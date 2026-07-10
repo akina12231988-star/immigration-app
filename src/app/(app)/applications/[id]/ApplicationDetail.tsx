@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Copy,
   Check,
@@ -8,6 +9,9 @@ import {
   ShieldCheck,
   ImageOff,
   Image as ImageIcon,
+  Trash2,
+  TriangleAlert,
+  ExternalLink,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -17,8 +21,11 @@ import { generateLineReport } from "@/lib/line-report";
 import { useApplications } from "@/lib/application-store";
 
 export function ApplicationDetail({ id }: { id: string }) {
-  const { applications, loaded, updateApplication } = useApplications();
+  const router = useRouter();
+  const { applications, loaded, updateApplication, deleteApplication } =
+    useApplications();
   const [copied, setCopied] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const app = applications.find((a) => a.id === id);
 
@@ -64,6 +71,11 @@ export function ApplicationDetail({ id }: { id: string }) {
     });
   }
 
+  function handleDelete() {
+    deleteApplication(id);
+    router.push("/applications");
+  }
+
   return (
     <div className="space-y-5">
       <Card className="p-4">
@@ -82,6 +94,7 @@ export function ApplicationDetail({ id }: { id: string }) {
       <Card className="p-4">
         <h3 className="mb-3 text-sm font-bold text-muted">基本情報</h3>
         <dl className="space-y-2.5 text-sm">
+          <InfoRow label="申請方法" value={app.applicationMethod} />
           <InfoRow label="申請番号" value={app.applicationNumber || "未登録"} />
           <InfoRow label="申請日" value={app.applicationDate} />
           <InfoRow
@@ -100,14 +113,40 @@ export function ApplicationDetail({ id }: { id: string }) {
         </dl>
       </Card>
 
-      <Card className="p-4">
-        <h3 className="mb-3 text-sm font-bold text-muted">画像</h3>
-        <div className="grid grid-cols-3 gap-2">
-          <ImageSlot label="受付票" url={app.receiptImageUrl} />
-          <ImageSlot label="通知書" url={app.noticeImageUrl} />
-          <ImageSlot label="在留カード" url={app.residenceCardImageUrl} />
-        </div>
-      </Card>
+      {app.applicationMethod === "オンライン申請" ? (
+        <Card className="p-4">
+          <h3 className="mb-3 text-sm font-bold text-muted">
+            確認メール情報
+          </h3>
+          {app.emailLink && (
+            <a
+              href={app.emailLink}
+              target="_blank"
+              rel="noreferrer"
+              className="mb-3 flex items-center gap-1.5 break-all text-sm font-bold text-brand underline"
+            >
+              <ExternalLink size={14} className="shrink-0" />
+              {app.emailLink}
+            </a>
+          )}
+          {app.emailBody ? (
+            <pre className="whitespace-pre-wrap rounded-xl bg-background p-3.5 text-sm leading-relaxed">
+              {app.emailBody}
+            </pre>
+          ) : (
+            <p className="text-sm text-muted">メール本文は未登録です</p>
+          )}
+        </Card>
+      ) : (
+        <Card className="p-4">
+          <h3 className="mb-3 text-sm font-bold text-muted">画像</h3>
+          <div className="grid grid-cols-3 gap-2">
+            <ImageSlot label="受付票" url={app.receiptImageUrl} />
+            <ImageSlot label="通知書" url={app.noticeImageUrl} />
+            <ImageSlot label="在留カード" url={app.residenceCardImageUrl} />
+          </div>
+        </Card>
+      )}
 
       <Card className="p-4">
         <div className="mb-3 flex items-center justify-between">
@@ -153,6 +192,41 @@ export function ApplicationDetail({ id }: { id: string }) {
             ? `許可済（許可日: ${app.approvalDate}）`
             : "許可済にする"}
         </Button>
+      </Card>
+
+      <Card className="p-4">
+        <h3 className="mb-3 text-sm font-bold text-muted">この申請の削除</h3>
+        {!confirmingDelete ? (
+          <Button
+            variant="secondary"
+            icon={<Trash2 size={17} />}
+            fullWidth
+            onClick={() => setConfirmingDelete(true)}
+          >
+            削除する
+          </Button>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-start gap-2 rounded-xl bg-seal/10 p-3 text-sm text-seal">
+              <TriangleAlert size={18} className="mt-0.5 shrink-0" />
+              <p>
+                「{app.name}」の申請情報を削除します。この操作は取り消せません。本当に削除しますか？
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Button variant="secondary" onClick={() => setConfirmingDelete(false)}>
+                キャンセル
+              </Button>
+              <Button
+                variant="seal"
+                icon={<Trash2 size={17} />}
+                onClick={handleDelete}
+              >
+                削除する
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
     </div>
   );

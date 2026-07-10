@@ -24,13 +24,21 @@ export const APPLICATION_CONTENT_OPTIONS = [
 
 export type ApplicationContent = (typeof APPLICATION_CONTENT_OPTIONS)[number];
 
+// 申請方法: 窓口申請（入管窓口で受付票を受け取る）/ オンライン申請（メールで受付確認が届く）
+export const APPLICATION_METHOD_OPTIONS = ["窓口申請", "オンライン申請"] as const;
+
+export type ApplicationMethod = (typeof APPLICATION_METHOD_OPTIONS)[number];
+
 export interface Application {
   id: string;
   name: string; // 氏名
   applicationDate: string; // 申請日 (YYYY-MM-DD)
   applicationNumber: string; // 申請番号
   applicationContent: ApplicationContent | ""; // 申請内容
-  receiptImageUrl?: string; // 受付票画像URL
+  applicationMethod: ApplicationMethod; // 申請方法（窓口申請/オンライン申請）
+  emailLink?: string; // オンライン申請時: 確認メールに記載されたリンクURL
+  emailBody?: string; // オンライン申請時: 確認メール本文の転記
+  receiptImageUrl?: string; // 受付票画像URL（窓口申請時）
   noticeImageUrl?: string; // 通知書画像URL
   residenceCardImageUrl?: string; // 在留カード画像URL
   approvalDate?: string; // 許可日

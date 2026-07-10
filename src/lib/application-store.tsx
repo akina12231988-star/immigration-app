@@ -20,6 +20,7 @@ interface ApplicationsContextValue {
   loaded: boolean;
   addApplication: (app: Application) => void;
   updateApplication: (id: string, patch: Partial<Application>) => void;
+  deleteApplication: (id: string) => void;
 }
 
 const ApplicationsContext = createContext<ApplicationsContextValue | null>(
@@ -63,9 +64,19 @@ export function ApplicationsProvider({ children }: { children: ReactNode }) {
     );
   }
 
+  function deleteApplication(id: string) {
+    setApplications((prev) => prev.filter((a) => a.id !== id));
+  }
+
   return (
     <ApplicationsContext.Provider
-      value={{ applications, loaded, addApplication, updateApplication }}
+      value={{
+        applications,
+        loaded,
+        addApplication,
+        updateApplication,
+        deleteApplication,
+      }}
     >
       {children}
     </ApplicationsContext.Provider>

@@ -13,33 +13,44 @@ import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { getDashboardStats } from "@/lib/mock-data";
 import { useApplications } from "@/lib/application-store";
+import type { DashboardFilterKey } from "@/lib/mock-data";
 
-const STAT_CARDS = [
+const STAT_CARDS: {
+  key: "thisMonthCount" | "unreportedCount" | "waitingNoticeCount" | "approvedCount";
+  filterKey: DashboardFilterKey;
+  label: string;
+  icon: typeof FileClock;
+  accent: string;
+}[] = [
   {
     key: "thisMonthCount",
+    filterKey: "thisMonth",
     label: "今月申請件数",
     icon: FileClock,
     accent: "text-status-applied-fg bg-status-applied-bg",
   },
   {
     key: "unreportedCount",
+    filterKey: "unreported",
     label: "未報告件数",
     icon: MessageCircleWarning,
     accent: "text-seal bg-seal/10",
   },
   {
     key: "waitingNoticeCount",
+    filterKey: "waitingNotice",
     label: "通知書待ち件数",
     icon: MailWarning,
     accent: "text-status-notice-fg bg-status-notice-bg",
   },
   {
     key: "approvedCount",
+    filterKey: "approved",
     label: "許可済件数",
     icon: CheckCircle2,
     accent: "text-status-approved-fg bg-status-approved-bg",
   },
-] as const;
+];
 
 export default function DashboardPage() {
   const { applications } = useApplications();
@@ -55,19 +66,23 @@ export default function DashboardPage() {
       <AppHeader title="ダッシュボード" />
       <div className="space-y-6 px-4 pt-5">
         <section className="grid grid-cols-2 gap-3">
-          {STAT_CARDS.map(({ key, label, icon: Icon, accent }) => (
-            <Card key={key} className="p-4">
-              <div
-                className={`mb-2 flex h-9 w-9 items-center justify-center rounded-lg ${accent}`}
-              >
-                <Icon size={20} />
-              </div>
-              <p className="text-2xl font-black tabular-nums">
-                {stats[key]}
-                <span className="ml-0.5 text-sm font-bold text-muted">件</span>
-              </p>
-              <p className="text-xs font-medium text-muted">{label}</p>
-            </Card>
+          {STAT_CARDS.map(({ key, filterKey, label, icon: Icon, accent }) => (
+            <Link key={key} href={`/applications?filter=${filterKey}`}>
+              <Card className="h-full p-4 active:scale-[0.98]">
+                <div
+                  className={`mb-2 flex h-9 w-9 items-center justify-center rounded-lg ${accent}`}
+                >
+                  <Icon size={20} />
+                </div>
+                <p className="text-2xl font-black tabular-nums">
+                  {stats[key]}
+                  <span className="ml-0.5 text-sm font-bold text-muted">
+                    件
+                  </span>
+                </p>
+                <p className="text-xs font-medium text-muted">{label}</p>
+              </Card>
+            </Link>
           ))}
         </section>
 

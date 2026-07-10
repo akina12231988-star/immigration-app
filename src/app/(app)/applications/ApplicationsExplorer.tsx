@@ -2,11 +2,18 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Search, LayoutGrid, Rows3, ChevronRight } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Search, LayoutGrid, Rows3, ChevronRight, X } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import type { Application, ApplicationStatus } from "@/types/application";
 import { APPLICATION_STATUS_ORDER } from "@/types/application";
+import {
+  DASHBOARD_FILTER_KEYS,
+  DASHBOARD_FILTER_LABELS,
+  matchesDashboardFilter,
+  type DashboardFilterKey,
+} from "@/lib/mock-data";
 
 type ViewMode = "card" | "list";
 
@@ -15,6 +22,13 @@ export function ApplicationsExplorer({
 }: {
   applications: Application[];
 }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const dashboardFilterParam = searchParams.get("filter");
+  // ダッシュボードのカードから渡された絞り込み条件（今月申請件数 等）
+  const dashboardFilter: DashboardFilterKey | null =
+    DASHBOARD_FILTER_KEYS.find((k) => k === dashboardFilterParam) ?? null;
+
   const [view, setView] = useState<ViewMode>("card");
   const [keyword, setKeyword] = useState("");
   const [statusFilter, setStatusFilter] = useState<ApplicationStatus | "all">(
@@ -24,6 +38,9 @@ export function ApplicationsExplorer({
   const filtered = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
     return applications.filter((a) => {
+      if (dashboardFilter && !matchesDashboardFilter(a, dashboardFilter)) {
+        return false;
+      }
       const matchesStatus = statusFilter === "all" || a.status === statusFilter;
       if (!matchesStatus) return false;
       if (!kw) return true;
@@ -34,10 +51,24 @@ export function ApplicationsExplorer({
         a.assignee.toLowerCase().includes(kw)
       );
     });
-  }, [applications, keyword, statusFilter]);
+  }, [applications, keyword, statusFilter, dashboardFilter]);
 
   return (
     <div className="space-y-4">
+      {dashboardFilter && (
+        <div className="flex items-center justify-between rounded-xl bg-brand/10 px-3.5 py-2.5">
+          <span className="text-sm font-bold text-brand">
+            ダッシュボードから絞り込み中: {DASHBOARD_FILTER_LABELS[dashboardFilter]}
+          </span>
+          <button
+            onClick={() => router.push("/applications")}
+            aria-label="絞り込みを解除"
+            className="flex h-7 w-7 items-center justify-center rounded-full text-brand hover:bg-brand/10"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
       {/* ⑩検索: 氏名・申請番号・申請内容・担当者を横断検索 */}
       <div className="relative">
         <Search
