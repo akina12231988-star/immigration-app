@@ -13,11 +13,19 @@ import {
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { useApplications } from "@/lib/application-store";
+import { fileToBase64 } from "@/lib/file-to-base64";
 import {
   APPLICATION_CONTENT_OPTIONS,
   type ApplicationContent,
   type ApplicationMethod,
 } from "@/types/application";
+
+function guessExtension(file: File): string {
+  if (file.type === "image/png") return "png";
+  if (file.type === "image/webp") return "webp";
+  if (file.type === "image/heic" || file.type === "image/heif") return "heic";
+  return "jpg";
+}
 
 interface FormFields {
   name: string;
@@ -47,8 +55,10 @@ export function ReceiptRegistrationForm() {
 
   const [method, setMethod] = useState<ApplicationMethod | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [fields, setFields] = useState<FormFields>(EMPTY_FIELDS);
   const [submitting, setSubmitting] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const isDuplicateNumber =
     fields.applicationNumber.length > 0 &&
@@ -70,10 +80,13 @@ export function ReceiptRegistrationForm() {
   function handleFile(file: File | undefined) {
     if (!file) return;
     setImagePreview(URL.createObjectURL(file));
+    setImageFile(file);
+    setUploadError(null);
   }
 
   function retake() {
     setImagePreview(null);
+    setImageFile(null);
   }
 
   function updateField<K extends keyof FormFields>(key: K, value: FormFields[K]) {
@@ -83,6 +96,39 @@ export function ReceiptRegistrationForm() {
   async function handleSubmit() {
     if (!method || !fields.applicationContent) return;
     setSubmitting(true);
+    setUploadError(null);
+
+    let receiptImageUrl: string | undefined;
+    if (method === "窓口申請" && imageFile) {
+      try {
+        const base64Data = await fileToBase64(imageFile);
+        const ext = guessExtension(imageFile);
+        const filename = `受付票_${fields.applicationDate}_${fields.name}_${fields.applicationNumber}.${ext}`;
+        const folderName = `${fields.applicationNumber}_${fields.name}`;
+        const res = await fetch("/api/upload-image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filename,
+            mimeType: imageFile.type || "image/jpeg",
+            base64Data,
+            folderName,
+          }),
+        });
+        const json = await res.json();
+        if (!res.ok || json.ok === false) {
+          throw new Error(json.error || "画像のアップロードに失敗しました");
+        }
+        receiptImageUrl = json.url as string;
+      } catch {
+        setUploadError(
+          "受付票画像のアップロードに失敗しました。もう一度お試しください"
+        );
+        setSubmitting(false);
+        return;
+      }
+    }
+
     const now = new Date().toISOString();
     const id =
       typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -98,6 +144,7 @@ export function ReceiptRegistrationForm() {
       applicationMethod: method,
       emailLink: method === "オンライン申請" ? fields.emailLink : undefined,
       emailBody: method === "オンライン申請" ? fields.emailBody : undefined,
+      receiptImageUrl,
       lineReported: false,
       notionSynced: false,
       approved: false,
@@ -330,6 +377,12 @@ export function ReceiptRegistrationForm() {
               <div className="mb-2 flex items-center gap-2 rounded-lg bg-seal/10 px-3 py-2 text-xs font-bold text-seal">
                 <TriangleAlert size={15} />
                 申請番号が重複しています。内容を確認してください
+              </div>
+            )}
+            {uploadError && (
+              <div className="mb-2 flex items-center gap-2 rounded-lg bg-seal/10 px-3 py-2 text-xs font-bold text-seal">
+                <TriangleAlert size={15} />
+                {uploadError}
               </div>
             )}
             <Button fullWidth disabled={!canSubmit} onClick={handleSubmit}>

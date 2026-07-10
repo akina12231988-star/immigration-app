@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Settings } from "lucide-react";
 import { DarkModeToggle } from "@/components/DarkModeToggle";
 
 export function AppHeader({
@@ -33,7 +33,16 @@ export function AppHeader({
             <h1 className="text-lg font-bold">{title}</h1>
           </div>
         </div>
-        <DarkModeToggle />
+        <div className="flex items-center gap-1.5">
+          <Link
+            href="/settings"
+            aria-label="ログイン設定"
+            className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-brand-foreground/10"
+          >
+            <Settings size={19} />
+          </Link>
+          <DarkModeToggle />
+        </div>
       </div>
     </header>
   );

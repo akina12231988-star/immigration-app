@@ -117,7 +117,11 @@ Sheets と同一のプロパティ構成をミラーリングする。同期は 
 
 ## 7. 認証・セキュリティ設計
 
-- ログイン: NextAuth.js (Auth.js) + Google Provider。社内ドメイン／許可メールアドレスのホワイトリストでアクセス制御し、対象外アカウントは弾く
+- ログイン: Googleアカウント連携は行わず、**社内共通のログインID・パスワード方式**を採用する。1つの会社共通アカウントを管理者（利用者自身）が [ログイン設定画面](../src/app/(app)/settings) から変更できる
+  - パスワードはNode標準の`scrypt`でハッシュ化し、Google Apps Script（PropertiesService）に保存する。平文パスワードは一切保存しない
+  - ログイン成功時、HMAC-SHA256で署名した有効期限付きセッショントークンをhttpOnly Cookieとして発行する（`src/lib/auth/session.ts`）。署名鍵は環境変数`AUTH_SECRET`
+  - `src/middleware.ts` が `/login` と `/api/auth/*` 以外の全ルートでセッションCookieを検証し、未ログイン時は `/login` にリダイレクトする
+  - 初回アクセス時のみ初期ID・パスワード（`admin` / `change-me-123`）でログイン可能。ログイン後は必ずログイン設定から変更する運用とする
 - Google Sheets / Drive へのアクセスは **Google Apps Script（GAS）のウェブアプリ**経由（サーバーサイドのみ）で行う。Google Cloud のプロジェクト作成・サービスアカウント発行・請求先アカウント登録を避けるため、GCPを使わずGoogleアカウント自身の権限で完結するGASをバックエンドとして採用する（詳細は [docs/apps-script/Code.gs](./apps-script/Code.gs)）
 - Next.js の API Routes から GAS ウェブアプリへ POST する際、共有シークレット文字列（`GAS_SECRET`）をボディに含めて認証する。このシークレットはサーバーサイド環境変数としてのみ保持し、クライアントバンドルに一切含めない
 - Notion Integration Token も同様にサーバーサイド環境変数として保持する

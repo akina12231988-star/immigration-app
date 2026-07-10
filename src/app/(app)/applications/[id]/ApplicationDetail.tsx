@@ -242,11 +242,27 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 function ImageSlot({ label, url }: { label: string; url?: string }) {
+  const content = (
+    <div
+      className={`flex aspect-square w-full items-center justify-center rounded-xl border text-muted ${
+        url
+          ? "border-brand bg-brand/10 text-brand"
+          : "border-dashed border-border bg-background"
+      }`}
+    >
+      {url ? <ImageIcon size={22} /> : <ImageOff size={22} />}
+    </div>
+  );
+
   return (
     <div className="flex flex-col items-center gap-1.5">
-      <div className="flex aspect-square w-full items-center justify-center rounded-xl border border-dashed border-border bg-background text-muted">
-        {url ? <ImageIcon size={22} /> : <ImageOff size={22} />}
-      </div>
+      {url ? (
+        <a href={url} target="_blank" rel="noreferrer" className="w-full">
+          {content}
+        </a>
+      ) : (
+        content
+      )}
       <span className="text-[11px] font-bold text-muted">{label}</span>
     </div>
   );

@@ -109,6 +109,29 @@ function objectToRow_(obj) {
   return COLUMNS.map((key) => (obj[key] === undefined ? "" : obj[key]));
 }
 
+// この列は値がURLの場合、セルをハイパーリンク表示にする
+// （getValues()で読み取れる値自体はURL文字列のまま変わらないため、アプリ側の読み取りには影響しない）
+const URL_COLUMNS = [
+  "emailLink",
+  "receiptImageUrl",
+  "noticeImageUrl",
+  "residenceCardImageUrl",
+];
+
+function applyHyperlinks_(sheet, rowIndex, obj) {
+  URL_COLUMNS.forEach((key) => {
+    const url = obj[key];
+    if (!url) return;
+    const colIndex = COLUMNS.indexOf(key) + 1;
+    if (colIndex <= 0) return;
+    const richValue = SpreadsheetApp.newRichTextValue()
+      .setText(url)
+      .setLinkUrl(url)
+      .build();
+    sheet.getRange(rowIndex, colIndex).setRichTextValue(richValue);
+  });
+}
+
 function findRowIndexById_(sheet, id) {
   const data = sheet.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
@@ -137,13 +160,15 @@ function doPost(e) {
 
     if (action === "upsert") {
       const app = body.application;
-      const rowIndex = findRowIndexById_(sheet, app.id);
+      let rowIndex = findRowIndexById_(sheet, app.id);
       const rowValues = objectToRow_(app);
       if (rowIndex === -1) {
         sheet.appendRow(rowValues);
+        rowIndex = sheet.getLastRow();
       } else {
         sheet.getRange(rowIndex, 1, 1, COLUMNS.length).setValues([rowValues]);
       }
+      applyHyperlinks_(sheet, rowIndex, app);
       return jsonResponse_({ ok: true });
     }
 
@@ -152,6 +177,27 @@ function doPost(e) {
       if (rowIndex !== -1) {
         sheet.deleteRow(rowIndex);
       }
+      return jsonResponse_({ ok: true });
+    }
+
+    if (action === "getAuthConfig") {
+      const props = PropertiesService.getScriptProperties();
+      let username = props.getProperty("AUTH_USERNAME");
+      let passwordHash = props.getProperty("AUTH_PASSWORD_HASH");
+      if (!username || !passwordHash) {
+        // 初回アクセス時のみ、Next.js側から渡された初期値で初期化する
+        username = body.defaultUsername || "admin";
+        passwordHash = body.defaultPasswordHash || "";
+        props.setProperty("AUTH_USERNAME", username);
+        props.setProperty("AUTH_PASSWORD_HASH", passwordHash);
+      }
+      return jsonResponse_({ ok: true, username: username, passwordHash: passwordHash });
+    }
+
+    if (action === "setAuthConfig") {
+      const props = PropertiesService.getScriptProperties();
+      props.setProperty("AUTH_USERNAME", body.username);
+      props.setProperty("AUTH_PASSWORD_HASH", body.passwordHash);
       return jsonResponse_({ ok: true });
     }
 

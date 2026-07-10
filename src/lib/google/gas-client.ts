@@ -96,3 +96,22 @@ export async function uploadImageToDrive(params: {
     ...params,
   });
 }
+
+// ログイン認証情報（社内共通のID・パスワードハッシュ）をGAS(PropertiesService)経由で保存する。
+// defaultUsername/defaultPasswordHash は初回アクセス時のみ使われる初期値。
+export async function getAuthConfig(defaults: {
+  defaultUsername: string;
+  defaultPasswordHash: string;
+}): Promise<{ username: string; passwordHash: string }> {
+  return callGas<{ username: string; passwordHash: string }>({
+    action: "getAuthConfig",
+    ...defaults,
+  });
+}
+
+export async function setAuthConfig(params: {
+  username: string;
+  passwordHash: string;
+}): Promise<void> {
+  await callGas({ action: "setAuthConfig", ...params });
+}
