@@ -1,0 +1,93 @@
+@import "tailwindcss";
+
+/* class="dark" をルートに付けることでダークモードを切り替える */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: #f5f7fa;
+  --surface: #ffffff;
+  --foreground: #14213d;
+  --muted: #5b6b82;
+  --border: #dbe2ea;
+
+  /* 公的手続き感のあるネイビー基調のブランドカラー */
+  --brand: #16325c;
+  --brand-strong: #0e223f;
+  --brand-foreground: #ffffff;
+
+  /* 朱印（はんこ）を思わせるアクセントレッド。強調操作にのみ使用 */
+  --seal: #b7282e;
+  --seal-foreground: #ffffff;
+
+  /* ステータス5段階（申請前→申請済→LINE報告済→通知書到着→許可済） */
+  --status-before-bg: #eef0f3;
+  --status-before-fg: #5b6472;
+  --status-applied-bg: #e2ecfb;
+  --status-applied-fg: #1d4ed8;
+  --status-reported-bg: #dcf5ea;
+  --status-reported-fg: #0f8a52;
+  --status-notice-bg: #fdecd2;
+  --status-notice-fg: #b1650a;
+  --status-approved-bg: #d9ead9;
+  --status-approved-fg: #1b5e2c;
+}
+
+.dark {
+  --background: #0b1220;
+  --surface: #121b2e;
+  --foreground: #e7ecf5;
+  --muted: #93a1b8;
+  --border: #24304a;
+
+  --brand: #4d7cbf;
+  --brand-strong: #2f5488;
+  --brand-foreground: #0b1220;
+
+  --seal: #e07178;
+  --seal-foreground: #0b1220;
+
+  --status-before-bg: #1c2438;
+  --status-before-fg: #a7b1c2;
+  --status-applied-bg: #1b2c4d;
+  --status-applied-fg: #7fb0ff;
+  --status-reported-bg: #123527;
+  --status-reported-fg: #57d998;
+  --status-notice-bg: #3a2a10;
+  --status-notice-fg: #f0ad5b;
+  --status-approved-bg: #163a1f;
+  --status-approved-fg: #6fce85;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-foreground: var(--brand-foreground);
+
+  --color-seal: var(--seal);
+  --color-seal-foreground: var(--seal-foreground);
+
+  --color-status-before-bg: var(--status-before-bg);
+  --color-status-before-fg: var(--status-before-fg);
+  --color-status-applied-bg: var(--status-applied-bg);
+  --color-status-applied-fg: var(--status-applied-fg);
+  --color-status-reported-bg: var(--status-reported-bg);
+  --color-status-reported-fg: var(--status-reported-fg);
+  --color-status-notice-bg: var(--status-notice-bg);
+  --color-status-notice-fg: var(--status-notice-fg);
+  --color-status-approved-bg: var(--status-approved-bg);
+  --color-status-approved-fg: var(--status-approved-fg);
+
+  --font-sans: var(--font-noto-sans-jp), var(--font-geist-sans), sans-serif;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
