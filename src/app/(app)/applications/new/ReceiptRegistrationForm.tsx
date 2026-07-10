@@ -80,7 +80,7 @@ export function ReceiptRegistrationForm() {
     setFields((prev) => ({ ...prev, [key]: value }));
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
     if (!method || !fields.applicationContent) return;
     setSubmitting(true);
     const now = new Date().toISOString();
@@ -89,7 +89,7 @@ export function ReceiptRegistrationForm() {
         ? crypto.randomUUID()
         : String(Date.now());
 
-    addApplication({
+    await addApplication({
       id,
       name: fields.name,
       applicationDate: fields.applicationDate,
@@ -107,9 +107,7 @@ export function ReceiptRegistrationForm() {
       updatedAt: now,
     });
 
-    setTimeout(() => {
-      router.push(`/applications/${id}`);
-    }, 400);
+    router.push(`/applications/${id}`);
   }
 
   // 窓口申請は受付票の撮影が必須、オンライン申請は不要

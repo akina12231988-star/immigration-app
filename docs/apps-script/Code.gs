@@ -17,7 +17,8 @@ const SECRET = "CHANGE_ME_TO_A_RANDOM_STRING";
 const SHEET_NAME = "申請管理台帳";
 const DRIVE_ROOT_FOLDER_NAME = "入管申請_受付票画像";
 
-// スプレッドシートの列順（A列から）
+// スプレッドシートの列順（A列から）。この配列の順序が実際のセルの並びと
+// JSON側のプロパティ名の対応関係を決める（並び順は変更しないこと）。
 const COLUMNS = [
   "id",
   "name",
@@ -41,6 +42,31 @@ const COLUMNS = [
   "notionPageId",
 ];
 
+// スプレッドシートの1行目（ヘッダー）に表示する日本語ラベル。
+// COLUMNSと同じ並び順にすること。
+const COLUMN_LABELS = [
+  "ID",
+  "氏名",
+  "申請日",
+  "申請番号",
+  "申請内容",
+  "申請方法",
+  "メールリンク",
+  "メール本文",
+  "受付票画像URL",
+  "通知書画像URL",
+  "在留カード画像URL",
+  "許可日",
+  "LINE報告済",
+  "Notion同期済",
+  "許可済",
+  "ステータス",
+  "担当者",
+  "登録日時",
+  "更新日時",
+  "Notion Page ID",
+];
+
 function getSheet_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName(SHEET_NAME);
@@ -48,8 +74,16 @@ function getSheet_() {
     sheet = ss.insertSheet(SHEET_NAME);
   }
   if (sheet.getLastRow() === 0) {
-    sheet.appendRow(COLUMNS);
+    sheet.appendRow(COLUMN_LABELS);
+  } else {
+    // 既存シートでも常にヘッダーを日本語ラベルへ揃える
+    sheet.getRange(1, 1, 1, COLUMN_LABELS.length).setValues([COLUMN_LABELS]);
   }
+  // 申請日等の "YYYY-MM-DD" 文字列をスプレッドシートが自動で日付型に変換し、
+  // タイムゾーンの都合で1日ずれてしまう問題を防ぐため、データ範囲を
+  // プレーンテキスト形式に固定する。
+  const numRows = Math.max(sheet.getMaxRows(), 1000);
+  sheet.getRange(1, 1, numRows, COLUMNS.length).setNumberFormat("@");
   return sheet;
 }
 

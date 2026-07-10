@@ -71,8 +71,8 @@ export function ApplicationDetail({ id }: { id: string }) {
     });
   }
 
-  function handleDelete() {
-    deleteApplication(id);
+  async function handleDelete() {
+    await deleteApplication(id);
     router.push("/applications");
   }
 
