@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { DarkModeToggle } from "@/components/DarkModeToggle";
+import { LogoutButton } from "@/components/LogoutButton";
 
 export function AppHeader({
   title,
@@ -33,7 +34,10 @@ export function AppHeader({
             <h1 className="text-lg font-bold">{title}</h1>
           </div>
         </div>
-        <DarkModeToggle />
+        <div className="flex items-center gap-1">
+          <DarkModeToggle />
+          <LogoutButton />
+        </div>
       </div>
     </header>
   );
