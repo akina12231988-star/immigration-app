@@ -14,6 +14,14 @@ const BUCKET = "app-files";
 const SIGNED_URL_TTL = 60 * 60; // 1時間
 const ALLOWED_MIME = /^(image\/(jpeg|png|webp|heic|heif)|application\/pdf)$/;
 
+// Storage のオブジェクトキーは日本語不可のため、種別を英数字のフォルダ名に変換する
+const KIND_SLUGS: Record<ApplicationFileKind, string> = {
+  受付票: "receipt",
+  通知書: "notice",
+  在留カード: "residence-card",
+  その他: "other",
+};
+
 type Admin = NonNullable<ReturnType<typeof createAdminClient>>;
 
 async function requireStaff(): Promise<string | null> {
@@ -62,8 +70,9 @@ export async function createUploadTicket(
   }
   await ensureBucket(admin);
 
-  const ext = fileName.includes(".") ? fileName.split(".").pop() : "bin";
-  const path = `${applicationId}/${kind}/${crypto.randomUUID()}.${ext}`;
+  const rawExt = fileName.includes(".") ? (fileName.split(".").pop() ?? "") : "";
+  const ext = /^[a-zA-Z0-9]{1,8}$/.test(rawExt) ? rawExt.toLowerCase() : "bin";
+  const path = `${applicationId}/${KIND_SLUGS[kind]}/${crypto.randomUUID()}.${ext}`;
   const { data, error } = await admin.storage
     .from(BUCKET)
     .createSignedUploadUrl(path);
@@ -86,7 +95,7 @@ export async function registerApplicationFile(
     return { ok: false, message: "画像の登録は admin / staff のみ可能です" };
   }
   // 発行時と同じ規則のパスのみ受け付ける（他申請のパスを紐づけさせない）
-  if (!path.startsWith(`${applicationId}/${kind}/`)) {
+  if (!path.startsWith(`${applicationId}/${KIND_SLUGS[kind]}/`)) {
     return { ok: false, message: "不正なファイルパスです" };
   }
   const admin = createAdminClient();
