@@ -17,7 +17,8 @@ supabase link --project-ref <プロジェクトRef>
 supabase db push
 ```
 
-方法B（ダッシュボード）: SQL Editor で `migrations/0001` → `0006` を番号順に実行する。
+方法B（ダッシュボード）: SQL Editor で `migrations/0001` から最新番号まで番号順に実行する。
+（適用済みの環境に新しいマイグレーションが増えた場合は、その番号のファイルだけを実行すればよい）
 
 ## 3. 最初の管理者を作成
 

@@ -2,70 +2,86 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useState,
   type ReactNode,
 } from "react";
 import type { Application } from "@/types/application";
-import { MOCK_APPLICATIONS } from "@/lib/mock-data";
+import { createClient } from "@/lib/supabase/client";
+import {
+  insertApplication,
+  listApplications,
+  updateApplicationRow,
+  type NewApplication,
+} from "@/lib/supabase/queries/applications";
 
-// Stage2の画面デザイン確認用の暫定ストア。
-// Stage4でGoogle Sheets APIからの取得・書き込みに置き換える想定で、
-// ここでは同じインターフェース(applications/addApplication/updateApplication)を保つ。
-const STORAGE_KEY = "immigration-app.applications";
+// Supabase を正とする申請ストア（旧: localStorage 保存の暫定ストア）。
+// 初回マウントで全件取得し、書き込みは楽観更新＋DB反映で全職員に共有される。
 
 interface ApplicationsContextValue {
   applications: Application[];
   loaded: boolean;
-  addApplication: (app: Application) => void;
-  updateApplication: (id: string, patch: Partial<Application>) => void;
+  error: string | null;
+  addApplication: (input: NewApplication) => Promise<Application>;
+  updateApplication: (id: string, patch: Partial<Application>) => Promise<void>;
 }
 
 const ApplicationsContext = createContext<ApplicationsContextValue | null>(
   null
 );
 
-function readFromStorage(): Application[] | null {
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Application[]) : null;
-  } catch {
-    return null;
-  }
-}
-
 export function ApplicationsProvider({ children }: { children: ReactNode }) {
-  const [applications, setApplications] =
-    useState<Application[]>(MOCK_APPLICATIONS);
+  const [applications, setApplications] = useState<Application[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // localStorageの読み取りはブラウザでのみ可能なため、マウント後に読み込む
-  // (SSR結果との不一致を避けるため、初回描画はモックデータのまま行う)
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setApplications(readFromStorage() ?? MOCK_APPLICATIONS);
-    setLoaded(true);
+    let cancelled = false;
+    listApplications(createClient())
+      .then((apps) => {
+        if (cancelled) return;
+        setApplications(apps);
+        setLoaded(true);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "申請データの取得に失敗しました");
+        setLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  useEffect(() => {
-    if (!loaded) return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(applications));
-  }, [applications, loaded]);
+  const addApplication = useCallback(async (input: NewApplication) => {
+    const created = await insertApplication(createClient(), input);
+    setApplications((prev) => [created, ...prev]);
+    return created;
+  }, []);
 
-  function addApplication(app: Application) {
-    setApplications((prev) => [app, ...prev]);
-  }
-
-  function updateApplication(id: string, patch: Partial<Application>) {
-    setApplications((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, ...patch } : a))
-    );
-  }
+  const updateApplication = useCallback(
+    async (id: string, patch: Partial<Application>) => {
+      // 楽観更新→DB反映。失敗時はDBの値で巻き戻す
+      setApplications((prev) =>
+        prev.map((a) => (a.id === id ? { ...a, ...patch } : a))
+      );
+      try {
+        const saved = await updateApplicationRow(createClient(), id, patch);
+        setApplications((prev) => prev.map((a) => (a.id === id ? saved : a)));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "保存に失敗しました");
+        const apps = await listApplications(createClient()).catch(() => null);
+        if (apps) setApplications(apps);
+      }
+    },
+    []
+  );
 
   return (
     <ApplicationsContext.Provider
-      value={{ applications, loaded, addApplication, updateApplication }}
+      value={{ applications, loaded, error, addApplication, updateApplication }}
     >
       {children}
     </ApplicationsContext.Provider>

@@ -26,6 +26,8 @@ export type ApplicationContent = (typeof APPLICATION_CONTENT_OPTIONS)[number];
 
 export interface Application {
   id: string;
+  workerId: string | null; // 紐づく外国人（workers.id）。未登録者の申請は null
+  workerName?: string | null; // 表示用（workers から JOIN 取得）
   name: string; // 氏名
   applicationDate: string; // 申請日 (YYYY-MM-DD)
   applicationNumber: string; // 申請番号

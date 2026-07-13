@@ -94,3 +94,25 @@ export type WorkHistoryInput = Omit<
 >;
 
 export type OrganizationInput = Omit<Organization, "id" | "created_at" | "updated_at">;
+
+// ---- 入管申請（0008_immigration_applications.sql） ----
+
+export interface ImmigrationApplicationRow {
+  id: string;
+  worker_id: string | null;
+  name: string;
+  application_date: string; // YYYY-MM-DD
+  application_no: string;
+  content: string;
+  status: string; // ApplicationStatus（types/application.ts）
+  assignee: string;
+  line_reported: boolean;
+  notion_synced: boolean;
+  approved: boolean;
+  approval_date: string | null;
+  receipt_image_url: string | null;
+  notice_image_url: string | null;
+  residence_card_image_url: string | null;
+  created_at: string;
+  updated_at: string;
+}

@@ -1,8 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarClock, Pencil, Plus, Trash2 } from "lucide-react";
+import { CalendarClock, ChevronRight, FileText, Pencil, Plus, Trash2 } from "lucide-react";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -24,15 +26,18 @@ import {
   updateHistory,
 } from "@/lib/supabase/queries/histories";
 import { COUNTED_VISAS } from "@/types/ssw";
+import type { Application } from "@/types/application";
 import type { Organization, WorkHistoryRow, WorkerInput, WorkerWithHistories } from "@/types/db";
 
 export function WorkerDetail({
   worker,
   organizations,
+  applications,
   canEdit,
 }: {
   worker: WorkerWithHistories;
   organizations: Organization[];
+  applications: Application[];
   canEdit: boolean;
 }) {
   const router = useRouter();
@@ -256,6 +261,53 @@ export function WorkerDetail({
           </Card>
         )}
         <p className="mt-2 text-[11px] text-muted">★ = 通算対象の在留資格</p>
+      </section>
+
+      {/* 入管申請（申請受付日・申請番号） */}
+      <section>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="flex items-center gap-1.5 text-sm font-bold text-muted">
+            <FileText size={14} />
+            入管申請（{applications.length}件）
+          </h2>
+          {canEdit && (
+            <Link
+              href="/applications/new"
+              className="text-xs font-bold text-brand"
+            >
+              申請を登録
+            </Link>
+          )}
+        </div>
+        {applications.length === 0 ? (
+          <Card className="p-5 text-center text-sm text-muted">
+            紐づく申請はありません。申請登録時に「外国人と紐づける」でこの人を選ぶとここに表示されます。
+          </Card>
+        ) : (
+          <Card className="divide-y divide-border overflow-hidden">
+            {applications.map((a) => (
+              <Link
+                key={a.id}
+                href={`/applications/${a.id}`}
+                className="flex items-center gap-3 p-3.5"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="mb-0.5 flex items-center gap-2">
+                    <p className="truncate text-sm font-bold">
+                      {a.applicationContent || "申請"}
+                    </p>
+                    <StatusBadge status={a.status} />
+                  </div>
+                  <p className="text-xs tabular-nums text-muted">
+                    受付日 {a.applicationDate} ・ 申請番号{" "}
+                    {a.applicationNumber || "未登録"}
+                  </p>
+                </div>
+                <ChevronRight size={18} className="shrink-0 text-muted" />
+              </Link>
+            ))}
+          </Card>
+        )}
       </section>
 
       {/* 削除 */}

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { getWorkerWithHistories } from "@/lib/supabase/queries/workers";
 import { listOrganizations } from "@/lib/supabase/queries/organizations";
+import { listApplicationsByWorker } from "@/lib/supabase/queries/applications";
 import { WorkerDetail } from "./WorkerDetail";
 
 export const dynamic = "force-dynamic";
@@ -18,9 +19,11 @@ export default async function WorkerDetailPage({
 
   const { id } = await params;
   const supabase = await createClient();
-  const [worker, organizations] = await Promise.all([
+  const [worker, organizations, applications] = await Promise.all([
     getWorkerWithHistories(supabase, id),
     listOrganizations(supabase),
+    // 入管申請テーブル未作成（0008未適用）でも詳細ページ自体は表示できるようにする
+    listApplicationsByWorker(supabase, id).catch(() => []),
   ]);
   if (!worker) notFound();
 
@@ -30,6 +33,7 @@ export default async function WorkerDetailPage({
       <WorkerDetail
         worker={worker}
         organizations={organizations}
+        applications={applications}
         canEdit={me.role !== "viewer"}
       />
     </>

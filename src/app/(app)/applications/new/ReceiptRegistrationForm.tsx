@@ -1,17 +1,20 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Camera,
   ImagePlus,
+  Keyboard,
   RotateCcw,
   ScanText,
   TriangleAlert,
+  UserRound,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { useApplications } from "@/lib/application-store";
+import { createClient } from "@/lib/supabase/client";
 import {
   APPLICATION_CONTENT_OPTIONS,
   type ApplicationContent,
@@ -33,20 +36,9 @@ const EMPTY_FIELDS: FormFields = {
   assignee: "",
 };
 
-// Stage2はデザイン確認用のためOCR結果を模擬生成する（Stage6でGoogle Vision APIに置き換える）
-const MOCK_OCR_NAME_POOL = [
-  "グエン・ヴァン・A",
-  "チャン・ティ・C",
-  "キム・ソヨン",
-  "ラム・クアン・D",
-];
-
-function generateMockApplicationNumber(existingNumbers: string[]): string {
-  let candidate: string;
-  do {
-    candidate = String(100000 + Math.floor(Math.random() * 900000));
-  } while (existingNumbers.includes(candidate));
-  return candidate;
+interface WorkerOption {
+  id: string;
+  name: string;
 }
 
 export function ReceiptRegistrationForm() {
@@ -56,11 +48,29 @@ export function ReceiptRegistrationForm() {
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [ocrState, setOcrState] = useState<"idle" | "loading" | "done">(
+  const [entryState, setEntryState] = useState<"idle" | "loading" | "editing">(
     "idle"
   );
   const [fields, setFields] = useState<FormFields>(EMPTY_FIELDS);
+  const [workerId, setWorkerId] = useState<string>("");
+  const [workers, setWorkers] = useState<WorkerOption[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // 紐づけ候補の外国人一覧（名前のみ）
+  useEffect(() => {
+    let cancelled = false;
+    createClient()
+      .from("workers")
+      .select("id, name")
+      .order("name")
+      .then(({ data }) => {
+        if (!cancelled && data) setWorkers(data as WorkerOption[]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const isDuplicateNumber =
     fields.applicationNumber.length > 0 &&
@@ -73,71 +83,72 @@ export function ReceiptRegistrationForm() {
         a.name === fields.name && a.applicationDate === fields.applicationDate
     );
 
+  function startEditing() {
+    setFields((prev) => ({
+      ...prev,
+      applicationDate: prev.applicationDate || new Date().toISOString().slice(0, 10),
+    }));
+    setEntryState("editing");
+  }
+
   function handleFile(file: File | undefined) {
     if (!file) return;
     const url = URL.createObjectURL(file);
     setImagePreview(url);
-    setOcrState("loading");
-    // OCR処理のモック。実装ではここでPOST /api/ocr を呼び出す
-    setTimeout(() => {
-      const existingNumbers = applications.map((a) => a.applicationNumber);
-      setFields({
-        name:
-          MOCK_OCR_NAME_POOL[
-            Math.floor(Math.random() * MOCK_OCR_NAME_POOL.length)
-          ],
-        applicationDate: new Date().toISOString().slice(0, 10),
-        applicationNumber: generateMockApplicationNumber(existingNumbers),
-        applicationContent: "",
-        assignee: "",
-      });
-      setOcrState("done");
-    }, 1200);
+    // OCR（Google Vision / /api/ocr）は未実装のため、撮影後は手入力してもらう
+    setEntryState("loading");
+    setTimeout(startEditing, 400);
   }
 
   function retake() {
     setImagePreview(null);
-    setOcrState("idle");
+    setEntryState("idle");
     setFields(EMPTY_FIELDS);
+    setWorkerId("");
   }
 
   function updateField<K extends keyof FormFields>(key: K, value: FormFields[K]) {
     setFields((prev) => ({ ...prev, [key]: value }));
   }
 
-  function handleSubmit() {
+  // 外国人を選ぶと氏名を自動入力（手修正も可）
+  function selectWorker(id: string) {
+    setWorkerId(id);
+    const w = workers.find((x) => x.id === id);
+    if (w) {
+      setFields((prev) => ({ ...prev, name: prev.name || w.name }));
+    }
+  }
+
+  async function handleSubmit() {
     if (!fields.applicationContent) return;
     setSubmitting(true);
-    const now = new Date().toISOString();
-    const id =
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : String(Date.now());
-
-    addApplication({
-      id,
-      name: fields.name,
-      applicationDate: fields.applicationDate,
-      applicationNumber: fields.applicationNumber,
-      applicationContent: fields.applicationContent,
-      lineReported: false,
-      notionSynced: false,
-      approved: false,
-      status: "申請済",
-      assignee: fields.assignee,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    setTimeout(() => {
-      router.push(`/applications/${id}`);
-    }, 400);
+    setSubmitError(null);
+    try {
+      const created = await addApplication({
+        workerId: workerId || null,
+        name: fields.name,
+        applicationDate: fields.applicationDate,
+        applicationNumber: fields.applicationNumber,
+        applicationContent: fields.applicationContent,
+        lineReported: false,
+        notionSynced: false,
+        approved: false,
+        status: "申請済",
+        assignee: fields.assignee,
+      });
+      router.push(`/applications/${created.id}`);
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "登録に失敗しました");
+      setSubmitting(false);
+    }
   }
 
   const canSubmit =
     !submitting &&
     !isDuplicateNumber &&
     fields.name &&
+    fields.applicationDate &&
     fields.applicationNumber &&
     fields.applicationContent &&
     fields.assignee;
@@ -167,6 +178,16 @@ export function ReceiptRegistrationForm() {
                 画像を選択
               </Button>
             </div>
+            {entryState === "idle" && (
+              <button
+                type="button"
+                onClick={startEditing}
+                className="mt-1 flex items-center gap-1.5 text-sm font-bold text-brand"
+              >
+                <Keyboard size={16} />
+                画像なしで手入力する
+              </button>
+            )}
           </Card>
         ) : (
           <Card className="overflow-hidden p-3">
@@ -203,22 +224,44 @@ export function ReceiptRegistrationForm() {
         />
       </section>
 
-      {ocrState !== "idle" && (
+      {entryState !== "idle" && (
         <section>
           <div className="mb-2 flex items-center gap-2">
             <ScanText size={16} className="text-brand" />
             <h2 className="text-sm font-bold text-muted">
-              ② 読み取り結果（間違っていれば修正してください）
+              ② 申請情報の入力
             </h2>
           </div>
 
-          {ocrState === "loading" ? (
+          {entryState === "loading" ? (
             <Card className="flex items-center gap-3 p-5">
               <span className="h-5 w-5 animate-spin rounded-full border-2 border-brand border-t-transparent" />
-              <p className="text-sm text-muted">OCRで読み取っています…</p>
+              <p className="text-sm text-muted">画像を読み込んでいます…</p>
             </Card>
           ) : (
             <Card className="space-y-4 p-4">
+              <label className="block">
+                <span className="mb-1.5 flex items-center gap-1 text-xs font-bold text-muted">
+                  <UserRound size={13} />
+                  外国人と紐づける（任意）
+                </span>
+                <select
+                  value={workerId}
+                  onChange={(e) => selectWorker(e.target.value)}
+                  className="w-full rounded-xl border border-border bg-surface px-3.5 py-3 text-base focus:border-brand focus:outline-none"
+                >
+                  <option value="">（紐づけない・未登録の人）</option>
+                  {workers.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="mt-1 block text-xs text-muted">
+                  紐づけると外国人詳細ページから申請受付日・番号を確認できます
+                </span>
+              </label>
+
               <Field
                 label="氏名"
                 value={fields.name}
@@ -285,13 +328,19 @@ export function ReceiptRegistrationForm() {
         </section>
       )}
 
-      {ocrState === "done" && (
+      {entryState === "editing" && (
         <div className="fixed bottom-[calc(64px+env(safe-area-inset-bottom))] left-0 right-0 z-10 border-t border-border bg-surface p-3">
           <div className="mx-auto max-w-lg">
             {isDuplicateNumber && (
               <div className="mb-2 flex items-center gap-2 rounded-lg bg-seal/10 px-3 py-2 text-xs font-bold text-seal">
                 <TriangleAlert size={15} />
                 申請番号が重複しています。内容を確認してください
+              </div>
+            )}
+            {submitError && (
+              <div className="mb-2 flex items-center gap-2 rounded-lg bg-seal/10 px-3 py-2 text-xs font-bold text-seal">
+                <TriangleAlert size={15} />
+                登録に失敗しました: {submitError}
               </div>
             )}
             <Button fullWidth disabled={!canSubmit} onClick={handleSubmit}>

@@ -14,7 +14,7 @@ import {
 import { AppHeader } from "@/components/AppHeader";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { getDashboardStats } from "@/lib/mock-data";
+import { getDashboardStats } from "@/lib/application-stats";
 import { useApplications } from "@/lib/application-store";
 
 const STAT_CARDS = [

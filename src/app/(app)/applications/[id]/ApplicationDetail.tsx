@@ -1,13 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
   Copy,
   Check,
+  ChevronRight,
   MessageCircle,
   ShieldCheck,
   ImageOff,
   Image as ImageIcon,
+  UserRound,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -42,25 +45,23 @@ export function ApplicationDetail({ id }: { id: string }) {
     setTimeout(() => setCopied(false), 2000);
   }
 
-  // ⑥報告済ボタン: Sheets/Notion双方の報告済フラグを更新する想定（Stage4/7で実API接続）
+  // ⑥報告済ボタン: LINE報告済フラグを更新（updated_at はDBトリガーが自動更新）
   function markReported() {
     if (!app) return;
-    updateApplication(app.id, {
+    void updateApplication(app.id, {
       lineReported: true,
       notionSynced: true,
       status: app.status === "申請前" ? "申請済" : "LINE報告済",
-      updatedAt: new Date().toISOString(),
     });
   }
 
-  // ⑧許可済ボタン: 許可日を自動入力しステータスを許可済に更新する想定
+  // ⑧許可済ボタン: 許可日を自動入力しステータスを許可済に更新する
   function markApproved() {
     const today = new Date().toISOString().slice(0, 10);
-    updateApplication(id, {
+    void updateApplication(id, {
       approved: true,
       approvalDate: today,
       status: "許可済",
-      updatedAt: new Date().toISOString(),
     });
   }
 
@@ -78,6 +79,25 @@ export function ApplicationDetail({ id }: { id: string }) {
           <StatusStepper current={app.status} />
         </div>
       </Card>
+
+      {app.workerId && (
+        <Link href={`/workers/${app.workerId}`}>
+          <Card className="flex items-center gap-3 p-3.5">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
+              <UserRound size={18} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[11px] font-bold text-muted">
+                紐づく外国人
+              </span>
+              <span className="block truncate font-bold">
+                {app.workerName ?? app.name}
+              </span>
+            </span>
+            <ChevronRight size={18} className="shrink-0 text-muted" />
+          </Card>
+        </Link>
+      )}
 
       <Card className="p-4">
         <h3 className="mb-3 text-sm font-bold text-muted">基本情報</h3>
