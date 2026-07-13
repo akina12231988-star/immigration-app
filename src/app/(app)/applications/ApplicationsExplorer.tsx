@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Search, LayoutGrid, Rows3, ChevronRight } from "lucide-react";
+import { Search, LayoutGrid, Rows3, ChevronRight, X } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { STAT_VIEWS, type StatViewKey } from "@/lib/application-stats";
 import type { Application, ApplicationStatus } from "@/types/application";
 import { APPLICATION_STATUS_FILTERS } from "@/types/application";
 
@@ -12,18 +13,23 @@ type ViewMode = "card" | "list";
 
 export function ApplicationsExplorer({
   applications,
+  initialView = null,
 }: {
   applications: Application[];
+  initialView?: StatViewKey | null;
 }) {
   const [view, setView] = useState<ViewMode>("card");
   const [keyword, setKeyword] = useState("");
   const [statusFilter, setStatusFilter] = useState<ApplicationStatus | "all">(
     "all"
   );
+  // ホームの集計カードから開いたときの絞り込み（×で解除できる）
+  const [statView, setStatView] = useState<StatViewKey | null>(initialView);
 
   const filtered = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
     return applications.filter((a) => {
+      if (statView && !STAT_VIEWS[statView].test(a)) return false;
       const matchesStatus = statusFilter === "all" || a.status === statusFilter;
       if (!matchesStatus) return false;
       if (!kw) return true;
@@ -34,10 +40,26 @@ export function ApplicationsExplorer({
         a.assignee.toLowerCase().includes(kw)
       );
     });
-  }, [applications, keyword, statusFilter]);
+  }, [applications, keyword, statusFilter, statView]);
 
   return (
     <div className="space-y-4">
+      {statView && (
+        <div className="flex items-center justify-between rounded-xl bg-brand/10 px-3.5 py-2.5">
+          <p className="text-sm font-bold text-brand">
+            「{STAT_VIEWS[statView].label}」で絞り込み中
+          </p>
+          <button
+            type="button"
+            onClick={() => setStatView(null)}
+            aria-label="絞り込みを解除"
+            className="flex h-7 w-7 items-center justify-center rounded-full text-brand hover:bg-brand/10"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
       {/* ⑩検索: 氏名・申請番号・申請内容・担当者を横断検索 */}
       <div className="relative">
         <Search

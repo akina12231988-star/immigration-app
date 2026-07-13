@@ -1,28 +1,48 @@
 import type { Application } from "@/types/application";
 
-// ダッシュボードのサマリー集計（旧 mock-data.ts から移設。データは Supabase 由来）
-export function getDashboardStats(applications: Application[]) {
-  const now = new Date();
-  const thisMonthCount = applications.filter((a) => {
-    const d = new Date(a.applicationDate);
-    return (
-      d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
-    );
-  }).length;
-
-  const unreportedCount = applications.filter(
-    (a) => !a.lineReported && a.status !== "申請前" && a.status !== "取下げ"
-  ).length;
-
-  const waitingNoticeCount = applications.filter(
-    (a) =>
+// ダッシュボードの集計と、一覧の「カードから開く絞り込み」で同じ条件を共有する
+export const STAT_VIEWS = {
+  "this-month": {
+    label: "今月の申請",
+    test: (a: Application) => {
+      const d = new Date(a.applicationDate);
+      const now = new Date();
+      return (
+        d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
+      );
+    },
+  },
+  unreported: {
+    label: "未報告",
+    test: (a: Application) =>
+      !a.lineReported && a.status !== "申請前" && a.status !== "取下げ",
+  },
+  "waiting-notice": {
+    label: "通知書待ち",
+    test: (a: Application) =>
       a.lineReported &&
       !a.approved &&
       a.status !== "通知書到着" &&
-      a.status !== "取下げ"
-  ).length;
+      a.status !== "取下げ",
+  },
+  approved: {
+    label: "許可済",
+    test: (a: Application) => a.approved,
+  },
+} as const;
 
-  const approvedCount = applications.filter((a) => a.approved).length;
+export type StatViewKey = keyof typeof STAT_VIEWS;
 
-  return { thisMonthCount, unreportedCount, waitingNoticeCount, approvedCount };
+export function isStatViewKey(v: string | null): v is StatViewKey {
+  return v !== null && v in STAT_VIEWS;
+}
+
+export function getDashboardStats(applications: Application[]) {
+  return {
+    thisMonthCount: applications.filter(STAT_VIEWS["this-month"].test).length,
+    unreportedCount: applications.filter(STAT_VIEWS.unreported.test).length,
+    waitingNoticeCount: applications.filter(STAT_VIEWS["waiting-notice"].test)
+      .length,
+    approvedCount: applications.filter(STAT_VIEWS.approved.test).length,
+  };
 }
