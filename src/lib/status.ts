@@ -33,4 +33,9 @@ export const STATUS_STYLES: Record<ApplicationStatus, StatusStyle> = {
     fg: "text-status-approved-fg",
     dot: "bg-status-approved-fg",
   },
+  在留カード受領: {
+    bg: "bg-brand/10",
+    fg: "text-brand",
+    dot: "bg-brand",
+  },
 };

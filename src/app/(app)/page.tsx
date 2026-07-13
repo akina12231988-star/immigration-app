@@ -48,10 +48,12 @@ export default function DashboardPage() {
   const { applications } = useApplications();
   const stats = getDashboardStats(applications);
 
-  // ⑬通知機能: LINE報告未実施・通知書未登録・許可未処理をアプリ内で可視化
+  // ⑬通知機能: LINE報告未実施・通知書未登録・在留カード未受領をアプリ内で可視化
   const needsAttention = applications
-    .filter((a) => a.status !== "許可済" && a.status !== "申請前")
-    .filter((a) => !a.lineReported || a.status === "通知書到着");
+    .filter((a) => a.status !== "在留カード受領" && a.status !== "申請前")
+    .filter(
+      (a) => !a.lineReported || a.status === "通知書到着" || a.status === "許可済"
+    );
 
   return (
     <div className="-mx-4 -mt-4">
@@ -100,6 +102,11 @@ export default function DashboardPage() {
                   {a.status === "通知書到着" && (
                     <span className="rounded-full bg-status-notice-bg px-2 py-1 text-[11px] font-bold text-status-notice-fg">
                       許可待ち
+                    </span>
+                  )}
+                  {a.status === "許可済" && (
+                    <span className="rounded-full bg-status-approved-bg px-2 py-1 text-[11px] font-bold text-status-approved-fg">
+                      在留カード待ち
                     </span>
                   )}
                   <ChevronRight size={18} className="shrink-0 text-muted" />

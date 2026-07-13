@@ -6,6 +6,7 @@ import {
   Camera,
   ImagePlus,
   Keyboard,
+  Link2,
   RotateCcw,
   ScanText,
   TriangleAlert,
@@ -15,9 +16,11 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { useApplications } from "@/lib/application-store";
 import { createClient } from "@/lib/supabase/client";
+import { uploadApplicationFile } from "@/lib/application-files";
 import {
   APPLICATION_CONTENT_OPTIONS,
   type ApplicationContent,
+  type ApplicationMethod,
 } from "@/types/application";
 
 interface FormFields {
@@ -26,6 +29,7 @@ interface FormFields {
   applicationNumber: string;
   applicationContent: ApplicationContent | "";
   assignee: string;
+  emailLink: string;
 }
 
 const EMPTY_FIELDS: FormFields = {
@@ -34,6 +38,7 @@ const EMPTY_FIELDS: FormFields = {
   applicationNumber: "",
   applicationContent: "",
   assignee: "",
+  emailLink: "",
 };
 
 interface WorkerOption {
@@ -41,17 +46,23 @@ interface WorkerOption {
   name: string;
 }
 
-export function ReceiptRegistrationForm() {
+export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod }) {
   const router = useRouter();
+  const isOnline = method === "オンライン";
   const { applications, addApplication } = useApplications();
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  // オンライン申請は画像がないため最初から入力欄を表示する
   const [entryState, setEntryState] = useState<"idle" | "loading" | "editing">(
-    "idle"
+    isOnline ? "editing" : "idle"
   );
-  const [fields, setFields] = useState<FormFields>(EMPTY_FIELDS);
+  const [fields, setFields] = useState<FormFields>(() => ({
+    ...EMPTY_FIELDS,
+    applicationDate: isOnline ? new Date().toISOString().slice(0, 10) : "",
+  }));
   const [workerId, setWorkerId] = useState<string>("");
   const [workers, setWorkers] = useState<WorkerOption[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -93,8 +104,8 @@ export function ReceiptRegistrationForm() {
 
   function handleFile(file: File | undefined) {
     if (!file) return;
-    const url = URL.createObjectURL(file);
-    setImagePreview(url);
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
     // OCR（Google Vision / /api/ocr）は未実装のため、撮影後は手入力してもらう
     setEntryState("loading");
     setTimeout(startEditing, 400);
@@ -102,6 +113,7 @@ export function ReceiptRegistrationForm() {
 
   function retake() {
     setImagePreview(null);
+    setImageFile(null);
     setEntryState("idle");
     setFields(EMPTY_FIELDS);
     setWorkerId("");
@@ -131,12 +143,19 @@ export function ReceiptRegistrationForm() {
         applicationDate: fields.applicationDate,
         applicationNumber: fields.applicationNumber,
         applicationContent: fields.applicationContent,
+        method,
+        emailLink: isOnline ? fields.emailLink : "",
         lineReported: false,
         notionSynced: false,
         approved: false,
+        approvalReported: false,
         status: "申請済",
         assignee: fields.assignee,
       });
+      // 窓口申請は受付票の画像を保存する（失敗しても申請詳細から再登録できる）
+      if (imageFile) {
+        await uploadApplicationFile(created.id, "受付票", imageFile).catch(() => undefined);
+      }
       router.push(`/applications/${created.id}`);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "登録に失敗しました");
@@ -151,85 +170,88 @@ export function ReceiptRegistrationForm() {
     fields.applicationDate &&
     fields.applicationNumber &&
     fields.applicationContent &&
-    fields.assignee;
+    fields.assignee &&
+    (!isOnline || fields.emailLink);
 
   return (
     <div className="space-y-5 pb-28">
-      <section>
-        <h2 className="mb-2 text-sm font-bold text-muted">① 受付票の画像</h2>
-        {!imagePreview ? (
-          <Card className="flex flex-col items-center gap-3 p-6 text-center">
-            <p className="text-sm text-muted">
-              入管窓口で受け取った受付票を撮影するか、画像を選択してください
-            </p>
-            <div className="grid w-full grid-cols-2 gap-3">
-              <Button
-                variant="primary"
-                icon={<Camera size={19} />}
-                onClick={() => cameraInputRef.current?.click()}
-              >
-                撮影する
-              </Button>
+      {!isOnline && (
+        <section>
+          <h2 className="mb-2 text-sm font-bold text-muted">① 受付票の画像</h2>
+          {!imagePreview ? (
+            <Card className="flex flex-col items-center gap-3 p-6 text-center">
+              <p className="text-sm text-muted">
+                入管窓口で受け取った受付票を撮影するか、画像を選択してください
+              </p>
+              <div className="grid w-full grid-cols-2 gap-3">
+                <Button
+                  variant="primary"
+                  icon={<Camera size={19} />}
+                  onClick={() => cameraInputRef.current?.click()}
+                >
+                  撮影する
+                </Button>
+                <Button
+                  variant="secondary"
+                  icon={<ImagePlus size={19} />}
+                  onClick={() => galleryInputRef.current?.click()}
+                >
+                  画像を選択
+                </Button>
+              </div>
+              {entryState === "idle" && (
+                <button
+                  type="button"
+                  onClick={startEditing}
+                  className="mt-1 flex items-center gap-1.5 text-sm font-bold text-brand"
+                >
+                  <Keyboard size={16} />
+                  画像なしで手入力する
+                </button>
+              )}
+            </Card>
+          ) : (
+            <Card className="overflow-hidden p-3">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={imagePreview}
+                alt="受付票プレビュー"
+                className="mb-3 max-h-64 w-full rounded-lg object-contain bg-background"
+              />
               <Button
                 variant="secondary"
-                icon={<ImagePlus size={19} />}
-                onClick={() => galleryInputRef.current?.click()}
+                icon={<RotateCcw size={17} />}
+                fullWidth
+                onClick={retake}
               >
-                画像を選択
+                撮り直す・選び直す
               </Button>
-            </div>
-            {entryState === "idle" && (
-              <button
-                type="button"
-                onClick={startEditing}
-                className="mt-1 flex items-center gap-1.5 text-sm font-bold text-brand"
-              >
-                <Keyboard size={16} />
-                画像なしで手入力する
-              </button>
-            )}
-          </Card>
-        ) : (
-          <Card className="overflow-hidden p-3">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={imagePreview}
-              alt="受付票プレビュー"
-              className="mb-3 max-h-64 w-full rounded-lg object-contain bg-background"
-            />
-            <Button
-              variant="secondary"
-              icon={<RotateCcw size={17} />}
-              fullWidth
-              onClick={retake}
-            >
-              撮り直す・選び直す
-            </Button>
-          </Card>
-        )}
-        <input
-          ref={cameraInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          onChange={(e) => handleFile(e.target.files?.[0])}
-        />
-        <input
-          ref={galleryInputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => handleFile(e.target.files?.[0])}
-        />
-      </section>
+            </Card>
+          )}
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(e) => handleFile(e.target.files?.[0])}
+          />
+          <input
+            ref={galleryInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => handleFile(e.target.files?.[0])}
+          />
+        </section>
+      )}
 
       {entryState !== "idle" && (
         <section>
           <div className="mb-2 flex items-center gap-2">
             <ScanText size={16} className="text-brand" />
             <h2 className="text-sm font-bold text-muted">
-              ② 申請情報の入力
+              {isOnline ? "申請情報の入力" : "② 申請情報の入力"}
             </h2>
           </div>
 
@@ -240,6 +262,25 @@ export function ReceiptRegistrationForm() {
             </Card>
           ) : (
             <Card className="space-y-4 p-4">
+              {isOnline && (
+                <label className="block">
+                  <span className="mb-1.5 flex items-center gap-1 text-xs font-bold text-muted">
+                    <Link2 size={13} />
+                    申請受付メールのリンク
+                  </span>
+                  <input
+                    type="url"
+                    value={fields.emailLink}
+                    onChange={(e) => updateField("emailLink", e.target.value)}
+                    placeholder="https://..."
+                    className="w-full rounded-xl border border-border bg-surface px-3.5 py-3 text-base focus:border-brand focus:outline-none"
+                  />
+                  <span className="mt-1 block text-xs text-muted">
+                    受付メールに記載されたリンクを貼り付けてください
+                  </span>
+                </label>
+              )}
+
               <label className="block">
                 <span className="mb-1.5 flex items-center gap-1 text-xs font-bold text-muted">
                   <UserRound size={13} />
@@ -310,7 +351,7 @@ export function ReceiptRegistrationForm() {
               </label>
 
               <Field
-                label="担当者"
+                label="申請取次士"
                 value={fields.assignee}
                 onChange={(v) => updateField("assignee", v)}
               />

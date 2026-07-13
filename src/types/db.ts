@@ -105,14 +105,30 @@ export interface ImmigrationApplicationRow {
   application_no: string;
   content: string;
   status: string; // ApplicationStatus（types/application.ts）
-  assignee: string;
+  assignee: string; // 申請取次士
+  method: string; // 窓口 / オンライン
+  email_link: string;
   line_reported: boolean;
   notion_synced: boolean;
   approved: boolean;
   approval_date: string | null;
+  card_received_on: string | null;
+  approval_reported: boolean;
   receipt_image_url: string | null;
   notice_image_url: string | null;
   residence_card_image_url: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// application_files（0009）: 申請画像のメタデータ
+export interface ApplicationFileRow {
+  id: string;
+  application_id: string;
+  kind: string; // ApplicationFileKind
+  storage_path: string;
+  file_name: string;
+  mime_type: string;
+  uploaded_by: string | null;
+  created_at: string;
 }

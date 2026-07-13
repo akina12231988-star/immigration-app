@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   Application,
   ApplicationContent,
+  ApplicationMethod,
   ApplicationStatus,
 } from "@/types/application";
 import type { ImmigrationApplicationRow } from "@/types/db";
@@ -22,10 +23,14 @@ function toApplication(row: RowWithWorker): Application {
     applicationDate: row.application_date,
     applicationNumber: row.application_no,
     applicationContent: row.content as ApplicationContent | "",
+    method: (row.method as ApplicationMethod) ?? "窓口",
+    emailLink: row.email_link ?? "",
     receiptImageUrl: row.receipt_image_url ?? undefined,
     noticeImageUrl: row.notice_image_url ?? undefined,
     residenceCardImageUrl: row.residence_card_image_url ?? undefined,
     approvalDate: row.approval_date ?? undefined,
+    cardReceivedOn: row.card_received_on ?? undefined,
+    approvalReported: row.approval_reported ?? false,
     lineReported: row.line_reported,
     notionSynced: row.notion_synced,
     approved: row.approved,
@@ -50,6 +55,10 @@ function toRowPatch(patch: Partial<Application>): Record<string, unknown> {
   if (patch.notionSynced !== undefined) row.notion_synced = patch.notionSynced;
   if (patch.approved !== undefined) row.approved = patch.approved;
   if (patch.approvalDate !== undefined) row.approval_date = patch.approvalDate ?? null;
+  if (patch.method !== undefined) row.method = patch.method;
+  if (patch.emailLink !== undefined) row.email_link = patch.emailLink;
+  if (patch.cardReceivedOn !== undefined) row.card_received_on = patch.cardReceivedOn ?? null;
+  if (patch.approvalReported !== undefined) row.approval_reported = patch.approvalReported;
   return row;
 }
 

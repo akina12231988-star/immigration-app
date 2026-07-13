@@ -47,7 +47,7 @@ export function ApplicationsExplorer({
         <input
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
-          placeholder="氏名・申請番号・申請内容・担当者で検索"
+          placeholder="氏名・申請番号・申請内容・申請取次士で検索"
           className="w-full rounded-xl border border-border bg-surface py-3 pl-10 pr-3 text-sm focus:border-brand focus:outline-none"
         />
       </div>

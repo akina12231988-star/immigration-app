@@ -23,3 +23,13 @@ ${formatJapaneseDate(app.applicationDate)}
 
 よろしくお願いいたします。`;
 }
+
+// 許可時の社長への定型報告文（許可済ボタン押下後に表示）
+export function generateApprovalReport(app: Application): string {
+  return `お世話になっております。
+
+本日、${app.name}さんの許可が降りました。
+許可が降りた資料は後日お持ちいたします。
+
+よろしくお願いいたします。`;
+}
