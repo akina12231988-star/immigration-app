@@ -1,0 +1,326 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { CalendarClock, Pencil, Plus, Trash2 } from "lucide-react";
+import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { WorkerForm } from "@/components/workers/WorkerForm";
+import {
+  HistoryFormDialog,
+  type HistoryFormValues,
+} from "@/components/workers/HistoryFormDialog";
+import { SswGauge } from "@/components/workers/SswGauge";
+import { SswStatusBadge, SupportBadge, WorkerStatusBadge } from "@/components/workers/badges";
+import { calcSsw, entryDays, todayStr, ymdFullText } from "@/lib/ssw/calc";
+import { createClient } from "@/lib/supabase/client";
+import { deleteWorker, updateWorker } from "@/lib/supabase/queries/workers";
+import {
+  deleteHistory,
+  insertHistory,
+  toCalcHistory,
+  updateHistory,
+} from "@/lib/supabase/queries/histories";
+import { COUNTED_VISAS } from "@/types/ssw";
+import type { Organization, WorkHistoryRow, WorkerInput, WorkerWithHistories } from "@/types/db";
+
+export function WorkerDetail({
+  worker,
+  organizations,
+  canEdit,
+}: {
+  worker: WorkerWithHistories;
+  organizations: Organization[];
+  canEdit: boolean;
+}) {
+  const router = useRouter();
+  const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [editingHistory, setEditingHistory] = useState<WorkHistoryRow | null>(null);
+  const [deletingHistory, setDeletingHistory] = useState<WorkHistoryRow | null>(null);
+  const [historyBusy, setHistoryBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const today = todayStr();
+  const calc = useMemo(
+    () => calcSsw(worker.work_histories.map(toCalcHistory), today),
+    [worker.work_histories, today],
+  );
+
+  const orgName = worker.current_organization_id
+    ? (organizations.find((o) => o.id === worker.current_organization_id)?.name ?? "所属不明")
+    : "未所属";
+
+  // 職歴は開始日昇順で表示（calc と同じ並び）
+  const histories = useMemo(
+    () =>
+      [...worker.work_histories].sort((a, b) => (a.start_date < b.start_date ? -1 : 1)),
+    [worker.work_histories],
+  );
+
+  const handleUpdateWorker = async (input: WorkerInput) => {
+    await updateWorker(createClient(), worker.id, input);
+    setEditOpen(false);
+    router.refresh();
+  };
+
+  const handleDeleteWorker = async () => {
+    setDeleting(true);
+    try {
+      await deleteWorker(createClient(), worker.id);
+      router.push("/workers");
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "削除に失敗しました");
+      setDeleting(false);
+      setDeleteOpen(false);
+    }
+  };
+
+  const handleSubmitHistory = async (values: HistoryFormValues) => {
+    const supabase = createClient();
+    if (editingHistory) {
+      await updateHistory(supabase, editingHistory.id, values);
+    } else {
+      await insertHistory(supabase, { ...values, worker_id: worker.id });
+    }
+    router.refresh();
+  };
+
+  const handleDeleteHistory = async () => {
+    if (!deletingHistory) return;
+    setHistoryBusy(true);
+    try {
+      await deleteHistory(createClient(), deletingHistory.id);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "削除に失敗しました");
+    } finally {
+      setHistoryBusy(false);
+      setDeletingHistory(null);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {error && (
+        <p role="alert" className="rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
+          {error}
+        </p>
+      )}
+
+      {/* 基本情報 */}
+      <Card className="p-4">
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-lg font-black">{worker.name}</p>
+            {worker.kana && <p className="text-xs text-muted">{worker.kana}</p>}
+          </div>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => setEditOpen(true)}
+              className="flex shrink-0 items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold"
+            >
+              <Pencil size={14} />
+              編集
+            </button>
+          )}
+        </div>
+        <div className="mb-3 flex flex-wrap items-center gap-1.5">
+          <WorkerStatusBadge status={worker.status} />
+          <SswStatusBadge status={calc.status} />
+          <SupportBadge support={worker.support} />
+        </div>
+        <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+          <InfoItem label="国籍" value={worker.nationality} />
+          <InfoItem label="生年月日" value={worker.birth} />
+          <InfoItem label="在留カード番号" value={worker.residence_card_no} />
+          <InfoItem label="分野・職種" value={worker.field} />
+          <InfoItem label="現在の所属機関" value={orgName} />
+          <InfoItem label="在留資格" value={worker.residence_status} />
+          <InfoItem label="許可日" value={worker.residence_permit_date} />
+          <InfoItem label="在留期限" value={worker.residence_expiry_date} />
+          <InfoItem label="健康状態" value={worker.health_note} wide />
+          <InfoItem label="家族構成" value={worker.family_note} wide />
+          <InfoItem label="備考" value={worker.note} wide />
+        </dl>
+      </Card>
+
+      {/* 通算期間 */}
+      <Card className="p-4">
+        <h2 className="mb-3 flex items-center gap-2 text-sm font-bold">
+          <CalendarClock size={16} />
+          特定技能1号 通算期間
+        </h2>
+        <SswGauge calc={calc} />
+        <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+          <InfoItem
+            label="通算在留期間"
+            value={calc.counted.length ? `${ymdFullText(calc.used)}（${calc.usedDays}日）` : null}
+          />
+          <InfoItem
+            label="残り"
+            value={calc.counted.length ? `${ymdFullText(calc.remain)}（${calc.remainDays}日）` : null}
+          />
+          <InfoItem label="起算日" value={calc.firstStart} />
+          <InfoItem label="満了予定日" value={calc.expiry} />
+        </dl>
+        <p className="mt-3 text-[11px] leading-relaxed text-muted">
+          通算期間は日数合算による目安です（特定活動〔1号移行準備〕を含む）。正式な判断は出入国在留管理庁にご確認ください。
+        </p>
+      </Card>
+
+      {/* 職歴 */}
+      <section>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-sm font-bold text-muted">職歴（{histories.length}件）</h2>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => {
+                setEditingHistory(null);
+                setHistoryOpen(true);
+              }}
+              className="flex items-center gap-1 rounded-lg bg-brand px-3 py-2 text-xs font-bold text-brand-foreground"
+            >
+              <Plus size={14} />
+              職歴を追加
+            </button>
+          )}
+        </div>
+
+        {histories.length === 0 ? (
+          <Card className="p-6 text-center text-sm text-muted">
+            職歴がまだ登録されていません
+          </Card>
+        ) : (
+          <Card className="divide-y divide-border overflow-hidden">
+            {histories.map((h) => {
+              const counted = COUNTED_VISAS.has(h.visa);
+              const days = entryDays({ start: h.start_date, end: h.end_date }, today);
+              return (
+                <div key={h.id} className="p-3.5">
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                        counted
+                          ? "bg-brand/10 text-brand"
+                          : "bg-status-before-bg text-status-before-fg"
+                      }`}
+                    >
+                      {h.visa}
+                      {counted && " ★"}
+                    </span>
+                    {canEdit && (
+                      <span className="flex shrink-0 gap-1">
+                        <button
+                          type="button"
+                          aria-label="職歴を編集"
+                          onClick={() => {
+                            setEditingHistory(h);
+                            setHistoryOpen(true);
+                          }}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="職歴を削除"
+                          onClick={() => setDeletingHistory(h)}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-seal"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm font-bold tabular-nums">
+                    {h.start_date} 〜 {h.end_date ?? "継続中"}
+                    <span className="ml-2 text-xs font-medium text-muted">{days}日</span>
+                  </p>
+                  {(h.org_name || h.role) && (
+                    <p className="mt-0.5 truncate text-xs text-muted">
+                      {[h.org_name, h.role].filter(Boolean).join(" ・ ")}
+                    </p>
+                  )}
+                  {h.note && <p className="mt-0.5 truncate text-xs text-muted">{h.note}</p>}
+                </div>
+              );
+            })}
+          </Card>
+        )}
+        <p className="mt-2 text-[11px] text-muted">★ = 通算対象の在留資格</p>
+      </section>
+
+      {/* 削除 */}
+      {canEdit && (
+        <Button variant="seal" fullWidth icon={<Trash2 size={18} />} onClick={() => setDeleteOpen(true)}>
+          この外国人を削除
+        </Button>
+      )}
+
+      {/* 編集モーダル */}
+      <Modal open={editOpen} title="基本情報を編集" onClose={() => setEditOpen(false)}>
+        <WorkerForm
+          initial={worker}
+          organizations={organizations}
+          submitLabel="更新する"
+          onSubmit={handleUpdateWorker}
+          onCancel={() => setEditOpen(false)}
+        />
+      </Modal>
+
+      <HistoryFormDialog
+        open={historyOpen}
+        initial={editingHistory}
+        onClose={() => setHistoryOpen(false)}
+        onSubmit={handleSubmitHistory}
+      />
+
+      <ConfirmDialog
+        open={deleteOpen}
+        title="外国人を削除"
+        message={`${worker.name} さんの基本情報と職歴${histories.length}件をすべて削除します。この操作は取り消せません。`}
+        busy={deleting}
+        onConfirm={handleDeleteWorker}
+        onCancel={() => setDeleteOpen(false)}
+      />
+
+      <ConfirmDialog
+        open={deletingHistory !== null}
+        title="職歴を削除"
+        message={
+          deletingHistory
+            ? `「${deletingHistory.visa} / ${deletingHistory.start_date}〜${deletingHistory.end_date ?? "継続中"}」を削除します。通算期間の計算にも反映されます。`
+            : ""
+        }
+        busy={historyBusy}
+        onConfirm={handleDeleteHistory}
+        onCancel={() => setDeletingHistory(null)}
+      />
+    </div>
+  );
+}
+
+function InfoItem({
+  label,
+  value,
+  wide = false,
+}: {
+  label: string;
+  value: string | null;
+  wide?: boolean;
+}) {
+  return (
+    <div className={wide ? "col-span-2" : ""}>
+      <dt className="text-[11px] font-bold text-muted">{label}</dt>
+      <dd className="whitespace-pre-wrap break-words">{value || "—"}</dd>
+    </div>
+  );
+}

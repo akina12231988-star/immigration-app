@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, List, ScanLine, PlusCircle } from "lucide-react";
+import { Home, List, ScanLine, PlusCircle, Users } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "/", label: "ホーム", icon: Home },
-  { href: "/applications", label: "一覧", icon: List },
+  { href: "/applications", label: "申請", icon: List },
   { href: "/applications/new", label: "登録", icon: PlusCircle, emphasize: true },
+  { href: "/workers", label: "外国人", icon: Users },
   { href: "/notices/search", label: "通知書", icon: ScanLine },
 ];
 

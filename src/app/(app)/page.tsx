@@ -7,6 +7,9 @@ import {
   MailWarning,
   CheckCircle2,
   ChevronRight,
+  Users,
+  Building2,
+  ShieldCheck,
 } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
 import { Card } from "@/components/ui/Card";
@@ -105,6 +108,28 @@ export default function DashboardPage() {
             </Card>
           </section>
         )}
+
+        <section>
+          <h2 className="mb-2 text-sm font-bold text-muted">特定技能・管理メニュー</h2>
+          <Card className="divide-y divide-border overflow-hidden">
+            {[
+              { href: "/workers", label: "外国人管理", desc: "職歴・通算期間・支援状況", icon: Users },
+              { href: "/admin/organizations", label: "会社・機関マスタ", desc: "所属先の登録（管理者のみ）", icon: Building2 },
+              { href: "/admin/users", label: "職員・権限管理", desc: "招待・ロール設定（管理者のみ）", icon: ShieldCheck },
+            ].map(({ href, label, desc, icon: Icon }) => (
+              <Link key={href} href={href} className="flex items-center gap-3 p-3.5">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
+                  <Icon size={18} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-bold">{label}</span>
+                  <span className="block truncate text-xs text-muted">{desc}</span>
+                </span>
+                <ChevronRight size={18} className="shrink-0 text-muted" />
+              </Link>
+            ))}
+          </Card>
+        </section>
 
         <section>
           <div className="mb-2 flex items-center justify-between">
