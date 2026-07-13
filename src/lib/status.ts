@@ -38,4 +38,9 @@ export const STATUS_STYLES: Record<ApplicationStatus, StatusStyle> = {
     fg: "text-brand",
     dot: "bg-brand",
   },
+  取下げ: {
+    bg: "bg-seal/10",
+    fg: "text-seal",
+    dot: "bg-seal",
+  },
 };

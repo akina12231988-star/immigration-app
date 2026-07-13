@@ -26,6 +26,7 @@ interface ApplicationsContextValue {
   error: string | null;
   addApplication: (input: NewApplication) => Promise<Application>;
   updateApplication: (id: string, patch: Partial<Application>) => Promise<void>;
+  removeApplication: (id: string) => void; // DB削除後にローカル状態から取り除く
 }
 
 const ApplicationsContext = createContext<ApplicationsContextValue | null>(
@@ -79,9 +80,20 @@ export function ApplicationsProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  const removeApplication = useCallback((id: string) => {
+    setApplications((prev) => prev.filter((a) => a.id !== id));
+  }, []);
+
   return (
     <ApplicationsContext.Provider
-      value={{ applications, loaded, error, addApplication, updateApplication }}
+      value={{
+        applications,
+        loaded,
+        error,
+        addApplication,
+        updateApplication,
+        removeApplication,
+      }}
     >
       {children}
     </ApplicationsContext.Provider>

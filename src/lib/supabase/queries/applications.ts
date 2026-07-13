@@ -30,6 +30,7 @@ function toApplication(row: RowWithWorker): Application {
     residenceCardImageUrl: row.residence_card_image_url ?? undefined,
     approvalDate: row.approval_date ?? undefined,
     cardReceivedOn: row.card_received_on ?? undefined,
+    withdrawnOn: row.withdrawn_on ?? undefined,
     approvalReported: row.approval_reported ?? false,
     lineReported: row.line_reported,
     notionSynced: row.notion_synced,
@@ -58,6 +59,8 @@ function toRowPatch(patch: Partial<Application>): Record<string, unknown> {
   if (patch.method !== undefined) row.method = patch.method;
   if (patch.emailLink !== undefined) row.email_link = patch.emailLink;
   if (patch.cardReceivedOn !== undefined) row.card_received_on = patch.cardReceivedOn ?? null;
+  // 取下げの取り消しで null に戻せるよう、キーの存在で判定する
+  if ("withdrawnOn" in patch) row.withdrawn_on = patch.withdrawnOn ?? null;
   if (patch.approvalReported !== undefined) row.approval_reported = patch.approvalReported;
   return row;
 }

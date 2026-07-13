@@ -113,6 +113,7 @@ export interface ImmigrationApplicationRow {
   approved: boolean;
   approval_date: string | null;
   card_received_on: string | null;
+  withdrawn_on: string | null;
   approval_reported: boolean;
   receipt_image_url: string | null;
   notice_image_url: string | null;

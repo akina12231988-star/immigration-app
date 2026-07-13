@@ -11,11 +11,15 @@ export function getDashboardStats(applications: Application[]) {
   }).length;
 
   const unreportedCount = applications.filter(
-    (a) => !a.lineReported && a.status !== "申請前"
+    (a) => !a.lineReported && a.status !== "申請前" && a.status !== "取下げ"
   ).length;
 
   const waitingNoticeCount = applications.filter(
-    (a) => a.lineReported && !a.approved && a.status !== "通知書到着"
+    (a) =>
+      a.lineReported &&
+      !a.approved &&
+      a.status !== "通知書到着" &&
+      a.status !== "取下げ"
   ).length;
 
   const approvedCount = applications.filter((a) => a.approved).length;

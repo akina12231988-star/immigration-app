@@ -159,6 +159,36 @@ export async function listApplicationFiles(
   }));
 }
 
+// 申請そのものを削除する（誤登録の取り消し用）。
+// Storage上の画像 → メタデータ（cascade）→ 申請行 の順で消す。
+export async function deleteApplication(
+  applicationId: string,
+): Promise<{ ok: true } | ActionError> {
+  if (!(await requireStaff())) {
+    return { ok: false, message: "削除は admin / staff のみ可能です" };
+  }
+  const admin = createAdminClient();
+  if (!admin) return { ok: false, message: "サーバー設定エラー" };
+
+  const { data: fileRows } = await admin
+    .from("application_files")
+    .select("storage_path")
+    .eq("application_id", applicationId);
+  const paths = ((fileRows as { storage_path: string }[]) ?? []).map(
+    (r) => r.storage_path,
+  );
+  if (paths.length > 0) {
+    await admin.storage.from(BUCKET).remove(paths).catch(() => undefined);
+  }
+
+  const { error } = await admin
+    .from("immigration_applications")
+    .delete()
+    .eq("id", applicationId);
+  if (error) return { ok: false, message: `削除に失敗しました: ${error.message}` };
+  return { ok: true };
+}
+
 export async function deleteApplicationFile(
   fileId: string,
 ): Promise<{ ok: true } | ActionError> {

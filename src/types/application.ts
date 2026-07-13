@@ -6,8 +6,10 @@ export type ApplicationStatus =
   | "LINE報告済"
   | "通知書到着"
   | "許可済"
-  | "在留カード受領";
+  | "在留カード受領"
+  | "取下げ";
 
+// ステップ進行の順序（取下げは進行外の終端状態のため含めない）
 export const APPLICATION_STATUS_ORDER: ApplicationStatus[] = [
   "申請前",
   "申請済",
@@ -15,6 +17,12 @@ export const APPLICATION_STATUS_ORDER: ApplicationStatus[] = [
   "通知書到着",
   "許可済",
   "在留カード受領",
+];
+
+// 一覧の絞り込みに使う全ステータス
+export const APPLICATION_STATUS_FILTERS: ApplicationStatus[] = [
+  ...APPLICATION_STATUS_ORDER,
+  "取下げ",
 ];
 
 // 申請内容は自由入力ではなく、この3種類から選択する
@@ -56,6 +64,7 @@ export interface Application {
   residenceCardImageUrl?: string; // （旧）在留カード画像URL
   approvalDate?: string; // 許可日
   cardReceivedOn?: string; // 在留カード受領日
+  withdrawnOn?: string; // 取下げ日
   approvalReported: boolean; // 許可のLINE報告済
   lineReported: boolean; // 申請のLINE報告済
   notionSynced: boolean; // Notion同期済

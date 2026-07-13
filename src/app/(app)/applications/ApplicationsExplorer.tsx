@@ -6,7 +6,7 @@ import { Search, LayoutGrid, Rows3, ChevronRight } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import type { Application, ApplicationStatus } from "@/types/application";
-import { APPLICATION_STATUS_ORDER } from "@/types/application";
+import { APPLICATION_STATUS_FILTERS } from "@/types/application";
 
 type ViewMode = "card" | "list";
 
@@ -58,7 +58,7 @@ export function ApplicationsExplorer({
           active={statusFilter === "all"}
           onClick={() => setStatusFilter("all")}
         />
-        {APPLICATION_STATUS_ORDER.map((s) => (
+        {APPLICATION_STATUS_FILTERS.map((s) => (
           <FilterChip
             key={s}
             label={s}

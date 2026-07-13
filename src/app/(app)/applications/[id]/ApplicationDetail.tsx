@@ -2,33 +2,47 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Copy,
   Check,
   ChevronRight,
   CreditCard,
   ExternalLink,
+  FileX,
   ImagePlus,
   MessageCircle,
+  Pencil,
   ShieldCheck,
+  Trash2,
+  Undo2,
   UserRound,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { StatusStepper } from "@/components/StatusStepper";
 import { generateApprovalReport, generateLineReport } from "@/lib/line-report";
 import { useApplications } from "@/lib/application-store";
 import { uploadApplicationFile } from "@/lib/application-files";
-import { listApplicationFiles } from "../actions";
+import { deleteApplication, listApplicationFiles } from "../actions";
+import { ApplicationEditDialog } from "./ApplicationEditDialog";
 import type { ApplicationFile, ApplicationFileKind } from "@/types/application";
 
 export function ApplicationDetail({ id }: { id: string }) {
-  const { applications, loaded, updateApplication } = useApplications();
+  const router = useRouter();
+  const { applications, loaded, updateApplication, removeApplication } =
+    useApplications();
   const [copied, setCopied] = useState<"apply" | "approval" | null>(null);
   const [files, setFiles] = useState<ApplicationFile[]>([]);
   const [uploading, setUploading] = useState<ApplicationFileKind | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const app = applications.find((a) => a.id === id);
 
@@ -57,6 +71,7 @@ export function ApplicationDetail({ id }: { id: string }) {
   const lineReportText = generateLineReport(app);
   const approvalReportText = generateApprovalReport(app);
   const cardReceived = app.status === "在留カード受領";
+  const withdrawn = app.status === "取下げ";
 
   async function handleCopy(text: string, key: "apply" | "approval") {
     await navigator.clipboard.writeText(text);
@@ -120,6 +135,32 @@ export function ApplicationDetail({ id }: { id: string }) {
     void updateApplication(id, { approvalReported: true });
   }
 
+  // 申請取下げ（キャンセル）。誤操作は「元に戻す」で復帰できる
+  function withdraw() {
+    const today = new Date().toISOString().slice(0, 10);
+    void updateApplication(id, { status: "取下げ", withdrawnOn: today });
+    setWithdrawOpen(false);
+  }
+
+  function restoreWithdrawn() {
+    void updateApplication(id, { status: "申請済", withdrawnOn: undefined });
+  }
+
+  // 誤登録の削除（画像も含めて完全に削除）
+  async function handleDelete() {
+    setDeleting(true);
+    setDeleteError(null);
+    const result = await deleteApplication(id);
+    if (result.ok) {
+      removeApplication(id);
+      router.push("/applications");
+    } else {
+      setDeleteError(result.message);
+      setDeleting(false);
+      setDeleteOpen(false);
+    }
+  }
+
   return (
     <div className="space-y-5">
       <Card className="p-4">
@@ -133,10 +174,27 @@ export function ApplicationDetail({ id }: { id: string }) {
               </span>
             </p>
           </div>
-          <StatusBadge status={app.status} />
+          <div className="flex shrink-0 items-center gap-1.5">
+            <StatusBadge status={app.status} />
+            <button
+              type="button"
+              onClick={() => setEditOpen(true)}
+              aria-label="申請情報を修正"
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted"
+            >
+              <Pencil size={15} />
+            </button>
+          </div>
         </div>
         <div className="mt-4">
-          <StatusStepper current={app.status} />
+          {withdrawn ? (
+            <p className="flex items-center gap-2 rounded-xl bg-seal/10 px-3 py-2.5 text-sm font-bold text-seal">
+              <FileX size={16} />
+              この申請は取下げ済みです（取下げ日: {app.withdrawnOn ?? "不明"}）
+            </p>
+          ) : (
+            <StatusStepper current={app.status} />
+          )}
         </div>
       </Card>
 
@@ -170,6 +228,7 @@ export function ApplicationDetail({ id }: { id: string }) {
             label="在留カード受領日"
             value={app.cardReceivedOn ?? "未受領"}
           />
+          {app.withdrawnOn && <InfoRow label="取下げ日" value={app.withdrawnOn} />}
           <InfoRow label="申請取次士" value={app.assignee} />
           <InfoRow
             label="登録日時"
@@ -217,6 +276,7 @@ export function ApplicationDetail({ id }: { id: string }) {
         </div>
       </Card>
 
+      {!withdrawn && (
       <Card className="p-4">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-sm font-bold text-muted">LINE報告文（申請）</h3>
@@ -247,7 +307,9 @@ export function ApplicationDetail({ id }: { id: string }) {
           </Button>
         </div>
       </Card>
+      )}
 
+      {!withdrawn && (
       <Card className="p-4">
         <h3 className="mb-3 text-sm font-bold text-muted">許可処理</h3>
         <Button
@@ -296,9 +358,10 @@ export function ApplicationDetail({ id }: { id: string }) {
           </div>
         )}
       </Card>
+      )}
 
       {/* 許可済になったら在留カードの受け取りを記録する */}
-      {app.approved && (
+      {app.approved && !withdrawn && (
         <Card className="p-4">
           <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-muted">
             <CreditCard size={15} />
@@ -325,6 +388,75 @@ export function ApplicationDetail({ id }: { id: string }) {
           </Button>
         </Card>
       )}
+
+      {/* 取下げ・削除 */}
+      <Card className="p-4">
+        <h3 className="mb-3 text-sm font-bold text-muted">取下げ・削除</h3>
+        {deleteError && (
+          <p role="alert" className="mb-3 rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
+            {deleteError}
+          </p>
+        )}
+        <div className="flex flex-col gap-2.5">
+          {withdrawn ? (
+            <Button
+              variant="secondary"
+              icon={<Undo2 size={18} />}
+              fullWidth
+              onClick={restoreWithdrawn}
+            >
+              取下げを元に戻す（申請済に戻る）
+            </Button>
+          ) : (
+            <Button
+              variant="secondary"
+              icon={<FileX size={18} />}
+              fullWidth
+              onClick={() => setWithdrawOpen(true)}
+            >
+              申請を取り下げる
+            </Button>
+          )}
+          <Button
+            variant="seal"
+            icon={<Trash2 size={18} />}
+            fullWidth
+            onClick={() => setDeleteOpen(true)}
+          >
+            この申請を削除する（誤登録の取り消し）
+          </Button>
+        </div>
+        <p className="mt-2 text-[11px] leading-relaxed text-muted">
+          取下げ: 申請をキャンセルした記録として残します（元に戻せます）／
+          削除: 画像も含めて完全に消します（元に戻せません）
+        </p>
+      </Card>
+
+      {editOpen && (
+        <ApplicationEditDialog
+          app={app}
+          onClose={() => setEditOpen(false)}
+          onSave={(patch) => updateApplication(app.id, patch)}
+        />
+      )}
+
+      <ConfirmDialog
+        open={withdrawOpen}
+        title="申請を取り下げる"
+        message={`${app.name} さんの「${app.applicationContent}」を取下げ（キャンセル）扱いにします。記録は残り、あとから元に戻すこともできます。`}
+        confirmLabel="取り下げる"
+        onConfirm={withdraw}
+        onCancel={() => setWithdrawOpen(false)}
+      />
+
+      <ConfirmDialog
+        open={deleteOpen}
+        title="申請を削除"
+        message={`${app.name} さんの「${app.applicationContent}」を、登録済みの画像も含めて完全に削除します。この操作は取り消せません。取下げの記録を残したい場合は「申請を取り下げる」を使ってください。`}
+        busy={deleting}
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteOpen(false)}
+      />
     </div>
   );
 }

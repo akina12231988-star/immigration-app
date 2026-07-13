@@ -50,7 +50,12 @@ export default function DashboardPage() {
 
   // ⑬通知機能: LINE報告未実施・通知書未登録・在留カード未受領をアプリ内で可視化
   const needsAttention = applications
-    .filter((a) => a.status !== "在留カード受領" && a.status !== "申請前")
+    .filter(
+      (a) =>
+        a.status !== "在留カード受領" &&
+        a.status !== "申請前" &&
+        a.status !== "取下げ"
+    )
     .filter(
       (a) => !a.lineReported || a.status === "通知書到着" || a.status === "許可済"
     );
