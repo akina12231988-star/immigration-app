@@ -25,19 +25,26 @@ import {
   toCalcHistory,
   updateHistory,
 } from "@/lib/supabase/queries/histories";
+import { JobApplicationSection } from "@/components/workers/JobApplicationSection";
 import { COUNTED_VISAS } from "@/types/ssw";
 import type { Application } from "@/types/application";
 import type { Organization, WorkHistoryRow, WorkerInput, WorkerWithHistories } from "@/types/db";
+import type { ApplicationWithRefs } from "@/lib/supabase/queries/jobs";
+import type { PostingWithStats } from "@/lib/supabase/queries/postings";
 
 export function WorkerDetail({
   worker,
   organizations,
   applications,
+  jobApplications,
+  postings,
   canEdit,
 }: {
   worker: WorkerWithHistories;
   organizations: Organization[];
   applications: Application[];
+  jobApplications: ApplicationWithRefs[];
+  postings: PostingWithStats[];
   canEdit: boolean;
 }) {
   const router = useRouter();
@@ -262,6 +269,14 @@ export function WorkerDetail({
         )}
         <p className="mt-2 text-[11px] text-muted">★ = 通算対象の在留資格</p>
       </section>
+
+      {/* 求職・応募（採用→所属自動更新の起点） */}
+      <JobApplicationSection
+        workerId={worker.id}
+        applications={jobApplications}
+        postings={postings}
+        canEdit={canEdit}
+      />
 
       {/* 入管申請（申請受付日・申請番号） */}
       <section>

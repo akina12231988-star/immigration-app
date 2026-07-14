@@ -10,6 +10,8 @@ import {
   Users,
   Building2,
   ShieldCheck,
+  Briefcase,
+  ClipboardList,
 } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
 import { Card } from "@/components/ui/Card";
@@ -132,6 +134,8 @@ export default function DashboardPage() {
           <Card className="divide-y divide-border overflow-hidden">
             {[
               { href: "/workers", label: "外国人管理", desc: "職歴・通算期間・支援状況", icon: Users },
+              { href: "/postings", label: "求人管理簿", desc: "求人の記録・Facebook掲載用出力", icon: Briefcase },
+              { href: "/jobs", label: "選考状況", desc: "選考中の応募を横断表示", icon: ClipboardList },
               { href: "/admin/organizations", label: "会社・機関マスタ", desc: "所属先の登録（管理者のみ）", icon: Building2 },
               { href: "/admin/users", label: "職員・権限管理", desc: "招待・ロール設定（管理者のみ）", icon: ShieldCheck },
             ].map(({ href, label, desc, icon: Icon }) => (
