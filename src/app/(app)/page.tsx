@@ -12,11 +12,13 @@ import {
   ShieldCheck,
   Briefcase,
   ClipboardList,
+  TriangleAlert,
 } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { getDashboardStats } from "@/lib/application-stats";
+import { isExpiryAlert, todayStr } from "@/lib/application-alerts";
 import { useApplications } from "@/lib/application-store";
 
 const STAT_CARDS = [
@@ -54,6 +56,10 @@ export default function DashboardPage() {
   const { applications } = useApplications();
   const stats = getDashboardStats(applications);
 
+  // ④在留期限アラート: 申請時点の在留期限から1か月経過・未受取
+  const today = todayStr();
+  const expiryAlerts = applications.filter((a) => isExpiryAlert(a, today));
+
   // ⑬通知機能: LINE報告未実施・通知書未登録・在留カード未受領をアプリ内で可視化
   const needsAttention = applications
     .filter(
@@ -70,6 +76,37 @@ export default function DashboardPage() {
     <div className="-mx-4 -mt-4 lg:-mx-8 lg:-mt-6">
       <AppHeader title="ダッシュボード" />
       <div className="space-y-6 px-4 pt-5">
+        {expiryAlerts.length > 0 && (
+          <section>
+            <div className="rounded-2xl border-2 border-seal bg-seal/10 p-4">
+              <div className="mb-2 flex items-center gap-2 font-bold text-seal">
+                <TriangleAlert size={18} />
+                在留期限アラート {expiryAlerts.length}件
+              </div>
+              <p className="mb-2 text-xs text-seal/90">
+                申請時点の在留期限から1か月が経過し、まだ受取処理が済んでいない申請です。
+              </p>
+              <div className="space-y-1.5">
+                {expiryAlerts.map((a) => (
+                  <Link
+                    key={a.id}
+                    href={`/applications/${a.id}`}
+                    className="flex items-center justify-between gap-2 rounded-lg bg-surface px-3 py-2"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-bold">{a.name}</span>
+                      <span className="block truncate text-xs text-muted">
+                        {a.organizationName ?? ""} 在留期限 {a.residenceExpiryAtApply}
+                      </span>
+                    </span>
+                    <ChevronRight size={16} className="shrink-0 text-seal" />
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+
         <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {STAT_CARDS.map(({ key, view, label, icon: Icon, accent }) => (
             <Link key={key} href={`/applications?view=${view}`}>

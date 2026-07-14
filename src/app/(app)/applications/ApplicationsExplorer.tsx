@@ -7,8 +7,19 @@ import { Search, X } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { STAT_VIEWS, type StatViewKey } from "@/lib/application-stats";
+import { isExpiryAlert, todayStr } from "@/lib/application-alerts";
 import type { Application, ApplicationStatus } from "@/types/application";
 import { APPLICATION_STATUS_FILTERS } from "@/types/application";
+
+const TODAY = todayStr();
+
+function AlertBadge() {
+  return (
+    <span className="inline-flex shrink-0 items-center rounded-full bg-seal px-2 py-0.5 text-[10px] font-bold text-seal-foreground">
+      期限超過
+    </span>
+  );
+}
 
 export function ApplicationsExplorer({
   applications,
@@ -99,10 +110,13 @@ export function ApplicationsExplorer({
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:hidden">
             {filtered.map((a) => (
               <Link key={a.id} href={`/applications/${a.id}`}>
-                <Card className="h-full p-4">
+                <Card className={`h-full p-4 ${isExpiryAlert(a, TODAY) ? "border-seal" : ""}`}>
                   <div className="mb-2 flex items-start justify-between gap-2">
                     <p className="font-bold">{a.name}</p>
-                    <StatusBadge status={a.status} />
+                    <div className="flex shrink-0 items-center gap-1">
+                      {isExpiryAlert(a, TODAY) && <AlertBadge />}
+                      <StatusBadge status={a.status} />
+                    </div>
                   </div>
                   <p className="mb-1 text-xs text-muted">{a.organizationName ?? "所属機関未設定"}</p>
                   <p className="mb-1 text-sm text-muted">{a.applicationContent}</p>
@@ -141,7 +155,12 @@ export function ApplicationsExplorer({
                     onClick={() => router.push(`/applications/${a.id}`)}
                     className="cursor-pointer bg-surface hover:bg-background"
                   >
-                    <Td className="font-bold">{a.name}</Td>
+                    <Td className="font-bold">
+                      <span className="flex items-center gap-1.5">
+                        {a.name}
+                        {isExpiryAlert(a, TODAY) && <AlertBadge />}
+                      </span>
+                    </Td>
                     <Td>{a.organizationName ?? "—"}</Td>
                     <Td>{a.applicationContent || "—"}</Td>
                     <Td className="tabular-nums">{a.applicationDate}</Td>
