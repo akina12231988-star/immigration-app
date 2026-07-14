@@ -124,13 +124,17 @@ export interface WorkerDocView {
   kind: WorkerDocKind;
   url: string;
   createdAt: string;
+  fromApplication?: boolean; // 申請登録時の画像（差し替え前の現データ）
 }
 
-// 在留カード・指定書の全履歴（新しい順・署名付きURL）
+// 在留カード・指定書の全履歴（新しい順・署名付きURL）。
+// 外国人管理で差し替えた worker_documents に加え、まだ差し替えていない種別は
+// 申請登録時に記録した最新画像（application_files）を「現データ」として表示する。
 export async function listWorkerDocs(workerId: string): Promise<WorkerDocView[]> {
   const me = await getMyProfile();
   const admin = createAdminClient();
   if (!me || !admin) return [];
+
   const { data } = await admin
     .from("worker_documents")
     .select("*")
@@ -139,16 +143,54 @@ export async function listWorkerDocs(workerId: string): Promise<WorkerDocView[]>
   const rows =
     (data as { id: string; kind: WorkerDocKind; storage_path: string; created_at: string }[]) ??
     [];
-  if (rows.length === 0) return [];
-  const { data: signed } = await admin.storage
-    .from(BUCKET)
-    .createSignedUrls(rows.map((r) => r.storage_path), TTL);
-  return rows.map((r, i) => ({
-    id: r.id,
-    kind: r.kind,
-    url: signed?.[i]?.signedUrl ?? "",
-    createdAt: r.created_at,
-  }));
+
+  const result: WorkerDocView[] = [];
+  if (rows.length > 0) {
+    const { data: signed } = await admin.storage
+      .from(BUCKET)
+      .createSignedUrls(rows.map((r) => r.storage_path), TTL);
+    rows.forEach((r, i) =>
+      result.push({ id: r.id, kind: r.kind, url: signed?.[i]?.signedUrl ?? "", createdAt: r.created_at }),
+    );
+  }
+
+  // worker_documents に無い種別は申請登録時の画像を現データとして補う
+  const kinds: WorkerDocKind[] = ["在留カード", "指定書"];
+  const missing = kinds.filter((k) => !result.some((d) => d.kind === k));
+  if (missing.length > 0) {
+    const { data: apps } = await admin
+      .from("immigration_applications")
+      .select("id")
+      .eq("worker_id", workerId);
+    const appIds = ((apps as { id: string }[]) ?? []).map((a) => a.id);
+    if (appIds.length > 0) {
+      for (const kind of missing) {
+        const { data: f } = await admin
+          .from("application_files")
+          .select("id, storage_path, created_at")
+          .in("application_id", appIds)
+          .eq("kind", kind)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const row = f as { id: string; storage_path: string; created_at: string } | null;
+        if (row) {
+          const { data: signed } = await admin.storage
+            .from(BUCKET)
+            .createSignedUrl(row.storage_path, TTL);
+          result.push({
+            id: `app-${row.id}`,
+            kind,
+            url: signed?.signedUrl ?? "",
+            createdAt: row.created_at,
+            fromApplication: true,
+          });
+        }
+      }
+    }
+  }
+
+  return result;
 }
 
 // 外国人の最新の在留カード画像・指定書画像の署名付きURL。

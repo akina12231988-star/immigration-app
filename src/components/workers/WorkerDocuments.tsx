@@ -119,6 +119,9 @@ function DocColumn({
           <div className="flex h-32 items-center justify-center text-xs text-muted">未登録</div>
         )}
       </div>
+      {latest?.fromApplication && (
+        <p className="mt-1 text-[10px] text-muted">申請登録時の画像を表示中（差し替えると最新になります）</p>
+      )}
       {history.length > 0 && (
         <div className="mt-2">
           <p className="mb-1 text-[10px] text-muted">履歴（{history.length}件）</p>

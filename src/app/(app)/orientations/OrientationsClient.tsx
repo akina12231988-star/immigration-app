@@ -3,16 +3,23 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarClock, Check, ExternalLink, GraduationCap } from "lucide-react";
+import { CalendarClock, Check, ExternalLink, GraduationCap, XCircle } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { createClient } from "@/lib/supabase/client";
 import { updateOrientation } from "@/lib/supabase/queries/orientations";
 import { recommendedFileName, recommendedFolderName } from "@/lib/orientation";
+import { ORIENTATION_STATUSES, type OrientationStatus } from "@/types/db";
 import type { OrientationWithRefs } from "@/lib/supabase/queries/orientations";
 
-type Tab = "未実施" | "実施済";
+type StatusFilter = OrientationStatus | "all";
+
+const STATUS_CLASS: Record<OrientationStatus, string> = {
+  未実施: "bg-status-notice-bg text-status-notice-fg",
+  実施済: "bg-status-reported-bg text-status-reported-fg",
+  "実施不可（早期退職）": "bg-seal/10 text-seal",
+};
 
 export function OrientationsClient({
   orientations,
@@ -22,13 +29,40 @@ export function OrientationsClient({
   canEdit: boolean;
 }) {
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>("未実施");
+  const [status, setStatus] = useState<StatusFilter>("未実施");
+  const [orgId, setOrgId] = useState<string>("all");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
   const [editing, setEditing] = useState<OrientationWithRefs | null>(null);
 
+  // 所属機関の選択肢（登録済みオリエンから集約）
+  const orgOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const o of orientations) {
+      const id = o.organization_id ?? o.workers?.current_organization_id;
+      const name = o.organizations?.name;
+      if (id && name) map.set(id, name);
+    }
+    return [...map.entries()].map(([id, name]) => ({ id, name }));
+  }, [orientations]);
+
   const filtered = useMemo(
-    () => orientations.filter((o) => o.status === tab),
-    [orientations, tab],
+    () =>
+      orientations.filter((o) => {
+        if (status !== "all" && o.status !== status) return false;
+        if (orgId !== "all") {
+          const oid = o.organization_id ?? o.workers?.current_organization_id ?? "";
+          if (oid !== orgId) return false;
+        }
+        if (from && o.scheduled_on < from) return false;
+        if (to && o.scheduled_on > to) return false;
+        return true;
+      }),
+    [orientations, status, orgId, from, to],
   );
+
+  const countFor = (s: StatusFilter) =>
+    s === "all" ? orientations.length : orientations.filter((o) => o.status === s).length;
 
   return (
     <div className="space-y-4">
@@ -37,29 +71,57 @@ export function OrientationsClient({
         特定技能1号の対象者について、雇用開始日から2週間後の日曜を予定日として自動登録します。
       </p>
 
-      <div className="flex gap-2">
-        {(["未実施", "実施済"] as Tab[]).map((t) => {
-          const count = orientations.filter((o) => o.status === t).length;
-          return (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTab(t)}
-              className={`flex-1 rounded-xl border px-3 py-2.5 text-sm font-bold ${
-                tab === t
-                  ? "border-brand bg-brand text-brand-foreground"
-                  : "border-border bg-surface text-muted"
-              }`}
-            >
-              {t}（{count}）
-            </button>
-          );
-        })}
+      {/* 状態フィルター */}
+      <div className="flex flex-wrap gap-2">
+        {(["未実施", "実施済", "実施不可（早期退職）", "all"] as StatusFilter[]).map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => setStatus(s)}
+            className={`rounded-xl border px-3 py-2 text-sm font-bold ${
+              status === s
+                ? "border-brand bg-brand text-brand-foreground"
+                : "border-border bg-surface text-muted"
+            }`}
+          >
+            {s === "all" ? "すべて" : s}（{countFor(s)}）
+          </button>
+        ))}
       </div>
+
+      {/* 所属機関・対象期間 */}
+      <Card className="flex flex-wrap items-end gap-3 p-4">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-muted">所属機関</span>
+          <select value={orgId} onChange={(e) => setOrgId(e.target.value)} className="min-h-[40px] rounded-xl border border-border bg-background px-3 text-sm">
+            <option value="all">すべて</option>
+            {orgOptions.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-muted">対象期間（実施予定日）開始</span>
+          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="min-h-[40px] rounded-xl border border-border bg-background px-3 text-sm" />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-muted">終了</span>
+          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="min-h-[40px] rounded-xl border border-border bg-background px-3 text-sm" />
+        </label>
+        {(orgId !== "all" || from || to) && (
+          <button type="button" onClick={() => { setOrgId("all"); setFrom(""); setTo(""); }} className="text-xs font-bold text-brand">
+            条件クリア
+          </button>
+        )}
+      </Card>
+
+      <p className="text-sm font-bold text-muted">{filtered.length}件</p>
 
       {filtered.length === 0 ? (
         <Card className="p-8 text-center text-sm text-muted">
-          {tab}の生活オリエンテーションはありません。
+          該当する生活オリエンテーションはありません。
         </Card>
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -70,13 +132,7 @@ export function OrientationsClient({
                   <p className="truncate font-bold">{o.workers?.name ?? "（削除済み）"}</p>
                   <p className="truncate text-xs text-muted">{o.organizations?.name ?? "所属機関未設定"}</p>
                 </Link>
-                <span
-                  className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${
-                    o.status === "実施済"
-                      ? "bg-status-reported-bg text-status-reported-fg"
-                      : "bg-status-notice-bg text-status-notice-fg"
-                  }`}
-                >
+                <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${STATUS_CLASS[o.status]}`}>
                   {o.status}
                 </span>
               </div>
@@ -89,27 +145,17 @@ export function OrientationsClient({
                 {o.done_on && <span>実施日 {o.done_on}</span>}
               </p>
               {o.drive_link && (
-                <a
-                  href={o.drive_link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-2 flex items-center gap-1 text-xs font-bold text-brand"
-                >
+                <a href={o.drive_link} target="_blank" rel="noopener noreferrer" className="mt-2 flex items-center gap-1 text-xs font-bold text-brand">
                   <ExternalLink size={13} />
                   保存資料を開く
                 </a>
               )}
+              {o.note && <p className="mt-1 text-xs text-muted">{o.note}</p>}
               {canEdit && (
-                <div className="mt-3 flex gap-2">
-                  {o.status === "未実施" ? (
-                    <Button variant="primary" fullWidth icon={<Check size={16} />} onClick={() => setEditing(o)}>
-                      実施済にする
-                    </Button>
-                  ) : (
-                    <Button variant="secondary" fullWidth onClick={() => setEditing(o)}>
-                      編集
-                    </Button>
-                  )}
+                <div className="mt-3">
+                  <Button variant={o.status === "未実施" ? "primary" : "secondary"} fullWidth icon={<Check size={16} />} onClick={() => setEditing(o)}>
+                    記録・編集
+                  </Button>
                 </div>
               )}
             </Card>
@@ -118,7 +164,7 @@ export function OrientationsClient({
       )}
 
       {editing && (
-        <DoneDialog
+        <RecordDialog
           orientation={editing}
           onClose={() => setEditing(null)}
           onSaved={() => {
@@ -131,7 +177,7 @@ export function OrientationsClient({
   );
 }
 
-function DoneDialog({
+function RecordDialog({
   orientation,
   onClose,
   onSaved,
@@ -140,6 +186,7 @@ function DoneDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const [status, setStatus] = useState<OrientationStatus>(orientation.status);
   const [doneOn, setDoneOn] = useState(orientation.done_on ?? new Date().toISOString().slice(0, 10));
   const [driveLink, setDriveLink] = useState(orientation.drive_link ?? "");
   const [note, setNote] = useState(orientation.note ?? "");
@@ -149,13 +196,14 @@ function DoneDialog({
   const folder = recommendedFolderName(orientation.organizations?.name ?? "");
   const file = recommendedFileName(orientation.workers?.name ?? "", doneOn);
 
-  const save = async (markDone: boolean) => {
+  const save = async () => {
     setBusy(true);
     setError(null);
     try {
       await updateOrientation(createClient(), orientation.id, {
-        status: markDone ? "実施済" : orientation.status,
-        done_on: doneOn || null,
+        status,
+        // 実施済のときのみ実施日を保存、その他は null に
+        done_on: status === "実施済" ? doneOn || null : null,
         drive_link: driveLink,
         note,
       });
@@ -169,7 +217,7 @@ function DoneDialog({
   const INPUT = "min-h-[44px] w-full rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none";
 
   return (
-    <Modal open title="生活オリエンテーション 実施記録" onClose={onClose}>
+    <Modal open title="生活オリエンテーション 記録" onClose={onClose}>
       <div className="flex flex-col gap-3">
         {error && (
           <p role="alert" className="rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
@@ -178,36 +226,52 @@ function DoneDialog({
         )}
 
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-bold text-muted">実施日</span>
-          <input type="date" value={doneOn} onChange={(e) => setDoneOn(e.target.value)} className={INPUT} />
+          <span className="text-xs font-bold text-muted">状態</span>
+          <select value={status} onChange={(e) => setStatus(e.target.value as OrientationStatus)} className={INPUT}>
+            {ORIENTATION_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
         </label>
 
-        <div className="rounded-xl bg-background p-3 text-xs leading-relaxed text-muted">
-          <p className="mb-1 font-bold text-foreground">Drive 推奨の保存名</p>
-          <p>フォルダ: {folder}</p>
-          <p>ファイル: {file}</p>
-          <p className="mt-1">上記の名前で Drive に保存し、そのリンクを下に貼り付けてください。</p>
-        </div>
+        {status === "実施不可（早期退職）" && (
+          <p className="flex items-center gap-1.5 rounded-lg bg-seal/10 px-3 py-2 text-xs text-seal">
+            <XCircle size={13} />
+            生活オリエンテーション前に退職したため実施不可として記録します。
+          </p>
+        )}
 
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-bold text-muted">保存先リンク（Drive など）</span>
-          <input type="url" value={driveLink} onChange={(e) => setDriveLink(e.target.value)} placeholder="https://drive.google.com/..." className={INPUT} />
-        </label>
+        {status === "実施済" && (
+          <>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-bold text-muted">実施日</span>
+              <input type="date" value={doneOn} onChange={(e) => setDoneOn(e.target.value)} className={INPUT} />
+            </label>
+
+            <div className="rounded-xl bg-background p-3 text-xs leading-relaxed text-muted">
+              <p className="mb-1 font-bold text-foreground">Drive 推奨の保存名</p>
+              <p>フォルダ: {folder}</p>
+              <p>ファイル: {file}</p>
+              <p className="mt-1">上記の名前で Drive に保存し、そのリンクを下に貼り付けてください。</p>
+            </div>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-bold text-muted">保存先リンク（Drive など）</span>
+              <input type="url" value={driveLink} onChange={(e) => setDriveLink(e.target.value)} placeholder="https://drive.google.com/..." className={INPUT} />
+            </label>
+          </>
+        )}
 
         <label className="flex flex-col gap-1">
           <span className="text-xs font-bold text-muted">備考</span>
           <input value={note} onChange={(e) => setNote(e.target.value)} className={INPUT} />
         </label>
 
-        {orientation.status === "実施済" ? (
-          <Button fullWidth disabled={busy} onClick={() => save(false)}>
-            {busy ? "保存中…" : "保存する"}
-          </Button>
-        ) : (
-          <Button fullWidth disabled={busy} onClick={() => save(true)}>
-            {busy ? "保存中…" : "実施済として保存"}
-          </Button>
-        )}
+        <Button fullWidth disabled={busy} onClick={save}>
+          {busy ? "保存中…" : "保存する"}
+        </Button>
       </div>
     </Modal>
   );
