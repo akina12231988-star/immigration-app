@@ -235,6 +235,40 @@ export function ApprovalSection({
             </p>
           )}
 
+          {/* 入管許可通知後のメモ（許可ボタンの直下・時系列履歴） */}
+          <div className="rounded-xl border border-border p-3">
+            <p className="mb-2 text-sm font-bold">入管許可通知後のメモ</p>
+            <div className="flex gap-2">
+              <input
+                value={memoBody}
+                onChange={(e) => setMemoBody(e.target.value)}
+                placeholder="メモを入力（受取までの経過など）"
+                className={INPUT_CLASS}
+              />
+              <Button type="button" variant="secondary" icon={<Plus size={16} />} onClick={addMemo} disabled={memoBusy || !memoBody.trim()}>
+                保存
+              </Button>
+            </div>
+            {memos.length > 0 && (
+              <ul className="mt-3 space-y-2">
+                {memos.map((m) => (
+                  <li key={m.id} className="rounded-lg bg-background p-2.5 text-sm">
+                    <div className="mb-0.5 flex items-center justify-between text-[11px] text-muted">
+                      <span>
+                        {new Date(m.createdAt).toLocaleString("ja-JP")}
+                        {m.author && ` ・ ${m.author}`}
+                      </span>
+                      <button type="button" aria-label="削除" onClick={() => removeMemo(m.id)} className="text-seal">
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                    <p className="whitespace-pre-wrap">{m.body}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
           {messengerLink && (
             <a
               href={messengerLink}
@@ -270,45 +304,6 @@ export function ApprovalSection({
           <Button fullWidth onClick={saveGrantInfo} disabled={saving} icon={saved ? <Check size={17} /> : undefined}>
             {saving ? "保存中…" : saved ? "保存しました（外国人情報も更新）" : "許可情報を保存"}
           </Button>
-
-          {/* 入管許可通知後のメモ（時系列履歴） */}
-          <div className="rounded-xl border border-border p-3">
-            <p className="mb-2 text-sm font-bold">入管許可通知後のメモ</p>
-            <div className="flex gap-2">
-              <input
-                value={memoBody}
-                onChange={(e) => setMemoBody(e.target.value)}
-                placeholder="メモを入力（受取までの経過など）"
-                className={INPUT_CLASS}
-              />
-              <Button type="button" variant="secondary" icon={<Plus size={16} />} onClick={addMemo} disabled={memoBusy || !memoBody.trim()}>
-                保存
-              </Button>
-            </div>
-            {memos.length > 0 && (
-              <ul className="mt-3 space-y-2">
-                {memos.map((m) => (
-                  <li key={m.id} className="rounded-lg bg-background p-2.5 text-sm">
-                    <div className="mb-0.5 flex items-center justify-between text-[11px] text-muted">
-                      <span>
-                        {new Date(m.createdAt).toLocaleString("ja-JP")}
-                        {m.author && ` ・ ${m.author}`}
-                      </span>
-                      <button
-                        type="button"
-                        aria-label="削除"
-                        onClick={() => removeMemo(m.id)}
-                        className="text-seal"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                    <p className="whitespace-pre-wrap">{m.body}</p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
 
           {/* 在留カード画像・指定書画像 */}
           <div className="space-y-4">

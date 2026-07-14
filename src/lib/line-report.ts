@@ -11,7 +11,7 @@ export function generateLineReport(app: Application): string {
   const orgLine = app.organizationName
     ? `${app.organizationName} ${app.reportOrgHonorific ?? "御中"}\n\n`
     : "";
-  return `${orgLine}本日、${app.name}さんの入管申請を行いました。
+  return `${orgLine}本日、${app.name}さんの下記の内容で申請を行いました。
 
 【申請内容】
 ${app.applicationContent}
@@ -22,6 +22,7 @@ ${app.applicationNumber || "未登録"}
 【申請日】
 ${formatJapaneseDate(app.applicationDate)}
 
+入管から進捗があり次第、ご連絡いたします。
 よろしくお願いいたします。`;
 }
 

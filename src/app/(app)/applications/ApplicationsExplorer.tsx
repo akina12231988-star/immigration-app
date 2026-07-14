@@ -1,22 +1,33 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Search, X } from "lucide-react";
+import { Search, StickyNote, X } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { createClient } from "@/lib/supabase/client";
+import { listApplicationMemos } from "@/lib/supabase/queries/memos";
+import type { ApplicationMemo } from "@/types/application";
 import { STAT_VIEWS, type StatViewKey } from "@/lib/application-stats";
-import { isExpiryAlert, todayStr } from "@/lib/application-alerts";
+import {
+  isExpiryAlert,
+  todayStr,
+  transitionEndDate,
+  formatMonthDay,
+} from "@/lib/application-alerts";
 import type { Application, ApplicationStatus } from "@/types/application";
 import { APPLICATION_STATUS_FILTERS } from "@/types/application";
 
 const TODAY = todayStr();
 
-function AlertBadge() {
+function AlertBadge({ expiry }: { expiry?: string }) {
+  const label = expiry
+    ? `期限注意（${formatMonthDay(transitionEndDate(expiry))}で経過措置終了）`
+    : "期限注意";
   return (
     <span className="inline-flex shrink-0 items-center rounded-full bg-seal px-2 py-0.5 text-[10px] font-bold text-seal-foreground">
-      期限超過
+      {label}
     </span>
   );
 }
@@ -51,6 +62,26 @@ export function ApplicationsExplorer({
       );
     });
   }, [applications, keyword, statusFilter, statView]);
+
+  // 「許可済」フィルター時は、入管許可通知後のメモを取得して表示する
+  const showApprovedDetail = statusFilter === "許可済";
+  const [memosByApp, setMemosByApp] = useState<Record<string, ApplicationMemo[]>>({});
+  useEffect(() => {
+    if (!showApprovedDetail) return;
+    let cancelled = false;
+    const supabase = createClient();
+    const ids = filtered.map((a) => a.id);
+    void Promise.all(
+      ids.map(
+        async (id) => [id, await listApplicationMemos(supabase, id).catch(() => [])] as const,
+      ),
+    ).then((entries) => {
+      if (!cancelled) setMemosByApp(Object.fromEntries(entries));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [showApprovedDetail, filtered]);
 
   return (
     <div className="space-y-4">
@@ -104,6 +135,49 @@ export function ApplicationsExplorer({
 
       {filtered.length === 0 ? (
         <p className="py-12 text-center text-sm text-muted">該当する申請が見つかりません</p>
+      ) : showApprovedDetail ? (
+        /* 許可済: 受取予定日＋入管許可通知後のメモを表示 */
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          {filtered.map((a) => {
+            const memos = memosByApp[a.id] ?? [];
+            return (
+              <Card key={a.id} className="p-4">
+                <div className="mb-1 flex items-start justify-between gap-2">
+                  <Link href={`/applications/${a.id}`} className="min-w-0">
+                    <p className="truncate font-bold">{a.name}</p>
+                    <p className="truncate text-xs text-muted">{a.organizationName ?? "所属機関未設定"}</p>
+                  </Link>
+                  <StatusBadge status={a.status} />
+                </div>
+                <p className="text-xs tabular-nums text-muted">
+                  受取予定日 {a.receiptScheduledOn ?? "未設定"}
+                  {a.receiptReason && ` ・ ${a.receiptReason}`}
+                </p>
+                <div className="mt-2 border-t border-border pt-2">
+                  <p className="mb-1 flex items-center gap-1 text-[11px] font-bold text-muted">
+                    <StickyNote size={12} />
+                    許可通知後のメモ（{memos.length}）
+                  </p>
+                  {memos.length === 0 ? (
+                    <p className="text-xs text-muted">メモはありません</p>
+                  ) : (
+                    <ul className="space-y-1">
+                      {memos.slice(0, 3).map((m) => (
+                        <li key={m.id} className="rounded-lg bg-background p-2 text-xs">
+                          <span className="block text-[10px] text-muted">
+                            {new Date(m.createdAt).toLocaleString("ja-JP")}
+                            {m.author && ` ・ ${m.author}`}
+                          </span>
+                          <span className="whitespace-pre-wrap">{m.body}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
       ) : (
         <>
           {/* モバイル: カード表示 */}
@@ -114,7 +188,7 @@ export function ApplicationsExplorer({
                   <div className="mb-2 flex items-start justify-between gap-2">
                     <p className="font-bold">{a.name}</p>
                     <div className="flex shrink-0 items-center gap-1">
-                      {isExpiryAlert(a, TODAY) && <AlertBadge />}
+                      {isExpiryAlert(a, TODAY) && <AlertBadge expiry={a.residenceExpiryAtApply} />}
                       <StatusBadge status={a.status} />
                     </div>
                   </div>
@@ -158,7 +232,7 @@ export function ApplicationsExplorer({
                     <Td className="font-bold">
                       <span className="flex items-center gap-1.5">
                         {a.name}
-                        {isExpiryAlert(a, TODAY) && <AlertBadge />}
+                        {isExpiryAlert(a, TODAY) && <AlertBadge expiry={a.residenceExpiryAtApply} />}
                       </span>
                     </Td>
                     <Td>{a.organizationName ?? "—"}</Td>

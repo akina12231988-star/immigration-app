@@ -137,7 +137,10 @@ export interface ImmigrationApplicationRow {
   updated_at: string;
 }
 
-// 生活オリエンテーション（0013 / 0015）
+// 生活オリエンテーション（0013 / 0015 / 0016）
+export const ORIENTATION_STATUSES = ["未実施", "実施済", "実施不可（早期退職）"] as const;
+export type OrientationStatus = (typeof ORIENTATION_STATUSES)[number];
+
 export interface OrientationRow {
   id: string;
   worker_id: string;
@@ -145,7 +148,7 @@ export interface OrientationRow {
   application_id: string | null;
   scheduled_on: string;
   employment_start_on: string | null;
-  status: "未実施" | "実施済";
+  status: OrientationStatus;
   done_on: string | null;
   drive_link: string;
   note: string;

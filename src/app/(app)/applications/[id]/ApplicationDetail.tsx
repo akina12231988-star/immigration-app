@@ -22,7 +22,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { StatusStepper } from "@/components/StatusStepper";
 import { FileGroup } from "@/components/applications/FileGroup";
 import { generateLineReport } from "@/lib/line-report";
-import { isExpiryAlert, todayStr } from "@/lib/application-alerts";
+import { isExpiryAlert, todayStr, transitionEndDate, formatMonthDay } from "@/lib/application-alerts";
 import { useApplications } from "@/lib/application-store";
 import { uploadApplicationFile } from "@/lib/application-files";
 import { createClient } from "@/lib/supabase/client";
@@ -171,10 +171,11 @@ export function ApplicationDetail({ id }: { id: string }) {
 
   return (
     <div className="space-y-5">
-      {alert && (
+      {alert && app.residenceExpiryAtApply && (
         <div className="flex items-center gap-2 rounded-xl border-2 border-seal bg-seal/10 px-3 py-2.5 text-sm font-bold text-seal">
           <FileX size={16} />
-          申請時点の在留期限から1か月以上経過し、まだ受取処理が済んでいません
+          申請時点の在留期限から1か月以上経過（
+          {formatMonthDay(transitionEndDate(app.residenceExpiryAtApply))}で経過措置終了）し、まだ受取処理が済んでいません
         </div>
       )}
       <Card className="p-4">
