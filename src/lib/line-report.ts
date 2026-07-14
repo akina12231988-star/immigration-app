@@ -24,12 +24,18 @@ ${formatJapaneseDate(app.applicationDate)}
 よろしくお願いいたします。`;
 }
 
-// 許可時の社長への定型報告文（許可済ボタン押下後に表示）
+// 許可時の所属機関への定型報告文。所属機関名＋敬称（御中/様）を先頭に表示し、雇用開始日を任意で添える
 export function generateApprovalReport(app: Application): string {
-  return `お世話になっております。
+  const orgLine = app.organizationName
+    ? `${app.organizationName} ${app.reportOrgHonorific ?? "御中"}\n\n`
+    : "";
+  const employmentLine = app.employmentStartOn
+    ? `\n雇用開始日は ${app.employmentStartOn} を予定しております。`
+    : "";
+  return `${orgLine}お世話になっております。
 
 本日、${app.name}さんの許可が降りました。
-許可が降りた資料は後日お持ちいたします。
+許可が降りた資料は後日お持ちいたします。${employmentLine}
 
 よろしくお願いいたします。`;
 }

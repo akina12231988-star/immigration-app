@@ -19,6 +19,7 @@ const KIND_SLUGS: Record<ApplicationFileKind, string> = {
   受付票: "receipt",
   通知書: "notice",
   在留カード: "residence-card",
+  指定書: "designation",
   その他: "other",
 };
 

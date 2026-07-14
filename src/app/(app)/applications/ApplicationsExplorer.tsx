@@ -2,14 +2,13 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Search, LayoutGrid, Rows3, ChevronRight, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Search, X } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { STAT_VIEWS, type StatViewKey } from "@/lib/application-stats";
 import type { Application, ApplicationStatus } from "@/types/application";
 import { APPLICATION_STATUS_FILTERS } from "@/types/application";
-
-type ViewMode = "card" | "list";
 
 export function ApplicationsExplorer({
   applications,
@@ -18,7 +17,7 @@ export function ApplicationsExplorer({
   applications: Application[];
   initialView?: StatViewKey | null;
 }) {
-  const [view, setView] = useState<ViewMode>("card");
+  const router = useRouter();
   const [keyword, setKeyword] = useState("");
   const [statusFilter, setStatusFilter] = useState<ApplicationStatus | "all">(
     "all"
@@ -90,79 +89,84 @@ export function ApplicationsExplorer({
         ))}
       </div>
 
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-bold text-muted">{filtered.length}件</p>
-        {/* ⑪表示切替: カード表示 / 一覧表示 */}
-        <div className="flex rounded-lg border border-border p-0.5">
-          <button
-            onClick={() => setView("card")}
-            aria-label="カード表示"
-            className={`flex h-9 w-9 items-center justify-center rounded-md ${
-              view === "card" ? "bg-brand text-brand-foreground" : "text-muted"
-            }`}
-          >
-            <LayoutGrid size={17} />
-          </button>
-          <button
-            onClick={() => setView("list")}
-            aria-label="一覧表示"
-            className={`flex h-9 w-9 items-center justify-center rounded-md ${
-              view === "list" ? "bg-brand text-brand-foreground" : "text-muted"
-            }`}
-          >
-            <Rows3 size={17} />
-          </button>
-        </div>
-      </div>
+      <p className="text-sm font-bold text-muted">{filtered.length}件</p>
 
       {filtered.length === 0 ? (
-        <p className="py-12 text-center text-sm text-muted">
-          該当する申請が見つかりません
-        </p>
-      ) : view === "card" ? (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {filtered.map((a) => (
-            <Link key={a.id} href={`/applications/${a.id}`}>
-              <Card className="h-full p-4">
-                <div className="mb-2 flex items-start justify-between gap-2">
-                  <p className="font-bold">{a.name}</p>
-                  <StatusBadge status={a.status} />
-                </div>
-                <p className="mb-1 text-sm text-muted">
-                  {a.applicationContent}
-                </p>
-                <div className="flex items-center justify-between text-xs text-muted">
-                  <span>申請番号 {a.applicationNumber || "未登録"}</span>
-                  <span>{a.assignee}</span>
-                </div>
-              </Card>
-            </Link>
-          ))}
-        </div>
+        <p className="py-12 text-center text-sm text-muted">該当する申請が見つかりません</p>
       ) : (
-        <Card className="divide-y divide-border overflow-hidden">
-          {filtered.map((a) => (
-            <Link
-              key={a.id}
-              href={`/applications/${a.id}`}
-              className="flex items-center gap-3 p-3.5"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <p className="truncate font-bold">{a.name}</p>
-                  <StatusBadge status={a.status} />
-                </div>
-                <p className="truncate text-xs text-muted">
-                  {a.applicationDate} ・ {a.applicationContent}
-                </p>
-              </div>
-              <ChevronRight size={18} className="shrink-0 text-muted" />
-            </Link>
-          ))}
-        </Card>
+        <>
+          {/* モバイル: カード表示 */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:hidden">
+            {filtered.map((a) => (
+              <Link key={a.id} href={`/applications/${a.id}`}>
+                <Card className="h-full p-4">
+                  <div className="mb-2 flex items-start justify-between gap-2">
+                    <p className="font-bold">{a.name}</p>
+                    <StatusBadge status={a.status} />
+                  </div>
+                  <p className="mb-1 text-xs text-muted">{a.organizationName ?? "所属機関未設定"}</p>
+                  <p className="mb-1 text-sm text-muted">{a.applicationContent}</p>
+                  <div className="flex items-center justify-between text-xs text-muted">
+                    <span>申請番号 {a.applicationNumber || "未登録"}</span>
+                    <span>{a.applicationDate}</span>
+                  </div>
+                  {a.residenceExpiryAtApply && (
+                    <p className="mt-1 text-xs text-muted">
+                      申請時在留期限 {a.residenceExpiryAtApply}
+                    </p>
+                  )}
+                </Card>
+              </Link>
+            ))}
+          </div>
+
+          {/* PC: テーブル表示 */}
+          <div className="hidden overflow-x-auto rounded-2xl border border-border lg:block">
+            <table className="w-full text-sm">
+              <thead className="bg-background text-left text-xs font-bold text-muted">
+                <tr>
+                  <Th>名前</Th>
+                  <Th>所属機関</Th>
+                  <Th>申請内容</Th>
+                  <Th>申請日</Th>
+                  <Th>申請番号</Th>
+                  <Th>申請時点在留期限</Th>
+                  <Th>状態</Th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {filtered.map((a) => (
+                  <tr
+                    key={a.id}
+                    onClick={() => router.push(`/applications/${a.id}`)}
+                    className="cursor-pointer bg-surface hover:bg-background"
+                  >
+                    <Td className="font-bold">{a.name}</Td>
+                    <Td>{a.organizationName ?? "—"}</Td>
+                    <Td>{a.applicationContent || "—"}</Td>
+                    <Td className="tabular-nums">{a.applicationDate}</Td>
+                    <Td className="tabular-nums">{a.applicationNumber || "—"}</Td>
+                    <Td className="tabular-nums">{a.residenceExpiryAtApply ?? "—"}</Td>
+                    <Td>
+                      <StatusBadge status={a.status} />
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );
+}
+
+function Th({ children }: { children: React.ReactNode }) {
+  return <th className="whitespace-nowrap px-4 py-3">{children}</th>;
+}
+
+function Td({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <td className={`whitespace-nowrap px-4 py-3 ${className}`}>{children}</td>;
 }
 
 function FilterChip({

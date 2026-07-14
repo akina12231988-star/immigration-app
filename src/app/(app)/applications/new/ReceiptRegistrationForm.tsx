@@ -10,34 +10,40 @@ import {
   RotateCcw,
   ScanText,
   TriangleAlert,
+  UserPlus,
   UserRound,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { useApplications } from "@/lib/application-store";
 import { createClient } from "@/lib/supabase/client";
+import { insertWorker } from "@/lib/supabase/queries/workers";
+import { blankWorkerInput } from "@/lib/worker-defaults";
 import { uploadApplicationFile } from "@/lib/application-files";
 import {
   APPLICATION_CONTENT_OPTIONS,
   type ApplicationContent,
   type ApplicationMethod,
 } from "@/types/application";
+import type { Organization } from "@/types/db";
 
 interface FormFields {
-  name: string;
   applicationDate: string;
   applicationNumber: string;
+  residenceExpiryAtApply: string;
   applicationContent: ApplicationContent | "";
   assignee: string;
+  isSelfApply: boolean;
   emailLink: string;
 }
 
 const EMPTY_FIELDS: FormFields = {
-  name: "",
   applicationDate: "",
   applicationNumber: "",
+  residenceExpiryAtApply: "",
   applicationContent: "",
   assignee: "",
+  isSelfApply: false,
   emailLink: "",
 };
 
@@ -45,6 +51,9 @@ interface WorkerOption {
   id: string;
   name: string;
 }
+
+const INPUT_CLASS =
+  "w-full rounded-xl border border-border bg-surface px-3.5 py-3 text-base focus:border-brand focus:outline-none";
 
 export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod }) {
   const router = useRouter();
@@ -55,7 +64,6 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
 
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
-  // オンライン申請は画像がないため最初から入力欄を表示する
   const [entryState, setEntryState] = useState<"idle" | "loading" | "editing">(
     isOnline ? "editing" : "idle"
   );
@@ -63,36 +71,46 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
     ...EMPTY_FIELDS,
     applicationDate: isOnline ? new Date().toISOString().slice(0, 10) : "",
   }));
-  const [workerId, setWorkerId] = useState<string>("");
+
+  // 外国人・所属機関
   const [workers, setWorkers] = useState<WorkerOption[]>([]);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [workerId, setWorkerId] = useState<string>("");
+  const [orgId, setOrgId] = useState<string>("");
+  const [newName, setNewName] = useState("");
+  const [creatingWorker, setCreatingWorker] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // 紐づけ候補の外国人一覧（名前のみ）
   useEffect(() => {
     let cancelled = false;
-    createClient()
+    const supabase = createClient();
+    void supabase
       .from("workers")
       .select("id, name")
       .order("name")
       .then(({ data }) => {
         if (!cancelled && data) setWorkers(data as WorkerOption[]);
       });
+    void supabase
+      .from("organizations")
+      .select("*")
+      .order("name")
+      .then(({ data }) => {
+        if (!cancelled && data) setOrganizations(data as Organization[]);
+      });
     return () => {
       cancelled = true;
     };
   }, []);
 
+  const selectedWorker = workers.find((w) => w.id === workerId) ?? null;
+
   const isDuplicateNumber =
     fields.applicationNumber.length > 0 &&
     applications.some((a) => a.applicationNumber === fields.applicationNumber);
-  const isDuplicateNameDate =
-    fields.name.length > 0 &&
-    fields.applicationDate.length > 0 &&
-    applications.some(
-      (a) =>
-        a.name === fields.name && a.applicationDate === fields.applicationDate
-    );
 
   function startEditing() {
     setFields((prev) => ({
@@ -106,7 +124,6 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
     if (!file) return;
     setImageFile(file);
     setImagePreview(URL.createObjectURL(file));
-    // OCR（Google Vision / /api/ocr）は未実装のため、撮影後は手入力してもらう
     setEntryState("loading");
     setTimeout(startEditing, 400);
   }
@@ -115,20 +132,29 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
     setImagePreview(null);
     setImageFile(null);
     setEntryState("idle");
-    setFields(EMPTY_FIELDS);
-    setWorkerId("");
   }
 
-  function updateField<K extends keyof FormFields>(key: K, value: FormFields[K]) {
+  const set = <K extends keyof FormFields>(key: K, value: FormFields[K]) =>
     setFields((prev) => ({ ...prev, [key]: value }));
-  }
 
-  // 外国人を選ぶと氏名を自動入力（手修正も可）
-  function selectWorker(id: string) {
-    setWorkerId(id);
-    const w = workers.find((x) => x.id === id);
-    if (w) {
-      setFields((prev) => ({ ...prev, name: prev.name || w.name }));
+  // 外国人選択に該当者がない場合、氏名だけで新規登録して紐づける
+  async function createWorkerByName() {
+    const name = newName.trim();
+    if (!name) return;
+    setCreatingWorker(true);
+    setNotice(null);
+    try {
+      const worker = await insertWorker(createClient(), blankWorkerInput(name, orgId || null));
+      setWorkers((prev) => [...prev, { id: worker.id, name: worker.name }]);
+      setWorkerId(worker.id);
+      setNewName("");
+      setNotice(
+        `外国人「${name}」を登録しました。国籍・在留カード番号などの詳細は、あとで外国人管理から入力できます。`,
+      );
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "外国人の登録に失敗しました");
+    } finally {
+      setCreatingWorker(false);
     }
   }
 
@@ -139,20 +165,23 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
     try {
       const created = await addApplication({
         workerId: workerId || null,
-        name: fields.name,
+        organizationId: orgId || null,
+        name: selectedWorker?.name ?? newName.trim(),
         applicationDate: fields.applicationDate,
         applicationNumber: fields.applicationNumber,
         applicationContent: fields.applicationContent,
         method,
         emailLink: isOnline ? fields.emailLink : "",
+        residenceExpiryAtApply: fields.residenceExpiryAtApply || undefined,
+        isSelfApply: fields.isSelfApply,
+        reportOrgHonorific: "御中",
         lineReported: false,
         notionSynced: false,
         approved: false,
         approvalReported: false,
         status: "申請済",
-        assignee: fields.assignee,
+        assignee: fields.isSelfApply ? "本人申請" : fields.assignee,
       });
-      // 窓口申請は受付票の画像を保存する（失敗しても申請詳細から再登録できる）
       if (imageFile) {
         await uploadApplicationFile(created.id, "受付票", imageFile).catch(() => undefined);
       }
@@ -163,14 +192,16 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
     }
   }
 
+  const hasSubject = Boolean(selectedWorker);
   const canSubmit =
     !submitting &&
     !isDuplicateNumber &&
-    fields.name &&
+    hasSubject &&
+    orgId &&
     fields.applicationDate &&
     fields.applicationNumber &&
     fields.applicationContent &&
-    fields.assignee &&
+    (fields.isSelfApply || fields.assignee) &&
     (!isOnline || fields.emailLink);
 
   return (
@@ -183,28 +214,16 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
               <p className="text-sm text-muted">
                 入管窓口で受け取った受付票を撮影するか、画像を選択してください
               </p>
-              <div className="grid w-full grid-cols-2 gap-3">
-                <Button
-                  variant="primary"
-                  icon={<Camera size={19} />}
-                  onClick={() => cameraInputRef.current?.click()}
-                >
+              <div className="grid w-full max-w-md grid-cols-2 gap-3">
+                <Button variant="primary" icon={<Camera size={19} />} onClick={() => cameraInputRef.current?.click()}>
                   撮影する
                 </Button>
-                <Button
-                  variant="secondary"
-                  icon={<ImagePlus size={19} />}
-                  onClick={() => galleryInputRef.current?.click()}
-                >
+                <Button variant="secondary" icon={<ImagePlus size={19} />} onClick={() => galleryInputRef.current?.click()}>
                   画像を選択
                 </Button>
               </div>
               {entryState === "idle" && (
-                <button
-                  type="button"
-                  onClick={startEditing}
-                  className="mt-1 flex items-center gap-1.5 text-sm font-bold text-brand"
-                >
+                <button type="button" onClick={startEditing} className="mt-1 flex items-center gap-1.5 text-sm font-bold text-brand">
                   <Keyboard size={16} />
                   画像なしで手入力する
                 </button>
@@ -213,36 +232,14 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
           ) : (
             <Card className="overflow-hidden p-3">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={imagePreview}
-                alt="受付票プレビュー"
-                className="mb-3 max-h-64 w-full rounded-lg object-contain bg-background"
-              />
-              <Button
-                variant="secondary"
-                icon={<RotateCcw size={17} />}
-                fullWidth
-                onClick={retake}
-              >
+              <img src={imagePreview} alt="受付票プレビュー" className="mb-3 max-h-64 w-full rounded-lg bg-background object-contain" />
+              <Button variant="secondary" icon={<RotateCcw size={17} />} fullWidth onClick={retake}>
                 撮り直す・選び直す
               </Button>
             </Card>
           )}
-          <input
-            ref={cameraInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="hidden"
-            onChange={(e) => handleFile(e.target.files?.[0])}
-          />
-          <input
-            ref={galleryInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => handleFile(e.target.files?.[0])}
-          />
+          <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
+          <input ref={galleryInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
         </section>
       )}
 
@@ -250,9 +247,7 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
         <section>
           <div className="mb-2 flex items-center gap-2">
             <ScanText size={16} className="text-brand" />
-            <h2 className="text-sm font-bold text-muted">
-              {isOnline ? "申請情報の入力" : "② 申請情報の入力"}
-            </h2>
+            <h2 className="text-sm font-bold text-muted">{isOnline ? "申請情報の入力" : "② 申請情報の入力"}</h2>
           </div>
 
           {entryState === "loading" ? (
@@ -262,82 +257,94 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
             </Card>
           ) : (
             <Card className="space-y-4 p-4">
-              {isOnline && (
-                <label className="block">
-                  <span className="mb-1.5 flex items-center gap-1 text-xs font-bold text-muted">
-                    <Link2 size={13} />
-                    申請受付メールのリンク
-                  </span>
-                  <input
-                    type="url"
-                    value={fields.emailLink}
-                    onChange={(e) => updateField("emailLink", e.target.value)}
-                    placeholder="https://..."
-                    className="w-full rounded-xl border border-border bg-surface px-3.5 py-3 text-base focus:border-brand focus:outline-none"
-                  />
-                  <span className="mt-1 block text-xs text-muted">
-                    受付メールに記載されたリンクを貼り付けてください
-                  </span>
-                </label>
+              {notice && (
+                <p className="rounded-lg bg-brand/10 px-3 py-2 text-sm text-brand">{notice}</p>
               )}
 
-              <label className="block">
+              {/* 1. 外国人氏名（該当者がなければ氏名だけで新規登録） */}
+              <div>
                 <span className="mb-1.5 flex items-center gap-1 text-xs font-bold text-muted">
                   <UserRound size={13} />
-                  外国人と紐づける（任意）
+                  外国人氏名（必須）
                 </span>
-                <select
-                  value={workerId}
-                  onChange={(e) => selectWorker(e.target.value)}
-                  className="w-full rounded-xl border border-border bg-surface px-3.5 py-3 text-base focus:border-brand focus:outline-none"
-                >
-                  <option value="">（紐づけない・未登録の人）</option>
+                <select value={workerId} onChange={(e) => setWorkerId(e.target.value)} className={INPUT_CLASS}>
+                  <option value="">選択してください</option>
                   {workers.map((w) => (
                     <option key={w.id} value={w.id}>
                       {w.name}
                     </option>
                   ))}
                 </select>
-                <span className="mt-1 block text-xs text-muted">
-                  紐づけると外国人詳細ページから申請受付日・番号を確認できます
-                </span>
+                {!selectedWorker && (
+                  <div className="mt-2 rounded-xl border border-dashed border-border p-3">
+                    <p className="mb-1.5 text-xs font-bold text-muted">
+                      一覧にいない場合は、氏名だけで先に登録できます
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        value={newName}
+                        onChange={(e) => setNewName(e.target.value)}
+                        placeholder="氏名を入力"
+                        className={INPUT_CLASS}
+                      />
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        icon={<UserPlus size={17} />}
+                        onClick={createWorkerByName}
+                        disabled={!newName.trim() || creatingWorker}
+                      >
+                        {creatingWorker ? "登録中…" : "登録"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 2. 所属機関 */}
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-bold text-muted">所属機関（必須）</span>
+                <select value={orgId} onChange={(e) => setOrgId(e.target.value)} className={INPUT_CLASS}>
+                  <option value="">選択してください</option>
+                  {organizations.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}
+                    </option>
+                  ))}
+                </select>
               </label>
 
-              <Field
-                label="氏名"
-                value={fields.name}
-                onChange={(v) => updateField("name", v)}
-              />
-              <Field
-                label="申請日"
-                type="date"
-                value={fields.applicationDate}
-                onChange={(v) => updateField("applicationDate", v)}
-              />
-              <Field
-                label="申請番号"
-                value={fields.applicationNumber}
-                onChange={(v) => updateField("applicationNumber", v)}
-                warning={
-                  isDuplicateNumber
-                    ? "この申請番号は既に登録されています"
-                    : undefined
-                }
-              />
+              {isOnline && (
+                <label className="block">
+                  <span className="mb-1.5 flex items-center gap-1 text-xs font-bold text-muted">
+                    <Link2 size={13} />
+                    申請受付メールのリンク
+                  </span>
+                  <input type="url" value={fields.emailLink} onChange={(e) => set("emailLink", e.target.value)} placeholder="https://..." className={INPUT_CLASS} />
+                </label>
+              )}
 
+              {/* 3. 申請日 4. 申請番号 */}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="申請日（必須）" type="date" value={fields.applicationDate} onChange={(v) => set("applicationDate", v)} />
+                <Field
+                  label="申請番号（必須）"
+                  value={fields.applicationNumber}
+                  onChange={(v) => set("applicationNumber", v)}
+                  warning={isDuplicateNumber ? "この申請番号は既に登録されています" : undefined}
+                />
+              </div>
+
+              {/* 申請時点の在留期限 */}
+              <Field label="申請時点の在留期限" type="date" value={fields.residenceExpiryAtApply} onChange={(v) => set("residenceExpiryAtApply", v)} />
+
+              {/* 5. 申請内容 */}
               <label className="block">
-                <span className="mb-1.5 block text-xs font-bold text-muted">
-                  申請内容
-                </span>
+                <span className="mb-1.5 block text-xs font-bold text-muted">申請内容（必須）</span>
                 <select
                   value={fields.applicationContent}
-                  onChange={(e) =>
-                    updateField(
-                      "applicationContent",
-                      e.target.value as ApplicationContent
-                    )
-                  }
-                  className="w-full rounded-xl border border-border bg-surface px-3.5 py-3 text-base focus:border-brand focus:outline-none"
+                  onChange={(e) => set("applicationContent", e.target.value as ApplicationContent)}
+                  className={INPUT_CLASS}
                 >
                   <option value="" disabled>
                     選択してください
@@ -350,28 +357,24 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
                 </select>
               </label>
 
-              <Field
-                label="申請取次士"
-                value={fields.assignee}
-                onChange={(v) => updateField("assignee", v)}
-              />
-
-              {isDuplicateNameDate && !isDuplicateNumber && (
-                <div className="flex items-start gap-2 rounded-xl bg-status-notice-bg p-3 text-sm text-status-notice-fg">
-                  <TriangleAlert size={18} className="mt-0.5 shrink-0" />
-                  <p>
-                    同じ氏名・申請日の申請が既に登録されています。重複登録でないかご確認ください。
-                  </p>
-                </div>
-              )}
+              {/* 6. 申請取次士（本人申請の場合はチェック） */}
+              <div>
+                <label className="mb-2 flex items-center gap-2 text-sm font-bold">
+                  <input type="checkbox" checked={fields.isSelfApply} onChange={(e) => set("isSelfApply", e.target.checked)} className="h-4 w-4" />
+                  本人申請（申請取次士を介さない）
+                </label>
+                {!fields.isSelfApply && (
+                  <Field label="申請取次士（必須）" value={fields.assignee} onChange={(v) => set("assignee", v)} />
+                )}
+              </div>
             </Card>
           )}
         </section>
       )}
 
       {entryState === "editing" && (
-        <div className="fixed bottom-[calc(64px+env(safe-area-inset-bottom))] left-0 right-0 z-10 border-t border-border bg-surface p-3">
-          <div className="mx-auto max-w-lg">
+        <div className="fixed bottom-[calc(64px+env(safe-area-inset-bottom))] left-0 right-0 z-10 border-t border-border bg-surface p-3 lg:bottom-0 lg:pl-64">
+          <div className="mx-auto max-w-2xl">
             {isDuplicateNumber && (
               <div className="mb-2 flex items-center gap-2 rounded-lg bg-seal/10 px-3 py-2 text-xs font-bold text-seal">
                 <TriangleAlert size={15} />
@@ -381,7 +384,7 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
             {submitError && (
               <div className="mb-2 flex items-center gap-2 rounded-lg bg-seal/10 px-3 py-2 text-xs font-bold text-seal">
                 <TriangleAlert size={15} />
-                登録に失敗しました: {submitError}
+                {submitError}
               </div>
             )}
             <Button fullWidth disabled={!canSubmit} onClick={handleSubmit}>
@@ -409,17 +412,13 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-xs font-bold text-muted">
-        {label}
-      </span>
+      <span className="mb-1.5 block text-xs font-bold text-muted">{label}</span>
       <input
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className={`w-full rounded-xl border bg-surface px-3.5 py-3 text-base focus:outline-none ${
-          warning
-            ? "border-seal focus:border-seal"
-            : "border-border focus:border-brand"
+          warning ? "border-seal focus:border-seal" : "border-border focus:border-brand"
         }`}
       />
       {warning && (

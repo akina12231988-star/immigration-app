@@ -1,19 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Copy,
   Check,
   ChevronRight,
-  CreditCard,
   ExternalLink,
   FileX,
-  ImagePlus,
   MessageCircle,
   Pencil,
-  ShieldCheck,
   Trash2,
   Undo2,
   UserRound,
@@ -23,21 +20,25 @@ import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { StatusStepper } from "@/components/StatusStepper";
-import { generateApprovalReport, generateLineReport } from "@/lib/line-report";
+import { FileGroup } from "@/components/applications/FileGroup";
+import { generateLineReport } from "@/lib/line-report";
 import { useApplications } from "@/lib/application-store";
 import { uploadApplicationFile } from "@/lib/application-files";
+import { createClient } from "@/lib/supabase/client";
 import { deleteApplication, listApplicationFiles } from "../actions";
 import { ApplicationEditDialog } from "./ApplicationEditDialog";
+import { ApprovalSection } from "./ApprovalSection";
 import type { ApplicationFile, ApplicationFileKind } from "@/types/application";
 
 export function ApplicationDetail({ id }: { id: string }) {
   const router = useRouter();
   const { applications, loaded, updateApplication, removeApplication } =
     useApplications();
-  const [copied, setCopied] = useState<"apply" | "approval" | null>(null);
+  const [copied, setCopied] = useState<"apply" | null>(null);
   const [files, setFiles] = useState<ApplicationFile[]>([]);
   const [uploading, setUploading] = useState<ApplicationFileKind | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [messengerLink, setMessengerLink] = useState("");
   const [editOpen, setEditOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -45,6 +46,7 @@ export function ApplicationDetail({ id }: { id: string }) {
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const app = applications.find((a) => a.id === id);
+  const workerId = app?.workerId ?? null;
 
   useEffect(() => {
     let cancelled = false;
@@ -55,6 +57,23 @@ export function ApplicationDetail({ id }: { id: string }) {
       cancelled = true;
     };
   }, [id]);
+
+  // 外国人のMessengerリンクを取得（許可処理で表示）
+  useEffect(() => {
+    if (!workerId) return;
+    let cancelled = false;
+    void createClient()
+      .from("workers")
+      .select("messenger_link")
+      .eq("id", workerId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled && data) setMessengerLink((data as { messenger_link: string }).messenger_link ?? "");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [workerId]);
 
   if (!loaded) {
     return <p className="py-12 text-center text-sm text-muted">読み込み中…</p>;
@@ -69,11 +88,10 @@ export function ApplicationDetail({ id }: { id: string }) {
   }
 
   const lineReportText = generateLineReport(app);
-  const approvalReportText = generateApprovalReport(app);
   const cardReceived = app.status === "在留カード受領";
   const withdrawn = app.status === "取下げ";
 
-  async function handleCopy(text: string, key: "apply" | "approval") {
+  async function handleCopy(text: string, key: "apply") {
     await navigator.clipboard.writeText(text);
     setCopied(key);
     setTimeout(() => setCopied(null), 2000);
@@ -112,16 +130,6 @@ export function ApplicationDetail({ id }: { id: string }) {
     });
   }
 
-  // ⑧許可済ボタン: 許可日を記録。押すと下に許可報告のLINE文が表示される
-  function markApproved() {
-    const today = new Date().toISOString().slice(0, 10);
-    void updateApplication(id, {
-      approved: true,
-      approvalDate: today,
-      status: "許可済",
-    });
-  }
-
   // 在留カード受領: 画像登録後に押して完了状態にする
   function markCardReceived() {
     const today = new Date().toISOString().slice(0, 10);
@@ -129,10 +137,6 @@ export function ApplicationDetail({ id }: { id: string }) {
       status: "在留カード受領",
       cardReceivedOn: today,
     });
-  }
-
-  function markApprovalReported() {
-    void updateApplication(id, { approvalReported: true });
   }
 
   // 申請取下げ（キャンセル）。誤操作は「元に戻す」で復帰できる
@@ -220,16 +224,18 @@ export function ApplicationDetail({ id }: { id: string }) {
       <Card className="p-4">
         <h3 className="mb-3 text-sm font-bold text-muted">基本情報</h3>
         <dl className="space-y-2.5 text-sm">
+          <InfoRow label="所属機関" value={app.organizationName ?? "未設定"} />
           <InfoRow label="申請方法" value={`${app.method}申請`} />
           <InfoRow label="申請番号" value={app.applicationNumber || "未登録"} />
           <InfoRow label="申請日" value={app.applicationDate} />
+          <InfoRow label="申請時点の在留期限" value={app.residenceExpiryAtApply ?? "未登録"} />
           <InfoRow label="許可日" value={app.approvalDate ?? "未許可"} />
           <InfoRow
             label="在留カード受領日"
             value={app.cardReceivedOn ?? "未受領"}
           />
           {app.withdrawnOn && <InfoRow label="取下げ日" value={app.withdrawnOn} />}
-          <InfoRow label="申請取次士" value={app.assignee} />
+          <InfoRow label="申請取次士" value={app.isSelfApply ? "本人申請" : app.assignee} />
           <InfoRow
             label="登録日時"
             value={new Date(app.createdAt).toLocaleString("ja-JP")}
@@ -310,81 +316,29 @@ export function ApplicationDetail({ id }: { id: string }) {
       )}
 
       {!withdrawn && (
-      <Card className="p-4">
-        <h3 className="mb-3 text-sm font-bold text-muted">許可処理</h3>
-        <Button
-          variant={app.approved ? "secondary" : "seal"}
-          icon={<ShieldCheck size={18} />}
-          fullWidth
-          onClick={markApproved}
-          disabled={app.approved}
-        >
-          {app.approved
-            ? `許可済（許可日: ${app.approvalDate}）`
-            : "許可済にする"}
-        </Button>
-
-        {/* 許可済を押すと下に許可報告のLINE文が表示される */}
-        {app.approved && (
-          <div className="mt-4 border-t border-border pt-4">
-            <div className="mb-3 flex items-center justify-between">
-              <h4 className="text-sm font-bold text-muted">LINE報告文（許可）</h4>
-              {app.approvalReported && (
-                <span className="text-xs font-bold text-status-reported-fg">
-                  報告済み
-                </span>
-              )}
-            </div>
-            <pre className="whitespace-pre-wrap rounded-xl bg-background p-3.5 text-sm leading-relaxed">
-              {approvalReportText}
-            </pre>
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <Button
-                variant="secondary"
-                icon={copied === "approval" ? <Check size={17} /> : <Copy size={17} />}
-                onClick={() => handleCopy(approvalReportText, "approval")}
-              >
-                {copied === "approval" ? "コピーしました" : "コピーする"}
-              </Button>
-              <Button
-                variant={app.approvalReported ? "secondary" : "primary"}
-                icon={<MessageCircle size={17} />}
-                onClick={markApprovalReported}
-                disabled={app.approvalReported}
-              >
-                {app.approvalReported ? "報告済み" : "報告済にする"}
-              </Button>
-            </div>
-          </div>
-        )}
-      </Card>
+        <ApprovalSection
+          app={app}
+          files={files}
+          uploading={uploading}
+          onUpload={handleUpload}
+          messengerLink={messengerLink}
+          updateApplication={updateApplication}
+        />
       )}
 
-      {/* 許可済になったら在留カードの受け取りを記録する */}
+      {/* 許可情報を保存したら在留カード受領を記録して完了にできる */}
       {app.approved && !withdrawn && (
         <Card className="p-4">
-          <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-muted">
-            <CreditCard size={15} />
-            在留カード
-          </h3>
-          <FileGroup
-            label="在留カード画像（複数枚可）"
-            files={files.filter((f) => f.kind === "在留カード")}
-            uploading={uploading === "在留カード"}
-            multiple
-            onSelect={(list) => handleUpload("在留カード", list)}
-          />
           <Button
             variant={cardReceived ? "secondary" : "primary"}
             icon={<Check size={18} />}
             fullWidth
-            className="mt-3"
             onClick={markCardReceived}
             disabled={cardReceived}
           >
             {cardReceived
               ? `在留カード受領済（${app.cardReceivedOn}）`
-              : "在留カードを受け取った"}
+              : "在留カードを受け取った（完了）"}
           </Button>
         </Card>
       )}
@@ -466,73 +420,6 @@ function InfoRow({ label, value }: { label: string; value: string }) {
     <div className="flex items-center justify-between gap-3">
       <dt className="text-muted">{label}</dt>
       <dd className="font-bold">{value}</dd>
-    </div>
-  );
-}
-
-// 画像種別ごとのサムネイル一覧＋追加ボタン
-function FileGroup({
-  label,
-  hint,
-  files,
-  uploading,
-  multiple = false,
-  onSelect,
-}: {
-  label: string;
-  hint?: string;
-  files: ApplicationFile[];
-  uploading: boolean;
-  multiple?: boolean;
-  onSelect: (list: FileList | null) => void;
-}) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  return (
-    <div>
-      <p className="mb-1.5 text-xs font-bold text-muted">{label}</p>
-      <div className="grid grid-cols-3 gap-2">
-        {files.map((f) => (
-          <a
-            key={f.id}
-            href={f.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block overflow-hidden rounded-xl border border-border bg-background"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={f.url}
-              alt={f.fileName}
-              className="aspect-square w-full object-cover"
-            />
-          </a>
-        ))}
-        <button
-          type="button"
-          disabled={uploading}
-          onClick={() => inputRef.current?.click()}
-          className="flex aspect-square items-center justify-center rounded-xl border border-dashed border-border bg-background text-muted disabled:opacity-50"
-          aria-label={`${label}を追加`}
-        >
-          {uploading ? (
-            <span className="h-5 w-5 animate-spin rounded-full border-2 border-brand border-t-transparent" />
-          ) : (
-            <ImagePlus size={22} />
-          )}
-        </button>
-      </div>
-      {hint && <p className="mt-1 text-[11px] text-muted">{hint}</p>}
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*,application/pdf"
-        multiple={multiple}
-        className="hidden"
-        onChange={(e) => {
-          onSelect(e.target.files);
-          e.target.value = "";
-        }}
-      />
     </div>
   );
 }

@@ -39,19 +39,31 @@ export function ApplicationEditDialog({
     method: app.method,
     emailLink: app.emailLink,
     workerId: app.workerId ?? "",
+    organizationId: app.organizationId ?? "",
+    residenceExpiryAtApply: app.residenceExpiryAtApply ?? "",
+    isSelfApply: app.isSelfApply,
   });
   const [workers, setWorkers] = useState<WorkerOption[]>([]);
+  const [organizations, setOrganizations] = useState<{ id: string; name: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    createClient()
+    const supabase = createClient();
+    void supabase
       .from("workers")
       .select("id, name")
       .order("name")
       .then(({ data }) => {
         if (!cancelled && data) setWorkers(data as WorkerOption[]);
+      });
+    void supabase
+      .from("organizations")
+      .select("id, name")
+      .order("name")
+      .then(({ data }) => {
+        if (!cancelled && data) setOrganizations(data as { id: string; name: string }[]);
       });
     return () => {
       cancelled = true;
@@ -71,10 +83,13 @@ export function ApplicationEditDialog({
         applicationDate: form.applicationDate,
         applicationNumber: form.applicationNumber.trim(),
         applicationContent: form.applicationContent,
-        assignee: form.assignee,
+        assignee: form.isSelfApply ? "本人申請" : form.assignee,
+        isSelfApply: form.isSelfApply,
         method: form.method,
         emailLink: form.method === "オンライン" ? form.emailLink : "",
         workerId: form.workerId || null,
+        organizationId: form.organizationId || null,
+        residenceExpiryAtApply: form.residenceExpiryAtApply || undefined,
       });
       onClose();
     } catch (err) {
@@ -116,6 +131,32 @@ export function ApplicationEditDialog({
               </option>
             ))}
           </select>
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-muted">所属機関</span>
+          <select
+            value={form.organizationId}
+            onChange={(e) => set("organizationId", e.target.value)}
+            className={INPUT_CLASS}
+          >
+            <option value="">（未設定）</option>
+            {organizations.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-muted">申請時点の在留期限</span>
+          <input
+            type="date"
+            value={form.residenceExpiryAtApply}
+            onChange={(e) => set("residenceExpiryAtApply", e.target.value)}
+            className={INPUT_CLASS}
+          />
         </label>
 
         <div className="grid grid-cols-2 gap-2.5">

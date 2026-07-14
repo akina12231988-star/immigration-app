@@ -102,6 +102,7 @@ export type OrganizationInput = Omit<Organization, "id" | "created_at" | "update
 export interface ImmigrationApplicationRow {
   id: string;
   worker_id: string | null;
+  organization_id: string | null;
   name: string;
   application_date: string; // YYYY-MM-DD
   application_no: string;
