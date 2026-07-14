@@ -8,6 +8,8 @@ import { FileGroup } from "@/components/applications/FileGroup";
 import { generateApprovalReport } from "@/lib/line-report";
 import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
+import { ensureOrientationForApplication } from "@/lib/supabase/queries/orientations";
+import { orientationDate } from "@/lib/orientation";
 import {
   ORG_HONORIFICS,
   type Application,
@@ -84,6 +86,15 @@ export function ApprovalSection({
           residence_permit_date: form.grantedPermitDate || null,
           residence_expiry_date: form.grantedExpiryDate || null,
         });
+        // 雇用開始日が入ったら、2週間後の日曜を予定日として生活オリエンテーションを自動生成
+        if (form.employmentStartOn) {
+          await ensureOrientationForApplication(createClient(), {
+            applicationId: app.id,
+            workerId: app.workerId,
+            organizationId: app.organizationId,
+            scheduledOn: orientationDate(form.employmentStartOn),
+          }).catch(() => undefined);
+        }
       }
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
