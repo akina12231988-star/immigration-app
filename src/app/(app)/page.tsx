@@ -67,10 +67,10 @@ export default function DashboardPage() {
     );
 
   return (
-    <div className="-mx-4 -mt-4">
+    <div className="-mx-4 -mt-4 lg:-mx-8 lg:-mt-6">
       <AppHeader title="ダッシュボード" />
       <div className="space-y-6 px-4 pt-5">
-        <section className="grid grid-cols-2 gap-3">
+        <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {STAT_CARDS.map(({ key, view, label, icon: Icon, accent }) => (
             <Link key={key} href={`/applications?view=${view}`}>
               <Card className="h-full p-4 transition hover:border-brand active:scale-[0.98]">

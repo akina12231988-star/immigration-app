@@ -12,7 +12,7 @@ export default function NewApplicationPage() {
   const [method, setMethod] = useState<ApplicationMethod | null>(null);
 
   return (
-    <div className="-mx-4 -mt-4">
+    <div className="-mx-4 -mt-4 lg:-mx-8 lg:-mt-6">
       <AppHeader
         title={
           method === null

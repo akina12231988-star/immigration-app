@@ -56,7 +56,7 @@ export function PostingsExplorer({
             : "条件に合う求人がありません"}
         </p>
       ) : (
-        <div className="flex flex-col gap-3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {filtered.map((p) => {
             const applicants = p.job_applications?.length ?? 0;
             const hired = p.job_applications?.filter((a) => a.result === "採用").length ?? 0;

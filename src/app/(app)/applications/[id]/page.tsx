@@ -9,7 +9,7 @@ export default async function ApplicationDetailPage({
   const { id } = await params;
 
   return (
-    <div className="-mx-4 -mt-4">
+    <div className="-mx-4 -mt-4 lg:-mx-8 lg:-mt-6">
       <AppHeader title="申請詳細" backHref="/applications" />
       <div className="px-4 pt-4">
         <ApplicationDetail id={id} />

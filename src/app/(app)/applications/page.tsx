@@ -14,7 +14,7 @@ function ApplicationsPageInner() {
   const view = isStatViewKey(viewParam) ? viewParam : null;
 
   return (
-    <div className="-mx-4 -mt-4">
+    <div className="-mx-4 -mt-4 lg:-mx-8 lg:-mt-6">
       <AppHeader title="申請一覧" />
       <div className="px-4 pt-4">
         <ApplicationsExplorer applications={applications} initialView={view} />

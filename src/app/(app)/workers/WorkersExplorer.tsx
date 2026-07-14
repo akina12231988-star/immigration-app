@@ -130,7 +130,7 @@ export function WorkersExplorer({
             : "条件に合う外国人が見つかりません"}
         </p>
       ) : (
-        <div className="flex flex-col gap-3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {filtered.map(({ worker, calc }) => (
             <Link key={worker.id} href={`/workers/${worker.id}`}>
               <Card className="p-4">
