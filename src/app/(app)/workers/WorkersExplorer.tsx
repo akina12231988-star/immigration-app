@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronRight, UserPlus } from "lucide-react";
+import { ChevronRight, Upload, UserPlus } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { LinkButton } from "@/components/ui/Button";
 import { SummaryCards } from "@/components/workers/SummaryCards";
@@ -109,9 +109,14 @@ export function WorkersExplorer({
       <SummaryCards summary={summary} />
 
       {canEdit && (
-        <LinkButton href="/workers/new" fullWidth icon={<UserPlus size={20} />}>
-          外国人を登録
-        </LinkButton>
+        <div className="flex gap-2">
+          <LinkButton href="/workers/new" fullWidth icon={<UserPlus size={20} />}>
+            外国人を登録
+          </LinkButton>
+          <LinkButton href="/workers/import" variant="secondary" icon={<Upload size={18} />}>
+            取込
+          </LinkButton>
+        </div>
       )}
 
       <WorkerFilters filter={filter} organizations={organizations} onChange={setFilter} />
