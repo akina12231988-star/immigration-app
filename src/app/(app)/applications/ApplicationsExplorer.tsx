@@ -151,7 +151,6 @@ export function ApplicationsExplorer({
                 </div>
                 <p className="text-xs tabular-nums text-muted">
                   受取予定日 {a.receiptScheduledOn ?? "未設定"}
-                  {a.receiptReason && ` ・ ${a.receiptReason}`}
                 </p>
                 <div className="mt-2 border-t border-border pt-2">
                   <p className="mb-1 flex items-center gap-1 text-[11px] font-bold text-muted">

@@ -47,7 +47,6 @@ export function ApprovalSection({
 }) {
   const [form, setForm] = useState({
     receiptScheduledOn: app.receiptScheduledOn ?? "",
-    receiptReason: app.receiptReason ?? "",
     grantedCardNo: app.grantedCardNo ?? "",
     grantedPermitDate: app.grantedPermitDate ?? "",
     grantedExpiryDate: app.grantedExpiryDate ?? "",
@@ -115,7 +114,6 @@ export function ApprovalSection({
     try {
       await updateApplication(app.id, {
         receiptScheduledOn: form.receiptScheduledOn || undefined,
-        receiptReason: form.receiptReason,
         grantedCardNo: form.grantedCardNo,
         grantedPermitDate: form.grantedPermitDate || undefined,
         grantedExpiryDate: form.grantedExpiryDate || undefined,
@@ -235,7 +233,12 @@ export function ApprovalSection({
             </p>
           )}
 
-          {/* 入管許可通知後のメモ（許可ボタンの直下・時系列履歴） */}
+          {/* 受取予定日（メモの前に配置） */}
+          <Labeled label="受取予定日">
+            <input type="date" value={form.receiptScheduledOn} onChange={(e) => set("receiptScheduledOn", e.target.value)} className={INPUT_CLASS} />
+          </Labeled>
+
+          {/* 入管許可通知後のメモ（時系列履歴） */}
           <div className="rounded-xl border border-border p-3">
             <p className="mb-2 text-sm font-bold">入管許可通知後のメモ</p>
             <div className="flex gap-2">
@@ -282,14 +285,8 @@ export function ApprovalSection({
             </a>
           )}
 
-          {/* 受取・許可情報 */}
+          {/* 許可情報 */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Labeled label="受取予定日">
-              <input type="date" value={form.receiptScheduledOn} onChange={(e) => set("receiptScheduledOn", e.target.value)} className={INPUT_CLASS} />
-            </Labeled>
-            <Labeled label="受取理由">
-              <input value={form.receiptReason} onChange={(e) => set("receiptReason", e.target.value)} placeholder="在留カード受取 など" className={INPUT_CLASS} />
-            </Labeled>
             <Labeled label="在留カード番号">
               <input value={form.grantedCardNo} onChange={(e) => set("grantedCardNo", e.target.value)} className={INPUT_CLASS} />
             </Labeled>
@@ -300,10 +297,6 @@ export function ApprovalSection({
               <input type="date" value={form.grantedExpiryDate} onChange={(e) => set("grantedExpiryDate", e.target.value)} className={INPUT_CLASS} />
             </Labeled>
           </div>
-
-          <Button fullWidth onClick={saveGrantInfo} disabled={saving} icon={saved ? <Check size={17} /> : undefined}>
-            {saving ? "保存中…" : saved ? "保存しました（外国人情報も更新）" : "許可情報を保存"}
-          </Button>
 
           {/* 在留カード画像・指定書画像 */}
           <div className="space-y-4">
@@ -322,6 +315,11 @@ export function ApprovalSection({
               onSelect={(list) => onUpload("指定書", list)}
             />
           </div>
+
+          {/* 許可情報の保存（画像の下に配置） */}
+          <Button fullWidth onClick={saveGrantInfo} disabled={saving} icon={saved ? <Check size={17} /> : undefined}>
+            {saving ? "保存中…" : saved ? "保存しました（外国人情報も更新）" : "許可情報を保存"}
+          </Button>
 
           {/* 許可のLINE報告文（所属機関名＋御中/様） */}
           <div className="border-t border-border pt-4">

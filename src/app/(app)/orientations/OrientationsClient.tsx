@@ -3,12 +3,13 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarClock, Check, ExternalLink, GraduationCap, XCircle } from "lucide-react";
+import { CalendarClock, Check, ExternalLink, GraduationCap, Trash2, XCircle } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { createClient } from "@/lib/supabase/client";
-import { updateOrientation } from "@/lib/supabase/queries/orientations";
+import { deleteOrientation, updateOrientation } from "@/lib/supabase/queries/orientations";
 import { recommendedFileName, recommendedFolderName } from "@/lib/orientation";
 import { ORIENTATION_STATUSES, type OrientationStatus } from "@/types/db";
 import type { OrientationWithRefs } from "@/lib/supabase/queries/orientations";
@@ -192,6 +193,20 @@ function RecordDialog({
   const [note, setNote] = useState(orientation.note ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const remove = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await deleteOrientation(createClient(), orientation.id);
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "削除に失敗しました");
+      setBusy(false);
+      setConfirmDelete(false);
+    }
+  };
 
   const folder = recommendedFolderName(orientation.organizations?.name ?? "");
   const file = recommendedFileName(orientation.workers?.name ?? "", doneOn);
@@ -272,7 +287,26 @@ function RecordDialog({
         <Button fullWidth disabled={busy} onClick={save}>
           {busy ? "保存中…" : "保存する"}
         </Button>
+
+        <button
+          type="button"
+          onClick={() => setConfirmDelete(true)}
+          disabled={busy}
+          className="mt-1 flex items-center justify-center gap-1.5 text-sm font-bold text-seal disabled:opacity-50"
+        >
+          <Trash2 size={15} />
+          この生活オリエンテーションを削除
+        </button>
       </div>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title="生活オリエンテーションを削除"
+        message={`${orientation.workers?.name ?? "この外国人"}の生活オリエンテーション（予定日 ${orientation.scheduled_on}）を削除します。誤って登録した場合にご利用ください。この操作は取り消せません。`}
+        busy={busy}
+        onConfirm={remove}
+        onCancel={() => setConfirmDelete(false)}
+      />
     </Modal>
   );
 }
