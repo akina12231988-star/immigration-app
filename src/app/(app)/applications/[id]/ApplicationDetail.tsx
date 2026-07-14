@@ -29,6 +29,7 @@ import { createClient } from "@/lib/supabase/client";
 import { deleteApplication, listApplicationFiles } from "../actions";
 import { ApplicationEditDialog } from "./ApplicationEditDialog";
 import { ApprovalSection } from "./ApprovalSection";
+import { ORG_HONORIFICS } from "@/types/application";
 import type { ApplicationFile, ApplicationFileKind } from "@/types/application";
 
 export function ApplicationDetail({ id }: { id: string }) {
@@ -293,13 +294,31 @@ export function ApplicationDetail({ id }: { id: string }) {
 
       {!withdrawn && (
       <Card className="p-4">
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex items-center justify-between gap-2">
           <h3 className="text-sm font-bold text-muted">LINE報告文（申請）</h3>
-          {app.lineReported && (
-            <span className="text-xs font-bold text-status-reported-fg">
-              報告済み
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {app.organizationName && (
+              <div className="flex rounded-lg border border-border p-0.5">
+                {ORG_HONORIFICS.map((h) => (
+                  <button
+                    key={h}
+                    type="button"
+                    onClick={() => void updateApplication(app.id, { reportOrgHonorific: h })}
+                    className={`rounded-md px-2.5 py-1 text-xs font-bold ${
+                      (app.reportOrgHonorific ?? "御中") === h
+                        ? "bg-brand text-brand-foreground"
+                        : "text-muted"
+                    }`}
+                  >
+                    {h}
+                  </button>
+                ))}
+              </div>
+            )}
+            {app.lineReported && (
+              <span className="text-xs font-bold text-status-reported-fg">報告済み</span>
+            )}
+          </div>
         </div>
         <pre className="whitespace-pre-wrap rounded-xl bg-background p-3.5 text-sm leading-relaxed">
           {lineReportText}

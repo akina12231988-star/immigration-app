@@ -53,6 +53,24 @@ export interface ApplicationFile {
 export const ORG_HONORIFICS = ["御中", "様"] as const;
 export type OrgHonorific = (typeof ORG_HONORIFICS)[number];
 
+// 許可時の在留資格の選択肢（特定技能1号を選ぶと生活オリエンテーションを自動登録）
+export const GRANT_VISA_OPTIONS = [
+  "特定活動（特定技能1号移行準備）",
+  "特定技能1号",
+  "特定活動（特定技能2号移行準備）",
+  "特定技能2号",
+] as const;
+export const ORIENTATION_TARGET_VISA = "特定技能1号";
+
+// 入管許可通知後のメモ（時系列履歴）
+export interface ApplicationMemo {
+  id: string;
+  applicationId: string;
+  author: string;
+  body: string;
+  createdAt: string;
+}
+
 export interface Application {
   id: string;
   workerId: string | null; // 紐づく外国人（workers.id）。未登録者の申請は null
@@ -77,6 +95,7 @@ export interface Application {
   grantedPermitDate?: string; // 在留許可日
   grantedExpiryDate?: string; // 在留期限日
   employmentStartOn?: string; // 雇用開始日
+  visaAtGrant?: string; // 許可時の在留資格
   reportOrgHonorific: OrgHonorific; // 御中 / 様
   cardReceivedOn?: string; // 在留カード受領日
   withdrawnOn?: string; // 取下げ日

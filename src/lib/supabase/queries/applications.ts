@@ -41,6 +41,7 @@ function toApplication(row: RowWithRefs): Application {
     grantedPermitDate: row.granted_permit_date ?? undefined,
     grantedExpiryDate: row.granted_expiry_date ?? undefined,
     employmentStartOn: row.employment_start_on ?? undefined,
+    visaAtGrant: row.visa_at_grant ?? undefined,
     reportOrgHonorific: (row.report_org_honorific as OrgHonorific) ?? "御中",
     cardReceivedOn: row.card_received_on ?? undefined,
     withdrawnOn: row.withdrawn_on ?? undefined,
@@ -81,6 +82,7 @@ function toRowPatch(patch: Partial<Application>): Record<string, unknown> {
   if ("grantedPermitDate" in patch) row.granted_permit_date = patch.grantedPermitDate ?? null;
   if ("grantedExpiryDate" in patch) row.granted_expiry_date = patch.grantedExpiryDate ?? null;
   if ("employmentStartOn" in patch) row.employment_start_on = patch.employmentStartOn ?? null;
+  if (patch.visaAtGrant !== undefined) row.visa_at_grant = patch.visaAtGrant;
   if (patch.reportOrgHonorific !== undefined) row.report_org_honorific = patch.reportOrgHonorific;
   if (patch.cardReceivedOn !== undefined) row.card_received_on = patch.cardReceivedOn ?? null;
   // 取下げの取り消しで null に戻せるよう、キーの存在で判定する

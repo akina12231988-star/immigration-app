@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Check, Copy, ExternalLink, MessageCircle, ShieldCheck } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Check, Copy, ExternalLink, MessageCircle, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { FileGroup } from "@/components/applications/FileGroup";
@@ -9,19 +9,27 @@ import { generateApprovalReport } from "@/lib/line-report";
 import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
 import { ensureOrientationForApplication } from "@/lib/supabase/queries/orientations";
+import {
+  deleteApplicationMemo,
+  insertApplicationMemo,
+  listApplicationMemos,
+} from "@/lib/supabase/queries/memos";
 import { orientationDate } from "@/lib/orientation";
 import {
+  GRANT_VISA_OPTIONS,
   ORG_HONORIFICS,
+  ORIENTATION_TARGET_VISA,
   type Application,
   type ApplicationFile,
   type ApplicationFileKind,
+  type ApplicationMemo,
   type OrgHonorific,
 } from "@/types/application";
 
 const INPUT_CLASS =
   "min-h-[44px] w-full rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none";
 
-// 許可処理（要件⑤）: 「入管から許可がおりた通知あり」→受取情報・許可情報・カード/指定書画像・許可LINE報告文
+// 許可処理: 「入管から許可がおりた通知あり」→受取情報・メモ履歴・カード/指定書画像・許可LINE報告文・雇用開始日/在留資格
 export function ApprovalSection({
   app,
   files,
@@ -43,7 +51,6 @@ export function ApprovalSection({
     grantedCardNo: app.grantedCardNo ?? "",
     grantedPermitDate: app.grantedPermitDate ?? "",
     grantedExpiryDate: app.grantedExpiryDate ?? "",
-    employmentStartOn: app.employmentStartOn ?? "",
   });
   const [honorific, setHonorific] = useState<OrgHonorific>(app.reportOrgHonorific ?? "御中");
   const [saving, setSaving] = useState(false);
@@ -51,10 +58,45 @@ export function ApprovalSection({
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // 雇用開始日・在留資格（許可報告の下）
+  const [employmentStartOn, setEmploymentStartOn] = useState(app.employmentStartOn ?? "");
+  const [visaAtGrant, setVisaAtGrant] = useState(app.visaAtGrant ?? "");
+  const [visaSaving, setVisaSaving] = useState(false);
+  const [visaSaved, setVisaSaved] = useState<string | null>(null);
+
+  // メモ履歴
+  const [memos, setMemos] = useState<ApplicationMemo[]>([]);
+  const [memoBody, setMemoBody] = useState("");
+  const [memoBusy, setMemoBusy] = useState(false);
+  const [authorName, setAuthorName] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+    void listApplicationMemos(supabase, app.id).then((m) => {
+      if (!cancelled) setMemos(m);
+    });
+    // 記入者名（プロフィール表示名 or メール）
+    void supabase.auth.getUser().then(async ({ data }) => {
+      if (!data.user) return;
+      const { data: p } = await supabase
+        .from("profiles")
+        .select("display_name, email")
+        .eq("id", data.user.id)
+        .maybeSingle();
+      if (!cancelled && p) {
+        const prof = p as { display_name: string; email: string };
+        setAuthorName(prof.display_name || prof.email);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [app.id]);
+
   const set = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
-  // 「入管から許可がおりた通知あり」: 許可確定
   function markApproved() {
     const today = new Date().toISOString().slice(0, 10);
     void updateApplication(app.id, {
@@ -65,7 +107,7 @@ export function ApprovalSection({
     });
   }
 
-  // 許可情報を保存。外国人の在留カード番号・許可日・期限日も自動更新する（⑦）
+  // 許可情報を保存。外国人の在留カード番号・許可日・期限日も自動更新する
   async function saveGrantInfo() {
     setSaving(true);
     setError(null);
@@ -77,7 +119,6 @@ export function ApprovalSection({
         grantedCardNo: form.grantedCardNo,
         grantedPermitDate: form.grantedPermitDate || undefined,
         grantedExpiryDate: form.grantedExpiryDate || undefined,
-        employmentStartOn: form.employmentStartOn || undefined,
         reportOrgHonorific: honorific,
       });
       if (app.workerId) {
@@ -86,15 +127,6 @@ export function ApprovalSection({
           residence_permit_date: form.grantedPermitDate || null,
           residence_expiry_date: form.grantedExpiryDate || null,
         });
-        // 雇用開始日が入ったら、2週間後の日曜を予定日として生活オリエンテーションを自動生成
-        if (form.employmentStartOn) {
-          await ensureOrientationForApplication(createClient(), {
-            applicationId: app.id,
-            workerId: app.workerId,
-            organizationId: app.organizationId,
-            scheduledOn: orientationDate(form.employmentStartOn),
-          }).catch(() => undefined);
-        }
       }
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
@@ -105,10 +137,69 @@ export function ApprovalSection({
     }
   }
 
+  // 雇用開始日・在留資格を保存。特定技能1号なら生活オリエンテーションを自動登録
+  async function saveVisaEmployment() {
+    setVisaSaving(true);
+    setError(null);
+    setVisaSaved(null);
+    try {
+      await updateApplication(app.id, {
+        employmentStartOn: employmentStartOn || undefined,
+        visaAtGrant: visaAtGrant || "",
+      });
+      if (
+        app.workerId &&
+        visaAtGrant === ORIENTATION_TARGET_VISA &&
+        employmentStartOn
+      ) {
+        await ensureOrientationForApplication(createClient(), {
+          applicationId: app.id,
+          workerId: app.workerId,
+          organizationId: app.organizationId,
+          scheduledOn: orientationDate(employmentStartOn),
+          employmentStartOn,
+        });
+        setVisaSaved(
+          `保存しました。生活オリエンテーション（予定日 ${orientationDate(employmentStartOn)}）を未実施で登録しました。`,
+        );
+      } else {
+        setVisaSaved("保存しました。");
+      }
+      setTimeout(() => setVisaSaved(null), 4000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存に失敗しました");
+    } finally {
+      setVisaSaving(false);
+    }
+  }
+
+  async function addMemo() {
+    if (!memoBody.trim()) return;
+    setMemoBusy(true);
+    try {
+      const memo = await insertApplicationMemo(createClient(), {
+        applicationId: app.id,
+        author: authorName,
+        body: memoBody.trim(),
+      });
+      setMemos((prev) => [memo, ...prev]);
+      setMemoBody("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "メモの保存に失敗しました");
+    } finally {
+      setMemoBusy(false);
+    }
+  }
+
+  async function removeMemo(id: string) {
+    await deleteApplicationMemo(createClient(), id).catch(() => undefined);
+    setMemos((prev) => prev.filter((m) => m.id !== id));
+  }
+
   const reportText = generateApprovalReport({
     ...app,
     reportOrgHonorific: honorific,
-    employmentStartOn: form.employmentStartOn || undefined,
+    employmentStartOn: employmentStartOn || undefined,
   });
 
   async function copyReport() {
@@ -144,7 +235,6 @@ export function ApprovalSection({
             </p>
           )}
 
-          {/* Messengerリンク（外国人情報から取得） */}
           {messengerLink && (
             <a
               href={messengerLink}
@@ -175,14 +265,50 @@ export function ApprovalSection({
             <Labeled label="在留期限日">
               <input type="date" value={form.grantedExpiryDate} onChange={(e) => set("grantedExpiryDate", e.target.value)} className={INPUT_CLASS} />
             </Labeled>
-            <Labeled label="雇用開始日">
-              <input type="date" value={form.employmentStartOn} onChange={(e) => set("employmentStartOn", e.target.value)} className={INPUT_CLASS} />
-            </Labeled>
           </div>
 
           <Button fullWidth onClick={saveGrantInfo} disabled={saving} icon={saved ? <Check size={17} /> : undefined}>
             {saving ? "保存中…" : saved ? "保存しました（外国人情報も更新）" : "許可情報を保存"}
           </Button>
+
+          {/* 入管許可通知後のメモ（時系列履歴） */}
+          <div className="rounded-xl border border-border p-3">
+            <p className="mb-2 text-sm font-bold">入管許可通知後のメモ</p>
+            <div className="flex gap-2">
+              <input
+                value={memoBody}
+                onChange={(e) => setMemoBody(e.target.value)}
+                placeholder="メモを入力（受取までの経過など）"
+                className={INPUT_CLASS}
+              />
+              <Button type="button" variant="secondary" icon={<Plus size={16} />} onClick={addMemo} disabled={memoBusy || !memoBody.trim()}>
+                保存
+              </Button>
+            </div>
+            {memos.length > 0 && (
+              <ul className="mt-3 space-y-2">
+                {memos.map((m) => (
+                  <li key={m.id} className="rounded-lg bg-background p-2.5 text-sm">
+                    <div className="mb-0.5 flex items-center justify-between text-[11px] text-muted">
+                      <span>
+                        {new Date(m.createdAt).toLocaleString("ja-JP")}
+                        {m.author && ` ・ ${m.author}`}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label="削除"
+                        onClick={() => removeMemo(m.id)}
+                        className="text-seal"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                    <p className="whitespace-pre-wrap">{m.body}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
 
           {/* 在留カード画像・指定書画像 */}
           <div className="space-y-4">
@@ -232,6 +358,35 @@ export function ApprovalSection({
               onClick={copyReport}
             >
               {copied ? "コピーしました" : "報告文をコピー"}
+            </Button>
+          </div>
+
+          {/* 雇用開始日・在留資格（特定技能1号で生活オリエンテーション自動登録） */}
+          <div className="rounded-xl border border-border p-3">
+            <p className="mb-2 text-sm font-bold">雇用開始日・在留資格</p>
+            {visaSaved && (
+              <p className="mb-2 rounded-lg bg-brand/10 px-3 py-2 text-xs text-brand">{visaSaved}</p>
+            )}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Labeled label="雇用開始日（予定でも可）">
+                <input type="date" value={employmentStartOn} onChange={(e) => setEmploymentStartOn(e.target.value)} className={INPUT_CLASS} />
+              </Labeled>
+              <Labeled label="在留資格情報">
+                <select value={visaAtGrant} onChange={(e) => setVisaAtGrant(e.target.value)} className={INPUT_CLASS}>
+                  <option value="">選択してください</option>
+                  {GRANT_VISA_OPTIONS.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </Labeled>
+            </div>
+            <p className="mt-1 text-[11px] text-muted">
+              「{ORIENTATION_TARGET_VISA}」を選んで保存すると、雇用開始日から2週間後の日曜を予定日として生活オリエンテーションに未実施で登録します。
+            </p>
+            <Button fullWidth className="mt-3" onClick={saveVisaEmployment} disabled={visaSaving}>
+              {visaSaving ? "保存中…" : "雇用開始日・在留資格を保存"}
             </Button>
           </div>
         </div>

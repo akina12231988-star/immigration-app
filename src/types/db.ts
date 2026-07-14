@@ -26,7 +26,7 @@ export interface Profile {
 export const SUPPORT_SCOPES = ["支援対象", "支援対象外"] as const;
 export type SupportScope = (typeof SUPPORT_SCOPES)[number];
 
-export const WORKER_STATUSES = ["支援中", "求職活動中", "帰国", "退職"] as const;
+export const WORKER_STATUSES = ["支援中", "在籍中", "求職活動中", "帰国", "退職"] as const;
 export type WorkerStatus = (typeof WORKER_STATUSES)[number];
 
 export interface Organization {
@@ -58,6 +58,8 @@ export interface Worker {
   residence_expiry_date: string | null;
   photo_path: string | null; // 顔写真（worker-files バケット）
   messenger_link: string; // Messenger グループ/個人リンク
+  specialty_grade: string; // 専門級の合格名
+  other_qualifications: string; // その他の資格・合格名
   note: string;
   legacy_id: string | null;
   created_by: string | null;
@@ -129,24 +131,38 @@ export interface ImmigrationApplicationRow {
   granted_permit_date: string | null; // 在留許可日
   granted_expiry_date: string | null; // 在留期限日
   employment_start_on: string | null; // 雇用開始日
+  visa_at_grant: string; // 許可時の在留資格
   report_org_honorific: string; // 御中 / 様
   created_at: string;
   updated_at: string;
 }
 
-// 生活オリエンテーション（0013）
+// 生活オリエンテーション（0013 / 0015）
 export interface OrientationRow {
   id: string;
   worker_id: string;
   organization_id: string | null;
   application_id: string | null;
   scheduled_on: string;
+  employment_start_on: string | null;
   status: "未実施" | "実施済";
   done_on: string | null;
   drive_link: string;
   note: string;
   created_at: string;
   updated_at: string;
+}
+
+// 在留カード・指定書の履歴（0015）
+export interface WorkerDocumentRow {
+  id: string;
+  worker_id: string;
+  kind: "在留カード" | "指定書";
+  storage_path: string;
+  file_name: string;
+  mime_type: string;
+  uploaded_by: string | null;
+  created_at: string;
 }
 
 // application_files（0009）: 申請画像のメタデータ

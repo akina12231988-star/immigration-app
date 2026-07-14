@@ -30,6 +30,8 @@ function toInput(w: Worker | null): WorkerInput {
     residence_expiry_date: w?.residence_expiry_date ?? null,
     photo_path: w?.photo_path ?? null,
     messenger_link: w?.messenger_link ?? "",
+    specialty_grade: w?.specialty_grade ?? "",
+    other_qualifications: w?.other_qualifications ?? "",
     note: w?.note ?? "",
   };
 }

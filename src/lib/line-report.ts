@@ -6,11 +6,12 @@ function formatJapaneseDate(dateStr: string): string {
   return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
 }
 
-// ⑤LINE報告文作成: 社長への定型報告文を生成する
+// LINE報告文（申請）: 宛名は「所属機関名＋様/御中」。所属機関が未設定なら宛名を省く
 export function generateLineReport(app: Application): string {
-  return `社長様
-
-本日、${app.name}さんの入管申請を行いました。
+  const orgLine = app.organizationName
+    ? `${app.organizationName} ${app.reportOrgHonorific ?? "御中"}\n\n`
+    : "";
+  return `${orgLine}本日、${app.name}さんの入管申請を行いました。
 
 【申請内容】
 ${app.applicationContent}

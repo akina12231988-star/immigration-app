@@ -20,6 +20,7 @@ export function SswStatusBadge({ status }: { status: SswStatus }) {
 
 const WORKER_STATUS_CLASSES: Record<WorkerStatus, string> = {
   支援中: "bg-status-reported-bg text-status-reported-fg",
+  在籍中: "bg-status-approved-bg text-status-approved-fg",
   求職活動中: "bg-status-applied-bg text-status-applied-fg",
   帰国: "bg-status-before-bg text-status-before-fg",
   退職: "bg-status-notice-bg text-status-notice-fg",

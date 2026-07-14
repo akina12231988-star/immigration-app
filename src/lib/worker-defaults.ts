@@ -19,6 +19,8 @@ export function blankWorkerInput(name: string, organizationId: string | null = n
     residence_expiry_date: null,
     photo_path: null,
     messenger_link: "",
+    specialty_grade: "",
+    other_qualifications: "",
     note: "",
   };
 }

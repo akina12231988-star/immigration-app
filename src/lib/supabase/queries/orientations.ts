@@ -2,11 +2,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { OrientationRow } from "@/types/db";
 
 export interface OrientationWithRefs extends OrientationRow {
-  workers: { id: string; name: string } | null;
+  workers: { id: string; name: string; current_organization_id: string | null } | null;
   organizations: { id: string; name: string } | null;
 }
 
-const SELECT = "*, workers(id, name), organizations(id, name)";
+const SELECT =
+  "*, workers(id, name, current_organization_id), organizations(id, name)";
 
 export async function listOrientations(
   supabase: SupabaseClient,
@@ -68,6 +69,7 @@ export async function ensureOrientationForApplication(
     workerId: string;
     organizationId: string | null;
     scheduledOn: string;
+    employmentStartOn: string | null;
   },
 ): Promise<void> {
   const { data } = await supabase
@@ -75,12 +77,24 @@ export async function ensureOrientationForApplication(
     .select("id")
     .eq("application_id", params.applicationId)
     .maybeSingle();
-  if (data) return; // 既にある
+  if (data) {
+    // 既にあれば予定日・雇用開始日を更新（在留資格や雇用開始日を後から変えた場合に追従）
+    await supabase
+      .from("orientations")
+      .update({
+        scheduled_on: params.scheduledOn,
+        employment_start_on: params.employmentStartOn,
+        organization_id: params.organizationId,
+      })
+      .eq("id", (data as { id: string }).id);
+    return;
+  }
   await supabase.from("orientations").insert({
     application_id: params.applicationId,
     worker_id: params.workerId,
     organization_id: params.organizationId,
     scheduled_on: params.scheduledOn,
+    employment_start_on: params.employmentStartOn,
     status: "未実施",
   });
 }
