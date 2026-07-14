@@ -56,6 +56,8 @@ export interface Worker {
   residence_status: string; // 現在の在留資格（自由入力）
   residence_permit_date: string | null;
   residence_expiry_date: string | null;
+  photo_path: string | null; // 顔写真（worker-files バケット）
+  messenger_link: string; // Messenger グループ/個人リンク
   note: string;
   legacy_id: string | null;
   created_by: string | null;
@@ -118,6 +120,30 @@ export interface ImmigrationApplicationRow {
   receipt_image_url: string | null;
   notice_image_url: string | null;
   residence_card_image_url: string | null;
+  residence_expiry_at_apply: string | null; // 申請時点の在留期限
+  is_self_apply: boolean; // 本人申請
+  receipt_scheduled_on: string | null; // 受取予定日
+  receipt_reason: string; // 受取理由
+  granted_card_no: string; // 許可時 在留カード番号
+  granted_permit_date: string | null; // 在留許可日
+  granted_expiry_date: string | null; // 在留期限日
+  employment_start_on: string | null; // 雇用開始日
+  report_org_honorific: string; // 御中 / 様
+  created_at: string;
+  updated_at: string;
+}
+
+// 生活オリエンテーション（0013）
+export interface OrientationRow {
+  id: string;
+  worker_id: string;
+  organization_id: string | null;
+  application_id: string | null;
+  scheduled_on: string;
+  status: "未実施" | "実施済";
+  done_on: string | null;
+  drive_link: string;
+  note: string;
   created_at: string;
   updated_at: string;
 }

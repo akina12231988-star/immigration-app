@@ -28,6 +28,8 @@ function toInput(w: Worker | null): WorkerInput {
     residence_status: w?.residence_status ?? "",
     residence_permit_date: w?.residence_permit_date ?? null,
     residence_expiry_date: w?.residence_expiry_date ?? null,
+    photo_path: w?.photo_path ?? null,
+    messenger_link: w?.messenger_link ?? "",
     note: w?.note ?? "",
   };
 }
@@ -175,6 +177,15 @@ export function WorkerForm({
               </option>
             ))}
           </select>
+        </Field>
+        <Field label="Messenger グループ/個人リンク">
+          <input
+            type="url"
+            value={form.messenger_link}
+            onChange={(e) => set("messenger_link", e.target.value)}
+            placeholder="https://m.me/... または https://www.messenger.com/..."
+            className={INPUT_CLASS}
+          />
         </Field>
         <Field label="健康状態">
           <textarea
