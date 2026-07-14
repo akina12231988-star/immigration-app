@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   FileClock,
@@ -20,6 +21,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { getDashboardStats } from "@/lib/application-stats";
 import { isExpiryAlert, todayStr } from "@/lib/application-alerts";
 import { useApplications } from "@/lib/application-store";
+import { createClient } from "@/lib/supabase/client";
 
 const STAT_CARDS = [
   {
@@ -59,6 +61,22 @@ export default function DashboardPage() {
   // ④在留期限アラート: 申請時点の在留期限から1か月経過・未受取
   const today = todayStr();
   const expiryAlerts = applications.filter((a) => isExpiryAlert(a, today));
+
+  // ⑨募集中の求人件数
+  const [openPostings, setOpenPostings] = useState<number | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void createClient()
+      .from("job_postings")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "募集中")
+      .then(({ count }) => {
+        if (!cancelled) setOpenPostings(count ?? 0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // ⑬通知機能: LINE報告未実施・通知書未登録・在留カード未受領をアプリ内で可視化
   const needsAttention = applications
@@ -165,6 +183,27 @@ export default function DashboardPage() {
             </Card>
           </section>
         )}
+
+        <section>
+          <Card className="flex items-center gap-4 p-4">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand">
+              <Briefcase size={24} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-muted">現在の求人件数（募集中）</p>
+              <p className="text-2xl font-black tabular-nums">
+                {openPostings ?? "—"}
+                <span className="ml-0.5 text-sm font-bold text-muted">件</span>
+              </p>
+            </div>
+            <Link
+              href="/postings"
+              className="shrink-0 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-brand-foreground"
+            >
+              詳細
+            </Link>
+          </Card>
+        </section>
 
         <section>
           <h2 className="mb-2 text-sm font-bold text-muted">特定技能・管理メニュー</h2>
