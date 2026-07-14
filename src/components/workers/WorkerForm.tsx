@@ -119,19 +119,27 @@ export function WorkerForm({
             <input type="date" value={form.birth ?? ""} onChange={setDate("birth")} className={INPUT_CLASS} />
           </Field>
         </div>
-        <Field label="在留カード番号">
-          <input
-            value={form.residence_card_no}
-            onChange={(e) => set("residence_card_no", e.target.value)}
-            placeholder="AB12345678CD"
-            className={INPUT_CLASS}
-          />
-        </Field>
         <Field label="特定産業分野・職種">
           <input
             value={form.field}
             onChange={(e) => set("field", e.target.value)}
             placeholder="飲食料品製造業"
+            className={INPUT_CLASS}
+          />
+        </Field>
+        <Field label="専門級の合格名">
+          <input
+            value={form.specialty_grade}
+            onChange={(e) => set("specialty_grade", e.target.value)}
+            placeholder="例: 介護福祉士 専門級 合格"
+            className={INPUT_CLASS}
+          />
+        </Field>
+        <Field label="その他の資格・合格名">
+          <input
+            value={form.other_qualifications}
+            onChange={(e) => set("other_qualifications", e.target.value)}
+            placeholder="例: 日本語能力試験N3 合格"
             className={INPUT_CLASS}
           />
         </Field>
@@ -215,6 +223,14 @@ export function WorkerForm({
             value={form.residence_status}
             onChange={(e) => set("residence_status", e.target.value)}
             placeholder="特定技能1号"
+            className={INPUT_CLASS}
+          />
+        </Field>
+        <Field label="在留カード番号">
+          <input
+            value={form.residence_card_no}
+            onChange={(e) => set("residence_card_no", e.target.value)}
+            placeholder="AB12345678CD"
             className={INPUT_CLASS}
           />
         </Field>

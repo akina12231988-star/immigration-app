@@ -11,17 +11,21 @@ export const dynamic = "force-dynamic";
 export default async function WorkersPrintPage({
   searchParams,
 }: {
-  searchParams: Promise<{ org?: string }>;
+  searchParams: Promise<{ org?: string; worker?: string }>;
 }) {
   const me = await getMyProfile();
   if (!me) redirect("/login");
 
-  const { org } = await searchParams;
+  const { org, worker: workerParam } = await searchParams;
   const supabase = await createClient();
   const organizations = await listOrganizations(supabase);
 
   let workers: Worker[] = [];
-  if (org) {
+  if (workerParam) {
+    // 個人単位の印刷
+    const { data } = await supabase.from("workers").select("*").eq("id", workerParam).maybeSingle();
+    if (data) workers = [data as Worker];
+  } else if (org) {
     const { data } = await supabase
       .from("workers")
       .select("*")
@@ -37,6 +41,7 @@ export default async function WorkersPrintPage({
         getWorkerPhotoUrl(w.photo_path),
         getWorkerLatestDocUrls(w.id),
       ]);
+      const orgId = w.current_organization_id;
       return {
         id: w.id,
         name: w.name,
@@ -45,10 +50,13 @@ export default async function WorkersPrintPage({
         birth: w.birth,
         residenceCardNo: w.residence_card_no,
         field: w.field,
+        specialtyGrade: w.specialty_grade,
+        otherQualifications: w.other_qualifications,
         residenceStatus: w.residence_status,
         residencePermitDate: w.residence_permit_date,
         residenceExpiryDate: w.residence_expiry_date,
         messengerLink: w.messenger_link,
+        orgName: orgId ? (organizations.find((o) => o.id === orgId)?.name ?? "") : "",
         photoUrl,
         residenceCardUrl: docs.residenceCardUrl,
         designationUrl: docs.designationUrl,
@@ -63,6 +71,7 @@ export default async function WorkersPrintPage({
       organizations={organizations}
       selectedOrg={org ?? ""}
       orgName={orgName}
+      individual={Boolean(workerParam)}
       workers={printWorkers}
     />
   );

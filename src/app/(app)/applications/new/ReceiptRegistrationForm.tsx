@@ -19,6 +19,7 @@ import { useApplications } from "@/lib/application-store";
 import { createClient } from "@/lib/supabase/client";
 import { insertWorker } from "@/lib/supabase/queries/workers";
 import { blankWorkerInput } from "@/lib/worker-defaults";
+import { buildWorkerOptions } from "@/lib/worker-label";
 import { uploadApplicationFile } from "@/lib/application-files";
 import {
   APPLICATION_CONTENT_OPTIONS,
@@ -50,6 +51,7 @@ const EMPTY_FIELDS: FormFields = {
 interface WorkerOption {
   id: string;
   name: string;
+  current_organization_id: string | null;
 }
 
 const INPUT_CLASS =
@@ -89,7 +91,7 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
     const supabase = createClient();
     void supabase
       .from("workers")
-      .select("id, name")
+      .select("id, name, current_organization_id")
       .order("name")
       .then(({ data }) => {
         if (!cancelled && data) setWorkers(data as WorkerOption[]);
@@ -107,6 +109,7 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
   }, []);
 
   const selectedWorker = workers.find((w) => w.id === workerId) ?? null;
+  const workerOptions = buildWorkerOptions(workers, organizations);
 
   const isDuplicateNumber =
     fields.applicationNumber.length > 0 &&
@@ -145,7 +148,10 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
     setNotice(null);
     try {
       const worker = await insertWorker(createClient(), blankWorkerInput(name, orgId || null));
-      setWorkers((prev) => [...prev, { id: worker.id, name: worker.name }]);
+      setWorkers((prev) => [
+        ...prev,
+        { id: worker.id, name: worker.name, current_organization_id: orgId || null },
+      ]);
       setWorkerId(worker.id);
       setNewName("");
       setNotice(
@@ -269,9 +275,9 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
                 </span>
                 <select value={workerId} onChange={(e) => setWorkerId(e.target.value)} className={INPUT_CLASS}>
                   <option value="">選択してください</option>
-                  {workers.map((w) => (
-                    <option key={w.id} value={w.id}>
-                      {w.name}
+                  {workerOptions.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.label}
                     </option>
                   ))}
                 </select>

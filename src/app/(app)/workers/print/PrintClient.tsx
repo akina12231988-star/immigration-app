@@ -15,10 +15,13 @@ export interface PrintWorker {
   birth: string | null;
   residenceCardNo: string;
   field: string;
+  specialtyGrade: string;
+  otherQualifications: string;
   residenceStatus: string;
   residencePermitDate: string | null;
   residenceExpiryDate: string | null;
   messengerLink: string;
+  orgName: string;
   photoUrl: string;
   residenceCardUrl: string;
   designationUrl: string;
@@ -28,14 +31,17 @@ export function PrintClient({
   organizations,
   selectedOrg,
   orgName,
+  individual,
   workers,
 }: {
   organizations: Organization[];
   selectedOrg: string;
   orgName: string;
+  individual: boolean;
   workers: PrintWorker[];
 }) {
   const router = useRouter();
+  const printDate = new Date().toLocaleDateString("ja-JP");
 
   return (
     <>
@@ -45,27 +51,29 @@ export function PrintClient({
           <Link href="/workers" aria-label="戻る" className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-brand-foreground/10">
             <ArrowLeft size={20} />
           </Link>
-          <h1 className="flex-1 text-lg font-bold">A4印刷</h1>
+          <h1 className="flex-1 text-lg font-bold">A4印刷{individual ? "（個人）" : ""}</h1>
         </div>
 
         <div className="space-y-3 px-4 py-4 lg:px-8">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-bold text-muted">所属機関で絞り込み</span>
-            <select
-              value={selectedOrg}
-              onChange={(e) => router.push(`/workers/print?org=${e.target.value}`)}
-              className="min-h-[44px] w-full max-w-md rounded-xl border border-border bg-surface px-3 text-sm"
-            >
-              <option value="">選択してください</option>
-              {organizations.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          {!individual && (
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-bold text-muted">所属機関で絞り込み</span>
+              <select
+                value={selectedOrg}
+                onChange={(e) => router.push(`/workers/print?org=${e.target.value}`)}
+                className="min-h-[44px] w-full max-w-md rounded-xl border border-border bg-surface px-3 text-sm"
+              >
+                <option value="">選択してください</option>
+                {organizations.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
 
-          {selectedOrg && (
+          {workers.length > 0 && (
             <button
               type="button"
               onClick={() => window.print()}
@@ -75,7 +83,7 @@ export function PrintClient({
               印刷する（{workers.length}名）
             </button>
           )}
-          {selectedOrg && workers.length === 0 && (
+          {!individual && selectedOrg && workers.length === 0 && (
             <p className="text-sm text-muted">この所属機関の外国人は登録されていません。</p>
           )}
         </div>
@@ -84,7 +92,7 @@ export function PrintClient({
       {/* 印刷本体: 1人1ページ */}
       <div className="print-root">
         {workers.map((w) => (
-          <WorkerSheet key={w.id} worker={w} orgName={orgName} />
+          <WorkerSheet key={w.id} worker={w} orgName={w.orgName || orgName} printDate={printDate} />
         ))}
       </div>
 
@@ -109,7 +117,15 @@ export function PrintClient({
   );
 }
 
-function WorkerSheet({ worker, orgName }: { worker: PrintWorker; orgName: string }) {
+function WorkerSheet({
+  worker,
+  orgName,
+  printDate,
+}: {
+  worker: PrintWorker;
+  orgName: string;
+  printDate: string;
+}) {
   const [qr, setQr] = useState("");
 
   useEffect(() => {
@@ -122,9 +138,12 @@ function WorkerSheet({ worker, orgName }: { worker: PrintWorker; orgName: string
 
   return (
     <div className="worker-sheet mx-auto mb-6 max-w-[210mm] border border-border bg-white p-[12mm] text-black print:mb-0 print:border-0">
-      <div className="mb-4 flex items-center justify-between border-b-2 border-black pb-2">
-        <h2 className="text-2xl font-black">{worker.name}</h2>
-        <p className="text-sm">{orgName}</p>
+      <div className="mb-4 flex items-start justify-between border-b-2 border-black pb-2">
+        <div>
+          <h2 className="text-2xl font-black">{worker.name}</h2>
+          <p className="text-sm">{orgName}</p>
+        </div>
+        <p className="text-xs text-gray-500">印刷日: {printDate}</p>
       </div>
 
       <div className="flex gap-6">
@@ -143,9 +162,11 @@ function WorkerSheet({ worker, orgName }: { worker: PrintWorker; orgName: string
           <Row label="フリガナ" value={worker.kana} />
           <Row label="国籍" value={worker.nationality} />
           <Row label="生年月日" value={worker.birth} />
-          <Row label="在留カード番号" value={worker.residenceCardNo} />
-          <Row label="在留資格" value={worker.residenceStatus} />
           <Row label="分野・職種" value={worker.field} />
+          <Row label="専門級の合格名" value={worker.specialtyGrade} />
+          <Row label="その他の資格・合格名" value={worker.otherQualifications} />
+          <Row label="在留資格" value={worker.residenceStatus} />
+          <Row label="在留カード番号" value={worker.residenceCardNo} />
           <Row label="許可日" value={worker.residencePermitDate} />
           <Row label="在留期限" value={worker.residenceExpiryDate} />
         </dl>

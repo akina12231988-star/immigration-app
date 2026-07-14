@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
+import { buildWorkerOptions } from "@/lib/worker-label";
 import {
   APPLICATION_CONTENT_OPTIONS,
   APPLICATION_METHODS,
@@ -18,6 +19,7 @@ const INPUT_CLASS =
 interface WorkerOption {
   id: string;
   name: string;
+  current_organization_id: string | null;
 }
 
 // 申請の基本情報を修正するダイアログ（誤登録の訂正用）
@@ -53,7 +55,7 @@ export function ApplicationEditDialog({
     const supabase = createClient();
     void supabase
       .from("workers")
-      .select("id, name")
+      .select("id, name, current_organization_id")
       .order("name")
       .then(({ data }) => {
         if (!cancelled && data) setWorkers(data as WorkerOption[]);
@@ -125,9 +127,9 @@ export function ApplicationEditDialog({
             className={INPUT_CLASS}
           >
             <option value="">（紐づけない・未登録の人）</option>
-            {workers.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.name}
+            {buildWorkerOptions(workers, organizations).map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
               </option>
             ))}
           </select>

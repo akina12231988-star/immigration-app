@@ -38,6 +38,18 @@ export function WorkersExplorer({
     [organizations],
   );
 
+  // 同姓同名対策: 氏名が重複する場合のみ表示に（所属機関名）を付す
+  const dupNames = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const w of workers) counts.set(w.name, (counts.get(w.name) ?? 0) + 1);
+    return counts;
+  }, [workers]);
+  const displayName = (w: WorkerWithHistories) => {
+    if ((dupNames.get(w.name) ?? 0) <= 1) return w.name;
+    const org = w.current_organization_id ? orgNames.get(w.current_organization_id) : undefined;
+    return `${w.name}（${org ?? "所属未設定"}）`;
+  };
+
   // "今日" 依存の通算計算は表示のたびに行う（結果は保存しない）
   const rows = useMemo<Row[]>(() => {
     const today = todayStr();
@@ -139,7 +151,7 @@ export function WorkersExplorer({
               <Card className="p-4">
                 <div className="mb-1 flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="truncate font-bold">{worker.name}</p>
+                    <p className="truncate font-bold">{displayName(worker)}</p>
                     <p className="truncate text-xs text-muted">
                       {[worker.kana, worker.nationality, worker.field]
                         .filter(Boolean)

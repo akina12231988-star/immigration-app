@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { WorkerPhoto } from "@/components/workers/WorkerPhoto";
+import { WorkerDocuments } from "@/components/workers/WorkerDocuments";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -168,7 +169,7 @@ export function WorkerDetail({
               </button>
             )}
             <Link
-              href={`/workers/print?org=${worker.current_organization_id ?? ""}`}
+              href={`/workers/print?worker=${worker.id}`}
               className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted"
             >
               <Printer size={14} />
@@ -181,20 +182,31 @@ export function WorkerDetail({
           <SswStatusBadge status={calc.status} />
           <SupportBadge support={worker.support} />
         </div>
-        <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+        <p className="mb-1 text-[11px] font-bold text-muted">基本情報</p>
+        <dl className="mb-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
           <InfoItem label="国籍" value={worker.nationality} />
           <InfoItem label="生年月日" value={worker.birth} />
-          <InfoItem label="在留カード番号" value={worker.residence_card_no} />
           <InfoItem label="分野・職種" value={worker.field} />
           <InfoItem label="現在の所属機関" value={orgName} />
+          <InfoItem label="専門級の合格名" value={worker.specialty_grade} />
+          <InfoItem label="その他の資格・合格名" value={worker.other_qualifications} />
+        </dl>
+        <p className="mb-1 text-[11px] font-bold text-muted">在留情報</p>
+        <dl className="mb-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
           <InfoItem label="在留資格" value={worker.residence_status} />
+          <InfoItem label="在留カード番号" value={worker.residence_card_no} />
           <InfoItem label="許可日" value={worker.residence_permit_date} />
           <InfoItem label="在留期限" value={worker.residence_expiry_date} />
+        </dl>
+        <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
           <InfoItem label="健康状態" value={worker.health_note} wide />
           <InfoItem label="家族構成" value={worker.family_note} wide />
           <InfoItem label="備考" value={worker.note} wide />
         </dl>
       </Card>
+
+      {/* 在留カード・指定書の差し替え（履歴保持） */}
+      <WorkerDocuments workerId={worker.id} canEdit={canEdit} />
 
       {/* 通算期間 */}
       <Card className="p-4">
