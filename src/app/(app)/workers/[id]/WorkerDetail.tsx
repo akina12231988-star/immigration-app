@@ -3,8 +3,18 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarClock, ChevronRight, FileText, Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  CalendarClock,
+  ChevronRight,
+  FileText,
+  MessageCircle,
+  Pencil,
+  Plus,
+  Printer,
+  Trash2,
+} from "lucide-react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { WorkerPhoto } from "@/components/workers/WorkerPhoto";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -128,20 +138,43 @@ export function WorkerDetail({
       {/* 基本情報 */}
       <Card className="p-4">
         <div className="mb-2 flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <p className="text-lg font-black">{worker.name}</p>
-            {worker.kana && <p className="text-xs text-muted">{worker.kana}</p>}
+          <div className="flex min-w-0 items-center gap-3">
+            <WorkerPhoto workerId={worker.id} photoPath={worker.photo_path} canEdit={canEdit} />
+            <div className="min-w-0">
+              <p className="text-lg font-black">{worker.name}</p>
+              {worker.kana && <p className="text-xs text-muted">{worker.kana}</p>}
+              {worker.messenger_link && (
+                <a
+                  href={worker.messenger_link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 inline-flex items-center gap-1 text-xs font-bold text-brand"
+                >
+                  <MessageCircle size={13} />
+                  Messenger
+                </a>
+              )}
+            </div>
           </div>
-          {canEdit && (
-            <button
-              type="button"
-              onClick={() => setEditOpen(true)}
-              className="flex shrink-0 items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold"
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => setEditOpen(true)}
+                className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold"
+              >
+                <Pencil size={14} />
+                編集
+              </button>
+            )}
+            <Link
+              href={`/workers/print?org=${worker.current_organization_id ?? ""}`}
+              className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted"
             >
-              <Pencil size={14} />
-              編集
-            </button>
-          )}
+              <Printer size={14} />
+              印刷
+            </Link>
+          </div>
         </div>
         <div className="mb-3 flex flex-wrap items-center gap-1.5">
           <WorkerStatusBadge status={worker.status} />

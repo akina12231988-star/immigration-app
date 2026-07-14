@@ -12,7 +12,7 @@ export function SideNav() {
   const active = activeHref(pathname);
 
   return (
-    <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-border bg-surface lg:flex">
+    <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-border bg-surface lg:flex print:!hidden">
       <div className="flex items-center gap-2.5 border-b border-border px-5 py-4">
         <span className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-brand text-sm font-black text-brand">
           入管

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronRight, Upload, UserPlus } from "lucide-react";
+import { ChevronRight, Printer, Upload, UserPlus } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { LinkButton } from "@/components/ui/Button";
 import { SummaryCards } from "@/components/workers/SummaryCards";
@@ -115,6 +115,9 @@ export function WorkersExplorer({
           </LinkButton>
           <LinkButton href="/workers/import" variant="secondary" icon={<Upload size={18} />}>
             取込
+          </LinkButton>
+          <LinkButton href="/workers/print" variant="secondary" icon={<Printer size={18} />}>
+            印刷
           </LinkButton>
         </div>
       )}

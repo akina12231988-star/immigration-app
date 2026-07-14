@@ -10,7 +10,7 @@ export function BottomNav() {
   const active = activeHref(pathname);
 
   return (
-    <nav className="sticky bottom-0 z-20 border-t border-border bg-surface pb-[env(safe-area-inset-bottom)] lg:hidden">
+    <nav className="sticky bottom-0 z-20 border-t border-border bg-surface pb-[env(safe-area-inset-bottom)] lg:hidden print:hidden">
       <div className="flex items-stretch gap-0.5 overflow-x-auto px-1">
         {NAV_ITEMS.map(({ href, short, icon: Icon, emphasize }) => {
           const isActive = active === href;

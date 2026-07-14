@@ -15,7 +15,7 @@ export default function AppLayout({
       <div className="lg:flex">
         <SideNav />
         <div className="flex min-h-screen w-full min-w-0 flex-col">
-          <main className="w-full flex-1 px-4 pb-8 pt-4 lg:px-8 lg:pt-6">
+          <main className="w-full flex-1 px-4 pb-8 pt-4 lg:px-8 lg:pt-6 print:p-0">
             {children}
           </main>
           <BottomNav />
