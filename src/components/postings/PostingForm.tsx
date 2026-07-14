@@ -26,6 +26,8 @@ function toInput(p: JobPosting | null, orgId: string): JobPostingInput {
     employment_period: p?.employment_period ?? "",
     wage_kind: p?.wage_kind ?? "時給",
     wage_amount: p?.wage_amount ?? null,
+    rent: p?.rent ?? "",
+    utilities: p?.utilities ?? "",
     contact: p?.contact ?? "",
     display_company: p?.display_company ?? "",
     display_address: p?.display_address ?? "",
@@ -236,6 +238,24 @@ export function PostingForm({
               value={form.hire_timing}
               onChange={(e) => set("hire_timing", e.target.value)}
               placeholder="2026年9月頃"
+              className={INPUT_CLASS}
+            />
+          </Field>
+        </div>
+        <div className="grid grid-cols-2 gap-2.5">
+          <Field label="家賃（掲載用・Tiền nhà）">
+            <input
+              value={form.rent}
+              onChange={(e) => set("rent", e.target.value)}
+              placeholder="約1万円 / 15000円 など"
+              className={INPUT_CLASS}
+            />
+          </Field>
+          <Field label="光熱費（掲載用・Điện nước ga）">
+            <input
+              value={form.utilities}
+              onChange={(e) => set("utilities", e.target.value)}
+              placeholder="自己負担 など"
               className={INPUT_CLASS}
             />
           </Field>

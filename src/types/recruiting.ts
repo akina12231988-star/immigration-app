@@ -24,6 +24,8 @@ export interface JobPosting {
   employment_period: string;
   wage_kind: WageKind;
   wage_amount: number | null;
+  rent: string; // 家賃（掲載用）
+  utilities: string; // 光熱費（掲載用）
   contact: string;
   display_company: string;
   display_address: string;

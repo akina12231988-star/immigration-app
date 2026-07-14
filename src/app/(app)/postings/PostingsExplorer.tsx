@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Plus, Users } from "lucide-react";
+import { ChevronRight, ImageIcon, Plus, Users } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { LinkButton } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
@@ -64,9 +64,14 @@ export function PostingsExplorer({
   return (
     <div className="space-y-4">
       {canEdit && (
-        <LinkButton href="/postings/new" fullWidth icon={<Plus size={20} />}>
-          求人を登録
-        </LinkButton>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <LinkButton href="/postings/new" fullWidth icon={<Plus size={20} />}>
+            求人を登録
+          </LinkButton>
+          <LinkButton href="/postings/flyer" variant="secondary" fullWidth icon={<ImageIcon size={18} />}>
+            Facebook掲載画像
+          </LinkButton>
+        </div>
       )}
 
       {/* 期間集計（人材紹介事業の定期報告用） */}
