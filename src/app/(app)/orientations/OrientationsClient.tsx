@@ -80,10 +80,13 @@ export function OrientationsClient({
                   {o.status}
                 </span>
               </div>
-              <p className="flex items-center gap-1 text-xs tabular-nums text-muted">
-                <CalendarClock size={12} />
-                予定日 {o.scheduled_on}
-                {o.done_on && ` ・ 実施日 ${o.done_on}`}
+              <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs tabular-nums text-muted">
+                <span className="flex items-center gap-1">
+                  <CalendarClock size={12} />
+                  実施予定日 {o.scheduled_on}
+                </span>
+                {o.employment_start_on && <span>雇用開始 {o.employment_start_on}</span>}
+                {o.done_on && <span>実施日 {o.done_on}</span>}
               </p>
               {o.drive_link && (
                 <a

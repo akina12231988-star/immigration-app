@@ -55,6 +55,18 @@ export async function listActiveApplications(
   return (data as ApplicationWithRefs[]) ?? [];
 }
 
+// 全応募の横断一覧（応募日の新しい順）。求職一覧の管理・集計に使用
+export async function listAllApplications(
+  supabase: SupabaseClient,
+): Promise<ApplicationWithRefs[]> {
+  const { data, error } = await supabase
+    .from("job_applications")
+    .select(APP_SELECT)
+    .order("applied_on", { ascending: false });
+  if (error) throw error;
+  return (data as ApplicationWithRefs[]) ?? [];
+}
+
 export async function insertApplication(
   supabase: SupabaseClient,
   input: JobApplicationInput,
