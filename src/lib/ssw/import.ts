@@ -1,7 +1,9 @@
-// 旧HTMLツールの「JSON保存」ファイルを新スキーマ用に正規化する純粋関数。
-// docs/03_database_design.md §8 のマッピングに対応。DOM・Supabase に依存しない。
+// 旧HTMLツールの「JSON保存」ファイル・外部データ（Notion在籍履歴など）を
+// 新スキーマ用に正規化する純粋関数。docs/03_database_design.md §8 のマッピングに対応。
+// DOM・Supabase に依存しない。
 
 import { VISA_TYPES, type VisaType } from "@/types/ssw";
+import { WORKER_STATUSES, type WorkerStatus } from "@/types/db";
 
 export interface ParsedHistory {
   visa: VisaType;
@@ -22,6 +24,13 @@ export interface ParsedWorker {
   field: string;
   note: string;
   histories: ParsedHistory[];
+  // 以下は任意項目（旧HTML由来のJSONには無いことが多いため未設定なら既定値を使う）
+  status?: WorkerStatus;
+  residence_status?: string;
+  residence_permit_date?: string | null;
+  residence_expiry_date?: string | null;
+  messenger_link?: string;
+  organization_name?: string; // 名称で会社・機関マスタに解決（無ければ新規作成）
 }
 
 export interface ImportResult {
@@ -114,6 +123,15 @@ function parseWorker(raw: unknown, skipped: string[]): ParsedWorker | null {
     }
   }
 
+  // 在籍状況（Notion在籍履歴など）。既知の値でなければ未設定のまま（DB既定値 支援中 が使われる）
+  const rawStatus = str(w.status ?? w.在籍状況);
+  const status = (WORKER_STATUSES as readonly string[]).includes(rawStatus)
+    ? (rawStatus as WorkerStatus)
+    : undefined;
+  if (rawStatus && !status) {
+    skipped.push(`${name}: 未知の状態「${rawStatus}」はスキップ（既定値を使用）`);
+  }
+
   return {
     legacy_id: str(w.id ?? w.legacyId ?? w.legacy_id) || null,
     name,
@@ -124,6 +142,12 @@ function parseWorker(raw: unknown, skipped: string[]): ParsedWorker | null {
     field: str(w.field ?? w.industry ?? w.分野),
     note: str(w.note ?? w.memo ?? w.備考),
     histories,
+    status,
+    residence_status: str(w.residence_status ?? w.residenceStatus ?? w.在留資格) || undefined,
+    residence_permit_date: normDate(w.residence_permit_date ?? w.residencePermitDate ?? w.在留許可日),
+    residence_expiry_date: normDate(w.residence_expiry_date ?? w.residenceExpiryDate ?? w.在留期限日),
+    messenger_link: str(w.messenger_link ?? w.messengerLink ?? w.メッセンジャー) || undefined,
+    organization_name: str(w.organization_name ?? w.organizationName ?? w.所属機関) || undefined,
   };
 }
 

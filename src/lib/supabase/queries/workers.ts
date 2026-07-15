@@ -67,16 +67,59 @@ export interface ImportSummary {
   inserted: number;
   updated: number;
   historyInserted: number;
+  orgsCreated: number;
   errors: string[];
+}
+
+// organization_name（表記ゆれのない完全一致）を organizations.id に解決する。
+// 無ければ新規作成し、以後の同名参照でも使い回す（同じ取込内で重複作成しない）。
+async function resolveOrganizationId(
+  supabase: SupabaseClient,
+  cache: Map<string, string>,
+  name: string,
+): Promise<string | null> {
+  const key = name.trim();
+  if (!key) return null;
+  const cached = cache.get(key);
+  if (cached) return cached;
+
+  const { data: existing } = await supabase
+    .from("organizations")
+    .select("id")
+    .eq("name", key)
+    .maybeSingle();
+  if (existing) {
+    const id = (existing as { id: string }).id;
+    cache.set(key, id);
+    return id;
+  }
+
+  const { data: created, error } = await supabase
+    .from("organizations")
+    .insert({ name: key })
+    .select("id")
+    .single();
+  if (error) throw error;
+  const id = (created as { id: string }).id;
+  cache.set(key, id);
+  return id;
 }
 
 // 旧JSONの取り込み。legacy_id で UPSERT し、職歴は legacy_id を持つ人のぶんを入れ替える。
 // 同じファイルを再取込しても重複しない（legacy_id 単位で職歴を消してから入れ直す）。
+// organization_name が付いていれば会社・機関マスタに名称で解決し、無ければ新規作成する。
 export async function importWorkers(
   supabase: SupabaseClient,
   parsed: ParsedWorker[],
 ): Promise<ImportSummary> {
-  const summary: ImportSummary = { inserted: 0, updated: 0, historyInserted: 0, errors: [] };
+  const summary: ImportSummary = {
+    inserted: 0,
+    updated: 0,
+    historyInserted: 0,
+    orgsCreated: 0,
+    errors: [],
+  };
+  const orgCache = new Map<string, string>();
 
   for (const p of parsed) {
     try {
@@ -91,6 +134,13 @@ export async function importWorkers(
         existingId = (data as { id: string } | null)?.id ?? null;
       }
 
+      let current_organization_id: string | null = null;
+      if (p.organization_name) {
+        const beforeSize = orgCache.size;
+        current_organization_id = await resolveOrganizationId(supabase, orgCache, p.organization_name);
+        if (orgCache.size > beforeSize) summary.orgsCreated += 1;
+      }
+
       const workerFields = {
         name: p.name,
         kana: p.kana,
@@ -100,6 +150,16 @@ export async function importWorkers(
         field: p.field,
         note: p.note,
         legacy_id: p.legacy_id,
+        ...(p.status !== undefined ? { status: p.status } : {}),
+        ...(p.residence_status !== undefined ? { residence_status: p.residence_status } : {}),
+        ...(p.residence_permit_date !== undefined
+          ? { residence_permit_date: p.residence_permit_date }
+          : {}),
+        ...(p.residence_expiry_date !== undefined
+          ? { residence_expiry_date: p.residence_expiry_date }
+          : {}),
+        ...(p.messenger_link !== undefined ? { messenger_link: p.messenger_link } : {}),
+        ...(current_organization_id ? { current_organization_id } : {}),
       };
 
       let workerId: string;

@@ -125,10 +125,11 @@ export function ImportClient() {
               <CheckCircle2 size={18} />
               取り込みが完了しました
             </p>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Stat label="新規" value={summary.inserted} unit="名" />
               <Stat label="更新" value={summary.updated} unit="名" />
               <Stat label="職歴" value={summary.historyInserted} unit="件" />
+              <Stat label="機関を新規作成" value={summary.orgsCreated} unit="件" />
             </div>
             {summary.errors.length > 0 && (
               <div className="mt-3 rounded-lg bg-seal/10 p-3 text-xs text-seal">
