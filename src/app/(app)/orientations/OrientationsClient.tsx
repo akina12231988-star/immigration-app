@@ -260,6 +260,10 @@ function RecordDialog({
 
         {status === "実施済" && (
           <>
+            <div className="rounded-lg bg-background px-3 py-2 text-sm">
+              <span className="text-xs font-bold text-muted">実施予定日</span>
+              <p className="font-bold tabular-nums">{orientation.scheduled_on}</p>
+            </div>
             <label className="flex flex-col gap-1">
               <span className="text-xs font-bold text-muted">実施日</span>
               <input type="date" value={doneOn} onChange={(e) => setDoneOn(e.target.value)} className={INPUT} />

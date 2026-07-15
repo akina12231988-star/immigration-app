@@ -214,22 +214,31 @@ export function ApplicationDetail({ id }: { id: string }) {
       </Card>
 
       {app.workerId && (
-        <Link href={`/workers/${app.workerId}`}>
-          <Card className="flex items-center gap-3 p-3.5">
+        <Card className="p-3.5">
+          <Link href={`/workers/${app.workerId}`} className="flex items-center gap-3">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
               <UserRound size={18} />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-[11px] font-bold text-muted">
-                紐づく外国人
-              </span>
-              <span className="block truncate font-bold">
-                {app.workerName ?? app.name}
-              </span>
+              <span className="block text-[11px] font-bold text-muted">紐づく外国人</span>
+              <span className="block truncate font-bold">{app.workerName ?? app.name}</span>
             </span>
             <ChevronRight size={18} className="shrink-0 text-muted" />
-          </Card>
-        </Link>
+          </Link>
+          {/* 氏名の下にメッセンジャーグループのリンクを表示 */}
+          {messengerLink && (
+            <a
+              href={messengerLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-bold text-brand"
+            >
+              <MessageCircle size={14} />
+              Messengerグループを開く
+              <ExternalLink size={12} />
+            </a>
+          )}
+        </Card>
       )}
 
       <Card className="p-4">

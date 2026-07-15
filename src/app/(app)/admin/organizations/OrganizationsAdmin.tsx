@@ -13,6 +13,7 @@ import {
   insertOrganization,
   updateOrganization,
 } from "@/lib/supabase/queries/organizations";
+import { SSW_INDUSTRIES } from "@/lib/industries";
 import type { Organization, OrganizationInput } from "@/types/db";
 
 const EMPTY: OrganizationInput = { name: "", industry: "", address: "", contact: "", note: "" };
@@ -208,13 +209,19 @@ function OrganizationFormModal({
           />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-bold text-muted">業種</span>
-          <input
+          <span className="text-xs font-bold text-muted">業種（特定技能 産業分野）</span>
+          <select
             value={form.industry}
             onChange={(e) => set("industry", e.target.value)}
-            placeholder="飲食料品製造業"
             className={INPUT_CLASS}
-          />
+          >
+            <option value="">選択してください</option>
+            {SSW_INDUSTRIES.map((ind) => (
+              <option key={ind} value={ind}>
+                {ind}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="flex flex-col gap-1">
           <span className="text-xs font-bold text-muted">所在地</span>

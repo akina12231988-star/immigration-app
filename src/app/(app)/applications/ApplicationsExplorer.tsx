@@ -141,13 +141,22 @@ export function ApplicationsExplorer({
           {filtered.map((a) => {
             const memos = memosByApp[a.id] ?? [];
             return (
-              <Card key={a.id} className="p-4">
+              <Card
+                key={a.id}
+                onClick={() => router.push(`/applications/${a.id}`)}
+                className={`cursor-pointer p-4 hover:border-brand ${
+                  isExpiryAlert(a, TODAY) ? "border-seal" : ""
+                }`}
+              >
                 <div className="mb-1 flex items-start justify-between gap-2">
-                  <Link href={`/applications/${a.id}`} className="min-w-0">
+                  <div className="min-w-0">
                     <p className="truncate font-bold">{a.name}</p>
                     <p className="truncate text-xs text-muted">{a.organizationName ?? "所属機関未設定"}</p>
-                  </Link>
-                  <StatusBadge status={a.status} />
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    {isExpiryAlert(a, TODAY) && <AlertBadge expiry={a.residenceExpiryAtApply} />}
+                    <StatusBadge status={a.status} />
+                  </div>
                 </div>
                 <p className="text-xs tabular-nums text-muted">
                   受取予定日 {a.receiptScheduledOn ?? "未設定"}

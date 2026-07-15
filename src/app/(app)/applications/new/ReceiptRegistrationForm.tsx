@@ -20,6 +20,12 @@ import { createClient } from "@/lib/supabase/client";
 import { insertWorker } from "@/lib/supabase/queries/workers";
 import { blankWorkerInput } from "@/lib/worker-defaults";
 import { buildWorkerOptions } from "@/lib/worker-label";
+import { Combobox } from "@/components/ui/Combobox";
+import {
+  listFilingAgents,
+  insertFilingAgent,
+  type FilingAgent,
+} from "@/lib/supabase/queries/agents";
 import { uploadApplicationFile } from "@/lib/application-files";
 import {
   APPLICATION_CONTENT_OPTIONS,
@@ -33,7 +39,6 @@ interface FormFields {
   applicationNumber: string;
   residenceExpiryAtApply: string;
   applicationContent: ApplicationContent | "";
-  assignee: string;
   isSelfApply: boolean;
   emailLink: string;
 }
@@ -43,7 +48,6 @@ const EMPTY_FIELDS: FormFields = {
   applicationNumber: "",
   residenceExpiryAtApply: "",
   applicationContent: "",
-  assignee: "",
   isSelfApply: false,
   emailLink: "",
 };
@@ -74,11 +78,15 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
     applicationDate: isOnline ? new Date().toISOString().slice(0, 10) : "",
   }));
 
-  // 外国人・所属機関
+  // 外国人・所属機関・申請取次士
   const [workers, setWorkers] = useState<WorkerOption[]>([]);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [agents, setAgents] = useState<FilingAgent[]>([]);
   const [workerId, setWorkerId] = useState<string>("");
   const [orgId, setOrgId] = useState<string>("");
+  const [agentId, setAgentId] = useState<string>("");
+  const [newAgentName, setNewAgentName] = useState("");
+  const [addingAgent, setAddingAgent] = useState(false);
   const [newName, setNewName] = useState("");
   const [creatingWorker, setCreatingWorker] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -103,13 +111,37 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
       .then(({ data }) => {
         if (!cancelled && data) setOrganizations(data as Organization[]);
       });
+    void listFilingAgents(supabase)
+      .then((a) => {
+        if (!cancelled) setAgents(a);
+      })
+      .catch(() => undefined);
     return () => {
       cancelled = true;
     };
   }, []);
 
   const selectedWorker = workers.find((w) => w.id === workerId) ?? null;
+  const selectedAgent = agents.find((a) => a.id === agentId) ?? null;
   const workerOptions = buildWorkerOptions(workers, organizations);
+  const orgOptions = organizations.map((o) => ({ id: o.id, label: o.name }));
+  const agentOptions = agents.map((a) => ({ id: a.id, label: a.name }));
+
+  async function addAgent() {
+    const name = newAgentName.trim();
+    if (!name) return;
+    setAddingAgent(true);
+    try {
+      const agent = await insertFilingAgent(createClient(), name);
+      setAgents((prev) => [...prev, agent].sort((a, b) => a.name.localeCompare(b.name, "ja")));
+      setAgentId(agent.id);
+      setNewAgentName("");
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "申請取次士の登録に失敗しました");
+    } finally {
+      setAddingAgent(false);
+    }
+  }
 
   const isDuplicateNumber =
     fields.applicationNumber.length > 0 &&
@@ -186,7 +218,7 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
         approved: false,
         approvalReported: false,
         status: "申請済",
-        assignee: fields.isSelfApply ? "本人申請" : fields.assignee,
+        assignee: fields.isSelfApply ? "本人申請" : (selectedAgent?.name ?? ""),
       });
       if (imageFile) {
         await uploadApplicationFile(created.id, "受付票", imageFile).catch(() => undefined);
@@ -207,7 +239,7 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
     fields.applicationDate &&
     fields.applicationNumber &&
     fields.applicationContent &&
-    (fields.isSelfApply || fields.assignee) &&
+    (fields.isSelfApply || agentId) &&
     (!isOnline || fields.emailLink);
 
   return (
@@ -273,14 +305,12 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
                   <UserRound size={13} />
                   外国人氏名（必須）
                 </span>
-                <select value={workerId} onChange={(e) => setWorkerId(e.target.value)} className={INPUT_CLASS}>
-                  <option value="">選択してください</option>
-                  {workerOptions.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
+                <Combobox
+                  options={workerOptions}
+                  value={workerId}
+                  onChange={setWorkerId}
+                  placeholder="氏名を入力して検索"
+                />
                 {!selectedWorker && (
                   <div className="mt-2 rounded-xl border border-dashed border-border p-3">
                     <p className="mb-1.5 text-xs font-bold text-muted">
@@ -310,14 +340,12 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
               {/* 2. 所属機関 */}
               <label className="block">
                 <span className="mb-1.5 block text-xs font-bold text-muted">所属機関（必須）</span>
-                <select value={orgId} onChange={(e) => setOrgId(e.target.value)} className={INPUT_CLASS}>
-                  <option value="">選択してください</option>
-                  {organizations.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.name}
-                    </option>
-                  ))}
-                </select>
+                <Combobox
+                  options={orgOptions}
+                  value={orgId}
+                  onChange={setOrgId}
+                  placeholder="所属機関名を入力して検索"
+                />
               </label>
 
               {isOnline && (
@@ -363,14 +391,39 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
                 </select>
               </label>
 
-              {/* 6. 申請取次士（本人申請の場合はチェック） */}
+              {/* 6. 申請取次士（登録済みから選択・本人申請の場合はチェック） */}
               <div>
                 <label className="mb-2 flex items-center gap-2 text-sm font-bold">
                   <input type="checkbox" checked={fields.isSelfApply} onChange={(e) => set("isSelfApply", e.target.checked)} className="h-4 w-4" />
                   本人申請（申請取次士を介さない）
                 </label>
                 {!fields.isSelfApply && (
-                  <Field label="申請取次士（必須）" value={fields.assignee} onChange={(v) => set("assignee", v)} />
+                  <div>
+                    <span className="mb-1.5 block text-xs font-bold text-muted">申請取次士（必須）</span>
+                    <Combobox
+                      options={agentOptions}
+                      value={agentId}
+                      onChange={setAgentId}
+                      placeholder="申請取次士を入力して検索"
+                    />
+                    <div className="mt-2 flex gap-2">
+                      <input
+                        value={newAgentName}
+                        onChange={(e) => setNewAgentName(e.target.value)}
+                        placeholder="一覧にいなければ氏名を入力して登録"
+                        className={INPUT_CLASS}
+                      />
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        icon={<UserPlus size={17} />}
+                        onClick={addAgent}
+                        disabled={!newAgentName.trim() || addingAgent}
+                      >
+                        {addingAgent ? "登録中…" : "登録"}
+                      </Button>
+                    </div>
+                  </div>
                 )}
               </div>
             </Card>
