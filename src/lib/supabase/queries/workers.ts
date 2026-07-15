@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Worker, WorkerInput, WorkerWithHistories } from "@/types/db";
 import type { ParsedWorker } from "@/lib/ssw/import";
+import type { ImportedWorker } from "@/lib/import";
 
 // 一覧用: 全外国人＋職歴を一括取得（通算計算はクライアント側で行う）
 export async function listWorkersWithHistories(
@@ -131,6 +132,92 @@ export async function importWorkers(
       summary.errors.push(
         `${p.name}: ${err instanceof Error ? err.message : String(err)}`,
       );
+    }
+  }
+  return summary;
+}
+
+// 履歴書PDF等から取り込んだ ImportedWorker を登録する（要件⑩⑪）。
+// legacy_id（pdf:氏名:生年月日）で UPSERT し、職歴は入れ替える。既存のJSON取込と
+// 同様に、同じPDFを再アップロードしても重複しない。職歴は行数制限なしで全件登録する。
+export async function importDocumentWorkers(
+  supabase: SupabaseClient,
+  workers: ImportedWorker[],
+): Promise<ImportSummary> {
+  const summary: ImportSummary = { inserted: 0, updated: 0, historyInserted: 0, errors: [] };
+
+  for (const w of workers) {
+    try {
+      if (!w.name) {
+        summary.errors.push("氏名が読み取れなかったレコードをスキップ");
+        continue;
+      }
+
+      let existingId: string | null = null;
+      const { data: found } = await supabase
+        .from("workers")
+        .select("id")
+        .eq("legacy_id", w.legacy_id)
+        .maybeSingle();
+      existingId = (found as { id: string } | null)?.id ?? null;
+
+      // 空の項目で既存データを潰さないよう、値があるフィールドのみ送る。
+      const fields: Record<string, unknown> = { name: w.name, legacy_id: w.legacy_id };
+      const put = (k: string, v: string | null) => {
+        if (v != null && v !== "") fields[k] = v;
+      };
+      put("kana", w.kana);
+      put("nationality", w.nationality);
+      put("birth", w.birth);
+      put("residence_status", w.residence_status);
+      put("residence_expiry_date", w.residence_expiry_date);
+      put("field", w.field);
+      put("specialty_grade", w.specialty_grade);
+      put("other_qualifications", w.other_qualifications);
+      put("health_note", w.health_note);
+      put("family_note", w.family_note);
+      put("note", w.note);
+
+      let workerId: string;
+      if (existingId) {
+        const { error } = await supabase.from("workers").update(fields).eq("id", existingId);
+        if (error) throw error;
+        workerId = existingId;
+        summary.updated += 1;
+        await supabase.from("work_histories").delete().eq("worker_id", workerId);
+      } else {
+        const { data, error } = await supabase
+          .from("workers")
+          .insert(fields)
+          .select("id")
+          .single();
+        if (error) throw error;
+        workerId = (data as { id: string }).id;
+        summary.inserted += 1;
+      }
+
+      // start_date は NOT NULL のため、開始日不明の職歴は登録できない
+      const insertable = w.histories.filter((h) => h.start_date);
+      const droppedNoStart = w.histories.length - insertable.length;
+      if (droppedNoStart > 0) {
+        summary.errors.push(`${w.name}: 開始年月のない職歴 ${droppedNoStart} 件は登録できませんでした`);
+      }
+      if (insertable.length > 0) {
+        const rows = insertable.map((h) => ({
+          worker_id: workerId,
+          visa: h.visa,
+          start_date: h.start_date,
+          end_date: h.end_date,
+          org_name: h.org_name,
+          role: h.role,
+          note: h.note,
+        }));
+        const { error } = await supabase.from("work_histories").insert(rows);
+        if (error) throw error;
+        summary.historyInserted += insertable.length;
+      }
+    } catch (err) {
+      summary.errors.push(`${w.name}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
   return summary;

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronRight, Printer, Upload, UserPlus } from "lucide-react";
+import { ChevronRight, FileUp, Printer, Upload, UserPlus } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { LinkButton } from "@/components/ui/Button";
 import { SummaryCards } from "@/components/workers/SummaryCards";
@@ -124,6 +124,9 @@ export function WorkersExplorer({
         <div className="flex gap-2">
           <LinkButton href="/workers/new" fullWidth icon={<UserPlus size={20} />}>
             外国人を登録
+          </LinkButton>
+          <LinkButton href="/workers/import-pdf" variant="secondary" icon={<FileUp size={18} />}>
+            履歴書PDF
           </LinkButton>
           <LinkButton href="/workers/import" variant="secondary" icon={<Upload size={18} />}>
             取込
