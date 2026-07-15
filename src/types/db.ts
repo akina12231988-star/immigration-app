@@ -33,6 +33,7 @@ export interface Organization {
   id: string;
   name: string;
   industry: string;
+  business_category: string; // 業務区分（特定技能）
   address: string;
   contact: string;
   note: string;

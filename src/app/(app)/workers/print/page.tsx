@@ -11,12 +11,19 @@ export const dynamic = "force-dynamic";
 export default async function WorkersPrintPage({
   searchParams,
 }: {
-  searchParams: Promise<{ org?: string; worker?: string }>;
+  searchParams: Promise<{
+    org?: string;
+    worker?: string;
+    from?: string;
+    to?: string;
+    mode?: string;
+  }>;
 }) {
   const me = await getMyProfile();
   if (!me) redirect("/login");
 
-  const { org, worker: workerParam } = await searchParams;
+  const { org, worker: workerParam, from, to, mode } = await searchParams;
+  const forCompany = mode === "company"; // 会社提出用（MessengerのQRを消す）
   const supabase = await createClient();
   const organizations = await listOrganizations(supabase);
 
@@ -26,11 +33,11 @@ export default async function WorkersPrintPage({
     const { data } = await supabase.from("workers").select("*").eq("id", workerParam).maybeSingle();
     if (data) workers = [data as Worker];
   } else if (org) {
-    const { data } = await supabase
-      .from("workers")
-      .select("*")
-      .eq("current_organization_id", org)
-      .order("name");
+    // 所属機関 AND 在留許可日の期間で絞り込み
+    let q = supabase.from("workers").select("*").eq("current_organization_id", org);
+    if (from) q = q.gte("residence_permit_date", from);
+    if (to) q = q.lte("residence_permit_date", to);
+    const { data } = await q.order("name");
     workers = (data as Worker[]) ?? [];
   }
 
@@ -72,6 +79,9 @@ export default async function WorkersPrintPage({
       selectedOrg={org ?? ""}
       orgName={orgName}
       individual={Boolean(workerParam)}
+      from={from ?? ""}
+      to={to ?? ""}
+      forCompany={forCompany}
       workers={printWorkers}
     />
   );

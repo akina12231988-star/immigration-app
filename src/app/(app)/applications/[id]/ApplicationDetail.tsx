@@ -378,6 +378,24 @@ export function ApplicationDetail({ id }: { id: string }) {
               ? `在留カード受領済（${app.cardReceivedOn}）`
               : "在留カードを受け取った（完了）"}
           </Button>
+
+          {/* 受領後は Notion の在籍履歴にも登録するよう案内 */}
+          {cardReceived && (
+            <div className="mt-3 rounded-xl border border-border bg-background p-3">
+              <p className="mb-2 text-xs leading-relaxed text-muted">
+                在留カードを受け取りました。Notion の在籍履歴にも登録してください。
+              </p>
+              <a
+                href="https://app.notion.com/p/24c29d7ae649802692f5f920c897f9f9?v=24c29d7ae649802f8fb6000c304654d9&source=copy_link"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-brand-foreground"
+              >
+                <ExternalLink size={16} />
+                Notion 在籍履歴を開いて登録する
+              </a>
+            </div>
+          )}
         </Card>
       )}
 

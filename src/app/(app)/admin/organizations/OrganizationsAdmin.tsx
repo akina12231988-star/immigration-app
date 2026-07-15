@@ -13,10 +13,17 @@ import {
   insertOrganization,
   updateOrganization,
 } from "@/lib/supabase/queries/organizations";
-import { SSW_INDUSTRIES } from "@/lib/industries";
+import { SSW_INDUSTRIES, categoriesFor } from "@/lib/industries";
 import type { Organization, OrganizationInput } from "@/types/db";
 
-const EMPTY: OrganizationInput = { name: "", industry: "", address: "", contact: "", note: "" };
+const EMPTY: OrganizationInput = {
+  name: "",
+  industry: "",
+  business_category: "",
+  address: "",
+  contact: "",
+  note: "",
+};
 
 const INPUT_CLASS =
   "min-h-[44px] w-full rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none";
@@ -119,7 +126,7 @@ export function OrganizationsAdmin({ organizations }: { organizations: Organizat
                 </span>
               </div>
               <p className="text-xs text-muted">
-                {[org.industry, org.address, org.contact].filter(Boolean).join(" ・ ") ||
+                {[org.industry, org.business_category, org.address, org.contact].filter(Boolean).join(" ・ ") ||
                   "詳細未登録"}
               </p>
               {org.note && <p className="mt-0.5 text-xs text-muted">{org.note}</p>}
@@ -166,6 +173,7 @@ function OrganizationFormModal({
       ? {
           name: initial.name,
           industry: initial.industry,
+          business_category: initial.business_category,
           address: initial.address,
           contact: initial.contact,
           note: initial.note,
@@ -212,7 +220,10 @@ function OrganizationFormModal({
           <span className="text-xs font-bold text-muted">業種（特定技能 産業分野）</span>
           <select
             value={form.industry}
-            onChange={(e) => set("industry", e.target.value)}
+            onChange={(e) => {
+              // 分野を変えたら業務区分をリセット
+              setForm((f) => ({ ...f, industry: e.target.value, business_category: "" }));
+            }}
             className={INPUT_CLASS}
           >
             <option value="">選択してください</option>
@@ -223,6 +234,23 @@ function OrganizationFormModal({
             ))}
           </select>
         </label>
+        {form.industry && categoriesFor(form.industry).length > 0 && (
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-bold text-muted">業務区分</span>
+            <select
+              value={form.business_category}
+              onChange={(e) => set("business_category", e.target.value)}
+              className={INPUT_CLASS}
+            >
+              <option value="">選択してください</option>
+              {categoriesFor(form.industry).map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="flex flex-col gap-1">
           <span className="text-xs font-bold text-muted">所在地</span>
           <input

@@ -32,16 +32,36 @@ export function PrintClient({
   selectedOrg,
   orgName,
   individual,
+  from,
+  to,
+  forCompany,
   workers,
 }: {
   organizations: Organization[];
   selectedOrg: string;
   orgName: string;
   individual: boolean;
+  from: string;
+  to: string;
+  forCompany: boolean;
   workers: PrintWorker[];
 }) {
   const router = useRouter();
   const printDate = new Date().toLocaleDateString("ja-JP");
+
+  // 条件変更でURLを組み立て直す（個人単位は worker パラメータを維持）
+  const buildUrl = (patch: Partial<{ org: string; from: string; to: string; mode: string }>) => {
+    const p = new URLSearchParams();
+    const nextOrg = patch.org ?? selectedOrg;
+    if (nextOrg) p.set("org", nextOrg);
+    const nextFrom = patch.from ?? from;
+    const nextTo = patch.to ?? to;
+    if (nextFrom) p.set("from", nextFrom);
+    if (nextTo) p.set("to", nextTo);
+    const nextMode = patch.mode ?? (forCompany ? "company" : "internal");
+    p.set("mode", nextMode);
+    return `/workers/print?${p.toString()}`;
+  };
 
   return (
     <>
@@ -55,22 +75,57 @@ export function PrintClient({
         </div>
 
         <div className="space-y-3 px-4 py-4 lg:px-8">
+          {/* 印刷用途の切替（社内用=Messenger QRあり / 会社提出用=QRなし） */}
+          <div className="flex rounded-xl border border-border p-0.5">
+            <button
+              type="button"
+              onClick={() => router.push(buildUrl({ mode: "internal" }))}
+              className={`flex-1 rounded-lg py-2 text-sm font-bold ${!forCompany ? "bg-brand text-brand-foreground" : "text-muted"}`}
+            >
+              社内用（QRあり）
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push(buildUrl({ mode: "company" }))}
+              className={`flex-1 rounded-lg py-2 text-sm font-bold ${forCompany ? "bg-brand text-brand-foreground" : "text-muted"}`}
+            >
+              会社提出用（QRなし）
+            </button>
+          </div>
+
           {!individual && (
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-bold text-muted">所属機関で絞り込み</span>
-              <select
-                value={selectedOrg}
-                onChange={(e) => router.push(`/workers/print?org=${e.target.value}`)}
-                className="min-h-[44px] w-full max-w-md rounded-xl border border-border bg-surface px-3 text-sm"
-              >
-                <option value="">選択してください</option>
-                {organizations.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-bold text-muted">所属機関で絞り込み</span>
+                <select
+                  value={selectedOrg}
+                  onChange={(e) => router.push(buildUrl({ org: e.target.value }))}
+                  className="min-h-[44px] w-full max-w-md rounded-xl border border-border bg-surface px-3 text-sm"
+                >
+                  <option value="">選択してください</option>
+                  {organizations.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs font-bold text-muted">在留許可日（開始）</span>
+                  <input type="date" value={from} onChange={(e) => router.push(buildUrl({ from: e.target.value }))} className="min-h-[40px] rounded-xl border border-border bg-surface px-3 text-sm" />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs font-bold text-muted">在留許可日（終了）</span>
+                  <input type="date" value={to} onChange={(e) => router.push(buildUrl({ to: e.target.value }))} className="min-h-[40px] rounded-xl border border-border bg-surface px-3 text-sm" />
+                </label>
+                {(from || to) && (
+                  <button type="button" onClick={() => router.push(buildUrl({ from: "", to: "" }))} className="text-xs font-bold text-brand">
+                    期間クリア
+                  </button>
+                )}
+              </div>
+            </>
           )}
 
           {workers.length > 0 && (
@@ -84,7 +139,7 @@ export function PrintClient({
             </button>
           )}
           {!individual && selectedOrg && workers.length === 0 && (
-            <p className="text-sm text-muted">この所属機関の外国人は登録されていません。</p>
+            <p className="text-sm text-muted">条件に合う外国人が見つかりません。</p>
           )}
         </div>
       </div>
@@ -92,7 +147,7 @@ export function PrintClient({
       {/* 印刷本体: 1人1ページ */}
       <div className="print-root">
         {workers.map((w) => (
-          <WorkerSheet key={w.id} worker={w} orgName={w.orgName || orgName} printDate={printDate} />
+          <WorkerSheet key={w.id} worker={w} orgName={w.orgName || orgName} printDate={printDate} forCompany={forCompany} />
         ))}
       </div>
 
@@ -121,20 +176,28 @@ function WorkerSheet({
   worker,
   orgName,
   printDate,
+  forCompany,
 }: {
   worker: PrintWorker;
   orgName: string;
   printDate: string;
+  forCompany: boolean;
 }) {
   const [qr, setQr] = useState("");
 
   useEffect(() => {
-    if (worker.messengerLink) {
-      QRCode.toDataURL(worker.messengerLink, { margin: 1, width: 240 })
-        .then(setQr)
-        .catch(() => setQr(""));
-    }
-  }, [worker.messengerLink]);
+    // 会社提出用は Messenger QR を出さない（描画側でも非表示）
+    if (forCompany || !worker.messengerLink) return;
+    let cancelled = false;
+    QRCode.toDataURL(worker.messengerLink, { margin: 1, width: 240 })
+      .then((u) => {
+        if (!cancelled) setQr(u);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [worker.messengerLink, forCompany]);
 
   return (
     <div className="worker-sheet mx-auto mb-6 max-w-[210mm] border border-border bg-white p-[12mm] text-black print:mb-0 print:border-0">
@@ -171,21 +234,23 @@ function WorkerSheet({
           <Row label="在留期限" value={worker.residenceExpiryDate} />
         </dl>
 
-        {/* MessengerリンクQRコード */}
-        <div className="flex w-[30mm] shrink-0 flex-col items-center">
-          {qr ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={qr} alt="Messenger QR" className="w-[28mm]" />
-          ) : (
-            <div className="flex h-[28mm] w-[28mm] items-center justify-center border border-dashed border-gray-300 text-[9px] text-gray-400">
-              Messenger未登録
-            </div>
-          )}
-          <span className="mt-1 text-[9px] text-gray-500">Messenger</span>
-        </div>
+        {/* MessengerリンクQRコード（社内用のみ） */}
+        {!forCompany && (
+          <div className="flex w-[30mm] shrink-0 flex-col items-center">
+            {qr ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={qr} alt="Messenger QR" className="w-[28mm]" />
+            ) : (
+              <div className="flex h-[28mm] w-[28mm] items-center justify-center border border-dashed border-gray-300 text-[9px] text-gray-400">
+                Messenger未登録
+              </div>
+            )}
+            <span className="mt-1 text-[9px] text-gray-500">Messenger</span>
+          </div>
+        )}
       </div>
 
-      {/* 最新在留カード画像・指定書画像 */}
+      {/* 最新在留カード画像・指定書画像（下半分を目いっぱい使う） */}
       <div className="mt-6 grid grid-cols-2 gap-4">
         <DocBox label="最新 在留カード" url={worker.residenceCardUrl} />
         <DocBox label="最新 指定書" url={worker.designationUrl} />
@@ -207,7 +272,7 @@ function DocBox({ label, url }: { label: string; url: string }) {
   return (
     <div>
       <p className="mb-1 text-[10px] font-bold text-gray-500">{label}</p>
-      <div className="flex h-[70mm] items-center justify-center overflow-hidden border border-gray-400 bg-gray-50">
+      <div className="flex h-[125mm] items-center justify-center overflow-hidden border border-gray-400 bg-gray-50">
         {url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={url} alt={label} className="h-full w-full object-contain" />
