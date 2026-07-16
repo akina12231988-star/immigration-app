@@ -54,9 +54,11 @@ export const ORG_HONORIFICS = ["御中", "様"] as const;
 export type OrgHonorific = (typeof ORG_HONORIFICS)[number];
 
 // 許可時の在留資格の選択肢（特定技能1号を選ぶと生活オリエンテーションを自動登録）
+// 「特定技能1号更新」は在留期間の更新（新規入国ではない）なので生活オリエンテーションの対象外。
 export const GRANT_VISA_OPTIONS = [
   "特定活動（特定技能1号移行準備）",
   "特定技能1号",
+  "特定技能1号更新",
   "特定活動（特定技能2号移行準備）",
   "特定技能2号",
 ] as const;
