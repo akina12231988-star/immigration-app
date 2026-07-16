@@ -56,6 +56,7 @@ interface WorkerOption {
   id: string;
   name: string;
   current_organization_id: string | null;
+  residence_expiry_date: string | null;
 }
 
 const INPUT_CLASS =
@@ -99,7 +100,7 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
     const supabase = createClient();
     void supabase
       .from("workers")
-      .select("id, name, current_organization_id")
+      .select("id, name, current_organization_id, residence_expiry_date")
       .order("name")
       .then(({ data }) => {
         if (!cancelled && data) setWorkers(data as WorkerOption[]);
@@ -172,6 +173,16 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
   const set = <K extends keyof FormFields>(key: K, value: FormFields[K]) =>
     setFields((prev) => ({ ...prev, [key]: value }));
 
+  // 外国人を選んだら、所属機関とその人の在留期限を自動反映する。
+  // 未登録（新規）の人は手入力のまま。
+  const onSelectWorker = (id: string) => {
+    setWorkerId(id);
+    const w = workers.find((x) => x.id === id);
+    if (!w) return;
+    if (w.current_organization_id) setOrgId(w.current_organization_id);
+    if (w.residence_expiry_date) set("residenceExpiryAtApply", w.residence_expiry_date);
+  };
+
   // 外国人選択に該当者がない場合、氏名だけで新規登録して紐づける
   async function createWorkerByName() {
     const name = newName.trim();
@@ -182,7 +193,12 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
       const worker = await insertWorker(createClient(), blankWorkerInput(name, orgId || null));
       setWorkers((prev) => [
         ...prev,
-        { id: worker.id, name: worker.name, current_organization_id: orgId || null },
+        {
+          id: worker.id,
+          name: worker.name,
+          current_organization_id: orgId || null,
+          residence_expiry_date: null,
+        },
       ]);
       setWorkerId(worker.id);
       setNewName("");
@@ -308,7 +324,7 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
                 <Combobox
                   options={workerOptions}
                   value={workerId}
-                  onChange={setWorkerId}
+                  onChange={onSelectWorker}
                   placeholder="氏名を入力して検索"
                 />
                 {!selectedWorker && (
@@ -369,8 +385,15 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
                 />
               </div>
 
-              {/* 申請時点の在留期限 */}
-              <Field label="申請時点の在留期限" type="date" value={fields.residenceExpiryAtApply} onChange={(v) => set("residenceExpiryAtApply", v)} />
+              {/* 申請時点の在留期限（紐づけた外国人があれば自動反映） */}
+              <div>
+                <Field label="申請時点の在留期限" type="date" value={fields.residenceExpiryAtApply} onChange={(v) => set("residenceExpiryAtApply", v)} />
+                <p className="mt-1 text-[11px] text-muted">
+                  {selectedWorker
+                    ? "紐づけた外国人の在留期限を反映しています（必要なら修正できます）。"
+                    : "新規の外国人は、現在の在留期限を入力してください。"}
+                </p>
+              </div>
 
               {/* 5. 申請内容 */}
               <label className="block">

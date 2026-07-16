@@ -20,6 +20,7 @@ interface WorkerOption {
   id: string;
   name: string;
   current_organization_id: string | null;
+  residence_expiry_date: string | null;
 }
 
 // 申請の基本情報を修正するダイアログ（誤登録の訂正用）
@@ -55,7 +56,7 @@ export function ApplicationEditDialog({
     const supabase = createClient();
     void supabase
       .from("workers")
-      .select("id, name, current_organization_id")
+      .select("id, name, current_organization_id, residence_expiry_date")
       .order("name")
       .then(({ data }) => {
         if (!cancelled && data) setWorkers(data as WorkerOption[]);
@@ -74,6 +75,18 @@ export function ApplicationEditDialog({
 
   const set = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
+
+  // 外国人を紐づけたら、その人の在留期限を「申請時点の在留期限」に自動反映する。
+  // 紐づけを外した（新規の人）ときは手入力のまま。
+  const onSelectWorker = (workerId: string) => {
+    const w = workers.find((x) => x.id === workerId);
+    setForm((f) => ({
+      ...f,
+      workerId,
+      organizationId: w?.current_organization_id ?? f.organizationId,
+      residenceExpiryAtApply: w?.residence_expiry_date ?? f.residenceExpiryAtApply,
+    }));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -123,7 +136,7 @@ export function ApplicationEditDialog({
           <span className="text-xs font-bold text-muted">外国人と紐づける</span>
           <select
             value={form.workerId}
-            onChange={(e) => set("workerId", e.target.value)}
+            onChange={(e) => onSelectWorker(e.target.value)}
             className={INPUT_CLASS}
           >
             <option value="">（紐づけない・未登録の人）</option>
@@ -159,6 +172,11 @@ export function ApplicationEditDialog({
             onChange={(e) => set("residenceExpiryAtApply", e.target.value)}
             className={INPUT_CLASS}
           />
+          <span className="text-[11px] text-muted">
+            {form.workerId
+              ? "紐づけた外国人の在留期限を反映しています（必要なら修正できます）。"
+              : "新規の外国人は、現在の在留期限を入力してください。"}
+          </span>
         </label>
 
         <div className="grid grid-cols-2 gap-2.5">
