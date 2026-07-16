@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
 import { parseLegacyJson, type ImportResult } from "@/lib/ssw/import";
+import { parseNotionCsv } from "@/lib/ssw/notion-csv";
 import { importWorkers, type ImportSummary } from "@/lib/supabase/queries/workers";
 
 type Phase = "select" | "preview" | "importing" | "done";
@@ -26,16 +27,20 @@ export function ImportClient() {
     setFileName(file.name);
     try {
       const text = await file.text();
-      const json = JSON.parse(text);
-      const result = parseLegacyJson(json);
+      const isCsv = file.name.toLowerCase().endsWith(".csv") || (!text.trimStart().startsWith("{") && !text.trimStart().startsWith("["));
+      const result = isCsv ? parseNotionCsv(text) : parseLegacyJson(JSON.parse(text));
       if (result.workerCount === 0) {
-        setError("外国人データが見つかりませんでした。旧ツールの「JSON保存」ファイルか確認してください。");
+        setError(
+          isCsv
+            ? "CSVから外国人データを読み取れませんでした。Notionの「在籍履歴」CSVか、氏名の列があるか確認してください。"
+            : "外国人データが見つかりませんでした。旧ツールの「JSON保存」ファイルか確認してください。",
+        );
         return;
       }
       setParsed(result);
       setPhase("preview");
     } catch {
-      setError("JSONの読み込みに失敗しました。ファイル形式をご確認ください。");
+      setError("ファイルの読み込みに失敗しました。JSONまたはCSV形式をご確認ください。");
     }
   }
 
@@ -65,12 +70,21 @@ export function ImportClient() {
       {phase === "select" && (
         <>
           <Card className="p-4 text-sm leading-relaxed text-muted">
-            旧「特定技能1号 職歴・通算期間管理」ツールの
-            <span className="font-bold text-foreground">「JSON保存」</span>
-            で書き出したファイルを取り込みます。同じファイルを何度取り込んでも重複しません（外国人IDで上書き）。
+            次のいずれかのファイルを取り込めます。
+            <span className="mt-2 block">
+              ・Notion「在籍履歴」からエクスポートした
+              <span className="font-bold text-foreground">CSV</span>
+            </span>
+            <span className="block">
+              ・旧「特定技能1号 職歴・通算期間管理」ツールの
+              <span className="font-bold text-foreground">JSON</span>
+            </span>
+            <span className="mt-2 block text-xs">
+              外国人ID（Notionのページ）で突き合わせるため、同じファイルを取り込んでも重複しません。
+            </span>
           </Card>
           <Button fullWidth icon={<Upload size={19} />} onClick={() => inputRef.current?.click()}>
-            JSONファイルを選択
+            CSV / JSON ファイルを選択
           </Button>
         </>
       )}
@@ -154,7 +168,7 @@ export function ImportClient() {
       <input
         ref={inputRef}
         type="file"
-        accept="application/json,.json"
+        accept="application/json,.json,text/csv,.csv"
         className="hidden"
         onChange={(e) => handleFile(e.target.files?.[0])}
       />
