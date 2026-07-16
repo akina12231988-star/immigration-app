@@ -62,7 +62,7 @@ export function RenewalsClient({
       )}
 
       <div className="flex flex-wrap gap-2">
-        {(["", "準備中", "転職先にて対応中", "帰国", "all"] as HandlingFilter[]).map((f) => (
+        {(["", "準備中", "審査中", "転職先にて対応中", "帰国", "all"] as HandlingFilter[]).map((f) => (
           <button
             key={f || "pending"}
             type="button"

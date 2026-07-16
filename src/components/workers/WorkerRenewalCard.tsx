@@ -18,6 +18,7 @@ import {
 export const RENEWAL_STATUS_LABEL: Record<ResidenceRenewalStatus, string> = {
   "": "未対応",
   準備中: "準備中",
+  審査中: "審査中",
   転職先にて対応中: "転職先にて対応中",
   帰国: "帰国",
 };
@@ -25,6 +26,7 @@ export const RENEWAL_STATUS_LABEL: Record<ResidenceRenewalStatus, string> = {
 const STATUS_CLASS: Record<ResidenceRenewalStatus, string> = {
   "": "bg-seal/10 text-seal",
   準備中: "bg-status-applied-bg text-status-applied-fg",
+  審査中: "bg-brand/10 text-brand",
   転職先にて対応中: "bg-status-notice-bg text-status-notice-fg",
   帰国: "bg-background text-muted",
 };
