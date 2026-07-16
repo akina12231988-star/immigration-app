@@ -15,6 +15,7 @@ import { SswGauge } from "@/components/workers/SswGauge";
 import { SswStatusBadge, SupportBadge, WorkerStatusBadge } from "@/components/workers/badges";
 import { calcSsw, todayStr, type SswCalcResult } from "@/lib/ssw/calc";
 import { toCalcHistory } from "@/lib/supabase/queries/histories";
+import { isResidenceRenewalTarget } from "@/lib/worker-alerts";
 import type { Organization, WorkerWithHistories } from "@/types/db";
 
 interface Row {
@@ -59,21 +60,50 @@ export function WorkersExplorer({
     }));
   }, [workers]);
 
-  const summary = useMemo(
-    () => ({
+  const summary = useMemo(() => {
+    const today = todayStr();
+    const isWithin1Year = (r: Row) =>
+      r.calc.counted.length > 0 && r.calc.remainDays > 0 && r.calc.remainDays <= 365;
+    return {
       total: rows.length,
       active: rows.filter((r) => r.calc.status === "1号在留中").length,
-      withinOneYear: rows.filter(
-        (r) => r.calc.counted.length > 0 && r.calc.remainDays > 0 && r.calc.remainDays <= 365,
-      ).length,
+      withinOneYear: rows.filter(isWithin1Year).length,
       reachedCap: rows.filter((r) => r.calc.status === "5年到達").length,
-    }),
-    [rows],
-  );
+      expiry3m: rows.filter((r) => isResidenceRenewalTarget(r.worker, today)).length,
+      retired: rows.filter((r) => r.worker.status === "退職").length,
+    };
+  }, [rows]);
 
   const filtered = useMemo(() => {
+    const today = todayStr();
     const kw = filter.keyword.trim().toLowerCase();
-    const result = rows.filter(({ worker }) => {
+    const result = rows.filter(({ worker, calc }) => {
+      // サマリーカードのクイック絞り込み
+      switch (filter.quick) {
+        case "active":
+          if (calc.status !== "1号在留中") return false;
+          break;
+        case "within1year":
+          if (!(calc.counted.length > 0 && calc.remainDays > 0 && calc.remainDays <= 365))
+            return false;
+          break;
+        case "reached":
+          if (calc.status !== "5年到達") return false;
+          break;
+        case "expiry3m":
+          if (!isResidenceRenewalTarget(worker, today)) return false;
+          break;
+        case "retired":
+          if (worker.status !== "退職") return false;
+          break;
+        default:
+          break;
+      }
+      // 在留期限の対象期間
+      if (filter.expiryFrom && (!worker.residence_expiry_date || worker.residence_expiry_date < filter.expiryFrom))
+        return false;
+      if (filter.expiryTo && (!worker.residence_expiry_date || worker.residence_expiry_date > filter.expiryTo))
+        return false;
       if (filter.status !== "all" && worker.status !== filter.status) return false;
       if (filter.support !== "all" && worker.support !== filter.support) return false;
       if (filter.orgId === "none") {
@@ -118,7 +148,13 @@ export function WorkersExplorer({
 
   return (
     <div className="space-y-4">
-      <SummaryCards summary={summary} />
+      <SummaryCards
+        summary={summary}
+        active={filter.quick}
+        onSelect={(quick) =>
+          setFilter((f) => ({ ...f, quick: f.quick === quick ? "all" : quick }))
+        }
+      />
 
       {canEdit && (
         <div className="flex gap-2">

@@ -18,12 +18,24 @@ export const SORT_LABELS: Record<WorkerSortKey, string> = {
   expiry: "在留期限が近い順",
 };
 
+// サマリーカードから選ぶクイック絞り込み
+export type WorkerQuickFilter =
+  | "all"
+  | "active" // 1号在留中（在籍中）
+  | "within1year" // 1号で残り1年以内
+  | "reached" // 5年到達
+  | "expiry3m" // 在留期限まで3ヶ月以内
+  | "retired"; // 退職者
+
 export interface WorkerFilterState {
   keyword: string;
   status: WorkerStatus | "all";
   support: SupportScope | "all";
   orgId: string | "all" | "none"; // none = 未所属
   sort: WorkerSortKey;
+  quick: WorkerQuickFilter;
+  expiryFrom: string; // 在留期限の対象期間（開始）
+  expiryTo: string; // 在留期限の対象期間（終了）
 }
 
 export const INITIAL_FILTER: WorkerFilterState = {
@@ -32,6 +44,9 @@ export const INITIAL_FILTER: WorkerFilterState = {
   support: "all",
   orgId: "all",
   sort: "created",
+  quick: "all",
+  expiryFrom: "",
+  expiryTo: "",
 };
 
 const SELECT_CLASS =
@@ -121,6 +136,36 @@ export function WorkerFilters({
             </option>
           ))}
         </select>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-bold text-muted">在留期限（対象期間）開始</span>
+          <input
+            type="date"
+            value={filter.expiryFrom}
+            onChange={(e) => set("expiryFrom", e.target.value)}
+            className="min-h-[40px] rounded-xl border border-border bg-surface px-2.5 text-xs"
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-bold text-muted">終了</span>
+          <input
+            type="date"
+            value={filter.expiryTo}
+            onChange={(e) => set("expiryTo", e.target.value)}
+            className="min-h-[40px] rounded-xl border border-border bg-surface px-2.5 text-xs"
+          />
+        </label>
+        {(filter.expiryFrom || filter.expiryTo) && (
+          <button
+            type="button"
+            onClick={() => onChange({ ...filter, expiryFrom: "", expiryTo: "" })}
+            className="min-h-[40px] text-xs font-bold text-brand"
+          >
+            期間クリア
+          </button>
+        )}
       </div>
     </div>
   );

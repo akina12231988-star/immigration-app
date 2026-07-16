@@ -71,7 +71,12 @@ export function WorkerForm({
 
   // date input は空文字を返すため null へ正規化する
   const setDate = (
-    key: "birth" | "residence_permit_date" | "residence_expiry_date" | "passport_expiry_date",
+    key:
+      | "birth"
+      | "residence_permit_date"
+      | "residence_expiry_date"
+      | "passport_expiry_date"
+      | "leaving_on",
   ) =>
     (e: React.ChangeEvent<HTMLInputElement>) =>
       set(key, e.target.value || null);
@@ -183,6 +188,26 @@ export function WorkerForm({
             </select>
           </Field>
         </div>
+        {form.status === "退職" && (
+          <div className="grid grid-cols-2 gap-2.5 rounded-xl bg-background p-3">
+            <Field label="退職日">
+              <input
+                type="date"
+                value={form.leaving_on ?? ""}
+                onChange={setDate("leaving_on")}
+                className={INPUT_CLASS}
+              />
+            </Field>
+            <Field label="Notion 申請TODO番号">
+              <input
+                value={form.leaving_todo}
+                onChange={(e) => set("leaving_todo", e.target.value)}
+                placeholder="例: TODO-1234"
+                className={INPUT_CLASS}
+              />
+            </Field>
+          </div>
+        )}
         <Field label="現在の所属機関">
           <select
             value={form.current_organization_id ?? ""}
