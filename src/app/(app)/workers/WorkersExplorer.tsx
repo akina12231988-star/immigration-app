@@ -26,13 +26,21 @@ interface Row {
 export function WorkersExplorer({
   workers,
   organizations,
+  underReviewWorkerIds = [],
   canEdit,
 }: {
   workers: WorkerWithHistories[];
   organizations: Organization[];
+  underReviewWorkerIds?: string[];
   canEdit: boolean;
 }) {
   const [filter, setFilter] = useState<WorkerFilterState>(INITIAL_FILTER);
+
+  // 在留更新対象と同じ条件にするため、現在申請審査中の外国人IDを持っておく
+  const underReview = useMemo(() => new Set(underReviewWorkerIds), [underReviewWorkerIds]);
+  // 「在留期限3ヶ月以内」= 退職者・審査中を除外（在留更新対象ページと一致）
+  const isExpiry3m = (w: WorkerWithHistories) =>
+    isResidenceRenewalTarget(w, todayStr()) && !underReview.has(w.id);
 
   const orgNames = useMemo(
     () => new Map(organizations.map((o) => [o.id, o.name])),
@@ -61,7 +69,6 @@ export function WorkersExplorer({
   }, [workers]);
 
   const summary = useMemo(() => {
-    const today = todayStr();
     const isWithin1Year = (r: Row) =>
       r.calc.counted.length > 0 && r.calc.remainDays > 0 && r.calc.remainDays <= 365;
     return {
@@ -69,13 +76,13 @@ export function WorkersExplorer({
       active: rows.filter((r) => r.calc.status === "1号在留中").length,
       withinOneYear: rows.filter(isWithin1Year).length,
       reachedCap: rows.filter((r) => r.calc.status === "5年到達").length,
-      expiry3m: rows.filter((r) => isResidenceRenewalTarget(r.worker, today)).length,
+      expiry3m: rows.filter((r) => isExpiry3m(r.worker)).length,
       retired: rows.filter((r) => r.worker.status === "退職").length,
     };
-  }, [rows]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, underReview]);
 
   const filtered = useMemo(() => {
-    const today = todayStr();
     const kw = filter.keyword.trim().toLowerCase();
     const result = rows.filter(({ worker, calc }) => {
       // サマリーカードのクイック絞り込み
@@ -91,7 +98,7 @@ export function WorkersExplorer({
           if (calc.status !== "5年到達") return false;
           break;
         case "expiry3m":
-          if (!isResidenceRenewalTarget(worker, today)) return false;
+          if (!isExpiry3m(worker)) return false;
           break;
         case "retired":
           if (worker.status !== "退職") return false;
@@ -144,7 +151,8 @@ export function WorkersExplorer({
         break; // 登録順（created_at 昇順で取得済み）
     }
     return result;
-  }, [rows, filter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, filter, underReview]);
 
   return (
     <div className="space-y-4">
