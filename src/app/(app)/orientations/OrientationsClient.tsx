@@ -3,17 +3,19 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CalendarClock, Check, ExternalLink, GraduationCap, Trash2, XCircle } from "lucide-react";
+import { AlertTriangle, CalendarClock, Check, ExternalLink, GraduationCap, Plus, Trash2, XCircle } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
+import { Combobox } from "@/components/ui/Combobox";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { createClient } from "@/lib/supabase/client";
-import { deleteOrientation, updateOrientation } from "@/lib/supabase/queries/orientations";
+import { deleteOrientation, insertOrientation, updateOrientation } from "@/lib/supabase/queries/orientations";
 import { recommendedFileName, recommendedFolderName } from "@/lib/orientation";
 import { todayStr } from "@/lib/application-alerts";
-import { ORIENTATION_STATUSES, type OrientationStatus } from "@/types/db";
+import { ORIENTATION_STATUSES, type OrientationStatus, type Organization } from "@/types/db";
 import type { OrientationWithRefs } from "@/lib/supabase/queries/orientations";
+import type { WorkerBrief } from "@/lib/supabase/queries/workers";
 
 // 「overdue」= 実施予定日を過ぎているのにまだ未実施（＝実施可能だが未実施）
 type StatusFilter = OrientationStatus | "overdue" | "all";
@@ -31,9 +33,13 @@ const STATUS_CLASS: Record<OrientationStatus, string> = {
 
 export function OrientationsClient({
   orientations,
+  workers = [],
+  organizations = [],
   canEdit,
 }: {
   orientations: OrientationWithRefs[];
+  workers?: WorkerBrief[];
+  organizations?: Organization[];
   canEdit: boolean;
 }) {
   const router = useRouter();
@@ -43,6 +49,7 @@ export function OrientationsClient({
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [editing, setEditing] = useState<OrientationWithRefs | null>(null);
+  const [creating, setCreating] = useState(false);
 
   // 所属機関の選択肢（登録済みオリエンから集約）
   const orgOptions = useMemo(() => {
@@ -91,10 +98,17 @@ export function OrientationsClient({
 
   return (
     <div className="space-y-4">
-      <p className="flex items-start gap-1.5 text-xs leading-relaxed text-muted">
-        <GraduationCap size={14} className="mt-0.5 shrink-0" />
-        特定技能1号の対象者について、雇用開始日から2週間後の日曜を予定日として自動登録します。
-      </p>
+      <div className="flex items-start justify-between gap-3">
+        <p className="flex items-start gap-1.5 text-xs leading-relaxed text-muted">
+          <GraduationCap size={14} className="mt-0.5 shrink-0" />
+          特定技能1号の対象者について、雇用開始日から2週間後の日曜を予定日として自動登録します。手動での追加も可能です。
+        </p>
+        {canEdit && (
+          <Button className="shrink-0" icon={<Plus size={16} />} onClick={() => setCreating(true)}>
+            新規追加
+          </Button>
+        )}
+      </div>
 
       {/* 実施予定日を過ぎた未実施へのアラート */}
       {overdueCount > 0 && (
@@ -226,7 +240,151 @@ export function OrientationsClient({
           }}
         />
       )}
+
+      {creating && (
+        <NewOrientationDialog
+          workers={workers}
+          organizations={organizations}
+          today={today}
+          onClose={() => setCreating(false)}
+          onSaved={() => {
+            setCreating(false);
+            router.refresh();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+function NewOrientationDialog({
+  workers,
+  organizations,
+  today,
+  onClose,
+  onSaved,
+}: {
+  workers: WorkerBrief[];
+  organizations: Organization[];
+  today: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [workerId, setWorkerId] = useState("");
+  const [orgId, setOrgId] = useState("");
+  const [scheduledOn, setScheduledOn] = useState("");
+  const [employmentStartOn, setEmploymentStartOn] = useState("");
+  const [status, setStatus] = useState<OrientationStatus>("未実施");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const workerOptions = useMemo(
+    () => workers.map((w) => ({ id: w.id, label: w.name })),
+    [workers],
+  );
+
+  // 外国人を選んだら、その現在の所属機関を初期選択する
+  const onSelectWorker = (id: string) => {
+    setWorkerId(id);
+    const w = workers.find((x) => x.id === id);
+    setOrgId(w?.current_organization_id ?? "");
+  };
+
+  const save = async () => {
+    if (!workerId) {
+      setError("外国人を選択してください");
+      return;
+    }
+    if (!scheduledOn) {
+      setError("実施予定日を入力してください");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await insertOrientation(createClient(), {
+        worker_id: workerId,
+        organization_id: orgId || null,
+        application_id: null,
+        scheduled_on: scheduledOn,
+        employment_start_on: employmentStartOn || null,
+        status,
+        done_on: status === "実施済" ? today : null,
+        drive_link: "",
+        note,
+      });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "追加に失敗しました");
+      setBusy(false);
+    }
+  };
+
+  const INPUT = "min-h-[44px] w-full rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none";
+
+  return (
+    <Modal open title="生活オリエンテーション 新規追加" onClose={onClose}>
+      <div className="flex flex-col gap-3">
+        {error && (
+          <p role="alert" className="rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
+            {error}
+          </p>
+        )}
+
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-muted">外国人（必須）</span>
+          <Combobox
+            options={workerOptions}
+            value={workerId}
+            onChange={onSelectWorker}
+            placeholder="氏名で検索して選択"
+          />
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-muted">所属機関</span>
+          <select value={orgId} onChange={(e) => setOrgId(e.target.value)} className={INPUT}>
+            <option value="">未設定</option>
+            {organizations.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-muted">実施予定日（必須）</span>
+          <input type="date" value={scheduledOn} onChange={(e) => setScheduledOn(e.target.value)} className={INPUT} />
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-muted">雇用開始日（任意）</span>
+          <input type="date" value={employmentStartOn} onChange={(e) => setEmploymentStartOn(e.target.value)} className={INPUT} />
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-muted">状態</span>
+          <select value={status} onChange={(e) => setStatus(e.target.value as OrientationStatus)} className={INPUT}>
+            {ORIENTATION_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-muted">備考</span>
+          <input value={note} onChange={(e) => setNote(e.target.value)} className={INPUT} />
+        </label>
+
+        <Button fullWidth disabled={busy} onClick={save}>
+          {busy ? "追加中…" : "追加する"}
+        </Button>
+      </div>
+    </Modal>
   );
 }
 

@@ -16,10 +16,17 @@ import {
   transitionEndDate,
   formatMonthDay,
 } from "@/lib/application-alerts";
-import type { Application, ApplicationStatus } from "@/types/application";
-import { APPLICATION_STATUS_FILTERS } from "@/types/application";
+import type { Application } from "@/types/application";
 
 const TODAY = todayStr();
+
+// フィルタータブ（ダッシュボードの集計と同じ区分で揃える）
+const VIEW_CHIPS: { key: StatViewKey | "all"; label: string }[] = [
+  { key: "all", label: "すべて" },
+  { key: "unreported", label: "LINE未報告" },
+  { key: "waiting-notice", label: "審査中" },
+  { key: "approved", label: "在留カード受け取り待ち" },
+];
 
 function AlertBadge({ expiry }: { expiry?: string }) {
   const label = expiry
@@ -41,18 +48,13 @@ export function ApplicationsExplorer({
 }) {
   const router = useRouter();
   const [keyword, setKeyword] = useState("");
-  const [statusFilter, setStatusFilter] = useState<ApplicationStatus | "all">(
-    "all"
-  );
-  // ホームの集計カードから開いたときの絞り込み（×で解除できる）
-  const [statView, setStatView] = useState<StatViewKey | null>(initialView);
+  // タブ＝ダッシュボードと同じ集計区分（すべて / LINE未報告 / 審査中 / 在留カード受け取り待ち）
+  const [view, setView] = useState<StatViewKey | "all">(initialView ?? "all");
 
   const filtered = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
     return applications.filter((a) => {
-      if (statView && !STAT_VIEWS[statView].test(a)) return false;
-      const matchesStatus = statusFilter === "all" || a.status === statusFilter;
-      if (!matchesStatus) return false;
+      if (view !== "all" && !STAT_VIEWS[view].test(a)) return false;
       if (!kw) return true;
       return (
         a.name.toLowerCase().includes(kw) ||
@@ -61,10 +63,10 @@ export function ApplicationsExplorer({
         a.assignee.toLowerCase().includes(kw)
       );
     });
-  }, [applications, keyword, statusFilter, statView]);
+  }, [applications, keyword, view]);
 
-  // 「許可済」フィルター時は、入管許可通知後のメモを取得して表示する
-  const showApprovedDetail = statusFilter === "許可済";
+  // 「在留カード受け取り待ち（許可済）」タブでは、受取予定日と許可通知後のメモを表示する
+  const showApprovedDetail = view === "approved";
   const [memosByApp, setMemosByApp] = useState<Record<string, ApplicationMemo[]>>({});
   useEffect(() => {
     if (!showApprovedDetail) return;
@@ -85,14 +87,14 @@ export function ApplicationsExplorer({
 
   return (
     <div className="space-y-4">
-      {statView && (
+      {view === "this-month" && (
         <div className="flex items-center justify-between rounded-xl bg-brand/10 px-3.5 py-2.5">
           <p className="text-sm font-bold text-brand">
-            「{STAT_VIEWS[statView].label}」で絞り込み中
+            「{STAT_VIEWS["this-month"].label}」で絞り込み中
           </p>
           <button
             type="button"
-            onClick={() => setStatView(null)}
+            onClick={() => setView("all")}
             aria-label="絞り込みを解除"
             className="flex h-7 w-7 items-center justify-center rounded-full text-brand hover:bg-brand/10"
           >
@@ -116,17 +118,12 @@ export function ApplicationsExplorer({
       </div>
 
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
-        <FilterChip
-          label="すべて"
-          active={statusFilter === "all"}
-          onClick={() => setStatusFilter("all")}
-        />
-        {APPLICATION_STATUS_FILTERS.map((s) => (
+        {VIEW_CHIPS.map((c) => (
           <FilterChip
-            key={s}
-            label={s}
-            active={statusFilter === s}
-            onClick={() => setStatusFilter(s)}
+            key={c.key}
+            label={c.label}
+            active={view === c.key}
+            onClick={() => setView(c.key)}
           />
         ))}
       </div>
@@ -158,9 +155,16 @@ export function ApplicationsExplorer({
                     <StatusBadge status={a.status} />
                   </div>
                 </div>
-                <p className="text-xs tabular-nums text-muted">
-                  受取予定日 {a.receiptScheduledOn ?? "未設定"}
-                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-xs tabular-nums text-muted">
+                    受取予定日 {a.receiptScheduledOn ?? "未設定"}
+                  </p>
+                  {a.receiptScheduledOn && a.receiptScheduledOn <= TODAY && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-status-reported-bg px-2 py-0.5 text-[11px] font-bold text-status-reported-fg">
+                      受け取り可能！
+                    </span>
+                  )}
+                </div>
                 <div className="mt-2 border-t border-border pt-2">
                   <p className="mb-1 flex items-center gap-1 text-[11px] font-bold text-muted">
                     <StickyNote size={12} />

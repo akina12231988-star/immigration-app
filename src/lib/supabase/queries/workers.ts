@@ -29,6 +29,24 @@ export async function getWorkerWithHistories(
   return data as WorkerWithHistories | null;
 }
 
+// 選択用の軽量な外国人一覧（id・氏名・現在の所属機関のみ）
+export interface WorkerBrief {
+  id: string;
+  name: string;
+  current_organization_id: string | null;
+}
+
+export async function listWorkersBrief(
+  supabase: SupabaseClient,
+): Promise<WorkerBrief[]> {
+  const { data, error } = await supabase
+    .from("workers")
+    .select("id, name, current_organization_id")
+    .order("name", { ascending: true });
+  if (error) throw error;
+  return (data as WorkerBrief[]) ?? [];
+}
+
 export async function insertWorker(
   supabase: SupabaseClient,
   input: WorkerInput,
