@@ -66,6 +66,8 @@ export interface Worker {
   notion_link: string; // Notion 個人ページのリンク
   residence_renewal_status: ResidenceRenewalStatus; // 在留更新の対応状況
   residence_renewal_todo: string; // Notion 申請TODO番号
+  leaving_on: string | null; // 退職日
+  leaving_todo: string; // 退職時のNotion申請TODO番号
   photo_path: string | null; // 顔写真（worker-files バケット）
   messenger_link: string; // Messenger グループ/個人リンク
   specialty_grade: string; // 専門級の合格名

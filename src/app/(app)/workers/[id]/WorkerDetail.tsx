@@ -228,6 +228,11 @@ export function WorkerDetail({
         </dl>
       </Card>
 
+      {/* 退職者情報（状態が退職のときのみ表示） */}
+      {worker.status === "退職" && (
+        <LeavingSection worker={worker} canEdit={canEdit} />
+      )}
+
       {/* 在留カード・指定書の差し替え（履歴保持） */}
       <WorkerDocuments workerId={worker.id} canEdit={canEdit} />
 
@@ -457,5 +462,89 @@ function InfoItem({
       <dt className="text-[11px] font-bold text-muted">{label}</dt>
       <dd className="whitespace-pre-wrap break-words">{value || "—"}</dd>
     </div>
+  );
+}
+
+// 退職者情報: 退職日とNotion申請TODO番号を記録する
+function LeavingSection({
+  worker,
+  canEdit,
+}: {
+  worker: WorkerWithHistories;
+  canEdit: boolean;
+}) {
+  const router = useRouter();
+  const [leavingOn, setLeavingOn] = useState(worker.leaving_on ?? "");
+  const [leavingTodo, setLeavingTodo] = useState(worker.leaving_todo ?? "");
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await updateWorker(createClient(), worker.id, {
+        leaving_on: leavingOn || null,
+        leaving_todo: leavingTodo.trim(),
+      });
+      setSaved(true);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const INPUT =
+    "min-h-[44px] w-full rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none";
+
+  if (!canEdit) {
+    return (
+      <Card className="p-4">
+        <p className="mb-2 text-[11px] font-bold text-muted">退職者情報</p>
+        <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+          <InfoItem label="退職日" value={worker.leaving_on} />
+          <InfoItem label="Notion 申請TODO番号" value={worker.leaving_todo} />
+        </dl>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="p-4">
+      <p className="mb-2 text-sm font-bold">退職者情報</p>
+      {error && <p className="mb-2 rounded-lg bg-seal/10 px-3 py-2 text-xs text-seal">{error}</p>}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-bold text-muted">退職日</span>
+          <input
+            type="date"
+            value={leavingOn}
+            onChange={(e) => {
+              setLeavingOn(e.target.value);
+              setSaved(false);
+            }}
+            className={INPUT}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-bold text-muted">Notion 申請TODO番号</span>
+          <input
+            value={leavingTodo}
+            onChange={(e) => {
+              setLeavingTodo(e.target.value);
+              setSaved(false);
+            }}
+            placeholder="例: TODO-1234"
+            className={INPUT}
+          />
+        </label>
+      </div>
+      <Button fullWidth className="mt-3" disabled={busy} onClick={save}>
+        {busy ? "保存中…" : saved ? "保存しました" : "退職者情報を保存"}
+      </Button>
+    </Card>
   );
 }

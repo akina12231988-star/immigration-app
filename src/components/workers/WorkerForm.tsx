@@ -33,6 +33,8 @@ function toInput(w: Worker | null): WorkerInput {
     notion_link: w?.notion_link ?? "",
     residence_renewal_status: w?.residence_renewal_status ?? "",
     residence_renewal_todo: w?.residence_renewal_todo ?? "",
+    leaving_on: w?.leaving_on ?? null,
+    leaving_todo: w?.leaving_todo ?? "",
     photo_path: w?.photo_path ?? null,
     messenger_link: w?.messenger_link ?? "",
     specialty_grade: w?.specialty_grade ?? "",

@@ -22,6 +22,8 @@ export function blankWorkerInput(name: string, organizationId: string | null = n
     notion_link: "",
     residence_renewal_status: "",
     residence_renewal_todo: "",
+    leaving_on: null,
+    leaving_todo: "",
     photo_path: null,
     messenger_link: "",
     specialty_grade: "",
