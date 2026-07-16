@@ -34,20 +34,25 @@ const STATUS_CLASS: Record<ResidenceRenewalStatus, string> = {
 
 export function RenewalsClient({
   workers,
+  underReviewWorkerIds = [],
   canEdit,
 }: {
   workers: WorkerWithOrg[];
+  underReviewWorkerIds?: string[];
   canEdit: boolean;
 }) {
   const today = todayStr();
   const [filter, setFilter] = useState<HandlingFilter>("");
 
+  const underReview = useMemo(() => new Set(underReviewWorkerIds), [underReviewWorkerIds]);
+
   const targets = useMemo(
     () =>
       workers
-        .filter((w) => isResidenceRenewalTarget(w, today))
+        // 退職者・現在申請審査中の人は対象外
+        .filter((w) => isResidenceRenewalTarget(w, today) && !underReview.has(w.id))
         .sort((a, b) => (a.residence_expiry_date ?? "").localeCompare(b.residence_expiry_date ?? "")),
-    [workers, today],
+    [workers, today, underReview],
   );
 
   const countFor = (f: HandlingFilter) =>
