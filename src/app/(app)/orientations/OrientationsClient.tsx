@@ -283,6 +283,10 @@ function NewOrientationDialog({
     () => workers.map((w) => ({ id: w.id, label: w.name })),
     [workers],
   );
+  const orgOptions = useMemo(
+    () => organizations.map((o) => ({ id: o.id, label: o.name })),
+    [organizations],
+  );
 
   // 外国人を選んだら、その現在の所属機関を初期選択する
   const onSelectWorker = (id: string) => {
@@ -344,14 +348,12 @@ function NewOrientationDialog({
 
         <label className="flex flex-col gap-1">
           <span className="text-xs font-bold text-muted">所属機関</span>
-          <select value={orgId} onChange={(e) => setOrgId(e.target.value)} className={INPUT}>
-            <option value="">未設定</option>
-            {organizations.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-              </option>
-            ))}
-          </select>
+          <Combobox
+            options={orgOptions}
+            value={orgId}
+            onChange={setOrgId}
+            placeholder="会社・機関名で検索して選択"
+          />
         </label>
 
         <label className="flex flex-col gap-1">
