@@ -9,6 +9,7 @@ import {
   ClipboardList,
   CalendarClock,
   BookMarked,
+  Mailbox,
   type LucideIcon,
 } from "lucide-react";
 
@@ -24,6 +25,7 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "ホーム", short: "ホーム", icon: Home },
   { href: "/workers", label: "外国人", short: "外国人", icon: Users },
+  { href: "/mailing", label: "郵送請求", short: "郵送請求", icon: Mailbox },
   { href: "/applications/new", label: "申請登録", short: "申請登録", icon: FilePlus2, emphasize: true },
   { href: "/applications", label: "申請一覧", short: "申請一覧", icon: List },
   { href: "/workers/renewals", label: "在留更新対象", short: "在留更新", icon: CalendarClock },
