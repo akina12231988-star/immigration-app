@@ -93,3 +93,42 @@ export async function deleteJudgmentRecord(supabase: SupabaseClient, id: string)
   const { error } = await supabase.from("judgment_records").delete().eq("id", id);
   if (error) throw error;
 }
+
+// ---- 旧ツール（window.storage）から書き出したデータの取り込み ----
+type RawMuni = Record<string, unknown>;
+const bool = (v: unknown, dflt: boolean) => (typeof v === "boolean" ? v : dflt);
+const str = (v: unknown, dflt = "") => (typeof v === "string" && v ? v : dflt);
+
+export async function importMailingData(
+  supabase: SupabaseClient,
+  payload: { municipalities?: RawMuni[]; judgment_records?: Record<string, unknown>[] },
+): Promise<{ muniCount: number; recCount: number }> {
+  let muniCount = 0;
+  let recCount = 0;
+
+  for (const m of payload.municipalities ?? []) {
+    const name = str(m.name);
+    if (!name) continue;
+    const row = {
+      name,
+      cert_name: str(m.cert_name ?? m.certName, "課税証明書"),
+      has_income: bool(m.has_income ?? m.hasIncome, true),
+      has_tax: bool(m.has_tax ?? m.hasTax, true),
+      needs_tax_payment_cert: bool(m.needs_tax_payment_cert ?? m.needsTaxPaymentCert, false),
+      show_asterisk: bool(m.show_asterisk ?? m.showAsterisk, false),
+      note: str(m.note),
+    };
+    const { error } = await supabase.from("municipalities").insert(row);
+    if (error) throw error;
+    muniCount += 1;
+  }
+
+  for (const r of payload.judgment_records ?? []) {
+    const created_at = str(r.createdAt ?? r.created_at, new Date().toISOString());
+    const { error } = await supabase.from("judgment_records").insert({ data: r, created_at });
+    if (error) throw error;
+    recCount += 1;
+  }
+
+  return { muniCount, recCount };
+}

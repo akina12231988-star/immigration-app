@@ -13,6 +13,7 @@ import {
   insertJudgmentRecord,
   updateJudgmentRecord,
   deleteJudgmentRecord,
+  importMailingData,
 } from "@/lib/supabase/queries/tax-cert";
 import {
   buildRequiredDocs,
@@ -113,6 +114,7 @@ export function MailingClient({
   const [tab, setTab] = useState<"judge" | "muni" | "records">("judge");
   const [municipalities, setMunicipalities] = useState(initialMunicipalities);
   const [records, setRecords] = useState(initialRecords);
+  const [importOpen, setImportOpen] = useState(false);
   const [showToast, toastNode] = useToast();
 
   const tabs = [
@@ -123,6 +125,16 @@ export function MailingClient({
 
   return (
     <div className="space-y-4">
+      {canEdit && (
+        <div className="flex justify-end">
+          <Button variant="secondary" onClick={() => setImportOpen(true)}>
+            旧ツールのデータを取込
+          </Button>
+        </div>
+      )}
+      {importOpen && (
+        <ImportDialog onClose={() => setImportOpen(false)} showToast={showToast} />
+      )}
       <div className="flex gap-1 overflow-x-auto border-b border-border">
         {tabs.map((t) => (
           <button
@@ -171,6 +183,58 @@ export function MailingClient({
       </p>
       {toastNode}
     </div>
+  );
+}
+
+/* ============================ データ取込 ============================ */
+function ImportDialog({ onClose, showToast }: { onClose: () => void; showToast: (m: string) => void }) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = async () => {
+    setError(null);
+    let payload: { municipalities?: unknown[]; judgment_records?: unknown[] };
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      setError("JSONの形式が正しくありません。書き出したデータをそのまま貼り付けてください。");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await importMailingData(createClient(), payload as never);
+      showToast(`自治体${res.muniCount}件・記録${res.recCount}件を取り込みました`);
+      onClose();
+      // 反映のため再読み込み
+      window.location.reload();
+    } catch (e) {
+      setError("取り込みに失敗しました: " + (e instanceof Error ? e.message : String(e)));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal open title="旧ツールのデータを取込" onClose={onClose}>
+      <div className="flex flex-col gap-3">
+        {error && <p role="alert" className="rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">{error}</p>}
+        <div className="rounded-xl bg-background p-3 text-xs leading-relaxed text-muted">
+          旧ツール（Artifact）の画面を開き、ブラウザのコンソールで書き出したJSONを貼り付けてください。
+          <br />
+          <span className="font-bold text-foreground">{"{ municipalities: [...], judgment_records: [...] }"}</span>
+          の形式です。取り込みは追加のみで、既存データは消えません。
+        </div>
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder='{"municipalities":[...],"judgment_records":[...]}'
+          className={`${INPUT} min-h-[180px] py-2 font-mono text-xs`}
+        />
+        <Button fullWidth disabled={busy || !text.trim()} onClick={run}>
+          {busy ? "取込中…" : "この内容を取り込む"}
+        </Button>
+      </div>
+    </Modal>
   );
 }
 
