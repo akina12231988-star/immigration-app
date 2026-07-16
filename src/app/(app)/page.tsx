@@ -5,8 +5,8 @@ import Link from "next/link";
 import {
   FileClock,
   MessageCircleWarning,
-  MailWarning,
-  CheckCircle2,
+  Hourglass,
+  CreditCard,
   ChevronRight,
   Users,
   Building2,
@@ -34,22 +34,22 @@ const STAT_CARDS = [
   {
     key: "unreportedCount",
     view: "unreported",
-    label: "未報告件数",
+    label: "LINE未報告件数",
     icon: MessageCircleWarning,
     accent: "text-seal bg-seal/10",
   },
   {
     key: "waitingNoticeCount",
     view: "waiting-notice",
-    label: "通知書待ち件数",
-    icon: MailWarning,
+    label: "現在審査中件数",
+    icon: Hourglass,
     accent: "text-status-notice-fg bg-status-notice-bg",
   },
   {
     key: "approvedCount",
     view: "approved",
-    label: "許可済件数",
-    icon: CheckCircle2,
+    label: "在留カード受取待ち件数",
+    icon: CreditCard,
     accent: "text-status-approved-fg bg-status-approved-bg",
   },
 ] as const;

@@ -13,12 +13,12 @@ export const STAT_VIEWS = {
     },
   },
   unreported: {
-    label: "未報告",
+    label: "LINE未報告",
     test: (a: Application) =>
       !a.lineReported && a.status !== "申請前" && a.status !== "取下げ",
   },
   "waiting-notice": {
-    label: "通知書待ち",
+    label: "現在審査中",
     test: (a: Application) =>
       a.lineReported &&
       !a.approved &&
@@ -26,7 +26,7 @@ export const STAT_VIEWS = {
       a.status !== "取下げ",
   },
   approved: {
-    label: "許可済",
+    label: "在留カード受取待ち",
     test: (a: Application) => a.approved,
   },
 } as const;
