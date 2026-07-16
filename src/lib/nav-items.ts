@@ -7,6 +7,8 @@ import {
   GraduationCap,
   Briefcase,
   ClipboardList,
+  CalendarClock,
+  BookMarked,
   type LucideIcon,
 } from "lucide-react";
 
@@ -24,6 +26,8 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/workers", label: "外国人", short: "外国人", icon: Users },
   { href: "/applications/new", label: "申請登録", short: "申請登録", icon: FilePlus2, emphasize: true },
   { href: "/applications", label: "申請一覧", short: "申請一覧", icon: List },
+  { href: "/workers/renewals", label: "在留更新対象", short: "在留更新", icon: CalendarClock },
+  { href: "/workers/passports", label: "パスポート更新必要", short: "パスポート", icon: BookMarked },
   { href: "/notices/search", label: "通知書", short: "通知書", icon: ScanLine },
   { href: "/orientations", label: "生活オリエンテーション", short: "生活", icon: GraduationCap },
   { href: "/postings", label: "求人一覧", short: "求人", icon: Briefcase },

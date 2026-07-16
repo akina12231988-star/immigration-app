@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   CalendarClock,
   ChevronRight,
+  ExternalLink,
   FileText,
   MessageCircle,
   Pencil,
@@ -144,17 +145,30 @@ export function WorkerDetail({
             <div className="min-w-0">
               <p className="text-lg font-black">{worker.name}</p>
               {worker.kana && <p className="text-xs text-muted">{worker.kana}</p>}
-              {worker.messenger_link && (
-                <a
-                  href={worker.messenger_link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-1 inline-flex items-center gap-1 text-xs font-bold text-brand"
-                >
-                  <MessageCircle size={13} />
-                  Messenger
-                </a>
-              )}
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                {worker.messenger_link && (
+                  <a
+                    href={worker.messenger_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs font-bold text-brand"
+                  >
+                    <MessageCircle size={13} />
+                    Messenger
+                  </a>
+                )}
+                {worker.notion_link && (
+                  <a
+                    href={worker.notion_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs font-bold text-brand"
+                  >
+                    <ExternalLink size={13} />
+                    Notion
+                  </a>
+                )}
+              </div>
             </div>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-2">
@@ -204,6 +218,8 @@ export function WorkerDetail({
           <InfoItem label="在留カード番号" value={worker.residence_card_no} />
           <InfoItem label="許可日" value={worker.residence_permit_date} />
           <InfoItem label="在留期限" value={worker.residence_expiry_date} />
+          <InfoItem label="パスポート番号" value={worker.passport_no} />
+          <InfoItem label="パスポート有効期限" value={worker.passport_expiry_date} />
         </dl>
         <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
           <InfoItem label="健康状態" value={worker.health_note} wide />

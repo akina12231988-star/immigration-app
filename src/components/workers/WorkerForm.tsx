@@ -28,6 +28,11 @@ function toInput(w: Worker | null): WorkerInput {
     residence_status: w?.residence_status ?? "",
     residence_permit_date: w?.residence_permit_date ?? null,
     residence_expiry_date: w?.residence_expiry_date ?? null,
+    passport_no: w?.passport_no ?? "",
+    passport_expiry_date: w?.passport_expiry_date ?? null,
+    notion_link: w?.notion_link ?? "",
+    residence_renewal_status: w?.residence_renewal_status ?? "",
+    residence_renewal_todo: w?.residence_renewal_todo ?? "",
     photo_path: w?.photo_path ?? null,
     messenger_link: w?.messenger_link ?? "",
     specialty_grade: w?.specialty_grade ?? "",
@@ -63,7 +68,9 @@ export function WorkerForm({
     setForm((f) => ({ ...f, [key]: value }));
 
   // date input は空文字を返すため null へ正規化する
-  const setDate = (key: "birth" | "residence_permit_date" | "residence_expiry_date") =>
+  const setDate = (
+    key: "birth" | "residence_permit_date" | "residence_expiry_date" | "passport_expiry_date",
+  ) =>
     (e: React.ChangeEvent<HTMLInputElement>) =>
       set(key, e.target.value || null);
 
@@ -197,6 +204,15 @@ export function WorkerForm({
             className={INPUT_CLASS}
           />
         </Field>
+        <Field label="Notion 個人ページのリンク">
+          <input
+            type="url"
+            value={form.notion_link}
+            onChange={(e) => set("notion_link", e.target.value)}
+            placeholder="https://www.notion.so/... または https://app.notion.com/..."
+            className={INPUT_CLASS}
+          />
+        </Field>
         <Field label="健康状態">
           <textarea
             rows={2}
@@ -260,6 +276,28 @@ export function WorkerForm({
             className={TEXTAREA_CLASS}
           />
         </Field>
+      </Fieldset>
+
+      <Fieldset legend="パスポート情報">
+        <Field label="パスポート番号">
+          <input
+            value={form.passport_no}
+            onChange={(e) => set("passport_no", e.target.value)}
+            placeholder="例: C1234567"
+            className={INPUT_CLASS}
+          />
+        </Field>
+        <Field label="パスポート有効期限">
+          <input
+            type="date"
+            value={form.passport_expiry_date ?? ""}
+            onChange={setDate("passport_expiry_date")}
+            className={INPUT_CLASS}
+          />
+        </Field>
+        <p className="px-1 text-[11px] leading-relaxed text-muted">
+          有効期限の半年前になると「パスポート更新必要」に自動で表示されます。
+        </p>
       </Fieldset>
 
       <div className="flex gap-2">

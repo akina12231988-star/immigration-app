@@ -47,6 +47,22 @@ export async function listWorkersBrief(
   return (data as WorkerBrief[]) ?? [];
 }
 
+// 在留更新・パスポート更新の一覧用: 外国人＋現在の所属機関名
+export interface WorkerWithOrg extends Worker {
+  organizations: { name: string } | null;
+}
+
+export async function listWorkersWithOrg(
+  supabase: SupabaseClient,
+): Promise<WorkerWithOrg[]> {
+  const { data, error } = await supabase
+    .from("workers")
+    .select("*, organizations(name)")
+    .order("residence_expiry_date", { ascending: true, nullsFirst: false });
+  if (error) throw error;
+  return (data as WorkerWithOrg[]) ?? [];
+}
+
 export async function insertWorker(
   supabase: SupabaseClient,
   input: WorkerInput,

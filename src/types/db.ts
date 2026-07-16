@@ -29,6 +29,10 @@ export type SupportScope = (typeof SUPPORT_SCOPES)[number];
 export const WORKER_STATUSES = ["支援中", "在籍中", "求職活動中", "帰国", "退職"] as const;
 export type WorkerStatus = (typeof WORKER_STATUSES)[number];
 
+// 在留更新の対応状況（空文字＝未対応・対象）
+export const RESIDENCE_RENEWAL_STATUSES = ["", "準備中", "転職先にて対応中", "帰国"] as const;
+export type ResidenceRenewalStatus = (typeof RESIDENCE_RENEWAL_STATUSES)[number];
+
 export interface Organization {
   id: string;
   name: string;
@@ -57,6 +61,11 @@ export interface Worker {
   residence_status: string; // 現在の在留資格（自由入力）
   residence_permit_date: string | null;
   residence_expiry_date: string | null;
+  passport_no: string; // パスポート番号
+  passport_expiry_date: string | null; // パスポート有効期限
+  notion_link: string; // Notion 個人ページのリンク
+  residence_renewal_status: ResidenceRenewalStatus; // 在留更新の対応状況
+  residence_renewal_todo: string; // Notion 申請TODO番号
   photo_path: string | null; // 顔写真（worker-files バケット）
   messenger_link: string; // Messenger グループ/個人リンク
   specialty_grade: string; // 専門級の合格名
