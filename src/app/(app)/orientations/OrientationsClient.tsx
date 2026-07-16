@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarClock, Check, ExternalLink, GraduationCap, Trash2, XCircle } from "lucide-react";
+import { AlertTriangle, CalendarClock, Check, ExternalLink, GraduationCap, Trash2, XCircle } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -11,10 +11,17 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { createClient } from "@/lib/supabase/client";
 import { deleteOrientation, updateOrientation } from "@/lib/supabase/queries/orientations";
 import { recommendedFileName, recommendedFolderName } from "@/lib/orientation";
+import { todayStr } from "@/lib/application-alerts";
 import { ORIENTATION_STATUSES, type OrientationStatus } from "@/types/db";
 import type { OrientationWithRefs } from "@/lib/supabase/queries/orientations";
 
-type StatusFilter = OrientationStatus | "all";
+// 「overdue」= 実施予定日を過ぎているのにまだ未実施（＝実施可能だが未実施）
+type StatusFilter = OrientationStatus | "overdue" | "all";
+
+// 実施予定日が今日以前で、まだ未実施のもの
+function isOverdue(o: OrientationWithRefs, today: string): boolean {
+  return o.status === "未実施" && o.scheduled_on <= today;
+}
 
 const STATUS_CLASS: Record<OrientationStatus, string> = {
   未実施: "bg-status-notice-bg text-status-notice-fg",
@@ -30,6 +37,7 @@ export function OrientationsClient({
   canEdit: boolean;
 }) {
   const router = useRouter();
+  const today = todayStr();
   const [status, setStatus] = useState<StatusFilter>("未実施");
   const [orgId, setOrgId] = useState<string>("all");
   const [from, setFrom] = useState("");
@@ -50,7 +58,11 @@ export function OrientationsClient({
   const filtered = useMemo(
     () =>
       orientations.filter((o) => {
-        if (status !== "all" && o.status !== status) return false;
+        if (status === "overdue") {
+          if (!isOverdue(o, today)) return false;
+        } else if (status !== "all" && o.status !== status) {
+          return false;
+        }
         if (orgId !== "all") {
           const oid = o.organization_id ?? o.workers?.current_organization_id ?? "";
           if (oid !== orgId) return false;
@@ -59,11 +71,23 @@ export function OrientationsClient({
         if (to && o.scheduled_on > to) return false;
         return true;
       }),
-    [orientations, status, orgId, from, to],
+    [orientations, status, orgId, from, to, today],
+  );
+
+  const overdueCount = useMemo(
+    () => orientations.filter((o) => isOverdue(o, today)).length,
+    [orientations, today],
   );
 
   const countFor = (s: StatusFilter) =>
-    s === "all" ? orientations.length : orientations.filter((o) => o.status === s).length;
+    s === "all"
+      ? orientations.length
+      : s === "overdue"
+        ? overdueCount
+        : orientations.filter((o) => o.status === s).length;
+
+  const tabLabel = (s: StatusFilter) =>
+    s === "all" ? "すべて" : s === "overdue" ? "要実施（予定日超過）" : s;
 
   return (
     <div className="space-y-4">
@@ -72,22 +96,44 @@ export function OrientationsClient({
         特定技能1号の対象者について、雇用開始日から2週間後の日曜を予定日として自動登録します。
       </p>
 
+      {/* 実施予定日を過ぎた未実施へのアラート */}
+      {overdueCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setStatus("overdue")}
+          className="flex w-full items-center gap-2 rounded-xl border border-seal/40 bg-seal/10 px-3 py-2.5 text-left text-sm font-bold text-seal"
+        >
+          <AlertTriangle size={17} className="shrink-0" />
+          <span>
+            実施予定日を過ぎた未実施が{overdueCount}件あります。実施してください。
+          </span>
+        </button>
+      )}
+
       {/* 状態フィルター */}
       <div className="flex flex-wrap gap-2">
-        {(["未実施", "実施済", "実施不可（早期退職）", "all"] as StatusFilter[]).map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => setStatus(s)}
-            className={`rounded-xl border px-3 py-2 text-sm font-bold ${
-              status === s
-                ? "border-brand bg-brand text-brand-foreground"
-                : "border-border bg-surface text-muted"
-            }`}
-          >
-            {s === "all" ? "すべて" : s}（{countFor(s)}）
-          </button>
-        ))}
+        {(["overdue", "未実施", "実施済", "実施不可（早期退職）", "all"] as StatusFilter[]).map((s) => {
+          const active = status === s;
+          const isOverdueTab = s === "overdue";
+          return (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setStatus(s)}
+              className={`rounded-xl border px-3 py-2 text-sm font-bold ${
+                active
+                  ? isOverdueTab
+                    ? "border-seal bg-seal text-white"
+                    : "border-brand bg-brand text-brand-foreground"
+                  : isOverdueTab && overdueCount > 0
+                    ? "border-seal/40 bg-seal/10 text-seal"
+                    : "border-border bg-surface text-muted"
+              }`}
+            >
+              {tabLabel(s)}（{countFor(s)}）
+            </button>
+          );
+        })}
       </div>
 
       {/* 所属機関・対象期間 */}
@@ -145,6 +191,12 @@ export function OrientationsClient({
                 {o.employment_start_on && <span>雇用開始 {o.employment_start_on}</span>}
                 {o.done_on && <span>実施日 {o.done_on}</span>}
               </p>
+              {isOverdue(o, today) && (
+                <p className="mt-2 flex items-center gap-1.5 rounded-lg bg-seal/10 px-2.5 py-1.5 text-xs font-bold text-seal">
+                  <AlertTriangle size={13} className="shrink-0" />
+                  実施予定日を過ぎています。実施してください。
+                </p>
+              )}
               {o.drive_link && (
                 <a href={o.drive_link} target="_blank" rel="noopener noreferrer" className="mt-2 flex items-center gap-1 text-xs font-bold text-brand">
                   <ExternalLink size={13} />
