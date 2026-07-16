@@ -1,36 +1,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { AlertTriangle, CalendarClock, ExternalLink, MessageCircle } from "lucide-react";
+import { AlertTriangle, CalendarClock } from "lucide-react";
 import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { createClient } from "@/lib/supabase/client";
-import { updateWorker, type WorkerWithOrg } from "@/lib/supabase/queries/workers";
-import {
-  isResidenceRenewalTarget,
-  remainingLabel,
-  daysUntil,
-} from "@/lib/worker-alerts";
+import { type WorkerWithOrg } from "@/lib/supabase/queries/workers";
+import { isResidenceRenewalTarget } from "@/lib/worker-alerts";
 import { todayStr } from "@/lib/application-alerts";
-import { RESIDENCE_RENEWAL_STATUSES, type ResidenceRenewalStatus } from "@/types/db";
+import { type ResidenceRenewalStatus } from "@/types/db";
+import {
+  WorkerRenewalCard,
+  RENEWAL_STATUS_LABEL as STATUS_LABEL,
+} from "@/components/workers/WorkerRenewalCard";
 
 type HandlingFilter = ResidenceRenewalStatus | "all";
-
-const STATUS_LABEL: Record<ResidenceRenewalStatus, string> = {
-  "": "未対応",
-  準備中: "準備中",
-  転職先にて対応中: "転職先にて対応中",
-  帰国: "帰国",
-};
-
-const STATUS_CLASS: Record<ResidenceRenewalStatus, string> = {
-  "": "bg-seal/10 text-seal",
-  準備中: "bg-status-applied-bg text-status-applied-fg",
-  転職先にて対応中: "bg-status-notice-bg text-status-notice-fg",
-  帰国: "bg-background text-muted",
-};
 
 export function RenewalsClient({
   workers,
@@ -103,136 +85,16 @@ export function RenewalsClient({
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {filtered.map((w) => (
-            <RenewalRow key={w.id} worker={w} today={today} canEdit={canEdit} />
+            <WorkerRenewalCard
+              key={w.id}
+              worker={w}
+              orgName={w.organizations?.name ?? null}
+              today={today}
+              canEdit={canEdit}
+            />
           ))}
         </div>
       )}
     </div>
-  );
-}
-
-function RenewalRow({
-  worker,
-  today,
-  canEdit,
-}: {
-  worker: WorkerWithOrg;
-  today: string;
-  canEdit: boolean;
-}) {
-  const router = useRouter();
-  const [todo, setTodo] = useState(worker.residence_renewal_todo ?? "");
-  const [status, setStatus] = useState<ResidenceRenewalStatus>(worker.residence_renewal_status);
-  const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const expiry = worker.residence_expiry_date ?? "";
-  const days = expiry ? daysUntil(expiry, today) : 0;
-  const overdue = days < 0;
-
-  const onTodoChange = (v: string) => {
-    setTodo(v);
-    setSaved(false);
-    // TODO番号を入れたら、未対応のときは自動で「準備中」に
-    if (v.trim() && status === "") setStatus("準備中");
-  };
-
-  const save = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      await updateWorker(createClient(), worker.id, {
-        residence_renewal_todo: todo.trim(),
-        residence_renewal_status: status,
-      });
-      setSaved(true);
-      router.refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "保存に失敗しました");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const INPUT = "min-h-[40px] w-full rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none";
-
-  return (
-    <Card className={`p-4 ${status === "" && overdue ? "border-seal" : ""}`}>
-      <div className="mb-1 flex items-start justify-between gap-2">
-        <Link href={`/workers/${worker.id}`} className="min-w-0">
-          <p className="truncate font-bold">{worker.name}</p>
-          <p className="truncate text-xs text-muted">
-            {worker.organizations?.name ?? "所属機関未設定"}
-            {worker.nationality && ` ・ ${worker.nationality}`}
-          </p>
-        </Link>
-        <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${STATUS_CLASS[status]}`}>
-          {STATUS_LABEL[status]}
-        </span>
-      </div>
-
-      <p className="flex flex-wrap items-center gap-x-2 text-xs tabular-nums text-muted">
-        <span className="flex items-center gap-1">
-          <CalendarClock size={12} />
-          在留期限 {expiry || "未登録"}
-        </span>
-        {expiry && (
-          <span className={`font-bold ${overdue ? "text-seal" : "text-status-applied-fg"}`}>
-            （{remainingLabel(expiry, today)}）
-          </span>
-        )}
-      </p>
-
-      <div className="mt-2 flex flex-wrap gap-3">
-        {worker.notion_link && (
-          <a href={worker.notion_link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs font-bold text-brand">
-            <ExternalLink size={13} />
-            Notionを開く
-          </a>
-        )}
-        {worker.messenger_link && (
-          <a href={worker.messenger_link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs font-bold text-brand">
-            <MessageCircle size={13} />
-            Messenger
-          </a>
-        )}
-      </div>
-
-      {canEdit && (
-        <div className="mt-3 space-y-2 border-t border-border pt-3">
-          {error && <p className="rounded-lg bg-seal/10 px-2.5 py-1.5 text-xs text-seal">{error}</p>}
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-bold text-muted">Notion 申請TODO番号</span>
-            <input
-              value={todo}
-              onChange={(e) => onTodoChange(e.target.value)}
-              placeholder="例: TODO-1234"
-              className={INPUT}
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-bold text-muted">対応状況</span>
-            <select
-              value={status}
-              onChange={(e) => {
-                setStatus(e.target.value as ResidenceRenewalStatus);
-                setSaved(false);
-              }}
-              className={INPUT}
-            >
-              {RESIDENCE_RENEWAL_STATUSES.map((s) => (
-                <option key={s || "pending"} value={s}>
-                  {STATUS_LABEL[s]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <Button fullWidth disabled={busy} onClick={save}>
-            {busy ? "保存中…" : saved ? "保存しました" : "保存する"}
-          </Button>
-        </div>
-      )}
-    </Card>
   );
 }

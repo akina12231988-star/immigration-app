@@ -16,6 +16,7 @@ import { SswStatusBadge, SupportBadge, WorkerStatusBadge } from "@/components/wo
 import { calcSsw, todayStr, type SswCalcResult } from "@/lib/ssw/calc";
 import { toCalcHistory } from "@/lib/supabase/queries/histories";
 import { isResidenceRenewalTarget } from "@/lib/worker-alerts";
+import { WorkerRenewalCard } from "@/components/workers/WorkerRenewalCard";
 import type { Organization, WorkerWithHistories } from "@/types/db";
 
 interface Row {
@@ -188,6 +189,23 @@ export function WorkersExplorer({
             ? "まだ登録がありません。「外国人を登録」から追加してください。"
             : "条件に合う外国人が見つかりません"}
         </p>
+      ) : filter.quick === "expiry3m" ? (
+        /* 「在留期限3ヶ月以内」は在留更新対象ページと同じカード表示にする */
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {filtered.map(({ worker }) => (
+            <WorkerRenewalCard
+              key={worker.id}
+              worker={worker}
+              orgName={
+                worker.current_organization_id
+                  ? (orgNames.get(worker.current_organization_id) ?? null)
+                  : null
+              }
+              today={todayStr()}
+              canEdit={canEdit}
+            />
+          ))}
+        </div>
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {filtered.map(({ worker, calc }) => (
