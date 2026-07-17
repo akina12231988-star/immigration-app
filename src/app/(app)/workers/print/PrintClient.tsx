@@ -9,6 +9,7 @@ import type { Organization } from "@/types/db";
 
 export interface PrintWorker {
   id: string;
+  workerCode: string;
   name: string;
   kana: string;
   nationality: string;
@@ -224,6 +225,7 @@ export function PrintClient({
 
 const LIST_COLS = [
   "No.",
+  "ID",
   "氏名",
   "フリガナ",
   "生年月日",
@@ -258,18 +260,23 @@ function WorkerListSheet({
 
   return (
     <div className="list-sheet mx-auto max-w-[297mm] bg-white p-[8mm] text-black">
-      <div className="mb-2 flex items-end justify-between border-b-2 border-black pb-1">
-        <div>
-          <h2 className="text-lg font-black">外国人 一覧表</h2>
-          <p className="text-[11px]">
-            {orgName ? `所属機関: ${orgName}　` : ""}在留許可日: {period}　該当 {workers.length} 名
-          </p>
-        </div>
-        <p className="text-[11px] text-gray-500">印刷日: {printDate}</p>
-      </div>
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-[10px] leading-tight">
+          {/* thead はページをまたぐと各ページ先頭に繰り返し表示される（見出し＋列名を毎ページに） */}
           <thead>
+            <tr>
+              <th colSpan={LIST_COLS.length} className="border border-gray-400 p-0">
+                <div className="flex items-end justify-between border-b-2 border-black px-1.5 py-1">
+                  <div className="text-left">
+                    <span className="text-base font-black">外国人 一覧表</span>
+                    <span className="ml-2 text-[10px] font-normal">
+                      {orgName ? `所属機関: ${orgName}　` : ""}在留許可日: {period}　該当 {workers.length} 名
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-normal text-gray-500">印刷日: {printDate}</span>
+                </div>
+              </th>
+            </tr>
             <tr className="bg-gray-100">
               {LIST_COLS.map((h) => (
                 <th key={h} className="border border-gray-400 px-1 py-0.5 text-left font-bold">
@@ -282,6 +289,7 @@ function WorkerListSheet({
             {workers.map((w, i) => (
               <tr key={w.id}>
                 <td className={`${TD} text-right tabular-nums`}>{i + 1}</td>
+                <td className={`${TD} font-bold tabular-nums`}>{w.workerCode}</td>
                 <td className={`${TD} font-bold`}>{w.name}</td>
                 <td className={TD}>{w.kana}</td>
                 <td className={`${TD} tabular-nums`}>{fmt(w.birth)}</td>
@@ -334,7 +342,10 @@ function WorkerSheet({
     <div className="worker-sheet mx-auto mb-6 max-w-[210mm] border border-border bg-white p-[12mm] text-black print:mb-0 print:border-0">
       <div className="mb-4 flex items-start justify-between border-b-2 border-black pb-2">
         <div>
-          <h2 className="text-2xl font-black">{worker.name}</h2>
+          <h2 className="text-2xl font-black">
+            {worker.name}
+            {!forCompany && worker.workerCode && `（${worker.workerCode}）`}
+          </h2>
           <p className="text-sm">{orgName}</p>
         </div>
         <p className="text-xs text-gray-500">印刷日: {printDate}</p>

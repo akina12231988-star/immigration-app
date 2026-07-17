@@ -83,6 +83,7 @@ export interface Worker {
   specialty_grade: string; // 専門級の合格名
   other_qualifications: string; // その他の資格・合格名
   note: string;
+  worker_code: string | null; // 外国人ID（例: V-1）。自動採番
   legacy_id: string | null;
   created_by: string | null;
   created_at: string;
@@ -108,10 +109,10 @@ export interface WorkerWithHistories extends Worker {
   work_histories: WorkHistoryRow[];
 }
 
-// フォーム入力（IDや監査列を除いた編集可能フィールド）
+// フォーム入力（IDや監査列を除いた編集可能フィールド）。worker_code は自動採番のため除外
 export type WorkerInput = Omit<
   Worker,
-  "id" | "legacy_id" | "created_by" | "created_at" | "updated_at"
+  "id" | "worker_code" | "legacy_id" | "created_by" | "created_at" | "updated_at"
 >;
 
 export type WorkHistoryInput = Omit<

@@ -145,7 +145,14 @@ export function WorkerDetail({
           <div className="flex min-w-0 items-center gap-3">
             <WorkerPhoto workerId={worker.id} photoPath={worker.photo_path} canEdit={canEdit} />
             <div className="min-w-0">
-              <p className="text-lg font-black">{worker.name}</p>
+              <p className="text-lg font-black">
+                {worker.name}
+                {worker.worker_code && (
+                  <span className="ml-2 align-middle text-xs font-bold text-brand">
+                    ID {worker.worker_code}
+                  </span>
+                )}
+              </p>
               {worker.kana && <p className="text-xs text-muted">{worker.kana}</p>}
               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
                 {worker.messenger_link && (

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Worker, WorkerInput, WorkerWithHistories } from "@/types/db";
 import type { ParsedWorker } from "@/lib/ssw/import";
+import { letterForNationality, nextWorkerCode } from "@/lib/worker-code";
 
 // 一覧用: 全外国人＋職歴を一括取得（通算計算はクライアント側で行う）
 export async function listWorkersWithHistories(
@@ -63,13 +64,28 @@ export async function listWorkersWithOrg(
   return (data as WorkerWithOrg[]) ?? [];
 }
 
+// 外国人IDを国籍から自動採番する（例: V-3）
+async function generateWorkerCode(
+  supabase: SupabaseClient,
+  nationality: string,
+): Promise<string> {
+  const letter = letterForNationality(nationality);
+  const { data } = await supabase
+    .from("workers")
+    .select("worker_code")
+    .like("worker_code", `${letter}-%`);
+  const codes = ((data as { worker_code: string | null }[]) ?? []).map((r) => r.worker_code);
+  return nextWorkerCode(letter, codes);
+}
+
 export async function insertWorker(
   supabase: SupabaseClient,
   input: WorkerInput,
 ): Promise<Worker> {
+  const worker_code = await generateWorkerCode(supabase, input.nationality);
   const { data, error } = await supabase
     .from("workers")
-    .insert(input)
+    .insert({ ...input, worker_code })
     .select()
     .single();
   if (error) throw error;

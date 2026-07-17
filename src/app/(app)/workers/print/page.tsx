@@ -66,6 +66,7 @@ export default async function WorkersPrintPage({
       const orgId = w.current_organization_id;
       return {
         id: w.id,
+        workerCode: w.worker_code ?? "",
         name: w.name,
         kana: w.kana,
         nationality: w.nationality,
