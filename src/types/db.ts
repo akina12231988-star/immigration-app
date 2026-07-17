@@ -74,6 +74,10 @@ export interface Worker {
   residence_renewal_todo: string; // Notion 申請TODO番号
   leaving_on: string | null; // 退職日
   leaving_todo: string; // 退職時のNotion申請TODO番号
+  gender: string; // 性別
+  employment_start_on: string | null; // 雇用開始年月日
+  assigned_office: string; // 配属先営業所
+  residence_note: string; // 居住先（社宅・自分のアパート など）
   photo_path: string | null; // 顔写真（worker-files バケット）
   messenger_link: string; // Messenger グループ/個人リンク
   specialty_grade: string; // 専門級の合格名

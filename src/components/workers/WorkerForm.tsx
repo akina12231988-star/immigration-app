@@ -35,6 +35,10 @@ function toInput(w: Worker | null): WorkerInput {
     residence_renewal_todo: w?.residence_renewal_todo ?? "",
     leaving_on: w?.leaving_on ?? null,
     leaving_todo: w?.leaving_todo ?? "",
+    gender: w?.gender ?? "",
+    employment_start_on: w?.employment_start_on ?? null,
+    assigned_office: w?.assigned_office ?? "",
+    residence_note: w?.residence_note ?? "",
     photo_path: w?.photo_path ?? null,
     messenger_link: w?.messenger_link ?? "",
     specialty_grade: w?.specialty_grade ?? "",
@@ -76,7 +80,8 @@ export function WorkerForm({
       | "residence_permit_date"
       | "residence_expiry_date"
       | "passport_expiry_date"
-      | "leaving_on",
+      | "leaving_on"
+      | "employment_start_on",
   ) =>
     (e: React.ChangeEvent<HTMLInputElement>) =>
       set(key, e.target.value || null);
@@ -133,6 +138,13 @@ export function WorkerForm({
             <input type="date" value={form.birth ?? ""} onChange={setDate("birth")} className={INPUT_CLASS} />
           </Field>
         </div>
+        <Field label="性別">
+          <select value={form.gender} onChange={(e) => set("gender", e.target.value)} className={INPUT_CLASS}>
+            <option value="">未設定</option>
+            <option value="男">男</option>
+            <option value="女">女</option>
+          </select>
+        </Field>
         <Field label="特定産業分野・職種">
           <input
             value={form.field}
@@ -221,6 +233,32 @@ export function WorkerForm({
               </option>
             ))}
           </select>
+        </Field>
+        <div className="grid grid-cols-2 gap-2.5">
+          <Field label="雇用開始年月日">
+            <input
+              type="date"
+              value={form.employment_start_on ?? ""}
+              onChange={setDate("employment_start_on")}
+              className={INPUT_CLASS}
+            />
+          </Field>
+          <Field label="配属先営業所">
+            <input
+              value={form.assigned_office}
+              onChange={(e) => set("assigned_office", e.target.value)}
+              placeholder="例: 熊本営業所"
+              className={INPUT_CLASS}
+            />
+          </Field>
+        </div>
+        <Field label="居住先">
+          <input
+            value={form.residence_note}
+            onChange={(e) => set("residence_note", e.target.value)}
+            placeholder="例: 社宅 / 自分のアパート"
+            className={INPUT_CLASS}
+          />
         </Field>
         <Field label="Messenger グループ/個人リンク">
           <input

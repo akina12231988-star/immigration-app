@@ -13,6 +13,7 @@ export interface PrintWorker {
   kana: string;
   nationality: string;
   birth: string | null;
+  gender: string;
   residenceCardNo: string;
   field: string;
   specialtyGrade: string;
@@ -20,6 +21,10 @@ export interface PrintWorker {
   residenceStatus: string;
   residencePermitDate: string | null;
   residenceExpiryDate: string | null;
+  employmentStartOn: string | null;
+  leavingOn: string | null;
+  assignedOffice: string;
+  residenceNote: string;
   messengerLink: string;
   orgName: string;
   photoUrl: string;
@@ -35,6 +40,7 @@ export function PrintClient({
   from,
   to,
   forCompany,
+  forList,
   workers,
 }: {
   organizations: Organization[];
@@ -44,6 +50,7 @@ export function PrintClient({
   from: string;
   to: string;
   forCompany: boolean;
+  forList: boolean;
   workers: PrintWorker[];
 }) {
   const router = useRouter();
@@ -58,7 +65,7 @@ export function PrintClient({
     const nextTo = patch.to ?? to;
     if (nextFrom) p.set("from", nextFrom);
     if (nextTo) p.set("to", nextTo);
-    const nextMode = patch.mode ?? (forCompany ? "company" : "internal");
+    const nextMode = patch.mode ?? (forList ? "list" : forCompany ? "company" : "internal");
     p.set("mode", nextMode);
     return `/workers/print?${p.toString()}`;
   };
@@ -75,23 +82,51 @@ export function PrintClient({
         </div>
 
         <div className="space-y-3 px-4 py-4 lg:px-8">
-          {/* 印刷用途の切替（社内用=Messenger QRあり / 会社提出用=QRなし） */}
-          <div className="flex rounded-xl border border-border p-0.5">
-            <button
-              type="button"
-              onClick={() => router.push(buildUrl({ mode: "internal" }))}
-              className={`flex-1 rounded-lg py-2 text-sm font-bold ${!forCompany ? "bg-brand text-brand-foreground" : "text-muted"}`}
-            >
-              社内用（QRあり）
-            </button>
-            <button
-              type="button"
-              onClick={() => router.push(buildUrl({ mode: "company" }))}
-              className={`flex-1 rounded-lg py-2 text-sm font-bold ${forCompany ? "bg-brand text-brand-foreground" : "text-muted"}`}
-            >
-              会社提出用（QRなし）
-            </button>
-          </div>
+          {/* 印刷用途の切替（社内用=QRあり / 会社提出用=QRなし / 一覧表=まとめて1表） */}
+          {!individual && (
+            <div className="flex rounded-xl border border-border p-0.5">
+              <button
+                type="button"
+                onClick={() => router.push(buildUrl({ mode: "internal" }))}
+                className={`flex-1 rounded-lg py-2 text-sm font-bold ${!forCompany && !forList ? "bg-brand text-brand-foreground" : "text-muted"}`}
+              >
+                社内用（QRあり）
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push(buildUrl({ mode: "company" }))}
+                className={`flex-1 rounded-lg py-2 text-sm font-bold ${forCompany ? "bg-brand text-brand-foreground" : "text-muted"}`}
+              >
+                会社提出用（QRなし）
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push(buildUrl({ mode: "list" }))}
+                className={`flex-1 rounded-lg py-2 text-sm font-bold ${forList ? "bg-brand text-brand-foreground" : "text-muted"}`}
+              >
+                一覧表
+              </button>
+            </div>
+          )}
+          {/* 個人単位のときは用途切替（社内/会社提出）だけ表示 */}
+          {individual && (
+            <div className="flex rounded-xl border border-border p-0.5">
+              <button
+                type="button"
+                onClick={() => router.push(buildUrl({ mode: "internal" }))}
+                className={`flex-1 rounded-lg py-2 text-sm font-bold ${!forCompany ? "bg-brand text-brand-foreground" : "text-muted"}`}
+              >
+                社内用（QRあり）
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push(buildUrl({ mode: "company" }))}
+                className={`flex-1 rounded-lg py-2 text-sm font-bold ${forCompany ? "bg-brand text-brand-foreground" : "text-muted"}`}
+              >
+                会社提出用（QRなし）
+              </button>
+            </div>
+          )}
 
           {!individual && (
             <>
@@ -138,22 +173,33 @@ export function PrintClient({
               印刷する（{workers.length}名）
             </button>
           )}
-          {!individual && selectedOrg && workers.length === 0 && (
+          {!individual && (selectedOrg || from || to) && workers.length === 0 && (
             <p className="text-sm text-muted">条件に合う外国人が見つかりません。</p>
+          )}
+          {forList && !selectedOrg && !from && !to && (
+            <p className="text-sm text-muted">所属機関または在留許可日の期間を指定すると、一覧表を作成できます。</p>
           )}
         </div>
       </div>
 
-      {/* 印刷本体: 1人1ページ */}
-      <div className="print-root">
-        {workers.map((w) => (
-          <WorkerSheet key={w.id} worker={w} orgName={w.orgName || orgName} printDate={printDate} forCompany={forCompany} />
-        ))}
-      </div>
+      {/* 印刷本体 */}
+      {forList ? (
+        <div className="print-root">
+          {workers.length > 0 && (
+            <WorkerListSheet workers={workers} orgName={orgName} from={from} to={to} printDate={printDate} />
+          )}
+        </div>
+      ) : (
+        <div className="print-root">
+          {workers.map((w) => (
+            <WorkerSheet key={w.id} worker={w} orgName={w.orgName || orgName} printDate={printDate} forCompany={forCompany} />
+          ))}
+        </div>
+      )}
 
       <style jsx global>{`
         @page {
-          size: A4;
+          size: A4 portrait;
           margin: 0;
         }
         @media print {
@@ -166,9 +212,94 @@ export function PrintClient({
             page-break-after: always;
             box-sizing: border-box;
           }
+          .list-sheet {
+            width: 210mm;
+            box-sizing: border-box;
+          }
         }
       `}</style>
     </>
+  );
+}
+
+const LIST_COLS = [
+  "No.",
+  "氏名",
+  "フリガナ",
+  "生年月日",
+  "性別",
+  "現在の在留資格",
+  "在留許可日",
+  "在留期限",
+  "国籍",
+  "雇用開始年月日",
+  "退職年月日",
+  "配属先営業所",
+  "居住先",
+];
+
+// 在留許可日の期間で絞った外国人の一覧表（A4縦・1表にまとめる）
+function WorkerListSheet({
+  workers,
+  orgName,
+  from,
+  to,
+  printDate,
+}: {
+  workers: PrintWorker[];
+  orgName: string;
+  from: string;
+  to: string;
+  printDate: string;
+}) {
+  const fmt = (d: string | null) => (d ? d.replace(/-/g, "/") : "");
+  const period = from || to ? `${fmt(from) || "…"} 〜 ${fmt(to) || "…"}` : "全期間";
+  const TD = "border border-gray-400 px-1 py-0.5 align-top";
+
+  return (
+    <div className="list-sheet mx-auto max-w-[210mm] bg-white p-[8mm] text-black">
+      <div className="mb-2 flex items-end justify-between border-b-2 border-black pb-1">
+        <div>
+          <h2 className="text-lg font-black">外国人 一覧表</h2>
+          <p className="text-[10px]">
+            {orgName ? `所属機関: ${orgName}　` : ""}在留許可日: {period}　該当 {workers.length} 名
+          </p>
+        </div>
+        <p className="text-[10px] text-gray-500">印刷日: {printDate}</p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-[8px] leading-tight">
+          <thead>
+            <tr className="bg-gray-100">
+              {LIST_COLS.map((h) => (
+                <th key={h} className="border border-gray-400 px-1 py-0.5 text-left font-bold">
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {workers.map((w, i) => (
+              <tr key={w.id}>
+                <td className={`${TD} text-right tabular-nums`}>{i + 1}</td>
+                <td className={`${TD} font-bold`}>{w.name}</td>
+                <td className={TD}>{w.kana}</td>
+                <td className={`${TD} tabular-nums`}>{fmt(w.birth)}</td>
+                <td className={`${TD} text-center`}>{w.gender}</td>
+                <td className={TD}>{w.residenceStatus}</td>
+                <td className={`${TD} tabular-nums`}>{fmt(w.residencePermitDate)}</td>
+                <td className={`${TD} tabular-nums`}>{fmt(w.residenceExpiryDate)}</td>
+                <td className={TD}>{w.nationality}</td>
+                <td className={`${TD} tabular-nums`}>{fmt(w.employmentStartOn)}</td>
+                <td className={`${TD} tabular-nums`}>{fmt(w.leavingOn)}</td>
+                <td className={TD}>{w.assignedOffice}</td>
+                <td className={TD}>{w.residenceNote}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 
