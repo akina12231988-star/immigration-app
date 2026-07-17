@@ -483,8 +483,14 @@ function DocumentTotalPanel({ histories }: { histories: WorkHistory[] }) {
   const hasData = calc.counted.length > 0;
 
   const copy = async () => {
+    const lines = calc.hist.map((h) => {
+      const period = `${h.start}〜${h.end || "継続中"}`;
+      const detail = [h.visa, h.org, h.role].filter(Boolean).join("　");
+      return `${period}　${detail}`;
+    });
+    const text = `【職歴】\n${lines.join("\n")}\n\n【申請書記載】${shinsei}`;
     try {
-      await navigator.clipboard.writeText(shinsei);
+      await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
     } catch {
@@ -526,10 +532,11 @@ function DocumentTotalPanel({ histories }: { histories: WorkHistory[] }) {
           </div>
           <Button
             variant="secondary"
+            fullWidth
             icon={copied ? <Check size={15} /> : <Copy size={15} />}
             onClick={copy}
           >
-            {copied ? "コピーしました" : "申請書記載をコピー"}
+            {copied ? "コピーしました" : "職歴と申請書記載をコピー"}
           </Button>
         </div>
       )}
