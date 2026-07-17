@@ -42,6 +42,7 @@ export function PrintClient({
   to,
   forCompany,
   forList,
+  listForCompany,
   workers,
 }: {
   organizations: Organization[];
@@ -52,6 +53,7 @@ export function PrintClient({
   to: string;
   forCompany: boolean;
   forList: boolean;
+  listForCompany: boolean;
   workers: PrintWorker[];
 }) {
   const router = useRouter();
@@ -66,7 +68,9 @@ export function PrintClient({
     const nextTo = patch.to ?? to;
     if (nextFrom) p.set("from", nextFrom);
     if (nextTo) p.set("to", nextTo);
-    const nextMode = patch.mode ?? (forList ? "list" : forCompany ? "company" : "internal");
+    const nextMode =
+      patch.mode ??
+      (forList ? (listForCompany ? "list-company" : "list") : forCompany ? "company" : "internal");
     p.set("mode", nextMode);
     return `/workers/print?${p.toString()}`;
   };
@@ -129,6 +133,25 @@ export function PrintClient({
             </div>
           )}
 
+          {forList && (
+            <div className="flex max-w-md rounded-xl border border-border p-0.5">
+              <button
+                type="button"
+                onClick={() => router.push(buildUrl({ mode: "list" }))}
+                className={`flex-1 rounded-lg py-2 text-sm font-bold ${!listForCompany ? "bg-brand text-brand-foreground" : "text-muted"}`}
+              >
+                社内用（IDあり）
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push(buildUrl({ mode: "list-company" }))}
+                className={`flex-1 rounded-lg py-2 text-sm font-bold ${listForCompany ? "bg-brand text-brand-foreground" : "text-muted"}`}
+              >
+                会社提出用（IDなし）
+              </button>
+            </div>
+          )}
+
           {!individual && (
             <>
               <label className="flex flex-col gap-1">
@@ -187,7 +210,14 @@ export function PrintClient({
       {forList ? (
         <div className="print-root">
           {workers.length > 0 && (
-            <WorkerListSheet workers={workers} orgName={orgName} from={from} to={to} printDate={printDate} />
+            <WorkerListSheet
+              workers={workers}
+              orgName={orgName}
+              from={from}
+              to={to}
+              printDate={printDate}
+              showId={!listForCompany}
+            />
           )}
         </div>
       ) : (
@@ -247,16 +277,20 @@ function WorkerListSheet({
   from,
   to,
   printDate,
+  showId,
 }: {
   workers: PrintWorker[];
   orgName: string;
   from: string;
   to: string;
   printDate: string;
+  showId: boolean;
 }) {
   const fmt = (d: string | null) => (d ? d.replace(/-/g, "/") : "");
   const period = from || to ? `${fmt(from) || "…"} 〜 ${fmt(to) || "…"}` : "全期間";
   const TD = "border border-gray-400 px-1 py-0.5 align-top";
+  // ID列は社内用のみ。会社提出用（showId=false）では出さない
+  const cols = showId ? LIST_COLS : LIST_COLS.filter((c) => c !== "ID");
 
   return (
     <div className="list-sheet mx-auto max-w-[297mm] bg-white p-[8mm] text-black">
@@ -265,7 +299,7 @@ function WorkerListSheet({
           {/* thead はページをまたぐと各ページ先頭に繰り返し表示される（見出し＋列名を毎ページに） */}
           <thead>
             <tr>
-              <th colSpan={LIST_COLS.length} className="border border-gray-400 p-0">
+              <th colSpan={cols.length} className="border border-gray-400 p-0">
                 <div className="flex items-end justify-between border-b-2 border-black px-1.5 py-1">
                   <div className="text-left">
                     <span className="text-base font-black">外国人 一覧表</span>
@@ -278,7 +312,7 @@ function WorkerListSheet({
               </th>
             </tr>
             <tr className="bg-gray-100">
-              {LIST_COLS.map((h) => (
+              {cols.map((h) => (
                 <th key={h} className="border border-gray-400 px-1 py-0.5 text-left font-bold">
                   {h}
                 </th>
@@ -289,7 +323,7 @@ function WorkerListSheet({
             {workers.map((w, i) => (
               <tr key={w.id}>
                 <td className={`${TD} text-right tabular-nums`}>{i + 1}</td>
-                <td className={`${TD} font-bold tabular-nums`}>{w.workerCode}</td>
+                {showId && <td className={`${TD} font-bold tabular-nums`}>{w.workerCode}</td>}
                 <td className={`${TD} font-bold`}>{w.name}</td>
                 <td className={TD}>{w.kana}</td>
                 <td className={`${TD} tabular-nums`}>{fmt(w.birth)}</td>

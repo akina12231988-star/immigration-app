@@ -24,7 +24,8 @@ export default async function WorkersPrintPage({
 
   const { org, worker: workerParam, from, to, mode } = await searchParams;
   const forCompany = mode === "company"; // 会社提出用（MessengerのQRを消す）
-  const forList = mode === "list"; // 一覧表（在留許可日の期間で絞った一覧を印刷）
+  const forList = mode === "list" || mode === "list-company"; // 一覧表
+  const listForCompany = mode === "list-company"; // 会社提出用の一覧表（IDを出さない）
   const supabase = await createClient();
   const organizations = await listOrganizations(supabase);
 
@@ -104,6 +105,7 @@ export default async function WorkersPrintPage({
       to={to ?? ""}
       forCompany={forCompany}
       forList={forList}
+      listForCompany={listForCompany}
       workers={printWorkers}
     />
   );
