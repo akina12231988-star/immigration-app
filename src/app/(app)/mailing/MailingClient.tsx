@@ -1,9 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
+import { Plus } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
+import { Combobox } from "@/components/ui/Combobox";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -105,10 +108,12 @@ function useToast() {
 export function MailingClient({
   initialMunicipalities,
   initialRecords,
+  workers = [],
   canEdit,
 }: {
   initialMunicipalities: Municipality[];
   initialRecords: JudgmentRecord[];
+  workers?: { id: string; name: string }[];
   canEdit: boolean;
 }) {
   const [tab, setTab] = useState<"judge" | "muni" | "records">("judge");
@@ -155,6 +160,7 @@ export function MailingClient({
           municipalities={municipalities}
           records={records}
           setRecords={setRecords}
+          workers={workers}
           canEdit={canEdit}
           showToast={showToast}
         />
@@ -367,12 +373,14 @@ function JudgeTab({
   municipalities,
   records,
   setRecords,
+  workers,
   canEdit,
   showToast,
 }: {
   municipalities: Municipality[];
   records: JudgmentRecord[];
   setRecords: (r: JudgmentRecord[]) => void;
+  workers: { id: string; name: string }[];
   canEdit: boolean;
   showToast: (m: string) => void;
 }) {
@@ -386,7 +394,15 @@ function JudgeTab({
   const [busy, setBusy] = useState(false);
 
   const [personName, setPersonName] = useState("");
+  const [workerId, setWorkerId] = useState("");
   const [todoNumber, setTodoNumber] = useState("");
+
+  const workerOptions = useMemo(() => workers.map((w) => ({ id: w.id, label: w.name })), [workers]);
+  const onSelectPerson = (id: string) => {
+    setWorkerId(id);
+    const w = workers.find((x) => x.id === id);
+    setPersonName(w?.name ?? "");
+  };
   const [mainAlt, setMainAlt] = useState("");
   const [nhiAlt, setNhiAlt] = useState("");
 
@@ -488,6 +504,7 @@ function JudgeTab({
     const record: JudgmentRecord = {
       ...result,
       personName: personName.trim(),
+      workerId: workerId || undefined,
       todoNumber: todoNumber.trim(),
       mainAlternativeNote: mainAlt.trim(),
       nhiAlternativeNote: result.hasNhi ? nhiAlt.trim() : "",
@@ -514,10 +531,21 @@ function JudgeTab({
         <p className="mb-1 text-sm font-bold">対象者情報</p>
         <p className="mb-3 text-xs text-muted">記録として残すための情報です（判定ロジックには使用しません）</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <label className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1">
             <span className={LABEL}>外国人の氏名</span>
-            <input value={personName} onChange={(e) => setPersonName(e.target.value)} placeholder="例：グエン・ヴァン・A" className={INPUT} />
-          </label>
+            <Combobox
+              options={workerOptions}
+              value={workerId}
+              onChange={onSelectPerson}
+              placeholder="氏名を入力して検索"
+            />
+            {!workerId && (
+              <Link href="/workers/new" className="mt-0.5 inline-flex items-center gap-1 text-xs font-bold text-brand">
+                <Plus size={13} />
+                一覧にいない場合は新規登録
+              </Link>
+            )}
+          </div>
           <label className="flex flex-col gap-1">
             <span className={LABEL}>TODO番号</span>
             <input value={todoNumber} onChange={(e) => setTodoNumber(e.target.value)} placeholder="管理しているTODO番号" className={INPUT} />
@@ -982,7 +1010,13 @@ function RecordsTab({
             <Card key={r.id} className="p-4">
               <div className="mb-2 flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="truncate font-bold">{r.personName || "（氏名未入力）"}</p>
+                  {r.workerId ? (
+                    <Link href={`/workers/${r.workerId}`} className="truncate font-bold text-brand hover:underline">
+                      {r.personName || "（氏名未入力）"}
+                    </Link>
+                  ) : (
+                    <p className="truncate font-bold">{r.personName || "（氏名未入力）"}</p>
+                  )}
                   <p className="truncate text-xs text-muted">
                     {r.todoNumber ? `TODO ${r.todoNumber} ・ ` : ""}
                     {new Date(r.createdAt).toLocaleString("ja-JP", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}

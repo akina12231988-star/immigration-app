@@ -6,6 +6,7 @@ import {
   listMunicipalities,
   listJudgmentRecords,
 } from "@/lib/supabase/queries/tax-cert";
+import { listWorkersBrief } from "@/lib/supabase/queries/workers";
 import { MailingClient } from "./MailingClient";
 
 export const dynamic = "force-dynamic";
@@ -15,9 +16,10 @@ export default async function MailingPage() {
   if (!me) redirect("/login");
 
   const supabase = await createClient();
-  const [municipalities, records] = await Promise.all([
+  const [municipalities, records, workers] = await Promise.all([
     listMunicipalities(supabase).catch(() => []),
     listJudgmentRecords(supabase).catch(() => []),
+    listWorkersBrief(supabase).catch(() => []),
   ]);
 
   return (
@@ -26,6 +28,7 @@ export default async function MailingPage() {
       <MailingClient
         initialMunicipalities={municipalities}
         initialRecords={records}
+        workers={workers.map((w) => ({ id: w.id, name: w.name }))}
         canEdit={me.role !== "viewer"}
       />
     </>

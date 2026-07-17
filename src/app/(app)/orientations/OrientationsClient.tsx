@@ -275,6 +275,7 @@ function NewOrientationDialog({
   const [scheduledOn, setScheduledOn] = useState("");
   const [employmentStartOn, setEmploymentStartOn] = useState("");
   const [status, setStatus] = useState<OrientationStatus>("未実施");
+  const [doneOn, setDoneOn] = useState(today);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -304,6 +305,10 @@ function NewOrientationDialog({
       setError("実施予定日を入力してください");
       return;
     }
+    if (status === "実施済" && !doneOn) {
+      setError("実施日を入力してください");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -314,7 +319,7 @@ function NewOrientationDialog({
         scheduled_on: scheduledOn,
         employment_start_on: employmentStartOn || null,
         status,
-        done_on: status === "実施済" ? today : null,
+        done_on: status === "実施済" ? doneOn || null : null,
         drive_link: "",
         note,
       });
@@ -344,6 +349,12 @@ function NewOrientationDialog({
             onChange={onSelectWorker}
             placeholder="氏名で検索して選択"
           />
+          {!workerId && (
+            <Link href="/workers/new" className="mt-0.5 inline-flex items-center gap-1 text-xs font-bold text-brand">
+              <Plus size={13} />
+              一覧にいない場合は新規登録
+            </Link>
+          )}
         </label>
 
         <label className="flex flex-col gap-1">
@@ -376,6 +387,13 @@ function NewOrientationDialog({
             ))}
           </select>
         </label>
+
+        {status === "実施済" && (
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-bold text-muted">実施日</span>
+            <input type="date" value={doneOn} onChange={(e) => setDoneOn(e.target.value)} className={INPUT} />
+          </label>
+        )}
 
         <label className="flex flex-col gap-1">
           <span className="text-xs font-bold text-muted">備考</span>

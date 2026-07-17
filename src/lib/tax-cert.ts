@@ -47,6 +47,7 @@ export interface JudgmentRecord {
   timingDetail: string;
   docs: JudgmentDoc[];
   personName: string;
+  workerId?: string; // 紐づく外国人（workers.id）
   todoNumber: string;
   mainAlternativeNote: string;
   nhiAlternativeNote: string;
