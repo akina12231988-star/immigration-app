@@ -199,7 +199,7 @@ export function PrintClient({
 
       <style jsx global>{`
         @page {
-          size: A4 portrait;
+          size: ${forList ? "A4 landscape" : "A4 portrait"};
           margin: 0;
         }
         @media print {
@@ -213,7 +213,7 @@ export function PrintClient({
             box-sizing: border-box;
           }
           .list-sheet {
-            width: 210mm;
+            width: 297mm;
             box-sizing: border-box;
           }
         }
@@ -257,18 +257,18 @@ function WorkerListSheet({
   const TD = "border border-gray-400 px-1 py-0.5 align-top";
 
   return (
-    <div className="list-sheet mx-auto max-w-[210mm] bg-white p-[8mm] text-black">
+    <div className="list-sheet mx-auto max-w-[297mm] bg-white p-[8mm] text-black">
       <div className="mb-2 flex items-end justify-between border-b-2 border-black pb-1">
         <div>
           <h2 className="text-lg font-black">外国人 一覧表</h2>
-          <p className="text-[10px]">
+          <p className="text-[11px]">
             {orgName ? `所属機関: ${orgName}　` : ""}在留許可日: {period}　該当 {workers.length} 名
           </p>
         </div>
-        <p className="text-[10px] text-gray-500">印刷日: {printDate}</p>
+        <p className="text-[11px] text-gray-500">印刷日: {printDate}</p>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-[8px] leading-tight">
+        <table className="w-full border-collapse text-[10px] leading-tight">
           <thead>
             <tr className="bg-gray-100">
               {LIST_COLS.map((h) => (
