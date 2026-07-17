@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarClock, ExternalLink, MessageCircle } from "lucide-react";
+import { CalendarClock, Check, Copy, ExternalLink, MessageCircle, UserRound } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
@@ -50,7 +50,18 @@ export function WorkerRenewalCard({
   const [messengerLink, setMessengerLink] = useState(worker.messenger_link ?? "");
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [nameCopied, setNameCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const copyName = async () => {
+    try {
+      await navigator.clipboard.writeText(worker.name);
+      setNameCopied(true);
+      setTimeout(() => setNameCopied(false), 1500);
+    } catch {
+      /* クリップボード非対応時は何もしない */
+    }
+  };
 
   const expiry = worker.residence_expiry_date ?? "";
   const days = expiry ? daysUntil(expiry, today) : 0;
@@ -87,13 +98,25 @@ export function WorkerRenewalCard({
   return (
     <Card className={`p-4 ${status === "" && overdue ? "border-seal" : ""}`}>
       <div className="mb-1 flex items-start justify-between gap-2">
-        <Link href={`/workers/${worker.id}`} className="min-w-0">
-          <p className="truncate font-bold">{worker.name}</p>
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5">
+            {/* クリックしても遷移せず、選択・コピーできるように通常テキストにする */}
+            <p className="select-text truncate font-bold">{worker.name}</p>
+            <button
+              type="button"
+              onClick={copyName}
+              aria-label="氏名をコピー"
+              className="shrink-0 text-muted hover:text-brand"
+            >
+              {nameCopied ? <Check size={14} className="text-status-reported-fg" /> : <Copy size={14} />}
+            </button>
+          </div>
           <p className="truncate text-xs text-muted">
             {orgName ?? "所属機関未設定"}
             {worker.nationality && ` ・ ${worker.nationality}`}
+            {worker.residence_status && ` ・ ${worker.residence_status}`}
           </p>
-        </Link>
+        </div>
         <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${STATUS_CLASS[status]}`}>
           {RENEWAL_STATUS_LABEL[status]}
         </span>
@@ -112,6 +135,10 @@ export function WorkerRenewalCard({
       </p>
 
       <div className="mt-2 flex flex-wrap gap-3">
+        <Link href={`/workers/${worker.id}`} className="flex items-center gap-1 text-xs font-bold text-brand">
+          <UserRound size={13} />
+          外国人情報
+        </Link>
         {worker.messenger_link && (
           <a href={worker.messenger_link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs font-bold text-brand">
             <MessageCircle size={13} />
