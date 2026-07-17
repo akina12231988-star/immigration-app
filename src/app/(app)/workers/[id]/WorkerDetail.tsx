@@ -5,7 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   CalendarClock,
+  Check,
   ChevronRight,
+  Copy,
   ExternalLink,
   FileText,
   MessageCircle,
@@ -38,7 +40,7 @@ import {
   updateHistory,
 } from "@/lib/supabase/queries/histories";
 import { JobApplicationSection } from "@/components/workers/JobApplicationSection";
-import { COUNTED_VISAS } from "@/types/ssw";
+import { COUNTED_VISAS, type WorkHistory } from "@/types/ssw";
 import type { Application } from "@/types/application";
 import type { Organization, WorkHistoryRow, WorkerInput, WorkerWithHistories } from "@/types/db";
 import type { ApplicationWithRefs } from "@/lib/supabase/queries/jobs";
@@ -343,6 +345,9 @@ export function WorkerDetail({
         <p className="mt-2 text-[11px] text-muted">★ = 通算対象の在留資格</p>
       </section>
 
+      {/* 申請書類用の通算（書類作成日時点・月は切り上げ） */}
+      <DocumentTotalPanel histories={worker.work_histories.map(toCalcHistory)} />
+
       {/* 求職・応募（採用→所属自動更新の起点） */}
       <JobApplicationSection
         workerId={worker.id}
@@ -462,6 +467,73 @@ function InfoItem({
       <dt className="text-[11px] font-bold text-muted">{label}</dt>
       <dd className="whitespace-pre-wrap break-words">{value || "—"}</dd>
     </div>
+  );
+}
+
+// 申請書類用の通算: 書類作成日時点で計算し、月は切り上げて「◯年◯か月」を出す
+function DocumentTotalPanel({ histories }: { histories: WorkHistory[] }) {
+  const [docDate, setDocDate] = useState(todayStr());
+  const [copied, setCopied] = useState(false);
+  const calc = useMemo(() => calcSsw(histories, docDate), [histories, docDate]);
+
+  const totalMonths = calc.used.y * 12 + calc.used.m;
+  // 1日でも端数があれば1か月に切り上げ
+  const roundedMonths = calc.used.d > 0 ? totalMonths + 1 : totalMonths;
+  const shinsei = `${Math.floor(roundedMonths / 12)}年${roundedMonths % 12}か月`;
+  const hasData = calc.counted.length > 0;
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(shinsei);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      /* クリップボード非対応時は何もしない */
+    }
+  };
+
+  const INPUT =
+    "min-h-[40px] rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none";
+
+  return (
+    <Card className="p-4">
+      <h2 className="mb-1 flex items-center gap-2 text-sm font-bold">
+        <FileText size={16} />
+        申請書類用の通算
+      </h2>
+      <p className="mb-3 text-[11px] leading-relaxed text-muted">
+        書類作成日の時点で通算します（1日でも経過した月は1か月に切り上げ）。
+      </p>
+      {!hasData ? (
+        <p className="rounded-xl bg-background p-4 text-center text-sm text-muted">
+          特定技能1号の職歴がないため計算できません。
+        </p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-bold text-muted">書類作成日</span>
+            <input type="date" value={docDate} onChange={(e) => setDocDate(e.target.value)} className={INPUT} />
+          </label>
+          <div className="rounded-xl bg-brand/10 p-3.5">
+            <p className="text-xs font-bold text-muted">申請書記載</p>
+            <p className="text-2xl font-black text-brand">
+              {shinsei}
+              <span className="ml-2 text-sm font-bold text-muted">（切り上げ・{roundedMonths}か月）</span>
+            </p>
+            <p className="mt-1 text-xs tabular-nums text-muted">
+              実日数では {ymdFullText(calc.used)} ／ {calc.usedDays}日
+            </p>
+          </div>
+          <Button
+            variant="secondary"
+            icon={copied ? <Check size={15} /> : <Copy size={15} />}
+            onClick={copy}
+          >
+            {copied ? "コピーしました" : "申請書記載をコピー"}
+          </Button>
+        </div>
+      )}
+    </Card>
   );
 }
 
