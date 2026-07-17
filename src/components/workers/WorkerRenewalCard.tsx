@@ -47,6 +47,7 @@ export function WorkerRenewalCard({
   const [todo, setTodo] = useState(worker.residence_renewal_todo ?? "");
   const [status, setStatus] = useState<ResidenceRenewalStatus>(worker.residence_renewal_status);
   const [notionLink, setNotionLink] = useState(worker.notion_link ?? "");
+  const [messengerLink, setMessengerLink] = useState(worker.messenger_link ?? "");
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,6 +70,7 @@ export function WorkerRenewalCard({
         residence_renewal_todo: todo.trim(),
         residence_renewal_status: status,
         notion_link: notionLink.trim(),
+        messenger_link: messengerLink.trim(),
       });
       setSaved(true);
       router.refresh();
@@ -110,16 +112,16 @@ export function WorkerRenewalCard({
       </p>
 
       <div className="mt-2 flex flex-wrap gap-3">
-        {notionLink && (
-          <a href={notionLink} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs font-bold text-brand">
-            <ExternalLink size={13} />
-            Notionを開く
-          </a>
-        )}
         {worker.messenger_link && (
           <a href={worker.messenger_link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs font-bold text-brand">
             <MessageCircle size={13} />
             Messenger
+          </a>
+        )}
+        {worker.notion_link && (
+          <a href={worker.notion_link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs font-bold text-brand">
+            <ExternalLink size={13} />
+            Notionを開く
           </a>
         )}
       </div>
@@ -153,22 +155,38 @@ export function WorkerRenewalCard({
               ))}
             </select>
           </label>
-          {/* Notionリンク未登録なら、この画面で入力できる */}
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-bold text-muted">
-              Notion 個人ページのリンク{notionLink ? "" : "（未登録）"}
-            </span>
-            <input
-              type="url"
-              value={notionLink}
-              onChange={(e) => {
-                setNotionLink(e.target.value);
-                setSaved(false);
-              }}
-              placeholder="https://www.notion.so/... または https://app.notion.com/..."
-              className={INPUT}
-            />
-          </label>
+          {/* メッセンジャー未登録なら、この画面で入力して登録できる（登録済みなら上にリンク表示） */}
+          {!worker.messenger_link && (
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-bold text-muted">Messenger リンク（未登録）</span>
+              <input
+                type="url"
+                value={messengerLink}
+                onChange={(e) => {
+                  setMessengerLink(e.target.value);
+                  setSaved(false);
+                }}
+                placeholder="https://m.me/... または https://www.messenger.com/..."
+                className={INPUT}
+              />
+            </label>
+          )}
+          {/* Notion未登録なら、この画面で入力して登録できる（登録済みなら上にリンク表示） */}
+          {!worker.notion_link && (
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-bold text-muted">Notion 個人ページのリンク（未登録）</span>
+              <input
+                type="url"
+                value={notionLink}
+                onChange={(e) => {
+                  setNotionLink(e.target.value);
+                  setSaved(false);
+                }}
+                placeholder="https://www.notion.so/... または https://app.notion.com/..."
+                className={INPUT}
+              />
+            </label>
+          )}
           <Button fullWidth disabled={busy} onClick={save}>
             {busy ? "保存中…" : saved ? "保存しました" : "保存する"}
           </Button>
