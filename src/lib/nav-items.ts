@@ -14,6 +14,7 @@ import {
   MailPlus,
   Archive,
   UserMinus,
+  Bell,
   type LucideIcon,
 } from "lucide-react";
 
@@ -34,6 +35,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/mailing", label: "郵送請求", short: "郵送請求", icon: Mailbox },
   { href: "/applications/new", label: "申請登録", short: "申請登録", icon: FilePlus2, emphasize: true },
   { href: "/applications", label: "申請一覧", short: "申請一覧", icon: List },
+  { href: "/notifications", label: "入管メール通知", short: "お知らせ", icon: Bell },
   { href: "/workers/renewals", label: "申請準備", short: "申請準備", icon: CalendarClock },
   { href: "/workers/passports", label: "パスポート更新必要", short: "パスポート", icon: BookMarked },
   { href: "/custody", label: "保管ボックス（原本預かり）", short: "保管", icon: Archive },
