@@ -77,6 +77,7 @@ export interface Application {
   id: string;
   workerId: string | null; // 紐づく外国人（workers.id）。未登録者の申請は null
   workerName?: string | null; // 表示用（workers から JOIN 取得）
+  workerRenewalStatus?: string | null; // 紐づく外国人の在留更新の対応状況（JOIN 取得。準備中なら一覧で「申請前準備中」表示）
   organizationId: string | null; // 所属機関
   organizationName?: string | null; // 表示用（JOIN 取得）
   name: string; // 氏名

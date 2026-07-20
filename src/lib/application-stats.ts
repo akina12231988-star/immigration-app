@@ -29,6 +29,11 @@ export const STAT_VIEWS = {
     label: "在留カード受取待ち",
     test: (a: Application) => a.approved,
   },
+  // 在留カード受領完了＝新規発行済み。受領済みの人を絞り込む
+  "card-issued": {
+    label: "在留カード新規発行済み",
+    test: (a: Application) => a.status === "在留カード受領",
+  },
 } as const;
 
 export type StatViewKey = keyof typeof STAT_VIEWS;
