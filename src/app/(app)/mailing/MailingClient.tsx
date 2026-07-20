@@ -185,6 +185,7 @@ export function MailingClient({
         <RecordsTab
           records={records}
           setRecords={setRecords}
+          workers={workers}
           focusRecordId={focusRecordId}
           canEdit={canEdit}
           showToast={showToast}
@@ -883,12 +884,14 @@ function MunicipalityModal({
 function RecordsTab({
   records,
   setRecords,
+  workers,
   focusRecordId,
   canEdit,
   showToast,
 }: {
   records: JudgmentRecord[];
   setRecords: (r: JudgmentRecord[]) => void;
+  workers: { id: string; name: string }[];
   focusRecordId?: string;
   canEdit: boolean;
   showToast: (m: string) => void;
@@ -909,6 +912,24 @@ function RecordsTab({
     const el = document.getElementById(`record-${focusRecordId}`);
     if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [focusRecordId, records]);
+
+  // 氏名 → 外国人ID の対応表（同名が複数いる場合は曖昧なのでリンクしない）。
+  // 旧ツールから取り込んだ workerId を持たない記録も、氏名一致で外国人詳細へ飛べるようにする。
+  const workerIdByName = useMemo(() => {
+    const counts = new Map<string, number>();
+    const map = new Map<string, string>();
+    for (const w of workers) {
+      const key = w.name.trim().toLowerCase();
+      if (!key) continue;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+      map.set(key, w.id);
+    }
+    for (const [key, c] of counts) if (c > 1) map.delete(key);
+    return map;
+  }, [workers]);
+
+  const resolveWorkerId = (r: JudgmentRecord): string | undefined =>
+    r.workerId || workerIdByName.get((r.personName ?? "").trim().toLowerCase());
 
   const muniOptions = useMemo(() => {
     const names = Array.from(new Set(records.map((r) => r.municipalityName).filter(Boolean)));
@@ -1019,7 +1040,9 @@ function RecordsTab({
         <Card className="p-8 text-center text-sm text-muted">条件に一致する記録がありません。</Card>
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {filtered.map((r) => (
+          {filtered.map((r) => {
+            const linkedWorkerId = resolveWorkerId(r);
+            return (
             <Card
               key={r.id}
               id={`record-${r.id}`}
@@ -1027,8 +1050,8 @@ function RecordsTab({
             >
               <div className="mb-2 flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  {r.workerId ? (
-                    <Link href={`/workers/${r.workerId}`} className="truncate font-bold text-brand hover:underline">
+                  {linkedWorkerId ? (
+                    <Link href={`/workers/${linkedWorkerId}`} className="truncate font-bold text-brand hover:underline">
                       {r.personName || "（氏名未入力）"}
                     </Link>
                   ) : (
@@ -1070,7 +1093,8 @@ function RecordsTab({
                 </div>
               )}
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
 
