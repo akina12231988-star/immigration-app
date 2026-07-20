@@ -35,6 +35,7 @@ export const RESIDENCE_RENEWAL_STATUSES = [
   "準備中",
   "審査中",
   "転職先にて対応中",
+  "他登録支援機関にて対応中",
   "帰国",
 ] as const;
 export type ResidenceRenewalStatus = (typeof RESIDENCE_RENEWAL_STATUSES)[number];
