@@ -27,7 +27,8 @@ export const STAT_VIEWS = {
   },
   approved: {
     label: "在留カード受取待ち",
-    test: (a: Application) => a.approved,
+    // 受領済みは「在留カード新規発行済み」タブで表示するため、ここでは除外する
+    test: (a: Application) => a.approved && a.status !== "在留カード受領",
   },
   // 在留カード受領完了＝新規発行済み。受領済みの人を絞り込む
   "card-issued": {
