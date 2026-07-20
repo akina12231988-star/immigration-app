@@ -10,17 +10,19 @@ import type { ImmigrationApplicationRow } from "@/types/db";
 
 // workers / organizations を JOIN したときの行型
 type RowWithRefs = ImmigrationApplicationRow & {
-  workers: { id: string; name: string } | null;
+  workers: { id: string; name: string; residence_renewal_status: string | null } | null;
   organizations: { id: string; name: string } | null;
 };
 
-const SELECT = "*, workers(id, name), organizations(id, name)";
+const SELECT =
+  "*, workers(id, name, residence_renewal_status), organizations(id, name)";
 
 function toApplication(row: RowWithRefs): Application {
   return {
     id: row.id,
     workerId: row.worker_id,
     workerName: row.workers?.name ?? null,
+    workerRenewalStatus: row.workers?.residence_renewal_status ?? null,
     organizationId: row.organization_id ?? null,
     organizationName: row.organizations?.name ?? null,
     name: row.name,

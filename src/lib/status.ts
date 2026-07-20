@@ -1,4 +1,13 @@
-import type { ApplicationStatus } from "@/types/application";
+import type { Application, ApplicationStatus } from "@/types/application";
+
+// 一覧に表示するステータス文言。
+// 在留更新対象で「準備中」にした外国人の申請前案件は「申請前準備中」と表示する。
+export function applicationStatusLabel(app: Application): string {
+  if (app.status === "申請前" && app.workerRenewalStatus === "準備中") {
+    return "申請前準備中";
+  }
+  return app.status;
+}
 
 interface StatusStyle {
   bg: string;
