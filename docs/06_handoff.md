@@ -106,6 +106,15 @@ npm run test    # Vitest
 ### 通知書（`/notices/search`）
 - 通知書の検索
 
+### 入管メール通知（`/notifications`）
+- Gmailに届く入管メール（許可・申請受付）を **Google Apps Script → `/api/mail/inbound`（共有シークレット認証, service_role）** で `mail_notifications` テーブルに取り込む
+- **氏名で自動紐づけ**（`src/lib/mail-classify.ts`: `classifyMailCategory` / `matchNotification`。件名・本文の氏名/フリガナから外国人・申請を推定）。外れたらお知らせ一覧の「紐づけ修正」で申請を選び直せる
+- UI: ヘッダー（スマホ）／サイドナビ（PC）の **ベル🔔＋未読バッジ**（`NotificationBell`）、下部タブ・サイドナビのナビ項目にも未読数、**お知らせ一覧ページ**（フィルタ: すべて/未読/許可/申請受付、一括既読、既読切替、削除、Gmailで開く）
+- 通知ストア `src/lib/notification-store.tsx`（マウント時・ウィンドウ復帰・60秒間隔で再取得。書込失敗時は `refresh()` でサーバー状態へ復帰）
+- **セットアップ手順は `docs/07_gmail_apps_script.md`**（DB=0025適用、Vercel環境変数 `MAIL_INBOUND_SECRET`、Apps Scriptの貼付と5分トリガー）
+- 重複防止: サーバーは `gmail_message_id` のunique、Apps Scriptは「同期済」ラベル
+- middleware は `/api/` を認証対象から除外（Webhookは共有シークレットで独自認証）
+
 ---
 
 ## 3. 未完成 / 保留中の機能

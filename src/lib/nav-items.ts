@@ -10,6 +10,7 @@ import {
   CalendarClock,
   BookMarked,
   Mailbox,
+  Bell,
   type LucideIcon,
 } from "lucide-react";
 
@@ -28,6 +29,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/mailing", label: "郵送請求", short: "郵送請求", icon: Mailbox },
   { href: "/applications/new", label: "申請登録", short: "申請登録", icon: FilePlus2, emphasize: true },
   { href: "/applications", label: "申請一覧", short: "申請一覧", icon: List },
+  { href: "/notifications", label: "入管メール通知", short: "お知らせ", icon: Bell },
   { href: "/workers/renewals", label: "在留更新対象", short: "在留更新", icon: CalendarClock },
   { href: "/workers/passports", label: "パスポート更新必要", short: "パスポート", icon: BookMarked },
   { href: "/notices/search", label: "通知書", short: "通知書", icon: ScanLine },

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { DarkModeToggle } from "@/components/DarkModeToggle";
 import { LogoutButton } from "@/components/LogoutButton";
+import { NotificationBell } from "@/components/NotificationBell";
 
 export function AppHeader({
   title,
@@ -35,7 +36,8 @@ export function AppHeader({
           </div>
         </div>
         {/* PC はサイドナビに集約するため非表示 */}
-        <div className="flex items-center gap-1 lg:hidden">
+        <div className="flex items-center gap-1 text-brand-foreground lg:hidden">
+          <NotificationBell tone="dark" />
           <DarkModeToggle />
           <LogoutButton />
         </div>

@@ -160,6 +160,30 @@ export interface ImmigrationApplicationRow {
   updated_at: string;
 }
 
+// ---- 入管メール通知（0025_mail_notifications.sql） ----
+
+// Gmailに届いた入管メールの分類
+export const MAIL_CATEGORIES = ["許可", "申請受付", "その他"] as const;
+export type MailCategory = (typeof MAIL_CATEGORIES)[number];
+
+export interface MailNotificationRow {
+  id: string;
+  gmail_message_id: string | null;
+  category: string; // MailCategory
+  subject: string;
+  from_address: string;
+  snippet: string;
+  body: string;
+  received_at: string;
+  gmail_link: string;
+  matched_worker_id: string | null;
+  matched_application_id: string | null;
+  matched_name: string;
+  is_read: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 // 生活オリエンテーション（0013 / 0015 / 0016）
 export const ORIENTATION_STATUSES = ["未実施", "実施済", "実施不可（早期退職）"] as const;
 export type OrientationStatus = (typeof ORIENTATION_STATUSES)[number];

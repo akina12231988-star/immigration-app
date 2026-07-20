@@ -46,7 +46,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // 静的ファイル以外のすべてに適用
-    "/((?!_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // 静的ファイルと API ルート（Webhook 等は独自に認証）以外のすべてに適用
+    "/((?!_next/static|_next/image|api/|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
