@@ -51,7 +51,7 @@ export function RenewalsClient({
     <div className="space-y-4">
       <p className="flex items-start gap-1.5 text-xs leading-relaxed text-muted">
         <CalendarClock size={14} className="mt-0.5 shrink-0" />
-        在留期限の3か月前になった対象者です。Notionで申請TODOを作成し、そのTODO番号を入力すると「準備中」になります。弊社で準備しない場合は「転職先にて対応中」「帰国」を選べます。
+        在留期限の3か月前になった対象者です。Notionで申請TODOを作成し、そのTODO番号を入力すると「準備中」になります。弊社で準備しない場合は「転職先にて対応中」「他登録支援機関にて対応中」「帰国」を選べます。
       </p>
 
       {pendingCount > 0 && (
@@ -62,7 +62,7 @@ export function RenewalsClient({
       )}
 
       <div className="flex flex-wrap gap-2">
-        {(["", "準備中", "審査中", "転職先にて対応中", "帰国", "all"] as HandlingFilter[]).map((f) => (
+        {(["", "準備中", "審査中", "転職先にて対応中", "他登録支援機関にて対応中", "帰国", "all"] as HandlingFilter[]).map((f) => (
           <button
             key={f || "pending"}
             type="button"
