@@ -56,6 +56,21 @@ export async function listJudgmentRecords(supabase: SupabaseClient): Promise<Jud
   return ((data as RecordRow[]) ?? []).map(toRecord);
 }
 
+// 特定の外国人（workers.id）に紐づく判定記録のみを新しい順で取得する。
+// 過去にどこへ郵送請求したかを外国人詳細から辿るために使用する。
+export async function listJudgmentRecordsByWorker(
+  supabase: SupabaseClient,
+  workerId: string,
+): Promise<JudgmentRecord[]> {
+  const { data, error } = await supabase
+    .from("judgment_records")
+    .select("id, data, created_at")
+    .eq("data->>workerId", workerId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return ((data as RecordRow[]) ?? []).map(toRecord);
+}
+
 // id・createdAt を除いた本体を data に保存する
 function toData(record: JudgmentRecord): Record<string, unknown> {
   const { id: _id, createdAt: _createdAt, ...rest } = record;

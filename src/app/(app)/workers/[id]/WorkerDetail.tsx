@@ -40,6 +40,8 @@ import {
   updateHistory,
 } from "@/lib/supabase/queries/histories";
 import { JobApplicationSection } from "@/components/workers/JobApplicationSection";
+import { WorkerMailingHistory } from "@/components/workers/WorkerMailingHistory";
+import type { JudgmentRecord } from "@/lib/tax-cert";
 import { COUNTED_VISAS, type WorkHistory } from "@/types/ssw";
 import type { Application } from "@/types/application";
 import type { Organization, WorkHistoryRow, WorkerInput, WorkerWithHistories } from "@/types/db";
@@ -52,6 +54,7 @@ export function WorkerDetail({
   applications,
   jobApplications,
   postings,
+  mailingRecords,
   canEdit,
 }: {
   worker: WorkerWithHistories;
@@ -59,6 +62,7 @@ export function WorkerDetail({
   applications: Application[];
   jobApplications: ApplicationWithRefs[];
   postings: PostingWithStats[];
+  mailingRecords: JudgmentRecord[];
   canEdit: boolean;
 }) {
   const router = useRouter();
@@ -409,6 +413,9 @@ export function WorkerDetail({
           </Card>
         )}
       </section>
+
+      {/* 郵送請求（課税・納税証明書）の記録 */}
+      <WorkerMailingHistory workerId={worker.id} records={mailingRecords} />
 
       {/* 削除 */}
       {canEdit && (

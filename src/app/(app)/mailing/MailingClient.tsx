@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { Card } from "@/components/ui/Card";
@@ -27,6 +27,7 @@ import {
   judgeNhiYear,
   judgeTiming,
   judgeYear,
+  methodText,
   paymentStatusLabel,
   todayISO,
   yearWithReiwa,
@@ -109,14 +110,20 @@ export function MailingClient({
   initialMunicipalities,
   initialRecords,
   workers = [],
+  initialWorkerId,
+  focusRecordId,
   canEdit,
 }: {
   initialMunicipalities: Municipality[];
   initialRecords: JudgmentRecord[];
   workers?: { id: string; name: string }[];
+  initialWorkerId?: string;
+  focusRecordId?: string;
   canEdit: boolean;
 }) {
-  const [tab, setTab] = useState<"judge" | "muni" | "records">("judge");
+  const [tab, setTab] = useState<"judge" | "muni" | "records">(
+    focusRecordId ? "records" : "judge",
+  );
   const [municipalities, setMunicipalities] = useState(initialMunicipalities);
   const [records, setRecords] = useState(initialRecords);
   const [importOpen, setImportOpen] = useState(false);
@@ -161,6 +168,7 @@ export function MailingClient({
           records={records}
           setRecords={setRecords}
           workers={workers}
+          initialWorkerId={initialWorkerId}
           canEdit={canEdit}
           showToast={showToast}
         />
@@ -177,6 +185,7 @@ export function MailingClient({
         <RecordsTab
           records={records}
           setRecords={setRecords}
+          focusRecordId={focusRecordId}
           canEdit={canEdit}
           showToast={showToast}
         />
@@ -374,6 +383,7 @@ function JudgeTab({
   records,
   setRecords,
   workers,
+  initialWorkerId,
   canEdit,
   showToast,
 }: {
@@ -381,6 +391,7 @@ function JudgeTab({
   records: JudgmentRecord[];
   setRecords: (r: JudgmentRecord[]) => void;
   workers: { id: string; name: string }[];
+  initialWorkerId?: string;
   canEdit: boolean;
   showToast: (m: string) => void;
 }) {
@@ -393,8 +404,9 @@ function JudgeTab({
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const [personName, setPersonName] = useState("");
-  const [workerId, setWorkerId] = useState("");
+  const initialWorker = initialWorkerId ? workers.find((w) => w.id === initialWorkerId) : undefined;
+  const [personName, setPersonName] = useState(initialWorker?.name ?? "");
+  const [workerId, setWorkerId] = useState(initialWorker?.id ?? "");
   const [todoNumber, setTodoNumber] = useState("");
 
   const workerOptions = useMemo(() => workers.map((w) => ({ id: w.id, label: w.name })), [workers]);
@@ -868,22 +880,16 @@ function MunicipalityModal({
 }
 
 /* ============================ 判定記録一覧 ============================ */
-function methodText(method?: string, mailDate?: string, recipient?: string, agent?: string): string {
-  if (!method || method === "window") return "本人が窓口で取得";
-  if (method === "agent_window") return `代理人が窓口で取得（${agent || "未入力"}）`;
-  const dateLabel = mailDate ? formatDateJP(mailDate) : "請求日未記録";
-  if (recipient === "agent") return `郵送請求（${dateLabel}・代理人「${agent || "未入力"}」宛）`;
-  return `郵送請求（${dateLabel}・本人宛）`;
-}
-
 function RecordsTab({
   records,
   setRecords,
+  focusRecordId,
   canEdit,
   showToast,
 }: {
   records: JudgmentRecord[];
   setRecords: (r: JudgmentRecord[]) => void;
+  focusRecordId?: string;
   canEdit: boolean;
   showToast: (m: string) => void;
 }) {
@@ -896,6 +902,13 @@ function RecordsTab({
   const [fKeyword, setFKeyword] = useState("");
   const [fAgent, setFAgent] = useState("");
   const [fMailOnly, setFMailOnly] = useState(false);
+
+  // 外国人詳細から特定の記録を開いたとき、その記録までスクロールして強調する
+  useEffect(() => {
+    if (!focusRecordId) return;
+    const el = document.getElementById(`record-${focusRecordId}`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [focusRecordId, records]);
 
   const muniOptions = useMemo(() => {
     const names = Array.from(new Set(records.map((r) => r.municipalityName).filter(Boolean)));
@@ -1007,7 +1020,11 @@ function RecordsTab({
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {filtered.map((r) => (
-            <Card key={r.id} className="p-4">
+            <Card
+              key={r.id}
+              id={`record-${r.id}`}
+              className={`p-4 ${r.id === focusRecordId ? "ring-2 ring-brand" : ""}`}
+            >
               <div className="mb-2 flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   {r.workerId ? (

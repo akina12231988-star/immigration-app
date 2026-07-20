@@ -252,6 +252,28 @@ export function formatDateJP(iso: string): string {
   return `${y}年${parseInt(m, 10)}月${parseInt(d, 10)}日`;
 }
 
+// 受領方法を人が読める文言にする（判定記録一覧・外国人詳細の両方で使用）
+export function methodText(
+  method?: string,
+  mailDate?: string,
+  recipient?: string,
+  agent?: string,
+): string {
+  if (!method || method === "window") return "本人が窓口で取得";
+  if (method === "agent_window") return `代理人が窓口で取得（${agent || "未入力"}）`;
+  const dateLabel = mailDate ? formatDateJP(mailDate) : "請求日未記録";
+  if (recipient === "agent") return `郵送請求（${dateLabel}・代理人「${agent || "未入力"}」宛）`;
+  return `郵送請求（${dateLabel}・本人宛）`;
+}
+
+// 記録が郵送請求（課税側または国保側）を含むか
+export function recordHasMailRequest(r: JudgmentRecord): boolean {
+  const mainMail = r.requestMethod === "mail";
+  const nhiMail =
+    r.hasNhi && (r.nhiSameAsMain ? r.requestMethod === "mail" : r.nhiRequestMethod === "mail");
+  return mainMail || nhiMail;
+}
+
 export function toReiwa(seirekiYear: number): number {
   return seirekiYear - 2018;
 }

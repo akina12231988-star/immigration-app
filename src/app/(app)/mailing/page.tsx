@@ -11,9 +11,15 @@ import { MailingClient } from "./MailingClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function MailingPage() {
+export default async function MailingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ worker?: string; record?: string }>;
+}) {
   const me = await getMyProfile();
   if (!me) redirect("/login");
+
+  const { worker: workerParam, record: recordParam } = await searchParams;
 
   const supabase = await createClient();
   const [municipalities, records, workers] = await Promise.all([
@@ -29,6 +35,8 @@ export default async function MailingPage() {
         initialMunicipalities={municipalities}
         initialRecords={records}
         workers={workers.map((w) => ({ id: w.id, name: w.name }))}
+        initialWorkerId={workerParam}
+        focusRecordId={recordParam}
         canEdit={me.role !== "viewer"}
       />
     </>

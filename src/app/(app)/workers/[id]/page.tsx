@@ -7,6 +7,7 @@ import { listOrganizations } from "@/lib/supabase/queries/organizations";
 import { listApplicationsByWorker } from "@/lib/supabase/queries/applications";
 import { listApplicationsByWorker as listJobApplicationsByWorker } from "@/lib/supabase/queries/jobs";
 import { listPostings } from "@/lib/supabase/queries/postings";
+import { listJudgmentRecordsByWorker } from "@/lib/supabase/queries/tax-cert";
 import { WorkerDetail } from "./WorkerDetail";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +22,7 @@ export default async function WorkerDetailPage({
 
   const { id } = await params;
   const supabase = await createClient();
-  const [worker, organizations, applications, jobApplications, postings] =
+  const [worker, organizations, applications, jobApplications, postings, mailingRecords] =
     await Promise.all([
       getWorkerWithHistories(supabase, id),
       listOrganizations(supabase),
@@ -29,6 +30,7 @@ export default async function WorkerDetailPage({
       listApplicationsByWorker(supabase, id).catch(() => []),
       listJobApplicationsByWorker(supabase, id).catch(() => []),
       listPostings(supabase).catch(() => []),
+      listJudgmentRecordsByWorker(supabase, id).catch(() => []),
     ]);
   if (!worker) notFound();
 
@@ -41,6 +43,7 @@ export default async function WorkerDetailPage({
         applications={applications}
         jobApplications={jobApplications}
         postings={postings}
+        mailingRecords={mailingRecords}
         canEdit={me.role !== "viewer"}
       />
     </>
