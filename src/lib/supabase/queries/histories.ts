@@ -12,6 +12,7 @@ export function toCalcHistory(row: WorkHistoryRow): WorkHistory {
     org: row.org_name,
     role: row.role,
     note: row.note,
+    keptResidence: row.kept_residence_status,
   };
 }
 

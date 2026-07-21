@@ -3,7 +3,12 @@ import type { WorkHistory } from "@/types/ssw";
 import { calcSsw, entryDays, ymdFullText } from "./calc";
 
 let seq = 0;
-const h = (visa: WorkHistory["visa"], start: string, end: string | null): WorkHistory => ({
+const h = (
+  visa: WorkHistory["visa"],
+  start: string,
+  end: string | null,
+  keptResidence = false,
+): WorkHistory => ({
   id: `t${++seq}`,
   visa,
   start,
@@ -11,6 +16,7 @@ const h = (visa: WorkHistory["visa"], start: string, end: string | null): WorkHi
   org: "",
   role: "",
   note: "",
+  keptResidence,
 });
 
 describe("entryDays（両端を含む在留日数）", () => {
@@ -67,6 +73,42 @@ describe("calcSsw: 通算対象の区分", () => {
       ],
       "2026-07-12",
     );
+    expect(c.usedDays).toBe(0);
+    expect(c.status).toBe("1号期間未登録");
+  });
+});
+
+describe("calcSsw: 在留資格を保持したままの帰国期間", () => {
+  // 特定技能1号で就労 → 退職して帰国（特定技能1号は保持したまま）→ 再雇用で再来日（継続中）
+  const history = [
+    h("特定技能1号", "2025-12-04", "2026-01-12"),
+    h("本国での職歴", "2026-01-13", "2026-07-13", true),
+    h("特定技能1号", "2026-07-14", null),
+  ];
+
+  it("保持したまま帰国した期間もカウントされ、起算日から今日まで連続で数える", () => {
+    const c = calcSsw(history, "2026-07-21");
+    // 40日 + 帰国182日 + 8日 = 230日（2025-12-04〜2026-07-21 の連続日数と一致）
+    expect(c.usedDays).toBe(230);
+    expect(c.firstStart).toBe("2025-12-04");
+    expect(c.ongoing).toBe(true);
+    expect(c.status).toBe("1号在留中");
+    expect(c.remainDays).toBe(1826 - 230);
+  });
+
+  it("在留資格を切って帰国した場合は帰国期間をカウントしない", () => {
+    const cut = [
+      h("特定技能1号", "2025-12-04", "2026-01-12"),
+      h("本国での職歴", "2026-01-13", "2026-07-13", false),
+      h("特定技能1号", "2026-07-14", null),
+    ];
+    const c = calcSsw(cut, "2026-07-21");
+    expect(c.usedDays).toBe(48); // 40日 + 8日のみ
+  });
+
+  it("保持フラグは帰国期間の区分（本国での職歴・その他）にだけ効く", () => {
+    // 技能実習に誤ってフラグが付いてもカウントされない
+    const c = calcSsw([h("技能実習", "2024-01-01", "2024-12-31", true)], "2026-07-21");
     expect(c.usedDays).toBe(0);
     expect(c.status).toBe("1号期間未登録");
   });

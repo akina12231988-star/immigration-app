@@ -7,7 +7,7 @@
 // 通算は日数合算による目安であり、正式な判断は出入国在留管理庁による。
 // "今日" に依存する計算のため、結果は保存せず表示のたびに呼び出す。
 
-import { COUNTED_VISAS, type SswStatus, type WorkHistory } from "@/types/ssw";
+import { isCountedHistory, type SswStatus, type WorkHistory } from "@/types/ssw";
 
 const DAY = 86_400_000;
 // 1か月 = 30.4375日（365.25 ÷ 12）の近似で年月日換算する
@@ -74,7 +74,8 @@ export interface SswCalcResult {
 
 export function calcSsw(history: WorkHistory[], today: string = todayStr()): SswCalcResult {
   const hist = [...history].sort((a, b) => (a.start < b.start ? -1 : 1));
-  const counted = hist.filter((h) => COUNTED_VISAS.has(h.visa));
+  // 通算対象の在留資格に加え、在留資格を保持したまま帰国していた期間もカウントする
+  const counted = hist.filter(isCountedHistory);
   const usedDays = counted.reduce((sum, h) => sum + entryDays(h, today), 0);
   const firstStart = counted.length ? counted[0].start : null;
   const ongoing = counted.some((h) => !h.end || h.end >= today);

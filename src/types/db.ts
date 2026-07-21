@@ -102,6 +102,7 @@ export interface WorkHistoryRow {
   org_name: string;
   role: string;
   note: string;
+  kept_residence_status: boolean; // 在留資格（特定技能1号）を保持したまま帰国した期間か
   legacy_id: string | null;
   created_at: string;
   updated_at: string;

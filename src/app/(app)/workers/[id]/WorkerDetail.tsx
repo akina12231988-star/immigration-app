@@ -41,7 +41,7 @@ import {
   updateHistory,
 } from "@/lib/supabase/queries/histories";
 import { JobApplicationSection } from "@/components/workers/JobApplicationSection";
-import { COUNTED_VISAS, type WorkHistory } from "@/types/ssw";
+import { isCountedHistory, type WorkHistory } from "@/types/ssw";
 import type { Application } from "@/types/application";
 import type { Organization, WorkHistoryRow, WorkerInput, WorkerWithHistories } from "@/types/db";
 import type { ApplicationWithRefs } from "@/lib/supabase/queries/jobs";
@@ -301,7 +301,10 @@ export function WorkerDetail({
         ) : (
           <Card className="divide-y divide-border overflow-hidden">
             {histories.map((h) => {
-              const counted = COUNTED_VISAS.has(h.visa);
+              const counted = isCountedHistory({
+                visa: h.visa,
+                keptResidence: h.kept_residence_status,
+              });
               const days = entryDays({ start: h.start_date, end: h.end_date }, today);
               return (
                 <div key={h.id} className="p-3.5">
@@ -314,6 +317,7 @@ export function WorkerDetail({
                       }`}
                     >
                       {h.visa}
+                      {h.kept_residence_status && "（特定技能1号を保持）"}
                       {counted && " ★"}
                     </span>
                     {canEdit && (
