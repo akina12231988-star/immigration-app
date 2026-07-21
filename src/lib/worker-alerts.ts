@@ -39,6 +39,11 @@ export function remainingLabel(target: string, today: string): string {
   return d > 0 ? `あと${span}` : `${span}超過`;
 }
 
+// 在留期限まで2ヶ月以内（または既に超過）。申請前の「早く申請して」アラート用
+export function isExpiryWithinTwoMonths(expiry: string, today: string): boolean {
+  return today >= addMonths(expiry, -2);
+}
+
 // 在留更新対象: 在留期限まで3か月以内（または既に超過）。期限未登録は対象外。
 // 退職者は在留更新の対象から外す。
 export function isResidenceRenewalTarget(w: Worker, today: string): boolean {
