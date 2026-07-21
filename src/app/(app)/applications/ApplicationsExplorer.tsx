@@ -25,9 +25,12 @@ const TODAY = todayStr();
 // 表示件数の選択肢（データが重くならないよう、既定は50件）
 const PAGE_SIZES = [10, 50, 100] as const;
 
-// フィルタータブ（ダッシュボードの集計と同じ区分で揃える）
-const VIEW_CHIPS: { key: StatViewKey | "all"; label: string }[] = [
+// フィルタータブ（ダッシュボードの集計と同じ区分＋在留更新の「申請前＜準備中＞」）
+type ViewKey = StatViewKey | "all" | "pre-prep";
+
+const VIEW_CHIPS: { key: ViewKey; label: string }[] = [
   { key: "all", label: "すべて" },
+  { key: "pre-prep", label: "申請前＜準備中＞" },
   { key: "unreported", label: "LINE未報告" },
   { key: "waiting-notice", label: "審査中" },
   { key: "approved", label: "在留カード受け取り待ち" },
@@ -44,8 +47,8 @@ export function ApplicationsExplorer({
   const router = useRouter();
   const { updateApplication } = useApplications();
   const [keyword, setKeyword] = useState("");
-  // タブ＝ダッシュボードと同じ集計区分（すべて / LINE未報告 / 審査中 / 受け取り待ち / 新規発行済み）
-  const [view, setView] = useState<StatViewKey | "all">(initialView ?? "all");
+  // タブ＝ダッシュボードと同じ集計区分＋申請前＜準備中＞
+  const [view, setView] = useState<ViewKey>(initialView ?? "all");
 
   // 在留カード新規発行済みタブの「在留許可日」期間検索
   const [permitFrom, setPermitFrom] = useState("");
@@ -105,7 +108,12 @@ export function ApplicationsExplorer({
       a.assignee.toLowerCase().includes(kw);
 
     const rows = applications.filter((a) => {
-      if (view !== "all" && !STAT_VIEWS[view].test(a)) return false;
+      if (view === "pre-prep") {
+        // 申請前＜準備中＞タブ: 実レコードは「申請前」かつ在留更新が準備中の案件のみ
+        if (a.status !== "申請前" || a.workerRenewalStatus !== "準備中") return false;
+      } else if (view !== "all" && !STAT_VIEWS[view].test(a)) {
+        return false;
+      }
       // 新規発行済み: 在留許可日の期間（いつからいつまで）で絞り込む
       if (showIssued) {
         const d = a.grantedPermitDate ?? "";
@@ -115,9 +123,9 @@ export function ApplicationsExplorer({
       return matchesKeyword(a);
     });
 
-    // 「すべて」表示では、在留更新で準備中の外国人を「申請前＜準備中＞」として先頭に出す。
+    // 「すべて」と「申請前＜準備中＞」では、在留更新で準備中の外国人を擬似行として先頭に出す。
     // 申請登録して審査中になると、この擬似行は実レコードの行に置き換わる。
-    if (view === "all") {
+    if (view === "all" || view === "pre-prep") {
       const placeholders = buildRenewalPlaceholders(renewalWorkers, applications, TODAY)
         .filter(matchesKeyword);
       return [...placeholders, ...rows];
