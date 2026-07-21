@@ -36,6 +36,7 @@ function toInput(w: Worker | null): WorkerInput {
     leaving_on: w?.leaving_on ?? null,
     leaving_todo: w?.leaving_todo ?? "",
     gender: w?.gender ?? "",
+    address: w?.address ?? "",
     employment_start_on: w?.employment_start_on ?? null,
     assigned_office: w?.assigned_office ?? "",
     residence_note: w?.residence_note ?? "",
@@ -144,6 +145,14 @@ export function WorkerForm({
             <option value="男">男</option>
             <option value="女">女</option>
           </select>
+        </Field>
+        <Field label="住所">
+          <input
+            value={form.address}
+            onChange={(e) => set("address", e.target.value)}
+            placeholder="例: 熊本県熊本市中央区◯◯1-2-3"
+            className={INPUT_CLASS}
+          />
         </Field>
         <Field label="特定産業分野・職種">
           <input

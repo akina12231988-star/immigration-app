@@ -32,6 +32,8 @@ export default async function WorkerResumePage({
         name: worker.name,
         kana: worker.kana,
         birth: worker.birth,
+        gender: worker.gender,
+        address: worker.address,
         nationality: worker.nationality,
         residenceStatus: worker.residence_status,
         field: worker.field,

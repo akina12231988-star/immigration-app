@@ -76,6 +76,7 @@ export interface Worker {
   leaving_on: string | null; // 退職日
   leaving_todo: string; // 退職時のNotion申請TODO番号
   gender: string; // 性別
+  address: string; // 住所（履歴書に表示）
   employment_start_on: string | null; // 雇用開始年月日
   assigned_office: string; // 配属先営業所
   residence_note: string; // 居住先（社宅・自分のアパート など）

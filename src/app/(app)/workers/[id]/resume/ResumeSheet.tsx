@@ -1,12 +1,16 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Printer, UserRound } from "lucide-react";
+import { todayStr } from "@/lib/ssw/calc";
 
 interface ResumeWorker {
   name: string;
   kana: string;
   birth: string | null;
+  gender: string;
+  address: string;
   nationality: string;
   residenceStatus: string;
   field: string;
@@ -32,7 +36,11 @@ export function ResumeSheet({
   worker: ResumeWorker;
   histories: ResumeHistory[];
 }) {
-  const today = new Date().toLocaleDateString("ja-JP");
+  // 発行年月日は自動表示ではなく、印刷前に指定できるようにする（初期値は今日）
+  const [issuedOn, setIssuedOn] = useState(todayStr());
+  const issuedText = issuedOn
+    ? new Date(`${issuedOn}T00:00:00`).toLocaleDateString("ja-JP")
+    : "";
 
   return (
     <>
@@ -44,11 +52,20 @@ export function ResumeSheet({
           </Link>
           <h1 className="flex-1 text-lg font-bold">履歴書</h1>
         </div>
-        <div className="px-4 py-4 lg:px-8">
+        <div className="flex flex-wrap items-end gap-3 px-4 py-4 lg:px-8">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-bold text-muted">発行年月日</span>
+            <input
+              type="date"
+              value={issuedOn}
+              onChange={(e) => setIssuedOn(e.target.value)}
+              className="min-h-[44px] rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none"
+            />
+          </label>
           <button
             type="button"
             onClick={() => window.print()}
-            className="inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-3 text-sm font-bold text-brand-foreground"
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-brand px-5 py-3 text-sm font-bold text-brand-foreground"
           >
             <Printer size={18} />
             印刷・PDF保存
@@ -60,7 +77,7 @@ export function ResumeSheet({
         <div className="worker-sheet mx-auto mb-6 max-w-[210mm] border border-border bg-white p-[12mm] text-black print:mb-0 print:border-0">
           <div className="mb-4 flex items-start justify-between border-b-2 border-black pb-2">
             <h2 className="text-2xl font-black">履歴書</h2>
-            <p className="text-xs text-gray-500">作成日: {today}</p>
+            <p className="text-xs text-gray-500">発行年月日: {issuedText || "—"}</p>
           </div>
 
           {/* 氏名・写真 */}
@@ -69,9 +86,11 @@ export function ResumeSheet({
               <Row label="氏名" value={worker.name} big />
               <Row label="フリガナ" value={worker.kana} />
               <Row label="生年月日" value={worker.birth} />
+              <Row label="性別" value={worker.gender} />
               <Row label="国籍" value={worker.nationality} />
               <Row label="現在の在留資格" value={worker.residenceStatus} />
-              <Row label="分野・職種" value={worker.field} />
+              <Row label="住所" value={worker.address} wide />
+              <Row label="分野・職種" value={worker.field} wide />
             </dl>
             <div className="flex h-[40mm] w-[32mm] shrink-0 items-center justify-center overflow-hidden border border-gray-400 bg-gray-50">
               {photoUrl ? (
@@ -138,9 +157,19 @@ export function ResumeSheet({
   );
 }
 
-function Row({ label, value, big = false }: { label: string; value: string | null; big?: boolean }) {
+function Row({
+  label,
+  value,
+  big = false,
+  wide = false,
+}: {
+  label: string;
+  value: string | null;
+  big?: boolean;
+  wide?: boolean;
+}) {
   return (
-    <div className="flex flex-col border-b border-gray-200 pb-1">
+    <div className={`flex flex-col border-b border-gray-200 pb-1${wide ? " col-span-2" : ""}`}>
       <dt className="text-[10px] font-bold text-gray-500">{label}</dt>
       <dd className={big ? "text-lg font-black" : "text-sm font-bold"}>{value || "—"}</dd>
     </div>
