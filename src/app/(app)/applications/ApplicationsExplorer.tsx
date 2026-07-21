@@ -3,7 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Search, X } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  MessageCircle,
+  Search,
+  X,
+} from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { AlertBadge } from "@/components/applications/AlertBadge";
@@ -97,6 +104,15 @@ export function ApplicationsExplorer({
 
   const showApprovedDetail = view === "approved";
   const showIssued = view === "card-issued";
+  const showPrep = view === "pre-prep";
+
+  // 申請前＜準備中＞タブで TODO番号・Notion・Messenger を表示するための外国人引き当て
+  const workersById = useMemo(
+    () => new Map(renewalWorkers.map((w) => [w.id, w])),
+    [renewalWorkers],
+  );
+  const workerFor = (a: Application) =>
+    a.workerId ? workersById.get(a.workerId) : undefined;
 
   const filtered = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
@@ -275,9 +291,10 @@ export function ApplicationsExplorer({
         <>
           {/* モバイル: カード表示 */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:hidden">
-            {paged.map((a) => (
-              <Link key={a.id} href={hrefFor(a)}>
-                <Card className={`h-full p-4 ${isExpiryAlert(a, TODAY) ? "border-seal" : ""}`}>
+            {paged.map((a) => {
+              const w = showPrep ? workerFor(a) : undefined;
+              const body = (
+                <>
                   <div className="mb-2 flex items-start justify-between gap-2">
                     <p className="font-bold">{a.name}</p>
                     <div className="flex shrink-0 items-center gap-1">
@@ -296,9 +313,41 @@ export function ApplicationsExplorer({
                       申請時在留期限 {a.residenceExpiryAtApply}
                     </p>
                   )}
+                </>
+              );
+              // 申請前＜準備中＞: TODO番号・Notion・Messenger を表示。
+              // カード内にリンクを置くため、Link入れ子を避けて onClick 遷移にする
+              return showPrep ? (
+                <Card
+                  key={a.id}
+                  onClick={() => router.push(hrefFor(a))}
+                  className={`h-full cursor-pointer p-4 hover:border-brand ${
+                    isExpiryAlert(a, TODAY) ? "border-seal" : ""
+                  }`}
+                >
+                  {body}
+                  <div className="mt-2 border-t border-border pt-2">
+                    <p className="text-xs tabular-nums text-muted">
+                      申請TODO番号 {w?.residence_renewal_todo || "未登録"}
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap gap-3">
+                      <WorkerLink href={w?.notion_link} icon={<ExternalLink size={13} />}>
+                        Notionを開く
+                      </WorkerLink>
+                      <WorkerLink href={w?.messenger_link} icon={<MessageCircle size={13} />}>
+                        Messenger
+                      </WorkerLink>
+                    </div>
+                  </div>
                 </Card>
-              </Link>
-            ))}
+              ) : (
+                <Link key={a.id} href={hrefFor(a)}>
+                  <Card className={`h-full p-4 ${isExpiryAlert(a, TODAY) ? "border-seal" : ""}`}>
+                    {body}
+                  </Card>
+                </Link>
+              );
+            })}
           </div>
 
           {/* PC: テーブル表示 */}
@@ -308,36 +357,69 @@ export function ApplicationsExplorer({
                 <tr>
                   <Th>名前</Th>
                   <Th>所属機関</Th>
-                  <Th>申請内容</Th>
-                  <Th>申請日</Th>
-                  <Th>申請番号</Th>
+                  {showPrep ? (
+                    /* 申請前＜準備中＞: 申請内容・申請日・申請番号はまだ空のため、
+                       代わりに在留更新の TODO番号・Notion・Messenger を表示する */
+                    <>
+                      <Th>申請TODO番号</Th>
+                      <Th>Notion</Th>
+                      <Th>Messenger</Th>
+                    </>
+                  ) : (
+                    <>
+                      <Th>申請内容</Th>
+                      <Th>申請日</Th>
+                      <Th>申請番号</Th>
+                    </>
+                  )}
                   <Th>申請時点在留期限</Th>
                   <Th>状態</Th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {paged.map((a) => (
-                  <tr
-                    key={a.id}
-                    onClick={() => router.push(hrefFor(a))}
-                    className="cursor-pointer bg-surface hover:bg-background"
-                  >
-                    <Td className="font-bold">
-                      <span className="flex items-center gap-1.5">
-                        {a.name}
-                        {isExpiryAlert(a, TODAY) && <AlertBadge expiry={a.residenceExpiryAtApply} />}
-                      </span>
-                    </Td>
-                    <Td>{a.organizationName ?? "—"}</Td>
-                    <Td>{a.applicationContent || "—"}</Td>
-                    <Td className="tabular-nums">{a.applicationDate || "—"}</Td>
-                    <Td className="tabular-nums">{a.applicationNumber || "—"}</Td>
-                    <Td className="tabular-nums">{a.residenceExpiryAtApply ?? "—"}</Td>
-                    <Td>
-                      <StatusBadge status={a.status} label={applicationStatusLabel(a)} />
-                    </Td>
-                  </tr>
-                ))}
+                {paged.map((a) => {
+                  const w = showPrep ? workerFor(a) : undefined;
+                  return (
+                    <tr
+                      key={a.id}
+                      onClick={() => router.push(hrefFor(a))}
+                      className="cursor-pointer bg-surface hover:bg-background"
+                    >
+                      <Td className="font-bold">
+                        <span className="flex items-center gap-1.5">
+                          {a.name}
+                          {isExpiryAlert(a, TODAY) && <AlertBadge expiry={a.residenceExpiryAtApply} />}
+                        </span>
+                      </Td>
+                      <Td>{a.organizationName ?? "—"}</Td>
+                      {showPrep ? (
+                        <>
+                          <Td className="tabular-nums">{w?.residence_renewal_todo || "—"}</Td>
+                          <Td>
+                            <WorkerLink href={w?.notion_link} icon={<ExternalLink size={13} />}>
+                              Notionを開く
+                            </WorkerLink>
+                          </Td>
+                          <Td>
+                            <WorkerLink href={w?.messenger_link} icon={<MessageCircle size={13} />}>
+                              Messenger
+                            </WorkerLink>
+                          </Td>
+                        </>
+                      ) : (
+                        <>
+                          <Td>{a.applicationContent || "—"}</Td>
+                          <Td className="tabular-nums">{a.applicationDate || "—"}</Td>
+                          <Td className="tabular-nums">{a.applicationNumber || "—"}</Td>
+                        </>
+                      )}
+                      <Td className="tabular-nums">{a.residenceExpiryAtApply ?? "—"}</Td>
+                      <Td>
+                        <StatusBadge status={a.status} label={applicationStatusLabel(a)} />
+                      </Td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -415,6 +497,31 @@ function Pagination({
         <ChevronRight size={16} />
       </button>
     </div>
+  );
+}
+
+// 外国人のNotion/Messengerリンク。行クリックの遷移を止めて別タブで開く。未登録なら「—」
+function WorkerLink({
+  href,
+  icon,
+  children,
+}: {
+  href?: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  if (!href) return <span className="text-muted">—</span>;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      className="inline-flex items-center gap-1 text-xs font-bold text-brand hover:underline"
+    >
+      {icon}
+      {children}
+    </a>
   );
 }
 
