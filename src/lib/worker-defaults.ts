@@ -25,6 +25,7 @@ export function blankWorkerInput(name: string, organizationId: string | null = n
     leaving_on: null,
     leaving_todo: "",
     gender: "",
+    address: "",
     employment_start_on: null,
     assigned_office: "",
     residence_note: "",

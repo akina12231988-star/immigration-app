@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronRight, Printer, Upload, UserPlus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Printer, Upload, UserPlus } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { LinkButton } from "@/components/ui/Button";
 import { SummaryCards } from "@/components/workers/SummaryCards";
@@ -24,6 +24,23 @@ interface Row {
   calc: SswCalcResult;
 }
 
+// 一覧の表示件数（1ページあたり）。描画を絞ってデータが重くならないようにする
+const PAGE_SIZES = [10, 50, 100] as const;
+
+// ページ番号の並び（先頭・末尾・現在ページの前後を表示し、間は「…」で省略）
+function pageNumbers(current: number, total: number): (number | "...")[] {
+  const wanted = new Set([1, total, current - 1, current, current + 1]);
+  const sorted = [...wanted].filter((p) => p >= 1 && p <= total).sort((a, b) => a - b);
+  const out: (number | "...")[] = [];
+  let prev = 0;
+  for (const p of sorted) {
+    if (prev && p - prev > 1) out.push("...");
+    out.push(p);
+    prev = p;
+  }
+  return out;
+}
+
 export function WorkersExplorer({
   workers,
   organizations,
@@ -36,6 +53,14 @@ export function WorkersExplorer({
   canEdit: boolean;
 }) {
   const [filter, setFilter] = useState<WorkerFilterState>(INITIAL_FILTER);
+  const [pageSize, setPageSize] = useState<number>(PAGE_SIZES[0]);
+  const [page, setPage] = useState(1);
+
+  // 絞り込みが変わったら1ページ目に戻す
+  const applyFilter: React.Dispatch<React.SetStateAction<WorkerFilterState>> = (next) => {
+    setFilter(next);
+    setPage(1);
+  };
 
   // 在留更新対象と同じ条件にするため、現在申請審査中の外国人IDを持っておく
   const underReview = useMemo(() => new Set(underReviewWorkerIds), [underReviewWorkerIds]);
@@ -155,13 +180,27 @@ export function WorkersExplorer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, filter, underReview]);
 
+  // ページ分割: 表示中のページ分だけ描画してデータが重くならないようにする
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * pageSize;
+  const paged = useMemo(
+    () => filtered.slice(pageStart, pageStart + pageSize),
+    [filtered, pageStart, pageSize],
+  );
+
+  const goPage = (p: number) => {
+    setPage(Math.min(Math.max(p, 1), totalPages));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   return (
     <div className="space-y-4">
       <SummaryCards
         summary={summary}
         active={filter.quick}
         onSelect={(quick) =>
-          setFilter((f) => ({ ...f, quick: f.quick === quick ? "all" : quick }))
+          applyFilter((f) => ({ ...f, quick: f.quick === quick ? "all" : quick }))
         }
       />
 
@@ -179,9 +218,35 @@ export function WorkersExplorer({
         </div>
       )}
 
-      <WorkerFilters filter={filter} organizations={organizations} onChange={setFilter} />
+      <WorkerFilters filter={filter} organizations={organizations} onChange={applyFilter} />
 
-      <p className="text-sm font-bold text-muted">{filtered.length}名</p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-bold text-muted">
+          {filtered.length}名
+          {filtered.length > pageSize && (
+            <span className="ml-1 font-medium">
+              （{pageStart + 1}〜{pageStart + paged.length}名を表示）
+            </span>
+          )}
+        </p>
+        <label className="flex items-center gap-1.5 text-xs font-bold text-muted">
+          表示件数
+          <select
+            value={pageSize}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setPage(1);
+            }}
+            className="min-h-[36px] rounded-lg border border-border bg-background px-2 text-sm font-normal focus:border-brand focus:outline-none"
+          >
+            {PAGE_SIZES.map((n) => (
+              <option key={n} value={n}>
+                {n}件
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
 
       {filtered.length === 0 ? (
         <p className="py-12 text-center text-sm text-muted">
@@ -192,7 +257,7 @@ export function WorkersExplorer({
       ) : filter.quick === "expiry3m" ? (
         /* 「在留期限3ヶ月以内」は在留更新対象ページと同じカード表示にする */
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {filtered.map(({ worker }) => (
+          {paged.map(({ worker }) => (
             <WorkerRenewalCard
               key={worker.id}
               worker={worker}
@@ -208,7 +273,7 @@ export function WorkersExplorer({
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {filtered.map(({ worker, calc }) => (
+          {paged.map(({ worker, calc }) => (
             <Link key={worker.id} href={`/workers/${worker.id}`}>
               <Card className="p-4">
                 <div className="mb-1 flex items-start justify-between gap-2">
@@ -244,6 +309,50 @@ export function WorkersExplorer({
             </Link>
           ))}
         </div>
+      )}
+
+      {totalPages > 1 && (
+        <nav aria-label="ページ切り替え" className="flex flex-wrap items-center justify-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => goPage(currentPage - 1)}
+            disabled={currentPage === 1}
+            className="flex min-h-[40px] items-center gap-0.5 rounded-lg border border-border px-3 text-sm font-bold disabled:opacity-40"
+          >
+            <ChevronLeft size={15} />
+            前へ
+          </button>
+          {pageNumbers(currentPage, totalPages).map((p, i) =>
+            p === "..." ? (
+              <span key={`ellipsis-${i}`} className="px-1 text-sm text-muted">
+                …
+              </span>
+            ) : (
+              <button
+                key={p}
+                type="button"
+                onClick={() => goPage(p)}
+                aria-current={p === currentPage ? "page" : undefined}
+                className={`min-h-[40px] min-w-[40px] rounded-lg px-2 text-sm font-bold tabular-nums ${
+                  p === currentPage
+                    ? "bg-brand text-brand-foreground"
+                    : "border border-border"
+                }`}
+              >
+                {p}
+              </button>
+            ),
+          )}
+          <button
+            type="button"
+            onClick={() => goPage(currentPage + 1)}
+            disabled={currentPage === totalPages}
+            className="flex min-h-[40px] items-center gap-0.5 rounded-lg border border-border px-3 text-sm font-bold disabled:opacity-40"
+          >
+            次へ
+            <ChevronRight size={15} />
+          </button>
+        </nav>
       )}
 
       <p className="pb-2 text-center text-[11px] leading-relaxed text-muted">

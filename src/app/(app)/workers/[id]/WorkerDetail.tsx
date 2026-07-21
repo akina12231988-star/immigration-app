@@ -216,6 +216,8 @@ export function WorkerDetail({
         <dl className="mb-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
           <InfoItem label="国籍" value={worker.nationality} />
           <InfoItem label="生年月日" value={worker.birth} />
+          <InfoItem label="性別" value={worker.gender} />
+          <InfoItem label="住所" value={worker.address} />
           <InfoItem label="分野・職種" value={worker.field} />
           <InfoItem label="現在の所属機関" value={orgName} />
           <InfoItem label="専門級の合格名" value={worker.specialty_grade} />
