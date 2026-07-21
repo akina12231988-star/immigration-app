@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertTriangle, CalendarClock } from "lucide-react";
+import { AlertTriangle, CalendarClock, X } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { type WorkerWithOrg } from "@/lib/supabase/queries/workers";
 import { isResidenceRenewalTarget } from "@/lib/worker-alerts";
@@ -26,16 +26,29 @@ export function RenewalsClient({
   const today = todayStr();
   const [filter, setFilter] = useState<HandlingFilter>("");
 
+  // 在留期限の期間検索（指定すると3か月の枠を超えてその期間の人を表示できる）
+  const [expiryFrom, setExpiryFrom] = useState("");
+  const [expiryTo, setExpiryTo] = useState("");
+  const hasExpiryRange = Boolean(expiryFrom || expiryTo);
+
   const underReview = useMemo(() => new Set(underReviewWorkerIds), [underReviewWorkerIds]);
 
-  const targets = useMemo(
-    () =>
-      workers
-        // 退職者・現在申請審査中の人は対象外
-        .filter((w) => isResidenceRenewalTarget(w, today) && !underReview.has(w.id))
-        .sort((a, b) => (a.residence_expiry_date ?? "").localeCompare(b.residence_expiry_date ?? "")),
-    [workers, today, underReview],
-  );
+  const targets = useMemo(() => {
+    // 期間指定あり: 在留期限がその期間内の人（3か月より先も含む）。
+    // 期間指定なし: 従来どおり在留期限の3か月前になった人。
+    const inScope = (w: WorkerWithOrg) => {
+      if (!hasExpiryRange) return isResidenceRenewalTarget(w, today);
+      const d = w.residence_expiry_date;
+      if (w.status === "退職" || !d) return false;
+      if (expiryFrom && d < expiryFrom) return false;
+      if (expiryTo && d > expiryTo) return false;
+      return true;
+    };
+    return workers
+      // 退職者・現在申請審査中の人は対象外
+      .filter((w) => inScope(w) && !underReview.has(w.id))
+      .sort((a, b) => (a.residence_expiry_date ?? "").localeCompare(b.residence_expiry_date ?? ""));
+  }, [workers, today, underReview, hasExpiryRange, expiryFrom, expiryTo]);
 
   const countFor = (f: HandlingFilter) =>
     f === "all" ? targets.length : targets.filter((w) => w.residence_renewal_status === f).length;
@@ -76,6 +89,45 @@ export function RenewalsClient({
             {f === "all" ? "すべて" : STATUS_LABEL[f]}（{countFor(f)}）
           </button>
         ))}
+      </div>
+
+      {/* 在留期限の期間検索: 見落としがないか期間で確認できる */}
+      <div className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-surface px-3.5 py-3">
+        <p className="w-full text-[11px] font-bold text-muted">
+          在留期限で期間検索（指定すると3か月より先の人も表示されます）
+        </p>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] text-muted">いつから</span>
+          <input
+            type="date"
+            value={expiryFrom}
+            onChange={(e) => setExpiryFrom(e.target.value)}
+            className="min-h-[40px] rounded-lg border border-border bg-background px-2 text-sm focus:border-brand focus:outline-none"
+          />
+        </label>
+        <span className="pb-2.5 text-muted">〜</span>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] text-muted">いつまで</span>
+          <input
+            type="date"
+            value={expiryTo}
+            onChange={(e) => setExpiryTo(e.target.value)}
+            className="min-h-[40px] rounded-lg border border-border bg-background px-2 text-sm focus:border-brand focus:outline-none"
+          />
+        </label>
+        {hasExpiryRange && (
+          <button
+            type="button"
+            onClick={() => {
+              setExpiryFrom("");
+              setExpiryTo("");
+            }}
+            className="inline-flex min-h-[40px] items-center gap-1 rounded-lg border border-border bg-surface px-3 text-xs font-bold text-muted"
+          >
+            <X size={14} />
+            クリア
+          </button>
+        )}
       </div>
 
       <p className="text-sm font-bold text-muted">{filtered.length}件</p>
