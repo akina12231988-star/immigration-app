@@ -124,6 +124,10 @@ export function ApprovalSection({
           residence_card_no: form.grantedCardNo,
           residence_permit_date: form.grantedPermitDate || null,
           residence_expiry_date: form.grantedExpiryDate || null,
+          // 新しい在留期限が決まったら、在留更新の対応状況をリセットして次の更新サイクルに備える
+          ...(form.grantedExpiryDate
+            ? { residence_renewal_status: "" as const, residence_renewal_todo: "" }
+            : {}),
         });
       }
       setSaved(true);

@@ -1,15 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Building2, Globe, ChevronRight } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
 import { Card } from "@/components/ui/Card";
 import { ReceiptRegistrationForm } from "./ReceiptRegistrationForm";
 import type { ApplicationMethod } from "@/types/application";
 
-// 申請の登録は 窓口（受付票あり）/ オンライン（受付メールのリンクを記録）の2通り
-export default function NewApplicationPage() {
+// 申請の登録は 窓口（受付票あり）/ オンライン（受付メールのリンクを記録）の2通り。
+// 申請一覧の「申請前＜準備中＞」から来た場合は ?workerId= で外国人を自動選択する。
+// useSearchParams は Suspense 境界の内側で使う必要がある
+function NewApplicationPageInner() {
   const [method, setMethod] = useState<ApplicationMethod | null>(null);
+  const initialWorkerId = useSearchParams().get("workerId") ?? undefined;
 
   return (
     <div className="-mx-4 -mt-4 lg:-mx-8 lg:-mt-6">
@@ -57,9 +61,17 @@ export default function NewApplicationPage() {
             </button>
           </div>
         ) : (
-          <ReceiptRegistrationForm method={method} />
+          <ReceiptRegistrationForm method={method} initialWorkerId={initialWorkerId} />
         )}
       </div>
     </div>
+  );
+}
+
+export default function NewApplicationPage() {
+  return (
+    <Suspense>
+      <NewApplicationPageInner />
+    </Suspense>
   );
 }
