@@ -21,6 +21,11 @@ import { STAT_VIEWS, type StatViewKey } from "@/lib/application-stats";
 import { isExpiryAlert, todayStr } from "@/lib/application-alerts";
 import { listWorkersWithOrg, type WorkerWithOrg } from "@/lib/supabase/queries/workers";
 import {
+  daysUntil,
+  isExpiryWithinTwoMonths,
+  remainingLabel,
+} from "@/lib/worker-alerts";
+import {
   buildRenewalPlaceholders,
   isRenewalPlaceholder,
 } from "@/lib/renewal-placeholders";
@@ -309,8 +314,11 @@ export function ApplicationsExplorer({
                     <span>{a.applicationDate || "—"}</span>
                   </div>
                   {a.residenceExpiryAtApply && (
-                    <p className="mt-1 text-xs text-muted">
+                    <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted">
                       申請時在留期限 {a.residenceExpiryAtApply}
+                      {showPrep && isExpiryWithinTwoMonths(a.residenceExpiryAtApply, TODAY) && (
+                        <ApplyRushBadge expiry={a.residenceExpiryAtApply} />
+                      )}
                     </p>
                   )}
                 </>
@@ -413,7 +421,18 @@ export function ApplicationsExplorer({
                           <Td className="tabular-nums">{a.applicationNumber || "—"}</Td>
                         </>
                       )}
-                      <Td className="tabular-nums">{a.residenceExpiryAtApply ?? "—"}</Td>
+                      <Td className="tabular-nums">
+                        {showPrep &&
+                        a.residenceExpiryAtApply &&
+                        isExpiryWithinTwoMonths(a.residenceExpiryAtApply, TODAY) ? (
+                          <span className="flex items-center gap-1.5">
+                            {a.residenceExpiryAtApply}
+                            <ApplyRushBadge expiry={a.residenceExpiryAtApply} />
+                          </span>
+                        ) : (
+                          a.residenceExpiryAtApply ?? "—"
+                        )}
+                      </Td>
                       <Td>
                         <StatusBadge status={a.status} label={applicationStatusLabel(a)} />
                       </Td>
@@ -497,6 +516,22 @@ function Pagination({
         <ChevronRight size={16} />
       </button>
     </div>
+  );
+}
+
+// 申請前＜準備中＞: 在留期限が2ヶ月以内に迫ったら「期限まであと〇ヶ月〇日！早く申請して」
+function ApplyRushBadge({ expiry }: { expiry: string }) {
+  const d = daysUntil(expiry, TODAY);
+  const label =
+    d > 0
+      ? `期限まで${remainingLabel(expiry, TODAY)}！早く申請して`
+      : d === 0
+        ? "期限は本日！早く申請して"
+        : `期限を${remainingLabel(expiry, TODAY)}！早く申請して`;
+  return (
+    <span className="inline-flex shrink-0 items-center rounded-full bg-seal px-2 py-0.5 text-[10px] font-bold text-seal-foreground">
+      {label}
+    </span>
   );
 }
 
