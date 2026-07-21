@@ -62,7 +62,13 @@ interface WorkerOption {
 const INPUT_CLASS =
   "w-full rounded-xl border border-border bg-surface px-3.5 py-3 text-base focus:border-brand focus:outline-none";
 
-export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod }) {
+export function ReceiptRegistrationForm({
+  method,
+  initialWorkerId,
+}: {
+  method: ApplicationMethod;
+  initialWorkerId?: string;
+}) {
   const router = useRouter();
   const isOnline = method === "オンライン";
   const { applications, addApplication } = useApplications();
@@ -103,7 +109,18 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
       .select("id, name, current_organization_id, residence_expiry_date")
       .order("name")
       .then(({ data }) => {
-        if (!cancelled && data) setWorkers(data as WorkerOption[]);
+        if (cancelled || !data) return;
+        const list = data as WorkerOption[];
+        setWorkers(list);
+        // 申請一覧の「申請前＜準備中＞」から遷移した場合、対象の外国人を自動選択する
+        const w = initialWorkerId ? list.find((x) => x.id === initialWorkerId) : undefined;
+        if (w) {
+          setWorkerId(w.id);
+          if (w.current_organization_id) setOrgId(w.current_organization_id);
+          if (w.residence_expiry_date) {
+            setFields((prev) => ({ ...prev, residenceExpiryAtApply: w.residence_expiry_date! }));
+          }
+        }
       });
     void supabase
       .from("organizations")
@@ -120,7 +137,7 @@ export function ReceiptRegistrationForm({ method }: { method: ApplicationMethod 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [initialWorkerId]);
 
   const selectedWorker = workers.find((w) => w.id === workerId) ?? null;
   const selectedAgent = agents.find((a) => a.id === agentId) ?? null;

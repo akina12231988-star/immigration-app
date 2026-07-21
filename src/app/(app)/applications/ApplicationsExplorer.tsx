@@ -12,6 +12,11 @@ import { useApplications } from "@/lib/application-store";
 import { applicationStatusLabel } from "@/lib/status";
 import { STAT_VIEWS, type StatViewKey } from "@/lib/application-stats";
 import { isExpiryAlert, todayStr } from "@/lib/application-alerts";
+import { listWorkersWithOrg, type WorkerWithOrg } from "@/lib/supabase/queries/workers";
+import {
+  buildRenewalPlaceholders,
+  isRenewalPlaceholder,
+} from "@/lib/renewal-placeholders";
 import type { Application } from "@/types/application";
 import { ApprovedCard } from "./ApprovedCard";
 
@@ -50,6 +55,20 @@ export function ApplicationsExplorer({
   const [pageSize, setPageSize] = useState<number>(50);
   const [page, setPage] = useState(1);
 
+  // 在留更新で「準備中」の外国人を「申請前＜準備中＞」の擬似行として出すための外国人一覧
+  const [renewalWorkers, setRenewalWorkers] = useState<WorkerWithOrg[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    listWorkersWithOrg(createClient())
+      .then((ws) => {
+        if (!cancelled) setRenewalWorkers(ws);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // メモ・受取予定日のインライン編集用（記入者名と編集可否）
   const [authorName, setAuthorName] = useState("");
   const [canEdit, setCanEdit] = useState(false);
@@ -78,7 +97,14 @@ export function ApplicationsExplorer({
 
   const filtered = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
-    return applications.filter((a) => {
+    const matchesKeyword = (a: Application) =>
+      !kw ||
+      a.name.toLowerCase().includes(kw) ||
+      a.applicationNumber.toLowerCase().includes(kw) ||
+      a.applicationContent.toLowerCase().includes(kw) ||
+      a.assignee.toLowerCase().includes(kw);
+
+    const rows = applications.filter((a) => {
       if (view !== "all" && !STAT_VIEWS[view].test(a)) return false;
       // 新規発行済み: 在留許可日の期間（いつからいつまで）で絞り込む
       if (showIssued) {
@@ -86,15 +112,18 @@ export function ApplicationsExplorer({
         if (permitFrom && (!d || d < permitFrom)) return false;
         if (permitTo && (!d || d > permitTo)) return false;
       }
-      if (!kw) return true;
-      return (
-        a.name.toLowerCase().includes(kw) ||
-        a.applicationNumber.toLowerCase().includes(kw) ||
-        a.applicationContent.toLowerCase().includes(kw) ||
-        a.assignee.toLowerCase().includes(kw)
-      );
+      return matchesKeyword(a);
     });
-  }, [applications, keyword, view, showIssued, permitFrom, permitTo]);
+
+    // 「すべて」表示では、在留更新で準備中の外国人を「申請前＜準備中＞」として先頭に出す。
+    // 申請登録して審査中になると、この擬似行は実レコードの行に置き換わる。
+    if (view === "all") {
+      const placeholders = buildRenewalPlaceholders(renewalWorkers, applications, TODAY)
+        .filter(matchesKeyword);
+      return [...placeholders, ...rows];
+    }
+    return rows;
+  }, [applications, renewalWorkers, keyword, view, showIssued, permitFrom, permitTo]);
 
   // 絞り込み条件・表示件数が変わったら1ページ目に戻す（レンダー時に調整）
   const filterKey = `${view}|${keyword}|${permitFrom}|${permitTo}|${pageSize}`;
@@ -103,6 +132,12 @@ export function ApplicationsExplorer({
     setPrevFilterKey(filterKey);
     setPage(1);
   }
+
+  // 擬似行（申請前＜準備中＞）は申請登録へ、実レコードは詳細へ遷移する
+  const hrefFor = (a: Application) =>
+    isRenewalPlaceholder(a)
+      ? `/applications/new?workerId=${a.workerId}`
+      : `/applications/${a.id}`;
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
@@ -233,7 +268,7 @@ export function ApplicationsExplorer({
           {/* モバイル: カード表示 */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:hidden">
             {paged.map((a) => (
-              <Link key={a.id} href={`/applications/${a.id}`}>
+              <Link key={a.id} href={hrefFor(a)}>
                 <Card className={`h-full p-4 ${isExpiryAlert(a, TODAY) ? "border-seal" : ""}`}>
                   <div className="mb-2 flex items-start justify-between gap-2">
                     <p className="font-bold">{a.name}</p>
@@ -246,7 +281,7 @@ export function ApplicationsExplorer({
                   <p className="mb-1 text-sm text-muted">{a.applicationContent}</p>
                   <div className="flex items-center justify-between text-xs text-muted">
                     <span>申請番号 {a.applicationNumber || "未登録"}</span>
-                    <span>{a.applicationDate}</span>
+                    <span>{a.applicationDate || "—"}</span>
                   </div>
                   {a.residenceExpiryAtApply && (
                     <p className="mt-1 text-xs text-muted">
@@ -276,7 +311,7 @@ export function ApplicationsExplorer({
                 {paged.map((a) => (
                   <tr
                     key={a.id}
-                    onClick={() => router.push(`/applications/${a.id}`)}
+                    onClick={() => router.push(hrefFor(a))}
                     className="cursor-pointer bg-surface hover:bg-background"
                   >
                     <Td className="font-bold">
@@ -287,7 +322,7 @@ export function ApplicationsExplorer({
                     </Td>
                     <Td>{a.organizationName ?? "—"}</Td>
                     <Td>{a.applicationContent || "—"}</Td>
-                    <Td className="tabular-nums">{a.applicationDate}</Td>
+                    <Td className="tabular-nums">{a.applicationDate || "—"}</Td>
                     <Td className="tabular-nums">{a.applicationNumber || "—"}</Td>
                     <Td className="tabular-nums">{a.residenceExpiryAtApply ?? "—"}</Td>
                     <Td>
