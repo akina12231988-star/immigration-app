@@ -19,6 +19,7 @@ import {
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { WorkerPhoto } from "@/components/workers/WorkerPhoto";
 import { WorkerDocuments } from "@/components/workers/WorkerDocuments";
+import { OnboardingDocuments } from "@/components/workers/OnboardingDocuments";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -246,6 +247,9 @@ export function WorkerDetail({
 
       {/* 在留カード・指定書の差し替え（履歴保持） */}
       <WorkerDocuments workerId={worker.id} canEdit={canEdit} />
+
+      {/* 入社書類メールで登録した添付データ（選択ダウンロード・Gmailリンク） */}
+      <OnboardingDocuments workerId={worker.id} />
 
       {/* 通算期間 */}
       <Card className="p-4">

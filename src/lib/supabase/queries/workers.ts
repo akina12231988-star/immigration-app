@@ -64,6 +64,30 @@ export async function listWorkersWithOrg(
   return (data as WorkerWithOrg[]) ?? [];
 }
 
+// 入社書類メール用: 氏名と初期値（雇用開始日・配属先・居住地・許可日・所属）を取得
+export interface WorkerForOnboarding {
+  id: string;
+  name: string;
+  employment_start_on: string | null;
+  assigned_office: string;
+  residence_note: string;
+  residence_permit_date: string | null;
+  current_organization_id: string | null;
+}
+
+export async function listWorkersForOnboarding(
+  supabase: SupabaseClient,
+): Promise<WorkerForOnboarding[]> {
+  const { data, error } = await supabase
+    .from("workers")
+    .select(
+      "id, name, employment_start_on, assigned_office, residence_note, residence_permit_date, current_organization_id",
+    )
+    .order("name", { ascending: true });
+  if (error) throw error;
+  return (data as WorkerForOnboarding[]) ?? [];
+}
+
 // 外国人IDを国籍から自動採番する（例: V-3）
 async function generateWorkerCode(
   supabase: SupabaseClient,

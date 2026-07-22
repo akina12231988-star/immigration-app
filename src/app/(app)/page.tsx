@@ -16,6 +16,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
+import { OnboardingPendingAlert } from "@/components/OnboardingPendingAlert";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { getDashboardStats } from "@/lib/application-stats";
@@ -124,6 +125,9 @@ export default function DashboardPage() {
             </div>
           </section>
         )}
+
+        {/* 入社書類の後送待ちアラート */}
+        <OnboardingPendingAlert />
 
         <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {STAT_CARDS.map(({ key, view, label, icon: Icon, accent }) => (
