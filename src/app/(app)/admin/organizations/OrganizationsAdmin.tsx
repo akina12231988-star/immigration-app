@@ -22,6 +22,7 @@ const EMPTY: OrganizationInput = {
   business_category: "",
   address: "",
   contact: "",
+  corporate_no: "",
   note: "",
 };
 
@@ -176,6 +177,7 @@ function OrganizationFormModal({
           business_category: initial.business_category,
           address: initial.address,
           contact: initial.contact,
+          corporate_no: initial.corporate_no,
           note: initial.note,
         }
       : EMPTY,
@@ -265,6 +267,17 @@ function OrganizationFormModal({
             value={form.contact}
             onChange={(e) => set("contact", e.target.value)}
             placeholder="担当者名・電話番号など"
+            className={INPUT_CLASS}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-muted">法人番号（13桁・法人でない場合は空欄）</span>
+          <input
+            value={form.corporate_no}
+            onChange={(e) => set("corporate_no", e.target.value)}
+            placeholder="1234567890123"
+            inputMode="numeric"
+            maxLength={13}
             className={INPUT_CLASS}
           />
         </label>
