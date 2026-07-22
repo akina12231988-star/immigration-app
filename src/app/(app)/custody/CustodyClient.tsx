@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Archive, FileUp, Printer, Stamp } from "lucide-react";
+import { Archive, Download, FileUp, Printer, QrCode, Stamp } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -14,6 +14,7 @@ import {
 import type { WorkerWithOrg } from "@/lib/supabase/queries/workers";
 import type { CustodyEventRow, CustodyStatus } from "@/types/db";
 import { formatStorageNo, parseAzkLedger } from "@/lib/custody";
+import { QrImage, custodyQrUrl, downloadQrPng, useOrigin } from "./QrImage";
 
 const STATUS_BADGE: Record<CustodyStatus, string> = {
   ボックス保管中: "bg-status-approved-bg text-status-approved-fg",
@@ -35,16 +36,23 @@ export function CustodyClient({
   workers,
   canWrite,
   meName,
+  initialNo,
 }: {
   initialRecords: CustodyWithWorker[];
   workers: WorkerWithOrg[];
   canWrite: boolean;
   meName: string;
+  initialNo?: number;
 }) {
+  // QRコード（/custody?no=番号）から開いた場合、その番号の預かりを直接開く。
+  // 現在預かり中でない番号は、検索欄に番号を入れて過去履歴を表示する。
+  const initialActive = initialNo
+    ? (initialRecords.find((r) => r.storage_no === initialNo && r.status !== "返却済み") ?? null)
+    : null;
   const [records, setRecords] = useState(initialRecords);
-  const [filter, setFilter] = useState<Filter>("預かり中");
-  const [q, setQ] = useState("");
-  const [selected, setSelected] = useState<CustodyWithWorker | null>(null);
+  const [filter, setFilter] = useState<Filter>(initialNo && !initialActive ? "すべて" : "預かり中");
+  const [q, setQ] = useState(initialNo && !initialActive ? formatStorageNo(initialNo) : "");
+  const [selected, setSelected] = useState<CustodyWithWorker | null>(initialActive);
   const [importing, setImporting] = useState(false);
 
   const active = records.filter((r) => r.status !== "返却済み");
@@ -94,16 +102,21 @@ export function CustodyClient({
         </span>
       </div>
 
-      {canWrite && (
-        <div className="flex flex-wrap gap-2">
-          <LinkButton href="/custody/new" icon={<Stamp size={18} />}>
-            預かり証を発行
-          </LinkButton>
-          <Button variant="secondary" icon={<FileUp size={18} />} onClick={() => setImporting(true)}>
-            azk台帳から取込
-          </Button>
-        </div>
-      )}
+      <div className="flex flex-wrap gap-2">
+        {canWrite && (
+          <>
+            <LinkButton href="/custody/new" icon={<Stamp size={18} />}>
+              預かり証を発行
+            </LinkButton>
+            <Button variant="secondary" icon={<FileUp size={18} />} onClick={() => setImporting(true)}>
+              azk台帳から取込
+            </Button>
+          </>
+        )}
+        <LinkButton href="/custody/qr" variant="secondary" icon={<QrCode size={18} />}>
+          QRコード
+        </LinkButton>
+      </div>
 
       <div className="flex flex-wrap items-center gap-2">
         <input
@@ -308,6 +321,8 @@ function DetailModal({
           預かり証を表示・印刷
         </LinkButton>
 
+        <QrSection storageNo={record.storage_no} />
+
         {canWrite && record.status !== "返却済み" && (
           <div className="space-y-2 rounded-xl border border-border p-3">
             <p className="text-sm font-bold">出し入れを記録</p>
@@ -379,6 +394,33 @@ function DetailModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+// ---- 保管番号QR（スマホで読み取るとこの番号の画面が直接開く） ----
+
+function QrSection({ storageNo }: { storageNo: number }) {
+  const origin = useOrigin();
+  if (!origin) return null;
+
+  const url = custodyQrUrl(origin, storageNo);
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-border p-3">
+      <QrImage text={url} size={96} className="shrink-0 rounded bg-white p-1" />
+      <div className="min-w-0 flex-1 space-y-2">
+        <p className="text-[11px] leading-relaxed text-muted">
+          この番号のQRコードです。印刷して付箋やボックスに貼っておくと、スマホで読み取るだけでこの画面が開き、その場で持出・返却を記録できます。
+        </p>
+        <button
+          type="button"
+          onClick={() => void downloadQrPng(url, `保管QR_No${formatStorageNo(storageNo)}.png`)}
+          className="inline-flex items-center gap-1 text-xs font-bold text-brand"
+        >
+          <Download size={13} />
+          QR画像を保存
+        </button>
+      </div>
+    </div>
   );
 }
 
