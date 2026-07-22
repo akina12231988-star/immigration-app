@@ -1,11 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Download, Printer, QrCode } from "lucide-react";
+import { Download, Printer, QrCode, Tag } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import type { CustodyWithWorker } from "@/lib/supabase/queries/custody";
 import { STORAGE_NO_MAX, STORAGE_NO_MIN, formatStorageNo } from "@/lib/custody";
-import { QrImage, QrLinkCopyButton, QrSaveButton, custodyQrUrl, useOrigin } from "../QrImage";
+import { QrImage, QrLinkCopyButton, QrSaveButton, TepraSaveButton, custodyQrUrl, useOrigin } from "../QrImage";
 
 const inputCls =
   "min-h-[44px] w-20 rounded-xl border border-border bg-surface px-3 text-center text-base font-bold tabular-nums focus:border-brand focus:outline-none";
@@ -82,6 +82,15 @@ export function QrSheetClient({ records }: { records: CustodyWithWorker[] }) {
                     url={url}
                     className="inline-flex items-center gap-1 text-[11px] font-bold text-brand"
                   />
+                  <TepraSaveButton
+                    text={url}
+                    numberLabel={formatStorageNo(no)}
+                    filename={`テプラQR_No${formatStorageNo(no)}.png`}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-brand"
+                  >
+                    <Tag size={12} />
+                    テプラ用
+                  </TepraSaveButton>
                 </div>
               </Card>
             );
