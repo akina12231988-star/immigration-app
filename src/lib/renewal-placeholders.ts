@@ -10,9 +10,10 @@ export function isRenewalPlaceholder(app: Application): boolean {
   return app.id.startsWith(PLACEHOLDER_PREFIX);
 }
 
-// 在留更新対象で「準備中」にした外国人を、申請一覧に「申請前＜準備中＞」として
+// 申請準備で「準備中」にした外国人を、申請一覧に「申請前＜準備中＞」として
 // 表示するための擬似行を作る。実際に申請したら申請登録（/applications/new）で
 // 実レコードを作成し、審査中になった時点で擬似行は消える。
+// 「新規で申請書類準備」の人は在留期限に関係なく、「更新」の人は3か月前から対象。
 export function buildRenewalPlaceholders(
   workers: WorkerWithOrg[],
   applications: Application[],
@@ -30,7 +31,9 @@ export function buildRenewalPlaceholders(
     .filter(
       (w) =>
         w.residence_renewal_status === "準備中" &&
-        isResidenceRenewalTarget(w, today) &&
+        (w.application_prep_kind === "新規"
+          ? w.status !== "退職"
+          : isResidenceRenewalTarget(w, today)) &&
         !underReview.has(w.id) &&
         !hasPreApplication.has(w.id),
     )
