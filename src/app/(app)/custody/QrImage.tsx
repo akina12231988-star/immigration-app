@@ -77,10 +77,13 @@ export function QrLinkCopyButton({ url, className = "" }: { url: string; classNa
 const TEPRA_MM = 14; // px / mm
 const TEPRA_W_MM = 50;
 const TEPRA_H_MM = 24;
-// 1本目の折り線はラベル全長のちょうど半分（25mm）。
-// 2本目は残り25mmの中央（37.5mm）で、番号2面が折り線から等距離になり、折ると数字がぴったり重なる。
-const TEPRA_QR_SECTION_MM = TEPRA_W_MM / 2; // QR部の幅（25mm）
-const TEPRA_NUM_SECTION_MM = TEPRA_W_MM / 4; // 番号部の幅 ×2（12.5mm）
+// 1本目の折り線はラベル全長のちょうど半分（25mm）で、線の両側に5mmずつ余白を設ける。
+// QRは 0〜20mm に収め、番号は 30mm から。2本目の折り線は番号部（30〜50mm）の中央（40mm）で、
+// 番号2面が折り線から等距離になり、折ると数字がぴったり重なる。
+const TEPRA_FOLD1_MM = TEPRA_W_MM / 2; // 25mm
+const TEPRA_FOLD_GAP_MM = 5; // 折り線1の両側余白
+const TEPRA_NUM_START_MM = TEPRA_FOLD1_MM + TEPRA_FOLD_GAP_MM; // 30mm
+const TEPRA_NUM_SECTION_MM = (TEPRA_W_MM - TEPRA_NUM_START_MM) / 2; // 10mm ×2
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -106,15 +109,16 @@ export async function buildTepraLabel(
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, W, H);
 
-  // QR（左端セクションの中央に 20mm 角）
-  const qrSize = 20 * TEPRA_MM;
+  // QR（折り線1の5mm手前までの領域 0〜20mm の中央に 18mm 角）
+  const qrAreaW = (TEPRA_FOLD1_MM - TEPRA_FOLD_GAP_MM) * TEPRA_MM;
+  const qrSize = 18 * TEPRA_MM;
   const qrDataUrl = await QRCode.toDataURL(text, { margin: 0, width: qrSize });
   const qrImg = await loadImage(qrDataUrl);
-  ctx.drawImage(qrImg, (TEPRA_QR_SECTION_MM * TEPRA_MM - qrSize) / 2, (H - qrSize) / 2, qrSize, qrSize);
+  ctx.drawImage(qrImg, (qrAreaW - qrSize) / 2, (H - qrSize) / 2, qrSize, qrSize);
 
   // 折り線（目印用なので細く・短い破線で控えめに）
-  const x1 = TEPRA_QR_SECTION_MM * TEPRA_MM;
-  const x2 = x1 + TEPRA_NUM_SECTION_MM * TEPRA_MM;
+  const x1 = TEPRA_FOLD1_MM * TEPRA_MM;
+  const x2 = (TEPRA_NUM_START_MM + TEPRA_NUM_SECTION_MM) * TEPRA_MM;
   ctx.strokeStyle = "#000000";
   ctx.lineWidth = 2;
   ctx.setLineDash([5, 16]);
@@ -138,7 +142,7 @@ export async function buildTepraLabel(
     ctx.font = `bold ${fontSize}px "Helvetica Neue", Arial, sans-serif`;
   }
   const centers: Array<[number, number]> = [
-    [x1 + (TEPRA_NUM_SECTION_MM * TEPRA_MM) / 2, Math.PI / 2],
+    [(TEPRA_NUM_START_MM + TEPRA_NUM_SECTION_MM / 2) * TEPRA_MM, Math.PI / 2],
     [x2 + (TEPRA_NUM_SECTION_MM * TEPRA_MM) / 2, -Math.PI / 2],
   ];
   for (const [cx, angle] of centers) {
