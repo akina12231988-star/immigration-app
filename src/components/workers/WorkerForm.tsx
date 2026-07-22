@@ -220,7 +220,7 @@ export function WorkerForm({
                 className={INPUT_CLASS}
               />
             </Field>
-            <Field label="Notion 申請TODO番号">
+            <Field label="Notion 随時報告TODO番号">
               <input
                 value={form.leaving_todo}
                 onChange={(e) => set("leaving_todo", e.target.value)}

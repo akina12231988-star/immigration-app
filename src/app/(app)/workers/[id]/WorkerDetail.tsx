@@ -582,7 +582,7 @@ function DocumentTotalPanel({ histories }: { histories: WorkHistory[] }) {
   );
 }
 
-// 退職者情報: 退職日とNotion申請TODO番号を記録する
+// 退職者情報: 退職日とNotion随時報告TODO番号を記録する
 function LeavingSection({
   worker,
   canEdit,
@@ -623,7 +623,7 @@ function LeavingSection({
         <p className="mb-2 text-[11px] font-bold text-muted">退職者情報</p>
         <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
           <InfoItem label="退職日" value={worker.leaving_on} />
-          <InfoItem label="Notion 申請TODO番号" value={worker.leaving_todo} />
+          <InfoItem label="Notion 随時報告TODO番号" value={worker.leaving_todo} />
         </dl>
       </Card>
     );
@@ -647,7 +647,7 @@ function LeavingSection({
           />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-[11px] font-bold text-muted">Notion 申請TODO番号</span>
+          <span className="text-[11px] font-bold text-muted">Notion 随時報告TODO番号</span>
           <input
             value={leavingTodo}
             onChange={(e) => {
