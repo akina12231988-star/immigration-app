@@ -76,6 +76,10 @@ export interface Worker {
   application_prep_kind: string; // 申請準備の区分（'' = 更新 / '新規' = 新規で申請書類準備）
   leaving_on: string | null; // 退職日
   leaving_todo: string; // 退職時のNotion随時報告TODO番号
+  leaving_kind: string; // 退職区分（'' / 会社都合 / 自己都合）
+  leaving_reason: string; // 退職理由
+  leaving_org_name: string; // 退職した所属機関の名称
+  leaving_org_address: string; // 退職した所属機関の住所
   gender: string; // 性別
   address: string; // 住所（履歴書に表示）
   employment_start_on: string | null; // 雇用開始年月日
@@ -182,6 +186,33 @@ export interface OrientationRow {
   created_at: string;
   updated_at: string;
 }
+
+// ---- 退職＜随時報告＞（0032_resignations.sql） ----
+
+export const RESIGNATION_KINDS = ["会社都合", "自己都合"] as const;
+export type ResignationKind = (typeof RESIGNATION_KINDS)[number];
+
+export interface ResignationRow {
+  id: string;
+  worker_id: string;
+  organization_id: string | null;
+  org_name: string; // 退職元機関のスナップショット
+  org_address: string;
+  org_contact: string;
+  kind: ResignationKind; // 会社都合 / 自己都合
+  reason: string; // 退職理由
+  leaving_on: string; // 退職日 YYYY-MM-DD
+  todo_no: string; // Notion随時報告TODO番号
+  note: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ResignationInput = Omit<
+  ResignationRow,
+  "id" | "created_by" | "created_at" | "updated_at"
+>;
 
 // 在留カード・指定書の履歴（0015）
 export interface WorkerDocumentRow {

@@ -12,6 +12,7 @@ import {
   Mailbox,
   MailPlus,
   Archive,
+  UserMinus,
   type LucideIcon,
 } from "lucide-react";
 
@@ -36,6 +37,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/custody", label: "保管ボックス（原本預かり）", short: "保管", icon: Archive },
   { href: "/notices/search", label: "通知書", short: "通知書", icon: ScanLine },
   { href: "/orientations", label: "生活オリエンテーション", short: "生活", icon: GraduationCap },
+  { href: "/resignations", label: "退職＜随時報告＞", short: "退職", icon: UserMinus },
   { href: "/postings", label: "求人一覧", short: "求人", icon: Briefcase },
   { href: "/jobs", label: "求職一覧", short: "求職", icon: ClipboardList },
 ];

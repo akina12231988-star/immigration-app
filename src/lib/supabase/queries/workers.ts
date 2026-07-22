@@ -48,6 +48,31 @@ export async function listWorkersBrief(
   return (data as WorkerBrief[]) ?? [];
 }
 
+// 退職＜随時報告＞用: 氏名検索とリンク表示・所属機関の確認に必要な項目のみ
+export interface WorkerForResignation {
+  id: string;
+  name: string;
+  kana: string;
+  messenger_link: string;
+  notion_link: string;
+  current_organization_id: string | null;
+  leaving_on: string | null;
+  leaving_todo: string;
+}
+
+export async function listWorkersForResignation(
+  supabase: SupabaseClient,
+): Promise<WorkerForResignation[]> {
+  const { data, error } = await supabase
+    .from("workers")
+    .select(
+      "id, name, kana, messenger_link, notion_link, current_organization_id, leaving_on, leaving_todo",
+    )
+    .order("name", { ascending: true });
+  if (error) throw error;
+  return (data as WorkerForResignation[]) ?? [];
+}
+
 // 在留更新・パスポート更新の一覧用: 外国人＋現在の所属機関名
 export interface WorkerWithOrg extends Worker {
   organizations: { name: string } | null;
