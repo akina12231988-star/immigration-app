@@ -5,7 +5,7 @@ import { Download, Printer, QrCode } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import type { CustodyWithWorker } from "@/lib/supabase/queries/custody";
 import { STORAGE_NO_MAX, STORAGE_NO_MIN, formatStorageNo } from "@/lib/custody";
-import { QrImage, custodyQrUrl, downloadQrPng, useOrigin } from "../QrImage";
+import { QrImage, QrLinkCopyButton, QrSaveButton, custodyQrUrl, useOrigin } from "../QrImage";
 
 const inputCls =
   "min-h-[44px] w-20 rounded-xl border border-border bg-surface px-3 text-center text-base font-bold tabular-nums focus:border-brand focus:outline-none";
@@ -69,14 +69,20 @@ export function QrSheetClient({ records }: { records: CustodyWithWorker[] }) {
                 </span>
                 <QrImage text={url} size={120} className="rounded bg-white p-1" />
                 <p className="h-4 truncate text-[10px] text-muted">{holder ?? ""}</p>
-                <button
-                  type="button"
-                  onClick={() => void downloadQrPng(url, `保管QR_No${formatStorageNo(no)}.png`)}
-                  className="inline-flex items-center gap-1 text-[11px] font-bold text-brand print:hidden"
-                >
-                  <Download size={12} />
-                  QRを保存
-                </button>
+                <div className="flex flex-wrap justify-center gap-2 print:hidden">
+                  <QrSaveButton
+                    text={url}
+                    filename={`保管QR_No${formatStorageNo(no)}.png`}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-brand"
+                  >
+                    <Download size={12} />
+                    QRを保存
+                  </QrSaveButton>
+                  <QrLinkCopyButton
+                    url={url}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-brand"
+                  />
+                </div>
               </Card>
             );
           })}

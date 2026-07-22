@@ -3,7 +3,14 @@ import { Card } from "@/components/ui/Card";
 import { DarkModeToggle } from "@/components/DarkModeToggle";
 import { LoginForm } from "./LoginForm";
 
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
+  // ログイン後の戻り先（QRコードのリンク先など）。アプリ内パスのみ許可
+  const { next } = await searchParams;
+  const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
   return (
     <div className="flex min-h-screen flex-col bg-brand text-brand-foreground">
       <div className="flex justify-end p-4">
@@ -23,7 +30,7 @@ export default function LoginPage() {
         </div>
 
         <Card className="w-full max-w-sm bg-surface p-6 text-foreground">
-          <LoginForm />
+          <LoginForm next={safeNext} />
           <p className="mt-4 flex items-center justify-center gap-1.5 text-xs text-muted">
             <ShieldCheck size={14} />
             招待された職員アカウントのみアクセスできます

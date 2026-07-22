@@ -30,15 +30,18 @@ export async function middleware(request: NextRequest) {
 
   const isLoginPage = request.nextUrl.pathname.startsWith("/login");
   if (!user && !isLoginPage) {
+    // ログイン後に元のページ（例: QRコードのリンク先 /custody?no=7）へ戻れるよう next に保持する
+    const dest = request.nextUrl.pathname + request.nextUrl.search;
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";
-    redirectUrl.search = "";
+    redirectUrl.search = dest && dest !== "/" ? `?next=${encodeURIComponent(dest)}` : "";
     return NextResponse.redirect(redirectUrl);
   }
   if (user && isLoginPage) {
-    const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = "/";
-    redirectUrl.search = "";
+    // オープンリダイレクト防止のためアプリ内パスのみ許可
+    const next = request.nextUrl.searchParams.get("next");
+    const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+    const redirectUrl = new URL(safeNext, request.nextUrl.origin);
     return NextResponse.redirect(redirectUrl);
   }
   return response;

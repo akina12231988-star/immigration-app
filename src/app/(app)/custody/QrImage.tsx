@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useSyncExternalStore } from "react";
+import { Check, Link2 } from "lucide-react";
 import QRCode from "qrcode";
 
 // 保管番号QR: 読み取ると /custody?no=番号 が開き、その番号の持出・返却画面に直行する
@@ -49,13 +50,107 @@ export function QrImage({
   return <img src={url} alt="QRコード" width={size} height={size} className={className} />;
 }
 
-// 高解像度PNGとしてQRを保存
-export async function downloadQrPng(text: string, filename: string): Promise<void> {
-  const url = await QRCode.toDataURL(text, { margin: 2, width: 512 });
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+// QRのリンク先URLをコピーするボタン
+export function QrLinkCopyButton({ url, className = "" }: { url: string; className?: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      /* クリップボード非対応時は何もしない */
+    }
+  };
+  return (
+    <button type="button" onClick={() => void copy()} className={className}>
+      {copied ? <Check size={13} /> : <Link2 size={13} />}
+      {copied ? "コピーしました" : "リンクをコピー"}
+    </button>
+  );
+}
+
+// QRを高解像度PNGとして保存するボタン。
+// スマホでは共有シート（「画像を保存」「写真に追加」）を開き、PCでは通常のダウンロード。
+// どちらも使えない場合は大きなQRを表示して長押し保存を案内する。
+export function QrSaveButton({
+  text,
+  filename,
+  className = "",
+  children,
+}: {
+  text: string;
+  filename: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const [fallback, setFallback] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      const dataUrl = await QRCode.toDataURL(text, { margin: 2, width: 512 });
+      const blob = await (await fetch(dataUrl)).blob();
+      const file = new File([blob], filename, { type: "image/png" });
+
+      // スマホ: 共有シートから写真に保存できる（iOS Safari は download 属性が効かないため）
+      if (typeof navigator.canShare === "function" && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: filename });
+          return;
+        } catch (err) {
+          // キャンセルは正常終了扱い。それ以外はフォールバックへ
+          if (err instanceof Error && err.name === "AbortError") return;
+        }
+      }
+
+      // PCブラウザ: 通常のダウンロード
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } catch {
+      setFallback(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <button type="button" disabled={busy} onClick={() => void save()} className={className}>
+        {children}
+      </button>
+      {fallback && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-6"
+          onClick={() => setFallback(false)}
+        >
+          <div
+            className="w-full max-w-xs rounded-2xl bg-white p-5 text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <QrImage text={text} size={220} className="mx-auto" />
+            <p className="mt-3 text-xs leading-relaxed text-gray-700">
+              自動保存ができない端末です。
+              <br />
+              上のQR画像を<strong>長押し</strong>して「写真に追加」「画像を保存」を選んでください。
+            </p>
+            <button
+              type="button"
+              onClick={() => setFallback(false)}
+              className="mt-3 text-sm font-bold text-[#1d4ed8]"
+            >
+              閉じる
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
 }
