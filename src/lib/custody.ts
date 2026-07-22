@@ -35,6 +35,15 @@ export function defaultExpireOn(receivedOn: string): string {
   return d.toISOString().slice(0, 10);
 }
 
+// 持出・返却時の目的の選択肢（「その他」は画面側で手入力に切り替える）
+export const CUSTODY_PURPOSES = [
+  "転入手続き",
+  "母国に一時帰国",
+  "申請書類ファイルに入っている",
+  "入管ー窓口申請する為",
+  "入管ー許可おりた為",
+] as const;
+
 // ---- 預かり証の翻訳（azk-receipt の多言語データを移植） ----
 
 export interface ReceiptTranslation {

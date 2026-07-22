@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { AppHeader } from "@/components/AppHeader";
 import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
-import { listCustody } from "@/lib/supabase/queries/custody";
+import { listCustody, listCustodyPersons } from "@/lib/supabase/queries/custody";
 import { listWorkersWithOrg } from "@/lib/supabase/queries/workers";
 import { CustodyClient } from "./CustodyClient";
 
@@ -19,9 +19,10 @@ export default async function CustodyPage({
   const initialNo = no ? Number.parseInt(no, 10) : undefined;
 
   const supabase = await createClient();
-  const [records, workers] = await Promise.all([
+  const [records, workers, persons] = await Promise.all([
     listCustody(supabase).catch(() => []),
     listWorkersWithOrg(supabase).catch(() => []),
+    listCustodyPersons(supabase).catch(() => []),
   ]);
 
   return (
@@ -33,6 +34,7 @@ export default async function CustodyPage({
         canWrite={me.role !== "viewer"}
         meName={me.display_name}
         initialNo={Number.isFinite(initialNo) ? initialNo : undefined}
+        initialPersons={persons}
       />
     </>
   );
