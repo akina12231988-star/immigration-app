@@ -582,7 +582,8 @@ function DocumentTotalPanel({ histories }: { histories: WorkHistory[] }) {
   );
 }
 
-// 退職者情報: 退職日とNotion随時報告TODO番号を記録する
+// 退職者情報: 退職日・区分・理由・退職元機関・Notion随時報告TODO番号を記録する。
+// 退職＜随時報告＞ページで記録すると自動で転記される（ここでの手修正も可能）。
 function LeavingSection({
   worker,
   canEdit,
@@ -593,6 +594,10 @@ function LeavingSection({
   const router = useRouter();
   const [leavingOn, setLeavingOn] = useState(worker.leaving_on ?? "");
   const [leavingTodo, setLeavingTodo] = useState(worker.leaving_todo ?? "");
+  const [leavingKind, setLeavingKind] = useState(worker.leaving_kind ?? "");
+  const [leavingReason, setLeavingReason] = useState(worker.leaving_reason ?? "");
+  const [leavingOrgName, setLeavingOrgName] = useState(worker.leaving_org_name ?? "");
+  const [leavingOrgAddress, setLeavingOrgAddress] = useState(worker.leaving_org_address ?? "");
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -604,6 +609,10 @@ function LeavingSection({
       await updateWorker(createClient(), worker.id, {
         leaving_on: leavingOn || null,
         leaving_todo: leavingTodo.trim(),
+        leaving_kind: leavingKind,
+        leaving_reason: leavingReason.trim(),
+        leaving_org_name: leavingOrgName.trim(),
+        leaving_org_address: leavingOrgAddress.trim(),
       });
       setSaved(true);
       router.refresh();
@@ -624,6 +633,10 @@ function LeavingSection({
         <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
           <InfoItem label="退職日" value={worker.leaving_on} />
           <InfoItem label="Notion 随時報告TODO番号" value={worker.leaving_todo} />
+          <InfoItem label="退職区分" value={worker.leaving_kind} />
+          <InfoItem label="退職理由" value={worker.leaving_reason} />
+          <InfoItem label="退職した所属機関" value={worker.leaving_org_name} />
+          <InfoItem label="同・住所" value={worker.leaving_org_address} />
         </dl>
       </Card>
     );
@@ -655,6 +668,55 @@ function LeavingSection({
               setSaved(false);
             }}
             placeholder="例: TODO-1234"
+            className={INPUT}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-bold text-muted">退職区分</span>
+          <select
+            value={leavingKind}
+            onChange={(e) => {
+              setLeavingKind(e.target.value);
+              setSaved(false);
+            }}
+            className={INPUT}
+          >
+            <option value="">未設定</option>
+            <option value="会社都合">会社都合</option>
+            <option value="自己都合">自己都合</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-bold text-muted">退職理由</span>
+          <input
+            value={leavingReason}
+            onChange={(e) => {
+              setLeavingReason(e.target.value);
+              setSaved(false);
+            }}
+            placeholder="わかれば入力"
+            className={INPUT}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-bold text-muted">退職した所属機関</span>
+          <input
+            value={leavingOrgName}
+            onChange={(e) => {
+              setLeavingOrgName(e.target.value);
+              setSaved(false);
+            }}
+            className={INPUT}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-bold text-muted">同・住所</span>
+          <input
+            value={leavingOrgAddress}
+            onChange={(e) => {
+              setLeavingOrgAddress(e.target.value);
+              setSaved(false);
+            }}
             className={INPUT}
           />
         </label>
