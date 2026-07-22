@@ -73,6 +73,7 @@ export interface Worker {
   notion_link: string; // Notion 個人ページのリンク
   residence_renewal_status: ResidenceRenewalStatus; // 在留更新の対応状況
   residence_renewal_todo: string; // Notion 申請TODO番号
+  application_prep_kind: string; // 申請準備の区分（'' = 更新 / '新規' = 新規で申請書類準備）
   leaving_on: string | null; // 退職日
   leaving_todo: string; // 退職時のNotion申請TODO番号
   gender: string; // 性別

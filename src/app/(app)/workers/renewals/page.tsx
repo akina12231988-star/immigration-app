@@ -21,7 +21,7 @@ export default async function RenewalsPage() {
 
   return (
     <>
-      <AppHeader title="在留更新対象" backHref="/" />
+      <AppHeader title="申請準備" backHref="/" />
       <RenewalsClient
         workers={workers}
         underReviewWorkerIds={underReviewWorkerIds(applications)}

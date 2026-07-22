@@ -24,6 +24,7 @@ function makeWorker(over: Partial<WorkerWithOrg>): WorkerWithOrg {
     notion_link: "",
     residence_renewal_status: "準備中",
     residence_renewal_todo: "TODO-1",
+    application_prep_kind: "",
     leaving_on: null,
     leaving_todo: "",
     gender: "",
@@ -84,6 +85,25 @@ describe("buildRenewalPlaceholders", () => {
   it("在留期限が3か月より先の外国人は対象外", () => {
     const rows = buildRenewalPlaceholders(
       [makeWorker({ residence_expiry_date: "2026-12-01" })],
+      [],
+      TODAY,
+    );
+    expect(rows).toHaveLength(0);
+  });
+
+  it("新規で申請書類準備の人は在留期限に関係なく擬似行になる", () => {
+    const rows = buildRenewalPlaceholders(
+      [makeWorker({ application_prep_kind: "新規", residence_expiry_date: null })],
+      [],
+      TODAY,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].workerRenewalStatus).toBe("準備中");
+  });
+
+  it("新規で申請書類準備でも退職者は対象外", () => {
+    const rows = buildRenewalPlaceholders(
+      [makeWorker({ application_prep_kind: "新規", status: "退職" })],
       [],
       TODAY,
     );

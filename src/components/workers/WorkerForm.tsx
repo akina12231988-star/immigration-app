@@ -33,6 +33,7 @@ function toInput(w: Worker | null): WorkerInput {
     notion_link: w?.notion_link ?? "",
     residence_renewal_status: w?.residence_renewal_status ?? "",
     residence_renewal_todo: w?.residence_renewal_todo ?? "",
+    application_prep_kind: w?.application_prep_kind ?? "",
     leaving_on: w?.leaving_on ?? null,
     leaving_todo: w?.leaving_todo ?? "",
     gender: w?.gender ?? "",
