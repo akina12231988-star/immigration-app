@@ -8,9 +8,15 @@ import { CustodyClient } from "./CustodyClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function CustodyPage() {
+export default async function CustodyPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ no?: string }>;
+}) {
   const me = await getMyProfile();
   if (!me) redirect("/login");
+  const { no } = await searchParams;
+  const initialNo = no ? Number.parseInt(no, 10) : undefined;
 
   const supabase = await createClient();
   const [records, workers] = await Promise.all([
@@ -26,6 +32,7 @@ export default async function CustodyPage() {
         workers={workers}
         canWrite={me.role !== "viewer"}
         meName={me.display_name}
+        initialNo={Number.isFinite(initialNo) ? initialNo : undefined}
       />
     </>
   );
