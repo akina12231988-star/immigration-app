@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FORM_312, FORM_34, FORM_511, defaultEndReason, formsForKind, jpDate } from "./resignation";
+import { FORM_312, FORM_34, FORM_511, formsForKind, jpDate } from "./resignation";
 
 describe("formsForKind", () => {
   it("会社都合は3様式を作成する", () => {
@@ -7,15 +7,6 @@ describe("formsForKind", () => {
   });
   it("自己都合は3-1-2号のみ", () => {
     expect(formsForKind("自己都合")).toEqual([FORM_312]);
-  });
-});
-
-describe("defaultEndReason", () => {
-  it("会社都合は05その他（括弧に理由を記入）", () => {
-    expect(defaultEndReason("会社都合")).toBe("05");
-  });
-  it("自己都合は02外国人の都合", () => {
-    expect(defaultEndReason("自己都合")).toBe("02");
   });
 });
 

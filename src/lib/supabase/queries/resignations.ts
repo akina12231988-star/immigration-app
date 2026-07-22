@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ResignationInput, ResignationRow, Worker } from "@/types/db";
+import type { Organization, ResignationInput, ResignationRow, Worker } from "@/types/db";
 
 // 一覧用: 外国人の氏名・リンク類と機関名を同時取得
 export interface ResignationWithRefs extends ResignationRow {
@@ -27,9 +27,10 @@ export async function listResignations(
   return (data as ResignationWithRefs[]) ?? [];
 }
 
-// 様式作成用: 届出の対象者欄に必要な外国人情報を全て取得
+// 様式作成用: 届出の対象者欄に必要な外国人情報と機関情報（業務区分など）を全て取得
 export interface ResignationForForms extends ResignationRow {
   workers: Worker | null;
+  organizations: Organization | null;
 }
 
 export async function getResignationForForms(
@@ -38,7 +39,7 @@ export async function getResignationForForms(
 ): Promise<ResignationForForms | null> {
   const { data, error } = await supabase
     .from("resignations")
-    .select("*, workers(*)")
+    .select("*, workers(*), organizations(*)")
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;

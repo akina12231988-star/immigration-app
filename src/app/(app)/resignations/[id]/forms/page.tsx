@@ -31,6 +31,7 @@ export default async function ResignationFormsPage({
         orgName: resignation.org_name,
         orgAddress: resignation.org_address,
         orgContact: resignation.org_contact,
+        businessCategory: resignation.organizations?.business_category ?? "",
       }}
       worker={{
         name: w.name,
@@ -38,8 +39,9 @@ export default async function ResignationFormsPage({
         gender: w.gender,
         birth: w.birth,
         nationality: w.nationality,
+        address: w.address,
         residenceCardNo: w.residence_card_no,
-        residenceStatus: w.residence_status,
+        field: w.field,
       }}
     />
   );
