@@ -418,6 +418,7 @@ function RecordDialog({
   onSaved: () => void;
 }) {
   const [status, setStatus] = useState<OrientationStatus>(orientation.status);
+  const [scheduledOn, setScheduledOn] = useState(orientation.scheduled_on);
   const [doneOn, setDoneOn] = useState(orientation.done_on ?? new Date().toISOString().slice(0, 10));
   const [driveLink, setDriveLink] = useState(orientation.drive_link ?? "");
   const [note, setNote] = useState(orientation.note ?? "");
@@ -442,11 +443,16 @@ function RecordDialog({
   const file = recommendedFileName(orientation.workers?.name ?? "", doneOn);
 
   const save = async () => {
+    if (!scheduledOn) {
+      setError("実施予定日を入力してください");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       await updateOrientation(createClient(), orientation.id, {
         status,
+        scheduled_on: scheduledOn,
         // 実施済のときのみ実施日を保存、その他は null に
         done_on: status === "実施済" ? doneOn || null : null,
         drive_link: driveLink,
@@ -481,6 +487,14 @@ function RecordDialog({
           </select>
         </label>
 
+        {status === "未実施" && (
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-bold text-muted">実施予定日</span>
+            <input type="date" value={scheduledOn} onChange={(e) => setScheduledOn(e.target.value)} className={INPUT} />
+            <span className="text-xs text-muted">予定日を変更する場合はこちらを修正して保存してください。</span>
+          </label>
+        )}
+
         {status === "実施不可（早期退職）" && (
           <p className="flex items-center gap-1.5 rounded-lg bg-seal/10 px-3 py-2 text-xs text-seal">
             <XCircle size={13} />
@@ -492,7 +506,7 @@ function RecordDialog({
           <>
             <div className="rounded-lg bg-background px-3 py-2 text-sm">
               <span className="text-xs font-bold text-muted">実施予定日</span>
-              <p className="font-bold tabular-nums">{orientation.scheduled_on}</p>
+              <p className="font-bold tabular-nums">{scheduledOn}</p>
             </div>
             <label className="flex flex-col gap-1">
               <span className="text-xs font-bold text-muted">実施日</span>
