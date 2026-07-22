@@ -6,13 +6,13 @@ import { NAV_ITEMS, activeHref } from "@/lib/nav-items";
 import { DarkModeToggle } from "@/components/DarkModeToggle";
 import { LogoutButton } from "@/components/LogoutButton";
 
-// PC専用の左サイドナビ（lg 以上で表示）。モバイルは下部タブを使う。
+// PC専用の左サイドナビ（md 以上＝ブラウザ幅768px以上で表示）。モバイルは下部タブを使う。
 export function SideNav() {
   const pathname = usePathname();
   const active = activeHref(pathname);
 
   return (
-    <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-border bg-surface lg:flex print:!hidden">
+    <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-border bg-surface md:flex print:!hidden">
       <div className="flex items-center gap-2.5 border-b border-border px-5 py-4">
         <span className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-brand text-sm font-black text-brand">
           入管

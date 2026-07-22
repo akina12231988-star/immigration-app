@@ -15,6 +15,7 @@ import type { WorkerWithOrg } from "@/lib/supabase/queries/workers";
 import { isPassportRenewalTarget, remainingLabel, daysUntil } from "@/lib/worker-alerts";
 import { todayStr } from "@/lib/application-alerts";
 import { passportGuide } from "@/lib/passport-guides";
+import { notionAppUrl } from "@/lib/notion-link";
 
 export function PassportsClient({ workers }: { workers: WorkerWithOrg[] }) {
   const today = todayStr();
@@ -97,7 +98,7 @@ function PassportRow({ worker, today }: { worker: WorkerWithOrg; today: string }
           </a>
         )}
         {worker.notion_link && (
-          <a href={worker.notion_link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs font-bold text-brand">
+          <a href={notionAppUrl(worker.notion_link)} className="flex items-center gap-1 text-xs font-bold text-brand">
             <ExternalLink size={13} />
             Notion
           </a>

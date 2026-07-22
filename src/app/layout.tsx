@@ -28,6 +28,9 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: "#16244d",
+  // セーフエリア（iPhoneのホームインジケーター等）の余白を有効にし、
+  // 下部タブがOSのジェスチャー領域と重ならないようにする
+  viewportFit: "cover",
 };
 
 // システムのダークモード設定を初期表示前に反映し、ちらつきを防ぐ

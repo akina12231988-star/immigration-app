@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { COUNTED_VISAS, VISA_TYPES, type VisaType } from "@/types/ssw";
+import { COUNTED_VISAS, KEEPABLE_VISAS, VISA_TYPES, type VisaType } from "@/types/ssw";
 import type { WorkHistoryRow } from "@/types/db";
 
 export interface HistoryFormValues {
@@ -13,6 +13,7 @@ export interface HistoryFormValues {
   org_name: string;
   role: string;
   note: string;
+  kept_residence_status: boolean;
 }
 
 function toValues(row: WorkHistoryRow | null): HistoryFormValues {
@@ -23,6 +24,7 @@ function toValues(row: WorkHistoryRow | null): HistoryFormValues {
     org_name: row?.org_name ?? "",
     role: row?.role ?? "",
     note: row?.note ?? "",
+    kept_residence_status: row?.kept_residence_status ?? false,
   };
 }
 
@@ -78,7 +80,11 @@ function HistoryFormDialogInner({
     setBusy(true);
     setError(null);
     try {
-      await onSubmit(form);
+      // 帰国期間以外の区分では在留資格保持フラグを持たせない
+      await onSubmit({
+        ...form,
+        kept_residence_status: KEEPABLE_VISAS.has(form.visa) && form.kept_residence_status,
+      });
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存に失敗しました");
@@ -111,6 +117,23 @@ function HistoryFormDialogInner({
             ))}
           </select>
         </label>
+
+        {KEEPABLE_VISAS.has(form.visa) && (
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-bold text-muted">帰国中の在留資格</span>
+            <select
+              value={form.kept_residence_status ? "kept" : "cut"}
+              onChange={(e) => set("kept_residence_status", e.target.value === "kept")}
+              className={INPUT_CLASS}
+            >
+              <option value="cut">在留資格を切って帰国（通算にカウントしない）</option>
+              <option value="kept">特定技能1号を保持したまま帰国（通算にカウント）</option>
+            </select>
+            <span className="px-1 text-[11px] leading-relaxed text-muted">
+              特定技能1号の在留資格を保持したまま一時帰国していた場合、その期間も通算5年のカウントが続きます。在留資格を切って帰国した場合はカウントされません。
+            </span>
+          </label>
+        )}
 
         <div className="grid grid-cols-2 gap-2.5">
           <label className="flex flex-col gap-1">

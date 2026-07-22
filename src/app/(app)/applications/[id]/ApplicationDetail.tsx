@@ -23,6 +23,7 @@ import { StatusStepper } from "@/components/StatusStepper";
 import { FileGroup } from "@/components/applications/FileGroup";
 import { generateLineReport } from "@/lib/line-report";
 import { isExpiryAlert, todayStr, transitionEndDate, formatMonthDay } from "@/lib/application-alerts";
+import { notionAppUrl } from "@/lib/notion-link";
 import { useApplications } from "@/lib/application-store";
 import { uploadApplicationFile } from "@/lib/application-files";
 import { createClient } from "@/lib/supabase/client";
@@ -403,9 +404,9 @@ export function ApplicationDetail({ id }: { id: string }) {
                 在留カードを受け取りました。Notion の在籍履歴にも登録してください。
               </p>
               <a
-                href="https://app.notion.com/p/24c29d7ae649802692f5f920c897f9f9?v=24c29d7ae649802f8fb6000c304654d9&source=copy_link"
-                target="_blank"
-                rel="noopener noreferrer"
+                href={notionAppUrl(
+                  "https://app.notion.com/p/24c29d7ae649802692f5f920c897f9f9?v=24c29d7ae649802f8fb6000c304654d9&source=copy_link",
+                )}
                 className="flex items-center justify-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-brand-foreground"
               >
                 <ExternalLink size={16} />
