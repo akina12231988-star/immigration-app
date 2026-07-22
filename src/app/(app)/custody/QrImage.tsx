@@ -77,8 +77,10 @@ export function QrLinkCopyButton({ url, className = "" }: { url: string; classNa
 const TEPRA_MM = 14; // px / mm
 const TEPRA_W_MM = 50;
 const TEPRA_H_MM = 24;
-const TEPRA_QR_SECTION_MM = 24; // QR部の幅
-const TEPRA_NUM_SECTION_MM = 13; // 番号部の幅 ×2
+// 1本目の折り線はラベル全長のちょうど半分（25mm）。
+// 2本目は残り25mmの中央（37.5mm）で、番号2面が折り線から等距離になり、折ると数字がぴったり重なる。
+const TEPRA_QR_SECTION_MM = TEPRA_W_MM / 2; // QR部の幅（25mm）
+const TEPRA_NUM_SECTION_MM = TEPRA_W_MM / 4; // 番号部の幅 ×2（12.5mm）
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
