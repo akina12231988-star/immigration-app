@@ -443,6 +443,10 @@ function ImportModal({
               ref_no: e.refno,
               returned_on: e.returned ? (e.returnedAt ?? "").slice(0, 10) || null : null,
               note: "azk-receipt 台帳から取込",
+              holder_name: e.name,
+              holder_nationality: e.nat,
+              holder_card_no: e.cardno,
+              holder_residence_status: e.status,
             })
             .select(
               "*, workers(id, name, kana, nationality, birth, residence_card_no, residence_status, residence_expiry_date, passport_no, passport_expiry_date, worker_code)",
