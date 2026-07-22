@@ -7,13 +7,14 @@ import { Button, LinkButton } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { createClient } from "@/lib/supabase/client";
 import {
+  addCustodyPerson,
   listCustodyEvents,
   recordCustodyAction,
   type CustodyWithWorker,
 } from "@/lib/supabase/queries/custody";
 import type { WorkerWithOrg } from "@/lib/supabase/queries/workers";
 import type { CustodyEventRow, CustodyStatus } from "@/types/db";
-import { formatStorageNo, parseAzkLedger } from "@/lib/custody";
+import { CUSTODY_PURPOSES, formatStorageNo, parseAzkLedger } from "@/lib/custody";
 import { QrImage, custodyQrUrl, downloadQrPng, useOrigin } from "./QrImage";
 
 const STATUS_BADGE: Record<CustodyStatus, string> = {
@@ -37,13 +38,16 @@ export function CustodyClient({
   canWrite,
   meName,
   initialNo,
+  initialPersons,
 }: {
   initialRecords: CustodyWithWorker[];
   workers: WorkerWithOrg[];
   canWrite: boolean;
   meName: string;
   initialNo?: number;
+  initialPersons: string[];
 }) {
+  const [persons, setPersons] = useState(initialPersons);
   // QRコード（/custody?no=番号）から開いた場合、その番号の預かりを直接開く。
   // 現在預かり中でない番号は、検索欄に番号を入れて過去履歴を表示する。
   const initialActive = initialNo
@@ -188,6 +192,10 @@ export function CustodyClient({
           record={selected}
           canWrite={canWrite}
           meName={meName}
+          persons={persons}
+          onAddPerson={(name) =>
+            setPersons((prev) => (prev.includes(name) ? prev : [...prev, name]))
+          }
           onClose={() => setSelected(null)}
           onUpdated={replaceRecord}
         />
@@ -207,22 +215,31 @@ export function CustodyClient({
 
 // ---- 詳細モーダル（持出・返却の登録と履歴表示） ----
 
+const ADD_PERSON = "__add__";
+const OTHER_PURPOSE = "__other__";
+
 function DetailModal({
   record,
   canWrite,
   meName,
+  persons,
+  onAddPerson,
   onClose,
   onUpdated,
 }: {
   record: CustodyWithWorker;
   canWrite: boolean;
   meName: string;
+  persons: string[];
+  onAddPerson: (name: string) => void;
   onClose: () => void;
   onUpdated: (r: CustodyWithWorker) => void;
 }) {
   const [events, setEvents] = useState<CustodyEventRow[] | null>(null);
   const [person, setPerson] = useState("");
-  const [purpose, setPurpose] = useState("");
+  const [newPerson, setNewPerson] = useState("");
+  const [purposeSel, setPurposeSel] = useState("");
+  const [purposeOther, setPurposeOther] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmReturn, setConfirmReturn] = useState(false);
@@ -234,11 +251,31 @@ function DetailModal({
       .catch(() => setEvents([]));
   }, [record.id]);
 
+  // 「＋新しい名前を追加」で入力した名前を名簿に登録して選択状態にする
+  const registerPerson = async () => {
+    const name = newPerson.trim();
+    if (!name) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await addCustodyPerson(createClient(), name);
+      onAddPerson(name);
+      setPerson(name);
+      setNewPerson("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const act = async (action: "持出" | "ボックスへ戻す" | "本人へ返却") => {
-    if (action === "持出" && !person.trim()) {
-      setError("持ち出す人の名前を入力してください");
+    const personName = person === ADD_PERSON ? "" : person;
+    if (action === "持出" && !personName) {
+      setError("持ち出す人を選択してください");
       return;
     }
+    const purpose = purposeSel === OTHER_PURPOSE ? purposeOther.trim() : purposeSel;
     setBusy(true);
     setError(null);
     try {
@@ -247,13 +284,14 @@ function DetailModal({
         supabase,
         record.id,
         action,
-        action === "持出" ? person.trim() : person.trim() || meName,
-        purpose.trim(),
+        personName || meName,
+        purpose,
       );
       onUpdated(updated);
       setEvents(await listCustodyEvents(supabase, record.id).catch(() => []));
       setPerson("");
-      setPurpose("");
+      setPurposeSel("");
+      setPurposeOther("");
       setConfirmReturn(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -326,18 +364,56 @@ function DetailModal({
         {canWrite && record.status !== "返却済み" && (
           <div className="space-y-2 rounded-xl border border-border p-3">
             <p className="text-sm font-bold">出し入れを記録</p>
-            <input
-              value={person}
-              onChange={(e) => setPerson(e.target.value)}
-              placeholder={record.status === "ボックス保管中" ? "持ち出す人（必須）" : `対応した人（空欄は ${meName}）`}
-              className={inputCls}
-            />
-            <input
-              value={purpose}
-              onChange={(e) => setPurpose(e.target.value)}
-              placeholder="目的・メモ（任意）"
-              className={inputCls}
-            />
+
+            <div>
+              <p className="mb-1 text-[11px] font-bold text-muted">
+                {record.status === "ボックス保管中" ? "持ち出す人（必須）" : `対応した人（未選択は ${meName}）`}
+              </p>
+              <select value={person} onChange={(e) => setPerson(e.target.value)} className={inputCls}>
+                <option value="">選択してください</option>
+                {persons.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+                <option value={ADD_PERSON}>＋ 新しい名前を追加</option>
+              </select>
+              {person === ADD_PERSON && (
+                <div className="mt-2 flex gap-2">
+                  <input
+                    value={newPerson}
+                    onChange={(e) => setNewPerson(e.target.value)}
+                    placeholder="名前を入力"
+                    className={inputCls}
+                  />
+                  <Button variant="secondary" disabled={busy || !newPerson.trim()} onClick={registerPerson}>
+                    追加
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <p className="mb-1 text-[11px] font-bold text-muted">目的</p>
+              <select value={purposeSel} onChange={(e) => setPurposeSel(e.target.value)} className={inputCls}>
+                <option value="">選択してください（任意）</option>
+                {CUSTODY_PURPOSES.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+                <option value={OTHER_PURPOSE}>その他（手入力）</option>
+              </select>
+              {purposeSel === OTHER_PURPOSE && (
+                <input
+                  value={purposeOther}
+                  onChange={(e) => setPurposeOther(e.target.value)}
+                  placeholder="目的を入力"
+                  className={`${inputCls} mt-2`}
+                />
+              )}
+            </div>
+
             {error && <p className="text-xs font-bold text-seal">{error}</p>}
             <div className="flex flex-col gap-2">
               {record.status === "ボックス保管中" && (

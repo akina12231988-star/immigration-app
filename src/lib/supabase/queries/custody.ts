@@ -72,6 +72,22 @@ export async function listCustodyEvents(
   return (data as CustodyEventRow[]) ?? [];
 }
 
+// 持ち出す人の名簿（custody_persons）
+export async function listCustodyPersons(supabase: SupabaseClient): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("custody_persons")
+    .select("name")
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return ((data as { name: string }[]) ?? []).map((r) => r.name);
+}
+
+export async function addCustodyPerson(supabase: SupabaseClient, name: string): Promise<void> {
+  const { error } = await supabase.from("custody_persons").insert({ name: name.trim() });
+  // 既に登録済みなら成功扱い
+  if (error && !`${error.code}`.startsWith("23")) throw error;
+}
+
 // 預かり登録（預かり証発行）。レコード作成と同時に「預かり」イベントを履歴に残す
 export async function createCustody(
   supabase: SupabaseClient,
