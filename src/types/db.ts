@@ -249,6 +249,49 @@ export interface CustodyRecord {
   updated_at: string;
 }
 
+// ---- 入社書類メール（0029_onboarding.sql） ----
+
+export const ONBOARDING_DOC_STATUSES = ["添付", "後送", "未入手", "対象外"] as const;
+export type OnboardingDocStatus = (typeof ONBOARDING_DOC_STATUSES)[number];
+
+// 外国人1人につき1件のメール作成情報
+export interface OnboardingRecordRow {
+  id: string;
+  worker_id: string;
+  org_name: string; // 宛名（所属機関名）
+  org_honorific: "御中" | "様";
+  employment_start_on: string | null; // 雇用開始年月日
+  permit_on: string | null; // 在留許可日
+  office: string; // 配属先営業所
+  residence: string; // 居住地
+  sender: string; // 送信者名
+  extra_note: string; // 追記事項
+  gmail_link: string; // 最初に送ったGmailのメールリンク
+  mail_sent_on: string | null; // 最初にメールを送った日
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// 書類ごとのステータス・後送期日・アップロードファイル
+export interface OnboardingDocumentRow {
+  id: string;
+  worker_id: string;
+  doc_key: string; // lib/onboarding.ts の ONBOARDING_DOCS のキー
+  label: string;
+  sort_no: number;
+  status: OnboardingDocStatus;
+  note: string;
+  due_on: string | null; // 後送: いつまでに送るか
+  received_on: string | null; // 後送: 本人が送ってきた日
+  storage_path: string;
+  file_name: string;
+  mime_type: string;
+  uploaded_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface CustodyEventRow {
   id: string;
   custody_id: string;
