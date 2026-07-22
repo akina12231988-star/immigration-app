@@ -145,7 +145,8 @@ export function ApprovalSection({
     }
   }
 
-  // 雇用開始日・在留資格を保存。特定技能1号なら生活オリエンテーションを自動登録
+  // 雇用開始日・在留資格を保存。紐づく外国人の「現在の在留資格」も更新し、
+  // 特定技能1号なら生活オリエンテーションを自動登録
   async function saveVisaEmployment() {
     setVisaSaving(true);
     setError(null);
@@ -155,6 +156,15 @@ export function ApprovalSection({
         employmentStartOn: employmentStartOn || undefined,
         visaAtGrant: visaAtGrant || "",
       });
+      const workerUpdated = Boolean(app.workerId && visaAtGrant);
+      if (app.workerId && visaAtGrant) {
+        await updateWorker(createClient(), app.workerId, {
+          residence_status: visaAtGrant,
+        });
+      }
+      const savedMsg = workerUpdated
+        ? "保存しました（外国人情報の在留資格も更新）。"
+        : "保存しました。";
       if (
         app.workerId &&
         visaAtGrant === ORIENTATION_TARGET_VISA &&
@@ -168,10 +178,10 @@ export function ApprovalSection({
           employmentStartOn,
         });
         setVisaSaved(
-          `保存しました。生活オリエンテーション（予定日 ${orientationDate(employmentStartOn)}）を未実施で登録しました。`,
+          `${savedMsg}生活オリエンテーション（予定日 ${orientationDate(employmentStartOn)}）を未実施で登録しました。`,
         );
       } else {
-        setVisaSaved("保存しました。");
+        setVisaSaved(savedMsg);
       }
       setTimeout(() => setVisaSaved(null), 4000);
     } catch (err) {
@@ -388,7 +398,7 @@ export function ApprovalSection({
               </Labeled>
             </div>
             <p className="mt-1 text-[11px] text-muted">
-              「{ORIENTATION_TARGET_VISA}」を選んで保存すると、雇用開始日から2週間後の日曜を予定日として生活オリエンテーションに未実施で登録します。
+              保存すると、紐づいている外国人の「現在の在留資格」も選択した内容で自動更新されます。「{ORIENTATION_TARGET_VISA}」を選んで保存すると、雇用開始日から2週間後の日曜を予定日として生活オリエンテーションに未実施で登録します。
             </p>
             <Button fullWidth className="mt-3" onClick={saveVisaEmployment} disabled={visaSaving}>
               {visaSaving ? "保存中…" : "雇用開始日・在留資格を保存"}
