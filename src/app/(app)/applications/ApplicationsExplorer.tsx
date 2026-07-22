@@ -37,6 +37,15 @@ const TODAY = todayStr();
 // 表示件数の選択肢（データが重くならないよう、既定は50件）
 const PAGE_SIZES = [10, 50, 100] as const;
 
+// 並び順の選択肢（申請日・申請時点在留期限の昇順/降順）
+const SORT_OPTIONS = [
+  { key: "date-desc", label: "申請日が遅い順" },
+  { key: "date-asc", label: "申請日が早い順" },
+  { key: "expiry-asc", label: "在留期限が短い順" },
+  { key: "expiry-desc", label: "在留期限が遅い順" },
+] as const;
+type SortKey = (typeof SORT_OPTIONS)[number]["key"];
+
 // フィルタータブ（ダッシュボードの集計と同じ区分＋在留更新の「申請前＜準備中＞」）
 type ViewKey = StatViewKey | "all" | "pre-prep";
 
@@ -119,6 +128,9 @@ export function ApplicationsExplorer({
   const workerFor = (a: Application) =>
     a.workerId ? workersById.get(a.workerId) : undefined;
 
+  // 並び順（申請日の早い/遅い順・在留期限の短い/遅い順）
+  const [sort, setSort] = useState<SortKey>("date-desc");
+
   const filtered = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
     const matchesKeyword = (a: Application) =>
@@ -154,8 +166,25 @@ export function ApplicationsExplorer({
     return rows;
   }, [applications, renewalWorkers, keyword, view, showIssued, permitFrom, permitTo]);
 
-  // 絞り込み条件・表示件数が変わったら1ページ目に戻す（レンダー時に調整）
-  const filterKey = `${view}|${keyword}|${permitFrom}|${permitTo}|${pageSize}`;
+  // 並び替え。日付が未設定の行は末尾に回す
+  const sorted = useMemo(() => {
+    // 既定は取得順のまま（申請日の新しい順・準備中の擬似行が先頭）
+    if (sort === "date-desc") return filtered;
+    const value = (a: Application) =>
+      sort === "date-asc" ? a.applicationDate : (a.residenceExpiryAtApply ?? "");
+    const dir = sort === "expiry-desc" ? -1 : 1;
+    return [...filtered].sort((a, b) => {
+      const va = value(a);
+      const vb = value(b);
+      if (!va && !vb) return 0;
+      if (!va) return 1;
+      if (!vb) return -1;
+      return va.localeCompare(vb) * dir;
+    });
+  }, [filtered, sort]);
+
+  // 絞り込み条件・並び順・表示件数が変わったら1ページ目に戻す（レンダー時に調整）
+  const filterKey = `${view}|${keyword}|${permitFrom}|${permitTo}|${pageSize}|${sort}`;
   const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
   if (filterKey !== prevFilterKey) {
     setPrevFilterKey(filterKey);
@@ -168,11 +197,11 @@ export function ApplicationsExplorer({
       ? `/applications/new?workerId=${a.workerId}`
       : `/applications/${a.id}`;
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const safePage = Math.min(page, totalPages);
   const paged = useMemo(
-    () => filtered.slice((safePage - 1) * pageSize, safePage * pageSize),
-    [filtered, safePage, pageSize],
+    () => sorted.slice((safePage - 1) * pageSize, safePage * pageSize),
+    [sorted, safePage, pageSize],
   );
 
   return (
@@ -259,20 +288,36 @@ export function ApplicationsExplorer({
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-bold text-muted">{filtered.length}件</p>
-        <label className="flex items-center gap-1.5 text-xs text-muted">
-          表示件数
-          <select
-            value={pageSize}
-            onChange={(e) => setPageSize(Number(e.target.value))}
-            className="min-h-[36px] rounded-lg border border-border bg-surface px-2 text-sm font-bold focus:border-brand focus:outline-none"
-          >
-            {PAGE_SIZES.map((n) => (
-              <option key={n} value={n}>
-                {n}件
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-1.5 text-xs text-muted">
+            並び順
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortKey)}
+              className="min-h-[36px] rounded-lg border border-border bg-surface px-2 text-sm font-bold focus:border-brand focus:outline-none"
+            >
+              {SORT_OPTIONS.map((o) => (
+                <option key={o.key} value={o.key}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-1.5 text-xs text-muted">
+            表示件数
+            <select
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+              className="min-h-[36px] rounded-lg border border-border bg-surface px-2 text-sm font-bold focus:border-brand focus:outline-none"
+            >
+              {PAGE_SIZES.map((n) => (
+                <option key={n} value={n}>
+                  {n}件
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
 
       {filtered.length === 0 ? (
