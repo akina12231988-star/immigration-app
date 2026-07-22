@@ -75,7 +75,7 @@ export interface Worker {
   residence_renewal_todo: string; // Notion 申請TODO番号
   application_prep_kind: string; // 申請準備の区分（'' = 更新 / '新規' = 新規で申請書類準備）
   leaving_on: string | null; // 退職日
-  leaving_todo: string; // 退職時のNotion申請TODO番号
+  leaving_todo: string; // 退職時のNotion随時報告TODO番号
   gender: string; // 性別
   address: string; // 住所（履歴書に表示）
   employment_start_on: string | null; // 雇用開始年月日
