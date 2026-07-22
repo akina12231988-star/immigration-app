@@ -233,6 +233,16 @@ export interface CustodyRecord {
   held_since: string | null; // 持出中の場合: 持出日時
   returned_on: string | null; // 本人へ返却した日
   note: string;
+  // 預かり証の記載内容（発行時点のスナップショット。0027）
+  holder_name: string; // 氏名（在留カード記載のローマ字）
+  holder_nationality: string; // 国籍・地域
+  holder_birth: string | null; // 生年月日
+  holder_card_no: string; // 在留カード番号
+  holder_residence_status: string; // 在留資格
+  holder_card_expire: string | null; // 在留期間（満了日）
+  agent_cert_expire: string | null; // 申請取次者証明書 有効期限
+  front_image_path: string; // 在留カード表面画像（app-files）
+  back_image_path: string; // 在留カード裏面画像（app-files）
   created_by: string | null;
   created_at: string;
   updated_at: string;
