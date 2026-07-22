@@ -33,6 +33,7 @@ import { SswGauge } from "@/components/workers/SswGauge";
 import { SswStatusBadge, SupportBadge, WorkerStatusBadge } from "@/components/workers/badges";
 import { calcSsw, entryDays, todayStr, ymdFullText } from "@/lib/ssw/calc";
 import { createClient } from "@/lib/supabase/client";
+import { notionAppUrl } from "@/lib/notion-link";
 import { deleteWorker, updateWorker } from "@/lib/supabase/queries/workers";
 import {
   deleteHistory,
@@ -169,9 +170,7 @@ export function WorkerDetail({
                 )}
                 {worker.notion_link && (
                   <a
-                    href={worker.notion_link}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    href={notionAppUrl(worker.notion_link)}
                     className="inline-flex items-center gap-1 text-xs font-bold text-brand"
                   >
                     <ExternalLink size={13} />

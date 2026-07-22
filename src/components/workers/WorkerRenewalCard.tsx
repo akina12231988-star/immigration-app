@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
 import { remainingLabel, daysUntil } from "@/lib/worker-alerts";
+import { notionAppUrl } from "@/lib/notion-link";
 import {
   RESIDENCE_RENEWAL_STATUSES,
   type ResidenceRenewalStatus,
@@ -148,7 +149,7 @@ export function WorkerRenewalCard({
           </a>
         )}
         {worker.notion_link && (
-          <a href={worker.notion_link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs font-bold text-brand">
+          <a href={notionAppUrl(worker.notion_link)} className="flex items-center gap-1 text-xs font-bold text-brand">
             <ExternalLink size={13} />
             Notionを開く
           </a>
