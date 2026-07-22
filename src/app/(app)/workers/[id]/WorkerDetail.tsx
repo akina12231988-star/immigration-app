@@ -245,7 +245,11 @@ export function WorkerDetail({
       )}
 
       {/* 在留カード・指定書の差し替え（履歴保持） */}
-      <WorkerDocuments workerId={worker.id} canEdit={canEdit} />
+      <WorkerDocuments
+        workerId={worker.id}
+        canEdit={canEdit}
+        histories={worker.work_histories}
+      />
 
       {/* 入社書類メールで登録した添付データ（選択ダウンロード・Gmailリンク） */}
       <OnboardingDocuments workerId={worker.id} />
