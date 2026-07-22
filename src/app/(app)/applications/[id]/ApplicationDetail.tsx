@@ -26,7 +26,11 @@ import { isExpiryAlert, todayStr, transitionEndDate, formatMonthDay } from "@/li
 import { useApplications } from "@/lib/application-store";
 import { uploadApplicationFile } from "@/lib/application-files";
 import { createClient } from "@/lib/supabase/client";
-import { deleteApplication, listApplicationFiles } from "../actions";
+import {
+  deleteApplication,
+  deleteApplicationFile,
+  listApplicationFiles,
+} from "../actions";
 import { ApplicationEditDialog } from "./ApplicationEditDialog";
 import { ApprovalSection } from "./ApprovalSection";
 import { ORG_HONORIFICS } from "@/types/application";
@@ -119,6 +123,18 @@ export function ApplicationDetail({ id }: { id: string }) {
       setUploadError(err instanceof Error ? err.message : "アップロードに失敗しました");
     } finally {
       setUploading(null);
+    }
+  }
+
+  // 誤ってアップロードした画像の削除（在留カード・指定書）
+  async function handleDeleteFile(file: ApplicationFile) {
+    if (!confirm(`「${file.fileName}」を削除しますか？`)) return;
+    setUploadError(null);
+    const res = await deleteApplicationFile(file.id);
+    if (res.ok) {
+      setFiles((prev) => prev.filter((f) => f.id !== file.id));
+    } else {
+      setUploadError(res.message);
     }
   }
 
@@ -359,6 +375,7 @@ export function ApplicationDetail({ id }: { id: string }) {
           files={files}
           uploading={uploading}
           onUpload={handleUpload}
+          onDeleteFile={handleDeleteFile}
           messengerLink={messengerLink}
           updateApplication={updateApplication}
         />
