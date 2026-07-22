@@ -35,6 +35,7 @@ export function ApprovalSection({
   files,
   uploading,
   onUpload,
+  onDeleteFile,
   messengerLink,
   updateApplication,
 }: {
@@ -42,6 +43,7 @@ export function ApprovalSection({
   files: ApplicationFile[];
   uploading: ApplicationFileKind | null;
   onUpload: (kind: ApplicationFileKind, list: FileList | null) => void;
+  onDeleteFile: (file: ApplicationFile) => void; // 誤アップロード画像の削除
   messengerLink: string;
   updateApplication: (id: string, patch: Partial<Application>) => Promise<void>;
 }) {
@@ -314,6 +316,7 @@ export function ApprovalSection({
               uploading={uploading === "在留カード"}
               multiple
               onSelect={(list) => onUpload("在留カード", list)}
+              onDelete={onDeleteFile}
             />
             <FileGroup
               label="指定書画像（複数枚可）"
@@ -321,6 +324,7 @@ export function ApprovalSection({
               uploading={uploading === "指定書"}
               multiple
               onSelect={(list) => onUpload("指定書", list)}
+              onDelete={onDeleteFile}
             />
           </div>
 
