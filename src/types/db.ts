@@ -204,3 +204,52 @@ export interface ApplicationFileRow {
   uploaded_by: string | null;
   created_at: string;
 }
+
+// ---- パスポート・在留カード原本の預かり管理（0026_custody.sql） ----
+
+export const CUSTODY_STATUSES = ["ボックス保管中", "持出中", "返却済み"] as const;
+export type CustodyStatus = (typeof CUSTODY_STATUSES)[number];
+
+export const CUSTODY_ACTIONS = ["預かり", "持出", "ボックスへ戻す", "本人へ返却"] as const;
+export type CustodyAction = (typeof CUSTODY_ACTIONS)[number];
+
+export const CUSTODY_ITEMS = [
+  "パスポート・在留カード",
+  "パスポートのみ",
+  "在留カードのみ",
+] as const;
+
+export interface CustodyRecord {
+  id: string;
+  worker_id: string;
+  storage_no: number; // 保管番号（付箋・預かり証の番号）
+  status: CustodyStatus;
+  items: string; // 預かっている書類
+  received_on: string; // 預かった日
+  expire_on: string | null; // 預かり証の有効年月日
+  content: string; // 申請内容
+  ref_no: string; // 預かり証の整理番号
+  holder: string; // 持出中の場合: 今持っている人
+  held_since: string | null; // 持出中の場合: 持出日時
+  returned_on: string | null; // 本人へ返却した日
+  note: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CustodyEventRow {
+  id: string;
+  custody_id: string;
+  action: CustodyAction;
+  person: string; // 持ち出した人・対応した担当者
+  purpose: string; // 目的・メモ
+  happened_at: string;
+  created_by: string | null;
+  created_at: string;
+}
+
+export type CustodyInput = Omit<
+  CustodyRecord,
+  "id" | "status" | "holder" | "held_since" | "returned_on" | "created_by" | "created_at" | "updated_at"
+>;
