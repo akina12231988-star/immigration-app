@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useSyncExternalStore } from "react";
+import { Check, Link2 } from "lucide-react";
 import QRCode from "qrcode";
 
 // 保管番号QR: 読み取ると /custody?no=番号 が開き、その番号の持出・返却画面に直行する
@@ -47,6 +48,26 @@ export function QrImage({
   // dataURL のQR画像のため next/image は使わない
   // eslint-disable-next-line @next/next/no-img-element
   return <img src={url} alt="QRコード" width={size} height={size} className={className} />;
+}
+
+// QRのリンク先URLをコピーするボタン
+export function QrLinkCopyButton({ url, className = "" }: { url: string; className?: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      /* クリップボード非対応時は何もしない */
+    }
+  };
+  return (
+    <button type="button" onClick={() => void copy()} className={className}>
+      {copied ? <Check size={13} /> : <Link2 size={13} />}
+      {copied ? "コピーしました" : "リンクをコピー"}
+    </button>
+  );
 }
 
 // QRを高解像度PNGとして保存するボタン。

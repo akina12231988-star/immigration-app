@@ -15,7 +15,7 @@ import {
 import type { WorkerWithOrg } from "@/lib/supabase/queries/workers";
 import type { CustodyEventRow, CustodyStatus } from "@/types/db";
 import { CUSTODY_PURPOSES, formatStorageNo, parseAzkLedger } from "@/lib/custody";
-import { QrImage, QrSaveButton, custodyQrUrl, useOrigin } from "./QrImage";
+import { QrImage, QrLinkCopyButton, QrSaveButton, custodyQrUrl, useOrigin } from "./QrImage";
 
 const STATUS_BADGE: Record<CustodyStatus, string> = {
   ボックス保管中: "bg-status-approved-bg text-status-approved-fg",
@@ -487,14 +487,17 @@ function QrSection({ storageNo }: { storageNo: number }) {
         <p className="text-[11px] leading-relaxed text-muted">
           この番号のQRコードです。印刷して付箋やボックスに貼っておくと、スマホで読み取るだけでこの画面が開き、その場で持出・返却を記録できます。
         </p>
-        <QrSaveButton
-          text={url}
-          filename={`保管QR_No${formatStorageNo(storageNo)}.png`}
-          className="inline-flex items-center gap-1 text-xs font-bold text-brand"
-        >
-          <Download size={13} />
-          QR画像を保存
-        </QrSaveButton>
+        <div className="flex flex-wrap gap-3">
+          <QrSaveButton
+            text={url}
+            filename={`保管QR_No${formatStorageNo(storageNo)}.png`}
+            className="inline-flex items-center gap-1 text-xs font-bold text-brand"
+          >
+            <Download size={13} />
+            QR画像を保存
+          </QrSaveButton>
+          <QrLinkCopyButton url={url} className="inline-flex items-center gap-1 text-xs font-bold text-brand" />
+        </div>
       </div>
     </div>
   );
