@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Archive, Download, FileUp, Printer, QrCode, Stamp } from "lucide-react";
+import { Archive, Download, FileUp, Printer, QrCode, Stamp, Tag } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -15,7 +15,7 @@ import {
 import type { WorkerWithOrg } from "@/lib/supabase/queries/workers";
 import type { CustodyEventRow, CustodyStatus } from "@/types/db";
 import { CUSTODY_PURPOSES, formatStorageNo, parseAzkLedger } from "@/lib/custody";
-import { QrImage, QrLinkCopyButton, QrSaveButton, custodyQrUrl, useOrigin } from "./QrImage";
+import { QrImage, QrLinkCopyButton, QrSaveButton, TepraSaveButton, custodyQrUrl, useOrigin } from "./QrImage";
 
 const STATUS_BADGE: Record<CustodyStatus, string> = {
   ボックス保管中: "bg-status-approved-bg text-status-approved-fg",
@@ -497,6 +497,15 @@ function QrSection({ storageNo }: { storageNo: number }) {
             QR画像を保存
           </QrSaveButton>
           <QrLinkCopyButton url={url} className="inline-flex items-center gap-1 text-xs font-bold text-brand" />
+          <TepraSaveButton
+            text={url}
+            numberLabel={formatStorageNo(storageNo)}
+            filename={`テプラQR_No${formatStorageNo(storageNo)}.png`}
+            className="inline-flex items-center gap-1 text-xs font-bold text-brand"
+          >
+            <Tag size={13} />
+            テプラ用画像を保存
+          </TepraSaveButton>
         </div>
       </div>
     </div>
