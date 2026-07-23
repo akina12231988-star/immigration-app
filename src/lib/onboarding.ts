@@ -62,6 +62,19 @@ export const DOC_REFERENCE_LINKS: Record<string, string> = {
 export const HEALTH_CHECK_DOC_KEY = "kenshin";
 export const HEALTH_CHECK_LABEL = "健康診断";
 
+// 外国人の書類（PDF・画像）。入社書類メールとは別に、外国人の情報として保管する。
+export const WORKER_CERT_DOCS = [
+  { key: "cert_senmonkyu", label: "専門級の合格証" },
+  { key: "cert_passport", label: "パスポート" },
+  { key: "cert_nihongo", label: "日本語の合格証" },
+  { key: "cert_senmongai", label: "専門外の合格証" },
+  { key: "cert_rirekisho", label: "履歴書" },
+  { key: "cert_zairyu", label: "在留カード" },
+] as const;
+export function isWorkerCertKey(key: string): boolean {
+  return /^cert_[a-z0-9_]+$/.test(key);
+}
+
 // 源泉徴収票の令和年ごとのキー・表示名（例: 令和8年分 → gensen_r8 / 令和8年分源泉徴収票）
 export function gensenDocKey(reiwa: number): string {
   return `gensen_r${reiwa}`;

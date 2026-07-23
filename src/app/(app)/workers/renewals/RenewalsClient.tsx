@@ -1,12 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   ArrowLeft,
   CalendarClock,
   ChevronRight,
+  SquarePen,
   UserPlus,
   UserRoundPlus,
   X,
@@ -255,6 +257,8 @@ function NewPrepForm({ workers }: { workers: WorkerWithOrg[] }) {
   const [error, setError] = useState<string | null>(null);
   // この画面で氏名登録した人も選択肢に出すため、ローカルにも持つ
   const [extraWorkers, setExtraWorkers] = useState<{ id: string; name: string }[]>([]);
+  // 新規登録した人を追加した直後に、詳細（編集）ページへの導線を出すための情報
+  const [addedNewWorker, setAddedNewWorker] = useState<{ id: string; name: string } | null>(null);
 
   // 同姓同名は（所属機関名）付きで区別する
   const options = useMemo(() => {
@@ -301,12 +305,15 @@ function NewPrepForm({ workers }: { workers: WorkerWithOrg[] }) {
     setSaving(true);
     setError(null);
     try {
+      // この画面で氏名だけ登録した新規の人か（詳細入力への導線を出すため）
+      const newWorker = extraWorkers.find((w) => w.id === workerId) ?? null;
       await updateWorker(createClient(), workerId, {
         residence_renewal_todo: todo.trim(),
         residence_renewal_status: status,
         application_prep_kind: "新規",
       });
       setNotice(`${selected?.label ?? "対象者"}を新規の申請準備に追加しました。`);
+      setAddedNewWorker(newWorker);
       setWorkerId("");
       setTodo("");
       setStatus("準備中");
@@ -326,6 +333,22 @@ function NewPrepForm({ workers }: { workers: WorkerWithOrg[] }) {
       </p>
       {notice && <p className="rounded-lg bg-brand/10 px-3 py-2 text-xs text-brand">{notice}</p>}
       {error && <p className="rounded-lg bg-seal/10 px-3 py-2 text-xs text-seal">{error}</p>}
+
+      {/* 新規登録した人は、続けて詳細情報を入力できるよう編集ページへ誘導する */}
+      {addedNewWorker && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand/40 bg-brand/5 px-3 py-2.5">
+          <span className="text-xs text-muted">
+            新規登録した「{addedNewWorker.name}」の詳細情報（国籍・在留カード番号・書類など）を入力できます。
+          </span>
+          <Link
+            href={`/workers/${addedNewWorker.id}#edit`}
+            className="flex shrink-0 items-center gap-1 rounded-lg bg-brand px-3 py-1.5 text-xs font-bold text-brand-foreground"
+          >
+            <SquarePen size={13} />
+            詳細を入力する
+          </Link>
+        </div>
+      )}
 
       <div>
         <span className="mb-1.5 block text-[11px] font-bold text-muted">外国人氏名（必須）</span>

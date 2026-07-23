@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -22,6 +22,7 @@ import { WorkerDocuments } from "@/components/workers/WorkerDocuments";
 import { OnboardingDocuments } from "@/components/workers/OnboardingDocuments";
 import { HealthCheckSection } from "@/components/workers/HealthCheckSection";
 import { GensenDocuments } from "@/components/workers/GensenDocuments";
+import { WorkerCertificateDocs } from "@/components/workers/WorkerCertificateDocs";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -74,6 +75,16 @@ export function WorkerDetail({
   const [deletingHistory, setDeletingHistory] = useState<WorkHistoryRow | null>(null);
   const [historyBusy, setHistoryBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 申請準備などから「詳細を入力する」で #edit 付きで来たら編集モーダルを自動で開く。
+  // location.hash は SSR では読めないため（遅延初期化はハイドレーション不整合になる）、
+  // マウント後の一度きりの副作用で開く。
+  useEffect(() => {
+    if (canEdit && typeof window !== "undefined" && window.location.hash === "#edit") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- ブラウザ専用APIからの初期化
+      setEditOpen(true);
+    }
+  }, [canEdit]);
 
   const today = todayStr();
   const calc = useMemo(
@@ -252,6 +263,9 @@ export function WorkerDetail({
         canEdit={canEdit}
         histories={worker.work_histories}
       />
+
+      {/* 外国人書類（合格証・パスポート・履歴書など）をPDF・画像で保存 */}
+      <WorkerCertificateDocs workerId={worker.id} canEdit={canEdit} />
 
       {/* 入社書類メールで登録した添付データ（選択ダウンロード・Gmailリンク） */}
       <OnboardingDocuments workerId={worker.id} canEdit={canEdit} />
