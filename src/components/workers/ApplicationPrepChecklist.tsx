@@ -18,6 +18,8 @@ import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
 import { listOnboardingDocs } from "@/lib/supabase/queries/onboarding";
 import { getPrepChecklist, upsertPrepChecklist } from "@/lib/supabase/queries/application-prep";
+import { getHealthCheckDetail } from "@/lib/supabase/queries/health-check";
+import { EMPTY_HEALTH_DETAIL, isHealthDetailComplete, type HealthCheckDetail } from "@/lib/health-check";
 import {
   clearOnboardingDocFile,
   getOnboardingDocDownloadUrl,
@@ -54,6 +56,7 @@ export function ApplicationPrepChecklist({
   healthCheckOn: string | null;
 }) {
   const [meta, setMeta] = useState<PrepChecklistMeta>(EMPTY_PREP_META);
+  const [healthDetail, setHealthDetail] = useState<HealthCheckDetail>(EMPTY_HEALTH_DETAIL);
   const [docs, setDocs] = useState<OnboardingDocumentRow[]>([]);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -70,6 +73,7 @@ export function ApplicationPrepChecklist({
 
   useEffect(() => {
     getPrepChecklist(createClient(), workerId).then(setMeta).catch(() => undefined);
+    getHealthCheckDetail(createClient(), workerId).then(setHealthDetail).catch(() => undefined);
     void loadDocs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workerId]);
@@ -77,11 +81,18 @@ export function ApplicationPrepChecklist({
   const today = todayStr();
   const filledDocKeys = new Set(docs.filter((d) => d.storage_path).map((d) => d.doc_key));
   const docByKey = new Map(docs.map((d) => [d.doc_key, d]));
-  const { items, missing } = evaluatePrepChecklist(
-    meta,
-    { filledDocKeys, photoPath: photoExists ? "yes" : null, healthCheckOn },
+  // 健康診断書の完了判定は詳細（様式・受診項目・就労可の後日結果）まで含める
+  const healthComplete = isHealthDetailComplete(
+    healthDetail,
+    filledDocKeys.has("kenshin"),
+    healthCheckOn,
     today,
   );
+  const { items, missing } = evaluatePrepChecklist(meta, {
+    filledDocKeys,
+    photoPath: photoExists ? "yes" : null,
+    healthComplete,
+  });
 
   // 書類の実際の保存キー（源泉徴収票は対象年度で変わる）。写真はキーなし。
   const resolveDocKey = (def: PrepDocDef): string | null => {
@@ -307,6 +318,7 @@ export function ApplicationPrepChecklist({
                   key={item.def.id}
                   item={item}
                   meta={meta}
+                  workerId={workerId}
                   row={row}
                   isPhoto={isPhoto}
                   canEdit={canEdit}
@@ -315,7 +327,6 @@ export function ApplicationPrepChecklist({
                   onRemove={() => key && removeDoc(key, prepDocLabel(item.def, meta.target_reiwa))}
                   onPreview={() => (isPhoto ? previewPhoto() : row && previewDoc(row.id))}
                   onDownload={() => row && downloadDoc(row.id)}
-                  onToggleKenshin={(v) => patchMeta({ kenshin_items_ok: v })}
                 />
               );
             })}
@@ -352,6 +363,7 @@ export function ApplicationPrepChecklist({
 function DocRow({
   item,
   meta,
+  workerId,
   row,
   isPhoto,
   canEdit,
@@ -360,10 +372,10 @@ function DocRow({
   onRemove,
   onPreview,
   onDownload,
-  onToggleKenshin,
 }: {
   item: PrepDocStatus;
   meta: PrepChecklistMeta;
+  workerId: string;
   row: OnboardingDocumentRow | null;
   isPhoto: boolean;
   canEdit: boolean;
@@ -372,7 +384,6 @@ function DocRow({
   onRemove: () => void;
   onPreview: () => void;
   onDownload: () => void;
-  onToggleKenshin: (v: boolean) => void;
 }) {
   const { def, satisfied } = item;
   const label = prepDocLabel(def, meta.target_reiwa);
@@ -454,18 +465,15 @@ function DocRow({
         </Link>
       )}
 
-      {/* 健康診断書: 受診項目の確認（手動チェック） */}
+      {/* 健康診断書: 様式・受診項目・就労可の後日結果は別ページで管理 */}
       {def.source.kind === "health" && (
-        <label className="ml-[18px] mt-1.5 flex items-center gap-1.5 text-[11px] font-bold text-muted">
-          <input
-            type="checkbox"
-            checked={meta.kenshin_items_ok}
-            disabled={!canEdit}
-            onChange={(e) => onToggleKenshin(e.target.checked)}
-            className="h-3.5 w-3.5"
-          />
-          受診項目（1〜3号と同じ項目）が足りていることを確認した
-        </label>
+        <Link
+          href={`/workers/${workerId}/health-check`}
+          className="ml-[18px] mt-1.5 inline-flex items-center gap-1 text-[11px] font-bold text-brand hover:underline"
+        >
+          <ExternalLink size={11} />
+          受診項目・就労可の詳細を確認/入力
+        </Link>
       )}
     </div>
   );

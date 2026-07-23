@@ -9,7 +9,6 @@
 //  - 健康診断書 … 健康診断セクション（onboarding_documents の kenshin ＋ 受診日）
 //  - 課税証明書 / 納税証明書 / 保険証 / 年金記録 … このチェックリスト専用（prep_*）
 
-import { isHealthCheckValid } from "@/lib/health-check";
 import { gensenDocKey } from "@/lib/onboarding";
 
 export type PrepAppType = "変更" | "更新";
@@ -174,7 +173,8 @@ export interface PrepDocSources {
   // onboarding_documents のうち storage_path があるキーの集合
   filledDocKeys: Set<string>;
   photoPath: string | null;
-  healthCheckOn: string | null;
+  // 健康診断書が「揃っている」か（様式・受診項目・就労可の後日結果まで含めた判定。健康診断書の詳細ページで管理）
+  healthComplete: boolean;
 }
 
 // その書類が揃っているか（登録済みか）
@@ -182,7 +182,6 @@ export function isSatisfied(
   def: PrepDocDef,
   meta: PrepChecklistMeta,
   sources: PrepDocSources,
-  today: string,
 ): boolean {
   switch (def.source.kind) {
     case "doc":
@@ -192,11 +191,7 @@ export function isSatisfied(
     case "photo":
       return !!sources.photoPath;
     case "health":
-      return (
-        sources.filledDocKeys.has("kenshin") &&
-        isHealthCheckValid(sources.healthCheckOn, today) &&
-        meta.kenshin_items_ok
-      );
+      return sources.healthComplete;
   }
 }
 
@@ -210,12 +205,11 @@ export interface PrepDocStatus {
 export function evaluatePrepChecklist(
   meta: PrepChecklistMeta,
   sources: PrepDocSources,
-  today: string,
 ): { items: PrepDocStatus[]; missing: PrepDocStatus[] } {
   const items = PREP_DOC_DEFS.filter((def) => isRequired(def, meta)).map((def) => ({
     def,
     required: true,
-    satisfied: isSatisfied(def, meta, sources, today),
+    satisfied: isSatisfied(def, meta, sources),
   }));
   return { items, missing: items.filter((i) => !i.satisfied) };
 }
