@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { ArrowLeft, Printer, UserRound } from "lucide-react";
+import { BackButton } from "@/components/BackButton";
+import { Printer, UserRound } from "lucide-react";
 import { todayStr } from "@/lib/ssw/calc";
 
 interface ResumeWorker {
@@ -47,9 +47,7 @@ export function ResumeSheet({
       {/* 画面用ツールバー（印刷時は非表示） */}
       <div className="print:hidden">
         <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-brand px-4 py-3 text-brand-foreground lg:px-8">
-          <Link href="/workers" aria-label="戻る" className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-brand-foreground/10">
-            <ArrowLeft size={20} />
-          </Link>
+          <BackButton fallbackHref="/workers" />
           <h1 className="flex-1 text-lg font-bold">履歴書</h1>
         </div>
         <div className="flex flex-wrap items-end gap-3 px-4 py-4 lg:px-8">

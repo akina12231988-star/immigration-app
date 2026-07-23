@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import { BackButton } from "@/components/BackButton";
 import QRCode from "qrcode";
-import { ArrowLeft, Printer, UserRound } from "lucide-react";
+import { Printer, UserRound } from "lucide-react";
 import type { Organization } from "@/types/db";
 
 export interface PrintWorker {
@@ -80,9 +80,7 @@ export function PrintClient({
       {/* 画面用ツールバー（印刷時は非表示） */}
       <div className="print:hidden">
         <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-brand px-4 py-3 text-brand-foreground lg:px-8">
-          <Link href="/workers" aria-label="戻る" className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-brand-foreground/10">
-            <ArrowLeft size={20} />
-          </Link>
+          <BackButton fallbackHref="/workers" />
           <h1 className="flex-1 text-lg font-bold">A4印刷{individual ? "（個人）" : ""}</h1>
         </div>
 

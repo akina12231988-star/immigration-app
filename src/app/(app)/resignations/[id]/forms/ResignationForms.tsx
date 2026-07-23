@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState, useSyncExternalStore } from "react";
-import Link from "next/link";
-import { ArrowLeft, Download, ExternalLink, FileSpreadsheet, FileText } from "lucide-react";
+import { BackButton } from "@/components/BackButton";
+import { Download, ExternalLink, FileSpreadsheet, FileText } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { todayStr } from "@/lib/application-alerts";
 import {
@@ -204,13 +204,7 @@ export function ResignationForms({
   return (
     <div className="space-y-4">
       <div className="sticky top-0 z-20 -mx-4 flex items-center gap-3 border-b border-border bg-brand px-4 py-3 text-brand-foreground md:-mx-8 lg:px-8">
-        <Link
-          href="/resignations"
-          aria-label="戻る"
-          className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-brand-foreground/10"
-        >
-          <ArrowLeft size={20} />
-        </Link>
+        <BackButton fallbackHref="/resignations" />
         <h1 className="flex-1 text-lg font-bold">
           随時届出の作成（{resignation.kind}）
         </h1>

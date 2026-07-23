@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { BackButton } from "@/components/BackButton";
 import { DarkModeToggle } from "@/components/DarkModeToggle";
 import { LogoutButton } from "@/components/LogoutButton";
 
@@ -15,13 +14,7 @@ export function AppHeader({
       <div className="flex w-full items-center justify-between px-4 py-3.5 md:px-8">
         <div className="flex items-center gap-2.5">
           {backHref ? (
-            <Link
-              href={backHref}
-              aria-label="戻る"
-              className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-brand-foreground/10"
-            >
-              <ArrowLeft size={20} />
-            </Link>
+            <BackButton fallbackHref={backHref} />
           ) : (
             <span className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-brand-foreground/70 text-sm font-black md:hidden">
               入管

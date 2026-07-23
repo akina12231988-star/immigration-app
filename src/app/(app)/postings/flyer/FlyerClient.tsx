@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { ArrowLeft, Download, ImageIcon } from "lucide-react";
+import { BackButton } from "@/components/BackButton";
+import { Download, ImageIcon } from "lucide-react";
 import { renderPostingsGrid, type GridPosting } from "@/lib/posting-grid";
 
 export interface FlyerItem {
@@ -53,9 +53,7 @@ export function FlyerClient({ items }: { items: FlyerItem[] }) {
   return (
     <>
       <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-brand px-4 py-3 text-brand-foreground lg:px-8">
-        <Link href="/postings" aria-label="戻る" className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-brand-foreground/10">
-          <ArrowLeft size={20} />
-        </Link>
+        <BackButton fallbackHref="/postings" />
         <h1 className="flex-1 text-lg font-bold">Facebook掲載画像（一覧）</h1>
       </div>
 
