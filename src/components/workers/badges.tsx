@@ -19,6 +19,7 @@ export function SswStatusBadge({ status }: { status: SswStatus }) {
 }
 
 const WORKER_STATUS_CLASSES: Record<WorkerStatus, string> = {
+  申請準備中: "bg-status-notice-bg text-status-notice-fg",
   支援中: "bg-status-reported-bg text-status-reported-fg",
   在籍中: "bg-status-approved-bg text-status-approved-fg",
   求職活動中: "bg-status-applied-bg text-status-applied-fg",
@@ -37,10 +38,10 @@ export function WorkerStatusBadge({ status }: { status: WorkerStatus }) {
 }
 
 export function SupportBadge({ support }: { support: SupportScope }) {
-  if (support === "支援対象") return null; // 大多数なのでバッジは対象外のみ表示
+  if (support === "支援対象") return null; // 大多数なのでバッジは対象以外のみ表示
   return (
     <span className="inline-flex shrink-0 items-center rounded-full border border-border px-2.5 py-1 text-[11px] font-bold text-muted">
-      支援対象外
+      {support}
     </span>
   );
 }

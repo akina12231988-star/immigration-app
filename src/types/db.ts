@@ -23,10 +23,17 @@ export interface Profile {
 
 // ---- 外国人・職歴・所属機関（0003_core.sql） ----
 
-export const SUPPORT_SCOPES = ["支援対象", "支援対象外"] as const;
+export const SUPPORT_SCOPES = ["支援開始前", "支援対象", "支援対象外"] as const;
 export type SupportScope = (typeof SUPPORT_SCOPES)[number];
 
-export const WORKER_STATUSES = ["支援中", "在籍中", "求職活動中", "帰国", "退職"] as const;
+export const WORKER_STATUSES = [
+  "申請準備中",
+  "支援中",
+  "在籍中",
+  "求職活動中",
+  "帰国",
+  "退職",
+] as const;
 export type WorkerStatus = (typeof WORKER_STATUSES)[number];
 
 // 在留更新の対応状況（空文字＝未対応・対象）
