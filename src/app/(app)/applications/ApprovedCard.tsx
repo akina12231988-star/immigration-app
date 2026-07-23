@@ -23,6 +23,7 @@ export function ApprovedCard({
   variant,
   canEdit,
   authorName,
+  custodyNoLabel,
   updateApplication,
 }: {
   app: Application;
@@ -30,6 +31,7 @@ export function ApprovedCard({
   variant: "waiting" | "issued"; // waiting=受け取り待ち / issued=新規発行済み
   canEdit: boolean;
   authorName: string;
+  custodyNoLabel: string; // 預かり番号（未預かりは「—」）
   updateApplication: (id: string, patch: Partial<Application>) => Promise<void>;
 }) {
   const router = useRouter();
@@ -114,6 +116,7 @@ export function ApprovedCard({
           <p className="truncate text-xs text-muted">
             {app.organizationName ?? "所属機関未設定"}
           </p>
+          <p className="text-xs tabular-nums text-muted">預かり番号 {custodyNoLabel}</p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {alert && <AlertBadge expiry={app.residenceExpiryAtApply} />}

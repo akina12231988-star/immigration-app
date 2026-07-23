@@ -20,6 +20,8 @@ import { applicationStatusLabel } from "@/lib/status";
 import { STAT_VIEWS, type StatViewKey } from "@/lib/application-stats";
 import { isExpiryAlert, todayStr } from "@/lib/application-alerts";
 import { listWorkersWithOrg, type WorkerWithOrg } from "@/lib/supabase/queries/workers";
+import { listActiveCustodyNoByWorker } from "@/lib/supabase/queries/custody";
+import { formatStorageNo } from "@/lib/custody";
 import {
   daysUntil,
   isExpiryWithinTwoMonths,
@@ -127,6 +129,27 @@ export function ApplicationsExplorer({
   );
   const workerFor = (a: Application) =>
     a.workerId ? workersById.get(a.workerId) : undefined;
+
+  // 全タブで表示する「預かり番号」（返却済み以外の保管番号）。外国人ごとに引き当てる。
+  const [custodyNoByWorker, setCustodyNoByWorker] = useState<Map<string, number>>(
+    new Map(),
+  );
+  useEffect(() => {
+    let cancelled = false;
+    listActiveCustodyNoByWorker(createClient())
+      .then((m) => {
+        if (!cancelled) setCustodyNoByWorker(m);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  // 表示用の預かり番号文字列（未預かり・外国人未紐づけは「—」）
+  const custodyNoLabel = (a: Application) => {
+    const no = a.workerId ? custodyNoByWorker.get(a.workerId) : undefined;
+    return no != null ? formatStorageNo(no) : "—";
+  };
 
   // 並び順（申請日の早い/遅い順・在留期限の短い/遅い順）
   const [sort, setSort] = useState<SortKey>("date-desc");
@@ -333,6 +356,7 @@ export function ApplicationsExplorer({
               variant={showIssued ? "issued" : "waiting"}
               canEdit={canEdit}
               authorName={authorName}
+              custodyNoLabel={custodyNoLabel(a)}
               updateApplication={updateApplication}
             />
           ))}
@@ -358,6 +382,9 @@ export function ApplicationsExplorer({
                     <span>申請番号 {a.applicationNumber || "未登録"}</span>
                     <span>{a.applicationDate || "—"}</span>
                   </div>
+                  <p className="mt-1 text-xs tabular-nums text-muted">
+                    預かり番号 {custodyNoLabel(a)}
+                  </p>
                   {a.residenceExpiryAtApply && (
                     <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted">
                       申請時在留期限 {a.residenceExpiryAtApply}
@@ -425,6 +452,7 @@ export function ApplicationsExplorer({
                       <Th>申請番号</Th>
                     </>
                   )}
+                  <Th>預かり番号</Th>
                   <Th>申請時点在留期限</Th>
                   <Th>状態</Th>
                 </tr>
@@ -466,6 +494,7 @@ export function ApplicationsExplorer({
                           <Td className="tabular-nums">{a.applicationNumber || "—"}</Td>
                         </>
                       )}
+                      <Td className="tabular-nums">{custodyNoLabel(a)}</Td>
                       <Td className="tabular-nums">
                         {showPrep &&
                         a.residenceExpiryAtApply &&
