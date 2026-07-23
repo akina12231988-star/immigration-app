@@ -49,6 +49,25 @@ export async function getCustody(
   return data as CustodyWithWorker | null;
 }
 
+// 現に預かり中（返却済み以外）の外国人ごとの保管番号。申請一覧で「預かり番号」を
+// 表示するために worker_id → storage_no のマップを返す。1人が複数の預かり中番号を
+// 持つことは稀だが、その場合は小さい番号を採用する（番号昇順で先勝ち）。
+export async function listActiveCustodyNoByWorker(
+  supabase: SupabaseClient,
+): Promise<Map<string, number>> {
+  const { data, error } = await supabase
+    .from("custody_records")
+    .select("worker_id, storage_no")
+    .neq("status", "返却済み")
+    .order("storage_no", { ascending: true });
+  if (error) throw error;
+  const map = new Map<string, number>();
+  for (const r of (data as { worker_id: string; storage_no: number }[]) ?? []) {
+    if (r.worker_id && !map.has(r.worker_id)) map.set(r.worker_id, r.storage_no);
+  }
+  return map;
+}
+
 // 現に預かり中（返却済み以外）の保管番号一覧（自動採番・重複チェック用）
 export async function listActiveStorageNos(supabase: SupabaseClient): Promise<number[]> {
   const { data, error } = await supabase
