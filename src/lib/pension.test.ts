@@ -18,6 +18,18 @@ describe("judgePension", () => {
     expect(judgePension(["A"]).judgment).toBe("ok");
     expect(judgePension(["A"]).needsAction).toBe(false);
   });
+
+  it("免除区分（全額免除・納付猶予）のみは対応済み", () => {
+    expect(judgePension(["A", "L", "セ"]).judgment).toBe("exempt");
+  });
+
+  it("半額免除期間の未納（ア）も未納として要対応", () => {
+    expect(judgePension(["A", "ア"]).judgment).toBe("pay");
+  });
+
+  it("時効未納/未加入（-・/）のみは要確認", () => {
+    expect(judgePension(["A", "-", "/"]).judgment).toBe("check");
+  });
 });
 
 describe("parsePensionSymbols", () => {

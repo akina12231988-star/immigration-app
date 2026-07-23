@@ -10,12 +10,32 @@ export interface PensionSymbol {
   action: PensionAction;
 }
 
-// 通知書（被保険者記録照会回答票）に記載の記号。実際の通知書の記号に合わせる。
-// ＊=未納 / A=納付済み は確認済み。他の記号（B ほか・免除/猶予/厚生/第3号 等）は
-// 通知書の凡例に合わせて随時追加する。
+// 通知書（被保険者記録照会回答票）に記載の記号。実際の通知書の凡例に合わせる。
 export const PENSION_SYMBOLS: PensionSymbol[] = [
+  // 納付済み（問題なし）
   { code: "A", meaning: "納付済み", action: "ok" },
+  { code: "B", meaning: "納付済み", action: "ok" },
+  { code: "H", meaning: "納付済み", action: "ok" },
+  { code: "￥", meaning: "納付済み", action: "ok" },
+  { code: "イ", meaning: "半額免除期間にかかる納付", action: "ok" },
+  { code: "ツ", meaning: "4分の3免除期間にかかる納付", action: "ok" },
+  { code: "フ", meaning: "4分の1免除期間にかかる納付", action: "ok" },
+  { code: "+", meaning: "第3号納付", action: "ok" },
+  // 未納（要支払い/免除申請）
   { code: "＊", meaning: "未納", action: "pay" },
+  { code: "ア", meaning: "半額免除期間にかかる未納", action: "pay" },
+  { code: "チ", meaning: "4分の3免除期間にかかる未納", action: "pay" },
+  { code: "ヒ", meaning: "4分の1免除期間にかかる未納", action: "pay" },
+  // 免除・猶予・特例（対応済み）
+  { code: "L", meaning: "全額免除", action: "exempt" },
+  { code: "R", meaning: "全額免除", action: "exempt" },
+  { code: "Y", meaning: "全額免除", action: "exempt" },
+  { code: "Z", meaning: "全額免除", action: "exempt" },
+  { code: "サ", meaning: "学生納付特例", action: "exempt" },
+  { code: "セ", meaning: "納付猶予", action: "exempt" },
+  // 要確認
+  { code: "-", meaning: "時効により保険料が納付できなくなった期間", action: "check" },
+  { code: "/", meaning: "国民年金に加入していない期間", action: "check" },
 ];
 
 export function pensionSymbolByCode(code: string): PensionSymbol | undefined {
@@ -60,7 +80,7 @@ export function judgePension(codes: string[]): PensionResult {
   if (actions.has("check")) {
     return {
       judgment: "check",
-      alert: "未加入期間があります。内容を確認してください。",
+      alert: "時効未納・未加入などの期間があります。内容を確認してください。",
       needsAction: false,
     };
   }
