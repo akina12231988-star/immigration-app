@@ -20,6 +20,22 @@ describe("extractNotionPageId", () => {
     ).toBe("3a629d7a-e649-802d-9aed-e82605d6e06c");
   });
 
+  it("?v=ビューID や &source= が付いていてもページIDを取り出す（ビューIDを拾わない）", () => {
+    expect(
+      extractNotionPageId(
+        "https://app.notion.com/p/3a629d7ae649802d9aede82605d6e06c?v=898e2974751747cd8e809ac96227d7d6&source=copy_link",
+      ),
+    ).toBe("3a629d7a-e649-802d-9aed-e82605d6e06c");
+  });
+
+  it("スラッグ＋?v= 付きURLでもパス末尾のページIDを取り出す", () => {
+    expect(
+      extractNotionPageId(
+        "https://app.notion.com/p/PROEURNG-BOREY-3a629d7ae649802d9aede82605d6e06c?v=898e2974751747cd8e809ac96227d7d6",
+      ),
+    ).toBe("3a629d7a-e649-802d-9aed-e82605d6e06c");
+  });
+
   it("IDが無ければ null", () => {
     expect(extractNotionPageId("https://example.com/no-id-here")).toBeNull();
   });
