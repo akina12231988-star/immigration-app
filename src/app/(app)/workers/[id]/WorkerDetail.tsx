@@ -252,7 +252,7 @@ export function WorkerDetail({
       />
 
       {/* 入社書類メールで登録した添付データ（選択ダウンロード・Gmailリンク） */}
-      <OnboardingDocuments workerId={worker.id} />
+      <OnboardingDocuments workerId={worker.id} canEdit={canEdit} />
 
       {/* 通算期間 */}
       <Card className="p-4">

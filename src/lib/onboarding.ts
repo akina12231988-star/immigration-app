@@ -33,6 +33,26 @@ export function onboardingDocDefs(today: string): OnboardingDocDef[] {
   return defs.map((d, i) => ({ ...d, num: i + 1 }));
 }
 
+// 外国人詳細ページの「入社書類」で保存・差し替え・削除を管理する書類キー。
+// 申請書類一式（shinsei）・労働者名簿（meibo）はこの画面では扱わない。
+export const WORKER_DETAIL_DOC_KEYS = [
+  "zairyu",
+  "shiteisho",
+  "mynumber",
+  "tsuchou",
+  "fuyo",
+  "fuyokojo",
+  "rirekisho",
+  "gensen",
+  "furigana",
+] as const;
+
+// 登録済みの worker_documents（在留カード・指定書）から複製して紐付けられる書類キー。
+export const LINKABLE_DOC_KINDS: Record<string, "在留カード" | "指定書"> = {
+  zairyu: "在留カード",
+  shiteisho: "指定書",
+};
+
 // YYYY-MM-DD → YYYY/MM/DD（未入力は全角スペースで空欄を表す）
 export function formatDateSlash(dateStr: string | null): string {
   if (!dateStr) return "　　　　";
