@@ -42,6 +42,7 @@ import {
   evaluatePrepChecklist,
   PREP_APP_TYPES,
   prepDocLabel,
+  prepYearDocKey,
   type PrepChecklistMeta,
   type PrepDocDef,
   type PrepDocStatus,
@@ -126,6 +127,11 @@ export function ApplicationPrepChecklist({
     switch (def.source.kind) {
       case "doc":
         return def.source.docKey;
+      case "docYear":
+        // 課税・納税証明書は対象年度ごとに別ファイルとして蓄積する
+        return meta.target_reiwa != null
+          ? prepYearDocKey(def.source.baseKey, meta.target_reiwa)
+          : null;
       case "gensenYear":
         return meta.target_reiwa != null ? gensenDocKey(meta.target_reiwa - 1) : null;
       case "health":
@@ -453,7 +459,11 @@ export function ApplicationPrepChecklist({
           <div className="overflow-hidden rounded-xl border border-border">
             {items.map((item) => {
               const key = resolveDocKey(item.def);
-              const row = key ? docByKey.get(key) ?? null : null;
+              let row = key ? (docByKey.get(key) ?? null) : null;
+              // 年度付き書類: 旧形式（年度なしキー）で保存済みの添付があれば表示する
+              if (!row && item.def.source.kind === "docYear") {
+                row = docByKey.get(item.def.source.baseKey) ?? null;
+              }
               const isPhoto = item.def.source.kind === "photo";
               return (
                 <DocRow
@@ -466,7 +476,10 @@ export function ApplicationPrepChecklist({
                   canEdit={canEdit}
                   busy={busyKey === (isPhoto ? "photo" : key)}
                   onAttach={() => startAttach(item.def)}
-                  onRemove={() => key && removeDoc(key, prepDocLabel(item.def, meta.target_reiwa, currentReiwa))}
+                  onRemove={() => {
+                    const k = row?.doc_key ?? key;
+                    if (k) void removeDoc(k, prepDocLabel(item.def, meta.target_reiwa, currentReiwa));
+                  }}
                   onPreview={() => (isPhoto ? previewPhoto() : row && previewDoc(row.id))}
                   onDownload={() => row && downloadDoc(row.id)}
                 />
