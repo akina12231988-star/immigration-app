@@ -248,6 +248,32 @@ export function WorkerDetail({
           <InfoItem label="パスポート番号" value={worker.passport_no} />
           <InfoItem label="パスポート有効期限" value={worker.passport_expiry_date} />
         </dl>
+        <p className="mb-1 text-[11px] font-bold text-muted">家族情報</p>
+        <dl className="mb-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+          <InfoItem label="配偶者の有無" value={worker.has_spouse} />
+          <InfoItem label="在日親族の同居" value={worker.relatives_in_japan} />
+        </dl>
+        {worker.relatives_in_japan === "有" && (worker.relatives ?? []).length > 0 && (
+          <div className="mb-3">
+            <p className="mb-1 text-[11px] font-bold text-muted">同居している在日親族</p>
+            <div className="space-y-1.5">
+              {(worker.relatives ?? []).map((r, i) => (
+                <div key={i} className="rounded-lg bg-background px-3 py-2 text-sm">
+                  <p className="font-bold">{r.name || "氏名未登録"}</p>
+                  <p className="text-xs text-muted">
+                    {[
+                      r.birth && `生年月日 ${r.birth}`,
+                      r.workplace && `勤務先 ${r.workplace}`,
+                      r.residence_card_no && `在留カード番号 ${r.residence_card_no}`,
+                    ]
+                      .filter(Boolean)
+                      .join(" ・ ") || "詳細未登録"}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
           <InfoItem label="健康状態" value={worker.health_note} wide />
           <InfoItem label="家族構成" value={worker.family_note} wide />
