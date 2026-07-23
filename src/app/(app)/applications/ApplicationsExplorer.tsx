@@ -4,17 +4,22 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  ClipboardList,
   ExternalLink,
   MessageCircle,
   Search,
   X,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { Modal } from "@/components/ui/Modal";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { AlertBadge } from "@/components/applications/AlertBadge";
+import { ApplicationPrepChecklist } from "@/components/workers/ApplicationPrepChecklist";
 import { createClient } from "@/lib/supabase/client";
+import { listPrepStatuses, type PrepStatus } from "@/lib/supabase/queries/prep-status";
 import { useApplications } from "@/lib/application-store";
 import { applicationStatusLabel } from "@/lib/status";
 import { STAT_VIEWS, type StatViewKey } from "@/lib/application-stats";
@@ -227,6 +232,49 @@ export function ApplicationsExplorer({
     [sorted, safePage, pageSize],
   );
 
+  // 申請前＜準備中＞: 各人の準備状況（不足数）と、その場で添付するモーダル
+  const [prepStatuses, setPrepStatuses] = useState<Map<string, PrepStatus>>(new Map());
+  const [prepReload, setPrepReload] = useState(0);
+  const [prepModal, setPrepModal] = useState<{
+    id: string;
+    name: string;
+    photoPath: string | null;
+    healthCheckOn: string | null;
+  } | null>(null);
+
+  const prepWorkerIds = useMemo(
+    () =>
+      showPrep
+        ? (paged.map((a) => a.workerId).filter((id): id is string => !!id))
+        : [],
+    [showPrep, paged],
+  );
+  const prepIdsKey = prepWorkerIds.join(",");
+  useEffect(() => {
+    if (!showPrep || prepWorkerIds.length === 0) return;
+    let cancelled = false;
+    listPrepStatuses(createClient(), prepWorkerIds, TODAY)
+      .then((m) => {
+        if (!cancelled) setPrepStatuses(m);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showPrep, prepIdsKey, prepReload]);
+
+  const openPrepModal = (a: Application) => {
+    if (!a.workerId) return;
+    const st = prepStatuses.get(a.workerId);
+    setPrepModal({
+      id: a.workerId,
+      name: a.name,
+      photoPath: st?.photoPath ?? null,
+      healthCheckOn: st?.healthCheckOn ?? null,
+    });
+  };
+
   return (
     <div className="space-y-4">
       {view === "this-month" && (
@@ -419,6 +467,22 @@ export function ApplicationsExplorer({
                       </WorkerLink>
                     </div>
                   </div>
+                  <div
+                    className="mt-2 flex items-center justify-between gap-2 border-t border-border pt-2"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <PrepStatusBadge status={a.workerId ? prepStatuses.get(a.workerId) : undefined} />
+                    {canEdit && a.workerId && (
+                      <button
+                        type="button"
+                        onClick={() => openPrepModal(a)}
+                        className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11px] font-bold text-brand"
+                      >
+                        <ClipboardList size={13} />
+                        準備状況・添付
+                      </button>
+                    )}
+                  </div>
                 </Card>
               ) : (
                 <Link key={a.id} href={hrefFor(a)}>
@@ -452,6 +516,7 @@ export function ApplicationsExplorer({
                       <Th>申請番号</Th>
                     </>
                   )}
+                  {showPrep && <Th>準備状況</Th>}
                   <Th>預かり番号</Th>
                   <Th>申請時点在留期限</Th>
                   <Th>状態</Th>
@@ -494,6 +559,26 @@ export function ApplicationsExplorer({
                           <Td className="tabular-nums">{a.applicationNumber || "—"}</Td>
                         </>
                       )}
+                      {showPrep && (
+                        <Td>
+                          <span
+                            className="flex items-center gap-2"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <PrepStatusBadge status={a.workerId ? prepStatuses.get(a.workerId) : undefined} />
+                            {canEdit && a.workerId && (
+                              <button
+                                type="button"
+                                onClick={() => openPrepModal(a)}
+                                className="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[11px] font-bold text-brand"
+                              >
+                                <ClipboardList size={12} />
+                                添付
+                              </button>
+                            )}
+                          </span>
+                        </Td>
+                      )}
                       <Td className="tabular-nums">{custodyNoLabel(a)}</Td>
                       <Td className="tabular-nums">
                         {showPrep &&
@@ -526,7 +611,50 @@ export function ApplicationsExplorer({
           onChange={setPage}
         />
       )}
+
+      {/* 申請前＜準備中＞: 準備状況の確認とその場での書類添付 */}
+      {prepModal && (
+        <Modal
+          open
+          title={`${prepModal.name}｜申請準備`}
+          onClose={() => {
+            setPrepModal(null);
+            setPrepReload((k) => k + 1); // 添付結果を一覧のバッジに反映
+          }}
+        >
+          <ApplicationPrepChecklist
+            workerId={prepModal.id}
+            canEdit={canEdit}
+            photoPath={prepModal.photoPath}
+            healthCheckOn={prepModal.healthCheckOn}
+          />
+        </Modal>
+      )}
     </div>
+  );
+}
+
+// 申請前＜準備中＞の準備状況バッジ（未設定 / 不足N件 / 準備完了）
+function PrepStatusBadge({ status }: { status: PrepStatus | undefined }) {
+  if (!status || !status.appTypeSet) {
+    return (
+      <span className="inline-flex shrink-0 items-center rounded-full bg-status-before-bg px-2 py-0.5 text-[11px] font-bold text-status-before-fg">
+        未設定
+      </span>
+    );
+  }
+  if (status.missing === 0) {
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-status-approved-bg px-2 py-0.5 text-[11px] font-bold text-status-approved-fg">
+        <CheckCircle2 size={12} />
+        準備完了
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex shrink-0 items-center rounded-full bg-seal/10 px-2 py-0.5 text-[11px] font-bold text-seal">
+      不足 {status.missing}件
+    </span>
   );
 }
 
