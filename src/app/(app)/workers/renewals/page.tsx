@@ -10,14 +10,14 @@ import { RenewalsClient } from "./RenewalsClient";
 export const dynamic = "force-dynamic";
 
 export default async function RenewalsPage() {
-  const me = await getMyProfile();
-  if (!me) redirect("/login");
-
+  // ログイン確認とデータ取得を並列に行い、ページ表示までの待ち時間を短縮する
   const supabase = await createClient();
-  const [workers, applications] = await Promise.all([
+  const [me, workers, applications] = await Promise.all([
+    getMyProfile(),
     listWorkersWithOrg(supabase).catch(() => []),
     listApplications(supabase).catch(() => []),
   ]);
+  if (!me) redirect("/login");
 
   return (
     <>

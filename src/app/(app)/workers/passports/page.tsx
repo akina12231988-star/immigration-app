@@ -8,11 +8,13 @@ import { PassportsClient } from "./PassportsClient";
 export const dynamic = "force-dynamic";
 
 export default async function PassportsPage() {
-  const me = await getMyProfile();
-  if (!me) redirect("/login");
-
+  // ログイン確認とデータ取得を並列に行い、ページ表示までの待ち時間を短縮する
   const supabase = await createClient();
-  const workers = await listWorkersWithOrg(supabase).catch(() => []);
+  const [me, workers] = await Promise.all([
+    getMyProfile(),
+    listWorkersWithOrg(supabase).catch(() => []),
+  ]);
+  if (!me) redirect("/login");
 
   return (
     <>

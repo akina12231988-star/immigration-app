@@ -11,15 +11,15 @@ import { WorkersExplorer } from "./WorkersExplorer";
 export const dynamic = "force-dynamic";
 
 export default async function WorkersPage() {
-  const me = await getMyProfile();
-  if (!me) redirect("/login");
-
+  // ログイン確認とデータ取得を並列に行い、ページ表示までの待ち時間を短縮する
   const supabase = await createClient();
-  const [workers, organizations, applications] = await Promise.all([
+  const [me, workers, organizations, applications] = await Promise.all([
+    getMyProfile(),
     listWorkersWithHistories(supabase),
     listOrganizations(supabase),
     listApplications(supabase).catch(() => []),
   ]);
+  if (!me) redirect("/login");
 
   return (
     <>
