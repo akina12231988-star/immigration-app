@@ -51,7 +51,8 @@ export async function listPrepStatuses(
     supabase
       .from("application_prep_checklists")
       .select("worker_id, app_type, has_kokuho, has_nenkin, target_reiwa, kenshin_items_ok")
-      .in("worker_id", workerIds),
+      .in("worker_id", workerIds)
+      .order("updated_at", { ascending: false }),
     supabase
       .from("onboarding_documents")
       .select("worker_id, doc_key, storage_path")
@@ -63,15 +64,21 @@ export async function listPrepStatuses(
     supabase.from("workers").select("id, photo_path, health_check_on").in("id", workerIds),
   ]);
 
+  // TODO番号ごとに複数リストがあるため、外国人ごとに「申請種別が設定済みの最新リスト」を
+  // 代表として使う（無ければ最新リスト）。updated_at 降順で取得済み
   const metaByWorker = new Map<string, PrepChecklistMeta>();
   for (const c of (checklistsRes.data as ChecklistRow[]) ?? []) {
-    metaByWorker.set(c.worker_id, {
+    const meta: PrepChecklistMeta = {
       app_type: (c.app_type ?? "") as PrepChecklistMeta["app_type"],
       has_kokuho: c.has_kokuho ?? false,
       has_nenkin: c.has_nenkin ?? false,
       target_reiwa: c.target_reiwa ?? null,
       kenshin_items_ok: c.kenshin_items_ok ?? false,
-    });
+    };
+    const existing = metaByWorker.get(c.worker_id);
+    if (!existing || (!existing.app_type && meta.app_type)) {
+      metaByWorker.set(c.worker_id, meta);
+    }
   }
 
   const filledByWorker = new Map<string, Set<string>>();

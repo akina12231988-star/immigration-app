@@ -17,7 +17,12 @@ import {
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
 import { listOnboardingDocs } from "@/lib/supabase/queries/onboarding";
-import { getPrepChecklist, upsertPrepChecklist } from "@/lib/supabase/queries/application-prep";
+import {
+  deletePrepChecklist,
+  listPrepChecklists,
+  upsertPrepChecklist,
+  type PrepChecklistRow,
+} from "@/lib/supabase/queries/application-prep";
 import { getHealthCheckDetail } from "@/lib/supabase/queries/health-check";
 import { EMPTY_HEALTH_DETAIL, isHealthDetailComplete, type HealthCheckDetail } from "@/lib/health-check";
 import {
@@ -57,7 +62,11 @@ export function ApplicationPrepChecklist({
   photoPath: string | null;
   healthCheckOn: string | null;
 }) {
-  const [meta, setMeta] = useState<PrepChecklistMeta>(EMPTY_PREP_META);
+  // TODO番号ごとの準備リスト。selected が表示中のリスト（todo_no）
+  const [lists, setLists] = useState<PrepChecklistRow[]>([]);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [newTodo, setNewTodo] = useState("");
+  const [creating, setCreating] = useState(false);
   const [healthDetail, setHealthDetail] = useState<HealthCheckDetail>(EMPTY_HEALTH_DETAIL);
   const [addresses, setAddresses] = useState<WorkerAddress[]>([]);
   const [docs, setDocs] = useState<OnboardingDocumentRow[]>([]);
@@ -75,12 +84,21 @@ export function ApplicationPrepChecklist({
     listOnboardingDocs(createClient(), workerId).then(setDocs).catch(() => undefined);
 
   useEffect(() => {
-    getPrepChecklist(createClient(), workerId).then(setMeta).catch(() => undefined);
+    listPrepChecklists(createClient(), workerId)
+      .then((rows) => {
+        setLists(rows);
+        setSelected(rows[0]?.todo_no ?? null);
+      })
+      .catch(() => undefined);
     getHealthCheckDetail(createClient(), workerId).then(setHealthDetail).catch(() => undefined);
     listWorkerAddresses(createClient(), workerId).then(setAddresses).catch(() => undefined);
     void loadDocs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workerId]);
+
+  const current =
+    selected != null ? (lists.find((l) => l.todo_no === selected) ?? null) : null;
+  const meta: PrepChecklistMeta = current ?? EMPTY_PREP_META;
 
   const today = todayStr();
   const filledDocKeys = new Set(docs.filter((d) => d.storage_path).map((d) => d.doc_key));
@@ -118,13 +136,65 @@ export function ApplicationPrepChecklist({
   };
 
   async function patchMeta(patch: Partial<PrepChecklistMeta>) {
-    const next = { ...meta, ...patch };
-    setMeta(next);
+    if (selected == null || current == null) return;
+    const next: PrepChecklistMeta = {
+      app_type: current.app_type,
+      has_kokuho: current.has_kokuho,
+      has_nenkin: current.has_nenkin,
+      target_reiwa: current.target_reiwa,
+      kenshin_items_ok: current.kenshin_items_ok,
+      ...patch,
+    };
+    setLists((ls) => ls.map((l) => (l.todo_no === selected ? { ...l, ...patch } : l)));
     setError(null);
     try {
-      await upsertPrepChecklist(createClient(), workerId, next);
+      await upsertPrepChecklist(createClient(), workerId, selected, next);
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存に失敗しました");
+    }
+  }
+
+  // TODO番号を入力して新しい準備リストを作成する
+  async function createList() {
+    const todo = newTodo.trim();
+    if (!todo) {
+      setError("TODO番号を入力してください。");
+      return;
+    }
+    if (lists.some((l) => l.todo_no === todo)) {
+      setSelected(todo);
+      setNewTodo("");
+      return;
+    }
+    setCreating(true);
+    setError(null);
+    try {
+      await upsertPrepChecklist(createClient(), workerId, todo, EMPTY_PREP_META);
+      const rows = await listPrepChecklists(createClient(), workerId);
+      setLists(rows);
+      setSelected(todo);
+      setNewTodo("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "作成に失敗しました");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  // 表示中のTODOの準備リストを削除する（添付済みの書類ファイル自体は消えない）
+  async function removeList() {
+    if (selected == null) return;
+    const label = selected || "（番号未設定）";
+    if (!window.confirm(`「${label}」の準備リストを削除します。添付済みの書類ファイルは削除されません。よろしいですか？`))
+      return;
+    setError(null);
+    try {
+      await deletePrepChecklist(createClient(), workerId, selected);
+      const rows = lists.filter((l) => l.todo_no !== selected);
+      setLists(rows);
+      setSelected(rows[0]?.todo_no ?? null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "削除に失敗しました");
     }
   }
 
@@ -221,7 +291,7 @@ export function ApplicationPrepChecklist({
         申請準備 書類チェックリスト
       </h2>
       <p className="mb-3 text-[11px] text-muted">
-        申請種別と加入状況を選ぶと、必要書類と不足がわかります。各書類はこの場で添付できます。
+        Notion申請TODO番号ごとに準備リストを作成できます。申請種別と加入状況を選ぶと、必要書類と不足がわかります。各書類はこの場で添付できます。
       </p>
 
       {error && (
@@ -230,6 +300,55 @@ export function ApplicationPrepChecklist({
         </p>
       )}
 
+      {/* TODO番号ごとの準備リスト切り替え */}
+      <div className="mb-3 rounded-xl border border-border bg-background p-3">
+        <p className="mb-2 text-xs font-bold text-muted">申請TODO番号</p>
+        {lists.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {lists.map((l) => (
+              <button
+                key={l.id}
+                type="button"
+                onClick={() => setSelected(l.todo_no)}
+                className={`rounded-full px-3 py-1.5 text-xs font-bold ${
+                  selected === l.todo_no
+                    ? "bg-brand text-brand-foreground"
+                    : "border border-border text-muted"
+                }`}
+              >
+                {l.todo_no || "（番号未設定）"}
+              </button>
+            ))}
+          </div>
+        )}
+        {canEdit ? (
+          <div className="flex gap-2">
+            <input
+              value={newTodo}
+              onChange={(e) => setNewTodo(e.target.value)}
+              placeholder="例: TODO-1234"
+              className={`${inputCls} min-w-0 flex-1`}
+            />
+            <button
+              type="button"
+              onClick={createList}
+              disabled={creating}
+              className="shrink-0 rounded-lg bg-brand px-3 py-2 text-xs font-bold text-brand-foreground disabled:opacity-50"
+            >
+              {creating ? "作成中…" : "リストを追加"}
+            </button>
+          </div>
+        ) : (
+          lists.length === 0 && <p className="text-xs text-muted">準備リストはまだありません。</p>
+        )}
+      </div>
+
+      {current == null ? (
+        <p className="rounded-xl bg-background p-4 text-center text-xs text-muted">
+          TODO番号を追加すると、そのTODOに対する準備リストが表示されます。
+        </p>
+      ) : (
+        <>
       {/* 条件の選択 */}
       <div className="mb-3 space-y-2.5 rounded-xl border border-border bg-background p-3">
         <div className="flex flex-wrap items-center gap-3">
@@ -354,6 +473,19 @@ export function ApplicationPrepChecklist({
               );
             })}
           </div>
+        </>
+      )}
+
+      {canEdit && (
+        <button
+          type="button"
+          onClick={removeList}
+          className="mt-3 flex items-center gap-1 text-xs font-bold text-seal"
+        >
+          <Trash2 size={13} />
+          この準備リスト（{(current.todo_no || "番号未設定")}）を削除
+        </button>
+      )}
         </>
       )}
 
