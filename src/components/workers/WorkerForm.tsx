@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { Combobox } from "@/components/ui/Combobox";
+import { createClient } from "@/lib/supabase/client";
+import { insertOrganization } from "@/lib/supabase/queries/organizations";
 import {
   SUPPORT_SCOPES,
   WORKER_STATUSES,
@@ -75,6 +78,38 @@ export function WorkerForm({
   const [form, setForm] = useState<WorkerInput>(() => toInput(initial));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 所属機関: この画面で新規登録した機関も候補に出すためローカルに保持する
+  const [orgs, setOrgs] = useState<Organization[]>(organizations);
+  const [newOrgName, setNewOrgName] = useState("");
+  const [addingOrg, setAddingOrg] = useState(false);
+
+  async function addOrg() {
+    const name = newOrgName.trim();
+    if (!name) return;
+    setAddingOrg(true);
+    setError(null);
+    try {
+      const org = await insertOrganization(createClient(), {
+        name,
+        industry: "",
+        business_category: "",
+        address: "",
+        contact: "",
+        corporate_no: "",
+        note: "",
+      });
+      setOrgs((prev) =>
+        [...prev, org].sort((a, b) => a.name.localeCompare(b.name, "ja")),
+      );
+      set("current_organization_id", org.id);
+      setNewOrgName("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "所属機関の登録に失敗しました");
+    } finally {
+      setAddingOrg(false);
+    }
+  }
 
   const set = <K extends keyof WorkerInput>(key: K, value: WorkerInput[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -234,20 +269,38 @@ export function WorkerForm({
             </Field>
           </div>
         )}
-        <Field label="現在の所属機関">
-          <select
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-muted">現在の所属機関</span>
+          <Combobox
+            options={orgs.map((o) => ({ id: o.id, label: o.name }))}
             value={form.current_organization_id ?? ""}
-            onChange={(e) => set("current_organization_id", e.target.value || null)}
-            className={INPUT_CLASS}
-          >
-            <option value="">（未所属・未設定）</option>
-            {organizations.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-              </option>
-            ))}
-          </select>
-        </Field>
+            onChange={(id) => set("current_organization_id", id || null)}
+            placeholder="所属機関名を入力して検索"
+          />
+          {!form.current_organization_id && (
+            <div className="mt-1 rounded-xl border border-dashed border-border p-2.5">
+              <p className="mb-1.5 text-[11px] font-bold text-muted">
+                一覧にない場合は、所属機関名を入力して登録できます
+              </p>
+              <div className="flex gap-2">
+                <input
+                  value={newOrgName}
+                  onChange={(e) => setNewOrgName(e.target.value)}
+                  placeholder="所属機関名を入力"
+                  className={INPUT_CLASS}
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={addOrg}
+                  disabled={!newOrgName.trim() || addingOrg}
+                >
+                  {addingOrg ? "登録中…" : "登録"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
         <div className="grid grid-cols-2 gap-2.5">
           <Field label="雇用開始年月日">
             <input
