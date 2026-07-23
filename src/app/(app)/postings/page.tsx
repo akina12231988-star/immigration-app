@@ -8,11 +8,13 @@ import { PostingsExplorer } from "./PostingsExplorer";
 export const dynamic = "force-dynamic";
 
 export default async function PostingsPage() {
-  const me = await getMyProfile();
-  if (!me) redirect("/login");
-
+  // ログイン確認とデータ取得を並列に行い、ページ表示までの待ち時間を短縮する
   const supabase = await createClient();
-  const postings = await listPostings(supabase);
+  const [me, postings] = await Promise.all([
+    getMyProfile(),
+    listPostings(supabase),
+  ]);
+  if (!me) redirect("/login");
 
   return (
     <>

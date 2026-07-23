@@ -9,6 +9,15 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/api/resignation-forms": ["./public/forms/**"],
   },
+  experimental: {
+    // 一度表示したページを30秒間クライアント側に保持し、
+    // 戻る・再訪時はサーバーの応答を待たずに即表示する
+    // （登録・保存の操作は router.refresh() で最新化されるため影響しない）
+    staleTimes: {
+      dynamic: 30,
+      static: 300,
+    },
+  },
 };
 
 export default nextConfig;
