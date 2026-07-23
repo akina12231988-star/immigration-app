@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Combobox } from "@/components/ui/Combobox";
 import { createClient } from "@/lib/supabase/client";
 import { insertOrganization } from "@/lib/supabase/queries/organizations";
+import { SSW_INDUSTRIES, categoriesFor } from "@/lib/industries";
 import {
   SUPPORT_SCOPES,
   WORKER_STATUSES,
@@ -12,6 +13,7 @@ import {
   type SupportScope,
   type Worker,
   type WorkerInput,
+  type WorkerRelative,
   type WorkerStatus,
 } from "@/types/db";
 
@@ -44,6 +46,9 @@ function toInput(w: Worker | null): WorkerInput {
     leaving_org_name: w?.leaving_org_name ?? "",
     leaving_org_address: w?.leaving_org_address ?? "",
     gender: w?.gender ?? "",
+    has_spouse: w?.has_spouse ?? "",
+    relatives_in_japan: w?.relatives_in_japan ?? "",
+    relatives: w?.relatives ?? [],
     address: w?.address ?? "",
     employment_start_on: w?.employment_start_on ?? null,
     assigned_office: w?.assigned_office ?? "",
@@ -194,14 +199,7 @@ export function WorkerForm({
             className={INPUT_CLASS}
           />
         </Field>
-        <Field label="特定産業分野・職種">
-          <input
-            value={form.field}
-            onChange={(e) => set("field", e.target.value)}
-            placeholder="飲食料品製造業"
-            className={INPUT_CLASS}
-          />
-        </Field>
+        <FieldJobSelect field={form.field} onChange={(v) => set("field", v)} />
         <Field label="専門級の合格名">
           <input
             value={form.specialty_grade}
@@ -363,6 +361,36 @@ export function WorkerForm({
             className={TEXTAREA_CLASS}
           />
         </Field>
+        <div className="grid grid-cols-2 gap-2.5">
+          <Field label="配偶者の有無">
+            <select
+              value={form.has_spouse}
+              onChange={(e) => set("has_spouse", e.target.value)}
+              className={INPUT_CLASS}
+            >
+              <option value="">未設定</option>
+              <option value="有">有</option>
+              <option value="無">無</option>
+            </select>
+          </Field>
+          <Field label="在日親族の同居の有無">
+            <select
+              value={form.relatives_in_japan}
+              onChange={(e) => set("relatives_in_japan", e.target.value)}
+              className={INPUT_CLASS}
+            >
+              <option value="">未設定</option>
+              <option value="有">有</option>
+              <option value="無">無</option>
+            </select>
+          </Field>
+        </div>
+        {form.relatives_in_japan === "有" && (
+          <RelativesEditor
+            relatives={form.relatives}
+            onChange={(v) => set("relatives", v)}
+          />
+        )}
       </Fieldset>
 
       <Fieldset legend="在留情報">
@@ -461,5 +489,144 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="text-xs font-bold text-muted">{label}</span>
       {children}
     </label>
+  );
+}
+
+// 特定産業分野・職種の連動プルダウン。
+// field は「分野／職種」の1文字列で保存する（分野のみの場合は分野だけ）。
+// 旧データの自由入力値はリストに無くても選択肢へ含めて保持する
+function FieldJobSelect({
+  field,
+  onChange,
+}: {
+  field: string;
+  onChange: (value: string) => void;
+}) {
+  const [industry = "", jobType = ""] = field.split("／");
+  const industryOptions =
+    !industry || SSW_INDUSTRIES.includes(industry)
+      ? SSW_INDUSTRIES
+      : [industry, ...SSW_INDUSTRIES];
+  const jobs = categoriesFor(industry);
+  const jobOptions = jobType && !jobs.includes(jobType) ? [jobType, ...jobs] : jobs;
+
+  return (
+    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+      <Field label="特定技能分野">
+        <select
+          value={industry}
+          onChange={(e) => onChange(e.target.value)}
+          className={INPUT_CLASS}
+        >
+          <option value="">選択してください</option>
+          {industryOptions.map((v) => (
+            <option key={v} value={v}>
+              {v}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label="職種（業務区分）">
+        <select
+          value={jobType}
+          onChange={(e) =>
+            onChange(e.target.value ? `${industry}／${e.target.value}` : industry)
+          }
+          disabled={!industry}
+          className={`${INPUT_CLASS} disabled:opacity-50`}
+        >
+          <option value="">{industry ? "選択してください" : "先に分野を選択"}</option>
+          {jobOptions.map((v) => (
+            <option key={v} value={v}>
+              {v}
+            </option>
+          ))}
+        </select>
+      </Field>
+    </div>
+  );
+}
+
+const BLANK_RELATIVE: WorkerRelative = {
+  name: "",
+  birth: "",
+  workplace: "",
+  residence_card_no: "",
+};
+
+// 同居している在日親族の入力（複数人）。氏名・生年月日・勤務先・在留カード番号
+function RelativesEditor({
+  relatives,
+  onChange,
+}: {
+  relatives: WorkerRelative[];
+  onChange: (value: WorkerRelative[]) => void;
+}) {
+  const setAt = (i: number, key: keyof WorkerRelative, value: string) =>
+    onChange(relatives.map((r, idx) => (idx === i ? { ...r, [key]: value } : r)));
+
+  return (
+    <div className="flex flex-col gap-2.5 rounded-xl bg-background p-3">
+      <p className="text-xs font-bold text-muted">同居している在日親族</p>
+      {relatives.length === 0 && (
+        <p className="text-xs text-muted">「親族を追加」から登録してください。</p>
+      )}
+      {relatives.map((r, i) => (
+        <div key={i} className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-muted">親族 {i + 1}</span>
+            <button
+              type="button"
+              onClick={() => onChange(relatives.filter((_, idx) => idx !== i))}
+              className="text-xs font-bold text-seal"
+            >
+              削除
+            </button>
+          </div>
+          <Field label="氏名">
+            <input
+              value={r.name}
+              onChange={(e) => setAt(i, "name", e.target.value)}
+              placeholder="NGUYEN VAN B"
+              className={INPUT_CLASS}
+            />
+          </Field>
+          <div className="grid grid-cols-2 gap-2.5">
+            <Field label="生年月日">
+              <input
+                type="date"
+                value={r.birth}
+                onChange={(e) => setAt(i, "birth", e.target.value)}
+                className={INPUT_CLASS}
+              />
+            </Field>
+            <Field label="在留カード番号">
+              <input
+                value={r.residence_card_no}
+                onChange={(e) => setAt(i, "residence_card_no", e.target.value)}
+                placeholder="AB12345678CD"
+                className={INPUT_CLASS}
+              />
+            </Field>
+          </div>
+          <Field label="勤務先">
+            <input
+              value={r.workplace}
+              onChange={(e) => setAt(i, "workplace", e.target.value)}
+              placeholder="株式会社◯◯"
+              className={INPUT_CLASS}
+            />
+          </Field>
+        </div>
+      ))}
+      <Button
+        type="button"
+        variant="secondary"
+        fullWidth
+        onClick={() => onChange([...relatives, { ...BLANK_RELATIVE }])}
+      >
+        親族を追加
+      </Button>
+    </div>
   );
 }

@@ -60,6 +60,14 @@ export interface Organization {
   updated_at: string;
 }
 
+// 同居している在日親族の1人分（workers.relatives jsonb に配列で保存）
+export interface WorkerRelative {
+  name: string; // 氏名
+  birth: string; // 生年月日 YYYY-MM-DD（未入力は ''）
+  workplace: string; // 勤務先
+  residence_card_no: string; // 在留カード番号
+}
+
 export interface Worker {
   id: string;
   name: string;
@@ -90,6 +98,9 @@ export interface Worker {
   leaving_org_name: string; // 退職した所属機関の名称
   leaving_org_address: string; // 退職した所属機関の住所
   gender: string; // 性別
+  has_spouse: string; // 配偶者の有無（'' / 有 / 無）
+  relatives_in_japan: string; // 在日親族の同居の有無（'' / 有 / 無）
+  relatives: WorkerRelative[]; // 同居している在日親族
   address: string; // 住所（履歴書に表示）
   employment_start_on: string | null; // 雇用開始年月日
   assigned_office: string; // 配属先営業所
