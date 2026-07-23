@@ -53,10 +53,10 @@ describe("isSatisfied", () => {
     expect(isSatisfied(def("photo"), meta({}), sources({ photoPath: "p.jpg" }))).toBe(true);
   });
 
-  it("源泉徴収票は対象年度の gensen_r{年} があれば充足", () => {
-    const m = meta({ target_reiwa: 7 });
-    expect(isSatisfied(def("gensen"), m, sources({ filledDocKeys: new Set(["gensen_r7"]) }))).toBe(true);
-    expect(isSatisfied(def("gensen"), m, sources({ filledDocKeys: new Set(["gensen_r6"]) }))).toBe(false);
+  it("源泉徴収票は対象年度の前年分（target-1）の gensen_r{年} があれば充足", () => {
+    const m = meta({ target_reiwa: 7 }); // 令和7年度課税 → 令和6年分源泉
+    expect(isSatisfied(def("gensen"), m, sources({ filledDocKeys: new Set(["gensen_r6"]) }))).toBe(true);
+    expect(isSatisfied(def("gensen"), m, sources({ filledDocKeys: new Set(["gensen_r7"]) }))).toBe(false);
   });
 
   it("健康診断書は healthComplete で充足（詳細ページで判定）", () => {
@@ -70,7 +70,7 @@ describe("evaluatePrepChecklist", () => {
     const m = meta({ app_type: "更新", has_kokuho: true, has_nenkin: true, target_reiwa: 7 });
     const { items, missing } = evaluatePrepChecklist(
       m,
-      sources({ filledDocKeys: new Set(["cert_zairyu", "gensen_r7"]), photoPath: "p.jpg" }),
+      sources({ filledDocKeys: new Set(["cert_zairyu", "gensen_r6"]), photoPath: "p.jpg" }),
     );
     // 更新の必要書類: 在留カード/顔写真/パスポート/源泉/課税/納税(市県民)/納税(国保)/年金記録 = 8件
     expect(items).toHaveLength(8);
@@ -82,9 +82,16 @@ describe("evaluatePrepChecklist", () => {
 });
 
 describe("prepDocLabel", () => {
-  it("年度つき書類は令和年を付ける", () => {
-    expect(prepDocLabel(def("kazei"), 7)).toBe("令和7年度 課税証明書");
-    expect(prepDocLabel(def("gensen"), 6)).toBe("令和6年分 源泉徴収票");
-    expect(prepDocLabel(def("zairyu"), 7)).toBe("在留カード（両面・現住所がわかるもの）");
+  it("課税証明書は対象年度そのまま", () => {
+    expect(prepDocLabel(def("kazei"), 7, 8)).toBe("令和7年度 課税証明書");
+  });
+  it("源泉徴収票は対象年度の前年分（令和7年度課税→令和6年分源泉）", () => {
+    expect(prepDocLabel(def("gensen"), 7, 8)).toBe("令和6年分 源泉徴収票");
+  });
+  it("国保税納税証明書は現時点の最新年度", () => {
+    expect(prepDocLabel(def("nozei_kokuho"), 7, 8)).toBe("令和8年度 納税証明書（国保税）");
+  });
+  it("年つきでない書類はそのまま", () => {
+    expect(prepDocLabel(def("zairyu"), 7, 8)).toBe("在留カード（両面・現住所がわかるもの）");
   });
 });

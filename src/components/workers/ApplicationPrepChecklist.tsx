@@ -28,6 +28,8 @@ import {
 import { getWorkerPhotoUrl } from "@/app/(app)/workers/actions";
 import { uploadOnboardingDoc } from "@/lib/onboarding-files";
 import { uploadWorkerPhoto } from "@/lib/worker-photo";
+import { listWorkerAddresses } from "@/lib/supabase/queries/worker-addresses";
+import { addressOnDate, reiwaJan1, type WorkerAddress } from "@/lib/worker-address";
 import { gensenDocKey, reiwaYear } from "@/lib/onboarding";
 import { todayStr } from "@/lib/ssw/calc";
 import {
@@ -57,6 +59,7 @@ export function ApplicationPrepChecklist({
 }) {
   const [meta, setMeta] = useState<PrepChecklistMeta>(EMPTY_PREP_META);
   const [healthDetail, setHealthDetail] = useState<HealthCheckDetail>(EMPTY_HEALTH_DETAIL);
+  const [addresses, setAddresses] = useState<WorkerAddress[]>([]);
   const [docs, setDocs] = useState<OnboardingDocumentRow[]>([]);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -74,6 +77,7 @@ export function ApplicationPrepChecklist({
   useEffect(() => {
     getPrepChecklist(createClient(), workerId).then(setMeta).catch(() => undefined);
     getHealthCheckDetail(createClient(), workerId).then(setHealthDetail).catch(() => undefined);
+    listWorkerAddresses(createClient(), workerId).then(setAddresses).catch(() => undefined);
     void loadDocs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workerId]);
@@ -94,13 +98,18 @@ export function ApplicationPrepChecklist({
     healthComplete,
   });
 
-  // 書類の実際の保存キー（源泉徴収票は対象年度で変わる）。写真はキーなし。
+  const currentReiwa = reiwaYear(today);
+  // 課税・納税証明書の基準日（対象年度の1月1日）時点の住所
+  const kazeiRefAddress =
+    meta.target_reiwa != null ? addressOnDate(addresses, reiwaJan1(meta.target_reiwa)) : null;
+
+  // 書類の実際の保存キー（源泉徴収票は対象年度の前年分で変わる）。写真はキーなし。
   const resolveDocKey = (def: PrepDocDef): string | null => {
     switch (def.source.kind) {
       case "doc":
         return def.source.docKey;
       case "gensenYear":
-        return meta.target_reiwa != null ? gensenDocKey(meta.target_reiwa) : null;
+        return meta.target_reiwa != null ? gensenDocKey(meta.target_reiwa - 1) : null;
       case "health":
         return "kenshin";
       case "photo":
@@ -130,7 +139,7 @@ export function ApplicationPrepChecklist({
       setError("先に対象年度（令和）を入力してください。");
       return;
     }
-    uploadRef.current = { docKey: key, label: prepDocLabel(def, meta.target_reiwa) };
+    uploadRef.current = { docKey: key, label: prepDocLabel(def, meta.target_reiwa, currentReiwa) };
     docInputRef.current?.click();
   }
 
@@ -301,9 +310,23 @@ export function ApplicationPrepChecklist({
               </p>
               <ul className="list-disc space-y-0.5 pl-5 text-xs text-seal">
                 {missing.map((m) => (
-                  <li key={m.def.id}>{prepDocLabel(m.def, meta.target_reiwa)}</li>
+                  <li key={m.def.id}>{prepDocLabel(m.def, meta.target_reiwa, currentReiwa)}</li>
                 ))}
               </ul>
+            </div>
+          )}
+
+          {/* 課税・納税証明書の「1月1日時点の住所」案内（郵送請求先の判断用） */}
+          {meta.target_reiwa != null && (
+            <div className="mb-3 rounded-xl border border-status-applied-fg/30 bg-status-applied-bg/40 px-3 py-2.5 text-xs text-status-applied-fg">
+              <p className="font-bold">
+                令和{meta.target_reiwa}年1月1日（{reiwaJan1(meta.target_reiwa)}）時点の住所
+              </p>
+              <p className="mt-0.5">
+                {kazeiRefAddress
+                  ? `${kazeiRefAddress.address} → この住所の市区町村へ課税・市県民税納税証明書を郵送請求してください。`
+                  : "住所歴が未登録です。外国人詳細の「住所歴」に転入日と住所を登録すると、請求先を判定できます。"}
+              </p>
             </div>
           )}
 
@@ -324,7 +347,7 @@ export function ApplicationPrepChecklist({
                   canEdit={canEdit}
                   busy={busyKey === (isPhoto ? "photo" : key)}
                   onAttach={() => startAttach(item.def)}
-                  onRemove={() => key && removeDoc(key, prepDocLabel(item.def, meta.target_reiwa))}
+                  onRemove={() => key && removeDoc(key, prepDocLabel(item.def, meta.target_reiwa, currentReiwa))}
                   onPreview={() => (isPhoto ? previewPhoto() : row && previewDoc(row.id))}
                   onDownload={() => row && downloadDoc(row.id)}
                 />
@@ -386,7 +409,7 @@ function DocRow({
   onDownload: () => void;
 }) {
   const { def, satisfied } = item;
-  const label = prepDocLabel(def, meta.target_reiwa);
+  const label = prepDocLabel(def, meta.target_reiwa, reiwaYear(todayStr()));
   const hasFile = !!row?.storage_path;
 
   return (
