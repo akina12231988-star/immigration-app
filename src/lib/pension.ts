@@ -10,19 +10,12 @@ export interface PensionSymbol {
   action: PensionAction;
 }
 
+// 通知書（被保険者記録照会回答票）に記載の記号。実際の通知書の記号に合わせる。
+// ＊=未納 / A=納付済み は確認済み。他の記号（B ほか・免除/猶予/厚生/第3号 等）は
+// 通知書の凡例に合わせて随時追加する。
 export const PENSION_SYMBOLS: PensionSymbol[] = [
-  { code: "納", meaning: "納付済み", action: "ok" },
-  { code: "未", meaning: "未納", action: "pay" },
-  { code: "全免", meaning: "全額免除", action: "exempt" },
-  { code: "3/4免", meaning: "4分の3免除", action: "exempt" },
-  { code: "半免", meaning: "半額免除（4分の2免除）", action: "exempt" },
-  { code: "1/4免", meaning: "4分の1免除", action: "exempt" },
-  { code: "学特", meaning: "学生納付特例", action: "exempt" },
-  { code: "猶予", meaning: "納付猶予", action: "exempt" },
-  { code: "産", meaning: "産前産後期間の免除", action: "ok" },
-  { code: "厚", meaning: "厚生年金（第2号被保険者）", action: "ok" },
-  { code: "3号", meaning: "第3号被保険者（扶養）", action: "ok" },
-  { code: "未加入", meaning: "未加入期間", action: "check" },
+  { code: "A", meaning: "納付済み", action: "ok" },
+  { code: "＊", meaning: "未納", action: "pay" },
 ];
 
 export function pensionSymbolByCode(code: string): PensionSymbol | undefined {
