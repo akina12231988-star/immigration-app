@@ -498,6 +498,17 @@ function DocRow({
           受診項目・就労可の詳細を確認/入力
         </Link>
       )}
+
+      {/* 年金記録: 記号の意味と未納アラートは別ページで確認 */}
+      {def.id === "nenkin" && (
+        <Link
+          href={`/workers/${workerId}/pension`}
+          className="ml-[18px] mt-1.5 inline-flex items-center gap-1 text-[11px] font-bold text-brand hover:underline"
+        >
+          <ExternalLink size={11} />
+          記号の確認・支払/免除の判定
+        </Link>
+      )}
     </div>
   );
 }
