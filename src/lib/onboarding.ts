@@ -69,7 +69,7 @@ export const WORKER_CERT_DOCS = [
   { key: "cert_nihongo", label: "日本語の合格証" },
   { key: "cert_senmongai", label: "専門外の合格証" },
   { key: "cert_rirekisho", label: "履歴書" },
-  { key: "cert_zairyu", label: "在留カード" },
+  { key: "cert_zairyu", label: "在留カード（申請書類準備時・両面）" },
 ] as const;
 export function isWorkerCertKey(key: string): boolean {
   return /^cert_[a-z0-9_]+$/.test(key);

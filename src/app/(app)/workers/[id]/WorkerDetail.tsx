@@ -23,6 +23,7 @@ import { OnboardingDocuments } from "@/components/workers/OnboardingDocuments";
 import { HealthCheckSection } from "@/components/workers/HealthCheckSection";
 import { GensenDocuments } from "@/components/workers/GensenDocuments";
 import { WorkerCertificateDocs } from "@/components/workers/WorkerCertificateDocs";
+import { ApplicationPrepChecklist } from "@/components/workers/ApplicationPrepChecklist";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -266,6 +267,14 @@ export function WorkerDetail({
 
       {/* 外国人書類（合格証・パスポート・履歴書など）をPDF・画像で保存 */}
       <WorkerCertificateDocs workerId={worker.id} canEdit={canEdit} />
+
+      {/* 申請準備 書類チェックリスト（申請種別ごとの必要書類・不足の把握） */}
+      <ApplicationPrepChecklist
+        workerId={worker.id}
+        canEdit={canEdit}
+        photoPath={worker.photo_path}
+        healthCheckOn={worker.health_check_on ?? null}
+      />
 
       {/* 入社書類メールで登録した添付データ（選択ダウンロード・Gmailリンク） */}
       <OnboardingDocuments workerId={worker.id} canEdit={canEdit} />
