@@ -5,12 +5,14 @@ import ExcelJS from "exceljs";
 import JSZip from "jszip";
 import {
   type FormFillData,
+  categoriesForField,
   defaultEndReason312,
   endReasonOptions312,
   fill312,
   fill34,
   fill511,
   genderMark,
+  matchFormField,
 } from "./resignation-forms";
 
 const FORMS_DIR = path.join(__dirname, "../../public/forms");
@@ -31,6 +33,7 @@ const companyData: FormFillData = {
   businessCategory: "耕種農業全般",
   leavingOn: "2026-07-31",
   reason: "事業所閉鎖のため",
+  caseSummary: "経営悪化により事業所を閉鎖",
   endReason: "05",
   supportRegNo: "２０登-005746",
   supportName: "SUPPORT NAME",
@@ -39,6 +42,7 @@ const companyData: FormFillData = {
   orgAddress: "熊本県八代市",
   orgPhone: "096-000-0000",
   orgStaff: "担当 太郎",
+  orgCorporateNo: "1234567890123",
   contactStatus: "連絡可能",
   intention: "活動継続の意思なし（転職希望）",
   measure: "転職支援実施予定",
@@ -68,6 +72,21 @@ describe("defaultEndReason312 / endReasonOptions312", () => {
     expect(company).toEqual(["01", "02", "03", "04", "05"]);
     const self = endReasonOptions312("自己都合").map((r) => r.code);
     expect(self).toEqual(["01", "06", "07", "08", "09", "10", "11"]);
+  });
+});
+
+describe("matchFormField / categoriesForField", () => {
+  it("外国人情報の自由入力から分野を推定する", () => {
+    expect(matchFormField("農業分野")).toBe("農業分野");
+    expect(matchFormField("農業分野・耕種農業")).toBe("農業分野");
+    expect(matchFormField("飲食料品製造業分野")).toBe("飲食料品製造業分野");
+    expect(matchFormField("工業製品製造業")).toBe("工業製品製造業分野");
+    expect(matchFormField("")).toBe("");
+  });
+  it("分野を選ぶと業務区分が絞り込まれる", () => {
+    expect(categoriesForField("農業分野")).toEqual(["耕種農業", "畜産農業"]);
+    expect(categoriesForField("宿泊分野")).toEqual(["宿泊"]);
+    expect(categoriesForField("")).toEqual([]);
   });
 });
 
@@ -113,9 +132,12 @@ describe("fill312", () => {
     expect(ws.getCell("J71").value).toBe("2026");
     expect(ws.getCell("J74").value).toBe("２０登-005746");
     expect(ws.getCell("J80").value).toBe("SUPPORT NAME");
-    // 届出機関
+    // 届出機関（法人番号は1桁ずつ）
     expect(ws.getCell("I101").value).toBe("テスト株式会社");
     expect(ws.getCell("AA108").value).toBe("096-000-0000");
+    expect(ws.getCell("I98").value).toBe("1");
+    expect(ws.getCell("K98").value).toBe("2");
+    expect(ws.getCell("AG98").value).toBe("3");
     // 作成年月日
     expect(ws.getCell("U116").value).toBe("2026");
     expect(ws.getCell("AA116").value).toBe("8");
@@ -155,13 +177,15 @@ describe("fill34", () => {
     expect(ws.getCell("J54").value).toBe("2026");
     expect(ws.getCell("P54").value).toBe("7");
     expect(ws.getCell("T54").value).toBe("31");
-    expect(ws.getCell("J58").value).toBe("事業所閉鎖のため");
+    expect(ws.getCell("J58").value).toBe("経営悪化により事業所を閉鎖");
     // ③④
     expect(ws.getCell("K86").value).toBe("☑");
     expect(ws.getCell("I94").value).toBe("☑");
     expect(ws.getCell("I100").value).toBe("☑");
-    // ⑤ 届出機関・作成年月日
+    // ⑤ 届出機関（法人番号は1桁ずつ）・作成年月日
     expect(ws.getCell("I111").value).toBe("テスト株式会社");
+    expect(ws.getCell("I108").value).toBe("1");
+    expect(ws.getCell("AG108").value).toBe("3");
     expect(ws.getCell("U127").value).toBe("2026");
   });
 

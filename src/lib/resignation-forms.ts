@@ -64,6 +64,74 @@ export const MEASURE_OPTIONS_34 = [
   { value: "雇用契約解除予定", cell: "I102" },
 ] as const;
 
+// 特定産業分野と業務区分の対応表（様式の記載要領に基づく）。
+// 分野を選択すると、その分野の業務区分だけが選べるようになる。
+export const FORM_INDUSTRY_CATEGORIES: { field: string; categories: string[] }[] = [
+  { field: "介護分野", categories: ["介護"] },
+  { field: "ビルクリーニング分野", categories: ["ビルクリーニング"] },
+  { field: "リネンサプライ分野", categories: ["リネンサプライ"] },
+  {
+    field: "工業製品製造業分野",
+    categories: [
+      "機械金属加工",
+      "電気電子機器組立て",
+      "金属表面処理",
+      "紙器・段ボール箱製造",
+      "コンクリート製品製造",
+      "RPF製造",
+      "陶磁器製品製造",
+      "印刷・製本",
+      "紡織製品製造",
+      "縫製",
+      "電線・ケーブル製造",
+      "プレハブ住宅製品製造",
+      "家具製造",
+      "定形・不定形耐火物製造",
+      "生コンクリート製造",
+      "ゴム製品製造",
+      "かばん製造",
+    ],
+  },
+  { field: "建設分野", categories: ["土木", "建築", "ライフライン・設備"] },
+  { field: "造船・舶用工業分野", categories: ["造船", "舶用機械", "舶用電気電子機器"] },
+  { field: "自動車整備分野", categories: ["自動車の整備等"] },
+  { field: "航空分野", categories: ["空港グランドハンドリング", "航空機整備"] },
+  { field: "宿泊分野", categories: ["宿泊"] },
+  { field: "自動車運送業分野", categories: ["トラック運転者", "タクシー運転者", "バス運転者"] },
+  {
+    field: "鉄道分野",
+    categories: ["軌道整備", "電気設備整備", "車両整備", "車両製造", "運輸係員", "駅・車両清掃"],
+  },
+  { field: "物流倉庫分野", categories: ["物流倉庫"] },
+  { field: "農業分野", categories: ["耕種農業", "畜産農業"] },
+  { field: "漁業分野", categories: ["漁業", "養殖業"] },
+  { field: "飲食料品製造業分野", categories: ["飲食料品製造業全般"] },
+  { field: "外食業分野", categories: ["外食業"] },
+  { field: "林業分野", categories: ["林業"] },
+  { field: "木材産業分野", categories: ["木材産業"] },
+  { field: "資源循環分野", categories: ["廃棄物処分業（中間処理）"] },
+];
+
+export function categoriesForField(field: string): string[] {
+  return FORM_INDUSTRY_CATEGORIES.find((e) => e.field === field)?.categories ?? [];
+}
+
+// 外国人情報の自由入力（例: 「農業分野・耕種農業」）から対応表の分野を推定する
+export function matchFormField(workerField: string): string {
+  if (!workerField) return "";
+  const exact = FORM_INDUSTRY_CATEGORIES.find((e) => e.field === workerField);
+  if (exact) return exact.field;
+  // 最長一致（「工業製品製造業分野」と「飲食料品製造業分野」の取り違えを防ぐ）
+  let best = "";
+  for (const e of FORM_INDUSTRY_CATEGORIES) {
+    const stem = e.field.replace(/分野$/, "");
+    if (workerField.includes(stem) && stem.length > best.replace(/分野$/, "").length) {
+      best = e.field;
+    }
+  }
+  return best;
+}
+
 // 届出書へ転記するデータ一式（画面で編集した最終値を渡す）
 export interface FormFillData {
   kind: ResignationKind;
@@ -78,7 +146,8 @@ export interface FormFillData {
   businessCategory: string; // 業務区分
   // 退職情報
   leavingOn: string; // YYYY-MM-DD（雇用契約終了年月日・委託契約終了年月日・事由発生日）
-  reason: string; // 理由（05/11その他の括弧・3-4号の事案の概要）
+  reason: string; // その他（05/11）の括弧内に記入する理由
+  caseSummary: string; // 3-4号の事案の概要（全角20文字以内）
   endReason: EndReason312Code;
   // 委託契約をしていた登録支援機関（毎回同じ）
   supportRegNo: string;
@@ -89,6 +158,7 @@ export interface FormFillData {
   orgAddress: string;
   orgPhone: string;
   orgStaff: string; // 担当者
+  orgCorporateNo: string; // 法人番号（13桁・法人でない場合は空）
   // 3-4号の選択欄
   contactStatus: string; // ③現状
   intention: string; // ④Ａ
@@ -121,6 +191,12 @@ export function genderMark(gender: string): "男" | "女" | "" {
 function cardChars(cardNo: string): string[] {
   const chars = cardNo.replace(/\s/g, "").toUpperCase().split("");
   return Array.from({ length: 12 }, (_, i) => chars[i] ?? "");
+}
+
+// 法人番号を1桁ずつ13個のマスへ（数字以外は除去。空なら全マス空欄のまま）
+function corporateChars(corporateNo: string): string[] {
+  const digits = corporateNo.replace(/\D/g, "").split("");
+  return Array.from({ length: 13 }, (_, i) => digits[i] ?? "");
 }
 
 type Worksheet = {
@@ -212,7 +288,13 @@ export async function fill312(template: ArrayBuffer, data: FormFillData): Promis
     J83: data.supportAddress,
   });
 
-  // ③ 届出機関（退職元の特定技能所属機関）
+  // ③ 届出機関（退職元の特定技能所属機関）。法人の場合は法人番号を1桁ずつ
+  const corp = corporateChars(data.orgCorporateNo);
+  ["I98", "K98", "M98", "O98", "Q98", "S98", "U98", "W98", "Y98", "AA98", "AC98", "AE98", "AG98"].forEach(
+    (addr, i) => {
+      if (corp[i]) ws.getCell(addr).value = corp[i];
+    },
+  );
   setCells(ws, {
     I101: data.orgName,
     I104: data.orgAddress,
@@ -270,7 +352,7 @@ export async function fill34(template: ArrayBuffer, data: FormFillData): Promise
   }
 
   // Ａb 事由発生日 / Ａc 事案の概要（全角20文字以内）
-  setCells(ws, { J54: leave.y, P54: leave.m, T54: leave.d, J58: data.reason });
+  setCells(ws, { J54: leave.y, P54: leave.m, T54: leave.d, J58: data.caseSummary });
 
   // ③ 特定技能外国人の現状
   const contactCell = CONTACT_STATUSES_34.find((o) => o.value === data.contactStatus)?.cell ?? null;
@@ -290,7 +372,13 @@ export async function fill34(template: ArrayBuffer, data: FormFillData): Promise
     measureCell,
   );
 
-  // ⑤ 届出機関
+  // ⑤ 届出機関。法人の場合は法人番号を1桁ずつ
+  const corp = corporateChars(data.orgCorporateNo);
+  ["I108", "K108", "M108", "O108", "Q108", "S108", "U108", "W108", "Y108", "AA108", "AC108", "AE108", "AG108"].forEach(
+    (addr, i) => {
+      if (corp[i]) ws.getCell(addr).value = corp[i];
+    },
+  );
   setCells(ws, {
     I111: data.orgName,
     I114: data.orgAddress,

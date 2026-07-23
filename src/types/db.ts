@@ -47,6 +47,7 @@ export interface Organization {
   business_category: string; // 業務区分（特定技能）
   address: string;
   contact: string;
+  corporate_no: string; // 法人番号（13桁・法人でない場合は空）
   note: string;
   created_at: string;
   updated_at: string;
