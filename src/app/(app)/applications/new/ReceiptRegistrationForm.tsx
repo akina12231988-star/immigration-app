@@ -100,6 +100,9 @@ export function ReceiptRegistrationForm({
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // 登録直後、ストアに追加された自分自身のレコードで重複警告が誤って出るのを防ぐため、
+  // 作成済みレコードのIDを重複チェックから除外する
+  const [createdId, setCreatedId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -161,9 +164,15 @@ export function ReceiptRegistrationForm({
     }
   }
 
+  // 申請番号は前後の空白を無視して比較する（保存時も trim するため一貫させる）。
+  // 登録処理で自分自身をストアへ追加した直後は createdId で除外し、
+  // 画像アップロード中に「既に登録されています」が一瞬出る誤警告を防ぐ。
+  const trimmedNumber = fields.applicationNumber.trim();
   const isDuplicateNumber =
-    fields.applicationNumber.length > 0 &&
-    applications.some((a) => a.applicationNumber === fields.applicationNumber);
+    trimmedNumber.length > 0 &&
+    applications.some(
+      (a) => a.id !== createdId && a.applicationNumber === trimmedNumber,
+    );
 
   function startEditing() {
     setFields((prev) => ({
@@ -239,7 +248,7 @@ export function ReceiptRegistrationForm({
         organizationId: orgId || null,
         name: selectedWorker?.name ?? newName.trim(),
         applicationDate: fields.applicationDate,
-        applicationNumber: fields.applicationNumber,
+        applicationNumber: trimmedNumber,
         applicationContent: fields.applicationContent,
         method,
         emailLink: isOnline ? fields.emailLink : "",
@@ -253,6 +262,9 @@ export function ReceiptRegistrationForm({
         status: "申請済",
         assignee: fields.isSelfApply ? "本人申請" : (selectedAgent?.name ?? ""),
       });
+      // ストアに追加された自分自身のレコードを重複チェックから外し、
+      // 画像アップロード完了までの間に誤った重複警告が出ないようにする
+      setCreatedId(created.id);
       if (imageFile) {
         await uploadApplicationFile(created.id, "受付票", imageFile).catch(() => undefined);
       }
