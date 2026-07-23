@@ -10,13 +10,12 @@ import {
   type PrepDocSources,
 } from "./application-prep";
 
-const TODAY = "2026-07-23";
 
 function meta(over: Partial<PrepChecklistMeta>): PrepChecklistMeta {
   return { ...EMPTY_PREP_META, ...over };
 }
 function sources(over: Partial<PrepDocSources>): PrepDocSources {
-  return { filledDocKeys: new Set(), photoPath: null, healthCheckOn: null, ...over };
+  return { filledDocKeys: new Set(), photoPath: null, healthComplete: false, ...over };
 }
 const def = (id: string) => PREP_DOC_DEFS.find((d) => d.id === id)!;
 
@@ -44,46 +43,25 @@ describe("isRequired", () => {
 
 describe("isSatisfied", () => {
   it("在留カードは cert_zairyu のファイルがあれば充足", () => {
-    expect(isSatisfied(def("zairyu"), meta({}), sources({}), TODAY)).toBe(false);
+    expect(isSatisfied(def("zairyu"), meta({}), sources({}))).toBe(false);
     expect(
-      isSatisfied(def("zairyu"), meta({}), sources({ filledDocKeys: new Set(["cert_zairyu"]) }), TODAY),
+      isSatisfied(def("zairyu"), meta({}), sources({ filledDocKeys: new Set(["cert_zairyu"]) })),
     ).toBe(true);
   });
 
   it("顔写真は photo_path があれば充足", () => {
-    expect(isSatisfied(def("photo"), meta({}), sources({ photoPath: "p.jpg" }), TODAY)).toBe(true);
+    expect(isSatisfied(def("photo"), meta({}), sources({ photoPath: "p.jpg" }))).toBe(true);
   });
 
   it("源泉徴収票は対象年度の gensen_r{年} があれば充足", () => {
     const m = meta({ target_reiwa: 7 });
-    expect(isSatisfied(def("gensen"), m, sources({ filledDocKeys: new Set(["gensen_r7"]) }), TODAY)).toBe(true);
-    expect(isSatisfied(def("gensen"), m, sources({ filledDocKeys: new Set(["gensen_r6"]) }), TODAY)).toBe(false);
+    expect(isSatisfied(def("gensen"), m, sources({ filledDocKeys: new Set(["gensen_r7"]) }))).toBe(true);
+    expect(isSatisfied(def("gensen"), m, sources({ filledDocKeys: new Set(["gensen_r6"]) }))).toBe(false);
   });
 
-  it("健康診断書はファイル・受診日1年以内・項目確認の3点で充足", () => {
-    const filled = new Set(["kenshin"]);
-    // 項目未確認 → 不足
-    expect(
-      isSatisfied(def("kenshin"), meta({}), sources({ filledDocKeys: filled, healthCheckOn: "2026-05-01" }), TODAY),
-    ).toBe(false);
-    // 3点そろう → 充足
-    expect(
-      isSatisfied(
-        def("kenshin"),
-        meta({ kenshin_items_ok: true }),
-        sources({ filledDocKeys: filled, healthCheckOn: "2026-05-01" }),
-        TODAY,
-      ),
-    ).toBe(true);
-    // 受診日が1年超 → 不足
-    expect(
-      isSatisfied(
-        def("kenshin"),
-        meta({ kenshin_items_ok: true }),
-        sources({ filledDocKeys: filled, healthCheckOn: "2025-01-01" }),
-        TODAY,
-      ),
-    ).toBe(false);
+  it("健康診断書は healthComplete で充足（詳細ページで判定）", () => {
+    expect(isSatisfied(def("kenshin"), meta({}), sources({ healthComplete: false }))).toBe(false);
+    expect(isSatisfied(def("kenshin"), meta({}), sources({ healthComplete: true }))).toBe(true);
   });
 });
 
@@ -93,7 +71,6 @@ describe("evaluatePrepChecklist", () => {
     const { items, missing } = evaluatePrepChecklist(
       m,
       sources({ filledDocKeys: new Set(["cert_zairyu", "gensen_r7"]), photoPath: "p.jpg" }),
-      TODAY,
     );
     // 更新の必要書類: 在留カード/顔写真/パスポート/源泉/課税/納税(市県民)/納税(国保)/年金記録 = 8件
     expect(items).toHaveLength(8);

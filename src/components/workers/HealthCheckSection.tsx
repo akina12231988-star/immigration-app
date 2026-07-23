@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, Download, Eye, HeartPulse, Loader2, Trash2, Upload } from "lucide-react";
+import Link from "next/link";
+import { Check, Download, Eye, HeartPulse, Loader2, Trash2, Upload, ClipboardCheck } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
 import { listOnboardingDocs } from "@/lib/supabase/queries/onboarding";
@@ -204,6 +205,14 @@ export function HealthCheckSection({
           )}
         </div>
       </div>
+
+      <Link
+        href={`/workers/${workerId}/health-check`}
+        className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-brand hover:underline"
+      >
+        <ClipboardCheck size={13} />
+        受診項目・就労可の詳細を確認/入力
+      </Link>
 
       <input
         ref={fileInputRef}

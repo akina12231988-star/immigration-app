@@ -18,13 +18,17 @@ import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
 import { listOnboardingDocs } from "@/lib/supabase/queries/onboarding";
 import { getPrepChecklist, upsertPrepChecklist } from "@/lib/supabase/queries/application-prep";
+import { getHealthCheckDetail } from "@/lib/supabase/queries/health-check";
+import { EMPTY_HEALTH_DETAIL, isHealthDetailComplete, type HealthCheckDetail } from "@/lib/health-check";
 import {
   clearOnboardingDocFile,
   getOnboardingDocDownloadUrl,
   getOnboardingDocPreviewUrl,
 } from "@/app/(app)/onboarding/actions";
+import { getWorkerPhotoUrl } from "@/app/(app)/workers/actions";
 import { uploadOnboardingDoc } from "@/lib/onboarding-files";
-import { reiwaYear } from "@/lib/onboarding";
+import { uploadWorkerPhoto } from "@/lib/worker-photo";
+import { gensenDocKey, reiwaYear } from "@/lib/onboarding";
 import { todayStr } from "@/lib/ssw/calc";
 import {
   EMPTY_PREP_META,
@@ -32,13 +36,14 @@ import {
   PREP_APP_TYPES,
   prepDocLabel,
   type PrepChecklistMeta,
+  type PrepDocDef,
   type PrepDocStatus,
 } from "@/lib/application-prep";
 import type { OnboardingDocumentRow } from "@/types/db";
 
 // 申請準備の書類チェックリスト。申請種別（変更/更新）と国保・年金の加入で必要書類が
-// 切り替わり、今どれが不足しているかを一覧で把握できる。ファイルは既存の保存先を再利用し、
-// 課税・納税証明書などはこの画面で保存＋郵送請求ツールへ誘導する。
+// 切り替わり、今どれが不足しているかを一覧で把握できる。各書類はこの画面から直接添付でき、
+// 保存先は既存のセクションと共有する（在留カード=外国人書類、顔写真=写真 など）。
 export function ApplicationPrepChecklist({
   workerId,
   canEdit = false,
@@ -51,17 +56,24 @@ export function ApplicationPrepChecklist({
   healthCheckOn: string | null;
 }) {
   const [meta, setMeta] = useState<PrepChecklistMeta>(EMPTY_PREP_META);
+  const [healthDetail, setHealthDetail] = useState<HealthCheckDetail>(EMPTY_HEALTH_DETAIL);
   const [docs, setDocs] = useState<OnboardingDocumentRow[]>([]);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // 顔写真は workers.photo_path と連動（最新の1枚を共有）
+  const [photoExists, setPhotoExists] = useState<boolean>(!!photoPath);
+  const [photoUrl, setPhotoUrl] = useState<string>("");
+
   const uploadRef = useRef<{ docKey: string; label: string } | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const docInputRef = useRef<HTMLInputElement>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   const loadDocs = () =>
     listOnboardingDocs(createClient(), workerId).then(setDocs).catch(() => undefined);
 
   useEffect(() => {
     getPrepChecklist(createClient(), workerId).then(setMeta).catch(() => undefined);
+    getHealthCheckDetail(createClient(), workerId).then(setHealthDetail).catch(() => undefined);
     void loadDocs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workerId]);
@@ -69,11 +81,32 @@ export function ApplicationPrepChecklist({
   const today = todayStr();
   const filledDocKeys = new Set(docs.filter((d) => d.storage_path).map((d) => d.doc_key));
   const docByKey = new Map(docs.map((d) => [d.doc_key, d]));
-  const { items, missing } = evaluatePrepChecklist(
-    meta,
-    { filledDocKeys, photoPath, healthCheckOn },
+  // 健康診断書の完了判定は詳細（様式・受診項目・就労可の後日結果）まで含める
+  const healthComplete = isHealthDetailComplete(
+    healthDetail,
+    filledDocKeys.has("kenshin"),
+    healthCheckOn,
     today,
   );
+  const { items, missing } = evaluatePrepChecklist(meta, {
+    filledDocKeys,
+    photoPath: photoExists ? "yes" : null,
+    healthComplete,
+  });
+
+  // 書類の実際の保存キー（源泉徴収票は対象年度で変わる）。写真はキーなし。
+  const resolveDocKey = (def: PrepDocDef): string | null => {
+    switch (def.source.kind) {
+      case "doc":
+        return def.source.docKey;
+      case "gensenYear":
+        return meta.target_reiwa != null ? gensenDocKey(meta.target_reiwa) : null;
+      case "health":
+        return "kenshin";
+      case "photo":
+        return null;
+    }
+  };
 
   async function patchMeta(patch: Partial<PrepChecklistMeta>) {
     const next = { ...meta, ...patch };
@@ -86,12 +119,22 @@ export function ApplicationPrepChecklist({
     }
   }
 
-  function startUpload(docKey: string, label: string) {
-    uploadRef.current = { docKey, label };
-    fileInputRef.current?.click();
+  function startAttach(def: PrepDocDef) {
+    setError(null);
+    if (def.source.kind === "photo") {
+      photoInputRef.current?.click();
+      return;
+    }
+    const key = resolveDocKey(def);
+    if (!key) {
+      setError("先に対象年度（令和）を入力してください。");
+      return;
+    }
+    uploadRef.current = { docKey: key, label: prepDocLabel(def, meta.target_reiwa) };
+    docInputRef.current?.click();
   }
 
-  async function handleFile(file: File | undefined) {
+  async function handleDocFile(file: File | undefined) {
     const target = uploadRef.current;
     if (!file || !target) return;
     setBusyKey(target.docKey);
@@ -106,12 +149,27 @@ export function ApplicationPrepChecklist({
     }
   }
 
-  async function removeFile(docKey: string, label: string) {
-    if (!window.confirm(`「${label}」の保存データを削除します。よろしいですか？`)) return;
-    setBusyKey(docKey);
+  async function handlePhotoFile(file: File | undefined) {
+    if (!file) return;
+    setBusyKey("photo");
     setError(null);
     try {
-      const res = await clearOnboardingDocFile(workerId, docKey);
+      const url = await uploadWorkerPhoto(workerId, file);
+      setPhotoExists(true);
+      setPhotoUrl(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "写真のアップロードに失敗しました");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function removeDoc(key: string, label: string) {
+    if (!window.confirm(`「${label}」の保存データを削除します。よろしいですか？`)) return;
+    setBusyKey(key);
+    setError(null);
+    try {
+      const res = await clearOnboardingDocFile(workerId, key);
       if (!res.ok) throw new Error(res.message);
       await loadDocs();
     } catch (err) {
@@ -121,13 +179,13 @@ export function ApplicationPrepChecklist({
     }
   }
 
-  async function openPreview(id: string) {
+  async function previewDoc(id: string) {
     const res = await getOnboardingDocPreviewUrl(id);
     if (!res.ok) return setError(res.message);
     window.open(res.url, "_blank", "noopener,noreferrer");
   }
 
-  async function download(id: string) {
+  async function downloadDoc(id: string) {
     const res = await getOnboardingDocDownloadUrl(id);
     if (!res.ok) return setError(res.message);
     const a = document.createElement("a");
@@ -136,6 +194,12 @@ export function ApplicationPrepChecklist({
     document.body.appendChild(a);
     a.click();
     a.remove();
+  }
+
+  async function previewPhoto() {
+    let url = photoUrl;
+    if (!url && photoPath) url = await getWorkerPhotoUrl(photoPath);
+    if (url) window.open(url, "_blank", "noopener,noreferrer");
   }
 
   const inputCls =
@@ -148,7 +212,7 @@ export function ApplicationPrepChecklist({
         申請準備 書類チェックリスト
       </h2>
       <p className="mb-3 text-[11px] text-muted">
-        申請種別と加入状況を選ぶと、必要書類と不足がわかります。
+        申請種別と加入状況を選ぶと、必要書類と不足がわかります。各書類はこの場で添付できます。
       </p>
 
       {error && (
@@ -245,32 +309,50 @@ export function ApplicationPrepChecklist({
 
           {/* 書類一覧 */}
           <div className="overflow-hidden rounded-xl border border-border">
-            {items.map((item) => (
-              <DocRow
-                key={item.def.id}
-                item={item}
-                meta={meta}
-                row={docByKey.get(item.def.source.kind === "doc" ? item.def.source.docKey : "") ?? null}
-                canEdit={canEdit}
-                busy={busyKey === (item.def.source.kind === "doc" ? item.def.source.docKey : item.def.id)}
-                onUpload={startUpload}
-                onRemove={removeFile}
-                onPreview={openPreview}
-                onDownload={download}
-                onToggleKenshin={(v) => patchMeta({ kenshin_items_ok: v })}
-              />
-            ))}
+            {items.map((item) => {
+              const key = resolveDocKey(item.def);
+              const row = key ? docByKey.get(key) ?? null : null;
+              const isPhoto = item.def.source.kind === "photo";
+              return (
+                <DocRow
+                  key={item.def.id}
+                  item={item}
+                  meta={meta}
+                  workerId={workerId}
+                  row={row}
+                  isPhoto={isPhoto}
+                  canEdit={canEdit}
+                  busy={busyKey === (isPhoto ? "photo" : key)}
+                  onAttach={() => startAttach(item.def)}
+                  onRemove={() => key && removeDoc(key, prepDocLabel(item.def, meta.target_reiwa))}
+                  onPreview={() => (isPhoto ? previewPhoto() : row && previewDoc(row.id))}
+                  onDownload={() => row && downloadDoc(row.id)}
+                />
+              );
+            })}
           </div>
         </>
       )}
 
+      {/* 書類（画像・PDF）用の隠しファイル入力 */}
       <input
-        ref={fileInputRef}
+        ref={docInputRef}
         type="file"
         accept="image/*,application/pdf"
         className="hidden"
         onChange={(e) => {
-          void handleFile(e.target.files?.[0]);
+          void handleDocFile(e.target.files?.[0]);
+          e.target.value = "";
+        }}
+      />
+      {/* 顔写真用の隠しファイル入力（画像のみ） */}
+      <input
+        ref={photoInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          void handlePhotoFile(e.target.files?.[0]);
           e.target.value = "";
         }}
       />
@@ -281,29 +363,30 @@ export function ApplicationPrepChecklist({
 function DocRow({
   item,
   meta,
+  workerId,
   row,
+  isPhoto,
   canEdit,
   busy,
-  onUpload,
+  onAttach,
   onRemove,
   onPreview,
   onDownload,
-  onToggleKenshin,
 }: {
   item: PrepDocStatus;
   meta: PrepChecklistMeta;
+  workerId: string;
   row: OnboardingDocumentRow | null;
+  isPhoto: boolean;
   canEdit: boolean;
   busy: boolean;
-  onUpload: (docKey: string, label: string) => void;
-  onRemove: (docKey: string, label: string) => void;
-  onPreview: (id: string) => void;
-  onDownload: (id: string) => void;
-  onToggleKenshin: (v: boolean) => void;
+  onAttach: () => void;
+  onRemove: () => void;
+  onPreview: () => void;
+  onDownload: () => void;
 }) {
   const { def, satisfied } = item;
   const label = prepDocLabel(def, meta.target_reiwa);
-  const docKey = def.source.kind === "doc" ? def.source.docKey : "";
   const hasFile = !!row?.storage_path;
 
   return (
@@ -332,49 +415,43 @@ function DocRow({
               {satisfied ? "登録済み" : "不足"}
             </span>
           </span>
-          {def.manageInline && hasFile && (
-            <span className="block truncate text-[11px] text-muted">{row!.file_name}</span>
-          )}
+          {hasFile && <span className="block truncate text-[11px] text-muted">{row!.file_name}</span>}
           {def.note && <span className="mt-0.5 block text-[11px] text-muted">※ {def.note}</span>}
-          {!def.manageInline && def.managedIn && (
-            <span className="mt-0.5 block text-[11px] text-muted">
-              「{def.managedIn}」セクションで登録・差し替えできます
-            </span>
+          {def.managedIn && (
+            <span className="mt-0.5 block text-[11px] text-muted">「{def.managedIn}」と共有</span>
           )}
         </span>
 
-        {/* 操作（この画面で管理する書類のみ） */}
-        {def.manageInline && (
-          <div className="flex shrink-0 items-center gap-1">
-            {busy ? (
-              <Loader2 size={15} className="animate-spin text-muted" />
-            ) : (
-              <>
-                {hasFile && row && (
-                  <>
-                    <IconButton label="表示" onClick={() => onPreview(row.id)}>
-                      <Eye size={13} />
-                    </IconButton>
-                    <IconButton label="ダウンロード" onClick={() => onDownload(row.id)}>
-                      <Download size={13} />
-                    </IconButton>
-                  </>
-                )}
-                {canEdit && (
-                  <IconButton label={hasFile ? "差し替え" : "アップロード"} onClick={() => onUpload(docKey, label)}>
-                    <Upload size={13} />
-                    {hasFile ? "差し替え" : "追加"}
-                  </IconButton>
-                )}
-                {canEdit && hasFile && (
-                  <IconButton label="削除" tone="danger" onClick={() => onRemove(docKey, label)}>
-                    <Trash2 size={13} />
-                  </IconButton>
-                )}
-              </>
-            )}
-          </div>
-        )}
+        {/* 添付・操作 */}
+        <div className="flex shrink-0 items-center gap-1">
+          {busy ? (
+            <Loader2 size={15} className="animate-spin text-muted" />
+          ) : (
+            <>
+              {(hasFile || (isPhoto && satisfied)) && (
+                <IconButton label="表示" onClick={onPreview}>
+                  <Eye size={13} />
+                </IconButton>
+              )}
+              {hasFile && !isPhoto && (
+                <IconButton label="ダウンロード" onClick={onDownload}>
+                  <Download size={13} />
+                </IconButton>
+              )}
+              {canEdit && (
+                <IconButton label={satisfied ? "差し替え" : "添付"} onClick={onAttach}>
+                  <Upload size={13} />
+                  {satisfied ? "差し替え" : "添付"}
+                </IconButton>
+              )}
+              {canEdit && hasFile && !isPhoto && (
+                <IconButton label="削除" tone="danger" onClick={onRemove}>
+                  <Trash2 size={13} />
+                </IconButton>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* 郵送請求への導線 */}
@@ -388,18 +465,15 @@ function DocRow({
         </Link>
       )}
 
-      {/* 健康診断書: 受診項目の確認（手動チェック） */}
+      {/* 健康診断書: 様式・受診項目・就労可の後日結果は別ページで管理 */}
       {def.source.kind === "health" && (
-        <label className="ml-[18px] mt-1.5 flex items-center gap-1.5 text-[11px] font-bold text-muted">
-          <input
-            type="checkbox"
-            checked={meta.kenshin_items_ok}
-            disabled={!canEdit}
-            onChange={(e) => onToggleKenshin(e.target.checked)}
-            className="h-3.5 w-3.5"
-          />
-          受診項目（1〜3号と同じ項目）が足りていることを確認した
-        </label>
+        <Link
+          href={`/workers/${workerId}/health-check`}
+          className="ml-[18px] mt-1.5 inline-flex items-center gap-1 text-[11px] font-bold text-brand hover:underline"
+        >
+          <ExternalLink size={11} />
+          受診項目・就労可の詳細を確認/入力
+        </Link>
       )}
     </div>
   );
