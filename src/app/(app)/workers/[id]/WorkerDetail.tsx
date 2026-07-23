@@ -24,6 +24,7 @@ import { HealthCheckSection } from "@/components/workers/HealthCheckSection";
 import { GensenDocuments } from "@/components/workers/GensenDocuments";
 import { WorkerCertificateDocs } from "@/components/workers/WorkerCertificateDocs";
 import { ApplicationPrepChecklist } from "@/components/workers/ApplicationPrepChecklist";
+import { WorkerAddressHistory } from "@/components/workers/WorkerAddressHistory";
 import { NotionTransferButton } from "@/components/workers/NotionTransferButton";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -295,6 +296,9 @@ export function WorkerDetail({
 
       {/* 外国人書類（合格証・パスポート・履歴書など）をPDF・画像で保存 */}
       <WorkerCertificateDocs workerId={worker.id} canEdit={canEdit} />
+
+      {/* 住所歴（課税・納税証明書の1月1日時点の住所判定に使う） */}
+      <WorkerAddressHistory workerId={worker.id} canEdit={canEdit} />
 
       {/* 申請準備 書類チェックリスト（申請種別ごとの必要書類・不足の把握） */}
       <ApplicationPrepChecklist

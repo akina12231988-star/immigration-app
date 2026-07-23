@@ -51,6 +51,9 @@ export interface PrepDocDef {
   appliesTo: PrepAppType[]; // 必要になる申請種別
   requiredIf?: "kokuho" | "nenkin"; // 条件付き（加入時のみ必要）
   viaMail?: boolean; // 郵送請求（課税・納税証明書）で取得するもの
+  // 年つき書類の対象年（令和）の決め方:
+  // target=対象年度そのまま / target-1=対象年度の前年（源泉徴収票） / current=現時点の最新年度（国保税）
+  yearMode?: "target" | "target-1" | "current";
   note?: string;
   source: Source;
   manageInline: boolean; // true: この画面でファイルを保存/差し替え/削除する（prep_*）
@@ -99,6 +102,7 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
     id: "gensen",
     label: "源泉徴収票",
     yearKind: "年分",
+    yearMode: "target-1", // 課税○年度に対して源泉徴収票は前年分（例: 令和7年度課税→令和6年分源泉）
     appliesTo: ["変更", "更新"],
     source: { kind: "gensenYear" },
     manageInline: false,
@@ -127,10 +131,12 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
     id: "nozei_kokuho",
     label: "納税証明書（国保税）",
     yearKind: "年度",
+    yearMode: "current", // 国保税は現時点の最新年度を発行
     appliesTo: ["変更", "更新"],
     requiredIf: "kokuho",
     viaMail: true,
-    source: { kind: "docYear", baseKey: "prep_nozei_kokuho" },
+    note: "現時点の最新年度のものを発行",
+    source: { kind: "doc", docKey: "prep_nozei_kokuho" },
     manageInline: true,
   },
   {
@@ -160,10 +166,32 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
   },
 ];
 
-// 令和年つきの表示名（年度未設定は「令和?年」）
-export function prepDocLabel(def: PrepDocDef, targetReiwa: number | null): string {
+// 年つき書類の対象年（令和）を決める。yearMode に応じて対象年度そのまま/前年/最新年度。
+export function prepDocYear(
+  def: PrepDocDef,
+  targetReiwa: number | null,
+  currentReiwa: number,
+): number | null {
+  if (!def.yearKind) return null;
+  switch (def.yearMode ?? "target") {
+    case "target":
+      return targetReiwa;
+    case "target-1":
+      return targetReiwa != null ? targetReiwa - 1 : null;
+    case "current":
+      return currentReiwa;
+  }
+}
+
+// 令和年つきの表示名（対象年が決まらないときは「令和?」）
+export function prepDocLabel(
+  def: PrepDocDef,
+  targetReiwa: number | null,
+  currentReiwa: number,
+): string {
   if (!def.yearKind) return def.label;
-  const y = targetReiwa != null ? `令和${targetReiwa}` : "令和?";
+  const year = prepDocYear(def, targetReiwa, currentReiwa);
+  const y = year != null ? `令和${year}` : "令和?";
   return `${y}${def.yearKind} ${def.label}`;
 }
 
@@ -194,14 +222,17 @@ export function isSatisfied(
     case "doc":
       return sources.filledDocKeys.has(def.source.docKey);
     case "docYear":
-      // 旧形式（年度なしキー）で保存済みの添付も揃っている扱いにする
+      // 対象年度ごとに蓄積したキー（{baseKey}_r{令和年}）。旧形式（年度なしキー）も揃っている扱いにする
       return (
         (meta.target_reiwa != null &&
           sources.filledDocKeys.has(prepYearDocKey(def.source.baseKey, meta.target_reiwa))) ||
         sources.filledDocKeys.has(def.source.baseKey)
       );
-    case "gensenYear":
-      return meta.target_reiwa != null && sources.filledDocKeys.has(gensenDocKey(meta.target_reiwa));
+    case "gensenYear": {
+      // 源泉徴収票は課税年度の前年分（target-1）。その年の gensen_r{年} があれば充足。
+      const y = meta.target_reiwa != null ? meta.target_reiwa - 1 : null;
+      return y != null && sources.filledDocKeys.has(gensenDocKey(y));
+    }
     case "photo":
       return !!sources.photoPath;
     case "health":
