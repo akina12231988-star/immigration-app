@@ -7,7 +7,8 @@
 //  - 顔写真 … workers.photo_path
 //  - 源泉徴収票 … 源泉徴収票セクション（onboarding_documents の gensen_r{令和年}）
 //  - 健康診断書 … 健康診断セクション（onboarding_documents の kenshin ＋ 受診日）
-//  - 課税証明書 / 納税証明書 / 保険証 / 年金記録 … このチェックリスト専用（prep_*）
+//  - 課税証明書 / 納税証明書 … このチェックリスト専用・対象年度ごとに蓄積（prep_*_r{令和年}）
+//  - 保険証 / 年金記録 … このチェックリスト専用・最新のみ（prep_*）
 
 import { gensenDocKey } from "@/lib/onboarding";
 
@@ -33,9 +34,15 @@ export const EMPTY_PREP_META: PrepChecklistMeta = {
 // 書類の判定元
 type Source =
   | { kind: "doc"; docKey: string } // onboarding_documents の固定キー（cert_* / prep_*）
+  | { kind: "docYear"; baseKey: string } // 対象年度ごとに蓄積（{baseKey}_r{target_reiwa}）
   | { kind: "gensenYear" } // gensen_r{target_reiwa}
   | { kind: "photo" } // workers.photo_path
   | { kind: "health" }; // 健康診断（kenshin ＋ 受診日1年以内 ＋ 項目確認）
+
+// 年度付き書類の保存キー（例: prep_kazei_r7）。年度ごとに別ファイルとして蓄積される
+export function prepYearDocKey(baseKey: string, reiwa: number): string {
+  return `${baseKey}_r${reiwa}`;
+}
 
 export interface PrepDocDef {
   id: string;
@@ -104,7 +111,7 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
     appliesTo: ["変更", "更新"],
     viaMail: true,
     note: "その年度の1月1日時点の住所も確認が必要",
-    source: { kind: "doc", docKey: "prep_kazei" },
+    source: { kind: "docYear", baseKey: "prep_kazei" },
     manageInline: true,
   },
   {
@@ -113,7 +120,7 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
     yearKind: "年度",
     appliesTo: ["変更", "更新"],
     viaMail: true,
-    source: { kind: "doc", docKey: "prep_nozei_shiken" },
+    source: { kind: "docYear", baseKey: "prep_nozei_shiken" },
     manageInline: true,
   },
   {
@@ -123,7 +130,7 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
     appliesTo: ["変更", "更新"],
     requiredIf: "kokuho",
     viaMail: true,
-    source: { kind: "doc", docKey: "prep_nozei_kokuho" },
+    source: { kind: "docYear", baseKey: "prep_nozei_kokuho" },
     manageInline: true,
   },
   {
@@ -186,6 +193,13 @@ export function isSatisfied(
   switch (def.source.kind) {
     case "doc":
       return sources.filledDocKeys.has(def.source.docKey);
+    case "docYear":
+      // 旧形式（年度なしキー）で保存済みの添付も揃っている扱いにする
+      return (
+        (meta.target_reiwa != null &&
+          sources.filledDocKeys.has(prepYearDocKey(def.source.baseKey, meta.target_reiwa))) ||
+        sources.filledDocKeys.has(def.source.baseKey)
+      );
     case "gensenYear":
       return meta.target_reiwa != null && sources.filledDocKeys.has(gensenDocKey(meta.target_reiwa));
     case "photo":
