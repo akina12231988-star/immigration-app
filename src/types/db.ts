@@ -71,6 +71,7 @@ export interface Worker {
   support: SupportScope;
   status: WorkerStatus;
   health_note: string;
+  health_check_on?: string | null; // 健康診断の受診日（有効期限は受診日の1年後）
   family_note: string;
   current_organization_id: string | null;
   residence_status: string; // 現在の在留資格（自由入力）

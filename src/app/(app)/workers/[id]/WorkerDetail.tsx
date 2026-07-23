@@ -20,6 +20,8 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { WorkerPhoto } from "@/components/workers/WorkerPhoto";
 import { WorkerDocuments } from "@/components/workers/WorkerDocuments";
 import { OnboardingDocuments } from "@/components/workers/OnboardingDocuments";
+import { HealthCheckSection } from "@/components/workers/HealthCheckSection";
+import { GensenDocuments } from "@/components/workers/GensenDocuments";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -252,7 +254,15 @@ export function WorkerDetail({
       />
 
       {/* 入社書類メールで登録した添付データ（選択ダウンロード・Gmailリンク） */}
-      <OnboardingDocuments workerId={worker.id} />
+      <OnboardingDocuments workerId={worker.id} canEdit={canEdit} />
+
+      <GensenDocuments workerId={worker.id} canEdit={canEdit} />
+
+      <HealthCheckSection
+        workerId={worker.id}
+        initialExamOn={worker.health_check_on ?? null}
+        canEdit={canEdit}
+      />
 
       {/* 通算期間 */}
       <Card className="p-4">
