@@ -24,6 +24,7 @@ import { HealthCheckSection } from "@/components/workers/HealthCheckSection";
 import { GensenDocuments } from "@/components/workers/GensenDocuments";
 import { WorkerCertificateDocs } from "@/components/workers/WorkerCertificateDocs";
 import { ApplicationPrepChecklist } from "@/components/workers/ApplicationPrepChecklist";
+import { NotionTransferButton } from "@/components/workers/NotionTransferButton";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -219,6 +220,7 @@ export function WorkerDetail({
               <FileText size={14} />
               履歴書
             </Link>
+            {canEdit && <NotionTransferButton worker={worker} />}
           </div>
         </div>
         <div className="mb-3 flex flex-wrap items-center gap-1.5">
