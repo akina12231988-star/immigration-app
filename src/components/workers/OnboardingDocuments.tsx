@@ -23,11 +23,13 @@ import {
   linkWorkerDocToOnboarding,
 } from "@/app/(app)/onboarding/actions";
 import { uploadOnboardingDoc } from "@/lib/onboarding-files";
+import { isPrepDocKey } from "@/lib/application-prep";
 import {
   DOC_REFERENCE_LINKS,
   isGensenYearKey,
   isPendingDocAlert,
   isPendingDocOverdue,
+  isWorkerCertKey,
   HEALTH_CHECK_DOC_KEY,
   LINKABLE_DOC_KINDS,
   onboardingDocDefs,
@@ -79,8 +81,13 @@ export function OnboardingDocuments({
   const managedDefs = onboardingDocDefs(today).filter((d) =>
     (WORKER_DETAIL_DOC_KEYS as readonly string[]).includes(d.key),
   );
-  // 健康診断・源泉徴収票（令和年別）は専用セクションで扱うため、この一覧からは除く
-  const isDedicated = (key: string) => key === HEALTH_CHECK_DOC_KEY || isGensenYearKey(key);
+  // 健康診断・源泉徴収票（令和年別）・外国人書類（cert_*）・申請準備（prep_*）は
+  // それぞれ専用セクションで扱うため、この一覧からは除く
+  const isDedicated = (key: string) =>
+    key === HEALTH_CHECK_DOC_KEY ||
+    isGensenYearKey(key) ||
+    isWorkerCertKey(key) ||
+    isPrepDocKey(key);
   const emailDocs = docs.filter((d) => !isDedicated(d.doc_key));
   const docByKey = new Map(emailDocs.map((d) => [d.doc_key, d]));
   const files = emailDocs.filter((d) => d.storage_path);
