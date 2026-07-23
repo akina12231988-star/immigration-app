@@ -19,6 +19,7 @@ import { compressImage } from "@/lib/image-compress";
 import { todayStr } from "@/lib/ssw/calc";
 import {
   buildOnboardingMail,
+  DOC_REFERENCE_LINKS,
   onboardingDocDefs,
   type OnboardingDocDef,
 } from "@/lib/onboarding";
@@ -568,6 +569,17 @@ function DocRow({
         <span className="min-w-0 flex-1 text-sm">
           <span className="mr-1 text-[11px] font-bold text-muted">{def.num}.</span>
           {def.label}
+          {DOC_REFERENCE_LINKS[def.key] && (
+            <a
+              href={DOC_REFERENCE_LINKS[def.key]}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-2 inline-flex items-center gap-0.5 align-middle text-[11px] font-bold text-brand hover:underline"
+            >
+              <ExternalLink size={11} />
+              国税庁の様式ページ
+            </a>
+          )}
         </span>
         <select
           value={state.status}

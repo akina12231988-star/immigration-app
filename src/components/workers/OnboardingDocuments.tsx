@@ -24,8 +24,11 @@ import {
 } from "@/app/(app)/onboarding/actions";
 import { uploadOnboardingDoc } from "@/lib/onboarding-files";
 import {
+  DOC_REFERENCE_LINKS,
+  isGensenYearKey,
   isPendingDocAlert,
   isPendingDocOverdue,
+  HEALTH_CHECK_DOC_KEY,
   LINKABLE_DOC_KINDS,
   onboardingDocDefs,
   WORKER_DETAIL_DOC_KEYS,
@@ -76,9 +79,12 @@ export function OnboardingDocuments({
   const managedDefs = onboardingDocDefs(today).filter((d) =>
     (WORKER_DETAIL_DOC_KEYS as readonly string[]).includes(d.key),
   );
-  const docByKey = new Map(docs.map((d) => [d.doc_key, d]));
-  const files = docs.filter((d) => d.storage_path);
-  const pending = docs.filter((d) => isPendingDocAlert(d));
+  // 健康診断・源泉徴収票（令和年別）は専用セクションで扱うため、この一覧からは除く
+  const isDedicated = (key: string) => key === HEALTH_CHECK_DOC_KEY || isGensenYearKey(key);
+  const emailDocs = docs.filter((d) => !isDedicated(d.doc_key));
+  const docByKey = new Map(emailDocs.map((d) => [d.doc_key, d]));
+  const files = emailDocs.filter((d) => d.storage_path);
+  const pending = emailDocs.filter((d) => isPendingDocAlert(d));
 
   // 職員は常に管理行を表示。閲覧者はファイルがあるときだけ表示する。
   const hasAny = record !== null || files.length > 0;
@@ -258,6 +264,17 @@ export function OnboardingDocuments({
                     )}
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-bold">{def.label}</span>
+                      {DOC_REFERENCE_LINKS[def.key] && (
+                        <a
+                          href={DOC_REFERENCE_LINKS[def.key]}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-[11px] font-bold text-brand hover:underline"
+                        >
+                          <ExternalLink size={11} />
+                          国税庁の様式ページ
+                        </a>
+                      )}
                       <span className="block truncate text-[11px] text-muted">
                         {hasFile ? row!.file_name : "未登録"}
                       </span>

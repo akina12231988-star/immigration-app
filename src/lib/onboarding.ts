@@ -35,6 +35,7 @@ export function onboardingDocDefs(today: string): OnboardingDocDef[] {
 
 // 外国人詳細ページの「入社書類」で保存・差し替え・削除を管理する書類キー。
 // 申請書類一式（shinsei）・労働者名簿（meibo）はこの画面では扱わない。
+// 源泉徴収票（gensen）は令和年ごとに蓄積するため専用セクションで管理する。
 export const WORKER_DETAIL_DOC_KEYS = [
   "zairyu",
   "shiteisho",
@@ -43,7 +44,6 @@ export const WORKER_DETAIL_DOC_KEYS = [
   "fuyo",
   "fuyokojo",
   "rirekisho",
-  "gensen",
   "furigana",
 ] as const;
 
@@ -52,6 +52,31 @@ export const LINKABLE_DOC_KINDS: Record<string, "在留カード" | "指定書">
   zairyu: "在留カード",
   shiteisho: "指定書",
 };
+
+// 書類の横に表示する参考リンク（国税庁の様式ページなど）。
+export const DOC_REFERENCE_LINKS: Record<string, string> = {
+  fuyokojo: "https://www.nta.go.jp/users/gensen/nencho/shinkokusyo/index.htm",
+};
+
+// 健康診断（入社書類メールには添付しないが外国人詳細で保存する）
+export const HEALTH_CHECK_DOC_KEY = "kenshin";
+export const HEALTH_CHECK_LABEL = "健康診断";
+
+// 源泉徴収票の令和年ごとのキー・表示名（例: 令和8年分 → gensen_r8 / 令和8年分源泉徴収票）
+export function gensenDocKey(reiwa: number): string {
+  return `gensen_r${reiwa}`;
+}
+export function gensenLabel(reiwa: number): string {
+  return `令和${reiwa}年分源泉徴収票`;
+}
+export function isGensenYearKey(key: string): boolean {
+  return /^gensen_r\d+$/.test(key);
+}
+// gensen_r8 → 8（令和年）。取れなければ null
+export function gensenReiwaFromKey(key: string): number | null {
+  const m = /^gensen_r(\d+)$/.exec(key);
+  return m ? Number(m[1]) : null;
+}
 
 // YYYY-MM-DD → YYYY/MM/DD（未入力は全角スペースで空欄を表す）
 export function formatDateSlash(dateStr: string | null): string {
