@@ -307,14 +307,16 @@ export function OnboardingClient({
                       placeholder="例: 有限会社 國崎青果"
                       className={`${INPUT} min-w-0 flex-1`}
                     />
-                    <select
-                      value={honorific}
-                      onChange={(e) => setHonorific(e.target.value as "御中" | "様")}
-                      className={`${INPUT} w-24! shrink-0`}
-                    >
-                      <option value="御中">御中</option>
-                      <option value="様">様</option>
-                    </select>
+                    <div className="w-24 shrink-0">
+                      <select
+                        value={honorific}
+                        onChange={(e) => setHonorific(e.target.value as "御中" | "様")}
+                        className={INPUT}
+                      >
+                        <option value="御中">御中</option>
+                        <option value="様">様</option>
+                      </select>
+                    </div>
                   </div>
                 </label>
                 <label className="flex flex-col gap-1">
