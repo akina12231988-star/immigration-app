@@ -2,7 +2,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
-import { LINKABLE_DOC_KINDS, onboardingDownloadName } from "@/lib/onboarding";
+import { LINKABLE_DOC_KINDS, onboardingDownloadName, onboardingPdfName } from "@/lib/onboarding";
 import type { OnboardingDocumentRow } from "@/types/db";
 
 // 入社書類ファイルは非公開バケット app-files（onboarding-docs/）に保存し、署名付きURLで扱う
@@ -193,29 +193,61 @@ export async function linkWorkerDocToOnboarding(
 // ダウンロード用の署名付きURL。ファイル名は「外国人の氏名＋添付データ名」になる
 export async function getOnboardingDocDownloadUrl(
   docId: string,
-): Promise<{ ok: true; url: string; fileName: string } | Err> {
+): Promise<
+  | { ok: true; url: string; fileName: string; pdfName: string; mimeType: string }
+  | Err
+> {
   const me = await getMyProfile();
   const admin = createAdminClient();
   if (!me || !admin) return { ok: false, message: "権限がありません" };
 
   const { data, error } = await admin
     .from("onboarding_documents")
-    .select("storage_path, file_name, label, workers(name)")
+    .select("storage_path, file_name, mime_type, label, workers(name)")
     .eq("id", docId)
     .maybeSingle();
   if (error || !data) return { ok: false, message: "書類が見つかりません" };
 
-  const row = data as unknown as Pick<OnboardingDocumentRow, "storage_path" | "file_name" | "label"> & {
+  const row = data as unknown as Pick<
+    OnboardingDocumentRow,
+    "storage_path" | "file_name" | "mime_type" | "label"
+  > & {
     workers: { name: string } | null;
   };
   if (!row.storage_path) return { ok: false, message: "ファイルが未登録です" };
 
-  const downloadName = onboardingDownloadName(row.workers?.name ?? "", row.label, row.file_name);
+  const workerName = row.workers?.name ?? "";
+  const downloadName = onboardingDownloadName(workerName, row.label, row.file_name);
+  const pdfName = onboardingPdfName(workerName, row.label);
+  // 古い記録などで mime_type が空のときは拡張子から推定する
+  const mimeType = row.mime_type || mimeFromFileName(row.file_name);
+  // fetchでバイト列を取得してクライアント側でPDF化するため、download指定なしの署名付きURLを返す
   const { data: signed, error: signErr } = await admin.storage
     .from(BUCKET)
-    .createSignedUrl(row.storage_path, TTL, { download: downloadName });
+    .createSignedUrl(row.storage_path, TTL);
   if (signErr || !signed) return { ok: false, message: `URL発行に失敗: ${signErr?.message}` };
-  return { ok: true, url: signed.signedUrl, fileName: downloadName };
+  return {
+    ok: true,
+    url: signed.signedUrl,
+    fileName: downloadName,
+    pdfName,
+    mimeType,
+  };
+}
+
+// 拡張子からMIMEタイプを推定する（mime_type が未保存の記録向け）
+function mimeFromFileName(fileName: string): string {
+  const ext = fileName.includes(".") ? (fileName.split(".").pop() ?? "").toLowerCase() : "";
+  const map: Record<string, string> = {
+    pdf: "application/pdf",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    png: "image/png",
+    webp: "image/webp",
+    heic: "image/heic",
+    heif: "image/heif",
+  };
+  return map[ext] ?? "";
 }
 
 // プレビュー用の署名付きURL（ブラウザ内で開く）

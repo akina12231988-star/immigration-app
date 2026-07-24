@@ -23,6 +23,7 @@ import {
   linkWorkerDocToOnboarding,
 } from "@/app/(app)/onboarding/actions";
 import { uploadOnboardingDoc } from "@/lib/onboarding-files";
+import { downloadBlob, toPdfBlob } from "@/lib/onboarding-pdf";
 import { isPrepDocKey } from "@/lib/application-prep";
 import {
   DOC_REFERENCE_LINKS,
@@ -41,7 +42,7 @@ import type { OnboardingDocumentRow, OnboardingRecordRow } from "@/types/db";
 
 // 入社書類メールで使うデータの管理。書類ごとに保存・差し替え・削除ができ、
 // 在留カード・指定書は登録済みのものから紐付け（複製）できる。
-// チェックで選んだファイルは「外国人の氏名＋添付データ名」の名前でダウンロードできる。
+// チェックで選んだファイルは画像もPDFに変換し「外国人の氏名＋添付データ名.pdf」でダウンロードできる。
 export function OnboardingDocuments({
   workerId,
   canEdit = false,
@@ -112,12 +113,10 @@ export function OnboardingDocuments({
       for (const doc of files.filter((f) => selected.has(f.id))) {
         const res = await getOnboardingDocDownloadUrl(doc.id);
         if (!res.ok) throw new Error(`${doc.label}: ${res.message}`);
-        const a = document.createElement("a");
-        a.href = res.url;
-        a.download = res.fileName;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
+        // バイト列を取得し、画像も含めてPDF化してから「氏名_書類名.pdf」で保存する
+        const bytes = await fetch(res.url).then((r) => r.arrayBuffer());
+        const { blob, converted } = await toPdfBlob(bytes, res.mimeType);
+        downloadBlob(blob, converted ? res.pdfName : res.fileName);
         // 連続ダウンロードがブラウザにブロックされないよう少し間隔をあける
         await new Promise((r) => setTimeout(r, 400));
       }
@@ -358,7 +357,7 @@ export function OnboardingDocuments({
                 選択したデータをダウンロード（{selected.size}件）
               </button>
               <p className="text-[11px] text-muted">
-                ファイル名は「外国人の氏名＋添付データ名」で保存されます。
+                画像もPDFに変換し、ファイル名は「外国人の氏名＋添付データ名.pdf」で保存されます。
               </p>
             </>
           )}
