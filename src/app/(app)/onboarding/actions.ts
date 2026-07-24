@@ -190,7 +190,7 @@ export async function linkWorkerDocToOnboarding(
   return { ok: true };
 }
 
-// ダウンロード用の署名付きURL。ファイル名は「外国人の氏名＋添付データ名」になる
+// ダウンロード用の署名付きURL。ファイル名は「番号＋添付データ名＋外国人の氏名」になる
 export async function getOnboardingDocDownloadUrl(
   docId: string,
 ): Promise<
@@ -203,22 +203,22 @@ export async function getOnboardingDocDownloadUrl(
 
   const { data, error } = await admin
     .from("onboarding_documents")
-    .select("storage_path, file_name, mime_type, label, workers(name)")
+    .select("storage_path, file_name, mime_type, label, sort_no, workers(name)")
     .eq("id", docId)
     .maybeSingle();
   if (error || !data) return { ok: false, message: "書類が見つかりません" };
 
   const row = data as unknown as Pick<
     OnboardingDocumentRow,
-    "storage_path" | "file_name" | "mime_type" | "label"
+    "storage_path" | "file_name" | "mime_type" | "label" | "sort_no"
   > & {
     workers: { name: string } | null;
   };
   if (!row.storage_path) return { ok: false, message: "ファイルが未登録です" };
 
   const workerName = row.workers?.name ?? "";
-  const downloadName = onboardingDownloadName(workerName, row.label, row.file_name);
-  const pdfName = onboardingPdfName(workerName, row.label);
+  const downloadName = onboardingDownloadName(row.sort_no, row.label, workerName, row.file_name);
+  const pdfName = onboardingPdfName(row.sort_no, row.label, workerName);
   // 古い記録などで mime_type が空のときは拡張子から推定する
   const mimeType = row.mime_type || mimeFromFileName(row.file_name);
   // fetchでバイト列を取得してクライアント側でPDF化するため、download指定なしの署名付きURLを返す

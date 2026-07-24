@@ -42,7 +42,7 @@ import type { OnboardingDocumentRow, OnboardingRecordRow } from "@/types/db";
 
 // 入社書類メールで使うデータの管理。書類ごとに保存・差し替え・削除ができ、
 // 在留カード・指定書は登録済みのものから紐付け（複製）できる。
-// チェックで選んだファイルは画像もPDFに変換し「外国人の氏名＋添付データ名.pdf」でダウンロードできる。
+// チェックで選んだファイルは画像もPDFに変換し「番号＋添付データ名＋外国人の氏名.pdf」でダウンロードできる。
 export function OnboardingDocuments({
   workerId,
   canEdit = false,
@@ -357,7 +357,7 @@ export function OnboardingDocuments({
                 選択したデータをダウンロード（{selected.size}件）
               </button>
               <p className="text-[11px] text-muted">
-                画像もPDFに変換し、ファイル名は「外国人の氏名＋添付データ名.pdf」で保存されます。
+                画像もPDFに変換し、ファイル名は「番号＋添付データ名＋外国人の氏名.pdf」で保存されます。
               </p>
             </>
           )}

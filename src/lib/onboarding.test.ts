@@ -77,28 +77,30 @@ describe("buildOnboardingMail", () => {
 });
 
 describe("onboardingDownloadName", () => {
-  it("氏名_書類名＋元の拡張子", () => {
-    expect(onboardingDownloadName("CHHOURN SOMONNY", "在留カード", "scan.pdf")).toBe(
-      "CHHOURN_SOMONNY_在留カード.pdf",
+  it("番号_書類名_氏名＋元の拡張子（番号は2桁ゼロ埋め）", () => {
+    expect(onboardingDownloadName(1, "在留カード", "CHHOURN SOMONNY", "scan.pdf")).toBe(
+      "01_在留カード_CHHOURN_SOMONNY.pdf",
     );
   });
   it("括弧の補足と使えない文字を除く", () => {
     expect(
-      onboardingDownloadName("NGUYEN VAN A", "申請書類一式（雇用契約書・雇用条件書含む）", "a.JPG"),
-    ).toBe("NGUYEN_VAN_A_申請書類一式.jpg");
+      onboardingDownloadName(3, "申請書類一式（雇用契約書・雇用条件書含む）", "NGUYEN VAN A", "a.JPG"),
+    ).toBe("03_申請書類一式_NGUYEN_VAN_A.jpg");
   });
   it("拡張子が不明なら付けない", () => {
-    expect(onboardingDownloadName("A", "指定書", "noext")).toBe("A_指定書");
+    expect(onboardingDownloadName(2, "指定書", "A", "noext")).toBe("02_指定書_A");
   });
 });
 
 describe("onboardingPdfName", () => {
-  it("元の拡張子に関わらず .pdf を付ける", () => {
-    expect(onboardingPdfName("CHHOURN SOMONNY", "在留カード")).toBe("CHHOURN_SOMONNY_在留カード.pdf");
+  it("番号_書類名_氏名.pdf（元の拡張子に関わらず）", () => {
+    expect(onboardingPdfName(1, "在留カード", "CHHOURN SOMONNY")).toBe(
+      "01_在留カード_CHHOURN_SOMONNY.pdf",
+    );
   });
-  it("括弧の補足と使えない文字を除く", () => {
-    expect(onboardingPdfName("NGUYEN VAN A", "申請書類一式（雇用契約書・雇用条件書含む）")).toBe(
-      "NGUYEN_VAN_A_申請書類一式.pdf",
+  it("2桁の番号もそのまま2桁で付く", () => {
+    expect(onboardingPdfName(11, "フリガナがわかる書類（前職の社保など）", "NGUYEN VAN A")).toBe(
+      "11_フリガナがわかる書類_NGUYEN_VAN_A.pdf",
     );
   });
 });
