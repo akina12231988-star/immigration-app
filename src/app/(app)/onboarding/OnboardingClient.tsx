@@ -305,12 +305,12 @@ export function OnboardingClient({
                       value={orgName}
                       onChange={(e) => setOrgName(e.target.value)}
                       placeholder="例: 有限会社 國崎青果"
-                      className={INPUT}
+                      className={`${INPUT} min-w-0 flex-1`}
                     />
                     <select
                       value={honorific}
                       onChange={(e) => setHonorific(e.target.value as "御中" | "様")}
-                      className={`${INPUT} w-24 shrink-0`}
+                      className={`${INPUT} w-24! shrink-0`}
                     >
                       <option value="御中">御中</option>
                       <option value="様">様</option>
