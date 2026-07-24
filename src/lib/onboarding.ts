@@ -153,27 +153,31 @@ export function buildOnboardingMail(input: OnboardingMailInput): string {
   return body;
 }
 
-// ダウンロード名の共通部分: 「外国人の氏名＋添付データ名」（拡張子なし）。
+// ダウンロード名の共通部分: 「番号＋添付データ名＋外国人の氏名」（拡張子なし）。
+// 番号はファイル一覧が書類順に並ぶよう2桁ゼロ埋め（例: 01）。
 // 括弧内の補足とファイル名に使えない文字を除いて短くする。
-export function onboardingDownloadBaseName(workerName: string, label: string): string {
+export function onboardingDownloadBaseName(num: number, label: string, workerName: string): string {
   const cleanLabel = label.replace(/[（(].*?[）)]/g, "").trim();
-  return `${workerName.trim()}_${cleanLabel}`.replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, "_");
+  const no = Number.isFinite(num) && num > 0 ? String(Math.trunc(num)).padStart(2, "0") : "";
+  const parts = [no, cleanLabel, workerName.trim()].filter((p) => p !== "");
+  return parts.join("_").replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, "_");
 }
 
-// ダウンロード時のファイル名: 「外国人の氏名＋添付データ名」＋元ファイルの拡張子
+// ダウンロード時のファイル名: 「番号＋添付データ名＋外国人の氏名」＋元ファイルの拡張子
 export function onboardingDownloadName(
-  workerName: string,
+  num: number,
   label: string,
+  workerName: string,
   fileName: string,
 ): string {
   const rawExt = fileName.includes(".") ? (fileName.split(".").pop() ?? "") : "";
   const ext = /^[a-zA-Z0-9]{1,8}$/.test(rawExt) ? `.${rawExt.toLowerCase()}` : "";
-  return `${onboardingDownloadBaseName(workerName, label)}${ext}`;
+  return `${onboardingDownloadBaseName(num, label, workerName)}${ext}`;
 }
 
-// PDF化してダウンロードするときのファイル名: 「外国人の氏名＋添付データ名.pdf」
-export function onboardingPdfName(workerName: string, label: string): string {
-  return `${onboardingDownloadBaseName(workerName, label)}.pdf`;
+// PDF化してダウンロードするときのファイル名: 「番号＋添付データ名＋外国人の氏名.pdf」
+export function onboardingPdfName(num: number, label: string, workerName: string): string {
+  return `${onboardingDownloadBaseName(num, label, workerName)}.pdf`;
 }
 
 // 後送アラート対象: 後送のまま本人からまだ届いていない書類

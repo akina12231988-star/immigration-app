@@ -410,7 +410,7 @@ export function OnboardingClient({
                     「添付資料」をPDFでダウンロード（{attachableDocs.length}件）
                   </button>
                   <p className="mt-1.5 text-[11px] text-muted">
-                    画像もPDFに変換し、ファイル名は「外国人の氏名＋添付データ名.pdf」で保存されます。
+                    画像もPDFに変換し、ファイル名は「番号＋添付データ名＋外国人の氏名.pdf」で保存されます。
                     メール作成時にこのPDFを添付してください。
                   </p>
                 </>
