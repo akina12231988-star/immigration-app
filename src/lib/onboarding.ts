@@ -153,6 +153,13 @@ export function buildOnboardingMail(input: OnboardingMailInput): string {
   return body;
 }
 
+// ダウンロード名の共通部分: 「外国人の氏名＋添付データ名」（拡張子なし）。
+// 括弧内の補足とファイル名に使えない文字を除いて短くする。
+export function onboardingDownloadBaseName(workerName: string, label: string): string {
+  const cleanLabel = label.replace(/[（(].*?[）)]/g, "").trim();
+  return `${workerName.trim()}_${cleanLabel}`.replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, "_");
+}
+
 // ダウンロード時のファイル名: 「外国人の氏名＋添付データ名」＋元ファイルの拡張子
 export function onboardingDownloadName(
   workerName: string,
@@ -161,10 +168,12 @@ export function onboardingDownloadName(
 ): string {
   const rawExt = fileName.includes(".") ? (fileName.split(".").pop() ?? "") : "";
   const ext = /^[a-zA-Z0-9]{1,8}$/.test(rawExt) ? `.${rawExt.toLowerCase()}` : "";
-  // ファイル名に使えない文字と括弧内の補足を除いて短くする
-  const cleanLabel = label.replace(/[（(].*?[）)]/g, "").trim();
-  const base = `${workerName.trim()}_${cleanLabel}`.replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, "_");
-  return `${base}${ext}`;
+  return `${onboardingDownloadBaseName(workerName, label)}${ext}`;
+}
+
+// PDF化してダウンロードするときのファイル名: 「外国人の氏名＋添付データ名.pdf」
+export function onboardingPdfName(workerName: string, label: string): string {
+  return `${onboardingDownloadBaseName(workerName, label)}.pdf`;
 }
 
 // 後送アラート対象: 後送のまま本人からまだ届いていない書類

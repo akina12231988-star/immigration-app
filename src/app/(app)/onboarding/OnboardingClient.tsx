@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   Copy,
+  Download,
   ExternalLink,
   Loader2,
   Mail,
@@ -33,7 +34,9 @@ import {
   createOnboardingDocTicket,
   registerOnboardingDocFile,
   getOnboardingDocPreviewUrl,
+  getOnboardingDocDownloadUrl,
 } from "./actions";
+import { downloadBlob, toPdfBlob } from "@/lib/onboarding-pdf";
 import type { WorkerForOnboarding } from "@/lib/supabase/queries/workers";
 import type { OnboardingDocStatus, OnboardingDocumentRow } from "@/types/db";
 
@@ -118,6 +121,7 @@ export function OnboardingClient({
   const [error, setError] = useState<string | null>(null);
   const [mail, setMail] = useState("");
   const [copied, setCopied] = useState(false);
+  const [downloadingAttachments, setDownloadingAttachments] = useState(false);
   const [showToast, toastNode] = useToast();
 
   const loadWorker = useCallback(
@@ -219,6 +223,35 @@ export function OnboardingClient({
     }
   };
 
+  // 「添付資料」に選んだ書類のうちファイルがあるもの
+  const attachableDocs = defs.filter(
+    (def) => docs[def.key]?.status === "添付" && docs[def.key]?.row?.storage_path,
+  );
+
+  // 添付資料を画像もPDF化して「氏名_書類名.pdf」でダウンロードする
+  const downloadAttachments = async () => {
+    if (attachableDocs.length === 0) return;
+    setDownloadingAttachments(true);
+    setError(null);
+    try {
+      for (const def of attachableDocs) {
+        const row = docs[def.key]?.row;
+        if (!row) continue;
+        const res = await getOnboardingDocDownloadUrl(row.id);
+        if (!res.ok) throw new Error(`${def.label}: ${res.message}`);
+        const bytes = await fetch(res.url).then((r) => r.arrayBuffer());
+        const { blob, converted } = await toPdfBlob(bytes, res.mimeType);
+        downloadBlob(blob, converted ? res.pdfName : res.fileName);
+        // 連続ダウンロードがブラウザにブロックされないよう少し間隔をあける
+        await new Promise((r) => setTimeout(r, 400));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "ダウンロードに失敗しました");
+    } finally {
+      setDownloadingAttachments(false);
+    }
+  };
+
   const save = async () => {
     if (!worker) return;
     setSaving(true);
@@ -307,14 +340,16 @@ export function OnboardingClient({
                       placeholder="例: 有限会社 國崎青果"
                       className={`${INPUT} min-w-0 flex-1`}
                     />
-                    <select
-                      value={honorific}
-                      onChange={(e) => setHonorific(e.target.value as "御中" | "様")}
-                      className={`${INPUT} w-24! shrink-0`}
-                    >
-                      <option value="御中">御中</option>
-                      <option value="様">様</option>
-                    </select>
+                    <div className="w-24 shrink-0">
+                      <select
+                        value={honorific}
+                        onChange={(e) => setHonorific(e.target.value as "御中" | "様")}
+                        className={INPUT}
+                      >
+                        <option value="御中">御中</option>
+                        <option value="様">様</option>
+                      </select>
+                    </div>
                   </div>
                 </label>
                 <label className="flex flex-col gap-1">
@@ -359,6 +394,27 @@ export function OnboardingClient({
                   />
                 ))}
               </div>
+              {attachableDocs.length > 0 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={downloadAttachments}
+                    disabled={downloadingAttachments}
+                    className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-brand-foreground disabled:opacity-40"
+                  >
+                    {downloadingAttachments ? (
+                      <Loader2 size={15} className="animate-spin" />
+                    ) : (
+                      <Download size={15} />
+                    )}
+                    「添付資料」をPDFでダウンロード（{attachableDocs.length}件）
+                  </button>
+                  <p className="mt-1.5 text-[11px] text-muted">
+                    画像もPDFに変換し、ファイル名は「外国人の氏名＋添付データ名.pdf」で保存されます。
+                    メール作成時にこのPDFを添付してください。
+                  </p>
+                </>
+              )}
             </Card>
 
             <Card className="p-4">

@@ -6,6 +6,7 @@ import {
   isPendingDocOverdue,
   onboardingDocDefs,
   onboardingDownloadName,
+  onboardingPdfName,
   reiwaYear,
 } from "./onboarding";
 
@@ -88,6 +89,17 @@ describe("onboardingDownloadName", () => {
   });
   it("拡張子が不明なら付けない", () => {
     expect(onboardingDownloadName("A", "指定書", "noext")).toBe("A_指定書");
+  });
+});
+
+describe("onboardingPdfName", () => {
+  it("元の拡張子に関わらず .pdf を付ける", () => {
+    expect(onboardingPdfName("CHHOURN SOMONNY", "在留カード")).toBe("CHHOURN_SOMONNY_在留カード.pdf");
+  });
+  it("括弧の補足と使えない文字を除く", () => {
+    expect(onboardingPdfName("NGUYEN VAN A", "申請書類一式（雇用契約書・雇用条件書含む）")).toBe(
+      "NGUYEN_VAN_A_申請書類一式.pdf",
+    );
   });
 });
 
