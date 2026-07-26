@@ -260,6 +260,10 @@ function OrganizationFormModal({
             onChange={(e) => set("address", e.target.value)}
             className={INPUT_CLASS}
           />
+          <span className="text-[11px] leading-relaxed text-muted">
+            法人で支店などがある場合は本店の所在地を記載してください。
+            個人事業主の場合は事業主の免許証の住所を記載してください。
+          </span>
         </label>
         <label className="flex flex-col gap-1">
           <span className="text-xs font-bold text-muted">連絡先</span>
@@ -269,6 +273,9 @@ function OrganizationFormModal({
             placeholder="担当者名・電話番号など"
             className={INPUT_CLASS}
           />
+          <span className="text-[11px] leading-relaxed text-muted">
+            入管から連絡が来ても対応できる連絡先を記載してください。
+          </span>
         </label>
         <label className="flex flex-col gap-1">
           <span className="text-xs font-bold text-muted">法人番号（13桁・法人でない場合は空欄）</span>
