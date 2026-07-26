@@ -2,19 +2,23 @@ import type { ResignationKind } from "@/types/db";
 
 // 特定技能所属機関の随時届出（法務省: nyuukokukanri10_00002.html）で
 // 退職時に作成する参考様式。会社都合は3点セット、自己都合は3-1-2号のみ。
+// あわせて外国人本人が提出する「契約機関に関する届出（契約の終了）」（参考様式1の4）も
+// どちらの退職区分でも一緒に作成する。
 export const FORM_312 = "参考様式第3-1-2号";
 export const FORM_34 = "参考様式第3-4号";
 export const FORM_511 = "参考様式第5-11号";
+export const FORM_14 = "参考様式1の4";
 
 export const FORM_TITLES: Record<string, string> = {
   [FORM_312]: "特定技能雇用契約に係る届出書（契約を終了した又は新たに締結した場合）",
   [FORM_34]: "受入れ困難に係る届出書",
   [FORM_511]: "受入れ困難となるに至った経緯に係る説明書",
+  [FORM_14]: "契約機関に関する届出（契約の終了）",
 };
 
 // 退職区分から作成する様式の一覧を返す
 export function formsForKind(kind: ResignationKind): string[] {
-  return kind === "会社都合" ? [FORM_312, FORM_34, FORM_511] : [FORM_312];
+  return kind === "会社都合" ? [FORM_312, FORM_34, FORM_511, FORM_14] : [FORM_312, FORM_14];
 }
 
 // 委託契約をしていた登録支援機関の情報（毎回同じ内容を転記する）。

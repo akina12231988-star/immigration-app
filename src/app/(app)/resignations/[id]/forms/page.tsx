@@ -31,10 +31,12 @@ export default async function ResignationFormsPage({
         orgName: resignation.org_name,
         orgAddress: resignation.org_address,
         orgContact: resignation.org_contact,
+        organizationId: resignation.organization_id,
         orgCorporateNo: resignation.organizations?.corporate_no ?? "",
         businessCategory: resignation.organizations?.business_category ?? "",
       }}
       worker={{
+        id: w.id,
         name: w.name,
         kana: w.kana,
         gender: w.gender,
@@ -44,6 +46,7 @@ export default async function ResignationFormsPage({
         residenceCardNo: w.residence_card_no,
         field: w.field,
       }}
+      canEdit={me.role !== "viewer"}
     />
   );
 }

@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { NextResponse, type NextRequest } from "next/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
-import { fill312, fill34, fill511, type FormFillData } from "@/lib/resignation-forms";
+import { fill14, fill312, fill34, fill511, type FormFillData } from "@/lib/resignation-forms";
 
 // 参考様式の生成はサーバー側で行う（ブラウザ側でのExcel生成は本番ビルドで
 // 正しく動作しないことがあるため。Node環境ではテストで動作を保証している）。
@@ -30,6 +30,13 @@ const FORMS = {
     mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ext: "docx",
     label: "参考様式第5-11号",
+  },
+  form14: {
+    template: "sanko-1-4.xlsx",
+    fill: fill14,
+    mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ext: "xlsx",
+    label: "契約機関に関する届出（契約の終了）",
   },
 } as const;
 
