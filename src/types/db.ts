@@ -334,8 +334,9 @@ export interface OnboardingDocumentRow {
   sort_no: number;
   status: OnboardingDocStatus;
   note: string;
-  due_on: string | null; // 後送: いつまでに送るか
-  received_on: string | null; // 後送: 本人が送ってきた日
+  due_on: string | null; // 後送・未入手: いつまでに送るか
+  received_on: string | null; // 後送・未入手: 本人が送ってきた日
+  pending_since: string | null; // 後送・未入手にした日（経過日数アラートの起点）
   storage_path: string;
   file_name: string;
   mime_type: string;

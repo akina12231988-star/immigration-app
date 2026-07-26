@@ -21,7 +21,12 @@ import { todayStr } from "@/lib/ssw/calc";
 import {
   buildOnboardingMail,
   DOC_REFERENCE_LINKS,
+  isPendingStatus,
   onboardingDocDefs,
+  onboardingDownloadName,
+  onboardingMailNumbers,
+  onboardingPdfName,
+  pendingDaysElapsed,
   type OnboardingDocDef,
 } from "@/lib/onboarding";
 import {
@@ -61,13 +66,14 @@ const STATUS_BORDER: Record<OnboardingDocStatus, string> = {
 interface DocState {
   status: OnboardingDocStatus;
   note: string;
-  dueOn: string; // 後送: いつまでに送るか
-  receivedOn: string; // 後送: 本人が送ってきた日
+  dueOn: string; // 後送・未入手: いつまでに送るか
+  receivedOn: string; // 後送・未入手: 本人が送ってきた日
   row: OnboardingDocumentRow | null; // 保存済み行（ファイル情報含む）
 }
 
+// ファイル未添付の書類は「添付資料」にできないため、初期値は「未入手」
 function emptyDocState(): DocState {
-  return { status: "添付", note: "", dueOn: "", receivedOn: "", row: null };
+  return { status: "未入手", note: "", dueOn: "", receivedOn: "", row: null };
 }
 
 function useToast() {
@@ -157,7 +163,8 @@ export function OnboardingClient({
           const row = rows.find((r) => r.doc_key === def.key) ?? null;
           next[def.key] = row
             ? {
-                status: row.status,
+                // ファイルが無いのに「添付」の行（旧データ）は「未入手」として扱う
+                status: row.status === "添付" && !row.storage_path ? "未入手" : row.status,
                 note: row.note,
                 dueOn: row.due_on ?? "",
                 receivedOn: row.received_on ?? "",
@@ -191,6 +198,12 @@ export function OnboardingClient({
   const setDoc = (key: string, patch: Partial<DocState>) =>
     setDocs((prev) => ({ ...prev, [key]: { ...(prev[key] ?? emptyDocState()), ...patch } }));
 
+  // メール本文・添付ファイル名で使う番号（添付資料→後送→未入手の順の通し番号）
+  const mailNums = useMemo(
+    () => onboardingMailNumbers(defs.map((def) => (docs[def.key] ?? emptyDocState()).status)),
+    [defs, docs],
+  );
+
   const generate = () => {
     if (!worker) return;
     setMail(
@@ -205,7 +218,7 @@ export function OnboardingClient({
         extraNote,
         docs: defs.map((def) => {
           const d = docs[def.key] ?? emptyDocState();
-          return { num: def.num, label: def.label, status: d.status, note: d.note };
+          return { label: def.label, status: d.status, note: d.note };
         }),
       }),
     );
@@ -228,20 +241,27 @@ export function OnboardingClient({
     (def) => docs[def.key]?.status === "添付" && docs[def.key]?.row?.storage_path,
   );
 
-  // 添付資料を画像もPDF化して「氏名_書類名.pdf」でダウンロードする
+  // 添付資料を画像もPDF化してダウンロードする。
+  // ファイル名の番号はメール本文と同じ振り直した通し番号（1始まり）を使う
   const downloadAttachments = async () => {
-    if (attachableDocs.length === 0) return;
+    if (attachableDocs.length === 0 || !worker) return;
     setDownloadingAttachments(true);
     setError(null);
     try {
       for (const def of attachableDocs) {
         const row = docs[def.key]?.row;
         if (!row) continue;
+        const num = mailNums[defs.findIndex((d) => d.key === def.key)] ?? def.num;
         const res = await getOnboardingDocDownloadUrl(row.id);
         if (!res.ok) throw new Error(`${def.label}: ${res.message}`);
         const bytes = await fetch(res.url).then((r) => r.arrayBuffer());
         const { blob, converted } = await toPdfBlob(bytes, res.mimeType);
-        downloadBlob(blob, converted ? res.pdfName : res.fileName);
+        downloadBlob(
+          blob,
+          converted
+            ? onboardingPdfName(num, def.label, worker.name)
+            : onboardingDownloadName(num, def.label, worker.name, row.file_name),
+        );
         // 連続ダウンロードがブラウザにブロックされないよう少し間隔をあける
         await new Promise((r) => setTimeout(r, 400));
       }
@@ -275,6 +295,7 @@ export function OnboardingClient({
         supabase,
         defs.map((def) => {
           const d = docs[def.key] ?? emptyDocState();
+          const pending = isPendingStatus(d.status);
           return {
             worker_id: worker.id,
             doc_key: def.key,
@@ -282,8 +303,10 @@ export function OnboardingClient({
             sort_no: def.num,
             status: d.status,
             note: d.note.trim(),
-            due_on: d.status === "後送" ? d.dueOn || null : null,
-            received_on: d.status === "後送" ? d.receivedOn || null : null,
+            due_on: pending ? d.dueOn || null : null,
+            received_on: pending ? d.receivedOn || null : null,
+            // 後送・未入手にした日。すでに後送・未入手だった場合は起点を引き継ぐ
+            pending_since: pending ? (d.row?.pending_since ?? today) : null,
           };
         }),
       );
@@ -296,7 +319,7 @@ export function OnboardingClient({
     }
   };
 
-  const pendingDocs = defs.filter((d) => docs[d.key]?.status === "後送");
+  const pendingDocs = defs.filter((d) => isPendingStatus(docs[d.key]?.status ?? "対象外"));
 
   return (
     <div className="space-y-4">
@@ -378,13 +401,16 @@ export function OnboardingClient({
             <Card className="p-4">
               <h2 className="mb-1 text-sm font-bold text-muted">書類ステータス</h2>
               <p className="mb-3 text-[11px] text-muted">
+                ファイルを添付すると自動で「添付資料」になります。未添付の書類は後送・未入手・対象外から選んでください。
+                番号はメール本文と同じ「添付資料→後送→未入手」の順の通し番号です。
                 アップロードしたファイルは外国人詳細ページにも保存され、そこから選んでダウンロードできます。
               </p>
               <div className="space-y-2">
-                {defs.map((def) => (
+                {defs.map((def, i) => (
                   <DocRow
                     key={def.key}
                     def={def}
+                    mailNum={mailNums[i]}
                     state={docs[def.key] ?? emptyDocState()}
                     workerId={worker.id}
                     canEdit={canEdit}
@@ -505,27 +531,41 @@ export function OnboardingClient({
               </label>
             </Card>
 
-            {/* 後送予定の期日・受領 */}
+            {/* 後送・未入手の期日・経過日数・受領 */}
             {pendingDocs.length > 0 && (
               <Card className="border-status-notice-fg/40 p-4">
                 <h2 className="mb-1 flex items-center gap-1.5 text-sm font-bold text-status-notice-fg">
                   <TriangleAlert size={15} />
-                  後送予定書類の期日
+                  後送・未入手書類の期日
                 </h2>
                 <p className="mb-3 text-[11px] leading-relaxed text-muted">
-                  期日を設定して保存すると、本人から届くまでホームにアラートが表示されます。
+                  保存すると、本人から届くまでホームに「何日経過」のアラートが表示されます。
                   届いたら「本人から受領」にチェックしてください。
                 </p>
                 <div className="space-y-2">
                   {pendingDocs.map((def) => {
                     const d = docs[def.key] ?? emptyDocState();
+                    const elapsed = pendingDaysElapsed(d.row?.pending_since ?? null, today);
+                    const overdue = !!d.dueOn && today > d.dueOn;
                     return (
                       <div
                         key={def.key}
                         className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-border bg-background px-3 py-2.5"
                       >
                         <span className="min-w-0 flex-1 text-sm font-bold">
-                          {def.num}. {def.label}
+                          {mailNums[defs.findIndex((x) => x.key === def.key)] ?? "—"}. {def.label}
+                          <span className="ml-1.5 text-[11px] font-bold text-status-notice-fg">
+                            （{d.status}）
+                          </span>
+                          {elapsed !== null && !d.receivedOn && (
+                            <span
+                              className={`ml-1.5 text-[11px] font-bold tabular-nums ${
+                                overdue ? "text-seal" : "text-status-notice-fg"
+                              }`}
+                            >
+                              {elapsed}日経過
+                            </span>
+                          )}
                         </span>
                         <label className="flex items-center gap-1.5 text-xs text-muted">
                           期日
@@ -561,9 +601,12 @@ export function OnboardingClient({
   );
 }
 
-// 書類1行: ステータス・備考・ファイルアップロード
+// 書類1行: ステータス・備考・ファイルアップロード。
+// 番号はメール本文と同じ振り直した通し番号（対象外は番号なし）。
+// 「添付資料」はファイルが添付されている書類だけ選べる（添付すると自動でこのステータスになる）。
 function DocRow({
   def,
+  mailNum,
   state,
   workerId,
   canEdit,
@@ -572,6 +615,7 @@ function DocRow({
   onError,
 }: {
   def: OnboardingDocDef;
+  mailNum: number | null;
   state: DocState;
   workerId: string;
   canEdit: boolean;
@@ -623,7 +667,9 @@ function DocRow({
     <div className={`rounded-xl border border-border bg-background p-2.5 ${STATUS_BORDER[state.status]}`}>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
         <span className="min-w-0 flex-1 text-sm">
-          <span className="mr-1 text-[11px] font-bold text-muted">{def.num}.</span>
+          <span className="mr-1 text-[11px] font-bold text-muted">
+            {mailNum !== null ? `${mailNum}.` : "—"}
+          </span>
           {def.label}
           {DOC_REFERENCE_LINKS[def.key] && (
             <a
@@ -644,8 +690,9 @@ function DocRow({
           className="min-h-[36px] rounded-lg border border-border bg-surface px-2 text-xs focus:border-brand focus:outline-none"
         >
           {STATUS_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
+            <option key={o.value} value={o.value} disabled={o.value === "添付" && !uploaded}>
               {o.label}
+              {o.value === "添付" && !uploaded ? "（要添付）" : ""}
             </option>
           ))}
         </select>

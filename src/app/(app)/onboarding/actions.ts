@@ -42,7 +42,8 @@ export async function createOnboardingDocTicket(
 }
 
 // アップロード完了後にファイル情報を書類行へ記録する
-// （既存行の status・note などは保持し、行が無ければ新規作成する）
+// （note などは保持し、行が無ければ新規作成する。ファイルが付いたので
+//   ステータスは自動で「添付」にし、後送・未入手の経過日数アラートを解除する）
 export async function registerOnboardingDocFile(
   workerId: string,
   docKey: string,
@@ -64,6 +65,8 @@ export async function registerOnboardingDocFile(
       doc_key: docKey,
       label,
       sort_no: sortNo,
+      status: "添付",
+      pending_since: null,
       storage_path: path,
       file_name: fileName,
       mime_type: mimeType,
@@ -76,7 +79,8 @@ export async function registerOnboardingDocFile(
 }
 
 // 添付ファイルの取り消し（間違って添付した場合の削除）。
-// ストレージの実体を消し、書類行のファイル列だけを空にする（ステータス・備考の行自体は残す）。
+// ストレージの実体を消し、書類行のファイル列を空にする（備考などの行自体は残す）。
+// ファイルが無くなったので「添付」は維持できず、ステータスは「未入手」に戻す。
 export async function clearOnboardingDocFile(
   workerId: string,
   docKey: string,
@@ -88,16 +92,26 @@ export async function clearOnboardingDocFile(
 
   const { data } = await admin
     .from("onboarding_documents")
-    .select("storage_path")
+    .select("storage_path, status")
     .eq("worker_id", workerId)
     .eq("doc_key", docKey)
     .maybeSingle();
-  const path = (data as { storage_path: string } | null)?.storage_path;
-  if (path) await admin.storage.from(BUCKET).remove([path]).catch(() => undefined);
+  const row = data as { storage_path: string; status: string } | null;
+  if (row?.storage_path) {
+    await admin.storage.from(BUCKET).remove([row.storage_path]).catch(() => undefined);
+  }
 
   const { error } = await admin
     .from("onboarding_documents")
-    .update({ storage_path: "", file_name: "", mime_type: "", uploaded_at: null })
+    .update({
+      storage_path: "",
+      file_name: "",
+      mime_type: "",
+      uploaded_at: null,
+      ...(row?.status === "添付"
+        ? { status: "未入手", pending_since: new Date().toISOString().slice(0, 10) }
+        : {}),
+    })
     .eq("worker_id", workerId)
     .eq("doc_key", docKey);
   if (error) return { ok: false, message: error.message };
@@ -106,6 +120,7 @@ export async function clearOnboardingDocFile(
 
 // 在留カード・指定書を、登録済み（worker_documents。無ければ申請登録時の画像）から
 // 複製して入社書類データに紐付ける。紐付け時点のファイルを複製するスナップショット方式。
+// ファイルが付くのでステータスは自動で「添付」になる。
 export async function linkWorkerDocToOnboarding(
   workerId: string,
   docKey: string,
@@ -179,6 +194,8 @@ export async function linkWorkerDocToOnboarding(
       doc_key: docKey,
       label,
       sort_no: sortNo,
+      status: "添付",
+      pending_since: null,
       storage_path: destPath,
       file_name: src.file_name || `${kind}.${ext}`,
       mime_type: src.mime_type || "application/octet-stream",

@@ -6,7 +6,9 @@ import {
   isPendingDocOverdue,
   onboardingDocDefs,
   onboardingDownloadName,
+  onboardingMailNumbers,
   onboardingPdfName,
+  pendingDaysElapsed,
   reiwaYear,
 } from "./onboarding";
 
@@ -34,6 +36,19 @@ describe("formatDateSlash", () => {
   });
 });
 
+describe("onboardingMailNumbers", () => {
+  it("添付資料→後送→未入手の順に通し番号を振り直す（対象外は番号なし）", () => {
+    // 元の並び: 1.在留カード(添付) 2.指定書(後送) 3.申請書類一式(添付) 4.マイナンバー(未入手) 5.履歴書(対象外)
+    expect(onboardingMailNumbers(["添付", "後送", "添付", "未入手", "対象外"])).toEqual([
+      1, // 在留カード → 添付資料の1番
+      3, // 指定書 → 後送は添付資料の続き
+      2, // 申請書類一式 → 添付資料の2番（番号が詰まる）
+      4, // マイナンバー → 未入手は後送の続き
+      null, // 対象外は番号なし
+    ]);
+  });
+});
+
 describe("buildOnboardingMail", () => {
   const base = {
     workerName: "CHHOURN SOMONNY",
@@ -45,10 +60,10 @@ describe("buildOnboardingMail", () => {
     sender: "野口",
     extraNote: "",
     docs: [
-      { num: 1, label: "在留カード", status: "添付" as const, note: "" },
-      { num: 2, label: "指定書", status: "後送" as const, note: "来週発送" },
-      { num: 3, label: "マイナンバー", status: "未入手" as const, note: "" },
-      { num: 4, label: "履歴書", status: "対象外" as const, note: "" },
+      { label: "在留カード", status: "添付" as const, note: "" },
+      { label: "指定書", status: "後送" as const, note: "来週発送" },
+      { label: "マイナンバー", status: "未入手" as const, note: "" },
+      { label: "履歴書", status: "対象外" as const, note: "" },
     ],
   };
 
@@ -63,6 +78,21 @@ describe("buildOnboardingMail", () => {
     expect(mail).toContain("【後送予定】\n2. 指定書→来週発送");
     expect(mail).toContain("【未入手】\n3. マイナンバー");
     expect(mail.endsWith("ご確認のほどよろしくお願いします。\n\n野口")).toBe(true);
+  });
+
+  it("後送があると添付資料の番号が詰まり、後送はその続きの番号になる", () => {
+    const mail = buildOnboardingMail({
+      ...base,
+      docs: [
+        { label: "在留カード", status: "添付" as const, note: "" },
+        { label: "指定書", status: "後送" as const, note: "" },
+        { label: "申請書類一式（雇用契約書・雇用条件書含む）", status: "添付" as const, note: "" },
+      ],
+    });
+    expect(mail).toContain(
+      "【添付資料】\n1. 在留カード\n2. 申請書類一式（雇用契約書・雇用条件書含む）",
+    );
+    expect(mail).toContain("【後送予定】\n3. 指定書");
   });
 
   it("対象外はどの区分にも載せない", () => {
@@ -105,15 +135,24 @@ describe("onboardingPdfName", () => {
   });
 });
 
-describe("後送アラート", () => {
-  it("後送かつ未受領のみ対象", () => {
+describe("未提出アラート", () => {
+  it("後送・未入手かつ未受領のみ対象", () => {
     expect(isPendingDocAlert({ status: "後送", received_on: null })).toBe(true);
+    expect(isPendingDocAlert({ status: "未入手", received_on: null })).toBe(true);
     expect(isPendingDocAlert({ status: "後送", received_on: "2026-07-01" })).toBe(false);
+    expect(isPendingDocAlert({ status: "未入手", received_on: "2026-07-01" })).toBe(false);
     expect(isPendingDocAlert({ status: "添付", received_on: null })).toBe(false);
+    expect(isPendingDocAlert({ status: "対象外", received_on: null })).toBe(false);
   });
   it("期日を過ぎたら超過（当日は超過でない・未設定は超過扱いしない）", () => {
     expect(isPendingDocOverdue("2026-07-21", "2026-07-22")).toBe(true);
     expect(isPendingDocOverdue("2026-07-22", "2026-07-22")).toBe(false);
     expect(isPendingDocOverdue(null, "2026-07-22")).toBe(false);
+  });
+  it("後送・未入手にした日からの経過日数（当日は0日・日付なしは null）", () => {
+    expect(pendingDaysElapsed("2026-07-16", "2026-07-26")).toBe(10);
+    expect(pendingDaysElapsed("2026-07-26", "2026-07-26")).toBe(0);
+    expect(pendingDaysElapsed(null, "2026-07-26")).toBeNull();
+    expect(pendingDaysElapsed("invalid", "2026-07-26")).toBeNull();
   });
 });

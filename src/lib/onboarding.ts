@@ -102,10 +102,24 @@ export function formatDateSlash(dateStr: string | null): string {
 }
 
 export interface OnboardingMailDoc {
-  num: number;
   label: string;
   status: OnboardingDocStatus;
   note: string;
+}
+
+// メール本文の番号の振り直し: 添付資料→後送→未入手の順に通し番号を振る（対象外は番号なし）。
+// 例: 指定書（元2番）を後送にすると、添付資料が 1.在留カード 2.申請書類一式 … と詰まり、
+// 後送・未入手はその続きの番号になる。添付ファイル名の番号もこの番号に合わせる。
+export function onboardingMailNumbers(statuses: OnboardingDocStatus[]): (number | null)[] {
+  const order: OnboardingDocStatus[] = ["添付", "後送", "未入手"];
+  const nums: (number | null)[] = statuses.map(() => null);
+  let n = 0;
+  for (const status of order) {
+    statuses.forEach((s, i) => {
+      if (s === status) nums[i] = ++n;
+    });
+  }
+  return nums;
 }
 
 export interface OnboardingMailInput {
@@ -120,9 +134,11 @@ export interface OnboardingMailInput {
   docs: OnboardingMailDoc[];
 }
 
-// メール本文の組み立て（添付資料 / 後送予定 / 未入手 の3区分・対象外は載せない）
+// メール本文の組み立て（添付資料 / 後送予定 / 未入手 の3区分・対象外は載せない）。
+// 番号は元の書類番号ではなく、添付資料から順に振り直した通し番号を使う。
 export function buildOnboardingMail(input: OnboardingMailInput): string {
   const name = input.workerName.trim() || "（氏名未入力）";
+  const nums = onboardingMailNumbers(input.docs.map((d) => d.status));
   const sections: [string, OnboardingDocStatus][] = [
     ["【添付資料】", "添付"],
     ["【後送予定】", "後送"],
@@ -137,7 +153,9 @@ export function buildOnboardingMail(input: OnboardingMailInput): string {
   body += `居住地：${input.residence.trim() || "（未入力）"}\n\n`;
 
   for (const [heading, status] of sections) {
-    const items = input.docs.filter((d) => d.status === status);
+    const items = input.docs
+      .map((d, i) => ({ ...d, num: nums[i] }))
+      .filter((d) => d.status === status);
     if (items.length === 0) continue;
     body += `${heading}\n`;
     for (const item of items) {
@@ -180,15 +198,29 @@ export function onboardingPdfName(num: number, label: string, workerName: string
   return `${onboardingDownloadBaseName(num, label, workerName)}.pdf`;
 }
 
-// 後送アラート対象: 後送のまま本人からまだ届いていない書類
+// あとで送る扱いのステータス（後送・未入手）。経過日数アラートの対象になる
+export function isPendingStatus(status: OnboardingDocStatus): boolean {
+  return status === "後送" || status === "未入手";
+}
+
+// アラート対象: 後送・未入手のまま本人からまだ届いていない書類
 export function isPendingDocAlert(doc: {
   status: OnboardingDocStatus;
   received_on: string | null;
 }): boolean {
-  return doc.status === "後送" && !doc.received_on;
+  return isPendingStatus(doc.status) && !doc.received_on;
 }
 
 // 期日超過か（期日未設定は超過扱いにしない）
 export function isPendingDocOverdue(dueOn: string | null, today: string): boolean {
   return !!dueOn && today > dueOn;
+}
+
+// 後送・未入手にした日（pending_since）からの経過日数（当日は0日）。日付が無ければ null
+export function pendingDaysElapsed(since: string | null, today: string): number | null {
+  if (!since) return null;
+  const a = new Date(`${since}T00:00:00Z`).getTime();
+  const b = new Date(`${today}T00:00:00Z`).getTime();
+  if (Number.isNaN(a) || Number.isNaN(b)) return null;
+  return Math.max(0, Math.round((b - a) / 86_400_000));
 }
