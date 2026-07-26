@@ -103,6 +103,7 @@ export function WorkerForm({
         contact: "",
         corporate_no: "",
         note: "",
+        intake: {},
       });
       setOrgs((prev) =>
         [...prev, org].sort((a, b) => a.name.localeCompare(b.name, "ja")),

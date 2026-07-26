@@ -56,8 +56,71 @@ export interface Organization {
   contact: string;
   corporate_no: string; // 法人番号（13桁・法人でない場合は空）
   note: string;
+  intake: Partial<OrganizationIntake>; // 登録支援機関への申込書の内容（0043）。旧行は {}
   created_at: string;
   updated_at: string;
+}
+
+// ---- 登録支援機関への申込書（organizations.intake jsonb） ----
+
+// 決算情報の1年度分（昨年度・2年前・3年前の3行で持つ）
+export interface OrgFinancialYear {
+  year: string; // 令和何年度（例: 6）
+  sales: string; // 売上高
+  ordinary: string; // 経常損益
+  net: string; // 純損益
+  assets: string; // 純資産
+}
+
+// 一緒に働く日本人常勤職員（専従者）。定期報告の際に賃金台帳を提出する対象
+export interface OrgJapaneseStaff {
+  name: string; // 氏名
+  role: string; // 役職・職務内容・責任程度
+  profile: string; // 年齢・性別・経験年数
+  pay: string; // 報酬（月給/時給）
+}
+
+// 所属役員（法人の場合）
+export interface OrgOfficer {
+  kana: string; // ふりがな
+  name: string; // 氏名
+  title: string; // 役職
+  not_involved: boolean; // 特定技能外国人の受入れ業務の執行に直接関与しない
+}
+
+// 申込書の入力内容一式
+export interface OrganizationIntake {
+  kana: string; // 名称フリガナ
+  phone: string; // 電話番号
+  fax: string; // FAX
+  email: string; // Email
+  contact_method: string; // 資料のやりとり方法（FAX / グループLINE / email）
+  health_insurance: string; // 保険（国民健康保険 / 社会保険 / その他）
+  pension: string; // 年金（国民年金 / 厚生年金）
+  work_address: string; // 作業する住所（会社の住所と別の場合）
+  work_contact: string; // 作業する住所の TEL・FAX
+  rep_kana: string; // 代表者フリガナ
+  rep_name: string; // 代表者役職・氏名
+  capital: string; // 資本金（法人）
+  fiscal_month: string; // 決算月（法人）
+  staff_japanese: string; // 常勤職員数: 日本人
+  staff_trainee: string; // 常勤職員数: 技能実習生
+  staff_ssw1: string; // 常勤職員数: 特定技能1号
+  staff_ssw2: string; // 常勤職員数: 特定技能2号
+  staff_katsudo: string; // 常勤職員数: 特定活動
+  financials: OrgFinancialYear[]; // 直近3年分の決算情報
+  wage_parity_reason: string; // 報酬が日本人と同等以上であると考えられる理由
+  rosai_covered: string; // 労災保険の適用事業所か（'' / はい / いいえ）
+  rosai_no: string; // 労働保険番号
+  koyo_covered: string; // 雇用保険の適用事業所か（'' / はい / いいえ）
+  koyo_no: string; // 雇用保険適用事業所番号
+  lodging_address: string; // 特定技能外国人の宿泊住所
+  first_hired_on: string; // 国籍問わず労働者を雇用開始した日付（大体）
+  missing_ssw: string; // 過去1年間の行方不明者数（特定技能）
+  missing_trainee: string; // 過去1年間の行方不明者数（技能実習生）
+  council_note: string; // 協議会の加入・協力確認書の提出先/提出日
+  japanese_staff: OrgJapaneseStaff[]; // 一緒に働く日本人常勤職員
+  officers: OrgOfficer[]; // 所属役員（法人）
 }
 
 // 同居している在日親族の1人分（workers.relatives jsonb に配列で保存）
