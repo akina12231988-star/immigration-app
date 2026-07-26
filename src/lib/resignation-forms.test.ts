@@ -8,6 +8,7 @@ import {
   categoriesForField,
   defaultEndReason312,
   endReasonOptions312,
+  fill14,
   fill312,
   fill34,
   fill511,
@@ -46,7 +47,6 @@ const companyData: FormFillData = {
   contactStatus: "連絡可能",
   intention: "活動継続の意思なし（転職希望）",
   measure: "転職支援実施予定",
-  reportOn: "2026-08-01",
 };
 
 const selfData: FormFillData = {
@@ -138,10 +138,10 @@ describe("fill312", () => {
     expect(ws.getCell("I98").value).toBe("1");
     expect(ws.getCell("K98").value).toBe("2");
     expect(ws.getCell("AG98").value).toBe("3");
-    // 作成年月日
-    expect(ws.getCell("U116").value).toBe("2026");
-    expect(ws.getCell("AA116").value).toBe("8");
-    expect(ws.getCell("AE116").value).toBe("1");
+    // 作成年月日は署名日を手書きするため記載しない
+    expect(ws.getCell("U116").value ?? null).toBeNull();
+    expect(ws.getCell("AA116").value ?? null).toBeNull();
+    expect(ws.getCell("AE116").value ?? null).toBeNull();
   });
 
   it("自己都合: 外国人の都合＋10自己都合退職にチェックする", async () => {
@@ -216,11 +216,12 @@ describe("fill34", () => {
     expect(ws.getCell("K86").value).toBe("☑");
     expect(ws.getCell("I94").value).toBe("☑");
     expect(ws.getCell("I100").value).toBe("☑");
-    // ⑤ 届出機関（法人番号は1桁ずつ）・作成年月日
+    // ⑤ 届出機関（法人番号は1桁ずつ）
     expect(ws.getCell("I111").value).toBe("テスト株式会社");
     expect(ws.getCell("I108").value).toBe("1");
     expect(ws.getCell("AG108").value).toBe("3");
-    expect(ws.getCell("U127").value).toBe("2026");
+    // 作成年月日は署名日を手書きするため記載しない
+    expect(ws.getCell("U127").value ?? null).toBeNull();
   });
 
   it("経営上の都合を選ぶとK48にチェックされる", async () => {
@@ -228,6 +229,46 @@ describe("fill34", () => {
     const ws = await loadSheet(await fill34(template, { ...companyData, endReason: "02" }));
     expect(ws.getCell("K48").value).toBe("☑");
     expect(ws.getCell("K51").value).toBe("□");
+  });
+});
+
+describe("fill14", () => {
+  it("契約機関に関する届出（契約の終了）に本人・契約終了機関の情報を転記する", async () => {
+    const template = toArrayBuffer(await readFile(path.join(FORMS_DIR, "sanko-1-4.xlsx")));
+    const ws = await loadSheet(await fill14(template, companyData));
+
+    // ① 届出人（本人）
+    expect(ws.getCell("J9").value).toBe("TEST TARO");
+    expect(ws.getCell("AD9").value).toBe("男（ Male ）"); // プルダウンの値に合わせる
+    expect(ws.getCell("H12").value).toBe("1990");
+    expect(ws.getCell("N12").value).toBe("12");
+    expect(ws.getCell("R12").value).toBe("3");
+    expect(ws.getCell("AA12").value).toBe("ベトナム");
+    expect(ws.getCell("H15").value).toBe("〒　東京都新宿区1-2-3"); // 〒は欄の印字を引き継ぐ
+    expect(ws.getCell("H22").value).toBe("特定技能　（　Specified Skilled Worker　）");
+    // 在留カード番号は1文字ずつ12マス
+    expect(ws.getCell("H18").value).toBe("A");
+    expect(ws.getCell("J18").value).toBe("B");
+    expect(ws.getCell("AD18").value).toBe("D");
+    // ② 契約の終了
+    expect(ws.getCell("K30").value).toBe("2026");
+    expect(ws.getCell("Q30").value).toBe("7");
+    expect(ws.getCell("U30").value).toBe("31");
+    expect(ws.getCell("AD30").value).toBe("1234567890123");
+    expect(ws.getCell("L36").value).toBe("テスト株式会社");
+    expect(ws.getCell("M42").value).toBe("〒　熊本県八代市");
+    // ③署名・⑥届出年月日は本人が手書きするため空欄のまま
+    expect(ws.getCell("I64").value ?? null).toBeNull();
+    expect(ws.getCell("O64").value ?? null).toBeNull();
+  });
+
+  it("性別が不明ならプルダウンは空のまま・〒付き住所はそのまま使う", async () => {
+    const template = toArrayBuffer(await readFile(path.join(FORMS_DIR, "sanko-1-4.xlsx")));
+    const ws = await loadSheet(
+      await fill14(template, { ...companyData, gender: "", address: "〒861-0000 熊本県八代市1-2-3" }),
+    );
+    expect(ws.getCell("AD9").value ?? null).toBeNull();
+    expect(ws.getCell("H15").value).toBe("〒861-0000 熊本県八代市1-2-3");
   });
 });
 
@@ -239,7 +280,8 @@ describe("fill511", () => {
     const xml = await zip.file("word/document.xml")!.async("string");
     expect(xml).toContain("TEST TARO");
     expect(xml).toContain("テスト株式会社");
-    expect(xml).toContain("2026年");
+    // 作成年月日は署名日を手書きするため空欄
+    expect(xml).toContain("　　　　年　　　月　　　日");
     expect(xml).not.toContain("{{WORKER_NAME}}");
     expect(xml).not.toContain("{{ORG_NAME}}");
     expect(xml).not.toContain("{{DATE}}");

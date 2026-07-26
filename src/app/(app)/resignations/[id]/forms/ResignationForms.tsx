@@ -1,11 +1,15 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { BackButton } from "@/components/BackButton";
 import { Download, ExternalLink, FileSpreadsheet, FileText } from "lucide-react";
 import { Card } from "@/components/ui/Card";
-import { todayStr } from "@/lib/application-alerts";
+import { createClient } from "@/lib/supabase/client";
+import { updateWorker } from "@/lib/supabase/queries/workers";
+import { updateOrganization } from "@/lib/supabase/queries/organizations";
+import { updateResignation } from "@/lib/supabase/queries/resignations";
 import {
+  FORM_14,
   FORM_312,
   FORM_34,
   FORM_511,
@@ -43,11 +47,13 @@ interface FormsResignation {
   orgName: string;
   orgAddress: string;
   orgContact: string;
+  organizationId: string | null;
   orgCorporateNo: string;
   businessCategory: string;
 }
 
 interface FormsWorker {
+  id: string;
   name: string;
   kana: string;
   gender: string;
@@ -64,15 +70,18 @@ const INPUT =
 // 退職記録を公式の参考様式ファイル（Excel/Word）へ転記してダウンロードする画面。
 // 生成はサーバー側（/api/resignation-forms）で行う。
 // 会社都合: 3-1-2号・3-4号・5-11号 / 自己都合: 3-1-2号のみ。
+// 本人が提出する「契約機関に関する届出（契約の終了）」（1の4）はどちらの区分でも作成する。
+// 作成年月日は署名してもらった日を手書きするため、どの様式にも記載しない。
 export function ResignationForms({
   resignation,
   worker,
+  canEdit,
 }: {
   resignation: FormsResignation;
   worker: FormsWorker;
+  canEdit: boolean;
 }) {
   const isCompany = resignation.kind === "会社都合";
-  const [reportOn, setReportOn] = useState(todayStr());
   const [endReason, setEndReason] = useState<EndReason312Code>(defaultEndReason312(resignation.kind));
   const [reasonText, setReasonText] = useState(resignation.reason);
   const [caseSummary, setCaseSummary] = useState(resignation.reason);
@@ -134,7 +143,6 @@ export function ResignationForms({
       contactStatus,
       intention,
       measure,
-      reportOn,
     }),
     [
       resignation,
@@ -154,14 +162,53 @@ export function ResignationForms({
       contactStatus,
       intention,
       measure,
-      reportOn,
     ],
   );
 
-  const download = async (key: "form312" | "form34" | "form511") => {
+  // 画面で訂正・補完した内容を外国人情報・所属機関情報にも反映する（ダウンロード時に保存）。
+  // 空欄への上書きはしない（値を入力・変更したものだけ書き戻す）。
+  const lastSyncedRef = useRef<string>("");
+  const syncMasters = async () => {
+    if (!canEdit) return;
+    const supabase = createClient();
+
+    const workerPatch: { gender?: string; address?: string; field?: string } = {};
+    if (gender && gender !== genderMark(worker.gender)) workerPatch.gender = gender;
+    if (address.trim() && address.trim() !== worker.address) workerPatch.address = address.trim();
+    const composedField = field ? (category ? `${field}・${category}` : field) : "";
+    if (composedField && composedField !== worker.field) workerPatch.field = composedField;
+
+    const orgPatch: { corporate_no?: string; business_category?: string } = {};
+    const corpDigits = corporateNo.replace(/\D/g, "");
+    if (corpDigits && corpDigits !== resignation.orgCorporateNo) orgPatch.corporate_no = corpDigits;
+    if (category && category !== resignation.businessCategory) orgPatch.business_category = category;
+
+    const phone = orgPhone.trim();
+    const contactChanged = phone !== "" && phone !== resignation.orgContact;
+
+    const snapshot = JSON.stringify([workerPatch, orgPatch, contactChanged ? phone : ""]);
+    if (snapshot === lastSyncedRef.current) return;
+
+    if (Object.keys(workerPatch).length > 0) await updateWorker(supabase, worker.id, workerPatch);
+    if (resignation.organizationId && Object.keys(orgPatch).length > 0) {
+      await updateOrganization(supabase, resignation.organizationId, orgPatch);
+    }
+    if (contactChanged) {
+      await updateResignation(supabase, resignation.id, { org_contact: phone });
+    }
+    lastSyncedRef.current = snapshot;
+  };
+
+  const download = async (key: "form312" | "form34" | "form511" | "form14") => {
     setBusy(key);
     setError(null);
     try {
+      // 訂正した外国人情報・所属機関情報を先にマスタへ反映する（失敗しても作成は続ける）
+      await syncMasters().catch((err) => {
+        setError(
+          `外国人情報・所属機関情報への反映に失敗しました: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
       const res = await fetch("/api/resignation-forms", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -175,9 +222,15 @@ export function ResignationForms({
       // ファイル名は Content-Disposition の filename*（UTF-8）から取得
       const cd = res.headers.get("content-disposition") ?? "";
       const m = /filename\*=UTF-8''([^;]+)/.exec(cd);
-      const fileName = m
-        ? decodeURIComponent(m[1])
-        : `${key === "form511" ? "参考様式第5-11号" : key === "form34" ? "参考様式第3-4号" : "参考様式第3-1-2号"}_${worker.name}`;
+      const fallbackLabel =
+        key === "form511"
+          ? "参考様式第5-11号"
+          : key === "form34"
+            ? "参考様式第3-4号"
+            : key === "form14"
+              ? "契約機関に関する届出"
+              : "参考様式第3-1-2号";
+      const fileName = m ? decodeURIComponent(m[1]) : `${fallbackLabel}_${worker.name}`;
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -197,6 +250,7 @@ export function ResignationForms({
       await download("form34");
       await download("form511");
     }
+    await download("form14");
   };
 
   const reasonOptions = endReasonOptions312(resignation.kind);
@@ -304,23 +358,17 @@ export function ResignationForms({
           </label>
         </div>
         <p className="mt-2 text-[11px] text-muted">
-          性別・住居地はここで補完できます（外国人情報に間違いがある場合は外国人情報も修正してください）。
+          性別・住居地・分野はここで訂正・補完できます。訂正・入力した内容は、様式のダウンロード時に外国人情報にも反映されます。
         </p>
       </Card>
 
       {/* 届出内容の入力 */}
       <Card className="flex flex-col gap-3 p-4">
         <p className="text-sm font-bold">届出内容</p>
+        <p className="text-[11px] text-muted">
+          作成年月日・届出年月日は署名してもらった日を手書きするため、様式には記載されません。
+        </p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-bold text-muted">作成年月日（届出書に記載）</span>
-            <input
-              type="date"
-              value={reportOn}
-              onChange={(e) => setReportOn(e.target.value)}
-              className={INPUT}
-            />
-          </label>
           <label className="flex flex-col gap-1">
             <span className="text-xs font-bold text-muted">終了の事由（3-1-2号）</span>
             <select
@@ -403,7 +451,7 @@ export function ResignationForms({
         </div>
         <p className="text-[11px] text-muted">
           法人番号は会社・機関マスタに登録しておくと自動で入ります（管理者メニュー →
-          会社・機関マスタ）。
+          会社・機関マスタ）。ここで訂正・入力した法人番号・業務区分は、ダウンロード時に会社・機関マスタにも反映されます。
         </p>
 
         <p className="mt-1 text-sm font-bold">委託契約をしていた登録支援機関（毎回同じ・この端末に保存）</p>
@@ -511,17 +559,21 @@ export function ResignationForms({
             />
           </>
         )}
-        {isCompany && (
-          <button
-            type="button"
-            disabled={busy !== null}
-            onClick={downloadAll}
-            className="mt-1 inline-flex min-h-[52px] items-center justify-center gap-2 rounded-xl bg-brand px-5 py-3.5 text-base font-bold text-brand-foreground transition hover:bg-brand-strong active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
-          >
-            <Download size={18} />
-            3様式をまとめてダウンロード
-          </button>
-        )}
+        <FormButton
+          icon={<FileSpreadsheet size={18} />}
+          label={`${FORM_14}（Excel）契約機関に関する届出（契約の終了） ※本人が提出`}
+          busy={busy === "form14"}
+          onClick={() => download("form14")}
+        />
+        <button
+          type="button"
+          disabled={busy !== null}
+          onClick={downloadAll}
+          className="mt-1 inline-flex min-h-[52px] items-center justify-center gap-2 rounded-xl bg-brand px-5 py-3.5 text-base font-bold text-brand-foreground transition hover:bg-brand-strong active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
+        >
+          <Download size={18} />
+          {isCompany ? "4様式をまとめてダウンロード" : "2様式をまとめてダウンロード"}
+        </button>
       </Card>
     </div>
   );

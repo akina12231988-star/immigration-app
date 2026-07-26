@@ -13,6 +13,7 @@ export const FORM_TEMPLATE_PATHS = {
   form312: "/forms/sanko-3-1-2.xlsx",
   form34: "/forms/sanko-3-4.xlsx",
   form511: "/forms/sanko-5-11.docx",
+  form14: "/forms/sanko-1-4.xlsx",
 } as const;
 
 const CHECKED = "☑";
@@ -168,9 +169,8 @@ export interface FormFillData {
   contactStatus: string; // ③現状
   intention: string; // ④Ａ
   measure: string; // ④Ｂ
-  // 作成年月日
-  reportOn: string; // YYYY-MM-DD
 }
+// 作成年月日・届出年月日は署名してもらった日を手書きするため、どの様式にも記載しない
 
 interface DateParts {
   y: string;
@@ -266,7 +266,6 @@ async function fillXlsxTemplate(template: ArrayBuffer, cells: CellValues): Promi
 export async function fill312(template: ArrayBuffer, data: FormFillData): Promise<Uint8Array> {
   const birth = dateParts(data.birth);
   const leave = dateParts(data.leavingOn);
-  const report = dateParts(data.reportOn);
   const card = cardChars(data.residenceCardNo);
   const cardCells = ["I27", "K27", "M27", "O27", "Q27", "S27", "U27", "W27", "Y27", "AA27", "AC27", "AE27"];
 
@@ -337,8 +336,7 @@ export async function fill312(template: ArrayBuffer, data: FormFillData): Promis
     AA108: data.orgPhone,
   });
 
-  // 作成年月日
-  Object.assign(cells, { U116: report.y, AA116: report.m, AE116: report.d });
+  // 作成年月日は署名日を手書きするため記載しない
 
   return fillXlsxTemplate(template, cells);
 }
@@ -348,7 +346,6 @@ export async function fill312(template: ArrayBuffer, data: FormFillData): Promis
 export async function fill34(template: ArrayBuffer, data: FormFillData): Promise<Uint8Array> {
   const birth = dateParts(data.birth);
   const leave = dateParts(data.leavingOn);
-  const report = dateParts(data.reportOn);
   const card = cardChars(data.residenceCardNo);
   const cardCells = ["H30", "J30", "L30", "N30", "P30", "R30", "T30", "V30", "X30", "Z30", "AB30", "AD30"];
 
@@ -420,8 +417,57 @@ export async function fill34(template: ArrayBuffer, data: FormFillData): Promise
     AA118: data.orgPhone,
   });
 
-  // 作成年月日
-  Object.assign(cells, { U127: report.y, AA127: report.m, AE127: report.d });
+  // 作成年月日は署名日を手書きするため記載しない
+
+  return fillXlsxTemplate(template, cells);
+}
+
+// ---- 参考様式1の4「契約機関に関する届出（契約の終了）」（Excel・本人が提出） ----
+// 退職した外国人本人が入管へ提出する届出。随時報告書と一緒に作成する。
+// ③署名・⑥届出年月日は本人が署名した日を手書きするため空欄のまま、
+// ⑤提出者は本人以外が提出する場合のみ記入する欄なので触らない。
+
+// 性別・在留資格はテンプレートのプルダウン（リスト入力規則）の値に合わせる
+const SEX_OPTIONS_14: Record<"男" | "女", string> = {
+  男: "男（ Male ）",
+  女: "女（Female）",
+};
+const STATUS_SSW_14 = "特定技能　（　Specified Skilled Worker　）";
+
+// 住居地・所在地の入力欄は「〒」が欄内に印字されているため、上書きしても残るように付け直す
+function withPostalMark(address: string): string {
+  const a = address.trim();
+  return a.startsWith("〒") ? a : `〒　${a}`;
+}
+
+export async function fill14(template: ArrayBuffer, data: FormFillData): Promise<Uint8Array> {
+  const birth = dateParts(data.birth);
+  const leave = dateParts(data.leavingOn);
+  const card = cardChars(data.residenceCardNo);
+  const cardCells = ["H18", "J18", "L18", "N18", "P18", "R18", "T18", "V18", "X18", "Z18", "AB18", "AD18"];
+
+  // ① 届出人（本人）
+  const cells: CellValues = {
+    J9: data.workerName,
+    H12: birth.y,
+    N12: birth.m,
+    R12: birth.d,
+    AA12: data.nationality,
+    H22: STATUS_SSW_14,
+  };
+  const mark = genderMark(data.gender);
+  if (mark) cells.AD9 = SEX_OPTIONS_14[mark];
+  if (data.address.trim()) cells.H15 = withPostalMark(data.address);
+  cardCells.forEach((addr, i) => {
+    cells[addr] = card[i];
+  });
+
+  // ② 届出の事由（契約の終了）: 終了年月日・法人番号・機関の名称・所在地
+  Object.assign(cells, { K30: leave.y, Q30: leave.m, U30: leave.d });
+  const corp = data.orgCorporateNo.replace(/\D/g, "");
+  if (corp) cells.AD30 = corp;
+  cells.L36 = data.orgName;
+  if (data.orgAddress.trim()) cells.M42 = withPostalMark(data.orgAddress);
 
   return fillXlsxTemplate(template, cells);
 }
@@ -435,14 +481,13 @@ export async function fill511(template: ArrayBuffer, data: FormFillData): Promis
   const path = "word/document.xml";
   let xml = await zip.file(path)!.async("string");
 
-  const report = dateParts(data.reportOn);
-  const dateText = report.y ? `${report.y}年　${report.m}　月　${report.d}　日` : "　　　　年　　　月　　　日";
+  // 作成年月日は署名日を手書きするため空欄のままにする
   const tokens: Record<string, string> = {
     "{{WORKER_NAME}}": data.workerName,
     "{{ORG_NAME}}": data.orgName,
     "{{STAFF_NAME}}": data.orgStaff,
     "{{CONTACT_NAME}}": "",
-    "{{DATE}}": dateText,
+    "{{DATE}}": "　　　　年　　　月　　　日",
   };
   for (const [tok, value] of Object.entries(tokens)) {
     xml = xml.split(tok).join(escapeXml(value));
