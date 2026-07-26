@@ -57,6 +57,7 @@ export interface OnboardingDocStatusInput {
   note: string;
   due_on: string | null;
   received_on: string | null;
+  pending_since: string | null; // 後送・未入手にした日（経過日数アラートの起点）
 }
 
 export async function upsertOnboardingDocStatuses(
@@ -70,7 +71,7 @@ export async function upsertOnboardingDocStatuses(
   if (error) throw error;
 }
 
-// 本人が送ってきた（後送アラート解除）
+// 本人が送ってきた（後送・未入手アラート解除）
 export async function markOnboardingDocReceived(
   supabase: SupabaseClient,
   docId: string,
@@ -83,7 +84,7 @@ export async function markOnboardingDocReceived(
   if (error) throw error;
 }
 
-// 後送アラート: 後送のまま本人からまだ届いていない書類（外国人名つき・期日昇順）
+// 未提出アラート: 後送・未入手のまま本人からまだ届いていない書類（外国人名つき）
 export interface PendingOnboardingDoc extends OnboardingDocumentRow {
   workers: { name: string } | null;
 }
@@ -94,9 +95,10 @@ export async function listPendingOnboardingDocs(
   const { data, error } = await supabase
     .from("onboarding_documents")
     .select("*, workers(name)")
-    .eq("status", "後送")
+    .in("status", ["後送", "未入手"])
     .is("received_on", null)
-    .order("due_on", { ascending: true, nullsFirst: false });
+    .order("worker_id", { ascending: true })
+    .order("sort_no", { ascending: true });
   if (error) throw error;
   return (data as PendingOnboardingDoc[]) ?? [];
 }
