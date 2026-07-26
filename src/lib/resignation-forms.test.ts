@@ -154,6 +154,40 @@ describe("fill312", () => {
     // 05その他の括弧は空欄のまま
     expect(String(ws.getCell("F53").value)).toContain("05.その他");
   });
+
+  // 過去にテンプレートを読み込み直して書き出す方式で壊れたファイルが生成され、
+  // Excel が「修復」してシートが空になる問題が起きた。転記後も対象セル以外は
+  // テンプレートのまま変わっていないことを保証する（Excel の修復対象にしない）。
+  it("転記後もシート以外の部品とシートの構造はテンプレートのまま保たれる", async () => {
+    const buf = await readFile(path.join(FORMS_DIR, "sanko-3-1-2.xlsx"));
+    const bytes = await fill312(toArrayBuffer(buf), companyData);
+
+    const tplZip = await JSZip.loadAsync(toArrayBuffer(buf));
+    const outZip = await JSZip.loadAsync(bytes);
+    const tplNames = Object.keys(tplZip.files).sort();
+    expect(Object.keys(outZip.files).sort()).toEqual(tplNames);
+    for (const name of tplNames) {
+      if (name === "xl/worksheets/sheet1.xml" || name.endsWith("/")) continue;
+      const [a, b] = await Promise.all([
+        tplZip.file(name)!.async("string"),
+        outZip.file(name)!.async("string"),
+      ]);
+      expect(b, `${name} が書き換わっている`).toBe(a);
+    }
+
+    const tplXml = await tplZip.file("xl/worksheets/sheet1.xml")!.async("string");
+    const outXml = await outZip.file("xl/worksheets/sheet1.xml")!.async("string");
+    // セル・行・結合セルの構造が保たれている（要素の増減がない）
+    for (const pattern of [/<c [^>]*r="/g, /<row /g, /<mergeCell /g]) {
+      expect(outXml.match(pattern)?.length).toBe(tplXml.match(pattern)?.length);
+    }
+    // シート設定（ビュー・列幅・印刷範囲）はテンプレートのまま
+    for (const tag of ["<sheetViews>", "<sheetFormatPr", "<pageMargins", "<pageSetup"]) {
+      const tpl = tplXml.slice(tplXml.indexOf(tag), tplXml.indexOf(tag) + 80);
+      const out = outXml.slice(outXml.indexOf(tag), outXml.indexOf(tag) + 80);
+      expect(out).toBe(tpl);
+    }
+  });
 });
 
 describe("fill34", () => {
