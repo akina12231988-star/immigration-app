@@ -270,7 +270,7 @@ function OrganizationFormModal({
           <input
             value={form.contact}
             onChange={(e) => set("contact", e.target.value)}
-            placeholder="担当者名・電話番号など"
+            placeholder="電話番号など"
             className={INPUT_CLASS}
           />
           <span className="text-[11px] leading-relaxed text-muted">
