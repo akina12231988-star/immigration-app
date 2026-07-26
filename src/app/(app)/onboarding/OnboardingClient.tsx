@@ -6,10 +6,12 @@ import {
   Copy,
   Download,
   ExternalLink,
+  Eye,
   Loader2,
   Mail,
   Paperclip,
   Save,
+  Trash2,
   TriangleAlert,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
@@ -36,6 +38,7 @@ import {
   upsertOnboardingDocStatuses,
 } from "@/lib/supabase/queries/onboarding";
 import {
+  clearOnboardingDocFile,
   createOnboardingDocTicket,
   registerOnboardingDocFile,
   getOnboardingDocPreviewUrl,
@@ -663,6 +666,24 @@ function DocRow({
     else onError(res.message);
   }
 
+  // 間違って添付したファイルの削除。ファイルが無くなるためステータスは「未入手」に戻る
+  async function removeFile() {
+    const fileName = state.row?.file_name || "ファイル";
+    if (!window.confirm(`「${def.label}」の添付データ（${fileName}）を削除します。よろしいですか？`)) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await clearOnboardingDocFile(workerId, def.key);
+      if (!res.ok) throw new Error(res.message);
+      onUploaded();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "削除に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className={`rounded-xl border border-border bg-background p-2.5 ${STATUS_BORDER[state.status]}`}>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
@@ -735,9 +756,29 @@ function DocRow({
           className="min-h-[34px] min-w-0 flex-1 rounded-lg border border-border bg-surface px-2 text-xs focus:border-brand focus:outline-none"
         />
         {uploaded && (
-          <button type="button" onClick={openPreview} className="text-[11px] font-bold text-brand">
-            {state.row?.file_name || "ファイルを開く"}
-          </button>
+          <span className="flex shrink-0 items-center gap-2.5">
+            <button
+              type="button"
+              onClick={openPreview}
+              title="添付データを新しいタブで表示"
+              className="flex max-w-[180px] items-center gap-1 text-[11px] font-bold text-brand hover:underline"
+            >
+              <Eye size={12} className="shrink-0" />
+              <span className="truncate">{state.row?.file_name || "ファイルを開く"}</span>
+            </button>
+            {canEdit && (
+              <button
+                type="button"
+                onClick={removeFile}
+                disabled={busy}
+                title="間違って添付した場合の削除"
+                className="flex items-center gap-0.5 text-[11px] font-bold text-seal hover:underline disabled:opacity-50"
+              >
+                <Trash2 size={12} />
+                削除
+              </button>
+            )}
+          </span>
         )}
       </div>
       <input
