@@ -20,6 +20,8 @@ import { AlertBadge } from "@/components/applications/AlertBadge";
 import { ApplicationPrepChecklist } from "@/components/workers/ApplicationPrepChecklist";
 import { createClient } from "@/lib/supabase/client";
 import { listPrepStatuses, type PrepStatus } from "@/lib/supabase/queries/prep-status";
+import { upsertPrepTantou } from "@/lib/supabase/queries/application-prep";
+import { PREP_TANTOU_OPTIONS } from "@/lib/application-prep";
 import { useApplications } from "@/lib/application-store";
 import { applicationStatusLabel } from "@/lib/status";
 import { STAT_VIEWS, type StatViewKey } from "@/lib/application-stats";
@@ -275,6 +277,25 @@ export function ApplicationsExplorer({
     });
   };
 
+  // 担当者のインライン編集。外国人の申請TODO番号の準備リストに保存する（無ければ作成）
+  const changeTantou = async (a: Application, tantou: string) => {
+    if (!a.workerId) return;
+    const workerId = a.workerId;
+    const todoNo = workerFor(a)?.residence_renewal_todo ?? "";
+    // 先に画面へ反映し、保存失敗時は再読込で正しい状態に戻す
+    setPrepStatuses((prev) => {
+      const next = new Map(prev);
+      const st = next.get(workerId);
+      if (st) next.set(workerId, { ...st, tantou });
+      return next;
+    });
+    try {
+      await upsertPrepTantou(createClient(), workerId, todoNo, tantou);
+    } catch {
+      setPrepReload((k) => k + 1);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {view === "this-month" && (
@@ -483,6 +504,19 @@ export function ApplicationsExplorer({
                       </button>
                     )}
                   </div>
+                  {a.workerId && (
+                    <div
+                      className="mt-2 flex items-center gap-2"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <span className="text-[11px] font-bold text-muted">担当者</span>
+                      <TantouSelect
+                        value={prepStatuses.get(a.workerId)?.tantou ?? ""}
+                        disabled={!canEdit}
+                        onChange={(v) => changeTantou(a, v)}
+                      />
+                    </div>
+                  )}
                 </Card>
               ) : (
                 <Link key={a.id} href={hrefFor(a)}>
@@ -516,7 +550,12 @@ export function ApplicationsExplorer({
                       <Th>申請番号</Th>
                     </>
                   )}
-                  {showPrep && <Th>準備状況</Th>}
+                  {showPrep && (
+                    <>
+                      <Th>担当者</Th>
+                      <Th>準備状況</Th>
+                    </>
+                  )}
                   <Th>預かり番号</Th>
                   <Th>申請時点在留期限</Th>
                   <Th>状態</Th>
@@ -560,24 +599,35 @@ export function ApplicationsExplorer({
                         </>
                       )}
                       {showPrep && (
-                        <Td>
-                          <span
-                            className="flex items-center gap-2"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <PrepStatusBadge status={a.workerId ? prepStatuses.get(a.workerId) : undefined} />
-                            {canEdit && a.workerId && (
-                              <button
-                                type="button"
-                                onClick={() => openPrepModal(a)}
-                                className="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[11px] font-bold text-brand"
-                              >
-                                <ClipboardList size={12} />
-                                添付
-                              </button>
-                            )}
-                          </span>
-                        </Td>
+                        <>
+                          <Td>
+                            <span onClick={(e) => e.stopPropagation()}>
+                              <TantouSelect
+                                value={a.workerId ? (prepStatuses.get(a.workerId)?.tantou ?? "") : ""}
+                                disabled={!canEdit || !a.workerId}
+                                onChange={(v) => changeTantou(a, v)}
+                              />
+                            </span>
+                          </Td>
+                          <Td>
+                            <span
+                              className="flex items-center gap-2"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <PrepStatusBadge status={a.workerId ? prepStatuses.get(a.workerId) : undefined} />
+                              {canEdit && a.workerId && (
+                                <button
+                                  type="button"
+                                  onClick={() => openPrepModal(a)}
+                                  className="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[11px] font-bold text-brand"
+                                >
+                                  <ClipboardList size={12} />
+                                  添付
+                                </button>
+                              )}
+                            </span>
+                          </Td>
+                        </>
                       )}
                       <Td className="tabular-nums">{custodyNoLabel(a)}</Td>
                       <Td className="tabular-nums">
@@ -631,6 +681,37 @@ export function ApplicationsExplorer({
         </Modal>
       )}
     </div>
+  );
+}
+
+// 担当者のインライン選択（申請前＜準備中＞）。外国人の申請TODO番号の準備リストに紐づく
+function TantouSelect({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: string;
+  disabled: boolean;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <select
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value)}
+      className="min-h-[34px] max-w-[140px] rounded-lg border border-border bg-surface px-1.5 text-xs focus:border-brand focus:outline-none disabled:opacity-60"
+    >
+      <option value="">未定</option>
+      {/* 名簿から外れた保存済みの名前も選択肢として残す */}
+      {value && !PREP_TANTOU_OPTIONS.includes(value as (typeof PREP_TANTOU_OPTIONS)[number]) && (
+        <option value={value}>{value}</option>
+      )}
+      {PREP_TANTOU_OPTIONS.map((t) => (
+        <option key={t} value={t}>
+          {t}
+        </option>
+      ))}
+    </select>
   );
 }
 

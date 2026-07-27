@@ -14,7 +14,7 @@ export async function listPrepChecklists(
 ): Promise<PrepChecklistRow[]> {
   const { data, error } = await supabase
     .from("application_prep_checklists")
-    .select("id, todo_no, app_type, has_kokuho, has_nenkin, target_reiwa, kenshin_items_ok")
+    .select("id, todo_no, app_type, has_kokuho, has_nenkin, target_reiwa, kenshin_items_ok, tantou")
     .eq("worker_id", workerId)
     .order("updated_at", { ascending: false });
   if (error) throw error;
@@ -26,6 +26,7 @@ export async function listPrepChecklists(
     has_nenkin: r.has_nenkin ?? false,
     target_reiwa: r.target_reiwa ?? null,
     kenshin_items_ok: r.kenshin_items_ok ?? false,
+    tantou: r.tantou ?? "",
   }));
 }
 
@@ -40,6 +41,23 @@ export async function upsertPrepChecklist(
     .from("application_prep_checklists")
     .upsert(
       { worker_id: workerId, todo_no: todoNo, ...meta },
+      { onConflict: "worker_id,todo_no" },
+    );
+  if (error) throw error;
+}
+
+// 担当者だけを保存する（そのTODO番号のリストが無ければ作成する）。
+// 申請一覧「申請前＜準備中＞」からのインライン編集用。他のメタ情報は変更しない
+export async function upsertPrepTantou(
+  supabase: SupabaseClient,
+  workerId: string,
+  todoNo: string,
+  tantou: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("application_prep_checklists")
+    .upsert(
+      { worker_id: workerId, todo_no: todoNo, tantou },
       { onConflict: "worker_id,todo_no" },
     );
   if (error) throw error;

@@ -21,6 +21,7 @@ export interface PrepChecklistMeta {
   has_nenkin: boolean;
   target_reiwa: number | null;
   kenshin_items_ok: boolean;
+  tantou: string; // 担当者（'' = 未定。申請一覧からもあとで設定できる）
 }
 
 export const EMPTY_PREP_META: PrepChecklistMeta = {
@@ -29,7 +30,17 @@ export const EMPTY_PREP_META: PrepChecklistMeta = {
   has_nenkin: false,
   target_reiwa: null,
   kenshin_items_ok: false,
+  tantou: "",
 };
+
+// 申請準備・申請一覧で選ぶ担当者の名簿
+export const PREP_TANTOU_OPTIONS = [
+  "市原　彩奈",
+  "田上　夏季",
+  "大元　麗奈",
+  "秋吉　伽恋",
+  "野口　明菜",
+] as const;
 
 // 書類の判定元
 type Source =

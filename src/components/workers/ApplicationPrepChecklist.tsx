@@ -41,6 +41,7 @@ import {
   EMPTY_PREP_META,
   evaluatePrepChecklist,
   PREP_APP_TYPES,
+  PREP_TANTOU_OPTIONS,
   prepDocLabel,
   prepYearDocKey,
   type PrepChecklistMeta,
@@ -149,6 +150,7 @@ export function ApplicationPrepChecklist({
       has_nenkin: current.has_nenkin,
       target_reiwa: current.target_reiwa,
       kenshin_items_ok: current.kenshin_items_ok,
+      tantou: current.tantou,
       ...patch,
     };
     setLists((ls) => ls.map((l) => (l.todo_no === selected ? { ...l, ...patch } : l)));
@@ -389,6 +391,22 @@ export function ApplicationPrepChecklist({
               className={`${inputCls} w-20 tabular-nums`}
             />
             年
+          </label>
+          <label className="flex items-center gap-1.5 text-xs font-bold text-muted">
+            担当者
+            <select
+              value={meta.tantou}
+              disabled={!canEdit}
+              onChange={(e) => patchMeta({ tantou: e.target.value })}
+              className={inputCls}
+            >
+              <option value="">未定（あとで申請一覧から設定可）</option>
+              {PREP_TANTOU_OPTIONS.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
         <div className="flex flex-wrap items-center gap-4">
