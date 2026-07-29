@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   FINANCIAL_DEFAULT_ROWS,
+  emptyLodging,
   emptyOrganizationIntake,
   formatYen,
+  lodgingContractKind,
   normalizeOrganizationIntake,
   ownedMonthlyRent,
   parseAmount,
@@ -47,6 +49,59 @@ describe("normalizeOrganizationIntake", () => {
     expect(intake.officers).toEqual([
       { kana: "", name: "山田 太郎", title: "", not_involved: true },
     ]);
+  });
+
+  it("旧形式のフラットな lodging_* 項目は寮1件目として移行され、フラット項目は残らない", () => {
+    const intake = normalizeOrganizationIntake({
+      lodging_address: "熊本県八代市1-2-3",
+      lodging_kind: "賃貸物件",
+      lodging_rent: "50,000",
+      lodging_max_residents: "3",
+    });
+    expect(intake.lodgings).toEqual([
+      {
+        ...emptyLodging("lodging-1"),
+        address: "熊本県八代市1-2-3",
+        kind: "賃貸物件",
+        rent: "50,000",
+        max_residents: "3",
+      },
+    ]);
+    expect("lodging_address" in intake).toBe(false);
+    expect("lodging_rent" in intake).toBe(false);
+  });
+
+  it("lodgings 配列は行数を維持し、欠けたキーと id を補完する", () => {
+    const intake = normalizeOrganizationIntake({
+      lodgings: [
+        { name: "女子寮", kind: "賃貸物件", rent: "50,000" },
+        { id: "abc-123", name: "男子寮" },
+      ],
+    });
+    expect(intake.lodgings).toHaveLength(2);
+    expect(intake.lodgings[0]).toEqual({
+      ...emptyLodging("lodging-1"),
+      name: "女子寮",
+      kind: "賃貸物件",
+      rent: "50,000",
+    });
+    // 保存済みの id は維持される
+    expect(intake.lodgings[1].id).toBe("abc-123");
+    expect(intake.lodgings[1].name).toBe("男子寮");
+    expect(intake.lodgings[1].address).toBe("");
+  });
+
+  it("寮が未登録なら空の1件が用意される", () => {
+    expect(normalizeOrganizationIntake({}).lodgings).toEqual([emptyLodging("lodging-1")]);
+  });
+});
+
+describe("lodgingContractKind", () => {
+  it("1件目の寮は旧データ互換のため従来の「賃貸契約書」を使う", () => {
+    expect(lodgingContractKind(emptyLodging("lodging-1"))).toBe("賃貸契約書");
+  });
+  it("2件目以降は id 付きの種別で区別する", () => {
+    expect(lodgingContractKind(emptyLodging("abc-123"))).toBe("賃貸契約書:abc-123");
   });
 });
 
