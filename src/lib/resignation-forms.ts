@@ -14,6 +14,7 @@ export const FORM_TEMPLATE_PATHS = {
   form34: "/forms/sanko-3-4.xlsx",
   form511: "/forms/sanko-5-11.docx",
   form14: "/forms/sanko-1-4.xlsx",
+  form15: "/forms/sanko-1-5.xlsx",
 } as const;
 
 const CHECKED = "☑";
@@ -468,6 +469,80 @@ export async function fill14(template: ArrayBuffer, data: FormFillData): Promise
   if (corp) cells.AD30 = corp;
   cells.L36 = data.orgName;
   if (data.orgAddress.trim()) cells.M42 = withPostalMark(data.orgAddress);
+
+  return fillXlsxTemplate(template, cells);
+}
+
+// ---- 参考様式1の5「契約機関に関する届出（新たな契約の締結）」（Excel・本人が提出） ----
+// 在留カード受領後（新しい所属機関との契約開始後）に本人が入管へ提出する届出。
+// 申請詳細の「在留カード受領済」から作成する。1の4と同じレイアウトのため
+// ①届出人のセル座標は共通。②は締結年月日＋新たな機関の名称・法人番号・所在地・活動内容。
+// 従前の機関は情報が無いため空欄のまま（必要ならExcelで追記する）。
+// ③署名・④連絡先・⑤提出者・⑥届出年月日は本人が記入するため空欄のまま。
+
+// 届出書へ転記するデータ一式（新たな契約の締結）
+export interface Form15Data {
+  workerName: string; // 氏名（ローマ字）
+  gender: string; // 男 / 女 / ''
+  birth: string | null; // YYYY-MM-DD
+  nationality: string;
+  address: string; // 住居地
+  residenceCardNo: string; // 12桁
+  residenceStatus: string; // 現在の在留資格（特定技能なら様式のリスト値に変換）
+  concludedOn: string; // 新たな契約を締結した年月日（雇用開始日）
+  newOrgName: string; // 新たな機関の名称
+  newOrgCorporateNo: string; // 新たな機関の法人番号（13桁・法人でない場合は空）
+  newOrgAddress: string; // 新たな機関の所在地
+  activity: string; // 新たな機関における活動の内容（分野・職種）
+}
+
+// 在留資格の自由入力を様式のプルダウン値に合わせる（該当が無ければそのまま記入）
+export function statusListValue15(residenceStatus: string): string {
+  const s = residenceStatus.trim();
+  if (!s) return "";
+  if (s.includes("特定技能")) return STATUS_SSW_14;
+  if (s.includes("技術") || s.includes("人文知識") || s.includes("国際業務")) {
+    return "技術・人文知識・国際業務　（　Engineer/Specialist in Humanities/International Services　）";
+  }
+  if (s.includes("介護")) return "介護　（　Nursing Care　）";
+  if (s.includes("興行")) return "興行　（　Entertainer　）";
+  if (s.includes("技能")) return "技能　（　Skilled Labor　）";
+  if (s.includes("研究")) return "研究　（　Researcher　）";
+  return s;
+}
+
+export async function fill15(template: ArrayBuffer, data: Form15Data): Promise<Uint8Array> {
+  const birth = dateParts(data.birth);
+  const concluded = dateParts(data.concludedOn);
+  const card = cardChars(data.residenceCardNo);
+  const cardCells = ["H18", "J18", "L18", "N18", "P18", "R18", "T18", "V18", "X18", "Z18", "AB18", "AD18"];
+
+  // ① 届出人（本人）
+  const cells: CellValues = {
+    J9: data.workerName,
+    H12: birth.y,
+    N12: birth.m,
+    R12: birth.d,
+    AA12: data.nationality,
+  };
+  const status = statusListValue15(data.residenceStatus);
+  if (status) cells.H22 = status;
+  const mark = genderMark(data.gender);
+  if (mark) cells.AD9 = SEX_OPTIONS_14[mark];
+  if (data.address.trim()) cells.H15 = withPostalMark(data.address);
+  cardCells.forEach((addr, i) => {
+    cells[addr] = card[i];
+  });
+
+  // ② 届出の事由（新たな契約の締結）: 締結年月日＋新たな機関の名称・法人番号・所在地
+  Object.assign(cells, { M30: concluded.y, S30: concluded.m, W30: concluded.d });
+  cells.AA33 = data.newOrgName;
+  const corp = data.newOrgCorporateNo.replace(/\D/g, "");
+  if (corp) cells.AA36 = corp;
+  if (data.newOrgAddress.trim()) cells.N42 = withPostalMark(data.newOrgAddress);
+
+  // 新たな機関における活動の内容（分野・職種）
+  if (data.activity.trim()) cells.D47 = data.activity;
 
   return fillXlsxTemplate(template, cells);
 }

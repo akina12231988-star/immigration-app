@@ -4,16 +4,19 @@ import { describe, expect, it } from "vitest";
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
 import {
+  type Form15Data,
   type FormFillData,
   categoriesForField,
   defaultEndReason312,
   endReasonOptions312,
   fill14,
+  fill15,
   fill312,
   fill34,
   fill511,
   genderMark,
   matchFormField,
+  statusListValue15,
 } from "./resignation-forms";
 
 const FORMS_DIR = path.join(__dirname, "../../public/forms");
@@ -269,6 +272,82 @@ describe("fill14", () => {
     );
     expect(ws.getCell("AD9").value ?? null).toBeNull();
     expect(ws.getCell("H15").value).toBe("〒861-0000 熊本県八代市1-2-3");
+  });
+});
+
+const form15Data: Form15Data = {
+  workerName: "TEST HANAKO",
+  gender: "女",
+  birth: "1989-11-01",
+  nationality: "ベトナム",
+  address: "熊本県八代市1-2-3",
+  residenceCardNo: "LJ32492079RG",
+  residenceStatus: "特定技能1号",
+  concludedOn: "2026-07-21",
+  newOrgName: "テスト株式会社",
+  newOrgCorporateNo: "1234567890123",
+  newOrgAddress: "熊本県八代市2-3-4",
+  activity: "農業・耕種農業",
+};
+
+describe("fill15", () => {
+  it("契約機関に関する届出（新たな契約の締結）に本人・新たな機関の情報を転記する", async () => {
+    const template = toArrayBuffer(await readFile(path.join(FORMS_DIR, "sanko-1-5.xlsx")));
+    const ws = await loadSheet(await fill15(template, form15Data));
+
+    // ① 届出人（本人）
+    expect(ws.getCell("J9").value).toBe("TEST HANAKO");
+    expect(ws.getCell("AD9").value).toBe("女（Female）"); // プルダウンの値に合わせる
+    expect(ws.getCell("H12").value).toBe("1989");
+    expect(ws.getCell("N12").value).toBe("11");
+    expect(ws.getCell("R12").value).toBe("1");
+    expect(ws.getCell("AA12").value).toBe("ベトナム");
+    expect(ws.getCell("H15").value).toBe("〒　熊本県八代市1-2-3"); // 〒は欄の印字を引き継ぐ
+    expect(ws.getCell("H22").value).toBe("特定技能　（　Specified Skilled Worker　）");
+    // 在留カード番号は1文字ずつ12マス
+    expect(ws.getCell("H18").value).toBe("L");
+    expect(ws.getCell("J18").value).toBe("J");
+    expect(ws.getCell("AD18").value).toBe("G");
+    // ② 新たな契約の締結（締結年月日＝雇用開始日）
+    expect(ws.getCell("M30").value).toBe("2026");
+    expect(ws.getCell("S30").value).toBe("7");
+    expect(ws.getCell("W30").value).toBe("21");
+    expect(ws.getCell("AA33").value).toBe("テスト株式会社");
+    expect(ws.getCell("AA36").value).toBe("1234567890123");
+    expect(ws.getCell("N42").value).toBe("〒　熊本県八代市2-3-4");
+    expect(ws.getCell("D47").value).toBe("農業・耕種農業");
+    // 従前の機関は情報が無いため空欄のまま（所在地は〒の印字が残る）
+    expect(ws.getCell("N33").value ?? null).toBeNull();
+    expect(ws.getCell("N36").value ?? null).toBeNull();
+    expect(String(ws.getCell("N39").value ?? "")).toContain("〒");
+    // ③署名・⑥届出年月日は本人が手書きするため空欄のまま
+    expect(ws.getCell("I71").value ?? null).toBeNull();
+    expect(ws.getCell("O71").value ?? null).toBeNull();
+    expect(ws.getCell("S71").value ?? null).toBeNull();
+  });
+
+  it("在留資格が特定技能系でない場合はそのまま記入し、法人番号が空なら欄を触らない", async () => {
+    const template = toArrayBuffer(await readFile(path.join(FORMS_DIR, "sanko-1-5.xlsx")));
+    const ws = await loadSheet(
+      await fill15(template, {
+        ...form15Data,
+        residenceStatus: "特定活動（特定技能1号移行準備）",
+        newOrgCorporateNo: "",
+      }),
+    );
+    // 「特定技能」を含むためリスト値へ変換される
+    expect(ws.getCell("H22").value).toBe("特定技能　（　Specified Skilled Worker　）");
+    expect(ws.getCell("AA36").value ?? null).toBeNull();
+  });
+});
+
+describe("statusListValue15", () => {
+  it("在留資格の自由入力を様式のリスト値へ変換する", () => {
+    expect(statusListValue15("特定技能1号")).toBe("特定技能　（　Specified Skilled Worker　）");
+    expect(statusListValue15("介護")).toBe("介護　（　Nursing Care　）");
+    expect(statusListValue15("技能")).toBe("技能　（　Skilled Labor　）");
+    expect(statusListValue15("留学")).toBe("留学");
+    expect(statusListValue15("")).toBe("");
   });
 });
 
