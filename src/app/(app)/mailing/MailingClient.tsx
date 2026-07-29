@@ -23,6 +23,7 @@ import {
   buildRequiredDocs,
   collectionLabel,
   fiscalYearLabel,
+  isSelfOnlyMunicipality,
   formatDateJP,
   formatYen,
   judgeNhiYear,
@@ -172,6 +173,7 @@ export function MailingClient({
       {tab === "judge" && (
         <JudgeTab
           municipalities={municipalities}
+          setMunicipalities={setMunicipalities}
           records={records}
           setRecords={setRecords}
           workers={workers}
@@ -191,6 +193,8 @@ export function MailingClient({
         <RecordsTab
           records={records}
           setRecords={setRecords}
+          municipalities={municipalities}
+          setMunicipalities={setMunicipalities}
           canEdit={canEdit}
           showToast={showToast}
         />
@@ -385,6 +389,7 @@ function buildMethodInfo(method: RequestMethod, mDate: string, rType: RecipientT
 /* ============================ 判定フォーム ============================ */
 function JudgeTab({
   municipalities,
+  setMunicipalities,
   records,
   setRecords,
   workers,
@@ -392,6 +397,7 @@ function JudgeTab({
   showToast,
 }: {
   municipalities: Municipality[];
+  setMunicipalities: (m: Municipality[]) => void;
   records: JudgmentRecord[];
   setRecords: (r: JudgmentRecord[]) => void;
   workers: MailingWorker[];
@@ -595,6 +601,8 @@ function JudgeTab({
           workerId={workerId}
           todoNumber={todoNumber}
           workerAddress={selectedWorker ? selectedWorker.address : null}
+          municipalities={municipalities}
+          setMunicipalities={setMunicipalities}
           records={records}
           setRecords={setRecords}
           canEdit={canEdit}
@@ -727,7 +735,7 @@ function JudgeTab({
 
 // 転出届・住民票の請求フォームの入力値
 interface ExtraFormValues {
-  cityOffice: string; // 請求先の市役所
+  muniId: string; // 請求先の市役所（自治体マスタから選択）
   movingDate: string; // 転出日（転出届）
   newAddress: string; // 転入先の住所（転出届）
   postDate: string; // ポスト投函日（郵送請求）
@@ -740,7 +748,7 @@ interface ExtraFormValues {
 
 function emptyExtraValues(): ExtraFormValues {
   return {
-    cityOffice: "",
+    muniId: "",
     movingDate: "",
     newAddress: "",
     postDate: todayISO(),
@@ -752,9 +760,11 @@ function emptyExtraValues(): ExtraFormValues {
   };
 }
 
-function extraValuesFromRecord(r: JudgmentRecord): ExtraFormValues {
+// 記録から編集用の入力値へ。古い記録（自由入力の市役所名）は名前で自治体マスタと突き合わせる
+function extraValuesFromRecord(r: JudgmentRecord, municipalities: Municipality[]): ExtraFormValues {
+  const byName = municipalities.find((m) => m.name === (r.cityOffice ?? r.municipalityName));
   return {
-    cityOffice: r.cityOffice ?? r.municipalityName ?? "",
+    muniId: r.cityOfficeId ?? byName?.id ?? "",
     movingDate: r.movingDate ?? "",
     newAddress: r.newAddress ?? "",
     postDate: r.postDate ?? todayISO(),
@@ -772,37 +782,48 @@ function isMailExtra(kind: "tenshutsu" | "juminhyo", v: ExtraFormValues): boolea
 }
 
 // 入力チェック。問題があればエラーメッセージ、無ければ null
-function extraFormError(kind: "tenshutsu" | "juminhyo", v: ExtraFormValues): string | null {
-  if (!v.cityOffice.trim()) return "請求先の市役所を入力してください";
-  if (isMailExtra(kind, v) && v.applicantType === "agent" && !v.agentName.trim()) {
+function extraFormError(
+  kind: "tenshutsu" | "juminhyo",
+  v: ExtraFormValues,
+  muni: Municipality | null,
+): string | null {
+  if (!muni) return "請求先の市役所を自治体マスタから選択してください";
+  const selfOnly = isSelfOnlyMunicipality(kind, muni);
+  if (!selfOnly && v.applicantType === "agent" && !v.agentName.trim()) {
     return "代理人の名前を入力してください";
   }
   return null;
 }
 
 // フォーム入力から記録へ反映する項目一式。既存の受領方法の項目
-// （requestMethod など）にも反映して、記録一覧のフィルタ・表示と互換にする
+// （requestMethod など）にも反映して、記録一覧のフィルタ・表示と互換にする。
+// 本人申請のみの自治体では申請者を強制的に本人にする
 function extraRecordPatch(
   kind: "tenshutsu" | "juminhyo",
   v: ExtraFormValues,
+  muni: Municipality | null,
 ): Partial<JudgmentRecord> {
   const isMail = isMailExtra(kind, v);
-  const agent = isMail && v.applicantType === "agent" ? v.agentName.trim() : "";
+  const selfOnly = isSelfOnlyMunicipality(kind, muni);
+  const applicant: ApplicantType = selfOnly ? "self" : v.applicantType;
+  const agent = applicant === "agent" ? v.agentName.trim() : "";
   return {
     requestKind: kind,
-    municipalityName: v.cityOffice.trim(),
-    cityOffice: v.cityOffice.trim(),
+    municipalityId: muni?.id ?? "",
+    municipalityName: muni?.name ?? "",
+    cityOffice: muni?.name ?? "",
+    cityOfficeId: muni?.id ?? "",
     movingDate: kind === "tenshutsu" ? v.movingDate : "",
     newAddress: kind === "tenshutsu" ? v.newAddress.trim() : "",
     juminhyoMethod: kind === "juminhyo" ? v.juminhyoMethod : undefined,
     juminhyoMyNumber: kind === "juminhyo" ? v.juminhyoMyNumber : undefined,
     juminhyoPurpose: kind === "juminhyo" ? v.juminhyoPurpose.trim() : undefined,
     postDate: isMail ? v.postDate : "",
-    applicantType: isMail ? v.applicantType : undefined,
+    applicantType: applicant,
     applicantAgentName: agent,
     requestMethod: isMail ? "mail" : "window",
     mailRequestDate: isMail ? v.postDate : "",
-    recipientType: isMail ? v.applicantType : "self",
+    recipientType: applicant,
     agentName: agent,
     docs: [
       kind === "tenshutsu"
@@ -816,17 +837,98 @@ function extraRecordPatch(
   };
 }
 
+// 請求先の市役所の選択（自治体マスタ）。未登録ならこの場で追加できる
+function CityOfficeSelect({
+  label,
+  municipalities,
+  value,
+  onChange,
+  onCreated,
+  canEdit,
+  showToast,
+}: {
+  label: string;
+  municipalities: Municipality[];
+  value: string;
+  onChange: (id: string) => void;
+  onCreated: (m: Municipality) => void;
+  canEdit: boolean;
+  showToast: (m: string) => void;
+}) {
+  const [addOpen, setAddOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const create = async (form: MunicipalityInput) => {
+    setBusy(true);
+    try {
+      const created = await insertMunicipality(createClient(), form);
+      onCreated(created);
+      onChange(created.id);
+      setAddOpen(false);
+      showToast(`自治体マスタに「${created.name}」を追加しました`);
+    } catch (e) {
+      showToast("自治体の追加に失敗しました: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-1">
+      <span className={LABEL}>{label}</span>
+      {municipalities.length === 0 ? (
+        <p className="rounded-xl bg-background p-3 text-xs text-muted">
+          自治体マスタが未登録です。「＋ 自治体マスタに追加」から登録してください。
+        </p>
+      ) : (
+        <select value={value} onChange={(e) => onChange(e.target.value)} className={INPUT}>
+          <option value="">選択してください</option>
+          {municipalities.map((m) => (
+            <option key={m.id} value={m.id}>{m.name}</option>
+          ))}
+        </select>
+      )}
+      <span className="text-[11px] text-muted">
+        上に表示している「外国人の現在の住所」から請求先の自治体を判断して選択してください。
+      </span>
+      {canEdit && (
+        <button type="button" onClick={() => setAddOpen(true)} className="self-start text-xs font-bold text-brand">
+          ＋ 自治体マスタに追加
+        </button>
+      )}
+      {addOpen && (
+        <MunicipalityModal
+          initial={null}
+          busy={busy}
+          onClose={() => setAddOpen(false)}
+          onSave={(form) => void create(form)}
+        />
+      )}
+    </div>
+  );
+}
+
 // 転出届・住民票の入力欄（新規請求フォームと記録の編集モーダルで共用）
 function ExtraRequestFields({
   kind,
   v,
   set,
+  municipalities,
+  onCreated,
+  canEdit,
+  showToast,
 }: {
   kind: "tenshutsu" | "juminhyo";
   v: ExtraFormValues;
   set: (patch: Partial<ExtraFormValues>) => void;
+  municipalities: Municipality[];
+  onCreated: (m: Municipality) => void;
+  canEdit: boolean;
+  showToast: (m: string) => void;
 }) {
   const isMail = isMailExtra(kind, v);
+  const muni = municipalities.find((m) => m.id === v.muniId) ?? null;
+  const selfOnly = isSelfOnlyMunicipality(kind, muni);
   return (
     <div className="space-y-3">
       {kind === "juminhyo" && (
@@ -838,11 +940,15 @@ function ExtraRequestFields({
           </div>
         </div>
       )}
-      <label className="flex flex-col gap-1">
-        <span className={LABEL}>{kind === "tenshutsu" ? "請求先の市役所" : "請求先・発行場所の市役所"}</span>
-        <input value={v.cityOffice} onChange={(e) => set({ cityOffice: e.target.value })} placeholder="例：八代市役所" className={INPUT} />
-        <span className="text-[11px] text-muted">上に表示している「外国人の現在の住所」から請求先の自治体を判断して入力してください。</span>
-      </label>
+      <CityOfficeSelect
+        label={kind === "tenshutsu" ? "請求先の市役所（自治体マスタから選択）" : "請求先・発行場所の市役所（自治体マスタから選択）"}
+        municipalities={municipalities}
+        value={v.muniId}
+        onChange={(id) => set({ muniId: id })}
+        onCreated={onCreated}
+        canEdit={canEdit}
+        showToast={showToast}
+      />
       {kind === "tenshutsu" && (
         <>
           <label className="flex flex-col gap-1">
@@ -871,13 +977,20 @@ function ExtraRequestFields({
         </>
       )}
       {isMail && (
-        <>
-          <label className="flex flex-col gap-1">
-            <span className={LABEL}>ポスト投函日</span>
-            <input type="date" value={v.postDate} onChange={(e) => set({ postDate: e.target.value })} className={INPUT} />
-          </label>
-          <div className="flex flex-col gap-1">
-            <span className={LABEL}>申請者</span>
+        <label className="flex flex-col gap-1">
+          <span className={LABEL}>ポスト投函日</span>
+          <input type="date" value={v.postDate} onChange={(e) => set({ postDate: e.target.value })} className={INPUT} />
+        </label>
+      )}
+      {/* 申請者（郵送・窓口共通）。本人申請のみの自治体では代理人を選べない */}
+      <div className="flex flex-col gap-1">
+        <span className={LABEL}>申請者</span>
+        {selfOnly ? (
+          <p className="rounded-xl bg-status-notice-bg px-3 py-2.5 text-xs font-bold text-status-notice-fg">
+            この自治体は本人申請のみです（自治体マスタの設定により代理人申請はできません）
+          </p>
+        ) : (
+          <>
             <div className="flex gap-2">
               <Pill active={v.applicantType === "self"} onClick={() => set({ applicantType: "self" })}>本人申請</Pill>
               <Pill active={v.applicantType === "agent"} onClick={() => set({ applicantType: "agent" })}>代理人</Pill>
@@ -885,9 +998,9 @@ function ExtraRequestFields({
             {v.applicantType === "agent" && (
               <input value={v.agentName} onChange={(e) => set({ agentName: e.target.value })} placeholder="代理人の名前" className={INPUT} />
             )}
-          </div>
-        </>
-      )}
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -899,6 +1012,8 @@ function ExtraRequestForm({
   workerId,
   todoNumber,
   workerAddress,
+  municipalities,
+  setMunicipalities,
   records,
   setRecords,
   canEdit,
@@ -909,6 +1024,8 @@ function ExtraRequestForm({
   workerId: string;
   todoNumber: string;
   workerAddress: string | null;
+  municipalities: Municipality[];
+  setMunicipalities: (m: Municipality[]) => void;
   records: JudgmentRecord[];
   setRecords: (r: JudgmentRecord[]) => void;
   canEdit: boolean;
@@ -919,10 +1036,13 @@ function ExtraRequestForm({
   const [busy, setBusy] = useState(false);
   const [savedRecord, setSavedRecord] = useState<JudgmentRecord | null>(null);
   const label = requestKindLabel(kind);
+  const muni = municipalities.find((m) => m.id === v.muniId) ?? null;
+  const addMunicipality = (m: Municipality) =>
+    setMunicipalities([...municipalities, m].sort((a, b) => a.name.localeCompare(b.name, "ja")));
 
   const save = async () => {
     if (!personName.trim()) return showToast("対象者の氏名を入力してください");
-    const err = extraFormError(kind, v);
+    const err = extraFormError(kind, v, muni);
     if (err) return showToast(err);
 
     const record: JudgmentRecord = {
@@ -958,7 +1078,7 @@ function ExtraRequestForm({
       nhiAgentName: "",
       nhiSameAsMain: true,
       workerAddress: workerAddress ?? "",
-      ...extraRecordPatch(kind, v),
+      ...extraRecordPatch(kind, v, muni),
     } as JudgmentRecord;
 
     setBusy(true);
@@ -979,8 +1099,8 @@ function ExtraRequestForm({
       <p className="mb-1 text-sm font-bold">{label}の郵送請求</p>
       <p className="mb-3 text-xs text-muted">
         {kind === "tenshutsu"
-          ? "転出届の郵送先（転出元の自治体）を現在の住所から確認して入力してください"
-          : "住民票の郵送先・窓口発行場所を現在の住所から確認して入力してください"}
+          ? "転出届の郵送先（転出元の自治体）を現在の住所から確認し、自治体マスタから選択してください"
+          : "住民票の郵送先・窓口発行場所を現在の住所から確認し、自治体マスタから選択してください"}
       </p>
 
       {/* 請求先判断のための現在の住所（外国人マスタの住所） */}
@@ -1002,11 +1122,11 @@ function ExtraRequestForm({
             <p className="mt-0.5 text-xs text-muted">内容の修正は「記録一覧」タブの編集から行えます。</p>
           </div>
           <div>
-            <p className="mb-2 text-sm font-bold text-muted">{label}の画像（複数可）</p>
+            <p className="mb-2 text-sm font-bold text-muted">{label}・申請書のデータ（複数可）</p>
             <MailingFileAttachments
               recordId={savedRecord.id}
               kind={label}
-              addLabel={`${label}の画像を追加（画像・PDF）`}
+              addLabel={`申請書・${label}のデータを追加（画像・PDF）`}
               canEdit={canEdit}
             />
           </div>
@@ -1016,7 +1136,15 @@ function ExtraRequestForm({
         </div>
       ) : (
         <>
-          <ExtraRequestFields kind={kind} v={v} set={set} />
+          <ExtraRequestFields
+            kind={kind}
+            v={v}
+            set={set}
+            municipalities={municipalities}
+            onCreated={addMunicipality}
+            canEdit={canEdit}
+            showToast={showToast}
+          />
           {canEdit && (
             <Button fullWidth className="mt-4" disabled={busy} onClick={save}>
               {busy ? "保存中…" : "この請求を記録として保存"}
@@ -1031,22 +1159,31 @@ function ExtraRequestForm({
 // 転出届・住民票の記録の編集モーダル（画像の添付もここから）
 function ExtraEditModal({
   record,
+  municipalities,
+  setMunicipalities,
   busy,
   onClose,
   onSave,
   canEdit,
+  showToast,
 }: {
   record: JudgmentRecord;
+  municipalities: Municipality[];
+  setMunicipalities: (m: Municipality[]) => void;
   busy: boolean;
   onClose: () => void;
   onSave: (r: JudgmentRecord) => void;
   canEdit: boolean;
+  showToast: (m: string) => void;
 }) {
   const kind: "tenshutsu" | "juminhyo" = record.requestKind === "juminhyo" ? "juminhyo" : "tenshutsu";
-  const [v, setV] = useState<ExtraFormValues>(() => extraValuesFromRecord(record));
+  const [v, setV] = useState<ExtraFormValues>(() => extraValuesFromRecord(record, municipalities));
   const set = (patch: Partial<ExtraFormValues>) => setV((x) => ({ ...x, ...patch }));
   const label = requestKindLabel(record.requestKind);
-  const canSave = extraFormError(kind, v) === null;
+  const muni = municipalities.find((m) => m.id === v.muniId) ?? null;
+  const canSave = extraFormError(kind, v, muni) === null;
+  const addMunicipality = (m: Municipality) =>
+    setMunicipalities([...municipalities, m].sort((a, b) => a.name.localeCompare(b.name, "ja")));
 
   return (
     <Modal open title={`${label}の請求を編集`} onClose={onClose}>
@@ -1057,20 +1194,28 @@ function ExtraEditModal({
             <p className="mt-0.5 text-sm">{record.workerAddress}</p>
           </div>
         )}
-        <ExtraRequestFields kind={kind} v={v} set={set} />
+        <ExtraRequestFields
+          kind={kind}
+          v={v}
+          set={set}
+          municipalities={municipalities}
+          onCreated={addMunicipality}
+          canEdit={canEdit}
+          showToast={showToast}
+        />
         <div className="border-t border-dashed border-border pt-3">
-          <p className="mb-2 text-sm font-bold text-muted">{label}の画像（複数可）</p>
+          <p className="mb-2 text-sm font-bold text-muted">{label}・申請書のデータ（複数可）</p>
           <MailingFileAttachments
             recordId={record.id}
             kind={label}
-            addLabel={`${label}の画像を追加（画像・PDF）`}
+            addLabel={`申請書・${label}のデータを追加（画像・PDF）`}
             canEdit={canEdit}
           />
         </div>
         <Button
           fullWidth
           disabled={!canSave || busy}
-          onClick={() => onSave({ ...record, ...extraRecordPatch(kind, v) } as JudgmentRecord)}
+          onClick={() => onSave({ ...record, ...extraRecordPatch(kind, v, muni) } as JudgmentRecord)}
         >
           {busy ? "保存中…" : "保存する"}
         </Button>
@@ -1199,6 +1344,8 @@ function MunicipalityTab({
                 <YNBadge on={m.has_tax} yes="課税額あり" no="課税額なし" />
                 <YNBadge on={m.needs_tax_payment_cert} yes="納税証明書要" no="納税証明書不要" />
                 <YNBadge on={m.show_asterisk} yes="＊表示する" no="＊表示しない" />
+                <YNBadge on={m.tenshutsu_self_only} yes="転出届 本人のみ" no="転出届 代理可" />
+                <YNBadge on={m.juminhyo_self_only} yes="住民票 本人のみ" no="住民票 代理可" />
               </div>
               {m.note && <p className="mt-2 text-xs text-muted">{m.note}</p>}
             </Card>
@@ -1239,8 +1386,8 @@ function MunicipalityModal({
 }) {
   const [form, setForm] = useState<MunicipalityInput>(
     initial
-      ? { name: initial.name, cert_name: initial.cert_name, has_income: initial.has_income, has_tax: initial.has_tax, needs_tax_payment_cert: initial.needs_tax_payment_cert, show_asterisk: initial.show_asterisk, note: initial.note }
-      : { name: "", cert_name: "課税証明書", has_income: true, has_tax: true, needs_tax_payment_cert: false, show_asterisk: false, note: "" },
+      ? { name: initial.name, cert_name: initial.cert_name, has_income: initial.has_income, has_tax: initial.has_tax, needs_tax_payment_cert: initial.needs_tax_payment_cert, show_asterisk: initial.show_asterisk, note: initial.note, tenshutsu_self_only: initial.tenshutsu_self_only ?? false, juminhyo_self_only: initial.juminhyo_self_only ?? false }
+      : { name: "", cert_name: "課税証明書", has_income: true, has_tax: true, needs_tax_payment_cert: false, show_asterisk: false, note: "", tenshutsu_self_only: false, juminhyo_self_only: false },
   );
   const set = <K extends keyof MunicipalityInput>(k: K, v: MunicipalityInput[K]) => setForm((f) => ({ ...f, [k]: v }));
   const canSave = form.name.trim() !== "" && form.cert_name.trim() !== "";
@@ -1261,6 +1408,8 @@ function MunicipalityModal({
           <CheckRow checked={form.has_tax} onChange={(v) => set("has_tax", v)} label="課税額の記載がある" />
           <CheckRow checked={form.needs_tax_payment_cert} onChange={(v) => set("needs_tax_payment_cert", v)} label="納税証明書が別途必要" />
           <CheckRow checked={form.show_asterisk} onChange={(v) => set("show_asterisk", v)} label="納期未到来額・未納額を「＊」表示する" />
+          <CheckRow checked={form.tenshutsu_self_only} onChange={(v) => set("tenshutsu_self_only", v)} label="転出届は本人申請のみ（代理人申請不可）" />
+          <CheckRow checked={form.juminhyo_self_only} onChange={(v) => set("juminhyo_self_only", v)} label="住民票は個人番号なしでも本人申請のみ（代理人申請不可）" />
         </div>
         <label className="flex flex-col gap-1">
           <span className={LABEL}>備考</span>
@@ -1286,11 +1435,15 @@ function methodText(method?: string, mailDate?: string, recipient?: string, agen
 function RecordsTab({
   records,
   setRecords,
+  municipalities,
+  setMunicipalities,
   canEdit,
   showToast,
 }: {
   records: JudgmentRecord[];
   setRecords: (r: JudgmentRecord[]) => void;
+  municipalities: Municipality[];
+  setMunicipalities: (m: Municipality[]) => void;
   canEdit: boolean;
   showToast: (m: string) => void;
 }) {
@@ -1468,7 +1621,7 @@ function RecordsTab({
                     </>
                   )}
                   {r.requestKind === "juminhyo" && r.juminhyoMethod === "window" ? (
-                    <p className="mt-1">発行方法：窓口発行</p>
+                    <p className="mt-1">窓口発行：{applicantLabel(r.applicantType, r.applicantAgentName)}</p>
                   ) : (
                     <p className="mt-1">
                       郵送請求：{applicantLabel(r.applicantType, r.applicantAgentName)}
@@ -1509,10 +1662,13 @@ function RecordsTab({
         (editTarget.requestKind === "tenshutsu" || editTarget.requestKind === "juminhyo" ? (
           <ExtraEditModal
             record={editTarget}
+            municipalities={municipalities}
+            setMunicipalities={setMunicipalities}
             busy={busy}
             onClose={() => setEditTarget(null)}
             onSave={persistUpdate}
             canEdit={canEdit}
+            showToast={showToast}
           />
         ) : (
           <RecipientEditModal record={editTarget} busy={busy} onClose={() => setEditTarget(null)} onSave={persistUpdate} />
