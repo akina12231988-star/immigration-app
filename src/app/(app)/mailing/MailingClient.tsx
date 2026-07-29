@@ -18,6 +18,7 @@ import {
   deleteJudgmentRecord,
   importMailingData,
 } from "@/lib/supabase/queries/tax-cert";
+import { updateWorker } from "@/lib/supabase/queries/workers";
 import {
   applicantLabel,
   buildRequiredDocs,
@@ -134,6 +135,10 @@ export function MailingClient({
   const [tab, setTab] = useState<"judge" | "muni" | "records">("judge");
   const [municipalities, setMunicipalities] = useState(initialMunicipalities);
   const [records, setRecords] = useState(initialRecords);
+  // 外国人の現在の住所（未登録なら請求フォームから登録でき、外国人詳細にも反映される）
+  const [workerList, setWorkerList] = useState(workers);
+  const updateWorkerAddressLocal = (id: string, address: string) =>
+    setWorkerList((ws) => ws.map((w) => (w.id === id ? { ...w, address } : w)));
   const [importOpen, setImportOpen] = useState(false);
   const [showToast, toastNode] = useToast();
 
@@ -176,7 +181,8 @@ export function MailingClient({
           setMunicipalities={setMunicipalities}
           records={records}
           setRecords={setRecords}
-          workers={workers}
+          workers={workerList}
+          onWorkerAddressSaved={updateWorkerAddressLocal}
           canEdit={canEdit}
           showToast={showToast}
         />
@@ -393,6 +399,7 @@ function JudgeTab({
   records,
   setRecords,
   workers,
+  onWorkerAddressSaved,
   canEdit,
   showToast,
 }: {
@@ -401,6 +408,7 @@ function JudgeTab({
   records: JudgmentRecord[];
   setRecords: (r: JudgmentRecord[]) => void;
   workers: MailingWorker[];
+  onWorkerAddressSaved: (id: string, address: string) => void;
   canEdit: boolean;
   showToast: (m: string) => void;
 }) {
@@ -601,6 +609,7 @@ function JudgeTab({
           workerId={workerId}
           todoNumber={todoNumber}
           workerAddress={selectedWorker ? selectedWorker.address : null}
+          onWorkerAddressSaved={onWorkerAddressSaved}
           municipalities={municipalities}
           setMunicipalities={setMunicipalities}
           records={records}
@@ -1012,6 +1021,7 @@ function ExtraRequestForm({
   workerId,
   todoNumber,
   workerAddress,
+  onWorkerAddressSaved,
   municipalities,
   setMunicipalities,
   records,
@@ -1024,6 +1034,7 @@ function ExtraRequestForm({
   workerId: string;
   todoNumber: string;
   workerAddress: string | null;
+  onWorkerAddressSaved: (id: string, address: string) => void;
   municipalities: Municipality[];
   setMunicipalities: (m: Municipality[]) => void;
   records: JudgmentRecord[];
@@ -1039,6 +1050,25 @@ function ExtraRequestForm({
   const muni = municipalities.find((m) => m.id === v.muniId) ?? null;
   const addMunicipality = (m: Municipality) =>
     setMunicipalities([...municipalities, m].sort((a, b) => a.name.localeCompare(b.name, "ja")));
+
+  // 住所が未登録なら、この場で入力して外国人詳細（workers.address）にも反映する
+  const [addressDraft, setAddressDraft] = useState("");
+  const [addressBusy, setAddressBusy] = useState(false);
+  const saveAddress = async () => {
+    const address = addressDraft.trim();
+    if (!workerId || !address) return;
+    setAddressBusy(true);
+    try {
+      await updateWorker(createClient(), workerId, { address });
+      onWorkerAddressSaved(workerId, address);
+      setAddressDraft("");
+      showToast("住所を保存しました（外国人詳細にも反映されます）");
+    } catch (e) {
+      showToast("住所の保存に失敗しました: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setAddressBusy(false);
+    }
+  };
 
   const save = async () => {
     if (!personName.trim()) return showToast("対象者の氏名を入力してください");
@@ -1103,16 +1133,36 @@ function ExtraRequestForm({
           : "住民票の郵送先・窓口発行場所を現在の住所から確認し、自治体マスタから選択してください"}
       </p>
 
-      {/* 請求先判断のための現在の住所（外国人マスタの住所） */}
+      {/* 請求先判断のための現在の住所（外国人マスタの住所）。未登録ならこの場で登録できる */}
       <div className="mb-3 rounded-xl bg-background p-3">
         <p className="text-[11px] font-bold text-muted">外国人の現在の住所</p>
-        <p className="mt-0.5 text-sm">
-          {workerAddress
-            ? workerAddress
-            : workerId
-              ? "住所が未登録です（外国人詳細の住所歴・住所欄で登録できます）"
-              : "上の「対象者情報」で外国人を選ぶと表示されます"}
-        </p>
+        {workerAddress ? (
+          <p className="mt-0.5 text-sm">{workerAddress}</p>
+        ) : !workerId ? (
+          <p className="mt-0.5 text-sm">上の「対象者情報」で外国人を選ぶと表示されます</p>
+        ) : canEdit ? (
+          <div className="mt-1.5 flex flex-col gap-1.5">
+            <p className="text-sm">住所が未登録です。ここで入力すると外国人詳細にも反映されます。</p>
+            <div className="flex gap-2">
+              <input
+                value={addressDraft}
+                onChange={(e) => setAddressDraft(e.target.value)}
+                placeholder="例：熊本県八代市◯◯1-2-3"
+                className={INPUT}
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={addressBusy || !addressDraft.trim()}
+                onClick={saveAddress}
+              >
+                {addressBusy ? "保存中…" : "住所を保存"}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <p className="mt-0.5 text-sm">住所が未登録です（外国人詳細の住所歴・住所欄で登録できます）</p>
+        )}
       </div>
 
       {savedRecord ? (
