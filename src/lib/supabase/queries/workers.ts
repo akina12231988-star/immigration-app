@@ -35,6 +35,7 @@ export interface WorkerBrief {
   id: string;
   name: string;
   current_organization_id: string | null;
+  address: string; // 現在の住所（郵送請求ツールで請求先判断の参考に表示）
 }
 
 export async function listWorkersBrief(
@@ -42,7 +43,7 @@ export async function listWorkersBrief(
 ): Promise<WorkerBrief[]> {
   const { data, error } = await supabase
     .from("workers")
-    .select("id, name, current_organization_id")
+    .select("id, name, current_organization_id, address")
     .order("name", { ascending: true });
   if (error) throw error;
   return (data as WorkerBrief[]) ?? [];

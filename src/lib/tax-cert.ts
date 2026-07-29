@@ -20,12 +20,16 @@ export type RequestMethod = "window" | "agent_window" | "mail";
 export type RecipientType = "self" | "agent";
 export type PaymentStatus = "" | "unpaid" | "paid" | "receipt_sent";
 
+// 請求の種別（課税・納税証明書 / 転出届 / 住民票）。既存の記録は undefined = tax
+export type RequestKind = "tax" | "tenshutsu" | "juminhyo";
+export type ApplicantType = "self" | "agent"; // 本人申請 / 代理人
+export type JuminhyoMethod = "mail" | "window"; // 住民票の発行方法（郵送請求 / 窓口発行）
+
 export interface JudgmentDoc {
   title: string;
   meta: string;
   starred: boolean;
   isNhi?: boolean;
-  isExtra?: boolean; // 追加書類（転出届・住民票）
 }
 
 // 判定記録（DBの judgment_records.data に丸ごと保存する）
@@ -61,10 +65,18 @@ export interface JudgmentRecord {
   nhiRecipientType: RecipientType;
   nhiAgentName: string;
   nhiSameAsMain: boolean;
-  // 追加書類（証明書と一緒に郵送請求するもの）
-  hasTenshutsu?: boolean; // 転出届も請求する
-  hasJuminhyo?: boolean; // 住民票も請求する
+  // ---- 転出届・住民票の郵送請求（requestKind が tenshutsu / juminhyo のとき） ----
+  requestKind?: RequestKind;
+  cityOffice?: string; // 請求先の市役所
+  workerAddress?: string; // 記録時点の外国人の現在の住所（請求先判断の参考）
+  postDate?: string; // ポスト投函日（郵送請求のとき）
+  applicantType?: ApplicantType; // 本人申請 / 代理人
+  applicantAgentName?: string; // 代理人の名前
+  movingDate?: string; // 転出日（転出届）
+  newAddress?: string; // 転入先の住所（転出届）
+  juminhyoMethod?: JuminhyoMethod; // 住民票: 郵送請求 / 窓口発行
   juminhyoMyNumber?: boolean; // 住民票に個人番号（マイナンバー）を記載する
+  juminhyoPurpose?: string; // 住民票を発行する目的
   // 電話連絡メモ（main / nhi）
   mainPhoneContact?: string;
   mainPhoneContent?: string;
@@ -225,44 +237,21 @@ export function buildRequiredDocs(
   return docs;
 }
 
-// 追加書類（転出届・住民票）。証明書と一緒に郵送請求するものを必要書類に加える
-export function buildExtraDocs(
-  hasTenshutsu: boolean,
-  hasJuminhyo: boolean,
-  juminhyoMyNumber: boolean,
-): JudgmentDoc[] {
-  const docs: JudgmentDoc[] = [];
-  if (hasTenshutsu) {
-    docs.push({
-      title: "転出届",
-      meta: "転出元（旧住所）の自治体へ郵送で届け出ます。転出証明書の返送先に注意してください。",
-      starred: false,
-      isExtra: true,
-    });
-  }
-  if (hasJuminhyo) {
-    docs.push({
-      title: `住民票の写し（個人番号の記載${juminhyoMyNumber ? "あり" : "なし"}）`,
-      meta: "現住所の自治体で取得します。提出先に合わせて個人番号（マイナンバー）記載の有無を確認してください。",
-      starred: false,
-      isExtra: true,
-    });
-  }
-  return docs;
+// 請求種別の表示名
+export function requestKindLabel(kind?: RequestKind): string {
+  if (kind === "tenshutsu") return "転出届";
+  if (kind === "juminhyo") return "住民票";
+  return "課税・納税証明書";
 }
 
-// 記録一覧などに表示する追加書類の要約（例: 転出届 ・ 住民票（個人番号 記載なし））
-export function extraDocsSummary(r: {
-  hasTenshutsu?: boolean;
-  hasJuminhyo?: boolean;
-  juminhyoMyNumber?: boolean;
-}): string {
-  return [
-    r.hasTenshutsu ? "転出届" : "",
-    r.hasJuminhyo ? `住民票（個人番号 記載${r.juminhyoMyNumber ? "あり" : "なし"}）` : "",
-  ]
-    .filter(Boolean)
-    .join(" ・ ");
+// 住民票の書類名（個人番号の記載有無つき）
+export function juminhyoTitle(withMyNumber: boolean): string {
+  return `住民票の写し（個人番号の記載${withMyNumber ? "あり" : "なし"}）`;
+}
+
+// 申請者の表示（本人申請 / 代理人（名前））
+export function applicantLabel(type?: ApplicantType, agentName?: string): string {
+  return type === "agent" ? `代理人（${agentName || "名前未入力"}）` : "本人申請";
 }
 
 export function collectionLabel(t: CollectionType): string {
