@@ -40,6 +40,9 @@ export function PostingDetail({
 
   const orgName = posting.organizations?.name;
   const hired = applicants.filter((a) => a.result === "採用").length;
+  // 所属機関が求人で必須としている他条件（所属機関の情報で登録）
+  const postingOrg = organizations.find((o) => o.id === posting.organization_id);
+  const orgPostingNote = (postingOrg?.intake?.posting_note ?? "").trim();
 
   const handleUpdate = async (input: JobPostingInput) => {
     await updatePosting(createClient(), posting.id, input);
@@ -65,6 +68,12 @@ export function PostingDetail({
       {error && (
         <p role="alert" className="rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
           {error}
+        </p>
+      )}
+
+      {orgPostingNote && (
+        <p className="rounded-xl border border-status-notice-fg/50 bg-status-notice-bg/50 px-3 py-2.5 text-xs font-bold leading-relaxed text-status-notice-fg">
+          ⚠ この所属機関の求人必須条件: {orgPostingNote}
         </p>
       )}
 

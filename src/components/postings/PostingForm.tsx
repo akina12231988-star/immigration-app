@@ -104,6 +104,17 @@ export function PostingForm({
             ))}
           </select>
         </Field>
+        {/* 所属機関が求人で必須としている他条件（所属機関の情報で登録）を注意喚起 */}
+        {(() => {
+          const org = organizations.find((o) => o.id === form.organization_id);
+          const note = (org?.intake?.posting_note ?? "").trim();
+          if (!note) return null;
+          return (
+            <p className="rounded-xl border border-status-notice-fg/50 bg-status-notice-bg/50 px-3 py-2.5 text-xs font-bold leading-relaxed text-status-notice-fg">
+              ⚠ この所属機関の求人必須条件: {note}
+            </p>
+          );
+        })()}
         <div className="grid grid-cols-2 gap-2.5">
           <Field label="求人受付日">
             <input

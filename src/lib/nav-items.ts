@@ -1,5 +1,6 @@
 import {
   Home,
+  Building2,
   Users,
   FilePlus2,
   List,
@@ -27,6 +28,7 @@ export interface NavItem {
 // 下部タブ・サイドナビ共通のナビ項目（要件②の順序）
 export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "ホーム", short: "ホーム", icon: Home },
+  { href: "/organizations", label: "所属機関の情報", short: "所属機関", icon: Building2 },
   { href: "/workers", label: "外国人", short: "外国人", icon: Users },
   { href: "/onboarding", label: "入社書類メール", short: "入社書類", icon: MailPlus },
   { href: "/mailing", label: "郵送請求", short: "郵送請求", icon: Mailbox },

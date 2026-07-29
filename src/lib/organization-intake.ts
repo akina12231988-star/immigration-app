@@ -8,11 +8,20 @@ import type {
   OrganizationIntake,
 } from "@/types/db";
 
-// 決算情報の行ラベル（申込書の並びと同じ）
-export const FINANCIAL_YEAR_LABELS = ["昨年度", "2年前", "3年前"] as const;
+// 決算情報の初期行数（年月の経過に合わせて行は追加できる）
+export const FINANCIAL_DEFAULT_ROWS = 3;
 
 export function emptyFinancialYear(): OrgFinancialYear {
-  return { year: "", sales: "", ordinary: "", net: "", assets: "" };
+  return {
+    year: "",
+    term: "",
+    period_from: "",
+    period_to: "",
+    sales: "",
+    ordinary: "",
+    net: "",
+    assets: "",
+  };
 }
 
 export function emptyJapaneseStaff(): OrgJapaneseStaff {
@@ -29,6 +38,9 @@ export function emptyOrganizationIntake(): OrganizationIntake {
     phone: "",
     fax: "",
     email: "",
+    fiscal_kind: "",
+    support_fee: "",
+    posting_note: "",
     contact_method: "",
     health_insurance: "",
     pension: "",
@@ -43,7 +55,7 @@ export function emptyOrganizationIntake(): OrganizationIntake {
     staff_ssw1: "",
     staff_ssw2: "",
     staff_katsudo: "",
-    financials: FINANCIAL_YEAR_LABELS.map(() => emptyFinancialYear()),
+    financials: Array.from({ length: FINANCIAL_DEFAULT_ROWS }, () => emptyFinancialYear()),
     wage_parity_reason: "",
     rosai_covered: "",
     rosai_no: "",
@@ -64,8 +76,12 @@ export function normalizeOrganizationIntake(raw: unknown): OrganizationIntake {
   const base = emptyOrganizationIntake();
   const src = (raw && typeof raw === "object" ? raw : {}) as Partial<OrganizationIntake>;
 
+  // 決算情報は保存済みの行数を維持する（行の追加に対応）。無ければ初期行数分の空行
   const finSrc = Array.isArray(src.financials) ? src.financials : [];
-  const financials = base.financials.map((row, i) => ({ ...row, ...(finSrc[i] ?? {}) }));
+  const financials =
+    finSrc.length > 0
+      ? finSrc.map((row) => ({ ...emptyFinancialYear(), ...row }))
+      : base.financials;
 
   const staffSrc = Array.isArray(src.japanese_staff) ? src.japanese_staff : [];
   const japanese_staff =
