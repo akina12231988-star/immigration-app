@@ -4,8 +4,12 @@ import {
   evaluatePrepChecklist,
   isRequired,
   isSatisfied,
+  letterPackTrackingUrl,
+  PREP_DOC_ALWAYS_EXTRAS,
   PREP_DOC_DEFS,
+  PREP_DOC_STATUS_OPTIONS,
   prepDocLabel,
+  prepStatusOption,
   type PrepChecklistMeta,
   type PrepDocSources,
 } from "./application-prep";
@@ -93,5 +97,57 @@ describe("prepDocLabel", () => {
   });
   it("年つきでない書類はそのまま", () => {
     expect(prepDocLabel(def("zairyu"), 7, 8)).toBe("在留カード（両面・現住所がわかるもの）");
+  });
+});
+
+describe("準備状況（ステータス）の定義", () => {
+  it("選択肢が定義されている書類IDは PREP_DOC_DEFS に存在する", () => {
+    const ids = new Set(PREP_DOC_DEFS.map((d) => d.id));
+    for (const docId of Object.keys(PREP_DOC_STATUS_OPTIONS)) {
+      expect(ids.has(docId), `${docId} が書類定義にない`).toBe(true);
+    }
+    for (const docId of Object.keys(PREP_DOC_ALWAYS_EXTRAS)) {
+      expect(ids.has(docId), `${docId} が書類定義にない`).toBe(true);
+    }
+  });
+  it("どの書類にも準備中と完了の選択肢がある", () => {
+    for (const [docId, options] of Object.entries(PREP_DOC_STATUS_OPTIONS)) {
+      expect(options.some((o) => !o.done), `${docId} に準備中がない`).toBe(true);
+      expect(options.some((o) => o.done), `${docId} に完了がない`).toBe(true);
+    }
+  });
+  it("prepStatusOption は選択中の選択肢を返す（未選択は null）", () => {
+    expect(prepStatusOption("zairyu", "預かった")?.done).toBe(true);
+    expect(prepStatusOption("zairyu", "")).toBeNull();
+  });
+});
+
+describe("在留資格認定申請（認定）", () => {
+  it("認定は変更と同じ書類＋推薦状が必要", () => {
+    const ninteiIds = evaluatePrepChecklist(
+      meta({ app_type: "認定", has_kokuho: true, has_nenkin: true, target_reiwa: 7 }),
+      sources({}),
+    ).items.map((x) => x.def.id);
+    const henkouIds = evaluatePrepChecklist(
+      meta({ app_type: "変更", has_kokuho: true, has_nenkin: true, target_reiwa: 7 }),
+      sources({}),
+    ).items.map((x) => x.def.id);
+    expect(ninteiIds).toEqual(henkouIds);
+    expect(ninteiIds).toContain("suisenjo");
+  });
+  it("更新には推薦状は不要", () => {
+    const ids = evaluatePrepChecklist(
+      meta({ app_type: "更新", has_kokuho: true, has_nenkin: true, target_reiwa: 7 }),
+      sources({}),
+    ).items.map((x) => x.def.id);
+    expect(ids).not.toContain("suisenjo");
+  });
+});
+
+describe("letterPackTrackingUrl", () => {
+  it("追跡番号から記号を除いて日本郵便の追跡ページを組み立てる", () => {
+    expect(letterPackTrackingUrl("1234-5678-9012")).toBe(
+      "https://trackings.post.japanpost.jp/services/srv/search/direct?searchKind=S002&locale=ja&reqCodeNo1=123456789012",
+    );
   });
 });
