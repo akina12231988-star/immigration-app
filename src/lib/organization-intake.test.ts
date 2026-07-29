@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  FINANCIAL_YEAR_LABELS,
+  FINANCIAL_DEFAULT_ROWS,
   emptyOrganizationIntake,
   normalizeOrganizationIntake,
 } from "./organization-intake";
@@ -9,7 +9,7 @@ describe("normalizeOrganizationIntake", () => {
   it("空のjsonb（{}）から全キーを補完する", () => {
     const intake = normalizeOrganizationIntake({});
     expect(intake).toEqual(emptyOrganizationIntake());
-    expect(intake.financials).toHaveLength(FINANCIAL_YEAR_LABELS.length);
+    expect(intake.financials).toHaveLength(FINANCIAL_DEFAULT_ROWS);
     expect(intake.japanese_staff).toHaveLength(1);
     expect(intake.officers).toHaveLength(1);
   });
@@ -27,16 +27,18 @@ describe("normalizeOrganizationIntake", () => {
     });
     expect(intake.phone).toBe("096-000-0000");
     expect(intake.kana).toBe("");
-    // 決算情報は3行に補完され、1行目の入力は保持される
-    expect(intake.financials).toHaveLength(3);
+    // 決算情報は保存済みの行数を維持し（行の追加に対応）、欠けたキーは補完される
+    expect(intake.financials).toHaveLength(1);
     expect(intake.financials[0]).toEqual({
       year: "6",
+      term: "",
+      period_from: "",
+      period_to: "",
       sales: "1000万円",
       ordinary: "",
       net: "",
       assets: "",
     });
-    expect(intake.financials[1].sales).toBe("");
     // 役員行は欠けたキーが補完される
     expect(intake.officers).toEqual([
       { kana: "", name: "山田 太郎", title: "", not_involved: true },

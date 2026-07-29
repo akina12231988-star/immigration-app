@@ -1,21 +1,29 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, Pencil, Plus, Trash2 } from "lucide-react";
+import { Building2, Eye, Loader2, Pencil, Plus, Trash2, Upload } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { createClient } from "@/lib/supabase/client";
+import { compressImage } from "@/lib/image-compress";
 import {
   deleteOrganization,
   insertOrganization,
   updateOrganization,
 } from "@/lib/supabase/queries/organizations";
+import { listOrganizationFiles } from "@/lib/supabase/queries/organization-files";
+import {
+  createOrgFileTicket,
+  deleteOrgFile,
+  getOrgFilePreviewUrl,
+  registerOrgFile,
+} from "@/app/(app)/organizations/actions";
 import { SSW_INDUSTRIES, categoriesFor } from "@/lib/industries";
 import {
-  FINANCIAL_YEAR_LABELS,
+  emptyFinancialYear,
   emptyJapaneseStaff,
   emptyOfficer,
   emptyOrganizationIntake,
@@ -26,6 +34,7 @@ import type {
   OrgJapaneseStaff,
   OrgOfficer,
   Organization,
+  OrganizationFileRow,
   OrganizationInput,
   OrganizationIntake,
 } from "@/types/db";
@@ -184,20 +193,21 @@ function OrganizationFormModal({
   onClose: () => void;
   onSubmit: (input: OrganizationInput) => Promise<void>;
 }) {
-  const [form, setForm] = useState<OrganizationInput>(
-    initial
-      ? {
-          name: initial.name,
-          industry: initial.industry,
-          business_category: initial.business_category,
-          address: initial.address,
-          contact: initial.contact,
-          corporate_no: initial.corporate_no,
-          note: initial.note,
-          intake: normalizeOrganizationIntake(initial.intake),
-        }
-      : { ...EMPTY, intake: emptyOrganizationIntake() },
-  );
+  const [form, setForm] = useState<OrganizationInput>(() => {
+    if (!initial) return { ...EMPTY, intake: emptyOrganizationIntake() };
+    const intake = normalizeOrganizationIntake(initial.intake);
+    return {
+      name: initial.name,
+      industry: initial.industry,
+      business_category: initial.business_category,
+      address: initial.address,
+      // 電話番号（旧・申込書の項目）は連絡先へ統合。連絡先が空なら旧データを引き継ぐ
+      contact: initial.contact || intake.phone,
+      corporate_no: initial.corporate_no,
+      note: initial.note,
+      intake: { ...intake, phone: "" },
+    };
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -287,7 +297,7 @@ function OrganizationFormModal({
           </span>
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-bold text-muted">連絡先</span>
+          <span className="text-xs font-bold text-muted">電話番号・連絡先</span>
           <input
             value={form.contact}
             onChange={(e) => set("contact", e.target.value)}
@@ -318,7 +328,7 @@ function OrganizationFormModal({
           />
         </label>
 
-        <IntakeSection intake={intake} setIntake={setIntake} />
+        <IntakeSection intake={intake} setIntake={setIntake} orgId={initial?.id ?? null} />
 
         <Button type="submit" fullWidth disabled={busy} className="mt-1">
           {busy ? "保存中…" : initial ? "更新する" : "登録する"}
@@ -389,13 +399,15 @@ function IntakeSelect({
   );
 }
 
-// 登録支援機関への申込書の内容。項目が多いため折りたたみで表示する
+// 登録支援機関への申込書の内容。折りたたまず最初から全項目を表示する
 function IntakeSection({
   intake,
   setIntake,
+  orgId,
 }: {
   intake: OrganizationIntake;
   setIntake: (patch: Partial<OrganizationIntake>) => void;
+  orgId: string | null; // 見積書の添付に使う（新規登録時は保存後に添付可）
 }) {
   const setFinancial = (i: number, patch: Partial<OrgFinancialYear>) =>
     setIntake({
@@ -413,15 +425,12 @@ function IntakeSection({
     });
 
   return (
-    <details className="rounded-xl border border-border">
-      <summary className="cursor-pointer select-none px-3 py-3 text-sm font-bold">
-        申込書の情報（登録支援機関への申込書）
-      </summary>
-      <div className="flex flex-col gap-2.5 border-t border-border p-3">
+    <div className="rounded-xl border border-border">
+      <p className="px-3 pt-3 text-sm font-bold">申込書の情報（登録支援機関への申込書）</p>
+      <div className="flex flex-col gap-2.5 p-3">
         <p className={GROUP_CLASS}>会社の情報</p>
         <IntakeField label="名称のフリガナ" value={intake.kana} onChange={(v) => setIntake({ kana: v })} />
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-          <IntakeField label="電話番号" value={intake.phone} onChange={(v) => setIntake({ phone: v })} />
           <IntakeField label="FAX" value={intake.fax} onChange={(v) => setIntake({ fax: v })} />
           <IntakeField label="Email" value={intake.email} onChange={(v) => setIntake({ email: v })} />
           <IntakeSelect
@@ -485,23 +494,117 @@ function IntakeSection({
           <IntakeField label="特定活動" value={intake.staff_katsudo} onChange={(v) => setIntake({ staff_katsudo: v })} />
         </div>
 
-        <p className={GROUP_CLASS}>決算情報（直近3年分）</p>
+        <p className={GROUP_CLASS}>決算情報（年月が経過したら行を追加）</p>
         <p className={HINT_CLASS}>
           個人事業主は、売上高＝青色決算書の「売上（収入）金額」、経常損益＝「所得金額」、
           純資産＝貸借対照表の「元入金」を記入してください（純損益は記載不要）。
         </p>
+        <div className="flex flex-wrap items-center gap-4">
+          <span className="text-[11px] font-bold text-muted">区分:</span>
+          {["個人事業主", "法人"].map((k) => (
+            <label key={k} className="flex items-center gap-1.5 text-xs font-bold">
+              <input
+                type="radio"
+                name="fiscal-kind"
+                checked={intake.fiscal_kind === k}
+                onChange={() => setIntake({ fiscal_kind: k })}
+                className="h-4 w-4"
+              />
+              {k}
+            </label>
+          ))}
+        </div>
         {intake.financials.map((row, i) => (
-          <div key={FINANCIAL_YEAR_LABELS[i] ?? i} className="rounded-xl border border-border p-2.5">
-            <p className="mb-1.5 text-xs font-bold">{FINANCIAL_YEAR_LABELS[i] ?? `${i + 1}年前`}</p>
-            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5">
-              <IntakeField label="令和◯年度" value={row.year} onChange={(v) => setFinancial(i, { year: v })} />
+          <div key={i} className="rounded-xl border border-border p-2.5">
+            {/* 期の表記: 個人事業主は「令和◯年分売上情報」、法人は「◯期分（令和◯年◯月分〜令和◯年◯月分）」 */}
+            {intake.fiscal_kind === "法人" ? (
+              <div className="mb-1.5 flex flex-wrap items-center gap-1.5 text-xs font-bold">
+                <input
+                  value={row.term}
+                  onChange={(e) => setFinancial(i, { term: e.target.value })}
+                  placeholder="12"
+                  className="min-h-[34px] w-14 rounded-lg border border-border bg-background px-2 text-center text-xs tabular-nums focus:border-brand focus:outline-none"
+                />
+                期分（令和
+                <input
+                  value={row.period_from}
+                  onChange={(e) => setFinancial(i, { period_from: e.target.value })}
+                  placeholder="7年4月"
+                  className="min-h-[34px] w-20 rounded-lg border border-border bg-background px-2 text-center text-xs tabular-nums focus:border-brand focus:outline-none"
+                />
+                分〜令和
+                <input
+                  value={row.period_to}
+                  onChange={(e) => setFinancial(i, { period_to: e.target.value })}
+                  placeholder="8年3月"
+                  className="min-h-[34px] w-20 rounded-lg border border-border bg-background px-2 text-center text-xs tabular-nums focus:border-brand focus:outline-none"
+                />
+                分）
+              </div>
+            ) : (
+              <div className="mb-1.5 flex items-center gap-1.5 text-xs font-bold">
+                令和
+                <input
+                  value={row.year}
+                  onChange={(e) => setFinancial(i, { year: e.target.value })}
+                  placeholder="7"
+                  className="min-h-[34px] w-14 rounded-lg border border-border bg-background px-2 text-center text-xs tabular-nums focus:border-brand focus:outline-none"
+                />
+                年分売上情報
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
               <IntakeField label="売上高" value={row.sales} onChange={(v) => setFinancial(i, { sales: v })} />
               <IntakeField label="経常損益" value={row.ordinary} onChange={(v) => setFinancial(i, { ordinary: v })} />
               <IntakeField label="純損益" value={row.net} onChange={(v) => setFinancial(i, { net: v })} />
               <IntakeField label="純資産" value={row.assets} onChange={(v) => setFinancial(i, { assets: v })} />
             </div>
+            {intake.financials.length > 1 && (
+              <button
+                type="button"
+                onClick={() =>
+                  setIntake({ financials: intake.financials.filter((_, idx) => idx !== i) })
+                }
+                className="mt-1.5 text-[11px] font-bold text-seal"
+              >
+                この期を削除
+              </button>
+            )}
           </div>
         ))}
+        <button
+          type="button"
+          onClick={() => setIntake({ financials: [...intake.financials, emptyFinancialYear()] })}
+          className="self-start text-xs font-bold text-brand"
+        >
+          ＋ 期を追加
+        </button>
+
+        <IntakeField
+          label="毎月の支援代（月額）"
+          value={intake.support_fee}
+          onChange={(v) => setIntake({ support_fee: v })}
+          placeholder="例: 20,000円/人"
+        />
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-muted">
+            求人で必須としている他条件（求人情報の画面で注意喚起として表示されます）
+          </span>
+          <textarea
+            value={intake.posting_note}
+            onChange={(e) => setIntake({ posting_note: e.target.value })}
+            rows={2}
+            placeholder="例: 普通自動車免許必須・寮なし など"
+            className={`${INPUT_CLASS} min-h-[60px] py-2 leading-relaxed`}
+          />
+        </label>
+
+        <p className={GROUP_CLASS}>見積書の添付（複数可）</p>
+        {orgId ? (
+          <OrgQuoteFiles orgId={orgId} />
+        ) : (
+          <p className={HINT_CLASS}>見積書は、会社・機関を登録したあとに編集画面から添付できます。</p>
+        )}
 
         <p className={GROUP_CLASS}>一緒に働く日本人常勤職員（専従者）</p>
         <p className={HINT_CLASS}>記入した職員については、定期報告の際に賃金台帳を提出します。</p>
@@ -661,6 +764,111 @@ function IntakeSection({
           ＋ 役員を追加
         </button>
       </div>
-    </details>
+    </div>
+  );
+}
+
+// 見積書の添付（複数可）。編集中の会社・機関に紐づけて保存する
+function OrgQuoteFiles({ orgId }: { orgId: string }) {
+  const [files, setFiles] = useState<OrganizationFileRow[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    listOrganizationFiles(createClient(), orgId)
+      .then((rows) => {
+        if (!cancelled) setFiles(rows);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId]);
+
+  async function handleFiles(list: FileList | null) {
+    if (!list || list.length === 0) return;
+    setBusy(true);
+    setError(null);
+    try {
+      for (const file of Array.from(list)) {
+        const { blob, mimeType, fileName } = await compressImage(file);
+        const ticket = await createOrgFileTicket(orgId, fileName, mimeType);
+        if (!ticket.ok) throw new Error(ticket.message);
+        const { error: upErr } = await createClient()
+          .storage.from("app-files")
+          .uploadToSignedUrl(ticket.path, ticket.token, blob, { contentType: mimeType });
+        if (upErr) throw new Error(`アップロードに失敗しました: ${upErr.message}`);
+        const res = await registerOrgFile(orgId, "見積書", ticket.path, fileName, mimeType);
+        if (!res.ok) throw new Error(res.message);
+      }
+      setFiles(await listOrganizationFiles(createClient(), orgId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "アップロードに失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function preview(id: string) {
+    const res = await getOrgFilePreviewUrl(id);
+    if (res.ok) window.open(res.url, "_blank", "noopener");
+    else setError(res.message);
+  }
+
+  async function remove(f: OrganizationFileRow) {
+    if (!window.confirm(`「${f.file_name}」を削除します。よろしいですか？`)) return;
+    setError(null);
+    const res = await deleteOrgFile(f.id);
+    if (res.ok) setFiles((prev) => prev.filter((x) => x.id !== f.id));
+    else setError(res.message);
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {error && <p className="rounded-lg bg-seal/10 px-2.5 py-1.5 text-xs text-seal">{error}</p>}
+      {files.map((f) => (
+        <div key={f.id} className="flex items-center gap-1.5">
+          <span className="min-w-0 flex-1 truncate text-[11px] text-muted">{f.file_name}</span>
+          <button
+            type="button"
+            onClick={() => preview(f.id)}
+            aria-label="表示"
+            className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-muted hover:text-brand"
+          >
+            <Eye size={13} />
+          </button>
+          <button
+            type="button"
+            onClick={() => remove(f)}
+            aria-label="削除"
+            className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-seal"
+          >
+            <Trash2 size={13} />
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        disabled={busy}
+        className="flex items-center gap-1.5 self-start rounded-lg border border-dashed border-brand px-3 py-2 text-xs font-bold text-brand disabled:opacity-50"
+      >
+        {busy ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+        {busy ? "アップロード中…" : "見積書を追加（画像・PDF）"}
+      </button>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*,application/pdf"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          void handleFiles(e.target.files);
+          e.target.value = "";
+        }}
+      />
+    </div>
   );
 }

@@ -49,13 +49,16 @@ import {
   evaluatePrepChecklist,
   isPrepPageKeyOf,
   letterPackTrackingUrl,
+  parseAttachItems,
   PREP_APP_TYPE_LABELS,
   PREP_APP_TYPES,
   PREP_CERT_PATTERNS,
   PREP_DOC_ALWAYS_EXTRAS,
+  PREP_DOC_ATTACH_ITEMS,
   PREP_DOC_STATUS_OPTIONS,
   PREP_MAIL_AFTER_HIDDEN,
   PREP_TANTOU_OPTIONS,
+  serializeAttachItems,
   prepDocLabel,
   prepPageKey,
   prepStatusOption,
@@ -150,6 +153,7 @@ export function ApplicationPrepChecklist({
             tracking_out: r.tracking_out,
             tracking_back: r.tracking_back,
             mail_after_apply: r.mail_after_apply,
+            attach_items: r.attach_items ?? "",
           };
         }
         setDocStatusesByList((prev) => ({ ...prev, [currentId]: next }));
@@ -933,6 +937,36 @@ function DocRow({
               onPatch={onPatchStatus}
             />
           ))}
+          {/* 添付する資料項目の選択（年金記録: 年金記録／免除申請書） */}
+          {PREP_DOC_ATTACH_ITEMS[def.id] && (
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-[11px] text-muted">添付する資料項目:</span>
+              {PREP_DOC_ATTACH_ITEMS[def.id].map((item) => {
+                const selected = parseAttachItems(ds.attach_items);
+                const checked = selected.includes(item);
+                return (
+                  <label key={item} className="flex items-center gap-1.5 text-[11px] font-bold">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={!canEdit}
+                      onChange={(e) =>
+                        onPatchStatus({
+                          attach_items: serializeAttachItems(
+                            e.target.checked
+                              ? [...selected, item]
+                              : selected.filter((x) => x !== item),
+                          ),
+                        })
+                      }
+                      className="h-3.5 w-3.5"
+                    />
+                    {item}
+                  </label>
+                );
+              })}
+            </div>
+          )}
           {canEdit && !PREP_MAIL_AFTER_HIDDEN.has(def.id) && (
             <label className="flex items-center gap-1.5 text-[11px]">
               <input

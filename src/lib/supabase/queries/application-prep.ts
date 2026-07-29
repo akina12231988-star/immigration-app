@@ -93,6 +93,7 @@ export interface PrepDocStatusRow {
   tracking_out: string; // レターパック追跡番号（送付）
   tracking_back: string; // レターパック追跡番号（返信用）
   mail_after_apply: boolean; // 申請後に発行され次第、入管へ郵送する
+  attach_items: string; // 添付する資料項目（カンマ区切り。年金記録: 年金記録/免除申請書）
 }
 
 export type PrepDocStatusInput = Omit<PrepDocStatusRow, "id" | "checklist_id" | "doc_id">;
@@ -105,6 +106,7 @@ export const EMPTY_PREP_DOC_STATUS: PrepDocStatusInput = {
   tracking_out: "",
   tracking_back: "",
   mail_after_apply: false,
+  attach_items: "",
 };
 
 // チェックリスト1件分の書類ステータスを全件取得

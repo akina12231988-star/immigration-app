@@ -7,12 +7,15 @@ import {
   isRequired,
   isSatisfied,
   letterPackTrackingUrl,
+  parseAttachItems,
   PREP_DOC_ALWAYS_EXTRAS,
+  PREP_DOC_ATTACH_ITEMS,
   PREP_DOC_DEFS,
   PREP_DOC_STATUS_OPTIONS,
   prepDocLabel,
   prepPageKey,
   prepStatusOption,
+  serializeAttachItems,
   type PrepChecklistMeta,
   type PrepDocSources,
 } from "./application-prep";
@@ -66,9 +69,11 @@ describe("isSatisfied", () => {
     expect(isSatisfied(def("gensen"), m, sources({ filledDocKeys: new Set(["gensen_r7"]) }))).toBe(false);
   });
 
-  it("健康診断書は healthComplete で充足（詳細ページで判定）", () => {
-    expect(isSatisfied(def("kenshin"), meta({}), sources({ healthComplete: false }))).toBe(false);
-    expect(isSatisfied(def("kenshin"), meta({}), sources({ healthComplete: true }))).toBe(true);
+  it("健康診断書はファイル（kenshin）が添付されていれば充足（詳細確認はステータスで管理）", () => {
+    expect(isSatisfied(def("kenshin"), meta({}), sources({}))).toBe(false);
+    expect(
+      isSatisfied(def("kenshin"), meta({}), sources({ filledDocKeys: new Set(["kenshin"]) })),
+    ).toBe(true);
   });
 });
 
@@ -145,6 +150,17 @@ describe("特定活動へ資格変更申請", () => {
     expect(ids).toContain("cert_senmonkyu");
     expect(ids).toContain("cert_nihongo");
     expect(ids).toContain("cert_senmongai");
+  });
+});
+
+describe("添付する資料項目（attach_items）", () => {
+  it("年金記録には 年金記録／免除申請書 の選択肢がある", () => {
+    expect(PREP_DOC_ATTACH_ITEMS.nenkin).toEqual(["年金記録", "免除申請書"]);
+  });
+  it("カンマ区切りで保存・復元できる", () => {
+    expect(serializeAttachItems(["年金記録", "免除申請書"])).toBe("年金記録,免除申請書");
+    expect(parseAttachItems("年金記録,免除申請書")).toEqual(["年金記録", "免除申請書"]);
+    expect(parseAttachItems("")).toEqual([]);
   });
 });
 

@@ -63,9 +63,13 @@ export interface Organization {
 
 // ---- 登録支援機関への申込書（organizations.intake jsonb） ----
 
-// 決算情報の1年度分（昨年度・2年前・3年前の3行で持つ）
+// 決算情報の1期分。行は年月の経過に合わせて追加できる。
+// 個人事業主: 「令和{year}年分売上情報」 / 法人: 「{term}期分（令和{period_from}〜令和{period_to}）」
 export interface OrgFinancialYear {
-  year: string; // 令和何年度（例: 6）
+  year: string; // 個人事業主: 令和何年分（例: 6）
+  term: string; // 法人: 何期分（例: 12）
+  period_from: string; // 法人: 期間の開始（例: 7年4月）
+  period_to: string; // 法人: 期間の終了（例: 8年3月）
   sales: string; // 売上高
   ordinary: string; // 経常損益
   net: string; // 純損益
@@ -91,9 +95,12 @@ export interface OrgOfficer {
 // 申込書の入力内容一式
 export interface OrganizationIntake {
   kana: string; // 名称フリガナ
-  phone: string; // 電話番号
+  phone: string; // 電話番号（旧項目。連絡先(organizations.contact)に統合済み・未移行データ用に残す）
   fax: string; // FAX
   email: string; // Email
+  fiscal_kind: string; // 決算情報の区分（個人事業主 / 法人）
+  support_fee: string; // 毎月の支援代（月額）
+  posting_note: string; // 求人で必須としている他条件（求人情報で注意喚起表示）
   contact_method: string; // 資料のやりとり方法（FAX / グループLINE / email）
   health_insurance: string; // 保険（国民健康保険 / 社会保険 / その他）
   pension: string; // 年金（国民年金 / 厚生年金）
@@ -121,6 +128,18 @@ export interface OrganizationIntake {
   council_note: string; // 協議会の加入・協力確認書の提出先/提出日
   japanese_staff: OrgJapaneseStaff[]; // 一緒に働く日本人常勤職員
   officers: OrgOfficer[]; // 所属役員（法人）
+}
+
+// 所属機関に添付するファイル（見積書など。0049_organization_files.sql）
+export interface OrganizationFileRow {
+  id: string;
+  organization_id: string;
+  kind: string; // 見積書 など
+  storage_path: string;
+  file_name: string;
+  mime_type: string;
+  uploaded_by: string | null;
+  created_at: string;
 }
 
 // 同居している在日親族の1人分（workers.relatives jsonb に配列で保存）
