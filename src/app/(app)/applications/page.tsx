@@ -11,7 +11,9 @@ import { ApplicationsExplorer } from "./ApplicationsExplorer";
 function ApplicationsPageInner() {
   const { applications } = useApplications();
   const viewParam = useSearchParams().get("view");
-  const view = isStatViewKey(viewParam) ? viewParam : null;
+  // pre-prep（申請前＜準備中＞）はダッシュボードのカードから開く既定タブ
+  const view =
+    viewParam === "pre-prep" ? "pre-prep" : isStatViewKey(viewParam) ? viewParam : null;
 
   return (
     <div className="-mx-4 -mt-4 lg:-mx-8 lg:-mt-6">
