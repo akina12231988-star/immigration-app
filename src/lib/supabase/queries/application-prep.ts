@@ -14,7 +14,9 @@ export async function listPrepChecklists(
 ): Promise<PrepChecklistRow[]> {
   const { data, error } = await supabase
     .from("application_prep_checklists")
-    .select("id, todo_no, app_type, has_kokuho, has_nenkin, target_reiwa, kenshin_items_ok, tantou")
+    .select(
+      "id, todo_no, app_type, has_kokuho, has_nenkin, target_reiwa, kenshin_items_ok, tantou, cert_pattern",
+    )
     .eq("worker_id", workerId)
     .order("updated_at", { ascending: false });
   if (error) throw error;
@@ -27,6 +29,7 @@ export async function listPrepChecklists(
     target_reiwa: r.target_reiwa ?? null,
     kenshin_items_ok: r.kenshin_items_ok ?? false,
     tantou: r.tantou ?? "",
+    cert_pattern: r.cert_pattern ?? "",
   }));
 }
 

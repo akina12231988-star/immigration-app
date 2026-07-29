@@ -30,7 +30,17 @@ export interface PrepChecklistMeta {
   target_reiwa: number | null;
   kenshin_items_ok: boolean;
   tantou: string; // 担当者（'' = 未定。申請一覧からもあとで設定できる）
+  cert_pattern: "" | PrepCertPattern; // 合格証の組み合わせ（'' = 未選択・合格証3種を表示）
 }
+
+// 合格証の組み合わせ。申請内容で必要な合格証が変わる
+export type PrepCertPattern = "専門級" | "別分野・専門級" | "専門外・日本語" | "技能評価調書";
+export const PREP_CERT_PATTERNS: { value: PrepCertPattern; label: string }[] = [
+  { value: "専門級", label: "専門級の合格証あり（同じ分野で就職）→ 専門級のみ" },
+  { value: "別分野・専門級", label: "専門級以外の分野で就職（専門級あり）→ 専門外＋専門級" },
+  { value: "専門外・日本語", label: "専門級の合格証なし → 専門外＋日本語の合格証" },
+  { value: "技能評価調書", label: "専門級なし・技能実習2号を良好修了 → 技能評価調書" },
+];
 
 export const EMPTY_PREP_META: PrepChecklistMeta = {
   app_type: "",
@@ -39,6 +49,7 @@ export const EMPTY_PREP_META: PrepChecklistMeta = {
   target_reiwa: null,
   kenshin_items_ok: false,
   tantou: "",
+  cert_pattern: "",
 };
 
 // 申請準備・申請一覧で選ぶ担当者の名簿
@@ -69,6 +80,7 @@ export interface PrepDocDef {
   yearKind?: "年分" | "年度";
   appliesTo: PrepAppType[]; // 必要になる申請種別
   requiredIf?: "kokuho" | "nenkin"; // 条件付き（加入時のみ必要）
+  certPatterns?: PrepCertPattern[]; // 合格証の組み合わせで必要になる書類（未選択時は調書以外を表示）
   viaMail?: boolean; // 郵送請求（課税・納税証明書）で取得するもの
   // 年つき書類の対象年（令和）の決め方:
   // target=対象年度そのまま / target-1=対象年度の前年（源泉徴収票） / current=現時点の最新年度（国保税）
@@ -87,6 +99,7 @@ export const PREP_DOC_KEYS = [
   "prep_hokensho",
   "prep_nenkin",
   "prep_suisenjo",
+  "prep_hyoka_chosho",
 ] as const;
 
 export function isPrepDocKey(key: string): boolean {
@@ -196,6 +209,7 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
     id: "cert_senmonkyu",
     label: "専門級の合格証",
     appliesTo: ["変更", "認定", "特定活動"],
+    certPatterns: ["専門級", "別分野・専門級"],
     source: { kind: "doc", docKey: "cert_senmonkyu" },
     manageInline: false,
     managedIn: "外国人書類",
@@ -204,6 +218,8 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
     id: "cert_nihongo",
     label: "日本語の合格証",
     appliesTo: ["変更", "認定", "特定活動"],
+    certPatterns: ["専門外・日本語"],
+    note: "専門級の合格証がない場合は必須",
     source: { kind: "doc", docKey: "cert_nihongo" },
     manageInline: false,
     managedIn: "外国人書類",
@@ -212,9 +228,20 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
     id: "cert_senmongai",
     label: "専門外の合格証",
     appliesTo: ["変更", "認定", "特定活動"],
+    certPatterns: ["別分野・専門級", "専門外・日本語"],
+    note: "専門級以外の分野で就職する場合に必要",
     source: { kind: "doc", docKey: "cert_senmongai" },
     manageInline: false,
     managedIn: "外国人書類",
+  },
+  {
+    id: "hyoka_chosho",
+    label: "技能評価調書",
+    appliesTo: ["変更", "認定", "特定活動"],
+    certPatterns: ["技能評価調書"],
+    note: "専門級の合格証はないが、技能実習2号まで良好修了した場合に必要",
+    source: { kind: "doc", docKey: "prep_hyoka_chosho" },
+    manageInline: true,
   },
 ];
 
@@ -253,6 +280,11 @@ export function isRequired(def: PrepDocDef, meta: PrepChecklistMeta): boolean {
   if (!def.appliesTo.includes(meta.app_type)) return false;
   if (def.requiredIf === "kokuho" && !meta.has_kokuho) return false;
   if (def.requiredIf === "nenkin" && !meta.has_nenkin) return false;
+  if (def.certPatterns) {
+    // 組み合わせ未選択のときは調書以外（合格証3種）を表示して選択を促す
+    if (!meta.cert_pattern) return def.id !== "hyoka_chosho";
+    return def.certPatterns.includes(meta.cert_pattern);
+  }
   return true;
 }
 

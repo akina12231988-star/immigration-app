@@ -51,6 +51,7 @@ import {
   letterPackTrackingUrl,
   PREP_APP_TYPE_LABELS,
   PREP_APP_TYPES,
+  PREP_CERT_PATTERNS,
   PREP_DOC_ALWAYS_EXTRAS,
   PREP_DOC_STATUS_OPTIONS,
   PREP_MAIL_AFTER_HIDDEN,
@@ -230,6 +231,7 @@ export function ApplicationPrepChecklist({
       target_reiwa: current.target_reiwa,
       kenshin_items_ok: current.kenshin_items_ok,
       tantou: current.tantou,
+      cert_pattern: current.cert_pattern,
       ...patch,
     };
     setLists((ls) => ls.map((l) => (l.todo_no === selected ? { ...l, ...patch } : l)));
@@ -518,6 +520,27 @@ export function ApplicationPrepChecklist({
             </select>
           </label>
         </div>
+        {/* 合格証の組み合わせ（申請内容で必要な合格証が変わる。更新申請では不要） */}
+        {meta.app_type && meta.app_type !== "更新" && (
+          <label className="flex flex-col gap-1 text-xs font-bold text-muted">
+            合格証の組み合わせ
+            <select
+              value={meta.cert_pattern}
+              disabled={!canEdit}
+              onChange={(e) =>
+                patchMeta({ cert_pattern: e.target.value as PrepChecklistMeta["cert_pattern"] })
+              }
+              className={inputCls}
+            >
+              <option value="">未選択（合格証3種をすべて表示）</option>
+              {PREP_CERT_PATTERNS.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <div className="flex flex-wrap items-center gap-4">
           <label className="flex items-center gap-1.5 text-xs font-bold">
             <input
