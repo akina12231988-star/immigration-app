@@ -12,6 +12,19 @@ export async function listOrganizations(
   return (data as Organization[]) ?? [];
 }
 
+export async function getOrganization(
+  supabase: SupabaseClient,
+  id: string,
+): Promise<Organization | null> {
+  const { data, error } = await supabase
+    .from("organizations")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as Organization) ?? null;
+}
+
 export async function insertOrganization(
   supabase: SupabaseClient,
   input: OrganizationInput,
