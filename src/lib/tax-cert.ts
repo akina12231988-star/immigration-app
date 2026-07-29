@@ -10,6 +10,8 @@ export interface Municipality {
   needs_tax_payment_cert: boolean;
   show_asterisk: boolean;
   note: string;
+  tenshutsu_self_only: boolean; // 転出届: 本人申請のみ（代理人申請不可）
+  juminhyo_self_only: boolean; // 住民票: 個人番号なしでも本人申請のみ（代理人申請不可）
 }
 
 export type MunicipalityInput = Omit<Municipality, "id">;
@@ -67,7 +69,8 @@ export interface JudgmentRecord {
   nhiSameAsMain: boolean;
   // ---- 転出届・住民票の郵送請求（requestKind が tenshutsu / juminhyo のとき） ----
   requestKind?: RequestKind;
-  cityOffice?: string; // 請求先の市役所
+  cityOffice?: string; // 請求先の市役所（自治体マスタの名称）
+  cityOfficeId?: string; // 請求先の自治体マスタID
   workerAddress?: string; // 記録時点の外国人の現在の住所（請求先判断の参考）
   postDate?: string; // ポスト投函日（郵送請求のとき）
   applicantType?: ApplicantType; // 本人申請 / 代理人
@@ -252,6 +255,15 @@ export function juminhyoTitle(withMyNumber: boolean): string {
 // 申請者の表示（本人申請 / 代理人（名前））
 export function applicantLabel(type?: ApplicantType, agentName?: string): string {
   return type === "agent" ? `代理人（${agentName || "名前未入力"}）` : "本人申請";
+}
+
+// 自治体マスタの設定で本人申請のみ（代理人申請不可）か
+export function isSelfOnlyMunicipality(
+  kind: "tenshutsu" | "juminhyo",
+  muni: Municipality | null,
+): boolean {
+  if (!muni) return false;
+  return kind === "tenshutsu" ? !!muni.tenshutsu_self_only : !!muni.juminhyo_self_only;
 }
 
 export function collectionLabel(t: CollectionType): string {
