@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { MapPin, Plus, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -10,6 +11,7 @@ import {
   insertWorkerAddress,
   listWorkerAddresses,
 } from "@/lib/supabase/queries/worker-addresses";
+import { updateWorker } from "@/lib/supabase/queries/workers";
 import type { WorkerAddress } from "@/lib/worker-address";
 
 const INPUT =
@@ -23,6 +25,7 @@ export function WorkerAddressHistory({
   workerId: string;
   canEdit?: boolean;
 }) {
+  const router = useRouter();
   const [rows, setRows] = useState<WorkerAddress[]>([]);
   const [movedOn, setMovedOn] = useState("");
   const [address, setAddress] = useState("");
@@ -30,13 +33,24 @@ export function WorkerAddressHistory({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = () =>
-    listWorkerAddresses(createClient(), workerId).then(setRows).catch(() => undefined);
+  const load = async (): Promise<WorkerAddress[]> => {
+    const next = await listWorkerAddresses(createClient(), workerId);
+    setRows(next);
+    return next;
+  };
 
   useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    listWorkerAddresses(createClient(), workerId).then(setRows).catch(() => undefined);
   }, [workerId]);
+
+  // 住所歴の最新（転入日が最も新しい行）を、外国人の現在の住所（基本情報の住所欄）へ
+  // 自動反映する。住所歴が空になった場合は手入力の住所を消さないよう何もしない。
+  const syncCurrentAddress = async (next: WorkerAddress[]) => {
+    const latest = next[0];
+    if (!latest) return;
+    await updateWorker(createClient(), workerId, { address: latest.address });
+    router.refresh(); // 基本情報の住所表示を更新する
+  };
 
   async function add() {
     if (!movedOn || !address.trim()) return;
@@ -53,7 +67,7 @@ export function WorkerAddressHistory({
       setMovedOn("");
       setAddress("");
       setKind("転入");
-      await load();
+      await syncCurrentAddress(await load());
     } catch (err) {
       setError(err instanceof Error ? err.message : "住所歴の登録に失敗しました");
     } finally {
@@ -66,7 +80,7 @@ export function WorkerAddressHistory({
     setError(null);
     try {
       await deleteWorkerAddress(createClient(), id);
-      await load();
+      await syncCurrentAddress(await load());
     } catch (err) {
       setError(err instanceof Error ? err.message : "削除に失敗しました");
     }
@@ -80,6 +94,7 @@ export function WorkerAddressHistory({
       </h2>
       <p className="mb-3 text-[11px] text-muted">
         転入日ごとに住所を記録します。課税・納税証明書の「1月1日時点の住所」判定に使われます。
+        最新の住所は、基本情報の「住所」欄へ現在の住所として自動反映されます。
       </p>
 
       {error && (
