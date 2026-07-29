@@ -1,6 +1,6 @@
 # 開発ハンドオフ資料
 
-最終更新: 2026-07-17
+最終更新: 2026-07-29
 
 次回開発を引き継ぐための現状整理。デバッグ経緯や試行錯誤は省き、「今どうなっているか」「これから何をするか」に絞る。
 
@@ -111,9 +111,16 @@ npm run test    # Vitest
 - **氏名で自動紐づけ**（`src/lib/mail-classify.ts`: `classifyMailCategory` / `matchNotification`。件名・本文の氏名/フリガナから外国人・申請を推定）。外れたらお知らせ一覧の「紐づけ修正」で申請を選び直せる
 - UI: ヘッダー（スマホ）／サイドナビ（PC）の **ベル🔔＋未読バッジ**（`NotificationBell`）、下部タブ・サイドナビのナビ項目にも未読数、**お知らせ一覧ページ**（フィルタ: すべて/未読/許可/申請受付、一括既読、既読切替、削除、Gmailで開く）
 - 通知ストア `src/lib/notification-store.tsx`（マウント時・ウィンドウ復帰・60秒間隔で再取得。書込失敗時は `refresh()` でサーバー状態へ復帰）
-- **セットアップ手順は `docs/07_gmail_apps_script.md`**（DB=0050適用（旧0025として適用済み）、Vercel環境変数 `MAIL_INBOUND_SECRET`、Apps Scriptの貼付と5分トリガー）
+- **セットアップ手順は `docs/07_gmail_apps_script.md`**（DB=0050適用、Vercel環境変数 `MAIL_INBOUND_SECRET`、Apps Scriptの貼付と5分トリガー）
 - 重複防止: サーバーは `gmail_message_id` のunique、Apps Scriptは「同期済」ラベル
-- middleware は `/api/` を認証対象から除外（Webhookは共有シークレットで独自認証）
+- middleware は `/api/` を認証対象から除外（Webhookは共有シークレットで独自認証。`/api/resignation-forms` は自前で `getMyProfile()` により401を返す）
+- **ユーザー側セットアップは完了済み**（2026-07-29 時点）:
+  - ✅ マイグレーション適用済み（旧番号 `0025_mail_notifications.sql` として Supabase 本番に適用。main 反映時に `0050_mail_notifications.sql` へ改番したが SQL は同一・再適用不要）
+  - ✅ Vercel の **`immigration-app-sdnn`** プロジェクトに `MAIL_INBOUND_SECRET` 設定・再デプロイ済み（`SUPABASE_SERVICE_ROLE_KEY` は既存）。シークレット値は Vercel と Apps Script で一致（値はリポジトリに残さない）
+  - ✅ Apps Script は **thanhktc2017.visa@gmail.com**（入管メールが届くアカウント。ここ重要）で作成、5分おきトリガー設定済み。`QUERY = '(from:moj.go.jp OR subject:入管庁) newer_than:1y'`
+  - 初回実行 0 件＝正常（.visa アカウントには入管メールがまだ届いていない。今後届き次第流れる）
+  - Vercel プロジェクトは2つ存在: **本番はスマホで使っている `immigration-app-sdnn`**（immigration-app-sdnn.vercel.app）。`immigration-app`（rose）は未使用・触らない
+  - 参考: 旧アカウント thanhktc2017@gmail.com の入管メール差出人は `info@rasens-immi.moj.go.jp`（件名【入管庁】）
 
 ---
 
@@ -121,6 +128,7 @@ npm run test    # Vitest
 
 - **PWAアイコンの最終確認**: 実ロゴのエンブレム部分をトリミングして生成済み。文字（社名）は入れていない。「白背景→紺背景に」「余白調整」などの微修正は未対応（要望があれば対応）
 - **履歴書PDFからの取込**: ユーザーからPDF取込の要望あり。現状の `/workers/import` は JSON + CSV のみ対応。**PDF（履歴書）からの取り込みは未実装**
+- **middleware の deprecation 警告**: Next.js 16 が「"middleware" は非推奨、"proxy" を使え」と警告（ビルドは成功）。急ぎではないが、いずれ `src/middleware.ts` → `src/proxy.ts` 移行を検討
 - **未適用SQLマイグレーションの確認**: DBマイグレーションは手動運用（後述）。最新の `0024_worker_code` および `municipalities`/`judgment_records` の投入がSupabase本番に適用済みか、次回セッション開始時に要確認
 
 ---

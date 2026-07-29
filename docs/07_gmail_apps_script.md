@@ -22,6 +22,8 @@ Gmail（入管メール）
 
 `supabase/migrations/0050_mail_notifications.sql` を Supabase の SQL Editor に貼って実行してください（既存の運用どおり）。
 
+> **✅ 適用済み（2026-07-29）**: このSQLは旧番号 `0025_mail_notifications.sql` として本番に適用済み。main 反映時に `0050` へ改番しただけで内容は同一のため、再実行は不要（`if not exists` なので再実行しても安全）。
+
 ## 手順2: 環境変数を設定（Vercel）
 
 Vercel のプロジェクト設定 → Environment Variables に以下を追加します。
