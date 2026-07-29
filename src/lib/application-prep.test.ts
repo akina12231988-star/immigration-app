@@ -227,3 +227,38 @@ describe("letterPackTrackingUrl", () => {
     );
   });
 });
+
+describe("合格証の組み合わせ（cert_pattern）", () => {
+  const ids = (pattern: PrepChecklistMeta["cert_pattern"]) =>
+    evaluatePrepChecklist(
+      meta({ app_type: "特定活動", cert_pattern: pattern }),
+      sources({}),
+    ).items
+      .map((x) => x.def.id)
+      .filter((id) => ["cert_senmonkyu", "cert_nihongo", "cert_senmongai", "hyoka_chosho"].includes(id))
+      .sort();
+
+  it("未選択のときは合格証3種を表示（調書は出さない）", () => {
+    expect(ids("")).toEqual(["cert_nihongo", "cert_senmongai", "cert_senmonkyu"].sort());
+  });
+  it("専門級あり（同じ分野）→ 専門級のみ", () => {
+    expect(ids("専門級")).toEqual(["cert_senmonkyu"]);
+  });
+  it("専門級以外の分野で就職（専門級あり）→ 専門外＋専門級", () => {
+    expect(ids("別分野・専門級")).toEqual(["cert_senmongai", "cert_senmonkyu"].sort());
+  });
+  it("専門級なし → 専門外＋日本語（日本語は必須）", () => {
+    expect(ids("専門外・日本語")).toEqual(["cert_nihongo", "cert_senmongai"].sort());
+  });
+  it("専門級なし・技能実習2号を良好修了 → 技能評価調書", () => {
+    expect(ids("技能評価調書")).toEqual(["hyoka_chosho"]);
+  });
+  it("更新申請には合格証・調書は出ない", () => {
+    const updateIds = evaluatePrepChecklist(
+      meta({ app_type: "更新", cert_pattern: "専門級" }),
+      sources({}),
+    ).items.map((x) => x.def.id);
+    expect(updateIds).not.toContain("cert_senmonkyu");
+    expect(updateIds).not.toContain("hyoka_chosho");
+  });
+});
