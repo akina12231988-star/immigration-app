@@ -18,6 +18,8 @@ import { Button } from "@/components/ui/Button";
 import { Combobox } from "@/components/ui/Combobox";
 import { createClient } from "@/lib/supabase/client";
 import { insertWorker, updateWorker, type WorkerWithOrg } from "@/lib/supabase/queries/workers";
+import { upsertPrepTantou } from "@/lib/supabase/queries/application-prep";
+import { PREP_TANTOU_OPTIONS } from "@/lib/application-prep";
 import { blankWorkerInput } from "@/lib/worker-defaults";
 import { nameCounts } from "@/lib/worker-label";
 import { isResidenceRenewalTarget } from "@/lib/worker-alerts";
@@ -252,6 +254,7 @@ function NewPrepForm({ workers }: { workers: WorkerWithOrg[] }) {
   const [creating, setCreating] = useState(false);
   const [todo, setTodo] = useState("");
   const [status, setStatus] = useState<ResidenceRenewalStatus>("準備中");
+  const [tantou, setTantou] = useState("");
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -312,11 +315,16 @@ function NewPrepForm({ workers }: { workers: WorkerWithOrg[] }) {
         residence_renewal_status: status,
         application_prep_kind: "新規",
       });
+      // 担当者を選んだ場合は、TODO番号の準備リストに紐づけて保存する
+      if (tantou) {
+        await upsertPrepTantou(createClient(), workerId, todo.trim(), tantou);
+      }
       setNotice(`${selected?.label ?? "対象者"}を新規の申請準備に追加しました。`);
       setAddedNewWorker(newWorker);
       setWorkerId("");
       setTodo("");
       setStatus("準備中");
+      setTantou("");
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存に失敗しました");
@@ -404,6 +412,18 @@ function NewPrepForm({ workers }: { workers: WorkerWithOrg[] }) {
           {RESIDENCE_RENEWAL_STATUSES.map((s) => (
             <option key={s || "pending"} value={s}>
               {STATUS_LABEL[s]}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className="text-[11px] font-bold text-muted">担当者（未定でも可・あとから設定できます）</span>
+        <select value={tantou} onChange={(e) => setTantou(e.target.value)} className={INPUT_CLASS}>
+          <option value="">未定</option>
+          {PREP_TANTOU_OPTIONS.map((t) => (
+            <option key={t} value={t}>
+              {t}
             </option>
           ))}
         </select>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CalendarClock, Check, Copy, ExternalLink, MessageCircle, UserRound } from "lucide-react";
@@ -8,6 +8,12 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
+import {
+  listPrepChecklists,
+  upsertPrepTantou,
+  type PrepChecklistRow,
+} from "@/lib/supabase/queries/application-prep";
+import { PREP_TANTOU_OPTIONS } from "@/lib/application-prep";
 import { remainingLabel, daysUntil } from "@/lib/worker-alerts";
 import { notionAppUrl } from "@/lib/notion-link";
 import {
@@ -56,6 +62,21 @@ export function WorkerRenewalCard({
   const [nameCopied, setNameCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // 担当者はTODO番号ごとの準備リスト（application_prep_checklists）に保存されている
+  const [prepRows, setPrepRows] = useState<PrepChecklistRow[]>([]);
+  const [tantou, setTantou] = useState("");
+  useEffect(() => {
+    if (!canEdit) return;
+    listPrepChecklists(createClient(), worker.id)
+      .then((rows) => {
+        setPrepRows(rows);
+        const t = (worker.residence_renewal_todo ?? "").trim();
+        setTantou(rows.find((r) => r.todo_no === t)?.tantou ?? "");
+      })
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [worker.id, canEdit]);
+
   const copyName = async () => {
     try {
       await navigator.clipboard.writeText(worker.name);
@@ -74,6 +95,8 @@ export function WorkerRenewalCard({
     setTodo(v);
     setSaved(false);
     if (v.trim() && status === "") setStatus("準備中");
+    // 担当者はTODO番号に紐づくため、番号を変えたらその番号の担当者に切り替える
+    setTantou(prepRows.find((r) => r.todo_no === v.trim())?.tantou ?? "");
   };
 
   const save = async () => {
@@ -86,6 +109,16 @@ export function WorkerRenewalCard({
         notion_link: notionLink.trim(),
         messenger_link: messengerLink.trim(),
       });
+      // 担当者はTODO番号の準備リストへ保存（選択済み、またはリストが既にある場合のみ）
+      const todoNo = todo.trim();
+      if (tantou || prepRows.some((r) => r.todo_no === todoNo)) {
+        await upsertPrepTantou(createClient(), worker.id, todoNo, tantou);
+        setPrepRows((rows) =>
+          rows.some((r) => r.todo_no === todoNo)
+            ? rows.map((r) => (r.todo_no === todoNo ? { ...r, tantou } : r))
+            : rows,
+        );
+      }
       setSaved(true);
       router.refresh();
     } catch (err) {
@@ -181,6 +214,28 @@ export function WorkerRenewalCard({
               {RESIDENCE_RENEWAL_STATUSES.map((s) => (
                 <option key={s || "pending"} value={s}>
                   {RENEWAL_STATUS_LABEL[s]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-bold text-muted">担当者（TODO番号に紐づき・未定でも可）</span>
+            <select
+              value={tantou}
+              onChange={(e) => {
+                setTantou(e.target.value);
+                setSaved(false);
+              }}
+              className={INPUT}
+            >
+              <option value="">未定</option>
+              {tantou &&
+                !PREP_TANTOU_OPTIONS.includes(tantou as (typeof PREP_TANTOU_OPTIONS)[number]) && (
+                  <option value={tantou}>{tantou}</option>
+                )}
+              {PREP_TANTOU_OPTIONS.map((t) => (
+                <option key={t} value={t}>
+                  {t}
                 </option>
               ))}
             </select>

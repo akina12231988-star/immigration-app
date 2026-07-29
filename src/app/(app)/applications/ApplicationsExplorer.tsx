@@ -4,10 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  Check,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  Copy,
   ExternalLink,
   MessageCircle,
   Search,
@@ -476,8 +478,9 @@ export function ApplicationsExplorer({
                 >
                   {body}
                   <div className="mt-2 border-t border-border pt-2">
-                    <p className="text-xs tabular-nums text-muted">
+                    <p className="flex items-center gap-1.5 text-xs tabular-nums text-muted">
                       申請TODO番号 {w?.residence_renewal_todo || "未登録"}
+                      {w?.residence_renewal_todo && <CopyTodoButton todo={w.residence_renewal_todo} />}
                     </p>
                     <div className="mt-1.5 flex flex-wrap gap-3">
                       <WorkerLink href={w?.notion_link} icon={<ExternalLink size={13} />}>
@@ -579,7 +582,19 @@ export function ApplicationsExplorer({
                       <Td>{a.organizationName ?? "—"}</Td>
                       {showPrep ? (
                         <>
-                          <Td className="tabular-nums">{w?.residence_renewal_todo || "—"}</Td>
+                          <Td className="tabular-nums">
+                            {w?.residence_renewal_todo ? (
+                              <span
+                                className="flex items-center gap-1.5"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <span className="select-text">{w.residence_renewal_todo}</span>
+                                <CopyTodoButton todo={w.residence_renewal_todo} />
+                              </span>
+                            ) : (
+                              "—"
+                            )}
+                          </Td>
                           <Td>
                             <WorkerLink href={w?.notion_link} icon={<ExternalLink size={13} />}>
                               Notionを開く
@@ -681,6 +696,31 @@ export function ApplicationsExplorer({
         </Modal>
       )}
     </div>
+  );
+}
+
+// 申請TODO番号のコピー（申請前＜準備中＞）。Notionで検索して開く時に使う
+function CopyTodoButton({ todo }: { todo: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(todo);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* クリップボード非対応時は何もしない */
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      aria-label="TODO番号をコピー"
+      className="shrink-0 text-muted hover:text-brand"
+    >
+      {copied ? <Check size={13} className="text-status-reported-fg" /> : <Copy size={13} />}
+    </button>
   );
 }
 
