@@ -61,13 +61,14 @@ type SortKey = (typeof SORT_OPTIONS)[number]["key"];
 // フィルタータブ（ダッシュボードの集計と同じ区分＋在留更新の「申請前＜準備中＞」）
 type ViewKey = StatViewKey | "all" | "pre-prep";
 
+// 「申請前＜準備中＞」を最初に表示するため先頭に、「すべて」は一番右に置く
 const VIEW_CHIPS: { key: ViewKey; label: string }[] = [
-  { key: "all", label: "すべて" },
   { key: "pre-prep", label: "申請前＜準備中＞" },
   { key: "unreported", label: "LINE未報告" },
   { key: "waiting-notice", label: "審査中" },
   { key: "approved", label: "在留カード受け取り待ち" },
   { key: "card-issued", label: "在留カード新規発行済み" },
+  { key: "all", label: "すべて" },
 ];
 
 export function ApplicationsExplorer({
@@ -80,8 +81,9 @@ export function ApplicationsExplorer({
   const router = useRouter();
   const { updateApplication } = useApplications();
   const [keyword, setKeyword] = useState("");
-  // タブ＝ダッシュボードと同じ集計区分＋申請前＜準備中＞
-  const [view, setView] = useState<ViewKey>(initialView ?? "all");
+  // タブ＝ダッシュボードと同じ集計区分＋申請前＜準備中＞。
+  // 指定がなければ「申請前＜準備中＞」を最初に表示する
+  const [view, setView] = useState<ViewKey>(initialView ?? "pre-prep");
 
   // 在留カード新規発行済みタブの「在留許可日」期間検索
   const [permitFrom, setPermitFrom] = useState("");
