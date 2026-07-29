@@ -24,6 +24,7 @@ import { createClient } from "@/lib/supabase/client";
 import { listPrepStatuses, type PrepStatus } from "@/lib/supabase/queries/prep-status";
 import { upsertPrepTantou } from "@/lib/supabase/queries/application-prep";
 import { PREP_TANTOU_OPTIONS } from "@/lib/application-prep";
+import { notionAppUrl } from "@/lib/notion-link";
 import { useApplications } from "@/lib/application-store";
 import { applicationStatusLabel } from "@/lib/status";
 import { STAT_VIEWS, type StatViewKey } from "@/lib/application-stats";
@@ -483,7 +484,10 @@ export function ApplicationsExplorer({
                       {w?.residence_renewal_todo && <CopyTodoButton todo={w.residence_renewal_todo} />}
                     </p>
                     <div className="mt-1.5 flex flex-wrap gap-3">
-                      <WorkerLink href={w?.notion_link} icon={<ExternalLink size={13} />}>
+                      <WorkerLink
+                        href={w?.notion_link ? notionAppUrl(w.notion_link) : undefined}
+                        icon={<ExternalLink size={13} />}
+                      >
                         Notionを開く
                       </WorkerLink>
                       <WorkerLink href={w?.messenger_link} icon={<MessageCircle size={13} />}>
@@ -596,7 +600,10 @@ export function ApplicationsExplorer({
                             )}
                           </Td>
                           <Td>
-                            <WorkerLink href={w?.notion_link} icon={<ExternalLink size={13} />}>
+                            <WorkerLink
+                              href={w?.notion_link ? notionAppUrl(w.notion_link) : undefined}
+                              icon={<ExternalLink size={13} />}
+                            >
                               Notionを開く
                             </WorkerLink>
                           </Td>
@@ -869,11 +876,13 @@ function WorkerLink({
   children: React.ReactNode;
 }) {
   if (!href) return <span className="text-muted">—</span>;
+  // notion:// などアプリで開くリンクは target="_blank" を付けない（空タブが残るのを防ぐ）
+  const isWeb = /^https?:/i.test(href);
   return (
     <a
       href={href}
-      target="_blank"
-      rel="noopener noreferrer"
+      target={isWeb ? "_blank" : undefined}
+      rel={isWeb ? "noopener noreferrer" : undefined}
       onClick={(e) => e.stopPropagation()}
       className="inline-flex items-center gap-1 text-xs font-bold text-brand hover:underline"
     >
