@@ -92,7 +92,9 @@ function syncImmigrationMails() {
     contentType: 'application/json',
     headers: { 'x-webhook-secret': SECRET },
     payload: JSON.stringify({ messages: messages }),
-    muteHttpExceptions: true
+    muteHttpExceptions: true,
+    // リダイレクト先（ログイン画面など）の200を「送信成功」と誤認しないようにする
+    followRedirects: false
   });
 
   const code = res.getResponseCode();
@@ -132,3 +134,6 @@ function syncImmigrationMails() {
 - 実行ログが 401: シークレット不一致 / 503: `MAIL_INBOUND_SECRET` か `SUPABASE_SERVICE_ROLE_KEY` 未設定
 - メールが拾われない: `QUERY` が実際の差出人・件名に合っているか（手動実行で件数を確認）
 - 紐づかない: メール文面の氏名表記が外国人名簿の氏名/フリガナと一致しているか（英字表記のみ等は自動では外れることがある）
+- **「同期済」ラベルは付いているのにアプリに出ない**: 本番にAPIが公開される前に送信して空振りした可能性
+  （旧スクリプトはログイン画面へのリダイレクトを成功と誤認してラベルを付けていた。2026-07-29 に `followRedirects: false` で修正済み）。
+  **Gmailで該当メールの「入管通知-同期済」ラベルを外す → 5分待つ（またはApps Scriptで手動実行）** と再送信される。サーバーはメッセージIDで重複防止しているので、外しすぎて二重登録になる心配はない
