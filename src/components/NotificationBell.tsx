@@ -52,9 +52,10 @@ export function NotificationBell({
       </button>
 
       {open && (
+        // スマホ: 画面幅いっぱいの固定表示（ベル基準だと画面外にはみ出すため）。PC: ベル基準で表示
         <div
-          className={`absolute top-11 z-30 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-border bg-surface shadow-xl ${
-            align === "right" ? "right-0" : "left-0"
+          className={`fixed inset-x-4 top-16 z-30 overflow-hidden rounded-2xl border border-border bg-surface shadow-xl md:absolute md:inset-x-auto md:top-11 md:w-80 ${
+            align === "right" ? "md:right-0" : "md:left-0"
           }`}
         >
           <div className="flex items-center justify-between border-b border-border px-4 py-3">

@@ -34,13 +34,13 @@ export const viewport: Viewport = {
 };
 
 // システムのダークモード設定を初期表示前に反映し、ちらつきを防ぐ
+// （手動切替は廃止。旧トグルが保存した localStorage の設定は無視して削除する）
 const themeInitScript = `
   (function () {
     try {
-      var stored = localStorage.getItem('theme');
-      var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      var isDark = stored ? stored === 'dark' : prefersDark;
+      var isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       document.documentElement.classList.toggle('dark', isDark);
+      localStorage.removeItem('theme');
     } catch (e) {}
   })();
 `;

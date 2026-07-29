@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NAV_ITEMS, activeHref } from "@/lib/nav-items";
-import { DarkModeToggle } from "@/components/DarkModeToggle";
 import { LogoutButton } from "@/components/LogoutButton";
 import { NotificationBell } from "@/components/NotificationBell";
 import { useNotifications } from "@/lib/notification-store";
@@ -25,7 +24,8 @@ export function SideNav() {
           <p className="text-sm font-bold">業務管理システム</p>
         </div>
         <div className="ml-auto">
-          <NotificationBell tone="light" />
+          {/* サイドナビは画面左端にあるため、ドロップダウンは右方向に開く */}
+          <NotificationBell tone="light" align="left" />
         </div>
       </div>
 
@@ -55,8 +55,7 @@ export function SideNav() {
         })}
       </nav>
 
-      <div className="flex items-center justify-between border-t border-border px-4 py-3">
-        <DarkModeToggle />
+      <div className="flex items-center justify-end border-t border-border px-4 py-3">
         <LogoutButton />
       </div>
     </aside>

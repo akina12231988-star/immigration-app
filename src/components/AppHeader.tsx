@@ -1,5 +1,4 @@
 import { BackButton } from "@/components/BackButton";
-import { DarkModeToggle } from "@/components/DarkModeToggle";
 import { LogoutButton } from "@/components/LogoutButton";
 import { NotificationBell } from "@/components/NotificationBell";
 
@@ -31,7 +30,6 @@ export function AppHeader({
         {/* PC はサイドナビに集約するため非表示 */}
         <div className="flex items-center gap-1 text-brand-foreground md:hidden">
           <NotificationBell tone="dark" />
-          <DarkModeToggle />
           <LogoutButton />
         </div>
       </div>
