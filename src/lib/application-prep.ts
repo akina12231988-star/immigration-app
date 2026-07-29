@@ -12,8 +12,16 @@
 
 import { gensenDocKey } from "@/lib/onboarding";
 
-export type PrepAppType = "変更" | "更新" | "認定";
-export const PREP_APP_TYPES: PrepAppType[] = ["変更", "更新", "認定"];
+export type PrepAppType = "変更" | "更新" | "認定" | "特定活動";
+export const PREP_APP_TYPES: PrepAppType[] = ["変更", "更新", "認定", "特定活動"];
+
+// 申請種別の表示名
+export const PREP_APP_TYPE_LABELS: Record<PrepAppType, string> = {
+  変更: "在留資格変更申請",
+  更新: "在留資格更新申請",
+  認定: "在留資格認定申請",
+  特定活動: "特定活動へ資格変更申請",
+};
 
 export interface PrepChecklistMeta {
   app_type: "" | PrepAppType;
@@ -89,7 +97,7 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
   {
     id: "zairyu",
     label: "在留カード（両面・現住所がわかるもの）",
-    appliesTo: ["変更", "更新", "認定"],
+    appliesTo: ["変更", "更新", "認定", "特定活動"],
     source: { kind: "doc", docKey: "cert_zairyu" },
     manageInline: false,
     managedIn: "外国人書類",
@@ -97,7 +105,7 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
   {
     id: "photo",
     label: "顔写真",
-    appliesTo: ["変更", "更新", "認定"],
+    appliesTo: ["変更", "更新", "認定", "特定活動"],
     source: { kind: "photo" },
     manageInline: false,
     managedIn: "写真",
@@ -105,7 +113,7 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
   {
     id: "passport",
     label: "パスポート",
-    appliesTo: ["変更", "更新", "認定"],
+    appliesTo: ["変更", "更新", "認定", "特定活動"],
     source: { kind: "doc", docKey: "cert_passport" },
     manageInline: false,
     managedIn: "外国人書類",
@@ -180,9 +188,33 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
     id: "suisenjo",
     label: "推薦状",
     appliesTo: ["変更", "認定"],
-    note: "送り出し機関、または大使館への郵送請求で取得する",
+    note: "送り出し機関、または大使館への郵送請求で取得する（ベトナム: 技能実習→特定活動→特定技能の資格変更でも発行依頼する場合がある）",
     source: { kind: "doc", docKey: "prep_suisenjo" },
     manageInline: true,
+  },
+  {
+    id: "cert_senmonkyu",
+    label: "専門級の合格証",
+    appliesTo: ["変更", "認定", "特定活動"],
+    source: { kind: "doc", docKey: "cert_senmonkyu" },
+    manageInline: false,
+    managedIn: "外国人書類",
+  },
+  {
+    id: "cert_nihongo",
+    label: "日本語の合格証",
+    appliesTo: ["変更", "認定", "特定活動"],
+    source: { kind: "doc", docKey: "cert_nihongo" },
+    manageInline: false,
+    managedIn: "外国人書類",
+  },
+  {
+    id: "cert_senmongai",
+    label: "専門外の合格証",
+    appliesTo: ["変更", "認定", "特定活動"],
+    source: { kind: "doc", docKey: "cert_senmongai" },
+    manageInline: false,
+    managedIn: "外国人書類",
   },
 ];
 
@@ -263,19 +295,37 @@ export function isSatisfied(
 export interface PrepDocStatus {
   def: PrepDocDef;
   required: boolean;
-  satisfied: boolean;
+  satisfied: boolean; // 完了か（添付＋準備状況が完了。ステータスの無い書類は添付のみ）
+  fileSatisfied: boolean; // 添付（登録）があるか
 }
 
-// 必要書類それぞれの状態と、不足件数を返す
+// 書類の完了判定: 添付があり、かつ準備状況が完了の選択肢になっていること。
+// 「発行できない」等の noFile な完了選択肢は添付なしで完了扱い。
+// ステータス選択肢の無い書類（合格証など）は添付のみで完了。
+export function isDocComplete(docId: string, fileSatisfied: boolean, status: string): boolean {
+  const options = PREP_DOC_STATUS_OPTIONS[docId];
+  if (!options) return fileSatisfied;
+  const opt = options.find((o) => o.value === status);
+  if (!opt?.done) return false;
+  return opt.noFile ? true : fileSatisfied;
+}
+
+// 必要書類それぞれの状態と、不足件数を返す。
+// docStatuses は書類ID→選択中の準備状況（prep_doc_statuses の status）
 export function evaluatePrepChecklist(
   meta: PrepChecklistMeta,
   sources: PrepDocSources,
+  docStatuses: Record<string, string> = {},
 ): { items: PrepDocStatus[]; missing: PrepDocStatus[] } {
-  const items = PREP_DOC_DEFS.filter((def) => isRequired(def, meta)).map((def) => ({
-    def,
-    required: true,
-    satisfied: isSatisfied(def, meta, sources),
-  }));
+  const items = PREP_DOC_DEFS.filter((def) => isRequired(def, meta)).map((def) => {
+    const fileSatisfied = isSatisfied(def, meta, sources);
+    return {
+      def,
+      required: true,
+      satisfied: isDocComplete(def.id, fileSatisfied, docStatuses[def.id] ?? ""),
+      fileSatisfied,
+    };
+  });
   return { items, missing: items.filter((i) => !i.satisfied) };
 }
 
@@ -287,6 +337,7 @@ export function evaluatePrepChecklist(
 // ステータスに付随する入力・表示の種類
 export type PrepStatusExtra =
   | { kind: "text"; label: string } // 1行テキスト（note に保存）
+  | { kind: "tantou"; label: string } // 担当者の選択（名簿から。note に保存）
   | { kind: "textarea"; label: string } // 理由書などの長文（note に保存）
   | { kind: "amount"; label: string } // 金額（amount に保存）
   | { kind: "date"; label: string } // 日付（date_on に保存）
@@ -297,6 +348,7 @@ export type PrepStatusExtra =
 export interface PrepDocStatusOption {
   value: string; // 保存値＝表示ラベル
   done: boolean; // 完了扱いの選択肢か
+  noFile?: boolean; // true: 発行できない等でファイル添付なしでも完了扱いにする
   extras?: PrepStatusExtra[];
 }
 
@@ -317,21 +369,22 @@ export const PREP_DOC_STATUS_OPTIONS: Record<string, PrepDocStatusOption[]> = {
   gensen: [
     { value: "本人に依頼中", done: false },
     { value: "本人から送られてきた", done: true },
-    { value: "本人が母国在住だった為発行できない", done: true },
-    { value: "本人にまだ届いていないから納税証明書その３で対応", done: true },
+    { value: "本人が母国在住だった為発行できない", done: true, noFile: true },
+    { value: "本人にまだ届いていないから納税証明書その３で対応", done: true, noFile: true },
   ],
   kazei: [
-    { value: "発行依頼中", done: false, extras: [{ kind: "text", label: "誰に発行依頼中か" }] },
+    { value: "発行依頼中", done: false, extras: [{ kind: "tantou", label: "誰に発行依頼中か（担当者）" }] },
     { value: "郵送請求中", done: false, extras: [{ kind: "mailing" }] },
     { value: "発行完了", done: true },
     {
       value: "1月1日時点で日本に在住していなかった為発行できなかった",
       done: true,
+      noFile: true,
       extras: [{ kind: "textarea", label: "理由書（申請に添付する理由を記入して保存）" }],
     },
   ],
   nozei_shiken: [
-    { value: "発行依頼中", done: false, extras: [{ kind: "text", label: "誰に発行依頼中か" }] },
+    { value: "発行依頼中", done: false, extras: [{ kind: "tantou", label: "誰に発行依頼中か（担当者）" }] },
     { value: "郵送請求中", done: false, extras: [{ kind: "mailing" }] },
     {
       value: "未納のため領収書発行待ち",
@@ -342,12 +395,13 @@ export const PREP_DOC_STATUS_OPTIONS: Record<string, PrepDocStatusOption[]> = {
     {
       value: "1月1日時点で日本に在住していなかった為発行できなかった",
       done: true,
+      noFile: true,
       extras: [{ kind: "textarea", label: "理由書（申請に添付する理由を記入して保存）" }],
     },
-    { value: "非課税のため発行できなかった", done: true },
+    { value: "非課税のため発行できなかった", done: true, noFile: true },
   ],
   nozei_kokuho: [
-    { value: "発行依頼中", done: false, extras: [{ kind: "text", label: "誰に発行依頼中か" }] },
+    { value: "発行依頼中", done: false, extras: [{ kind: "tantou", label: "誰に発行依頼中か（担当者）" }] },
     { value: "郵送請求中", done: false, extras: [{ kind: "mailing" }] },
     {
       value: "未納のため領収書発行待ち",
@@ -358,11 +412,13 @@ export const PREP_DOC_STATUS_OPTIONS: Record<string, PrepDocStatusOption[]> = {
     {
       value: "1月1日時点で日本に在住していなかった為発行できなかった",
       done: true,
+      noFile: true,
       extras: [{ kind: "textarea", label: "理由書（申請に添付する理由を記入して保存）" }],
     },
     {
       value: "国保に加入したばかりで発行できない",
       done: true,
+      noFile: true,
       extras: [{ kind: "textarea", label: "理由書（申請に添付する理由を記入して保存）" }],
     },
   ],
@@ -372,6 +428,7 @@ export const PREP_DOC_STATUS_OPTIONS: Record<string, PrepDocStatusOption[]> = {
     {
       value: "加入できない",
       done: true,
+      noFile: true,
       extras: [{ kind: "textarea", label: "理由書（申請に添付する理由を記入して保存）" }],
     },
   ],
@@ -420,4 +477,18 @@ export function prepStatusOption(docId: string, status: string): PrepDocStatusOp
 export function letterPackTrackingUrl(no: string): string {
   const clean = no.replace(/[^0-9A-Za-z]/g, "");
   return `https://trackings.post.japanpost.jp/services/srv/search/direct?searchKind=S002&locale=ja&reqCodeNo1=${clean}`;
+}
+
+// 「申請後に入管へ郵送する」チェックを表示しない書類（本人から預かる・撮影するもの）
+export const PREP_MAIL_AFTER_HIDDEN = new Set(["zairyu", "passport", "photo"]);
+
+// 追加添付（2枚目以降）の保存キー（例: prep_kazei_r7_p2）。1枚目は基本キーのまま
+export function prepPageKey(baseKey: string, page: number): string {
+  return page <= 1 ? baseKey : `${baseKey}_p${page}`;
+}
+
+// その書類の添付キーか（基本キー、または {base}_p2 などの追加添付キー）
+export function isPrepPageKeyOf(baseKey: string, key: string): boolean {
+  if (key === baseKey) return true;
+  return key.startsWith(`${baseKey}_p`) && /^\d+$/.test(key.slice(baseKey.length + 2));
 }

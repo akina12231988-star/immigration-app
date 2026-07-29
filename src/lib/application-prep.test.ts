@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   EMPTY_PREP_META,
   evaluatePrepChecklist,
+  isDocComplete,
+  isPrepPageKeyOf,
   isRequired,
   isSatisfied,
   letterPackTrackingUrl,
@@ -9,6 +11,7 @@ import {
   PREP_DOC_DEFS,
   PREP_DOC_STATUS_OPTIONS,
   prepDocLabel,
+  prepPageKey,
   prepStatusOption,
   type PrepChecklistMeta,
   type PrepDocSources,
@@ -70,18 +73,87 @@ describe("isSatisfied", () => {
 });
 
 describe("evaluatePrepChecklist", () => {
-  it("更新・国保&年金加入で必要書類と不足を集計する", () => {
+  it("更新・国保&年金加入で必要書類と不足を集計する（完了＝添付＋ステータス完了）", () => {
     const m = meta({ app_type: "更新", has_kokuho: true, has_nenkin: true, target_reiwa: 7 });
     const { items, missing } = evaluatePrepChecklist(
       m,
       sources({ filledDocKeys: new Set(["cert_zairyu", "gensen_r6"]), photoPath: "p.jpg" }),
+      {
+        zairyu: "預かった",
+        photo: "顔写真加工なし確認済み",
+        gensen: "本人から送られてきた",
+      },
     );
     // 更新の必要書類: 在留カード/顔写真/パスポート/源泉/課税/納税(市県民)/納税(国保)/年金記録 = 8件
     expect(items).toHaveLength(8);
-    // 充足: 在留カード・顔写真・源泉 → 不足は 5件
+    // 完了: 在留カード・顔写真・源泉（添付あり＋完了ステータス） → 不足は 5件
     expect(missing.map((x) => x.def.id).sort()).toEqual(
       ["kazei", "nenkin", "nozei_kokuho", "nozei_shiken", "passport"].sort(),
     );
+  });
+
+  it("添付があってもステータスが完了でなければ不足のまま", () => {
+    const m = meta({ app_type: "更新", has_kokuho: false, has_nenkin: false, target_reiwa: 7 });
+    const { items } = evaluatePrepChecklist(
+      m,
+      sources({ filledDocKeys: new Set(["cert_zairyu"]) }),
+      { zairyu: "写真だけ先に本人に依頼中" },
+    );
+    const zairyu = items.find((x) => x.def.id === "zairyu")!;
+    expect(zairyu.fileSatisfied).toBe(true);
+    expect(zairyu.satisfied).toBe(false);
+  });
+});
+
+describe("isDocComplete", () => {
+  it("完了ステータス＋添付ありで完了", () => {
+    expect(isDocComplete("zairyu", true, "預かった")).toBe(true);
+    expect(isDocComplete("zairyu", false, "預かった")).toBe(false);
+    expect(isDocComplete("zairyu", true, "写真だけ先に本人に依頼中")).toBe(false);
+  });
+  it("発行できない系（noFile）の完了ステータスは添付なしでも完了", () => {
+    expect(isDocComplete("nozei_shiken", false, "非課税のため発行できなかった")).toBe(true);
+    expect(
+      isDocComplete("kazei", false, "1月1日時点で日本に在住していなかった為発行できなかった"),
+    ).toBe(true);
+  });
+  it("ステータス選択肢の無い書類（合格証）は添付のみで完了", () => {
+    expect(isDocComplete("cert_senmonkyu", true, "")).toBe(true);
+    expect(isDocComplete("cert_senmonkyu", false, "")).toBe(false);
+  });
+});
+
+describe("特定活動へ資格変更申請", () => {
+  it("必要書類は在留カード・顔写真・パスポート・合格証3種", () => {
+    const ids = evaluatePrepChecklist(
+      meta({ app_type: "特定活動", has_kokuho: true, has_nenkin: true, target_reiwa: 7 }),
+      sources({}),
+    ).items.map((x) => x.def.id);
+    expect(ids.sort()).toEqual(
+      ["zairyu", "photo", "passport", "cert_senmonkyu", "cert_nihongo", "cert_senmongai"].sort(),
+    );
+  });
+  it("変更申請には合格証3種も含まれる", () => {
+    const ids = evaluatePrepChecklist(
+      meta({ app_type: "変更", has_kokuho: false, has_nenkin: false, target_reiwa: 7 }),
+      sources({}),
+    ).items.map((x) => x.def.id);
+    expect(ids).toContain("cert_senmonkyu");
+    expect(ids).toContain("cert_nihongo");
+    expect(ids).toContain("cert_senmongai");
+  });
+});
+
+describe("複数添付のキー（prepPageKey / isPrepPageKeyOf）", () => {
+  it("1枚目は基本キー、2枚目以降は _p{n} を付ける", () => {
+    expect(prepPageKey("prep_kazei_r7", 1)).toBe("prep_kazei_r7");
+    expect(prepPageKey("prep_kazei_r7", 2)).toBe("prep_kazei_r7_p2");
+  });
+  it("基本キーと枝番キーだけがその書類の添付と判定される", () => {
+    expect(isPrepPageKeyOf("prep_kazei_r7", "prep_kazei_r7")).toBe(true);
+    expect(isPrepPageKeyOf("prep_kazei_r7", "prep_kazei_r7_p2")).toBe(true);
+    expect(isPrepPageKeyOf("prep_kazei_r7", "prep_kazei_r70")).toBe(false);
+    expect(isPrepPageKeyOf("prep_kazei_r7", "prep_kazei_r7_px")).toBe(false);
   });
 });
 

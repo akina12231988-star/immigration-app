@@ -47,12 +47,16 @@ import { todayStr } from "@/lib/ssw/calc";
 import {
   EMPTY_PREP_META,
   evaluatePrepChecklist,
+  isPrepPageKeyOf,
   letterPackTrackingUrl,
+  PREP_APP_TYPE_LABELS,
   PREP_APP_TYPES,
   PREP_DOC_ALWAYS_EXTRAS,
   PREP_DOC_STATUS_OPTIONS,
+  PREP_MAIL_AFTER_HIDDEN,
   PREP_TANTOU_OPTIONS,
   prepDocLabel,
+  prepPageKey,
   prepStatusOption,
   prepYearDocKey,
   type PrepChecklistMeta,
@@ -172,7 +176,6 @@ export function ApplicationPrepChecklist({
 
   const today = todayStr();
   const filledDocKeys = new Set(docs.filter((d) => d.storage_path).map((d) => d.doc_key));
-  const docByKey = new Map(docs.map((d) => [d.doc_key, d]));
   // 健康診断書の完了判定は詳細（様式・受診項目・就労可の後日結果）まで含める
   const healthComplete = isHealthDetailComplete(
     healthDetail,
@@ -180,11 +183,19 @@ export function ApplicationPrepChecklist({
     healthCheckOn,
     today,
   );
-  const { items, missing } = evaluatePrepChecklist(meta, {
-    filledDocKeys,
-    photoPath: photoExists ? "yes" : null,
-    healthComplete,
-  });
+  // 完了判定は「添付＋準備状況が完了」の両方（ステータスの無い書類は添付のみ）
+  const statusValues = Object.fromEntries(
+    Object.entries(docStatuses).map(([docId, v]) => [docId, v.status]),
+  );
+  const { items, missing } = evaluatePrepChecklist(
+    meta,
+    {
+      filledDocKeys,
+      photoPath: photoExists ? "yes" : null,
+      healthComplete,
+    },
+    statusValues,
+  );
 
   const currentReiwa = reiwaYear(today);
   // 課税・納税証明書の基準日（対象年度の1月1日）時点の住所
@@ -287,6 +298,36 @@ export function ApplicationPrepChecklist({
     }
     uploadRef.current = { docKey: key, label: prepDocLabel(def, meta.target_reiwa, currentReiwa) };
     docInputRef.current?.click();
+  }
+
+  // 画像の追加添付（2枚目以降）。空いている枝番キー（{base}_p2, _p3 …）へ保存する
+  function startAttachPage(def: PrepDocDef, files: OnboardingDocumentRow[]) {
+    setError(null);
+    const key = resolveDocKey(def);
+    if (!key) {
+      setError("先に対象年度（令和）を入力してください。");
+      return;
+    }
+    const keys = new Set(files.map((f) => f.doc_key));
+    let page = 2;
+    while (keys.has(prepPageKey(key, page))) page++;
+    uploadRef.current = {
+      docKey: prepPageKey(key, page),
+      label: `${prepDocLabel(def, meta.target_reiwa, currentReiwa)}（${page}枚目）`,
+    };
+    docInputRef.current?.click();
+  }
+
+  // その書類に添付済みのファイル一覧（基本キー＋追加添付の枝番キー。年度なしの旧形式も含む）
+  function docFilesFor(def: PrepDocDef): OnboardingDocumentRow[] {
+    const key = resolveDocKey(def);
+    if (!key) return [];
+    let files = docs.filter((d) => d.storage_path && isPrepPageKeyOf(key, d.doc_key));
+    if (files.length === 0 && def.source.kind === "docYear") {
+      const base = def.source.baseKey;
+      files = docs.filter((d) => d.storage_path && isPrepPageKeyOf(base, d.doc_key));
+    }
+    return files.sort((a, b) => a.doc_key.localeCompare(b.doc_key, "en"));
   }
 
   async function handleDocFile(file: File | undefined) {
@@ -439,7 +480,7 @@ export function ApplicationPrepChecklist({
               <option value="">選択してください</option>
               {PREP_APP_TYPES.map((t) => (
                 <option key={t} value={t}>
-                  在留資格{t}申請
+                  {PREP_APP_TYPE_LABELS[t]}
                 </option>
               ))}
             </select>
@@ -545,11 +586,7 @@ export function ApplicationPrepChecklist({
           <div className="overflow-hidden rounded-xl border border-border">
             {items.map((item) => {
               const key = resolveDocKey(item.def);
-              let row = key ? (docByKey.get(key) ?? null) : null;
-              // 年度付き書類: 旧形式（年度なしキー）で保存済みの添付があれば表示する
-              if (!row && item.def.source.kind === "docYear") {
-                row = docByKey.get(item.def.source.baseKey) ?? null;
-              }
+              const files = docFilesFor(item.def);
               const isPhoto = item.def.source.kind === "photo";
               return (
                 <DocRow
@@ -557,20 +594,24 @@ export function ApplicationPrepChecklist({
                   item={item}
                   meta={meta}
                   workerId={workerId}
-                  row={row}
+                  files={files}
                   isPhoto={isPhoto}
                   canEdit={canEdit}
-                  busy={busyKey === (isPhoto ? "photo" : key)}
+                  busy={busyKey != null && (isPhoto ? busyKey === "photo" : busyKey.startsWith(key ?? " "))}
                   ds={{ ...EMPTY_PREP_DOC_STATUS, ...(docStatuses[item.def.id] ?? {}) }}
                   custodyNo={custodyNo}
                   onPatchStatus={(patch, save) => patchDocStatus(item.def.id, patch, save)}
                   onAttach={() => startAttach(item.def)}
-                  onRemove={() => {
-                    const k = row?.doc_key ?? key;
-                    if (k) void removeDoc(k, prepDocLabel(item.def, meta.target_reiwa, currentReiwa));
-                  }}
-                  onPreview={() => (isPhoto ? previewPhoto() : row && previewDoc(row.id))}
-                  onDownload={() => row && downloadDoc(row.id)}
+                  onAddPage={() => startAttachPage(item.def, files)}
+                  onRemoveFile={(f) =>
+                    void removeDoc(
+                      f.doc_key,
+                      `${prepDocLabel(item.def, meta.target_reiwa, currentReiwa)}（${f.file_name}）`,
+                    )
+                  }
+                  onPreviewFile={(f) => void previewDoc(f.id)}
+                  onPreviewPhoto={() => void previewPhoto()}
+                  onDownloadFile={(f) => void downloadDoc(f.id)}
                 />
               );
             })}
@@ -621,7 +662,7 @@ function DocRow({
   item,
   meta,
   workerId,
-  row,
+  files,
   isPhoto,
   canEdit,
   busy,
@@ -629,14 +670,16 @@ function DocRow({
   custodyNo,
   onPatchStatus,
   onAttach,
-  onRemove,
-  onPreview,
-  onDownload,
+  onAddPage,
+  onRemoveFile,
+  onPreviewFile,
+  onPreviewPhoto,
+  onDownloadFile,
 }: {
   item: PrepDocStatus;
   meta: PrepChecklistMeta;
   workerId: string;
-  row: OnboardingDocumentRow | null;
+  files: OnboardingDocumentRow[];
   isPhoto: boolean;
   canEdit: boolean;
   busy: boolean;
@@ -644,13 +687,15 @@ function DocRow({
   custodyNo: number | null;
   onPatchStatus: (patch: Partial<PrepDocStatusInput>, save?: boolean) => void;
   onAttach: () => void;
-  onRemove: () => void;
-  onPreview: () => void;
-  onDownload: () => void;
+  onAddPage: () => void;
+  onRemoveFile: (f: OnboardingDocumentRow) => void;
+  onPreviewFile: (f: OnboardingDocumentRow) => void;
+  onPreviewPhoto: () => void;
+  onDownloadFile: (f: OnboardingDocumentRow) => void;
 }) {
-  const { def, satisfied } = item;
+  const { def, satisfied, fileSatisfied } = item;
   const label = prepDocLabel(def, meta.target_reiwa, reiwaYear(todayStr()));
-  const hasFile = !!row?.storage_path;
+  const hasFile = files.length > 0;
 
   // 書類ごとの準備状況（ステータス）。選択肢と、選択に応じた付随入力を表示する
   const statusOptions = PREP_DOC_STATUS_OPTIONS[def.id];
@@ -683,10 +728,14 @@ function DocRow({
                   : "bg-seal/10 text-seal"
               }`}
             >
-              {satisfied ? "登録済み" : "不足"}
+              {satisfied ? "完了" : "不足"}
             </span>
+            {!satisfied && fileSatisfied && (
+              <span className="rounded-full bg-background px-1.5 py-0.5 text-[10px] font-bold text-muted ring-1 ring-border">
+                添付済み・準備状況が未完了
+              </span>
+            )}
           </span>
-          {hasFile && <span className="block truncate text-[11px] text-muted">{row!.file_name}</span>}
           {def.note && <span className="mt-0.5 block text-[11px] text-muted">※ {def.note}</span>}
           {def.managedIn && (
             <span className="mt-0.5 block text-[11px] text-muted">「{def.managedIn}」と共有</span>
@@ -699,31 +748,52 @@ function DocRow({
             <Loader2 size={15} className="animate-spin text-muted" />
           ) : (
             <>
-              {(hasFile || (isPhoto && satisfied)) && (
-                <IconButton label="表示" onClick={onPreview}>
+              {isPhoto && fileSatisfied && (
+                <IconButton label="表示" onClick={onPreviewPhoto}>
                   <Eye size={13} />
                 </IconButton>
               )}
-              {hasFile && !isPhoto && (
-                <IconButton label="ダウンロード" onClick={onDownload}>
-                  <Download size={13} />
-                </IconButton>
-              )}
               {canEdit && (
-                <IconButton label={satisfied ? "差し替え" : "添付"} onClick={onAttach}>
+                <IconButton label={hasFile || (isPhoto && fileSatisfied) ? "差し替え" : "添付"} onClick={onAttach}>
                   <Upload size={13} />
-                  {satisfied ? "差し替え" : "添付"}
+                  {hasFile || (isPhoto && fileSatisfied) ? "差し替え" : "添付"}
                 </IconButton>
               )}
-              {canEdit && hasFile && !isPhoto && (
-                <IconButton label="削除" tone="danger" onClick={onRemove}>
-                  <Trash2 size={13} />
+              {canEdit && !isPhoto && hasFile && (
+                <IconButton label="画像を追加" onClick={onAddPage}>
+                  <Upload size={13} />
+                  追加
                 </IconButton>
               )}
             </>
           )}
         </div>
       </div>
+
+      {/* 添付ファイル一覧（複数添付に対応。1件ずつ表示・DL・削除できる） */}
+      {files.length > 0 && (
+        <div className="ml-[18px] mt-1.5 space-y-1">
+          {files.map((f, i) => (
+            <div key={f.id} className="flex items-center gap-1.5">
+              <span className="min-w-0 flex-1 truncate text-[11px] text-muted">
+                {files.length > 1 && <span className="mr-1 font-bold">{i + 1}枚目:</span>}
+                {f.file_name}
+              </span>
+              <IconButton label="表示" onClick={() => onPreviewFile(f)}>
+                <Eye size={12} />
+              </IconButton>
+              <IconButton label="ダウンロード" onClick={() => onDownloadFile(f)}>
+                <Download size={12} />
+              </IconButton>
+              {canEdit && (
+                <IconButton label="削除" tone="danger" onClick={() => onRemoveFile(f)}>
+                  <Trash2 size={12} />
+                </IconButton>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* 郵送請求への導線 */}
       {def.viaMail && (
@@ -811,7 +881,7 @@ function DocRow({
               onPatch={onPatchStatus}
             />
           ))}
-          {canEdit && (
+          {canEdit && !PREP_MAIL_AFTER_HIDDEN.has(def.id) && (
             <label className="flex items-center gap-1.5 text-[11px]">
               <input
                 type="checkbox"
@@ -856,6 +926,30 @@ function StatusExtraField({
             onBlur={() => onPatch({}, true)}
             className={inputCls}
           />
+        </label>
+      );
+    case "tantou":
+      return (
+        <label className="block">
+          <span className="mb-0.5 block text-[11px] text-muted">{extra.label}</span>
+          <select
+            value={ds.note}
+            disabled={!canEdit}
+            onChange={(e) => onPatch({ note: e.target.value })}
+            className={inputCls}
+          >
+            <option value="">選択してください</option>
+            {/* 名簿から外れた保存済みの値（旧・自由入力など）も選択肢として残す */}
+            {ds.note &&
+              !PREP_TANTOU_OPTIONS.includes(ds.note as (typeof PREP_TANTOU_OPTIONS)[number]) && (
+                <option value={ds.note}>{ds.note}</option>
+              )}
+            {PREP_TANTOU_OPTIONS.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
         </label>
       );
     case "textarea":
