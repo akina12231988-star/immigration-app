@@ -320,7 +320,10 @@ export function isSatisfied(
     case "photo":
       return !!sources.photoPath;
     case "health":
-      return sources.healthComplete;
+      // 健康診断書はファイルが添付されていれば「添付あり」。
+      // 受診日や受診項目などの細かい確認は準備状況ステータス（受診済み・完了 など）で人が管理し、
+      // 完了判定は他の書類と同じ「添付あり＋ステータス完了」で行う
+      return sources.filledDocKeys.has("kenshin");
   }
 }
 
@@ -510,6 +513,19 @@ export function prepStatusOption(docId: string, status: string): PrepDocStatusOp
 export function letterPackTrackingUrl(no: string): string {
   const clean = no.replace(/[^0-9A-Za-z]/g, "");
   return `https://trackings.post.japanpost.jp/services/srv/search/direct?searchKind=S002&locale=ja&reqCodeNo1=${clean}`;
+}
+
+// 書類ごとの「添付する資料項目」（どれを添付するかをチェックボックスで選ぶ）
+export const PREP_DOC_ATTACH_ITEMS: Record<string, string[]> = {
+  nenkin: ["年金記録", "免除申請書"],
+};
+
+// 添付する資料項目の保存形式（カンマ区切り）の変換
+export function parseAttachItems(s: string): string[] {
+  return s ? s.split(",").filter(Boolean) : [];
+}
+export function serializeAttachItems(items: string[]): string {
+  return items.join(",");
 }
 
 // 「申請後に入管へ郵送する」チェックを表示しない書類（本人から預かる・撮影するもの）
