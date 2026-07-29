@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { getResignationForForms } from "@/lib/supabase/queries/resignations";
+import { normalizeOrganizationIntake } from "@/lib/organization-intake";
 import { ResignationForms } from "./ResignationForms";
 
 export const dynamic = "force-dynamic";
@@ -34,6 +35,8 @@ export default async function ResignationFormsPage({
         organizationId: resignation.organization_id,
         orgCorporateNo: resignation.organizations?.corporate_no ?? "",
         businessCategory: resignation.organizations?.business_category ?? "",
+        // 所属機関に登録した「定期報告書・随時報告書の担当者名」を様式の担当者欄の初期値にする
+        orgReportStaff: normalizeOrganizationIntake(resignation.organizations?.intake).report_staff,
       }}
       worker={{
         id: w.id,

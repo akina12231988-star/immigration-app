@@ -158,7 +158,8 @@ export function OrganizationsAdmin({ organizations }: { organizations: Organizat
   );
 }
 
-function OrganizationFormModal({
+// 会社・機関の編集モーダル。一覧（鉛筆ボタン）と詳細ページの「編集」から使う
+export function OrganizationFormModal({
   initial,
   onClose,
   onSubmit,

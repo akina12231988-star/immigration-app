@@ -111,6 +111,7 @@ export interface OrganizationIntake {
   phone: string; // 電話番号（旧項目。連絡先(organizations.contact)に統合済み・未移行データ用に残す）
   fax: string; // FAX
   email: string; // Email
+  report_staff: string; // 定期報告書・随時報告書の担当者名（退職の随時報告書へ自動転記）
   fiscal_kind: string; // 決算情報の区分（個人事業主 / 法人）
   support_fee: string; // 毎月の支援代（月額）
   posting_note: string; // 求人で必須としている他条件（求人情報で注意喚起表示）

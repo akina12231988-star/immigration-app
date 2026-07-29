@@ -366,6 +366,15 @@ export function OrganizationFormBody({
           </span>
         </label>
       )}
+      {/* 連絡先の下: 定期報告書・随時報告書の担当者名（退職の随時報告書へ自動転記） */}
+      <IntakeField
+        label="定期報告書・随時報告書の担当者名"
+        value={intake.report_staff}
+        onChange={(v) => setIntake({ report_staff: v })}
+        placeholder="例: 井上　有基"
+        hint="退職＜随時報告＞の様式（3-1-2号・3-4号）の届出機関担当者欄に自動転記されます。"
+        locked={locks.intake("report_staff")}
+      />
       {locks.top("corporate_no") ? (
         <StaticValue label="法人番号" value={form.corporate_no} />
       ) : (
