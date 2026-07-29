@@ -76,7 +76,7 @@ export function ApplicationsExplorer({
   initialView = null,
 }: {
   applications: Application[];
-  initialView?: StatViewKey | null;
+  initialView?: StatViewKey | "pre-prep" | null;
 }) {
   const router = useRouter();
   const { updateApplication } = useApplications();

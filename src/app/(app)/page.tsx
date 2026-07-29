@@ -19,18 +19,20 @@ import { AppHeader } from "@/components/AppHeader";
 import { OnboardingPendingAlert } from "@/components/OnboardingPendingAlert";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { getDashboardStats } from "@/lib/application-stats";
+import { countPrePrepApplications, getDashboardStats } from "@/lib/application-stats";
 import { isExpiryAlert, todayStr } from "@/lib/application-alerts";
 import { useApplications } from "@/lib/application-store";
+import { buildRenewalPlaceholders } from "@/lib/renewal-placeholders";
+import { listWorkersWithOrg, type WorkerWithOrg } from "@/lib/supabase/queries/workers";
 import { createClient } from "@/lib/supabase/client";
 
 const STAT_CARDS = [
   {
-    key: "thisMonthCount",
-    view: "this-month",
-    label: "今月申請件数",
+    key: "prePrepCount",
+    view: "pre-prep",
+    label: "申請前＜準備中＞件数",
     icon: FileClock,
-    accent: "text-status-applied-fg bg-status-applied-bg",
+    accent: "text-status-before-fg bg-status-before-bg",
   },
   {
     key: "unreportedCount",
@@ -57,11 +59,30 @@ const STAT_CARDS = [
 
 export default function DashboardPage() {
   const { applications } = useApplications();
-  const stats = getDashboardStats(applications);
+
+  // 在留更新で「準備中」の外国人（申請前＜準備中＞の擬似行の件数に使う）
+  const [renewalWorkers, setRenewalWorkers] = useState<WorkerWithOrg[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    listWorkersWithOrg(createClient())
+      .then((ws) => {
+        if (!cancelled) setRenewalWorkers(ws);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // ④在留期限アラート: 申請時点の在留期限から1か月経過・未受取
   const today = todayStr();
   const expiryAlerts = applications.filter((a) => isExpiryAlert(a, today));
+
+  // 申請前＜準備中＞: 実レコード＋在留更新準備中の擬似行（申請一覧のタブと同じ件数）
+  const prePrepCount =
+    countPrePrepApplications(applications) +
+    buildRenewalPlaceholders(renewalWorkers, applications, today).length;
+  const stats = { ...getDashboardStats(applications), prePrepCount };
 
   // ⑨募集中の求人件数
   const [openPostings, setOpenPostings] = useState<number | null>(null);
