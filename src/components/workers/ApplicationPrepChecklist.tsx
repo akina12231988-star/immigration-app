@@ -522,24 +522,53 @@ export function ApplicationPrepChecklist({
         </div>
         {/* 合格証の組み合わせ（申請内容で必要な合格証が変わる。更新申請では不要） */}
         {meta.app_type && meta.app_type !== "更新" && (
-          <label className="flex flex-col gap-1 text-xs font-bold text-muted">
-            合格証の組み合わせ
-            <select
-              value={meta.cert_pattern}
-              disabled={!canEdit}
-              onChange={(e) =>
-                patchMeta({ cert_pattern: e.target.value as PrepChecklistMeta["cert_pattern"] })
-              }
-              className={inputCls}
-            >
-              <option value="">未選択（合格証3種をすべて表示）</option>
-              {PREP_CERT_PATTERNS.map((p) => (
-                <option key={p.value} value={p.value}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="flex flex-col gap-1">
+            <label className="flex flex-col gap-1 text-xs font-bold text-muted">
+              合格証の組み合わせ
+              <select
+                value={meta.cert_pattern}
+                disabled={!canEdit}
+                onChange={(e) =>
+                  patchMeta({ cert_pattern: e.target.value as PrepChecklistMeta["cert_pattern"] })
+                }
+                className={inputCls}
+              >
+                <option value="">未選択（合格証3種をすべて表示）</option>
+                {PREP_CERT_PATTERNS.map((p) => (
+                  <option key={p.value} value={p.value}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {/* 本人の合格証の登録状況。下までスクロールしなくても組み合わせを選べるようにする */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] text-muted">本人の登録状況:</span>
+              {(
+                [
+                  ["専門級", "cert_senmonkyu"],
+                  ["日本語", "cert_nihongo"],
+                  ["専門外", "cert_senmongai"],
+                  ["技能評価調書", "prep_hyoka_chosho"],
+                ] as const
+              ).map(([certLabel, certKey]) => {
+                const has = filledDocKeys.has(certKey);
+                return (
+                  <span
+                    key={certKey}
+                    className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                      has
+                        ? "bg-status-approved-bg text-status-approved-fg"
+                        : "bg-seal/10 text-seal"
+                    }`}
+                  >
+                    {has && <CheckCircle2 size={11} />}
+                    {certLabel} {has ? "登録済み" : "未登録"}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
         )}
         <div className="flex flex-wrap items-center gap-4">
           <label className="flex items-center gap-1.5 text-xs font-bold">
