@@ -13,6 +13,7 @@ import {
   ExternalLink,
   MessageCircle,
   Search,
+  UserRound,
   X,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
@@ -467,10 +468,18 @@ export function ApplicationsExplorer({
                       )}
                     </p>
                   )}
+                  {a.workerId && (
+                    <span
+                      className="mt-2 inline-block"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <WorkerInfoLink workerId={a.workerId} />
+                    </span>
+                  )}
                 </>
               );
-              // 申請前＜準備中＞: TODO番号・Notion・Messenger を表示。
-              // カード内にリンクを置くため、Link入れ子を避けて onClick 遷移にする
+              // カード内にリンク（外国人の情報・Notionなど）を置くため、
+              // Link入れ子を避けて onClick 遷移にする
               return showPrep ? (
                 <Card
                   key={a.id}
@@ -528,11 +537,15 @@ export function ApplicationsExplorer({
                   )}
                 </Card>
               ) : (
-                <Link key={a.id} href={hrefFor(a)}>
-                  <Card className={`h-full p-4 ${isExpiryAlert(a, TODAY) ? "border-seal" : ""}`}>
-                    {body}
-                  </Card>
-                </Link>
+                <Card
+                  key={a.id}
+                  onClick={() => router.push(hrefFor(a))}
+                  className={`h-full cursor-pointer p-4 hover:border-brand ${
+                    isExpiryAlert(a, TODAY) ? "border-seal" : ""
+                  }`}
+                >
+                  {body}
+                </Card>
               );
             })}
           </div>
@@ -584,6 +597,14 @@ export function ApplicationsExplorer({
                           {a.name}
                           {isExpiryAlert(a, TODAY) && <AlertBadge expiry={a.residenceExpiryAtApply} />}
                         </span>
+                        {a.workerId && (
+                          <span
+                            className="mt-1 block"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <WorkerInfoLink workerId={a.workerId} />
+                          </span>
+                        )}
                       </Td>
                       <Td>{a.organizationName ?? "—"}</Td>
                       {showPrep ? (
@@ -864,6 +885,20 @@ function ApplyRushBadge({ expiry }: { expiry: string }) {
     <span className="inline-flex shrink-0 items-center rounded-full bg-seal px-2 py-0.5 text-[10px] font-bold text-seal-foreground">
       {label}
     </span>
+  );
+}
+
+// 外国人の詳細ページ（/workers/[id]）を開くボタン。行クリックの遷移とは別に使う
+function WorkerInfoLink({ workerId }: { workerId: string }) {
+  return (
+    <Link
+      href={`/workers/${workerId}`}
+      onClick={(e) => e.stopPropagation()}
+      className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[11px] font-bold text-brand hover:bg-brand/5"
+    >
+      <UserRound size={12} />
+      外国人の情報
+    </Link>
   );
 }
 
