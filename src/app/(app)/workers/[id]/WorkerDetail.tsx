@@ -112,6 +112,79 @@ export function WorkerDetail({
     router.refresh();
   };
 
+  // 未記入の欄をその場で入力して保存する下書き（編集モーダルを開かずに埋められる）。
+  // 入力済みの項目の修正は従来どおり「編集」から行う
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [fillBusy, setFillBusy] = useState(false);
+  const setField = (key: string, value: string) => setDraft((d) => ({ ...d, [key]: value }));
+  const filledEntries = Object.entries(draft).filter(([, v]) => v.trim() !== "");
+  const fillDirty = filledEntries.length > 0;
+
+  const saveFilled = async () => {
+    setFillBusy(true);
+    setError(null);
+    try {
+      const payload: Partial<WorkerInput> = {};
+      for (const [key, value] of filledEntries) {
+        (payload as Record<string, unknown>)[key] = value.trim();
+      }
+      await updateWorker(createClient(), worker.id, payload);
+      setDraft({});
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存に失敗しました");
+    } finally {
+      setFillBusy(false);
+    }
+  };
+
+  // 未記入欄用のインライン入力（点線枠で「ここに入力できる」ことを示す）
+  const FILL_INPUT =
+    "mt-0.5 min-h-[36px] w-full rounded-lg border border-dashed border-border bg-background px-2.5 text-sm focus:border-brand focus:outline-none";
+  const fillText = (key: string, placeholder?: string) =>
+    canEdit ? (
+      <input
+        value={draft[key] ?? ""}
+        onChange={(e) => setField(key, e.target.value)}
+        placeholder={placeholder ?? "未入力"}
+        className={FILL_INPUT}
+      />
+    ) : undefined;
+  const fillDate = (key: string) =>
+    canEdit ? (
+      <input
+        type="date"
+        value={draft[key] ?? ""}
+        onChange={(e) => setField(key, e.target.value)}
+        className={FILL_INPUT}
+      />
+    ) : undefined;
+  const fillSelect = (key: string, options: string[]) =>
+    canEdit ? (
+      <select
+        value={draft[key] ?? ""}
+        onChange={(e) => setField(key, e.target.value)}
+        className={FILL_INPUT}
+      >
+        <option value="">未設定</option>
+        {options.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+    ) : undefined;
+  const fillTextarea = (key: string, placeholder?: string) =>
+    canEdit ? (
+      <textarea
+        rows={2}
+        value={draft[key] ?? ""}
+        onChange={(e) => setField(key, e.target.value)}
+        placeholder={placeholder}
+        className={`${FILL_INPUT} min-h-[52px] py-2 leading-relaxed`}
+      />
+    ) : undefined;
+
   const handleDeleteWorker = async () => {
     setDeleting(true);
     try {
@@ -230,29 +303,77 @@ export function WorkerDetail({
           <SupportBadge support={worker.support} />
         </div>
         <p className="mb-1 text-[11px] font-bold text-muted">基本情報</p>
+        {canEdit && (
+          <p className="mb-2 text-[11px] text-muted">
+            未記入の欄はそのまま入力し「入力した内容を保存」で保存できます（入力済みの修正は「編集」から）。
+          </p>
+        )}
         <dl className="mb-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
-          <InfoItem label="国籍" value={worker.nationality} />
-          <InfoItem label="生年月日" value={worker.birth} />
-          <InfoItem label="性別" value={worker.gender} />
-          <InfoItem label="住所" value={worker.address} />
-          <InfoItem label="分野・職種" value={worker.field} />
-          <InfoItem label="現在の所属機関" value={orgName} />
-          <InfoItem label="専門級の合格名" value={worker.specialty_grade} />
-          <InfoItem label="その他の資格・合格名" value={worker.other_qualifications} />
+          <InfoItem label="国籍" value={worker.nationality} edit={fillText("nationality", "例: ベトナム")} />
+          <InfoItem label="生年月日" value={worker.birth} edit={fillDate("birth")} />
+          <InfoItem label="性別" value={worker.gender} edit={fillSelect("gender", ["男", "女"])} />
+          <InfoItem
+            label="住所"
+            value={worker.address}
+            edit={fillText("address", "例: 熊本県熊本市中央区◯◯1-2-3")}
+          />
+          <InfoItem label="分野・職種" value={worker.field} edit={fillText("field", "例: 農業・耕種農業")} />
+          <InfoItem
+            label="現在の所属機関"
+            value={worker.current_organization_id ? orgName : canEdit ? "" : "未所属"}
+            edit={
+              canEdit ? (
+                <select
+                  value={draft.current_organization_id ?? ""}
+                  onChange={(e) => setField("current_organization_id", e.target.value)}
+                  className={FILL_INPUT}
+                >
+                  <option value="">未所属</option>
+                  {organizations.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}
+                    </option>
+                  ))}
+                </select>
+              ) : undefined
+            }
+          />
+          <InfoItem label="専門級の合格名" value={worker.specialty_grade} edit={fillText("specialty_grade")} />
+          <InfoItem
+            label="その他の資格・合格名"
+            value={worker.other_qualifications}
+            edit={fillText("other_qualifications")}
+          />
         </dl>
         <p className="mb-1 text-[11px] font-bold text-muted">在留情報</p>
         <dl className="mb-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
-          <InfoItem label="在留資格" value={worker.residence_status} />
-          <InfoItem label="在留カード番号" value={worker.residence_card_no} />
-          <InfoItem label="許可日" value={worker.residence_permit_date} />
-          <InfoItem label="在留期限" value={worker.residence_expiry_date} />
-          <InfoItem label="パスポート番号" value={worker.passport_no} />
-          <InfoItem label="パスポート有効期限" value={worker.passport_expiry_date} />
+          <InfoItem
+            label="在留資格"
+            value={worker.residence_status}
+            edit={fillText("residence_status", "例: 特定技能1号")}
+          />
+          <InfoItem
+            label="在留カード番号"
+            value={worker.residence_card_no}
+            edit={fillText("residence_card_no")}
+          />
+          <InfoItem label="許可日" value={worker.residence_permit_date} edit={fillDate("residence_permit_date")} />
+          <InfoItem label="在留期限" value={worker.residence_expiry_date} edit={fillDate("residence_expiry_date")} />
+          <InfoItem label="パスポート番号" value={worker.passport_no} edit={fillText("passport_no")} />
+          <InfoItem
+            label="パスポート有効期限"
+            value={worker.passport_expiry_date}
+            edit={fillDate("passport_expiry_date")}
+          />
         </dl>
         <p className="mb-1 text-[11px] font-bold text-muted">家族情報</p>
         <dl className="mb-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
-          <InfoItem label="配偶者の有無" value={worker.has_spouse} />
-          <InfoItem label="在日親族の同居" value={worker.relatives_in_japan} />
+          <InfoItem label="配偶者の有無" value={worker.has_spouse} edit={fillSelect("has_spouse", ["有", "無"])} />
+          <InfoItem
+            label="在日親族の同居"
+            value={worker.relatives_in_japan}
+            edit={fillSelect("relatives_in_japan", ["有", "無"])}
+          />
         </dl>
         {worker.relatives_in_japan === "有" && (worker.relatives ?? []).length > 0 && (
           <div className="mb-3">
@@ -276,10 +397,25 @@ export function WorkerDetail({
           </div>
         )}
         <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
-          <InfoItem label="健康状態" value={worker.health_note} wide />
-          <InfoItem label="家族構成" value={worker.family_note} wide />
-          <InfoItem label="備考" value={worker.note} wide />
+          <InfoItem
+            label="健康状態"
+            value={worker.health_note}
+            wide
+            edit={fillTextarea("health_note", "持病・通院状況など")}
+          />
+          <InfoItem
+            label="家族構成"
+            value={worker.family_note}
+            wide
+            edit={fillTextarea("family_note", "配偶者・子どもの有無、同居状況など")}
+          />
+          <InfoItem label="備考" value={worker.note} wide edit={fillTextarea("note")} />
         </dl>
+        {canEdit && fillDirty && (
+          <Button fullWidth className="mt-3" disabled={fillBusy} onClick={saveFilled}>
+            {fillBusy ? "保存中…" : "入力した内容を保存"}
+          </Button>
+        )}
       </Card>
 
       {/* 退職者情報（状態が退職のときのみ表示） */}
@@ -542,15 +678,17 @@ function InfoItem({
   label,
   value,
   wide = false,
+  edit,
 }: {
   label: string;
   value: string | null;
   wide?: boolean;
+  edit?: React.ReactNode; // 未記入のときに表示するインライン入力（省略時は「—」）
 }) {
   return (
     <div className={wide ? "col-span-2" : ""}>
       <dt className="text-[11px] font-bold text-muted">{label}</dt>
-      <dd className="whitespace-pre-wrap break-words">{value || "—"}</dd>
+      <dd className="whitespace-pre-wrap break-words">{value || edit || "—"}</dd>
     </div>
   );
 }
