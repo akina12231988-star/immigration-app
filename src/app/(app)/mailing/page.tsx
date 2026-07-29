@@ -24,11 +24,11 @@ export default async function MailingPage() {
 
   return (
     <>
-      <AppHeader title="郵送請求（課税・納税証明書）" backHref="/workers" />
+      <AppHeader title="郵送請求（課税・納税証明書／転出届／住民票）" backHref="/workers" />
       <MailingClient
         initialMunicipalities={municipalities}
         initialRecords={records}
-        workers={workers.map((w) => ({ id: w.id, name: w.name }))}
+        workers={workers.map((w) => ({ id: w.id, name: w.name, address: w.address }))}
         canEdit={me.role !== "viewer"}
       />
     </>

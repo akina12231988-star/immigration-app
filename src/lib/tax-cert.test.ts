@@ -1,39 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { buildExtraDocs, extraDocsSummary } from "./tax-cert";
+import { applicantLabel, juminhyoTitle, requestKindLabel } from "./tax-cert";
 
-describe("buildExtraDocs（転出届・住民票）", () => {
-  it("チェックした書類だけが追加される", () => {
-    expect(buildExtraDocs(false, false, false)).toEqual([]);
-
-    const tenshutsuOnly = buildExtraDocs(true, false, false);
-    expect(tenshutsuOnly).toHaveLength(1);
-    expect(tenshutsuOnly[0].title).toBe("転出届");
-    expect(tenshutsuOnly[0].isExtra).toBe(true);
-
-    const both = buildExtraDocs(true, true, false);
-    expect(both.map((d) => d.title)).toEqual([
-      "転出届",
-      "住民票の写し（個人番号の記載なし）",
-    ]);
-  });
-
-  it("住民票は個人番号（マイナンバー）記載の有無をタイトルに含める", () => {
-    expect(buildExtraDocs(false, true, true)[0].title).toBe(
-      "住民票の写し（個人番号の記載あり）",
-    );
-    expect(buildExtraDocs(false, true, false)[0].title).toBe(
-      "住民票の写し（個人番号の記載なし）",
-    );
+describe("requestKindLabel", () => {
+  it("請求種別の表示名を返す（未設定の既存記録は課税・納税証明書）", () => {
+    expect(requestKindLabel("tax")).toBe("課税・納税証明書");
+    expect(requestKindLabel("tenshutsu")).toBe("転出届");
+    expect(requestKindLabel("juminhyo")).toBe("住民票");
+    expect(requestKindLabel(undefined)).toBe("課税・納税証明書");
   });
 });
 
-describe("extraDocsSummary", () => {
-  it("記録一覧用の要約を作る", () => {
-    expect(extraDocsSummary({})).toBe("");
-    expect(extraDocsSummary({ hasTenshutsu: true })).toBe("転出届");
-    expect(
-      extraDocsSummary({ hasTenshutsu: true, hasJuminhyo: true, juminhyoMyNumber: true }),
-    ).toBe("転出届 ・ 住民票（個人番号 記載あり）");
-    expect(extraDocsSummary({ hasJuminhyo: true })).toBe("住民票（個人番号 記載なし）");
+describe("juminhyoTitle", () => {
+  it("個人番号（マイナンバー）記載の有無をタイトルに含める", () => {
+    expect(juminhyoTitle(true)).toBe("住民票の写し（個人番号の記載あり）");
+    expect(juminhyoTitle(false)).toBe("住民票の写し（個人番号の記載なし）");
+  });
+});
+
+describe("applicantLabel", () => {
+  it("本人申請・代理人（名前）を表示する", () => {
+    expect(applicantLabel("self")).toBe("本人申請");
+    expect(applicantLabel(undefined)).toBe("本人申請");
+    expect(applicantLabel("agent", "山田太郎")).toBe("代理人（山田太郎）");
+    expect(applicantLabel("agent", "")).toBe("代理人（名前未入力）");
   });
 });
