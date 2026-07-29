@@ -55,6 +55,7 @@ export function emptyOrganizationIntake(): OrganizationIntake {
     staff_ssw1: "",
     staff_ssw2: "",
     staff_katsudo: "",
+    staff_updated_on: "",
     financials: Array.from({ length: FINANCIAL_DEFAULT_ROWS }, () => emptyFinancialYear()),
     wage_parity_reason: "",
     rosai_covered: "",
@@ -62,6 +63,12 @@ export function emptyOrganizationIntake(): OrganizationIntake {
     koyo_covered: "",
     koyo_no: "",
     lodging_address: "",
+    lodging_kind: "",
+    lodging_total_cost: "",
+    lodging_equipment_cost: "",
+    lodging_useful_years: "",
+    lodging_rent: "",
+    lodging_max_residents: "",
     first_hired_on: "",
     missing_ssw: "",
     missing_trainee: "",
@@ -92,4 +99,41 @@ export function normalizeOrganizationIntake(raw: unknown): OrganizationIntake {
     officerSrc.length > 0 ? officerSrc.map((o) => ({ ...emptyOfficer(), ...o })) : base.officers;
 
   return { ...base, ...src, financials, japanese_staff, officers };
+}
+
+// ---- 宿泊物件の費用計算 ----
+
+// 金額・数値の文字列から数値を取り出す（カンマ・円・全角数字などを許容）。数値にならなければ null
+export function parseAmount(s: string): number | null {
+  const half = s.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
+  const cleaned = half.replace(/[^0-9.]/g, "");
+  if (!cleaned) return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+// 自己所有物件の1ヶ月分の家賃代 = （かかった総費用＋備品代）÷（耐用年数×12） 円未満四捨五入
+export function ownedMonthlyRent(
+  totalCost: string,
+  equipmentCost: string,
+  usefulYears: string,
+): number | null {
+  const total = parseAmount(totalCost);
+  const equipment = parseAmount(equipmentCost) ?? 0;
+  const years = parseAmount(usefulYears);
+  if (total == null || years == null) return null;
+  return Math.round((total + equipment) / (years * 12));
+}
+
+// 1人あたりの居住費用 = 家賃（月額）÷ 最大入居人数 円未満四捨五入
+export function perResidentCost(rent: string, maxResidents: string): number | null {
+  const r = parseAmount(rent);
+  const n = parseAmount(maxResidents);
+  if (r == null || n == null) return null;
+  return Math.round(r / n);
+}
+
+// 金額の表示（例: 25,000円）
+export function formatYen(n: number): string {
+  return `${n.toLocaleString("ja-JP")}円`;
 }

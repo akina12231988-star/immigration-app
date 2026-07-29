@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   FINANCIAL_DEFAULT_ROWS,
   emptyOrganizationIntake,
+  formatYen,
   normalizeOrganizationIntake,
+  ownedMonthlyRent,
+  parseAmount,
+  perResidentCost,
 } from "./organization-intake";
 
 describe("normalizeOrganizationIntake", () => {
@@ -43,5 +47,32 @@ describe("normalizeOrganizationIntake", () => {
     expect(intake.officers).toEqual([
       { kana: "", name: "山田 太郎", title: "", not_involved: true },
     ]);
+  });
+});
+
+describe("宿泊物件の費用計算", () => {
+  it("金額文字列からカンマ・円・全角数字を除いて数値化する", () => {
+    expect(parseAmount("15,000,000円")).toBe(15000000);
+    expect(parseAmount("６０，０００")).toBe(60000);
+    expect(parseAmount("")).toBeNull();
+    expect(parseAmount("なし")).toBeNull();
+  });
+  it("自己所有物件の1ヶ月分の家賃代 = （総費用＋備品代）÷（耐用年数×12）", () => {
+    // (15,000,000 + 500,000) ÷ (22年×12) = 58,712円
+    expect(ownedMonthlyRent("15,000,000", "500,000", "22")).toBe(58712);
+    // 備品代なしでも計算できる
+    expect(ownedMonthlyRent("13,200,000", "", "22")).toBe(50000);
+    // 総費用か耐用年数が無ければ null
+    expect(ownedMonthlyRent("", "500,000", "22")).toBeNull();
+    expect(ownedMonthlyRent("15,000,000", "", "")).toBeNull();
+  });
+  it("1人あたりの居住費用 = 家賃 ÷ 最大入居人数", () => {
+    expect(perResidentCost("60,000", "3")).toBe(20000);
+    expect(perResidentCost("50,000", "3")).toBe(16667);
+    expect(perResidentCost("", "3")).toBeNull();
+    expect(perResidentCost("60,000", "")).toBeNull();
+  });
+  it("金額表示はカンマ区切り＋円", () => {
+    expect(formatYen(58712)).toBe("58,712円");
   });
 });
