@@ -28,7 +28,10 @@ import {
   emptyJapaneseStaff,
   emptyOfficer,
   emptyOrganizationIntake,
+  formatYen,
   normalizeOrganizationIntake,
+  ownedMonthlyRent,
+  perResidentCost,
 } from "@/lib/organization-intake";
 import type {
   OrgFinancialYear,
@@ -613,7 +616,7 @@ function IntakeSection({
 
         <p className={GROUP_CLASS}>見積書の添付（複数可）</p>
         {orgId ? (
-          <OrgQuoteFiles orgId={orgId} />
+          <OrgFileAttachments orgId={orgId} kind="見積書" addLabel="見積書を追加（画像・PDF）" />
         ) : (
           <p className={HINT_CLASS}>見積書は、会社・機関を登録したあとに編集画面から添付できます。</p>
         )}
@@ -708,8 +711,106 @@ function IntakeSection({
           value={intake.lodging_address}
           onChange={(v) => setIntake({ lodging_address: v })}
           placeholder="〒　住所"
-          hint="賃貸物件の場合は賃貸契約書の写しをもらってください。"
         />
+        {/* 宿泊物件の区分と居住費用の計算 */}
+        <div className="flex flex-wrap items-center gap-4">
+          <span className="text-[11px] font-bold text-muted">宿泊物件の区分:</span>
+          {["自己所有物件", "賃貸物件"].map((k) => (
+            <label key={k} className="flex items-center gap-1.5 text-xs font-bold">
+              <input
+                type="radio"
+                name="lodging-kind"
+                checked={intake.lodging_kind === k}
+                onChange={() => setIntake({ lodging_kind: k })}
+                className="h-4 w-4"
+              />
+              {k}
+            </label>
+          ))}
+        </div>
+        {intake.lodging_kind === "自己所有物件" && (
+          <>
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+              <IntakeField
+                label="かかった総費用（円）"
+                value={intake.lodging_total_cost}
+                onChange={(v) => setIntake({ lodging_total_cost: v })}
+                placeholder="例: 15,000,000"
+              />
+              <IntakeField
+                label="備品代（円）"
+                value={intake.lodging_equipment_cost}
+                onChange={(v) => setIntake({ lodging_equipment_cost: v })}
+                placeholder="例: 500,000"
+              />
+              <IntakeField
+                label="耐用年数（年）"
+                value={intake.lodging_useful_years}
+                onChange={(v) => setIntake({ lodging_useful_years: v })}
+                placeholder="例: 22"
+              />
+            </div>
+            <p className={HINT_CLASS}>
+              1ヶ月分の家賃代（(総費用＋備品代) ÷ (耐用年数×12)）:{" "}
+              {(() => {
+                const monthly = ownedMonthlyRent(
+                  intake.lodging_total_cost,
+                  intake.lodging_equipment_cost,
+                  intake.lodging_useful_years,
+                );
+                return monthly != null ? (
+                  <span className="font-bold text-brand">{formatYen(monthly)}</span>
+                ) : (
+                  "総費用と耐用年数を入力すると自動計算されます"
+                );
+              })()}
+            </p>
+          </>
+        )}
+        {intake.lodging_kind === "賃貸物件" && (
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs font-bold text-muted">賃貸契約書のコピー（複数可）</span>
+            {orgId ? (
+              <OrgFileAttachments
+                orgId={orgId}
+                kind="賃貸契約書"
+                addLabel="賃貸契約書を追加（画像・PDF）"
+              />
+            ) : (
+              <p className={HINT_CLASS}>賃貸契約書は、会社・機関を登録したあとに編集画面から添付できます。</p>
+            )}
+          </div>
+        )}
+        {intake.lodging_kind && (
+          <>
+            <div className="grid grid-cols-2 gap-2.5">
+              <IntakeField
+                label="家賃（月額・円）"
+                value={intake.lodging_rent}
+                onChange={(v) => setIntake({ lodging_rent: v })}
+                placeholder="例: 60,000"
+                hint={intake.lodging_kind === "自己所有物件" ? "上の自動計算の金額を参考に入力してください。" : undefined}
+              />
+              <IntakeField
+                label="最大入居人数"
+                value={intake.lodging_max_residents}
+                onChange={(v) => setIntake({ lodging_max_residents: v })}
+                placeholder="例: 3"
+              />
+            </div>
+            <p className={HINT_CLASS}>
+              1人あたりの居住費用（家賃 ÷ 最大入居人数）:{" "}
+              {(() => {
+                const per = perResidentCost(intake.lodging_rent, intake.lodging_max_residents);
+                return per != null ? (
+                  <span className="font-bold text-brand">{formatYen(per)}</span>
+                ) : (
+                  "家賃と最大入居人数を入力すると自動計算されます"
+                );
+              })()}
+            </p>
+          </>
+        )}
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
           <IntakeField
             label="労働者の雇用開始日（国籍問わず・大体で可）"
@@ -780,8 +881,16 @@ function IntakeSection({
   );
 }
 
-// 見積書の添付（複数可）。編集中の会社・機関に紐づけて保存する
-function OrgQuoteFiles({ orgId }: { orgId: string }) {
+// 会社・機関へのファイル添付（見積書・賃貸契約書など・複数可）。kind で種類を分けて保存する
+function OrgFileAttachments({
+  orgId,
+  kind,
+  addLabel,
+}: {
+  orgId: string;
+  kind: string;
+  addLabel: string;
+}) {
   const [files, setFiles] = useState<OrganizationFileRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -791,13 +900,13 @@ function OrgQuoteFiles({ orgId }: { orgId: string }) {
     let cancelled = false;
     listOrganizationFiles(createClient(), orgId)
       .then((rows) => {
-        if (!cancelled) setFiles(rows);
+        if (!cancelled) setFiles(rows.filter((r) => r.kind === kind));
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
-  }, [orgId]);
+  }, [orgId, kind]);
 
   async function handleFiles(list: FileList | null) {
     if (!list || list.length === 0) return;
@@ -812,10 +921,10 @@ function OrgQuoteFiles({ orgId }: { orgId: string }) {
           .storage.from("app-files")
           .uploadToSignedUrl(ticket.path, ticket.token, blob, { contentType: mimeType });
         if (upErr) throw new Error(`アップロードに失敗しました: ${upErr.message}`);
-        const res = await registerOrgFile(orgId, "見積書", ticket.path, fileName, mimeType);
+        const res = await registerOrgFile(orgId, kind, ticket.path, fileName, mimeType);
         if (!res.ok) throw new Error(res.message);
       }
-      setFiles(await listOrganizationFiles(createClient(), orgId));
+      setFiles((await listOrganizationFiles(createClient(), orgId)).filter((r) => r.kind === kind));
     } catch (err) {
       setError(err instanceof Error ? err.message : "アップロードに失敗しました");
     } finally {
@@ -868,7 +977,7 @@ function OrgQuoteFiles({ orgId }: { orgId: string }) {
         className="flex items-center gap-1.5 self-start rounded-lg border border-dashed border-brand px-3 py-2 text-xs font-bold text-brand disabled:opacity-50"
       >
         {busy ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
-        {busy ? "アップロード中…" : "見積書を追加（画像・PDF）"}
+        {busy ? "アップロード中…" : addLabel}
       </button>
       <input
         ref={inputRef}

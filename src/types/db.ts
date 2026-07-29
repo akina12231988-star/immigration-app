@@ -123,6 +123,12 @@ export interface OrganizationIntake {
   koyo_covered: string; // 雇用保険の適用事業所か（'' / はい / いいえ）
   koyo_no: string; // 雇用保険適用事業所番号
   lodging_address: string; // 特定技能外国人の宿泊住所
+  lodging_kind: string; // 宿泊物件の区分（自己所有物件 / 賃貸物件）
+  lodging_total_cost: string; // 自己所有: かかった総費用（円）
+  lodging_equipment_cost: string; // 自己所有: 備品代（円）
+  lodging_useful_years: string; // 自己所有: 耐用年数（年）
+  lodging_rent: string; // 家賃（月額・円）
+  lodging_max_residents: string; // 最大入居人数
   first_hired_on: string; // 国籍問わず労働者を雇用開始した日付（大体）
   missing_ssw: string; // 過去1年間の行方不明者数（特定技能）
   missing_trainee: string; // 過去1年間の行方不明者数（技能実習生）
