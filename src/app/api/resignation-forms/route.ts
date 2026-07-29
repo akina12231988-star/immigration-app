@@ -2,7 +2,15 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { NextResponse, type NextRequest } from "next/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
-import { fill14, fill312, fill34, fill511, type FormFillData } from "@/lib/resignation-forms";
+import {
+  fill14,
+  fill15,
+  fill312,
+  fill34,
+  fill511,
+  type Form15Data,
+  type FormFillData,
+} from "@/lib/resignation-forms";
 
 // 参考様式の生成はサーバー側で行う（ブラウザ側でのExcel生成は本番ビルドで
 // 正しく動作しないことがあるため。Node環境ではテストで動作を保証している）。
@@ -38,6 +46,13 @@ const FORMS = {
     ext: "xlsx",
     label: "契約機関に関する届出（契約の終了）",
   },
+  form15: {
+    template: "sanko-1-5.xlsx",
+    fill: fill15,
+    mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ext: "xlsx",
+    label: "契約機関に関する届出（新たな契約の締結）",
+  },
 } as const;
 
 export async function POST(req: NextRequest) {
@@ -46,7 +61,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "ログインが必要です" }, { status: 401 });
   }
 
-  let body: { form?: string; data?: FormFillData };
+  let body: { form?: string; data?: FormFillData | Form15Data };
   try {
     body = await req.json();
   } catch {
@@ -60,7 +75,7 @@ export async function POST(req: NextRequest) {
   try {
     const buf = await readFile(path.join(process.cwd(), "public", "forms", def.template));
     const template = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
-    const bytes = await def.fill(template, body.data);
+    const bytes = await def.fill(template, body.data as FormFillData & Form15Data);
 
     const fileName = `${def.label}_${body.data.workerName || "届出"}.${def.ext}`;
     return new NextResponse(new Blob([bytes as BlobPart]), {

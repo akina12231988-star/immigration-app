@@ -39,6 +39,7 @@ import {
 } from "../actions";
 import { ApplicationEditDialog } from "./ApplicationEditDialog";
 import { ApprovalSection } from "./ApprovalSection";
+import { ContractOrgFormSection } from "./ContractOrgFormSection";
 import { ORG_HONORIFICS } from "@/types/application";
 import type { ApplicationFile, ApplicationFileKind } from "@/types/application";
 
@@ -456,6 +457,11 @@ export function ApplicationDetail({ id }: { id: string }) {
             </div>
           )}
         </Card>
+      )}
+
+      {/* 在留カード受領後: 契約機関に関する届出（参考様式1の5）の作成 */}
+      {app.approved && !withdrawn && cardReceived && app.workerId && (
+        <ContractOrgFormSection app={app} />
       )}
 
       {/* 取下げ・削除 */}
