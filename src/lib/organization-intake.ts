@@ -4,6 +4,7 @@
 import type {
   OrgFinancialYear,
   OrgJapaneseStaff,
+  OrgLodging,
   OrgOfficer,
   OrganizationIntake,
 } from "@/types/db";
@@ -30,6 +31,27 @@ export function emptyJapaneseStaff(): OrgJapaneseStaff {
 
 export function emptyOfficer(): OrgOfficer {
   return { kana: "", name: "", title: "", not_involved: false };
+}
+
+// 寮・宿泊物件の空行。id は添付ファイルとの紐付けに使うため呼び出し側で採番する
+// （normalize が毎回同じ結果を返せるよう、この関数内では乱数を使わない）
+export function emptyLodging(id: string): OrgLodging {
+  return {
+    id,
+    name: "",
+    address: "",
+    kind: "",
+    total_cost: "",
+    equipment_cost: "",
+    useful_years: "",
+    rent: "",
+    max_residents: "",
+  };
+}
+
+// 賃貸契約書の添付ファイル種別。1件目は旧データとの互換のため従来の「賃貸契約書」を使う
+export function lodgingContractKind(lodging: OrgLodging): string {
+  return lodging.id === "lodging-1" ? "賃貸契約書" : `賃貸契約書:${lodging.id}`;
 }
 
 export function emptyOrganizationIntake(): OrganizationIntake {
@@ -62,13 +84,7 @@ export function emptyOrganizationIntake(): OrganizationIntake {
     rosai_no: "",
     koyo_covered: "",
     koyo_no: "",
-    lodging_address: "",
-    lodging_kind: "",
-    lodging_total_cost: "",
-    lodging_equipment_cost: "",
-    lodging_useful_years: "",
-    lodging_rent: "",
-    lodging_max_residents: "",
+    lodgings: [emptyLodging("lodging-1")],
     first_hired_on: "",
     missing_ssw: "",
     missing_trainee: "",
@@ -98,7 +114,48 @@ export function normalizeOrganizationIntake(raw: unknown): OrganizationIntake {
   const officers =
     officerSrc.length > 0 ? officerSrc.map((o) => ({ ...emptyOfficer(), ...o })) : base.officers;
 
-  return { ...base, ...src, financials, japanese_staff, officers };
+  // 寮・宿泊物件。旧形式（フラットな lodging_* 項目）は1件目として移行する。
+  // id が無い行には決め打ちの id を振る（保存すると固定される）
+  const legacy = src as Record<string, unknown>;
+  const s = (v: unknown) => (typeof v === "string" ? v : "");
+  const lodSrc = Array.isArray(src.lodgings) ? src.lodgings : [];
+  const lodgings: OrgLodging[] =
+    lodSrc.length > 0
+      ? lodSrc.map((row, i) => ({ ...emptyLodging(`lodging-${i + 1}`), ...row }))
+      : [
+          {
+            ...emptyLodging("lodging-1"),
+            address: s(legacy.lodging_address),
+            kind: s(legacy.lodging_kind),
+            total_cost: s(legacy.lodging_total_cost),
+            equipment_cost: s(legacy.lodging_equipment_cost),
+            useful_years: s(legacy.lodging_useful_years),
+            rent: s(legacy.lodging_rent),
+            max_residents: s(legacy.lodging_max_residents),
+          },
+        ];
+
+  const merged: OrganizationIntake & Record<string, unknown> = {
+    ...base,
+    ...src,
+    financials,
+    japanese_staff,
+    officers,
+    lodgings,
+  };
+  // 旧フラット項目は保存し直したときに残らないよう取り除く
+  for (const key of [
+    "lodging_address",
+    "lodging_kind",
+    "lodging_total_cost",
+    "lodging_equipment_cost",
+    "lodging_useful_years",
+    "lodging_rent",
+    "lodging_max_residents",
+  ]) {
+    delete merged[key];
+  }
+  return merged;
 }
 
 // ---- 宿泊物件の費用計算 ----

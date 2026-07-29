@@ -16,9 +16,11 @@ import { todayStr } from "@/lib/ssw/calc";
 import {
   emptyFinancialYear,
   emptyJapaneseStaff,
+  emptyLodging,
   emptyOfficer,
   emptyOrganizationIntake,
   formatYen,
+  lodgingContractKind,
   normalizeOrganizationIntake,
   ownedMonthlyRent,
   perResidentCost,
@@ -26,6 +28,7 @@ import {
 import type {
   OrgFinancialYear,
   OrgJapaneseStaff,
+  OrgLodging,
   OrgOfficer,
   Organization,
   OrganizationFileRow,
@@ -85,6 +88,7 @@ interface FieldLocks {
   intake: (key: keyof OrganizationIntake) => boolean;
   fin: (i: number, key: keyof OrgFinancialYear) => boolean;
   staff: (i: number, key: keyof OrgJapaneseStaff) => boolean;
+  lodging: (i: number, key: keyof OrgLodging) => boolean;
   officerField: (i: number, key: "kana" | "name" | "title") => boolean;
   officerRow: (i: number) => boolean;
 }
@@ -95,6 +99,7 @@ const NO_LOCKS: FieldLocks = {
   intake: () => false,
   fin: () => false,
   staff: () => false,
+  lodging: () => false,
   officerField: () => false,
   officerRow: () => false,
 };
@@ -204,6 +209,33 @@ function InlineNum({
   );
 }
 
+// 居住費用などの自動計算の結果表示。計算できたら金額を大きく強調する
+function CalcResult({
+  label,
+  value,
+  emptyHint,
+}: {
+  label: string;
+  value: number | null;
+  emptyHint: string;
+}) {
+  if (value == null) {
+    return (
+      <p className={HINT_CLASS}>
+        {label}: {emptyHint}
+      </p>
+    );
+  }
+  return (
+    <p className="rounded-xl bg-brand/10 px-3 py-2.5 text-xs text-muted">
+      {label}:{" "}
+      <span className="ml-1 align-middle text-lg font-bold tabular-nums text-brand">
+        {formatYen(value)}
+      </span>
+    </p>
+  );
+}
+
 // 会社・機関フォームの全入力欄（基本項目＋申込書の情報）。
 // snapshot を渡すと詳細表示モードになり、開いた時点で入力済みの欄は表示のみ・
 // 未記入の欄だけ入力できる（編集は一覧の鉛筆ボタンから）。
@@ -227,6 +259,7 @@ export function OrganizationFormBody({
       intake: (key) => filled(snapIntake[key]),
       fin: (i, key) => filled(snapIntake.financials[i]?.[key]),
       staff: (i, key) => filled(snapIntake.japanese_staff[i]?.[key]),
+      lodging: (i, key) => filled(snapIntake.lodgings[i]?.[key]),
       officerField: (i, key) => filled(snapIntake.officers[i]?.[key]),
       officerRow: (i) => {
         const row = snapIntake.officers[i];
@@ -391,6 +424,10 @@ function IntakeSection({
   const setOfficer = (i: number, patch: Partial<OrgOfficer>) =>
     setIntake({
       officers: intake.officers.map((row, idx) => (idx === i ? { ...row, ...patch } : row)),
+    });
+  const setLodging = (i: number, patch: Partial<OrgLodging>) =>
+    setIntake({
+      lodgings: intake.lodgings.map((row, idx) => (idx === i ? { ...row, ...patch } : row)),
     });
   // 常勤職員数は年1回更新するため、入力したらその日の日付を最終更新日として記録する
   const setStaffCount = (patch: Partial<OrganizationIntake>) =>
@@ -781,125 +818,146 @@ function IntakeSection({
           />
         </div>
 
-        <p className={GROUP_CLASS}>その他</p>
-        <IntakeField
-          label="特定技能外国人の宿泊住所"
-          value={intake.lodging_address}
-          onChange={(v) => setIntake({ lodging_address: v })}
-          placeholder="〒　住所"
-          locked={locks.intake("lodging_address")}
-        />
-        {/* 宿泊物件の区分と居住費用の計算 */}
-        {locks.intake("lodging_kind") ? (
-          <p className="text-xs font-bold">
-            <span className="text-muted">宿泊物件の区分: </span>
-            {intake.lodging_kind}
-          </p>
-        ) : (
-          <div className="flex flex-wrap items-center gap-4">
-            <span className="text-[11px] font-bold text-muted">宿泊物件の区分:</span>
-            {["自己所有物件", "賃貸物件"].map((k) => (
-              <label key={k} className="flex items-center gap-1.5 text-xs font-bold">
-                <input
-                  type="radio"
-                  name="lodging-kind"
-                  checked={intake.lodging_kind === k}
-                  onChange={() => setIntake({ lodging_kind: k })}
-                  className="h-4 w-4"
-                />
-                {k}
-              </label>
-            ))}
-          </div>
-        )}
-        {intake.lodging_kind === "自己所有物件" && (
-          <>
-            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+        <p className={GROUP_CLASS}>寮・宿泊物件の情報（特定技能外国人の宿泊先）</p>
+        <p className={HINT_CLASS}>女子寮・男子寮など物件が複数ある場合は「＋ 寮を追加」で登録してください。</p>
+        {intake.lodgings.map((lodging, i) => (
+          <div key={lodging.id} className="flex flex-col gap-2.5 rounded-xl border border-border p-2.5">
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
               <IntakeField
-                label="かかった総費用（円）"
-                value={intake.lodging_total_cost}
-                onChange={(v) => setIntake({ lodging_total_cost: v })}
-                placeholder="例: 15,000,000"
-                locked={locks.intake("lodging_total_cost")}
+                label="寮の名前"
+                value={lodging.name}
+                onChange={(v) => setLodging(i, { name: v })}
+                placeholder="例: 女子寮 / 男子寮 / 第1寮"
+                locked={locks.lodging(i, "name")}
               />
               <IntakeField
-                label="備品代（円）"
-                value={intake.lodging_equipment_cost}
-                onChange={(v) => setIntake({ lodging_equipment_cost: v })}
-                placeholder="例: 500,000"
-                locked={locks.intake("lodging_equipment_cost")}
-              />
-              <IntakeField
-                label="耐用年数（年）"
-                value={intake.lodging_useful_years}
-                onChange={(v) => setIntake({ lodging_useful_years: v })}
-                placeholder="例: 22"
-                locked={locks.intake("lodging_useful_years")}
+                label="宿泊住所"
+                value={lodging.address}
+                onChange={(v) => setLodging(i, { address: v })}
+                placeholder="〒　住所"
+                locked={locks.lodging(i, "address")}
               />
             </div>
-            <p className={HINT_CLASS}>
-              1ヶ月分の家賃代（(総費用＋備品代) ÷ (耐用年数×12)）:{" "}
-              {(() => {
-                const monthly = ownedMonthlyRent(
-                  intake.lodging_total_cost,
-                  intake.lodging_equipment_cost,
-                  intake.lodging_useful_years,
-                );
-                return monthly != null ? (
-                  <span className="font-bold text-brand">{formatYen(monthly)}</span>
-                ) : (
-                  "総費用と耐用年数を入力すると自動計算されます"
-                );
-              })()}
-            </p>
-          </>
-        )}
-        {intake.lodging_kind === "賃貸物件" && (
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-bold text-muted">賃貸契約書のコピー（複数可）</span>
-            {orgId ? (
-              <OrgFileAttachments
-                orgId={orgId}
-                kind="賃貸契約書"
-                addLabel="賃貸契約書を追加（画像・PDF）"
-              />
+            {locks.lodging(i, "kind") ? (
+              <p className="text-xs font-bold">
+                <span className="text-muted">宿泊物件の区分: </span>
+                {lodging.kind}
+              </p>
             ) : (
-              <p className={HINT_CLASS}>賃貸契約書は、会社・機関を登録したあとに編集画面から添付できます。</p>
+              <div className="flex flex-wrap items-center gap-4">
+                <span className="text-[11px] font-bold text-muted">宿泊物件の区分:</span>
+                {["自己所有物件", "賃貸物件"].map((k) => (
+                  <label key={k} className="flex items-center gap-1.5 text-xs font-bold">
+                    <input
+                      type="radio"
+                      name={`lodging-kind-${lodging.id}`}
+                      checked={lodging.kind === k}
+                      onChange={() => setLodging(i, { kind: k })}
+                      className="h-4 w-4"
+                    />
+                    {k}
+                  </label>
+                ))}
+              </div>
+            )}
+            {lodging.kind === "自己所有物件" && (
+              <>
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                  <IntakeField
+                    label="かかった総費用（円）"
+                    value={lodging.total_cost}
+                    onChange={(v) => setLodging(i, { total_cost: v })}
+                    placeholder="例: 15,000,000"
+                    locked={locks.lodging(i, "total_cost")}
+                  />
+                  <IntakeField
+                    label="備品代（円）"
+                    value={lodging.equipment_cost}
+                    onChange={(v) => setLodging(i, { equipment_cost: v })}
+                    placeholder="例: 500,000"
+                    locked={locks.lodging(i, "equipment_cost")}
+                  />
+                  <IntakeField
+                    label="耐用年数（年）"
+                    value={lodging.useful_years}
+                    onChange={(v) => setLodging(i, { useful_years: v })}
+                    placeholder="例: 22"
+                    locked={locks.lodging(i, "useful_years")}
+                  />
+                </div>
+                <CalcResult
+                  label="1ヶ月分の家賃代（(総費用＋備品代) ÷ (耐用年数×12)）"
+                  value={ownedMonthlyRent(
+                    lodging.total_cost,
+                    lodging.equipment_cost,
+                    lodging.useful_years,
+                  )}
+                  emptyHint="総費用と耐用年数を入力すると自動計算されます"
+                />
+              </>
+            )}
+            {lodging.kind === "賃貸物件" && (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-bold text-muted">賃貸契約書のコピー（複数可）</span>
+                {orgId ? (
+                  <OrgFileAttachments
+                    orgId={orgId}
+                    kind={lodgingContractKind(lodging)}
+                    addLabel="賃貸契約書を追加（画像・PDF）"
+                  />
+                ) : (
+                  <p className={HINT_CLASS}>賃貸契約書は、会社・機関を登録したあとに編集画面から添付できます。</p>
+                )}
+              </div>
+            )}
+            {lodging.kind && (
+              <>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <IntakeField
+                    label="家賃（月額・円）"
+                    value={lodging.rent}
+                    onChange={(v) => setLodging(i, { rent: v })}
+                    placeholder="例: 60,000"
+                    hint={lodging.kind === "自己所有物件" ? "上の自動計算の金額を参考に入力してください。" : undefined}
+                    locked={locks.lodging(i, "rent")}
+                  />
+                  <IntakeField
+                    label="最大入居人数"
+                    value={lodging.max_residents}
+                    onChange={(v) => setLodging(i, { max_residents: v })}
+                    placeholder="例: 3"
+                    locked={locks.lodging(i, "max_residents")}
+                  />
+                </div>
+                <CalcResult
+                  label="1人あたりの居住費用（家賃 ÷ 最大入居人数）"
+                  value={perResidentCost(lodging.rent, lodging.max_residents)}
+                  emptyHint="家賃と最大入居人数を入力すると自動計算されます"
+                />
+              </>
+            )}
+            {!locks.detail && intake.lodgings.length > 1 && (
+              <button
+                type="button"
+                onClick={() =>
+                  setIntake({ lodgings: intake.lodgings.filter((_, idx) => idx !== i) })
+                }
+                className="self-start text-[11px] font-bold text-seal"
+              >
+                この寮を削除
+              </button>
             )}
           </div>
-        )}
-        {intake.lodging_kind && (
-          <>
-            <div className="grid grid-cols-2 gap-2.5">
-              <IntakeField
-                label="家賃（月額・円）"
-                value={intake.lodging_rent}
-                onChange={(v) => setIntake({ lodging_rent: v })}
-                placeholder="例: 60,000"
-                hint={intake.lodging_kind === "自己所有物件" ? "上の自動計算の金額を参考に入力してください。" : undefined}
-                locked={locks.intake("lodging_rent")}
-              />
-              <IntakeField
-                label="最大入居人数"
-                value={intake.lodging_max_residents}
-                onChange={(v) => setIntake({ lodging_max_residents: v })}
-                placeholder="例: 3"
-                locked={locks.intake("lodging_max_residents")}
-              />
-            </div>
-            <p className={HINT_CLASS}>
-              1人あたりの居住費用（家賃 ÷ 最大入居人数）:{" "}
-              {(() => {
-                const per = perResidentCost(intake.lodging_rent, intake.lodging_max_residents);
-                return per != null ? (
-                  <span className="font-bold text-brand">{formatYen(per)}</span>
-                ) : (
-                  "家賃と最大入居人数を入力すると自動計算されます"
-                );
-              })()}
-            </p>
-          </>
-        )}
+        ))}
+        <button
+          type="button"
+          onClick={() => setIntake({ lodgings: [...intake.lodgings, emptyLodging(crypto.randomUUID())] })}
+          className="self-start text-xs font-bold text-brand"
+        >
+          ＋ 寮を追加
+        </button>
+
+        <p className={GROUP_CLASS}>その他</p>
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
           <IntakeField
             label="労働者の雇用開始日（国籍問わず・大体で可）"

@@ -92,6 +92,19 @@ export interface OrgOfficer {
   not_involved: boolean; // 特定技能外国人の受入れ業務の執行に直接関与しない
 }
 
+// 寮・宿泊物件の1件分。女子寮・男子寮など複数登録できる
+export interface OrgLodging {
+  id: string; // 賃貸契約書の添付ファイルとの紐付けに使う識別子（行の追加時に採番）
+  name: string; // 寮の名前（例: 女子寮 / 男子寮 / 第1寮）
+  address: string; // 宿泊住所
+  kind: string; // 宿泊物件の区分（自己所有物件 / 賃貸物件）
+  total_cost: string; // 自己所有: かかった総費用（円）
+  equipment_cost: string; // 自己所有: 備品代（円）
+  useful_years: string; // 自己所有: 耐用年数（年）
+  rent: string; // 家賃（月額・円）
+  max_residents: string; // 最大入居人数
+}
+
 // 申込書の入力内容一式
 export interface OrganizationIntake {
   kana: string; // 名称フリガナ
@@ -122,13 +135,7 @@ export interface OrganizationIntake {
   rosai_no: string; // 労働保険番号
   koyo_covered: string; // 雇用保険の適用事業所か（'' / はい / いいえ）
   koyo_no: string; // 雇用保険適用事業所番号
-  lodging_address: string; // 特定技能外国人の宿泊住所
-  lodging_kind: string; // 宿泊物件の区分（自己所有物件 / 賃貸物件）
-  lodging_total_cost: string; // 自己所有: かかった総費用（円）
-  lodging_equipment_cost: string; // 自己所有: 備品代（円）
-  lodging_useful_years: string; // 自己所有: 耐用年数（年）
-  lodging_rent: string; // 家賃（月額・円）
-  lodging_max_residents: string; // 最大入居人数
+  lodgings: OrgLodging[]; // 寮・宿泊物件（複数可。旧フラット項目 lodging_* は normalize で1件目に移行）
   first_hired_on: string; // 国籍問わず労働者を雇用開始した日付（大体）
   missing_ssw: string; // 過去1年間の行方不明者数（特定技能）
   missing_trainee: string; // 過去1年間の行方不明者数（技能実習生）
