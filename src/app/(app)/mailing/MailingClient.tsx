@@ -19,8 +19,10 @@ import {
   importMailingData,
 } from "@/lib/supabase/queries/tax-cert";
 import {
+  buildExtraDocs,
   buildRequiredDocs,
   collectionLabel,
+  extraDocsSummary,
   fiscalYearLabel,
   formatDateJP,
   formatYen,
@@ -389,6 +391,10 @@ function JudgeTab({
   const [appDate, setAppDate] = useState(todayISO());
   const [hasNhi, setHasNhi] = useState(false);
   const [nhiMuniId, setNhiMuniId] = useState("");
+  // 追加書類（転出届・住民票）
+  const [hasTenshutsu, setHasTenshutsu] = useState(false);
+  const [hasJuminhyo, setHasJuminhyo] = useState(false);
+  const [juminhyoMyNumber, setJuminhyoMyNumber] = useState(false);
   const [result, setResult] = useState<JudgmentRecord | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -427,7 +433,10 @@ function JudgeTab({
     const dateObj = new Date(appDate + "T00:00:00");
     const y = judgeYear(selectedMuni.show_asterisk, collectionType, dateObj);
     const timing = judgeTiming(collectionType, y.yearType, dateObj);
-    const docs = buildRequiredDocs(selectedMuni, y.yearType, hasNhi, dateObj, selectedNhiMuni);
+    const docs = [
+      ...buildRequiredDocs(selectedMuni, y.yearType, hasNhi, dateObj, selectedNhiMuni),
+      ...buildExtraDocs(hasTenshutsu, hasJuminhyo, juminhyoMyNumber),
+    ];
     const nhiYear = hasNhi ? judgeNhiYear(dateObj) : null;
     setResult({
       id: "",
@@ -460,6 +469,9 @@ function JudgeTab({
       nhiRecipientType: "self",
       nhiAgentName: "",
       nhiSameAsMain: true,
+      hasTenshutsu,
+      hasJuminhyo,
+      juminhyoMyNumber: hasJuminhyo ? juminhyoMyNumber : false,
     });
     setSaved(false);
   };
@@ -598,6 +610,25 @@ function JudgeTab({
                 <span className="text-[11px] text-muted">課税証明書の取得先と異なる場合があります。郵送請求時は特に注意してください。</span>
               </label>
             )}
+            {/* 追加書類（転出届・住民票）も一緒に請求する場合 */}
+            <label className="flex items-center gap-2 rounded-xl bg-background px-3 py-2.5 text-sm">
+              <input type="checkbox" checked={hasTenshutsu} onChange={(e) => { setHasTenshutsu(e.target.checked); resetResult(); }} className="h-4 w-4" />
+              転出届も請求する
+            </label>
+            <label className="flex items-center gap-2 rounded-xl bg-background px-3 py-2.5 text-sm">
+              <input type="checkbox" checked={hasJuminhyo} onChange={(e) => { setHasJuminhyo(e.target.checked); resetResult(); }} className="h-4 w-4" />
+              住民票も請求する
+            </label>
+            {hasJuminhyo && (
+              <div className="flex flex-col gap-1">
+                <span className={LABEL}>住民票への個人番号（マイナンバー）の記載</span>
+                <div className="flex gap-2">
+                  <Pill active={!juminhyoMyNumber} onClick={() => { setJuminhyoMyNumber(false); resetResult(); }}>記載なし</Pill>
+                  <Pill active={juminhyoMyNumber} onClick={() => { setJuminhyoMyNumber(true); resetResult(); }}>記載あり</Pill>
+                </div>
+                <span className="text-[11px] text-muted">提出先に合わせて記載の有無を選んでください（入管提出用は通常「記載なし」）。</span>
+              </div>
+            )}
             <Button fullWidth disabled={!canJudge} onClick={runJudge}>判定する</Button>
           </div>
         )}
@@ -619,7 +650,7 @@ function JudgeTab({
                 label={result.timingLabel}
                 notes={[result.timingDetail, result.yearReason]}
               />
-              <DocList docs={result.docs.filter((d) => !d.isNhi)} />
+              <DocList docs={result.docs.filter((d) => !d.isNhi && !d.isExtra)} />
               <label className="mt-4 flex flex-col gap-1 border-t border-dashed border-border pt-4">
                 <span className={LABEL}>代替対応の備考</span>
                 <span className="text-[11px] text-muted">例：令和7年度の1月1日時点で対象者が国外転出していたため発行不可。今回は令和6年度で対応した、など</span>
@@ -657,6 +688,18 @@ function JudgeTab({
                     <MethodToggleSection method={nhiMethod} setMethod={setNhiMethod} mailDate={nhiMailDate} setMailDate={setNhiMailDate} recipient={nhiRecipient} setRecipient={setNhiRecipient} agent={nhiAgent} setAgent={setNhiAgent} />
                   )}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* 追加書類（転出届・住民票） */}
+          {(result.hasTenshutsu || result.hasJuminhyo) && (
+            <div className="mb-4 overflow-hidden rounded-xl border border-border">
+              <div className="border-b border-border bg-background px-4 py-2.5 text-sm font-bold">
+                一緒に請求する書類（転出届・住民票）
+              </div>
+              <div className="p-4">
+                <DocList docs={result.docs.filter((d) => d.isExtra)} />
               </div>
             </div>
           )}
@@ -1050,6 +1093,13 @@ function RecordsTab({
                   </p>
                   {r.nhiAlternativeNote && <p className="mt-1 text-status-notice-fg">代替：{r.nhiAlternativeNote}</p>}
                   <PhoneLogView prefix="nhi" r={r} />
+                </div>
+              )}
+
+              {(r.hasTenshutsu || r.hasJuminhyo) && (
+                <div className="mt-2 rounded-xl border-l-2 border-brand bg-background p-3 text-xs leading-relaxed">
+                  <p className="font-bold">一緒に請求する書類</p>
+                  <p className="text-muted">{extraDocsSummary(r)}</p>
                 </div>
               )}
             </Card>
