@@ -1,6 +1,6 @@
 # 開発ハンドオフ資料
 
-最終更新: 2026-07-17
+最終更新: 2026-07-29
 
 次回開発を引き継ぐための現状整理。デバッグ経緯や試行錯誤は省き、「今どうなっているか」「これから何をするか」に絞る。
 
@@ -119,6 +119,17 @@ npm run test    # Vitest
 
 ## 3. 未完成 / 保留中の機能
 
+- **【最優先・次セッション冒頭で対応】入管メール通知の本番公開（mainへの反映）**
+  - 機能実装・ユーザー側セットアップは**すべて完了**しているが、コードがブランチ `claude/immigration-email-sync-yaylhx` にあり **main 未反映＝本番アプリに未表示**
+  - main はこのブランチの祖先で **fast-forward 可能**（確認済み）。ユーザーの許可を得て `git checkout main && git merge --ff-only claude/immigration-email-sync-yaylhx && git push` で公開する（前セッションで A=公開する/B=プルリク/C=保留 を確認中に中断）
+  - ユーザー側セットアップの完了状況（2026-07-29 時点）:
+    - ✅ 手順1: マイグレーション `0025_mail_notifications.sql` を Supabase 本番に適用済み
+    - ✅ 手順2: Vercel の **`immigration-app-sdnn`** プロジェクトに `MAIL_INBOUND_SECRET` を設定し再デプロイ済み（`SUPABASE_SERVICE_ROLE_KEY` は既存）。シークレット値は Vercel と Apps Script に設定済みで両者一致（値はチャット内でのみ共有、リポジトリには残さない）
+    - ✅ 手順3: Apps Script を **thanhktc2017.visa@gmail.com**（入管メールが届くアカウント。ここ重要）で作成、5分おきトリガー設定済み。`QUERY = '(from:moj.go.jp OR subject:入管庁) newer_than:1y'`
+    - 初回実行は 0 件＝正常（.visa アカウントには入管メールが**まだ届いていない**。今後届き次第流れる）
+  - Vercel プロジェクトは2つ存在: **本番はスマホで使っている `immigration-app-sdnn`**（immigration-app-sdnn.vercel.app）。`immigration-app`（rose）は未使用・触らない
+  - 参考: 旧アカウント thanhktc2017@gmail.com の入管メール差出人は `info@rasens-immi.moj.go.jp`（件名【入管庁】）
+- **middleware の deprecation 警告**: Next.js 16 が「"middleware" は非推奨、"proxy" を使え」と警告（ビルドは成功）。急ぎではないが、いずれ `src/middleware.ts` → `src/proxy.ts` 移行を検討
 - **PWAアイコンの最終確認**: 実ロゴのエンブレム部分をトリミングして生成済み。文字（社名）は入れていない。「白背景→紺背景に」「余白調整」などの微修正は未対応（要望があれば対応）
 - **履歴書PDFからの取込**: ユーザーからPDF取込の要望あり。現状の `/workers/import` は JSON + CSV のみ対応。**PDF（履歴書）からの取り込みは未実装**
 - **未適用SQLマイグレーションの確認**: DBマイグレーションは手動運用（後述）。最新の `0024_worker_code` および `municipalities`/`judgment_records` の投入がSupabase本番に適用済みか、次回セッション開始時に要確認
@@ -146,7 +157,7 @@ npm run test    # Vitest
   - RLSで弾かれるデータ投入は「Run without RLS」で実行してもらう
 
 ### Git運用
-- 開発ブランチ: `claude/phase-3-foreign-career-screens-0vtb8c`
+- 開発ブランチ（今回）: `claude/immigration-email-sync-yaylhx`（入管メール通知。main へ fast-forward 反映待ち）
 - フロー: フィーチャーブランチにコミット/プッシュ → `main` を **fast-forward** で追従 → main もプッシュ
 - コミットメッセージ末尾に付与:
   ```
