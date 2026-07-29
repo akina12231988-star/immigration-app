@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
 import { updateOrganization } from "@/lib/supabase/queries/organizations";
 import { updateResignation } from "@/lib/supabase/queries/resignations";
+import { normalizeOrganizationIntake } from "@/lib/organization-intake";
 import {
   FORM_14,
   FORM_312,
@@ -50,6 +51,7 @@ interface FormsResignation {
   organizationId: string | null;
   orgCorporateNo: string;
   businessCategory: string;
+  orgReportStaff: string; // 所属機関に登録した定期報告書・随時報告書の担当者名
 }
 
 interface FormsWorker {
@@ -95,7 +97,8 @@ export function ResignationForms({
     return cats.find((c) => resignation.businessCategory.includes(c) || worker.field.includes(c)) ?? "";
   });
   const [orgPhone, setOrgPhone] = useState(resignation.orgContact);
-  const [orgStaff, setOrgStaff] = useState("");
+  // 担当者は所属機関の「定期報告書・随時報告書の担当者名」を初期値にする（画面で修正可）
+  const [orgStaff, setOrgStaff] = useState(resignation.orgReportStaff);
   const [corporateNo, setCorporateNo] = useState(resignation.orgCorporateNo);
   const [contactStatus, setContactStatus] = useState<string>(CONTACT_STATUSES_34[0].value);
   const [intention, setIntention] = useState<string>("活動継続の意思なし（転職希望）");
@@ -186,12 +189,33 @@ export function ResignationForms({
     const phone = orgPhone.trim();
     const contactChanged = phone !== "" && phone !== resignation.orgContact;
 
-    const snapshot = JSON.stringify([workerPatch, orgPatch, contactChanged ? phone : ""]);
+    // 担当者名は所属機関の「定期報告書・随時報告書の担当者名」へ書き戻す
+    const staff = orgStaff.trim();
+    const staffChanged = staff !== "" && staff !== resignation.orgReportStaff;
+
+    const snapshot = JSON.stringify([
+      workerPatch,
+      orgPatch,
+      contactChanged ? phone : "",
+      staffChanged ? staff : "",
+    ]);
     if (snapshot === lastSyncedRef.current) return;
 
     if (Object.keys(workerPatch).length > 0) await updateWorker(supabase, worker.id, workerPatch);
     if (resignation.organizationId && Object.keys(orgPatch).length > 0) {
       await updateOrganization(supabase, resignation.organizationId, orgPatch);
+    }
+    if (resignation.organizationId && staffChanged) {
+      // intake（JSONB）内の項目のため、現在の内容を読み出してから担当者名だけ更新する
+      const { data } = await supabase
+        .from("organizations")
+        .select("intake")
+        .eq("id", resignation.organizationId)
+        .maybeSingle();
+      const intake = normalizeOrganizationIntake((data as { intake?: unknown } | null)?.intake);
+      await updateOrganization(supabase, resignation.organizationId, {
+        intake: { ...intake, report_staff: staff },
+      });
     }
     if (contactChanged) {
       await updateResignation(supabase, resignation.id, { org_contact: phone });
@@ -439,6 +463,9 @@ export function ResignationForms({
               onChange={(e) => setOrgStaff(e.target.value)}
               className={INPUT}
             />
+            <span className="text-[11px] leading-relaxed text-muted">
+              所属機関の「定期報告書・随時報告書の担当者名」が初期値です。修正するとダウンロード時に所属機関の情報にも反映されます。
+            </span>
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-xs font-bold text-muted">電話番号</span>

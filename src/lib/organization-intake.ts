@@ -60,6 +60,7 @@ export function emptyOrganizationIntake(): OrganizationIntake {
     phone: "",
     fax: "",
     email: "",
+    report_staff: "",
     fiscal_kind: "",
     support_fee: "",
     posting_note: "",
