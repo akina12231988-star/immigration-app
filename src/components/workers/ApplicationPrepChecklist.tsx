@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   CheckCircle2,
   ClipboardList,
+  Copy,
   Download,
   ExternalLink,
   Eye,
@@ -19,10 +20,16 @@ import { createClient } from "@/lib/supabase/client";
 import { listOnboardingDocs } from "@/lib/supabase/queries/onboarding";
 import {
   deletePrepChecklist,
+  EMPTY_PREP_DOC_STATUS,
   listPrepChecklists,
+  listPrepDocStatuses,
   upsertPrepChecklist,
+  upsertPrepDocStatus,
   type PrepChecklistRow,
+  type PrepDocStatusInput,
 } from "@/lib/supabase/queries/application-prep";
+import { listActiveCustodyNoByWorker } from "@/lib/supabase/queries/custody";
+import { formatStorageNo } from "@/lib/custody";
 import { getHealthCheckDetail } from "@/lib/supabase/queries/health-check";
 import { EMPTY_HEALTH_DETAIL, isHealthDetailComplete, type HealthCheckDetail } from "@/lib/health-check";
 import {
@@ -40,13 +47,18 @@ import { todayStr } from "@/lib/ssw/calc";
 import {
   EMPTY_PREP_META,
   evaluatePrepChecklist,
+  letterPackTrackingUrl,
   PREP_APP_TYPES,
+  PREP_DOC_ALWAYS_EXTRAS,
+  PREP_DOC_STATUS_OPTIONS,
   PREP_TANTOU_OPTIONS,
   prepDocLabel,
+  prepStatusOption,
   prepYearDocKey,
   type PrepChecklistMeta,
   type PrepDocDef,
   type PrepDocStatus,
+  type PrepStatusExtra,
 } from "@/lib/application-prep";
 import type { OnboardingDocumentRow } from "@/types/db";
 
@@ -82,6 +94,13 @@ export function ApplicationPrepChecklist({
   const docInputRef = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
+  // 書類ごとの準備状況（ステータス）。チェックリストID → 書類ID → 入力値
+  const [docStatusesByList, setDocStatusesByList] = useState<
+    Record<string, Record<string, PrepDocStatusInput>>
+  >({});
+  // 在留カード・パスポートの「預かった」で表示する預かり番号（保管ボックスと連動）
+  const [custodyNo, setCustodyNo] = useState<number | null>(null);
+
   const loadDocs = () =>
     listOnboardingDocs(createClient(), workerId).then(setDocs).catch(() => undefined);
 
@@ -94,6 +113,9 @@ export function ApplicationPrepChecklist({
       .catch(() => undefined);
     getHealthCheckDetail(createClient(), workerId).then(setHealthDetail).catch(() => undefined);
     listWorkerAddresses(createClient(), workerId).then(setAddresses).catch(() => undefined);
+    listActiveCustodyNoByWorker(createClient())
+      .then((m) => setCustodyNo(m.get(workerId) ?? null))
+      .catch(() => undefined);
     void loadDocs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workerId]);
@@ -101,6 +123,52 @@ export function ApplicationPrepChecklist({
   const current =
     selected != null ? (lists.find((l) => l.todo_no === selected) ?? null) : null;
   const meta: PrepChecklistMeta = current ?? EMPTY_PREP_META;
+
+  // 表示中のリストを切り替えたら、そのリストの書類ステータスを読み込む
+  const currentId = current?.id ?? null;
+  const docStatuses: Record<string, PrepDocStatusInput> = currentId
+    ? (docStatusesByList[currentId] ?? {})
+    : {};
+  useEffect(() => {
+    if (!currentId) return;
+    let cancelled = false;
+    listPrepDocStatuses(createClient(), currentId)
+      .then((rows) => {
+        if (cancelled) return;
+        const next: Record<string, PrepDocStatusInput> = {};
+        for (const r of rows) {
+          next[r.doc_id] = {
+            status: r.status,
+            note: r.note,
+            amount: r.amount,
+            date_on: r.date_on,
+            tracking_out: r.tracking_out,
+            tracking_back: r.tracking_back,
+            mail_after_apply: r.mail_after_apply,
+          };
+        }
+        setDocStatusesByList((prev) => ({ ...prev, [currentId]: next }));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [currentId]);
+
+  // 書類ステータスの更新。save=false はテキスト入力中（保存はフォーカスが外れた時）
+  const patchDocStatus = (docId: string, patch: Partial<PrepDocStatusInput>, save = true) => {
+    if (!currentId) return;
+    const next = { ...EMPTY_PREP_DOC_STATUS, ...(docStatuses[docId] ?? {}), ...patch };
+    setDocStatusesByList((prev) => ({
+      ...prev,
+      [currentId]: { ...(prev[currentId] ?? {}), [docId]: next },
+    }));
+    if (save) {
+      upsertPrepDocStatus(createClient(), currentId, docId, next).catch((err) =>
+        setError(err instanceof Error ? err.message : "準備状況の保存に失敗しました"),
+      );
+    }
+  };
 
   const today = todayStr();
   const filledDocKeys = new Set(docs.filter((d) => d.storage_path).map((d) => d.doc_key));
@@ -493,6 +561,9 @@ export function ApplicationPrepChecklist({
                   isPhoto={isPhoto}
                   canEdit={canEdit}
                   busy={busyKey === (isPhoto ? "photo" : key)}
+                  ds={{ ...EMPTY_PREP_DOC_STATUS, ...(docStatuses[item.def.id] ?? {}) }}
+                  custodyNo={custodyNo}
+                  onPatchStatus={(patch, save) => patchDocStatus(item.def.id, patch, save)}
                   onAttach={() => startAttach(item.def)}
                   onRemove={() => {
                     const k = row?.doc_key ?? key;
@@ -554,6 +625,9 @@ function DocRow({
   isPhoto,
   canEdit,
   busy,
+  ds,
+  custodyNo,
+  onPatchStatus,
   onAttach,
   onRemove,
   onPreview,
@@ -566,6 +640,9 @@ function DocRow({
   isPhoto: boolean;
   canEdit: boolean;
   busy: boolean;
+  ds: PrepDocStatusInput;
+  custodyNo: number | null;
+  onPatchStatus: (patch: Partial<PrepDocStatusInput>, save?: boolean) => void;
   onAttach: () => void;
   onRemove: () => void;
   onPreview: () => void;
@@ -574,6 +651,14 @@ function DocRow({
   const { def, satisfied } = item;
   const label = prepDocLabel(def, meta.target_reiwa, reiwaYear(todayStr()));
   const hasFile = !!row?.storage_path;
+
+  // 書類ごとの準備状況（ステータス）。選択肢と、選択に応じた付随入力を表示する
+  const statusOptions = PREP_DOC_STATUS_OPTIONS[def.id];
+  const selectedOption = prepStatusOption(def.id, ds.status);
+  const extras: PrepStatusExtra[] = [
+    ...(selectedOption?.extras ?? []),
+    ...(PREP_DOC_ALWAYS_EXTRAS[def.id] ?? []),
+  ];
 
   return (
     <div className="border-b border-border bg-background px-3 py-2.5 text-sm last:border-b-0">
@@ -672,6 +757,251 @@ function DocRow({
           記号の確認・支払/免除の判定
         </Link>
       )}
+
+      {/* 準備状況（ステータス）: 書類ごとの選択肢と付随入力 */}
+      {statusOptions && (
+        <div className="ml-[18px] mt-2 space-y-1.5 rounded-lg bg-surface/60 p-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-bold text-muted">準備状況</span>
+            <select
+              value={ds.status}
+              disabled={!canEdit}
+              onChange={(e) => onPatchStatus({ status: e.target.value })}
+              className="min-h-[32px] max-w-full rounded-lg border border-border bg-background px-1.5 text-xs focus:border-brand focus:outline-none disabled:opacity-60"
+            >
+              <option value="">未選択</option>
+              <optgroup label="準備中">
+                {statusOptions
+                  .filter((o) => !o.done)
+                  .map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.value}
+                    </option>
+                  ))}
+              </optgroup>
+              <optgroup label="完了">
+                {statusOptions
+                  .filter((o) => o.done)
+                  .map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.value}
+                    </option>
+                  ))}
+              </optgroup>
+            </select>
+            {selectedOption && (
+              <span
+                className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                  selectedOption.done
+                    ? "bg-status-approved-bg text-status-approved-fg"
+                    : "bg-status-applied-bg text-status-applied-fg"
+                }`}
+              >
+                {selectedOption.done ? "完了" : "準備中"}
+              </span>
+            )}
+          </div>
+          {extras.map((extra, i) => (
+            <StatusExtraField
+              key={`${ds.status}-${i}`}
+              extra={extra}
+              ds={ds}
+              custodyNo={custodyNo}
+              canEdit={canEdit}
+              onPatch={onPatchStatus}
+            />
+          ))}
+          {canEdit && (
+            <label className="flex items-center gap-1.5 text-[11px]">
+              <input
+                type="checkbox"
+                checked={ds.mail_after_apply}
+                onChange={(e) => onPatchStatus({ mail_after_apply: e.target.checked })}
+                className="h-3.5 w-3.5"
+              />
+              申請後に発行され次第、入管へ郵送する（申請詳細にアラート表示・郵送したらチェックを外す）
+            </label>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 準備状況に付随する入力・表示（依頼先・金額・受診日・預かり番号・郵送請求・レターパック追跡）
+function StatusExtraField({
+  extra,
+  ds,
+  custodyNo,
+  canEdit,
+  onPatch,
+}: {
+  extra: PrepStatusExtra;
+  ds: PrepDocStatusInput;
+  custodyNo: number | null;
+  canEdit: boolean;
+  onPatch: (patch: Partial<PrepDocStatusInput>, save?: boolean) => void;
+}) {
+  const inputCls =
+    "min-h-[32px] w-full rounded-lg border border-border bg-background px-2 text-xs focus:border-brand focus:outline-none disabled:opacity-60";
+  switch (extra.kind) {
+    case "text":
+      return (
+        <label className="block">
+          <span className="mb-0.5 block text-[11px] text-muted">{extra.label}</span>
+          <input
+            value={ds.note}
+            readOnly={!canEdit}
+            onChange={(e) => onPatch({ note: e.target.value }, false)}
+            onBlur={() => onPatch({}, true)}
+            className={inputCls}
+          />
+        </label>
+      );
+    case "textarea":
+      return (
+        <label className="block">
+          <span className="mb-0.5 block text-[11px] text-muted">{extra.label}</span>
+          <textarea
+            value={ds.note}
+            readOnly={!canEdit}
+            rows={2}
+            onChange={(e) => onPatch({ note: e.target.value }, false)}
+            onBlur={() => onPatch({}, true)}
+            className={`${inputCls} min-h-[48px] py-1.5 leading-relaxed`}
+          />
+        </label>
+      );
+    case "amount":
+      return (
+        <label className="block">
+          <span className="mb-0.5 block text-[11px] text-muted">{extra.label}</span>
+          <input
+            value={ds.amount}
+            readOnly={!canEdit}
+            inputMode="numeric"
+            placeholder="例: 12,000円"
+            onChange={(e) => onPatch({ amount: e.target.value }, false)}
+            onBlur={() => onPatch({}, true)}
+            className={inputCls}
+          />
+        </label>
+      );
+    case "date":
+      return (
+        <label className="block">
+          <span className="mb-0.5 block text-[11px] text-muted">{extra.label}</span>
+          <input
+            type="date"
+            value={ds.date_on ?? ""}
+            disabled={!canEdit}
+            onChange={(e) => onPatch({ date_on: e.target.value || null })}
+            className={inputCls}
+          />
+        </label>
+      );
+    case "custody":
+      return (
+        <p className="text-[11px] font-bold tabular-nums">
+          預かり番号:{" "}
+          {custodyNo != null ? (
+            <span className="text-brand">{formatStorageNo(custodyNo)}</span>
+          ) : (
+            <span className="font-medium text-muted">
+              未預かり（保管ボックスに登録すると表示されます）
+            </span>
+          )}
+        </p>
+      );
+    case "mailing":
+      return (
+        <Link
+          href="/mailing"
+          className="inline-flex items-center gap-1 text-[11px] font-bold text-brand hover:underline"
+        >
+          <ExternalLink size={11} />
+          郵送請求ツールで請求状況を確認する
+        </Link>
+      );
+    case "tracking":
+      return (
+        <div className="space-y-1.5">
+          <TrackingNoField
+            label="送付レターパックの追跡番号"
+            value={ds.tracking_out}
+            canEdit={canEdit}
+            onChange={(v) => onPatch({ tracking_out: v }, false)}
+            onBlur={() => onPatch({}, true)}
+          />
+          <TrackingNoField
+            label="返信用レターパックの追跡番号"
+            value={ds.tracking_back}
+            canEdit={canEdit}
+            onChange={(v) => onPatch({ tracking_back: v }, false)}
+            onBlur={() => onPatch({}, true)}
+          />
+        </div>
+      );
+  }
+}
+
+// レターパック追跡番号の入力（コピー＋日本郵便の追跡ページへのリンク付き）
+function TrackingNoField({
+  label,
+  value,
+  canEdit,
+  onChange,
+  onBlur,
+}: {
+  label: string;
+  value: string;
+  canEdit: boolean;
+  onChange: (v: string) => void;
+  onBlur: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    if (!value.trim()) return;
+    try {
+      await navigator.clipboard.writeText(value.trim());
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* クリップボード非対応時は何もしない */
+    }
+  };
+  return (
+    <div>
+      <span className="mb-0.5 block text-[11px] text-muted">{label}</span>
+      <div className="flex items-center gap-1.5">
+        <input
+          value={value}
+          readOnly={!canEdit}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={onBlur}
+          placeholder="例: 1234-5678-9012"
+          className="min-h-[32px] min-w-0 flex-1 rounded-lg border border-border bg-background px-2 text-xs tabular-nums focus:border-brand focus:outline-none"
+        />
+        <button
+          type="button"
+          onClick={copy}
+          aria-label={`${label}をコピー`}
+          className="shrink-0 text-muted hover:text-brand disabled:opacity-40"
+          disabled={!value.trim()}
+        >
+          {copied ? <CheckCircle2 size={14} className="text-status-approved-fg" /> : <Copy size={14} />}
+        </button>
+        {value.trim() && (
+          <a
+            href={letterPackTrackingUrl(value)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 text-[11px] font-bold text-brand hover:underline"
+          >
+            追跡
+          </a>
+        )}
+      </div>
     </div>
   );
 }

@@ -28,6 +28,11 @@ import { useApplications } from "@/lib/application-store";
 import { uploadApplicationFile } from "@/lib/application-files";
 import { createClient } from "@/lib/supabase/client";
 import {
+  listMailAfterApplyDocs,
+  type MailAfterApplyDoc,
+} from "@/lib/supabase/queries/application-prep";
+import { PREP_DOC_DEFS } from "@/lib/application-prep";
+import {
   deleteApplication,
   deleteApplicationFile,
   listApplicationFiles,
@@ -81,6 +86,25 @@ export function ApplicationDetail({ id }: { id: string }) {
       cancelled = true;
     };
   }, [workerId]);
+
+  // 申請準備で「申請後に入管へ郵送する」とした書類のアラート
+  const [mailDocs, setMailDocs] = useState<MailAfterApplyDoc[]>([]);
+  useEffect(() => {
+    if (!workerId) return;
+    let cancelled = false;
+    listMailAfterApplyDocs(createClient(), workerId)
+      .then((docs) => {
+        if (!cancelled) setMailDocs(docs);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [workerId]);
+  const mailDocLabel = (d: MailAfterApplyDoc) => {
+    const label = PREP_DOC_DEFS.find((def) => def.id === d.doc_id)?.label ?? d.doc_id;
+    return d.todo_no ? `${label}（${d.todo_no}）` : label;
+  };
 
   if (!loaded) {
     return <p className="py-12 text-center text-sm text-muted">読み込み中…</p>;
@@ -193,6 +217,23 @@ export function ApplicationDetail({ id }: { id: string }) {
           <FileX size={16} />
           申請時点の在留期限から1か月以上経過（
           {formatMonthDay(transitionEndDate(app.residenceExpiryAtApply))}で経過措置終了）し、まだ受取処理が済んでいません
+        </div>
+      )}
+
+      {/* 申請準備で「申請後に入管へ郵送する」とした書類のアラート */}
+      {mailDocs.length > 0 && (
+        <div className="rounded-xl border-2 border-status-notice-fg bg-status-notice-bg/50 px-3 py-2.5">
+          <p className="text-sm font-bold text-status-notice-fg">
+            申請後に入管へ郵送する書類が{mailDocs.length}件あります
+          </p>
+          <ul className="mt-1 list-disc pl-5 text-xs text-status-notice-fg/90">
+            {mailDocs.map((d) => (
+              <li key={`${d.todo_no}-${d.doc_id}`}>{mailDocLabel(d)}</li>
+            ))}
+          </ul>
+          <p className="mt-1 text-[11px] text-status-notice-fg/80">
+            発行され次第、入管へ郵送してください。郵送したら申請準備のチェックリストで「申請後に郵送する」のチェックを外すと、このアラートは消えます。
+          </p>
         </div>
       )}
       <Card className="p-4">
