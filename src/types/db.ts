@@ -115,6 +115,7 @@ export interface OrganizationIntake {
   staff_ssw1: string; // 常勤職員数: 特定技能1号
   staff_ssw2: string; // 常勤職員数: 特定技能2号
   staff_katsudo: string; // 常勤職員数: 特定活動
+  staff_updated_on: string; // 常勤職員数の最終更新日（入力時に自動記録。年1回の更新用）
   financials: OrgFinancialYear[]; // 直近3年分の決算情報
   wage_parity_reason: string; // 報酬が日本人と同等以上であると考えられる理由
   rosai_covered: string; // 労災保険の適用事業所か（'' / はい / いいえ）

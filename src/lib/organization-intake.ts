@@ -55,6 +55,7 @@ export function emptyOrganizationIntake(): OrganizationIntake {
     staff_ssw1: "",
     staff_ssw2: "",
     staff_katsudo: "",
+    staff_updated_on: "",
     financials: Array.from({ length: FINANCIAL_DEFAULT_ROWS }, () => emptyFinancialYear()),
     wage_parity_reason: "",
     rosai_covered: "",

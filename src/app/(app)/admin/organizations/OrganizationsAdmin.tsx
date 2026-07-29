@@ -22,6 +22,7 @@ import {
   registerOrgFile,
 } from "@/app/(app)/organizations/actions";
 import { SSW_INDUSTRIES, categoriesFor } from "@/lib/industries";
+import { todayStr } from "@/lib/ssw/calc";
 import {
   emptyFinancialYear,
   emptyJapaneseStaff,
@@ -423,6 +424,9 @@ function IntakeSection({
     setIntake({
       officers: intake.officers.map((row, idx) => (idx === i ? { ...row, ...patch } : row)),
     });
+  // 常勤職員数は年1回更新するため、入力したらその日の日付を最終更新日として記録する
+  const setStaffCount = (patch: Partial<OrganizationIntake>) =>
+    setIntake({ ...patch, staff_updated_on: todayStr() });
 
   return (
     <div className="rounded-xl border border-border">
@@ -485,13 +489,21 @@ function IntakeSection({
           />
         </div>
 
-        <p className={GROUP_CLASS}>常勤職員数（専従者も含む）</p>
+        <p className={GROUP_CLASS}>
+          常勤職員数（専従者も含む）
+          <span className="ml-2 font-medium text-muted">
+            {intake.staff_updated_on
+              ? `最終更新: ${intake.staff_updated_on}`
+              : "未更新（入力すると日付が記録されます）"}
+          </span>
+        </p>
+        <p className={HINT_CLASS}>年に1回情報を更新してください。入力するとその日の日付が自動で記録されます。</p>
         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5">
-          <IntakeField label="日本人" value={intake.staff_japanese} onChange={(v) => setIntake({ staff_japanese: v })} />
-          <IntakeField label="技能実習生" value={intake.staff_trainee} onChange={(v) => setIntake({ staff_trainee: v })} />
-          <IntakeField label="特定技能1号" value={intake.staff_ssw1} onChange={(v) => setIntake({ staff_ssw1: v })} />
-          <IntakeField label="特定技能2号" value={intake.staff_ssw2} onChange={(v) => setIntake({ staff_ssw2: v })} />
-          <IntakeField label="特定活動" value={intake.staff_katsudo} onChange={(v) => setIntake({ staff_katsudo: v })} />
+          <IntakeField label="日本人" value={intake.staff_japanese} onChange={(v) => setStaffCount({ staff_japanese: v })} />
+          <IntakeField label="技能実習生" value={intake.staff_trainee} onChange={(v) => setStaffCount({ staff_trainee: v })} />
+          <IntakeField label="特定技能1号" value={intake.staff_ssw1} onChange={(v) => setStaffCount({ staff_ssw1: v })} />
+          <IntakeField label="特定技能2号" value={intake.staff_ssw2} onChange={(v) => setStaffCount({ staff_ssw2: v })} />
+          <IntakeField label="特定活動" value={intake.staff_katsudo} onChange={(v) => setStaffCount({ staff_katsudo: v })} />
         </div>
 
         <p className={GROUP_CLASS}>決算情報（年月が経過したら行を追加）</p>
