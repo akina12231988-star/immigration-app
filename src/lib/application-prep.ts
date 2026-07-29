@@ -188,7 +188,7 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
     id: "suisenjo",
     label: "推薦状",
     appliesTo: ["変更", "認定"],
-    note: "送り出し機関、または大使館への郵送請求で取得する（ベトナム: 技能実習→特定活動→特定技能の資格変更でも発行依頼する場合がある）",
+    note: "送り出し機関、または大使館への郵送請求で取得する（ベトナム: 技能実習→特定活動→特定技能の資格変更の場合は発行はいらない）",
     source: { kind: "doc", docKey: "prep_suisenjo" },
     manageInline: true,
   },
@@ -452,6 +452,7 @@ export const PREP_DOC_STATUS_OPTIONS: Record<string, PrepDocStatusOption[]> = {
     { value: "送り出し機関に依頼中", done: false },
     { value: "大使館へ郵送請求中", done: false, extras: [{ kind: "tracking" }] },
     { value: "発行済", done: true },
+    { value: "特定活動からの資格変更の為、発行なし（国籍：ベトナム）", done: true, noFile: true },
   ],
 };
 

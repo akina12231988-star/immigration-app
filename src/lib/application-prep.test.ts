@@ -116,6 +116,10 @@ describe("isDocComplete", () => {
     expect(
       isDocComplete("kazei", false, "1月1日時点で日本に在住していなかった為発行できなかった"),
     ).toBe(true);
+    // 推薦状: 特定活動からの資格変更（ベトナム）は発行なしで完了
+    expect(
+      isDocComplete("suisenjo", false, "特定活動からの資格変更の為、発行なし（国籍：ベトナム）"),
+    ).toBe(true);
   });
   it("ステータス選択肢の無い書類（合格証）は添付のみで完了", () => {
     expect(isDocComplete("cert_senmonkyu", true, "")).toBe(true);
