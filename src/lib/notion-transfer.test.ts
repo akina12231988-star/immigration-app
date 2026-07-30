@@ -48,6 +48,7 @@ function worker(over: Partial<Worker>): Worker {
     pension_no: "",
     ssw_insurance_link: "",
     ssw_insurance_expiry_date: null,
+    dependents: [],
     note: "",
     worker_code: null,
     legacy_id: null,

@@ -26,6 +26,7 @@ import { GensenDocuments } from "@/components/workers/GensenDocuments";
 import { WorkerCertificateDocs } from "@/components/workers/WorkerCertificateDocs";
 import { ApplicationPrepChecklist } from "@/components/workers/ApplicationPrepChecklist";
 import { WorkerAddressHistory } from "@/components/workers/WorkerAddressHistory";
+import { WorkerDependents } from "@/components/workers/WorkerDependents";
 import { NotionTransferButton } from "@/components/workers/NotionTransferButton";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -484,6 +485,13 @@ export function WorkerDetail({
       {worker.status === "退職" && (
         <LeavingSection worker={worker} canEdit={canEdit} />
       )}
+
+      {/* 扶養家族（扶養親族証明書の内容→控除区分の自動判定・扶養控除等申告書の作成） */}
+      <WorkerDependents
+        workerId={worker.id}
+        initial={worker.dependents}
+        canEdit={canEdit}
+      />
 
       {/* 在留カード・指定書の差し替え（履歴保持） */}
       <WorkerDocuments

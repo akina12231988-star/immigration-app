@@ -49,6 +49,7 @@ function toInput(w: Worker | null): WorkerInput {
     has_spouse: w?.has_spouse ?? "",
     relatives_in_japan: w?.relatives_in_japan ?? "",
     relatives: w?.relatives ?? [],
+    dependents: w?.dependents ?? [],
     address: w?.address ?? "",
     employment_start_on: w?.employment_start_on ?? null,
     assigned_office: w?.assigned_office ?? "",

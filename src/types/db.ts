@@ -159,6 +159,19 @@ export interface OrganizationFileRow {
   created_at: string;
 }
 
+// 扶養家族の1人分（workers.dependents jsonb に配列で保存）。
+// 外国人から届く扶養親族証明書の内容を記録し、扶養控除等申告書の作成に使う
+export interface WorkerDependent {
+  name: string; // 氏名（例: PORY PHANNA）
+  kana: string; // フリガナ（例: ポーイ パンナー）
+  relation: string; // 続柄（父・母・妹・配偶者 など）
+  birth: string; // 生年月日 YYYY-MM-DD（未入力は ''）
+  address: string; // 住所（母国住所など）
+  occupation: string; // 職業及び年収（例: FARMER）
+  my_number: string; // 個人番号（あれば）
+  income: string; // 年中の所得の見積額・送金額のメモ
+}
+
 // 同居している在日親族の1人分（workers.relatives jsonb に配列で保存）
 export interface WorkerRelative {
   name: string; // 氏名
@@ -200,6 +213,7 @@ export interface Worker {
   has_spouse: string; // 配偶者の有無（'' / 有 / 無）
   relatives_in_japan: string; // 在日親族の同居の有無（'' / 有 / 無）
   relatives: WorkerRelative[]; // 同居している在日親族
+  dependents: WorkerDependent[]; // 扶養家族（扶養親族証明書の内容）
   address: string; // 住所（履歴書に表示）
   employment_start_on: string | null; // 雇用開始年月日
   assigned_office: string; // 配属先営業所
