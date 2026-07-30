@@ -13,11 +13,6 @@ const TODAY = "2026-07-30";
 
 // 扶養親族証明書の例（カンボジア）: 父49歳・母46歳・妹21歳
 const DATA: FuyoFormData = {
-  org: {
-    name: "有限会社國崎青果",
-    corporateNo: "1234567890123",
-    address: "熊本県八代市鏡町内田1515番地",
-  },
   worker: {
     name: "BOY SAMNANG",
     kana: "ボン　サムナン",
@@ -65,9 +60,10 @@ const DATA: FuyoFormData = {
 describe("buildFuyoFieldValues", () => {
   const v = buildFuyoFieldValues(DATA, TODAY);
 
-  it("上部の支払者・本人情報を対応するフィールドに入れる", () => {
-    expect(v.texts["Text3"]).toBe("有限会社國崎青果");
-    expect(v.texts["Text4"]).toBe("1234567890123");
+  it("本人情報を対応するフィールドに入れ、給与の支払者の欄は記入しない", () => {
+    expect(v.texts["Text3"]).toBeUndefined(); // 名称
+    expect(v.texts["Text4"]).toBeUndefined(); // 法人番号
+    expect(v.texts["Text5"]).toBeUndefined(); // 所在地
     expect(v.texts["Text7"]).toBe("BOY SAMNANG");
     expect(v.texts["Text8"]).toBe("058796259394");
     // 本人の生年月日は平成11年12月12日

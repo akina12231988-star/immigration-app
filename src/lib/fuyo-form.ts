@@ -13,7 +13,6 @@ import type { WorkerDependent } from "@/types/db";
 // ここで意味のある名前に対応付ける。座標をレンダリングして特定したマッピング。
 
 export interface FuyoFormData {
-  org: { name: string; corporateNo: string; address: string };
   worker: {
     name: string;
     kana: string;
@@ -104,10 +103,7 @@ export function buildFuyoFieldValues(data: FuyoFormData, today: string): FuyoFie
     texts[d] = String(p.day);
   };
 
-  // 上部: 給与の支払者・本人情報
-  texts["Text3"] = data.org.name;
-  texts["Text4"] = data.org.corporateNo;
-  texts["Text5"] = data.org.address;
+  // 上部: 本人情報。給与の支払者の欄（名称・法人番号・所在地）は会社側が記載するため入力しない
   texts["Text6"] = data.worker.kana;
   texts["Text7"] = data.worker.name;
   texts["Text8"] = data.worker.myNumber;
