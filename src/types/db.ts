@@ -252,6 +252,36 @@ export type WorkHistoryInput = Omit<
 
 export type OrganizationInput = Omit<Organization, "id" | "created_at" | "updated_at">;
 
+// ---- 労働者名簿（0054_worker_rosters.sql） ----
+
+// 履歴の1行分（年月日・内容とも表示文字列のまま保存）
+export interface RosterHistoryEntry {
+  on: string; // 年月日（例: 2026年7月31日）
+  content: string; // 内容（例: 入社）
+}
+
+// 前職の1行分
+export interface RosterPreviousJob {
+  company: string; // 会社名
+  prefecture: string; // 都道府県
+}
+
+// 会社へ送る労働者名簿。転職があるため外国人1人につき会社ごとに複数件持てる
+export interface WorkerRoster {
+  id: string;
+  worker_id: string;
+  company_name: string; // 送付先の会社名（名簿の識別に使う）
+  work_kind: string; // 業務の種類（例: 耕種農業の一般社員（役員なし））
+  history: RosterHistoryEntry[];
+  previous_jobs: RosterPreviousJob[];
+  leaving_on: string; // 解雇・退職または死亡の年月日（表示文字列）
+  leaving_reason: string; // 同・事由
+  created_at: string;
+  updated_at: string;
+}
+
+export type WorkerRosterInput = Omit<WorkerRoster, "id" | "created_at" | "updated_at">;
+
 // ---- 入管申請（0008_immigration_applications.sql） ----
 
 export interface ImmigrationApplicationRow {

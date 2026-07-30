@@ -2,7 +2,20 @@
 
 import { useState } from "react";
 import { BackButton } from "@/components/BackButton";
-import { Printer } from "lucide-react";
+import { Plus, Printer, Save, Trash2 } from "lucide-react";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { createClient } from "@/lib/supabase/client";
+import {
+  deleteWorkerRoster,
+  insertWorkerRoster,
+  updateWorkerRoster,
+} from "@/lib/supabase/queries/rosters";
+import { rosterJpDate, rosterWorkKind } from "@/lib/roster";
+import type {
+  RosterHistoryEntry,
+  RosterPreviousJob,
+  WorkerRoster,
+} from "@/types/db";
 
 interface RosterWorker {
   name: string;
@@ -19,42 +32,140 @@ interface RosterWorker {
   leavingReason: string;
 }
 
-// YYYY-MM-DD → 「1999年12月12日」
-function jpDate(dateStr: string | null): string {
-  if (!dateStr) return "";
-  const [y, m, d] = dateStr.split("-").map(Number);
-  if (!y || !m || !d) return dateStr;
-  return `${y}年${m}月${d}日`;
+// 名簿1枚分の編集中データ（worker_rosters の編集可能フィールド）
+interface RosterForm {
+  company_name: string;
+  work_kind: string;
+  history: RosterHistoryEntry[];
+  previous_jobs: RosterPreviousJob[];
+  leaving_on: string;
+  leaving_reason: string;
 }
 
-// 会社へ送る労働者名簿（労働基準法107条の様式に準拠した1枚もの）。
-// 会社名・業務の種類は印刷前に画面上で調整できる
+const NEW_ID = "new";
+
+// 会社へ送る労働者名簿。会社ごとに保存でき（転職対応）、
+// 履歴・前職・解雇の各欄は画面上で編集してから保存・印刷する
 export function RosterSheet({
+  workerId,
+  canEdit,
   orgName,
   worker,
-  previousJobs,
+  defaultPreviousJobs,
+  initialRosters,
 }: {
+  workerId: string;
+  canEdit: boolean;
   orgName: string;
   worker: RosterWorker;
-  previousJobs: { id: string; org: string }[];
+  defaultPreviousJobs: string[];
+  initialRosters: WorkerRoster[];
 }) {
-  const [company, setCompany] = useState(orgName);
-  const [workKind, setWorkKind] = useState(worker.field);
+  // 新規作成時の初期値: 外国人の登録データから自動で埋める
+  const buildDefault = (): RosterForm => ({
+    company_name: orgName,
+    work_kind: rosterWorkKind(worker.field),
+    history: worker.employmentStartOn
+      ? [{ on: rosterJpDate(worker.employmentStartOn), content: "入社" }]
+      : [],
+    previous_jobs: defaultPreviousJobs.map((company) => ({ company, prefecture: "" })),
+    leaving_on: worker.status === "退職" ? rosterJpDate(worker.leavingOn) : "",
+    leaving_reason:
+      worker.status === "退職"
+        ? [worker.leavingKind, worker.leavingReason].filter(Boolean).join("・")
+        : "",
+  });
+
+  const toForm = (r: WorkerRoster): RosterForm => ({
+    company_name: r.company_name,
+    work_kind: r.work_kind,
+    history: r.history ?? [],
+    previous_jobs: r.previous_jobs ?? [],
+    leaving_on: r.leaving_on,
+    leaving_reason: r.leaving_reason,
+  });
+
+  const [rosters, setRosters] = useState<WorkerRoster[]>(initialRosters);
+  const [selectedId, setSelectedId] = useState<string>(
+    initialRosters[0]?.id ?? NEW_ID,
+  );
+  const [form, setForm] = useState<RosterForm>(() =>
+    initialRosters[0] ? toForm(initialRosters[0]) : buildDefault(),
+  );
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const set = <K extends keyof RosterForm>(key: K, value: RosterForm[K]) => {
+    setForm((f) => ({ ...f, [key]: value }));
+    setSaved(false);
+  };
+
+  const select = (id: string) => {
+    setSelectedId(id);
+    setSaved(false);
+    setError(null);
+    if (id === NEW_ID) {
+      setForm(buildDefault());
+    } else {
+      const roster = rosters.find((r) => r.id === id);
+      if (roster) setForm(toForm(roster));
+    }
+  };
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const supabase = createClient();
+      if (selectedId === NEW_ID) {
+        const row = await insertWorkerRoster(supabase, { worker_id: workerId, ...form });
+        setRosters((rs) => [row, ...rs]);
+        setSelectedId(row.id);
+      } else {
+        await updateWorkerRoster(supabase, selectedId, form);
+        setRosters((rs) =>
+          rs.map((r) => (r.id === selectedId ? { ...r, ...form } : r)),
+        );
+      }
+      setSaved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await deleteWorkerRoster(createClient(), selectedId);
+      const rest = rosters.filter((r) => r.id !== selectedId);
+      setRosters(rest);
+      setDeleteOpen(false);
+      if (rest[0]) {
+        setSelectedId(rest[0].id);
+        setForm(toForm(rest[0]));
+      } else {
+        setSelectedId(NEW_ID);
+        setForm(buildDefault());
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "削除に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const selectedRoster = rosters.find((r) => r.id === selectedId);
 
   const TOOL_INPUT =
     "min-h-[44px] rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none";
-
-  // 履歴: 雇用開始（入社）が登録されていれば1行目に出す。残りは手書き用の空行
-  const historyRows: { date: string; content: string }[] = [];
-  if (worker.employmentStartOn) {
-    historyRows.push({ date: jpDate(worker.employmentStartOn), content: "入社" });
-  }
-  while (historyRows.length < 2) historyRows.push({ date: "", content: "" });
-
-  const isLeft = worker.status === "退職";
-  const leavingReason = [worker.leavingKind, worker.leavingReason]
-    .filter(Boolean)
-    .join("・");
+  // 名簿内のインライン入力（印刷時は枠なしの文字だけになる）
+  const CELL_INPUT =
+    "w-full bg-transparent text-sm font-bold placeholder:font-normal placeholder:text-gray-300 focus:outline-none print:placeholder:text-transparent";
 
   return (
     <>
@@ -66,23 +177,48 @@ export function RosterSheet({
         </div>
         <div className="flex flex-wrap items-end gap-3 px-4 py-4 lg:px-8">
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-bold text-muted">会社名（送付先）</span>
+            <span className="text-xs font-bold text-muted">保存済みの名簿（会社ごと）</span>
+            <select value={selectedId} onChange={(e) => select(e.target.value)} className={TOOL_INPUT}>
+              <option value={NEW_ID}>＋ 新しい名簿を作成</option>
+              {rosters.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.company_name || "会社名未設定"}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-bold text-muted">会社名（送付先・保存名）</span>
             <input
-              value={company}
-              onChange={(e) => setCompany(e.target.value)}
+              value={form.company_name}
+              onChange={(e) => set("company_name", e.target.value)}
               placeholder="例: 有限会社◯◯"
+              disabled={!canEdit}
               className={TOOL_INPUT}
             />
           </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-bold text-muted">業務の種類</span>
-            <input
-              value={workKind}
-              onChange={(e) => setWorkKind(e.target.value)}
-              placeholder="例: 耕種農業の一般社員（役員なし）"
-              className={`${TOOL_INPUT} min-w-[260px]`}
-            />
-          </label>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={save}
+              disabled={busy}
+              className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-border px-5 py-3 text-sm font-bold disabled:opacity-50"
+            >
+              <Save size={18} />
+              {busy ? "保存中…" : saved ? "保存しました" : selectedId === NEW_ID ? "この会社の名簿を保存" : "上書き保存"}
+            </button>
+          )}
+          {canEdit && selectedRoster && (
+            <button
+              type="button"
+              onClick={() => setDeleteOpen(true)}
+              disabled={busy}
+              className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-border px-4 py-3 text-sm font-bold text-seal disabled:opacity-50"
+            >
+              <Trash2 size={18} />
+              削除
+            </button>
+          )}
           <button
             type="button"
             onClick={() => window.print()}
@@ -92,89 +228,130 @@ export function RosterSheet({
             印刷・PDF保存
           </button>
         </div>
-        <p className="px-4 pb-3 text-[11px] text-muted lg:px-8">
-          会社名・業務の種類はこの画面で修正してから印刷できます（保存はされません）。個人番号・住所などの元データの修正は外国人詳細から行ってください。
+        {error && (
+          <p role="alert" className="mx-4 mb-3 rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal lg:mx-8">
+            {error}
+          </p>
+        )}
+        <p className="px-4 pb-3 text-[11px] leading-relaxed text-muted lg:px-8">
+          業務の種類・履歴・前職・解雇の各欄は名簿の上で直接編集できます（「保存」でこの会社の名簿として記憶）。
+          名前・住所・個人番号などの元データの修正は外国人詳細から行ってください。
         </p>
       </div>
 
       <div className="print-root">
         <div className="worker-sheet mx-auto mb-6 max-w-[210mm] border border-border bg-white p-[12mm] text-black print:mb-0 print:border-0">
-          <h2 className="mb-5 text-2xl font-black">
-            労働者名簿{company && `（${company}）`}
-          </h2>
+          <h2 className="mb-5 text-2xl font-black">労働者名簿</h2>
 
           {/* 基本情報 */}
           <table className="mb-5 w-[130mm] border-collapse text-sm">
             <tbody>
-              <BasicRow label="名前" value={worker.name} big />
-              <BasicRow label="フリガナ" value={worker.kana} />
-              <BasicRow label="生年月日" value={jpDate(worker.birth)} />
-              <BasicRow label="性別" value={worker.gender} />
-              <BasicRow label="住所" value={worker.address} />
-              <BasicRow label="業務の種類" value={workKind} />
-              <BasicRow label="個人番号" value={worker.myNumber} />
-              <BasicRow label="雇用開始年月日" value={jpDate(worker.employmentStartOn)} />
+              <BasicRow label="名前">
+                <span className="font-black">{worker.name || "　"}</span>
+              </BasicRow>
+              <BasicRow label="フリガナ">{worker.kana || "　"}</BasicRow>
+              <BasicRow label="生年月日">{rosterJpDate(worker.birth) || "　"}</BasicRow>
+              <BasicRow label="性別">{worker.gender || "　"}</BasicRow>
+              <BasicRow label="住所">{worker.address || "　"}</BasicRow>
+              <BasicRow label="業務の種類">
+                {canEdit ? (
+                  <input
+                    value={form.work_kind}
+                    onChange={(e) => set("work_kind", e.target.value)}
+                    placeholder="例: 耕種農業の一般社員（役員なし）"
+                    className={CELL_INPUT}
+                  />
+                ) : (
+                  form.work_kind || "　"
+                )}
+              </BasicRow>
+              <BasicRow label="個人番号">{worker.myNumber || "　"}</BasicRow>
+              <BasicRow label="雇用開始年月日">
+                {rosterJpDate(worker.employmentStartOn) || "　"}
+              </BasicRow>
             </tbody>
           </table>
 
           {/* 履歴 */}
-          <SectionHeading>履歴</SectionHeading>
-          <table className="mb-5 w-full border-collapse text-sm">
-            <thead>
-              <tr>
-                <HeaderCell className="w-[35mm]">年月日</HeaderCell>
-                <HeaderCell>内容</HeaderCell>
-              </tr>
-            </thead>
-            <tbody>
-              {historyRows.map((row, i) => (
-                <tr key={i}>
-                  <BodyCell>{row.date}</BodyCell>
-                  <BodyCell>{row.content}</BodyCell>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <EditableRowsSection
+            title="履歴"
+            canEdit={canEdit}
+            columns={[
+              { label: "年月日", width: "w-[40mm]", placeholder: "例: 2026年7月31日" },
+              { label: "内容", placeholder: "例: 入社" },
+            ]}
+            rows={form.history.map((h) => [h.on, h.content])}
+            onChange={(rows) =>
+              set("history", rows.map(([on = "", content = ""]) => ({ on, content })))
+            }
+          />
 
           {/* 前職 */}
-          <SectionHeading>前職</SectionHeading>
-          <table className="mb-5 w-full border-collapse text-sm">
-            <thead>
-              <tr>
-                <HeaderCell>会社名</HeaderCell>
-                <HeaderCell className="w-[35mm]">都道府県</HeaderCell>
-              </tr>
-            </thead>
-            <tbody>
-              {(previousJobs.length > 0 ? previousJobs : [{ id: "blank", org: "" }]).map(
-                (job) => (
-                  <tr key={job.id}>
-                    <BodyCell>{job.org}</BodyCell>
-                    <BodyCell>{""}</BodyCell>
-                  </tr>
-                ),
-              )}
-            </tbody>
-          </table>
+          <EditableRowsSection
+            title="前職"
+            canEdit={canEdit}
+            columns={[
+              { label: "会社名", placeholder: "例: ◯◯株式会社" },
+              { label: "都道府県", width: "w-[40mm]", placeholder: "例: 愛知県" },
+            ]}
+            rows={form.previous_jobs.map((j) => [j.company, j.prefecture])}
+            onChange={(rows) =>
+              set(
+                "previous_jobs",
+                rows.map(([company = "", prefecture = ""]) => ({ company, prefecture })),
+              )
+            }
+          />
 
           {/* 解雇・退職または死亡 */}
           <SectionHeading>解雇・退職または死亡</SectionHeading>
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr>
-                <HeaderCell className="w-[35mm]">年月日</HeaderCell>
+                <HeaderCell className="w-[40mm]">年月日</HeaderCell>
                 <HeaderCell>事由</HeaderCell>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <BodyCell>{isLeft ? jpDate(worker.leavingOn) : ""}</BodyCell>
-                <BodyCell>{isLeft ? leavingReason : ""}</BodyCell>
+                <BodyCell>
+                  {canEdit ? (
+                    <input
+                      value={form.leaving_on}
+                      onChange={(e) => set("leaving_on", e.target.value)}
+                      placeholder="年月日"
+                      className={CELL_INPUT}
+                    />
+                  ) : (
+                    form.leaving_on || "　"
+                  )}
+                </BodyCell>
+                <BodyCell>
+                  {canEdit ? (
+                    <input
+                      value={form.leaving_reason}
+                      onChange={(e) => set("leaving_reason", e.target.value)}
+                      placeholder="事由"
+                      className={CELL_INPUT}
+                    />
+                  ) : (
+                    form.leaving_reason || "　"
+                  )}
+                </BodyCell>
               </tr>
             </tbody>
           </table>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={deleteOpen}
+        title="労働者名簿を削除"
+        message={`「${selectedRoster?.company_name || "会社名未設定"}」の労働者名簿を削除します。この操作は取り消せません。`}
+        busy={busy}
+        onConfirm={remove}
+        onCancel={() => setDeleteOpen(false)}
+      />
 
       <style jsx global>{`
         @page {
@@ -193,31 +370,113 @@ export function RosterSheet({
   );
 }
 
-function BasicRow({
-  label,
-  value,
-  big = false,
+// 履歴・前職のような「行の追加・削除ができる2列テーブル」の共通部品。
+// 行が無いときも印刷で表が形になるように空行を1つ表示する
+function EditableRowsSection({
+  title,
+  canEdit,
+  columns,
+  rows,
+  onChange,
 }: {
-  label: string;
-  value: string;
-  big?: boolean;
+  title: string;
+  canEdit: boolean;
+  columns: { label: string; width?: string; placeholder?: string }[];
+  rows: string[][];
+  onChange: (rows: string[][]) => void;
 }) {
+  const CELL_INPUT =
+    "w-full bg-transparent text-sm font-bold placeholder:font-normal placeholder:text-gray-300 focus:outline-none print:placeholder:text-transparent";
+
+  const setCell = (rowIdx: number, colIdx: number, value: string) =>
+    onChange(
+      rows.map((row, i) =>
+        i === rowIdx ? row.map((v, j) => (j === colIdx ? value : v)) : row,
+      ),
+    );
+
+  return (
+    <div className="mb-5">
+      <SectionHeading>{title}</SectionHeading>
+      <table className="w-full border-collapse text-sm">
+        <thead>
+          <tr>
+            {columns.map((c) => (
+              <HeaderCell key={c.label} className={c.width ?? ""}>
+                {c.label}
+              </HeaderCell>
+            ))}
+            {canEdit && <th className="w-8 print:hidden" />}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 && (
+            <tr>
+              {columns.map((c) => (
+                <BodyCell key={c.label}>{"　"}</BodyCell>
+              ))}
+              {canEdit && <td className="print:hidden" />}
+            </tr>
+          )}
+          {rows.map((row, i) => (
+            <tr key={i}>
+              {columns.map((c, j) => (
+                <BodyCell key={c.label}>
+                  {canEdit ? (
+                    <input
+                      value={row[j] ?? ""}
+                      onChange={(e) => setCell(i, j, e.target.value)}
+                      placeholder={c.placeholder}
+                      className={CELL_INPUT}
+                    />
+                  ) : (
+                    row[j] || "　"
+                  )}
+                </BodyCell>
+              ))}
+              {canEdit && (
+                <td className="pl-1 print:hidden">
+                  <button
+                    type="button"
+                    aria-label={`${title}の行を削除`}
+                    onClick={() => onChange(rows.filter((_, idx) => idx !== i))}
+                    className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-seal"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {canEdit && (
+        <button
+          type="button"
+          onClick={() => onChange([...rows, columns.map(() => "")])}
+          className="mt-1.5 inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-bold text-muted print:hidden"
+        >
+          <Plus size={13} />
+          行を追加
+        </button>
+      )}
+    </div>
+  );
+}
+
+function BasicRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <tr className="border border-gray-300">
       <th className="w-[38mm] border border-gray-300 bg-gray-50 px-3 py-2 text-left text-xs font-bold text-gray-600">
         {label}
       </th>
-      <td className={`border border-gray-300 px-3 py-2 ${big ? "font-black" : "font-bold"}`}>
-        {value || "　"}
-      </td>
+      <td className="border border-gray-300 px-3 py-2 font-bold">{children}</td>
     </tr>
   );
 }
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="mb-2 bg-orange-100 px-2 py-1 text-sm font-bold">{children}</p>
-  );
+  return <p className="mb-2 bg-orange-100 px-2 py-1 text-sm font-bold">{children}</p>;
 }
 
 function HeaderCell({
@@ -237,9 +496,5 @@ function HeaderCell({
 }
 
 function BodyCell({ children }: { children: React.ReactNode }) {
-  return (
-    <td className="min-h-[28px] border border-gray-300 px-3 py-1.5">
-      {children || "　"}
-    </td>
-  );
+  return <td className="border border-gray-300 px-3 py-1.5">{children}</td>;
 }
