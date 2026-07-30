@@ -7,6 +7,7 @@ import {
   CalendarClock,
   Check,
   ChevronRight,
+  ClipboardList,
   Copy,
   ExternalLink,
   FileText,
@@ -294,6 +295,13 @@ export function WorkerDetail({
             >
               <FileText size={14} />
               履歴書
+            </Link>
+            <Link
+              href={`/workers/${worker.id}/roster`}
+              className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted"
+            >
+              <ClipboardList size={14} />
+              労働者名簿
             </Link>
             {canEdit && <NotionTransferButton worker={worker} />}
           </div>
