@@ -38,6 +38,7 @@ import {
 import { SswGauge } from "@/components/workers/SswGauge";
 import { SswStatusBadge, SupportBadge, WorkerStatusBadge } from "@/components/workers/badges";
 import { calcSsw, entryDays, todayStr, ymdFullText } from "@/lib/ssw/calc";
+import { isSswInsuranceRenewalTarget, remainingLabel } from "@/lib/worker-alerts";
 import { createClient } from "@/lib/supabase/client";
 import { notionAppUrl } from "@/lib/notion-link";
 import { deleteWorker, updateWorker } from "@/lib/supabase/queries/workers";
@@ -366,6 +367,49 @@ export function WorkerDetail({
             edit={fillDate("passport_expiry_date")}
           />
         </dl>
+        <p className="mb-1 text-[11px] font-bold text-muted">番号・保険</p>
+        <dl className="mb-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+          <InfoItem label="個人番号" value={worker.my_number} edit={fillText("my_number")} />
+          <InfoItem
+            label="雇用保険被保険者番号"
+            value={worker.employment_insurance_no}
+            edit={fillText("employment_insurance_no")}
+          />
+          <InfoItem label="基礎年金番号" value={worker.pension_no} edit={fillText("pension_no")} />
+          <InfoItem
+            label="特定技能総合保険の加入リンク先"
+            value={
+              worker.ssw_insurance_link ? (
+                <a
+                  href={worker.ssw_insurance_link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 font-bold text-brand"
+                >
+                  <ExternalLink size={13} className="shrink-0" />
+                  加入ページを開く
+                </a>
+              ) : null
+            }
+            edit={fillText("ssw_insurance_link", "https://...")}
+          />
+          <InfoItem
+            label="特定技能総合保険 有効期限"
+            value={
+              worker.ssw_insurance_expiry_date ? (
+                <>
+                  {worker.ssw_insurance_expiry_date}
+                  {isSswInsuranceRenewalTarget(worker, today) && (
+                    <span className="ml-2 rounded-full bg-seal/10 px-2 py-0.5 text-[11px] font-bold text-seal">
+                      {remainingLabel(worker.ssw_insurance_expiry_date, today)}
+                    </span>
+                  )}
+                </>
+              ) : null
+            }
+            edit={fillDate("ssw_insurance_expiry_date")}
+          />
+        </dl>
         <p className="mb-1 text-[11px] font-bold text-muted">家族情報</p>
         <dl className="mb-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
           <InfoItem label="配偶者の有無" value={worker.has_spouse} edit={fillSelect("has_spouse", ["有", "無"])} />
@@ -681,7 +725,7 @@ function InfoItem({
   edit,
 }: {
   label: string;
-  value: string | null;
+  value: React.ReactNode; // 空文字・null は未記入扱い
   wide?: boolean;
   edit?: React.ReactNode; // 未記入のときに表示するインライン入力（省略時は「—」）
 }) {
