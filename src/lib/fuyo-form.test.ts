@@ -1,0 +1,200 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+import { PDFDocument } from "pdf-lib";
+import {
+  buildFuyoFieldValues,
+  fillFuyoForm,
+  fuyoOverflow,
+  type FuyoFormData,
+} from "./fuyo-form";
+
+const TODAY = "2026-07-30";
+
+// 扶養親族証明書の例（カンボジア）: 父49歳・母46歳・妹21歳
+const DATA: FuyoFormData = {
+  org: {
+    name: "有限会社國崎青果",
+    corporateNo: "1234567890123",
+    address: "熊本県八代市鏡町内田1515番地",
+  },
+  worker: {
+    name: "BOY SAMNANG",
+    kana: "ボン　サムナン",
+    birth: "1999-12-12",
+    address: "熊本県八代市新浜町1番1号",
+    myNumber: "058796259394",
+    hasSpouse: "",
+  },
+  householdHead: "BOY SAMNANG",
+  headRelation: "本人",
+  dependents: [
+    {
+      name: "PORY PHANNA",
+      kana: "ポーイ　パンナー",
+      relation: "父",
+      birth: "1977-05-05",
+      address: "POR SANGKAE VILLAGE, KOMNOB COMMUNE, KIRI VONG DISTRICT, TAKEO PROVINCE.",
+      occupation: "FARMER",
+      my_number: "",
+      income: "0円",
+    },
+    {
+      name: "BAN KIMHOEURN",
+      kana: "バン　キムホウン",
+      relation: "母",
+      birth: "1979-11-12",
+      address: "POR SANGKAE VILLAGE, KOMNOB COMMUNE, KIRI VONG DISTRICT, TAKEO PROVINCE.",
+      occupation: "FARMER",
+      my_number: "",
+      income: "0円",
+    },
+    {
+      name: "BORY REATREY",
+      kana: "ポーイ　レアトレイ",
+      relation: "妹",
+      birth: "2005-06-01",
+      address: "POR SANGKAE VILLAGE, KOMNOB COMMUNE, KIRI VONG DISTRICT, TAKEO PROVINCE.",
+      occupation: "BURDEN",
+      my_number: "",
+      income: "0円",
+    },
+  ],
+};
+
+describe("buildFuyoFieldValues", () => {
+  const v = buildFuyoFieldValues(DATA, TODAY);
+
+  it("上部の支払者・本人情報を対応するフィールドに入れる", () => {
+    expect(v.texts["Text3"]).toBe("有限会社國崎青果");
+    expect(v.texts["Text4"]).toBe("1234567890123");
+    expect(v.texts["Text7"]).toBe("BOY SAMNANG");
+    expect(v.texts["Text8"]).toBe("058796259394");
+    // 本人の生年月日は平成11年12月12日
+    expect(v.dropdowns["Dropdown1"]).toBe("平");
+    expect(v.texts["Text11"]).toBe("11");
+    expect(v.texts["Text12"]).toBe("12");
+    expect(v.texts["Text13"]).toBe("12");
+    expect(v.texts["Text14"]).toBe("BOY SAMNANG");
+    expect(v.texts["Text15"]).toBe("本人");
+  });
+
+  it("配偶者がいなければ配偶者の有無は無・A欄は空", () => {
+    expect(v.dropdowns["Dropdown2"]).toBe("無");
+    expect(v.texts["Text17"]).toBeUndefined();
+  });
+
+  it("16歳以上の扶養親族をB欄1〜3行目に入れる", () => {
+    expect(v.texts["Text26"]).toBe("PORY PHANNA"); // 1行目: 父
+    expect(v.texts["Text28"]).toBe("父");
+    expect(v.dropdowns["Dropdown5"]).toBe("昭"); // 1977年 → 昭和52年
+    expect(v.texts["Text29"]).toBe("52");
+    expect(v.texts["Text36"]).toBe("BAN KIMHOEURN"); // 2行目: 母
+    expect(v.texts["Text46"]).toBe("BORY REATREY"); // 3行目: 妹
+    expect(v.texts["Text56"]).toBeUndefined(); // 4行目は空
+  });
+
+  it("控除区分のチェック: 父母(30-70歳)は38万円以上の支払、妹(21歳)は特定扶養と16-30歳", () => {
+    expect(v.checks).toContain("Check Box3-4"); // 父: 38万円以上の支払
+    expect(v.checks).toContain("Check Box6-4"); // 母: 38万円以上の支払
+    expect(v.checks).toContain("Check Box8-1"); // 妹: 特定扶養親族
+    expect(v.checks).toContain("Check Box9-1"); // 妹: 16歳以上30歳未満又は70歳以上
+    expect(v.checks).not.toContain("Check Box3-1"); // 父は16-30歳ではない
+  });
+
+  it("配偶者はA欄に入り、配偶者の有無が有になる", () => {
+    const withSpouse = buildFuyoFieldValues(
+      {
+        ...DATA,
+        dependents: [
+          {
+            name: "SOK SREYPICH",
+            kana: "ソク　スレイピッチ",
+            relation: "配偶者",
+            birth: "2000-03-15",
+            address: "TAKEO PROVINCE.",
+            occupation: "",
+            my_number: "",
+            income: "0円",
+          },
+        ],
+      },
+      TODAY,
+    );
+    expect(withSpouse.dropdowns["Dropdown2"]).toBe("有");
+    expect(withSpouse.texts["Text17"]).toBe("SOK SREYPICH");
+    expect(withSpouse.dropdowns["Dropdown4"]).toBe("平");
+    expect(withSpouse.dropdowns["Dropdown50"]).toBe("○");
+    // B欄には入らない
+    expect(withSpouse.texts["Text26"]).toBeUndefined();
+  });
+
+  it("16歳未満は住民税欄に入り、控除対象外国外扶養親族に○が付く", () => {
+    const withChild = buildFuyoFieldValues(
+      {
+        ...DATA,
+        dependents: [
+          {
+            name: "BOY DARA",
+            kana: "ボン　ダラ",
+            relation: "子",
+            birth: "2015-02-01",
+            address: "TAKEO PROVINCE.",
+            occupation: "",
+            my_number: "",
+            income: "",
+          },
+        ],
+      },
+      TODAY,
+    );
+    expect(withChild.texts["Text91"]).toBe("BOY DARA");
+    expect(withChild.texts["Text93"]).toBe("子");
+    expect(withChild.dropdowns["Dropdown20"]).toBe("○");
+    expect(withChild.texts["Text26"]).toBeUndefined(); // B欄には入らない
+  });
+});
+
+describe("fuyoOverflow", () => {
+  it("B欄4行・住民税欄2行を超えた人数を返す", () => {
+    expect(fuyoOverflow(DATA, TODAY)).toEqual({ over16Overflow: 0, under16Overflow: 0 });
+    const many = {
+      ...DATA,
+      dependents: Array.from({ length: 6 }, (_, i) => ({
+        ...DATA.dependents[0],
+        name: `DEP ${i}`,
+      })),
+    };
+    expect(fuyoOverflow(many, TODAY).over16Overflow).toBe(2);
+  });
+});
+
+describe("fillFuyoForm", () => {
+  it("テンプレートPDFに値が書き込まれる（flattenなしで検証）", async () => {
+    const template = await readFile(path.join(process.cwd(), "public", "forms", "fuyo-r8.pdf"));
+    const font = await readFile(
+      path.join(process.cwd(), "public", "fonts", "NotoSansJP-Regular.otf"),
+    );
+    const bytes = await fillFuyoForm(template, font, DATA, TODAY, { flatten: false });
+
+    const doc = await PDFDocument.load(bytes);
+    const form = doc.getForm();
+    expect(form.getTextField("Text7").getText()).toBe("BOY SAMNANG");
+    expect(form.getTextField("Text26").getText()).toBe("PORY PHANNA");
+    expect(form.getDropdown("Dropdown1").getSelected()).toEqual(["平"]);
+    expect(form.getCheckBox("Check Box3-4").isChecked()).toBe(true);
+    expect(form.getCheckBox("Check Box3-1").isChecked()).toBe(false);
+    // 個人番号（コーム欄・12桁）が桁数制限内で入っている
+    expect(form.getTextField("Text8").getText()).toBe("058796259394");
+  }, 30000);
+
+  it("flattenすると編集不可の確定版になる", async () => {
+    const template = await readFile(path.join(process.cwd(), "public", "forms", "fuyo-r8.pdf"));
+    const font = await readFile(
+      path.join(process.cwd(), "public", "fonts", "NotoSansJP-Regular.otf"),
+    );
+    const bytes = await fillFuyoForm(template, font, DATA, TODAY);
+    const doc = await PDFDocument.load(bytes);
+    expect(doc.getForm().getFields()).toHaveLength(0);
+  }, 30000);
+});
