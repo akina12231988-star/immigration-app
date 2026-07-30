@@ -10,7 +10,13 @@ import {
   insertWorkerRoster,
   updateWorkerRoster,
 } from "@/lib/supabase/queries/rosters";
-import { rosterJpDate, rosterWorkKind } from "@/lib/roster";
+import {
+  isWithinRosterRetention,
+  rosterJpDate,
+  rosterRetentionEnd,
+  rosterWorkKind,
+} from "@/lib/roster";
+import { todayStr } from "@/lib/ssw/calc";
 import type {
   RosterHistoryEntry,
   RosterPreviousJob,
@@ -40,6 +46,7 @@ interface RosterForm {
   previous_jobs: RosterPreviousJob[];
   leaving_on: string;
   leaving_reason: string;
+  issued_on: string; // 発行年月日（'' = 未設定。保存時は null にする）
 }
 
 const NEW_ID = "new";
@@ -74,6 +81,7 @@ export function RosterSheet({
       worker.status === "退職"
         ? [worker.leavingKind, worker.leavingReason].filter(Boolean).join("・")
         : "",
+    issued_on: todayStr(),
   });
 
   const toForm = (r: WorkerRoster): RosterForm => ({
@@ -83,6 +91,7 @@ export function RosterSheet({
     previous_jobs: r.previous_jobs ?? [],
     leaving_on: r.leaving_on,
     leaving_reason: r.leaving_reason,
+    issued_on: r.issued_on ?? "",
   });
 
   const [rosters, setRosters] = useState<WorkerRoster[]>(initialRosters);
@@ -119,14 +128,18 @@ export function RosterSheet({
     setError(null);
     try {
       const supabase = createClient();
+      const payload = { ...form, issued_on: form.issued_on || null };
       if (selectedId === NEW_ID) {
-        const row = await insertWorkerRoster(supabase, { worker_id: workerId, ...form });
+        const row = await insertWorkerRoster(supabase, {
+          worker_id: workerId,
+          ...payload,
+        });
         setRosters((rs) => [row, ...rs]);
         setSelectedId(row.id);
       } else {
-        await updateWorkerRoster(supabase, selectedId, form);
+        await updateWorkerRoster(supabase, selectedId, payload);
         setRosters((rs) =>
-          rs.map((r) => (r.id === selectedId ? { ...r, ...form } : r)),
+          rs.map((r) => (r.id === selectedId ? { ...r, ...payload } : r)),
         );
       }
       setSaved(true);
@@ -197,6 +210,16 @@ export function RosterSheet({
               className={TOOL_INPUT}
             />
           </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-bold text-muted">発行年月日</span>
+            <input
+              type="date"
+              value={form.issued_on}
+              onChange={(e) => set("issued_on", e.target.value)}
+              disabled={!canEdit}
+              className={TOOL_INPUT}
+            />
+          </label>
           {canEdit && (
             <button
               type="button"
@@ -233,15 +256,25 @@ export function RosterSheet({
             {error}
           </p>
         )}
-        <p className="px-4 pb-3 text-[11px] leading-relaxed text-muted lg:px-8">
+        <p className="px-4 pb-1 text-[11px] leading-relaxed text-muted lg:px-8">
           業務の種類・履歴・前職・解雇の各欄は名簿の上で直接編集できます（「保存」でこの会社の名簿として記憶）。
           名前・住所・個人番号などの元データの修正は外国人詳細から行ってください。
+        </p>
+        <p className="px-4 pb-3 text-[11px] leading-relaxed text-muted lg:px-8">
+          労働者名簿は労働基準法第107条に基づいて作成し、同法第109条により発行から5年間保存します。
+          {form.issued_on &&
+            `この名簿の保存期限: ${rosterJpDate(rosterRetentionEnd(form.issued_on))}まで`}
         </p>
       </div>
 
       <div className="print-root">
         <div className="worker-sheet mx-auto mb-6 max-w-[210mm] border border-border bg-white p-[12mm] text-black print:mb-0 print:border-0">
-          <h2 className="mb-5 text-2xl font-black">労働者名簿</h2>
+          <div className="mb-5 flex items-end justify-between gap-4">
+            <h2 className="text-2xl font-black">労働者名簿</h2>
+            <p className="text-xs text-gray-500">
+              発行年月日: {rosterJpDate(form.issued_on) || "—"}
+            </p>
+          </div>
 
           {/* 基本情報 */}
           <table className="mb-5 w-[130mm] border-collapse text-sm">
@@ -341,13 +374,25 @@ export function RosterSheet({
               </tr>
             </tbody>
           </table>
+
+          <p className="mt-6 text-[10px] leading-relaxed text-gray-500">
+            本名簿は労働基準法第107条に基づき作成し、同法第109条により発行日から5年間保存する。
+          </p>
         </div>
       </div>
 
       <ConfirmDialog
         open={deleteOpen}
         title="労働者名簿を削除"
-        message={`「${selectedRoster?.company_name || "会社名未設定"}」の労働者名簿を削除します。この操作は取り消せません。`}
+        message={
+          selectedRoster && isWithinRosterRetention(selectedRoster.issued_on, todayStr())
+            ? `「${selectedRoster.company_name || "会社名未設定"}」の労働者名簿は労働基準法により発行から5年間（${
+                selectedRoster.issued_on
+                  ? `${rosterJpDate(rosterRetentionEnd(selectedRoster.issued_on))}まで`
+                  : "発行年月日未設定"
+              }）の保存が必要です。本当に削除しますか？この操作は取り消せません。`
+            : `「${selectedRoster?.company_name || "会社名未設定"}」の労働者名簿を削除します。この操作は取り消せません。`
+        }
         busy={busy}
         onConfirm={remove}
         onCancel={() => setDeleteOpen(false)}

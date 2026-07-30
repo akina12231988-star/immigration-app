@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { rosterJpDate, rosterWorkKind } from "./roster";
+import {
+  isWithinRosterRetention,
+  rosterJpDate,
+  rosterRetentionEnd,
+  rosterWorkKind,
+} from "./roster";
 
 describe("rosterWorkKind", () => {
   it("農業の耕種農業全般は「耕種農業の一般社員（役員なし）」", () => {
@@ -72,5 +77,29 @@ describe("rosterJpDate", () => {
   it("null・空は空文字", () => {
     expect(rosterJpDate(null)).toBe("");
     expect(rosterJpDate("")).toBe("");
+  });
+});
+
+describe("rosterRetentionEnd", () => {
+  it("発行から5年後の日付を返す", () => {
+    expect(rosterRetentionEnd("2026-07-30")).toBe("2031-07-30");
+  });
+
+  it("うるう日は翌日に繰り上がる", () => {
+    expect(rosterRetentionEnd("2024-02-29")).toBe("2029-03-01");
+  });
+});
+
+describe("isWithinRosterRetention", () => {
+  it("満了日までは保存期間内", () => {
+    expect(isWithinRosterRetention("2026-07-30", "2031-07-30")).toBe(true);
+  });
+
+  it("満了日を過ぎたら期間外", () => {
+    expect(isWithinRosterRetention("2026-07-30", "2031-07-31")).toBe(false);
+  });
+
+  it("発行年月日未設定は期間内扱い（保護する）", () => {
+    expect(isWithinRosterRetention(null, "2031-07-31")).toBe(true);
   });
 });

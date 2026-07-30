@@ -276,6 +276,7 @@ export interface WorkerRoster {
   previous_jobs: RosterPreviousJob[];
   leaving_on: string; // 解雇・退職または死亡の年月日（表示文字列）
   leaving_reason: string; // 同・事由
+  issued_on: string | null; // 発行年月日（労基法109条: 発行から5年間保存）
   created_at: string;
   updated_at: string;
 }

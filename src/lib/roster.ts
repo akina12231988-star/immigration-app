@@ -51,3 +51,18 @@ export function rosterJpDate(dateStr: string | null): string {
   if (!m) return dateStr;
   return `${Number(m[1])}年${Number(m[2])}月${Number(m[3])}日`;
 }
+
+// 労働者名簿の保存期間の満了日（労働基準法第109条: 発行から5年間保存）
+export function rosterRetentionEnd(issuedOn: string): string {
+  const d = new Date(`${issuedOn}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return "";
+  d.setUTCFullYear(d.getUTCFullYear() + 5);
+  return d.toISOString().slice(0, 10);
+}
+
+// 保存期間内か（today は YYYY-MM-DD）。発行年月日未設定は期間内扱いにして保護する
+export function isWithinRosterRetention(issuedOn: string | null, today: string): boolean {
+  if (!issuedOn) return true;
+  const end = rosterRetentionEnd(issuedOn);
+  return !end || today <= end;
+}
