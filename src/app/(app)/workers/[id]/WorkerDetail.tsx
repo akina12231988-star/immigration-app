@@ -40,6 +40,7 @@ import { SswGauge } from "@/components/workers/SswGauge";
 import { SswStatusBadge, SupportBadge, WorkerStatusBadge } from "@/components/workers/badges";
 import { calcSsw, entryDays, todayStr, ymdFullText } from "@/lib/ssw/calc";
 import { isSswInsuranceRenewalTarget, remainingLabel } from "@/lib/worker-alerts";
+import { orgStaffLabel } from "@/lib/organization-intake";
 import { createClient } from "@/lib/supabase/client";
 import { notionAppUrl } from "@/lib/notion-link";
 import { deleteWorker, updateWorker } from "@/lib/supabase/queries/workers";
@@ -97,9 +98,14 @@ export function WorkerDetail({
     [worker.work_histories, today],
   );
 
+  const currentOrg = worker.current_organization_id
+    ? organizations.find((o) => o.id === worker.current_organization_id)
+    : undefined;
   const orgName = worker.current_organization_id
-    ? (organizations.find((o) => o.id === worker.current_organization_id)?.name ?? "所属不明")
+    ? (currentOrg?.name ?? "所属不明")
     : "未所属";
+  // 所属機関の担当者（主・副）。会社・機関マスタで登録する
+  const orgStaff = orgStaffLabel(currentOrg?.intake);
 
   // 職歴は開始日昇順で表示（calc と同じ並び）
   const histories = useMemo(
@@ -346,6 +352,10 @@ export function WorkerDetail({
                 </select>
               ) : undefined
             }
+          />
+          <InfoItem
+            label="担当者（所属機関の主・副）"
+            value={orgStaff || (currentOrg ? "未設定（会社・機関マスタで登録）" : null)}
           />
           <InfoItem label="専門級の合格名" value={worker.specialty_grade} edit={fillText("specialty_grade")} />
           <InfoItem

@@ -12,6 +12,7 @@ import {
   registerOrgFile,
 } from "@/app/(app)/organizations/actions";
 import { SSW_INDUSTRIES, categoriesFor } from "@/lib/industries";
+import { PREP_TANTOU_OPTIONS } from "@/lib/application-prep";
 import { todayStr } from "@/lib/ssw/calc";
 import {
   emptyFinancialYear,
@@ -149,6 +150,13 @@ function IntakeField({
       {hint && <span className={HINT_CLASS}>{hint}</span>}
     </label>
   );
+}
+
+// 担当職員の選択肢。名簿から外れた保存済みの名前も選択肢として残す
+function staffOptions(current: string): string[] {
+  const options: string[] = [...PREP_TANTOU_OPTIONS];
+  if (current && !options.includes(current)) options.unshift(current);
+  return options;
 }
 
 // 申込書の1入力欄（選択式）
@@ -375,6 +383,26 @@ export function OrganizationFormBody({
         hint="退職＜随時報告＞の様式（3-1-2号・3-4号）の届出機関担当者欄に自動転記されます。"
         locked={locks.intake("report_staff")}
       />
+      {/* この機関の担当職員（主・副）。外国人詳細・申請一覧・ダッシュボードに表示され、
+          申請一覧では担当者での絞り込みに使う */}
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+        <IntakeSelect
+          label="この機関の主担当"
+          value={intake.staff_primary}
+          onChange={(v) => setIntake({ staff_primary: v })}
+          options={staffOptions(intake.staff_primary)}
+          hint="会社との窓口・進捗管理の責任者。外国人詳細・申請一覧・ダッシュボードに表示されます。"
+          locked={locks.intake("staff_primary")}
+        />
+        <IntakeSelect
+          label="この機関の副担当"
+          value={intake.staff_secondary}
+          onChange={(v) => setIntake({ staff_secondary: v })}
+          options={staffOptions(intake.staff_secondary)}
+          hint="主担当が不在のときのバックアップ。"
+          locked={locks.intake("staff_secondary")}
+        />
+      </div>
       {locks.top("corporate_no") ? (
         <StaticValue label="法人番号" value={form.corporate_no} />
       ) : (

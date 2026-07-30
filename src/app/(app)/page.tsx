@@ -26,7 +26,10 @@ import { useApplications } from "@/lib/application-store";
 import { buildRenewalPlaceholders } from "@/lib/renewal-placeholders";
 import { isSswInsuranceRenewalTarget, remainingLabel } from "@/lib/worker-alerts";
 import { listWorkersWithOrg, type WorkerWithOrg } from "@/lib/supabase/queries/workers";
+import { listOrganizations } from "@/lib/supabase/queries/organizations";
+import { orgStaffLabel } from "@/lib/organization-intake";
 import { createClient } from "@/lib/supabase/client";
+import type { Organization } from "@/types/db";
 
 const STAT_CARDS = [
   {
@@ -75,6 +78,24 @@ export default function DashboardPage() {
       cancelled = true;
     };
   }, []);
+
+  // 所属機関ごとの担当者（主・副）を表示するための機関マスタ
+  const [orgs, setOrgs] = useState<Organization[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    listOrganizations(createClient())
+      .then((os) => {
+        if (!cancelled) setOrgs(os);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const orgById = new Map(orgs.map((o) => [o.id, o]));
+  // 機関IDから担当者表示（例: 市原　彩奈（主）・田上　夏季（副））。未設定は ''
+  const staffForOrg = (orgId: string | null | undefined) =>
+    orgId ? orgStaffLabel(orgById.get(orgId)?.intake) : "";
 
   // ④在留期限アラート: 申請時点の在留期限から1か月経過・未受取
   const today = todayStr();
@@ -142,6 +163,7 @@ export default function DashboardPage() {
                       <span className="block truncate text-sm font-bold">{a.name}</span>
                       <span className="block truncate text-xs text-muted">
                         {a.organizationName ?? ""} 在留期限 {a.residenceExpiryAtApply}
+                        {staffForOrg(a.organizationId) && ` ・担当 ${staffForOrg(a.organizationId)}`}
                       </span>
                     </span>
                     <ChevronRight size={16} className="shrink-0 text-seal" />
@@ -175,6 +197,8 @@ export default function DashboardPage() {
                         {w.organizations?.name ?? ""} 有効期限 {w.ssw_insurance_expiry_date}
                         {w.ssw_insurance_expiry_date &&
                           `（${remainingLabel(w.ssw_insurance_expiry_date, today)}）`}
+                        {staffForOrg(w.current_organization_id) &&
+                          ` ・担当 ${staffForOrg(w.current_organization_id)}`}
                       </span>
                     </span>
                     <ChevronRight size={16} className="shrink-0 text-seal" />
@@ -223,6 +247,7 @@ export default function DashboardPage() {
                     <p className="truncate font-bold">{a.name}</p>
                     <p className="truncate text-xs text-muted">
                       {a.applicationContent}
+                      {staffForOrg(a.organizationId) && ` ・担当 ${staffForOrg(a.organizationId)}`}
                     </p>
                   </div>
                   {!a.lineReported && (

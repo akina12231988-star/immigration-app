@@ -61,6 +61,8 @@ export function emptyOrganizationIntake(): OrganizationIntake {
     fax: "",
     email: "",
     report_staff: "",
+    staff_primary: "",
+    staff_secondary: "",
     fiscal_kind: "",
     support_fee: "",
     posting_note: "",
@@ -93,6 +95,24 @@ export function emptyOrganizationIntake(): OrganizationIntake {
     japanese_staff: [emptyJapaneseStaff()],
     officers: [emptyOfficer()],
   };
+}
+
+// 主担当・副担当の表示（例: 市原　彩奈（主）・田上　夏季（副））。未設定なら ''
+export function orgStaffLabel(intake: Partial<OrganizationIntake> | null | undefined): string {
+  const primary = intake?.staff_primary?.trim() ?? "";
+  const secondary = intake?.staff_secondary?.trim() ?? "";
+  return [primary && `${primary}（主）`, secondary && `${secondary}（副）`]
+    .filter(Boolean)
+    .join("・");
+}
+
+// この機関の担当者か（主担当・副担当のどちらかに一致するか）
+export function isOrgStaff(
+  intake: Partial<OrganizationIntake> | null | undefined,
+  name: string,
+): boolean {
+  if (!name) return false;
+  return intake?.staff_primary === name || intake?.staff_secondary === name;
 }
 
 // 保存済みの intake（欠けたキーや古い形があり得る）を完全な形に補完する
