@@ -33,6 +33,7 @@ export function blankWorkerInput(name: string, organizationId: string | null = n
     has_spouse: "",
     relatives_in_japan: "",
     relatives: [],
+    dependents: [],
     address: "",
     employment_start_on: null,
     assigned_office: "",
