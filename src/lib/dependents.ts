@@ -13,31 +13,28 @@ export function dependentAge(birth: string, today: string): number | null {
   return age >= 0 ? age : null;
 }
 
-// YYYY-MM-DD → 和暦表示（例: 1999-12-12 → 平成11年12月12日）。元号外・不正な日付は ''
-export function warekiDate(dateStr: string | null): string {
-  if (!dateStr) return "";
+// YYYY-MM-DD → 和暦の分解（元号1文字・元号年・月・日）。元号外・不正な日付は null。
+// 扶養控除等申告書のPDF（元号プルダウン＋年月日欄）への入力に使う
+export function warekiParts(
+  dateStr: string | null,
+): { era: string; eraLong: string; year: number; month: number; day: number } | null {
+  if (!dateStr) return null;
   const m = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return "";
+  if (!m) return null;
   const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
   const ymd = dateStr;
-  let era = "";
-  let eraYear = 0;
-  if (ymd >= "2019-05-01") {
-    era = "令和";
-    eraYear = y - 2018;
-  } else if (ymd >= "1989-01-08") {
-    era = "平成";
-    eraYear = y - 1988;
-  } else if (ymd >= "1926-12-25") {
-    era = "昭和";
-    eraYear = y - 1925;
-  } else if (ymd >= "1912-07-30") {
-    era = "大正";
-    eraYear = y - 1911;
-  } else {
-    return "";
-  }
-  return `${era}${eraYear === 1 ? "元" : eraYear}年${mo}月${d}日`;
+  if (ymd >= "2019-05-01") return { era: "令", eraLong: "令和", year: y - 2018, month: mo, day: d };
+  if (ymd >= "1989-01-08") return { era: "平", eraLong: "平成", year: y - 1988, month: mo, day: d };
+  if (ymd >= "1926-12-25") return { era: "昭", eraLong: "昭和", year: y - 1925, month: mo, day: d };
+  if (ymd >= "1912-07-30") return { era: "大", eraLong: "大正", year: y - 1911, month: mo, day: d };
+  return null;
+}
+
+// YYYY-MM-DD → 和暦表示（例: 1999-12-12 → 平成11年12月12日）。元号外・不正な日付は ''
+export function warekiDate(dateStr: string | null): string {
+  const p = warekiParts(dateStr);
+  if (!p) return "";
+  return `${p.eraLong}${p.year === 1 ? "元" : p.year}年${p.month}月${p.day}日`;
 }
 
 // 続柄が配偶者か（配偶者控除の対象）
