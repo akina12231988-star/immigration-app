@@ -4,8 +4,10 @@ import {
   emptyLodging,
   emptyOrganizationIntake,
   formatYen,
+  isOrgStaff,
   lodgingContractKind,
   normalizeOrganizationIntake,
+  orgStaffLabel,
   ownedMonthlyRent,
   parseAmount,
   perResidentCost,
@@ -129,5 +131,33 @@ describe("宿泊物件の費用計算", () => {
   });
   it("金額表示はカンマ区切り＋円", () => {
     expect(formatYen(58712)).toBe("58,712円");
+  });
+});
+
+describe("orgStaffLabel / isOrgStaff", () => {
+  it("主担当・副担当をまとめて表示する", () => {
+    expect(orgStaffLabel({ staff_primary: "市原　彩奈", staff_secondary: "田上　夏季" })).toBe(
+      "市原　彩奈（主）・田上　夏季（副）",
+    );
+  });
+
+  it("主担当のみ・副担当のみでも表示できる", () => {
+    expect(orgStaffLabel({ staff_primary: "市原　彩奈" })).toBe("市原　彩奈（主）");
+    expect(orgStaffLabel({ staff_secondary: "田上　夏季" })).toBe("田上　夏季（副）");
+  });
+
+  it("未設定・intakeなしは空文字", () => {
+    expect(orgStaffLabel({})).toBe("");
+    expect(orgStaffLabel(undefined)).toBe("");
+    expect(orgStaffLabel(null)).toBe("");
+  });
+
+  it("主担当・副担当のどちらかに一致すれば担当者", () => {
+    const intake = { staff_primary: "市原　彩奈", staff_secondary: "田上　夏季" };
+    expect(isOrgStaff(intake, "市原　彩奈")).toBe(true);
+    expect(isOrgStaff(intake, "田上　夏季")).toBe(true);
+    expect(isOrgStaff(intake, "大元　麗奈")).toBe(false);
+    expect(isOrgStaff(intake, "")).toBe(false);
+    expect(isOrgStaff(undefined, "市原　彩奈")).toBe(false);
   });
 });

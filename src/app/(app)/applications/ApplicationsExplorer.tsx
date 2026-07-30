@@ -31,6 +31,9 @@ import { applicationStatusLabel } from "@/lib/status";
 import { STAT_VIEWS, type StatViewKey } from "@/lib/application-stats";
 import { isExpiryAlert, todayStr } from "@/lib/application-alerts";
 import { listWorkersWithOrg, type WorkerWithOrg } from "@/lib/supabase/queries/workers";
+import { listOrganizations } from "@/lib/supabase/queries/organizations";
+import { isOrgStaff, orgStaffLabel } from "@/lib/organization-intake";
+import type { Organization } from "@/types/db";
 import { listActiveCustodyNoByWorker } from "@/lib/supabase/queries/custody";
 import { formatStorageNo } from "@/lib/custody";
 import {
@@ -108,6 +111,34 @@ export function ApplicationsExplorer({
     };
   }, []);
 
+  // 所属機関ごとの担当者（主・副）の表示・絞り込み用に機関マスタを取得する
+  const [orgs, setOrgs] = useState<Organization[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    listOrganizations(createClient())
+      .then((os) => {
+        if (!cancelled) setOrgs(os);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const orgById = useMemo(() => new Map(orgs.map((o) => [o.id, o])), [orgs]);
+  const orgIntakeFor = (a: Application) =>
+    a.organizationId ? orgById.get(a.organizationId)?.intake : undefined;
+
+  // 担当者での絞り込み（所属機関の主担当・副担当に一致する案件のみ表示）
+  const [tantouFilter, setTantouFilter] = useState("");
+  const tantouOptions = useMemo(() => {
+    const names = new Set<string>(PREP_TANTOU_OPTIONS);
+    for (const o of orgs) {
+      if (o.intake?.staff_primary) names.add(o.intake.staff_primary);
+      if (o.intake?.staff_secondary) names.add(o.intake.staff_secondary);
+    }
+    return [...names];
+  }, [orgs]);
+
   // メモ・受取予定日のインライン編集用（記入者名と編集可否）
   const [authorName, setAuthorName] = useState("");
   const [canEdit, setCanEdit] = useState(false);
@@ -175,6 +206,13 @@ export function ApplicationsExplorer({
       a.applicationNumber.toLowerCase().includes(kw) ||
       a.applicationContent.toLowerCase().includes(kw) ||
       a.assignee.toLowerCase().includes(kw);
+    // 担当者絞り込み: 所属機関の主担当・副担当に一致する案件のみ
+    const matchesTantou = (a: Application) =>
+      !tantouFilter ||
+      isOrgStaff(
+        a.organizationId ? orgById.get(a.organizationId)?.intake : undefined,
+        tantouFilter,
+      );
 
     const rows = applications.filter((a) => {
       if (view === "pre-prep") {
@@ -189,18 +227,18 @@ export function ApplicationsExplorer({
         if (permitFrom && (!d || d < permitFrom)) return false;
         if (permitTo && (!d || d > permitTo)) return false;
       }
-      return matchesKeyword(a);
+      return matchesKeyword(a) && matchesTantou(a);
     });
 
     // 「すべて」と「申請前＜準備中＞」では、在留更新で準備中の外国人を擬似行として先頭に出す。
     // 申請登録して審査中になると、この擬似行は実レコードの行に置き換わる。
     if (view === "all" || view === "pre-prep") {
       const placeholders = buildRenewalPlaceholders(renewalWorkers, applications, TODAY)
-        .filter(matchesKeyword);
+        .filter((a) => matchesKeyword(a) && matchesTantou(a));
       return [...placeholders, ...rows];
     }
     return rows;
-  }, [applications, renewalWorkers, keyword, view, showIssued, permitFrom, permitTo]);
+  }, [applications, renewalWorkers, keyword, view, showIssued, permitFrom, permitTo, tantouFilter, orgById]);
 
   // 並び替え。日付が未設定の行は末尾に回す
   const sorted = useMemo(() => {
@@ -220,7 +258,7 @@ export function ApplicationsExplorer({
   }, [filtered, sort]);
 
   // 絞り込み条件・並び順・表示件数が変わったら1ページ目に戻す（レンダー時に調整）
-  const filterKey = `${view}|${keyword}|${permitFrom}|${permitTo}|${pageSize}|${sort}`;
+  const filterKey = `${view}|${keyword}|${tantouFilter}|${permitFrom}|${permitTo}|${pageSize}|${sort}`;
   const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
   if (filterKey !== prevFilterKey) {
     setPrevFilterKey(filterKey);
@@ -388,6 +426,21 @@ export function ApplicationsExplorer({
         <p className="text-sm font-bold text-muted">{filtered.length}件</p>
         <div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-1.5 text-xs text-muted">
+            担当者
+            <select
+              value={tantouFilter}
+              onChange={(e) => setTantouFilter(e.target.value)}
+              className="min-h-[36px] rounded-lg border border-border bg-surface px-2 text-sm font-bold focus:border-brand focus:outline-none"
+            >
+              <option value="">すべて</option>
+              {tantouOptions.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-1.5 text-xs text-muted">
             並び順
             <select
               value={sort}
@@ -451,7 +504,12 @@ export function ApplicationsExplorer({
                       <StatusBadge status={a.status} label={applicationStatusLabel(a)} />
                     </div>
                   </div>
-                  <p className="mb-1 text-xs text-muted">{a.organizationName ?? "所属機関未設定"}</p>
+                  <p className="mb-1 text-xs text-muted">
+                    {a.organizationName ?? "所属機関未設定"}
+                    {orgStaffLabel(orgIntakeFor(a)) && (
+                      <span className="ml-2">担当 {orgStaffLabel(orgIntakeFor(a))}</span>
+                    )}
+                  </p>
                   <p className="mb-1 text-sm text-muted">{a.applicationContent}</p>
                   <div className="flex items-center justify-between text-xs text-muted">
                     <span>申請番号 {a.applicationNumber || "未登録"}</span>
@@ -557,6 +615,7 @@ export function ApplicationsExplorer({
                 <tr>
                   <Th>名前</Th>
                   <Th>所属機関</Th>
+                  <Th>機関担当（主・副）</Th>
                   {showPrep ? (
                     /* 申請前＜準備中＞: 申請内容・申請日・申請番号はまだ空のため、
                        代わりに在留更新の TODO番号・Notion・Messenger を表示する */
@@ -607,6 +666,7 @@ export function ApplicationsExplorer({
                         )}
                       </Td>
                       <Td>{a.organizationName ?? "—"}</Td>
+                      <Td className="text-xs">{orgStaffLabel(orgIntakeFor(a)) || "—"}</Td>
                       {showPrep ? (
                         <>
                           <Td className="tabular-nums">

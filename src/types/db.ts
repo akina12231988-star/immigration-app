@@ -112,6 +112,8 @@ export interface OrganizationIntake {
   fax: string; // FAX
   email: string; // Email
   report_staff: string; // 定期報告書・随時報告書の担当者名（退職の随時報告書へ自動転記）
+  staff_primary: string; // この機関の主担当（会社との窓口・進捗管理の責任者）
+  staff_secondary: string; // この機関の副担当（主担当不在時のバックアップ）
   fiscal_kind: string; // 決算情報の区分（個人事業主 / 法人）
   support_fee: string; // 毎月の支援代（月額）
   posting_note: string; // 求人で必須としている他条件（求人情報で注意喚起表示）
