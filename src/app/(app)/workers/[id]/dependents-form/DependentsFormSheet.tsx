@@ -26,11 +26,9 @@ interface FormWorker {
 // 給与所得者の扶養控除等（異動）申告書（令和8年分・国税庁の入力用PDF）を、
 // 外国人詳細の扶養家族データから自動入力してダウンロードする
 export function DependentsFormSheet({
-  org,
   worker,
   dependents,
 }: {
-  org: { name: string; corporate_no: string; address: string };
   worker: FormWorker;
   dependents: WorkerDependent[];
 }) {
@@ -53,11 +51,6 @@ export function DependentsFormSheet({
   const noBirth = dependents.filter((d) => !isSpouseRelation(d.relation) && d.birth === "");
 
   const formData: FuyoFormData = {
-    org: {
-      name: org.name,
-      corporateNo: org.corporate_no,
-      address: org.address,
-    },
     worker,
     householdHead,
     headRelation,
@@ -168,7 +161,10 @@ export function DependentsFormSheet({
         <Card className="p-4">
           <p className="mb-2 text-sm font-bold">記載内容</p>
           <dl className="space-y-2 text-sm">
-            <PreviewRow label="給与の支払者" value={`${org.name || "所属機関未設定"}（法人番号 ${org.corporate_no || "未登録"}）`} />
+            <PreviewRow
+              label="給与の支払者の欄"
+              value="記入しません（会社側で記載する欄のため空欄のまま出力します）"
+            />
             <PreviewRow
               label="本人"
               value={`${worker.name}${worker.birth ? `（${warekiDate(worker.birth)}生まれ）` : ""} ・ 世帯主 ${householdHead || "未入力"}（${headRelation || "未入力"}） ・ 配偶者の有無 ${spouse || worker.hasSpouse === "有" ? "有" : "無"}`}

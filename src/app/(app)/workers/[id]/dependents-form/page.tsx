@@ -20,20 +20,8 @@ export default async function DependentsFormPage({
   const worker = await getWorkerWithHistories(supabase, id);
   if (!worker) notFound();
 
-  // 給与の支払者 = 現在の所属機関（名称・法人番号・所在地）
-  let org = { name: "", corporate_no: "", address: "" };
-  if (worker.current_organization_id) {
-    const { data } = await supabase
-      .from("organizations")
-      .select("name, corporate_no, address")
-      .eq("id", worker.current_organization_id)
-      .maybeSingle();
-    if (data) org = data as typeof org;
-  }
-
   return (
     <DependentsFormSheet
-      org={org}
       worker={{
         name: worker.name,
         kana: worker.kana,
