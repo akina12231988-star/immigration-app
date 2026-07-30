@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Briefcase,
   ClipboardList,
+  ShieldAlert,
   TriangleAlert,
 } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
@@ -23,6 +24,7 @@ import { countPrePrepApplications, getDashboardStats } from "@/lib/application-s
 import { isExpiryAlert, todayStr } from "@/lib/application-alerts";
 import { useApplications } from "@/lib/application-store";
 import { buildRenewalPlaceholders } from "@/lib/renewal-placeholders";
+import { isSswInsuranceRenewalTarget, remainingLabel } from "@/lib/worker-alerts";
 import { listWorkersWithOrg, type WorkerWithOrg } from "@/lib/supabase/queries/workers";
 import { createClient } from "@/lib/supabase/client";
 
@@ -77,6 +79,9 @@ export default function DashboardPage() {
   // ④在留期限アラート: 申請時点の在留期限から1か月経過・未受取
   const today = todayStr();
   const expiryAlerts = applications.filter((a) => isExpiryAlert(a, today));
+
+  // 特定技能総合保険の期限アラート: 有効期限まで1か月以内（または超過）の外国人
+  const insuranceAlerts = renewalWorkers.filter((w) => isSswInsuranceRenewalTarget(w, today));
 
   // 申請前＜準備中＞: 実レコード＋在留更新準備中の擬似行（申請一覧のタブと同じ件数）
   const prePrepCount =
@@ -137,6 +142,39 @@ export default function DashboardPage() {
                       <span className="block truncate text-sm font-bold">{a.name}</span>
                       <span className="block truncate text-xs text-muted">
                         {a.organizationName ?? ""} 在留期限 {a.residenceExpiryAtApply}
+                      </span>
+                    </span>
+                    <ChevronRight size={16} className="shrink-0 text-seal" />
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {insuranceAlerts.length > 0 && (
+          <section>
+            <div className="rounded-2xl border-2 border-seal bg-seal/10 p-4">
+              <div className="mb-2 flex items-center gap-2 font-bold text-seal">
+                <ShieldAlert size={18} />
+                特定技能総合保険 期限アラート {insuranceAlerts.length}件
+              </div>
+              <p className="mb-2 text-xs text-seal/90">
+                特定技能総合保険の有効期限まで1か月を切った（または期限切れの）外国人です。更新手続きをしてください。
+              </p>
+              <div className="space-y-1.5">
+                {insuranceAlerts.map((w) => (
+                  <Link
+                    key={w.id}
+                    href={`/workers/${w.id}`}
+                    className="flex items-center justify-between gap-2 rounded-lg bg-surface px-3 py-2"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-bold">{w.name}</span>
+                      <span className="block truncate text-xs text-muted">
+                        {w.organizations?.name ?? ""} 有効期限 {w.ssw_insurance_expiry_date}
+                        {w.ssw_insurance_expiry_date &&
+                          `（${remainingLabel(w.ssw_insurance_expiry_date, today)}）`}
                       </span>
                     </span>
                     <ChevronRight size={16} className="shrink-0 text-seal" />

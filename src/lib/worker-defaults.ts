@@ -41,6 +41,11 @@ export function blankWorkerInput(name: string, organizationId: string | null = n
     messenger_link: "",
     specialty_grade: "",
     other_qualifications: "",
+    my_number: "",
+    employment_insurance_no: "",
+    pension_no: "",
+    ssw_insurance_link: "",
+    ssw_insurance_expiry_date: null,
     note: "",
   };
 }

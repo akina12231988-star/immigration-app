@@ -62,3 +62,11 @@ export function isPassportRenewalTarget(w: Worker, today: string): boolean {
   if (!w.passport_expiry_date) return false;
   return today >= addMonths(w.passport_expiry_date, -6);
 }
+
+// 特定技能総合保険の更新必要: 有効期限まで1か月以内（または既に超過）。期限未登録は対象外。
+// 退職者は対象から外す。
+export function isSswInsuranceRenewalTarget(w: Worker, today: string): boolean {
+  if (w.status === "退職") return false;
+  if (!w.ssw_insurance_expiry_date) return false;
+  return today >= addMonths(w.ssw_insurance_expiry_date, -1);
+}

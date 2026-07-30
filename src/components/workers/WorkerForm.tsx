@@ -57,6 +57,11 @@ function toInput(w: Worker | null): WorkerInput {
     messenger_link: w?.messenger_link ?? "",
     specialty_grade: w?.specialty_grade ?? "",
     other_qualifications: w?.other_qualifications ?? "",
+    my_number: w?.my_number ?? "",
+    employment_insurance_no: w?.employment_insurance_no ?? "",
+    pension_no: w?.pension_no ?? "",
+    ssw_insurance_link: w?.ssw_insurance_link ?? "",
+    ssw_insurance_expiry_date: w?.ssw_insurance_expiry_date ?? null,
     note: w?.note ?? "",
   };
 }
@@ -128,7 +133,8 @@ export function WorkerForm({
       | "residence_expiry_date"
       | "passport_expiry_date"
       | "leaving_on"
-      | "employment_start_on",
+      | "employment_start_on"
+      | "ssw_insurance_expiry_date",
   ) =>
     (e: React.ChangeEvent<HTMLInputElement>) =>
       set(key, e.target.value || null);
@@ -458,6 +464,53 @@ export function WorkerForm({
         </Field>
         <p className="px-1 text-[11px] leading-relaxed text-muted">
           有効期限の半年前になると「パスポート更新必要」に自動で表示されます。
+        </p>
+      </Fieldset>
+
+      <Fieldset legend="番号・保険情報">
+        <Field label="個人番号（マイナンバー）">
+          <input
+            value={form.my_number}
+            onChange={(e) => set("my_number", e.target.value)}
+            placeholder="例: 123456789012"
+            className={INPUT_CLASS}
+          />
+        </Field>
+        <Field label="雇用保険被保険者番号">
+          <input
+            value={form.employment_insurance_no}
+            onChange={(e) => set("employment_insurance_no", e.target.value)}
+            placeholder="例: 1234-567890-1"
+            className={INPUT_CLASS}
+          />
+        </Field>
+        <Field label="基礎年金番号">
+          <input
+            value={form.pension_no}
+            onChange={(e) => set("pension_no", e.target.value)}
+            placeholder="例: 1234-567890"
+            className={INPUT_CLASS}
+          />
+        </Field>
+        <Field label="特定技能総合保険の加入リンク先">
+          <input
+            type="url"
+            value={form.ssw_insurance_link}
+            onChange={(e) => set("ssw_insurance_link", e.target.value)}
+            placeholder="https://..."
+            className={INPUT_CLASS}
+          />
+        </Field>
+        <Field label="特定技能総合保険の有効期限">
+          <input
+            type="date"
+            value={form.ssw_insurance_expiry_date ?? ""}
+            onChange={setDate("ssw_insurance_expiry_date")}
+            className={INPUT_CLASS}
+          />
+        </Field>
+        <p className="px-1 text-[11px] leading-relaxed text-muted">
+          有効期限の1か月前になるとダッシュボードにアラートが表示されます。
         </p>
       </Fieldset>
 

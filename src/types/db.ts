@@ -206,6 +206,11 @@ export interface Worker {
   messenger_link: string; // Messenger グループ/個人リンク
   specialty_grade: string; // 専門級の合格名
   other_qualifications: string; // その他の資格・合格名
+  my_number: string; // 個人番号（マイナンバー）
+  employment_insurance_no: string; // 雇用保険被保険者番号
+  pension_no: string; // 基礎年金番号
+  ssw_insurance_link: string; // 特定技能総合保険の加入ページリンク
+  ssw_insurance_expiry_date: string | null; // 特定技能総合保険の有効期限
   note: string;
   worker_code: string | null; // 外国人ID（例: V-1）。自動採番
   legacy_id: string | null;
