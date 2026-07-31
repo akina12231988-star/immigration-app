@@ -3,7 +3,9 @@ import fontkit from "@pdf-lib/fontkit";
 import {
   dependentAge,
   dependentCategories,
+  formatYenAmount,
   isSpouseRelation,
+  remittanceTotal,
   warekiParts,
 } from "@/lib/dependents";
 import type { WorkerDependent } from "@/types/db";
@@ -12,7 +14,11 @@ import type { WorkerDependent } from "@/types/db";
 // テンプレート（public/forms/fuyo-r8.pdf）のフィールド名は機械的な連番のため、
 // ここで意味のある名前に対応付ける。座標をレンダリングして特定したマッピング。
 
+// 発行パターン。年末調整時はB欄の「生計を一にする事実」にその年の送金合計額を記載する
+export type FuyoFormKind = "入社時" | "年末調整時";
+
 export interface FuyoFormData {
+  kind?: FuyoFormKind; // 省略時は入社時
   worker: {
     name: string;
     kana: string;
@@ -27,32 +33,33 @@ export interface FuyoFormData {
 }
 
 // B欄（控除対象扶養親族・16歳以上）の行ごとのフィールド名
+// fact = 「生計を一にする事実」欄（その年に送金した合計額を記載する）
 const B_ROWS = [
   {
     kana: "Text25", name: "Text26", num: "Text27", rel: "Text28",
     era: "Dropdown5", y: "Text29", m: "Text30", d: "Text31",
-    income: "Text32", addr: "Text33",
+    income: "Text32", addr: "Text33", fact: "Text120",
     cbElderly: "Check Box1-2", cbSpecific: "Check Box2-1",
     cbYoung: "Check Box3-1", cbRemit: "Check Box3-4",
   },
   {
     kana: "Text35", name: "Text36", num: "Text37", rel: "Text38",
     era: "Dropdown6", y: "Text39", m: "Text40", d: "Text41",
-    income: "Text42", addr: "Text43",
+    income: "Text42", addr: "Text43", fact: "Text121",
     cbElderly: "Check Box4-2", cbSpecific: "Check Box5-1",
     cbYoung: "Check Box6-1", cbRemit: "Check Box6-4",
   },
   {
     kana: "Text45", name: "Text46", num: "Text47", rel: "Text48",
     era: "Dropdown7", y: "Text49", m: "Text50", d: "Text51",
-    income: "Text52", addr: "Text53",
+    income: "Text52", addr: "Text53", fact: "Text122",
     cbElderly: "Check Box7-2", cbSpecific: "Check Box8-1",
     cbYoung: "Check Box9-1", cbRemit: "Check Box9-4",
   },
   {
     kana: "Text55", name: "Text56", num: "Text57", rel: "Text58",
     era: "Dropdown8", y: "Text59", m: "Text60", d: "Text61",
-    income: "Text62", addr: "Text63",
+    income: "Text62", addr: "Text63", fact: "Text123",
     cbElderly: "Check Box10-2", cbSpecific: "Check Box11-1",
     cbYoung: "Check Box12-1", cbRemit: "Check Box12-4",
   },
@@ -148,6 +155,11 @@ export function buildFuyoFieldValues(data: FuyoFormData, today: string): FuyoFie
     setBirth(dep.birth, row.era, row.y, row.m, row.d);
     texts[row.income] = yen(dep.income);
     texts[row.addr] = dep.address;
+    // 年末調整時は「生計を一にする事実」欄にその年（1/1〜12/31）の送金合計額を記載する
+    if (data.kind === "年末調整時") {
+      const total = remittanceTotal(dep.remittances);
+      if (total > 0) texts[row.fact] = formatYenAmount(total);
+    }
     if (c.elderly) checks.push(row.cbElderly); // 老人扶養親族（その他）
     if (c.specific) checks.push(row.cbSpecific); // 特定扶養親族
     if (c.youngOrElderly) checks.push(row.cbYoung); // 16歳以上30歳未満又は70歳以上
