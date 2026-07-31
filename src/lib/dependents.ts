@@ -1,4 +1,4 @@
-import type { WorkerDependent } from "@/types/db";
+import type { DependentRemittance, WorkerDependent } from "@/types/db";
 
 // ---- 扶養家族の年齢・和暦・控除区分の判定 ----
 
@@ -109,6 +109,16 @@ export function emptyDependent(): WorkerDependent {
   };
 }
 
+// 送金1行分の正規化。旧形式（金額だけの文字列）は対象年なしとして引き継ぐ
+function normalizeRemittance(v: unknown): DependentRemittance {
+  if (typeof v === "string") return { year: "", amount: v };
+  const src = (v && typeof v === "object" ? v : {}) as Partial<DependentRemittance>;
+  return {
+    year: typeof src.year === "string" ? src.year : "",
+    amount: typeof src.amount === "string" ? src.amount : "",
+  };
+}
+
 // 保存済みの dependents（欠けたキーがあり得る）を完全な形に補完する
 export function normalizeDependents(raw: unknown): WorkerDependent[] {
   if (!Array.isArray(raw)) return [];
@@ -118,7 +128,7 @@ export function normalizeDependents(raw: unknown): WorkerDependent[] {
       ...emptyDependent(),
       ...src,
       remittances: Array.isArray(src.remittances)
-        ? src.remittances.map((v) => (typeof v === "string" ? v : String(v ?? "")))
+        ? src.remittances.map(normalizeRemittance)
         : [],
     };
   });
@@ -138,9 +148,28 @@ export function parseYen(s: string): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-// 送金明細の各行の合計額
-export function remittanceTotal(amounts: string[]): number {
-  return amounts.reduce((sum, a) => sum + (parseYen(a) ?? 0), 0);
+// 送金明細の合計額。year を渡すとその対象年の行だけを合計する
+export function remittanceTotal(entries: DependentRemittance[], year?: string): number {
+  return entries
+    .filter((e) => year === undefined || e.year === year)
+    .reduce((sum, e) => sum + (parseYen(e.amount) ?? 0), 0);
+}
+
+// 記録されている対象年の一覧（新しい年が先。未設定 '' は末尾）
+export function remittanceYears(entries: DependentRemittance[]): string[] {
+  const years = [...new Set(entries.map((e) => e.year))];
+  return years.sort((a, b) => {
+    if (!a) return 1;
+    if (!b) return -1;
+    return b.localeCompare(a);
+  });
+}
+
+// 西暦の年（例: 2026）→ その年の年末調整の和暦表記（例: 令和8年）。
+// 元号がまたがる年は年末（12/31）時点の元号で表す（令和元年分など）
+export function warekiYear(year: string): string {
+  const parts = warekiParts(`${year}-12-31`);
+  return parts ? `${parts.eraLong}${parts.year === 1 ? "元" : parts.year}年` : "";
 }
 
 // その扶養親族に必要な年間送金額。
@@ -153,12 +182,13 @@ export function remittanceTarget(
   return dependentCategories(dep, today).remittanceRequired ? REMITTANCE_HIGH_TARGET : 1;
 }
 
-// 送金額が目標に達しているか
+// その対象年の送金額が目標に達しているか
 export function isRemittanceAchieved(
   dep: Pick<WorkerDependent, "relation" | "birth" | "remittances">,
   today: string,
+  year: string,
 ): boolean {
-  return remittanceTotal(dep.remittances) >= remittanceTarget(dep, today);
+  return remittanceTotal(dep.remittances, year) >= remittanceTarget(dep, today);
 }
 
 // 金額の表示（例: 380,000円）

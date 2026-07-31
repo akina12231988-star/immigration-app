@@ -19,6 +19,7 @@ export type FuyoFormKind = "入社時" | "年末調整時";
 
 export interface FuyoFormData {
   kind?: FuyoFormKind; // 省略時は入社時
+  year?: string; // 年末調整の対象年（西暦）。送金合計額の集計に使う
   worker: {
     name: string;
     kana: string;
@@ -155,9 +156,9 @@ export function buildFuyoFieldValues(data: FuyoFormData, today: string): FuyoFie
     setBirth(dep.birth, row.era, row.y, row.m, row.d);
     texts[row.income] = yen(dep.income);
     texts[row.addr] = dep.address;
-    // 年末調整時は「生計を一にする事実」欄にその年（1/1〜12/31）の送金合計額を記載する
+    // 年末調整時は「生計を一にする事実」欄に対象年（1/1〜12/31）の送金合計額を記載する
     if (data.kind === "年末調整時") {
-      const total = remittanceTotal(dep.remittances);
+      const total = remittanceTotal(dep.remittances, data.year);
       if (total > 0) texts[row.fact] = formatYenAmount(total);
     }
     if (c.elderly) checks.push(row.cbElderly); // 老人扶養親族（その他）
