@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   employmentStartForOrg,
   normalizeOrgEmploymentStarts,
+  upsertOrgEmploymentStart,
 } from "./org-employment";
 
 describe("normalizeOrgEmploymentStarts", () => {
@@ -30,5 +31,22 @@ describe("employmentStartForOrg", () => {
     expect(employmentStartForOrg(entries, "org9")).toBeNull();
     expect(employmentStartForOrg(entries, "org3")).toBeNull();
     expect(employmentStartForOrg(entries, null)).toBeNull();
+  });
+});
+
+describe("upsertOrgEmploymentStart", () => {
+  it("同じ機関の行があれば日付を上書きする", () => {
+    const entries = [{ organization_id: "org1", start_on: "2024-04-01" }];
+    expect(upsertOrgEmploymentStart(entries, "org1", "2026-08-01")).toEqual([
+      { organization_id: "org1", start_on: "2026-08-01" },
+    ]);
+  });
+
+  it("無ければ行を追加する（既存行はそのまま）", () => {
+    const entries = [{ organization_id: "org1", start_on: "2024-04-01" }];
+    expect(upsertOrgEmploymentStart(entries, "org2", "2026-08-01")).toEqual([
+      { organization_id: "org1", start_on: "2024-04-01" },
+      { organization_id: "org2", start_on: "2026-08-01" },
+    ]);
   });
 });
