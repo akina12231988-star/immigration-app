@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileText, Plus, Users } from "lucide-react";
+import { Check, FileText, Plus, TriangleAlert, Users } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
@@ -12,8 +12,13 @@ import {
   dependentAge,
   dependentCategoryLabels,
   emptyDependent,
+  formatYenAmount,
+  isRemittanceAchieved,
   normalizeDependents,
+  remittanceTarget,
+  remittanceTotal,
   warekiDate,
+  REMITTANCE_HIGH_TARGET,
 } from "@/lib/dependents";
 import { todayStr } from "@/lib/ssw/calc";
 import type { WorkerDependent } from "@/types/db";
@@ -49,6 +54,8 @@ export function WorkerDependents({
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // 送金の目標を達成している人数（申告書はこの達成者のみで発行できる）
+  const achievedCount = rows.filter((r) => isRemittanceAchieved(r, today)).length;
 
   const setAt = (i: number, key: keyof WorkerDependent, value: string) => {
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, [key]: value } : r)));
@@ -87,10 +94,27 @@ export function WorkerDependents({
           扶養控除等申告書を作成
         </Link>
       </div>
-      <p className="mb-3 text-[11px] leading-relaxed text-muted">
+      <p className="mb-2 text-[11px] leading-relaxed text-muted">
         扶養親族証明書の内容を記録します。生年月日（西暦）を入力すると和暦と現時点の年齢、
         該当する控除区分（配偶者控除・老人扶養親族・特定扶養親族など）を自動で表示します。
+        年末の国際送金は明細書の各行の金額を入力すると、合計が目標額に達したかを自動で判定します。
       </p>
+      {rows.length > 0 && (
+        <p
+          className={`mb-3 rounded-lg px-3 py-2 text-xs font-bold ${
+            achievedCount === rows.length
+              ? "bg-status-approved-bg text-status-approved-fg"
+              : "bg-seal/10 text-seal"
+          }`}
+        >
+          送金の目標達成 {achievedCount}/{rows.length}人
+          {achievedCount < rows.length &&
+            `（未達成: ${rows
+              .filter((r) => !isRemittanceAchieved(r, today))
+              .map((r) => r.name || "氏名未入力")
+              .join("・")}）`}
+        </p>
+      )}
       {error && <p className="mb-2 rounded-lg bg-seal/10 px-3 py-2 text-xs text-seal">{error}</p>}
 
       {rows.length === 0 && (
@@ -204,16 +228,29 @@ export function WorkerDependents({
                     className={INPUT}
                   />
                 </Field>
-                <Field label="所得の見積額・送金額メモ">
+                <Field label="所得の見積額メモ">
                   <input
                     value={r.income}
                     onChange={(e) => setAt(i, "income", e.target.value)}
-                    placeholder="例: 0円 / 送金 40万円"
+                    placeholder="例: 0円"
                     disabled={!canEdit}
                     className={INPUT}
                   />
                 </Field>
               </div>
+
+              {/* 年末の国際送金（送金関係書類）の明細と目標達成チェック */}
+              <RemittanceRows
+                amounts={r.remittances}
+                target={remittanceTarget(r, today)}
+                canEdit={canEdit}
+                onChange={(v) => {
+                  setRows((rs) =>
+                    rs.map((row, idx) => (idx === i ? { ...row, remittances: v } : row)),
+                  );
+                  setSaved(false);
+                }}
+              />
             </div>
           );
         })}
@@ -240,6 +277,115 @@ export function WorkerDependents({
         </div>
       )}
     </Card>
+  );
+}
+
+// 年末の国際送金（送金関係書類）の明細入力。送金明細書の各行の金額を続けて入力でき、
+// Enterキーで次の行へ進む（最終行なら行を追加して移動）。合計が目標に達したかを表示する
+function RemittanceRows({
+  amounts,
+  target,
+  canEdit,
+  onChange,
+}: {
+  amounts: string[];
+  target: number;
+  canEdit: boolean;
+  onChange: (v: string[]) => void;
+}) {
+  const refs = useRef<(HTMLInputElement | null)[]>([]);
+  const rows = amounts.length > 0 ? amounts : [""];
+  const total = remittanceTotal(rows);
+  const achieved = total >= target && total > 0;
+  const highTarget = target >= REMITTANCE_HIGH_TARGET;
+
+  const setAt = (i: number, value: string) =>
+    onChange(rows.map((v, idx) => (idx === i ? value : v)));
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, i: number) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (i < rows.length - 1) {
+      refs.current[i + 1]?.focus();
+      return;
+    }
+    // 最終行でEnter: 行を1つ増やして、描画後にその行へ移動する
+    onChange([...rows, ""]);
+    setTimeout(() => refs.current[i + 1]?.focus(), 0);
+  };
+
+  return (
+    <div className="mt-2 rounded-xl border border-border bg-surface p-2.5">
+      <div className="mb-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <p className="text-[11px] font-bold text-muted">
+          年末の国際送金（送金明細書の各行）
+          <span className="ml-1.5 font-medium">
+            目標 {highTarget ? `${formatYenAmount(target)}以上` : "1円以上（送金関係書類が必要）"}
+          </span>
+        </p>
+        <span
+          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold ${
+            achieved
+              ? "bg-status-approved-bg text-status-approved-fg"
+              : "bg-seal/10 text-seal"
+          }`}
+        >
+          {achieved ? <Check size={12} /> : <TriangleAlert size={12} />}
+          合計 {formatYenAmount(total)}
+          {achieved
+            ? " ・達成"
+            : highTarget
+              ? ` ・あと${formatYenAmount(Math.max(0, target - total))}`
+              : " ・未送金"}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+        {rows.map((v, i) => (
+          <label key={i} className="flex items-center gap-1">
+            <span className="w-5 shrink-0 text-right text-[10px] text-muted">{i + 1}</span>
+            <input
+              ref={(el) => {
+                refs.current[i] = el;
+              }}
+              value={v}
+              onChange={(e) => setAt(i, e.target.value)}
+              onKeyDown={(e) => handleKeyDown(e, i)}
+              inputMode="numeric"
+              placeholder="0"
+              disabled={!canEdit}
+              className="min-h-[34px] w-full rounded-lg border border-border bg-background px-2 text-right text-sm tabular-nums focus:border-brand focus:outline-none disabled:opacity-60"
+            />
+          </label>
+        ))}
+      </div>
+      {canEdit && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <button
+            type="button"
+            onClick={() => {
+              onChange([...rows, ""]);
+              setTimeout(() => refs.current[rows.length]?.focus(), 0);
+            }}
+            className="inline-flex items-center gap-1 text-[11px] font-bold text-brand"
+          >
+            <Plus size={12} />
+            行を追加
+          </button>
+          {rows.length > 1 && (
+            <button
+              type="button"
+              onClick={() => onChange(rows.slice(0, -1))}
+              className="text-[11px] font-bold text-muted"
+            >
+              最後の行を削除
+            </button>
+          )}
+          <span className="text-[10px] text-muted">
+            Enterキーで次の行へ進みます（最終行なら行が増えます）
+          </span>
+        </div>
+      )}
+    </div>
   );
 }
 

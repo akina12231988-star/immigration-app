@@ -105,14 +105,63 @@ export function emptyDependent(): WorkerDependent {
     occupation: "",
     my_number: "",
     income: "",
+    remittances: [],
   };
 }
 
 // 保存済みの dependents（欠けたキーがあり得る）を完全な形に補完する
 export function normalizeDependents(raw: unknown): WorkerDependent[] {
   if (!Array.isArray(raw)) return [];
-  return raw.map((d) => ({
-    ...emptyDependent(),
-    ...(d && typeof d === "object" ? d : {}),
-  }));
+  return raw.map((d) => {
+    const src = (d && typeof d === "object" ? d : {}) as Partial<WorkerDependent>;
+    return {
+      ...emptyDependent(),
+      ...src,
+      remittances: Array.isArray(src.remittances)
+        ? src.remittances.map((v) => (typeof v === "string" ? v : String(v ?? "")))
+        : [],
+    };
+  });
+}
+
+// ---- 年末の国際送金（送金関係書類）の金額集計と目標判定 ----
+
+// 30歳以上70歳未満の非居住者の扶養親族は年38万円以上の送金が必要
+export const REMITTANCE_HIGH_TARGET = 380_000;
+
+// 金額文字列を数値にする（カンマ・円・全角数字を許容）。数値にならなければ null
+export function parseYen(s: string): number | null {
+  const half = s.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
+  const cleaned = half.replace(/[^0-9.]/g, "");
+  if (!cleaned) return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+// 送金明細の各行の合計額
+export function remittanceTotal(amounts: string[]): number {
+  return amounts.reduce((sum, a) => sum + (parseYen(a) ?? 0), 0);
+}
+
+// その扶養親族に必要な年間送金額。
+// 30歳以上70歳未満は38万円以上、それ以外（配偶者・16歳以上30歳未満・70歳以上・16歳未満）は
+// 送金関係書類が必要なため1円以上
+export function remittanceTarget(
+  dep: Pick<WorkerDependent, "relation" | "birth">,
+  today: string,
+): number {
+  return dependentCategories(dep, today).remittanceRequired ? REMITTANCE_HIGH_TARGET : 1;
+}
+
+// 送金額が目標に達しているか
+export function isRemittanceAchieved(
+  dep: Pick<WorkerDependent, "relation" | "birth" | "remittances">,
+  today: string,
+): boolean {
+  return remittanceTotal(dep.remittances) >= remittanceTarget(dep, today);
+}
+
+// 金額の表示（例: 380,000円）
+export function formatYenAmount(n: number): string {
+  return `${Math.round(n).toLocaleString("ja-JP")}円`;
 }

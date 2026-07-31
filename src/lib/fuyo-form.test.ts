@@ -33,6 +33,7 @@ const DATA: FuyoFormData = {
       occupation: "FARMER",
       my_number: "",
       income: "0円",
+      remittances: [],
     },
     {
       name: "BAN KIMHOEURN",
@@ -43,6 +44,7 @@ const DATA: FuyoFormData = {
       occupation: "FARMER",
       my_number: "",
       income: "0円",
+      remittances: [],
     },
     {
       name: "BORY REATREY",
@@ -53,6 +55,7 @@ const DATA: FuyoFormData = {
       occupation: "BURDEN",
       my_number: "",
       income: "0円",
+      remittances: [],
     },
   ],
 };
@@ -112,6 +115,7 @@ describe("buildFuyoFieldValues", () => {
             occupation: "",
             my_number: "",
             income: "0円",
+            remittances: [],
           },
         ],
       },
@@ -139,6 +143,7 @@ describe("buildFuyoFieldValues", () => {
             occupation: "",
             my_number: "",
             income: "",
+            remittances: [],
           },
         ],
       },

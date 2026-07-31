@@ -7,7 +7,11 @@ import { Card } from "@/components/ui/Card";
 import {
   dependentAge,
   dependentCategoryLabels,
+  formatYenAmount,
+  isRemittanceAchieved,
   isSpouseRelation,
+  remittanceTarget,
+  remittanceTotal,
   warekiDate,
 } from "@/lib/dependents";
 import { fuyoOverflow, type FuyoFormData } from "@/lib/fuyo-form";
@@ -27,7 +31,7 @@ interface FormWorker {
 // 外国人詳細の扶養家族データから自動入力してダウンロードする
 export function DependentsFormSheet({
   worker,
-  dependents,
+  dependents: allDependents,
 }: {
   worker: FormWorker;
   dependents: WorkerDependent[];
@@ -35,8 +39,17 @@ export function DependentsFormSheet({
   const today = todayStr();
   const [householdHead, setHouseholdHead] = useState(worker.name);
   const [headRelation, setHeadRelation] = useState("本人");
+  // 発行パターン: 入社時は扶養親族を全員記載、年末調整時は年末の国際送金が
+  // 目標に達した人だけを記載する
+  const [formKind, setFormKind] = useState<"入社時" | "年末調整時">("入社時");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const unachieved = allDependents.filter((d) => !isRemittanceAchieved(d, today));
+  const dependents =
+    formKind === "年末調整時"
+      ? allDependents.filter((d) => isRemittanceAchieved(d, today))
+      : allDependents;
 
   const spouse = dependents.find((d) => isSpouseRelation(d.relation));
   const over16 = dependents.filter(
@@ -75,7 +88,7 @@ export function DependentsFormSheet({
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `扶養控除等申告書_${worker.name}.pdf`;
+      a.download = `扶養控除等申告書_${formKind}_${worker.name}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -136,6 +149,58 @@ export function DependentsFormSheet({
             {busy ? "作成中…" : "申告書PDFをダウンロード"}
           </button>
         </div>
+
+        {/* 発行パターンの切り替え */}
+        <div>
+          <p className="mb-1.5 text-xs font-bold text-muted">発行パターン</p>
+          <div className="flex items-center gap-2">
+            {(["入社時", "年末調整時"] as const).map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setFormKind(k)}
+                className={`shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-bold ${
+                  formKind === k
+                    ? "border-brand bg-brand text-brand-foreground"
+                    : "border-border bg-surface text-muted"
+                }`}
+              >
+                {k}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-muted">
+            {formKind === "入社時"
+              ? "入社時: 登録されている扶養親族を全員記載します。"
+              : "年末調整時: 年末の国際送金が目標額に達した扶養親族だけを記載します（未達成の人は載せません）。"}
+          </p>
+        </div>
+
+        {/* 送金の目標未達成者 */}
+        {unachieved.length > 0 && (
+          <div
+            className={`rounded-xl px-3.5 py-2.5 text-xs leading-relaxed ${
+              formKind === "年末調整時" ? "bg-seal/10 text-seal" : "bg-background text-muted"
+            }`}
+          >
+            <p className="font-bold">
+              送金額が目標に達していない扶養親族が {unachieved.length}人います
+              {formKind === "年末調整時" ? "（申告書には記載されません）" : ""}
+            </p>
+            <ul className="mt-1 space-y-0.5">
+              {unachieved.map((d, i) => (
+                <li key={i}>
+                  {d.name || "氏名未入力"}（{d.relation || "続柄未入力"}）… 送金{" "}
+                  {formatYenAmount(remittanceTotal(d.remittances))} / 目標{" "}
+                  {formatYenAmount(remittanceTarget(d, today))}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-1 font-medium">
+              送金額の入力は外国人詳細の「扶養家族」から行えます。
+            </p>
+          </div>
+        )}
 
         {(overflow.over16Overflow > 0 || overflow.under16Overflow > 0 || noBirth.length > 0) && (
           <div className="rounded-xl bg-seal/10 px-3.5 py-2.5 text-xs leading-relaxed text-seal">
@@ -219,11 +284,13 @@ export function DependentsFormSheet({
 
 function depLine(d: WorkerDependent, today: string): string {
   const age = d.birth ? dependentAge(d.birth, today) : null;
+  const total = remittanceTotal(d.remittances);
   return [
     d.name || "氏名未入力",
     d.relation && `（${d.relation}）`,
     d.birth && `${warekiDate(d.birth)}生まれ`,
     age != null && `${age}歳`,
+    total > 0 && `送金 ${formatYenAmount(total)}`,
   ]
     .filter(Boolean)
     .join(" ");

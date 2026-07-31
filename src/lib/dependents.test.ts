@@ -3,8 +3,13 @@ import {
   dependentAge,
   dependentCategories,
   dependentCategoryLabels,
+  formatYenAmount,
+  isRemittanceAchieved,
   isSpouseRelation,
   normalizeDependents,
+  parseYen,
+  remittanceTarget,
+  remittanceTotal,
   warekiDate,
 } from "./dependents";
 
@@ -119,8 +124,51 @@ describe("normalizeDependents", () => {
       occupation: "",
       my_number: "",
       income: "",
+      remittances: [],
     });
     expect(normalizeDependents(null)).toEqual([]);
     expect(normalizeDependents("x")).toEqual([]);
+  });
+
+  it("送金明細は文字列配列に正規化する", () => {
+    expect(normalizeDependents([{ remittances: ["100000", "50,000"] }])[0].remittances).toEqual([
+      "100000",
+      "50,000",
+    ]);
+    expect(normalizeDependents([{ remittances: "x" }])[0].remittances).toEqual([]);
+  });
+});
+
+describe("送金額の集計・目標判定", () => {
+  it("カンマ・円・全角数字を許容して合計する", () => {
+    expect(parseYen("100,000円")).toBe(100000);
+    expect(parseYen("５０００")).toBe(5000);
+    expect(parseYen("")).toBeNull();
+    expect(parseYen("なし")).toBeNull();
+    expect(remittanceTotal(["100,000", "200000", "", "80,000円"])).toBe(380000);
+  });
+
+  it("30歳以上70歳未満は38万円、それ以外は1円以上が目標", () => {
+    expect(remittanceTarget({ relation: "母", birth: "1979-11-12" }, TODAY)).toBe(380000); // 46歳
+    expect(remittanceTarget({ relation: "妹", birth: "2005-06-01" }, TODAY)).toBe(1); // 21歳
+    expect(remittanceTarget({ relation: "父", birth: "1950-01-01" }, TODAY)).toBe(1); // 76歳
+    expect(remittanceTarget({ relation: "配偶者", birth: "2000-01-01" }, TODAY)).toBe(1);
+    expect(remittanceTarget({ relation: "子", birth: "2015-01-01" }, TODAY)).toBe(1); // 11歳
+  });
+
+  it("合計が目標に達したかを判定する", () => {
+    const mother = { relation: "母", birth: "1979-11-12" };
+    expect(isRemittanceAchieved({ ...mother, remittances: ["380,000"] }, TODAY)).toBe(true);
+    expect(isRemittanceAchieved({ ...mother, remittances: ["300,000", "80,000"] }, TODAY)).toBe(true);
+    expect(isRemittanceAchieved({ ...mother, remittances: ["300,000"] }, TODAY)).toBe(false);
+    expect(isRemittanceAchieved({ ...mother, remittances: [] }, TODAY)).toBe(false);
+
+    const sister = { relation: "妹", birth: "2005-06-01" };
+    expect(isRemittanceAchieved({ ...sister, remittances: ["10,000"] }, TODAY)).toBe(true);
+    expect(isRemittanceAchieved({ ...sister, remittances: [""] }, TODAY)).toBe(false);
+  });
+
+  it("金額表示はカンマ区切り＋円", () => {
+    expect(formatYenAmount(380000)).toBe("380,000円");
   });
 });
