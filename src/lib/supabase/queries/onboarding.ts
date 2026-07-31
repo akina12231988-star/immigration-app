@@ -1,5 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { OnboardingDocumentRow, OnboardingRecordRow } from "@/types/db";
+import type {
+  OnboardingDocumentRow,
+  OnboardingFollowupRow,
+  OnboardingRecordRow,
+} from "@/types/db";
 
 // ---- 入社書類メール（onboarding_records / onboarding_documents） ----
 
@@ -81,6 +85,44 @@ export async function markOnboardingDocReceived(
     .from("onboarding_documents")
     .update({ received_on: receivedOn })
     .eq("id", docId);
+  if (error) throw error;
+}
+
+// ---- 訂正・追送メールの送付履歴（onboarding_followups） ----
+
+export async function listOnboardingFollowups(
+  supabase: SupabaseClient,
+  workerId: string,
+): Promise<OnboardingFollowupRow[]> {
+  const { data, error } = await supabase
+    .from("onboarding_followups")
+    .select("*")
+    .eq("worker_id", workerId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data as OnboardingFollowupRow[]) ?? [];
+}
+
+export type OnboardingFollowupInput = Omit<OnboardingFollowupRow, "id" | "created_at">;
+
+export async function insertOnboardingFollowup(
+  supabase: SupabaseClient,
+  input: OnboardingFollowupInput,
+): Promise<OnboardingFollowupRow> {
+  const { data, error } = await supabase
+    .from("onboarding_followups")
+    .insert(input)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as OnboardingFollowupRow;
+}
+
+export async function deleteOnboardingFollowup(
+  supabase: SupabaseClient,
+  id: string,
+): Promise<void> {
+  const { error } = await supabase.from("onboarding_followups").delete().eq("id", id);
   if (error) throw error;
 }
 

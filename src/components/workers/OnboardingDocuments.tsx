@@ -15,7 +15,11 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
-import { getOnboardingRecord, listOnboardingDocs } from "@/lib/supabase/queries/onboarding";
+import {
+  getOnboardingRecord,
+  listOnboardingDocs,
+  listOnboardingFollowups,
+} from "@/lib/supabase/queries/onboarding";
 import {
   clearOnboardingDocFile,
   getOnboardingDocDownloadUrl,
@@ -38,7 +42,11 @@ import {
   type OnboardingDocDef,
 } from "@/lib/onboarding";
 import { todayStr } from "@/lib/ssw/calc";
-import type { OnboardingDocumentRow, OnboardingRecordRow } from "@/types/db";
+import type {
+  OnboardingDocumentRow,
+  OnboardingFollowupRow,
+  OnboardingRecordRow,
+} from "@/types/db";
 
 // 入社書類メールで使うデータの管理。書類ごとに保存・差し替え・削除ができ、
 // 在留カード・指定書は登録済みのものから紐付け（複製）できる。
@@ -52,6 +60,7 @@ export function OnboardingDocuments({
 }) {
   const [record, setRecord] = useState<OnboardingRecordRow | null>(null);
   const [docs, setDocs] = useState<OnboardingDocumentRow[]>([]);
+  const [followups, setFollowups] = useState<OnboardingFollowupRow[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [downloading, setDownloading] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -65,10 +74,13 @@ export function OnboardingDocuments({
     return Promise.all([
       getOnboardingRecord(supabase, workerId),
       listOnboardingDocs(supabase, workerId),
+      // onboarding_followups 未作成でも表示できるように握りつぶす
+      listOnboardingFollowups(supabase, workerId).catch(() => []),
     ])
-      .then(([r, d]) => {
+      .then(([r, d, fus]) => {
         setRecord(r);
         setDocs(d);
+        setFollowups(fus);
       })
       .catch(() => undefined);
   };
@@ -360,6 +372,26 @@ export function OnboardingDocuments({
                 画像もPDFに変換し、ファイル名は「番号＋添付データ名＋外国人の氏名.pdf」で保存されます。
               </p>
             </>
+          )}
+
+          {/* 訂正・追送の履歴（入社書類メールの訂正・追送モードで記録したもの） */}
+          {followups.length > 0 && (
+            <div className="rounded-xl border border-border bg-background px-3 py-2.5">
+              <p className="mb-1 text-xs font-bold text-muted">訂正・追送の履歴（{followups.length}件）</p>
+              <ul className="space-y-1 text-[11px] leading-relaxed">
+                {followups.map((f) => (
+                  <li key={f.id}>
+                    <span className="font-bold tabular-nums">{f.sent_on ?? "日付未設定"}</span>
+                    {f.reason && <span className="ml-1.5">{f.reason}</span>}
+                    <span className="block text-muted">
+                      {(f.docs ?? [])
+                        .map((d) => `${d.label}（${d.kind}）`)
+                        .join(" ・ ")}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
 
           {/* Gmailリンク */}

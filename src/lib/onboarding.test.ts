@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildFollowupMail,
   buildOnboardingMail,
+  followupMailDocs,
   formatDateSlash,
   isPendingDocAlert,
   isPendingDocOverdue,
+  isStartDateCorrectionNeeded,
   onboardingDocDefs,
   onboardingDownloadName,
   onboardingMailNumbers,
   onboardingPdfName,
   pendingDaysElapsed,
   reiwaYear,
+  startDateCorrectionReason,
 } from "./onboarding";
 
 describe("onboardingDocDefs", () => {
@@ -154,5 +158,103 @@ describe("未提出アラート", () => {
     expect(pendingDaysElapsed("2026-07-26", "2026-07-26")).toBe(0);
     expect(pendingDaysElapsed(null, "2026-07-26")).toBeNull();
     expect(pendingDaysElapsed("invalid", "2026-07-26")).toBeNull();
+  });
+});
+
+describe("followupMailDocs", () => {
+  it("訂正版→追加の順に通し番号を振る", () => {
+    const docs = followupMailDocs([
+      { label: "フリガナがわかる書類（前職の社保など）", kind: "追加", note: "" },
+      { label: "申請書類一式（雇用契約書・雇用条件書含む）", kind: "訂正版", note: "" },
+      { label: "労働者名簿", kind: "訂正版", note: "" },
+    ]);
+    expect(docs.map((d) => [d.num, d.label])).toEqual([
+      [1, "申請書類一式（雇用契約書・雇用条件書含む）"],
+      [2, "労働者名簿"],
+      [3, "フリガナがわかる書類（前職の社保など）"],
+    ]);
+  });
+});
+
+describe("buildFollowupMail", () => {
+  it("訂正理由・訂正版・追加資料・差し替えのお願いを組み立てる", () => {
+    const body = buildFollowupMail({
+      workerName: "BOY SAMNANG",
+      orgName: "有限会社國崎青果",
+      honorific: "御中",
+      reason: "雇用開始年月日の訂正（2026/08/01 → 2026/08/05）",
+      docs: [
+        { label: "申請書類一式（雇用契約書・雇用条件書含む）", kind: "訂正版", note: "" },
+        { label: "労働者名簿", kind: "訂正版", note: "" },
+        { label: "フリガナがわかる書類（前職の社保など）", kind: "追加", note: "前職の社保" },
+      ],
+      extraNote: "",
+      sender: "野口",
+    });
+    expect(body).toContain("有限会社國崎青果 御中");
+    expect(body).toContain(
+      "先日お送りしたBOY SAMNANGさんの入社書類について、雇用開始年月日の訂正（2026/08/01 → 2026/08/05）がありましたので",
+    );
+    expect(body).toContain("【訂正版】\n1. 申請書類一式（雇用契約書・雇用条件書含む）\n2. 労働者名簿");
+    expect(body).toContain("【追加資料】\n3. フリガナがわかる書類（前職の社保など）→前職の社保");
+    expect(body).toContain("以前お送りした資料との差し替えをお願いいたします");
+    expect(body.trim().endsWith("野口")).toBe(true);
+  });
+
+  it("追加資料だけのときは差し替えのお願いを入れない", () => {
+    const body = buildFollowupMail({
+      workerName: "BOY SAMNANG",
+      orgName: "有限会社國崎青果",
+      honorific: "御中",
+      reason: "",
+      docs: [{ label: "フリガナがわかる書類（前職の社保など）", kind: "追加", note: "" }],
+      extraNote: "",
+      sender: "野口",
+    });
+    expect(body).toContain("下記の資料を追加で添付いたします");
+    expect(body).not.toContain("差し替え");
+    expect(body).not.toContain("【訂正版】");
+  });
+});
+
+describe("雇用開始日の訂正検知", () => {
+  it("送信済みで記録と外国人情報の雇用開始日が食い違うと訂正が必要", () => {
+    expect(
+      isStartDateCorrectionNeeded({
+        recordStartOn: "2026-08-01",
+        workerStartOn: "2026-08-05",
+        mailSentOn: "2026-07-25",
+      }),
+    ).toBe(true);
+  });
+
+  it("未送信・日付一致・どちらか未入力なら対象外", () => {
+    expect(
+      isStartDateCorrectionNeeded({
+        recordStartOn: "2026-08-01",
+        workerStartOn: "2026-08-05",
+        mailSentOn: null,
+      }),
+    ).toBe(false);
+    expect(
+      isStartDateCorrectionNeeded({
+        recordStartOn: "2026-08-01",
+        workerStartOn: "2026-08-01",
+        mailSentOn: "2026-07-25",
+      }),
+    ).toBe(false);
+    expect(
+      isStartDateCorrectionNeeded({
+        recordStartOn: null,
+        workerStartOn: "2026-08-05",
+        mailSentOn: "2026-07-25",
+      }),
+    ).toBe(false);
+  });
+
+  it("訂正理由の文面を作る", () => {
+    expect(startDateCorrectionReason("2026-08-01", "2026-08-05")).toBe(
+      "雇用開始年月日の訂正（2026/08/01 → 2026/08/05）",
+    );
   });
 });
