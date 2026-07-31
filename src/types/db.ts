@@ -171,6 +171,7 @@ export interface WorkerDependent {
   occupation: string; // 職業及び年収（例: FARMER）
   my_number: string; // 個人番号（あれば）
   income: string; // 年中の所得の見積額・送金額のメモ
+  remittances: string[]; // 年末の国際送金明細書の各行の金額（入力したままの文字列）
 }
 
 // 所属機関別の雇用開始日の1件分（workers.org_employment_starts jsonb に配列で保存）。
