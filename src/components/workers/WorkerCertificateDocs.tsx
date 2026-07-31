@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Download, Eye, FileText, Loader2, Trash2, Upload } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { FileDropArea } from "@/components/ui/FileDropArea";
 import { createClient } from "@/lib/supabase/client";
 import { listOnboardingDocs } from "@/lib/supabase/queries/onboarding";
 import {
@@ -47,9 +48,9 @@ export function WorkerCertificateDocs({
     fileInputRef.current?.click();
   }
 
-  async function handleFile(file: File | undefined) {
-    const def = uploadDefRef.current;
-    if (!file || !def) return;
+  // ボタンからの選択・ドラッグ&ドロップの共通のアップロード処理
+  async function upload(def: CertDef, file: File | undefined) {
+    if (!file) return;
     setBusyKey(def.key);
     setError(null);
     try {
@@ -60,6 +61,11 @@ export function WorkerCertificateDocs({
     } finally {
       setBusyKey(null);
     }
+  }
+
+  async function handleFile(file: File | undefined) {
+    const def = uploadDefRef.current;
+    if (def) await upload(def, file);
   }
 
   async function deleteFile(def: CertDef, fileName: string) {
@@ -118,8 +124,10 @@ export function WorkerCertificateDocs({
           const hasFile = !!row?.storage_path;
           const busy = busyKey === def.key;
           return (
-            <div
+            <FileDropArea
               key={def.key}
+              onFiles={(files) => void upload(def, files[0])}
+              disabled={!canEdit || busy}
               className="flex items-center gap-2.5 border-b border-border bg-background px-3 py-2.5 text-sm last:border-b-0"
             >
               <span className="min-w-0 flex-1">
@@ -160,7 +168,7 @@ export function WorkerCertificateDocs({
                   </>
                 )}
               </div>
-            </div>
+            </FileDropArea>
           );
         })}
       </div>

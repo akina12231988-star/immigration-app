@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Check, Download, Eye, HeartPulse, Loader2, Trash2, Upload, ClipboardCheck } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { FileDropArea } from "@/components/ui/FileDropArea";
 import { createClient } from "@/lib/supabase/client";
 import { listOnboardingDocs } from "@/lib/supabase/queries/onboarding";
 import {
@@ -167,8 +168,12 @@ export function HealthCheckSection({
         </div>
       </div>
 
-      {/* 健康診断データ（ファイル） */}
-      <div className="mt-4 flex items-center gap-2.5 rounded-xl border border-border bg-background px-3 py-2.5 text-sm">
+      {/* 健康診断データ（ファイル）。この枠にドロップしてもアップロードできる */}
+      <FileDropArea
+        onFiles={(files) => void handleFile(files[0])}
+        disabled={!canEdit || busy}
+        className="mt-4 flex items-center gap-2.5 rounded-xl border border-border bg-background px-3 py-2.5 text-sm"
+      >
         <span className="min-w-0 flex-1">
           <span className="block truncate font-bold">健康診断データ</span>
           <span className="block truncate text-[11px] text-muted">
@@ -204,7 +209,7 @@ export function HealthCheckSection({
             </>
           )}
         </div>
-      </div>
+      </FileDropArea>
 
       <Link
         href={`/workers/${workerId}/health-check`}

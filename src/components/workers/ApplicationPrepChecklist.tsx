@@ -16,6 +16,7 @@ import {
   Upload,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { FileDropArea } from "@/components/ui/FileDropArea";
 import { createClient } from "@/lib/supabase/client";
 import { listOnboardingDocs } from "@/lib/supabase/queries/onboarding";
 import {
@@ -336,9 +337,11 @@ export function ApplicationPrepChecklist({
     return files.sort((a, b) => a.doc_key.localeCompare(b.doc_key, "en"));
   }
 
-  async function handleDocFile(file: File | undefined) {
-    const target = uploadRef.current;
-    if (!file || !target) return;
+  async function uploadDoc(
+    target: { docKey: string; label: string },
+    file: File | undefined,
+  ) {
+    if (!file) return;
     setBusyKey(target.docKey);
     setError(null);
     try {
@@ -349,6 +352,44 @@ export function ApplicationPrepChecklist({
     } finally {
       setBusyKey(null);
     }
+  }
+
+  async function handleDocFile(file: File | undefined) {
+    const target = uploadRef.current;
+    if (target) await uploadDoc(target, file);
+  }
+
+  // ドラッグ&ドロップでの添付。顔写真はそのまま、書類は既存の枚数に応じた枝番キーへ保存する
+  async function dropAttach(def: PrepDocDef, file: File | undefined) {
+    if (!file) return;
+    setError(null);
+    if (def.source.kind === "photo") {
+      await handlePhotoFile(file);
+      return;
+    }
+    const key = resolveDocKey(def);
+    if (!key) {
+      setError("先に対象年度（令和）を入力してください。");
+      return;
+    }
+    const existing = docFilesFor(def);
+    if (existing.length === 0) {
+      await uploadDoc(
+        { docKey: key, label: prepDocLabel(def, meta.target_reiwa, currentReiwa) },
+        file,
+      );
+      return;
+    }
+    const keys = new Set(existing.map((f) => f.doc_key));
+    let page = 2;
+    while (keys.has(prepPageKey(key, page))) page++;
+    await uploadDoc(
+      {
+        docKey: prepPageKey(key, page),
+        label: `${prepDocLabel(def, meta.target_reiwa, currentReiwa)}（${page}枚目）`,
+      },
+      file,
+    );
   }
 
   async function handlePhotoFile(file: File | undefined) {
@@ -658,6 +699,7 @@ export function ApplicationPrepChecklist({
                   custodyNo={custodyNo}
                   onPatchStatus={(patch, save) => patchDocStatus(item.def.id, patch, save)}
                   onAttach={() => startAttach(item.def)}
+                  onDropFiles={(files) => void dropAttach(item.def, files[0])}
                   onAddPage={() => startAttachPage(item.def, files)}
                   onRemoveFile={(f) =>
                     void removeDoc(
@@ -726,6 +768,7 @@ function DocRow({
   custodyNo,
   onPatchStatus,
   onAttach,
+  onDropFiles,
   onAddPage,
   onRemoveFile,
   onPreviewFile,
@@ -743,6 +786,7 @@ function DocRow({
   custodyNo: number | null;
   onPatchStatus: (patch: Partial<PrepDocStatusInput>, save?: boolean) => void;
   onAttach: () => void;
+  onDropFiles: (files: FileList) => void;
   onAddPage: () => void;
   onRemoveFile: (f: OnboardingDocumentRow) => void;
   onPreviewFile: (f: OnboardingDocumentRow) => void;
@@ -762,7 +806,11 @@ function DocRow({
   ];
 
   return (
-    <div className="border-b border-border bg-background px-3 py-2.5 text-sm last:border-b-0">
+    <FileDropArea
+      onFiles={onDropFiles}
+      disabled={!canEdit || busy}
+      className="border-b border-border bg-background px-3 py-2.5 text-sm last:border-b-0"
+    >
       <div className="flex items-center gap-2.5">
         <span
           className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${satisfied ? "bg-status-approved-fg" : "bg-seal"}`}
@@ -980,7 +1028,7 @@ function DocRow({
           )}
         </div>
       )}
-    </div>
+    </FileDropArea>
   );
 }
 

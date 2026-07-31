@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Camera, UserRound } from "lucide-react";
+import { FileDropArea } from "@/components/ui/FileDropArea";
 import { uploadWorkerPhoto } from "@/lib/worker-photo";
 import { getWorkerPhotoUrl } from "@/app/(app)/workers/actions";
 
@@ -50,7 +51,11 @@ export function WorkerPhoto({
 
   return (
     <div className="flex flex-col items-center gap-1">
-      <div
+      {/* 写真の枠にドロップしてもアップロードできる */}
+      <FileDropArea
+        onFiles={(files) => void handleFile(files[0])}
+        disabled={!canEdit || busy}
+        title="ここに写真をドロップしても登録できます"
         className="relative overflow-hidden rounded-2xl border border-border bg-background"
         style={{ width: size, height: size }}
       >
@@ -67,7 +72,7 @@ export function WorkerPhoto({
             <span className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
           </div>
         )}
-      </div>
+      </FileDropArea>
       {canEdit && (
         <button
           type="button"
