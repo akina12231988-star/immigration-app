@@ -350,6 +350,7 @@ export function ApplicationDetail({ id }: { id: string }) {
             files={files.filter((f) => f.kind === "受付票")}
             uploading={uploading === "受付票"}
             onSelect={(list) => handleUpload("受付票", list)}
+            onDelete={handleDeleteFile}
           />
           <FileGroup
             label="通知書"
@@ -357,6 +358,7 @@ export function ApplicationDetail({ id }: { id: string }) {
             files={files.filter((f) => f.kind === "通知書")}
             uploading={uploading === "通知書"}
             onSelect={(list) => handleUpload("通知書", list)}
+            onDelete={handleDeleteFile}
           />
         </div>
       </Card>
