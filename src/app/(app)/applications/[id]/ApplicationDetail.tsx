@@ -40,6 +40,7 @@ import {
 import { ApplicationEditDialog } from "./ApplicationEditDialog";
 import { ApprovalSection } from "./ApprovalSection";
 import { ContractOrgFormSection } from "./ContractOrgFormSection";
+import { SalesEntrySection } from "./SalesEntrySection";
 import { ORG_HONORIFICS } from "@/types/application";
 import type { ApplicationFile, ApplicationFileKind } from "@/types/application";
 
@@ -465,6 +466,9 @@ export function ApplicationDetail({ id }: { id: string }) {
       {app.approved && !withdrawn && cardReceived && app.workerId && (
         <ContractOrgFormSection app={app} />
       )}
+
+      {/* 在留カード受領後: freee販売への売上登録の明細を作る */}
+      {app.approved && !withdrawn && cardReceived && <SalesEntrySection app={app} />}
 
       {/* 取下げ・削除 */}
       <Card className="p-4">

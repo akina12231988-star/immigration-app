@@ -28,6 +28,7 @@ import { ApplicationPrepChecklist } from "@/components/workers/ApplicationPrepCh
 import { WorkerAddressHistory } from "@/components/workers/WorkerAddressHistory";
 import { WorkerDependents } from "@/components/workers/WorkerDependents";
 import { WorkerEmploymentStarts } from "@/components/workers/WorkerEmploymentStarts";
+import { WorkerSalesResignation } from "@/components/workers/WorkerSalesResignation";
 import { NotionTransferButton } from "@/components/workers/NotionTransferButton";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -566,7 +567,18 @@ export function WorkerDetail({
 
       {/* 退職者情報（状態が退職のときのみ表示） */}
       {worker.status === "退職" && (
-        <LeavingSection worker={worker} canEdit={canEdit} />
+        <>
+          <LeavingSection worker={worker} canEdit={canEdit} />
+          {/* 退職日までの支援代の日割りと、定期売上の締め */}
+          <WorkerSalesResignation
+            workerId={worker.id}
+            workerName={worker.name}
+            organizationId={worker.current_organization_id}
+            leavingOn={worker.leaving_on}
+            residenceStatus={worker.residence_status}
+            canEdit={canEdit}
+          />
+        </>
       )}
 
       {/* 雇用開始日（所属機関別）。現在の所属機関の分は雇用開始年月日に自動反映 */}
