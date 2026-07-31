@@ -12,6 +12,7 @@ import {
   type SalesEntryWithRefs,
 } from "@/lib/supabase/queries/sales";
 import { formatSalesYen } from "@/lib/sales";
+import { dbErrorMessage, errorMessage } from "@/lib/errors";
 import { todayStr } from "@/lib/ssw/calc";
 import type { SalesEntryStatus } from "@/types/db";
 
@@ -45,11 +46,7 @@ export function SalesClient({ canEdit }: { canEdit: boolean }) {
         })
         .catch((err) => {
           if (cancelled) return;
-          setError(
-            err instanceof Error
-              ? `${err.message}（テーブル未作成の場合はマイグレーション0061を適用してください）`
-              : "読み込みに失敗しました",
-          );
+          setError(dbErrorMessage(err, "0061_sales_entries.sql", "読み込みに失敗しました"));
         })
         .finally(() => {
           if (!cancelled) setLoading(false);
@@ -103,7 +100,7 @@ export function SalesClient({ canEdit }: { canEdit: boolean }) {
         ),
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "更新に失敗しました");
+      setError(errorMessage(err, "更新に失敗しました"));
     } finally {
       setBusyId(null);
     }
@@ -127,7 +124,7 @@ export function SalesClient({ canEdit }: { canEdit: boolean }) {
       await deleteSalesEntry(createClient(), id);
       setRows((prev) => prev.filter((r) => r.id !== id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "削除に失敗しました");
+      setError(errorMessage(err, "削除に失敗しました"));
     } finally {
       setBusyId(null);
     }

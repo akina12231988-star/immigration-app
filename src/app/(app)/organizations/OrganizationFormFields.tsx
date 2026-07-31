@@ -13,6 +13,7 @@ import {
 } from "@/app/(app)/organizations/actions";
 import { SSW_INDUSTRIES, categoriesFor } from "@/lib/industries";
 import { PREP_TANTOU_OPTIONS } from "@/lib/application-prep";
+import { SALES_APP_KINDS } from "@/lib/sales";
 import { todayStr } from "@/lib/ssw/calc";
 import {
   emptyFinancialYear,
@@ -20,6 +21,7 @@ import {
   emptyLodging,
   emptyOfficer,
   emptyOrganizationIntake,
+  emptySalesItem,
   formatYen,
   lodgingContractKind,
   normalizeOrganizationIntake,
@@ -31,6 +33,7 @@ import type {
   OrgJapaneseStaff,
   OrgLodging,
   OrgOfficer,
+  OrgSalesItem,
   Organization,
   OrganizationFileRow,
   OrganizationInput,
@@ -759,6 +762,65 @@ function IntakeSection({
         ) : (
           <p className={HINT_CLASS}>見積書は、会社・機関を登録したあとに編集画面から添付できます。</p>
         )}
+
+        <p className={GROUP_CLASS}>申請種別ごとの売上明細（freee販売）</p>
+        <p className={HINT_CLASS}>
+          在留カード受領後の売上登録で、申請種別を選ぶとここに登録した明細が自動で入ります。
+          明細項目と金額を必要な行数だけ登録してください（例: 申請取次費用 150,000円 / 書類作成費 30,000円）。
+        </p>
+        {SALES_APP_KINDS.map((kind) => {
+          const rows = intake.sales_items[kind] ?? [];
+          const setRows = (next: OrgSalesItem[]) =>
+            setIntake({ sales_items: { ...intake.sales_items, [kind]: next } });
+          return (
+            <div key={kind} className="rounded-xl border border-border p-2.5">
+              <p className="mb-1.5 text-xs font-bold">{kind}</p>
+              {rows.length === 0 && (
+                <p className={HINT_CLASS}>まだ明細がありません。「＋ 明細を追加」から登録してください。</p>
+              )}
+              <div className="flex flex-col gap-2">
+                {rows.map((row, i) => (
+                  <div key={i} className="flex items-end gap-2">
+                    <div className="min-w-0 flex-1">
+                      <IntakeField
+                        label="明細項目"
+                        value={row.name}
+                        onChange={(v) =>
+                          setRows(rows.map((r, idx) => (idx === i ? { ...r, name: v } : r)))
+                        }
+                        placeholder="例: 申請取次費用"
+                      />
+                    </div>
+                    <div className="w-32 shrink-0">
+                      <IntakeField
+                        label="金額"
+                        value={row.amount}
+                        onChange={(v) =>
+                          setRows(rows.map((r, idx) => (idx === i ? { ...r, amount: v } : r)))
+                        }
+                        placeholder="例: 150,000円"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setRows(rows.filter((_, idx) => idx !== i))}
+                      className="min-h-[44px] shrink-0 text-[11px] font-bold text-seal"
+                    >
+                      削除
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => setRows([...rows, emptySalesItem()])}
+                className="mt-1.5 text-xs font-bold text-brand"
+              >
+                ＋ 明細を追加
+              </button>
+            </div>
+          );
+        })}
 
         <p className={GROUP_CLASS}>一緒に働く日本人常勤職員（専従者）</p>
         <p className={HINT_CLASS}>記入した職員については、定期報告の際に賃金台帳を提出します。</p>

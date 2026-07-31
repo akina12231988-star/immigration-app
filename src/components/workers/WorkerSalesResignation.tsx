@@ -20,6 +20,7 @@ import {
   type SalesAppKind,
 } from "@/lib/sales";
 import { parseAmount } from "@/lib/organization-intake";
+import { dbErrorMessage } from "@/lib/errors";
 import type { SalesEntryRow } from "@/types/db";
 
 // 退職時の売上精算（freee販売）。退職日までの支援代を日割りで計上し、
@@ -105,11 +106,7 @@ export function WorkerSalesResignation({
         ...rows,
       ]);
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? `${err.message}（テーブル未作成の場合はマイグレーション0061を適用してください）`
-          : "保存に失敗しました",
-      );
+      setError(dbErrorMessage(err, "0061_sales_entries.sql", "保存に失敗しました"));
     } finally {
       setSaving(false);
     }
