@@ -17,7 +17,9 @@ import {
   normalizeDependents,
   remittanceTarget,
   remittanceTotal,
+  remittanceYears,
   warekiDate,
+  warekiYear,
   REMITTANCE_HIGH_TARGET,
 } from "@/lib/dependents";
 import { todayStr } from "@/lib/ssw/calc";
@@ -51,14 +53,51 @@ export function WorkerDependents({
   const router = useRouter();
   const today = todayStr();
   const [rows, setRows] = useState<WorkerDependent[]>(() => normalizeDependents(initial));
+  // 送金の対象年（西暦）。年末調整は年ごとに行うため、この年の送金だけを入力・判定する
+  const [targetYear, setTargetYear] = useState(today.slice(0, 4));
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // 送金の目標を達成している人数（申告書はこの達成者のみで発行できる）
-  const achievedCount = rows.filter((r) => isRemittanceAchieved(r, today)).length;
+  // 対象年の送金で目標を達成している人数（申告書はこの達成者のみで発行できる）
+  const achievedCount = rows.filter((r) => isRemittanceAchieved(r, today, targetYear)).length;
 
   const setAt = (i: number, key: keyof WorkerDependent, value: string) => {
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, [key]: value } : r)));
+    setSaved(false);
+  };
+
+  // 対象年の送金明細を差し替える（他の年の記録はそのまま残す）
+  const setRemittances = (i: number, amounts: string[]) => {
+    setRows((rs) =>
+      rs.map((r, idx) =>
+        idx === i
+          ? {
+              ...r,
+              remittances: [
+                ...r.remittances.filter((e) => e.year !== targetYear),
+                ...amounts.map((amount) => ({ year: targetYear, amount })),
+              ],
+            }
+          : r,
+      ),
+    );
+    setSaved(false);
+  };
+
+  // 対象年が未設定の古い記録を、いまの対象年に振り分ける
+  const assignYear = (i: number) => {
+    setRows((rs) =>
+      rs.map((r, idx) =>
+        idx === i
+          ? {
+              ...r,
+              remittances: r.remittances.map((e) =>
+                e.year === "" ? { ...e, year: targetYear } : e,
+              ),
+            }
+          : r,
+      ),
+    );
     setSaved(false);
   };
 
@@ -66,7 +105,13 @@ export function WorkerDependents({
     setBusy(true);
     setError(null);
     try {
-      await updateWorker(createClient(), workerId, { dependents: rows });
+      // 金額が空の行は保存しない
+      const cleaned = rows.map((r) => ({
+        ...r,
+        remittances: r.remittances.filter((e) => e.amount.trim() !== ""),
+      }));
+      await updateWorker(createClient(), workerId, { dependents: cleaned });
+      setRows(cleaned);
       setSaved(true);
       router.refresh();
     } catch (err) {
@@ -100,20 +145,41 @@ export function WorkerDependents({
         年末の国際送金は明細書の各行の金額を入力すると、合計が目標額に達したかを自動で判定します。
       </p>
       {rows.length > 0 && (
-        <p
-          className={`mb-3 rounded-lg px-3 py-2 text-xs font-bold ${
-            achievedCount === rows.length
-              ? "bg-status-approved-bg text-status-approved-fg"
-              : "bg-seal/10 text-seal"
-          }`}
-        >
-          送金の目標達成 {achievedCount}/{rows.length}人
-          {achievedCount < rows.length &&
-            `（未達成: ${rows
-              .filter((r) => !isRemittanceAchieved(r, today))
-              .map((r) => r.name || "氏名未入力")
-              .join("・")}）`}
-        </p>
+        <>
+          <label className="mb-2 flex flex-wrap items-center gap-2 text-xs font-bold text-muted">
+            送金の対象年（西暦）
+            <input
+              type="number"
+              min={2000}
+              max={2100}
+              value={targetYear}
+              onChange={(e) => setTargetYear(e.target.value)}
+              className="min-h-[36px] w-24 rounded-lg border border-border bg-surface px-2 text-sm tabular-nums focus:border-brand focus:outline-none"
+            />
+            <span className="font-medium">
+              {warekiYear(targetYear) ? `（${warekiYear(targetYear)}）` : ""}
+            </span>
+            <span className="font-medium text-muted">
+              の送金を入力・判定します（年末調整は年ごと）
+            </span>
+          </label>
+          <p
+            className={`mb-3 rounded-lg px-3 py-2 text-xs font-bold ${
+              achievedCount === rows.length
+                ? "bg-status-approved-bg text-status-approved-fg"
+                : "bg-seal/10 text-seal"
+            }`}
+          >
+            {targetYear}年
+            {warekiYear(targetYear) && `（${warekiYear(targetYear)}）`}の送金の目標達成{" "}
+            {achievedCount}/{rows.length}人
+            {achievedCount < rows.length &&
+              `（未達成: ${rows
+                .filter((r) => !isRemittanceAchieved(r, today, targetYear))
+                .map((r) => r.name || "氏名未入力")
+                .join("・")}）`}
+          </p>
+        </>
       )}
       {error && <p className="mb-2 rounded-lg bg-seal/10 px-3 py-2 text-xs text-seal">{error}</p>}
 
@@ -239,17 +305,22 @@ export function WorkerDependents({
                 </Field>
               </div>
 
-              {/* 年末の国際送金（送金関係書類）の明細と目標達成チェック */}
+              {/* 年末の国際送金（送金関係書類）の明細と目標達成チェック（対象年ごと） */}
               <RemittanceRows
-                amounts={r.remittances}
+                amounts={r.remittances
+                  .filter((e) => e.year === targetYear)
+                  .map((e) => e.amount)}
                 target={remittanceTarget(r, today)}
+                year={targetYear}
                 canEdit={canEdit}
-                onChange={(v) => {
-                  setRows((rs) =>
-                    rs.map((row, idx) => (idx === i ? { ...row, remittances: v } : row)),
-                  );
-                  setSaved(false);
-                }}
+                onChange={(v) => setRemittances(i, v)}
+                otherYears={remittanceYears(r.remittances)
+                  .filter((y) => y !== targetYear)
+                  .map((y) => ({
+                    year: y,
+                    total: remittanceTotal(r.remittances, y),
+                  }))}
+                onAssignYear={canEdit ? () => assignYear(i) : undefined}
               />
             </div>
           );
@@ -285,17 +356,23 @@ export function WorkerDependents({
 function RemittanceRows({
   amounts,
   target,
+  year,
   canEdit,
   onChange,
+  otherYears,
+  onAssignYear,
 }: {
   amounts: string[];
   target: number;
+  year: string; // 対象年（西暦）
   canEdit: boolean;
   onChange: (v: string[]) => void;
+  otherYears: { year: string; total: number }[]; // 他の年の記録（表示のみ）
+  onAssignYear?: () => void; // 対象年が未設定の古い記録を対象年に振り分ける
 }) {
   const refs = useRef<(HTMLInputElement | null)[]>([]);
   const rows = amounts.length > 0 ? amounts : [""];
-  const total = remittanceTotal(rows);
+  const total = remittanceTotal(rows.map((amount) => ({ year, amount })));
   const achieved = total >= target && total > 0;
   const highTarget = target >= REMITTANCE_HIGH_TARGET;
 
@@ -318,7 +395,7 @@ function RemittanceRows({
     <div className="mt-2 rounded-xl border border-border bg-surface p-2.5">
       <div className="mb-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <p className="text-[11px] font-bold text-muted">
-          年末の国際送金（送金明細書の各行）
+          {year}年{warekiYear(year) && `（${warekiYear(year)}）`}の国際送金（送金明細書の各行）
           <span className="ml-1.5 font-medium">
             目標 {highTarget ? `${formatYenAmount(target)}以上` : "1円以上（送金関係書類が必要）"}
           </span>
@@ -384,6 +461,28 @@ function RemittanceRows({
             Enterキーで次の行へ進みます（最終行なら行が増えます）
           </span>
         </div>
+      )}
+      {/* 他の年の記録（対象年を切り替えると入力できます） */}
+      {otherYears.length > 0 && (
+        <p className="mt-1.5 text-[10px] leading-relaxed text-muted">
+          他の年の送金:{" "}
+          {otherYears
+            .map((o) =>
+              o.year
+                ? `${o.year}年${warekiYear(o.year) ? `（${warekiYear(o.year)}）` : ""} ${formatYenAmount(o.total)}`
+                : `年未設定 ${formatYenAmount(o.total)}`,
+            )
+            .join(" ・ ")}
+          {otherYears.some((o) => !o.year) && onAssignYear && (
+            <button
+              type="button"
+              onClick={onAssignYear}
+              className="ml-1.5 font-bold text-brand underline"
+            >
+              年未設定を{year}年にする
+            </button>
+          )}
+        </p>
       )}
     </div>
   );

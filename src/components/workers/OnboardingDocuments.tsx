@@ -14,6 +14,7 @@ import {
   Upload,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { FileDropArea } from "@/components/ui/FileDropArea";
 import { createClient } from "@/lib/supabase/client";
 import {
   getOnboardingRecord,
@@ -153,9 +154,9 @@ export function OnboardingDocuments({
     fileInputRef.current?.click();
   };
 
-  const handleFile = async (file: File | undefined) => {
-    const def = uploadDefRef.current;
-    if (!file || !def) return;
+  // ボタンからの選択・ドラッグ&ドロップの共通のアップロード処理
+  const upload = async (def: OnboardingDocDef, file: File | undefined) => {
+    if (!file) return;
     setBusyKey(def.key);
     setError(null);
     try {
@@ -166,6 +167,11 @@ export function OnboardingDocuments({
     } finally {
       setBusyKey(null);
     }
+  };
+
+  const handleFile = async (file: File | undefined) => {
+    const def = uploadDefRef.current;
+    if (def) await upload(def, file);
   };
 
   const linkDoc = async (def: OnboardingDocDef) => {
@@ -265,8 +271,10 @@ export function OnboardingDocuments({
                 const isLinkable = def.key in LINKABLE_DOC_KINDS;
                 const busy = busyKey === def.key;
                 return (
-                  <div
+                  <FileDropArea
                     key={def.key}
+                    onFiles={(files) => void upload(def, files[0])}
+                    disabled={!canEdit || busy}
                     className="flex items-center gap-2.5 border-b border-border bg-background px-3 py-2.5 text-sm last:border-b-0"
                   >
                     {hasFile && row ? (
@@ -326,7 +334,7 @@ export function OnboardingDocuments({
                         </>
                       )}
                     </div>
-                  </div>
+                  </FileDropArea>
                 );
               })}
             </div>

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CreditCard, FileText, ImagePlus } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { FileDropArea } from "@/components/ui/FileDropArea";
 import { uploadWorkerDoc } from "@/lib/worker-docs";
 import { listWorkerDocs, type WorkerDocView } from "@/app/(app)/workers/actions";
 import type { WorkHistoryRow } from "@/types/db";
@@ -245,18 +246,23 @@ function DocColumn({
           </button>
         )}
       </div>
-      <div className="overflow-hidden rounded-xl border border-border bg-background">
+      {/* 画像の枠にファイルを落としてもアップロードできる */}
+      <FileDropArea
+        onFiles={(files) => void handleFile(files[0])}
+        disabled={!canEdit || busy}
+        className="overflow-hidden rounded-xl border border-border bg-background"
+      >
         {latest ? (
           <a href={latest.url} target="_blank" rel="noopener noreferrer">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={latest.url} alt={kind} className="max-h-56 w-full object-contain" />
           </a>
         ) : (
-          <div className="flex h-32 items-center justify-center text-xs text-muted">
-            {emptyLabel}
+          <div className="flex h-32 items-center justify-center px-2 text-center text-xs text-muted">
+            {canEdit ? `${emptyLabel}（ここにドロップでも登録できます）` : emptyLabel}
           </div>
         )}
-      </div>
+      </FileDropArea>
       {latest?.fromApplication && (
         <p className="mt-1 text-[10px] text-muted">申請登録時の画像を表示中（差し替えると最新になります）</p>
       )}

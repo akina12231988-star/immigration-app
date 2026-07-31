@@ -10,7 +10,9 @@ import {
   parseYen,
   remittanceTarget,
   remittanceTotal,
+  remittanceYears,
   warekiDate,
+  warekiYear,
 } from "./dependents";
 
 const TODAY = "2026-07-30";
@@ -130,14 +132,21 @@ describe("normalizeDependents", () => {
     expect(normalizeDependents("x")).toEqual([]);
   });
 
-  it("送金明細は文字列配列に正規化する", () => {
-    expect(normalizeDependents([{ remittances: ["100000", "50,000"] }])[0].remittances).toEqual([
-      "100000",
-      "50,000",
+  it("送金明細は対象年つきに正規化する（旧形式の金額だけの文字列も引き継ぐ）", () => {
+    expect(
+      normalizeDependents([
+        { remittances: [{ year: "2026", amount: "100000" }, "50,000"] },
+      ])[0].remittances,
+    ).toEqual([
+      { year: "2026", amount: "100000" },
+      { year: "", amount: "50,000" }, // 旧形式は年未設定として残す
     ]);
     expect(normalizeDependents([{ remittances: "x" }])[0].remittances).toEqual([]);
   });
 });
+
+// 送金1行分（対象年つき）を作るテスト用ヘルパー
+const yen = (year: string, ...amounts: string[]) => amounts.map((amount) => ({ year, amount }));
 
 describe("送金額の集計・目標判定", () => {
   it("カンマ・円・全角数字を許容して合計する", () => {
@@ -145,7 +154,27 @@ describe("送金額の集計・目標判定", () => {
     expect(parseYen("５０００")).toBe(5000);
     expect(parseYen("")).toBeNull();
     expect(parseYen("なし")).toBeNull();
-    expect(remittanceTotal(["100,000", "200000", "", "80,000円"])).toBe(380000);
+    expect(remittanceTotal(yen("2026", "100,000", "200000", "", "80,000円"))).toBe(380000);
+  });
+
+  it("対象年を指定するとその年の送金だけを合計する", () => {
+    const entries = [...yen("2026", "300,000", "80,000"), ...yen("2025", "400,000")];
+    expect(remittanceTotal(entries, "2026")).toBe(380000);
+    expect(remittanceTotal(entries, "2025")).toBe(400000);
+    expect(remittanceTotal(entries, "2024")).toBe(0);
+    expect(remittanceTotal(entries)).toBe(780000); // 年を指定しなければ全期間
+  });
+
+  it("記録されている対象年を新しい順で返す（年未設定は末尾）", () => {
+    const entries = [...yen("2025", "1"), ...yen("", "2"), ...yen("2026", "3")];
+    expect(remittanceYears(entries)).toEqual(["2026", "2025", ""]);
+  });
+
+  it("西暦の年を年末時点の和暦にする", () => {
+    expect(warekiYear("2026")).toBe("令和8年");
+    expect(warekiYear("2019")).toBe("令和元年"); // 元号がまたがる年は年末の元号
+    expect(warekiYear("2018")).toBe("平成30年");
+    expect(warekiYear("")).toBe("");
   });
 
   it("30歳以上70歳未満は38万円、それ以外は1円以上が目標", () => {
@@ -156,16 +185,34 @@ describe("送金額の集計・目標判定", () => {
     expect(remittanceTarget({ relation: "子", birth: "2015-01-01" }, TODAY)).toBe(1); // 11歳
   });
 
-  it("合計が目標に達したかを判定する", () => {
+  it("対象年の合計が目標に達したかを判定する", () => {
     const mother = { relation: "母", birth: "1979-11-12" };
-    expect(isRemittanceAchieved({ ...mother, remittances: ["380,000"] }, TODAY)).toBe(true);
-    expect(isRemittanceAchieved({ ...mother, remittances: ["300,000", "80,000"] }, TODAY)).toBe(true);
-    expect(isRemittanceAchieved({ ...mother, remittances: ["300,000"] }, TODAY)).toBe(false);
-    expect(isRemittanceAchieved({ ...mother, remittances: [] }, TODAY)).toBe(false);
+    expect(
+      isRemittanceAchieved({ ...mother, remittances: yen("2026", "380,000") }, TODAY, "2026"),
+    ).toBe(true);
+    expect(
+      isRemittanceAchieved(
+        { ...mother, remittances: yen("2026", "300,000", "80,000") },
+        TODAY,
+        "2026",
+      ),
+    ).toBe(true);
+    expect(
+      isRemittanceAchieved({ ...mother, remittances: yen("2026", "300,000") }, TODAY, "2026"),
+    ).toBe(false);
+    expect(isRemittanceAchieved({ ...mother, remittances: [] }, TODAY, "2026")).toBe(false);
+    // 別の年の送金は対象年の判定に使わない
+    expect(
+      isRemittanceAchieved({ ...mother, remittances: yen("2025", "380,000") }, TODAY, "2026"),
+    ).toBe(false);
 
     const sister = { relation: "妹", birth: "2005-06-01" };
-    expect(isRemittanceAchieved({ ...sister, remittances: ["10,000"] }, TODAY)).toBe(true);
-    expect(isRemittanceAchieved({ ...sister, remittances: [""] }, TODAY)).toBe(false);
+    expect(
+      isRemittanceAchieved({ ...sister, remittances: yen("2026", "10,000") }, TODAY, "2026"),
+    ).toBe(true);
+    expect(isRemittanceAchieved({ ...sister, remittances: yen("2026", "") }, TODAY, "2026")).toBe(
+      false,
+    );
   });
 
   it("金額表示はカンマ区切り＋円", () => {

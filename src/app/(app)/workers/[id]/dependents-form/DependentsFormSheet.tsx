@@ -13,6 +13,7 @@ import {
   remittanceTarget,
   remittanceTotal,
   warekiDate,
+  warekiYear,
 } from "@/lib/dependents";
 import { fuyoOverflow, type FuyoFormData } from "@/lib/fuyo-form";
 import { todayStr } from "@/lib/ssw/calc";
@@ -42,13 +43,15 @@ export function DependentsFormSheet({
   // 発行パターン: 入社時は扶養親族を全員記載、年末調整時は年末の国際送金が
   // 目標に達した人だけを記載する
   const [formKind, setFormKind] = useState<"入社時" | "年末調整時">("入社時");
+  // 年末調整の対象年（西暦）。この年の送金で達成判定し、「生計を一にする事実」欄に合計額を記載する
+  const [targetYear, setTargetYear] = useState(today.slice(0, 4));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const unachieved = allDependents.filter((d) => !isRemittanceAchieved(d, today));
+  const unachieved = allDependents.filter((d) => !isRemittanceAchieved(d, today, targetYear));
   const dependents =
     formKind === "年末調整時"
-      ? allDependents.filter((d) => isRemittanceAchieved(d, today))
+      ? allDependents.filter((d) => isRemittanceAchieved(d, today, targetYear))
       : allDependents;
 
   const spouse = dependents.find((d) => isSpouseRelation(d.relation));
@@ -65,6 +68,7 @@ export function DependentsFormSheet({
 
   const formData: FuyoFormData = {
     kind: formKind,
+    year: targetYear,
     worker,
     householdHead,
     headRelation,
@@ -170,10 +174,28 @@ export function DependentsFormSheet({
               </button>
             ))}
           </div>
+          {formKind === "年末調整時" && (
+            <label className="mt-2 flex flex-wrap items-center gap-2 text-xs font-bold text-muted">
+              対象年（西暦）
+              <input
+                type="number"
+                min={2000}
+                max={2100}
+                value={targetYear}
+                onChange={(e) => setTargetYear(e.target.value)}
+                className="min-h-[36px] w-24 rounded-lg border border-border bg-background px-2 text-sm tabular-nums focus:border-brand focus:outline-none"
+              />
+              <span className="font-medium">
+                {warekiYear(targetYear) ? `（${warekiYear(targetYear)}）` : ""}
+              </span>
+            </label>
+          )}
           <p className="mt-1.5 text-[11px] leading-relaxed text-muted">
             {formKind === "入社時"
               ? "入社時: 登録されている扶養親族を全員記載します。"
-              : "年末調整時: 年末の国際送金が目標額に達した扶養親族だけを記載し、B欄の「生計を一にする事実」欄にその年（1月1日〜12月31日）の送金合計額を記載します。"}
+              : `年末調整時: ${targetYear}年${
+                  warekiYear(targetYear) ? `（${warekiYear(targetYear)}）` : ""
+                }の国際送金が目標額に達した扶養親族だけを記載し、B欄の「生計を一にする事実」欄にその年（1月1日〜12月31日）の送金合計額を記載します。`}
           </p>
         </div>
 
@@ -185,14 +207,15 @@ export function DependentsFormSheet({
             }`}
           >
             <p className="font-bold">
-              送金額が目標に達していない扶養親族が {unachieved.length}人います
+              {targetYear}年{warekiYear(targetYear) && `（${warekiYear(targetYear)}）`}
+              の送金額が目標に達していない扶養親族が {unachieved.length}人います
               {formKind === "年末調整時" ? "（申告書には記載されません）" : ""}
             </p>
             <ul className="mt-1 space-y-0.5">
               {unachieved.map((d, i) => (
                 <li key={i}>
                   {d.name || "氏名未入力"}（{d.relation || "続柄未入力"}）… 送金{" "}
-                  {formatYenAmount(remittanceTotal(d.remittances))} / 目標{" "}
+                  {formatYenAmount(remittanceTotal(d.remittances, targetYear))} / 目標{" "}
                   {formatYenAmount(remittanceTarget(d, today))}
                 </li>
               ))}

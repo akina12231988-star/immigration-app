@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Download, Eye, FileText, Loader2, Plus, Trash2, Upload } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { FileDropArea } from "@/components/ui/FileDropArea";
 import { createClient } from "@/lib/supabase/client";
 import { listOnboardingDocs } from "@/lib/supabase/queries/onboarding";
 import {
@@ -59,9 +60,12 @@ export function GensenDocuments({
     fileInputRef.current?.click();
   }
 
-  async function handleFile(file: File | undefined) {
-    const target = uploadKeyRef.current;
-    if (!file || !target) return;
+  // ボタンからの選択・ドラッグ&ドロップの共通のアップロード処理
+  async function upload(
+    target: { key: string; label: string },
+    file: File | undefined,
+  ) {
+    if (!file) return;
     setBusyKey(target.key);
     setError(null);
     try {
@@ -72,6 +76,11 @@ export function GensenDocuments({
     } finally {
       setBusyKey(null);
     }
+  }
+
+  async function handleFile(file: File | undefined) {
+    const target = uploadKeyRef.current;
+    if (target) await upload(target, file);
   }
 
   async function remove(row: OnboardingDocumentRow) {
@@ -131,8 +140,12 @@ export function GensenDocuments({
           {rows.map((row) => {
             const busy = busyKey === row.doc_key;
             return (
-              <div
+              <FileDropArea
                 key={row.id}
+                onFiles={(files) =>
+                  void upload({ key: row.doc_key, label: row.label }, files[0])
+                }
+                disabled={!canEdit || busy}
                 className="flex items-center gap-2.5 border-b border-border bg-background px-3 py-2.5 text-sm last:border-b-0"
               >
                 <span className="min-w-0 flex-1">
@@ -169,7 +182,7 @@ export function GensenDocuments({
                     </>
                   )}
                 </div>
-              </div>
+              </FileDropArea>
             );
           })}
         </div>
