@@ -508,6 +508,23 @@ export interface OnboardingRecordRow {
   updated_at: string;
 }
 
+// 訂正・追送で送った書類の1件分（onboarding_followups.docs jsonb に配列で保存）
+export interface OnboardingFollowupDoc {
+  label: string; // 書類名
+  kind: "訂正版" | "追加"; // 訂正版の再送か、追加資料か
+  note: string; // 備考
+}
+
+// 入社書類メールの訂正・追送の送付履歴（0059_onboarding_followups.sql）
+export interface OnboardingFollowupRow {
+  id: string;
+  worker_id: string;
+  sent_on: string | null; // 送った日
+  reason: string; // 訂正・追送の理由
+  docs: OnboardingFollowupDoc[];
+  created_at: string;
+}
+
 // 書類ごとのステータス・後送期日・アップロードファイル
 export interface OnboardingDocumentRow {
   id: string;

@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Briefcase,
   ClipboardList,
+  MailWarning,
   ShieldAlert,
   TriangleAlert,
 } from "lucide-react";
@@ -25,6 +26,7 @@ import { isExpiryAlert, todayStr } from "@/lib/application-alerts";
 import { useApplications } from "@/lib/application-store";
 import { buildRenewalPlaceholders } from "@/lib/renewal-placeholders";
 import { isSswInsuranceRenewalTarget, remainingLabel } from "@/lib/worker-alerts";
+import { formatDateSlash, isStartDateCorrectionNeeded } from "@/lib/onboarding";
 import { listWorkersWithOrg, type WorkerWithOrg } from "@/lib/supabase/queries/workers";
 import { listOrganizations } from "@/lib/supabase/queries/organizations";
 import { orgStaffLabel } from "@/lib/organization-intake";
@@ -97,9 +99,40 @@ export default function DashboardPage() {
   const staffForOrg = (orgId: string | null | undefined) =>
     orgId ? orgStaffLabel(orgById.get(orgId)?.intake) : "";
 
+  // 入社書類メールの送信記録（雇用開始日の訂正検知に使う）
+  const [onbRecords, setOnbRecords] = useState<
+    { worker_id: string; employment_start_on: string | null; mail_sent_on: string | null }[]
+  >([]);
+  useEffect(() => {
+    let cancelled = false;
+    void createClient()
+      .from("onboarding_records")
+      .select("worker_id, employment_start_on, mail_sent_on")
+      .then(({ data }) => {
+        if (!cancelled && data) setOnbRecords(data as typeof onbRecords);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const onbRecordByWorker = new Map(onbRecords.map((r) => [r.worker_id, r]));
+
   // ④在留期限アラート: 申請時点の在留期限から1か月経過・未受取
   const today = todayStr();
   const expiryAlerts = applications.filter((a) => isExpiryAlert(a, today));
+
+  // 入社書類メールの訂正アラート: 初回送信後に雇用開始日が変わった外国人
+  const correctionAlerts = renewalWorkers
+    .map((w) => ({ w, r: onbRecordByWorker.get(w.id) }))
+    .filter(({ w, r }) =>
+      r
+        ? isStartDateCorrectionNeeded({
+            recordStartOn: r.employment_start_on,
+            workerStartOn: w.employment_start_on,
+            mailSentOn: r.mail_sent_on,
+          })
+        : false,
+    );
 
   // 特定技能総合保険の期限アラート: 有効期限まで1か月以内（または超過）の外国人。
   // 所属機関が外国人負担で本人が自己負担加入を希望していない場合（未加入）は対象外
@@ -207,6 +240,40 @@ export default function DashboardPage() {
                           `（${remainingLabel(w.ssw_insurance_expiry_date, today)}）`}
                         {staffForOrg(w.current_organization_id) &&
                           ` ・担当 ${staffForOrg(w.current_organization_id)}`}
+                      </span>
+                    </span>
+                    <ChevronRight size={16} className="shrink-0 text-seal" />
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* 入社書類メールの訂正アラート: 送信後に雇用開始日が変わった外国人 */}
+        {correctionAlerts.length > 0 && (
+          <section>
+            <div className="rounded-2xl border-2 border-seal bg-seal/10 p-4">
+              <div className="mb-2 flex items-center gap-2 font-bold text-seal">
+                <MailWarning size={18} />
+                入社書類の訂正が必要 {correctionAlerts.length}件
+              </div>
+              <p className="mb-2 text-xs text-seal/90">
+                入社書類メールを送った後に雇用開始日が変わった外国人です。訂正版（雇用条件書・労働者名簿など）を送ってください。
+              </p>
+              <div className="space-y-1.5">
+                {correctionAlerts.map(({ w, r }) => (
+                  <Link
+                    key={w.id}
+                    href={`/onboarding?worker=${w.id}`}
+                    className="flex items-center justify-between gap-2 rounded-lg bg-surface px-3 py-2"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-bold">{w.name}</span>
+                      <span className="block truncate text-xs text-muted">
+                        {w.organizations?.name ?? ""} 雇用開始日{" "}
+                        {formatDateSlash(r?.employment_start_on ?? null)} →{" "}
+                        {formatDateSlash(w.employment_start_on)}
                       </span>
                     </span>
                     <ChevronRight size={16} className="shrink-0 text-seal" />

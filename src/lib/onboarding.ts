@@ -198,6 +198,96 @@ export function onboardingPdfName(num: number, label: string, workerName: string
   return `${onboardingDownloadBaseName(num, label, workerName)}.pdf`;
 }
 
+// ---- 訂正・追送メール（初回送付後に訂正版・追加資料を送るとき） ----
+
+export type FollowupKind = "訂正版" | "追加";
+
+export interface FollowupMailDoc {
+  label: string;
+  kind: FollowupKind;
+  note: string;
+}
+
+export interface FollowupMailInput {
+  workerName: string;
+  orgName: string;
+  honorific: "御中" | "様";
+  reason: string; // 訂正・追送の理由（例: 雇用開始年月日の訂正（2026/08/01 → 2026/08/05））
+  docs: FollowupMailDoc[]; // 今回送る書類（訂正版→追加の順に通し番号を振る）
+  extraNote: string;
+  sender: string;
+}
+
+// 訂正・追送メールで送る書類の並び（訂正版→追加の順）と通し番号
+export function followupMailDocs(
+  docs: FollowupMailDoc[],
+): (FollowupMailDoc & { num: number })[] {
+  const ordered = [
+    ...docs.filter((d) => d.kind === "訂正版"),
+    ...docs.filter((d) => d.kind === "追加"),
+  ];
+  return ordered.map((d, i) => ({ ...d, num: i + 1 }));
+}
+
+// 訂正・追送メールの本文。初回メール（buildOnboardingMail）と同じ宛名・結びの体裁で、
+// 【訂正版】【追加資料】の2区分に通し番号を振る。訂正版があるときは差し替えのお願いを入れる
+export function buildFollowupMail(input: FollowupMailInput): string {
+  const name = input.workerName.trim() || "（氏名未入力）";
+  const numbered = followupMailDocs(input.docs);
+  const reason = input.reason.trim();
+
+  let body = "";
+  if (input.orgName.trim()) body += `${input.orgName.trim()} ${input.honorific}\n\n`;
+  body += "お世話になっております。\n\n";
+  body += reason
+    ? `先日お送りした${name}さんの入社書類について、${reason}がありましたので、下記の資料を添付いたします。\n\n`
+    : `先日お送りした${name}さんの入社書類について、下記の資料を追加で添付いたします。\n\n`;
+
+  const sections: [string, FollowupKind][] = [
+    ["【訂正版】", "訂正版"],
+    ["【追加資料】", "追加"],
+  ];
+  for (const [heading, kind] of sections) {
+    const items = numbered.filter((d) => d.kind === kind);
+    if (items.length === 0) continue;
+    body += `${heading}\n`;
+    for (const item of items) {
+      body += `${item.num}. ${item.label}`;
+      if (item.note.trim()) body += `→${item.note.trim()}`;
+      body += "\n";
+    }
+    body += "\n";
+  }
+
+  if (numbered.some((d) => d.kind === "訂正版")) {
+    body += "お手数ですが、以前お送りした資料との差し替えをお願いいたします。\n\n";
+  }
+  if (input.extraNote.trim()) body += `${input.extraNote.trim()}\n\n`;
+  body += `ご確認のほどよろしくお願いします。\n\n${input.sender.trim()}`;
+  return body;
+}
+
+// 雇用開始日の訂正が必要か: 初回メールを送った後に、外国人情報の雇用開始日が
+// 送信時の記録（onboarding_records.employment_start_on）と食い違っている状態
+export function isStartDateCorrectionNeeded(params: {
+  recordStartOn: string | null;
+  workerStartOn: string | null;
+  mailSentOn: string | null;
+}): boolean {
+  const { recordStartOn, workerStartOn, mailSentOn } = params;
+  if (!mailSentOn) return false; // まだ送っていなければ訂正の必要はない
+  if (!recordStartOn || !workerStartOn) return false;
+  return recordStartOn !== workerStartOn;
+}
+
+// 雇用開始日訂正の理由文（例: 雇用開始年月日の訂正（2026/08/01 → 2026/08/05））
+export function startDateCorrectionReason(
+  recordStartOn: string | null,
+  workerStartOn: string | null,
+): string {
+  return `雇用開始年月日の訂正（${formatDateSlash(recordStartOn)} → ${formatDateSlash(workerStartOn)}）`;
+}
+
 // あとで送る扱いのステータス（後送・未入手）。経過日数アラートの対象になる
 export function isPendingStatus(status: OnboardingDocStatus): boolean {
   return status === "後送" || status === "未入手";

@@ -21,19 +21,28 @@ import { createClient } from "@/lib/supabase/client";
 import { compressImage } from "@/lib/image-compress";
 import { todayStr } from "@/lib/ssw/calc";
 import {
+  buildFollowupMail,
   buildOnboardingMail,
   DOC_REFERENCE_LINKS,
+  followupMailDocs,
+  formatDateSlash,
   isPendingStatus,
+  isStartDateCorrectionNeeded,
   onboardingDocDefs,
   onboardingDownloadName,
   onboardingMailNumbers,
   onboardingPdfName,
   pendingDaysElapsed,
+  startDateCorrectionReason,
+  type FollowupKind,
   type OnboardingDocDef,
 } from "@/lib/onboarding";
 import {
+  deleteOnboardingFollowup,
   getOnboardingRecord,
+  insertOnboardingFollowup,
   listOnboardingDocs,
+  listOnboardingFollowups,
   upsertOnboardingRecord,
   upsertOnboardingDocStatuses,
 } from "@/lib/supabase/queries/onboarding";
@@ -46,7 +55,11 @@ import {
 } from "./actions";
 import { downloadBlob, toPdfBlob } from "@/lib/onboarding-pdf";
 import type { WorkerForOnboarding } from "@/lib/supabase/queries/workers";
-import type { OnboardingDocStatus, OnboardingDocumentRow } from "@/types/db";
+import type {
+  OnboardingDocStatus,
+  OnboardingDocumentRow,
+  OnboardingFollowupRow,
+} from "@/types/db";
 
 const INPUT =
   "min-h-[42px] w-full rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none";
@@ -123,6 +136,17 @@ export function OnboardingClient({
   const [extraNote, setExtraNote] = useState("");
   const [gmailLink, setGmailLink] = useState("");
   const [mailSentOn, setMailSentOn] = useState("");
+  // 前回送信時の雇用開始日（onboarding_records のスナップショット。訂正検知に使う）
+  const [recordStartOn, setRecordStartOn] = useState("");
+
+  // 訂正・追送モード: 初回送付後に訂正版・追加資料を送るとき
+  const [mode, setMode] = useState<"initial" | "followup">("initial");
+  const [fuKinds, setFuKinds] = useState<Record<string, "" | FollowupKind>>({});
+  const [fuNotes, setFuNotes] = useState<Record<string, string>>({});
+  const [fuReason, setFuReason] = useState("");
+  const [fuSentOn, setFuSentOn] = useState(today);
+  const [fuSaving, setFuSaving] = useState(false);
+  const [followups, setFollowups] = useState<OnboardingFollowupRow[]>([]);
 
   const [docs, setDocs] = useState<Record<string, DocState>>({});
   const [loading, setLoading] = useState(false);
@@ -142,9 +166,11 @@ export function OnboardingClient({
       setMail("");
       try {
         const supabase = createClient();
-        const [record, rows] = await Promise.all([
+        const [record, rows, fus] = await Promise.all([
           getOnboardingRecord(supabase, id),
           listOnboardingDocs(supabase, id),
+          // onboarding_followups 未作成でも画面自体は使えるように握りつぶす
+          listOnboardingFollowups(supabase, id).catch(() => []),
         ]);
         // 保存済みがあればそれを、無ければ外国人情報から初期値を入れる
         const orgFromWorker = w.current_organization_id
@@ -160,6 +186,12 @@ export function OnboardingClient({
         setExtraNote(record?.extra_note ?? "");
         setGmailLink(record?.gmail_link ?? "");
         setMailSentOn(record?.mail_sent_on ?? "");
+        setRecordStartOn(record?.employment_start_on ?? "");
+        setFollowups(fus);
+        setFuKinds({});
+        setFuNotes({});
+        setFuReason("");
+        setFuSentOn(today);
 
         const next: Record<string, DocState> = {};
         for (const def of defs) {
@@ -182,7 +214,7 @@ export function OnboardingClient({
         setLoading(false);
       }
     },
-    [workers, organizations, defs],
+    [workers, organizations, defs, today],
   );
 
   useEffect(() => {
@@ -207,8 +239,55 @@ export function OnboardingClient({
     [defs, docs],
   );
 
+  // 訂正・追送: 今回送る書類（訂正版→追加の順の通し番号つき）
+  const fuSelectedDefs = defs.filter((def) => fuKinds[def.key]);
+  const fuMailDocs = followupMailDocs(
+    fuSelectedDefs.map((def) => ({
+      label: def.label,
+      kind: fuKinds[def.key] as FollowupKind,
+      note: (fuNotes[def.key] ?? "").trim(),
+    })),
+  );
+  const fuNumByLabel = new Map(fuMailDocs.map((d) => [d.label, d.num]));
+
+  // 雇用開始日の訂正が必要か（初回メール送信後に外国人情報の雇用開始日が変わった）
+  const correctionNeeded = worker
+    ? isStartDateCorrectionNeeded({
+        recordStartOn: recordStartOn || null,
+        workerStartOn: worker.employment_start_on,
+        mailSentOn: mailSentOn || null,
+      })
+    : false;
+
+  // 訂正・追送モードに切り替えて、雇用開始日訂正の理由を自動入力する
+  const startCorrectionMail = () => {
+    if (!worker) return;
+    setMode("followup");
+    setFuReason(startDateCorrectionReason(recordStartOn || null, worker.employment_start_on));
+    setMail("");
+  };
+
   const generate = () => {
     if (!worker) return;
+    if (mode === "followup") {
+      setMail(
+        buildFollowupMail({
+          workerName: worker.name,
+          orgName,
+          honorific,
+          reason: fuReason,
+          docs: fuSelectedDefs.map((def) => ({
+            label: def.label,
+            kind: fuKinds[def.key] as FollowupKind,
+            note: (fuNotes[def.key] ?? "").trim(),
+          })),
+          extraNote,
+          sender,
+        }),
+      );
+      setCopied(false);
+      return;
+    }
     setMail(
       buildOnboardingMail({
         workerName: worker.name,
@@ -272,6 +351,89 @@ export function OnboardingClient({
       setError(err instanceof Error ? err.message : "ダウンロードに失敗しました");
     } finally {
       setDownloadingAttachments(false);
+    }
+  };
+
+  // 訂正・追送で送る書類のうちファイルがあるもの（訂正版はアップロードで差し替え済みの想定）
+  const fuAttachableDefs = fuSelectedDefs.filter((def) => docs[def.key]?.row?.storage_path);
+
+  // 訂正・追送の添付をPDFでダウンロード（番号は訂正版→追加の通し番号）
+  const downloadFollowupAttachments = async () => {
+    if (fuAttachableDefs.length === 0 || !worker) return;
+    setDownloadingAttachments(true);
+    setError(null);
+    try {
+      for (const def of fuAttachableDefs) {
+        const row = docs[def.key]?.row;
+        if (!row) continue;
+        const num = fuNumByLabel.get(def.label) ?? 1;
+        const res = await getOnboardingDocDownloadUrl(row.id);
+        if (!res.ok) throw new Error(`${def.label}: ${res.message}`);
+        const bytes = await fetch(res.url).then((r) => r.arrayBuffer());
+        const { blob, converted } = await toPdfBlob(bytes, res.mimeType);
+        downloadBlob(
+          blob,
+          converted
+            ? onboardingPdfName(num, def.label, worker.name)
+            : onboardingDownloadName(num, def.label, worker.name, row.file_name),
+        );
+        await new Promise((r) => setTimeout(r, 400));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "ダウンロードに失敗しました");
+    } finally {
+      setDownloadingAttachments(false);
+    }
+  };
+
+  // 訂正・追送の送付を履歴に記録する。雇用開始日の訂正なら記録のスナップショットも
+  // 現在の値に更新して、訂正アラートを解除する
+  const recordFollowup = async () => {
+    if (!worker || fuMailDocs.length === 0) return;
+    setFuSaving(true);
+    setError(null);
+    try {
+      const supabase = createClient();
+      const row = await insertOnboardingFollowup(supabase, {
+        worker_id: worker.id,
+        sent_on: fuSentOn || null,
+        reason: fuReason.trim(),
+        docs: fuMailDocs.map(({ label, kind, note }) => ({ label, kind, note })),
+      });
+      setFollowups((prev) => [row, ...prev]);
+      // 雇用開始日の訂正を送ったら、送信時スナップショットを現在の値に合わせる
+      if (correctionNeeded && worker.employment_start_on) {
+        await upsertOnboardingRecord(supabase, {
+          worker_id: worker.id,
+          org_name: orgName.trim(),
+          org_honorific: honorific,
+          employment_start_on: worker.employment_start_on,
+          permit_on: permitOn || null,
+          office: office.trim(),
+          residence: residence.trim(),
+          sender: sender.trim(),
+          extra_note: extraNote.trim(),
+          gmail_link: gmailLink.trim(),
+          mail_sent_on: mailSentOn || null,
+        });
+        setRecordStartOn(worker.employment_start_on);
+        setStartOn(worker.employment_start_on);
+      }
+      showToast("訂正・追送を記録しました");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "記録に失敗しました");
+    } finally {
+      setFuSaving(false);
+    }
+  };
+
+  const removeFollowup = async (row: OnboardingFollowupRow) => {
+    if (!window.confirm(`${row.sent_on ?? ""} の訂正・追送の記録を削除します。よろしいですか？`)) return;
+    try {
+      await deleteOnboardingFollowup(createClient(), row.id);
+      setFollowups((prev) => prev.filter((f) => f.id !== row.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "削除に失敗しました");
     }
   };
 
@@ -351,9 +513,144 @@ export function OnboardingClient({
       </Card>
 
       {worker && !loading && (
+        <>
+          {/* 雇用開始日の訂正アラート: 初回送信後に外国人情報の雇用開始日が変わった */}
+          {correctionNeeded && (
+            <div className="rounded-2xl border-2 border-seal bg-seal/10 p-4">
+              <p className="mb-1 flex items-center gap-1.5 text-sm font-bold text-seal">
+                <TriangleAlert size={16} />
+                雇用開始日が前回送信時から変わっています
+              </p>
+              <p className="mb-2 text-xs leading-relaxed text-seal/90">
+                前回送信時 {formatDateSlash(recordStartOn || null)} → 現在の外国人情報{" "}
+                {formatDateSlash(worker.employment_start_on)}。
+                雇用条件書・労働者名簿などの訂正版の送付が必要です。
+              </p>
+              <button
+                type="button"
+                onClick={startCorrectionMail}
+                className="rounded-lg bg-seal px-3.5 py-2 text-xs font-bold text-seal-foreground"
+              >
+                訂正・追送メールを作成
+              </button>
+            </div>
+          )}
+
+          {/* モード切替: 初回送付 / 訂正・追送 */}
+          <div className="flex items-center gap-2">
+            {(
+              [
+                ["initial", "初回送付"],
+                ["followup", `訂正・追送${followups.length > 0 ? `（履歴${followups.length}件）` : ""}`],
+              ] as const
+            ).map(([m, label]) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => {
+                  setMode(m);
+                  setMail("");
+                }}
+                className={`shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-bold ${
+                  mode === m
+                    ? "border-brand bg-brand text-brand-foreground"
+                    : "border-border bg-surface text-muted"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
           {/* 左: 入力 */}
           <div className="space-y-4">
+            {mode === "followup" && (
+              <>
+                <Card className="p-4">
+                  <h2 className="mb-3 text-sm font-bold text-muted">宛名・送信者</h2>
+                  <div className="grid grid-cols-1 gap-3">
+                    <label className="flex flex-col gap-1">
+                      <span className={LABEL}>所属機関名（宛名）</span>
+                      <div className="flex gap-2">
+                        <input
+                          value={orgName}
+                          onChange={(e) => setOrgName(e.target.value)}
+                          className={`${INPUT} min-w-0 flex-1`}
+                        />
+                        <div className="w-24 shrink-0">
+                          <select
+                            value={honorific}
+                            onChange={(e) => setHonorific(e.target.value as "御中" | "様")}
+                            className={INPUT}
+                          >
+                            <option value="御中">御中</option>
+                            <option value="様">様</option>
+                          </select>
+                        </div>
+                      </div>
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className={LABEL}>送信者名</span>
+                      <input value={sender} onChange={(e) => setSender(e.target.value)} className={INPUT} />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className={LABEL}>訂正・追送の理由（本文に入ります）</span>
+                      <input
+                        value={fuReason}
+                        onChange={(e) => setFuReason(e.target.value)}
+                        placeholder="例: 雇用開始年月日の訂正（2026/08/01 → 2026/08/05）"
+                        className={INPUT}
+                      />
+                    </label>
+                  </div>
+                </Card>
+
+                <Card className="p-4">
+                  <h2 className="mb-1 text-sm font-bold text-muted">訂正・追送する書類</h2>
+                  <p className="mb-3 text-[11px] leading-relaxed text-muted">
+                    今回送る書類だけ「訂正版」または「追加」を選んでください。訂正版はファイルを添付し直すと
+                    外国人詳細の保存データも新しい版に差し替わります。番号は「訂正版→追加」の順の通し番号です。
+                  </p>
+                  <div className="space-y-2">
+                    {defs.map((def) => (
+                      <FollowupDocRow
+                        key={def.key}
+                        def={def}
+                        num={fuKinds[def.key] ? (fuNumByLabel.get(def.label) ?? null) : null}
+                        kind={fuKinds[def.key] ?? ""}
+                        note={fuNotes[def.key] ?? ""}
+                        state={docs[def.key] ?? emptyDocState()}
+                        workerId={worker.id}
+                        canEdit={canEdit}
+                        onKind={(v) => setFuKinds((prev) => ({ ...prev, [def.key]: v }))}
+                        onNote={(v) => setFuNotes((prev) => ({ ...prev, [def.key]: v }))}
+                        onUploaded={() => loadWorker(worker.id)}
+                        onError={setError}
+                      />
+                    ))}
+                  </div>
+                  {fuAttachableDefs.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={downloadFollowupAttachments}
+                      disabled={downloadingAttachments}
+                      className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-brand-foreground disabled:opacity-40"
+                    >
+                      {downloadingAttachments ? (
+                        <Loader2 size={15} className="animate-spin" />
+                      ) : (
+                        <Download size={15} />
+                      )}
+                      送る書類をPDFでダウンロード（{fuAttachableDefs.length}件）
+                    </button>
+                  )}
+                </Card>
+              </>
+            )}
+
+            {mode === "initial" && (
+            <>
             <Card className="p-4">
               <h2 className="mb-3 text-sm font-bold text-muted">基本情報</h2>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -445,6 +742,8 @@ export function OnboardingClient({
                 </>
               )}
             </Card>
+            </>
+            )}
 
             <Card className="p-4">
               <h2 className="mb-2 text-sm font-bold text-muted">追記事項</h2>
@@ -460,7 +759,7 @@ export function OnboardingClient({
             <Button fullWidth icon={<Mail size={18} />} onClick={generate}>
               メール文を生成
             </Button>
-            {canEdit && (
+            {mode === "initial" && canEdit && (
               <Button fullWidth variant="secondary" icon={<Save size={18} />} disabled={saving} onClick={save}>
                 {saving ? "保存中…" : "保存する（書類ステータス・Gmailリンク）"}
               </Button>
@@ -534,8 +833,71 @@ export function OnboardingClient({
               </label>
             </Card>
 
+            {/* 訂正・追送の記録と履歴 */}
+            {mode === "followup" && (
+              <Card className="p-4">
+                <h2 className="mb-1 text-sm font-bold text-muted">訂正・追送の記録</h2>
+                <p className="mb-3 text-[11px] leading-relaxed text-muted">
+                  メールを送ったら記録してください。「いつ・何を・どの理由で」送ったかが履歴に残ります。
+                </p>
+                {canEdit && (
+                  <div className="mb-3 flex flex-wrap items-end gap-2">
+                    <label className="flex flex-col gap-1">
+                      <span className={LABEL}>送った日</span>
+                      <input
+                        type="date"
+                        value={fuSentOn}
+                        onChange={(e) => setFuSentOn(e.target.value)}
+                        className={INPUT}
+                      />
+                    </label>
+                    <Button
+                      icon={<Save size={15} />}
+                      disabled={fuSaving || fuMailDocs.length === 0}
+                      onClick={recordFollowup}
+                    >
+                      {fuSaving ? "記録中…" : "訂正・追送を記録"}
+                    </Button>
+                  </div>
+                )}
+                {followups.length === 0 ? (
+                  <p className="rounded-xl bg-background p-4 text-center text-xs text-muted">
+                    まだ記録がありません。
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {followups.map((f) => (
+                      <div key={f.id} className="rounded-xl border border-border bg-background px-3 py-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs font-bold tabular-nums">
+                            {f.sent_on ?? "日付未設定"}
+                            {f.reason && <span className="ml-2 font-medium">{f.reason}</span>}
+                          </p>
+                          {canEdit && (
+                            <button
+                              type="button"
+                              onClick={() => removeFollowup(f)}
+                              aria-label="この記録を削除"
+                              className="shrink-0 text-seal"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </div>
+                        <p className="mt-1 text-[11px] leading-relaxed text-muted">
+                          {(f.docs ?? [])
+                            .map((d) => `${d.label}（${d.kind}）${d.note ? `→${d.note}` : ""}`)
+                            .join(" ・ ") || "書類の記録なし"}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            )}
+
             {/* 後送・未入手の期日・経過日数・受領 */}
-            {pendingDocs.length > 0 && (
+            {mode === "initial" && pendingDocs.length > 0 && (
               <Card className="border-status-notice-fg/40 p-4">
                 <h2 className="mb-1 flex items-center gap-1.5 text-sm font-bold text-status-notice-fg">
                   <TriangleAlert size={15} />
@@ -599,6 +961,7 @@ export function OnboardingClient({
             )}
           </div>
         </div>
+        </>
       )}
     </div>
   );
@@ -781,6 +1144,163 @@ function DocRow({
           </span>
         )}
       </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*,application/pdf"
+        className="hidden"
+        onChange={(e) => {
+          handleFile(e.target.files?.[0]);
+          e.target.value = "";
+        }}
+      />
+    </div>
+  );
+}
+
+// 訂正・追送する書類の1行: 「訂正版/追加」の選択・備考・ファイルの差し替え。
+// 訂正版はここでファイルを添付し直すと保存データが新しい版に置き換わる
+function FollowupDocRow({
+  def,
+  num,
+  kind,
+  note,
+  state,
+  workerId,
+  canEdit,
+  onKind,
+  onNote,
+  onUploaded,
+  onError,
+}: {
+  def: OnboardingDocDef;
+  num: number | null;
+  kind: "" | FollowupKind;
+  note: string;
+  state: DocState;
+  workerId: string;
+  canEdit: boolean;
+  onKind: (v: "" | FollowupKind) => void;
+  onNote: (v: string) => void;
+  onUploaded: () => void;
+  onError: (m: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const uploaded = !!state.row?.storage_path;
+
+  async function handleFile(file: File | undefined) {
+    if (!file) return;
+    setBusy(true);
+    try {
+      const { blob, mimeType, fileName } = await compressImage(file);
+      const ticket = await createOnboardingDocTicket(workerId, def.key, fileName, mimeType);
+      if (!ticket.ok) throw new Error(ticket.message);
+      const { error } = await createClient()
+        .storage.from("app-files")
+        .uploadToSignedUrl(ticket.path, ticket.token, blob, { contentType: mimeType });
+      if (error) throw new Error(`アップロードに失敗しました: ${error.message}`);
+      const result = await registerOnboardingDocFile(
+        workerId,
+        def.key,
+        def.label,
+        def.num,
+        ticket.path,
+        fileName,
+        mimeType,
+      );
+      if (!result.ok) throw new Error(result.message);
+      onUploaded();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "アップロードに失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function openPreview() {
+    if (!state.row) return;
+    const res = await getOnboardingDocPreviewUrl(state.row.id);
+    if (res.ok) window.open(res.url, "_blank", "noopener");
+    else onError(res.message);
+  }
+
+  const active = kind !== "";
+  return (
+    <div
+      className={`rounded-xl border border-border bg-background p-2.5 ${
+        active ? "border-l-4 border-l-brand" : "opacity-70"
+      }`}
+    >
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+        <span className="min-w-0 flex-1 text-sm">
+          <span className="mr-1 text-[11px] font-bold text-muted">
+            {num !== null ? `${num}.` : "—"}
+          </span>
+          {def.label}
+        </span>
+        <select
+          value={kind}
+          onChange={(e) => onKind(e.target.value as "" | FollowupKind)}
+          disabled={!canEdit}
+          className="min-h-[36px] rounded-lg border border-border bg-surface px-2 text-xs focus:border-brand focus:outline-none"
+        >
+          <option value="">— 送らない</option>
+          <option value="訂正版">🔁 訂正版</option>
+          <option value="追加">➕ 追加</option>
+        </select>
+        {canEdit && active && (
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            disabled={busy}
+            className={`flex min-h-[36px] items-center gap-1 rounded-lg border px-2.5 text-[11px] font-bold disabled:opacity-50 ${
+              uploaded
+                ? "border-status-approved-fg text-status-approved-fg"
+                : "border-dashed border-brand text-brand"
+            }`}
+          >
+            {busy ? (
+              <>
+                <Loader2 size={12} className="animate-spin" />
+                保存中…
+              </>
+            ) : uploaded ? (
+              <>
+                <Check size={12} />
+                差し替え
+              </>
+            ) : (
+              <>
+                <Paperclip size={12} />
+                添付
+              </>
+            )}
+          </button>
+        )}
+      </div>
+      {active && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <input
+            value={note}
+            onChange={(e) => onNote(e.target.value)}
+            placeholder="備考（メール本文に「→備考」で載ります）"
+            readOnly={!canEdit}
+            className="min-h-[34px] min-w-0 flex-1 rounded-lg border border-border bg-surface px-2 text-xs focus:border-brand focus:outline-none"
+          />
+          {uploaded && (
+            <button
+              type="button"
+              onClick={openPreview}
+              title="添付データを新しいタブで表示"
+              className="flex max-w-[180px] shrink-0 items-center gap-1 text-[11px] font-bold text-brand hover:underline"
+            >
+              <Eye size={12} className="shrink-0" />
+              <span className="truncate">{state.row?.file_name || "ファイルを開く"}</span>
+            </button>
+          )}
+        </div>
+      )}
       <input
         ref={inputRef}
         type="file"
