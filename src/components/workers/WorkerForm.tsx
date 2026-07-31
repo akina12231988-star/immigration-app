@@ -52,6 +52,7 @@ function toInput(w: Worker | null): WorkerInput {
     dependents: w?.dependents ?? [],
     address: w?.address ?? "",
     employment_start_on: w?.employment_start_on ?? null,
+    org_employment_starts: w?.org_employment_starts ?? [],
     assigned_office: w?.assigned_office ?? "",
     residence_note: w?.residence_note ?? "",
     photo_path: w?.photo_path ?? null,

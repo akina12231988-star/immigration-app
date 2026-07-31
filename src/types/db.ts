@@ -172,6 +172,13 @@ export interface WorkerDependent {
   income: string; // 年中の所得の見積額・送金額のメモ
 }
 
+// 所属機関別の雇用開始日の1件分（workers.org_employment_starts jsonb に配列で保存）。
+// 転職すると機関ごとに雇用開始日が異なるため機関別に記録する
+export interface WorkerOrgEmploymentStart {
+  organization_id: string; // 所属機関ID（organizations.id）
+  start_on: string; // 雇用開始日 YYYY-MM-DD（未入力は ''）
+}
+
 // 同居している在日親族の1人分（workers.relatives jsonb に配列で保存）
 export interface WorkerRelative {
   name: string; // 氏名
@@ -215,7 +222,8 @@ export interface Worker {
   relatives: WorkerRelative[]; // 同居している在日親族
   dependents: WorkerDependent[]; // 扶養家族（扶養親族証明書の内容）
   address: string; // 住所（履歴書に表示）
-  employment_start_on: string | null; // 雇用開始年月日
+  employment_start_on: string | null; // 雇用開始年月日（現在の所属機関のもの）
+  org_employment_starts: WorkerOrgEmploymentStart[]; // 所属機関別の雇用開始日
   assigned_office: string; // 配属先営業所
   residence_note: string; // 居住先（社宅・自分のアパート など）
   photo_path: string | null; // 顔写真（worker-files バケット）

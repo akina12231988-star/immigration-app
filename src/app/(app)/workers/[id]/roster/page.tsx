@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { getWorkerWithHistories } from "@/lib/supabase/queries/workers";
 import { listWorkerRosters } from "@/lib/supabase/queries/rosters";
+import { normalizeOrgEmploymentStarts } from "@/lib/org-employment";
 import { RosterSheet } from "./RosterSheet";
 
 export const dynamic = "force-dynamic";
@@ -23,15 +24,20 @@ export default async function WorkerRosterPage({
   // worker_rosters 未作成でもページ自体は表示できるように握りつぶす
   const rosters = await listWorkerRosters(supabase, id).catch(() => []);
 
-  let orgName = "";
-  if (worker.current_organization_id) {
-    const { data } = await supabase
-      .from("organizations")
-      .select("name")
-      .eq("id", worker.current_organization_id)
-      .maybeSingle();
-    orgName = data?.name ?? "";
-  }
+  // 機関名の解決と、所属機関別の雇用開始日（会社名→開始日）の組み立て
+  const { data: orgRows } = await supabase.from("organizations").select("id, name");
+  const orgNameById = new Map(
+    ((orgRows as { id: string; name: string }[]) ?? []).map((o) => [o.id, o.name]),
+  );
+  const orgName = worker.current_organization_id
+    ? (orgNameById.get(worker.current_organization_id) ?? "")
+    : "";
+  const employmentStarts = normalizeOrgEmploymentStarts(worker.org_employment_starts)
+    .filter((e) => e.start_on && orgNameById.has(e.organization_id))
+    .map((e) => ({
+      orgName: orgNameById.get(e.organization_id) as string,
+      startOn: e.start_on,
+    }));
 
   // 前職の初期値: 終了済みの職歴（開始日昇順）
   const previousJobs = [...worker.work_histories]
@@ -58,6 +64,7 @@ export default async function WorkerRosterPage({
         leavingReason: worker.leaving_reason,
       }}
       defaultPreviousJobs={previousJobs.map((h) => h.org_name)}
+      employmentStarts={employmentStarts}
       initialRosters={rosters}
     />
   );

@@ -27,6 +27,7 @@ import { WorkerCertificateDocs } from "@/components/workers/WorkerCertificateDoc
 import { ApplicationPrepChecklist } from "@/components/workers/ApplicationPrepChecklist";
 import { WorkerAddressHistory } from "@/components/workers/WorkerAddressHistory";
 import { WorkerDependents } from "@/components/workers/WorkerDependents";
+import { WorkerEmploymentStarts } from "@/components/workers/WorkerEmploymentStarts";
 import { NotionTransferButton } from "@/components/workers/NotionTransferButton";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -485,6 +486,16 @@ export function WorkerDetail({
       {worker.status === "退職" && (
         <LeavingSection worker={worker} canEdit={canEdit} />
       )}
+
+      {/* 雇用開始日（所属機関別）。現在の所属機関の分は雇用開始年月日に自動反映 */}
+      <WorkerEmploymentStarts
+        workerId={worker.id}
+        initial={worker.org_employment_starts}
+        currentOrganizationId={worker.current_organization_id}
+        currentEmploymentStartOn={worker.employment_start_on}
+        organizations={organizations}
+        canEdit={canEdit}
+      />
 
       {/* 扶養家族（扶養親族証明書の内容→控除区分の自動判定・扶養控除等申告書の作成） */}
       <WorkerDependents
