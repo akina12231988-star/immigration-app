@@ -27,6 +27,14 @@ export type WorkerQuickFilter =
   | "expiry3m" // 在留期限まで3ヶ月以内
   | "retired"; // 退職者
 
+// 対象期間で絞り込む日付の種類（在留許可日 / 在留期限）
+export type WorkerPeriodField = "expiry" | "permit";
+
+export const PERIOD_FIELD_LABELS: Record<WorkerPeriodField, string> = {
+  expiry: "在留期限（対象期間）",
+  permit: "在留許可（対象期間）",
+};
+
 export interface WorkerFilterState {
   keyword: string;
   status: WorkerStatus | "all";
@@ -34,8 +42,9 @@ export interface WorkerFilterState {
   orgId: string | "all" | "none"; // none = 未所属
   sort: WorkerSortKey;
   quick: WorkerQuickFilter;
-  expiryFrom: string; // 在留期限の対象期間（開始）
-  expiryTo: string; // 在留期限の対象期間（終了）
+  periodField: WorkerPeriodField; // 対象期間をどの日付で絞るか
+  expiryFrom: string; // 対象期間（開始）
+  expiryTo: string; // 対象期間（終了）
 }
 
 export const INITIAL_FILTER: WorkerFilterState = {
@@ -45,6 +54,7 @@ export const INITIAL_FILTER: WorkerFilterState = {
   orgId: "all",
   sort: "created",
   quick: "all",
+  periodField: "expiry",
   expiryFrom: "",
   expiryTo: "",
 };
@@ -140,7 +150,23 @@ export function WorkerFilters({
 
       <div className="flex flex-wrap items-end gap-2">
         <label className="flex flex-col gap-1">
-          <span className="text-[11px] font-bold text-muted">在留期限（対象期間）開始</span>
+          <span className="text-[11px] font-bold text-muted">対象期間の種類</span>
+          <select
+            value={filter.periodField}
+            onChange={(e) => set("periodField", e.target.value as WorkerPeriodField)}
+            className="min-h-[40px] rounded-xl border border-border bg-surface px-2.5 text-xs font-bold focus:border-brand focus:outline-none"
+          >
+            {(Object.keys(PERIOD_FIELD_LABELS) as WorkerPeriodField[]).map((k) => (
+              <option key={k} value={k}>
+                {PERIOD_FIELD_LABELS[k]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-bold text-muted">
+            {PERIOD_FIELD_LABELS[filter.periodField]}開始
+          </span>
           <input
             type="date"
             value={filter.expiryFrom}

@@ -132,11 +132,16 @@ export function WorkersExplorer({
         default:
           break;
       }
-      // 在留期限の対象期間
-      if (filter.expiryFrom && (!worker.residence_expiry_date || worker.residence_expiry_date < filter.expiryFrom))
-        return false;
-      if (filter.expiryTo && (!worker.residence_expiry_date || worker.residence_expiry_date > filter.expiryTo))
-        return false;
+      // 対象期間（在留期限 または 在留許可日で絞り込む）
+      if (filter.expiryFrom || filter.expiryTo) {
+        const target =
+          filter.periodField === "permit"
+            ? worker.residence_permit_date
+            : worker.residence_expiry_date;
+        if (!target) return false;
+        if (filter.expiryFrom && target < filter.expiryFrom) return false;
+        if (filter.expiryTo && target > filter.expiryTo) return false;
+      }
       if (filter.status !== "all" && worker.status !== filter.status) return false;
       if (filter.support !== "all" && worker.support !== filter.support) return false;
       if (filter.orgId === "none") {

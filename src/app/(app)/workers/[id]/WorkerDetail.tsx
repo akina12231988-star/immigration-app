@@ -380,6 +380,20 @@ export function WorkerDetail({
           />
           <InfoItem label="専門級の合格名" value={worker.specialty_grade} edit={fillText("specialty_grade")} />
           <InfoItem
+            label="特定技能2号の合格試験名"
+            value={
+              worker.ssw2_exam ? (
+                <>
+                  {worker.ssw2_exam}
+                  <span className="ml-2 rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-bold text-brand">
+                    2号合格
+                  </span>
+                </>
+              ) : null
+            }
+            edit={fillText("ssw2_exam", "例: ビルクリーニング分野特定技能2号評価試験")}
+          />
+          <InfoItem
             label="その他の資格・合格名"
             value={worker.other_qualifications}
             edit={fillText("other_qualifications")}
