@@ -64,6 +64,7 @@ export function DependentsFormSheet({
   const noBirth = dependents.filter((d) => !isSpouseRelation(d.relation) && d.birth === "");
 
   const formData: FuyoFormData = {
+    kind: formKind,
     worker,
     householdHead,
     headRelation,
@@ -172,7 +173,7 @@ export function DependentsFormSheet({
           <p className="mt-1.5 text-[11px] leading-relaxed text-muted">
             {formKind === "入社時"
               ? "入社時: 登録されている扶養親族を全員記載します。"
-              : "年末調整時: 年末の国際送金が目標額に達した扶養親族だけを記載します（未達成の人は載せません）。"}
+              : "年末調整時: 年末の国際送金が目標額に達した扶養親族だけを記載し、B欄の「生計を一にする事実」欄にその年（1月1日〜12月31日）の送金合計額を記載します。"}
           </p>
         </div>
 

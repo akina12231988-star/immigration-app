@@ -129,6 +129,39 @@ describe("buildFuyoFieldValues", () => {
     expect(withSpouse.texts["Text26"]).toBeUndefined();
   });
 
+  it("入社時（既定）は「生計を一にする事実」欄を記載しない", () => {
+    const withMoney = buildFuyoFieldValues(
+      {
+        ...DATA,
+        dependents: [{ ...DATA.dependents[0], remittances: ["200,000", "180,000"] }],
+      },
+      TODAY,
+    );
+    expect(withMoney.texts["Text120"]).toBeUndefined();
+  });
+
+  it("年末調整時はB欄の「生計を一にする事実」にその年の送金合計額を入れる", () => {
+    const v2 = buildFuyoFieldValues(
+      {
+        ...DATA,
+        kind: "年末調整時",
+        dependents: [
+          { ...DATA.dependents[0], remittances: ["200,000", "180,000"] }, // 父: 38万円
+          { ...DATA.dependents[2], remittances: ["10,000"] }, // 妹: 1万円
+        ],
+      },
+      TODAY,
+    );
+    expect(v2.texts["Text120"]).toBe("380,000円"); // B欄1行目
+    expect(v2.texts["Text121"]).toBe("10,000円"); // B欄2行目
+    expect(v2.texts["Text122"]).toBeUndefined(); // 3行目は空
+  });
+
+  it("送金の記録がなければ「生計を一にする事実」欄は空のまま", () => {
+    const v3 = buildFuyoFieldValues({ ...DATA, kind: "年末調整時" }, TODAY);
+    expect(v3.texts["Text120"]).toBeUndefined();
+  });
+
   it("16歳未満は住民税欄に入り、控除対象外国外扶養親族に○が付く", () => {
     const withChild = buildFuyoFieldValues(
       {
