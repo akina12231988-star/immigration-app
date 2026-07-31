@@ -58,6 +58,7 @@ function toInput(w: Worker | null): WorkerInput {
     photo_path: w?.photo_path ?? null,
     messenger_link: w?.messenger_link ?? "",
     specialty_grade: w?.specialty_grade ?? "",
+    ssw2_exam: w?.ssw2_exam ?? "",
     other_qualifications: w?.other_qualifications ?? "",
     my_number: w?.my_number ?? "",
     employment_insurance_no: w?.employment_insurance_no ?? "",
@@ -217,6 +218,18 @@ export function WorkerForm({
             placeholder="例: 介護福祉士 専門級 合格"
             className={INPUT_CLASS}
           />
+        </Field>
+        <Field label="特定技能2号の合格試験名">
+          <input
+            value={form.ssw2_exam}
+            onChange={(e) => set("ssw2_exam", e.target.value)}
+            placeholder="例: ビルクリーニング分野特定技能2号評価試験"
+            className={INPUT_CLASS}
+          />
+          <span className="px-1 text-[11px] leading-relaxed text-muted">
+            入力すると外国人詳細に「2号合格」と表示されます。合格証は「外国人書類」の
+            「特定技能2号の合格証」から添付できます。
+          </span>
         </Field>
         <Field label="その他の資格・合格名">
           <input

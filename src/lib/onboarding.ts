@@ -65,6 +65,7 @@ export const HEALTH_CHECK_LABEL = "健康診断";
 // 外国人の書類（PDF・画像）。入社書類メールとは別に、外国人の情報として保管する。
 export const WORKER_CERT_DOCS = [
   { key: "cert_senmonkyu", label: "専門級の合格証" },
+  { key: "cert_ssw2", label: "特定技能2号の合格証" },
   { key: "cert_passport", label: "パスポート" },
   { key: "cert_nihongo", label: "日本語の合格証" },
   { key: "cert_senmongai", label: "専門外の合格証" },

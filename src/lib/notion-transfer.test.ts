@@ -43,6 +43,7 @@ function worker(over: Partial<Worker>): Worker {
     photo_path: null,
     messenger_link: "",
     specialty_grade: "",
+    ssw2_exam: "",
     other_qualifications: "",
     my_number: "",
     employment_insurance_no: "",
