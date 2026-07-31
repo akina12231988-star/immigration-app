@@ -16,6 +16,11 @@ import {
 } from "@/lib/supabase/queries/memos";
 import { orientationDate } from "@/lib/orientation";
 import {
+  normalizeOrgEmploymentStarts,
+  upsertOrgEmploymentStart,
+} from "@/lib/org-employment";
+import type { WorkerInput } from "@/types/db";
+import {
   GRANT_VISA_OPTIONS,
   ORG_HONORIFICS,
   ORIENTATION_TARGET_VISA,
@@ -145,7 +150,8 @@ export function ApprovalSection({
     }
   }
 
-  // 雇用開始日・在留資格を保存。紐づく外国人の「現在の在留資格」も更新し、
+  // 雇用開始日・在留資格を保存。紐づく外国人の「現在の在留資格」と
+  // 所属機関別の雇用開始日（申請の所属機関の行）も自動更新し、
   // 特定技能1号なら生活オリエンテーションを自動登録
   async function saveVisaEmployment() {
     setVisaSaving(true);
@@ -156,14 +162,44 @@ export function ApprovalSection({
         employmentStartOn: employmentStartOn || undefined,
         visaAtGrant: visaAtGrant || "",
       });
-      const workerUpdated = Boolean(app.workerId && visaAtGrant);
-      if (app.workerId && visaAtGrant) {
-        await updateWorker(createClient(), app.workerId, {
-          residence_status: visaAtGrant,
-        });
+      const supabase = createClient();
+      const patch: Partial<WorkerInput> = {};
+      if (visaAtGrant) patch.residence_status = visaAtGrant;
+      // 雇用開始日を、申請の所属機関の「雇用開始日（所属機関別）」へ反映。
+      // その機関が現在の所属機関なら既存の雇用開始年月日にも反映する
+      let startSynced = false;
+      if (app.workerId && app.organizationId && employmentStartOn) {
+        const { data: w } = await supabase
+          .from("workers")
+          .select("org_employment_starts, current_organization_id")
+          .eq("id", app.workerId)
+          .maybeSingle();
+        if (w) {
+          const row = w as {
+            org_employment_starts: unknown;
+            current_organization_id: string | null;
+          };
+          patch.org_employment_starts = upsertOrgEmploymentStart(
+            normalizeOrgEmploymentStarts(row.org_employment_starts),
+            app.organizationId,
+            employmentStartOn,
+          );
+          if (row.current_organization_id === app.organizationId) {
+            patch.employment_start_on = employmentStartOn;
+          }
+          startSynced = true;
+        }
       }
+      const workerUpdated = Boolean(app.workerId && Object.keys(patch).length > 0);
+      if (app.workerId && workerUpdated) {
+        await updateWorker(supabase, app.workerId, patch);
+      }
+      const updatedParts = [
+        visaAtGrant && "在留資格",
+        startSynced && "所属機関別の雇用開始日",
+      ].filter(Boolean);
       const savedMsg = workerUpdated
-        ? "保存しました（外国人情報の在留資格も更新）。"
+        ? `保存しました（外国人情報の${updatedParts.join("・")}も更新）。`
         : "保存しました。";
       if (
         app.workerId &&
@@ -398,7 +434,7 @@ export function ApprovalSection({
               </Labeled>
             </div>
             <p className="mt-1 text-[11px] text-muted">
-              保存すると、紐づいている外国人の「現在の在留資格」も選択した内容で自動更新されます。「{ORIENTATION_TARGET_VISA}」を選んで保存すると、雇用開始日から2週間後の日曜を予定日として生活オリエンテーションに未実施で登録します。
+              保存すると、紐づいている外国人の「現在の在留資格」と、申請の所属機関の「雇用開始日（所属機関別）」も自動更新されます（現在の所属機関なら雇用開始年月日にも反映）。「{ORIENTATION_TARGET_VISA}」を選んで保存すると、雇用開始日から2週間後の日曜を予定日として生活オリエンテーションに未実施で登録します。
             </p>
             <Button fullWidth className="mt-3" onClick={saveVisaEmployment} disabled={visaSaving}>
               {visaSaving ? "保存中…" : "雇用開始日・在留資格を保存"}
