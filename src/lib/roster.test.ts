@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   isWithinRosterRetention,
+  rosterDateKey,
   rosterJpDate,
   rosterRetentionEnd,
   rosterWorkKind,
+  sortRosterHistory,
 } from "./roster";
 
 describe("rosterWorkKind", () => {
@@ -77,6 +79,49 @@ describe("rosterJpDate", () => {
   it("null・空は空文字", () => {
     expect(rosterJpDate(null)).toBe("");
     expect(rosterJpDate("")).toBe("");
+  });
+});
+
+describe("rosterDateKey", () => {
+  it("年月日表記・ISO・スラッシュ・和暦を解釈する", () => {
+    expect(rosterDateKey("2026年8月1日")).toBe("2026-08-01");
+    expect(rosterDateKey("2026-08-01")).toBe("2026-08-01");
+    expect(rosterDateKey("2026/8/1")).toBe("2026-08-01");
+    expect(rosterDateKey("令和8年8月1日")).toBe("2026-08-01");
+    expect(rosterDateKey("平成11年12月12日")).toBe("1999-12-12");
+  });
+
+  it("読めない文字列は null", () => {
+    expect(rosterDateKey("")).toBeNull();
+    expect(rosterDateKey("入社時")).toBeNull();
+  });
+});
+
+describe("sortRosterHistory", () => {
+  it("年月日の昇順（上から下へ時系列順）に並び替える", () => {
+    const rows = [
+      { on: "2026年8月1日", content: "入社" },
+      { on: "2026年7月30日", content: "特定活動ビザの許可おりる" },
+    ];
+    expect(sortRosterHistory(rows).map((r) => r.content)).toEqual([
+      "特定活動ビザの許可おりる",
+      "入社",
+    ]);
+  });
+
+  it("日付が読めない行は順序を保って末尾に置く", () => {
+    const rows = [
+      { on: "", content: "メモ1" },
+      { on: "2026年8月1日", content: "入社" },
+      { on: "その他", content: "メモ2" },
+      { on: "2026年1月1日", content: "来日" },
+    ];
+    expect(sortRosterHistory(rows).map((r) => r.content)).toEqual([
+      "来日",
+      "入社",
+      "メモ1",
+      "メモ2",
+    ]);
   });
 });
 

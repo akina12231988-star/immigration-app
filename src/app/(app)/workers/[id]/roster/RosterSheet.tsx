@@ -15,6 +15,7 @@ import {
   rosterJpDate,
   rosterRetentionEnd,
   rosterWorkKind,
+  sortRosterHistory,
 } from "@/lib/roster";
 import { todayStr } from "@/lib/ssw/calc";
 import type {
@@ -93,7 +94,7 @@ export function RosterSheet({
   const toForm = (r: WorkerRoster): RosterForm => ({
     company_name: r.company_name,
     work_kind: r.work_kind,
-    history: r.history ?? [],
+    history: sortRosterHistory(r.history ?? []),
     previous_jobs: r.previous_jobs ?? [],
     leaving_on: r.leaving_on,
     leaving_reason: r.leaving_reason,
@@ -134,7 +135,13 @@ export function RosterSheet({
     setError(null);
     try {
       const supabase = createClient();
-      const payload = { ...form, issued_on: form.issued_on || null };
+      // 履歴は年月日の昇順（時系列順）に並び替えて保存する
+      const payload = {
+        ...form,
+        history: sortRosterHistory(form.history),
+        issued_on: form.issued_on || null,
+      };
+      setForm((f) => ({ ...f, history: payload.history }));
       if (selectedId === NEW_ID) {
         const row = await insertWorkerRoster(supabase, {
           worker_id: workerId,
@@ -312,7 +319,7 @@ export function RosterSheet({
             </tbody>
           </table>
 
-          {/* 履歴 */}
+          {/* 履歴（入力欄を離れると年月日の昇順＝上から時系列順に自動で並び替える） */}
           <EditableRowsSection
             title="履歴"
             canEdit={canEdit}
@@ -323,6 +330,11 @@ export function RosterSheet({
             rows={form.history.map((h) => [h.on, h.content])}
             onChange={(rows) =>
               set("history", rows.map(([on = "", content = ""]) => ({ on, content })))
+            }
+            normalizeOnBlur={(rows) =>
+              sortRosterHistory(
+                rows.map(([on = "", content = ""]) => ({ on, content })),
+              ).map((h) => [h.on, h.content])
             }
           />
 
@@ -423,20 +435,26 @@ export function RosterSheet({
 }
 
 // 履歴・前職のような「行の追加・削除ができる2列テーブル」の共通部品。
-// 行が無いときも印刷で表が形になるように空行を1つ表示する
+// 行が無いときも印刷で表が形になるように空行を1つ表示する。
+// normalizeOnBlur を渡すと、入力欄を離れたときに行の並び替えなどの整形を行う
 function EditableRowsSection({
   title,
   canEdit,
   columns,
   rows,
   onChange,
+  normalizeOnBlur,
 }: {
   title: string;
   canEdit: boolean;
   columns: { label: string; width?: string; placeholder?: string }[];
   rows: string[][];
   onChange: (rows: string[][]) => void;
+  normalizeOnBlur?: (rows: string[][]) => string[][];
 }) {
+  const handleBlur = () => {
+    if (normalizeOnBlur) onChange(normalizeOnBlur(rows));
+  };
   const CELL_INPUT =
     "w-full bg-transparent text-sm font-bold placeholder:font-normal placeholder:text-gray-300 focus:outline-none print:placeholder:text-transparent";
 
@@ -478,6 +496,7 @@ function EditableRowsSection({
                     <input
                       value={row[j] ?? ""}
                       onChange={(e) => setCell(i, j, e.target.value)}
+                      onBlur={handleBlur}
                       placeholder={c.placeholder}
                       className={CELL_INPUT}
                     />
