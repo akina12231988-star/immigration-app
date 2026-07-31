@@ -157,8 +157,10 @@ export function OnboardingClient({
   const [downloadingAttachments, setDownloadingAttachments] = useState(false);
   const [showToast, toastNode] = useToast();
 
+  // 外国人の保存内容を読み込む。ファイル添付後の再読み込みでは
+  // 入力中の訂正・追送の選択（区分・備考・理由）を消さないよう keepFollowup を渡す
   const loadWorker = useCallback(
-    async (id: string) => {
+    async (id: string, options: { keepFollowup?: boolean } = {}) => {
       const w = workers.find((x) => x.id === id);
       if (!w) return;
       setLoading(true);
@@ -188,10 +190,12 @@ export function OnboardingClient({
         setMailSentOn(record?.mail_sent_on ?? "");
         setRecordStartOn(record?.employment_start_on ?? "");
         setFollowups(fus);
-        setFuKinds({});
-        setFuNotes({});
-        setFuReason("");
-        setFuSentOn(today);
+        if (!options.keepFollowup) {
+          setFuKinds({});
+          setFuNotes({});
+          setFuReason("");
+          setFuSentOn(today);
+        }
 
         const next: Record<string, DocState> = {};
         for (const def of defs) {
@@ -609,8 +613,9 @@ export function OnboardingClient({
                 <Card className="p-4">
                   <h2 className="mb-1 text-sm font-bold text-muted">訂正・追送する書類</h2>
                   <p className="mb-3 text-[11px] leading-relaxed text-muted">
-                    今回送る書類だけ「訂正版」または「追加」を選んでください。訂正版はファイルを添付し直すと
-                    外国人詳細の保存データも新しい版に差し替わります。番号は「訂正版→追加」の順の通し番号です。
+                    今回送る書類の「添付」からファイルを選ぶと、保存データがある書類は「訂正版」、
+                    初めての書類は「追加」に自動で切り替わります（手動での変更も可）。
+                    添付したファイルは外国人詳細の保存データにも反映されます。番号は「訂正版→追加」の順の通し番号です。
                   </p>
                   <div className="space-y-2">
                     {defs.map((def) => (
@@ -625,7 +630,7 @@ export function OnboardingClient({
                         canEdit={canEdit}
                         onKind={(v) => setFuKinds((prev) => ({ ...prev, [def.key]: v }))}
                         onNote={(v) => setFuNotes((prev) => ({ ...prev, [def.key]: v }))}
-                        onUploaded={() => loadWorker(worker.id)}
+                        onUploaded={() => loadWorker(worker.id, { keepFollowup: true })}
                         onError={setError}
                       />
                     ))}
@@ -1191,6 +1196,7 @@ function FollowupDocRow({
 
   async function handleFile(file: File | undefined) {
     if (!file) return;
+    const hadFile = uploaded; // 添付前に保存データがあったか（訂正版/追加の自動判定に使う）
     setBusy(true);
     try {
       const { blob, mimeType, fileName } = await compressImage(file);
@@ -1210,6 +1216,9 @@ function FollowupDocRow({
         mimeType,
       );
       if (!result.ok) throw new Error(result.message);
+      // 未選択のまま添付したら、既存ファイルの差し替えは「訂正版」、
+      // 初めての添付は「追加」として自動で選ぶ
+      if (kind === "") onKind(hadFile ? "訂正版" : "追加");
       onUploaded();
     } catch (err) {
       onError(err instanceof Error ? err.message : "アップロードに失敗しました");
@@ -1249,7 +1258,8 @@ function FollowupDocRow({
           <option value="訂正版">🔁 訂正版</option>
           <option value="追加">➕ 追加</option>
         </select>
-        {canEdit && active && (
+        {/* 添付は「訂正版/追加」の選択前でも押せる（添付すると自動で区分が選ばれる） */}
+        {canEdit && (
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
@@ -1279,15 +1289,17 @@ function FollowupDocRow({
           </button>
         )}
       </div>
-      {active && (
+      {(active || uploaded) && (
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-          <input
-            value={note}
-            onChange={(e) => onNote(e.target.value)}
-            placeholder="備考（メール本文に「→備考」で載ります）"
-            readOnly={!canEdit}
-            className="min-h-[34px] min-w-0 flex-1 rounded-lg border border-border bg-surface px-2 text-xs focus:border-brand focus:outline-none"
-          />
+          {active && (
+            <input
+              value={note}
+              onChange={(e) => onNote(e.target.value)}
+              placeholder="備考（メール本文に「→備考」で載ります）"
+              readOnly={!canEdit}
+              className="min-h-[34px] min-w-0 flex-1 rounded-lg border border-border bg-surface px-2 text-xs focus:border-brand focus:outline-none"
+            />
+          )}
           {uploaded && (
             <button
               type="button"
