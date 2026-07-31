@@ -109,6 +109,25 @@ export function WorkerDetail({
   // 所属機関の担当者（主・副）。会社・機関マスタで登録する
   const orgStaff = orgStaffLabel(currentOrg?.intake);
 
+  // 特定技能総合保険の負担区分（現在の所属機関の設定）。
+  // 外国人負担の場合は、本人が自己負担加入を希望したときだけリンク先・有効期限を表示する
+  const insuranceBurden = currentOrg?.intake?.ssw_insurance_burden ?? "";
+  const showInsuranceFields =
+    insuranceBurden !== "外国人負担" || worker.ssw_insurance_self_join;
+  const [selfJoinBusy, setSelfJoinBusy] = useState(false);
+  const setSelfJoin = async (value: boolean) => {
+    setSelfJoinBusy(true);
+    setError(null);
+    try {
+      await updateWorker(createClient(), worker.id, { ssw_insurance_self_join: value });
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存に失敗しました");
+    } finally {
+      setSelfJoinBusy(false);
+    }
+  };
+
   // 職歴は開始日昇順で表示（calc と同じ並び）
   const histories = useMemo(
     () =>
@@ -397,38 +416,87 @@ export function WorkerDetail({
           />
           <InfoItem label="基礎年金番号" value={worker.pension_no} edit={fillText("pension_no")} />
           <InfoItem
-            label="特定技能総合保険の加入リンク先"
+            label="特定技能総合保険の負担（現在の所属機関）"
             value={
-              worker.ssw_insurance_link ? (
-                <a
-                  href={worker.ssw_insurance_link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 font-bold text-brand"
-                >
-                  <ExternalLink size={13} className="shrink-0" />
-                  加入ページを開く
-                </a>
-              ) : null
+              insuranceBurden ||
+              (currentOrg ? "未設定（会社・機関マスタで登録）" : null)
             }
-            edit={fillText("ssw_insurance_link", "https://...")}
           />
-          <InfoItem
-            label="特定技能総合保険 有効期限"
-            value={
-              worker.ssw_insurance_expiry_date ? (
-                <>
-                  {worker.ssw_insurance_expiry_date}
-                  {isSswInsuranceRenewalTarget(worker, today) && (
-                    <span className="ml-2 rounded-full bg-seal/10 px-2 py-0.5 text-[11px] font-bold text-seal">
-                      {remainingLabel(worker.ssw_insurance_expiry_date, today)}
+          {insuranceBurden === "外国人負担" && (
+            <div className="col-span-2">
+              <dt className="text-[11px] font-bold text-muted">自己負担での加入</dt>
+              <dd>
+                {worker.ssw_insurance_self_join ? (
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-bold text-brand">
+                      自己負担加入希望あり
                     </span>
-                  )}
-                </>
-              ) : null
-            }
-            edit={fillDate("ssw_insurance_expiry_date")}
-          />
+                    {canEdit && (
+                      <button
+                        type="button"
+                        disabled={selfJoinBusy}
+                        onClick={() => setSelfJoin(false)}
+                        className="text-[11px] font-bold text-muted underline disabled:opacity-50"
+                      >
+                        {selfJoinBusy ? "保存中…" : "希望を取り消す"}
+                      </button>
+                    )}
+                  </span>
+                ) : (
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm text-muted">外国人負担のため未加入</span>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        disabled={selfJoinBusy}
+                        onClick={() => setSelfJoin(true)}
+                        className="rounded-lg bg-brand px-3 py-1.5 text-xs font-bold text-brand-foreground disabled:opacity-50"
+                      >
+                        {selfJoinBusy ? "保存中…" : "自己負担加入希望"}
+                      </button>
+                    )}
+                  </span>
+                )}
+              </dd>
+            </div>
+          )}
+          {showInsuranceFields && (
+            <>
+              <InfoItem
+                label="特定技能総合保険の加入リンク先"
+                value={
+                  worker.ssw_insurance_link ? (
+                    <a
+                      href={worker.ssw_insurance_link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 font-bold text-brand"
+                    >
+                      <ExternalLink size={13} className="shrink-0" />
+                      加入ページを開く
+                    </a>
+                  ) : null
+                }
+                edit={fillText("ssw_insurance_link", "https://...")}
+              />
+              <InfoItem
+                label="特定技能総合保険 有効期限"
+                value={
+                  worker.ssw_insurance_expiry_date ? (
+                    <>
+                      {worker.ssw_insurance_expiry_date}
+                      {isSswInsuranceRenewalTarget(worker, today) && (
+                        <span className="ml-2 rounded-full bg-seal/10 px-2 py-0.5 text-[11px] font-bold text-seal">
+                          {remainingLabel(worker.ssw_insurance_expiry_date, today)}
+                        </span>
+                      )}
+                    </>
+                  ) : null
+                }
+                edit={fillDate("ssw_insurance_expiry_date")}
+              />
+            </>
+          )}
         </dl>
         <p className="mb-1 text-[11px] font-bold text-muted">家族情報</p>
         <dl className="mb-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">

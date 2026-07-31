@@ -64,6 +64,7 @@ function toInput(w: Worker | null): WorkerInput {
     pension_no: w?.pension_no ?? "",
     ssw_insurance_link: w?.ssw_insurance_link ?? "",
     ssw_insurance_expiry_date: w?.ssw_insurance_expiry_date ?? null,
+    ssw_insurance_self_join: w?.ssw_insurance_self_join ?? false,
     note: w?.note ?? "",
   };
 }

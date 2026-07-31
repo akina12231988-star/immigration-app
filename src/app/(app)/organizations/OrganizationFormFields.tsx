@@ -509,6 +509,14 @@ function IntakeSection({
             locked={locks.intake("health_insurance")}
           />
           <IntakeSelect
+            label="特定技能総合保険の負担"
+            value={intake.ssw_insurance_burden}
+            onChange={(v) => setIntake({ ssw_insurance_burden: v })}
+            options={["会社負担", "外国人負担"]}
+            hint="外国人詳細の「特定技能総合保険」欄の表示が切り替わります。外国人負担の場合は、本人が自己負担加入を希望したときだけリンク先と有効期限を表示します。"
+            locked={locks.intake("ssw_insurance_burden")}
+          />
+          <IntakeSelect
             label="年金（事業所としての適用内容）"
             value={intake.pension}
             onChange={(v) => setIntake({ pension: v })}

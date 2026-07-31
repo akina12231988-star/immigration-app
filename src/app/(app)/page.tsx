@@ -101,8 +101,16 @@ export default function DashboardPage() {
   const today = todayStr();
   const expiryAlerts = applications.filter((a) => isExpiryAlert(a, today));
 
-  // 特定技能総合保険の期限アラート: 有効期限まで1か月以内（または超過）の外国人
-  const insuranceAlerts = renewalWorkers.filter((w) => isSswInsuranceRenewalTarget(w, today));
+  // 特定技能総合保険の期限アラート: 有効期限まで1か月以内（または超過）の外国人。
+  // 所属機関が外国人負担で本人が自己負担加入を希望していない場合（未加入）は対象外
+  const insuranceAlerts = renewalWorkers.filter((w) => {
+    if (!isSswInsuranceRenewalTarget(w, today)) return false;
+    const burden =
+      (w.current_organization_id
+        ? orgById.get(w.current_organization_id)?.intake?.ssw_insurance_burden
+        : "") ?? "";
+    return burden !== "外国人負担" || w.ssw_insurance_self_join;
+  });
 
   // 申請前＜準備中＞: 実レコード＋在留更新準備中の擬似行（申請一覧のタブと同じ件数）
   const prePrepCount =
