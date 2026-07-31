@@ -36,6 +36,7 @@ export function blankWorkerInput(name: string, organizationId: string | null = n
     dependents: [],
     address: "",
     employment_start_on: null,
+    org_employment_starts: [],
     assigned_office: "",
     residence_note: "",
     photo_path: null,

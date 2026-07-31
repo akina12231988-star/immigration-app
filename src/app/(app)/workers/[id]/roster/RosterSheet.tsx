@@ -59,6 +59,7 @@ export function RosterSheet({
   orgName,
   worker,
   defaultPreviousJobs,
+  employmentStarts,
   initialRosters,
 }: {
   workerId: string;
@@ -66,14 +67,19 @@ export function RosterSheet({
   orgName: string;
   worker: RosterWorker;
   defaultPreviousJobs: string[];
+  employmentStarts: { orgName: string; startOn: string }[]; // 所属機関別の雇用開始日
   initialRosters: WorkerRoster[];
 }) {
+  // 会社名に対応する雇用開始日（機関別の登録があればそれを、無ければ既存の雇用開始年月日）
+  const startFor = (company: string): string | null =>
+    employmentStarts.find((e) => e.orgName === company.trim())?.startOn ??
+    worker.employmentStartOn;
   // 新規作成時の初期値: 外国人の登録データから自動で埋める
   const buildDefault = (): RosterForm => ({
     company_name: orgName,
     work_kind: rosterWorkKind(worker.field),
-    history: worker.employmentStartOn
-      ? [{ on: rosterJpDate(worker.employmentStartOn), content: "入社" }]
+    history: startFor(orgName)
+      ? [{ on: rosterJpDate(startFor(orgName)), content: "入社" }]
       : [],
     previous_jobs: defaultPreviousJobs.map((company) => ({ company, prefecture: "" })),
     leaving_on: worker.status === "退職" ? rosterJpDate(worker.leavingOn) : "",
@@ -299,8 +305,9 @@ export function RosterSheet({
                 )}
               </BasicRow>
               <BasicRow label="個人番号">{worker.myNumber || "　"}</BasicRow>
+              {/* この名簿の会社に対応する雇用開始日を表示（機関別の登録があればそれを使う） */}
               <BasicRow label="雇用開始年月日">
-                {rosterJpDate(worker.employmentStartOn) || "　"}
+                {rosterJpDate(startFor(form.company_name)) || "　"}
               </BasicRow>
             </tbody>
           </table>

@@ -37,6 +37,7 @@ function worker(over: Partial<Worker>): Worker {
     relatives: [],
     address: "",
     employment_start_on: null,
+    org_employment_starts: [],
     assigned_office: "",
     residence_note: "",
     photo_path: null,
