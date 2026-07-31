@@ -116,7 +116,8 @@ export interface BuildSalesInput {
   permitDate: string; // 許可日 YYYY-MM-DD
   supportFee: string; // 所属機関の毎月の支援代（例: "20,000円/人"）
   insuranceByCompany: boolean; // 特定技能総合保険が会社負担か
-  applicationFee: string; // 申請の売上金額（機関ごとに異なるため入力値）
+  // 申請種別ごとの売上明細（所属機関マスタに登録した内容。複数行）
+  applicationItems: { name: string; amount: string }[];
 }
 
 // 在留カード受領後に登録する売上明細を組み立てる。
@@ -128,16 +129,20 @@ export function buildSalesEntries(input: BuildSalesInput): SalesEntryDraft[] {
   const feeName = supportFeeName(input.appKind);
   const itemName = supportItemName(input.appKind);
 
-  const appAmount = parseAmount(input.applicationFee) ?? 0;
-  entries.push({
-    kind: "申請",
-    item_name: input.appKind,
-    description: `${input.workerName}さん　${input.appKind}`,
-    amount: appAmount,
-    taxable: true,
-    period_from: null,
-    period_to: null,
-  });
+  // 申請の売上は所属機関マスタの「申請種別ごとの売上明細」をそのまま行にする
+  for (const item of input.applicationItems) {
+    const name = item.name.trim();
+    if (!name) continue;
+    entries.push({
+      kind: "申請",
+      item_name: name,
+      description: `${input.workerName}さん　${name}`,
+      amount: parseAmount(item.amount) ?? 0,
+      taxable: true,
+      period_from: null,
+      period_to: null,
+    });
+  }
 
   if (isNewSswApplication(input.appKind) && input.insuranceByCompany) {
     entries.push({

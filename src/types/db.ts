@@ -105,6 +105,15 @@ export interface OrgLodging {
   max_residents: string; // 最大入居人数
 }
 
+// 申請種別ごとの売上明細の1行（freee販売に登録する内容の雛形）
+export interface OrgSalesItem {
+  name: string; // 明細項目（例: 申請取次費用）
+  amount: string; // 金額（例: 150,000円）
+}
+
+// 申請種別（特定技能申請 など）→ その種別で登録する売上明細
+export type OrgSalesItems = Record<string, OrgSalesItem[]>;
+
 // 申込書の入力内容一式
 export interface OrganizationIntake {
   kana: string; // 名称フリガナ
@@ -121,6 +130,7 @@ export interface OrganizationIntake {
   health_insurance: string; // 保険（国民健康保険 / 社会保険 / その他）
   pension: string; // 年金（国民年金 / 厚生年金）
   ssw_insurance_burden: string; // 特定技能総合保険の負担（'' / 会社負担 / 外国人負担）
+  sales_items: OrgSalesItems; // 申請種別ごとの売上明細（freee販売への登録内容）
   work_address: string; // 作業する住所（会社の住所と別の場合）
   work_contact: string; // 作業する住所の TEL・FAX
   rep_kana: string; // 代表者フリガナ

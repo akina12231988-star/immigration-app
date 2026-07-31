@@ -6,6 +6,8 @@ import type {
   OrgJapaneseStaff,
   OrgLodging,
   OrgOfficer,
+  OrgSalesItem,
+  OrgSalesItems,
   OrganizationIntake,
 } from "@/types/db";
 
@@ -31,6 +33,27 @@ export function emptyJapaneseStaff(): OrgJapaneseStaff {
 
 export function emptyOfficer(): OrgOfficer {
   return { kana: "", name: "", title: "", not_involved: false };
+}
+
+export function emptySalesItem(): OrgSalesItem {
+  return { name: "", amount: "" };
+}
+
+// 申請種別ごとの売上明細の正規化（不正な形は空として扱う）
+export function normalizeSalesItems(raw: unknown): OrgSalesItems {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: OrgSalesItems = {};
+  for (const [kind, rows] of Object.entries(raw as Record<string, unknown>)) {
+    if (!Array.isArray(rows)) continue;
+    out[kind] = rows.map((r) => {
+      const src = (r && typeof r === "object" ? r : {}) as Partial<OrgSalesItem>;
+      return {
+        name: typeof src.name === "string" ? src.name : "",
+        amount: typeof src.amount === "string" ? src.amount : "",
+      };
+    });
+  }
+  return out;
 }
 
 // 寮・宿泊物件の空行。id は添付ファイルとの紐付けに使うため呼び出し側で採番する
@@ -70,6 +93,7 @@ export function emptyOrganizationIntake(): OrganizationIntake {
     health_insurance: "",
     pension: "",
     ssw_insurance_burden: "",
+    sales_items: {},
     work_address: "",
     work_contact: "",
     rep_kana: "",
@@ -164,6 +188,7 @@ export function normalizeOrganizationIntake(raw: unknown): OrganizationIntake {
     japanese_staff,
     officers,
     lodgings,
+    sales_items: normalizeSalesItems(src.sales_items),
   };
   // 旧フラット項目は保存し直したときに残らないよう取り除く
   for (const key of [

@@ -75,7 +75,7 @@ describe("buildSalesEntries", () => {
     workerName: "BOY SAMNANG",
     permitDate: "2026-04-08",
     supportFee: "20,000円/人",
-    applicationFee: "150,000円",
+    applicationItems: [{ name: "特定技能申請", amount: "150,000円" }],
   };
 
   it("特定技能申請・保険が会社負担: 申請・保険・日割り・定期売上の4件", () => {
@@ -86,7 +86,12 @@ describe("buildSalesEntries", () => {
     });
     expect(entries.map((e) => e.kind)).toEqual(["申請", "保険", "支援代日割り", "定期売上"]);
 
-    expect(entries[0]).toMatchObject({ item_name: "特定技能申請", amount: 150000, taxable: true });
+    expect(entries[0]).toMatchObject({
+      item_name: "特定技能申請",
+      description: "BOY SAMNANGさん　特定技能申請",
+      amount: 150000,
+      taxable: true,
+    });
 
     // 特定技能総合保険は1人あたり8,820円・非課税
     expect(entries[1]).toMatchObject({
