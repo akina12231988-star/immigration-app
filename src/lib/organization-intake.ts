@@ -69,6 +69,7 @@ export function emptyOrganizationIntake(): OrganizationIntake {
     contact_method: "",
     health_insurance: "",
     pension: "",
+    ssw_insurance_burden: "",
     work_address: "",
     work_contact: "",
     rep_kana: "",

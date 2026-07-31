@@ -120,6 +120,7 @@ export interface OrganizationIntake {
   contact_method: string; // 資料のやりとり方法（FAX / グループLINE / email）
   health_insurance: string; // 保険（国民健康保険 / 社会保険 / その他）
   pension: string; // 年金（国民年金 / 厚生年金）
+  ssw_insurance_burden: string; // 特定技能総合保険の負担（'' / 会社負担 / 外国人負担）
   work_address: string; // 作業する住所（会社の住所と別の場合）
   work_contact: string; // 作業する住所の TEL・FAX
   rep_kana: string; // 代表者フリガナ
@@ -235,6 +236,7 @@ export interface Worker {
   pension_no: string; // 基礎年金番号
   ssw_insurance_link: string; // 特定技能総合保険の加入ページリンク
   ssw_insurance_expiry_date: string | null; // 特定技能総合保険の有効期限
+  ssw_insurance_self_join: boolean; // 自己負担加入希望（所属機関が外国人負担の場合に本人が加入を希望）
   note: string;
   worker_code: string | null; // 外国人ID（例: V-1）。自動採番
   legacy_id: string | null;
