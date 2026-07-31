@@ -317,6 +317,32 @@ export interface WorkerRoster {
 
 export type WorkerRosterInput = Omit<WorkerRoster, "id" | "created_at" | "updated_at">;
 
+// ---- freee販売への売上登録（0061_sales_entries.sql） ----
+
+export type SalesEntryStatus = "未登録" | "登録済み" | "対象外";
+
+export interface SalesEntryRow {
+  id: string;
+  worker_id: string;
+  organization_id: string | null;
+  application_id: string | null;
+  kind: string; // 申請 / 保険 / 支援代日割り / 定期売上 / 退職精算
+  item_name: string; // 品目
+  description: string; // freeeに記載する内容
+  amount: number;
+  taxable: boolean; // false = 非課税
+  period_from: string | null;
+  period_to: string | null;
+  status: SalesEntryStatus;
+  freee_no: string; // freee販売の伝票番号など
+  registered_on: string | null;
+  note: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type SalesEntryInput = Omit<SalesEntryRow, "id" | "created_at" | "updated_at">;
+
 // ---- 入管申請（0008_immigration_applications.sql） ----
 
 export interface ImmigrationApplicationRow {

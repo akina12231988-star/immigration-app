@@ -14,6 +14,7 @@ import {
   MailPlus,
   Archive,
   UserMinus,
+  Coins,
   Bell,
   type LucideIcon,
 } from "lucide-react";
@@ -42,6 +43,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/notices/search", label: "通知書", short: "通知書", icon: ScanLine },
   { href: "/orientations", label: "生活オリエンテーション", short: "生活", icon: GraduationCap },
   { href: "/resignations", label: "退職＜随時報告＞", short: "退職", icon: UserMinus },
+  { href: "/sales", label: "売上登録（freee販売）", short: "売上", icon: Coins },
   { href: "/postings", label: "求人一覧", short: "求人", icon: Briefcase },
   { href: "/jobs", label: "求職一覧", short: "求職", icon: ClipboardList },
 ];
