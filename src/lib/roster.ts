@@ -52,6 +52,35 @@ export function rosterJpDate(dateStr: string | null): string {
   return `${Number(m[1])}年${Number(m[2])}月${Number(m[3])}日`;
 }
 
+// 履歴の年月日文字列を並び替え用のキー（YYYY-MM-DD）にする。
+// 「2026年8月1日」「2026-08-01」「2026/8/1」「令和8年8月1日」などを解釈。読めなければ null
+export function rosterDateKey(s: string): string | null {
+  const pad = (v: string) => v.padStart(2, "0");
+  const t = s.trim();
+  let m = t.match(/^(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})日?$/);
+  if (m) return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
+  m = t.match(/^(明治|大正|昭和|平成|令和)(元|\d{1,2})年(\d{1,2})月(\d{1,2})日$/);
+  if (m) {
+    const base = { 明治: 1867, 大正: 1911, 昭和: 1925, 平成: 1988, 令和: 2018 }[
+      m[1] as "明治" | "大正" | "昭和" | "平成" | "令和"
+    ];
+    const y = base + (m[2] === "元" ? 1 : Number(m[2]));
+    return `${y}-${pad(m[3])}-${pad(m[4])}`;
+  }
+  return null;
+}
+
+// 履歴を年月日の昇順（上から下へ時系列順）に並び替える。
+// 日付が読めない行（未入力・自由記述）は順序を保ったまま末尾に置く
+export function sortRosterHistory<T extends { on: string }>(rows: T[]): T[] {
+  const dated = rows.filter((r) => rosterDateKey(r.on) !== null);
+  const undated = rows.filter((r) => rosterDateKey(r.on) === null);
+  dated.sort((a, b) =>
+    (rosterDateKey(a.on) as string).localeCompare(rosterDateKey(b.on) as string),
+  );
+  return [...dated, ...undated];
+}
+
 // 労働者名簿の保存期間の満了日（労働基準法第109条: 発行から5年間保存）
 export function rosterRetentionEnd(issuedOn: string): string {
   const d = new Date(`${issuedOn}T00:00:00Z`);
