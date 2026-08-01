@@ -13,8 +13,7 @@ import {
   organizationToInput,
 } from "../OrganizationFormFields";
 import {
-  orgRequiredManagers,
-  orgRequiredStaff,
+  orgRequiredPersons,
   orgSupportManagers,
   orgSupportStaff,
 } from "@/lib/support-system";
@@ -50,11 +49,10 @@ export function OrganizationDetail({
   const managers = orgSupportManagers(organization.intake);
   const supportStaff = orgSupportStaff(organization.intake);
   const dual = managers.filter((n) => supportStaff.includes(n));
-  // この機関の在籍数から必要な人数
-  const needManagers = orgRequiredManagers(workerCount);
-  const needStaff = orgRequiredStaff(workerCount);
-  const managerShort = Math.max(0, needManagers - managers.length);
-  const staffShort = Math.max(0, needStaff - supportStaff.length);
+  // 支援責任者等 = 責任者と担当者の実人数（兼務は1人）。在籍数から必要人数を出す
+  const persons = new Set([...managers, ...supportStaff]).size;
+  const needPersons = orgRequiredPersons(workerCount);
+  const shortage = Math.max(0, needPersons - persons);
 
   // 鉛筆（編集）: 登録済みの内容も修正できる編集モーダル。保存後は最新の内容で表示し直す
   const handleEditSubmit = async (input: OrganizationInput) => {
@@ -121,30 +119,25 @@ export function OrganizationDetail({
           <span className="text-muted">在籍（1号特定技能）: </span>
           <span className="font-bold">{workerCount}名</span>
           <span className="ml-2 text-muted">
-            必要人数: 支援責任者{needManagers}名・支援担当者{needStaff}名
+            必要な支援責任者等: {needPersons}名（選任 {persons}名）
           </span>
+          {shortage > 0 && <span className="font-bold text-seal"> ← {shortage}名不足</span>}
         </p>
         <p className="mt-1 text-xs">
-          <span className="text-muted">
-            支援責任者（{managers.length}／{needManagers}名）:{" "}
-          </span>
+          <span className="text-muted">支援責任者: </span>
           {managers.length > 0 ? (
             managers.join("・")
           ) : (
-            <span className="font-bold text-seal">未選任</span>
+            <span className="font-bold text-seal">未選任（1人以上必要）</span>
           )}
-          {managerShort > 0 && <span className="font-bold text-seal"> ← {managerShort}名不足</span>}
         </p>
         <p className="text-xs">
-          <span className="text-muted">
-            支援担当者（{supportStaff.length}／{needStaff}名）:{" "}
-          </span>
+          <span className="text-muted">支援担当者: </span>
           {supportStaff.length > 0 ? (
             supportStaff.join("・")
           ) : (
-            <span className="font-bold text-seal">未選任</span>
+            <span className="font-bold text-seal">未選任（1人以上必要）</span>
           )}
-          {staffShort > 0 && <span className="font-bold text-seal"> ← {staffShort}名不足</span>}
         </p>
         {dual.length > 0 && <p className="text-xs text-muted">兼任: {dual.join("・")}</p>}
       </Card>
