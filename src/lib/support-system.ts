@@ -183,14 +183,18 @@ export interface EmployeeAssignment {
 export interface EmployeeSupportRole {
   employee: Employee;
   assignments: EmployeeAssignment[];
-  isManager: boolean; // どこかの機関で支援責任者
-  isStaff: boolean; // どこかの機関で支援担当者
-  isDual: boolean; // 同一機関で責任者と担当者を兼任
+  isManager: boolean; // 現在 支援責任者をしている（従業員側の設定）
+  isStaff: boolean; // 現在 支援担当者をしている（従業員側の設定）
+  isDual: boolean; // 支援責任者と支援担当者を兼任している
   years: number | null; // 勤続年数（満年数）
-  eligibleAsManager: boolean; // 支援責任者になれるか
-  // 支援責任者になれるのにまだ選任されていない（画面にアラートを出す）
+  isActive: boolean; // 在籍中か
+  eligibleAsManager: boolean; // 支援責任者になれるか（在籍中・常勤・勤続2年以上）
+  // 支援責任者になれるのに、まだ支援責任者にしていない（画面にアラートを出す）
   suggestManager: boolean;
   workerCount: number; // 担当している1号特定技能外国人の合計
+  // 従業員側で役割にしていないのに所属機関で選任されている機関（設定の取り違え）
+  mismatchedManagerOrgs: string[];
+  mismatchedStaffOrgs: string[];
 }
 
 export function buildEmployeeRoles(
@@ -213,21 +217,43 @@ export function buildEmployeeRoles(
         workerCount: org.workerCount,
       });
     }
-    const isManager = assignments.some((a) => a.isManager);
-    const isStaff = assignments.some((a) => a.isStaff);
+    // 役割は従業員側の設定を正とする（所属機関ではこの役割の人だけを選べる）
+    const isManager = employee.is_support_manager;
+    const isStaff = employee.is_support_staff;
     const eligibleAsManager = canBeSupportManager(employee, today);
     return {
       employee,
       assignments,
       isManager,
       isStaff,
-      isDual: assignments.some((a) => a.isDual),
+      isDual: isManager && isStaff,
       years: yearsBetween(employee.joined_on, today),
+      isActive: isActiveEmployee(employee, today),
       eligibleAsManager,
       suggestManager: eligibleAsManager && !isManager,
       workerCount: assignments.reduce((sum, a) => sum + a.workerCount, 0),
+      mismatchedManagerOrgs: isManager
+        ? []
+        : assignments.filter((a) => a.isManager).map((a) => a.organizationName),
+      mismatchedStaffOrgs: isStaff
+        ? []
+        : assignments.filter((a) => a.isStaff).map((a) => a.organizationName),
     };
   });
+}
+
+// 所属機関の「支援責任者」に選べる従業員（現在 支援責任者をしている在籍者）
+export function supportManagerOptions(employees: Employee[], today: string): string[] {
+  return employees
+    .filter((e) => e.is_support_manager && isActiveEmployee(e, today) && e.name.trim())
+    .map((e) => e.name.trim());
+}
+
+// 所属機関の「支援担当者」に選べる従業員（現在 支援担当者をしている在籍者）
+export function supportStaffOptions(employees: Employee[], today: string): string[] {
+  return employees
+    .filter((e) => e.is_support_staff && isActiveEmployee(e, today) && e.name.trim())
+    .map((e) => e.name.trim());
 }
 
 // ---- 必要人数 ----
@@ -270,7 +296,8 @@ export function summarizeSupportSystem(
   const orgCount = orgSummaries.filter((o) => o.workerCount > 0).length;
   const workerCount = orgSummaries.reduce((sum, o) => sum + o.workerCount, 0);
 
-  const activeRoles = roles.filter((r) => r.isManager || r.isStaff);
+  // 人数は従業員側で役割にしている在籍者を数える
+  const activeRoles = roles.filter((r) => (r.isManager || r.isStaff) && r.isActive);
   const currentStaff = activeRoles.filter((r) => r.isStaff).length;
   const currentManagers = activeRoles.filter((r) => r.isManager).length;
   const requiredStaff = requiredSupportStaffCount(orgCount, workerCount);

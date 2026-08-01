@@ -58,11 +58,13 @@ function OrgSupportLine({ org, workerCount }: { org: Organization; workerCount: 
 
 export function OrganizationsAdmin({
   organizations,
-  employeeNames = [],
+  managerNames = [],
+  staffNames = [],
   workerCounts = {},
 }: {
   organizations: Organization[];
-  employeeNames?: string[];
+  managerNames?: string[]; // 支援責任者にしている従業員
+  staffNames?: string[]; // 支援担当者にしている従業員
   workerCounts?: OrgWorkerCounts;
 }) {
   const router = useRouter();
@@ -181,7 +183,8 @@ export function OrganizationsAdmin({
       {formOpen && (
         <OrganizationFormModal
           initial={editing}
-          employeeNames={employeeNames}
+          managerNames={managerNames}
+          staffNames={staffNames}
           onClose={() => setFormOpen(false)}
           onSubmit={handleSubmit}
         />
@@ -208,12 +211,14 @@ export function OrganizationFormModal({
   initial,
   onClose,
   onSubmit,
-  employeeNames = [],
+  managerNames = [],
+  staffNames = [],
 }: {
   initial: Organization | null;
   onClose: () => void;
   onSubmit: (input: OrganizationInput) => Promise<void>;
-  employeeNames?: string[];
+  managerNames?: string[];
+  staffNames?: string[];
 }) {
   const [form, setForm] = useState<OrganizationInput>(() =>
     initial ? organizationToInput(initial) : emptyOrganizationInput(),
@@ -244,7 +249,8 @@ export function OrganizationFormModal({
         <OrganizationFormBody
           form={form}
           setForm={setForm}
-          employeeNames={employeeNames}
+          managerNames={managerNames}
+          staffNames={staffNames}
           orgId={initial?.id ?? null}
           snapshot={null}
         />

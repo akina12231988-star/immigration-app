@@ -34,7 +34,10 @@ export interface Employee {
   joined_on: string | null; // 入社日 YYYY-MM-DD
   left_on: string | null; // 退職日（入力があれば在籍対象から外す）
   employment_kind: string; // 常勤 / 非常勤
+  is_representative: boolean; // 代表か（個人事業主本人・法人の代表者。役員との併用可）
   is_officer: boolean; // 役員か
+  is_support_manager: boolean; // 現在 支援責任者をしている（所属機関の支援責任者に選任できる）
+  is_support_staff: boolean; // 現在 支援担当者をしている（所属機関の支援担当者に選任できる）
   office: string; // 支援業務を行う事務所
   training_completed_on: string | null; // 支援責任者の養成講習 修了日
   note: string;

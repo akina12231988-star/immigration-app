@@ -12,7 +12,6 @@ import {
   registerOrgFile,
 } from "@/app/(app)/organizations/actions";
 import { SSW_INDUSTRIES, categoriesFor } from "@/lib/industries";
-import { PREP_TANTOU_OPTIONS } from "@/lib/application-prep";
 import { SALES_APP_KINDS } from "@/lib/sales";
 import { todayStr } from "@/lib/ssw/calc";
 import {
@@ -157,10 +156,12 @@ function IntakeField({
   );
 }
 
-// 支援責任者・支援担当者の選択肢。従業員マスタ（/employees）＋保存済みの名前
-function supportNameOptions(employeeNames: string[], selected: string[]): string[] {
+// 支援責任者・支援担当者の選択肢。
+// 従業員マスタ（/employees）でその役割にしている人だけを候補にする。
+// 既に選任されている名前は、候補から外れても選択を解除できるよう残す。
+function supportNameOptions(roleNames: string[], selected: string[]): string[] {
   const options: string[] = [];
-  for (const name of [...employeeNames, ...PREP_TANTOU_OPTIONS, ...selected]) {
+  for (const name of [...roleNames, ...selected]) {
     const trimmed = name.trim();
     if (trimmed && !options.includes(trimmed)) options.push(trimmed);
   }
@@ -192,7 +193,7 @@ function IntakeNameMulti({
       <span className="text-xs font-bold text-muted">{label}</span>
       {options.length === 0 ? (
         <span className={HINT_CLASS}>
-          従業員が登録されていません。「支援体制（従業員）」から追加してください。
+          該当する従業員がいません。「支援体制（従業員）」で対象者にこの役割をチェックしてください。
         </span>
       ) : (
         <div className="flex flex-wrap gap-1.5">
@@ -314,13 +315,15 @@ export function OrganizationFormBody({
   setForm,
   orgId,
   snapshot,
-  employeeNames = [],
+  managerNames = [],
+  staffNames = [],
 }: {
   form: OrganizationInput;
   setForm: React.Dispatch<React.SetStateAction<OrganizationInput>>;
   orgId: string | null;
   snapshot: OrganizationInput | null;
-  employeeNames?: string[]; // 支援責任者・支援担当者の選択肢（従業員マスタ）
+  managerNames?: string[]; // 支援責任者にしている従業員（/employees で設定）
+  staffNames?: string[]; // 支援担当者にしている従業員（/employees で設定）
 }) {
   const locks = useMemo<FieldLocks>(() => {
     if (!snapshot) return NO_LOCKS;
@@ -455,13 +458,14 @@ export function OrganizationFormBody({
       <div className="flex flex-col gap-2.5 rounded-xl border border-border p-3">
         <p className="text-xs leading-relaxed text-muted">
           支援責任者・支援担当者は、支援業務を行う事務所ごとに常勤の役員又は職員からそれぞれ1名以上選任します（兼務可）。
-          選任できる人と必要な人数は「支援体制（従業員）」で確認できます。
+          <strong>「支援体制（従業員）」でその役割にしている在籍者だけが候補に出ます。</strong>
+          候補に出ない場合は、先に従業員側で役割をチェックしてください。
         </p>
         <IntakeNameMulti
           label="この機関の支援責任者（複数選択可）"
           value={intake.support_managers}
           onChange={(v) => setIntake({ support_managers: v })}
-          options={supportNameOptions(employeeNames, intake.support_managers)}
+          options={supportNameOptions(managerNames, intake.support_managers)}
           hint="支援計画の作成・実施を統括する責任者。外国人詳細・申請一覧・ダッシュボードに表示されます。"
           locked={locks.intake("support_managers")}
         />
@@ -469,7 +473,7 @@ export function OrganizationFormBody({
           label="この機関の支援担当者（複数選択可）"
           value={intake.support_staff}
           onChange={(v) => setIntake({ support_staff: v })}
-          options={supportNameOptions(employeeNames, intake.support_staff)}
+          options={supportNameOptions(staffNames, intake.support_staff)}
           hint="実際に支援業務を行う担当者。支援責任者との兼任も可（両方で同じ人を選ぶと「兼任」と表示されます）。"
           locked={locks.intake("support_staff")}
         />

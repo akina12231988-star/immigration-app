@@ -11,6 +11,8 @@ import {
   summarizeOrganizations,
   summarizeSupportSystem,
   supportManagerBlockReason,
+  supportManagerOptions,
+  supportStaffOptions,
   yearsBetween,
 } from "./support-system";
 import type { Employee, Organization, Worker } from "@/types/db";
@@ -24,7 +26,10 @@ function employee(over: Partial<Employee> & { name: string }): Employee {
     joined_on: null,
     left_on: null,
     employment_kind: "常勤",
+    is_representative: false,
     is_officer: false,
+    is_support_manager: false,
+    is_support_staff: false,
     office: "本社",
     training_completed_on: null,
     note: "",
@@ -210,11 +215,17 @@ describe("buildEmployeeRoles / summarizeSupportSystem", () => {
     worker({ current_organization_id: "org-1" }),
     worker({ current_organization_id: "org-2" }),
   ];
+  // 役割（支援責任者・支援担当者）は従業員側の設定を正とする
   const employees = [
-    employee({ name: "市原　彩奈", joined_on: "2019-04-01" }),
-    employee({ name: "田上　夏季", joined_on: "2023-04-01" }),
-    employee({ name: "大元　麗奈", joined_on: "2025-10-01" }),
-    employee({ name: "秋吉　伽恋", joined_on: "2021-04-01" }), // 2年以上だが未選任
+    employee({
+      name: "市原　彩奈",
+      joined_on: "2019-04-01",
+      is_support_manager: true,
+      is_support_staff: true,
+    }),
+    employee({ name: "田上　夏季", joined_on: "2023-04-01", is_support_staff: true }),
+    employee({ name: "大元　麗奈", joined_on: "2025-10-01", is_support_staff: true }),
+    employee({ name: "秋吉　伽恋", joined_on: "2021-04-01" }), // 2年以上だが役割なし
   ];
 
   const summaries = summarizeOrganizations(orgs, workers);
@@ -225,7 +236,7 @@ describe("buildEmployeeRoles / summarizeSupportSystem", () => {
     expect(ichihara.assignments.map((a) => a.organizationName)).toEqual(["A社", "B社"]);
     expect(ichihara.isManager).toBe(true);
     expect(ichihara.isStaff).toBe(true);
-    expect(ichihara.isDual).toBe(true); // A社で兼任
+    expect(ichihara.isDual).toBe(true);
     expect(ichihara.workerCount).toBe(2);
 
     const oomoto = roles.find((r) => r.employee.name === "大元　麗奈")!;
@@ -234,12 +245,24 @@ describe("buildEmployeeRoles / summarizeSupportSystem", () => {
     expect(oomoto.isDual).toBe(false);
   });
 
-  it("入社2年以上でまだ支援責任者でない人にアラートを出す", () => {
+  it("役割にしていないのに所属機関で選任されている場合を検出する", () => {
+    // 従業員側で支援責任者にしていない大元が、B社の支援責任者に選ばれていた場合
+    const wrong = [employee({ name: "大元　麗奈", joined_on: "2019-04-01", is_support_staff: true })];
+    const wrongOrgs = summarizeOrganizations(
+      [organization("org-2", "B社", { support_managers: ["大元　麗奈"], support_staff: ["大元　麗奈"] })],
+      workers,
+    );
+    const role = buildEmployeeRoles(wrong, wrongOrgs, TODAY)[0];
+    expect(role.mismatchedManagerOrgs).toEqual(["B社"]);
+    expect(role.mismatchedStaffOrgs).toEqual([]);
+  });
+
+  it("入社2年以上でまだ支援責任者にしていない人にアラートを出す", () => {
     const suggested = roles.filter((r) => r.suggestManager).map((r) => r.employee.name);
     expect(suggested).toEqual(["田上　夏季", "秋吉　伽恋"]);
     // 大元は勤続2年未満なのでアラートを出さない
     expect(suggested).not.toContain("大元　麗奈");
-    // 市原は既に責任者なのでアラートを出さない
+    // 市原は既に支援責任者なのでアラートを出さない
     expect(suggested).not.toContain("市原　彩奈");
   });
 
@@ -254,11 +277,43 @@ describe("buildEmployeeRoles / summarizeSupportSystem", () => {
     expect(summary.eligibleNotAssigned).toEqual(["田上　夏季", "秋吉　伽恋"]);
   });
 
+  it("退職済みの従業員は人数に数えない", () => {
+    const withLeaver = [
+      ...employees,
+      employee({
+        name: "退職　太郎",
+        joined_on: "2019-04-01",
+        left_on: "2026-03-31",
+        is_support_staff: true,
+      }),
+    ];
+    const summary = summarizeSupportSystem(
+      buildEmployeeRoles(withLeaver, summaries, TODAY),
+      summaries,
+    );
+    expect(summary.currentStaff).toBe(3);
+  });
+
   it("事務所ごとに責任者・担当者が1名以上いるかを判定する", () => {
     const split = [
-      employee({ name: "市原　彩奈", joined_on: "2019-04-01", office: "本社" }),
-      employee({ name: "田上　夏季", joined_on: "2023-04-01", office: "本社" }),
-      employee({ name: "大元　麗奈", joined_on: "2025-10-01", office: "福岡支店" }),
+      employee({
+        name: "市原　彩奈",
+        joined_on: "2019-04-01",
+        office: "本社",
+        is_support_manager: true,
+      }),
+      employee({
+        name: "田上　夏季",
+        joined_on: "2023-04-01",
+        office: "本社",
+        is_support_staff: true,
+      }),
+      employee({
+        name: "大元　麗奈",
+        joined_on: "2025-10-01",
+        office: "福岡支店",
+        is_support_staff: true,
+      }),
     ];
     const summary = summarizeSupportSystem(buildEmployeeRoles(split, summaries, TODAY), summaries);
     const honsha = summary.offices.find((o) => o.office === "本社")!;
@@ -267,5 +322,19 @@ describe("buildEmployeeRoles / summarizeSupportSystem", () => {
     const fukuoka = summary.offices.find((o) => o.office === "福岡支店")!;
     expect(fukuoka.managers).toEqual([]);
     expect(fukuoka.ok).toBe(false);
+  });
+});
+
+describe("supportManagerOptions / supportStaffOptions", () => {
+  const employees = [
+    employee({ name: "市原　彩奈", is_support_manager: true, is_support_staff: true }),
+    employee({ name: "田上　夏季", is_support_staff: true }),
+    employee({ name: "大元　麗奈" }), // 役割なし
+    employee({ name: "退職　太郎", is_support_manager: true, left_on: "2026-03-31" }),
+  ];
+
+  it("所属機関で選べるのは、その役割にしている在籍者だけ", () => {
+    expect(supportManagerOptions(employees, TODAY)).toEqual(["市原　彩奈"]);
+    expect(supportStaffOptions(employees, TODAY)).toEqual(["市原　彩奈", "田上　夏季"]);
   });
 });

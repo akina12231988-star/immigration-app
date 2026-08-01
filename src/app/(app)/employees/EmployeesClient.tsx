@@ -35,7 +35,7 @@ import {
 
 type OrgBrief = Pick<Organization, "id" | "name" | "intake">;
 
-const MIGRATION = "0062_employees.sql";
+const MIGRATION = "0062_employees.sql・0063_employee_roles.sql";
 
 function emptyInput(): EmployeeInput {
   return {
@@ -44,7 +44,10 @@ function emptyInput(): EmployeeInput {
     joined_on: null,
     left_on: null,
     employment_kind: "常勤",
+    is_representative: false,
     is_officer: false,
+    is_support_manager: false,
+    is_support_staff: false,
     office: "",
     training_completed_on: null,
     note: "",
@@ -58,7 +61,10 @@ function toInput(e: Employee): EmployeeInput {
     joined_on: e.joined_on,
     left_on: e.left_on,
     employment_kind: e.employment_kind,
+    is_representative: e.is_representative,
     is_officer: e.is_officer,
+    is_support_manager: e.is_support_manager,
+    is_support_staff: e.is_support_staff,
     office: e.office,
     training_completed_on: e.training_completed_on,
     note: e.note,
@@ -68,7 +74,7 @@ function toInput(e: Employee): EmployeeInput {
 // 役割バッジ（支援責任者 / 支援担当者 / 兼任）
 function RoleBadges({ role }: { role: EmployeeSupportRole }) {
   if (!role.isManager && !role.isStaff) {
-    return <span className="rounded-full bg-background px-2 py-0.5 text-xs text-muted">未選任</span>;
+    return <span className="rounded-full bg-background px-2 py-0.5 text-xs text-muted">役割なし</span>;
   }
   return (
     <span className="flex flex-wrap gap-1">
@@ -166,6 +172,12 @@ export function EmployeesClient({
       setDeleting(null);
     }
   };
+
+  // フォームで入力中の内容に対する支援責任者の要件チェック（満たさない場合の警告表示）
+  const managerBlockReason = supportManagerBlockReason(
+    { ...(editing ?? ({} as Employee)), ...form } as Employee,
+    today,
+  );
 
   const inputCls =
     "min-h-[44px] w-full rounded-xl border border-border bg-background px-3 text-sm";
@@ -299,6 +311,11 @@ export function EmployeesClient({
                   <div className="min-w-0">
                     <p className="truncate font-bold">
                       {e.name}
+                      {e.is_representative && (
+                        <span className="ml-2 rounded-full bg-background px-2 py-0.5 text-xs text-muted">
+                          代表
+                        </span>
+                      )}
                       {e.is_officer && (
                         <span className="ml-2 rounded-full bg-background px-2 py-0.5 text-xs text-muted">
                           役員
@@ -330,6 +347,25 @@ export function EmployeesClient({
                 <div className="mb-2 mt-1">
                   <RoleBadges role={role} />
                 </div>
+
+                {/* 従業員側で役割にしていないのに所属機関で選任されている（設定の取り違え） */}
+                {(role.mismatchedManagerOrgs.length > 0 || role.mismatchedStaffOrgs.length > 0) && (
+                  <p className="mb-2 rounded-lg bg-seal/10 px-2 py-1.5 text-xs text-seal">
+                    {role.mismatchedManagerOrgs.length > 0 && (
+                      <span className="block">
+                        ⚠ 支援責任者にしていませんが {role.mismatchedManagerOrgs.join("・")}{" "}
+                        の支援責任者に選任されています。
+                      </span>
+                    )}
+                    {role.mismatchedStaffOrgs.length > 0 && (
+                      <span className="block">
+                        ⚠ 支援担当者にしていませんが {role.mismatchedStaffOrgs.join("・")}{" "}
+                        の支援担当者に選任されています。
+                      </span>
+                    )}
+                    上の編集で役割をチェックするか、所属機関側の選任を外してください。
+                  </p>
+                )}
 
                 <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
                   <div>
@@ -370,7 +406,9 @@ export function EmployeesClient({
                       なし
                       {blockReason
                         ? `（支援責任者にはなれません: ${blockReason}）`
-                        : "（支援責任者・支援担当者に選任できます）"}
+                        : role.isManager || role.isStaff
+                          ? "（所属機関の支援責任者・支援担当者で選任してください）"
+                          : "（支援責任者・支援担当者に該当できます）"}
                     </p>
                   ) : (
                     <ul className="flex flex-col gap-1">
@@ -519,15 +557,60 @@ export function EmployeesClient({
               />
             </label>
           </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={form.is_officer}
-              onChange={(ev) => set("is_officer", ev.target.checked)}
-              className="h-5 w-5"
-            />
-            役員
-          </label>
+          {/* 個人事業主には役員がいないため、代表と役員は別項目にする（両方に該当する場合は両方チェック） */}
+          <div className="flex gap-5">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.is_representative}
+                onChange={(ev) => set("is_representative", ev.target.checked)}
+                className="h-5 w-5"
+              />
+              代表
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.is_officer}
+                onChange={(ev) => set("is_officer", ev.target.checked)}
+                className="h-5 w-5"
+              />
+              役員
+            </label>
+          </div>
+          <p className="-mt-1 text-xs text-muted">
+            個人事業主の場合は「代表」にチェックしてください（役員はいないため）。支援責任者等は常勤の役員又は職員から選任します。
+          </p>
+          {/* 現在の役割。ここで選んだ人だけが所属機関の支援責任者・支援担当者に選べる */}
+          <div className="flex flex-col gap-1.5 rounded-xl border border-border p-3">
+            <span className="text-xs font-bold text-muted">現在している役割</span>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.is_support_manager}
+                onChange={(ev) => set("is_support_manager", ev.target.checked)}
+                className="h-5 w-5"
+              />
+              支援責任者
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.is_support_staff}
+                onChange={(ev) => set("is_support_staff", ev.target.checked)}
+                className="h-5 w-5"
+              />
+              支援担当者
+            </label>
+            <p className="text-xs text-muted">
+              ここでチェックした人だけが、所属機関の「支援責任者」「支援担当者」で選べるようになります。両方チェックすると兼任です。
+            </p>
+            {form.is_support_manager && managerBlockReason && (
+              <p className="text-xs font-bold text-seal">
+                ⚠ この人は支援責任者の要件を満たしていません（{managerBlockReason}）。
+              </p>
+            )}
+          </div>
           <label className="flex flex-col gap-1">
             <span className="text-xs font-bold text-muted">
               支援責任者の養成講習 修了日（未修了は空欄）

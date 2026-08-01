@@ -23,11 +23,13 @@ import type { Organization, OrganizationInput } from "@/types/db";
 // 未記入の欄はこの画面で入力して保存できる（修正は一覧の鉛筆ボタンから）
 export function OrganizationDetail({
   organization,
-  employeeNames = [],
+  managerNames = [],
+  staffNames = [],
   workerCount = 0,
 }: {
   organization: Organization;
-  employeeNames?: string[]; // 支援責任者・支援担当者の選択肢（従業員マスタ）
+  managerNames?: string[]; // 支援責任者にしている従業員（/employees で設定）
+  staffNames?: string[]; // 支援担当者にしている従業員（/employees で設定）
   workerCount?: number; // この機関に在籍している1号特定技能外国人数
 }) {
   const router = useRouter();
@@ -141,7 +143,8 @@ export function OrganizationDetail({
           <OrganizationFormBody
             form={form}
             setForm={setForm}
-            employeeNames={employeeNames}
+            managerNames={managerNames}
+            staffNames={staffNames}
             orgId={organization.id}
             snapshot={snapshot}
           />
@@ -154,7 +157,8 @@ export function OrganizationDetail({
       {editOpen && (
         <OrganizationFormModal
           initial={organization}
-          employeeNames={employeeNames}
+          managerNames={managerNames}
+          staffNames={staffNames}
           onClose={() => setEditOpen(false)}
           onSubmit={handleEditSubmit}
         />
