@@ -232,11 +232,13 @@ export function SalesEntrySection({ app }: { app: Application }) {
                     className={`${INPUT} min-w-0 flex-1`}
                   />
                   <input
-                    value={it.amount}
-                    onChange={(e) => setItemAt(i, { amount: e.target.value })}
+                    value={digitsOnly(it.amount)}
+                    onChange={(e) => setItemAt(i, { amount: digitsOnly(e.target.value) })}
+                    inputMode="numeric"
                     placeholder="金額"
-                    className={`${INPUT} w-32 shrink-0 text-right tabular-nums`}
+                    className={`${INPUT} w-28 shrink-0 text-right tabular-nums`}
                   />
+                  <span className="shrink-0 text-xs text-muted">円</span>
                   <button
                     type="button"
                     onClick={() => setItems((rs) => rs.filter((_, idx) => idx !== i))}
