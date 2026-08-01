@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Building2, Pencil, Plus, Trash2 } from "lucide-react";
@@ -28,6 +28,9 @@ import {
 import { normalizeOrganizationIntake } from "@/lib/organization-intake";
 import { dbErrorMessage } from "@/lib/errors";
 import { SUPPORT_CONTRACT_STATUSES, type Organization, type OrganizationInput } from "@/types/db";
+
+// 絞り込みの選択肢（すべて → 支援委託の状況 → 未設定）
+const FILTER_KEYS = ["すべて", ...SUPPORT_CONTRACT_STATUSES, "未設定"] as const;
 
 // 所属機関ごとの在籍数（1号特定技能外国人）。支援体制ページと同じ数え方
 export interface OrgWorkerCounts {
@@ -156,11 +159,32 @@ export function OrganizationsAdmin({
   workerCounts?: OrgWorkerCounts;
 }) {
   const router = useRouter();
+  const [contractFilter, setContractFilter] = useState<string>("すべて");
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Organization | null>(null);
   const [deleting, setDeleting] = useState<Organization | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ ok: boolean; message: string } | null>(null);
+
+  // 支援委託の状況で絞り込む。件数はボタンに出す（0件でも押せるようにする）
+  const counts = useMemo(() => {
+    const map: Record<string, number> = { すべて: organizations.length, 未設定: 0 };
+    for (const s of SUPPORT_CONTRACT_STATUSES) map[s] = 0;
+    for (const org of organizations) {
+      const status = (org.intake?.support_contract_status ?? "").trim();
+      const key = status && status in map ? status : "未設定";
+      map[key] += 1;
+    }
+    return map;
+  }, [organizations]);
+
+  const shown = useMemo(() => {
+    if (contractFilter === "すべて") return organizations;
+    return organizations.filter((org) => {
+      const status = (org.intake?.support_contract_status ?? "").trim();
+      return contractFilter === "未設定" ? !status : status === contractFilter;
+    });
+  }, [organizations, contractFilter]);
 
   const openNew = () => {
     setEditing(null);
@@ -219,13 +243,41 @@ export function OrganizationsAdmin({
         会社・機関を追加
       </Button>
 
+      {/* 支援委託の状況で絞り込む（「支援委託中」だけを見たいときに使う） */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-xs font-bold text-muted">支援委託:</span>
+        {FILTER_KEYS.map((key) => {
+          const on = contractFilter === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              aria-pressed={on}
+              onClick={() => setContractFilter(key)}
+              className={`min-h-[36px] rounded-full border px-3 text-xs transition ${
+                on
+                  ? "border-brand bg-brand/10 font-bold text-brand"
+                  : "border-border bg-background text-muted"
+              }`}
+            >
+              {key}
+              <span className="ml-1 tabular-nums">{counts[key] ?? 0}</span>
+            </button>
+          );
+        })}
+      </div>
+
       {organizations.length === 0 ? (
         <Card className="p-6 text-center text-sm text-muted">
           まだ登録がありません。外国人の所属先となる会社・機関を追加してください。
         </Card>
+      ) : shown.length === 0 ? (
+        <Card className="p-6 text-center text-sm text-muted">
+          「{contractFilter}」の会社・機関はありません。
+        </Card>
       ) : (
         <div className="flex flex-col gap-2.5">
-          {organizations.map((org) => (
+          {shown.map((org) => (
             <Card key={org.id} className="p-4">
               <div className="mb-1 flex items-start justify-between gap-2">
                 {/* 名称をタップすると詳細ページ（登録内容の表示・未記入欄の入力）を開く */}
