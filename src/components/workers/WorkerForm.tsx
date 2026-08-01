@@ -59,6 +59,7 @@ function toInput(w: Worker | null): WorkerInput {
     messenger_link: w?.messenger_link ?? "",
     specialty_grade: w?.specialty_grade ?? "",
     ssw2_exam: w?.ssw2_exam ?? "",
+    recurring_sales_no: w?.recurring_sales_no ?? "",
     other_qualifications: w?.other_qualifications ?? "",
     my_number: w?.my_number ?? "",
     employment_insurance_no: w?.employment_insurance_no ?? "",

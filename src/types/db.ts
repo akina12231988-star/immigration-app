@@ -301,6 +301,7 @@ export interface Worker {
   ssw_insurance_expiry_date: string | null; // 特定技能総合保険の有効期限
   ssw_insurance_self_join: boolean; // 自己負担加入希望（所属機関が外国人負担の場合に本人が加入を希望）
   note: string;
+  recurring_sales_no: string; // 定期売上No.（freee販売の定期売上の伝票番号。例: SP-0000000225）
   worker_code: string | null; // 外国人ID（例: V-1）。自動採番
   legacy_id: string | null;
   created_by: string | null;

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { BillingWorker } from "@/lib/monthly-billing";
 import type { Worker, WorkerInput, WorkerWithHistories } from "@/types/db";
 import type { ParsedWorker } from "@/lib/ssw/import";
 import type { SupportWorker } from "@/lib/support-system";
@@ -59,6 +60,35 @@ export async function listWorkersBrief(
     .order("name", { ascending: true });
   if (error) throw error;
   return (data as WorkerBrief[]) ?? [];
+}
+
+// 月末の請求書作成用: 在籍名簿と支援費の日割りに必要な項目のみ
+export async function listWorkersForBilling(
+  supabase: SupabaseClient,
+): Promise<BillingWorker[]> {
+  const { data, error } = await supabase
+    .from("workers")
+    .select(
+      "id, name, kana, nationality, gender, birth, residence_status, residence_card_no, " +
+        "residence_permit_date, residence_expiry_date, employment_start_on, assigned_office, " +
+        "residence_note, recurring_sales_no, current_organization_id, support, status, leaving_on",
+    )
+    .order("name", { ascending: true });
+  if (error) throw error;
+  return (data as unknown as BillingWorker[]) ?? [];
+}
+
+// 定期売上No.（freee販売の定期売上の伝票番号）だけを更新する
+export async function setWorkerRecurringSalesNo(
+  supabase: SupabaseClient,
+  workerId: string,
+  recurringSalesNo: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("workers")
+    .update({ recurring_sales_no: recurringSalesNo })
+    .eq("id", workerId);
+  if (error) throw error;
 }
 
 // 退職＜随時報告＞用: 氏名検索とリンク表示・所属機関の確認に必要な項目のみ

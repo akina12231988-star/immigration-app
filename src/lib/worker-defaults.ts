@@ -44,6 +44,7 @@ export function blankWorkerInput(name: string, organizationId: string | null = n
     messenger_link: "",
     specialty_grade: "",
     ssw2_exam: "",
+    recurring_sales_no: "",
     other_qualifications: "",
     my_number: "",
     employment_insurance_no: "",
