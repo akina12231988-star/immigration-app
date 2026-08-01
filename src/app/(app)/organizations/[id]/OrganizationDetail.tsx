@@ -13,9 +13,9 @@ import {
   organizationToInput,
 } from "../OrganizationFormFields";
 import {
+  orgRequiredPersons,
   orgSupportManagers,
   orgSupportStaff,
-  requiredSupportStaffCount,
 } from "@/lib/support-system";
 import type { Organization, OrganizationInput } from "@/types/db";
 
@@ -23,11 +23,13 @@ import type { Organization, OrganizationInput } from "@/types/db";
 // 未記入の欄はこの画面で入力して保存できる（修正は一覧の鉛筆ボタンから）
 export function OrganizationDetail({
   organization,
-  employeeNames = [],
+  managerNames = [],
+  staffNames = [],
   workerCount = 0,
 }: {
   organization: Organization;
-  employeeNames?: string[]; // 支援責任者・支援担当者の選択肢（従業員マスタ）
+  managerNames?: string[]; // 支援責任者にしている従業員（/employees で設定）
+  staffNames?: string[]; // 支援担当者にしている従業員（/employees で設定）
   workerCount?: number; // この機関に在籍している1号特定技能外国人数
 }) {
   const router = useRouter();
@@ -47,6 +49,10 @@ export function OrganizationDetail({
   const managers = orgSupportManagers(organization.intake);
   const supportStaff = orgSupportStaff(organization.intake);
   const dual = managers.filter((n) => supportStaff.includes(n));
+  // 支援責任者等 = 責任者と担当者の実人数（兼務は1人）。在籍数から必要人数を出す
+  const persons = new Set([...managers, ...supportStaff]).size;
+  const needPersons = orgRequiredPersons(workerCount);
+  const shortage = Math.max(0, needPersons - persons);
 
   // 鉛筆（編集）: 登録済みの内容も修正できる編集モーダル。保存後は最新の内容で表示し直す
   const handleEditSubmit = async (input: OrganizationInput) => {
@@ -113,16 +119,16 @@ export function OrganizationDetail({
           <span className="text-muted">在籍（1号特定技能）: </span>
           <span className="font-bold">{workerCount}名</span>
           <span className="ml-2 text-muted">
-            必要人数（この機関分）: 支援責任者1名以上・支援担当者
-            {requiredSupportStaffCount(workerCount > 0 ? 1 : 0, workerCount)}名以上
+            必要な支援責任者等: {needPersons}名（選任 {persons}名）
           </span>
+          {shortage > 0 && <span className="font-bold text-seal"> ← {shortage}名不足</span>}
         </p>
         <p className="mt-1 text-xs">
           <span className="text-muted">支援責任者: </span>
           {managers.length > 0 ? (
             managers.join("・")
           ) : (
-            <span className="font-bold text-seal">未選任</span>
+            <span className="font-bold text-seal">未選任（1人以上必要）</span>
           )}
         </p>
         <p className="text-xs">
@@ -130,7 +136,7 @@ export function OrganizationDetail({
           {supportStaff.length > 0 ? (
             supportStaff.join("・")
           ) : (
-            <span className="font-bold text-seal">未選任</span>
+            <span className="font-bold text-seal">未選任（1人以上必要）</span>
           )}
         </p>
         {dual.length > 0 && <p className="text-xs text-muted">兼任: {dual.join("・")}</p>}
@@ -141,7 +147,8 @@ export function OrganizationDetail({
           <OrganizationFormBody
             form={form}
             setForm={setForm}
-            employeeNames={employeeNames}
+            managerNames={managerNames}
+            staffNames={staffNames}
             orgId={organization.id}
             snapshot={snapshot}
           />
@@ -154,7 +161,8 @@ export function OrganizationDetail({
       {editOpen && (
         <OrganizationFormModal
           initial={organization}
-          employeeNames={employeeNames}
+          managerNames={managerNames}
+          staffNames={staffNames}
           onClose={() => setEditOpen(false)}
           onSubmit={handleEditSubmit}
         />

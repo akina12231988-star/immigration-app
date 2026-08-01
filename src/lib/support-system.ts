@@ -5,12 +5,14 @@
 //     それぞれ常勤の役員又は職員の中から1名以上選任する（支援責任者が支援担当者を兼務することは可）。
 //  2. 支援業務に従事することができる者を支援責任者等に限定する。
 //  3. 支援責任者に養成講習の受講を義務付ける（※令和9年4月1日以降も当分の間は未修了でも差し支えない）。
-//  4. 支援担当者の数が、
-//       ・委託を受けている特定技能所属機関の数 ÷ 10
-//       ・支援を行っている1号特定技能外国人の数 ÷ 50
-//     の双方を「超えている」こと（支援責任者が支援担当者を兼務することは可）。
+//  4. 登録支援機関が支援業務の委託を受けることができる特定技能所属機関の数は、
+//     支援責任者等1人当たり10機関未満とする（例: 25機関なら3人の支援責任者等が必要）。
+//  5. 支援責任者等が支援を行うことができる1号特定技能外国人の数は、
+//     支援責任者等1人当たり50人未満とする（例: 120人なら3人の支援責任者等が必要）。
 //
-// 支援責任者になれる目安は弊社の運用基準（入社から2年以上経過した常勤の従業員）。
+// ④⑤の人数は支援責任者と支援担当者を別々にではなく「支援責任者等」としてまとめて数える
+// （兼務している人は1人）。
+// 支援責任者になれる目安の勤続年数は弊社の運用基準（入社から2年以上）。
 
 import type { Employee, Organization, OrganizationIntake, Worker } from "@/types/db";
 
@@ -20,9 +22,15 @@ export const REFORM_EFFECTIVE_ON = "2027-04-01";
 // 支援責任者になれる目安の勤続年数（弊社の運用基準）
 export const SUPPORT_MANAGER_MIN_YEARS = 2;
 
-// 支援担当者1人あたりの上限（これを「超えている」人数が必要）
-export const ORGS_PER_SUPPORT_STAFF = 10;
-export const WORKERS_PER_SUPPORT_STAFF = 50;
+// 「支援責任者等」1人あたりの上限。
+// 支援責任者と支援担当者は別々に数えるのではなく、合わせて「支援責任者等」として数える
+// （兼務している人は1人）。上限は「未満」なので、ちょうどの数は超過扱いになる。
+//   ④ 委託を受けることができる特定技能所属機関の数 … 支援責任者等1人当たり10機関未満
+//      例: 25機関の委託を受ける場合は3人の支援責任者等が必要
+//   ⑤ 支援を行うことができる1号特定技能外国人の数 … 支援責任者等1人当たり50人未満
+//      例: 1号特定技能外国人120人を支援する場合は3人の支援責任者等が必要
+export const ORGS_PER_SUPPORT_PERSON = 10;
+export const WORKERS_PER_SUPPORT_PERSON = 50;
 
 // ---- 日付 ----
 
@@ -57,10 +65,24 @@ export function isActiveEmployee(employee: Employee, today: string): boolean {
   return employee.left_on > today;
 }
 
+// 支援責任者等（支援責任者・支援担当者）の共通要件。
+// 改正点①「それぞれ常勤の役員又は職員の中から1人ずつ以上選任する」に対応する
+export function canBeSupportPerson(employee: Employee, today: string): boolean {
+  return isActiveEmployee(employee, today) && employee.employment_kind === "常勤";
+}
+
+// 支援担当者にできない理由（できる場合は ''）
+export function supportStaffBlockReason(employee: Employee, today: string): string {
+  if (!isActiveEmployee(employee, today)) return "退職済み";
+  if (employee.employment_kind !== "常勤") {
+    return "常勤ではありません（支援責任者等は常勤の役員又は職員から選任します）";
+  }
+  return "";
+}
+
 // 支援責任者になれるか（在籍中・常勤・勤続2年以上）
 export function canBeSupportManager(employee: Employee, today: string): boolean {
-  if (!isActiveEmployee(employee, today)) return false;
-  if (employee.employment_kind !== "常勤") return false;
+  if (!canBeSupportPerson(employee, today)) return false;
   const years = yearsBetween(employee.joined_on, today);
   return years !== null && years >= SUPPORT_MANAGER_MIN_YEARS;
 }
@@ -144,6 +166,11 @@ export interface OrgSupportSummary {
   managers: string[]; // 支援責任者
   staff: string[]; // 支援担当者
   dual: string[]; // 責任者と担当者を兼任している人
+  persons: string[]; // この機関の支援責任者等（責任者＋担当者の実人数。兼任は1人）
+  requiredPersons: number; // この機関の在籍数から必要な支援責任者等の人数
+  personShortage: number; // 支援責任者等の不足数（0なら充足）
+  managerMissing: boolean; // 支援責任者が1人も選任されていない
+  staffMissing: boolean; // 支援担当者が1人も選任されていない
 }
 
 export function summarizeOrganizations(
@@ -158,13 +185,21 @@ export function summarizeOrganizations(
   return organizations.map((org) => {
     const managers = orgSupportManagers(org.intake);
     const staff = orgSupportStaff(org.intake);
+    const workerCount = counts.get(org.id) ?? 0;
+    const persons = [...new Set([...managers, ...staff])];
+    const requiredPersons = orgRequiredPersons(workerCount);
     return {
       organizationId: org.id,
       organizationName: org.name,
-      workerCount: counts.get(org.id) ?? 0,
+      workerCount,
       managers,
       staff,
       dual: managers.filter((n) => staff.includes(n)),
+      persons,
+      requiredPersons,
+      personShortage: Math.max(0, requiredPersons - persons.length),
+      managerMissing: managers.length === 0,
+      staffMissing: staff.length === 0,
     };
   });
 }
@@ -183,14 +218,23 @@ export interface EmployeeAssignment {
 export interface EmployeeSupportRole {
   employee: Employee;
   assignments: EmployeeAssignment[];
-  isManager: boolean; // どこかの機関で支援責任者
-  isStaff: boolean; // どこかの機関で支援担当者
-  isDual: boolean; // 同一機関で責任者と担当者を兼任
+  isManager: boolean; // 現在 支援責任者をしている（従業員側の設定）
+  isStaff: boolean; // 現在 支援担当者をしている（従業員側の設定）
+  isDual: boolean; // 支援責任者と支援担当者を兼任している
   years: number | null; // 勤続年数（満年数）
-  eligibleAsManager: boolean; // 支援責任者になれるか
-  // 支援責任者になれるのにまだ選任されていない（画面にアラートを出す）
+  isActive: boolean; // 在籍中か
+  eligibleAsManager: boolean; // 支援責任者になれるか（在籍中・常勤・勤続2年以上）
+  // 支援責任者になれるのに、まだ支援責任者にしていない（画面にアラートを出す）
   suggestManager: boolean;
   workerCount: number; // 担当している1号特定技能外国人の合計
+  // 従業員側で役割にしていないのに所属機関で選任されている機関（設定の取り違え）
+  mismatchedManagerOrgs: string[];
+  mismatchedStaffOrgs: string[];
+  // 役割にしているが要件を満たしていない理由（満たしていれば ''）
+  managerIssue: string;
+  staffIssue: string;
+  // 支援責任者なのに養成講習が未修了（当分の間は差し支えないが、いずれ必要）
+  trainingPending: boolean;
 }
 
 export function buildEmployeeRoles(
@@ -213,33 +257,77 @@ export function buildEmployeeRoles(
         workerCount: org.workerCount,
       });
     }
-    const isManager = assignments.some((a) => a.isManager);
-    const isStaff = assignments.some((a) => a.isStaff);
+    // 役割は従業員側の設定を正とする（所属機関ではこの役割の人だけを選べる）
+    const isManager = employee.is_support_manager;
+    const isStaff = employee.is_support_staff;
     const eligibleAsManager = canBeSupportManager(employee, today);
     return {
       employee,
       assignments,
       isManager,
       isStaff,
-      isDual: assignments.some((a) => a.isDual),
+      isDual: isManager && isStaff,
       years: yearsBetween(employee.joined_on, today),
+      isActive: isActiveEmployee(employee, today),
       eligibleAsManager,
       suggestManager: eligibleAsManager && !isManager,
       workerCount: assignments.reduce((sum, a) => sum + a.workerCount, 0),
+      mismatchedManagerOrgs: isManager
+        ? []
+        : assignments.filter((a) => a.isManager).map((a) => a.organizationName),
+      mismatchedStaffOrgs: isStaff
+        ? []
+        : assignments.filter((a) => a.isStaff).map((a) => a.organizationName),
+      managerIssue: isManager ? supportManagerBlockReason(employee, today) : "",
+      staffIssue: isStaff ? supportStaffBlockReason(employee, today) : "",
+      trainingPending: isManager && !employee.training_completed_on,
     };
   });
 }
 
+// 所属機関の「支援責任者」に選べる従業員（現在 支援責任者をしている常勤の在籍者）
+export function supportManagerOptions(employees: Employee[], today: string): string[] {
+  return employees
+    .filter((e) => e.is_support_manager && canBeSupportPerson(e, today) && e.name.trim())
+    .map((e) => e.name.trim());
+}
+
+// 所属機関の「支援担当者」に選べる従業員（現在 支援担当者をしている常勤の在籍者）
+export function supportStaffOptions(employees: Employee[], today: string): string[] {
+  return employees
+    .filter((e) => e.is_support_staff && canBeSupportPerson(e, today) && e.name.trim())
+    .map((e) => e.name.trim());
+}
+
 // ---- 必要人数 ----
 
-// 「n を超えている」ことが要件なので、n が割り切れる場合も +1 人必要
-function moreThan(value: number, per: number): number {
+// 「1人当たり n 未満」が要件なので、n人でちょうど割り切れる場合も1人多く必要。
+// 例: 20機関を2人（1人10機関）は「10機関未満」を満たさないので3人必要
+function requiredFor(value: number, per: number): number {
   return Math.floor(value / per) + 1;
 }
 
-// 必要な支援担当者数（機関数÷10・外国人数÷50 の双方を超える人数）
-export function requiredSupportStaffCount(orgCount: number, workerCount: number): number {
-  return Math.max(moreThan(orgCount, ORGS_PER_SUPPORT_STAFF), moreThan(workerCount, WORKERS_PER_SUPPORT_STAFF));
+// 必要な支援責任者等の人数（機関数・1号特定技能外国人数の両方の上限を満たす人数）
+export function requiredSupportPersonCount(orgCount: number, workerCount: number): number {
+  return Math.max(
+    requiredFor(orgCount, ORGS_PER_SUPPORT_PERSON),
+    requiredFor(workerCount, WORKERS_PER_SUPPORT_PERSON),
+  );
+}
+
+// 支援責任者等が n 人いるときに委託を受けられる機関数の上限（10n 未満なので 10n-1）
+export function maxOrgCountFor(personCount: number): number {
+  return Math.max(0, personCount * ORGS_PER_SUPPORT_PERSON - 1);
+}
+
+// 支援責任者等が n 人いるときに支援できる1号特定技能外国人数の上限（50n 未満なので 50n-1）
+export function maxWorkerCountFor(personCount: number): number {
+  return Math.max(0, personCount * WORKERS_PER_SUPPORT_PERSON - 1);
+}
+
+// 所属機関1社あたりの必要人数（その機関に在籍している1号特定技能外国人の数から算出）
+export function orgRequiredPersons(workerCount: number): number {
+  return requiredSupportPersonCount(1, workerCount);
 }
 
 // ---- 事務所ごとの充足状況 ----
@@ -254,12 +342,20 @@ export interface OfficeSummary {
 export interface SupportSystemSummary {
   orgCount: number; // 委託を受けている特定技能所属機関の数（支援対象者が在籍している機関）
   workerCount: number; // 支援を行っている1号特定技能外国人の数
-  requiredStaff: number; // 必要な支援担当者数
-  currentStaff: number; // 現在の支援担当者数（実人数）
-  staffShortage: number; // 不足数（0なら充足）
-  currentManagers: number; // 現在の支援責任者数（実人数）
+  requiredPersons: number; // 必要な支援責任者等の人数（機関数・外国人数の上限から）
+  currentPersons: number; // 現在の支援責任者等の人数（責任者＋担当者の実人数。兼任は1人）
+  personShortage: number; // 支援責任者等の不足数（0なら充足）
+  maxOrgs: number; // 現在の人数で委託を受けられる機関数の上限
+  maxWorkers: number; // 現在の人数で支援できる1号特定技能外国人数の上限
+  currentStaff: number; // 現在の支援担当者数（内訳）
+  currentManagers: number; // 現在の支援責任者数（内訳）
+  // 機関ごとに必要人数を満たしていない機関
+  understaffedOrgs: OrgSupportSummary[];
   offices: OfficeSummary[]; // 事務所ごとの充足状況
   eligibleNotAssigned: string[]; // 支援責任者になれるのに未選任の従業員名
+  // 役割にしているが要件（常勤・勤続2年以上）を満たしていない従業員
+  invalidRoles: { name: string; issue: string }[];
+  trainingPending: string[]; // 養成講習が未修了の支援責任者
 }
 
 export function summarizeSupportSystem(
@@ -270,10 +366,16 @@ export function summarizeSupportSystem(
   const orgCount = orgSummaries.filter((o) => o.workerCount > 0).length;
   const workerCount = orgSummaries.reduce((sum, o) => sum + o.workerCount, 0);
 
-  const activeRoles = roles.filter((r) => r.isManager || r.isStaff);
+  // 人数は従業員側で役割にしている在籍者を数える
+  // 常勤の在籍者だけを数える（支援責任者等は常勤の役員又は職員から選任する）
+  const activeRoles = roles.filter(
+    (r) => (r.isManager || r.isStaff) && r.isActive && r.employee.employment_kind === "常勤",
+  );
   const currentStaff = activeRoles.filter((r) => r.isStaff).length;
   const currentManagers = activeRoles.filter((r) => r.isManager).length;
-  const requiredStaff = requiredSupportStaffCount(orgCount, workerCount);
+  // 支援責任者等 = 支援責任者と支援担当者の実人数（兼務している人は1人として数える）
+  const currentPersons = activeRoles.length;
+  const requiredPersons = requiredSupportPersonCount(orgCount, workerCount);
 
   const officeNames = new Set<string>();
   for (const r of activeRoles) officeNames.add(r.employee.office.trim());
@@ -287,11 +389,31 @@ export function summarizeSupportSystem(
   return {
     orgCount,
     workerCount,
-    requiredStaff,
+    requiredPersons,
+    currentPersons,
+    personShortage: Math.max(0, requiredPersons - currentPersons),
+    maxOrgs: maxOrgCountFor(currentPersons),
+    maxWorkers: maxWorkerCountFor(currentPersons),
     currentStaff,
-    staffShortage: Math.max(0, requiredStaff - currentStaff),
     currentManagers,
+    understaffedOrgs: orgSummaries.filter(
+      (o) => o.personShortage > 0 || o.managerMissing || o.staffMissing,
+    ),
     offices,
     eligibleNotAssigned: roles.filter((r) => r.suggestManager).map((r) => r.employee.name),
+    invalidRoles: roles
+      .filter((r) => r.managerIssue || r.staffIssue)
+      .map((r) => ({
+        name: r.employee.name,
+        issue: [
+          r.managerIssue && `支援責任者: ${r.managerIssue}`,
+          r.staffIssue && `支援担当者: ${r.staffIssue}`,
+        ]
+          .filter(Boolean)
+          .join(" / "),
+      })),
+    trainingPending: roles
+      .filter((r) => r.trainingPending && r.isActive)
+      .map((r) => r.employee.name),
   };
 }

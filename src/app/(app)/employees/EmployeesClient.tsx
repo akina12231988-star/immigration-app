@@ -18,11 +18,14 @@ import {
 import {
   REFORM_EFFECTIVE_ON,
   SUPPORT_MANAGER_MIN_YEARS,
+  ORGS_PER_SUPPORT_PERSON,
+  WORKERS_PER_SUPPORT_PERSON,
   buildEmployeeRoles,
   serviceLabel,
   summarizeOrganizations,
   summarizeSupportSystem,
   supportManagerBlockReason,
+  supportStaffBlockReason,
   type EmployeeSupportRole,
   type SupportWorker,
 } from "@/lib/support-system";
@@ -35,7 +38,7 @@ import {
 
 type OrgBrief = Pick<Organization, "id" | "name" | "intake">;
 
-const MIGRATION = "0062_employees.sql";
+const MIGRATION = "0062_employees.sql・0063_employee_roles.sql";
 
 function emptyInput(): EmployeeInput {
   return {
@@ -44,7 +47,10 @@ function emptyInput(): EmployeeInput {
     joined_on: null,
     left_on: null,
     employment_kind: "常勤",
+    is_representative: false,
     is_officer: false,
+    is_support_manager: false,
+    is_support_staff: false,
     office: "",
     training_completed_on: null,
     note: "",
@@ -58,7 +64,10 @@ function toInput(e: Employee): EmployeeInput {
     joined_on: e.joined_on,
     left_on: e.left_on,
     employment_kind: e.employment_kind,
+    is_representative: e.is_representative,
     is_officer: e.is_officer,
+    is_support_manager: e.is_support_manager,
+    is_support_staff: e.is_support_staff,
     office: e.office,
     training_completed_on: e.training_completed_on,
     note: e.note,
@@ -68,7 +77,7 @@ function toInput(e: Employee): EmployeeInput {
 // 役割バッジ（支援責任者 / 支援担当者 / 兼任）
 function RoleBadges({ role }: { role: EmployeeSupportRole }) {
   if (!role.isManager && !role.isStaff) {
-    return <span className="rounded-full bg-background px-2 py-0.5 text-xs text-muted">未選任</span>;
+    return <span className="rounded-full bg-background px-2 py-0.5 text-xs text-muted">役割なし</span>;
   }
   return (
     <span className="flex flex-wrap gap-1">
@@ -167,6 +176,11 @@ export function EmployeesClient({
     }
   };
 
+  // フォームで入力中の内容に対する支援責任者の要件チェック（満たさない場合の警告表示）
+  const formEmployee = { ...(editing ?? ({} as Employee)), ...form } as Employee;
+  const managerBlockReason = supportManagerBlockReason(formEmployee, today);
+  const staffBlockReason = supportStaffBlockReason(formEmployee, today);
+
   const inputCls =
     "min-h-[44px] w-full rounded-xl border border-border bg-background px-3 text-sm";
 
@@ -187,9 +201,11 @@ export function EmployeesClient({
       <Card className="p-4">
         <h2 className="mb-1 text-sm font-bold">支援体制の充足状況</h2>
         <p className="mb-3 text-xs leading-relaxed text-muted">
-          令和9年4月1日（{REFORM_EFFECTIVE_ON}）施行の省令改正に基づく判定です。支援責任者・支援担当者は、支援業務を行う事務所ごとに常勤の役員又は職員から
-          それぞれ1名以上を選任します（兼務可）。支援担当者の数は「委託を受けている特定技能所属機関の数÷10」と「1号特定技能外国人の数÷50」の
-          双方を<strong>超えている</strong>必要があります。
+          令和9年4月1日（{REFORM_EFFECTIVE_ON}）施行の省令改正に基づく判定です。支援責任者・支援担当者（あわせて
+          <strong>支援責任者等</strong>）は、支援業務を行う事務所ごとに常勤の役員又は職員からそれぞれ1人以上を選任します（兼務可）。
+          人数の上限は支援責任者等をまとめて数え、<strong>1人当たり {ORGS_PER_SUPPORT_PERSON}機関未満</strong>・
+          <strong>1人当たり {WORKERS_PER_SUPPORT_PERSON}人未満</strong>である必要があります
+          （例: 25機関の委託を受けるなら3人、1号特定技能外国人120人を支援するなら3人）。
         </p>
         <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
           <div className="rounded-xl bg-background p-3">
@@ -201,31 +217,42 @@ export function EmployeesClient({
             <dd className="text-lg font-bold">{summary.workerCount}名</dd>
           </div>
           <div className="rounded-xl bg-background p-3">
-            <dt className="text-xs text-muted">支援担当者（必要／現在）</dt>
+            <dt className="text-xs text-muted">支援責任者等（必要／現在）</dt>
             <dd className="text-lg font-bold">
-              {summary.requiredStaff}名 ／{" "}
-              <span className={summary.staffShortage > 0 ? "text-seal" : "text-brand"}>
-                {summary.currentStaff}名
+              {summary.requiredPersons}名 ／{" "}
+              <span className={summary.personShortage > 0 ? "text-seal" : "text-brand"}>
+                {summary.currentPersons}名
               </span>
+            </dd>
+            <dd className="text-xs text-muted">
+              内訳: 責任者{summary.currentManagers}名・担当者{summary.currentStaff}名
             </dd>
           </div>
           <div className="rounded-xl bg-background p-3">
-            <dt className="text-xs text-muted">支援責任者（現在）</dt>
-            <dd className="text-lg font-bold">{summary.currentManagers}名</dd>
+            <dt className="text-xs text-muted">現在の人数で受けられる上限</dt>
+            <dd className="text-sm font-bold">
+              {summary.maxOrgs}機関・{summary.maxWorkers}名まで
+            </dd>
+            <dd className="text-xs text-muted">
+              支援責任者等{summary.currentPersons}名の場合
+            </dd>
           </div>
         </dl>
 
-        {summary.staffShortage > 0 ? (
+        {summary.personShortage > 0 ? (
           <p className="mt-3 flex items-start gap-2 rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
             <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-            支援担当者が{summary.staffShortage}名不足しています（必要 {summary.requiredStaff}名・現在{" "}
-            {summary.currentStaff}名）。所属機関の「支援担当者」に選任してください。
+            支援責任者等が{summary.personShortage}名不足しています（必要 {summary.requiredPersons}名・現在{" "}
+            {summary.currentPersons}名）。委託を受けている機関 {summary.orgCount}社・1号特定技能外国人{" "}
+            {summary.workerCount}名を支援するには {summary.requiredPersons}名必要です。
+            従業員の「現在している役割」で支援責任者・支援担当者を増やしてください。
           </p>
         ) : (
           <p className="mt-3 flex items-start gap-2 rounded-lg bg-brand/10 px-3 py-2 text-sm text-brand">
             <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
-            支援担当者の人数は要件を満たしています（必要 {summary.requiredStaff}名・現在{" "}
-            {summary.currentStaff}名）。
+            人数は要件を満たしています（必要 {summary.requiredPersons}名・現在 {summary.currentPersons}名）。
+            あと {Math.max(0, summary.maxOrgs - summary.orgCount)}機関・
+            {Math.max(0, summary.maxWorkers - summary.workerCount)}名まで受け入れられます。
           </p>
         )}
 
@@ -250,6 +277,42 @@ export function EmployeesClient({
           </ul>
         )}
       </Card>
+
+      {/* 役割にしているが要件を満たしていない従業員 */}
+      {summary.invalidRoles.length > 0 && (
+        <Card className="border-seal/40 p-4">
+          <h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-seal">
+            <AlertTriangle size={16} />
+            要件を満たしていない支援責任者等 {summary.invalidRoles.length}名
+          </h2>
+          <p className="mb-2 text-xs text-muted">
+            支援責任者等は常勤の役員又は職員から選任します。役割のチェックを外すか、勤務区分を見直してください。
+            この人たちは所属機関の選択肢にも出ません。
+          </p>
+          <ul className="flex flex-col gap-1">
+            {summary.invalidRoles.map((r) => (
+              <li key={r.name} className="text-sm">
+                <span className="font-bold">{r.name}</span>
+                <span className="ml-2 text-xs text-seal">{r.issue}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      {/* 養成講習が未修了の支援責任者 */}
+      {summary.trainingPending.length > 0 && (
+        <Card className="p-4">
+          <h2 className="mb-1 text-sm font-bold">養成講習 未修了の支援責任者 {summary.trainingPending.length}名</h2>
+          <p className="mb-2 text-xs text-muted">
+            {summary.trainingPending.join("・")}
+          </p>
+          <p className="text-xs text-muted">
+            支援責任者には支援能力向上のための養成講習（入管法や労働関係法令等）の受講が義務付けられます。
+            令和9年4月1日以降も当分の間は修了していなくても差し支えありませんが、受講したら修了日を登録してください。
+          </p>
+        </Card>
+      )}
 
       {/* 支援責任者になれる従業員のアラート */}
       {suggested.length > 0 && (
@@ -299,6 +362,11 @@ export function EmployeesClient({
                   <div className="min-w-0">
                     <p className="truncate font-bold">
                       {e.name}
+                      {e.is_representative && (
+                        <span className="ml-2 rounded-full bg-background px-2 py-0.5 text-xs text-muted">
+                          代表
+                        </span>
+                      )}
                       {e.is_officer && (
                         <span className="ml-2 rounded-full bg-background px-2 py-0.5 text-xs text-muted">
                           役員
@@ -330,6 +398,25 @@ export function EmployeesClient({
                 <div className="mb-2 mt-1">
                   <RoleBadges role={role} />
                 </div>
+
+                {/* 従業員側で役割にしていないのに所属機関で選任されている（設定の取り違え） */}
+                {(role.mismatchedManagerOrgs.length > 0 || role.mismatchedStaffOrgs.length > 0) && (
+                  <p className="mb-2 rounded-lg bg-seal/10 px-2 py-1.5 text-xs text-seal">
+                    {role.mismatchedManagerOrgs.length > 0 && (
+                      <span className="block">
+                        ⚠ 支援責任者にしていませんが {role.mismatchedManagerOrgs.join("・")}{" "}
+                        の支援責任者に選任されています。
+                      </span>
+                    )}
+                    {role.mismatchedStaffOrgs.length > 0 && (
+                      <span className="block">
+                        ⚠ 支援担当者にしていませんが {role.mismatchedStaffOrgs.join("・")}{" "}
+                        の支援担当者に選任されています。
+                      </span>
+                    )}
+                    上の編集で役割をチェックするか、所属機関側の選任を外してください。
+                  </p>
+                )}
 
                 <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
                   <div>
@@ -370,7 +457,9 @@ export function EmployeesClient({
                       なし
                       {blockReason
                         ? `（支援責任者にはなれません: ${blockReason}）`
-                        : "（支援責任者・支援担当者に選任できます）"}
+                        : role.isManager || role.isStaff
+                          ? "（所属機関の支援責任者・支援担当者で選任してください）"
+                          : "（支援責任者・支援担当者に該当できます）"}
                     </p>
                   ) : (
                     <ul className="flex flex-col gap-1">
@@ -423,14 +512,18 @@ export function EmployeesClient({
                   {org.organizationName}
                 </Link>
                 <p className="mt-0.5 text-xs text-muted">
-                  在籍している1号特定技能外国人 {org.workerCount}名
+                  在籍している1号特定技能外国人 {org.workerCount}名 ／ 必要な支援責任者等{" "}
+                  {org.requiredPersons}名（選任 {org.persons.length}名）
+                  {org.personShortage > 0 && (
+                    <span className="font-bold text-seal"> ← {org.personShortage}名不足</span>
+                  )}
                 </p>
                 <p className="mt-1 text-xs">
                   <span className="text-muted">支援責任者: </span>
                   {org.managers.length > 0 ? (
                     org.managers.join("・")
                   ) : (
-                    <span className="font-bold text-seal">未選任</span>
+                    <span className="font-bold text-seal">未選任（1人以上必要）</span>
                   )}
                 </p>
                 <p className="text-xs">
@@ -438,7 +531,7 @@ export function EmployeesClient({
                   {org.staff.length > 0 ? (
                     org.staff.join("・")
                   ) : (
-                    <span className="font-bold text-seal">未選任</span>
+                    <span className="font-bold text-seal">未選任（1人以上必要）</span>
                   )}
                 </p>
                 {org.dual.length > 0 && (
@@ -519,15 +612,65 @@ export function EmployeesClient({
               />
             </label>
           </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={form.is_officer}
-              onChange={(ev) => set("is_officer", ev.target.checked)}
-              className="h-5 w-5"
-            />
-            役員
-          </label>
+          {/* 個人事業主には役員がいないため、代表と役員は別項目にする（両方に該当する場合は両方チェック） */}
+          <div className="flex gap-5">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.is_representative}
+                onChange={(ev) => set("is_representative", ev.target.checked)}
+                className="h-5 w-5"
+              />
+              代表
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.is_officer}
+                onChange={(ev) => set("is_officer", ev.target.checked)}
+                className="h-5 w-5"
+              />
+              役員
+            </label>
+          </div>
+          <p className="-mt-1 text-xs text-muted">
+            個人事業主の場合は「代表」にチェックしてください（役員はいないため）。支援責任者等は常勤の役員又は職員から選任します。
+          </p>
+          {/* 現在の役割。ここで選んだ人だけが所属機関の支援責任者・支援担当者に選べる */}
+          <div className="flex flex-col gap-1.5 rounded-xl border border-border p-3">
+            <span className="text-xs font-bold text-muted">現在している役割</span>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.is_support_manager}
+                onChange={(ev) => set("is_support_manager", ev.target.checked)}
+                className="h-5 w-5"
+              />
+              支援責任者
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.is_support_staff}
+                onChange={(ev) => set("is_support_staff", ev.target.checked)}
+                className="h-5 w-5"
+              />
+              支援担当者
+            </label>
+            <p className="text-xs text-muted">
+              ここでチェックした人だけが、所属機関の「支援責任者」「支援担当者」で選べるようになります。両方チェックすると兼任です。
+            </p>
+            {form.is_support_manager && managerBlockReason && (
+              <p className="text-xs font-bold text-seal">
+                ⚠ この人は支援責任者の要件を満たしていません（{managerBlockReason}）。
+              </p>
+            )}
+            {form.is_support_staff && staffBlockReason && (
+              <p className="text-xs font-bold text-seal">
+                ⚠ この人は支援担当者の要件を満たしていません（{staffBlockReason}）。
+              </p>
+            )}
+          </div>
           <label className="flex flex-col gap-1">
             <span className="text-xs font-bold text-muted">
               支援責任者の養成講習 修了日（未修了は空欄）

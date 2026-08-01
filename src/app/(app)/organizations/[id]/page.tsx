@@ -5,7 +5,12 @@ import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { getOrganization } from "@/lib/supabase/queries/organizations";
 import { listEmployees } from "@/lib/supabase/queries/employees";
 import { listWorkersForSupport } from "@/lib/supabase/queries/workers";
-import { isSupportedSsw1 } from "@/lib/support-system";
+import {
+  isSupportedSsw1,
+  supportManagerOptions,
+  supportStaffOptions,
+} from "@/lib/support-system";
+import { todayStr } from "@/lib/application-alerts";
 import { OrganizationDetail } from "./OrganizationDetail";
 
 export const dynamic = "force-dynamic";
@@ -39,7 +44,8 @@ export default async function OrganizationDetailPage({
       <AppHeader title={organization.name} backHref="/organizations" />
       <OrganizationDetail
         organization={organization}
-        employeeNames={employees.map((e) => e.name)}
+        managerNames={supportManagerOptions(employees, todayStr())}
+        staffNames={supportStaffOptions(employees, todayStr())}
         workerCount={workerCount}
       />
     </>
