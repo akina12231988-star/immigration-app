@@ -10,6 +10,7 @@ function worker(over: Partial<Worker>): Worker {
     nationality: "",
     birth: null,
     residence_card_no: "",
+    recurring_sales_no: "",
     field: "",
     support: "支援対象",
     status: "支援中",

@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
 import { getOrganization } from "@/lib/supabase/queries/organizations";
+import { setWorkerRecurringSalesNo } from "@/lib/supabase/queries/workers";
 import {
   insertSalesEntries,
   listSalesEntriesByWorker,
@@ -21,12 +22,12 @@ import {
   supportFeeName,
   type SalesAppKind,
 } from "@/lib/sales";
-import { normalizeSalesItems, parseAmount } from "@/lib/organization-intake";
+import { digitsOnly, normalizeSalesItems, parseAmount } from "@/lib/organization-intake";
 import { dbErrorMessage } from "@/lib/errors";
 import type { Application } from "@/types/application";
 import type { OrgSalesItem, OrgSalesItems, SalesEntryRow } from "@/types/db";
 
-// 在留カード受領後の売上登録（freee販売）。所属機関マスタの
+// 在留カード受領後の売上登録。作った明細は「請求書作成」で確認する。所属機関マスタの
 // 「申請種別ごとの売上明細」「毎月の支援代」「特定技能総合保険の負担」を読み込み、
 // 申請・保険・許可日からの日割り・定期売上の明細を作って「登録待ち」に入れる。
 export function SalesEntrySection({ app }: { app: Application }) {
@@ -41,6 +42,9 @@ export function SalesEntrySection({ app }: { app: Application }) {
   const [selfJoin, setSelfJoin] = useState(false);
 
   const [supportFee, setSupportFee] = useState("");
+  // 定期売上No.（freee販売の定期売上の伝票番号）。外国人に保存する
+  const [recurringSalesNo, setRecurringSalesNo] = useState("");
+  const [savedSalesNo, setSavedSalesNo] = useState("");
   const [items, setItems] = useState<OrgSalesItem[]>([]);
   const [existing, setExisting] = useState<SalesEntryRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,11 +69,14 @@ export function SalesEntrySection({ app }: { app: Application }) {
         if (app.workerId) {
           const { data: w } = await supabase
             .from("workers")
-            .select("ssw_insurance_self_join")
+            .select("ssw_insurance_self_join, recurring_sales_no")
             .eq("id", app.workerId)
             .maybeSingle();
           if (!cancelled && w) {
-            setSelfJoin(Boolean((w as { ssw_insurance_self_join?: boolean }).ssw_insurance_self_join));
+            const row = w as { ssw_insurance_self_join?: boolean; recurring_sales_no?: string };
+            setSelfJoin(Boolean(row.ssw_insurance_self_join));
+            setRecurringSalesNo(row.recurring_sales_no ?? "");
+            setSavedSalesNo(row.recurring_sales_no ?? "");
           }
           // sales_entries 未作成でも画面は使えるように握りつぶす
           const rows = await listSalesEntriesByWorker(supabase, app.workerId).catch(() => []);
@@ -135,6 +142,11 @@ export function SalesEntrySection({ app }: { app: Application }) {
           note: "",
         })),
       );
+      // 定期売上No. は外国人に持たせる（月末の請求書作成・外国人詳細でも使う）
+      if (recurringSalesNo.trim() !== savedSalesNo) {
+        await setWorkerRecurringSalesNo(createClient(), app.workerId, recurringSalesNo.trim());
+        setSavedSalesNo(recurringSalesNo.trim());
+      }
       setExisting((prev) => [...prev, ...rows]);
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
@@ -153,7 +165,7 @@ export function SalesEntrySection({ app }: { app: Application }) {
     <Card className="p-4">
       <h3 className="mb-1 flex items-center gap-1.5 text-sm font-bold text-muted">
         <Coins size={15} />
-        売上登録（freee販売）
+        売上登録（請求書作成）
       </h3>
       <p className="mb-3 text-[11px] leading-relaxed text-muted">
         所属機関の情報に登録した「申請種別ごとの売上明細」「毎月の支援代」「特定技能総合保険の負担」を読み込んで明細を作ります。作成した明細は
@@ -232,11 +244,13 @@ export function SalesEntrySection({ app }: { app: Application }) {
                     className={`${INPUT} min-w-0 flex-1`}
                   />
                   <input
-                    value={it.amount}
-                    onChange={(e) => setItemAt(i, { amount: e.target.value })}
+                    value={digitsOnly(it.amount)}
+                    onChange={(e) => setItemAt(i, { amount: digitsOnly(e.target.value) })}
+                    inputMode="numeric"
                     placeholder="金額"
-                    className={`${INPUT} w-32 shrink-0 text-right tabular-nums`}
+                    className={`${INPUT} w-28 shrink-0 text-right tabular-nums`}
                   />
+                  <span className="shrink-0 text-xs text-muted">円</span>
                   <button
                     type="button"
                     onClick={() => setItems((rs) => rs.filter((_, idx) => idx !== i))}
@@ -265,12 +279,16 @@ export function SalesEntrySection({ app }: { app: Application }) {
                 月額の{supportFeeName(appKind)}
                 {orgSupportFee ? "（所属機関の情報から）" : ""}
               </span>
-              <input
-                value={supportFee}
-                onChange={(e) => setSupportFee(e.target.value)}
-                placeholder="例: 20,000円/人"
-                className={INPUT}
-              />
+              <span className="flex items-center gap-2">
+                <input
+                  value={digitsOnly(supportFee)}
+                  onChange={(e) => setSupportFee(digitsOnly(e.target.value))}
+                  inputMode="numeric"
+                  placeholder="例: 20000"
+                  className={`${INPUT} text-right`}
+                />
+                <span className="shrink-0 text-sm text-muted">円</span>
+              </span>
               {!orgSupportFee && (
                 <span className="text-[11px] text-seal">
                   所属機関の情報に「毎月の支援代」が未登録です。
@@ -279,6 +297,19 @@ export function SalesEntrySection({ app }: { app: Application }) {
                   </Link>
                 </span>
               )}
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-bold text-muted">定期売上No.</span>
+              <input
+                value={recurringSalesNo}
+                onChange={(e) => setRecurringSalesNo(e.target.value)}
+                placeholder="例: SP-0000000225"
+                className={`${INPUT} ${recurringSalesNo ? "" : "border-seal/40 bg-seal/5"}`}
+              />
+              <span className="text-[11px] text-muted">
+                freee販売で定期売上を作ったら、その伝票番号をここに入れてください。
+                「登録待ちに入れる」で外国人に保存され、外国人詳細と月末の請求書作成に出ます。
+              </span>
             </label>
             <div className="flex flex-col gap-1">
               <span className="text-[11px] font-bold text-muted">

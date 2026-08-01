@@ -29,6 +29,7 @@ import { WorkerAddressHistory } from "@/components/workers/WorkerAddressHistory"
 import { WorkerDependents } from "@/components/workers/WorkerDependents";
 import { WorkerEmploymentStarts } from "@/components/workers/WorkerEmploymentStarts";
 import { WorkerSalesResignation } from "@/components/workers/WorkerSalesResignation";
+import { WorkerRecurringSales } from "@/components/workers/WorkerRecurringSales";
 import { NotionTransferButton } from "@/components/workers/NotionTransferButton";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -580,6 +581,14 @@ export function WorkerDetail({
           />
         </>
       )}
+
+      {/* 定期売上（毎月の支援代）。定期売上No.が未登録ならここから登録できる */}
+      <WorkerRecurringSales
+        workerId={worker.id}
+        organizationId={worker.current_organization_id}
+        initialSalesNo={worker.recurring_sales_no ?? ""}
+        canEdit={canEdit}
+      />
 
       {/* 雇用開始日（所属機関別）。現在の所属機関の分は雇用開始年月日に自動反映 */}
       <WorkerEmploymentStarts
