@@ -21,6 +21,7 @@ import {
   emptyOfficer,
   emptyOrganizationIntake,
   emptySalesItem,
+  digitsOnly,
   formatYen,
   lodgingContractKind,
   normalizeOrganizationIntake,
@@ -220,6 +221,45 @@ function IntakeNameMulti({
       )}
       {hint && <span className={HINT_CLASS}>{hint}</span>}
     </div>
+  );
+}
+
+// 金額の入力欄（数字だけ）。「円」は入力欄の外に表示する
+function IntakeYen({
+  label,
+  value,
+  onChange,
+  hint,
+  locked,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  hint?: string;
+  locked?: boolean;
+}) {
+  const digits = digitsOnly(value);
+  if (locked) {
+    return <StaticValue label={label} value={digits ? formatYen(Number(digits)) : value} />;
+  }
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-xs font-bold text-muted">{label}</span>
+      <span className="flex items-center gap-2">
+        <input
+          value={digits}
+          onChange={(e) => onChange(digitsOnly(e.target.value))}
+          inputMode="numeric"
+          placeholder="例: 20000"
+          className={`${INPUT_CLASS} text-right`}
+        />
+        <span className="shrink-0 text-sm text-muted">円</span>
+      </span>
+      {digits && (
+        <span className={HINT_CLASS}>{formatYen(Number(digits))}</span>
+      )}
+      {hint && <span className={HINT_CLASS}>{hint}</span>}
+    </label>
   );
 }
 
@@ -813,11 +853,11 @@ function IntakeSection({
           ＋ 期を追加
         </button>
 
-        <IntakeField
-          label="毎月の支援代（月額）"
+        <IntakeYen
+          label="毎月の支援代（1人あたり月額）"
           value={intake.support_fee}
           onChange={(v) => setIntake({ support_fee: v })}
-          placeholder="例: 20,000円/人"
+          hint="数字だけを入力してください（例: 20000）。在留カード受領後の売上登録・退職時の日割り計算に使います。"
           locked={locks.intake("support_fee")}
         />
         {locks.intake("posting_note") ? (
@@ -850,7 +890,7 @@ function IntakeSection({
         <p className={GROUP_CLASS}>申請種別ごとの売上明細（freee販売）</p>
         <p className={HINT_CLASS}>
           在留カード受領後の売上登録で、申請種別を選ぶとここに登録した明細が自動で入ります。
-          明細項目と金額を必要な行数だけ登録してください（例: 申請取次費用 150,000円 / 書類作成費 30,000円）。
+          明細項目と金額を必要な行数だけ登録してください（例: 申請取次費用 150000 / 書類作成費 30000）。金額は数字だけを入力してください。
         </p>
         {SALES_APP_KINDS.map((kind) => {
           const rows = intake.sales_items[kind] ?? [];
@@ -875,14 +915,13 @@ function IntakeSection({
                         placeholder="例: 申請取次費用"
                       />
                     </div>
-                    <div className="w-32 shrink-0">
-                      <IntakeField
+                    <div className="w-36 shrink-0">
+                      <IntakeYen
                         label="金額"
                         value={row.amount}
                         onChange={(v) =>
                           setRows(rows.map((r, idx) => (idx === i ? { ...r, amount: v } : r)))
                         }
-                        placeholder="例: 150,000円"
                       />
                     </div>
                     <button

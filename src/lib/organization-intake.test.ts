@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   FINANCIAL_DEFAULT_ROWS,
+  digitsOnly,
   emptyLodging,
   emptyOrganizationIntake,
   formatYen,
@@ -104,6 +105,16 @@ describe("lodgingContractKind", () => {
   });
   it("2件目以降は id 付きの種別で区別する", () => {
     expect(lodgingContractKind(emptyLodging("abc-123"))).toBe("賃貸契約書:abc-123");
+  });
+});
+
+describe("digitsOnly", () => {
+  it("数字だけを残す（全角は半角に。円・カンマ・単位は取り除く）", () => {
+    expect(digitsOnly("10000円")).toBe("10000");
+    expect(digitsOnly("20,000円/人")).toBe("20000");
+    expect(digitsOnly("１５０，０００")).toBe("150000");
+    expect(digitsOnly("")).toBe("");
+    expect(digitsOnly("未定")).toBe("");
   });
 });
 

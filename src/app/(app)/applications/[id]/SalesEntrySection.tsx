@@ -21,7 +21,7 @@ import {
   supportFeeName,
   type SalesAppKind,
 } from "@/lib/sales";
-import { normalizeSalesItems, parseAmount } from "@/lib/organization-intake";
+import { digitsOnly, normalizeSalesItems, parseAmount } from "@/lib/organization-intake";
 import { dbErrorMessage } from "@/lib/errors";
 import type { Application } from "@/types/application";
 import type { OrgSalesItem, OrgSalesItems, SalesEntryRow } from "@/types/db";
@@ -265,12 +265,16 @@ export function SalesEntrySection({ app }: { app: Application }) {
                 月額の{supportFeeName(appKind)}
                 {orgSupportFee ? "（所属機関の情報から）" : ""}
               </span>
-              <input
-                value={supportFee}
-                onChange={(e) => setSupportFee(e.target.value)}
-                placeholder="例: 20,000円/人"
-                className={INPUT}
-              />
+              <span className="flex items-center gap-2">
+                <input
+                  value={digitsOnly(supportFee)}
+                  onChange={(e) => setSupportFee(digitsOnly(e.target.value))}
+                  inputMode="numeric"
+                  placeholder="例: 20000"
+                  className={`${INPUT} text-right`}
+                />
+                <span className="shrink-0 text-sm text-muted">円</span>
+              </span>
               {!orgSupportFee && (
                 <span className="text-[11px] text-seal">
                   所属機関の情報に「毎月の支援代」が未登録です。

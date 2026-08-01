@@ -255,3 +255,11 @@ export function perResidentCost(rent: string, maxResidents: string): number | nu
 export function formatYen(n: number): string {
   return `${n.toLocaleString("ja-JP")}円`;
 }
+
+// 金額入力を数字だけにする（全角数字は半角に。カンマ・「円」・「/人」などは取り除く）。
+// 保存する値を数字だけに揃えることで、日割り計算やfreee販売への転記で読み違えが起きないようにする
+export function digitsOnly(s: string): string {
+  return s
+    .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+    .replace(/[^0-9]/g, "");
+}
