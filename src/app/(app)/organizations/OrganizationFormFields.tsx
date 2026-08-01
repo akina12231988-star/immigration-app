@@ -27,6 +27,7 @@ import {
   ownedMonthlyRent,
   perResidentCost,
 } from "@/lib/organization-intake";
+import { SUPPORT_CONTRACT_STATUSES } from "@/types/db";
 import type {
   OrgFinancialYear,
   OrgJapaneseStaff,
@@ -456,6 +457,14 @@ export function OrganizationFormBody({
       {/* この機関の支援責任者・支援担当者（複数可）。外国人詳細・申請一覧・ダッシュボードに表示され、
           申請一覧では担当者での絞り込みに使う。令和9年4月1日施行の省令改正に対応 */}
       <div className="flex flex-col gap-2.5 rounded-xl border border-border p-3">
+        <IntakeSelect
+          label="支援委託の状況"
+          value={intake.support_contract_status}
+          onChange={(v) => setIntake({ support_contract_status: v })}
+          options={[...SUPPORT_CONTRACT_STATUSES]}
+          hint="「支援委託中」「特定技能1号の許可後に支援委託開始」を選ぶと、委託を受けている機関として数えます（支援責任者1人当たり10機関未満）。所属機関の一覧からも切り替えられます。"
+          locked={locks.intake("support_contract_status")}
+        />
         <p className="text-xs leading-relaxed text-muted">
           支援責任者・支援担当者は、支援業務を行う事務所ごとに常勤の役員又は職員からそれぞれ1名以上選任します（兼務可）。
           <strong>「支援体制（従業員）」でその役割にしている在籍者だけが候補に出ます。</strong>

@@ -140,6 +140,22 @@ export interface OrgSalesItem {
 // 申請種別（特定技能申請 など）→ その種別で登録する売上明細
 export type OrgSalesItems = Record<string, OrgSalesItem[]>;
 
+// 支援委託の状況。「支援委託中」と「特定技能1号の許可後に支援委託開始」は、
+// 委託を受けている特定技能所属機関としてカウントする（支援責任者の必要人数に影響する）
+export const SUPPORT_CONTRACT_STATUSES = [
+  "支援委託前",
+  "特定技能1号の許可後に支援委託開始",
+  "支援委託中",
+  "支援委託終了",
+] as const;
+export type SupportContractStatus = (typeof SUPPORT_CONTRACT_STATUSES)[number];
+
+// 委託を受けている機関として数える状況
+export const CONTRACTED_SUPPORT_STATUSES: readonly SupportContractStatus[] = [
+  "特定技能1号の許可後に支援委託開始",
+  "支援委託中",
+];
+
 // 申込書の入力内容一式
 export interface OrganizationIntake {
   kana: string; // 名称フリガナ
@@ -149,6 +165,7 @@ export interface OrganizationIntake {
   report_staff: string; // 定期報告書・随時報告書の担当者名（退職の随時報告書へ自動転記）
   staff_primary: string; // 旧項目: この機関の主担当。support_managers へ移行済み（未移行データ用に残す）
   staff_secondary: string; // 旧項目: この機関の副担当。support_staff へ移行済み（未移行データ用に残す）
+  support_contract_status: string; // 支援委託の状況（SUPPORT_CONTRACT_STATUSES。'' = 未設定）
   support_managers: string[]; // この機関の支援責任者（複数可・employees.name）
   support_staff: string[]; // この機関の支援担当者（複数可・employees.name。支援責任者との兼任可）
   fiscal_kind: string; // 決算情報の区分（個人事業主 / 法人）
