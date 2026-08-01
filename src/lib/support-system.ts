@@ -20,9 +20,20 @@ export const REFORM_EFFECTIVE_ON = "2027-04-01";
 // 支援責任者になれる目安の勤続年数（弊社の運用基準）
 export const SUPPORT_MANAGER_MIN_YEARS = 2;
 
-// 支援担当者1人あたりの上限（これを「超えている」人数が必要）
-export const ORGS_PER_SUPPORT_STAFF = 10;
-export const WORKERS_PER_SUPPORT_STAFF = 50;
+// 1人あたりの上限（この数を「超えている」人数が必要）。
+// 支援責任者・支援担当者それぞれに、担当できる所属機関数と1号特定技能外国人数の上限がある。
+export interface RoleRatio {
+  orgsPerPerson: number; // 1人が担当できる特定技能所属機関の数
+  workersPerPerson: number; // 1人が担当できる1号特定技能外国人の数
+}
+
+// 支援責任者の上限
+export const SUPPORT_MANAGER_RATIO: RoleRatio = { orgsPerPerson: 10, workersPerPerson: 50 };
+// 支援担当者の上限（省令の改正文どおり）
+export const SUPPORT_STAFF_RATIO: RoleRatio = { orgsPerPerson: 10, workersPerPerson: 50 };
+
+export const ORGS_PER_SUPPORT_STAFF = SUPPORT_STAFF_RATIO.orgsPerPerson;
+export const WORKERS_PER_SUPPORT_STAFF = SUPPORT_STAFF_RATIO.workersPerPerson;
 
 // ---- 日付 ----
 
@@ -144,6 +155,10 @@ export interface OrgSupportSummary {
   managers: string[]; // 支援責任者
   staff: string[]; // 支援担当者
   dual: string[]; // 責任者と担当者を兼任している人
+  requiredManagers: number; // この機関の在籍数から必要な支援責任者数
+  requiredStaff: number; // この機関の在籍数から必要な支援担当者数
+  managerShortage: number; // 支援責任者の不足数（0なら充足）
+  staffShortage: number; // 支援担当者の不足数（0なら充足）
 }
 
 export function summarizeOrganizations(
@@ -158,13 +173,20 @@ export function summarizeOrganizations(
   return organizations.map((org) => {
     const managers = orgSupportManagers(org.intake);
     const staff = orgSupportStaff(org.intake);
+    const workerCount = counts.get(org.id) ?? 0;
+    const requiredManagers = orgRequiredManagers(workerCount);
+    const requiredStaff = orgRequiredStaff(workerCount);
     return {
       organizationId: org.id,
       organizationName: org.name,
-      workerCount: counts.get(org.id) ?? 0,
+      workerCount,
       managers,
       staff,
       dual: managers.filter((n) => staff.includes(n)),
+      requiredManagers,
+      requiredStaff,
+      managerShortage: Math.max(0, requiredManagers - managers.length),
+      staffShortage: Math.max(0, requiredStaff - staff.length),
     };
   });
 }
@@ -263,9 +285,35 @@ function moreThan(value: number, per: number): number {
   return Math.floor(value / per) + 1;
 }
 
-// 必要な支援担当者数（機関数÷10・外国人数÷50 の双方を超える人数）
+// 必要人数（機関数÷上限・外国人数÷上限 の双方を超える人数）
+export function requiredCount(
+  ratio: RoleRatio,
+  orgCount: number,
+  workerCount: number,
+): number {
+  return Math.max(
+    moreThan(orgCount, ratio.orgsPerPerson),
+    moreThan(workerCount, ratio.workersPerPerson),
+  );
+}
+
+// 必要な支援責任者数
+export function requiredSupportManagerCount(orgCount: number, workerCount: number): number {
+  return requiredCount(SUPPORT_MANAGER_RATIO, orgCount, workerCount);
+}
+
+// 必要な支援担当者数
 export function requiredSupportStaffCount(orgCount: number, workerCount: number): number {
-  return Math.max(moreThan(orgCount, ORGS_PER_SUPPORT_STAFF), moreThan(workerCount, WORKERS_PER_SUPPORT_STAFF));
+  return requiredCount(SUPPORT_STAFF_RATIO, orgCount, workerCount);
+}
+
+// 所属機関1社あたりの必要人数（その機関に在籍している1号特定技能外国人の数から算出）
+export function orgRequiredManagers(workerCount: number): number {
+  return requiredSupportManagerCount(1, workerCount);
+}
+
+export function orgRequiredStaff(workerCount: number): number {
+  return requiredSupportStaffCount(1, workerCount);
 }
 
 // ---- 事務所ごとの充足状況 ----
@@ -282,8 +330,12 @@ export interface SupportSystemSummary {
   workerCount: number; // 支援を行っている1号特定技能外国人の数
   requiredStaff: number; // 必要な支援担当者数
   currentStaff: number; // 現在の支援担当者数（実人数）
-  staffShortage: number; // 不足数（0なら充足）
+  staffShortage: number; // 支援担当者の不足数（0なら充足）
+  requiredManagers: number; // 必要な支援責任者数
   currentManagers: number; // 現在の支援責任者数（実人数）
+  managerShortage: number; // 支援責任者の不足数（0なら充足）
+  // 機関ごとに必要人数を満たしていない機関（機関名と不足内容）
+  understaffedOrgs: OrgSupportSummary[];
   offices: OfficeSummary[]; // 事務所ごとの充足状況
   eligibleNotAssigned: string[]; // 支援責任者になれるのに未選任の従業員名
 }
@@ -301,6 +353,7 @@ export function summarizeSupportSystem(
   const currentStaff = activeRoles.filter((r) => r.isStaff).length;
   const currentManagers = activeRoles.filter((r) => r.isManager).length;
   const requiredStaff = requiredSupportStaffCount(orgCount, workerCount);
+  const requiredManagers = requiredSupportManagerCount(orgCount, workerCount);
 
   const officeNames = new Set<string>();
   for (const r of activeRoles) officeNames.add(r.employee.office.trim());
@@ -317,7 +370,10 @@ export function summarizeSupportSystem(
     requiredStaff,
     currentStaff,
     staffShortage: Math.max(0, requiredStaff - currentStaff),
+    requiredManagers,
     currentManagers,
+    managerShortage: Math.max(0, requiredManagers - currentManagers),
+    understaffedOrgs: orgSummaries.filter((o) => o.managerShortage > 0 || o.staffShortage > 0),
     offices,
     eligibleNotAssigned: roles.filter((r) => r.suggestManager).map((r) => r.employee.name),
   };

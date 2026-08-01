@@ -18,6 +18,8 @@ import {
 import {
   REFORM_EFFECTIVE_ON,
   SUPPORT_MANAGER_MIN_YEARS,
+  SUPPORT_MANAGER_RATIO,
+  SUPPORT_STAFF_RATIO,
   buildEmployeeRoles,
   serviceLabel,
   summarizeOrganizations,
@@ -222,24 +224,43 @@ export function EmployeesClient({
             </dd>
           </div>
           <div className="rounded-xl bg-background p-3">
-            <dt className="text-xs text-muted">支援責任者（現在）</dt>
-            <dd className="text-lg font-bold">{summary.currentManagers}名</dd>
+            <dt className="text-xs text-muted">支援責任者（必要／現在）</dt>
+            <dd className="text-lg font-bold">
+              {summary.requiredManagers}名 ／{" "}
+              <span className={summary.managerShortage > 0 ? "text-seal" : "text-brand"}>
+                {summary.currentManagers}名
+              </span>
+            </dd>
           </div>
         </dl>
 
-        {summary.staffShortage > 0 ? (
+        {summary.managerShortage > 0 && (
           <p className="mt-3 flex items-start gap-2 rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
             <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-            支援担当者が{summary.staffShortage}名不足しています（必要 {summary.requiredStaff}名・現在{" "}
-            {summary.currentStaff}名）。所属機関の「支援担当者」に選任してください。
+            支援責任者が{summary.managerShortage}名不足しています（必要 {summary.requiredManagers}名・現在{" "}
+            {summary.currentManagers}名）。従業員の「現在している役割」で支援責任者を増やしてください。
           </p>
-        ) : (
+        )}
+        {summary.staffShortage > 0 && (
+          <p className="mt-2 flex items-start gap-2 rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+            支援担当者が{summary.staffShortage}名不足しています（必要 {summary.requiredStaff}名・現在{" "}
+            {summary.currentStaff}名）。従業員の「現在している役割」で支援担当者を増やしてください。
+          </p>
+        )}
+        {summary.managerShortage === 0 && summary.staffShortage === 0 && (
           <p className="mt-3 flex items-start gap-2 rounded-lg bg-brand/10 px-3 py-2 text-sm text-brand">
             <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
-            支援担当者の人数は要件を満たしています（必要 {summary.requiredStaff}名・現在{" "}
+            人数は要件を満たしています（支援責任者 必要 {summary.requiredManagers}名・現在{" "}
+            {summary.currentManagers}名／支援担当者 必要 {summary.requiredStaff}名・現在{" "}
             {summary.currentStaff}名）。
           </p>
         )}
+        <p className="mt-2 text-xs text-muted">
+          1人あたりの上限: 支援責任者は {SUPPORT_MANAGER_RATIO.orgsPerPerson}社・
+          {SUPPORT_MANAGER_RATIO.workersPerPerson}名、 支援担当者は {SUPPORT_STAFF_RATIO.orgsPerPerson}社・
+          {SUPPORT_STAFF_RATIO.workersPerPerson}名（この数を超える人数が必要）。
+        </p>
 
         {summary.offices.length > 0 && (
           <ul className="mt-3 flex flex-col gap-1.5">
@@ -461,22 +482,33 @@ export function EmployeesClient({
                   {org.organizationName}
                 </Link>
                 <p className="mt-0.5 text-xs text-muted">
-                  在籍している1号特定技能外国人 {org.workerCount}名
+                  在籍している1号特定技能外国人 {org.workerCount}名 ／ 必要人数: 支援責任者
+                  {org.requiredManagers}名・支援担当者{org.requiredStaff}名
                 </p>
                 <p className="mt-1 text-xs">
-                  <span className="text-muted">支援責任者: </span>
+                  <span className="text-muted">
+                    支援責任者（{org.managers.length}／{org.requiredManagers}名）:{" "}
+                  </span>
                   {org.managers.length > 0 ? (
                     org.managers.join("・")
                   ) : (
                     <span className="font-bold text-seal">未選任</span>
                   )}
+                  {org.managerShortage > 0 && (
+                    <span className="font-bold text-seal"> ← {org.managerShortage}名不足</span>
+                  )}
                 </p>
                 <p className="text-xs">
-                  <span className="text-muted">支援担当者: </span>
+                  <span className="text-muted">
+                    支援担当者（{org.staff.length}／{org.requiredStaff}名）:{" "}
+                  </span>
                   {org.staff.length > 0 ? (
                     org.staff.join("・")
                   ) : (
                     <span className="font-bold text-seal">未選任</span>
+                  )}
+                  {org.staffShortage > 0 && (
+                    <span className="font-bold text-seal"> ← {org.staffShortage}名不足</span>
                   )}
                 </p>
                 {org.dual.length > 0 && (

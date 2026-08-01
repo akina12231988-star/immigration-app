@@ -19,7 +19,12 @@ import {
   emptyOrganizationInput,
   organizationToInput,
 } from "@/app/(app)/organizations/OrganizationFormFields";
-import { orgSupportManagers, orgSupportStaff, requiredSupportStaffCount } from "@/lib/support-system";
+import {
+  orgRequiredManagers,
+  orgRequiredStaff,
+  orgSupportManagers,
+  orgSupportStaff,
+} from "@/lib/support-system";
 import type { Organization, OrganizationInput } from "@/types/db";
 
 // 所属機関ごとの在籍数（1号特定技能外国人）。支援体制ページと同じ数え方
@@ -32,24 +37,33 @@ function OrgSupportLine({ org, workerCount }: { org: Organization; workerCount: 
   const managers = orgSupportManagers(org.intake);
   const staff = orgSupportStaff(org.intake);
   const dual = managers.filter((n) => staff.includes(n));
-  // この機関だけで見たときに必要な支援担当者数（機関数1・在籍数から算出）
-  const required = requiredSupportStaffCount(workerCount > 0 ? 1 : 0, workerCount);
+  // この機関の在籍数から必要な人数（支援責任者・支援担当者）
+  const needManagers = orgRequiredManagers(workerCount);
+  const needStaff = orgRequiredStaff(workerCount);
+  const managerShort = Math.max(0, needManagers - managers.length);
+  const staffShort = Math.max(0, needStaff - staff.length);
   return (
     <div className="mt-1.5 border-t border-border pt-1.5 text-xs">
       <p>
         <span className="text-muted">在籍（1号特定技能）: </span>
         <span className="font-bold">{workerCount}名</span>
         <span className="ml-2 text-muted">
-          必要人数（この機関分）: 支援責任者1名以上・支援担当者{required}名以上
+          必要人数: 支援責任者{needManagers}名・支援担当者{needStaff}名
         </span>
       </p>
       <p className="mt-0.5">
-        <span className="text-muted">支援責任者: </span>
+        <span className="text-muted">
+          支援責任者（{managers.length}／{needManagers}名）:{" "}
+        </span>
         {managers.length > 0 ? managers.join("・") : <span className="font-bold text-seal">未選任</span>}
+        {managerShort > 0 && <span className="font-bold text-seal"> ← {managerShort}名不足</span>}
       </p>
       <p>
-        <span className="text-muted">支援担当者: </span>
+        <span className="text-muted">
+          支援担当者（{staff.length}／{needStaff}名）:{" "}
+        </span>
         {staff.length > 0 ? staff.join("・") : <span className="font-bold text-seal">未選任</span>}
+        {staffShort > 0 && <span className="font-bold text-seal"> ← {staffShort}名不足</span>}
       </p>
       {dual.length > 0 && <p className="text-muted">兼任: {dual.join("・")}</p>}
     </div>

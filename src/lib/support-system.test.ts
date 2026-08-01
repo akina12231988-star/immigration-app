@@ -6,6 +6,9 @@ import {
   isSupportedSsw1,
   orgSupportManagers,
   orgSupportStaff,
+  orgRequiredManagers,
+  orgRequiredStaff,
+  requiredSupportManagerCount,
   requiredSupportStaffCount,
   serviceLabel,
   summarizeOrganizations,
@@ -178,6 +181,27 @@ describe("requiredSupportStaffCount", () => {
   });
 });
 
+describe("requiredSupportManagerCount", () => {
+  it("支援責任者にも機関数・外国人数の上限がある", () => {
+    expect(requiredSupportManagerCount(0, 0)).toBe(1); // 最低1名
+    expect(requiredSupportManagerCount(5, 20)).toBe(1);
+    expect(requiredSupportManagerCount(11, 20)).toBe(2); // 11社 → 2名
+    expect(requiredSupportManagerCount(5, 60)).toBe(2); // 60名 → 2名
+    expect(requiredSupportManagerCount(10, 0)).toBe(2); // 割り切れる場合も1名多い
+  });
+});
+
+describe("orgRequiredManagers / orgRequiredStaff", () => {
+  it("所属機関1社ごとの必要人数を在籍数から出す", () => {
+    expect(orgRequiredManagers(0)).toBe(1);
+    expect(orgRequiredStaff(0)).toBe(1);
+    expect(orgRequiredManagers(49)).toBe(1);
+    expect(orgRequiredStaff(50)).toBe(2); // 50名ちょうどでも「超えている」必要があるので2名
+    expect(orgRequiredManagers(120)).toBe(3);
+    expect(orgRequiredStaff(120)).toBe(3);
+  });
+});
+
 describe("summarizeOrganizations", () => {
   const orgs = [
     organization("org-1", "A社", { support_managers: ["市原　彩奈"], support_staff: ["市原　彩奈", "田上　夏季"] }),
@@ -198,8 +222,15 @@ describe("summarizeOrganizations", () => {
       managers: ["市原　彩奈"],
       staff: ["市原　彩奈", "田上　夏季"],
       dual: ["市原　彩奈"],
+      requiredManagers: 1,
+      requiredStaff: 1,
+      managerShortage: 0,
+      staffShortage: 0,
     });
     expect(result[1]).toMatchObject({ organizationName: "B社", workerCount: 0, dual: [] });
+    // B社は支援担当者が未選任なので1名不足
+    expect(result[1].staffShortage).toBe(1);
+    expect(result[1].managerShortage).toBe(0);
   });
 });
 
@@ -273,8 +304,23 @@ describe("buildEmployeeRoles / summarizeSupportSystem", () => {
     expect(summary.requiredStaff).toBe(1);
     expect(summary.currentStaff).toBe(3); // 市原・田上・大元
     expect(summary.staffShortage).toBe(0);
+    expect(summary.requiredManagers).toBe(1);
     expect(summary.currentManagers).toBe(1); // 市原のみ
+    expect(summary.managerShortage).toBe(0);
     expect(summary.eligibleNotAssigned).toEqual(["田上　夏季", "秋吉　伽恋"]);
+  });
+
+  it("機関ごとに必要人数を満たしていない機関を拾う", () => {
+    const summary = summarizeSupportSystem(roles, summaries);
+    // A社は責任者・担当者とも選任済み、B社は担当者1名・責任者1名で充足
+    expect(summary.understaffedOrgs.map((o) => o.organizationName)).toEqual([]);
+
+    const noStaff = summarizeOrganizations(
+      [organization("org-3", "C社", { support_managers: ["市原　彩奈"], support_staff: [] })],
+      [worker({ current_organization_id: "org-3" })],
+    );
+    const s2 = summarizeSupportSystem(buildEmployeeRoles(employees, noStaff, TODAY), noStaff);
+    expect(s2.understaffedOrgs.map((o) => o.organizationName)).toEqual(["C社"]);
   });
 
   it("退職済みの従業員は人数に数えない", () => {
