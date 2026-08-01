@@ -135,15 +135,27 @@ describe("宿泊物件の費用計算", () => {
 });
 
 describe("orgStaffLabel / isOrgStaff", () => {
-  it("主担当・副担当をまとめて表示する", () => {
-    expect(orgStaffLabel({ staff_primary: "市原　彩奈", staff_secondary: "田上　夏季" })).toBe(
-      "市原　彩奈（主）・田上　夏季（副）",
-    );
+  it("支援責任者・支援担当者をまとめて表示する", () => {
+    expect(
+      orgStaffLabel({ support_managers: ["市原　彩奈"], support_staff: ["田上　夏季"] }),
+    ).toBe("市原　彩奈（責）・田上　夏季（担）");
   });
 
-  it("主担当のみ・副担当のみでも表示できる", () => {
-    expect(orgStaffLabel({ staff_primary: "市原　彩奈" })).toBe("市原　彩奈（主）");
-    expect(orgStaffLabel({ staff_secondary: "田上　夏季" })).toBe("田上　夏季（副）");
+  it("兼任している人は（責・担）で1回だけ表示する", () => {
+    expect(
+      orgStaffLabel({
+        support_managers: ["市原　彩奈"],
+        support_staff: ["市原　彩奈", "田上　夏季"],
+      }),
+    ).toBe("市原　彩奈（責・担）・田上　夏季（担）");
+  });
+
+  it("未移行データ（主担当・副担当）も表示できる", () => {
+    expect(orgStaffLabel({ staff_primary: "市原　彩奈", staff_secondary: "田上　夏季" })).toBe(
+      "市原　彩奈（責）・田上　夏季（担）",
+    );
+    expect(orgStaffLabel({ staff_primary: "市原　彩奈" })).toBe("市原　彩奈（責）");
+    expect(orgStaffLabel({ staff_secondary: "田上　夏季" })).toBe("田上　夏季（担）");
   });
 
   it("未設定・intakeなしは空文字", () => {
@@ -152,8 +164,8 @@ describe("orgStaffLabel / isOrgStaff", () => {
     expect(orgStaffLabel(null)).toBe("");
   });
 
-  it("主担当・副担当のどちらかに一致すれば担当者", () => {
-    const intake = { staff_primary: "市原　彩奈", staff_secondary: "田上　夏季" };
+  it("支援責任者・支援担当者のどちらかに一致すれば担当者", () => {
+    const intake = { support_managers: ["市原　彩奈"], support_staff: ["田上　夏季"] };
     expect(isOrgStaff(intake, "市原　彩奈")).toBe(true);
     expect(isOrgStaff(intake, "田上　夏季")).toBe(true);
     expect(isOrgStaff(intake, "大元　麗奈")).toBe(false);

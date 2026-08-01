@@ -19,9 +19,52 @@ import {
   emptyOrganizationInput,
   organizationToInput,
 } from "@/app/(app)/organizations/OrganizationFormFields";
+import { orgSupportManagers, orgSupportStaff, requiredSupportStaffCount } from "@/lib/support-system";
 import type { Organization, OrganizationInput } from "@/types/db";
 
-export function OrganizationsAdmin({ organizations }: { organizations: Organization[] }) {
+// 所属機関ごとの在籍数（1号特定技能外国人）。支援体制ページと同じ数え方
+export interface OrgWorkerCounts {
+  [organizationId: string]: number;
+}
+
+// 在籍数・支援責任者・支援担当者・必要人数の1行表示（令和9年4月1日施行の要件）
+function OrgSupportLine({ org, workerCount }: { org: Organization; workerCount: number }) {
+  const managers = orgSupportManagers(org.intake);
+  const staff = orgSupportStaff(org.intake);
+  const dual = managers.filter((n) => staff.includes(n));
+  // この機関だけで見たときに必要な支援担当者数（機関数1・在籍数から算出）
+  const required = requiredSupportStaffCount(workerCount > 0 ? 1 : 0, workerCount);
+  return (
+    <div className="mt-1.5 border-t border-border pt-1.5 text-xs">
+      <p>
+        <span className="text-muted">在籍（1号特定技能）: </span>
+        <span className="font-bold">{workerCount}名</span>
+        <span className="ml-2 text-muted">
+          必要人数（この機関分）: 支援責任者1名以上・支援担当者{required}名以上
+        </span>
+      </p>
+      <p className="mt-0.5">
+        <span className="text-muted">支援責任者: </span>
+        {managers.length > 0 ? managers.join("・") : <span className="font-bold text-seal">未選任</span>}
+      </p>
+      <p>
+        <span className="text-muted">支援担当者: </span>
+        {staff.length > 0 ? staff.join("・") : <span className="font-bold text-seal">未選任</span>}
+      </p>
+      {dual.length > 0 && <p className="text-muted">兼任: {dual.join("・")}</p>}
+    </div>
+  );
+}
+
+export function OrganizationsAdmin({
+  organizations,
+  employeeNames = [],
+  workerCounts = {},
+}: {
+  organizations: Organization[];
+  employeeNames?: string[];
+  workerCounts?: OrgWorkerCounts;
+}) {
   const router = useRouter();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Organization | null>(null);
@@ -129,6 +172,7 @@ export function OrganizationsAdmin({ organizations }: { organizations: Organizat
                   "詳細未登録"}
               </p>
               {org.note && <p className="mt-0.5 text-xs text-muted">{org.note}</p>}
+              <OrgSupportLine org={org} workerCount={workerCounts[org.id] ?? 0} />
             </Card>
           ))}
         </div>
@@ -137,6 +181,7 @@ export function OrganizationsAdmin({ organizations }: { organizations: Organizat
       {formOpen && (
         <OrganizationFormModal
           initial={editing}
+          employeeNames={employeeNames}
           onClose={() => setFormOpen(false)}
           onSubmit={handleSubmit}
         />
@@ -163,10 +208,12 @@ export function OrganizationFormModal({
   initial,
   onClose,
   onSubmit,
+  employeeNames = [],
 }: {
   initial: Organization | null;
   onClose: () => void;
   onSubmit: (input: OrganizationInput) => Promise<void>;
+  employeeNames?: string[];
 }) {
   const [form, setForm] = useState<OrganizationInput>(() =>
     initial ? organizationToInput(initial) : emptyOrganizationInput(),
@@ -197,6 +244,7 @@ export function OrganizationFormModal({
         <OrganizationFormBody
           form={form}
           setForm={setForm}
+          employeeNames={employeeNames}
           orgId={initial?.id ?? null}
           snapshot={null}
         />
