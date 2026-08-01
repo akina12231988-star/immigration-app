@@ -87,6 +87,7 @@ export function emptyOrganizationIntake(): OrganizationIntake {
     report_staff: "",
     staff_primary: "",
     staff_secondary: "",
+    support_contract_status: "",
     support_managers: [],
     support_staff: [],
     fiscal_kind: "",

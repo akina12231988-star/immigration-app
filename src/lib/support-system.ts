@@ -16,7 +16,14 @@
 //       → 支援責任者1人 = 10機関未満 ／ 支援担当者5人 = 250人未満
 // 支援責任者になれる目安の勤続年数は弊社の運用基準（入社から2年以上）。
 
-import type { Employee, Organization, OrganizationIntake, Worker } from "@/types/db";
+import { CONTRACTED_SUPPORT_STATUSES } from "@/types/db";
+import type {
+  Employee,
+  Organization,
+  OrganizationIntake,
+  SupportContractStatus,
+  Worker,
+} from "@/types/db";
 
 // 施行日（令和9年4月1日）
 export const REFORM_EFFECTIVE_ON = "2027-04-01";
@@ -132,6 +139,18 @@ export function orgSupportStaff(
   return names(intake?.staff_secondary ? [intake.staff_secondary] : []);
 }
 
+// 委託を受けている機関として数えるか。
+// 「支援委託中」「特定技能1号の許可後に支援委託開始」を数える。
+// 未設定（旧データ）は、支援対象の1号特定技能外国人が在籍していれば委託中とみなす。
+export function isContractedOrg(
+  intake: Partial<OrganizationIntake> | null | undefined,
+  workerCount: number,
+): boolean {
+  const status = (intake?.support_contract_status ?? "").trim();
+  if (!status) return workerCount > 0;
+  return CONTRACTED_SUPPORT_STATUSES.includes(status as SupportContractStatus);
+}
+
 // ---- 1号特定技能外国人 ----
 
 // 在留資格が特定技能1号か（特定活動（特定技能1号移行準備）は支援対象外なので除く）
@@ -164,6 +183,8 @@ export interface OrgSupportSummary {
   managers: string[]; // 支援責任者
   staff: string[]; // 支援担当者
   dual: string[]; // 責任者と担当者を兼任している人
+  contracted: boolean; // 委託を受けている機関として数えるか
+  contractStatus: string; // 支援委託の状況（'' = 未設定）
   persons: string[]; // この機関の支援責任者等（責任者＋担当者の実人数。兼任は1人）
   requiredStaff: number; // この機関の在籍数から必要な支援担当者の人数（1人当たり50人未満）
   staffShortage: number; // 支援担当者の不足数（0なら充足）
@@ -193,6 +214,8 @@ export function summarizeOrganizations(
       managers,
       staff,
       dual: managers.filter((n) => staff.includes(n)),
+      contracted: isContractedOrg(org.intake, workerCount),
+      contractStatus: (org.intake?.support_contract_status ?? "").trim(),
       persons,
       requiredStaff,
       staffShortage: Math.max(0, requiredStaff - staff.length),
@@ -360,9 +383,11 @@ export function summarizeSupportSystem(
   roles: EmployeeSupportRole[],
   orgSummaries: OrgSupportSummary[],
 ): SupportSystemSummary {
-  // 委託を受けている機関数 = 支援対象の1号特定技能外国人が在籍している機関
-  const orgCount = orgSummaries.filter((o) => o.workerCount > 0).length;
-  const workerCount = orgSummaries.reduce((sum, o) => sum + o.workerCount, 0);
+  // 委託を受けている機関数・支援している1号特定技能外国人数は、
+  // 支援委託の状況が「支援委託中」「特定技能1号の許可後に支援委託開始」の機関だけを数える
+  const contracted = orgSummaries.filter((o) => o.contracted);
+  const orgCount = contracted.length;
+  const workerCount = contracted.reduce((sum, o) => sum + o.workerCount, 0);
 
   // 人数は従業員側で役割にしている在籍者を数える
   // 常勤の在籍者だけを数える（支援責任者等は常勤の役員又は職員から選任する）
@@ -397,7 +422,7 @@ export function summarizeSupportSystem(
     dualCount: activeRoles.filter((r) => r.isDual).length,
     maxOrgs: maxOrgCountFor(currentManagers),
     maxWorkers: maxWorkerCountFor(currentStaff),
-    understaffedOrgs: orgSummaries.filter(
+    understaffedOrgs: contracted.filter(
       (o) => o.staffShortage > 0 || o.managerMissing || o.staffMissing,
     ),
     offices,

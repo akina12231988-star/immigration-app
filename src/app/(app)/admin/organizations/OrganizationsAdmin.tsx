@@ -20,15 +20,79 @@ import {
   organizationToInput,
 } from "@/app/(app)/organizations/OrganizationFormFields";
 import {
+  isContractedOrg,
   requiredSupportStaffCount,
   orgSupportManagers,
   orgSupportStaff,
 } from "@/lib/support-system";
-import type { Organization, OrganizationInput } from "@/types/db";
+import { normalizeOrganizationIntake } from "@/lib/organization-intake";
+import { dbErrorMessage } from "@/lib/errors";
+import { SUPPORT_CONTRACT_STATUSES, type Organization, type OrganizationInput } from "@/types/db";
 
 // 所属機関ごとの在籍数（1号特定技能外国人）。支援体制ページと同じ数え方
 export interface OrgWorkerCounts {
   [organizationId: string]: number;
+}
+
+// 支援委託の状況を切り替えるボタン。押すとその場で保存する。
+// 「支援委託中」「特定技能1号の許可後に支援委託開始」を選ぶと、委託を受けている機関として数える
+function SupportContractButtons({
+  org,
+  onSaved,
+  onError,
+}: {
+  org: Organization;
+  onSaved: (message: string) => void;
+  onError: (message: string) => void;
+}) {
+  const [status, setStatus] = useState(
+    () => (org.intake?.support_contract_status ?? "").trim(),
+  );
+  const [busy, setBusy] = useState(false);
+
+  const choose = async (next: string) => {
+    const value = status === next ? "" : next; // もう一度押すと未設定に戻す
+    const prev = status;
+    setStatus(value);
+    setBusy(true);
+    try {
+      await updateOrganization(createClient(), org.id, {
+        intake: { ...normalizeOrganizationIntake(org.intake), support_contract_status: value },
+      });
+      onSaved(`${org.name} の支援委託の状況を「${value || "未設定"}」にしました`);
+    } catch (err) {
+      setStatus(prev);
+      onError(dbErrorMessage(err, "0043_organization_intake.sql", "保存に失敗しました"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+      <span className="text-xs text-muted">支援委託:</span>
+      {SUPPORT_CONTRACT_STATUSES.map((s) => {
+        const on = status === s;
+        return (
+          <button
+            key={s}
+            type="button"
+            aria-pressed={on}
+            disabled={busy}
+            onClick={() => choose(s)}
+            className={`min-h-[32px] rounded-full border px-2.5 text-xs transition disabled:opacity-50 ${
+              on
+                ? "border-brand bg-brand/10 font-bold text-brand"
+                : "border-border bg-background text-muted"
+            }`}
+          >
+            {s}
+          </button>
+        );
+      })}
+      {!status && <span className="text-xs text-muted">（未設定）</span>}
+    </div>
+  );
 }
 
 // 在籍数・支援責任者・支援担当者・必要人数の1行表示（令和9年4月1日施行の要件）
@@ -39,6 +103,16 @@ function OrgSupportLine({ org, workerCount }: { org: Organization; workerCount: 
   // 在籍数から必要な支援担当者の人数を出す（支援担当者1人当たり50人未満）
   const needStaff = requiredSupportStaffCount(workerCount);
   const shortage = Math.max(0, needStaff - staff.length);
+  const contracted = isContractedOrg(org.intake, workerCount);
+  // 委託していない機関は支援責任者等の必要人数の対象外なので指摘しない
+  if (!contracted) {
+    return (
+      <div className="mt-1.5 border-t border-border pt-1.5 text-xs text-muted">
+        在籍（1号特定技能）: <span className="font-bold text-foreground">{workerCount}名</span>
+        <span className="ml-2">委託を受けている機関として数えていません</span>
+      </div>
+    );
+  }
   return (
     <div className="mt-1.5 border-t border-border pt-1.5 text-xs">
       <p>
@@ -188,6 +262,14 @@ export function OrganizationsAdmin({
                   "詳細未登録"}
               </p>
               {org.note && <p className="mt-0.5 text-xs text-muted">{org.note}</p>}
+              <SupportContractButtons
+                org={org}
+                onSaved={(message) => {
+                  setNotice({ ok: true, message });
+                  router.refresh();
+                }}
+                onError={(message) => setNotice({ ok: false, message })}
+              />
               <OrgSupportLine org={org} workerCount={workerCounts[org.id] ?? 0} />
             </Card>
           ))}

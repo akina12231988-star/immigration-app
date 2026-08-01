@@ -3,6 +3,7 @@ import {
   buildEmployeeRoles,
   canBeSupportManager,
   isSsw1Residence,
+  isContractedOrg,
   isSupportedSsw1,
   orgSupportManagers,
   orgSupportStaff,
@@ -186,6 +187,27 @@ describe("1号特定技能外国人の判定", () => {
   });
 });
 
+describe("isContractedOrg（支援委託の状況）", () => {
+  it("支援委託中・特定技能1号の許可後に支援委託開始 は委託を受けている機関として数える", () => {
+    expect(isContractedOrg({ support_contract_status: "支援委託中" }, 0)).toBe(true);
+    expect(
+      isContractedOrg({ support_contract_status: "特定技能1号の許可後に支援委託開始" }, 0),
+    ).toBe(true);
+  });
+
+  it("支援委託前・支援委託終了 は数えない（在籍者がいても）", () => {
+    expect(isContractedOrg({ support_contract_status: "支援委託前" }, 5)).toBe(false);
+    expect(isContractedOrg({ support_contract_status: "支援委託終了" }, 5)).toBe(false);
+  });
+
+  it("未設定は在籍者がいれば委託中とみなす（旧データ）", () => {
+    expect(isContractedOrg({}, 3)).toBe(true);
+    expect(isContractedOrg({}, 0)).toBe(false);
+    expect(isContractedOrg(undefined, 3)).toBe(true);
+    expect(isContractedOrg({ support_contract_status: "  " }, 0)).toBe(false);
+  });
+});
+
 describe("requiredSupportManagerCount（機関数 → 支援責任者）", () => {
   it("支援責任者1人当たり10機関未満", () => {
     expect(requiredSupportManagerCount(0)).toBe(1); // 最低1名
@@ -314,6 +336,38 @@ describe("buildEmployeeRoles / summarizeSupportSystem", () => {
     expect(suggested).not.toContain("大元　麗奈");
     // 市原は既に支援責任者なのでアラートを出さない
     expect(suggested).not.toContain("市原　彩奈");
+  });
+
+  it("支援委託の状況で委託機関数・支援している外国人数が変わる", () => {
+    const mixed = summarizeOrganizations(
+      [
+        organization("org-1", "A社", {
+          support_contract_status: "支援委託中",
+          support_managers: ["市原　彩奈"],
+          support_staff: ["市原　彩奈"],
+        }),
+        organization("org-2", "B社", {
+          support_contract_status: "支援委託終了",
+          support_managers: ["市原　彩奈"],
+          support_staff: ["市原　彩奈"],
+        }),
+        organization("org-3", "C社", {
+          support_contract_status: "特定技能1号の許可後に支援委託開始",
+          support_managers: ["市原　彩奈"],
+          support_staff: ["市原　彩奈"],
+        }),
+      ],
+      [
+        worker({ current_organization_id: "org-1" }),
+        worker({ current_organization_id: "org-2" }),
+        worker({ current_organization_id: "org-3" }),
+      ],
+    );
+    const summary = summarizeSupportSystem(buildEmployeeRoles(employees, mixed, TODAY), mixed);
+    // A社（委託中）と C社（許可後に開始）の2社だけ数える
+    expect(summary.orgCount).toBe(2);
+    // 支援している外国人も委託中の機関の分だけ（B社の1名は除く）
+    expect(summary.workerCount).toBe(2);
   });
 
   it("体制のサマリーを組み立てる", () => {

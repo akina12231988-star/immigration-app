@@ -13,6 +13,7 @@ import {
   organizationToInput,
 } from "../OrganizationFormFields";
 import {
+  isContractedOrg,
   requiredSupportStaffCount,
   orgSupportManagers,
   orgSupportStaff,
@@ -52,6 +53,8 @@ export function OrganizationDetail({
   // 在籍数から必要な支援担当者の人数を出す（支援担当者1人当たり50人未満）
   const needStaff = requiredSupportStaffCount(workerCount);
   const shortage = Math.max(0, needStaff - supportStaff.length);
+  const contractStatus = (organization.intake?.support_contract_status ?? "").trim();
+  const contracted = isContractedOrg(organization.intake, workerCount);
 
   // 鉛筆（編集）: 登録済みの内容も修正できる編集モーダル。保存後は最新の内容で表示し直す
   const handleEditSubmit = async (input: OrganizationInput) => {
@@ -114,6 +117,15 @@ export function OrganizationDetail({
       {/* 支援体制（令和9年4月1日施行の要件）。在籍数と選任状況をひと目で確認できるようにする */}
       <Card className="p-4">
         <h2 className="mb-1 text-sm font-bold">支援体制</h2>
+        <p className="mb-1 text-xs">
+          <span className="text-muted">支援委託の状況: </span>
+          <span className="font-bold">{contractStatus || "未設定"}</span>
+          <span className="ml-2 text-muted">
+            {contracted
+              ? "委託を受けている機関として数えています"
+              : "委託を受けている機関として数えていません"}
+          </span>
+        </p>
         <p className="text-xs">
           <span className="text-muted">在籍（1号特定技能）: </span>
           <span className="font-bold">{workerCount}名</span>
