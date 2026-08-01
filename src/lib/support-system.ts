@@ -6,12 +6,14 @@
 //  2. 支援業務に従事することができる者を支援責任者等に限定する。
 //  3. 支援責任者に養成講習の受講を義務付ける（※令和9年4月1日以降も当分の間は未修了でも差し支えない）。
 //  4. 登録支援機関が支援業務の委託を受けることができる特定技能所属機関の数は、
-//     支援責任者等1人当たり10機関未満とする（例: 25機関なら3人の支援責任者等が必要）。
-//  5. 支援責任者等が支援を行うことができる1号特定技能外国人の数は、
-//     支援責任者等1人当たり50人未満とする（例: 120人なら3人の支援責任者等が必要）。
+//     支援責任者1人当たり10機関未満とする。
+//  5. 支援を行うことができる1号特定技能外国人の数は、
+//     支援担当者1人当たり50人未満とする。
 //
-// ④⑤の人数は支援責任者と支援担当者を別々にではなく「支援責任者等」としてまとめて数える
-// （兼務している人は1人）。
+// ④は支援責任者の人数、⑤は支援担当者の人数で決まる（見る役割が異なる）。
+// 支援責任者が支援担当者を兼務している場合、その人は両方の人数に数える。
+//   例: 支援責任者A（担当者を兼務）＋支援担当者B・C・D・E
+//       → 支援責任者1人 = 10機関未満 ／ 支援担当者5人 = 250人未満
 // 支援責任者になれる目安の勤続年数は弊社の運用基準（入社から2年以上）。
 
 import type { Employee, Organization, OrganizationIntake, Worker } from "@/types/db";
@@ -22,15 +24,11 @@ export const REFORM_EFFECTIVE_ON = "2027-04-01";
 // 支援責任者になれる目安の勤続年数（弊社の運用基準）
 export const SUPPORT_MANAGER_MIN_YEARS = 2;
 
-// 「支援責任者等」1人あたりの上限。
-// 支援責任者と支援担当者は別々に数えるのではなく、合わせて「支援責任者等」として数える
-// （兼務している人は1人）。上限は「未満」なので、ちょうどの数は超過扱いになる。
-//   ④ 委託を受けることができる特定技能所属機関の数 … 支援責任者等1人当たり10機関未満
-//      例: 25機関の委託を受ける場合は3人の支援責任者等が必要
-//   ⑤ 支援を行うことができる1号特定技能外国人の数 … 支援責任者等1人当たり50人未満
-//      例: 1号特定技能外国人120人を支援する場合は3人の支援責任者等が必要
-export const ORGS_PER_SUPPORT_PERSON = 10;
-export const WORKERS_PER_SUPPORT_PERSON = 50;
+// 1人あたりの上限。「未満」なので、ちょうどの数は超過扱いになる。
+//   ④ 委託を受けられる特定技能所属機関の数 … 支援責任者1人当たり10機関未満
+//   ⑤ 支援できる1号特定技能外国人の数 … 支援担当者1人当たり50人未満
+export const ORGS_PER_SUPPORT_MANAGER = 10;
+export const WORKERS_PER_SUPPORT_STAFF = 50;
 
 // ---- 日付 ----
 
@@ -167,8 +165,8 @@ export interface OrgSupportSummary {
   staff: string[]; // 支援担当者
   dual: string[]; // 責任者と担当者を兼任している人
   persons: string[]; // この機関の支援責任者等（責任者＋担当者の実人数。兼任は1人）
-  requiredPersons: number; // この機関の在籍数から必要な支援責任者等の人数
-  personShortage: number; // 支援責任者等の不足数（0なら充足）
+  requiredStaff: number; // この機関の在籍数から必要な支援担当者の人数（1人当たり50人未満）
+  staffShortage: number; // 支援担当者の不足数（0なら充足）
   managerMissing: boolean; // 支援責任者が1人も選任されていない
   staffMissing: boolean; // 支援担当者が1人も選任されていない
 }
@@ -187,7 +185,7 @@ export function summarizeOrganizations(
     const staff = orgSupportStaff(org.intake);
     const workerCount = counts.get(org.id) ?? 0;
     const persons = [...new Set([...managers, ...staff])];
-    const requiredPersons = orgRequiredPersons(workerCount);
+    const requiredStaff = requiredSupportStaffCount(workerCount);
     return {
       organizationId: org.id,
       organizationName: org.name,
@@ -196,8 +194,8 @@ export function summarizeOrganizations(
       staff,
       dual: managers.filter((n) => staff.includes(n)),
       persons,
-      requiredPersons,
-      personShortage: Math.max(0, requiredPersons - persons.length),
+      requiredStaff,
+      staffShortage: Math.max(0, requiredStaff - staff.length),
       managerMissing: managers.length === 0,
       staffMissing: staff.length === 0,
     };
@@ -307,27 +305,24 @@ function requiredFor(value: number, per: number): number {
   return Math.floor(value / per) + 1;
 }
 
-// 必要な支援責任者等の人数（機関数・1号特定技能外国人数の両方の上限を満たす人数）
-export function requiredSupportPersonCount(orgCount: number, workerCount: number): number {
-  return Math.max(
-    requiredFor(orgCount, ORGS_PER_SUPPORT_PERSON),
-    requiredFor(workerCount, WORKERS_PER_SUPPORT_PERSON),
-  );
+// 必要な支援責任者の人数（委託を受けている特定技能所属機関の数から。1人当たり10機関未満）
+export function requiredSupportManagerCount(orgCount: number): number {
+  return requiredFor(orgCount, ORGS_PER_SUPPORT_MANAGER);
 }
 
-// 支援責任者等が n 人いるときに委託を受けられる機関数の上限（10n 未満なので 10n-1）
-export function maxOrgCountFor(personCount: number): number {
-  return Math.max(0, personCount * ORGS_PER_SUPPORT_PERSON - 1);
+// 必要な支援担当者の人数（1号特定技能外国人の数から。1人当たり50人未満）
+export function requiredSupportStaffCount(workerCount: number): number {
+  return requiredFor(workerCount, WORKERS_PER_SUPPORT_STAFF);
 }
 
-// 支援責任者等が n 人いるときに支援できる1号特定技能外国人数の上限（50n 未満なので 50n-1）
-export function maxWorkerCountFor(personCount: number): number {
-  return Math.max(0, personCount * WORKERS_PER_SUPPORT_PERSON - 1);
+// 支援責任者が n 人いるときに委託を受けられる機関数の上限（10n 未満なので 10n-1）
+export function maxOrgCountFor(managerCount: number): number {
+  return Math.max(0, managerCount * ORGS_PER_SUPPORT_MANAGER - 1);
 }
 
-// 所属機関1社あたりの必要人数（その機関に在籍している1号特定技能外国人の数から算出）
-export function orgRequiredPersons(workerCount: number): number {
-  return requiredSupportPersonCount(1, workerCount);
+// 支援担当者が n 人いるときに支援できる1号特定技能外国人数の上限（50n 未満なので 50n-1）
+export function maxWorkerCountFor(staffCount: number): number {
+  return Math.max(0, staffCount * WORKERS_PER_SUPPORT_STAFF - 1);
 }
 
 // ---- 事務所ごとの充足状況 ----
@@ -342,13 +337,16 @@ export interface OfficeSummary {
 export interface SupportSystemSummary {
   orgCount: number; // 委託を受けている特定技能所属機関の数（支援対象者が在籍している機関）
   workerCount: number; // 支援を行っている1号特定技能外国人の数
-  requiredPersons: number; // 必要な支援責任者等の人数（機関数・外国人数の上限から）
-  currentPersons: number; // 現在の支援責任者等の人数（責任者＋担当者の実人数。兼任は1人）
-  personShortage: number; // 支援責任者等の不足数（0なら充足）
-  maxOrgs: number; // 現在の人数で委託を受けられる機関数の上限
-  maxWorkers: number; // 現在の人数で支援できる1号特定技能外国人数の上限
-  currentStaff: number; // 現在の支援担当者数（内訳）
-  currentManagers: number; // 現在の支援責任者数（内訳）
+  requiredManagers: number; // 必要な支援責任者の人数（機関数から）
+  currentManagers: number; // 現在の支援責任者の人数（兼任も1人として含む）
+  managerShortage: number; // 支援責任者の不足数（0なら充足）
+  requiredStaff: number; // 必要な支援担当者の人数（1号特定技能外国人の数から）
+  currentStaff: number; // 現在の支援担当者の人数（兼任も1人として含む）
+  staffShortage: number; // 支援担当者の不足数（0なら充足）
+  currentPersons: number; // 支援責任者等の実人数（兼任は1人）。表示用
+  dualCount: number; // 責任者と担当者を兼任している人数
+  maxOrgs: number; // 現在の支援責任者数で委託を受けられる機関数の上限
+  maxWorkers: number; // 現在の支援担当者数で支援できる1号特定技能外国人数の上限
   // 機関ごとに必要人数を満たしていない機関
   understaffedOrgs: OrgSupportSummary[];
   offices: OfficeSummary[]; // 事務所ごとの充足状況
@@ -371,11 +369,11 @@ export function summarizeSupportSystem(
   const activeRoles = roles.filter(
     (r) => (r.isManager || r.isStaff) && r.isActive && r.employee.employment_kind === "常勤",
   );
+  // 兼務している人は支援責任者としても支援担当者としても数える
   const currentStaff = activeRoles.filter((r) => r.isStaff).length;
   const currentManagers = activeRoles.filter((r) => r.isManager).length;
-  // 支援責任者等 = 支援責任者と支援担当者の実人数（兼務している人は1人として数える）
-  const currentPersons = activeRoles.length;
-  const requiredPersons = requiredSupportPersonCount(orgCount, workerCount);
+  const requiredManagers = requiredSupportManagerCount(orgCount);
+  const requiredStaff = requiredSupportStaffCount(workerCount);
 
   const officeNames = new Set<string>();
   for (const r of activeRoles) officeNames.add(r.employee.office.trim());
@@ -389,15 +387,18 @@ export function summarizeSupportSystem(
   return {
     orgCount,
     workerCount,
-    requiredPersons,
-    currentPersons,
-    personShortage: Math.max(0, requiredPersons - currentPersons),
-    maxOrgs: maxOrgCountFor(currentPersons),
-    maxWorkers: maxWorkerCountFor(currentPersons),
-    currentStaff,
+    requiredManagers,
     currentManagers,
+    managerShortage: Math.max(0, requiredManagers - currentManagers),
+    requiredStaff,
+    currentStaff,
+    staffShortage: Math.max(0, requiredStaff - currentStaff),
+    currentPersons: activeRoles.length,
+    dualCount: activeRoles.filter((r) => r.isDual).length,
+    maxOrgs: maxOrgCountFor(currentManagers),
+    maxWorkers: maxWorkerCountFor(currentStaff),
     understaffedOrgs: orgSummaries.filter(
-      (o) => o.personShortage > 0 || o.managerMissing || o.staffMissing,
+      (o) => o.staffShortage > 0 || o.managerMissing || o.staffMissing,
     ),
     offices,
     eligibleNotAssigned: roles.filter((r) => r.suggestManager).map((r) => r.employee.name),

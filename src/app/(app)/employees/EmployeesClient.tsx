@@ -18,8 +18,8 @@ import {
 import {
   REFORM_EFFECTIVE_ON,
   SUPPORT_MANAGER_MIN_YEARS,
-  ORGS_PER_SUPPORT_PERSON,
-  WORKERS_PER_SUPPORT_PERSON,
+  ORGS_PER_SUPPORT_MANAGER,
+  WORKERS_PER_SUPPORT_STAFF,
   buildEmployeeRoles,
   serviceLabel,
   summarizeOrganizations,
@@ -201,58 +201,79 @@ export function EmployeesClient({
       <Card className="p-4">
         <h2 className="mb-1 text-sm font-bold">支援体制の充足状況</h2>
         <p className="mb-3 text-xs leading-relaxed text-muted">
-          令和9年4月1日（{REFORM_EFFECTIVE_ON}）施行の省令改正に基づく判定です。支援責任者・支援担当者（あわせて
-          <strong>支援責任者等</strong>）は、支援業務を行う事務所ごとに常勤の役員又は職員からそれぞれ1人以上を選任します（兼務可）。
-          人数の上限は支援責任者等をまとめて数え、<strong>1人当たり {ORGS_PER_SUPPORT_PERSON}機関未満</strong>・
-          <strong>1人当たり {WORKERS_PER_SUPPORT_PERSON}人未満</strong>である必要があります
-          （例: 25機関の委託を受けるなら3人、1号特定技能外国人120人を支援するなら3人）。
+          令和9年4月1日（{REFORM_EFFECTIVE_ON}）施行の省令改正に基づく判定です。支援責任者・支援担当者は、支援業務を行う事務所ごとに
+          常勤の役員又は職員からそれぞれ1人以上を選任します（兼務可）。人数の上限は<strong>役割ごとに別</strong>で、
+          委託を受けられる機関数は<strong>支援責任者1人当たり {ORGS_PER_SUPPORT_MANAGER}機関未満</strong>、
+          支援できる1号特定技能外国人の数は<strong>支援担当者1人当たり {WORKERS_PER_SUPPORT_STAFF}人未満</strong>です。
+          支援責任者が支援担当者を兼務している場合は、その人を両方の人数に数えます。
         </p>
         <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
           <div className="rounded-xl bg-background p-3">
-            <dt className="text-xs text-muted">委託を受けている機関</dt>
-            <dd className="text-lg font-bold">{summary.orgCount}社</dd>
-          </div>
-          <div className="rounded-xl bg-background p-3">
-            <dt className="text-xs text-muted">1号特定技能外国人</dt>
-            <dd className="text-lg font-bold">{summary.workerCount}名</dd>
-          </div>
-          <div className="rounded-xl bg-background p-3">
-            <dt className="text-xs text-muted">支援責任者等（必要／現在）</dt>
+            <dt className="text-xs text-muted">支援責任者（必要／現在）</dt>
             <dd className="text-lg font-bold">
-              {summary.requiredPersons}名 ／{" "}
-              <span className={summary.personShortage > 0 ? "text-seal" : "text-brand"}>
-                {summary.currentPersons}名
+              {summary.requiredManagers}名 ／{" "}
+              <span className={summary.managerShortage > 0 ? "text-seal" : "text-brand"}>
+                {summary.currentManagers}名
               </span>
             </dd>
             <dd className="text-xs text-muted">
-              内訳: 責任者{summary.currentManagers}名・担当者{summary.currentStaff}名
+              委託 {summary.orgCount}社 → 上限 {summary.maxOrgs}機関まで
             </dd>
           </div>
           <div className="rounded-xl bg-background p-3">
-            <dt className="text-xs text-muted">現在の人数で受けられる上限</dt>
-            <dd className="text-sm font-bold">
-              {summary.maxOrgs}機関・{summary.maxWorkers}名まで
+            <dt className="text-xs text-muted">支援担当者（必要／現在）</dt>
+            <dd className="text-lg font-bold">
+              {summary.requiredStaff}名 ／{" "}
+              <span className={summary.staffShortage > 0 ? "text-seal" : "text-brand"}>
+                {summary.currentStaff}名
+              </span>
             </dd>
             <dd className="text-xs text-muted">
-              支援責任者等{summary.currentPersons}名の場合
+              1号 {summary.workerCount}名 → 上限 {summary.maxWorkers}名まで
+            </dd>
+          </div>
+          <div className="rounded-xl bg-background p-3">
+            <dt className="text-xs text-muted">支援責任者等（実人数）</dt>
+            <dd className="text-lg font-bold">{summary.currentPersons}名</dd>
+            <dd className="text-xs text-muted">
+              責任者{summary.currentManagers}名・担当者{summary.currentStaff}名
+              {summary.dualCount > 0 && `（うち兼任${summary.dualCount}名）`}
+            </dd>
+          </div>
+          <div className="rounded-xl bg-background p-3">
+            <dt className="text-xs text-muted">あと受け入れられる数</dt>
+            <dd className="text-sm font-bold">
+              {Math.max(0, summary.maxOrgs - summary.orgCount)}機関・
+              {Math.max(0, summary.maxWorkers - summary.workerCount)}名
+            </dd>
+            <dd className="text-xs text-muted">
+              上限 {summary.maxOrgs}機関・{summary.maxWorkers}名
             </dd>
           </div>
         </dl>
 
-        {summary.personShortage > 0 ? (
+        {summary.managerShortage > 0 && (
           <p className="mt-3 flex items-start gap-2 rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
             <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-            支援責任者等が{summary.personShortage}名不足しています（必要 {summary.requiredPersons}名・現在{" "}
-            {summary.currentPersons}名）。委託を受けている機関 {summary.orgCount}社・1号特定技能外国人{" "}
-            {summary.workerCount}名を支援するには {summary.requiredPersons}名必要です。
-            従業員の「現在している役割」で支援責任者・支援担当者を増やしてください。
+            支援責任者が{summary.managerShortage}名不足しています。委託を受けている {summary.orgCount}社には
+            支援責任者 {summary.requiredManagers}名が必要です（現在 {summary.currentManagers}名・
+            上限 {summary.maxOrgs}機関まで）。
           </p>
-        ) : (
+        )}
+        {summary.staffShortage > 0 && (
+          <p className="mt-2 flex items-start gap-2 rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+            支援担当者が{summary.staffShortage}名不足しています。1号特定技能外国人 {summary.workerCount}名には
+            支援担当者 {summary.requiredStaff}名が必要です（現在 {summary.currentStaff}名・
+            上限 {summary.maxWorkers}名まで）。
+          </p>
+        )}
+        {summary.managerShortage === 0 && summary.staffShortage === 0 && (
           <p className="mt-3 flex items-start gap-2 rounded-lg bg-brand/10 px-3 py-2 text-sm text-brand">
             <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
-            人数は要件を満たしています（必要 {summary.requiredPersons}名・現在 {summary.currentPersons}名）。
-            あと {Math.max(0, summary.maxOrgs - summary.orgCount)}機関・
-            {Math.max(0, summary.maxWorkers - summary.workerCount)}名まで受け入れられます。
+            人数は要件を満たしています。支援責任者 {summary.currentManagers}名で
+            あと {Math.max(0, summary.maxOrgs - summary.orgCount)}機関、支援担当者 {summary.currentStaff}名で
+            あと {Math.max(0, summary.maxWorkers - summary.workerCount)}名まで受け入れられます。
           </p>
         )}
 
@@ -512,10 +533,10 @@ export function EmployeesClient({
                   {org.organizationName}
                 </Link>
                 <p className="mt-0.5 text-xs text-muted">
-                  在籍している1号特定技能外国人 {org.workerCount}名 ／ 必要な支援責任者等{" "}
-                  {org.requiredPersons}名（選任 {org.persons.length}名）
-                  {org.personShortage > 0 && (
-                    <span className="font-bold text-seal"> ← {org.personShortage}名不足</span>
+                  在籍している1号特定技能外国人 {org.workerCount}名 ／ 必要な支援担当者{" "}
+                  {org.requiredStaff}名（選任 {org.staff.length}名）
+                  {org.staffShortage > 0 && (
+                    <span className="font-bold text-seal"> ← {org.staffShortage}名不足</span>
                   )}
                 </p>
                 <p className="mt-1 text-xs">
