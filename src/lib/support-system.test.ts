@@ -8,8 +8,8 @@ import {
   orgSupportStaff,
   maxOrgCountFor,
   maxWorkerCountFor,
-  orgRequiredPersons,
-  requiredSupportPersonCount,
+  requiredSupportManagerCount,
+  requiredSupportStaffCount,
   serviceLabel,
   summarizeOrganizations,
   summarizeSupportSystem,
@@ -186,47 +186,37 @@ describe("1号特定技能外国人の判定", () => {
   });
 });
 
-describe("requiredSupportPersonCount", () => {
-  it("支援責任者等は1人当たり10機関未満・50人未満（資料の例と一致する）", () => {
-    // 例: 特定技能所属機関25機関から委託を受ける場合は3人の支援責任者等が必要
-    expect(requiredSupportPersonCount(25, 0)).toBe(3);
-    // 例: 1号特定技能外国人120人を支援する場合は3人の支援責任者等が必要
-    expect(requiredSupportPersonCount(0, 120)).toBe(3);
+describe("requiredSupportManagerCount（機関数 → 支援責任者）", () => {
+  it("支援責任者1人当たり10機関未満", () => {
+    expect(requiredSupportManagerCount(0)).toBe(1); // 最低1名
+    expect(requiredSupportManagerCount(9)).toBe(1);
+    expect(requiredSupportManagerCount(10)).toBe(2); // 10機関を1人（10機関）は不可
+    expect(requiredSupportManagerCount(25)).toBe(3);
+    expect(requiredSupportManagerCount(36)).toBe(4);
   });
+});
 
-  it("最低1名。上限ちょうどは「未満」を満たさないので1名多く必要", () => {
-    expect(requiredSupportPersonCount(0, 0)).toBe(1);
-    expect(requiredSupportPersonCount(9, 49)).toBe(1);
-    expect(requiredSupportPersonCount(10, 0)).toBe(2); // 10機関を1人（10機関）は不可
-    expect(requiredSupportPersonCount(0, 50)).toBe(2); // 50人を1人（50人）は不可
-    expect(requiredSupportPersonCount(20, 100)).toBe(3);
-  });
-
-  it("機関数と外国人数の厳しいほうを採る", () => {
-    expect(requiredSupportPersonCount(25, 20)).toBe(3); // 機関数で3名
-    expect(requiredSupportPersonCount(5, 120)).toBe(3); // 外国人数で3名
+describe("requiredSupportStaffCount（外国人数 → 支援担当者）", () => {
+  it("支援担当者1人当たり50人未満", () => {
+    expect(requiredSupportStaffCount(0)).toBe(1); // 最低1名
+    expect(requiredSupportStaffCount(49)).toBe(1);
+    expect(requiredSupportStaffCount(50)).toBe(2); // 50人を1人（50人）は不可
+    expect(requiredSupportStaffCount(120)).toBe(3);
+    expect(requiredSupportStaffCount(151)).toBe(4);
   });
 });
 
 describe("maxOrgCountFor / maxWorkerCountFor", () => {
-  it("支援責任者等の人数から受け入れられる上限を出す", () => {
-    // 資料: 支援責任者等が1人なら50人未満、2人なら100人未満、3人なら150人未満
-    expect(maxWorkerCountFor(1)).toBe(49);
-    expect(maxWorkerCountFor(2)).toBe(99);
-    expect(maxWorkerCountFor(3)).toBe(149);
-    // 1人当たり10機関未満
-    expect(maxOrgCountFor(1)).toBe(9);
+  it("委託を受けられる機関数は支援責任者の人数で決まる", () => {
+    expect(maxOrgCountFor(1)).toBe(9); // 1人 → 10機関未満
     expect(maxOrgCountFor(3)).toBe(29);
     expect(maxOrgCountFor(0)).toBe(0);
   });
-});
 
-describe("orgRequiredPersons", () => {
-  it("所属機関1社ごとの必要人数を在籍数から出す", () => {
-    expect(orgRequiredPersons(0)).toBe(1);
-    expect(orgRequiredPersons(49)).toBe(1);
-    expect(orgRequiredPersons(50)).toBe(2); // 50名ちょうどは「50人未満」を満たさない
-    expect(orgRequiredPersons(120)).toBe(3);
+  it("支援できる1号特定技能外国人の数は支援担当者の人数で決まる", () => {
+    expect(maxWorkerCountFor(1)).toBe(49); // 1人 → 50人未満
+    expect(maxWorkerCountFor(2)).toBe(99);
+    expect(maxWorkerCountFor(5)).toBe(249); // 5人 → 250人未満
   });
 });
 
@@ -250,9 +240,9 @@ describe("summarizeOrganizations", () => {
       managers: ["市原　彩奈"],
       staff: ["市原　彩奈", "田上　夏季"],
       dual: ["市原　彩奈"],
-      persons: ["市原　彩奈", "田上　夏季"], // 兼任は1人として数える
-      requiredPersons: 1,
-      personShortage: 0,
+      persons: ["市原　彩奈", "田上　夏季"], // 支援責任者等の実人数（兼任は1人）
+      requiredStaff: 1,
+      staffShortage: 0,
       managerMissing: false,
       staffMissing: false,
     });
@@ -330,13 +320,16 @@ describe("buildEmployeeRoles / summarizeSupportSystem", () => {
     const summary = summarizeSupportSystem(roles, summaries);
     expect(summary.orgCount).toBe(2);
     expect(summary.workerCount).toBe(2);
-    expect(summary.requiredPersons).toBe(1);
-    expect(summary.currentPersons).toBe(3); // 市原・田上・大元（市原の兼任は1人）
-    expect(summary.personShortage).toBe(0);
-    expect(summary.currentStaff).toBe(3);
+    expect(summary.requiredManagers).toBe(1); // 委託2社 → 支援責任者1名
     expect(summary.currentManagers).toBe(1); // 市原のみ
-    expect(summary.maxOrgs).toBe(29); // 3名なので30機関未満
-    expect(summary.maxWorkers).toBe(149); // 3名なので150人未満
+    expect(summary.managerShortage).toBe(0);
+    expect(summary.requiredStaff).toBe(1); // 1号2名 → 支援担当者1名
+    expect(summary.currentStaff).toBe(3); // 市原・田上・大元（兼任の市原も含む）
+    expect(summary.staffShortage).toBe(0);
+    expect(summary.currentPersons).toBe(3); // 実人数（市原の兼任は1人）
+    expect(summary.dualCount).toBe(1);
+    expect(summary.maxOrgs).toBe(9); // 支援責任者1名 → 10機関未満
+    expect(summary.maxWorkers).toBe(149); // 支援担当者3名 → 150人未満
     expect(summary.eligibleNotAssigned).toEqual(["田上　夏季", "秋吉　伽恋"]);
   });
 
@@ -354,18 +347,39 @@ describe("buildEmployeeRoles / summarizeSupportSystem", () => {
     expect(s2.understaffedOrgs.map((o) => o.organizationName)).toEqual(["C社"]);
   });
 
-  it("在籍数が多い機関は支援責任者等の人数が足りないと不足として拾う", () => {
-    // 60名在籍 → 支援責任者等2名必要だが、選任は1名（兼任）
+  it("在籍数が多い機関は支援担当者が足りないと不足として拾う", () => {
+    // 60名在籍 → 支援担当者2名必要だが、選任は1名（兼任）
     const big = summarizeOrganizations(
       [organization("org-4", "D社", { support_managers: ["市原　彩奈"], support_staff: ["市原　彩奈"] })],
       Array.from({ length: 60 }, () => worker({ current_organization_id: "org-4" })),
     );
     expect(big[0].workerCount).toBe(60);
-    expect(big[0].requiredPersons).toBe(2);
-    expect(big[0].persons).toEqual(["市原　彩奈"]);
-    expect(big[0].personShortage).toBe(1);
+    expect(big[0].requiredStaff).toBe(2);
+    expect(big[0].staff).toEqual(["市原　彩奈"]);
+    expect(big[0].staffShortage).toBe(1);
     const s3 = summarizeSupportSystem(buildEmployeeRoles(employees, big, TODAY), big);
     expect(s3.understaffedOrgs.map((o) => o.organizationName)).toEqual(["D社"]);
+  });
+
+  it("実運用の例: 支援責任者A（担当者を兼務）＋担当者B〜E → 10機関未満・250人未満", () => {
+    const real = [
+      employee({
+        name: "A",
+        joined_on: "2019-04-01",
+        is_support_manager: true,
+        is_support_staff: true,
+      }),
+      employee({ name: "B", joined_on: "2023-04-01", is_support_staff: true }),
+      employee({ name: "C", joined_on: "2023-04-01", is_support_staff: true }),
+      employee({ name: "D", joined_on: "2023-04-01", is_support_staff: true }),
+      employee({ name: "E", joined_on: "2023-04-01", is_support_staff: true }),
+    ];
+    const summary = summarizeSupportSystem(buildEmployeeRoles(real, summaries, TODAY), summaries);
+    expect(summary.currentManagers).toBe(1); // A のみ
+    expect(summary.currentStaff).toBe(5); // A・B・C・D・E（兼務の A も含む）
+    expect(summary.currentPersons).toBe(5); // 実人数
+    expect(summary.maxOrgs).toBe(9); // 支援責任者1名 → 10機関未満
+    expect(summary.maxWorkers).toBe(249); // 支援担当者5名 → 250人未満
   });
 
   it("役割にしているが要件を満たしていない従業員を拾う", () => {
@@ -385,8 +399,9 @@ describe("buildEmployeeRoles / summarizeSupportSystem", () => {
       summaries,
     );
     expect(summary.invalidRoles.map((r) => r.name)).toEqual(["非常勤　花子", "新人　太郎"]);
-    // 非常勤は人数にも数えない
+    // 非常勤は人数にも数えない（新人は支援責任者としてのみ数える）
     expect(summary.currentPersons).toBe(1);
+    expect(summary.currentStaff).toBe(0);
   });
 
   it("養成講習が未修了の支援責任者を拾う", () => {

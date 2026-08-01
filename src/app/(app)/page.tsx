@@ -280,7 +280,8 @@ export default function DashboardPage() {
         )}
 
         {/* 支援体制: 人数の不足（令和9年4月1日施行の要件） */}
-        {(supportSummary.personShortage > 0 ||
+        {(supportSummary.managerShortage > 0 ||
+          supportSummary.staffShortage > 0 ||
           supportSummary.understaffedOrgs.length > 0) && (
           <section>
             <div className="rounded-2xl border-2 border-seal bg-seal/10 p-4">
@@ -289,10 +290,9 @@ export default function DashboardPage() {
                 支援体制の人数が不足しています
               </div>
               <p className="mb-2 text-xs text-seal/90">
-                委託を受けている機関 {supportSummary.orgCount}社・1号特定技能外国人{" "}
-                {supportSummary.workerCount}名に対し、支援責任者等は {supportSummary.requiredPersons}名必要です（現在{" "}
-                {supportSummary.currentPersons}名・責任者{supportSummary.currentManagers}名／担当者
-                {supportSummary.currentStaff}名）。
+                委託 {supportSummary.orgCount}社には支援責任者 {supportSummary.requiredManagers}名（現在{" "}
+                {supportSummary.currentManagers}名）、1号特定技能外国人 {supportSummary.workerCount}名には
+                支援担当者 {supportSummary.requiredStaff}名（現在 {supportSummary.currentStaff}名）が必要です。
               </p>
               {supportSummary.understaffedOrgs.length > 0 && (
                 <div className="mb-2 space-y-1">
@@ -307,8 +307,8 @@ export default function DashboardPage() {
                           {org.organizationName}
                         </span>
                         <span className="block truncate text-xs text-muted">
-                          1号 {org.workerCount}名 ／ 支援責任者等 {org.persons.length}／
-                          {org.requiredPersons}名
+                          1号 {org.workerCount}名 ／ 支援担当者 {org.staff.length}／
+                          {org.requiredStaff}名
                           {org.managerMissing && "・支援責任者 未選任"}
                           {org.staffMissing && "・支援担当者 未選任"}
                         </span>

@@ -20,7 +20,7 @@ import {
   organizationToInput,
 } from "@/app/(app)/organizations/OrganizationFormFields";
 import {
-  orgRequiredPersons,
+  requiredSupportStaffCount,
   orgSupportManagers,
   orgSupportStaff,
 } from "@/lib/support-system";
@@ -36,17 +36,16 @@ function OrgSupportLine({ org, workerCount }: { org: Organization; workerCount: 
   const managers = orgSupportManagers(org.intake);
   const staff = orgSupportStaff(org.intake);
   const dual = managers.filter((n) => staff.includes(n));
-  // 支援責任者等 = 責任者と担当者の実人数（兼務は1人）。在籍数から必要人数を出す
-  const persons = new Set([...managers, ...staff]).size;
-  const needPersons = orgRequiredPersons(workerCount);
-  const shortage = Math.max(0, needPersons - persons);
+  // 在籍数から必要な支援担当者の人数を出す（支援担当者1人当たり50人未満）
+  const needStaff = requiredSupportStaffCount(workerCount);
+  const shortage = Math.max(0, needStaff - staff.length);
   return (
     <div className="mt-1.5 border-t border-border pt-1.5 text-xs">
       <p>
         <span className="text-muted">在籍（1号特定技能）: </span>
         <span className="font-bold">{workerCount}名</span>
         <span className="ml-2 text-muted">
-          必要な支援責任者等: {needPersons}名（選任 {persons}名）
+          必要な支援担当者: {needStaff}名（選任 {staff.length}名）
         </span>
         {shortage > 0 && <span className="font-bold text-seal"> ← {shortage}名不足</span>}
       </p>
