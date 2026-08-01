@@ -109,6 +109,8 @@ const NO_LOCKS: FieldLocks = {
 };
 
 function filled(v: unknown): boolean {
+  // 支援責任者・支援担当者のように複数選択の項目は、1つでも選ばれていれば入力済み
+  if (Array.isArray(v)) return v.some((x) => typeof x === "string" && x.trim() !== "");
   return typeof v === "string" && v.trim() !== "";
 }
 
@@ -155,11 +157,68 @@ function IntakeField({
   );
 }
 
-// 担当職員の選択肢。名簿から外れた保存済みの名前も選択肢として残す
-function staffOptions(current: string): string[] {
-  const options: string[] = [...PREP_TANTOU_OPTIONS];
-  if (current && !options.includes(current)) options.unshift(current);
+// 支援責任者・支援担当者の選択肢。従業員マスタ（/employees）＋保存済みの名前
+function supportNameOptions(employeeNames: string[], selected: string[]): string[] {
+  const options: string[] = [];
+  for (const name of [...employeeNames, ...PREP_TANTOU_OPTIONS, ...selected]) {
+    const trimmed = name.trim();
+    if (trimmed && !options.includes(trimmed)) options.push(trimmed);
+  }
   return options;
+}
+
+// 支援責任者・支援担当者（複数選択）。従業員マスタの氏名からチェックで選ぶ
+function IntakeNameMulti({
+  label,
+  value,
+  onChange,
+  options,
+  hint,
+  locked,
+}: {
+  label: string;
+  value: string[];
+  onChange: (v: string[]) => void;
+  options: string[];
+  hint?: string;
+  locked?: boolean;
+}) {
+  if (locked) return <StaticValue label={label} value={value.join("・")} />;
+  const toggle = (name: string) => {
+    onChange(value.includes(name) ? value.filter((v) => v !== name) : [...value, name]);
+  };
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs font-bold text-muted">{label}</span>
+      {options.length === 0 ? (
+        <span className={HINT_CLASS}>
+          従業員が登録されていません。「支援体制（従業員）」から追加してください。
+        </span>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {options.map((name) => {
+            const on = value.includes(name);
+            return (
+              <button
+                key={name}
+                type="button"
+                aria-pressed={on}
+                onClick={() => toggle(name)}
+                className={`min-h-[36px] rounded-full border px-3 text-sm transition ${
+                  on
+                    ? "border-brand bg-brand/10 font-bold text-brand"
+                    : "border-border bg-background text-muted"
+                }`}
+              >
+                {name}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {hint && <span className={HINT_CLASS}>{hint}</span>}
+    </div>
+  );
 }
 
 // 申込書の1入力欄（選択式）
@@ -255,11 +314,13 @@ export function OrganizationFormBody({
   setForm,
   orgId,
   snapshot,
+  employeeNames = [],
 }: {
   form: OrganizationInput;
   setForm: React.Dispatch<React.SetStateAction<OrganizationInput>>;
   orgId: string | null;
   snapshot: OrganizationInput | null;
+  employeeNames?: string[]; // 支援責任者・支援担当者の選択肢（従業員マスタ）
 }) {
   const locks = useMemo<FieldLocks>(() => {
     if (!snapshot) return NO_LOCKS;
@@ -285,6 +346,9 @@ export function OrganizationFormBody({
   const intake = normalizeOrganizationIntake(form.intake);
   const setIntake = (patch: Partial<OrganizationIntake>) =>
     setForm((f) => ({ ...f, intake: { ...normalizeOrganizationIntake(f.intake), ...patch } }));
+
+  // 支援責任者と支援担当者を兼任している人
+  const dualNames = intake.support_managers.filter((n) => intake.support_staff.includes(n));
 
   return (
     <>
@@ -386,25 +450,32 @@ export function OrganizationFormBody({
         hint="退職＜随時報告＞の様式（3-1-2号・3-4号）の届出機関担当者欄に自動転記されます。"
         locked={locks.intake("report_staff")}
       />
-      {/* この機関の担当職員（主・副）。外国人詳細・申請一覧・ダッシュボードに表示され、
-          申請一覧では担当者での絞り込みに使う */}
-      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-        <IntakeSelect
-          label="この機関の主担当"
-          value={intake.staff_primary}
-          onChange={(v) => setIntake({ staff_primary: v })}
-          options={staffOptions(intake.staff_primary)}
-          hint="会社との窓口・進捗管理の責任者。外国人詳細・申請一覧・ダッシュボードに表示されます。"
-          locked={locks.intake("staff_primary")}
+      {/* この機関の支援責任者・支援担当者（複数可）。外国人詳細・申請一覧・ダッシュボードに表示され、
+          申請一覧では担当者での絞り込みに使う。令和9年4月1日施行の省令改正に対応 */}
+      <div className="flex flex-col gap-2.5 rounded-xl border border-border p-3">
+        <p className="text-xs leading-relaxed text-muted">
+          支援責任者・支援担当者は、支援業務を行う事務所ごとに常勤の役員又は職員からそれぞれ1名以上選任します（兼務可）。
+          選任できる人と必要な人数は「支援体制（従業員）」で確認できます。
+        </p>
+        <IntakeNameMulti
+          label="この機関の支援責任者（複数選択可）"
+          value={intake.support_managers}
+          onChange={(v) => setIntake({ support_managers: v })}
+          options={supportNameOptions(employeeNames, intake.support_managers)}
+          hint="支援計画の作成・実施を統括する責任者。外国人詳細・申請一覧・ダッシュボードに表示されます。"
+          locked={locks.intake("support_managers")}
         />
-        <IntakeSelect
-          label="この機関の副担当"
-          value={intake.staff_secondary}
-          onChange={(v) => setIntake({ staff_secondary: v })}
-          options={staffOptions(intake.staff_secondary)}
-          hint="主担当が不在のときのバックアップ。"
-          locked={locks.intake("staff_secondary")}
+        <IntakeNameMulti
+          label="この機関の支援担当者（複数選択可）"
+          value={intake.support_staff}
+          onChange={(v) => setIntake({ support_staff: v })}
+          options={supportNameOptions(employeeNames, intake.support_staff)}
+          hint="実際に支援業務を行う担当者。支援責任者との兼任も可（両方で同じ人を選ぶと「兼任」と表示されます）。"
+          locked={locks.intake("support_staff")}
         />
+        {dualNames.length > 0 && (
+          <p className="text-xs font-bold text-brand">兼任: {dualNames.join("・")}</p>
+        )}
       </div>
       {locks.top("corporate_no") ? (
         <StaticValue label="法人番号" value={form.corporate_no} />

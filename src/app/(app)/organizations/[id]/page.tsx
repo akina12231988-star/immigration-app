@@ -3,6 +3,9 @@ import { AppHeader } from "@/components/AppHeader";
 import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { getOrganization } from "@/lib/supabase/queries/organizations";
+import { listEmployees } from "@/lib/supabase/queries/employees";
+import { listWorkersForSupport } from "@/lib/supabase/queries/workers";
+import { isSupportedSsw1 } from "@/lib/support-system";
 import { OrganizationDetail } from "./OrganizationDetail";
 
 export const dynamic = "force-dynamic";
@@ -23,10 +26,22 @@ export default async function OrganizationDetailPage({
   const organization = await getOrganization(supabase, id);
   if (!organization) notFound();
 
+  const [employees, workers] = await Promise.all([
+    listEmployees(supabase),
+    listWorkersForSupport(supabase),
+  ]);
+  const workerCount = workers.filter(
+    (w) => w.current_organization_id === id && isSupportedSsw1(w),
+  ).length;
+
   return (
     <>
       <AppHeader title={organization.name} backHref="/organizations" />
-      <OrganizationDetail organization={organization} />
+      <OrganizationDetail
+        organization={organization}
+        employeeNames={employees.map((e) => e.name)}
+        workerCount={workerCount}
+      />
     </>
   );
 }

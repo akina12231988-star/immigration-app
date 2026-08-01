@@ -33,6 +33,7 @@ import { isExpiryAlert, todayStr } from "@/lib/application-alerts";
 import { listWorkersWithOrg, type WorkerWithOrg } from "@/lib/supabase/queries/workers";
 import { listOrganizations } from "@/lib/supabase/queries/organizations";
 import { isOrgStaff, orgStaffLabel } from "@/lib/organization-intake";
+import { orgSupportManagers, orgSupportStaff } from "@/lib/support-system";
 import type { Organization } from "@/types/db";
 import { listActiveCustodyNoByWorker } from "@/lib/supabase/queries/custody";
 import { formatStorageNo } from "@/lib/custody";
@@ -111,7 +112,7 @@ export function ApplicationsExplorer({
     };
   }, []);
 
-  // 所属機関ごとの担当者（主・副）の表示・絞り込み用に機関マスタを取得する
+  // 所属機関ごとの支援責任者・支援担当者の表示・絞り込み用に機関マスタを取得する
   const [orgs, setOrgs] = useState<Organization[]>([]);
   useEffect(() => {
     let cancelled = false;
@@ -128,13 +129,13 @@ export function ApplicationsExplorer({
   const orgIntakeFor = (a: Application) =>
     a.organizationId ? orgById.get(a.organizationId)?.intake : undefined;
 
-  // 担当者での絞り込み（所属機関の主担当・副担当に一致する案件のみ表示）
+  // 担当者での絞り込み（所属機関の支援責任者・支援担当者に一致する案件のみ表示）
   const [tantouFilter, setTantouFilter] = useState("");
   const tantouOptions = useMemo(() => {
     const names = new Set<string>(PREP_TANTOU_OPTIONS);
     for (const o of orgs) {
-      if (o.intake?.staff_primary) names.add(o.intake.staff_primary);
-      if (o.intake?.staff_secondary) names.add(o.intake.staff_secondary);
+      for (const name of orgSupportManagers(o.intake)) names.add(name);
+      for (const name of orgSupportStaff(o.intake)) names.add(name);
     }
     return [...names];
   }, [orgs]);
@@ -206,7 +207,7 @@ export function ApplicationsExplorer({
       a.applicationNumber.toLowerCase().includes(kw) ||
       a.applicationContent.toLowerCase().includes(kw) ||
       a.assignee.toLowerCase().includes(kw);
-    // 担当者絞り込み: 所属機関の主担当・副担当に一致する案件のみ
+    // 担当者絞り込み: 所属機関の支援責任者・支援担当者に一致する案件のみ
     const matchesTantou = (a: Application) =>
       !tantouFilter ||
       isOrgStaff(
@@ -507,7 +508,7 @@ export function ApplicationsExplorer({
                   <p className="mb-1 text-xs text-muted">
                     {a.organizationName ?? "所属機関未設定"}
                     {orgStaffLabel(orgIntakeFor(a)) && (
-                      <span className="ml-2">担当 {orgStaffLabel(orgIntakeFor(a))}</span>
+                      <span className="ml-2">支援 {orgStaffLabel(orgIntakeFor(a))}</span>
                     )}
                   </p>
                   <p className="mb-1 text-sm text-muted">{a.applicationContent}</p>
@@ -615,7 +616,7 @@ export function ApplicationsExplorer({
                 <tr>
                   <Th>名前</Th>
                   <Th>所属機関</Th>
-                  <Th>機関担当（主・副）</Th>
+                  <Th>支援責任者・支援担当者</Th>
                   {showPrep ? (
                     /* 申請前＜準備中＞: 申請内容・申請日・申請番号はまだ空のため、
                        代わりに在留更新の TODO番号・Notion・Messenger を表示する */

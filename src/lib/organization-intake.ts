@@ -10,6 +10,7 @@ import type {
   OrgSalesItems,
   OrganizationIntake,
 } from "@/types/db";
+import { orgSupportManagers, orgSupportStaff } from "@/lib/support-system";
 
 // 決算情報の初期行数（年月の経過に合わせて行は追加できる）
 export const FINANCIAL_DEFAULT_ROWS = 3;
@@ -86,6 +87,8 @@ export function emptyOrganizationIntake(): OrganizationIntake {
     report_staff: "",
     staff_primary: "",
     staff_secondary: "",
+    support_managers: [],
+    support_staff: [],
     fiscal_kind: "",
     support_fee: "",
     posting_note: "",
@@ -122,22 +125,28 @@ export function emptyOrganizationIntake(): OrganizationIntake {
   };
 }
 
-// 主担当・副担当の表示（例: 市原　彩奈（主）・田上　夏季（副））。未設定なら ''
+// 支援責任者・支援担当者の表示（例: 市原　彩奈（責）・田上　夏季（担））。未設定なら ''。
+// 責任者と担当者を兼任している人は「（責・担）」でまとめて1回だけ出す。
 export function orgStaffLabel(intake: Partial<OrganizationIntake> | null | undefined): string {
-  const primary = intake?.staff_primary?.trim() ?? "";
-  const secondary = intake?.staff_secondary?.trim() ?? "";
-  return [primary && `${primary}（主）`, secondary && `${secondary}（副）`]
-    .filter(Boolean)
-    .join("・");
+  const managers = orgSupportManagers(intake);
+  const staff = orgSupportStaff(intake);
+  const parts: string[] = [];
+  for (const name of managers) {
+    parts.push(staff.includes(name) ? `${name}（責・担）` : `${name}（責）`);
+  }
+  for (const name of staff) {
+    if (!managers.includes(name)) parts.push(`${name}（担）`);
+  }
+  return parts.join("・");
 }
 
-// この機関の担当者か（主担当・副担当のどちらかに一致するか）
+// この機関の支援責任者・支援担当者のいずれかか
 export function isOrgStaff(
   intake: Partial<OrganizationIntake> | null | undefined,
   name: string,
 ): boolean {
   if (!name) return false;
-  return intake?.staff_primary === name || intake?.staff_secondary === name;
+  return orgSupportManagers(intake).includes(name) || orgSupportStaff(intake).includes(name);
 }
 
 // 保存済みの intake（欠けたキーや古い形があり得る）を完全な形に補完する
@@ -181,6 +190,8 @@ export function normalizeOrganizationIntake(raw: unknown): OrganizationIntake {
           },
         ];
 
+  // 支援責任者・支援担当者。未移行データ（旧「主担当」「副担当」）は
+  // 主担当 → 支援責任者、副担当 → 支援担当者として引き継ぐ
   const merged: OrganizationIntake & Record<string, unknown> = {
     ...base,
     ...src,
@@ -189,6 +200,8 @@ export function normalizeOrganizationIntake(raw: unknown): OrganizationIntake {
     officers,
     lodgings,
     sales_items: normalizeSalesItems(src.sales_items),
+    support_managers: orgSupportManagers(src),
+    support_staff: orgSupportStaff(src),
   };
   // 旧フラット項目は保存し直したときに残らないよう取り除く
   for (const key of [

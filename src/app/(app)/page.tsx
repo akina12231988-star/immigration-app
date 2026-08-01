@@ -15,6 +15,7 @@ import {
   ClipboardList,
   MailWarning,
   ShieldAlert,
+  UserCheck,
   TriangleAlert,
 } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
@@ -30,8 +31,16 @@ import { formatDateSlash, isStartDateCorrectionNeeded } from "@/lib/onboarding";
 import { listWorkersWithOrg, type WorkerWithOrg } from "@/lib/supabase/queries/workers";
 import { listOrganizations } from "@/lib/supabase/queries/organizations";
 import { orgStaffLabel } from "@/lib/organization-intake";
+import { listEmployees } from "@/lib/supabase/queries/employees";
+import {
+  SUPPORT_MANAGER_MIN_YEARS,
+  buildEmployeeRoles,
+  serviceLabel,
+  summarizeOrganizations,
+  summarizeSupportSystem,
+} from "@/lib/support-system";
 import { createClient } from "@/lib/supabase/client";
-import type { Organization } from "@/types/db";
+import type { Employee, Organization } from "@/types/db";
 
 const STAT_CARDS = [
   {
@@ -81,7 +90,21 @@ export default function DashboardPage() {
     };
   }, []);
 
-  // 所属機関ごとの担当者（主・副）を表示するための機関マスタ
+  // 支援体制（支援責任者に該当できる従業員・支援担当者の不足）の判定用
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    listEmployees(createClient())
+      .then((es) => {
+        if (!cancelled) setEmployees(es);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 所属機関ごとの支援責任者・支援担当者を表示するための機関マスタ
   const [orgs, setOrgs] = useState<Organization[]>([]);
   useEffect(() => {
     let cancelled = false;
@@ -95,7 +118,7 @@ export default function DashboardPage() {
     };
   }, []);
   const orgById = new Map(orgs.map((o) => [o.id, o]));
-  // 機関IDから担当者表示（例: 市原　彩奈（主）・田上　夏季（副））。未設定は ''
+  // 機関IDから支援責任者・支援担当者の表示（例: 市原　彩奈（責）・田上　夏季（担））。未設定は ''
   const staffForOrg = (orgId: string | null | undefined) =>
     orgId ? orgStaffLabel(orgById.get(orgId)?.intake) : "";
 
@@ -144,6 +167,12 @@ export default function DashboardPage() {
         : "") ?? "";
     return burden !== "外国人負担" || w.ssw_insurance_self_join;
   });
+
+  // 支援体制（令和9年4月1日施行の省令改正）: 支援責任者になれる従業員・支援担当者の不足
+  const orgSupportSummaries = summarizeOrganizations(orgs, renewalWorkers);
+  const supportRoles = buildEmployeeRoles(employees, orgSupportSummaries, today);
+  const managerCandidates = supportRoles.filter((r) => r.suggestManager);
+  const supportSummary = summarizeSupportSystem(supportRoles, orgSupportSummaries);
 
   // 申請前＜準備中＞: 実レコード＋在留更新準備中の擬似行（申請一覧のタブと同じ件数）
   const prePrepCount =
@@ -243,6 +272,64 @@ export default function DashboardPage() {
                       </span>
                     </span>
                     <ChevronRight size={16} className="shrink-0 text-seal" />
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* 支援体制: 支援担当者の不足（令和9年4月1日施行の要件） */}
+        {supportSummary.staffShortage > 0 && (
+          <section>
+            <div className="rounded-2xl border-2 border-seal bg-seal/10 p-4">
+              <div className="mb-2 flex items-center gap-2 font-bold text-seal">
+                <ShieldAlert size={18} />
+                支援担当者が{supportSummary.staffShortage}名不足しています
+              </div>
+              <p className="mb-2 text-xs text-seal/90">
+                委託を受けている機関 {supportSummary.orgCount}社・1号特定技能外国人{" "}
+                {supportSummary.workerCount}名に対し、必要な支援担当者は {supportSummary.requiredStaff}名です（現在{" "}
+                {supportSummary.currentStaff}名）。
+              </p>
+              <Link
+                href="/employees"
+                className="flex items-center justify-between gap-2 rounded-lg bg-surface px-3 py-2 text-sm font-bold"
+              >
+                支援体制を確認する
+                <ChevronRight size={16} className="shrink-0 text-seal" />
+              </Link>
+            </div>
+          </section>
+        )}
+
+        {/* 支援体制: 支援責任者に該当できる従業員 */}
+        {managerCandidates.length > 0 && (
+          <section>
+            <div className="rounded-2xl border-2 border-brand bg-brand/10 p-4">
+              <div className="mb-2 flex items-center gap-2 font-bold text-brand">
+                <UserCheck size={18} />
+                支援責任者に該当できます {managerCandidates.length}名
+              </div>
+              <p className="mb-2 text-xs text-brand/90">
+                入社から{SUPPORT_MANAGER_MIN_YEARS}年以上経過した常勤の従業員です。所属機関の「支援責任者」に選任できます。
+              </p>
+              <div className="space-y-1.5">
+                {managerCandidates.map((role) => (
+                  <Link
+                    key={role.employee.id}
+                    href="/employees"
+                    className="flex items-center justify-between gap-2 rounded-lg bg-surface px-3 py-2"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-bold">{role.employee.name}</span>
+                      <span className="block truncate text-xs text-muted">
+                        勤続 {serviceLabel(role.employee.joined_on, today)}
+                        {role.employee.office && ` ・${role.employee.office}`}
+                        {role.isStaff && " ・現在は支援担当者"}
+                      </span>
+                    </span>
+                    <ChevronRight size={16} className="shrink-0 text-brand" />
                   </Link>
                 ))}
               </div>

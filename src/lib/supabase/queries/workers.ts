@@ -1,7 +1,19 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Worker, WorkerInput, WorkerWithHistories } from "@/types/db";
 import type { ParsedWorker } from "@/lib/ssw/import";
+import type { SupportWorker } from "@/lib/support-system";
 import { letterForNationality, nextWorkerCode } from "@/lib/worker-code";
+
+// 支援体制の集計用: 所属機関ごとの1号特定技能外国人数を数えるための最小項目
+export async function listWorkersForSupport(
+  supabase: SupabaseClient,
+): Promise<SupportWorker[]> {
+  const { data, error } = await supabase
+    .from("workers")
+    .select("current_organization_id, support, status, residence_status");
+  if (error) throw error;
+  return (data as SupportWorker[]) ?? [];
+}
 
 // 一覧用: 全外国人＋職歴を一括取得（通算計算はクライアント側で行う）
 export async function listWorkersWithHistories(

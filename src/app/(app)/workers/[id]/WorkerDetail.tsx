@@ -107,7 +107,7 @@ export function WorkerDetail({
   const orgName = worker.current_organization_id
     ? (currentOrg?.name ?? "所属不明")
     : "未所属";
-  // 所属機関の担当者（主・副）。会社・機関マスタで登録する
+  // 所属機関の支援責任者・支援担当者。会社・機関マスタで登録する
   const orgStaff = orgStaffLabel(currentOrg?.intake);
 
   // 特定技能総合保険の負担区分（現在の所属機関の設定）。
@@ -376,7 +376,7 @@ export function WorkerDetail({
             }
           />
           <InfoItem
-            label="担当者（所属機関の主・副）"
+            label="支援責任者・支援担当者（所属機関）"
             value={orgStaff || (currentOrg ? "未設定（会社・機関マスタで登録）" : null)}
           />
           <InfoItem label="専門級の合格名" value={worker.specialty_grade} edit={fillText("specialty_grade")} />

@@ -12,11 +12,24 @@ import {
   OrganizationFormBody,
   organizationToInput,
 } from "../OrganizationFormFields";
+import {
+  orgSupportManagers,
+  orgSupportStaff,
+  requiredSupportStaffCount,
+} from "@/lib/support-system";
 import type { Organization, OrganizationInput } from "@/types/db";
 
 // 所属機関の詳細表示。開いた時点で入力済みの欄は表示のみ、
 // 未記入の欄はこの画面で入力して保存できる（修正は一覧の鉛筆ボタンから）
-export function OrganizationDetail({ organization }: { organization: Organization }) {
+export function OrganizationDetail({
+  organization,
+  employeeNames = [],
+  workerCount = 0,
+}: {
+  organization: Organization;
+  employeeNames?: string[]; // 支援責任者・支援担当者の選択肢（従業員マスタ）
+  workerCount?: number; // この機関に在籍している1号特定技能外国人数
+}) {
   const router = useRouter();
   // snapshot = 表示のみにする基準（保存すると入力した欄も表示に切り替わる）
   const [snapshot, setSnapshot] = useState(() => organizationToInput(organization));
@@ -29,6 +42,11 @@ export function OrganizationDetail({ organization }: { organization: Organizatio
     () => JSON.stringify(form) !== JSON.stringify(snapshot),
     [form, snapshot],
   );
+
+  // 支援体制の表示は保存済みの内容（form ではなく organization）を使う
+  const managers = orgSupportManagers(organization.intake);
+  const supportStaff = orgSupportStaff(organization.intake);
+  const dual = managers.filter((n) => supportStaff.includes(n));
 
   // 鉛筆（編集）: 登録済みの内容も修正できる編集モーダル。保存後は最新の内容で表示し直す
   const handleEditSubmit = async (input: OrganizationInput) => {
@@ -88,11 +106,42 @@ export function OrganizationDetail({ organization }: { organization: Organizatio
           編集
         </button>
       </div>
+      {/* 支援体制（令和9年4月1日施行の要件）。在籍数と選任状況をひと目で確認できるようにする */}
+      <Card className="p-4">
+        <h2 className="mb-1 text-sm font-bold">支援体制</h2>
+        <p className="text-xs">
+          <span className="text-muted">在籍（1号特定技能）: </span>
+          <span className="font-bold">{workerCount}名</span>
+          <span className="ml-2 text-muted">
+            必要人数（この機関分）: 支援責任者1名以上・支援担当者
+            {requiredSupportStaffCount(workerCount > 0 ? 1 : 0, workerCount)}名以上
+          </span>
+        </p>
+        <p className="mt-1 text-xs">
+          <span className="text-muted">支援責任者: </span>
+          {managers.length > 0 ? (
+            managers.join("・")
+          ) : (
+            <span className="font-bold text-seal">未選任</span>
+          )}
+        </p>
+        <p className="text-xs">
+          <span className="text-muted">支援担当者: </span>
+          {supportStaff.length > 0 ? (
+            supportStaff.join("・")
+          ) : (
+            <span className="font-bold text-seal">未選任</span>
+          )}
+        </p>
+        {dual.length > 0 && <p className="text-xs text-muted">兼任: {dual.join("・")}</p>}
+      </Card>
+
       <Card className="p-4">
         <div className="flex flex-col gap-2.5">
           <OrganizationFormBody
             form={form}
             setForm={setForm}
+            employeeNames={employeeNames}
             orgId={organization.id}
             snapshot={snapshot}
           />
@@ -105,6 +154,7 @@ export function OrganizationDetail({ organization }: { organization: Organizatio
       {editOpen && (
         <OrganizationFormModal
           initial={organization}
+          employeeNames={employeeNames}
           onClose={() => setEditOpen(false)}
           onSubmit={handleEditSubmit}
         />

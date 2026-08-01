@@ -21,6 +21,29 @@ export interface Profile {
   updated_at: string;
 }
 
+// ---- 弊社の従業員・支援体制（0062_employees.sql） ----
+
+export const EMPLOYMENT_KINDS = ["常勤", "非常勤"] as const;
+export type EmploymentKind = (typeof EMPLOYMENT_KINDS)[number];
+
+// 弊社（登録支援機関）の従業員。支援責任者・支援担当者の選任元になる
+export interface Employee {
+  id: string;
+  name: string;
+  kana: string;
+  joined_on: string | null; // 入社日 YYYY-MM-DD
+  left_on: string | null; // 退職日（入力があれば在籍対象から外す）
+  employment_kind: string; // 常勤 / 非常勤
+  is_officer: boolean; // 役員か
+  office: string; // 支援業務を行う事務所
+  training_completed_on: string | null; // 支援責任者の養成講習 修了日
+  note: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type EmployeeInput = Omit<Employee, "id" | "created_at" | "updated_at">;
+
 // ---- 外国人・職歴・所属機関（0003_core.sql） ----
 
 export const SUPPORT_SCOPES = ["支援開始前", "支援対象", "支援対象外"] as const;
@@ -121,8 +144,10 @@ export interface OrganizationIntake {
   fax: string; // FAX
   email: string; // Email
   report_staff: string; // 定期報告書・随時報告書の担当者名（退職の随時報告書へ自動転記）
-  staff_primary: string; // この機関の主担当（会社との窓口・進捗管理の責任者）
-  staff_secondary: string; // この機関の副担当（主担当不在時のバックアップ）
+  staff_primary: string; // 旧項目: この機関の主担当。support_managers へ移行済み（未移行データ用に残す）
+  staff_secondary: string; // 旧項目: この機関の副担当。support_staff へ移行済み（未移行データ用に残す）
+  support_managers: string[]; // この機関の支援責任者（複数可・employees.name）
+  support_staff: string[]; // この機関の支援担当者（複数可・employees.name。支援責任者との兼任可）
   fiscal_kind: string; // 決算情報の区分（個人事業主 / 法人）
   support_fee: string; // 毎月の支援代（月額）
   posting_note: string; // 求人で必須としている他条件（求人情報で注意喚起表示）
