@@ -13,7 +13,9 @@ import {
   serviceLabel,
   summarizeOrganizations,
   summarizeSupportSystem,
+  canBeSupportPerson,
   supportManagerBlockReason,
+  supportStaffBlockReason,
   supportManagerOptions,
   supportStaffOptions,
   yearsBetween,
@@ -122,6 +124,25 @@ describe("canBeSupportManager", () => {
         TODAY,
       ),
     ).toBe("常勤ではありません");
+  });
+});
+
+describe("canBeSupportPerson / supportStaffBlockReason", () => {
+  it("支援責任者等は常勤の在籍者に限る（改正点①）", () => {
+    expect(canBeSupportPerson(employee({ name: "A" }), TODAY)).toBe(true);
+    expect(canBeSupportPerson(employee({ name: "B", employment_kind: "非常勤" }), TODAY)).toBe(false);
+    expect(canBeSupportPerson(employee({ name: "C", left_on: "2026-03-31" }), TODAY)).toBe(false);
+  });
+
+  it("支援担当者にできない理由を返す（勤続年数は問わない）", () => {
+    // 入社日が無くても常勤の在籍者なら支援担当者にはなれる
+    expect(supportStaffBlockReason(employee({ name: "A" }), TODAY)).toBe("");
+    expect(
+      supportStaffBlockReason(employee({ name: "B", employment_kind: "非常勤" }), TODAY),
+    ).toBe("常勤ではありません（支援責任者等は常勤の役員又は職員から選任します）");
+    expect(supportStaffBlockReason(employee({ name: "C", left_on: "2026-03-31" }), TODAY)).toBe(
+      "退職済み",
+    );
   });
 });
 
@@ -347,6 +368,43 @@ describe("buildEmployeeRoles / summarizeSupportSystem", () => {
     expect(s3.understaffedOrgs.map((o) => o.organizationName)).toEqual(["D社"]);
   });
 
+  it("役割にしているが要件を満たしていない従業員を拾う", () => {
+    const invalid = [
+      // 非常勤なのに支援担当者にしている
+      employee({
+        name: "非常勤　花子",
+        joined_on: "2019-04-01",
+        employment_kind: "非常勤",
+        is_support_staff: true,
+      }),
+      // 勤続2年未満なのに支援責任者にしている
+      employee({ name: "新人　太郎", joined_on: "2025-04-01", is_support_manager: true }),
+    ];
+    const summary = summarizeSupportSystem(
+      buildEmployeeRoles(invalid, summaries, TODAY),
+      summaries,
+    );
+    expect(summary.invalidRoles.map((r) => r.name)).toEqual(["非常勤　花子", "新人　太郎"]);
+    // 非常勤は人数にも数えない
+    expect(summary.currentPersons).toBe(1);
+  });
+
+  it("養成講習が未修了の支援責任者を拾う", () => {
+    const summary = summarizeSupportSystem(roles, summaries);
+    expect(summary.trainingPending).toEqual(["市原　彩奈"]);
+
+    const done = [
+      employee({
+        name: "市原　彩奈",
+        joined_on: "2019-04-01",
+        is_support_manager: true,
+        training_completed_on: "2026-05-01",
+      }),
+    ];
+    const s2 = summarizeSupportSystem(buildEmployeeRoles(done, summaries, TODAY), summaries);
+    expect(s2.trainingPending).toEqual([]);
+  });
+
   it("退職済みの従業員は人数に数えない", () => {
     const withLeaver = [
       ...employees,
@@ -403,8 +461,16 @@ describe("supportManagerOptions / supportStaffOptions", () => {
     employee({ name: "退職　太郎", is_support_manager: true, left_on: "2026-03-31" }),
   ];
 
-  it("所属機関で選べるのは、その役割にしている在籍者だけ", () => {
+  it("所属機関で選べるのは、その役割にしている常勤の在籍者だけ", () => {
     expect(supportManagerOptions(employees, TODAY)).toEqual(["市原　彩奈"]);
     expect(supportStaffOptions(employees, TODAY)).toEqual(["市原　彩奈", "田上　夏季"]);
+  });
+
+  it("非常勤は役割にしていても選択肢に出ない（改正点①）", () => {
+    const withPartTime = [
+      ...employees,
+      employee({ name: "非常勤　花子", employment_kind: "非常勤", is_support_staff: true }),
+    ];
+    expect(supportStaffOptions(withPartTime, TODAY)).toEqual(["市原　彩奈", "田上　夏季"]);
   });
 });

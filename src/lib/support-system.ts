@@ -5,12 +5,14 @@
 //     それぞれ常勤の役員又は職員の中から1名以上選任する（支援責任者が支援担当者を兼務することは可）。
 //  2. 支援業務に従事することができる者を支援責任者等に限定する。
 //  3. 支援責任者に養成講習の受講を義務付ける（※令和9年4月1日以降も当分の間は未修了でも差し支えない）。
-//  4. 支援担当者の数が、
-//       ・委託を受けている特定技能所属機関の数 ÷ 10
-//       ・支援を行っている1号特定技能外国人の数 ÷ 50
-//     の双方を「超えている」こと（支援責任者が支援担当者を兼務することは可）。
+//  4. 登録支援機関が支援業務の委託を受けることができる特定技能所属機関の数は、
+//     支援責任者等1人当たり10機関未満とする（例: 25機関なら3人の支援責任者等が必要）。
+//  5. 支援責任者等が支援を行うことができる1号特定技能外国人の数は、
+//     支援責任者等1人当たり50人未満とする（例: 120人なら3人の支援責任者等が必要）。
 //
-// 支援責任者になれる目安は弊社の運用基準（入社から2年以上経過した常勤の従業員）。
+// ④⑤の人数は支援責任者と支援担当者を別々にではなく「支援責任者等」としてまとめて数える
+// （兼務している人は1人）。
+// 支援責任者になれる目安の勤続年数は弊社の運用基準（入社から2年以上）。
 
 import type { Employee, Organization, OrganizationIntake, Worker } from "@/types/db";
 
@@ -63,10 +65,24 @@ export function isActiveEmployee(employee: Employee, today: string): boolean {
   return employee.left_on > today;
 }
 
+// 支援責任者等（支援責任者・支援担当者）の共通要件。
+// 改正点①「それぞれ常勤の役員又は職員の中から1人ずつ以上選任する」に対応する
+export function canBeSupportPerson(employee: Employee, today: string): boolean {
+  return isActiveEmployee(employee, today) && employee.employment_kind === "常勤";
+}
+
+// 支援担当者にできない理由（できる場合は ''）
+export function supportStaffBlockReason(employee: Employee, today: string): string {
+  if (!isActiveEmployee(employee, today)) return "退職済み";
+  if (employee.employment_kind !== "常勤") {
+    return "常勤ではありません（支援責任者等は常勤の役員又は職員から選任します）";
+  }
+  return "";
+}
+
 // 支援責任者になれるか（在籍中・常勤・勤続2年以上）
 export function canBeSupportManager(employee: Employee, today: string): boolean {
-  if (!isActiveEmployee(employee, today)) return false;
-  if (employee.employment_kind !== "常勤") return false;
+  if (!canBeSupportPerson(employee, today)) return false;
   const years = yearsBetween(employee.joined_on, today);
   return years !== null && years >= SUPPORT_MANAGER_MIN_YEARS;
 }
@@ -214,6 +230,11 @@ export interface EmployeeSupportRole {
   // 従業員側で役割にしていないのに所属機関で選任されている機関（設定の取り違え）
   mismatchedManagerOrgs: string[];
   mismatchedStaffOrgs: string[];
+  // 役割にしているが要件を満たしていない理由（満たしていれば ''）
+  managerIssue: string;
+  staffIssue: string;
+  // 支援責任者なのに養成講習が未修了（当分の間は差し支えないが、いずれ必要）
+  trainingPending: boolean;
 }
 
 export function buildEmployeeRoles(
@@ -257,21 +278,24 @@ export function buildEmployeeRoles(
       mismatchedStaffOrgs: isStaff
         ? []
         : assignments.filter((a) => a.isStaff).map((a) => a.organizationName),
+      managerIssue: isManager ? supportManagerBlockReason(employee, today) : "",
+      staffIssue: isStaff ? supportStaffBlockReason(employee, today) : "",
+      trainingPending: isManager && !employee.training_completed_on,
     };
   });
 }
 
-// 所属機関の「支援責任者」に選べる従業員（現在 支援責任者をしている在籍者）
+// 所属機関の「支援責任者」に選べる従業員（現在 支援責任者をしている常勤の在籍者）
 export function supportManagerOptions(employees: Employee[], today: string): string[] {
   return employees
-    .filter((e) => e.is_support_manager && isActiveEmployee(e, today) && e.name.trim())
+    .filter((e) => e.is_support_manager && canBeSupportPerson(e, today) && e.name.trim())
     .map((e) => e.name.trim());
 }
 
-// 所属機関の「支援担当者」に選べる従業員（現在 支援担当者をしている在籍者）
+// 所属機関の「支援担当者」に選べる従業員（現在 支援担当者をしている常勤の在籍者）
 export function supportStaffOptions(employees: Employee[], today: string): string[] {
   return employees
-    .filter((e) => e.is_support_staff && isActiveEmployee(e, today) && e.name.trim())
+    .filter((e) => e.is_support_staff && canBeSupportPerson(e, today) && e.name.trim())
     .map((e) => e.name.trim());
 }
 
@@ -329,6 +353,9 @@ export interface SupportSystemSummary {
   understaffedOrgs: OrgSupportSummary[];
   offices: OfficeSummary[]; // 事務所ごとの充足状況
   eligibleNotAssigned: string[]; // 支援責任者になれるのに未選任の従業員名
+  // 役割にしているが要件（常勤・勤続2年以上）を満たしていない従業員
+  invalidRoles: { name: string; issue: string }[];
+  trainingPending: string[]; // 養成講習が未修了の支援責任者
 }
 
 export function summarizeSupportSystem(
@@ -340,7 +367,10 @@ export function summarizeSupportSystem(
   const workerCount = orgSummaries.reduce((sum, o) => sum + o.workerCount, 0);
 
   // 人数は従業員側で役割にしている在籍者を数える
-  const activeRoles = roles.filter((r) => (r.isManager || r.isStaff) && r.isActive);
+  // 常勤の在籍者だけを数える（支援責任者等は常勤の役員又は職員から選任する）
+  const activeRoles = roles.filter(
+    (r) => (r.isManager || r.isStaff) && r.isActive && r.employee.employment_kind === "常勤",
+  );
   const currentStaff = activeRoles.filter((r) => r.isStaff).length;
   const currentManagers = activeRoles.filter((r) => r.isManager).length;
   // 支援責任者等 = 支援責任者と支援担当者の実人数（兼務している人は1人として数える）
@@ -371,5 +401,19 @@ export function summarizeSupportSystem(
     ),
     offices,
     eligibleNotAssigned: roles.filter((r) => r.suggestManager).map((r) => r.employee.name),
+    invalidRoles: roles
+      .filter((r) => r.managerIssue || r.staffIssue)
+      .map((r) => ({
+        name: r.employee.name,
+        issue: [
+          r.managerIssue && `支援責任者: ${r.managerIssue}`,
+          r.staffIssue && `支援担当者: ${r.staffIssue}`,
+        ]
+          .filter(Boolean)
+          .join(" / "),
+      })),
+    trainingPending: roles
+      .filter((r) => r.trainingPending && r.isActive)
+      .map((r) => r.employee.name),
   };
 }

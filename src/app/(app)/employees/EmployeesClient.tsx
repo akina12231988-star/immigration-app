@@ -25,6 +25,7 @@ import {
   summarizeOrganizations,
   summarizeSupportSystem,
   supportManagerBlockReason,
+  supportStaffBlockReason,
   type EmployeeSupportRole,
   type SupportWorker,
 } from "@/lib/support-system";
@@ -176,10 +177,9 @@ export function EmployeesClient({
   };
 
   // フォームで入力中の内容に対する支援責任者の要件チェック（満たさない場合の警告表示）
-  const managerBlockReason = supportManagerBlockReason(
-    { ...(editing ?? ({} as Employee)), ...form } as Employee,
-    today,
-  );
+  const formEmployee = { ...(editing ?? ({} as Employee)), ...form } as Employee;
+  const managerBlockReason = supportManagerBlockReason(formEmployee, today);
+  const staffBlockReason = supportStaffBlockReason(formEmployee, today);
 
   const inputCls =
     "min-h-[44px] w-full rounded-xl border border-border bg-background px-3 text-sm";
@@ -277,6 +277,42 @@ export function EmployeesClient({
           </ul>
         )}
       </Card>
+
+      {/* 役割にしているが要件を満たしていない従業員 */}
+      {summary.invalidRoles.length > 0 && (
+        <Card className="border-seal/40 p-4">
+          <h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-seal">
+            <AlertTriangle size={16} />
+            要件を満たしていない支援責任者等 {summary.invalidRoles.length}名
+          </h2>
+          <p className="mb-2 text-xs text-muted">
+            支援責任者等は常勤の役員又は職員から選任します。役割のチェックを外すか、勤務区分を見直してください。
+            この人たちは所属機関の選択肢にも出ません。
+          </p>
+          <ul className="flex flex-col gap-1">
+            {summary.invalidRoles.map((r) => (
+              <li key={r.name} className="text-sm">
+                <span className="font-bold">{r.name}</span>
+                <span className="ml-2 text-xs text-seal">{r.issue}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      {/* 養成講習が未修了の支援責任者 */}
+      {summary.trainingPending.length > 0 && (
+        <Card className="p-4">
+          <h2 className="mb-1 text-sm font-bold">養成講習 未修了の支援責任者 {summary.trainingPending.length}名</h2>
+          <p className="mb-2 text-xs text-muted">
+            {summary.trainingPending.join("・")}
+          </p>
+          <p className="text-xs text-muted">
+            支援責任者には支援能力向上のための養成講習（入管法や労働関係法令等）の受講が義務付けられます。
+            令和9年4月1日以降も当分の間は修了していなくても差し支えありませんが、受講したら修了日を登録してください。
+          </p>
+        </Card>
+      )}
 
       {/* 支援責任者になれる従業員のアラート */}
       {suggested.length > 0 && (
@@ -627,6 +663,11 @@ export function EmployeesClient({
             {form.is_support_manager && managerBlockReason && (
               <p className="text-xs font-bold text-seal">
                 ⚠ この人は支援責任者の要件を満たしていません（{managerBlockReason}）。
+              </p>
+            )}
+            {form.is_support_staff && staffBlockReason && (
+              <p className="text-xs font-bold text-seal">
+                ⚠ この人は支援担当者の要件を満たしていません（{staffBlockReason}）。
               </p>
             )}
           </div>
