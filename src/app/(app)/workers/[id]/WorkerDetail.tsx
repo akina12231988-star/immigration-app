@@ -586,7 +586,10 @@ export function WorkerDetail({
       <WorkerRecurringSales
         workerId={worker.id}
         organizationId={worker.current_organization_id}
+        organizations={organizations}
+        support={worker.support}
         initialSalesNo={worker.recurring_sales_no ?? ""}
+        initialPast={worker.past_recurring_sales}
         canEdit={canEdit}
       />
 
