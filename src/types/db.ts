@@ -62,6 +62,18 @@ export const WORKER_STATUSES = [
 ] as const;
 export type WorkerStatus = (typeof WORKER_STATUSES)[number];
 
+// 現在の在留資格の選択肢（外国人詳細で選択して登録する）。
+// この一覧にない表記が登録済みの場合は、その表記も選択肢に残して削除しない
+export const RESIDENCE_STATUSES = [
+  "技能実習1号",
+  "技能実習2号",
+  "技能実習3号",
+  "特定活動（特定技能1号移行準備）",
+  "特定活動（特定技能2号移行準備）",
+  "特定技能1号",
+  "特定技能2号",
+] as const;
+
 // 在留更新の対応状況（空文字＝未対応・対象）
 export const RESIDENCE_RENEWAL_STATUSES = [
   "",

@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { insertOrganization } from "@/lib/supabase/queries/organizations";
 import { SSW_INDUSTRIES, categoriesFor } from "@/lib/industries";
 import {
+  RESIDENCE_STATUSES,
   SUPPORT_SCOPES,
   WORKER_STATUSES,
   type Organization,
@@ -420,12 +421,23 @@ export function WorkerForm({
 
       <Fieldset legend="在留情報">
         <Field label="現在の在留資格">
-          <input
+          <select
             value={form.residence_status}
             onChange={(e) => set("residence_status", e.target.value)}
-            placeholder="特定技能1号"
             className={INPUT_CLASS}
-          />
+          >
+            <option value="">未設定</option>
+            {/* 一覧にない表記が登録済みの場合はそのまま選択肢に残す（削除しない） */}
+            {form.residence_status &&
+              !(RESIDENCE_STATUSES as readonly string[]).includes(form.residence_status) && (
+                <option value={form.residence_status}>{form.residence_status}</option>
+              )}
+            {RESIDENCE_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
         </Field>
         <Field label="在留カード番号">
           <input

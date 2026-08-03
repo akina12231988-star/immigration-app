@@ -25,6 +25,7 @@ export function WorkerRecurringSales({
   workerId,
   organizationId,
   organizations,
+  support,
   initialSalesNo,
   initialPast,
   canEdit,
@@ -32,6 +33,7 @@ export function WorkerRecurringSales({
   workerId: string;
   organizationId: string | null;
   organizations: Organization[];
+  support: string; // 支援の区分（支援対象外は支援代の請求がないため定期売上No.なし）
   initialSalesNo: string;
   initialPast: unknown; // workers.past_recurring_sales（jsonb）
   canEdit: boolean;
@@ -150,7 +152,13 @@ export function WorkerRecurringSales({
       </dl>
 
       <div className="mt-3">
-        {canEdit ? (
+        {support === "支援対象外" ? (
+          // 特定技能2号などの支援対象外は支援代の請求がないため定期売上No.はなし
+          <p className="rounded-xl bg-background p-3 text-sm">
+            <span className="text-xs text-muted">定期売上No.: </span>
+            <span className="font-bold">なし（支援対象外のため定期売上はありません）</span>
+          </p>
+        ) : canEdit ? (
           <label className="flex flex-col gap-1">
             <span className="text-xs font-bold text-muted">
               定期売上No.（現在・在籍中{currentOrgName ? `: ${currentOrgName}` : ""}）
