@@ -242,6 +242,13 @@ export interface WorkerOrgEmploymentStart {
   start_on: string; // 雇用開始日 YYYY-MM-DD（未入力は ''）
 }
 
+// 過去の定期売上No.の1件分（workers.past_recurring_sales jsonb に配列で保存）。
+// 定期売上No.は所属機関ごとに発行するため、転職前の番号を旧機関と紐付けて残す
+export interface WorkerPastRecurringSale {
+  organization_id: string; // 当時の所属機関ID（organizations.id）
+  sales_no: string; // 当時の定期売上No.（例: SP-0000000225）
+}
+
 // 同居している在日親族の1人分（workers.relatives jsonb に配列で保存）
 export interface WorkerRelative {
   name: string; // 氏名
@@ -302,6 +309,7 @@ export interface Worker {
   ssw_insurance_self_join: boolean; // 自己負担加入希望（所属機関が外国人負担の場合に本人が加入を希望）
   note: string;
   recurring_sales_no: string; // 定期売上No.（freee販売の定期売上の伝票番号。例: SP-0000000225）
+  past_recurring_sales: WorkerPastRecurringSale[]; // 過去の定期売上No.（転職前の所属機関の番号）
   worker_code: string | null; // 外国人ID（例: V-1）。自動採番
   legacy_id: string | null;
   created_by: string | null;

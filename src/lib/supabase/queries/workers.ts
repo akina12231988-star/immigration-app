@@ -1,6 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { BillingWorker } from "@/lib/monthly-billing";
-import type { Worker, WorkerInput, WorkerWithHistories } from "@/types/db";
+import type {
+  Worker,
+  WorkerInput,
+  WorkerPastRecurringSale,
+  WorkerWithHistories,
+} from "@/types/db";
 import type { ParsedWorker } from "@/lib/ssw/import";
 import type { SupportWorker } from "@/lib/support-system";
 import { letterForNationality, nextWorkerCode } from "@/lib/worker-code";
@@ -87,6 +92,19 @@ export async function setWorkerRecurringSalesNo(
   const { error } = await supabase
     .from("workers")
     .update({ recurring_sales_no: recurringSalesNo })
+    .eq("id", workerId);
+  if (error) throw error;
+}
+
+// 過去の定期売上No.（転職前の所属機関の番号）だけを更新する
+export async function setWorkerPastRecurringSales(
+  supabase: SupabaseClient,
+  workerId: string,
+  entries: WorkerPastRecurringSale[],
+): Promise<void> {
+  const { error } = await supabase
+    .from("workers")
+    .update({ past_recurring_sales: entries })
     .eq("id", workerId);
   if (error) throw error;
 }

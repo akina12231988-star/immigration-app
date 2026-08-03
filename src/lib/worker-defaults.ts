@@ -45,6 +45,7 @@ export function blankWorkerInput(name: string, organizationId: string | null = n
     specialty_grade: "",
     ssw2_exam: "",
     recurring_sales_no: "",
+    past_recurring_sales: [],
     other_qualifications: "",
     my_number: "",
     employment_insurance_no: "",

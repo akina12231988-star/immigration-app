@@ -60,6 +60,7 @@ function toInput(w: Worker | null): WorkerInput {
     specialty_grade: w?.specialty_grade ?? "",
     ssw2_exam: w?.ssw2_exam ?? "",
     recurring_sales_no: w?.recurring_sales_no ?? "",
+    past_recurring_sales: w?.past_recurring_sales ?? [],
     other_qualifications: w?.other_qualifications ?? "",
     my_number: w?.my_number ?? "",
     employment_insurance_no: w?.employment_insurance_no ?? "",
