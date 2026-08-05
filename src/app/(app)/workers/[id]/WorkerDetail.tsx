@@ -881,18 +881,17 @@ function InfoItem({
 }
 
 // 申請書類用の通算: 通算対象（特定技能1号・特定活動〔1号移行準備〕・在留資格を保持したままの
-// 帰国）の期間だけを合算し、端数は1か月に切り上げて「◯年◯か月」を出す。
+// 帰国）の期間について「1日でも在留した月」を1か月と数えて「◯年◯か月」を出す。
 // 在留資格を切って帰国していた期間などの空白は数えない（通算期間ゲージと同じ範囲）
 function DocumentTotalPanel({ histories }: { histories: WorkHistory[] }) {
   const [docDate, setDocDate] = useState(todayStr());
   const [copied, setCopied] = useState(false);
   const calc = useMemo(() => calcSsw(histories, docDate), [histories, docDate]);
-  const total = useMemo(() => calcDocumentTotal(histories, docDate), [histories, docDate]);
+  const totalMonths = useMemo(() => calcDocumentTotal(histories, docDate), [histories, docDate]);
 
   const firstStart = calc.firstStart;
-  const roundedMonths = total?.roundedMonths ?? 0;
-  const shinsei = `${Math.floor(roundedMonths / 12)}年${roundedMonths % 12}か月`;
-  const hasData = !!total && !!firstStart;
+  const shinsei = `${Math.floor((totalMonths ?? 0) / 12)}年${(totalMonths ?? 0) % 12}か月`;
+  const hasData = totalMonths !== null && !!firstStart;
 
   const copy = async () => {
     const lines = calc.hist.map((h) => {
@@ -920,8 +919,8 @@ function DocumentTotalPanel({ histories }: { histories: WorkHistory[] }) {
         申請書類用の通算
       </h2>
       <p className="mb-3 text-[11px] leading-relaxed text-muted">
-        特定技能1号（通算対象）の期間だけを合算します。在留資格を切って帰国していた期間は数えません。
-        端数の日数は30日を1か月とみなし、それでも残る端数は1日でも1か月に切り上げます。
+        特定技能1号（通算対象）の期間について、1日でも在留した月を1か月と数えて合算します。
+        在留資格を切って帰国していた期間は数えません。
       </p>
       {!hasData ? (
         <p className="rounded-xl bg-background p-4 text-center text-sm text-muted">
@@ -937,12 +936,11 @@ function DocumentTotalPanel({ histories }: { histories: WorkHistory[] }) {
             <p className="text-xs font-bold text-muted">申請書記載</p>
             <p className="text-2xl font-black text-brand">
               {shinsei}
-              <span className="ml-2 text-sm font-bold text-muted">（切り上げ・{roundedMonths}か月）</span>
+              <span className="ml-2 text-sm font-bold text-muted">（{totalMonths}か月）</span>
             </p>
             <p className="mt-1 text-xs tabular-nums text-muted">
               起算日 {firstStart}
-              {total &&
-                `　合算 ${Math.floor(total.months / 12)}年${total.months % 12}か月${total.days}日（対象期間のみ・帰国などの空白は含まず）`}
+              　1日でも在留した月を1か月と数えています（帰国などの空白は含まず）
             </p>
           </div>
           <Button
