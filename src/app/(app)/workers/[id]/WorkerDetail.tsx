@@ -101,6 +101,11 @@ export function WorkerDetail({
     () => calcSsw(worker.work_histories.map(toCalcHistory), today),
     [worker.work_histories, today],
   );
+  // 月単位の通算（1日でも在留した月は1か月）。申請書類用と同じ数え方の今日時点の値
+  const monthTotal = useMemo(
+    () => calcDocumentTotal(worker.work_histories.map(toCalcHistory), today),
+    [worker.work_histories, today],
+  );
 
   const currentOrg = worker.current_organization_id
     ? organizations.find((o) => o.id === worker.current_organization_id)
@@ -651,18 +656,29 @@ export function WorkerDetail({
         <SswGauge calc={calc} />
         <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
           <InfoItem
-            label="通算在留期間"
+            label="通算在留日数"
             value={calc.counted.length ? `${ymdFullText(calc.used)}（${calc.usedDays}日）` : null}
           />
           <InfoItem
             label="残り"
             value={calc.counted.length ? `${ymdFullText(calc.remain)}（${calc.remainDays}日）` : null}
           />
+          <InfoItem
+            label="月単位の通算（1日でも在留した月は1か月）"
+            value={
+              monthTotal !== null
+                ? `${Math.floor(monthTotal / 12)}年${monthTotal % 12}か月（${monthTotal}か月）`
+                : null
+            }
+            wide
+          />
           <InfoItem label="起算日" value={calc.firstStart} />
           <InfoItem label="満了予定日" value={calc.expiry} />
         </dl>
         <p className="mt-3 text-[11px] leading-relaxed text-muted">
-          通算期間は日数合算による目安です（特定活動〔1号移行準備〕を含む）。正式な判断は出入国在留管理庁にご確認ください。
+          通算在留日数は日数合算による目安です（特定活動〔1号移行準備〕を含む）。
+          月単位の通算は申請書類用と同じ数え方（1日でも在留した月は1か月）の今日時点の値です。
+          正式な判断は出入国在留管理庁にご確認ください。
         </p>
       </Card>
 
