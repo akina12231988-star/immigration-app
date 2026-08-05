@@ -29,6 +29,7 @@ import { dailyFee, formatSalesYen } from "@/lib/sales";
 import {
   currentMonth,
   daysText,
+  isMonthStr,
   monthLabel,
   periodText,
   summarizeMonthlyBilling,
@@ -47,6 +48,9 @@ import { buildXlsx, downloadBlob } from "@/lib/xlsx-export";
 // 月末の請求書作成。年月を選ぶと、その月に1日でも在籍していた支援対象者を
 // 所属機関ごとに並べ、支援費の請求額（満額・日割り）を出す。
 // 所属機関へ在籍名簿をメールで送るため、エクセルで書き出せる。
+
+// 選んだ対象の年月の保存キー（タブ内で保持し、ページを離れて戻っても選択が消えないように）
+const MONTH_STORE_KEY = "monthly-billing-month";
 export function MonthlyBillingSection({
   workers,
   organizations,
@@ -60,6 +64,24 @@ export function MonthlyBillingSection({
 }) {
   const [month, setMonth] = useState(() => currentMonth(today));
   const [openOrgId, setOpenOrgId] = useState<string | null>(null);
+
+  // 選んだ年月はタブを閉じるまで保持する（ページを離れて戻っても今月に戻らないように）。
+  // 新しいタブ・ブラウザを開き直したときは今月に戻る
+  useEffect(() => {
+    // レンダー中の同期setStateを避けるため、反映はマイクロタスクで行う
+    void Promise.resolve().then(() => {
+      const saved = window.sessionStorage.getItem(MONTH_STORE_KEY);
+      if (saved && isMonthStr(saved)) setMonth(saved);
+    });
+  }, []);
+  const changeMonth = (value: string) => {
+    setMonth(value);
+    try {
+      window.sessionStorage.setItem(MONTH_STORE_KEY, value);
+    } catch {
+      /* プライベートブラウズなどで保存できなくても画面は動かす */
+    }
+  };
   const [salesNos, setSalesNos] = useState<Record<string, string>>({});
   // 定期売上No.の並び順（null=氏名順・asc=昇順・desc=降順）
   const [salesNoSort, setSalesNoSort] = useState<"asc" | "desc" | null>(null);
@@ -239,7 +261,7 @@ export function MonthlyBillingSection({
             <input
               type="month"
               value={month}
-              onChange={(e) => setMonth(e.target.value)}
+              onChange={(e) => changeMonth(e.target.value)}
               className="min-h-[44px] rounded-xl border border-border bg-background px-3 text-sm"
             />
           </label>
