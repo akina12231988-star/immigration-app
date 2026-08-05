@@ -20,6 +20,7 @@ export type SalesEntryKind =
   | "申請" // 申請種別ごとの売上
   | "保険" // 特定技能総合保険
   | "支援代日割り" // 許可日からの日割り
+  | "支援代満額" // 特定活動（1号移行準備）から特定技能へ移行した月（支援継続中のため日割りしない）
   | "定期売上" // 翌月以降の月額（freee販売の定期売上に登録）
   | "退職精算"; // 退職日までの日割り
 
@@ -118,6 +119,9 @@ export interface BuildSalesInput {
   insuranceByCompany: boolean; // 特定技能総合保険が会社負担か
   // 申請種別ごとの売上明細（所属機関マスタに登録した内容。複数行）
   applicationItems: { name: string; amount: string }[];
+  // 同じ所属機関で特定活動（1号移行準備）から特定技能へ移行した場合 true。
+  // 支援が継続しているため許可月は日割りせず満額（名称はサポート代→特定技能支援代に変わる）
+  fullMonthSupport?: boolean;
 }
 
 // 在留カード受領後に登録する売上明細を組み立てる。
@@ -156,19 +160,36 @@ export function buildSalesEntries(input: BuildSalesInput): SalesEntryDraft[] {
     });
   }
 
-  const prorated = prorateFromDate(monthly, input.permitDate);
-  if (prorated) {
-    entries.push({
-      kind: "支援代日割り",
-      item_name: itemName,
-      description: `${input.workerName}さん　${mdText(input.permitDate)}からの特定${
-        input.appKind.startsWith("特定活動") ? "活動サポート代" : "技能支援代"
-      }`,
-      amount: prorated.amount,
-      taxable: true,
-      period_from: input.permitDate,
-      period_to: monthEnd(input.permitDate),
-    });
+  if (input.fullMonthSupport) {
+    // 特定活動（1号移行準備）から特定技能へ移行した月は、支援が継続しているため
+    // 日割りせず満額。名称はサポート代から特定技能支援代に変わる
+    if (monthly > 0) {
+      const month = Number(input.permitDate.slice(5, 7));
+      entries.push({
+        kind: "支援代満額",
+        item_name: itemName,
+        description: `${input.workerName}さん　${month}月分の${itemName}（特定活動から移行・満額）`,
+        amount: monthly,
+        taxable: true,
+        period_from: monthStart(input.permitDate),
+        period_to: monthEnd(input.permitDate),
+      });
+    }
+  } else {
+    const prorated = prorateFromDate(monthly, input.permitDate);
+    if (prorated) {
+      entries.push({
+        kind: "支援代日割り",
+        item_name: itemName,
+        description: `${input.workerName}さん　${mdText(input.permitDate)}からの特定${
+          input.appKind.startsWith("特定活動") ? "活動サポート代" : "技能支援代"
+        }`,
+        amount: prorated.amount,
+        taxable: true,
+        period_from: input.permitDate,
+        period_to: monthEnd(input.permitDate),
+      });
+    }
   }
 
   if (monthly > 0) {

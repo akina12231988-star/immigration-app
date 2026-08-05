@@ -31,10 +31,14 @@ import type { OrgSalesItem, OrgSalesItems, SalesEntryRow } from "@/types/db";
 // 「申請種別ごとの売上明細」「毎月の支援代」「特定技能総合保険の負担」を読み込み、
 // 申請・保険・許可日からの日割り・定期売上の明細を作って「登録待ち」に入れる。
 export function SalesEntrySection({ app }: { app: Application }) {
-  const permitDate = app.grantedPermitDate ?? app.approvalDate ?? "";
+  // 日割りの開始日は在留許可日（請求書作成と同じ）。日付が違うときは画面で直せる
+  const [permitDate, setPermitDate] = useState(app.grantedPermitDate ?? app.approvalDate ?? "");
   const [appKind, setAppKind] = useState<SalesAppKind>(() =>
     guessAppKind(app.visaAtGrant ?? "", app.applicationContent ?? ""),
   );
+  // 同じ所属機関で特定活動（1号移行準備）から特定技能へ移行した場合は、
+  // 支援が継続しているため許可月は日割りせず満額（品目は特定技能支援代）
+  const [fullMonthSupport, setFullMonthSupport] = useState(false);
   // 所属機関マスタから読み込む設定
   const [salesItems, setSalesItems] = useState<OrgSalesItems>({});
   const [orgSupportFee, setOrgSupportFee] = useState("");
@@ -110,9 +114,12 @@ export function SalesEntrySection({ app }: { app: Application }) {
         supportFee,
         insuranceByCompany,
         applicationItems: items,
+        fullMonthSupport,
       })
     : [];
-  const prorated = prorateFromDate(parseAmount(supportFee) ?? 0, permitDate);
+  const prorated = fullMonthSupport
+    ? null
+    : prorateFromDate(parseAmount(supportFee) ?? 0, permitDate);
   const total = drafts.reduce((sum, d) => sum + d.amount, 0);
 
   const setItemAt = (i: number, patch: Partial<OrgSalesItem>) =>
@@ -205,20 +212,54 @@ export function SalesEntrySection({ app }: { app: Application }) {
         </div>
       ) : (
         <>
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-bold text-muted">申請種別</span>
-            <select
-              value={appKind}
-              onChange={(e) => setAppKind(e.target.value as SalesAppKind)}
-              className={`${INPUT} sm:max-w-xs`}
-            >
-              {SALES_APP_KINDS.map((k) => (
-                <option key={k} value={k}>
-                  {k}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-bold text-muted">申請種別</span>
+              <select
+                value={appKind}
+                onChange={(e) => setAppKind(e.target.value as SalesAppKind)}
+                className={INPUT}
+              >
+                {SALES_APP_KINDS.map((k) => (
+                  <option key={k} value={k}>
+                    {k}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-bold text-muted">在留許可日（日割りの開始日）</span>
+              <input
+                type="date"
+                value={permitDate}
+                onChange={(e) => setPermitDate(e.target.value)}
+                className={INPUT}
+              />
+              <span className="text-[11px] text-muted">
+                請求書作成と同じく在留許可日から日割りします。日付が違うときはここで直してください。
+              </span>
+            </label>
+          </div>
+
+          {appKind === "特定技能申請" && (
+            <label className="mt-3 flex items-start gap-2">
+              <input
+                type="checkbox"
+                checked={fullMonthSupport}
+                onChange={(e) => setFullMonthSupport(e.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-brand"
+              />
+              <span className="text-xs">
+                <span className="font-bold">
+                  特定活動（1号移行準備）から特定技能へ移行（同じ所属機関）
+                </span>
+                <span className="block text-[11px] leading-relaxed text-muted">
+                  支援が続いているため、許可月は日割りせず満額（品目は特定技能支援代）で作ります。
+                  前月まで請求していた特定活動サポート代の定期売上は、freee販売で前月末の対象期間で締めてください。
+                </span>
+              </span>
+            </label>
+          )}
 
           {/* 申請種別ごとの売上明細（所属機関マスタの登録内容。ここでも調整できる） */}
           <div className="mt-3">
@@ -343,7 +384,7 @@ export function SalesEntrySection({ app }: { app: Application }) {
 
           {!permitDate ? (
             <p className="mt-3 rounded-lg bg-seal/10 px-3 py-2 text-xs text-seal">
-              許可日が未登録のため日割り計算ができません。「許可情報」で在留許可日を入力してください。
+              許可日が未登録のため日割り計算ができません。上の「在留許可日」に入力してください（許可情報にも登録をお願いします）。
             </p>
           ) : (
             <>

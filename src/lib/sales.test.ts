@@ -184,3 +184,49 @@ describe("guessAppKind", () => {
     expect(guessAppKind("特定活動", "更新")).toBe("特定活動更新申請");
   });
 });
+
+describe("buildSalesEntries: 特定活動→特定技能の移行（fullMonthSupport）", () => {
+  const base = {
+    workerName: "CHU THI SAM",
+    permitDate: "2026-07-17",
+    supportFee: "10,000円",
+    applicationItems: [{ name: "特定技能申請", amount: "100,000円" }],
+  };
+
+  it("許可月は日割りせず満額（品目は特定技能支援代・期間は月初〜月末）", () => {
+    const entries = buildSalesEntries({
+      ...base,
+      appKind: "特定技能申請",
+      insuranceByCompany: false,
+      fullMonthSupport: true,
+    });
+    const kinds = entries.map((e) => e.kind);
+    expect(kinds).not.toContain("支援代日割り");
+    const full = entries.find((e) => e.kind === "支援代満額");
+    expect(full).toBeDefined();
+    expect(full?.item_name).toBe("特定技能支援代");
+    expect(full?.amount).toBe(10000); // 満額（日割りしない）
+    expect(full?.period_from).toBe("2026-07-01");
+    expect(full?.period_to).toBe("2026-07-31");
+    expect(full?.description).toContain("7月分の特定技能支援代");
+    expect(full?.description).toContain("特定活動から移行");
+    // 定期売上は通常どおり翌月から
+    const recurring = entries.find((e) => e.kind === "定期売上");
+    expect(recurring?.period_from).toBe("2026-08-01");
+    expect(recurring?.amount).toBe(10000);
+  });
+
+  it("fullMonthSupport なしなら従来どおり許可日から日割り", () => {
+    const entries = buildSalesEntries({
+      ...base,
+      appKind: "特定技能申請",
+      insuranceByCompany: false,
+    });
+    const prorated = entries.find((e) => e.kind === "支援代日割り");
+    // 7/17〜7/31 の15日分 = 10000×15÷31 = 4838.7 → 4838（切り捨て）
+    expect(prorated?.amount).toBe(4838);
+    expect(prorated?.period_from).toBe("2026-07-17");
+    expect(prorated?.period_to).toBe("2026-07-31");
+    expect(entries.some((e) => e.kind === "支援代満額")).toBe(false);
+  });
+});
