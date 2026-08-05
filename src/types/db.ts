@@ -419,6 +419,20 @@ export interface SalesEntryRow {
 
 export type SalesEntryInput = Omit<SalesEntryRow, "id" | "created_at" | "updated_at">;
 
+// ---- ◯月分の支援代のfreee登録記録（0066_monthly_support_registrations.sql） ----
+
+// 月末の請求書作成で「freee売上登録」ボタンを押すと1人×対象年月で記録し、
+// 登録漏れ・二重登録を防ぐ。名称は特定活動なら「サポート代」、それ以外は「支援代」
+export interface MonthlySupportRegistration {
+  id: string;
+  worker_id: string;
+  month: string; // 対象の年月 YYYY-MM
+  fee_name: string; // 支援代 / サポート代
+  registered_on: string | null; // 登録した日
+  created_at: string;
+  updated_at: string;
+}
+
 // ---- 入管申請（0008_immigration_applications.sql） ----
 
 export interface ImmigrationApplicationRow {
