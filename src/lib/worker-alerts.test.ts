@@ -8,7 +8,7 @@ function makeWorker(over: Partial<Worker>): Worker {
   return {
     id: "w1",
     name: "NGUYEN TEST",
-    status: "支援中",
+    status: "在籍中",
     ssw_insurance_expiry_date: null,
     ...over,
   } as Worker;

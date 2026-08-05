@@ -52,9 +52,10 @@ export type EmployeeInput = Omit<Employee, "id" | "created_at" | "updated_at">;
 export const SUPPORT_SCOPES = ["支援開始前", "支援対象", "支援対象外"] as const;
 export type SupportScope = (typeof SUPPORT_SCOPES)[number];
 
+// 「支援中」は「在籍中」へ統一済み（0068_unify_worker_status.sql）。
+// 支援しているかどうかは支援区分（support）で管理する
 export const WORKER_STATUSES = [
   "申請準備中",
-  "支援中",
   "在籍中",
   "求職活動中",
   "帰国",

@@ -13,7 +13,7 @@ function worker(over: Partial<Worker>): Worker {
     recurring_sales_no: "",
     field: "",
     support: "支援対象",
-    status: "支援中",
+    status: "在籍中",
     health_note: "",
     family_note: "",
     current_organization_id: null,

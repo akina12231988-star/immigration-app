@@ -180,7 +180,6 @@ describe("1号特定技能外国人の判定", () => {
 
   it("支援対象・在籍中のみ数える", () => {
     expect(isSupportedSsw1(worker({}))).toBe(true);
-    expect(isSupportedSsw1(worker({ status: "支援中" }))).toBe(true);
     expect(isSupportedSsw1(worker({ support: "支援対象外" }))).toBe(false);
     expect(isSupportedSsw1(worker({ status: "退職" }))).toBe(false);
     expect(isSupportedSsw1(worker({ residence_status: "技能実習" }))).toBe(false);
