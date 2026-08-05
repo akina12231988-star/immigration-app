@@ -419,6 +419,30 @@ export interface SalesEntryRow {
 
 export type SalesEntryInput = Omit<SalesEntryRow, "id" | "created_at" | "updated_at">;
 
+// ---- 人材紹介（あっせん）手数料の台帳（0067_referral_fees.sql） ----
+
+// 全所属機関のあっせん手数料をまとめて管理し、請求年月日・入金年月日を記録する
+export interface ReferralFee {
+  id: string;
+  worker_id: string | null;
+  organization_id: string | null;
+  worker_name: string; // 氏名（外国人が削除されても台帳に残すための控え）
+  domestic: string; // 国内・国外
+  jobseeker_no: string; // 求職受付番号（例: R8KS-2）
+  employer_name: string; // 求人者（求職簿）
+  referred_on: string | null; // 紹介年月日
+  hired_on: string | null; // 採用年月日
+  fee: number; // 手数料（円・税抜）
+  sales_no: string; // 紹介売上No.（freee販売）
+  billed_on: string | null; // 請求年月日
+  paid_on: string | null; // 入金年月日
+  note: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ReferralFeeInput = Omit<ReferralFee, "id" | "created_at" | "updated_at">;
+
 // ---- ◯月分の支援代のfreee登録記録（0066_monthly_support_registrations.sql） ----
 
 // 月末の請求書作成で「freee売上登録」ボタンを押すと1人×対象年月で記録し、
