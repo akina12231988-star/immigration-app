@@ -55,10 +55,10 @@ describe("summarySheet", () => {
     expect(sheet.rows[0]).toEqual(["在籍名簿サマリー"]);
     expect(sheet.rows[1]).toEqual(["基準日", "2026-07-31"]);
     expect(sheet.rows[3]).toEqual(["所属機関", "掲載人数", "うち当月退職", "支援費請求額合計"]);
-    // 15000 + 4838（10/31日割り）
+    // 15000 + 4830（483円×10日）
     expect(sheet.rows[4]).toEqual(["（通貨💰）髙濱　伸吉", 1, 0, 10000]);
-    expect(sheet.rows[5]).toEqual(["有限会社　國崎青果", 2, 1, 19838]);
-    expect(sheet.rows[6]).toEqual(["合計", 3, 1, 29838]);
+    expect(sheet.rows[5]).toEqual(["有限会社　國崎青果", 2, 1, 19830]);
+    expect(sheet.rows[6]).toEqual(["合計", 3, 1, 29830]);
   });
 });
 
@@ -83,12 +83,12 @@ describe("orgBillingSheets", () => {
 
     expect(second[1]).toBe("LONH SOULIM");
     expect(second[18]).toBe("退職日まで日割");
-    expect(second[19]).toBe(4838);
+    expect(second[19]).toBe(4830);
     expect(second[20]).toBe("退職");
     expect(second[21]).toBe("2026-07-10");
 
     // 末尾に合計行
-    expect(sheet.rows[sheet.rows.length - 1][19]).toBe(19838);
+    expect(sheet.rows[sheet.rows.length - 1][19]).toBe(19830);
   });
 
   it("その月に許可が下りた人は当月許可に印がつく", () => {
@@ -107,7 +107,7 @@ describe("orgBillingSheets", () => {
     const row = sheet.rows[4];
     expect(row[9]).toBe("⭕"); // 当月許可
     expect(row[18]).toBe("許可日から日割");
-    expect(row[19]).toBe(7258); // 15000 × 15/31 = 7258.06… → 7258
+    expect(row[19]).toBe(7245); // 1日あたり 15000÷31 = 483（切り捨て）× 15日
   });
 });
 

@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
+  Check,
   ChevronDown,
   ChevronRight,
   Download,
@@ -17,8 +18,14 @@ import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
 import { setWorkerRecurringSalesNo } from "@/lib/supabase/queries/workers";
 import { updateOrganization } from "@/lib/supabase/queries/organizations";
-import { errorMessage } from "@/lib/errors";
-import { formatSalesYen } from "@/lib/sales";
+import {
+  addMonthlySupportRegistration,
+  deleteMonthlySupportRegistration,
+  listMonthlySupportRegistrations,
+} from "@/lib/supabase/queries/sales";
+import { dbErrorMessage, errorMessage } from "@/lib/errors";
+import type { MonthlySupportRegistration } from "@/types/db";
+import { dailyFee, formatSalesYen } from "@/lib/sales";
 import {
   currentMonth,
   daysText,
@@ -100,6 +107,77 @@ export function MonthlyBillingSection({
     });
   };
 
+  // ◯月分の支援代をfreeeに登録した記録（worker_id → 記録）。対象の年月ごとに読み込む
+  const [regs, setRegs] = useState<Record<string, MonthlySupportRegistration>>({});
+  const [regBusyId, setRegBusyId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    // レンダー中の同期setStateを避けるため、読み込みはマイクロタスクで開始する
+    void Promise.resolve().then(() =>
+      listMonthlySupportRegistrations(createClient(), month)
+        .then((rows) => {
+          if (!cancelled) setRegs(Object.fromEntries(rows.map((r) => [r.worker_id, r])));
+        })
+        .catch(() => {
+          // テーブル未作成（マイグレーション未実行）でも画面は使えるようにする
+          if (!cancelled) setRegs({});
+        }),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [month]);
+
+  // 在留資格が特定活動なら「サポート代」、それ以外は「支援代」
+  const feeNameFor = (residenceStatus: string | null | undefined): string =>
+    (residenceStatus ?? "").includes("特定活動") ? "サポート代" : "支援代";
+  const monthNum = Number(month.slice(5, 7)) || 0;
+
+  // 「freee売上登録」ボタン: ◯月分の支援代を登録した記録を残す
+  const registerMonthly = async (workerId: string, residenceStatus: string | null) => {
+    setRegBusyId(workerId);
+    setError(null);
+    try {
+      const row = await addMonthlySupportRegistration(createClient(), {
+        worker_id: workerId,
+        month,
+        fee_name: feeNameFor(residenceStatus),
+        registered_on: today,
+      });
+      setRegs((prev) => ({ ...prev, [workerId]: row }));
+    } catch (err) {
+      setError(
+        dbErrorMessage(
+          err,
+          "0066_monthly_support_registrations.sql",
+          errorMessage(err, "登録記録の保存に失敗しました"),
+        ),
+      );
+    } finally {
+      setRegBusyId(null);
+    }
+  };
+
+  const unregisterMonthly = async (workerId: string) => {
+    const reg = regs[workerId];
+    if (!reg) return;
+    setRegBusyId(workerId);
+    setError(null);
+    try {
+      await deleteMonthlySupportRegistration(createClient(), reg.id);
+      setRegs((prev) => {
+        const next = { ...prev };
+        delete next[workerId];
+        return next;
+      });
+    } catch (err) {
+      setError(errorMessage(err, "登録記録の取り消しに失敗しました"));
+    } finally {
+      setRegBusyId(null);
+    }
+  };
+
   // 支援代（月額）をこのページから所属機関に登録する（数字だけ）
   const saveOrgFee = async (orgId: string) => {
     const digits = feeDraft.replace(/[^0-9]/g, "");
@@ -177,7 +255,7 @@ export function MonthlyBillingSection({
         <p className="mt-2 text-xs leading-relaxed text-muted">
           {monthLabel(month)}に1日でも在籍していた支援対象の1号特定技能外国人（特定活動（特定技能1号移行準備）を含む）を、
           所属機関ごとに並べています。 支援費は所属機関の「毎月の支援代」から計算し、
-          その月に支援が始まった人は在留許可日から、退職した人は退職日までを日割りします（小数点以下は切り捨て）。
+          その月に支援が始まった人は在留許可日から、退職した人は退職日までを日割りします（1日あたり＝月額÷その月の日数を小数点以下切り捨てで出してから、日数を掛けます）。
         </p>
 
         <dl className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
@@ -331,25 +409,58 @@ export function MonthlyBillingSection({
                           </td>
                           <td className="py-1.5 pr-2 text-muted">{row.worker.residence_status}</td>
                           <td className="py-1.5 pr-2">
-                            {canEdit ? (
-                              <input
-                                defaultValue={row.worker.recurring_sales_no}
-                                onBlur={(e) => {
-                                  const v = e.target.value;
-                                  if (v !== row.worker.recurring_sales_no) {
-                                    void saveSalesNo(row.worker.id, v);
-                                  }
-                                }}
-                                placeholder="SP-…"
-                                className={`w-36 rounded-lg border px-1.5 py-1 text-xs ${
-                                  row.worker.recurring_sales_no
-                                    ? "border-border bg-background"
-                                    : "border-seal/40 bg-seal/5"
-                                }`}
-                              />
-                            ) : (
-                              <span className="text-muted">{row.worker.recurring_sales_no || "—"}</span>
-                            )}
+                            <div className="flex items-center gap-1.5">
+                              {canEdit ? (
+                                <input
+                                  defaultValue={row.worker.recurring_sales_no}
+                                  onBlur={(e) => {
+                                    const v = e.target.value;
+                                    if (v !== row.worker.recurring_sales_no) {
+                                      void saveSalesNo(row.worker.id, v);
+                                    }
+                                  }}
+                                  placeholder="SP-…"
+                                  className={`w-36 rounded-lg border px-1.5 py-1 text-xs ${
+                                    row.worker.recurring_sales_no
+                                      ? "border-border bg-background"
+                                      : "border-seal/40 bg-seal/5"
+                                  }`}
+                                />
+                              ) : (
+                                <span className="text-muted">{row.worker.recurring_sales_no || "—"}</span>
+                              )}
+                              {/* ◯月分の支援代をfreeeに登録した記録（登録漏れ・二重登録の防止） */}
+                              {regs[row.worker.id] ? (
+                                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-status-approved-bg px-2 py-0.5 text-[10px] font-bold text-status-approved-fg">
+                                  <Check size={11} />
+                                  {monthNum}月分の{regs[row.worker.id].fee_name}登録済み
+                                  {canEdit && (
+                                    <button
+                                      type="button"
+                                      onClick={() => void unregisterMonthly(row.worker.id)}
+                                      disabled={regBusyId === row.worker.id}
+                                      className="ml-0.5 underline"
+                                    >
+                                      取消
+                                    </button>
+                                  )}
+                                </span>
+                              ) : (
+                                canEdit && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      void registerMonthly(row.worker.id, row.worker.residence_status)
+                                    }
+                                    disabled={regBusyId === row.worker.id}
+                                    title={`freeeに${monthNum}月分の${feeNameFor(row.worker.residence_status)}を登録したら押して記録します`}
+                                    className="shrink-0 rounded-lg border border-brand px-2 py-1 text-[10px] font-bold text-brand disabled:opacity-50"
+                                  >
+                                    freee売上登録
+                                  </button>
+                                )
+                              )}
+                            </div>
                           </td>
                           <td className="py-1.5 pr-2 text-right tabular-nums">
                             {row.monthlyFee > 0 ? formatSalesYen(row.monthlyFee) : "未登録"}
@@ -362,8 +473,9 @@ export function MonthlyBillingSection({
                             {/* 日割りの行は計算式を添える（退職日まで日割・許可日から日割） */}
                             {row.kind.includes("日割") && row.monthlyFee > 0 && (
                               <span className="block text-[10px] font-normal text-muted">
-                                {formatSalesYen(row.monthlyFee)}×{row.days}日÷{row.monthDays}
-                                日（切り捨て）
+                                {formatSalesYen(row.monthlyFee)}÷{row.monthDays}日=
+                                {formatSalesYen(dailyFee(row.monthlyFee, row.monthDays))}
+                                （切り捨て）×{row.days}日
                               </span>
                             )}
                           </td>

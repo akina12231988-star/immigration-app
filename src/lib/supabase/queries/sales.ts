@@ -1,5 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { SalesEntryInput, SalesEntryRow, SalesEntryStatus } from "@/types/db";
+import type {
+  MonthlySupportRegistration,
+  SalesEntryInput,
+  SalesEntryRow,
+  SalesEntryStatus,
+} from "@/types/db";
 
 // ---- freee販売への売上登録（sales_entries） ----
 
@@ -71,5 +76,46 @@ export async function deleteSalesEntry(
   id: string,
 ): Promise<void> {
   const { error } = await supabase.from("sales_entries").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// ---- ◯月分の支援代のfreee登録記録（monthly_support_registrations） ----
+
+// 対象の年月の登録記録を一覧する（請求書作成でボタンの状態表示に使う）
+export async function listMonthlySupportRegistrations(
+  supabase: SupabaseClient,
+  month: string,
+): Promise<MonthlySupportRegistration[]> {
+  const { data, error } = await supabase
+    .from("monthly_support_registrations")
+    .select("*")
+    .eq("month", month);
+  if (error) throw error;
+  return (data as MonthlySupportRegistration[]) ?? [];
+}
+
+// 「freee売上登録」ボタン: ◯月分の支援代（サポート代）を登録した記録を残す
+export async function addMonthlySupportRegistration(
+  supabase: SupabaseClient,
+  input: Pick<MonthlySupportRegistration, "worker_id" | "month" | "fee_name" | "registered_on">,
+): Promise<MonthlySupportRegistration> {
+  const { data, error } = await supabase
+    .from("monthly_support_registrations")
+    .insert(input)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as MonthlySupportRegistration;
+}
+
+// 登録記録の取り消し（押し間違いの訂正用）
+export async function deleteMonthlySupportRegistration(
+  supabase: SupabaseClient,
+  id: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("monthly_support_registrations")
+    .delete()
+    .eq("id", id);
   if (error) throw error;
 }
