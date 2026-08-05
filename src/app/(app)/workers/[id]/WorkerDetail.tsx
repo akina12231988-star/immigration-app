@@ -42,7 +42,7 @@ import {
 } from "@/components/workers/HistoryFormDialog";
 import { SswGauge } from "@/components/workers/SswGauge";
 import { SswStatusBadge, SupportBadge, WorkerStatusBadge } from "@/components/workers/badges";
-import { calcSsw, entryDays, todayStr, ymdFullText } from "@/lib/ssw/calc";
+import { calcDocumentTotal, calcSsw, entryDays, todayStr, ymdFullText } from "@/lib/ssw/calc";
 import { isSswInsuranceRenewalTarget, remainingLabel } from "@/lib/worker-alerts";
 import { orgStaffLabel } from "@/lib/organization-intake";
 import { createClient } from "@/lib/supabase/client";
@@ -880,38 +880,19 @@ function InfoItem({
   );
 }
 
-// 2つの日付（from<=to）の暦上の差を {months, days, totalDays} で返す
-function monthsSpan(from: string, to: string): { months: number; days: number; totalDays: number } {
-  const f = new Date(`${from}T00:00:00Z`);
-  const t = new Date(`${to}T00:00:00Z`);
-  let months = (t.getUTCFullYear() - f.getUTCFullYear()) * 12 + (t.getUTCMonth() - f.getUTCMonth());
-  let days = t.getUTCDate() - f.getUTCDate();
-  if (days < 0) {
-    months -= 1;
-    const prevMonthEnd = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), 0));
-    days += prevMonthEnd.getUTCDate();
-  }
-  const totalDays = Math.round((t.getTime() - f.getTime()) / 86_400_000);
-  return { months: Math.max(months, 0), days: Math.max(days, 0), totalDays: Math.max(totalDays, 0) };
-}
-
-// 申請書類用の通算: 最初の通算対象（特定技能1号・特定活動〔1号移行準備〕）の開始日から
-// 書類作成日までの期間を数え、端数の月は1か月に切り上げて「◯年◯か月」を出す
+// 申請書類用の通算: 通算対象（特定技能1号・特定活動〔1号移行準備〕・在留資格を保持したままの
+// 帰国）の期間だけを合算し、端数は1か月に切り上げて「◯年◯か月」を出す。
+// 在留資格を切って帰国していた期間などの空白は数えない（通算期間ゲージと同じ範囲）
 function DocumentTotalPanel({ histories }: { histories: WorkHistory[] }) {
   const [docDate, setDocDate] = useState(todayStr());
   const [copied, setCopied] = useState(false);
   const calc = useMemo(() => calcSsw(histories, docDate), [histories, docDate]);
+  const total = useMemo(() => calcDocumentTotal(histories, docDate), [histories, docDate]);
 
   const firstStart = calc.firstStart;
-  const span = useMemo(
-    () => (firstStart && docDate >= firstStart ? monthsSpan(firstStart, docDate) : null),
-    [firstStart, docDate],
-  );
-  const totalMonths = span ? span.months : 0;
-  // 1日でも端数があれば1か月に切り上げ
-  const roundedMonths = span && span.days > 0 ? totalMonths + 1 : totalMonths;
+  const roundedMonths = total?.roundedMonths ?? 0;
   const shinsei = `${Math.floor(roundedMonths / 12)}年${roundedMonths % 12}か月`;
-  const hasData = calc.counted.length > 0 && !!firstStart;
+  const hasData = !!total && !!firstStart;
 
   const copy = async () => {
     const lines = calc.hist.map((h) => {
@@ -939,7 +920,8 @@ function DocumentTotalPanel({ histories }: { histories: WorkHistory[] }) {
         申請書類用の通算
       </h2>
       <p className="mb-3 text-[11px] leading-relaxed text-muted">
-        最初の特定技能1号（通算対象）の開始日から書類作成日までを数えます（1日でも経過した月は1か月に切り上げ）。
+        特定技能1号（通算対象）の期間だけを合算します。在留資格を切って帰国していた期間は数えません。
+        端数の日数は30日を1か月とみなし、それでも残る端数は1日でも1か月に切り上げます。
       </p>
       {!hasData ? (
         <p className="rounded-xl bg-background p-4 text-center text-sm text-muted">
@@ -959,7 +941,8 @@ function DocumentTotalPanel({ histories }: { histories: WorkHistory[] }) {
             </p>
             <p className="mt-1 text-xs tabular-nums text-muted">
               起算日 {firstStart}
-              {span && `　実際は ${Math.floor(span.months / 12)}年${span.months % 12}か月${span.days}日 ／ ${span.totalDays}日`}
+              {total &&
+                `　合算 ${Math.floor(total.months / 12)}年${total.months % 12}か月${total.days}日（対象期間のみ・帰国などの空白は含まず）`}
             </p>
           </div>
           <Button
