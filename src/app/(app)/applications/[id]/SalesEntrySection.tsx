@@ -36,9 +36,14 @@ export function SalesEntrySection({ app }: { app: Application }) {
   const [appKind, setAppKind] = useState<SalesAppKind>(() =>
     guessAppKind(app.visaAtGrant ?? "", app.applicationContent ?? ""),
   );
-  // 同じ所属機関で特定活動（1号移行準備）から特定技能へ移行した場合は、
-  // 支援が継続しているため許可月は日割りせず満額（品目は特定技能支援代）
-  const [fullMonthSupport, setFullMonthSupport] = useState(false);
+  // 支援代の登録方法。新規は日割り計算（許可日から月末まで）、
+  // 更新や特定活動（1号移行準備）からの移行は支援が継続しているため満額。
+  // 申請種別から初期値を決める（更新申請なら満額）が、画面で選び直せる
+  const [feeMode, setFeeMode] = useState<"日割り" | "満額">(() =>
+    guessAppKind(app.visaAtGrant ?? "", app.applicationContent ?? "").includes("更新")
+      ? "満額"
+      : "日割り",
+  );
   // 所属機関マスタから読み込む設定
   const [salesItems, setSalesItems] = useState<OrgSalesItems>({});
   const [orgSupportFee, setOrgSupportFee] = useState("");
@@ -95,14 +100,17 @@ export function SalesEntrySection({ app }: { app: Application }) {
     };
   }, [app.organizationId, app.workerId, app.id]);
 
-  // 申請種別を変えたら、その種別の売上明細（所属機関マスタ）を読み直す。
+  // 申請種別を変えたら、その種別の売上明細（所属機関マスタ）を読み直し、
+  // 支援代の登録方法の初期値も合わせる（更新申請なら満額）。
   // レンダー中に同期して切り替える（申請種別 or 読み込み結果が変わったときだけ）
   const templateKey = `${appKind}|${JSON.stringify(salesItems[appKind] ?? [])}`;
   const [prevKey, setPrevKey] = useState("");
   if (templateKey !== prevKey) {
+    const kindChanged = prevKey !== "" && prevKey.split("|")[0] !== appKind;
     setPrevKey(templateKey);
     const template = salesItems[appKind] ?? [];
     setItems(template.length > 0 ? template.map((t) => ({ ...t })) : [{ name: appKind, amount: "" }]);
+    if (kindChanged) setFeeMode(appKind.includes("更新") ? "満額" : "日割り");
   }
 
   const insuranceByCompany = insuranceBurden === "会社負担";
@@ -114,12 +122,11 @@ export function SalesEntrySection({ app }: { app: Application }) {
         supportFee,
         insuranceByCompany,
         applicationItems: items,
-        fullMonthSupport,
+        fullMonthSupport: feeMode === "満額",
       })
     : [];
-  const prorated = fullMonthSupport
-    ? null
-    : prorateFromDate(parseAmount(supportFee) ?? 0, permitDate);
+  const prorated =
+    feeMode === "満額" ? null : prorateFromDate(parseAmount(supportFee) ?? 0, permitDate);
   const total = drafts.reduce((sum, d) => sum + d.amount, 0);
 
   const setItemAt = (i: number, patch: Partial<OrgSalesItem>) =>
@@ -241,25 +248,22 @@ export function SalesEntrySection({ app }: { app: Application }) {
             </label>
           </div>
 
-          {appKind === "特定技能申請" && (
-            <label className="mt-3 flex items-start gap-2">
-              <input
-                type="checkbox"
-                checked={fullMonthSupport}
-                onChange={(e) => setFullMonthSupport(e.target.checked)}
-                className="mt-0.5 h-4 w-4 accent-brand"
-              />
-              <span className="text-xs">
-                <span className="font-bold">
-                  特定活動（1号移行準備）から特定技能へ移行（同じ所属機関）
-                </span>
-                <span className="block text-[11px] leading-relaxed text-muted">
-                  支援が続いているため、許可月は日割りせず満額（品目は特定技能支援代）で作ります。
-                  前月まで請求していた特定活動サポート代の定期売上は、freee販売で前月末の対象期間で締めてください。
-                </span>
-              </span>
-            </label>
-          )}
+          <label className="mt-3 flex flex-col gap-1">
+            <span className="text-[11px] font-bold text-muted">支援代の登録方法</span>
+            <select
+              value={feeMode}
+              onChange={(e) => setFeeMode(e.target.value as "日割り" | "満額")}
+              className={`${INPUT} sm:max-w-md`}
+            >
+              <option value="日割り">日割り計算（新規: 許可日から月末まで）</option>
+              <option value="満額">満額（更新・特定活動〔1号移行準備〕からの移行）</option>
+            </select>
+            <span className="text-[11px] leading-relaxed text-muted">
+              {feeMode === "満額"
+                ? "支援が続いているため許可月は日割りせず満額で作ります。特定活動から特定技能へ移行した場合は品目が特定技能支援代に変わるため、前月まで請求していたサポート代の定期売上はfreee販売で前月末の対象期間で締めてください。"
+                : "その月に新しく支援が始まった人向けです。1日あたり（月額÷その月の日数・切り捨て）×許可日から月末までの日数で計算します。"}
+            </span>
+          </label>
 
           {/* 申請種別ごとの売上明細（所属機関マスタの登録内容。ここでも調整できる） */}
           <div className="mt-3">

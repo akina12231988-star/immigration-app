@@ -211,7 +211,7 @@ describe("buildSalesEntries: 特定活動→特定技能の移行（fullMonthSup
     expect(full?.period_from).toBe("2026-07-01");
     expect(full?.period_to).toBe("2026-07-31");
     expect(full?.description).toContain("7月分の特定技能支援代");
-    expect(full?.description).toContain("特定活動から移行");
+    expect(full?.description).toContain("満額");
     // 定期売上は通常どおり翌月から
     const recurring = entries.find((e) => e.kind === "定期売上");
     expect(recurring?.period_from).toBe("2026-08-01");

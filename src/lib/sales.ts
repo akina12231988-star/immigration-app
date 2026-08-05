@@ -132,8 +132,9 @@ export interface BuildSalesInput {
   insuranceByCompany: boolean; // 特定技能総合保険が会社負担か
   // 申請種別ごとの売上明細（所属機関マスタに登録した内容。複数行）
   applicationItems: { name: string; amount: string }[];
-  // 同じ所属機関で特定活動（1号移行準備）から特定技能へ移行した場合 true。
-  // 支援が継続しているため許可月は日割りせず満額（名称はサポート代→特定技能支援代に変わる）
+  // 支援代を満額で登録する場合 true（更新申請や、同じ所属機関で特定活動〔1号移行準備〕から
+  // 特定技能へ移行した場合など、支援が継続しているため許可月を日割りしないとき）。
+  // false（既定）は新規の日割り計算（許可日から月末まで）
   fullMonthSupport?: boolean;
 }
 
@@ -174,14 +175,14 @@ export function buildSalesEntries(input: BuildSalesInput): SalesEntryDraft[] {
   }
 
   if (input.fullMonthSupport) {
-    // 特定活動（1号移行準備）から特定技能へ移行した月は、支援が継続しているため
-    // 日割りせず満額。名称はサポート代から特定技能支援代に変わる
+    // 更新や特定活動（1号移行準備）からの移行など支援が継続している月は、
+    // 日割りせず満額（特定活動からの移行では名称がサポート代から特定技能支援代に変わる）
     if (monthly > 0) {
       const month = Number(input.permitDate.slice(5, 7));
       entries.push({
         kind: "支援代満額",
         item_name: itemName,
-        description: `${input.workerName}さん　${month}月分の${itemName}（特定活動から移行・満額）`,
+        description: `${input.workerName}さん　${month}月分の${itemName}（満額）`,
         amount: monthly,
         taxable: true,
         period_from: monthStart(input.permitDate),
