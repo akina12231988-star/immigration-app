@@ -3,9 +3,9 @@ import type { SalesEntryInput, SalesEntryRow, SalesEntryStatus } from "@/types/d
 
 // ---- freee販売への売上登録（sales_entries） ----
 
-// 一覧（外国人名・所属機関名つき）。登録待ちの確認に使う
+// 一覧（外国人名・在留許可日・所属機関名つき）。登録待ちの確認や許可日での絞り込みに使う
 export interface SalesEntryWithRefs extends SalesEntryRow {
-  workers: { name: string } | null;
+  workers: { name: string; residence_permit_date: string | null } | null;
   organizations: { name: string } | null;
 }
 
@@ -14,7 +14,7 @@ export async function listSalesEntries(
 ): Promise<SalesEntryWithRefs[]> {
   const { data, error } = await supabase
     .from("sales_entries")
-    .select("*, workers(name), organizations(name)")
+    .select("*, workers(name, residence_permit_date), organizations(name)")
     .order("created_at", { ascending: false });
   if (error) throw error;
   return (data as SalesEntryWithRefs[]) ?? [];
