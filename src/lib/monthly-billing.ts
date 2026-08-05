@@ -4,15 +4,16 @@
 //
 // 請求額の区分は3つ:
 //   満額           … その月まるまる在籍 → 支援代（月額）そのまま
-//   許可日から日割  … その月に支援が始まった → 月額 × 許可日から月末までの日数 ÷ その月の日数
-//   退職日まで日割  … その月に退職した   → 月額 × 月初から退職日までの日数 ÷ その月の日数
-// 小数点以下は切り捨て（弊社の運用）。
+//   許可日から日割  … その月に支援が始まった → 1日あたり × 許可日から月末までの日数
+//   退職日まで日割  … その月に退職した   → 1日あたり × 月初から退職日までの日数
+// 1日あたり = 月額 ÷ その月の日数（小数点以下切り捨て）を先に出してから日数を掛ける
+// （弊社の運用。例: 10,000円÷31日=322円 → 322円×15日=4,830円）。
 //
 // 「その月に支援が始まった」は、在留許可日がその月内で、かつ雇用開始日がその月より前でない
 // （＝更新ではなく新しく支援を始めた）場合とする。更新で許可日がその月内でも、
 // すでに支援している人は日割りせず満額にする。
 
-import { daysInMonth, monthEnd, monthStart } from "@/lib/sales";
+import { dailyFee, daysInMonth, monthEnd, monthStart } from "@/lib/sales";
 import { parseAmount } from "@/lib/organization-intake";
 import { isSsw1Residence } from "@/lib/support-system";
 import type { Organization, Worker } from "@/types/db";
@@ -148,9 +149,9 @@ export function billingRowFor(
   else if (permitThisMonth) kind = "満額（更新月）";
 
   const days = dayNumber(periodTo) - dayNumber(periodFrom) + 1;
-  const full = kind === "満額" || kind === "満額（更新月）";
-  const amount =
-    monthlyFee <= 0 ? 0 : full ? monthlyFee : Math.floor((monthlyFee * days) / monthDays);
+  // 日割りでも月まるごと（月初許可〜未退職など）は満額にする
+  const full = kind === "満額" || kind === "満額（更新月）" || days === monthDays;
+  const amount = monthlyFee <= 0 ? 0 : full ? monthlyFee : dailyFee(monthlyFee, monthDays) * days;
 
   return {
     worker,

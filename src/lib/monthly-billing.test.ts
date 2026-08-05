@@ -107,7 +107,7 @@ describe("billingRowFor（1人分の請求額）", () => {
   });
 
   it("その月に支援が始まった人は許可日から日割り（小数点以下は切り捨て）", () => {
-    // 15000 × 8/31 = 3870.9… → 3870
+    // 1日あたり 15000÷31 = 483（切り捨て）× 8日 = 3,864
     const row = billingRowFor(
       worker({
         name: "B",
@@ -117,14 +117,14 @@ describe("billingRowFor（1人分の請求額）", () => {
       MONTH,
       15000,
     );
-    expect(row).toMatchObject({ kind: "許可日から日割", days: 8, amount: 3870 });
+    expect(row).toMatchObject({ kind: "許可日から日割", days: 8, amount: 3864 });
     expect(periodText(row)).toBe("2026-07-24〜2026-07-31");
   });
 
   it("その月に退職した人は退職日まで日割り", () => {
-    // 15000 × 10/31 = 4838.7… → 4838
+    // 1日あたり 15000÷31 = 483（切り捨て）× 10日 = 4,830
     const row = billingRowFor(worker({ name: "C", leaving_on: "2026-07-10" }), MONTH, 15000);
-    expect(row).toMatchObject({ kind: "退職日まで日割", days: 10, amount: 4838, leftThisMonth: true });
+    expect(row).toMatchObject({ kind: "退職日まで日割", days: 10, amount: 4830, leftThisMonth: true });
     expect(periodText(row)).toBe("2026-07-01〜2026-07-10");
   });
 
@@ -147,9 +147,9 @@ describe("billingRowFor（1人分の請求額）", () => {
   });
 
   it("月末が31日でない月でも日数で割る", () => {
-    // 2026年2月は28日。15000 × 14/28 = 7500
+    // 2026年2月は28日。1日あたり 15000÷28 = 535（切り捨て）× 14日 = 7,490
     const row = billingRowFor(worker({ name: "F", leaving_on: "2026-02-14" }), "2026-02", 15000);
-    expect(row).toMatchObject({ days: 14, monthDays: 28, amount: 7500 });
+    expect(row).toMatchObject({ days: 14, monthDays: 28, amount: 7490 });
   });
 });
 
@@ -186,12 +186,12 @@ describe("summarizeMonthlyBilling", () => {
       "LONH SOULIM",
     ]);
     expect(kunisaki.leftCount).toBe(1);
-    // 15000 + 15000 + 4838（10/31日割り）
-    expect(kunisaki.total).toBe(34838);
+    // 15000 + 15000 + 4830（483円×10日）
+    expect(kunisaki.total).toBe(34830);
 
     expect(result.totalPeople).toBe(4);
     expect(result.totalLeft).toBe(1);
-    expect(result.totalAmount).toBe(34838 + 10000);
+    expect(result.totalAmount).toBe(34830 + 10000);
   });
 
   it("支援代が未登録の機関の人を拾い出す", () => {

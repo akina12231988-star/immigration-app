@@ -191,8 +191,9 @@ export function WorkerSalesResignation({
               <div className="mt-3 rounded-xl border border-border bg-background px-3 py-2.5 text-sm">
                 <p className="font-bold">{draft.description}</p>
                 <p className="text-[11px] text-muted">
-                  日割り: {formatSalesYen(prorated.monthly)} ÷ {prorated.monthDays}日 ×{" "}
-                  {prorated.days}日 = {formatSalesYen(prorated.amount)}（小数点以下切り捨て）
+                  日割り: {formatSalesYen(prorated.monthly)} ÷ {prorated.monthDays}日 ={" "}
+                  {formatSalesYen(prorated.daily)}（切り捨て） × {prorated.days}日 ={" "}
+                  {formatSalesYen(prorated.amount)}
                 </p>
                 <p className="mt-0.5 text-base font-black tabular-nums">
                   {formatSalesYen(draft.amount)}

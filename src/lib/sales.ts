@@ -54,27 +54,40 @@ function dayOf(dateStr: string): number {
 
 // 日割り計算の結果（画面で式を見せるため内訳も返す）
 export interface ProratedFee {
-  amount: number; // 日割り後の金額（小数点以下切り捨て）
+  amount: number; // 日割り後の金額（1日あたり × 日数）
   monthly: number; // 月額
+  daily: number; // 1日あたり（月額 ÷ その月の日数・小数点以下切り捨て）
   days: number; // 対象日数
   monthDays: number; // その月の日数
 }
 
-// 許可日からその月末までの日割り（許可日当日を含む）。小数点以下は切り捨て
+// 1日あたりの支援代（月額 ÷ その月の日数・小数点以下切り捨て）。
+// 日割りは「1日あたりを先に切り捨ててから日数を掛ける」（弊社の運用。
+// 例: 10,000円÷31日=322円 → 322円×15日=4,830円）
+export function dailyFee(monthly: number, monthDays: number): number {
+  if (monthDays <= 0) return 0;
+  return Math.floor(monthly / monthDays);
+}
+
+// 許可日からその月末までの日割り（許可日当日を含む）。月まるごとなら満額
 export function prorateFromDate(monthly: number, fromDate: string): ProratedFee | null {
   const monthDays = daysInMonth(fromDate);
   const day = dayOf(fromDate);
   if (!monthDays || !day || monthly <= 0) return null;
   const days = monthDays - day + 1;
-  return { amount: Math.floor((monthly * days) / monthDays), monthly, days, monthDays };
+  const daily = dailyFee(monthly, monthDays);
+  const amount = days === monthDays ? monthly : daily * days;
+  return { amount, monthly, daily, days, monthDays };
 }
 
-// 月初から退職日までの日割り（退職日当日を含む）。小数点以下は切り捨て
+// 月初から退職日までの日割り（退職日当日を含む）。月まるごとなら満額
 export function prorateToDate(monthly: number, toDate: string): ProratedFee | null {
   const monthDays = daysInMonth(toDate);
   const day = dayOf(toDate);
   if (!monthDays || !day || monthly <= 0) return null;
-  return { amount: Math.floor((monthly * day) / monthDays), monthly, days: day, monthDays };
+  const daily = dailyFee(monthly, monthDays);
+  const amount = day === monthDays ? monthly : daily * day;
+  return { amount, monthly, daily, days: day, monthDays };
 }
 
 // YYYY-MM-DD → 「4月8日」

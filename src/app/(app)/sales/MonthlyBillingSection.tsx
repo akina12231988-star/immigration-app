@@ -18,7 +18,7 @@ import { createClient } from "@/lib/supabase/client";
 import { setWorkerRecurringSalesNo } from "@/lib/supabase/queries/workers";
 import { updateOrganization } from "@/lib/supabase/queries/organizations";
 import { errorMessage } from "@/lib/errors";
-import { formatSalesYen } from "@/lib/sales";
+import { dailyFee, formatSalesYen } from "@/lib/sales";
 import {
   currentMonth,
   daysText,
@@ -177,7 +177,7 @@ export function MonthlyBillingSection({
         <p className="mt-2 text-xs leading-relaxed text-muted">
           {monthLabel(month)}に1日でも在籍していた支援対象の1号特定技能外国人（特定活動（特定技能1号移行準備）を含む）を、
           所属機関ごとに並べています。 支援費は所属機関の「毎月の支援代」から計算し、
-          その月に支援が始まった人は在留許可日から、退職した人は退職日までを日割りします（小数点以下は切り捨て）。
+          その月に支援が始まった人は在留許可日から、退職した人は退職日までを日割りします（1日あたり＝月額÷その月の日数を小数点以下切り捨てで出してから、日数を掛けます）。
         </p>
 
         <dl className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
@@ -362,8 +362,9 @@ export function MonthlyBillingSection({
                             {/* 日割りの行は計算式を添える（退職日まで日割・許可日から日割） */}
                             {row.kind.includes("日割") && row.monthlyFee > 0 && (
                               <span className="block text-[10px] font-normal text-muted">
-                                {formatSalesYen(row.monthlyFee)}×{row.days}日÷{row.monthDays}
-                                日（切り捨て）
+                                {formatSalesYen(row.monthlyFee)}÷{row.monthDays}日=
+                                {formatSalesYen(dailyFee(row.monthlyFee, row.monthDays))}
+                                （切り捨て）×{row.days}日
                               </span>
                             )}
                           </td>
