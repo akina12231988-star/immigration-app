@@ -170,7 +170,7 @@ export type SupportWorker = Pick<
 // 支援を行っている1号特定技能外国人か（支援対象・在籍中・在留資格が特定技能1号）
 export function isSupportedSsw1(worker: SupportWorker): boolean {
   if (worker.support !== "支援対象") return false;
-  if (worker.status !== "在籍中" && worker.status !== "支援中") return false;
+  if (worker.status !== "在籍中") return false;
   return isSsw1Residence(worker.residence_status);
 }
 

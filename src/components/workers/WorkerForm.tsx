@@ -265,6 +265,10 @@ export function WorkerForm({
               onChange={(e) => set("status", e.target.value as WorkerStatus)}
               className={INPUT_CLASS}
             >
+              {/* 統一前の「支援中」などが残っている場合も表示できるよう選択肢に残す */}
+              {form.status && !(WORKER_STATUSES as readonly string[]).includes(form.status) && (
+                <option value={form.status}>{form.status}</option>
+              )}
               {WORKER_STATUSES.map((s) => (
                 <option key={s} value={s}>
                   {s}

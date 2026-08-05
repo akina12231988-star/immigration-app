@@ -123,7 +123,7 @@ function parseWorker(raw: unknown, skipped: string[]): ParsedWorker | null {
     }
   }
 
-  // 在籍状況（Notion在籍履歴など）。既知の値でなければ未設定のまま（DB既定値 支援中 が使われる）
+  // 在籍状況（Notion在籍履歴など）。既知の値でなければ未設定のまま（DB既定値 在籍中 が使われる）
   const rawStatus = str(w.status ?? w.在籍状況);
   const status = (WORKER_STATUSES as readonly string[]).includes(rawStatus)
     ? (rawStatus as WorkerStatus)

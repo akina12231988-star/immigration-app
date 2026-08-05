@@ -13,7 +13,7 @@ function makeWorker(over: Partial<WorkerWithOrg>): WorkerWithOrg {
     name_kana: "",
     nationality: "ベトナム",
     birthday: null,
-    status: "支援中",
+    status: "在籍中",
     current_organization_id: "org1",
     residence_card_no: "",
     residence_status: "特定技能1号",

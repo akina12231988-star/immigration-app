@@ -20,7 +20,6 @@ export function SswStatusBadge({ status }: { status: SswStatus }) {
 
 const WORKER_STATUS_CLASSES: Record<WorkerStatus, string> = {
   申請準備中: "bg-status-notice-bg text-status-notice-fg",
-  支援中: "bg-status-reported-bg text-status-reported-fg",
   在籍中: "bg-status-approved-bg text-status-approved-fg",
   求職活動中: "bg-status-applied-bg text-status-applied-fg",
   帰国: "bg-status-before-bg text-status-before-fg",
@@ -30,7 +29,10 @@ const WORKER_STATUS_CLASSES: Record<WorkerStatus, string> = {
 export function WorkerStatusBadge({ status }: { status: WorkerStatus }) {
   return (
     <span
-      className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-bold ${WORKER_STATUS_CLASSES[status]}`}
+      className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-bold ${
+        // 統一前の「支援中」などが残っている場合は在籍中と同じ見た目にする
+        WORKER_STATUS_CLASSES[status] ?? WORKER_STATUS_CLASSES["在籍中"]
+      }`}
     >
       {status}
     </span>
