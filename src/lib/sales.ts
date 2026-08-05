@@ -15,6 +15,10 @@ export type SalesAppKind = (typeof SALES_APP_KINDS)[number];
 // 特定技能総合保険（会社負担のときに1人あたり計上・非課税）
 export const SSW_INSURANCE_AMOUNT = 8820;
 
+// 所属機関マスタの売上明細（sales_items）のあっせん（人材紹介手数料）用キー。
+// 申請種別とは別枠で、紹介手数料台帳の手数料の初期値に使う
+export const REFERRAL_SALES_KEY = "あっせん";
+
 // 明細の種類
 export type SalesEntryKind =
   | "申請" // 申請種別ごとの売上

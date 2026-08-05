@@ -12,7 +12,7 @@ import {
   registerOrgFile,
 } from "@/app/(app)/organizations/actions";
 import { SSW_INDUSTRIES, categoriesFor } from "@/lib/industries";
-import { SALES_APP_KINDS } from "@/lib/sales";
+import { REFERRAL_SALES_KEY, SALES_APP_KINDS } from "@/lib/sales";
 import { todayStr } from "@/lib/ssw/calc";
 import {
   emptyFinancialYear,
@@ -890,15 +890,19 @@ function IntakeSection({
         <p className={GROUP_CLASS}>申請種別ごとの売上明細（freee販売）</p>
         <p className={HINT_CLASS}>
           在留カード受領後の売上登録で、申請種別を選ぶとここに登録した明細が自動で入ります。
-          明細項目と金額を必要な行数だけ登録してください（例: 申請取次費用 150000 / 書類作成費 30000）。金額は数字だけを入力してください。
+          明細項目と金額を必要な行数だけ登録してください（例: 申請取次費用 150000 / 書類作成費 30000）。
+          金額は数字だけ・税抜で入力してください（消費税はfreee販売で計算します）。
+          あっせん（人材紹介手数料）の明細は、紹介手数料台帳で手数料の初期値になります。
         </p>
-        {SALES_APP_KINDS.map((kind) => {
+        {[...SALES_APP_KINDS, REFERRAL_SALES_KEY].map((kind) => {
           const rows = intake.sales_items[kind] ?? [];
           const setRows = (next: OrgSalesItem[]) =>
             setIntake({ sales_items: { ...intake.sales_items, [kind]: next } });
           return (
             <div key={kind} className="rounded-xl border border-border p-2.5">
-              <p className="mb-1.5 text-xs font-bold">{kind}</p>
+              <p className="mb-1.5 text-xs font-bold">
+                {kind === REFERRAL_SALES_KEY ? "あっせん（人材紹介手数料）" : kind}
+              </p>
               {rows.length === 0 && (
                 <p className={HINT_CLASS}>まだ明細がありません。「＋ 明細を追加」から登録してください。</p>
               )}
