@@ -2,11 +2,21 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ChevronDown, ChevronRight, Download, Loader2 } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  ChevronDown,
+  ChevronRight,
+  Download,
+  Loader2,
+} from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
 import { setWorkerRecurringSalesNo } from "@/lib/supabase/queries/workers";
+import { updateOrganization } from "@/lib/supabase/queries/organizations";
 import { errorMessage } from "@/lib/errors";
 import { formatSalesYen } from "@/lib/sales";
 import {
@@ -18,6 +28,7 @@ import {
   type BillingOrg,
   type BillingWorker,
   type MonthlyBillingOrg,
+  type MonthlyBillingRow,
 } from "@/lib/monthly-billing";
 import {
   billingFileName,
@@ -43,6 +54,12 @@ export function MonthlyBillingSection({
   const [month, setMonth] = useState(() => currentMonth(today));
   const [openOrgId, setOpenOrgId] = useState<string | null>(null);
   const [salesNos, setSalesNos] = useState<Record<string, string>>({});
+  // 定期売上No.の並び順（null=氏名順・asc=昇順・desc=降順）
+  const [salesNoSort, setSalesNoSort] = useState<"asc" | "desc" | null>(null);
+  // このページで登録した支援代（月額）。organization_id → 数字だけの文字列
+  const [orgFees, setOrgFees] = useState<Record<string, string>>({});
+  const [feeDraft, setFeeDraft] = useState("");
+  const [feeSaving, setFeeSaving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,10 +71,57 @@ export function MonthlyBillingSection({
       ),
     [workers, salesNos],
   );
-  const billing = useMemo(
-    () => summarizeMonthlyBilling(merged, organizations, month),
-    [merged, organizations, month],
+  // 支援代（月額）もこのページで登録した内容を優先して集計に反映する
+  const mergedOrgs = useMemo(
+    () =>
+      organizations.map((o) =>
+        orgFees[o.id] === undefined
+          ? o
+          : { ...o, intake: { ...(o.intake ?? {}), support_fee: orgFees[o.id] } },
+      ),
+    [organizations, orgFees],
   );
+  const billing = useMemo(
+    () => summarizeMonthlyBilling(merged, mergedOrgs, month),
+    [merged, mergedOrgs, month],
+  );
+
+  // 定期売上No.でのソート。未登録は常に最後（氏名順のままの集計順は billing 側）
+  const sortRows = (rows: MonthlyBillingRow[]): MonthlyBillingRow[] => {
+    if (!salesNoSort) return rows;
+    return [...rows].sort((a, b) => {
+      const av = a.worker.recurring_sales_no || "";
+      const bv = b.worker.recurring_sales_no || "";
+      if (!av && !bv) return a.worker.name.localeCompare(b.worker.name, "ja");
+      if (!av) return 1;
+      if (!bv) return -1;
+      const cmp = av.localeCompare(bv, "ja");
+      return salesNoSort === "asc" ? cmp : -cmp;
+    });
+  };
+
+  // 支援代（月額）をこのページから所属機関に登録する（数字だけ）
+  const saveOrgFee = async (orgId: string) => {
+    const digits = feeDraft.replace(/[^0-9]/g, "");
+    if (!digits || Number(digits) <= 0) {
+      setError("支援代（月額）は数字だけで入力してください");
+      return;
+    }
+    setFeeSaving(true);
+    setError(null);
+    try {
+      const org = organizations.find((o) => o.id === orgId);
+      await updateOrganization(createClient(), orgId, {
+        intake: { ...(org?.intake ?? {}), support_fee: digits },
+      });
+      setOrgFees((prev) => ({ ...prev, [orgId]: digits }));
+      setFeeDraft("");
+    } catch (err) {
+      setError(errorMessage(err, "支援代（月額）の保存に失敗しました"));
+    } finally {
+      setFeeSaving(false);
+    }
+  };
 
   const download = async (org?: MonthlyBillingOrg) => {
     setBusy(true);
@@ -159,7 +223,10 @@ export function MonthlyBillingSection({
               <div className="flex items-start justify-between gap-2">
                 <button
                   type="button"
-                  onClick={() => setOpenOrgId(open ? null : org.organizationId)}
+                  onClick={() => {
+                    setOpenOrgId(open ? null : org.organizationId);
+                    setFeeDraft("");
+                  }}
                   className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
                 >
                   {open ? (
@@ -187,6 +254,30 @@ export function MonthlyBillingSection({
                 </button>
               </div>
 
+              {open && canEdit && org.organizationId && (org.rows[0]?.monthlyFee ?? 0) <= 0 && (
+                <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-seal/10 px-3 py-2 text-xs text-seal">
+                  <AlertTriangle size={14} className="shrink-0" />
+                  <span className="font-bold">支援代（月額）が未登録です。ここから登録できます:</span>
+                  <input
+                    value={feeDraft}
+                    onChange={(e) => setFeeDraft(e.target.value.replace(/[^0-9]/g, ""))}
+                    inputMode="numeric"
+                    placeholder="例: 12000"
+                    className="min-h-[32px] w-28 rounded-lg border border-border bg-surface px-2 text-xs text-foreground focus:border-brand focus:outline-none"
+                  />
+                  <span>円</span>
+                  <button
+                    type="button"
+                    disabled={feeSaving || !feeDraft}
+                    onClick={() => void saveOrgFee(org.organizationId)}
+                    className="rounded-lg bg-brand px-3 py-1.5 text-xs font-bold text-brand-foreground disabled:opacity-50"
+                  >
+                    {feeSaving ? "保存中…" : "保存"}
+                  </button>
+                  <span className="text-[10px]">所属機関の「毎月の支援代」に保存され、集計にすぐ反映されます</span>
+                </div>
+              )}
+
               {open && (
                 <div className="mt-2 overflow-x-auto">
                   <table className="w-full min-w-[900px] border-collapse text-xs">
@@ -194,7 +285,27 @@ export function MonthlyBillingSection({
                       <tr className="border-b border-border text-left text-muted">
                         <th className="py-1.5 pr-2 font-bold">氏名</th>
                         <th className="py-1.5 pr-2 font-bold">在留資格</th>
-                        <th className="py-1.5 pr-2 font-bold">定期売上No.</th>
+                        <th className="py-1.5 pr-2 font-bold">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSalesNoSort((s) =>
+                                s === null ? "asc" : s === "asc" ? "desc" : null,
+                              )
+                            }
+                            title="クリックで 昇順 → 降順 → 氏名順 に切り替え"
+                            className="inline-flex items-center gap-1 font-bold hover:text-brand"
+                          >
+                            定期売上No.
+                            {salesNoSort === "asc" ? (
+                              <ArrowUp size={12} />
+                            ) : salesNoSort === "desc" ? (
+                              <ArrowDown size={12} />
+                            ) : (
+                              <ArrowUpDown size={12} className="opacity-50" />
+                            )}
+                          </button>
+                        </th>
                         <th className="py-1.5 pr-2 text-right font-bold">支援代（月額）</th>
                         <th className="py-1.5 pr-2 font-bold">支援費算定期間</th>
                         <th className="py-1.5 pr-2 font-bold">日数</th>
@@ -203,7 +314,7 @@ export function MonthlyBillingSection({
                       </tr>
                     </thead>
                     <tbody>
-                      {org.rows.map((row) => (
+                      {sortRows(org.rows).map((row) => (
                         <tr key={row.worker.id} className="border-b border-border/60">
                           <td className="py-1.5 pr-2">
                             <Link
@@ -248,6 +359,13 @@ export function MonthlyBillingSection({
                           <td className="py-1.5 pr-2 text-muted">{row.kind}</td>
                           <td className="py-1.5 pr-2 text-right font-bold tabular-nums">
                             {formatSalesYen(row.amount)}
+                            {/* 日割りの行は計算式を添える（退職日まで日割・許可日から日割） */}
+                            {row.kind.includes("日割") && row.monthlyFee > 0 && (
+                              <span className="block text-[10px] font-normal text-muted">
+                                {formatSalesYen(row.monthlyFee)}×{row.days}日÷{row.monthDays}
+                                日（切り捨て）
+                              </span>
+                            )}
                           </td>
                         </tr>
                       ))}

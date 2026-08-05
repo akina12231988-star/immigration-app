@@ -31,6 +31,9 @@ export function SalesClient({ canEdit }: { canEdit: boolean }) {
   const [rows, setRows] = useState<SalesEntryWithRefs[]>([]);
   const [tab, setTab] = useState<SalesEntryStatus | "all">("未登録");
   const [keyword, setKeyword] = useState("");
+  // 在留許可日の範囲指定（その間に許可が下りた人の明細だけを表示）
+  const [permitFrom, setPermitFrom] = useState("");
+  const [permitTo, setPermitTo] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -61,6 +64,13 @@ export function SalesClient({ canEdit }: { canEdit: boolean }) {
     const kw = keyword.trim().toLowerCase();
     return rows.filter((r) => {
       if (tab !== "all" && r.status !== tab) return false;
+      // 在留許可日の範囲指定があれば、その間に許可が下りた人の明細だけにする
+      if (permitFrom || permitTo) {
+        const permit = r.workers?.residence_permit_date ?? "";
+        if (!permit) return false;
+        if (permitFrom && permit < permitFrom) return false;
+        if (permitTo && permit > permitTo) return false;
+      }
       if (!kw) return true;
       return (
         (r.workers?.name ?? "").toLowerCase().includes(kw) ||
@@ -69,7 +79,7 @@ export function SalesClient({ canEdit }: { canEdit: boolean }) {
         r.description.toLowerCase().includes(kw)
       );
     });
-  }, [rows, tab, keyword]);
+  }, [rows, tab, keyword, permitFrom, permitTo]);
 
   // 所属機関ごとにまとめる（freee販売は機関ごとの案件に登録するため）
   const grouped = useMemo(() => {
@@ -227,6 +237,40 @@ export function SalesClient({ canEdit }: { canEdit: boolean }) {
         ))}
       </div>
 
+      {/* 在留許可日の範囲指定（その間に許可が下りた人の明細だけを表示） */}
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-muted">在留許可日（から）</span>
+          <input
+            type="date"
+            value={permitFrom}
+            onChange={(e) => setPermitFrom(e.target.value)}
+            className={INPUT}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-muted">在留許可日（まで）</span>
+          <input
+            type="date"
+            value={permitTo}
+            onChange={(e) => setPermitTo(e.target.value)}
+            className={INPUT}
+          />
+        </label>
+        {(permitFrom || permitTo) && (
+          <button
+            type="button"
+            onClick={() => {
+              setPermitFrom("");
+              setPermitTo("");
+            }}
+            className="min-h-[40px] rounded-xl border border-border px-3 text-xs font-bold text-muted"
+          >
+            範囲をクリア
+          </button>
+        )}
+      </div>
+
       <div className="flex flex-wrap items-center gap-2">
         <input
           value={keyword}
@@ -313,6 +357,8 @@ export function SalesClient({ canEdit }: { canEdit: boolean }) {
                               >
                                 {r.workers.name}
                               </Link>
+                              {r.workers.residence_permit_date &&
+                                ` ・ 許可日 ${r.workers.residence_permit_date}`}
                             </>
                           )}
                         </p>
