@@ -72,47 +72,25 @@ export interface SswCalcResult {
   status: SswStatus;
 }
 
-// ---- 申請書類用の通算（通算対象期間の合算・月単位切り上げ） ----
-
-// from から toExclusive（終了日の翌日）までの暦上の「まる◯か月と端数◯日」
-function calendarSpan(from: string, toExclusive: string): { months: number; days: number } {
-  const f = d(from);
-  const t = d(toExclusive);
-  let months = (t.getUTCFullYear() - f.getUTCFullYear()) * 12 + (t.getUTCMonth() - f.getUTCMonth());
-  let days = t.getUTCDate() - f.getUTCDate();
-  if (days < 0) {
-    months -= 1;
-    const prevMonthEnd = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), 0));
-    days += prevMonthEnd.getUTCDate();
-  }
-  return { months: Math.max(months, 0), days: Math.max(days, 0) };
-}
-
-export interface DocumentTotal {
-  months: number; // 合算した月数（端数日の30日=1か月繰り上げ込み・切り上げ前）
-  days: number; // 1か月に満たない端数日数（0〜29）
-  roundedMonths: number; // 端数を1か月に切り上げた申請書記載用の月数
-}
+// ---- 申請書類用の通算（通算対象期間の合算・月単位） ----
 
 // 申請書類用の通算: 通算対象（特定技能1号・特定活動〔1号移行準備〕・在留資格を保持したままの
-// 帰国）の期間だけを合算する。在留資格を切って帰国していた期間などの空白は数えない。
-// 期間ごとに「まる◯か月と端数◯日」を暦で数えて合算し、端数日は30日をもって1か月とみなし、
-// それでも残る端数は1日でも1か月に切り上げる（申請書の「◯年◯か月」記載用）。
-export function calcDocumentTotal(history: WorkHistory[], docDate: string): DocumentTotal | null {
+// 帰国）の期間について「1日でも在留した月」を1か月と数える（申請書の「◯年◯か月」記載用）。
+// 在留資格を切って帰国していた期間などの空白は数えない。
+// 同じ月に複数の期間がかかっても、その月は1か月として数える。
+export function calcDocumentTotal(history: WorkHistory[], docDate: string): number | null {
   const counted = history.filter(isCountedHistory).filter((h) => h.start && h.start <= docDate);
   if (!counted.length) return null;
-  let months = 0;
-  let days = 0;
+  const months = new Set<number>();
   for (const h of counted) {
     const end = !h.end || h.end > docDate ? docDate : h.end;
-    const endExclusive = new Date(d(end).getTime() + DAY); // 両端を含むため終了日の翌日まで
-    const span = calendarSpan(h.start, toDateStr(endExclusive));
-    months += span.months;
-    days += span.days;
+    const s = d(h.start);
+    const e = d(end);
+    const from = s.getUTCFullYear() * 12 + s.getUTCMonth();
+    const to = e.getUTCFullYear() * 12 + e.getUTCMonth();
+    for (let m = from; m <= to; m++) months.add(m);
   }
-  months += Math.floor(days / 30); // 端数日は30日をもって1か月とみなす
-  days = days % 30;
-  return { months, days, roundedMonths: days > 0 ? months + 1 : months };
+  return months.size;
 }
 
 export function calcSsw(history: WorkHistory[], today: string = todayStr()): SswCalcResult {
