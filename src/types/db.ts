@@ -420,6 +420,27 @@ export interface SalesEntryRow {
 
 export type SalesEntryInput = Omit<SalesEntryRow, "id" | "created_at" | "updated_at">;
 
+// ---- 所属機関ごとの請求・入金の記録（0070_org_invoices.sql） ----
+
+// 月ごとの請求（請求書番号・実際の請求金額）と入金（入金済み額・入金日）の台帳。
+// 残額がある請求は督促状の一覧に自動で載る
+export interface OrgInvoice {
+  id: string;
+  organization_id: string;
+  month: string; // 対象の年月 YYYY-MM
+  billed_on: string | null; // 請求日（通常は月初）
+  invoice_no: string; // 請求書番号（freeeのINV-…）
+  amount: number; // 請求金額（実際に請求した額）
+  paid: number; // 入金済み額
+  paid_on: string | null; // 入金日
+  due_on: string | null; // 支払期限（通常は月末）
+  note: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type OrgInvoiceInput = Omit<OrgInvoice, "id" | "created_at" | "updated_at">;
+
 // ---- 人材紹介（あっせん）手数料の台帳（0067_referral_fees.sql） ----
 
 // 全所属機関のあっせん手数料をまとめて管理し、請求年月日・入金年月日を記録する
