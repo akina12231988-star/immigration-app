@@ -454,6 +454,7 @@ export interface MonthlySupportRegistration {
   month: string; // 対象の年月 YYYY-MM
   fee_name: string; // 支援代 / サポート代
   registered_on: string | null; // 登録した日
+  note: string; // メモ（この月に請求しない理由など。0069_monthly_support_note.sql）
   created_at: string;
   updated_at: string;
 }

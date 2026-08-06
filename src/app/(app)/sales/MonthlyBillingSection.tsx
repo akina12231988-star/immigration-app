@@ -20,12 +20,14 @@ import { setWorkerRecurringSalesNo } from "@/lib/supabase/queries/workers";
 import { updateOrganization } from "@/lib/supabase/queries/organizations";
 import {
   addMonthlySupportRegistration,
+  clearMonthlySupportRegistration,
   deleteMonthlySupportRegistration,
   listMonthlySupportRegistrations,
+  upsertMonthlySupportNote,
 } from "@/lib/supabase/queries/sales";
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
 import type { MonthlySupportRegistration } from "@/types/db";
-import { dailyFee, formatSalesYen } from "@/lib/sales";
+import { dailyFee, formatSalesYen, mdText } from "@/lib/sales";
 import {
   billingExclusionReason,
   currentMonth,
@@ -175,6 +177,35 @@ export function MonthlyBillingSection({
   const feeNameFor = (residenceStatus: string | null | undefined): string =>
     (residenceStatus ?? "").includes("特定活動") ? "サポート代" : "支援代";
   const monthNum = Number(month.slice(5, 7)) || 0;
+  // 許可日が対象の年月内か（名前の横に「許可日◯月◯日」のバッジを出す）
+  const permitInMonth = (permit: string | null): boolean =>
+    Boolean(permit && permit.startsWith(month));
+
+  // メモ（この月に請求しない理由など）。外国人×対象の年月ごとに保存する
+  const saveNote = async (
+    workerId: string,
+    residenceStatus: string | null,
+    note: string,
+  ) => {
+    setError(null);
+    try {
+      const row = await upsertMonthlySupportNote(createClient(), {
+        worker_id: workerId,
+        month,
+        fee_name: feeNameFor(residenceStatus),
+        note: note.trim(),
+      });
+      setRegs((prev) => ({ ...prev, [workerId]: row }));
+    } catch (err) {
+      setError(
+        dbErrorMessage(
+          err,
+          "0069_monthly_support_note.sql",
+          errorMessage(err, "メモの保存に失敗しました"),
+        ),
+      );
+    }
+  };
 
   // 「freee売上登録」ボタン: ◯月分の支援代を登録した記録を残す
   const registerMonthly = async (workerId: string, residenceStatus: string | null) => {
@@ -207,12 +238,18 @@ export function MonthlyBillingSection({
     setRegBusyId(workerId);
     setError(null);
     try {
-      await deleteMonthlySupportRegistration(createClient(), reg.id);
-      setRegs((prev) => {
-        const next = { ...prev };
-        delete next[workerId];
-        return next;
-      });
+      if (reg.note) {
+        // メモが書かれている行は消さず、登録記録だけを取り消す
+        await clearMonthlySupportRegistration(createClient(), reg.id);
+        setRegs((prev) => ({ ...prev, [workerId]: { ...reg, registered_on: null } }));
+      } else {
+        await deleteMonthlySupportRegistration(createClient(), reg.id);
+        setRegs((prev) => {
+          const next = { ...prev };
+          delete next[workerId];
+          return next;
+        });
+      }
     } catch (err) {
       setError(errorMessage(err, "登録記録の取り消しに失敗しました"));
     } finally {
@@ -432,7 +469,7 @@ export function MonthlyBillingSection({
 
               {open && (
                 <div className="mt-2 overflow-x-auto">
-                  <table className="w-full min-w-[900px] border-collapse text-xs">
+                  <table className="w-full min-w-[1000px] border-collapse text-xs">
                     <thead>
                       <tr className="border-b border-border text-left text-muted">
                         <th className="py-1.5 pr-2 font-bold">氏名</th>
@@ -463,6 +500,7 @@ export function MonthlyBillingSection({
                         <th className="py-1.5 pr-2 font-bold">日数</th>
                         <th className="py-1.5 pr-2 font-bold">区分</th>
                         <th className="py-1.5 pr-2 text-right font-bold">支援費請求額</th>
+                        <th className="py-1.5 pr-2 font-bold">メモ</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -475,6 +513,12 @@ export function MonthlyBillingSection({
                             >
                               {row.worker.name}
                             </Link>
+                            {/* 対象の年月に許可が下りた人はグリーンのバッジで表示 */}
+                            {permitInMonth(row.worker.residence_permit_date) && (
+                              <span className="ml-1 rounded-full bg-status-approved-bg px-1.5 py-0.5 text-[10px] font-bold text-status-approved-fg">
+                                許可日 {mdText(row.worker.residence_permit_date ?? "")}
+                              </span>
+                            )}
                             {row.leftThisMonth && (
                               <span className="ml-1 rounded-full bg-seal/10 px-1.5 py-0.5 text-[10px] font-bold text-seal">
                                 退職 {row.worker.leaving_on}
@@ -504,7 +548,7 @@ export function MonthlyBillingSection({
                                 <span className="text-muted">{row.worker.recurring_sales_no || "—"}</span>
                               )}
                               {/* ◯月分の支援代をfreeeに登録した記録（登録漏れ・二重登録の防止） */}
-                              {regs[row.worker.id] ? (
+                              {regs[row.worker.id]?.registered_on ? (
                                 <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-status-approved-bg px-2 py-0.5 text-[10px] font-bold text-status-approved-fg">
                                   <Check size={11} />
                                   {monthNum}月分の{regs[row.worker.id].fee_name}登録済み
@@ -553,6 +597,25 @@ export function MonthlyBillingSection({
                               </span>
                             )}
                           </td>
+                          <td className="py-1.5 pr-2">
+                            {/* 請求しない場合の理由などを外国人×対象の年月ごとに残せる */}
+                            {canEdit ? (
+                              <input
+                                key={`${row.worker.id}-${month}`}
+                                defaultValue={regs[row.worker.id]?.note ?? ""}
+                                onBlur={(e) => {
+                                  const v = e.target.value.trim();
+                                  if (v !== (regs[row.worker.id]?.note ?? "")) {
+                                    void saveNote(row.worker.id, row.worker.residence_status, v);
+                                  }
+                                }}
+                                placeholder="請求しない理由など"
+                                className="w-40 rounded-lg border border-border bg-background px-1.5 py-1 text-xs"
+                              />
+                            ) : (
+                              <span className="text-muted">{regs[row.worker.id]?.note || "—"}</span>
+                            )}
+                          </td>
                         </tr>
                       ))}
                       <tr>
@@ -562,6 +625,7 @@ export function MonthlyBillingSection({
                         <td className="py-1.5 pr-2 text-right font-bold tabular-nums text-brand">
                           {formatSalesYen(org.total)}
                         </td>
+                        <td />
                       </tr>
                     </tbody>
                   </table>
