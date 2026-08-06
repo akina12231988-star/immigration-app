@@ -26,8 +26,14 @@ import {
   listMonthlySupportRegistrations,
   upsertMonthlySupportNote,
 } from "@/lib/supabase/queries/sales";
+import {
+  deleteOrgInvoice,
+  listOrgInvoices,
+  updateOrgInvoice,
+  upsertOrgInvoice,
+} from "@/lib/supabase/queries/org-invoices";
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
-import type { MonthlySupportRegistration } from "@/types/db";
+import type { MonthlySupportRegistration, OrgInvoice } from "@/types/db";
 import { dailyFee, formatSalesYen, mdText, monthEnd } from "@/lib/sales";
 import {
   reminderFileName,
@@ -218,38 +224,100 @@ export function MonthlyBillingSection({
     return lines.join("\n");
   };
 
-  // 督促状（未入金のご確認）の入力。開いている機関の分だけ持ち、機関を切り替えたら消す
-  interface ReminderDraftRow {
-    billedOn: string; // 請求日
-    invoiceNo: string; // 請求書番号（INV-…）
-    amount: string; // 請求金額（数字だけ）
-    paid: string; // 入金済み額（一部入金。数字だけ）
-    dueOn: string; // 支払期限
-  }
+  // 請求・入金の記録（org_invoices）。督促状のもとになる台帳で、
+  // 月ごとの請求書番号・実際の請求金額と入金を保存して積み上げていく
   const [showReminder, setShowReminder] = useState(false);
-  const [reminderRows, setReminderRows] = useState<ReminderDraftRow[]>([]);
-  const [reminderInvoiceNo, setReminderInvoiceNo] = useState("");
+  const [orgInvoices, setOrgInvoices] = useState<OrgInvoice[]>([]);
+  const [invLoading, setInvLoading] = useState(false);
+  const [invBusy, setInvBusy] = useState(false);
+  const [currentInvoiceNo, setCurrentInvoiceNo] = useState("");
+  const [currentAmount, setCurrentAmount] = useState("");
 
-  const setReminderAt = (i: number, patch: Partial<ReminderDraftRow>) =>
-    setReminderRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  // 督促状セクションを開いたら保存済みの記録を読み込み、今回分の入力に反映する
+  const toggleReminder = async (org: MonthlyBillingOrg) => {
+    const opening = !showReminder;
+    setShowReminder(opening);
+    if (!opening) return;
+    setInvLoading(true);
+    setError(null);
+    try {
+      const rows = await listOrgInvoices(createClient(), org.organizationId);
+      setOrgInvoices(rows);
+      const cur = rows.find((r) => r.month === month);
+      setCurrentInvoiceNo(cur?.invoice_no ?? "");
+      setCurrentAmount(String(cur?.amount || org.total || ""));
+    } catch (err) {
+      setError(
+        dbErrorMessage(err, "0070_org_invoices.sql", errorMessage(err, "請求記録の読み込みに失敗しました")),
+      );
+    } finally {
+      setInvLoading(false);
+    }
+  };
 
-  // 入力中の未入金請求を数値に直す（請求日と金額がある行だけ）
-  const parsedReminderRows = (): ReminderInvoiceRow[] =>
-    reminderRows
-      .filter((r) => r.billedOn && (Number(r.amount) || 0) > 0)
+  // 今回（対象月）の請求書番号・実際の請求金額を保存する（同じ月なら上書き）
+  const saveCurrentInvoice = async (org: MonthlyBillingOrg) => {
+    setInvBusy(true);
+    setError(null);
+    try {
+      const row = await upsertOrgInvoice(createClient(), {
+        organization_id: org.organizationId,
+        month,
+        billed_on: `${month}-01`,
+        invoice_no: currentInvoiceNo.trim(),
+        amount: Number(currentAmount) || 0,
+        due_on: billing.monthEndOn,
+      });
+      setOrgInvoices((prev) => [row, ...prev.filter((r) => r.id !== row.id)]);
+    } catch (err) {
+      setError(
+        dbErrorMessage(err, "0070_org_invoices.sql", errorMessage(err, "請求記録の保存に失敗しました")),
+      );
+    } finally {
+      setInvBusy(false);
+    }
+  };
+
+  // 入金の記録（入金済み額・入金日）などの部分更新
+  const patchInvoice = async (
+    id: string,
+    patch: Partial<Pick<OrgInvoice, "invoice_no" | "amount" | "paid" | "paid_on" | "note">>,
+  ) => {
+    setOrgInvoices((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+    try {
+      await updateOrgInvoice(createClient(), id, patch);
+    } catch (err) {
+      setError(errorMessage(err, "入金記録の保存に失敗しました"));
+    }
+  };
+
+  const removeInvoice = async (id: string) => {
+    if (!window.confirm("この請求の記録を削除します。よろしいですか？")) return;
+    try {
+      await deleteOrgInvoice(createClient(), id);
+      setOrgInvoices((prev) => prev.filter((r) => r.id !== id));
+    } catch (err) {
+      setError(errorMessage(err, "削除に失敗しました"));
+    }
+  };
+
+  // 保存済みの記録のうち、残額が残っている過去の請求（督促状の一覧に自動で載る）
+  const savedUnpaidRows = (): ReminderInvoiceRow[] =>
+    orgInvoices
+      .filter((r) => r.month !== month && r.amount - r.paid > 0)
       .map((r) => ({
-        billedOn: r.billedOn,
-        invoiceNo: r.invoiceNo.trim(),
-        amount: Number(r.amount) || 0,
-        paid: Number(r.paid) || 0,
-        dueOn: r.dueOn || monthEnd(r.billedOn),
+        billedOn: r.billed_on ?? `${r.month}-01`,
+        invoiceNo: r.invoice_no,
+        amount: r.amount,
+        paid: r.paid,
+        dueOn: r.due_on ?? monthEnd(`${r.month}-01`),
       }));
 
-  // 今回（対象月）の請求分。請求日は月初・支払期限は月末・金額は集計の機関合計
+  // 今回（対象月）の請求分。金額は保存内容（未保存なら入力値か集計の機関合計）
   const currentInvoiceFor = (org: MonthlyBillingOrg): ReminderInvoiceRow => ({
     billedOn: `${month}-01`,
-    invoiceNo: reminderInvoiceNo.trim(),
-    amount: org.total,
+    invoiceNo: currentInvoiceNo.trim(),
+    amount: Number(currentAmount) || org.total,
     paid: 0,
     dueOn: billing.monthEndOn,
   });
@@ -259,7 +327,7 @@ export function MonthlyBillingSection({
     /会社|法人|組合|協会/.test(orgName) ? "御中" : "様";
 
   const downloadReminder = async (org: MonthlyBillingOrg) => {
-    const unpaid = parsedReminderRows();
+    const unpaid = savedUnpaidRows();
     if (unpaid.length === 0) return;
     setBusy(true);
     setError(null);
@@ -527,10 +595,11 @@ export function MonthlyBillingSection({
                   onClick={() => {
                     setOpenOrgId(open ? null : org.organizationId);
                     setFeeDraft("");
-                    // 督促状の入力は機関ごとの内容なので切り替え時に消す
+                    // 請求・入金の記録は機関ごとの内容なので切り替え時に閉じて消す
                     setShowReminder(false);
-                    setReminderRows([]);
-                    setReminderInvoiceNo("");
+                    setOrgInvoices([]);
+                    setCurrentInvoiceNo("");
+                    setCurrentAmount("");
                   }}
                   className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
                 >
@@ -597,128 +666,199 @@ export function MonthlyBillingSection({
                 </div>
               )}
 
-              {/* 督促状の作成（未入金・一部入金の請求＋今回の請求の合算） */}
+              {/* 請求・入金の記録と督促状の作成。記録は月ごとに保存され積み上がっていく */}
               {open && canEdit && (
                 <div className="mt-2 rounded-xl border border-border p-3">
                   <button
                     type="button"
-                    onClick={() => setShowReminder((v) => !v)}
+                    onClick={() => void toggleReminder(org)}
                     className="flex items-center gap-1 text-xs font-bold text-brand"
                   >
                     {showReminder ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                    督促状の作成（未入金のご確認）
+                    請求・入金の記録と督促状（未入金のご確認）
                   </button>
                   {showReminder && (
-                    <div className="mt-2 space-y-2">
+                    <div className="mt-2 space-y-3">
                       <p className="text-[11px] leading-relaxed text-muted">
-                        入金のない請求（freeeの請求書）を追加してください。一部入金があった場合は入金済み額を入れると残額で計算します。
-                        今回（{monthLabel(month)}分 {formatSalesYen(org.total)}）は自動で一覧に入り、
-                        参考合計は未入金分と合算した金額になります。
+                        今回の請求書番号と実際の請求金額を保存すると、月ごとの記録として残ります。
+                        入金があったら入金済み額・入金日を記録してください（「全額入金」で一括記録）。
+                        残額が残っている請求は督促状の一覧に自動で載り、参考合計は今回のご請求と合算した金額になります。
                       </p>
-                      {reminderRows.map((r, i) => (
-                        <div key={i} className="flex flex-wrap items-end gap-1.5">
-                          <label className="flex flex-col gap-0.5">
-                            <span className="text-[10px] font-bold text-muted">請求日</span>
-                            <input
-                              type="date"
-                              value={r.billedOn}
-                              onChange={(e) => setReminderAt(i, { billedOn: e.target.value })}
-                              className="min-h-[36px] rounded-lg border border-border bg-background px-2 text-xs"
-                            />
-                          </label>
-                          <label className="flex flex-col gap-0.5">
-                            <span className="text-[10px] font-bold text-muted">請求書番号</span>
-                            <input
-                              value={r.invoiceNo}
-                              onChange={(e) => setReminderAt(i, { invoiceNo: e.target.value })}
-                              placeholder="INV-…"
-                              className="min-h-[36px] w-36 rounded-lg border border-border bg-background px-2 text-xs"
-                            />
-                          </label>
-                          <label className="flex flex-col gap-0.5">
-                            <span className="text-[10px] font-bold text-muted">請求金額</span>
-                            <input
-                              value={r.amount}
-                              onChange={(e) =>
-                                setReminderAt(i, { amount: e.target.value.replace(/[^0-9]/g, "") })
-                              }
-                              inputMode="numeric"
-                              className="min-h-[36px] w-24 rounded-lg border border-border bg-background px-2 text-right text-xs tabular-nums"
-                            />
-                          </label>
-                          <label className="flex flex-col gap-0.5">
-                            <span className="text-[10px] font-bold text-muted">入金済み額（一部入金）</span>
-                            <input
-                              value={r.paid}
-                              onChange={(e) =>
-                                setReminderAt(i, { paid: e.target.value.replace(/[^0-9]/g, "") })
-                              }
-                              inputMode="numeric"
-                              placeholder="0"
-                              className="min-h-[36px] w-24 rounded-lg border border-border bg-background px-2 text-right text-xs tabular-nums"
-                            />
-                          </label>
-                          <label className="flex flex-col gap-0.5">
-                            <span className="text-[10px] font-bold text-muted">支払期限（空欄は月末）</span>
-                            <input
-                              type="date"
-                              value={r.dueOn}
-                              onChange={(e) => setReminderAt(i, { dueOn: e.target.value })}
-                              className="min-h-[36px] rounded-lg border border-border bg-background px-2 text-xs"
-                            />
-                          </label>
-                          <button
-                            type="button"
-                            aria-label="この請求を削除"
-                            onClick={() => setReminderRows((rs) => rs.filter((_, idx) => idx !== i))}
-                            className="min-h-[36px] px-1 text-xs font-bold text-seal"
-                          >
-                            削除
-                          </button>
-                        </div>
-                      ))}
-                      <div className="flex flex-wrap items-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setReminderRows((rs) => [
-                              ...rs,
-                              { billedOn: "", invoiceNo: "", amount: "", paid: "", dueOn: "" },
-                            ])
-                          }
-                          className="min-h-[36px] rounded-lg border border-border px-2.5 text-xs font-bold text-brand"
-                        >
-                          ＋ 未入金の請求を追加
-                        </button>
+
+                      {/* 今回（対象月）の請求の保存 */}
+                      <div className="flex flex-wrap items-end gap-2 rounded-lg bg-background p-2.5">
+                        <span className="text-xs font-bold">{monthLabel(month)}分の請求</span>
                         <label className="flex flex-col gap-0.5">
-                          <span className="text-[10px] font-bold text-muted">今回請求分の請求書番号（任意）</span>
+                          <span className="text-[10px] font-bold text-muted">請求書番号</span>
                           <input
-                            value={reminderInvoiceNo}
-                            onChange={(e) => setReminderInvoiceNo(e.target.value)}
+                            value={currentInvoiceNo}
+                            onChange={(e) => setCurrentInvoiceNo(e.target.value)}
                             placeholder="INV-…"
-                            className="min-h-[36px] w-36 rounded-lg border border-border bg-background px-2 text-xs"
+                            className="min-h-[36px] w-40 rounded-lg border border-border bg-surface px-2 text-xs"
                           />
                         </label>
-                        <span className="min-h-[36px] content-center text-xs font-bold">
-                          参考合計（合算）:{" "}
+                        <label className="flex flex-col gap-0.5">
+                          <span className="text-[10px] font-bold text-muted">
+                            実際の請求金額（集計は{formatSalesYen(org.total)}）
+                          </span>
+                          <input
+                            value={currentAmount}
+                            onChange={(e) => setCurrentAmount(e.target.value.replace(/[^0-9]/g, ""))}
+                            inputMode="numeric"
+                            className="min-h-[36px] w-28 rounded-lg border border-border bg-surface px-2 text-right text-xs tabular-nums"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          disabled={invBusy}
+                          onClick={() => void saveCurrentInvoice(org)}
+                          className="min-h-[36px] rounded-lg bg-brand px-3 text-xs font-bold text-brand-foreground disabled:opacity-50"
+                        >
+                          {invBusy ? "保存中…" : "保存"}
+                        </button>
+                        {orgInvoices.some((r) => r.month === month) && (
+                          <span className="text-[11px] font-bold text-status-approved-fg">保存済み</span>
+                        )}
+                      </div>
+
+                      {/* 保存済みの請求と入金の記録（新しい月から） */}
+                      {invLoading ? (
+                        <p className="flex items-center gap-1.5 text-xs text-muted">
+                          <Loader2 size={13} className="animate-spin" />
+                          読み込み中…
+                        </p>
+                      ) : orgInvoices.length === 0 ? (
+                        <p className="text-xs text-muted">
+                          まだ記録がありません。上の「保存」で今回分から記録を始められます。
+                        </p>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full min-w-[760px] border-collapse text-xs">
+                            <thead>
+                              <tr className="border-b border-border text-left text-muted">
+                                <th className="py-1.5 pr-2 font-bold">対象月</th>
+                                <th className="py-1.5 pr-2 font-bold">請求書番号</th>
+                                <th className="py-1.5 pr-2 text-right font-bold">請求金額</th>
+                                <th className="py-1.5 pr-2 text-right font-bold">入金済み額</th>
+                                <th className="py-1.5 pr-2 font-bold">入金日</th>
+                                <th className="py-1.5 pr-2 text-right font-bold">残額</th>
+                                <th className="py-1.5 pr-2 font-bold">状態</th>
+                                <th className="py-1.5 font-bold" />
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {orgInvoices.map((inv) => {
+                                const remaining = Math.max(inv.amount - inv.paid, 0);
+                                return (
+                                  <tr key={inv.id} className="border-b border-border/60">
+                                    <td className="py-1.5 pr-2 tabular-nums">{monthLabel(inv.month)}</td>
+                                    <td className="py-1.5 pr-2">{inv.invoice_no || "—"}</td>
+                                    <td className="py-1.5 pr-2 text-right tabular-nums">
+                                      {formatSalesYen(inv.amount)}
+                                    </td>
+                                    <td className="py-1.5 pr-2 text-right">
+                                      <input
+                                        key={`${inv.id}-${inv.paid}`}
+                                        defaultValue={inv.paid ? String(inv.paid) : ""}
+                                        onBlur={(e) => {
+                                          const v = Number(e.target.value.replace(/[^0-9]/g, "")) || 0;
+                                          if (v !== inv.paid) void patchInvoice(inv.id, { paid: v });
+                                        }}
+                                        inputMode="numeric"
+                                        placeholder="0"
+                                        className="w-24 rounded-lg border border-border bg-background px-1.5 py-1 text-right text-xs tabular-nums"
+                                      />
+                                    </td>
+                                    <td className="py-1.5 pr-2">
+                                      <input
+                                        type="date"
+                                        value={inv.paid_on ?? ""}
+                                        onChange={(e) =>
+                                          void patchInvoice(inv.id, { paid_on: e.target.value || null })
+                                        }
+                                        className="rounded-lg border border-border bg-background px-1.5 py-1 text-xs"
+                                      />
+                                    </td>
+                                    <td className="py-1.5 pr-2 text-right font-bold tabular-nums">
+                                      {formatSalesYen(remaining)}
+                                    </td>
+                                    <td className="py-1.5 pr-2">
+                                      {remaining === 0 && inv.amount > 0 ? (
+                                        <span className="rounded-full bg-status-approved-bg px-2 py-0.5 text-[10px] font-bold text-status-approved-fg">
+                                          入金済み
+                                        </span>
+                                      ) : inv.paid > 0 ? (
+                                        <span className="rounded-full bg-status-notice-bg px-2 py-0.5 text-[10px] font-bold text-status-notice-fg">
+                                          一部入金
+                                        </span>
+                                      ) : inv.month === month ? (
+                                        <span className="rounded-full bg-background px-2 py-0.5 text-[10px] font-bold text-muted ring-1 ring-border">
+                                          請求中
+                                        </span>
+                                      ) : (
+                                        <span className="rounded-full bg-seal/10 px-2 py-0.5 text-[10px] font-bold text-seal">
+                                          未入金
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="py-1.5 text-right">
+                                      {remaining > 0 && (
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            void patchInvoice(inv.id, { paid: inv.amount, paid_on: today })
+                                          }
+                                          className="mr-2 text-[10px] font-bold text-brand underline"
+                                        >
+                                          全額入金
+                                        </button>
+                                      )}
+                                      <button
+                                        type="button"
+                                        aria-label="この記録を削除"
+                                        onClick={() => void removeInvoice(inv.id)}
+                                        className="text-[10px] font-bold text-seal underline"
+                                      >
+                                        削除
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap items-center gap-3">
+                        <span className="text-xs font-bold">
+                          未入金の残額合計（今回分を除く）:{" "}
+                          <span className="text-seal">
+                            {formatSalesYen(savedUnpaidRows().reduce((s2, r) => s2 + (r.amount - r.paid), 0))}
+                          </span>
+                        </span>
+                        <span className="text-xs font-bold">
+                          参考合計（今回分と合算）:{" "}
                           <span className="text-brand">
                             {formatSalesYen(
-                              reminderTotal({
-                                unpaid: parsedReminderRows(),
-                                current: currentInvoiceFor(org),
-                              }),
+                              reminderTotal({ unpaid: savedUnpaidRows(), current: currentInvoiceFor(org) }),
                             )}
                           </span>
                         </span>
                         <Button
                           className="ml-auto"
                           icon={<Download size={16} />}
-                          disabled={busy || parsedReminderRows().length === 0}
+                          disabled={busy || savedUnpaidRows().length === 0}
                           onClick={() => void downloadReminder(org)}
                         >
                           督促状エクセル
                         </Button>
                       </div>
+                      {savedUnpaidRows().length === 0 && (
+                        <p className="text-[11px] text-muted">
+                          残額が残っている過去の請求がないため、督促状は作成できません（未入金が出たときに使えます）。
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
