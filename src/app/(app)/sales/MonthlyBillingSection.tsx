@@ -10,6 +10,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Copy,
   Download,
   Loader2,
 } from "lucide-react";
@@ -180,6 +181,49 @@ export function MonthlyBillingSection({
   // 許可日が対象の年月内か（名前の横に「許可日◯月◯日」のバッジを出す）
   const permitInMonth = (permit: string | null): boolean =>
     Boolean(permit && permit.startsWith(month));
+
+  // 請求書（freee）の備考欄に貼る文章を自動で作る。
+  // ＜許可おりた人＞（在留資格ごと）と＜退職者＞をその機関の名簿から組み立てる
+  const orgRemarks = (org: MonthlyBillingOrg): string => {
+    const permitted = org.rows.filter((r) => permitInMonth(r.worker.residence_permit_date));
+    const left = org.rows.filter((r) => r.leftThisMonth);
+    const lines: string[] = [];
+    if (permitted.length > 0) {
+      lines.push("＜許可おりた人＞");
+      const byVisa = new Map<string, MonthlyBillingRow[]>();
+      for (const r of permitted) {
+        const visa = r.worker.residence_status || "在留資格未設定";
+        if (!byVisa.has(visa)) byVisa.set(visa, []);
+        byVisa.get(visa)!.push(r);
+      }
+      for (const [visa, rows] of byVisa) {
+        lines.push(`${visa}ビザ`);
+        for (const r of rows) {
+          lines.push(`${r.worker.name}さん　許可日：${mdText(r.worker.residence_permit_date ?? "")}`);
+        }
+      }
+    }
+    if (left.length > 0) {
+      lines.push("＜退職者＞");
+      for (const r of left) {
+        lines.push(`${r.worker.name}さん　退職日：${mdText(r.worker.leaving_on ?? "")}`);
+      }
+    }
+    return lines.join("\n");
+  };
+
+  const [copiedOrgId, setCopiedOrgId] = useState<string | null>(null);
+  const copyRemarks = async (org: MonthlyBillingOrg) => {
+    const text = orgRemarks(org);
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedOrgId(org.organizationId);
+      setTimeout(() => setCopiedOrgId(null), 2000);
+    } catch {
+      /* クリップボード非対応時は何もしない */
+    }
+  };
 
   // メモ（この月に請求しない理由など）。外国人×対象の年月ごとに保存する
   const saveNote = async (
@@ -432,15 +476,29 @@ export function MonthlyBillingSection({
                     </span>
                   </span>
                 </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void download(org)}
-                  className="flex min-h-[36px] shrink-0 items-center gap-1 rounded-lg border border-border px-2.5 text-xs font-bold text-brand disabled:opacity-50"
-                >
-                  <Download size={14} />
-                  この機関のみ
-                </button>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  {/* 請求書（freee）の備考欄に貼る文章のコピー（許可おりた人・退職者） */}
+                  {orgRemarks(org) && (
+                    <button
+                      type="button"
+                      onClick={() => void copyRemarks(org)}
+                      title="請求書の備考欄に貼る文章（許可おりた人・退職者）をコピーします"
+                      className="flex min-h-[36px] items-center gap-1 rounded-lg border border-border px-2.5 text-xs font-bold text-brand"
+                    >
+                      {copiedOrgId === org.organizationId ? <Check size={14} /> : <Copy size={14} />}
+                      {copiedOrgId === org.organizationId ? "コピーしました" : "備考欄"}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void download(org)}
+                    className="flex min-h-[36px] items-center gap-1 rounded-lg border border-border px-2.5 text-xs font-bold text-brand disabled:opacity-50"
+                  >
+                    <Download size={14} />
+                    この機関のみ
+                  </button>
+                </div>
               </div>
 
               {open && canEdit && org.organizationId && (org.rows[0]?.monthlyFee ?? 0) <= 0 && (
@@ -464,6 +522,16 @@ export function MonthlyBillingSection({
                     {feeSaving ? "保存中…" : "保存"}
                   </button>
                   <span className="text-[10px]">所属機関の「毎月の支援代」に保存され、集計にすぐ反映されます</span>
+                </div>
+              )}
+
+              {/* 備考欄のプレビュー（コピーされる内容の確認用） */}
+              {open && orgRemarks(org) && (
+                <div className="mt-2 rounded-xl bg-background p-3">
+                  <p className="mb-1 text-[11px] font-bold text-muted">請求書の備考欄（コピー用）</p>
+                  <pre className="whitespace-pre-wrap font-sans text-[11px] leading-relaxed">
+                    {orgRemarks(org)}
+                  </pre>
                 </div>
               )}
 
