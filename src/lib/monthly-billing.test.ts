@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  billingExclusionReason,
   billingRowFor,
   currentMonth,
   daysText,
@@ -211,5 +212,56 @@ describe("summarizeMonthlyBilling", () => {
       MONTH,
     );
     expect(result.orgs[0].organizationName).toBe("所属機関未設定");
+  });
+});
+
+describe("billingExclusionReason（名簿に載らない理由）", () => {
+  const base = {
+    id: "W",
+    name: "TEST",
+    kana: "",
+    nationality: "",
+    gender: "",
+    birth: null,
+    residence_status: "特定技能1号",
+    residence_card_no: "",
+    residence_permit_date: "2026-07-01",
+    residence_expiry_date: null,
+    employment_start_on: null,
+    assigned_office: "",
+    residence_note: "",
+    recurring_sales_no: "",
+    current_organization_id: "org-1",
+    support: "支援対象",
+    status: "在籍中",
+    leaving_on: null,
+  } as BillingWorker;
+
+  it("名簿に載る人と支援対象でない人は null", () => {
+    expect(billingExclusionReason(base, "2026-08")).toBeNull();
+    expect(billingExclusionReason({ ...base, support: "支援対象外" }, "2026-08")).toBeNull();
+  });
+  it("在留資格が対象外・未設定", () => {
+    expect(billingExclusionReason({ ...base, residence_status: "技能実習" }, "2026-08")).toBe(
+      "在留資格が対象外（技能実習）",
+    );
+    expect(billingExclusionReason({ ...base, residence_status: "" }, "2026-08")).toBe(
+      "在留資格が未設定",
+    );
+  });
+  it("在留許可日が未登録・対象月より後", () => {
+    expect(
+      billingExclusionReason({ ...base, residence_permit_date: null }, "2026-08"),
+    ).toBe("在留許可日が未登録");
+    expect(
+      billingExclusionReason({ ...base, residence_permit_date: "2026-09-15" }, "2026-08"),
+    ).toBe("在留許可日が対象月より後（2026-09-15）");
+  });
+  it("対象月より前に退職済み", () => {
+    expect(billingExclusionReason({ ...base, leaving_on: "2026-07-20" }, "2026-08")).toBe(
+      "対象月より前に退職済み（退職日 2026-07-20）",
+    );
+    // 対象月内の退職は名簿に載る（退職日まで日割）ので null
+    expect(billingExclusionReason({ ...base, leaving_on: "2026-08-10" }, "2026-08")).toBeNull();
   });
 });
