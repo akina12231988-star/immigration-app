@@ -121,6 +121,24 @@ export function isBilledInMonth(worker: BillingWorker, month: string): boolean {
   return true;
 }
 
+// 支援対象なのに名簿に載らない理由（載る場合と支援対象でない場合は null）。
+// 「なぜ表示されないのか」を請求書作成の画面でそのまま見せるために使う
+export function billingExclusionReason(worker: BillingWorker, month: string): string | null {
+  if (worker.support !== "支援対象") return null; // 支援対象外は載らなくて正常
+  if (isBilledInMonth(worker, month)) return null;
+  const { from, to } = monthRange(month);
+  if (!isBillableResidence(worker.residence_status)) {
+    const s = (worker.residence_status ?? "").trim();
+    return s ? `在留資格が対象外（${s}）` : "在留資格が未設定";
+  }
+  const permit = worker.residence_permit_date;
+  if (!permit) return "在留許可日が未登録";
+  if (permit > to) return `在留許可日が対象月より後（${permit}）`;
+  const left = worker.leaving_on;
+  if (left && left < from) return `対象月より前に退職済み（退職日 ${left}）`;
+  return "掲載条件を満たしていません"; // 想定外（条件を増やしたときの取りこぼし防止）
+}
+
 // 1人分の請求額を出す。支援代（月額）が0以下なら金額0で区分は満額として返す
 export function billingRowFor(
   worker: BillingWorker,

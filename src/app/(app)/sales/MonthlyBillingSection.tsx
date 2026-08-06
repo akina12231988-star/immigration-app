@@ -27,6 +27,7 @@ import { dbErrorMessage, errorMessage } from "@/lib/errors";
 import type { MonthlySupportRegistration } from "@/types/db";
 import { dailyFee, formatSalesYen } from "@/lib/sales";
 import {
+  billingExclusionReason,
   currentMonth,
   daysText,
   isMonthStr,
@@ -114,6 +115,25 @@ export function MonthlyBillingSection({
     () => summarizeMonthlyBilling(merged, mergedOrgs, month),
     [merged, mergedOrgs, month],
   );
+
+  // 支援対象なのに名簿に載っていない人と、その理由（「なぜ出てこない？」をここで確認できる）
+  const orgNameById = useMemo(
+    () => new Map(mergedOrgs.map((o) => [o.id, o.name])),
+    [mergedOrgs],
+  );
+  const excluded = useMemo(
+    () =>
+      merged
+        .map((w) => ({ worker: w, reason: billingExclusionReason(w, month) }))
+        .filter((x): x is { worker: BillingWorker; reason: string } => x.reason !== null)
+        .sort((a, b) => {
+          const ao = orgNameById.get(a.worker.current_organization_id ?? "") ?? "";
+          const bo = orgNameById.get(b.worker.current_organization_id ?? "") ?? "";
+          return ao.localeCompare(bo, "ja") || a.worker.name.localeCompare(b.worker.name, "ja");
+        }),
+    [merged, month, orgNameById],
+  );
+  const [showExcluded, setShowExcluded] = useState(false);
 
   // 定期売上No.でのソート。未登録は常に最後（氏名順のままの集計順は billing 側）
   const sortRows = (rows: MonthlyBillingRow[]): MonthlyBillingRow[] => {
@@ -308,6 +328,38 @@ export function MonthlyBillingSection({
               {billing.unpriced.length > 5 && " ほか"}）。 所属機関の情報に支援代を登録してください。
             </span>
           </p>
+        )}
+
+        {/* 支援対象なのに名簿に載っていない人（理由つき）。「なぜ出てこない？」の確認用 */}
+        {excluded.length > 0 && (
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={() => setShowExcluded((v) => !v)}
+              className="flex items-center gap-1 text-xs font-bold text-brand"
+            >
+              {showExcluded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              名簿に載っていない支援対象者 {excluded.length}名（理由を見る）
+            </button>
+            {showExcluded && (
+              <ul className="mt-2 space-y-1.5 rounded-xl bg-background p-3 text-xs">
+                {excluded.map(({ worker, reason }) => (
+                  <li key={worker.id}>
+                    <Link
+                      href={`/workers/${worker.id}`}
+                      className="font-bold underline-offset-2 hover:text-brand hover:underline"
+                    >
+                      {worker.name}
+                    </Link>
+                    <span className="text-muted">
+                      （{orgNameById.get(worker.current_organization_id ?? "") ?? "所属機関未設定"}）
+                      … {reason}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         )}
       </Card>
 
