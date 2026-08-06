@@ -94,14 +94,15 @@ export async function listMonthlySupportRegistrations(
   return (data as MonthlySupportRegistration[]) ?? [];
 }
 
-// 「freee売上登録」ボタン: ◯月分の支援代（サポート代）を登録した記録を残す
+// 「freee売上登録」ボタン: ◯月分の支援代（サポート代）を登録した記録を残す。
+// 先にメモだけ保存されている場合もあるため upsert にする（note は指定しないので保たれる）
 export async function addMonthlySupportRegistration(
   supabase: SupabaseClient,
   input: Pick<MonthlySupportRegistration, "worker_id" | "month" | "fee_name" | "registered_on">,
 ): Promise<MonthlySupportRegistration> {
   const { data, error } = await supabase
     .from("monthly_support_registrations")
-    .insert(input)
+    .upsert(input, { onConflict: "worker_id,month" })
     .select()
     .single();
   if (error) throw error;
@@ -118,4 +119,31 @@ export async function deleteMonthlySupportRegistration(
     .delete()
     .eq("id", id);
   if (error) throw error;
+}
+
+// 登録記録だけを取り消してメモは残す（メモがある行の取消用）
+export async function clearMonthlySupportRegistration(
+  supabase: SupabaseClient,
+  id: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("monthly_support_registrations")
+    .update({ registered_on: null })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+// メモ（この月に請求しない理由など）を保存する。記録行が無ければ作る。
+// registered_on は指定しないため、freee登録済みの記録はそのまま保たれる
+export async function upsertMonthlySupportNote(
+  supabase: SupabaseClient,
+  input: Pick<MonthlySupportRegistration, "worker_id" | "month" | "fee_name" | "note">,
+): Promise<MonthlySupportRegistration> {
+  const { data, error } = await supabase
+    .from("monthly_support_registrations")
+    .upsert(input, { onConflict: "worker_id,month" })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as MonthlySupportRegistration;
 }
