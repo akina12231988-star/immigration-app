@@ -28,7 +28,13 @@ import {
 } from "@/lib/supabase/queries/sales";
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
 import type { MonthlySupportRegistration } from "@/types/db";
-import { dailyFee, formatSalesYen, mdText } from "@/lib/sales";
+import { dailyFee, formatSalesYen, mdText, monthEnd } from "@/lib/sales";
+import {
+  reminderFileName,
+  reminderLetterSheet,
+  reminderTotal,
+  type ReminderInvoiceRow,
+} from "@/lib/reminder-letter";
 import {
   billingExclusionReason,
   currentMonth,
@@ -210,6 +216,68 @@ export function MonthlyBillingSection({
       }
     }
     return lines.join("\n");
+  };
+
+  // 督促状（未入金のご確認）の入力。開いている機関の分だけ持ち、機関を切り替えたら消す
+  interface ReminderDraftRow {
+    billedOn: string; // 請求日
+    invoiceNo: string; // 請求書番号（INV-…）
+    amount: string; // 請求金額（数字だけ）
+    paid: string; // 入金済み額（一部入金。数字だけ）
+    dueOn: string; // 支払期限
+  }
+  const [showReminder, setShowReminder] = useState(false);
+  const [reminderRows, setReminderRows] = useState<ReminderDraftRow[]>([]);
+  const [reminderInvoiceNo, setReminderInvoiceNo] = useState("");
+
+  const setReminderAt = (i: number, patch: Partial<ReminderDraftRow>) =>
+    setReminderRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+
+  // 入力中の未入金請求を数値に直す（請求日と金額がある行だけ）
+  const parsedReminderRows = (): ReminderInvoiceRow[] =>
+    reminderRows
+      .filter((r) => r.billedOn && (Number(r.amount) || 0) > 0)
+      .map((r) => ({
+        billedOn: r.billedOn,
+        invoiceNo: r.invoiceNo.trim(),
+        amount: Number(r.amount) || 0,
+        paid: Number(r.paid) || 0,
+        dueOn: r.dueOn || monthEnd(r.billedOn),
+      }));
+
+  // 今回（対象月）の請求分。請求日は月初・支払期限は月末・金額は集計の機関合計
+  const currentInvoiceFor = (org: MonthlyBillingOrg): ReminderInvoiceRow => ({
+    billedOn: `${month}-01`,
+    invoiceNo: reminderInvoiceNo.trim(),
+    amount: org.total,
+    paid: 0,
+    dueOn: billing.monthEndOn,
+  });
+
+  // 会社・法人などは「御中」、個人事業主は「様」
+  const honorificFor = (orgName: string): string =>
+    /会社|法人|組合|協会/.test(orgName) ? "御中" : "様";
+
+  const downloadReminder = async (org: MonthlyBillingOrg) => {
+    const unpaid = parsedReminderRows();
+    if (unpaid.length === 0) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const sheet = reminderLetterSheet({
+        orgName: org.organizationName,
+        honorific: honorificFor(org.organizationName),
+        issuedOn: today,
+        unpaid,
+        current: currentInvoiceFor(org),
+      });
+      const blob = await buildXlsx([sheet]);
+      downloadBlob(blob, reminderFileName(org.organizationName, today));
+    } catch (err) {
+      setError(errorMessage(err, "督促状の書き出しに失敗しました"));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const [copiedOrgId, setCopiedOrgId] = useState<string | null>(null);
@@ -459,6 +527,10 @@ export function MonthlyBillingSection({
                   onClick={() => {
                     setOpenOrgId(open ? null : org.organizationId);
                     setFeeDraft("");
+                    // 督促状の入力は機関ごとの内容なので切り替え時に消す
+                    setShowReminder(false);
+                    setReminderRows([]);
+                    setReminderInvoiceNo("");
                   }}
                   className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
                 >
@@ -522,6 +594,133 @@ export function MonthlyBillingSection({
                     {feeSaving ? "保存中…" : "保存"}
                   </button>
                   <span className="text-[10px]">所属機関の「毎月の支援代」に保存され、集計にすぐ反映されます</span>
+                </div>
+              )}
+
+              {/* 督促状の作成（未入金・一部入金の請求＋今回の請求の合算） */}
+              {open && canEdit && (
+                <div className="mt-2 rounded-xl border border-border p-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowReminder((v) => !v)}
+                    className="flex items-center gap-1 text-xs font-bold text-brand"
+                  >
+                    {showReminder ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    督促状の作成（未入金のご確認）
+                  </button>
+                  {showReminder && (
+                    <div className="mt-2 space-y-2">
+                      <p className="text-[11px] leading-relaxed text-muted">
+                        入金のない請求（freeeの請求書）を追加してください。一部入金があった場合は入金済み額を入れると残額で計算します。
+                        今回（{monthLabel(month)}分 {formatSalesYen(org.total)}）は自動で一覧に入り、
+                        参考合計は未入金分と合算した金額になります。
+                      </p>
+                      {reminderRows.map((r, i) => (
+                        <div key={i} className="flex flex-wrap items-end gap-1.5">
+                          <label className="flex flex-col gap-0.5">
+                            <span className="text-[10px] font-bold text-muted">請求日</span>
+                            <input
+                              type="date"
+                              value={r.billedOn}
+                              onChange={(e) => setReminderAt(i, { billedOn: e.target.value })}
+                              className="min-h-[36px] rounded-lg border border-border bg-background px-2 text-xs"
+                            />
+                          </label>
+                          <label className="flex flex-col gap-0.5">
+                            <span className="text-[10px] font-bold text-muted">請求書番号</span>
+                            <input
+                              value={r.invoiceNo}
+                              onChange={(e) => setReminderAt(i, { invoiceNo: e.target.value })}
+                              placeholder="INV-…"
+                              className="min-h-[36px] w-36 rounded-lg border border-border bg-background px-2 text-xs"
+                            />
+                          </label>
+                          <label className="flex flex-col gap-0.5">
+                            <span className="text-[10px] font-bold text-muted">請求金額</span>
+                            <input
+                              value={r.amount}
+                              onChange={(e) =>
+                                setReminderAt(i, { amount: e.target.value.replace(/[^0-9]/g, "") })
+                              }
+                              inputMode="numeric"
+                              className="min-h-[36px] w-24 rounded-lg border border-border bg-background px-2 text-right text-xs tabular-nums"
+                            />
+                          </label>
+                          <label className="flex flex-col gap-0.5">
+                            <span className="text-[10px] font-bold text-muted">入金済み額（一部入金）</span>
+                            <input
+                              value={r.paid}
+                              onChange={(e) =>
+                                setReminderAt(i, { paid: e.target.value.replace(/[^0-9]/g, "") })
+                              }
+                              inputMode="numeric"
+                              placeholder="0"
+                              className="min-h-[36px] w-24 rounded-lg border border-border bg-background px-2 text-right text-xs tabular-nums"
+                            />
+                          </label>
+                          <label className="flex flex-col gap-0.5">
+                            <span className="text-[10px] font-bold text-muted">支払期限（空欄は月末）</span>
+                            <input
+                              type="date"
+                              value={r.dueOn}
+                              onChange={(e) => setReminderAt(i, { dueOn: e.target.value })}
+                              className="min-h-[36px] rounded-lg border border-border bg-background px-2 text-xs"
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            aria-label="この請求を削除"
+                            onClick={() => setReminderRows((rs) => rs.filter((_, idx) => idx !== i))}
+                            className="min-h-[36px] px-1 text-xs font-bold text-seal"
+                          >
+                            削除
+                          </button>
+                        </div>
+                      ))}
+                      <div className="flex flex-wrap items-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setReminderRows((rs) => [
+                              ...rs,
+                              { billedOn: "", invoiceNo: "", amount: "", paid: "", dueOn: "" },
+                            ])
+                          }
+                          className="min-h-[36px] rounded-lg border border-border px-2.5 text-xs font-bold text-brand"
+                        >
+                          ＋ 未入金の請求を追加
+                        </button>
+                        <label className="flex flex-col gap-0.5">
+                          <span className="text-[10px] font-bold text-muted">今回請求分の請求書番号（任意）</span>
+                          <input
+                            value={reminderInvoiceNo}
+                            onChange={(e) => setReminderInvoiceNo(e.target.value)}
+                            placeholder="INV-…"
+                            className="min-h-[36px] w-36 rounded-lg border border-border bg-background px-2 text-xs"
+                          />
+                        </label>
+                        <span className="min-h-[36px] content-center text-xs font-bold">
+                          参考合計（合算）:{" "}
+                          <span className="text-brand">
+                            {formatSalesYen(
+                              reminderTotal({
+                                unpaid: parsedReminderRows(),
+                                current: currentInvoiceFor(org),
+                              }),
+                            )}
+                          </span>
+                        </span>
+                        <Button
+                          className="ml-auto"
+                          icon={<Download size={16} />}
+                          disabled={busy || parsedReminderRows().length === 0}
+                          onClick={() => void downloadReminder(org)}
+                        >
+                          督促状エクセル
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
