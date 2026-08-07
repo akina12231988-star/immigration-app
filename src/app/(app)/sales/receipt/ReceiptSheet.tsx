@@ -127,7 +127,13 @@ export function ReceiptSheet({
           width: 22mm;
           height: 22mm;
           object-fit: contain;
-          opacity: 0.9;
+        }
+        /* 印影は薄くならないよう、背景色を落とす印刷設定でもそのまま出す */
+        @media print {
+          .receipt-stamp img {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
         }
         @media print {
           .receipt-sheet {
