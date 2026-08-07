@@ -1,5 +1,16 @@
 import type { Worker } from "@/types/db";
 
+// アラート判定に必要な項目だけ。一覧は列を絞って取るため、
+// 全項目の Worker ではなくこの形を受け取る
+export type AlertWorker = Pick<
+  Worker,
+  | "status"
+  | "residence_expiry_date"
+  | "residence_renewal_status"
+  | "passport_expiry_date"
+  | "ssw_insurance_expiry_date"
+>;
+
 function addMonths(dateStr: string, months: number): string {
   const d = new Date(`${dateStr}T00:00:00Z`);
   d.setUTCMonth(d.getUTCMonth() + months);
@@ -46,26 +57,26 @@ export function isExpiryWithinTwoMonths(expiry: string, today: string): boolean 
 
 // 在留更新対象: 在留期限まで3か月以内（または既に超過）。期限未登録は対象外。
 // 退職者は在留更新の対象から外す。
-export function isResidenceRenewalTarget(w: Worker, today: string): boolean {
+export function isResidenceRenewalTarget(w: AlertWorker, today: string): boolean {
   if (w.status === "退職") return false;
   if (!w.residence_expiry_date) return false;
   return today >= addMonths(w.residence_expiry_date, -3);
 }
 
 // まだ対応が済んでいない在留更新対象（帰国・転職先にて対応中・準備中は対応済み扱い）
-export function isResidenceRenewalPending(w: Worker, today: string): boolean {
+export function isResidenceRenewalPending(w: AlertWorker, today: string): boolean {
   return isResidenceRenewalTarget(w, today) && w.residence_renewal_status === "";
 }
 
 // パスポート更新必要: 有効期限まで半年（6か月）以内（または既に超過）。期限未登録は対象外。
-export function isPassportRenewalTarget(w: Worker, today: string): boolean {
+export function isPassportRenewalTarget(w: AlertWorker, today: string): boolean {
   if (!w.passport_expiry_date) return false;
   return today >= addMonths(w.passport_expiry_date, -6);
 }
 
 // 特定技能総合保険の更新必要: 有効期限まで1か月以内（または既に超過）。期限未登録は対象外。
 // 退職者は対象から外す。
-export function isSswInsuranceRenewalTarget(w: Worker, today: string): boolean {
+export function isSswInsuranceRenewalTarget(w: AlertWorker, today: string): boolean {
   if (w.status === "退職") return false;
   if (!w.ssw_insurance_expiry_date) return false;
   return today >= addMonths(w.ssw_insurance_expiry_date, -1);

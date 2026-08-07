@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -18,11 +19,13 @@ import {
 } from "@/lib/supabase/queries/applications";
 
 // Supabase を正とする申請ストア（旧: localStorage 保存の暫定ストア）。
-// 初回マウントで全件取得し、書き込みは楽観更新＋DB反映で全職員に共有される。
+// 全件取得は useApplications を呼ぶページに入ったときに1回だけ走らせ、
+// 書き込みは楽観更新＋DB反映で全職員に共有される。
 
 interface ApplicationsContextValue {
   applications: Application[];
   loaded: boolean;
+  ensureLoaded: () => void; // 申請を使うページに入ったときに取得を始める
   error: string | null;
   addApplication: (input: NewApplication) => Promise<Application>;
   updateApplication: (id: string, patch: Partial<Application>) => Promise<void>;
@@ -38,22 +41,22 @@ export function ApplicationsProvider({ children }: { children: ReactNode }) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  // 申請の全件取得は重いので、申請を使うページに入って初めて走らせる
+  // （useApplications が呼ばれたら1回だけ取得する）。
+  // 所属機関・請求書作成のように申請を見ないページでは通信が起きない
+  const started = useRef(false);
+  const ensureLoaded = useCallback(() => {
+    if (started.current) return;
+    started.current = true;
     listApplications(createClient())
       .then((apps) => {
-        if (cancelled) return;
         setApplications(apps);
         setLoaded(true);
       })
       .catch((err: unknown) => {
-        if (cancelled) return;
         setError(err instanceof Error ? err.message : "申請データの取得に失敗しました");
         setLoaded(true);
       });
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   const addApplication = useCallback(async (input: NewApplication) => {
@@ -89,6 +92,7 @@ export function ApplicationsProvider({ children }: { children: ReactNode }) {
       value={{
         applications,
         loaded,
+        ensureLoaded,
         error,
         addApplication,
         updateApplication,
@@ -105,5 +109,10 @@ export function useApplications() {
   if (!ctx) {
     throw new Error("useApplications must be used within ApplicationsProvider");
   }
+  // このフックを使うページに入ったときに初めて全件取得する
+  const { ensureLoaded } = ctx;
+  useEffect(() => {
+    ensureLoaded();
+  }, [ensureLoaded]);
   return ctx;
 }
