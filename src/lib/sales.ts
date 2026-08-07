@@ -100,6 +100,12 @@ export function mdText(dateStr: string): string {
   return m ? `${Number(m[2])}月${Number(m[3])}日` : dateStr;
 }
 
+// YYYY-MM-DD → 「2026年7月1日」（年をまたぐ請求日の表示に使う）
+export function ymdText(dateStr: string): string {
+  const m = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${Number(m[1])}年${Number(m[2])}月${Number(m[3])}日` : dateStr;
+}
+
 // その月の月初・月末（YYYY-MM-DD）
 export function monthStart(dateStr: string): string {
   return `${dateStr.slice(0, 7)}-01`;

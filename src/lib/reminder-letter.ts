@@ -1,9 +1,8 @@
-// 督促状（未入金のお支払いのご確認）のエクセルを組み立てる。
+// 督促状（未入金のお支払いのご確認）の文面と一覧表を組み立てる。
 // 弊社テンプレート「先月分が未入金の場合」の文面を再現し、
 // 未入金（一部入金を含む）の請求と今回の請求をまとめた一覧と、
 // 合算の参考合計（未入金の残額＋今回のご請求額）を載せる。
-
-import type { SheetSpec } from "@/lib/xlsx-export";
+// 出来上がった内容は A4 の印刷用ページ（/sales/reminder）で表示する。
 
 // 一覧の1行分（未入金・一部入金・今回の請求）
 export interface ReminderInvoiceRow {
@@ -22,6 +21,30 @@ export interface ReminderLetterInput {
   current: ReminderInvoiceRow | null; // 今回（対象月）の請求。区分は「請求中」
 }
 
+// 一覧表の1行（表示用に整えたもの）
+export interface ReminderLetterRow {
+  billedOn: string; // 2026/06/01
+  invoiceNo: string;
+  amount: number;
+  paid: number; // 0 なら空欄で表示する
+  remaining: number;
+  dueOn: string; // 2026/06/30
+  kind: "未入金" | "一部入金" | "請求中";
+}
+
+// 督促状1通分の中身
+export interface ReminderLetter {
+  addressee: string; // 「井上洋介　様」
+  issuedOn: string; // 2026/08/06
+  sender: string[]; // 差出人（登録支援機関名・担当）
+  title: string;
+  paragraphs: string[]; // 本文（1要素＝1段落）
+  rows: ReminderLetterRow[];
+  total: number; // 参考合計
+}
+
+const SENDER = ["登録支援機関 VUONG VAN THANH", "担当：野口　明菜"];
+
 // 残額（請求金額 − 入金済み額。マイナスにはしない）
 export function remainingAmount(row: ReminderInvoiceRow): number {
   return Math.max(row.amount - row.paid, 0);
@@ -31,6 +54,11 @@ export function remainingAmount(row: ReminderInvoiceRow): number {
 export function reminderTotal(input: Pick<ReminderLetterInput, "unpaid" | "current">): number {
   const unpaid = input.unpaid.reduce((sum, r) => sum + remainingAmount(r), 0);
   return unpaid + (input.current ? remainingAmount(input.current) : 0);
+}
+
+// 会社・法人などは「御中」、個人事業主は「様」
+export function honorificFor(orgName: string): string {
+  return /会社|法人|組合|協会/.test(orgName) ? "御中" : "様";
 }
 
 // "2026-06-01" → "6月1日"
@@ -44,72 +72,56 @@ function slashDate(dateStr: string): string {
   return dateStr.replaceAll("-", "/");
 }
 
-export function reminderFileName(orgName: string, issuedOn: string): string {
-  return `督促状_${orgName}_${issuedOn}.xlsx`;
+function toRow(r: ReminderInvoiceRow, kind: ReminderLetterRow["kind"]): ReminderLetterRow {
+  return {
+    billedOn: slashDate(r.billedOn),
+    invoiceNo: r.invoiceNo,
+    amount: r.amount,
+    paid: r.paid,
+    remaining: remainingAmount(r),
+    dueOn: slashDate(r.dueOn),
+    kind,
+  };
 }
 
-// 督促状1通分のシート
-export function reminderLetterSheet(input: ReminderLetterInput): SheetSpec {
+// 督促状1通分の文面と一覧表を組み立てる
+export function buildReminderLetter(input: ReminderLetterInput): ReminderLetter {
+  // 未入金は古い請求から順に載せる（一番古い請求の日付を本文で使う）
   const sorted = [...input.unpaid].sort((a, b) => a.billedOn.localeCompare(b.billedOn));
   const oldest = sorted[0];
   const hasPartial = sorted.some((r) => r.paid > 0);
 
-  const rows: (string | number | null)[][] = [];
-  rows.push([`${input.orgName}　${input.honorific}`, null, null, null, null, "発行年月日", slashDate(input.issuedOn)]);
-  rows.push([]);
-  rows.push([null, null, null, null, "登録支援機関 VUONG VAN THANH"]);
-  rows.push([null, null, null, null, "担当：野口　明菜"]);
-  rows.push([]);
-  rows.push([null, "【ご確認のお願い】"]);
-  rows.push([null, "未入金のお支払いについて"]);
-  rows.push([]);
-  rows.push(["いつも大変お世話になっております。"]);
+  const paragraphs: string[] = ["いつも大変お世話になっております。"];
   if (oldest) {
-    rows.push([`さて、${mdJp(oldest.billedOn)}付で発行いたしましたご請求書につきまして`]);
-    rows.push([`支払い期限を${mdJp(oldest.dueOn)}としておりましたが、本日現在、まだご入金の確認が`]);
-    rows.push(["とれていない状況です。"]);
+    paragraphs.push(
+      `さて、${mdJp(oldest.billedOn)}付で発行いたしましたご請求書につきまして支払い期限を` +
+        `${mdJp(oldest.dueOn)}としておりましたが、本日現在、まだご入金の確認がとれていない状況です。`,
+    );
   }
   if (hasPartial) {
-    rows.push(["一部ご入金をいただいている請求は、入金済み額と残額を記載しております。"]);
+    paragraphs.push("一部ご入金をいただいている請求は、入金済み額と残額を記載しております。");
   }
-  rows.push([]);
   if (input.current) {
-    rows.push([`念の為、${mdJp(input.current.billedOn)}付で発行しております請求書分まで一覧に`]);
-    rows.push(["まとめて記載しておりますので、ご確認いただけますと幸いです。"]);
-    rows.push([]);
+    paragraphs.push(
+      `念の為、${mdJp(input.current.billedOn)}付で発行しております請求書分まで一覧に` +
+        "まとめて記載しておりますので、ご確認いただけますと幸いです。",
+    );
   }
-  rows.push(["すでに、お支払いがお済みでした場合は、行き違いとなり誠に申し訳ございません。"]);
-  rows.push(["何卒、ご確認のほど、よろしくお願い申し上げます。"]);
-  rows.push([]);
+  paragraphs.push(
+    "すでに、お支払いがお済みでした場合は、行き違いとなり誠に申し訳ございません。",
+    "何卒、ご確認のほど、よろしくお願い申し上げます。",
+  );
 
-  rows.push(["請求日", "請求書番号", "請求金額", "入金済み額", "ご請求額（残額）", "支払期限", "区分"]);
-  for (const r of sorted) {
-    rows.push([
-      slashDate(r.billedOn),
-      r.invoiceNo,
-      r.amount,
-      r.paid > 0 ? r.paid : null,
-      remainingAmount(r),
-      slashDate(r.dueOn),
-      r.paid > 0 ? "一部入金" : "未入金",
-    ]);
-  }
-  if (input.current) {
-    rows.push([
-      slashDate(input.current.billedOn),
-      input.current.invoiceNo,
-      input.current.amount,
-      null,
-      remainingAmount(input.current),
-      slashDate(input.current.dueOn),
-      "請求中",
-    ]);
-  }
-  rows.push(["参考合計（未入金分＋今回ご請求分）", null, null, null, reminderTotal(input), null, null]);
+  const rows = sorted.map((r) => toRow(r, r.paid > 0 ? "一部入金" : "未入金"));
+  if (input.current) rows.push(toRow(input.current, "請求中"));
 
   return {
-    name: `督促状 ${input.orgName}`,
+    addressee: `${input.orgName}　${input.honorific}`,
+    issuedOn: slashDate(input.issuedOn),
+    sender: SENDER,
+    title: "未入金のお支払いについて",
+    paragraphs,
     rows,
-    columnWidths: [16, 16, 12, 12, 16, 12, 10],
+    total: reminderTotal(input),
   };
 }

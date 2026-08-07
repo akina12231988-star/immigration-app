@@ -13,7 +13,7 @@
 // （＝更新ではなく新しく支援を始めた）場合とする。更新で許可日がその月内でも、
 // すでに支援している人は日割りせず満額にする。
 
-import { dailyFee, daysInMonth, monthEnd, monthStart } from "@/lib/sales";
+import { dailyFee, daysInMonth, monthEnd, monthStart, nextMonthStart } from "@/lib/sales";
 import { parseAmount } from "@/lib/organization-intake";
 import { isSsw1Residence } from "@/lib/support-system";
 import type { Organization, Worker } from "@/types/db";
@@ -97,6 +97,18 @@ export function monthLabel(month: string): string {
 // 今月の YYYY-MM
 export function currentMonth(today: string): string {
   return today.slice(0, 7);
+}
+
+// 請求日は対象月の翌月1日（その月の支援が終わってから請求するため）。
+// 例: 対象月 2026-06 → 請求日 2026-07-01
+export function invoiceBilledOn(month: string): string {
+  return isMonthStr(month) ? nextMonthStart(`${month}-01`) : "";
+}
+
+// 支払期限は請求日と同じ月の末日。例: 対象月 2026-06 → 支払期限 2026-07-31
+export function invoiceDueOn(month: string): string {
+  const billed = invoiceBilledOn(month);
+  return billed ? monthEnd(billed) : "";
 }
 
 // 支援費の請求対象になる在留資格か。
