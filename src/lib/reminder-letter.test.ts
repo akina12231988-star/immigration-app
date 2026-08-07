@@ -86,8 +86,35 @@ describe("督促状（未入金のご確認）", () => {
       current: null,
     });
     expect(letter.rows.map((r) => r.invoiceNo)).toEqual(["A", "B", "C"]);
-    // 本文では一番古い請求の日付を使う
-    expect(letter.paragraphs.join("\n")).toContain("さて、5月1日付で発行いたしました");
+    // 本文が指すのは前回お出しした請求書＝未入金のうち一番新しいもの
+    expect(letter.paragraphs.join("\n")).toContain("さて、7月1日付で発行いたしました");
+  });
+
+  it("本文は前回請求（未入金の最新）を指し、今回の請求とは別に書く", () => {
+    // 対象月2026年7月ぶんを請求中。4〜6月分（請求日5/1・6/1・7/1）が未入金
+    const letter = buildReminderLetter({
+      orgName: "國崎青果",
+      honorific: "様",
+      issuedOn: "2026-08-07",
+      unpaid: [
+        row({ billedOn: "2026-05-01", dueOn: "2026-05-31", amount: 89620 }),
+        row({ billedOn: "2026-06-01", dueOn: "2026-06-30", amount: 55000 }),
+        row({ billedOn: "2026-07-01", dueOn: "2026-07-31", amount: 55000 }),
+      ],
+      current: row({ billedOn: "2026-08-01", dueOn: "2026-08-31", amount: 55000 }),
+    });
+    const text = letter.paragraphs.join("\n");
+    expect(text).toContain(
+      "さて、7月1日付で発行いたしましたご請求書につきまして支払い期限を7月31日としておりましたが",
+    );
+    expect(text).toContain("念の為、8月1日付で発行しております請求書分まで一覧に");
+    // 一覧はこれまでどおり古い順＋今回分が末尾
+    expect(letter.rows.map((r) => r.billedOn)).toEqual([
+      "2026/05/01",
+      "2026/06/01",
+      "2026/07/01",
+      "2026/08/01",
+    ]);
   });
 
   it("未入金がすべて全額のままなら一部入金の文は入らない", () => {

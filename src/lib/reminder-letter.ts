@@ -86,16 +86,18 @@ function toRow(r: ReminderInvoiceRow, kind: ReminderLetterRow["kind"]): Reminder
 
 // 督促状1通分の文面と一覧表を組み立てる
 export function buildReminderLetter(input: ReminderLetterInput): ReminderLetter {
-  // 未入金は古い請求から順に載せる（一番古い請求の日付を本文で使う）
+  // 未入金は古い請求から順に載せる。
+  // 本文が指すのは「前回お出しした請求書」なので、未入金のうち一番新しいものを使う
+  // （例: 今回が8月1日付なら、前回請求の7月1日付を本文に書く）
   const sorted = [...input.unpaid].sort((a, b) => a.billedOn.localeCompare(b.billedOn));
-  const oldest = sorted[0];
+  const previous = sorted.at(-1);
   const hasPartial = sorted.some((r) => r.paid > 0);
 
   const paragraphs: string[] = ["いつも大変お世話になっております。"];
-  if (oldest) {
+  if (previous) {
     paragraphs.push(
-      `さて、${mdJp(oldest.billedOn)}付で発行いたしましたご請求書につきまして支払い期限を` +
-        `${mdJp(oldest.dueOn)}としておりましたが、本日現在、まだご入金の確認がとれていない状況です。`,
+      `さて、${mdJp(previous.billedOn)}付で発行いたしましたご請求書につきまして支払い期限を` +
+        `${mdJp(previous.dueOn)}としておりましたが、本日現在、まだご入金の確認がとれていない状況です。`,
     );
   }
   if (hasPartial) {
