@@ -34,7 +34,7 @@ import {
 } from "@/lib/supabase/queries/org-invoices";
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
 import type { MonthlySupportRegistration, OrgInvoice } from "@/types/db";
-import { dailyFee, formatSalesYen, mdText, monthEnd } from "@/lib/sales";
+import { dailyFee, formatSalesYen, mdText, ymdText } from "@/lib/sales";
 import {
   reminderFileName,
   reminderLetterSheet,
@@ -45,6 +45,8 @@ import {
   billingExclusionReason,
   currentMonth,
   daysText,
+  invoiceBilledOn,
+  invoiceDueOn,
   isMonthStr,
   monthLabel,
   periodText,
@@ -282,10 +284,10 @@ export function MonthlyBillingSection({
       const row = await upsertOrgInvoice(createClient(), {
         organization_id: org.organizationId,
         month,
-        billed_on: `${month}-01`,
+        billed_on: invoiceBilledOn(month),
         invoice_no: currentInvoiceNo.trim(),
         amount: Number(currentAmount) || 0,
-        due_on: billing.monthEndOn,
+        due_on: invoiceDueOn(month),
       });
       setOrgInvoices((prev) => sortInvoices([row, ...prev.filter((r) => r.id !== row.id)]));
     } catch (err) {
@@ -310,10 +312,10 @@ export function MonthlyBillingSection({
       const row = await upsertOrgInvoice(createClient(), {
         organization_id: org.organizationId,
         month: pastMonth,
-        billed_on: `${pastMonth}-01`,
+        billed_on: invoiceBilledOn(pastMonth),
         invoice_no: pastInvoiceNo.trim(),
         amount: Number(pastAmount) || 0,
-        due_on: monthEnd(`${pastMonth}-01`),
+        due_on: invoiceDueOn(pastMonth),
         paid: Number(pastPaid) || 0,
         paid_on: pastPaidOn || null,
       });
@@ -366,20 +368,21 @@ export function MonthlyBillingSection({
     orgInvoices
       .filter((r) => r.month !== month && r.amount - r.paid > 0)
       .map((r) => ({
-        billedOn: r.billed_on ?? `${r.month}-01`,
+        // 請求日・支払期限は対象月から決まる（古い記録も画面と督促状で同じ日付になる）
+        billedOn: invoiceBilledOn(r.month),
         invoiceNo: r.invoice_no,
         amount: r.amount,
         paid: r.paid,
-        dueOn: r.due_on ?? monthEnd(`${r.month}-01`),
+        dueOn: invoiceDueOn(r.month),
       }));
 
   // 今回（対象月）の請求分。金額は保存内容（未保存なら入力値か集計の機関合計）
   const currentInvoiceFor = (org: MonthlyBillingOrg): ReminderInvoiceRow => ({
-    billedOn: `${month}-01`,
+    billedOn: invoiceBilledOn(month),
     invoiceNo: currentInvoiceNo.trim(),
     amount: Number(currentAmount) || org.total,
     paid: 0,
-    dueOn: billing.monthEndOn,
+    dueOn: invoiceDueOn(month),
   });
 
   // 会社・法人などは「御中」、個人事業主は「様」
@@ -745,13 +748,19 @@ export function MonthlyBillingSection({
                         今回の請求書番号と実際の請求金額を保存すると、月ごとの記録として残ります。
                         入金があったら入金済み額・入金日を記録してください（「全額入金」で一括記録）。
                         残額が残っている請求は督促状の一覧に自動で載り、参考合計は今回のご請求と合算した金額になります。
+                        請求日は対象月の翌月1日、支払期限はその月末です（例: 対象月2026年6月 → 請求日2026年7月1日）。
                         過去の未入金分は「過去分の請求を追加」から対象の年月を選んで登録できます。
                         表の請求書番号・請求金額はあとから直接直せます（欄から離れると保存されます）。
                       </p>
 
                       {/* 今回（対象月）の請求の保存 */}
                       <div className="flex flex-wrap items-end gap-2 rounded-lg bg-background p-2.5">
-                        <span className="text-xs font-bold">{monthLabel(month)}分の請求</span>
+                        <div className="leading-tight">
+                          <span className="text-xs font-bold">{monthLabel(month)}分の請求</span>
+                          <span className="block text-[10px] text-muted">
+                            請求日 {ymdText(invoiceBilledOn(month))}
+                          </span>
+                        </div>
                         <label className="flex flex-col gap-0.5">
                           <span className="text-[10px] font-bold text-muted">請求書番号</span>
                           <input
@@ -813,6 +822,12 @@ export function MonthlyBillingSection({
                                   className="min-h-[36px] rounded-lg border border-border bg-surface px-2 text-xs"
                                 />
                               </label>
+                              <div className="flex flex-col gap-0.5">
+                                <span className="text-[10px] font-bold text-muted">請求日</span>
+                                <span className="flex min-h-[36px] items-center text-xs tabular-nums">
+                                  {isMonthStr(pastMonth) ? ymdText(invoiceBilledOn(pastMonth)) : "—"}
+                                </span>
+                              </div>
                               <label className="flex flex-col gap-0.5">
                                 <span className="text-[10px] font-bold text-muted">請求書番号</span>
                                 <input
@@ -886,6 +901,7 @@ export function MonthlyBillingSection({
                             <thead>
                               <tr className="border-b border-border text-left text-muted">
                                 <th className="py-1.5 pr-2 font-bold">対象月</th>
+                                <th className="py-1.5 pr-2 font-bold">請求日</th>
                                 <th className="py-1.5 pr-2 font-bold">請求書番号</th>
                                 <th className="py-1.5 pr-2 text-right font-bold">請求金額</th>
                                 <th className="py-1.5 pr-2 text-right font-bold">入金済み額</th>
@@ -901,6 +917,9 @@ export function MonthlyBillingSection({
                                 return (
                                   <tr key={inv.id} className="border-b border-border/60">
                                     <td className="py-1.5 pr-2 tabular-nums">{monthLabel(inv.month)}</td>
+                                    <td className="py-1.5 pr-2 tabular-nums">
+                                      {ymdText(invoiceBilledOn(inv.month))}
+                                    </td>
                                     <td className="py-1.5 pr-2">
                                       <input
                                         key={`${inv.id}-no-${inv.invoice_no}`}

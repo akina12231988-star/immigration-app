@@ -4,6 +4,8 @@ import {
   billingRowFor,
   currentMonth,
   daysText,
+  invoiceBilledOn,
+  invoiceDueOn,
   isBilledInMonth,
   isBillableResidence,
   isMonthStr,
@@ -263,5 +265,24 @@ describe("billingExclusionReason（名簿に載らない理由）", () => {
     );
     // 対象月内の退職は名簿に載る（退職日まで日割）ので null
     expect(billingExclusionReason({ ...base, leaving_on: "2026-08-10" }, "2026-08")).toBeNull();
+  });
+});
+
+describe("請求日・支払期限", () => {
+  it("請求日は対象月の翌月1日", () => {
+    expect(invoiceBilledOn("2026-06")).toBe("2026-07-01");
+    expect(invoiceBilledOn("2026-08")).toBe("2026-09-01");
+  });
+  it("年をまたぐ対象月でも翌年1月1日になる", () => {
+    expect(invoiceBilledOn("2026-12")).toBe("2027-01-01");
+    expect(invoiceDueOn("2026-12")).toBe("2027-01-31");
+  });
+  it("支払期限は請求日と同じ月の末日（うるう年も正しい）", () => {
+    expect(invoiceDueOn("2026-06")).toBe("2026-07-31");
+    expect(invoiceDueOn("2028-01")).toBe("2028-02-29");
+  });
+  it("年月の形でなければ空文字", () => {
+    expect(invoiceBilledOn("2026-13")).toBe("");
+    expect(invoiceDueOn("")).toBe("");
   });
 });
