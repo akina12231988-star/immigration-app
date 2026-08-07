@@ -29,6 +29,7 @@ import { WorkerAddressHistory } from "@/components/workers/WorkerAddressHistory"
 import { WorkerDependents } from "@/components/workers/WorkerDependents";
 import { WorkerEmploymentStarts } from "@/components/workers/WorkerEmploymentStarts";
 import { WorkerSalesResignation } from "@/components/workers/WorkerSalesResignation";
+import { WorkerPermitSalesNos } from "@/components/workers/WorkerPermitSalesNos";
 import { WorkerRecurringSales } from "@/components/workers/WorkerRecurringSales";
 import { NotionTransferButton } from "@/components/workers/NotionTransferButton";
 import { Card } from "@/components/ui/Card";
@@ -586,6 +587,9 @@ export function WorkerDetail({
           />
         </>
       )}
+
+      {/* 許可売上No.・保険No.（売上明細の伝票番号をまとめて見る・直す） */}
+      <WorkerPermitSalesNos workerId={worker.id} canEdit={canEdit} />
 
       {/* 定期売上（毎月の支援代）。定期売上No.が未登録ならここから登録できる */}
       <WorkerRecurringSales

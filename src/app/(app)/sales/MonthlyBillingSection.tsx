@@ -22,6 +22,11 @@ import { createClient } from "@/lib/supabase/client";
 import { setWorkerRecurringSalesNo } from "@/lib/supabase/queries/workers";
 import { updateOrganization } from "@/lib/supabase/queries/organizations";
 import {
+  listWorkerSalesNos,
+  setSalesEntryFreeeNo,
+  type WorkerSalesNos,
+} from "@/lib/supabase/queries/sales";
+import {
   addMonthlySupportRegistration,
   clearMonthlySupportRegistration,
   deleteMonthlySupportRegistration,
@@ -186,6 +191,45 @@ export function MonthlyBillingSection({
       const cmp = av.localeCompare(bv, "ja");
       return salesNoSort === "asc" ? cmp : -cmp;
     });
+  };
+
+  // 許可売上No.・保険No.（売上明細の伝票番号を1人1つにまとめたもの）。
+  // 番号の実体は sales_entries なので、ここでの編集はその行を書き換える
+  const [salesNos2, setSalesNos2] = useState<Record<string, WorkerSalesNos>>({});
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve().then(() =>
+      listWorkerSalesNos(createClient())
+        .then((map) => {
+          if (!cancelled) setSalesNos2(map);
+        })
+        .catch(() => {
+          // 売上明細が未作成でも名簿は使えるようにする
+          if (!cancelled) setSalesNos2({});
+        }),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 名簿から伝票番号を直したときは、その売上明細の行を書き換える
+  const saveEntryNo = async (
+    workerId: string,
+    key: "permit" | "insurance",
+    entryId: string,
+    value: string,
+  ) => {
+    setSalesNos2((prev) => {
+      const cur = prev[workerId];
+      if (!cur?.[key]) return prev;
+      return { ...prev, [workerId]: { ...cur, [key]: { ...cur[key], freeeNo: value } } };
+    });
+    try {
+      await setSalesEntryFreeeNo(createClient(), entryId, value);
+    } catch (err) {
+      setError(errorMessage(err, "売上No.の保存に失敗しました"));
+    }
   };
 
   // ◯月分の支援代をfreeeに登録した記録（worker_id → 記録）。対象の年月ごとに読み込む
@@ -1442,6 +1486,8 @@ export function MonthlyBillingSection({
                             )}
                           </button>
                         </th>
+                        <th className="py-1.5 pr-2 font-bold">許可売上No.</th>
+                        <th className="py-1.5 pr-2 font-bold">保険No.</th>
                         <th className="py-1.5 pr-2 text-right font-bold">支援代（月額）</th>
                         <th className="py-1.5 pr-2 font-bold">支援費算定期間</th>
                         <th className="py-1.5 pr-2 font-bold">日数</th>
@@ -1527,6 +1573,23 @@ export function MonthlyBillingSection({
                               )}
                             </div>
                           </td>
+                          {/* 許可売上No.・保険No.（売上明細の伝票番号をその場で直せる） */}
+                          <SalesNoCell
+                            entry={salesNos2[row.worker.id]?.permit ?? null}
+                            canEdit={canEdit}
+                            placeholder="許可売上No."
+                            onSave={(v, entryId) =>
+                              void saveEntryNo(row.worker.id, "permit", entryId, v)
+                            }
+                          />
+                          <SalesNoCell
+                            entry={salesNos2[row.worker.id]?.insurance ?? null}
+                            canEdit={canEdit}
+                            placeholder="保険No."
+                            onSave={(v, entryId) =>
+                              void saveEntryNo(row.worker.id, "insurance", entryId, v)
+                            }
+                          />
                           <td className="py-1.5 pr-2 text-right tabular-nums">
                             {row.monthlyFee > 0 ? formatSalesYen(row.monthlyFee) : "未登録"}
                           </td>
@@ -1583,5 +1646,47 @@ export function MonthlyBillingSection({
         })
       )}
     </div>
+  );
+}
+
+// 許可売上No.・保険No.の1マス。売上明細の行があればその場で直せる。
+// 明細が無い人は空欄のまま（申請詳細の売上登録で作られる）
+function SalesNoCell({
+  entry,
+  canEdit,
+  placeholder,
+  onSave,
+}: {
+  entry: { entryId: string; freeeNo: string; itemName: string } | null;
+  canEdit: boolean;
+  placeholder: string;
+  onSave: (value: string, entryId: string) => void;
+}) {
+  if (!entry) {
+    return (
+      <td className="py-1.5 pr-2 text-muted" title="売上明細がまだありません（申請詳細の売上登録で作られます）">
+        —
+      </td>
+    );
+  }
+  if (!canEdit) {
+    return <td className="py-1.5 pr-2 tabular-nums">{entry.freeeNo || "—"}</td>;
+  }
+  return (
+    <td className="py-1.5 pr-2">
+      <input
+        key={`${entry.entryId}-${entry.freeeNo}`}
+        defaultValue={entry.freeeNo}
+        onBlur={(e) => {
+          const v = e.target.value.trim();
+          if (v !== entry.freeeNo) onSave(v, entry.entryId);
+        }}
+        placeholder={placeholder}
+        title={entry.itemName}
+        className={`w-32 rounded-lg border px-1.5 py-1 text-xs ${
+          entry.freeeNo ? "border-border bg-background" : "border-seal/40 bg-seal/5"
+        }`}
+      />
+    </td>
   );
 }

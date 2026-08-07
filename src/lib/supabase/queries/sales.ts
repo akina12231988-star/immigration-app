@@ -147,3 +147,71 @@ export async function upsertMonthlySupportNote(
   if (error) throw error;
   return data as MonthlySupportRegistration;
 }
+
+// ---- 許可売上No.・保険No.（売上明細の伝票番号を1人1つにまとめたもの） ----
+// 許可時の売上（申請）と特定技能総合保険の freee 伝票番号は sales_entries に入っている。
+// 名簿や外国人詳細で見やすくするため、外国人ごとに一番新しい1件を取り出す。
+// 番号そのものは sales_entries 側で持ち続けるので、申請ごとの履歴は残る。
+
+export interface WorkerSalesNo {
+  entryId: string; // 書き換え先の sales_entries の行
+  freeeNo: string;
+  itemName: string;
+  createdAt: string;
+}
+
+export interface WorkerSalesNos {
+  permit: WorkerSalesNo | null; // 許可売上No.（申請の明細）
+  insurance: WorkerSalesNo | null; // 保険No.（特定技能総合保険の明細）
+}
+
+// 外国人ID → 許可売上No.・保険No.
+export async function listWorkerSalesNos(
+  supabase: SupabaseClient,
+): Promise<Record<string, WorkerSalesNos>> {
+  const { data, error } = await supabase
+    .from("sales_entries")
+    .select("id, worker_id, kind, item_name, freee_no, created_at")
+    .in("kind", ["申請", "保険"])
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+
+  const rows = (data as
+    | {
+        id: string;
+        worker_id: string;
+        kind: string;
+        item_name: string;
+        freee_no: string;
+        created_at: string;
+      }[]
+    | null) ?? [];
+
+  const out: Record<string, WorkerSalesNos> = {};
+  for (const r of rows) {
+    const bucket = (out[r.worker_id] ??= { permit: null, insurance: null });
+    const key = r.kind === "保険" ? "insurance" : "permit";
+    // 新しい順に並んでいるので、最初に来たものだけを採る
+    if (bucket[key]) continue;
+    bucket[key] = {
+      entryId: r.id,
+      freeeNo: r.freee_no,
+      itemName: r.item_name,
+      createdAt: r.created_at,
+    };
+  }
+  return out;
+}
+
+// 売上明細の伝票番号だけを書き換える（名簿・外国人詳細からの直接編集用）
+export async function setSalesEntryFreeeNo(
+  supabase: SupabaseClient,
+  entryId: string,
+  freeeNo: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("sales_entries")
+    .update({ freee_no: freeeNo })
+    .eq("id", entryId);
+  if (error) throw error;
+}
