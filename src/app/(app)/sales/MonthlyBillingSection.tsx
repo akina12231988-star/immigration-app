@@ -315,7 +315,7 @@ export function MonthlyBillingSection({
     }
     if (renewed.length > 0) {
       if (newly.length > 0) lines.push("");
-      lines.push("＜更新許可おりた人＞");
+      lines.push("＜更新許可＞");
       pushVisaGroups(renewed);
     }
     if (left.length > 0) {
