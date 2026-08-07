@@ -1135,6 +1135,17 @@ export function MonthlyBillingSection({
                                           全額入金
                                         </button>
                                       )}
+                                      {/* 入金日が入っている記録は、その入金に対する領収書を発行できる */}
+                                      {inv.paid > 0 && inv.paid_on && (
+                                        <Link
+                                          href={`/sales/receipt?org=${encodeURIComponent(
+                                            org.organizationId,
+                                          )}&month=${inv.month}`}
+                                          className="mr-2 text-[10px] font-bold text-brand underline"
+                                        >
+                                          領収書
+                                        </Link>
+                                      )}
                                       <button
                                         type="button"
                                         aria-label="この記録を削除"
