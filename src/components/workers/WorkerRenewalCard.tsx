@@ -40,6 +40,20 @@ const STATUS_CLASS: Record<ResidenceRenewalStatus, string> = {
   帰国: "bg-background text-muted",
 };
 
+// カードの表示・編集に使う項目だけ（一覧は列を絞って取るため全項目は持たない）
+export type RenewalCardWorker = Pick<
+  Worker,
+  | "id"
+  | "name"
+  | "nationality"
+  | "residence_status"
+  | "residence_expiry_date"
+  | "residence_renewal_status"
+  | "residence_renewal_todo"
+  | "notion_link"
+  | "messenger_link"
+>;
+
 // 在留更新対象の1件を表示・編集するカード（在留更新対象ページと外国人管理で共用）
 export function WorkerRenewalCard({
   worker,
@@ -47,7 +61,7 @@ export function WorkerRenewalCard({
   today,
   canEdit,
 }: {
-  worker: Worker;
+  worker: RenewalCardWorker;
   orgName?: string | null;
   today: string;
   canEdit: boolean;

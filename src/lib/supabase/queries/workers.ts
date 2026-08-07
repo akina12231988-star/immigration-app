@@ -134,20 +134,57 @@ export async function listWorkersForResignation(
   return (data as WorkerForResignation[]) ?? [];
 }
 
-// 在留更新・パスポート更新の一覧用: 外国人＋現在の所属機関名
-export interface WorkerWithOrg extends Worker {
+// 在留更新・パスポート更新の一覧用: 外国人＋現在の所属機関名。
+// 一覧は全件を取るので、表示・判定に使う列だけに絞って通信量を抑える
+// （メモ・家族・住所・扶養などの長い項目は詳細ページで取る）。
+// 列を足すときは WORKER_LIST_COLUMNS と型の両方に足すこと
+export const WORKER_LIST_FIELDS = [
+  "id",
+  "name",
+  "kana",
+  "nationality",
+  "birth",
+  "gender",
+  "residence_card_no",
+  "field",
+  "support",
+  "status",
+  "current_organization_id",
+  "residence_status",
+  "residence_permit_date",
+  "residence_expiry_date",
+  "passport_no",
+  "passport_expiry_date",
+  "notion_link",
+  "messenger_link",
+  "residence_renewal_status",
+  "residence_renewal_todo",
+  "application_prep_kind",
+  "leaving_on",
+  "employment_start_on",
+  "assigned_office",
+  "residence_note",
+  "recurring_sales_no",
+  "ssw_insurance_expiry_date",
+  "ssw_insurance_self_join",
+  "worker_code",
+] as const;
+
+const WORKER_LIST_COLUMNS = `${WORKER_LIST_FIELDS.join(", ")}, organizations(name)`;
+
+export type WorkerWithOrg = Pick<Worker, (typeof WORKER_LIST_FIELDS)[number]> & {
   organizations: { name: string } | null;
-}
+};
 
 export async function listWorkersWithOrg(
   supabase: SupabaseClient,
 ): Promise<WorkerWithOrg[]> {
   const { data, error } = await supabase
     .from("workers")
-    .select("*, organizations(name)")
+    .select(WORKER_LIST_COLUMNS)
     .order("residence_expiry_date", { ascending: true, nullsFirst: false });
   if (error) throw error;
-  return (data as WorkerWithOrg[]) ?? [];
+  return (data as unknown as WorkerWithOrg[]) ?? [];
 }
 
 // 入社書類メール用: 氏名と初期値（雇用開始日・配属先・居住地・許可日・所属）を取得
