@@ -3,8 +3,10 @@ import { summarizeMonthlyBilling, type BillingOrg, type BillingWorker } from "./
 import {
   ROSTER_HEADERS,
   billingFileName,
+  leftThisMonthSheet,
   monthlyBillingSheets,
   orgBillingSheets,
+  permittedThisMonthSheet,
   summarySheet,
 } from "./monthly-billing-sheets";
 
@@ -112,10 +114,12 @@ describe("orgBillingSheets", () => {
 });
 
 describe("monthlyBillingSheets / billingFileName", () => {
-  it("1シート目がサマリー、以降が機関ごと", () => {
+  it("サマリー・当月許可者・当月退職者のあとに機関ごとの名簿が並ぶ", () => {
     const sheets = monthlyBillingSheets(billing);
     expect(sheets.map((s) => s.name)).toEqual([
       "サマリー",
+      "当月許可者",
+      "当月退職者",
       "（通貨💰）髙濱　伸吉",
       "有限会社　國崎青果",
     ]);
@@ -126,5 +130,64 @@ describe("monthlyBillingSheets / billingFileName", () => {
     expect(billingFileName(billing, "有限会社　國崎青果")).toBe(
       "在籍名簿_2026年7月_有限会社　國崎青果.xlsx",
     );
+  });
+});
+
+describe("当月許可者・当月退職者のシート", () => {
+  // 新規（許可日から日割）・更新（満額（更新月））・前月以前の許可・当月退職を混ぜる
+  const mixed = summarizeMonthlyBilling(
+    [
+      worker({ name: "以前から在籍" }), // 許可日2025-01-01。許可者リストには載らない
+      worker({
+        name: "新規のひと",
+        residence_permit_date: "2026-07-24",
+        employment_start_on: "2026-08-01",
+      }),
+      worker({
+        name: "更新のひと",
+        residence_permit_date: "2026-07-08",
+        employment_start_on: "2025-07-28",
+      }),
+      worker({ name: "退職のひと", leaving_on: "2026-07-10" }),
+    ],
+    orgs,
+    MONTH,
+  );
+
+  it("当月許可者は許可日が対象月の人だけ・許可日の古い順", () => {
+    const sheet = permittedThisMonthSheet(mixed);
+    expect(sheet.name).toBe("当月許可者");
+    const names = sheet.rows.slice(4).map((r) => r[2]);
+    expect(names).toEqual(["更新のひと", "新規のひと"]); // 7/8 → 7/24
+    // 新規と更新は区分で見分けられる
+    const kinds = sheet.rows.slice(4).map((r) => r[11]);
+    expect(kinds).toEqual(["満額（更新月）", "許可日から日割"]);
+    expect(sheet.rows[1]).toContain("2名");
+  });
+
+  it("当月退職者は退職日が対象月の人だけ", () => {
+    const sheet = leftThisMonthSheet(mixed);
+    expect(sheet.name).toBe("当月退職者");
+    const rows = sheet.rows.slice(4);
+    expect(rows.map((r) => r[2])).toEqual(["退職のひと"]);
+    expect(rows[0][6]).toBe("2026-07-10"); // 退職日
+    expect(sheet.rows[1]).toContain("1名");
+  });
+
+  it("該当者がいなければその旨を書く", () => {
+    const none = summarizeMonthlyBilling([worker({ name: "以前から在籍" })], orgs, MONTH);
+    expect(permittedThisMonthSheet(none).rows.at(-1)).toEqual([
+      "当月に在留許可が下りた方はいません。",
+    ]);
+    expect(leftThisMonthSheet(none).rows.at(-1)).toEqual(["当月に退職された方はいません。"]);
+  });
+
+  it("ブックはサマリー・当月許可者・当月退職者・機関ごとの名簿の順に並ぶ", () => {
+    const sheets = monthlyBillingSheets(mixed);
+    expect(sheets.slice(0, 3).map((s) => s.name)).toEqual([
+      "サマリー",
+      "当月許可者",
+      "当月退職者",
+    ]);
   });
 });
