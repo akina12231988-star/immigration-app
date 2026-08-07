@@ -16,6 +16,9 @@ export function ReceiptSheet({
   invoiceNo,
   amount,
   paidOn,
+  invoiceAmountExcl,
+  invoiceTax,
+  invoiceAmount,
 }: {
   orgName: string;
   honorific: string;
@@ -23,8 +26,21 @@ export function ReceiptSheet({
   invoiceNo: string;
   amount: number;
   paidOn: string;
+  invoiceAmountExcl: number;
+  invoiceTax: number;
+  invoiceAmount: number;
 }) {
-  const receipt = buildReceipt({ orgName, honorific, month, invoiceNo, amount, paidOn });
+  const receipt = buildReceipt({
+    orgName,
+    honorific,
+    month,
+    invoiceNo,
+    amount,
+    paidOn,
+    invoiceAmountExcl,
+    invoiceTax,
+    invoiceAmount,
+  });
 
   return (
     <>
@@ -72,6 +88,10 @@ export function ReceiptSheet({
               </span>
               <span className="text-sm font-bold">也</span>
             </div>
+
+            {receipt.taxText && (
+              <p className="mt-1 text-center text-[11px]">{receipt.taxText}</p>
+            )}
 
             <p className="mt-3 text-center text-xs">
               但し　{receipt.purpose}

@@ -267,3 +267,17 @@ export function guessAppKind(visa: string, content: string): SalesAppKind {
 export function formatSalesYen(n: number): string {
   return `${Math.round(n).toLocaleString("ja-JP")}円`;
 }
+
+// ---- 消費税（請求・入金の記録の税抜・消費税・税込） ----
+
+export const CONSUMPTION_TAX_RATE = 0.1;
+
+// 税抜金額からの消費税額（1円未満は切り捨て）
+export function taxFromExcl(amountExcl: number): number {
+  return Math.floor(Math.max(amountExcl, 0) * CONSUMPTION_TAX_RATE);
+}
+
+// 税抜＋消費税が税込と合っているか（合っていなければ画面で注意を出す）
+export function taxBreakdownMatches(amountExcl: number, tax: number, amount: number): boolean {
+  return amountExcl + tax === amount;
+}

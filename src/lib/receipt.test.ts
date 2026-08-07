@@ -24,6 +24,9 @@ describe("領収書", () => {
       invoiceNo: "INV-0000001413",
       amount: 55000,
       paidOn: "2026-08-07",
+      invoiceAmountExcl: 50000,
+      invoiceTax: 5000,
+      invoiceAmount: 55000,
     });
     expect(r.addressee).toBe("有限会社　國崎青果　御中");
     expect(r.amountText).toBe("¥55,000-");
@@ -31,6 +34,39 @@ describe("領収書", () => {
     expect(r.issuedOn).toBe("2026年8月7日");
     expect(r.issuer.name).toBe("登録支援機関 VUONG VAN THANH");
     expect(r.issuer.registrationNo).toBe("20登-005746");
+    // 全額入金なので内消費税額を載せる
+    expect(r.taxText).toBe("（内消費税額 ¥5,000-／税抜 ¥50,000-）");
+  });
+
+  it("一部入金では内消費税額を載せない（請求書の税額をそのまま書けないため）", () => {
+    const r = buildReceipt({
+      orgName: "有限会社　國崎青果",
+      honorific: "御中",
+      month: "2026-07",
+      invoiceNo: "INV-0000001413",
+      amount: 30000, // 55,000円の請求に対して一部だけ入金
+      paidOn: "2026-08-07",
+      invoiceAmountExcl: 50000,
+      invoiceTax: 5000,
+      invoiceAmount: 55000,
+    });
+    expect(r.amountText).toBe("¥30,000-");
+    expect(r.taxText).toBeNull();
+  });
+
+  it("内訳が入っていなければ内消費税額を載せない", () => {
+    const r = buildReceipt({
+      orgName: "井上洋介",
+      honorific: "様",
+      month: "2026-07",
+      invoiceNo: "",
+      amount: 55000,
+      paidOn: "2026-08-07",
+      invoiceAmountExcl: 0,
+      invoiceTax: 0,
+      invoiceAmount: 55000,
+    });
+    expect(r.taxText).toBeNull();
   });
 
   it("発行日は入金日（請求日ではない）", () => {
@@ -41,6 +77,9 @@ describe("領収書", () => {
       invoiceNo: "",
       amount: 89620,
       paidOn: "2026-08-20", // 5月分を8月20日に入金
+      invoiceAmountExcl: 81473,
+      invoiceTax: 8147,
+      invoiceAmount: 89620,
     });
     expect(r.issuedOn).toBe("2026年8月20日");
     expect(r.purpose).toBe("2026年5月分 支援費として");

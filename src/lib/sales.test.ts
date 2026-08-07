@@ -11,6 +11,8 @@ import {
   SSW_INSURANCE_AMOUNT,
   supportFeeName,
   supportItemName,
+  taxBreakdownMatches,
+  taxFromExcl,
 } from "./sales";
 
 describe("日割り計算", () => {
@@ -230,5 +232,20 @@ describe("buildSalesEntries: 特定活動→特定技能の移行（fullMonthSup
     expect(prorated?.period_from).toBe("2026-07-17");
     expect(prorated?.period_to).toBe("2026-07-31");
     expect(entries.some((e) => e.kind === "支援代満額")).toBe(false);
+  });
+});
+
+describe("消費税（請求・入金の記録）", () => {
+  it("税抜からの消費税は10%・1円未満切り捨て", () => {
+    expect(taxFromExcl(50000)).toBe(5000);
+    expect(taxFromExcl(81473)).toBe(8147); // 8147.3 → 切り捨て
+    expect(taxFromExcl(0)).toBe(0);
+    expect(taxFromExcl(-100)).toBe(0);
+  });
+
+  it("税抜＋消費税が税込と合っているか判定する", () => {
+    expect(taxBreakdownMatches(50000, 5000, 55000)).toBe(true);
+    expect(taxBreakdownMatches(50000, 5000, 55001)).toBe(false);
+    expect(taxBreakdownMatches(0, 0, 0)).toBe(true);
   });
 });
