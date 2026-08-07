@@ -232,6 +232,25 @@ export function MonthlyBillingSection({
   const [invBusy, setInvBusy] = useState(false);
   const [currentInvoiceNo, setCurrentInvoiceNo] = useState("");
   const [currentAmount, setCurrentAmount] = useState("");
+  // 過去分（対象月より前の未入金など）をあとから登録するための入力
+  const [showPastForm, setShowPastForm] = useState(false);
+  const [pastMonth, setPastMonth] = useState("");
+  const [pastInvoiceNo, setPastInvoiceNo] = useState("");
+  const [pastAmount, setPastAmount] = useState("");
+  const [pastPaid, setPastPaid] = useState("");
+  const [pastPaidOn, setPastPaidOn] = useState("");
+
+  // 記録は新しい月から順に並べる（過去分を追加しても正しい位置に入るようにする）
+  const sortInvoices = (rows: OrgInvoice[]): OrgInvoice[] =>
+    [...rows].sort((a, b) => (a.month < b.month ? 1 : a.month > b.month ? -1 : 0));
+
+  const resetPastForm = () => {
+    setPastMonth("");
+    setPastInvoiceNo("");
+    setPastAmount("");
+    setPastPaid("");
+    setPastPaidOn("");
+  };
 
   // 督促状セクションを開いたら保存済みの記録を読み込み、今回分の入力に反映する
   const toggleReminder = async (org: MonthlyBillingOrg) => {
@@ -242,7 +261,7 @@ export function MonthlyBillingSection({
     setError(null);
     try {
       const rows = await listOrgInvoices(createClient(), org.organizationId);
-      setOrgInvoices(rows);
+      setOrgInvoices(sortInvoices(rows));
       const cur = rows.find((r) => r.month === month);
       setCurrentInvoiceNo(cur?.invoice_no ?? "");
       setCurrentAmount(String(cur?.amount || org.total || ""));
@@ -268,10 +287,46 @@ export function MonthlyBillingSection({
         amount: Number(currentAmount) || 0,
         due_on: billing.monthEndOn,
       });
-      setOrgInvoices((prev) => [row, ...prev.filter((r) => r.id !== row.id)]);
+      setOrgInvoices((prev) => sortInvoices([row, ...prev.filter((r) => r.id !== row.id)]));
     } catch (err) {
       setError(
         dbErrorMessage(err, "0070_org_invoices.sql", errorMessage(err, "請求記録の保存に失敗しました")),
+      );
+    } finally {
+      setInvBusy(false);
+    }
+  };
+
+  // 過去分の請求をあとから登録する（未入金のまま残っている過去の請求を督促状に載せるため）。
+  // 入金済み額・入金日も同時に入れられる（一部入金・入金済みの記録もそのまま残せる）
+  const savePastInvoice = async (org: MonthlyBillingOrg) => {
+    if (!isMonthStr(pastMonth)) {
+      setError("対象の年月を選んでください");
+      return;
+    }
+    setInvBusy(true);
+    setError(null);
+    try {
+      const row = await upsertOrgInvoice(createClient(), {
+        organization_id: org.organizationId,
+        month: pastMonth,
+        billed_on: `${pastMonth}-01`,
+        invoice_no: pastInvoiceNo.trim(),
+        amount: Number(pastAmount) || 0,
+        due_on: monthEnd(`${pastMonth}-01`),
+        paid: Number(pastPaid) || 0,
+        paid_on: pastPaidOn || null,
+      });
+      setOrgInvoices((prev) => sortInvoices([row, ...prev.filter((r) => r.id !== row.id)]));
+      // 対象月と同じ月を入れた場合は「今回分」の入力欄にも反映しておく
+      if (row.month === month) {
+        setCurrentInvoiceNo(row.invoice_no);
+        setCurrentAmount(String(row.amount || ""));
+      }
+      resetPastForm();
+    } catch (err) {
+      setError(
+        dbErrorMessage(err, "0070_org_invoices.sql", errorMessage(err, "過去分の請求の保存に失敗しました")),
       );
     } finally {
       setInvBusy(false);
@@ -284,6 +339,11 @@ export function MonthlyBillingSection({
     patch: Partial<Pick<OrgInvoice, "invoice_no" | "amount" | "paid" | "paid_on" | "note">>,
   ) => {
     setOrgInvoices((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+    // 対象月の行を書き換えたときは「今回分」の入力欄にも合わせる
+    if (orgInvoices.find((r) => r.id === id)?.month === month) {
+      if (patch.invoice_no !== undefined) setCurrentInvoiceNo(patch.invoice_no);
+      if (patch.amount !== undefined) setCurrentAmount(String(patch.amount || ""));
+    }
     try {
       await updateOrgInvoice(createClient(), id, patch);
     } catch (err) {
@@ -600,6 +660,8 @@ export function MonthlyBillingSection({
                     setOrgInvoices([]);
                     setCurrentInvoiceNo("");
                     setCurrentAmount("");
+                    setShowPastForm(false);
+                    resetPastForm();
                   }}
                   className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
                 >
@@ -683,6 +745,8 @@ export function MonthlyBillingSection({
                         今回の請求書番号と実際の請求金額を保存すると、月ごとの記録として残ります。
                         入金があったら入金済み額・入金日を記録してください（「全額入金」で一括記録）。
                         残額が残っている請求は督促状の一覧に自動で載り、参考合計は今回のご請求と合算した金額になります。
+                        過去の未入金分は「過去分の請求を追加」から対象の年月を選んで登録できます。
+                        表の請求書番号・請求金額はあとから直接直せます（欄から離れると保存されます）。
                       </p>
 
                       {/* 今回（対象月）の請求の保存 */}
@@ -721,6 +785,90 @@ export function MonthlyBillingSection({
                         )}
                       </div>
 
+                      {/* 過去分の請求をあとから登録する（過去の未入金を督促状に載せるため） */}
+                      <div className="rounded-lg border border-dashed border-border p-2.5">
+                        <button
+                          type="button"
+                          onClick={() => setShowPastForm((v) => !v)}
+                          className="flex items-center gap-1 text-xs font-bold text-brand"
+                        >
+                          {showPastForm ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                          過去分の請求を追加（未入金の記録を入れる）
+                        </button>
+                        {showPastForm && (
+                          <div className="mt-2 space-y-2">
+                            <p className="text-[11px] leading-relaxed text-muted">
+                              このシステムを使う前に請求した分など、過去の請求をあとから登録できます。
+                              入金がまだなら入金済み額は空のままにしてください（残額がそのまま督促状に載ります）。
+                              一部だけ入金があった場合は、その金額と入金日を入れてください。
+                            </p>
+                            <div className="flex flex-wrap items-end gap-2">
+                              <label className="flex flex-col gap-0.5">
+                                <span className="text-[10px] font-bold text-muted">対象の年月</span>
+                                <input
+                                  type="month"
+                                  value={pastMonth}
+                                  max={month}
+                                  onChange={(e) => setPastMonth(e.target.value)}
+                                  className="min-h-[36px] rounded-lg border border-border bg-surface px-2 text-xs"
+                                />
+                              </label>
+                              <label className="flex flex-col gap-0.5">
+                                <span className="text-[10px] font-bold text-muted">請求書番号</span>
+                                <input
+                                  value={pastInvoiceNo}
+                                  onChange={(e) => setPastInvoiceNo(e.target.value)}
+                                  placeholder="INV-…"
+                                  className="min-h-[36px] w-40 rounded-lg border border-border bg-surface px-2 text-xs"
+                                />
+                              </label>
+                              <label className="flex flex-col gap-0.5">
+                                <span className="text-[10px] font-bold text-muted">請求金額</span>
+                                <input
+                                  value={pastAmount}
+                                  onChange={(e) => setPastAmount(e.target.value.replace(/[^0-9]/g, ""))}
+                                  inputMode="numeric"
+                                  placeholder="0"
+                                  className="min-h-[36px] w-28 rounded-lg border border-border bg-surface px-2 text-right text-xs tabular-nums"
+                                />
+                              </label>
+                              <label className="flex flex-col gap-0.5">
+                                <span className="text-[10px] font-bold text-muted">入金済み額（任意）</span>
+                                <input
+                                  value={pastPaid}
+                                  onChange={(e) => setPastPaid(e.target.value.replace(/[^0-9]/g, ""))}
+                                  inputMode="numeric"
+                                  placeholder="0"
+                                  className="min-h-[36px] w-28 rounded-lg border border-border bg-surface px-2 text-right text-xs tabular-nums"
+                                />
+                              </label>
+                              <label className="flex flex-col gap-0.5">
+                                <span className="text-[10px] font-bold text-muted">入金日（任意）</span>
+                                <input
+                                  type="date"
+                                  value={pastPaidOn}
+                                  onChange={(e) => setPastPaidOn(e.target.value)}
+                                  className="min-h-[36px] rounded-lg border border-border bg-surface px-2 text-xs"
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                disabled={invBusy || !pastMonth}
+                                onClick={() => void savePastInvoice(org)}
+                                className="min-h-[36px] rounded-lg bg-brand px-3 text-xs font-bold text-brand-foreground disabled:opacity-50"
+                              >
+                                {invBusy ? "保存中…" : "この月を追加"}
+                              </button>
+                            </div>
+                            {pastMonth && orgInvoices.some((r) => r.month === pastMonth) && (
+                              <p className="text-[11px] font-bold text-seal">
+                                {monthLabel(pastMonth)}分はすでに記録があります。保存すると上書きされます。
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
                       {/* 保存済みの請求と入金の記録（新しい月から） */}
                       {invLoading ? (
                         <p className="flex items-center gap-1.5 text-xs text-muted">
@@ -729,7 +877,8 @@ export function MonthlyBillingSection({
                         </p>
                       ) : orgInvoices.length === 0 ? (
                         <p className="text-xs text-muted">
-                          まだ記録がありません。上の「保存」で今回分から記録を始められます。
+                          まだ記録がありません。上の「保存」で今回分から、
+                          「過去分の請求を追加」で以前の未入金分から記録を始められます。
                         </p>
                       ) : (
                         <div className="overflow-x-auto">
@@ -752,9 +901,30 @@ export function MonthlyBillingSection({
                                 return (
                                   <tr key={inv.id} className="border-b border-border/60">
                                     <td className="py-1.5 pr-2 tabular-nums">{monthLabel(inv.month)}</td>
-                                    <td className="py-1.5 pr-2">{inv.invoice_no || "—"}</td>
-                                    <td className="py-1.5 pr-2 text-right tabular-nums">
-                                      {formatSalesYen(inv.amount)}
+                                    <td className="py-1.5 pr-2">
+                                      <input
+                                        key={`${inv.id}-no-${inv.invoice_no}`}
+                                        defaultValue={inv.invoice_no}
+                                        onBlur={(e) => {
+                                          const v = e.target.value.trim();
+                                          if (v !== inv.invoice_no) void patchInvoice(inv.id, { invoice_no: v });
+                                        }}
+                                        placeholder="INV-…"
+                                        className="w-36 rounded-lg border border-border bg-background px-1.5 py-1 text-xs"
+                                      />
+                                    </td>
+                                    <td className="py-1.5 pr-2 text-right">
+                                      <input
+                                        key={`${inv.id}-amt-${inv.amount}`}
+                                        defaultValue={inv.amount ? String(inv.amount) : ""}
+                                        onBlur={(e) => {
+                                          const v = Number(e.target.value.replace(/[^0-9]/g, "")) || 0;
+                                          if (v !== inv.amount) void patchInvoice(inv.id, { amount: v });
+                                        }}
+                                        inputMode="numeric"
+                                        placeholder="0"
+                                        className="w-24 rounded-lg border border-border bg-background px-1.5 py-1 text-right text-xs tabular-nums"
+                                      />
                                     </td>
                                     <td className="py-1.5 pr-2 text-right">
                                       <input
