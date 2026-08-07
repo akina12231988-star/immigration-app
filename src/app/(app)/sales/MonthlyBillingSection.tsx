@@ -13,6 +13,7 @@ import {
   Copy,
   Download,
   Loader2,
+  Printer,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -35,12 +36,7 @@ import {
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
 import type { MonthlySupportRegistration, OrgInvoice } from "@/types/db";
 import { dailyFee, formatSalesYen, mdText, ymdText } from "@/lib/sales";
-import {
-  reminderFileName,
-  reminderLetterSheet,
-  reminderTotal,
-  type ReminderInvoiceRow,
-} from "@/lib/reminder-letter";
+import { reminderTotal, type ReminderInvoiceRow } from "@/lib/reminder-letter";
 import {
   billingExclusionReason,
   currentMonth,
@@ -242,9 +238,9 @@ export function MonthlyBillingSection({
   const [pastPaid, setPastPaid] = useState("");
   const [pastPaidOn, setPastPaidOn] = useState("");
 
-  // 記録は新しい月から順に並べる（過去分を追加しても正しい位置に入るようにする）
+  // 記録は古い月から順に並べる（上から下へ年月が流れるように見せる）
   const sortInvoices = (rows: OrgInvoice[]): OrgInvoice[] =>
-    [...rows].sort((a, b) => (a.month < b.month ? 1 : a.month > b.month ? -1 : 0));
+    [...rows].sort((a, b) => (a.month < b.month ? -1 : a.month > b.month ? 1 : 0));
 
   const resetPastForm = () => {
     setPastMonth("");
@@ -385,31 +381,9 @@ export function MonthlyBillingSection({
     dueOn: invoiceDueOn(month),
   });
 
-  // 会社・法人などは「御中」、個人事業主は「様」
-  const honorificFor = (orgName: string): string =>
-    /会社|法人|組合|協会/.test(orgName) ? "御中" : "様";
-
-  const downloadReminder = async (org: MonthlyBillingOrg) => {
-    const unpaid = savedUnpaidRows();
-    if (unpaid.length === 0) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const sheet = reminderLetterSheet({
-        orgName: org.organizationName,
-        honorific: honorificFor(org.organizationName),
-        issuedOn: today,
-        unpaid,
-        current: currentInvoiceFor(org),
-      });
-      const blob = await buildXlsx([sheet]);
-      downloadBlob(blob, reminderFileName(org.organizationName, today));
-    } catch (err) {
-      setError(errorMessage(err, "督促状の書き出しに失敗しました"));
-    } finally {
-      setBusy(false);
-    }
-  };
+  // 督促状はA4の印刷用ページで開く（文面と一覧表をそのまま印字できる）
+  const reminderHref = (org: MonthlyBillingOrg): string =>
+    `/sales/reminder?org=${encodeURIComponent(org.organizationId)}&month=${month}`;
 
   const [copiedOrgId, setCopiedOrgId] = useState<string | null>(null);
   const copyRemarks = async (org: MonthlyBillingOrg) => {
@@ -1034,14 +1008,20 @@ export function MonthlyBillingSection({
                             )}
                           </span>
                         </span>
-                        <Button
-                          className="ml-auto"
-                          icon={<Download size={16} />}
-                          disabled={busy || savedUnpaidRows().length === 0}
-                          onClick={() => void downloadReminder(org)}
-                        >
-                          督促状エクセル
-                        </Button>
+                        {savedUnpaidRows().length > 0 ? (
+                          <Link
+                            href={reminderHref(org)}
+                            className="ml-auto inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-brand px-5 py-3 text-sm font-bold text-brand-foreground"
+                          >
+                            <Printer size={16} />
+                            督促状を印刷
+                          </Link>
+                        ) : (
+                          <span className="ml-auto inline-flex min-h-[44px] cursor-not-allowed items-center gap-2 rounded-xl bg-brand px-5 py-3 text-sm font-bold text-brand-foreground opacity-50">
+                            <Printer size={16} />
+                            督促状を印刷
+                          </span>
+                        )}
                       </div>
                       {savedUnpaidRows().length === 0 && (
                         <p className="text-[11px] text-muted">
