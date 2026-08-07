@@ -266,3 +266,35 @@ export function periodText(row: MonthlyBillingRow): string {
 export function daysText(row: MonthlyBillingRow): string {
   return `${row.days}/${row.monthDays}`;
 }
+
+// 所属機関をまたいだ1行（当月許可者・当月退職者のリスト用）
+export interface CrossOrgBillingRow {
+  org: MonthlyBillingOrg;
+  row: MonthlyBillingRow;
+}
+
+function crossOrgRows(billing: MonthlyBilling): CrossOrgBillingRow[] {
+  return billing.orgs.flatMap((org) => org.rows.map((row) => ({ org, row })));
+}
+
+// 当月に在留許可が下りた人（新規・更新の両方。見分けは区分 row.kind）。許可日の古い順
+export function permittedThisMonthRows(billing: MonthlyBilling): CrossOrgBillingRow[] {
+  return crossOrgRows(billing)
+    .filter(({ row }) => (row.worker.residence_permit_date ?? "").startsWith(billing.month))
+    .sort((a, b) => {
+      const d = (a.row.worker.residence_permit_date ?? "").localeCompare(
+        b.row.worker.residence_permit_date ?? "",
+      );
+      return d !== 0 ? d : a.row.worker.name.localeCompare(b.row.worker.name, "ja");
+    });
+}
+
+// 当月に退職した人（退職日まで日割りで請求している人）。退職日の古い順
+export function leftThisMonthRows(billing: MonthlyBilling): CrossOrgBillingRow[] {
+  return crossOrgRows(billing)
+    .filter(({ row }) => row.leftThisMonth)
+    .sort((a, b) => {
+      const d = (a.row.worker.leaving_on ?? "").localeCompare(b.row.worker.leaving_on ?? "");
+      return d !== 0 ? d : a.row.worker.name.localeCompare(b.row.worker.name, "ja");
+    });
+}

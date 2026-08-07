@@ -14,6 +14,7 @@ import {
   Download,
   Loader2,
   Printer,
+  Search,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -44,7 +45,9 @@ import {
   invoiceBilledOn,
   invoiceDueOn,
   isMonthStr,
+  leftThisMonthRows,
   monthLabel,
+  permittedThisMonthRows,
   periodText,
   summarizeMonthlyBilling,
   type BillingOrg,
@@ -147,6 +150,22 @@ export function MonthlyBillingSection({
     [merged, month, orgNameById],
   );
   const [showExcluded, setShowExcluded] = useState(false);
+
+  // 当月に在留許可が下りた人・当月に退職した人（所属機関をまたいだ一覧）。
+  // エクセルの「当月許可者」「当月退職者」シートと同じ中身を画面でも見られるようにする
+  const permittedRows = useMemo(() => permittedThisMonthRows(billing), [billing]);
+  const leftRows = useMemo(() => leftThisMonthRows(billing), [billing]);
+  const [showPermitted, setShowPermitted] = useState(false);
+  const [showLeft, setShowLeft] = useState(false);
+
+  // 所属機関名での絞り込み（空白の有無・大文字小文字は無視して部分一致）
+  const [orgQuery, setOrgQuery] = useState("");
+  const visibleOrgs = useMemo(() => {
+    const normalize = (s: string) => s.replace(/[\s　]/g, "").toLowerCase();
+    const q = normalize(orgQuery);
+    if (!q) return billing.orgs;
+    return billing.orgs.filter((o) => normalize(o.organizationName).includes(q));
+  }, [billing.orgs, orgQuery]);
 
   // 定期売上No.でのソート。未登録は常に最後（氏名順のままの集計順は billing 側）
   const sortRows = (rows: MonthlyBillingRow[]): MonthlyBillingRow[] => {
@@ -615,14 +634,154 @@ export function MonthlyBillingSection({
             )}
           </div>
         )}
+
+        {/* 当月許可者・当月退職者（エクセルの同名シートと同じ中身） */}
+        <div className="mt-3 space-y-2">
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowPermitted((v) => !v)}
+              className="flex items-center gap-1 text-xs font-bold text-brand"
+            >
+              {showPermitted ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              当月許可者リスト {permittedRows.length}名（在留許可日が{monthLabel(month)}の方）
+            </button>
+            {showPermitted && (
+              <div className="mt-2 overflow-x-auto rounded-xl bg-background p-3">
+                {permittedRows.length === 0 ? (
+                  <p className="text-xs text-muted">当月に在留許可が下りた方はいません。</p>
+                ) : (
+                  <table className="w-full min-w-[620px] border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-border text-left text-muted">
+                        <th className="py-1.5 pr-2 font-bold">許可日</th>
+                        <th className="py-1.5 pr-2 font-bold">氏名</th>
+                        <th className="py-1.5 pr-2 font-bold">所属機関</th>
+                        <th className="py-1.5 pr-2 font-bold">在留資格</th>
+                        <th className="py-1.5 pr-2 font-bold">在留期限</th>
+                        <th className="py-1.5 pr-2 font-bold">区分</th>
+                        <th className="py-1.5 text-right font-bold">支援費請求額</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {permittedRows.map(({ org, row }) => (
+                        <tr key={row.worker.id} className="border-b border-border/60">
+                          <td className="py-1.5 pr-2 tabular-nums">
+                            {row.worker.residence_permit_date ?? "—"}
+                          </td>
+                          <td className="py-1.5 pr-2">
+                            <Link
+                              href={`/workers/${row.worker.id}`}
+                              className="font-bold underline-offset-2 hover:text-brand hover:underline"
+                            >
+                              {row.worker.name}
+                            </Link>
+                          </td>
+                          <td className="py-1.5 pr-2">{org.organizationName}</td>
+                          <td className="py-1.5 pr-2">{row.worker.residence_status}</td>
+                          <td className="py-1.5 pr-2 tabular-nums">
+                            {row.worker.residence_expiry_date ?? "—"}
+                          </td>
+                          <td className="py-1.5 pr-2">{row.kind}</td>
+                          <td className="py-1.5 text-right tabular-nums">
+                            {formatSalesYen(row.amount)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowLeft((v) => !v)}
+              className="flex items-center gap-1 text-xs font-bold text-brand"
+            >
+              {showLeft ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              当月退職者リスト {leftRows.length}名（退職日が{monthLabel(month)}の方）
+            </button>
+            {showLeft && (
+              <div className="mt-2 overflow-x-auto rounded-xl bg-background p-3">
+                {leftRows.length === 0 ? (
+                  <p className="text-xs text-muted">当月に退職された方はいません。</p>
+                ) : (
+                  <table className="w-full min-w-[620px] border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-border text-left text-muted">
+                        <th className="py-1.5 pr-2 font-bold">退職日</th>
+                        <th className="py-1.5 pr-2 font-bold">氏名</th>
+                        <th className="py-1.5 pr-2 font-bold">所属機関</th>
+                        <th className="py-1.5 pr-2 font-bold">在留資格</th>
+                        <th className="py-1.5 pr-2 font-bold">支援費算定期間</th>
+                        <th className="py-1.5 pr-2 font-bold">日数</th>
+                        <th className="py-1.5 text-right font-bold">支援費請求額</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {leftRows.map(({ org, row }) => (
+                        <tr key={row.worker.id} className="border-b border-border/60">
+                          <td className="py-1.5 pr-2 tabular-nums">{row.worker.leaving_on ?? "—"}</td>
+                          <td className="py-1.5 pr-2">
+                            <Link
+                              href={`/workers/${row.worker.id}`}
+                              className="font-bold underline-offset-2 hover:text-brand hover:underline"
+                            >
+                              {row.worker.name}
+                            </Link>
+                          </td>
+                          <td className="py-1.5 pr-2">{org.organizationName}</td>
+                          <td className="py-1.5 pr-2">{row.worker.residence_status}</td>
+                          <td className="py-1.5 pr-2 tabular-nums">{periodText(row)}</td>
+                          <td className="py-1.5 pr-2 tabular-nums">{daysText(row)}</td>
+                          <td className="py-1.5 text-right tabular-nums">
+                            {formatSalesYen(row.amount)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
       </Card>
+
+      {/* 所属機関名で絞り込む（機関が増えても目的の会社にすぐ行けるように） */}
+      {billing.orgs.length > 0 && (
+        <div className="relative">
+          <Search
+            size={16}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
+          />
+          <input
+            value={orgQuery}
+            onChange={(e) => setOrgQuery(e.target.value)}
+            placeholder="所属機関名で検索（例: 國崎）"
+            className="min-h-[44px] w-full rounded-xl border border-border bg-surface pl-9 pr-3 text-sm"
+          />
+          {orgQuery && (
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted">
+              {visibleOrgs.length}件
+            </span>
+          )}
+        </div>
+      )}
 
       {billing.orgs.length === 0 ? (
         <Card className="p-6 text-center text-sm text-muted">
           {monthLabel(month)}に在籍していた支援対象者がいません。
         </Card>
+      ) : visibleOrgs.length === 0 ? (
+        <Card className="p-6 text-center text-sm text-muted">
+          「{orgQuery}」に一致する所属機関はありません。
+        </Card>
       ) : (
-        billing.orgs.map((org) => {
+        visibleOrgs.map((org) => {
           const open = openOrgId === org.organizationId;
           return (
             <Card key={org.organizationId || "none"} className="p-3">

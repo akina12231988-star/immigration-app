@@ -3,8 +3,10 @@
 
 import {
   daysText,
+  leftThisMonthRows,
   monthLabel,
   periodText,
+  permittedThisMonthRows,
   type MonthlyBilling,
   type MonthlyBillingOrg,
   type MonthlyBillingRow,
@@ -90,6 +92,102 @@ export function orgRosterSheet(org: MonthlyBillingOrg, billing: MonthlyBilling):
   };
 }
 
+const PERMITTED_HEADERS = [
+  "No.",
+  "所属機関",
+  "氏名",
+  "フリガナ",
+  "国籍",
+  "在留資格",
+  "在留カード番号",
+  "在留許可日",
+  "在留期限日",
+  "雇用開始",
+  "定期売上No.",
+  "区分",
+  "支援費請求額",
+] as const;
+
+// 当月に在留許可が下りた人の一覧（新規・更新の両方。区分で見分けられる）
+export function permittedThisMonthSheet(billing: MonthlyBilling): SheetSpec {
+  const targets = permittedThisMonthRows(billing);
+
+  return {
+    name: "当月許可者",
+    headerRows: 1,
+    columnWidths: [5, 22, 26, 22, 12, 22, 16, 12, 12, 12, 18, 16, 12],
+    rows: [
+      [`当月許可者リスト（${monthLabel(billing.month)}）`],
+      ["基準日", billing.monthEndOn, "人数", `${targets.length}名`],
+      [],
+      [...PERMITTED_HEADERS],
+      ...targets.map(({ org, row }, i) => [
+        i + 1,
+        org.organizationName,
+        row.worker.name,
+        row.worker.kana,
+        row.worker.nationality,
+        row.worker.residence_status,
+        row.worker.residence_card_no,
+        row.worker.residence_permit_date ?? "",
+        row.worker.residence_expiry_date ?? "",
+        row.worker.employment_start_on ?? "",
+        row.worker.recurring_sales_no,
+        row.kind,
+        row.amount,
+      ]),
+      ...(targets.length === 0 ? [["当月に在留許可が下りた方はいません。"]] : []),
+    ],
+  };
+}
+
+const LEFT_HEADERS = [
+  "No.",
+  "所属機関",
+  "氏名",
+  "フリガナ",
+  "国籍",
+  "在留資格",
+  "退職日",
+  "雇用開始",
+  "定期売上No.",
+  "支援費算定期間",
+  "日数",
+  "支援費請求額",
+] as const;
+
+// 当月に退職した人の一覧（退職日まで日割りで請求している人）
+export function leftThisMonthSheet(billing: MonthlyBilling): SheetSpec {
+  const targets = leftThisMonthRows(billing);
+
+  return {
+    name: "当月退職者",
+    headerRows: 1,
+    columnWidths: [5, 22, 26, 22, 12, 22, 12, 12, 18, 24, 8, 12],
+    rows: [
+      [`当月退職者リスト（${monthLabel(billing.month)}）`],
+      ["基準日", billing.monthEndOn, "人数", `${targets.length}名`],
+      [],
+      [...LEFT_HEADERS],
+      ...targets.map(({ org, row }, i) => [
+        i + 1,
+        org.organizationName,
+        row.worker.name,
+        row.worker.kana,
+        row.worker.nationality,
+        row.worker.residence_status,
+        row.worker.leaving_on ?? "",
+        row.worker.employment_start_on ?? "",
+        row.worker.recurring_sales_no,
+        periodText(row),
+        daysText(row),
+        row.amount,
+      ]),
+      ...(targets.length === 0 ? [["当月に退職された方はいません。"]] : []),
+    ],
+  };
+}
+
 // 1シート目のサマリー
 export function summarySheet(billing: MonthlyBilling): SheetSpec {
   return {
@@ -107,9 +205,14 @@ export function summarySheet(billing: MonthlyBilling): SheetSpec {
   };
 }
 
-// ブック全体（サマリー＋所属機関ごとの在籍名簿）
+// ブック全体（サマリー＋当月許可者＋当月退職者＋所属機関ごとの在籍名簿）
 export function monthlyBillingSheets(billing: MonthlyBilling): SheetSpec[] {
-  return [summarySheet(billing), ...billing.orgs.map((o) => orgRosterSheet(o, billing))];
+  return [
+    summarySheet(billing),
+    permittedThisMonthSheet(billing),
+    leftThisMonthSheet(billing),
+    ...billing.orgs.map((o) => orgRosterSheet(o, billing)),
+  ];
 }
 
 // 所属機関1社分だけのブック（その機関へ送るとき用）
