@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
 import { setWorkerRecurringSalesNo } from "@/lib/supabase/queries/workers";
 import { updateOrganization } from "@/lib/supabase/queries/organizations";
+import { listPermitContentsByMonth } from "@/lib/supabase/queries/applications";
 import {
   listWorkerSalesNos,
   setSalesEntryFreeeNo,
@@ -193,6 +194,26 @@ export function MonthlyBillingSection({
     });
   };
 
+  // 対象月に許可が下りた申請の「申請内容」（worker_id → 在留資格の変更許可／在留期間の更新許可）。
+  // 備考で新規と更新を書き分けるために使う
+  const [permitContents, setPermitContents] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve().then(() =>
+      listPermitContentsByMonth(createClient(), month)
+        .then((map) => {
+          if (!cancelled) setPermitContents(map);
+        })
+        .catch(() => {
+          // 取れなくても備考は作れる（その場合はすべて新規側に並ぶ）
+          if (!cancelled) setPermitContents({});
+        }),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [month]);
+
   // 許可売上No.・保険No.（売上明細の伝票番号を1人1つにまとめたもの）。
   // 番号の実体は sales_entries なので、ここでの編集はその行を書き換える
   const [salesNos2, setSalesNos2] = useState<Record<string, WorkerSalesNos>>({});
@@ -268,22 +289,37 @@ export function MonthlyBillingSection({
     const permitted = org.rows.filter((r) => permitInMonth(r.worker.residence_permit_date));
     const left = org.rows.filter((r) => r.leftThisMonth);
     const lines: string[] = [];
-    if (permitted.length > 0) {
-      lines.push("＜許可おりた人＞");
+    // 新規（在留資格の変更・認定）と更新（在留期間の更新）を分けて書く。
+    // 判定は申請の「申請内容」を正とし、申請が見つからない人は新規側に置く
+    const isRenewal = (r: MonthlyBillingRow) =>
+      (permitContents[r.worker.id] ?? "").includes("更新");
+    const pushVisaGroups = (rows: MonthlyBillingRow[]) => {
       const byVisa = new Map<string, MonthlyBillingRow[]>();
-      for (const r of permitted) {
+      for (const r of rows) {
         const visa = r.worker.residence_status || "在留資格未設定";
         if (!byVisa.has(visa)) byVisa.set(visa, []);
         byVisa.get(visa)!.push(r);
       }
-      for (const [visa, rows] of byVisa) {
+      for (const [visa, group] of byVisa) {
         lines.push(`${visa}ビザ`);
-        for (const r of rows) {
+        for (const r of group) {
           lines.push(`${r.worker.name}さん　許可日：${mdText(r.worker.residence_permit_date ?? "")}`);
         }
       }
+    };
+    const newly = permitted.filter((r) => !isRenewal(r));
+    const renewed = permitted.filter(isRenewal);
+    if (newly.length > 0) {
+      lines.push("＜許可おりた人＞");
+      pushVisaGroups(newly);
+    }
+    if (renewed.length > 0) {
+      if (newly.length > 0) lines.push("");
+      lines.push("＜更新許可おりた人＞");
+      pushVisaGroups(renewed);
     }
     if (left.length > 0) {
+      if (lines.length > 0) lines.push("");
       lines.push("＜退職者＞");
       for (const r of left) {
         lines.push(`${r.worker.name}さん　退職日：${mdText(r.worker.leaving_on ?? "")}`);

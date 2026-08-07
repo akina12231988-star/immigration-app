@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { monthEnd } from "@/lib/sales";
 import type {
   Application,
   ApplicationContent,
@@ -148,4 +149,31 @@ export async function updateApplicationRow(
     .single();
   if (error) throw error;
   return toApplication(data as RowWithRefs);
+}
+
+// 対象月に許可が下りた申請の「申請内容」を外国人ごとに返す（worker_id → 申請内容）。
+// 請求書の備考で新規（在留資格の変更）と更新（在留期間の更新）を区別するために使う。
+// 同じ月に複数あれば許可日の新しいものを採る
+export async function listPermitContentsByMonth(
+  supabase: SupabaseClient,
+  month: string,
+): Promise<Record<string, string>> {
+  const { data, error } = await supabase
+    .from("immigration_applications")
+    .select("worker_id, application_content, granted_permit_date")
+    .gte("granted_permit_date", `${month}-01`)
+    .lte("granted_permit_date", monthEnd(`${month}-01`))
+    .order("granted_permit_date", { ascending: false });
+  if (error) throw error;
+
+  const rows =
+    (data as
+      | { worker_id: string | null; application_content: string | null }[]
+      | null) ?? [];
+  const out: Record<string, string> = {};
+  for (const r of rows) {
+    if (!r.worker_id || out[r.worker_id]) continue;
+    out[r.worker_id] = r.application_content ?? "";
+  }
+  return out;
 }
