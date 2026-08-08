@@ -26,6 +26,7 @@ describe("領収書", () => {
       paidOn: "2026-08-07",
       invoiceAmountExcl: 50000,
       invoiceTax: 5000,
+      invoiceTaxFree: 0,
       invoiceAmount: 55000,
     });
     expect(r.addressee).toBe("有限会社　國崎青果　御中");
@@ -37,7 +38,7 @@ describe("領収書", () => {
     // 適格請求書発行事業者（インボイス）登録番号
     expect(r.issuer.invoiceRegistrationNo).toBe("T3810864134633");
     // 全額入金なので内消費税額を載せる
-    expect(r.taxText).toBe("（内消費税額 ¥5,000-／税抜 ¥50,000-）");
+    expect(r.taxText).toBe("10%対象 ¥55,000-（内消費税額 ¥5,000-）");
   });
 
   it("一部入金では内消費税額を載せない（請求書の税額をそのまま書けないため）", () => {
@@ -50,6 +51,7 @@ describe("領収書", () => {
       paidOn: "2026-08-07",
       invoiceAmountExcl: 50000,
       invoiceTax: 5000,
+      invoiceTaxFree: 0,
       invoiceAmount: 55000,
     });
     expect(r.amountText).toBe("¥30,000-");
@@ -66,6 +68,7 @@ describe("領収書", () => {
       paidOn: "2026-08-07",
       invoiceAmountExcl: 0,
       invoiceTax: 0,
+      invoiceTaxFree: 0,
       invoiceAmount: 55000,
     });
     expect(r.taxText).toBeNull();
@@ -81,6 +84,7 @@ describe("領収書", () => {
       paidOn: "2026-08-20", // 5月分を8月20日に入金
       invoiceAmountExcl: 81473,
       invoiceTax: 8147,
+      invoiceTaxFree: 0,
       invoiceAmount: 89620,
     });
     expect(r.issuedOn).toBe("2026年8月20日");
@@ -91,5 +95,39 @@ describe("領収書", () => {
     expect(receiptFileName("有限会社　國崎青果", "2026-07")).toBe(
       "領収書_有限会社　國崎青果_2026年7月",
     );
+  });
+
+  it("非課税がある月は10%対象と非課税を分けて書く", () => {
+    // 支援代 50,000 + 消費税 5,000 + 特定技能総合保険（非課税）8,820 = 63,820
+    const r = buildReceipt({
+      orgName: "有限会社　國崎青果",
+      honorific: "御中",
+      month: "2026-07",
+      invoiceNo: "INV-0000001413",
+      amount: 63820,
+      paidOn: "2026-08-07",
+      invoiceAmountExcl: 50000,
+      invoiceTax: 5000,
+      invoiceTaxFree: 8820,
+      invoiceAmount: 63820,
+    });
+    expect(r.amountText).toBe("¥63,820-");
+    expect(r.taxText).toBe("10%対象 ¥55,000-（内消費税額 ¥5,000-）　非課税 ¥8,820-");
+  });
+
+  it("内訳の合計が税込と合わなければ内訳を出さない", () => {
+    const r = buildReceipt({
+      orgName: "井上洋介",
+      honorific: "様",
+      month: "2026-07",
+      invoiceNo: "",
+      amount: 64940,
+      paidOn: "2026-08-07",
+      invoiceAmountExcl: 52800,
+      invoiceTax: 5280,
+      invoiceTaxFree: 0, // 52,800 + 5,280 ≠ 64,940
+      invoiceAmount: 64940,
+    });
+    expect(r.taxText).toBeNull();
   });
 });

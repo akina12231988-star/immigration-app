@@ -18,6 +18,7 @@ export function ReceiptSheet({
   paidOn,
   invoiceAmountExcl,
   invoiceTax,
+  invoiceTaxFree,
   invoiceAmount,
 }: {
   orgName: string;
@@ -28,6 +29,7 @@ export function ReceiptSheet({
   paidOn: string;
   invoiceAmountExcl: number;
   invoiceTax: number;
+  invoiceTaxFree: number;
   invoiceAmount: number;
 }) {
   const receipt = buildReceipt({
@@ -39,6 +41,7 @@ export function ReceiptSheet({
     paidOn,
     invoiceAmountExcl,
     invoiceTax,
+    invoiceTaxFree,
     invoiceAmount,
   });
 

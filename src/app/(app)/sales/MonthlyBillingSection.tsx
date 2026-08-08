@@ -338,6 +338,7 @@ export function MonthlyBillingSection({
   // 請求金額は税抜・消費税・税込の3つを持つ（領収書に内消費税を正しく書くため）
   const [currentAmountExcl, setCurrentAmountExcl] = useState("");
   const [currentTax, setCurrentTax] = useState("");
+  const [currentTaxFree, setCurrentTaxFree] = useState("");
   const [currentAmount, setCurrentAmount] = useState("");
   // 過去分（対象月より前の未入金など）をあとから登録するための入力
   const [showPastForm, setShowPastForm] = useState(false);
@@ -345,38 +346,56 @@ export function MonthlyBillingSection({
   const [pastInvoiceNo, setPastInvoiceNo] = useState("");
   const [pastAmountExcl, setPastAmountExcl] = useState("");
   const [pastTax, setPastTax] = useState("");
+  const [pastTaxFree, setPastTaxFree] = useState("");
   const [pastAmount, setPastAmount] = useState("");
   const [pastPaid, setPastPaid] = useState("");
   const [pastPaidOn, setPastPaidOn] = useState("");
 
   const digits = (v: string) => v.replace(/[^0-9]/g, "");
 
+  // 税込金額 = 税抜（課税対象）＋ 消費税 ＋ 非課税
+  const totalOf = (excl: string, tax: string, taxFree: string) =>
+    (Number(excl) || 0) + (Number(tax) || 0) + (Number(taxFree) || 0);
+
   // 税抜を入れたら消費税（10%・切り捨て）と税込を自動で埋める。
-  // 消費税・税込はあとから直せるので、端数が違う請求書にも合わせられる
+  // 消費税・非課税・税込はあとから直せるので、端数が違う請求書にも合わせられる
   const setExclAndFill = (
     value: string,
+    taxFree: string,
     setExcl: (v: string) => void,
     setTaxValue: (v: string) => void,
     setTotal: (v: string) => void,
   ) => {
     const v = digits(value);
     setExcl(v);
-    const excl = Number(v) || 0;
-    const t = taxFromExcl(excl);
-    setTaxValue(v ? String(t) : "");
-    setTotal(v ? String(excl + t) : "");
+    const t = v ? String(taxFromExcl(Number(v) || 0)) : "";
+    setTaxValue(t);
+    setTotal(v || taxFree ? String(totalOf(v, t, taxFree)) : "");
   };
 
-  // 消費税を直したら税込を入れ直す
+  // 消費税・非課税を直したら税込を入れ直す
   const setTaxAndFill = (
     value: string,
     excl: string,
+    taxFree: string,
     setTaxValue: (v: string) => void,
     setTotal: (v: string) => void,
   ) => {
     const v = digits(value);
     setTaxValue(v);
-    setTotal(String((Number(excl) || 0) + (Number(v) || 0)));
+    setTotal(String(totalOf(excl, v, taxFree)));
+  };
+
+  const setTaxFreeAndFill = (
+    value: string,
+    excl: string,
+    tax: string,
+    setTaxFreeValue: (v: string) => void,
+    setTotal: (v: string) => void,
+  ) => {
+    const v = digits(value);
+    setTaxFreeValue(v);
+    setTotal(String(totalOf(excl, tax, v)));
   };
 
   // 記録は古い月から順に並べる（上から下へ年月が流れるように見せる）
@@ -388,6 +407,7 @@ export function MonthlyBillingSection({
     setPastInvoiceNo("");
     setPastAmountExcl("");
     setPastTax("");
+    setPastTaxFree("");
     setPastAmount("");
     setPastPaid("");
     setPastPaidOn("");
@@ -408,10 +428,18 @@ export function MonthlyBillingSection({
       if (cur) {
         setCurrentAmountExcl(String(cur.amount_excl || ""));
         setCurrentTax(String(cur.tax || ""));
+        setCurrentTaxFree(String(cur.tax_free || ""));
         setCurrentAmount(String(cur.amount || ""));
       } else {
         // 未保存なら集計（税抜）から税込までを下書きしておく
-        setExclAndFill(String(org.total || ""), setCurrentAmountExcl, setCurrentTax, setCurrentAmount);
+        setCurrentTaxFree("");
+        setExclAndFill(
+          String(org.total || ""),
+          "",
+          setCurrentAmountExcl,
+          setCurrentTax,
+          setCurrentAmount,
+        );
       }
     } catch (err) {
       setError(
@@ -434,6 +462,7 @@ export function MonthlyBillingSection({
         invoice_no: currentInvoiceNo.trim(),
         amount_excl: Number(currentAmountExcl) || 0,
         tax: Number(currentTax) || 0,
+        tax_free: Number(currentTaxFree) || 0,
         amount: Number(currentAmount) || 0,
         due_on: invoiceDueOn(month),
       });
@@ -464,6 +493,7 @@ export function MonthlyBillingSection({
         invoice_no: pastInvoiceNo.trim(),
         amount_excl: Number(pastAmountExcl) || 0,
         tax: Number(pastTax) || 0,
+        tax_free: Number(pastTaxFree) || 0,
         amount: Number(pastAmount) || 0,
         due_on: invoiceDueOn(pastMonth),
         paid: Number(pastPaid) || 0,
@@ -475,6 +505,7 @@ export function MonthlyBillingSection({
         setCurrentInvoiceNo(row.invoice_no);
         setCurrentAmountExcl(String(row.amount_excl || ""));
         setCurrentTax(String(row.tax || ""));
+        setCurrentTaxFree(String(row.tax_free || ""));
         setCurrentAmount(String(row.amount || ""));
       }
       resetPastForm();
@@ -493,7 +524,14 @@ export function MonthlyBillingSection({
     patch: Partial<
       Pick<
         OrgInvoice,
-        "invoice_no" | "amount_excl" | "tax" | "amount" | "paid" | "paid_on" | "note"
+        | "invoice_no"
+        | "amount_excl"
+        | "tax"
+        | "tax_free"
+        | "amount"
+        | "paid"
+        | "paid_on"
+        | "note"
       >
     >,
   ) => {
@@ -503,6 +541,7 @@ export function MonthlyBillingSection({
       if (patch.invoice_no !== undefined) setCurrentInvoiceNo(patch.invoice_no);
       if (patch.amount_excl !== undefined) setCurrentAmountExcl(String(patch.amount_excl || ""));
       if (patch.tax !== undefined) setCurrentTax(String(patch.tax || ""));
+      if (patch.tax_free !== undefined) setCurrentTaxFree(String(patch.tax_free || ""));
       if (patch.amount !== undefined) setCurrentAmount(String(patch.amount || ""));
     }
     try {
@@ -941,6 +980,7 @@ export function MonthlyBillingSection({
                     setCurrentInvoiceNo("");
                     setCurrentAmountExcl("");
                     setCurrentTax("");
+                    setCurrentTaxFree("");
                     setCurrentAmount("");
                     setShowPastForm(false);
                     resetPastForm();
@@ -1028,7 +1068,8 @@ export function MonthlyBillingSection({
                         入金があったら入金済み額・入金日を記録してください（「全額入金」で一括記録）。
                         残額が残っている請求は督促状の一覧に自動で載り、参考合計は今回のご請求と合算した金額になります。
                         請求日は対象月の翌月1日、支払期限はその月末です（例: 対象月2026年6月 → 請求日2026年7月1日）。
-                        この台帳の金額は<b>税込</b>で入れてください（上の集計・名簿は税抜です）。
+                        金額は<b>税抜（課税対象）・消費税・非課税</b>に分けて入れてください（上の集計・名簿は税抜です）。
+                        非課税は特定技能総合保険など消費税がかからない項目です。
                         入金日を入れると、その入金に対する領収書を発行できます。
                         過去の未入金分は「過去分の請求を追加」から対象の年月を選んで登録できます。
                         表の請求書番号・請求金額はあとから直接直せます（欄から離れると保存されます）。
@@ -1060,6 +1101,7 @@ export function MonthlyBillingSection({
                             onChange={(e) =>
                               setExclAndFill(
                                 e.target.value,
+                                currentTaxFree,
                                 setCurrentAmountExcl,
                                 setCurrentTax,
                                 setCurrentAmount,
@@ -1077,11 +1119,31 @@ export function MonthlyBillingSection({
                               setTaxAndFill(
                                 e.target.value,
                                 currentAmountExcl,
+                                currentTaxFree,
                                 setCurrentTax,
                                 setCurrentAmount,
                               )
                             }
                             inputMode="numeric"
+                            className="min-h-[36px] w-24 rounded-lg border border-border bg-surface px-2 text-right text-xs tabular-nums"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-0.5">
+                          <span className="text-[10px] font-bold text-muted">非課税額</span>
+                          <input
+                            value={currentTaxFree}
+                            onChange={(e) =>
+                              setTaxFreeAndFill(
+                                e.target.value,
+                                currentAmountExcl,
+                                currentTax,
+                                setCurrentTaxFree,
+                                setCurrentAmount,
+                              )
+                            }
+                            inputMode="numeric"
+                            placeholder="0"
+                            title="特定技能総合保険など消費税がかからない項目"
                             className="min-h-[36px] w-24 rounded-lg border border-border bg-surface px-2 text-right text-xs tabular-nums"
                           />
                         </label>
@@ -1109,11 +1171,13 @@ export function MonthlyBillingSection({
                           !taxBreakdownMatches(
                             Number(currentAmountExcl) || 0,
                             Number(currentTax) || 0,
+                            Number(currentTaxFree) || 0,
                             Number(currentAmount) || 0,
                           ) && (
                             <span className="w-full text-[11px] font-bold text-seal">
                               税抜 {formatSalesYen(Number(currentAmountExcl) || 0)} ＋ 消費税{" "}
-                              {formatSalesYen(Number(currentTax) || 0)} が税込{" "}
+                              {formatSalesYen(Number(currentTax) || 0)} ＋ 非課税{" "}
+                              {formatSalesYen(Number(currentTaxFree) || 0)} が税込{" "}
                               {formatSalesYen(Number(currentAmount) || 0)} と合いません。請求書の金額をご確認ください。
                             </span>
                           )}
@@ -1169,6 +1233,7 @@ export function MonthlyBillingSection({
                                   onChange={(e) =>
                                     setExclAndFill(
                                       e.target.value,
+                                      pastTaxFree,
                                       setPastAmountExcl,
                                       setPastTax,
                                       setPastAmount,
@@ -1184,10 +1249,35 @@ export function MonthlyBillingSection({
                                 <input
                                   value={pastTax}
                                   onChange={(e) =>
-                                    setTaxAndFill(e.target.value, pastAmountExcl, setPastTax, setPastAmount)
+                                    setTaxAndFill(
+                                      e.target.value,
+                                      pastAmountExcl,
+                                      pastTaxFree,
+                                      setPastTax,
+                                      setPastAmount,
+                                    )
                                   }
                                   inputMode="numeric"
                                   placeholder="0"
+                                  className="min-h-[36px] w-24 rounded-lg border border-border bg-surface px-2 text-right text-xs tabular-nums"
+                                />
+                              </label>
+                              <label className="flex flex-col gap-0.5">
+                                <span className="text-[10px] font-bold text-muted">非課税額</span>
+                                <input
+                                  value={pastTaxFree}
+                                  onChange={(e) =>
+                                    setTaxFreeAndFill(
+                                      e.target.value,
+                                      pastAmountExcl,
+                                      pastTax,
+                                      setPastTaxFree,
+                                      setPastAmount,
+                                    )
+                                  }
+                                  inputMode="numeric"
+                                  placeholder="0"
+                                  title="特定技能総合保険など消費税がかからない項目"
                                   className="min-h-[36px] w-24 rounded-lg border border-border bg-surface px-2 text-right text-xs tabular-nums"
                                 />
                               </label>
@@ -1235,10 +1325,11 @@ export function MonthlyBillingSection({
                               !taxBreakdownMatches(
                                 Number(pastAmountExcl) || 0,
                                 Number(pastTax) || 0,
+                                Number(pastTaxFree) || 0,
                                 Number(pastAmount) || 0,
                               ) && (
                                 <p className="text-[11px] font-bold text-seal">
-                                  税抜 ＋ 消費税 が税込と合っていません。請求書の金額をご確認ください。
+                                  税抜 ＋ 消費税 ＋ 非課税 が税込と合っていません。請求書の金額をご確認ください。
                                 </p>
                               )}
                             {pastMonth && orgInvoices.some((r) => r.month === pastMonth) && (
@@ -1263,7 +1354,7 @@ export function MonthlyBillingSection({
                         </p>
                       ) : (
                         <div className="overflow-x-auto">
-                          <table className="w-full min-w-[1000px] border-collapse text-xs">
+                          <table className="w-full min-w-[1120px] border-collapse text-xs">
                             <thead>
                               <tr className="border-b border-border text-left text-muted">
                                 <th className="py-1.5 pr-2 font-bold">対象月</th>
@@ -1271,6 +1362,7 @@ export function MonthlyBillingSection({
                                 <th className="py-1.5 pr-2 font-bold">請求書番号</th>
                                 <th className="py-1.5 pr-2 text-right font-bold">税抜金額</th>
                                 <th className="py-1.5 pr-2 text-right font-bold">消費税額</th>
+                                <th className="py-1.5 pr-2 text-right font-bold">非課税額</th>
                                 <th className="py-1.5 pr-2 text-right font-bold">税込金額</th>
                                 <th className="py-1.5 pr-2 text-right font-bold">入金済み額（税込）</th>
                                 <th className="py-1.5 pr-2 font-bold">入金日</th>
@@ -1312,7 +1404,7 @@ export function MonthlyBillingSection({
                                           void patchInvoice(inv.id, {
                                             amount_excl: v,
                                             tax: t,
-                                            amount: v + t,
+                                            amount: v + t + inv.tax_free,
                                           });
                                         }}
                                         inputMode="numeric"
@@ -1329,11 +1421,29 @@ export function MonthlyBillingSection({
                                           if (v === inv.tax) return;
                                           void patchInvoice(inv.id, {
                                             tax: v,
-                                            amount: inv.amount_excl + v,
+                                            amount: inv.amount_excl + v + inv.tax_free,
                                           });
                                         }}
                                         inputMode="numeric"
                                         placeholder="0"
+                                        className="w-20 rounded-lg border border-border bg-background px-1.5 py-1 text-right text-xs tabular-nums"
+                                      />
+                                    </td>
+                                    <td className="py-1.5 pr-2 text-right">
+                                      <input
+                                        key={`${inv.id}-free-${inv.tax_free}`}
+                                        defaultValue={inv.tax_free ? String(inv.tax_free) : ""}
+                                        onBlur={(e) => {
+                                          const v = Number(digits(e.target.value)) || 0;
+                                          if (v === inv.tax_free) return;
+                                          void patchInvoice(inv.id, {
+                                            tax_free: v,
+                                            amount: inv.amount_excl + inv.tax + v,
+                                          });
+                                        }}
+                                        inputMode="numeric"
+                                        placeholder="0"
+                                        title="特定技能総合保険など消費税がかからない項目"
                                         className="w-20 rounded-lg border border-border bg-background px-1.5 py-1 text-right text-xs tabular-nums"
                                       />
                                     </td>
@@ -1348,14 +1458,24 @@ export function MonthlyBillingSection({
                                         inputMode="numeric"
                                         placeholder="0"
                                         className={`w-24 rounded-lg border bg-background px-1.5 py-1 text-right text-xs font-bold tabular-nums ${
-                                          taxBreakdownMatches(inv.amount_excl, inv.tax, inv.amount)
+                                          taxBreakdownMatches(
+                                            inv.amount_excl,
+                                            inv.tax,
+                                            inv.tax_free,
+                                            inv.amount,
+                                          )
                                             ? "border-border"
                                             : "border-seal text-seal"
                                         }`}
                                         title={
-                                          taxBreakdownMatches(inv.amount_excl, inv.tax, inv.amount)
+                                          taxBreakdownMatches(
+                                            inv.amount_excl,
+                                            inv.tax,
+                                            inv.tax_free,
+                                            inv.amount,
+                                          )
                                             ? undefined
-                                            : "税抜＋消費税が税込と合っていません"
+                                            : "税抜＋消費税＋非課税が税込と合っていません"
                                         }
                                       />
                                     </td>
@@ -1496,7 +1616,7 @@ export function MonthlyBillingSection({
 
               {open && (
                 <div className="mt-2 overflow-x-auto">
-                  <table className="w-full min-w-[1000px] border-collapse text-xs">
+                  <table className="w-full min-w-[1120px] border-collapse text-xs">
                     <thead>
                       <tr className="border-b border-border text-left text-muted">
                         <th className="py-1.5 pr-2 font-bold">氏名</th>

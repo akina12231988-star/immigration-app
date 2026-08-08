@@ -430,9 +430,10 @@ export interface OrgInvoice {
   month: string; // 対象の年月 YYYY-MM
   billed_on: string | null; // 請求日（通常は月初）
   invoice_no: string; // 請求書番号（freeeのINV-…）
-  amount_excl: number; // 税抜金額
+  amount_excl: number; // 税抜金額（10%の課税対象）
   tax: number; // 消費税額
-  amount: number; // 税込金額（実際に請求した額。amount_excl + tax）
+  tax_free: number; // 非課税額（特定技能総合保険 など）
+  amount: number; // 税込金額（実際に請求した額。amount_excl + tax + tax_free）
   paid: number; // 入金済み額（実際に振り込まれた税込金額）
   paid_on: string | null; // 入金日
   due_on: string | null; // 支払期限（通常は月末）
