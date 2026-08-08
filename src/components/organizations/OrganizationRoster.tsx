@@ -8,9 +8,11 @@ import type { OrgRosterWorker } from "@/lib/supabase/queries/organizations";
 export function OrganizationRoster({
   current,
   past,
+  error = null,
 }: {
   current: OrgRosterWorker[];
   past: OrgRosterWorker[];
+  error?: string | null; // 取得に失敗したとき（0名と区別できるように出す）
 }) {
   return (
     <Card className="p-4">
@@ -22,6 +24,12 @@ export function OrganizationRoster({
         在籍中は今この機関に紐づいている方、過去に在籍は退職記録・機関別の雇用開始日が残っている方です。
         転職された方は、今どちらにいるかも出します。
       </p>
+
+      {error && (
+        <p role="alert" className="mb-3 rounded-lg bg-seal/10 px-3 py-2 text-xs text-seal">
+          在籍者を取得できませんでした（{error}）。0名という意味ではありません。
+        </p>
+      )}
 
       <Section
         title="在籍中"
