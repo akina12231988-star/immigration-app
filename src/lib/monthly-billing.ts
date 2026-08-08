@@ -134,12 +134,28 @@ export function isBilledInMonth(worker: BillingWorker, month: string): boolean {
   return true;
 }
 
-// 支援対象なのに名簿に載らない理由（載る場合と支援対象でない場合は null）。
-// 「なぜ表示されないのか」を請求書作成の画面でそのまま見せるために使う
+// 名簿に載らない理由（載る場合は null）。
+// 「なぜ表示されないのか」を請求書作成の画面でそのまま見せるために使う。
+//
+// 支援区分が「支援対象」でない人は、ほかの条件（在留資格・許可日・退職日）を
+// 満たしているときだけ理由を出す。特定技能2号のように在留資格から対象外の人まで
+// 挙げると一覧がうるさくなるが、支援区分の変え忘れは拾いたいため
 export function billingExclusionReason(worker: BillingWorker, month: string): string | null {
-  if (worker.support !== "支援対象") return null; // 支援対象外は載らなくて正常
   if (isBilledInMonth(worker, month)) return null;
   const { from, to } = monthRange(month);
+
+  if (worker.support !== "支援対象") {
+    const permit = worker.residence_permit_date;
+    const otherConditionsOk =
+      isBillableResidence(worker.residence_status) &&
+      Boolean(permit) &&
+      (permit as string) <= to &&
+      !(worker.leaving_on && worker.leaving_on < from);
+    return otherConditionsOk
+      ? `支援区分が「${worker.support}」のまま（請求するなら「支援対象」に変えてください）`
+      : null;
+  }
+
   if (!isBillableResidence(worker.residence_status)) {
     const s = (worker.residence_status ?? "").trim();
     return s ? `在留資格が対象外（${s}）` : "在留資格が未設定";

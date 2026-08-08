@@ -12,16 +12,23 @@ import {
   ChevronRight,
   Copy,
   Download,
+  FileCheck2,
   Loader2,
   Printer,
   Search,
+  Square,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
 import { setWorkerRecurringSalesNo } from "@/lib/supabase/queries/workers";
 import { updateOrganization } from "@/lib/supabase/queries/organizations";
-import { listPermitContentsByMonth } from "@/lib/supabase/queries/applications";
+import {
+  listGrantedPermits,
+  listPermitContentsByMonth,
+  type GrantedPermit,
+} from "@/lib/supabase/queries/applications";
+import { effectivePermitForMonth } from "@/lib/billing-permits";
 import {
   listWorkerSalesNos,
   setSalesEntryFreeeNo,
@@ -37,15 +44,23 @@ import {
 import {
   deleteOrgInvoice,
   listOrgInvoices,
+  listOrgInvoicesByMonth,
+  setOrgInvoiceCreated,
   updateOrgInvoice,
   upsertOrgInvoice,
 } from "@/lib/supabase/queries/org-invoices";
+import {
+  countInvoicesCreated,
+  invoiceCreatedMap,
+  isInvoiceCreated,
+} from "@/lib/invoice-status";
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
 import type { MonthlySupportRegistration, OrgInvoice } from "@/types/db";
 import {
   dailyFee,
   formatSalesYen,
   mdText,
+  monthEnd,
   taxBreakdownMatches,
   taxFromExcl,
   ymdText,
@@ -122,13 +137,49 @@ export function MonthlyBillingSection({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // 在留許可の履歴（外国人ごと）。更新許可で許可日が進んでも過去の月が変わらないようにする
+  const [permitHistory, setPermitHistory] = useState<Record<string, GrantedPermit[]>>({});
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve().then(() =>
+      listGrantedPermits(createClient())
+        .then((rows) => {
+          if (cancelled) return;
+          const byWorker: Record<string, GrantedPermit[]> = {};
+          for (const r of rows) (byWorker[r.workerId] ??= []).push(r);
+          setPermitHistory(byWorker);
+        })
+        .catch(() => {
+          // 取れなくても現在の許可日で集計する（これまでの動き）
+          if (!cancelled) setPermitHistory({});
+        }),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // 定期売上No. は画面で編集した内容を優先して集計に反映する
   const merged = useMemo(
     () =>
-      workers.map((w) =>
-        salesNos[w.id] === undefined ? w : { ...w, recurring_sales_no: salesNos[w.id] },
-      ),
-    [workers, salesNos],
+      workers.map((w) => {
+        const next =
+          salesNos[w.id] === undefined ? w : { ...w, recurring_sales_no: salesNos[w.id] };
+        // 現在の許可日が対象月より後なら、その月の時点で有効だった許可に置き換える。
+        // 更新許可で日付が進んだ人が、過去の月の名簿から消えないようにする
+        const permits = permitHistory[w.id];
+        if (!permits || (next.residence_permit_date ?? "") <= monthEnd(`${month}-01`)) {
+          return next;
+        }
+        const asOf = effectivePermitForMonth(permits, month);
+        if (!asOf) return next;
+        return {
+          ...next,
+          residence_permit_date: asOf.permitDate,
+          residence_status: asOf.visa || next.residence_status,
+        };
+      }),
+    [workers, salesNos, permitHistory, month],
   );
   // 支援代（月額）もこのページで登録した内容を優先して集計に反映する
   const mergedOrgs = useMemo(
@@ -175,14 +226,84 @@ export function MonthlyBillingSection({
   const [showPermitted, setShowPermitted] = useState(false);
   const [showLeft, setShowLeft] = useState(false);
 
+  // 請求書を作成済みの機関（organization_id → 作成日）。対象の年月ごとに読み込む。
+  // 「この機関のみ」でエクセルを出したときに自動で作成済みになり、ボタンで手直しもできる
+  const [invoiceCreatedOn, setInvoiceCreatedOn] = useState<Record<string, string>>({});
+  const [createdBusyId, setCreatedBusyId] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      // 前の月の状態が残らないよう、読み込み前に空にする
+      if (!cancelled) setInvoiceCreatedOn({});
+      return listOrgInvoicesByMonth(createClient(), month)
+        .then((rows) => {
+          if (!cancelled) setInvoiceCreatedOn(invoiceCreatedMap(rows));
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          setError(
+            dbErrorMessage(
+              err,
+              "0075_org_invoice_created_on.sql",
+              errorMessage(err, "請求書の作成状況の読み込みに失敗しました"),
+            ),
+          );
+        });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [month]);
+
+  const invoiceProgress = useMemo(
+    () => countInvoicesCreated(billing.orgs.map((o) => o.organizationId), invoiceCreatedOn),
+    [billing.orgs, invoiceCreatedOn],
+  );
+
+  // 請求書を作成した／取り消した、を記録する
+  const markInvoiceCreated = async (organizationId: string, created: boolean) => {
+    if (!organizationId) return;
+    setCreatedBusyId(organizationId);
+    setError(null);
+    try {
+      const row = await setOrgInvoiceCreated(createClient(), {
+        organization_id: organizationId,
+        month,
+        billed_on: invoiceBilledOn(month),
+        due_on: invoiceDueOn(month),
+        invoice_created_on: created ? today : null,
+      });
+      setInvoiceCreatedOn((prev) => {
+        const next = { ...prev };
+        if (row.invoice_created_on) next[organizationId] = row.invoice_created_on;
+        else delete next[organizationId];
+        return next;
+      });
+    } catch (err) {
+      setError(
+        dbErrorMessage(
+          err,
+          "0075_org_invoice_created_on.sql",
+          errorMessage(err, "請求書の作成状況の保存に失敗しました"),
+        ),
+      );
+    } finally {
+      setCreatedBusyId(null);
+    }
+  };
+
   // 所属機関名での絞り込み（空白の有無・大文字小文字は無視して部分一致）
   const [orgQuery, setOrgQuery] = useState("");
+  // 請求書がまだの機関だけを出す（月末に残りを片づけるとき用）
+  const [onlyUncreated, setOnlyUncreated] = useState(false);
   const visibleOrgs = useMemo(() => {
     const normalize = (s: string) => s.replace(/[\s　]/g, "").toLowerCase();
     const q = normalize(orgQuery);
-    if (!q) return billing.orgs;
-    return billing.orgs.filter((o) => normalize(o.organizationName).includes(q));
-  }, [billing.orgs, orgQuery]);
+    let orgs = billing.orgs;
+    if (q) orgs = orgs.filter((o) => normalize(o.organizationName).includes(q));
+    if (onlyUncreated) orgs = orgs.filter((o) => !isInvoiceCreated(invoiceCreatedOn, o.organizationId));
+    return orgs;
+  }, [billing.orgs, orgQuery, onlyUncreated, invoiceCreatedOn]);
 
   // 定期売上No.でのソート。未登録は常に最後（氏名順のままの集計順は billing 側）
   const sortRows = (rows: MonthlyBillingRow[]): MonthlyBillingRow[] => {
@@ -471,6 +592,10 @@ export function MonthlyBillingSection({
         due_on: invoiceDueOn(month),
       });
       setOrgInvoices((prev) => sortInvoices([row, ...prev.filter((r) => r.id !== row.id)]));
+      // 請求書番号を入れたということは請求書を作ったということなので、作成済みにしておく
+      if (row.invoice_no && !isInvoiceCreated(invoiceCreatedOn, org.organizationId)) {
+        await markInvoiceCreated(org.organizationId, true);
+      }
     } catch (err) {
       setError(
         dbErrorMessage(err, "0070_org_invoices.sql", errorMessage(err, "請求記録の保存に失敗しました")),
@@ -710,6 +835,11 @@ export function MonthlyBillingSection({
       const sheets = org ? orgBillingSheets(org, billing) : monthlyBillingSheets(billing);
       const blob = await buildXlsx(sheets);
       downloadBlob(blob, billingFileName(billing, org?.organizationName));
+      // 機関ごとに書き出したら、その機関の請求書は作成したものとして記録する
+      // （全機関のエクセルは下書き用なので印はつけない）
+      if (canEdit && org?.organizationId && !isInvoiceCreated(invoiceCreatedOn, org.organizationId)) {
+        await markInvoiceCreated(org.organizationId, true);
+      }
     } catch (err) {
       setError(errorMessage(err, "エクセルの書き出しに失敗しました"));
     } finally {
@@ -799,7 +929,7 @@ export function MonthlyBillingSection({
               className="flex items-center gap-1 text-xs font-bold text-brand"
             >
               {showExcluded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-              名簿に載っていない支援対象者 {excluded.length}名（理由を見る）
+              名簿に載っていない人 {excluded.length}名（理由を見る）
             </button>
             {showExcluded && (
               <ul className="mt-2 space-y-1.5 rounded-xl bg-background p-3 text-xs">
@@ -938,6 +1068,41 @@ export function MonthlyBillingSection({
         </div>
       </Card>
 
+      {/* 請求書をどこまで作ったかの確認（機関ごとの「作成済み」の数） */}
+      {billing.orgs.length > 0 && (
+        <Card className="flex flex-wrap items-center gap-x-4 gap-y-2 p-3">
+          <p className="flex items-center gap-2 text-sm">
+            <FileCheck2 size={18} className="text-brand" />
+            <span className="font-bold">請求書</span>
+            <span className="tabular-nums">
+              作成済み {invoiceProgress.created} / {invoiceProgress.total}機関
+            </span>
+            {invoiceProgress.remaining > 0 ? (
+              <span className="rounded-full bg-seal/10 px-2 py-0.5 text-xs font-bold text-seal tabular-nums">
+                残り {invoiceProgress.remaining}機関
+              </span>
+            ) : (
+              <span className="rounded-full bg-brand/10 px-2 py-0.5 text-xs font-bold text-brand">
+                すべて作成済み
+              </span>
+            )}
+          </p>
+          <button
+            type="button"
+            onClick={() => setOnlyUncreated((v) => !v)}
+            className={`min-h-[36px] rounded-lg border px-3 text-xs font-bold ${
+              onlyUncreated ? "border-brand bg-brand text-brand-foreground" : "border-border text-brand"
+            }`}
+          >
+            {onlyUncreated ? "すべての機関を表示" : "未作成のみ表示"}
+          </button>
+          <p className="w-full text-xs text-muted">
+            「この機関のみ」でエクセルを出すと自動で作成済みになります。freeeで直接作った分は、
+            機関ごとの「未作成」を押して作成済みにできます。
+          </p>
+        </Card>
+      )}
+
       {/* 所属機関名で絞り込む（機関が増えても目的の会社にすぐ行けるように） */}
       {billing.orgs.length > 0 && (
         <div className="relative">
@@ -965,7 +1130,9 @@ export function MonthlyBillingSection({
         </Card>
       ) : visibleOrgs.length === 0 ? (
         <Card className="p-6 text-center text-sm text-muted">
-          「{orgQuery}」に一致する所属機関はありません。
+          {orgQuery
+            ? `「${orgQuery}」に一致する所属機関はありません。`
+            : "請求書が未作成の所属機関はありません（すべて作成済みです）。"}
         </Card>
       ) : (
         visibleOrgs.map((org) => {
@@ -997,15 +1164,65 @@ export function MonthlyBillingSection({
                     <ChevronRight size={16} className="shrink-0 text-muted" />
                   )}
                   <span className="min-w-0">
-                    <span className="block truncate text-sm font-bold">{org.organizationName}</span>
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="truncate text-sm font-bold">{org.organizationName}</span>
+                      {/* 請求書を作ったかどうか。名前の横に出して一覧で確認できるようにする */}
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                          invoiceCreatedOn[org.organizationId]
+                            ? "bg-brand/10 text-brand"
+                            : "bg-seal/10 text-seal"
+                        }`}
+                      >
+                        {invoiceCreatedOn[org.organizationId] ? "請求書 作成済み" : "請求書 未作成"}
+                      </span>
+                    </span>
                     <span className="block text-xs text-muted">
                       {org.rows.length}名
                       {org.leftCount > 0 && `（うち当月退職 ${org.leftCount}名）`} ・{" "}
                       <span className="font-bold text-brand">{formatSalesYen(org.total)}</span>
+                      {invoiceCreatedOn[org.organizationId] && (
+                        <span className="text-muted">
+                          {" "}
+                          ・ 請求書作成 {invoiceCreatedOn[org.organizationId]}
+                        </span>
+                      )}
                     </span>
                   </span>
                 </button>
                 <div className="flex shrink-0 items-center gap-1.5">
+                  {/* 請求書を作成したかどうかの手入力（freeeで直接作った分もここで印をつけられる） */}
+                  {canEdit && org.organizationId && (
+                    <button
+                      type="button"
+                      disabled={createdBusyId === org.organizationId}
+                      onClick={() =>
+                        void markInvoiceCreated(
+                          org.organizationId,
+                          !invoiceCreatedOn[org.organizationId],
+                        )
+                      }
+                      title={
+                        invoiceCreatedOn[org.organizationId]
+                          ? `${invoiceCreatedOn[org.organizationId]}に作成済みにしました。押すと未作成に戻します`
+                          : "請求書を作成したら押してください"
+                      }
+                      className={`flex min-h-[36px] items-center gap-1 rounded-lg border px-2.5 text-xs font-bold disabled:opacity-50 ${
+                        invoiceCreatedOn[org.organizationId]
+                          ? "border-brand bg-brand/10 text-brand"
+                          : "border-border text-muted"
+                      }`}
+                    >
+                      {createdBusyId === org.organizationId ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : invoiceCreatedOn[org.organizationId] ? (
+                        <FileCheck2 size={14} />
+                      ) : (
+                        <Square size={14} />
+                      )}
+                      {invoiceCreatedOn[org.organizationId] ? "作成済み" : "未作成"}
+                    </button>
+                  )}
                   {/* 請求書（freee）の備考欄に貼る文章のコピー（許可おりた人・退職者） */}
                   {orgRemarks(org) && (
                     <button

@@ -239,9 +239,8 @@ describe("billingExclusionReason（名簿に載らない理由）", () => {
     leaving_on: null,
   } as BillingWorker;
 
-  it("名簿に載る人と支援対象でない人は null", () => {
+  it("名簿に載る人は null", () => {
     expect(billingExclusionReason(base, "2026-08")).toBeNull();
-    expect(billingExclusionReason({ ...base, support: "支援対象外" }, "2026-08")).toBeNull();
   });
   it("在留資格が対象外・未設定", () => {
     expect(billingExclusionReason({ ...base, residence_status: "技能実習" }, "2026-08")).toBe(
@@ -284,5 +283,42 @@ describe("請求日・支払期限", () => {
   it("年月の形でなければ空文字", () => {
     expect(invoiceBilledOn("2026-13")).toBe("");
     expect(invoiceDueOn("")).toBe("");
+  });
+});
+
+describe("支援区分が理由で名簿に載らない人", () => {
+  const base = worker({ name: "TEST", residence_permit_date: "2026-07-01" });
+
+  it("ほかの条件を満たしているのに支援開始前のままなら理由を出す", () => {
+    expect(billingExclusionReason({ ...base, support: "支援開始前" }, MONTH)).toBe(
+      "支援区分が「支援開始前」のまま（請求するなら「支援対象」に変えてください）",
+    );
+  });
+
+  it("支援対象外も同じように出す（変え忘れを拾うため）", () => {
+    expect(billingExclusionReason({ ...base, support: "支援対象外" }, MONTH)).toBe(
+      "支援区分が「支援対象外」のまま（請求するなら「支援対象」に変えてください）",
+    );
+  });
+
+  it("在留資格から対象外の人は挙げない（特定技能2号など）", () => {
+    expect(
+      billingExclusionReason(
+        { ...base, support: "支援対象外", residence_status: "特定技能2号" },
+        MONTH,
+      ),
+    ).toBeNull();
+  });
+
+  it("前月までに退職した人・翌月に許可が下りる人も挙げない", () => {
+    expect(
+      billingExclusionReason({ ...base, support: "支援対象外", leaving_on: "2026-06-30" }, MONTH),
+    ).toBeNull();
+    expect(
+      billingExclusionReason(
+        { ...base, support: "支援開始前", residence_permit_date: "2026-08-01" },
+        MONTH,
+      ),
+    ).toBeNull();
   });
 });
