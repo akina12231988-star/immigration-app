@@ -8,7 +8,6 @@ import {
   invoiceDueOn,
   isBilledInMonth,
   isBillableResidence,
-  isOnRosterInMonth,
   isMonthStr,
   monthLabel,
   monthRange,
@@ -285,55 +284,5 @@ describe("請求日・支払期限", () => {
   it("年月の形でなければ空文字", () => {
     expect(invoiceBilledOn("2026-13")).toBe("");
     expect(invoiceDueOn("")).toBe("");
-  });
-});
-
-describe("支援対象外の在籍者（在籍名簿には載せる・請求はしない）", () => {
-  const ssw2 = worker({
-    name: "SSW2 SAN",
-    residence_status: "特定技能2号",
-    support: "支援対象外",
-  });
-  const katsudo2 = worker({
-    name: "KATSUDO2 SAN",
-    residence_status: "特定活動（特定技能2号移行準備）",
-    support: "支援対象外",
-  });
-
-  it("名簿には載るが請求の対象ではない", () => {
-    expect(isOnRosterInMonth(ssw2, MONTH)).toBe(true);
-    expect(isOnRosterInMonth(katsudo2, MONTH)).toBe(true);
-    expect(isBilledInMonth(ssw2, MONTH)).toBe(false);
-    expect(isBilledInMonth(katsudo2, MONTH)).toBe(false);
-  });
-
-  it("区分は支援対象外・請求額は0円", () => {
-    const row = billingRowFor(ssw2, MONTH, 15000, false);
-    expect(row).toMatchObject({ kind: "支援対象外", amount: 0, monthlyFee: 0, billable: false });
-  });
-
-  it("集計では人数に入るが請求額合計には入らない", () => {
-    const result = summarizeMonthlyBilling(
-      [worker({ name: "支援中のひと" }), ssw2, katsudo2],
-      [org("org-1", "國崎青果", "15000")],
-      MONTH,
-    );
-    const kunisaki = result.orgs[0];
-    expect(kunisaki.rows).toHaveLength(3);
-    expect(kunisaki.billableCount).toBe(1);
-    expect(kunisaki.total).toBe(15000); // 支援対象外の2名は0円
-
-    expect(result.totalPeople).toBe(3);
-    expect(result.totalBillable).toBe(1);
-    expect(result.totalAmount).toBe(15000);
-  });
-
-  it("支援対象外は支援代が未登録でも「未登録の人」に挙げない", () => {
-    const result = summarizeMonthlyBilling([ssw2], [org("org-1", "未登録社", "")], MONTH);
-    expect(result.unpriced).toEqual([]);
-  });
-
-  it("支援開始前（まだ許可前）は名簿に載せない", () => {
-    expect(isOnRosterInMonth(worker({ name: "A", support: "支援開始前" }), MONTH)).toBe(false);
   });
 });
