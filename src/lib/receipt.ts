@@ -27,6 +27,8 @@ export interface Receipt {
   // 内訳の表記（全額の入金で内訳が入っているときだけ。一部入金では出さない）。
   // 適格請求書として税率ごとの対価と消費税額、非課税分を書き分ける
   taxText: string | null;
+  // 用紙の上3分の1に載せる送付状の本文（1要素＝1段落）
+  coverParagraphs: string[];
   issuedOn: string; // 「2026年8月7日」
   issuer: {
     name: string;
@@ -63,12 +65,21 @@ export function buildReceipt(input: ReceiptInput): Receipt {
     `（内消費税額 ${receiptAmountText(input.invoiceTax)}）` +
     (input.invoiceTaxFree > 0 ? `　非課税 ${receiptAmountText(input.invoiceTaxFree)}` : "");
 
+  const coverParagraphs = [
+    "いつも大変お世話になっております。",
+    `このたびは、${monthLabel(input.month)}分のご入金をいただき誠にありがとうございました。`,
+    "つきましては、領収書を下記のとおり発行いたしましたので、" +
+      "切り取り線でお切り取りのうえ、ご査収ください。",
+    "今後とも変わらぬお付き合いのほど、よろしくお願い申し上げます。",
+  ];
+
   return {
     addressee: `${input.orgName}　${input.honorific}`,
     amount: input.amount,
     amountText: receiptAmountText(input.amount),
     purpose: `${monthLabel(input.month)}分 支援費として`,
     taxText: fullyPaid && hasBreakdown ? breakdown : null,
+    coverParagraphs,
     issuedOn: receiptDateText(input.paidOn),
     issuer: {
       name: `登録支援機関 ${CUSTODIAN_INFO.officeName}`,
