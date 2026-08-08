@@ -37,8 +37,10 @@ export function effectivePermitForMonth(
     .filter((p) => p.permitDate > to && isRenewal(p.content))
     .sort((a, b) => a.permitDate.localeCompare(b.permitDate))[0];
   if (laterRenewal) {
-    // 元の許可日は分からないので、その月はまるごと在籍していたものとして扱う
-    return { permitDate: monthStart(`${month}-01`), visa: laterRenewal.visa };
+    // 元の許可日は分からないので、その月はまるごと在籍していたものとして扱う。
+    // 更新許可では在留資格は変わらないため、在留資格は外国人の現在の値のまま
+    // （申請の「許可時の在留資格」は入力の揺れがあり、名簿にそのまま出したくない）
+    return { permitDate: monthStart(`${month}-01`), visa: "" };
   }
 
   return null;
