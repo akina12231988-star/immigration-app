@@ -181,6 +181,9 @@ export function MonthlyBillingSection({
         }
         const asOf = effectivePermitForMonth(permits, month);
         if (!asOf) return next;
+        // あとの更新許可から在籍を割り出しただけのときは、在留許可日は実際の値のまま。
+        // 名簿・エクセル・当月許可者リストに実際の許可日を出すため、在籍の印だけ立てる
+        if (asOf.estimated) return { ...next, resident_before_month: true };
         return {
           ...next,
           residence_permit_date: asOf.permitDate,
