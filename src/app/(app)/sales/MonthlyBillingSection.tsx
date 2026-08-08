@@ -764,6 +764,11 @@ export function MonthlyBillingSection({
           <div className="rounded-xl bg-background p-3">
             <dt className="text-xs text-muted">掲載人数</dt>
             <dd className="text-lg font-bold">{billing.totalPeople}名</dd>
+            {billing.totalBillable < billing.totalPeople && (
+              <dd className="text-[11px] text-muted">
+                うち請求対象 {billing.totalBillable}名
+              </dd>
+            )}
           </div>
           <div className="rounded-xl bg-background p-3">
             <dt className="text-xs text-muted">うち当月退職</dt>
@@ -996,6 +1001,8 @@ export function MonthlyBillingSection({
                     <span className="block truncate text-sm font-bold">{org.organizationName}</span>
                     <span className="block text-xs text-muted">
                       {org.rows.length}名
+                      {org.billableCount < org.rows.length &&
+                        `（うち請求対象 ${org.billableCount}名）`}
                       {org.leftCount > 0 && `（うち当月退職 ${org.leftCount}名）`} ・{" "}
                       <span className="font-bold text-brand">{formatSalesYen(org.total)}</span>
                     </span>
@@ -1696,8 +1703,9 @@ export function MonthlyBillingSection({
                               ) : (
                                 <span className="text-muted">{row.worker.recurring_sales_no || "—"}</span>
                               )}
-                              {/* ◯月分の支援代をfreeeに登録した記録（登録漏れ・二重登録の防止） */}
-                              {regs[row.worker.id]?.registered_on ? (
+                              {/* ◯月分の支援代をfreeeに登録した記録（登録漏れ・二重登録の防止）。
+                                  支援対象外は請求しないので出さない */}
+                              {!row.billable ? null : regs[row.worker.id]?.registered_on ? (
                                 <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-status-approved-bg px-2 py-0.5 text-[10px] font-bold text-status-approved-fg">
                                   <Check size={11} />
                                   {monthNum}月分の{regs[row.worker.id].fee_name}登録済み

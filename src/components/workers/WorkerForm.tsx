@@ -6,6 +6,7 @@ import { Combobox } from "@/components/ui/Combobox";
 import { createClient } from "@/lib/supabase/client";
 import { insertOrganization } from "@/lib/supabase/queries/organizations";
 import { SSW_INDUSTRIES, categoriesFor } from "@/lib/industries";
+import { suggestSupportScope, supportScopeReason } from "@/lib/worker-support";
 import {
   RESIDENCE_STATUSES,
   SUPPORT_SCOPES,
@@ -131,6 +132,15 @@ export function WorkerForm({
 
   const set = <K extends keyof WorkerInput>(key: K, value: WorkerInput[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
+
+  // 在留資格・状態を変えたら、支援区分の候補を入れ直す（手で変えられる）。
+  // 退職・帰国・求職活動中では候補を出さない（退職月の請求を残すため）
+  const setWithSupport = (patch: Partial<WorkerInput>) =>
+    setForm((f) => {
+      const next = { ...f, ...patch };
+      const suggested = suggestSupportScope(next.residence_status, next.status);
+      return suggested ? { ...next, support: suggested } : next;
+    });
 
   // date input は空文字を返すため null へ正規化する
   const setDate = (
@@ -258,11 +268,17 @@ export function WorkerForm({
                 </option>
               ))}
             </select>
+            {/* 在留資格・状態から入れた候補。違うときはそのまま選び直せる */}
+            {supportScopeReason(form.residence_status, form.status) && (
+              <p className="mt-0.5 text-[10px] text-muted">
+                {supportScopeReason(form.residence_status, form.status)}自動で選んでいます
+              </p>
+            )}
           </Field>
           <Field label="状態">
             <select
               value={form.status}
-              onChange={(e) => set("status", e.target.value as WorkerStatus)}
+              onChange={(e) => setWithSupport({ status: e.target.value as WorkerStatus })}
               className={INPUT_CLASS}
             >
               {/* 統一前の「支援中」などが残っている場合も表示できるよう選択肢に残す */}
@@ -427,7 +443,7 @@ export function WorkerForm({
         <Field label="現在の在留資格">
           <select
             value={form.residence_status}
-            onChange={(e) => set("residence_status", e.target.value)}
+            onChange={(e) => setWithSupport({ residence_status: e.target.value })}
             className={INPUT_CLASS}
           >
             <option value="">未設定</option>
