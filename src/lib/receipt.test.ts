@@ -34,6 +34,8 @@ describe("領収書", () => {
     expect(r.issuedOn).toBe("2026年8月7日");
     expect(r.issuer.name).toBe("登録支援機関 VUONG VAN THANH");
     expect(r.issuer.registrationNo).toBe("20登-005746");
+    // 適格請求書発行事業者（インボイス）登録番号
+    expect(r.issuer.invoiceRegistrationNo).toBe("T3810864134633");
     // 全額入金なので内消費税額を載せる
     expect(r.taxText).toBe("（内消費税額 ¥5,000-／税抜 ¥50,000-）");
   });

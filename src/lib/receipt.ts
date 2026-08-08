@@ -31,6 +31,7 @@ export interface Receipt {
     address: string;
     tel: string;
     registrationNo: string;
+    invoiceRegistrationNo: string; // 適格請求書発行事業者（インボイス）登録番号
   };
 }
 
@@ -68,6 +69,7 @@ export function buildReceipt(input: ReceiptInput): Receipt {
       address: CUSTODIAN_INFO.address,
       tel: CUSTODIAN_INFO.tel,
       registrationNo: CUSTODIAN_INFO.registrationNo,
+      invoiceRegistrationNo: CUSTODIAN_INFO.invoiceRegistrationNo,
     },
   };
 }
