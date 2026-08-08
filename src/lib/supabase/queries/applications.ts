@@ -160,20 +160,19 @@ export async function listPermitContentsByMonth(
 ): Promise<Record<string, string>> {
   const { data, error } = await supabase
     .from("immigration_applications")
-    .select("worker_id, application_content, granted_permit_date")
+    // 申請内容の列は content（画面では applicationContent）
+    .select("worker_id, content, granted_permit_date")
     .gte("granted_permit_date", `${month}-01`)
     .lte("granted_permit_date", monthEnd(`${month}-01`))
     .order("granted_permit_date", { ascending: false });
   if (error) throw error;
 
   const rows =
-    (data as
-      | { worker_id: string | null; application_content: string | null }[]
-      | null) ?? [];
+    (data as | { worker_id: string | null; content: string | null }[] | null) ?? [];
   const out: Record<string, string> = {};
   for (const r of rows) {
     if (!r.worker_id || out[r.worker_id]) continue;
-    out[r.worker_id] = r.application_content ?? "";
+    out[r.worker_id] = r.content ?? "";
   }
   return out;
 }
@@ -195,7 +194,8 @@ export async function listGrantedPermits(
 ): Promise<GrantedPermit[]> {
   const { data, error } = await supabase
     .from("immigration_applications")
-    .select("worker_id, granted_permit_date, visa_at_grant, application_content")
+    // 申請内容の列は content（画面では applicationContent）
+    .select("worker_id, granted_permit_date, visa_at_grant, content")
     .not("granted_permit_date", "is", null)
     .order("granted_permit_date", { ascending: false });
   if (error) throw error;
@@ -206,7 +206,7 @@ export async function listGrantedPermits(
           worker_id: string | null;
           granted_permit_date: string;
           visa_at_grant: string | null;
-          application_content: string | null;
+          content: string | null;
         }[]
       | null) ?? []
   )
@@ -215,6 +215,6 @@ export async function listGrantedPermits(
       workerId: r.worker_id as string,
       permitDate: r.granted_permit_date,
       visa: r.visa_at_grant ?? "",
-      content: r.application_content ?? "",
+      content: r.content ?? "",
     }));
 }
