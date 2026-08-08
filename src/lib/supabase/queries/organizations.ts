@@ -61,3 +61,153 @@ export async function deleteOrganization(
   const { error } = await supabase.from("organizations").delete().eq("id", id);
   if (error) throw error;
 }
+
+// ---- 所属機関の在籍者・過去の在籍者 ----
+// 「誰が今いて、誰が過去にいたか」を機関の詳細ページで把握するための一覧。
+// 在籍は workers.current_organization_id を見る。過去は次の3つを合わせる:
+//   ・退職記録（resignations）… 機関IDつきの退職記録
+//   ・機関別の雇用開始日（workers.org_employment_starts）… 転職しても残る
+//   ・退職日が入ったまま機関が残っている人（current_organization_id はこの機関）
+
+export interface OrgRosterWorker {
+  id: string;
+  name: string;
+  kana: string;
+  nationality: string;
+  residenceStatus: string;
+  residencePermitDate: string | null;
+  residenceExpiryDate: string | null;
+  support: string;
+  status: string;
+  startOn: string | null; // この機関での雇用開始日
+  leavingOn: string | null; // この機関での退職日（過去の在籍者のみ）
+  currentOrgName: string | null; // 今どこにいるか（過去の在籍者の転職先）
+}
+
+export interface OrgRoster {
+  current: OrgRosterWorker[]; // 在籍中
+  past: OrgRosterWorker[]; // 過去に在籍
+}
+
+interface RosterRow {
+  id: string;
+  name: string;
+  kana: string;
+  nationality: string;
+  residence_status: string;
+  residence_permit_date: string | null;
+  residence_expiry_date: string | null;
+  support: string;
+  status: string;
+  employment_start_on: string | null;
+  leaving_on: string | null;
+  current_organization_id: string | null;
+  org_employment_starts: unknown;
+}
+
+const ROSTER_COLUMNS =
+  "id, name, kana, nationality, residence_status, residence_permit_date, residence_expiry_date, support, status, employment_start_on, leaving_on, current_organization_id, org_employment_starts";
+
+// org_employment_starts から、その機関での雇用開始日を取り出す
+function startAtOrg(row: RosterRow, organizationId: string): string | null {
+  const list = Array.isArray(row.org_employment_starts) ? row.org_employment_starts : [];
+  for (const e of list) {
+    if (
+      e &&
+      typeof e === "object" &&
+      (e as { organization_id?: string }).organization_id === organizationId
+    ) {
+      const start = (e as { start_on?: string | null }).start_on;
+      if (start) return start;
+    }
+  }
+  // 機関別の記録が無ければ、今この機関にいる人だけ雇用開始年月日を使う
+  return row.current_organization_id === organizationId ? row.employment_start_on : null;
+}
+
+export async function getOrgRoster(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<OrgRoster> {
+  const [atOrg, everAtOrg, resigned, orgNames] = await Promise.all([
+    // 今この機関に紐づいている人
+    supabase.from("workers").select(ROSTER_COLUMNS).eq("current_organization_id", organizationId),
+    // 過去にこの機関で働いた記録がある人（転職して機関が変わっていても残る）
+    supabase
+      .from("workers")
+      .select(ROSTER_COLUMNS)
+      .contains("org_employment_starts", [{ organization_id: organizationId }]),
+    // この機関からの退職記録
+    supabase
+      .from("resignations")
+      .select("worker_id, leaving_on")
+      .eq("organization_id", organizationId)
+      .order("leaving_on", { ascending: false }),
+    supabase.from("organizations").select("id, name"),
+  ]);
+
+  if (atOrg.error) throw atOrg.error;
+  if (everAtOrg.error) throw everAtOrg.error;
+
+  const orgNameById = new Map(
+    (((orgNames.data as { id: string; name: string }[] | null) ?? []) as {
+      id: string;
+      name: string;
+    }[]).map((o) => [o.id, o.name]),
+  );
+
+  // 退職記録は新しい順に並んでいるので、1人につき最初の1件（＝最新）を採る
+  const resignedOn = new Map<string, string>();
+  for (const r of ((resigned.data as { worker_id: string; leaving_on: string }[] | null) ?? [])) {
+    if (!resignedOn.has(r.worker_id)) resignedOn.set(r.worker_id, r.leaving_on);
+  }
+
+  const byId = new Map<string, RosterRow>();
+  for (const r of [
+    ...(((atOrg.data as unknown as RosterRow[] | null) ?? [])),
+    ...(((everAtOrg.data as unknown as RosterRow[] | null) ?? [])),
+  ]) {
+    byId.set(r.id, r);
+  }
+
+  const current: OrgRosterWorker[] = [];
+  const past: OrgRosterWorker[] = [];
+
+  for (const row of byId.values()) {
+    const here = row.current_organization_id === organizationId;
+    // 在籍中＝この機関に紐づいていて、退職日が入っていない
+    const isCurrent = here && !row.leaving_on;
+    const leavingOn = resignedOn.get(row.id) ?? (here ? row.leaving_on : null);
+
+    const item: OrgRosterWorker = {
+      id: row.id,
+      name: row.name,
+      kana: row.kana,
+      nationality: row.nationality,
+      residenceStatus: row.residence_status,
+      residencePermitDate: row.residence_permit_date,
+      residenceExpiryDate: row.residence_expiry_date,
+      support: row.support,
+      status: row.status,
+      startOn: startAtOrg(row, organizationId),
+      leavingOn: isCurrent ? null : leavingOn,
+      currentOrgName:
+        here || !row.current_organization_id
+          ? null
+          : (orgNameById.get(row.current_organization_id) ?? null),
+    };
+    (isCurrent ? current : past).push(item);
+  }
+
+  const byName = (a: OrgRosterWorker, b: OrgRosterWorker) => a.name.localeCompare(b.name, "ja");
+  current.sort(byName);
+  // 過去は退職日の新しい順（退職日が無い人は後ろ）
+  past.sort((a, b) => {
+    if (a.leavingOn && b.leavingOn) return b.leavingOn.localeCompare(a.leavingOn);
+    if (a.leavingOn) return -1;
+    if (b.leavingOn) return 1;
+    return byName(a, b);
+  });
+
+  return { current, past };
+}
