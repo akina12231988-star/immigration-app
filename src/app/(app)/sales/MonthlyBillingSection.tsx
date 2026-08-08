@@ -799,7 +799,7 @@ export function MonthlyBillingSection({
               className="flex items-center gap-1 text-xs font-bold text-brand"
             >
               {showExcluded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-              名簿に載っていない支援対象者 {excluded.length}名（理由を見る）
+              名簿に載っていない人 {excluded.length}名（理由を見る）
             </button>
             {showExcluded && (
               <ul className="mt-2 space-y-1.5 rounded-xl bg-background p-3 text-xs">
