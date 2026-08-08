@@ -149,9 +149,17 @@ export function MonthlyBillingSection({
           for (const r of rows) (byWorker[r.workerId] ??= []).push(r);
           setPermitHistory(byWorker);
         })
-        .catch(() => {
-          // 取れなくても現在の許可日で集計する（これまでの動き）
-          if (!cancelled) setPermitHistory({});
+        .catch((err) => {
+          // 取れないと更新許可の人が過去の月から抜け落ちるため、黙って続けずに知らせる
+          // （集計自体は現在の許可日で続ける）
+          if (cancelled) return;
+          setPermitHistory({});
+          setError(
+            errorMessage(
+              err,
+              "在留許可の履歴を読み込めませんでした（更新許可の方が過去の月の名簿から抜ける場合があります）",
+            ),
+          );
         }),
     );
     return () => {
