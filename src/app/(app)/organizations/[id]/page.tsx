@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { AppHeader } from "@/components/AppHeader";
 import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
-import { getOrganization } from "@/lib/supabase/queries/organizations";
+import { getOrgRoster, getOrganization } from "@/lib/supabase/queries/organizations";
 import { listEmployees } from "@/lib/supabase/queries/employees";
 import { listWorkersForSupport } from "@/lib/supabase/queries/workers";
 import {
@@ -11,6 +11,7 @@ import {
   supportStaffOptions,
 } from "@/lib/support-system";
 import { todayStr } from "@/lib/application-alerts";
+import { OrganizationRoster } from "@/components/organizations/OrganizationRoster";
 import { OrganizationDetail } from "./OrganizationDetail";
 
 export const dynamic = "force-dynamic";
@@ -31,9 +32,11 @@ export default async function OrganizationDetailPage({
   const organization = await getOrganization(supabase, id);
   if (!organization) notFound();
 
-  const [employees, workers] = await Promise.all([
+  const [employees, workers, roster] = await Promise.all([
     listEmployees(supabase),
     listWorkersForSupport(supabase),
+    // 在籍者・過去の在籍者。記録が無くても機関の画面は開けるようにする
+    getOrgRoster(supabase, id).catch(() => ({ current: [], past: [] })),
   ]);
   const workerCount = workers.filter(
     (w) => w.current_organization_id === id && isSupportedSsw1(w),
@@ -48,6 +51,9 @@ export default async function OrganizationDetailPage({
         staffNames={supportStaffOptions(employees, todayStr())}
         workerCount={workerCount}
       />
+      <div className="mt-4">
+        <OrganizationRoster current={roster.current} past={roster.past} />
+      </div>
     </>
   );
 }

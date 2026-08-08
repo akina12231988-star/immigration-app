@@ -12,9 +12,10 @@ export interface ReceiptInput {
   invoiceNo: string; // 請求書番号（控えとして載せる）
   amount: number; // 領収金額（入金済み額・税込）
   paidOn: string; // 入金日（＝発行日）YYYY-MM-DD
-  // 請求の内訳（税抜・消費税・税込）。全額の入金なら内消費税額として載せる
+  // 請求の内訳（税抜・消費税・非課税・税込）。全額の入金なら内訳として載せる
   invoiceAmountExcl: number;
   invoiceTax: number;
+  invoiceTaxFree: number;
   invoiceAmount: number;
 }
 
@@ -23,7 +24,8 @@ export interface Receipt {
   amount: number;
   amountText: string; // 「¥55,000-」
   purpose: string; // 但し書き
-  // 内消費税額（全額の入金で内訳が入っているときだけ。一部入金では出さない）
+  // 内訳の表記（全額の入金で内訳が入っているときだけ。一部入金では出さない）。
+  // 適格請求書として税率ごとの対価と消費税額、非課税分を書き分ける
   taxText: string | null;
   issuedOn: string; // 「2026年8月7日」
   issuer: {
@@ -31,6 +33,7 @@ export interface Receipt {
     address: string;
     tel: string;
     registrationNo: string;
+    invoiceRegistrationNo: string; // 適格請求書発行事業者（インボイス）登録番号
   };
 }
 
@@ -49,25 +52,30 @@ export function buildReceipt(input: ReceiptInput): Receipt {
   // 請求の全額が入金された場合だけ、請求書の内訳をそのまま内消費税額として載せる。
   // 一部入金では請求書の消費税額をそのまま書けないため出さない
   const fullyPaid = input.invoiceAmount > 0 && input.amount === input.invoiceAmount;
-  const hasBreakdown = input.invoiceTax > 0 && input.invoiceAmountExcl + input.invoiceTax === input.invoiceAmount;
+  const hasBreakdown =
+    input.invoiceTax > 0 &&
+    input.invoiceAmountExcl + input.invoiceTax + input.invoiceTaxFree === input.invoiceAmount;
+
+  // 10%対象は税抜＋消費税。非課税があるときは分けて書く
+  const taxableTotal = input.invoiceAmountExcl + input.invoiceTax;
+  const breakdown =
+    `10%対象 ${receiptAmountText(taxableTotal)}` +
+    `（内消費税額 ${receiptAmountText(input.invoiceTax)}）` +
+    (input.invoiceTaxFree > 0 ? `　非課税 ${receiptAmountText(input.invoiceTaxFree)}` : "");
 
   return {
     addressee: `${input.orgName}　${input.honorific}`,
     amount: input.amount,
     amountText: receiptAmountText(input.amount),
     purpose: `${monthLabel(input.month)}分 支援費として`,
-    taxText:
-      fullyPaid && hasBreakdown
-        ? `（内消費税額 ${receiptAmountText(input.invoiceTax)}／税抜 ${receiptAmountText(
-            input.invoiceAmountExcl,
-          )}）`
-        : null,
+    taxText: fullyPaid && hasBreakdown ? breakdown : null,
     issuedOn: receiptDateText(input.paidOn),
     issuer: {
       name: `登録支援機関 ${CUSTODIAN_INFO.officeName}`,
       address: CUSTODIAN_INFO.address,
       tel: CUSTODIAN_INFO.tel,
       registrationNo: CUSTODIAN_INFO.registrationNo,
+      invoiceRegistrationNo: CUSTODIAN_INFO.invoiceRegistrationNo,
     },
   };
 }

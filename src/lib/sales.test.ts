@@ -243,9 +243,12 @@ describe("消費税（請求・入金の記録）", () => {
     expect(taxFromExcl(-100)).toBe(0);
   });
 
-  it("税抜＋消費税が税込と合っているか判定する", () => {
-    expect(taxBreakdownMatches(50000, 5000, 55000)).toBe(true);
-    expect(taxBreakdownMatches(50000, 5000, 55001)).toBe(false);
-    expect(taxBreakdownMatches(0, 0, 0)).toBe(true);
+  it("税抜＋消費税＋非課税が税込と合っているか判定する", () => {
+    expect(taxBreakdownMatches(50000, 5000, 0, 55000)).toBe(true);
+    expect(taxBreakdownMatches(50000, 5000, 0, 55001)).toBe(false);
+    expect(taxBreakdownMatches(0, 0, 0, 0)).toBe(true);
+    // 特定技能総合保険（非課税 8,820円）が混ざる月
+    expect(taxBreakdownMatches(50000, 5000, 8820, 63820)).toBe(true);
+    expect(taxBreakdownMatches(50000, 5000, 8820, 55000)).toBe(false);
   });
 });

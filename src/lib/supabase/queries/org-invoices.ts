@@ -31,6 +31,7 @@ export async function upsertOrgInvoice(
     | "invoice_no"
     | "amount_excl"
     | "tax"
+    | "tax_free"
     | "amount"
     | "due_on"
   > &
@@ -50,7 +51,17 @@ export async function updateOrgInvoice(
   supabase: SupabaseClient,
   id: string,
   patch: Partial<
-    Pick<OrgInvoice, "invoice_no" | "amount_excl" | "tax" | "amount" | "paid" | "paid_on" | "note">
+    Pick<
+      OrgInvoice,
+      | "invoice_no"
+      | "amount_excl"
+      | "tax"
+      | "tax_free"
+      | "amount"
+      | "paid"
+      | "paid_on"
+      | "note"
+    >
   >,
 ): Promise<void> {
   const { error } = await supabase.from("org_invoices").update(patch).eq("id", id);

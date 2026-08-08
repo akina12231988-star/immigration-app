@@ -277,7 +277,12 @@ export function taxFromExcl(amountExcl: number): number {
   return Math.floor(Math.max(amountExcl, 0) * CONSUMPTION_TAX_RATE);
 }
 
-// 税抜＋消費税が税込と合っているか（合っていなければ画面で注意を出す）
-export function taxBreakdownMatches(amountExcl: number, tax: number, amount: number): boolean {
-  return amountExcl + tax === amount;
+// 税抜＋消費税＋非課税が税込と合っているか（合っていなければ画面で注意を出す）
+export function taxBreakdownMatches(
+  amountExcl: number,
+  tax: number,
+  taxFree: number,
+  amount: number,
+): boolean {
+  return amountExcl + tax + taxFree === amount;
 }

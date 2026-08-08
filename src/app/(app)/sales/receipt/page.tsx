@@ -45,6 +45,7 @@ export default async function SalesReceiptPage({
       paidOn={invoice.paid_on}
       invoiceAmountExcl={invoice.amount_excl}
       invoiceTax={invoice.tax}
+      invoiceTaxFree={invoice.tax_free}
       invoiceAmount={invoice.amount}
     />
   );

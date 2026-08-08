@@ -18,6 +18,7 @@ export function ReceiptSheet({
   paidOn,
   invoiceAmountExcl,
   invoiceTax,
+  invoiceTaxFree,
   invoiceAmount,
 }: {
   orgName: string;
@@ -28,6 +29,7 @@ export function ReceiptSheet({
   paidOn: string;
   invoiceAmountExcl: number;
   invoiceTax: number;
+  invoiceTaxFree: number;
   invoiceAmount: number;
 }) {
   const receipt = buildReceipt({
@@ -39,6 +41,7 @@ export function ReceiptSheet({
     paidOn,
     invoiceAmountExcl,
     invoiceTax,
+    invoiceTaxFree,
     invoiceAmount,
   });
 
@@ -105,6 +108,7 @@ export function ReceiptSheet({
                 <p>
                   TEL {receipt.issuer.tel}　登録番号 {receipt.issuer.registrationNo}
                 </p>
+                <p>登録番号（インボイス）　{receipt.issuer.invoiceRegistrationNo}</p>
               </div>
               <div className="receipt-stamp shrink-0">
                 {/* 角印（帳票内のため next/image は使わない） */}

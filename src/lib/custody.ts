@@ -94,6 +94,7 @@ export function receiptTranslation(nationality: string): ReceiptTranslation | nu
 export const CUSTODIAN_INFO = {
   officeName: "VUONG VAN THANH",
   registrationNo: "20登-005746",
+  invoiceRegistrationNo: "T3810864134633", // 適格請求書発行事業者（インボイス）登録番号
   address: "熊本県熊本市東区小山2丁目13-20 日産共同住宅201号",
   tel: "050-8890-4000",
   mobile: "070-4713-5104",
