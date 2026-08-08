@@ -267,6 +267,52 @@ describe("billingExclusionReason（名簿に載らない理由）", () => {
   });
 });
 
+// 8月に更新許可が下りた人は、workers の在留許可日が2026-08-05に上書きされる。
+// 7月分では「その月にはすでに在籍していた」印を立てて名簿に載せるが、
+// 在留許可日は実際の値のままにする（名簿・エクセルに本当の許可日を出すため）
+describe("更新許可からその月の在籍が分かっている人", () => {
+  const renewed = worker({
+    name: "DOEU",
+    residence_permit_date: "2026-08-05",
+    employment_start_on: "2025-04-01",
+    resident_before_month: true,
+  });
+
+  it("在留許可日が対象月より後でも名簿に載る", () => {
+    expect(isBilledInMonth(renewed, MONTH)).toBe(true);
+    expect(billingExclusionReason(renewed, MONTH)).toBeNull();
+  });
+
+  it("印が無ければこれまでどおり名簿から外れる", () => {
+    const without = { ...renewed, resident_before_month: false };
+    expect(isBilledInMonth(without, MONTH)).toBe(false);
+    expect(billingExclusionReason(without, MONTH)).toBe("在留許可日が対象月より後（2026-08-05）");
+  });
+
+  it("満額で、在留許可日は実際の値のまま", () => {
+    const row = billingRowFor(renewed, MONTH, 15000);
+    expect(row.kind).toBe("満額");
+    expect(row.amount).toBe(15000);
+    expect(row.periodFrom).toBe("2026-07-01");
+    expect(row.periodTo).toBe("2026-07-31");
+    // 差し替えていないので、表示に使う在留許可日は実際の許可日のまま
+    expect(row.worker.residence_permit_date).toBe("2026-08-05");
+  });
+
+  it("その月に退職していれば退職日まで日割りになる", () => {
+    const row = billingRowFor({ ...renewed, leaving_on: "2026-07-10" }, MONTH, 31000);
+    expect(row.kind).toBe("退職日まで日割");
+    expect(row.periodFrom).toBe("2026-07-01");
+    expect(row.periodTo).toBe("2026-07-10");
+  });
+
+  it("支援区分が支援対象でなければ理由を出す", () => {
+    expect(billingExclusionReason({ ...renewed, support: "支援開始前" }, MONTH)).toBe(
+      "支援区分が「支援開始前」のまま（請求するなら「支援対象」に変えてください）",
+    );
+  });
+});
+
 describe("請求日・支払期限", () => {
   it("請求日は対象月の翌月1日", () => {
     expect(invoiceBilledOn("2026-06")).toBe("2026-07-01");

@@ -10,6 +10,10 @@ import type { GrantedPermit } from "@/lib/supabase/queries/applications";
 export interface EffectivePermit {
   permitDate: string; // その月の時点で有効だった在留許可日
   visa: string; // そのときの在留資格（分からなければ空）
+  // 実際の許可の記録ではなく、あとの更新許可から「その月には在籍していた」と
+  // 割り出しただけか。true のときは在留許可日を書き換えず、在籍の印だけ立てる
+  // （名簿やエクセルには実際の許可日を出したいため）
+  estimated: boolean;
 }
 
 // 在留期間の更新許可か（在留資格は変わらず、期間だけ延びる申請）
@@ -28,7 +32,9 @@ export function effectivePermitForMonth(
   const granted = permits
     .filter((p) => p.permitDate <= to)
     .sort((a, b) => b.permitDate.localeCompare(a.permitDate));
-  if (granted[0]) return { permitDate: granted[0].permitDate, visa: granted[0].visa };
+  if (granted[0]) {
+    return { permitDate: granted[0].permitDate, visa: granted[0].visa, estimated: false };
+  }
 
   // ②その月までの許可が記録に無くても、あとから下りたのが更新許可なら、
   //   その月にはすでに同じ在留資格で在籍していたことになる。
@@ -38,9 +44,9 @@ export function effectivePermitForMonth(
     .sort((a, b) => a.permitDate.localeCompare(b.permitDate))[0];
   if (laterRenewal) {
     // 元の許可日は分からないので、その月はまるごと在籍していたものとして扱う。
-    // 更新許可では在留資格は変わらないため、在留資格は外国人の現在の値のまま
-    // （申請の「許可時の在留資格」は入力の揺れがあり、名簿にそのまま出したくない）
-    return { permitDate: monthStart(`${month}-01`), visa: "" };
+    // ただし在留許可日は書き換えない（実際の許可日を名簿とエクセルに出すため）。
+    // 更新許可では在留資格も変わらないので、こちらも現在の値のままにする
+    return { permitDate: monthStart(`${month}-01`), visa: "", estimated: true };
   }
 
   return null;

@@ -20,22 +20,25 @@ describe("対象月の時点で有効だった在留許可", () => {
     expect(effectivePermitForMonth(permits, "2026-07")).toEqual({
       permitDate: "2025-08-10",
       visa: "特定技能1号",
+      estimated: false,
     });
     // 8月分になれば新しい許可を使う
     expect(effectivePermitForMonth(permits, "2026-08")).toEqual({
       permitDate: "2026-08-05",
       visa: "特定技能1号",
+      estimated: false,
     });
   });
 
   it("過去の許可が記録に無くても、あとの更新許可からその月の在籍が分かる", () => {
     // 前の許可が申請として登録されていないケース。
     // 8月に更新許可＝7月にはすでに同じ在留資格でいた。
-    // 更新では在留資格が変わらないので、在留資格は空＝現在の値のまま
+    // 割り出しただけなので estimated＝在留許可日・在留資格は書き換えない
     const permits = [permit({ permitDate: "2026-08-05", content: "在留期間の更新許可" })];
     expect(effectivePermitForMonth(permits, "2026-07")).toEqual({
       permitDate: "2026-07-01",
       visa: "",
+      estimated: true,
     });
   });
 

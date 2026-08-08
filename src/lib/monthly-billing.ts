@@ -42,7 +42,12 @@ export type BillingWorker = Pick<
   | "support"
   | "status"
   | "leaving_on"
->;
+> & {
+  // 在留許可日が対象月より後でも、その月にはすでに同じ在留資格で在籍していたと
+  // 分かっている場合に立てる印（あとから下りた更新許可から割り出す）。
+  // 在留許可日は実際の値のまま表示し、請求の判定だけこの印で行う
+  resident_before_month?: boolean;
+};
 
 export type BillingOrg = Pick<Organization, "id" | "name" | "intake">;
 
@@ -127,11 +132,18 @@ export function isBilledInMonth(worker: BillingWorker, month: string): boolean {
   if (worker.support !== "支援対象") return false;
   if (!isBillableResidence(worker.residence_status)) return false;
   const { from, to } = monthRange(month);
-  const permit = worker.residence_permit_date;
-  if (!permit || permit > to) return false;
+  if (!residedInMonth(worker, to)) return false;
   const left = worker.leaving_on;
   if (left && left < from) return false;
   return true;
+}
+
+// その月に在留していたか。在留許可日がその月の末日までに来ているか、
+// あとから下りた更新許可からその月の在籍が分かっているか
+function residedInMonth(worker: BillingWorker, to: string): boolean {
+  if (worker.resident_before_month) return true;
+  const permit = worker.residence_permit_date;
+  return Boolean(permit && permit <= to);
 }
 
 // 名簿に載らない理由（載る場合は null）。
@@ -145,11 +157,9 @@ export function billingExclusionReason(worker: BillingWorker, month: string): st
   const { from, to } = monthRange(month);
 
   if (worker.support !== "支援対象") {
-    const permit = worker.residence_permit_date;
     const otherConditionsOk =
       isBillableResidence(worker.residence_status) &&
-      Boolean(permit) &&
-      (permit as string) <= to &&
+      residedInMonth(worker, to) &&
       !(worker.leaving_on && worker.leaving_on < from);
     return otherConditionsOk
       ? `支援区分が「${worker.support}」のまま（請求するなら「支援対象」に変えてください）`
@@ -162,7 +172,7 @@ export function billingExclusionReason(worker: BillingWorker, month: string): st
   }
   const permit = worker.residence_permit_date;
   if (!permit) return "在留許可日が未登録";
-  if (permit > to) return `在留許可日が対象月より後（${permit}）`;
+  if (!residedInMonth(worker, to)) return `在留許可日が対象月より後（${permit}）`;
   const left = worker.leaving_on;
   if (left && left < from) return `対象月より前に退職済み（退職日 ${left}）`;
   return "掲載条件を満たしていません"; // 想定外（条件を増やしたときの取りこぼし防止）
