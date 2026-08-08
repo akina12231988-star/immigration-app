@@ -41,6 +41,25 @@ describe("領収書", () => {
     expect(r.taxText).toBe("10%対象 ¥55,000-（内消費税額 ¥5,000-）");
   });
 
+  it("送付状の文面に対象月とお礼・切り取りの案内が入る", () => {
+    const r = buildReceipt({
+      orgName: "有限会社　國崎青果",
+      honorific: "御中",
+      month: "2026-07",
+      invoiceNo: "INV-0000001413",
+      amount: 55000,
+      paidOn: "2026-08-07",
+      invoiceAmountExcl: 50000,
+      invoiceTax: 5000,
+      invoiceTaxFree: 0,
+      invoiceAmount: 55000,
+    });
+    const text = r.coverParagraphs.join("\n");
+    expect(text).toContain("いつも大変お世話になっております。");
+    expect(text).toContain("2026年7月分のご入金をいただき誠にありがとうございました。");
+    expect(text).toContain("切り取り線でお切り取りのうえ、ご査収ください。");
+  });
+
   it("一部入金では内消費税額を載せない（請求書の税額をそのまま書けないため）", () => {
     const r = buildReceipt({
       orgName: "有限会社　國崎青果",

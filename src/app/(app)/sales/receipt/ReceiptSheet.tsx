@@ -7,8 +7,8 @@ import { monthLabel } from "@/lib/monthly-billing";
 import { buildReceipt } from "@/lib/receipt";
 
 // 領収書のA4印刷用シート。
-// A4を縦3分割し、上から1つ目の枠（99mm）に領収書を収める。
-// 残りの2枠は空白で、切り取り線で切り離して1枚の領収書にできる。
+// A4を縦3分割し、上の1枠（99mm）に送付状、下の2枠（198mm）に領収書を収める。
+// 切り取り線で切り離すと、領収書だけを手元に残せる。
 export function ReceiptSheet({
   orgName,
   honorific,
@@ -63,7 +63,8 @@ export function ReceiptSheet({
             印刷・PDF保存
           </button>
           <p className="text-xs text-muted">
-            {monthLabel(month)}分の入金（{paidOn}）に対する領収書です。A4を縦3分割した上の1枠に印字されます。
+            {monthLabel(month)}分の入金（{paidOn}）に対する領収書です。用紙の上3分の1が送付状、
+            切り取り線から下の3分の2が領収書です。
           </p>
           <p className="w-full text-[11px] text-muted">
             印刷設定は<b>用紙: A4</b>・<b>余白: なし</b>・<b>倍率: 100%</b>にしてください
@@ -74,8 +75,29 @@ export function ReceiptSheet({
 
       <div className="print-root">
         <div className="receipt-sheet mx-auto mb-6 max-w-[210mm] border border-border bg-white text-black print:mb-0 print:border-0">
-          {/* 1枠目: 領収書 */}
-          <div className="receipt-body px-[16mm] py-[10mm]">
+          {/* 上1枠: 送付状（切り取り線から上は会社の手元に残る） */}
+          <div className="receipt-cover px-[18mm] pt-[14mm]">
+            <div className="flex items-start justify-between gap-6">
+              <p className="min-w-0 border-b border-black pb-1 text-base font-bold">
+                {receipt.addressee}
+              </p>
+              <div className="shrink-0 text-right text-[11px] leading-relaxed">
+                <p>{receipt.issuedOn}</p>
+                <p className="font-bold">{receipt.issuer.name}</p>
+              </div>
+            </div>
+            <div className="mt-5 space-y-2 text-sm leading-relaxed">
+              {receipt.coverParagraphs.map((p) => (
+                <p key={p}>{p}</p>
+              ))}
+            </div>
+          </div>
+
+          {/* 下2枠: 領収書。枠の上辺が切り取り線 */}
+          <div className="receipt-body relative px-[16mm] pb-[12mm] pt-[12mm]">
+            <span className="absolute -top-[1.6mm] left-[16mm] bg-white px-2 text-[10px] text-gray-500">
+              ✂ 切り取り線
+            </span>
             <div className="flex items-start justify-between gap-6">
               <div className="min-w-0">
                 <p className="border-b border-black pb-1 text-lg font-bold">{receipt.addressee}</p>
@@ -122,11 +144,6 @@ export function ReceiptSheet({
             </div>
           </div>
 
-          {/* 2枠目・3枠目は空白。枠の上辺が切り取り線になる */}
-          <div className="receipt-blank">
-            <span className="ml-[16mm] bg-white px-2 text-[10px] text-gray-500">✂ 切り取り線</span>
-          </div>
-          <div className="receipt-blank" />
         </div>
       </div>
 
@@ -139,17 +156,17 @@ export function ReceiptSheet({
           width: 210mm;
           box-sizing: border-box;
         }
-        /* A4（297mm）を縦3分割。1枠 = 99mm（枠線ぶんも含めた高さ） */
-        .receipt-body,
-        .receipt-blank {
+        /* A4（297mm）を縦3分割。上1枠（99mm）が送付状、下2枠（198mm）が領収書 */
+        .receipt-cover {
           height: 99mm;
           box-sizing: border-box;
           overflow: hidden;
         }
-        /* 枠の上辺が切り取り線 */
-        .receipt-blank {
+        .receipt-body {
+          height: 198mm;
+          box-sizing: border-box;
+          overflow: hidden;
           border-top: 1px dashed #9ca3af;
-          padding-top: 2mm;
         }
         .receipt-stamp img {
           width: 22mm;
