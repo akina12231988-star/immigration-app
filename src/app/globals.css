@@ -91,3 +91,29 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
 }
+
+/* 帳票の印刷（領収書・督促状・労働者名簿・預り証）。
+   画面用の背景色が用紙に出ないよう、印刷では白地に戻す。
+   帳票そのものは 210mm × 297mm で原寸のまま出す */
+@media print {
+  html,
+  body {
+    background: #fff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+
+  .print-root {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  /* 画面で付けている中央寄せの余白・影は用紙では不要 */
+  .print-root > * {
+    margin: 0 auto !important;
+    box-shadow: none !important;
+  }
+}

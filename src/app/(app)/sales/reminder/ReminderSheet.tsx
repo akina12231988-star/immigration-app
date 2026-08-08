@@ -46,6 +46,10 @@ export function ReminderSheet({
           <p className="text-xs text-muted">
             {monthLabel(month)}分までの請求をまとめています。用紙の下3分の1は空白です（切り取り線から切り離して捨てられます）。
           </p>
+          <p className="w-full text-[11px] text-muted">
+            印刷設定は<b>用紙: A4</b>・<b>余白: なし</b>・<b>倍率: 100%</b>にしてください
+            （「用紙に合わせる」だと少し小さく印刷されます）。
+          </p>
         </div>
         {unpaid.length === 0 && (
           <p className="mx-4 mb-3 rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal lg:mx-8">

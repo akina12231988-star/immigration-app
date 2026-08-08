@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Users } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { wageText } from "@/lib/wage";
 import type { OrgRosterWorker } from "@/lib/supabase/queries/organizations";
 
 // 所属機関に今いる人と、過去にいた人の一覧。
@@ -23,6 +24,8 @@ export function OrganizationRoster({
       <p className="mb-3 text-[11px] leading-relaxed text-muted">
         在籍中は今この機関に紐づいている方、過去に在籍は退職記録・機関別の雇用開始日が残っている方です。
         転職された方は、今どちらにいるかも出します。
+        賃金は外国人詳細の「賃金（時給・月給）」に入れた現在の金額です（未登録は「未登録」と出ます）。
+        雇用開始日は外国人詳細の「所属機関別の雇用開始日」で入れられます。
       </p>
 
       {error && (
@@ -73,13 +76,14 @@ function Section({
         <p className="rounded-xl bg-background p-3 text-xs text-muted">{emptyText}</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] border-collapse text-xs">
+          <table className="w-full min-w-[820px] border-collapse text-xs">
             <thead>
               <tr className="border-b border-border text-left text-muted">
                 <th className="py-1.5 pr-2 font-bold">氏名</th>
                 <th className="py-1.5 pr-2 font-bold">国籍</th>
                 <th className="py-1.5 pr-2 font-bold">在留資格</th>
                 <th className="py-1.5 pr-2 font-bold">雇用開始</th>
+                <th className="py-1.5 pr-2 font-bold">賃金</th>
                 {showLeaving ? (
                   <>
                     <th className="py-1.5 pr-2 font-bold">退職日</th>
@@ -107,7 +111,23 @@ function Section({
                   </td>
                   <td className="py-1.5 pr-2 text-muted">{w.nationality || "—"}</td>
                   <td className="py-1.5 pr-2 text-muted">{w.residenceStatus || "—"}</td>
-                  <td className="py-1.5 pr-2 tabular-nums">{w.startOn ?? "—"}</td>
+                  <td className="py-1.5 pr-2 tabular-nums">
+                    {w.startOn ?? <span className="text-seal">未登録</span>}
+                  </td>
+                  <td className="py-1.5 pr-2 tabular-nums">
+                    {w.wageAmount ? (
+                      <>
+                        {wageText(w.wageKind ?? "", w.wageAmount)}
+                        {w.wageStartedOn && (
+                          <span className="block text-[10px] text-muted">
+                            {w.wageStartedOn}から
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-seal">未登録</span>
+                    )}
+                  </td>
                   {showLeaving ? (
                     <>
                       <td className="py-1.5 pr-2 tabular-nums">{w.leavingOn ?? "—"}</td>

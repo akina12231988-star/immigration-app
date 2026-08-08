@@ -65,6 +65,10 @@ export function ReceiptSheet({
           <p className="text-xs text-muted">
             {monthLabel(month)}分の入金（{paidOn}）に対する領収書です。A4を縦3分割した上の1枠に印字されます。
           </p>
+          <p className="w-full text-[11px] text-muted">
+            印刷設定は<b>用紙: A4</b>・<b>余白: なし</b>・<b>倍率: 100%</b>にしてください
+            （「用紙に合わせる」だと少し小さく印刷されます）。
+          </p>
         </div>
       </div>
 

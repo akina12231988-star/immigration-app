@@ -30,6 +30,7 @@ import { WorkerDependents } from "@/components/workers/WorkerDependents";
 import { WorkerEmploymentStarts } from "@/components/workers/WorkerEmploymentStarts";
 import { WorkerSalesResignation } from "@/components/workers/WorkerSalesResignation";
 import { WorkerPermitSalesNos } from "@/components/workers/WorkerPermitSalesNos";
+import { WorkerWages } from "@/components/workers/WorkerWages";
 import { WorkerRecurringSales } from "@/components/workers/WorkerRecurringSales";
 import { NotionTransferButton } from "@/components/workers/NotionTransferButton";
 import { Card } from "@/components/ui/Card";
@@ -587,6 +588,16 @@ export function WorkerDetail({
           />
         </>
       )}
+
+      {/* 賃金（時給・月給）。採用時の賃金と昇給の履歴を残す */}
+      <WorkerWages
+        workerId={worker.id}
+        currentOrganizationId={worker.current_organization_id}
+        employmentStartOn={worker.employment_start_on}
+        organizations={organizations}
+        today={todayStr()}
+        canEdit={canEdit}
+      />
 
       {/* 許可売上No.・保険No.（売上明細の伝票番号をまとめて見る・直す） */}
       <WorkerPermitSalesNos workerId={worker.id} canEdit={canEdit} />

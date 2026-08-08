@@ -19,7 +19,12 @@ import { isSsw1Residence } from "@/lib/support-system";
 import type { Organization, Worker } from "@/types/db";
 
 // 請求額の区分
-export type BillingKind = "満額" | "満額（更新月）" | "許可日から日割" | "退職日まで日割";
+export type BillingKind =
+  | "満額"
+  | "満額（更新月）"
+  | "許可日から日割"
+  | "退職日まで日割"
+  | "支援対象外"; // 在籍名簿には載るが請求はしない（特定技能2号など）
 
 // 集計に必要な外国人の項目だけ（一覧の取得を軽くするため）
 export type BillingWorker = Pick<
@@ -54,23 +59,26 @@ export interface MonthlyBillingRow {
   days: number; // 対象日数
   monthDays: number; // その月の日数
   kind: BillingKind;
-  amount: number; // 支援費請求額
+  amount: number; // 支援費請求額（支援対象外は0）
   leftThisMonth: boolean; // その月に退職した
+  billable: boolean; // 請求の対象か（支援対象外なら false）
 }
 
 export interface MonthlyBillingOrg {
   organizationId: string;
   organizationName: string;
   rows: MonthlyBillingRow[];
-  total: number; // 支援費請求額合計
+  total: number; // 支援費請求額合計（支援対象外は含まない）
   leftCount: number; // うち当月退職
+  billableCount: number; // うち請求の対象（支援対象）
 }
 
 export interface MonthlyBilling {
   month: string; // YYYY-MM
   monthEndOn: string; // 基準日（その月の末日）
   orgs: MonthlyBillingOrg[];
-  totalPeople: number;
+  totalPeople: number; // 名簿に載る人数（支援対象外を含む）
+  totalBillable: number; // うち請求の対象
   totalLeft: number;
   totalAmount: number;
   unpriced: MonthlyBillingRow[]; // 所属機関に支援代（月額）が未登録の人
@@ -120,17 +128,34 @@ export function isBillableResidence(residenceStatus: string | null | undefined):
   return s.includes("特定活動") && s.includes("特定技能1号");
 }
 
-// その月に1日でも在籍していた支援対象者か。
+// 在籍名簿に載せる在留資格か。
+// 支援の対象外（特定技能2号・特定活動〔特定技能2号移行準備〕）でも、
+// その所属機関に在籍しているので名簿には載せる（請求だけしない）
+export function isRosterResidence(residenceStatus: string | null | undefined): boolean {
+  const s = (residenceStatus ?? "").trim();
+  if (!s) return false;
+  if (isBillableResidence(s)) return true;
+  return /特定技能|特定活動/.test(s);
+}
+
+// その月に1日でも在籍していて、在籍名簿に載る人か（支援区分は問わない）。
 // 在留許可日がその月の末日までに来ていて、退職日がその月の初日以降（未退職を含む）
-export function isBilledInMonth(worker: BillingWorker, month: string): boolean {
-  if (worker.support !== "支援対象") return false;
-  if (!isBillableResidence(worker.residence_status)) return false;
+export function isOnRosterInMonth(worker: BillingWorker, month: string): boolean {
+  if (worker.support === "支援開始前") return false; // まだ許可前で在籍していない
+  if (!isRosterResidence(worker.residence_status)) return false;
   const { from, to } = monthRange(month);
   const permit = worker.residence_permit_date;
   if (!permit || permit > to) return false;
   const left = worker.leaving_on;
   if (left && left < from) return false;
   return true;
+}
+
+// その月に1日でも在籍していた支援対象者か（＝支援費を請求する人）。
+export function isBilledInMonth(worker: BillingWorker, month: string): boolean {
+  if (worker.support !== "支援対象") return false;
+  if (!isBillableResidence(worker.residence_status)) return false;
+  return isOnRosterInMonth(worker, month);
 }
 
 // 支援対象なのに名簿に載らない理由（載る場合と支援対象でない場合は null）。
@@ -156,6 +181,7 @@ export function billingRowFor(
   worker: BillingWorker,
   month: string,
   monthlyFee: number,
+  billable = true, // false = 支援対象外（名簿には載せるが請求はしない）
 ): MonthlyBillingRow {
   const { from, to } = monthRange(month);
   const monthDays = daysInMonth(from);
@@ -174,18 +200,24 @@ export function billingRowFor(
   const periodTo = leftThisMonth ? left : to;
 
   let kind: BillingKind = "満額";
-  if (newlyStarted) kind = "許可日から日割";
+  if (!billable) kind = "支援対象外";
+  else if (newlyStarted) kind = "許可日から日割";
   else if (leftThisMonth) kind = "退職日まで日割";
   else if (permitThisMonth) kind = "満額（更新月）";
 
   const days = dayNumber(periodTo) - dayNumber(periodFrom) + 1;
   // 日割りでも月まるごと（月初許可〜未退職など）は満額にする
   const full = kind === "満額" || kind === "満額（更新月）" || days === monthDays;
-  const amount = monthlyFee <= 0 ? 0 : full ? monthlyFee : dailyFee(monthlyFee, monthDays) * days;
+  const amount =
+    !billable || monthlyFee <= 0
+      ? 0
+      : full
+        ? monthlyFee
+        : dailyFee(monthlyFee, monthDays) * days;
 
   return {
     worker,
-    monthlyFee,
+    monthlyFee: billable ? monthlyFee : 0,
     periodFrom,
     periodTo,
     days: full ? monthDays : days,
@@ -193,6 +225,7 @@ export function billingRowFor(
     kind,
     amount,
     leftThisMonth,
+    billable,
   };
 }
 
@@ -219,11 +252,13 @@ export function summarizeMonthlyBilling(
   const unpriced: MonthlyBillingRow[] = [];
 
   for (const worker of workers) {
-    if (!isBilledInMonth(worker, month)) continue;
+    // 支援対象外でも在籍していれば名簿には載せる（請求額は0）
+    if (!isOnRosterInMonth(worker, month)) continue;
+    const billable = isBilledInMonth(worker, month);
     const orgId = worker.current_organization_id ?? "";
     const org = orgById.get(orgId);
-    const row = billingRowFor(worker, month, orgMonthlyFee(org));
-    if (row.monthlyFee <= 0) unpriced.push(row);
+    const row = billingRowFor(worker, month, orgMonthlyFee(org), billable);
+    if (billable && row.monthlyFee <= 0) unpriced.push(row);
 
     if (!byOrg.has(orgId)) {
       byOrg.set(orgId, {
@@ -232,12 +267,14 @@ export function summarizeMonthlyBilling(
         rows: [],
         total: 0,
         leftCount: 0,
+        billableCount: 0,
       });
     }
     const bucket = byOrg.get(orgId)!;
     bucket.rows.push(row);
     bucket.total += row.amount;
     if (row.leftThisMonth) bucket.leftCount += 1;
+    if (billable) bucket.billableCount += 1;
   }
 
   const orgs = [...byOrg.values()].sort((a, b) =>
@@ -251,6 +288,7 @@ export function summarizeMonthlyBilling(
     monthEndOn: to,
     orgs,
     totalPeople: orgs.reduce((sum, o) => sum + o.rows.length, 0),
+    totalBillable: orgs.reduce((sum, o) => sum + o.billableCount, 0),
     totalLeft: orgs.reduce((sum, o) => sum + o.leftCount, 0),
     totalAmount: orgs.reduce((sum, o) => sum + o.total, 0),
     unpriced,
