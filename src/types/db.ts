@@ -444,6 +444,30 @@ export interface OrgInvoice {
 
 export type OrgInvoiceInput = Omit<OrgInvoice, "id" | "created_at" | "updated_at">;
 
+// ---- 賃金の記録（0074_worker_wages.sql） ----
+
+export const WORKER_WAGE_KINDS = ["時給", "月給", "日給", "年収"] as const;
+export type WorkerWageKind = (typeof WORKER_WAGE_KINDS)[number];
+
+// 昇給のたびに1行増やし、適用開始日がいちばん新しい行が現在の賃金になる
+export interface WorkerWage {
+  id: string;
+  worker_id: string;
+  organization_id: string | null; // どの機関での賃金か
+  kind: WorkerWageKind;
+  amount: number; // 金額（円）
+  started_on: string; // 適用開始日（採用日・昇給日）YYYY-MM-DD
+  reason: string; // 採用時 / 昇給 など
+  note: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type WorkerWageInput = Omit<
+  WorkerWage,
+  "id" | "created_at" | "updated_at"
+>;
+
 // ---- 人材紹介（あっせん）手数料の台帳（0067_referral_fees.sql） ----
 
 // 全所属機関のあっせん手数料をまとめて管理し、請求年月日・入金年月日を記録する

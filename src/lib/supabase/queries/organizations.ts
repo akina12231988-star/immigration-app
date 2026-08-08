@@ -82,6 +82,9 @@ export interface OrgRosterWorker {
   startOn: string | null; // この機関での雇用開始日
   leavingOn: string | null; // この機関での退職日（過去の在籍者のみ）
   currentOrgName: string | null; // 今どこにいるか（過去の在籍者の転職先）
+  wageKind: string | null; // 現在の賃金の区分（時給 など）
+  wageAmount: number | null; // 現在の賃金の金額
+  wageStartedOn: string | null; // その賃金の適用開始日
 }
 
 export interface OrgRoster {
@@ -129,7 +132,7 @@ export async function getOrgRoster(
   supabase: SupabaseClient,
   organizationId: string,
 ): Promise<OrgRoster> {
-  const [atOrg, everAtOrg, resigned, resignedWorkers, orgNames] = await Promise.all([
+  const [atOrg, everAtOrg, resigned, resignedWorkers, orgNames, wages] = await Promise.all([
     // 今この機関に紐づいている人
     supabase.from("workers").select(ROSTER_COLUMNS).eq("current_organization_id", organizationId),
     // 過去にこの機関で働いた記録がある人（転職して機関が変わっていても残る）。
@@ -161,6 +164,13 @@ export async function getOrgRoster(
           ),
       ),
     supabase.from("organizations").select("id, name"),
+    // この機関での賃金（現在の賃金を一覧に出す）
+    supabase
+      .from("worker_wages")
+      .select("worker_id, kind, amount, started_on, created_at")
+      .eq("organization_id", organizationId)
+      .order("started_on", { ascending: false })
+      .order("created_at", { ascending: false }),
   ]);
 
   // 在籍中の一覧は必ず必要。ここが取れないときだけエラーにする
@@ -172,6 +182,20 @@ export async function getOrgRoster(
       name: string;
     }[]).map((o) => [o.id, o.name]),
   );
+
+  // 賃金も新しい順なので、1人につき最初の1件が現在の賃金になる。
+  // テーブル未作成（マイグレーション未実行）でも一覧は出す
+  const wageByWorker = new Map<
+    string,
+    { kind: string; amount: number; started_on: string }
+  >();
+  if (!wages.error) {
+    for (const w of ((wages.data as
+      | { worker_id: string; kind: string; amount: number; started_on: string }[]
+      | null) ?? [])) {
+      if (!wageByWorker.has(w.worker_id)) wageByWorker.set(w.worker_id, w);
+    }
+  }
 
   // 退職記録は新しい順に並んでいるので、1人につき最初の1件（＝最新）を採る
   const resignedOn = new Map<string, string>();
@@ -216,6 +240,9 @@ export async function getOrgRoster(
         here || !row.current_organization_id
           ? null
           : (orgNameById.get(row.current_organization_id) ?? null),
+      wageKind: wageByWorker.get(row.id)?.kind ?? null,
+      wageAmount: wageByWorker.get(row.id)?.amount ?? null,
+      wageStartedOn: wageByWorker.get(row.id)?.started_on ?? null,
     };
     (isCurrent ? current : past).push(item);
   }
