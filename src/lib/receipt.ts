@@ -70,7 +70,6 @@ export function buildReceipt(input: ReceiptInput): Receipt {
     `このたびは、${monthLabel(input.month)}分のご入金をいただき誠にありがとうございました。`,
     "つきましては、領収書を下記のとおり発行いたしましたので、" +
       "切り取り線でお切り取りのうえ、ご査収ください。",
-    "今後とも変わらぬお付き合いのほど、よろしくお願い申し上げます。",
   ];
 
   return {
