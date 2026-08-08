@@ -146,6 +146,10 @@ export function MonthlyBillingSection({
   );
 
   // 支援対象なのに名簿に載っていない人と、その理由（「なぜ出てこない？」をここで確認できる）
+  // 特定技能総合保険の負担（会社負担 / 外国人負担）。保険No.の出し分けに使う
+  const insuranceBurdenOf = (organizationId: string): string =>
+    mergedOrgs.find((o) => o.id === organizationId)?.intake?.ssw_insurance_burden ?? "";
+
   const orgNameById = useMemo(
     () => new Map(mergedOrgs.map((o) => [o.id, o.name])),
     [mergedOrgs],
@@ -764,11 +768,6 @@ export function MonthlyBillingSection({
           <div className="rounded-xl bg-background p-3">
             <dt className="text-xs text-muted">掲載人数</dt>
             <dd className="text-lg font-bold">{billing.totalPeople}名</dd>
-            {billing.totalBillable < billing.totalPeople && (
-              <dd className="text-[11px] text-muted">
-                うち請求対象 {billing.totalBillable}名
-              </dd>
-            )}
           </div>
           <div className="rounded-xl bg-background p-3">
             <dt className="text-xs text-muted">うち当月退職</dt>
@@ -1001,8 +1000,6 @@ export function MonthlyBillingSection({
                     <span className="block truncate text-sm font-bold">{org.organizationName}</span>
                     <span className="block text-xs text-muted">
                       {org.rows.length}名
-                      {org.billableCount < org.rows.length &&
-                        `（うち請求対象 ${org.billableCount}名）`}
                       {org.leftCount > 0 && `（うち当月退職 ${org.leftCount}名）`} ・{" "}
                       <span className="font-bold text-brand">{formatSalesYen(org.total)}</span>
                     </span>
@@ -1682,8 +1679,8 @@ export function MonthlyBillingSection({
                             )}
                           </td>
                           <td className="py-1.5 pr-2 text-muted">{row.worker.residence_status}</td>
-                          <td className="py-1.5 pr-2">
-                            <div className="flex items-center gap-1.5">
+                          <td className="py-1.5 pr-2 align-top">
+                            <div className="flex w-36 flex-col items-start gap-1">
                               {canEdit ? (
                                 <input
                                   defaultValue={row.worker.recurring_sales_no}
@@ -1703,10 +1700,9 @@ export function MonthlyBillingSection({
                               ) : (
                                 <span className="text-muted">{row.worker.recurring_sales_no || "—"}</span>
                               )}
-                              {/* ◯月分の支援代をfreeeに登録した記録（登録漏れ・二重登録の防止）。
-                                  支援対象外は請求しないので出さない */}
-                              {!row.billable ? null : regs[row.worker.id]?.registered_on ? (
-                                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-status-approved-bg px-2 py-0.5 text-[10px] font-bold text-status-approved-fg">
+                              {/* ◯月分の支援代をfreeeに登録した記録（登録漏れ・二重登録の防止） */}
+                              {regs[row.worker.id]?.registered_on ? (
+                                <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-status-approved-bg px-2 py-0.5 text-[10px] font-bold text-status-approved-fg">
                                   <Check size={11} />
                                   {monthNum}月分の{regs[row.worker.id].fee_name}登録済み
                                   {canEdit && (
@@ -1729,7 +1725,7 @@ export function MonthlyBillingSection({
                                     }
                                     disabled={regBusyId === row.worker.id}
                                     title={`freeeに${monthNum}月分の${feeNameFor(row.worker.residence_status)}を登録したら押して記録します`}
-                                    className="shrink-0 rounded-lg border border-brand px-2 py-1 text-[10px] font-bold text-brand disabled:opacity-50"
+                                    className="rounded-lg border border-brand px-2 py-1 text-[10px] font-bold text-brand disabled:opacity-50"
                                   >
                                     freee売上登録
                                   </button>
@@ -1750,6 +1746,13 @@ export function MonthlyBillingSection({
                             entry={salesNos2[row.worker.id]?.insurance ?? null}
                             canEdit={canEdit}
                             placeholder="保険No."
+                            // 特定技能総合保険が外国人負担の機関は、弊社の売上にならないので❌
+                            disabledText={
+                              insuranceBurdenOf(org.organizationId) === "外国人負担"
+                                ? "❌"
+                                : null
+                            }
+                            disabledTitle="特定技能総合保険が外国人負担のため、保険No.はありません"
                             onSave={(v, entryId) =>
                               void saveEntryNo(row.worker.id, "insurance", entryId, v)
                             }
@@ -1819,13 +1822,24 @@ function SalesNoCell({
   entry,
   canEdit,
   placeholder,
+  disabledText = null,
+  disabledTitle,
   onSave,
 }: {
   entry: { entryId: string; freeeNo: string; itemName: string } | null;
   canEdit: boolean;
   placeholder: string;
+  disabledText?: string | null; // そもそも番号が発生しないときの表示（❌ など）
+  disabledTitle?: string;
   onSave: (value: string, entryId: string) => void;
 }) {
+  if (disabledText) {
+    return (
+      <td className="py-1.5 pr-2 text-muted" title={disabledTitle}>
+        {disabledText}
+      </td>
+    );
+  }
   if (!entry) {
     return (
       <td className="py-1.5 pr-2 text-muted" title="売上明細がまだありません（申請詳細の売上登録で作られます）">
