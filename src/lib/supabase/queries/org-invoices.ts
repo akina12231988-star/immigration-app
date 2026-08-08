@@ -18,14 +18,15 @@ export async function listOrgInvoices(
   return (data as OrgInvoice[]) ?? [];
 }
 
-// ---- 請求書を作成したかどうか（月末の作業の進み具合の確認用） ----
+// ---- 請求書を作成したか・督促状を発行したか（月末の作業の進み具合の確認用） ----
 
-// 一覧に出すのは「作成済みか」を判断するのに要る列だけ（機関が多いので軽く保つ）
+// 一覧に出すのは進み具合の判断に要る列だけ（機関が多いので軽く保つ）
 export const ORG_INVOICE_STATUS_FIELDS = [
   "id",
   "organization_id",
   "month",
   "invoice_created_on",
+  "reminder_sent_on",
   "invoice_no",
   "amount",
   "paid",
@@ -49,17 +50,20 @@ export async function listOrgInvoicesByMonth(
   return (data as unknown as OrgInvoiceStatus[]) ?? [];
 }
 
-// 請求書を作成した／作成を取り消した、を記録する。記録がまだ無い機関×月なら作る。
-// 渡した列だけ書き換わるので、すでに入っている請求書番号や入金の記録は消えない
-export async function setOrgInvoiceCreated(
+// 請求書を作成した・督促状を発行した（またはその取り消し）を記録する。
+// 記録がまだ無い機関×月なら作る。渡した列だけ書き換わるので、
+// すでに入っている請求書番号や入金の記録は消えない
+export async function stampOrgInvoice(
   supabase: SupabaseClient,
   input: {
     organization_id: string;
     month: string;
     billed_on: string;
     due_on: string;
+  } & Partial<{
     invoice_created_on: string | null; // null で「未作成」に戻す
-  },
+    reminder_sent_on: string | null; // null で「未発行」に戻す
+  }>,
 ): Promise<OrgInvoiceStatus> {
   const { data, error } = await supabase
     .from("org_invoices")

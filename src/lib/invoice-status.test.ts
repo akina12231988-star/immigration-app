@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   countInvoicesCreated,
+  countRemindersSent,
   invoiceCreatedMap,
   isInvoiceCreated,
+  reminderSentMap,
 } from "./invoice-status";
 
 describe("invoiceCreatedMap", () => {
@@ -57,5 +59,31 @@ describe("countInvoicesCreated", () => {
       total: 2,
       remaining: 2,
     });
+  });
+});
+
+describe("reminderSentMap", () => {
+  it("発行日が入っている機関だけを拾う", () => {
+    expect(
+      reminderSentMap([
+        { organization_id: "a", reminder_sent_on: "2026-08-08" },
+        { organization_id: "b", reminder_sent_on: null },
+        { organization_id: "", reminder_sent_on: "2026-08-08" },
+      ]),
+    ).toEqual({ a: "2026-08-08" });
+  });
+});
+
+describe("countRemindersSent", () => {
+  it("督促状を出した機関の数を数える", () => {
+    expect(countRemindersSent(["a", "b", "c"], { a: "2026-08-08", c: "2026-08-08" })).toBe(2);
+  });
+
+  it("出していなければ0", () => {
+    expect(countRemindersSent(["a", "b"], {})).toBe(0);
+  });
+
+  it("所属機関が未設定の行は数えない", () => {
+    expect(countRemindersSent(["", "a"], { a: "2026-08-08" })).toBe(1);
   });
 });

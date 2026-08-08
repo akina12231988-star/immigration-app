@@ -430,6 +430,7 @@ export interface OrgInvoice {
   month: string; // 対象の年月 YYYY-MM
   billed_on: string | null; // 請求日（通常は月初）
   invoice_created_on: string | null; // 請求書を作成した日（未作成なら null）
+  reminder_sent_on: string | null; // 督促状を発行した日（未発行なら null）
   invoice_no: string; // 請求書番号（freeeのINV-…）
   amount_excl: number; // 税抜金額（10%の課税対象）
   tax: number; // 消費税額

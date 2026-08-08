@@ -14,6 +14,7 @@ import {
   Download,
   FileCheck2,
   Loader2,
+  MailWarning,
   Printer,
   Search,
   Square,
@@ -45,14 +46,16 @@ import {
   deleteOrgInvoice,
   listOrgInvoices,
   listOrgInvoicesByMonth,
-  setOrgInvoiceCreated,
+  stampOrgInvoice,
   updateOrgInvoice,
   upsertOrgInvoice,
 } from "@/lib/supabase/queries/org-invoices";
 import {
   countInvoicesCreated,
+  countRemindersSent,
   invoiceCreatedMap,
   isInvoiceCreated,
+  reminderSentMap,
 } from "@/lib/invoice-status";
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
 import type { MonthlySupportRegistration, OrgInvoice } from "@/types/db";
@@ -237,26 +240,34 @@ export function MonthlyBillingSection({
   const [showPermitted, setShowPermitted] = useState(false);
   const [showLeft, setShowLeft] = useState(false);
 
-  // 請求書を作成済みの機関（organization_id → 作成日）。対象の年月ごとに読み込む。
-  // 「この機関のみ」でエクセルを出したときに自動で作成済みになり、ボタンで手直しもできる
+  // 月末の作業の進み具合（organization_id → 日付）。対象の年月ごとに読み込む。
+  // 請求書は「この機関のみ」でエクセルを出したとき、督促状は印刷を開いたときに
+  // 自動で記録され、どちらもボタンで手直しできる
   const [invoiceCreatedOn, setInvoiceCreatedOn] = useState<Record<string, string>>({});
+  const [reminderSentOn, setReminderSentOn] = useState<Record<string, string>>({});
   const [createdBusyId, setCreatedBusyId] = useState<string | null>(null);
+  const [reminderBusyId, setReminderBusyId] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     void Promise.resolve().then(() => {
       // 前の月の状態が残らないよう、読み込み前に空にする
-      if (!cancelled) setInvoiceCreatedOn({});
+      if (!cancelled) {
+        setInvoiceCreatedOn({});
+        setReminderSentOn({});
+      }
       return listOrgInvoicesByMonth(createClient(), month)
         .then((rows) => {
-          if (!cancelled) setInvoiceCreatedOn(invoiceCreatedMap(rows));
+          if (cancelled) return;
+          setInvoiceCreatedOn(invoiceCreatedMap(rows));
+          setReminderSentOn(reminderSentMap(rows));
         })
         .catch((err) => {
           if (cancelled) return;
           setError(
             dbErrorMessage(
               err,
-              "0075_org_invoice_created_on.sql",
-              errorMessage(err, "請求書の作成状況の読み込みに失敗しました"),
+              "0075_org_invoice_created_on.sql / 0076_org_invoice_reminder_sent_on.sql",
+              errorMessage(err, "請求書・督促状の状況の読み込みに失敗しました"),
             ),
           );
         });
@@ -270,6 +281,10 @@ export function MonthlyBillingSection({
     () => countInvoicesCreated(billing.orgs.map((o) => o.organizationId), invoiceCreatedOn),
     [billing.orgs, invoiceCreatedOn],
   );
+  const reminderCount = useMemo(
+    () => countRemindersSent(billing.orgs.map((o) => o.organizationId), reminderSentOn),
+    [billing.orgs, reminderSentOn],
+  );
 
   // 請求書を作成した／取り消した、を記録する
   const markInvoiceCreated = async (organizationId: string, created: boolean) => {
@@ -277,7 +292,7 @@ export function MonthlyBillingSection({
     setCreatedBusyId(organizationId);
     setError(null);
     try {
-      const row = await setOrgInvoiceCreated(createClient(), {
+      const row = await stampOrgInvoice(createClient(), {
         organization_id: organizationId,
         month,
         billed_on: invoiceBilledOn(month),
@@ -303,18 +318,53 @@ export function MonthlyBillingSection({
     }
   };
 
+  // 督促状を発行した／取り消した、を記録する
+  const markReminderSent = async (organizationId: string, sent: boolean) => {
+    if (!organizationId) return;
+    setReminderBusyId(organizationId);
+    setError(null);
+    try {
+      const row = await stampOrgInvoice(createClient(), {
+        organization_id: organizationId,
+        month,
+        billed_on: invoiceBilledOn(month),
+        due_on: invoiceDueOn(month),
+        reminder_sent_on: sent ? today : null,
+      });
+      setReminderSentOn((prev) => {
+        const next = { ...prev };
+        if (row.reminder_sent_on) next[organizationId] = row.reminder_sent_on;
+        else delete next[organizationId];
+        return next;
+      });
+    } catch (err) {
+      setError(
+        dbErrorMessage(
+          err,
+          "0076_org_invoice_reminder_sent_on.sql",
+          errorMessage(err, "督促状の発行状況の保存に失敗しました"),
+        ),
+      );
+    } finally {
+      setReminderBusyId(null);
+    }
+  };
+
   // 所属機関名での絞り込み（空白の有無・大文字小文字は無視して部分一致）
   const [orgQuery, setOrgQuery] = useState("");
   // 請求書がまだの機関だけを出す（月末に残りを片づけるとき用）
   const [onlyUncreated, setOnlyUncreated] = useState(false);
+  // 督促状を出した機関だけを出す（未入金の追いかけ用）
+  const [onlyReminded, setOnlyReminded] = useState(false);
   const visibleOrgs = useMemo(() => {
     const normalize = (s: string) => s.replace(/[\s　]/g, "").toLowerCase();
     const q = normalize(orgQuery);
     let orgs = billing.orgs;
     if (q) orgs = orgs.filter((o) => normalize(o.organizationName).includes(q));
     if (onlyUncreated) orgs = orgs.filter((o) => !isInvoiceCreated(invoiceCreatedOn, o.organizationId));
+    if (onlyReminded) orgs = orgs.filter((o) => Boolean(reminderSentOn[o.organizationId]));
     return orgs;
-  }, [billing.orgs, orgQuery, onlyUncreated, invoiceCreatedOn]);
+  }, [billing.orgs, orgQuery, onlyUncreated, onlyReminded, invoiceCreatedOn, reminderSentOn]);
 
   // 定期売上No.でのソート。未登録は常に最後（氏名順のままの集計順は billing 側）
   const sortRows = (rows: MonthlyBillingRow[]): MonthlyBillingRow[] => {
@@ -1111,6 +1161,29 @@ export function MonthlyBillingSection({
             「この機関のみ」でエクセルを出すと自動で作成済みになります。freeeで直接作った分は、
             機関ごとの「未作成」を押して作成済みにできます。
           </p>
+
+          {/* 督促状を出した機関（未入金の追いかけ用。出していない機関のほうが多いので数だけ出す） */}
+          <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-3">
+            <p className="flex items-center gap-2 text-sm">
+              <MailWarning size={18} className="text-seal" />
+              <span className="font-bold">督促状</span>
+              <span className="tabular-nums">発行済み {reminderCount}機関</span>
+            </p>
+            {reminderCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setOnlyReminded((v) => !v)}
+                className={`min-h-[36px] rounded-lg border px-3 text-xs font-bold ${
+                  onlyReminded ? "border-seal bg-seal text-white" : "border-border text-seal"
+                }`}
+              >
+                {onlyReminded ? "すべての機関を表示" : "督促状を出した機関のみ"}
+              </button>
+            )}
+            <p className="w-full text-xs text-muted">
+              「督促状を印刷」を開くと自動で発行済みになります。押し直せば取り消せます。
+            </p>
+          </div>
         </Card>
       )}
 
@@ -1187,6 +1260,12 @@ export function MonthlyBillingSection({
                       >
                         {invoiceCreatedOn[org.organizationId] ? "請求書 作成済み" : "請求書 未作成"}
                       </span>
+                      {/* 督促状は出した機関だけ印をつける（出していない機関のほうが多いため） */}
+                      {reminderSentOn[org.organizationId] && (
+                        <span className="shrink-0 rounded-full bg-seal/10 px-2 py-0.5 text-[10px] font-bold text-seal">
+                          督促状 発行済み
+                        </span>
+                      )}
                     </span>
                     <span className="block text-xs text-muted">
                       {org.rows.length}名
@@ -1196,6 +1275,12 @@ export function MonthlyBillingSection({
                         <span className="text-muted">
                           {" "}
                           ・ 請求書作成 {invoiceCreatedOn[org.organizationId]}
+                        </span>
+                      )}
+                      {reminderSentOn[org.organizationId] && (
+                        <span className="text-seal">
+                          {" "}
+                          ・ 督促状 {reminderSentOn[org.organizationId]}
                         </span>
                       )}
                     </span>
@@ -1811,9 +1896,47 @@ export function MonthlyBillingSection({
                             )}
                           </span>
                         </span>
+                        {/* 発行済みの印。押して取り消せる（誤って開いたときのため） */}
+                        {canEdit && org.organizationId && (
+                          <button
+                            type="button"
+                            disabled={reminderBusyId === org.organizationId}
+                            onClick={() =>
+                              void markReminderSent(
+                                org.organizationId,
+                                !reminderSentOn[org.organizationId],
+                              )
+                            }
+                            title={
+                              reminderSentOn[org.organizationId]
+                                ? `${reminderSentOn[org.organizationId]}に発行済みにしました。押すと未発行に戻します`
+                                : "督促状を発行したら押してください（印刷を開くと自動で記録されます）"
+                            }
+                            className={`inline-flex min-h-[36px] items-center gap-1 rounded-lg border px-2.5 text-xs font-bold disabled:opacity-50 ${
+                              reminderSentOn[org.organizationId]
+                                ? "border-seal bg-seal/10 text-seal"
+                                : "border-border text-muted"
+                            }`}
+                          >
+                            {reminderBusyId === org.organizationId ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <MailWarning size={14} />
+                            )}
+                            {reminderSentOn[org.organizationId]
+                              ? `督促状 発行済み（${reminderSentOn[org.organizationId]}）`
+                              : "督促状 未発行"}
+                          </button>
+                        )}
                         {savedUnpaidRows().length > 0 ? (
                           <Link
                             href={reminderHref(org)}
+                            // 印刷ページを開いた時点で発行済みとして記録する
+                            onClick={() => {
+                              if (canEdit && !reminderSentOn[org.organizationId]) {
+                                void markReminderSent(org.organizationId, true);
+                              }
+                            }}
                             className="ml-auto inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-brand px-5 py-3 text-sm font-bold text-brand-foreground"
                           >
                             <Printer size={16} />
