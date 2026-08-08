@@ -21,7 +21,12 @@ import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
 import { setWorkerRecurringSalesNo } from "@/lib/supabase/queries/workers";
 import { updateOrganization } from "@/lib/supabase/queries/organizations";
-import { listPermitContentsByMonth } from "@/lib/supabase/queries/applications";
+import {
+  listGrantedPermits,
+  listPermitContentsByMonth,
+  type GrantedPermit,
+} from "@/lib/supabase/queries/applications";
+import { effectivePermitForMonth } from "@/lib/billing-permits";
 import {
   listWorkerSalesNos,
   setSalesEntryFreeeNo,
@@ -46,6 +51,7 @@ import {
   dailyFee,
   formatSalesYen,
   mdText,
+  monthEnd,
   taxBreakdownMatches,
   taxFromExcl,
   ymdText,
@@ -122,13 +128,49 @@ export function MonthlyBillingSection({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // 在留許可の履歴（外国人ごと）。更新許可で許可日が進んでも過去の月が変わらないようにする
+  const [permitHistory, setPermitHistory] = useState<Record<string, GrantedPermit[]>>({});
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve().then(() =>
+      listGrantedPermits(createClient())
+        .then((rows) => {
+          if (cancelled) return;
+          const byWorker: Record<string, GrantedPermit[]> = {};
+          for (const r of rows) (byWorker[r.workerId] ??= []).push(r);
+          setPermitHistory(byWorker);
+        })
+        .catch(() => {
+          // 取れなくても現在の許可日で集計する（これまでの動き）
+          if (!cancelled) setPermitHistory({});
+        }),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // 定期売上No. は画面で編集した内容を優先して集計に反映する
   const merged = useMemo(
     () =>
-      workers.map((w) =>
-        salesNos[w.id] === undefined ? w : { ...w, recurring_sales_no: salesNos[w.id] },
-      ),
-    [workers, salesNos],
+      workers.map((w) => {
+        const next =
+          salesNos[w.id] === undefined ? w : { ...w, recurring_sales_no: salesNos[w.id] };
+        // 現在の許可日が対象月より後なら、その月の時点で有効だった許可に置き換える。
+        // 更新許可で日付が進んだ人が、過去の月の名簿から消えないようにする
+        const permits = permitHistory[w.id];
+        if (!permits || (next.residence_permit_date ?? "") <= monthEnd(`${month}-01`)) {
+          return next;
+        }
+        const asOf = effectivePermitForMonth(permits, month);
+        if (!asOf) return next;
+        return {
+          ...next,
+          residence_permit_date: asOf.permitDate,
+          residence_status: asOf.visa || next.residence_status,
+        };
+      }),
+    [workers, salesNos, permitHistory, month],
   );
   // 支援代（月額）もこのページで登録した内容を優先して集計に反映する
   const mergedOrgs = useMemo(

@@ -177,3 +177,44 @@ export async function listPermitContentsByMonth(
   }
   return out;
 }
+
+// 許可が下りた申請の記録（外国人ごとの在留許可の履歴）。
+//
+// workers.residence_permit_date は「現在の在留資格の許可日」なので、更新許可が
+// 下りると日付が上書きされ、その人が過去の月の名簿から消えてしまう。
+// 過去の月を作り直しても同じ結果になるよう、申請に残っている許可の履歴を使う
+export interface GrantedPermit {
+  workerId: string;
+  permitDate: string; // 在留許可日 YYYY-MM-DD
+  visa: string; // 許可時の在留資格（未登録なら空）
+  content: string; // 申請内容（在留期間の更新許可 など）
+}
+
+export async function listGrantedPermits(
+  supabase: SupabaseClient,
+): Promise<GrantedPermit[]> {
+  const { data, error } = await supabase
+    .from("immigration_applications")
+    .select("worker_id, granted_permit_date, visa_at_grant, application_content")
+    .not("granted_permit_date", "is", null)
+    .order("granted_permit_date", { ascending: false });
+  if (error) throw error;
+
+  return (
+    (data as
+      | {
+          worker_id: string | null;
+          granted_permit_date: string;
+          visa_at_grant: string | null;
+          application_content: string | null;
+        }[]
+      | null) ?? []
+  )
+    .filter((r) => r.worker_id)
+    .map((r) => ({
+      workerId: r.worker_id as string,
+      permitDate: r.granted_permit_date,
+      visa: r.visa_at_grant ?? "",
+      content: r.application_content ?? "",
+    }));
+}
