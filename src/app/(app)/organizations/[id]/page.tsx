@@ -35,8 +35,16 @@ export default async function OrganizationDetailPage({
   const [employees, workers, roster] = await Promise.all([
     listEmployees(supabase),
     listWorkersForSupport(supabase),
-    // 在籍者・過去の在籍者。記録が無くても機関の画面は開けるようにする
-    getOrgRoster(supabase, id).catch(() => ({ current: [], past: [] })),
+    // 在籍者・過去の在籍者。取得に失敗しても機関の画面は開けるようにするが、
+    // 「0名」と紛らわしく見せないよう、失敗した事実は画面に出す
+    getOrgRoster(supabase, id).then(
+      (r) => ({ ...r, error: null as string | null }),
+      (e: unknown) => ({
+        current: [],
+        past: [],
+        error: e instanceof Error ? e.message : "在籍者の取得に失敗しました",
+      }),
+    ),
   ]);
   const workerCount = workers.filter(
     (w) => w.current_organization_id === id && isSupportedSsw1(w),
@@ -52,7 +60,11 @@ export default async function OrganizationDetailPage({
         workerCount={workerCount}
       />
       <div className="mt-4">
-        <OrganizationRoster current={roster.current} past={roster.past} />
+        <OrganizationRoster
+          current={roster.current}
+          past={roster.past}
+          error={roster.error}
+        />
       </div>
     </>
   );

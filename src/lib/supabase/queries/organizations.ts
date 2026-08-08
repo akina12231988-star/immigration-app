@@ -129,25 +129,42 @@ export async function getOrgRoster(
   supabase: SupabaseClient,
   organizationId: string,
 ): Promise<OrgRoster> {
-  const [atOrg, everAtOrg, resigned, orgNames] = await Promise.all([
+  const [atOrg, everAtOrg, resigned, resignedWorkers, orgNames] = await Promise.all([
     // 今この機関に紐づいている人
     supabase.from("workers").select(ROSTER_COLUMNS).eq("current_organization_id", organizationId),
-    // 過去にこの機関で働いた記録がある人（転職して機関が変わっていても残る）
+    // 過去にこの機関で働いた記録がある人（転職して機関が変わっていても残る）。
+    // jsonb の包含検索は JSON 文字列で渡す（配列で渡すとPostgreSQLの配列表記になってしまう）
     supabase
       .from("workers")
       .select(ROSTER_COLUMNS)
-      .contains("org_employment_starts", [{ organization_id: organizationId }]),
+      .contains("org_employment_starts", JSON.stringify([{ organization_id: organizationId }])),
     // この機関からの退職記録
     supabase
       .from("resignations")
       .select("worker_id, leaving_on")
       .eq("organization_id", organizationId)
       .order("leaving_on", { ascending: false }),
+    // 退職記録から辿る外国人（所属機関が別に移っていて上の2つに出てこない人を拾う）
+    supabase
+      .from("workers")
+      .select(ROSTER_COLUMNS)
+      .in(
+        "id",
+        await supabase
+          .from("resignations")
+          .select("worker_id")
+          .eq("organization_id", organizationId)
+          .then(
+            ({ data }) =>
+              ((data as { worker_id: string }[] | null) ?? []).map((r) => r.worker_id),
+            () => [],
+          ),
+      ),
     supabase.from("organizations").select("id, name"),
   ]);
 
+  // 在籍中の一覧は必ず必要。ここが取れないときだけエラーにする
   if (atOrg.error) throw atOrg.error;
-  if (everAtOrg.error) throw everAtOrg.error;
 
   const orgNameById = new Map(
     (((orgNames.data as { id: string; name: string }[] | null) ?? []) as {
@@ -162,10 +179,14 @@ export async function getOrgRoster(
     if (!resignedOn.has(r.worker_id)) resignedOn.set(r.worker_id, r.leaving_on);
   }
 
+  // 過去分の2つは取れなくても在籍中の一覧は出す（記録の作り方によっては空になる）
   const byId = new Map<string, RosterRow>();
   for (const r of [
-    ...(((atOrg.data as unknown as RosterRow[] | null) ?? [])),
-    ...(((everAtOrg.data as unknown as RosterRow[] | null) ?? [])),
+    ...((atOrg.data as unknown as RosterRow[] | null) ?? []),
+    ...(everAtOrg.error ? [] : ((everAtOrg.data as unknown as RosterRow[] | null) ?? [])),
+    ...(resignedWorkers.error
+      ? []
+      : ((resignedWorkers.data as unknown as RosterRow[] | null) ?? [])),
   ]) {
     byId.set(r.id, r);
   }
