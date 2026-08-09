@@ -42,6 +42,10 @@ export interface InvoiceCheckResult {
   missing: { no: number; name: string; amount: number }[];
   // 請求書にあるのに名簿にいない人（対象月・所属機関違いの疑い)
   unknown: InvoiceSupportLine[];
+  // メモ（請求しない理由）が入力されていて請求書にも無い人。漏れではなく意図した除外
+  skipped: { no: number; name: string; amount: number; note: string }[];
+  // メモでは請求しないはずなのに、請求書に載っている人（メモか請求書のどちらかが違う）
+  notedButBilled: { no: number; name: string; note: string }[];
 }
 
 // 氏名の照合用の形にそろえる（大文字・空白なし）。
@@ -51,21 +55,32 @@ export function normalizeName(name: string): string {
   return name.replace(/[\s　]+/g, "").toUpperCase();
 }
 
-// 支援代・サポート代の行か。摘要は「◯◯さん　特定技能　7月分の支援代」のような形
-const SUPPORT_LINE_RE = /^(.+?)さん.*(支援代|サポート代)/;
+// 支援代・サポート代の行か。摘要は「◯◯さん　特定技能　7月分の支援代」のような形。
+// 一度No.を書き込んだPDFでは文字の切れ方が変わり「1 人」「サポート 代」のように
+// 空白が挟まることがあるため、語の間の空白は許して判定する
+const SUPPORT_LINE_RE = /^(.+?)さ\s*ん.*?(支\s*援\s*代|サ\s*ポ\s*ー\s*ト\s*代)/;
+
+// 明細の数量「1人」。備考欄にも「支援代なし」のような文が書かれることがあるため、
+// 数量がある行だけを明細として扱う（備考の行にNo.を振らないように）
+const QTY_RE = /\s(\d+)\s*人(?=\s|$)/g;
 
 // 「15,000」「1,932」のような金額
 const AMOUNT_RE = /\d{1,3}(?:,\d{3})*(?![\d,])/g;
 
-// PDFの1行から支援代・サポート代の行を取り出す。該当しない行は null。
+// PDFの1行から支援代・サポート代の明細行を取り出す。該当しない行は null。
 // すでにNo.を書き込んだPDFをもう一度アップロードしても照合できるよう、
 // 行頭の「No.12」は氏名に入れない
 export function parseSupportLine(line: PdfTextLine): InvoiceSupportLine | null {
   const text = line.text.replace(/^No\.\d+\s*/, "");
   const m = SUPPORT_LINE_RE.exec(text);
   if (!m) return null;
-  // 行の一番右の数字を明細金額として読む（数量「1人」の1は桁が小さいので単価・金額が残る）
-  const nums = text.match(AMOUNT_RE) ?? [];
+
+  // 数量「1人」より右にある一番右の数字を明細金額として読む。
+  // 摘要の「7月2日までの」のような日付の数字を金額と読み間違えないため
+  let qtyEnd = -1;
+  for (let q = QTY_RE.exec(text); q; q = QTY_RE.exec(text)) qtyEnd = q.index + q[0].length;
+  if (qtyEnd < 0) return null; // 数量が無い行は明細ではない（備考欄の文章など）
+  const nums = text.slice(qtyEnd).match(AMOUNT_RE) ?? [];
   const last = nums.length > 0 ? Number(nums[nums.length - 1].replace(/,/g, "")) : null;
   return {
     page: line.page,
@@ -78,10 +93,13 @@ export function parseSupportLine(line: PdfTextLine): InvoiceSupportLine | null {
 }
 
 // 名簿（org.rows。エクセルの在籍名簿と同じ氏名順）と請求書の行を照合する。
-// No.はエクセルのNo.列と同じ「氏名順の並びで1はじまり」
+// No.はエクセルのNo.列と同じ「氏名順の並びで1はじまり」。
+// notes は名簿のメモ（請求しない理由。worker.id → メモ）。メモが入力されている人は
+// 請求書に載っていなくても漏れではなく「意図して請求しない人」として扱う
 export function checkInvoiceLines(
   rosterRows: MonthlyBillingRow[],
   lines: PdfTextLine[],
+  notes: Record<string, string> = {},
 ): InvoiceCheckResult {
   const supportLines = lines
     .map(parseSupportLine)
@@ -91,9 +109,11 @@ export function checkInvoiceLines(
   rosterRows.forEach((row, i) => {
     byName.set(normalizeName(row.worker.name), { no: i + 1, row });
   });
+  const noteOf = (row: MonthlyBillingRow): string => (notes[row.worker.id] ?? "").trim();
 
   const matched: InvoiceCheckResult["matched"] = [];
   const unknown: InvoiceSupportLine[] = [];
+  const notedButBilled: InvoiceCheckResult["notedButBilled"] = [];
   const found = new Set<number>(); // 請求書に出てきた名簿のNo.
 
   for (const line of supportLines) {
@@ -101,6 +121,9 @@ export function checkInvoiceLines(
     if (!hit) {
       unknown.push(line);
       continue;
+    }
+    if (!found.has(hit.no) && noteOf(hit.row)) {
+      notedButBilled.push({ no: hit.no, name: hit.row.worker.name, note: noteOf(hit.row) });
     }
     found.add(hit.no);
     matched.push({
@@ -113,10 +136,17 @@ export function checkInvoiceLines(
     });
   }
 
-  // 請求額が0円の人（支援代（月額）未登録など）は請求書に載らなくても漏れとしない
-  const missing = rosterRows
-    .map((row, i) => ({ no: i + 1, name: row.worker.name, amount: row.amount }))
-    .filter((r) => !found.has(r.no) && r.amount > 0);
+  // 請求書に載っていない人のうち、メモがある人は「意図して請求しない人」、
+  // メモも無い人は「請求漏れの疑い」。請求額0円の人（支援代（月額）未登録など）は出さない
+  const missing: InvoiceCheckResult["missing"] = [];
+  const skipped: InvoiceCheckResult["skipped"] = [];
+  rosterRows.forEach((row, i) => {
+    const no = i + 1;
+    if (found.has(no) || row.amount <= 0) return;
+    const note = noteOf(row);
+    if (note) skipped.push({ no, name: row.worker.name, amount: row.amount, note });
+    else missing.push({ no, name: row.worker.name, amount: row.amount });
+  });
 
-  return { matched, missing, unknown };
+  return { matched, missing, unknown, skipped, notedButBilled };
 }

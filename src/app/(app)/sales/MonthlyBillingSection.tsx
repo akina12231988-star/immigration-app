@@ -542,6 +542,17 @@ export function MonthlyBillingSection({
   const [regs, setRegs] = useState<Record<string, MonthlySupportRegistration>>({});
   const [regBusyId, setRegBusyId] = useState<string | null>(null);
 
+  // メモ（請求しない理由）だけを取り出したもの（worker_id → メモ）。請求書PDFの照合で使う
+  const regNotes = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.values(regs)
+          .filter((r) => r.note.trim())
+          .map((r) => [r.worker_id, r.note]),
+      ),
+    [regs],
+  );
+
   useEffect(() => {
     let cancelled = false;
     // レンダー中の同期setStateを避けるため、読み込みはマイクロタスクで開始する
@@ -1441,8 +1452,9 @@ export function MonthlyBillingSection({
                   </button>
                 </div>
                 {/* 請求書PDFをアップロードして名簿と照合し、No.付きPDFを作る。
-                    ボタンは「この機関のみ」の横に並び、結果は下の行いっぱいに折り返して出る */}
-                <InvoicePdfCheck org={org} />
+                    ボタンは「この機関のみ」の横に並び、結果は下の行いっぱいに折り返して出る。
+                    メモ（請求しない理由）がある人は漏れではなく「請求しない人」として出す */}
+                <InvoicePdfCheck org={org} notes={regNotes} />
               </div>
 
               {open && canEdit && org.organizationId && (org.rows[0]?.monthlyFee ?? 0) <= 0 && (

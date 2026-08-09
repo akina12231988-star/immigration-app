@@ -81,7 +81,15 @@ async function annotatePdf(
   return new Blob([bytes as unknown as BlobPart], { type: "application/pdf" });
 }
 
-export function InvoicePdfCheck({ org }: { org: MonthlyBillingOrg }) {
+export function InvoicePdfCheck({
+  org,
+  notes,
+}: {
+  org: MonthlyBillingOrg;
+  // 名簿のメモ（請求しない理由。worker.id → メモ）。
+  // メモがある人は請求書に無くても漏れではなく「請求しない人」として出す
+  notes: Record<string, string>;
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -99,7 +107,7 @@ export function InvoicePdfCheck({ org }: { org: MonthlyBillingOrg }) {
       const data = await file.arrayBuffer();
       // pdfjs は渡したバッファを作業用に持っていってしまう（空になる）ので、コピーを渡す
       const lines = await extractTextLines(data.slice(0));
-      const checked = checkInvoiceLines(org.rows, lines);
+      const checked = checkInvoiceLines(org.rows, lines, notes);
       if (checked.matched.length === 0) {
         setError(
           "支援代・サポート代の行が見つかりませんでした。freeeから出した請求書PDFか、所属機関が合っているかご確認ください",
@@ -121,7 +129,11 @@ export function InvoicePdfCheck({ org }: { org: MonthlyBillingOrg }) {
     downloadBlob(annotated, `No付き_${fileName}`);
   };
 
-  const ok = result && result.missing.length === 0 && result.unknown.length === 0;
+  const ok =
+    result &&
+    result.missing.length === 0 &&
+    result.unknown.length === 0 &&
+    result.notedButBilled.length === 0;
 
   return (
     <>
@@ -181,6 +193,26 @@ export function InvoicePdfCheck({ org }: { org: MonthlyBillingOrg }) {
                   <p className="font-bold">名簿にいない人の行（対象月・所属機関違いの疑い）:</p>
                   {result.unknown.map((u, i) => (
                     <p key={i}>{u.name}</p>
+                  ))}
+                </div>
+              )}
+              {result.notedButBilled.length > 0 && (
+                <div className="text-seal">
+                  <p className="font-bold">メモでは請求しないはずなのに請求書に載っている人:</p>
+                  {result.notedButBilled.map((m) => (
+                    <p key={m.no}>
+                      No.{m.no} {m.name}　メモ: {m.note}
+                    </p>
+                  ))}
+                </div>
+              )}
+              {result.skipped.length > 0 && (
+                <div className="text-muted">
+                  <p className="font-bold">メモにより請求しない人（漏れではありません）:</p>
+                  {result.skipped.map((m) => (
+                    <p key={m.no}>
+                      No.{m.no} {m.name}（名簿の請求額 {formatSalesYen(m.amount)}）　メモ: {m.note}
+                    </p>
                   ))}
                 </div>
               )}

@@ -64,6 +64,39 @@ describe("parseSupportLine", () => {
     expect(parseSupportLine(line("請求金額 1,717,349円"))).toBeNull();
   });
 
+  it("備考欄の文章は明細ではない（数量が無い行は対象外）", () => {
+    // 実際の請求書の備考欄にあった行。「支援代」を含むが明細ではないのでNo.を振らない
+    expect(
+      parseSupportLine(
+        line("TRINH TRUNG NGUYENさん　許可日:7月2日（早期退職の為、申請手数料・支援代なし）"),
+      ),
+    ).toBeNull();
+    expect(parseSupportLine(line("BOY SAMNANGさん　許可日:7月28日"))).toBeNull();
+  });
+
+  it("No.付きPDFを読み直したときの空白まじりの行でも読める", () => {
+    // pdf-lib で再保存すると「1 人」「サ ポート代」のように空白が挟まることがある
+    const l = parseSupportLine(
+      line("CHEN SOLEU さん 特定活動 7 月分のサポート代 1 人 15,000 15,000"),
+    );
+    expect(l?.name).toBe("CHEN SOLEU");
+    expect(l?.amount).toBe(15000);
+    // 備考欄の行は空白まじりでも明細にしない
+    expect(
+      parseSupportLine(
+        line("TRINH TRUNG NGUYEN さん 許可日： 7 月 2 日（早期退職の為、申請手数料・支援代なし）"),
+      ),
+    ).toBeNull();
+  });
+
+  it("摘要の日付の数字を金額と読み間違えない（金額は数量より右から読む）", () => {
+    const l = parseSupportLine(line("NGUYEN THI NHIさん　特定技能　7月4日までの支援代 1人 1,932 1,932"));
+    expect(l?.amount).toBe(1932);
+    // 数量より右に数字が無ければ金額は不明のまま
+    const n = parseSupportLine(line("SOAM LINAさん　特定技能　7月10日からの支援代 1人"));
+    expect(n?.amount).toBeNull();
+  });
+
   it("氏名の空白のゆれ（2つの空白・切れ方の違い）でも照合できる形にそろえる", () => {
     expect(normalizeName("VO  QUANG BEN")).toBe(normalizeName("VO QUANG BEN"));
     expect(normalizeName("CHEN SOL EU")).toBe(normalizeName("CHEN SOLEU"));
@@ -132,5 +165,34 @@ describe("checkInvoiceLines", () => {
     ]);
     expect(result.matched.map((m) => m.no)).toEqual([1]);
     expect(result.missing).toEqual([]);
+  });
+
+  it("メモ（請求しない理由）がある人は漏れではなく「請求しない人」になる", () => {
+    const boy = row("BOY SAMNANG");
+    const result = checkInvoiceLines([boy], [], {
+      [boy.worker.id]: "7月28日許可後に8月1日から雇用開始",
+    });
+    expect(result.missing).toEqual([]);
+    expect(result.skipped).toEqual([
+      {
+        no: 1,
+        name: "BOY SAMNANG",
+        amount: boy.amount,
+        note: "7月28日許可後に8月1日から雇用開始",
+      },
+    ]);
+  });
+
+  it("メモがあるのに請求書に載っている人は警告する", () => {
+    const dany = row("BOEURN DANY");
+    const result = checkInvoiceLines(
+      [dany],
+      [line("BOEURN DANYさん　特定技能　7月分の支援代 1人 15,000 15,000")],
+      { [dany.worker.id]: "今月は請求しない" },
+    );
+    expect(result.notedButBilled).toEqual([
+      { no: 1, name: "BOEURN DANY", note: "今月は請求しない" },
+    ]);
+    expect(result.skipped).toEqual([]);
   });
 });
