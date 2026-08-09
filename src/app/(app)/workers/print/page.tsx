@@ -39,16 +39,22 @@ export default async function WorkersPrintPage({
     const { data } = await supabase.from("workers").select("*").eq("id", workerParam).maybeSingle();
     if (data) workers = [data as Worker];
   } else if (forList) {
-    // 一覧表: 在留許可日または退職日の期間で絞り込み（所属機関は任意）
-    let q = supabase.from("workers").select("*");
+    // 一覧表: 在留許可日または退職日の期間で絞り込み（所属機関は任意）。
+    // 支援開始前の人は許可が下りておらず在留許可日が予定のため載せない
+    let q = supabase.from("workers").select("*").neq("support", "支援開始前");
     if (org) q = q.eq("current_organization_id", org);
     if (from) q = q.gte(dateColumn, from);
     if (to) q = q.lte(dateColumn, to);
     const { data } = await q.order(dateColumn, { ascending: true });
     workers = (data as Worker[]) ?? [];
   } else if (org) {
-    // 所属機関 AND 在留許可日または退職日の期間で絞り込み（1人1ページのシート）
-    let q = supabase.from("workers").select("*").eq("current_organization_id", org);
+    // 所属機関 AND 在留許可日または退職日の期間で絞り込み（1人1ページのシート）。
+    // こちらも支援開始前の人は載せない（個人単位の印刷では本人を選んでいるので出せる）
+    let q = supabase
+      .from("workers")
+      .select("*")
+      .eq("current_organization_id", org)
+      .neq("support", "支援開始前");
     if (from) q = q.gte(dateColumn, from);
     if (to) q = q.lte(dateColumn, to);
     const { data } = await q.order("name");
