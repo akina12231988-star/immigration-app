@@ -215,3 +215,45 @@ export async function setSalesEntryFreeeNo(
     .eq("id", entryId);
   if (error) throw error;
 }
+
+// 名簿で許可売上No.・保険No.を入れたときに、その番号だけの売上明細を作る。
+// 更新申請の人は申請詳細の売上登録を通していないことがあり、書き換える行が無いと
+// 番号を残せないため、名簿から番号を入れた時点で行のほうを用意する。
+// 金額はfreee側にあるので0のままにし、番号がある＝登録済みとして扱う
+export async function createSalesNoEntry(
+  supabase: SupabaseClient,
+  params: {
+    workerId: string;
+    organizationId: string | null;
+    kind: "申請" | "保険";
+    itemName: string;
+    description: string;
+    freeeNo: string;
+    registeredOn: string;
+  },
+): Promise<WorkerSalesNo> {
+  const { data, error } = await supabase
+    .from("sales_entries")
+    .insert({
+      worker_id: params.workerId,
+      organization_id: params.organizationId,
+      kind: params.kind,
+      item_name: params.itemName,
+      description: params.description,
+      amount: 0,
+      taxable: params.kind !== "保険", // 特定技能総合保険は非課税
+      status: "登録済み",
+      freee_no: params.freeeNo,
+      registered_on: params.registeredOn,
+    })
+    .select("id, freee_no, item_name, created_at")
+    .single();
+  if (error) throw error;
+  const row = data as { id: string; freee_no: string; item_name: string; created_at: string };
+  return {
+    entryId: row.id,
+    freeeNo: row.freee_no,
+    itemName: row.item_name,
+    createdAt: row.created_at,
+  };
+}
