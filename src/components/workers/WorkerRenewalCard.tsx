@@ -1,5 +1,6 @@
 "use client";
 
+import { messengerWebUrl } from "@/lib/messenger-link";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -190,7 +191,7 @@ export function WorkerRenewalCard({
           外国人情報
         </Link>
         {worker.messenger_link && (
-          <a href={worker.messenger_link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs font-bold text-brand">
+          <a href={messengerWebUrl(worker.messenger_link)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs font-bold text-brand">
             <MessageCircle size={13} />
             Messenger
           </a>

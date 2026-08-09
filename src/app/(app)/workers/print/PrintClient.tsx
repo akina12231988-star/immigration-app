@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BackButton } from "@/components/BackButton";
 import QRCode from "qrcode";
+import { messengerWebUrl } from "@/lib/messenger-link";
 import { Printer, UserRound } from "lucide-react";
 import type { Organization } from "@/types/db";
 
@@ -364,7 +365,8 @@ function WorkerSheet({
     // 会社提出用は Messenger QR を出さない（描画側でも非表示）
     if (forCompany || !worker.messengerLink) return;
     let cancelled = false;
-    QRCode.toDataURL(worker.messengerLink, { margin: 1, width: 240 })
+    // QRを読み取ったときもアプリではなくブラウザで開くよう、messenger.com の形にする
+    QRCode.toDataURL(messengerWebUrl(worker.messengerLink), { margin: 1, width: 240 })
       .then((u) => {
         if (!cancelled) setQr(u);
       })

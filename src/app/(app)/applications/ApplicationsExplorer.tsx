@@ -1,5 +1,6 @@
 "use client";
 
+import { messengerWebUrl } from "@/lib/messenger-link";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -560,7 +561,7 @@ export function ApplicationsExplorer({
                       >
                         Notionを開く
                       </WorkerLink>
-                      <WorkerLink href={w?.messenger_link} icon={<MessageCircle size={13} />}>
+                      <WorkerLink href={w?.messenger_link ? messengerWebUrl(w.messenger_link) : undefined} icon={<MessageCircle size={13} />}>
                         Messenger
                       </WorkerLink>
                     </div>
@@ -692,7 +693,7 @@ export function ApplicationsExplorer({
                             </WorkerLink>
                           </Td>
                           <Td>
-                            <WorkerLink href={w?.messenger_link} icon={<MessageCircle size={13} />}>
+                            <WorkerLink href={w?.messenger_link ? messengerWebUrl(w.messenger_link) : undefined} icon={<MessageCircle size={13} />}>
                               Messenger
                             </WorkerLink>
                           </Td>
