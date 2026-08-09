@@ -38,6 +38,7 @@ export function PrintClient({
   selectedOrg,
   orgName,
   individual,
+  workerId,
   from,
   to,
   forCompany,
@@ -49,6 +50,7 @@ export function PrintClient({
   selectedOrg: string;
   orgName: string;
   individual: boolean;
+  workerId: string; // 個人単位の印刷の対象（空なら所属機関などの絞り込み）
   from: string;
   to: string;
   forCompany: boolean;
@@ -59,9 +61,11 @@ export function PrintClient({
   const router = useRouter();
   const printDate = new Date().toLocaleDateString("ja-JP");
 
-  // 条件変更でURLを組み立て直す（個人単位は worker パラメータを維持）
+  // 条件変更でURLを組み立て直す（個人単位は worker パラメータを維持。
+  // これが消えると誰の印刷か分からなくなり、切替した瞬間に真っ白になる）
   const buildUrl = (patch: Partial<{ org: string; from: string; to: string; mode: string }>) => {
     const p = new URLSearchParams();
+    if (workerId) p.set("worker", workerId);
     const nextOrg = patch.org ?? selectedOrg;
     if (nextOrg) p.set("org", nextOrg);
     const nextFrom = patch.from ?? from;

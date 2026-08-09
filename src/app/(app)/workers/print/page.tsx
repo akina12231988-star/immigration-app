@@ -101,6 +101,7 @@ export default async function WorkersPrintPage({
       selectedOrg={org ?? ""}
       orgName={orgName}
       individual={Boolean(workerParam)}
+      workerId={workerParam ?? ""}
       from={from ?? ""}
       to={to ?? ""}
       forCompany={forCompany}
