@@ -113,6 +113,7 @@ export default async function WorkersPrintPage({
       forList={forList}
       listForCompany={listForCompany}
       workers={printWorkers}
+      canEdit={me.role !== "viewer"}
     />
   );
 }
