@@ -188,9 +188,10 @@ export function PrintClient({
 
           {!individual && (
             <>
-              <label className="flex flex-col gap-1">
+              {/* 会社名を入力すると下に候補が出る（機関が多くても選びやすいように）。
+                  label の中に入れると候補のクリックが input に取られて選べないため div で包む */}
+              <div className="flex flex-col gap-1">
                 <span className="text-xs font-bold text-muted">所属機関で絞り込み</span>
-                {/* 会社名を入力すると下に候補が出る（機関が多くても選びやすいように） */}
                 <Combobox
                   options={organizations.map((o) => ({ id: o.id, label: o.name }))}
                   value={selectedOrg}
@@ -198,7 +199,7 @@ export function PrintClient({
                   placeholder="会社名を入力して検索"
                   className="max-w-md"
                 />
-              </label>
+              </div>
               {/* 期間で絞り込む日付の切替（在留許可日 / 退職日） */}
               <div className="flex max-w-md rounded-xl border border-border p-0.5">
                 <button
