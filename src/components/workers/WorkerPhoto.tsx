@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Camera, UserRound } from "lucide-react";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { uploadWorkerPhoto } from "@/lib/worker-photo";
@@ -18,6 +19,7 @@ export function WorkerPhoto({
   canEdit: boolean;
   size?: number;
 }) {
+  const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
@@ -42,6 +44,9 @@ export function WorkerPhoto({
     try {
       const newUrl = await uploadWorkerPhoto(workerId, file);
       setUrl(newUrl);
+      // ページ側の photo_path も新しくする。古いままだと、このあと編集フォームを
+      // 開いて保存したときに写真が古いパスに戻ってしまう
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "アップロードに失敗しました");
     } finally {

@@ -145,7 +145,11 @@ export function WorkerDetail({
   );
 
   const handleUpdateWorker = async (input: WorkerInput) => {
-    await updateWorker(createClient(), worker.id, input);
+    // 顔写真は編集フォームの外（写真の枠）で登録するため、フォームが開いた時点の
+    // 古いパスで上書きしない。フォームを開いたまま写真を登録→保存すると消えてしまう
+    const { photo_path: _keepPhoto, ...rest } = input;
+    void _keepPhoto;
+    await updateWorker(createClient(), worker.id, rest);
     setEditOpen(false);
     router.refresh();
   };
