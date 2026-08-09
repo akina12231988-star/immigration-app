@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BackButton } from "@/components/BackButton";
+import { Combobox } from "@/components/ui/Combobox";
 import QRCode from "qrcode";
 import { messengerWebUrl } from "@/lib/messenger-link";
 import { FileDown, Printer, UserRound } from "lucide-react";
@@ -185,18 +186,14 @@ export function PrintClient({
             <>
               <label className="flex flex-col gap-1">
                 <span className="text-xs font-bold text-muted">所属機関で絞り込み</span>
-                <select
+                {/* 会社名を入力すると下に候補が出る（機関が多くても選びやすいように） */}
+                <Combobox
+                  options={organizations.map((o) => ({ id: o.id, label: o.name }))}
                   value={selectedOrg}
-                  onChange={(e) => router.push(buildUrl({ org: e.target.value }))}
-                  className="min-h-[44px] w-full max-w-md rounded-xl border border-border bg-surface px-3 text-sm"
-                >
-                  <option value="">選択してください</option>
-                  {organizations.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(id) => router.push(buildUrl({ org: id }))}
+                  placeholder="会社名を入力して検索"
+                  className="max-w-md"
+                />
               </label>
               {/* 期間で絞り込む日付の切替（在留許可日 / 退職日） */}
               <div className="flex max-w-md rounded-xl border border-border p-0.5">
