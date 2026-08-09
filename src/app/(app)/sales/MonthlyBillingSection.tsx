@@ -47,6 +47,7 @@ import {
   clearMonthlySupportRegistration,
   deleteMonthlySupportRegistration,
   listMonthlySupportRegistrations,
+  upsertMonthlySupportNoCharge,
   upsertMonthlySupportNote,
 } from "@/lib/supabase/queries/sales";
 import {
@@ -213,9 +214,23 @@ export function MonthlyBillingSection({
       ),
     [organizations, orgFees],
   );
+  // ◯月分の支援代をfreeeに登録した記録（worker_id → 記録）。対象の年月ごとに読み込む。
+  // 集計（billing）が「請求しない」の記録を参照するため、ここで先に宣言する
+  const [regs, setRegs] = useState<Record<string, MonthlySupportRegistration>>({});
+
+  // 「この月の支援代を請求しない」と記録した外国人（0円・区分「請求しない」で集計する）
+  const noChargeIds = useMemo(
+    () =>
+      new Set(
+        Object.values(regs)
+          .filter((r) => r.no_charge)
+          .map((r) => r.worker_id),
+      ),
+    [regs],
+  );
   const billing = useMemo(
-    () => summarizeMonthlyBilling(merged, mergedOrgs, month),
-    [merged, mergedOrgs, month],
+    () => summarizeMonthlyBilling(merged, mergedOrgs, month, noChargeIds),
+    [merged, mergedOrgs, month, noChargeIds],
   );
 
   // 支援対象なのに名簿に載っていない人と、その理由（「なぜ出てこない？」をここで確認できる）
@@ -538,8 +553,6 @@ export function MonthlyBillingSection({
     }
   };
 
-  // ◯月分の支援代をfreeeに登録した記録（worker_id → 記録）。対象の年月ごとに読み込む
-  const [regs, setRegs] = useState<Record<string, MonthlySupportRegistration>>({});
   const [regBusyId, setRegBusyId] = useState<string | null>(null);
 
   // メモ（請求しない理由）だけを取り出したもの（worker_id → メモ）。請求書PDFの照合で使う
@@ -927,6 +940,34 @@ export function MonthlyBillingSection({
   };
 
   // 「freee売上登録」ボタン: ◯月分の支援代を登録した記録を残す
+  // 「この月の支援代を請求しない」の切り替え（病欠・帰国など）。
+  // 押すとその月の支援費請求額が0円・区分「請求しない」になり、合計からも外れる
+  const [noChargeBusyId, setNoChargeBusyId] = useState<string | null>(null);
+  const toggleNoCharge = async (workerId: string, residenceStatus: string | null) => {
+    const next = !regs[workerId]?.no_charge;
+    setNoChargeBusyId(workerId);
+    setError(null);
+    try {
+      const row = await upsertMonthlySupportNoCharge(createClient(), {
+        worker_id: workerId,
+        month,
+        fee_name: feeNameFor(residenceStatus),
+        no_charge: next,
+      });
+      setRegs((prev) => ({ ...prev, [workerId]: row }));
+    } catch (err) {
+      setError(
+        dbErrorMessage(
+          err,
+          "0077_monthly_support_no_charge.sql",
+          errorMessage(err, "請求しないの記録に失敗しました"),
+        ),
+      );
+    } finally {
+      setNoChargeBusyId(null);
+    }
+  };
+
   const registerMonthly = async (workerId: string, residenceStatus: string | null) => {
     setRegBusyId(workerId);
     setError(null);
@@ -2203,6 +2244,7 @@ export function MonthlyBillingSection({
                           <SalesNoCell
                             entry={salesNos2[row.worker.id]?.permit ?? null}
                             canEdit={canEdit}
+                            active={permitInMonth(row.worker.residence_permit_date)}
                             placeholder="許可売上No."
                             onSave={(v, entryId) =>
                               void saveEntryNo(
@@ -2218,6 +2260,7 @@ export function MonthlyBillingSection({
                           <SalesNoCell
                             entry={salesNos2[row.worker.id]?.insurance ?? null}
                             canEdit={canEdit}
+                            active={permitInMonth(row.worker.residence_permit_date)}
                             placeholder="保険No."
                             // 特定技能総合保険が外国人負担の機関は、弊社の売上にならないので❌
                             disabledText={
@@ -2241,6 +2284,7 @@ export function MonthlyBillingSection({
                           <ReferralNoCell
                             fee={referralFees[row.worker.id] ?? null}
                             canEdit={canEdit}
+                            active={permitInMonth(row.worker.residence_permit_date)}
                             busy={referralBusyId === row.worker.id}
                             onSave={(v) => void saveReferralNo(row, org.organizationId, v)}
                             onTogglePaid={() => void toggleReferralPaid(row.worker.id)}
@@ -2252,7 +2296,11 @@ export function MonthlyBillingSection({
                           <td className="py-1.5 pr-2 tabular-nums text-muted">{daysText(row)}</td>
                           <td className="py-1.5 pr-2 text-muted">{row.kind}</td>
                           <td className="py-1.5 pr-2 text-right font-bold tabular-nums">
-                            {formatSalesYen(row.amount)}
+                            {row.kind === "請求しない" ? (
+                              <span className="text-seal">請求しない</span>
+                            ) : (
+                              formatSalesYen(row.amount)
+                            )}
                             {/* 日割りの行は計算式を添える（退職日まで日割・許可日から日割） */}
                             {row.kind.includes("日割") && row.monthlyFee > 0 && (
                               <span className="block text-[10px] font-normal text-muted">
@@ -2260,6 +2308,32 @@ export function MonthlyBillingSection({
                                 {formatSalesYen(dailyFee(row.monthlyFee, row.monthDays))}
                                 （切り捨て）×{row.days}日
                               </span>
+                            )}
+                            {/* 病欠・帰国などでこの月の支援代をあえて請求しない切り替え */}
+                            {canEdit && (
+                              <button
+                                type="button"
+                                disabled={noChargeBusyId === row.worker.id}
+                                onClick={() =>
+                                  void toggleNoCharge(row.worker.id, row.worker.residence_status)
+                                }
+                                title={
+                                  row.kind === "請求しない"
+                                    ? "押すと請求する状態に戻します"
+                                    : "この月の支援代を請求しない場合に押します（0円になり合計から外れます）"
+                                }
+                                className={`mt-0.5 block w-full rounded-lg border px-1.5 py-0.5 text-[10px] font-bold disabled:opacity-50 ${
+                                  row.kind === "請求しない"
+                                    ? "border-seal bg-seal/10 text-seal"
+                                    : "border-seal/40 text-seal"
+                                }`}
+                              >
+                                {noChargeBusyId === row.worker.id
+                                  ? "保存中…"
+                                  : row.kind === "請求しない"
+                                    ? "請求しないを解除"
+                                    : "請求しない"}
+                              </button>
                             )}
                           </td>
                           <td className="py-1.5 pr-2">
@@ -2310,6 +2384,7 @@ export function MonthlyBillingSection({
 function SalesNoCell({
   entry,
   canEdit,
+  active,
   placeholder,
   disabledText = null,
   disabledTitle,
@@ -2317,6 +2392,9 @@ function SalesNoCell({
 }: {
   entry: { entryId: string; freeeNo: string; itemName: string } | null;
   canEdit: boolean;
+  // 対象月に許可（新規・更新・変更）が下りた人だけ入力できる。
+  // それ以外の人は保存済みの番号の表示のみ（無ければ —）
+  active: boolean;
   placeholder: string;
   disabledText?: string | null; // そもそも番号が発生しないときの表示（❌ など）
   disabledTitle?: string;
@@ -2326,6 +2404,16 @@ function SalesNoCell({
     return (
       <td className="py-1.5 pr-2 text-muted" title={disabledTitle}>
         {disabledText}
+      </td>
+    );
+  }
+  if (!active) {
+    return (
+      <td
+        className="py-1.5 pr-2 tabular-nums text-muted"
+        title="対象月に許可が下りた人だけ入力できます"
+      >
+        {entry?.freeeNo || "—"}
       </td>
     );
   }
@@ -2368,16 +2456,26 @@ function SalesNoCell({
 function ReferralNoCell({
   fee,
   canEdit,
+  active,
   busy,
   onSave,
   onTogglePaid,
 }: {
   fee: WorkerReferralFee | null;
   canEdit: boolean;
+  // 対象月に許可が下りた人だけ入力できる（紹介手数料は請求しない場合もあるので空欄のままでもよい）
+  active: boolean;
   busy: boolean;
   onSave: (value: string) => void;
   onTogglePaid: () => void;
 }) {
+  if (!active && !fee) {
+    return (
+      <td className="py-1.5 pr-2 text-muted" title="対象月に許可が下りた人だけ入力できます">
+        —
+      </td>
+    );
+  }
   if (!canEdit) {
     return (
       <td className="py-1.5 pr-2 tabular-nums">

@@ -215,6 +215,23 @@ describe("summarizeMonthlyBilling", () => {
     );
     expect(result.orgs[0].organizationName).toBe("所属機関未設定");
   });
+
+  it("「請求しない」の人は名簿に載せたまま0円・区分「請求しない」で合計から外す", () => {
+    const workers = [worker({ name: "BOEURN DANY" }), worker({ name: "CHEN SOLEU" })];
+    const result = summarizeMonthlyBilling(
+      workers,
+      orgs,
+      MONTH,
+      new Set(["CHEN SOLEU"]), // worker() は name を id に使う
+    );
+    const kunisaki = result.orgs[0];
+    expect(kunisaki.rows.map((r) => [r.worker.name, r.kind, r.amount])).toEqual([
+      ["BOEURN DANY", "満額", 15000],
+      ["CHEN SOLEU", "請求しない", 0],
+    ]);
+    expect(kunisaki.total).toBe(15000);
+    expect(result.totalAmount).toBe(15000);
+  });
 });
 
 describe("billingExclusionReason（名簿に載らない理由）", () => {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BackButton } from "@/components/BackButton";
 import { Combobox } from "@/components/ui/Combobox";
@@ -527,6 +528,14 @@ function WorkerSheet({
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
           <p className="text-xs text-gray-500">印刷日: {printDate}</p>
+          {/* 外国人詳細ページへ（画面専用リンク。印刷には出ない） */}
+          <Link
+            href={`/workers/${worker.id}`}
+            className="flex items-center gap-1 rounded-lg border border-gray-300 px-2.5 py-1 text-xs font-bold text-gray-500 print:hidden"
+          >
+            <UserRound size={12} />
+            外国人詳細
+          </Link>
           {/* 情報の訂正・追加（画面専用ボタン。印刷には出ない） */}
           {canEdit && (
             <button
@@ -612,6 +621,7 @@ function WorkerSheet({
           <Row label="フリガナ" value={worker.kana} edit={edit("kana")} />
           <Row label="国籍" value={worker.nationality} edit={edit("nationality")} />
           <Row label="生年月日" value={worker.birth} edit={edit("birth", true)} />
+          <Row label="性別" value={worker.gender} edit={edit("gender")} />
           <Row label="分野・職種" value={worker.field} edit={edit("field")} />
           <Row label="専門級の合格名" value={worker.specialtyGrade} edit={edit("specialty_grade")} />
           <Row

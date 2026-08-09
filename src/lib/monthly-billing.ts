@@ -19,7 +19,12 @@ import { isSsw1Residence } from "@/lib/support-system";
 import type { Organization, Worker } from "@/types/db";
 
 // 請求額の区分
-export type BillingKind = "満額" | "満額（更新月）" | "許可日から日割" | "退職日まで日割";
+export type BillingKind =
+  | "満額"
+  | "満額（更新月）"
+  | "許可日から日割"
+  | "退職日まで日割"
+  | "請求しない"; // 病欠・帰国などでその月の支援代をあえて請求しない（金額0円）
 
 // 集計に必要な外国人の項目だけ（一覧の取得を軽くするため）
 export type BillingWorker = Pick<
@@ -234,11 +239,14 @@ export function orgMonthlyFee(org: BillingOrg | undefined): number {
   return parseAmount(org.intake?.support_fee ?? "") ?? 0;
 }
 
-// その月の請求書作成用の集計を組み立てる
+// その月の請求書作成用の集計を組み立てる。
+// noCharge は「この月の支援代を請求しない」と記録した外国人のID。
+// 名簿には載せたまま、支援費請求額を0円・区分「請求しない」にして合計から外す
 export function summarizeMonthlyBilling(
   workers: BillingWorker[],
   organizations: BillingOrg[],
   month: string,
+  noCharge: Set<string> = new Set(),
 ): MonthlyBilling {
   const { to } = monthRange(month);
   const orgById = new Map(organizations.map((o) => [o.id, o]));
@@ -249,7 +257,8 @@ export function summarizeMonthlyBilling(
     if (!isBilledInMonth(worker, month)) continue;
     const orgId = worker.current_organization_id ?? "";
     const org = orgById.get(orgId);
-    const row = billingRowFor(worker, month, orgMonthlyFee(org));
+    let row = billingRowFor(worker, month, orgMonthlyFee(org));
+    if (noCharge.has(worker.id)) row = { ...row, amount: 0, kind: "請求しない" };
     if (row.monthlyFee <= 0) unpriced.push(row);
 
     if (!byOrg.has(orgId)) {

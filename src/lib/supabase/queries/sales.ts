@@ -148,6 +148,21 @@ export async function upsertMonthlySupportNote(
   return data as MonthlySupportRegistration;
 }
 
+// 「この月の支援代を請求しない」の切り替え。記録行が無ければ作る。
+// registered_on・note は指定しないため、freee登録済みの記録やメモはそのまま保たれる
+export async function upsertMonthlySupportNoCharge(
+  supabase: SupabaseClient,
+  input: Pick<MonthlySupportRegistration, "worker_id" | "month" | "fee_name" | "no_charge">,
+): Promise<MonthlySupportRegistration> {
+  const { data, error } = await supabase
+    .from("monthly_support_registrations")
+    .upsert(input, { onConflict: "worker_id,month" })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as MonthlySupportRegistration;
+}
+
 // ---- 許可売上No.・保険No.（売上明細の伝票番号を1人1つにまとめたもの） ----
 // 許可時の売上（申請）と特定技能総合保険の freee 伝票番号は sales_entries に入っている。
 // 名簿や外国人詳細で見やすくするため、外国人ごとに一番新しい1件を取り出す。
