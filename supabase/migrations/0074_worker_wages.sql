@@ -27,14 +27,20 @@ create index if not exists idx_worker_wages_org on worker_wages (organization_id
 alter table worker_wages enable row level security;
 
 -- 閲覧は全ロール、追加・更新・削除は admin/staff（sales_entries と同じ方針）
+-- 途中まで実行された状態から流し直せるよう、作り直す形にしてある
+drop policy if exists sel_worker_wages on worker_wages;
 create policy sel_worker_wages on worker_wages for select
   using (my_role() is not null);
+drop policy if exists ins_worker_wages on worker_wages;
 create policy ins_worker_wages on worker_wages for insert
   with check (my_role() in ('admin', 'staff'));
+drop policy if exists upd_worker_wages on worker_wages;
 create policy upd_worker_wages on worker_wages for update
   using (my_role() in ('admin', 'staff')) with check (my_role() in ('admin', 'staff'));
+drop policy if exists del_worker_wages on worker_wages;
 create policy del_worker_wages on worker_wages for delete
   using (my_role() in ('admin', 'staff'));
 
+drop trigger if exists worker_wages_updated on worker_wages;
 create trigger worker_wages_updated before update on worker_wages
   for each row execute procedure moddatetime(updated_at);

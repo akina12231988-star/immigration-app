@@ -31,10 +31,17 @@ import {
 } from "@/lib/supabase/queries/applications";
 import { effectivePermitForMonth } from "@/lib/billing-permits";
 import {
+  createSalesNoEntry,
   listWorkerSalesNos,
   setSalesEntryFreeeNo,
   type WorkerSalesNos,
 } from "@/lib/supabase/queries/sales";
+import {
+  createReferralFeeForSalesNo,
+  listWorkerReferralFees,
+  updateReferralFee,
+  type WorkerReferralFee,
+} from "@/lib/supabase/queries/referrals";
 import {
   addMonthlySupportRegistration,
   clearMonthlySupportRegistration,
@@ -420,13 +427,39 @@ export function MonthlyBillingSection({
     };
   }, []);
 
-  // 名簿から伝票番号を直したときは、その売上明細の行を書き換える
+  // 名簿から伝票番号を直したときは、その売上明細の行を書き換える。
+  // 書き換える行がまだ無いとき（更新申請などで売上登録を通していない人）は、
+  // 番号だけの明細をここで作ってから入れる
   const saveEntryNo = async (
     workerId: string,
     key: "permit" | "insurance",
     entryId: string,
     value: string,
+    row: MonthlyBillingRow,
+    organizationId: string,
   ) => {
+    if (!entryId) {
+      if (!value) return; // 空欄のまま離れただけなら何も作らない
+      try {
+        const itemName = key === "insurance" ? "特定技能総合保険" : "申請";
+        const created = await createSalesNoEntry(createClient(), {
+          workerId,
+          organizationId: organizationId || null,
+          kind: key === "insurance" ? "保険" : "申請",
+          itemName,
+          description: `${row.worker.name}さん　${itemName}`,
+          freeeNo: value,
+          registeredOn: today,
+        });
+        setSalesNos2((prev) => {
+          const cur = prev[workerId] ?? { permit: null, insurance: null };
+          return { ...prev, [workerId]: { ...cur, [key]: created } };
+        });
+      } catch (err) {
+        setError(errorMessage(err, "売上No.の保存に失敗しました"));
+      }
+      return;
+    }
     setSalesNos2((prev) => {
       const cur = prev[workerId];
       if (!cur?.[key]) return prev;
@@ -436,6 +469,71 @@ export function MonthlyBillingSection({
       await setSalesEntryFreeeNo(createClient(), entryId, value);
     } catch (err) {
       setError(errorMessage(err, "売上No.の保存に失敗しました"));
+    }
+  };
+
+  // 紹介手数料No.（紹介手数料台帳 referral_fees の行と1対1）。
+  // 名簿から番号を入れ、入金があったら入金年月日を記録する
+  const [referralFees, setReferralFees] = useState<Record<string, WorkerReferralFee>>({});
+  const [referralBusyId, setReferralBusyId] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve().then(() =>
+      listWorkerReferralFees(createClient())
+        .then((map) => {
+          if (!cancelled) setReferralFees(map);
+        })
+        .catch(() => {
+          // 台帳が未作成でも名簿は使えるようにする
+          if (!cancelled) setReferralFees({});
+        }),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 紹介手数料No.を入れたとき。台帳に行が無ければ作り、あれば番号を書き換える
+  const saveReferralNo = async (row: MonthlyBillingRow, organizationId: string, value: string) => {
+    const workerId = row.worker.id;
+    const cur = referralFees[workerId];
+    if (!cur) {
+      if (!value) return;
+      try {
+        const created = await createReferralFeeForSalesNo(createClient(), {
+          workerId,
+          organizationId: organizationId || null,
+          workerName: row.worker.name,
+          salesNo: value,
+        });
+        setReferralFees((prev) => ({ ...prev, [workerId]: created }));
+      } catch (err) {
+        setError(errorMessage(err, "紹介手数料No.の保存に失敗しました"));
+      }
+      return;
+    }
+    setReferralFees((prev) => ({ ...prev, [workerId]: { ...cur, salesNo: value } }));
+    try {
+      await updateReferralFee(createClient(), cur.feeId, { sales_no: value });
+    } catch (err) {
+      setError(errorMessage(err, "紹介手数料No.の保存に失敗しました"));
+    }
+  };
+
+  // 紹介手数料の入金を記録する（取り消しもできる）。台帳の入金年月日にそのまま入る
+  const toggleReferralPaid = async (workerId: string) => {
+    const cur = referralFees[workerId];
+    if (!cur) return;
+    const paidOn = cur.paidOn ? null : today;
+    setReferralBusyId(workerId);
+    setReferralFees((prev) => ({ ...prev, [workerId]: { ...cur, paidOn } }));
+    try {
+      await updateReferralFee(createClient(), cur.feeId, { paid_on: paidOn });
+    } catch (err) {
+      setReferralFees((prev) => ({ ...prev, [workerId]: cur })); // 失敗したら戻す
+      setError(errorMessage(err, "紹介手数料の入金の記録に失敗しました"));
+    } finally {
+      setReferralBusyId(null);
     }
   };
 
@@ -1999,6 +2097,7 @@ export function MonthlyBillingSection({
                         </th>
                         <th className="py-1.5 pr-2 font-bold">許可売上No.</th>
                         <th className="py-1.5 pr-2 font-bold">保険No.</th>
+                        <th className="py-1.5 pr-2 font-bold">紹介手数料No.</th>
                         <th className="py-1.5 pr-2 text-right font-bold">支援代（月額）</th>
                         <th className="py-1.5 pr-2 font-bold">支援費算定期間</th>
                         <th className="py-1.5 pr-2 font-bold">日数</th>
@@ -2090,7 +2189,14 @@ export function MonthlyBillingSection({
                             canEdit={canEdit}
                             placeholder="許可売上No."
                             onSave={(v, entryId) =>
-                              void saveEntryNo(row.worker.id, "permit", entryId, v)
+                              void saveEntryNo(
+                                row.worker.id,
+                                "permit",
+                                entryId,
+                                v,
+                                row,
+                                org.organizationId,
+                              )
                             }
                           />
                           <SalesNoCell
@@ -2105,8 +2211,23 @@ export function MonthlyBillingSection({
                             }
                             disabledTitle="特定技能総合保険が外国人負担のため、保険No.はありません"
                             onSave={(v, entryId) =>
-                              void saveEntryNo(row.worker.id, "insurance", entryId, v)
+                              void saveEntryNo(
+                                row.worker.id,
+                                "insurance",
+                                entryId,
+                                v,
+                                row,
+                                org.organizationId,
+                              )
                             }
+                          />
+                          {/* 紹介手数料No.（紹介手数料台帳の行とつながっていて、入金も記録できる） */}
+                          <ReferralNoCell
+                            fee={referralFees[row.worker.id] ?? null}
+                            canEdit={canEdit}
+                            busy={referralBusyId === row.worker.id}
+                            onSave={(v) => void saveReferralNo(row, org.organizationId, v)}
+                            onTogglePaid={() => void toggleReferralPaid(row.worker.id)}
                           />
                           <td className="py-1.5 pr-2 text-right tabular-nums">
                             {row.monthlyFee > 0 ? formatSalesYen(row.monthlyFee) : "未登録"}
@@ -2147,7 +2268,7 @@ export function MonthlyBillingSection({
                         </tr>
                       ))}
                       <tr>
-                        <td colSpan={7} className="py-1.5 pr-2 text-right font-bold">
+                        <td colSpan={8} className="py-1.5 pr-2 text-right font-bold">
                           合計
                         </td>
                         <td className="py-1.5 pr-2 text-right font-bold tabular-nums text-brand">
@@ -2168,7 +2289,8 @@ export function MonthlyBillingSection({
 }
 
 // 許可売上No.・保険No.の1マス。売上明細の行があればその場で直せる。
-// 明細が無い人は空欄のまま（申請詳細の売上登録で作られる）
+// 明細がまだ無い人（更新申請などで売上登録を通していない人）も、
+// ここに番号を入れればその時点で明細を作るので、更新でも入力できる
 function SalesNoCell({
   entry,
   canEdit,
@@ -2191,7 +2313,7 @@ function SalesNoCell({
       </td>
     );
   }
-  if (!entry) {
+  if (!entry && !canEdit) {
     return (
       <td className="py-1.5 pr-2 text-muted" title="売上明細がまだありません（申請詳細の売上登録で作られます）">
         —
@@ -2199,23 +2321,105 @@ function SalesNoCell({
     );
   }
   if (!canEdit) {
-    return <td className="py-1.5 pr-2 tabular-nums">{entry.freeeNo || "—"}</td>;
+    return <td className="py-1.5 pr-2 tabular-nums">{entry?.freeeNo || "—"}</td>;
   }
+  const current = entry?.freeeNo ?? "";
   return (
     <td className="py-1.5 pr-2">
       <input
-        key={`${entry.entryId}-${entry.freeeNo}`}
-        defaultValue={entry.freeeNo}
+        key={`${entry?.entryId ?? "new"}-${current}`}
+        defaultValue={current}
         onBlur={(e) => {
           const v = e.target.value.trim();
-          if (v !== entry.freeeNo) onSave(v, entry.entryId);
+          if (v !== current) onSave(v, entry?.entryId ?? "");
         }}
         placeholder={placeholder}
-        title={entry.itemName}
+        title={
+          entry
+            ? entry.itemName
+            : "売上明細がまだありません。番号を入れるとこの名簿から明細を作ります"
+        }
         className={`w-32 rounded-lg border px-1.5 py-1 text-xs ${
-          entry.freeeNo ? "border-border bg-background" : "border-seal/40 bg-seal/5"
+          current ? "border-border bg-background" : "border-seal/40 bg-seal/5"
         }`}
       />
+    </td>
+  );
+}
+
+// 紹介手数料No.の1マス。番号は紹介手数料台帳（referral_fees）の行そのもので、
+// 台帳に行が無い人は番号を入れた時点で作る。入金があったらここで記録できる
+function ReferralNoCell({
+  fee,
+  canEdit,
+  busy,
+  onSave,
+  onTogglePaid,
+}: {
+  fee: WorkerReferralFee | null;
+  canEdit: boolean;
+  busy: boolean;
+  onSave: (value: string) => void;
+  onTogglePaid: () => void;
+}) {
+  if (!canEdit) {
+    return (
+      <td className="py-1.5 pr-2 tabular-nums">
+        {fee?.salesNo || "—"}
+        {fee?.paidOn && (
+          <span className="ml-1 text-[10px] font-bold text-status-approved-fg">
+            入金 {mdText(fee.paidOn)}
+          </span>
+        )}
+      </td>
+    );
+  }
+  const current = fee?.salesNo ?? "";
+  return (
+    <td className="py-1.5 pr-2 align-top">
+      <div className="flex w-32 flex-col items-start gap-1">
+        <input
+          key={`${fee?.feeId ?? "new"}-${current}`}
+          defaultValue={current}
+          onBlur={(e) => {
+            const v = e.target.value.trim();
+            if (v !== current) onSave(v);
+          }}
+          placeholder="紹介手数料No."
+          title={
+            fee
+              ? "紹介手数料台帳の記録につながっています"
+              : "番号を入れると紹介手数料台帳に記録を作ります"
+          }
+          className="w-32 rounded-lg border border-border bg-background px-1.5 py-1 text-xs"
+        />
+        {/* 入金があったら記録する（台帳の入金年月日にそのまま入る） */}
+        {fee &&
+          (fee.paidOn ? (
+            <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-status-approved-bg px-2 py-0.5 text-[10px] font-bold text-status-approved-fg">
+              <Check size={11} />
+              入金 {mdText(fee.paidOn)}
+              <button
+                type="button"
+                onClick={onTogglePaid}
+                disabled={busy}
+                className="ml-0.5 underline"
+              >
+                取消
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={onTogglePaid}
+              disabled={busy}
+              title="紹介手数料の入金があったら押して記録します"
+              className="rounded-lg border border-brand px-2 py-1 text-[10px] font-bold text-brand disabled:opacity-50"
+            >
+              入金を記録
+            </button>
+          ))}
+      </div>
     </td>
   );
 }

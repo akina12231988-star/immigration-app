@@ -573,8 +573,10 @@ export function WorkerDetail({
         )}
       </Card>
 
-      {/* 退職者情報（状態が退職のときのみ表示） */}
-      {worker.status === "退職" && (
+      {/* 退職者情報（状態が退職のとき、または退職日が残っているとき）。
+          再雇用などで状態を在籍中に戻しても退職日が残っていると請求書作成の名簿から
+          消えてしまうため、戻したあとも退職日を消せるように出しておく */}
+      {(worker.status === "退職" || worker.leaving_on) && (
         <>
           <LeavingSection worker={worker} canEdit={canEdit} />
           {/* 退職日までの支援代の日割りと、定期売上の締め */}
@@ -1051,6 +1053,14 @@ function LeavingSection({
   return (
     <Card className="p-4">
       <p className="mb-2 text-sm font-bold">退職者情報</p>
+      {/* 状態は戻っているのに退職日が残っている状態。このままだと請求書作成の名簿に出ない */}
+      {worker.status !== "退職" && worker.leaving_on && (
+        <p className="mb-2 rounded-lg bg-seal/10 px-3 py-2 text-xs text-seal">
+          状態は「{worker.status}」ですが退職日（{worker.leaving_on}）が残っています。
+          再雇用などで在籍が続いている場合は、退職日を空にして保存してください。
+          残っていると請求書作成の名簿に出ません。
+        </p>
+      )}
       {error && <p className="mb-2 rounded-lg bg-seal/10 px-3 py-2 text-xs text-seal">{error}</p>}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="flex flex-col gap-1">

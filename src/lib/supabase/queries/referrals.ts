@@ -46,6 +46,78 @@ export async function updateReferralFee(
   if (error) throw error;
 }
 
+// ---- 名簿（請求書作成）から紹介手数料No.を扱うための取り出し ----
+
+// 名簿の1マスに出す紹介手数料。台帳（referral_fees）の1行と1対1で結びつく
+export interface WorkerReferralFee {
+  feeId: string; // 書き換え先の referral_fees の行
+  salesNo: string; // 紹介売上No.（freee販売）
+  paidOn: string | null; // 入金年月日（未入金なら null）
+  fee: number; // 手数料（円・税抜）
+}
+
+// 外国人ID → 紹介手数料（1人に複数あるときは新しい1件）。
+// 名簿で紹介手数料No.を出すために使う
+export async function listWorkerReferralFees(
+  supabase: SupabaseClient,
+): Promise<Record<string, WorkerReferralFee>> {
+  const { data, error } = await supabase
+    .from("referral_fees")
+    .select("id, worker_id, sales_no, paid_on, fee, created_at")
+    .not("worker_id", "is", null)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  const rows =
+    (data as
+      | {
+          id: string;
+          worker_id: string;
+          sales_no: string;
+          paid_on: string | null;
+          fee: number;
+        }[]
+      | null) ?? [];
+
+  const out: Record<string, WorkerReferralFee> = {};
+  for (const r of rows) {
+    // 新しい順に並んでいるので、最初に来たものだけを採る
+    if (out[r.worker_id]) continue;
+    out[r.worker_id] = {
+      feeId: r.id,
+      salesNo: r.sales_no,
+      paidOn: r.paid_on,
+      fee: r.fee,
+    };
+  }
+  return out;
+}
+
+// 名簿で紹介手数料No.を入れたときに、台帳の行がまだ無ければ作る。
+// 台帳ページで手数料や紹介年月日をあとから足せるよう、ここでは番号だけ持たせる
+export async function createReferralFeeForSalesNo(
+  supabase: SupabaseClient,
+  params: {
+    workerId: string;
+    organizationId: string | null;
+    workerName: string;
+    salesNo: string;
+  },
+): Promise<WorkerReferralFee> {
+  const { data, error } = await supabase
+    .from("referral_fees")
+    .insert({
+      worker_id: params.workerId,
+      organization_id: params.organizationId,
+      worker_name: params.workerName,
+      sales_no: params.salesNo,
+    })
+    .select("id, sales_no, paid_on, fee")
+    .single();
+  if (error) throw error;
+  const row = data as { id: string; sales_no: string; paid_on: string | null; fee: number };
+  return { feeId: row.id, salesNo: row.sales_no, paidOn: row.paid_on, fee: row.fee };
+}
+
 export async function deleteReferralFee(
   supabase: SupabaseClient,
   id: string,
