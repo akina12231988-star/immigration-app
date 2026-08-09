@@ -1,14 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BackButton } from "@/components/BackButton";
 import { Combobox } from "@/components/ui/Combobox";
 import QRCode from "qrcode";
 import { messengerWebUrl } from "@/lib/messenger-link";
-import { FileDown, Pencil, Printer, UserRound } from "lucide-react";
+import { FileDown, Loader2, Pencil, Printer, UserRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
+import { FileDropArea } from "@/components/ui/FileDropArea";
+import { uploadWorkerPhoto } from "@/lib/worker-photo";
+import { uploadWorkerDoc } from "@/lib/worker-docs";
 import type { Organization, WorkerInput } from "@/types/db";
 
 export interface PrintWorker {
@@ -454,6 +457,27 @@ function WorkerSheet({
     }
   };
 
+  // 顔写真・在留カード・指定書のアップロード（編集モードでクリック / ドロップ）。
+  // 保存先は外国人詳細と同じ（写真は workers.photo_path、書類は履歴に追記）
+  const [uploading, setUploading] = useState<"" | "photo" | "在留カード" | "指定書">("");
+  const uploadImage = async (target: "photo" | "在留カード" | "指定書", file: File | undefined) => {
+    if (!file || uploading) return;
+    setSaveError(null);
+    setUploading(target);
+    try {
+      if (target === "photo") await uploadWorkerPhoto(worker.id, file);
+      else await uploadWorkerDoc(worker.id, target, file);
+      onSaved();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "アップロードに失敗しました");
+    } finally {
+      setUploading("");
+    }
+  };
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const cardInputRef = useRef<HTMLInputElement>(null);
+  const designationInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     // 会社提出用は Messenger QR を出さない（描画側でも非表示）
     if (forCompany || !worker.messengerLink) return;
@@ -531,15 +555,57 @@ function WorkerSheet({
       )}
 
       <div className="flex gap-6">
-        {/* 顔写真 */}
-        <div className="flex h-[40mm] w-[32mm] shrink-0 items-center justify-center overflow-hidden border border-gray-400 bg-gray-50">
-          {worker.photoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={worker.photoUrl} alt="顔写真" className="h-full w-full object-cover" />
-          ) : (
-            <UserRound size={48} className="text-gray-300" />
-          )}
-        </div>
+        {/* 顔写真（編集モードではクリック / ドロップで差し替えできる） */}
+        {editing ? (
+          <div className="shrink-0">
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                void uploadImage("photo", f);
+              }}
+            />
+            <FileDropArea
+              onFiles={(files) => void uploadImage("photo", files[0])}
+              disabled={Boolean(uploading)}
+              title="クリックまたは写真をドロップして差し替えます"
+              className="relative flex h-[40mm] w-[32mm] cursor-pointer items-center justify-center overflow-hidden border border-dashed border-gray-400 bg-gray-50"
+            >
+              <button
+                type="button"
+                onClick={() => photoInputRef.current?.click()}
+                className="absolute inset-0 z-10 print:hidden"
+                aria-label="顔写真をアップロード"
+              />
+              {worker.photoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={worker.photoUrl} alt="顔写真" className="h-full w-full object-cover" />
+              ) : (
+                <span className="px-1 text-center text-[9px] text-gray-400 print:hidden">
+                  クリックまたはドロップで写真を登録
+                </span>
+              )}
+              {uploading === "photo" && (
+                <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40">
+                  <Loader2 size={20} className="animate-spin text-white" />
+                </div>
+              )}
+            </FileDropArea>
+          </div>
+        ) : (
+          <div className="flex h-[40mm] w-[32mm] shrink-0 items-center justify-center overflow-hidden border border-gray-400 bg-gray-50">
+            {worker.photoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={worker.photoUrl} alt="顔写真" className="h-full w-full object-cover" />
+            ) : (
+              <UserRound size={48} className="text-gray-300" />
+            )}
+          </div>
+        )}
 
         {/* 外国人情報 */}
         <dl className="grid flex-1 grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
@@ -565,8 +631,16 @@ function WorkerSheet({
         {!forCompany && (
           <div className="flex w-[30mm] shrink-0 flex-col items-center">
             {qr ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={qr} alt="Messenger QR" className="w-[28mm]" />
+              // 画面ではQRをクリック（タップ）してもMessengerを開けるようにする
+              <a
+                href={messengerWebUrl(worker.messengerLink)}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="クリックでMessengerを開きます"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={qr} alt="Messenger QR" className="w-[28mm]" />
+              </a>
             ) : (
               <div className="flex h-[28mm] w-[28mm] items-center justify-center border border-dashed border-gray-300 text-[9px] text-gray-400">
                 Messenger未登録
@@ -577,10 +651,35 @@ function WorkerSheet({
         )}
       </div>
 
-      {/* 最新在留カード画像・指定書画像（下半分を目いっぱい使う） */}
+      {/* 最新在留カード画像・指定書画像（下半分を目いっぱい使う）。
+          編集モードではクリック / ドロップで差し替えできる（履歴に追記される） */}
       <div className="mt-6 grid grid-cols-2 gap-4">
-        <DocBox label="最新 在留カード" url={worker.residenceCardUrl} />
-        <DocBox label="最新 指定書" url={worker.designationUrl} />
+        <DocBox
+          label="最新 在留カード"
+          url={worker.residenceCardUrl}
+          edit={
+            editing
+              ? {
+                  busy: uploading === "在留カード",
+                  inputRef: cardInputRef,
+                  onFile: (f) => void uploadImage("在留カード", f),
+                }
+              : undefined
+          }
+        />
+        <DocBox
+          label="最新 指定書"
+          url={worker.designationUrl}
+          edit={
+            editing
+              ? {
+                  busy: uploading === "指定書",
+                  inputRef: designationInputRef,
+                  onFile: (f) => void uploadImage("指定書", f),
+                }
+              : undefined
+          }
+        />
       </div>
     </div>
   );
@@ -621,18 +720,79 @@ function Row({
   );
 }
 
-function DocBox({ label, url }: { label: string; url: string }) {
+function DocBox({
+  label,
+  url,
+  edit,
+}: {
+  label: string;
+  url: string;
+  // 編集モードのときだけ渡される（クリック / ドロップで差し替え）
+  edit?: {
+    busy: boolean;
+    inputRef: React.RefObject<HTMLInputElement | null>;
+    onFile: (file: File | undefined) => void;
+  };
+}) {
+  const frame = "flex h-[125mm] items-center justify-center overflow-hidden bg-gray-50";
   return (
     <div>
-      <p className="mb-1 text-[10px] font-bold text-gray-500">{label}</p>
-      <div className="flex h-[125mm] items-center justify-center overflow-hidden border border-gray-400 bg-gray-50">
-        {url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={url} alt={label} className="h-full w-full object-contain" />
-        ) : (
-          <span className="text-[10px] text-gray-400">未登録</span>
+      <p className="mb-1 text-[10px] font-bold text-gray-500">
+        {label}
+        {edit && (
+          <span className="ml-2 font-normal text-gray-400 print:hidden">
+            クリックまたはドロップで差し替え
+          </span>
         )}
-      </div>
+      </p>
+      {edit ? (
+        <>
+          <input
+            ref={edit.inputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              edit.onFile(f);
+            }}
+          />
+          <FileDropArea
+            onFiles={(files) => edit.onFile(files[0])}
+            disabled={edit.busy}
+            title="クリックまたは画像をドロップして差し替えます"
+            className={`${frame} relative cursor-pointer border border-dashed border-gray-400`}
+          >
+            <button
+              type="button"
+              onClick={() => edit.inputRef.current?.click()}
+              className="absolute inset-0 z-10 print:hidden"
+              aria-label={`${label}をアップロード`}
+            />
+            {url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={url} alt={label} className="h-full w-full object-contain" />
+            ) : (
+              <span className="text-[10px] text-gray-400">未登録（クリックで追加）</span>
+            )}
+            {edit.busy && (
+              <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40">
+                <Loader2 size={24} className="animate-spin text-white" />
+              </div>
+            )}
+          </FileDropArea>
+        </>
+      ) : (
+        <div className={`${frame} border border-gray-400`}>
+          {url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={url} alt={label} className="h-full w-full object-contain" />
+          ) : (
+            <span className="text-[10px] text-gray-400">未登録</span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
