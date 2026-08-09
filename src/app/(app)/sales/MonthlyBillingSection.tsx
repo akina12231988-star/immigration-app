@@ -99,6 +99,7 @@ import {
   orgBillingSheets,
 } from "@/lib/monthly-billing-sheets";
 import { buildXlsx, downloadBlob } from "@/lib/xlsx-export";
+import { InvoicePdfCheck } from "./InvoicePdfCheck";
 
 // 月末の請求書作成。年月を選ぶと、その月に1日でも在籍していた支援対象者を
 // 所属機関ごとに並べ、支援費の請求額（満額・日割り）を出す。
@@ -1321,7 +1322,7 @@ export function MonthlyBillingSection({
           const open = openOrgId === org.organizationId;
           return (
             <Card key={org.organizationId || "none"} className="p-3">
-              <div className="flex items-start justify-between gap-2">
+              <div className="flex flex-wrap items-start justify-between gap-2">
                 <button
                   type="button"
                   onClick={() => {
@@ -1439,6 +1440,9 @@ export function MonthlyBillingSection({
                     この機関のみ
                   </button>
                 </div>
+                {/* 請求書PDFをアップロードして名簿と照合し、No.付きPDFを作る。
+                    ボタンは「この機関のみ」の横に並び、結果は下の行いっぱいに折り返して出る */}
+                <InvoicePdfCheck org={org} />
               </div>
 
               {open && canEdit && org.organizationId && (org.rows[0]?.monthlyFee ?? 0) <= 0 && (
