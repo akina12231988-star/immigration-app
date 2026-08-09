@@ -6,8 +6,10 @@ import { BackButton } from "@/components/BackButton";
 import { Combobox } from "@/components/ui/Combobox";
 import QRCode from "qrcode";
 import { messengerWebUrl } from "@/lib/messenger-link";
-import { FileDown, Printer, UserRound } from "lucide-react";
-import type { Organization } from "@/types/db";
+import { FileDown, Pencil, Printer, UserRound } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import { updateWorker } from "@/lib/supabase/queries/workers";
+import type { Organization, WorkerInput } from "@/types/db";
 
 export interface PrintWorker {
   id: string;
@@ -48,6 +50,7 @@ export function PrintClient({
   forList,
   listForCompany,
   workers,
+  canEdit,
 }: {
   organizations: Organization[];
   selectedOrg: string;
@@ -61,6 +64,7 @@ export function PrintClient({
   forList: boolean;
   listForCompany: boolean;
   workers: PrintWorker[];
+  canEdit: boolean; // この画面から情報を訂正できるか（admin / staff）
 }) {
   const router = useRouter();
   const printDate = new Date().toLocaleDateString("ja-JP");
@@ -284,7 +288,15 @@ export function PrintClient({
       ) : (
         <div className="print-root">
           {workers.map((w) => (
-            <WorkerSheet key={w.id} worker={w} orgName={w.orgName || orgName} printDate={printDate} forCompany={forCompany} />
+            <WorkerSheet
+              key={w.id}
+              worker={w}
+              orgName={w.orgName || orgName}
+              printDate={printDate}
+              forCompany={forCompany}
+              canEdit={canEdit}
+              onSaved={() => router.refresh()}
+            />
           ))}
         </div>
       )}
@@ -413,13 +425,33 @@ function WorkerSheet({
   orgName,
   printDate,
   forCompany,
+  canEdit,
+  onSaved,
 }: {
   worker: PrintWorker;
   orgName: string;
   printDate: string;
   forCompany: boolean;
+  canEdit: boolean;
+  onSaved: () => void; // 保存後にページのデータを読み直す
 }) {
   const [qr, setQr] = useState("");
+  // この画面から情報を訂正・追加できる編集モード（画面専用。印刷には出ない）
+  const [editing, setEditing] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // 1項目ずつその場で保存する（外国人詳細まで行かなくても直せるように）
+  const saveField = async (column: string, value: string, isDate: boolean) => {
+    setSaveError(null);
+    try {
+      await updateWorker(createClient(), worker.id, {
+        [column]: isDate ? value || null : value.trim(),
+      } as Partial<WorkerInput>);
+      onSaved();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "保存に失敗しました");
+    }
+  };
 
   useEffect(() => {
     // 会社提出用は Messenger QR を出さない（描画側でも非表示）
@@ -436,18 +468,66 @@ function WorkerSheet({
     };
   }, [worker.messengerLink, forCompany]);
 
+  // 編集モードでは各項目がその場で直せる（onBlur で1項目ずつ保存）
+  const edit = (column: string, isDate = false) =>
+    editing ? { isDate, onSave: (v: string) => void saveField(column, v, isDate) } : undefined;
+
   return (
     <div className="worker-sheet mx-auto mb-6 max-w-[210mm] border border-border bg-white p-[12mm] text-black print:mb-0 print:border-0">
       <div className="mb-4 flex items-start justify-between border-b-2 border-black pb-2">
-        <div>
-          <h2 className="text-2xl font-black">
-            {worker.name}
-            {!forCompany && worker.workerCode && `（${worker.workerCode}）`}
-          </h2>
+        <div className="min-w-0 flex-1">
+          {editing ? (
+            <input
+              key={worker.name}
+              defaultValue={worker.name}
+              onBlur={(e) => {
+                const v = e.target.value.trim();
+                if (v && v !== worker.name) void saveField("name", v, false);
+              }}
+              className="w-full max-w-md rounded-lg border border-dashed border-gray-400 px-2 py-1 text-2xl font-black print:hidden"
+            />
+          ) : (
+            <h2 className="text-2xl font-black">
+              {worker.name}
+              {!forCompany && worker.workerCode && `（${worker.workerCode}）`}
+            </h2>
+          )}
+          {editing && (
+            <h2 className="hidden text-2xl font-black print:block">
+              {worker.name}
+              {!forCompany && worker.workerCode && `（${worker.workerCode}）`}
+            </h2>
+          )}
           <p className="text-sm">{orgName}</p>
         </div>
-        <p className="text-xs text-gray-500">印刷日: {printDate}</p>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <p className="text-xs text-gray-500">印刷日: {printDate}</p>
+          {/* 情報の訂正・追加（画面専用ボタン。印刷には出ない） */}
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => {
+                setEditing((v) => !v);
+                setSaveError(null);
+              }}
+              className={`flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-bold print:hidden ${
+                editing ? "border-brand bg-brand/10 text-brand" : "border-gray-300 text-gray-500"
+              }`}
+            >
+              <Pencil size={12} />
+              {editing ? "編集を終了" : "情報を訂正"}
+            </button>
+          )}
+        </div>
       </div>
+      {saveError && (
+        <p className="mb-2 rounded-lg bg-red-50 px-3 py-1.5 text-xs text-red-600 print:hidden">{saveError}</p>
+      )}
+      {editing && (
+        <p className="mb-2 text-xs text-gray-500 print:hidden">
+          欄を書き換えて別の場所をタップすると、その項目がすぐに保存されます（外国人詳細にも反映されます）
+        </p>
+      )}
 
       <div className="flex gap-6">
         {/* 顔写真 */}
@@ -462,18 +542,22 @@ function WorkerSheet({
 
         {/* 外国人情報 */}
         <dl className="grid flex-1 grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
-          <Row label="フリガナ" value={worker.kana} />
-          <Row label="国籍" value={worker.nationality} />
-          <Row label="生年月日" value={worker.birth} />
-          <Row label="分野・職種" value={worker.field} />
-          <Row label="専門級の合格名" value={worker.specialtyGrade} />
-          <Row label="その他の資格・合格名" value={worker.otherQualifications} />
-          <Row label="在留資格" value={worker.residenceStatus} />
-          <Row label="在留カード番号" value={worker.residenceCardNo} />
-          <Row label="許可日" value={worker.residencePermitDate} />
-          <Row label="在留期限" value={worker.residenceExpiryDate} />
-          <Row label="雇用開始日" value={worker.employmentStartOn} />
-          <Row label="退職日" value={worker.leavingOn} />
+          <Row label="フリガナ" value={worker.kana} edit={edit("kana")} />
+          <Row label="国籍" value={worker.nationality} edit={edit("nationality")} />
+          <Row label="生年月日" value={worker.birth} edit={edit("birth", true)} />
+          <Row label="分野・職種" value={worker.field} edit={edit("field")} />
+          <Row label="専門級の合格名" value={worker.specialtyGrade} edit={edit("specialty_grade")} />
+          <Row
+            label="その他の資格・合格名"
+            value={worker.otherQualifications}
+            edit={edit("other_qualifications")}
+          />
+          <Row label="在留資格" value={worker.residenceStatus} edit={edit("residence_status")} />
+          <Row label="在留カード番号" value={worker.residenceCardNo} edit={edit("residence_card_no")} />
+          <Row label="許可日" value={worker.residencePermitDate} edit={edit("residence_permit_date", true)} />
+          <Row label="在留期限" value={worker.residenceExpiryDate} edit={edit("residence_expiry_date", true)} />
+          <Row label="雇用開始日" value={worker.employmentStartOn} edit={edit("employment_start_on", true)} />
+          <Row label="退職日" value={worker.leavingOn} edit={edit("leaving_on", true)} />
         </dl>
 
         {/* MessengerリンクQRコード（社内用のみ） */}
@@ -501,11 +585,37 @@ function WorkerSheet({
   );
 }
 
-function Row({ label, value }: { label: string; value: string | null }) {
+function Row({
+  label,
+  value,
+  edit,
+}: {
+  label: string;
+  value: string | null;
+  // 編集モードのときだけ渡される。入力欄は画面専用で、印刷には保存済みの値が出る
+  edit?: { isDate: boolean; onSave: (value: string) => void };
+}) {
   return (
     <div className="flex flex-col border-b border-gray-200 pb-1">
       <dt className="text-[10px] font-bold text-gray-500">{label}</dt>
-      <dd className="text-sm font-bold">{value || "—"}</dd>
+      {edit ? (
+        <>
+          <dd className="print:hidden">
+            <input
+              key={value ?? ""}
+              type={edit.isDate ? "date" : "text"}
+              defaultValue={value ?? ""}
+              onBlur={(e) => {
+                if (e.target.value !== (value ?? "")) edit.onSave(e.target.value);
+              }}
+              className="w-full rounded-lg border border-dashed border-gray-400 px-1.5 py-0.5 text-sm font-bold focus:border-brand focus:outline-none"
+            />
+          </dd>
+          <dd className="hidden text-sm font-bold print:block">{value || "—"}</dd>
+        </>
+      ) : (
+        <dd className="text-sm font-bold">{value || "—"}</dd>
+      )}
     </div>
   );
 }
