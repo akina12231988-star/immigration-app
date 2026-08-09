@@ -565,8 +565,16 @@ function WorkerSheet({
         {!forCompany && (
           <div className="flex w-[30mm] shrink-0 flex-col items-center">
             {qr ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={qr} alt="Messenger QR" className="w-[28mm]" />
+              // 画面ではQRをクリック（タップ）してもMessengerを開けるようにする
+              <a
+                href={messengerWebUrl(worker.messengerLink)}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="クリックでMessengerを開きます"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={qr} alt="Messenger QR" className="w-[28mm]" />
+              </a>
             ) : (
               <div className="flex h-[28mm] w-[28mm] items-center justify-center border border-dashed border-gray-300 text-[9px] text-gray-400">
                 Messenger未登録
