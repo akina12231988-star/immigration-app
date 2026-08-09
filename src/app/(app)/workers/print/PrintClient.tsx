@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { BackButton } from "@/components/BackButton";
 import QRCode from "qrcode";
 import { messengerWebUrl } from "@/lib/messenger-link";
-import { Printer, UserRound } from "lucide-react";
+import { FileDown, Printer, UserRound } from "lucide-react";
 import type { Organization } from "@/types/db";
 
 export interface PrintWorker {
@@ -40,6 +40,7 @@ export function PrintClient({
   orgName,
   individual,
   workerId,
+  byLeaving,
   from,
   to,
   forCompany,
@@ -52,6 +53,7 @@ export function PrintClient({
   orgName: string;
   individual: boolean;
   workerId: string; // 個人単位の印刷の対象（空なら所属機関などの絞り込み）
+  byLeaving: boolean; // 期間の絞り込みを退職日で行う（既定は在留許可日）
   from: string;
   to: string;
   forCompany: boolean;
@@ -61,10 +63,13 @@ export function PrintClient({
 }) {
   const router = useRouter();
   const printDate = new Date().toLocaleDateString("ja-JP");
+  const dateLabel = byLeaving ? "退職日" : "在留許可日";
 
   // 条件変更でURLを組み立て直す（個人単位は worker パラメータを維持。
   // これが消えると誰の印刷か分からなくなり、切替した瞬間に真っ白になる）
-  const buildUrl = (patch: Partial<{ org: string; from: string; to: string; mode: string }>) => {
+  const buildUrl = (
+    patch: Partial<{ org: string; from: string; to: string; mode: string; date: string }>,
+  ) => {
     const p = new URLSearchParams();
     if (workerId) p.set("worker", workerId);
     const nextOrg = patch.org ?? selectedOrg;
@@ -73,11 +78,32 @@ export function PrintClient({
     const nextTo = patch.to ?? to;
     if (nextFrom) p.set("from", nextFrom);
     if (nextTo) p.set("to", nextTo);
+    const nextDate = patch.date ?? (byLeaving ? "leaving" : "");
+    if (nextDate) p.set("date", nextDate);
     const nextMode =
       patch.mode ??
       (forList ? (listForCompany ? "list-company" : "list") : forCompany ? "company" : "internal");
     p.set("mode", nextMode);
     return `/workers/print?${p.toString()}`;
+  };
+
+  // 印刷・PDF保存のファイル名（ブラウザの「PDFに保存」はページのタイトルが
+  // そのままファイル名になるため、印刷の間だけタイトルを差し替える）
+  const sanitize = (s: string) => s.replace(/[\\/:*?"<>|]/g, "").trim();
+  const fileName = forList
+    ? sanitize(`${orgName || "外国人"}_一覧表`)
+    : individual && workers.length === 1
+      ? sanitize(`${workers[0].name}_${workers[0].orgName || orgName}_個人票`)
+      : sanitize(`${orgName || "外国人"}_個人票`);
+  const printWithName = () => {
+    const prev = document.title;
+    const restore = () => {
+      document.title = prev;
+      window.removeEventListener("afterprint", restore);
+    };
+    window.addEventListener("afterprint", restore);
+    document.title = fileName;
+    window.print();
   };
 
   return (
@@ -172,13 +198,30 @@ export function PrintClient({
                   ))}
                 </select>
               </label>
+              {/* 期間で絞り込む日付の切替（在留許可日 / 退職日） */}
+              <div className="flex max-w-md rounded-xl border border-border p-0.5">
+                <button
+                  type="button"
+                  onClick={() => router.push(buildUrl({ date: "" }))}
+                  className={`flex-1 rounded-lg py-2 text-sm font-bold ${!byLeaving ? "bg-brand text-brand-foreground" : "text-muted"}`}
+                >
+                  在留許可日で絞り込み
+                </button>
+                <button
+                  type="button"
+                  onClick={() => router.push(buildUrl({ date: "leaving" }))}
+                  className={`flex-1 rounded-lg py-2 text-sm font-bold ${byLeaving ? "bg-brand text-brand-foreground" : "text-muted"}`}
+                >
+                  退職日で絞り込み
+                </button>
+              </div>
               <div className="flex flex-wrap items-end gap-3">
                 <label className="flex flex-col gap-1">
-                  <span className="text-xs font-bold text-muted">在留許可日（開始）</span>
+                  <span className="text-xs font-bold text-muted">{dateLabel}（開始）</span>
                   <input type="date" value={from} onChange={(e) => router.push(buildUrl({ from: e.target.value }))} className="min-h-[40px] rounded-xl border border-border bg-surface px-3 text-sm" />
                 </label>
                 <label className="flex flex-col gap-1">
-                  <span className="text-xs font-bold text-muted">在留許可日（終了）</span>
+                  <span className="text-xs font-bold text-muted">{dateLabel}（終了）</span>
                   <input type="date" value={to} onChange={(e) => router.push(buildUrl({ to: e.target.value }))} className="min-h-[40px] rounded-xl border border-border bg-surface px-3 text-sm" />
                 </label>
                 {(from || to) && (
@@ -191,20 +234,37 @@ export function PrintClient({
           )}
 
           {workers.length > 0 && (
-            <button
-              type="button"
-              onClick={() => window.print()}
-              className="inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-3 text-sm font-bold text-brand-foreground"
-            >
-              <Printer size={18} />
-              印刷する（{workers.length}名）
-            </button>
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={printWithName}
+                  className="inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-3 text-sm font-bold text-brand-foreground"
+                >
+                  <Printer size={18} />
+                  印刷する（{workers.length}名）
+                </button>
+                <button
+                  type="button"
+                  onClick={printWithName}
+                  className="inline-flex items-center gap-2 rounded-xl border border-brand px-5 py-3 text-sm font-bold text-brand"
+                >
+                  <FileDown size={18} />
+                  PDF出力（{workers.length}名）
+                </button>
+              </div>
+              <p className="text-xs text-muted">
+                PDF出力は、印刷画面の送信先で「PDFに保存」を選ぶと「{fileName}」の名前で保存されます。
+              </p>
+            </div>
           )}
           {!individual && (selectedOrg || from || to) && workers.length === 0 && (
             <p className="text-sm text-muted">条件に合う外国人が見つかりません。</p>
           )}
           {forList && !selectedOrg && !from && !to && (
-            <p className="text-sm text-muted">所属機関または在留許可日の期間を指定すると、一覧表を作成できます。</p>
+            <p className="text-sm text-muted">
+              所属機関または{dateLabel}の期間を指定すると、一覧表を作成できます。
+            </p>
           )}
         </div>
       </div>
@@ -216,6 +276,7 @@ export function PrintClient({
             <WorkerListSheet
               workers={workers}
               orgName={orgName}
+              dateLabel={dateLabel}
               from={from}
               to={to}
               printDate={printDate}
@@ -277,6 +338,7 @@ const LIST_COLS = [
 function WorkerListSheet({
   workers,
   orgName,
+  dateLabel,
   from,
   to,
   printDate,
@@ -284,6 +346,7 @@ function WorkerListSheet({
 }: {
   workers: PrintWorker[];
   orgName: string;
+  dateLabel: string; // 期間で絞り込んだ日付の名前（在留許可日 / 退職日）
   from: string;
   to: string;
   printDate: string;
@@ -307,7 +370,7 @@ function WorkerListSheet({
                   <div className="text-left">
                     <span className="text-base font-black">外国人 一覧表</span>
                     <span className="ml-2 text-[10px] font-normal">
-                      {orgName ? `所属機関: ${orgName}　` : ""}在留許可日: {period}　該当 {workers.length} 名
+                      {orgName ? `所属機関: ${orgName}　` : ""}{dateLabel}: {period}　該当 {workers.length} 名
                     </span>
                   </div>
                   <span className="text-[10px] font-normal text-gray-500">印刷日: {printDate}</span>
@@ -412,6 +475,8 @@ function WorkerSheet({
           <Row label="在留カード番号" value={worker.residenceCardNo} />
           <Row label="許可日" value={worker.residencePermitDate} />
           <Row label="在留期限" value={worker.residenceExpiryDate} />
+          <Row label="雇用開始日" value={worker.employmentStartOn} />
+          <Row label="退職日" value={worker.leavingOn} />
         </dl>
 
         {/* MessengerリンクQRコード（社内用のみ） */}

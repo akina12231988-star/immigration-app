@@ -17,15 +17,19 @@ export default async function WorkersPrintPage({
     from?: string;
     to?: string;
     mode?: string;
+    date?: string;
   }>;
 }) {
   const me = await getMyProfile();
   if (!me) redirect("/login");
 
-  const { org, worker: workerParam, from, to, mode } = await searchParams;
+  const { org, worker: workerParam, from, to, mode, date } = await searchParams;
   const forCompany = mode === "company"; // 会社提出用（MessengerのQRを消す）
   const forList = mode === "list" || mode === "list-company"; // 一覧表
   const listForCompany = mode === "list-company"; // 会社提出用の一覧表（IDを出さない）
+  // 期間で絞り込む日付。既定は在留許可日、date=leaving なら退職日で絞り込む
+  const byLeaving = date === "leaving";
+  const dateColumn = byLeaving ? "leaving_on" : "residence_permit_date";
   const supabase = await createClient();
   const organizations = await listOrganizations(supabase);
 
@@ -35,18 +39,18 @@ export default async function WorkersPrintPage({
     const { data } = await supabase.from("workers").select("*").eq("id", workerParam).maybeSingle();
     if (data) workers = [data as Worker];
   } else if (forList) {
-    // 一覧表: 在留許可日の期間で絞り込み（所属機関は任意）
+    // 一覧表: 在留許可日または退職日の期間で絞り込み（所属機関は任意）
     let q = supabase.from("workers").select("*");
     if (org) q = q.eq("current_organization_id", org);
-    if (from) q = q.gte("residence_permit_date", from);
-    if (to) q = q.lte("residence_permit_date", to);
-    const { data } = await q.order("residence_permit_date", { ascending: true });
+    if (from) q = q.gte(dateColumn, from);
+    if (to) q = q.lte(dateColumn, to);
+    const { data } = await q.order(dateColumn, { ascending: true });
     workers = (data as Worker[]) ?? [];
   } else if (org) {
-    // 所属機関 AND 在留許可日の期間で絞り込み（1人1ページのシート）
+    // 所属機関 AND 在留許可日または退職日の期間で絞り込み（1人1ページのシート）
     let q = supabase.from("workers").select("*").eq("current_organization_id", org);
-    if (from) q = q.gte("residence_permit_date", from);
-    if (to) q = q.lte("residence_permit_date", to);
+    if (from) q = q.gte(dateColumn, from);
+    if (to) q = q.lte(dateColumn, to);
     const { data } = await q.order("name");
     workers = (data as Worker[]) ?? [];
   }
@@ -102,6 +106,7 @@ export default async function WorkersPrintPage({
       orgName={orgName}
       individual={Boolean(workerParam)}
       workerId={workerParam ?? ""}
+      byLeaving={byLeaving}
       from={from ?? ""}
       to={to ?? ""}
       forCompany={forCompany}
