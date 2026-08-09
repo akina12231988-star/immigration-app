@@ -1,5 +1,6 @@
 "use client";
 
+import { messengerWebUrl } from "@/lib/messenger-link";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -288,7 +289,7 @@ export function ApplicationDetail({ id }: { id: string }) {
           {/* 氏名の下にメッセンジャーグループのリンクを表示 */}
           {messengerLink && (
             <a
-              href={messengerLink}
+              href={messengerWebUrl(messengerLink)}
               target="_blank"
               rel="noopener noreferrer"
               className="mt-2 flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-bold text-brand"

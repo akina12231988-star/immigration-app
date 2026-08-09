@@ -1,5 +1,6 @@
 "use client";
 
+import { messengerWebUrl } from "@/lib/messenger-link";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -290,7 +291,7 @@ export function WorkerDetail({
               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
                 {worker.messenger_link && (
                   <a
-                    href={worker.messenger_link}
+                    href={messengerWebUrl(worker.messenger_link)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 text-xs font-bold text-brand"

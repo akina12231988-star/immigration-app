@@ -1,5 +1,6 @@
 "use client";
 
+import { messengerWebUrl } from "@/lib/messenger-link";
 import { useEffect, useState } from "react";
 import { Check, Copy, ExternalLink, MessageCircle, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
@@ -330,7 +331,7 @@ export function ApprovalSection({
 
           {messengerLink && (
             <a
-              href={messengerLink}
+              href={messengerWebUrl(messengerLink)}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-bold text-brand"

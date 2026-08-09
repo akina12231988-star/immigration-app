@@ -1,5 +1,6 @@
 "use client";
 
+import { messengerWebUrl } from "@/lib/messenger-link";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
@@ -92,7 +93,7 @@ function PassportRow({ worker, today }: { worker: WorkerWithOrg; today: string }
 
       <div className="mt-2 flex flex-wrap gap-3">
         {worker.messenger_link && (
-          <a href={worker.messenger_link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs font-bold text-brand">
+          <a href={messengerWebUrl(worker.messenger_link)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs font-bold text-brand">
             <MessageCircle size={13} />
             Messengerで送る
           </a>
