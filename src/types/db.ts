@@ -505,6 +505,7 @@ export interface MonthlySupportRegistration {
   fee_name: string; // 支援代 / サポート代
   registered_on: string | null; // 登録した日
   note: string; // メモ（この月に請求しない理由など。0069_monthly_support_note.sql）
+  no_charge: boolean; // この月の支援代を請求しない（0077_monthly_support_no_charge.sql）
   created_at: string;
   updated_at: string;
 }
