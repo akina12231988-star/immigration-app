@@ -40,6 +40,7 @@ export interface WorkerFilterState {
   status: WorkerStatus | "all";
   support: SupportScope | "all";
   orgId: string | "all" | "none"; // none = 未所属
+  nationality: string | "all"; // 国籍で絞り込み
   sort: WorkerSortKey;
   quick: WorkerQuickFilter;
   periodField: WorkerPeriodField; // 対象期間をどの日付で絞るか
@@ -52,6 +53,7 @@ export const INITIAL_FILTER: WorkerFilterState = {
   status: "all",
   support: "all",
   orgId: "all",
+  nationality: "all",
   sort: "created",
   quick: "all",
   periodField: "expiry",
@@ -66,10 +68,12 @@ const SELECT_CLASS =
 export function WorkerFilters({
   filter,
   organizations,
+  nationalities,
   onChange,
 }: {
   filter: WorkerFilterState;
   organizations: Organization[];
+  nationalities: string[]; // 登録されている国籍（重複なし・あいうえお順）
   onChange: (next: WorkerFilterState) => void;
 }) {
   const set = <K extends keyof WorkerFilterState>(key: K, value: WorkerFilterState[K]) =>
@@ -131,6 +135,19 @@ export function WorkerFilters({
           {organizations.map((o) => (
             <option key={o.id} value={o.id}>
               {o.name}
+            </option>
+          ))}
+        </select>
+        <select
+          value={filter.nationality}
+          onChange={(e) => set("nationality", e.target.value)}
+          aria-label="国籍で絞り込み"
+          className={SELECT_CLASS}
+        >
+          <option value="all">国籍: すべて</option>
+          {nationalities.map((n) => (
+            <option key={n} value={n}>
+              {n}
             </option>
           ))}
         </select>
