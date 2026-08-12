@@ -73,6 +73,15 @@ export function WorkersExplorer({
     [organizations],
   );
 
+  // 国籍フィルターの選択肢（登録されている国籍を重複なしで五十音順に）
+  const nationalities = useMemo(
+    () =>
+      [...new Set(workers.map((w) => w.nationality.trim()).filter(Boolean))].sort((a, b) =>
+        a.localeCompare(b, "ja"),
+      ),
+    [workers],
+  );
+
   // 同姓同名対策: 氏名が重複する場合のみ表示に（所属機関名）を付す
   const dupNames = useMemo(() => {
     const counts = new Map<string, number>();
@@ -144,6 +153,7 @@ export function WorkersExplorer({
       }
       if (filter.status !== "all" && worker.status !== filter.status) return false;
       if (filter.support !== "all" && worker.support !== filter.support) return false;
+      if (filter.nationality !== "all" && worker.nationality !== filter.nationality) return false;
       if (filter.orgId === "none") {
         if (worker.current_organization_id) return false;
       } else if (filter.orgId !== "all") {
@@ -223,7 +233,12 @@ export function WorkersExplorer({
         </div>
       )}
 
-      <WorkerFilters filter={filter} organizations={organizations} onChange={applyFilter} />
+      <WorkerFilters
+        filter={filter}
+        organizations={organizations}
+        nationalities={nationalities}
+        onChange={applyFilter}
+      />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-bold text-muted">
