@@ -63,6 +63,11 @@ export function JobsExplorer({
   const [rows, setRows] = useState(applications);
   const [error, setError] = useState<string | null>(null);
 
+  // 登録ダイアログでその場で新規登録した外国人・企業も候補に含めるため、
+  // 一覧が持つ選択肢は state で持つ
+  const [workerList, setWorkerList] = useState(workers);
+  const [orgList, setOrgList] = useState(organizations);
+
   // 新規の応募登録（求職一覧から直接記入する）
   const [adding, setAdding] = useState(false);
 
@@ -119,8 +124,8 @@ export function JobsExplorer({
     if (!workerId) throw new Error("外国人を選択してください");
     const row = await insertApplication(createClient(), { ...values, worker_id: workerId });
     // 一覧にすぐ出せるよう、選択肢から表示用の名前を組み立てる
-    const w = workers.find((x) => x.id === workerId);
-    const org = organizations.find((o) => o.id === values.organization_id);
+    const w = workerList.find((x) => x.id === workerId);
+    const org = orgList.find((o) => o.id === values.organization_id);
     const posting = postings.find((p) => p.id === values.job_posting_id);
     setRows((prev) => [
       {
@@ -156,7 +161,7 @@ export function JobsExplorer({
     setReferralBusyId(a.id);
     setError(null);
     try {
-      const org = organizations.find((o) => o.id === a.organization_id);
+      const org = orgList.find((o) => o.id === a.organization_id);
       const items = normalizeSalesItems(org?.intake?.sales_items)[REFERRAL_SALES_KEY] ?? [];
       const fee = parseAmount(items[0]?.amount ?? "") ?? 0;
       const row = await insertReferralFee(createClient(), {
@@ -371,9 +376,18 @@ export function JobsExplorer({
         <JobApplicationDialog
           initial={null}
           postings={postings}
-          workers={workers}
+          workers={workerList}
+          organizations={orgList}
           onClose={() => setAdding(false)}
           onSubmit={addApplication}
+          onWorkerCreated={(w) =>
+            setWorkerList((prev) =>
+              [...prev, w].sort((a, b) => a.name.localeCompare(b.name, "ja")),
+            )
+          }
+          onOrganizationCreated={(o) =>
+            setOrgList((prev) => [...prev, o].sort((a, b) => a.name.localeCompare(b.name, "ja")))
+          }
         />
       )}
 

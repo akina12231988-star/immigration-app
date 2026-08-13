@@ -1,14 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
+import { Combobox } from "@/components/ui/Combobox";
+import { createClient } from "@/lib/supabase/client";
+import { dbErrorMessage } from "@/lib/errors";
 import {
   APPLICATION_RESULTS,
   type ApplicationResult,
 } from "@/types/recruiting";
 import type { ApplicationWithRefs } from "@/lib/supabase/queries/jobs";
 import type { PostingWithStats } from "@/lib/supabase/queries/postings";
+import type { Organization } from "@/types/db";
 import { postingDisplayName } from "@/lib/posting-output";
 
 export interface JobApplicationValues {
@@ -19,6 +23,11 @@ export interface JobApplicationValues {
   result_on: string | null;
   result: ApplicationResult;
   note: string;
+}
+
+export interface NameOption {
+  id: string;
+  name: string;
 }
 
 const INPUT_CLASS =
@@ -37,25 +46,45 @@ function toValues(a: ApplicationWithRefs | null): JobApplicationValues {
 }
 
 // 応募の追加・編集。求人を選ぶと所属機関が自動で決まる。
-// workers を渡すと外国人の選択欄が出る（求職一覧からの新規登録用。
-// 外国人詳細から開くときは本人が決まっているため渡さない）
+// workers / organizations を渡すと名前入力のコンボボックスが出て、
+// 候補に無ければその場で新規登録できる（求職一覧からの新規登録用。
+// 外国人詳細から開くときは本人が決まっているため workers は渡さない）
 export function JobApplicationDialog({
   initial,
   postings,
   workers,
+  organizations,
   onClose,
   onSubmit,
+  onWorkerCreated,
+  onOrganizationCreated,
 }: {
   initial: ApplicationWithRefs | null;
   postings: PostingWithStats[];
-  workers?: { id: string; name: string }[];
+  workers?: NameOption[];
+  organizations?: NameOption[];
   onClose: () => void;
   onSubmit: (values: JobApplicationValues, workerId?: string) => Promise<void>;
+  onWorkerCreated?: (worker: NameOption) => void;
+  onOrganizationCreated?: (organization: Organization) => void;
 }) {
   const [form, setForm] = useState<JobApplicationValues>(() => toValues(initial));
   const [workerId, setWorkerId] = useState(initial?.worker_id ?? "");
+  // その場で新規登録した外国人・企業も候補に出すための追加分
+  const [extraWorkers, setExtraWorkers] = useState<NameOption[]>([]);
+  const [extraOrgs, setExtraOrgs] = useState<NameOption[]>([]);
   const [busy, setBusy] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const workerOptions = useMemo(
+    () => [...(workers ?? []), ...extraWorkers],
+    [workers, extraWorkers],
+  );
+  const orgOptions = useMemo(
+    () => [...(organizations ?? []), ...extraOrgs],
+    [organizations, extraOrgs],
+  );
 
   const set = <K extends keyof JobApplicationValues>(key: K, value: JobApplicationValues[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -69,14 +98,84 @@ export function JobApplicationDialog({
     }));
   };
 
+  // 企業を選び直したら、別の企業の求人が残らないようにする
+  const selectOrganization = (orgId: string) => {
+    setForm((f) => {
+      const posting = postings.find((p) => p.id === f.job_posting_id);
+      const keepPosting = posting && posting.organization_id === orgId;
+      return {
+        ...f,
+        organization_id: orgId,
+        job_posting_id: keepPosting ? f.job_posting_id : null,
+      };
+    });
+  };
+
+  // 名前だけで外国人を新規登録する（詳細は外国人詳細であとから入力する）
+  const createWorker = async (name: string) => {
+    setCreating(true);
+    setError(null);
+    try {
+      const { data, error: err } = await createClient()
+        .from("workers")
+        .insert({ name })
+        .select("id, name")
+        .single();
+      if (err) throw err;
+      const w = data as NameOption;
+      setExtraWorkers((prev) => [...prev, w]);
+      setWorkerId(w.id);
+      onWorkerCreated?.(w);
+    } catch (err) {
+      setError(dbErrorMessage(err, "0003_core.sql", "外国人の新規登録に失敗しました"));
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  // 名前だけで企業（所属機関）を新規登録する
+  const createOrganization = async (name: string) => {
+    setCreating(true);
+    setError(null);
+    try {
+      const { data, error: err } = await createClient()
+        .from("organizations")
+        .insert({ name })
+        .select("*")
+        .single();
+      if (err) throw err;
+      const o = data as Organization;
+      setExtraOrgs((prev) => [...prev, { id: o.id, name: o.name }]);
+      selectOrganization(o.id);
+      onOrganizationCreated?.(o);
+    } catch (err) {
+      setError(dbErrorMessage(err, "0003_core.sql", "企業の新規登録に失敗しました"));
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  // 選んだ企業の求人だけを候補にする（企業未選択なら全求人）
+  const postingOptions = useMemo(
+    () =>
+      form.organization_id
+        ? postings.filter((p) => p.organization_id === form.organization_id)
+        : postings,
+    [postings, form.organization_id],
+  );
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (workers && !workerId) {
-      setError("外国人を選択してください");
+      setError("外国人を選択してください（名前を入力すると候補、無ければ新規登録が出ます）");
       return;
     }
     if (!form.organization_id) {
-      setError("求人を選択してください（応募先の機関が必要です）");
+      setError(
+        organizations
+          ? "応募先の企業を選択してください（企業名を入力すると候補、無ければ新規登録が出ます）"
+          : "求人を選択してください（応募先の機関が必要です）",
+      );
       return;
     }
     // 結果が選考中以外なら結果日を必須にする（DB制約と一致）
@@ -104,34 +203,54 @@ export function JobApplicationDialog({
           </p>
         )}
 
-        {workers && (
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-bold text-muted">外国人</span>
-            <select
-              value={workerId}
-              onChange={(e) => setWorkerId(e.target.value)}
-              disabled={Boolean(initial)}
-              className={`${INPUT_CLASS} disabled:opacity-60`}
-            >
-              <option value="">選択してください</option>
-              {workers.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
-                </option>
-              ))}
-            </select>
-          </label>
+        {workers &&
+          (initial ? (
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-bold text-muted">外国人</span>
+              <p className="text-sm font-bold">{initial.workers?.name ?? "（不明）"}</p>
+            </div>
+          ) : (
+            // 名前を入力すると下に候補が出る。候補に無ければ「新規登録」で名前だけ登録する。
+            // label の中に入れると候補のクリックが input に取られるため div で包む
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-bold text-muted">外国人（必須）</span>
+              <Combobox
+                options={workerOptions.map((w) => ({ id: w.id, label: w.name }))}
+                value={workerId}
+                onChange={setWorkerId}
+                onCreate={(name) => void createWorker(name)}
+                placeholder="名前を入力して検索（無ければ新規登録）"
+              />
+              <span className="text-[11px] text-muted">
+                新規登録した外国人の詳細（国籍・生年月日など）は外国人詳細であとから入力できます
+              </span>
+            </div>
+          ))}
+
+        {organizations && (
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-bold text-muted">応募先の企業（必須）</span>
+            <Combobox
+              options={orgOptions.map((o) => ({ id: o.id, label: o.name }))}
+              value={form.organization_id}
+              onChange={selectOrganization}
+              onCreate={(name) => void createOrganization(name)}
+              placeholder="企業名を入力して検索（無ければ新規登録）"
+            />
+          </div>
         )}
 
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-bold text-muted">応募先の求人</span>
+          <span className="text-xs font-bold text-muted">
+            応募先の求人{organizations ? "（任意・選ぶと企業も自動で入ります）" : ""}
+          </span>
           <select
             value={form.job_posting_id ?? ""}
             onChange={(e) => selectPosting(e.target.value)}
             className={INPUT_CLASS}
           >
             <option value="">求人を選択</option>
-            {postings.map((p) => (
+            {postingOptions.map((p) => (
               <option key={p.id} value={p.id}>
                 {postingDisplayName(p, p.organizations?.name)}
                 {p.job_type ? `（${p.job_type}）` : ""}
@@ -203,8 +322,8 @@ export function JobApplicationDialog({
           </p>
         )}
 
-        <Button type="submit" fullWidth disabled={busy} className="mt-1">
-          {busy ? "保存中…" : initial ? "更新する" : "登録する"}
+        <Button type="submit" fullWidth disabled={busy || creating} className="mt-1">
+          {busy ? "保存中…" : creating ? "新規登録中…" : initial ? "更新する" : "登録する"}
         </Button>
       </form>
     </Modal>
