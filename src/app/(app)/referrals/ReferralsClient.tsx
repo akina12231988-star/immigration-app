@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { ExternalLink, Loader2, Plus, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
@@ -13,7 +13,7 @@ import {
   updateReferralFee,
   type ReferralFeeWithRefs,
 } from "@/lib/supabase/queries/referrals";
-import { formatSalesYen, REFERRAL_SALES_KEY } from "@/lib/sales";
+import { formatSalesYen, FREEE_SALES_LOGIN_URL, REFERRAL_SALES_KEY } from "@/lib/sales";
 import { normalizeSalesItems, parseAmount } from "@/lib/organization-intake";
 import { isMonthStr, monthLabel } from "@/lib/monthly-billing";
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
@@ -154,13 +154,25 @@ export function ReferralsClient({
   // 行の一部（請求年月日・入金年月日・紹介売上No.・手数料など）をその場で保存する
   const patchRow = async (
     id: string,
-    patch: Partial<Pick<ReferralFeeWithRefs, "billed_on" | "paid_on" | "sales_no" | "fee" | "note">>,
+    patch: Partial<
+      Pick<
+        ReferralFeeWithRefs,
+        "billed_on" | "paid_on" | "sales_no" | "fee" | "note" | "sales_checked_on"
+      >
+    >,
   ) => {
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
     try {
       await updateReferralFee(createClient(), id, patch);
     } catch (err) {
-      setError(errorMessage(err, "保存に失敗しました"));
+      setError(dbErrorMessage(err, "0078_referral_fees_job_link.sql", "保存に失敗しました"));
+    }
+  };
+
+  // freee販売を開いて売上登録を確認するとき、検索しやすいよう紹介売上No.をコピーしておく
+  const openFreee = (salesNo: string) => {
+    if (salesNo && navigator.clipboard) {
+      void navigator.clipboard.writeText(salesNo).catch(() => {});
     }
   };
 
@@ -210,6 +222,10 @@ export function ReferralsClient({
         全所属機関のあっせん（人材紹介）手数料をまとめて管理する台帳です。freee販売に登録したら紹介売上No.を、
         請求書を発行したら請求年月日を、入金を確認したら入金年月日を記録してください。
         手数料は税抜で入力します。対象の年月は在留許可日の月で絞り込みます。
+        入金年月日は、紹介売上No.横の
+        <ExternalLink size={11} className="mx-0.5 inline" />
+        からfreee販売を開いて売上登録を確かめ、「売上登録確認」にチェックを入れると入力できるようになります
+        （No.はコピーされるので、freee販売の検索に貼り付けられます）。
       </p>
 
       <div className="flex flex-wrap items-end gap-2">
@@ -357,7 +373,7 @@ export function ReferralsClient({
       ) : (
         <Card className="p-3">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1250px] border-collapse text-xs">
+            <table className="w-full min-w-[1400px] border-collapse text-xs">
               <thead>
                 <tr className="border-b border-border text-left text-muted">
                   <th className="py-1.5 pr-2 font-bold">氏名</th>
@@ -371,6 +387,7 @@ export function ReferralsClient({
                   <th className="py-1.5 pr-2 font-bold">在留資格</th>
                   <th className="py-1.5 pr-2 text-right font-bold">手数料（税抜）</th>
                   <th className="py-1.5 pr-2 font-bold">紹介売上No.</th>
+                  <th className="py-1.5 pr-2 font-bold">売上登録確認</th>
                   <th className="py-1.5 pr-2 font-bold">請求年月日</th>
                   <th className="py-1.5 pr-2 font-bold">入金年月日</th>
                   <th className="py-1.5 pr-2 font-bold">備考</th>
@@ -418,18 +435,55 @@ export function ReferralsClient({
                       )}
                     </td>
                     <td className="py-1.5 pr-2">
+                      <span className="flex items-center gap-1">
+                        {canEdit ? (
+                          <input
+                            defaultValue={r.sales_no}
+                            onBlur={(e) => {
+                              if (e.target.value !== r.sales_no)
+                                void patchRow(r.id, { sales_no: e.target.value.trim() });
+                            }}
+                            placeholder="S-…"
+                            className={`${CELL_INPUT} w-32`}
+                          />
+                        ) : (
+                          <span className="text-muted">{r.sales_no || "—"}</span>
+                        )}
+                        <a
+                          href={FREEE_SALES_LOGIN_URL}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={() => openFreee(r.sales_no)}
+                          title="freee販売を開いて売上登録を確認する（No.をコピーします）"
+                          aria-label="freee販売を開く"
+                          className="shrink-0 text-brand"
+                        >
+                          <ExternalLink size={13} />
+                        </a>
+                      </span>
+                    </td>
+                    {/* freee販売で売上登録を確認できたらチェック。入金年月日はこの後に入れられる */}
+                    <td className="py-1.5 pr-2">
                       {canEdit ? (
-                        <input
-                          defaultValue={r.sales_no}
-                          onBlur={(e) => {
-                            if (e.target.value !== r.sales_no)
-                              void patchRow(r.id, { sales_no: e.target.value.trim() });
-                          }}
-                          placeholder="S-…"
-                          className={`${CELL_INPUT} w-32`}
-                        />
+                        <label className="flex items-center gap-1">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(r.sales_checked_on)}
+                            onChange={(e) =>
+                              void patchRow(r.id, {
+                                sales_checked_on: e.target.checked ? today : null,
+                              })
+                            }
+                            className="h-4 w-4 accent-brand"
+                          />
+                          <span className="tabular-nums text-muted">
+                            {r.sales_checked_on ?? ""}
+                          </span>
+                        </label>
                       ) : (
-                        <span className="text-muted">{r.sales_no || "—"}</span>
+                        <span className="tabular-nums text-muted">
+                          {r.sales_checked_on ?? "未確認"}
+                        </span>
                       )}
                     </td>
                     <td className="py-1.5 pr-2">
@@ -450,7 +504,13 @@ export function ReferralsClient({
                           type="date"
                           value={r.paid_on ?? ""}
                           onChange={(e) => void patchRow(r.id, { paid_on: e.target.value || null })}
-                          className={`${CELL_INPUT} ${r.paid_on ? "" : "border-seal/40 bg-seal/5"}`}
+                          disabled={!r.sales_checked_on && !r.paid_on}
+                          title={
+                            !r.sales_checked_on && !r.paid_on
+                              ? "freee販売で売上登録を確認（チェック）してから入金日を入れてください"
+                              : undefined
+                          }
+                          className={`${CELL_INPUT} ${r.paid_on ? "" : "border-seal/40 bg-seal/5"} disabled:cursor-not-allowed disabled:opacity-40`}
                         />
                       ) : (
                         <span className="tabular-nums text-muted">{r.paid_on ?? "未入金"}</span>
@@ -492,7 +552,7 @@ export function ReferralsClient({
                   <td className="py-1.5 pr-2 text-right font-bold tabular-nums text-brand">
                     {formatSalesYen(total)}
                   </td>
-                  <td colSpan={canEdit ? 5 : 4} />
+                  <td colSpan={canEdit ? 6 : 5} />
                 </tr>
               </tbody>
             </table>

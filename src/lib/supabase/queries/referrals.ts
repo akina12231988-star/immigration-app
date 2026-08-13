@@ -118,6 +118,54 @@ export async function createReferralFeeForSalesNo(
   return { feeId: row.id, salesNo: row.sales_no, paidOn: row.paid_on, fee: row.fee };
 }
 
+// ---- 求職一覧（応募）から台帳を見るための取り出し ----
+
+// 求職一覧の1件（応募）に出す台帳の状態
+export interface ApplicationReferralFee {
+  feeId: string; // referral_fees の行
+  salesNo: string; // 紹介売上No.（freee販売）
+  fee: number; // 手数料（円・税抜）
+  billedOn: string | null; // 請求年月日
+  paidOn: string | null; // 入金年月日
+}
+
+// 応募ID → 台帳の行（1応募に複数あるときは新しい1件）。
+// 0078未適用だと列が無くてエラーになるため、呼び出し側で catch して空にする
+export async function listReferralFeesByApplication(
+  supabase: SupabaseClient,
+): Promise<Record<string, ApplicationReferralFee>> {
+  const { data, error } = await supabase
+    .from("referral_fees")
+    .select("id, job_application_id, sales_no, fee, billed_on, paid_on, created_at")
+    .not("job_application_id", "is", null)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  const rows =
+    (data as
+      | {
+          id: string;
+          job_application_id: string;
+          sales_no: string;
+          fee: number;
+          billed_on: string | null;
+          paid_on: string | null;
+        }[]
+      | null) ?? [];
+
+  const out: Record<string, ApplicationReferralFee> = {};
+  for (const r of rows) {
+    if (out[r.job_application_id]) continue; // 新しい順なので最初の1件だけ
+    out[r.job_application_id] = {
+      feeId: r.id,
+      salesNo: r.sales_no,
+      fee: r.fee,
+      billedOn: r.billed_on,
+      paidOn: r.paid_on,
+    };
+  }
+  return out;
+}
+
 export async function deleteReferralFee(
   supabase: SupabaseClient,
   id: string,

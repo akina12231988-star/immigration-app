@@ -488,11 +488,18 @@ export interface ReferralFee {
   billed_on: string | null; // 請求年月日
   paid_on: string | null; // 入金年月日
   note: string;
+  job_application_id: string | null; // 紐づく応募（求職一覧の行。0078）
+  sales_checked_on: string | null; // freee販売で売上登録を確認した日（0078）
   created_at: string;
   updated_at: string;
 }
 
-export type ReferralFeeInput = Omit<ReferralFee, "id" | "created_at" | "updated_at">;
+// 0078の2列は未適用の環境でも追加が通るよう任意にする
+export type ReferralFeeInput = Omit<
+  ReferralFee,
+  "id" | "created_at" | "updated_at" | "job_application_id" | "sales_checked_on"
+> &
+  Partial<Pick<ReferralFee, "job_application_id" | "sales_checked_on">>;
 
 // ---- ◯月分の支援代のfreee登録記録（0066_monthly_support_registrations.sql） ----
 

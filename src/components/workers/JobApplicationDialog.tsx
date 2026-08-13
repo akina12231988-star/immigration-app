@@ -36,19 +36,24 @@ function toValues(a: ApplicationWithRefs | null): JobApplicationValues {
   };
 }
 
-// 応募の追加・編集。求人を選ぶと所属機関が自動で決まる
+// 応募の追加・編集。求人を選ぶと所属機関が自動で決まる。
+// workers を渡すと外国人の選択欄が出る（求職一覧からの新規登録用。
+// 外国人詳細から開くときは本人が決まっているため渡さない）
 export function JobApplicationDialog({
   initial,
   postings,
+  workers,
   onClose,
   onSubmit,
 }: {
   initial: ApplicationWithRefs | null;
   postings: PostingWithStats[];
+  workers?: { id: string; name: string }[];
   onClose: () => void;
-  onSubmit: (values: JobApplicationValues) => Promise<void>;
+  onSubmit: (values: JobApplicationValues, workerId?: string) => Promise<void>;
 }) {
   const [form, setForm] = useState<JobApplicationValues>(() => toValues(initial));
+  const [workerId, setWorkerId] = useState(initial?.worker_id ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,6 +71,10 @@ export function JobApplicationDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (workers && !workerId) {
+      setError("外国人を選択してください");
+      return;
+    }
     if (!form.organization_id) {
       setError("求人を選択してください（応募先の機関が必要です）");
       return;
@@ -78,7 +87,7 @@ export function JobApplicationDialog({
     setBusy(true);
     setError(null);
     try {
-      await onSubmit(form);
+      await onSubmit(form, workerId || undefined);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存に失敗しました");
@@ -93,6 +102,25 @@ export function JobApplicationDialog({
           <p role="alert" className="rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
             {error}
           </p>
+        )}
+
+        {workers && (
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-bold text-muted">外国人</span>
+            <select
+              value={workerId}
+              onChange={(e) => setWorkerId(e.target.value)}
+              disabled={Boolean(initial)}
+              className={`${INPUT_CLASS} disabled:opacity-60`}
+            >
+              <option value="">選択してください</option>
+              {workers.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
+            </select>
+          </label>
         )}
 
         <label className="flex flex-col gap-1">
