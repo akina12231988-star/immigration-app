@@ -321,6 +321,9 @@ export interface Worker {
   ssw_insurance_expiry_date: string | null; // 特定技能総合保険の有効期限
   ssw_insurance_self_join: boolean; // 自己負担加入希望（所属機関が外国人負担の場合に本人が加入を希望）
   note: string;
+  jobseeker_no?: string; // 求職受付番号（求職管理簿。例: R8KS-2。0079）
+  jobseeker_accepted_on?: string | null; // 求職受付年月日（0079）
+  jobseeker_valid_until?: string | null; // 求職の有効期間（終了日。0079）
   recurring_sales_no: string; // 定期売上No.（freee販売の定期売上の伝票番号。例: SP-0000000225）
   past_recurring_sales: WorkerPastRecurringSale[]; // 過去の定期売上No.（転職前の所属機関の番号）
   worker_code: string | null; // 外国人ID（例: V-1）。自動採番
@@ -490,16 +493,26 @@ export interface ReferralFee {
   note: string;
   job_application_id: string | null; // 紐づく応募（求職一覧の行。0078）
   sales_checked_on: string | null; // freee販売で売上登録を確認した日（0078）
+  fee_kind: string; // 手数料の種類（手数料管理簿。既定「紹介手数料」。0079）
+  calc_basis: string; // 手数料の算出根拠（手数料管理簿。例: 賃金総額150万円×11％。0079）
   created_at: string;
   updated_at: string;
 }
 
-// 0078の2列は未適用の環境でも追加が通るよう任意にする
+// 0078・0079の追加列は未適用の環境でも追加が通るよう任意にする
 export type ReferralFeeInput = Omit<
   ReferralFee,
-  "id" | "created_at" | "updated_at" | "job_application_id" | "sales_checked_on"
+  | "id"
+  | "created_at"
+  | "updated_at"
+  | "job_application_id"
+  | "sales_checked_on"
+  | "fee_kind"
+  | "calc_basis"
 > &
-  Partial<Pick<ReferralFee, "job_application_id" | "sales_checked_on">>;
+  Partial<
+    Pick<ReferralFee, "job_application_id" | "sales_checked_on" | "fee_kind" | "calc_basis">
+  >;
 
 // ---- ◯月分の支援代のfreee登録記録（0066_monthly_support_registrations.sql） ----
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ExternalLink, Loader2, Plus, Trash2 } from "lucide-react";
+import { ExternalLink, FileSpreadsheet, Loader2, Plus, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
@@ -14,6 +14,8 @@ import {
   type ReferralFeeWithRefs,
 } from "@/lib/supabase/queries/referrals";
 import { formatSalesYen, FREEE_SALES_LOGIN_URL, REFERRAL_SALES_KEY } from "@/lib/sales";
+import { buildXlsx, downloadBlob } from "@/lib/xlsx-export";
+import { buildFeeLedgerSheet } from "@/lib/recruit-ledgers";
 import { normalizeSalesItems, parseAmount } from "@/lib/organization-intake";
 import { isMonthStr, monthLabel } from "@/lib/monthly-billing";
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
@@ -157,7 +159,14 @@ export function ReferralsClient({
     patch: Partial<
       Pick<
         ReferralFeeWithRefs,
-        "billed_on" | "paid_on" | "sales_no" | "fee" | "note" | "sales_checked_on"
+        | "billed_on"
+        | "paid_on"
+        | "sales_no"
+        | "fee"
+        | "note"
+        | "sales_checked_on"
+        | "fee_kind"
+        | "calc_basis"
       >
     >,
   ) => {
@@ -248,11 +257,37 @@ export function ReferralsClient({
           />
           全期間を表示
         </label>
-        {canEdit && (
-          <Button icon={<Plus size={16} />} className="ml-auto" onClick={() => setAdding((v) => !v)}>
-            台帳に追加
-          </Button>
-        )}
+        <span className="ml-auto flex items-center gap-2">
+          {/* 労働局の訪問指導（監査）で提出する手数料管理簿（表示中の絞り込みのまま出力） */}
+          <button
+            type="button"
+            onClick={() => {
+              const today = new Date().toISOString().slice(0, 10);
+              void buildXlsx([
+                buildFeeLedgerSheet(
+                  filtered.map((r) => ({
+                    payer_name: r.employer_name || r.organizations?.name || "",
+                    paid_on: r.paid_on,
+                    fee_kind: r.fee_kind || "紹介手数料",
+                    fee: r.fee,
+                    calc_basis: r.calc_basis ?? "",
+                    worker_name: r.workers?.name ?? r.worker_name,
+                    note: r.note,
+                  })),
+                ),
+              ]).then((blob) => downloadBlob(blob, `手数料管理簿_${today}.xlsx`));
+            }}
+            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-bold text-brand"
+          >
+            <FileSpreadsheet size={14} />
+            手数料管理簿（Excel）
+          </button>
+          {canEdit && (
+            <Button icon={<Plus size={16} />} onClick={() => setAdding((v) => !v)}>
+              台帳に追加
+            </Button>
+          )}
+        </span>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -373,7 +408,7 @@ export function ReferralsClient({
       ) : (
         <Card className="p-3">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1400px] border-collapse text-xs">
+            <table className="w-full min-w-[1650px] border-collapse text-xs">
               <thead>
                 <tr className="border-b border-border text-left text-muted">
                   <th className="py-1.5 pr-2 font-bold">氏名</th>
@@ -385,7 +420,9 @@ export function ReferralsClient({
                   <th className="py-1.5 pr-2 font-bold">採用日</th>
                   <th className="py-1.5 pr-2 font-bold">在留許可日</th>
                   <th className="py-1.5 pr-2 font-bold">在留資格</th>
+                  <th className="py-1.5 pr-2 font-bold">種類</th>
                   <th className="py-1.5 pr-2 text-right font-bold">手数料（税抜）</th>
+                  <th className="py-1.5 pr-2 font-bold">算出根拠</th>
                   <th className="py-1.5 pr-2 font-bold">紹介売上No.</th>
                   <th className="py-1.5 pr-2 font-bold">売上登録確認</th>
                   <th className="py-1.5 pr-2 font-bold">請求年月日</th>
@@ -419,6 +456,22 @@ export function ReferralsClient({
                       {r.workers?.residence_permit_date ?? "—"}
                     </td>
                     <td className="py-1.5 pr-2 text-muted">{r.workers?.residence_status || "—"}</td>
+                    {/* 手数料の種類・算出根拠（手数料管理簿の記載事項） */}
+                    <td className="py-1.5 pr-2">
+                      {canEdit ? (
+                        <input
+                          defaultValue={r.fee_kind ?? ""}
+                          onBlur={(e) => {
+                            if (e.target.value !== (r.fee_kind ?? ""))
+                              void patchRow(r.id, { fee_kind: e.target.value.trim() });
+                          }}
+                          placeholder="紹介手数料"
+                          className={`${CELL_INPUT} w-24`}
+                        />
+                      ) : (
+                        <span className="text-muted">{r.fee_kind || "紹介手数料"}</span>
+                      )}
+                    </td>
                     <td className="py-1.5 pr-2 text-right">
                       {canEdit ? (
                         <input
@@ -432,6 +485,21 @@ export function ReferralsClient({
                         />
                       ) : (
                         <span className="font-bold tabular-nums">{formatSalesYen(r.fee)}</span>
+                      )}
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      {canEdit ? (
+                        <input
+                          defaultValue={r.calc_basis ?? ""}
+                          onBlur={(e) => {
+                            if (e.target.value !== (r.calc_basis ?? ""))
+                              void patchRow(r.id, { calc_basis: e.target.value.trim() });
+                          }}
+                          placeholder="例: 賃金総額×11％"
+                          className={`${CELL_INPUT} w-32`}
+                        />
+                      ) : (
+                        <span className="text-muted">{r.calc_basis || "—"}</span>
                       )}
                     </td>
                     <td className="py-1.5 pr-2">
@@ -546,13 +614,13 @@ export function ReferralsClient({
                   </tr>
                 ))}
                 <tr>
-                  <td colSpan={9} className="py-1.5 pr-2 text-right font-bold">
+                  <td colSpan={10} className="py-1.5 pr-2 text-right font-bold">
                     手数料合計
                   </td>
                   <td className="py-1.5 pr-2 text-right font-bold tabular-nums text-brand">
                     {formatSalesYen(total)}
                   </td>
-                  <td colSpan={canEdit ? 6 : 5} />
+                  <td colSpan={canEdit ? 7 : 6} />
                 </tr>
               </tbody>
             </table>
