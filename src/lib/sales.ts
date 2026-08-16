@@ -19,6 +19,10 @@ export const SSW_INSURANCE_AMOUNT = 8820;
 // 申請種別とは別枠で、紹介手数料台帳の手数料の初期値に使う
 export const REFERRAL_SALES_KEY = "あっせん";
 
+// freee販売を開くURL（紹介手数料台帳の紹介売上No.から売上登録を確認するとき用）。
+// アプリ本体のURLはログイン後に決まるため、公式のログイン経由ページを使う
+export const FREEE_SALES_LOGIN_URL = "https://www.freee.co.jp/login/sales-management/";
+
 // 明細の種類
 export type SalesEntryKind =
   | "申請" // 申請種別ごとの売上

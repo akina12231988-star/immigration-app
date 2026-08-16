@@ -3,13 +3,21 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronRight, ImageIcon, Plus, Users } from "lucide-react";
+import { ChevronRight, FileSpreadsheet, ImageIcon, Plus, Users } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { LinkButton } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
 import { updatePosting } from "@/lib/supabase/queries/postings";
 import { formatWage, POSTING_STATUSES, type PostingStatus } from "@/types/recruiting";
 import { postingDisplayName } from "@/lib/posting-output";
+import { buildXlsx, downloadBlob } from "@/lib/xlsx-export";
+import {
+  buildForm30Sheet,
+  buildPostingLedgerSheet,
+  postingEntriesToForm30,
+} from "@/lib/recruit-ledgers";
+import { fetchPostingLedger } from "@/lib/supabase/queries/recruit-ledgers";
+import { dbErrorMessage } from "@/lib/errors";
 import type { PostingWithStats } from "@/lib/supabase/queries/postings";
 
 export function PostingsExplorer({
@@ -47,6 +55,31 @@ export function PostingsExplorer({
     [inPeriod, statusFilter],
   );
 
+  // 労働局の監査（訪問指導）用の帳簿出力。
+  // 求人管理簿（厚労省様式の項目）と、事前提出する様式30（求人者リスト）
+  const [exporting, setExporting] = useState<"ledger" | "form30" | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const exportLedger = async (kind: "ledger" | "form30") => {
+    setExporting(kind);
+    setExportError(null);
+    const today = new Date().toISOString().slice(0, 10);
+    try {
+      const entries = await fetchPostingLedger(createClient());
+      const sheet =
+        kind === "ledger"
+          ? buildPostingLedgerSheet(entries)
+          : buildForm30Sheet(postingEntriesToForm30(entries), today);
+      downloadBlob(
+        await buildXlsx([sheet]),
+        kind === "ledger" ? `求人管理簿_${today}.xlsx` : `様式30_求人者リスト_${today}.xlsx`,
+      );
+    } catch (err) {
+      setExportError(dbErrorMessage(err, "0079_recruit_ledgers.sql", "出力に失敗しました"));
+    } finally {
+      setExporting(null);
+    }
+  };
+
   const changeStatus = async (id: string, status: PostingStatus) => {
     const prev = rows;
     setRows((rs) => rs.map((r) => (r.id === id ? { ...r, status } : r)));
@@ -73,6 +106,34 @@ export function PostingsExplorer({
           </LinkButton>
         </div>
       )}
+
+      {exportError && (
+        <p role="alert" className="rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
+          {exportError}
+        </p>
+      )}
+      {/* 労働局の訪問指導（監査）で提出する帳簿。ボタン1つで様式の項目どおりに出力する */}
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => void exportLedger("ledger")}
+          disabled={exporting !== null}
+          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-bold text-brand disabled:opacity-50"
+        >
+          <FileSpreadsheet size={14} />
+          {exporting === "ledger" ? "出力中…" : "求人管理簿（Excel）"}
+        </button>
+        <button
+          type="button"
+          onClick={() => void exportLedger("form30")}
+          disabled={exporting !== null}
+          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-bold text-brand disabled:opacity-50"
+        >
+          <FileSpreadsheet size={14} />
+          {exporting === "form30" ? "出力中…" : "様式30 求人者リスト（Excel）"}
+        </button>
+        <span className="text-[11px] text-muted">労働局の訪問指導（監査）用</span>
+      </div>
 
       {/* 期間集計（人材紹介事業の定期報告用） */}
       <Card className="p-4">

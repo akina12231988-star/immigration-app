@@ -17,6 +17,7 @@ import type { Organization } from "@/types/db";
 function toInput(p: JobPosting | null, orgId: string): JobPostingInput {
   return {
     organization_id: p?.organization_id ?? orgId,
+    acceptance_no: p?.acceptance_no ?? "",
     received_on: p?.received_on ?? new Date().toISOString().slice(0, 10),
     valid_until: p?.valid_until ?? null,
     closed_on: p?.closed_on ?? null,
@@ -115,6 +116,14 @@ export function PostingForm({
             </p>
           );
         })()}
+        <Field label="求人受理番号（求人管理簿・労働局への提出で使用）">
+          <input
+            value={form.acceptance_no}
+            onChange={(e) => set("acceptance_no", e.target.value)}
+            placeholder="例: 8-1（年度-連番）"
+            className={INPUT_CLASS}
+          />
+        </Field>
         <div className="grid grid-cols-2 gap-2.5">
           <Field label="求人受付日">
             <input

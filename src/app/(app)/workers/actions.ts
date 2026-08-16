@@ -66,12 +66,14 @@ export async function getWorkerPhotoUrl(path: string | null): Promise<string> {
   return data?.signedUrl ?? "";
 }
 
-// ---- 在留カード・指定書の履歴（worker_documents） ----
+// ---- 在留カード・指定書・雇用契約書・雇用条件書の履歴（worker_documents） ----
 
-type WorkerDocKind = "在留カード" | "指定書";
+type WorkerDocKind = "在留カード" | "指定書" | "雇用契約書" | "雇用条件書";
 const DOC_SLUGS: Record<WorkerDocKind, string> = {
   在留カード: "residence-card",
   指定書: "designation",
+  雇用契約書: "employment-contract",
+  雇用条件書: "employment-conditions",
 };
 
 export async function createWorkerDocTicket(
@@ -123,6 +125,9 @@ export interface WorkerDocView {
   id: string;
   kind: WorkerDocKind;
   url: string;
+  downloadUrl?: string; // ダウンロード用（Content-Disposition: attachment の署名付きURL）
+  fileName?: string;
+  mimeType?: string;
   createdAt: string;
   fromApplication?: boolean; // 申請登録時の画像（差し替え前の現データ）
 }
@@ -141,16 +146,33 @@ export async function listWorkerDocs(workerId: string): Promise<WorkerDocView[]>
     .eq("worker_id", workerId)
     .order("created_at", { ascending: false });
   const rows =
-    (data as { id: string; kind: WorkerDocKind; storage_path: string; created_at: string }[]) ??
-    [];
+    (data as {
+      id: string;
+      kind: WorkerDocKind;
+      storage_path: string;
+      file_name: string;
+      mime_type: string;
+      created_at: string;
+    }[]) ?? [];
 
   const result: WorkerDocView[] = [];
   if (rows.length > 0) {
-    const { data: signed } = await admin.storage
-      .from(BUCKET)
-      .createSignedUrls(rows.map((r) => r.storage_path), TTL);
+    const paths = rows.map((r) => r.storage_path);
+    // 表示用と、ファイル保存用（attachment）の署名付きURLを両方作る
+    const [{ data: signed }, { data: signedDl }] = await Promise.all([
+      admin.storage.from(BUCKET).createSignedUrls(paths, TTL),
+      admin.storage.from(BUCKET).createSignedUrls(paths, TTL, { download: true }),
+    ]);
     rows.forEach((r, i) =>
-      result.push({ id: r.id, kind: r.kind, url: signed?.[i]?.signedUrl ?? "", createdAt: r.created_at }),
+      result.push({
+        id: r.id,
+        kind: r.kind,
+        url: signed?.[i]?.signedUrl ?? "",
+        downloadUrl: signedDl?.[i]?.signedUrl ?? "",
+        fileName: r.file_name,
+        mimeType: r.mime_type,
+        createdAt: r.created_at,
+      }),
     );
   }
 

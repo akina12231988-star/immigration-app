@@ -15,6 +15,7 @@ export type ApplicationResult = (typeof APPLICATION_RESULTS)[number];
 export interface JobPosting {
   id: string;
   organization_id: string;
+  acceptance_no: string; // 求人受理番号（求人管理簿・様式30。例: 6-1）
   received_on: string;
   valid_until: string | null;
   closed_on: string | null;
@@ -43,7 +44,12 @@ export type JobPostingInput = Omit<
   "id" | "created_at" | "updated_at"
 >;
 
-// 求職管理簿（応募）
+// 6か月以内の離職状況（求人管理簿・求職管理簿の無期雇用就職者に関する事項）
+export const SEPARATION_STATUSES = ["離職", "離職せず", "不明"] as const;
+export type SeparationStatus = (typeof SEPARATION_STATUSES)[number];
+
+// 求職管理簿（応募）。
+// 0079の採用後項目（雇用期間・離職状況）は未適用の環境でも動くよう任意にする
 export interface JobApplicationRow {
   id: string;
   worker_id: string;
@@ -54,6 +60,10 @@ export interface JobApplicationRow {
   result_on: string | null;
   result: ApplicationResult;
   note: string;
+  employment_term?: string; // 雇用期間（'' / 無期 / 有期）
+  separation_status?: string; // 6か月以内の離職状況（'' / 離職 / 離職せず / 不明）
+  separation_checked_on?: string | null; // 離職状況の調査日
+  separation_check_method?: string; // 調査方法（例: 電話確認）
   created_at: string;
   updated_at: string;
 }

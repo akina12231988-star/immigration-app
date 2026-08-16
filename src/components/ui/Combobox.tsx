@@ -10,16 +10,22 @@ export interface ComboOption {
 
 // 文字入力で候補を絞り込み、クリックで選択するコンボボックス。
 // 1文字でもヒットすれば候補を表示する。
+// onCreate を渡すと、入力した名前が候補に無いときに「◯◯を新規登録」ボタンが出る
+// （求職一覧の応募登録で、未登録の外国人・企業をその場で作るために使う）
 export function Combobox({
   options,
   value,
   onChange,
+  onCreate,
+  createLabel = "を新規登録",
   placeholder = "入力して検索",
   className = "",
 }: {
   options: ComboOption[];
   value: string; // 選択中の id
   onChange: (id: string) => void;
+  onCreate?: (name: string) => void; // 入力名で新規登録（呼び出し側で作成して onChange する）
+  createLabel?: string; // 新規登録ボタンの後ろに付ける文言
   placeholder?: string;
   className?: string;
 }) {
@@ -92,7 +98,7 @@ export function Combobox({
 
       {open && (
         <div className="absolute z-30 mt-1 max-h-60 w-full overflow-y-auto rounded-xl border border-border bg-surface shadow-lg">
-          {filtered.length === 0 ? (
+          {filtered.length === 0 && !onCreate ? (
             <p className="px-3 py-2.5 text-sm text-muted">候補がありません</p>
           ) : (
             filtered.map((o) => (
@@ -111,6 +117,23 @@ export function Combobox({
                 {o.label}
               </button>
             ))
+          )}
+          {/* 入力した名前が候補に無いときは、その場で新規登録できるようにする */}
+          {onCreate && query.trim() !== "" && !options.some((o) => o.label === query.trim()) && (
+            <button
+              type="button"
+              onClick={() => {
+                onCreate(query.trim());
+                setOpen(false);
+                setQuery("");
+              }}
+              className="block w-full border-t border-border px-3 py-2.5 text-left text-sm font-bold text-brand hover:bg-background"
+            >
+              ＋「{query.trim()}」{createLabel}
+            </button>
+          )}
+          {onCreate && query.trim() === "" && filtered.length === 0 && (
+            <p className="px-3 py-2.5 text-sm text-muted">名前を入力すると新規登録できます</p>
           )}
         </div>
       )}

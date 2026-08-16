@@ -21,6 +21,7 @@ import {
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { WorkerPhoto } from "@/components/workers/WorkerPhoto";
 import { WorkerDocuments } from "@/components/workers/WorkerDocuments";
+import { WorkerContracts } from "@/components/workers/WorkerContracts";
 import { OnboardingDocuments } from "@/components/workers/OnboardingDocuments";
 import { HealthCheckSection } from "@/components/workers/HealthCheckSection";
 import { GensenDocuments } from "@/components/workers/GensenDocuments";
@@ -642,6 +643,13 @@ export function WorkerDetail({
         workerId={worker.id}
         canEdit={canEdit}
         histories={worker.work_histories}
+      />
+
+      {/* 雇用契約書・雇用条件書（採用時の書類。ダウンロード・Messenger送付） */}
+      <WorkerContracts
+        workerId={worker.id}
+        canEdit={canEdit}
+        messengerLink={worker.messenger_link}
       />
 
       {/* 外国人書類（合格証・パスポート・履歴書など）をPDF・画像で保存 */}
