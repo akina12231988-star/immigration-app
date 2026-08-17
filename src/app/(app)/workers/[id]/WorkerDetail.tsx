@@ -60,6 +60,7 @@ import {
 } from "@/lib/supabase/queries/histories";
 import { JobApplicationSection } from "@/components/workers/JobApplicationSection";
 import { warekiDate } from "@/lib/dependents";
+import { formatStorageNo } from "@/lib/custody";
 import { isCountedHistory, type WorkHistory } from "@/types/ssw";
 import type { Application } from "@/types/application";
 import type { Organization, WorkHistoryRow, WorkerInput, WorkerWithHistories } from "@/types/db";
@@ -72,6 +73,7 @@ export function WorkerDetail({
   applications,
   jobApplications,
   postings,
+  custodyNo,
   canEdit,
 }: {
   worker: WorkerWithHistories;
@@ -79,6 +81,7 @@ export function WorkerDetail({
   applications: Application[];
   jobApplications: ApplicationWithRefs[];
   postings: PostingWithStats[];
+  custodyNo: number | null; // 預かり中の保管番号（預かっていなければ null）
   canEdit: boolean;
 }) {
   const router = useRouter();
@@ -287,6 +290,16 @@ export function WorkerDetail({
                   <span className="ml-2 align-middle text-xs font-bold text-brand">
                     ID {worker.worker_code}
                   </span>
+                )}
+                {/* 原本を預かっていれば保管番号（押すと保管ボックスのその番号を開く） */}
+                {custodyNo != null && (
+                  <Link
+                    href={`/custody?no=${custodyNo}`}
+                    className="ml-2 inline-flex align-middle rounded border-2 border-seal px-1.5 text-xs font-black tabular-nums tracking-widest text-seal"
+                    title="原本を預かり中（保管ボックスを開く）"
+                  >
+                    {formatStorageNo(custodyNo)}
+                  </Link>
                 )}
               </p>
               {worker.kana && <p className="text-xs text-muted">{worker.kana}</p>}
