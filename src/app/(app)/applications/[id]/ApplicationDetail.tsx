@@ -28,6 +28,7 @@ import { notionAppUrl } from "@/lib/notion-link";
 import { useApplications } from "@/lib/application-store";
 import { uploadApplicationFile } from "@/lib/application-files";
 import { createClient } from "@/lib/supabase/client";
+import { updateWorker } from "@/lib/supabase/queries/workers";
 import {
   listMailAfterApplyDocs,
   type MailAfterApplyDoc,
@@ -59,6 +60,8 @@ export function ApplicationDetail({ id }: { id: string }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  // 在留カード受領で外国人の現在の所属機関を更新したときの知らせ
+  const [orgLinkNotice, setOrgLinkNotice] = useState<string | null>(null);
 
   const app = applications.find((a) => a.id === id);
   const workerId = app?.workerId ?? null;
@@ -176,13 +179,44 @@ export function ApplicationDetail({ id }: { id: string }) {
     });
   }
 
-  // 在留カード受領: 画像登録後に押して完了状態にする
-  function markCardReceived() {
+  // 在留カード受領: 画像登録後に押して完了状態にする。
+  // 許可が下りて在留カードを受け取った時点でその会社で働き始めるため、
+  // 申請の所属機関を外国人の「現在の所属機関」に反映する（転職・新規のどちらも）。
+  // 雇用開始日も分かっていれば一緒に入れる（外国人詳細から直せる）
+  async function markCardReceived() {
     const today = new Date().toISOString().slice(0, 10);
     void updateApplication(id, {
       status: "在留カード受領",
       cardReceivedOn: today,
     });
+    if (!app?.workerId || !app.organizationId) return;
+    try {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("workers")
+        .select("current_organization_id")
+        .eq("id", app.workerId)
+        .maybeSingle();
+      const currentOrgId =
+        (data as { current_organization_id: string | null } | null)?.current_organization_id ??
+        null;
+      if (currentOrgId === app.organizationId) return;
+      await updateWorker(supabase, app.workerId, {
+        current_organization_id: app.organizationId,
+        ...(app.employmentStartOn ? { employment_start_on: app.employmentStartOn } : {}),
+      });
+      setOrgLinkNotice(
+        `外国人の現在の所属機関を「${app.organizationName ?? "この申請の所属機関"}」に更新しました。`,
+      );
+      router.refresh();
+    } catch (err) {
+      // 所属機関の反映に失敗しても受領の記録は残す（外国人詳細から直せる）
+      setOrgLinkNotice(
+        `所属機関の反映に失敗しました（${
+          err instanceof Error ? err.message : "エラー"
+        }）。外国人詳細から変更してください。`,
+      );
+    }
   }
 
   // 申請取下げ（キャンセル）。誤操作は「元に戻す」で復帰できる
@@ -435,13 +469,19 @@ export function ApplicationDetail({ id }: { id: string }) {
             variant={cardReceived ? "secondary" : "primary"}
             icon={<Check size={18} />}
             fullWidth
-            onClick={markCardReceived}
+            onClick={() => void markCardReceived()}
             disabled={cardReceived}
           >
             {cardReceived
               ? `在留カード受領済（${app.cardReceivedOn}）`
               : "在留カードを受け取った（完了）"}
           </Button>
+
+          {orgLinkNotice && (
+            <p className="mt-2 rounded-lg bg-brand/10 px-3 py-2 text-xs font-bold text-brand">
+              {orgLinkNotice}
+            </p>
+          )}
 
           {/* 受領後は Notion の在籍履歴にも登録するよう案内 */}
           {cardReceived && (
