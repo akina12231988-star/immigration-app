@@ -59,6 +59,7 @@ import {
   updateHistory,
 } from "@/lib/supabase/queries/histories";
 import { JobApplicationSection } from "@/components/workers/JobApplicationSection";
+import { warekiDate } from "@/lib/dependents";
 import { isCountedHistory, type WorkHistory } from "@/types/ssw";
 import type { Application } from "@/types/application";
 import type { Organization, WorkHistoryRow, WorkerInput, WorkerWithHistories } from "@/types/db";
@@ -361,7 +362,23 @@ export function WorkerDetail({
         )}
         <dl className="mb-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
           <InfoItem label="国籍" value={worker.nationality} edit={fillText("nationality", "例: ベトナム")} />
-          <InfoItem label="生年月日" value={worker.birth} edit={fillDate("birth")} />
+          {/* 申請書類は和暦で書くため、西暦の下に和暦も出す（例: 2006-08-20 → 平成18年8月20日） */}
+          <InfoItem
+            label="生年月日"
+            value={
+              worker.birth ? (
+                <>
+                  {worker.birth}
+                  {warekiDate(worker.birth) && (
+                    <span className="block text-[11px] text-muted">{warekiDate(worker.birth)}</span>
+                  )}
+                </>
+              ) : (
+                ""
+              )
+            }
+            edit={fillDate("birth")}
+          />
           <InfoItem label="性別" value={worker.gender} edit={fillSelect("gender", ["男", "女"])} />
           <InfoItem
             label="住所"
