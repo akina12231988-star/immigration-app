@@ -169,6 +169,10 @@ export function CustodyClient({
                   </span>
                 </div>
                 <p className="truncate text-sm font-bold">{r.workers?.name ?? "（不明）"}</p>
+                {/* フリガナ（名前の読みで探せるように名前のすぐ下に出す） */}
+                {r.workers?.kana && (
+                  <p className="truncate text-[11px] text-muted">{r.workers.kana}</p>
+                )}
                 <p className="truncate text-[11px] text-muted">
                   {r.workers?.nationality || "国籍未登録"} ・ {r.items}
                 </p>
@@ -320,6 +324,12 @@ function DetailModal({
         </div>
 
         <div className="rounded-xl bg-background p-3 text-xs leading-relaxed">
+          {w?.kana && (
+            <p>
+              <span className="text-muted">フリガナ：</span>
+              {w.kana}
+            </p>
+          )}
           <p>
             <span className="text-muted">預かり書類：</span>
             {record.items}

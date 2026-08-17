@@ -8,7 +8,11 @@ import type {
 } from "@/types/db";
 import type { ParsedWorker } from "@/lib/ssw/import";
 import type { SupportWorker } from "@/lib/support-system";
-import { letterForNationality, nextWorkerCode } from "@/lib/worker-code";
+import {
+  letterForNationality,
+  nextWorkerCode,
+  shouldReissueWorkerCode,
+} from "@/lib/worker-code";
 
 // 支援体制の集計用: 所属機関ごとの1号特定技能外国人数を数えるための最小項目
 export async function listWorkersForSupport(
@@ -244,9 +248,24 @@ export async function updateWorker(
   id: string,
   input: Partial<WorkerInput>,
 ): Promise<Worker> {
+  // 申請登録から作った外国人は国籍がまだ無いためIDが X-1 になる。
+  // あとから国籍を登録したら、その国の英字（カンボジアなら C）でIDを振り直す
+  const patch: Partial<WorkerInput> & { worker_code?: string } = { ...input };
+  if (input.nationality !== undefined) {
+    const { data: current } = await supabase
+      .from("workers")
+      .select("worker_code")
+      .eq("id", id)
+      .maybeSingle();
+    const code = (current as { worker_code: string | null } | null)?.worker_code ?? null;
+    if (shouldReissueWorkerCode(code, input.nationality)) {
+      patch.worker_code = await generateWorkerCode(supabase, input.nationality);
+    }
+  }
+
   const { data, error } = await supabase
     .from("workers")
-    .update(input)
+    .update(patch)
     .eq("id", id)
     .select()
     .single();

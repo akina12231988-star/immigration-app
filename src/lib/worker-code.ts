@@ -21,6 +21,31 @@ export function letterForNationality(nationality: string | null | undefined): st
   return NATIONALITY_LETTER[key] ?? "X";
 }
 
+// 外国人IDの英字部分（例: "C-5" → "C"）。IDが無い・形が違う場合は null
+export function codeLetter(code: string | null | undefined): string | null {
+  const m = (code ?? "").trim().match(/^([A-Za-z])-\d+$/);
+  return m ? m[1].toUpperCase() : null;
+}
+
+// 国籍を入れ直したときに外国人IDを振り直すかを決める。
+//
+// 申請登録から外国人を作ると国籍がまだ無いため X-1 のようなIDになる。
+// あとから国籍を登録したら、その国の英字（カンボジアなら C）に振り直したい。
+//   - IDがまだ無い → 採番する
+//   - 国籍の英字が今のIDの英字と違う → 振り直す（X-1 → C-5、国籍の訂正 C-3 → V-8 も同じ）
+//   - ただし国籍が未入力・対応表に無い国（X）のときは、すでに付いている国入りのIDは変えない
+//     （国籍を消してしまったときにIDが X に戻るのを防ぐ）
+export function shouldReissueWorkerCode(
+  currentCode: string | null | undefined,
+  nationality: string | null | undefined,
+): boolean {
+  const current = codeLetter(currentCode);
+  if (!current) return true;
+  const letter = letterForNationality(nationality);
+  if (letter === "X") return false;
+  return current !== letter;
+}
+
 // 既存コードから、その英字の次の連番を求めて "V-3" のような文字列を返す
 export function nextWorkerCode(letter: string, existingCodes: (string | null)[]): string {
   let max = 0;
