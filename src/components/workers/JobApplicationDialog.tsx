@@ -5,6 +5,8 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Combobox } from "@/components/ui/Combobox";
 import { createClient } from "@/lib/supabase/client";
+import { insertWorker } from "@/lib/supabase/queries/workers";
+import { blankWorkerInput } from "@/lib/worker-defaults";
 import { dbErrorMessage } from "@/lib/errors";
 import {
   APPLICATION_RESULTS,
@@ -111,18 +113,15 @@ export function JobApplicationDialog({
     });
   };
 
-  // 名前だけで外国人を新規登録する（詳細は外国人詳細であとから入力する）
+  // 名前だけで外国人を新規登録する（詳細は外国人詳細であとから入力する）。
+  // insertWorker を通すことで外国人ID（国籍が未入力なので X-1。
+  // 国籍を登録すると C-5 のように振り直される）も採番される
   const createWorker = async (name: string) => {
     setCreating(true);
     setError(null);
     try {
-      const { data, error: err } = await createClient()
-        .from("workers")
-        .insert({ name })
-        .select("id, name")
-        .single();
-      if (err) throw err;
-      const w = data as NameOption;
+      const created = await insertWorker(createClient(), blankWorkerInput(name));
+      const w: NameOption = { id: created.id, name: created.name };
       setExtraWorkers((prev) => [...prev, w]);
       setWorkerId(w.id);
       onWorkerCreated?.(w);
