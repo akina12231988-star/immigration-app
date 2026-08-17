@@ -183,3 +183,30 @@ export async function recordCustodyAction(
   if (error) throw error;
   return data as CustodyWithWorker;
 }
+
+// 預かり書類を変える（例: 在留カードのみ → あとからパスポートも預かった）。
+// 履歴には「預かり」として、何から何に変わったかを残す
+export async function updateCustodyItems(
+  supabase: SupabaseClient,
+  custodyId: string,
+  items: string,
+  before: string,
+  person: string,
+): Promise<CustodyWithWorker> {
+  const { error: evError } = await supabase.from("custody_events").insert({
+    custody_id: custodyId,
+    action: "預かり",
+    person,
+    purpose: `預かり書類を「${before}」→「${items}」に変更`,
+  });
+  if (evError) throw evError;
+
+  const { data, error } = await supabase
+    .from("custody_records")
+    .update({ items })
+    .eq("id", custodyId)
+    .select(SELECT)
+    .single();
+  if (error) throw error;
+  return data as CustodyWithWorker;
+}

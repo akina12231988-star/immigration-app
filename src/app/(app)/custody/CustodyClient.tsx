@@ -10,10 +10,11 @@ import {
   addCustodyPerson,
   listCustodyEvents,
   recordCustodyAction,
+  updateCustodyItems,
   type CustodyWithWorker,
 } from "@/lib/supabase/queries/custody";
 import type { WorkerWithOrg } from "@/lib/supabase/queries/workers";
-import type { CustodyEventRow, CustodyStatus } from "@/types/db";
+import { CUSTODY_ITEMS, type CustodyEventRow, type CustodyStatus } from "@/types/db";
 import { CUSTODY_PURPOSES, formatStorageNo, parseAzkLedger } from "@/lib/custody";
 import { QrImage, QrLinkCopyButton, QrSaveButton, TepraSaveButton, custodyQrUrl, useOrigin } from "./QrImage";
 
@@ -222,6 +223,12 @@ export function CustodyClient({
 const ADD_PERSON = "__add__";
 const OTHER_PURPOSE = "__other__";
 
+// 片方だけ預かっているとき、あとから足せるもう片方（ワンタップ用）
+const ADD_ITEM_LABEL: Record<string, string | undefined> = {
+  在留カードのみ: "パスポート",
+  パスポートのみ: "在留カード",
+};
+
 function DetailModal({
   record,
   canWrite,
@@ -266,6 +273,29 @@ function DetailModal({
       onAddPerson(name);
       setPerson(name);
       setNewPerson("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // 預かり書類を変える（あとからパスポートも預かった、など）。履歴にも残す
+  const changeItems = async (items: string) => {
+    if (items === record.items) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const supabase = createClient();
+      const updated = await updateCustodyItems(
+        supabase,
+        record.id,
+        items,
+        record.items,
+        person === ADD_PERSON || !person ? meName : person,
+      );
+      onUpdated(updated);
+      setEvents(await listCustodyEvents(supabase, record.id).catch(() => []));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -330,10 +360,40 @@ function DetailModal({
               {w.kana}
             </p>
           )}
-          <p>
-            <span className="text-muted">預かり書類：</span>
-            {record.items}
-          </p>
+          {/* 預かり書類。あとから足す（在留カードのみ → パスポートも預かった）ことがある */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span>
+              <span className="text-muted">預かり書類：</span>
+              {record.items}
+            </span>
+            {canWrite && record.status !== "返却済み" && (
+              <>
+                {ADD_ITEM_LABEL[record.items] && (
+                  <button
+                    type="button"
+                    onClick={() => void changeItems("パスポート・在留カード")}
+                    disabled={busy}
+                    className="rounded-lg border border-brand px-2 py-0.5 text-[11px] font-bold text-brand disabled:opacity-50"
+                  >
+                    ＋{ADD_ITEM_LABEL[record.items]}も預かった
+                  </button>
+                )}
+                <select
+                  value={record.items}
+                  onChange={(e) => void changeItems(e.target.value)}
+                  disabled={busy}
+                  aria-label="預かり書類を変更"
+                  className="rounded-lg border border-border bg-surface px-1.5 py-0.5 text-[11px] disabled:opacity-50"
+                >
+                  {CUSTODY_ITEMS.map((i) => (
+                    <option key={i} value={i}>
+                      {i}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
+          </div>
           <p>
             <span className="text-muted">国籍：</span>
             {w?.nationality || "—"}
@@ -368,6 +428,11 @@ function DetailModal({
         >
           預かり証を表示・印刷
         </LinkButton>
+        {canWrite && (
+          <p className="-mt-2 text-[11px] text-muted">
+            預かり書類を変えたら、預かり証を発行し直して本人に渡してください。
+          </p>
+        )}
 
         <QrSection storageNo={record.storage_no} />
 
