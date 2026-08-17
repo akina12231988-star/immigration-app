@@ -221,8 +221,13 @@ export async function fillFuyoForm(
   const { flatten = true } = options;
   const doc = await PDFDocument.load(template);
   doc.registerFontkit(fontkit);
-  // subset: true にすると一部ビューアで日本語グリフが描画されない（CFFサブセットの不具合）ため
-  // フォントは全埋め込みにする（生成PDFは5MB程度になるが確実に表示される）
+  // フォントは TrueType（glyf）版を全埋め込みにする（生成PDFは5MB程度になるが確実に表示される）。
+  //
+  // ※ OpenType/CFF（拡張子 .otf・先頭が OTTO）を渡すと、pdf-lib は中身を確かめずに
+  //   CIDFontType2 ＋ FontFile2（＝TrueType用の入れ物）として埋め込むため、
+  //   規格に厳しいビューア（スマホ・Chrome・プレビューなど）で文字が出なくなる。
+  //   日本語フォントを差し替えるときは必ず .ttf（glyf）を使うこと。
+  //   subset: true は一部ビューアで描画されないことがあったため使わない。
   const jpFont = await doc.embedFont(font, { subset: false });
   const form = doc.getForm();
   const values = buildFuyoFieldValues(data, today);

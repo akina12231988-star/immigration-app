@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
   try {
     const [template, font] = await Promise.all([
       readFile(path.join(process.cwd(), "public", "forms", "fuyo-r8.pdf")),
-      readFile(path.join(process.cwd(), "public", "fonts", "NotoSansJP-Regular.otf")),
+      readFile(path.join(process.cwd(), "public", "fonts", "NotoSansJP-Regular.ttf")),
     ]);
     const bytes = await fillFuyoForm(template, font, body.data, todayStr());
 
