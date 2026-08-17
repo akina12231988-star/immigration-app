@@ -88,7 +88,9 @@ export function RosterSheet({
       worker.status === "退職"
         ? [worker.leavingKind, worker.leavingReason].filter(Boolean).join("・")
         : "",
-    issued_on: todayStr(),
+    // 発行年月日はその会社の雇用開始年月日を初期値にする（画面で直せる）。
+    // 雇用開始日が分からない会社は今日にする
+    issued_on: startFor(orgName) ?? todayStr(),
   });
 
   const toForm = (r: WorkerRoster): RosterForm => ({
@@ -98,7 +100,8 @@ export function RosterSheet({
     previous_jobs: r.previous_jobs ?? [],
     leaving_on: r.leaving_on,
     leaving_reason: r.leaving_reason,
-    issued_on: r.issued_on ?? "",
+    // 発行年月日が未設定の古い名簿も、その会社の雇用開始年月日で補う（保存するまでDBは変えない）
+    issued_on: r.issued_on ?? startFor(r.company_name) ?? "",
   });
 
   const [rosters, setRosters] = useState<WorkerRoster[]>(initialRosters);
@@ -224,7 +227,9 @@ export function RosterSheet({
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-bold text-muted">発行年月日</span>
+            <span className="text-xs font-bold text-muted">
+              発行年月日{startFor(form.company_name) ? "（雇用開始年月日を初期表示）" : ""}
+            </span>
             <input
               type="date"
               value={form.issued_on}
