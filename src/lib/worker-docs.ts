@@ -11,9 +11,10 @@ export async function uploadWorkerDoc(
   workerId: string,
   kind: WorkerDocKind,
   file: File,
+  organizationId?: string | null, // 雇用契約書・雇用条件書は会社ごとに保管する
 ): Promise<void> {
   const { blob, mimeType, fileName } = await compressImage(file);
-  const ticket = await createWorkerDocTicket(workerId, kind, fileName, mimeType);
+  const ticket = await createWorkerDocTicket(workerId, kind, fileName, mimeType, organizationId);
   if (!ticket.ok) throw new Error(ticket.message);
 
   const { error } = await createClient()
@@ -21,6 +22,13 @@ export async function uploadWorkerDoc(
     .uploadToSignedUrl(ticket.path, ticket.token, blob, { contentType: mimeType });
   if (error) throw new Error(`アップロードに失敗しました: ${error.message}`);
 
-  const result = await registerWorkerDoc(workerId, kind, ticket.path, fileName, mimeType);
+  const result = await registerWorkerDoc(
+    workerId,
+    kind,
+    ticket.path,
+    fileName,
+    mimeType,
+    organizationId,
+  );
   if (!result.ok) throw new Error(result.message);
 }

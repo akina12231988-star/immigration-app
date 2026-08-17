@@ -675,11 +675,14 @@ export function WorkerDetail({
         histories={worker.work_histories}
       />
 
-      {/* 雇用契約書・雇用条件書（採用時の書類。ダウンロード・Messenger送付） */}
+      {/* 雇用契約書・雇用条件書（所属機関ごと。ダウンロード・Messenger送付） */}
       <WorkerContracts
         workerId={worker.id}
         canEdit={canEdit}
         messengerLink={worker.messenger_link}
+        organizations={organizations}
+        currentOrganizationId={worker.current_organization_id}
+        orgEmploymentStarts={worker.org_employment_starts ?? []}
       />
 
       {/* 外国人書類（合格証・パスポート・履歴書など）をPDF・画像で保存 */}
