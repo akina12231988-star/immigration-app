@@ -238,7 +238,7 @@ describe("fillFuyoForm", () => {
   it("テンプレートPDFに値が書き込まれる（flattenなしで検証）", async () => {
     const template = await readFile(path.join(process.cwd(), "public", "forms", "fuyo-r8.pdf"));
     const font = await readFile(
-      path.join(process.cwd(), "public", "fonts", "NotoSansJP-Regular.otf"),
+      path.join(process.cwd(), "public", "fonts", "NotoSansJP-Regular.ttf"),
     );
     const bytes = await fillFuyoForm(template, font, DATA, TODAY, { flatten: false });
 
@@ -256,10 +256,40 @@ describe("fillFuyoForm", () => {
   it("flattenすると編集不可の確定版になる", async () => {
     const template = await readFile(path.join(process.cwd(), "public", "forms", "fuyo-r8.pdf"));
     const font = await readFile(
-      path.join(process.cwd(), "public", "fonts", "NotoSansJP-Regular.otf"),
+      path.join(process.cwd(), "public", "fonts", "NotoSansJP-Regular.ttf"),
     );
     const bytes = await fillFuyoForm(template, font, DATA, TODAY);
     const doc = await PDFDocument.load(bytes);
     expect(doc.getForm().getFields()).toHaveLength(0);
   }, 30000);
+});
+
+// 日本語フォントの形式が崩れると、生成したPDFをスマホなどで開いたときに
+// 文字が表示されなくなる（pdf-lib は OpenType/CFF でも TrueType 用の入れ物で
+// 埋め込んでしまうため）。差し替え事故を防ぐためにここで見張る
+describe("日本語フォントの埋め込み形式", () => {
+  const fontPath = path.join(process.cwd(), "public", "fonts", "NotoSansJP-Regular.ttf");
+
+  it("同梱フォントは TrueType（glyf）である（OpenType/CFF は使えない）", async () => {
+    const font = await readFile(fontPath);
+    const signature = font.subarray(0, 4).toString("hex");
+    expect(signature).not.toBe("4f54544f"); // OTTO = CFF形式。これだと文字が出ない
+    expect(["00010000", "74727565"]).toContain(signature); // TrueType
+  });
+
+  it("生成したPDFにも CFF 形式のフォントが入らない", async () => {
+    const [template, font] = await Promise.all([
+      readFile(path.join(process.cwd(), "public", "forms", "fuyo-r8.pdf")),
+      readFile(fontPath),
+    ]);
+    const bytes = await fillFuyoForm(template, font, DATA, TODAY);
+    const raw = Buffer.from(bytes);
+
+    // 埋め込まれたフォント本体が CFF 形式（先頭 OTTO）でないこと。
+    // pdf-lib は .otf でも TrueType 用の入れ物で埋め込むため、
+    // これが入っているとスマホなどのビューアで文字が消える
+    expect(raw.includes(Buffer.from("OTTO", "latin1"))).toBe(false);
+    // 本文が読み取れる（フォント埋め込みが壊れていない）こと
+    expect(raw.includes(Buffer.from("NotoSansJP", "latin1"))).toBe(true);
+  }, 60000);
 });
