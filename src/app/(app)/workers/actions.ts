@@ -81,7 +81,9 @@ export async function createWorkerDocTicket(
   kind: WorkerDocKind,
   fileName: string,
   mimeType: string,
+  organizationId?: string | null,
 ): Promise<{ ok: true; path: string; token: string } | Err> {
+  void organizationId; // 保存先のパスは種別ごと。機関は registerWorkerDoc で記録する
   if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
   if (!/^(image\/(jpeg|png|webp|heic|heif)|application\/pdf)$/.test(mimeType)) {
     return { ok: false, message: "画像またはPDFのみ登録できます" };
@@ -103,6 +105,7 @@ export async function registerWorkerDoc(
   path: string,
   fileName: string,
   mimeType: string,
+  organizationId?: string | null,
 ): Promise<{ ok: true } | Err> {
   if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
   if (!path.startsWith(`worker-docs/${workerId}/${DOC_SLUGS[kind]}/`)) {
@@ -116,6 +119,8 @@ export async function registerWorkerDoc(
     storage_path: path,
     file_name: fileName,
     mime_type: mimeType,
+    // 雇用契約書・雇用条件書は会社ごとに保管する（転職で混ざらないように）
+    ...(organizationId ? { organization_id: organizationId } : {}),
   });
   if (error) return { ok: false, message: error.message };
   return { ok: true };
@@ -128,6 +133,7 @@ export interface WorkerDocView {
   downloadUrl?: string; // ダウンロード用（Content-Disposition: attachment の署名付きURL）
   fileName?: string;
   mimeType?: string;
+  organizationId?: string | null; // 雇用契約書・雇用条件書の所属機関（0081）
   createdAt: string;
   fromApplication?: boolean; // 申請登録時の画像（差し替え前の現データ）
 }
@@ -152,6 +158,7 @@ export async function listWorkerDocs(workerId: string): Promise<WorkerDocView[]>
       storage_path: string;
       file_name: string;
       mime_type: string;
+      organization_id?: string | null;
       created_at: string;
     }[]) ?? [];
 
@@ -171,6 +178,7 @@ export async function listWorkerDocs(workerId: string): Promise<WorkerDocView[]>
         downloadUrl: signedDl?.[i]?.signedUrl ?? "",
         fileName: r.file_name,
         mimeType: r.mime_type,
+        organizationId: r.organization_id ?? null,
         createdAt: r.created_at,
       }),
     );
