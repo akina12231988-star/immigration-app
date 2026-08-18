@@ -174,9 +174,11 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
   },
   {
     id: "hokensho",
-    label: "保険証の画像（有効期限内）",
-    appliesTo: ["変更", "認定"],
+    // 2024年12月以降は保険証が新規発行されないため、資格確認証・資格情報のお知らせも同じ枠で扱う
+    label: "保険証・資格確認証の画像（有効期限内）",
+    appliesTo: ["変更", "更新", "認定"],
     requiredIf: "kokuho",
+    note: "マイナ保険証の人は「資格情報のお知らせ」でも可",
     source: { kind: "doc", docKey: "prep_hokensho" },
     manageInline: true,
   },
