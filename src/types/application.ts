@@ -39,7 +39,14 @@ export const APPLICATION_METHODS = ["窓口", "オンライン"] as const;
 export type ApplicationMethod = (typeof APPLICATION_METHODS)[number];
 
 // 申請に添付する画像の種別
-export const APPLICATION_FILE_KINDS = ["受付票", "通知書", "在留カード", "指定書", "その他"] as const;
+export const APPLICATION_FILE_KINDS = [
+  "受付票",
+  "通知書",
+  "在留カード",
+  "指定書",
+  "追加資料通知", // 入管から来た追加資料提出通知書（0083）
+  "その他",
+] as const;
 export type ApplicationFileKind = (typeof APPLICATION_FILE_KINDS)[number];
 
 export interface ApplicationFile {
@@ -112,3 +119,43 @@ export interface Application {
   updatedAt: string; // 更新日時
   notionPageId?: string;
 }
+
+
+// ---- 追加資料の提出依頼（0083_application_extra_requests.sql） ----
+//
+// 審査中に入管から「この資料も出してください」と言われたときの記録。
+// 書類（追加資料提出通知書）で来る場合と、電話で来る場合がある。
+
+export const EXTRA_REQUEST_METHODS = ["書類", "電話"] as const;
+export type ExtraRequestMethod = (typeof EXTRA_REQUEST_METHODS)[number];
+
+// 対応の進み具合。レターパックで送ったら「郵送済み」＝完了
+export const EXTRA_REQUEST_STATUSES = [
+  "本人へ依頼中",
+  "本人から受領",
+  "書類作成中",
+  "郵送済み",
+] as const;
+export type ExtraRequestStatus = (typeof EXTRA_REQUEST_STATUSES)[number];
+
+export interface ApplicationExtraRequest {
+  id: string;
+  application_id: string;
+  requested_on: string; // 依頼が来た日 YYYY-MM-DD
+  method: ExtraRequestMethod; // 書類 / 電話
+  officer: string; // 入管の審査担当者
+  due_on: string | null; // 提出期限
+  items: string; // 求められた資料
+  status: ExtraRequestStatus;
+  worker_reply: string; // 本人からどう返事が来たか
+  sent_on: string | null; // レターパックで送った日
+  tracking_no: string; // レターパックの追跡番号
+  note: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ApplicationExtraRequestInput = Omit<
+  ApplicationExtraRequest,
+  "id" | "created_at" | "updated_at"
+>;
