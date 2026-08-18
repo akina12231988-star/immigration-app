@@ -3,7 +3,11 @@ import {
   applicantLabel,
   isSelfOnlyMunicipality,
   juminhyoTitle,
+  mailedDocTitles,
+  moneyOrderNo,
+  moneyOrderSummary,
   requestKindLabel,
+  syncMoneyOrders,
   type Municipality,
 } from "./tax-cert";
 
@@ -54,5 +58,80 @@ describe("isSelfOnlyMunicipality", () => {
   });
   it("自治体未選択（null）は制限なし扱い", () => {
     expect(isSelfOnlyMunicipality("tenshutsu", null)).toBe(false);
+  });
+});
+
+describe("定額小為替", () => {
+  it("番号は前半-後半でつなぐ（未入力なら空）", () => {
+    expect(moneyOrderNo({ first: "12345", second: "67890" })).toBe("12345-67890");
+    expect(moneyOrderNo({ first: "", second: "" })).toBe("");
+  });
+
+  it("郵送請求する証明書の数だけ行を作る", () => {
+    const rows = syncMoneyOrders(["課税証明書（前年度分）", "納税証明書（前年度分）"]);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].docTitle).toBe("課税証明書（前年度分）");
+    expect(rows[1].first).toBe("");
+  });
+
+  it("入力済みの番号は同じ証明書の行に引き継ぐ", () => {
+    const first = syncMoneyOrders(["課税証明書（前年度分）"]);
+    first[0].first = "12345";
+    first[0].second = "67890";
+    const next = syncMoneyOrders(
+      ["課税証明書（前年度分）", "納税証明書（前年度分）"],
+      first,
+    );
+    expect(moneyOrderNo(next[0])).toBe("12345-67890");
+    expect(moneyOrderNo(next[1])).toBe("");
+  });
+
+  it("証明書が減っても、番号が入っている行は残す", () => {
+    const rows = syncMoneyOrders(
+      [],
+      [{ id: "a", docTitle: "課税証明書（前年度分）", first: "1", second: "2" }],
+    );
+    expect(rows).toHaveLength(1);
+  });
+
+  it("窓口で受け取るものは小為替の対象にしない", () => {
+    expect(
+      mailedDocTitles({
+        requestMethod: "window",
+        docs: [{ title: "課税証明書（前年度分）", meta: "", starred: false }],
+      }),
+    ).toEqual([]);
+    expect(
+      mailedDocTitles({ requestKind: "juminhyo", juminhyoMethod: "window" }),
+    ).toEqual([]);
+  });
+
+  it("郵送請求なら証明書、国保は受領方法に従う", () => {
+    const docs = [
+      { title: "課税証明書（前年度分）", meta: "", starred: false },
+      { title: "国民健康保険税 納税証明書", meta: "", starred: false, isNhi: true },
+    ];
+    expect(
+      mailedDocTitles({ requestMethod: "mail", hasNhi: true, nhiSameAsMain: true, docs }),
+    ).toEqual(["課税証明書（前年度分）", "国民健康保険税 納税証明書"]);
+    expect(
+      mailedDocTitles({
+        requestMethod: "mail",
+        hasNhi: true,
+        nhiSameAsMain: false,
+        nhiRequestMethod: "window",
+        docs,
+      }),
+    ).toEqual(["課税証明書（前年度分）"]);
+  });
+
+  it("一覧に出す一言は枚数と入力済み枚数を出す", () => {
+    expect(
+      moneyOrderSummary([
+        { id: "a", docTitle: "課税証明書", first: "1", second: "2" },
+        { id: "b", docTitle: "納税証明書", first: "", second: "" },
+      ]),
+    ).toBe("定額小為替 2枚（番号入力済み 1枚）");
+    expect(moneyOrderSummary([])).toBe("");
   });
 });

@@ -18,13 +18,17 @@ export function MailingFileAttachments({
   kind,
   addLabel,
   canEdit,
+  filterKind,
 }: {
   recordId: string;
   kind: string;
   addLabel: string;
   canEdit: boolean;
+  // 指定するとその種別の添付だけを表示する（領収書だけを分けて出すときに使う）
+  filterKind?: string;
 }) {
   const [files, setFiles] = useState<MailingFileRow[]>([]);
+  const shown = filterKind ? files.filter((f) => f.kind === filterKind) : files;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -82,8 +86,8 @@ export function MailingFileAttachments({
   return (
     <div className="flex flex-col gap-1.5">
       {error && <p className="rounded-lg bg-seal/10 px-2.5 py-1.5 text-xs text-seal">{error}</p>}
-      {files.length === 0 && !canEdit && <p className="text-[11px] text-muted">添付はありません</p>}
-      {files.map((f) => (
+      {shown.length === 0 && !canEdit && <p className="text-[11px] text-muted">添付はありません</p>}
+      {shown.map((f) => (
         <div key={f.id} className="flex items-center gap-1.5">
           <span className="min-w-0 flex-1 truncate text-[11px] text-muted">{f.file_name}</span>
           <button
