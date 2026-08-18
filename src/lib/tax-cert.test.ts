@@ -94,6 +94,27 @@ describe("定額小為替", () => {
     expect(rows).toHaveLength(1);
   });
 
+  it("住民票は請求する通数だけ小為替の行を作る", () => {
+    expect(
+      mailedDocTitles({
+        requestKind: "juminhyo",
+        juminhyoMethod: "mail",
+        juminhyoMyNumber: false,
+        juminhyoCopies: 2,
+      }),
+    ).toEqual([
+      "住民票の写し（個人番号の記載なし）（1通目）",
+      "住民票の写し（個人番号の記載なし）（2通目）",
+    ]);
+    expect(
+      mailedDocTitles({ requestKind: "juminhyo", juminhyoMethod: "mail", juminhyoCopies: 1 }),
+    ).toEqual(["住民票の写し（個人番号の記載なし）"]);
+  });
+
+  it("転出届は手数料がかからないので自動では行を作らない", () => {
+    expect(mailedDocTitles({ requestKind: "tenshutsu", requestMethod: "mail" })).toEqual([]);
+  });
+
   it("窓口で受け取るものは小為替の対象にしない", () => {
     expect(
       mailedDocTitles({

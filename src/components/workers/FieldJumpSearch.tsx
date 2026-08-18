@@ -10,6 +10,12 @@ import { Search, X } from "lucide-react";
 // 項目は画面に出ている見出し（h1〜h3）とラベルをその場で拾う。
 // 事前に項目リストを持たないので、画面を増やしてもそのまま使える。
 
+// 画面の左下に固定する位置。
+// スマホ: 下タブ（BottomNav）に重ならないよう、タブの高さ＋セーフエリア分だけ上げる。
+// PC: 左のサイドナビ（w-60 = 15rem）に重ならないよう、その右側に置く。
+const ANCHOR =
+  "fixed left-4 z-30 bottom-[calc(env(safe-area-inset-bottom)+6.25rem)] md:bottom-6 md:left-[16.5rem] print:hidden";
+
 interface Target {
   el: HTMLElement;
   text: string; // 項目名
@@ -107,7 +113,7 @@ export function FieldJumpSearch({
         type="button"
         data-field-jump
         onClick={() => setOpen(true)}
-        className="fixed bottom-20 left-4 z-30 flex items-center gap-1.5 rounded-full border border-border bg-surface px-3.5 py-2.5 text-xs font-bold text-brand shadow-lg md:bottom-6 print:hidden"
+        className={`${ANCHOR} flex items-center gap-1.5 rounded-full border border-border bg-surface px-3.5 py-2.5 text-xs font-bold text-brand shadow-lg`}
       >
         <Search size={15} />
         {label}
@@ -118,7 +124,7 @@ export function FieldJumpSearch({
   return (
     <div
       data-field-jump
-      className="fixed bottom-20 left-4 z-30 w-[min(20rem,calc(100vw-2rem))] rounded-2xl border border-border bg-surface p-3 shadow-xl md:bottom-6 print:hidden"
+      className={`${ANCHOR} w-[min(20rem,calc(100vw-2rem))] rounded-2xl border border-border bg-surface p-3 shadow-xl`}
     >
       <div className="mb-2 flex items-center gap-2">
         <Search size={15} className="shrink-0 text-muted" />
