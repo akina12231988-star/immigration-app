@@ -798,6 +798,7 @@ interface ExtraFormValues {
   juminhyoMethod: JuminhyoMethod; // 住民票: 郵送請求 / 窓口発行
   juminhyoMyNumber: boolean; // 個人番号の記載あり/なし
   juminhyoPurpose: string; // 住民票を発行する目的
+  juminhyoCopies: number; // 住民票の請求通数（1通につき定額小為替1枚）
   moneyOrders: MoneyOrder[]; // 同封した定額小為替（証明書1枚につき1枚）
 }
 
@@ -812,6 +813,7 @@ function emptyExtraValues(): ExtraFormValues {
     juminhyoMethod: "mail",
     juminhyoMyNumber: false,
     juminhyoPurpose: "",
+    juminhyoCopies: 1,
     moneyOrders: [],
   };
 }
@@ -829,6 +831,7 @@ function extraValuesFromRecord(r: JudgmentRecord, municipalities: Municipality[]
     juminhyoMethod: r.juminhyoMethod ?? "mail",
     juminhyoMyNumber: !!r.juminhyoMyNumber,
     juminhyoPurpose: r.juminhyoPurpose ?? "",
+    juminhyoCopies: r.juminhyoCopies ?? 1,
     moneyOrders: r.moneyOrders ?? [],
   };
 }
@@ -875,6 +878,7 @@ function extraRecordPatch(
     juminhyoMethod: kind === "juminhyo" ? v.juminhyoMethod : undefined,
     juminhyoMyNumber: kind === "juminhyo" ? v.juminhyoMyNumber : undefined,
     juminhyoPurpose: kind === "juminhyo" ? v.juminhyoPurpose.trim() : undefined,
+    juminhyoCopies: kind === "juminhyo" ? Math.max(1, v.juminhyoCopies) : undefined,
     postDate: isMail ? v.postDate : "",
     moneyOrders: isMail ? v.moneyOrders : [],
     applicantType: applicant,
@@ -1029,6 +1033,19 @@ function ExtraRequestFields({
             </div>
           </div>
           <label className="flex flex-col gap-1">
+            <span className={LABEL}>請求する通数</span>
+            <input
+              type="number"
+              min={1}
+              value={v.juminhyoCopies}
+              onChange={(e) => set({ juminhyoCopies: Math.max(1, Number(e.target.value) || 1) })}
+              className={`${INPUT} tabular-nums`}
+            />
+            <span className="text-[11px] text-muted">
+              郵送請求では、1通につき定額小為替を1枚同封します（通数を変えると下の枚数も変わります）。
+            </span>
+          </label>
+          <label className="flex flex-col gap-1">
             <span className={LABEL}>住民票を発行する目的</span>
             <input value={v.juminhyoPurpose} onChange={(e) => set({ juminhyoPurpose: e.target.value })} placeholder="例：在留資格変更許可申請の添付書類のため" className={INPUT} />
           </label>
@@ -1047,6 +1064,7 @@ function ExtraRequestFields({
                 requestKind: kind,
                 juminhyoMethod: v.juminhyoMethod,
                 juminhyoMyNumber: v.juminhyoMyNumber,
+                juminhyoCopies: v.juminhyoCopies,
                 requestMethod: "mail",
               })}
               orders={v.moneyOrders}
@@ -1746,7 +1764,10 @@ function RecordsTab({
                   )}
                   {r.requestKind === "juminhyo" && (
                     <>
-                      <p className="text-muted">{juminhyoTitle(!!r.juminhyoMyNumber)}</p>
+                      <p className="text-muted">
+                        {juminhyoTitle(!!r.juminhyoMyNumber)}
+                        {(r.juminhyoCopies ?? 1) > 1 ? `　${r.juminhyoCopies}通` : ""}
+                      </p>
                       {r.juminhyoPurpose && <p className="text-muted">目的：{r.juminhyoPurpose}</p>}
                     </>
                   )}

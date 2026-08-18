@@ -89,6 +89,7 @@ export interface JudgmentRecord {
   juminhyoMethod?: JuminhyoMethod; // 住民票: 郵送請求 / 窓口発行
   juminhyoMyNumber?: boolean; // 住民票に個人番号（マイナンバー）を記載する
   juminhyoPurpose?: string; // 住民票を発行する目的
+  juminhyoCopies?: number; // 住民票の請求通数（1通につき定額小為替1枚）
   // 郵送請求に同封した定額小為替（証明書1枚につき1枚）
   moneyOrders?: MoneyOrder[];
   // 電話連絡メモ（main / nhi）
@@ -267,17 +268,23 @@ export function mailedDocTitles(r: {
   requestKind?: RequestKind;
   juminhyoMethod?: JuminhyoMethod;
   juminhyoMyNumber?: boolean;
+  juminhyoCopies?: number;
   requestMethod?: RequestMethod;
   hasNhi?: boolean;
   nhiSameAsMain?: boolean;
   nhiRequestMethod?: RequestMethod;
   docs?: JudgmentDoc[];
 }): string[] {
-  if (r.requestKind === "tenshutsu") {
-    return r.requestMethod === "window" ? [] : ["転出届"];
-  }
+  // 転出届は手数料がかからないため、定額小為替は自動では出さない
+  // （同封した場合は手で1枚追加できる）
+  if (r.requestKind === "tenshutsu") return [];
   if (r.requestKind === "juminhyo") {
-    return r.juminhyoMethod === "window" ? [] : [juminhyoTitle(!!r.juminhyoMyNumber)];
+    if (r.juminhyoMethod === "window") return [];
+    const title = juminhyoTitle(!!r.juminhyoMyNumber);
+    const copies = Math.max(1, Math.floor(r.juminhyoCopies ?? 1));
+    // 1通につき1枚。2通以上なら「1通目」「2通目」と分けて控える
+    if (copies === 1) return [title];
+    return Array.from({ length: copies }, (_, i) => `${title}（${i + 1}通目）`);
   }
   const docs = r.docs ?? [];
   const out: string[] = [];

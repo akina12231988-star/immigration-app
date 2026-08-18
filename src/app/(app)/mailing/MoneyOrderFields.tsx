@@ -42,7 +42,8 @@ export function MoneyOrderFields({
       </p>
       {rows.length === 0 ? (
         <p className="rounded-xl bg-background px-3 py-2 text-[11px] text-muted">
-          郵送請求する証明書がありません。
+          手数料がかからない請求のため、定額小為替の行はありません。
+          同封した場合は下の「定額小為替を追加」で残せます。
         </p>
       ) : (
         rows.map((o) => (
