@@ -143,12 +143,29 @@ export async function setWorkerDocOrganization(
   return { ok: true };
 }
 
+// ダウンロード時のファイル名: 氏名_書類名_所属機関名.拡張子
+// （雇用契約書・雇用条件書は会社ごとに保管するため会社名まで入れる）。
+// ファイル名に使えない文字は全角・中黒に置き換える
+function workerDocFileName(
+  workerName: string,
+  kind: string,
+  orgName: string,
+  original: string,
+): string {
+  const ext = original.includes(".") ? (original.split(".").pop() ?? "") : "";
+  const safe = (v: string) => v.replace(/[\\/:*?"<>|]/g, "・").trim();
+  const base = [safe(workerName), safe(kind), safe(orgName)].filter(Boolean).join("_");
+  const name = base || safe(original) || "document";
+  return ext ? `${name}.${ext.toLowerCase()}` : name;
+}
+
 export interface WorkerDocView {
   id: string;
   kind: WorkerDocKind;
   url: string;
   downloadUrl?: string; // ダウンロード用（Content-Disposition: attachment の署名付きURL）
   fileName?: string;
+  downloadName?: string; // ダウンロード時の名前（氏名_書類名_所属機関名）
   mimeType?: string;
   organizationId?: string | null; // 雇用契約書・雇用条件書の所属機関（0081）
   createdAt: string;
@@ -182,18 +199,55 @@ export async function listWorkerDocs(workerId: string): Promise<WorkerDocView[]>
   const result: WorkerDocView[] = [];
   if (rows.length > 0) {
     const paths = rows.map((r) => r.storage_path);
-    // 表示用と、ファイル保存用（attachment）の署名付きURLを両方作る
-    const [{ data: signed }, { data: signedDl }] = await Promise.all([
+
+    // ダウンロードしたときのファイル名を「氏名_書類名_所属機関名」にするため、
+    // 外国人の氏名と、書類に紐づく所属機関の名前を引く
+    const { data: w } = await admin
+      .from("workers")
+      .select("name")
+      .eq("id", workerId)
+      .maybeSingle();
+    const workerName = (w as { name: string } | null)?.name ?? "";
+    const orgIds = [...new Set(rows.map((r) => r.organization_id).filter(Boolean))] as string[];
+    const orgNames = new Map<string, string>();
+    if (orgIds.length > 0) {
+      const { data: orgs } = await admin
+        .from("organizations")
+        .select("id, name")
+        .in("id", orgIds);
+      for (const o of (orgs as { id: string; name: string }[] | null) ?? []) {
+        orgNames.set(o.id, o.name);
+      }
+    }
+
+    // 表示用（そのまま開く）と、ファイル保存用（名前を付けて保存）の署名付きURLを作る
+    const downloadNames = rows.map((r) =>
+      workerDocFileName(
+        workerName,
+        r.kind,
+        r.organization_id ? (orgNames.get(r.organization_id) ?? "") : "",
+        r.file_name,
+      ),
+    );
+    const [{ data: signed }, signedDl] = await Promise.all([
       admin.storage.from(BUCKET).createSignedUrls(paths, TTL),
-      admin.storage.from(BUCKET).createSignedUrls(paths, TTL, { download: true }),
+      Promise.all(
+        rows.map((r, i) =>
+          admin.storage
+            .from(BUCKET)
+            .createSignedUrl(r.storage_path, TTL, { download: downloadNames[i] })
+            .then((res) => res.data?.signedUrl ?? ""),
+        ),
+      ),
     ]);
     rows.forEach((r, i) =>
       result.push({
         id: r.id,
         kind: r.kind,
         url: signed?.[i]?.signedUrl ?? "",
-        downloadUrl: signedDl?.[i]?.signedUrl ?? "",
+        downloadUrl: signedDl[i] ?? "",
         fileName: r.file_name,
+        downloadName: downloadNames[i],
         mimeType: r.mime_type,
         organizationId: r.organization_id ?? null,
         createdAt: r.created_at,
