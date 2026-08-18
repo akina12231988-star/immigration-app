@@ -6,7 +6,11 @@ import { Card } from "@/components/ui/Card";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { uploadWorkerDoc } from "@/lib/worker-docs";
 import { messengerWebUrl } from "@/lib/messenger-link";
-import { listWorkerDocs, type WorkerDocView } from "@/app/(app)/workers/actions";
+import {
+  listWorkerDocs,
+  setWorkerDocOrganization,
+  type WorkerDocView,
+} from "@/app/(app)/workers/actions";
 import type { Organization, WorkerOrgEmploymentStart } from "@/types/db";
 
 type Kind = "雇用契約書" | "雇用条件書";
@@ -91,6 +95,30 @@ export function WorkerContracts({
 
   const selectedOrgName = orgName(selectedOrgId);
 
+  // 登録済みの書類を別の会社に付け替える（会社を間違えて登録したときの訂正）
+  const [reassigning, setReassigning] = useState<string | null>(null);
+  const reassign = async (docId: string, organizationId: string) => {
+    setReassigning(docId);
+    setError(null);
+    try {
+      const res = await setWorkerDocOrganization(docId, organizationId || null);
+      if (!res.ok) throw new Error(res.message);
+      load();
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setReassigning(null);
+    }
+  };
+
+  // 付け替え先の候補（この外国人に関係する会社を先に、その他の会社も選べる）
+  const allOrgOptions = [
+    ...orgChoices.map((o) => ({ id: o.id, name: o.name + (o.current ? "（現在）" : "") })),
+    ...organizations
+      .filter((o) => !orgChoices.some((c) => c.id === o.id))
+      .map((o) => ({ id: o.id, name: o.name })),
+  ];
+
   return (
     <section id="contracts">
       <Card className="p-4">
@@ -109,32 +137,42 @@ export function WorkerContracts({
           </p>
         )}
 
-        {orgChoices.length === 0 ? (
+        {orgChoices.length === 0 && organizations.length === 0 ? (
           <p className="rounded-xl border border-border bg-background p-4 text-center text-xs text-muted">
             所属機関が未登録です。先に「現在の所属機関」を登録すると、その会社の契約書を保管できます。
           </p>
         ) : (
           <>
-            {/* 会社の切り替え（転職した人は会社ごとに保管される） */}
-            {orgChoices.length > 1 && (
-              <div className="mb-3 flex flex-wrap items-center gap-2">
-                {orgChoices.map((o) => (
-                  <button
-                    key={o.id}
-                    type="button"
-                    onClick={() => setPickedOrgId(o.id)}
-                    className={`shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-bold ${
-                      selectedOrgId === o.id
-                        ? "border-brand bg-brand text-brand-foreground"
-                        : "border-border bg-surface text-muted"
-                    }`}
-                  >
-                    {o.name}
-                    {o.current ? "（現在）" : ""}
-                  </button>
-                ))}
-              </div>
-            )}
+            {/* どの会社の契約書として登録するかをはっきり出す（違っていたらここで選び直す） */}
+            <div className="mb-3 rounded-xl border border-brand/40 bg-brand/5 p-3">
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-bold text-brand">この会社の契約書として登録します</span>
+                <select
+                  value={selectedOrgId}
+                  onChange={(e) => setPickedOrgId(e.target.value)}
+                  disabled={!canEdit}
+                  className="min-h-[44px] w-full rounded-xl border border-border bg-surface px-3 text-base font-bold focus:border-brand focus:outline-none disabled:opacity-70"
+                >
+                  {orgChoices.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}
+                      {o.current ? "（現在の所属機関）" : ""}
+                    </option>
+                  ))}
+                  {/* 過去・別の会社の分をここに入れることもできる */}
+                  {organizations
+                    .filter((o) => !orgChoices.some((c) => c.id === o.id))
+                    .map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <p className="mt-1 text-[11px] text-muted">
+                会社が違うときはここで選び直してから登録してください。
+              </p>
+            </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {KINDS.map((kind) => (
@@ -147,16 +185,14 @@ export function WorkerContracts({
                   workerId={workerId}
                   organizationId={selectedOrgId}
                   canEdit={canEdit}
+                  orgOptions={allOrgOptions}
+                  reassigningId={reassigning}
+                  onReassign={reassign}
                   onUploaded={load}
                   onError={handleError}
                 />
               ))}
             </div>
-            {selectedOrgName && (
-              <p className="mt-2 text-[11px] text-muted">
-                登録先: {selectedOrgName}
-              </p>
-            )}
           </>
         )}
 
@@ -164,21 +200,32 @@ export function WorkerContracts({
         {unassigned.length > 0 && (
           <div className="mt-3 rounded-xl border border-border bg-background p-3">
             <p className="mb-1.5 text-[11px] font-bold text-muted">所属機関の記録が無い書類</p>
-            <div className="flex flex-col gap-0.5">
+            <div className="flex flex-col gap-1">
               {unassigned.map((d) => (
-                <a
-                  key={d.id}
-                  href={d.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="truncate text-[11px] text-muted underline-offset-2 hover:text-brand hover:underline"
-                >
-                  {d.createdAt.slice(0, 10)} — {d.kind} {d.fileName || ""}
-                </a>
+                <div key={d.id} className="flex flex-wrap items-center gap-2">
+                  <a
+                    href={d.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="truncate text-[11px] text-muted underline-offset-2 hover:text-brand hover:underline"
+                  >
+                    {d.createdAt.slice(0, 10)} — {d.kind} {d.fileName || ""}
+                  </a>
+                  {canEdit && selectedOrgId && (
+                    <button
+                      type="button"
+                      onClick={() => void reassign(d.id, selectedOrgId)}
+                      disabled={reassigning === d.id}
+                      className="shrink-0 rounded-lg border border-border px-2 py-0.5 text-[11px] font-bold text-brand disabled:opacity-50"
+                    >
+                      {reassigning === d.id ? "移動中…" : `「${selectedOrgName}」の分にする`}
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
             <p className="mt-1 text-[10px] text-muted">
-              会社が分かる場合は、その会社を選んで登録し直すと会社ごとの保管になります。
+              上で会社を選んでから押すと、その会社の書類として保管し直します。
             </p>
           </div>
         )}
@@ -215,6 +262,9 @@ function ContractColumn({
   workerId,
   organizationId,
   canEdit,
+  orgOptions,
+  reassigningId,
+  onReassign,
   onUploaded,
   onError,
 }: {
@@ -223,6 +273,9 @@ function ContractColumn({
   workerId: string;
   organizationId: string;
   canEdit: boolean;
+  orgOptions: { id: string; name: string }[];
+  reassigningId: string | null;
+  onReassign: (docId: string, organizationId: string) => void | Promise<void>;
   onUploaded: () => void;
   onError: (err: unknown) => void;
 }) {
@@ -308,6 +361,24 @@ function ContractColumn({
             ダウンロード
           </a>
         </div>
+      )}
+      {/* 会社を間違えて登録したときは、ここで別の会社に移せる */}
+      {latest && canEdit && (
+        <label className="mt-1.5 flex items-center gap-1.5">
+          <span className="shrink-0 text-[11px] text-muted">この書類の会社</span>
+          <select
+            value={organizationId}
+            onChange={(e) => void onReassign(latest.id, e.target.value)}
+            disabled={reassigningId === latest.id}
+            className="min-w-0 flex-1 rounded-lg border border-border bg-background px-1.5 py-1 text-[11px] disabled:opacity-50"
+          >
+            {orgOptions.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name}
+              </option>
+            ))}
+          </select>
+        </label>
       )}
       {history.length > 0 && (
         <div className="mt-2">

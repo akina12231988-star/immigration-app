@@ -126,6 +126,23 @@ export async function registerWorkerDoc(
   return { ok: true };
 }
 
+// 登録済みの書類の所属機関を付け替える（違う会社で登録してしまったときの訂正）。
+// worker_documents に update のRLSポリシーが無いため、管理クライアントで更新する
+export async function setWorkerDocOrganization(
+  docId: string,
+  organizationId: string | null,
+): Promise<{ ok: true } | Err> {
+  if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
+  const admin = createAdminClient();
+  if (!admin) return { ok: false, message: "サーバー設定エラー" };
+  const { error } = await admin
+    .from("worker_documents")
+    .update({ organization_id: organizationId })
+    .eq("id", docId);
+  if (error) return { ok: false, message: error.message };
+  return { ok: true };
+}
+
 export interface WorkerDocView {
   id: string;
   kind: WorkerDocKind;
