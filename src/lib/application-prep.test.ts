@@ -34,7 +34,7 @@ describe("isRequired", () => {
     expect(isRequired(def("zairyu"), meta({}))).toBe(false);
   });
 
-  it("変更申請では健康診断書・保険証が必要、更新では不要", () => {
+  it("変更申請では健康診断書が必要、更新では不要", () => {
     expect(isRequired(def("kenshin"), meta({ app_type: "変更" }))).toBe(true);
     expect(isRequired(def("kenshin"), meta({ app_type: "更新" }))).toBe(false);
   });
@@ -43,6 +43,12 @@ describe("isRequired", () => {
     expect(isRequired(def("nozei_kokuho"), meta({ app_type: "更新" }))).toBe(false);
     expect(isRequired(def("nozei_kokuho"), meta({ app_type: "更新", has_kokuho: true }))).toBe(true);
     expect(isRequired(def("hokensho"), meta({ app_type: "変更", has_kokuho: true }))).toBe(true);
+  });
+
+  it("保険証・資格確認証は国保加入なら更新・認定でも必要", () => {
+    expect(isRequired(def("hokensho"), meta({ app_type: "更新" }))).toBe(false);
+    expect(isRequired(def("hokensho"), meta({ app_type: "更新", has_kokuho: true }))).toBe(true);
+    expect(isRequired(def("hokensho"), meta({ app_type: "認定", has_kokuho: true }))).toBe(true);
   });
 
   it("年金記録は国民年金加入時のみ必要", () => {
@@ -89,11 +95,12 @@ describe("evaluatePrepChecklist", () => {
         gensen: "本人から送られてきた",
       },
     );
-    // 更新の必要書類: 在留カード/顔写真/パスポート/源泉/課税/納税(市県民)/納税(国保)/年金記録 = 8件
-    expect(items).toHaveLength(8);
-    // 完了: 在留カード・顔写真・源泉（添付あり＋完了ステータス） → 不足は 5件
+    // 更新の必要書類: 在留カード/顔写真/パスポート/源泉/課税/納税(市県民)/納税(国保)/
+    // 保険証・資格確認証/年金記録 = 9件
+    expect(items).toHaveLength(9);
+    // 完了: 在留カード・顔写真・源泉（添付あり＋完了ステータス） → 不足は 6件
     expect(missing.map((x) => x.def.id).sort()).toEqual(
-      ["kazei", "nenkin", "nozei_kokuho", "nozei_shiken", "passport"].sort(),
+      ["hokensho", "kazei", "nenkin", "nozei_kokuho", "nozei_shiken", "passport"].sort(),
     );
   });
 
