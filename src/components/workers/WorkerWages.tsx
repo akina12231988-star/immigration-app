@@ -10,10 +10,20 @@ import {
   listWorkerWages,
   updateWorkerWage,
 } from "@/lib/supabase/queries/wages";
-import { currentWage, hourlyFromMonthly, wageConversionText, wageRaise, wageText } from "@/lib/wage";
+import {
+  currentWage,
+  hourlyFromMonthly,
+  sortWages,
+  wageConversionText,
+  wageRaise,
+  wageText,
+} from "@/lib/wage";
 import {
   MINIMUM_WAGE_NOTE,
+  MINIMUM_WAGE_SOURCE_URL,
+  MINIMUM_WAGE_YEAR_LABEL,
   checkMinimumWage,
+  minimumWageUpdateDue,
   prefectureFromAddress,
 } from "@/lib/minimum-wage";
 import { updateOrganization } from "@/lib/supabase/queries/organizations";
@@ -231,7 +241,9 @@ export function WorkerWages({
             {minCheckOf(now)!.ok
               ? `最低賃金クリア（${minCheckOf(now)!.prefecture} ${minCheckOf(now)!.minimum.toLocaleString("ja-JP")}円 ＋${minCheckOf(now)!.diff.toLocaleString("ja-JP")}円）`
               : `最低賃金を下回っています（${minCheckOf(now)!.prefecture} ${minCheckOf(now)!.minimum.toLocaleString("ja-JP")}円 に ${Math.abs(minCheckOf(now)!.diff).toLocaleString("ja-JP")}円 不足）`}
-            <span className="font-medium text-muted">・{MINIMUM_WAGE_NOTE}</span>
+            <span className="font-medium text-muted">
+              ・{MINIMUM_WAGE_NOTE}（{minCheckOf(now)!.effectiveOn}発効）
+            </span>
           </p>
         )}
         {now && (
@@ -247,6 +259,22 @@ export function WorkerWages({
           </p>
         )}
       </div>
+
+      {/* 毎年10月ごろの改定後は、最低賃金の表を新しい年度のものに更新する */}
+      {minimumWageUpdateDue(today) && (
+        <p className="mt-2 rounded-lg bg-status-notice-bg/60 px-3 py-2 text-[11px] leading-relaxed text-status-notice-fg">
+          最低賃金の表が{MINIMUM_WAGE_YEAR_LABEL}のままです。毎年10月ごろに改定されるので、
+          <a
+            href={MINIMUM_WAGE_SOURCE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mx-0.5 font-bold underline underline-offset-2"
+          >
+            厚生労働省の「地域別最低賃金の全国一覧」
+          </a>
+          のPDFを保存して渡してください（新しい年度の額に差し替えます）。
+        </p>
+      )}
 
       {/* 換算に使う年間所定労働時間（会社ごとに登録。雇用条件書の値を入れる） */}
       {conversionOrgId && (
@@ -381,12 +409,28 @@ export function WorkerWages({
               </tr>
             </thead>
             <tbody>
-              {wages.map((w) => {
+              {sortWages(wages).map((w) => {
                 const raise = wageRaise(wages, w);
                 return (
                   <tr key={w.id} className="border-b border-border/60">
                     <td className="py-1.5 pr-2 tabular-nums">
-                      {w.id === now?.id ? <b>{w.started_on}</b> : w.started_on}
+                      {canEdit ? (
+                        <input
+                          type="date"
+                          value={w.started_on}
+                          onChange={(e) => {
+                            if (e.target.value) void patch(w.id, { started_on: e.target.value });
+                          }}
+                          aria-label="適用開始日"
+                          className={`rounded-lg border border-border bg-background px-1.5 py-1 text-xs tabular-nums ${
+                            w.id === now?.id ? "font-bold" : ""
+                          }`}
+                        />
+                      ) : w.id === now?.id ? (
+                        <b>{w.started_on}</b>
+                      ) : (
+                        w.started_on
+                      )}
                       {w.id === now?.id && (
                         <span className="ml-1 rounded-full bg-status-approved-bg px-1.5 py-0.5 text-[10px] font-bold text-status-approved-fg">
                           現在
