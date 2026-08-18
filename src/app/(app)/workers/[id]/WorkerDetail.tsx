@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { WorkerPhoto } from "@/components/workers/WorkerPhoto";
+import { FieldJumpSearch } from "@/components/workers/FieldJumpSearch";
 import { WorkerDocuments } from "@/components/workers/WorkerDocuments";
 import { WorkerContracts } from "@/components/workers/WorkerContracts";
 import { OnboardingDocuments } from "@/components/workers/OnboardingDocuments";
@@ -938,6 +939,9 @@ export function WorkerDetail({
         onConfirm={handleDeleteHistory}
         onCancel={() => setDeletingHistory(null)}
       />
+
+      {/* 項目が多いので、左下の検索から目的の入力欄へ直接飛べるようにする */}
+      <FieldJumpSearch />
     </div>
   );
 }
