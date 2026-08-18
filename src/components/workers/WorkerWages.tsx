@@ -16,6 +16,7 @@ import {
   sortWages,
   wageConversionText,
   wageRaise,
+  wageRaiseRate,
   wageText,
 } from "@/lib/wage";
 import {
@@ -114,8 +115,19 @@ export function WorkerWages({
     );
   };
 
-  const minCheckOf = (w: WorkerWage) =>
-    checkMinimumWage(hourlyOf(w), prefectureOf(w.organization_id));
+  // その賃金が適用されていた期間（次の賃金の開始日まで。無ければ今日まで）で判定する。
+  // 据え置いたまま最低賃金が上がって割れた場合も気づけるようにする
+  const periodOf = (w: WorkerWage): { from: string; to: string } => {
+    const sorted = sortWages(wages); // 新しい順
+    const i = sorted.findIndex((x) => x.id === w.id);
+    const next = i > 0 ? sorted[i - 1] : null; // 1つ新しい賃金
+    return { from: w.started_on, to: next ? next.started_on : today };
+  };
+
+  const minCheckOf = (w: WorkerWage) => {
+    const { from, to } = periodOf(w);
+    return checkMinimumWage(hourlyOf(w), prefectureOf(w.organization_id), from, to);
+  };
 
   // 年間所定労働時間を所属機関に保存する（この会社の全員の換算に使われる）
   const saveHours = async () => {
@@ -411,6 +423,12 @@ export function WorkerWages({
             <tbody>
               {sortWages(wages).map((w) => {
                 const raise = wageRaise(wages, w);
+                const raiseRate = wageRaiseRate(wages, w);
+                // 割合の表示（+10.0% / -2.5%）
+                const rateText =
+                  raiseRate === null
+                    ? ""
+                    : `${raiseRate > 0 ? "+" : ""}${raiseRate.toFixed(1)}%`;
                 return (
                   <tr key={w.id} className="border-b border-border/60">
                     <td className="py-1.5 pr-2 tabular-nums">
@@ -444,11 +462,19 @@ export function WorkerWages({
                           {wageConversionText(w.kind, w.amount, annualHours(w.organization_id))}
                         </span>
                       )}
-                      {minCheckOf(w) && !minCheckOf(w)!.ok && (
-                        <span className="block text-[10px] font-bold text-seal">
-                          最低賃金に{Math.abs(minCheckOf(w)!.diff).toLocaleString("ja-JP")}円不足
-                        </span>
-                      )}
+                      {minCheckOf(w) &&
+                        (minCheckOf(w)!.ok ? (
+                          <span className="block text-[10px] text-status-approved-fg">
+                            最低賃金クリア（{minCheckOf(w)!.prefecture}{" "}
+                            {minCheckOf(w)!.minimum.toLocaleString("ja-JP")}円）
+                          </span>
+                        ) : (
+                          <span className="block text-[10px] font-bold text-seal">
+                            最低賃金に{Math.abs(minCheckOf(w)!.diff).toLocaleString("ja-JP")}円不足（
+                            {minCheckOf(w)!.prefecture} {minCheckOf(w)!.minimum.toLocaleString("ja-JP")}円・
+                            {minCheckOf(w)!.effectiveOn}〜）
+                          </span>
+                        ))}
                     </td>
                     <td className="py-1.5 pr-2 text-right tabular-nums">
                       {canEdit ? (
@@ -472,9 +498,17 @@ export function WorkerWages({
                       ) : raise > 0 ? (
                         <span className="font-bold text-status-approved-fg">
                           +{raise.toLocaleString("ja-JP")}
+                          {rateText && (
+                            <span className="block text-[10px] font-medium">（{rateText}）</span>
+                          )}
                         </span>
                       ) : raise < 0 ? (
-                        <span className="font-bold text-seal">{raise.toLocaleString("ja-JP")}</span>
+                        <span className="font-bold text-seal">
+                          {raise.toLocaleString("ja-JP")}
+                          {rateText && (
+                            <span className="block text-[10px] font-medium">（{rateText}）</span>
+                          )}
+                        </span>
                       ) : (
                         "±0"
                       )}

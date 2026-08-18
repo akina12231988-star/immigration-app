@@ -43,6 +43,19 @@ export function wageRaise<T extends Pick<WorkerWage, "started_on" | "created_at"
   return prev ? target.amount - prev.amount : null;
 }
 
+// 前回からの上がり幅の割合（％）。前がなければ null。
+// 例: 170,000円 → 187,000円 なら +10.0%
+export function wageRaiseRate<
+  T extends Pick<WorkerWage, "started_on" | "created_at" | "amount" | "kind">,
+>(wages: T[], target: T): number | null {
+  const sorted = sortWages(wages);
+  const i = sorted.indexOf(target);
+  if (i < 0) return null;
+  const prev = sorted.slice(i + 1).find((w) => w.kind === target.kind);
+  if (!prev || !prev.amount) return null;
+  return ((target.amount - prev.amount) / prev.amount) * 100;
+}
+
 // ---- 時給 ⇔ 月給の換算（雇用条件書と同じ考え方） ----
 //
 //   時給 = 月給 × 12ヶ月 ÷ 年間所定労働時間数
