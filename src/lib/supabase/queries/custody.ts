@@ -184,6 +184,22 @@ export async function recordCustodyAction(
   return data as CustodyWithWorker;
 }
 
+// 預かりレコードの記入内容を直す（申請内容・メモなど。出し入れの記録は別）
+export async function updateCustodyRecord(
+  supabase: SupabaseClient,
+  custodyId: string,
+  patch: Partial<Pick<CustodyRecord, "content" | "note" | "expire_on" | "received_on" | "ref_no">>,
+): Promise<CustodyWithWorker> {
+  const { data, error } = await supabase
+    .from("custody_records")
+    .update(patch)
+    .eq("id", custodyId)
+    .select(SELECT)
+    .single();
+  if (error) throw error;
+  return data as CustodyWithWorker;
+}
+
 // 預かり書類を変える（例: 在留カードのみ → あとからパスポートも預かった）。
 // 履歴には「預かり」として、何から何に変わったかを残す
 export async function updateCustodyItems(

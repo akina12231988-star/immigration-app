@@ -11,6 +11,7 @@ import {
   listCustodyEvents,
   recordCustodyAction,
   updateCustodyItems,
+  updateCustodyRecord,
   type CustodyWithWorker,
 } from "@/lib/supabase/queries/custody";
 import type { WorkerWithOrg } from "@/lib/supabase/queries/workers";
@@ -280,6 +281,22 @@ function DetailModal({
     }
   };
 
+  // 申請内容を直す（入力欄から離れたときに保存）
+  const changeContent = async (content: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await updateCustodyRecord(createClient(), record.id, {
+        content: content.trim(),
+      });
+      onUpdated(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   // 預かり書類を変える（あとからパスポートも預かった、など）。履歴にも残す
   const changeItems = async (items: string) => {
     if (items === record.items) return;
@@ -406,12 +423,24 @@ function DetailModal({
             <span className="ml-3 text-muted">有効年月日：</span>
             {record.expire_on ?? "—"}
           </p>
-          {record.content && (
-            <p>
-              <span className="text-muted">申請内容：</span>
-              {record.content}
-            </p>
-          )}
+          {/* 申請内容（あとから直せる。空でも入力できる） */}
+          <p className="flex flex-wrap items-center gap-1">
+            <span className="text-muted">申請内容：</span>
+            {canWrite ? (
+              <input
+                defaultValue={record.content}
+                onBlur={(e) => {
+                  if (e.target.value !== record.content) void changeContent(e.target.value);
+                }}
+                placeholder="例: 福岡出入国管理局への在留資格変更許可申請"
+                disabled={busy}
+                aria-label="申請内容"
+                className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-2 py-1 text-xs disabled:opacity-50"
+              />
+            ) : (
+              (record.content || "—")
+            )}
+          </p>
           {record.note && (
             <p>
               <span className="text-muted">メモ：</span>
