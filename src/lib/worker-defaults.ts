@@ -23,6 +23,7 @@ export function blankWorkerInput(name: string, organizationId: string | null = n
     residence_renewal_status: "",
     residence_renewal_todo: "",
     application_prep_kind: "",
+    application_prep_organization_id: null,
     leaving_on: null,
     leaving_todo: "",
     leaving_kind: "",

@@ -164,6 +164,7 @@ export const WORKER_LIST_FIELDS = [
   "residence_renewal_status",
   "residence_renewal_todo",
   "application_prep_kind",
+  "application_prep_organization_id",
   "leaving_on",
   "employment_start_on",
   "assigned_office",

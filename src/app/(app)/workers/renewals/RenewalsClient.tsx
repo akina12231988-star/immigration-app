@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/Button";
 import { Combobox } from "@/components/ui/Combobox";
 import { createClient } from "@/lib/supabase/client";
 import { insertWorker, updateWorker, type WorkerWithOrg } from "@/lib/supabase/queries/workers";
+import { insertOrganization } from "@/lib/supabase/queries/organizations";
 import { upsertPrepTantou } from "@/lib/supabase/queries/application-prep";
 import { PREP_TANTOU_OPTIONS } from "@/lib/application-prep";
 import { blankWorkerInput } from "@/lib/worker-defaults";
@@ -33,19 +34,29 @@ import {
 type HandlingFilter = ResidenceRenewalStatus | "all";
 type PrepMode = "新規" | "更新";
 
+// 所属機関の選択肢（申請準備で選ぶ・転職の場合は転職先）
+export interface OrgOption {
+  id: string;
+  name: string;
+}
+
 const INPUT_CLASS =
   "min-h-[40px] w-full rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none";
 
 export function RenewalsClient({
   workers,
+  organizations,
   underReviewWorkerIds = [],
   canEdit,
 }: {
   workers: WorkerWithOrg[];
+  organizations: OrgOption[];
   underReviewWorkerIds?: string[];
   canEdit: boolean;
 }) {
   const today = todayStr();
+  // この画面で新規登録した所属機関もすぐ選べるようにローカルに持つ
+  const [orgOptions, setOrgOptions] = useState<OrgOption[]>(organizations);
   // 新規で申請書類準備 / 更新で申請書類準備 のどちらかから始まる
   const [mode, setMode] = useState<PrepMode | null>(null);
   const [filter, setFilter] = useState<HandlingFilter>("");
@@ -154,7 +165,17 @@ export function RenewalsClient({
           : "在留期限の3か月前になった対象者です。Notionで申請TODOを作成し、そのTODO番号を入力すると「準備中」になります。「準備中」の人は申請一覧に「申請前＜準備中＞」として表示され、申請したらそこから申請登録できます。弊社で準備しない場合は「転職先にて対応中」「他登録支援機関にて対応中」「帰国」を選べます。"}
       </p>
 
-      {mode === "新規" && canEdit && <NewPrepForm workers={workers} />}
+      {mode === "新規" && canEdit && (
+        <NewPrepForm
+          workers={workers}
+          organizations={orgOptions}
+          onOrgCreated={(o) =>
+            setOrgOptions((prev) =>
+              [...prev, o].sort((a, b) => a.name.localeCompare(b.name, "ja")),
+            )
+          }
+        />
+      )}
 
       {pendingCount > 0 && (
         <div className="flex items-center gap-2 rounded-xl border border-seal/40 bg-seal/10 px-3 py-2.5 text-sm font-bold text-seal">
@@ -236,6 +257,7 @@ export function RenewalsClient({
               key={w.id}
               worker={w}
               orgName={w.organizations?.name ?? null}
+              organizations={orgOptions}
               today={today}
               canEdit={canEdit}
             />
@@ -246,13 +268,23 @@ export function RenewalsClient({
   );
 }
 
-// 新規で申請書類準備: 外国人を選んで（いなければ氏名で登録して）TODO番号・対応状況を登録する
-function NewPrepForm({ workers }: { workers: WorkerWithOrg[] }) {
+// 新規で申請書類準備: 外国人を選んで（いなければ氏名で登録して）
+// 所属機関（転職の場合は転職先）・TODO番号・対応状況を登録する
+function NewPrepForm({
+  workers,
+  organizations,
+  onOrgCreated,
+}: {
+  workers: WorkerWithOrg[];
+  organizations: OrgOption[];
+  onOrgCreated: (org: OrgOption) => void;
+}) {
   const router = useRouter();
   const [workerId, setWorkerId] = useState("");
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
   const [todo, setTodo] = useState("");
+  const [orgId, setOrgId] = useState("");
   const [status, setStatus] = useState<ResidenceRenewalStatus>("準備中");
   const [tantou, setTantou] = useState("");
   const [saving, setSaving] = useState(false);
@@ -281,6 +313,36 @@ function NewPrepForm({ workers }: { workers: WorkerWithOrg[] }) {
   }, [workers, extraWorkers]);
 
   const selected = options.find((o) => o.id === workerId) ?? null;
+
+  // 外国人を選んだら、その人の所属機関を初期値にする（転職ならここで転職先に選び直す）
+  const selectWorker = (id: string) => {
+    setWorkerId(id);
+    const w = workers.find((x) => x.id === id);
+    setOrgId(w?.application_prep_organization_id ?? w?.current_organization_id ?? "");
+  };
+
+  // 一覧に無い会社は、名前だけでその場で登録して選択する
+  const createOrg = async (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setError(null);
+    try {
+      const org = await insertOrganization(createClient(), {
+        name: trimmed,
+        industry: "",
+        business_category: "",
+        address: "",
+        contact: "",
+        corporate_no: "",
+        note: "",
+        intake: {},
+      });
+      onOrgCreated({ id: org.id, name: org.name });
+      setOrgId(org.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "所属機関の登録に失敗しました");
+    }
+  };
 
   // 一覧にいない人は氏名だけで先に登録して選択状態にする
   async function createByName() {
@@ -314,6 +376,8 @@ function NewPrepForm({ workers }: { workers: WorkerWithOrg[] }) {
         residence_renewal_todo: todo.trim(),
         residence_renewal_status: status,
         application_prep_kind: "新規",
+        // 転職の場合の転職先。現在の所属機関は在留カード受領まで変えない
+        application_prep_organization_id: orgId || null,
       });
       // 担当者を選んだ場合は、TODO番号の準備リストに紐づけて保存する
       if (tantou) {
@@ -322,6 +386,7 @@ function NewPrepForm({ workers }: { workers: WorkerWithOrg[] }) {
       setNotice(`${selected?.label ?? "対象者"}を新規の申請準備に追加しました。`);
       setAddedNewWorker(newWorker);
       setWorkerId("");
+      setOrgId("");
       setTodo("");
       setStatus("準備中");
       setTantou("");
@@ -363,7 +428,7 @@ function NewPrepForm({ workers }: { workers: WorkerWithOrg[] }) {
         <Combobox
           options={options}
           value={workerId}
-          onChange={setWorkerId}
+          onChange={selectWorker}
           placeholder="氏名を入力して検索"
         />
         {!workerId && (
@@ -390,6 +455,24 @@ function NewPrepForm({ workers }: { workers: WorkerWithOrg[] }) {
             </div>
           </div>
         )}
+      </div>
+
+      <div>
+        <span className="mb-1.5 block text-[11px] font-bold text-muted">
+          所属機関（転職の場合は転職先）
+        </span>
+        <Combobox
+          options={organizations.map((o) => ({ id: o.id, label: o.name }))}
+          value={orgId}
+          onChange={setOrgId}
+          onCreate={(name) => void createOrg(name)}
+          createLabel="を所属機関として新規登録"
+          placeholder="会社名を入力して検索"
+        />
+        <p className="mt-1 text-[11px] text-muted">
+          転職の申請はここで転職先を選びます。申請一覧の「申請前＜準備中＞」にこの会社で表示されます。
+          外国人詳細の「現在の所属機関」は、在留カードを受け取るまで変わりません。
+        </p>
       </div>
 
       <label className="flex flex-col gap-1">

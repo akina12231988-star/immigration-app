@@ -53,17 +53,24 @@ export type RenewalCardWorker = Pick<
   | "residence_renewal_todo"
   | "notion_link"
   | "messenger_link"
->;
+> & {
+  // 所属機関の表示・編集用（一覧によっては取得していないので任意）
+  current_organization_id?: string | null;
+  application_prep_organization_id?: string | null;
+};
 
 // 在留更新対象の1件を表示・編集するカード（在留更新対象ページと外国人管理で共用）
 export function WorkerRenewalCard({
   worker,
   orgName,
+  organizations,
   today,
   canEdit,
 }: {
   worker: RenewalCardWorker;
   orgName?: string | null;
+  // 渡すと「所属機関（転職の場合は転職先）」を選べるようになる
+  organizations?: { id: string; name: string }[];
   today: string;
   canEdit: boolean;
 }) {
@@ -71,6 +78,10 @@ export function WorkerRenewalCard({
   const [todo, setTodo] = useState(worker.residence_renewal_todo ?? "");
   const [status, setStatus] = useState<ResidenceRenewalStatus>(worker.residence_renewal_status);
   const [notionLink, setNotionLink] = useState(worker.notion_link ?? "");
+  // 申請準備の所属機関（転職の場合の転職先）。未設定なら現在の所属機関を初期値にする
+  const [prepOrgId, setPrepOrgId] = useState(
+    worker.application_prep_organization_id ?? worker.current_organization_id ?? "",
+  );
   const [messengerLink, setMessengerLink] = useState(worker.messenger_link ?? "");
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -123,6 +134,8 @@ export function WorkerRenewalCard({
         residence_renewal_status: status,
         notion_link: notionLink.trim(),
         messenger_link: messengerLink.trim(),
+        // 所属機関を選べる画面（申請準備）のときだけ保存する
+        ...(organizations ? { application_prep_organization_id: prepOrgId || null } : {}),
       });
       // 担当者はTODO番号の準備リストへ保存（選択済み、またはリストが既にある場合のみ）
       const todoNo = todo.trim();
@@ -163,7 +176,7 @@ export function WorkerRenewalCard({
             </button>
           </div>
           <p className="truncate text-xs text-muted">
-            {orgName ?? "所属機関未設定"}
+            {(organizations?.find((o) => o.id === prepOrgId)?.name ?? orgName) ?? "所属機関未設定"}
             {worker.nationality && ` ・ ${worker.nationality}`}
             {worker.residence_status && ` ・ ${worker.residence_status}`}
           </p>
@@ -207,6 +220,32 @@ export function WorkerRenewalCard({
       {canEdit && (
         <div className="mt-3 space-y-2 border-t border-border pt-3">
           {error && <p className="rounded-lg bg-seal/10 px-2.5 py-1.5 text-xs text-seal">{error}</p>}
+          {organizations && (
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-bold text-muted">
+                所属機関（転職の場合は転職先）
+              </span>
+              <select
+                value={prepOrgId}
+                onChange={(e) => {
+                  setPrepOrgId(e.target.value);
+                  setSaved(false);
+                }}
+                className={INPUT}
+              >
+                <option value="">未設定</option>
+                {organizations.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ))}
+              </select>
+              <span className="text-[11px] text-muted">
+                転職はここで転職先を選ぶと、申請一覧の「申請前＜準備中＞」にその会社で表示されます。
+                現在の所属機関は在留カードを受け取るまで変わりません。
+              </span>
+            </label>
+          )}
           <label className="flex flex-col gap-1">
             <span className="text-[11px] font-bold text-muted">Notion 申請TODO番号</span>
             <input

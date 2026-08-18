@@ -64,6 +64,23 @@ function makeApp(over: Partial<Application>): Application {
 }
 
 describe("buildRenewalPlaceholders", () => {
+  it("転職の準備で入れた所属機関（転職先）を所属機関として出す", () => {
+    const rows = buildRenewalPlaceholders(
+      [makeWorker({ application_prep_organization_id: "org2" })],
+      [],
+      TODAY,
+      new Map([["org2", "転職先の会社"]]),
+    );
+    expect(rows[0].organizationId).toBe("org2");
+    expect(rows[0].organizationName).toBe("転職先の会社");
+  });
+
+  it("転職先を入れていなければ現在の所属機関を出す", () => {
+    const rows = buildRenewalPlaceholders([makeWorker({})], [], TODAY, new Map());
+    expect(rows[0].organizationId).toBe("org1");
+    expect(rows[0].organizationName).toBe("テスト機関");
+  });
+
   it("準備中かつ在留更新対象の外国人を「申請前＜準備中＞」の擬似行にする", () => {
     const rows = buildRenewalPlaceholders([makeWorker({})], [], TODAY);
     expect(rows).toHaveLength(1);

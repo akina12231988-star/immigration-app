@@ -31,7 +31,11 @@ import { useApplications } from "@/lib/application-store";
 import { applicationStatusLabel } from "@/lib/status";
 import { STAT_VIEWS, type StatViewKey } from "@/lib/application-stats";
 import { isExpiryAlert, todayStr } from "@/lib/application-alerts";
-import { listWorkersWithOrg, type WorkerWithOrg } from "@/lib/supabase/queries/workers";
+import {
+  listWorkersWithOrg,
+  updateWorker,
+  type WorkerWithOrg,
+} from "@/lib/supabase/queries/workers";
 import { listOrganizations } from "@/lib/supabase/queries/organizations";
 import { isOrgStaff, orgStaffLabel } from "@/lib/organization-intake";
 import { orgSupportManagers, orgSupportStaff } from "@/lib/support-system";
@@ -127,6 +131,8 @@ export function ApplicationsExplorer({
     };
   }, []);
   const orgById = useMemo(() => new Map(orgs.map((o) => [o.id, o])), [orgs]);
+  // 申請準備の所属機関（転職先）の名称を引くための対応表
+  const orgNameById = useMemo(() => new Map(orgs.map((o) => [o.id, o.name])), [orgs]);
   const orgIntakeFor = (a: Application) =>
     a.organizationId ? orgById.get(a.organizationId)?.intake : undefined;
 
@@ -197,6 +203,9 @@ export function ApplicationsExplorer({
     return no != null ? formatStorageNo(no) : "—";
   };
 
+  // 準備中のインライン編集（所属機関・TODO番号）の保存エラー
+  const [workerError, setWorkerError] = useState<string | null>(null);
+
   // 並び順（申請日の早い/遅い順・在留期限の短い/遅い順）
   const [sort, setSort] = useState<SortKey>("date-desc");
 
@@ -235,12 +244,17 @@ export function ApplicationsExplorer({
     // 「すべて」と「申請前＜準備中＞」では、在留更新で準備中の外国人を擬似行として先頭に出す。
     // 申請登録して審査中になると、この擬似行は実レコードの行に置き換わる。
     if (view === "all" || view === "pre-prep") {
-      const placeholders = buildRenewalPlaceholders(renewalWorkers, applications, TODAY)
+      const placeholders = buildRenewalPlaceholders(
+        renewalWorkers,
+        applications,
+        TODAY,
+        orgNameById,
+      )
         .filter((a) => matchesKeyword(a) && matchesTantou(a));
       return [...placeholders, ...rows];
     }
     return rows;
-  }, [applications, renewalWorkers, keyword, view, showIssued, permitFrom, permitTo, tantouFilter, orgById]);
+  }, [applications, renewalWorkers, keyword, view, showIssued, permitFrom, permitTo, tantouFilter, orgById, orgNameById]);
 
   // 並び替え。日付が未設定の行は末尾に回す
   const sorted = useMemo(() => {
@@ -342,6 +356,49 @@ export function ApplicationsExplorer({
     }
   };
 
+  // 申請前＜準備中＞の所属機関のインライン編集。
+  // 擬似行（まだ申請登録していない人）は外国人の「申請準備の所属機関」（転職先）に、
+  // 申請登録済みの行はその申請の所属機関に保存する
+  const changeOrg = async (a: Application, orgId: string) => {
+    const name = orgId ? (orgNameById.get(orgId) ?? null) : null;
+    if (!isRenewalPlaceholder(a)) {
+      await updateApplication(a.id, { organizationId: orgId || null, organizationName: name });
+      return;
+    }
+    if (!a.workerId) return;
+    const workerId = a.workerId;
+    setRenewalWorkers((prev) =>
+      prev.map((w) =>
+        w.id === workerId ? { ...w, application_prep_organization_id: orgId || null } : w,
+      ),
+    );
+    try {
+      await updateWorker(createClient(), workerId, {
+        application_prep_organization_id: orgId || null,
+      });
+    } catch {
+      setWorkerError("所属機関の保存に失敗しました。通信状況を確認してもう一度お試しください。");
+    }
+  };
+
+  // 申請TODO番号のインライン編集（外国人に保存する）
+  const changeTodo = async (a: Application, todo: string) => {
+    if (!a.workerId) return;
+    const workerId = a.workerId;
+    const value = todo.trim();
+    setRenewalWorkers((prev) =>
+      prev.map((w) => (w.id === workerId ? { ...w, residence_renewal_todo: value } : w)),
+    );
+    try {
+      await updateWorker(createClient(), workerId, { residence_renewal_todo: value });
+    } catch {
+      setWorkerError("申請TODO番号の保存に失敗しました。通信状況を確認してもう一度お試しください。");
+    }
+  };
+
+  // 現在の所属機関の選択値（準備中の行で使う）
+  const orgValueFor = (a: Application) => a.organizationId ?? "";
+
   return (
     <div className="space-y-4">
       {view === "this-month" && (
@@ -422,6 +479,12 @@ export function ApplicationsExplorer({
             </button>
           )}
         </div>
+      )}
+
+      {workerError && (
+        <p role="alert" className="rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
+          {workerError}
+        </p>
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -550,10 +613,40 @@ export function ApplicationsExplorer({
                 >
                   {body}
                   <div className="mt-2 border-t border-border pt-2">
-                    <p className="flex items-center gap-1.5 text-xs tabular-nums text-muted">
-                      申請TODO番号 {w?.residence_renewal_todo || "未登録"}
-                      {w?.residence_renewal_todo && <CopyTodoButton todo={w.residence_renewal_todo} />}
-                    </p>
+                    {canEdit ? (
+                      <div
+                        className="mb-2 space-y-1.5"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <span className="block text-[11px] font-bold text-muted">
+                          所属機関（転職の場合は転職先）
+                        </span>
+                        <PrepOrgSelect
+                          value={orgValueFor(a)}
+                          orgs={orgs}
+                          onChange={(v) => void changeOrg(a, v)}
+                          fullWidth
+                        />
+                        <span className="block text-[11px] font-bold text-muted">
+                          申請TODO番号
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <PrepTodoInput
+                            value={w?.residence_renewal_todo ?? ""}
+                            onSave={(v) => void changeTodo(a, v)}
+                            fullWidth
+                          />
+                          {w?.residence_renewal_todo && (
+                            <CopyTodoButton todo={w.residence_renewal_todo} />
+                          )}
+                        </span>
+                      </div>
+                    ) : (
+                      <p className="flex items-center gap-1.5 text-xs tabular-nums text-muted">
+                        申請TODO番号 {w?.residence_renewal_todo || "未登録"}
+                        {w?.residence_renewal_todo && <CopyTodoButton todo={w.residence_renewal_todo} />}
+                      </p>
+                    )}
                     <div className="mt-1.5 flex flex-wrap gap-3">
                       <WorkerLink
                         href={w?.notion_link ? notionAppUrl(w.notion_link) : undefined}
@@ -667,22 +760,41 @@ export function ApplicationsExplorer({
                           </span>
                         )}
                       </Td>
-                      <Td>{a.organizationName ?? "—"}</Td>
+                      <Td>
+                        {showPrep && canEdit ? (
+                          <span onClick={(e) => e.stopPropagation()}>
+                            <PrepOrgSelect
+                              value={orgValueFor(a)}
+                              orgs={orgs}
+                              onChange={(v) => void changeOrg(a, v)}
+                            />
+                          </span>
+                        ) : (
+                          (a.organizationName ?? "—")
+                        )}
+                      </Td>
                       <Td className="text-xs">{orgStaffLabel(orgIntakeFor(a)) || "—"}</Td>
                       {showPrep ? (
                         <>
                           <Td className="tabular-nums">
-                            {w?.residence_renewal_todo ? (
-                              <span
-                                className="flex items-center gap-1.5"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <span className="select-text">{w.residence_renewal_todo}</span>
+                            <span
+                              className="flex items-center gap-1.5"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {canEdit && a.workerId ? (
+                                <PrepTodoInput
+                                  value={w?.residence_renewal_todo ?? ""}
+                                  onSave={(v) => void changeTodo(a, v)}
+                                />
+                              ) : (
+                                <span className="select-text">
+                                  {w?.residence_renewal_todo || "—"}
+                                </span>
+                              )}
+                              {w?.residence_renewal_todo && (
                                 <CopyTodoButton todo={w.residence_renewal_todo} />
-                              </span>
-                            ) : (
-                              "—"
-                            )}
+                              )}
+                            </span>
                           </Td>
                           <Td>
                             <WorkerLink
@@ -813,6 +925,65 @@ function CopyTodoButton({ todo }: { todo: string }) {
     >
       {copied ? <Check size={13} className="text-status-reported-fg" /> : <Copy size={13} />}
     </button>
+  );
+}
+
+// 所属機関のインライン選択（申請前＜準備中＞）。
+// 転職の準備では転職先をここで選ぶ。まだ申請登録していない人は外国人の
+// 「申請準備の所属機関」に、申請登録済みならその申請の所属機関に保存される
+function PrepOrgSelect({
+  value,
+  orgs,
+  onChange,
+  fullWidth = false,
+}: {
+  value: string;
+  orgs: Organization[];
+  onChange: (id: string) => void;
+  fullWidth?: boolean;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={`min-h-[32px] rounded-lg border border-border bg-surface px-2 text-xs focus:border-brand focus:outline-none ${
+        fullWidth ? "w-full" : "max-w-[13rem]"
+      }`}
+    >
+      <option value="">未設定</option>
+      {/* 一覧に無い機関（削除済みなど）が入っていても選択状態を保てるようにする */}
+      {value && !orgs.some((o) => o.id === value) && <option value={value}>登録なし</option>}
+      {orgs.map((o) => (
+        <option key={o.id} value={o.id}>
+          {o.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+// 申請TODO番号のインライン入力（申請前＜準備中＞）。入力欄から離れたときに保存する
+function PrepTodoInput({
+  value,
+  onSave,
+  fullWidth = false,
+}: {
+  value: string;
+  onSave: (v: string) => void;
+  fullWidth?: boolean;
+}) {
+  return (
+    <input
+      key={value}
+      defaultValue={value}
+      onBlur={(e) => {
+        if (e.target.value.trim() !== value) onSave(e.target.value);
+      }}
+      placeholder="例: TODO-1234"
+      className={`min-h-[32px] rounded-lg border border-border bg-surface px-2 text-xs tabular-nums focus:border-brand focus:outline-none ${
+        fullWidth ? "w-full" : "w-32"
+      }`}
+    />
   );
 }
 

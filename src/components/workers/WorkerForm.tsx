@@ -32,6 +32,7 @@ function toInput(w: Worker | null): WorkerInput {
     health_note: w?.health_note ?? "",
     family_note: w?.family_note ?? "",
     current_organization_id: w?.current_organization_id ?? null,
+    application_prep_organization_id: w?.application_prep_organization_id ?? null,
     residence_status: w?.residence_status ?? "",
     residence_permit_date: w?.residence_permit_date ?? null,
     residence_expiry_date: w?.residence_expiry_date ?? null,

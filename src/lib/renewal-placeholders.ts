@@ -3,6 +3,16 @@ import type { WorkerWithOrg } from "@/lib/supabase/queries/workers";
 import { isResidenceRenewalTarget } from "@/lib/worker-alerts";
 import { underReviewWorkerIds } from "@/lib/renewal-filter";
 
+// 申請準備の所属機関（転職先）が入っていればその名称、無ければ現在の所属機関の名称
+function prepOrgName(
+  w: WorkerWithOrg,
+  orgNameById?: Map<string, string>,
+): string | null {
+  const prepOrgId = w.application_prep_organization_id;
+  if (prepOrgId) return orgNameById?.get(prepOrgId) ?? w.organizations?.name ?? null;
+  return w.organizations?.name ?? null;
+}
+
 // 擬似行のIDに付ける接頭辞。実在の申請レコードと区別するために使う
 const PLACEHOLDER_PREFIX = "renewal-placeholder-";
 
@@ -14,10 +24,13 @@ export function isRenewalPlaceholder(app: Application): boolean {
 // 表示するための擬似行を作る。実際に申請したら申請登録（/applications/new）で
 // 実レコードを作成し、審査中になった時点で擬似行は消える。
 // 「新規で申請書類準備」の人は在留期限に関係なく、「更新」の人は3か月前から対象。
+// orgNameById: 申請準備の所属機関（転職先）の名称を引くための機関マスタ。
+// 渡さない場合は現在の所属機関の名称をそのまま使う。
 export function buildRenewalPlaceholders(
   workers: WorkerWithOrg[],
   applications: Application[],
   today: string,
+  orgNameById?: Map<string, string>,
 ): Application[] {
   const underReview = new Set(underReviewWorkerIds(applications));
   // 実レコードとして「申請前」を登録済みの外国人は擬似行を出さない（二重表示防止）
@@ -43,8 +56,9 @@ export function buildRenewalPlaceholders(
       workerId: w.id,
       workerName: w.name,
       workerRenewalStatus: w.residence_renewal_status,
-      organizationId: w.current_organization_id ?? null,
-      organizationName: w.organizations?.name ?? null,
+      // 転職の準備で「申請準備の所属機関」を入れていれば、そちらを所属機関として出す
+      organizationId: w.application_prep_organization_id ?? w.current_organization_id ?? null,
+      organizationName: prepOrgName(w, orgNameById),
       name: w.name,
       applicationDate: "",
       applicationNumber: "",
