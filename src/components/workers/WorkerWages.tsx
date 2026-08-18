@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Banknote, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, Banknote, CheckCircle2, Plus, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -10,7 +10,12 @@ import {
   listWorkerWages,
   updateWorkerWage,
 } from "@/lib/supabase/queries/wages";
-import { currentWage, wageConversionText, wageRaise, wageText } from "@/lib/wage";
+import { currentWage, hourlyFromMonthly, wageConversionText, wageRaise, wageText } from "@/lib/wage";
+import {
+  MINIMUM_WAGE_NOTE,
+  checkMinimumWage,
+  prefectureFromAddress,
+} from "@/lib/minimum-wage";
 import { updateOrganization } from "@/lib/supabase/queries/organizations";
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
 import { WORKER_WAGE_KINDS, type Organization, type WorkerWage, type WorkerWageKind } from "@/types/db";
@@ -81,6 +86,26 @@ export function WorkerWages({
   const [hoursByOrg, setHoursByOrg] = useState<Record<string, number>>({});
   const annualHours = (id: string | null): number =>
     (id && hoursByOrg[id]) || orgHours(id);
+
+  // 最低賃金と比べる時給（時給ならその額、月給なら換算した額）
+  const hourlyOf = (w: WorkerWage): number | null => {
+    if (w.kind === "時給") return w.amount || null;
+    if (w.kind === "月給") return hourlyFromMonthly(w.amount, annualHours(w.organization_id));
+    return null;
+  };
+
+  // 就業場所の都道府県（会社の作業する住所→会社の住所の順に見る）
+  const prefectureOf = (orgId: string | null): string | null => {
+    const org = organizations.find((o) => o.id === orgId);
+    if (!org) return null;
+    return (
+      prefectureFromAddress(org.intake?.work_address) ??
+      prefectureFromAddress(org.address)
+    );
+  };
+
+  const minCheckOf = (w: WorkerWage) =>
+    checkMinimumWage(hourlyOf(w), prefectureOf(w.organization_id));
 
   // 年間所定労働時間を所属機関に保存する（この会社の全員の換算に使われる）
   const saveHours = async () => {
@@ -194,6 +219,19 @@ export function WorkerWages({
             <span className="ml-1 text-[11px] font-medium text-muted">
               （年間所定労働時間 {annualHours(now.organization_id).toLocaleString("ja-JP")}時間で計算）
             </span>
+          </p>
+        )}
+        {now && minCheckOf(now) && (
+          <p
+            className={`mt-1 flex items-center gap-1 text-xs font-bold ${
+              minCheckOf(now)!.ok ? "text-status-approved-fg" : "text-seal"
+            }`}
+          >
+            {minCheckOf(now)!.ok ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
+            {minCheckOf(now)!.ok
+              ? `最低賃金クリア（${minCheckOf(now)!.prefecture} ${minCheckOf(now)!.minimum.toLocaleString("ja-JP")}円 ＋${minCheckOf(now)!.diff.toLocaleString("ja-JP")}円）`
+              : `最低賃金を下回っています（${minCheckOf(now)!.prefecture} ${minCheckOf(now)!.minimum.toLocaleString("ja-JP")}円 に ${Math.abs(minCheckOf(now)!.diff).toLocaleString("ja-JP")}円 不足）`}
+            <span className="font-medium text-muted">・{MINIMUM_WAGE_NOTE}</span>
           </p>
         )}
         {now && (
@@ -360,6 +398,11 @@ export function WorkerWages({
                       {wageConversionText(w.kind, w.amount, annualHours(w.organization_id)) && (
                         <span className="block text-[10px] text-muted">
                           {wageConversionText(w.kind, w.amount, annualHours(w.organization_id))}
+                        </span>
+                      )}
+                      {minCheckOf(w) && !minCheckOf(w)!.ok && (
+                        <span className="block text-[10px] font-bold text-seal">
+                          最低賃金に{Math.abs(minCheckOf(w)!.diff).toLocaleString("ja-JP")}円不足
                         </span>
                       )}
                     </td>
