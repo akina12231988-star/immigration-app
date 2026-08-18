@@ -27,6 +27,15 @@ export type RequestKind = "tax" | "tenshutsu" | "juminhyo";
 export type ApplicantType = "self" | "agent"; // 本人申請 / 代理人
 export type JuminhyoMethod = "mail" | "window"; // 住民票の発行方法（郵送請求 / 窓口発行）
 
+// 定額小為替（証明書1枚につき1枚同封する）。
+// 番号は「前半の数字-後半の数字」で控える
+export interface MoneyOrder {
+  id: string;
+  docTitle: string; // どの証明書の分か
+  first: string; // 番号の前半
+  second: string; // 番号の後半
+}
+
 export interface JudgmentDoc {
   title: string;
   meta: string;
@@ -80,6 +89,8 @@ export interface JudgmentRecord {
   juminhyoMethod?: JuminhyoMethod; // 住民票: 郵送請求 / 窓口発行
   juminhyoMyNumber?: boolean; // 住民票に個人番号（マイナンバー）を記載する
   juminhyoPurpose?: string; // 住民票を発行する目的
+  // 郵送請求に同封した定額小為替（証明書1枚につき1枚）
+  moneyOrders?: MoneyOrder[];
   // 電話連絡メモ（main / nhi）
   mainPhoneContact?: string;
   mainPhoneContent?: string;
@@ -238,6 +249,69 @@ export function buildRequiredDocs(
   }
 
   return docs;
+}
+
+// ---- 定額小為替 ----
+
+// 表示用の番号（前半-後半）。片方でも入っていれば出す
+export function moneyOrderNo(mo: { first: string; second: string }): string {
+  const first = mo.first.trim();
+  const second = mo.second.trim();
+  if (!first && !second) return "";
+  return `${first}-${second}`;
+}
+
+// 郵送請求で送る証明書の一覧（この枚数だけ定額小為替を同封する）。
+// 窓口で受け取るものは郵送しないので含めない。
+export function mailedDocTitles(r: {
+  requestKind?: RequestKind;
+  juminhyoMethod?: JuminhyoMethod;
+  juminhyoMyNumber?: boolean;
+  requestMethod?: RequestMethod;
+  hasNhi?: boolean;
+  nhiSameAsMain?: boolean;
+  nhiRequestMethod?: RequestMethod;
+  docs?: JudgmentDoc[];
+}): string[] {
+  if (r.requestKind === "tenshutsu") {
+    return r.requestMethod === "window" ? [] : ["転出届"];
+  }
+  if (r.requestKind === "juminhyo") {
+    return r.juminhyoMethod === "window" ? [] : [juminhyoTitle(!!r.juminhyoMyNumber)];
+  }
+  const docs = r.docs ?? [];
+  const out: string[] = [];
+  if (r.requestMethod === "mail") {
+    out.push(...docs.filter((d) => !d.isNhi).map((d) => d.title));
+  }
+  // 国保の納税証明書は「課税証明書と同じ受領方法」か、別に指定した方法で判断する
+  const nhiByMail =
+    r.nhiSameAsMain === false ? r.nhiRequestMethod === "mail" : r.requestMethod === "mail";
+  if (r.hasNhi && nhiByMail) {
+    out.push(...docs.filter((d) => d.isNhi).map((d) => d.title));
+  }
+  return out;
+}
+
+// 証明書の枚数に合わせて定額小為替の行をそろえる。
+// すでに入力した番号は、同じ証明書の行に引き継ぐ（順番も保つ）。
+// 証明書に紐づかない行（手で足した分）は末尾にそのまま残す。
+export function syncMoneyOrders(titles: string[], existing: MoneyOrder[] = []): MoneyOrder[] {
+  const rest = [...existing];
+  const rows: MoneyOrder[] = titles.map((title, i) => {
+    const at = rest.findIndex((o) => o.docTitle === title);
+    if (at >= 0) return { ...rest.splice(at, 1)[0], docTitle: title };
+    return { id: `mo-${i}-${title}`, docTitle: title, first: "", second: "" };
+  });
+  // 証明書が減った場合、番号が入っている行だけは消さずに残す
+  return [...rows, ...rest.filter((o) => moneyOrderNo(o) !== "")];
+}
+
+// 一覧に出す一言（例: 定額小為替 2枚（番号入力済み 1枚））
+export function moneyOrderSummary(orders: MoneyOrder[] = []): string {
+  if (orders.length === 0) return "";
+  const filled = orders.filter((o) => moneyOrderNo(o) !== "").length;
+  return `定額小為替 ${orders.length}枚（番号入力済み ${filled}枚）`;
 }
 
 // 請求種別の表示名

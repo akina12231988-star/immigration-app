@@ -31,6 +31,9 @@ import {
   judgeTiming,
   judgeYear,
   juminhyoTitle,
+  mailedDocTitles,
+  moneyOrderNo,
+  moneyOrderSummary,
   paymentStatusLabel,
   requestKindLabel,
   todayISO,
@@ -39,6 +42,7 @@ import {
   type CollectionType,
   type JudgmentRecord,
   type JuminhyoMethod,
+  type MoneyOrder,
   type Municipality,
   type MunicipalityInput,
   type RecipientType,
@@ -46,6 +50,7 @@ import {
   type RequestMethod,
 } from "@/lib/tax-cert";
 import { MailingFileAttachments } from "./MailingFileAttachments";
+import { MoneyOrderFields } from "./MoneyOrderFields";
 
 // 郵送請求ツールで扱う外国人（現在の住所は転出届・住民票の請求先判断に表示する）
 interface MailingWorker {
@@ -335,6 +340,10 @@ interface MethodState {
   agent: string;
   setAgent: (v: string) => void;
   title?: string;
+  // 郵送請求のときに出す定額小為替の入力（証明書1枚につき1枚）
+  orderTitles?: string[];
+  orders?: MoneyOrder[];
+  setOrders?: (o: MoneyOrder[]) => void;
 }
 
 function MethodToggleSection(p: MethodState) {
@@ -367,6 +376,16 @@ function MethodToggleSection(p: MethodState) {
               <span className={LABEL}>代理人の氏名・宛先</span>
               <input value={p.agent} onChange={(e) => p.setAgent(e.target.value)} placeholder="例：山田太郎（行政書士事務所）" className={INPUT} />
             </label>
+          )}
+          {p.orders && p.setOrders && (
+            <div className="mt-1">
+              <p className="mb-1.5 text-sm font-bold text-muted">同封した定額小為替</p>
+              <MoneyOrderFields
+                titles={p.orderTitles ?? []}
+                orders={p.orders}
+                onChange={p.setOrders}
+              />
+            </div>
           )}
         </div>
       )}
@@ -441,6 +460,9 @@ function JudgeTab({
   const [mailDate, setMailDate] = useState(todayISO());
   const [recipient, setRecipient] = useState<RecipientType>("self");
   const [agent, setAgent] = useState("");
+
+  // 郵送請求に同封する定額小為替（証明書1枚につき1枚）
+  const [moneyOrders, setMoneyOrders] = useState<MoneyOrder[]>([]);
 
   const [nhiSameAsMain, setNhiSameAsMain] = useState(true);
   const [nhiMethod, setNhiMethod] = useState<RequestMethod>("window");
@@ -541,6 +563,7 @@ function JudgeTab({
       nhiAlternativeNote: result.hasNhi ? nhiAlt.trim() : "",
       ...mainInfo,
       ...nhiInfoFields,
+      moneyOrders,
     } as JudgmentRecord;
 
     setBusy(true);
@@ -691,7 +714,26 @@ function JudgeTab({
                 <span className="text-[11px] text-muted">例：令和7年度の1月1日時点で対象者が国外転出していたため発行不可。今回は令和6年度で対応した、など</span>
                 <textarea value={mainAlt} onChange={(e) => setMainAlt(e.target.value)} placeholder="判定年度で発行できなかった場合の対応内容（任意）" className={`${INPUT} min-h-[56px] py-2`} />
               </label>
-              <MethodToggleSection title="受領方法" method={method} setMethod={setMethod} mailDate={mailDate} setMailDate={setMailDate} recipient={recipient} setRecipient={setRecipient} agent={agent} setAgent={setAgent} />
+              <MethodToggleSection
+                title="受領方法"
+                method={method}
+                setMethod={setMethod}
+                mailDate={mailDate}
+                setMailDate={setMailDate}
+                recipient={recipient}
+                setRecipient={setRecipient}
+                agent={agent}
+                setAgent={setAgent}
+                orderTitles={mailedDocTitles({
+                  requestMethod: method,
+                  hasNhi: result.hasNhi,
+                  nhiSameAsMain,
+                  nhiRequestMethod: nhiMethod,
+                  docs: result.docs,
+                })}
+                orders={moneyOrders}
+                setOrders={setMoneyOrders}
+              />
             </div>
           </div>
 
@@ -740,6 +782,9 @@ function JudgeTab({
   );
 }
 
+// 領収書の添付に使う種別名（後日届く手数料の領収書）
+const RECEIPT_KIND = "領収書";
+
 /* ============================ 転出届・住民票の郵送請求 ============================ */
 
 // 転出届・住民票の請求フォームの入力値
@@ -753,6 +798,7 @@ interface ExtraFormValues {
   juminhyoMethod: JuminhyoMethod; // 住民票: 郵送請求 / 窓口発行
   juminhyoMyNumber: boolean; // 個人番号の記載あり/なし
   juminhyoPurpose: string; // 住民票を発行する目的
+  moneyOrders: MoneyOrder[]; // 同封した定額小為替（証明書1枚につき1枚）
 }
 
 function emptyExtraValues(): ExtraFormValues {
@@ -766,6 +812,7 @@ function emptyExtraValues(): ExtraFormValues {
     juminhyoMethod: "mail",
     juminhyoMyNumber: false,
     juminhyoPurpose: "",
+    moneyOrders: [],
   };
 }
 
@@ -782,6 +829,7 @@ function extraValuesFromRecord(r: JudgmentRecord, municipalities: Municipality[]
     juminhyoMethod: r.juminhyoMethod ?? "mail",
     juminhyoMyNumber: !!r.juminhyoMyNumber,
     juminhyoPurpose: r.juminhyoPurpose ?? "",
+    moneyOrders: r.moneyOrders ?? [],
   };
 }
 
@@ -828,6 +876,7 @@ function extraRecordPatch(
     juminhyoMyNumber: kind === "juminhyo" ? v.juminhyoMyNumber : undefined,
     juminhyoPurpose: kind === "juminhyo" ? v.juminhyoPurpose.trim() : undefined,
     postDate: isMail ? v.postDate : "",
+    moneyOrders: isMail ? v.moneyOrders : [],
     applicantType: applicant,
     applicantAgentName: agent,
     requestMethod: isMail ? "mail" : "window",
@@ -986,10 +1035,26 @@ function ExtraRequestFields({
         </>
       )}
       {isMail && (
-        <label className="flex flex-col gap-1">
-          <span className={LABEL}>ポスト投函日</span>
-          <input type="date" value={v.postDate} onChange={(e) => set({ postDate: e.target.value })} className={INPUT} />
-        </label>
+        <>
+          <label className="flex flex-col gap-1">
+            <span className={LABEL}>ポスト投函日（郵送で送った日）</span>
+            <input type="date" value={v.postDate} onChange={(e) => set({ postDate: e.target.value })} className={INPUT} />
+          </label>
+          <div className="flex flex-col gap-1">
+            <span className={LABEL}>同封した定額小為替</span>
+            <MoneyOrderFields
+              titles={mailedDocTitles({
+                requestKind: kind,
+                juminhyoMethod: v.juminhyoMethod,
+                juminhyoMyNumber: v.juminhyoMyNumber,
+                requestMethod: "mail",
+              })}
+              orders={v.moneyOrders}
+              onChange={(moneyOrders) => set({ moneyOrders })}
+              canEdit={canEdit}
+            />
+          </div>
+        </>
       )}
       {/* 申請者（郵送・窓口共通）。本人申請のみの自治体では代理人を選べない */}
       <div className="flex flex-col gap-1">
@@ -1176,6 +1241,7 @@ function ExtraRequestForm({
             <MailingFileAttachments
               recordId={savedRecord.id}
               kind={label}
+              filterKind={label}
               addLabel={`申請書・${label}のデータを追加（画像・PDF）`}
               canEdit={canEdit}
             />
@@ -1258,7 +1324,21 @@ function ExtraEditModal({
           <MailingFileAttachments
             recordId={record.id}
             kind={label}
+            filterKind={label}
             addLabel={`申請書・${label}のデータを追加（画像・PDF）`}
+            canEdit={canEdit}
+          />
+        </div>
+        <div className="border-t border-dashed border-border pt-3">
+          <p className="mb-1 text-sm font-bold text-muted">領収書（後日届いたら添付）</p>
+          <p className="mb-2 text-[11px] text-muted">
+            手数料の領収書が郵送で届いたら、ここに画像・PDFを添付してください。
+          </p>
+          <MailingFileAttachments
+            recordId={record.id}
+            kind={RECEIPT_KIND}
+            filterKind={RECEIPT_KIND}
+            addLabel="領収書を添付（画像・PDF）"
             canEdit={canEdit}
           />
         </div>
@@ -1692,6 +1772,9 @@ function RecordsTab({
                 </div>
               )}
 
+              {/* 郵送請求に同封した定額小為替と、後日届く領収書 */}
+              <MoneyOrderReceiptView record={r} canEdit={canEdit} />
+
               {r.hasNhi && (
                 <div className="mt-2 rounded-xl border-l-2 border-status-notice-fg bg-background p-3 text-xs leading-relaxed">
                   <p className="font-bold">国保：{r.nhiMunicipalityName || "未選択"}</p>
@@ -1721,7 +1804,7 @@ function RecordsTab({
             showToast={showToast}
           />
         ) : (
-          <RecipientEditModal record={editTarget} busy={busy} onClose={() => setEditTarget(null)} onSave={persistUpdate} />
+          <RecipientEditModal record={editTarget} busy={busy} onClose={() => setEditTarget(null)} onSave={persistUpdate} canEdit={canEdit} />
         ))}
       <ConfirmDialog
         open={!!deleteTarget}
@@ -1731,6 +1814,47 @@ function RecordsTab({
         onConfirm={remove}
         onCancel={() => setDeleteTarget(null)}
       />
+    </div>
+  );
+}
+
+// 記録一覧のカードに出す「定額小為替」と「領収書」。
+// 郵送請求した記録だけに出す（窓口で受け取るものは小為替も領収書も無い）
+function MoneyOrderReceiptView({
+  record,
+  canEdit,
+}: {
+  record: JudgmentRecord;
+  canEdit: boolean;
+}) {
+  const orders = record.moneyOrders ?? [];
+  const mailed =
+    record.requestMethod === "mail" ||
+    (record.requestKind === "tenshutsu" && record.requestMethod !== "window") ||
+    (record.requestKind === "juminhyo" && record.juminhyoMethod !== "window");
+  if (!mailed) return null;
+  return (
+    <div className="mt-2 rounded-xl bg-background p-3 text-xs leading-relaxed">
+      <p className="font-bold">{moneyOrderSummary(orders) || "定額小為替 未登録"}</p>
+      {orders.map((o) => (
+        <p key={o.id} className="text-muted">
+          <span className="tabular-nums">{moneyOrderNo(o) || "番号未入力"}</span>
+          {o.docTitle ? `（${o.docTitle}）` : ""}
+        </p>
+      ))}
+      {orders.length === 0 && (
+        <p className="text-muted">「編集」から為替証書の番号を登録できます。</p>
+      )}
+      <div className="mt-2 border-t border-dashed border-border pt-2">
+        <p className="mb-1 font-bold">領収書（後日届いたら添付）</p>
+        <MailingFileAttachments
+          recordId={record.id}
+          kind={RECEIPT_KIND}
+          filterKind={RECEIPT_KIND}
+          addLabel="領収書を添付（画像・PDF）"
+          canEdit={canEdit}
+        />
+      </div>
     </div>
   );
 }
@@ -1758,17 +1882,20 @@ function RecipientEditModal({
   busy,
   onClose,
   onSave,
+  canEdit,
 }: {
   record: JudgmentRecord;
   busy: boolean;
   onClose: () => void;
   onSave: (r: JudgmentRecord) => void;
+  canEdit: boolean;
 }) {
   const [method, setMethod] = useState<RequestMethod>(record.requestMethod || "window");
   const [mailDate, setMailDate] = useState(record.mailRequestDate || todayISO());
   const [recipient, setRecipient] = useState<RecipientType>(record.recipientType || "self");
   const [agent, setAgent] = useState(record.agentName || "");
   const [mainAlt, setMainAlt] = useState(record.mainAlternativeNote || "");
+  const [moneyOrders, setMoneyOrders] = useState<MoneyOrder[]>(record.moneyOrders ?? []);
 
   const [nhiSameAsMain, setNhiSameAsMain] = useState(record.hasNhi ? record.nhiSameAsMain !== false : true);
   const [nhiMethod, setNhiMethod] = useState<RequestMethod>(record.nhiRequestMethod || "window");
@@ -1804,6 +1931,7 @@ function RecipientEditModal({
       mainPhoneNeeded: mpd.trim(),
       mainUnpaidAmount: mua,
       mainPaymentStatus: mps as JudgmentRecord["mainPaymentStatus"],
+      moneyOrders,
     };
     if (record.hasNhi) {
       updated.nhiAlternativeNote = nhiAlt.trim();
@@ -1833,7 +1961,26 @@ function RecipientEditModal({
   return (
     <Modal open title="受領方法・メモを編集" onClose={onClose}>
       <div className="flex flex-col gap-2">
-        <MethodToggleSection title={record.hasNhi ? "課税証明書・市県民税納税証明書" : undefined} method={method} setMethod={setMethod} mailDate={mailDate} setMailDate={setMailDate} recipient={recipient} setRecipient={setRecipient} agent={agent} setAgent={setAgent} />
+        <MethodToggleSection
+          title={record.hasNhi ? "課税証明書・市県民税納税証明書" : undefined}
+          method={method}
+          setMethod={setMethod}
+          mailDate={mailDate}
+          setMailDate={setMailDate}
+          recipient={recipient}
+          setRecipient={setRecipient}
+          agent={agent}
+          setAgent={setAgent}
+          orderTitles={mailedDocTitles({
+            requestMethod: method,
+            hasNhi: record.hasNhi,
+            nhiSameAsMain,
+            nhiRequestMethod: nhiMethod,
+            docs: record.docs,
+          })}
+          orders={moneyOrders}
+          setOrders={setMoneyOrders}
+        />
         <label className="mt-3 flex flex-col gap-1">
           <span className={LABEL}>代替対応の備考（課税証明書等）</span>
           <textarea value={mainAlt} onChange={(e) => setMainAlt(e.target.value)} className={`${INPUT} min-h-[48px] py-2`} />
@@ -1865,6 +2012,20 @@ function RecipientEditModal({
             </div>
           </>
         )}
+
+        <div className="mt-3 border-t border-dashed border-border pt-3">
+          <p className="mb-1 text-sm font-bold text-muted">領収書（後日届いたら添付）</p>
+          <p className="mb-2 text-[11px] text-muted">
+            手数料の領収書が郵送で届いたら、ここに画像・PDFを添付してください。
+          </p>
+          <MailingFileAttachments
+            recordId={record.id}
+            kind={RECEIPT_KIND}
+            filterKind={RECEIPT_KIND}
+            addLabel="領収書を添付（画像・PDF）"
+            canEdit={canEdit}
+          />
+        </div>
 
         <Button fullWidth className="mt-3" disabled={!canSave || busy} onClick={submit}>
           {busy ? "保存中…" : "保存する"}
