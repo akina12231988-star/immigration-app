@@ -41,6 +41,7 @@ import {
 } from "../actions";
 import { ApplicationEditDialog } from "./ApplicationEditDialog";
 import { ApprovalSection } from "./ApprovalSection";
+import { ExtraRequestSection } from "./ExtraRequestSection";
 import { ContractOrgFormSection } from "./ContractOrgFormSection";
 import { SalesEntrySection } from "./SalesEntrySection";
 import { ORG_HONORIFICS } from "@/types/application";
@@ -449,6 +450,16 @@ export function ApplicationDetail({ id }: { id: string }) {
         </div>
       </Card>
       )}
+
+      {/* 審査中に入管から来た追加資料の提出依頼（書類/電話）。レターパックで送ったら完了 */}
+      <ExtraRequestSection
+        applicationId={app.id}
+        canEdit={!withdrawn}
+        noticeFiles={files.filter((f) => f.kind === "追加資料通知")}
+        uploading={uploading === "追加資料通知"}
+        onUpload={(list) => handleUpload("追加資料通知", list)}
+        onDeleteFile={handleDeleteFile}
+      />
 
       {!withdrawn && (
         <ApprovalSection
