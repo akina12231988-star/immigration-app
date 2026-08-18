@@ -6,6 +6,7 @@ import { Camera, UserRound } from "lucide-react";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { uploadWorkerPhoto } from "@/lib/worker-photo";
 import { getWorkerPhotoUrl } from "@/app/(app)/workers/actions";
+import { notifyWorkerPhotoChanged, useWorkerPhotoChanged } from "@/lib/worker-docs-events";
 
 // 顔写真の表示＋アップロード（外国人詳細）
 export function WorkerPhoto({
@@ -37,6 +38,13 @@ export function WorkerPhoto({
     };
   }, [photoPath]);
 
+  // 申請準備のチェックリストで登録された写真もすぐここに出す。
+  // ページ側の photo_path も新しくして、次の保存で古い写真に戻らないようにする
+  useWorkerPhotoChanged(workerId, (newUrl) => {
+    setUrl(newUrl);
+    router.refresh();
+  });
+
   async function handleFile(file: File | undefined) {
     if (!file) return;
     setBusy(true);
@@ -44,6 +52,7 @@ export function WorkerPhoto({
     try {
       const newUrl = await uploadWorkerPhoto(workerId, file);
       setUrl(newUrl);
+      notifyWorkerPhotoChanged(workerId, newUrl); // チェックリスト側にも反映する
       // ページ側の photo_path も新しくする。古いままだと、このあと編集フォームを
       // 開いて保存したときに写真が古いパスに戻ってしまう
       router.refresh();

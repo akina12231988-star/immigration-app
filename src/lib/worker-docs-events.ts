@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 // 外国人書類（onboarding_documents）の変更を、同じ画面の他のセクションに知らせる。
 //
@@ -25,5 +25,36 @@ export function useWorkerDocsChanged(workerId: string, reload: () => void): void
     window.addEventListener(EVENT_NAME, onChanged);
     return () => window.removeEventListener(EVENT_NAME, onChanged);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workerId]);
+}
+
+// ---- 顔写真 ----
+// 顔写真も申請準備のチェックリストと外国人詳細の見出しの両方から登録できるため、
+// 片方で登録したらもう片方にもすぐ最新の写真を出す
+const PHOTO_EVENT_NAME = "worker-photo-changed";
+
+export function notifyWorkerPhotoChanged(workerId: string, url: string): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(PHOTO_EVENT_NAME, { detail: { workerId, url } }));
+}
+
+// 同じ外国人の顔写真が登録されたら、新しい表示用URLを受け取る
+export function useWorkerPhotoChanged(
+  workerId: string,
+  apply: (url: string) => void,
+): void {
+  const applyRef = useRef(apply);
+  // 最新の処理を効果の中から呼べるようにする（レンダー中には書き換えない）
+  useEffect(() => {
+    applyRef.current = apply;
+  });
+  useEffect(() => {
+    const onChanged = (e: Event) => {
+      const detail = (e as CustomEvent<{ workerId?: string; url?: string }>).detail;
+      if (!detail?.url) return;
+      if (!detail.workerId || detail.workerId === workerId) applyRef.current(detail.url);
+    };
+    window.addEventListener(PHOTO_EVENT_NAME, onChanged);
+    return () => window.removeEventListener(PHOTO_EVENT_NAME, onChanged);
   }, [workerId]);
 }
