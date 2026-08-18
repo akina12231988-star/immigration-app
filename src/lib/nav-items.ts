@@ -18,6 +18,7 @@ import {
   UserCheck,
   Bell,
   Handshake,
+  Sparkles,
   type LucideIcon,
 } from "lucide-react";
 
@@ -50,6 +51,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/employees", label: "支援体制（従業員）", short: "支援体制", icon: UserCheck },
   { href: "/postings", label: "求人一覧", short: "求人", icon: Briefcase },
   { href: "/jobs", label: "求職一覧", short: "求職", icon: ClipboardList },
+  { href: "/updates", label: "更新のお知らせ", short: "更新情報", icon: Sparkles },
 ];
 
 // 現在パスがナビ項目にマッチするか（ホームは完全一致、他は前方一致）

@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { NAV_ITEMS, activeHref, type NavItem } from "@/lib/nav-items";
 import { useNotifications } from "@/lib/notification-store";
+import { useUnreadReleaseCount } from "@/lib/release-notes-read";
 
 // 1行目に常時表示する項目数（6列目は開閉ボタン）
 const PRIMARY_COUNT = 5;
@@ -96,7 +97,10 @@ function NavTab({
   const { href, short, icon: Icon, emphasize } = item;
   const isActive = active === href;
   const { unreadCount } = useNotifications();
-  const showBadge = href === "/notifications" && unreadCount > 0;
+  // 新機能のお知らせの未読件数（「更新のお知らせ」を開くと消える）
+  const unreadUpdates = useUnreadReleaseCount();
+  const badge =
+    href === "/notifications" ? unreadCount : href === "/updates" ? unreadUpdates : 0;
   return (
     <Link href={href} onClick={onNavigate} className="flex flex-col items-center gap-0.5 py-1">
       <span
@@ -112,9 +116,9 @@ function NavTab({
           size={20}
           className={emphasize ? "" : isActive ? "text-brand" : "text-muted"}
         />
-        {showBadge && (
+        {badge > 0 && (
           <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-seal px-1 text-[10px] font-black leading-none text-white">
-            {unreadCount > 99 ? "99+" : unreadCount}
+            {badge > 99 ? "99+" : badge}
           </span>
         )}
       </span>

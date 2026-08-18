@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
 import { OnboardingPendingAlert } from "@/components/OnboardingPendingAlert";
+import { UpdatesBanner } from "@/components/UpdatesBanner";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { countPrePrepApplications, getDashboardStats } from "@/lib/application-stats";
@@ -396,6 +397,9 @@ export default function DashboardPage() {
             </div>
           </section>
         )}
+
+        {/* 新しく追加した機能のお知らせ（未読があるときだけ出る） */}
+        <UpdatesBanner />
 
         {/* 入社書類の後送待ちアラート */}
         <OnboardingPendingAlert />

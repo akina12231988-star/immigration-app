@@ -6,12 +6,15 @@ import { NAV_ITEMS, activeHref } from "@/lib/nav-items";
 import { LogoutButton } from "@/components/LogoutButton";
 import { NotificationBell } from "@/components/NotificationBell";
 import { useNotifications } from "@/lib/notification-store";
+import { useUnreadReleaseCount } from "@/lib/release-notes-read";
 
 // PC専用の左サイドナビ（md 以上＝ブラウザ幅768px以上で表示）。モバイルは下部タブを使う。
 export function SideNav() {
   const pathname = usePathname();
   const active = activeHref(pathname);
   const { unreadCount } = useNotifications();
+  // 新機能のお知らせの未読件数（この端末で「更新のお知らせ」を開くと消える）
+  const unreadUpdates = useUnreadReleaseCount();
 
   return (
     <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-border bg-surface md:flex print:!hidden">
@@ -32,7 +35,12 @@ export function SideNav() {
       <nav className="flex-1 overflow-y-auto p-3">
         {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
           const isActive = active === href;
-          const showBadge = href === "/notifications" && unreadCount > 0;
+          const badge =
+            href === "/notifications"
+              ? unreadCount
+              : href === "/updates"
+                ? unreadUpdates
+                : 0;
           return (
             <Link
               key={href}
@@ -45,9 +53,9 @@ export function SideNav() {
             >
               <Icon size={19} className={isActive ? "" : "text-muted"} />
               {label}
-              {showBadge && (
+              {badge > 0 && (
                 <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-seal px-1.5 text-[11px] font-black text-white">
-                  {unreadCount > 99 ? "99+" : unreadCount}
+                  {badge > 99 ? "99+" : badge}
                 </span>
               )}
             </Link>
