@@ -20,6 +20,7 @@ import {
   reiwaYear,
 } from "@/lib/onboarding";
 import { todayStr } from "@/lib/ssw/calc";
+import { notifyWorkerDocsChanged, useWorkerDocsChanged } from "@/lib/worker-docs-events";
 import type { OnboardingDocumentRow } from "@/types/db";
 
 // 源泉徴収票を令和年ごとに蓄積して保存する。年を選んでアップロードすると、
@@ -53,6 +54,9 @@ export function GensenDocuments({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workerId]);
 
+  // 申請準備のチェックリストで源泉徴収票を添付したときも、ここに反映する
+  useWorkerDocsChanged(workerId, () => void load());
+
   const existingYears = new Set(rows.map((r) => gensenReiwaFromKey(r.doc_key)));
 
   function startUpload(reiwa: number) {
@@ -71,6 +75,7 @@ export function GensenDocuments({
     try {
       await uploadOnboardingDoc(workerId, { key: target.key, label: target.label, num: 10 }, file);
       await load();
+      notifyWorkerDocsChanged(workerId); // チェックリスト側にも反映する
     } catch (err) {
       setError(err instanceof Error ? err.message : "アップロードに失敗しました");
     } finally {
@@ -91,6 +96,7 @@ export function GensenDocuments({
       const res = await clearOnboardingDocFile(workerId, row.doc_key);
       if (!res.ok) throw new Error(res.message);
       await load();
+      notifyWorkerDocsChanged(workerId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "削除に失敗しました");
     } finally {
@@ -149,7 +155,13 @@ export function GensenDocuments({
                 className="flex items-center gap-2.5 border-b border-border bg-background px-3 py-2.5 text-sm last:border-b-0"
               >
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate font-bold">{row.label}</span>
+                  {/* 見出しは年から組み立てる（申請準備から添付した分も同じ表記になる） */}
+                  <span className="block truncate font-bold">
+                    {(() => {
+                      const y = gensenReiwaFromKey(row.doc_key);
+                      return y != null ? gensenLabel(y) : row.label;
+                    })()}
+                  </span>
                   <span className="block truncate text-[11px] text-muted">{row.file_name}</span>
                 </span>
                 <div className="flex shrink-0 items-center gap-1">

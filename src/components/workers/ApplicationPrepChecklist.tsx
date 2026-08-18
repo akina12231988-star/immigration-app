@@ -44,6 +44,12 @@ import { uploadWorkerPhoto } from "@/lib/worker-photo";
 import { listWorkerAddresses } from "@/lib/supabase/queries/worker-addresses";
 import { addressOnDate, reiwaJan1, type WorkerAddress } from "@/lib/worker-address";
 import { gensenDocKey, reiwaYear } from "@/lib/onboarding";
+import {
+  notifyWorkerDocsChanged,
+  notifyWorkerPhotoChanged,
+  useWorkerDocsChanged,
+  useWorkerPhotoChanged,
+} from "@/lib/worker-docs-events";
 import { todayStr } from "@/lib/ssw/calc";
 import {
   EMPTY_PREP_META,
@@ -128,6 +134,15 @@ export function ApplicationPrepChecklist({
     void loadDocs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workerId]);
+
+  // 源泉徴収票セクションなど、他の場所で添付・削除されたときもここに反映する
+  useWorkerDocsChanged(workerId, () => void loadDocs());
+
+  // 外国人詳細の見出しで登録された顔写真もここに反映する
+  useWorkerPhotoChanged(workerId, (url) => {
+    setPhotoExists(true);
+    setPhotoUrl(url);
+  });
 
   const current =
     selected != null ? (lists.find((l) => l.todo_no === selected) ?? null) : null;
@@ -347,6 +362,8 @@ export function ApplicationPrepChecklist({
     try {
       await uploadOnboardingDoc(workerId, { key: target.docKey, label: target.label, num: 0 }, file);
       await loadDocs();
+      // 源泉徴収票など、外国人詳細の他のセクションと共有している書類にも反映する
+      notifyWorkerDocsChanged(workerId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "アップロードに失敗しました");
     } finally {
@@ -400,6 +417,8 @@ export function ApplicationPrepChecklist({
       const url = await uploadWorkerPhoto(workerId, file);
       setPhotoExists(true);
       setPhotoUrl(url);
+      // 外国人詳細の見出しの写真もこの最新版に差し替える
+      notifyWorkerPhotoChanged(workerId, url);
     } catch (err) {
       setError(err instanceof Error ? err.message : "写真のアップロードに失敗しました");
     } finally {
@@ -415,6 +434,7 @@ export function ApplicationPrepChecklist({
       const res = await clearOnboardingDocFile(workerId, key);
       if (!res.ok) throw new Error(res.message);
       await loadDocs();
+      notifyWorkerDocsChanged(workerId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "削除に失敗しました");
     } finally {
