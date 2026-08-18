@@ -44,6 +44,7 @@ import { uploadWorkerPhoto } from "@/lib/worker-photo";
 import { listWorkerAddresses } from "@/lib/supabase/queries/worker-addresses";
 import { addressOnDate, reiwaJan1, type WorkerAddress } from "@/lib/worker-address";
 import { gensenDocKey, reiwaYear } from "@/lib/onboarding";
+import { notifyWorkerDocsChanged, useWorkerDocsChanged } from "@/lib/worker-docs-events";
 import { todayStr } from "@/lib/ssw/calc";
 import {
   EMPTY_PREP_META,
@@ -128,6 +129,9 @@ export function ApplicationPrepChecklist({
     void loadDocs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workerId]);
+
+  // 源泉徴収票セクションなど、他の場所で添付・削除されたときもここに反映する
+  useWorkerDocsChanged(workerId, () => void loadDocs());
 
   const current =
     selected != null ? (lists.find((l) => l.todo_no === selected) ?? null) : null;
@@ -347,6 +351,8 @@ export function ApplicationPrepChecklist({
     try {
       await uploadOnboardingDoc(workerId, { key: target.docKey, label: target.label, num: 0 }, file);
       await loadDocs();
+      // 源泉徴収票など、外国人詳細の他のセクションと共有している書類にも反映する
+      notifyWorkerDocsChanged(workerId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "アップロードに失敗しました");
     } finally {
@@ -415,6 +421,7 @@ export function ApplicationPrepChecklist({
       const res = await clearOnboardingDocFile(workerId, key);
       if (!res.ok) throw new Error(res.message);
       await loadDocs();
+      notifyWorkerDocsChanged(workerId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "削除に失敗しました");
     } finally {
