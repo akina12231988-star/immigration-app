@@ -294,6 +294,9 @@ export interface Worker {
   residence_renewal_status: ResidenceRenewalStatus; // 在留更新の対応状況
   residence_renewal_todo: string; // Notion 申請TODO番号
   application_prep_kind: string; // 申請準備の区分（'' = 更新 / '新規' = 新規で申請書類準備）
+  // 申請準備の所属機関（転職の場合の転職先）。0084。organizations.id。
+  // 現在の所属機関は在留カード受領まで変えないため、準備中はこちらを表示する
+  application_prep_organization_id: string | null;
   leaving_on: string | null; // 退職日
   leaving_todo: string; // 退職時のNotion随時報告TODO番号
   leaving_kind: string; // 退職区分（'' / 会社都合 / 自己都合）

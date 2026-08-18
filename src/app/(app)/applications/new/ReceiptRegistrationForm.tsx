@@ -56,8 +56,14 @@ interface WorkerOption {
   id: string;
   name: string;
   current_organization_id: string | null;
+  // 申請準備で入れた所属機関（転職の場合の転職先）。あればこちらを申請の所属機関にする
+  application_prep_organization_id: string | null;
   residence_expiry_date: string | null;
 }
+
+// 申請の所属機関は「申請準備の所属機関（転職先）」を優先し、無ければ現在の所属機関
+const orgIdFor = (w: WorkerOption) =>
+  w.application_prep_organization_id ?? w.current_organization_id ?? "";
 
 const INPUT_CLASS =
   "w-full rounded-xl border border-border bg-surface px-3.5 py-3 text-base focus:border-brand focus:outline-none";
@@ -109,7 +115,9 @@ export function ReceiptRegistrationForm({
     const supabase = createClient();
     void supabase
       .from("workers")
-      .select("id, name, current_organization_id, residence_expiry_date")
+      .select(
+        "id, name, current_organization_id, application_prep_organization_id, residence_expiry_date",
+      )
       .order("name")
       .then(({ data }) => {
         if (cancelled || !data) return;
@@ -119,7 +127,7 @@ export function ReceiptRegistrationForm({
         const w = initialWorkerId ? list.find((x) => x.id === initialWorkerId) : undefined;
         if (w) {
           setWorkerId(w.id);
-          if (w.current_organization_id) setOrgId(w.current_organization_id);
+          if (orgIdFor(w)) setOrgId(orgIdFor(w));
           if (w.residence_expiry_date) {
             setFields((prev) => ({ ...prev, residenceExpiryAtApply: w.residence_expiry_date! }));
           }
@@ -205,7 +213,7 @@ export function ReceiptRegistrationForm({
     setWorkerId(id);
     const w = workers.find((x) => x.id === id);
     if (!w) return;
-    if (w.current_organization_id) setOrgId(w.current_organization_id);
+    if (orgIdFor(w)) setOrgId(orgIdFor(w));
     if (w.residence_expiry_date) set("residenceExpiryAtApply", w.residence_expiry_date);
   };
 
@@ -223,6 +231,7 @@ export function ReceiptRegistrationForm({
           id: worker.id,
           name: worker.name,
           current_organization_id: orgId || null,
+          application_prep_organization_id: null,
           residence_expiry_date: null,
         },
       ]);

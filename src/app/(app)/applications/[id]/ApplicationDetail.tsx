@@ -201,9 +201,17 @@ export function ApplicationDetail({ id }: { id: string }) {
       const currentOrgId =
         (data as { current_organization_id: string | null } | null)?.current_organization_id ??
         null;
-      if (currentOrgId === app.organizationId) return;
+      // 転職の申請準備で入れた「申請準備の所属機関（転職先）」は、
+      // 現在の所属機関に反映した時点で役目を終えるので消す
+      if (currentOrgId === app.organizationId) {
+        await updateWorker(supabase, app.workerId, {
+          application_prep_organization_id: null,
+        });
+        return;
+      }
       await updateWorker(supabase, app.workerId, {
         current_organization_id: app.organizationId,
+        application_prep_organization_id: null,
         ...(app.employmentStartOn ? { employment_start_on: app.employmentStartOn } : {}),
       });
       setOrgLinkNotice(

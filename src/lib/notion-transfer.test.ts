@@ -17,6 +17,7 @@ function worker(over: Partial<Worker>): Worker {
     health_note: "",
     family_note: "",
     current_organization_id: null,
+    application_prep_organization_id: null,
     residence_status: "",
     residence_permit_date: null,
     residence_expiry_date: null,
