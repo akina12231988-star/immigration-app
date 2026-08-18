@@ -286,6 +286,8 @@ export function WorkerDetail({
             <div className="min-w-0">
               <p className="text-lg font-black">
                 {worker.name}
+                {/* 氏名を書類やメールに貼りやすいようにコピーできる */}
+                <CopyNameButton name={worker.name} />
                 {worker.worker_code && (
                   <span className="ml-2 align-middle text-xs font-bold text-brand">
                     ID {worker.worker_code}
@@ -937,6 +939,33 @@ export function WorkerDetail({
         onCancel={() => setDeletingHistory(null)}
       />
     </div>
+  );
+}
+
+// 氏名のコピー（押すと一瞬チェックに変わる）
+function CopyNameButton({ name }: { name: string }) {
+  const [done, setDone] = useState(false);
+  if (!name) return null;
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(name);
+          setDone(true);
+          setTimeout(() => setDone(false), 1500);
+        } catch {
+          // クリップボードが使えない環境では何もしない
+        }
+      }}
+      title={done ? "コピーしました" : "氏名をコピー"}
+      aria-label="氏名をコピー"
+      className={`ml-1.5 inline-flex h-6 w-6 items-center justify-center rounded-lg align-middle ${
+        done ? "text-status-approved-fg" : "text-muted hover:bg-background hover:text-brand"
+      }`}
+    >
+      {done ? <Check size={14} /> : <Copy size={14} />}
+    </button>
   );
 }
 
