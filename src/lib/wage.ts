@@ -42,3 +42,40 @@ export function wageRaise<T extends Pick<WorkerWage, "started_on" | "created_at"
   const prev = sorted.slice(i + 1).find((w) => w.kind === target.kind);
   return prev ? target.amount - prev.amount : null;
 }
+
+// ---- 時給 ⇔ 月給の換算（雇用条件書と同じ考え方） ----
+//
+//   時給 = 月給 × 12ヶ月 ÷ 年間所定労働時間数
+//   月給 = 時給 × 年間所定労働時間数 ÷ 12ヶ月
+//
+// 年間所定労働時間は会社ごとに違うため、所属機関に登録した値を使う（0 は未登録）。
+
+// 月給 → 時給（円・四捨五入）。換算できないときは null
+export function hourlyFromMonthly(monthly: number, annualHours: number): number | null {
+  if (!monthly || !annualHours) return null;
+  return Math.round((monthly * 12) / annualHours);
+}
+
+// 時給 → 月給（円・四捨五入）。換算できないときは null
+export function monthlyFromHourly(hourly: number, annualHours: number): number | null {
+  if (!hourly || !annualHours) return null;
+  return Math.round((hourly * annualHours) / 12);
+}
+
+// 賃金の区分に応じた換算の表示（例: 月給187,000円 → 「時給 約1,122円」）。
+// 時給・月給以外（日給・年収）は換算しない
+export function wageConversionText(
+  kind: WorkerWageKind | string,
+  amount: number,
+  annualHours: number,
+): string | null {
+  if (kind === "月給") {
+    const hourly = hourlyFromMonthly(amount, annualHours);
+    return hourly == null ? null : `時給 約${hourly.toLocaleString("ja-JP")}円`;
+  }
+  if (kind === "時給") {
+    const monthly = monthlyFromHourly(amount, annualHours);
+    return monthly == null ? null : `月給 約${monthly.toLocaleString("ja-JP")}円`;
+  }
+  return null;
+}
