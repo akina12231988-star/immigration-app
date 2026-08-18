@@ -4,10 +4,13 @@ import {
   isSelfOnlyMunicipality,
   juminhyoTitle,
   mailedDocTitles,
+  mainMailedTitles,
   moneyOrderNo,
   moneyOrderSummary,
+  nhiMailedTitles,
   requestKindLabel,
   syncMoneyOrders,
+  type MoneyOrder,
   type Municipality,
 } from "./tax-cert";
 
@@ -127,23 +130,58 @@ describe("定額小為替", () => {
     ).toEqual([]);
   });
 
-  it("郵送請求なら証明書、国保は受領方法に従う", () => {
+  it("課税証明書と市県民税納税証明書で1行ずつ作る（判定結果に納税証明書が無くても）", () => {
+    expect(
+      mainMailedTitles({
+        requestMethod: "mail",
+        yearType: "prev",
+        docs: [{ title: "課税証明書（前年度分）", meta: "", starred: false }],
+      }),
+    ).toEqual(["課税証明書（前年度分）", "市県民税納税証明書（前年度分）"]);
+  });
+
+  it("国保は受領方法に従い、国保の欄の分として1行作る", () => {
     const docs = [
       { title: "課税証明書（前年度分）", meta: "", starred: false },
       { title: "国民健康保険税 納税証明書", meta: "", starred: false, isNhi: true },
     ];
     expect(
-      mailedDocTitles({ requestMethod: "mail", hasNhi: true, nhiSameAsMain: true, docs }),
-    ).toEqual(["課税証明書（前年度分）", "国民健康保険税 納税証明書"]);
+      nhiMailedTitles({ requestMethod: "mail", hasNhi: true, nhiSameAsMain: true, docs }),
+    ).toEqual(["国民健康保険税 納税証明書"]);
     expect(
-      mailedDocTitles({
+      nhiMailedTitles({
         requestMethod: "mail",
         hasNhi: true,
         nhiSameAsMain: false,
         nhiRequestMethod: "window",
         docs,
       }),
-    ).toEqual(["課税証明書（前年度分）"]);
+    ).toEqual([]);
+  });
+
+  it("手で追加した行は、番号が空でも消えない", () => {
+    const added: MoneyOrder[] = [
+      {
+        id: "mo-main-extra-1",
+        docTitle: "課税証明書（前年度分）",
+        first: "",
+        second: "",
+        group: "main",
+        extra: true,
+      },
+    ];
+    const rows = syncMoneyOrders(["課税証明書（前年度分）"], added, "main");
+    expect(rows).toHaveLength(2);
+    expect(rows[1].extra).toBe(true);
+  });
+
+  it("金額を入れると合計を出す", () => {
+    expect(
+      moneyOrderSummary([
+        { id: "a", docTitle: "課税証明書", first: "1", second: "2", amount: "300" },
+        { id: "b", docTitle: "納税証明書", first: "3", second: "4", amount: "400" },
+      ]),
+    ).toBe("定額小為替 2枚（番号入力済み 2枚）・合計 700円");
   });
 
   it("一覧に出す一言は枚数と入力済み枚数を出す", () => {

@@ -32,8 +32,10 @@ import {
   judgeYear,
   juminhyoTitle,
   mailedDocTitles,
+  mainMailedTitles,
   moneyOrderNo,
   moneyOrderSummary,
+  nhiMailedTitles,
   paymentStatusLabel,
   requestKindLabel,
   todayISO,
@@ -384,6 +386,7 @@ function MethodToggleSection(p: MethodState) {
                 titles={p.orderTitles ?? []}
                 orders={p.orders}
                 onChange={p.setOrders}
+                group="main"
               />
             </div>
           )}
@@ -469,6 +472,17 @@ function JudgeTab({
   const [nhiMailDate, setNhiMailDate] = useState(todayISO());
   const [nhiRecipient, setNhiRecipient] = useState<RecipientType>("self");
   const [nhiAgent, setNhiAgent] = useState("");
+
+  // 国保税納税証明書の分の定額小為替（郵送で受け取るときだけ）
+  const nhiOrderTitles = result
+    ? nhiMailedTitles({
+        requestMethod: method,
+        hasNhi: result.hasNhi,
+        nhiSameAsMain,
+        nhiRequestMethod: nhiMethod,
+        docs: result.docs,
+      })
+    : [];
 
   const selectedMuni = municipalities.find((m) => m.id === muniId) ?? null;
   const selectedNhiMuni = municipalities.find((m) => m.id === nhiMuniId) ?? null;
@@ -724,11 +738,9 @@ function JudgeTab({
                 setRecipient={setRecipient}
                 agent={agent}
                 setAgent={setAgent}
-                orderTitles={mailedDocTitles({
+                orderTitles={mainMailedTitles({
                   requestMethod: method,
-                  hasNhi: result.hasNhi,
-                  nhiSameAsMain,
-                  nhiRequestMethod: nhiMethod,
+                  yearType: result.yearType,
                   docs: result.docs,
                 })}
                 orders={moneyOrders}
@@ -763,6 +775,17 @@ function JudgeTab({
                   </div>
                   {!nhiSameAsMain && (
                     <MethodToggleSection method={nhiMethod} setMethod={setNhiMethod} mailDate={nhiMailDate} setMailDate={setNhiMailDate} recipient={nhiRecipient} setRecipient={setNhiRecipient} agent={nhiAgent} setAgent={setNhiAgent} />
+                  )}
+                  {nhiOrderTitles.length > 0 && (
+                    <div className="mt-3">
+                      <p className="mb-1.5 text-sm font-bold text-muted">同封した定額小為替</p>
+                      <MoneyOrderFields
+                        titles={nhiOrderTitles}
+                        orders={moneyOrders}
+                        onChange={setMoneyOrders}
+                        group="nhi"
+                      />
+                    </div>
                   )}
                 </div>
               </div>
@@ -1860,6 +1883,7 @@ function MoneyOrderReceiptView({
       {orders.map((o) => (
         <p key={o.id} className="text-muted">
           <span className="tabular-nums">{moneyOrderNo(o) || "番号未入力"}</span>
+          {o.amount ? `　${Number(o.amount).toLocaleString("ja-JP")}円` : ""}
           {o.docTitle ? `（${o.docTitle}）` : ""}
         </p>
       ))}
@@ -1936,6 +1960,15 @@ function RecipientEditModal({
   const [nua, setNua] = useState((record.nhiUnpaidAmount as string) || "");
   const [nps, setNps] = useState((record.nhiPaymentStatus as string) || "");
 
+  // 国保税納税証明書の分の定額小為替（郵送で受け取るときだけ）
+  const nhiOrderTitles = nhiMailedTitles({
+    requestMethod: method,
+    hasNhi: record.hasNhi,
+    nhiSameAsMain,
+    nhiRequestMethod: nhiMethod,
+    docs: record.docs,
+  });
+
   const canSave =
     checkMethodValid(method, mailDate, recipient, agent) &&
     (!record.hasNhi || nhiSameAsMain || checkMethodValid(nhiMethod, nhiMailDate, nhiRecipient, nhiAgent));
@@ -1992,11 +2025,9 @@ function RecipientEditModal({
           setRecipient={setRecipient}
           agent={agent}
           setAgent={setAgent}
-          orderTitles={mailedDocTitles({
+          orderTitles={mainMailedTitles({
             requestMethod: method,
-            hasNhi: record.hasNhi,
-            nhiSameAsMain,
-            nhiRequestMethod: nhiMethod,
+            yearType: record.yearType,
             docs: record.docs,
           })}
           orders={moneyOrders}
@@ -2021,6 +2052,17 @@ function RecipientEditModal({
               </div>
               {!nhiSameAsMain && (
                 <MethodToggleSection method={nhiMethod} setMethod={setNhiMethod} mailDate={nhiMailDate} setMailDate={setNhiMailDate} recipient={nhiRecipient} setRecipient={setNhiRecipient} agent={nhiAgent} setAgent={setNhiAgent} />
+              )}
+              {nhiOrderTitles.length > 0 && (
+                <div className="mt-3">
+                  <p className="mb-1.5 text-sm font-bold text-muted">同封した定額小為替</p>
+                  <MoneyOrderFields
+                    titles={nhiOrderTitles}
+                    orders={moneyOrders}
+                    onChange={setMoneyOrders}
+                    group="nhi"
+                  />
+                </div>
               )}
             </div>
             <label className="mt-3 flex flex-col gap-1">
