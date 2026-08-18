@@ -332,7 +332,10 @@ function ContractColumn({
           ) : (
             <div className="flex h-32 flex-col items-center justify-center gap-1 px-2 text-center">
               <FileText size={24} className="text-muted" />
-              <p className="max-w-full truncate text-xs font-bold">{latest.fileName || kind}</p>
+              {/* ダウンロードすると付く名前をそのまま出す（氏名_書類名_会社名） */}
+              <p className="max-w-full truncate text-xs font-bold">
+                {latest.downloadName || latest.fileName || kind}
+              </p>
               <p className="text-[10px] text-muted">{latest.createdAt.slice(0, 10)} 登録</p>
             </div>
           )
@@ -392,7 +395,7 @@ function ContractColumn({
                 rel="noopener noreferrer"
                 className="truncate text-[11px] text-muted underline-offset-2 hover:text-brand hover:underline"
               >
-                {d.createdAt.slice(0, 10)} — {d.fileName || kind}
+                {d.createdAt.slice(0, 10)} — {d.downloadName || d.fileName || kind}
               </a>
             ))}
           </div>
