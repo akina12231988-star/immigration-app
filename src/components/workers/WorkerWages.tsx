@@ -10,7 +10,8 @@ import {
   listWorkerWages,
   updateWorkerWage,
 } from "@/lib/supabase/queries/wages";
-import { currentWage, wageRaise, wageText } from "@/lib/wage";
+import { currentWage, wageConversionText, wageRaise, wageText } from "@/lib/wage";
+import { updateOrganization } from "@/lib/supabase/queries/organizations";
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
 import { WORKER_WAGE_KINDS, type Organization, type WorkerWage, type WorkerWageKind } from "@/types/db";
 
@@ -69,6 +70,42 @@ export function WorkerWages({
     id ? (organizations.find((o) => o.id === id)?.name ?? "") : "";
 
   const now = currentWage(wages, today);
+
+  // 時給⇔月給の換算に使う年間所定労働時間（会社ごと。所属機関に登録する）。
+  // 賃金の行に機関が入っていればその会社、無ければ現在の所属機関のものを使う
+  const orgHours = (id: string | null): number =>
+    organizations.find((o) => o.id === id)?.annual_work_hours ?? 0;
+  const conversionOrgId = now?.organization_id ?? currentOrganizationId;
+  const [hoursInput, setHoursInput] = useState<string>("");
+  const [hoursSaving, setHoursSaving] = useState(false);
+  const [hoursByOrg, setHoursByOrg] = useState<Record<string, number>>({});
+  const annualHours = (id: string | null): number =>
+    (id && hoursByOrg[id]) || orgHours(id);
+
+  // 年間所定労働時間を所属機関に保存する（この会社の全員の換算に使われる）
+  const saveHours = async () => {
+    if (!conversionOrgId) return;
+    const hours = Number(hoursInput.replace(/[^0-9]/g, "")) || 0;
+    setHoursSaving(true);
+    setError(null);
+    try {
+      await updateOrganization(createClient(), conversionOrgId, {
+        annual_work_hours: hours,
+      } as never);
+      setHoursByOrg((prev) => ({ ...prev, [conversionOrgId]: hours }));
+      setHoursInput("");
+    } catch (err) {
+      setError(
+        dbErrorMessage(
+          err,
+          "0082_organization_annual_work_hours.sql",
+          errorMessage(err, "年間所定労働時間の保存に失敗しました"),
+        ),
+      );
+    } finally {
+      setHoursSaving(false);
+    }
+  };
 
   const openForm = (asHire: boolean) => {
     setKind(now?.kind ?? "時給");
@@ -151,6 +188,14 @@ export function WorkerWages({
             <span className="text-sm font-bold text-seal">未登録</span>
           )}
         </p>
+        {now && wageConversionText(now.kind, now.amount, annualHours(now.organization_id)) && (
+          <p className="text-sm font-bold text-brand">
+            ＝ {wageConversionText(now.kind, now.amount, annualHours(now.organization_id))}
+            <span className="ml-1 text-[11px] font-medium text-muted">
+              （年間所定労働時間 {annualHours(now.organization_id).toLocaleString("ja-JP")}時間で計算）
+            </span>
+          </p>
+        )}
         {now && (
           <p className="text-[11px] text-muted">
             {now.started_on}から
@@ -164,6 +209,48 @@ export function WorkerWages({
           </p>
         )}
       </div>
+
+      {/* 換算に使う年間所定労働時間（会社ごとに登録。雇用条件書の値を入れる） */}
+      {conversionOrgId && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+          <span className="text-muted">
+            年間所定労働時間（{orgName(conversionOrgId) || "所属機関"}）:
+          </span>
+          {annualHours(conversionOrgId) > 0 && hoursInput === "" ? (
+            <span className="font-bold tabular-nums">
+              {annualHours(conversionOrgId).toLocaleString("ja-JP")}時間
+            </span>
+          ) : null}
+          {canEdit && (
+            <>
+              <input
+                value={hoursInput}
+                onChange={(e) => setHoursInput(e.target.value.replace(/[^0-9]/g, ""))}
+                inputMode="numeric"
+                placeholder={
+                  annualHours(conversionOrgId) > 0
+                    ? String(annualHours(conversionOrgId))
+                    : "例: 2000"
+                }
+                className="w-24 rounded-lg border border-border bg-surface px-2 py-1 text-right tabular-nums"
+              />
+              <button
+                type="button"
+                onClick={() => void saveHours()}
+                disabled={hoursSaving || hoursInput === ""}
+                className="rounded-lg border border-border px-2 py-1 font-bold text-brand disabled:opacity-50"
+              >
+                {hoursSaving ? "保存中…" : "この会社に登録"}
+              </button>
+            </>
+          )}
+          {annualHours(conversionOrgId) === 0 && (
+            <span className="text-muted">
+              登録すると時給⇔月給の換算が出ます（雇用条件書の年間所定労働時間）
+            </span>
+          )}
+        </div>
+      )}
 
       {canEdit && (
         <div className="mt-2 flex flex-wrap gap-2">
@@ -268,7 +355,14 @@ export function WorkerWages({
                         </span>
                       )}
                     </td>
-                    <td className="py-1.5 pr-2">{w.kind}</td>
+                    <td className="py-1.5 pr-2">
+                      {w.kind}
+                      {wageConversionText(w.kind, w.amount, annualHours(w.organization_id)) && (
+                        <span className="block text-[10px] text-muted">
+                          {wageConversionText(w.kind, w.amount, annualHours(w.organization_id))}
+                        </span>
+                      )}
+                    </td>
                     <td className="py-1.5 pr-2 text-right tabular-nums">
                       {canEdit ? (
                         <input

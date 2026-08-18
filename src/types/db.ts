@@ -96,6 +96,7 @@ export interface Organization {
   corporate_no: string; // 法人番号（13桁・法人でない場合は空）
   note: string;
   intake: Partial<OrganizationIntake>; // 登録支援機関への申込書の内容（0043）。旧行は {}
+  annual_work_hours?: number; // 年間所定労働時間（時給⇔月給の換算に使う。0 = 未登録。0082）
   created_at: string;
   updated_at: string;
 }
