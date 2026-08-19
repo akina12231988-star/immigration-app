@@ -15,6 +15,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { FileDropArea } from "@/components/ui/FileDropArea";
 import { Button } from "@/components/ui/Button";
 import { Combobox } from "@/components/ui/Combobox";
 import { createClient } from "@/lib/supabase/client";
@@ -709,6 +710,7 @@ export function OnboardingClient({
                 ファイルを添付すると自動で「添付資料」になります。未添付の書類は後送・未入手・対象外から選んでください。
                 番号はメール本文と同じ「添付資料→後送→未入手」の順の通し番号です。
                 アップロードしたファイルは外国人詳細ページにも保存され、そこから選んでダウンロードできます。
+                「添付」を押すほか、書類の行にファイルをドラッグ＆ドロップしても添付できます。
               </p>
               <div className="space-y-2">
                 {defs.map((def, i) => (
@@ -1053,7 +1055,12 @@ function DocRow({
   }
 
   return (
-    <div className={`rounded-xl border border-border bg-background p-2.5 ${STATUS_BORDER[state.status]}`}>
+    // 行のどこにファイルを落としても添付できる
+    <FileDropArea
+      onFiles={(files) => void handleFile(files[0])}
+      disabled={!canEdit || busy}
+      className={`rounded-xl border border-border bg-background p-2.5 ${STATUS_BORDER[state.status]}`}
+    >
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
         <span className="min-w-0 flex-1 text-sm">
           <span className="mr-1 text-[11px] font-bold text-muted">
@@ -1159,7 +1166,7 @@ function DocRow({
           e.target.value = "";
         }}
       />
-    </div>
+    </FileDropArea>
   );
 }
 
@@ -1236,7 +1243,9 @@ function FollowupDocRow({
 
   const active = kind !== "";
   return (
-    <div
+    <FileDropArea
+      onFiles={(files) => void handleFile(files[0])}
+      disabled={!canEdit || busy}
       className={`rounded-xl border border-border bg-background p-2.5 ${
         active ? "border-l-4 border-l-brand" : "opacity-70"
       }`}
@@ -1323,6 +1332,6 @@ function FollowupDocRow({
           e.target.value = "";
         }}
       />
-    </div>
+    </FileDropArea>
   );
 }
