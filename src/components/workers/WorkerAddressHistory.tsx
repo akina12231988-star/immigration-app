@@ -75,12 +75,28 @@ export function WorkerAddressHistory({
     }
   }
 
-  async function remove(id: string) {
-    if (!window.confirm("この住所歴を削除します。よろしいですか？")) return;
+  async function remove(row: WorkerAddress) {
+    if (!window.confirm(`${row.moved_on}「${row.address}」の住所歴を削除します。よろしいですか？`)) {
+      return;
+    }
     setError(null);
     try {
-      await deleteWorkerAddress(createClient(), id);
-      await syncCurrentAddress(await load());
+      const deleted = await deleteWorkerAddress(createClient(), row.id);
+      if (deleted === 0) {
+        // 権限（RLS）が足りないと、エラーにならず消えないことがある
+        setError(
+          "住所歴を削除できませんでした。権限の設定が足りない可能性があります／マイグレーション 0088_worker_address_policies.sql が未適用の可能性があります。Supabase の SQL Editor で適用してください。",
+        );
+        return;
+      }
+      // 消えたことが分かるよう、先に一覧から外す
+      setRows((prev) => prev.filter((r) => r.id !== row.id));
+      try {
+        await syncCurrentAddress(await load());
+      } catch {
+        // 削除自体は済んでいるので、基本情報への反映だけ失敗したことを伝える
+        setError("削除しました。基本情報の住所への反映に失敗したので、画面を開き直してください。");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "削除に失敗しました");
     }
@@ -123,7 +139,7 @@ export function WorkerAddressHistory({
                 <button
                   type="button"
                   aria-label="削除"
-                  onClick={() => remove(r.id)}
+                  onClick={() => void remove(r)}
                   className="shrink-0 rounded-lg border border-border px-2 py-1 text-seal"
                 >
                   <Trash2 size={13} />
