@@ -12,6 +12,7 @@ import {
   onboardingDocDefs,
   onboardingDownloadName,
   onboardingMailNumbers,
+  onboardingMailSubject,
   onboardingPdfName,
   pendingDaysElapsed,
   reiwaYear,
@@ -272,5 +273,19 @@ describe("入社書類メールと外国人詳細の書類をそろえる", () =
   it("申請書類一式と労働者名簿も外国人詳細に出す", () => {
     expect(WORKER_DETAIL_DOC_KEYS).toContain("shinsei");
     expect(WORKER_DETAIL_DOC_KEYS).toContain("meibo");
+  });
+});
+
+describe("onboardingMailSubject", () => {
+  it("「◯◯さんの資料」にする", () => {
+    expect(onboardingMailSubject("TEGUH RIZKI")).toBe("TEGUH RIZKIさんの資料");
+  });
+
+  it("前後の空白は落とす", () => {
+    expect(onboardingMailSubject("  NGUYEN VAN A  ")).toBe("NGUYEN VAN Aさんの資料");
+  });
+
+  it("氏名が無いときは「資料」だけにする", () => {
+    expect(onboardingMailSubject("")).toBe("資料");
   });
 });

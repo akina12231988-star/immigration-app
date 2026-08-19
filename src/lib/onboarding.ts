@@ -139,6 +139,12 @@ export interface OnboardingMailInput {
   docs: OnboardingMailDoc[];
 }
 
+// メールの件名。「◯◯さんの資料」（後送分の返信でも同じ件名を使う）
+export function onboardingMailSubject(workerName: string): string {
+  const name = (workerName ?? "").trim();
+  return name ? `${name}さんの資料` : "資料";
+}
+
 // メール本文の組み立て（添付資料 / 後送予定 / 未入手 の3区分・対象外は載せない）。
 // 番号は元の書類番号ではなく、添付資料から順に振り直した通し番号を使う。
 export function buildOnboardingMail(input: OnboardingMailInput): string {
