@@ -12,7 +12,8 @@ import {
   registerMailingFile,
 } from "./actions";
 
-// 郵送請求の記録へのファイル添付（転出届・住民票の画像など・複数可）
+// 郵送請求の記録へのファイル添付（郵送請求した申請書・転出届・住民票・領収書の画像やPDF・複数可）。
+// 追加はドラッグ＆ドロップと、ボタンを押してファイルを選ぶ方法のどちらでもできる。
 export function MailingFileAttachments({
   recordId,
   kind,
@@ -30,6 +31,7 @@ export function MailingFileAttachments({
   const [files, setFiles] = useState<MailingFileRow[]>([]);
   const shown = filterKind ? files.filter((f) => f.kind === filterKind) : files;
   const [busy, setBusy] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -84,7 +86,21 @@ export function MailingFileAttachments({
   }
 
   return (
-    <div className="flex flex-col gap-1.5">
+    <div
+      onDragOver={(e) => {
+        if (!canEdit) return;
+        e.preventDefault();
+        setDragOver(true);
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        if (!canEdit) return;
+        e.preventDefault();
+        setDragOver(false);
+        if (!busy) void handleFiles(e.dataTransfer.files);
+      }}
+      className={`flex flex-col gap-1.5 rounded-xl p-1 ${dragOver ? "bg-brand/10 ring-2 ring-brand" : ""}`}
+    >
       {error && <p className="rounded-lg bg-seal/10 px-2.5 py-1.5 text-xs text-seal">{error}</p>}
       {shown.length === 0 && !canEdit && <p className="text-[11px] text-muted">添付はありません</p>}
       {shown.map((f) => (
@@ -121,6 +137,11 @@ export function MailingFileAttachments({
             {busy ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
             {busy ? "アップロード中…" : addLabel}
           </button>
+          <p className="text-[11px] text-muted">
+            {dragOver
+              ? "ここで離すと添付します"
+              : "画像・PDFをこの枠にドラッグ＆ドロップしても添付できます。"}
+          </p>
           <input
             ref={inputRef}
             type="file"
