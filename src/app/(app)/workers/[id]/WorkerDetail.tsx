@@ -23,6 +23,7 @@ import { WorkerPhoto } from "@/components/workers/WorkerPhoto";
 import { FieldJumpSearch } from "@/components/workers/FieldJumpSearch";
 import { WorkerDocuments } from "@/components/workers/WorkerDocuments";
 import { WorkerContracts } from "@/components/workers/WorkerContracts";
+import { WorkerEmploymentInsurance } from "@/components/workers/WorkerEmploymentInsurance";
 import { OnboardingDocuments } from "@/components/workers/OnboardingDocuments";
 import { HealthCheckSection } from "@/components/workers/HealthCheckSection";
 import { GensenDocuments } from "@/components/workers/GensenDocuments";
@@ -687,6 +688,9 @@ export function WorkerDetail({
         currentOrganizationId={worker.current_organization_id}
         orgEmploymentStarts={worker.org_employment_starts ?? []}
       />
+
+      {/* 雇用保険（離職票・被保険者証）が届いたときの保管 */}
+      <WorkerEmploymentInsurance workerId={worker.id} canEdit={canEdit} />
 
       {/* 外国人書類（合格証・パスポート・履歴書など）をPDF・画像で保存 */}
       <WorkerCertificateDocs workerId={worker.id} canEdit={canEdit} />

@@ -4,9 +4,16 @@ import { createClient } from "@/lib/supabase/client";
 import { compressImage } from "@/lib/image-compress";
 import { createWorkerDocTicket, registerWorkerDoc } from "@/app/(app)/workers/actions";
 
-type WorkerDocKind = "在留カード" | "指定書" | "雇用契約書" | "雇用条件書";
+type WorkerDocKind =
+  | "在留カード"
+  | "指定書"
+  | "雇用契約書"
+  | "雇用条件書"
+  | "雇用保険 離職票"
+  | "雇用保険 被保険者証";
 
-// 在留カード・指定書・雇用契約書・雇用条件書の差し替え登録（履歴は worker_documents に追記）
+// 在留カード・指定書・雇用契約書・雇用条件書・雇用保険の書類の登録
+// （差し替えても前の分は worker_documents に履歴として残る）
 export async function uploadWorkerDoc(
   workerId: string,
   kind: WorkerDocKind,

@@ -66,14 +66,22 @@ export async function getWorkerPhotoUrl(path: string | null): Promise<string> {
   return data?.signedUrl ?? "";
 }
 
-// ---- 在留カード・指定書・雇用契約書・雇用条件書の履歴（worker_documents） ----
+// ---- 在留カード・指定書・雇用契約書・雇用条件書・雇用保険の書類の履歴（worker_documents） ----
 
-type WorkerDocKind = "在留カード" | "指定書" | "雇用契約書" | "雇用条件書";
+type WorkerDocKind =
+  | "在留カード"
+  | "指定書"
+  | "雇用契約書"
+  | "雇用条件書"
+  | "雇用保険 離職票"
+  | "雇用保険 被保険者証";
 const DOC_SLUGS: Record<WorkerDocKind, string> = {
   在留カード: "residence-card",
   指定書: "designation",
   雇用契約書: "employment-contract",
   雇用条件書: "employment-conditions",
+  "雇用保険 離職票": "employment-insurance-separation",
+  "雇用保険 被保険者証": "employment-insurance-card",
 };
 
 export async function createWorkerDocTicket(
