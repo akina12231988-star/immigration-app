@@ -27,6 +27,11 @@ import { formatSalesYen, REFERRAL_SALES_KEY } from "@/lib/sales";
 import { normalizeSalesItems, parseAmount } from "@/lib/organization-intake";
 import { buildXlsx, downloadBlob } from "@/lib/xlsx-export";
 import { buildSeekerLedgerSheet } from "@/lib/recruit-ledgers";
+import {
+  employmentStartAt,
+  hasEmploymentStarted,
+  type EmploymentStartWorker,
+} from "@/lib/job-employment-start";
 import { fetchSeekerLedger } from "@/lib/supabase/queries/recruit-ledgers";
 import { dbErrorMessage } from "@/lib/errors";
 import {
@@ -39,7 +44,11 @@ import type { JobApplicationValues } from "@/components/workers/JobApplicationDi
 import type { PostingWithStats } from "@/lib/supabase/queries/postings";
 import type { Organization } from "@/types/db";
 
-type ResultFilter = ApplicationResult | "all";
+// 絞り込み。採否のほかに「雇用開始済み」（雇用開始日が入っている人）でも絞れる
+type ResultFilter = ApplicationResult | "all" | "employed";
+
+// 一覧で使う外国人。氏名の選択肢に加えて、雇用開始日の判定にも使う
+export type JobsWorker = { id: string; name: string } & EmploymentStartWorker;
 
 export function JobsExplorer({
   applications,
@@ -52,7 +61,7 @@ export function JobsExplorer({
   applications: ApplicationWithRefs[];
   postings: PostingWithStats[];
   organizations: Organization[];
-  workers: { id: string; name: string }[];
+  workers: JobsWorker[];
   initialReferralFees: Record<string, ApplicationReferralFee>;
   canEdit: boolean;
 }) {
@@ -97,6 +106,21 @@ export function JobsExplorer({
   const [referralFees, setReferralFees] =
     useState<Record<string, ApplicationReferralFee>>(initialReferralFees);
   const [referralBusyId, setReferralBusyId] = useState<string | null>(null);
+  // 台帳に追加する前に入力する「紹介手数料」と「紹介売上No.」（応募ごと）
+  const [feeDrafts, setFeeDrafts] = useState<Record<string, { fee: string; salesNo: string }>>({});
+  // 所属機関マスタのあっせん明細の金額を初期値にする
+  const defaultFee = (a: ApplicationWithRefs) => {
+    const org = orgList.find((o) => o.id === a.organization_id);
+    const items = normalizeSalesItems(org?.intake?.sales_items)[REFERRAL_SALES_KEY] ?? [];
+    return String(parseAmount(items[0]?.amount ?? "") ?? "");
+  };
+  const feeDraft = (a: ApplicationWithRefs) =>
+    feeDrafts[a.id] ?? { fee: defaultFee(a), salesNo: "" };
+  const setFeeDraft = (id: string, patch: { fee?: string; salesNo?: string }) =>
+    setFeeDrafts((prev) => ({
+      ...prev,
+      [id]: { ...(prev[id] ?? { fee: "", salesNo: "" }), ...patch },
+    }));
 
   // 期間（応募日）で絞った母集団
   const inPeriod = useMemo(
@@ -109,16 +133,29 @@ export function JobsExplorer({
     [rows, from, to],
   );
 
-  const stats = useMemo(() => {
-    const s = { total: inPeriod.length, 選考中: 0, 採用: 0, 不採用: 0, 辞退: 0 };
-    for (const a of inPeriod) s[a.result as ApplicationResult] += 1;
-    return s;
-  }, [inPeriod]);
+  // 応募先の会社で雇用開始しているか（外国人の雇用開始日から判定する）
+  const workerById = useMemo(() => new Map(workerList.map((w) => [w.id, w])), [workerList]);
+  const startedOn = (a: ApplicationWithRefs) =>
+    employmentStartAt(workerById.get(a.worker_id), a.organization_id);
+  const isEmployed = (a: ApplicationWithRefs) =>
+    hasEmploymentStarted(workerById.get(a.worker_id), a.organization_id);
 
-  const filtered = useMemo(
-    () => (filter === "all" ? inPeriod : inPeriod.filter((a) => a.result === filter)),
-    [inPeriod, filter],
-  );
+  const stats = useMemo(() => {
+    const s = { total: inPeriod.length, 選考中: 0, 採用: 0, 不採用: 0, 辞退: 0, 雇用開始済み: 0 };
+    for (const a of inPeriod) {
+      s[a.result as ApplicationResult] += 1;
+      if (isEmployed(a)) s.雇用開始済み += 1;
+    }
+    return s;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inPeriod, workerById]);
+
+  const filtered = useMemo(() => {
+    if (filter === "all") return inPeriod;
+    if (filter === "employed") return inPeriod.filter(isEmployed);
+    return inPeriod.filter((a) => a.result === filter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inPeriod, filter, workerById]);
 
   const addApplication = async (values: JobApplicationValues, workerId?: string) => {
     if (!workerId) throw new Error("外国人を選択してください");
@@ -162,8 +199,8 @@ export function JobsExplorer({
     setError(null);
     try {
       const org = orgList.find((o) => o.id === a.organization_id);
-      const items = normalizeSalesItems(org?.intake?.sales_items)[REFERRAL_SALES_KEY] ?? [];
-      const fee = parseAmount(items[0]?.amount ?? "") ?? 0;
+      const draft = feeDraft(a);
+      const fee = parseAmount(draft.fee) ?? 0;
       const row = await insertReferralFee(createClient(), {
         worker_id: a.worker_id,
         organization_id: a.organization_id,
@@ -174,7 +211,7 @@ export function JobsExplorer({
         referred_on: a.applied_on,
         hired_on: a.result_on,
         fee,
-        sales_no: "",
+        sales_no: draft.salesNo.trim(),
         billed_on: null,
         paid_on: null,
         note: "",
@@ -246,12 +283,13 @@ export function JobsExplorer({
             )}
           </span>
         </div>
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
           <StatBox label="応募" value={stats.total} />
           <StatBox label="選考中" value={stats.選考中} />
           <StatBox label="採用" value={stats.採用} />
           <StatBox label="不採用" value={stats.不採用} />
           <StatBox label="辞退" value={stats.辞退} />
+          <StatBox label="雇用開始済み" value={stats.雇用開始済み} />
         </div>
       </Card>
 
@@ -261,6 +299,12 @@ export function JobsExplorer({
         {APPLICATION_RESULTS.map((r) => (
           <Chip key={r} label={r} active={filter === r} onClick={() => setFilter(r)} />
         ))}
+        {/* 雇用開始日が入っている人（実際に働き始めた人）だけを出す */}
+        <Chip
+          label="雇用開始済み"
+          active={filter === "employed"}
+          onClick={() => setFilter("employed")}
+        />
       </div>
 
       <p className="text-sm font-bold text-muted">{filtered.length}件</p>
@@ -287,6 +331,7 @@ export function JobsExplorer({
                       応募 {a.applied_on}
                       {a.interview_on && ` ・ 面接 ${a.interview_on}`}
                       {a.result_on && ` ・ 結果 ${a.result_on}`}
+                      {startedOn(a) && ` ・ 雇用開始 ${startedOn(a)}`}
                     </p>
                   </Link>
                   <ChevronRight size={16} className="shrink-0 text-muted" />
@@ -318,15 +363,44 @@ export function JobsExplorer({
                   canEdit &&
                   a.result === "採用" && (
                     <div className="mt-2 border-t border-border pt-2">
-                      <button
-                        type="button"
-                        onClick={() => void addToLedger(a)}
-                        disabled={referralBusyId === a.id}
-                        className="flex items-center gap-1.5 rounded-lg border border-brand px-3 py-1.5 text-xs font-bold text-brand disabled:opacity-50"
-                      >
-                        <HandCoins size={14} />
-                        {referralBusyId === a.id ? "追加中…" : "紹介手数料台帳に追加"}
-                      </button>
+                      <p className="mb-1.5 flex items-center gap-1 text-[11px] font-bold text-muted">
+                        <HandCoins size={12} />
+                        紹介手数料台帳に追加する内容
+                      </p>
+                      <div className="flex flex-wrap items-end gap-2">
+                        <label className="flex flex-col gap-1">
+                          <span className="text-[11px] text-muted">紹介手数料（円・税抜）</span>
+                          <input
+                            inputMode="numeric"
+                            value={feeDraft(a).fee}
+                            onChange={(e) => setFeeDraft(a.id, { fee: e.target.value })}
+                            placeholder="例: 30000"
+                            className="min-h-[36px] w-32 rounded-lg border border-border bg-background px-2 text-xs tabular-nums focus:border-brand focus:outline-none"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1">
+                          <span className="text-[11px] text-muted">紹介売上No.（freee販売）</span>
+                          <input
+                            value={feeDraft(a).salesNo}
+                            onChange={(e) => setFeeDraft(a.id, { salesNo: e.target.value })}
+                            placeholder="例: S-0000004378"
+                            className="min-h-[36px] w-44 rounded-lg border border-border bg-background px-2 text-xs tabular-nums focus:border-brand focus:outline-none"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => void addToLedger(a)}
+                          disabled={referralBusyId === a.id || !parseAmount(feeDraft(a).fee)}
+                          className="flex min-h-[36px] items-center gap-1.5 rounded-lg border border-brand px-3 py-1.5 text-xs font-bold text-brand disabled:opacity-50"
+                        >
+                          <HandCoins size={14} />
+                          {referralBusyId === a.id ? "追加中…" : "紹介手数料台帳に追加"}
+                        </button>
+                      </div>
+                      <p className="mt-1 text-[11px] text-muted">
+                        手数料は所属機関マスタのあっせん明細から入れています（数字だけ・税抜）。
+                        紹介売上No.はあとから手数料管理簿でも入れられます。
+                      </p>
                     </div>
                   )
                 )}
