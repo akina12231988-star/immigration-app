@@ -704,6 +704,8 @@ export function WorkerDetail({
         canEdit={canEdit}
         photoPath={worker.photo_path}
         healthCheckOn={worker.health_check_on ?? null}
+        worker={worker}
+        organizations={organizations}
       />
 
       {/* 入社書類メールで登録した添付データ（選択ダウンロード・Gmailリンク） */}

@@ -57,7 +57,11 @@ export function isExpiryWithinTwoMonths(expiry: string, today: string): boolean 
 
 // 在留更新対象: 在留期限まで3か月以内（または既に超過）。期限未登録は対象外。
 // 退職者は在留更新の対象から外す。
-export function isResidenceRenewalTarget(w: AlertWorker, today: string): boolean {
+export function isResidenceRenewalTarget(
+  // 使うのは在籍状況と在留期限だけ（在留カードの有無に関わらず判定できるようにする）
+  w: Pick<AlertWorker, "status" | "residence_expiry_date">,
+  today: string,
+): boolean {
   if (w.status === "退職") return false;
   if (!w.residence_expiry_date) return false;
   return today >= addMonths(w.residence_expiry_date, -3);

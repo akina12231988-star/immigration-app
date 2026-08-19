@@ -1,36 +1,20 @@
 "use client";
 
 import { messengerWebUrl } from "@/lib/messenger-link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { CalendarClock, Check, Copy, ExternalLink, MessageCircle, UserRound } from "lucide-react";
 import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { createClient } from "@/lib/supabase/client";
-import { updateWorker } from "@/lib/supabase/queries/workers";
 import {
-  listPrepChecklists,
-  upsertPrepTantou,
-  type PrepChecklistRow,
-} from "@/lib/supabase/queries/application-prep";
-import { PREP_TANTOU_OPTIONS } from "@/lib/application-prep";
+  RENEWAL_STATUS_LABEL,
+  WorkerRenewalFields,
+} from "@/components/workers/WorkerRenewalFields";
 import { remainingLabel, daysUntil } from "@/lib/worker-alerts";
 import { notionAppUrl } from "@/lib/notion-link";
-import {
-  RESIDENCE_RENEWAL_STATUSES,
-  type ResidenceRenewalStatus,
-  type Worker,
-} from "@/types/db";
+import type { ResidenceRenewalStatus, Worker } from "@/types/db";
 
-export const RENEWAL_STATUS_LABEL: Record<ResidenceRenewalStatus, string> = {
-  "": "未対応",
-  準備中: "準備中",
-  審査中: "審査中",
-  転職先にて対応中: "転職先にて対応中",
-  他登録支援機関にて対応中: "他登録支援機関にて対応中",
-  帰国: "帰国",
-};
+// 対応状況の呼び名は入力欄と共通（他の画面からはこちらを読んでいるので再公開する）
+export { RENEWAL_STATUS_LABEL };
 
 const STATUS_CLASS: Record<ResidenceRenewalStatus, string> = {
   "": "bg-seal/10 text-seal",
@@ -46,6 +30,7 @@ export type RenewalCardWorker = Pick<
   Worker,
   | "id"
   | "name"
+  | "status"
   | "nationality"
   | "residence_status"
   | "residence_expiry_date"
@@ -57,6 +42,7 @@ export type RenewalCardWorker = Pick<
   // 所属機関の表示・編集用（一覧によっては取得していないので任意）
   current_organization_id?: string | null;
   application_prep_organization_id?: string | null;
+  application_prep_kind?: string | null;
 };
 
 // 在留更新対象の1件を表示・編集するカード（在留更新対象ページと外国人管理で共用）
@@ -74,34 +60,12 @@ export function WorkerRenewalCard({
   today: string;
   canEdit: boolean;
 }) {
-  const router = useRouter();
-  const [todo, setTodo] = useState(worker.residence_renewal_todo ?? "");
+  // 見出しのバッジ・所属機関名は入力中の値に追従させる（保存前でも見た目が変わる）
   const [status, setStatus] = useState<ResidenceRenewalStatus>(worker.residence_renewal_status);
-  const [notionLink, setNotionLink] = useState(worker.notion_link ?? "");
-  // 申請準備の所属機関（転職の場合の転職先）。未設定なら現在の所属機関を初期値にする
   const [prepOrgId, setPrepOrgId] = useState(
     worker.application_prep_organization_id ?? worker.current_organization_id ?? "",
   );
-  const [messengerLink, setMessengerLink] = useState(worker.messenger_link ?? "");
-  const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [nameCopied, setNameCopied] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // 担当者はTODO番号ごとの準備リスト（application_prep_checklists）に保存されている
-  const [prepRows, setPrepRows] = useState<PrepChecklistRow[]>([]);
-  const [tantou, setTantou] = useState("");
-  useEffect(() => {
-    if (!canEdit) return;
-    listPrepChecklists(createClient(), worker.id)
-      .then((rows) => {
-        setPrepRows(rows);
-        const t = (worker.residence_renewal_todo ?? "").trim();
-        setTantou(rows.find((r) => r.todo_no === t)?.tantou ?? "");
-      })
-      .catch(() => undefined);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [worker.id, canEdit]);
 
   const copyName = async () => {
     try {
@@ -116,48 +80,6 @@ export function WorkerRenewalCard({
   const expiry = worker.residence_expiry_date ?? "";
   const days = expiry ? daysUntil(expiry, today) : 0;
   const overdue = days < 0;
-
-  const onTodoChange = (v: string) => {
-    setTodo(v);
-    setSaved(false);
-    if (v.trim() && status === "") setStatus("準備中");
-    // 担当者はTODO番号に紐づくため、番号を変えたらその番号の担当者に切り替える
-    setTantou(prepRows.find((r) => r.todo_no === v.trim())?.tantou ?? "");
-  };
-
-  const save = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      await updateWorker(createClient(), worker.id, {
-        residence_renewal_todo: todo.trim(),
-        residence_renewal_status: status,
-        notion_link: notionLink.trim(),
-        messenger_link: messengerLink.trim(),
-        // 所属機関を選べる画面（申請準備）のときだけ保存する
-        ...(organizations ? { application_prep_organization_id: prepOrgId || null } : {}),
-      });
-      // 担当者はTODO番号の準備リストへ保存（選択済み、またはリストが既にある場合のみ）
-      const todoNo = todo.trim();
-      if (tantou || prepRows.some((r) => r.todo_no === todoNo)) {
-        await upsertPrepTantou(createClient(), worker.id, todoNo, tantou);
-        setPrepRows((rows) =>
-          rows.some((r) => r.todo_no === todoNo)
-            ? rows.map((r) => (r.todo_no === todoNo ? { ...r, tantou } : r))
-            : rows,
-        );
-      }
-      setSaved(true);
-      router.refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "保存に失敗しました");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const INPUT =
-    "min-h-[40px] w-full rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none";
 
   return (
     <Card className={`p-4 ${status === "" && overdue ? "border-seal" : ""}`}>
@@ -218,117 +140,18 @@ export function WorkerRenewalCard({
       </div>
 
       {canEdit && (
-        <div className="mt-3 space-y-2 border-t border-border pt-3">
-          {error && <p className="rounded-lg bg-seal/10 px-2.5 py-1.5 text-xs text-seal">{error}</p>}
-          {organizations && (
-            <label className="flex flex-col gap-1">
-              <span className="text-[11px] font-bold text-muted">
-                所属機関（転職の場合は転職先）
-              </span>
-              <select
-                value={prepOrgId}
-                onChange={(e) => {
-                  setPrepOrgId(e.target.value);
-                  setSaved(false);
-                }}
-                className={INPUT}
-              >
-                <option value="">未設定</option>
-                {organizations.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name}
-                  </option>
-                ))}
-              </select>
-              <span className="text-[11px] text-muted">
-                転職はここで転職先を選ぶと、申請一覧の「申請前＜準備中＞」にその会社で表示されます。
-                現在の所属機関は在留カードを受け取るまで変わりません。
-              </span>
-            </label>
-          )}
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-bold text-muted">Notion 申請TODO番号</span>
-            <input
-              value={todo}
-              onChange={(e) => onTodoChange(e.target.value)}
-              placeholder="例: TODO-1234"
-              className={INPUT}
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-bold text-muted">対応状況</span>
-            <select
-              value={status}
-              onChange={(e) => {
-                setStatus(e.target.value as ResidenceRenewalStatus);
-                setSaved(false);
-              }}
-              className={INPUT}
-            >
-              {RESIDENCE_RENEWAL_STATUSES.map((s) => (
-                <option key={s || "pending"} value={s}>
-                  {RENEWAL_STATUS_LABEL[s]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-bold text-muted">担当者（TODO番号に紐づき・未定でも可）</span>
-            <select
-              value={tantou}
-              onChange={(e) => {
-                setTantou(e.target.value);
-                setSaved(false);
-              }}
-              className={INPUT}
-            >
-              <option value="">未定</option>
-              {tantou &&
-                !PREP_TANTOU_OPTIONS.includes(tantou as (typeof PREP_TANTOU_OPTIONS)[number]) && (
-                  <option value={tantou}>{tantou}</option>
-                )}
-              {PREP_TANTOU_OPTIONS.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </label>
-          {/* メッセンジャー未登録なら、この画面で入力して登録できる（登録済みなら上にリンク表示） */}
-          {!worker.messenger_link && (
-            <label className="flex flex-col gap-1">
-              <span className="text-[11px] font-bold text-muted">Messenger リンク（未登録）</span>
-              <input
-                type="url"
-                value={messengerLink}
-                onChange={(e) => {
-                  setMessengerLink(e.target.value);
-                  setSaved(false);
-                }}
-                placeholder="https://m.me/... または https://www.messenger.com/..."
-                className={INPUT}
-              />
-            </label>
-          )}
-          {/* Notion未登録なら、この画面で入力して登録できる（登録済みなら上にリンク表示） */}
-          {!worker.notion_link && (
-            <label className="flex flex-col gap-1">
-              <span className="text-[11px] font-bold text-muted">Notion 個人ページのリンク（未登録）</span>
-              <input
-                type="url"
-                value={notionLink}
-                onChange={(e) => {
-                  setNotionLink(e.target.value);
-                  setSaved(false);
-                }}
-                placeholder="https://www.notion.so/... または https://app.notion.com/..."
-                className={INPUT}
-              />
-            </label>
-          )}
-          <Button fullWidth disabled={busy} onClick={save}>
-            {busy ? "保存中…" : saved ? "保存しました" : "保存する"}
-          </Button>
+        <div className="mt-3 border-t border-border pt-3">
+          {/* 入力欄は外国人詳細の申請準備 書類チェックリストと共通 */}
+          <WorkerRenewalFields
+            worker={worker}
+            organizations={organizations}
+            canEdit={canEdit}
+            today={today}
+            onDraftChange={(d) => {
+              setStatus(d.status);
+              setPrepOrgId(d.prepOrgId);
+            }}
+          />
         </div>
       )}
     </Card>

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildRenewalPlaceholders, isRenewalPlaceholder } from "./renewal-placeholders";
+import {
+  buildRenewalPlaceholders,
+  isPrepListTarget,
+  isRenewalPlaceholder,
+} from "./renewal-placeholders";
 import type { WorkerWithOrg } from "@/lib/supabase/queries/workers";
 import type { Application } from "@/types/application";
 
@@ -160,5 +164,30 @@ describe("buildRenewalPlaceholders", () => {
       TODAY,
     );
     expect(rows.map((r) => r.workerId)).toEqual(["w1", "w2"]);
+  });
+});
+
+describe("isPrepListTarget", () => {
+  it("準備中で在留期限の3か月前なら申請一覧に出る", () => {
+    expect(isPrepListTarget(makeWorker({}), TODAY)).toBe(true);
+  });
+
+  it("準備中でも在留期限が3か月より先なら出ない", () => {
+    expect(isPrepListTarget(makeWorker({ residence_expiry_date: "2027-09-01" }), TODAY)).toBe(false);
+  });
+
+  it("新規で申請書類準備なら在留期限に関係なく出る", () => {
+    const w = makeWorker({ residence_expiry_date: "2027-09-01", application_prep_kind: "新規" });
+    expect(isPrepListTarget(w, TODAY)).toBe(true);
+  });
+
+  it("新規でも退職した人は出ない", () => {
+    const w = makeWorker({ application_prep_kind: "新規", status: "退職" });
+    expect(isPrepListTarget(w, TODAY)).toBe(false);
+  });
+
+  it("準備中以外（未対応・審査中など）は出ない", () => {
+    expect(isPrepListTarget(makeWorker({ residence_renewal_status: "" }), TODAY)).toBe(false);
+    expect(isPrepListTarget(makeWorker({ residence_renewal_status: "審査中" }), TODAY)).toBe(false);
   });
 });
