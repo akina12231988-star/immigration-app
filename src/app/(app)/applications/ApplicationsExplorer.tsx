@@ -21,6 +21,7 @@ import { Card } from "@/components/ui/Card";
 import { Modal } from "@/components/ui/Modal";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { AlertBadge } from "@/components/applications/AlertBadge";
+import { ApplicantMeta } from "@/components/applications/ApplicantMeta";
 import { ApplicationPrepChecklist } from "@/components/workers/ApplicationPrepChecklist";
 import { createClient } from "@/lib/supabase/client";
 import { listPrepStatuses, type PrepStatus } from "@/lib/supabase/queries/prep-status";
@@ -181,6 +182,9 @@ export function ApplicationsExplorer({
   );
   const workerFor = (a: Application) =>
     a.workerId ? workersById.get(a.workerId) : undefined;
+
+  // 全タブで表示する国籍（外国人一覧から引き当てる）
+  const nationalityOf = (a: Application) => workerFor(a)?.nationality;
 
   // 全タブで表示する「預かり番号」（返却済み以外の保管番号）。外国人ごとに引き当てる。
   const [custodyNoByWorker, setCustodyNoByWorker] = useState<Map<string, number>>(
@@ -550,6 +554,7 @@ export function ApplicationsExplorer({
               canEdit={canEdit}
               authorName={authorName}
               custodyNoLabel={custodyNoLabel(a)}
+              nationality={nationalityOf(a)}
               updateApplication={updateApplication}
             />
           ))}
@@ -583,6 +588,12 @@ export function ApplicationsExplorer({
                   <p className="mt-1 text-xs tabular-nums text-muted">
                     預かり番号 {custodyNoLabel(a)}
                   </p>
+                  <ApplicantMeta
+                    app={a}
+                    nationality={nationalityOf(a)}
+                    showApplicant={!isRenewalPlaceholder(a)}
+                    className="mt-1"
+                  />
                   {a.residenceExpiryAtApply && (
                     <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted">
                       申請時在留期限 {a.residenceExpiryAtApply}
@@ -751,6 +762,12 @@ export function ApplicationsExplorer({
                           {a.name}
                           {isExpiryAlert(a, TODAY) && <AlertBadge expiry={a.residenceExpiryAtApply} />}
                         </span>
+                        <ApplicantMeta
+                          app={a}
+                          nationality={nationalityOf(a)}
+                          showApplicant={!isRenewalPlaceholder(a)}
+                          className="mt-1 font-normal"
+                        />
                         {a.workerId && (
                           <span
                             className="mt-1 block"

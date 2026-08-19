@@ -6,6 +6,7 @@ import { Check, CreditCard, Plus, StickyNote, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { AlertBadge } from "@/components/applications/AlertBadge";
+import { ApplicantMeta } from "@/components/applications/ApplicantMeta";
 import { createClient } from "@/lib/supabase/client";
 import {
   deleteApplicationMemo,
@@ -24,6 +25,7 @@ export function ApprovedCard({
   canEdit,
   authorName,
   custodyNoLabel,
+  nationality,
   updateApplication,
 }: {
   app: Application;
@@ -32,6 +34,7 @@ export function ApprovedCard({
   canEdit: boolean;
   authorName: string;
   custodyNoLabel: string; // 預かり番号（未預かりは「—」）
+  nationality?: string | null; // 外国人一覧から引き当てた国籍
   updateApplication: (id: string, patch: Partial<Application>) => Promise<void>;
 }) {
   const router = useRouter();
@@ -117,6 +120,7 @@ export function ApprovedCard({
             {app.organizationName ?? "所属機関未設定"}
           </p>
           <p className="text-xs tabular-nums text-muted">預かり番号 {custodyNoLabel}</p>
+          <ApplicantMeta app={app} nationality={nationality} className="mt-1" />
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {alert && <AlertBadge expiry={app.residenceExpiryAtApply} />}
