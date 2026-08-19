@@ -199,7 +199,12 @@ insert into imp_seeker values
 
 -- 氏名の突き合わせ用（空白・記号を取り除いて比べる）
 create or replace function pg_temp.norm(t text) returns text language sql immutable as $fn$
-  select upper(regexp_replace(coalesce(t, ''), '[[:space:]　・（）()、。，,.]', '', 'g'))
+  -- 空白・記号を取り除き、漢字の異体字（髙・高、﨑・崎、濵・濱 など）もそろえて比べる
+  select upper(translate(
+    regexp_replace(coalesce(t, ''), '[[:space:]　・（）()、。，,.]', '', 'g'),
+    '髙﨑濵栁桒邊邉齋齊',
+    '高崎濱柳桑辺辺斎斉'
+  ))
 $fn$;
 
 
