@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { compressImage } from "@/lib/image-compress";
+import { normalizePdfToA4 } from "@/lib/pdf-normalize";
 import {
   createOnboardingDocTicket,
   registerOnboardingDocFile,
@@ -14,7 +15,13 @@ export async function uploadOnboardingDoc(
   def: { key: string; label: string; num: number },
   file: File,
 ): Promise<void> {
-  const { blob, mimeType, fileName } = await compressImage(file);
+  const { blob: compressed, mimeType, fileName } = await compressImage(file);
+  // スキャンPDFはページごとに大きさが違うことがあるので、A4に統一してから保存する
+  let blob: Blob = compressed;
+  if (mimeType === "application/pdf") {
+    const normalized = await normalizePdfToA4(await compressed.arrayBuffer());
+    if (normalized) blob = new Blob([normalized as BlobPart], { type: "application/pdf" });
+  }
   const ticket = await createOnboardingDocTicket(workerId, def.key, fileName, mimeType);
   if (!ticket.ok) throw new Error(ticket.message);
 
