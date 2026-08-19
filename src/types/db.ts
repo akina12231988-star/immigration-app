@@ -620,6 +620,10 @@ export interface OrientationRow {
 export const RESIGNATION_KINDS = ["会社都合", "自己都合"] as const;
 export type ResignationKind = (typeof RESIGNATION_KINDS)[number];
 
+// 進み具合（0086）: 届出書を作ったら「署名依頼中」、投函したら「投函完了」
+export const RESIGNATION_STATUSES = ["準備中", "署名依頼中", "投函完了"] as const;
+export type ResignationStatus = (typeof RESIGNATION_STATUSES)[number];
+
 export interface ResignationRow {
   id: string;
   worker_id: string;
@@ -632,6 +636,11 @@ export interface ResignationRow {
   leaving_on: string; // 退職日 YYYY-MM-DD
   todo_no: string; // Notion随時報告TODO番号
   note: string;
+  // 進み具合（0086）。マイグレーション未適用の環境では欠けることがある
+  status?: ResignationStatus;
+  forms_downloaded_at?: string | null; // 様式を最初にダウンロードした日時
+  posted_on?: string | null; // レターパックで投函した日
+  tracking_no?: string; // レターパックの追跡番号
   created_by: string | null;
   created_at: string;
   updated_at: string;

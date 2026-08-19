@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
 import { updateOrganization } from "@/lib/supabase/queries/organizations";
 import { updateResignation } from "@/lib/supabase/queries/resignations";
+import type { ResignationStatus } from "@/types/db";
 import { normalizeOrganizationIntake } from "@/lib/organization-intake";
 import {
   FORM_14,
@@ -52,6 +53,7 @@ interface FormsResignation {
   orgCorporateNo: string;
   businessCategory: string;
   orgReportStaff: string; // 所属機関に登録した定期報告書・随時報告書の担当者名
+  status: ResignationStatus; // 今の進み具合（0086）
 }
 
 interface FormsWorker {
@@ -223,6 +225,23 @@ export function ResignationForms({
     lastSyncedRef.current = snapshot;
   };
 
+  // 様式を作った＝会社・本人へ署名をお願いする段階。退職一覧のタブを進める。
+  // 一度進めたら（署名依頼中・投函完了）そのままにする
+  const [signatureMarked, setSignatureMarked] = useState(resignation.status !== "準備中");
+  const markSignatureRequested = async () => {
+    if (signatureMarked) return;
+    setSignatureMarked(true);
+    try {
+      await updateResignation(createClient(), resignation.id, {
+        status: "署名依頼中",
+        forms_downloaded_at: new Date().toISOString(),
+      });
+    } catch {
+      // 0086 が未適用でも様式の作成そのものは続けられるようにする
+      setSignatureMarked(false);
+    }
+  };
+
   const download = async (key: "form312" | "form34" | "form511" | "form14") => {
     setBusy(key);
     setError(null);
@@ -261,6 +280,9 @@ export function ResignationForms({
       a.download = fileName;
       a.click();
       URL.revokeObjectURL(url);
+
+      // 様式を作った＝会社・本人へ署名をお願いする段階。退職一覧のタブを進める
+      await markSignatureRequested();
     } catch (err) {
       setError(err instanceof Error ? err.message : "作成に失敗しました");
     } finally {
