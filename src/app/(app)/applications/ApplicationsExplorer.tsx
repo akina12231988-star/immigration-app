@@ -54,6 +54,10 @@ import {
 } from "@/lib/renewal-placeholders";
 import type { Application } from "@/types/application";
 import { ApprovedCard } from "./ApprovedCard";
+import { ExtraRequestBoard } from "./ExtraRequestBoard";
+import { listAllExtraRequests } from "@/lib/supabase/queries/extra-requests";
+import { countOpenExtraRequests } from "@/lib/extra-request-alerts";
+import type { ApplicationExtraRequest } from "@/types/application";
 
 const TODAY = todayStr();
 
@@ -70,13 +74,14 @@ const SORT_OPTIONS = [
 type SortKey = (typeof SORT_OPTIONS)[number]["key"];
 
 // フィルタータブ（ダッシュボードの集計と同じ区分＋在留更新の「申請前＜準備中＞」）
-type ViewKey = StatViewKey | "all" | "pre-prep";
+type ViewKey = StatViewKey | "all" | "pre-prep" | "extra-request";
 
 // 「申請前＜準備中＞」を最初に表示するため先頭に、「すべて」は一番右に置く
 const VIEW_CHIPS: { key: ViewKey; label: string }[] = [
   { key: "pre-prep", label: "申請前＜準備中＞" },
   { key: "unreported", label: "LINE未報告" },
   { key: "waiting-notice", label: "審査中" },
+  { key: "extra-request", label: "＜入管＞追加資料" },
   { key: "approved", label: "在留カード受け取り待ち" },
   { key: "card-issued", label: "在留カード新規発行済み" },
   { key: "all", label: "すべて" },
@@ -201,6 +206,22 @@ export function ApplicationsExplorer({
       cancelled = true;
     };
   }, []);
+  // 入管から求められた追加資料（「＜入管＞追加資料」タブ用・全申請ぶん）
+  const [extraRequests, setExtraRequests] = useState<ApplicationExtraRequest[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    listAllExtraRequests(createClient())
+      .then((rows) => {
+        if (!cancelled) setExtraRequests(rows);
+      })
+      // 0083 が未適用でもタブ以外は使えるようにする（タブは0件表示になる）
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const openExtraCount = countOpenExtraRequests(extraRequests);
+
   // 表示用の預かり番号文字列（未預かり・外国人未紐づけは「—」）
   const custodyNoLabel = (a: Application) => {
     const no = a.workerId ? custodyNoByWorker.get(a.workerId) : undefined;
@@ -233,7 +254,7 @@ export function ApplicationsExplorer({
       if (view === "pre-prep") {
         // 申請前＜準備中＞タブ: 実レコードは「申請前」かつ在留更新が準備中の案件のみ
         if (a.status !== "申請前" || a.workerRenewalStatus !== "準備中") return false;
-      } else if (view !== "all" && !STAT_VIEWS[view].test(a)) {
+      } else if (view !== "all" && view !== "extra-request" && !STAT_VIEWS[view].test(a)) {
         return false;
       }
       // 新規発行済み: 在留許可日の期間（いつからいつまで）で絞り込む
@@ -439,7 +460,11 @@ export function ApplicationsExplorer({
         {VIEW_CHIPS.map((c) => (
           <FilterChip
             key={c.key}
-            label={c.label}
+            label={
+              c.key === "extra-request" && openExtraCount > 0
+                ? `${c.label}（${openExtraCount}）`
+                : c.label
+            }
             active={view === c.key}
             onClick={() => setView(c.key)}
           />
@@ -491,6 +516,20 @@ export function ApplicationsExplorer({
         </p>
       )}
 
+      {/* ＜入管＞追加資料: 提出期限のアラート付きで、郵送した日・追跡番号をこの場で入力する */}
+      {view === "extra-request" ? (
+        <ExtraRequestBoard
+          rows={extraRequests}
+          applications={applications}
+          today={TODAY}
+          keyword={keyword}
+          canEdit={canEdit}
+          onChanged={(row) =>
+            setExtraRequests((prev) => prev.map((r) => (r.id === row.id ? row : r)))
+          }
+        />
+      ) : (
+        <>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-bold text-muted">{filtered.length}件</p>
         <div className="flex flex-wrap items-center gap-3">
@@ -896,6 +935,8 @@ export function ApplicationsExplorer({
           totalPages={totalPages}
           onChange={setPage}
         />
+      )}
+        </>
       )}
 
       {/* 申請前＜準備中＞: 準備状況の確認とその場での書類添付 */}

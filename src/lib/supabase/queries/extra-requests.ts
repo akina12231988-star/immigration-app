@@ -23,6 +23,20 @@ export async function listExtraRequests(
   return (data as ApplicationExtraRequest[]) ?? [];
 }
 
+// 申請一覧の「＜入管＞追加資料」タブ用に、全申請ぶんの依頼をまとめて取る。
+// 件数が多くないので絞り込みは画面側で行う（完了した分も履歴として出す）。
+export async function listAllExtraRequests(
+  supabase: SupabaseClient,
+): Promise<ApplicationExtraRequest[]> {
+  const { data, error } = await supabase
+    .from("application_extra_requests")
+    .select("*")
+    .order("requested_on", { ascending: false })
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data as ApplicationExtraRequest[]) ?? [];
+}
+
 export async function insertExtraRequest(
   supabase: SupabaseClient,
   input: ApplicationExtraRequestInput,
