@@ -12,10 +12,12 @@ import {
 } from "@/lib/supabase/queries/rosters";
 import {
   isWithinRosterRetention,
+  rosterFileName,
   rosterJpDate,
   rosterRetentionEnd,
   rosterWorkKind,
   sortRosterHistory,
+  withResidencePermitHistory,
 } from "@/lib/roster";
 import { todayStr } from "@/lib/ssw/calc";
 import type {
@@ -33,6 +35,8 @@ interface RosterWorker {
   field: string;
   myNumber: string;
   employmentStartOn: string | null;
+  residenceStatus: string; // 在留資格（履歴の「◯◯ビザの許可」に使う）
+  residencePermitDate: string | null; // 在留資格の許可年月日
   status: string;
   leavingOn: string | null;
   leavingKind: string;
@@ -79,9 +83,12 @@ export function RosterSheet({
   const buildDefault = (): RosterForm => ({
     company_name: orgName,
     work_kind: rosterWorkKind(worker.field),
-    history: startFor(orgName)
-      ? [{ on: rosterJpDate(startFor(orgName)), content: "入社" }]
-      : [],
+    // 入社の行に加えて、在留資格の許可も履歴として残す
+    history: withResidencePermitHistory(
+      startFor(orgName) ? [{ on: rosterJpDate(startFor(orgName)), content: "入社" }] : [],
+      worker.residenceStatus,
+      worker.residencePermitDate,
+    ),
     previous_jobs: defaultPreviousJobs.map((company) => ({ company, prefecture: "" })),
     leaving_on: worker.status === "退職" ? rosterJpDate(worker.leavingOn) : "",
     leaving_reason:
@@ -96,7 +103,12 @@ export function RosterSheet({
   const toForm = (r: WorkerRoster): RosterForm => ({
     company_name: r.company_name,
     work_kind: r.work_kind,
-    history: sortRosterHistory(r.history ?? []),
+    // 保存済みの名簿にも在留資格の許可を出す（同じ年月日の行があるときはそのまま）
+    history: withResidencePermitHistory(
+      r.history ?? [],
+      worker.residenceStatus,
+      worker.residencePermitDate,
+    ),
     previous_jobs: r.previous_jobs ?? [],
     leaving_on: r.leaving_on,
     leaving_reason: r.leaving_reason,
@@ -115,6 +127,22 @@ export function RosterSheet({
   const [saved, setSaved] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 印刷（PDF保存）のとき、保存されるファイル名を「労働者名簿_氏名_会社名」にする。
+  // ブラウザは画面の題名（document.title）をPDFの既定のファイル名に使うため、
+  // 印刷の前に題名を差し替えて、終わったら元に戻す
+  const printSheet = () => {
+    const original = document.title;
+    const restore = () => {
+      document.title = original;
+      window.removeEventListener("afterprint", restore);
+    };
+    document.title = rosterFileName(worker.name, form.company_name || orgName);
+    window.addEventListener("afterprint", restore);
+    window.print();
+    // afterprint が来ないブラウザのための保険
+    setTimeout(restore, 3000);
+  };
 
   const set = <K extends keyof RosterForm>(key: K, value: RosterForm[K]) => {
     setForm((f) => ({ ...f, [key]: value }));
@@ -262,7 +290,7 @@ export function RosterSheet({
           )}
           <button
             type="button"
-            onClick={() => window.print()}
+            onClick={printSheet}
             className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-brand px-5 py-3 text-sm font-bold text-brand-foreground"
           >
             <Printer size={18} />

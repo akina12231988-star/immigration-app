@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   isWithinRosterRetention,
+  residencePermitHistory,
   rosterDateKey,
+  rosterFileName,
   rosterJpDate,
   rosterRetentionEnd,
   rosterWorkKind,
   sortRosterHistory,
+  withResidencePermitHistory,
 } from "./roster";
 
 describe("rosterWorkKind", () => {
@@ -146,5 +149,56 @@ describe("isWithinRosterRetention", () => {
 
   it("発行年月日未設定は期間内扱い（保護する）", () => {
     expect(isWithinRosterRetention(null, "2031-07-31")).toBe(true);
+  });
+});
+
+describe("residencePermitHistory / withResidencePermitHistory", () => {
+  it("在留資格の許可を履歴の1行にする", () => {
+    expect(residencePermitHistory("特定技能1号", "2026-08-19")).toEqual({
+      on: "2026年8月19日",
+      content: "特定技能1号ビザの許可",
+    });
+  });
+
+  it("在留資格が空でも許可の行は作る", () => {
+    expect(residencePermitHistory("", "2026-08-19")?.content).toBe("在留資格の許可");
+  });
+
+  it("許可年月日が無ければ作らない", () => {
+    expect(residencePermitHistory("特定技能1号", null)).toBeNull();
+  });
+
+  it("履歴に許可を足して、古い順に並べる", () => {
+    const rows = withResidencePermitHistory(
+      [{ on: "2026年8月20日", content: "入社" }],
+      "特定技能1号",
+      "2026-08-19",
+    );
+    expect(rows.map((r) => r.content)).toEqual(["特定技能1号ビザの許可", "入社"]);
+  });
+
+  it("同じ年月日の行が既にあれば足さない", () => {
+    const rows = withResidencePermitHistory(
+      [{ on: "2026年8月19日", content: "特定技能１号ビザの許可" }],
+      "特定技能1号",
+      "2026-08-19",
+    );
+    expect(rows).toHaveLength(1);
+  });
+});
+
+describe("rosterFileName", () => {
+  it("労働者名簿_氏名_会社名 にする", () => {
+    expect(rosterFileName("TEGUH RIZKI", "有限会社國崎青果")).toBe(
+      "労働者名簿_TEGUH RIZKI_有限会社國崎青果",
+    );
+  });
+
+  it("ファイル名に使えない記号は - にする", () => {
+    expect(rosterFileName("A/B", "C:D")).toBe("労働者名簿_A-B_C-D");
+  });
+
+  it("会社名が空でも氏名だけで作る", () => {
+    expect(rosterFileName("TEGUH RIZKI", "")).toBe("労働者名簿_TEGUH RIZKI");
   });
 });
