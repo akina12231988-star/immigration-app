@@ -26,7 +26,7 @@ detail as (
     n.id,
     n.name,
     n.application_date,
-    n.status,
+    n.status::text as status,
     n.created_at,
     (select count(*) from application_files f where f.application_id = n.id) as files,
     (select count(*) from application_memos m where m.application_id = n.id) as memos,
@@ -35,7 +35,7 @@ detail as (
     -- 進み具合の順番（先に進んでいるものを残す）
     array_position(
       array['申請前','申請済','LINE報告済','通知書到着','許可済','在留カード受領','取下げ'],
-      n.status
+      n.status::text  -- 状態は enum なので文字にそろえてから比べる
     ) as step
   from norm n
   join dup on dup.no_key = n.no_key
