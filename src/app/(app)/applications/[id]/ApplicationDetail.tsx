@@ -108,6 +108,18 @@ export function ApplicationDetail({ id }: { id: string }) {
       cancelled = true;
     };
   }, [workerId]);
+  // 氏名のコピー（入管サイト・Notionなどへの貼り付け用）
+  const [nameCopied, setNameCopied] = useState(false);
+  const copyName = async (name: string) => {
+    try {
+      await navigator.clipboard.writeText(name);
+      setNameCopied(true);
+      setTimeout(() => setNameCopied(false), 1500);
+    } catch {
+      /* クリップボード非対応時は何もしない */
+    }
+  };
+
   const mailDocLabel = (d: MailAfterApplyDoc) => {
     const label = PREP_DOC_DEFS.find((def) => def.id === d.doc_id)?.label ?? d.doc_id;
     return d.todo_no ? `${label}（${d.todo_no}）` : label;
@@ -282,10 +294,25 @@ export function ApplicationDetail({ id }: { id: string }) {
           </p>
         </div>
       )}
-      <Card className="p-4">
+      {/* 下へスクロールしても誰の申請かが分かるよう、この見出しは上部に固定する */}
+      <Card className="sticky top-0 z-30 p-4 shadow-md">
         <div className="mb-1 flex items-start justify-between gap-2">
-          <div>
-            <h2 className="text-xl font-bold">{app.name}</h2>
+          <div className="min-w-0">
+            <h2 className="flex items-center gap-1.5 text-xl font-bold">
+              <span className="min-w-0 select-text truncate">{app.name}</span>
+              <button
+                type="button"
+                onClick={() => void copyName(app.name)}
+                aria-label="氏名をコピー"
+                className="shrink-0 text-muted hover:text-brand"
+              >
+                {nameCopied ? (
+                  <Check size={16} className="text-status-reported-fg" />
+                ) : (
+                  <Copy size={16} />
+                )}
+              </button>
+            </h2>
             <p className="text-sm text-muted">
               {app.applicationContent}
               <span className="ml-2 rounded-full border border-border px-2 py-0.5 text-[11px] font-bold text-muted">

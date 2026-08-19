@@ -2,6 +2,8 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { getWorkerWithHistories } from "@/lib/supabase/queries/workers";
+import { normalizeOrgEmploymentStarts } from "@/lib/org-employment";
+import { mergeResumeHistories } from "@/lib/resume-histories";
 import { getWorkerPhotoUrl } from "../../actions";
 import { ResumeSheet } from "./ResumeSheet";
 
@@ -21,9 +23,31 @@ export default async function WorkerResumePage({
   if (!worker) notFound();
 
   const photoUrl = await getWorkerPhotoUrl(worker.photo_path);
-  const histories = [...worker.work_histories].sort((a, b) =>
-    a.start_date < b.start_date ? -1 : 1,
+
+  // 職歴に、所属機関別の雇用開始日と退職の記録を自動で足す（手入力済みの機関は足さない）
+  const [{ data: orgRows }, { data: resignationRows }] = await Promise.all([
+    supabase.from("organizations").select("id, name"),
+    supabase
+      .from("resignations")
+      .select("organization_id, org_name, leaving_on")
+      .eq("worker_id", worker.id),
+  ]);
+  const orgNameById = new Map(
+    ((orgRows as { id: string; name: string }[]) ?? []).map((o) => [o.id, o.name]),
   );
+  const histories = mergeResumeHistories({
+    histories: worker.work_histories,
+    employmentStarts: normalizeOrgEmploymentStarts(worker.org_employment_starts)
+      .filter((e) => orgNameById.has(e.organization_id))
+      .map((e) => ({ ...e, orgName: orgNameById.get(e.organization_id) as string })),
+    resignations:
+      (resignationRows as { organization_id: string | null; org_name: string; leaving_on: string | null }[]) ??
+      [],
+    residenceStatus: worker.residence_status,
+    currentOrganizationId: worker.current_organization_id,
+    workerStatus: worker.status,
+    workerLeavingOn: worker.leaving_on,
+  });
 
   return (
     <ResumeSheet
@@ -40,14 +64,7 @@ export default async function WorkerResumePage({
         specialtyGrade: worker.specialty_grade,
         otherQualifications: worker.other_qualifications,
       }}
-      histories={histories.map((h) => ({
-        id: h.id,
-        visa: h.visa,
-        start: h.start_date,
-        end: h.end_date,
-        org: h.org_name,
-        role: h.role,
-      }))}
+      histories={histories}
     />
   );
 }
