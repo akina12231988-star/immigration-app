@@ -58,6 +58,8 @@ export default async function WorkerRosterPage({
         field: worker.field,
         myNumber: worker.my_number,
         employmentStartOn: worker.employment_start_on,
+        residenceStatus: worker.residence_status,
+        residencePermitDate: worker.residence_permit_date,
         status: worker.status,
         leavingOn: worker.leaving_on,
         leavingKind: worker.leaving_kind,

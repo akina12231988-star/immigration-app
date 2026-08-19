@@ -1,4 +1,5 @@
 import { categoriesFor } from "@/lib/industries";
+import type { RosterHistoryEntry } from "@/types/db";
 
 // ---- 労働者名簿（worker_rosters）のロジック ----
 
@@ -94,4 +95,42 @@ export function isWithinRosterRetention(issuedOn: string | null, today: string):
   if (!issuedOn) return true;
   const end = rosterRetentionEnd(issuedOn);
   return !end || today <= end;
+}
+
+// ---- 在留資格の許可を履歴に残す ----
+
+// 在留資格の許可を履歴の1行にする（例: 2026年8月19日「特定技能1号ビザの許可」）。
+// 許可年月日が無ければ null
+export function residencePermitHistory(
+  residenceStatus: string,
+  permitOn: string | null,
+): RosterHistoryEntry | null {
+  if (!permitOn) return null;
+  const status = (residenceStatus ?? "").trim();
+  return {
+    on: rosterJpDate(permitOn),
+    content: status ? `${status}ビザの許可` : "在留資格の許可",
+  };
+}
+
+// 履歴に在留資格の許可の行を足す（同じ年月日の行が既にあるときは足さない）。
+// 並び順は年月日の古い順にそろえる
+export function withResidencePermitHistory(
+  history: RosterHistoryEntry[],
+  residenceStatus: string,
+  permitOn: string | null,
+): RosterHistoryEntry[] {
+  const row = residencePermitHistory(residenceStatus, permitOn);
+  if (!row) return sortRosterHistory(history);
+  const key = rosterDateKey(row.on);
+  const already = history.some((h) => rosterDateKey(h.on) === key);
+  return sortRosterHistory(already ? history : [...history, row]);
+}
+
+// ---- 印刷（PDF保存）のファイル名 ----
+
+// 「労働者名簿_氏名_会社名」。ファイル名に使えない記号は「-」にする
+export function rosterFileName(workerName: string, companyName: string): string {
+  const safe = (v: string) => (v ?? "").replace(/[\\/:*?"<>|]/g, "-").trim();
+  return ["労働者名簿", safe(workerName), safe(companyName)].filter(Boolean).join("_");
 }

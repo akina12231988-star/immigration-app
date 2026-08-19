@@ -1,15 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
+  WORKER_DETAIL_DOC_KEYS,
   buildFollowupMail,
   buildOnboardingMail,
   followupMailDocs,
   formatDateSlash,
+  isGensenYearKey,
   isPendingDocAlert,
   isPendingDocOverdue,
   isStartDateCorrectionNeeded,
   onboardingDocDefs,
   onboardingDownloadName,
   onboardingMailNumbers,
+  onboardingMailSubject,
   onboardingPdfName,
   pendingDaysElapsed,
   reiwaYear,
@@ -25,7 +28,7 @@ describe("onboardingDocDefs", () => {
   });
   it("源泉徴収票のラベルは令和年で変わる", () => {
     expect(reiwaYear("2026-07-22")).toBe(8);
-    const gensen = onboardingDocDefs("2026-07-22").find((d) => d.key === "gensen");
+    const gensen = onboardingDocDefs("2026-07-22").find((d) => d.key === "gensen_r8");
     expect(gensen?.label).toBe("令和8年分源泉徴収票");
   });
 });
@@ -256,5 +259,33 @@ describe("雇用開始日の訂正検知", () => {
     expect(startDateCorrectionReason("2026-08-01", "2026-08-05")).toBe(
       "雇用開始年月日の訂正（2026/08/01 → 2026/08/05）",
     );
+  });
+});
+
+describe("入社書類メールと外国人詳細の書類をそろえる", () => {
+  it("外国人詳細の書類は、入社書類メールと同じ並び（源泉徴収票を除く）", () => {
+    const mail = onboardingDocDefs("2026-07-22")
+      .map((d) => d.key)
+      .filter((k) => !isGensenYearKey(k));
+    expect([...WORKER_DETAIL_DOC_KEYS]).toEqual(mail);
+  });
+
+  it("申請書類一式と労働者名簿も外国人詳細に出す", () => {
+    expect(WORKER_DETAIL_DOC_KEYS).toContain("shinsei");
+    expect(WORKER_DETAIL_DOC_KEYS).toContain("meibo");
+  });
+});
+
+describe("onboardingMailSubject", () => {
+  it("「◯◯さんの資料」にする", () => {
+    expect(onboardingMailSubject("TEGUH RIZKI")).toBe("TEGUH RIZKIさんの資料");
+  });
+
+  it("前後の空白は落とす", () => {
+    expect(onboardingMailSubject("  NGUYEN VAN A  ")).toBe("NGUYEN VAN Aさんの資料");
+  });
+
+  it("氏名が無いときは「資料」だけにする", () => {
+    expect(onboardingMailSubject("")).toBe("資料");
   });
 });
