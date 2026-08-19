@@ -27,22 +27,26 @@ export function onboardingDocDefs(today: string): OnboardingDocDef[] {
     { key: "fuyokojo", label: "扶養控除等申告書" },
     { key: "meibo", label: "労働者名簿" },
     { key: "rirekisho", label: "履歴書" },
-    { key: "gensen", label: `令和${reiwaYear(today)}年分源泉徴収票` },
+    // 源泉徴収票は令和年ごとに貯めるため、外国人詳細の源泉徴収票セクション・
+    // 申請準備のチェックリストと同じ「gensen_r{令和年}」で保存する
+    { key: gensenDocKey(reiwaYear(today)), label: gensenLabel(reiwaYear(today)) },
     { key: "furigana", label: "フリガナがわかる書類（前職の社保など）" },
   ];
   return defs.map((d, i) => ({ ...d, num: i + 1 }));
 }
 
 // 外国人詳細ページの「入社書類」で保存・差し替え・削除を管理する書類キー。
-// 申請書類一式（shinsei）・労働者名簿（meibo）はこの画面では扱わない。
-// 源泉徴収票（gensen）は令和年ごとに蓄積するため専用セクションで管理する。
+// 入社書類メールと同じ並び・同じ中身にしてある（どちらから添付しても同じデータ）。
+// 源泉徴収票だけは令和年ごとに貯めるため、すぐ下の源泉徴収票セクションで管理する。
 export const WORKER_DETAIL_DOC_KEYS = [
   "zairyu",
   "shiteisho",
+  "shinsei",
   "mynumber",
   "tsuchou",
   "fuyo",
   "fuyokojo",
+  "meibo",
   "rirekisho",
   "furigana",
 ] as const;
