@@ -33,6 +33,17 @@ export function WorkerAddressHistory({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // 基本情報の住所（労働者名簿・履歴書・扶養控除等申告書はこの値を使う）。
+  // 住所歴の最新と食い違っていたら、下の注意書きで直せるようにする
+  const [currentAddress, setCurrentAddress] = useState<string | null>(null);
+  const fetchCurrentAddress = () =>
+    createClient()
+      .from("workers")
+      .select("address")
+      .eq("id", workerId)
+      .maybeSingle()
+      .then(({ data }) => (data as { address?: string } | null)?.address ?? "");
+
   const load = async (): Promise<WorkerAddress[]> => {
     const next = await listWorkerAddresses(createClient(), workerId);
     setRows(next);
@@ -41,6 +52,8 @@ export function WorkerAddressHistory({
 
   useEffect(() => {
     listWorkerAddresses(createClient(), workerId).then(setRows).catch(() => undefined);
+    fetchCurrentAddress().then(setCurrentAddress, () => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workerId]);
 
   // 住所歴の最新（転入日が最も新しい行）を、外国人の現在の住所（基本情報の住所欄）へ
@@ -49,7 +62,43 @@ export function WorkerAddressHistory({
     const latest = next[0];
     if (!latest) return;
     await updateWorker(createClient(), workerId, { address: latest.address });
+    setCurrentAddress(latest.address);
     router.refresh(); // 基本情報の住所表示を更新する
+  };
+
+  // 基本情報の住所と住所歴の最新が食い違っているか
+  // （基本情報を直接直した・住所歴に誤字が残っている など）
+  const latestRow = rows[0];
+  const mismatch =
+    currentAddress !== null && !!latestRow && latestRow.address !== currentAddress;
+
+  // 住所歴の最新を基本情報へ反映する（労働者名簿などは基本情報の住所を使う）
+  const applyHistoryToWorker = async () => {
+    if (!latestRow) return;
+    setError(null);
+    try {
+      await updateWorker(createClient(), workerId, { address: latestRow.address });
+      setCurrentAddress(latestRow.address);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "反映に失敗しました");
+    }
+  };
+
+  // 基本情報の住所で、住所歴の最新の行を直す（誤字を基本情報側で直したとき用）
+  const applyWorkerToHistory = async () => {
+    if (!latestRow || currentAddress === null) return;
+    setError(null);
+    try {
+      const { error: upErr } = await createClient()
+        .from("worker_addresses")
+        .update({ address: currentAddress })
+        .eq("id", latestRow.id);
+      if (upErr) throw upErr;
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "住所歴の修正に失敗しました");
+    }
   };
 
   async function add() {
@@ -117,6 +166,39 @@ export function WorkerAddressHistory({
         <p role="alert" className="mb-3 rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
           {error}
         </p>
+      )}
+
+      {/* 基本情報の住所と住所歴の最新が違うときの注意（名簿などは基本情報の住所で作られる） */}
+      {mismatch && (
+        <div className="mb-3 rounded-xl bg-status-notice-bg p-3 text-xs text-status-notice-fg">
+          <p className="font-bold">基本情報の住所と、住所歴の最新が違っています。</p>
+          <p className="mt-1">
+            基本情報：<span className="font-bold">{currentAddress || "（空欄）"}</span>
+            <br />
+            住所歴の最新：<span className="font-bold">{latestRow.address}</span>
+          </p>
+          <p className="mt-1">
+            労働者名簿・履歴書・扶養控除等申告書は基本情報の住所で作られます。正しい方を選んでそろえてください。
+          </p>
+          {canEdit && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void applyHistoryToWorker()}
+                className="rounded-lg border border-status-notice-fg/40 bg-surface px-3 py-1.5 font-bold"
+              >
+                住所歴の最新が正しい（基本情報へ反映）
+              </button>
+              <button
+                type="button"
+                onClick={() => void applyWorkerToHistory()}
+                className="rounded-lg border border-status-notice-fg/40 bg-surface px-3 py-1.5 font-bold"
+              >
+                基本情報が正しい（住所歴の最新を直す）
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       {rows.length === 0 ? (
