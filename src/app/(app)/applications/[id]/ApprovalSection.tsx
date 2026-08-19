@@ -2,13 +2,17 @@
 
 import { messengerWebUrl } from "@/lib/messenger-link";
 import { useEffect, useState } from "react";
-import { Check, Copy, ExternalLink, MessageCircle, Plus, ShieldCheck, Trash2 } from "lucide-react";
+import { Check, Copy, ExternalLink, MapPin, MessageCircle, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { FileGroup } from "@/components/applications/FileGroup";
 import { generateApprovalReport } from "@/lib/line-report";
 import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
+import {
+  insertWorkerAddress,
+  listWorkerAddresses,
+} from "@/lib/supabase/queries/worker-addresses";
 import { ensureOrientationForApplication } from "@/lib/supabase/queries/orientations";
 import {
   deleteApplicationMemo,
@@ -16,6 +20,7 @@ import {
   listApplicationMemos,
 } from "@/lib/supabase/queries/memos";
 import { orientationDate } from "@/lib/orientation";
+import { todayStr } from "@/lib/application-alerts";
 import {
   normalizeOrgEmploymentStarts,
   upsertOrgEmploymentStart,
@@ -112,6 +117,64 @@ export function ApprovalSection({
       status: "許可済",
       grantedPermitDate: form.grantedPermitDate || today,
     });
+  }
+
+  // ---- 許可後の住所変更 ----
+  // 許可がおりて在留カードを受け取ると、住所が変わっていることがある。
+  // ここで新しい住所を入れると、住所歴（転入）に残り、外国人情報の住所も更新される。
+  const [currentAddress, setCurrentAddress] = useState("");
+  const [newAddress, setNewAddress] = useState("");
+  const [movedOn, setMovedOn] = useState("");
+  const [addressSaving, setAddressSaving] = useState(false);
+  const [addressSaved, setAddressSaved] = useState(false);
+  // 画面に出す（＝保存される）転入日。触っていなければ在留許可日、それも無ければ今日
+  const movedOnValue = movedOn || form.grantedPermitDate || todayStr();
+
+  useEffect(() => {
+    if (!app.workerId) return;
+    let cancelled = false;
+    void createClient()
+      .from("workers")
+      .select("address")
+      .eq("id", app.workerId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setCurrentAddress((data as { address?: string } | null)?.address ?? "");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [app.workerId]);
+
+  async function saveAddress() {
+    if (!app.workerId || !newAddress.trim()) return;
+    setAddressSaving(true);
+    setError(null);
+    setAddressSaved(false);
+    try {
+      const supabase = createClient();
+      const address = newAddress.trim();
+      // 住所歴（課税・納税証明書の1月1日時点の住所判定に使う）にも残す
+      await insertWorkerAddress(supabase, {
+        worker_id: app.workerId,
+        moved_on: movedOnValue,
+        address,
+        kind: "転入",
+        note: "在留許可時に変更",
+      });
+      // 住所歴のいちばん新しい行を現在の住所にする（外国人詳細の住所歴と同じ扱い）
+      const rows = await listWorkerAddresses(supabase, app.workerId);
+      await updateWorker(supabase, app.workerId, { address: rows[0]?.address ?? address });
+      setCurrentAddress(rows[0]?.address ?? address);
+      setNewAddress("");
+      setMovedOn("");
+      setAddressSaved(true);
+      setTimeout(() => setAddressSaved(false), 2500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "住所の更新に失敗しました");
+    } finally {
+      setAddressSaving(false);
+    }
   }
 
   // 許可情報を保存。外国人の在留カード番号・許可日・期限日も自動更新する
@@ -354,6 +417,52 @@ export function ApprovalSection({
               <input type="date" value={form.grantedExpiryDate} onChange={(e) => set("grantedExpiryDate", e.target.value)} className={INPUT_CLASS} />
             </Labeled>
           </div>
+
+          {/* 許可後の住所変更（在留カードの住所が今の登録と違うとき） */}
+          {app.workerId && (
+            <div className="rounded-xl border border-border bg-background p-3">
+              <p className="mb-1 flex items-center gap-1.5 text-sm font-bold text-muted">
+                <MapPin size={14} />
+                住所（在留カードの記載と違うとき）
+              </p>
+              <p className="mb-2 text-xs">
+                今の登録：
+                <span className="font-bold">{currentAddress || "未登録"}</span>
+              </p>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                <label className="flex flex-1 flex-col gap-1">
+                  <span className="text-[11px] font-bold text-muted">新しい住所</span>
+                  <input
+                    value={newAddress}
+                    onChange={(e) => setNewAddress(e.target.value)}
+                    placeholder="例：熊本県八代市◯◯町1-2-3 ◯◯アパート101"
+                    className={INPUT_CLASS}
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] font-bold text-muted">転入日（住所歴に残ります）</span>
+                  <input
+                    type="date"
+                    value={movedOnValue}
+                    onChange={(e) => setMovedOn(e.target.value)}
+                    className={`${INPUT_CLASS} sm:w-44`}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => void saveAddress()}
+                  disabled={addressSaving || !newAddress.trim()}
+                  className="min-h-[44px] shrink-0 rounded-xl bg-brand px-4 text-sm font-bold text-brand-foreground disabled:opacity-50"
+                >
+                  {addressSaving ? "保存中…" : addressSaved ? "更新しました" : "住所を更新"}
+                </button>
+              </div>
+              <p className="mt-1 text-[11px] text-muted">
+                住所歴に「転入」として残り、外国人情報の住所も新しい住所になります。
+                転入日は在留許可日を初期表示しています（違うときは直してください）。
+              </p>
+            </div>
+          )}
 
           {/* 在留カード画像・指定書画像 */}
           <div className="space-y-4">

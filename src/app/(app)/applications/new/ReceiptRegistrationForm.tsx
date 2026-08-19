@@ -17,6 +17,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { useApplications } from "@/lib/application-store";
 import { createClient } from "@/lib/supabase/client";
+import { findDuplicateApplication } from "@/lib/application-number";
 import { insertWorker } from "@/lib/supabase/queries/workers";
 import { blankWorkerInput } from "@/lib/worker-defaults";
 import { buildWorkerOptions } from "@/lib/worker-label";
@@ -172,15 +173,19 @@ export function ReceiptRegistrationForm({
     }
   }
 
-  // 申請番号は前後の空白を無視して比較する（保存時も trim するため一貫させる）。
+  // 申請番号の重複チェック。最後の「号」・空白・全角半角の違いは無視して比べる
+  // （受付票は「福熊E91138号」だが、入力では「号」を省くため）。
   // 登録処理で自分自身をストアへ追加した直後は createdId で除外し、
   // 画像アップロード中に「既に登録されています」が一瞬出る誤警告を防ぐ。
   const trimmedNumber = fields.applicationNumber.trim();
-  const isDuplicateNumber =
-    trimmedNumber.length > 0 &&
-    applications.some(
-      (a) => a.id !== createdId && a.applicationNumber === trimmedNumber,
-    );
+  const duplicateApp = findDuplicateApplication(applications, trimmedNumber, createdId);
+  const isDuplicateNumber = !!duplicateApp;
+  // どの申請と重なっているかを出す（人違い・入力間違いをその場で確かめられるように）
+  const duplicateLabel = duplicateApp
+    ? `この申請番号は既に登録されています（${duplicateApp.name || "氏名なし"}・${
+        duplicateApp.applicationDate || "申請日なし"
+      }）`
+    : undefined;
 
   function startEditing() {
     setFields((prev) => ({
@@ -249,6 +254,17 @@ export function ReceiptRegistrationForm({
 
   async function handleSubmit() {
     if (!fields.applicationContent) return;
+    // 同じ申請番号が既にあるときは、いったん確かめてから登録する
+    if (
+      duplicateApp &&
+      !window.confirm(
+        `同じ申請番号の申請が既に登録されています（${duplicateApp.name || "氏名なし"}・${
+          duplicateApp.applicationDate || "申請日なし"
+        }）。\nそれでもこの内容で登録しますか？`,
+      )
+    ) {
+      return;
+    }
     setSubmitting(true);
     setSubmitError(null);
     try {
@@ -287,7 +303,6 @@ export function ReceiptRegistrationForm({
   const hasSubject = Boolean(selectedWorker);
   const canSubmit =
     !submitting &&
-    !isDuplicateNumber &&
     hasSubject &&
     orgId &&
     fields.applicationDate &&
@@ -419,7 +434,7 @@ export function ReceiptRegistrationForm({
                   label="申請番号（必須）"
                   value={fields.applicationNumber}
                   onChange={(v) => set("applicationNumber", v)}
-                  warning={isDuplicateNumber ? "この申請番号は既に登録されています" : undefined}
+                  warning={duplicateLabel}
                 />
               </div>
 
@@ -496,9 +511,13 @@ export function ReceiptRegistrationForm({
         <div className="fixed bottom-[calc(64px+env(safe-area-inset-bottom))] left-0 right-0 z-10 border-t border-border bg-surface p-3 lg:bottom-0 lg:pl-64">
           <div className="mx-auto max-w-2xl">
             {isDuplicateNumber && (
-              <div className="mb-2 flex items-center gap-2 rounded-lg bg-seal/10 px-3 py-2 text-xs font-bold text-seal">
-                <TriangleAlert size={15} />
-                申請番号が重複しています。内容を確認してください
+              <div className="mb-2 flex items-start gap-2 rounded-lg bg-seal/10 px-3 py-2 text-xs font-bold text-seal">
+                <TriangleAlert size={15} className="mt-0.5 shrink-0" />
+                <span>
+                  {duplicateLabel}
+                  <br />
+                  内容を確かめて、それでも登録するときはそのまま「登録する」を押してください。
+                </span>
               </div>
             )}
             {submitError && (
