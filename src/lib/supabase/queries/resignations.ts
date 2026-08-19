@@ -22,7 +22,8 @@ export async function listResignations(
   const { data, error } = await supabase
     .from("resignations")
     .select(SELECT)
-    .order("leaving_on", { ascending: false });
+    // 退職日が未定（null）のものを先頭に出す（「退職日を聞いて！！」の対象）
+    .order("leaving_on", { ascending: false, nullsFirst: true });
   if (error) throw error;
   return (data as ResignationWithRefs[]) ?? [];
 }

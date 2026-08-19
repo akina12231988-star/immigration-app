@@ -20,6 +20,9 @@ export default async function ResignationFormsPage({
   const supabase = await createClient();
   const resignation = await getResignationForForms(supabase, id);
   if (!resignation || !resignation.workers) notFound();
+  // 様式には退職日を書く欄があるため、退職日が未定のうちは作成画面を開かない
+  // （一覧に「退職日を聞いて！！」と出ているので、そこで入れてもらう）
+  if (!resignation.leaving_on) redirect("/resignations");
 
   const w = resignation.workers;
   return (

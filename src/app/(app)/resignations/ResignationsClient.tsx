@@ -13,6 +13,7 @@ import {
   Pencil,
   Plus,
   Trash2,
+  TriangleAlert,
   UserMinus,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
@@ -205,10 +206,17 @@ export function ResignationsClient({
               <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs tabular-nums text-muted">
                 <span className="flex items-center gap-1">
                   <CalendarClock size={12} />
-                  退職日 {r.leaving_on}
+                  退職日 {r.leaving_on ?? "未定"}
                 </span>
                 <span>随時報告TODO {r.todo_no || "未入力"}</span>
               </p>
+              {/* 退職希望は出ているが退職日がまだ決まっていない人。忘れないように目立たせる */}
+              {!r.leaving_on && (
+                <p className="mt-1.5 flex items-center gap-1.5 rounded-lg bg-seal/10 px-2.5 py-1.5 text-xs font-bold text-seal">
+                  <TriangleAlert size={14} className="shrink-0" />
+                  退職日を聞いて！！（退職日が未定のままです）
+                </p>
+              )}
               {r.reason && <p className="mt-1 text-xs text-muted">理由: {r.reason}</p>}
 
               {/* Messenger・Notion リンク */}
@@ -245,13 +253,24 @@ export function ResignationsClient({
                     >
                       TODO番号
                     </Button>
-                    <Link
-                      href={`/resignations/${r.id}/forms`}
-                      className="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-xl bg-brand px-5 py-3.5 text-base font-bold text-brand-foreground transition hover:bg-brand-strong active:scale-[0.98]"
-                    >
-                      <FileOutput size={15} />
-                      届出書作成
-                    </Link>
+                    {r.leaving_on ? (
+                      <Link
+                        href={`/resignations/${r.id}/forms`}
+                        className="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-xl bg-brand px-5 py-3.5 text-base font-bold text-brand-foreground transition hover:bg-brand-strong active:scale-[0.98]"
+                      >
+                        <FileOutput size={15} />
+                        届出書作成
+                      </Link>
+                    ) : (
+                      // 様式には退職日を書く欄があるため、決まるまでは作れない
+                      <span
+                        title="退職日が決まったら「記録を編集」で入れてください"
+                        className="inline-flex min-h-[52px] cursor-not-allowed items-center justify-center gap-2 rounded-xl border border-border bg-background px-5 py-3.5 text-sm font-bold text-muted"
+                      >
+                        <FileOutput size={15} />
+                        届出書作成（退職日待ち）
+                      </span>
+                    )}
                   </div>
                   <p className="text-center text-[11px] text-muted">
                     作成する様式: {formsForKind(r.kind).join("・")}
@@ -392,10 +411,6 @@ function ResignationDialog({
       setError("退職する所属機関を選択してください");
       return;
     }
-    if (!leavingOn) {
-      setError("退職日を入力してください");
-      return;
-    }
     setBusy(true);
     setError(null);
     try {
@@ -408,7 +423,8 @@ function ResignationDialog({
         org_contact: targetOrg.contact,
         kind,
         reason: reason.trim(),
-        leaving_on: leavingOn,
+        // 退職希望は出ているが退職日が未定のことがある。空なら未定として残す
+        leaving_on: leavingOn || null,
         todo_no: editing?.todo_no ?? "",
         note: editing?.note ?? "",
       };
@@ -419,7 +435,8 @@ function ResignationDialog({
       }
       // 外国人情報の退職者情報へ転記（退職日・区分・理由・退職元機関）
       await updateWorker(supabase, workerId, {
-        leaving_on: leavingOn,
+        // 退職日が未定のうちは、外国人情報の退職日は空のままにする
+        ...(leavingOn ? { leaving_on: leavingOn } : {}),
         leaving_kind: kind,
         leaving_reason: reason.trim(),
         leaving_org_name: targetOrg.name,
@@ -563,7 +580,7 @@ function ResignationDialog({
         </label>
 
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-bold text-muted">退職日（必須）</span>
+          <span className="text-xs font-bold text-muted">退職日（未定なら空のままでOK）</span>
           <input
             type="date"
             value={leavingOn}
@@ -572,6 +589,8 @@ function ResignationDialog({
           />
           <span className="text-[11px] text-muted">
             外国人情報の退職者情報にも表示・記録されます。
+            空のまま保存すると一覧に「退職日を聞いて！！」と出るので、決まったら入れてください
+            （届出書の作成には退職日が必要です）。
           </span>
         </label>
 
