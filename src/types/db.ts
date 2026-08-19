@@ -633,7 +633,7 @@ export interface ResignationRow {
   org_contact: string;
   kind: ResignationKind; // 会社都合 / 自己都合
   reason: string; // 退職理由
-  leaving_on: string; // 退職日 YYYY-MM-DD
+  leaving_on: string | null; // 退職日 YYYY-MM-DD（未定のときは null・0087）
   todo_no: string; // Notion随時報告TODO番号
   note: string;
   // 進み具合（0086）。マイグレーション未適用の環境では欠けることがある
