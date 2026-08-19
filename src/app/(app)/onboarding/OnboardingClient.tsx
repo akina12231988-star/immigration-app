@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
+  FileText,
   Copy,
   Download,
   ExternalLink,
@@ -1065,6 +1066,43 @@ function DocRow({
     }
   }
 
+  // アプリで作れる書類（扶養控除等申告書・労働者名簿）を、その場で作って添付する
+  const generatable: Record<string, string> = {
+    fuyokojo: "扶養控除等申告書",
+    meibo: "労働者名簿",
+  };
+  async function createAndAttach() {
+    const label = generatable[def.key];
+    if (!label) return;
+    if (
+      !window.confirm(
+        `外国人詳細の登録内容で「${label}」を作成し、この書類に添付します。\n` +
+          "内容に間違いがなければOKを押してください（添付後も差し替えできます）。",
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch("/api/onboarding-doc-pdf", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ workerId, kind: def.key }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? `${label}の作成に失敗しました`);
+      }
+      const blob = await res.blob();
+      const cd = res.headers.get("content-disposition") ?? "";
+      const m = /filename\*=UTF-8''([^;]+)/.exec(cd);
+      const fileName = m ? decodeURIComponent(m[1]) : `${label}.pdf`;
+      await handleFile(new File([blob], fileName, { type: "application/pdf" }));
+    } catch (err) {
+      onError(err instanceof Error ? err.message : `${label}の作成に失敗しました`);
+      setBusy(false);
+    }
+  }
   async function openPreview() {
     if (!state.row) return;
     const res = await getOnboardingDocPreviewUrl(state.row.id);
@@ -1128,6 +1166,18 @@ function DocRow({
             </option>
           ))}
         </select>
+        {canEdit && generatable[def.key] && (
+          <button
+            type="button"
+            onClick={() => void createAndAttach()}
+            disabled={busy}
+            title={`登録内容から${generatable[def.key]}を作って添付します`}
+            className="flex min-h-[36px] items-center gap-1 rounded-lg border border-border px-2.5 text-[11px] font-bold text-brand disabled:opacity-50"
+          >
+            <FileText size={12} />
+            {uploaded ? "作り直す" : "作成"}
+          </button>
+        )}
         {canEdit && (
           <button
             type="button"

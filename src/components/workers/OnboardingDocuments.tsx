@@ -6,6 +6,7 @@ import {
   Download,
   ExternalLink,
   Eye,
+  FileText,
   Link2,
   Loader2,
   MailPlus,
@@ -169,6 +170,52 @@ export function OnboardingDocuments({
     }
   };
 
+  // アプリで作れる書類（扶養控除等申告書・労働者名簿）。
+  // 登録済みの内容からPDFを作り、ダウンロードせずにそのまま添付データとして保存する
+  const GENERATABLE: Record<string, string> = {
+    fuyokojo: "扶養控除等申告書",
+    meibo: "労働者名簿",
+  };
+  const createAndAttach = async (def: OnboardingDocDef) => {
+    const label = GENERATABLE[def.key];
+    if (!label) return;
+    if (
+      !window.confirm(
+        `外国人詳細の登録内容で「${label}」を作成し、この欄に添付します。\n` +
+          "内容に間違いがなければOKを押してください（添付後も差し替えできます）。",
+      )
+    ) {
+      return;
+    }
+    setBusyKey(def.key);
+    setError(null);
+    try {
+      const res = await fetch("/api/onboarding-doc-pdf", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ workerId, kind: def.key }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? `${label}の作成に失敗しました`);
+      }
+      const blob = await res.blob();
+      const cd = res.headers.get("content-disposition") ?? "";
+      const m = /filename\*=UTF-8''([^;]+)/.exec(cd);
+      const fileName = m ? decodeURIComponent(m[1]) : `${label}.pdf`;
+      await uploadOnboardingDoc(
+        workerId,
+        def,
+        new File([blob], fileName, { type: "application/pdf" }),
+      );
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `${label}の作成に失敗しました`);
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
   const handleFile = async (file: File | undefined) => {
     const def = uploadDefRef.current;
     if (def) await upload(def, file);
@@ -313,6 +360,15 @@ export function OnboardingDocuments({
                           {hasFile && (
                             <IconButton label="表示" onClick={() => openPreview(row!.id)}>
                               <Eye size={13} />
+                            </IconButton>
+                          )}
+                          {GENERATABLE[def.key] && (
+                            <IconButton
+                              label={`${GENERATABLE[def.key]}を作成して添付`}
+                              onClick={() => void createAndAttach(def)}
+                            >
+                              <FileText size={13} />
+                              {hasFile ? "作り直す" : "作成"}
                             </IconButton>
                           )}
                           {isLinkable ? (
