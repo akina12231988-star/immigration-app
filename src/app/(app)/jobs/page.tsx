@@ -6,7 +6,7 @@ import { listAllApplications } from "@/lib/supabase/queries/jobs";
 import { listPostings } from "@/lib/supabase/queries/postings";
 import { listOrganizations } from "@/lib/supabase/queries/organizations";
 import { listReferralFeesByApplication } from "@/lib/supabase/queries/referrals";
-import { JobsExplorer } from "./JobsExplorer";
+import { JobsExplorer, type JobsWorker } from "./JobsExplorer";
 
 export const dynamic = "force-dynamic";
 
@@ -21,8 +21,11 @@ export default async function JobsPage() {
     listPostings(supabase).catch(() => []),
     // 手数料台帳に追加するときの手数料の初期値（あっせん明細）用
     listOrganizations(supabase).catch(() => []),
-    // 新規登録フォームの外国人候補
-    supabase.from("workers").select("id, name").order("name", { ascending: true }),
+    // 新規登録フォームの外国人候補＋「雇用開始済み」の判定に使う雇用開始日
+    supabase
+      .from("workers")
+      .select("id, name, employment_start_on, current_organization_id, org_employment_starts")
+      .order("name", { ascending: true }),
     // 応募 → 紹介手数料台帳の状態（0078未適用でも一覧は使えるようにする）
     listReferralFeesByApplication(supabase).catch(() => ({})),
   ]);
@@ -34,7 +37,7 @@ export default async function JobsPage() {
         applications={applications}
         postings={postings}
         organizations={organizations}
-        workers={(workersRes.data as { id: string; name: string }[] | null) ?? []}
+        workers={(workersRes.data as JobsWorker[] | null) ?? []}
         initialReferralFees={referralFees}
         canEdit={me.role !== "viewer"}
       />
