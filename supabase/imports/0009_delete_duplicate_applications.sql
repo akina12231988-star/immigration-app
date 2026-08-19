@@ -5,7 +5,8 @@
 --   画像・メモ・追加資料が多い → 進み具合が先 → 在留カード番号あり → 先に登録した方
 -- の順で残す方を決めます。
 --
--- 消す前に、消す側に付いている画像・メモ・追加資料・生活オリエンテーション・売上を
+-- 消す前に、消す側に付いている画像・メモ・追加資料・生活オリエンテーション・売上・
+-- メール通知の紐づけを
 -- 残す側へ付け替えるので、記録は失われません。
 --
 -- 何度実行しても安全です（二重登録が無くなれば何も起きません）。
@@ -75,8 +76,11 @@ from dup_plan p where e.application_id = p.id and p.rn > 1;
 update orientations o set application_id = p.keep_id
 from dup_plan p where o.application_id = p.id and p.rn > 1;
 
-update sales_entries s set matched_application_id = p.keep_id
-from dup_plan p where s.matched_application_id = p.id and p.rn > 1;
+update sales_entries s set application_id = p.keep_id
+from dup_plan p where s.application_id = p.id and p.rn > 1;
+
+update mail_notifications n set matched_application_id = p.keep_id
+from dup_plan p where n.matched_application_id = p.id and p.rn > 1;
 
 -- 3) 二重登録の方を消す
 delete from immigration_applications a
