@@ -127,7 +127,12 @@ export function SalesEntrySection({ app }: { app: Application }) {
     : [];
   const prorated =
     feeMode === "満額" ? null : prorateFromDate(parseAmount(supportFee) ?? 0, permitDate);
-  const total = drafts.reduce((sum, d) => sum + d.amount, 0);
+  // 申請種別ごとの売上明細の小計（入力の確認用）
+  const itemsSubtotal = items.reduce((sum, it) => sum + (parseAmount(it.amount) ?? 0), 0);
+  // 合計は今回の請求ぶんだけ。翌月からの定期売上は freee販売で別に登録するため含めない
+  const total = drafts
+    .filter((d) => d.kind !== "定期売上")
+    .reduce((sum, d) => sum + d.amount, 0);
 
   const setItemAt = (i: number, patch: Partial<OrgSalesItem>) =>
     setItems((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -279,34 +284,51 @@ export function SalesEntrySection({ app }: { app: Application }) {
                 </span>
               )}
             </p>
-            <div className="space-y-1.5">
+            {/* 1行に「項目」と「金額」。狭い画面では金額が下に折り返す */}
+            <div className="space-y-2">
               {items.map((it, i) => (
-                <div key={i} className="flex items-center gap-1.5">
-                  <input
-                    value={it.name}
-                    onChange={(e) => setItemAt(i, { name: e.target.value })}
-                    placeholder="明細項目（例: 申請取次費用）"
-                    className={`${INPUT} min-w-0 flex-1`}
-                  />
-                  <input
-                    value={digitsOnly(it.amount)}
-                    onChange={(e) => setItemAt(i, { amount: digitsOnly(e.target.value) })}
-                    inputMode="numeric"
-                    placeholder="金額"
-                    className={`${INPUT} w-28 shrink-0 text-right tabular-nums`}
-                  />
-                  <span className="shrink-0 text-xs text-muted">円</span>
+                <div
+                  key={i}
+                  className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-background p-2"
+                >
+                  <label className="flex min-w-[12rem] flex-1 flex-col gap-1">
+                    <span className="text-[11px] font-bold text-muted">項目</span>
+                    <input
+                      value={it.name}
+                      onChange={(e) => setItemAt(i, { name: e.target.value })}
+                      placeholder="例: 在留資格変更許可申請に係る申請取次支援業務費"
+                      className={`${INPUT} min-w-0`}
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] font-bold text-muted">金額（円・税抜）</span>
+                    <span className="flex items-center gap-1.5">
+                      <input
+                        value={digitsOnly(it.amount)}
+                        onChange={(e) => setItemAt(i, { amount: digitsOnly(e.target.value) })}
+                        inputMode="numeric"
+                        placeholder="0"
+                        className={`${INPUT} w-32 text-right tabular-nums`}
+                      />
+                      <span className="text-xs text-muted">円</span>
+                    </span>
+                  </label>
                   <button
                     type="button"
                     onClick={() => setItems((rs) => rs.filter((_, idx) => idx !== i))}
                     aria-label="この明細を削除"
-                    className="shrink-0 text-seal"
+                    className="mb-2.5 shrink-0 text-seal"
                   >
-                    <Trash2 size={14} />
+                    <Trash2 size={16} />
                   </button>
                 </div>
               ))}
             </div>
+            {items.length > 0 && (
+              <p className="mt-1.5 text-right text-xs font-bold text-muted">
+                明細の小計 {formatSalesYen(itemsSubtotal)}
+              </p>
+            )}
             <button
               type="button"
               onClick={() => setItems((rs) => [...rs, { name: "", amount: "" }])}
@@ -406,8 +428,13 @@ export function SalesEntrySection({ app }: { app: Application }) {
                         {!d.taxable && " ・ 非課税"}
                       </span>
                     </span>
-                    <span className="shrink-0 font-bold tabular-nums">
-                      {formatSalesYen(d.amount)}
+                    <span className="shrink-0 text-right">
+                      <span className="block font-bold tabular-nums">
+                        {formatSalesYen(d.amount)}
+                      </span>
+                      {d.kind === "定期売上" && (
+                        <span className="block text-[10px] text-muted">合計に含めません</span>
+                      )}
                     </span>
                   </div>
                 ))}
@@ -419,7 +446,12 @@ export function SalesEntrySection({ app }: { app: Application }) {
                   {formatSalesYen(prorated.amount)}
                 </p>
               )}
-              <p className="mt-1 text-sm font-bold">合計 {formatSalesYen(total)}</p>
+              <p className="mt-1 text-sm font-bold">
+                合計 {formatSalesYen(total)}
+                <span className="ml-1.5 text-[11px] font-medium text-muted">
+                  （翌月からの定期売上は含みません。freee販売の定期売上で登録してください）
+                </span>
+              </p>
               <Button
                 fullWidth
                 className="mt-3"
