@@ -1,11 +1,19 @@
--- 求人管理簿・求職管理簿の過去データ（2025年4月〜2026年3月）の取り込み【その1: 確認だけ】
+-- 求人管理簿・求職管理簿の過去データ（2025年4月〜2026年3月）の取り込み【その2: 本体】
 --
--- この SQL はデータを一切変更しません（select のみ）。取り込む前に
---   ・求人者（会社）が「会社・機関マスタ」に登録済みか
---   ・求職者が「外国人」に登録済みか
---   ・すでに取り込み済みの求人が無いか
--- を確かめます。全文を Supabase の SQL Editor に貼って実行し、
--- 出てきた表（9行）をそのまま送ってください。その2（取り込み用）を作ります。
+-- その1（0001_recruit_ledger_check.sql）の確認結果に合わせた取り込みです。
+--   求人 54件 / 求職者 111名 / 紹介 116件
+--
+-- することは4つだけです。
+--   1. 会社・機関マスタに無い求人者を追加する（確認では 井上 有基・片山 一弘 の2社）
+--   2. 求人（job_postings）を追加する（求人受理番号 BKY-◯◯ ごとに1件）
+--   3. 外国人に無い求職者を追加する（確認では9名。在籍状況「求職活動中」・支援対象外・
+--      備考に「求職管理簿の過去データ」と入れるので、現在の在籍者と混ざりません）
+--   4. 求職受付番号・受付日・有効期間を外国人に入れ、紹介（応募）の実績を追加する
+--
+-- 既に入っているものは飛ばすので、何度実行しても二重登録になりません。
+-- 実行すると Supabase が「destructive operations」と出しますが、消しているのは
+-- この SQL の中だけで使う作業用の一時表（imp_posting / imp_seeker）です。
+-- 「Run without RLS」で実行してください。
 
 -- 取り込むデータ（CSVそのまま。この接続の中だけで使う一時表）。
 -- 何度でも実行できるよう、先に作り直す。
@@ -204,60 +212,189 @@ $fn$;
 
 
 -- ============================================================
--- 確認結果（この表を送ってください）
+-- 1) 会社・機関マスタに無い求人者を追加する
 -- ============================================================
-with org_match as (
-  select
-    p.acceptance_no,
-    p.org_name as csv_org,
-    o.id as organization_id,
-    o.name as db_org
+insert into organizations (name, address, contact, note)
+select distinct on (pg_temp.norm(p.org_name))
+       p.org_name, coalesce(p.org_address, ''), coalesce(p.contact, ''),
+       '求人管理簿の過去データ（2025年4月〜2026年3月）で登録'
+from imp_posting p
+where not exists (
+  select 1 from organizations o
+  where pg_temp.norm(o.name) = pg_temp.norm(p.org_name)
+     or pg_temp.norm(o.name) = pg_temp.norm(p.employer)
+     or pg_temp.norm(o.name) like '%' || pg_temp.norm(p.org_name) || '%'
+     or pg_temp.norm(o.name) like '%' || pg_temp.norm(p.employer) || '%'
+)
+order by pg_temp.norm(p.org_name), p.received_on nulls last;
+
+-- 求人者と会社・機関マスタの対応表（このあとずっと使う）
+drop table if exists imp_org_map;
+create temp table imp_org_map as
+select p.acceptance_no, o.id as organization_id
+from imp_posting p
+left join lateral (
+  select o.id, o.name
+  from organizations o
+  where pg_temp.norm(o.name) = pg_temp.norm(p.org_name)
+     or pg_temp.norm(o.name) = pg_temp.norm(p.employer)
+     or pg_temp.norm(o.name) like '%' || pg_temp.norm(p.org_name) || '%'
+     or pg_temp.norm(o.name) like '%' || pg_temp.norm(p.employer) || '%'
+  order by length(o.name)
+  limit 1
+) o on true;
+
+-- 連絡先が空の会社にだけ、求人票の電話番号を入れる（入っている会社は触らない）
+update organizations o
+set contact = m.contact
+from (
+  select distinct on (map.organization_id) map.organization_id, p.contact
   from imp_posting p
-  left join lateral (
-    select o.id, o.name
-    from organizations o
-    where pg_temp.norm(o.name) = pg_temp.norm(p.org_name)
-       or pg_temp.norm(o.name) = pg_temp.norm(p.employer)
-       or pg_temp.norm(o.name) like '%' || pg_temp.norm(p.org_name) || '%'
-       or pg_temp.norm(o.name) like '%' || pg_temp.norm(p.employer) || '%'
-    order by length(o.name)
-    limit 1
-  ) o on true
-),
-worker_match as (
-  select
-    s.name as csv_name,
-    w.id as worker_id,
-    w.name as db_name
-  from (select distinct name from imp_seeker) s
-  left join lateral (
-    select w.id, w.name
-    from workers w
+  join imp_org_map map on map.acceptance_no = p.acceptance_no
+  where coalesce(p.contact, '') <> '' and map.organization_id is not null
+  order by map.organization_id, p.received_on nulls last
+) m(organization_id, contact)
+where o.id = m.organization_id and coalesce(o.contact, '') = '';
+
+-- ============================================================
+-- 2) 求人（求人管理簿）を追加する
+-- ============================================================
+insert into job_postings (
+  organization_id, acceptance_no, received_on, valid_until, openings,
+  job_type, work_location, employment_period, wage_kind, wage_amount,
+  contact, status, note
+)
+select
+  map.organization_id,
+  p.acceptance_no,
+  -- 受付日が空の求人は、その求人への最初の紹介日で代用する
+  coalesce(
+    p.received_on,
+    (select min(coalesce(s.applied_on, s.accepted_on, s.result_on))
+       from imp_seeker s where s.acceptance_no = p.acceptance_no),
+    current_date
+  ),
+  p.valid_until,
+  greatest(coalesce(p.openings, 1), 1),
+  coalesce(p.job_type, ''),
+  coalesce(p.work_location, ''),
+  coalesce(p.employment_period, ''),
+  coalesce(p.wage_kind, '時給')::wage_type,
+  p.wage_amount,
+  coalesce(p.contact, ''),
+  case when p.valid_until is null or p.valid_until >= current_date then '募集中' else '終了' end::posting_status,
+  '過去データ取込（2025年4月〜2026年3月 求人管理簿）'
+from imp_posting p
+join imp_org_map map on map.acceptance_no = p.acceptance_no
+where map.organization_id is not null
+  and not exists (select 1 from job_postings jp where jp.acceptance_no = p.acceptance_no);
+
+-- ============================================================
+-- 3) 外国人に無い求職者を追加する
+-- ============================================================
+insert into workers (name, address, birth, field, status, support, note)
+select distinct on (pg_temp.norm(s.name))
+       s.name, coalesce(s.address, ''), s.birth, coalesce(s.field, ''),
+       '求職活動中'::worker_status, '支援対象外'::support_scope,
+       '求職管理簿の過去データ（2025年4月〜2026年3月）で登録'
+from imp_seeker s
+where coalesce(s.name, '') <> ''
+  and not exists (
+    select 1 from workers w
     where pg_temp.norm(w.name) = pg_temp.norm(s.name)
        or pg_temp.norm(w.name) like pg_temp.norm(s.name) || '%'
-    order by length(w.name)
-    limit 1
-  ) w on true
+  )
+order by pg_temp.norm(s.name), s.accepted_on nulls last;
+
+-- 求職者と外国人の対応表
+drop table if exists imp_worker_map;
+create temp table imp_worker_map as
+select s.name, w.id as worker_id
+from (select distinct name from imp_seeker where coalesce(name, '') <> '') s
+left join lateral (
+  select w.id
+  from workers w
+  where pg_temp.norm(w.name) = pg_temp.norm(s.name)
+     or pg_temp.norm(w.name) like pg_temp.norm(s.name) || '%'
+  order by length(w.name)
+  limit 1
+) w on true;
+
+-- ============================================================
+-- 4) 求職受付（求職管理簿）と紹介の実績を入れる
+-- ============================================================
+-- 求職受付番号は1人に1つなので、いちばん新しい受付を採用する
+update workers w
+set jobseeker_no = latest.jobseeker_no,
+    jobseeker_accepted_on = latest.accepted_on,
+    jobseeker_valid_until = latest.valid_until,
+    -- 住所・生年月日・希望職種は、まだ空のときだけ埋める
+    address = case when coalesce(w.address, '') = '' then coalesce(latest.address, '') else w.address end,
+    birth = coalesce(w.birth, latest.birth),
+    field = case when coalesce(w.field, '') = '' then coalesce(latest.field, '') else w.field end
+from (
+  select distinct on (m.worker_id)
+         m.worker_id, s.jobseeker_no, s.accepted_on, s.valid_until, s.address, s.birth, s.field
+  from imp_seeker s
+  join imp_worker_map m on m.name = s.name
+  where m.worker_id is not null and coalesce(s.jobseeker_no, '') <> ''
+  order by m.worker_id, s.accepted_on desc nulls last, s.jobseeker_no desc
+) latest
+where w.id = latest.worker_id
+  and coalesce(w.jobseeker_no, '') = '';
+
+-- 紹介（応募）の実績。求人受理番号が入っている行だけ入れる
+insert into job_applications (
+  worker_id, organization_id, job_posting_id, applied_on, result, result_on, employment_term, note
 )
-select '1. 取り込む件数（求人 / 求職者 / 紹介）' as 項目,
-       (select count(*)::text from imp_posting) || ' / ' ||
-       (select count(distinct name)::text from imp_seeker) || ' / ' ||
-       (select count(*)::text from imp_seeker) as 内容
+select
+  m.worker_id,
+  jp.organization_id,
+  jp.id,
+  coalesce(s.applied_on, s.result_on, s.accepted_on, jp.received_on),
+  s.result::application_result,
+  -- 「不採用」は日付が無いことがあるので、紹介日で代用する（様式には出ません）
+  case when s.result = '採用' then s.result_on
+       else coalesce(s.result_on, s.applied_on, s.accepted_on, jp.received_on) end,
+  coalesce(s.employment_term, ''),
+  '過去データ取込（2025年4月〜2026年3月 求職管理簿）'
+from imp_seeker s
+join imp_worker_map m on m.name = s.name and m.worker_id is not null
+join job_postings jp on jp.acceptance_no = s.acceptance_no
+where coalesce(s.acceptance_no, '') <> ''
+  and coalesce(s.result, '') <> ''
+  and not exists (
+    select 1 from job_applications a
+    where a.worker_id = m.worker_id and a.job_posting_id = jp.id
+  );
+
+-- ============================================================
+-- 5) 取り込み結果（この表を送ってください）
+-- ============================================================
+select '1. 求人（求人管理簿）' as 項目,
+       (select count(*)::text from job_postings jp join imp_posting p on jp.acceptance_no = p.acceptance_no)
+       || ' / ' || (select count(*)::text from imp_posting) || ' 件' as 取り込み済み
 union all
-select '2. 会社: 見つかった', (select count(distinct csv_org)::text from org_match where organization_id is not null)
+select '2. 求職受付（求職管理簿）',
+       (select count(distinct w.id)::text from workers w
+          join imp_worker_map m on m.worker_id = w.id
+         where coalesce(w.jobseeker_no, '') <> '')
+       || ' / ' || (select count(distinct name)::text from imp_seeker) || ' 人'
 union all
-select '3. 会社: 見つからない', (select count(distinct csv_org)::text from org_match where organization_id is null)
+select '3. 紹介の実績',
+       (select count(*)::text from job_applications a where a.note like '過去データ取込%')
+       || ' / ' || (select count(*)::text from imp_seeker where coalesce(acceptance_no, '') <> '') || ' 件'
 union all
-select '4. 会社: 見つからない名前', coalesce((select string_agg(distinct csv_org, ' / ') from org_match where organization_id is null), '（なし）')
+select '4. 新しく作った会社',
+       coalesce((select string_agg(o.name, ' / ' order by o.name) from organizations o
+                 where o.note like '求人管理簿の過去データ%'), '（なし）')
 union all
-select '5. 会社: 一致した組み合わせ', coalesce((select string_agg(distinct csv_org || ' → ' || db_org, ' / ') from org_match where organization_id is not null), '（なし）')
+select '5. 新しく作った外国人（求職活動中・支援対象外）',
+       coalesce((select string_agg(w.name, ' / ' order by w.name) from workers w
+                 where w.note like '求職管理簿の過去データ%'), '（なし）')
 union all
-select '6. 求職者: 既に登録済み', (select count(*)::text from worker_match where worker_id is not null)
+select '6. 求人に結びつかなかった紹介（求人受理番号なし）',
+       (select count(*)::text from imp_seeker where coalesce(acceptance_no, '') = '' and coalesce(name, '') <> '') || ' 件（不採用の記録。求職管理簿には受付だけ載ります）'
 union all
-select '7. 求職者: 未登録（新しく作る必要あり）', (select count(*)::text from worker_match where worker_id is null)
-union all
-select '8. 求職者: 未登録の氏名', coalesce((select string_agg(csv_name, ' / ' order by csv_name) from worker_match where worker_id is null), '（なし）')
-union all
-select '9. すでに入っている求人・求職受付番号',
-       (select count(*)::text from job_postings jp join imp_posting p on jp.acceptance_no = p.acceptance_no) || ' 件 / ' ||
-       (select count(*)::text from workers w where coalesce(w.jobseeker_no, '') <> '') || ' 人';
+select '7. 外国人に結びつかなかった求職者',
+       coalesce((select string_agg(name, ' / ') from imp_worker_map where worker_id is null), '（なし）');
