@@ -13,6 +13,22 @@ function prepOrgName(
   return w.organizations?.name ?? null;
 }
 
+// 申請一覧の「申請前＜準備中＞」に出る人かどうか。
+// 「準備中」にしていても、更新の人は在留期限の3か月前になるまでは出ない
+// （「新規で申請書類準備」にした人は在留期限に関係なく出る）。
+export function isPrepListTarget(
+  w: Pick<
+    WorkerWithOrg,
+    "status" | "residence_expiry_date" | "residence_renewal_status" | "application_prep_kind"
+  >,
+  today: string,
+): boolean {
+  if (w.residence_renewal_status !== "準備中") return false;
+  return w.application_prep_kind === "新規"
+    ? w.status !== "退職"
+    : isResidenceRenewalTarget(w, today);
+}
+
 // 擬似行のIDに付ける接頭辞。実在の申請レコードと区別するために使う
 const PLACEHOLDER_PREFIX = "renewal-placeholder-";
 
@@ -41,15 +57,7 @@ export function buildRenewalPlaceholders(
   );
 
   return workers
-    .filter(
-      (w) =>
-        w.residence_renewal_status === "準備中" &&
-        (w.application_prep_kind === "新規"
-          ? w.status !== "退職"
-          : isResidenceRenewalTarget(w, today)) &&
-        !underReview.has(w.id) &&
-        !hasPreApplication.has(w.id),
-    )
+    .filter((w) => isPrepListTarget(w, today) && !underReview.has(w.id) && !hasPreApplication.has(w.id))
     .sort((a, b) => (a.residence_expiry_date ?? "").localeCompare(b.residence_expiry_date ?? ""))
     .map((w) => ({
       id: `${PLACEHOLDER_PREFIX}${w.id}`,

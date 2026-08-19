@@ -30,7 +30,18 @@ import {
 import { updateWorker, type WorkerForResignation } from "@/lib/supabase/queries/workers";
 import { notionAppUrl } from "@/lib/notion-link";
 import { formsForKind } from "@/lib/resignation";
-import { RESIGNATION_KINDS, type Organization, type ResignationKind } from "@/types/db";
+import {
+  countByResignationStatus,
+  resignationStatus,
+} from "@/lib/resignation-progress";
+import { ResignationPosting } from "./ResignationPosting";
+import {
+  RESIGNATION_KINDS,
+  RESIGNATION_STATUSES,
+  type Organization,
+  type ResignationKind,
+  type ResignationStatus,
+} from "@/types/db";
 
 const INPUT =
   "min-h-[44px] w-full rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none";
@@ -40,6 +51,13 @@ const TEXTAREA =
 const KIND_CLASS: Record<ResignationKind, string> = {
   会社都合: "bg-seal/10 text-seal",
   自己都合: "bg-status-notice-bg text-status-notice-fg",
+};
+
+// 進み具合のバッジの色（準備中 → 署名依頼中 → 投函完了）
+const STATUS_CLASS: Record<ResignationStatus, string> = {
+  準備中: "bg-background text-muted",
+  署名依頼中: "bg-status-notice-bg text-status-notice-fg",
+  投函完了: "bg-status-approved-bg text-status-approved-fg",
 };
 
 export function ResignationsClient({
@@ -62,10 +80,28 @@ export function ResignationsClient({
   const [deleting, setDeleting] = useState<ResignationWithRefs | null>(null);
   const [busyDelete, setBusyDelete] = useState(false);
   const [kindFilter, setKindFilter] = useState<ResignationKind | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<ResignationStatus | "all">("all");
+
+  // 投函日・追跡番号・進み具合はこの画面で直せるので、手元でも最新の値を持つ
+  const [rows, setRows] = useState(resignations);
+  const [prevRows, setPrevRows] = useState(resignations);
+  if (resignations !== prevRows) {
+    setPrevRows(resignations);
+    setRows(resignations);
+  }
+  const patchRow = (id: string, patch: Partial<ResignationWithRefs>) =>
+    setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+
+  const statusCounts = useMemo(() => countByResignationStatus(rows), [rows]);
 
   const filtered = useMemo(
-    () => resignations.filter((r) => kindFilter === "all" || r.kind === kindFilter),
-    [resignations, kindFilter],
+    () =>
+      rows.filter(
+        (r) =>
+          (kindFilter === "all" || r.kind === kindFilter) &&
+          (statusFilter === "all" || resignationStatus(r) === statusFilter),
+      ),
+    [rows, kindFilter, statusFilter],
   );
 
   const remove = async () => {
@@ -117,6 +153,28 @@ export function ResignationsClient({
         })}
       </div>
 
+      {/* 進み具合フィルター（準備中 → 署名依頼中 → 投函完了） */}
+      <div className="flex flex-wrap gap-2">
+        {(["all", ...RESIGNATION_STATUSES] as (ResignationStatus | "all")[]).map((st) => {
+          const active = statusFilter === st;
+          const count = st === "all" ? rows.length : statusCounts[st];
+          return (
+            <button
+              key={st}
+              type="button"
+              onClick={() => setStatusFilter(st)}
+              className={`rounded-full border px-3.5 py-1.5 text-xs font-bold ${
+                active
+                  ? "border-brand bg-brand text-brand-foreground"
+                  : "border-border bg-surface text-muted"
+              }`}
+            >
+              {st === "all" ? "すべての進み具合" : st}（{count}）
+            </button>
+          );
+        })}
+      </div>
+
       {filtered.length === 0 ? (
         <Card className="p-8 text-center text-sm text-muted">退職の記録はありません。</Card>
       ) : (
@@ -131,11 +189,18 @@ export function ResignationsClient({
                     {r.org_name || r.organizations?.name || "所属機関未設定"}
                   </p>
                 </Link>
-                <span
-                  className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${KIND_CLASS[r.kind]}`}
-                >
-                  {r.kind}
-                </span>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${KIND_CLASS[r.kind]}`}
+                  >
+                    {r.kind}
+                  </span>
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${STATUS_CLASS[resignationStatus(r)]}`}
+                  >
+                    {resignationStatus(r)}
+                  </span>
+                </div>
               </div>
               <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs tabular-nums text-muted">
                 <span className="flex items-center gap-1">
@@ -190,7 +255,16 @@ export function ResignationsClient({
                   </div>
                   <p className="text-center text-[11px] text-muted">
                     作成する様式: {formsForKind(r.kind).join("・")}
+                    {resignationStatus(r) === "準備中" &&
+                      "（ダウンロードすると「署名依頼中」になります）"}
                   </p>
+
+                  {/* 署名済みの届出書を郵送したときの記録 */}
+                  <ResignationPosting
+                    resignation={r}
+                    canEdit={canEdit}
+                    onPatched={(patch) => patchRow(r.id, patch)}
+                  />
                   <div className="flex justify-between">
                     <button
                       type="button"

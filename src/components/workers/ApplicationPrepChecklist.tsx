@@ -17,7 +17,12 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { FileDropArea } from "@/components/ui/FileDropArea";
+import {
+  WorkerRenewalFields,
+  type RenewalFieldsWorker,
+} from "@/components/workers/WorkerRenewalFields";
 import { createClient } from "@/lib/supabase/client";
+import { updateWorker } from "@/lib/supabase/queries/workers";
 import { listOnboardingDocs } from "@/lib/supabase/queries/onboarding";
 import {
   deletePrepChecklist,
@@ -85,15 +90,30 @@ export function ApplicationPrepChecklist({
   canEdit = false,
   photoPath,
   healthCheckOn,
+  worker,
+  organizations,
 }: {
   workerId: string;
   canEdit?: boolean;
   photoPath: string | null;
   healthCheckOn: string | null;
+  // 渡すと、申請準備（在留更新対象）と同じ入力欄をこの画面にも出す。
+  // ここで「準備中」にすると申請一覧の「申請前＜準備中＞」に出る
+  worker?: RenewalFieldsWorker;
+  organizations?: { id: string; name: string }[];
 }) {
   // TODO番号ごとの準備リスト。selected が表示中のリスト（todo_no）
   const [lists, setLists] = useState<PrepChecklistRow[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
+  // 申請準備の入力欄に渡す外国人。リストを追加すると対応状況・TODO番号が変わるので、
+  // この画面の中でも最新の値を持ち、入力欄を作り直して反映する
+  const [renewalWorker, setRenewalWorker] = useState(worker);
+  const [prevWorker, setPrevWorker] = useState(worker);
+  if (worker !== prevWorker) {
+    // 親（外国人詳細）で保存し直したら、その内容に合わせる
+    setPrevWorker(worker);
+    setRenewalWorker(worker);
+  }
   const [newTodo, setNewTodo] = useState("");
   const [creating, setCreating] = useState(false);
   const [healthDetail, setHealthDetail] = useState<HealthCheckDetail>(EMPTY_HEALTH_DETAIL);
@@ -279,6 +299,24 @@ export function ApplicationPrepChecklist({
     setError(null);
     try {
       await upsertPrepChecklist(createClient(), workerId, todo, EMPTY_PREP_META);
+      // 申請準備で番号を入れたときと同じように、この番号で「準備中」にする。
+      // これで申請一覧の「申請前＜準備中＞」にも出る（すでに対応状況が
+      // 入っている人は、その状況を変えない）
+      if (worker) {
+        await updateWorker(createClient(), workerId, {
+          residence_renewal_todo: todo,
+          ...(worker.residence_renewal_status === "" ? { residence_renewal_status: "準備中" } : {}),
+        });
+        setRenewalWorker((w) =>
+          w
+            ? {
+                ...w,
+                residence_renewal_todo: todo,
+                residence_renewal_status: w.residence_renewal_status || "準備中",
+              }
+            : w,
+        );
+      }
       const rows = await listPrepChecklists(createClient(), workerId);
       setLists(rows);
       setSelected(todo);
@@ -524,6 +562,27 @@ export function ApplicationPrepChecklist({
           </div>
         ) : (
           lists.length === 0 && <p className="text-xs text-muted">準備リストはまだありません。</p>
+        )}
+
+        {/* 申請準備（在留更新対象）と同じ入力欄。ここで「準備中」にすると
+            申請一覧の「申請前＜準備中＞」に出る（担当者は下の欄で選ぶ） */}
+        {renewalWorker && canEdit && (
+          <div className="mt-3 border-t border-dashed border-border pt-3">
+            <p className="mb-2 text-xs font-bold text-muted">
+              申請準備の対応状況（申請一覧の「申請前＜準備中＞」に反映されます）
+            </p>
+            <WorkerRenewalFields
+              key={`${renewalWorker.residence_renewal_todo}/${renewalWorker.residence_renewal_status}`}
+              worker={renewalWorker}
+              organizations={organizations}
+              canEdit={canEdit}
+              today={today}
+              fixedTodo={selected ?? renewalWorker.residence_renewal_todo ?? ""}
+              showTantou={false}
+              showLinks={false}
+              showPrepKind
+            />
+          </div>
         )}
       </div>
 
