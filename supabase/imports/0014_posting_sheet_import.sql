@@ -76,7 +76,7 @@ where jp.acceptance_no = i.acceptance_no
 
 -- 給与が未入力（応相談のまま）の求人だけ、求人票の基本給を入れる
 update job_postings jp
-set wage_kind   = i.wage_kind,
+set wage_kind   = i.wage_kind::wage_type,  -- 給与形態は enum（wage_type）なので変換する
     wage_amount = i.wage_amount
 from imp_sheet i
 where jp.acceptance_no = i.acceptance_no
@@ -89,7 +89,7 @@ select
   i.acceptance_no                     as 求人受理番号,
   i.employer                          as 求人者名,
   jp.job_type                         as 職種,
-  jp.wage_kind || ' ' || coalesce(jp.wage_amount::text, '未入力') as 給与,
+  jp.wage_kind::text || ' ' || coalesce(jp.wage_amount::text, '未入力') as 給与,
   jp.sheet->>'job_description'        as 仕事内容,
   jp.sheet->>'work_start' || '〜' || coalesce(jp.sheet->>'work_end', '') as 勤務時間,
   jp.sheet->>'holiday_note'           as 休日,
