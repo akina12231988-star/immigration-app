@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   CalendarClock,
   ChevronRight,
+  Search,
   SquarePen,
   UserPlus,
   UserRoundPlus,
@@ -24,6 +25,11 @@ import { PREP_TANTOU_OPTIONS } from "@/lib/application-prep";
 import { blankWorkerInput } from "@/lib/worker-defaults";
 import { nameCounts } from "@/lib/worker-label";
 import { isResidenceRenewalTarget } from "@/lib/worker-alerts";
+import {
+  matchesWorkerName,
+  offListReason,
+  workerNameSuggestions,
+} from "@/lib/renewal-search";
 import { todayStr } from "@/lib/application-alerts";
 import { RESIDENCE_RENEWAL_STATUSES, type ResidenceRenewalStatus } from "@/types/db";
 import {
@@ -61,10 +67,14 @@ export function RenewalsClient({
   const [mode, setMode] = useState<PrepMode | null>(null);
   const [filter, setFilter] = useState<HandlingFilter>("");
 
-  // 在留期限の期間検索（更新モード: 指定すると3か月の枠を超えてその期間の人を表示できる）
+  // 在留期限の期間検索（更新モード: 指定すると4か月の枠を超えてその期間の人を表示できる）
   const [expiryFrom, setExpiryFrom] = useState("");
   const [expiryTo, setExpiryTo] = useState("");
   const hasExpiryRange = Boolean(expiryFrom || expiryTo);
+
+  // 氏名で検索（候補から選ぶ・部分一致）。入力中は対応状況のタブに関わらず対象者全体から探す
+  const [nameQuery, setNameQuery] = useState("");
+  const query = nameQuery.trim();
 
   const underReview = useMemo(() => new Set(underReviewWorkerIds), [underReviewWorkerIds]);
 
@@ -81,8 +91,8 @@ export function RenewalsClient({
         .sort((a, b) => a.name.localeCompare(b.name, "ja"));
     }
     // 更新モード
-    // 期間指定あり: 在留期限がその期間内の人（3か月より先も含む）。
-    // 期間指定なし: 従来どおり在留期限の3か月前になった人。
+    // 期間指定あり: 在留期限がその期間内の人（4か月より先も含む）。
+    // 期間指定なし: 在留期限の4か月前になった人（前もって準備できるよう4か月前から）。
     const inScope = (w: WorkerWithOrg) => {
       if (!hasExpiryRange) return isResidenceRenewalTarget(w, today);
       const d = w.residence_expiry_date;
@@ -100,10 +110,36 @@ export function RenewalsClient({
   const countFor = (f: HandlingFilter) =>
     f === "all" ? targets.length : targets.filter((w) => w.residence_renewal_status === f).length;
 
-  const filtered = useMemo(
-    () => (filter === "all" ? targets : targets.filter((w) => w.residence_renewal_status === filter)),
-    [targets, filter],
-  );
+  const filtered = useMemo(() => {
+    // 氏名で検索しているときは、対応状況のタブを気にせず対象者全体から探す
+    if (query) return targets.filter((w) => matchesWorkerName(w, query));
+    return filter === "all" ? targets : targets.filter((w) => w.residence_renewal_status === filter);
+  }, [targets, filter, query]);
+
+  // 探した人が一覧に出てこないとき、その理由（在留期限がまだ先・審査中など）を出す
+  const offList = useMemo(() => {
+    if (!query) return [];
+    const shown = new Set(filtered.map((w) => w.id));
+    return workers
+      .filter((w) => !shown.has(w.id) && matchesWorkerName(w, query))
+      .map((w) => ({
+        worker: w,
+        reason:
+          offListReason(w, {
+            today,
+            underReview: underReview.has(w.id),
+            mode: mode ?? "更新",
+          }) ??
+          (hasExpiryRange
+            ? "指定した在留期限の期間の外です。期間をクリアすると表示されます。"
+            : null),
+      }))
+      .filter((r) => r.reason)
+      .slice(0, 5);
+  }, [workers, filtered, query, today, underReview, mode, hasExpiryRange]);
+
+  // 検索の候補に出す人（退職者は除く）
+  const searchCandidates = useMemo(() => workers.filter((w) => w.status !== "退職"), [workers]);
 
   const pendingCount = countFor("");
 
@@ -134,7 +170,7 @@ export function RenewalsClient({
             <span className="min-w-0 flex-1">
               <span className="block font-bold">更新で申請書類準備</span>
               <span className="block text-xs text-muted">
-                在留期限の3か月前になった人の更新準備（これまでの在留更新対象）
+                在留期限の4か月前になった人の更新準備（前もって準備できます）
               </span>
             </span>
             <ChevronRight size={18} className="shrink-0 text-muted" />
@@ -151,6 +187,7 @@ export function RenewalsClient({
         onClick={() => {
           setMode(null);
           setFilter("");
+          setNameQuery("");
         }}
         className="flex items-center gap-1 text-xs font-bold text-brand"
       >
@@ -162,7 +199,7 @@ export function RenewalsClient({
         <CalendarClock size={14} className="mt-0.5 shrink-0" />
         {mode === "新規"
           ? "初めて申請する人の書類準備です。外国人を選んで（いなければ氏名で登録して）、NotionのTODO番号と対応状況を登録します。「準備中」の人は申請一覧に「申請前＜準備中＞」として表示され、申請したらそこから申請登録できます。"
-          : "在留期限の3か月前になった対象者です。Notionで申請TODOを作成し、そのTODO番号を入力すると「準備中」になります。「準備中」の人は申請一覧に「申請前＜準備中＞」として表示され、申請したらそこから申請登録できます。弊社で準備しない場合は「転職先にて対応中」「他登録支援機関にて対応中」「帰国」を選べます。"}
+          : "在留期限の4か月前になった対象者です。Notionで申請TODOを作成し、そのTODO番号を入力すると「準備中」になります。「準備中」の人は申請一覧に「申請前＜準備中＞」として表示され、申請したらそこから申請登録できます。弊社で準備しない場合は「転職先にて対応中」「他登録支援機関にて対応中」「帰国」を選べます。"}
       </p>
 
       {mode === "新規" && canEdit && (
@@ -183,6 +220,14 @@ export function RenewalsClient({
           未対応の対象者が{pendingCount}件あります。
         </div>
       )}
+
+      {/* 氏名で検索: 入力すると候補が出て、選ぶとその人だけ表示される */}
+      <NameSearchBox
+        candidates={searchCandidates}
+        value={nameQuery}
+        onChange={setNameQuery}
+        mode={mode}
+      />
 
       <div className="flex flex-wrap gap-2">
         {(["", "準備中", "審査中", "転職先にて対応中", "他登録支援機関にて対応中", "帰国", "all"] as HandlingFilter[]).map((f) => (
@@ -205,7 +250,7 @@ export function RenewalsClient({
       {mode === "更新" && (
         <div className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-surface px-3.5 py-3">
           <p className="w-full text-[11px] font-bold text-muted">
-            在留期限で期間検索（指定すると3か月より先の人も表示されます）
+            在留期限で期間検索（指定すると4か月より先の人も表示されます）
           </p>
           <label className="flex flex-col gap-1">
             <span className="text-[11px] text-muted">いつから</span>
@@ -242,13 +287,43 @@ export function RenewalsClient({
         </div>
       )}
 
-      <p className="text-sm font-bold text-muted">{filtered.length}件</p>
+      <p className="text-sm font-bold text-muted">
+        {query ? `「${query}」の検索結果 ${filtered.length}件` : `${filtered.length}件`}
+        {query && (
+          <span className="ml-1 text-[11px] font-normal">
+            （対応状況のタブに関わらず探しています）
+          </span>
+        )}
+      </p>
+
+      {/* 検索した人が一覧に出てこない場合は、その理由と外国人詳細への導線を出す */}
+      {offList.length > 0 && (
+        <div className="space-y-2 rounded-xl border border-border bg-surface px-3.5 py-3">
+          <p className="text-[11px] font-bold text-muted">一覧に出ていない、名前が一致した方</p>
+          {offList.map(({ worker, reason }) => (
+            <div key={worker.id} className="flex flex-wrap items-center justify-between gap-2">
+              <span className="min-w-0 text-xs text-muted">
+                <span className="font-bold text-foreground">{worker.name}</span>
+                <span className="ml-1">{reason}</span>
+              </span>
+              <Link
+                href={`/workers/${worker.id}`}
+                className="shrink-0 rounded-lg border border-border px-2.5 py-1 text-[11px] font-bold text-brand"
+              >
+                外国人詳細
+              </Link>
+            </div>
+          ))}
+        </div>
+      )}
 
       {filtered.length === 0 ? (
         <Card className="p-8 text-center text-sm text-muted">
-          {mode === "新規"
-            ? "新規の申請準備はまだ登録されていません。上のフォームから追加できます。"
-            : "該当者はいません。"}
+          {query
+            ? `「${query}」に一致する対象者はいません。`
+            : mode === "新規"
+              ? "新規の申請準備はまだ登録されていません。上のフォームから追加できます。"
+              : "該当者はいません。"}
         </Card>
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -263,6 +338,91 @@ export function RenewalsClient({
             />
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+// 外国人の氏名を入力すると候補が出て、選ぶ（または入力したまま）で一覧を絞り込む。
+// ふりがなでも探せる。候補は退職者を除いた全員から出すので、
+// 一覧に出ていない人（在留期限がまだ先など）も選べば理由が分かる。
+function NameSearchBox({
+  candidates,
+  value,
+  onChange,
+  mode,
+}: {
+  candidates: WorkerWithOrg[];
+  value: string;
+  onChange: (value: string) => void;
+  mode: PrepMode;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  // 外側をクリックしたら候補を閉じる
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  const suggestions = useMemo(() => workerNameSuggestions(candidates, value), [candidates, value]);
+  const showSuggestions = open && value.trim().length > 0 && suggestions.length > 0;
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <div className="flex items-center gap-2 rounded-xl border border-border bg-surface px-3">
+        <Search size={16} className="shrink-0 text-muted" />
+        <input
+          value={value}
+          onChange={(e) => {
+            onChange(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          placeholder="外国人の氏名を入力して検索（ふりがなでも探せます）"
+          className="min-h-[44px] w-full bg-transparent text-base focus:outline-none"
+        />
+        {value && (
+          <button
+            type="button"
+            aria-label="検索をクリア"
+            onClick={() => {
+              onChange("");
+              setOpen(false);
+            }}
+            className="shrink-0 text-muted"
+          >
+            <X size={16} />
+          </button>
+        )}
+      </div>
+
+      {showSuggestions && (
+        <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-xl border border-border bg-surface shadow-lg">
+          {suggestions.map((w) => (
+            <li key={w.id}>
+              <button
+                type="button"
+                onClick={() => {
+                  onChange(w.name);
+                  setOpen(false);
+                }}
+                className="flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left text-sm"
+              >
+                <span className="min-w-0 truncate font-bold">{w.name}</span>
+                <span className="shrink-0 text-[11px] text-muted">
+                  {mode === "更新" && w.residence_expiry_date
+                    ? `在留期限 ${w.residence_expiry_date}`
+                    : (w.organizations?.name ?? "")}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

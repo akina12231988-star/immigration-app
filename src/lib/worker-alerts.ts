@@ -55,7 +55,11 @@ export function isExpiryWithinTwoMonths(expiry: string, today: string): boolean 
   return today >= addMonths(expiry, -2);
 }
 
-// 在留更新対象: 在留期限まで3か月以内（または既に超過）。期限未登録は対象外。
+// 申請準備（在留更新）の対象にする月数。在留期限のこの月数前から一覧に出す。
+// 前もって準備できるよう4か月前からにしている。
+export const RESIDENCE_RENEWAL_MONTHS = 4;
+
+// 在留更新対象: 在留期限まで4か月以内（または既に超過）。期限未登録は対象外。
 // 退職者は在留更新の対象から外す。
 export function isResidenceRenewalTarget(
   // 使うのは在籍状況と在留期限だけ（在留カードの有無に関わらず判定できるようにする）
@@ -64,7 +68,7 @@ export function isResidenceRenewalTarget(
 ): boolean {
   if (w.status === "退職") return false;
   if (!w.residence_expiry_date) return false;
-  return today >= addMonths(w.residence_expiry_date, -3);
+  return today >= addMonths(w.residence_expiry_date, -RESIDENCE_RENEWAL_MONTHS);
 }
 
 // まだ対応が済んでいない在留更新対象（帰国・転職先にて対応中・準備中は対応済み扱い）
