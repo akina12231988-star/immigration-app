@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Megaphone, Pencil, Share2, Trash2, Users } from "lucide-react";
+import { ChevronRight, ClipboardList, Copy, Megaphone, Pencil, Share2, Trash2, Users } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -15,6 +15,15 @@ import { ApplicationResultBadge } from "@/components/postings/ApplicationResultB
 import { createClient } from "@/lib/supabase/client";
 import { deletePosting, updatePosting } from "@/lib/supabase/queries/postings";
 import { postingDisplayName } from "@/lib/posting-output";
+import {
+  contractText,
+  holidayText,
+  insurancesText,
+  normalizePostingSheet,
+  postingSheetText,
+  smokingText,
+  workHoursText,
+} from "@/lib/posting-sheet";
 import { formatWage, type ApplicationResult, type JobPostingInput } from "@/types/recruiting";
 import type { Organization } from "@/types/db";
 import type { PostingWithStats } from "@/lib/supabase/queries/postings";
@@ -37,8 +46,23 @@ export function PostingDetail({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const orgName = posting.organizations?.name;
+
+  // 求人票（会社に書いてもらった内容）
+  const sheet = normalizePostingSheet(posting.sheet);
+
+  const copySheet = async () => {
+    try {
+      await navigator.clipboard.writeText(postingSheetText(posting, sheet, orgName));
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  };
+
   const hired = applicants.filter((a) => a.result === "採用").length;
   // 所属機関が求人で必須としている他条件（所属機関の情報で登録）
   const postingOrg = organizations.find((o) => o.id === posting.organization_id);
@@ -114,6 +138,112 @@ export function PostingDetail({
           <Info label="有効期限" value={posting.valid_until} />
           <Info label="備考" value={posting.note} wide />
         </dl>
+      </Card>
+
+      {/* 求人票（会社に書いてもらう内容）。編集は上の鉛筆から */}
+      <Card className="p-4">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h2 className="flex items-center gap-1.5 text-sm font-bold">
+            <ClipboardList size={15} className="text-brand" />
+            求人票（特定技能1号）
+          </h2>
+          <button
+            type="button"
+            onClick={() => void copySheet()}
+            className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-bold"
+          >
+            <Copy size={13} />
+            {copied ? "コピーしました" : "内容をコピー"}
+          </button>
+        </div>
+        <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+          <Info label="分野名" value={sheet.field_name} />
+          <Info label="記入日" value={sheet.filled_on} />
+          <Info label="勤務地の変更の可能性" value={sheet.work_location_change} />
+          <Info label="契約期間" value={contractText(sheet)} />
+          <Info label="仕事内容" value={sheet.job_description} wide />
+          <Info label="勤務時間" value={workHoursText(sheet)} />
+          <Info label="変形労働制" value={sheet.flexible_hours} />
+          <Info label="休憩" value={sheet.break_minutes ? `${sheet.break_minutes}分` : ""} />
+          <Info label="残業" value={sheet.overtime} />
+          <Info label="休日" value={holidayText(sheet)} wide />
+          {sheet.allowances
+            .filter((a) => a.name || a.amount || a.method)
+            .map((a, i) => (
+              <Info
+                key={i}
+                label={`手当${sheet.allowances.length > 1 ? i + 1 : ""}`}
+                value={[
+                  a.name,
+                  a.amount ? `${Number(a.amount).toLocaleString("ja-JP")}円` : "",
+                  a.method ? `計算方法：${a.method}` : "",
+                ]
+                  .filter(Boolean)
+                  .join("／")}
+                wide
+              />
+            ))}
+          <Info
+            label="源泉所得税（扶養0人）"
+            value={sheet.income_tax ? `${Number(sheet.income_tax).toLocaleString("ja-JP")}円` : ""}
+          />
+          <Info
+            label="社会保険料・雇用保険料"
+            value={
+              sheet.social_insurance || sheet.employment_insurance
+                ? `社保 ${sheet.social_insurance || "—"} ／ 雇用 ${sheet.employment_insurance || "—"}`
+                : ""
+            }
+          />
+          <Info
+            label="居住費"
+            value={[
+              sheet.housing_cost ? `${Number(sheet.housing_cost).toLocaleString("ja-JP")}円` : "",
+              sheet.housing_kind,
+              sheet.housing_note,
+            ]
+              .filter(Boolean)
+              .join("／")}
+            wide
+          />
+          <Info
+            label="水道光熱費"
+            value={[
+              sheet.utility_cost ? `約${Number(sheet.utility_cost).toLocaleString("ja-JP")}円` : "",
+              sheet.utility_kind,
+            ]
+              .filter(Boolean)
+              .join("／")}
+          />
+          <Info
+            label="通信費"
+            value={
+              sheet.communication_cost
+                ? `約${Number(sheet.communication_cost).toLocaleString("ja-JP")}円`
+                : ""
+            }
+          />
+          <Info label="昇給" value={[sheet.raise, sheet.raise_note].filter(Boolean).join("／")} />
+          <Info label="賞与" value={[sheet.bonus, sheet.bonus_note].filter(Boolean).join("／")} />
+          <Info
+            label="給与の締切日・支払日"
+            value={
+              sheet.pay_closing_day || sheet.pay_day
+                ? `${sheet.pay_closing_day || "—"} 締切 ／ ${sheet.pay_day || "—"} 支払`
+                : ""
+            }
+          />
+          <Info label="支払方法" value={sheet.pay_method} />
+          <Info label="加入保険" value={insurancesText(sheet)} wide />
+          <Info label="受動喫煙防止措置" value={smokingText(sheet)} wide />
+          <Info label="経験の有無" value={sheet.experience} />
+          <Info label="必要条件" value={sheet.requirements} />
+          <Info label="その他（応募条件）" value={sheet.other_requirements} wide />
+        </dl>
+        <p className="mt-2 text-[11px] leading-relaxed text-muted">
+          会社からもらった求人票の内容です。空欄は上の鉛筆マーク（編集）から入力できます。
+          職種・就業場所・採用人数・基本給・連絡先は上の求人管理簿の欄と共通です。
+        </p>
       </Card>
 
       <Button
