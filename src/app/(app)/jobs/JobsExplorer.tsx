@@ -24,6 +24,11 @@ import {
   updateApplication as updateJobApplication,
 } from "@/lib/supabase/queries/jobs";
 import { insertReferralFee, type ApplicationReferralFee } from "@/lib/supabase/queries/referrals";
+import {
+  feeDraftOf,
+  patchFeeDraft,
+  type ReferralFeeDrafts,
+} from "@/lib/referral-fee-draft";
 import { formatSalesYen, REFERRAL_SALES_KEY } from "@/lib/sales";
 import { normalizeSalesItems, parseAmount } from "@/lib/organization-intake";
 import { buildXlsx, downloadBlob } from "@/lib/xlsx-export";
@@ -121,20 +126,17 @@ export function JobsExplorer({
     useState<Record<string, ApplicationReferralFee>>(initialReferralFees);
   const [referralBusyId, setReferralBusyId] = useState<string | null>(null);
   // 台帳に追加する前に入力する「紹介手数料」と「紹介売上No.」（応募ごと）
-  const [feeDrafts, setFeeDrafts] = useState<Record<string, { fee: string; salesNo: string }>>({});
+  const [feeDrafts, setFeeDrafts] = useState<ReferralFeeDrafts>({});
   // 所属機関マスタのあっせん明細の金額を初期値にする
   const defaultFee = (a: ApplicationWithRefs) => {
     const org = orgList.find((o) => o.id === a.organization_id);
     const items = normalizeSalesItems(org?.intake?.sales_items)[REFERRAL_SALES_KEY] ?? [];
     return String(parseAmount(items[0]?.amount ?? "") ?? "");
   };
-  const feeDraft = (a: ApplicationWithRefs) =>
-    feeDrafts[a.id] ?? { fee: defaultFee(a), salesNo: "" };
-  const setFeeDraft = (id: string, patch: { fee?: string; salesNo?: string }) =>
-    setFeeDrafts((prev) => ({
-      ...prev,
-      [id]: { ...(prev[id] ?? { fee: "", salesNo: "" }), ...patch },
-    }));
+  const feeDraft = (a: ApplicationWithRefs) => feeDraftOf(feeDrafts, a.id, defaultFee(a));
+  // 片方だけ入れたときにもう片方が消えないよう、初期値を含む今の下書きを土台にする
+  const setFeeDraft = (a: ApplicationWithRefs, patch: { fee?: string; salesNo?: string }) =>
+    setFeeDrafts((prev) => patchFeeDraft(prev, a.id, defaultFee(a), patch));
 
   // 期間（応募日）で絞った母集団
   const inPeriod = useMemo(
@@ -450,7 +452,7 @@ export function JobsExplorer({
                           <input
                             inputMode="numeric"
                             value={feeDraft(a).fee}
-                            onChange={(e) => setFeeDraft(a.id, { fee: e.target.value })}
+                            onChange={(e) => setFeeDraft(a, { fee: e.target.value })}
                             placeholder="例: 30000"
                             className="min-h-[36px] w-32 rounded-lg border border-border bg-background px-2 text-xs tabular-nums focus:border-brand focus:outline-none"
                           />
@@ -459,7 +461,7 @@ export function JobsExplorer({
                           <span className="text-[11px] text-muted">紹介売上No.（freee販売）</span>
                           <input
                             value={feeDraft(a).salesNo}
-                            onChange={(e) => setFeeDraft(a.id, { salesNo: e.target.value })}
+                            onChange={(e) => setFeeDraft(a, { salesNo: e.target.value })}
                             placeholder="例: S-0000004378"
                             className="min-h-[36px] w-44 rounded-lg border border-border bg-background px-2 text-xs tabular-nums focus:border-brand focus:outline-none"
                           />
