@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, Banknote, CheckCircle2, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, Banknote, CheckCircle2, ExternalLink, FileText, Plus, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -28,8 +28,24 @@ import {
   prefectureFromAddress,
 } from "@/lib/minimum-wage";
 import { updateOrganization } from "@/lib/supabase/queries/organizations";
+import { WageDetailForm } from "@/components/workers/WageDetailForm";
+import {
+  WAGE_CALC_TOOL_URL,
+  calcWageDetail,
+  emptyWageDetail,
+  formatYen,
+  hasWageDetail,
+  normalizeWageDetail,
+} from "@/lib/wage-calc";
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
-import { WORKER_WAGE_KINDS, type Organization, type WorkerWage, type WorkerWageKind } from "@/types/db";
+import {
+  WORKER_WAGE_KINDS,
+  type OrgLodging,
+  type Organization,
+  type WageDetail,
+  type WorkerWage,
+  type WorkerWageKind,
+} from "@/types/db";
 
 // 賃金（時給・月給など）の記録。
 // 採用時の賃金を1行目に入れ、昇給のたびに行を足す。
@@ -60,6 +76,12 @@ export function WorkerWages({
   const [amount, setAmount] = useState("");
   const [startedOn, setStartedOn] = useState("");
   const [reason, setReason] = useState("");
+  // 1-6号別紙（賃金の支払）の内容。追加フォームの分と、記録の行を開いて直す分
+  const [newDetailOpen, setNewDetailOpen] = useState(false);
+  const [newDetail, setNewDetail] = useState<WageDetail>(emptyWageDetail());
+  const [openDetailId, setOpenDetailId] = useState<string | null>(null);
+  const [editDetail, setEditDetail] = useState<WageDetail>(emptyWageDetail());
+  const [detailSaving, setDetailSaving] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -160,6 +182,8 @@ export function WorkerWages({
     // 採用時なら雇用開始日、昇給なら今日を初期値にする
     setStartedOn(asHire ? (employmentStartOn ?? "") : today);
     setReason(asHire ? "採用時" : "昇給");
+    setNewDetail(emptyWageDetail());
+    setNewDetailOpen(false);
     setOpen(true);
   };
 
@@ -179,6 +203,8 @@ export function WorkerWages({
         started_on: startedOn,
         reason: reason.trim(),
         note: "",
+        // 別紙の内容は開いて入力したときだけ残す（開かなければ空）
+        detail: newDetailOpen ? newDetail : {},
       });
       setWages((prev) => [row, ...prev]);
       setOpen(false);
@@ -207,6 +233,47 @@ export function WorkerWages({
     }
   };
 
+  // 1-6号別紙の居住費で選ぶ社宅（所属機関の申込書内容に登録した寮・宿泊物件）
+  const lodgingsOf = (orgId: string | null): OrgLodging[] =>
+    (orgId ? organizations.find((o) => o.id === orgId)?.intake?.lodgings : undefined) ?? [];
+
+  // 記録の行を開いて、1-6号別紙の内容を入れ直す
+  const openDetail = (w: WorkerWage) => {
+    if (openDetailId === w.id) {
+      setOpenDetailId(null);
+      return;
+    }
+    setOpenDetailId(w.id);
+    setEditDetail(normalizeWageDetail(w.detail));
+  };
+
+  const saveDetail = async (id: string) => {
+    setDetailSaving(true);
+    setError(null);
+    try {
+      await updateWorkerWage(createClient(), id, { detail: editDetail });
+      setWages((prev) => prev.map((w) => (w.id === id ? { ...w, detail: editDetail } : w)));
+      setOpenDetailId(null);
+    } catch (err) {
+      setError(
+        dbErrorMessage(
+          err,
+          "0089_worker_wage_detail.sql",
+          errorMessage(err, "1-6号別紙の内容の保存に失敗しました"),
+        ),
+      );
+    } finally {
+      setDetailSaving(false);
+    }
+  };
+
+  // 記録の行に出す「手取り 約◯◯円」（別紙の内容が入っている行だけ）
+  const netTextOf = (w: WorkerWage): string | null => {
+    if (!hasWageDetail(w.detail)) return null;
+    const r = calcWageDetail(w, normalizeWageDetail(w.detail), annualHours(w.organization_id));
+    return `手取り 約${formatYen(r.net)}円`;
+  };
+
   return (
     <Card className="p-4">
       <h2 className="mb-1 flex items-center gap-2 text-sm font-bold">
@@ -217,6 +284,19 @@ export function WorkerWages({
         採用時の賃金を入れ、昇給のたびに行を足してください。
         適用開始日がいちばん新しいものが現在の賃金になり、過去の賃金もそのまま残ります。
         所属機関の在籍者一覧にも現在の賃金が出ます。
+        賃金を入れるときに「どういう内容で1-6号別紙（賃金の支払）を作ったか」も一緒に残せます
+        （源泉所得税・社会保険料・雇用保険料・社宅の居住費まで概算します）。
+        同じ計算は
+        <a
+          href={WAGE_CALC_TOOL_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mx-0.5 inline-flex items-center gap-0.5 font-bold text-brand underline underline-offset-2"
+        >
+          賃金の明細 計算ツール
+          <ExternalLink size={11} />
+        </a>
+        でもできます。
       </p>
 
       {error && (
@@ -402,6 +482,32 @@ export function WorkerWages({
           >
             やめる
           </button>
+
+          {/* 1-6号別紙（賃金の支払）の内容。入れておくと手取りまで計算できる */}
+          <div className="w-full border-t border-border pt-2">
+            <button
+              type="button"
+              onClick={() => setNewDetailOpen((v) => !v)}
+              className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-bold"
+            >
+              <FileText size={13} />
+              {newDetailOpen
+                ? "1-6号別紙の内容を閉じる"
+                : "1-6号別紙（賃金の支払）の内容も入れる"}
+            </button>
+            {newDetailOpen && (
+              <div className="mt-2">
+                <WageDetailForm
+                  wage={{ kind, amount: Number(amount) || 0 }}
+                  detail={newDetail}
+                  onChange={setNewDetail}
+                  lodgings={lodgingsOf(currentOrganizationId)}
+                  orgName={orgName(currentOrganizationId)}
+                  fallbackAnnualHours={annualHours(currentOrganizationId)}
+                />
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -417,6 +523,7 @@ export function WorkerWages({
                 <th className="py-1.5 pr-2 text-right font-bold">前回比</th>
                 <th className="py-1.5 pr-2 font-bold">理由</th>
                 <th className="py-1.5 pr-2 font-bold">所属機関</th>
+                <th className="py-1.5 pr-2 font-bold">1-6号別紙</th>
                 {canEdit && <th className="py-1.5 font-bold" />}
               </tr>
             </thead>
@@ -515,6 +622,19 @@ export function WorkerWages({
                     </td>
                     <td className="py-1.5 pr-2 text-muted">{w.reason || "—"}</td>
                     <td className="py-1.5 pr-2 text-muted">{orgName(w.organization_id) || "—"}</td>
+                    <td className="py-1.5 pr-2">
+                      <button
+                        type="button"
+                        onClick={() => openDetail(w)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 font-bold text-brand"
+                      >
+                        <FileText size={12} />
+                        {openDetailId === w.id ? "閉じる" : hasWageDetail(w.detail) ? "見る・直す" : "入れる"}
+                      </button>
+                      {netTextOf(w) && (
+                        <span className="block text-[10px] text-muted">{netTextOf(w)}</span>
+                      )}
+                    </td>
                     {canEdit && (
                       <td className="py-1.5 text-right">
                         <button
@@ -532,6 +652,53 @@ export function WorkerWages({
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* 選んだ賃金の1-6号別紙（賃金の支払）の内容 */}
+      {openDetailId && (
+        <div className="mt-3 rounded-xl border border-border p-3">
+          {(() => {
+            const w = wages.find((x) => x.id === openDetailId);
+            if (!w) return null;
+            return (
+              <>
+                <p className="mb-2 flex items-center gap-1.5 text-xs font-bold">
+                  <FileText size={14} className="text-brand" />
+                  1-6号別紙（賃金の支払）・{w.started_on}からの{w.kind}
+                  {formatYen(w.amount)}円
+                </p>
+                <WageDetailForm
+                  wage={w}
+                  detail={editDetail}
+                  onChange={setEditDetail}
+                  lodgings={lodgingsOf(w.organization_id ?? currentOrganizationId)}
+                  orgName={orgName(w.organization_id ?? currentOrganizationId)}
+                  fallbackAnnualHours={annualHours(w.organization_id)}
+                  readOnly={!canEdit}
+                />
+                {canEdit && (
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      disabled={detailSaving}
+                      onClick={() => void saveDetail(w.id)}
+                      className="min-h-[36px] rounded-lg bg-brand px-3 text-xs font-bold text-brand-foreground disabled:opacity-50"
+                    >
+                      {detailSaving ? "保存中…" : "1-6号別紙の内容を保存"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOpenDetailId(null)}
+                      className="min-h-[36px] px-2 text-xs font-bold text-muted"
+                    >
+                      やめる
+                    </button>
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
     </Card>
