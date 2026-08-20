@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   contractText,
+  deductionItemsText,
   emptyPostingSheet,
   hasPostingSheet,
   holidayText,
@@ -38,10 +39,15 @@ describe("normalizePostingSheet / hasPostingSheet", () => {
     expect(s.allowances[0]).toEqual({ name: "皆勤手当", amount: "5000", method: "" });
   });
 
-  it("休日・加入保険は配列でなければ既定値にする", () => {
-    const s = normalizePostingSheet({ holidays: "土日", insurances: ["健康保険"] });
+  it("休日・加入保険・控除項目は配列でなければ既定値にする", () => {
+    const s = normalizePostingSheet({
+      holidays: "土日",
+      insurances: ["健康保険"],
+      deduction_items: ["水道光熱費"],
+    });
     expect(s.holidays).toEqual([]);
     expect(s.insurances).toEqual(["健康保険"]);
+    expect(s.deduction_items).toEqual(["水道光熱費"]);
   });
 
   it("入力があるかどうかを判定できる", () => {
@@ -81,6 +87,14 @@ describe("表示の組み立て", () => {
     expect(contractText(s)).toBe("期間の定めあり：1年 ／ 契約の更新：有：勤務成績により判断");
   });
 
+  it("控除項目を並べる", () => {
+    const s = {
+      ...emptyPostingSheet(),
+      deduction_items: ["水道光熱費", "社宅（居住費）", "雇用保険料"],
+    };
+    expect(deductionItemsText(s)).toBe("水道光熱費・社宅（居住費）・雇用保険料");
+  });
+
   it("加入保険はその他も並べる", () => {
     const s = {
       ...emptyPostingSheet(),
@@ -116,6 +130,7 @@ describe("postingSheetText", () => {
       pay_closing_day: "末日",
       pay_day: "翌月25日",
       insurances: ["健康保険", "厚生年金保険"],
+      deduction_items: ["水道光熱費", "雇用保険料"],
       requirements: "N4",
     };
     const text = postingSheetText(POSTING, sheet, "岩下みちる");
@@ -130,6 +145,7 @@ describe("postingSheetText", () => {
     expect(text).toContain("休憩：60分");
     expect(text).toContain("手当：皆勤手当 5000円／計算方法：欠勤がない月に定額支給");
     expect(text).toContain("居住費：20000円／賃貸物件");
+    expect(text).toContain("控除項目：水道光熱費・雇用保険料");
     expect(text).toContain("加入保険：健康保険・厚生年金保険");
     expect(text).toContain("必要条件：N4");
     // 見出しの前は1行あける

@@ -28,6 +28,7 @@ export function emptyPostingSheet(): PostingSheet {
     holidays: [],
     holiday_note: "",
     allowances: [],
+    deduction_items: [],
     income_tax: "",
     social_insurance: "適用",
     employment_insurance: "適用",
@@ -81,7 +82,7 @@ export function normalizePostingSheet(raw: unknown): PostingSheet {
     const v = r[key];
     if (v === undefined) continue;
     if (key === "allowances") continue;
-    if (key === "holidays" || key === "insurances") {
+    if (key === "holidays" || key === "insurances" || key === "deduction_items") {
       out[key] = strList(v, base[key]);
       continue;
     }
@@ -117,6 +118,11 @@ export function contractText(sheet: PostingSheet): string {
   const term = sheet.contract_term ? `：${sheet.contract_term}` : "";
   const renewal = sheet.contract_renewal ? ` ／ 契約の更新：${sheet.contract_renewal}` : "";
   return `${kind}${term}${renewal}`;
+}
+
+// 控除項目の表示（例: 「水道光熱費・社宅（居住費）・雇用保険料」）
+export function deductionItemsText(sheet: PostingSheet): string {
+  return sheet.deduction_items.join("・");
 }
 
 // 加入保険の表示
@@ -167,6 +173,7 @@ export function postingSheetText(
         (a) =>
           `手当：${a.name}${a.amount ? ` ${a.amount}円` : ""}${a.method ? `／計算方法：${a.method}` : ""}`,
       ),
+    line("控除項目", deductionItemsText(sheet)),
     line("源泉所得税（扶養0人として）", sheet.income_tax ? `${sheet.income_tax}円` : ""),
     line("社会保険料", sheet.social_insurance),
     line("雇用保険料", sheet.employment_insurance),
