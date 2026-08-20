@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  ArrowDownUp,
   CalendarClock,
   ChevronRight,
   FileSpreadsheet,
@@ -32,6 +33,14 @@ import {
   hasEmploymentStarted,
   type EmploymentStartWorker,
 } from "@/lib/job-employment-start";
+import { matchesWorkerName } from "@/lib/worker-search";
+import { NameSearchBox } from "@/components/ui/NameSearchBox";
+import {
+  DEFAULT_JOB_SORT,
+  JOB_SORTS,
+  sortJobApplications,
+  type JobSort,
+} from "@/lib/job-sort";
 import { fetchSeekerLedger } from "@/lib/supabase/queries/recruit-ledgers";
 import { dbErrorMessage } from "@/lib/errors";
 import {
@@ -69,6 +78,11 @@ export function JobsExplorer({
   const [filter, setFilter] = useState<ResultFilter>("all");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  // 並び替え（採用年月日・雇用開始日の準備をするときに日付順で見られるように）
+  const [sort, setSort] = useState<JobSort>(DEFAULT_JOB_SORT);
+  // 氏名で検索（候補から選ぶ・部分一致）。入力中は採否のタブに関わらず全体から探す
+  const [nameQuery, setNameQuery] = useState("");
+  const query = nameQuery.trim();
   const [rows, setRows] = useState(applications);
   const [error, setError] = useState<string | null>(null);
 
@@ -151,11 +165,32 @@ export function JobsExplorer({
   }, [inPeriod, workerById]);
 
   const filtered = useMemo(() => {
-    if (filter === "all") return inPeriod;
-    if (filter === "employed") return inPeriod.filter(isEmployed);
-    return inPeriod.filter((a) => a.result === filter);
+    // 氏名で検索しているときは、採否のタブを気にせず期間内の全体から探す
+    const list = query
+      ? inPeriod.filter((a) => matchesWorkerName({ name: a.workers?.name ?? "" }, query))
+      : filter === "all"
+        ? inPeriod
+        : filter === "employed"
+          ? inPeriod.filter(isEmployed)
+          : inPeriod.filter((a) => a.result === filter);
+    return sortJobApplications(list, sort, startedOn);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inPeriod, filter, workerById]);
+  }, [inPeriod, filter, sort, query, workerById]);
+
+  // 検索の候補（期間内の応募に出てくる外国人。同じ人は1回だけ）
+  const searchCandidates = useMemo(() => {
+    const seen = new Map<string, { id: string; name: string; hint: string }>();
+    for (const a of inPeriod) {
+      const w = a.workers;
+      if (!w || seen.has(w.id)) continue;
+      seen.set(w.id, {
+        id: w.id,
+        name: w.name,
+        hint: a.job_postings?.display_company || a.organizations?.name || "",
+      });
+    }
+    return [...seen.values()];
+  }, [inPeriod]);
 
   const addApplication = async (values: JobApplicationValues, workerId?: string) => {
     if (!workerId) throw new Error("外国人を選択してください");
@@ -307,10 +342,52 @@ export function JobsExplorer({
         />
       </div>
 
-      <p className="text-sm font-bold text-muted">{filtered.length}件</p>
+      {/* 氏名で検索: 入力すると候補が出て、選ぶとその人の応募だけ表示される */}
+      <NameSearchBox
+        candidates={searchCandidates}
+        value={nameQuery}
+        onChange={setNameQuery}
+        hintOf={(w) => w.hint}
+      />
+
+      {/* 並び替え（採用年月日・雇用開始日の準備をするときに時系列で見る） */}
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-sm font-bold text-muted">
+          {query ? `「${query}」の検索結果 ${filtered.length}件` : `${filtered.length}件`}
+          {query && (
+            <span className="ml-1 text-[11px] font-normal">（採否のタブに関わらず探しています）</span>
+          )}
+        </p>
+        <label className="ml-auto flex items-center gap-1.5 text-xs font-bold text-muted">
+          <ArrowDownUp size={14} />
+          並び替え
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as JobSort)}
+            className="min-h-[36px] rounded-lg border border-border bg-surface px-2 text-xs font-bold"
+          >
+            {JOB_SORTS.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {sort !== DEFAULT_JOB_SORT && (
+        <p className="-mt-2 text-[11px] text-muted">
+          {sort.startsWith("採用年月日")
+            ? "結果日（採用年月日）の順に並べています。結果がまだの応募は最後にまとめています。"
+            : sort.startsWith("雇用開始日")
+              ? "雇用開始日の順に並べています。まだ雇用開始していない人は最後にまとめています。"
+              : "応募日の順に並べています。"}
+        </p>
+      )}
 
       {filtered.length === 0 ? (
-        <Card className="p-8 text-center text-sm text-muted">該当する応募はありません。</Card>
+        <Card className="p-8 text-center text-sm text-muted">
+          {query ? `「${query}」に一致する応募はありません。` : "該当する応募はありません。"}
+        </Card>
       ) : (
         <div className="flex flex-col gap-2.5">
           {filtered.map((a) => {
