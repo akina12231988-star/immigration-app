@@ -33,6 +33,8 @@ import {
   hasEmploymentStarted,
   type EmploymentStartWorker,
 } from "@/lib/job-employment-start";
+import { matchesWorkerName } from "@/lib/worker-search";
+import { NameSearchBox } from "@/components/ui/NameSearchBox";
 import {
   DEFAULT_JOB_SORT,
   JOB_SORTS,
@@ -78,6 +80,9 @@ export function JobsExplorer({
   const [to, setTo] = useState("");
   // 並び替え（採用年月日・雇用開始日の準備をするときに日付順で見られるように）
   const [sort, setSort] = useState<JobSort>(DEFAULT_JOB_SORT);
+  // 氏名で検索（候補から選ぶ・部分一致）。入力中は採否のタブに関わらず全体から探す
+  const [nameQuery, setNameQuery] = useState("");
+  const query = nameQuery.trim();
   const [rows, setRows] = useState(applications);
   const [error, setError] = useState<string | null>(null);
 
@@ -160,15 +165,32 @@ export function JobsExplorer({
   }, [inPeriod, workerById]);
 
   const filtered = useMemo(() => {
-    const list =
-      filter === "all"
+    // 氏名で検索しているときは、採否のタブを気にせず期間内の全体から探す
+    const list = query
+      ? inPeriod.filter((a) => matchesWorkerName({ name: a.workers?.name ?? "" }, query))
+      : filter === "all"
         ? inPeriod
         : filter === "employed"
           ? inPeriod.filter(isEmployed)
           : inPeriod.filter((a) => a.result === filter);
     return sortJobApplications(list, sort, startedOn);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inPeriod, filter, sort, workerById]);
+  }, [inPeriod, filter, sort, query, workerById]);
+
+  // 検索の候補（期間内の応募に出てくる外国人。同じ人は1回だけ）
+  const searchCandidates = useMemo(() => {
+    const seen = new Map<string, { id: string; name: string; hint: string }>();
+    for (const a of inPeriod) {
+      const w = a.workers;
+      if (!w || seen.has(w.id)) continue;
+      seen.set(w.id, {
+        id: w.id,
+        name: w.name,
+        hint: a.job_postings?.display_company || a.organizations?.name || "",
+      });
+    }
+    return [...seen.values()];
+  }, [inPeriod]);
 
   const addApplication = async (values: JobApplicationValues, workerId?: string) => {
     if (!workerId) throw new Error("外国人を選択してください");
@@ -320,9 +342,22 @@ export function JobsExplorer({
         />
       </div>
 
+      {/* 氏名で検索: 入力すると候補が出て、選ぶとその人の応募だけ表示される */}
+      <NameSearchBox
+        candidates={searchCandidates}
+        value={nameQuery}
+        onChange={setNameQuery}
+        hintOf={(w) => w.hint}
+      />
+
       {/* 並び替え（採用年月日・雇用開始日の準備をするときに時系列で見る） */}
       <div className="flex flex-wrap items-center gap-2">
-        <p className="text-sm font-bold text-muted">{filtered.length}件</p>
+        <p className="text-sm font-bold text-muted">
+          {query ? `「${query}」の検索結果 ${filtered.length}件` : `${filtered.length}件`}
+          {query && (
+            <span className="ml-1 text-[11px] font-normal">（採否のタブに関わらず探しています）</span>
+          )}
+        </p>
         <label className="ml-auto flex items-center gap-1.5 text-xs font-bold text-muted">
           <ArrowDownUp size={14} />
           並び替え
@@ -350,7 +385,9 @@ export function JobsExplorer({
       )}
 
       {filtered.length === 0 ? (
-        <Card className="p-8 text-center text-sm text-muted">該当する応募はありません。</Card>
+        <Card className="p-8 text-center text-sm text-muted">
+          {query ? `「${query}」に一致する応募はありません。` : "該当する応募はありません。"}
+        </Card>
       ) : (
         <div className="flex flex-col gap-2.5">
           {filtered.map((a) => {
