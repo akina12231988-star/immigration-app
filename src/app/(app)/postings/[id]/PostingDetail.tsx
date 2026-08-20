@@ -17,6 +17,7 @@ import { deletePosting, updatePosting } from "@/lib/supabase/queries/postings";
 import { postingDisplayName } from "@/lib/posting-output";
 import {
   contractText,
+  deductionItemsText,
   holidayText,
   insurancesText,
   normalizePostingSheet,
@@ -183,6 +184,7 @@ export function PostingDetail({
                 wide
               />
             ))}
+          <Info label="控除項目" value={deductionItemsText(sheet)} wide />
           <Info
             label="源泉所得税（扶養0人）"
             value={sheet.income_tax ? `${Number(sheet.income_tax).toLocaleString("ja-JP")}円` : ""}

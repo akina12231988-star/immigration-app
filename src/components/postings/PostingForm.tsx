@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import {
   GENDER_REQS,
+  POSTING_DEDUCTION_ITEMS,
   POSTING_FIELDS,
   POSTING_INSURANCES,
   POSTING_SMOKING_OPTIONS,
@@ -454,6 +455,24 @@ export function PostingForm({
         </Field>
 
         {/* 控除内容 */}
+        <Field label="控除項目（給与から引くもの）">
+          <div className="flex flex-wrap gap-1.5">
+            {POSTING_DEDUCTION_ITEMS.map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setSheet({ deduction_items: toggle(sheet.deduction_items, d) })}
+                className={`min-h-[36px] rounded-lg border px-3 text-sm font-bold ${
+                  sheet.deduction_items.includes(d)
+                    ? "border-brand bg-brand text-brand-foreground"
+                    : "border-border bg-background text-muted"
+                }`}
+              >
+                {d}
+              </button>
+            ))}
+          </div>
+        </Field>
         <div className="grid grid-cols-3 gap-2.5">
           <Field label="源泉所得税（扶養0人・円）">
             <input

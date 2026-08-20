@@ -35,18 +35,31 @@ export const POSTING_FIELDS = [
 
 export const POSTING_WEEKDAYS = ["月", "火", "水", "木", "金", "土", "日", "祝祭日"] as const;
 
-// 加入保険（求人票のチェック欄）
+// 加入保険（求人票のチェック欄）。個人事業の農家などは国民健康保険・国民年金になる
 export const POSTING_INSURANCES = [
   "健康保険",
   "厚生年金保険",
   "労災保険",
   "雇用保険",
+  "国民健康保険",
+  "国民年金",
+] as const;
+
+// 控除項目（求人票の「控除内容」で何を給与から引くか）
+export const POSTING_DEDUCTION_ITEMS = [
+  "源泉所得税",
+  "社会保険料",
+  "雇用保険料",
+  "水道光熱費",
+  "社宅（居住費）",
+  "通信費",
 ] as const;
 
 // 受動喫煙防止措置の状況（求人票のチェック欄）
 export const POSTING_SMOKING_OPTIONS = [
   "屋内禁煙",
   "屋内原則禁煙（喫煙室あり）",
+  "敷地内禁煙",
   "敷地内禁煙（喫煙場所あり）",
   "敷地内禁煙（喫煙場所なし）",
   "その他",
@@ -76,6 +89,7 @@ export interface PostingSheet {
   holidays: string[]; // 休日（曜日・祝祭日）
   holiday_note: string; // 休日のその他
   allowances: PostingAllowance[]; // 手当
+  deduction_items: string[]; // 控除項目（給与から引くもの）
   income_tax: string; // 源泉所得税（円・扶養0人として）
   social_insurance: string; // 社会保険料（適用 / 適用なし）
   employment_insurance: string; // 雇用保険料（適用 / 適用なし）
