@@ -24,7 +24,7 @@ export type WorkerQuickFilter =
   | "active" // 1号在留中（在籍中）
   | "within1year" // 1号で残り1年以内
   | "reached" // 5年到達
-  | "expiry3m" // 在留期限まで3ヶ月以内
+  | "expiry3m" // 在留期限まで4ヶ月以内
   | "retired"; // 退職者
 
 // 対象期間で絞り込む日付の種類（在留許可日 / 在留期限）

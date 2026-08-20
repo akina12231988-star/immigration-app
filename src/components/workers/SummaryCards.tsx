@@ -7,7 +7,7 @@ export interface WorkerSummary {
   active: number; // 1号在留中（在籍中）
   withinOneYear: number; // 1号で残り1年以内
   reachedCap: number; // 5年到達
-  expiry3m: number; // 在留期限まで3ヶ月以内
+  expiry3m: number; // 在留期限まで4ヶ月以内
   retired: number; // 退職者
 }
 
@@ -43,7 +43,7 @@ const CARDS: {
   {
     key: "expiry3m",
     quick: "expiry3m",
-    label: "在留期限3ヶ月以内",
+    label: "在留期限4ヶ月以内",
     icon: CalendarClock,
     accent: "text-status-notice-fg bg-status-notice-bg",
   },

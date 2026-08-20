@@ -320,7 +320,7 @@ export function WorkerRenewalFields({
         <p className="rounded-lg bg-status-notice-bg px-2.5 py-1.5 text-[11px] text-status-notice-fg">
           {worker.status === "退職"
             ? "退職の人は申請一覧の「申請前＜準備中＞」には出ません。"
-            : "在留期限が3か月より先（または未登録）のため、このままでは申請一覧の「申請前＜準備中＞」に出ません。" +
+            : "在留期限が4か月より先（または未登録）のため、このままでは申請一覧の「申請前＜準備中＞」に出ません。" +
               (showPrepKind ? "上の「新規で申請書類準備として扱う」を選ぶと出ます。" : "")}
         </p>
       )}

@@ -64,7 +64,7 @@ export function WorkersExplorer({
 
   // 在留更新対象と同じ条件にするため、現在申請審査中の外国人IDを持っておく
   const underReview = useMemo(() => new Set(underReviewWorkerIds), [underReviewWorkerIds]);
-  // 「在留期限3ヶ月以内」= 退職者・審査中を除外（在留更新対象ページと一致）
+  // 「在留期限4ヶ月以内」= 退職者・審査中を除外（在留更新対象ページと一致）
   const isExpiry3m = (w: WorkerWithHistories) =>
     isResidenceRenewalTarget(w, todayStr()) && !underReview.has(w.id);
 
@@ -275,7 +275,7 @@ export function WorkersExplorer({
             : "条件に合う外国人が見つかりません"}
         </p>
       ) : filter.quick === "expiry3m" ? (
-        /* 「在留期限3ヶ月以内」は在留更新対象ページと同じカード表示にする */
+        /* 「在留期限4ヶ月以内」は在留更新対象ページと同じカード表示にする */
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {paged.map(({ worker }) => (
             <WorkerRenewalCard
