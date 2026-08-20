@@ -458,6 +458,57 @@ export type OrgInvoiceInput = Omit<OrgInvoice, "id" | "created_at" | "updated_at
 export const WORKER_WAGE_KINDS = ["時給", "月給", "日給", "年収"] as const;
 export type WorkerWageKind = (typeof WORKER_WAGE_KINDS)[number];
 
+// ---- 1-6号別紙（賃金の支払）の内容（0089_worker_wage_detail.sql の detail） ----
+//
+// 賃金を入れるときに「どういう内容で参考様式第1-6号 別紙1を作ったか」を残す。
+// 計算（所得税・社会保険料・雇用保険料・手取り）は src/lib/wage-calc.ts で行う。
+
+// 諸手当の1行（家族手当・通勤手当など）
+export interface WageAllowance {
+  type: string; // 手当の種類
+  name: string; // 手当名（任意）
+  amount: number; // 月額（円）
+  method: string; // 計算方法（別紙にそのまま書く文）
+}
+
+// その他控除の1行
+export interface WageOtherDeduction {
+  name: string; // 項目名
+  amount: number; // 金額（円）
+}
+
+// 年齢区分（介護保険料が乗るのは40〜64歳のみ）
+export const WAGE_AGE_BANDS = ["40歳未満", "40〜64歳", "65歳以上"] as const;
+export type WageAgeBand = (typeof WAGE_AGE_BANDS)[number];
+
+// 水道光熱費の徴収の仕方
+export const WAGE_UTILITY_KINDS = ["実費", "固定額"] as const;
+export type WageUtilityKind = (typeof WAGE_UTILITY_KINDS)[number];
+
+export interface WageDetail {
+  annual_hours: number; // 計算に使った年間所定労働時間（0 = 所属機関の登録値を使う）
+  allowances: WageAllowance[]; // 諸手当
+  fixed_ot_enabled: boolean; // 固定残業代があるか
+  fixed_ot_amount: number; // 固定残業代（円）
+  fixed_ot_hours: number; // 固定残業代に含む時間外労働の時間数
+  tax_spouse: boolean; // 源泉控除対象配偶者あり
+  tax_dependents: number; // 扶養親族等の数（人）
+  social_enabled: boolean; // 社会保険（健康保険・厚生年金）に加入する
+  health_prefecture: string; // 健康保険料率の都道府県（協会けんぽ。"手入力" は下の率を使う）
+  health_rate: number; // 健康保険料率（%）
+  age_band: WageAgeBand;
+  employment_enabled: boolean; // 雇用保険に加入する
+  employment_kind: string; // 事業の種類（雇用保険料率）
+  food_cost: number; // 食費（円）
+  housing_self_contract: boolean; // 本人が自分で住居を契約する（居住費は徴収しない）
+  housing_lodging_id: string; // 所属機関に登録した寮・社宅のID
+  housing_amount: number; // 1人当たり居住費（円/月）
+  housing_note: string; // 居住費の算定方法・説明文
+  utility_kind: WageUtilityKind;
+  utility_amount: number; // 水道光熱費（円）
+  others: WageOtherDeduction[]; // その他控除
+}
+
 // 昇給のたびに1行増やし、適用開始日がいちばん新しい行が現在の賃金になる
 export interface WorkerWage {
   id: string;
@@ -468,6 +519,8 @@ export interface WorkerWage {
   started_on: string; // 適用開始日（採用日・昇給日）YYYY-MM-DD
   reason: string; // 採用時 / 昇給 など
   note: string;
+  // 1-6号別紙（賃金の支払）の内容。未入力は {}（0089_worker_wage_detail.sql）
+  detail: Partial<WageDetail> | null;
   created_at: string;
   updated_at: string;
 }
