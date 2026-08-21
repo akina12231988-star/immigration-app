@@ -308,7 +308,8 @@ export interface Worker {
   relatives_in_japan: string; // 在日親族の同居の有無（'' / 有 / 無）
   relatives: WorkerRelative[]; // 同居している在日親族
   dependents: WorkerDependent[]; // 扶養家族（扶養親族証明書の内容）
-  address: string; // 住所（履歴書に表示）
+  address: string; // 日本での住所（履歴書・労働者名簿に表示）
+  home_address: string; // 母国の住所（本国の住所。0091）
   employment_start_on: string | null; // 雇用開始年月日（現在の所属機関のもの）
   org_employment_starts: WorkerOrgEmploymentStart[]; // 所属機関別の雇用開始日
   assigned_office: string; // 配属先営業所

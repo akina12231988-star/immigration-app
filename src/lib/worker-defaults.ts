@@ -36,6 +36,7 @@ export function blankWorkerInput(name: string, organizationId: string | null = n
     relatives: [],
     dependents: [],
     address: "",
+    home_address: "",
     employment_start_on: null,
     org_employment_starts: [],
     ssw_insurance_self_join: false,

@@ -54,6 +54,7 @@ function toInput(w: Worker | null): WorkerInput {
     relatives: w?.relatives ?? [],
     dependents: w?.dependents ?? [],
     address: w?.address ?? "",
+    home_address: w?.home_address ?? "",
     employment_start_on: w?.employment_start_on ?? null,
     org_employment_starts: w?.org_employment_starts ?? [],
     assigned_office: w?.assigned_office ?? "",
@@ -505,6 +506,16 @@ export function WorkerForm({
             className={INPUT_CLASS}
           />
         </Field>
+        {/* 母国（本国）の住所。基本情報の「住所」は日本での住所なので、分けて入力する */}
+        <Field label="母国の住所">
+          <textarea
+            rows={2}
+            value={form.home_address}
+            onChange={(e) => set("home_address", e.target.value)}
+            placeholder="例: Số 12, Thôn A, Xã B, Huyện C, Tỉnh Nghệ An, Việt Nam"
+            className={TEXTAREA_CLASS}
+          />
+        </Field>
         <Field label="パスポート有効期限">
           <input
             type="date"
@@ -515,6 +526,7 @@ export function WorkerForm({
         </Field>
         <p className="px-1 text-[11px] leading-relaxed text-muted">
           有効期限の半年前になると「パスポート更新必要」に自動で表示されます。
+          母国の住所は本国の住所です（日本での住所は基本情報の「住所」に入れてください）。
         </p>
       </Fieldset>
 
