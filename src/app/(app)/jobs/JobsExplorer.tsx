@@ -29,6 +29,10 @@ import {
   patchFeeDraft,
   type ReferralFeeDrafts,
 } from "@/lib/referral-fee-draft";
+import {
+  countMissingFromReferralLedger,
+  referralLedgerStatus,
+} from "@/lib/referral-ledger-status";
 import { formatSalesYen, REFERRAL_SALES_KEY } from "@/lib/sales";
 import { normalizeSalesItems, parseAmount } from "@/lib/organization-intake";
 import { buildXlsx, downloadBlob } from "@/lib/xlsx-export";
@@ -58,8 +62,9 @@ import type { JobApplicationValues } from "@/components/workers/JobApplicationDi
 import type { PostingWithStats } from "@/lib/supabase/queries/postings";
 import type { Organization } from "@/types/db";
 
-// 絞り込み。採否のほかに「雇用開始済み」（雇用開始日が入っている人）でも絞れる
-type ResultFilter = ApplicationResult | "all" | "employed";
+// 絞り込み。採否のほかに「雇用開始済み」（雇用開始日が入っている人）と
+// 「台帳未追加」（採用なのに紹介手数料台帳へ入れていない人）でも絞れる
+type ResultFilter = ApplicationResult | "all" | "employed" | "no_referral";
 
 // 一覧で使う外国人。氏名の選択肢に加えて、雇用開始日の判定にも使う
 export type JobsWorker = { id: string; name: string } & EmploymentStartWorker;
@@ -70,6 +75,7 @@ export function JobsExplorer({
   organizations,
   workers,
   initialReferralFees,
+  initialUnlinkedReferralKeys,
   canEdit,
 }: {
   applications: ApplicationWithRefs[];
@@ -77,6 +83,7 @@ export function JobsExplorer({
   organizations: Organization[];
   workers: JobsWorker[];
   initialReferralFees: Record<string, ApplicationReferralFee>;
+  initialUnlinkedReferralKeys: string[];
   canEdit: boolean;
 }) {
   const router = useRouter();
@@ -125,6 +132,15 @@ export function JobsExplorer({
   const [referralFees, setReferralFees] =
     useState<Record<string, ApplicationReferralFee>>(initialReferralFees);
   const [referralBusyId, setReferralBusyId] = useState<string | null>(null);
+  // 手数料管理簿から直接足した（応募と紐づいていない）台帳の行。
+  // 台帳に載っている人を「未追加」に出さないよう、外国人＋所属機関で照らし合わせる
+  const unlinkedReferralKeys = useMemo(
+    () => new Set(initialUnlinkedReferralKeys),
+    [initialUnlinkedReferralKeys],
+  );
+  // その応募が紹介手数料台帳のどの状態か（追加済み／別行あり／未追加／対象外）
+  const ledgerStatus = (a: ApplicationWithRefs) =>
+    referralLedgerStatus(a, referralFees, unlinkedReferralKeys);
   // 台帳に追加する前に入力する「紹介手数料」と「紹介売上No.」（応募ごと）
   const [feeDrafts, setFeeDrafts] = useState<ReferralFeeDrafts>({});
   // 所属機関マスタのあっせん明細の金額を初期値にする
@@ -174,10 +190,18 @@ export function JobsExplorer({
         ? inPeriod
         : filter === "employed"
           ? inPeriod.filter(isEmployed)
-          : inPeriod.filter((a) => a.result === filter);
+          : filter === "no_referral"
+            ? inPeriod.filter((a) => ledgerStatus(a) === "未追加")
+            : inPeriod.filter((a) => a.result === filter);
     return sortJobApplications(list, sort, startedOn);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inPeriod, filter, sort, query, workerById]);
+  }, [inPeriod, filter, sort, query, workerById, referralFees, unlinkedReferralKeys]);
+
+  // 紹介手数料台帳にまだ追加していない採用の件数（絞り込みのボタンに出す）
+  const missingReferralCount = useMemo(
+    () => countMissingFromReferralLedger(inPeriod, referralFees, unlinkedReferralKeys),
+    [inPeriod, referralFees, unlinkedReferralKeys],
+  );
 
   // 検索の候補（期間内の応募に出てくる外国人。同じ人は1回だけ）
   const searchCandidates = useMemo(() => {
@@ -342,6 +366,12 @@ export function JobsExplorer({
           active={filter === "employed"}
           onClick={() => setFilter("employed")}
         />
+        {/* 採用なのに紹介手数料台帳へ入れていない人（請求のもれ防止） */}
+        <Chip
+          label={`台帳未追加 ${missingReferralCount}`}
+          active={filter === "no_referral"}
+          onClick={() => setFilter("no_referral")}
+        />
       </div>
 
       {/* 氏名で検索: 入力すると候補が出て、選ぶとその人の応募だけ表示される */}
@@ -376,6 +406,12 @@ export function JobsExplorer({
           </select>
         </label>
       </div>
+      {filter === "no_referral" && !query && (
+        <p className="-mt-2 text-[11px] text-muted">
+          採用なのに紹介手数料台帳へ追加していない応募だけを出しています。
+          手数料管理簿から直接入れた行（応募と紐づいていないもの）は、同じ人・同じ会社なら追加済みとして数えません。
+        </p>
+      )}
       {sort !== DEFAULT_JOB_SORT && (
         <p className="-mt-2 text-[11px] text-muted">
           {sort.startsWith("採用年月日")
@@ -388,7 +424,11 @@ export function JobsExplorer({
 
       {filtered.length === 0 ? (
         <Card className="p-8 text-center text-sm text-muted">
-          {query ? `「${query}」に一致する応募はありません。` : "該当する応募はありません。"}
+          {query
+            ? `「${query}」に一致する応募はありません。`
+            : filter === "no_referral"
+              ? "紹介手数料台帳に未追加の採用はありません。"
+              : "該当する応募はありません。"}
         </Card>
       ) : (
         <div className="flex flex-col gap-2.5">
@@ -446,6 +486,17 @@ export function JobsExplorer({
                         <HandCoins size={12} />
                         紹介手数料台帳に追加する内容
                       </p>
+                      {/* 手数料管理簿から直接入れた行がある人。二重に追加しないよう先に確認する */}
+                      {ledgerStatus(a) === "別行あり" && (
+                        <p className="mb-1.5 rounded-lg bg-status-notice-bg px-2 py-1.5 text-[11px] text-status-notice-fg">
+                          同じ人・同じ会社の行が紹介手数料台帳にすでにあります（この応募とは紐づいていません）。
+                          二重に追加しないよう、
+                          <Link href="/referrals" className="font-bold underline underline-offset-2">
+                            手数料管理簿
+                          </Link>
+                          で確認してから追加してください。
+                        </p>
+                      )}
                       <div className="flex flex-wrap items-end gap-2">
                         <label className="flex flex-col gap-1">
                           <span className="text-[11px] text-muted">紹介手数料（円・税抜）</span>

@@ -5,7 +5,10 @@ import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { listAllApplications } from "@/lib/supabase/queries/jobs";
 import { listPostings } from "@/lib/supabase/queries/postings";
 import { listOrganizations } from "@/lib/supabase/queries/organizations";
-import { listReferralFeesByApplication } from "@/lib/supabase/queries/referrals";
+import {
+  listReferralFeesByApplication,
+  listUnlinkedReferralFeeKeys,
+} from "@/lib/supabase/queries/referrals";
 import { JobsExplorer, type JobsWorker } from "./JobsExplorer";
 
 export const dynamic = "force-dynamic";
@@ -15,20 +18,24 @@ export default async function JobsPage() {
   if (!me) redirect("/login");
 
   const supabase = await createClient();
-  const [applications, postings, organizations, workersRes, referralFees] = await Promise.all([
-    listAllApplications(supabase).catch(() => []),
-    // 新規登録フォームの求人候補
-    listPostings(supabase).catch(() => []),
-    // 手数料台帳に追加するときの手数料の初期値（あっせん明細）用
-    listOrganizations(supabase).catch(() => []),
-    // 新規登録フォームの外国人候補＋「雇用開始済み」の判定に使う雇用開始日
-    supabase
-      .from("workers")
-      .select("id, name, employment_start_on, current_organization_id, org_employment_starts")
-      .order("name", { ascending: true }),
-    // 応募 → 紹介手数料台帳の状態（0078未適用でも一覧は使えるようにする）
-    listReferralFeesByApplication(supabase).catch(() => ({})),
-  ]);
+  const [applications, postings, organizations, workersRes, referralFees, unlinkedFeeKeys] =
+    await Promise.all([
+      listAllApplications(supabase).catch(() => []),
+      // 新規登録フォームの求人候補
+      listPostings(supabase).catch(() => []),
+      // 手数料台帳に追加するときの手数料の初期値（あっせん明細）用
+      listOrganizations(supabase).catch(() => []),
+      // 新規登録フォームの外国人候補＋「雇用開始済み」の判定に使う雇用開始日
+      supabase
+        .from("workers")
+        .select("id, name, employment_start_on, current_organization_id, org_employment_starts")
+        .order("name", { ascending: true }),
+      // 応募 → 紹介手数料台帳の状態（0078未適用でも一覧は使えるようにする）
+      listReferralFeesByApplication(supabase).catch(() => ({})),
+      // 応募と紐づいていない台帳の行（手数料管理簿から直接足したもの）。
+      // 「台帳に未追加」の絞り込みで、台帳に載っている人を数えないために使う
+      listUnlinkedReferralFeeKeys(supabase).catch(() => []),
+    ]);
 
   return (
     <>
@@ -39,6 +46,7 @@ export default async function JobsPage() {
         organizations={organizations}
         workers={(workersRes.data as JobsWorker[] | null) ?? []}
         initialReferralFees={referralFees}
+        initialUnlinkedReferralKeys={unlinkedFeeKeys}
         canEdit={me.role !== "viewer"}
       />
     </>
