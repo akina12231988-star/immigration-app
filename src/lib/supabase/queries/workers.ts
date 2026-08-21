@@ -13,6 +13,10 @@ import {
   nextWorkerCode,
   shouldReissueWorkerCode,
 } from "@/lib/worker-code";
+import {
+  normalizeOrgEmploymentStarts,
+  upsertOrgEmploymentStart,
+} from "@/lib/org-employment";
 
 // 支援体制の集計用: 所属機関ごとの1号特定技能外国人数を数えるための最小項目
 export async function listWorkersForSupport(
@@ -242,6 +246,35 @@ export async function insertWorker(
     .single();
   if (error) throw error;
   return data as Worker;
+}
+
+// 所属機関別の雇用開始日を1件だけ入れ直す（所属機関の在籍者一覧からその場で入力する用）。
+// 既存の記録を読んでから同じ機関の行を上書きするので、他の機関の分は消えない。
+// 現在の所属機関の分は、労働者名簿・印刷で使う employment_start_on にも反映する
+export async function setOrgEmploymentStart(
+  supabase: SupabaseClient,
+  workerId: string,
+  organizationId: string,
+  startOn: string,
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("workers")
+    .select("org_employment_starts, current_organization_id")
+    .eq("id", workerId)
+    .single();
+  if (error) throw error;
+  const row = data as {
+    org_employment_starts: unknown;
+    current_organization_id: string | null;
+  };
+  const entries = upsertOrgEmploymentStart(
+    normalizeOrgEmploymentStarts(row.org_employment_starts),
+    organizationId,
+    startOn,
+  );
+  const patch: Partial<WorkerInput> = { org_employment_starts: entries };
+  if (row.current_organization_id === organizationId) patch.employment_start_on = startOn;
+  await updateWorker(supabase, workerId, patch);
 }
 
 export async function updateWorker(
