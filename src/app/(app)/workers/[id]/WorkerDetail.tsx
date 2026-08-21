@@ -53,6 +53,7 @@ import { isSswInsuranceRenewalTarget, remainingLabel } from "@/lib/worker-alerts
 import { orgStaffLabel } from "@/lib/organization-intake";
 import { createClient } from "@/lib/supabase/client";
 import { dbErrorMessage } from "@/lib/errors";
+import { WORK_RESTRICTIONS } from "@/lib/residence-card";
 import { notionAppUrl } from "@/lib/notion-link";
 import { deleteWorker, updateWorker } from "@/lib/supabase/queries/workers";
 import {
@@ -162,7 +163,7 @@ export function WorkerDetail({
       await updateWorker(createClient(), worker.id, rest);
     } catch (err) {
       // 母国の住所（0091）など、列が無いときは何を適用すればよいか案内する
-      throw new Error(dbErrorMessage(err, "0091_worker_home_address.sql", "保存に失敗しました"));
+      throw new Error(dbErrorMessage(err, "0092_worker_residence_card_fields.sql", "保存に失敗しました"));
     }
     setEditOpen(false);
     router.refresh();
@@ -188,7 +189,7 @@ export function WorkerDetail({
       setDraft({});
       router.refresh();
     } catch (err) {
-      setError(dbErrorMessage(err, "0091_worker_home_address.sql", "保存に失敗しました"));
+      setError(dbErrorMessage(err, "0092_worker_residence_card_fields.sql", "保存に失敗しました"));
     } finally {
       setFillBusy(false);
     }
@@ -468,6 +469,17 @@ export function WorkerDetail({
           />
           <InfoItem label="許可日" value={worker.residence_permit_date} edit={fillDate("residence_permit_date")} />
           <InfoItem label="在留期限" value={worker.residence_expiry_date} edit={fillDate("residence_expiry_date")} />
+          {/* 在留カードの記載（0092）。在留期間は満了日とは別に、何年もらえたかが分かる */}
+          <InfoItem
+            label="在留期間"
+            value={worker.residence_period}
+            edit={fillText("residence_period", "例: 1年")}
+          />
+          <InfoItem
+            label="就労制限の有無"
+            value={worker.work_restriction}
+            edit={fillSelect("work_restriction", [...WORK_RESTRICTIONS])}
+          />
           <InfoItem label="パスポート番号" value={worker.passport_no} edit={fillText("passport_no")} />
           <InfoItem
             label="パスポート有効期限"
