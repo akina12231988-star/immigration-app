@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   mrzCheckDigit,
+  mrzCopyItems,
   mrzDate,
   mrzToWorkerFields,
   normalizeMrz,
@@ -109,6 +110,11 @@ describe("parseMrz（正常系）", () => {
     expect(r.invalidChecks).toEqual([]);
   });
 
+  it("正規化した2行をそのまま返す（画面に残してコピーできるように）", () => {
+    expect(r.line1).toBe(LINE1);
+    expect(r.line2).toBe(LINE2);
+  });
+
   it("各項目を取り出す", () => {
     expect(r.passportNo).toBe("L898902C3");
     expect(r.surname).toBe("ERIKSSON");
@@ -183,5 +189,51 @@ describe("mrzToWorkerFields", () => {
     const noSex = `${LINE1}\n${LINE2.slice(0, 20)}<${LINE2.slice(21)}`;
     const fields = mrzToWorkerFields(parseMrz(noSex, TODAY));
     expect(fields.gender).toBeUndefined();
+  });
+});
+
+describe("mrzCopyItems", () => {
+  it("2行と読み取れた項目をコピーの選択肢に出す", () => {
+    const items = mrzCopyItems(parseMrz(SAMPLE, TODAY));
+    expect(items.map((i) => i.label)).toEqual([
+      "MRZ 1行目",
+      "MRZ 2行目",
+      "パスポート番号",
+      "姓（Surname）",
+      "名（Given names）",
+      "氏名（姓 名）",
+      "生年月日",
+      "性別",
+      "有効期限",
+      "国籍コード",
+    ]);
+    // 対応表に無い国コードなので「国籍」は出さない（空の項目は並べない）
+    expect(items.find((i) => i.label === "国籍")).toBeUndefined();
+  });
+
+  it("MRZの行と番号・日付は等幅で出す", () => {
+    const items = mrzCopyItems(parseMrz(SAMPLE, TODAY));
+    const mono = items.filter((i) => i.mono).map((i) => i.label);
+    expect(mono).toContain("MRZ 1行目");
+    expect(mono).toContain("MRZ 2行目");
+    expect(mono).toContain("パスポート番号");
+    expect(mono).not.toContain("姓（Surname）");
+  });
+
+  it("行の中身は貼り付けた形そのまま（44文字）", () => {
+    const items = mrzCopyItems(parseMrz(SAMPLE, TODAY));
+    expect(items[0].value).toBe(LINE1);
+    expect(items[1].value).toBe(LINE2);
+    expect(items[0].value).toHaveLength(44);
+  });
+
+  it("形として読めなかったときは何も出さない", () => {
+    expect(mrzCopyItems(parseMrz(LINE1, TODAY))).toEqual([]);
+  });
+
+  it("チェックディジットが合わなくてもコピーはできる（転記のために出す）", () => {
+    const broken = `${LINE1}\n${LINE2.slice(0, 19)}9${LINE2.slice(20)}`;
+    const items = mrzCopyItems(parseMrz(broken, TODAY));
+    expect(items.find((i) => i.label === "生年月日")?.value).toBe("1974-08-12");
   });
 });

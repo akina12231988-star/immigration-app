@@ -8,6 +8,10 @@
 export interface MrzResult {
   ok: boolean; // 形（2行44文字）として読めたか
   formatError: string | null; // 形が違うときの理由（読めたときは null）
+  // 正規化したあとの2行（読めなかったときは空）。
+  // 試験の申込などで転記するとき、画面から選んでコピーできるように残す
+  line1: string;
+  line2: string;
   passportNo: string;
   nationalityCode: string; // MRZの3文字コード（VNM など）
   nationality: string; // 日本語の国名（対応表に無ければ空）
@@ -128,6 +132,8 @@ function emptyResult(formatError: string | null): MrzResult {
   return {
     ok: formatError === null,
     formatError,
+    line1: "",
+    line2: "",
     passportNo: "",
     nationalityCode: "",
     nationality: "",
@@ -155,6 +161,8 @@ export function parseMrz(text: string, today: string): MrzResult {
   }
 
   const result = emptyResult(null);
+  result.line1 = line1;
+  result.line2 = line2;
 
   // 1行目: P<（種別）＋発行国3文字＋氏名
   const { surname, givenNames } = parseMrzName(line1.slice(5));
@@ -198,6 +206,33 @@ export function parseMrz(text: string, today: string): MrzResult {
   ];
   result.invalidChecks = labels.filter(([k]) => !result.checks[k]).map(([, label]) => label);
   return result;
+}
+
+// 画面でコピーできるようにする項目。
+// パスポートの2行そのものと、読み取れた項目を1つずつ出す。
+// 特定技能試験（プロメトリック）の申込などで、必要なところだけ写せるようにするため
+export interface MrzCopyItem {
+  label: string;
+  value: string;
+  mono: boolean; // 等幅で出すか（MRZの行・番号など）
+}
+
+export function mrzCopyItems(result: MrzResult): MrzCopyItem[] {
+  if (!result.ok) return [];
+  const items: MrzCopyItem[] = [
+    { label: "MRZ 1行目", value: result.line1, mono: true },
+    { label: "MRZ 2行目", value: result.line2, mono: true },
+    { label: "パスポート番号", value: result.passportNo, mono: true },
+    { label: "姓（Surname）", value: result.surname, mono: false },
+    { label: "名（Given names）", value: result.givenNames, mono: false },
+    { label: "氏名（姓 名）", value: [result.surname, result.givenNames].filter(Boolean).join(" "), mono: false },
+    { label: "生年月日", value: result.birth, mono: true },
+    { label: "性別", value: result.sex, mono: false },
+    { label: "有効期限", value: result.expiry, mono: true },
+    { label: "国籍コード", value: result.nationalityCode, mono: true },
+    { label: "国籍", value: result.nationality, mono: false },
+  ];
+  return items.filter((i) => i.value !== "");
 }
 
 // 読み取り結果から、外国人フォームに入れる値を組み立てる（空の項目は入れない）。
