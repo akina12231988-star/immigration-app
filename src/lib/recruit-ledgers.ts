@@ -51,6 +51,8 @@ export interface PostingLedgerApp {
 }
 
 export interface PostingLedgerEntry {
+  id: string; // 求人（job_postings.id）。様式30で選ぶときの目印に使う
+  organization_id: string | null; // 手数料管理簿の入金状況と突き合わせる
   acceptance_no: string;
   org_name: string; // 求人者の氏名又は名称
   org_address: string; // 所在地
@@ -271,6 +273,8 @@ export function buildFeeLedgerSheet(entries: FeeLedgerEntry[]): SheetSpec {
 // 求人管理簿の元データを様式30の1行分へ変換する
 export function postingEntriesToForm30(entries: PostingLedgerEntry[]): Form30Posting[] {
   return entries.map((p) => ({
+    id: p.id,
+    organization_id: p.organization_id,
     received_on: p.received_on,
     org_name: p.org_name,
     org_address: p.org_address,
@@ -281,6 +285,8 @@ export function postingEntriesToForm30(entries: PostingLedgerEntry[]): Form30Pos
 }
 
 export interface Form30Posting {
+  id: string; // 求人（job_postings.id）
+  organization_id: string | null; // 求人者（手数料管理簿の入金状況の突き合わせに使う）
   received_on: string; // 求人受付年月日
   org_name: string; // 求人事業所名又は求人者氏名
   org_address: string; // 所在地

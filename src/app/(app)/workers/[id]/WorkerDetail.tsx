@@ -868,6 +868,7 @@ export function WorkerDetail({
         workerId={worker.id}
         applications={jobApplications}
         postings={postings}
+        organizations={organizations}
         canEdit={canEdit}
       />
 

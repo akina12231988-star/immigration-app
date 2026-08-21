@@ -243,16 +243,24 @@ export function JobApplicationDialog({
           <span className="text-xs font-bold text-muted">
             応募先の求人{organizations ? "（任意・選ぶと企業も自動で入ります）" : ""}
           </span>
+          {organizations && form.organization_id && (
+            <span className="text-[11px] text-muted">
+              選んでいる企業の求人だけを出しています。別の会社に直すときは、上の「応募先の企業」を変えてください。
+            </span>
+          )}
           <select
             value={form.job_posting_id ?? ""}
             onChange={(e) => selectPosting(e.target.value)}
             className={INPUT_CLASS}
           >
             <option value="">求人を選択</option>
+            {/* 同じ会社に同じ職種の求人が並ぶことがあるため、受付年月日も出して見分けられるようにする */}
             {postingOptions.map((p) => (
               <option key={p.id} value={p.id}>
                 {postingDisplayName(p, p.organizations?.name)}
                 {p.job_type ? `（${p.job_type}）` : ""}
+                {p.received_on ? ` 受付 ${p.received_on}` : ""}
+                {p.acceptance_no ? ` / ${p.acceptance_no}` : ""}
               </option>
             ))}
           </select>

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowDownUp,
+  Building2,
   CalendarClock,
   ChevronRight,
   FileSpreadsheet,
@@ -43,6 +44,7 @@ import {
   type EmploymentStartWorker,
 } from "@/lib/job-employment-start";
 import { matchesWorkerName } from "@/lib/worker-search";
+import { jobOrgOptions } from "@/lib/job-org-filter";
 import { NameSearchBox } from "@/components/ui/NameSearchBox";
 import {
   DEFAULT_JOB_SORT,
@@ -92,6 +94,8 @@ export function JobsExplorer({
   const [to, setTo] = useState("");
   // 並び替え（採用年月日・雇用開始日の準備をするときに日付順で見られるように）
   const [sort, setSort] = useState<JobSort>(DEFAULT_JOB_SORT);
+  // 応募先の企業で絞り込む（""＝すべての企業）。どこで採用が出ているかを見るのに使う
+  const [orgFilter, setOrgFilter] = useState("");
   // 氏名で検索（候補から選ぶ・部分一致）。入力中は採否のタブに関わらず全体から探す
   const [nameQuery, setNameQuery] = useState("");
   const query = nameQuery.trim();
@@ -165,6 +169,14 @@ export function JobsExplorer({
     [rows, from, to],
   );
 
+  // 企業の選択肢（期間内の応募から作る。採用の多い順）
+  const orgOptions = useMemo(() => jobOrgOptions(inPeriod), [inPeriod]);
+  // 企業で絞ったあとの母集団。件数・絞り込み・検索の候補はすべてこれをもとにする
+  const inOrg = useMemo(
+    () => (orgFilter ? inPeriod.filter((a) => a.organization_id === orgFilter) : inPeriod),
+    [inPeriod, orgFilter],
+  );
+
   // 応募先の会社で雇用開始しているか（外国人の雇用開始日から判定する）
   const workerById = useMemo(() => new Map(workerList.map((w) => [w.id, w])), [workerList]);
   const startedOn = (a: ApplicationWithRefs) =>
@@ -173,40 +185,40 @@ export function JobsExplorer({
     hasEmploymentStarted(workerById.get(a.worker_id), a.organization_id);
 
   const stats = useMemo(() => {
-    const s = { total: inPeriod.length, 選考中: 0, 採用: 0, 不採用: 0, 辞退: 0, 雇用開始済み: 0 };
-    for (const a of inPeriod) {
+    const s = { total: inOrg.length, 選考中: 0, 採用: 0, 不採用: 0, 辞退: 0, 雇用開始済み: 0 };
+    for (const a of inOrg) {
       s[a.result as ApplicationResult] += 1;
       if (isEmployed(a)) s.雇用開始済み += 1;
     }
     return s;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inPeriod, workerById]);
+  }, [inOrg, workerById]);
 
   const filtered = useMemo(() => {
     // 氏名で検索しているときは、採否のタブを気にせず期間内の全体から探す
     const list = query
-      ? inPeriod.filter((a) => matchesWorkerName({ name: a.workers?.name ?? "" }, query))
+      ? inOrg.filter((a) => matchesWorkerName({ name: a.workers?.name ?? "" }, query))
       : filter === "all"
-        ? inPeriod
+        ? inOrg
         : filter === "employed"
-          ? inPeriod.filter(isEmployed)
+          ? inOrg.filter(isEmployed)
           : filter === "no_referral"
-            ? inPeriod.filter((a) => ledgerStatus(a) === "未追加")
-            : inPeriod.filter((a) => a.result === filter);
+            ? inOrg.filter((a) => ledgerStatus(a) === "未追加")
+            : inOrg.filter((a) => a.result === filter);
     return sortJobApplications(list, sort, startedOn);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inPeriod, filter, sort, query, workerById, referralFees, unlinkedReferralKeys]);
+  }, [inOrg, filter, sort, query, workerById, referralFees, unlinkedReferralKeys]);
 
   // 紹介手数料台帳にまだ追加していない採用の件数（絞り込みのボタンに出す）
   const missingReferralCount = useMemo(
-    () => countMissingFromReferralLedger(inPeriod, referralFees, unlinkedReferralKeys),
-    [inPeriod, referralFees, unlinkedReferralKeys],
+    () => countMissingFromReferralLedger(inOrg, referralFees, unlinkedReferralKeys),
+    [inOrg, referralFees, unlinkedReferralKeys],
   );
 
   // 検索の候補（期間内の応募に出てくる外国人。同じ人は1回だけ）
   const searchCandidates = useMemo(() => {
     const seen = new Map<string, { id: string; name: string; hint: string }>();
-    for (const a of inPeriod) {
+    for (const a of inOrg) {
       const w = a.workers;
       if (!w || seen.has(w.id)) continue;
       seen.set(w.id, {
@@ -216,7 +228,7 @@ export function JobsExplorer({
       });
     }
     return [...seen.values()];
-  }, [inPeriod]);
+  }, [inOrg]);
 
   const addApplication = async (values: JobApplicationValues, workerId?: string) => {
     if (!workerId) throw new Error("外国人を選択してください");
@@ -373,6 +385,29 @@ export function JobsExplorer({
           onClick={() => setFilter("no_referral")}
         />
       </div>
+
+      {/* 応募先の企業で絞り込む（採用が出ている会社が上に来る） */}
+      <label className="flex flex-wrap items-center gap-2 text-xs font-bold text-muted">
+        <Building2 size={14} />
+        企業で絞り込み
+        <select
+          value={orgFilter}
+          onChange={(e) => setOrgFilter(e.target.value)}
+          className="min-h-[40px] min-w-[220px] flex-1 rounded-lg border border-border bg-surface px-2 text-xs font-bold"
+        >
+          <option value="">すべての企業（{orgOptions.length}社）</option>
+          {orgOptions.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.name}（応募{o.total}・採用{o.hired}）
+            </option>
+          ))}
+        </select>
+        {orgFilter && (
+          <button type="button" onClick={() => setOrgFilter("")} className="text-xs font-bold text-brand">
+            企業クリア
+          </button>
+        )}
+      </label>
 
       {/* 氏名で検索: 入力すると候補が出て、選ぶとその人の応募だけ表示される */}
       <NameSearchBox

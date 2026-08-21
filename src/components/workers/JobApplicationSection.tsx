@@ -17,6 +17,7 @@ import {
 } from "@/lib/supabase/queries/jobs";
 import type { ApplicationWithRefs } from "@/lib/supabase/queries/jobs";
 import type { PostingWithStats } from "@/lib/supabase/queries/postings";
+import type { Organization } from "@/types/db";
 import type { ApplicationResult, EmploymentInput } from "@/types/recruiting";
 import type { JobApplicationValues } from "@/components/workers/JobApplicationDialog";
 
@@ -25,14 +26,18 @@ export function JobApplicationSection({
   workerId,
   applications,
   postings,
+  organizations,
   canEdit,
 }: {
   workerId: string;
   applications: ApplicationWithRefs[];
   postings: PostingWithStats[];
+  organizations: Organization[]; // 応募先の企業を選び直せるようにする（間違えたときの訂正用）
   canEdit: boolean;
 }) {
   const router = useRouter();
+  // この画面で新規登録した企業も候補に含めるため、選択肢は state で持つ
+  const [orgList, setOrgList] = useState(organizations);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<ApplicationWithRefs | null>(null);
   const [employFor, setEmployFor] = useState<ApplicationWithRefs | null>(null);
@@ -163,8 +168,12 @@ export function JobApplicationSection({
         <JobApplicationDialog
           initial={editing}
           postings={postings}
+          organizations={orgList}
           onClose={() => setDialogOpen(false)}
           onSubmit={submitApplication}
+          onOrganizationCreated={(o) =>
+            setOrgList((prev) => [...prev, o].sort((a, b) => a.name.localeCompare(b.name, "ja")))
+          }
         />
       )}
 
