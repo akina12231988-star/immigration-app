@@ -51,6 +51,28 @@ export async function upsertPrepChecklist(
 
 // 担当者だけを保存する（そのTODO番号のリストが無ければ作成する）。
 // 申請一覧「申請前＜準備中＞」からのインライン編集用。他のメタ情報は変更しない
+// 担当者（申請準備）の一覧。申請一覧を担当者で絞り込むのに使う。
+// 担当者は「外国人 × 申請TODO番号」で持つため、その形の対応表で返す
+// （キーは `${worker_id} ${todo_no}`。listPrepStatuses と同じ引き方）。
+// 表示中のページに関わらず全件で絞れるよう、一覧をまとめて取る
+export async function listPrepTantou(
+  supabase: SupabaseClient,
+): Promise<Record<string, string>> {
+  const { data, error } = await supabase
+    .from("application_prep_checklists")
+    .select("worker_id, todo_no, tantou, updated_at")
+    .order("updated_at", { ascending: false });
+  if (error) throw error;
+  const rows =
+    (data as { worker_id: string; todo_no: string | null; tantou: string | null }[] | null) ?? [];
+  const out: Record<string, string> = {};
+  for (const r of rows) {
+    const key = `${r.worker_id} ${r.todo_no ?? ""}`;
+    if (out[key] === undefined) out[key] = r.tantou ?? "";
+  }
+  return out;
+}
+
 export async function upsertPrepTantou(
   supabase: SupabaseClient,
   workerId: string,
