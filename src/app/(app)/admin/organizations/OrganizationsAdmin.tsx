@@ -26,6 +26,8 @@ import {
   orgSupportStaff,
 } from "@/lib/support-system";
 import { normalizeOrganizationIntake } from "@/lib/organization-intake";
+import { matchesOrganizationName, organizationSuggestions } from "@/lib/org-search";
+import { NameSearchBox } from "@/components/ui/NameSearchBox";
 import { dbErrorMessage } from "@/lib/errors";
 import { SUPPORT_CONTRACT_STATUSES, type Organization, type OrganizationInput } from "@/types/db";
 
@@ -160,6 +162,9 @@ export function OrganizationsAdmin({
 }) {
   const router = useRouter();
   const [contractFilter, setContractFilter] = useState<string>("すべて");
+  // 名称で検索（候補から選ぶ・部分一致）。入力中は支援委託の絞り込みに関わらず全体から探す
+  const [nameQuery, setNameQuery] = useState("");
+  const query = nameQuery.trim();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Organization | null>(null);
   const [deleting, setDeleting] = useState<Organization | null>(null);
@@ -179,12 +184,14 @@ export function OrganizationsAdmin({
   }, [organizations]);
 
   const shown = useMemo(() => {
+    // 名称で検索しているときは、支援委託の絞り込みを気にせず全体から探す
+    if (query) return organizations.filter((org) => matchesOrganizationName(org, query));
     if (contractFilter === "すべて") return organizations;
     return organizations.filter((org) => {
       const status = (org.intake?.support_contract_status ?? "").trim();
       return contractFilter === "未設定" ? !status : status === contractFilter;
     });
-  }, [organizations, contractFilter]);
+  }, [organizations, contractFilter, query]);
 
   const openNew = () => {
     setEditing(null);
@@ -267,13 +274,33 @@ export function OrganizationsAdmin({
         })}
       </div>
 
+      {/* 会社名で検索: 入力すると候補が出て、選ぶとその会社だけ表示される */}
+      <NameSearchBox
+        candidates={organizations}
+        value={nameQuery}
+        onChange={setNameQuery}
+        placeholder="会社・機関の名称を入力して検索（「BASE」「国崎」などでも探せます）"
+        suggest={organizationSuggestions}
+        hintOf={(org) => org.intake?.support_contract_status ?? ""}
+      />
+      {query && (
+        <p className="-mt-1 text-sm font-bold text-muted">
+          「{query}」の検索結果 {shown.length}件
+          <span className="ml-1 text-[11px] font-normal">
+            （支援委託の絞り込みに関わらず探しています）
+          </span>
+        </p>
+      )}
+
       {organizations.length === 0 ? (
         <Card className="p-6 text-center text-sm text-muted">
           まだ登録がありません。外国人の所属先となる会社・機関を追加してください。
         </Card>
       ) : shown.length === 0 ? (
         <Card className="p-6 text-center text-sm text-muted">
-          「{contractFilter}」の会社・機関はありません。
+          {query
+            ? `「${query}」に一致する会社・機関はありません。`
+            : `「${contractFilter}」の会社・機関はありません。`}
         </Card>
       ) : (
         <div className="flex flex-col gap-2.5">

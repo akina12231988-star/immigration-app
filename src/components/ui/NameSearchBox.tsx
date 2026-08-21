@@ -4,21 +4,24 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, X } from "lucide-react";
 import { workerNameSuggestions, type SearchableWorker } from "@/lib/worker-search";
 
-// 外国人の氏名を入力すると候補が出て、選ぶと一覧をその人で絞り込む検索ボックス。
-// ふりがなでも、空白の入れ方が違っても探せる（worker-search.ts）。
-// 申請準備の一覧と求職一覧で同じ形にしている。
+// 名前を入力すると候補が出て、選ぶと一覧をその1件で絞り込む検索ボックス。
+// 既定は外国人の氏名（ふりがな・空白の入れ方の違いでも探せる。worker-search.ts）。
+// suggest を渡すと会社・機関の名称など別の探し方にもできる（org-search.ts）。
+// 申請準備の一覧・求職一覧・所属機関の情報で同じ形にしている。
 export function NameSearchBox<T extends SearchableWorker & { id: string }>({
   candidates,
   value,
   onChange,
   placeholder = "外国人の氏名を入力して検索（ふりがなでも探せます）",
   hintOf,
+  suggest = workerNameSuggestions,
 }: {
   candidates: T[]; // 候補に出す人
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   hintOf?: (worker: T) => string; // 候補の右に出す補足（在留期限・応募先など）
+  suggest?: (candidates: T[], query: string) => T[]; // 候補の絞り込み方（既定は氏名）
 }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -32,7 +35,7 @@ export function NameSearchBox<T extends SearchableWorker & { id: string }>({
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
 
-  const suggestions = useMemo(() => workerNameSuggestions(candidates, value), [candidates, value]);
+  const suggestions = useMemo(() => suggest(candidates, value), [suggest, candidates, value]);
   const showSuggestions = open && value.trim().length > 0 && suggestions.length > 0;
 
   return (
