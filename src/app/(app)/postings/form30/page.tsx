@@ -6,6 +6,7 @@ import { listReferralFees } from "@/lib/supabase/queries/referrals";
 import { listAllApplications } from "@/lib/supabase/queries/jobs";
 import { todayStr } from "@/lib/application-alerts";
 import { CUSTODIAN_INFO } from "@/lib/custody";
+import type { Form30Application } from "@/lib/form30";
 import { Form30Client, type Form30Row } from "./Form30Client";
 
 export const dynamic = "force-dynamic";
@@ -25,10 +26,16 @@ export default async function Form30Page() {
     listAllApplications(supabase).catch(() => []),
   ]);
 
-  const orgReferredDates: Record<string, string[]> = {};
+  // 会社ごとの応募（求人票に紐づいていない過去データを拾い直すのに使う）
+  const orgApplications: Record<string, Form30Application[]> = {};
   for (const a of applications) {
     if (!a.organization_id) continue;
-    (orgReferredDates[a.organization_id] ??= []).push(a.applied_on);
+    (orgApplications[a.organization_id] ??= []).push({
+      worker_name: a.workers?.name ?? "",
+      applied_on: a.applied_on,
+      result: a.result,
+      result_on: a.result_on,
+    });
   }
 
   const postings: Form30Row[] = entries.map((p) => ({
@@ -39,7 +46,12 @@ export default async function Form30Page() {
     org_address: p.org_address,
     job_type: p.job_type,
     note: p.note,
-    referred_dates: p.applications.map((a) => a.applied_on),
+    applications: p.applications.map((a) => ({
+      worker_name: a.worker_name,
+      applied_on: a.applied_on,
+      result: a.result,
+      result_on: a.result_on,
+    })),
   }));
 
   return (
@@ -51,7 +63,7 @@ export default async function Form30Page() {
         billed_on: f.billed_on,
         paid_on: f.paid_on,
       }))}
-      orgReferredDates={orgReferredDates}
+      orgApplications={orgApplications}
       today={todayStr()}
       agencyName={CUSTODIAN_INFO.officeName}
     />

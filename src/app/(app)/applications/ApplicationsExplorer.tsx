@@ -27,6 +27,8 @@ import { createClient } from "@/lib/supabase/client";
 import { listPrepStatuses, type PrepStatus } from "@/lib/supabase/queries/prep-status";
 import { upsertPrepTantou } from "@/lib/supabase/queries/application-prep";
 import { PREP_TANTOU_OPTIONS } from "@/lib/application-prep";
+import { matchesApplicationTantou, tantouFilterOptions } from "@/lib/application-tantou";
+import { listPrepTantou } from "@/lib/supabase/queries/application-prep";
 import { notionAppUrl } from "@/lib/notion-link";
 import { useApplications } from "@/lib/application-store";
 import { applicationStatusLabel } from "@/lib/status";
@@ -38,8 +40,7 @@ import {
   type WorkerWithOrg,
 } from "@/lib/supabase/queries/workers";
 import { listOrganizations } from "@/lib/supabase/queries/organizations";
-import { isOrgStaff, orgStaffLabel } from "@/lib/organization-intake";
-import { orgSupportManagers, orgSupportStaff } from "@/lib/support-system";
+import { orgStaffLabel } from "@/lib/organization-intake";
 import type { Organization } from "@/types/db";
 import { listActiveCustodyNoByWorker } from "@/lib/supabase/queries/custody";
 import { formatStorageNo } from "@/lib/custody";
@@ -142,16 +143,40 @@ export function ApplicationsExplorer({
   const orgIntakeFor = (a: Application) =>
     a.organizationId ? orgById.get(a.organizationId)?.intake : undefined;
 
-  // 担当者での絞り込み（所属機関の支援責任者・支援担当者に一致する案件のみ表示）
+  // 準備の読み直しの合図（担当者の保存に失敗したときなどに増やす）
+  const [prepReload, setPrepReload] = useState(0);
+
+  // 各人の申請準備の状況（不足数など）。表示中のページ分だけ読み込む
+  const [prepStatuses, setPrepStatuses] = useState<Map<string, PrepStatus>>(new Map());
+
+  // 担当者（申請準備）。絞り込みは表示中のページに関わらず効かせたいので、まとめて持つ
+  // （キーは `${worker_id} ${申請TODO番号}`）
+  const [prepTantou, setPrepTantou] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let cancelled = false;
+    listPrepTantou(createClient())
+      .then((map) => {
+        if (!cancelled) setPrepTantou(map);
+      })
+      .catch(() => undefined); // 0083未適用でも一覧は使えるようにする
+    return () => {
+      cancelled = true;
+    };
+  }, [prepReload]);
+
+  // その案件の担当者（申請準備）
+  const tantouOf = (a: Application) => {
+    if (!a.workerId) return "";
+    const todoNo = workerFor(a)?.residence_renewal_todo ?? "";
+    return prepTantou[`${a.workerId} ${todoNo}`] ?? "";
+  };
+
+  // 担当者（申請準備）での絞り込み。一覧の担当者の欄に出ている人で探せるようにする
   const [tantouFilter, setTantouFilter] = useState("");
-  const tantouOptions = useMemo(() => {
-    const names = new Set<string>(PREP_TANTOU_OPTIONS);
-    for (const o of orgs) {
-      for (const name of orgSupportManagers(o.intake)) names.add(name);
-      for (const name of orgSupportStaff(o.intake)) names.add(name);
-    }
-    return [...names];
-  }, [orgs]);
+  const tantouOptions = useMemo(
+    () => tantouFilterOptions(PREP_TANTOU_OPTIONS, Object.values(prepTantou)),
+    [prepTantou],
+  );
 
   // メモ・受取予定日のインライン編集用（記入者名と編集可否）
   const [authorName, setAuthorName] = useState("");
@@ -242,13 +267,8 @@ export function ApplicationsExplorer({
       a.applicationNumber.toLowerCase().includes(kw) ||
       a.applicationContent.toLowerCase().includes(kw) ||
       a.assignee.toLowerCase().includes(kw);
-    // 担当者絞り込み: 所属機関の支援責任者・支援担当者に一致する案件のみ
-    const matchesTantou = (a: Application) =>
-      !tantouFilter ||
-      isOrgStaff(
-        a.organizationId ? orgById.get(a.organizationId)?.intake : undefined,
-        tantouFilter,
-      );
+    // 担当者絞り込み: 一覧の担当者の欄（担当者（申請準備））に一致する案件のみ
+    const matchesTantou = (a: Application) => matchesApplicationTantou(tantouFilter, tantouOf(a));
 
     const rows = applications.filter((a) => {
       if (view === "pre-prep") {
@@ -279,7 +299,8 @@ export function ApplicationsExplorer({
       return [...placeholders, ...rows];
     }
     return rows;
-  }, [applications, renewalWorkers, keyword, view, showIssued, permitFrom, permitTo, tantouFilter, orgById, orgNameById]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applications, renewalWorkers, keyword, view, showIssued, permitFrom, permitTo, tantouFilter, prepTantou, orgNameById]);
 
   // 並び替え。日付が未設定の行は末尾に回す
   const sorted = useMemo(() => {
@@ -319,9 +340,7 @@ export function ApplicationsExplorer({
     [sorted, safePage, pageSize],
   );
 
-  // 申請前＜準備中＞: 各人の準備状況（不足数）と、その場で添付するモーダル
-  const [prepStatuses, setPrepStatuses] = useState<Map<string, PrepStatus>>(new Map());
-  const [prepReload, setPrepReload] = useState(0);
+  // 申請前＜準備中＞: その場で添付するモーダル
   const [prepModal, setPrepModal] = useState<{
     id: string;
     name: string;
@@ -368,6 +387,7 @@ export function ApplicationsExplorer({
     const workerId = a.workerId;
     const todoNo = workerFor(a)?.residence_renewal_todo ?? "";
     // 先に画面へ反映し、保存失敗時は再読込で正しい状態に戻す
+    setPrepTantou((prev) => ({ ...prev, [`${workerId} ${todoNo}`]: tantou }));
     setPrepStatuses((prev) => {
       const next = new Map(prev);
       const st = next.get(workerId);
@@ -732,7 +752,7 @@ export function ApplicationsExplorer({
                     >
                       <span className="text-[11px] font-bold text-muted">担当者</span>
                       <TantouSelect
-                        value={prepStatuses.get(a.workerId)?.tantou ?? ""}
+                        value={tantouOf(a)}
                         disabled={!canEdit}
                         onChange={(v) => changeTantou(a, v)}
                       />
@@ -878,7 +898,7 @@ export function ApplicationsExplorer({
                           <Td>
                             <span onClick={(e) => e.stopPropagation()}>
                               <TantouSelect
-                                value={a.workerId ? (prepStatuses.get(a.workerId)?.tantou ?? "") : ""}
+                                value={tantouOf(a)}
                                 disabled={!canEdit || !a.workerId}
                                 onChange={(v) => changeTantou(a, v)}
                               />

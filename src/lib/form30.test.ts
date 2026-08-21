@@ -7,6 +7,12 @@ import {
   isEligible,
   oneYearBefore,
   payStatusOf,
+  applyForm30Edits,
+  changedOrgAddresses,
+  emptyForm30Edits,
+  form30Note,
+  isImportNote,
+  type Form30Application,
   type Form30Candidate,
   type Form30Fee,
   type Form30PostingInput,
@@ -23,6 +29,14 @@ const fee = (over: Partial<Form30Fee> = {}): Form30Fee => ({
   ...over,
 });
 
+const app = (over: Partial<Form30Application> = {}): Form30Application => ({
+  worker_name: "NGUYEN VAN A",
+  applied_on: "2026-06-19",
+  result: "採用",
+  result_on: "2026-06-22",
+  ...over,
+});
+
 const posting = (over: Partial<Form30PostingInput> = {}): Form30PostingInput => ({
   postingId: "p1",
   organizationId: "o1",
@@ -31,7 +45,7 @@ const posting = (over: Partial<Form30PostingInput> = {}): Form30PostingInput => 
   org_address: "熊本県八代市鏡町1515",
   job_type: "耕種農業全般",
   note: "",
-  referred_dates: ["2026-06-19"],
+  applications: [app()],
   ...over,
 });
 
@@ -88,7 +102,7 @@ describe("buildForm30Candidates", () => {
 
   it("過去1年に応募がある求人だけを出す", () => {
     const rows = buildForm30Candidates(
-      [posting(), posting({ postingId: "p2", referred_dates: ["2024-01-05"] })],
+      [posting(), posting({ postingId: "p2", applications: [app({ applied_on: "2024-01-05" })] })],
       paid,
       BASE,
     );
@@ -111,10 +125,10 @@ describe("buildForm30Candidates", () => {
 
   it("応募が求人票に紐づいていなくても、会社の応募で拾い直す", () => {
     const rows = buildForm30Candidates(
-      [posting({ referred_dates: [] })],
+      [posting({ applications: [] })],
       paid,
       BASE,
-      { o1: ["2026-06-19"] },
+      { o1: [app()] },
     );
     expect(rows).toHaveLength(1);
     expect(rows[0].matchedBy).toBe("会社");
@@ -122,17 +136,17 @@ describe("buildForm30Candidates", () => {
 
   it("求人票に紐づいた実績がある会社は、会社での拾い直しをしない（二重に出さない）", () => {
     const rows = buildForm30Candidates(
-      [posting({ postingId: "p1" }), posting({ postingId: "p2", referred_dates: [] })],
+      [posting({ postingId: "p1" }), posting({ postingId: "p2", applications: [] })],
       paid,
       BASE,
-      { o1: ["2026-06-19"] },
+      { o1: [app()] },
     );
     expect(rows.map((r) => r.postingId)).toEqual(["p1"]);
   });
 
   it("期間外の応募しか無ければ拾わない", () => {
-    const rows = buildForm30Candidates([posting({ referred_dates: [] })], paid, BASE, {
-      o1: ["2024-01-05"],
+    const rows = buildForm30Candidates([posting({ applications: [] })], paid, BASE, {
+      o1: [app({ applied_on: "2024-01-05" })],
     });
     expect(rows).toEqual([]);
   });
@@ -147,7 +161,8 @@ describe("isEligible / defaultSelection", () => {
     org_address: "",
     job_type: "",
     note: "",
-    referred_dates: [],
+    applications: [],
+    hired: [],
     payStatus: status,
     paidOn: status === "入金済み" ? "2026-07-31" : null,
     paidWorkers: [],
@@ -181,7 +196,8 @@ describe("buildForm30Doc", () => {
     org_address: "熊本県八代市鏡町1515",
     job_type: "耕種農業全般",
     note: "",
-    referred_dates: [],
+    applications: [],
+    hired: [],
     payStatus: "入金済み",
     paidOn: "2026-07-31",
     paidWorkers: [],
@@ -238,5 +254,145 @@ describe("buildForm30Doc", () => {
     const xml = docxDocumentXml(buildForm30Doc(many, { agencyName: "A", baseDate: BASE }));
     expect(xml).toContain("会社14");
     expect(xml).not.toContain("会社15");
+  });
+});
+
+describe("isImportNote / form30Note", () => {
+  it("過去データ取込の覚え書きは様式の備考に出さない", () => {
+    const note = "過去データ取込（2026年4月〜2027年3月 求人管理簿）";
+    expect(isImportNote(note)).toBe(true);
+    expect(form30Note(note)).toBe("");
+  });
+
+  it("前後に空白があっても取込の覚え書きとみなす", () => {
+    expect(form30Note("  過去データ取込（2025年4月〜2026年3月 求人管理簿）  ")).toBe("");
+  });
+
+  it("手で書いた備考はそのまま残す", () => {
+    expect(isImportNote("寮あり")).toBe(false);
+    expect(form30Note("寮あり")).toBe("寮あり");
+    expect(form30Note("")).toBe("");
+  });
+
+  it("候補を作るときに備考から取り除く", () => {
+    const rows = buildForm30Candidates(
+      [posting({ note: "過去データ取込（2026年4月〜2027年3月 求人管理簿）" })],
+      [fee({ paid_on: "2026-07-31" })],
+      BASE,
+    );
+    expect(rows[0].note).toBe("");
+  });
+});
+
+describe("応募・採用の内訳", () => {
+  it("期間内の応募と、そのうちの採用を持つ", () => {
+    const rows = buildForm30Candidates(
+      [
+        posting({
+          applications: [
+            app({ worker_name: "A", applied_on: "2026-06-19", result: "採用", result_on: "2026-06-22" }),
+            app({ worker_name: "B", applied_on: "2026-05-01", result: "不採用", result_on: "2026-05-10" }),
+            app({ worker_name: "C", applied_on: "2024-01-05", result: "採用", result_on: "2024-01-10" }),
+          ],
+        }),
+      ],
+      [fee({ paid_on: "2026-07-31" })],
+      BASE,
+    );
+    expect(rows[0].applications.map((a) => a.worker_name)).toEqual(["A", "B"]); // 期間外のCは入らない
+    expect(rows[0].hired.map((a) => a.worker_name)).toEqual(["A"]);
+  });
+
+  it("応募日の新しい順に並べる", () => {
+    const rows = buildForm30Candidates(
+      [
+        posting({
+          applications: [
+            app({ worker_name: "古", applied_on: "2026-01-05" }),
+            app({ worker_name: "新", applied_on: "2026-06-19" }),
+          ],
+        }),
+      ],
+      [fee({ paid_on: "2026-07-31" })],
+      BASE,
+    );
+    expect(rows[0].applications.map((a) => a.worker_name)).toEqual(["新", "古"]);
+  });
+
+  it("会社で拾い直したときも、その会社の応募を出す", () => {
+    const rows = buildForm30Candidates(
+      [posting({ applications: [] })],
+      [fee({ paid_on: "2026-07-31" })],
+      BASE,
+      { o1: [app({ worker_name: "会社経由" })] },
+    );
+    expect(rows[0].matchedBy).toBe("会社");
+    expect(rows[0].hired.map((a) => a.worker_name)).toEqual(["会社経由"]);
+  });
+});
+
+describe("画面で直した内容（applyForm30Edits / changedOrgAddresses）", () => {
+  const base = (): Form30Candidate => ({
+    postingId: "p1",
+    organizationId: "o1",
+    received_on: "2026-05-01",
+    org_name: "髙濱　伸吉",
+    org_address: "",
+    job_type: "農業",
+    note: "",
+    applications: [],
+    hired: [],
+    payStatus: "入金済み",
+    paidOn: "2026-06-26",
+    paidWorkers: [],
+    matchedBy: "求人",
+  });
+
+  it("直していなければ元のまま", () => {
+    expect(applyForm30Edits(base(), emptyForm30Edits())).toEqual(base());
+  });
+
+  it("所在地は会社ごとに当たる（同じ会社の求人が並んでも1回で済む）", () => {
+    const edits = { orgs: { o1: { address: "熊本県八代市◯◯1-2" } }, postings: {} };
+    const row1 = applyForm30Edits({ ...base(), postingId: "p1" }, edits);
+    const row2 = applyForm30Edits({ ...base(), postingId: "p2" }, edits);
+    expect(row1.org_address).toBe("熊本県八代市◯◯1-2");
+    expect(row2.org_address).toBe("熊本県八代市◯◯1-2");
+  });
+
+  it("受付年月日・職種・備考は求人ごとに当たる", () => {
+    const edits = {
+      orgs: {},
+      postings: { p1: { received_on: "2026-04-02", job_type: "耕種農業", note: "寮あり" } },
+    };
+    const row = applyForm30Edits(base(), edits);
+    expect(row.received_on).toBe("2026-04-02");
+    expect(row.job_type).toBe("耕種農業");
+    expect(row.note).toBe("寮あり");
+    // 別の求人には当たらない
+    expect(applyForm30Edits({ ...base(), postingId: "p2" }, edits).job_type).toBe("農業");
+  });
+
+  it("会社が分からない求人には会社の直しを当てない", () => {
+    const edits = { orgs: { o1: { address: "A" } }, postings: {} };
+    expect(applyForm30Edits({ ...base(), organizationId: null }, edits).org_address).toBe("");
+  });
+
+  it("マスタに保存するのは、実際に変わった所在地だけ", () => {
+    const rows = [base(), { ...base(), postingId: "p2" }];
+    const edits = { orgs: { o1: { address: "熊本県八代市◯◯1-2" } }, postings: {} };
+    expect(changedOrgAddresses(rows, edits)).toEqual([
+      { organizationId: "o1", name: "髙濱　伸吉", address: "熊本県八代市◯◯1-2" },
+    ]);
+  });
+
+  it("元と同じ内容（空白の違いだけ）なら保存の対象にしない", () => {
+    const rows = [{ ...base(), org_address: "熊本県八代市◯◯1-2" }];
+    const edits = { orgs: { o1: { address: " 熊本県八代市◯◯1-2 " } }, postings: {} };
+    expect(changedOrgAddresses(rows, edits)).toEqual([]);
+  });
+
+  it("直していなければ保存の対象は無い", () => {
+    expect(changedOrgAddresses([base()], emptyForm30Edits())).toEqual([]);
   });
 });
