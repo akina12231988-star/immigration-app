@@ -38,6 +38,7 @@ function worker(over: Partial<Worker>): Worker {
     relatives_in_japan: "",
     relatives: [],
     address: "",
+    home_address: "",
     employment_start_on: null,
     org_employment_starts: [],
     assigned_office: "",

@@ -52,6 +52,7 @@ import { calcDocumentTotal, calcSsw, entryDays, todayStr, ymdFullText } from "@/
 import { isSswInsuranceRenewalTarget, remainingLabel } from "@/lib/worker-alerts";
 import { orgStaffLabel } from "@/lib/organization-intake";
 import { createClient } from "@/lib/supabase/client";
+import { dbErrorMessage } from "@/lib/errors";
 import { notionAppUrl } from "@/lib/notion-link";
 import { deleteWorker, updateWorker } from "@/lib/supabase/queries/workers";
 import {
@@ -157,7 +158,12 @@ export function WorkerDetail({
     // 古いパスで上書きしない。フォームを開いたまま写真を登録→保存すると消えてしまう
     const { photo_path: _keepPhoto, ...rest } = input;
     void _keepPhoto;
-    await updateWorker(createClient(), worker.id, rest);
+    try {
+      await updateWorker(createClient(), worker.id, rest);
+    } catch (err) {
+      // 母国の住所（0091）など、列が無いときは何を適用すればよいか案内する
+      throw new Error(dbErrorMessage(err, "0091_worker_home_address.sql", "保存に失敗しました"));
+    }
     setEditOpen(false);
     router.refresh();
   };
@@ -182,7 +188,7 @@ export function WorkerDetail({
       setDraft({});
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存に失敗しました");
+      setError(dbErrorMessage(err, "0091_worker_home_address.sql", "保存に失敗しました"));
     } finally {
       setFillBusy(false);
     }
@@ -467,6 +473,13 @@ export function WorkerDetail({
             label="パスポート有効期限"
             value={worker.passport_expiry_date}
             edit={fillDate("passport_expiry_date")}
+          />
+          {/* 母国（本国）の住所。上の「住所」は日本での住所なので、分けて持つ */}
+          <InfoItem
+            label="母国の住所"
+            wide
+            value={worker.home_address}
+            edit={fillTextarea("home_address", "例: Số 12, Thôn A, Xã B, Huyện C, Tỉnh Nghệ An, Việt Nam")}
           />
         </dl>
         <p className="mb-1 text-[11px] font-bold text-muted">番号・保険</p>
