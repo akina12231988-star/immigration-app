@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  BadgeCheck,
   Check,
   CheckCircle2,
   ChevronLeft,
@@ -19,6 +20,7 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Modal } from "@/components/ui/Modal";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { AlertBadge } from "@/components/applications/AlertBadge";
 import { ApplicantMeta } from "@/components/applications/ApplicantMeta";
@@ -28,6 +30,7 @@ import { listPrepStatuses, type PrepStatus } from "@/lib/supabase/queries/prep-s
 import { upsertPrepTantou } from "@/lib/supabase/queries/application-prep";
 import { PREP_TANTOU_OPTIONS } from "@/lib/application-prep";
 import { matchesApplicationTantou, tantouFilterOptions } from "@/lib/application-tantou";
+import { approvalPatch, canMarkApproved } from "@/lib/application-approval";
 import { listPrepTantou } from "@/lib/supabase/queries/application-prep";
 import { notionAppUrl } from "@/lib/notion-link";
 import { useApplications } from "@/lib/application-store";
@@ -370,6 +373,21 @@ export function ApplicationsExplorer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showPrep, prepIdsKey, prepReload]);
 
+  // 「許可が降りた」…審査中の申請を、詳細を開かずに許可済みにする。
+  // 押し間違いで状態が変わらないよう、確認してから保存する
+  const [approveTarget, setApproveTarget] = useState<Application | null>(null);
+  const [approveBusy, setApproveBusy] = useState(false);
+  const runApprove = async () => {
+    if (!approveTarget) return;
+    setApproveBusy(true);
+    try {
+      await updateApplication(approveTarget.id, approvalPatch(TODAY));
+      setApproveTarget(null);
+    } finally {
+      setApproveBusy(false);
+    }
+  };
+
   const openPrepModal = (a: Application) => {
     if (!a.workerId) return;
     const st = prepStatuses.get(a.workerId);
@@ -669,6 +687,19 @@ export function ApplicationsExplorer({
                       <WorkerInfoLink workerId={a.workerId} />
                     </span>
                   )}
+                  {/* 審査中の申請は、詳細を開かなくてもここで許可済みにできる */}
+                  {canEdit && !isRenewalPlaceholder(a) && canMarkApproved(a) && (
+                    <span className="mt-2 block" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        onClick={() => setApproveTarget(a)}
+                        className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-brand py-2.5 text-xs font-bold text-brand"
+                      >
+                        <BadgeCheck size={15} />
+                        許可が降りた（許可済みにする）
+                      </button>
+                    </span>
+                  )}
                 </>
               );
               // カード内にリンク（外国人の情報・Notionなど）を置くため、
@@ -958,6 +989,21 @@ export function ApplicationsExplorer({
       )}
         </>
       )}
+
+      {/* 「許可が降りた」の確認（押し間違いで状態が変わらないように） */}
+      <ConfirmDialog
+        open={approveTarget !== null}
+        title="許可済みにします"
+        message={
+          approveTarget
+            ? `${approveTarget.name} さんの申請（${approveTarget.applicationNumber || "申請番号未登録"}）を許可済みにします。在留カード受け取り待ちに移り、在留許可日は今日（${TODAY}）で入ります。詳細画面であとから直せます。`
+            : ""
+        }
+        confirmLabel="許可済みにする"
+        busy={approveBusy}
+        onConfirm={() => void runApprove()}
+        onCancel={() => setApproveTarget(null)}
+      />
 
       {/* 申請前＜準備中＞: 準備状況の確認とその場での書類添付 */}
       {prepModal && (
