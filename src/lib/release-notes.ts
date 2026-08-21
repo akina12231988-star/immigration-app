@@ -23,6 +23,16 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-08-21",
+    title: "求職一覧で、氏名をボタン1つでコピーできるようになりました",
+    where: "求職 ＞ 求職一覧 ＞ 各応募の氏名の右",
+    href: "/jobs",
+    items: [
+      "氏名の右のコピーボタンを押すと、その人の名前が写せます（freee販売やメールへの転記用）。",
+      "氏名を押すとこれまでどおり外国人詳細が開きます。",
+    ],
+  },
+  {
+    date: "2026-08-21",
     title: "外国人詳細から応募を編集するとき、応募先の企業を直せるようになりました",
     where: "外国人 ＞ 外国人詳細 ＞ 求職・応募 ＞ 鉛筆ボタン",
     href: "/workers",

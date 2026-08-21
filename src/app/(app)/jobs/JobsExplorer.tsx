@@ -46,6 +46,7 @@ import {
 import { matchesWorkerName } from "@/lib/worker-search";
 import { jobOrgOptions } from "@/lib/job-org-filter";
 import { NameSearchBox } from "@/components/ui/NameSearchBox";
+import { CopyButton } from "@/components/ui/CopyButton";
 import {
   DEFAULT_JOB_SORT,
   JOB_SORTS,
@@ -472,22 +473,36 @@ export function JobsExplorer({
             return (
               <Card key={a.id} className="p-3.5">
                 <div className="flex items-center gap-3">
-                  <Link href={a.workers ? `/workers/${a.workers.id}` : "#"} className="min-w-0 flex-1">
-                    <div className="mb-0.5 flex items-center gap-2">
-                      <p className="truncate font-bold">{a.workers?.name ?? "（削除済み）"}</p>
+                  <div className="min-w-0 flex-1">
+                    {/* 氏名はコピーできるよう、リンクとコピーボタンを分けて置く */}
+                    <div className="mb-0.5 flex items-center gap-1.5">
+                      <Link
+                        href={a.workers ? `/workers/${a.workers.id}` : "#"}
+                        className="min-w-0 truncate font-bold underline-offset-2 hover:text-brand hover:underline"
+                      >
+                        {a.workers?.name ?? "（削除済み）"}
+                      </Link>
+                      {a.workers?.name && (
+                        <CopyButton value={a.workers.name} label={`${a.workers.name} の氏名をコピー`} />
+                      )}
                       <ApplicationResultBadge result={a.result as ApplicationResult} />
                     </div>
-                    <p className="truncate text-xs text-muted">
-                      {a.job_postings?.display_company || a.organizations?.name || "応募先"}
-                    </p>
-                    <p className="flex items-center gap-1 text-xs tabular-nums text-muted">
-                      <CalendarClock size={12} />
-                      応募 {a.applied_on}
-                      {a.interview_on && ` ・ 面接 ${a.interview_on}`}
-                      {a.result_on && ` ・ 結果 ${a.result_on}`}
-                      {startedOn(a) && ` ・ 雇用開始 ${startedOn(a)}`}
-                    </p>
-                  </Link>
+                    <Link
+                      href={a.workers ? `/workers/${a.workers.id}` : "#"}
+                      className="block min-w-0"
+                    >
+                      <p className="truncate text-xs text-muted">
+                        {a.job_postings?.display_company || a.organizations?.name || "応募先"}
+                      </p>
+                      <p className="flex items-center gap-1 text-xs tabular-nums text-muted">
+                        <CalendarClock size={12} />
+                        応募 {a.applied_on}
+                        {a.interview_on && ` ・ 面接 ${a.interview_on}`}
+                        {a.result_on && ` ・ 結果 ${a.result_on}`}
+                        {startedOn(a) && ` ・ 雇用開始 ${startedOn(a)}`}
+                      </p>
+                    </Link>
+                  </div>
                   <ChevronRight size={16} className="shrink-0 text-muted" />
                 </div>
 

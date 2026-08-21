@@ -3,8 +3,9 @@
 import { messengerWebUrl } from "@/lib/messenger-link";
 import { useState } from "react";
 import Link from "next/link";
-import { CalendarClock, Check, Copy, ExternalLink, MessageCircle, UserRound } from "lucide-react";
+import { CalendarClock, ExternalLink, MessageCircle, UserRound } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { CopyButton } from "@/components/ui/CopyButton";
 import {
   RENEWAL_STATUS_LABEL,
   WorkerRenewalFields,
@@ -65,18 +66,6 @@ export function WorkerRenewalCard({
   const [prepOrgId, setPrepOrgId] = useState(
     worker.application_prep_organization_id ?? worker.current_organization_id ?? "",
   );
-  const [nameCopied, setNameCopied] = useState(false);
-
-  const copyName = async () => {
-    try {
-      await navigator.clipboard.writeText(worker.name);
-      setNameCopied(true);
-      setTimeout(() => setNameCopied(false), 1500);
-    } catch {
-      /* クリップボード非対応時は何もしない */
-    }
-  };
-
   const expiry = worker.residence_expiry_date ?? "";
   const days = expiry ? daysUntil(expiry, today) : 0;
   const overdue = days < 0;
@@ -88,14 +77,7 @@ export function WorkerRenewalCard({
           <div className="flex items-center gap-1.5">
             {/* クリックしても遷移せず、選択・コピーできるように通常テキストにする */}
             <p className="select-text truncate font-bold">{worker.name}</p>
-            <button
-              type="button"
-              onClick={copyName}
-              aria-label="氏名をコピー"
-              className="shrink-0 text-muted hover:text-brand"
-            >
-              {nameCopied ? <Check size={14} className="text-status-reported-fg" /> : <Copy size={14} />}
-            </button>
+            <CopyButton value={worker.name} label="氏名をコピー" />
           </div>
           <p className="truncate text-xs text-muted">
             {(organizations?.find((o) => o.id === prepOrgId)?.name ?? orgName) ?? "所属機関未設定"}
