@@ -40,6 +40,8 @@ describe("separationSummary", () => {
 });
 
 const postingBase: Omit<PostingLedgerEntry, "applications"> = {
+  id: "p1",
+  organization_id: "o1",
   acceptance_no: "8-1",
   org_name: "株式会社テスト",
   org_address: "熊本県熊本市",
@@ -177,6 +179,8 @@ describe("buildFeeLedgerSheet", () => {
 
 describe("buildForm30Sheet", () => {
   const posting = (received: string, referred: string[]): Form30Posting => ({
+    id: `p-${received}`,
+    organization_id: "o1",
     received_on: received,
     org_name: "株式会社テスト",
     org_address: "熊本県熊本市",

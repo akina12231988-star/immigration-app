@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronRight, FileSpreadsheet, ImageIcon, Plus, Users } from "lucide-react";
+import { ChevronRight, FileSpreadsheet, FileText, ImageIcon, Plus, Users } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { LinkButton } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
@@ -123,6 +123,14 @@ export function PostingsExplorer({
           <FileSpreadsheet size={14} />
           {exporting === "ledger" ? "出力中…" : "求人管理簿（Excel）"}
         </button>
+        {/* 様式30は入金済みの企業だけを載せるため、選んでからWord・印刷に進む画面へ */}
+        <Link
+          href="/postings/form30"
+          className="flex items-center gap-1.5 rounded-lg border border-brand px-3 py-2 text-xs font-bold text-brand"
+        >
+          <FileText size={14} />
+          様式30 求人者リストを作る（Word・印刷）
+        </Link>
         <button
           type="button"
           onClick={() => void exportLedger("form30")}
@@ -130,7 +138,7 @@ export function PostingsExplorer({
           className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-bold text-brand disabled:opacity-50"
         >
           <FileSpreadsheet size={14} />
-          {exporting === "form30" ? "出力中…" : "様式30 求人者リスト（Excel）"}
+          {exporting === "form30" ? "出力中…" : "様式30（Excel）"}
         </button>
         <span className="text-[11px] text-muted">労働局の訪問指導（監査）用</span>
       </div>

@@ -6,6 +6,8 @@ import type { PostingLedgerEntry, SeekerLedgerEntry } from "@/lib/recruit-ledger
 // 0079_recruit_ledgers.sql が未適用だと列が無くてエラーになる（呼び出し側で案内する）
 
 interface PostingRow {
+  id: string;
+  organization_id: string | null;
   acceptance_no: string;
   received_on: string;
   valid_until: string | null;
@@ -36,7 +38,7 @@ export async function fetchPostingLedger(
   const { data, error } = await supabase
     .from("job_postings")
     .select(
-      "acceptance_no, received_on, valid_until, openings, job_type, work_location, employment_period, wage_kind, wage_amount, note, " +
+      "id, organization_id, acceptance_no, received_on, valid_until, openings, job_type, work_location, employment_period, wage_kind, wage_amount, note, " +
         "organizations(name, address, contact), " +
         "job_applications(applied_on, result, result_on, employment_term, separation_status, separation_checked_on, separation_check_method, workers(name))",
     )
@@ -44,6 +46,8 @@ export async function fetchPostingLedger(
   if (error) throw error;
 
   return ((data as unknown as PostingRow[]) ?? []).map((p) => ({
+    id: p.id,
+    organization_id: p.organization_id,
     acceptance_no: p.acceptance_no ?? "",
     org_name: p.organizations?.name ?? "",
     org_address: p.organizations?.address ?? "",
