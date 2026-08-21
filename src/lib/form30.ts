@@ -14,6 +14,23 @@ export const FORM30_MAX_ROWS = 15;
 // 入金の状況。載せてよいのは「入金済み」だけ
 export type Form30PayStatus = "入金済み" | "請求済み・未入金" | "未請求" | "台帳に無し";
 
+// その求人・会社への応募1件（誰がいつ応募して採否がどうだったか）
+export interface Form30Application {
+  worker_name: string;
+  applied_on: string; // 紹介年月日
+  result: string; // 採用 / 不採用 / 辞退 / 選考中
+  result_on: string | null; // 採用年月日
+}
+
+// 期間内の応募だけに絞る
+export function applicationsInPeriod(
+  applications: Form30Application[],
+  from: string,
+  to: string,
+): Form30Application[] {
+  return applications.filter((a) => a.applied_on >= from && a.applied_on <= to);
+}
+
 // 手数料管理簿の1行（判定に使う分だけ）
 export interface Form30Fee {
   organization_id: string | null;
@@ -31,7 +48,8 @@ export interface Form30Candidate {
   org_address: string; // 所在地
   job_type: string; // 求人職種
   note: string; // 備考
-  referred_dates: string[]; // 紹介年月日（応募日）
+  applications: Form30Application[]; // 期間内の応募（誰がいつ応募したか）
+  hired: Form30Application[]; // うち採用になったもの
   payStatus: Form30PayStatus;
   paidOn: string | null; // いちばん新しい入金日
   paidWorkers: string[]; // 入金済みの手数料の対象になった外国人
@@ -39,6 +57,64 @@ export interface Form30Candidate {
   // 「求人」= 応募がこの求人票に紐づいている（本来の形）
   // 「会社」= 応募が求人票に紐づいていないため、同じ会社の応募で判定した
   matchedBy: "求人" | "会社";
+}
+
+// 過去データの取り込みで入れた覚え書き（「過去データ取込（2026年4月〜…）」）かどうか。
+// 社内の目印であって労働局に出す書類には不要なため、様式の備考には出さない
+export function isImportNote(note: string): boolean {
+  return /^過去データ取込/.test((note ?? "").trim());
+}
+
+// 様式の備考に出す文字（取り込みの覚え書きは空にする）
+export function form30Note(note: string): string {
+  return isImportNote(note) ? "" : (note ?? "");
+}
+
+// 画面で直した内容。
+// 所在地・事業所名は会社ごと（同じ会社の求人が並んでも1回直せば済む）、
+// 受付年月日・職種・備考は求人ごとに持つ
+export interface Form30Edits {
+  orgs: Record<string, { name?: string; address?: string }>;
+  postings: Record<string, { received_on?: string; job_type?: string; note?: string }>;
+}
+
+export function emptyForm30Edits(): Form30Edits {
+  return { orgs: {}, postings: {} };
+}
+
+// 直した内容を1件に当てる（直していない項目は元のまま）
+export function applyForm30Edits(
+  candidate: Form30Candidate,
+  edits: Form30Edits,
+): Form30Candidate {
+  const org = candidate.organizationId ? edits.orgs[candidate.organizationId] : undefined;
+  const posting = edits.postings[candidate.postingId];
+  return {
+    ...candidate,
+    org_name: org?.name ?? candidate.org_name,
+    org_address: org?.address ?? candidate.org_address,
+    received_on: posting?.received_on ?? candidate.received_on,
+    job_type: posting?.job_type ?? candidate.job_type,
+    note: posting?.note ?? candidate.note,
+  };
+}
+
+// 会社・機関マスタに書き戻す所在地（画面で直したもののうち、元と変わったものだけ）
+export function changedOrgAddresses(
+  candidates: Form30Candidate[],
+  edits: Form30Edits,
+): { organizationId: string; name: string; address: string }[] {
+  const out: { organizationId: string; name: string; address: string }[] = [];
+  const seen = new Set<string>();
+  for (const c of candidates) {
+    const id = c.organizationId;
+    if (!id || seen.has(id)) continue;
+    const address = edits.orgs[id]?.address;
+    if (address === undefined || address.trim() === c.org_address.trim()) continue;
+    seen.add(id);
+    out.push({ organizationId: id, name: c.org_name, address: address.trim() });
+  }
+  return out;
 }
 
 // 基準日（訪問予定日）の1年前。過去1年間の実績を見るのに使う
@@ -80,7 +156,7 @@ export interface Form30PostingInput {
   org_address: string;
   job_type: string;
   note: string;
-  referred_dates: string[]; // この求人票に紐づく応募の応募日
+  applications: Form30Application[]; // この求人票に紐づく応募
 }
 
 // 画面に出す候補。基準日から過去1年間に紹介実績（応募）がある求人を、
@@ -93,20 +169,26 @@ export function buildForm30Candidates(
   postings: Form30PostingInput[],
   fees: Form30Fee[],
   baseDate: string,
-  orgReferredDates: Record<string, string[]> = {},
+  orgApplications: Record<string, Form30Application[]> = {},
 ): Form30Candidate[] {
   const from = oneYearBefore(baseDate);
-  const inPeriod = (dates: string[]) => dates.some((d) => d >= from && d <= baseDate);
 
   // 求人票に紐づいた実績が1件でもある会社は、そちらだけを使う
   const orgsWithPostingHit = new Set(
     postings
-      .filter((p) => p.organizationId && inPeriod(p.referred_dates))
+      .filter(
+        (p) => p.organizationId && applicationsInPeriod(p.applications, from, baseDate).length > 0,
+      )
       .map((p) => p.organizationId as string),
   );
 
-  const build = (p: Form30PostingInput, matchedBy: "求人" | "会社"): Form30Candidate => {
+  const build = (
+    p: Form30PostingInput,
+    matchedBy: "求人" | "会社",
+    applications: Form30Application[],
+  ): Form30Candidate => {
     const pay = payStatusOf(fees, p.organizationId);
+    const sorted = [...applications].sort((a, b) => (a.applied_on < b.applied_on ? 1 : -1));
     return {
       postingId: p.postingId,
       organizationId: p.organizationId,
@@ -114,8 +196,9 @@ export function buildForm30Candidates(
       org_name: p.org_name,
       org_address: p.org_address,
       job_type: p.job_type,
-      note: p.note,
-      referred_dates: p.referred_dates,
+      note: form30Note(p.note),
+      applications: sorted,
+      hired: sorted.filter((a) => a.result === "採用"),
       payStatus: pay.status,
       paidOn: pay.paidOn,
       paidWorkers: pay.paidWorkers,
@@ -125,13 +208,15 @@ export function buildForm30Candidates(
 
   const rows: Form30Candidate[] = [];
   for (const p of postings) {
-    if (inPeriod(p.referred_dates)) {
-      rows.push(build(p, "求人"));
+    const own = applicationsInPeriod(p.applications, from, baseDate);
+    if (own.length > 0) {
+      rows.push(build(p, "求人", own));
       continue;
     }
     const orgId = p.organizationId;
     if (!orgId || orgsWithPostingHit.has(orgId)) continue;
-    if (inPeriod(orgReferredDates[orgId] ?? [])) rows.push(build(p, "会社"));
+    const byOrg = applicationsInPeriod(orgApplications[orgId] ?? [], from, baseDate);
+    if (byOrg.length > 0) rows.push(build(p, "会社", byOrg));
   }
   return rows.sort((a, b) => (a.received_on > b.received_on ? -1 : 1));
 }
