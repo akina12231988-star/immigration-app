@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ReferralFee, ReferralFeeInput } from "@/types/db";
+import { referralWorkerOrgKey } from "@/lib/referral-ledger-status";
 
 // ---- 人材紹介（あっせん）手数料の台帳（referral_fees） ----
 
@@ -164,6 +165,23 @@ export async function listReferralFeesByApplication(
     };
   }
   return out;
+}
+
+// 応募と紐づいていない台帳の行の「外国人＋所属機関」の鍵。
+// 手数料管理簿の画面から直接足した行は応募と紐づかないため、
+// 求職一覧で「台帳に未追加」を数えるときに、この鍵で照らし合わせて二重登録を防ぐ。
+// 0078未適用だと列が無くてエラーになるため、呼び出し側で catch して空にする
+export async function listUnlinkedReferralFeeKeys(
+  supabase: SupabaseClient,
+): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("referral_fees")
+    .select("worker_id, organization_id")
+    .is("job_application_id", null);
+  if (error) throw error;
+  const rows =
+    (data as { worker_id: string | null; organization_id: string | null }[] | null) ?? [];
+  return [...new Set(rows.map((r) => referralWorkerOrgKey(r.worker_id, r.organization_id)))];
 }
 
 export async function deleteReferralFee(
