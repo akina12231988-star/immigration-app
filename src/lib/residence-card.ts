@@ -3,14 +3,6 @@
 // カードの記載をそのまま入れてもらい、フォームに入る形（YYYY-MM-DD など）へそろえる。
 // 個人情報そのものなので、この関数は受け取った値をログに出さない・保存しない。
 
-// 就労制限の有無（在留カードの記載どおりの4種類）
-export const WORK_RESTRICTIONS = [
-  "就労不可",
-  "在留資格に基づく就労活動のみ可",
-  "指定書により指定された就労活動のみ可",
-  "就労制限なし",
-] as const;
-
 // 在留期間の書き方（よくあるもの。自由入力もできる）
 export const RESIDENCE_PERIODS = ["6月", "1年", "2年", "3年", "4年", "5年"] as const;
 
@@ -67,7 +59,6 @@ export interface ResidenceCardInput {
   expiryDate: string;
   permitDate: string;
   cardNo: string;
-  workRestriction: string;
 }
 
 export function emptyResidenceCardInput(): ResidenceCardInput {
@@ -82,7 +73,6 @@ export function emptyResidenceCardInput(): ResidenceCardInput {
     expiryDate: "",
     permitDate: "",
     cardNo: "",
-    workRestriction: "",
   };
 }
 
@@ -104,6 +94,5 @@ export function residenceCardToWorkerFields(input: ResidenceCardInput): Record<s
   put("residence_expiry_date", normalizeCardDate(input.expiryDate));
   put("residence_permit_date", normalizeCardDate(input.permitDate));
   put("residence_card_no", normalizeResidenceCardNo(input.cardNo));
-  put("work_restriction", input.workRestriction);
   return fields;
 }

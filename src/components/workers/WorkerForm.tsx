@@ -7,7 +7,7 @@ import { Modal } from "@/components/ui/Modal";
 import { ResidenceCardDialog } from "@/components/workers/ResidenceCardDialog";
 import { PassportMrzDialog } from "@/components/workers/PassportMrzDialog";
 import { filledFieldCount, overwrittenFields, type FieldChange } from "@/lib/field-overwrite";
-import { RESIDENCE_PERIODS, WORK_RESTRICTIONS } from "@/lib/residence-card";
+import { RESIDENCE_PERIODS } from "@/lib/residence-card";
 import { todayStr } from "@/lib/application-alerts";
 import { Combobox } from "@/components/ui/Combobox";
 import { createClient } from "@/lib/supabase/client";
@@ -46,7 +46,6 @@ function toInput(w: Worker | null): WorkerInput {
     passport_no: w?.passport_no ?? "",
     passport_expiry_date: w?.passport_expiry_date ?? null,
     residence_period: w?.residence_period ?? "",
-    work_restriction: w?.work_restriction ?? "",
     notion_link: w?.notion_link ?? "",
     residence_renewal_status: w?.residence_renewal_status ?? "",
     residence_renewal_todo: w?.residence_renewal_todo ?? "",
@@ -567,41 +566,20 @@ export function WorkerForm({
           </Field>
         </div>
         {/* 在留カードの記載（0092）。在留期間は満了日とは別に、何年もらえたかを残す */}
-        <div className="grid grid-cols-2 gap-2.5">
-          <Field label="在留期間">
-            <input
-              list="worker-residence-periods"
-              value={form.residence_period}
-              onChange={(e) => set("residence_period", e.target.value)}
-              placeholder="1年"
-              className={INPUT_CLASS}
-            />
-            <datalist id="worker-residence-periods">
-              {RESIDENCE_PERIODS.map((p) => (
-                <option key={p} value={p} />
-              ))}
-            </datalist>
-          </Field>
-          <Field label="就労制限の有無">
-            <select
-              value={form.work_restriction}
-              onChange={(e) => set("work_restriction", e.target.value)}
-              className={INPUT_CLASS}
-            >
-              <option value="">未設定</option>
-              {/* 一覧にない表記が登録済みの場合はそのまま選択肢に残す */}
-              {form.work_restriction &&
-                !(WORK_RESTRICTIONS as readonly string[]).includes(form.work_restriction) && (
-                  <option value={form.work_restriction}>{form.work_restriction}</option>
-                )}
-              {WORK_RESTRICTIONS.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
+        <Field label="在留期間">
+          <input
+            list="worker-residence-periods"
+            value={form.residence_period}
+            onChange={(e) => set("residence_period", e.target.value)}
+            placeholder="1年"
+            className={INPUT_CLASS}
+          />
+          <datalist id="worker-residence-periods">
+            {RESIDENCE_PERIODS.map((p) => (
+              <option key={p} value={p} />
+            ))}
+          </datalist>
+        </Field>
         <Field label="備考">
           <textarea
             rows={2}
@@ -764,7 +742,6 @@ const IMPORT_FIELD_LABELS: Record<string, string> = {
   residence_expiry_date: "在留期限",
   residence_permit_date: "許可日",
   residence_card_no: "在留カード番号",
-  work_restriction: "就労制限の有無",
   passport_no: "パスポート番号",
   passport_expiry_date: "パスポート有効期限",
 };

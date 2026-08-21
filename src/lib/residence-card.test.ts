@@ -67,7 +67,6 @@ describe("residenceCardToWorkerFields", () => {
     expiryDate: "2027/5/8",
     permitDate: "令和8年5月8日",
     cardNo: "ab12345678cd",
-    workRestriction: "在留資格に基づく就労活動のみ可",
   };
 
   it("フォームの項目名で、正規化した値を返す", () => {
@@ -82,7 +81,6 @@ describe("residenceCardToWorkerFields", () => {
       residence_expiry_date: "2027-05-08",
       residence_permit_date: "2026-05-08",
       residence_card_no: "AB12345678CD",
-      work_restriction: "在留資格に基づく就労活動のみ可",
     });
   });
 

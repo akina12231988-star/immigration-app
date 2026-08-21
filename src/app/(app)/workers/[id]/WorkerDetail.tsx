@@ -53,7 +53,6 @@ import { isSswInsuranceRenewalTarget, remainingLabel } from "@/lib/worker-alerts
 import { orgStaffLabel } from "@/lib/organization-intake";
 import { createClient } from "@/lib/supabase/client";
 import { dbErrorMessage } from "@/lib/errors";
-import { WORK_RESTRICTIONS } from "@/lib/residence-card";
 import { notionAppUrl } from "@/lib/notion-link";
 import { deleteWorker, updateWorker } from "@/lib/supabase/queries/workers";
 import {
@@ -474,11 +473,6 @@ export function WorkerDetail({
             label="在留期間"
             value={worker.residence_period}
             edit={fillText("residence_period", "例: 1年")}
-          />
-          <InfoItem
-            label="就労制限の有無"
-            value={worker.work_restriction}
-            edit={fillSelect("work_restriction", [...WORK_RESTRICTIONS])}
           />
           <InfoItem label="パスポート番号" value={worker.passport_no} edit={fillText("passport_no")} />
           <InfoItem
