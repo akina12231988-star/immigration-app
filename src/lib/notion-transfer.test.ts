@@ -40,7 +40,6 @@ function worker(over: Partial<Worker>): Worker {
     address: "",
     home_address: "",
     residence_period: "",
-    work_restriction: "",
     employment_start_on: null,
     org_employment_starts: [],
     assigned_office: "",

@@ -6,7 +6,6 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import {
   RESIDENCE_PERIODS,
-  WORK_RESTRICTIONS,
   emptyResidenceCardInput,
   isValidResidenceCardNo,
   normalizeCardDate,
@@ -17,7 +16,7 @@ import { RESIDENCE_STATUSES } from "@/types/db";
 
 // 在留カードの券面を見ながら入力するためのダイアログ。
 // 実物のカードと同じ位置関係（左に氏名・生年月日・性別・国籍・住居地、
-// 右上に番号と写真、下に在留資格・就労制限・在留期間・満了日・許可年月日）に並べる。
+// 右上に番号と写真、下に在留資格・在留期間・満了日・許可年月日）に並べる。
 //
 // 入力した内容はこのダイアログの中だけで持ち、「この内容を反映」で
 // 外国人フォームへ渡す。保存や送信はしない（機微な情報を残さないため）。
@@ -140,7 +139,7 @@ export function ResidenceCardDialog({
           </div>
         </div>
 
-        {/* 下段: 在留資格・就労制限・在留期間・満了日・許可年月日 */}
+        {/* 下段: 在留資格・在留期間・満了日・許可年月日 */}
         <div className="mt-2 flex flex-col gap-2 border-t border-border pt-2">
           <div className="grid grid-cols-2 gap-2">
             <CardField label="在留資格 STATUS">
@@ -157,22 +156,6 @@ export function ResidenceCardDialog({
                 ))}
               </select>
             </CardField>
-            <CardField label="就労制限の有無">
-              <select
-                value={card.workRestriction}
-                onChange={(e) => set("workRestriction", e.target.value)}
-                className={CARD_INPUT}
-              >
-                <option value="">未入力</option>
-                {WORK_RESTRICTIONS.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
-            </CardField>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
             <CardField label="在留期間 PERIOD OF STAY">
               <input
                 list="residence-periods"
@@ -187,6 +170,8 @@ export function ResidenceCardDialog({
                 ))}
               </datalist>
             </CardField>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
             <CardField label="在留期間満了日 DATE OF EXPIRATION">
               <input
                 value={card.expiryDate}
@@ -196,16 +181,16 @@ export function ResidenceCardDialog({
                 className={badDate(card.expiryDate) ? CARD_INPUT_BAD : CARD_INPUT}
               />
             </CardField>
+            <CardField label="許可年月日 DATE OF PERMISSION">
+              <input
+                value={card.permitDate}
+                onChange={(e) => set("permitDate", e.target.value)}
+                placeholder="令和8年5月8日"
+                aria-invalid={badDate(card.permitDate)}
+                className={badDate(card.permitDate) ? CARD_INPUT_BAD : CARD_INPUT}
+              />
+            </CardField>
           </div>
-          <CardField label="許可年月日 DATE OF PERMISSION">
-            <input
-              value={card.permitDate}
-              onChange={(e) => set("permitDate", e.target.value)}
-              placeholder="令和8年5月8日"
-              aria-invalid={badDate(card.permitDate)}
-              className={badDate(card.permitDate) ? CARD_INPUT_BAD : CARD_INPUT}
-            />
-          </CardField>
         </div>
       </div>
 
