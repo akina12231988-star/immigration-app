@@ -61,8 +61,10 @@ export default async function OrganizationDetailPage({
       />
       <div className="mt-4">
         <OrganizationRoster
+          organizationId={id}
           current={roster.current}
           past={roster.past}
+          today={todayStr()}
           error={roster.error}
         />
       </div>
