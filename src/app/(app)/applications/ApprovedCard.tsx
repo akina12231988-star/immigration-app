@@ -119,6 +119,12 @@ export function ApprovedCard({
           <p className="truncate text-xs text-muted">
             {app.organizationName ?? "所属機関未設定"}
           </p>
+          {/* どの申請の在留カードを待っているかが分かるよう、申請内容と申請番号も出す */}
+          <p className="text-xs text-muted">{app.applicationContent || "申請内容未登録"}</p>
+          <p className="text-xs tabular-nums text-muted">
+            申請番号 {app.applicationNumber || "未登録"}
+            {app.applicationDate && ` ・ 申請日 ${app.applicationDate}`}
+          </p>
           <p className="text-xs tabular-nums text-muted">預かり番号 {custodyNoLabel}</p>
           <ApplicantMeta app={app} nationality={nationality} className="mt-1" />
         </div>

@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import {
+  BadgeCheck,
   Camera,
   Check,
   ChevronRight,
@@ -17,6 +18,9 @@ import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useApplications } from "@/lib/application-store";
 import { uploadApplicationFile } from "@/lib/application-files";
+import { findApplicationsByNumber } from "@/lib/application-number";
+import { approvalPatch, canMarkApproved } from "@/lib/application-approval";
+import { todayStr } from "@/lib/application-alerts";
 import type { Application } from "@/types/application";
 
 // 通知書が届いたときの流れ:
@@ -31,9 +35,15 @@ export function NoticeSearch() {
   const [noticePreview, setNoticePreview] = useState<string | null>(null);
   const [manualNumber, setManualNumber] = useState("");
   const [searched, setSearched] = useState(false);
-  const [result, setResult] = useState<Application | null>(null);
+  // 数字だけでも探せるようにしたため、当てはまる申請が複数になることがある。
+  // 1件なら今までどおりそのまま出し、複数なら選んでもらう
+  const [matches, setMatches] = useState<Application[]>([]);
+  const [pickedId, setPickedId] = useState<string | null>(null);
+  const result = matches.find((a) => a.id === pickedId) ?? (matches.length === 1 ? matches[0] : null);
   const [attachState, setAttachState] = useState<"idle" | "busy" | "done">("idle");
   const [error, setError] = useState<string | null>(null);
+  const [approving, setApproving] = useState(false);
+  const [approved, setApproved] = useState(false);
 
   function handleFile(file: File | undefined) {
     if (!file) return;
@@ -44,11 +54,29 @@ export function NoticeSearch() {
   function runSearch() {
     const number = manualNumber.trim();
     if (!number) return;
-    const found = applications.find((a) => a.applicationNumber === number);
-    setResult(found ?? null);
+    // 「福熊C10685号」でも「10685」でも見つかる
+    const found = findApplicationsByNumber(applications, number);
+    setMatches(found);
+    setPickedId(found.length === 1 ? found[0].id : null);
     setSearched(true);
     setAttachState("idle");
+    setApproved(false);
     setError(null);
+  }
+
+  // 通知書が届いた＝許可が降りた、なので、この画面から許可済みにできるようにする
+  async function markApproved() {
+    if (!result) return;
+    setApproving(true);
+    setError(null);
+    try {
+      await updateApplication(result.id, approvalPatch(todayStr()));
+      setApproved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存に失敗しました");
+    } finally {
+      setApproving(false);
+    }
   }
 
   // ヒットした申請に通知書画像を登録し、状態を「通知書到着」へ進める
@@ -143,7 +171,7 @@ export function NoticeSearch() {
             <input
               value={manualNumber}
               onChange={(e) => setManualNumber(e.target.value)}
-              placeholder="通知書の受付番号を入力"
+              placeholder="通知書の受付番号（数字だけでも可）"
               className="flex-1 rounded-xl border border-border bg-surface px-3.5 py-3 text-base focus:border-brand focus:outline-none"
             />
             <Button
@@ -158,7 +186,37 @@ export function NoticeSearch() {
         </Card>
       </section>
 
-      {searched && result === null && (
+      {/* 数字だけで探すと同じ数字の申請が並ぶことがあるため、選んでもらう */}
+      {searched && matches.length > 1 && (
+        <section>
+          <h2 className="mb-2 text-sm font-bold text-muted">
+            当てはまる申請が{matches.length}件あります。どれか選んでください
+          </h2>
+          <div className="flex flex-col gap-2">
+            {matches.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                onClick={() => setPickedId(a.id)}
+                className={`rounded-2xl border p-3 text-left ${
+                  a.id === pickedId ? "border-brand bg-brand/5" : "border-border bg-surface"
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <span className="font-bold">{a.name}</span>
+                  <StatusBadge status={a.status} />
+                </span>
+                <span className="block text-xs tabular-nums text-muted">
+                  申請番号 {a.applicationNumber || "未登録"} ・ 申請日 {a.applicationDate || "—"}
+                </span>
+                <span className="block text-xs text-muted">{a.applicationContent}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {searched && matches.length === 0 && (
         <Card className="flex flex-col items-center gap-2 p-8 text-center">
           <SearchX size={28} className="text-muted" />
           <p className="text-sm text-muted">
@@ -211,11 +269,32 @@ export function NoticeSearch() {
               </p>
             )}
 
+            {/* 審査中の申請は、詳細を開かなくてもここで許可済みにできる */}
+            {approved ? (
+              <p className="mb-2 flex items-center gap-2 rounded-lg bg-status-reported-bg px-3 py-2.5 text-sm font-bold text-status-reported-fg">
+                <Check size={16} />
+                許可済みにしました（在留カード受け取り待ちに移ります）
+              </p>
+            ) : (
+              canMarkApproved(result) && (
+                <Button
+                  fullWidth
+                  variant="secondary"
+                  icon={<BadgeCheck size={18} />}
+                  disabled={approving}
+                  onClick={markApproved}
+                  className="mb-2"
+                >
+                  {approving ? "保存しています…" : "許可が降りた（許可済みにする）"}
+                </Button>
+              )
+            )}
+
             <Link
               href={`/applications/${result.id}`}
               className="flex items-center justify-center gap-1 rounded-xl border border-border py-3 text-sm font-bold"
             >
-              詳細を開いて許可済みにする
+              詳細を開く
               <ChevronRight size={16} />
             </Link>
           </Card>
