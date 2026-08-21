@@ -1,7 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { CreditCard, ScanLine } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
+import { ResidenceCardDialog } from "@/components/workers/ResidenceCardDialog";
+import { PassportMrzDialog } from "@/components/workers/PassportMrzDialog";
+import { filledFieldCount, overwrittenFields, type FieldChange } from "@/lib/field-overwrite";
+import { RESIDENCE_PERIODS, WORK_RESTRICTIONS } from "@/lib/residence-card";
+import { todayStr } from "@/lib/application-alerts";
 import { Combobox } from "@/components/ui/Combobox";
 import { createClient } from "@/lib/supabase/client";
 import { insertOrganization } from "@/lib/supabase/queries/organizations";
@@ -38,6 +45,8 @@ function toInput(w: Worker | null): WorkerInput {
     residence_expiry_date: w?.residence_expiry_date ?? null,
     passport_no: w?.passport_no ?? "",
     passport_expiry_date: w?.passport_expiry_date ?? null,
+    residence_period: w?.residence_period ?? "",
+    work_restriction: w?.work_restriction ?? "",
     notion_link: w?.notion_link ?? "",
     residence_renewal_status: w?.residence_renewal_status ?? "",
     residence_renewal_todo: w?.residence_renewal_todo ?? "",
@@ -135,6 +144,50 @@ export function WorkerForm({
   const set = <K extends keyof WorkerInput>(key: K, value: WorkerInput[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
+  // 在留カード・パスポートMRZからの反映（手入力のフォームはそのまま使える補助の入口）。
+  // 空いている項目はそのまま入れ、すでに入っている項目を変えるときだけ確認してもらう
+  const [cardOpen, setCardOpen] = useState(false);
+  const [mrzOpen, setMrzOpen] = useState(false);
+  const [pending, setPending] = useState<{
+    fields: Record<string, string>;
+    changes: FieldChange[];
+    source: string;
+  } | null>(null);
+  const [applied, setApplied] = useState<string | null>(null);
+
+  const applyFields = (fields: Record<string, string>) =>
+    setForm((f) => {
+      const next = { ...f } as Record<string, unknown>;
+      for (const [key, value] of Object.entries(fields)) next[key] = value;
+      return next as WorkerInput;
+    });
+
+  // 反映の要求を受ける。書き換えになる項目があれば確認ダイアログを先に出す
+  const requestApply = (source: string, fields: Record<string, string>) => {
+    const current = form as unknown as Record<string, unknown>;
+    const changes = overwrittenFields(current, fields, IMPORT_FIELD_LABELS);
+    if (changes.length > 0) {
+      setPending({ fields, changes, source });
+      return;
+    }
+    applyFields(fields);
+    setCardOpen(false);
+    setMrzOpen(false);
+    setApplied(
+      `${source}から${filledFieldCount(current, fields)}件を反映しました。内容を確かめて保存してください。`,
+    );
+  };
+
+  const confirmApply = () => {
+    if (!pending) return;
+    const count = filledFieldCount(form as unknown as Record<string, unknown>, pending.fields);
+    applyFields(pending.fields);
+    setApplied(`${pending.source}から${count}件を反映しました。内容を確かめて保存してください。`);
+    setPending(null);
+    setCardOpen(false);
+    setMrzOpen(false);
+  };
+
   // 在留資格・状態を変えたら、支援区分の候補を入れ直す（手で変えられる）。
   // 退職・帰国・求職活動中では候補を出さない（退職月の請求を残すため）
   const setWithSupport = (patch: Partial<WorkerInput>) =>
@@ -171,12 +224,38 @@ export function WorkerForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+    <>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       {error && (
         <p role="alert" className="rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
           保存に失敗しました: {error}
         </p>
       )}
+      {applied && (
+        <p role="status" className="rounded-lg bg-brand/10 px-3 py-2 text-sm text-brand">
+          {applied}
+        </p>
+      )}
+
+      {/* 券面から入力する補助の入口（手で入れるときはそのまま下のフォームを使えます） */}
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setCardOpen(true)}
+          className="flex min-h-[44px] flex-1 items-center justify-center gap-1.5 rounded-xl border border-brand px-3 text-sm font-bold text-brand"
+        >
+          <CreditCard size={16} />
+          在留カードから入力
+        </button>
+        <button
+          type="button"
+          onClick={() => setMrzOpen(true)}
+          className="flex min-h-[44px] flex-1 items-center justify-center gap-1.5 rounded-xl border border-brand px-3 text-sm font-bold text-brand"
+        >
+          <ScanLine size={16} />
+          パスポートMRZから入力
+        </button>
+      </div>
 
       <Fieldset legend="基本情報">
         <Field label="氏名（必須）">
@@ -487,6 +566,42 @@ export function WorkerForm({
             />
           </Field>
         </div>
+        {/* 在留カードの記載（0092）。在留期間は満了日とは別に、何年もらえたかを残す */}
+        <div className="grid grid-cols-2 gap-2.5">
+          <Field label="在留期間">
+            <input
+              list="worker-residence-periods"
+              value={form.residence_period}
+              onChange={(e) => set("residence_period", e.target.value)}
+              placeholder="1年"
+              className={INPUT_CLASS}
+            />
+            <datalist id="worker-residence-periods">
+              {RESIDENCE_PERIODS.map((p) => (
+                <option key={p} value={p} />
+              ))}
+            </datalist>
+          </Field>
+          <Field label="就労制限の有無">
+            <select
+              value={form.work_restriction}
+              onChange={(e) => set("work_restriction", e.target.value)}
+              className={INPUT_CLASS}
+            >
+              <option value="">未設定</option>
+              {/* 一覧にない表記が登録済みの場合はそのまま選択肢に残す */}
+              {form.work_restriction &&
+                !(WORK_RESTRICTIONS as readonly string[]).includes(form.work_restriction) && (
+                  <option value={form.work_restriction}>{form.work_restriction}</option>
+                )}
+              {WORK_RESTRICTIONS.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
         <Field label="備考">
           <textarea
             rows={2}
@@ -587,9 +702,72 @@ export function WorkerForm({
           {busy ? "保存中…" : submitLabel}
         </Button>
       </div>
-    </form>
+      </form>
+
+      <ResidenceCardDialog
+        open={cardOpen}
+        onClose={() => setCardOpen(false)}
+        onApply={(fields) => requestApply("在留カード", fields)}
+      />
+      <PassportMrzDialog
+        open={mrzOpen}
+        today={todayStr()}
+        onClose={() => setMrzOpen(false)}
+        onApply={(fields) => requestApply("パスポートMRZ", fields)}
+      />
+
+      {/* 入力済みの項目を書き換えるときの確認 */}
+      <Modal
+        open={pending !== null}
+        title="入力済みの項目を書き換えます"
+        onClose={() => setPending(null)}
+      >
+        <p className="mb-3 text-sm leading-relaxed">
+          {pending?.source}の内容を反映すると、次の項目が書き換わります。よろしいですか。
+        </p>
+        <ul className="mb-3 flex flex-col gap-1.5">
+          {pending?.changes.map((c) => (
+            <li key={c.key} className="rounded-lg bg-background px-3 py-2 text-xs">
+              <span className="font-bold">{c.label}</span>
+              <span className="mt-0.5 block break-words text-muted">
+                今: {c.before} → 反映後:{" "}
+                <span className="font-bold text-foreground">{c.after}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p className="mb-3 text-[11px] text-muted">
+          反映してもまだ保存されません。フォームの内容を確かめてから保存してください。
+        </p>
+        <div className="flex gap-2">
+          <Button type="button" variant="secondary" fullWidth onClick={() => setPending(null)}>
+            やめる
+          </Button>
+          <Button type="button" fullWidth onClick={confirmApply}>
+            書き換えて反映
+          </Button>
+        </div>
+      </Modal>
+    </>
   );
 }
+
+// 在留カード・MRZから反映する項目の日本語名（上書き確認の一覧に出す）
+const IMPORT_FIELD_LABELS: Record<string, string> = {
+  name: "氏名",
+  birth: "生年月日",
+  gender: "性別",
+  nationality: "国籍",
+  address: "住所（住居地）",
+  residence_status: "現在の在留資格",
+  residence_period: "在留期間",
+  residence_expiry_date: "在留期限",
+  residence_permit_date: "許可日",
+  residence_card_no: "在留カード番号",
+  work_restriction: "就労制限の有無",
+  passport_no: "パスポート番号",
+  passport_expiry_date: "パスポート有効期限",
+};
 
 function Fieldset({ legend, children }: { legend: string; children: React.ReactNode }) {
   return (
