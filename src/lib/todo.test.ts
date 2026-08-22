@@ -1,5 +1,11 @@
 import { describe, expect, test } from "vitest";
-import { isCheckingStatus, nextTodoNo, stageOfStatus, type TodoStatusOption } from "@/lib/todo";
+import {
+  isCheckingStatus,
+  nextTodoNo,
+  normalizeTodoKey,
+  stageOfStatus,
+  type TodoStatusOption,
+} from "@/lib/todo";
 
 describe("nextTodoNo", () => {
   test("既存の数字の番号の最大＋1を返す（数字以外・空は無視）", () => {
@@ -36,5 +42,15 @@ describe("isCheckingStatus", () => {
     expect(isCheckingStatus("明菜　チェック中")).toBe(true);
     expect(isCheckingStatus("彩奈　チェック中")).toBe(true);
     expect(isCheckingStatus("書類待ち")).toBe(false);
+  });
+});
+
+describe("normalizeTodoKey", () => {
+  test("書き方が揺れるTODO番号を同じキーにそろえる", () => {
+    expect(normalizeTodoKey("TODO-1357")).toBe("1357");
+    expect(normalizeTodoKey("#812")).toBe("812");
+    expect(normalizeTodoKey(" 812 ")).toBe("812");
+    expect(normalizeTodoKey("todo 42")).toBe("42");
+    expect(normalizeTodoKey("")).toBe("");
   });
 });

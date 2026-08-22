@@ -13,6 +13,7 @@ import {
   TODO_KINDS,
   TODO_STAGES,
   isCheckingStatus,
+  normalizeTodoKey,
   stageOfStatus,
   type TodoKind,
   type TodoStage,
@@ -37,9 +38,26 @@ import {
   type TodoCorrectionView,
 } from "./correction-actions";
 import { compressImage } from "@/lib/image-compress";
+import {
+  paymentStatusLabel,
+  requestKindLabel,
+  type JudgmentRecord,
+} from "@/lib/tax-cert";
 
 const INPUT =
   "min-h-[40px] rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none";
+
+// 郵送請求（判定記録）のTODO番号でリンクした状況の要約
+export interface MailingSummary {
+  id: string;
+  todoKey: string; // 正規化したTODO番号
+  createdAt: string;
+  kindLabel: string; // 課税・納税証明書 / 転出届 / 住民票
+  to: string; // 請求先（自治体・市役所）
+  progress: string; // 請求方法と日付（現在の状況）
+  payment: string; // 納付・領収証送付状況
+  person: string;
+}
 
 // あっせん有りのときに表示する、求人への採用の一連の流れ（求職管理簿から）
 export interface JobFlowRow {
@@ -68,6 +86,7 @@ export function TodosClient({
   const [options, setOptions] = useState<TodoStatusOption[]>([]);
   const [workers, setWorkers] = useState<{ id: string; label: string }[]>([]);
   const [jobFlows, setJobFlows] = useState<JobFlowRow[]>([]);
+  const [mailings, setMailings] = useState<MailingSummary[]>([]);
   const [kind, setKind] = useState<TodoKind>(fixedKind ?? "申請準備");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -127,6 +146,38 @@ export function TodosClient({
                 postingJobType: r.job_postings?.job_type ?? "",
               })),
             );
+          });
+        // 郵送請求（判定記録）のTODO番号とリンクして、現在の状況を出す
+        void supabase
+          .from("judgment_records")
+          .select("id, data, created_at")
+          .order("created_at", { ascending: false })
+          .then(({ data: jr }) => {
+            const rows = (jr as { id: string; data: unknown; created_at: string }[] | null) ?? [];
+            const out: MailingSummary[] = [];
+            for (const row of rows) {
+              const r = row.data as JudgmentRecord | null;
+              if (!r) continue;
+              const key = normalizeTodoKey(String(r.todoNumber ?? ""));
+              if (!key) continue;
+              const isCity = r.requestKind === "tenshutsu" || r.requestKind === "juminhyo";
+              let progress: string;
+              if (r.postDate) progress = `ポスト投函済み（${r.postDate}）`;
+              else if (r.mailRequestDate) progress = `郵送請求中（請求日 ${r.mailRequestDate}）`;
+              else if (r.requestMethod === "mail") progress = "郵送請求（投函日未記録）";
+              else progress = "窓口請求";
+              out.push({
+                id: row.id,
+                todoKey: key,
+                createdAt: row.created_at,
+                kindLabel: requestKindLabel(r.requestKind),
+                to: (isCity ? (r.cityOffice ?? "") : r.municipalityName) || r.municipalityName || "",
+                progress,
+                payment: paymentStatusLabel(r.mainPaymentStatus),
+                person: r.personName ?? "",
+              });
+            }
+            setMailings(out);
           });
       })
       .catch((err) => setError(dbErrorMessage(err, "0102_todos.sql", "TODOの読み込みに失敗しました")))
@@ -293,6 +344,9 @@ export function TodosClient({
                       checkOptions={checkOptions}
                       canEdit={canEdit}
                       jobFlows={jobFlows.filter((f) => f.worker_id === t.worker_id)}
+                      mailings={mailings.filter(
+                        (m) => m.todoKey && m.todoKey === normalizeTodoKey(t.todo_no),
+                      )}
                       onChange={(patch) => run(() => updateTodo(createClient(), t.id, patch))}
                       onDelete={() => {
                         if (
@@ -347,6 +401,7 @@ function TodoItem({
   checkOptions,
   canEdit,
   jobFlows = [],
+  mailings = [],
   onChange,
   onDelete,
 }: {
@@ -355,6 +410,7 @@ function TodoItem({
   checkOptions: TodoStatusOption[];
   canEdit: boolean;
   jobFlows?: JobFlowRow[]; // あっせん有りのときに出す、求人への採用の流れ
+  mailings?: MailingSummary[]; // 同じTODO番号の郵送請求（判定記録）の状況
   onChange: (
     patch: Partial<
       Pick<TodoRow, "todo_no" | "title" | "status" | "check_status" | "assen" | "assen_note">
@@ -536,6 +592,31 @@ function TodoItem({
               )}
             </div>
           )}
+          {/* 郵送請求の状況（同じTODO番号の判定記録とリンク） */}
+          <div className="rounded-lg bg-background p-2">
+            <p className="mb-1 flex flex-wrap items-center justify-between gap-1 text-[11px] font-bold text-muted">
+              📮 郵送請求の状況（TODO番号 {todo.todo_no} とリンク）
+              <Link href="/mailing" className="font-bold text-brand hover:underline">
+                郵送請求を開く →
+              </Link>
+            </p>
+            {mailings.length === 0 ? (
+              <p className="text-[11px] text-muted">
+                このTODO番号の郵送請求はまだありません（郵送請求の判定記録にTODO番号を入れるとここに出ます）。
+              </p>
+            ) : (
+              <div className="space-y-0.5">
+                {mailings.map((m) => (
+                  <p key={m.id} className="text-[11px] leading-relaxed">
+                    <span className="font-bold">{m.kindLabel}</span>
+                    {m.to && `（${m.to}）`}　{m.progress}
+                    {m.payment && `　納付: ${m.payment}`}
+                    <span className="text-[10px] text-muted">　記録 {m.createdAt.slice(0, 10)}</span>
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
           {/* チェック後の申請書類の訂正記録 */}
           <CorrectionSection todoId={todo.id} canEdit={canEdit} />
         </div>

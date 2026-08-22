@@ -27,6 +27,16 @@ export function isCheckingStatus(status: string): boolean {
   return status.includes("チェック中");
 }
 
+// TODO番号の突き合わせ用の正規化（「TODO-1357」「#812」「 812 」→「1357」「812」「812」）。
+// 郵送請求の判定記録など、書き方が揺れる番号どうしをリンクさせるのに使う
+export function normalizeTodoKey(s: string): string {
+  return s
+    .trim()
+    .toLowerCase()
+    .replace(/[^0-9a-z]/g, "")
+    .replace(/^todo/, "");
+}
+
 // 次のTODO番号。既存の番号（TODO・申請準備・随時報告の記録に入っているNotion由来の
 // 番号を含む）のうち数字のものの最大＋1を返す。数字以外の番号は採番には使わない
 export function nextTodoNo(existing: string[]): string {
