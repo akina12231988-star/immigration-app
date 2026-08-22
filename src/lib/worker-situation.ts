@@ -192,6 +192,30 @@ export function situationAfterApproval(current: string): string | null {
   return next.join(SITUATION_SEPARATOR);
 }
 
+// 只今の状況が未入力のときに自動で表示する内容。
+// 現在のビザ（在留資格）に、いちばん新しい申請の「審査中／許可済」の情報を添える。
+// 申請登録・許可時の自動更新が入る前から登録している人でも、いまの状態がひと目でわかるようにする
+export function autoSituation(
+  residenceStatus: string | null | undefined,
+  latestApplication?: { status: string; applicationContent?: string | null } | null,
+): string {
+  const visa = (residenceStatus ?? "").trim();
+  let appInfo = "";
+  if (latestApplication) {
+    const content = (latestApplication.applicationContent ?? "").trim();
+    const status = latestApplication.status;
+    if (status === "申請済" || status === "LINE報告済" || status === "通知書到着") {
+      appInfo = content ? `${content}の審査中` : "審査中";
+    } else if (status === "許可済") {
+      appInfo = content
+        ? `${content}の許可済（在留カード受け取り待ち）`
+        : "許可済（在留カード受け取り待ち）";
+    }
+    // 在留カード受領・取下げ・申請前は添えない（ビザだけを表示する）
+  }
+  return [visa, appInfo].filter(Boolean).join(SITUATION_SEPARATOR);
+}
+
 // 申請準備の対応状況を「準備中」にしたときに選ぶ、準備の内容（7つ）。
 // 選んで保存すると、外国人詳細の「只今の状況」にそのまま入る
 export const PREP_SITUATIONS: string[] = [

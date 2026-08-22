@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarDays, Plus, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
 import { normalizeOrgEmploymentStarts } from "@/lib/org-employment";
+import { organizationSuggestions } from "@/lib/org-search";
 import type { Organization, WorkerInput, WorkerOrgEmploymentStart } from "@/types/db";
 
 // 所属機関別の雇用開始日。転職すると機関ごとに雇用開始日が異なるため、
@@ -95,19 +96,13 @@ export function WorkerEmploymentStarts({
               <span className="text-[11px] font-bold text-muted">
                 所属機関{r.organization_id === currentOrganizationId ? "（現在）" : ""}
               </span>
-              <select
+              <OrgSearchInput
                 value={r.organization_id}
-                onChange={(e) => setAt(i, "organization_id", e.target.value)}
+                organizations={organizations}
+                onSelect={(id) => setAt(i, "organization_id", id)}
                 disabled={!canEdit}
-                className={INPUT}
-              >
-                <option value="">選択してください</option>
-                {organizations.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name}
-                  </option>
-                ))}
-              </select>
+                inputClass={INPUT}
+              />
             </label>
             <label className="flex w-[160px] shrink-0 flex-col gap-1">
               <span className="text-[11px] font-bold text-muted">雇用開始日</span>
@@ -157,5 +152,82 @@ export function WorkerEmploymentStarts({
         </div>
       )}
     </Card>
+  );
+}
+
+// 所属機関を名前の一部で探して選ぶ入力。
+// 「BASE」「井上」のように一部を入力すると下に候補が出て、選ぶとその機関になる
+// （法人格の有無・全角半角・異体字の揺れは org-search.ts で吸収する）
+function OrgSearchInput({
+  value,
+  organizations,
+  onSelect,
+  disabled,
+  inputClass,
+}: {
+  value: string; // 選択中の organizations.id（'' = 未選択）
+  organizations: Organization[];
+  onSelect: (id: string) => void;
+  disabled: boolean;
+  inputClass: string;
+}) {
+  // query が null のときは選択中の機関名を表示、入力中はその文字を表示する
+  const [query, setQuery] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  const selectedName = organizations.find((o) => o.id === value)?.name ?? "";
+  const text = query ?? selectedName;
+  const suggestions = query ? organizationSuggestions(organizations, query, 8) : [];
+
+  // 外側をクリックしたら候補を閉じ、表示を選択中の機関名に戻す
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setQuery(null);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <input
+        value={text}
+        onChange={(e) => {
+          const v = e.target.value;
+          setQuery(v);
+          setOpen(true);
+          // 全部消したら未選択に戻す
+          if (v.trim() === "") onSelect("");
+        }}
+        onFocus={() => setOpen(true)}
+        placeholder="名前の一部を入力して検索（例: BASE / 井上）"
+        disabled={disabled}
+        autoComplete="off"
+        className={inputClass}
+      />
+      {open && suggestions.length > 0 && (
+        <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-border bg-surface shadow-lg">
+          {suggestions.map((o) => (
+            <li key={o.id}>
+              <button
+                type="button"
+                onClick={() => {
+                  onSelect(o.id);
+                  setQuery(null);
+                  setOpen(false);
+                }}
+                className="w-full truncate px-3.5 py-2.5 text-left text-sm font-bold"
+              >
+                {o.name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

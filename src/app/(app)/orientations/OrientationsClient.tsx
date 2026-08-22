@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Combobox } from "@/components/ui/Combobox";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { NameSearchBox } from "@/components/ui/NameSearchBox";
+import { matchesWorkerName } from "@/lib/worker-search";
 import { createClient } from "@/lib/supabase/client";
 import { deleteOrientation, insertOrientation, updateOrientation } from "@/lib/supabase/queries/orientations";
 import { recommendedFileName, recommendedFolderName } from "@/lib/orientation";
@@ -46,6 +48,7 @@ export function OrientationsClient({
   const today = todayStr();
   const [status, setStatus] = useState<StatusFilter>("未実施");
   const [orgId, setOrgId] = useState<string>("all");
+  const [nameQuery, setNameQuery] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [editing, setEditing] = useState<OrientationWithRefs | null>(null);
@@ -62,6 +65,21 @@ export function OrientationsClient({
     return [...map.entries()].map(([id, name]) => ({ id, name }));
   }, [orientations]);
 
+  // 氏名検索の候補（登録済みオリエンの外国人から集約。候補の右に所属機関名を出す）
+  const nameCandidates = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; orgName: string }>();
+    for (const o of orientations) {
+      if (o.workers) {
+        map.set(o.workers.id, {
+          id: o.workers.id,
+          name: o.workers.name,
+          orgName: o.organizations?.name ?? "",
+        });
+      }
+    }
+    return [...map.values()];
+  }, [orientations]);
+
   const filtered = useMemo(
     () =>
       orientations.filter((o) => {
@@ -74,11 +92,14 @@ export function OrientationsClient({
           const oid = o.organization_id ?? o.workers?.current_organization_id ?? "";
           if (oid !== orgId) return false;
         }
+        if (nameQuery && !matchesWorkerName({ name: o.workers?.name ?? "" }, nameQuery)) {
+          return false;
+        }
         if (from && o.scheduled_on < from) return false;
         if (to && o.scheduled_on > to) return false;
         return true;
       }),
-    [orientations, status, orgId, from, to, today],
+    [orientations, status, orgId, nameQuery, from, to, today],
   );
 
   const overdueCount = useMemo(
@@ -150,6 +171,14 @@ export function OrientationsClient({
         })}
       </div>
 
+      {/* 氏名で検索（入力すると候補が出る。ローマ字・空白の入れ方の違いでも探せる） */}
+      <NameSearchBox
+        candidates={nameCandidates}
+        value={nameQuery}
+        onChange={setNameQuery}
+        hintOf={(w) => w.orgName}
+      />
+
       {/* 所属機関・対象期間 */}
       <Card className="flex flex-wrap items-end gap-3 p-4">
         <label className="flex flex-col gap-1">
@@ -171,8 +200,8 @@ export function OrientationsClient({
           <span className="text-xs font-bold text-muted">終了</span>
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="min-h-[40px] rounded-xl border border-border bg-background px-3 text-sm" />
         </label>
-        {(orgId !== "all" || from || to) && (
-          <button type="button" onClick={() => { setOrgId("all"); setFrom(""); setTo(""); }} className="text-xs font-bold text-brand">
+        {(orgId !== "all" || nameQuery || from || to) && (
+          <button type="button" onClick={() => { setOrgId("all"); setNameQuery(""); setFrom(""); setTo(""); }} className="text-xs font-bold text-brand">
             条件クリア
           </button>
         )}

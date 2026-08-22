@@ -4,6 +4,7 @@ import {
   ENTRUSTED_SITUATION,
   PREP_SITUATIONS,
   WORKER_SITUATIONS,
+  autoSituation,
   mergeSituation,
   situationAfterApproval,
   situationDescription,
@@ -126,5 +127,36 @@ describe("splitSituations / situationDescription（併記）", () => {
     const text = situationDescription(`${ENTRUSTED_SITUATION}・特定技能更新許可の審査中`);
     expect(text).toContain("在留期間更新許可申請");
     expect(text).toContain("支援委託中");
+  });
+});
+
+describe("autoSituation（未入力のときの自動表示）", () => {
+  test("審査中の申請があれば、現在のビザ＋申請内容の審査中を返す", () => {
+    expect(
+      autoSituation("特定技能1号", { status: "申請済", applicationContent: "在留期間の更新許可" }),
+    ).toBe("特定技能1号・在留期間の更新許可の審査中");
+    expect(
+      autoSituation("特定活動", { status: "通知書到着", applicationContent: "在留資格の変更許可" }),
+    ).toBe("特定活動・在留資格の変更許可の審査中");
+  });
+
+  test("許可済（在留カード受け取り待ち）も添える", () => {
+    expect(
+      autoSituation("特定技能1号", { status: "許可済", applicationContent: "在留期間の更新許可" }),
+    ).toBe("特定技能1号・在留期間の更新許可の許可済（在留カード受け取り待ち）");
+  });
+
+  test("在留カード受領・取下げ・申請前はビザだけを返す", () => {
+    expect(autoSituation("特定技能1号", { status: "在留カード受領" })).toBe("特定技能1号");
+    expect(autoSituation("特定技能1号", { status: "取下げ" })).toBe("特定技能1号");
+    expect(autoSituation("特定技能1号", { status: "申請前" })).toBe("特定技能1号");
+    expect(autoSituation("特定技能1号", null)).toBe("特定技能1号");
+  });
+
+  test("ビザが未入力でも審査中の情報だけ返す。どちらも無ければ空", () => {
+    expect(autoSituation("", { status: "申請済", applicationContent: "在留認定許可申請" })).toBe(
+      "在留認定許可申請の審査中",
+    );
+    expect(autoSituation("", null)).toBe("");
   });
 });
