@@ -1005,23 +1005,44 @@ export function WorkerDetail({
               ]}
             />
           </div>
-          {/* 連絡リンクは在留カードの欄の写真の下に出るもの。編集モードのときだけここで直す */}
-          {editing && canEdit && (
-            <>
-              <InfoItem
-                label="Messenger グループ/個人リンク"
-                wide
-                value=""
-                edit={textInput("messenger_link", "https://m.me/... または https://www.messenger.com/...")}
-              />
-              <InfoItem
-                label="Notion 個人ページのリンク"
-                wide
-                value=""
-                edit={textInput("notion_link", "https://www.notion.so/... または https://app.notion.com/...")}
-              />
-            </>
-          )}
+          {/* 連絡リンク（在留カードの欄の写真の下のボタンのリンク先）。
+              未入力ならそのまま入力でき、登録済みは「編集」でここから直せる */}
+          <InfoItem
+            label="Messenger グループ/個人リンク"
+            wide
+            value={
+              worker.messenger_link ? (
+                <a
+                  href={messengerWebUrl(worker.messenger_link)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="break-all text-sm font-normal text-brand underline"
+                >
+                  {worker.messenger_link}
+                </a>
+              ) : (
+                ""
+              )
+            }
+            edit={textInput("messenger_link", "https://m.me/... または https://www.messenger.com/...")}
+          />
+          <InfoItem
+            label="Notion 個人ページのリンク"
+            wide
+            value={
+              worker.notion_link ? (
+                <a
+                  href={notionAppUrl(worker.notion_link)}
+                  className="break-all text-sm font-normal text-brand underline"
+                >
+                  {worker.notion_link}
+                </a>
+              ) : (
+                ""
+              )
+            }
+            edit={textInput("notion_link", "https://www.notion.so/... または https://app.notion.com/...")}
+          />
         </dl>
         <p className="mb-1 text-[11px] font-bold text-muted">番号・保険</p>
         <dl className="mb-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
