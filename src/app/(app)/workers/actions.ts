@@ -74,6 +74,8 @@ type WorkerDocKind =
   | "指定書"
   | "雇用契約書"
   | "雇用条件書"
+  | "雇用契約書（日付なし）"
+  | "雇用条件書（日付なし）"
   | "雇用保険 離職票"
   | "雇用保険 被保険者証";
 const DOC_SLUGS: Record<WorkerDocKind, string> = {
@@ -81,6 +83,9 @@ const DOC_SLUGS: Record<WorkerDocKind, string> = {
   指定書: "designation",
   雇用契約書: "employment-contract",
   雇用条件書: "employment-conditions",
+  // 一旦日付なしで印鑑・署名をもらってきた版（あとから正式な日付入りを上の種別で保存する）
+  "雇用契約書（日付なし）": "employment-contract-undated",
+  "雇用条件書（日付なし）": "employment-conditions-undated",
   "雇用保険 離職票": "employment-insurance-separation",
   "雇用保険 被保険者証": "employment-insurance-card",
 };

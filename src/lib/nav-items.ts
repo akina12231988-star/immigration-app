@@ -9,6 +9,7 @@ import {
   Briefcase,
   ClipboardList,
   ListTodo,
+  PencilLine,
   CalendarClock,
   BookMarked,
   Mailbox,
@@ -48,6 +49,8 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/notices/search", label: "通知書", short: "通知書", icon: ScanLine },
   { href: "/orientations", label: "生活オリエンテーション", short: "生活", icon: GraduationCap },
   { href: "/resignations", label: "退職＜随時報告＞", short: "退職", icon: UserMinus },
+  // 試験の申込のTODO（並び順はあとで整理する予定）
+  { href: "/todos/exams", label: "試験の申込", short: "試験", icon: PencilLine },
   { href: "/sales", label: "請求書作成", short: "請求", icon: Coins },
   { href: "/referrals", label: "紹介手数料台帳", short: "紹介料", icon: Handshake },
   { href: "/employees", label: "支援体制（従業員）", short: "支援体制", icon: UserCheck },

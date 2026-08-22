@@ -13,8 +13,16 @@ import {
 } from "@/app/(app)/workers/actions";
 import type { Organization, WorkerOrgEmploymentStart } from "@/types/db";
 
-type Kind = "雇用契約書" | "雇用条件書";
+type Kind =
+  | "雇用契約書"
+  | "雇用条件書"
+  | "雇用契約書（日付なし）"
+  | "雇用条件書（日付なし）";
+// 正式な日付入りの契約書（外国人詳細の正式版。申請準備のTODOからもここにリンクされる）
 const KINDS: Kind[] = ["雇用契約書", "雇用条件書"];
+// 一旦、日付なしで印鑑・署名をもらってきた版（0104）。正式な日付入りは上のKINDSで保存する
+const UNDATED_KINDS: Kind[] = ["雇用契約書（日付なし）", "雇用条件書（日付なし）"];
+const ALL_KINDS: Kind[] = [...KINDS, ...UNDATED_KINDS];
 
 // 会社の選択肢（現在の所属機関・過去に雇用開始日を登録した機関）
 interface OrgChoice {
@@ -81,14 +89,14 @@ export function WorkerContracts({
 
   // 会社の紐づけが無い古い書類（0081より前に登録した分）
   const unassigned = docs.filter(
-    (d) => KINDS.includes(d.kind as Kind) && !d.organizationId,
+    (d) => ALL_KINDS.includes(d.kind as Kind) && !d.organizationId,
   );
 
   const handleError = (err: unknown) => {
     let message = err instanceof Error ? err.message : "アップロードに失敗しました";
     // 0079・0081が未適用だと worker_documents の制約・列で弾かれる
     if (/check|制約|column|organization_id/i.test(message)) {
-      message += "／マイグレーション 0079_recruit_ledgers.sql・0081_worker_documents_organization.sql が未適用の可能性があります。Supabase の SQL Editor で適用してください。";
+      message += "／マイグレーション 0079_recruit_ledgers.sql・0081_worker_documents_organization.sql・0104_worker_contract_undated.sql が未適用の可能性があります。Supabase の SQL Editor で適用してください。";
     }
     setError(message);
   };
@@ -176,6 +184,34 @@ export function WorkerContracts({
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {KINDS.map((kind) => (
+                <ContractColumn
+                  key={`${selectedOrgId}-${kind}`}
+                  kind={kind}
+                  docs={docs.filter(
+                    (d) => d.kind === kind && d.organizationId === selectedOrgId,
+                  )}
+                  workerId={workerId}
+                  organizationId={selectedOrgId}
+                  canEdit={canEdit}
+                  orgOptions={allOrgOptions}
+                  reassigningId={reassigning}
+                  onReassign={reassign}
+                  onUploaded={load}
+                  onError={handleError}
+                />
+              ))}
+            </div>
+
+            {/* 一旦、日付なしで印鑑・署名をもらってきた版。正式な日付入りは上に登録する */}
+            <p className="mb-1 mt-4 text-xs font-bold text-muted">
+              日付なし（印鑑・署名あり）版
+            </p>
+            <p className="mb-2 text-[11px] leading-relaxed text-muted">
+              先に日付なしで印鑑・署名をもらってきた雇用契約書・雇用条件書はここに保管してください。
+              あとから正式な日付が入ったものは、上の「雇用契約書」「雇用条件書」に登録します。
+            </p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {UNDATED_KINDS.map((kind) => (
                 <ContractColumn
                   key={`${selectedOrgId}-${kind}`}
                   kind={kind}

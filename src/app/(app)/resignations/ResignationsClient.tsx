@@ -29,6 +29,8 @@ import {
   type ResignationWithRefs,
 } from "@/lib/supabase/queries/resignations";
 import { updateWorker, type WorkerForResignation } from "@/lib/supabase/queries/workers";
+import { fetchNextTodoNo, insertTodo } from "@/lib/supabase/queries/todos";
+import { dbErrorMessage } from "@/lib/errors";
 import { notionAppUrl } from "@/lib/notion-link";
 import { formsForKind } from "@/lib/resignation";
 import {
@@ -637,6 +639,16 @@ function TodoDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // 通し番号で自動発行（TODO・申請準備・随時報告の既存番号の続き）
+  const autoAssign = async () => {
+    setError(null);
+    try {
+      setTodo(await fetchNextTodoNo(createClient()));
+    } catch (err) {
+      setError(dbErrorMessage(err, "0102_todos.sql", "自動発行に失敗しました"));
+    }
+  };
+
   const save = async () => {
     setBusy(true);
     setError(null);
@@ -644,6 +656,15 @@ function TodoDialog({
       const supabase = createClient();
       await updateResignation(supabase, resignation.id, { todo_no: todo.trim() });
       await updateWorker(supabase, resignation.worker_id, { leaving_todo: todo.trim() });
+      // TODO一覧（退職の随時報告書）にも登録する（TODO機能が未適用・番号重複なら黙って続行）
+      if (todo.trim()) {
+        await insertTodo(supabase, {
+          kind: "退職の随時報告書",
+          worker_id: resignation.worker_id,
+          title: "退職の随時報告書",
+          todo_no: todo.trim(),
+        }).catch(() => undefined);
+      }
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存に失敗しました");
@@ -663,14 +684,23 @@ function TodoDialog({
           <span className="text-xs font-bold text-muted">
             {resignation.workers?.name ?? ""} さんの随時報告TODO番号
           </span>
-          <input
-            value={todo}
-            onChange={(e) => setTodo(e.target.value)}
-            placeholder="例: TODO-1234"
-            className={INPUT}
-          />
+          <div className="flex gap-2">
+            <input
+              value={todo}
+              onChange={(e) => setTodo(e.target.value)}
+              placeholder="例: TODO-1234"
+              className={`${INPUT} min-w-0 flex-1`}
+            />
+            <button
+              type="button"
+              onClick={() => void autoAssign()}
+              className="shrink-0 rounded-xl border border-border px-3 text-xs font-bold text-brand"
+            >
+              自動発行
+            </button>
+          </div>
           <span className="text-[11px] text-muted">
-            外国人情報の退職者情報（Notion 随時報告TODO番号）にも転記されます。
+            外国人情報の退職者情報（Notion 随時報告TODO番号）にも転記され、保存するとTODO一覧（退職の随時報告書）にも登録されます。
           </span>
         </label>
         <Button fullWidth disabled={busy} onClick={save}>

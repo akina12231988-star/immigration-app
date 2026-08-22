@@ -13,6 +13,8 @@ export interface TodoRow {
   title: string;
   status: string;
   check_status: string; // 経過が「〜チェック中」のときの確認ステータス
+  assen: string; // あっせんの有無（'' / あり / なし。申請準備のTODOで使う・0103）
+  assen_note: string; // あっせん無しの場合の申請書類作成の経緯
   note: string;
   created_at: string;
   updated_at: string;
@@ -81,7 +83,10 @@ export async function updateTodo(
   supabase: SupabaseClient,
   id: string,
   patch: Partial<
-    Pick<TodoRow, "todo_no" | "worker_id" | "title" | "status" | "check_status" | "note">
+    Pick<
+      TodoRow,
+      "todo_no" | "worker_id" | "title" | "status" | "check_status" | "assen" | "assen_note" | "note"
+    >
   >,
 ): Promise<void> {
   const { error } = await supabase

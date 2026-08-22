@@ -29,18 +29,46 @@ import {
   updateTodo,
   type TodoRow,
 } from "@/lib/supabase/queries/todos";
+import {
+  createTodoCorrectionTicket,
+  deleteTodoCorrection,
+  listTodoCorrections,
+  registerTodoCorrection,
+  type TodoCorrectionView,
+} from "./correction-actions";
+import { compressImage } from "@/lib/image-compress";
 
 const INPUT =
   "min-h-[40px] rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none";
 
+// あっせん有りのときに表示する、求人への採用の一連の流れ（求職管理簿から）
+export interface JobFlowRow {
+  id: string;
+  worker_id: string;
+  applied_on: string; // 求職申込日
+  interview_on: string | null; // 面接日
+  result_on: string | null; // 採用日（result が採用のとき）
+  result: string;
+  orgName: string;
+  postingReceivedOn: string | null; // 求人申込日（求人受付日）
+  postingJobType: string;
+}
+
 // TODO（NotionのTODOデータベースの置き換え）。
 // 申請準備・退職の随時報告書・試験の申込の3つの構成で、番号は通しで自動採番。
 // ステータス（経過）の選択肢は「選択肢の編集」から随時追加・変更・削除して運用できる
-export function TodosClient({ canEdit }: { canEdit: boolean }) {
+export function TodosClient({
+  canEdit,
+  fixedKind,
+}: {
+  canEdit: boolean;
+  fixedKind?: TodoKind; // 指定すると、その構成だけの画面になる（例: 試験の申込）
+}) {
   const [todos, setTodos] = useState<TodoRow[]>([]);
   const [options, setOptions] = useState<TodoStatusOption[]>([]);
   const [workers, setWorkers] = useState<{ id: string; label: string }[]>([]);
-  const [kind, setKind] = useState<TodoKind>("申請準備");
+  const [jobFlows, setJobFlows] = useState<JobFlowRow[]>([]);
+  const [kind, setKind] = useState<TodoKind>(fixedKind ?? "申請準備");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,6 +85,49 @@ export function TodosClient({ canEdit }: { canEdit: boolean }) {
         setTodos(t);
         setOptions(o);
         setError(null);
+        // あっせん有りのときに出す「求人への採用の流れ」（申請準備のTODOの外国人分）
+        const workerIds = [
+          ...new Set(
+            t.filter((r) => r.kind === "申請準備" && r.worker_id).map((r) => r.worker_id as string),
+          ),
+        ];
+        if (workerIds.length === 0) {
+          setJobFlows([]);
+          return;
+        }
+        void supabase
+          .from("job_applications")
+          .select(
+            "id, worker_id, applied_on, interview_on, result_on, result, organizations(name), job_postings(received_on, job_type)",
+          )
+          .in("worker_id", workerIds)
+          .order("applied_on", { ascending: false })
+          .then(({ data }) => {
+            const rows =
+              (data as unknown as {
+                id: string;
+                worker_id: string;
+                applied_on: string;
+                interview_on: string | null;
+                result_on: string | null;
+                result: string;
+                organizations: { name: string } | null;
+                job_postings: { received_on: string | null; job_type: string } | null;
+              }[]) ?? [];
+            setJobFlows(
+              rows.map((r) => ({
+                id: r.id,
+                worker_id: r.worker_id,
+                applied_on: r.applied_on,
+                interview_on: r.interview_on,
+                result_on: r.result_on,
+                result: r.result,
+                orgName: r.organizations?.name ?? "",
+                postingReceivedOn: r.job_postings?.received_on ?? null,
+                postingJobType: r.job_postings?.job_type ?? "",
+              })),
+            );
+          });
       })
       .catch((err) => setError(dbErrorMessage(err, "0102_todos.sql", "TODOの読み込みに失敗しました")))
       .finally(() => setLoading(false));
@@ -126,7 +197,8 @@ export function TodosClient({ canEdit }: { canEdit: boolean }) {
         </p>
       )}
 
-      {/* 3つの構成の切り替え */}
+      {/* 3つの構成の切り替え（fixedKind 指定時はその構成だけの画面にする） */}
+      {!fixedKind && (
       <div className="flex flex-wrap gap-2">
         {TODO_KINDS.map((k) => {
           const active = kind === k;
@@ -147,6 +219,18 @@ export function TodosClient({ canEdit }: { canEdit: boolean }) {
           );
         })}
       </div>
+      )}
+
+      {/* ② 退職の随時報告書は、退職＜随時報告＞のページと連動して使う */}
+      {kind === "退職の随時報告書" && (
+        <p className="rounded-xl border border-border bg-background px-3 py-2.5 text-xs text-muted">
+          退職の随時報告書には
+          <Link href="/resignations" className="mx-1 font-bold text-brand hover:underline">
+            退職＜随時報告＞
+          </Link>
+          のページがあります。届出書の作成・署名済み届出書の添付・投函の記録はそちらで行い、TODO番号はそのページの「TODO番号」から自動発行できます。ここでは番号と経過の一覧管理だけを行います。
+        </p>
+      )}
 
       {/* 追加 */}
       {canEdit && (
@@ -208,6 +292,7 @@ export function TodosClient({ canEdit }: { canEdit: boolean }) {
                       statusOptions={kindOptions}
                       checkOptions={checkOptions}
                       canEdit={canEdit}
+                      jobFlows={jobFlows.filter((f) => f.worker_id === t.worker_id)}
                       onChange={(patch) => run(() => updateTodo(createClient(), t.id, patch))}
                       onDelete={() => {
                         if (
@@ -261,6 +346,7 @@ function TodoItem({
   statusOptions,
   checkOptions,
   canEdit,
+  jobFlows = [],
   onChange,
   onDelete,
 }: {
@@ -268,11 +354,17 @@ function TodoItem({
   statusOptions: TodoStatusOption[];
   checkOptions: TodoStatusOption[];
   canEdit: boolean;
-  onChange: (patch: Partial<Pick<TodoRow, "todo_no" | "title" | "status" | "check_status">>) => void;
+  jobFlows?: JobFlowRow[]; // あっせん有りのときに出す、求人への採用の流れ
+  onChange: (
+    patch: Partial<
+      Pick<TodoRow, "todo_no" | "title" | "status" | "check_status" | "assen" | "assen_note">
+    >,
+  ) => void;
   onDelete: () => void;
 }) {
   const [no, setNo] = useState(todo.todo_no);
   const [title, setTitle] = useState(todo.title);
+  const [assenNote, setAssenNote] = useState(todo.assen_note ?? "");
 
   const selectFor = (
     value: string,
@@ -328,12 +420,20 @@ function TodoItem({
               {/* 申請準備のTODOは、外国人詳細の賃金（1-6号別紙）とリンクして作成を進める。
                   会社の同意の確認チェックもその中にある */}
               {todo.kind === "申請準備" && (
-                <Link
-                  href={`/workers/${todo.worker_id}#wages`}
-                  className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] font-bold text-brand"
-                >
-                  賃金（1-6号別紙）を開く
-                </Link>
+                <>
+                  <Link
+                    href={`/workers/${todo.worker_id}#wages`}
+                    className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] font-bold text-brand"
+                  >
+                    賃金（1-6号別紙）を開く
+                  </Link>
+                  <Link
+                    href={`/workers/${todo.worker_id}#contracts`}
+                    className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] font-bold text-brand"
+                  >
+                    雇用契約書・雇用条件書
+                  </Link>
+                </>
               )}
             </>
           ) : (
@@ -366,7 +466,209 @@ function TodoItem({
           {selectFor(todo.check_status ?? "", checkOptions, (v) => onChange({ check_status: v }), "未選択")}
         </div>
       )}
+
+      {/* 申請準備のTODO: あっせんの有無と、チェック後の訂正記録 */}
+      {todo.kind === "申請準備" && (
+        <div className="mt-2 space-y-2 border-t border-dashed border-border pt-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="shrink-0 text-[11px] font-bold text-muted">あっせん</span>
+            <select
+              value={todo.assen ?? ""}
+              onChange={(e) => onChange({ assen: e.target.value })}
+              disabled={!canEdit}
+              className="min-h-[36px] rounded-lg border border-border bg-surface px-2 text-xs"
+            >
+              <option value="">未設定</option>
+              <option value="あり">あり（求人からの採用）</option>
+              <option value="なし">なし</option>
+            </select>
+          </div>
+          {todo.assen === "なし" && (
+            <label className="block">
+              <span className="text-[11px] font-bold text-muted">
+                どのような経緯での申請書類作成か（あっせん無しの場合に記入）
+              </span>
+              <textarea
+                value={assenNote}
+                onChange={(e) => setAssenNote(e.target.value)}
+                onBlur={() => {
+                  if (assenNote !== (todo.assen_note ?? "")) onChange({ assen_note: assenNote });
+                }}
+                disabled={!canEdit}
+                rows={2}
+                placeholder="例: 知人の紹介で本人から直接依頼があり、会社と面談のうえ雇用が決まった など"
+                className={`${INPUT} mt-0.5 w-full py-2`}
+              />
+            </label>
+          )}
+          {todo.assen === "あり" && (
+            <div className="rounded-lg bg-background p-2">
+              <p className="mb-1 text-[11px] font-bold text-muted">
+                求人への採用の一連の流れ（求職管理簿から）
+              </p>
+              {jobFlows.length === 0 ? (
+                <p className="text-[11px] text-muted">
+                  この外国人の応募（求職管理簿）が見つかりません。求職一覧で応募・採用を登録してください。
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  {jobFlows.map((f) => (
+                    <p key={f.id} className="text-[11px] leading-relaxed">
+                      <span className="font-bold">{f.orgName}</span>
+                      {f.postingJobType && `（${f.postingJobType}）`}
+                      求人申込日 {f.postingReceivedOn ?? "—"} → 求職申込日 {f.applied_on} → 面接日{" "}
+                      {f.interview_on ?? "—"} → {f.result === "採用" ? "採用日" : f.result}{" "}
+                      {f.result_on ?? "—"}
+                    </p>
+                  ))}
+                  <p className="text-[10px] text-muted">
+                    これらの日付は特定技能支援計画書の日付計算のカレンダーにも載せる予定です。
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+          {/* チェック後の申請書類の訂正記録 */}
+          <CorrectionSection todoId={todo.id} canEdit={canEdit} />
+        </div>
+      )}
     </div>
+  );
+}
+
+// 申請書類の訂正記録（チェック後）。訂正書類名・訂正箇所の画像・訂正内容を複数保存できる
+function CorrectionSection({ todoId, canEdit }: { todoId: string; canEdit: boolean }) {
+  const [rows, setRows] = useState<TodoCorrectionView[]>([]);
+  const [open, setOpen] = useState(false);
+  const [docName, setDocName] = useState("");
+  const [content, setContent] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = () => listTodoCorrections(todoId).then(setRows).catch(() => undefined);
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todoId]);
+
+  const add = async () => {
+    if (!docName.trim() && !content.trim() && !file) return;
+    setBusy(true);
+    setError(null);
+    try {
+      let path: string | undefined;
+      let fileName: string | undefined;
+      let mimeType: string | undefined;
+      if (file) {
+        const { blob, mimeType: mt, fileName: fn } = await compressImage(file);
+        const ticket = await createTodoCorrectionTicket(todoId, fn, mt);
+        if (!ticket.ok) throw new Error(ticket.message);
+        const { error: upErr } = await createClient()
+          .storage.from("app-files")
+          .uploadToSignedUrl(ticket.path, ticket.token, blob, { contentType: mt });
+        if (upErr) throw new Error(`アップロードに失敗しました: ${upErr.message}`);
+        path = ticket.path;
+        fileName = fn;
+        mimeType = mt;
+      }
+      const res = await registerTodoCorrection(todoId, {
+        doc_name: docName.trim(),
+        content: content.trim(),
+        path,
+        fileName,
+        mimeType,
+      });
+      if (!res.ok) throw new Error(res.message);
+      setDocName("");
+      setContent("");
+      setFile(null);
+      await load();
+    } catch (err) {
+      setError(
+        dbErrorMessage(err, "0103_todo_prep_extras.sql", "訂正記録の保存に失敗しました"),
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <details
+      open={open}
+      onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
+      className="rounded-lg bg-background p-2"
+    >
+      <summary className="cursor-pointer text-[11px] font-bold text-muted">
+        📝 申請書類の訂正記録（チェック後）{rows.length > 0 && `（${rows.length}件）`}
+      </summary>
+      <div className="mt-2 space-y-2">
+        {error && <p className="rounded-lg bg-seal/10 px-2 py-1.5 text-[11px] text-seal">{error}</p>}
+        {rows.map((r) => (
+          <div key={r.id} className="flex items-start gap-2 rounded-lg border border-border bg-surface p-2">
+            {r.url && (
+              <a href={r.url} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={r.url} alt="訂正箇所" className="h-14 w-14 rounded border border-border object-cover" />
+              </a>
+            )}
+            <span className="min-w-0 flex-1 text-[11px]">
+              <span className="block font-bold">{r.doc_name || "（書類名なし）"}</span>
+              <span className="block whitespace-pre-wrap">{r.content}</span>
+              <span className="block text-[10px] text-muted">{r.created_at.slice(0, 10)}</span>
+            </span>
+            {canEdit && (
+              <button
+                type="button"
+                aria-label="この訂正記録を削除"
+                onClick={() => {
+                  if (window.confirm("この訂正記録を削除します。よろしいですか？")) {
+                    void deleteTodoCorrection(r.id).then(load);
+                  }
+                }}
+                className="shrink-0 text-seal"
+              >
+                <Trash2 size={13} />
+              </button>
+            )}
+          </div>
+        ))}
+        {canEdit && (
+          <div className="space-y-1.5 rounded-lg border border-dashed border-border p-2">
+            <input
+              value={docName}
+              onChange={(e) => setDocName(e.target.value)}
+              placeholder="訂正書類名（例: 1-6号別紙）"
+              className="min-h-[34px] w-full rounded-lg border border-border bg-surface px-2 text-xs"
+            />
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              rows={2}
+              placeholder="訂正内容"
+              className="w-full rounded-lg border border-border bg-surface px-2 py-1.5 text-xs"
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="file"
+                accept="image/*,application/pdf"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                className="min-w-0 flex-1 text-[11px]"
+              />
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void add()}
+                className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-[11px] font-bold text-brand disabled:opacity-50"
+              >
+                <Plus size={12} />
+                {busy ? "保存中…" : "訂正記録を追加"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </details>
   );
 }
 
