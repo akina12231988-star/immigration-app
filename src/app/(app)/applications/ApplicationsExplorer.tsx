@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  FilePlus2,
   Copy,
   ExternalLink,
   MessageCircle,
@@ -709,11 +710,15 @@ export function ApplicationsExplorer({
                 </>
               );
               // カード内にリンク（外国人の情報・Notionなど）を置くため、
-              // Link入れ子を避けて onClick 遷移にする
+              // Link入れ子を避けて onClick 遷移にする。
+              // 準備中の擬似行はクリックで申請準備の現在の内容（チェックリスト）を開き、
+              // 申請登録へは行内の「申請登録へ進む」リンクから移動する
               return showPrep ? (
                 <Card
                   key={a.id}
-                  onClick={() => router.push(hrefFor(a))}
+                  onClick={() =>
+                    isRenewalPlaceholder(a) ? openPrepModal(a) : router.push(hrefFor(a))
+                  }
                   className={`h-full cursor-pointer p-4 hover:border-brand ${
                     isExpiryAlert(a, TODAY) ? "border-seal" : ""
                   }`}
@@ -764,6 +769,12 @@ export function ApplicationsExplorer({
                       <WorkerLink href={w?.messenger_link ? messengerWebUrl(w.messenger_link) : undefined} icon={<MessageCircle size={13} />}>
                         Messenger
                       </WorkerLink>
+                      {/* 行クリックは申請準備の内容表示に変えたため、申請登録はここから */}
+                      {isRenewalPlaceholder(a) && (
+                        <WorkerLink href={hrefFor(a)} icon={<FilePlus2 size={13} />}>
+                          申請登録へ進む
+                        </WorkerLink>
+                      )}
                     </div>
                   </div>
                   <div
@@ -850,7 +861,10 @@ export function ApplicationsExplorer({
                   return (
                     <tr
                       key={a.id}
-                      onClick={() => router.push(hrefFor(a))}
+                      // 準備中の擬似行はクリックで申請準備の現在の内容（チェックリスト）を開く
+                      onClick={() =>
+                        isRenewalPlaceholder(a) ? openPrepModal(a) : router.push(hrefFor(a))
+                      }
                       className="cursor-pointer bg-surface hover:bg-background"
                     >
                       <Td className="font-bold">
@@ -870,6 +884,14 @@ export function ApplicationsExplorer({
                             onClick={(e) => e.stopPropagation()}
                           >
                             <WorkerInfoLink workerId={a.workerId} />
+                          </span>
+                        )}
+                        {/* 行クリックは申請準備の内容表示に変えたため、申請登録はここから */}
+                        {isRenewalPlaceholder(a) && (
+                          <span className="mt-1 block" onClick={(e) => e.stopPropagation()}>
+                            <WorkerLink href={hrefFor(a)} icon={<FilePlus2 size={13} />}>
+                              申請登録へ進む
+                            </WorkerLink>
                           </span>
                         )}
                       </Td>
