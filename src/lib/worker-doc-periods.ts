@@ -43,7 +43,13 @@ export function buildPastPeriods(histories: WorkHistoryRow[], today: string): Or
     .map((p, i) => ({ key: `${p.start}-${i}`, org: p.org, start: p.start, end: p.end }));
 }
 
-// 画像の登録日から、どの在籍期間の画像かを判定する。
+// 期間の判定に使う日付。「いつ時点の書類か」（effective_on）が入っていればそれを優先し、
+// 無ければ登録日で判定する（過去タブから登録した画像を当時の期間に出すため）
+export function docPeriodDate(doc: { effectiveOn?: string | null; createdAt: string }): string {
+  return (doc.effectiveOn || doc.createdAt).slice(0, 10);
+}
+
+// 画像の登録日（または effective_on）から、どの在籍期間の画像かを判定する。
 // 期間内ならその期間、どこにも入らなければ「現在」。
 // ただし過去の期間同士の隙間に登録された画像は、日付が近いほうの過去期間に寄せる
 export function periodKeyFor(createdAt: string, past: OrgPeriod[], hasOngoing: boolean): string {

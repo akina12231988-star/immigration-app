@@ -2,6 +2,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
+import { dbErrorMessage } from "@/lib/errors";
 
 // 外国人の顔写真・最新書類画像は非公開バケット app-files に保存し、署名付きURLで表示する。
 const BUCKET = "app-files";
@@ -114,6 +115,8 @@ export async function registerWorkerDoc(
   fileName: string,
   mimeType: string,
   organizationId?: string | null,
+  // 過去の在籍期間タブから登録するとき、その期間の日付（いつ時点の書類か）
+  effectiveOn?: string | null,
 ): Promise<{ ok: true } | Err> {
   if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
   if (!path.startsWith(`worker-docs/${workerId}/${DOC_SLUGS[kind]}/`)) {
@@ -129,8 +132,14 @@ export async function registerWorkerDoc(
     mime_type: mimeType,
     // 雇用契約書・雇用条件書は会社ごとに保管する（転職で混ざらないように）
     ...(organizationId ? { organization_id: organizationId } : {}),
+    ...(effectiveOn ? { effective_on: effectiveOn } : {}),
   });
-  if (error) return { ok: false, message: error.message };
+  if (error) {
+    return {
+      ok: false,
+      message: dbErrorMessage(error, "0100_worker_document_effective_on.sql", "登録に失敗しました"),
+    };
+  }
   return { ok: true };
 }
 
@@ -176,6 +185,7 @@ export interface WorkerDocView {
   downloadName?: string; // ダウンロード時の名前（氏名_書類名_所属機関名）
   mimeType?: string;
   organizationId?: string | null; // 雇用契約書・雇用条件書の所属機関（0081）
+  effectiveOn?: string | null; // いつ時点の書類か（過去の在籍期間への登録用・0100）
   createdAt: string;
   fromApplication?: boolean; // 申請登録時の画像（差し替え前の現データ）
 }
@@ -201,6 +211,7 @@ export async function listWorkerDocs(workerId: string): Promise<WorkerDocView[]>
       file_name: string;
       mime_type: string;
       organization_id?: string | null;
+      effective_on?: string | null;
       created_at: string;
     }[]) ?? [];
 
@@ -258,6 +269,7 @@ export async function listWorkerDocs(workerId: string): Promise<WorkerDocView[]>
         downloadName: downloadNames[i],
         mimeType: r.mime_type,
         organizationId: r.organization_id ?? null,
+        effectiveOn: r.effective_on ?? null,
         createdAt: r.created_at,
       }),
     );

@@ -7,7 +7,7 @@ import { FileDropArea } from "@/components/ui/FileDropArea";
 import { uploadWorkerDoc } from "@/lib/worker-docs";
 import { todayStr } from "@/lib/application-alerts";
 import { listWorkerDocs, type WorkerDocView } from "@/app/(app)/workers/actions";
-import { buildPastPeriods, periodKeyFor } from "@/lib/worker-doc-periods";
+import { buildPastPeriods, docPeriodDate, periodKeyFor } from "@/lib/worker-doc-periods";
 import type { WorkHistoryRow } from "@/types/db";
 
 type Kind = "在留カード" | "指定書";
@@ -46,17 +46,23 @@ export function WorkerDocuments({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workerId]);
 
-  // 表示中の在籍期間に登録された画像だけに絞る
+  // 表示中の在籍期間の画像だけに絞る（過去タブから登録した画像は effective_on で当時の期間に入る）
   const visibleDocs = useMemo(
-    () => docs.filter((d) => periodKeyFor(d.createdAt, past, hasOngoing) === period),
+    () => docs.filter((d) => periodKeyFor(docPeriodDate(d), past, hasOngoing) === period),
     [docs, past, hasOngoing, period],
   );
 
   const isCurrent = period === "current";
+  // 過去タブを開いているとき、アップロードした画像をその期間に振り分けるための日付（退職日）
+  const selectedPast = past.find((p) => p.key === period) ?? null;
 
-  // 「現在」に該当する画像が無くても、登録済みの画像があれば最後に登録したものを表示する。
+  // 「現在」に該当する画像が無くても、登録済みの画像があれば一番新しい時点のものを表示する。
   // （何も登録していないように見えてしまうのを防ぐ。差し替えれば最新になる）
-  const newestFor = (kind: Kind) => docs.find((d) => d.kind === kind) ?? null;
+  const newestFor = (kind: Kind) => {
+    const list = docs.filter((d) => d.kind === kind);
+    if (list.length === 0) return null;
+    return [...list].sort((a, b) => (docPeriodDate(a) > docPeriodDate(b) ? -1 : 1))[0];
+  };
 
   return (
     <Card className="p-4">
@@ -92,7 +98,9 @@ export function WorkerDocuments({
           docs={visibleDocs.filter((d) => d.kind === "在留カード")}
           fallback={isCurrent ? newestFor("在留カード") : null}
           workerId={workerId}
-          canEdit={canEdit && isCurrent}
+          canEdit={canEdit}
+          effectiveOn={selectedPast?.end ?? null}
+          uploadLabel={isCurrent ? "差し替え" : "この期間に登録"}
           emptyLabel={isCurrent ? "未登録" : "この期間の登録はありません"}
           onUploaded={load}
           onError={setError}
@@ -103,14 +111,16 @@ export function WorkerDocuments({
           docs={visibleDocs.filter((d) => d.kind === "指定書")}
           fallback={isCurrent ? newestFor("指定書") : null}
           workerId={workerId}
-          canEdit={canEdit && isCurrent}
+          canEdit={canEdit}
+          effectiveOn={selectedPast?.end ?? null}
+          uploadLabel={isCurrent ? "差し替え" : "この期間に登録"}
           emptyLabel={isCurrent ? "未登録" : "この期間の登録はありません"}
           onUploaded={load}
           onError={setError}
         />
       </div>
       <p className="mt-2 text-[11px] text-muted">
-        新しい画像を登録すると「現在」の最新として表示され、以前の画像も履歴として残ります。「現在」では、いま登録されている最新の画像を表示します（在籍期間が今日を含む場合もここに出ます）。過去の在籍期間タブでは、その期間中に登録された当時の画像を表示します。
+        新しい画像を登録すると「現在」の最新として表示され、以前の画像も履歴として残ります。「現在」では、いま登録されている最新の画像を表示します（在籍期間が今日を含む場合もここに出ます）。過去の在籍期間タブでは、その期間の当時の画像を表示します。過去タブで「この期間に登録」すると、当時の画像としてその期間に保存されます。
       </p>
     </Card>
   );
@@ -147,6 +157,8 @@ function DocColumn({
   fallback = null,
   workerId,
   canEdit,
+  effectiveOn = null,
+  uploadLabel = "差し替え",
   emptyLabel,
   onUploaded,
   onError,
@@ -158,6 +170,9 @@ function DocColumn({
   fallback?: WorkerDocView | null;
   workerId: string;
   canEdit: boolean;
+  // 過去の在籍期間タブでは、その期間の日付を付けて登録する（当時の画像として振り分けるため）
+  effectiveOn?: string | null;
+  uploadLabel?: string;
   emptyLabel: string;
   onUploaded: () => void;
   onError: (m: string) => void;
@@ -172,7 +187,7 @@ function DocColumn({
     if (!file) return;
     setBusy(true);
     try {
-      await uploadWorkerDoc(workerId, kind, file);
+      await uploadWorkerDoc(workerId, kind, file, null, effectiveOn);
       onUploaded();
     } catch (err) {
       onError(err instanceof Error ? err.message : "アップロードに失敗しました");
@@ -195,7 +210,7 @@ function DocColumn({
             disabled={busy}
             className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11px] font-bold text-brand disabled:opacity-50"
           >
-            {busy ? "登録中…" : <><ImagePlus size={12} /> 差し替え</>}
+            {busy ? "登録中…" : <><ImagePlus size={12} /> {uploadLabel}</>}
           </button>
         )}
       </div>
@@ -221,7 +236,7 @@ function DocColumn({
       )}
       {usingFallback && !latest?.fromApplication && (
         <p className="mt-1 text-[10px] text-muted">
-          {latest?.createdAt.slice(0, 10)} に登録した画像を表示中（差し替えると最新になります）
+          {latest ? docPeriodDate(latest) : ""} 時点の画像を表示中（差し替えると最新になります）
         </p>
       )}
       {history.length > 0 && (
