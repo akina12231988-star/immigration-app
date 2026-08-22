@@ -12,7 +12,12 @@ import type { Worker } from "@/types/db";
 // - 「コピー」: Notion AIに読み込ませるための転記テキストをコピー（API未設定時のフォールバック）
 export function NotionTransferButton({ worker }: { worker: Worker }) {
   const [syncing, setSyncing] = useState(false);
-  const [result, setResult] = useState<{ url: string; count: number } | null>(null);
+  const [result, setResult] = useState<{
+    url: string;
+    count: number;
+    situationDone: boolean;
+    situationNote?: string;
+  } | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,7 +31,12 @@ export function NotionTransferButton({ worker }: { worker: Worker }) {
         setError(res.message);
         return;
       }
-      setResult({ url: res.url, count: res.written.length });
+      setResult({
+        url: res.url,
+        count: res.written.length,
+        situationDone: res.written.includes("只今の状況"),
+        situationNote: res.situationNote,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Notionへの同期に失敗しました");
     } finally {
@@ -73,6 +83,13 @@ export function NotionTransferButton({ worker }: { worker: Worker }) {
       {result && (
         <div className="w-56 rounded-lg border border-brand/40 bg-brand/5 px-2.5 py-2 text-[11px] text-muted">
           Notionに反映しました（{result.count}項目）。
+          {result.situationDone ? (
+            <span className="mt-0.5 block">只今の状況も更新しました。</span>
+          ) : (
+            result.situationNote && (
+              <span className="mt-0.5 block text-seal">{result.situationNote}</span>
+            )
+          )}
           {result.url && (
             <a
               href={notionAppUrl(result.url)}

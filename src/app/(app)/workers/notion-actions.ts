@@ -5,6 +5,7 @@ import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { NOTION_FIELD_MAP } from "@/lib/notion-transfer";
 import { extractNotionPageId } from "@/lib/notion-link";
 import { toNotionProperty, type NotionPropertyDef } from "@/lib/notion-property";
+import { autoSituation } from "@/lib/worker-situation";
 import type { Worker } from "@/types/db";
 
 // Notion「ビザの状況」データベースへ外国人情報を直接書き込む（案A: アプリ優先・空欄は保持）。
@@ -36,7 +37,7 @@ function notionHeaders(key: string): HeadersInit {
 
 export async function syncWorkerToNotion(
   workerId: string,
-): Promise<{ ok: true; url: string; written: string[] } | Err> {
+): Promise<{ ok: true; url: string; written: string[]; situationNote?: string } | Err> {
   if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
 
   const key = process.env.NOTION_API_KEY;
@@ -55,6 +56,23 @@ export async function syncWorkerToNotion(
   if (error || !data) return { ok: false, message: "外国人が見つかりません" };
   const worker = data as Worker;
 
+  // 只今の状況が未入力の人は、画面と同じ自動表示（現在の在留資格＋いちばん新しい申請の
+  // 審査中/許可）をNotionにも入れる（画面で見えている内容とNotionがずれないように）
+  if (!(worker.current_situation ?? "").trim()) {
+    const { data: apps } = await admin
+      .from("immigration_applications")
+      .select("status, content")
+      .eq("worker_id", workerId)
+      .order("application_date", { ascending: false })
+      .limit(1);
+    const latest = (apps as { status: string; content: string | null }[] | null)?.[0];
+    const auto = autoSituation(
+      worker.residence_status,
+      latest ? { status: latest.status, applicationContent: latest.content } : null,
+    );
+    if (auto) worker.current_situation = auto;
+  }
+
   // データベースのスキーマからプロパティ型を取得
   const dbRes = await fetch(`${NOTION_API}/databases/${dbId}`, { headers: notionHeaders(key) });
   if (!dbRes.ok) {
@@ -70,13 +88,28 @@ export async function syncWorkerToNotion(
   // 案A: アプリに値がある項目のみ、Notionに実在する書き込み可能プロパティへ反映（空欄はNotionを維持）
   const properties: Record<string, unknown> = {};
   const written: string[] = [];
+  // 只今の状況が反映されなかったときに理由を返す（更新されない原因が分かるように）
+  let situationNote: string | undefined;
   for (const { prop, get } of NOTION_FIELD_MAP) {
     const value = (get(worker) ?? "").toString().trim();
-    if (!value) continue;
+    const isSituation = prop === "只今の状況";
+    if (!value) {
+      if (isSituation) situationNote = "只今の状況は未入力のため更新していません。";
+      continue;
+    }
     const def = schema[prop];
-    if (!def) continue;
+    if (!def) {
+      if (isSituation)
+        situationNote =
+          "Notion側に「只今の状況」という名前のプロパティが見つからないため更新できませんでした。プロパティ名が一致しているか確認してください。";
+      continue;
+    }
     const built = toNotionProperty(def, value);
-    if (!built) continue;
+    if (!built) {
+      if (isSituation)
+        situationNote = `Notion側の「只今の状況」の型（${def.type}）に書き込めない値のため更新できませんでした。`;
+      continue;
+    }
     properties[prop] = built;
     written.push(prop);
   }
@@ -102,7 +135,7 @@ export async function syncWorkerToNotion(
       return { ok: false, message: `Notionページの更新に失敗（${res.status}）。${t.slice(0, 200)}` };
     }
     const page = (await res.json()) as { url?: string };
-    return { ok: true, url: page.url ?? worker.notion_link, written };
+    return { ok: true, url: page.url ?? worker.notion_link, written, situationNote };
   }
 
   const res = await fetch(`${NOTION_API}/pages`, {
@@ -117,5 +150,5 @@ export async function syncWorkerToNotion(
   const page = (await res.json()) as { url?: string };
   const url = page.url ?? "";
   if (url) await admin.from("workers").update({ notion_link: url }).eq("id", workerId);
-  return { ok: true, url, written };
+  return { ok: true, url, written, situationNote };
 }

@@ -136,8 +136,29 @@ export function ApplicationPrepChecklist({
   // 在留カード・パスポートの「預かった」で表示する預かり番号（保管ボックスと連動）
   const [custodyNo, setCustodyNo] = useState<number | null>(null);
 
+  // 在留カード・パスポートの充足判定は移行先（在留カード・指定書／パスポートの記録）を見る
+  const [hasResidenceCard, setHasResidenceCard] = useState(false);
+  const [hasPassportFile, setHasPassportFile] = useState(false);
+
   const loadDocs = () =>
     listOnboardingDocs(createClient(), workerId).then(setDocs).catch(() => undefined);
+
+  const loadMovedDocs = () => {
+    const supabase = createClient();
+    void supabase
+      .from("worker_documents")
+      .select("id")
+      .eq("worker_id", workerId)
+      .eq("kind", "在留カード")
+      .limit(1)
+      .then(({ data }) => setHasResidenceCard(!!data && data.length > 0));
+    void supabase
+      .from("worker_passport_files")
+      .select("id")
+      .eq("worker_id", workerId)
+      .limit(1)
+      .then(({ data }) => setHasPassportFile(!!data && data.length > 0));
+  };
 
   useEffect(() => {
     listPrepChecklists(createClient(), workerId)
@@ -152,11 +173,15 @@ export function ApplicationPrepChecklist({
       .then((m) => setCustodyNo(m.get(workerId) ?? null))
       .catch(() => undefined);
     void loadDocs();
+    loadMovedDocs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workerId]);
 
   // 源泉徴収票セクションなど、他の場所で添付・削除されたときもここに反映する
-  useWorkerDocsChanged(workerId, () => void loadDocs());
+  useWorkerDocsChanged(workerId, () => {
+    void loadDocs();
+    loadMovedDocs();
+  });
 
   // 外国人詳細の見出しで登録された顔写真もここに反映する
   useWorkerPhotoChanged(workerId, (url) => {
@@ -234,6 +259,8 @@ export function ApplicationPrepChecklist({
       filledDocKeys,
       photoPath: photoExists ? "yes" : null,
       healthComplete,
+      hasResidenceCard,
+      hasPassportFile,
     },
     statusValues,
   );
@@ -258,6 +285,9 @@ export function ApplicationPrepChecklist({
       case "health":
         return "kenshin";
       case "photo":
+      // 在留カード・パスポートは移行先（在留カード・指定書／パスポートの記録）で管理するためキーなし
+      case "residenceCardDoc":
+      case "passportFile":
         return null;
     }
   };

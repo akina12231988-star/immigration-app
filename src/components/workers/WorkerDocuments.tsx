@@ -12,6 +12,15 @@ import type { WorkHistoryRow } from "@/types/db";
 
 type Kind = "在留カード" | "指定書";
 
+// PDFかどうか（imgタグでは表示できないため、埋め込み表示に切り替える）
+function isPdfDoc(d: WorkerDocView): boolean {
+  return (
+    d.mimeType === "application/pdf" ||
+    (d.fileName ?? "").toLowerCase().endsWith(".pdf") ||
+    (d.url.split("?")[0] ?? "").toLowerCase().endsWith(".pdf")
+  );
+}
+
 // 在留カード・指定書の差し替え（最新を大きく表示・履歴も保持）。
 // 在籍期間（現在／過去の所属機関ごと）のタブで、当時の画像へ表示を切り替えられる
 export function WorkerDocuments({
@@ -221,16 +230,31 @@ function DocColumn({
         className="overflow-hidden rounded-xl border border-border bg-background"
       >
         {latest ? (
-          <a href={latest.url} target="_blank" rel="noopener noreferrer">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={latest.url} alt={kind} className="max-h-56 w-full object-contain" />
-          </a>
+          isPdfDoc(latest) ? (
+            // PDFは中身をスクロールして見られる埋め込み表示にする（imgでは表示できない）
+            <iframe src={latest.url} title={kind} className="h-72 w-full" />
+          ) : (
+            <a href={latest.url} target="_blank" rel="noopener noreferrer">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={latest.url} alt={kind} className="max-h-56 w-full object-contain" />
+            </a>
+          )
         ) : (
           <div className="flex h-32 items-center justify-center px-2 text-center text-xs text-muted">
             {canEdit ? `${emptyLabel}（ここにドロップでも登録できます）` : emptyLabel}
           </div>
         )}
       </FileDropArea>
+      {latest && isPdfDoc(latest) && (
+        <a
+          href={latest.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-1 inline-block text-[11px] font-bold text-brand"
+        >
+          PDFを別タブで大きく開く
+        </a>
+      )}
       {latest?.fromApplication && (
         <p className="mt-1 text-[10px] text-muted">申請登録時の画像を表示中（差し替えると最新になります）</p>
       )}
@@ -245,8 +269,14 @@ function DocColumn({
           <div className="flex gap-1.5 overflow-x-auto">
             {history.map((d) => (
               <a key={d.id} href={d.url} target="_blank" rel="noopener noreferrer" className="shrink-0">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={d.url} alt="履歴" className="h-12 w-12 rounded border border-border object-cover" />
+                {isPdfDoc(d) ? (
+                  <span className="flex h-12 w-12 items-center justify-center rounded border border-border text-[10px] font-bold text-muted">
+                    PDF
+                  </span>
+                ) : (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={d.url} alt="履歴" className="h-12 w-12 rounded border border-border object-cover" />
+                )}
               </a>
             ))}
           </div>

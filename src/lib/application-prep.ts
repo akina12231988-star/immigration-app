@@ -3,7 +3,9 @@
 // 現状どれが足りていないかを把握できるようにする。
 //
 // 書類ファイルの保存先は既存の仕組みを再利用する:
-//  - 在留カード / パスポート … 外国人書類（onboarding_documents の cert_*）
+//  - 在留カード … 在留カード・指定書（worker_documents）
+//  - パスポート … 出入国の記録のパスポートの記録（worker_passport_files）
+//  - 合格証 … 基本情報の各合格名の下（onboarding_documents の cert_*）
 //  - 顔写真 … workers.photo_path
 //  - 源泉徴収票 … 源泉徴収票セクション（onboarding_documents の gensen_r{令和年}）
 //  - 健康診断書 … 健康診断セクション（onboarding_documents の kenshin ＋ 受診日）
@@ -67,7 +69,9 @@ type Source =
   | { kind: "docYear"; baseKey: string } // 対象年度ごとに蓄積（{baseKey}_r{target_reiwa}）
   | { kind: "gensenYear" } // gensen_r{target_reiwa}
   | { kind: "photo" } // workers.photo_path
-  | { kind: "health" }; // 健康診断（kenshin ＋ 受診日1年以内 ＋ 項目確認）
+  | { kind: "health" } // 健康診断（kenshin ＋ 受診日1年以内 ＋ 項目確認）
+  | { kind: "residenceCardDoc" } // 在留カード・指定書（worker_documents の在留カード）
+  | { kind: "passportFile" }; // 出入国の記録のパスポートの記録（worker_passport_files）
 
 // 年度付き書類の保存キー（例: prep_kazei_r7）。年度ごとに別ファイルとして蓄積される
 export function prepYearDocKey(baseKey: string, reiwa: number): string {
@@ -111,9 +115,9 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
     id: "zairyu",
     label: "在留カード（両面・現住所がわかるもの）",
     appliesTo: ["変更", "更新", "認定", "特定活動"],
-    source: { kind: "doc", docKey: "cert_zairyu" },
+    source: { kind: "residenceCardDoc" },
     manageInline: false,
-    managedIn: "外国人書類",
+    managedIn: "在留カード・指定書",
   },
   {
     id: "photo",
@@ -127,9 +131,9 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
     id: "passport",
     label: "パスポート",
     appliesTo: ["変更", "更新", "認定", "特定活動"],
-    source: { kind: "doc", docKey: "cert_passport" },
+    source: { kind: "passportFile" },
     manageInline: false,
-    managedIn: "外国人書類",
+    managedIn: "出入国の記録（パスポートの記録）",
   },
   {
     id: "gensen",
@@ -214,7 +218,7 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
     certPatterns: ["専門級", "別分野・専門級"],
     source: { kind: "doc", docKey: "cert_senmonkyu" },
     manageInline: false,
-    managedIn: "外国人書類",
+    managedIn: "基本情報（専門級の合格名の下）",
   },
   {
     id: "cert_nihongo",
@@ -224,7 +228,7 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
     note: "専門級の合格証がない場合は必須",
     source: { kind: "doc", docKey: "cert_nihongo" },
     manageInline: false,
-    managedIn: "外国人書類",
+    managedIn: "基本情報（その他の資格・合格名の下）",
   },
   {
     id: "cert_senmongai",
@@ -234,7 +238,7 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
     note: "専門級以外の分野で就職する場合に必要",
     source: { kind: "doc", docKey: "cert_senmongai" },
     manageInline: false,
-    managedIn: "外国人書類",
+    managedIn: "基本情報（その他の資格・合格名の下）",
   },
   {
     id: "hyoka_chosho",
@@ -294,6 +298,10 @@ export interface PrepDocSources {
   // onboarding_documents のうち storage_path があるキーの集合
   filledDocKeys: Set<string>;
   photoPath: string | null;
+  // 在留カード・指定書（worker_documents）に在留カードの画像があるか
+  hasResidenceCard?: boolean;
+  // 出入国の記録のパスポートの記録（worker_passport_files）にファイルがあるか
+  hasPassportFile?: boolean;
   // 健康診断書が「揃っている」か（様式・受診項目・就労可の後日結果まで含めた判定。健康診断書の詳細ページで管理）
   healthComplete: boolean;
 }
@@ -321,6 +329,11 @@ export function isSatisfied(
     }
     case "photo":
       return !!sources.photoPath;
+    case "residenceCardDoc":
+      // 旧「外国人書類」の cert_zairyu からの移行前でも揃っている扱いにする（0101で移行）
+      return !!sources.hasResidenceCard || sources.filledDocKeys.has("cert_zairyu");
+    case "passportFile":
+      return !!sources.hasPassportFile || sources.filledDocKeys.has("cert_passport");
     case "health":
       // 健康診断書はファイルが添付されていれば「添付あり」。
       // 受診日や受診項目などの細かい確認は準備状況ステータス（受診済み・完了 など）で人が管理し、
