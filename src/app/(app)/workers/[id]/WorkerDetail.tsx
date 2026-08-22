@@ -140,6 +140,20 @@ export function WorkerDetail({
     }
   }, [canEdit]);
 
+  // バッジと操作ボタンの列は、下へスクロールしても画面上部に固定する。
+  // 上のヘッダー（sticky）の高さはページごとに違うため、測ってその真下に付ける
+  const [stickyTop, setStickyTop] = useState(0);
+  useEffect(() => {
+    const measure = () => {
+      const el = document.querySelector("header");
+       
+      if (el instanceof HTMLElement) setStickyTop(el.offsetHeight);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
+
   const today = todayStr();
   const calc = useMemo(
     () => calcSsw(worker.work_histories.map(toCalcHistory), today),
@@ -380,9 +394,13 @@ export function WorkerDetail({
         </p>
       )}
 
-      {/* 在留カード（実物のカードの項目順で表示） */}
-      <Card className="p-4">
-        <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+      {/* バッジと操作ボタン。下へスクロールしてもヘッダーの真下に固定する
+          （編集モードでは保存・やめるが常に見える） */}
+      <div
+        className="sticky z-10 -mx-4 border-b border-border bg-background px-4 py-2 md:-mx-8 md:px-8 print:static"
+        style={{ top: stickyTop }}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1.5">
             {editing ? (
               <>
@@ -484,7 +502,10 @@ export function WorkerDetail({
             )}
           </div>
         </div>
+      </div>
 
+      {/* 在留カード（実物のカードの項目順で表示） */}
+      <Card className="p-4">
         {applied && (
           <p role="status" className="mb-3 rounded-lg bg-brand/10 px-3 py-2 text-sm text-brand">
             {applied}
