@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Eye, Home, Loader2, Plane, Plus, Stamp, Trash2, Upload } from "lucide-react";
+import { Eye, Home, Loader2, Pencil, Plane, Plus, Stamp, Trash2, Upload } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
@@ -107,6 +107,42 @@ export function WorkerPassportTravel({
   // 往復（1回目・2回目…）は表示のたびに日付から自動で組み立てる
   const trips = buildTrips(travels);
   const summary = tripsSummary(trips);
+
+  // 日付の修正。修正後の内容を1行として追加してから、元の記録をまとめて消す
+  // （スタンプ1個ずつ入れた往復も、修正すると1行に整理される）
+  const saveTrip = async (t: Trip, values: TripEditValues) => {
+    setError(null);
+    const hasDate = [
+      values.home_departure_on,
+      values.japan_entry_on,
+      values.japan_exit_on,
+      values.home_entry_on,
+    ].some((v) => v);
+    if (!hasDate) {
+      setError("日付を1つ以上入れてください（この往復を消したいときはゴミ箱を押してください）。");
+      throw new Error("no date");
+    }
+    try {
+      await insertWorkerTravel(createClient(), workerId, {
+        home_departure_on: values.home_departure_on || null,
+        japan_entry_on: values.japan_entry_on || null,
+        japan_exit_on: values.japan_exit_on || null,
+        home_entry_on: values.home_entry_on || null,
+        landing_permission: values.landing_permission.trim(),
+        note: "",
+      });
+      for (const id of t.sourceIds) {
+        await deleteWorkerTravel(createClient(), id);
+      }
+    } catch (err) {
+      setError(
+        dbErrorMessage(err, "0098_worker_travel_landing_permission.sql", "修正の保存に失敗しました"),
+      );
+      throw err;
+    } finally {
+      await loadTravels();
+    }
+  };
 
   // 往復の削除 = その往復に含まれる記録（スタンプの日付）をまとめて削除
   const removeTrip = async (t: Trip) => {
@@ -239,6 +275,7 @@ export function WorkerPassportTravel({
               today={today}
               canEdit={canEdit}
               onRemove={() => void removeTrip(t)}
+              onSave={(values) => saveTrip(t, values)}
             />
           ))}
         </div>
@@ -385,8 +422,18 @@ export function WorkerPassportTravel({
   );
 }
 
+// 1往復ぶんの編集で保存する内容
+export interface TripEditValues {
+  home_departure_on: string;
+  japan_entry_on: string;
+  japan_exit_on: string;
+  home_entry_on: string;
+  landing_permission: string;
+}
+
 // 1往復ぶんの流れの図: 母国出国 ─✈→ 日本入国 〜 日本出国 ─✈→ 母国入国。
-// まだ日本にいるとき（いちばん新しい往復のみ）は「日本滞在中（約◯年◯か月）」で止める
+// まだ日本にいるとき（いちばん新しい往復のみ）は「日本滞在中（約◯年◯か月）」で止める。
+// 鉛筆から日付をその場で直せる（保存すると往復に含まれる記録が1行にまとまる）
 function TripFlow({
   t,
   index,
@@ -394,6 +441,7 @@ function TripFlow({
   today,
   canEdit,
   onRemove,
+  onSave,
 }: {
   t: Trip;
   index: number;
@@ -401,9 +449,101 @@ function TripFlow({
   today: string;
   canEdit: boolean;
   onRemove: () => void;
+  onSave: (values: TripEditValues) => Promise<void>;
 }) {
   const staying = isLast && isTripStayingInJapan(t);
   const days = tripStayDays(t, today, isLast);
+
+  // 日付の修正。開いたときの値から直して保存する
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState<TripEditValues>({
+    home_departure_on: "",
+    japan_entry_on: "",
+    japan_exit_on: "",
+    home_entry_on: "",
+    landing_permission: "",
+  });
+  const startEdit = () => {
+    setForm({
+      home_departure_on: t.home_departure_on ?? "",
+      japan_entry_on: t.japan_entry_on ?? "",
+      japan_exit_on: t.japan_exit_on ?? "",
+      home_entry_on: t.home_entry_on ?? "",
+      landing_permission: t.landing_permission,
+    });
+    setEditing(true);
+  };
+  const save = async () => {
+    setBusy(true);
+    try {
+      await onSave(form);
+      setEditing(false);
+    } catch {
+      /* エラーはカード上部に表示される。開いたまま直せる */
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (editing) {
+    const set = (key: keyof TripEditValues, value: string) =>
+      setForm((f) => ({ ...f, [key]: value }));
+    const DATE_FIELDS: { key: keyof TripEditValues; label: string }[] = [
+      { key: "home_departure_on", label: "母国出国日" },
+      { key: "japan_entry_on", label: "日本入国日" },
+      { key: "japan_exit_on", label: "日本出国日" },
+      { key: "home_entry_on", label: "母国入国日" },
+    ];
+    return (
+      <div className="rounded-xl border border-brand/40 bg-background p-2.5">
+        <p className="mb-2 text-[11px] font-bold text-muted">{index + 1}回目の日付を修正</p>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {DATE_FIELDS.map(({ key, label }) => (
+            <label key={key} className="flex flex-col gap-1">
+              <span className="text-[11px] font-bold text-muted">{label}</span>
+              <input
+                type="date"
+                value={form[key]}
+                onChange={(e) => set(key, e.target.value)}
+                className={INPUT}
+              />
+            </label>
+          ))}
+        </div>
+        <label className="mt-2 flex flex-col gap-1">
+          <span className="text-[11px] font-bold text-muted">上陸許可の在留資格</span>
+          <input
+            list="landing-permission-statuses"
+            value={form.landing_permission}
+            onChange={(e) => set("landing_permission", e.target.value)}
+            placeholder="例: 特定技能1号"
+            autoComplete="off"
+            className={INPUT}
+          />
+        </label>
+        <div className="mt-2 flex gap-2">
+          <button
+            type="button"
+            onClick={() => setEditing(false)}
+            disabled={busy}
+            className="flex-1 rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted"
+          >
+            やめる
+          </button>
+          <button
+            type="button"
+            onClick={() => void save()}
+            disabled={busy}
+            className="flex-1 rounded-lg bg-brand px-3 py-2 text-xs font-bold text-brand-foreground disabled:opacity-50"
+          >
+            {busy ? "保存中…" : "保存"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={`rounded-xl border p-2.5 ${
@@ -421,14 +561,24 @@ function TripFlow({
           )}
         </span>
         {canEdit && (
-          <button
-            type="button"
-            aria-label="この出入国を削除"
-            onClick={onRemove}
-            className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-seal"
-          >
-            <Trash2 size={13} />
-          </button>
+          <span className="flex shrink-0 gap-1">
+            <button
+              type="button"
+              aria-label="この出入国の日付を修正"
+              onClick={startEdit}
+              className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-muted"
+            >
+              <Pencil size={13} />
+            </button>
+            <button
+              type="button"
+              aria-label="この出入国を削除"
+              onClick={onRemove}
+              className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-seal"
+            >
+              <Trash2 size={13} />
+            </button>
+          </span>
         )}
       </div>
       <div className="flex flex-wrap items-center gap-1.5 text-xs">
