@@ -559,7 +559,9 @@ export function WorkerDetail({
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              {/* スマホでは写真の横は狭いので、ここには生年月日・性別だけを置き、
+                  縦に積む（横に並べると項目名が折り返してぎゅっと詰まる） */}
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <CardItem
                   label="生年月日 DATE OF BIRTH"
                   value={
@@ -585,20 +587,58 @@ export function WorkerDetail({
                   edit={selectInput("gender", ["男", "女"], true)}
                 />
               </div>
-              <CardItem
-                label="国籍・地域 NATIONALITY/REGION"
-                value={worker.nationality}
-                edit={textInput("nationality", "例: ベトナム", true)}
-              />
-              <CardItem
-                label="住居地 ADDRESS"
-                value={worker.address}
-                edit={textInput("address", "例: 熊本県熊本市中央区◯◯1-2-3", true)}
-              />
-              {/* 住所の下に住所歴（転入日ごと）。最新はそのまま住居地へ反映される */}
-              <WorkerAddressHistory workerId={worker.id} canEdit={canEdit} embedded />
+            </div>
 
-              <div className="grid grid-cols-2 gap-2">
+            {/* 右: 顔写真。下にID・Messenger・Notion */}
+            <div className="flex w-[104px] shrink-0 flex-col items-center gap-1">
+              <WorkerPhoto
+                workerId={worker.id}
+                photoPath={worker.photo_path}
+                canEdit={canEdit}
+                size={96}
+              />
+              {worker.worker_code && (
+                <span className="text-xs font-bold text-brand">ID {worker.worker_code}</span>
+              )}
+              {worker.messenger_link && (
+                <a
+                  href={messengerWebUrl(worker.messenger_link)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-brand"
+                >
+                  <MessageCircle size={12} />
+                  Messenger
+                </a>
+              )}
+              {worker.notion_link && (
+                <a
+                  href={notionAppUrl(worker.notion_link)}
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-brand"
+                >
+                  <ExternalLink size={12} />
+                  Notion
+                </a>
+              )}
+            </div>
+          </div>
+
+          {/* 写真の下からは横幅いっぱいに使う（スマホで潰れないように） */}
+          <div className="mt-2 flex flex-col gap-2">
+            <CardItem
+              label="国籍・地域 NATIONALITY/REGION"
+              value={worker.nationality}
+              edit={textInput("nationality", "例: ベトナム", true)}
+            />
+            <CardItem
+              label="住居地 ADDRESS"
+              value={worker.address}
+              edit={textInput("address", "例: 熊本県熊本市中央区◯◯1-2-3", true)}
+            />
+            {/* 住所の下に住所歴（転入日ごと）。最新はそのまま住居地へ反映される */}
+            <WorkerAddressHistory workerId={worker.id} canEdit={canEdit} embedded />
+
+            <div className="grid grid-cols-2 gap-2">
                 <CardItem
                   label="在留資格 STATUS"
                   value={worker.residence_status}
@@ -650,40 +690,6 @@ export function WorkerDetail({
                 }
                 edit={textInput("residence_card_no", "AB12345678CD", true)}
               />
-            </div>
-
-            {/* 右: 顔写真。下にID・Messenger・Notion */}
-            <div className="flex w-[104px] shrink-0 flex-col items-center gap-1">
-              <WorkerPhoto
-                workerId={worker.id}
-                photoPath={worker.photo_path}
-                canEdit={canEdit}
-                size={96}
-              />
-              {worker.worker_code && (
-                <span className="text-xs font-bold text-brand">ID {worker.worker_code}</span>
-              )}
-              {worker.messenger_link && (
-                <a
-                  href={messengerWebUrl(worker.messenger_link)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-[11px] font-bold text-brand"
-                >
-                  <MessageCircle size={12} />
-                  Messenger
-                </a>
-              )}
-              {worker.notion_link && (
-                <a
-                  href={notionAppUrl(worker.notion_link)}
-                  className="inline-flex items-center gap-1 text-[11px] font-bold text-brand"
-                >
-                  <ExternalLink size={12} />
-                  Notion
-                </a>
-              )}
-            </div>
           </div>
         </div>
         {saveBar}
@@ -706,45 +712,48 @@ export function WorkerDetail({
                 写真は在留カードの欄（ここはイメージ）
               </span>
             </div>
+            {/* スマホで潰れないよう、写真の横は名・番号だけを縦に置く */}
             <div className="flex min-w-0 flex-1 flex-col gap-2">
-              <div className="grid grid-cols-2 gap-2">
-                {/* 氏名は在留カードの欄と同じもの（直すときは在留カードの欄で） */}
-                <CardItem label="名 NAME" value={worker.name} />
-                <CardItem
-                  label="番号 PASSPORT NO."
-                  value={
-                    worker.passport_no ? (
-                      <span className="tabular-nums tracking-wider">{worker.passport_no}</span>
-                    ) : (
-                      ""
-                    )
-                  }
-                  edit={textInput("passport_no", "例: C1234567", true)}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <CardItem label="国籍 NATIONALITY" value={worker.nationality} />
-                <CardItem
-                  label="有効期限 DATE OF EXPIRY"
-                  value={worker.passport_expiry_date}
-                  edit={dateInput("passport_expiry_date", true)}
-                />
-              </div>
-              {/* 国によって書き方が違うが、パスポートの PLACE OF BIRTH を母国の住所として記録する */}
+              {/* 氏名は在留カードの欄と同じもの（直すときは在留カードの欄で） */}
+              <CardItem label="名 NAME" value={worker.name} />
               <CardItem
-                label="PLACE OF BIRTH（母国の住所）"
-                value={worker.home_address}
-                edit={textareaInput(
-                  "home_address",
-                  "例: KRATIE ／ Số 12, Thôn A, Tỉnh Nghệ An, Việt Nam",
-                  true,
-                )}
+                label="番号 PASSPORT NO."
+                value={
+                  worker.passport_no ? (
+                    <span className="tabular-nums tracking-wider">{worker.passport_no}</span>
+                  ) : (
+                    ""
+                  )
+                }
+                edit={textInput("passport_no", "例: C1234567", true)}
               />
-              <p className="text-[10px] leading-relaxed text-muted">
-                パスポートのPLACE OF BIRTH（出生地）を母国の住所として記録します。
-                実際の住所と違う場合は「編集」でここを直してください。
-              </p>
             </div>
+          </div>
+
+          {/* 写真の下からは横幅いっぱいに使う */}
+          <div className="mt-2 flex flex-col gap-2">
+            <div className="grid grid-cols-2 gap-2">
+              <CardItem label="国籍 NATIONALITY" value={worker.nationality} />
+              <CardItem
+                label="有効期限 DATE OF EXPIRY"
+                value={worker.passport_expiry_date}
+                edit={dateInput("passport_expiry_date", true)}
+              />
+            </div>
+            {/* 国によって書き方が違うが、パスポートの PLACE OF BIRTH を母国の住所として記録する */}
+            <CardItem
+              label="PLACE OF BIRTH（母国の住所）"
+              value={worker.home_address}
+              edit={textareaInput(
+                "home_address",
+                "例: KRATIE ／ Số 12, Thôn A, Tỉnh Nghệ An, Việt Nam",
+                true,
+              )}
+              />
+            <p className="text-[10px] leading-relaxed text-muted">
+              パスポートのPLACE OF BIRTH（出生地）を母国の住所として記録します。
+              実際の住所と違う場合は「編集」でここを直してください。
+            </p>
           </div>
 
           {/* 下部: 実物と同じくMRZ（2行）。貼り付けて読み取り、上の項目へ反映できる */}
