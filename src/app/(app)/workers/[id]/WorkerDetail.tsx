@@ -82,7 +82,7 @@ import {
   workerFieldString,
 } from "@/lib/worker-inline-edit";
 import { RESIDENCE_PERIODS } from "@/lib/residence-card";
-import { WORKER_SITUATIONS, situationDescription } from "@/lib/worker-situation";
+import { WORKER_SITUATIONS, autoSituation, situationDescription } from "@/lib/worker-situation";
 import { isCountedHistory, type WorkHistory } from "@/types/ssw";
 import type { Application } from "@/types/application";
 import {
@@ -175,6 +175,16 @@ export function WorkerDetail({
     : "未所属";
   // 所属機関の支援責任者・支援担当者。会社・機関マスタで登録する
   const orgStaff = orgStaffLabel(currentOrg?.intake);
+
+  // 現在の所属機関の雇用開始日（所属機関別の記録を優先し、無ければ既存の雇用開始年月日）
+  const currentOrgStart =
+    (worker.org_employment_starts ?? []).find(
+      (s) => s.organization_id === worker.current_organization_id && s.start_on,
+    )?.start_on ||
+    worker.employment_start_on ||
+    "";
+  // 只今の状況が未入力のときに自動で表示する内容（現在のビザ＋いちばん新しい申請の審査中/許可）
+  const autoSituationValue = autoSituation(worker.residence_status, applications[0] ?? null);
 
   // 特定技能総合保険の負担区分（現在の所属機関の設定）。
   // 外国人負担の場合は、本人が自己負担加入を希望したときだけリンク先・有効期限を表示する
@@ -809,6 +819,13 @@ export function WorkerDetail({
                     </span>
                   )}
                 </>
+              ) : autoSituationValue ? (
+                <>
+                  {autoSituationValue}
+                  <span className="block text-[11px] font-normal text-muted">
+                    在留資格と申請の状況から自動で表示しています（編集で上書きできます）
+                  </span>
+                </>
               ) : (
                 ""
               )
@@ -836,6 +853,37 @@ export function WorkerDetail({
                   </span>
                 </>
               ) : undefined
+            }
+          />
+          {/* 只今の状況 → 現在の所属機関 → 雇用開始日 → 状態・支援区分 の順で表示する */}
+          <InfoItem
+            label="現在の所属機関"
+            value={worker.current_organization_id ? orgName : canEdit ? "" : "未所属"}
+            edit={
+              showInput("current_organization_id") ? (
+                <select
+                  value={val("current_organization_id")}
+                  onChange={(e) => setField("current_organization_id", e.target.value)}
+                  className={inputCls()}
+                >
+                  <option value="">未所属</option>
+                  {organizations.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}
+                    </option>
+                  ))}
+                </select>
+              ) : undefined
+            }
+          />
+          <InfoItem
+            label="雇用開始日（現在の所属機関）"
+            value={
+              currentOrgStart || (
+                <span className="text-xs text-muted">
+                  未登録（下の「雇用開始日（所属機関別）」で追加できます）
+                </span>
+              )
             }
           />
           {/* 状態・支援区分（上部のバッジと同じもの）。「編集」でここから直せる */}
@@ -886,26 +934,6 @@ export function WorkerDetail({
                 <div className="mt-0.5">
                   <FieldJobSelect field={val("field")} onChange={(v) => setField("field", v)} />
                 </div>
-              ) : undefined
-            }
-          />
-          <InfoItem
-            label="現在の所属機関"
-            value={worker.current_organization_id ? orgName : canEdit ? "" : "未所属"}
-            edit={
-              showInput("current_organization_id") ? (
-                <select
-                  value={val("current_organization_id")}
-                  onChange={(e) => setField("current_organization_id", e.target.value)}
-                  className={inputCls()}
-                >
-                  <option value="">未所属</option>
-                  {organizations.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.name}
-                    </option>
-                  ))}
-                </select>
               ) : undefined
             }
           />
