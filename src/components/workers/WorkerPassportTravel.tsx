@@ -20,10 +20,12 @@ import {
   registerPassportFile,
 } from "@/app/(app)/workers/passport-file-actions";
 import {
+  buildTrips,
   formatStayDays,
-  isStayingInJapan,
-  japanStayDays,
-  travelSummary,
+  isTripStayingInJapan,
+  tripStayDays,
+  tripsSummary,
+  type Trip,
   type WorkerTravel,
 } from "@/lib/worker-travel";
 import { dbErrorMessage } from "@/lib/errors";
@@ -102,18 +104,30 @@ export function WorkerPassportTravel({
     }
   };
 
-  const removeTravel = async (t: WorkerTravel) => {
-    if (!window.confirm("この出入国の記録を削除します。よろしいですか？")) return;
+  // 往復（1回目・2回目…）は表示のたびに日付から自動で組み立てる
+  const trips = buildTrips(travels);
+  const summary = tripsSummary(trips);
+
+  // 往復の削除 = その往復に含まれる記録（スタンプの日付）をまとめて削除
+  const removeTrip = async (t: Trip) => {
+    if (t.sourceIds.length === 0) return;
+    if (
+      !window.confirm(
+        `この往復に含まれる出入国の記録${t.sourceIds.length}件を削除します。よろしいですか？`,
+      )
+    ) {
+      return;
+    }
     setError(null);
     try {
-      await deleteWorkerTravel(createClient(), t.id);
-      setTravels((prev) => prev.filter((x) => x.id !== t.id));
+      for (const id of t.sourceIds) {
+        await deleteWorkerTravel(createClient(), id);
+      }
+      await loadTravels();
     } catch (err) {
       setError(err instanceof Error ? err.message : "削除に失敗しました");
     }
   };
-
-  const summary = travelSummary(travels);
 
   // ---- スタンプページの添付 ----
   const [files, setFiles] = useState<WorkerPassportFileRow[]>([]);
@@ -183,8 +197,10 @@ export function WorkerPassportTravel({
         出入国の記録（パスポートのスタンプ）
       </h2>
       <p className="mb-3 text-[11px] leading-relaxed text-muted">
-        パスポートのスタンプの日付を1往復ずつ記録すると、出入国の回数と流れが図で出ます。
-        スタンプのページはPDF・画像でそのまま保存できます（添付した日付は自動で残ります）。
+        パスポートのスタンプの日付を入れると、時系列に並べて自動で1往復（1回目・2回目…）に
+        まとまります。母国出国〜母国入国が分かればその区切り、母国のスタンプが無ければ
+        日本入国〜日本出国で1回と数えます。スタンプ1個ずつ入れても、まとめて入れても構いません。
+        パスポートの記録はPDF・画像でそのまま保存できます（添付した日付は自動で残ります）。
       </p>
 
       {error && (
@@ -194,7 +210,7 @@ export function WorkerPassportTravel({
       )}
 
       {/* まとめ（回数と今の居場所） */}
-      {travels.length > 0 && (
+      {trips.length > 0 && (
         <p className="mb-2 text-sm font-bold">
           日本入国 {summary.entries}回
           <span
@@ -207,21 +223,22 @@ export function WorkerPassportTravel({
         </p>
       )}
 
-      {/* 出入国の流れ（1往復＝1段） */}
-      {travels.length === 0 ? (
+      {/* 出入国の流れ（1往復＝1段。日付から自動でまとめる） */}
+      {trips.length === 0 ? (
         <p className="mb-3 rounded-xl bg-background p-4 text-center text-xs text-muted">
           まだ出入国の記録がありません。スタンプの日付を下から追加してください。
         </p>
       ) : (
         <div className="mb-3 flex flex-col gap-2">
-          {travels.map((t, i) => (
+          {trips.map((t, i) => (
             <TripFlow
-              key={t.id}
+              key={t.sourceIds.join("-") || i}
               t={t}
               index={i}
+              isLast={i === trips.length - 1}
               today={today}
               canEdit={canEdit}
-              onRemove={() => void removeTravel(t)}
+              onRemove={() => void removeTrip(t)}
             />
           ))}
         </div>
@@ -369,22 +386,24 @@ export function WorkerPassportTravel({
 }
 
 // 1往復ぶんの流れの図: 母国出国 ─✈→ 日本入国 〜 日本出国 ─✈→ 母国入国。
-// まだ日本にいるときは「日本滞在中（約◯年◯か月）」で止める
+// まだ日本にいるとき（いちばん新しい往復のみ）は「日本滞在中（約◯年◯か月）」で止める
 function TripFlow({
   t,
   index,
+  isLast,
   today,
   canEdit,
   onRemove,
 }: {
-  t: WorkerTravel;
+  t: Trip;
   index: number;
+  isLast: boolean;
   today: string;
   canEdit: boolean;
   onRemove: () => void;
 }) {
-  const staying = isStayingInJapan(t);
-  const days = japanStayDays(t, today);
+  const staying = isLast && isTripStayingInJapan(t);
+  const days = tripStayDays(t, today, isLast);
   return (
     <div
       className={`rounded-xl border p-2.5 ${
