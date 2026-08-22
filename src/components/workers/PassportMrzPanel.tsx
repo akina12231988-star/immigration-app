@@ -10,7 +10,8 @@ import { mrzCopyItems, mrzToWorkerFields, parseMrz, type MrzResult } from "@/lib
 //
 // 貼り付け → 解析結果を確認 → 「この内容を反映」の順にする。
 // 確認せずに入ることは無い。読み取れなかった項目は空のままにし、推測で埋めない。
-// 貼り付けた文字はこのパネルの中だけで持ち、保存も送信もしない。
+// 反映するとMRZの2行も一緒に保存され（0095）、保存後はパスポート枠の
+// コピー候補（SavedMrzCopyList）からいつでも写せる。
 export function PassportMrzPanel({
   today,
   onApply,
@@ -20,19 +21,6 @@ export function PassportMrzPanel({
 }) {
   const [text, setText] = useState("");
   const [result, setResult] = useState<MrzResult | null>(null);
-  // どの項目をコピーしたか（押した合図を少しの間だけ出す）
-  const [copied, setCopied] = useState<string | null>(null);
-
-  // 押した項目をクリップボードへ入れる（コピー以外の保存・送信はしない）
-  const copy = async (label: string, value: string) => {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(label);
-      setTimeout(() => setCopied(null), 1800);
-    } catch {
-      /* クリップボードが使えないときは、文字を選んでコピーしてもらう */
-    }
-  };
 
   const read = () => setResult(parseMrz(text, today));
 
@@ -51,7 +39,8 @@ export function PassportMrzPanel({
         パスポートの写真のページ下部にある2行（英数字と
         <span className="font-bold">&lt;</span>
         が並んだところ）を貼り付けてください。改行・空白・全角はこちらでそろえます。
-        読み取った内容を確かめてから反映します。貼り付けた内容は保存されません（読み取りにだけ使います）。
+        読み取った内容を確かめてから反映します。反映して保存すると、MRZの2行も保存され、
+        パスポートの欄からいつでも項目ごとにコピーできるようになります。
       </p>
 
       <textarea
@@ -81,43 +70,9 @@ export function PassportMrzPanel({
 
       {result?.ok && (
         <div className="mt-3">
-          {/* 試験の申込などに写せるよう、2行と読み取れた項目をコピーできるようにする。
-              行はそのまま選べるので、必要なところだけドラッグして部分的にコピーもできる */}
-          <p className="mb-1.5 text-xs font-bold">コピーする（特定技能試験の申込などに）</p>
-          <p className="mb-1.5 text-[11px] leading-relaxed text-muted">
-            「コピー」を押すとその項目をまるごと写します。
-            2行はそのまま選べるので、必要なところだけなぞって部分的にコピーもできます。
-          </p>
-          <ul className="mb-3 flex flex-col gap-1">
-            {mrzCopyItems(result).map((item) => (
-              <li
-                key={item.label}
-                className="flex items-center gap-2 rounded-lg border border-border bg-background px-2.5 py-1.5"
-              >
-                <span className="w-[104px] shrink-0 text-[11px] font-bold text-muted">
-                  {item.label}
-                </span>
-                <span
-                  className={`min-w-0 flex-1 select-text overflow-x-auto whitespace-pre text-xs ${
-                    item.mono ? "font-mono" : "font-bold"
-                  }`}
-                >
-                  {item.value}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => void copy(item.label, item.value)}
-                  aria-label={`${item.label}をコピー`}
-                  className="flex min-h-[30px] shrink-0 items-center gap-1 rounded-lg border border-border px-2 text-[11px] font-bold text-brand"
-                >
-                  {copied === item.label ? <Check size={12} /> : <Copy size={12} />}
-                  {copied === item.label ? "コピーしました" : "コピー"}
-                </button>
-              </li>
-            ))}
-          </ul>
+          <MrzCopyList result={result} />
 
-          <p className="mb-1.5 text-xs font-bold">読み取り結果</p>
+          <p className="mb-1.5 mt-3 text-xs font-bold">読み取り結果</p>
           {result.invalidChecks.length > 0 && (
             <p
               role="alert"
@@ -154,6 +109,75 @@ export function PassportMrzPanel({
           </Button>
         </div>
       )}
+    </div>
+  );
+}
+
+// 保存済みのMRZ（workers.passport_mrz）からコピー候補を出す。
+// 表示のたびに2行を解析するので、読み取り結果の各項目は別に保存しない
+export function SavedMrzCopyList({ mrz, today }: { mrz: string; today: string }) {
+  const result = parseMrz(mrz, today);
+  if (!result.ok) return null; // 形が崩れて解析できないときは何も出さない
+  return (
+    <MrzCopyList
+      result={result}
+      note="保存済みのMRZから組み立てています。パスポートを変えたときは下の「MRZを貼り付けて読み取る」で入れ直してください。"
+    />
+  );
+}
+
+// 読み取り結果の項目ごとのコピー一覧（2行そのもの・番号・姓名・生年月日など）。
+// 試験（プロメトリック）の申込などに写す用
+function MrzCopyList({ result, note }: { result: MrzResult; note?: string }) {
+  // どの項目をコピーしたか（押した合図を少しの間だけ出す）
+  const [copied, setCopied] = useState<string | null>(null);
+
+  // 押した項目をクリップボードへ入れる（コピー以外の保存・送信はしない）
+  const copy = async (label: string, value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(label);
+      setTimeout(() => setCopied(null), 1800);
+    } catch {
+      /* クリップボードが使えないときは、文字を選んでコピーしてもらう */
+    }
+  };
+
+  return (
+    <div>
+      <p className="mb-1.5 text-xs font-bold">コピーする（特定技能試験の申込などに）</p>
+      <p className="mb-1.5 text-[11px] leading-relaxed text-muted">
+        {note ??
+          "「コピー」を押すとその項目をまるごと写します。2行はそのまま選べるので、必要なところだけなぞって部分的にコピーもできます。"}
+      </p>
+      <ul className="flex flex-col gap-1">
+        {mrzCopyItems(result).map((item) => (
+          <li
+            key={item.label}
+            className="flex items-center gap-2 rounded-lg border border-border bg-background px-2.5 py-1.5"
+          >
+            <span className="w-[104px] shrink-0 text-[11px] font-bold text-muted">
+              {item.label}
+            </span>
+            <span
+              className={`min-w-0 flex-1 select-text overflow-x-auto whitespace-pre text-xs ${
+                item.mono ? "font-mono" : "font-bold"
+              }`}
+            >
+              {item.value}
+            </span>
+            <button
+              type="button"
+              onClick={() => void copy(item.label, item.value)}
+              aria-label={`${item.label}をコピー`}
+              className="flex min-h-[30px] shrink-0 items-center gap-1 rounded-lg border border-border px-2 text-[11px] font-bold text-brand"
+            >
+              {copied === item.label ? <Check size={12} /> : <Copy size={12} />}
+              {copied === item.label ? "コピーしました" : "コピー"}
+            </button>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

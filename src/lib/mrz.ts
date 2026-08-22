@@ -236,7 +236,9 @@ export function mrzCopyItems(result: MrzResult): MrzCopyItem[] {
 }
 
 // 読み取り結果から、外国人フォームに入れる値を組み立てる（空の項目は入れない）。
-// 氏名は在留カード・申請書と同じ「姓 名」の並びにする
+// 氏名は在留カード・申請書と同じ「姓 名」の並びにする。
+// MRZの2行も一緒に入れて保存する（0095）。保存しておくと、外国人詳細の
+// パスポート枠でいつでも項目ごとにコピーできる（プロメトリック申込の転記用）
 export function mrzToWorkerFields(result: MrzResult): Record<string, string> {
   const fields: Record<string, string> = {};
   const name = [result.surname, result.givenNames].filter(Boolean).join(" ");
@@ -246,5 +248,6 @@ export function mrzToWorkerFields(result: MrzResult): Record<string, string> {
   if (result.birth) fields.birth = result.birth;
   if (result.sex) fields.gender = result.sex;
   if (result.expiry) fields.passport_expiry_date = result.expiry;
+  if (result.line1 && result.line2) fields.passport_mrz = `${result.line1}\n${result.line2}`;
   return fields;
 }

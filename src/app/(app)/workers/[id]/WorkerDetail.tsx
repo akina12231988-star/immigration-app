@@ -51,7 +51,7 @@ import {
   RelativesEditor,
 } from "@/components/workers/WorkerForm";
 import { ResidenceCardDialog } from "@/components/workers/ResidenceCardDialog";
-import { PassportMrzPanel } from "@/components/workers/PassportMrzPanel";
+import { PassportMrzPanel, SavedMrzCopyList } from "@/components/workers/PassportMrzPanel";
 import {
   HistoryFormDialog,
   type HistoryFormValues,
@@ -283,8 +283,8 @@ export function WorkerDetail({
       setApplied(null);
       router.refresh();
     } catch (err) {
-      // 只今の状況（0093）など、列が無いときは何を適用すればよいか案内する
-      setError(dbErrorMessage(err, "0093_worker_current_situation.sql", "保存に失敗しました"));
+      // パスポートMRZ（0095）など、列が無いときは何を適用すればよいか案内する
+      setError(dbErrorMessage(err, "0095_worker_passport_mrz.sql", "保存に失敗しました"));
     } finally {
       setSaveBusy(false);
     }
@@ -778,16 +778,38 @@ export function WorkerDetail({
             </p>
           </div>
 
-          {/* 下部: 実物と同じくMRZ（2行）。貼り付けて読み取り、上の項目へ反映できる */}
+          {/* 下部: 実物と同じくMRZ（2行）。
+              保存済みならコピー候補を常に出し（消えない）、読み取りの入力はたたんでおく */}
           <div className="mt-3 border-t border-border pt-2">
-            <p className="mb-1.5 text-[10px] font-bold text-muted">MRZ（下2行）から入力</p>
+            <p className="mb-1.5 text-[10px] font-bold text-muted">MRZ（下2行）</p>
+            {worker.passport_mrz && (
+              <div className="mb-2">
+                <SavedMrzCopyList mrz={worker.passport_mrz} today={today} />
+              </div>
+            )}
             {canEdit ? (
-              <PassportMrzPanel
-                today={today}
-                onApply={(fields) => requestApply("パスポートMRZ", fields)}
-              />
+              worker.passport_mrz ? (
+                <details className="rounded-lg border border-border bg-surface px-3 py-2">
+                  <summary className="cursor-pointer text-[11px] font-bold text-brand">
+                    MRZを貼り付けて読み取る（入れ直すとき）
+                  </summary>
+                  <div className="mt-2">
+                    <PassportMrzPanel
+                      today={today}
+                      onApply={(fields) => requestApply("パスポートMRZ", fields)}
+                    />
+                  </div>
+                </details>
+              ) : (
+                <PassportMrzPanel
+                  today={today}
+                  onApply={(fields) => requestApply("パスポートMRZ", fields)}
+                />
+              )
             ) : (
-              <p className="text-[11px] text-muted">閲覧のみのため使えません。</p>
+              !worker.passport_mrz && (
+                <p className="text-[11px] text-muted">保存されたMRZはありません。</p>
+              )
             )}
           </div>
         </div>
