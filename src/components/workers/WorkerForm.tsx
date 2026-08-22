@@ -8,6 +8,7 @@ import { ResidenceCardDialog } from "@/components/workers/ResidenceCardDialog";
 import { PassportMrzDialog } from "@/components/workers/PassportMrzDialog";
 import { filledFieldCount, overwrittenFields, type FieldChange } from "@/lib/field-overwrite";
 import { RESIDENCE_PERIODS } from "@/lib/residence-card";
+import { WORKER_SITUATIONS, situationDescription } from "@/lib/worker-situation";
 import { todayStr } from "@/lib/application-alerts";
 import { Combobox } from "@/components/ui/Combobox";
 import { createClient } from "@/lib/supabase/client";
@@ -46,6 +47,7 @@ function toInput(w: Worker | null): WorkerInput {
     passport_no: w?.passport_no ?? "",
     passport_expiry_date: w?.passport_expiry_date ?? null,
     residence_period: w?.residence_period ?? "",
+    current_situation: w?.current_situation ?? "",
     notion_link: w?.notion_link ?? "",
     residence_renewal_status: w?.residence_renewal_status ?? "",
     residence_renewal_todo: w?.residence_renewal_todo ?? "",
@@ -373,6 +375,27 @@ export function WorkerForm({
             </select>
           </Field>
         </div>
+        {/* 只今の状況（経過メモ）。Notionの只今の状況と同じ選択肢＋自由入力 */}
+        <Field label="只今の状況（経過メモ）">
+          <input
+            list="worker-form-situations"
+            value={form.current_situation}
+            onChange={(e) => set("current_situation", e.target.value)}
+            placeholder="例: 特定技能の審査中"
+            className={INPUT_CLASS}
+          />
+          <datalist id="worker-form-situations">
+            {WORKER_SITUATIONS.map((s) => (
+              <option key={s.value} value={s.value} />
+            ))}
+          </datalist>
+          {/* どういう人に付ける状況かを添える（説明のある選択肢だけ） */}
+          {situationDescription(form.current_situation) && (
+            <span className="px-1 text-[11px] leading-relaxed text-muted">
+              {situationDescription(form.current_situation)}
+            </span>
+          )}
+        </Field>
         {form.status === "退職" && (
           <div className="grid grid-cols-2 gap-2.5 rounded-xl bg-background p-3">
             <Field label="退職日">

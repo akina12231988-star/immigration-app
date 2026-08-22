@@ -17,9 +17,14 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useApplications } from "@/lib/application-store";
+import { createClient } from "@/lib/supabase/client";
 import { uploadApplicationFile } from "@/lib/application-files";
 import { findApplicationsByNumber } from "@/lib/application-number";
-import { approvalPatch, canMarkApproved } from "@/lib/application-approval";
+import {
+  advanceSituationOnApproval,
+  approvalPatch,
+  canMarkApproved,
+} from "@/lib/application-approval";
 import { todayStr } from "@/lib/application-alerts";
 import type { Application } from "@/types/application";
 
@@ -71,6 +76,8 @@ export function NoticeSearch() {
     setError(null);
     try {
       await updateApplication(result.id, approvalPatch(todayStr()));
+      // 特定技能の更新の許可なら、外国人の只今の状況を「更新」に進める（＜支援委託中＞は残す）
+      await advanceSituationOnApproval(createClient(), result.workerId);
       setApproved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存に失敗しました");

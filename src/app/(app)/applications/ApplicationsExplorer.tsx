@@ -30,7 +30,11 @@ import { listPrepStatuses, type PrepStatus } from "@/lib/supabase/queries/prep-s
 import { upsertPrepTantou } from "@/lib/supabase/queries/application-prep";
 import { PREP_TANTOU_OPTIONS } from "@/lib/application-prep";
 import { matchesApplicationTantou, tantouFilterOptions } from "@/lib/application-tantou";
-import { approvalPatch, canMarkApproved } from "@/lib/application-approval";
+import {
+  advanceSituationOnApproval,
+  approvalPatch,
+  canMarkApproved,
+} from "@/lib/application-approval";
 import { listPrepTantou } from "@/lib/supabase/queries/application-prep";
 import { notionAppUrl } from "@/lib/notion-link";
 import { useApplications } from "@/lib/application-store";
@@ -382,6 +386,8 @@ export function ApplicationsExplorer({
     setApproveBusy(true);
     try {
       await updateApplication(approveTarget.id, approvalPatch(TODAY));
+      // 特定技能の更新の許可なら、外国人の只今の状況を「更新」に進める（＜支援委託中＞は残す）
+      await advanceSituationOnApproval(createClient(), approveTarget.workerId);
       setApproveTarget(null);
     } finally {
       setApproveBusy(false);

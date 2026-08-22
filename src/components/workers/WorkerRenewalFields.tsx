@@ -4,13 +4,14 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
-import { updateWorker } from "@/lib/supabase/queries/workers";
+import { fetchWorkerSituationInfo, updateWorker } from "@/lib/supabase/queries/workers";
 import {
   listPrepChecklists,
   upsertPrepTantou,
   type PrepChecklistRow,
 } from "@/lib/supabase/queries/application-prep";
 import { PREP_TANTOU_OPTIONS } from "@/lib/application-prep";
+import { PREP_SITUATIONS, mergeSituation } from "@/lib/worker-situation";
 import { isPrepListTarget } from "@/lib/renewal-placeholders";
 import { dbErrorMessage } from "@/lib/errors";
 import {
@@ -43,6 +44,7 @@ export type RenewalFieldsWorker = Pick<
   current_organization_id?: string | null;
   application_prep_organization_id?: string | null;
   application_prep_kind?: string | null;
+  current_situation?: string | null; // 只今の状況（準備の内容の初期値に使う。0093）
 };
 
 const INPUT =
@@ -90,6 +92,12 @@ export function WorkerRenewalFields({
     worker.application_prep_organization_id ?? worker.current_organization_id ?? "",
   );
   const [isNewPrep, setIsNewPrep] = useState(worker.application_prep_kind === "新規");
+  // 準備の内容（対応状況が「準備中」のとき）。保存すると外国人の「只今の状況」に入る
+  const [prepSituation, setPrepSituation] = useState(() =>
+    worker.current_situation && PREP_SITUATIONS.includes(worker.current_situation)
+      ? worker.current_situation
+      : "",
+  );
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -152,6 +160,14 @@ export function WorkerRenewalFields({
     setBusy(true);
     setError(null);
     try {
+      // 只今の状況に入れる値。支援対象かつ在籍中の「特定技能1号＜支援委託中＞」は外さず併記する
+      const situation =
+        status === "準備中" && prepSituation
+          ? mergeSituation(
+              prepSituation,
+              await fetchWorkerSituationInfo(createClient(), worker.id),
+            )
+          : "";
       await updateWorker(createClient(), worker.id, {
         residence_renewal_todo: todo.trim(),
         residence_renewal_status: status,
@@ -161,6 +177,8 @@ export function WorkerRenewalFields({
         // 所属機関を選べる画面のときだけ保存する
         ...(organizations ? { application_prep_organization_id: prepOrgId || null } : {}),
         ...(showPrepKind ? { application_prep_kind: isNewPrep ? "新規" : "" } : {}),
+        // 準備の内容を選んでいれば、外国人の「只今の状況」にも入れる
+        ...(situation ? { current_situation: situation } : {}),
       });
       // 担当者はTODO番号の準備リストへ保存（選択済み、またはリストが既にある場合のみ）
       const todoNo = todo.trim();
@@ -238,6 +256,30 @@ export function WorkerRenewalFields({
           ))}
         </select>
       </label>
+      {/* 準備中のときは、どの準備かを選ぶ。保存すると外国人詳細の「只今の状況」に入る */}
+      {status === "準備中" && (
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-bold text-muted">準備の内容（只今の状況）</span>
+          <select
+            value={prepSituation}
+            onChange={(e) => {
+              setPrepSituation(e.target.value);
+              setSaved(false);
+            }}
+            className={INPUT}
+          >
+            <option value="">未選択（只今の状況は変えない）</option>
+            {PREP_SITUATIONS.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+          <span className="text-[11px] text-muted">
+            保存すると外国人詳細の「只今の状況」に入り、「Notionに登録／更新」でNotionにも反映できます。
+          </span>
+        </label>
+      )}
       {showTantou && (
         <label className="flex flex-col gap-1">
           <span className="text-[11px] font-bold text-muted">

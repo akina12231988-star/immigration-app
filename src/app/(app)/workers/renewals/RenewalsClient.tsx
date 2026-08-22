@@ -17,7 +17,12 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Combobox } from "@/components/ui/Combobox";
 import { createClient } from "@/lib/supabase/client";
-import { insertWorker, updateWorker, type WorkerWithOrg } from "@/lib/supabase/queries/workers";
+import {
+  fetchWorkerSituationInfo,
+  insertWorker,
+  updateWorker,
+  type WorkerWithOrg,
+} from "@/lib/supabase/queries/workers";
 import { insertOrganization } from "@/lib/supabase/queries/organizations";
 import { upsertPrepTantou } from "@/lib/supabase/queries/application-prep";
 import { PREP_TANTOU_OPTIONS } from "@/lib/application-prep";
@@ -29,6 +34,7 @@ import { matchesWorkerName } from "@/lib/worker-search";
 import { NameSearchBox } from "@/components/ui/NameSearchBox";
 import { todayStr } from "@/lib/application-alerts";
 import { RESIDENCE_RENEWAL_STATUSES, type ResidenceRenewalStatus } from "@/types/db";
+import { PREP_SITUATIONS, mergeSituation } from "@/lib/worker-situation";
 import {
   WorkerRenewalCard,
   RENEWAL_STATUS_LABEL as STATUS_LABEL,
@@ -362,6 +368,8 @@ function NewPrepForm({
   const [todo, setTodo] = useState("");
   const [orgId, setOrgId] = useState("");
   const [status, setStatus] = useState<ResidenceRenewalStatus>("準備中");
+  // 準備の内容。保存すると外国人の「只今の状況」に入る
+  const [prepSituation, setPrepSituation] = useState("");
   const [tantou, setTantou] = useState("");
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -448,12 +456,19 @@ function NewPrepForm({
     try {
       // この画面で氏名だけ登録した新規の人か（詳細入力への導線を出すため）
       const newWorker = extraWorkers.find((w) => w.id === workerId) ?? null;
+      // 只今の状況に入れる値。支援対象かつ在籍中の「特定技能1号＜支援委託中＞」は外さず併記する
+      const situation =
+        status === "準備中" && prepSituation
+          ? mergeSituation(prepSituation, await fetchWorkerSituationInfo(createClient(), workerId))
+          : "";
       await updateWorker(createClient(), workerId, {
         residence_renewal_todo: todo.trim(),
         residence_renewal_status: status,
         application_prep_kind: "新規",
         // 転職の場合の転職先。現在の所属機関は在留カード受領まで変えない
         application_prep_organization_id: orgId || null,
+        // 準備の内容を選んでいれば、外国人の「只今の状況」にも入れる
+        ...(situation ? { current_situation: situation } : {}),
       });
       // 担当者を選んだ場合は、TODO番号の準備リストに紐づけて保存する
       if (tantou) {
@@ -465,6 +480,7 @@ function NewPrepForm({
       setOrgId("");
       setTodo("");
       setStatus("準備中");
+      setPrepSituation("");
       setTantou("");
       router.refresh();
     } catch (err) {
@@ -575,6 +591,28 @@ function NewPrepForm({
           ))}
         </select>
       </label>
+
+      {/* 準備中のときは、どの準備かを選ぶ。追加すると外国人詳細の「只今の状況」に入る */}
+      {status === "準備中" && (
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-bold text-muted">準備の内容（只今の状況）</span>
+          <select
+            value={prepSituation}
+            onChange={(e) => setPrepSituation(e.target.value)}
+            className={INPUT_CLASS}
+          >
+            <option value="">未選択（只今の状況は変えない）</option>
+            {PREP_SITUATIONS.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+          <span className="text-[11px] text-muted">
+            追加すると外国人詳細の「只今の状況」に入ります。
+          </span>
+        </label>
+      )}
 
       <label className="flex flex-col gap-1">
         <span className="text-[11px] font-bold text-muted">担当者（未定でも可・あとから設定できます）</span>
