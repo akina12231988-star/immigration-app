@@ -43,6 +43,8 @@ import {
   requestKindLabel,
   type JudgmentRecord,
 } from "@/lib/tax-cert";
+import { isPrepListTarget } from "@/lib/renewal-placeholders";
+import { todayStr } from "@/lib/application-alerts";
 
 const INPUT =
   "min-h-[40px] rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none";
@@ -87,6 +89,10 @@ export function TodosClient({
   const [workers, setWorkers] = useState<{ id: string; label: string }[]>([]);
   const [jobFlows, setJobFlows] = useState<JobFlowRow[]>([]);
   const [mailings, setMailings] = useState<MailingSummary[]>([]);
+  // 申請一覧の「申請前＜準備中＞」に出ている人（申請準備のTODOにも新着として表示する）
+  const [prepWorkers, setPrepWorkers] = useState<
+    { workerId: string; name: string; todoNo: string; orgName: string }[]
+  >([]);
   const [kind, setKind] = useState<TodoKind>(fixedKind ?? "申請準備");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -147,6 +153,39 @@ export function TodosClient({
               })),
             );
           });
+        // 申請一覧の「申請前＜準備中＞」の人（同じ判定 isPrepListTarget）を新着として出す
+        void supabase
+          .from("workers")
+          .select(
+            "id, name, status, residence_expiry_date, residence_renewal_status, application_prep_kind, residence_renewal_todo, organizations(name)",
+          )
+          .eq("residence_renewal_status", "準備中")
+          .then(({ data: pw }) => {
+            const rows =
+              (pw as unknown as {
+                id: string;
+                name: string;
+                status: string;
+                residence_expiry_date: string | null;
+                residence_renewal_status: string;
+                application_prep_kind: string;
+                residence_renewal_todo: string | null;
+                organizations: { name: string } | null;
+              }[]) ?? [];
+            const today = todayStr();
+            setPrepWorkers(
+              rows
+                .filter((w) =>
+                  isPrepListTarget(w as Parameters<typeof isPrepListTarget>[0], today),
+                )
+                .map((w) => ({
+                  workerId: w.id,
+                  name: w.name,
+                  todoNo: w.residence_renewal_todo ?? "",
+                  orgName: w.organizations?.name ?? "",
+                })),
+            );
+          });
         // 郵送請求（判定記録）のTODO番号とリンクして、現在の状況を出す
         void supabase
           .from("judgment_records")
@@ -200,6 +239,24 @@ export function TodosClient({
         );
       });
   }, []);
+
+  // まだ申請準備のTODOに入っていない「申請前＜準備中＞」の人（外国人・番号のどちらでも重複を除く）
+  const prepPending = useMemo(() => {
+    const importedWorkers = new Set(
+      todos.filter((t) => t.kind === "申請準備" && t.worker_id).map((t) => t.worker_id),
+    );
+    const importedNos = new Set(
+      todos
+        .filter((t) => t.kind === "申請準備")
+        .map((t) => normalizeTodoKey(t.todo_no))
+        .filter(Boolean),
+    );
+    return prepWorkers.filter((w) => {
+      if (importedWorkers.has(w.workerId)) return false;
+      const key = normalizeTodoKey(w.todoNo);
+      return !(key && importedNos.has(key));
+    });
+  }, [prepWorkers, todos]);
 
   const kindOptions = useMemo(() => options.filter((o) => o.kind === kind), [options, kind]);
   const checkOptions = useMemo(
@@ -316,6 +373,77 @@ export function TodosClient({
           <Button icon={<Plus size={15} />} disabled={adding} onClick={() => void add()}>
             {adding ? "追加中…" : "TODOを追加"}
           </Button>
+        </Card>
+      )}
+
+      {/* 申請一覧の「申請前＜準備中＞」の人を新着として表示（まだTODOに入っていない人） */}
+      {kind === "申請準備" && !loading && prepPending.length > 0 && (
+        <Card className="border-brand/40 p-4">
+          <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-bold">
+              申請一覧の「申請前＜準備中＞」の人（{prepPending.length}件）
+            </p>
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() =>
+                  void run(async () => {
+                    for (const w of prepPending) {
+                      await insertTodo(createClient(), {
+                        kind: "申請準備",
+                        worker_id: w.workerId,
+                        title: "申請準備",
+                        todo_no: w.todoNo || undefined,
+                      }).catch(() => undefined);
+                    }
+                  })
+                }
+                className="rounded-lg bg-brand px-3 py-1.5 text-xs font-bold text-brand-foreground"
+              >
+                すべてTODOに取り込む
+              </button>
+            )}
+          </div>
+          <p className="mb-2 text-[11px] text-muted">
+            まだ申請準備のTODOに入っていない準備中の人です。取り込むと未着手のTODOになり、経過・訂正記録・郵送請求の状況などを管理できます（申請一覧のTODO番号をそのまま引き継ぎます）。
+          </p>
+          <div className="space-y-1">
+            {prepPending.map((w) => (
+              <div
+                key={w.workerId}
+                className="flex flex-wrap items-center gap-2 rounded-lg bg-background px-2 py-1.5 text-xs"
+              >
+                <span className="w-24 shrink-0 font-bold tabular-nums">
+                  {w.todoNo || "番号なし"}
+                </span>
+                <Link
+                  href={`/workers/${w.workerId}`}
+                  className="min-w-0 flex-1 truncate font-bold text-brand hover:underline"
+                >
+                  {w.name}
+                </Link>
+                <span className="truncate text-muted">{w.orgName}</span>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void run(async () => {
+                        await insertTodo(createClient(), {
+                          kind: "申請準備",
+                          worker_id: w.workerId,
+                          title: "申請準備",
+                          todo_no: w.todoNo || undefined,
+                        });
+                      })
+                    }
+                    className="shrink-0 rounded-lg border border-border px-2 py-1 text-[11px] font-bold text-brand"
+                  >
+                    取り込む
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
         </Card>
       )}
 

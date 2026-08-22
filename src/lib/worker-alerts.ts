@@ -77,9 +77,22 @@ export function isResidenceRenewalPending(w: AlertWorker, today: string): boolea
 }
 
 // パスポート更新必要: 有効期限まで半年（6か月）以内（または既に超過）。期限未登録は対象外。
-export function isPassportRenewalTarget(w: AlertWorker, today: string): boolean {
+export function isPassportRenewalTarget(
+  w: Pick<AlertWorker, "passport_expiry_date">,
+  today: string,
+): boolean {
   if (!w.passport_expiry_date) return false;
   return today >= addMonths(w.passport_expiry_date, -6);
+}
+
+// パスポート更新必要の一覧・メニューのアラートに出す人:
+// 現在も支援中（支援対象かつ在籍中）の人だけに絞る（退職者・支援対象外は出さない）
+export function isPassportRenewalListTarget(
+  w: Pick<Worker, "support" | "status" | "passport_expiry_date">,
+  today: string,
+): boolean {
+  if (w.support !== "支援対象" || w.status !== "在籍中") return false;
+  return isPassportRenewalTarget(w, today);
 }
 
 // 特定技能総合保険の更新必要: 有効期限まで1か月以内（または既に超過）。期限未登録は対象外。

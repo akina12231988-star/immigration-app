@@ -13,7 +13,7 @@ import {
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import type { WorkerWithOrg } from "@/lib/supabase/queries/workers";
-import { isPassportRenewalTarget, remainingLabel, daysUntil } from "@/lib/worker-alerts";
+import { isPassportRenewalListTarget, remainingLabel, daysUntil } from "@/lib/worker-alerts";
 import { todayStr } from "@/lib/application-alerts";
 import { passportGuide } from "@/lib/passport-guides";
 import { notionAppUrl } from "@/lib/notion-link";
@@ -24,7 +24,8 @@ export function PassportsClient({ workers }: { workers: WorkerWithOrg[] }) {
   const targets = useMemo(
     () =>
       workers
-        .filter((w) => isPassportRenewalTarget(w, today))
+        // 現在も支援中（支援対象かつ在籍中）の人だけに絞る
+        .filter((w) => isPassportRenewalListTarget(w, today))
         .sort((a, b) =>
           (a.passport_expiry_date ?? "").localeCompare(b.passport_expiry_date ?? ""),
         ),
@@ -35,7 +36,7 @@ export function PassportsClient({ workers }: { workers: WorkerWithOrg[] }) {
     <div className="space-y-4">
       <p className="flex items-start gap-1.5 text-xs leading-relaxed text-muted">
         <BookMarked size={14} className="mt-0.5 shrink-0" />
-        パスポート有効期限の半年前になった対象者です。国籍に応じた更新案内（日本語＋現地語）をコピーして、LINEやMessengerで本人に送れます。
+        パスポート有効期限の半年前になった、現在も支援中（支援対象・在籍中）の人です。国籍に応じた更新案内（日本語＋現地語）をコピーして、LINEやMessengerで本人に送れます。
       </p>
 
       <p className="text-sm font-bold text-muted">{targets.length}件</p>
