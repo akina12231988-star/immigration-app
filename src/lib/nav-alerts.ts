@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { isPassportRenewalTarget, type AlertWorker } from "@/lib/worker-alerts";
+import { isPassportRenewalListTarget } from "@/lib/worker-alerts";
 import { todayStr } from "@/lib/application-alerts";
 
 // メニューに出すアラート件数。
@@ -22,13 +22,18 @@ export function useNavAlerts(): NavAlerts {
     // テーブル未作成などで失敗しても、メニュー表示自体は影響を受けないよう握りつぶす
     void supabase
       .from("workers")
-      .select("status, passport_expiry_date")
+      .select("support, status, passport_expiry_date")
       .not("passport_expiry_date", "is", null)
       .then(({ data }) => {
         const rows =
-          (data as Pick<AlertWorker, "status" | "passport_expiry_date">[] | null) ?? [];
+          (data as { support: string; status: string; passport_expiry_date: string | null }[] | null) ??
+          [];
+        // 一覧（パスポート更新必要）と同じ判定: 現在も支援中の人だけ数える
         const count = rows.filter((w) =>
-          isPassportRenewalTarget(w as AlertWorker, today),
+          isPassportRenewalListTarget(
+            w as Parameters<typeof isPassportRenewalListTarget>[0],
+            today,
+          ),
         ).length;
         setAlerts((a) => ({ ...a, passports: count }));
       });
