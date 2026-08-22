@@ -5,11 +5,13 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  BookOpen,
   CalendarClock,
   Check,
   ChevronRight,
   ClipboardList,
   Copy,
+  CreditCard,
   ExternalLink,
   FileText,
   MessageCircle,
@@ -17,6 +19,8 @@ import {
   Plus,
   Printer,
   Trash2,
+  UserRound,
+  X,
 } from "lucide-react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { WorkerPhoto } from "@/components/workers/WorkerPhoto";
@@ -41,7 +45,13 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { WorkerForm } from "@/components/workers/WorkerForm";
+import {
+  FieldJobSelect,
+  IMPORT_FIELD_LABELS,
+  RelativesEditor,
+} from "@/components/workers/WorkerForm";
+import { ResidenceCardDialog } from "@/components/workers/ResidenceCardDialog";
+import { PassportMrzPanel } from "@/components/workers/PassportMrzPanel";
 import {
   HistoryFormDialog,
   type HistoryFormValues,
@@ -64,9 +74,24 @@ import {
 import { JobApplicationSection } from "@/components/workers/JobApplicationSection";
 import { warekiDate } from "@/lib/dependents";
 import { formatStorageNo } from "@/lib/custody";
+import { filledFieldCount, overwrittenFields, type FieldChange } from "@/lib/field-overwrite";
+import {
+  buildUpdatePayload,
+  changedFieldCount,
+  workerFieldString,
+} from "@/lib/worker-inline-edit";
+import { RESIDENCE_PERIODS } from "@/lib/residence-card";
 import { isCountedHistory, type WorkHistory } from "@/types/ssw";
 import type { Application } from "@/types/application";
-import type { Organization, WorkHistoryRow, WorkerInput, WorkerWithHistories } from "@/types/db";
+import {
+  RESIDENCE_STATUSES,
+  SUPPORT_SCOPES,
+  WORKER_STATUSES,
+  type Organization,
+  type WorkHistoryRow,
+  type WorkerRelative,
+  type WorkerWithHistories,
+} from "@/types/db";
 import type { ApplicationWithRefs } from "@/lib/supabase/queries/jobs";
 import type { PostingWithStats } from "@/lib/supabase/queries/postings";
 
@@ -88,7 +113,6 @@ export function WorkerDetail({
   canEdit: boolean;
 }) {
   const router = useRouter();
-  const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -97,13 +121,22 @@ export function WorkerDetail({
   const [historyBusy, setHistoryBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 申請準備などから「詳細を入力する」で #edit 付きで来たら編集モーダルを自動で開く。
+  // その場編集。「編集」を押すと表示中の欄がそのまま入力欄になり、「保存」で直接保存する。
+  // 下書き（draft）は項目名→入力中の文字列。保存時は現在の値から変わった項目だけ送る
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  // 在日親族は配列なので別で持つ（null = 触っていない）
+  const [relativesDraft, setRelativesDraft] = useState<WorkerRelative[] | null>(null);
+  const [saveBusy, setSaveBusy] = useState(false);
+  const [applied, setApplied] = useState<string | null>(null);
+
+  // 申請準備などから「詳細を入力する」で #edit 付きで来たら、その場編集を自動で始める。
   // location.hash は SSR では読めないため（遅延初期化はハイドレーション不整合になる）、
   // マウント後の一度きりの副作用で開く。
   useEffect(() => {
     if (canEdit && typeof window !== "undefined" && window.location.hash === "#edit") {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- ブラウザ専用APIからの初期化
-      setEditOpen(true);
+      setEditing(true);
     }
   }, [canEdit]);
 
@@ -153,74 +186,47 @@ export function WorkerDetail({
     [worker.work_histories],
   );
 
-  const handleUpdateWorker = async (input: WorkerInput) => {
-    // 顔写真は編集フォームの外（写真の枠）で登録するため、フォームが開いた時点の
-    // 古いパスで上書きしない。フォームを開いたまま写真を登録→保存すると消えてしまう
-    const { photo_path: _keepPhoto, ...rest } = input;
-    void _keepPhoto;
-    try {
-      await updateWorker(createClient(), worker.id, rest);
-    } catch (err) {
-      // 母国の住所（0091）など、列が無いときは何を適用すればよいか案内する
-      throw new Error(dbErrorMessage(err, "0092_worker_residence_card_fields.sql", "保存に失敗しました"));
-    }
-    setEditOpen(false);
-    router.refresh();
-  };
+  // ---- その場編集の入力欄 ----
 
-  // 未記入の欄をその場で入力して保存する下書き（編集モーダルを開かずに埋められる）。
-  // 入力済みの項目の修正は従来どおり「編集」から行う
-  const [draft, setDraft] = useState<Record<string, string>>({});
-  const [fillBusy, setFillBusy] = useState(false);
+  const workerRecord = worker as unknown as Record<string, unknown>;
+  const cur = (key: string) => workerFieldString(workerRecord, key);
+  const val = (key: string) => draft[key] ?? cur(key);
   const setField = (key: string, value: string) => setDraft((d) => ({ ...d, [key]: value }));
-  const filledEntries = Object.entries(draft).filter(([, v]) => v.trim() !== "");
-  const fillDirty = filledEntries.length > 0;
 
-  const saveFilled = async () => {
-    setFillBusy(true);
-    setError(null);
-    try {
-      const payload: Partial<WorkerInput> = {};
-      for (const [key, value] of filledEntries) {
-        (payload as Record<string, unknown>)[key] = value.trim();
-      }
-      await updateWorker(createClient(), worker.id, payload);
-      setDraft({});
-      router.refresh();
-    } catch (err) {
-      setError(dbErrorMessage(err, "0092_worker_residence_card_fields.sql", "保存に失敗しました"));
-    } finally {
-      setFillBusy(false);
-    }
-  };
+  // 入力欄を出すか: 編集モードは全項目、閲覧モードは未記入の欄だけ（その場で埋められる）
+  const showInput = (key: string) => canEdit && (editing || cur(key) === "");
+  const dirty = changedFieldCount(draft, workerRecord) > 0 || relativesDraft !== null;
 
-  // 未記入欄用のインライン入力（点線枠で「ここに入力できる」ことを示す）
-  const FILL_INPUT =
-    "mt-0.5 min-h-[36px] w-full rounded-lg border border-dashed border-border bg-background px-2.5 text-sm focus:border-brand focus:outline-none";
-  const fillText = (key: string, placeholder?: string) =>
-    canEdit ? (
+  // 閲覧モードの未記入欄は点線枠で「ここに入力できる」ことを示す。編集モードは実線
+  const inputCls = (boxed = false) =>
+    `mt-0.5 min-h-[36px] w-full rounded-lg border ${editing ? "" : "border-dashed "}border-border ${
+      boxed ? "bg-surface" : "bg-background"
+    } px-2.5 text-sm focus:border-brand focus:outline-none`;
+
+  const textInput = (key: string, placeholder?: string, boxed = false) =>
+    showInput(key) ? (
       <input
-        value={draft[key] ?? ""}
+        value={val(key)}
         onChange={(e) => setField(key, e.target.value)}
         placeholder={placeholder ?? "未入力"}
-        className={FILL_INPUT}
+        className={inputCls(boxed)}
       />
     ) : undefined;
-  const fillDate = (key: string) =>
-    canEdit ? (
+  const dateInput = (key: string, boxed = false) =>
+    showInput(key) ? (
       <input
         type="date"
-        value={draft[key] ?? ""}
+        value={val(key)}
         onChange={(e) => setField(key, e.target.value)}
-        className={FILL_INPUT}
+        className={inputCls(boxed)}
       />
     ) : undefined;
-  const fillSelect = (key: string, options: string[]) =>
-    canEdit ? (
+  const selectInput = (key: string, options: string[], boxed = false) =>
+    showInput(key) ? (
       <select
-        value={draft[key] ?? ""}
+        value={val(key)}
         onChange={(e) => setField(key, e.target.value)}
-        className={FILL_INPUT}
+        className={inputCls(boxed)}
       >
         <option value="">未設定</option>
         {options.map((o) => (
@@ -230,16 +236,86 @@ export function WorkerDetail({
         ))}
       </select>
     ) : undefined;
-  const fillTextarea = (key: string, placeholder?: string) =>
-    canEdit ? (
+  const textareaInput = (key: string, placeholder?: string, boxed = false) =>
+    showInput(key) ? (
       <textarea
         rows={2}
-        value={draft[key] ?? ""}
+        value={val(key)}
         onChange={(e) => setField(key, e.target.value)}
         placeholder={placeholder}
-        className={`${FILL_INPUT} min-h-[52px] py-2 leading-relaxed`}
+        className={`${inputCls(boxed)} min-h-[52px] py-2 leading-relaxed`}
       />
     ) : undefined;
+
+  const save = async () => {
+    setSaveBusy(true);
+    setError(null);
+    try {
+      const payload = buildUpdatePayload(draft, workerRecord);
+      // 氏名は必須（空にして保存すると各画面で誰か分からなくなる）
+      if ("name" in payload && !payload.name) {
+        setError("氏名は空にできません。");
+        setSaveBusy(false);
+        return;
+      }
+      if (relativesDraft !== null) payload.relatives = relativesDraft;
+      if (Object.keys(payload).length > 0) {
+        await updateWorker(createClient(), worker.id, payload);
+      }
+      setDraft({});
+      setRelativesDraft(null);
+      setEditing(false);
+      setApplied(null);
+      router.refresh();
+    } catch (err) {
+      // 母国の住所（0091）・在留期間（0092）など、列が無いときは何を適用すればよいか案内する
+      setError(dbErrorMessage(err, "0092_worker_residence_card_fields.sql", "保存に失敗しました"));
+    } finally {
+      setSaveBusy(false);
+    }
+  };
+
+  const cancelEdit = () => {
+    setDraft({});
+    setRelativesDraft(null);
+    setEditing(false);
+    setApplied(null);
+  };
+
+  // ---- 在留カード・パスポートMRZからの反映（下書きに入れて確認してから保存） ----
+
+  const [cardOpen, setCardOpen] = useState(false);
+  const [pendingImport, setPendingImport] = useState<{
+    fields: Record<string, string>;
+    changes: FieldChange[];
+    source: string;
+  } | null>(null);
+
+  // いま画面に出ている値（下書きがあれば下書き）を集める。上書き確認に使う
+  const effectiveValues = (keys: string[]) => {
+    const rec: Record<string, unknown> = {};
+    for (const k of keys) rec[k] = val(k);
+    return rec;
+  };
+
+  const applyImported = (source: string, fields: Record<string, string>) => {
+    const count = filledFieldCount(effectiveValues(Object.keys(fields)), fields);
+    setDraft((d) => ({ ...d, ...fields }));
+    setEditing(true);
+    setCardOpen(false);
+    setPendingImport(null);
+    setApplied(`${source}から${count}件を反映しました。内容を確かめて「保存」を押してください。`);
+  };
+
+  // 反映の要求を受ける。入っている値を書き換える項目があれば確認を先に出す
+  const requestApply = (source: string, fields: Record<string, string>) => {
+    const changes = overwrittenFields(effectiveValues(Object.keys(fields)), fields, IMPORT_FIELD_LABELS);
+    if (changes.length > 0) {
+      setPendingImport({ fields, changes, source });
+      return;
+    }
+    applyImported(source, fields);
+  };
 
   const handleDeleteWorker = async () => {
     setDeleting(true);
@@ -278,6 +354,24 @@ export function WorkerDetail({
     }
   };
 
+  // 変更がある間、各カードの下に出す保存ボタン（どこで入力しても押しやすいように）
+  const saveBar = canEdit && dirty && (
+    <Button fullWidth className="mt-3" disabled={saveBusy} onClick={save}>
+      {saveBusy ? "保存中…" : editing ? "保存" : "入力した内容を保存"}
+    </Button>
+  );
+
+  // 一覧に無い在留資格が登録済みの場合も選択肢に残す（消さない）
+  const residenceStatusOptions =
+    worker.residence_status &&
+    !(RESIDENCE_STATUSES as readonly string[]).includes(worker.residence_status)
+      ? [worker.residence_status, ...RESIDENCE_STATUSES]
+      : [...RESIDENCE_STATUSES];
+  const statusOptions =
+    worker.status && !(WORKER_STATUSES as readonly string[]).includes(worker.status)
+      ? [worker.status, ...WORKER_STATUSES]
+      : [...WORKER_STATUSES];
+
   return (
     <div className="space-y-4">
       {error && (
@@ -286,138 +380,417 @@ export function WorkerDetail({
         </p>
       )}
 
-      {/* 基本情報 */}
+      {/* 在留カード（実物のカードの項目順で表示） */}
       <Card className="p-4">
-        <div className="mb-2 flex items-start justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-3">
-            <WorkerPhoto workerId={worker.id} photoPath={worker.photo_path} canEdit={canEdit} />
-            <div className="min-w-0">
-              <p className="text-lg font-black">
-                {worker.name}
-                {/* 氏名を書類やメールに貼りやすいようにコピーできる */}
-                <CopyNameButton name={worker.name} />
-                {worker.worker_code && (
-                  <span className="ml-2 align-middle text-xs font-bold text-brand">
-                    ID {worker.worker_code}
-                  </span>
-                )}
-                {/* 原本を預かっていれば保管番号（押すと保管ボックスのその番号を開く） */}
-                {custodyNo != null && (
-                  <Link
-                    href={`/custody?no=${custodyNo}`}
-                    className="ml-2 inline-flex align-middle rounded border-2 border-seal px-1.5 text-xs font-black tabular-nums tracking-widest text-seal"
-                    title="原本を預かり中（保管ボックスを開く）"
+        <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {editing ? (
+              <>
+                {/* 状態・支援区分もその場で直せるように、バッジの位置を選択欄にする */}
+                <label className="flex items-center gap-1 text-[11px] font-bold text-muted">
+                  状態
+                  <select
+                    value={val("status")}
+                    onChange={(e) => setField("status", e.target.value)}
+                    className="min-h-[36px] rounded-lg border border-border bg-background px-2 text-xs font-normal text-foreground focus:border-brand focus:outline-none"
                   >
-                    {formatStorageNo(custodyNo)}
-                  </Link>
-                )}
-              </p>
-              {worker.kana && <p className="text-xs text-muted">{worker.kana}</p>}
-              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-                {worker.messenger_link && (
-                  <a
-                    href={messengerWebUrl(worker.messenger_link)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-xs font-bold text-brand"
+                    {statusOptions.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex items-center gap-1 text-[11px] font-bold text-muted">
+                  支援区分
+                  <select
+                    value={val("support")}
+                    onChange={(e) => setField("support", e.target.value)}
+                    className="min-h-[36px] rounded-lg border border-border bg-background px-2 text-xs font-normal text-foreground focus:border-brand focus:outline-none"
                   >
-                    <MessageCircle size={13} />
-                    Messenger
-                  </a>
-                )}
-                {worker.notion_link && (
-                  <a
-                    href={notionAppUrl(worker.notion_link)}
-                    className="inline-flex items-center gap-1 text-xs font-bold text-brand"
-                  >
-                    <ExternalLink size={13} />
-                    Notion
-                  </a>
-                )}
-              </div>
-            </div>
+                    {SUPPORT_SCOPES.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            ) : (
+              <>
+                <WorkerStatusBadge status={worker.status} />
+                <SswStatusBadge status={calc.status} />
+                <SupportBadge support={worker.support} />
+              </>
+            )}
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-2">
+          <div className="flex shrink-0 flex-wrap justify-end gap-2">
+            {canEdit && editing ? (
+              <>
+                <button
+                  type="button"
+                  onClick={save}
+                  disabled={saveBusy}
+                  className="flex items-center gap-1 rounded-lg bg-brand px-3 py-2 text-xs font-bold text-brand-foreground disabled:opacity-50"
+                >
+                  <Check size={14} />
+                  {saveBusy ? "保存中…" : "保存"}
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelEdit}
+                  disabled={saveBusy}
+                  className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted"
+                >
+                  <X size={14} />
+                  やめる
+                </button>
+              </>
+            ) : (
+              <>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => setEditing(true)}
+                    className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold"
+                  >
+                    <Pencil size={14} />
+                    編集
+                  </button>
+                )}
+                <Link
+                  href={`/workers/print?worker=${worker.id}`}
+                  className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted"
+                >
+                  <Printer size={14} />
+                  印刷
+                </Link>
+                <Link
+                  href={`/workers/${worker.id}/resume`}
+                  className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted"
+                >
+                  <FileText size={14} />
+                  履歴書
+                </Link>
+                <Link
+                  href={`/workers/${worker.id}/roster`}
+                  className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted"
+                >
+                  <ClipboardList size={14} />
+                  労働者名簿
+                </Link>
+                {canEdit && <NotionTransferButton worker={worker} />}
+              </>
+            )}
+          </div>
+        </div>
+
+        {applied && (
+          <p role="status" className="mb-3 rounded-lg bg-brand/10 px-3 py-2 text-sm text-brand">
+            {applied}
+          </p>
+        )}
+        {canEdit && (
+          <p className="mb-2 text-[11px] text-muted">
+            {editing
+              ? "表示のまま直して、右上または各枠の下の「保存」を押してください。「やめる」で元に戻ります。"
+              : "未記入の欄はそのまま入力して保存できます。入力済みの内容は右上の「編集」でその場で直せます。"}
+          </p>
+        )}
+
+        {/* 実物の在留カードと同じ並び: 氏名 → 生年月日・性別・国籍 → 住居地 → 在留資格 →
+            在留期間 → 満了日・許可日 → 番号。右に顔写真とID・連絡リンク */}
+        <div className="rounded-2xl border border-border bg-background p-3">
+          <div className="mb-2 flex items-center justify-between gap-2 border-b border-border pb-2">
+            <span className="flex items-center gap-1.5 text-[11px] font-bold text-muted">
+              <CreditCard size={13} />
+              在留カード RESIDENCE CARD
+            </span>
             {canEdit && (
               <button
                 type="button"
-                onClick={() => setEditOpen(true)}
-                className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold"
+                onClick={() => setCardOpen(true)}
+                className="flex min-h-[32px] items-center gap-1 rounded-lg border border-brand px-2.5 text-[11px] font-bold text-brand"
               >
-                <Pencil size={14} />
-                編集
+                <CreditCard size={12} />
+                在留カードから入力
               </button>
             )}
-            <Link
-              href={`/workers/print?worker=${worker.id}`}
-              className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted"
-            >
-              <Printer size={14} />
-              印刷
-            </Link>
-            <Link
-              href={`/workers/${worker.id}/resume`}
-              className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted"
-            >
-              <FileText size={14} />
-              履歴書
-            </Link>
-            <Link
-              href={`/workers/${worker.id}/roster`}
-              className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted"
-            >
-              <ClipboardList size={14} />
-              労働者名簿
-            </Link>
-            {canEdit && <NotionTransferButton worker={worker} />}
+          </div>
+
+          <div className="flex gap-3">
+            <div className="flex min-w-0 flex-1 flex-col gap-2">
+              <div>
+                <p className="text-[10px] font-bold text-muted">氏名 NAME</p>
+                {editing && canEdit ? (
+                  <div className="flex flex-col gap-1.5">
+                    <input
+                      value={val("name")}
+                      onChange={(e) => setField("name", e.target.value)}
+                      placeholder="NGUYEN VAN A"
+                      className={inputCls(true)}
+                    />
+                    <input
+                      value={val("kana")}
+                      onChange={(e) => setField("kana", e.target.value)}
+                      placeholder="フリガナ（例: グエン バン アー）"
+                      className={inputCls(true)}
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-lg font-black">
+                      {worker.name}
+                      {/* 氏名を書類やメールに貼りやすいようにコピーできる */}
+                      <CopyNameButton name={worker.name} />
+                      {/* 原本を預かっていれば保管番号（押すと保管ボックスのその番号を開く） */}
+                      {custodyNo != null && (
+                        <Link
+                          href={`/custody?no=${custodyNo}`}
+                          className="ml-2 inline-flex align-middle rounded border-2 border-seal px-1.5 text-xs font-black tabular-nums tracking-widest text-seal"
+                          title="原本を預かり中（保管ボックスを開く）"
+                        >
+                          {formatStorageNo(custodyNo)}
+                        </Link>
+                      )}
+                    </p>
+                    {worker.kana && <p className="text-xs text-muted">{worker.kana}</p>}
+                  </>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <CardItem
+                  label="生年月日 DATE OF BIRTH"
+                  value={
+                    worker.birth ? (
+                      <>
+                        {worker.birth}
+                        {/* 申請書類は和暦で書くため、西暦の下に和暦も出す */}
+                        {warekiDate(worker.birth) && (
+                          <span className="block text-[11px] font-normal text-muted">
+                            {warekiDate(worker.birth)}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      ""
+                    )
+                  }
+                  edit={dateInput("birth", true)}
+                />
+                <CardItem
+                  label="性別 SEX"
+                  value={worker.gender}
+                  edit={selectInput("gender", ["男", "女"], true)}
+                />
+              </div>
+              <CardItem
+                label="国籍・地域 NATIONALITY/REGION"
+                value={worker.nationality}
+                edit={textInput("nationality", "例: ベトナム", true)}
+              />
+              <CardItem
+                label="住居地 ADDRESS"
+                value={worker.address}
+                edit={textInput("address", "例: 熊本県熊本市中央区◯◯1-2-3", true)}
+              />
+              {/* 住所の下に住所歴（転入日ごと）。最新はそのまま住居地へ反映される */}
+              <WorkerAddressHistory workerId={worker.id} canEdit={canEdit} embedded />
+
+              <div className="grid grid-cols-2 gap-2">
+                <CardItem
+                  label="在留資格 STATUS"
+                  value={worker.residence_status}
+                  edit={selectInput("residence_status", residenceStatusOptions, true)}
+                />
+                <CardItem
+                  label="在留期間 PERIOD OF STAY"
+                  value={worker.residence_period}
+                  edit={
+                    showInput("residence_period") ? (
+                      <>
+                        <input
+                          list="detail-residence-periods"
+                          value={val("residence_period")}
+                          onChange={(e) => setField("residence_period", e.target.value)}
+                          placeholder="1年"
+                          className={inputCls(true)}
+                        />
+                        <datalist id="detail-residence-periods">
+                          {RESIDENCE_PERIODS.map((p) => (
+                            <option key={p} value={p} />
+                          ))}
+                        </datalist>
+                      </>
+                    ) : undefined
+                  }
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <CardItem
+                  label="在留期間満了日 DATE OF EXPIRATION"
+                  value={worker.residence_expiry_date}
+                  edit={dateInput("residence_expiry_date", true)}
+                />
+                <CardItem
+                  label="許可年月日 DATE OF PERMISSION"
+                  value={worker.residence_permit_date}
+                  edit={dateInput("residence_permit_date", true)}
+                />
+              </div>
+              <CardItem
+                label="番号 No."
+                value={
+                  worker.residence_card_no ? (
+                    <span className="tabular-nums tracking-wider">{worker.residence_card_no}</span>
+                  ) : (
+                    ""
+                  )
+                }
+                edit={textInput("residence_card_no", "AB12345678CD", true)}
+              />
+            </div>
+
+            {/* 右: 顔写真。下にID・Messenger・Notion */}
+            <div className="flex w-[104px] shrink-0 flex-col items-center gap-1">
+              <WorkerPhoto
+                workerId={worker.id}
+                photoPath={worker.photo_path}
+                canEdit={canEdit}
+                size={96}
+              />
+              {worker.worker_code && (
+                <span className="text-xs font-bold text-brand">ID {worker.worker_code}</span>
+              )}
+              {worker.messenger_link && (
+                <a
+                  href={messengerWebUrl(worker.messenger_link)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-brand"
+                >
+                  <MessageCircle size={12} />
+                  Messenger
+                </a>
+              )}
+              {worker.notion_link && (
+                <a
+                  href={notionAppUrl(worker.notion_link)}
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-brand"
+                >
+                  <ExternalLink size={12} />
+                  Notion
+                </a>
+              )}
+            </div>
           </div>
         </div>
-        <div className="mb-3 flex flex-wrap items-center gap-1.5">
-          <WorkerStatusBadge status={worker.status} />
-          <SswStatusBadge status={calc.status} />
-          <SupportBadge support={worker.support} />
+        {saveBar}
+      </Card>
+
+      {/* パスポート（名・番号・有効期限・PLACE OF BIRTH と、下部のMRZ 2行入力） */}
+      <Card className="p-4">
+        <div className="rounded-2xl border border-border bg-background p-3">
+          <div className="mb-2 flex items-center gap-1.5 border-b border-border pb-2 text-[11px] font-bold text-muted">
+            <BookOpen size={13} />
+            パスポート PASSPORT
+          </div>
+          <div className="flex gap-3">
+            {/* 左: 写真の位置。顔写真は在留カードの欄にあるので、ここはイメージ図だけ */}
+            <div className="flex w-[76px] shrink-0 flex-col items-center gap-1">
+              <div className="flex h-[96px] w-[76px] items-center justify-center rounded-lg border border-dashed border-border text-muted/60">
+                <UserRound size={34} />
+              </div>
+              <span className="text-center text-[9px] leading-tight text-muted">
+                写真は在留カードの欄（ここはイメージ）
+              </span>
+            </div>
+            <div className="flex min-w-0 flex-1 flex-col gap-2">
+              <div className="grid grid-cols-2 gap-2">
+                {/* 氏名は在留カードの欄と同じもの（直すときは在留カードの欄で） */}
+                <CardItem label="名 NAME" value={worker.name} />
+                <CardItem
+                  label="番号 PASSPORT NO."
+                  value={
+                    worker.passport_no ? (
+                      <span className="tabular-nums tracking-wider">{worker.passport_no}</span>
+                    ) : (
+                      ""
+                    )
+                  }
+                  edit={textInput("passport_no", "例: C1234567", true)}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <CardItem label="国籍 NATIONALITY" value={worker.nationality} />
+                <CardItem
+                  label="有効期限 DATE OF EXPIRY"
+                  value={worker.passport_expiry_date}
+                  edit={dateInput("passport_expiry_date", true)}
+                />
+              </div>
+              {/* 国によって書き方が違うが、パスポートの PLACE OF BIRTH を母国の住所として記録する */}
+              <CardItem
+                label="PLACE OF BIRTH（母国の住所）"
+                value={worker.home_address}
+                edit={textareaInput(
+                  "home_address",
+                  "例: KRATIE ／ Số 12, Thôn A, Tỉnh Nghệ An, Việt Nam",
+                  true,
+                )}
+              />
+              <p className="text-[10px] leading-relaxed text-muted">
+                パスポートのPLACE OF BIRTH（出生地）を母国の住所として記録します。
+                実際の住所と違う場合は「編集」でここを直してください。
+              </p>
+            </div>
+          </div>
+
+          {/* 下部: 実物と同じくMRZ（2行）。貼り付けて読み取り、上の項目へ反映できる */}
+          <div className="mt-3 border-t border-border pt-2">
+            <p className="mb-1.5 text-[10px] font-bold text-muted">MRZ（下2行）から入力</p>
+            {canEdit ? (
+              <PassportMrzPanel
+                today={today}
+                onApply={(fields) => requestApply("パスポートMRZ", fields)}
+              />
+            ) : (
+              <p className="text-[11px] text-muted">閲覧のみのため使えません。</p>
+            )}
+          </div>
         </div>
+        <p className="mt-2 text-[11px] leading-relaxed text-muted">
+          有効期限の半年前になると「パスポート更新必要」に自動で表示されます。
+        </p>
+        {saveBar}
+      </Card>
+
+      {/* 基本情報（在留カード・パスポート以外の項目） */}
+      <Card className="p-4">
         <p className="mb-1 text-[11px] font-bold text-muted">基本情報</p>
-        {canEdit && (
-          <p className="mb-2 text-[11px] text-muted">
-            未記入の欄はそのまま入力し「入力した内容を保存」で保存できます（入力済みの修正は「編集」から）。
-          </p>
-        )}
         <dl className="mb-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
-          <InfoItem label="国籍" value={worker.nationality} edit={fillText("nationality", "例: ベトナム")} />
-          {/* 申請書類は和暦で書くため、西暦の下に和暦も出す（例: 2006-08-20 → 平成18年8月20日） */}
           <InfoItem
-            label="生年月日"
-            value={
-              worker.birth ? (
-                <>
-                  {worker.birth}
-                  {warekiDate(worker.birth) && (
-                    <span className="block text-[11px] text-muted">{warekiDate(worker.birth)}</span>
-                  )}
-                </>
-              ) : (
-                ""
-              )
+            label="分野・職種"
+            wide
+            value={worker.field}
+            edit={
+              showInput("field") ? (
+                <div className="mt-0.5">
+                  <FieldJobSelect field={val("field")} onChange={(v) => setField("field", v)} />
+                </div>
+              ) : undefined
             }
-            edit={fillDate("birth")}
           />
-          <InfoItem label="性別" value={worker.gender} edit={fillSelect("gender", ["男", "女"])} />
-          <InfoItem
-            label="住所"
-            value={worker.address}
-            edit={fillText("address", "例: 熊本県熊本市中央区◯◯1-2-3")}
-          />
-          <InfoItem label="分野・職種" value={worker.field} edit={fillText("field", "例: 農業・耕種農業")} />
           <InfoItem
             label="現在の所属機関"
             value={worker.current_organization_id ? orgName : canEdit ? "" : "未所属"}
             edit={
-              canEdit ? (
+              showInput("current_organization_id") ? (
                 <select
-                  value={draft.current_organization_id ?? ""}
+                  value={val("current_organization_id")}
                   onChange={(e) => setField("current_organization_id", e.target.value)}
-                  className={FILL_INPUT}
+                  className={inputCls()}
                 >
                   <option value="">未所属</option>
                   {organizations.map((o) => (
@@ -433,7 +806,17 @@ export function WorkerDetail({
             label="支援責任者・支援担当者（所属機関）"
             value={orgStaff || (currentOrg ? "未設定（会社・機関マスタで登録）" : null)}
           />
-          <InfoItem label="専門級の合格名" value={worker.specialty_grade} edit={fillText("specialty_grade")} />
+          <InfoItem
+            label="配属先営業所"
+            value={worker.assigned_office}
+            edit={textInput("assigned_office", "例: 熊本営業所")}
+          />
+          <InfoItem
+            label="居住先"
+            value={worker.residence_note}
+            edit={textInput("residence_note", "例: 社宅 / 自分のアパート")}
+          />
+          <InfoItem label="専門級の合格名" value={worker.specialty_grade} edit={textInput("specialty_grade")} />
           <InfoItem
             label="特定技能2号の合格試験名"
             value={
@@ -446,57 +829,40 @@ export function WorkerDetail({
                 </>
               ) : null
             }
-            edit={fillText("ssw2_exam", "例: ビルクリーニング分野特定技能2号評価試験")}
+            edit={textInput("ssw2_exam", "例: ビルクリーニング分野特定技能2号評価試験")}
           />
           <InfoItem
             label="その他の資格・合格名"
             value={worker.other_qualifications}
-            edit={fillText("other_qualifications")}
+            edit={textInput("other_qualifications")}
           />
-        </dl>
-        <p className="mb-1 text-[11px] font-bold text-muted">在留情報</p>
-        <dl className="mb-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
-          <InfoItem
-            label="在留資格"
-            value={worker.residence_status}
-            edit={fillText("residence_status", "例: 特定技能1号")}
-          />
-          <InfoItem
-            label="在留カード番号"
-            value={worker.residence_card_no}
-            edit={fillText("residence_card_no")}
-          />
-          <InfoItem label="許可日" value={worker.residence_permit_date} edit={fillDate("residence_permit_date")} />
-          <InfoItem label="在留期限" value={worker.residence_expiry_date} edit={fillDate("residence_expiry_date")} />
-          {/* 在留カードの記載（0092）。在留期間は満了日とは別に、何年もらえたかが分かる */}
-          <InfoItem
-            label="在留期間"
-            value={worker.residence_period}
-            edit={fillText("residence_period", "例: 1年")}
-          />
-          <InfoItem label="パスポート番号" value={worker.passport_no} edit={fillText("passport_no")} />
-          <InfoItem
-            label="パスポート有効期限"
-            value={worker.passport_expiry_date}
-            edit={fillDate("passport_expiry_date")}
-          />
-          {/* 母国（本国）の住所。上の「住所」は日本での住所なので、分けて持つ */}
-          <InfoItem
-            label="母国の住所"
-            wide
-            value={worker.home_address}
-            edit={fillTextarea("home_address", "例: Số 12, Thôn A, Xã B, Huyện C, Tỉnh Nghệ An, Việt Nam")}
-          />
+          {/* 連絡リンクは在留カードの欄の写真の下に出るもの。編集モードのときだけここで直す */}
+          {editing && canEdit && (
+            <>
+              <InfoItem
+                label="Messenger グループ/個人リンク"
+                wide
+                value=""
+                edit={textInput("messenger_link", "https://m.me/... または https://www.messenger.com/...")}
+              />
+              <InfoItem
+                label="Notion 個人ページのリンク"
+                wide
+                value=""
+                edit={textInput("notion_link", "https://www.notion.so/... または https://app.notion.com/...")}
+              />
+            </>
+          )}
         </dl>
         <p className="mb-1 text-[11px] font-bold text-muted">番号・保険</p>
         <dl className="mb-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
-          <InfoItem label="個人番号" value={worker.my_number} edit={fillText("my_number")} />
+          <InfoItem label="個人番号" value={worker.my_number} edit={textInput("my_number")} />
           <InfoItem
             label="雇用保険被保険者番号"
             value={worker.employment_insurance_no}
-            edit={fillText("employment_insurance_no")}
+            edit={textInput("employment_insurance_no")}
           />
-          <InfoItem label="基礎年金番号" value={worker.pension_no} edit={fillText("pension_no")} />
+          <InfoItem label="基礎年金番号" value={worker.pension_no} edit={textInput("pension_no")} />
           <InfoItem
             label="特定技能総合保険の負担（現在の所属機関）"
             value={
@@ -559,7 +925,7 @@ export function WorkerDetail({
                     </a>
                   ) : null
                 }
-                edit={fillText("ssw_insurance_link", "https://...")}
+                edit={textInput("ssw_insurance_link", "https://...")}
               />
               <InfoItem
                 label="特定技能総合保険 有効期限"
@@ -575,61 +941,67 @@ export function WorkerDetail({
                     </>
                   ) : null
                 }
-                edit={fillDate("ssw_insurance_expiry_date")}
+                edit={dateInput("ssw_insurance_expiry_date")}
               />
             </>
           )}
         </dl>
         <p className="mb-1 text-[11px] font-bold text-muted">家族情報</p>
         <dl className="mb-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
-          <InfoItem label="配偶者の有無" value={worker.has_spouse} edit={fillSelect("has_spouse", ["有", "無"])} />
+          <InfoItem label="配偶者の有無" value={worker.has_spouse} edit={selectInput("has_spouse", ["有", "無"])} />
           <InfoItem
             label="在日親族の同居"
             value={worker.relatives_in_japan}
-            edit={fillSelect("relatives_in_japan", ["有", "無"])}
+            edit={selectInput("relatives_in_japan", ["有", "無"])}
           />
         </dl>
-        {worker.relatives_in_japan === "有" && (worker.relatives ?? []).length > 0 && (
+        {editing && canEdit && val("relatives_in_japan") === "有" ? (
           <div className="mb-3">
-            <p className="mb-1 text-[11px] font-bold text-muted">同居している在日親族</p>
-            <div className="space-y-1.5">
-              {(worker.relatives ?? []).map((r, i) => (
-                <div key={i} className="rounded-lg bg-background px-3 py-2 text-sm">
-                  <p className="font-bold">{r.name || "氏名未登録"}</p>
-                  <p className="text-xs text-muted">
-                    {[
-                      r.birth && `生年月日 ${r.birth}`,
-                      r.workplace && `勤務先 ${r.workplace}`,
-                      r.residence_card_no && `在留カード番号 ${r.residence_card_no}`,
-                    ]
-                      .filter(Boolean)
-                      .join(" ・ ") || "詳細未登録"}
-                  </p>
-                </div>
-              ))}
-            </div>
+            <RelativesEditor
+              relatives={relativesDraft ?? worker.relatives ?? []}
+              onChange={setRelativesDraft}
+            />
           </div>
+        ) : (
+          worker.relatives_in_japan === "有" &&
+          (worker.relatives ?? []).length > 0 && (
+            <div className="mb-3">
+              <p className="mb-1 text-[11px] font-bold text-muted">同居している在日親族</p>
+              <div className="space-y-1.5">
+                {(worker.relatives ?? []).map((r, i) => (
+                  <div key={i} className="rounded-lg bg-background px-3 py-2 text-sm">
+                    <p className="font-bold">{r.name || "氏名未登録"}</p>
+                    <p className="text-xs text-muted">
+                      {[
+                        r.birth && `生年月日 ${r.birth}`,
+                        r.workplace && `勤務先 ${r.workplace}`,
+                        r.residence_card_no && `在留カード番号 ${r.residence_card_no}`,
+                      ]
+                        .filter(Boolean)
+                        .join(" ・ ") || "詳細未登録"}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
         )}
         <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
           <InfoItem
             label="健康状態"
             value={worker.health_note}
             wide
-            edit={fillTextarea("health_note", "持病・通院状況など")}
+            edit={textareaInput("health_note", "持病・通院状況など")}
           />
           <InfoItem
             label="家族構成"
             value={worker.family_note}
             wide
-            edit={fillTextarea("family_note", "配偶者・子どもの有無、同居状況など")}
+            edit={textareaInput("family_note", "配偶者・子どもの有無、同居状況など")}
           />
-          <InfoItem label="備考" value={worker.note} wide edit={fillTextarea("note")} />
+          <InfoItem label="備考" value={worker.note} wide edit={textareaInput("note")} />
         </dl>
-        {canEdit && fillDirty && (
-          <Button fullWidth className="mt-3" disabled={fillBusy} onClick={saveFilled}>
-            {fillBusy ? "保存中…" : "入力した内容を保存"}
-          </Button>
-        )}
+        {saveBar}
       </Card>
 
       {/* 退職者情報（状態が退職のとき、または退職日が残っているとき）。
@@ -713,9 +1085,6 @@ export function WorkerDetail({
 
       {/* 外国人書類（合格証・パスポート・履歴書など）をPDF・画像で保存 */}
       <WorkerCertificateDocs workerId={worker.id} canEdit={canEdit} />
-
-      {/* 住所歴（課税・納税証明書の1月1日時点の住所判定に使う） */}
-      <WorkerAddressHistory workerId={worker.id} canEdit={canEdit} />
 
       {/* 申請準備 書類チェックリスト（申請種別ごとの必要書類・不足の把握） */}
       <ApplicationPrepChecklist
@@ -926,15 +1295,48 @@ export function WorkerDetail({
         </Button>
       )}
 
-      {/* 編集モーダル */}
-      <Modal open={editOpen} title="基本情報を編集" onClose={() => setEditOpen(false)}>
-        <WorkerForm
-          initial={worker}
-          organizations={organizations}
-          submitLabel="更新する"
-          onSubmit={handleUpdateWorker}
-          onCancel={() => setEditOpen(false)}
-        />
+      {/* 在留カードの券面を見ながら入力（反映すると編集モードになり、保存で確定） */}
+      <ResidenceCardDialog
+        open={cardOpen}
+        onClose={() => setCardOpen(false)}
+        onApply={(fields) => requestApply("在留カード", fields)}
+      />
+
+      {/* 券面・MRZの反映で、入力済みの項目を書き換えるときの確認 */}
+      <Modal
+        open={pendingImport !== null}
+        title="入力済みの項目を書き換えます"
+        onClose={() => setPendingImport(null)}
+      >
+        <p className="mb-3 text-sm leading-relaxed">
+          {pendingImport?.source}の内容を反映すると、次の項目が書き換わります。よろしいですか。
+        </p>
+        <ul className="mb-3 flex flex-col gap-1.5">
+          {pendingImport?.changes.map((c) => (
+            <li key={c.key} className="rounded-lg bg-background px-3 py-2 text-xs">
+              <span className="font-bold">{c.label}</span>
+              <span className="mt-0.5 block break-words text-muted">
+                今: {c.before} → 反映後:{" "}
+                <span className="font-bold text-foreground">{c.after}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p className="mb-3 text-[11px] text-muted">
+          反映してもまだ保存されません。画面の内容を確かめてから「保存」を押してください。
+        </p>
+        <div className="flex gap-2">
+          <Button type="button" variant="secondary" fullWidth onClick={() => setPendingImport(null)}>
+            やめる
+          </Button>
+          <Button
+            type="button"
+            fullWidth
+            onClick={() => pendingImport && applyImported(pendingImport.source, pendingImport.fields)}
+          >
+            書き換えて反映
+          </Button>
+        </div>
       </Modal>
 
       <HistoryFormDialog
@@ -999,6 +1401,29 @@ function CopyNameButton({ name }: { name: string }) {
   );
 }
 
+// 在留カード・パスポート枠の1項目（実物のカードに合わせた小さいラベル）。
+// edit があれば入力欄（編集モードや未記入のとき）、なければ値を出す
+function CardItem({
+  label,
+  value,
+  edit,
+}: {
+  label: string;
+  value?: React.ReactNode; // 空文字・null は未記入扱い
+  edit?: React.ReactNode;
+}) {
+  return (
+    <label className="flex min-w-0 flex-col gap-0.5">
+      <span className="text-[10px] font-bold text-muted">{label}</span>
+      {edit ?? (
+        <span className="min-h-[20px] whitespace-pre-wrap break-words text-sm font-bold">
+          {value || <span className="font-normal text-muted">—</span>}
+        </span>
+      )}
+    </label>
+  );
+}
+
 function InfoItem({
   label,
   value,
@@ -1008,12 +1433,12 @@ function InfoItem({
   label: string;
   value: React.ReactNode; // 空文字・null は未記入扱い
   wide?: boolean;
-  edit?: React.ReactNode; // 未記入のときに表示するインライン入力（省略時は「—」）
+  edit?: React.ReactNode; // 入力欄（編集モードでは値の代わりに出す。省略時は「—」）
 }) {
   return (
     <div className={wide ? "col-span-2" : ""}>
       <dt className="text-[11px] font-bold text-muted">{label}</dt>
-      <dd className="whitespace-pre-wrap break-words">{value || edit || "—"}</dd>
+      <dd className="whitespace-pre-wrap break-words">{edit ?? (value || "—")}</dd>
     </div>
   );
 }

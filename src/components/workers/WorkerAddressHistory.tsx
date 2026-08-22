@@ -18,12 +18,15 @@ const INPUT =
   "min-h-[40px] w-full rounded-lg border border-border bg-background px-2.5 text-sm focus:border-brand focus:outline-none";
 
 // 外国人の住所歴（転入日ごとの住所）。課税・納税証明書の「1月1日時点の住所」判定に使う。
+// embedded を付けると、在留カード枠の「住居地」の下などにカード無しで埋め込める
 export function WorkerAddressHistory({
   workerId,
   canEdit = false,
+  embedded = false,
 }: {
   workerId: string;
   canEdit?: boolean;
+  embedded?: boolean;
 }) {
   const router = useRouter();
   const [rows, setRows] = useState<WorkerAddress[]>([]);
@@ -151,15 +154,15 @@ export function WorkerAddressHistory({
     }
   }
 
-  return (
-    <Card className="p-4">
-      <h2 className="mb-1 flex items-center gap-1.5 text-sm font-bold text-muted">
-        <MapPin size={15} />
-        住所歴
+  const inner = (
+    <>
+      <h2 className="mb-1 flex items-center gap-1.5 text-xs font-bold text-muted">
+        <MapPin size={13} />
+        住所歴（転入日ごと）
       </h2>
       <p className="mb-3 text-[11px] text-muted">
         転入日ごとに住所を記録します。課税・納税証明書の「1月1日時点の住所」判定に使われます。
-        最新の住所は、基本情報の「住所」欄へ現在の住所として自動反映されます。
+        最新の住所は、上の「住居地」へ現在の住所として自動反映されます。
       </p>
 
       {error && (
@@ -272,6 +275,12 @@ export function WorkerAddressHistory({
           </Button>
         </div>
       )}
-    </Card>
+    </>
   );
+
+  // 埋め込み時はカードにせず、区切り線だけ引いて上の項目（住居地）とつなげる
+  if (embedded) {
+    return <div className="mt-1 border-t border-border pt-2">{inner}</div>;
+  }
+  return <Card className="p-4">{inner}</Card>;
 }

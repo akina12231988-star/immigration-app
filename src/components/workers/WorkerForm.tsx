@@ -731,7 +731,7 @@ export function WorkerForm({
 }
 
 // 在留カード・MRZから反映する項目の日本語名（上書き確認の一覧に出す）
-const IMPORT_FIELD_LABELS: Record<string, string> = {
+export const IMPORT_FIELD_LABELS: Record<string, string> = {
   name: "氏名",
   birth: "生年月日",
   gender: "性別",
@@ -767,7 +767,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 // 特定産業分野・職種の連動プルダウン。
 // field は「分野／職種」の1文字列で保存する（分野のみの場合は分野だけ）。
 // 旧データの自由入力値はリストに無くても選択肢へ含めて保持する
-function FieldJobSelect({
+export function FieldJobSelect({
   field,
   onChange,
 }: {
@@ -827,7 +827,7 @@ const BLANK_RELATIVE: WorkerRelative = {
 };
 
 // 同居している在日親族の入力（複数人）。氏名・生年月日・勤務先・在留カード番号
-function RelativesEditor({
+export function RelativesEditor({
   relatives,
   onChange,
 }: {
