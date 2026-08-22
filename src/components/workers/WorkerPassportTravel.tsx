@@ -304,11 +304,11 @@ export function WorkerPassportTravel({
         </div>
       )}
 
-      {/* スタンプページの保存（PDF・画像） */}
+      {/* パスポートの記録の保存（PDF・画像） */}
       <div className="border-t border-border pt-3">
-        <p className="mb-1.5 text-[11px] font-bold text-muted">スタンプページの保存（PDF・画像）</p>
+        <p className="mb-1.5 text-[11px] font-bold text-muted">パスポートの記録の保存（PDF・画像）</p>
         {files.length === 0 && (
-          <p className="mb-1.5 text-[11px] text-muted">まだ保存されたページはありません。</p>
+          <p className="mb-1.5 text-[11px] text-muted">まだ保存された記録はありません。</p>
         )}
         <div className="flex flex-col gap-1.5">
           {files.map((f) => (
@@ -348,7 +348,7 @@ export function WorkerPassportTravel({
               className="mt-1.5 flex items-center gap-1.5 rounded-lg border border-dashed border-brand px-3 py-2 text-xs font-bold text-brand disabled:opacity-50"
             >
               {uploading ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
-              {uploading ? "アップロード中…" : "スタンプページを添付（PDF・画像）"}
+              {uploading ? "アップロード中…" : "パスポートの記録を添付（PDF・画像）"}
             </button>
             <input
               ref={inputRef}
