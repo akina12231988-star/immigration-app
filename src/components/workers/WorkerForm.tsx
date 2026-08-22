@@ -8,7 +8,7 @@ import { ResidenceCardDialog } from "@/components/workers/ResidenceCardDialog";
 import { PassportMrzDialog } from "@/components/workers/PassportMrzDialog";
 import { filledFieldCount, overwrittenFields, type FieldChange } from "@/lib/field-overwrite";
 import { RESIDENCE_PERIODS } from "@/lib/residence-card";
-import { WORKER_SITUATIONS } from "@/lib/worker-situation";
+import { WORKER_SITUATIONS, situationDescription } from "@/lib/worker-situation";
 import { todayStr } from "@/lib/application-alerts";
 import { Combobox } from "@/components/ui/Combobox";
 import { createClient } from "@/lib/supabase/client";
@@ -386,9 +386,15 @@ export function WorkerForm({
           />
           <datalist id="worker-form-situations">
             {WORKER_SITUATIONS.map((s) => (
-              <option key={s} value={s} />
+              <option key={s.value} value={s.value} />
             ))}
           </datalist>
+          {/* どういう人に付ける状況かを添える（説明のある選択肢だけ） */}
+          {situationDescription(form.current_situation) && (
+            <span className="px-1 text-[11px] leading-relaxed text-muted">
+              {situationDescription(form.current_situation)}
+            </span>
+          )}
         </Field>
         {form.status === "退職" && (
           <div className="grid grid-cols-2 gap-2.5 rounded-xl bg-background p-3">

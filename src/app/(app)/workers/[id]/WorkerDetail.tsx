@@ -81,7 +81,7 @@ import {
   workerFieldString,
 } from "@/lib/worker-inline-edit";
 import { RESIDENCE_PERIODS } from "@/lib/residence-card";
-import { WORKER_SITUATIONS } from "@/lib/worker-situation";
+import { WORKER_SITUATIONS, situationDescription } from "@/lib/worker-situation";
 import { isCountedHistory, type WorkHistory } from "@/types/ssw";
 import type { Application } from "@/types/application";
 import {
@@ -806,7 +806,21 @@ export function WorkerDetail({
           <InfoItem
             label="只今の状況（経過メモ）"
             wide
-            value={worker.current_situation}
+            value={
+              worker.current_situation ? (
+                <>
+                  {worker.current_situation}
+                  {/* どういう人に付ける状況かを添える（選択肢に説明があるものだけ） */}
+                  {situationDescription(worker.current_situation) && (
+                    <span className="block text-[11px] font-normal text-muted">
+                      {situationDescription(worker.current_situation)}
+                    </span>
+                  )}
+                </>
+              ) : (
+                ""
+              )
+            }
             edit={
               showInput("current_situation") ? (
                 <>
@@ -819,11 +833,12 @@ export function WorkerDetail({
                   />
                   <datalist id="worker-situations">
                     {WORKER_SITUATIONS.map((s) => (
-                      <option key={s} value={s} />
+                      <option key={s.value} value={s.value} />
                     ))}
                   </datalist>
                   <span className="mt-0.5 block text-[10px] text-muted">
-                    選択肢から選ぶか、自由に入力できます。「Notionに登録／更新」でNotionの只今の状況にも入ります。
+                    {situationDescription(val("current_situation")) ||
+                      "選択肢から選ぶか、自由に入力できます。「Notionに登録／更新」でNotionの只今の状況にも入ります。"}
                   </span>
                 </>
               ) : undefined
