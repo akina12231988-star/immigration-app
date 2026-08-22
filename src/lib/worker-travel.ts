@@ -14,9 +14,13 @@ export interface WorkerTravel {
   japan_exit_on: string | null;
   home_entry_on: string | null;
   landing_permission: string; // 上陸許可シールの在留資格（日本入国時のもの。0098）
+  entry_kind: string; // 日本入国の種類（'' / 上陸許可 / 再入国。0099）
   note: string;
   created_at: string;
 }
+
+// 入国の種類の選択肢（再入国はみなし再入国許可などで、在留資格はそのまま）
+export const ENTRY_KINDS = ["上陸許可", "再入国"] as const;
 
 export type WorkerTravelInput = Pick<
   WorkerTravel,
@@ -25,6 +29,7 @@ export type WorkerTravelInput = Pick<
   | "japan_exit_on"
   | "home_entry_on"
   | "landing_permission"
+  | "entry_kind"
   | "note"
 >;
 
@@ -65,6 +70,7 @@ export interface Trip {
   japan_exit_on: string | null;
   home_entry_on: string | null;
   landing_permission: string; // この往復の日本入国の上陸許可
+  entry_kind: string; // この往復の日本入国の種類（'' / 上陸許可 / 再入国）
   sourceIds: string[]; // この往復に含まれる記録（worker_travels.id）。削除に使う
 }
 
@@ -75,6 +81,7 @@ function emptyTrip(): Trip {
     japan_exit_on: null,
     home_entry_on: null,
     landing_permission: "",
+    entry_kind: "",
     sourceIds: [],
   };
 }
@@ -85,6 +92,7 @@ export function buildTrips<T extends WorkerTravelInput & { id?: string }>(rows: 
     date: string;
     kind: number; // TRIP_KINDS の位置
     landing: string;
+    entryKind: string;
     id?: string;
   }
   const events: Ev[] = [];
@@ -95,8 +103,9 @@ export function buildTrips<T extends WorkerTravelInput & { id?: string }>(rows: 
       events.push({
         date,
         kind,
-        // 上陸許可は日本入国のスタンプに付くもの
+        // 上陸許可・入国の種類は日本入国のスタンプに付くもの
         landing: kind === 1 ? (r.landing_permission ?? "").trim() : "",
+        entryKind: kind === 1 ? (r.entry_kind ?? "").trim() : "",
         id: r.id,
       });
     });
@@ -115,6 +124,7 @@ export function buildTrips<T extends WorkerTravelInput & { id?: string }>(rows: 
     }
     cur[TRIP_KINDS[e.kind]] = e.date;
     if (e.landing && !cur.landing_permission) cur.landing_permission = e.landing;
+    if (e.entryKind && !cur.entry_kind) cur.entry_kind = e.entryKind;
     if (e.id && !cur.sourceIds.includes(e.id)) cur.sourceIds.push(e.id);
     lastKind = e.kind;
   }
