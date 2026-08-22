@@ -8,7 +8,6 @@ import {
   GraduationCap,
   Briefcase,
   ClipboardList,
-  ListTodo,
   PencilLine,
   CalendarClock,
   BookMarked,
@@ -42,8 +41,8 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/applications/new", label: "申請登録", short: "申請登録", icon: FilePlus2, emphasize: true },
   { href: "/applications", label: "申請一覧", short: "申請一覧", icon: List },
   { href: "/notifications", label: "入管メール通知", short: "お知らせ", icon: Bell },
+  // 申請準備のTODOは申請準備のページに合体した（/todos は直接開けば残っている）
   { href: "/workers/renewals", label: "申請準備", short: "申請準備", icon: CalendarClock },
-  { href: "/todos", label: "TODO", short: "TODO", icon: ListTodo },
   { href: "/workers/passports", label: "パスポート更新必要", short: "パスポート", icon: BookMarked },
   { href: "/custody", label: "保管ボックス（原本預かり）", short: "保管", icon: Archive },
   { href: "/notices/search", label: "通知書", short: "通知書", icon: ScanLine },

@@ -32,6 +32,7 @@ import { isResidenceRenewalTarget } from "@/lib/worker-alerts";
 import { offListReason } from "@/lib/renewal-search";
 import { matchesWorkerName } from "@/lib/worker-search";
 import { NameSearchBox } from "@/components/ui/NameSearchBox";
+import { TodosClient } from "@/app/(app)/todos/TodosClient";
 import { todayStr } from "@/lib/application-alerts";
 import { RESIDENCE_RENEWAL_STATUSES, type ResidenceRenewalStatus } from "@/types/db";
 import { PREP_SITUATIONS, mergeSituation } from "@/lib/worker-situation";
@@ -179,6 +180,12 @@ export function RenewalsClient({
             <ChevronRight size={18} className="shrink-0 text-muted" />
           </Card>
         </button>
+
+        {/* 申請準備のTODO（旧TODOページの申請準備と合体。選択の下に一覧が続く） */}
+        <div className="pt-3">
+          <p className="mb-2 text-sm font-bold">申請準備のTODO</p>
+          <TodosClient canEdit={canEdit} fixedKind="申請準備" />
+        </div>
       </div>
     );
   }

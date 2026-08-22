@@ -17,7 +17,7 @@ export default async function PlanDatesPage({
 
   return (
     <>
-      <AppHeader title="支援計画書 日付計算" backHref="/todos" />
+      <AppHeader title="支援計画書 日付計算" backHref="/workers/renewals" />
       <PlanDatesClient
         initialName={params.name ?? ""}
         initialOrg={params.org ?? ""}
