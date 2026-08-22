@@ -108,6 +108,19 @@ export function ApplicationDetail({ id }: { id: string }) {
       cancelled = true;
     };
   }, [workerId]);
+  // 氏名・進行状況・紐づく外国人のカードは、下へスクロールしても画面上部に固定する。
+  // 上のヘッダー（sticky・戻るボタン付き）に重ならないよう、高さを測ってその真下に付ける
+  const [stickyTop, setStickyTop] = useState(0);
+  useEffect(() => {
+    const measure = () => {
+      const el = document.querySelector("header");
+      if (el instanceof HTMLElement) setStickyTop(el.offsetHeight);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
+
   // 氏名のコピー（入管サイト・Notionなどへの貼り付け用）
   const [nameCopied, setNameCopied] = useState(false);
   const copyName = async (name: string) => {
@@ -294,8 +307,10 @@ export function ApplicationDetail({ id }: { id: string }) {
           </p>
         </div>
       )}
-      {/* 下へスクロールしても誰の申請かが分かるよう、この見出しは上部に固定する */}
-      <Card className="sticky top-0 z-30 p-4 shadow-md">
+      {/* 下へスクロールしても誰の申請か・進行状況・外国人へのリンクが見えるよう、
+          ヘッダー（戻るボタン）の真下に固定する。ヘッダーは z-20 なのでそれより下に置く */}
+      <div className="sticky z-10 -mx-4 space-y-5 bg-background px-4 pb-2" style={{ top: stickyTop }}>
+      <Card className="p-4 shadow-md">
         <div className="mb-1 flex items-start justify-between gap-2">
           <div className="min-w-0">
             <h2 className="flex items-center gap-1.5 text-xl font-bold">
@@ -371,6 +386,7 @@ export function ApplicationDetail({ id }: { id: string }) {
           )}
         </Card>
       )}
+      </div>
 
       <Card className="p-4">
         <h3 className="mb-3 text-sm font-bold text-muted">基本情報</h3>
