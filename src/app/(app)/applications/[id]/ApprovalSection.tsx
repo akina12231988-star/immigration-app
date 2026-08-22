@@ -26,7 +26,8 @@ import {
   normalizeOrgEmploymentStarts,
   upsertOrgEmploymentStart,
 } from "@/lib/org-employment";
-import type { WorkerInput, WorkerOrgEmploymentStart } from "@/types/db";
+import { RESIDENCE_PERIODS } from "@/lib/residence-card";
+import { RESIDENCE_STATUSES, type WorkerInput, type WorkerOrgEmploymentStart } from "@/types/db";
 import {
   GRANT_VISA_OPTIONS,
   ORG_HONORIFICS,
@@ -71,6 +72,11 @@ export function ApprovalSection({
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // 許可情報の在留資格・在留期間（外国人詳細の在留カードと同じ内容をここでも登録できる）。
+  // いまの登録内容を初期表示し、変えて保存すると外国人情報にも反映される
+  const [grantResidenceStatus, setGrantResidenceStatus] = useState("");
+  const [grantResidencePeriod, setGrantResidencePeriod] = useState("");
+
   // 雇用開始日・在留資格（許可報告の下）
   const [employmentStartOn, setEmploymentStartOn] = useState(app.employmentStartOn ?? "");
   const [visaAtGrant, setVisaAtGrant] = useState(app.visaAtGrant ?? "");
@@ -88,17 +94,25 @@ export function ApprovalSection({
   useEffect(() => {
     if (!app.workerId) return;
     let cancelled = false;
-    void createClient()
-      .from("workers")
-      .select(
-        "residence_status, current_organization_id, employment_start_on, org_employment_starts, organizations(name)",
-      )
-      .eq("id", app.workerId)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (cancelled || !data) return;
+    const supabase = createClient();
+    const select = (columns: string) =>
+      supabase.from("workers").select(columns).eq("id", app.workerId as string).maybeSingle();
+    void (async () => {
+      let res = await select(
+        "residence_status, residence_period, current_organization_id, employment_start_on, org_employment_starts, organizations(name)",
+      );
+      if (res.error) {
+        // residence_period が無い古いDB（0092未適用）でも表示できるように読み直す
+        res = await select(
+          "residence_status, current_organization_id, employment_start_on, org_employment_starts, organizations(name)",
+        );
+      }
+      const data = res.data;
+      if (cancelled || !data) return;
+      {
         const d = data as unknown as {
           residence_status: string | null;
+          residence_period: string | null;
           current_organization_id: string | null;
           employment_start_on: string | null;
           org_employment_starts: unknown;
@@ -111,7 +125,11 @@ export function ApprovalSection({
           org_employment_starts: normalizeOrgEmploymentStarts(d.org_employment_starts),
           orgName: d.organizations?.name ?? "",
         });
-      });
+        // 許可情報の在留資格・在留期間に、いまの登録内容を初期表示する
+        setGrantResidenceStatus((v) => v || (d.residence_status ?? ""));
+        setGrantResidencePeriod((v) => v || (d.residence_period ?? ""));
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -263,6 +281,9 @@ export function ApprovalSection({
           residence_card_no: form.grantedCardNo,
           residence_permit_date: form.grantedPermitDate || null,
           residence_expiry_date: form.grantedExpiryDate || null,
+          // 在留資格・在留期間も外国人詳細の在留カードと同じ内容として反映する（未入力なら変えない）
+          ...(grantResidenceStatus ? { residence_status: grantResidenceStatus } : {}),
+          ...(grantResidencePeriod ? { residence_period: grantResidencePeriod } : {}),
           // 新しい在留期限が決まったら、申請準備の対応状況をリセットして次の更新サイクルに備える
           ...(form.grantedExpiryDate
             ? {
@@ -492,7 +513,41 @@ export function ApprovalSection({
             <Labeled label="在留期限日">
               <input type="date" value={form.grantedExpiryDate} onChange={(e) => set("grantedExpiryDate", e.target.value)} className={INPUT_CLASS} />
             </Labeled>
+            {/* 外国人詳細の在留カードと同じ内容をここでも登録できる（候補から選ぶか自由入力） */}
+            <Labeled label="在留資格">
+              <input
+                list="grant-residence-statuses"
+                value={grantResidenceStatus}
+                onChange={(e) => setGrantResidenceStatus(e.target.value)}
+                placeholder="例: 特定技能1号"
+                autoComplete="off"
+                className={INPUT_CLASS}
+              />
+              <datalist id="grant-residence-statuses">
+                {RESIDENCE_STATUSES.map((s) => (
+                  <option key={s} value={s} />
+                ))}
+              </datalist>
+            </Labeled>
+            <Labeled label="在留期間">
+              <input
+                list="grant-residence-periods"
+                value={grantResidencePeriod}
+                onChange={(e) => setGrantResidencePeriod(e.target.value)}
+                placeholder="例: 1年"
+                autoComplete="off"
+                className={INPUT_CLASS}
+              />
+              <datalist id="grant-residence-periods">
+                {RESIDENCE_PERIODS.map((p) => (
+                  <option key={p} value={p} />
+                ))}
+              </datalist>
+            </Labeled>
           </div>
+          <p className="-mt-1 text-[11px] text-muted">
+            在留カード番号・許可日・期限日・在留資格・在留期間は、「許可情報を保存」で外国人詳細の在留カードの内容にも反映されます。
+          </p>
 
           {/* 許可後の住所変更（在留カードの住所が今の登録と違うとき） */}
           {app.workerId && (

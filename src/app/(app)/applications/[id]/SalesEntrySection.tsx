@@ -21,6 +21,7 @@ import {
   SSW_INSURANCE_AMOUNT,
   supportFeeName,
   type SalesAppKind,
+  type SalesEntryDraft,
 } from "@/lib/sales";
 import { digitsOnly, normalizeSalesItems, parseAmount } from "@/lib/organization-intake";
 import { dbErrorMessage } from "@/lib/errors";
@@ -125,12 +126,28 @@ export function SalesEntrySection({ app }: { app: Application }) {
         fullMonthSupport: feeMode === "満額",
       })
     : [];
+
+  // どの明細を売上として作るかの選択。既定は全部で、チェックを外した分だけ作らない
+  // （明細は入力のたびに作り直すため、外したものをキーで覚えておく）
+  const draftKey = (d: SalesEntryDraft) => `${d.kind}|${d.item_name}|${d.description}`;
+  const [excludedKeys, setExcludedKeys] = useState<Set<string>>(new Set());
+  const isDraftSelected = (d: SalesEntryDraft) => !excludedKeys.has(draftKey(d));
+  const toggleDraft = (d: SalesEntryDraft) =>
+    setExcludedKeys((prev) => {
+      const next = new Set(prev);
+      const key = draftKey(d);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  const selectedDrafts = drafts.filter(isDraftSelected);
+
   const prorated =
     feeMode === "満額" ? null : prorateFromDate(parseAmount(supportFee) ?? 0, permitDate);
   // 申請種別ごとの売上明細の小計（入力の確認用）
   const itemsSubtotal = items.reduce((sum, it) => sum + (parseAmount(it.amount) ?? 0), 0);
-  // 合計は今回の請求ぶんだけ。翌月からの定期売上は freee販売で別に登録するため含めない
-  const total = drafts
+  // 合計は選択した今回の請求ぶんだけ。翌月からの定期売上は freee販売で別に登録するため含めない
+  const total = selectedDrafts
     .filter((d) => d.kind !== "定期売上")
     .reduce((sum, d) => sum + d.amount, 0);
 
@@ -138,13 +155,13 @@ export function SalesEntrySection({ app }: { app: Application }) {
     setItems((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
 
   const save = async () => {
-    if (!app.workerId || drafts.length === 0) return;
+    if (!app.workerId || selectedDrafts.length === 0) return;
     setSaving(true);
     setError(null);
     try {
       const rows = await insertSalesEntries(
         createClient(),
-        drafts.map((d) => ({
+        selectedDrafts.map((d) => ({
           worker_id: app.workerId as string,
           organization_id: app.organizationId ?? null,
           application_id: app.id,
@@ -414,31 +431,50 @@ export function SalesEntrySection({ app }: { app: Application }) {
             </p>
           ) : (
             <>
+              {/* どの明細を売上としてあげるかをチェックで選ぶ（既定は全部） */}
               <div className="mt-3 overflow-hidden rounded-xl border border-border">
-                {drafts.map((d, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between gap-2 border-b border-border bg-background px-3 py-2 text-sm last:border-b-0"
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate font-bold">{d.description}</span>
-                      <span className="block truncate text-[11px] text-muted">
-                        {d.kind} ・ 品目 {d.item_name}
-                        {d.period_from && ` ・ ${d.period_from}〜${d.period_to ?? "（継続）"}`}
-                        {!d.taxable && " ・ 非課税"}
+                {drafts.map((d, i) => {
+                  const selected = isDraftSelected(d);
+                  return (
+                    <label
+                      key={i}
+                      className="flex cursor-pointer items-center justify-between gap-2 border-b border-border bg-background px-3 py-2 text-sm last:border-b-0"
+                    >
+                      <span className="flex min-w-0 items-center gap-2.5">
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={() => toggleDraft(d)}
+                          className="h-4 w-4 shrink-0 accent-brand"
+                        />
+                        <span className={`min-w-0 ${selected ? "" : "opacity-40"}`}>
+                          <span className="block truncate font-bold">{d.description}</span>
+                          <span className="block truncate text-[11px] text-muted">
+                            {d.kind} ・ 品目 {d.item_name}
+                            {d.period_from && ` ・ ${d.period_from}〜${d.period_to ?? "（継続）"}`}
+                            {!d.taxable && " ・ 非課税"}
+                          </span>
+                        </span>
                       </span>
-                    </span>
-                    <span className="shrink-0 text-right">
-                      <span className="block font-bold tabular-nums">
-                        {formatSalesYen(d.amount)}
+                      <span className={`shrink-0 text-right ${selected ? "" : "opacity-40"}`}>
+                        <span className="block font-bold tabular-nums">
+                          {formatSalesYen(d.amount)}
+                        </span>
+                        {selected ? (
+                          d.kind === "定期売上" && (
+                            <span className="block text-[10px] text-muted">合計に含めません</span>
+                          )
+                        ) : (
+                          <span className="block text-[10px] text-muted">作成しません</span>
+                        )}
                       </span>
-                      {d.kind === "定期売上" && (
-                        <span className="block text-[10px] text-muted">合計に含めません</span>
-                      )}
-                    </span>
-                  </div>
-                ))}
+                    </label>
+                  );
+                })}
               </div>
+              <p className="mt-1 text-[11px] text-muted">
+                チェックを外した明細は作成されません（あとから必要になったら、もう一度この画面かfreee販売で登録してください）。
+              </p>
               {prorated && (
                 <p className="mt-1.5 text-[11px] text-muted">
                   日割り: {formatSalesYen(prorated.monthly)} ÷ {prorated.monthDays}日 ={" "}
@@ -447,7 +483,7 @@ export function SalesEntrySection({ app }: { app: Application }) {
                 </p>
               )}
               <p className="mt-1 text-sm font-bold">
-                合計 {formatSalesYen(total)}
+                合計（選択分） {formatSalesYen(total)}
                 <span className="ml-1.5 text-[11px] font-medium text-muted">
                   （翌月からの定期売上は含みません。freee販売の定期売上で登録してください）
                 </span>
@@ -455,11 +491,20 @@ export function SalesEntrySection({ app }: { app: Application }) {
               <Button
                 fullWidth
                 className="mt-3"
-                disabled={saving || drafts.length === 0 || !app.workerId}
+                disabled={saving || selectedDrafts.length === 0 || !app.workerId}
                 onClick={save}
               >
-                {saving ? "作成中…" : saved ? "作成しました" : "売上明細を作成（登録待ちに追加）"}
+                {saving
+                  ? "作成中…"
+                  : saved
+                    ? "作成しました"
+                    : `売上明細を作成（選択した${selectedDrafts.length}件を登録待ちに追加）`}
               </Button>
+              {selectedDrafts.length === 0 && (
+                <p className="mt-1 text-[11px] text-seal">
+                  作成する明細が選ばれていません。上の一覧でチェックを入れてください。
+                </p>
+              )}
               {!app.workerId && (
                 <p className="mt-1 text-[11px] text-seal">
                   外国人と紐づいていない申請では作成できません。
