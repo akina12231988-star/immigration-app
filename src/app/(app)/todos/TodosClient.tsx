@@ -433,6 +433,14 @@ function TodoItem({
                   >
                     雇用契約書・雇用条件書
                   </Link>
+                  <Link
+                    href={`/todos/plan-dates?workerId=${todo.worker_id}&name=${encodeURIComponent(
+                      todo.worker_name ?? "",
+                    )}&todo=${encodeURIComponent(todo.todo_no)}`}
+                    className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] font-bold text-brand"
+                  >
+                    📅 日付計算
+                  </Link>
                 </>
               )}
             </>
