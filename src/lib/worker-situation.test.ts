@@ -9,10 +9,12 @@ describe("situationDescription", () => {
 
   test("選択肢に無い自由入力・説明未登録の選択肢は空を返す", () => {
     expect(situationDescription("独自のメモ")).toBe("");
-    expect(situationDescription("退職")).toBe("");
+    expect(situationDescription("特定技能の審査中")).toBe("");
   });
 
-  test("「技人国申請　更新準備中」は今後使わないため選択肢に無い", () => {
+  test("使わない選択肢（技人国・移行しない・技能習2号ロ）は外している", () => {
     expect(WORKER_SITUATIONS.some((s) => s.value.includes("技人国"))).toBe(false);
+    expect(WORKER_SITUATIONS.some((s) => s.value.includes("移行しない"))).toBe(false);
+    expect(WORKER_SITUATIONS.some((s) => s.value.includes("技能習"))).toBe(false);
   });
 });

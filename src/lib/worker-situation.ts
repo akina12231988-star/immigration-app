@@ -103,15 +103,27 @@ export const WORKER_SITUATIONS: WorkerSituation[] = [
     value: "日本国査証の発行手続き中",
     description: "在留資格認定で、在留認定証が届いたあと海外で日本国査証の手続き中の人",
   },
-  { value: "入国管理局からビザの許可おりた電話あり", description: "" },
-  { value: "特定技能の更新なし", description: "" },
-  { value: "申請の取り下げ", description: "" },
-  { value: "年金脱退一時金の為、一時的に退職（再入国次第、際雇用契約予定）", description: "" },
-  { value: "支援委託終了", description: "" },
-  { value: "退職", description: "" },
-  { value: "キャンセル", description: "" },
-  { value: "❌特定技能に移行しない", description: "" },
-  { value: "技能習2号ロ", description: "" },
+  {
+    value: "入国管理局からビザの許可おりた電話あり",
+    description: "審査中で許可がおりた人",
+  },
+  {
+    value: "特定技能の更新なし",
+    description: "特定技能を更新しない人（ビザ期限が切れても大丈夫な人）",
+  },
+  { value: "申請の取り下げ", description: "申請をキャンセルした人" },
+  {
+    value: "年金脱退一時金の為、一時的に退職（再入国次第、際雇用契約予定）",
+    description:
+      "特定技能ビザとしての在歴はそのまま。随時報告書で退職届の提出が必要で、再入国後にはあらためて再雇用の随時報告書の提出が必要な人",
+  },
+  { value: "支援委託終了", description: "もう支援しない人" },
+  { value: "退職", description: "退職した人" },
+  {
+    value: "キャンセル",
+    description: "一度、面接で採用になったが、その後キャンセルになった人",
+  },
+  // 「❌特定技能に移行しない」「技能習2号ロ」は使わないため選択肢から外した（登録済みの値はそのまま残る）
 ];
 
 // 入力中・保存済みの値に対する説明。選択肢に無い自由入力は空を返す
