@@ -12,6 +12,7 @@ import { PostingForm } from "@/components/postings/PostingForm";
 import { PostingStatusBadge } from "@/components/postings/PostingStatusBadge";
 import { PostingOutputDialog } from "@/components/postings/PostingOutputDialog";
 import { ApplicationResultBadge } from "@/components/postings/ApplicationResultBadge";
+import { PostingFileAttachments } from "@/components/postings/PostingFileAttachments";
 import { createClient } from "@/lib/supabase/client";
 import { deletePosting, updatePosting } from "@/lib/supabase/queries/postings";
 import { postingDisplayName } from "@/lib/posting-output";
@@ -246,6 +247,11 @@ export function PostingDetail({
           会社からもらった求人票の内容です。空欄は上の鉛筆マーク（編集）から入力できます。
           職種・就業場所・採用人数・基本給・連絡先は上の求人管理簿の欄と共通です。
         </p>
+        {/* 記載してもらった求人票の原本（PDF・画像）を添付して残す（求人管理簿の裏付け） */}
+        <div className="mt-3 border-t border-border pt-3">
+          <p className="mb-1.5 text-[11px] font-bold text-muted">求人票の原本（PDF・画像）</p>
+          <PostingFileAttachments postingId={posting.id} canEdit={canEdit} />
+        </div>
       </Card>
 
       <Button

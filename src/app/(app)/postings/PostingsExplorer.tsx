@@ -17,6 +17,11 @@ import {
   postingEntriesToForm30,
 } from "@/lib/recruit-ledgers";
 import { fetchPostingLedger } from "@/lib/supabase/queries/recruit-ledgers";
+import {
+  extendedValidUntil,
+  needsExtensionDecision,
+  postingValidUntil,
+} from "@/lib/posting-validity";
 import { dbErrorMessage } from "@/lib/errors";
 import type { PostingWithStats } from "@/lib/supabase/queries/postings";
 
@@ -50,10 +55,33 @@ export function PostingsExplorer({
     return s;
   }, [inPeriod]);
 
-  const filtered = useMemo(
-    () => (statusFilter === "all" ? inPeriod : inPeriod.filter((p) => p.status === statusFilter)),
-    [inPeriod, statusFilter],
-  );
+  // 募集中を上に出す（それぞれの中は受付日の新しい順のまま）
+  const filtered = useMemo(() => {
+    const list =
+      statusFilter === "all" ? inPeriod : inPeriod.filter((p) => p.status === statusFilter);
+    return [...list].sort(
+      (a, b) => (a.status === "募集中" ? 0 : 1) - (b.status === "募集中" ? 0 : 1),
+    );
+  }, [inPeriod, statusFilter]);
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  // 期限切れ・採用不足の求人の「期限を3か月延長する」
+  const [extendingId, setExtendingId] = useState<string | null>(null);
+  const extendPosting = async (p: PostingWithStats) => {
+    const next = extendedValidUntil(p.received_on, p.valid_until);
+    if (!next) return;
+    setExtendingId(p.id);
+    try {
+      await updatePosting(createClient(), p.id, { valid_until: next });
+      setRows((rs) => rs.map((r) => (r.id === p.id ? { ...r, valid_until: next } : r)));
+      router.refresh();
+    } catch {
+      /* 失敗したら表示は変えない（もう一度押せる） */
+    } finally {
+      setExtendingId(null);
+    }
+  };
 
   // 労働局の監査（訪問指導）用の帳簿出力。
   // 求人管理簿（厚労省様式の項目）と、事前提出する様式30（求人者リスト）
@@ -188,8 +216,35 @@ export function PostingsExplorer({
           {filtered.map((p) => {
             const applicants = p.job_applications?.length ?? 0;
             const hired = p.job_applications?.filter((a) => a.result === "採用").length ?? 0;
+            // 採用者・不採用者が誰かを一目で出す（氏名はカードの下に色分けで並べる）
+            const nameOf = (a: { workers: { name: string } | null }) =>
+              a.workers?.name ?? "氏名未登録";
+            const hiredNames = (p.job_applications ?? [])
+              .filter((a) => a.result === "採用")
+              .map(nameOf);
+            const rejectedNames = (p.job_applications ?? [])
+              .filter((a) => a.result === "不採用")
+              .map(nameOf);
+            const validUntil = postingValidUntil(p.received_on, p.valid_until);
+            // 期限を過ぎたのに採用が足りない募集中の求人（延長するか締め切るかを決めてもらう）
+            const needsDecision = needsExtensionDecision(
+              {
+                status: p.status,
+                received_on: p.received_on,
+                valid_until: p.valid_until,
+                openings: p.openings,
+                hired,
+              },
+              today,
+            );
             return (
-              <Card key={p.id} className="flex flex-col p-4">
+              <Card
+                key={p.id}
+                // 募集中はひと目で分かるよう赤みがかった背景にする
+                className={`flex flex-col p-4 ${
+                  p.status === "募集中" ? "border-seal/40 bg-seal/5" : ""
+                }`}
+              >
                 <Link href={`/postings/${p.id}`} className="min-w-0">
                   <div className="mb-1 flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -199,6 +254,13 @@ export function PostingsExplorer({
                       <p className="truncate text-xs text-muted">
                         {[p.job_type, p.display_address].filter(Boolean).join(" ・ ") || "詳細未設定"}
                       </p>
+                      {/* 求人受付日と有効期限（受付から3か月。帳簿・様式30と同じ日付を一覧で確かめられる） */}
+                      {p.received_on && (
+                        <p className="text-xs tabular-nums text-muted">
+                          受付 {p.received_on}
+                          {validUntil && `（期限 ${validUntil}）`}
+                        </p>
+                      )}
                     </div>
                     <ChevronRight size={16} className="mt-1 shrink-0 text-muted" />
                   </div>
@@ -209,7 +271,51 @@ export function PostingsExplorer({
                       応募{applicants}・採用{hired}/{p.openings}名
                     </span>
                   </div>
+                  {(hiredNames.length > 0 || rejectedNames.length > 0) && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {hiredNames.map((n, i) => (
+                        <span
+                          key={`hired-${i}`}
+                          className="rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-bold text-brand"
+                        >
+                          採用 {n}
+                        </span>
+                      ))}
+                      {rejectedNames.map((n, i) => (
+                        <span
+                          key={`rejected-${i}`}
+                          className="rounded-full bg-seal/10 px-2 py-0.5 text-[11px] font-bold text-seal"
+                        >
+                          不採用 {n}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </Link>
+                {/* 受付から3か月の期限が切れたのに採用が足りない求人は、延長するか締め切るかを決める */}
+                {needsDecision && (
+                  <div className="mt-2 rounded-lg bg-seal/10 px-2.5 py-2 text-[11px] leading-relaxed text-seal">
+                    <p className="font-bold">
+                      有効期限（{validUntil}）を過ぎましたが、採用 {hired}/{p.openings ?? "?"}
+                      名です。延長するか、締め切るか決めてください。
+                    </p>
+                    {canEdit && (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={extendingId === p.id}
+                          onClick={() => void extendPosting(p)}
+                          className="rounded-lg border border-seal/40 bg-surface px-2.5 py-1 font-bold disabled:opacity-50"
+                        >
+                          {extendingId === p.id
+                            ? "延長中…"
+                            : `期限を3か月延長する（→ ${extendedValidUntil(p.received_on, p.valid_until)}）`}
+                        </button>
+                        <span className="text-seal/80">締め切る場合は下の「充足」「終了」を押してください。</span>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {/* ワンクリック状態変更 */}
                 <div className="mt-3 flex gap-1.5 border-t border-border pt-3">
                   {POSTING_STATUSES.map((s) => (
