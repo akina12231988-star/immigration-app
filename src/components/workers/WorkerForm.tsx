@@ -46,6 +46,7 @@ function toInput(w: Worker | null): WorkerInput {
     residence_expiry_date: w?.residence_expiry_date ?? null,
     passport_no: w?.passport_no ?? "",
     passport_expiry_date: w?.passport_expiry_date ?? null,
+    passport_mrz: w?.passport_mrz ?? "",
     residence_period: w?.residence_period ?? "",
     current_situation: w?.current_situation ?? "",
     notion_link: w?.notion_link ?? "",
@@ -382,6 +383,8 @@ export function WorkerForm({
             value={form.current_situation}
             onChange={(e) => set("current_situation", e.target.value)}
             placeholder="例: 特定技能の審査中"
+            // ブラウザの住所・電話番号のオートフィルが候補に混ざらないようにする
+            autoComplete="off"
             className={INPUT_CLASS}
           />
           <datalist id="worker-form-situations">
@@ -595,6 +598,7 @@ export function WorkerForm({
             value={form.residence_period}
             onChange={(e) => set("residence_period", e.target.value)}
             placeholder="1年"
+            autoComplete="off"
             className={INPUT_CLASS}
           />
           <datalist id="worker-residence-periods">
@@ -767,6 +771,7 @@ export const IMPORT_FIELD_LABELS: Record<string, string> = {
   residence_card_no: "在留カード番号",
   passport_no: "パスポート番号",
   passport_expiry_date: "パスポート有効期限",
+  passport_mrz: "パスポートMRZ（2行）",
 };
 
 function Fieldset({ legend, children }: { legend: string; children: React.ReactNode }) {

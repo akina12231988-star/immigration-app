@@ -174,6 +174,8 @@ describe("mrzToWorkerFields", () => {
       birth: "1974-08-12",
       gender: "女",
       passport_expiry_date: "2012-04-15",
+      // MRZの2行も保存する（外国人詳細のコピー候補をいつでも出せるように。0095）
+      passport_mrz: SAMPLE,
     });
     // 国籍は対応表に無いので入れない
     expect(fields.nationality).toBeUndefined();

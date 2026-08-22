@@ -302,6 +302,7 @@ export interface Worker {
   residence_expiry_date: string | null;
   passport_no: string; // パスポート番号
   passport_expiry_date: string | null; // パスポート有効期限
+  passport_mrz: string; // パスポートMRZの2行（読み取り反映時に保存。コピー用。0095）
   residence_period: string; // 在留カードの在留期間（例: 1年・3年・6月。0092）
   current_situation: string; // 只今の状況（経過メモ。Notionの只今の状況と同期。0093）
   notion_link: string; // Notion 個人ページのリンク

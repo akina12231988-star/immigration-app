@@ -51,7 +51,8 @@ import {
   RelativesEditor,
 } from "@/components/workers/WorkerForm";
 import { ResidenceCardDialog } from "@/components/workers/ResidenceCardDialog";
-import { PassportMrzPanel } from "@/components/workers/PassportMrzPanel";
+import { PassportMrzPanel, SavedMrzCopyList } from "@/components/workers/PassportMrzPanel";
+import { WorkerPassportTravel } from "@/components/workers/WorkerPassportTravel";
 import {
   HistoryFormDialog,
   type HistoryFormValues,
@@ -283,8 +284,8 @@ export function WorkerDetail({
       setApplied(null);
       router.refresh();
     } catch (err) {
-      // 只今の状況（0093）など、列が無いときは何を適用すればよいか案内する
-      setError(dbErrorMessage(err, "0093_worker_current_situation.sql", "保存に失敗しました"));
+      // パスポートMRZ（0095）など、列が無いときは何を適用すればよいか案内する
+      setError(dbErrorMessage(err, "0095_worker_passport_mrz.sql", "保存に失敗しました"));
     } finally {
       setSaveBusy(false);
     }
@@ -403,45 +404,10 @@ export function WorkerDetail({
       >
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1.5">
-            {editing ? (
-              <>
-                {/* 状態・支援区分もその場で直せるように、バッジの位置を選択欄にする */}
-                <label className="flex items-center gap-1 text-[11px] font-bold text-muted">
-                  状態
-                  <select
-                    value={val("status")}
-                    onChange={(e) => setField("status", e.target.value)}
-                    className="min-h-[36px] rounded-lg border border-border bg-background px-2 text-xs font-normal text-foreground focus:border-brand focus:outline-none"
-                  >
-                    {statusOptions.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex items-center gap-1 text-[11px] font-bold text-muted">
-                  支援区分
-                  <select
-                    value={val("support")}
-                    onChange={(e) => setField("support", e.target.value)}
-                    className="min-h-[36px] rounded-lg border border-border bg-background px-2 text-xs font-normal text-foreground focus:border-brand focus:outline-none"
-                  >
-                    {SUPPORT_SCOPES.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </>
-            ) : (
-              <>
-                <WorkerStatusBadge status={worker.status} />
-                <SswStatusBadge status={calc.status} />
-                <SupportBadge support={worker.support} />
-              </>
-            )}
+            {/* 状態・支援区分の変更は「基本情報」の欄から（編集モードでその場で直せる） */}
+            <WorkerStatusBadge status={worker.status} />
+            <SswStatusBadge status={calc.status} />
+            <SupportBadge support={worker.support} />
           </div>
           <div className="flex shrink-0 flex-wrap justify-end gap-2">
             {canEdit && editing ? (
@@ -677,6 +643,7 @@ export function WorkerDetail({
                           value={val("residence_period")}
                           onChange={(e) => setField("residence_period", e.target.value)}
                           placeholder="1年"
+                          autoComplete="off"
                           className={inputCls(true)}
                         />
                         <datalist id="detail-residence-periods">
@@ -778,16 +745,38 @@ export function WorkerDetail({
             </p>
           </div>
 
-          {/* 下部: 実物と同じくMRZ（2行）。貼り付けて読み取り、上の項目へ反映できる */}
+          {/* 下部: 実物と同じくMRZ（2行）。
+              保存済みならコピー候補を常に出し（消えない）、読み取りの入力はたたんでおく */}
           <div className="mt-3 border-t border-border pt-2">
-            <p className="mb-1.5 text-[10px] font-bold text-muted">MRZ（下2行）から入力</p>
+            <p className="mb-1.5 text-[10px] font-bold text-muted">MRZ（下2行）</p>
+            {worker.passport_mrz && (
+              <div className="mb-2">
+                <SavedMrzCopyList mrz={worker.passport_mrz} today={today} />
+              </div>
+            )}
             {canEdit ? (
-              <PassportMrzPanel
-                today={today}
-                onApply={(fields) => requestApply("パスポートMRZ", fields)}
-              />
+              worker.passport_mrz ? (
+                <details className="rounded-lg border border-border bg-surface px-3 py-2">
+                  <summary className="cursor-pointer text-[11px] font-bold text-brand">
+                    MRZを貼り付けて読み取る（入れ直すとき）
+                  </summary>
+                  <div className="mt-2">
+                    <PassportMrzPanel
+                      today={today}
+                      onApply={(fields) => requestApply("パスポートMRZ", fields)}
+                    />
+                  </div>
+                </details>
+              ) : (
+                <PassportMrzPanel
+                  today={today}
+                  onApply={(fields) => requestApply("パスポートMRZ", fields)}
+                />
+              )
             ) : (
-              <p className="text-[11px] text-muted">閲覧のみのため使えません。</p>
+              !worker.passport_mrz && (
+                <p className="text-[11px] text-muted">保存されたMRZはありません。</p>
+              )
             )}
           </div>
         </div>
@@ -796,6 +785,9 @@ export function WorkerDetail({
         </p>
         {saveBar}
       </Card>
+
+      {/* 出入国の記録（パスポートのスタンプの日付と、スタンプページのPDF・画像） */}
+      <WorkerPassportTravel workerId={worker.id} canEdit={canEdit} today={today} />
 
       {/* 基本情報（在留カード・パスポート以外の項目） */}
       <Card className="p-4">
@@ -829,6 +821,8 @@ export function WorkerDetail({
                     value={val("current_situation")}
                     onChange={(e) => setField("current_situation", e.target.value)}
                     placeholder="例: 特定技能の審査中 ／ 入国管理局からビザの許可おりた電話あり"
+                    // ブラウザの住所・電話番号のオートフィルが候補に混ざらないようにする
+                    autoComplete="off"
                     className={inputCls()}
                   />
                   <datalist id="worker-situations">
@@ -841,6 +835,45 @@ export function WorkerDetail({
                       "選択肢から選ぶか、自由に入力できます。「Notionに登録／更新」でNotionの只今の状況にも入ります。"}
                   </span>
                 </>
+              ) : undefined
+            }
+          />
+          {/* 状態・支援区分（上部のバッジと同じもの）。「編集」でここから直せる */}
+          <InfoItem
+            label="状態"
+            value={worker.status}
+            edit={
+              editing && canEdit ? (
+                <select
+                  value={val("status")}
+                  onChange={(e) => setField("status", e.target.value)}
+                  className={inputCls()}
+                >
+                  {statusOptions.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              ) : undefined
+            }
+          />
+          <InfoItem
+            label="支援区分"
+            value={worker.support}
+            edit={
+              editing && canEdit ? (
+                <select
+                  value={val("support")}
+                  onChange={(e) => setField("support", e.target.value)}
+                  className={inputCls()}
+                >
+                  {SUPPORT_SCOPES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
               ) : undefined
             }
           />
