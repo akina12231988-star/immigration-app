@@ -12,6 +12,7 @@ const trip = (over: Record<string, string | null>) => ({
   japan_entry_on: null,
   japan_exit_on: null,
   home_entry_on: null,
+  landing_permission: "",
   note: "",
   ...over,
 });

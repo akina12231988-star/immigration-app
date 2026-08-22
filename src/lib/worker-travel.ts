@@ -10,13 +10,19 @@ export interface WorkerTravel {
   japan_entry_on: string | null;
   japan_exit_on: string | null;
   home_entry_on: string | null;
+  landing_permission: string; // 上陸許可シールの在留資格（日本入国時のもの。0098）
   note: string;
   created_at: string;
 }
 
 export type WorkerTravelInput = Pick<
   WorkerTravel,
-  "home_departure_on" | "japan_entry_on" | "japan_exit_on" | "home_entry_on" | "note"
+  | "home_departure_on"
+  | "japan_entry_on"
+  | "japan_exit_on"
+  | "home_entry_on"
+  | "landing_permission"
+  | "note"
 >;
 
 // 並び替えに使う日付（入っているいちばん早い日）。全部空なら空文字（末尾へ）

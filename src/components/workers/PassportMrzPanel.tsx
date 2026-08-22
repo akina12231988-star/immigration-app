@@ -114,21 +114,38 @@ export function PassportMrzPanel({
 }
 
 // 保存済みのMRZ（workers.passport_mrz）からコピー候補を出す。
-// 表示のたびに2行を解析するので、読み取り結果の各項目は別に保存しない
+// 表示のたびに2行を解析するので、読み取り結果の各項目は別に保存しない。
+// 一覧は長いのでトグルに収納し、押したときだけ開く
 export function SavedMrzCopyList({ mrz, today }: { mrz: string; today: string }) {
   const result = parseMrz(mrz, today);
   if (!result.ok) return null; // 形が崩れて解析できないときは何も出さない
   return (
-    <MrzCopyList
-      result={result}
-      note="保存済みのMRZから組み立てています。パスポートを変えたときは下の「MRZを貼り付けて読み取る」で入れ直してください。"
-    />
+    <details className="rounded-lg border border-border bg-surface px-3 py-2">
+      <summary className="cursor-pointer text-xs font-bold text-brand">
+        コピーする（特定技能試験の申込などに）
+      </summary>
+      <div className="mt-2">
+        <MrzCopyList
+          result={result}
+          bare
+          note="保存済みのMRZから組み立てています。パスポートを変えたときは下の「MRZを貼り付けて読み取る」で入れ直してください。"
+        />
+      </div>
+    </details>
   );
 }
 
 // 読み取り結果の項目ごとのコピー一覧（2行そのもの・番号・姓名・生年月日など）。
-// 試験（プロメトリック）の申込などに写す用
-function MrzCopyList({ result, note }: { result: MrzResult; note?: string }) {
+// 試験（プロメトリック）の申込などに写す用。bare はトグルの中に入れるとき（見出しを出さない）
+function MrzCopyList({
+  result,
+  note,
+  bare = false,
+}: {
+  result: MrzResult;
+  note?: string;
+  bare?: boolean;
+}) {
   // どの項目をコピーしたか（押した合図を少しの間だけ出す）
   const [copied, setCopied] = useState<string | null>(null);
 
@@ -145,7 +162,9 @@ function MrzCopyList({ result, note }: { result: MrzResult; note?: string }) {
 
   return (
     <div>
-      <p className="mb-1.5 text-xs font-bold">コピーする（特定技能試験の申込などに）</p>
+      {!bare && (
+        <p className="mb-1.5 text-xs font-bold">コピーする（特定技能試験の申込などに）</p>
+      )}
       <p className="mb-1.5 text-[11px] leading-relaxed text-muted">
         {note ??
           "「コピー」を押すとその項目をまるごと写します。2行はそのまま選べるので、必要なところだけなぞって部分的にコピーもできます。"}
