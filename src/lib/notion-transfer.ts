@@ -10,6 +10,8 @@ export interface NotionFieldMapEntry {
 
 export const NOTION_FIELD_MAP: NotionFieldMapEntry[] = [
   { prop: "外国人の名前", get: (w) => w.name },
+  // 只今の状況（経過メモ）。Notion側はselectのため、同じ名前の選択肢に入る（無ければ自動で作られる）
+  { prop: "只今の状況", get: (w) => w.current_situation },
   { prop: "フリガナ", get: (w) => w.kana },
   { prop: "国籍", get: (w) => w.nationality },
   { prop: "生年月日", get: (w) => w.birth },

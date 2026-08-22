@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { NOTION_FIELD_MAP } from "@/lib/notion-transfer";
 import { extractNotionPageId } from "@/lib/notion-link";
+import { toNotionProperty, type NotionPropertyDef } from "@/lib/notion-property";
 import type { Worker } from "@/types/db";
 
 // Notion「ビザの状況」データベースへ外国人情報を直接書き込む（案A: アプリ優先・空欄は保持）。
@@ -31,30 +32,6 @@ function notionHeaders(key: string): HeadersInit {
     "Notion-Version": NOTION_VERSION,
     "Content-Type": "application/json",
   };
-}
-
-// Notionプロパティ型に応じた書き込み値を組み立てる。対応外の型は null（書き込まない）。
-function toNotionProperty(type: string, value: string): Record<string, unknown> | null {
-  switch (type) {
-    case "title":
-      return { title: [{ text: { content: value } }] };
-    case "rich_text":
-      return { rich_text: [{ text: { content: value } }] };
-    case "url":
-      return { url: value };
-    case "email":
-      return { email: value };
-    case "phone_number":
-      return { phone_number: value };
-    case "date":
-      return /^\d{4}-\d{2}-\d{2}/.test(value) ? { date: { start: value.slice(0, 10) } } : null;
-    case "number": {
-      const n = Number(value);
-      return Number.isFinite(n) ? { number: n } : null;
-    }
-    default:
-      return null; // select / status / relation / formula / rollup / files / checkbox など
-  }
 }
 
 export async function syncWorkerToNotion(
@@ -87,7 +64,7 @@ export async function syncWorkerToNotion(
       message: `Notionデータベースの取得に失敗（${dbRes.status}）。データベースを連携アプリに共有しているか確認してください。${t.slice(0, 200)}`,
     };
   }
-  const db = (await dbRes.json()) as { properties?: Record<string, { type: string }> };
+  const db = (await dbRes.json()) as { properties?: Record<string, NotionPropertyDef> };
   const schema = db.properties ?? {};
 
   // 案A: アプリに値がある項目のみ、Notionに実在する書き込み可能プロパティへ反映（空欄はNotionを維持）
@@ -98,7 +75,7 @@ export async function syncWorkerToNotion(
     if (!value) continue;
     const def = schema[prop];
     if (!def) continue;
-    const built = toNotionProperty(def.type, value);
+    const built = toNotionProperty(def, value);
     if (!built) continue;
     properties[prop] = built;
     written.push(prop);

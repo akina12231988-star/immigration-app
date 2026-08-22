@@ -291,6 +291,7 @@ export interface Worker {
   passport_no: string; // パスポート番号
   passport_expiry_date: string | null; // パスポート有効期限
   residence_period: string; // 在留カードの在留期間（例: 1年・3年・6月。0092）
+  current_situation: string; // 只今の状況（経過メモ。Notionの只今の状況と同期。0093）
   notion_link: string; // Notion 個人ページのリンク
   residence_renewal_status: ResidenceRenewalStatus; // 在留更新の対応状況
   residence_renewal_todo: string; // Notion 申請TODO番号

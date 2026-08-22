@@ -81,6 +81,7 @@ import {
   workerFieldString,
 } from "@/lib/worker-inline-edit";
 import { RESIDENCE_PERIODS } from "@/lib/residence-card";
+import { WORKER_SITUATIONS } from "@/lib/worker-situation";
 import { isCountedHistory, type WorkHistory } from "@/types/ssw";
 import type { Application } from "@/types/application";
 import {
@@ -282,8 +283,8 @@ export function WorkerDetail({
       setApplied(null);
       router.refresh();
     } catch (err) {
-      // 母国の住所（0091）・在留期間（0092）など、列が無いときは何を適用すればよいか案内する
-      setError(dbErrorMessage(err, "0092_worker_residence_card_fields.sql", "保存に失敗しました"));
+      // 只今の状況（0093）など、列が無いときは何を適用すればよいか案内する
+      setError(dbErrorMessage(err, "0093_worker_current_situation.sql", "保存に失敗しました"));
     } finally {
       setSaveBusy(false);
     }
@@ -800,6 +801,34 @@ export function WorkerDetail({
       <Card className="p-4">
         <p className="mb-1 text-[11px] font-bold text-muted">基本情報</p>
         <dl className="mb-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+          {/* 只今の状況（経過メモ）。Notionの「只今の状況」と同じ選択肢＋自由入力。
+              「Notionに登録／更新」を押すとNotion側のselectにも反映される */}
+          <InfoItem
+            label="只今の状況（経過メモ）"
+            wide
+            value={worker.current_situation}
+            edit={
+              showInput("current_situation") ? (
+                <>
+                  <input
+                    list="worker-situations"
+                    value={val("current_situation")}
+                    onChange={(e) => setField("current_situation", e.target.value)}
+                    placeholder="例: 特定技能の審査中 ／ 入国管理局からビザの許可おりた電話あり"
+                    className={inputCls()}
+                  />
+                  <datalist id="worker-situations">
+                    {WORKER_SITUATIONS.map((s) => (
+                      <option key={s} value={s} />
+                    ))}
+                  </datalist>
+                  <span className="mt-0.5 block text-[10px] text-muted">
+                    選択肢から選ぶか、自由に入力できます。「Notionに登録／更新」でNotionの只今の状況にも入ります。
+                  </span>
+                </>
+              ) : undefined
+            }
+          />
           <InfoItem
             label="分野・職種"
             wide
