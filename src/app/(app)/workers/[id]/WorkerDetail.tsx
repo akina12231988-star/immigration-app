@@ -52,6 +52,7 @@ import {
 } from "@/components/workers/WorkerForm";
 import { ResidenceCardDialog } from "@/components/workers/ResidenceCardDialog";
 import { PassportMrzPanel, SavedMrzCopyList } from "@/components/workers/PassportMrzPanel";
+import { WorkerPassportTravel } from "@/components/workers/WorkerPassportTravel";
 import {
   HistoryFormDialog,
   type HistoryFormValues,
@@ -784,6 +785,9 @@ export function WorkerDetail({
         </p>
         {saveBar}
       </Card>
+
+      {/* 出入国の記録（パスポートのスタンプの日付と、スタンプページのPDF・画像） */}
+      <WorkerPassportTravel workerId={worker.id} canEdit={canEdit} today={today} />
 
       {/* 基本情報（在留カード・パスポート以外の項目） */}
       <Card className="p-4">
