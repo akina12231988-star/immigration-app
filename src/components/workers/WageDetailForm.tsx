@@ -642,6 +642,31 @@ export function WageDetailForm({
         </p>
       </div>
 
+      {/* 会社（所属機関）からの同意の確認。申請準備のTODOからここを開いて確認する */}
+      <label className="flex items-start gap-2 rounded-xl border border-border bg-background p-3 text-xs font-bold">
+        <input
+          type="checkbox"
+          checked={detail.company_agreed}
+          onChange={(e) => set({ company_agreed: e.target.checked })}
+          disabled={readOnly}
+          className="mt-0.5 h-4 w-4 accent-brand"
+        />
+        <span>
+          この1-6号別紙の内容について、会社（{orgName || "所属機関"}）から同意を得ました
+          {detail.company_agreed && (
+            <span className="ml-1.5 rounded-full bg-status-reported-bg px-2 py-0.5 text-[10px] text-status-reported-fg">
+              同意済み
+            </span>
+          )}
+          <span className="block text-[10px] font-normal text-muted">
+            賃金・控除の内容は会社の確認が必要です。同意をもらったらチェックして保存してください。
+          </span>
+        </span>
+      </label>
+
+      {/* 正式な書類（参考様式第1-6号 別紙1「賃金の支払」）と同じ並びで計算結果を表示する */}
+      <WageFormPreview wage={wage} detail={detail} result={result} />
+
       <button
         type="button"
         onClick={() => void copy()}
@@ -650,6 +675,98 @@ export function WageDetailForm({
         <Copy size={13} />
         {copied ? "コピーしました" : "様式用テキストをコピー"}
       </button>
+    </div>
+  );
+}
+
+// 参考様式第1-6号 別紙1「賃金の支払」の並びそのままで、計算結果を見やすく表示する。
+// Wordの様式が正式な書類のため、書類と同じ順番・言い回しで確認できるようにしている
+function WageFormPreview({
+  wage,
+  detail,
+  result,
+}: {
+  wage: { kind: WorkerWageKind | string; amount: number };
+  detail: WageDetail;
+  result: ReturnType<typeof calcWageDetail>;
+}) {
+  const yen = (n: number) => `約 ${formatYen(n)}円`;
+  const deductRow = (label: string, amount: number, sub?: string) => (
+    <div className="flex items-start justify-between gap-2 py-0.5">
+      <span className="min-w-0">
+        {label}
+        {sub && <span className="block text-[10px] font-normal text-muted">{sub}</span>}
+      </span>
+      <span className="shrink-0 tabular-nums">（{yen(amount)}）</span>
+    </div>
+  );
+  return (
+    <div className="rounded-xl border-2 border-border bg-surface p-3.5 text-xs leading-relaxed">
+      <p className="text-right text-[10px] text-muted">参考様式第１－６号　別紙１</p>
+      <p className="mb-2 text-center text-sm font-black">賃金の支払</p>
+
+      <p className="font-bold">１．基本賃金</p>
+      <p className="pl-3">
+        {wage.kind}（{formatYen(wage.amount)}円）
+      </p>
+      <p className="pl-3 text-[10px] text-muted">
+        {baseWageNote(wage.kind, wage.amount, result.annualHours)}
+      </p>
+
+      <p className="mt-2 font-bold">２．諸手当の額及び計算方法等（時間外労働の割増賃金は除く。）</p>
+      <div className="pl-3">
+        {detail.allowances.length === 0 && !detail.fixed_ot_enabled && (
+          <p className="text-muted">なし</p>
+        )}
+        {detail.allowances.map((a, i) => (
+          <p key={i}>
+            ({String.fromCharCode(97 + i)}) {a.type}
+            {a.name ? `／${a.name}` : ""}　{formatYen(a.amount)}円
+            {a.method && (
+              <span className="block pl-4 text-[10px] text-muted">計算方法：{a.method}</span>
+            )}
+          </p>
+        ))}
+        {detail.fixed_ot_enabled && (
+          <p>
+            【固定残業代】{formatYen(detail.fixed_ot_amount)}円
+            <span className="block pl-4 text-[10px] text-muted">
+              支給要件：時間外労働の有無にかかわらず、{formatYen(detail.fixed_ot_hours)}
+              時間分の時間外手当として支給。超える時間外労働分についての割増賃金は追加で支給。
+            </span>
+          </p>
+        )}
+      </div>
+
+      <p className="mt-2 flex items-center justify-between rounded-lg bg-background px-2 py-1.5 font-bold">
+        <span>３．１か月当たりの支払概算額（１＋２）</span>
+        <span className="tabular-nums">{yen(result.gross)}（合計）</span>
+      </p>
+
+      <p className="mt-2 font-bold">４．賃金支払時に控除する項目</p>
+      <div className="pl-3">
+        {deductRow("(a) 税　　　金", result.tax)}
+        {deductRow("(b) 社会保険料", result.social)}
+        {deductRow("(c) 雇用保険料", result.employment)}
+        {deductRow("(d) 食　　　費", result.food)}
+        {deductRow("(e) 居　住　費", result.housing, detail.housing_note || undefined)}
+        {deductRow("(f) その他（水道光熱費）", result.utility)}
+        {detail.others.map((o, i) => (
+          <div key={i}>{deductRow(`　　　　（${o.name || "その他"}）`, o.amount)}</div>
+        ))}
+      </div>
+      <p className="mt-1 flex items-center justify-between rounded-lg bg-background px-2 py-1.5 font-bold">
+        <span>控除する金額</span>
+        <span className="tabular-nums">{yen(result.deductTotal)}（合計）</span>
+      </p>
+
+      <p className="mt-2 flex items-center justify-between rounded-lg bg-brand/10 px-2 py-2 text-sm font-black text-brand">
+        <span>５．手取り支給額（３－４）</span>
+        <span className="tabular-nums">{yen(result.net)}（合計）</span>
+      </p>
+      <p className="mt-1 text-[10px] text-muted">
+        ※欠勤等がない場合であって、時間外労働の割増賃金等は除く。
+      </p>
     </div>
   );
 }

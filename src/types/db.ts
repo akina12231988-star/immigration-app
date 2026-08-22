@@ -524,6 +524,7 @@ export interface WageDetail {
   utility_kind: WageUtilityKind;
   utility_amount: number; // 水道光熱費（円）
   others: WageOtherDeduction[]; // その他控除
+  company_agreed: boolean; // 1-6号別紙の内容について会社（所属機関）から同意を得たか
 }
 
 // 昇給のたびに1行増やし、適用開始日がいちばん新しい行が現在の賃金になる

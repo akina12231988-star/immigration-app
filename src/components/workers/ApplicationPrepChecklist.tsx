@@ -29,11 +29,14 @@ import {
   EMPTY_PREP_DOC_STATUS,
   listPrepChecklists,
   listPrepDocStatuses,
+  updatePrepChecklistTodoNo,
   upsertPrepChecklist,
   upsertPrepDocStatus,
   type PrepChecklistRow,
   type PrepDocStatusInput,
 } from "@/lib/supabase/queries/application-prep";
+import { insertTodo, renameTodoNo } from "@/lib/supabase/queries/todos";
+import { dbErrorMessage } from "@/lib/errors";
 import { listActiveCustodyNoByWorker } from "@/lib/supabase/queries/custody";
 import { formatStorageNo } from "@/lib/custody";
 import { getHealthCheckDetail } from "@/lib/supabase/queries/health-check";
@@ -313,14 +316,10 @@ export function ApplicationPrepChecklist({
     }
   }
 
-  // TODO番号を入力して新しい準備リストを作成する
+  // 新しい準備リストを作成する。番号が空なら通し番号で自動採番し、TODO一覧にも登録する
   async function createList() {
-    const todo = newTodo.trim();
-    if (!todo) {
-      setError("TODO番号を入力してください。");
-      return;
-    }
-    if (lists.some((l) => l.todo_no === todo)) {
+    let todo = newTodo.trim();
+    if (todo && lists.some((l) => l.todo_no === todo)) {
       setSelected(todo);
       setNewTodo("");
       return;
@@ -328,6 +327,23 @@ export function ApplicationPrepChecklist({
     setCreating(true);
     setError(null);
     try {
+      if (!todo) {
+        // 自動採番（既存のNotion由来の番号の続き）。TODO一覧（/todos）にも行を作る
+        const row = await insertTodo(createClient(), {
+          kind: "申請準備",
+          worker_id: workerId,
+          title: "申請準備",
+        });
+        todo = row.todo_no;
+      } else {
+        // 手入力の番号もTODO一覧に登録する（TODO機能が未適用・番号重複なら黙って続行）
+        await insertTodo(createClient(), {
+          kind: "申請準備",
+          worker_id: workerId,
+          title: "申請準備",
+          todo_no: todo,
+        }).catch(() => undefined);
+      }
       await upsertPrepChecklist(createClient(), workerId, todo, EMPTY_PREP_META);
       // 申請準備で番号を入れたときと同じように、この番号で「準備中」にする。
       // これで申請一覧の「申請前＜準備中＞」にも出る（すでに対応状況が
@@ -352,9 +368,35 @@ export function ApplicationPrepChecklist({
       setSelected(todo);
       setNewTodo("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "作成に失敗しました");
+      setError(dbErrorMessage(err, "0102_todos.sql", "作成に失敗しました"));
     } finally {
       setCreating(false);
+    }
+  }
+
+  // 表示中のリストのTODO番号を変更する（TODO一覧側の番号も一緒にそろえる）
+  async function renameList() {
+    if (selected == null || current == null) return;
+    const next = window.prompt("新しいTODO番号を入力してください", selected)?.trim();
+    if (!next || next === selected) return;
+    if (lists.some((l) => l.todo_no === next)) {
+      setError(`TODO番号「${next}」の準備リストはすでにあります。`);
+      return;
+    }
+    setError(null);
+    try {
+      await updatePrepChecklistTodoNo(createClient(), current.id, next);
+      // TODO一覧（/todos）と申請準備の対応状況の番号もそろえる（無ければ何もしない）
+      await renameTodoNo(createClient(), "申請準備", workerId, selected, next).catch(() => undefined);
+      if (worker && renewalWorker?.residence_renewal_todo === selected) {
+        await updateWorker(createClient(), workerId, { residence_renewal_todo: next });
+        setRenewalWorker((w) => (w ? { ...w, residence_renewal_todo: next } : w));
+      }
+      const rows = await listPrepChecklists(createClient(), workerId);
+      setLists(rows);
+      setSelected(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "番号の変更に失敗しました");
     }
   }
 
@@ -554,7 +596,13 @@ export function ApplicationPrepChecklist({
 
       {/* TODO番号ごとの準備リスト切り替え */}
       <div className="mb-3 rounded-xl border border-border bg-background p-3">
-        <p className="mb-2 text-xs font-bold text-muted">申請TODO番号</p>
+        <p className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-muted">
+          申請TODO番号
+          {/* 申請準備は賃金（1-6号別紙）とリンクして進める。会社の同意チェックもそちらにある */}
+          <a href="#wages" className="font-bold text-brand hover:underline">
+            賃金（1-6号別紙）を開く →
+          </a>
+        </p>
         {lists.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
             {lists.map((l) => (
@@ -578,7 +626,7 @@ export function ApplicationPrepChecklist({
             <input
               value={newTodo}
               onChange={(e) => setNewTodo(e.target.value)}
-              placeholder="例: TODO-1234"
+              placeholder="空のまま追加でTODO番号を自動採番"
               className={`${inputCls} min-w-0 flex-1`}
             />
             <button
@@ -827,14 +875,23 @@ export function ApplicationPrepChecklist({
       )}
 
       {canEdit && (
-        <button
-          type="button"
-          onClick={removeList}
-          className="mt-3 flex items-center gap-1 text-xs font-bold text-seal"
-        >
-          <Trash2 size={13} />
-          この準備リスト（{(current.todo_no || "番号未設定")}）を削除
-        </button>
+        <div className="mt-3 flex flex-wrap items-center gap-4">
+          <button
+            type="button"
+            onClick={renameList}
+            className="flex items-center gap-1 text-xs font-bold text-brand"
+          >
+            TODO番号を変更（{current.todo_no || "番号未設定"}）
+          </button>
+          <button
+            type="button"
+            onClick={removeList}
+            className="flex items-center gap-1 text-xs font-bold text-seal"
+          >
+            <Trash2 size={13} />
+            この準備リスト（{(current.todo_no || "番号未設定")}）を削除
+          </button>
+        </div>
       )}
         </>
       )}

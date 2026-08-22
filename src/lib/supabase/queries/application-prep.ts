@@ -33,6 +33,19 @@ export async function listPrepChecklists(
   }));
 }
 
+// 準備リストのTODO番号を変更する（書類の準備状況はリストid紐付けのためそのまま残る）
+export async function updatePrepChecklistTodoNo(
+  supabase: SupabaseClient,
+  id: string,
+  todoNo: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("application_prep_checklists")
+    .update({ todo_no: todoNo })
+    .eq("id", id);
+  if (error) throw error;
+}
+
 // TODO番号を指定して保存（同じ番号があれば更新、無ければ新規作成）
 export async function upsertPrepChecklist(
   supabase: SupabaseClient,
