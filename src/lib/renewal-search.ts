@@ -18,7 +18,9 @@ export function offListReason(
 ): string | null {
   const { today, underReview, mode } = opts;
   if (worker.status === "退職") return "退職された方のため、申請準備の対象外です。";
-  if (underReview) return "いま申請中（審査中）のため、申請準備の一覧には出ません。";
+  if (underReview) {
+    return "いま申請の途中（審査中または在留カード受け取り待ち）のため、申請準備の一覧には出ません。在留カード受領まで進むと次の更新の対象に戻ります。";
+  }
   if (mode === "新規") {
     if (worker.application_prep_kind !== "新規") {
       return "「更新で申請書類準備」の対象です。準備の種類を選び直して「更新」から確認できます。";

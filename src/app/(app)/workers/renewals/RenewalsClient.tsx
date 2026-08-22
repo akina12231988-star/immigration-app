@@ -99,7 +99,7 @@ export function RenewalsClient({
       return true;
     };
     return workers
-      // 退職者・現在申請審査中の人・新規準備で追加した人は対象外
+      // 退職者・申請の途中（審査中・在留カード受け取り待ち）の人・新規準備で追加した人は対象外
       .filter((w) => w.application_prep_kind !== "新規" && inScope(w) && !underReview.has(w.id))
       .sort((a, b) => (a.residence_expiry_date ?? "").localeCompare(b.residence_expiry_date ?? ""));
   }, [workers, today, underReview, mode, hasExpiryRange, expiryFrom, expiryTo]);
