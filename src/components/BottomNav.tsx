@@ -7,6 +7,7 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import { NAV_ITEMS, activeHref, type NavItem } from "@/lib/nav-items";
 import { useNotifications } from "@/lib/notification-store";
 import { useUnreadReleaseCount } from "@/lib/release-notes-read";
+import { useNavAlerts, type NavAlerts } from "@/lib/nav-alerts";
 
 // 1行目に常時表示する項目数（6列目は開閉ボタン）
 const PRIMARY_COUNT = 5;
@@ -19,6 +20,8 @@ export function BottomNav() {
   const pathname = usePathname();
   const active = activeHref(pathname);
   const [open, setOpen] = useState(false);
+  // パスポート更新必要・要実施の生活オリエンのアラート件数（タブごとに取らず親で1回）
+  const alerts = useNavAlerts();
 
   const primary = NAV_ITEMS.slice(0, PRIMARY_COUNT);
   const rest = NAV_ITEMS.slice(PRIMARY_COUNT);
@@ -39,6 +42,7 @@ export function BottomNav() {
               key={item.href}
               item={item}
               active={active}
+              alerts={alerts}
               onNavigate={() => setOpen(false)}
             />
           ))}
@@ -48,7 +52,7 @@ export function BottomNav() {
       {/* 1行目: 常時表示（5項目＋開閉ボタン） */}
       <div className="grid grid-cols-6 gap-x-0.5 px-1 pb-1 pt-1">
         {primary.map((item) => (
-          <NavTab key={item.href} item={item} active={active} />
+          <NavTab key={item.href} item={item} active={active} alerts={alerts} />
         ))}
         <button
           type="button"
@@ -87,10 +91,12 @@ export function BottomNav() {
 function NavTab({
   item,
   active,
+  alerts,
   onNavigate,
 }: {
   item: NavItem;
   active: string | null;
+  alerts: NavAlerts;
   // タブを押して移動したら2行目以降を畳むためのコールバック
   onNavigate?: () => void;
 }) {
@@ -100,7 +106,15 @@ function NavTab({
   // 新機能のお知らせの未読件数（「更新のお知らせ」を開くと消える）
   const unreadUpdates = useUnreadReleaseCount();
   const badge =
-    href === "/notifications" ? unreadCount : href === "/updates" ? unreadUpdates : 0;
+    href === "/notifications"
+      ? unreadCount
+      : href === "/updates"
+        ? unreadUpdates
+        : item.alert === "passports"
+          ? alerts.passports
+          : item.alert === "orientations"
+            ? alerts.orientations
+            : 0;
   return (
     <Link href={href} onClick={onNavigate} className="flex flex-col items-center gap-0.5 py-1">
       <span

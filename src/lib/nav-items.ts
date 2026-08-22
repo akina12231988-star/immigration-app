@@ -4,6 +4,7 @@ import {
   Users,
   FilePlus2,
   List,
+  ListTodo,
   ScanLine,
   GraduationCap,
   Briefcase,
@@ -29,34 +30,82 @@ export interface NavItem {
   short: string; // 下部タブ用の短縮ラベル
   icon: LucideIcon;
   emphasize?: boolean;
+  // メニューにアラート件数を出す項目（passports=パスポート更新必要 / orientations=要実施の生活オリエン）
+  alert?: "passports" | "orientations";
 }
 
-// 下部タブ・サイドナビ共通のナビ項目（要件②の順序）
-export const NAV_ITEMS: NavItem[] = [
+// トグル表示のグループ（サイドナビで開閉できる。下部タブでは中身を並べる）
+export interface NavGroup {
+  key: string;
+  label: string;
+  icon: LucideIcon;
+  children: NavItem[];
+}
+
+export type NavEntry = NavItem | NavGroup;
+
+export function isNavGroup(entry: NavEntry): entry is NavGroup {
+  return (entry as NavGroup).children !== undefined;
+}
+
+// メニューの表示順（トグルのグループ入り）。
+// ※「入社書類メール」「郵送請求」は指定の並びに無かったため、関連の近くに仮置きしている
+export const NAV_ENTRIES: NavEntry[] = [
   { href: "/", label: "ホーム", short: "ホーム", icon: Home },
+  { href: "/notifications", label: "入管メール通知", short: "お知らせ", icon: Bell },
   { href: "/organizations", label: "所属機関の情報", short: "所属機関", icon: Building2 },
   { href: "/workers", label: "外国人", short: "外国人", icon: Users },
+  // ★指定の並びに無かった項目（仮置き）: 外国人まわりの書類のためここに置いている
   { href: "/onboarding", label: "入社書類メール", short: "入社書類", icon: MailPlus },
-  { href: "/mailing", label: "郵送請求", short: "郵送請求", icon: Mailbox },
-  { href: "/applications/new", label: "申請登録", short: "申請登録", icon: FilePlus2, emphasize: true },
-  { href: "/applications", label: "申請一覧", short: "申請一覧", icon: List },
-  { href: "/notifications", label: "入管メール通知", short: "お知らせ", icon: Bell },
-  // 申請準備のTODOは申請準備のページに合体した（/todos は直接開けば残っている）
-  { href: "/workers/renewals", label: "申請準備", short: "申請準備", icon: CalendarClock },
-  { href: "/workers/passports", label: "パスポート更新必要", short: "パスポート", icon: BookMarked },
   { href: "/custody", label: "保管ボックス（原本預かり）", short: "保管", icon: Archive },
+  {
+    key: "todo",
+    label: "TODO",
+    icon: ListTodo,
+    children: [
+      { href: "/workers/renewals", label: "申請準備", short: "申請準備", icon: CalendarClock },
+      { href: "/resignations", label: "退職＜随時報告＞", short: "退職", icon: UserMinus },
+      { href: "/todos/exams", label: "試験の申込", short: "試験", icon: PencilLine },
+    ],
+  },
+  { href: "/applications", label: "申請一覧", short: "申請一覧", icon: List },
+  { href: "/applications/new", label: "申請登録", short: "申請登録", icon: FilePlus2, emphasize: true },
+  // ★指定の並びに無かった項目（仮置き）: 申請準備で使う証明書の請求のためここに置いている
+  { href: "/mailing", label: "郵送請求", short: "郵送請求", icon: Mailbox },
   { href: "/notices/search", label: "通知書", short: "通知書", icon: ScanLine },
-  { href: "/orientations", label: "生活オリエンテーション", short: "生活", icon: GraduationCap },
-  { href: "/resignations", label: "退職＜随時報告＞", short: "退職", icon: UserMinus },
-  // 試験の申込のTODO（並び順はあとで整理する予定）
-  { href: "/todos/exams", label: "試験の申込", short: "試験", icon: PencilLine },
+  {
+    href: "/workers/passports",
+    label: "パスポート更新必要",
+    short: "パスポート",
+    icon: BookMarked,
+    alert: "passports",
+  },
+  {
+    href: "/orientations",
+    label: "生活オリエンテーション",
+    short: "生活",
+    icon: GraduationCap,
+    alert: "orientations",
+  },
   { href: "/sales", label: "請求書作成", short: "請求", icon: Coins },
-  { href: "/referrals", label: "紹介手数料台帳", short: "紹介料", icon: Handshake },
+  {
+    key: "assen",
+    label: "あっせん",
+    icon: Handshake,
+    children: [
+      { href: "/postings", label: "求人一覧", short: "求人", icon: Briefcase },
+      { href: "/jobs", label: "求職一覧", short: "求職", icon: ClipboardList },
+      { href: "/referrals", label: "紹介手数料台帳", short: "紹介料", icon: Handshake },
+    ],
+  },
   { href: "/employees", label: "支援体制（従業員）", short: "支援体制", icon: UserCheck },
-  { href: "/postings", label: "求人一覧", short: "求人", icon: Briefcase },
-  { href: "/jobs", label: "求職一覧", short: "求職", icon: ClipboardList },
   { href: "/updates", label: "更新のお知らせ", short: "更新情報", icon: Sparkles },
 ];
+
+// グループを展開した平らな一覧（下部タブ・現在地の判定用）
+export const NAV_ITEMS: NavItem[] = NAV_ENTRIES.flatMap((e) =>
+  isNavGroup(e) ? e.children : [e],
+);
 
 // 現在パスがナビ項目にマッチするか（ホームは完全一致、他は前方一致）
 export function isActive(pathname: string, href: string): boolean {
