@@ -27,6 +27,7 @@ import {
   type WorkerTravel,
 } from "@/lib/worker-travel";
 import { dbErrorMessage } from "@/lib/errors";
+import { RESIDENCE_STATUSES } from "@/types/db";
 
 const INPUT =
   "min-h-[40px] w-full rounded-lg border border-border bg-background px-2.5 text-sm focus:border-brand focus:outline-none";
@@ -52,6 +53,7 @@ export function WorkerPassportTravel({
     japan_entry_on: "",
     japan_exit_on: "",
     home_entry_on: "",
+    landing_permission: "",
   });
   const [adding, setAdding] = useState(false);
 
@@ -65,7 +67,12 @@ export function WorkerPassportTravel({
 
   const set = (key: keyof typeof form, value: string) =>
     setForm((f) => ({ ...f, [key]: value }));
-  const hasAnyDate = Object.values(form).some((v) => v);
+  const hasAnyDate = [
+    form.home_departure_on,
+    form.japan_entry_on,
+    form.japan_exit_on,
+    form.home_entry_on,
+  ].some((v) => v);
 
   const addTravel = async () => {
     if (!hasAnyDate) return;
@@ -77,12 +84,19 @@ export function WorkerPassportTravel({
         japan_entry_on: form.japan_entry_on || null,
         japan_exit_on: form.japan_exit_on || null,
         home_entry_on: form.home_entry_on || null,
+        landing_permission: form.landing_permission.trim(),
         note: "",
       });
-      setForm({ home_departure_on: "", japan_entry_on: "", japan_exit_on: "", home_entry_on: "" });
+      setForm({
+        home_departure_on: "",
+        japan_entry_on: "",
+        japan_exit_on: "",
+        home_entry_on: "",
+        landing_permission: "",
+      });
       await loadTravels();
     } catch (err) {
-      setError(dbErrorMessage(err, "0097_worker_travels.sql", "出入国の記録に失敗しました"));
+      setError(dbErrorMessage(err, "0098_worker_travel_landing_permission.sql", "出入国の記録に失敗しました"));
     } finally {
       setAdding(false);
     }
@@ -257,6 +271,25 @@ export function WorkerPassportTravel({
               />
             </label>
           </div>
+          {/* 上陸許可シールで入国した場合は、そのときの在留資格も記録する */}
+          <label className="mt-2 flex flex-col gap-1">
+            <span className="text-[11px] font-bold text-muted">
+              上陸許可の在留資格（シールに書かれた資格。分かるときだけ）
+            </span>
+            <input
+              list="landing-permission-statuses"
+              value={form.landing_permission}
+              onChange={(e) => set("landing_permission", e.target.value)}
+              placeholder="例: 特定技能1号 ／ 技能実習1号ロ ／ 短期滞在"
+              autoComplete="off"
+              className={INPUT}
+            />
+            <datalist id="landing-permission-statuses">
+              {RESIDENCE_STATUSES.map((s) => (
+                <option key={s} value={s} />
+              ))}
+            </datalist>
+          </label>
           <Button
             type="button"
             variant="secondary"
@@ -359,7 +392,15 @@ function TripFlow({
       }`}
     >
       <div className="mb-1.5 flex items-center justify-between gap-2">
-        <span className="text-[11px] font-bold text-muted">{index + 1}回目</span>
+        <span className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold text-muted">
+          {index + 1}回目
+          {/* 上陸許可シールの在留資格（この入国のときのもの） */}
+          {t.landing_permission && (
+            <span className="rounded-full border border-border bg-surface px-2 py-0.5 text-[10px] font-bold text-foreground">
+              上陸許可 {t.landing_permission}
+            </span>
+          )}
+        </span>
         {canEdit && (
           <button
             type="button"
