@@ -831,13 +831,18 @@ export function WorkerDetail({
               )
             }
             edit={
-              showInput("current_situation") ? (
+              // 未入力でも自動表示（現在のビザ＋審査中/許可）がある間は入力欄を出さず、
+              // 自動の内容を見せる。書き換えたいときは「編集」から
+              showInput("current_situation") && (editing || !autoSituationValue) ? (
                 <>
                   <input
                     list="worker-situations"
                     value={val("current_situation")}
                     onChange={(e) => setField("current_situation", e.target.value)}
-                    placeholder="例: 特定技能の審査中 ／ 入国管理局からビザの許可おりた電話あり"
+                    placeholder={
+                      autoSituationValue ||
+                      "例: 特定技能の審査中 ／ 入国管理局からビザの許可おりた電話あり"
+                    }
                     // ブラウザの住所・電話番号のオートフィルが候補に混ざらないようにする
                     autoComplete="off"
                     className={inputCls()}
@@ -849,15 +854,18 @@ export function WorkerDetail({
                   </datalist>
                   <span className="mt-0.5 block text-[10px] text-muted">
                     {situationDescription(val("current_situation")) ||
-                      "選択肢から選ぶか、自由に入力できます。「Notionに登録／更新」でNotionの只今の状況にも入ります。"}
+                      (autoSituationValue && !val("current_situation")
+                        ? `未入力の間は「${autoSituationValue}」（在留資格と申請の状況）を自動で表示します。`
+                        : "選択肢から選ぶか、自由に入力できます。「Notionに登録／更新」でNotionの只今の状況にも入ります。")}
                   </span>
                 </>
               ) : undefined
             }
           />
-          {/* 只今の状況 → 現在の所属機関 → 雇用開始日 → 状態・支援区分 の順で表示する */}
+          {/* 只今の状況 → 現在の所属機関 → 雇用開始日 → 状態・支援区分 の順で縦に表示する */}
           <InfoItem
             label="現在の所属機関"
+            wide
             value={worker.current_organization_id ? orgName : canEdit ? "" : "未所属"}
             edit={
               showInput("current_organization_id") ? (
@@ -878,6 +886,7 @@ export function WorkerDetail({
           />
           <InfoItem
             label="雇用開始日（現在の所属機関）"
+            wide
             value={
               currentOrgStart || (
                 <span className="text-xs text-muted">
