@@ -18,7 +18,8 @@ import { Button } from "@/components/ui/Button";
 import { useApplications } from "@/lib/application-store";
 import { createClient } from "@/lib/supabase/client";
 import { findDuplicateApplication } from "@/lib/application-number";
-import { insertWorker } from "@/lib/supabase/queries/workers";
+import { insertWorker, updateWorker } from "@/lib/supabase/queries/workers";
+import { APPLICATION_CONTENT_CHOICES } from "@/lib/worker-situation";
 import { blankWorkerInput } from "@/lib/worker-defaults";
 import { buildWorkerOptions } from "@/lib/worker-label";
 import { Combobox } from "@/components/ui/Combobox";
@@ -29,7 +30,6 @@ import {
 } from "@/lib/supabase/queries/agents";
 import { uploadApplicationFile } from "@/lib/application-files";
 import {
-  APPLICATION_CONTENT_OPTIONS,
   type ApplicationContent,
   type ApplicationMethod,
 } from "@/types/application";
@@ -91,6 +91,9 @@ export function ReceiptRegistrationForm({
     ...EMPTY_FIELDS,
     applicationDate: isOnline ? new Date().toISOString().slice(0, 10) : "",
   }));
+  // 申請内容の候補（7つ）。選ぶと保存する申請内容（3種類のどれか）と、
+  // 外国人の「只今の状況」（どの内容で審査中か）が決まる
+  const [contentChoice, setContentChoice] = useState("");
 
   // 外国人・所属機関・申請取次士
   const [workers, setWorkers] = useState<WorkerOption[]>([]);
@@ -212,6 +215,10 @@ export function ReceiptRegistrationForm({
   const set = <K extends keyof FormFields>(key: K, value: FormFields[K]) =>
     setFields((prev) => ({ ...prev, [key]: value }));
 
+  // 選んでいる申請内容の候補（只今の状況への反映と、案内表示に使う）
+  const selectedChoice =
+    APPLICATION_CONTENT_CHOICES.find((c) => c.label === contentChoice) ?? null;
+
   // 外国人を選んだら、所属機関とその人の在留期限を自動反映する。
   // 未登録（新規）の人は手入力のまま。
   const onSelectWorker = (id: string) => {
@@ -287,6 +294,13 @@ export function ReceiptRegistrationForm({
         status: "申請済",
         assignee: fields.isSelfApply ? "本人申請" : (selectedAgent?.name ?? ""),
       });
+      // 外国人と紐づけて登録したら、只今の状況を「どの内容で審査中か」に更新する。
+      // 状況の更新に失敗しても申請登録自体は成立させる（0093未適用でも登録は止めない）
+      if (workerId && selectedChoice) {
+        await updateWorker(createClient(), workerId, {
+          current_situation: selectedChoice.situation,
+        }).catch(() => undefined);
+      }
       // ストアに追加された自分自身のレコードを重複チェックから外し、
       // 画像アップロード完了までの間に誤った重複警告が出ないようにする
       setCreatedId(created.id);
@@ -448,23 +462,38 @@ export function ReceiptRegistrationForm({
                 </p>
               </div>
 
-              {/* 5. 申請内容 */}
+              {/* 5. 申請内容（7つの候補。選ぶと保存する申請内容と、外国人の只今の状況が決まる） */}
               <label className="block">
                 <span className="mb-1.5 block text-xs font-bold text-muted">申請内容（必須）</span>
                 <select
-                  value={fields.applicationContent}
-                  onChange={(e) => set("applicationContent", e.target.value as ApplicationContent)}
+                  value={contentChoice}
+                  onChange={(e) => {
+                    const label = e.target.value;
+                    setContentChoice(label);
+                    const choice = APPLICATION_CONTENT_CHOICES.find((c) => c.label === label);
+                    if (choice) {
+                      set("applicationContent", choice.content);
+                      // 本人申請の候補は、下の本人申請チェックも自動で入れる（外すこともできる）
+                      if (choice.selfApply) set("isSelfApply", true);
+                    }
+                  }}
                   className={INPUT_CLASS}
                 >
                   <option value="" disabled>
                     選択してください
                   </option>
-                  {APPLICATION_CONTENT_OPTIONS.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
+                  {APPLICATION_CONTENT_CHOICES.map((c) => (
+                    <option key={c.label} value={c.label}>
+                      {c.label}
                     </option>
                   ))}
                 </select>
+                {selectedChoice && (
+                  <span className="mt-1 block text-[11px] text-muted">
+                    登録すると、外国人詳細の只今の状況が「{selectedChoice.situation}」になります
+                    （申請内容は「{selectedChoice.content}」として保存されます）。
+                  </span>
+                )}
               </label>
 
               {/* 6. 申請取次士（登録済みから選択・本人申請の場合はチェック） */}

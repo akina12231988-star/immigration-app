@@ -4,6 +4,8 @@
 // Notion側と文字がずれると選択肢が二重にできるため、直すときは両方をそろえること。
 // description が空の選択肢は、意味の説明をまだもらっていないもの。
 
+import type { ApplicationContent } from "@/types/application";
+
 export interface WorkerSituation {
   value: string;
   description: string;
@@ -53,6 +55,10 @@ export const WORKER_SITUATIONS: WorkerSituation[] = [
     description: "特定技能ビザの在留期間更新許可申請で審査中の人",
   },
   { value: "特定技能の審査中", description: "" },
+  {
+    value: "２号特定技能の審査中",
+    description: "本人申請。特定技能２号ビザへの在留資格変更許可申請で審査中の人",
+  },
   {
     value: "在留資格認定申請書の準備中",
     description: "申請準備で、在留資格認定申請の準備中の人",
@@ -131,3 +137,65 @@ export function situationDescription(value: string): string {
   const v = value.trim();
   return WORKER_SITUATIONS.find((s) => s.value === v)?.description ?? "";
 }
+
+// 申請準備の対応状況を「準備中」にしたときに選ぶ、準備の内容（7つ）。
+// 選んで保存すると、外国人詳細の「只今の状況」にそのまま入る
+export const PREP_SITUATIONS: string[] = [
+  "在留資格認定申請書の準備中",
+  "特定技能申請準備中",
+  "特定技能更新の準備中",
+  "特定活動で申請準備中",
+  "特定活動（特定技能２号移行準備のため）準備中",
+  "特定活動ビザ更新の申請準備",
+  "特定技能2号申請準備中",
+];
+
+// 申請登録の「申請内容」の候補（7つ）。
+// 選ぶと、保存する申請内容（従来どおりの3種類のどれか）と、
+// 外国人の只今の状況（どの内容で審査中か）が決まる
+export interface ApplicationContentChoice {
+  label: string; // 画面に出す候補名
+  content: ApplicationContent; // 保存する申請内容（従来の3種類）
+  situation: string; // 外国人詳細の「只今の状況」に入れる値
+  selfApply?: boolean; // 本人申請の候補（選ぶと本人申請にチェックが入る）
+}
+
+export const APPLICATION_CONTENT_CHOICES: ApplicationContentChoice[] = [
+  {
+    label: "在留認定許可申請（特定技能）",
+    content: "在留認定許可申請",
+    situation: "特定技能（認定）の審査中",
+  },
+  {
+    label: "在留資格の変更許可（特定活動）",
+    content: "在留資格の変更許可",
+    situation: "特定活動の審査中",
+  },
+  {
+    label: "在留期間の更新許可（特定活動）",
+    content: "在留期間の更新許可",
+    situation: "特定活動更新許可の審査中",
+  },
+  {
+    label: "在留資格の変更許可（特定活動・２号以降準備）※本人申請",
+    content: "在留資格の変更許可",
+    situation: "特定活動（２号以降準備）の審査中",
+    selfApply: true,
+  },
+  {
+    label: "在留期間の更新許可（特定技能）",
+    content: "在留期間の更新許可",
+    situation: "特定技能更新許可の審査中",
+  },
+  {
+    label: "在留資格の変更許可（特定技能）",
+    content: "在留資格の変更許可",
+    situation: "特定技能の審査中",
+  },
+  {
+    label: "在留資格の変更許可（特定技能２号）※本人申請",
+    content: "在留資格の変更許可",
+    situation: "２号特定技能の審査中",
+    selfApply: true,
+  },
+];

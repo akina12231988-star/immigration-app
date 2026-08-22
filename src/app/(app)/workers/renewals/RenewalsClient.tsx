@@ -29,6 +29,7 @@ import { matchesWorkerName } from "@/lib/worker-search";
 import { NameSearchBox } from "@/components/ui/NameSearchBox";
 import { todayStr } from "@/lib/application-alerts";
 import { RESIDENCE_RENEWAL_STATUSES, type ResidenceRenewalStatus } from "@/types/db";
+import { PREP_SITUATIONS } from "@/lib/worker-situation";
 import {
   WorkerRenewalCard,
   RENEWAL_STATUS_LABEL as STATUS_LABEL,
@@ -362,6 +363,8 @@ function NewPrepForm({
   const [todo, setTodo] = useState("");
   const [orgId, setOrgId] = useState("");
   const [status, setStatus] = useState<ResidenceRenewalStatus>("準備中");
+  // 準備の内容。保存すると外国人の「只今の状況」に入る
+  const [prepSituation, setPrepSituation] = useState("");
   const [tantou, setTantou] = useState("");
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -454,6 +457,8 @@ function NewPrepForm({
         application_prep_kind: "新規",
         // 転職の場合の転職先。現在の所属機関は在留カード受領まで変えない
         application_prep_organization_id: orgId || null,
+        // 準備の内容を選んでいれば、外国人の「只今の状況」にも入れる
+        ...(status === "準備中" && prepSituation ? { current_situation: prepSituation } : {}),
       });
       // 担当者を選んだ場合は、TODO番号の準備リストに紐づけて保存する
       if (tantou) {
@@ -465,6 +470,7 @@ function NewPrepForm({
       setOrgId("");
       setTodo("");
       setStatus("準備中");
+      setPrepSituation("");
       setTantou("");
       router.refresh();
     } catch (err) {
@@ -575,6 +581,28 @@ function NewPrepForm({
           ))}
         </select>
       </label>
+
+      {/* 準備中のときは、どの準備かを選ぶ。追加すると外国人詳細の「只今の状況」に入る */}
+      {status === "準備中" && (
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-bold text-muted">準備の内容（只今の状況）</span>
+          <select
+            value={prepSituation}
+            onChange={(e) => setPrepSituation(e.target.value)}
+            className={INPUT_CLASS}
+          >
+            <option value="">未選択（只今の状況は変えない）</option>
+            {PREP_SITUATIONS.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+          <span className="text-[11px] text-muted">
+            追加すると外国人詳細の「只今の状況」に入ります。
+          </span>
+        </label>
+      )}
 
       <label className="flex flex-col gap-1">
         <span className="text-[11px] font-bold text-muted">担当者（未定でも可・あとから設定できます）</span>
