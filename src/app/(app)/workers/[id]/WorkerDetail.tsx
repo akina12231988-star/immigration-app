@@ -623,6 +623,21 @@ export function WorkerDetail({
 
           {/* 写真の下からは横幅いっぱいに使う（スマホで潰れないように） */}
           <div className="mt-2 flex flex-col gap-2">
+            {/* 編集モードでは、写真の下のMessenger・Notionのリンク先もここで変更できる */}
+            {editing && canEdit && (
+              <>
+                <CardItem
+                  label="Messenger グループ/個人リンク"
+                  value=""
+                  edit={textInput("messenger_link", "https://m.me/... または https://www.messenger.com/...", true)}
+                />
+                <CardItem
+                  label="Notion 個人ページのリンク"
+                  value=""
+                  edit={textInput("notion_link", "https://www.notion.so/... または https://app.notion.com/...", true)}
+                />
+              </>
+            )}
             <CardItem
               label="国籍・地域 NATIONALITY/REGION"
               value={worker.nationality}
