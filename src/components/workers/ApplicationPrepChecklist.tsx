@@ -596,7 +596,13 @@ export function ApplicationPrepChecklist({
 
       {/* TODO番号ごとの準備リスト切り替え */}
       <div className="mb-3 rounded-xl border border-border bg-background p-3">
-        <p className="mb-2 text-xs font-bold text-muted">申請TODO番号</p>
+        <p className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-muted">
+          申請TODO番号
+          {/* 申請準備は賃金（1-6号別紙）とリンクして進める。会社の同意チェックもそちらにある */}
+          <a href="#wages" className="font-bold text-brand hover:underline">
+            賃金（1-6号別紙）を開く →
+          </a>
+        </p>
         {lists.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
             {lists.map((l) => (

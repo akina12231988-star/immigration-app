@@ -264,6 +264,7 @@ export function emptyWageDetail(): WageDetail {
     utility_kind: "実費",
     utility_amount: 0,
     others: [],
+    company_agreed: false,
   };
 }
 
@@ -315,6 +316,7 @@ export function normalizeWageDetail(raw: unknown): WageDetail {
     housing_note: String(r.housing_note ?? base.housing_note),
     utility_kind: (r.utility_kind as WageDetail["utility_kind"]) ?? base.utility_kind,
     utility_amount: toNumber(r.utility_amount ?? base.utility_amount),
+    company_agreed: Boolean(r.company_agreed ?? base.company_agreed),
   };
 }
 

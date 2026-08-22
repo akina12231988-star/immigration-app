@@ -319,11 +319,23 @@ function TodoItem({
           aria-label="TODO番号"
           className="w-20 rounded-lg border border-border bg-surface px-2 py-1 text-center text-sm font-bold tabular-nums"
         />
-        <span className="min-w-0 flex-1">
+        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-0.5">
           {todo.worker_id ? (
-            <Link href={`/workers/${todo.worker_id}`} className="truncate font-bold text-brand hover:underline">
-              {todo.worker_name ?? "（外国人）"}
-            </Link>
+            <>
+              <Link href={`/workers/${todo.worker_id}`} className="truncate font-bold text-brand hover:underline">
+                {todo.worker_name ?? "（外国人）"}
+              </Link>
+              {/* 申請準備のTODOは、外国人詳細の賃金（1-6号別紙）とリンクして作成を進める。
+                  会社の同意の確認チェックもその中にある */}
+              {todo.kind === "申請準備" && (
+                <Link
+                  href={`/workers/${todo.worker_id}#wages`}
+                  className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] font-bold text-brand"
+                >
+                  賃金（1-6号別紙）を開く
+                </Link>
+              )}
+            </>
           ) : (
             <span className="text-xs text-muted">外国人ひも付けなし</span>
           )}

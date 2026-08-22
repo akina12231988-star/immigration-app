@@ -275,7 +275,8 @@ export function WorkerWages({
   };
 
   return (
-    <Card className="p-4">
+    // 申請準備のTODOから「賃金（1-6号別紙）を開く」で直接ここに飛べるようにする
+    <Card id="wages" className="scroll-mt-24 p-4">
       <h2 className="mb-1 flex items-center gap-2 text-sm font-bold">
         <Banknote size={16} />
         賃金（時給・月給）
