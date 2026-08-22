@@ -21,6 +21,17 @@ describe("toNotionProperty", () => {
     expect(toNotionProperty({ type: "select" }, "審査中, 待ち")).toBeNull();
   });
 
+  test("「・」で併記された値は、selectは末尾（いちばん新しい状況）・multi_selectは全部書く", () => {
+    expect(
+      toNotionProperty({ type: "select" }, "特定技能1号＜支援委託中＞・更新"),
+    ).toEqual({ select: { name: "更新" } });
+    expect(
+      toNotionProperty({ type: "multi_select" }, "特定技能1号＜支援委託中＞・更新"),
+    ).toEqual({
+      multi_select: [{ name: "特定技能1号＜支援委託中＞" }, { name: "更新" }],
+    });
+  });
+
   test("status は同じ名前の選択肢があるときだけ書く（無いとページ更新全体が失敗するため）", () => {
     const def = { type: "status", status: { options: [{ name: "審査中" }] } };
     expect(toNotionProperty(def, "審査中")).toEqual({ status: { name: "審査中" } });

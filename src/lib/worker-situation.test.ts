@@ -1,9 +1,13 @@
 import { describe, expect, test } from "vitest";
 import {
   APPLICATION_CONTENT_CHOICES,
+  ENTRUSTED_SITUATION,
   PREP_SITUATIONS,
   WORKER_SITUATIONS,
+  mergeSituation,
+  situationAfterApproval,
   situationDescription,
+  splitSituations,
 } from "@/lib/worker-situation";
 import { APPLICATION_CONTENT_OPTIONS } from "@/types/application";
 
@@ -55,5 +59,72 @@ describe("APPLICATION_CONTENT_CHOICES", () => {
     expect(self.map((c) => c.situation).sort()).toEqual(
       ["２号特定技能の審査中", "特定活動（２号以降準備）の審査中"].sort(),
     );
+  });
+});
+
+describe("mergeSituation", () => {
+  const entrusted = {
+    current_situation: ENTRUSTED_SITUATION,
+    support: "支援対象",
+    status: "在籍中",
+  };
+
+  test("支援対象かつ在籍中の＜支援委託中＞は外さず、先頭に残して併記する", () => {
+    expect(mergeSituation("特定技能更新許可の審査中", entrusted)).toBe(
+      `${ENTRUSTED_SITUATION}・特定技能更新許可の審査中`,
+    );
+    // すでに併記されている人も同じ形を保つ
+    expect(
+      mergeSituation("特定技能更新の準備中", {
+        ...entrusted,
+        current_situation: `${ENTRUSTED_SITUATION}・特定技能申請準備中`,
+      }),
+    ).toBe(`${ENTRUSTED_SITUATION}・特定技能更新の準備中`);
+  });
+
+  test("支援対象でない・在籍中でない・＜支援委託中＞が付いていない人はそのまま置き換える", () => {
+    expect(
+      mergeSituation("特定技能更新許可の審査中", { ...entrusted, support: "支援対象外" }),
+    ).toBe("特定技能更新許可の審査中");
+    expect(
+      mergeSituation("特定技能更新許可の審査中", { ...entrusted, status: "退職" }),
+    ).toBe("特定技能更新許可の審査中");
+    expect(
+      mergeSituation("特定技能更新許可の審査中", { ...entrusted, current_situation: "更新" }),
+    ).toBe("特定技能更新許可の審査中");
+  });
+
+  test("新しい状況が＜支援委託中＞そのもののときは二重にしない", () => {
+    expect(mergeSituation(ENTRUSTED_SITUATION, entrusted)).toBe(ENTRUSTED_SITUATION);
+  });
+});
+
+describe("situationAfterApproval", () => {
+  test("特定技能の更新の許可がおりたら「更新」に変える（＜支援委託中＞は残す）", () => {
+    expect(
+      situationAfterApproval(`${ENTRUSTED_SITUATION}・特定技能更新許可の審査中`),
+    ).toBe(`${ENTRUSTED_SITUATION}・更新`);
+    expect(situationAfterApproval("特定技能更新許可の審査中")).toBe("更新");
+  });
+
+  test("特定技能の更新以外の状況のときは変えない", () => {
+    expect(situationAfterApproval("特定活動の審査中")).toBeNull();
+    expect(situationAfterApproval(ENTRUSTED_SITUATION)).toBeNull();
+    expect(situationAfterApproval("")).toBeNull();
+  });
+});
+
+describe("splitSituations / situationDescription（併記）", () => {
+  test("「・」で併記された状況を分けられる", () => {
+    expect(splitSituations(`${ENTRUSTED_SITUATION}・特定技能更新許可の審査中`)).toEqual([
+      ENTRUSTED_SITUATION,
+      "特定技能更新許可の審査中",
+    ]);
+  });
+
+  test("併記された状況の説明は、それぞれの説明をつなげて返す", () => {
+    const text = situationDescription(`${ENTRUSTED_SITUATION}・特定技能更新許可の審査中`);
+    expect(text).toContain("在留期間更新許可申請");
+    expect(text).toContain("支援委託中");
   });
 });

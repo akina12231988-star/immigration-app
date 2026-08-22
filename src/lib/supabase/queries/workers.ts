@@ -445,3 +445,37 @@ export async function importWorkers(
   }
   return summary;
 }
+
+// 只今の状況の自動更新（申請準備・申請登録）で使う、現在の状況・支援区分・状態。
+// current_situation 列が無い（0093未適用）環境でも、支援区分・状態だけは取れるようにする
+export interface WorkerSituationInfo {
+  current_situation: string;
+  support: string;
+  status: string;
+}
+
+export async function fetchWorkerSituationInfo(
+  supabase: SupabaseClient,
+  workerId: string,
+): Promise<WorkerSituationInfo> {
+  const { data, error } = await supabase
+    .from("workers")
+    .select("current_situation, support, status")
+    .eq("id", workerId)
+    .maybeSingle();
+  if (!error && data) {
+    const d = data as Partial<WorkerSituationInfo>;
+    return {
+      current_situation: d.current_situation ?? "",
+      support: d.support ?? "",
+      status: d.status ?? "",
+    };
+  }
+  const fallback = await supabase
+    .from("workers")
+    .select("support, status")
+    .eq("id", workerId)
+    .maybeSingle();
+  const d = (fallback.data ?? {}) as Partial<WorkerSituationInfo>;
+  return { current_situation: "", support: d.support ?? "", status: d.status ?? "" };
+}

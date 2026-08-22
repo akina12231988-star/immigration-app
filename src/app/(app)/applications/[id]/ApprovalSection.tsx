@@ -9,6 +9,7 @@ import { FileGroup } from "@/components/applications/FileGroup";
 import { generateApprovalReport } from "@/lib/line-report";
 import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
+import { advanceSituationOnApproval } from "@/lib/application-approval";
 import {
   insertWorkerAddress,
   listWorkerAddresses,
@@ -117,6 +118,8 @@ export function ApprovalSection({
       status: "許可済",
       grantedPermitDate: form.grantedPermitDate || today,
     });
+    // 特定技能の更新の許可なら、外国人の只今の状況を「更新」に進める（＜支援委託中＞は残す）
+    void advanceSituationOnApproval(createClient(), app.workerId);
   }
 
   // ---- 許可後の住所変更 ----

@@ -4,14 +4,14 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
-import { updateWorker } from "@/lib/supabase/queries/workers";
+import { fetchWorkerSituationInfo, updateWorker } from "@/lib/supabase/queries/workers";
 import {
   listPrepChecklists,
   upsertPrepTantou,
   type PrepChecklistRow,
 } from "@/lib/supabase/queries/application-prep";
 import { PREP_TANTOU_OPTIONS } from "@/lib/application-prep";
-import { PREP_SITUATIONS } from "@/lib/worker-situation";
+import { PREP_SITUATIONS, mergeSituation } from "@/lib/worker-situation";
 import { isPrepListTarget } from "@/lib/renewal-placeholders";
 import { dbErrorMessage } from "@/lib/errors";
 import {
@@ -160,6 +160,14 @@ export function WorkerRenewalFields({
     setBusy(true);
     setError(null);
     try {
+      // 只今の状況に入れる値。支援対象かつ在籍中の「特定技能1号＜支援委託中＞」は外さず併記する
+      const situation =
+        status === "準備中" && prepSituation
+          ? mergeSituation(
+              prepSituation,
+              await fetchWorkerSituationInfo(createClient(), worker.id),
+            )
+          : "";
       await updateWorker(createClient(), worker.id, {
         residence_renewal_todo: todo.trim(),
         residence_renewal_status: status,
@@ -170,7 +178,7 @@ export function WorkerRenewalFields({
         ...(organizations ? { application_prep_organization_id: prepOrgId || null } : {}),
         ...(showPrepKind ? { application_prep_kind: isNewPrep ? "新規" : "" } : {}),
         // 準備の内容を選んでいれば、外国人の「只今の状況」にも入れる
-        ...(status === "準備中" && prepSituation ? { current_situation: prepSituation } : {}),
+        ...(situation ? { current_situation: situation } : {}),
       });
       // 担当者はTODO番号の準備リストへ保存（選択済み、またはリストが既にある場合のみ）
       const todoNo = todo.trim();

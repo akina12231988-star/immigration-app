@@ -32,9 +32,25 @@ export function toNotionProperty(
       const n = Number(value);
       return Number.isFinite(n) ? { number: n } : null;
     }
-    case "select":
+    case "select": {
+      // 「特定技能1号＜支援委託中＞・更新」のように併記された値は、selectでは1つしか
+      // 持てないため、末尾（いちばん新しい状況）だけを書く。
       // Notionのselectはカンマを含む名前を作れない
-      return value.includes(",") ? null : { select: { name: value } };
+      const parts = value
+        .split("・")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const name = parts.at(-1) ?? "";
+      return !name || name.includes(",") ? null : { select: { name } };
+    }
+    case "multi_select": {
+      // 併記された値は「・」で分けて、それぞれの選択肢として書く
+      const names = value
+        .split("・")
+        .map((s) => s.trim())
+        .filter((s) => s && !s.includes(","));
+      return names.length > 0 ? { multi_select: names.map((name) => ({ name })) } : null;
+    }
     case "status": {
       const exists = (def.status?.options ?? []).some((o) => o.name === value);
       return exists ? { status: { name: value } } : null;

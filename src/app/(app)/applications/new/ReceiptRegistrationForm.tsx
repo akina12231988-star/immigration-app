@@ -18,8 +18,12 @@ import { Button } from "@/components/ui/Button";
 import { useApplications } from "@/lib/application-store";
 import { createClient } from "@/lib/supabase/client";
 import { findDuplicateApplication } from "@/lib/application-number";
-import { insertWorker, updateWorker } from "@/lib/supabase/queries/workers";
-import { APPLICATION_CONTENT_CHOICES } from "@/lib/worker-situation";
+import {
+  fetchWorkerSituationInfo,
+  insertWorker,
+  updateWorker,
+} from "@/lib/supabase/queries/workers";
+import { APPLICATION_CONTENT_CHOICES, mergeSituation } from "@/lib/worker-situation";
 import { blankWorkerInput } from "@/lib/worker-defaults";
 import { buildWorkerOptions } from "@/lib/worker-label";
 import { Combobox } from "@/components/ui/Combobox";
@@ -295,11 +299,17 @@ export function ReceiptRegistrationForm({
         assignee: fields.isSelfApply ? "本人申請" : (selectedAgent?.name ?? ""),
       });
       // 外国人と紐づけて登録したら、只今の状況を「どの内容で審査中か」に更新する。
+      // 支援対象かつ在籍中の「特定技能1号＜支援委託中＞」は外さず併記する。
       // 状況の更新に失敗しても申請登録自体は成立させる（0093未適用でも登録は止めない）
       if (workerId && selectedChoice) {
-        await updateWorker(createClient(), workerId, {
-          current_situation: selectedChoice.situation,
-        }).catch(() => undefined);
+        try {
+          const info = await fetchWorkerSituationInfo(createClient(), workerId);
+          await updateWorker(createClient(), workerId, {
+            current_situation: mergeSituation(selectedChoice.situation, info),
+          });
+        } catch {
+          /* 状況の更新だけの失敗は申請登録を止めない */
+        }
       }
       // ストアに追加された自分自身のレコードを重複チェックから外し、
       // 画像アップロード完了までの間に誤った重複警告が出ないようにする

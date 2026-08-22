@@ -132,10 +132,64 @@ export const WORKER_SITUATIONS: WorkerSituation[] = [
   // 「❌特定技能に移行しない」「技能習2号ロ」は使わないため選択肢から外した（登録済みの値はそのまま残る）
 ];
 
-// 入力中・保存済みの値に対する説明。選択肢に無い自由入力は空を返す
+// 入力中・保存済みの値に対する説明。選択肢に無い自由入力は空を返す。
+// 「・」で併記されているときは、それぞれの説明をつなげて返す
 export function situationDescription(value: string): string {
-  const v = value.trim();
-  return WORKER_SITUATIONS.find((s) => s.value === v)?.description ?? "";
+  const parts = value
+    .split("・")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return parts
+    .map((p) => WORKER_SITUATIONS.find((s) => s.value === p)?.description ?? "")
+    .filter(Boolean)
+    .join("。");
+}
+
+// 支援委託中の目印。支援対象かつ在籍中の人からは、自動更新で外さない
+export const ENTRUSTED_SITUATION = "特定技能1号＜支援委託中＞";
+
+// 状況を併記するときの区切り（例: 特定技能1号＜支援委託中＞・更新）
+export const SITUATION_SEPARATOR = "・";
+
+export function splitSituations(value: string): string[] {
+  return value
+    .split(SITUATION_SEPARATOR)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+// 申請準備・申請登録から只今の状況を入れるときの値を決める。
+// 支援対象かつ在籍中で「特定技能1号＜支援委託中＞」が付いている人は、
+// 新しい状況に変えるときも外さず「特定技能1号＜支援委託中＞・新しい状況」の形で残す
+export function mergeSituation(
+  next: string,
+  worker: {
+    current_situation?: string | null;
+    support?: string | null;
+    status?: string | null;
+  },
+): string {
+  const keep =
+    (worker.current_situation ?? "").includes(ENTRUSTED_SITUATION) &&
+    worker.support === "支援対象" &&
+    worker.status === "在籍中" &&
+    !next.includes(ENTRUSTED_SITUATION);
+  return keep ? `${ENTRUSTED_SITUATION}${SITUATION_SEPARATOR}${next}` : next;
+}
+
+// 許可がおりたときの只今の状況。
+// 特定技能の更新（特定技能更新許可の審査中）の許可なら、その部分を「更新」に変える
+// （＜支援委託中＞などの併記は残す。例: 特定技能1号＜支援委託中＞・更新）。
+// それ以外の状況のときは変えない（null を返す）
+export function situationAfterApproval(current: string): string | null {
+  const parts = splitSituations(current);
+  if (!parts.includes("特定技能更新許可の審査中")) return null;
+  const next: string[] = [];
+  for (const p of parts) {
+    const v = p === "特定技能更新許可の審査中" ? "更新" : p;
+    if (!next.includes(v)) next.push(v);
+  }
+  return next.join(SITUATION_SEPARATOR);
 }
 
 // 申請準備の対応状況を「準備中」にしたときに選ぶ、準備の内容（7つ）。
