@@ -1,13 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { JobPosting, JobPostingInput } from "@/types/recruiting";
 
-// 求人＋所属機関名＋応募/採用の集計をまとめて取得する形
+// 求人＋所属機関名＋応募/採用の集計をまとめて取得する形。
+// 応募者の氏名も持ち、求人一覧で「採用者・不採用者が誰か」を一目で出せるようにする
 export interface PostingWithStats extends JobPosting {
   organizations: { id: string; name: string } | null;
-  job_applications: { id: string; result: string }[];
+  job_applications: { id: string; result: string; workers: { name: string } | null }[];
 }
 
-const SELECT = "*, organizations(id, name), job_applications(id, result)";
+const SELECT = "*, organizations(id, name), job_applications(id, result, workers(name))";
 
 export async function listPostings(
   supabase: SupabaseClient,
