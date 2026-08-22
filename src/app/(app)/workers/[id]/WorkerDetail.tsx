@@ -31,7 +31,7 @@ import { WorkerEmploymentInsurance } from "@/components/workers/WorkerEmployment
 import { OnboardingDocuments } from "@/components/workers/OnboardingDocuments";
 import { HealthCheckSection } from "@/components/workers/HealthCheckSection";
 import { GensenDocuments } from "@/components/workers/GensenDocuments";
-import { WorkerCertificateDocs } from "@/components/workers/WorkerCertificateDocs";
+import { WorkerCertDocRows } from "@/components/workers/WorkerCertDocRows";
 import { ApplicationPrepChecklist } from "@/components/workers/ApplicationPrepChecklist";
 import { WorkerAddressHistory } from "@/components/workers/WorkerAddressHistory";
 import { WorkerDependents } from "@/components/workers/WorkerDependents";
@@ -960,26 +960,51 @@ export function WorkerDetail({
             value={worker.residence_note}
             edit={textInput("residence_note", "例: 社宅 / 自分のアパート")}
           />
-          <InfoItem label="専門級の合格名" value={worker.specialty_grade} edit={textInput("specialty_grade")} />
-          <InfoItem
-            label="特定技能2号の合格試験名"
-            value={
-              worker.ssw2_exam ? (
-                <>
-                  {worker.ssw2_exam}
-                  <span className="ml-2 rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-bold text-brand">
-                    2号合格
-                  </span>
-                </>
-              ) : null
-            }
-            edit={textInput("ssw2_exam", "例: ビルクリーニング分野特定技能2号評価試験")}
-          />
-          <InfoItem
-            label="その他の資格・合格名"
-            value={worker.other_qualifications}
-            edit={textInput("other_qualifications")}
-          />
+          {/* 各合格名の下に、その合格証のPDF・画像を保存できる（旧「外国人書類」カードから移動） */}
+          <div>
+            <InfoItem label="専門級の合格名" value={worker.specialty_grade} edit={textInput("specialty_grade")} />
+            <WorkerCertDocRows
+              workerId={worker.id}
+              canEdit={canEdit}
+              defs={[{ key: "cert_senmonkyu", label: "専門級の合格証" }]}
+            />
+          </div>
+          <div>
+            <InfoItem
+              label="特定技能2号の合格試験名"
+              value={
+                worker.ssw2_exam ? (
+                  <>
+                    {worker.ssw2_exam}
+                    <span className="ml-2 rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-bold text-brand">
+                      2号合格
+                    </span>
+                  </>
+                ) : null
+              }
+              edit={textInput("ssw2_exam", "例: ビルクリーニング分野特定技能2号評価試験")}
+            />
+            <WorkerCertDocRows
+              workerId={worker.id}
+              canEdit={canEdit}
+              defs={[{ key: "cert_ssw2", label: "特定技能2号の合格証" }]}
+            />
+          </div>
+          <div>
+            <InfoItem
+              label="その他の資格・合格名"
+              value={worker.other_qualifications}
+              edit={textInput("other_qualifications")}
+            />
+            <WorkerCertDocRows
+              workerId={worker.id}
+              canEdit={canEdit}
+              defs={[
+                { key: "cert_nihongo", label: "日本語の合格証" },
+                { key: "cert_senmongai", label: "専門外の合格証" },
+              ]}
+            />
+          </div>
           {/* 連絡リンクは在留カードの欄の写真の下に出るもの。編集モードのときだけここで直す */}
           {editing && canEdit && (
             <>
@@ -1227,8 +1252,9 @@ export function WorkerDetail({
       {/* 雇用保険（離職票・被保険者証）が届いたときの保管 */}
       <WorkerEmploymentInsurance workerId={worker.id} canEdit={canEdit} />
 
-      {/* 外国人書類（合格証・パスポート・履歴書など）をPDF・画像で保存 */}
-      <WorkerCertificateDocs workerId={worker.id} canEdit={canEdit} />
+      {/* 旧「外国人書類（PDF・画像で保存）」カードは解体した:
+          合格証4種→基本情報の各合格名の下 / パスポート→出入国の記録のパスポートの記録 /
+          履歴書→入社書類 / 在留カード（申請書類準備時）→在留カード・指定書（0101で移行） */}
 
       {/* 申請準備 書類チェックリスト（申請種別ごとの必要書類・不足の把握） */}
       <ApplicationPrepChecklist

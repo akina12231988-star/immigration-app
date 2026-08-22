@@ -513,21 +513,25 @@ export function ApprovalSection({
             <Labeled label="在留期限日">
               <input type="date" value={form.grantedExpiryDate} onChange={(e) => set("grantedExpiryDate", e.target.value)} className={INPUT_CLASS} />
             </Labeled>
-            {/* 外国人詳細の在留カードと同じ内容をここでも登録できる（候補から選ぶか自由入力） */}
+            {/* 外国人詳細の在留カードと同じ内容をここでも登録できる（候補から選ぶ）。
+                一覧に無い表記が登録済みの場合はその表記も選択肢に残す */}
             <Labeled label="在留資格">
-              <input
-                list="grant-residence-statuses"
+              <select
                 value={grantResidenceStatus}
                 onChange={(e) => setGrantResidenceStatus(e.target.value)}
-                placeholder="例: 特定技能1号"
-                autoComplete="off"
                 className={INPUT_CLASS}
-              />
-              <datalist id="grant-residence-statuses">
-                {RESIDENCE_STATUSES.map((s) => (
-                  <option key={s} value={s} />
+              >
+                <option value="">選択してください</option>
+                {(grantResidenceStatus &&
+                !(RESIDENCE_STATUSES as readonly string[]).includes(grantResidenceStatus)
+                  ? [grantResidenceStatus, ...RESIDENCE_STATUSES]
+                  : [...RESIDENCE_STATUSES]
+                ).map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
                 ))}
-              </datalist>
+              </select>
             </Labeled>
             <Labeled label="在留期間">
               <input
