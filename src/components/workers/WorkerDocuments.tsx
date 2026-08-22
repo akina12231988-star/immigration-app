@@ -65,13 +65,12 @@ export function WorkerDocuments({
   // 過去タブを開いているとき、アップロードした画像をその期間に振り分けるための日付（退職日）
   const selectedPast = past.find((p) => p.key === period) ?? null;
 
-  // 「現在」に該当する画像が無くても、登録済みの画像があれば一番新しい時点のものを表示する。
+  // 「現在」に該当する画像が無くても、登録済みの画像があれば一番新しいものを代わりに表示する。
   // （何も登録していないように見えてしまうのを防ぐ。差し替えれば最新になる）
-  const newestFor = (kind: Kind) => {
-    const list = docs.filter((d) => d.kind === kind);
-    if (list.length === 0) return null;
-    return [...list].sort((a, b) => (docPeriodDate(a) > docPeriodDate(b) ? -1 : 1))[0];
-  };
+  // ただし過去タブから「この期間に登録」した画像（effective_on あり）は当時の画像なので、
+  // 「現在」には出さない（現在と過去に同じものが表示されてしまうため）
+  const newestFor = (kind: Kind) =>
+    docs.find((d) => d.kind === kind && !d.effectiveOn) ?? null;
 
   return (
     <Card className="p-4">
