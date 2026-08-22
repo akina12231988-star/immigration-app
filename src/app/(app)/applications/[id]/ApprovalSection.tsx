@@ -20,7 +20,7 @@ import {
   insertApplicationMemo,
   listApplicationMemos,
 } from "@/lib/supabase/queries/memos";
-import { orientationDate } from "@/lib/orientation";
+import { orientationBaseDate, orientationDate } from "@/lib/orientation";
 import { todayStr } from "@/lib/application-alerts";
 import {
   normalizeOrgEmploymentStarts,
@@ -273,15 +273,23 @@ export function ApprovalSection({
         visaAtGrant === ORIENTATION_TARGET_VISA &&
         employmentStartOn
       ) {
+        // すでに雇用が始まっている資格変更（雇用開始日＜在留許可日）は、
+        // 特定技能としての許可日から予定日を数える
+        const orientationBase = orientationBaseDate(
+          employmentStartOn,
+          form.grantedPermitDate || app.grantedPermitDate,
+        );
         await ensureOrientationForApplication(createClient(), {
           applicationId: app.id,
           workerId: app.workerId,
           organizationId: app.organizationId,
-          scheduledOn: orientationDate(employmentStartOn),
+          scheduledOn: orientationDate(orientationBase),
           employmentStartOn,
         });
         setVisaSaved(
-          `${savedMsg}生活オリエンテーション（予定日 ${orientationDate(employmentStartOn)}）を未実施で登録しました。`,
+          `${savedMsg}生活オリエンテーション（予定日 ${orientationDate(orientationBase)}${
+            orientationBase !== employmentStartOn ? "・在留許可日から起算" : ""
+          }）を未実施で登録しました。`,
         );
       } else {
         setVisaSaved(savedMsg);
@@ -547,7 +555,7 @@ export function ApprovalSection({
               </Labeled>
             </div>
             <p className="mt-1 text-[11px] text-muted">
-              保存すると、紐づいている外国人の「現在の在留資格」と、申請の所属機関の「雇用開始日（所属機関別）」も自動更新されます（現在の所属機関なら雇用開始年月日にも反映）。「{ORIENTATION_TARGET_VISA}」を選んで保存すると、雇用開始日から2週間後の日曜を予定日として生活オリエンテーションに未実施で登録します。
+              保存すると、紐づいている外国人の「現在の在留資格」と、申請の所属機関の「雇用開始日（所属機関別）」も自動更新されます（現在の所属機関なら雇用開始年月日にも反映）。「{ORIENTATION_TARGET_VISA}」を選んで保存すると、雇用開始日から2週間後の日曜を予定日として生活オリエンテーションに未実施で登録します。同じ所属機関で資格変更した人（雇用開始日が在留許可日より前）は、特定技能としての在留許可日から2週間後の日曜を予定日にします。
             </p>
             <Button fullWidth className="mt-3" onClick={saveVisaEmployment} disabled={visaSaving}>
               {visaSaving ? "保存中…" : "雇用開始日・在留資格を保存"}

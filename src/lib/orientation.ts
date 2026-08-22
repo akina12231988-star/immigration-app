@@ -1,5 +1,18 @@
+// 予定日の起算日。
+// 同じ所属機関で特定活動→特定技能1号などへ資格変更した場合は、雇用開始日が
+// 許可日より前（＝すでに雇用が始まっている）ため、特定技能としての在留許可日から数える。
+// これから雇用が始まる場合（認定・転職など）は従来どおり雇用開始日から数える
+export function orientationBaseDate(
+  employmentStartOn: string,
+  grantedPermitDate?: string | null,
+): string {
+  const permit = (grantedPermitDate ?? "").trim();
+  return permit && permit > employmentStartOn ? permit : employmentStartOn;
+}
+
 // 生活オリエンテーションの予定日（要件⑥）:
-// 雇用開始日から2週間後の日曜日。2週間後の当日が日曜ならその日、それ以外は次の日曜。
+// 起算日（雇用開始日、資格変更なら在留許可日）から2週間後の日曜日。
+// 2週間後の当日が日曜ならその日、それ以外は次の日曜。
 export function orientationDate(employmentStartOn: string): string {
   const d = new Date(`${employmentStartOn}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + 14);
