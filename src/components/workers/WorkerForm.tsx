@@ -383,6 +383,8 @@ export function WorkerForm({
             value={form.current_situation}
             onChange={(e) => set("current_situation", e.target.value)}
             placeholder="例: 特定技能の審査中"
+            // ブラウザの住所・電話番号のオートフィルが候補に混ざらないようにする
+            autoComplete="off"
             className={INPUT_CLASS}
           />
           <datalist id="worker-form-situations">
@@ -596,6 +598,7 @@ export function WorkerForm({
             value={form.residence_period}
             onChange={(e) => set("residence_period", e.target.value)}
             placeholder="1年"
+            autoComplete="off"
             className={INPUT_CLASS}
           />
           <datalist id="worker-residence-periods">

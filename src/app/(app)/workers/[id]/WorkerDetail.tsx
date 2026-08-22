@@ -403,45 +403,10 @@ export function WorkerDetail({
       >
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1.5">
-            {editing ? (
-              <>
-                {/* 状態・支援区分もその場で直せるように、バッジの位置を選択欄にする */}
-                <label className="flex items-center gap-1 text-[11px] font-bold text-muted">
-                  状態
-                  <select
-                    value={val("status")}
-                    onChange={(e) => setField("status", e.target.value)}
-                    className="min-h-[36px] rounded-lg border border-border bg-background px-2 text-xs font-normal text-foreground focus:border-brand focus:outline-none"
-                  >
-                    {statusOptions.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex items-center gap-1 text-[11px] font-bold text-muted">
-                  支援区分
-                  <select
-                    value={val("support")}
-                    onChange={(e) => setField("support", e.target.value)}
-                    className="min-h-[36px] rounded-lg border border-border bg-background px-2 text-xs font-normal text-foreground focus:border-brand focus:outline-none"
-                  >
-                    {SUPPORT_SCOPES.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </>
-            ) : (
-              <>
-                <WorkerStatusBadge status={worker.status} />
-                <SswStatusBadge status={calc.status} />
-                <SupportBadge support={worker.support} />
-              </>
-            )}
+            {/* 状態・支援区分の変更は「基本情報」の欄から（編集モードでその場で直せる） */}
+            <WorkerStatusBadge status={worker.status} />
+            <SswStatusBadge status={calc.status} />
+            <SupportBadge support={worker.support} />
           </div>
           <div className="flex shrink-0 flex-wrap justify-end gap-2">
             {canEdit && editing ? (
@@ -677,6 +642,7 @@ export function WorkerDetail({
                           value={val("residence_period")}
                           onChange={(e) => setField("residence_period", e.target.value)}
                           placeholder="1年"
+                          autoComplete="off"
                           className={inputCls(true)}
                         />
                         <datalist id="detail-residence-periods">
@@ -851,6 +817,8 @@ export function WorkerDetail({
                     value={val("current_situation")}
                     onChange={(e) => setField("current_situation", e.target.value)}
                     placeholder="例: 特定技能の審査中 ／ 入国管理局からビザの許可おりた電話あり"
+                    // ブラウザの住所・電話番号のオートフィルが候補に混ざらないようにする
+                    autoComplete="off"
                     className={inputCls()}
                   />
                   <datalist id="worker-situations">
@@ -863,6 +831,45 @@ export function WorkerDetail({
                       "選択肢から選ぶか、自由に入力できます。「Notionに登録／更新」でNotionの只今の状況にも入ります。"}
                   </span>
                 </>
+              ) : undefined
+            }
+          />
+          {/* 状態・支援区分（上部のバッジと同じもの）。「編集」でここから直せる */}
+          <InfoItem
+            label="状態"
+            value={worker.status}
+            edit={
+              editing && canEdit ? (
+                <select
+                  value={val("status")}
+                  onChange={(e) => setField("status", e.target.value)}
+                  className={inputCls()}
+                >
+                  {statusOptions.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              ) : undefined
+            }
+          />
+          <InfoItem
+            label="支援区分"
+            value={worker.support}
+            edit={
+              editing && canEdit ? (
+                <select
+                  value={val("support")}
+                  onChange={(e) => setField("support", e.target.value)}
+                  className={inputCls()}
+                >
+                  {SUPPORT_SCOPES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
               ) : undefined
             }
           />
