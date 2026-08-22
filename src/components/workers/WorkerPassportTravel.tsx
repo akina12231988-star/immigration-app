@@ -20,6 +20,7 @@ import {
   registerPassportFile,
 } from "@/app/(app)/workers/passport-file-actions";
 import {
+  ENTRY_KINDS,
   buildTrips,
   formatStayDays,
   isTripStayingInJapan,
@@ -56,6 +57,7 @@ export function WorkerPassportTravel({
     japan_exit_on: "",
     home_entry_on: "",
     landing_permission: "",
+    entry_kind: "",
   });
   const [adding, setAdding] = useState(false);
 
@@ -86,7 +88,8 @@ export function WorkerPassportTravel({
         japan_entry_on: form.japan_entry_on || null,
         japan_exit_on: form.japan_exit_on || null,
         home_entry_on: form.home_entry_on || null,
-        landing_permission: form.landing_permission.trim(),
+        landing_permission: form.entry_kind === "再入国" ? "" : form.landing_permission.trim(),
+        entry_kind: form.entry_kind,
         note: "",
       });
       setForm({
@@ -95,10 +98,11 @@ export function WorkerPassportTravel({
         japan_exit_on: "",
         home_entry_on: "",
         landing_permission: "",
+        entry_kind: "",
       });
       await loadTravels();
     } catch (err) {
-      setError(dbErrorMessage(err, "0098_worker_travel_landing_permission.sql", "出入国の記録に失敗しました"));
+      setError(dbErrorMessage(err, "0099_worker_travel_entry_kind.sql", "出入国の記録に失敗しました"));
     } finally {
       setAdding(false);
     }
@@ -128,7 +132,8 @@ export function WorkerPassportTravel({
         japan_entry_on: values.japan_entry_on || null,
         japan_exit_on: values.japan_exit_on || null,
         home_entry_on: values.home_entry_on || null,
-        landing_permission: values.landing_permission.trim(),
+        landing_permission: values.entry_kind === "再入国" ? "" : values.landing_permission.trim(),
+        entry_kind: values.entry_kind,
         note: "",
       });
       for (const id of t.sourceIds) {
@@ -136,7 +141,7 @@ export function WorkerPassportTravel({
       }
     } catch (err) {
       setError(
-        dbErrorMessage(err, "0098_worker_travel_landing_permission.sql", "修正の保存に失敗しました"),
+        dbErrorMessage(err, "0099_worker_travel_entry_kind.sql", "修正の保存に失敗しました"),
       );
       throw err;
     } finally {
@@ -325,25 +330,45 @@ export function WorkerPassportTravel({
               />
             </label>
           </div>
-          {/* 上陸許可シールで入国した場合は、そのときの在留資格も記録する */}
-          <label className="mt-2 flex flex-col gap-1">
-            <span className="text-[11px] font-bold text-muted">
-              上陸許可の在留資格（シールに書かれた資格。分かるときだけ）
-            </span>
-            <input
-              list="landing-permission-statuses"
-              value={form.landing_permission}
-              onChange={(e) => set("landing_permission", e.target.value)}
-              placeholder="例: 特定技能1号 ／ 技能実習1号ロ ／ 短期滞在"
-              autoComplete="off"
-              className={INPUT}
-            />
-            <datalist id="landing-permission-statuses">
-              {RESIDENCE_STATUSES.map((s) => (
-                <option key={s} value={s} />
-              ))}
-            </datalist>
-          </label>
+          {/* 日本入国が上陸許可（新しい在留資格のシール）か再入国かを記録する */}
+          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-bold text-muted">日本入国の種類</span>
+              <select
+                value={form.entry_kind}
+                onChange={(e) => set("entry_kind", e.target.value)}
+                className={INPUT}
+              >
+                <option value="">未設定</option>
+                {ENTRY_KINDS.map((k) => (
+                  <option key={k} value={k}>
+                    {k === "再入国" ? "再入国（みなし再入国など・資格はそのまま）" : "上陸許可（新しい在留資格のシール）"}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {/* 再入国のときは新しい在留資格のシールが無いため、資格の欄は出さない */}
+            {form.entry_kind !== "再入国" && (
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] font-bold text-muted">
+                  上陸許可の在留資格（シールの資格。分かるときだけ）
+                </span>
+                <input
+                  list="landing-permission-statuses"
+                  value={form.landing_permission}
+                  onChange={(e) => set("landing_permission", e.target.value)}
+                  placeholder="例: 特定技能1号 ／ 技能実習1号ロ ／ 短期滞在"
+                  autoComplete="off"
+                  className={INPUT}
+                />
+                <datalist id="landing-permission-statuses">
+                  {RESIDENCE_STATUSES.map((s) => (
+                    <option key={s} value={s} />
+                  ))}
+                </datalist>
+              </label>
+            )}
+          </div>
           <Button
             type="button"
             variant="secondary"
@@ -429,6 +454,7 @@ export interface TripEditValues {
   japan_exit_on: string;
   home_entry_on: string;
   landing_permission: string;
+  entry_kind: string;
 }
 
 // 1往復ぶんの流れの図: 母国出国 ─✈→ 日本入国 〜 日本出国 ─✈→ 母国入国。
@@ -463,6 +489,7 @@ function TripFlow({
     japan_exit_on: "",
     home_entry_on: "",
     landing_permission: "",
+    entry_kind: "",
   });
   const startEdit = () => {
     setForm({
@@ -471,6 +498,7 @@ function TripFlow({
       japan_exit_on: t.japan_exit_on ?? "",
       home_entry_on: t.home_entry_on ?? "",
       landing_permission: t.landing_permission,
+      entry_kind: t.entry_kind,
     });
     setEditing(true);
   };
@@ -511,17 +539,36 @@ function TripFlow({
             </label>
           ))}
         </div>
-        <label className="mt-2 flex flex-col gap-1">
-          <span className="text-[11px] font-bold text-muted">上陸許可の在留資格</span>
-          <input
-            list="landing-permission-statuses"
-            value={form.landing_permission}
-            onChange={(e) => set("landing_permission", e.target.value)}
-            placeholder="例: 特定技能1号"
-            autoComplete="off"
-            className={INPUT}
-          />
-        </label>
+        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-bold text-muted">日本入国の種類</span>
+            <select
+              value={form.entry_kind}
+              onChange={(e) => set("entry_kind", e.target.value)}
+              className={INPUT}
+            >
+              <option value="">未設定</option>
+              {ENTRY_KINDS.map((k) => (
+                <option key={k} value={k}>
+                  {k}
+                </option>
+              ))}
+            </select>
+          </label>
+          {form.entry_kind !== "再入国" && (
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-bold text-muted">上陸許可の在留資格</span>
+              <input
+                list="landing-permission-statuses"
+                value={form.landing_permission}
+                onChange={(e) => set("landing_permission", e.target.value)}
+                placeholder="例: 特定技能1号"
+                autoComplete="off"
+                className={INPUT}
+              />
+            </label>
+          )}
+        </div>
         <div className="mt-2 flex gap-2">
           <button
             type="button"
@@ -553,10 +600,15 @@ function TripFlow({
       <div className="mb-1.5 flex items-center justify-between gap-2">
         <span className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold text-muted">
           {index + 1}回目
-          {/* 上陸許可シールの在留資格（この入国のときのもの） */}
-          {t.landing_permission && (
+          {/* 日本入国の種類（再入国か、上陸許可＋そのときの在留資格か） */}
+          {t.entry_kind === "再入国" && (
             <span className="rounded-full border border-border bg-surface px-2 py-0.5 text-[10px] font-bold text-foreground">
-              上陸許可 {t.landing_permission}
+              再入国
+            </span>
+          )}
+          {t.entry_kind !== "再入国" && (t.landing_permission || t.entry_kind === "上陸許可") && (
+            <span className="rounded-full border border-border bg-surface px-2 py-0.5 text-[10px] font-bold text-foreground">
+              上陸許可{t.landing_permission && ` ${t.landing_permission}`}
             </span>
           )}
         </span>

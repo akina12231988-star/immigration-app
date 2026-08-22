@@ -16,6 +16,7 @@ const row = (over: Record<string, string | null>) => ({
   japan_exit_on: null,
   home_entry_on: null,
   landing_permission: "",
+  entry_kind: "",
   note: "",
   ...over,
 });
@@ -59,6 +60,15 @@ describe("buildTrips", () => {
     });
     // 各往復に元の記録のidが入る（削除に使う）
     expect(trips[0].sourceIds).toHaveLength(3);
+  });
+
+  test("入国の種類（再入国）は日本入国の行から往復に引き継がれる", () => {
+    const trips = buildTrips([
+      row({ japan_entry_on: "2024-06-15", entry_kind: "再入国" }),
+      row({ japan_exit_on: "2024-10-10" }),
+    ]);
+    expect(trips).toHaveLength(1);
+    expect(trips[0].entry_kind).toBe("再入国");
   });
 
   test("母国のスタンプが無ければ日本入国〜日本出国で1回と数える", () => {
