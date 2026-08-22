@@ -26,7 +26,7 @@ import {
   normalizeOrgEmploymentStarts,
   upsertOrgEmploymentStart,
 } from "@/lib/org-employment";
-import type { WorkerInput } from "@/types/db";
+import type { WorkerInput, WorkerOrgEmploymentStart } from "@/types/db";
 import {
   GRANT_VISA_OPTIONS,
   ORG_HONORIFICS,
@@ -76,6 +76,71 @@ export function ApprovalSection({
   const [visaAtGrant, setVisaAtGrant] = useState(app.visaAtGrant ?? "");
   const [visaSaving, setVisaSaving] = useState(false);
   const [visaSaved, setVisaSaved] = useState<string | null>(null);
+
+  // いまの登録内容（元の在留資格・所属機関・雇用開始日）を自動表示するために取る
+  const [workerNow, setWorkerNow] = useState<{
+    residence_status: string;
+    current_organization_id: string | null;
+    employment_start_on: string | null;
+    org_employment_starts: WorkerOrgEmploymentStart[];
+    orgName: string;
+  } | null>(null);
+  useEffect(() => {
+    if (!app.workerId) return;
+    let cancelled = false;
+    void createClient()
+      .from("workers")
+      .select(
+        "residence_status, current_organization_id, employment_start_on, org_employment_starts, organizations(name)",
+      )
+      .eq("id", app.workerId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled || !data) return;
+        const d = data as unknown as {
+          residence_status: string | null;
+          current_organization_id: string | null;
+          employment_start_on: string | null;
+          org_employment_starts: unknown;
+          organizations: { name: string } | null;
+        };
+        setWorkerNow({
+          residence_status: d.residence_status ?? "",
+          current_organization_id: d.current_organization_id,
+          employment_start_on: d.employment_start_on,
+          org_employment_starts: normalizeOrgEmploymentStarts(d.org_employment_starts),
+          orgName: d.organizations?.name ?? "",
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [app.workerId]);
+
+  // この申請の所属機関での、登録済みの雇用開始日
+  const existingStart =
+    (app.organizationId &&
+      workerNow &&
+      (workerNow.org_employment_starts.find((e) => e.organization_id === app.organizationId)
+        ?.start_on ||
+        (workerNow.current_organization_id === app.organizationId
+          ? (workerNow.employment_start_on ?? "")
+          : ""))) ||
+    "";
+  // 同じ所属機関での資格変更（現在の所属機関＝申請の所属機関で、雇用開始日が入力済み）。
+  // この場合は雇用開始日の入力は不要（登録済みの日付をそのまま使う）
+  const sameOrgChange = Boolean(
+    app.organizationId &&
+      workerNow?.current_organization_id === app.organizationId &&
+      existingStart,
+  );
+  useEffect(() => {
+    if (sameOrgChange && !employmentStartOn) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- 登録済みの雇用開始日を自動で使う
+      setEmploymentStartOn(existingStart);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sameOrgChange, existingStart]);
 
   // メモ履歴
   const [memos, setMemos] = useState<ApplicationMemo[]>([]);
@@ -533,17 +598,78 @@ export function ApprovalSection({
             </Button>
           </div>
 
-          {/* 雇用開始日・在留資格（特定技能1号で生活オリエンテーション自動登録） */}
+          {/* 雇用開始日・在留資格（特定技能1号で生活オリエンテーション自動登録）。
+              元の登録内容を自動表示し、同じ所属機関の資格変更なら雇用開始日の入力を省く */}
           <div className="rounded-xl border border-border p-3">
             <p className="mb-2 text-sm font-bold">雇用開始日・在留資格</p>
             {visaSaved && (
-              <p className="mb-2 rounded-lg bg-brand/10 px-3 py-2 text-xs text-brand">{visaSaved}</p>
+              <p className="mb-2 rounded-lg bg-brand/10 px-3 py-2 text-sm text-brand">{visaSaved}</p>
             )}
+
+            {/* いまの登録内容（元の在留カードの資格・所属機関・そのときの雇用開始日） */}
+            {workerNow && (
+              <dl className="mb-3 grid grid-cols-1 gap-x-3 gap-y-2 rounded-xl bg-background p-3 text-sm sm:grid-cols-3">
+                <div>
+                  <dt className="text-xs font-bold text-muted">元の在留資格</dt>
+                  <dd className="font-bold">{workerNow.residence_status || "未登録"}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-bold text-muted">現在の所属機関</dt>
+                  <dd className="font-bold">{workerNow.orgName || "未所属"}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-bold text-muted">そのときの雇用開始日</dt>
+                  <dd className="font-bold tabular-nums">
+                    {existingStart || workerNow.employment_start_on || "未登録"}
+                  </dd>
+                </div>
+              </dl>
+            )}
+
+            {/* どう操作すればよいかの案内（同じ所属機関の資格変更かどうかで変わる） */}
+            {sameOrgChange ? (
+              <div className="mb-3 rounded-xl bg-brand/10 p-3 text-sm leading-relaxed">
+                <p className="font-bold text-brand">
+                  同じ所属機関（{app.organizationName || workerNow?.orgName}）での資格変更です。
+                  雇用開始日の入力は不要です（{existingStart} で登録済み）。
+                </p>
+                <p className="mt-1">
+                  下の在留資格で「{ORIENTATION_TARGET_VISA}」を選んで保存するだけで、
+                  生活オリエンテーションの予定日は特定技能としての在留許可日
+                  {form.grantedPermitDate || app.grantedPermitDate ? (
+                    <>
+                      （{form.grantedPermitDate || app.grantedPermitDate}）から2週間後の日曜（
+                      <span className="font-bold tabular-nums">
+                        {orientationDate(
+                          orientationBaseDate(
+                            existingStart,
+                            form.grantedPermitDate || app.grantedPermitDate,
+                          ),
+                        )}
+                      </span>
+                      ）に自動でなります。
+                    </>
+                  ) : (
+                    <>から数えます。先に上の「在留許可日」を入れてください。</>
+                  )}
+                </p>
+              </div>
+            ) : (
+              <p className="mb-3 rounded-xl bg-background p-3 text-sm leading-relaxed text-muted">
+                これから雇用が始まる人は「雇用開始日（予定でも可）」を入れてください。
+                「{ORIENTATION_TARGET_VISA}」を選んで保存すると、雇用開始日から2週間後の日曜を
+                予定日として生活オリエンテーションに未実施で登録します。
+              </p>
+            )}
+
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Labeled label="雇用開始日（予定でも可）">
-                <input type="date" value={employmentStartOn} onChange={(e) => setEmploymentStartOn(e.target.value)} className={INPUT_CLASS} />
-              </Labeled>
-              <Labeled label="在留資格情報">
+              {/* 同じ所属機関の資格変更では雇用開始日は入力済みのため、入力欄を出さない */}
+              {!sameOrgChange && (
+                <Labeled label="雇用開始日（予定でも可）">
+                  <input type="date" value={employmentStartOn} onChange={(e) => setEmploymentStartOn(e.target.value)} className={INPUT_CLASS} />
+                </Labeled>
+              )}
+              <Labeled label="今回の許可の在留資格">
                 <select value={visaAtGrant} onChange={(e) => setVisaAtGrant(e.target.value)} className={INPUT_CLASS}>
                   <option value="">選択してください</option>
                   {GRANT_VISA_OPTIONS.map((v) => (
@@ -554,8 +680,8 @@ export function ApprovalSection({
                 </select>
               </Labeled>
             </div>
-            <p className="mt-1 text-[11px] text-muted">
-              保存すると、紐づいている外国人の「現在の在留資格」と、申請の所属機関の「雇用開始日（所属機関別）」も自動更新されます（現在の所属機関なら雇用開始年月日にも反映）。「{ORIENTATION_TARGET_VISA}」を選んで保存すると、雇用開始日から2週間後の日曜を予定日として生活オリエンテーションに未実施で登録します。同じ所属機関で資格変更した人（雇用開始日が在留許可日より前）は、特定技能としての在留許可日から2週間後の日曜を予定日にします。
+            <p className="mt-1.5 text-xs text-muted">
+              保存すると、外国人の「現在の在留資格」と所属機関別の雇用開始日も自動で更新されます。
             </p>
             <Button fullWidth className="mt-3" onClick={saveVisaEmployment} disabled={visaSaving}>
               {visaSaving ? "保存中…" : "雇用開始日・在留資格を保存"}
