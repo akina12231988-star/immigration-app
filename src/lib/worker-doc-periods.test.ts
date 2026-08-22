@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPastPeriods, periodKeyFor } from "./worker-doc-periods";
+import { buildPastPeriods, docPeriodDate, periodKeyFor } from "./worker-doc-periods";
 import type { WorkHistoryRow } from "@/types/db";
 
 const TODAY = "2026-08-18";
@@ -66,5 +66,29 @@ describe("periodKeyFor", () => {
       TODAY,
     );
     expect(periodKeyFor("2026-08-12T00:00:00Z", past, true)).toBe("current");
+  });
+
+  it("過去タブから登録した画像（effective_on＝退職日）はその期間に出る", () => {
+    const past = buildPastPeriods(
+      [history({ org_name: "前の会社", start_date: "2023-01-01", end_date: "2026-07-31" })],
+      TODAY,
+    );
+    // 今日アップロードしても、effective_on を退職日にすれば過去の期間に振り分けられる
+    expect(periodKeyFor("2026-07-31", past, true)).toBe(past[0].key);
+  });
+});
+
+describe("docPeriodDate", () => {
+  it("effective_on があれば登録日より優先する", () => {
+    expect(
+      docPeriodDate({ effectiveOn: "2026-07-31", createdAt: "2026-08-18T10:00:00Z" }),
+    ).toBe("2026-07-31");
+  });
+
+  it("effective_on が無ければ登録日で判定する", () => {
+    expect(docPeriodDate({ effectiveOn: null, createdAt: "2026-08-18T10:00:00Z" })).toBe(
+      "2026-08-18",
+    );
+    expect(docPeriodDate({ createdAt: "2026-08-18T10:00:00Z" })).toBe("2026-08-18");
   });
 });

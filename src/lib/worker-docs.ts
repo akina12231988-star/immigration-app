@@ -20,6 +20,7 @@ export async function uploadWorkerDoc(
   kind: WorkerDocKind,
   file: File,
   organizationId?: string | null, // 雇用契約書・雇用条件書は会社ごとに保管する
+  effectiveOn?: string | null, // 過去の在籍期間タブから登録するとき、その期間の日付
 ): Promise<void> {
   const { blob: compressed, mimeType, fileName } = await compressImage(file);
   // スキャンPDFはページごとに大きさが違うことがあるので、A4に統一してから保存する
@@ -43,6 +44,7 @@ export async function uploadWorkerDoc(
     fileName,
     mimeType,
     organizationId,
+    effectiveOn,
   );
   if (!result.ok) throw new Error(result.message);
 }
