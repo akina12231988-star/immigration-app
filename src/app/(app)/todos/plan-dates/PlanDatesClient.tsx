@@ -7,12 +7,14 @@ import { createClient } from "@/lib/supabase/client";
 import { dbErrorMessage } from "@/lib/errors";
 import {
   computePlanDates,
+  isTokuteiKatsudoContent,
   planDatesText,
   planDatesToMap,
   recommendedApplyDate,
   recommendedContractDate,
   recommendedDocDate,
 } from "@/lib/support-plan-dates";
+import { normalizeTodoKey } from "@/lib/todo";
 import { upsertPlanDates } from "@/lib/supabase/queries/plan-dates";
 import { SavedPlanDatesSection } from "@/components/workers/ApplicationPrepExtras";
 
@@ -48,7 +50,56 @@ export function PlanDatesClient({
   const [name, setName] = useState(initialName);
   const [org, setOrg] = useState(initialOrg);
   const [todo, setTodo] = useState(initialTodo);
-  const [isLegal, setIsLegal] = useState(false); // 既定は個人（1年）
+  // 雇用終了日は自動で2年間の有期雇用契約として計算する（法人/個人の選択は廃止）
+  const isLegal = true;
+  // 申請の内容（TODOの内容）。「特定活動」を含む申請では、
+  // 支援委託契約・事前ガイダンス・生活オリエンテーションの行を表示しない
+  const [todoTitle, setTodoTitle] = useState("");
+  const hideSupport = isTokuteiKatsudoContent(todoTitle);
+
+  // 所属機関名と申請の内容を自動で反映する（外国人と紐づけて開いたとき）
+  useEffect(() => {
+    if (!workerId) return;
+    let cancelled = false;
+    const supabase = createClient();
+    void supabase
+      .from("workers")
+      .select("application_prep_organization_id, current_organization_id")
+      .eq("id", workerId)
+      .maybeSingle()
+      .then(async ({ data }) => {
+        const w = data as {
+          application_prep_organization_id: string | null;
+          current_organization_id: string | null;
+        } | null;
+        const orgId = w?.application_prep_organization_id ?? w?.current_organization_id;
+        if (!orgId || cancelled) return;
+        const { data: o } = await supabase
+          .from("organizations")
+          .select("name")
+          .eq("id", orgId)
+          .maybeSingle();
+        if (!cancelled && o) {
+          setOrg((prev) => prev || (o as { name: string }).name);
+        }
+      });
+    void supabase
+      .from("todos")
+      .select("todo_no, title")
+      .eq("worker_id", workerId)
+      .eq("kind", "申請準備")
+      .then(({ data }) => {
+        if (cancelled) return;
+        const rows = (data as { todo_no: string; title: string }[] | null) ?? [];
+        const key = normalizeTodoKey(initialTodo);
+        const hit =
+          (key ? rows.find((r) => normalizeTodoKey(r.todo_no) === key) : undefined) ?? rows[0];
+        if (hit) setTodoTitle(hit.title ?? "");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [workerId, initialTodo]);
 
   const [step, setStep] = useState(0);
   // 各ステップの選択日（YYYY-MM-DD）: 雇用開始日 / 申請予定日 / 雇用契約日 / 書類作成日 / 健診受診日
@@ -199,7 +250,7 @@ export function PlanDatesClient({
             ] as const
           ).filter(([, v]) => v) as [string, string][],
         ),
-        dates: planDatesToMap(result, ap),
+        dates: planDatesToMap(result, ap, hideSupport),
       });
       setSavedAt((k) => k + 1);
     } catch (err) {
@@ -270,7 +321,9 @@ export function PlanDatesClient({
   const copy = async () => {
     if (!result) return;
     try {
-      await navigator.clipboard.writeText(planDatesText({ name, org, todo }, result, ap));
+      await navigator.clipboard.writeText(
+        planDatesText({ name, org, todo }, result, ap, hideSupport),
+      );
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -292,18 +345,9 @@ export function PlanDatesClient({
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="NGUYEN VAN A" className="min-h-[40px] rounded-xl border border-border bg-background px-3 text-sm" />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-[11px] font-bold text-muted">所属機関</span>
+          <span className="text-[11px] font-bold text-muted">所属機関（自動反映・直せます）</span>
           <input value={org} onChange={(e) => setOrg(e.target.value)} placeholder="例: 國崎青果" className="min-h-[40px] rounded-xl border border-border bg-background px-3 text-sm" />
-          <span className="flex gap-3 text-xs font-bold">
-            <label className="flex items-center gap-1">
-              <input type="radio" checked={isLegal} onChange={() => setIsLegal(true)} className="accent-brand" />
-              法人（2年）
-            </label>
-            <label className="flex items-center gap-1">
-              <input type="radio" checked={!isLegal} onChange={() => setIsLegal(false)} className="accent-brand" />
-              個人（1年）
-            </label>
-          </span>
+          <span className="text-[10px] text-muted">雇用期間は自動で2年間の有期雇用契約として計算します。</span>
         </label>
         <label className="flex flex-col gap-1">
           <span className="text-[11px] font-bold text-muted">TODO番号</span>
@@ -449,13 +493,21 @@ export function PlanDatesClient({
               {ap && <ResultRow badge="入力" label="申請予定日（入管）" date={ap} note="入力値" />}
               <ResultRow badge="確定" label="雇用条件書の作成日" sub="参考様式1-6号" date={result.cond} note="雇用契約日よりも前の日付" />
               <ResultRow badge={result.conEstimated ? "推定" : "入力"} label="雇用契約日" sub="参考様式1-6号 / 支援計画書" date={result.con} note={result.conEstimated ? "雇用開始日の14日前（推定）" : "入力値"} />
-              <ResultRow badge="確定" label="登録支援機関 支援委託契約日" sub="参考様式1-25号" date={result.con} note={`雇用契約日から5年間（〜 ${fmtSlash(result.scEnd)} まで）`} />
+              {/* 特定活動の申請では支援委託契約の行は出さない */}
+              {!hideSupport && (
+                <ResultRow badge="確定" label="登録支援機関 支援委託契約日" sub="参考様式1-25号" date={result.con} note={`雇用契約日から5年間（〜 ${fmtSlash(result.scEnd)} まで）`} />
+              )}
               <ResultRow badge={result.docEstimated ? "推定" : "入力"} label="書類作成日（支援計画書）" sub="参考様式1-17号 / 全様式共通" date={result.doc} note={result.docEstimated ? (ap ? "申請予定日の1日前（推定）" : "雇用開始日の3日前（推定）") : "入力値"} />
               <SectionRow title="▼ 雇用・支援実施" />
               <ResultRow badge="確定" label="雇用開始日" sub="参考様式1-6号 / 支援計画書" date={result.es} note="雇用契約期間の初日" />
               <ResultRow badge="確定" label={`雇用終了日（${result.eeYears}年後）`} sub="参考様式1-6号 / 支援計画書" date={result.eeEnd} note={`契約期間${result.eeYears}年の場合`} />
-              <ResultRow badge="推定" label="事前ガイダンス実施日" sub="参考様式1-17号" date={result.guid} note="雇用契約日〜書類作成日の間（中間値・要調整）" />
-              <ResultRow badge="確定" label="生活オリエンテーション実施日" sub="参考様式1-17号" date={result.orient} note="雇用開始から2週間後" />
+              {/* 特定活動の申請では事前ガイダンス・生活オリエンテーションの行は出さない */}
+              {!hideSupport && (
+                <>
+                  <ResultRow badge="推定" label="事前ガイダンス実施日" sub="参考様式1-17号" date={result.guid} note="雇用契約日〜書類作成日の間（中間値・要調整）" />
+                  <ResultRow badge="確定" label="生活オリエンテーション実施日" sub="参考様式1-17号" date={result.orient} note="雇用開始から2週間後" />
+                </>
+              )}
               <ResultRow
                 badge={result.signBasis === "health" ? "入力" : "推定"}
                 label="署名日"

@@ -133,19 +133,32 @@ export const PLAN_DATE_FIELDS = [
 
 export type PlanDateKey = (typeof PLAN_DATE_FIELDS)[number]["key"];
 
-// 算出結果 → 保存する日付一覧（未設定の項目は入れない）
-export function planDatesToMap(r: PlanDates, applyDate: string | null): Record<string, string> {
+// 申請の内容（TODOの内容）が特定活動か。
+// 特定活動の申請では、支援委託契約・事前ガイダンス・生活オリエンテーションの日付は使わない
+export function isTokuteiKatsudoContent(title: string): boolean {
+  return title.includes("特定活動");
+}
+
+// 算出結果 → 保存する日付一覧（未設定の項目は入れない）。
+// hideSupport=true（特定活動）のときは支援委託契約終了日・事前ガイダンス・生活オリエンを除く
+export function planDatesToMap(
+  r: PlanDates,
+  applyDate: string | null,
+  hideSupport = false,
+): Record<string, string> {
   const out: Record<string, string> = {
     cond: r.cond,
     con: r.con,
-    scEnd: r.scEnd,
     doc: r.doc,
     es: r.es,
     eeEnd: r.eeEnd,
-    guid: r.guid,
-    orient: r.orient,
     sign: r.sign,
   };
+  if (!hideSupport) {
+    out.scEnd = r.scEnd;
+    out.guid = r.guid;
+    out.orient = r.orient;
+  }
   if (applyDate) out.apply = applyDate;
   return out;
 }
@@ -155,6 +168,7 @@ export function planDatesText(
   info: { name: string; org: string; todo: string },
   r: PlanDates,
   applyDate: string | null,
+  hideSupport = false, // 特定活動: 支援委託契約・事前ガイダンス・生活オリエンの行を出さない
 ): string {
   const jp = (ymd: string) => {
     const [y, m, d] = ymd.split("-").map(Number);
@@ -167,18 +181,25 @@ export function planDatesText(
   lines.push("");
   const entries: [string, string][] = [];
   if (applyDate) entries.push(["申請予定日", applyDate]);
+  entries.push(["雇用条件書の作成日（参考様式1-6号）", r.cond], ["雇用契約日", r.con]);
+  if (!hideSupport) {
+    entries.push(
+      ["登録支援機関 支援委託契約日（参考様式1-25号）", r.con],
+      ["　（委託契約終了日）", r.scEnd],
+    );
+  }
   entries.push(
-    ["雇用条件書の作成日（参考様式1-6号）", r.cond],
-    ["雇用契約日", r.con],
-    ["登録支援機関 支援委託契約日（参考様式1-25号）", r.con],
-    ["　（委託契約終了日）", r.scEnd],
     ["書類作成日", r.doc],
     ["雇用開始日", r.es],
     [`雇用終了日（${r.eeYears}年後）`, r.eeEnd],
-    ["事前ガイダンス実施日（参考様式1-17号）", r.guid],
-    ["生活オリエンテーション実施日（参考様式1-17号）", r.orient],
-    ["署名日", r.sign],
   );
+  if (!hideSupport) {
+    entries.push(
+      ["事前ガイダンス実施日（参考様式1-17号）", r.guid],
+      ["生活オリエンテーション実施日（参考様式1-17号）", r.orient],
+    );
+  }
+  entries.push(["署名日", r.sign]);
   for (const [label, ymd] of entries) lines.push(`${label}：${jp(ymd)}`);
   return lines.join("\n");
 }

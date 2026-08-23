@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  displayTodoNo,
   isCheckingStatus,
   isImmigrationAppliedStatus,
   nextTodoNo,
@@ -9,13 +10,24 @@ import {
 } from "@/lib/todo";
 
 describe("nextTodoNo", () => {
-  test("既存の数字の番号の最大＋1を返す（数字以外・空は無視）", () => {
-    expect(nextTodoNo(["781", "782", "12", "", "TODO-9999", "  783 "])).toBe("784");
+  test("既存の番号（TODO-形式・数字のみ両方）の最大＋1を TODO-数字 の形で返す", () => {
+    expect(nextTodoNo(["781", "782", "12", "", "TODO-9999", "  783 "])).toBe("TODO-10000");
+    expect(nextTodoNo(["TODO-2000", "TODO-2001"])).toBe("TODO-2002");
   });
 
-  test("番号がまだ無ければ1から始まる", () => {
-    expect(nextTodoNo([])).toBe("1");
-    expect(nextTodoNo(["", "abc"])).toBe("1");
+  test("番号がまだ無い・小さい番号しか無ければ TODO-2000 から始まる", () => {
+    expect(nextTodoNo([])).toBe("TODO-2000");
+    expect(nextTodoNo(["", "abc"])).toBe("TODO-2000");
+    expect(nextTodoNo(["TODO-1305", "812"])).toBe("TODO-2000");
+  });
+});
+
+describe("displayTodoNo", () => {
+  test("数字だけの旧番号にも TODO- を付けてそろえる", () => {
+    expect(displayTodoNo("812")).toBe("TODO-812");
+    expect(displayTodoNo("TODO-2000")).toBe("TODO-2000");
+    expect(displayTodoNo(" 812 ")).toBe("TODO-812");
+    expect(displayTodoNo("")).toBe("");
   });
 });
 
