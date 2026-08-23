@@ -953,28 +953,31 @@ export function ApplicationPrepChecklist({
             </div>
           </div>
         )}
-        <div className="flex flex-wrap items-center gap-4">
-          <label className="flex items-center gap-1.5 text-xs font-bold">
-            <input
-              type="checkbox"
-              checked={meta.has_kokuho}
-              disabled={!canEdit}
-              onChange={(e) => patchMeta({ has_kokuho: e.target.checked })}
-              className="h-4 w-4"
-            />
-            国民健康保険に加入
-          </label>
-          <label className="flex items-center gap-1.5 text-xs font-bold">
-            <input
-              type="checkbox"
-              checked={meta.has_nenkin}
-              disabled={!canEdit}
-              onChange={(e) => patchMeta({ has_nenkin: e.target.checked })}
-              className="h-4 w-4"
-            />
-            国民年金に加入
-          </label>
-        </div>
+        {/* 在留資格認定・特定活動は国保・国民年金の加入を問わないため、チェック欄を出さない */}
+        {meta.app_type !== "認定" && meta.app_type !== "特定活動" && (
+          <div className="flex flex-wrap items-center gap-4">
+            <label className="flex items-center gap-1.5 text-xs font-bold">
+              <input
+                type="checkbox"
+                checked={meta.has_kokuho}
+                disabled={!canEdit}
+                onChange={(e) => patchMeta({ has_kokuho: e.target.checked })}
+                className="h-4 w-4"
+              />
+              国民健康保険に加入
+            </label>
+            <label className="flex items-center gap-1.5 text-xs font-bold">
+              <input
+                type="checkbox"
+                checked={meta.has_nenkin}
+                disabled={!canEdit}
+                onChange={(e) => patchMeta({ has_nenkin: e.target.checked })}
+                className="h-4 w-4"
+              />
+              国民年金に加入
+            </label>
+          </div>
+        )}
       </div>
       )}
 

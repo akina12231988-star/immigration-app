@@ -149,7 +149,8 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
     label: "源泉徴収票",
     yearKind: "年分",
     yearMode: "target-1", // 課税○年度に対して源泉徴収票は前年分（例: 令和7年度課税→令和6年分源泉）
-    appliesTo: ["変更", "更新", "認定"],
+    // 在留資格認定・特定活動は日本での課税実績が無いため源泉徴収票・課税/納税証明書は不要
+    appliesTo: ["変更", "更新"],
     source: { kind: "gensenYear" },
     manageInline: false,
     managedIn: "源泉徴収票",
@@ -158,7 +159,7 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
     id: "kazei",
     label: "課税証明書",
     yearKind: "年度",
-    appliesTo: ["変更", "更新", "認定"],
+    appliesTo: ["変更", "更新"],
     viaMail: true,
     note: "その年度の1月1日時点の住所も確認が必要",
     source: { kind: "docYear", baseKey: "prep_kazei" },
@@ -168,7 +169,7 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
     id: "nozei_shiken",
     label: "納税証明書（市県民税）",
     yearKind: "年度",
-    appliesTo: ["変更", "更新", "認定"],
+    appliesTo: ["変更", "更新"],
     viaMail: true,
     source: { kind: "docYear", baseKey: "prep_nozei_shiken" },
     manageInline: true,
@@ -293,6 +294,9 @@ export function prepDocLabel(
 export function isRequired(def: PrepDocDef, meta: PrepChecklistMeta): boolean {
   if (!meta.app_type) return false;
   if (!def.appliesTo.includes(meta.app_type)) return false;
+  // 在留資格認定・特定活動は国保・国民年金の加入を問わない（チェック欄も出さない）ため、
+  // 加入時のみ必要な書類（国保税の納税証明書・保険証・年金記録）は求めない
+  if (def.requiredIf && (meta.app_type === "認定" || meta.app_type === "特定活動")) return false;
   if (def.requiredIf === "kokuho" && !meta.has_kokuho) return false;
   if (def.requiredIf === "nenkin" && !meta.has_nenkin) return false;
   if (def.certPatterns) {

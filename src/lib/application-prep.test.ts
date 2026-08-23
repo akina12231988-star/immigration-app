@@ -45,10 +45,21 @@ describe("isRequired", () => {
     expect(isRequired(def("hokensho"), meta({ app_type: "変更", has_kokuho: true }))).toBe(true);
   });
 
-  it("保険証・資格確認証は国保加入なら更新・認定でも必要", () => {
+  it("保険証・資格確認証は国保加入なら更新でも必要（認定・特定活動は加入を問わず不要）", () => {
     expect(isRequired(def("hokensho"), meta({ app_type: "更新" }))).toBe(false);
     expect(isRequired(def("hokensho"), meta({ app_type: "更新", has_kokuho: true }))).toBe(true);
-    expect(isRequired(def("hokensho"), meta({ app_type: "認定", has_kokuho: true }))).toBe(true);
+    expect(isRequired(def("hokensho"), meta({ app_type: "認定", has_kokuho: true }))).toBe(false);
+    expect(isRequired(def("nozei_kokuho"), meta({ app_type: "認定", has_kokuho: true }))).toBe(false);
+    expect(isRequired(def("nenkin"), meta({ app_type: "特定活動", has_nenkin: true }))).toBe(false);
+  });
+
+  it("認定・特定活動では源泉徴収票・課税/納税証明書（市県民税）は不要", () => {
+    for (const id of ["gensen", "kazei", "nozei_shiken"] as const) {
+      expect(isRequired(def(id), meta({ app_type: "認定" }))).toBe(false);
+      expect(isRequired(def(id), meta({ app_type: "特定活動" }))).toBe(false);
+      expect(isRequired(def(id), meta({ app_type: "更新" }))).toBe(true);
+      expect(isRequired(def(id), meta({ app_type: "変更" }))).toBe(true);
+    }
   });
 
   it("年金記録は国民年金加入時のみ必要", () => {
@@ -222,17 +233,16 @@ describe("準備状況（ステータス）の定義", () => {
 });
 
 describe("在留資格認定申請（認定）", () => {
-  it("認定は変更と同じ書類＋推薦状が必要", () => {
+  it("認定は推薦状が必要で、日本での課税・保険関係の書類は不要", () => {
     const ninteiIds = evaluatePrepChecklist(
       meta({ app_type: "認定", has_kokuho: true, has_nenkin: true, target_reiwa: 7 }),
       sources({}),
     ).items.map((x) => x.def.id);
-    const henkouIds = evaluatePrepChecklist(
-      meta({ app_type: "変更", has_kokuho: true, has_nenkin: true, target_reiwa: 7 }),
-      sources({}),
-    ).items.map((x) => x.def.id);
-    expect(ninteiIds).toEqual(henkouIds);
     expect(ninteiIds).toContain("suisenjo");
+    // 日本での課税実績・保険加入が無いため出さない書類
+    for (const id of ["gensen", "kazei", "nozei_shiken", "nozei_kokuho", "hokensho", "nenkin"]) {
+      expect(ninteiIds).not.toContain(id);
+    }
   });
   it("更新には推薦状は不要", () => {
     const ids = evaluatePrepChecklist(
