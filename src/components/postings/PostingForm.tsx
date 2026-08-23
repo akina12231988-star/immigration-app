@@ -20,9 +20,17 @@ import {
   type PostingStatus,
   type WageKind,
 } from "@/types/recruiting";
-import { emptyPostingAllowance, normalizePostingSheet } from "@/lib/posting-sheet";
+import {
+  dailyWorkHours,
+  emptyPostingAllowance,
+  normalizePostingSheet,
+  normalizeTimeInput,
+} from "@/lib/posting-sheet";
+import { calcWageDetail, emptyWageDetail, formatYen } from "@/lib/wage-calc";
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
-import type { Organization } from "@/types/db";
+import { listOrganizationFiles } from "@/lib/supabase/queries/organization-files";
+import { getOrgFilePreviewUrl } from "@/app/(app)/organizations/actions";
+import type { Organization, OrganizationFileRow, WageDetail } from "@/types/db";
 
 function toInput(p: JobPosting | null, orgId: string): JobPostingInput {
   return {
@@ -82,6 +90,26 @@ export function PostingForm({
   // 前回の求人の内容を反映したときのお知らせ
   const [prefillNotice, setPrefillNotice] = useState<string | null>(null);
 
+  // 所属機関の情報に登録された内容（源泉所得税・保険・支払方法・水道光熱費・通信費）を
+  // 求人票の欄に反映する。登録がある項目だけ上書きする
+  const orgSheetOverlay = (orgId: string): Partial<PostingSheet> => {
+    const intake = organizations.find((o) => o.id === orgId)?.intake;
+    if (!intake) return {};
+    const out: Partial<PostingSheet> = {};
+    if (intake.health_insurance) {
+      out.social_insurance = intake.health_insurance === "社会保険" ? "適用" : "適用なし";
+    }
+    if (intake.koyo_covered) {
+      out.employment_insurance = intake.koyo_covered === "はい" ? "適用" : "適用なし";
+    }
+    if (intake.pay_method) out.pay_method = intake.pay_method;
+    if (intake.posting_gensen) out.income_tax = intake.posting_gensen;
+    if (intake.posting_utility_cost) out.utility_cost = intake.posting_utility_cost;
+    if (intake.posting_utility_kind) out.utility_kind = intake.posting_utility_kind;
+    if (intake.posting_comm_cost) out.communication_cost = intake.posting_comm_cost;
+    return out;
+  };
+
   // 新規登録のとき: 所属機関を選ぶと、その会社の直近の求人から毎回同じような項目
   // （職種・就業場所・給与・求人票の内容など）を自動で反映する。
   // 受理番号・受付日・有効期限・採用人数・記入日・状態は引き継がない
@@ -97,6 +125,11 @@ export function PostingForm({
       .then(({ data }) => {
         const prev = ((data as JobPosting[] | null) ?? [])[0];
         if (!prev) {
+          // 前回の求人が無くても、所属機関の情報の登録内容は反映する
+          setForm((f) => ({
+            ...f,
+            sheet: { ...normalizePostingSheet(f.sheet), ...orgSheetOverlay(orgId) },
+          }));
           setPrefillNotice(null);
           return;
         }
@@ -116,11 +149,16 @@ export function PostingForm({
           target_nationality: prev.target_nationality ?? "",
           gender: prev.gender ?? "不問",
           hire_timing: prev.hire_timing ?? "",
-          // 求人票（会社に書いてもらう内容）は記入日以外を引き継ぐ
-          sheet: { ...normalizePostingSheet(prev.sheet), filled_on: f.sheet?.filled_on ?? "" },
+          // 求人票（会社に書いてもらう内容）は記入日以外を引き継ぎ、
+          // 所属機関の情報に登録がある項目はそちらを優先する
+          sheet: {
+            ...normalizePostingSheet(prev.sheet),
+            ...orgSheetOverlay(orgId),
+            filled_on: f.sheet?.filled_on ?? "",
+          },
         }));
         setPrefillNotice(
-          `この会社の前回の求人（受付日 ${prev.received_on ?? "不明"}）の内容を反映しました。受理番号・受付日・有効期限・記入日は引き継いでいません。変わった項目だけ直してください。`,
+          `この会社の前回の求人（受付日 ${prev.received_on ?? "不明"}）の内容を反映しました。受理番号・受付日・有効期限・記入日は引き継いでいません。源泉所得税・保険・水道光熱費などは所属機関の情報の登録を優先しています。変わった項目だけ直してください。`,
         );
       });
   };
@@ -157,6 +195,18 @@ export function PostingForm({
   const sheet = normalizePostingSheet(form.sheet);
   const setSheet = (patch: Partial<PostingSheet>) =>
     setForm((f) => ({ ...f, sheet: { ...normalizePostingSheet(f.sheet), ...patch } }));
+
+  // 始業・終業・休憩を書き換えたら、1日の所定労働時間を自動で計算し直す
+  const setSheetTimes = (
+    patch: Partial<Pick<PostingSheet, "work_start" | "work_end" | "break_minutes">>,
+  ) => {
+    const next = { ...sheet, ...patch };
+    const daily = dailyWorkHours(next.work_start, next.work_end, next.break_minutes);
+    setSheet(daily ? { ...patch, daily_hours: daily } : patch);
+  };
+
+  const selectedOrg = organizations.find((o) => o.id === form.organization_id);
+  const orgPostingNote = (selectedOrg?.intake?.posting_note ?? "").trim();
 
   // チェックボックス（休日・加入保険）の付け外し
   const toggle = (list: string[], value: string): string[] =>
@@ -207,16 +257,11 @@ export function PostingForm({
           </p>
         )}
         {/* 所属機関が求人で必須としている他条件（所属機関の情報で登録）を注意喚起 */}
-        {(() => {
-          const org = organizations.find((o) => o.id === form.organization_id);
-          const note = (org?.intake?.posting_note ?? "").trim();
-          if (!note) return null;
-          return (
-            <p className="rounded-xl border border-status-notice-fg/50 bg-status-notice-bg/50 px-3 py-2.5 text-xs font-bold leading-relaxed text-status-notice-fg">
-              ⚠ この所属機関の求人必須条件: {note}
-            </p>
-          );
-        })()}
+        {orgPostingNote && (
+          <p className="rounded-xl border border-status-notice-fg/50 bg-status-notice-bg/50 px-3 py-2.5 text-xs font-bold leading-relaxed text-status-notice-fg">
+            ⚠ この所属機関の求人必須条件: {orgPostingNote}
+          </p>
+        )}
         <Field label="求人受理番号（今年度の次の番号を自動で入れます・直せます。求人管理簿・労働局への提出で使用）">
           <input
             value={form.acceptance_no}
@@ -372,29 +417,48 @@ export function PostingForm({
             </select>
           </Field>
           <Field label="雇用契約期間（定めありの場合）">
-            <input
+            <select
               value={sheet.contract_term}
               onChange={(e) => setSheet({ contract_term: e.target.value })}
-              placeholder="1年（2026/9/1〜2027/8/31）"
               className={INPUT_CLASS}
-            />
+            >
+              <option value="">—</option>
+              {["1年", "2年", "3年"].map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+              {/* 前回の求人などで別の書き方が保存されていたら、選択肢に残して消えないようにする */}
+              {sheet.contract_term && !["1年", "2年", "3年"].includes(sheet.contract_term) && (
+                <option value={sheet.contract_term}>{sheet.contract_term}</option>
+              )}
+            </select>
           </Field>
         </div>
         <Field label="契約の更新">
-          <input
+          <select
             value={sheet.contract_renewal}
             onChange={(e) => setSheet({ contract_renewal: e.target.value })}
-            placeholder="有：勤務成績・会社の経営状況により判断 ／ 無"
             className={INPUT_CLASS}
-          />
+          >
+            <option value="">—</option>
+            <option value="有">有</option>
+            <option value="無">無</option>
+            {sheet.contract_renewal && !["有", "無"].includes(sheet.contract_renewal) && (
+              <option value={sheet.contract_renewal}>{sheet.contract_renewal}</option>
+            )}
+          </select>
         </Field>
 
+        {/* 時刻は「800」と入れても欄を離れると「8:00」に整い、
+            始業・終業・休憩から1日の所定労働時間を自動で計算する */}
         <div className="grid grid-cols-3 gap-2.5">
           <Field label="始業">
             <input
               value={sheet.work_start}
               onChange={(e) => setSheet({ work_start: e.target.value })}
-              placeholder="8:00"
+              onBlur={() => setSheetTimes({ work_start: normalizeTimeInput(sheet.work_start) })}
+              placeholder="800 → 8:00"
               className={INPUT_CLASS}
             />
           </Field>
@@ -402,37 +466,67 @@ export function PostingForm({
             <input
               value={sheet.work_end}
               onChange={(e) => setSheet({ work_end: e.target.value })}
-              placeholder="17:00"
-              className={INPUT_CLASS}
-            />
-          </Field>
-          <Field label="1日の所定労働時間">
-            <input
-              value={sheet.daily_hours}
-              onChange={(e) => setSheet({ daily_hours: e.target.value })}
-              placeholder="8時間"
-              className={INPUT_CLASS}
-            />
-          </Field>
-        </div>
-        <div className="grid grid-cols-3 gap-2.5">
-          <Field label="変形労働制">
-            <input
-              value={sheet.flexible_hours}
-              onChange={(e) => setSheet({ flexible_hours: e.target.value })}
-              placeholder="なし／1年単位 など"
+              onBlur={() => setSheetTimes({ work_end: normalizeTimeInput(sheet.work_end) })}
+              placeholder="1700 → 17:00"
               className={INPUT_CLASS}
             />
           </Field>
           <Field label="休憩（分）">
             <input
               value={sheet.break_minutes}
-              onChange={(e) => setSheet({ break_minutes: e.target.value.replace(/[^0-9]/g, "") })}
+              onChange={(e) =>
+                setSheetTimes({ break_minutes: e.target.value.replace(/[^0-9]/g, "") })
+              }
               inputMode="numeric"
               placeholder="60"
               className={INPUT_CLASS}
             />
           </Field>
+        </div>
+        <Field label="1日の所定労働時間（始業・終業・休憩から自動計算）">
+          <input
+            value={sheet.daily_hours}
+            readOnly
+            placeholder="始業・終業・休憩を入力すると自動で入ります"
+            className={`${INPUT_CLASS} bg-border/30`}
+          />
+        </Field>
+        <div className="grid grid-cols-3 gap-2.5">
+          <Field label="変形労働時間制">
+            <select
+              value={sheet.flexible_hours === "" ? "" : sheet.flexible_hours === "なし" ? "なし" : "あり"}
+              onChange={(e) => {
+                const v = e.target.value;
+                // 「あり」を選んだらまず1年単位にしておく（右の欄で直せる）
+                setSheet({
+                  flexible_hours: v === "あり" ? "1年単位の変形労働時間制" : v,
+                });
+              }}
+              className={INPUT_CLASS}
+            >
+              <option value="">—</option>
+              <option value="なし">なし</option>
+              <option value="あり">あり</option>
+            </select>
+          </Field>
+          {sheet.flexible_hours !== "" && sheet.flexible_hours !== "なし" && (
+            <Field label="変形労働時間制の単位">
+              <select
+                value={sheet.flexible_hours}
+                onChange={(e) => setSheet({ flexible_hours: e.target.value })}
+                className={INPUT_CLASS}
+              >
+                <option value="1ヶ月単位の変形労働時間制">1ヶ月単位</option>
+                <option value="1年単位の変形労働時間制">1年単位</option>
+                {!["1ヶ月単位の変形労働時間制", "1年単位の変形労働時間制"].includes(
+                  sheet.flexible_hours,
+                ) && <option value={sheet.flexible_hours}>{sheet.flexible_hours}</option>}
+              </select>
+            </Field>
+          )}
+        </div>
+        {sheet.flexible_hours.includes("1年") && <FlexYearDocs orgId={form.organization_id} />}
+        <div className="grid grid-cols-2 gap-2.5">
           <Field label="残業">
             <select
               value={sheet.overtime}
@@ -443,6 +537,17 @@ export function PostingForm({
               <option value="有">有</option>
               <option value="無">無</option>
             </select>
+          </Field>
+          <Field label="固定残業代（あれば・円／月）">
+            <input
+              value={sheet.fixed_overtime}
+              onChange={(e) =>
+                setSheet({ fixed_overtime: e.target.value.replace(/[^0-9]/g, "") })
+              }
+              inputMode="numeric"
+              placeholder="20000"
+              className={INPUT_CLASS}
+            />
           </Field>
         </div>
         <Field label="休日">
@@ -561,7 +666,7 @@ export function PostingForm({
           </div>
         </Field>
         <div className="grid grid-cols-3 gap-2.5">
-          <Field label="源泉所得税（扶養0人・円）">
+          <Field label="源泉所得税（扶養0人・円・所属機関の情報の「求人票に記載する内容」から自動反映）">
             <input
               value={sheet.income_tax}
               onChange={(e) => setSheet({ income_tax: e.target.value.replace(/[^0-9]/g, "") })}
@@ -778,6 +883,13 @@ export function PostingForm({
           </Field>
         </div>
 
+        {/* 応募条件の入力時に必ず目に入るよう、所属機関の必須条件をここでも注意喚起する
+            （例: タツミ工業のタトゥー（刺青）禁止） */}
+        {orgPostingNote && (
+          <p className="rounded-xl border border-status-notice-fg/50 bg-status-notice-bg/50 px-3 py-2.5 text-xs font-bold leading-relaxed text-status-notice-fg">
+            ⚠ この所属機関の求人必須条件を必ず確認: {orgPostingNote}
+          </p>
+        )}
         <Field label="経験の有無（応募に必要とされる事項）">
           <input
             value={sheet.experience}
@@ -802,6 +914,13 @@ export function PostingForm({
             className={TEXTAREA_CLASS}
           />
         </Field>
+
+        <NetPayPreview
+          wageKind={form.wage_kind}
+          wageAmount={form.wage_amount}
+          sheet={sheet}
+          org={selectedOrg}
+        />
       </Fieldset>
 
       <Fieldset legend="Facebook掲載用">
@@ -936,5 +1055,163 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="text-xs font-bold text-muted">{label}</span>
       {children}
     </label>
+  );
+}
+
+// 1年単位の変形労働時間制のとき、所属機関に添付した年間カレンダー・労使協定書を
+// その場で確認できるようにする（添付は所属機関の情報の画面から）
+function FlexYearDocs({ orgId }: { orgId: string }) {
+  const [files, setFiles] = useState<OrganizationFileRow[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = orgId
+      ? listOrganizationFiles(createClient(), orgId)
+      : Promise.resolve([] as OrganizationFileRow[]);
+    load
+      .then((rows) => {
+        if (!cancelled) {
+          setFiles(rows.filter((r) => r.kind === "年間カレンダー" || r.kind === "労使協定書"));
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId]);
+
+  const open = async (id: string) => {
+    const res = await getOrgFilePreviewUrl(id);
+    if (res.ok) window.open(res.url, "_blank", "noopener");
+    else setError(res.message);
+  };
+
+  return (
+    <div className="rounded-xl border border-dashed border-border p-2.5">
+      <p className="text-xs font-bold text-muted">
+        1年単位の変形労働時間制の書類（所属機関のデータ）
+      </p>
+      {error && <p className="mt-1 text-xs text-seal">{error}</p>}
+      {files.length === 0 ? (
+        <p className="mt-1 text-[11px] leading-relaxed text-muted">
+          年間カレンダー・労使協定書がまだ添付されていません。
+          {orgId ? (
+            <a
+              href={`/organizations/${orgId}`}
+              target="_blank"
+              rel="noopener"
+              className="font-bold text-brand underline"
+            >
+              所属機関の情報
+            </a>
+          ) : (
+            "所属機関の情報"
+          )}
+          の「変形労働時間制（1年単位）の書類」から添付してください（労使協定書は有効期限内のもの）。
+        </p>
+      ) : (
+        <ul className="mt-1 flex flex-col gap-1">
+          {files.map((f) => (
+            <li key={f.id}>
+              <button
+                type="button"
+                onClick={() => void open(f.id)}
+                className="text-left text-xs font-bold text-brand underline"
+              >
+                {f.kind}：{f.file_name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// 手取りプレビューの1行（項目名と概算額）
+function PreviewRow({ label, value, bold = false }: { label: string; value: number; bold?: boolean }) {
+  return (
+    <div className={`flex items-center justify-between gap-2 ${bold ? "font-bold" : ""}`}>
+      <span className="text-muted">{label}</span>
+      <span>約{formatYen(value)}円</span>
+    </div>
+  );
+}
+
+// 求人票の入力内容が賃金（1-6号別紙）でどう見えるかのプレビュー。
+// 手取りがいくらになるかを、申請準備の賃金入力と同じ計算（概算）で出す
+function NetPayPreview({
+  wageKind,
+  wageAmount,
+  sheet,
+  org,
+}: {
+  wageKind: WageKind;
+  wageAmount: number | null;
+  sheet: PostingSheet;
+  org?: Organization;
+}) {
+  const deducts = sheet.deduction_items;
+  const detail: WageDetail = {
+    ...emptyWageDetail(),
+    annual_hours: org?.annual_work_hours ?? 0,
+    allowances: sheet.allowances
+      .filter((a) => Number(a.amount) > 0)
+      .map((a) => ({ type: "その他", name: a.name, amount: Number(a.amount) || 0, method: a.method })),
+    fixed_ot_enabled: Number(sheet.fixed_overtime) > 0,
+    fixed_ot_amount: Number(sheet.fixed_overtime) || 0,
+    social_enabled: sheet.social_insurance === "適用",
+    employment_enabled: sheet.employment_insurance === "適用",
+    employment_kind:
+      sheet.field_name === "農業" || sheet.field_name === "漁業"
+        ? "農林水産・清酒製造の事業"
+        : sheet.field_name === "建設"
+          ? "建設の事業"
+          : "一般の事業",
+    // 控除は「控除項目」でチェックしたものだけ手取りの計算に入れる
+    housing_amount: deducts.includes("社宅（居住費）") ? Number(sheet.housing_cost) || 0 : 0,
+    utility_amount: deducts.includes("水道光熱費") ? Number(sheet.utility_cost) || 0 : 0,
+    others:
+      deducts.includes("通信費") && Number(sheet.communication_cost) > 0
+        ? [{ name: "通信費", amount: Number(sheet.communication_cost) || 0 }]
+        : [],
+  };
+  const r = calcWageDetail({ kind: wageKind, amount: wageAmount ?? 0 }, detail);
+  const needsHours = (wageKind === "時給" || wageKind === "日給") && r.annualHours <= 0;
+
+  return (
+    <div className="rounded-xl border border-brand/40 bg-brand/5 p-3">
+      <p className="text-xs font-bold text-brand">
+        賃金（1-6号別紙）でのプレビュー（概算・自動計算）
+      </p>
+      {needsHours ? (
+        <p className="mt-1 text-[11px] leading-relaxed text-muted">
+          所属機関の「年間所定労働時間」が未登録のため、{wageKind}
+          を1か月あたりの金額に換算できません。所属機関の情報で年間所定労働時間を登録すると手取りを計算できます。
+        </p>
+      ) : (
+        <>
+          <div className="mt-1.5 flex flex-col gap-1 text-xs">
+            <PreviewRow label="1. 基本賃金（1か月あたり）" value={r.base} />
+            <PreviewRow label="2. 諸手当（固定残業代を含む）" value={r.allowanceTotal} />
+            <PreviewRow label="3. 支払概算額（1＋2）" value={r.gross} bold />
+            <PreviewRow label="税金（源泉所得税）" value={r.tax} />
+            <PreviewRow label="社会保険料" value={r.social} />
+            <PreviewRow label="雇用保険料" value={r.employment} />
+            {r.housing > 0 && <PreviewRow label="居住費（社宅）" value={r.housing} />}
+            {r.utility > 0 && <PreviewRow label="水道光熱費" value={r.utility} />}
+            {r.otherTotal > 0 && <PreviewRow label="通信費など" value={r.otherTotal} />}
+            <PreviewRow label="4. 控除額 合計" value={r.deductTotal} bold />
+          </div>
+          <p className="mt-2 border-t border-brand/30 pt-2 text-sm font-bold text-brand">
+            5. 手取り支給額（3－4）　約{formatYen(r.net)}円
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-muted">
+            税・保険は熊本県の令和8年度の率（扶養0人）での概算です。控除は「控除項目」でチェックしたものだけ反映しています。実際の1-6号別紙は申請準備の賃金入力で作成します。
+          </p>
+        </>
+      )}
+    </div>
   );
 }

@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   contractText,
+  dailyWorkHours,
   deductionItemsText,
   emptyPostingSheet,
   hasPostingSheet,
   holidayText,
   insurancesText,
   normalizePostingSheet,
+  normalizeTimeInput,
   postingSheetText,
   smokingText,
   workHoursText,
@@ -54,6 +56,47 @@ describe("normalizePostingSheet / hasPostingSheet", () => {
     expect(hasPostingSheet(null)).toBe(false);
     expect(hasPostingSheet({})).toBe(false);
     expect(hasPostingSheet({ field_name: "農業" })).toBe(true);
+  });
+});
+
+describe("normalizeTimeInput", () => {
+  it("数字だけの入力を時刻に直す", () => {
+    expect(normalizeTimeInput("800")).toBe("8:00");
+    expect(normalizeTimeInput("0830")).toBe("8:30");
+    expect(normalizeTimeInput("1730")).toBe("17:30");
+    expect(normalizeTimeInput("8")).toBe("8:00");
+    expect(normalizeTimeInput("17")).toBe("17:00");
+  });
+
+  it("コロン付き・全角も整える", () => {
+    expect(normalizeTimeInput("8:0")).toBe("8:00");
+    expect(normalizeTimeInput("08:30")).toBe("8:30");
+    expect(normalizeTimeInput("８：００")).toBe("8:00");
+  });
+
+  it("時刻と読めないものはそのまま返す", () => {
+    expect(normalizeTimeInput("")).toBe("");
+    expect(normalizeTimeInput("朝8時")).toBe("朝8時");
+    expect(normalizeTimeInput("870")).toBe("870");
+    expect(normalizeTimeInput("9999")).toBe("9999");
+  });
+});
+
+describe("dailyWorkHours", () => {
+  it("始業・終業・休憩から1日の所定労働時間を出す", () => {
+    expect(dailyWorkHours("8:00", "17:00", "60")).toBe("8時間");
+    expect(dailyWorkHours("8:00", "16:30", "60")).toBe("7時間30分");
+    expect(dailyWorkHours("800", "1700", "")).toBe("9時間");
+  });
+
+  it("夜勤（日またぎ）も計算できる", () => {
+    expect(dailyWorkHours("22:00", "7:00", "60")).toBe("8時間");
+  });
+
+  it("計算できないときは空", () => {
+    expect(dailyWorkHours("", "17:00", "60")).toBe("");
+    expect(dailyWorkHours("8:00", "", "60")).toBe("");
+    expect(dailyWorkHours("9:00", "9:00", "0")).toBe("");
   });
 });
 
