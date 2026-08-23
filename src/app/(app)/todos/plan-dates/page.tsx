@@ -23,6 +23,7 @@ export default async function PlanDatesPage({
         initialOrg={params.org ?? ""}
         initialTodo={params.todo ?? ""}
         workerId={params.workerId ?? ""}
+        canEdit={me.role !== "viewer"}
       />
     </>
   );

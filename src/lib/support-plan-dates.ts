@@ -115,6 +115,41 @@ export function recommendedDocDate(applyDate: string | null, employStart: string
   return applyDate ? addDaysYmd(applyDate, -1) : addDaysYmd(employStart, -3);
 }
 
+// 保存する日付一覧の項目（キー → 表示名）。
+// 日付計算の「保存」でこの形の Record<string, string> にして support_plan_dates.dates に入れ、
+// 申請準備のTODO・日付計算のどちらからでも編集できる
+export const PLAN_DATE_FIELDS = [
+  { key: "apply", label: "申請予定日（入管）" },
+  { key: "cond", label: "雇用条件書の作成日（参考様式1-6号）" },
+  { key: "con", label: "雇用契約日（支援委託契約日も同日）" },
+  { key: "scEnd", label: "支援委託契約の終了日" },
+  { key: "doc", label: "書類作成日（支援計画書）" },
+  { key: "es", label: "雇用開始日" },
+  { key: "eeEnd", label: "雇用終了日" },
+  { key: "guid", label: "事前ガイダンス実施日" },
+  { key: "orient", label: "生活オリエンテーション実施日" },
+  { key: "sign", label: "署名日" },
+] as const;
+
+export type PlanDateKey = (typeof PLAN_DATE_FIELDS)[number]["key"];
+
+// 算出結果 → 保存する日付一覧（未設定の項目は入れない）
+export function planDatesToMap(r: PlanDates, applyDate: string | null): Record<string, string> {
+  const out: Record<string, string> = {
+    cond: r.cond,
+    con: r.con,
+    scEnd: r.scEnd,
+    doc: r.doc,
+    es: r.es,
+    eeEnd: r.eeEnd,
+    guid: r.guid,
+    orient: r.orient,
+    sign: r.sign,
+  };
+  if (applyDate) out.apply = applyDate;
+  return out;
+}
+
 // コピー用テキスト（ツールの「テキストをコピー」と同じ形）
 export function planDatesText(
   info: { name: string; org: string; todo: string },

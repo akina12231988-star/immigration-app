@@ -21,8 +21,24 @@ import { getOrgFilePreviewUrl } from "@/app/(app)/organizations/actions";
 import { orgYearlyFileGroups, type OrgYearlyFileGroup } from "@/lib/org-yearly-files";
 import { normalizeOrganizationIntake } from "@/lib/organization-intake";
 import { listWorkerWages } from "@/lib/supabase/queries/wages";
+import {
+  findPlanDatesForTodo,
+  listPlanDates,
+  updatePlanDates,
+  type SavedPlanDates,
+} from "@/lib/supabase/queries/plan-dates";
+import { PLAN_DATE_FIELDS } from "@/lib/support-plan-dates";
+import { listOrganizations } from "@/lib/supabase/queries/organizations";
+import { WorkerWages } from "@/components/workers/WorkerWages";
+import { WorkerContracts } from "@/components/workers/WorkerContracts";
+import { todayStr } from "@/lib/ssw/calc";
 import { dbErrorMessage } from "@/lib/errors";
-import type { Organization, OrganizationFileRow, WorkerWage } from "@/types/db";
+import type {
+  Organization,
+  OrganizationFileRow,
+  WorkerOrgEmploymentStart,
+  WorkerWage,
+} from "@/types/db";
 
 // 申請準備 書類チェックリストの追加表示・入力。
 //  - 申請準備TODOのステータス（本人の名前の下に常時表示・編集可）
@@ -582,6 +598,192 @@ export function PrepWageSummary({ workerId }: { workerId: string }) {
         </div>
       )}
     </div>
+  );
+}
+
+// ---- 支援計画書 日付計算の保存済みの日付（表示・この場で編集できる） ----
+
+export function SavedPlanDatesSection({
+  workerId,
+  todoNo,
+  canEdit,
+}: {
+  workerId: string;
+  todoNo: string;
+  canEdit: boolean;
+}) {
+  const [saved, setSaved] = useState<SavedPlanDates | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [dates, setDates] = useState<Record<string, string>>({});
+  const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    listPlanDates(createClient(), workerId)
+      .then((rows) => {
+        if (cancelled) return;
+        const hit = findPlanDatesForTodo(rows, todoNo);
+        setSaved(hit);
+        setDates(hit?.dates ?? {});
+        setDirty(false);
+        setLoaded(true);
+      })
+      .catch(() => setLoaded(true)); // 0107未適用でも他の機能は使える
+    return () => {
+      cancelled = true;
+    };
+  }, [workerId, todoNo]);
+
+  const save = async () => {
+    if (!saved) return;
+    setBusy(true);
+    setError(null);
+    try {
+      // 空にした項目は消して保存する
+      const next = Object.fromEntries(Object.entries(dates).filter(([, v]) => v));
+      await updatePlanDates(createClient(), saved.id, next);
+      setDates(next);
+      setDirty(false);
+    } catch (err) {
+      setError(dbErrorMessage(err, "0107_support_plan_dates.sql", "日付の保存に失敗しました"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!loaded) return null;
+
+  return (
+    <div className="rounded-lg bg-background p-2">
+      <p className="mb-1 flex flex-wrap items-center justify-between gap-1 text-[11px] font-bold text-muted">
+        📅 支援計画書の日付（日付計算の保存結果）
+        <Link
+          href={`/todos/plan-dates?workerId=${workerId}&todo=${encodeURIComponent(todoNo)}`}
+          className="font-bold text-brand hover:underline"
+        >
+          日付計算を開く →
+        </Link>
+      </p>
+      {error && <p className="mb-1 rounded-lg bg-seal/10 px-2 py-1 text-[11px] text-seal">{error}</p>}
+      {!saved ? (
+        <p className="text-[11px] text-muted">
+          保存された日付はまだありません。日付計算で算出して「この結果を保存」すると、ここに表示され編集できます。
+        </p>
+      ) : (
+        <div className="space-y-1">
+          {PLAN_DATE_FIELDS.map((f) => (
+            <label key={f.key} className="flex flex-wrap items-center gap-2 text-[11px]">
+              <span className="min-w-[14rem] flex-1">{f.label}</span>
+              <input
+                type="date"
+                value={dates[f.key] ?? ""}
+                disabled={!canEdit}
+                onChange={(e) => {
+                  setDates((prev) => ({ ...prev, [f.key]: e.target.value }));
+                  setDirty(true);
+                }}
+                className="min-h-[32px] rounded-lg border border-border bg-surface px-2 text-xs tabular-nums disabled:opacity-60"
+              />
+            </label>
+          ))}
+          {canEdit && dirty && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void save()}
+              className="mt-1 rounded-lg bg-brand px-3 py-1.5 text-xs font-bold text-brand-foreground disabled:opacity-50"
+            >
+              {busy ? "保存中…" : "日付の変更を保存"}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- 賃金（1-6号別紙）と雇用契約書・雇用条件書を申請準備の中で直接入力する ----
+// 申請の時点で「この内容になっている」という記録を申請準備の中に残すための埋め込み。
+// 必要な所属機関などのデータはこの場で取得する
+
+export function PrepEmploymentSection({
+  workerId,
+  canEdit,
+  showWages,
+}: {
+  workerId: string;
+  canEdit: boolean;
+  showWages: boolean; // 外国人詳細では賃金の記録が別カードにあるため、モーダル表示のときだけ出す
+}) {
+  const [orgs, setOrgs] = useState<Organization[] | null>(null);
+  const [info, setInfo] = useState<{
+    current_organization_id: string | null;
+    employment_start_on: string | null;
+    messenger_link: string;
+    org_employment_starts: WorkerOrgEmploymentStart[];
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+    listOrganizations(supabase)
+      .then((rows) => {
+        if (!cancelled) setOrgs(rows);
+      })
+      .catch(() => undefined);
+    void supabase
+      .from("workers")
+      .select("current_organization_id, employment_start_on, messenger_link, org_employment_starts")
+      .eq("id", workerId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return;
+        const w = data as {
+          current_organization_id: string | null;
+          employment_start_on: string | null;
+          messenger_link: string | null;
+          org_employment_starts: WorkerOrgEmploymentStart[] | null;
+        } | null;
+        if (w) {
+          setInfo({
+            current_organization_id: w.current_organization_id,
+            employment_start_on: w.employment_start_on,
+            messenger_link: w.messenger_link ?? "",
+            org_employment_starts: w.org_employment_starts ?? [],
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [workerId]);
+
+  if (!orgs || !info) return null;
+
+  return (
+    <>
+      {showWages && (
+        <WorkerWages
+          workerId={workerId}
+          currentOrganizationId={info.current_organization_id}
+          employmentStartOn={info.employment_start_on}
+          organizations={orgs}
+          today={todayStr()}
+          canEdit={canEdit}
+        />
+      )}
+      {/* 雇用契約書・雇用条件書（日付なし版・正式版）は申請準備の中で保管する */}
+      <WorkerContracts
+        workerId={workerId}
+        canEdit={canEdit}
+        messengerLink={info.messenger_link}
+        organizations={orgs}
+        currentOrganizationId={info.current_organization_id}
+        orgEmploymentStarts={info.org_employment_starts}
+      />
+    </>
   );
 }
 

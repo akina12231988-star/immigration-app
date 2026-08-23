@@ -26,7 +26,6 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { WorkerPhoto } from "@/components/workers/WorkerPhoto";
 import { FieldJumpSearch } from "@/components/workers/FieldJumpSearch";
 import { WorkerDocuments } from "@/components/workers/WorkerDocuments";
-import { WorkerContracts } from "@/components/workers/WorkerContracts";
 import { WorkerEmploymentInsurance } from "@/components/workers/WorkerEmploymentInsurance";
 import { OnboardingDocuments } from "@/components/workers/OnboardingDocuments";
 import { HealthCheckSection } from "@/components/workers/HealthCheckSection";
@@ -1275,15 +1274,8 @@ export function WorkerDetail({
         histories={worker.work_histories}
       />
 
-      {/* 雇用契約書・雇用条件書（所属機関ごと。ダウンロード・Messenger送付） */}
-      <WorkerContracts
-        workerId={worker.id}
-        canEdit={canEdit}
-        messengerLink={worker.messenger_link}
-        organizations={organizations}
-        currentOrganizationId={worker.current_organization_id}
-        orgEmploymentStarts={worker.org_employment_starts ?? []}
-      />
+      {/* 雇用契約書・雇用条件書（日付なし版・正式版）は、申請の時点の記録として
+          申請準備 書類チェックリストの中に移動した（外国人詳細の独立カードは廃止） */}
 
       {/* 雇用保険（離職票・被保険者証）が届いたときの保管 */}
       <WorkerEmploymentInsurance workerId={worker.id} canEdit={canEdit} />
