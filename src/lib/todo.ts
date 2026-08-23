@@ -45,15 +45,25 @@ export function normalizeTodoKey(s: string): string {
     .replace(/^todo/, "");
 }
 
-// 次のTODO番号。既存の番号（TODO・申請準備・随時報告の記録に入っているNotion由来の
-// 番号を含む）のうち数字のものの最大＋1を返す。数字以外の番号は採番には使わない
+// 新規の自動採番はこの番号（TODO-2000）から始める。
+// Notion由来の既存番号（TODO-1305 など）と混ざらないよう、まとまった大きい番号にしている
+export const TODO_NO_START = 2000;
+
+// 次のTODO番号。既存の番号（「TODO-1234」「812」どちらの書き方も数える）の最大＋1を
+// 「TODO-数字」の形で返す。まだ小さい番号しか無ければ TODO-2000 から始める
 export function nextTodoNo(existing: string[]): string {
   let max = 0;
   for (const no of existing) {
-    const s = (no ?? "").trim();
-    if (/^\d+$/.test(s)) max = Math.max(max, Number(s));
+    const key = normalizeTodoKey(no ?? "");
+    if (/^\d+$/.test(key)) max = Math.max(max, Number(key));
   }
-  return String(max + 1);
+  return `TODO-${Math.max(max + 1, TODO_NO_START)}`;
+}
+
+// 表示・コピー用のTODO番号（数字だけの旧番号にも TODO- を付けてそろえる）
+export function displayTodoNo(no: string): string {
+  const s = (no ?? "").trim();
+  return /^\d+$/.test(s) ? `TODO-${s}` : s;
 }
 
 // ステータス名 → 区分（未着手/進行中/完了）。選択肢に無い自由入力は「進行中」とみなす

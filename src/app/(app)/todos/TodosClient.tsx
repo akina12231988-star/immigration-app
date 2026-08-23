@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ClipboardList, Plus, Settings2, Trash2 } from "lucide-react";
+import { Check, ClipboardList, Copy, Plus, Settings2, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Combobox } from "@/components/ui/Combobox";
@@ -17,6 +17,7 @@ import {
   TODO_CHECK_KIND,
   TODO_KINDS,
   TODO_STAGES,
+  displayTodoNo,
   isCheckingStatus,
   normalizeTodoKey,
   stageOfStatus,
@@ -409,8 +410,27 @@ export function TodosClient({
         </p>
       )}
 
+      {/* 申請準備のTODOは、必ず申請準備ページの「新規で申請書類準備」「更新で申請書類準備」から
+          登録する（準備中にすると自動でTODOに入る）。手入力の追加フォームは出さない */}
+      {kind === "申請準備" && (
+        <p className="rounded-xl border border-border bg-background px-3 py-2.5 text-xs leading-relaxed text-muted">
+          申請準備のTODOは、
+          {fixedKind ? (
+            "上の「新規で申請書類準備」「更新で申請書類準備」"
+          ) : (
+            <>
+              <Link href="/workers/renewals" className="mx-0.5 font-bold text-brand hover:underline">
+                申請準備
+              </Link>
+              の「新規で申請書類準備」「更新で申請書類準備」
+            </>
+          )}
+          から登録してください（対応状況を「準備中」にすると自動でここに入り、番号は TODO-2000 から自動で割り当てられます）。
+        </p>
+      )}
+
       {/* 追加 */}
-      {canEdit && (
+      {canEdit && kind !== "申請準備" && (
         <Card className="flex flex-wrap items-end gap-2 p-4">
           <label className="flex min-w-[14rem] flex-1 flex-col gap-1">
             <span className="text-[11px] font-bold text-muted">外国人（任意）</span>
@@ -717,6 +737,8 @@ function TodoItem({
           aria-label="TODO番号"
           className="w-28 rounded-lg border border-border bg-surface px-2 py-1 text-center text-sm font-bold tabular-nums"
         />
+        {/* 「TODO-番号：内容　準備中」の形でコピー（Notionやメッセージへの貼り付け用） */}
+        {todo.kind === "申請準備" && <CopyTodoLineButton todo={todo} />}
         <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-0.5">
           {todo.worker_id ? (
             <>
@@ -964,6 +986,33 @@ function TodoItem({
         </div>
       )}
     </div>
+  );
+}
+
+// 「TODO-番号：内容　準備中」の形でコピーするボタン。
+// 登録後の番号は TODO-数字 で表示し、そのまま貼り付けて使えるようにする
+function CopyTodoLineButton({ todo }: { todo: TodoRow }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    const text = `${displayTodoNo(todo.todo_no)}：${todo.title || "申請準備"}　準備中`;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* クリップボード非対応時は何もしない */
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={() => void copy()}
+      aria-label="TODO番号と内容をコピー"
+      title="「TODO-番号：内容　準備中」の形でコピー"
+      className="shrink-0 text-muted hover:text-brand"
+    >
+      {copied ? <Check size={14} className="text-status-approved-fg" /> : <Copy size={14} />}
+    </button>
   );
 }
 
