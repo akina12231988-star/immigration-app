@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { Combobox } from "@/components/ui/Combobox";
 import { createClient } from "@/lib/supabase/client";
 import {
   GENDER_REQS,
@@ -63,12 +64,15 @@ export function PostingForm({
   submitLabel,
   onSubmit,
   onCancel,
+  simple = false,
 }: {
   initial: JobPosting | null;
   organizations: Organization[];
   submitLabel: string;
   onSubmit: (input: JobPostingInput) => Promise<void>;
   onCancel?: () => void;
+  // true: 求人管理簿だけで一旦登録できる（求人票・Facebook掲載用は詳細ページの編集で入力）
+  simple?: boolean;
 }) {
   const [form, setForm] = useState<JobPostingInput>(() =>
     toInput(initial, organizations[0]?.id ?? ""),
@@ -167,23 +171,16 @@ export function PostingForm({
 
       <Fieldset legend="求人管理簿（記録用）">
         <Field label="所属機関（必須）">
-          <select
-            required
+          {/* 会社名の一部を入力すると候補が出る。選ぶと前回の求人の内容を反映する */}
+          <Combobox
+            options={organizations.map((o) => ({ id: o.id, label: o.name }))}
             value={form.organization_id}
-            onChange={(e) => {
-              set("organization_id", e.target.value);
-              // 会社を選び直したら、その会社の前回の求人の内容を反映する
-              applyPrevPosting(e.target.value);
+            onChange={(id) => {
+              set("organization_id", id);
+              applyPrevPosting(id);
             }}
-            className={INPUT_CLASS}
-          >
-            <option value="">選択してください</option>
-            {organizations.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-              </option>
-            ))}
-          </select>
+            placeholder="会社名の一部を入力して検索"
+          />
         </Field>
         {prefillNotice && (
           <p className="rounded-xl border border-brand/40 bg-brand/5 px-3 py-2.5 text-xs leading-relaxed text-brand">
@@ -287,6 +284,16 @@ export function PostingForm({
         </div>
       </Fieldset>
 
+      {/* 新規登録はまず求人管理簿だけで受付できる。求人票などの詳細は
+          会社に書いてもらったあと、求人の詳細ページの編集から入力する */}
+      {simple && (
+        <p className="rounded-xl border border-border bg-background px-3 py-2.5 text-xs leading-relaxed text-muted">
+          まずはここまでで登録して求人を受付できます。会社に求人票を記載してもらったら、求人の詳細ページの「編集」から求人票・Facebook掲載用の内容を入力してください。
+        </p>
+      )}
+
+      {!simple && (
+      <>
       <Fieldset legend="求人票（会社に書いてもらう内容）">
         <p className="text-[11px] leading-relaxed text-muted">
           特定技能1号の求人票に書いてもらった内容をそのまま入れる欄です。
@@ -878,6 +885,8 @@ export function PostingForm({
           </select>
         </Field>
       </Fieldset>
+      </>
+      )}
 
       <div className="flex gap-2">
         {onCancel && (

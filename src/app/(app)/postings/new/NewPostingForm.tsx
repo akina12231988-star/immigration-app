@@ -31,6 +31,7 @@ export function NewPostingForm({ organizations }: { organizations: Organization[
       organizations={organizations}
       submitLabel="登録する"
       onSubmit={handleSubmit}
+      simple
     />
   );
 }

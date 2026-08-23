@@ -25,6 +25,15 @@ const WAGE_KIND_VI: Record<string, string> = {
   年収: "Lương năm",
 };
 
+// 掲載用の住所は「何県何市」までにする（番地など細かい住所は出さない）
+export function prefCityOnly(address: string): string {
+  const s = address.trim();
+  const withPref = s.match(/^(.{2,3}[都道府県])(.+?[市区町村])?/);
+  if (withPref) return `${withPref[1]}${withPref[2] ?? ""}`;
+  const cityOnly = s.match(/^(.+?[市区町村])/);
+  return cityOnly ? cityOnly[1] : s;
+}
+
 // 求人1件をグリッド表示用に変換
 export function toGridPosting(p: JobPosting): GridPosting {
   let wage: string;
@@ -35,7 +44,7 @@ export function toGridPosting(p: JobPosting): GridPosting {
     wage = "Đàm phán";
   }
   return {
-    prefecture: p.display_address || p.work_location || "",
+    prefecture: prefCityOnly(p.display_address || p.work_location || ""),
     job: p.job_type || "",
     wage,
     rent: p.rent || "",
@@ -58,7 +67,6 @@ const ROWS: { label: string; key: keyof GridPosting }[] = [
 export interface GridOptions {
   title: string; // 見出し（登録支援機関名など）
   tagline: string; // ベトナム語のキャッチ
-  companyNames: string[]; // 各セルの会社名（掲載用）
 }
 
 // グリッド画像を Canvas に描画して PNG dataURL を返す（ブラウザ専用）
@@ -120,16 +128,10 @@ export function renderPostingsGrid(
     ctx.font = "bold 200px sans-serif";
     ctx.fillText(String(i + 1), x + CELL_W / 2, y + CELL_H / 2 + 70);
 
-    // 会社名（1行目・赤太字・中央）
-    const rowH = (CELL_H - 20) / (ROWS.length + 1);
-    ctx.fillStyle = "#c0392b";
-    ctx.font = "bold 24px sans-serif";
-    ctx.textAlign = "center";
-    fitText(ctx, opts.companyNames[i] ?? "", x + CELL_W / 2, y + 10 + rowH * 0.7, CELL_W - 30);
-
-    // 各行（ラベル左・値右）
+    // 会社名は掲載しない（番号で問い合わせてもらう）。各行（ラベル左・値右）
+    const rowH = (CELL_H - 20) / ROWS.length;
     ROWS.forEach((r, ri) => {
-      const ry = y + 10 + rowH * (ri + 1) + rowH * 0.62;
+      const ry = y + 10 + rowH * ri + rowH * 0.62;
       ctx.fillStyle = "#5b6b82";
       ctx.font = "500 19px sans-serif";
       ctx.textAlign = "left";

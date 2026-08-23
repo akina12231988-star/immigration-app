@@ -33,9 +33,10 @@ export function FlyerClient({ items }: { items: FlyerItem[] }) {
   };
 
   const generate = () => {
+    // 画像には会社名は載せない（番号で問い合わせてもらう）。住所も何県何市まで
     const url = renderPostingsGrid(
       chosen.map((i) => i.grid),
-      { title, tagline, companyNames: chosen.map((i) => i.company) },
+      { title, tagline },
     );
     setImageUrl(url);
   };
