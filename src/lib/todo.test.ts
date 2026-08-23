@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   isCheckingStatus,
+  isImmigrationAppliedStatus,
   nextTodoNo,
   normalizeTodoKey,
   stageOfStatus,
@@ -42,6 +43,16 @@ describe("isCheckingStatus", () => {
     expect(isCheckingStatus("明菜　チェック中")).toBe(true);
     expect(isCheckingStatus("彩奈　チェック中")).toBe(true);
     expect(isCheckingStatus("書類待ち")).toBe(false);
+  });
+});
+
+describe("isImmigrationAppliedStatus", () => {
+  test("「入管へ申請！！」（表記の揺れを含む）のときだけ入管へ申請済みと判定する", () => {
+    expect(isImmigrationAppliedStatus("入管へ申請！！")).toBe(true);
+    expect(isImmigrationAppliedStatus("入管へ申請")).toBe(true);
+    expect(isImmigrationAppliedStatus("書類作成中")).toBe(false);
+    expect(isImmigrationAppliedStatus("未着手")).toBe(false);
+    expect(isImmigrationAppliedStatus("")).toBe(false);
   });
 });
 

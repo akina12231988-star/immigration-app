@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ClipboardList, Plus, Settings2, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
@@ -258,6 +258,30 @@ export function TodosClient({
     });
   }, [prepWorkers, todos]);
 
+  // 「申請前＜準備中＞」の人は自動で申請準備のTODOに取り込む（準備中の管理はTODOで行い、
+  // ステータスが「入管へ申請！！」になった人だけが申請一覧に表示される）
+  const [autoImporting, setAutoImporting] = useState(false);
+  const autoImportedRef = useRef(false); // 取り込み失敗時に何度も繰り返さないよう1回だけ実行
+  useEffect(() => {
+    if (!canEdit || loading || autoImportedRef.current) return;
+    if (fixedKind && fixedKind !== "申請準備") return;
+    if (prepPending.length === 0) return;
+    autoImportedRef.current = true;
+    void (async () => {
+      setAutoImporting(true);
+      for (const w of prepPending) {
+        await insertTodo(createClient(), {
+          kind: "申請準備",
+          worker_id: w.workerId,
+          title: "申請準備",
+          todo_no: w.todoNo || undefined,
+        }).catch(() => undefined);
+      }
+      await load();
+      setAutoImporting(false);
+    })();
+  }, [canEdit, loading, fixedKind, prepPending]);
+
   const kindOptions = useMemo(() => options.filter((o) => o.kind === kind), [options, kind]);
   const checkOptions = useMemo(
     () => options.filter((o) => o.kind === TODO_CHECK_KIND),
@@ -376,12 +400,20 @@ export function TodosClient({
         </Card>
       )}
 
-      {/* 申請一覧の「申請前＜準備中＞」の人を新着として表示（まだTODOに入っていない人） */}
-      {kind === "申請準備" && !loading && prepPending.length > 0 && (
+      {/* 申請前＜準備中＞の人の自動取り込み中の表示 */}
+      {kind === "申請準備" && autoImporting && (
+        <Card className="border-brand/40 p-4 text-center text-xs text-muted">
+          「申請前＜準備中＞」の人を申請準備のTODOに取り込んでいます…（{prepPending.length}件）
+        </Card>
+      )}
+
+      {/* 「申請前＜準備中＞」の人は自動でTODOに入る。ここに出るのは、
+          自動取り込みができなかったとき（権限なし・保存失敗など）の案内と手動取り込み */}
+      {kind === "申請準備" && !loading && !autoImporting && prepPending.length > 0 && (
         <Card className="border-brand/40 p-4">
           <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-bold">
-              申請一覧の「申請前＜準備中＞」の人（{prepPending.length}件）
+              まだTODOに入っていない「申請前＜準備中＞」の人（{prepPending.length}件）
             </p>
             {canEdit && (
               <button
@@ -405,7 +437,7 @@ export function TodosClient({
             )}
           </div>
           <p className="mb-2 text-[11px] text-muted">
-            まだ申請準備のTODOに入っていない準備中の人です。取り込むと未着手のTODOになり、経過・訂正記録・郵送請求の状況などを管理できます（申請一覧のTODO番号をそのまま引き継ぎます）。
+            準備中の人は通常このページを開くと自動でTODOに入ります（申請一覧のTODO番号をそのまま引き継ぎます）。ここに残っている場合は「すべてTODOに取り込む」を押してください。TODOのステータスが「入管へ申請！！」になると申請一覧に表示されます。
           </p>
           <div className="space-y-1">
             {prepPending.map((w) => (
