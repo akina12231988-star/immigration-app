@@ -63,14 +63,15 @@ describe("suggestedUsefulYears", () => {
 });
 
 describe("reverseLodgingCost", () => {
-  it("家賃×耐用年数×12でかかった費用の想定額を逆算する", () => {
-    expect(reverseLodgingCost("100000", "15")).toBe(18_000_000);
-    expect(reverseLodgingCost("100,000円", "22")).toBe(26_400_000);
+  it("1人あたり家賃×最大入居人数×耐用年数×12でかかった費用の想定額を逆算する", () => {
+    expect(reverseLodgingCost("13000", "6", "15")).toBe(14_040_000);
+    expect(reverseLodgingCost("10,000円", "3", "22")).toBe(7_920_000);
   });
 
-  it("家賃か耐用年数が無ければ出さない", () => {
-    expect(reverseLodgingCost("", "15")).toBeNull();
-    expect(reverseLodgingCost("100000", "")).toBeNull();
+  it("家賃・入居人数・耐用年数のどれかが無ければ出さない", () => {
+    expect(reverseLodgingCost("", "6", "15")).toBeNull();
+    expect(reverseLodgingCost("13000", "", "15")).toBeNull();
+    expect(reverseLodgingCost("13000", "6", "")).toBeNull();
   });
 });
 

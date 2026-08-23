@@ -144,7 +144,7 @@ export interface OrgLodging {
   total_cost: string; // 自己所有: かかった総費用（円）
   equipment_cost: string; // 自己所有: 備品代（円）
   useful_years: string; // 自己所有: 耐用年数（年）
-  rent: string; // 家賃（月額・円）
+  rent: string; // 家賃（1人あたり・月額・円）
   max_residents: string; // 最大入居人数
 }
 

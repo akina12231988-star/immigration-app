@@ -27,12 +27,7 @@ import {
   normalizeTimeInput,
 } from "@/lib/posting-sheet";
 import { calcWageDetail, emptyWageDetail, formatYen } from "@/lib/wage-calc";
-import {
-  flexDocsValidUntil,
-  parseAmount,
-  parseHoursMinutes,
-  perResidentCost,
-} from "@/lib/organization-intake";
+import { flexDocsValidUntil, parseAmount, parseHoursMinutes } from "@/lib/organization-intake";
 import { todayStr } from "@/lib/ssw/calc";
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
 import { listOrganizationFiles } from "@/lib/supabase/queries/organization-files";
@@ -84,13 +79,13 @@ function orgAnnualHours(org?: Organization): number {
   return monthly ? Math.round(monthly * 12) : 0;
 }
 
-// 寮・宿泊物件から居住費を反映したときの説明文（算出根拠）
+// 寮・宿泊物件から居住費を反映したときの説明文（算出根拠）。家賃は1人あたりで登録されている
 function lodgingNote(l: OrgLodging): string {
   const rent = parseAmount(l.rent);
-  const n = parseAmount(l.max_residents);
   const where = l.name || l.address || "寮";
-  if (rent == null || n == null) return "";
-  return `${where}：家賃${rent.toLocaleString("ja-JP")}円を最大${n}名で按分`;
+  if (rent == null) return "";
+  const people = parseAmount(l.max_residents);
+  return `${where}：1人あたり月額${rent.toLocaleString("ja-JP")}円${people != null ? `（最大${people}名）` : ""}`;
 }
 
 export function PostingForm({
@@ -130,7 +125,6 @@ export function PostingForm({
       out.employment_insurance = intake.koyo_covered === "はい" ? "適用" : "適用なし";
     }
     if (intake.pay_method) out.pay_method = intake.pay_method;
-    if (intake.posting_gensen) out.income_tax = intake.posting_gensen;
     if (intake.posting_utility_cost) out.utility_cost = intake.posting_utility_cost;
     if (intake.posting_utility_kind) out.utility_kind = intake.posting_utility_kind;
     if (intake.posting_comm_cost) out.communication_cost = intake.posting_comm_cost;
@@ -143,9 +137,9 @@ export function PostingForm({
             : "1年単位の変形労働時間制";
     }
     // 寮が1件だけ登録されているときは居住費も自動で反映する（複数あるときは求人票の欄で選ぶ）
-    const lods = (intake.lodgings ?? []).filter((l) => l.kind && l.rent && l.max_residents);
+    const lods = (intake.lodgings ?? []).filter((l) => l.kind && l.rent);
     if (lods.length === 1) {
-      const per = perResidentCost(lods[0].rent, lods[0].max_residents);
+      const per = parseAmount(lods[0].rent);
       if (per != null) {
         out.housing_lodging_id = lods[0].id;
         out.housing_cost = String(per);
@@ -735,7 +729,7 @@ export function PostingForm({
           </div>
         </Field>
         <div className="grid grid-cols-3 gap-2.5">
-          <Field label="源泉所得税（扶養0人・円・所属機関の情報の「求人票に記載する内容」から自動反映）">
+          <Field label="源泉所得税（扶養0人・円。徴収しない会社は「なし」）">
             <input
               value={sheet.income_tax}
               onChange={(e) => setSheet({ income_tax: e.target.value })}
@@ -781,7 +775,7 @@ export function PostingForm({
                     setSheet({ housing_lodging_id: "" });
                     return;
                   }
-                  const per = perResidentCost(l.rent, l.max_residents);
+                  const per = parseAmount(l.rent);
                   setSheet({
                     housing_lodging_id: l.id,
                     housing_kind: l.kind,
@@ -793,7 +787,7 @@ export function PostingForm({
               >
                 <option value="">—（手入力）</option>
                 {lods.map((l) => {
-                  const per = perResidentCost(l.rent, l.max_residents);
+                  const per = parseAmount(l.rent);
                   return (
                     <option key={l.id} value={l.id}>
                       {l.name || l.address || "寮"}

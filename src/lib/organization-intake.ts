@@ -324,13 +324,19 @@ export function suggestedUsefulYears(
   return Math.max(2, Math.floor(years));
 }
 
-// 家賃（月額）から逆算した「かかった総費用＋備品代」の想定額 = 家賃×耐用年数×12。
+// 1人あたりの家賃（月額）から逆算した「かかった総費用＋備品代」の想定額
+// = 1人あたり家賃 × 最大入居人数 × 耐用年数 × 12。
 // 「この家賃にするには最低これぐらいの費用がかかった想定になる」と説明するのに使う
-export function reverseLodgingCost(rent: string, usefulYears: string): number | null {
-  const r = parseAmount(rent);
+export function reverseLodgingCost(
+  rentPerPerson: string,
+  maxResidents: string,
+  usefulYears: string,
+): number | null {
+  const r = parseAmount(rentPerPerson);
+  const n = parseAmount(maxResidents);
   const years = parseAmount(usefulYears);
-  if (r == null || years == null) return null;
-  return Math.round(r * years * 12);
+  if (r == null || n == null || years == null) return null;
+  return Math.round(r * n * years * 12);
 }
 
 // 変形労働時間制の書類（年間カレンダー・労使協定書）の有効期限。

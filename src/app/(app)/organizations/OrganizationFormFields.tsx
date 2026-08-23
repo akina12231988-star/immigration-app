@@ -31,7 +31,6 @@ import {
   normalizeOrganizationIntake,
   ownedMonthlyRent,
   parseAmount,
-  perResidentCost,
   reverseLodgingCost,
   suggestedUsefulYears,
   WOODEN_USEFUL_YEARS,
@@ -931,14 +930,6 @@ function IntakeSection({
         </p>
         <div className="grid grid-cols-2 gap-2.5">
           <IntakeField
-            label="源泉所得税（扶養0人・円）"
-            value={intake.posting_gensen}
-            onChange={(v) => setIntake({ posting_gensen: v })}
-            placeholder="例: 3000／なし"
-            hint="徴収しない会社は「なし」と入力してください。"
-            locked={locks.intake("posting_gensen")}
-          />
-          <IntakeField
             label="通信費（約・円）"
             value={intake.posting_comm_cost}
             onChange={(v) => setIntake({ posting_comm_cost: v })}
@@ -1376,7 +1367,7 @@ function IntakeSection({
                   />
                 </div>
                 <CalcResult
-                  label="1ヶ月分の家賃代（(総費用＋備品代) ÷ (耐用年数×12)）"
+                  label="1ヶ月分の家賃代・物件全体（(総費用＋備品代) ÷ (耐用年数×12)）"
                   value={ownedMonthlyRent(
                     lodging.total_cost,
                     lodging.equipment_cost,
@@ -1384,17 +1375,34 @@ function IntakeSection({
                   )}
                   emptyHint="総費用と耐用年数を入力すると自動計算されます"
                 />
+                <CalcResult
+                  label="1人あたりの家賃の目安（物件全体の家賃 ÷ 最大入居人数）"
+                  value={(() => {
+                    const whole = ownedMonthlyRent(
+                      lodging.total_cost,
+                      lodging.equipment_cost,
+                      lodging.useful_years,
+                    );
+                    const n = parseAmount(lodging.max_residents);
+                    return whole != null && n != null ? Math.round(whole / n) : null;
+                  })()}
+                  emptyHint="総費用・耐用年数・最大入居人数を入力すると自動計算されます"
+                />
                 {/* 家賃から逆算: この家賃で説明するには最低これぐらいの費用がかかった想定になる */}
                 {(() => {
-                  const reverse = reverseLodgingCost(lodging.rent, lodging.useful_years);
+                  const reverse = reverseLodgingCost(
+                    lodging.rent,
+                    lodging.max_residents,
+                    lodging.useful_years,
+                  );
                   if (reverse == null) return null;
                   return (
                     <div className="rounded-xl border border-dashed border-border bg-background p-2.5">
                       <p className="text-[11px] font-bold text-muted">
-                        家賃からの逆算（家賃 × 耐用年数 × 12）
+                        家賃からの逆算（1人あたり家賃 × 最大入居人数 × 耐用年数 × 12）
                       </p>
                       <p className="mt-0.5 text-xs leading-relaxed">
-                        この家賃（月額）で説明するには、かかった総費用＋備品代が
+                        この1人あたりの家賃（月額）で説明するには、かかった総費用＋備品代が
                         <span className="font-bold"> 約{formatYen(reverse)} </span>
                         かかった想定になります。
                       </p>
@@ -1428,13 +1436,18 @@ function IntakeSection({
             )}
             {lodging.kind && (
               <>
+                {/* 家賃は「1人あたり」で登録する（賃金の別紙・求人票の居住費にそのまま使う） */}
                 <div className="grid grid-cols-2 gap-2.5">
                   <IntakeField
-                    label="家賃（月額・円）"
+                    label="家賃（1人あたり・月額・円）"
                     value={lodging.rent}
                     onChange={(v) => setLodging(i, { rent: v })}
-                    placeholder="例: 60,000"
-                    hint={lodging.kind === "自己所有物件" ? "上の自動計算の金額を参考に入力してください。" : undefined}
+                    placeholder="例: 13,000"
+                    hint={
+                      lodging.kind === "自己所有物件"
+                        ? "上の「1人あたりの家賃の目安」を参考に入力してください。"
+                        : "物件全体の家賃を最大入居人数で割った1人あたりの金額を入力してください。"
+                    }
                     locked={locks.lodging(i, "rent")}
                   />
                   <IntakeField
@@ -1446,9 +1459,13 @@ function IntakeSection({
                   />
                 </div>
                 <CalcResult
-                  label="1人あたりの居住費用（家賃 ÷ 最大入居人数）"
-                  value={perResidentCost(lodging.rent, lodging.max_residents)}
-                  emptyHint="家賃と最大入居人数を入力すると自動計算されます"
+                  label="物件全体の家賃（1人あたり × 最大入居人数）"
+                  value={(() => {
+                    const r = parseAmount(lodging.rent);
+                    const n = parseAmount(lodging.max_residents);
+                    return r != null && n != null ? Math.round(r * n) : null;
+                  })()}
+                  emptyHint="1人あたりの家賃と最大入居人数を入力すると自動計算されます"
                 />
               </>
             )}
