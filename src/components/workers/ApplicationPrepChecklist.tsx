@@ -39,6 +39,7 @@ import {
   type PrepDocStatusInput,
 } from "@/lib/supabase/queries/application-prep";
 import {
+  deleteTodo,
   insertTodo,
   listTodoStatusOptions,
   renameTodoNo,
@@ -304,7 +305,10 @@ export function ApplicationPrepChecklist({
   // 追加項目（単独/連名・連名相手・署名ステータス）の保存（0105）
   async function saveExtras(
     patch: Partial<
-      Pick<PrepChecklistRow, "joint_kind" | "joint_worker_id" | "joint_todo_no" | "sign_status">
+      Pick<
+        PrepChecklistRow,
+        "joint_kind" | "joint_worker_id" | "joint_todo_no" | "joint_lead" | "sign_status"
+      >
     >,
   ) {
     if (current == null) return;
@@ -522,18 +526,35 @@ export function ApplicationPrepChecklist({
     }
   }
 
-  // 表示中のTODOの準備リストを削除する（添付済みの書類ファイル自体は消えない）
+  // 表示中のTODOの準備リストを削除する（添付済みの書類ファイル自体は消えない）。
+  // 間違えて「リストを追加」したときは、番号のチップの🗑からもここに来る
   async function removeList() {
     if (selected == null) return;
     const label = selected || "（番号未設定）";
-    if (!window.confirm(`「${label}」の準備リストを削除します。添付済みの書類ファイルは削除されません。よろしいですか？`))
+    if (!window.confirm(`「${label}」の準備リストを削除します。添付済みの書類ファイルは削除されません。TODO一覧の同じ番号のTODOは削除フォルダに移動します。よろしいですか？`))
       return;
     setError(null);
     try {
       await deletePrepChecklist(createClient(), workerId, selected);
+      // TODO一覧（/todos）にできた同じ番号の行も削除フォルダへ移す（無ければ何もしない）
+      if (selected) {
+        const supabase = createClient();
+        const { data: t } = await supabase
+          .from("todos")
+          .select("id")
+          .eq("kind", "申請準備")
+          .eq("worker_id", workerId)
+          .eq("todo_no", selected)
+          .is("deleted_at", null)
+          .limit(1)
+          .then((res) => (res.error ? { data: null } : res));
+        const todoId = ((t as { id: string }[] | null) ?? [])[0]?.id;
+        if (todoId) await deleteTodo(supabase, todoId).catch(() => undefined);
+      }
       const rows = lists.filter((l) => l.todo_no !== selected);
       setLists(rows);
       setSelected(rows[0]?.todo_no ?? null);
+      loadWorkerTodos();
     } catch (err) {
       setError(err instanceof Error ? err.message : "削除に失敗しました");
     }
@@ -743,18 +764,33 @@ export function ApplicationPrepChecklist({
         {lists.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
             {lists.map((l) => (
-              <button
+              <span
                 key={l.id}
-                type="button"
-                onClick={() => setSelected(l.todo_no)}
-                className={`rounded-full px-3 py-1.5 text-xs font-bold ${
+                className={`inline-flex items-center overflow-hidden rounded-full ${
                   selected === l.todo_no
                     ? "bg-brand text-brand-foreground"
                     : "border border-border text-muted"
                 }`}
               >
-                {l.todo_no || "（番号未設定）"}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setSelected(l.todo_no)}
+                  className="px-3 py-1.5 text-xs font-bold"
+                >
+                  {l.todo_no || "（番号未設定）"}
+                </button>
+                {/* 間違えて追加したリストはここからすぐ削除できる（選択中のものだけ表示） */}
+                {canEdit && selected === l.todo_no && (
+                  <button
+                    type="button"
+                    aria-label={`準備リスト ${l.todo_no || "（番号未設定）"} を削除`}
+                    onClick={removeList}
+                    className="py-1.5 pl-0.5 pr-2.5"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                )}
+              </span>
             ))}
           </div>
         )}

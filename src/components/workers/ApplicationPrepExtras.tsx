@@ -15,7 +15,11 @@ import {
   type TodoStatusOption,
 } from "@/lib/todo";
 import { PREP_SIGN_STATUSES } from "@/lib/application-prep";
-import type { PrepChecklistRow } from "@/lib/supabase/queries/application-prep";
+import {
+  listJointLinksTo,
+  type JointLinkFrom,
+  type PrepChecklistRow,
+} from "@/lib/supabase/queries/application-prep";
 import { listOrganizationFiles } from "@/lib/supabase/queries/organization-files";
 import { getOrgFilePreviewUrl } from "@/app/(app)/organizations/actions";
 import { orgYearlyFileGroups, type OrgYearlyFileGroup } from "@/lib/org-yearly-files";
@@ -376,7 +380,9 @@ export function JointApplicationField({
   row: PrepChecklistRow;
   canEdit: boolean;
   onChange: (
-    patch: Partial<Pick<PrepChecklistRow, "joint_kind" | "joint_worker_id" | "joint_todo_no">>,
+    patch: Partial<
+      Pick<PrepChecklistRow, "joint_kind" | "joint_worker_id" | "joint_todo_no" | "joint_lead">
+    >,
   ) => void;
 }) {
   // 連名相手の候補（自分以外の外国人）。連名を選んだときだけ読み込む
@@ -387,6 +393,20 @@ export function JointApplicationField({
     setPrevNo(row.joint_todo_no);
     setTodoNo(row.joint_todo_no);
   }
+  // 相手側からのリンク（この人を連名相手に設定している準備リスト）。
+  // どちらの申請準備TODOからも連名相手と筆頭者が分かるようにする
+  const [linksFrom, setLinksFrom] = useState<JointLinkFrom[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    listJointLinksTo(createClient(), workerId)
+      .then((rows) => {
+        if (!cancelled) setLinksFrom(rows);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [workerId]);
 
   useEffect(() => {
     if (row.joint_kind !== "連名" || workers !== null) return;
@@ -484,6 +504,53 @@ export function JointApplicationField({
               className={`${INPUT} w-28 tabular-nums`}
             />
           </div>
+          {/* 筆頭者の選択。相手側の申請準備TODOにも自動で表示される */}
+          <div className="flex flex-wrap items-center gap-2 text-[11px]">
+            <span className="font-bold text-muted">筆頭者:</span>
+            <select
+              value={row.joint_lead}
+              disabled={!canEdit}
+              onChange={(e) => onChange({ joint_lead: e.target.value })}
+              className={INPUT}
+            >
+              <option value="">未選択</option>
+              <option value="本人">この人（本人）が筆頭者</option>
+              <option value="相手">連名相手が筆頭者</option>
+            </select>
+            {row.joint_lead === "本人" && (
+              <span className="font-bold text-brand">筆頭者はこの人です</span>
+            )}
+            {row.joint_lead === "相手" && partnerName && (
+              <span className="font-bold text-brand">筆頭者は {partnerName} さんです</span>
+            )}
+          </div>
+        </div>
+      )}
+      {/* 相手側からのリンク。相手の準備リストで連名相手に設定されていたらここに出る */}
+      {linksFrom.length > 0 && (
+        <div className="mt-2 space-y-1 rounded-lg border border-brand/40 bg-brand/5 p-2">
+          <p className="text-[11px] font-bold text-brand">連名申請のリンク（相手側の設定）</p>
+          {linksFrom.map((l) => (
+            <p key={`${l.worker_id}-${l.todo_no}`} className="text-[11px] leading-relaxed">
+              <Link
+                href={`/workers/${l.worker_id}`}
+                className="font-bold text-brand hover:underline"
+              >
+                {l.worker_name || "（外国人）"}
+              </Link>
+              <span className="text-muted">
+                （{l.todo_no || "番号未設定"}）がこの人と連名申請です。
+              </span>
+              <span className="font-bold">
+                筆頭者:{" "}
+                {l.joint_lead === "本人"
+                  ? `${l.worker_name || "相手"} さん`
+                  : l.joint_lead === "相手"
+                    ? "この人"
+                    : "未選択"}
+              </span>
+            </p>
+          ))}
         </div>
       )}
     </div>

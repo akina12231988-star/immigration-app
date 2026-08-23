@@ -8,6 +8,7 @@ export interface PrepChecklistRow extends PrepChecklistMeta {
   joint_kind: string; // 単独申請か連名申請か（'' / 単独 / 連名。0105）
   joint_worker_id: string | null; // 連名相手の外国人
   joint_todo_no: string; // 連名相手のTODO番号
+  joint_lead: string; // 連名申請の筆頭者（'' / 本人 / 相手。0111）
   sign_status: string; // 本人から署名をもらったかのステータス
 }
 
@@ -36,8 +37,48 @@ export async function listPrepChecklists(
     joint_kind: r.joint_kind ?? "",
     joint_worker_id: r.joint_worker_id ?? null,
     joint_todo_no: r.joint_todo_no ?? "",
+    joint_lead: r.joint_lead ?? "",
     sign_status: r.sign_status ?? "",
   }));
+}
+
+// この外国人を連名相手として設定している準備リスト（相手側からのリンク）。
+// どちらの申請準備TODOからも「誰と連名で筆頭者が誰か」が分かるようにする
+export interface JointLinkFrom {
+  worker_id: string; // 設定した側（相手）の外国人
+  worker_name: string;
+  todo_no: string; // 相手のTODO番号
+  joint_todo_no: string; // こちら（この外国人）のTODO番号として登録された番号
+  joint_lead: string; // 筆頭者（'' / 本人=相手側が筆頭 / 相手=この外国人が筆頭）
+}
+
+export async function listJointLinksTo(
+  supabase: SupabaseClient,
+  workerId: string,
+): Promise<JointLinkFrom[]> {
+  // 0111未適用でも動くよう select("*") で読み、無い列は空として扱う
+  const { data, error } = await supabase
+    .from("application_prep_checklists")
+    .select("*")
+    .eq("joint_worker_id", workerId);
+  if (error) throw error;
+  const rows = ((data as PrepChecklistRow[]) ?? []).filter((r) => (r.joint_kind ?? "") === "連名");
+  if (rows.length === 0) return [];
+  const ids = [...new Set(rows.map((r) => (r as unknown as { worker_id: string }).worker_id))];
+  const { data: ws } = await supabase.from("workers").select("id, name").in("id", ids);
+  const nameById = new Map(
+    (((ws as { id: string; name: string }[] | null) ?? [])).map((w) => [w.id, w.name]),
+  );
+  return rows.map((r) => {
+    const workerIdOfRow = (r as unknown as { worker_id: string }).worker_id;
+    return {
+      worker_id: workerIdOfRow,
+      worker_name: nameById.get(workerIdOfRow) ?? "",
+      todo_no: r.todo_no ?? "",
+      joint_todo_no: r.joint_todo_no ?? "",
+      joint_lead: r.joint_lead ?? "",
+    };
+  });
 }
 
 // 追加項目（単独/連名・連名相手・署名ステータス）の保存。0105_prep_checklist_extras.sql が必要
@@ -45,7 +86,10 @@ export async function updatePrepChecklistExtras(
   supabase: SupabaseClient,
   id: string,
   patch: Partial<
-    Pick<PrepChecklistRow, "joint_kind" | "joint_worker_id" | "joint_todo_no" | "sign_status">
+    Pick<
+      PrepChecklistRow,
+      "joint_kind" | "joint_worker_id" | "joint_todo_no" | "joint_lead" | "sign_status"
+    >
   >,
 ): Promise<void> {
   const { error } = await supabase
