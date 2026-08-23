@@ -31,7 +31,8 @@ import { OnboardingDocuments } from "@/components/workers/OnboardingDocuments";
 import { HealthCheckSection } from "@/components/workers/HealthCheckSection";
 import { GensenDocuments } from "@/components/workers/GensenDocuments";
 import { WorkerCertDocRows } from "@/components/workers/WorkerCertDocRows";
-import { ApplicationPrepChecklist } from "@/components/workers/ApplicationPrepChecklist";
+import { WorkerContracts } from "@/components/workers/WorkerContracts";
+import { WorkerTodoLinks } from "@/components/workers/WorkerTodoLinks";
 import { WorkerAddressHistory } from "@/components/workers/WorkerAddressHistory";
 import { WorkerDependents } from "@/components/workers/WorkerDependents";
 import { WorkerEmploymentStarts } from "@/components/workers/WorkerEmploymentStarts";
@@ -1274,8 +1275,16 @@ export function WorkerDetail({
         histories={worker.work_histories}
       />
 
-      {/* 雇用契約書・雇用条件書（日付なし版・正式版）は、申請の時点の記録として
-          申請準備 書類チェックリストの中に移動した（外国人詳細の独立カードは廃止） */}
+      {/* 雇用契約書・雇用条件書（雇用開始後の分を所属機関ごとに保管。
+          申請時点の記録は申請準備のTODOの中でも同じ保管先を使う） */}
+      <WorkerContracts
+        workerId={worker.id}
+        canEdit={canEdit}
+        messengerLink={worker.messenger_link}
+        organizations={organizations}
+        currentOrganizationId={worker.current_organization_id}
+        orgEmploymentStarts={worker.org_employment_starts ?? []}
+      />
 
       {/* 雇用保険（離職票・被保険者証）が届いたときの保管 */}
       <WorkerEmploymentInsurance workerId={worker.id} canEdit={canEdit} />
@@ -1284,15 +1293,8 @@ export function WorkerDetail({
           合格証4種→基本情報の各合格名の下 / パスポート→出入国の記録のパスポートの記録 /
           履歴書→入社書類 / 在留カード（申請書類準備時）→在留カード・指定書（0101で移行） */}
 
-      {/* 申請準備 書類チェックリスト（申請種別ごとの必要書類・不足の把握） */}
-      <ApplicationPrepChecklist
-        workerId={worker.id}
-        canEdit={canEdit}
-        photoPath={worker.photo_path}
-        healthCheckOn={worker.health_check_on ?? null}
-        worker={worker}
-        organizations={organizations}
-      />
+      {/* 申請準備 書類チェックリストは申請準備のTODO（📋 必要な書類・準備の詳細）に移動した。
+          この画面では下の「TODO」カードから各TODOのページへ飛べる */}
 
       {/* 入社書類メールで登録した添付データ（選択ダウンロード・Gmailリンク） */}
       <OnboardingDocuments workerId={worker.id} canEdit={canEdit} />
@@ -1438,6 +1440,10 @@ export function WorkerDetail({
         organizations={organizations}
         canEdit={canEdit}
       />
+
+      {/* この人のTODOへのリンク（申請準備・退職の随時報告書・試験の申込。
+          申請準備の中身は申請準備のTODOで管理する） */}
+      <WorkerTodoLinks workerId={worker.id} />
 
       {/* 入管申請（申請受付日・申請番号） */}
       <section>
