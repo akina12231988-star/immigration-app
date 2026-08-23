@@ -31,6 +31,7 @@ import { OnboardingDocuments } from "@/components/workers/OnboardingDocuments";
 import { HealthCheckSection } from "@/components/workers/HealthCheckSection";
 import { GensenDocuments } from "@/components/workers/GensenDocuments";
 import { WorkerCertDocRows } from "@/components/workers/WorkerCertDocRows";
+import { Jisshu2Section } from "@/components/workers/Jisshu2Section";
 import { WorkerContracts } from "@/components/workers/WorkerContracts";
 import { WorkerTodoLinks } from "@/components/workers/WorkerTodoLinks";
 import { WorkerAddressHistory } from "@/components/workers/WorkerAddressHistory";
@@ -983,6 +984,11 @@ export function WorkerDetail({
               canEdit={canEdit}
               defs={[{ key: "cert_senmonkyu", label: "専門級の合格証" }]}
             />
+            {/* 良好に修了した技能実習2号（職種名・作業名・良好修了の証明）。
+                実技試験に合格していれば合格による証明、不合格なら書面（技能評価調書）で証明する */}
+            <div className="mt-1.5">
+              <Jisshu2Section workerId={worker.id} canEdit={canEdit} />
+            </div>
           </div>
           <div>
             <InfoItem

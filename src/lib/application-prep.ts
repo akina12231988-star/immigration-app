@@ -123,7 +123,8 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
   {
     id: "zairyu",
     label: "在留カード（両面・現住所がわかるもの）",
-    appliesTo: ["変更", "更新", "認定", "特定活動"],
+    // 在留資格認定は海外から呼ぶ申請のため在留カードは無い
+    appliesTo: ["変更", "更新", "特定活動"],
     source: { kind: "residenceCardDoc" },
     manageInline: false,
     managedIn: "在留カード・指定書",

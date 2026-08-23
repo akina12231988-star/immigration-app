@@ -239,8 +239,16 @@ describe("在留資格認定申請（認定）", () => {
       sources({}),
     ).items.map((x) => x.def.id);
     expect(ninteiIds).toContain("suisenjo");
-    // 日本での課税実績・保険加入が無いため出さない書類
-    for (const id of ["gensen", "kazei", "nozei_shiken", "nozei_kokuho", "hokensho", "nenkin"]) {
+    // 海外から呼ぶ申請のため、在留カード・日本での課税実績・保険加入の書類は出さない
+    for (const id of [
+      "zairyu",
+      "gensen",
+      "kazei",
+      "nozei_shiken",
+      "nozei_kokuho",
+      "hokensho",
+      "nenkin",
+    ]) {
       expect(ninteiIds).not.toContain(id);
     }
   });

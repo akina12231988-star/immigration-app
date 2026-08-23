@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { FileDropArea } from "@/components/ui/FileDropArea";
+import { WorkerCertDocRows } from "@/components/workers/WorkerCertDocRows";
+import { Jisshu2Section } from "@/components/workers/Jisshu2Section";
 import {
   WorkerRenewalFields,
   type RenewalFieldsWorker,
@@ -950,6 +952,24 @@ export function ApplicationPrepChecklist({
               <p className="text-[10px] text-muted">
                 この登録状況とデータを見て、上の「合格証の組み合わせ」を選んでください。
               </p>
+              {/* まだ添付していない合格証・調書はここから添付できる（外国人詳細と同じ保存先） */}
+              <div className="border-t border-dashed border-border pt-1.5">
+                <p className="mb-1 text-[10px] font-bold text-muted">
+                  添付・差し替え（外国人詳細と同じ保存先に入ります）
+                </p>
+                <WorkerCertDocRows
+                  workerId={workerId}
+                  canEdit={canEdit}
+                  defs={[
+                    { key: "cert_senmonkyu", label: "専門級の合格証" },
+                    { key: "cert_nihongo", label: "日本語の合格証" },
+                    { key: "cert_senmongai", label: "専門外の合格証" },
+                    { key: "prep_hyoka_chosho", label: "技能評価調書" },
+                  ]}
+                />
+              </div>
+              {/* 良好に修了した技能実習2号（職種名・作業名・良好修了の証明）もこの場で入力できる */}
+              <Jisshu2Section workerId={workerId} canEdit={canEdit} />
             </div>
           </div>
         )}
