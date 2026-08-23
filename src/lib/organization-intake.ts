@@ -2,6 +2,7 @@
 // DBの既定値は '{}' のため、欠けているキーを補完して画面で安全に扱えるようにする。
 
 import type {
+  OrgCouncilSubmission,
   OrgFinancialYear,
   OrgJapaneseStaff,
   OrgLodging,
@@ -34,6 +35,24 @@ export function emptyJapaneseStaff(): OrgJapaneseStaff {
 
 export function emptyOfficer(): OrgOfficer {
   return { kana: "", name: "", title: "", not_involved: false };
+}
+
+// 協力確認書の提出1件分（提出先・提出日）
+export function emptyCouncilSubmission(): OrgCouncilSubmission {
+  return { to: "", on: "" };
+}
+
+// 協力確認書の提出リストの正規化（不正な形は空行1件にする）
+function normalizeCouncilSubmissions(raw: unknown): OrgCouncilSubmission[] {
+  const src = Array.isArray(raw) ? raw : [];
+  const rows = src.map((r) => {
+    const s = (r && typeof r === "object" ? r : {}) as Partial<OrgCouncilSubmission>;
+    return {
+      to: typeof s.to === "string" ? s.to : "",
+      on: typeof s.on === "string" ? s.on : "",
+    };
+  });
+  return rows.length > 0 ? rows : [emptyCouncilSubmission()];
 }
 
 export function emptySalesItem(): OrgSalesItem {
@@ -96,6 +115,7 @@ export function emptyOrganizationIntake(): OrganizationIntake {
     contact_method: "",
     health_insurance: "",
     pension: "",
+    pay_method: "",
     ssw_insurance_burden: "",
     sales_items: {},
     work_address: "",
@@ -121,6 +141,8 @@ export function emptyOrganizationIntake(): OrganizationIntake {
     missing_ssw: "",
     missing_trainee: "",
     council_note: "",
+    council_office_submissions: [emptyCouncilSubmission()],
+    council_residence_submissions: [emptyCouncilSubmission()],
     japanese_staff: [emptyJapaneseStaff()],
     officers: [emptyOfficer()],
   };
@@ -201,6 +223,8 @@ export function normalizeOrganizationIntake(raw: unknown): OrganizationIntake {
     officers,
     lodgings,
     sales_items: normalizeSalesItems(src.sales_items),
+    council_office_submissions: normalizeCouncilSubmissions(src.council_office_submissions),
+    council_residence_submissions: normalizeCouncilSubmissions(src.council_residence_submissions),
     support_managers: orgSupportManagers(src),
     support_staff: orgSupportStaff(src),
   };

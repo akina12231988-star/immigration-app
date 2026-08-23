@@ -1090,6 +1090,7 @@ export function ApplicationsExplorer({
       {prepModal && (
         <Modal
           open
+          wide
           title={`${prepModal.name}｜申請準備`}
           onClose={() => {
             setPrepModal(null);

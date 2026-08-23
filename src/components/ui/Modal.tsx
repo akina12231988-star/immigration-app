@@ -9,11 +9,13 @@ export function Modal({
   open,
   title,
   onClose,
+  wide = false,
   children,
 }: {
   open: boolean;
   title: string;
   onClose: () => void;
+  wide?: boolean; // PCで2カラム表示する内容（申請準備など）向けに幅を広げる
   children: ReactNode;
 }) {
   useEffect(() => {
@@ -43,7 +45,9 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="relative z-10 flex max-h-[90dvh] w-full max-w-lg flex-col rounded-t-2xl bg-surface shadow-xl sm:rounded-2xl"
+        className={`relative z-10 flex max-h-[90dvh] w-full flex-col rounded-t-2xl bg-surface shadow-xl sm:rounded-2xl ${
+          wide ? "max-w-5xl" : "max-w-lg"
+        }`}
       >
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <h2 className="text-base font-bold">{title}</h2>

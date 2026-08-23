@@ -15,6 +15,7 @@ import { SSW_INDUSTRIES, categoriesFor } from "@/lib/industries";
 import { REFERRAL_SALES_KEY, SALES_APP_KINDS } from "@/lib/sales";
 import { todayStr } from "@/lib/ssw/calc";
 import {
+  emptyCouncilSubmission,
   emptyFinancialYear,
   emptyJapaneseStaff,
   emptyLodging,
@@ -28,8 +29,10 @@ import {
   ownedMonthlyRent,
   perResidentCost,
 } from "@/lib/organization-intake";
+import { orgYearlyFileGroups, orgYearlyKind } from "@/lib/org-yearly-files";
 import { SUPPORT_CONTRACT_STATUSES } from "@/types/db";
 import type {
+  OrgCouncilSubmission,
   OrgFinancialYear,
   OrgJapaneseStaff,
   OrgLodging,
@@ -650,6 +653,14 @@ function IntakeSection({
             options={["国民年金", "厚生年金"]}
             locked={locks.intake("pension")}
           />
+          <IntakeSelect
+            label="給与支払い方法"
+            value={intake.pay_method}
+            onChange={(v) => setIntake({ pay_method: v })}
+            options={["通貨払い", "口座振込"]}
+            hint="賃金（1-6号別紙）の入力画面に表示されます。"
+            locked={locks.intake("pay_method")}
+          />
         </div>
         <IntakeField
           label="作業する住所（会社の住所と別の場合）"
@@ -1213,13 +1224,49 @@ function IntakeSection({
             locked={locks.intake("missing_trainee")}
           />
         </div>
+        <p className={GROUP_CLASS}>協力確認書の提出（提出先・提出日）</p>
+        <p className={HINT_CLASS}>
+          提出先と提出日を分けて記録します。複数ある場合は「＋提出を追加」で行を足してください。協議会の加入通知書などがある場合はコピーをもらってください。
+        </p>
+        <CouncilSubmissionRows
+          label="特定技能外国人の活動する事業所の所在地での提出"
+          rows={intake.council_office_submissions}
+          onChange={(rows) => setIntake({ council_office_submissions: rows })}
+        />
+        <CouncilSubmissionRows
+          label="特定技能外国人の住居地での提出"
+          rows={intake.council_residence_submissions}
+          onChange={(rows) => setIntake({ council_residence_submissions: rows })}
+        />
         <IntakeField
-          label="協議会の加入・協力確認書（提出先・提出日など）"
+          label="協議会の加入メモ（旧: 提出先・提出日をまとめて書いていた欄）"
           value={intake.council_note}
           onChange={(v) => setIntake({ council_note: v })}
-          hint="協議会の加入通知書などがある場合はコピーをもらってください。"
+          hint="以前この欄にまとめて書いていた提出先・提出日は、上の欄へ分けて記録し直せます。"
           locked={locks.intake("council_note")}
         />
+
+        <p className={GROUP_CLASS}>定期報告・賃金台帳（毎年の提出データ）</p>
+        {orgId ? (
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+            <OrgYearlyFiles
+              orgId={orgId}
+              baseKind="定期報告書"
+              label="定期報告書の提出データ"
+              hint="毎年の定期報告で提出したデータです。追加で提出した書類も同じ年度にアップロードできます。"
+            />
+            <OrgYearlyFiles
+              orgId={orgId}
+              baseKind="賃金台帳"
+              label="賃金台帳"
+              hint="毎年の賃金台帳のデータをアップロードして保存します。"
+            />
+          </div>
+        ) : (
+          <p className={HINT_CLASS}>
+            定期報告・賃金台帳のデータは、会社・機関を登録したあとに編集画面から添付できます。
+          </p>
+        )}
 
         <p className={GROUP_CLASS}>所属役員（法人の場合）</p>
         <p className={HINT_CLASS}>
@@ -1278,6 +1325,222 @@ function IntakeSection({
           ＋ 役員を追加
         </button>
       </div>
+    </div>
+  );
+}
+
+// 協力確認書の提出（提出先・提出日）の複数行入力。行の追加・削除ができる
+function CouncilSubmissionRows({
+  label,
+  rows,
+  onChange,
+}: {
+  label: string;
+  rows: OrgCouncilSubmission[];
+  onChange: (rows: OrgCouncilSubmission[]) => void;
+}) {
+  const setRow = (i: number, patch: Partial<OrgCouncilSubmission>) =>
+    onChange(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  return (
+    <div className="rounded-xl border border-border p-2.5">
+      <p className="mb-1.5 text-xs font-bold">{label}</p>
+      <div className="flex flex-col gap-1.5">
+        {rows.map((row, i) => (
+          <div key={i} className="flex flex-wrap items-end gap-2">
+            <label className="flex min-w-[12rem] flex-1 flex-col gap-1">
+              <span className="text-[11px] text-muted">提出先</span>
+              <input
+                value={row.to}
+                onChange={(e) => setRow(i, { to: e.target.value })}
+                placeholder="例: 農業特定技能協議会"
+                className="min-h-[40px] w-full rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] text-muted">提出日</span>
+              <input
+                type="date"
+                value={row.on}
+                onChange={(e) => setRow(i, { on: e.target.value })}
+                className="min-h-[40px] rounded-xl border border-border bg-background px-2 text-sm focus:border-brand focus:outline-none"
+              />
+            </label>
+            {rows.length > 1 && (
+              <button
+                type="button"
+                onClick={() => onChange(rows.filter((_, j) => j !== i))}
+                aria-label="この提出を削除"
+                className="mb-1 flex h-9 w-9 items-center justify-center rounded-lg border border-border text-seal"
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={() => onChange([...rows, emptyCouncilSubmission()])}
+        className="mt-1.5 text-xs font-bold text-brand"
+      >
+        ＋ 提出を追加
+      </button>
+    </div>
+  );
+}
+
+// 毎年の提出データ（定期報告書・賃金台帳）。年度ラベルごとにまとめて保存・表示する
+export function OrgYearlyFiles({
+  orgId,
+  baseKind,
+  label,
+  hint,
+}: {
+  orgId: string;
+  baseKind: string; // 定期報告書 / 賃金台帳
+  label: string;
+  hint?: string;
+}) {
+  const [files, setFiles] = useState<OrganizationFileRow[]>([]);
+  const [newLabel, setNewLabel] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // どの年度（kind）へアップロードするか。空文字は新しい年度ラベル入力を使う
+  const uploadKindRef = useRef<string>(baseKind);
+
+  const load = () =>
+    listOrganizationFiles(createClient(), orgId)
+      .then((rows) =>
+        setFiles(rows.filter((r) => r.kind === baseKind || r.kind.startsWith(`${baseKind}:`))),
+      )
+      .catch(() => undefined);
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgId, baseKind]);
+
+  const groups = orgYearlyFileGroups(files, baseKind);
+
+  function startUpload(kind: string) {
+    uploadKindRef.current = kind;
+    inputRef.current?.click();
+  }
+
+  async function handleFiles(list: FileList | null) {
+    if (!list || list.length === 0) return;
+    const kind = uploadKindRef.current;
+    setBusy(true);
+    setError(null);
+    try {
+      for (const file of Array.from(list)) {
+        const { blob, mimeType, fileName } = await compressImage(file);
+        const ticket = await createOrgFileTicket(orgId, fileName, mimeType);
+        if (!ticket.ok) throw new Error(ticket.message);
+        const { error: upErr } = await createClient()
+          .storage.from("app-files")
+          .uploadToSignedUrl(ticket.path, ticket.token, blob, { contentType: mimeType });
+        if (upErr) throw new Error(`アップロードに失敗しました: ${upErr.message}`);
+        const res = await registerOrgFile(orgId, kind, ticket.path, fileName, mimeType);
+        if (!res.ok) throw new Error(res.message);
+      }
+      setNewLabel("");
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "アップロードに失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function preview(id: string) {
+    const res = await getOrgFilePreviewUrl(id);
+    if (res.ok) window.open(res.url, "_blank", "noopener");
+    else setError(res.message);
+  }
+
+  async function remove(f: OrganizationFileRow) {
+    if (!window.confirm(`「${f.file_name}」を削除します。よろしいですか？`)) return;
+    setError(null);
+    const res = await deleteOrgFile(f.id);
+    if (res.ok) setFiles((prev) => prev.filter((x) => x.id !== f.id));
+    else setError(res.message);
+  }
+
+  return (
+    <div className="rounded-xl border border-border p-2.5">
+      <p className="text-xs font-bold">{label}</p>
+      {hint && <p className={`${HINT_CLASS} mb-1.5`}>{hint}</p>}
+      {error && <p className="mb-1.5 rounded-lg bg-seal/10 px-2.5 py-1.5 text-xs text-seal">{error}</p>}
+      <div className="flex flex-col gap-2">
+        {groups.map((g) => (
+          <div key={g.kind} className="rounded-lg bg-background p-2">
+            <p className="mb-1 flex items-center justify-between gap-2 text-[11px] font-bold text-muted">
+              {g.label || "年度未設定"}
+              <button
+                type="button"
+                onClick={() => startUpload(g.kind)}
+                disabled={busy}
+                className="font-bold text-brand disabled:opacity-50"
+              >
+                ＋ この年度に追加
+              </button>
+            </p>
+            <div className="flex flex-col gap-1">
+              {g.files.map((f) => (
+                <div key={f.id} className="flex items-center gap-1.5">
+                  <span className="min-w-0 flex-1 truncate text-[11px] text-muted">{f.file_name}</span>
+                  <button
+                    type="button"
+                    onClick={() => void preview(f.id)}
+                    aria-label="表示"
+                    className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-muted hover:text-brand"
+                  >
+                    <Eye size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void remove(f)}
+                    aria-label="削除"
+                    className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-seal"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+        <div className="flex items-center gap-2">
+          <input
+            value={newLabel}
+            onChange={(e) => setNewLabel(e.target.value)}
+            placeholder="年度（例: 令和7年）"
+            className="min-h-[36px] w-32 rounded-lg border border-border bg-background px-2 text-xs focus:border-brand focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={() => startUpload(orgYearlyKind(baseKind, newLabel))}
+            disabled={busy}
+            className="flex items-center gap-1.5 rounded-lg border border-dashed border-brand px-3 py-2 text-xs font-bold text-brand disabled:opacity-50"
+          >
+            {busy ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+            {busy ? "アップロード中…" : "アップロード"}
+          </button>
+        </div>
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*,application/pdf"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          void handleFiles(e.target.files);
+          e.target.value = "";
+        }}
+      />
     </div>
   );
 }

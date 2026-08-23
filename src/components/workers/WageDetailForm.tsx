@@ -39,6 +39,15 @@ function numValue(v: string): number {
   return Number(v.replace(/[^0-9]/g, "")) || 0;
 }
 
+// 所属機関に登録している、1-6号別紙の記入に使う情報（フォームの上に参考表示する）
+export interface WageOrgInfo {
+  payMethod: string; // 給与支払い方法（通貨払い / 口座振込）
+  annualHours: number; // 年間所定労働時間（0 = 未登録）
+  healthInsurance: string; // 保険（国民健康保険 / 社会保険 / その他）
+  pension: string; // 年金（国民年金 / 厚生年金）
+  koyoCovered: string; // 雇用保険の適用事業所か（はい / いいえ）
+}
+
 export function WageDetailForm({
   wage,
   detail,
@@ -46,6 +55,7 @@ export function WageDetailForm({
   lodgings,
   orgName,
   fallbackAnnualHours,
+  orgInfo,
   readOnly = false,
 }: {
   wage: { kind: WorkerWageKind | string; amount: number };
@@ -54,6 +64,7 @@ export function WageDetailForm({
   lodgings: OrgLodging[]; // 所属機関に登録した寮・社宅
   orgName: string;
   fallbackAnnualHours: number; // 所属機関の年間所定労働時間
+  orgInfo?: WageOrgInfo; // 所属機関の給与支払い方法・労働時間・保険適用の参考表示
   readOnly?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
@@ -115,6 +126,42 @@ export function WageDetailForm({
         </a>
         でもできます。
       </p>
+
+      {/* 所属機関の登録情報を反映して表示（給与支払い方法・労働時間数・保険の適用） */}
+      {orgInfo && (
+        <div className="rounded-lg bg-background p-2.5 leading-relaxed">
+          <p className="mb-0.5 font-bold text-muted">
+            {orgName || "所属機関"}の登録情報（1-6号別紙の記入に使う）
+          </p>
+          <p>
+            給与支払い方法:{" "}
+            <span className="font-bold">{orgInfo.payMethod || "未登録"}</span>
+            （通貨払い or 口座振込）
+          </p>
+          <p>
+            年間所定労働時間:{" "}
+            <span className="font-bold tabular-nums">
+              {orgInfo.annualHours ? `${orgInfo.annualHours.toLocaleString("ja-JP")}時間` : "未登録"}
+            </span>
+            {orgInfo.annualHours > 0 && (
+              <>
+                　月平均所定労働時間:{" "}
+                <span className="font-bold tabular-nums">
+                  約{(orgInfo.annualHours / 12).toFixed(1)}時間
+                </span>
+              </>
+            )}
+          </p>
+          <p>
+            保険: <span className="font-bold">{orgInfo.healthInsurance || "未登録"}</span>
+            　年金: <span className="font-bold">{orgInfo.pension || "未登録"}</span>
+            　雇用保険の適用: <span className="font-bold">{orgInfo.koyoCovered || "未登録"}</span>
+          </p>
+          <p className="text-[10px] text-muted">
+            未登録の項目は所属機関の編集画面（申込書の情報）で登録すると表示されます。
+          </p>
+        </div>
+      )}
 
       {/* 1. 基本賃金（賃金の区分・金額はこのフォームの上で入れたものを使う） */}
       <div className={rowClass}>

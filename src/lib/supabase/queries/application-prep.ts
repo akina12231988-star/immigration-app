@@ -1,22 +1,25 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PrepChecklistMeta } from "@/lib/application-prep";
 
-// TODO番号ごとの準備リスト1件分（メタ情報＋識別子）
+// TODO番号ごとの準備リスト1件分（メタ情報＋識別子＋追加項目）
 export interface PrepChecklistRow extends PrepChecklistMeta {
   id: string;
   todo_no: string; // Notion 申請TODO番号（'' = 番号未設定の旧データ）
+  joint_kind: string; // 単独申請か連名申請か（'' / 単独 / 連名。0105）
+  joint_worker_id: string | null; // 連名相手の外国人
+  joint_todo_no: string; // 連名相手のTODO番号
+  sign_status: string; // 本人から署名をもらったかのステータス
 }
 
-// 外国人の準備リストを全件取得（更新が新しい順）
+// 外国人の準備リストを全件取得（更新が新しい順）。
+// select("*") にして、0105未適用でも追加項目が undefined → 既定値で動くようにする
 export async function listPrepChecklists(
   supabase: SupabaseClient,
   workerId: string,
 ): Promise<PrepChecklistRow[]> {
   const { data, error } = await supabase
     .from("application_prep_checklists")
-    .select(
-      "id, todo_no, app_type, has_kokuho, has_nenkin, target_reiwa, kenshin_items_ok, tantou, cert_pattern",
-    )
+    .select("*")
     .eq("worker_id", workerId)
     .order("updated_at", { ascending: false });
   if (error) throw error;
@@ -30,7 +33,26 @@ export async function listPrepChecklists(
     kenshin_items_ok: r.kenshin_items_ok ?? false,
     tantou: r.tantou ?? "",
     cert_pattern: r.cert_pattern ?? "",
+    joint_kind: r.joint_kind ?? "",
+    joint_worker_id: r.joint_worker_id ?? null,
+    joint_todo_no: r.joint_todo_no ?? "",
+    sign_status: r.sign_status ?? "",
   }));
+}
+
+// 追加項目（単独/連名・連名相手・署名ステータス）の保存。0105_prep_checklist_extras.sql が必要
+export async function updatePrepChecklistExtras(
+  supabase: SupabaseClient,
+  id: string,
+  patch: Partial<
+    Pick<PrepChecklistRow, "joint_kind" | "joint_worker_id" | "joint_todo_no" | "sign_status">
+  >,
+): Promise<void> {
+  const { error } = await supabase
+    .from("application_prep_checklists")
+    .update(patch)
+    .eq("id", id);
+  if (error) throw error;
 }
 
 // 準備リストのTODO番号を変更する（書類の準備状況はリストid紐付けのためそのまま残る）

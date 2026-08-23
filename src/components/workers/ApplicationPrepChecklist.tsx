@@ -29,13 +29,29 @@ import {
   EMPTY_PREP_DOC_STATUS,
   listPrepChecklists,
   listPrepDocStatuses,
+  updatePrepChecklistExtras,
   updatePrepChecklistTodoNo,
   upsertPrepChecklist,
   upsertPrepDocStatus,
   type PrepChecklistRow,
   type PrepDocStatusInput,
 } from "@/lib/supabase/queries/application-prep";
-import { insertTodo, renameTodoNo } from "@/lib/supabase/queries/todos";
+import {
+  insertTodo,
+  listTodoStatusOptions,
+  renameTodoNo,
+  type TodoRow,
+} from "@/lib/supabase/queries/todos";
+import { normalizeTodoKey, type TodoStatusOption } from "@/lib/todo";
+import {
+  JointApplicationField,
+  PrepAddressField,
+  PrepAssenSection,
+  PrepOrgInfo,
+  PrepSignStatusField,
+  PrepTodoStatusField,
+  PrepWageSummary,
+} from "@/components/workers/ApplicationPrepExtras";
 import { dbErrorMessage } from "@/lib/errors";
 import { listActiveCustodyNoByWorker } from "@/lib/supabase/queries/custody";
 import { formatStorageNo } from "@/lib/custody";
@@ -143,6 +159,31 @@ export function ApplicationPrepChecklist({
   const [hasResidenceCard, setHasResidenceCard] = useState(false);
   const [hasPassportFile, setHasPassportFile] = useState(false);
 
+  // 外国人の基本情報（現在の住所・所属機関・合格名）。モーダル表示でも使えるようこの場で取得する
+  const [workerRow, setWorkerRow] = useState<{
+    name: string;
+    address: string;
+    current_organization_id: string | null;
+    application_prep_organization_id: string | null;
+    specialty_grade: string;
+    other_qualifications: string;
+  } | null>(null);
+
+  // 申請準備のTODO（この外国人分）とステータスの選択肢。名前の下に常時表示して編集できる
+  const [workerTodos, setWorkerTodos] = useState<TodoRow[]>([]);
+  const [todoOptions, setTodoOptions] = useState<TodoStatusOption[]>([]);
+  const loadWorkerTodos = () => {
+    const supabase = createClient();
+    void supabase
+      .from("todos")
+      .select("*")
+      .eq("worker_id", workerId)
+      .eq("kind", "申請準備")
+      .order("created_at", { ascending: false })
+      .then(({ data }) => setWorkerTodos((data as TodoRow[] | null) ?? []));
+    listTodoStatusOptions(supabase).then(setTodoOptions).catch(() => undefined);
+  };
+
   const loadDocs = () =>
     listOnboardingDocs(createClient(), workerId).then(setDocs).catch(() => undefined);
 
@@ -177,6 +218,34 @@ export function ApplicationPrepChecklist({
       .catch(() => undefined);
     void loadDocs();
     loadMovedDocs();
+    loadWorkerTodos();
+    void createClient()
+      .from("workers")
+      .select(
+        "name, address, current_organization_id, application_prep_organization_id, specialty_grade, other_qualifications",
+      )
+      .eq("id", workerId)
+      .maybeSingle()
+      .then(({ data }) => {
+        const w = data as {
+          name: string;
+          address: string | null;
+          current_organization_id: string | null;
+          application_prep_organization_id: string | null;
+          specialty_grade: string | null;
+          other_qualifications: string | null;
+        } | null;
+        if (w) {
+          setWorkerRow({
+            name: w.name,
+            address: w.address ?? "",
+            current_organization_id: w.current_organization_id,
+            application_prep_organization_id: w.application_prep_organization_id,
+            specialty_grade: w.specialty_grade ?? "",
+            other_qualifications: w.other_qualifications ?? "",
+          });
+        }
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workerId]);
 
@@ -195,6 +264,33 @@ export function ApplicationPrepChecklist({
   const current =
     selected != null ? (lists.find((l) => l.todo_no === selected) ?? null) : null;
   const meta: PrepChecklistMeta = current ?? EMPTY_PREP_META;
+
+  // 表示中のTODO番号に対応する申請準備のTODO（番号の書き方の揺れは正規化して突き合わせる）
+  const selectedKey = selected != null ? normalizeTodoKey(selected) : "";
+  const currentTodo = selectedKey
+    ? (workerTodos.find((t) => normalizeTodoKey(t.todo_no) === selectedKey) ?? null)
+    : (workerTodos[0] ?? null);
+
+  // 申請準備の所属機関（転職先）が入っていればそちら、無ければ現在の所属機関
+  const prepOrgId =
+    workerRow?.application_prep_organization_id ?? workerRow?.current_organization_id ?? null;
+
+  // 追加項目（単独/連名・連名相手・署名ステータス）の保存（0105）
+  async function saveExtras(
+    patch: Partial<
+      Pick<PrepChecklistRow, "joint_kind" | "joint_worker_id" | "joint_todo_no" | "sign_status">
+    >,
+  ) {
+    if (current == null) return;
+    const id = current.id;
+    setLists((ls) => ls.map((l) => (l.id === id ? { ...l, ...patch } : l)));
+    setError(null);
+    try {
+      await updatePrepChecklistExtras(createClient(), id, patch);
+    } catch (err) {
+      setError(dbErrorMessage(err, "0105_prep_checklist_extras.sql", "保存に失敗しました"));
+    }
+  }
 
   // 表示中のリストを切り替えたら、そのリストの書類ステータスを読み込む
   const currentId = current?.id ?? null;
@@ -594,15 +690,30 @@ export function ApplicationPrepChecklist({
         </p>
       )}
 
+      {/* 申請準備TODOのステータス（本人の名前の下に常時表示・編集可） */}
+      <PrepTodoStatusField
+        todo={currentTodo}
+        options={todoOptions}
+        canEdit={canEdit}
+        onError={setError}
+        onChanged={loadWorkerTodos}
+      />
+
+      {/* 現在の住所（未登録なら入力して保存できる） */}
+      <PrepAddressField
+        workerId={workerId}
+        address={workerRow?.address ?? ""}
+        canEdit={canEdit}
+        onSaved={(a) => setWorkerRow((w) => (w ? { ...w, address: a } : w))}
+      />
+
+      {/* PC: TODO番号〜保険の選択までを左に、書類関係を右に表示して下にスクロールする */}
+      <div className="lg:grid lg:grid-cols-2 lg:items-start lg:gap-4">
+      <div className="lg:sticky lg:top-0 lg:self-start">
+
       {/* TODO番号ごとの準備リスト切り替え */}
       <div className="mb-3 rounded-xl border border-border bg-background p-3">
-        <p className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-muted">
-          申請TODO番号
-          {/* 申請準備は賃金（1-6号別紙）とリンクして進める。会社の同意チェックもそちらにある */}
-          <a href="#wages" className="font-bold text-brand hover:underline">
-            賃金（1-6号別紙）を開く →
-          </a>
-        </p>
+        <p className="mb-2 text-xs font-bold text-muted">申請TODO番号</p>
         {lists.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
             {lists.map((l) => (
@@ -622,24 +733,41 @@ export function ApplicationPrepChecklist({
           </div>
         )}
         {canEdit ? (
-          <div className="flex gap-2">
-            <input
-              value={newTodo}
-              onChange={(e) => setNewTodo(e.target.value)}
-              placeholder="空のまま追加でTODO番号を自動採番"
-              className={`${inputCls} min-w-0 flex-1`}
-            />
-            <button
-              type="button"
-              onClick={createList}
-              disabled={creating}
-              className="shrink-0 rounded-lg bg-brand px-3 py-2 text-xs font-bold text-brand-foreground disabled:opacity-50"
-            >
-              {creating ? "作成中…" : "リストを追加"}
-            </button>
-          </div>
+          current?.joint_kind === "単独" ? (
+            /* 単独申請の場合はリストを追加しない（連名にする場合は下の選択を変える） */
+            <p className="text-[11px] text-muted">
+              単独申請のため、リストの追加はありません。
+            </p>
+          ) : (
+            <div className="flex gap-2">
+              <input
+                value={newTodo}
+                onChange={(e) => setNewTodo(e.target.value)}
+                placeholder="空のまま追加でTODO番号を自動採番"
+                className={`${inputCls} min-w-0 flex-1`}
+              />
+              <button
+                type="button"
+                onClick={createList}
+                disabled={creating}
+                className="shrink-0 rounded-lg bg-brand px-3 py-2 text-xs font-bold text-brand-foreground disabled:opacity-50"
+              >
+                {creating ? "作成中…" : "リストを追加"}
+              </button>
+            </div>
+          )
         ) : (
           lists.length === 0 && <p className="text-xs text-muted">準備リストはまだありません。</p>
+        )}
+
+        {/* この番号が単独申請か連名申請か。連名なら相手を名前検索してTODO番号と紐づける */}
+        {current != null && (
+          <JointApplicationField
+            workerId={workerId}
+            row={current}
+            canEdit={canEdit}
+            onChange={(patch) => void saveExtras(patch)}
+          />
         )}
 
         {/* 申請準備（在留更新対象）と同じ入力欄。ここで「準備中」にすると
@@ -664,13 +792,8 @@ export function ApplicationPrepChecklist({
         )}
       </div>
 
-      {current == null ? (
-        <p className="rounded-xl bg-background p-4 text-center text-xs text-muted">
-          TODO番号を追加すると、そのTODOに対する準備リストが表示されます。
-        </p>
-      ) : (
-        <>
-      {/* 条件の選択 */}
+      {/* 条件の選択（申請種別の下に所属機関の情報を表示する） */}
+      {current != null && (
       <div className="mb-3 space-y-2.5 rounded-xl border border-border bg-background p-3">
         <div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-1.5 text-xs font-bold text-muted">
@@ -722,6 +845,10 @@ export function ApplicationPrepChecklist({
             </select>
           </label>
         </div>
+
+        {/* 申請種別の下: 所属機関の情報（住所・電話・代表者・協力確認書・売上高・定期報告/賃金台帳） */}
+        <PrepOrgInfo orgId={prepOrgId} />
+
         {/* 合格証の組み合わせ（申請内容で必要な合格証が変わる。更新申請では不要） */}
         {meta.app_type && meta.app_type !== "更新" && (
           <div className="flex flex-col gap-1">
@@ -770,6 +897,51 @@ export function ApplicationPrepChecklist({
                 );
               })}
             </div>
+            {/* 外国人詳細で登録している合格証の項目と、アップロード済みの合格証データ。
+                ここで内容を確認してから上の組み合わせを選べる */}
+            <div className="space-y-1 rounded-lg bg-surface/60 p-2">
+              <p className="text-[11px] font-bold text-muted">外国人詳細で登録している合格証</p>
+              <p className="text-[11px]">
+                専門級の合格名: {workerRow?.specialty_grade || "未登録"}
+                <span className="mx-1 text-muted">／</span>
+                その他の資格・合格名: {workerRow?.other_qualifications || "未登録"}
+              </p>
+              {(
+                [
+                  ["専門級の合格証", "cert_senmonkyu"],
+                  ["日本語の合格証", "cert_nihongo"],
+                  ["専門外の合格証", "cert_senmongai"],
+                  ["技能評価調書", "prep_hyoka_chosho"],
+                ] as const
+              ).map(([certLabel, certKey]) => {
+                const certFiles = docs.filter(
+                  (d) => d.storage_path && isPrepPageKeyOf(certKey, d.doc_key),
+                );
+                return (
+                  <div key={certKey} className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                    <span className="font-bold">{certLabel}:</span>
+                    {certFiles.length === 0 ? (
+                      <span className="text-muted">データなし</span>
+                    ) : (
+                      certFiles.map((f) => (
+                        <span key={f.id} className="inline-flex items-center gap-1">
+                          <span className="max-w-[11rem] truncate">{f.file_name}</span>
+                          <IconButton label="表示" onClick={() => void previewDoc(f.id)}>
+                            <Eye size={11} />
+                          </IconButton>
+                          <IconButton label="ダウンロード" onClick={() => void downloadDoc(f.id)}>
+                            <Download size={11} />
+                          </IconButton>
+                        </span>
+                      ))
+                    )}
+                  </div>
+                );
+              })}
+              <p className="text-[10px] text-muted">
+                この登録状況とデータを見て、上の「合格証の組み合わせ」を選んでください。
+              </p>
+            </div>
           </div>
         )}
         <div className="flex flex-wrap items-center gap-4">
@@ -795,7 +967,19 @@ export function ApplicationPrepChecklist({
           </label>
         </div>
       </div>
+      )}
 
+      {/* 左カラムここまで */}
+      </div>
+
+      {/* 右カラム: 必要書類などの書類関係の情報（下にスクロールして見ていく） */}
+      <div>
+      {current == null ? (
+        <p className="rounded-xl bg-background p-4 text-center text-xs text-muted">
+          TODO番号を追加すると、そのTODOに対する準備リストが表示されます。
+        </p>
+      ) : (
+        <>
       {!meta.app_type ? (
         <p className="rounded-xl bg-background p-4 text-center text-xs text-muted">
           申請種別を選ぶと、必要書類のチェックリストが表示されます。
@@ -874,6 +1058,35 @@ export function ApplicationPrepChecklist({
         </>
       )}
 
+      {/* 必要な書類の下: 署名・賃金（1-6号別紙）・あっせん・日付計算 */}
+      <div className="mt-3 space-y-3">
+        {/* 本人から署名をもらったかどうかのステータス */}
+        <PrepSignStatusField
+          value={current.sign_status}
+          canEdit={canEdit}
+          onChange={(v) => void saveExtras({ sign_status: v })}
+        />
+        {/* 賃金がいくらで採用となっているか（外国人詳細の賃金の記録と同じ内容）とリンク */}
+        <PrepWageSummary workerId={workerId} />
+        {/* あっせんの有無（申請準備のTODOと共有） */}
+        <PrepAssenSection
+          workerId={workerId}
+          todo={currentTodo}
+          canEdit={canEdit}
+          onError={setError}
+          onChanged={loadWorkerTodos}
+        />
+        {/* 支援計画書の日付計算ツール（求人日付のカレンダー表示付き） */}
+        <Link
+          href={`/todos/plan-dates?workerId=${workerId}&name=${encodeURIComponent(
+            workerRow?.name ?? "",
+          )}&todo=${encodeURIComponent(current.todo_no)}`}
+          className="flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-2.5 text-xs font-bold text-brand"
+        >
+          📅 日付計算: 支援計画書の日付計算ツール（求人日付のカレンダー表示付き）を開く →
+        </Link>
+      </div>
+
       {canEdit && (
         <div className="mt-3 flex flex-wrap items-center gap-4">
           <button
@@ -895,6 +1108,10 @@ export function ApplicationPrepChecklist({
       )}
         </>
       )}
+
+      {/* 右カラム・PC2カラムのグリッドここまで */}
+      </div>
+      </div>
 
       {/* 書類（画像・PDF）用の隠しファイル入力 */}
       <input

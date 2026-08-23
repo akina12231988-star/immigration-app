@@ -189,6 +189,7 @@ export interface OrganizationIntake {
   contact_method: string; // 資料のやりとり方法（FAX / グループLINE / email）
   health_insurance: string; // 保険（国民健康保険 / 社会保険 / その他）
   pension: string; // 年金（国民年金 / 厚生年金）
+  pay_method: string; // 給与支払い方法（'' / 通貨払い / 口座振込。1-6号別紙に反映）
   ssw_insurance_burden: string; // 特定技能総合保険の負担（'' / 会社負担 / 外国人負担）
   sales_items: OrgSalesItems; // 申請種別ごとの売上明細（freee販売への登録内容）
   work_address: string; // 作業する住所（会社の住所と別の場合）
@@ -213,9 +214,17 @@ export interface OrganizationIntake {
   first_hired_on: string; // 国籍問わず労働者を雇用開始した日付（大体）
   missing_ssw: string; // 過去1年間の行方不明者数（特定技能）
   missing_trainee: string; // 過去1年間の行方不明者数（技能実習生）
-  council_note: string; // 協議会の加入・協力確認書の提出先/提出日
+  council_note: string; // 協議会の加入メモ（旧: 協力確認書の提出先/提出日をまとめて書いていた欄）
+  council_office_submissions: OrgCouncilSubmission[]; // 協力確認書の提出（特定技能外国人の活動する事業所の所在地・複数可）
+  council_residence_submissions: OrgCouncilSubmission[]; // 協力確認書の提出（特定技能外国人の住居地・複数可）
   japanese_staff: OrgJapaneseStaff[]; // 一緒に働く日本人常勤職員
   officers: OrgOfficer[]; // 所属役員（法人）
+}
+
+// 協力確認書の提出1件分（提出先と提出日を分けて持つ）
+export interface OrgCouncilSubmission {
+  to: string; // 提出先
+  on: string; // 提出日（YYYY-MM-DD）
 }
 
 // 所属機関に添付するファイル（見積書など。0049_organization_files.sql）
