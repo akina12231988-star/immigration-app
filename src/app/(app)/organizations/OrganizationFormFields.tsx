@@ -397,8 +397,10 @@ export function OrganizationFormBody({
   // 支援責任者と支援担当者を兼任している人
   const dualNames = intake.support_managers.filter((n) => intake.support_staff.includes(n));
 
-  return (
-    <>
+  // 会社の基本情報（名称・業種・所在地・連絡先など）。バラバラに並べず、
+  // 「申込書の情報 ＞ 会社の情報」にフリガナ・FAX・Emailと一緒にまとめて表示する
+  const companyFields = (
+    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
       {locks.top("name") ? (
         <StaticValue label="名称" value={form.name} />
       ) : (
@@ -413,6 +415,12 @@ export function OrganizationFormBody({
           />
         </label>
       )}
+      <IntakeField
+        label="名称のフリガナ"
+        value={intake.kana}
+        onChange={(v) => setIntake({ kana: v })}
+        locked={locks.intake("kana")}
+      />
       {locks.top("industry") ? (
         <StaticValue label="業種（特定技能 産業分野）" value={form.industry} />
       ) : (
@@ -456,22 +464,24 @@ export function OrganizationFormBody({
             </select>
           </label>
         ))}
-      {locks.top("address") ? (
-        <StaticValue label="所在地" value={form.address} />
-      ) : (
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-bold text-muted">所在地</span>
-          <input
-            value={form.address}
-            onChange={(e) => set("address", e.target.value)}
-            className={INPUT_CLASS}
-          />
-          <span className={HINT_CLASS}>
-            法人で支店などがある場合は本店の所在地を記載してください。
-            個人事業主の場合は事業主の免許証の住所を記載してください。
-          </span>
-        </label>
-      )}
+      <div className="sm:col-span-2">
+        {locks.top("address") ? (
+          <StaticValue label="所在地" value={form.address} />
+        ) : (
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-bold text-muted">所在地</span>
+            <input
+              value={form.address}
+              onChange={(e) => set("address", e.target.value)}
+              className={INPUT_CLASS}
+            />
+            <span className={HINT_CLASS}>
+              法人で支店などがある場合は本店の所在地を記載してください。
+              個人事業主の場合は事業主の免許証の住所を記載してください。
+            </span>
+          </label>
+        )}
+      </div>
       {locks.top("contact") ? (
         <StaticValue label="電話番号・連絡先" value={form.contact} />
       ) : (
@@ -488,7 +498,18 @@ export function OrganizationFormBody({
           </span>
         </label>
       )}
-      {/* 連絡先の下: 定期報告書・随時報告書の担当者名（退職の随時報告書へ自動転記） */}
+      <IntakeField
+        label="FAX"
+        value={intake.fax}
+        onChange={(v) => setIntake({ fax: v })}
+        locked={locks.intake("fax")}
+      />
+      <IntakeField
+        label="Email"
+        value={intake.email}
+        onChange={(v) => setIntake({ email: v })}
+        locked={locks.intake("email")}
+      />
       <IntakeField
         label="定期報告書・随時報告書の担当者名"
         value={intake.report_staff}
@@ -497,6 +518,11 @@ export function OrganizationFormBody({
         hint="退職＜随時報告＞の様式（3-1-2号・3-4号）の届出機関担当者欄に自動転記されます。"
         locked={locks.intake("report_staff")}
       />
+    </div>
+  );
+
+  return (
+    <>
       {/* この機関の支援責任者・支援担当者（複数可）。外国人詳細・申請一覧・ダッシュボードに表示され、
           申請一覧では担当者での絞り込みに使う。令和9年4月1日施行の省令改正に対応 */}
       <div className="flex flex-col gap-2.5 rounded-xl border border-border p-3">
@@ -561,7 +587,13 @@ export function OrganizationFormBody({
         </label>
       )}
 
-      <IntakeSection intake={intake} setIntake={setIntake} orgId={orgId} locks={locks} />
+      <IntakeSection
+        intake={intake}
+        setIntake={setIntake}
+        orgId={orgId}
+        locks={locks}
+        companyFields={companyFields}
+      />
     </>
   );
 }
@@ -572,11 +604,13 @@ function IntakeSection({
   setIntake,
   orgId,
   locks,
+  companyFields,
 }: {
   intake: OrganizationIntake;
   setIntake: (patch: Partial<OrganizationIntake>) => void;
   orgId: string | null; // 見積書の添付に使う（新規登録時は保存後に添付可）
   locks: FieldLocks;
+  companyFields?: React.ReactNode; // 会社の基本情報（名称・業種・所在地など。ここにまとめて表示）
 }) {
   const setFinancial = (i: number, patch: Partial<OrgFinancialYear>) =>
     setIntake({
@@ -605,25 +639,8 @@ function IntakeSection({
       <p className="px-3 pt-3 text-sm font-bold">申込書の情報（登録支援機関への申込書）</p>
       <div className="flex flex-col gap-2.5 p-3">
         <p className={GROUP_CLASS}>会社の情報</p>
-        <IntakeField
-          label="名称のフリガナ"
-          value={intake.kana}
-          onChange={(v) => setIntake({ kana: v })}
-          locked={locks.intake("kana")}
-        />
+        {companyFields}
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-          <IntakeField
-            label="FAX"
-            value={intake.fax}
-            onChange={(v) => setIntake({ fax: v })}
-            locked={locks.intake("fax")}
-          />
-          <IntakeField
-            label="Email"
-            value={intake.email}
-            onChange={(v) => setIntake({ email: v })}
-            locked={locks.intake("email")}
-          />
           <IntakeSelect
             label="資料のやりとり方法"
             value={intake.contact_method}
@@ -830,12 +847,22 @@ function IntakeSection({
                 onChange={(v) => setFinancial(i, { ordinary: v })}
                 locked={locks.fin(i, "ordinary")}
               />
-              <IntakeField
-                label="純損益"
-                value={row.net}
-                onChange={(v) => setFinancial(i, { net: v })}
-                locked={locks.fin(i, "net")}
-              />
+              {/* 純損益は個人事業主では記載不要のため、選択中は記入できないようにする */}
+              {intake.fiscal_kind === "個人事業主" ? (
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-bold text-muted">純損益</span>
+                  <p className="flex min-h-[44px] items-center rounded-xl bg-border/30 px-3 text-[11px] leading-tight text-muted">
+                    個人事業主は記入不要
+                  </p>
+                </div>
+              ) : (
+                <IntakeField
+                  label="純損益"
+                  value={row.net}
+                  onChange={(v) => setFinancial(i, { net: v })}
+                  locked={locks.fin(i, "net")}
+                />
+              )}
               <IntakeField
                 label="純資産"
                 value={row.assets}
