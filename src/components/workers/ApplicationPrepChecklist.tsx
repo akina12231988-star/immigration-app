@@ -1347,8 +1347,11 @@ function DocRow({
   const label = prepDocLabel(def, meta.target_reiwa, reiwaYear(todayStr()));
   const hasFile = files.length > 0;
 
-  // 書類ごとの準備状況（ステータス）。選択肢と、選択に応じた付随入力を表示する
-  const statusOptions = PREP_DOC_STATUS_OPTIONS[def.id];
+  // 書類ごとの準備状況（ステータス）。選択肢と、選択に応じた付随入力を表示する。
+  // 申請種別の指定がある選択肢（例: 認定のみの「画像を送ってもらった」）はその種別のときだけ出す
+  const statusOptions = PREP_DOC_STATUS_OPTIONS[def.id]?.filter(
+    (o) => !o.appTypes || (meta.app_type !== "" && o.appTypes.includes(meta.app_type)),
+  );
   const selectedOption = prepStatusOption(def.id, ds.status);
   const extras: PrepStatusExtra[] = [
     ...(selectedOption?.extras ?? []),

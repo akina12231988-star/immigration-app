@@ -413,6 +413,7 @@ export interface PrepDocStatusOption {
   value: string; // 保存値＝表示ラベル
   done: boolean; // 完了扱いの選択肢か
   noFile?: boolean; // true: 発行できない等でファイル添付なしでも完了扱いにする
+  appTypes?: PrepAppType[]; // この申請種別のときだけ選択肢に出す（省略 = 全種別）
   extras?: PrepStatusExtra[];
 }
 
@@ -425,6 +426,8 @@ export const PREP_DOC_STATUS_OPTIONS: Record<string, PrepDocStatusOption[]> = {
   passport: [
     { value: "写真だけ先に本人に依頼中", done: false },
     { value: "預かった", done: true, extras: [{ kind: "custody" }] },
+    // 在留資格認定は本人が海外にいるため、パスポートは画像で受け取る
+    { value: "画像を送ってもらった", done: true, appTypes: ["認定"] },
   ],
   photo: [
     { value: "本人に依頼中", done: false },
