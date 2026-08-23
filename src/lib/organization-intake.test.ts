@@ -10,12 +10,39 @@ import {
   normalizeOrganizationIntake,
   orgStaffLabel,
   flexDocsValidUntil,
+  formatHoursDecimal,
   ownedMonthlyRent,
   parseAmount,
+  parseHoursMinutes,
   perResidentCost,
   reverseLodgingCost,
   suggestedUsefulYears,
 } from "./organization-intake";
+
+describe("parseHoursMinutes", () => {
+  it("「173時間20分」を小数の時間に直す", () => {
+    expect(parseHoursMinutes("173時間20分")).toBeCloseTo(173.333, 2);
+    expect(parseHoursMinutes("173:20")).toBeCloseTo(173.333, 2);
+    expect(parseHoursMinutes("１７３：２０")).toBeCloseTo(173.333, 2);
+    expect(parseHoursMinutes("173時間")).toBe(173);
+  });
+
+  it("小数のままの入力もそのまま読む", () => {
+    expect(parseHoursMinutes("173.3")).toBe(173.3);
+    expect(parseHoursMinutes("2080")).toBe(2080);
+  });
+
+  it("時間と読めなければ null", () => {
+    expect(parseHoursMinutes("")).toBeNull();
+    expect(parseHoursMinutes("173時間70分")).toBeNull();
+    expect(parseHoursMinutes("約173時間")).toBeNull();
+  });
+
+  it("表示は小数1桁に丸める", () => {
+    expect(formatHoursDecimal(173 + 20 / 60)).toBe("173.3");
+    expect(formatHoursDecimal(173)).toBe("173");
+  });
+});
 
 describe("suggestedUsefulYears", () => {
   it("新品は木造住宅の法定耐用年数22年", () => {

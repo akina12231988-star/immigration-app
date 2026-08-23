@@ -27,7 +27,12 @@ import {
   normalizeTimeInput,
 } from "@/lib/posting-sheet";
 import { calcWageDetail, emptyWageDetail, formatYen } from "@/lib/wage-calc";
-import { flexDocsValidUntil, parseAmount, perResidentCost } from "@/lib/organization-intake";
+import {
+  flexDocsValidUntil,
+  parseAmount,
+  parseHoursMinutes,
+  perResidentCost,
+} from "@/lib/organization-intake";
 import { todayStr } from "@/lib/ssw/calc";
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
 import { listOrganizationFiles } from "@/lib/supabase/queries/organization-files";
@@ -75,7 +80,7 @@ function orgAnnualHours(org?: Organization): number {
   const annual = parseAmount(intake?.posting_annual_hours ?? "");
   if (annual) return annual;
   if (org?.annual_work_hours) return org.annual_work_hours;
-  const monthly = parseAmount(intake?.posting_monthly_hours ?? "");
+  const monthly = parseHoursMinutes(intake?.posting_monthly_hours ?? "");
   return monthly ? Math.round(monthly * 12) : 0;
 }
 

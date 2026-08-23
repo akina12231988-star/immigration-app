@@ -24,7 +24,9 @@ import {
   emptySalesItem,
   digitsOnly,
   flexDocsValidUntil,
+  formatHoursDecimal,
   formatYen,
+  parseHoursMinutes,
   lodgingContractKind,
   normalizeOrganizationIntake,
   ownedMonthlyRent,
@@ -977,18 +979,24 @@ function IntakeSection({
         />
         {/* 月平均と年間はどちらかを入れると片方が自動で入る（月平均×12＝年間） */}
         <div className="grid grid-cols-2 gap-2.5">
+          {/* 「173時間20分」の形で入れても小数（173.3）に自動で直して計算に使う */}
           <IntakeField
             label="月平均所定労働時間数"
             value={intake.posting_monthly_hours}
             onChange={(v) => {
-              const n = parseAmount(v);
+              const n = parseHoursMinutes(v);
               setIntake({
                 posting_monthly_hours: v,
                 posting_annual_hours:
                   n != null ? String(Math.round(n * 12)) : intake.posting_annual_hours,
               });
             }}
-            placeholder="例: 173.3"
+            placeholder="例: 173時間20分／173.3"
+            hint={(() => {
+              const n = parseHoursMinutes(intake.posting_monthly_hours);
+              if (n == null) return "「173時間20分」「173:20」「173.3」のどの形でも入力できます。";
+              return `＝ ${formatHoursDecimal(n)}時間（年間 ${Math.round(n * 12)}時間）として自動で計算します。`;
+            })()}
             locked={locks.intake("posting_monthly_hours")}
           />
           <IntakeField

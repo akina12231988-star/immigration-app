@@ -278,6 +278,32 @@ export function ownedMonthlyRent(
   return Math.round((total + equipment) / (years * 12));
 }
 
+// 労働時間数の入力を小数の時間に直す。
+// 「173時間20分」「173:20」「173.3」「173時間」のどの形でも入力できるようにする。
+// 時間と読めなければ null
+export function parseHoursMinutes(v: string): number | null {
+  const half = v
+    .trim()
+    .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+    .replace(/[：]/g, ":")
+    .replace(/[．]/g, ".");
+  if (!half) return null;
+  const hm = half.match(/^(\d+)\s*(?:時間|:)\s*(\d{1,2})\s*分?$/);
+  if (hm) {
+    const m = Number(hm[2]);
+    if (m > 59) return null;
+    return Number(hm[1]) + m / 60;
+  }
+  const hOnly = half.match(/^(\d+(?:\.\d+)?)\s*(?:時間)?$/);
+  if (hOnly) return Number(hOnly[1]);
+  return null;
+}
+
+// 小数の時間の表示（例: 173.3。割り切れないときは小数1桁に丸める）
+export function formatHoursDecimal(n: number): string {
+  return String(Math.round(n * 10) / 10);
+}
+
 // 木造住宅の法定耐用年数（寮はほとんど木造のため、目安の計算に使う。直すこともできる）
 export const WOODEN_USEFUL_YEARS = 22;
 
