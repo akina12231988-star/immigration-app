@@ -23,6 +23,15 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-08-23",
+    title: "申請準備のTODOを外国人の名前で検索できるようになりました",
+    where: "申請準備 ＞ 申請準備のTODO",
+    href: "/workers/renewals",
+    items: [
+      "書類担当者の絞り込みの横に検索欄が付きました。外国人の名前の一部（またはTODO番号）を入れると、未着手・進行中・完了の各一覧がその場で絞り込まれます。",
+    ],
+  },
+  {
+    date: "2026-08-23",
     title: "試験の申込のTODOで、申込に必要なデータの反映・アプリケーションNo.の記録・結果確認のアラートができるようになりました",
     where: "TODO ＞ 試験の申込",
     href: "/todos/exams",

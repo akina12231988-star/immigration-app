@@ -123,6 +123,8 @@ export function TodosClient({
   const [prepTantou, setPrepTantou] = useState<Record<string, string>>({});
   // 書類担当者での絞り込み（'' = すべて）
   const [tantouFilter, setTantouFilter] = useState("");
+  // 外国人の名前・TODO番号での検索（申請準備のTODOで使う）
+  const [nameFilter, setNameFilter] = useState("");
 
   // そのTODOの書類担当者（番号の書き方の揺れは正規化して突き合わせ。無ければその人の担当者）
   const tantouOf = (t: TodoRow): string => {
@@ -653,9 +655,19 @@ export function TodosClient({
         </Card>
       )}
 
-      {/* 書類担当者での絞り込み（申請準備のTODOのみ） */}
+      {/* 外国人の名前・書類担当者での絞り込み（申請準備のTODOのみ） */}
       {kind === "申請準備" && !loading && (
         <div className="flex flex-wrap items-center gap-2">
+          <label className="flex min-w-[14rem] flex-1 items-center gap-1.5 text-xs font-bold text-muted">
+            🔍
+            <input
+              value={nameFilter}
+              onChange={(e) => setNameFilter(e.target.value)}
+              placeholder="外国人の名前・TODO番号で検索"
+              aria-label="外国人の名前・TODO番号で検索"
+              className="min-h-[36px] w-full rounded-lg border border-border bg-surface px-2.5 text-sm focus:border-brand focus:outline-none"
+            />
+          </label>
           <label className="flex items-center gap-1.5 text-xs font-bold text-muted">
             書類担当者で絞り込み
             <select
@@ -682,10 +694,20 @@ export function TodosClient({
         <Card className="p-6 text-center text-sm text-muted">読み込み中…</Card>
       ) : (
         TODO_STAGES.map((stage) => {
+          const q = nameFilter.trim().toLowerCase();
           const rows = kindTodos
             .filter((t) => stageOfStatus(t.status, kindOptions) === stage)
             .filter(
               (t) => kind !== "申請準備" || !tantouFilter || tantouOf(t) === tantouFilter,
+            )
+            // 外国人の名前・TODO番号の部分一致で検索（申請準備のTODOのみ）
+            .filter(
+              (t) =>
+                kind !== "申請準備" ||
+                !q ||
+                (t.worker_name ?? "").toLowerCase().includes(q) ||
+                (normalizeTodoKey(q) !== "" &&
+                  normalizeTodoKey(t.todo_no).includes(normalizeTodoKey(q))),
             );
           return (
             <Card key={stage} className="p-4">
