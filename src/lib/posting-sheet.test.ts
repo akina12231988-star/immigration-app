@@ -201,4 +201,24 @@ describe("postingSheetText", () => {
     expect(text).not.toContain("必要条件");
     expect(text).toContain("職種：耕種農業");
   });
+
+  it("源泉所得税・通信費は数字なら円、なし・無しはそのまま出す", () => {
+    const withNumbers = postingSheetText(POSTING, {
+      ...emptyPostingSheet(),
+      income_tax: "3000",
+      communication_cost: "3000",
+      fixed_overtime: "20000",
+    });
+    expect(withNumbers).toContain("源泉所得税（扶養0人として）：3000円");
+    expect(withNumbers).toContain("通信費：約3000円");
+    expect(withNumbers).toContain("固定残業代：月額20000円");
+
+    const withText = postingSheetText(POSTING, {
+      ...emptyPostingSheet(),
+      income_tax: "なし",
+      communication_cost: "無し",
+    });
+    expect(withText).toContain("源泉所得税（扶養0人として）：なし");
+    expect(withText).toContain("通信費：無し");
+  });
 });

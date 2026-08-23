@@ -9,10 +9,59 @@ import {
   lodgingContractKind,
   normalizeOrganizationIntake,
   orgStaffLabel,
+  flexDocsValidUntil,
   ownedMonthlyRent,
   parseAmount,
   perResidentCost,
+  reverseLodgingCost,
+  suggestedUsefulYears,
 } from "./organization-intake";
+
+describe("suggestedUsefulYears", () => {
+  it("新品は木造住宅の法定耐用年数22年", () => {
+    expect(suggestedUsefulYears("新品", "")).toBe(22);
+  });
+
+  it("中古は簡便法（築年数から計算・年未満切捨て）", () => {
+    // 一部経過: (22−10)＋10×0.2 = 14
+    expect(suggestedUsefulYears("中古", "10")).toBe(14);
+    // 全部経過: 22×0.2 = 4.4 → 4
+    expect(suggestedUsefulYears("中古", "25")).toBe(4);
+  });
+
+  it("中古で築年数が未入力なら出さない・未選択も出さない", () => {
+    expect(suggestedUsefulYears("中古", "")).toBeNull();
+    expect(suggestedUsefulYears("", "10")).toBeNull();
+  });
+});
+
+describe("reverseLodgingCost", () => {
+  it("家賃×耐用年数×12でかかった費用の想定額を逆算する", () => {
+    expect(reverseLodgingCost("100000", "15")).toBe(18_000_000);
+    expect(reverseLodgingCost("100,000円", "22")).toBe(26_400_000);
+  });
+
+  it("家賃か耐用年数が無ければ出さない", () => {
+    expect(reverseLodgingCost("", "15")).toBeNull();
+    expect(reverseLodgingCost("100000", "")).toBeNull();
+  });
+});
+
+describe("flexDocsValidUntil", () => {
+  it("開始日から1年間（開始日＋1年−1日）", () => {
+    expect(flexDocsValidUntil("2026-04-01")).toBe("2027-03-31");
+    expect(flexDocsValidUntil("2026-01-01")).toBe("2026-12-31");
+  });
+
+  it("うるう日も正しく扱う", () => {
+    expect(flexDocsValidUntil("2028-02-29")).toBe("2029-02-28");
+  });
+
+  it("日付と読めなければ空", () => {
+    expect(flexDocsValidUntil("")).toBe("");
+    expect(flexDocsValidUntil("2026/04/01")).toBe("");
+  });
+});
 
 describe("normalizeOrganizationIntake", () => {
   it("空のjsonb（{}）から全キーを補完する", () => {

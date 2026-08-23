@@ -96,6 +96,7 @@ export interface PostingSheet {
   employment_insurance: string; // 雇用保険料（適用 / 適用なし）
   housing_cost: string; // 居住費（円）
   housing_kind: string; // 自己所有物件 / 賃貸物件
+  housing_lodging_id: string; // 所属機関の寮・宿泊物件から反映した場合の寮のid
   housing_note: string; // 居住費の説明
   utility_cost: string; // 水道光熱費（約◯円）
   utility_kind: string; // 実費 / 固定
