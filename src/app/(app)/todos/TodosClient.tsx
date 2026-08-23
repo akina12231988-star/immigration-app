@@ -99,8 +99,13 @@ export function TodosClient({
   const [mailings, setMailings] = useState<MailingSummary[]>([]);
   // 申請一覧の「申請前＜準備中＞」に出ている人（申請準備のTODOにも新着として表示する）
   const [prepWorkers, setPrepWorkers] = useState<
-    { workerId: string; name: string; todoNo: string; orgName: string }[]
+    { workerId: string; name: string; todoNo: string; orgName: string; situation: string }[]
   >([]);
+
+  // 取り込むTODOの内容。只今の状況（準備の内容）から、申請内容の候補と同じ表記にそろえる
+  const prepTitleOf = (situation: string): string =>
+    APPLICATION_CONTENT_CHOICES.find((c) => situation.includes(c.prepSituation))?.label ??
+    "";
   const [kind, setKind] = useState<TodoKind>(fixedKind ?? "申請準備");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -257,7 +262,7 @@ export function TodosClient({
         void supabase
           .from("workers")
           .select(
-            "id, name, status, residence_expiry_date, residence_renewal_status, application_prep_kind, residence_renewal_todo, organizations(name)",
+            "id, name, status, residence_expiry_date, residence_renewal_status, application_prep_kind, residence_renewal_todo, current_situation, organizations(name)",
           )
           .eq("residence_renewal_status", "準備中")
           .then(({ data: pw, error: pwErr }) => {
@@ -275,6 +280,7 @@ export function TodosClient({
                 residence_renewal_status: string;
                 application_prep_kind: string;
                 residence_renewal_todo: string | null;
+                current_situation: string | null;
                 organizations: { name: string } | null;
               }[]) ?? [];
             const today = todayStr();
@@ -288,6 +294,7 @@ export function TodosClient({
                   name: w.name,
                   todoNo: w.residence_renewal_todo ?? "",
                   orgName: w.organizations?.name ?? "",
+                  situation: w.current_situation ?? "",
                 })),
             );
           });
@@ -382,7 +389,7 @@ export function TodosClient({
         await insertTodo(createClient(), {
           kind: "申請準備",
           worker_id: w.workerId,
-          title: "申請準備",
+          title: prepTitleOf(w.situation) || "申請準備",
           todo_no: w.todoNo || undefined,
         }).catch(() => undefined);
       }
@@ -552,7 +559,7 @@ export function TodosClient({
                       await insertTodo(createClient(), {
                         kind: "申請準備",
                         worker_id: w.workerId,
-                        title: "申請準備",
+                        title: prepTitleOf(w.situation) || "申請準備",
                         todo_no: w.todoNo || undefined,
                       }).catch(() => undefined);
                     }
@@ -591,7 +598,7 @@ export function TodosClient({
                         await insertTodo(createClient(), {
                           kind: "申請準備",
                           worker_id: w.workerId,
-                          title: "申請準備",
+                          title: prepTitleOf(w.situation) || "申請準備",
                           todo_no: w.todoNo || undefined,
                         });
                       })
