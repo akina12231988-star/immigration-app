@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { ChevronRight, ClipboardList, Copy, Megaphone, Pencil, Share2, Trash2, Users } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Modal } from "@/components/ui/Modal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { PostingForm } from "@/components/postings/PostingForm";
 import { PostingStatusBadge } from "@/components/postings/PostingStatusBadge";
@@ -103,6 +102,22 @@ export function PostingDetail({
         </p>
       )}
 
+      {/* 編集: 鉛筆を押すと、今表示している内容をこの場で直接編集できる（モーダルは廃止） */}
+      {editOpen ? (
+        <Card className="p-4">
+          <p className="mb-2 text-sm font-bold text-muted">
+            求人を編集（内容を直して「更新する」を押してください）
+          </p>
+          <PostingForm
+            initial={posting}
+            organizations={organizations}
+            submitLabel="更新する"
+            onSubmit={handleUpdate}
+            onCancel={() => setEditOpen(false)}
+          />
+        </Card>
+      ) : (
+        <>
       <Card className="p-4">
         <div className="mb-2 flex items-start justify-between gap-2">
           <div className="min-w-0">
@@ -253,6 +268,8 @@ export function PostingDetail({
           <PostingFileAttachments postingId={posting.id} canEdit={canEdit} />
         </div>
       </Card>
+        </>
+      )}
 
       <Button
         variant="primary"
@@ -312,18 +329,6 @@ export function PostingDetail({
         <Megaphone size={13} className="mt-0.5 shrink-0" />
         求人管理簿は厚生労働省の記載事項に沿って記録しています。掲載用の会社名・住所は別途「Facebook掲載用」欄で設定できます。
       </p>
-
-      {editOpen && (
-        <Modal open title="求人を編集" onClose={() => setEditOpen(false)}>
-          <PostingForm
-            initial={posting}
-            organizations={organizations}
-            submitLabel="更新する"
-            onSubmit={handleUpdate}
-            onCancel={() => setEditOpen(false)}
-          />
-        </Modal>
-      )}
 
       {outputOpen && (
         <PostingOutputDialog

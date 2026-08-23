@@ -125,9 +125,28 @@ export function PostingForm({
       });
   };
 
-  // 開いた時点の所属機関（先頭の会社）の分も反映しておく
+  // 開いた時点の所属機関（先頭の会社）の分も反映しておく。
+  // 求人受理番号は「令和年度-連番」（例: 8-1）で、今年度（4月始まり）の
+  // 既存の連番の続きを自動で入れる（直すこともできる）
   useEffect(() => {
-    if (!initial) applyPrevPosting(form.organization_id);
+    if (initial) return;
+    applyPrevPosting(form.organization_id);
+    void createClient()
+      .from("job_postings")
+      .select("acceptance_no")
+      .then(({ data }) => {
+        const now = new Date();
+        // 4月始まりの年度に直してから令和年に変換する
+        const fiscal = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+        const reiwa = fiscal.getFullYear() - 2018;
+        let max = 0;
+        for (const r of (data as { acceptance_no: string | null }[] | null) ?? []) {
+          const m = (r.acceptance_no ?? "").trim().match(new RegExp(`^${reiwa}-(\\d+)$`));
+          if (m) max = Math.max(max, Number(m[1]));
+        }
+        const next = `${reiwa}-${max + 1}`;
+        setForm((f) => (f.acceptance_no ? f : { ...f, acceptance_no: next }));
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -198,7 +217,7 @@ export function PostingForm({
             </p>
           );
         })()}
-        <Field label="求人受理番号（求人管理簿・労働局への提出で使用）">
+        <Field label="求人受理番号（今年度の次の番号を自動で入れます・直せます。求人管理簿・労働局への提出で使用）">
           <input
             value={form.acceptance_no}
             onChange={(e) => set("acceptance_no", e.target.value)}
