@@ -25,6 +25,7 @@ export function emptyPostingSheet(): PostingSheet {
     flexible_hours: "",
     break_minutes: "",
     overtime: "",
+    fixed_overtime: "",
     holidays: [],
     holiday_note: "",
     allowances: [],
@@ -53,6 +54,60 @@ export function emptyPostingSheet(): PostingSheet {
     requirements: "",
     other_requirements: "",
   };
+}
+
+// 時刻入力を「8:00」の形にそろえる。
+// 「800」「0830」「8」「８：００」のような入力も自動で変換する。時刻と読めなければそのまま返す
+export function normalizeTimeInput(v: string): string {
+  const half = v
+    .trim()
+    .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+    .replace(/[：]/g, ":");
+  if (!half) return "";
+  let hour: number;
+  let minute: number;
+  const colon = half.match(/^(\d{1,2}):(\d{1,2})$/);
+  const digits = half.match(/^(\d{1,4})$/);
+  if (colon) {
+    hour = Number(colon[1]);
+    minute = Number(colon[2]);
+  } else if (digits) {
+    const d = digits[1];
+    if (d.length <= 2) {
+      // 「8」「17」→ 8:00・17:00
+      hour = Number(d);
+      minute = 0;
+    } else {
+      // 「800」「1730」→ 後ろ2桁を分にする
+      hour = Number(d.slice(0, -2));
+      minute = Number(d.slice(-2));
+    }
+  } else {
+    return v;
+  }
+  // 深夜勤務の「25:00」なども許容する
+  if (hour > 29 || minute > 59) return v;
+  return `${hour}:${String(minute).padStart(2, "0")}`;
+}
+
+// 「8:00」を0時からの分に直す。読めなければ null
+function timeToMinutes(v: string): number | null {
+  const m = normalizeTimeInput(v).match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  return Number(m[1]) * 60 + Number(m[2]);
+}
+
+// 始業・終業・休憩（分）から1日の所定労働時間を出す（例: 「7時間30分」）。
+// 計算できないときは空を返す。終業が始業より前なら夜勤（日またぎ）として扱う
+export function dailyWorkHours(start: string, end: string, breakMinutes: string): string {
+  const s = timeToMinutes(start);
+  const e = timeToMinutes(end);
+  if (s === null || e === null || s === e) return "";
+  const span = (e > s ? e - s : e + 24 * 60 - s) - (Number(breakMinutes) || 0);
+  if (span <= 0) return "";
+  const h = Math.floor(span / 60);
+  const m = span % 60;
+  return m > 0 ? `${h}時間${m}分` : `${h}時間`;
 }
 
 function str(v: unknown, fallback = ""): string {
@@ -163,6 +218,7 @@ export function postingSheetText(
     line("変形労働制", sheet.flexible_hours),
     line("休憩", sheet.break_minutes ? `${sheet.break_minutes}分` : ""),
     line("残業", sheet.overtime),
+    line("固定残業代", sheet.fixed_overtime ? `月額${sheet.fixed_overtime}円` : ""),
     line("休日", holidayText(sheet)),
     "",
     "■ 給与",

@@ -918,6 +918,73 @@ function IntakeSection({
           </label>
         )}
 
+        <p className={GROUP_CLASS}>求人票に記載する内容</p>
+        <p className={HINT_CLASS}>
+          この会社の求人を登録するときに、求人票の欄へ自動で反映されます（毎回同じ値を入れ直さなくて済みます）。
+        </p>
+        <div className="grid grid-cols-2 gap-2.5">
+          <IntakeField
+            label="源泉所得税（扶養0人・円）"
+            value={intake.posting_gensen}
+            onChange={(v) => setIntake({ posting_gensen: digitsOnly(v) })}
+            placeholder="例: 3000"
+            locked={locks.intake("posting_gensen")}
+          />
+          <IntakeField
+            label="通信費（約・円）"
+            value={intake.posting_comm_cost}
+            onChange={(v) => setIntake({ posting_comm_cost: digitsOnly(v) })}
+            placeholder="例: 3000"
+            locked={locks.intake("posting_comm_cost")}
+          />
+          <IntakeField
+            label="水道光熱費（約・円）"
+            value={intake.posting_utility_cost}
+            onChange={(v) => setIntake({ posting_utility_cost: digitsOnly(v) })}
+            placeholder="例: 8000"
+            locked={locks.intake("posting_utility_cost")}
+          />
+          {locks.intake("posting_utility_kind") ? (
+            <StaticValue label="水道光熱費の徴収" value={intake.posting_utility_kind} />
+          ) : (
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-bold text-muted">水道光熱費の徴収</span>
+              <select
+                value={intake.posting_utility_kind}
+                onChange={(e) => setIntake({ posting_utility_kind: e.target.value })}
+                className={INPUT_CLASS}
+              >
+                <option value="">—</option>
+                <option value="実費">実費</option>
+                <option value="固定">固定</option>
+              </select>
+            </label>
+          )}
+        </div>
+
+        <p className={GROUP_CLASS}>変形労働時間制（1年単位）の書類</p>
+        <p className={HINT_CLASS}>
+          1年単位の変形労働時間制をとっている会社は、年間カレンダーと労使協定書（有効期限内のもの）をここに添付してください。求人票の入力画面から確認できます。
+        </p>
+        {orgId ? (
+          <>
+            <OrgFileAttachments
+              orgId={orgId}
+              kind="年間カレンダー"
+              addLabel="年間カレンダーを追加（画像・PDF）"
+            />
+            <OrgFileAttachments
+              orgId={orgId}
+              kind="労使協定書"
+              addLabel="労使協定書を追加（画像・PDF）"
+            />
+          </>
+        ) : (
+          <p className={HINT_CLASS}>
+            年間カレンダー・労使協定書は、会社・機関を登録したあとに編集画面から添付できます。
+          </p>
+        )}
+
         <p className={GROUP_CLASS}>見積書の添付（複数可）</p>
         {orgId ? (
           <OrgFileAttachments orgId={orgId} kind="見積書" addLabel="見積書を追加（画像・PDF）" />

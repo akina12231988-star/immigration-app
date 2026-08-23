@@ -86,6 +86,7 @@ export interface PostingSheet {
   flexible_hours: string; // 変形労働制（なし / 1か月単位 など）
   break_minutes: string; // 休憩（分）
   overtime: string; // 残業（有 / 無）
+  fixed_overtime: string; // 固定残業代（円・月額。無ければ空）
   holidays: string[]; // 休日（曜日・祝祭日）
   holiday_note: string; // 休日のその他
   allowances: PostingAllowance[]; // 手当

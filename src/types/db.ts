@@ -186,6 +186,10 @@ export interface OrganizationIntake {
   fiscal_kind: string; // 決算情報の区分（個人事業主 / 法人）
   support_fee: string; // 毎月の支援代（月額）
   posting_note: string; // 求人で必須としている他条件（求人情報で注意喚起表示）
+  posting_gensen: string; // 求人票に記載する源泉所得税（扶養0人・円。求人票へ自動反映）
+  posting_utility_cost: string; // 求人票に記載する水道光熱費（約・円）
+  posting_utility_kind: string; // 水道光熱費の徴収（'' / 実費 / 固定）
+  posting_comm_cost: string; // 求人票に記載する通信費（約・円）
   contact_method: string; // 資料のやりとり方法（FAX / グループLINE / email）
   health_insurance: string; // 保険（国民健康保険 / 社会保険 / その他）
   pension: string; // 年金（国民年金 / 厚生年金）
