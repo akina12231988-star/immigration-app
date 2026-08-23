@@ -36,11 +36,20 @@ export interface PrepChecklistMeta {
 }
 
 // 合格証の組み合わせ。申請内容で必要な合格証が変わる
-export type PrepCertPattern = "専門級" | "別分野・専門級" | "専門外・日本語" | "技能評価調書";
+export type PrepCertPattern =
+  | "専門級"
+  | "別分野・専門級"
+  | "専門外・日本語"
+  | "専門外・技能評価調書"
+  | "技能評価調書";
 export const PREP_CERT_PATTERNS: { value: PrepCertPattern; label: string }[] = [
   { value: "専門級", label: "専門級の合格証あり（同じ分野で就職）→ 専門級のみ" },
   { value: "別分野・専門級", label: "専門級以外の分野で就職（専門級あり）→ 専門外＋専門級" },
   { value: "専門外・日本語", label: "専門級の合格証なし → 専門外＋日本語の合格証" },
+  {
+    value: "専門外・技能評価調書",
+    label: "専門級以外の分野で就職（技能評価調書あり）→ 専門外＋技能評価調書",
+  },
   { value: "技能評価調書", label: "専門級なし・技能実習2号を良好修了 → 技能評価調書" },
 ];
 
@@ -245,7 +254,7 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
     id: "cert_senmongai",
     label: "専門外の合格証",
     appliesTo: ["変更", "認定", "特定活動"],
-    certPatterns: ["別分野・専門級", "専門外・日本語"],
+    certPatterns: ["別分野・専門級", "専門外・日本語", "専門外・技能評価調書"],
     note: "専門級以外の分野で就職する場合に必要",
     source: { kind: "doc", docKey: "cert_senmongai" },
     manageInline: false,
@@ -255,7 +264,7 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
     id: "hyoka_chosho",
     label: "技能評価調書",
     appliesTo: ["変更", "認定", "特定活動"],
-    certPatterns: ["技能評価調書"],
+    certPatterns: ["技能評価調書", "専門外・技能評価調書"],
     note: "専門級の合格証はないが、技能実習2号まで良好修了した場合に必要",
     source: { kind: "doc", docKey: "prep_hyoka_chosho" },
     manageInline: true,
@@ -413,6 +422,7 @@ export interface PrepDocStatusOption {
   value: string; // 保存値＝表示ラベル
   done: boolean; // 完了扱いの選択肢か
   noFile?: boolean; // true: 発行できない等でファイル添付なしでも完了扱いにする
+  appTypes?: PrepAppType[]; // この申請種別のときだけ選択肢に出す（省略 = 全種別）
   extras?: PrepStatusExtra[];
 }
 
@@ -425,6 +435,8 @@ export const PREP_DOC_STATUS_OPTIONS: Record<string, PrepDocStatusOption[]> = {
   passport: [
     { value: "写真だけ先に本人に依頼中", done: false },
     { value: "預かった", done: true, extras: [{ kind: "custody" }] },
+    // 在留資格認定は本人が海外にいるため、パスポートは画像で受け取る
+    { value: "画像を送ってもらった", done: true, appTypes: ["認定"] },
   ],
   photo: [
     { value: "本人に依頼中", done: false },

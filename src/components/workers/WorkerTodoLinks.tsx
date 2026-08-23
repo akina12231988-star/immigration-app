@@ -89,7 +89,12 @@ export function WorkerTodoLinks({ workerId }: { workerId: string }) {
           {todos.map((t) => (
             <Link
               key={t.id}
-              href={KIND_HREF[t.kind] ?? "/todos"}
+              // 申請準備は開いた先でこの人の詳細（📋 必要な書類・準備の詳細）を自動で開く
+              href={
+                t.kind === "申請準備"
+                  ? `/workers/renewals?openPrep=${workerId}`
+                  : (KIND_HREF[t.kind] ?? "/todos")
+              }
               className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-background px-3 py-2 text-xs hover:border-brand"
             >
               <span className="shrink-0 rounded-full bg-brand/10 px-2 py-0.5 text-[10px] font-bold text-brand">

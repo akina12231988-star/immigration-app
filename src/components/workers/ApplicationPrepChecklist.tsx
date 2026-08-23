@@ -61,7 +61,12 @@ import { dbErrorMessage } from "@/lib/errors";
 import { listActiveCustodyNoByWorker } from "@/lib/supabase/queries/custody";
 import { formatStorageNo } from "@/lib/custody";
 import { getHealthCheckDetail } from "@/lib/supabase/queries/health-check";
-import { EMPTY_HEALTH_DETAIL, isHealthDetailComplete, type HealthCheckDetail } from "@/lib/health-check";
+import {
+  EMPTY_HEALTH_DETAIL,
+  healthCheckValidUntil,
+  isHealthDetailComplete,
+  type HealthCheckDetail,
+} from "@/lib/health-check";
 import {
   clearOnboardingDocFile,
   getOnboardingDocDownloadUrl,
@@ -145,6 +150,14 @@ export function ApplicationPrepChecklist({
   const [newTodo, setNewTodo] = useState("");
   const [creating, setCreating] = useState(false);
   const [healthDetail, setHealthDetail] = useState<HealthCheckDetail>(EMPTY_HEALTH_DETAIL);
+  // 健康診断の受診日（workers.health_check_on）。この画面から入力・修正できる
+  const [healthOn, setHealthOn] = useState<string | null>(healthCheckOn);
+  const saveHealthOn = (v: string | null) => {
+    setHealthOn(v);
+    void updateWorker(createClient(), workerId, { health_check_on: v }).catch((err) =>
+      setError(err instanceof Error ? err.message : "受診日の保存に失敗しました"),
+    );
+  };
   const [addresses, setAddresses] = useState<WorkerAddress[]>([]);
   const [docs, setDocs] = useState<OnboardingDocumentRow[]>([]);
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -307,7 +320,12 @@ export function ApplicationPrepChecklist({
     patch: Partial<
       Pick<
         PrepChecklistRow,
-        "joint_kind" | "joint_worker_id" | "joint_todo_no" | "joint_lead" | "sign_status"
+        | "joint_kind"
+        | "joint_worker_id"
+        | "joint_todo_no"
+        | "joint_lead"
+        | "sign_status"
+        | "planned_app_on"
       >
     >,
   ) {
@@ -375,7 +393,7 @@ export function ApplicationPrepChecklist({
   const healthComplete = isHealthDetailComplete(
     healthDetail,
     filledDocKeys.has("kenshin"),
-    healthCheckOn,
+    healthOn,
     today,
   );
   // 完了判定は「添付＋準備状況が完了」の両方（ステータスの無い書類は添付のみ）
@@ -794,13 +812,10 @@ export function ApplicationPrepChecklist({
             ))}
           </div>
         )}
+        {/* 追加フォームはTODO番号がまだ無いときだけ出す（1人1番号が基本。
+            間違えて登録した番号は上のチップの🗑で削除してから登録し直す） */}
         {canEdit ? (
-          current?.joint_kind === "単独" ? (
-            /* 単独申請の場合はリストを追加しない（連名にする場合は下の選択を変える） */
-            <p className="text-[11px] text-muted">
-              単独申請のため、リストの追加はありません。
-            </p>
-          ) : (
+          lists.length === 0 && (
             <div className="flex gap-2">
               <input
                 value={newTodo}
@@ -826,6 +841,7 @@ export function ApplicationPrepChecklist({
         {current != null && (
           <JointApplicationField
             workerId={workerId}
+            workerName={workerRow?.name ?? ""}
             row={current}
             canEdit={canEdit}
             onChange={(patch) => void saveExtras(patch)}
@@ -1166,6 +1182,10 @@ export function ApplicationPrepChecklist({
                   busy={busyKey != null && (isPhoto ? busyKey === "photo" : busyKey.startsWith(key ?? " "))}
                   ds={{ ...EMPTY_PREP_DOC_STATUS, ...(docStatuses[item.def.id] ?? {}) }}
                   custodyNo={custodyNo}
+                  healthOn={healthOn}
+                  plannedAppOn={current?.planned_app_on ?? null}
+                  onSaveHealthOn={saveHealthOn}
+                  onSavePlannedAppOn={(v) => void saveExtras({ planned_app_on: v })}
                   onPatchStatus={(patch, save) => patchDocStatus(item.def.id, patch, save)}
                   onAttach={() => startAttach(item.def)}
                   onDropFiles={(files) => void dropAttach(item.def, files[0])}
@@ -1288,6 +1308,10 @@ function DocRow({
   busy,
   ds,
   custodyNo,
+  healthOn = null,
+  plannedAppOn = null,
+  onSaveHealthOn,
+  onSavePlannedAppOn,
   onPatchStatus,
   onAttach,
   onDropFiles,
@@ -1306,6 +1330,10 @@ function DocRow({
   busy: boolean;
   ds: PrepDocStatusInput;
   custodyNo: number | null;
+  healthOn?: string | null; // 健康診断の受診日（健康診断書の行で使う）
+  plannedAppOn?: string | null; // 申請予定日（健康診断書の有効チェックに使う）
+  onSaveHealthOn?: (v: string | null) => void;
+  onSavePlannedAppOn?: (v: string | null) => void;
   onPatchStatus: (patch: Partial<PrepDocStatusInput>, save?: boolean) => void;
   onAttach: () => void;
   onDropFiles: (files: FileList) => void;
@@ -1319,8 +1347,11 @@ function DocRow({
   const label = prepDocLabel(def, meta.target_reiwa, reiwaYear(todayStr()));
   const hasFile = files.length > 0;
 
-  // 書類ごとの準備状況（ステータス）。選択肢と、選択に応じた付随入力を表示する
-  const statusOptions = PREP_DOC_STATUS_OPTIONS[def.id];
+  // 書類ごとの準備状況（ステータス）。選択肢と、選択に応じた付随入力を表示する。
+  // 申請種別の指定がある選択肢（例: 認定のみの「画像を送ってもらった」）はその種別のときだけ出す
+  const statusOptions = PREP_DOC_STATUS_OPTIONS[def.id]?.filter(
+    (o) => !o.appTypes || (meta.app_type !== "" && o.appTypes.includes(meta.app_type)),
+  );
   const selectedOption = prepStatusOption(def.id, ds.status);
   const extras: PrepStatusExtra[] = [
     ...(selectedOption?.extras ?? []),
@@ -1434,13 +1465,64 @@ function DocRow({
 
       {/* 健康診断書: 様式・受診項目・就労可の後日結果は別ページで管理 */}
       {def.source.kind === "health" && (
-        <Link
-          href={`/workers/${workerId}/health-check`}
-          className="ml-[18px] mt-1.5 inline-flex items-center gap-1 text-[11px] font-bold text-brand hover:underline"
-        >
-          <ExternalLink size={11} />
-          受診項目・就労可の詳細を確認/入力
-        </Link>
+        <div className="ml-[18px] mt-1.5 space-y-1.5">
+          <Link
+            href={`/workers/${workerId}/health-check`}
+            className="inline-flex items-center gap-1 text-[11px] font-bold text-brand hover:underline"
+          >
+            <ExternalLink size={11} />
+            受診項目・就労可の詳細を確認/入力
+          </Link>
+          {/* 受診日から1年後まで使用できる。申請予定日に対して使えるかをその場でチェックする */}
+          <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-muted">
+            <label className="flex items-center gap-1.5">
+              受診日
+              <input
+                type="date"
+                value={healthOn ?? ""}
+                disabled={!canEdit}
+                onChange={(e) => onSaveHealthOn?.(e.target.value || null)}
+                className="min-h-[32px] rounded-lg border border-border bg-surface px-1.5 text-xs focus:border-brand focus:outline-none"
+              />
+            </label>
+            <label className="flex items-center gap-1.5">
+              申請予定日
+              <input
+                type="date"
+                value={plannedAppOn ?? ""}
+                disabled={!canEdit}
+                onChange={(e) => onSavePlannedAppOn?.(e.target.value || null)}
+                className="min-h-[32px] rounded-lg border border-border bg-surface px-1.5 text-xs focus:border-brand focus:outline-none"
+              />
+            </label>
+          </div>
+          {(() => {
+            const until = healthCheckValidUntil(healthOn);
+            if (!until) {
+              return (
+                <p className="text-[11px] leading-relaxed text-muted">
+                  受診日を入力すると、申請予定日に対して使用できるか（受診日から1年後まで有効）を自動でチェックします。
+                </p>
+              );
+            }
+            const refDate = plannedAppOn || todayStr();
+            const refLabel = plannedAppOn ? `申請予定日（${plannedAppOn}）` : `今日（${refDate}）`;
+            const ok = refDate <= until;
+            return (
+              <p
+                className={`rounded-lg px-2 py-1.5 text-[11px] font-bold leading-relaxed ${
+                  ok
+                    ? "bg-status-approved-bg text-status-approved-fg"
+                    : "bg-seal/10 text-seal"
+                }`}
+              >
+                {ok
+                  ? `✓ ${refLabel}に使用できます（有効期限: ${until} まで）`
+                  : `⚠ ${refLabel}には使用できません（有効期限: ${until}）。再受診が必要です。`}
+              </p>
+            );
+          })()}
+        </div>
       )}
 
       {/* 年金記録: 記号の意味と未納アラートは別ページで確認 */}

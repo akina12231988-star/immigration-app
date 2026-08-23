@@ -10,6 +10,7 @@ export interface PrepChecklistRow extends PrepChecklistMeta {
   joint_todo_no: string; // 連名相手のTODO番号
   joint_lead: string; // 連名申請の筆頭者（'' / 本人 / 相手。0111）
   sign_status: string; // 本人から署名をもらったかのステータス
+  planned_app_on: string | null; // 申請予定日（健康診断書の有効チェックに使う。0112）
 }
 
 // 外国人の準備リストを全件取得（更新が新しい順）。
@@ -39,6 +40,7 @@ export async function listPrepChecklists(
     joint_todo_no: r.joint_todo_no ?? "",
     joint_lead: r.joint_lead ?? "",
     sign_status: r.sign_status ?? "",
+    planned_app_on: r.planned_app_on ?? null,
   }));
 }
 
@@ -88,7 +90,12 @@ export async function updatePrepChecklistExtras(
   patch: Partial<
     Pick<
       PrepChecklistRow,
-      "joint_kind" | "joint_worker_id" | "joint_todo_no" | "joint_lead" | "sign_status"
+      | "joint_kind"
+      | "joint_worker_id"
+      | "joint_todo_no"
+      | "joint_lead"
+      | "sign_status"
+      | "planned_app_on"
     >
   >,
 ): Promise<void> {
