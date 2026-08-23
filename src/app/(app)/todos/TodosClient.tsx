@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Combobox } from "@/components/ui/Combobox";
 import { Modal } from "@/components/ui/Modal";
 import { ApplicationPrepChecklist } from "@/components/workers/ApplicationPrepChecklist";
+import { SavedPlanDatesSection } from "@/components/workers/ApplicationPrepExtras";
 import { APPLICATION_CONTENT_CHOICES } from "@/lib/worker-situation";
 import { listFilingAgents } from "@/lib/supabase/queries/agents";
 import { createClient } from "@/lib/supabase/client";
@@ -622,6 +623,7 @@ export function TodosClient({
             canEdit={canEdit}
             photoPath={prepModal.photoPath}
             healthCheckOn={prepModal.healthCheckOn}
+            embedEmployment
           />
         </Modal>
       )}
@@ -736,18 +738,26 @@ function TodoItem({
                       📋 必要な書類・準備の詳細
                     </button>
                   )}
-                  <Link
-                    href={`/workers/${todo.worker_id}#wages`}
-                    className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] font-bold text-brand"
-                  >
-                    賃金（1-6号別紙）を開く
-                  </Link>
-                  <Link
-                    href={`/workers/${todo.worker_id}#contracts`}
-                    className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] font-bold text-brand"
-                  >
-                    雇用契約書・雇用条件書
-                  </Link>
+                  {/* 賃金（1-6号別紙）・雇用契約書は申請準備の中で直接入力する
+                      （申請の時点でこの内容だったという記録。外国人詳細は雇用開始後の話） */}
+                  {onOpenPrep && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={onOpenPrep}
+                        className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] font-bold text-brand"
+                      >
+                        賃金（1-6号別紙）
+                      </button>
+                      <button
+                        type="button"
+                        onClick={onOpenPrep}
+                        className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] font-bold text-brand"
+                      >
+                        雇用契約書・雇用条件書
+                      </button>
+                    </>
+                  )}
                   <Link
                     href={`/todos/plan-dates?workerId=${todo.worker_id}&name=${encodeURIComponent(
                       todo.worker_name ?? "",
@@ -941,6 +951,14 @@ function TodoItem({
               </div>
             )}
           </div>
+          {/* 支援計画書の日付（日付計算の保存結果）。この場で見られて編集もできる */}
+          {todo.worker_id && (
+            <SavedPlanDatesSection
+              workerId={todo.worker_id}
+              todoNo={todo.todo_no}
+              canEdit={canEdit}
+            />
+          )}
           {/* チェック後の申請書類の訂正記録 */}
           <CorrectionSection todoId={todo.id} canEdit={canEdit} />
         </div>

@@ -47,10 +47,12 @@ import {
   JointApplicationField,
   PrepAddressField,
   PrepAssenSection,
+  PrepEmploymentSection,
   PrepOrgInfo,
   PrepSignStatusField,
   PrepTodoStatusField,
   PrepWageSummary,
+  SavedPlanDatesSection,
 } from "@/components/workers/ApplicationPrepExtras";
 import { dbErrorMessage } from "@/lib/errors";
 import { listActiveCustodyNoByWorker } from "@/lib/supabase/queries/custody";
@@ -111,6 +113,7 @@ export function ApplicationPrepChecklist({
   healthCheckOn,
   worker,
   organizations,
+  embedEmployment = false,
 }: {
   workerId: string;
   canEdit?: boolean;
@@ -120,6 +123,9 @@ export function ApplicationPrepChecklist({
   // ここで「準備中」にすると申請一覧の「申請前＜準備中＞」に出る
   worker?: RenewalFieldsWorker;
   organizations?: { id: string; name: string }[];
+  // モーダル表示（TODO・申請一覧）のとき true: 賃金（1-6号別紙）もこの中で直接入力する。
+  // 外国人詳細では賃金の記録カードが別にあるため false（リンク表示のみ）
+  embedEmployment?: boolean;
 }) {
   // TODO番号ごとの準備リスト。selected が表示中のリスト（todo_no）
   const [lists, setLists] = useState<PrepChecklistRow[]>([]);
@@ -1066,8 +1072,18 @@ export function ApplicationPrepChecklist({
           canEdit={canEdit}
           onChange={(v) => void saveExtras({ sign_status: v })}
         />
-        {/* 賃金がいくらで採用となっているか（外国人詳細の賃金の記録と同じ内容）とリンク */}
-        <PrepWageSummary workerId={workerId} />
+        {/* 賃金（1-6号別紙）: モーダル表示ではこの中で直接入力し、
+            「申請の時点でこの内容」という記録を申請準備に残す。
+            外国人詳細では賃金の記録カードが別にあるため、要約とリンクのみ */}
+        {embedEmployment ? (
+          <PrepEmploymentSection workerId={workerId} canEdit={canEdit} showWages />
+        ) : (
+          <>
+            <PrepWageSummary workerId={workerId} />
+            {/* 雇用契約書・雇用条件書（日付なし版・正式版）は申請準備の中で保管する */}
+            <PrepEmploymentSection workerId={workerId} canEdit={canEdit} showWages={false} />
+          </>
+        )}
         {/* あっせんの有無（申請準備のTODOと共有） */}
         <PrepAssenSection
           workerId={workerId}
@@ -1076,7 +1092,7 @@ export function ApplicationPrepChecklist({
           onError={setError}
           onChanged={loadWorkerTodos}
         />
-        {/* 支援計画書の日付計算ツール（求人日付のカレンダー表示付き） */}
+        {/* 支援計画書の日付計算ツール（求人日付のカレンダー表示付き）と保存済みの日付 */}
         <Link
           href={`/todos/plan-dates?workerId=${workerId}&name=${encodeURIComponent(
             workerRow?.name ?? "",
@@ -1085,6 +1101,7 @@ export function ApplicationPrepChecklist({
         >
           📅 日付計算: 支援計画書の日付計算ツール（求人日付のカレンダー表示付き）を開く →
         </Link>
+        <SavedPlanDatesSection workerId={workerId} todoNo={current.todo_no} canEdit={canEdit} />
       </div>
 
       {canEdit && (

@@ -1,16 +1,20 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, Check, Copy } from "lucide-react";
+import { CalendarDays, Check, Copy, Save } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
+import { dbErrorMessage } from "@/lib/errors";
 import {
   computePlanDates,
   planDatesText,
+  planDatesToMap,
   recommendedApplyDate,
   recommendedContractDate,
   recommendedDocDate,
 } from "@/lib/support-plan-dates";
+import { upsertPlanDates } from "@/lib/supabase/queries/plan-dates";
+import { SavedPlanDatesSection } from "@/components/workers/ApplicationPrepExtras";
 
 // 特定技能 支援計画書 日付計算（HTML版ツールの移植）。
 // 申請人・所属機関・TODO番号と、ステップカレンダーで選んだ日付から
@@ -33,11 +37,13 @@ export function PlanDatesClient({
   initialOrg,
   initialTodo,
   workerId,
+  canEdit = false,
 }: {
   initialName: string;
   initialOrg: string;
   initialTodo: string;
   workerId: string;
+  canEdit?: boolean;
 }) {
   const [name, setName] = useState(initialName);
   const [org, setOrg] = useState(initialOrg);
@@ -126,16 +132,83 @@ export function PlanDatesClient({
     [es, ap, ci, di, hi, isLegal],
   );
 
+  // そのステップの推奨日（選択状態を引数で受けて、移動直後の状態でも計算できるようにする）
+  const recommendedFor = (i: number, sel: (string | null)[]): string | null => {
+    const [es2, ap2] = sel;
+    switch (i) {
+      case 1:
+        return es2 ? recommendedApplyDate(es2) : null;
+      case 2:
+        return es2 || ap2 ? recommendedContractDate(ap2, es2 ?? ap2 ?? "") : null;
+      case 3:
+        return es2 ? recommendedDocDate(ap2, es2) : null;
+      default:
+        return null;
+    }
+  };
+
+  // ステップを移動したら、選択済みの日→推奨日→雇用開始日の順で
+  // その月をカレンダーに自動表示する（推奨日を探して月をめくらなくて済むように）
+  const gotoStep = (i: number, sel: (string | null)[] = selected) => {
+    setStep(i);
+    const target = sel[i] ?? recommendedFor(i, sel) ?? sel[0];
+    if (target) {
+      const [y, m] = target.split("-").map(Number);
+      setCalYear(y);
+      setCalMonth(m - 1);
+    }
+  };
+
   const select = (ymd: string) => {
     if (disabledFn(ymd)) return;
-    setSelected((prev) => prev.map((v, i) => (i === step ? ymd : v)));
+    const nextSel = selected.map((v, i) => (i === step ? ymd : v));
+    setSelected(nextSel);
     setSkipped((prev) => prev.map((v, i) => (i === step ? false : v)));
-    if (step < 4) setStep(step + 1);
+    if (step < 4) gotoStep(step + 1, nextSel);
   };
   const skip = () => {
-    setSelected((prev) => prev.map((v, i) => (i === step ? null : v)));
+    const nextSel = selected.map((v, i) => (i === step ? null : v));
+    setSelected(nextSel);
     setSkipped((prev) => prev.map((v, i) => (i === step ? true : v)));
-    if (step < 4) setStep(step + 1);
+    if (step < 4) gotoStep(step + 1, nextSel);
+  };
+
+  // 保存（外国人×TODO番号で1件。あとから申請準備のTODO・この画面から編集できる）
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState(0); // 保存済みカードの再読み込み用
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const saveResult = async () => {
+    if (!result || !workerId) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await upsertPlanDates(createClient(), {
+        worker_id: workerId,
+        todo_no: todo.trim(),
+        name,
+        org,
+        is_legal: isLegal,
+        inputs: Object.fromEntries(
+          (
+            [
+              ["es", es],
+              ["ap", ap],
+              ["ci", ci],
+              ["di", di],
+              ["hi", hi],
+            ] as const
+          ).filter(([, v]) => v) as [string, string][],
+        ),
+        dates: planDatesToMap(result, ap),
+      });
+      setSavedAt((k) => k + 1);
+    } catch (err) {
+      setSaveError(
+        dbErrorMessage(err, "0107_support_plan_dates.sql", "日付の保存に失敗しました"),
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   // ガイド文（HTML版と同じ内容）
@@ -248,7 +321,7 @@ export function PlanDatesClient({
               <button
                 key={label}
                 type="button"
-                onClick={() => setStep(i)}
+                onClick={() => gotoStep(i)}
                 className={`min-w-[90px] flex-1 border-r border-border/60 px-1 py-2 text-center text-[10px] font-bold last:border-r-0 ${
                   active ? "bg-brand/10 text-brand" : done ? "bg-status-reported-bg/50 text-status-reported-fg" : "text-muted"
                 }`}
@@ -339,7 +412,7 @@ export function PlanDatesClient({
           )}
           <div className="mt-3 flex gap-2">
             {step > 0 && (
-              <button type="button" onClick={() => setStep(step - 1)} className="flex-1 rounded-lg border border-border py-2 text-sm font-bold text-muted">
+              <button type="button" onClick={() => gotoStep(step - 1)} className="flex-1 rounded-lg border border-border py-2 text-sm font-bold text-muted">
                 ← 戻る
               </button>
             )}
@@ -398,12 +471,44 @@ export function PlanDatesClient({
               />
             </tbody>
           </table>
-          <div className="p-3">
+          <div className="space-y-2 p-3">
             <button type="button" onClick={() => void copy()} className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand py-2.5 text-sm font-bold text-brand-foreground">
               {copied ? <Check size={15} /> : <Copy size={15} />}
               {copied ? "コピーしました" : "テキストをコピー"}
             </button>
+            {/* 結果の保存。保存すると申請準備のTODO・下の欄からあとで編集できる */}
+            {canEdit &&
+              (workerId ? (
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => void saveResult()}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-brand py-2.5 text-sm font-bold text-brand disabled:opacity-50"
+                >
+                  <Save size={15} />
+                  {saving ? "保存中…" : "この結果を保存（あとから編集できます）"}
+                </button>
+              ) : (
+                <p className="text-center text-[11px] text-muted">
+                  保存するには、申請準備のTODOの「日付計算」から外国人を指定して開いてください。
+                </p>
+              ))}
+            {saveError && (
+              <p className="rounded-lg bg-seal/10 px-3 py-2 text-xs text-seal">{saveError}</p>
+            )}
           </div>
+        </Card>
+      )}
+
+      {/* 保存済みの日付（この画面でも見られて、そのまま編集できる） */}
+      {workerId && (
+        <Card className="p-4">
+          <SavedPlanDatesSection
+            key={savedAt}
+            workerId={workerId}
+            todoNo={todo}
+            canEdit={canEdit}
+          />
         </Card>
       )}
     </div>

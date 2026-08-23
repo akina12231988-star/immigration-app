@@ -1102,6 +1102,7 @@ export function ApplicationsExplorer({
             canEdit={canEdit}
             photoPath={prepModal.photoPath}
             healthCheckOn={prepModal.healthCheckOn}
+            embedEmployment
           />
         </Modal>
       )}
