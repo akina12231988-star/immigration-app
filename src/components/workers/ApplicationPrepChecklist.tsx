@@ -1018,6 +1018,19 @@ export function ApplicationPrepChecklist({
                 )}
               </p>
             ))}
+            {/* 外国人詳細の登録内容から自動で作られる履歴書もここから確認できる */}
+            <p className="border-t border-dashed border-border pt-1 text-[11px]">
+              <Link
+                href={`/workers/${workerId}/resume`}
+                target="_blank"
+                className="font-bold text-brand hover:underline"
+              >
+                📄 履歴書を開く →
+              </Link>
+              <span className="ml-1 text-muted">
+                （外国人詳細の登録内容から自動作成。職歴・住所もここで確認できます）
+              </span>
+            </p>
           </div>
         )}
         {/* 在留資格認定・特定活動は国保・国民年金の加入を問わないため、チェック欄を出さない */}
