@@ -27,6 +27,14 @@ export function isCheckingStatus(status: string): boolean {
   return status.includes("チェック中");
 }
 
+// 申請準備のTODOが「入管へ申請！！」（入管へ申請済み）のステータスか。
+// 申請一覧の「申請前＜準備中＞」には、この状態になった人だけを表示する
+// （準備中の人は申請準備のTODOで管理する）。選択肢名は画面から変更できるため、
+// 「！！」の有無などの揺れを許容して部分一致で判定する
+export function isImmigrationAppliedStatus(status: string): boolean {
+  return status.includes("入管へ申請");
+}
+
 // TODO番号の突き合わせ用の正規化（「TODO-1357」「#812」「 812 」→「1357」「812」「812」）。
 // 郵送請求の判定記録など、書き方が揺れる番号どうしをリンクさせるのに使う
 export function normalizeTodoKey(s: string): string {

@@ -61,6 +61,8 @@ import {
   buildRenewalPlaceholders,
   isRenewalPlaceholder,
 } from "@/lib/renewal-placeholders";
+import { isImmigrationAppliedStatus, normalizeTodoKey } from "@/lib/todo";
+import { listTodos, type TodoRow } from "@/lib/supabase/queries/todos";
 import type { Application } from "@/types/application";
 import { ApprovedCard } from "./ApprovedCard";
 import { ExtraRequestBoard } from "./ExtraRequestBoard";
@@ -131,6 +133,36 @@ export function ApplicationsExplorer({
       cancelled = true;
     };
   }, []);
+
+  // 申請準備のTODO。準備中の人はTODOで管理し、ステータスが「入管へ申請！！」に
+  // なった人だけを「申請前＜準備中＞」の擬似行として表示する。
+  // null のままなら（読み込み中・0102未適用）絞り込まず従来どおり全員表示する
+  const [prepTodos, setPrepTodos] = useState<TodoRow[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    listTodos(createClient())
+      .then((rows) => {
+        if (!cancelled) setPrepTodos(rows);
+      })
+      .catch(() => undefined); // 0102未適用でも一覧は使えるようにする
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 「入管へ申請！！」になった申請準備のTODOの外国人・TODO番号（擬似行の絞り込み用）
+  const appliedPrep = useMemo(() => {
+    if (prepTodos === null) return null;
+    const workerIds = new Set<string>();
+    const todoKeys = new Set<string>();
+    for (const t of prepTodos) {
+      if (t.kind !== "申請準備" || !isImmigrationAppliedStatus(t.status)) continue;
+      if (t.worker_id) workerIds.add(t.worker_id);
+      const key = normalizeTodoKey(t.todo_no);
+      if (key) todoKeys.add(key);
+    }
+    return { workerIds, todoKeys };
+  }, [prepTodos]);
 
   // 所属機関ごとの支援責任者・支援担当者の表示・絞り込み用に機関マスタを取得する
   const [orgs, setOrgs] = useState<Organization[]>([]);
@@ -294,21 +326,31 @@ export function ApplicationsExplorer({
       return matchesKeyword(a) && matchesTantou(a);
     });
 
-    // 「すべて」と「申請前＜準備中＞」では、在留更新で準備中の外国人を擬似行として先頭に出す。
+    // 「すべて」と「申請前＜準備中＞」では、在留更新で準備中の外国人のうち、
+    // 申請準備のTODOが「入管へ申請！！」になった人を擬似行として先頭に出す
+    // （準備中の人は申請準備のTODOで管理する）。
     // 申請登録して審査中になると、この擬似行は実レコードの行に置き換わる。
     if (view === "all" || view === "pre-prep") {
+      // 申請準備のTODOが「入管へ申請！！」になった人か（外国人・TODO番号のどちらかで一致）。
+      // TODOが読み込めない間（0102未適用を含む）は従来どおり全員表示する
+      const isApplied = (a: Application) => {
+        if (!appliedPrep) return true;
+        if (a.workerId && appliedPrep.workerIds.has(a.workerId)) return true;
+        const key = normalizeTodoKey(workerFor(a)?.residence_renewal_todo ?? "");
+        return key ? appliedPrep.todoKeys.has(key) : false;
+      };
       const placeholders = buildRenewalPlaceholders(
         renewalWorkers,
         applications,
         TODAY,
         orgNameById,
       )
-        .filter((a) => matchesKeyword(a) && matchesTantou(a));
+        .filter((a) => isApplied(a) && matchesKeyword(a) && matchesTantou(a));
       return [...placeholders, ...rows];
     }
     return rows;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [applications, renewalWorkers, keyword, view, showIssued, permitFrom, permitTo, tantouFilter, prepTantou, orgNameById]);
+  }, [applications, renewalWorkers, keyword, view, showIssued, permitFrom, permitTo, tantouFilter, prepTantou, orgNameById, appliedPrep]);
 
   // 並び替え。日付が未設定の行は末尾に回す
   const sorted = useMemo(() => {
@@ -515,6 +557,17 @@ export function ApplicationsExplorer({
           />
         ))}
       </div>
+
+      {/* 申請前＜準備中＞: 準備中の人は申請準備のTODOで管理するようになった案内 */}
+      {showPrep && appliedPrep !== null && (
+        <p className="rounded-xl border border-border bg-surface px-3.5 py-2.5 text-xs leading-relaxed text-muted">
+          申請準備のTODOのステータスが「入管へ申請！！」になった人が表示されます。準備中の人は
+          <Link href="/workers/renewals" className="mx-1 font-bold text-brand hover:underline">
+            申請準備
+          </Link>
+          のTODOで管理します。
+        </p>
+      )}
 
       {/* 新規発行済み: 在留許可日の期間検索 */}
       {showIssued && (
