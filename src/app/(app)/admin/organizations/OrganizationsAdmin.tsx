@@ -198,9 +198,10 @@ export function OrganizationsAdmin({
     setFormOpen(true);
   };
 
+  // 編集は詳細ページ（名称をタップして開く画面）の「編集」に統一した。
+  // 鉛筆ボタンはその画面へ移動する
   const openEdit = (org: Organization) => {
-    setEditing(org);
-    setFormOpen(true);
+    router.push(`/organizations/${org.id}`);
   };
 
   const handleSubmit = async (input: OrganizationInput) => {

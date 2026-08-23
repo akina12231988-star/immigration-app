@@ -2,12 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil } from "lucide-react";
+import { Pencil, X } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
 import { updateOrganization } from "@/lib/supabase/queries/organizations";
-import { OrganizationFormModal } from "@/app/(app)/admin/organizations/OrganizationsAdmin";
 import {
   OrganizationFormBody,
   organizationToInput,
@@ -18,10 +17,11 @@ import {
   orgSupportManagers,
   orgSupportStaff,
 } from "@/lib/support-system";
-import type { Organization, OrganizationInput } from "@/types/db";
+import type { Organization } from "@/types/db";
 
-// 所属機関の詳細表示。開いた時点で入力済みの欄は表示のみ、
-// 未記入の欄はこの画面で入力して保存できる（修正は一覧の鉛筆ボタンから）
+// 所属機関の詳細表示。開いた時点で入力済みの欄は表示のみ・未記入の欄はそのまま入力できる。
+// 「編集」を押すとこの画面がそのまま編集モードになり、入力済みの項目も直して保存できる
+// （以前の「会社・機関を編集」モーダルは廃止し、この画面に統一した）
 export function OrganizationDetail({
   organization,
   managerNames = [],
@@ -39,7 +39,8 @@ export function OrganizationDetail({
   const [form, setForm] = useState(() => organizationToInput(organization));
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ ok: boolean; message: string } | null>(null);
-  const [editOpen, setEditOpen] = useState(false);
+  // 編集モード: 入力済みの項目のロックを外して、この画面のまま修正できる
+  const [editing, setEditing] = useState(false);
 
   const dirty = useMemo(
     () => JSON.stringify(form) !== JSON.stringify(snapshot),
@@ -56,26 +57,16 @@ export function OrganizationDetail({
   const contractStatus = (organization.intake?.support_contract_status ?? "").trim();
   const contracted = isContractedOrg(organization.intake, workerCount);
 
-  // 鉛筆（編集）: 登録済みの内容も修正できる編集モーダル。保存後は最新の内容で表示し直す
-  const handleEditSubmit = async (input: OrganizationInput) => {
-    const saved = await updateOrganization(createClient(), organization.id, {
-      ...input,
-      name: input.name.trim(),
-    });
-    setEditOpen(false);
-    const next = organizationToInput(saved);
-    setSnapshot(next);
-    setForm(next);
-    setNotice({ ok: true, message: "更新しました" });
-    router.refresh();
-  };
-
   const handleSave = async () => {
     setBusy(true);
     setNotice(null);
     try {
-      await updateOrganization(createClient(), organization.id, form);
+      await updateOrganization(createClient(), organization.id, {
+        ...form,
+        name: form.name.trim(),
+      });
       setSnapshot(form);
+      setEditing(false);
       setNotice({ ok: true, message: "保存しました" });
       router.refresh();
     } catch (err) {
@@ -102,17 +93,33 @@ export function OrganizationDetail({
       )}
       <div className="flex items-start justify-between gap-3">
         <p className="text-xs leading-relaxed text-muted">
-          未記入の欄はこの画面でそのまま入力して保存できます。
-          入力済みの項目を修正する場合は「編集」ボタンを使ってください。
+          {editing
+            ? "編集モードです。入力済みの項目もこの画面のまま修正して保存できます。"
+            : "未記入の欄はこの画面でそのまま入力して保存できます。入力済みの項目を修正する場合は「編集」を押してください。"}
         </p>
-        <button
-          type="button"
-          onClick={() => setEditOpen(true)}
-          className="flex shrink-0 items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold"
-        >
-          <Pencil size={14} />
-          編集
-        </button>
+        {editing ? (
+          <button
+            type="button"
+            onClick={() => {
+              // 変更を破棄して表示モードに戻す
+              setForm(snapshot);
+              setEditing(false);
+            }}
+            className="flex shrink-0 items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted"
+          >
+            <X size={14} />
+            編集をやめる（変更を破棄）
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="flex shrink-0 items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold"
+          >
+            <Pencil size={14} />
+            編集
+          </button>
+        )}
       </div>
       {/* 支援体制（令和9年4月1日施行の要件）。在籍数と選任状況をひと目で確認できるようにする */}
       <Card className="p-4">
@@ -161,23 +168,13 @@ export function OrganizationDetail({
             managerNames={managerNames}
             staffNames={staffNames}
             orgId={organization.id}
-            snapshot={snapshot}
+            snapshot={editing ? null : snapshot}
           />
           <Button fullWidth disabled={busy || !dirty} onClick={handleSave} className="mt-1">
-            {busy ? "保存中…" : "入力した内容を保存"}
+            {busy ? "保存中…" : editing ? "編集した内容を保存" : "入力した内容を保存"}
           </Button>
         </div>
       </Card>
-
-      {editOpen && (
-        <OrganizationFormModal
-          initial={organization}
-          managerNames={managerNames}
-          staffNames={staffNames}
-          onClose={() => setEditOpen(false)}
-          onSubmit={handleEditSubmit}
-        />
-      )}
     </div>
   );
 }
