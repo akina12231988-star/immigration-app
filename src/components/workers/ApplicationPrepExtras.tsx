@@ -720,6 +720,7 @@ export function PrepEmploymentSection({
   const [orgs, setOrgs] = useState<Organization[] | null>(null);
   const [info, setInfo] = useState<{
     current_organization_id: string | null;
+    application_prep_organization_id: string | null;
     employment_start_on: string | null;
     messenger_link: string;
     org_employment_starts: WorkerOrgEmploymentStart[];
@@ -735,13 +736,16 @@ export function PrepEmploymentSection({
       .catch(() => undefined);
     void supabase
       .from("workers")
-      .select("current_organization_id, employment_start_on, messenger_link, org_employment_starts")
+      .select(
+        "current_organization_id, application_prep_organization_id, employment_start_on, messenger_link, org_employment_starts",
+      )
       .eq("id", workerId)
       .maybeSingle()
       .then(({ data }) => {
         if (cancelled) return;
         const w = data as {
           current_organization_id: string | null;
+          application_prep_organization_id: string | null;
           employment_start_on: string | null;
           messenger_link: string | null;
           org_employment_starts: WorkerOrgEmploymentStart[] | null;
@@ -749,6 +753,7 @@ export function PrepEmploymentSection({
         if (w) {
           setInfo({
             current_organization_id: w.current_organization_id,
+            application_prep_organization_id: w.application_prep_organization_id,
             employment_start_on: w.employment_start_on,
             messenger_link: w.messenger_link ?? "",
             org_employment_starts: w.org_employment_starts ?? [],
@@ -762,25 +767,30 @@ export function PrepEmploymentSection({
 
   if (!orgs || !info) return null;
 
+  // 賃金・雇用契約書の会社は、申請準備の所属機関（転職先）を自動で使う。
+  // 未設定なら現在の所属機関
+  const prepOrgId = info.application_prep_organization_id ?? info.current_organization_id;
+
   return (
     <>
       {showWages && (
         <WorkerWages
           workerId={workerId}
-          currentOrganizationId={info.current_organization_id}
+          currentOrganizationId={prepOrgId}
           employmentStartOn={info.employment_start_on}
           organizations={orgs}
           today={todayStr()}
           canEdit={canEdit}
         />
       )}
-      {/* 雇用契約書・雇用条件書（日付なし版・正式版）は申請準備の中で保管する */}
+      {/* 雇用契約書・雇用条件書（日付なし版・正式版）は申請準備の中で保管する。
+          登録先の会社は申請準備の所属機関を自動入力する */}
       <WorkerContracts
         workerId={workerId}
         canEdit={canEdit}
         messengerLink={info.messenger_link}
         organizations={orgs}
-        currentOrganizationId={info.current_organization_id}
+        currentOrganizationId={prepOrgId}
         orgEmploymentStarts={info.org_employment_starts}
       />
     </>

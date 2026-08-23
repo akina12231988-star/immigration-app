@@ -11,6 +11,8 @@ import { ApplicationPrepChecklist } from "@/components/workers/ApplicationPrepCh
 import { SavedPlanDatesSection } from "@/components/workers/ApplicationPrepExtras";
 import { APPLICATION_CONTENT_CHOICES } from "@/lib/worker-situation";
 import { listFilingAgents } from "@/lib/supabase/queries/agents";
+import { listPrepTantou, upsertPrepTantou } from "@/lib/supabase/queries/application-prep";
+import { PREP_TANTOU_OPTIONS } from "@/lib/application-prep";
 import { createClient } from "@/lib/supabase/client";
 import { dbErrorMessage } from "@/lib/errors";
 import {
@@ -104,6 +106,38 @@ export function TodosClient({
   const [error, setError] = useState<string | null>(null);
   // 申請取次士の名簿（申請準備のTODOで誰が取次するかを選ぶ）
   const [agents, setAgents] = useState<string[]>([]);
+  // TODOの行に出す所属機関名（外国人ID → 申請準備の所属機関名。無ければ現在の所属機関名）
+  const [orgNameByWorker, setOrgNameByWorker] = useState<Record<string, string>>({});
+  // 書類担当者（申請準備の担当者。キーは `${worker_id} ${todo_no}`）
+  const [prepTantou, setPrepTantou] = useState<Record<string, string>>({});
+  // 書類担当者での絞り込み（'' = すべて）
+  const [tantouFilter, setTantouFilter] = useState("");
+
+  // そのTODOの書類担当者（番号の書き方の揺れは正規化して突き合わせ。無ければその人の担当者）
+  const tantouOf = (t: TodoRow): string => {
+    if (!t.worker_id) return "";
+    const key = normalizeTodoKey(t.todo_no);
+    let fallback = "";
+    for (const [k, v] of Object.entries(prepTantou)) {
+      if (!k.startsWith(`${t.worker_id} `)) continue;
+      const no = k.slice(t.worker_id.length + 1);
+      if (key && normalizeTodoKey(no) === key) return v;
+      if (!fallback && v) fallback = v;
+    }
+    return fallback;
+  };
+
+  // 書類担当者の変更（外国人×TODO番号の準備リストに保存。無ければ作成される）
+  const changeTantou = (t: TodoRow, v: string) => {
+    if (!t.worker_id) return;
+    const workerId = t.worker_id;
+    setPrepTantou((prev) => ({ ...prev, [`${workerId} ${t.todo_no}`]: v }));
+    upsertPrepTantou(createClient(), workerId, t.todo_no, v)
+      .then(() => listPrepTantou(createClient()).then(setPrepTantou))
+      .catch(() =>
+        setError("書類担当者の保存に失敗しました。通信状況を確認してもう一度お試しください。"),
+      );
+  };
   // TODOの詳細（申請準備 書類チェックリスト）をその場で開くモーダル
   const [prepModal, setPrepModal] = useState<{
     workerId: string;
@@ -190,6 +224,35 @@ export function TodosClient({
               );
             });
         }
+        // TODOの行に出す所属機関名（申請準備の所属機関→現在の所属機関の順）
+        if (workerIds.length > 0) {
+          void Promise.all([
+            supabase
+              .from("workers")
+              .select("id, application_prep_organization_id, current_organization_id")
+              .in("id", workerIds),
+            supabase.from("organizations").select("id, name"),
+          ]).then(([w, o]) => {
+            const orgMap = new Map(
+              (((o.data as { id: string; name: string }[] | null) ?? [])).map((r) => [r.id, r.name]),
+            );
+            const out: Record<string, string> = {};
+            for (const r of (w.data as
+              | {
+                  id: string;
+                  application_prep_organization_id: string | null;
+                  current_organization_id: string | null;
+                }[]
+              | null) ?? []) {
+              out[r.id] =
+                orgMap.get(r.application_prep_organization_id ?? r.current_organization_id ?? "") ??
+                "";
+            }
+            setOrgNameByWorker(out);
+          });
+        }
+        // 書類担当者（申請準備の担当者）。0083未適用でも他は使えるようにする
+        listPrepTantou(supabase).then(setPrepTantou).catch(() => undefined);
         // 申請一覧の「申請前＜準備中＞」の人（同じ判定 isPrepListTarget）を新着として出す
         void supabase
           .from("workers")
@@ -544,17 +607,47 @@ export function TodosClient({
         </Card>
       )}
 
-      {/* 未着手 → 進行中 → 完了 の順に表示 */}
+      {/* 書類担当者での絞り込み（申請準備のTODOのみ） */}
+      {kind === "申請準備" && !loading && (
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-1.5 text-xs font-bold text-muted">
+            書類担当者で絞り込み
+            <select
+              value={tantouFilter}
+              onChange={(e) => setTantouFilter(e.target.value)}
+              className="min-h-[36px] rounded-lg border border-border bg-surface px-2 text-sm font-bold focus:border-brand focus:outline-none"
+            >
+              <option value="">すべて</option>
+              {/* 名簿＋保存済みの名前（名簿から外れた人も選べる） */}
+              {[...new Set([...PREP_TANTOU_OPTIONS, ...Object.values(prepTantou).filter(Boolean)])].map(
+                (t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ),
+              )}
+            </select>
+          </label>
+        </div>
+      )}
+
+      {/* 未着手 → 進行中 → 完了 の順に表示（見出しを押すと開閉できる） */}
       {loading ? (
         <Card className="p-6 text-center text-sm text-muted">読み込み中…</Card>
       ) : (
         TODO_STAGES.map((stage) => {
-          const rows = kindTodos.filter((t) => stageOfStatus(t.status, kindOptions) === stage);
+          const rows = kindTodos
+            .filter((t) => stageOfStatus(t.status, kindOptions) === stage)
+            .filter(
+              (t) => kind !== "申請準備" || !tantouFilter || tantouOf(t) === tantouFilter,
+            );
           return (
             <Card key={stage} className="p-4">
-              <h2 className="mb-2 text-sm font-bold text-muted">
+              <details open>
+              <summary className="cursor-pointer select-none text-sm font-bold text-muted">
                 {stage}（{rows.length}件）
-              </h2>
+              </summary>
+              <div className="mt-2">
               {rows.length === 0 ? (
                 <p className="rounded-xl bg-background p-3 text-center text-xs text-muted">
                   {stage}のTODOはありません。
@@ -569,6 +662,13 @@ export function TodosClient({
                       checkOptions={checkOptions}
                       canEdit={canEdit}
                       agents={agents}
+                      orgName={t.worker_id ? (orgNameByWorker[t.worker_id] ?? "") : ""}
+                      tantou={tantouOf(t)}
+                      onChangeTantou={
+                        t.kind === "申請準備" && t.worker_id
+                          ? (v) => changeTantou(t, v)
+                          : undefined
+                      }
                       onOpenPrep={t.kind === "申請準備" && t.worker_id ? () => openPrep(t) : undefined}
                       jobFlows={jobFlows.filter((f) => f.worker_id === t.worker_id)}
                       mailings={mailings.filter(
@@ -596,6 +696,8 @@ export function TodosClient({
                   ))}
                 </div>
               )}
+              </div>
+              </details>
             </Card>
           );
         })
@@ -657,6 +759,9 @@ function TodoItem({
   checkOptions,
   canEdit,
   agents = [],
+  orgName = "",
+  tantou = "",
+  onChangeTantou,
   onOpenPrep,
   jobFlows = [],
   mailings = [],
@@ -668,6 +773,9 @@ function TodoItem({
   checkOptions: TodoStatusOption[];
   canEdit: boolean;
   agents?: string[]; // 申請取次士の名簿（申請準備のTODOで選ぶ）
+  orgName?: string; // 申請準備の所属機関名（転職先→現在の順）
+  tantou?: string; // 書類担当者（申請準備の担当者）
+  onChangeTantou?: (v: string) => void;
   onOpenPrep?: () => void; // TODOの詳細（申請準備 書類チェックリスト）を開く
   jobFlows?: JobFlowRow[]; // あっせん有りのときに出す、求人への採用の流れ
   mailings?: MailingSummary[]; // 同じTODO番号の郵送請求（判定記録）の状況
@@ -745,50 +853,17 @@ function TodoItem({
               <Link href={`/workers/${todo.worker_id}`} className="truncate font-bold text-brand hover:underline">
                 {todo.worker_name ?? "（外国人）"}
               </Link>
-              {/* 申請準備のTODOは、外国人詳細の賃金（1-6号別紙）とリンクして作成を進める。
-                  会社の同意の確認チェックもその中にある */}
-              {todo.kind === "申請準備" && (
-                <>
-                  {/* TODOの詳細（必要な書類のチェックリスト）はここから開く。
-                      氏名クリック（外国人詳細）とは別の導線 */}
-                  {onOpenPrep && (
-                    <button
-                      type="button"
-                      onClick={onOpenPrep}
-                      className="shrink-0 rounded-full bg-brand px-2.5 py-1 text-[10px] font-bold text-brand-foreground"
-                    >
-                      📋 必要な書類・準備の詳細
-                    </button>
-                  )}
-                  {/* 賃金（1-6号別紙）・雇用契約書は申請準備の中で直接入力する
-                      （申請の時点でこの内容だったという記録。外国人詳細は雇用開始後の話） */}
-                  {onOpenPrep && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={onOpenPrep}
-                        className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] font-bold text-brand"
-                      >
-                        賃金（1-6号別紙）
-                      </button>
-                      <button
-                        type="button"
-                        onClick={onOpenPrep}
-                        className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] font-bold text-brand"
-                      >
-                        雇用契約書・雇用条件書
-                      </button>
-                    </>
-                  )}
-                  <Link
-                    href={`/todos/plan-dates?workerId=${todo.worker_id}&name=${encodeURIComponent(
-                      todo.worker_name ?? "",
-                    )}&todo=${encodeURIComponent(todo.todo_no)}`}
-                    className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] font-bold text-brand"
-                  >
-                    📅 日付計算
-                  </Link>
-                </>
+              {/* 申請準備の所属機関（転職先。未設定なら現在の所属機関） */}
+              {orgName && <span className="truncate text-[11px] text-muted">{orgName}</span>}
+              {/* 必要な書類・賃金・雇用契約書・日付はすべてこの詳細ボタンにまとめた */}
+              {todo.kind === "申請準備" && onOpenPrep && (
+                <button
+                  type="button"
+                  onClick={onOpenPrep}
+                  className="shrink-0 rounded-full bg-brand px-2.5 py-1 text-[10px] font-bold text-brand-foreground"
+                >
+                  📋 申請書類の準備状況の詳細
+                </button>
               )}
             </>
           ) : (
@@ -853,8 +928,31 @@ function TodoItem({
       {/* 申請準備のTODO: 申請取次士・本人申請、あっせんの有無、チェック後の訂正記録 */}
       {todo.kind === "申請準備" && (
         <div className="mt-2 space-y-2 border-t border-dashed border-border pt-2">
-          {/* 誰が取次するか（申請取次士）と、本人申請でするかの記録（0106） */}
+          {/* 書類担当者（申請準備の担当者）・申請取次士・本人申請でするかの記録 */}
           <div className="flex flex-wrap items-center gap-3">
+            {onChangeTantou && (
+              <label className="flex items-center gap-2 text-[11px] font-bold text-muted">
+                書類担当者
+                <select
+                  value={tantou}
+                  disabled={!canEdit}
+                  onChange={(e) => onChangeTantou(e.target.value)}
+                  className="min-h-[36px] rounded-lg border border-border bg-surface px-2 text-xs"
+                >
+                  <option value="">未定</option>
+                  {/* 名簿から外れた保存済みの名前も選択肢として残す */}
+                  {tantou &&
+                    !PREP_TANTOU_OPTIONS.includes(
+                      tantou as (typeof PREP_TANTOU_OPTIONS)[number],
+                    ) && <option value={tantou}>{tantou}</option>}
+                  {PREP_TANTOU_OPTIONS.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label className="flex items-center gap-2 text-[11px] font-bold text-muted">
               申請取次士
               <select
@@ -924,7 +1022,11 @@ function TodoItem({
               </p>
               {jobFlows.length === 0 ? (
                 <p className="text-[11px] text-muted">
-                  この外国人の応募（求職管理簿）が見つかりません。求職一覧で応募・採用を登録してください。
+                  この外国人の応募（求職管理簿）が見つかりません。
+                  <Link href="/jobs" className="mx-1 font-bold text-brand hover:underline">
+                    求職一覧を開く →
+                  </Link>
+                  から応募・採用を登録してください。
                 </p>
               ) : (
                 <div className="space-y-1">
