@@ -38,7 +38,8 @@ export function WorkerTodoLinks({ workerId }: { workerId: string }) {
       .order("created_at", { ascending: false })
       .then(({ data }) => {
         if (cancelled) return;
-        setTodos((data as TodoRow[] | null) ?? []);
+        // 削除フォルダ（0108）に入っているTODOは出さない
+        setTodos((((data as TodoRow[] | null) ?? [])).filter((t) => !t.deleted_at));
         setLoaded(true);
       });
     listTodoStatusOptions(supabase)

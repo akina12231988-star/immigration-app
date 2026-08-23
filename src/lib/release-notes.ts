@@ -23,6 +23,16 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-08-23",
+    title: "TODOの削除は30日間の削除フォルダ（ごみ箱）に入るようになりました",
+    where: "申請 ＞ 申請準備 ＞ 申請準備のTODO",
+    href: "/workers/renewals",
+    items: [
+      "TODOを削除するとすぐには消えず、一覧の下の「🗑 削除フォルダ」に30日間保存されます。「復元」で元に戻せて、「完全に削除」で今すぐ消すこともできます。30日を過ぎたものは自動で完全に削除されます（マイグレーション 0108_todos_soft_delete.sql が必要）。",
+      "削除フォルダに入っている間は、その人が「まだTODOに入っていない準備中の人」として再表示されない（勝手に取り込み直されない）ようにしました。",
+    ],
+  },
+  {
+    date: "2026-08-23",
     title: "「準備の内容」の選択肢を申請内容と同じ表記に統一し、新規の申請準備は追加後すぐTODOが見えるようになりました",
     where: "申請 ＞ 申請準備",
     href: "/workers/renewals",
