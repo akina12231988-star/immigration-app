@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { createClient } from "@/lib/supabase/client";
 import {
   GENDER_REQS,
   POSTING_DEDUCTION_ITEMS,
@@ -74,6 +75,57 @@ export function PostingForm({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 前回の求人の内容を反映したときのお知らせ
+  const [prefillNotice, setPrefillNotice] = useState<string | null>(null);
+
+  // 新規登録のとき: 所属機関を選ぶと、その会社の直近の求人から毎回同じような項目
+  // （職種・就業場所・給与・求人票の内容など）を自動で反映する。
+  // 受理番号・受付日・有効期限・採用人数・記入日・状態は引き継がない
+  const applyPrevPosting = (orgId: string) => {
+    if (initial || !orgId) return;
+    void createClient()
+      .from("job_postings")
+      .select("*")
+      .eq("organization_id", orgId)
+      .order("received_on", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .then(({ data }) => {
+        const prev = ((data as JobPosting[] | null) ?? [])[0];
+        if (!prev) {
+          setPrefillNotice(null);
+          return;
+        }
+        setForm((f) => ({
+          ...f,
+          organization_id: orgId,
+          job_type: prev.job_type ?? "",
+          work_location: prev.work_location ?? "",
+          employment_period: prev.employment_period ?? "",
+          wage_kind: prev.wage_kind ?? "時給",
+          wage_amount: prev.wage_amount ?? null,
+          rent: prev.rent ?? "",
+          utilities: prev.utilities ?? "",
+          contact: prev.contact ?? "",
+          display_company: prev.display_company ?? "",
+          display_address: prev.display_address ?? "",
+          target_nationality: prev.target_nationality ?? "",
+          gender: prev.gender ?? "不問",
+          hire_timing: prev.hire_timing ?? "",
+          // 求人票（会社に書いてもらう内容）は記入日以外を引き継ぐ
+          sheet: { ...normalizePostingSheet(prev.sheet), filled_on: f.sheet?.filled_on ?? "" },
+        }));
+        setPrefillNotice(
+          `この会社の前回の求人（受付日 ${prev.received_on ?? "不明"}）の内容を反映しました。受理番号・受付日・有効期限・記入日は引き継いでいません。変わった項目だけ直してください。`,
+        );
+      });
+  };
+
+  // 開いた時点の所属機関（先頭の会社）の分も反映しておく
+  useEffect(() => {
+    if (!initial) applyPrevPosting(form.organization_id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const set = <K extends keyof JobPostingInput>(key: K, value: JobPostingInput[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -118,7 +170,11 @@ export function PostingForm({
           <select
             required
             value={form.organization_id}
-            onChange={(e) => set("organization_id", e.target.value)}
+            onChange={(e) => {
+              set("organization_id", e.target.value);
+              // 会社を選び直したら、その会社の前回の求人の内容を反映する
+              applyPrevPosting(e.target.value);
+            }}
             className={INPUT_CLASS}
           >
             <option value="">選択してください</option>
@@ -129,6 +185,11 @@ export function PostingForm({
             ))}
           </select>
         </Field>
+        {prefillNotice && (
+          <p className="rounded-xl border border-brand/40 bg-brand/5 px-3 py-2.5 text-xs leading-relaxed text-brand">
+            {prefillNotice}
+          </p>
+        )}
         {/* 所属機関が求人で必須としている他条件（所属機関の情報で登録）を注意喚起 */}
         {(() => {
           const org = organizations.find((o) => o.id === form.organization_id);
