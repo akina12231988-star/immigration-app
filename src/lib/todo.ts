@@ -21,6 +21,73 @@ export interface TodoStatusOption {
   sort_no: number;
 }
 
+// ---- 試験の申込のTODO ----
+
+// 試験の申込のTODOの内容（自由入力ではなくこの3つから選ぶ）
+export const EXAM_TODO_TITLES = [
+  "２号農業試験申込",
+  "２号アプリケーションナンバーの申込",
+  "１号農業試験申込",
+] as const;
+
+// ２号農業試験申込のとき、どちらの試験を希望するか
+export const EXAM_CONTENT_CHOICES = [
+  "General crop farming Level 2（耕種農業全般）",
+  "General livestock farming Level 2（畜産農業全般）",
+] as const;
+
+// 試験の申込のTODOの詳細（todos.exam jsonb・0109）
+export interface TodoExam {
+  exam_choice: string; // 希望する受験内容（２号農業試験申込のとき）
+  applied_on: string; // 試験の申込日
+  exam_date: string; // 試験日（この日を過ぎたら結果確認のアラートを出す）
+  result_checked: boolean; // 試験結果を確認したか
+  application_no: string; // アプリケーションNo.
+  prometric_id: string; // プロメトリックID
+  password: string; // パスワード
+  login_email: string; // ログイン先のメールアドレス
+  login_email_owner: string; // メールアドレスを作ったのは（'' / 本人が作成 / 弊社が作成）
+  login_email_password: string; // メールアドレスのパスワード（弊社が作成した場合に記録）
+}
+
+export function emptyTodoExam(): TodoExam {
+  return {
+    exam_choice: "",
+    applied_on: "",
+    exam_date: "",
+    result_checked: false,
+    application_no: "",
+    prometric_id: "",
+    password: "",
+    login_email: "",
+    login_email_owner: "",
+    login_email_password: "",
+  };
+}
+
+// 保存された jsonb（項目が欠けていることがある）を、欠けを既定値で埋めた形にする
+export function normalizeTodoExam(raw: unknown): TodoExam {
+  const base = emptyTodoExam();
+  if (!raw || typeof raw !== "object") return base;
+  const r = raw as Record<string, unknown>;
+  return {
+    exam_choice: typeof r.exam_choice === "string" ? r.exam_choice : base.exam_choice,
+    applied_on: typeof r.applied_on === "string" ? r.applied_on : base.applied_on,
+    exam_date: typeof r.exam_date === "string" ? r.exam_date : base.exam_date,
+    result_checked: Boolean(r.result_checked ?? base.result_checked),
+    application_no: typeof r.application_no === "string" ? r.application_no : base.application_no,
+    prometric_id: typeof r.prometric_id === "string" ? r.prometric_id : base.prometric_id,
+    password: typeof r.password === "string" ? r.password : base.password,
+    login_email: typeof r.login_email === "string" ? r.login_email : base.login_email,
+    login_email_owner:
+      typeof r.login_email_owner === "string" ? r.login_email_owner : base.login_email_owner,
+    login_email_password:
+      typeof r.login_email_password === "string"
+        ? r.login_email_password
+        : base.login_email_password,
+  };
+}
+
 // 経過が「チェック中」（明菜　チェック中／彩奈　チェック中 など）か。
 // このとき確認ステータス（kind='チェック'）の欄を出す
 export function isCheckingStatus(status: string): boolean {
