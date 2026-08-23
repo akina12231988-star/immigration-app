@@ -35,7 +35,7 @@ import { NameSearchBox } from "@/components/ui/NameSearchBox";
 import { TodosClient } from "@/app/(app)/todos/TodosClient";
 import { todayStr } from "@/lib/application-alerts";
 import { RESIDENCE_RENEWAL_STATUSES, type ResidenceRenewalStatus } from "@/types/db";
-import { PREP_SITUATIONS, mergeSituation } from "@/lib/worker-situation";
+import { PREP_SITUATION_CHOICES, mergeSituation } from "@/lib/worker-situation";
 import {
   WorkerRenewalCard,
   RENEWAL_STATUS_LABEL as STATUS_LABEL,
@@ -70,6 +70,8 @@ export function RenewalsClient({
   // 新規で申請書類準備 / 更新で申請書類準備 のどちらかから始まる
   const [mode, setMode] = useState<PrepMode | null>(null);
   const [filter, setFilter] = useState<HandlingFilter>("");
+  // 新規の申請準備を追加したら、下のTODO一覧を読み込み直して取り込みを反映する
+  const [todoRefresh, setTodoRefresh] = useState(0);
 
   // 在留期限の期間検索（更新モード: 指定すると4か月の枠を超えてその期間の人を表示できる）
   const [expiryFrom, setExpiryFrom] = useState("");
@@ -190,6 +192,49 @@ export function RenewalsClient({
     );
   }
 
+  // 新規で申請書類準備: 追加すると自動で申請準備のTODOに入るため、
+  // フォームの下には登録後のTODOの内容をそのまま表示し、「📋 申請書類の準備状況の詳細」を
+  // 押して進める流れにする（以前の対応状況タブ・カード一覧は廃止）
+  if (mode === "新規") {
+    return (
+      <div className="space-y-4">
+        <button
+          type="button"
+          onClick={() => setMode(null)}
+          className="flex items-center gap-1 text-xs font-bold text-brand"
+        >
+          <ArrowLeft size={14} />
+          準備の種類を選び直す
+        </button>
+
+        <p className="flex items-start gap-1.5 text-xs leading-relaxed text-muted">
+          <CalendarClock size={14} className="mt-0.5 shrink-0" />
+          初めて申請する人の書類準備です。外国人を選んで（いなければ氏名で登録して）追加すると、下の申請準備のTODOに自動で入ります。TODOの「📋
+          申請書類の準備状況の詳細」から必要な書類・賃金・雇用契約書・日付を進め、ステータスが「入管へ申請！！」になると申請一覧に「申請前＜準備中＞」として表示され、そこから申請登録できます。
+        </p>
+
+        {canEdit && (
+          <NewPrepForm
+            workers={workers}
+            organizations={orgOptions}
+            onOrgCreated={(o) =>
+              setOrgOptions((prev) =>
+                [...prev, o].sort((a, b) => a.name.localeCompare(b.name, "ja")),
+              )
+            }
+            onSaved={() => setTodoRefresh((k) => k + 1)}
+          />
+        )}
+
+        {/* 登録後の申請準備のTODO（追加すると自動で取り込まれて、ここに表示される） */}
+        <div className="pt-1">
+          <p className="mb-2 text-sm font-bold">申請準備のTODO</p>
+          <TodosClient key={todoRefresh} canEdit={canEdit} fixedKind="申請準備" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <button
@@ -207,22 +252,8 @@ export function RenewalsClient({
 
       <p className="flex items-start gap-1.5 text-xs leading-relaxed text-muted">
         <CalendarClock size={14} className="mt-0.5 shrink-0" />
-        {mode === "新規"
-          ? "初めて申請する人の書類準備です。外国人を選んで（いなければ氏名で登録して）、NotionのTODO番号と対応状況を登録します。「準備中」の人は申請準備のTODOに自動で入り、TODOのステータスが「入管へ申請！！」になると申請一覧に「申請前＜準備中＞」として表示され、そこから申請登録できます。"
-          : "在留期限の4か月前になった対象者です。Notionで申請TODOを作成し、そのTODO番号を入力すると「準備中」になります。「準備中」の人は申請準備のTODOに自動で入り、TODOのステータスが「入管へ申請！！」になると申請一覧に「申請前＜準備中＞」として表示され、そこから申請登録できます。弊社で準備しない場合は「転職先にて対応中」「他登録支援機関にて対応中」「帰国」を選べます。"}
+        在留期限の4か月前になった対象者です。Notionで申請TODOを作成し、そのTODO番号を入力すると「準備中」になります。「準備中」の人は申請準備のTODOに自動で入り、TODOのステータスが「入管へ申請！！」になると申請一覧に「申請前＜準備中＞」として表示され、そこから申請登録できます。弊社で準備しない場合は「転職先にて対応中」「他登録支援機関にて対応中」「帰国」を選べます。
       </p>
-
-      {mode === "新規" && canEdit && (
-        <NewPrepForm
-          workers={workers}
-          organizations={orgOptions}
-          onOrgCreated={(o) =>
-            setOrgOptions((prev) =>
-              [...prev, o].sort((a, b) => a.name.localeCompare(b.name, "ja")),
-            )
-          }
-        />
-      )}
 
       {pendingCount > 0 && (
         <div className="flex items-center gap-2 rounded-xl border border-seal/40 bg-seal/10 px-3 py-2.5 text-sm font-bold text-seal">
@@ -333,11 +364,7 @@ export function RenewalsClient({
 
       {filtered.length === 0 ? (
         <Card className="p-8 text-center text-sm text-muted">
-          {query
-            ? `「${query}」に一致する対象者はいません。`
-            : mode === "新規"
-              ? "新規の申請準備はまだ登録されていません。上のフォームから追加できます。"
-              : "該当者はいません。"}
+          {query ? `「${query}」に一致する対象者はいません。` : "該当者はいません。"}
         </Card>
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -363,10 +390,12 @@ function NewPrepForm({
   workers,
   organizations,
   onOrgCreated,
+  onSaved,
 }: {
   workers: WorkerWithOrg[];
   organizations: OrgOption[];
   onOrgCreated: (org: OrgOption) => void;
+  onSaved?: () => void; // 追加後に下のTODO一覧を読み込み直す
 }) {
   const router = useRouter();
   const [workerId, setWorkerId] = useState("");
@@ -481,8 +510,11 @@ function NewPrepForm({
       if (tantou) {
         await upsertPrepTantou(createClient(), workerId, todo.trim(), tantou);
       }
-      setNotice(`${selected?.label ?? "対象者"}を新規の申請準備に追加しました。`);
+      setNotice(
+        `${selected?.label ?? "対象者"}を新規の申請準備に追加しました。下の申請準備のTODOに入ります。`,
+      );
       setAddedNewWorker(newWorker);
+      onSaved?.();
       setWorkerId("");
       setOrgId("");
       setTodo("");
@@ -609,9 +641,10 @@ function NewPrepForm({
             className={INPUT_CLASS}
           >
             <option value="">未選択（只今の状況は変えない）</option>
-            {PREP_SITUATIONS.map((s) => (
-              <option key={s} value={s}>
-                {s}
+            {/* 申請内容の候補（TODOの内容）と同じ表記で選ぶ。保存値は従来の準備中の文言 */}
+            {PREP_SITUATION_CHOICES.map((c) => (
+              <option key={c.situation} value={c.situation}>
+                {c.label}
               </option>
             ))}
           </select>

@@ -236,6 +236,7 @@ export interface ApplicationContentChoice {
   content: ApplicationContent; // 保存する申請内容（従来の3種類）
   situation: string; // 外国人詳細の「只今の状況」に入れる値
   selfApply?: boolean; // 本人申請の候補（選ぶと本人申請にチェックが入る）
+  prepSituation: string; // 準備中のときの只今の状況（PREP_SITUATIONS の値。表記の統一用）
 }
 
 export const APPLICATION_CONTENT_CHOICES: ApplicationContentChoice[] = [
@@ -243,37 +244,50 @@ export const APPLICATION_CONTENT_CHOICES: ApplicationContentChoice[] = [
     label: "在留認定許可申請（特定技能）",
     content: "在留認定許可申請",
     situation: "特定技能（認定）の審査中",
+    prepSituation: "在留資格認定申請書の準備中",
   },
   {
     label: "在留資格の変更許可（特定活動）",
     content: "在留資格の変更許可",
     situation: "特定活動の審査中",
+    prepSituation: "特定活動で申請準備中",
   },
   {
     label: "在留期間の更新許可（特定活動）",
     content: "在留期間の更新許可",
     situation: "特定活動更新許可の審査中",
+    prepSituation: "特定活動ビザ更新の申請準備",
   },
   {
     label: "在留資格の変更許可（特定活動・２号以降準備）※本人申請",
     content: "在留資格の変更許可",
     situation: "特定活動（２号以降準備）の審査中",
     selfApply: true,
+    prepSituation: "特定活動（特定技能２号移行準備のため）準備中",
   },
   {
     label: "在留期間の更新許可（特定技能）",
     content: "在留期間の更新許可",
     situation: "特定技能更新許可の審査中",
+    prepSituation: "特定技能更新の準備中",
   },
   {
     label: "在留資格の変更許可（特定技能）",
     content: "在留資格の変更許可",
     situation: "特定技能の審査中",
+    prepSituation: "特定技能申請準備中",
   },
   {
     label: "在留資格の変更許可（特定技能２号）※本人申請",
     content: "在留資格の変更許可",
     situation: "２号特定技能の審査中",
     selfApply: true,
+    prepSituation: "特定技能2号申請準備中",
   },
 ];
+
+// 「準備の内容（只今の状況）」の選択肢。
+// 申請内容の候補（7つ）と同じ表記で選び、保存する値は従来どおり PREP_SITUATIONS の文言
+// （既存データと互換）。TODOの内容の選択肢と表記が統一される
+export const PREP_SITUATION_CHOICES: { label: string; situation: string }[] =
+  APPLICATION_CONTENT_CHOICES.map((c) => ({ label: c.label, situation: c.prepSituation }));

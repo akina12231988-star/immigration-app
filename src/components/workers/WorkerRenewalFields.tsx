@@ -11,7 +11,11 @@ import {
   type PrepChecklistRow,
 } from "@/lib/supabase/queries/application-prep";
 import { PREP_TANTOU_OPTIONS } from "@/lib/application-prep";
-import { PREP_SITUATIONS, mergeSituation } from "@/lib/worker-situation";
+import {
+  PREP_SITUATIONS,
+  PREP_SITUATION_CHOICES,
+  mergeSituation,
+} from "@/lib/worker-situation";
 import { isPrepListTarget } from "@/lib/renewal-placeholders";
 import { dbErrorMessage } from "@/lib/errors";
 import {
@@ -269,9 +273,10 @@ export function WorkerRenewalFields({
             className={INPUT}
           >
             <option value="">未選択（只今の状況は変えない）</option>
-            {PREP_SITUATIONS.map((s) => (
-              <option key={s} value={s}>
-                {s}
+            {/* 申請内容の候補（TODOの内容）と同じ表記で選ぶ。保存値は従来の準備中の文言 */}
+            {PREP_SITUATION_CHOICES.map((c) => (
+              <option key={c.situation} value={c.situation}>
+                {c.label}
               </option>
             ))}
           </select>
