@@ -133,13 +133,19 @@ export function MailingClient({
   initialRecords,
   workers = [],
   canEdit,
+  initialKeyword = "",
 }: {
   initialMunicipalities: Municipality[];
   initialRecords: JudgmentRecord[];
   workers?: MailingWorker[];
   canEdit: boolean;
+  // 指定すると記録一覧タブを開き、氏名・TODO番号で絞り込んだ状態で表示する
+  // （申請準備のTODOの「郵送請求を開く」から、その人の記録一覧に直接来られるように）
+  initialKeyword?: string;
 }) {
-  const [tab, setTab] = useState<"judge" | "muni" | "records">("judge");
+  const [tab, setTab] = useState<"judge" | "muni" | "records">(
+    initialKeyword ? "records" : "judge",
+  );
   const [municipalities, setMunicipalities] = useState(initialMunicipalities);
   const [records, setRecords] = useState(initialRecords);
   // 外国人の現在の住所（未登録なら請求フォームから登録でき、外国人詳細にも反映される）
@@ -210,6 +216,7 @@ export function MailingClient({
           setMunicipalities={setMunicipalities}
           canEdit={canEdit}
           showToast={showToast}
+          initialKeyword={initialKeyword}
         />
       )}
 
@@ -1613,6 +1620,7 @@ function RecordsTab({
   setMunicipalities,
   canEdit,
   showToast,
+  initialKeyword = "",
 }: {
   records: JudgmentRecord[];
   setRecords: (r: JudgmentRecord[]) => void;
@@ -1620,6 +1628,7 @@ function RecordsTab({
   setMunicipalities: (m: Municipality[]) => void;
   canEdit: boolean;
   showToast: (m: string) => void;
+  initialKeyword?: string; // その人の記録だけを最初から表示する（氏名・TODO番号）
 }) {
   const [deleteTarget, setDeleteTarget] = useState<JudgmentRecord | null>(null);
   const [editTarget, setEditTarget] = useState<JudgmentRecord | null>(null);
@@ -1628,7 +1637,7 @@ function RecordsTab({
   const [fKind, setFKind] = useState("");
   const [fMuni, setFMuni] = useState("");
   const [fCollection, setFCollection] = useState("");
-  const [fKeyword, setFKeyword] = useState("");
+  const [fKeyword, setFKeyword] = useState(initialKeyword);
   const [fAgent, setFAgent] = useState("");
   const [fMailOnly, setFMailOnly] = useState(false);
 

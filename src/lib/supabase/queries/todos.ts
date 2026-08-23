@@ -15,6 +15,8 @@ export interface TodoRow {
   check_status: string; // 経過が「〜チェック中」のときの確認ステータス
   assen: string; // あっせんの有無（'' / あり / なし。申請準備のTODOで使う・0103）
   assen_note: string; // あっせん無しの場合の申請書類作成の経緯
+  agent_name: string; // 申請取次士（申請準備のTODOで使う・0106）
+  self_apply: boolean; // 本人申請でするか（0106）
   note: string;
   created_at: string;
   updated_at: string;
@@ -27,7 +29,15 @@ export async function listTodos(supabase: SupabaseClient): Promise<TodoRow[]> {
     .order("created_at", { ascending: false });
   if (error) throw error;
   const rows = (data as (TodoRow & { workers: { name: string } | null })[]) ?? [];
-  return rows.map((r) => ({ ...r, worker_name: r.workers?.name ?? null }));
+  // 0103/0106 が未適用でも画面が壊れないよう、無い列は既定値で補う
+  return rows.map((r) => ({
+    ...r,
+    worker_name: r.workers?.name ?? null,
+    assen: r.assen ?? "",
+    assen_note: r.assen_note ?? "",
+    agent_name: r.agent_name ?? "",
+    self_apply: r.self_apply ?? false,
+  }));
 }
 
 // 次のTODO番号。todos に加え、Notion由来の番号が入っている
@@ -85,7 +95,16 @@ export async function updateTodo(
   patch: Partial<
     Pick<
       TodoRow,
-      "todo_no" | "worker_id" | "title" | "status" | "check_status" | "assen" | "assen_note" | "note"
+      | "todo_no"
+      | "worker_id"
+      | "title"
+      | "status"
+      | "check_status"
+      | "assen"
+      | "assen_note"
+      | "agent_name"
+      | "self_apply"
+      | "note"
     >
   >,
 ): Promise<void> {
