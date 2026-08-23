@@ -240,9 +240,9 @@ export function PostingsExplorer({
             return (
               <Card
                 key={p.id}
-                // 募集中はひと目で分かるよう赤みがかった背景にする
+                // 募集中はひと目で分かるよう背景を赤にする（枠線は変えない）
                 className={`flex flex-col p-4 ${
-                  p.status === "募集中" ? "border-seal/40 bg-seal/5" : ""
+                  p.status === "募集中" ? "bg-seal/15" : ""
                 }`}
               >
                 <Link href={`/postings/${p.id}`} className="min-w-0">

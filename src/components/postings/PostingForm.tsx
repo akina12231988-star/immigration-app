@@ -64,12 +64,15 @@ export function PostingForm({
   submitLabel,
   onSubmit,
   onCancel,
+  simple = false,
 }: {
   initial: JobPosting | null;
   organizations: Organization[];
   submitLabel: string;
   onSubmit: (input: JobPostingInput) => Promise<void>;
   onCancel?: () => void;
+  // true: 求人管理簿だけで一旦登録できる（求人票・Facebook掲載用は詳細ページの編集で入力）
+  simple?: boolean;
 }) {
   const [form, setForm] = useState<JobPostingInput>(() =>
     toInput(initial, organizations[0]?.id ?? ""),
@@ -281,6 +284,16 @@ export function PostingForm({
         </div>
       </Fieldset>
 
+      {/* 新規登録はまず求人管理簿だけで受付できる。求人票などの詳細は
+          会社に書いてもらったあと、求人の詳細ページの編集から入力する */}
+      {simple && (
+        <p className="rounded-xl border border-border bg-background px-3 py-2.5 text-xs leading-relaxed text-muted">
+          まずはここまでで登録して求人を受付できます。会社に求人票を記載してもらったら、求人の詳細ページの「編集」から求人票・Facebook掲載用の内容を入力してください。
+        </p>
+      )}
+
+      {!simple && (
+      <>
       <Fieldset legend="求人票（会社に書いてもらう内容）">
         <p className="text-[11px] leading-relaxed text-muted">
           特定技能1号の求人票に書いてもらった内容をそのまま入れる欄です。
@@ -872,6 +885,8 @@ export function PostingForm({
           </select>
         </Field>
       </Fieldset>
+      </>
+      )}
 
       <div className="flex gap-2">
         {onCancel && (
