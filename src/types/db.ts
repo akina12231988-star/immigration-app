@@ -139,6 +139,8 @@ export interface OrgLodging {
   name: string; // 寮の名前（例: 女子寮 / 男子寮 / 第1寮）
   address: string; // 宿泊住所
   kind: string; // 宿泊物件の区分（自己所有物件 / 賃貸物件）
+  purchase_state: string; // 自己所有: 購入時の状態（'' / 新品 / 中古）。耐用年数の目安を出すのに使う
+  elapsed_years: string; // 自己所有・中古: 購入時の築年数（年）
   total_cost: string; // 自己所有: かかった総費用（円）
   equipment_cost: string; // 自己所有: 備品代（円）
   useful_years: string; // 自己所有: 耐用年数（年）
@@ -186,10 +188,15 @@ export interface OrganizationIntake {
   fiscal_kind: string; // 決算情報の区分（個人事業主 / 法人）
   support_fee: string; // 毎月の支援代（月額）
   posting_note: string; // 求人で必須としている他条件（求人情報で注意喚起表示）
-  posting_gensen: string; // 求人票に記載する源泉所得税（扶養0人・円。求人票へ自動反映）
+  posting_gensen: string; // 求人票に記載する源泉所得税（扶養0人・円。徴収しない会社は「なし」。求人票へ自動反映）
   posting_utility_cost: string; // 求人票に記載する水道光熱費（約・円）
   posting_utility_kind: string; // 水道光熱費の徴収（'' / 実費 / 固定）
-  posting_comm_cost: string; // 求人票に記載する通信費（約・円）
+  posting_comm_cost: string; // 求人票に記載する通信費（約・円。徴収しない会社は「無し」）
+  posting_comm_reason: string; // 通信費を徴収しない理由（聞いていたら記録する）
+  posting_monthly_hours: string; // 月平均所定労働時間数（時給⇔月給の換算に使う）
+  posting_annual_hours: string; // 年間所定労働時間数（月平均×12。時給⇔月給の換算・手取り計算に使う）
+  flex_hours_kind: string; // 変形労働時間制（'' / なし / 1ヶ月単位 / 1年単位）
+  flex_docs_start: string; // 変形労働時間制（1年単位）の書類の有効期間の開始日（1年間有効）
   contact_method: string; // 資料のやりとり方法（FAX / グループLINE / email）
   health_insurance: string; // 保険（国民健康保険 / 社会保険 / その他）
   pension: string; // 年金（国民年金 / 厚生年金）

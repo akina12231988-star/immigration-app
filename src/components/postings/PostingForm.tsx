@@ -27,10 +27,12 @@ import {
   normalizeTimeInput,
 } from "@/lib/posting-sheet";
 import { calcWageDetail, emptyWageDetail, formatYen } from "@/lib/wage-calc";
+import { flexDocsValidUntil, parseAmount, perResidentCost } from "@/lib/organization-intake";
+import { todayStr } from "@/lib/ssw/calc";
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
 import { listOrganizationFiles } from "@/lib/supabase/queries/organization-files";
 import { getOrgFilePreviewUrl } from "@/app/(app)/organizations/actions";
-import type { Organization, OrganizationFileRow, WageDetail } from "@/types/db";
+import type { OrgLodging, Organization, OrganizationFileRow, WageDetail } from "@/types/db";
 
 function toInput(p: JobPosting | null, orgId: string): JobPostingInput {
   return {
@@ -65,6 +67,26 @@ const INPUT_CLASS =
 
 const TEXTAREA_CLASS =
   "w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm focus:border-brand focus:outline-none";
+
+// 時給⇔月給換算・手取り計算に使う年間所定労働時間。
+// 所属機関の「求人票に記載する内容」→ 年間所定労働時間の列（0082）→ 月平均×12 の順で使う
+function orgAnnualHours(org?: Organization): number {
+  const intake = org?.intake;
+  const annual = parseAmount(intake?.posting_annual_hours ?? "");
+  if (annual) return annual;
+  if (org?.annual_work_hours) return org.annual_work_hours;
+  const monthly = parseAmount(intake?.posting_monthly_hours ?? "");
+  return monthly ? Math.round(monthly * 12) : 0;
+}
+
+// 寮・宿泊物件から居住費を反映したときの説明文（算出根拠）
+function lodgingNote(l: OrgLodging): string {
+  const rent = parseAmount(l.rent);
+  const n = parseAmount(l.max_residents);
+  const where = l.name || l.address || "寮";
+  if (rent == null || n == null) return "";
+  return `${where}：家賃${rent.toLocaleString("ja-JP")}円を最大${n}名で按分`;
+}
 
 export function PostingForm({
   initial,
@@ -107,6 +129,25 @@ export function PostingForm({
     if (intake.posting_utility_cost) out.utility_cost = intake.posting_utility_cost;
     if (intake.posting_utility_kind) out.utility_kind = intake.posting_utility_kind;
     if (intake.posting_comm_cost) out.communication_cost = intake.posting_comm_cost;
+    if (intake.flex_hours_kind) {
+      out.flexible_hours =
+        intake.flex_hours_kind === "なし"
+          ? "なし"
+          : intake.flex_hours_kind === "1ヶ月単位"
+            ? "1ヶ月単位の変形労働時間制"
+            : "1年単位の変形労働時間制";
+    }
+    // 寮が1件だけ登録されているときは居住費も自動で反映する（複数あるときは求人票の欄で選ぶ）
+    const lods = (intake.lodgings ?? []).filter((l) => l.kind && l.rent && l.max_residents);
+    if (lods.length === 1) {
+      const per = perResidentCost(lods[0].rent, lods[0].max_residents);
+      if (per != null) {
+        out.housing_lodging_id = lods[0].id;
+        out.housing_cost = String(per);
+        out.housing_kind = lods[0].kind;
+        out.housing_note = lodgingNote(lods[0]);
+      }
+    }
     return out;
   };
 
@@ -346,6 +387,29 @@ export function PostingForm({
             />
           </Field>
         </div>
+        {/* 時給を入れたら月給換算、月給を入れたら時給換算を所定労働時間から自動で出す */}
+        {(() => {
+          if (!form.wage_amount || (form.wage_kind !== "時給" && form.wage_kind !== "月給")) {
+            return null;
+          }
+          const hours = orgAnnualHours(selectedOrg);
+          if (!hours) {
+            return (
+              <p className="rounded-xl bg-background px-3 py-2 text-[11px] leading-relaxed text-muted">
+                所属機関の「求人票に記載する内容」で月平均・年間所定労働時間数を登録すると、時給⇔月給換算がここに表示されます。
+              </p>
+            );
+          }
+          const text =
+            form.wage_kind === "時給"
+              ? `月給換算 約${formatYen((form.wage_amount * hours) / 12)}円（時給 × 年間所定労働時間${hours}時間 ÷ 12ヶ月）`
+              : `時給換算 約${formatYen((form.wage_amount * 12) / hours)}円（月給 × 12ヶ月 ÷ 年間所定労働時間${hours}時間）`;
+          return (
+            <p className="rounded-xl border border-brand/40 bg-brand/5 px-3 py-2 text-xs font-bold text-brand">
+              {text}
+            </p>
+          );
+        })()}
       </Fieldset>
 
       {/* 新規登録はまず求人管理簿だけで受付できる。求人票などの詳細は
@@ -525,7 +589,7 @@ export function PostingForm({
             </Field>
           )}
         </div>
-        {sheet.flexible_hours.includes("1年") && <FlexYearDocs orgId={form.organization_id} />}
+        {sheet.flexible_hours.includes("1年") && <FlexYearDocs org={selectedOrg} />}
         <div className="grid grid-cols-2 gap-2.5">
           <Field label="残業">
             <select
@@ -669,9 +733,8 @@ export function PostingForm({
           <Field label="源泉所得税（扶養0人・円・所属機関の情報の「求人票に記載する内容」から自動反映）">
             <input
               value={sheet.income_tax}
-              onChange={(e) => setSheet({ income_tax: e.target.value.replace(/[^0-9]/g, "") })}
-              inputMode="numeric"
-              placeholder="3000"
+              onChange={(e) => setSheet({ income_tax: e.target.value })}
+              placeholder="3000／なし"
               className={INPUT_CLASS}
             />
           </Field>
@@ -696,6 +759,47 @@ export function PostingForm({
             </select>
           </Field>
         </div>
+        {/* 所属機関に登録した寮・宿泊物件から居住費を反映する。
+            複数あるときはどの寮かをここで選ぶ（1件だけなら会社を選んだ時点で自動反映） */}
+        {(() => {
+          const lods = (selectedOrg?.intake?.lodgings ?? []).filter(
+            (l) => l.kind && (l.rent || l.name || l.address),
+          );
+          if (lods.length === 0) return null;
+          return (
+            <Field label="居住費を所属機関の寮・宿泊物件から反映">
+              <select
+                value={sheet.housing_lodging_id}
+                onChange={(e) => {
+                  const l = lods.find((x) => x.id === e.target.value);
+                  if (!l) {
+                    setSheet({ housing_lodging_id: "" });
+                    return;
+                  }
+                  const per = perResidentCost(l.rent, l.max_residents);
+                  setSheet({
+                    housing_lodging_id: l.id,
+                    housing_kind: l.kind,
+                    ...(per != null ? { housing_cost: String(per) } : {}),
+                    ...(lodgingNote(l) ? { housing_note: lodgingNote(l) } : {}),
+                  });
+                }}
+                className={INPUT_CLASS}
+              >
+                <option value="">—（手入力）</option>
+                {lods.map((l) => {
+                  const per = perResidentCost(l.rent, l.max_residents);
+                  return (
+                    <option key={l.id} value={l.id}>
+                      {l.name || l.address || "寮"}
+                      {per != null ? `（1人あたり約${per.toLocaleString("ja-JP")}円）` : ""}
+                    </option>
+                  );
+                })}
+              </select>
+            </Field>
+          );
+        })()}
         <div className="grid grid-cols-2 gap-2.5">
           <Field label="居住費（円）">
             <input
@@ -748,18 +852,21 @@ export function PostingForm({
               <option value="固定">固定</option>
             </select>
           </Field>
-          <Field label="通信費（約・円）">
+          <Field label="通信費（約・円。徴収しない会社は「無し」）">
             <input
               value={sheet.communication_cost}
-              onChange={(e) =>
-                setSheet({ communication_cost: e.target.value.replace(/[^0-9]/g, "") })
-              }
-              inputMode="numeric"
-              placeholder="3000"
+              onChange={(e) => setSheet({ communication_cost: e.target.value })}
+              placeholder="3000／無し"
               className={INPUT_CLASS}
             />
           </Field>
         </div>
+        {/* 通信費を徴収しない理由（所属機関の情報に記録があれば表示） */}
+        {(selectedOrg?.intake?.posting_comm_reason ?? "").trim() !== "" && (
+          <p className="rounded-xl bg-background px-3 py-2 text-[11px] leading-relaxed text-muted">
+            通信費を徴収しない理由（所属機関の情報より）: {selectedOrg?.intake?.posting_comm_reason}
+          </p>
+        )}
 
         {/* 昇給・賞与・支払 */}
         <div className="grid grid-cols-2 gap-2.5">
@@ -1059,10 +1166,13 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 // 1年単位の変形労働時間制のとき、所属機関に添付した年間カレンダー・労使協定書を
-// その場で確認できるようにする（添付は所属機関の情報の画面から）
-function FlexYearDocs({ orgId }: { orgId: string }) {
+// その場で確認できるようにする（添付は所属機関の情報の画面から。開始日から1年間有効）
+function FlexYearDocs({ org }: { org?: Organization }) {
+  const orgId = org?.id ?? "";
   const [files, setFiles] = useState<OrganizationFileRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const validUntil = flexDocsValidUntil(org?.intake?.flex_docs_start ?? "");
+  const expired = validUntil !== "" && validUntil < todayStr();
 
   useEffect(() => {
     let cancelled = false;
@@ -1092,6 +1202,16 @@ function FlexYearDocs({ orgId }: { orgId: string }) {
       <p className="text-xs font-bold text-muted">
         1年単位の変形労働時間制の書類（所属機関のデータ）
       </p>
+      {validUntil ? (
+        <p className={`mt-0.5 text-[11px] font-bold ${expired ? "text-seal" : "text-muted"}`}>
+          有効期限: {validUntil} まで
+          {expired && "（期限切れです。所属機関の情報で新しい書類と開始日を登録してください）"}
+        </p>
+      ) : (
+        <p className="mt-0.5 text-[11px] leading-relaxed text-muted">
+          有効期間の開始日が未登録です。所属機関の情報の「変形労働時間制」で開始日を登録してください（開始日から1年間有効）。
+        </p>
+      )}
       {error && <p className="mt-1 text-xs text-seal">{error}</p>}
       {files.length === 0 ? (
         <p className="mt-1 text-[11px] leading-relaxed text-muted">
@@ -1155,7 +1275,7 @@ function NetPayPreview({
   const deducts = sheet.deduction_items;
   const detail: WageDetail = {
     ...emptyWageDetail(),
-    annual_hours: org?.annual_work_hours ?? 0,
+    annual_hours: orgAnnualHours(org),
     allowances: sheet.allowances
       .filter((a) => Number(a.amount) > 0)
       .map((a) => ({ type: "その他", name: a.name, amount: Number(a.amount) || 0, method: a.method })),
@@ -1187,8 +1307,8 @@ function NetPayPreview({
       </p>
       {needsHours ? (
         <p className="mt-1 text-[11px] leading-relaxed text-muted">
-          所属機関の「年間所定労働時間」が未登録のため、{wageKind}
-          を1か月あたりの金額に換算できません。所属機関の情報で年間所定労働時間を登録すると手取りを計算できます。
+          所属機関の「求人票に記載する内容」の月平均・年間所定労働時間数が未登録のため、{wageKind}
+          を1か月あたりの金額に換算できません。所属機関の情報で登録すると手取りを計算できます。
         </p>
       ) : (
         <>

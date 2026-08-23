@@ -84,6 +84,8 @@ export function emptyLodging(id: string): OrgLodging {
     name: "",
     address: "",
     kind: "",
+    purchase_state: "",
+    elapsed_years: "",
     total_cost: "",
     equipment_cost: "",
     useful_years: "",
@@ -116,6 +118,11 @@ export function emptyOrganizationIntake(): OrganizationIntake {
     posting_utility_cost: "",
     posting_utility_kind: "",
     posting_comm_cost: "",
+    posting_comm_reason: "",
+    posting_monthly_hours: "",
+    posting_annual_hours: "",
+    flex_hours_kind: "",
+    flex_docs_start: "",
     contact_method: "",
     health_insurance: "",
     pension: "",
@@ -269,6 +276,45 @@ export function ownedMonthlyRent(
   const years = parseAmount(usefulYears);
   if (total == null || years == null) return null;
   return Math.round((total + equipment) / (years * 12));
+}
+
+// 木造住宅の法定耐用年数（寮はほとんど木造のため、目安の計算に使う。直すこともできる）
+export const WOODEN_USEFUL_YEARS = 22;
+
+// 新品/中古から耐用年数の目安を出す（国税庁の中古資産の簡便法・木造住宅22年で計算）。
+// 中古: 全部経過→22×20%、一部経過→(22−築年数)＋築年数×20%（いずれも年未満切捨て・最低2年）
+export function suggestedUsefulYears(
+  purchaseState: string,
+  elapsedYears: string,
+): number | null {
+  if (purchaseState === "新品") return WOODEN_USEFUL_YEARS;
+  if (purchaseState !== "中古") return null;
+  const elapsed = parseAmount(elapsedYears);
+  if (elapsed == null) return null;
+  const years =
+    elapsed >= WOODEN_USEFUL_YEARS
+      ? WOODEN_USEFUL_YEARS * 0.2
+      : WOODEN_USEFUL_YEARS - elapsed + elapsed * 0.2;
+  return Math.max(2, Math.floor(years));
+}
+
+// 家賃（月額）から逆算した「かかった総費用＋備品代」の想定額 = 家賃×耐用年数×12。
+// 「この家賃にするには最低これぐらいの費用がかかった想定になる」と説明するのに使う
+export function reverseLodgingCost(rent: string, usefulYears: string): number | null {
+  const r = parseAmount(rent);
+  const years = parseAmount(usefulYears);
+  if (r == null || years == null) return null;
+  return Math.round(r * years * 12);
+}
+
+// 変形労働時間制の書類（年間カレンダー・労使協定書）の有効期限。
+// 開始日から1年間有効（開始日＋1年−1日）。日付と読めなければ空
+export function flexDocsValidUntil(start: string): string {
+  const m = start.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return "";
+  const d = new Date(Date.UTC(Number(m[1]) + 1, Number(m[2]) - 1, Number(m[3])));
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
 }
 
 // 1人あたりの居住費用 = 家賃（月額）÷ 最大入居人数 円未満四捨五入

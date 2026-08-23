@@ -35,6 +35,7 @@ export function emptyPostingSheet(): PostingSheet {
     employment_insurance: "適用",
     housing_cost: "",
     housing_kind: "",
+    housing_lodging_id: "",
     housing_note: "",
     utility_cost: "",
     utility_kind: "",
@@ -193,6 +194,12 @@ export function smokingText(sheet: PostingSheet): string {
   return sheet.smoking_note ? `${sheet.smoking}（${sheet.smoking_note}）` : sheet.smoking;
 }
 
+// 金額の欄の表示。数字なら「◯円」、「なし」「無し」などの言葉ならそのまま出す
+function yenOrText(v: string, prefix = ""): string {
+  if (!v) return "";
+  return /^\d+$/.test(v) ? `${prefix}${v}円` : v;
+}
+
 // 求人票の内容を、そのまま貼り付けたり読み合わせたりできるテキストにする
 export function postingSheetText(
   posting: Pick<JobPosting, "job_type" | "openings" | "work_location" | "wage_kind" | "wage_amount" | "contact">,
@@ -230,7 +237,7 @@ export function postingSheetText(
           `手当：${a.name}${a.amount ? ` ${a.amount}円` : ""}${a.method ? `／計算方法：${a.method}` : ""}`,
       ),
     line("控除項目", deductionItemsText(sheet)),
-    line("源泉所得税（扶養0人として）", sheet.income_tax ? `${sheet.income_tax}円` : ""),
+    line("源泉所得税（扶養0人として）", yenOrText(sheet.income_tax)),
     line("社会保険料", sheet.social_insurance),
     line("雇用保険料", sheet.employment_insurance),
     line(
@@ -249,7 +256,7 @@ export function postingSheetText(
         .filter(Boolean)
         .join("／"),
     ),
-    line("通信費", sheet.communication_cost ? `約${sheet.communication_cost}円` : ""),
+    line("通信費", yenOrText(sheet.communication_cost, "約")),
     line("昇給", [sheet.raise, sheet.raise_note].filter(Boolean).join("／")),
     line("賞与", [sheet.bonus, sheet.bonus_note].filter(Boolean).join("／")),
     line("給与の締切日", sheet.pay_closing_day),

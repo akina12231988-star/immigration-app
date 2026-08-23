@@ -23,11 +23,16 @@ import {
   emptyOrganizationIntake,
   emptySalesItem,
   digitsOnly,
+  flexDocsValidUntil,
   formatYen,
   lodgingContractKind,
   normalizeOrganizationIntake,
   ownedMonthlyRent,
+  parseAmount,
   perResidentCost,
+  reverseLodgingCost,
+  suggestedUsefulYears,
+  WOODEN_USEFUL_YEARS,
 } from "@/lib/organization-intake";
 import { orgYearlyFileGroups, orgYearlyKind } from "@/lib/org-yearly-files";
 import { SUPPORT_CONTRACT_STATUSES } from "@/types/db";
@@ -926,15 +931,17 @@ function IntakeSection({
           <IntakeField
             label="源泉所得税（扶養0人・円）"
             value={intake.posting_gensen}
-            onChange={(v) => setIntake({ posting_gensen: digitsOnly(v) })}
-            placeholder="例: 3000"
+            onChange={(v) => setIntake({ posting_gensen: v })}
+            placeholder="例: 3000／なし"
+            hint="徴収しない会社は「なし」と入力してください。"
             locked={locks.intake("posting_gensen")}
           />
           <IntakeField
             label="通信費（約・円）"
             value={intake.posting_comm_cost}
-            onChange={(v) => setIntake({ posting_comm_cost: digitsOnly(v) })}
-            placeholder="例: 3000"
+            onChange={(v) => setIntake({ posting_comm_cost: v })}
+            placeholder="例: 3000／無し"
+            hint="徴収しない会社は「無し」と入力してください。"
             locked={locks.intake("posting_comm_cost")}
           />
           <IntakeField
@@ -961,28 +968,124 @@ function IntakeSection({
             </label>
           )}
         </div>
+        <IntakeField
+          label="通信費を徴収しない理由（聞いていたら記録）"
+          value={intake.posting_comm_reason}
+          onChange={(v) => setIntake({ posting_comm_reason: v })}
+          placeholder="例: Wi-Fiは会社負担で本人契約のスマホ代のみのため など"
+          locked={locks.intake("posting_comm_reason")}
+        />
+        {/* 月平均と年間はどちらかを入れると片方が自動で入る（月平均×12＝年間） */}
+        <div className="grid grid-cols-2 gap-2.5">
+          <IntakeField
+            label="月平均所定労働時間数"
+            value={intake.posting_monthly_hours}
+            onChange={(v) => {
+              const n = parseAmount(v);
+              setIntake({
+                posting_monthly_hours: v,
+                posting_annual_hours:
+                  n != null ? String(Math.round(n * 12)) : intake.posting_annual_hours,
+              });
+            }}
+            placeholder="例: 173.3"
+            locked={locks.intake("posting_monthly_hours")}
+          />
+          <IntakeField
+            label="年間所定労働時間数"
+            value={intake.posting_annual_hours}
+            onChange={(v) => {
+              const n = parseAmount(v);
+              setIntake({
+                posting_annual_hours: v,
+                posting_monthly_hours:
+                  n != null ? String(Math.round((n / 12) * 10) / 10) : intake.posting_monthly_hours,
+              });
+            }}
+            placeholder="例: 2080"
+            hint="どちらかを入れるともう片方も自動で入ります。求人票の時給⇔月給換算・手取りプレビューに使います。"
+            locked={locks.intake("posting_annual_hours")}
+          />
+        </div>
 
-        <p className={GROUP_CLASS}>変形労働時間制（1年単位）の書類</p>
-        <p className={HINT_CLASS}>
-          1年単位の変形労働時間制をとっている会社は、年間カレンダーと労使協定書（有効期限内のもの）をここに添付してください。求人票の入力画面から確認できます。
-        </p>
-        {orgId ? (
-          <>
-            <OrgFileAttachments
-              orgId={orgId}
-              kind="年間カレンダー"
-              addLabel="年間カレンダーを追加（画像・PDF）"
-            />
-            <OrgFileAttachments
-              orgId={orgId}
-              kind="労使協定書"
-              addLabel="労使協定書を追加（画像・PDF）"
-            />
-          </>
+        <p className={GROUP_CLASS}>変形労働時間制</p>
+        {locks.intake("flex_hours_kind") ? (
+          <StaticValue label="変形労働時間制" value={intake.flex_hours_kind} />
         ) : (
-          <p className={HINT_CLASS}>
-            年間カレンダー・労使協定書は、会社・機関を登録したあとに編集画面から添付できます。
-          </p>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-bold text-muted">
+              変形労働時間制（求人票へ自動反映されます）
+            </span>
+            <select
+              value={intake.flex_hours_kind}
+              onChange={(e) => setIntake({ flex_hours_kind: e.target.value })}
+              className={INPUT_CLASS}
+            >
+              <option value="">—</option>
+              <option value="なし">なし</option>
+              <option value="1ヶ月単位">1ヶ月単位</option>
+              <option value="1年単位">1年単位</option>
+            </select>
+          </label>
+        )}
+        {/* 書類の添付は1年単位の変形労働時間制をとっている会社だけ */}
+        {intake.flex_hours_kind === "1年単位" && (
+          <>
+            <p className={HINT_CLASS}>
+              1年単位の変形労働時間制の会社は、年間カレンダーと労使協定書を添付してください。書類は開始日から1年間有効です。求人票の入力画面から確認できます。
+            </p>
+            <div className="grid grid-cols-2 gap-2.5">
+              {locks.intake("flex_docs_start") ? (
+                <StaticValue label="書類の有効期間の開始日" value={intake.flex_docs_start} />
+              ) : (
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs font-bold text-muted">書類の有効期間の開始日</span>
+                  <input
+                    type="date"
+                    value={intake.flex_docs_start}
+                    onChange={(e) => setIntake({ flex_docs_start: e.target.value })}
+                    className={INPUT_CLASS}
+                  />
+                </label>
+              )}
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-bold text-muted">有効期限（開始日から1年間）</span>
+                {(() => {
+                  const until = flexDocsValidUntil(intake.flex_docs_start);
+                  const expired = until !== "" && until < todayStr();
+                  return (
+                    <p
+                      className={`flex min-h-[44px] items-center rounded-xl px-3 text-sm font-bold ${
+                        expired ? "bg-seal/10 text-seal" : "bg-border/30"
+                      }`}
+                    >
+                      {until
+                        ? `${until} まで${expired ? "（期限切れ・新しい書類を添付してください）" : ""}`
+                        : "開始日を入力すると自動で入ります"}
+                    </p>
+                  );
+                })()}
+              </div>
+            </div>
+            {orgId ? (
+              <>
+                <OrgFileAttachments
+                  orgId={orgId}
+                  kind="年間カレンダー"
+                  addLabel="年間カレンダーを追加（画像・PDF）"
+                />
+                <OrgFileAttachments
+                  orgId={orgId}
+                  kind="労使協定書"
+                  addLabel="労使協定書を追加（画像・PDF）"
+                />
+              </>
+            ) : (
+              <p className={HINT_CLASS}>
+                年間カレンダー・労使協定書は、会社・機関を登録したあとに編集画面から添付できます。
+              </p>
+            )}
+          </>
         )}
 
         <p className={GROUP_CLASS}>見積書の添付（複数可）</p>
@@ -1201,6 +1304,45 @@ function IntakeSection({
             )}
             {lodging.kind === "自己所有物件" && (
               <>
+                {/* 新品/中古から耐用年数の目安を自動で入れる（木造住宅22年・中古は簡便法）。
+                    入れたあとの微調整は耐用年数の欄で直せる */}
+                <div className="flex flex-wrap items-center gap-4">
+                  <span className="text-[11px] font-bold text-muted">購入時の状態:</span>
+                  {["新品", "中古"].map((k) => (
+                    <label key={k} className="flex items-center gap-1.5 text-xs font-bold">
+                      <input
+                        type="radio"
+                        name={`lodging-state-${lodging.id}`}
+                        checked={lodging.purchase_state === k}
+                        onChange={() => {
+                          const years = suggestedUsefulYears(k, lodging.elapsed_years);
+                          setLodging(i, {
+                            purchase_state: k,
+                            useful_years: years != null ? String(years) : lodging.useful_years,
+                          });
+                        }}
+                        className="h-4 w-4"
+                      />
+                      {k}
+                    </label>
+                  ))}
+                </div>
+                {lodging.purchase_state === "中古" && (
+                  <IntakeField
+                    label="購入時の築年数（年）"
+                    value={lodging.elapsed_years}
+                    onChange={(v) => {
+                      const years = suggestedUsefulYears("中古", v);
+                      setLodging(i, {
+                        elapsed_years: v,
+                        useful_years: years != null ? String(years) : lodging.useful_years,
+                      });
+                    }}
+                    placeholder="例: 25"
+                    hint={`築年数から耐用年数の目安を自動で入れます（木造住宅${WOODEN_USEFUL_YEARS}年・中古の簡便法）。`}
+                    locked={locks.lodging(i, "elapsed_years")}
+                  />
+                )}
                 <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
                   <IntakeField
                     label="かかった総費用（円）"
@@ -1221,6 +1363,7 @@ function IntakeSection({
                     value={lodging.useful_years}
                     onChange={(v) => setLodging(i, { useful_years: v })}
                     placeholder="例: 22"
+                    hint="新品/中古を選ぶと目安が自動で入ります。直すこともできます。"
                     locked={locks.lodging(i, "useful_years")}
                   />
                 </div>
@@ -1233,6 +1376,32 @@ function IntakeSection({
                   )}
                   emptyHint="総費用と耐用年数を入力すると自動計算されます"
                 />
+                {/* 家賃から逆算: この家賃で説明するには最低これぐらいの費用がかかった想定になる */}
+                {(() => {
+                  const reverse = reverseLodgingCost(lodging.rent, lodging.useful_years);
+                  if (reverse == null) return null;
+                  return (
+                    <div className="rounded-xl border border-dashed border-border bg-background p-2.5">
+                      <p className="text-[11px] font-bold text-muted">
+                        家賃からの逆算（家賃 × 耐用年数 × 12）
+                      </p>
+                      <p className="mt-0.5 text-xs leading-relaxed">
+                        この家賃（月額）で説明するには、かかった総費用＋備品代が
+                        <span className="font-bold"> 約{formatYen(reverse)} </span>
+                        かかった想定になります。
+                      </p>
+                      {!locks.lodging(i, "total_cost") && (
+                        <button
+                          type="button"
+                          onClick={() => setLodging(i, { total_cost: String(reverse) })}
+                          className="mt-1.5 rounded-lg border border-border px-2.5 py-1.5 text-[11px] font-bold text-brand"
+                        >
+                          この金額を「かかった総費用」に入れる（あとで微調整できます）
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
               </>
             )}
             {lodging.kind === "賃貸物件" && (
