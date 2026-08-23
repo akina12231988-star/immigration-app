@@ -248,8 +248,9 @@ export function PostingsExplorer({
                 <Link href={`/postings/${p.id}`} className="min-w-0">
                   <div className="mb-1 flex items-start justify-between gap-2">
                     <div className="min-w-0">
+                      {/* 一覧はFacebook掲載用の名前ではなく所属機関名で見分けられるようにする */}
                       <p className="truncate font-bold">
-                        {postingDisplayName(p, p.organizations?.name)}
+                        {p.organizations?.name || postingDisplayName(p)}
                       </p>
                       <p className="truncate text-xs text-muted">
                         {[p.job_type, p.display_address].filter(Boolean).join(" ・ ") || "詳細未設定"}

@@ -58,6 +58,17 @@ export function employmentInsuranceRate(kind: string): number {
   return EMPLOYMENT_INSURANCE_KINDS.find((k) => k.kind === kind)?.rate ?? 0.005;
 }
 
+// ---- 建設分野（国交省）の賃金基準 ----
+// 所定内賃金（基本給＋毎月固定の手当。通勤手当・固定残業代は除く）が
+// 「最低賃金の全国平均 × 1.1 × 年間所定労働時間 ÷ 12」以上でないと認定されない。
+// 全国平均は毎年変動するため、改定されたらこの定数を入れ替える
+export const CONSTRUCTION_MIN_WAGE_AVG = 1121;
+
+// 建設分野で必要な所定内賃金の月額（円未満切り上げ）。例: 年間2080hなら213,738円
+export function constructionMinMonthly(annualHours: number): number {
+  return Math.ceil((CONSTRUCTION_MIN_WAGE_AVG * 1.1 * annualHours) / 12);
+}
+
 // ---- 諸手当の計算方法の文例（別紙の「計算方法」欄にそのまま書ける形） ----
 export const WAGE_ALLOWANCE_TYPES = [
   "家族手当",

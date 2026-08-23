@@ -28,6 +28,8 @@ import {
 import {
   calcIncomeTaxMonthly,
   calcWageDetail,
+  CONSTRUCTION_MIN_WAGE_AVG,
+  constructionMinMonthly,
   emptyWageDetail,
   employmentInsuranceAmount,
   formatYen,
@@ -436,6 +438,21 @@ export function PostingForm({
             className={INPUT_CLASS}
           />
         </Field>
+        {/* 特定技能の求人は職種の下で分野も選ぶ（建設は賃金基準のチェックに使う） */}
+        <Field label="分野（特定技能）">
+          <select
+            value={sheet.field_name}
+            onChange={(e) => setSheet({ field_name: e.target.value })}
+            className={INPUT_CLASS}
+          >
+            <option value="">選択してください</option>
+            {POSTING_FIELDS.map((f) => (
+              <option key={f} value={f}>
+                {f}
+              </option>
+            ))}
+          </select>
+        </Field>
         <Field label="採用人数（Facebook掲載用の募集人数にも自動で反映）">
           <input
             type="number"
@@ -519,6 +536,13 @@ export function PostingForm({
             </p>
           );
         })()}
+        {/* 建設分野は国交省の賃金基準を満たしているかをその場でチェックする */}
+        <ConstructionWageCheck
+          wageKind={form.wage_kind}
+          wageAmount={form.wage_amount}
+          sheet={sheet}
+          org={selectedOrg}
+        />
       </Fieldset>
 
       {/* 新規登録はまず求人管理簿だけで受付できる。求人票などの詳細は
@@ -648,30 +672,15 @@ export function PostingForm({
             }}
           />
         )}
-        <div className="grid grid-cols-2 gap-2.5">
-          <Field label="記入日">
-            <input
-              type="date"
-              value={sheet.filled_on}
-              onChange={(e) => setSheet({ filled_on: e.target.value })}
-              className={INPUT_CLASS}
-            />
-          </Field>
-          <Field label="分野名">
-            <select
-              value={sheet.field_name}
-              onChange={(e) => setSheet({ field_name: e.target.value })}
-              className={INPUT_CLASS}
-            >
-              <option value="">選択してください</option>
-              {POSTING_FIELDS.map((f) => (
-                <option key={f} value={f}>
-                  {f}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
+        {/* 分野は上の求人管理簿（職種の下）で選ぶ */}
+        <Field label="記入日">
+          <input
+            type="date"
+            value={sheet.filled_on}
+            onChange={(e) => setSheet({ filled_on: e.target.value })}
+            className={INPUT_CLASS}
+          />
+        </Field>
         <Field label="勤務地の変更の可能性">
           <input
             value={sheet.work_location_change}
@@ -1489,6 +1498,66 @@ function OrgPostingInfoEditor({
   );
 }
 
+// 建設分野（国交省）の賃金基準チェック。
+// 所定内賃金（基本給＋毎月固定の手当。通勤手当・固定残業代は除く）が
+// 「最低賃金の全国平均1,121円 × 1.1 × 年間所定労働時間 ÷ 12」以上でないと認定できない
+function ConstructionWageCheck({
+  wageKind,
+  wageAmount,
+  sheet,
+  org,
+}: {
+  wageKind: WageKind;
+  wageAmount: number | null;
+  sheet: PostingSheet;
+  org?: Organization;
+}) {
+  if (sheet.field_name !== "建設") return null;
+  const hours = orgAnnualHours(org);
+  if (!hours) {
+    return (
+      <p className="rounded-xl border border-status-notice-fg/50 bg-status-notice-bg/50 px-3 py-2.5 text-xs leading-relaxed text-status-notice-fg">
+        ⚠ 建設分野は国交省の賃金基準のチェックが必要です。所属機関の「求人票に記載する内容」で月平均・年間所定労働時間数を登録すると、ここで自動チェックできます。
+      </p>
+    );
+  }
+  const required = constructionMinMonthly(hours);
+  if (!wageAmount) {
+    return (
+      <p className="rounded-xl border border-status-notice-fg/50 bg-status-notice-bg/50 px-3 py-2.5 text-xs leading-relaxed text-status-notice-fg">
+        ⚠ 建設分野の国交省基準: 所定内賃金が月額 約{formatYen(required)}円以上
+        （{CONSTRUCTION_MIN_WAGE_AVG}円 × 1.1 × 年間{hours}時間 ÷ 12）必要です。給与を入力するとチェックします。
+      </p>
+    );
+  }
+  const base = monthlyBaseWage(wageKind, wageAmount, hours);
+  // 毎月固定の手当は含める。通勤手当と固定残業代は所定内賃金に入れない
+  const fixedAllowances = sheet.allowances
+    .filter((a) => !a.name.includes("通勤"))
+    .reduce((s, a) => s + (Number(a.amount) || 0), 0);
+  const monthly = base + fixedAllowances;
+  const ok = monthly >= required;
+  return (
+    <div
+      className={`rounded-xl border px-3 py-2.5 text-xs leading-relaxed ${
+        ok
+          ? "border-brand/40 bg-brand/5 text-brand"
+          : "border-seal/50 bg-seal/10 font-bold text-seal"
+      }`}
+    >
+      <p className="font-bold">
+        {ok ? "✓ 建設分野の国交省基準をクリアしています" : "⚠ 建設分野の国交省基準を満たしていません（このままでは認定できません）"}
+      </p>
+      <p className="mt-0.5">
+        所定内賃金（基本給の月給換算＋毎月固定の手当。通勤手当・固定残業代を除く）: 約
+        {formatYen(monthly)}円 ／ 基準額: {formatYen(required)}円以上（
+        {CONSTRUCTION_MIN_WAGE_AVG}円 × 1.1 × 年間{hours}時間 ÷ 12）
+        {!ok && ` ／ あと約${formatYen(required - monthly)}円不足`}
+      </p>
+    </div>
+  );
+}
+
 // 手取りプレビューの1行（項目名と概算額）
 function PreviewRow({ label, value, bold = false }: { label: string; value: number; bold?: boolean }) {
   return (
@@ -1534,6 +1603,26 @@ function NetPayPreview({
   const r = calcWageDetail({ kind: wageKind, amount: wageAmount ?? 0 }, detail);
   const needsHours = (wageKind === "時給" || wageKind === "日給") && r.annualHours <= 0;
 
+  // 手取りをいくらにしたいかを入れると、必要な基本給を逆計算する
+  // （手当・控除は今の入力のまま。税額が段階的に変わるため二分探索で求める）
+  const [targetNet, setTargetNet] = useState("");
+  const target = Number(targetNet) || 0;
+  let reverse: { monthly: number; hourly: number | null } | null = null;
+  if (target > 0) {
+    let lo = 0;
+    let hi = 10_000_000;
+    for (let i = 0; i < 40; i++) {
+      const mid = (lo + hi) / 2;
+      if (calcWageDetail({ kind: "月給", amount: mid }, detail).net < target) lo = mid;
+      else hi = mid;
+    }
+    const monthly = Math.ceil(hi);
+    reverse = {
+      monthly,
+      hourly: r.annualHours > 0 ? Math.ceil((monthly * 12) / r.annualHours) : null,
+    };
+  }
+
   return (
     <div className="rounded-xl border border-brand/40 bg-brand/5 p-3">
       <p className="text-xs font-bold text-brand">
@@ -1562,8 +1651,38 @@ function NetPayPreview({
             5. 手取り支給額（3－4）　約{formatYen(r.net)}円
           </p>
           <p className="mt-1 text-[11px] leading-relaxed text-muted">
-            税・保険は熊本県の令和8年度の率（扶養0人）での概算です。控除は「控除項目」でチェックしたものだけ反映しています。実際の1-6号別紙は申請準備の賃金入力で作成します。
+            税・保険は熊本県の令和8年度の率（扶養0人）での概算です。控除は金額が入っている居住費・水道光熱費・通信費を反映しています。実際の1-6号別紙は申請準備の賃金入力で作成します。
           </p>
+
+          {/* 手取りの目標額からの逆計算 */}
+          <div className="mt-2 border-t border-brand/30 pt-2">
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-bold text-muted">
+                手取りをいくらにしたい？からの逆計算（円・月額）
+              </span>
+              <input
+                value={targetNet}
+                onChange={(e) => setTargetNet(e.target.value.replace(/[^0-9]/g, ""))}
+                inputMode="numeric"
+                placeholder="例: 180000"
+                className={INPUT_CLASS}
+              />
+            </label>
+            {reverse && (
+              <p className="mt-1.5 text-xs leading-relaxed">
+                手取り 約{formatYen(target)}円にするには、基本給が
+                <span className="font-bold"> 月給 約{formatYen(reverse.monthly)}円 </span>
+                {reverse.hourly != null && (
+                  <>
+                    （時給なら
+                    <span className="font-bold"> 約{formatYen(reverse.hourly)}円 </span>
+                    ）
+                  </>
+                )}
+                必要です（手当・控除は今の入力のままとした概算）。
+              </p>
+            )}
+          </div>
         </>
       )}
     </div>

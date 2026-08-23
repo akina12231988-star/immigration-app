@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   allowanceMethodTemplate,
+  constructionMinMonthly,
   calcIncomeTaxMonthly,
   calcWageDetail,
   emptyWageDetail,
@@ -123,6 +124,13 @@ describe("healthInsuranceRate", () => {
 
   it("手入力なら入力した率をそのまま使う", () => {
     expect(healthInsuranceRate("手入力", 9.55)).toBe(9.55);
+  });
+});
+
+describe("constructionMinMonthly", () => {
+  it("建設分野の基準額 = 全国平均最低賃金×1.1×年間所定労働時間÷12（切り上げ）", () => {
+    // 1121円 × 1.1 × 2080h ÷ 12 = 213,737.33… → 213,738円
+    expect(constructionMinMonthly(2080)).toBe(213_738);
   });
 });
 
