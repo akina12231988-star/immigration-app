@@ -6,7 +6,6 @@ import { Combobox } from "@/components/ui/Combobox";
 import { createClient } from "@/lib/supabase/client";
 import {
   GENDER_REQS,
-  POSTING_DEDUCTION_ITEMS,
   POSTING_FIELDS,
   POSTING_INSURANCES,
   POSTING_SMOKING_OPTIONS,
@@ -26,13 +25,33 @@ import {
   normalizePostingSheet,
   normalizeTimeInput,
 } from "@/lib/posting-sheet";
-import { calcWageDetail, emptyWageDetail, formatYen } from "@/lib/wage-calc";
-import { flexDocsValidUntil, parseAmount, parseHoursMinutes } from "@/lib/organization-intake";
+import {
+  calcIncomeTaxMonthly,
+  calcWageDetail,
+  emptyWageDetail,
+  employmentInsuranceAmount,
+  formatYen,
+  monthlyBaseWage,
+  socialInsuranceAmount,
+} from "@/lib/wage-calc";
+import {
+  flexDocsValidUntil,
+  normalizeOrganizationIntake,
+  parseAmount,
+  parseHoursMinutes,
+} from "@/lib/organization-intake";
+import { prefCityOnly } from "@/lib/posting-grid";
 import { todayStr } from "@/lib/ssw/calc";
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
 import { listOrganizationFiles } from "@/lib/supabase/queries/organization-files";
 import { getOrgFilePreviewUrl } from "@/app/(app)/organizations/actions";
-import type { OrgLodging, Organization, OrganizationFileRow, WageDetail } from "@/types/db";
+import type {
+  OrgLodging,
+  Organization,
+  OrganizationFileRow,
+  OrganizationIntake,
+  WageDetail,
+} from "@/types/db";
 
 function toInput(p: JobPosting | null, orgId: string): JobPostingInput {
   return {
@@ -79,6 +98,21 @@ function orgAnnualHours(org?: Organization): number {
   return monthly ? Math.round(monthly * 12) : 0;
 }
 
+// 分野名から雇用保険料の事業の種類を出す（農業・漁業は料率が違う）
+function employmentKindForField(fieldName: string): string {
+  if (fieldName === "農業" || fieldName === "漁業") return "農林水産・清酒製造の事業";
+  if (fieldName === "建設") return "建設の事業";
+  return "一般の事業";
+}
+
+// Facebook掲載用の会社名の自動値（職種＋（就業場所の市まで））。例: 農業（上天草）
+function autoDisplayCompany(jobType: string, workLocation: string): string {
+  if (!jobType) return "";
+  const m = workLocation.match(/^(?:.{2,3}[都道府県])?(.+?)市/);
+  const city = m ? m[1] : "";
+  return city ? `${jobType}（${city}）` : jobType;
+}
+
 // 寮・宿泊物件から居住費を反映したときの説明文（算出根拠）。家賃は1人あたりで登録されている
 function lodgingNote(l: OrgLodging): string {
   const rent = parseAmount(l.rent);
@@ -86,6 +120,46 @@ function lodgingNote(l: OrgLodging): string {
   if (rent == null) return "";
   const people = parseAmount(l.max_residents);
   return `${where}：1人あたり月額${rent.toLocaleString("ja-JP")}円${people != null ? `（最大${people}名）` : ""}`;
+}
+
+// 所属機関の情報に登録された内容（保険・支払方法・締切日/支払日・水道光熱費・通信費・
+// 変形労働時間制・居住費・その他条件）を求人票の欄に反映する。登録がある項目だけ上書きする
+function sheetFromOrgIntake(intake?: Partial<OrganizationIntake>): Partial<PostingSheet> {
+  if (!intake) return {};
+  const out: Partial<PostingSheet> = {};
+  if (intake.health_insurance) {
+    out.social_insurance = intake.health_insurance === "社会保険" ? "適用" : "適用なし";
+  }
+  if (intake.koyo_covered) {
+    out.employment_insurance = intake.koyo_covered === "はい" ? "適用" : "適用なし";
+  }
+  if (intake.pay_method) out.pay_method = intake.pay_method;
+  if (intake.posting_pay_closing) out.pay_closing_day = intake.posting_pay_closing;
+  if (intake.posting_pay_day) out.pay_day = intake.posting_pay_day;
+  if (intake.posting_other_conditions) out.other_requirements = intake.posting_other_conditions;
+  if (intake.posting_utility_cost) out.utility_cost = intake.posting_utility_cost;
+  if (intake.posting_utility_kind) out.utility_kind = intake.posting_utility_kind;
+  if (intake.posting_comm_cost) out.communication_cost = intake.posting_comm_cost;
+  if (intake.flex_hours_kind) {
+    out.flexible_hours =
+      intake.flex_hours_kind === "なし"
+        ? "なし"
+        : intake.flex_hours_kind === "1ヶ月単位"
+          ? "1ヶ月単位の変形労働時間制"
+          : "1年単位の変形労働時間制";
+  }
+  // 寮が1件だけ登録されているときは居住費も自動で反映する（複数あるときは求人票の欄で選ぶ）
+  const lods = (intake.lodgings ?? []).filter((l) => l.kind && l.rent);
+  if (lods.length === 1) {
+    const per = parseAmount(lods[0].rent);
+    if (per != null) {
+      out.housing_lodging_id = lods[0].id;
+      out.housing_cost = String(per);
+      out.housing_kind = lods[0].kind;
+      out.housing_note = lodgingNote(lods[0]);
+    }
+  }
+  return out;
 }
 
 export function PostingForm({
@@ -111,44 +185,16 @@ export function PostingForm({
   const [error, setError] = useState<string | null>(null);
   // 前回の求人の内容を反映したときのお知らせ
   const [prefillNotice, setPrefillNotice] = useState<string | null>(null);
+  // この画面から所属機関の「求人票に記載する内容」を登録・修正したときの最新値
+  // （保存後すぐ求人票へ反映できるよう、機関ごとに持っておく）
+  const [intakeOverrides, setIntakeOverrides] = useState<Record<string, OrganizationIntake>>({});
 
-  // 所属機関の情報に登録された内容（源泉所得税・保険・支払方法・水道光熱費・通信費）を
-  // 求人票の欄に反映する。登録がある項目だけ上書きする
-  const orgSheetOverlay = (orgId: string): Partial<PostingSheet> => {
-    const intake = organizations.find((o) => o.id === orgId)?.intake;
-    if (!intake) return {};
-    const out: Partial<PostingSheet> = {};
-    if (intake.health_insurance) {
-      out.social_insurance = intake.health_insurance === "社会保険" ? "適用" : "適用なし";
-    }
-    if (intake.koyo_covered) {
-      out.employment_insurance = intake.koyo_covered === "はい" ? "適用" : "適用なし";
-    }
-    if (intake.pay_method) out.pay_method = intake.pay_method;
-    if (intake.posting_utility_cost) out.utility_cost = intake.posting_utility_cost;
-    if (intake.posting_utility_kind) out.utility_kind = intake.posting_utility_kind;
-    if (intake.posting_comm_cost) out.communication_cost = intake.posting_comm_cost;
-    if (intake.flex_hours_kind) {
-      out.flexible_hours =
-        intake.flex_hours_kind === "なし"
-          ? "なし"
-          : intake.flex_hours_kind === "1ヶ月単位"
-            ? "1ヶ月単位の変形労働時間制"
-            : "1年単位の変形労働時間制";
-    }
-    // 寮が1件だけ登録されているときは居住費も自動で反映する（複数あるときは求人票の欄で選ぶ）
-    const lods = (intake.lodgings ?? []).filter((l) => l.kind && l.rent);
-    if (lods.length === 1) {
-      const per = parseAmount(lods[0].rent);
-      if (per != null) {
-        out.housing_lodging_id = lods[0].id;
-        out.housing_cost = String(per);
-        out.housing_kind = lods[0].kind;
-        out.housing_note = lodgingNote(lods[0]);
-      }
-    }
-    return out;
-  };
+  const orgIntakeOf = (orgId: string): Partial<OrganizationIntake> | undefined =>
+    intakeOverrides[orgId] ?? organizations.find((o) => o.id === orgId)?.intake;
+
+  // 所属機関の情報に登録された内容を求人票の欄に反映する
+  const orgSheetOverlay = (orgId: string): Partial<PostingSheet> =>
+    sheetFromOrgIntake(orgIntakeOf(orgId));
 
   // 新規登録のとき: 所属機関を選ぶと、その会社の直近の求人から毎回同じような項目
   // （職種・就業場所・給与・求人票の内容など）を自動で反映する。
@@ -245,8 +291,53 @@ export function PostingForm({
     setSheet(daily ? { ...patch, daily_hours: daily } : patch);
   };
 
-  const selectedOrg = organizations.find((o) => o.id === form.organization_id);
+  const baseOrg = organizations.find((o) => o.id === form.organization_id);
+  // この画面で登録・修正した「求人票に記載する内容」があればそちらを使う
+  const selectedOrg: Organization | undefined =
+    baseOrg && intakeOverrides[baseOrg.id]
+      ? { ...baseOrg, intake: intakeOverrides[baseOrg.id] }
+      : baseOrg;
   const orgPostingNote = (selectedOrg?.intake?.posting_note ?? "").trim();
+
+  // 職種・就業場所を入力すると、Facebook掲載用の会社名（職種＋（市まで））と
+  // 簡易住所（何県何市まで）を自動で入れる。手で直した値は上書きしない
+  const setWithFbAuto = (patch: { job_type?: string; work_location?: string }) =>
+    setForm((f) => {
+      const next = { ...f, ...patch };
+      const prevCompany = autoDisplayCompany(f.job_type, f.work_location);
+      const prevAddress = prefCityOnly(f.work_location);
+      return {
+        ...next,
+        display_company:
+          !f.display_company || f.display_company === prevCompany
+            ? autoDisplayCompany(next.job_type, next.work_location)
+            : f.display_company,
+        display_address:
+          !f.display_address || f.display_address === prevAddress
+            ? prefCityOnly(next.work_location)
+            : f.display_address,
+      };
+    });
+
+  // 源泉所得税（扶養0人）を、時給→月給換算（月給ならそのまま）した金額から自動計算する。
+  // 社会保険・雇用保険の適用に応じて保険料を引いたあとの金額で計算する（概算）
+  const autoIncomeTax = (): number | null => {
+    const amount = form.wage_amount ?? 0;
+    if (!amount) return null;
+    const sh = normalizePostingSheet(form.sheet);
+    const base = monthlyBaseWage(form.wage_kind, amount, orgAnnualHours(selectedOrg));
+    if (!base) return null;
+    const social = socialInsuranceAmount(base, {
+      enabled: sh.social_insurance === "適用",
+      healthRate: 10.08,
+      ageBand: "40歳未満",
+    });
+    const employment = employmentInsuranceAmount(base, {
+      enabled: sh.employment_insurance === "適用",
+      kind: employmentKindForField(sh.field_name),
+    });
+    return calcIncomeTaxMonthly(Math.max(0, base - social - employment), false, 0);
+  };
 
   // チェックボックス（休日・加入保険）の付け外し
   const toggle = (list: string[], value: string): string[] =>
@@ -261,7 +352,16 @@ export function PostingForm({
     setBusy(true);
     setError(null);
     try {
-      await onSubmit(form);
+      // 源泉所得税（扶養0人）は月給換算からの自動計算値を保存する
+      const tax = autoIncomeTax();
+      await onSubmit(
+        tax != null
+          ? {
+              ...form,
+              sheet: { ...normalizePostingSheet(form.sheet), income_tax: String(tax) },
+            }
+          : form,
+      );
     } catch (err) {
       setError(
         dbErrorMessage(err, "0090_job_posting_sheet.sql", errorMessage(err, "保存に失敗しました")),
@@ -331,15 +431,25 @@ export function PostingForm({
         <Field label="職種">
           <input
             value={form.job_type}
-            onChange={(e) => set("job_type", e.target.value)}
+            onChange={(e) => setWithFbAuto({ job_type: e.target.value })}
             placeholder="惣菜製造"
+            className={INPUT_CLASS}
+          />
+        </Field>
+        <Field label="採用人数（Facebook掲載用の募集人数にも自動で反映）">
+          <input
+            type="number"
+            inputMode="numeric"
+            min={1}
+            value={form.openings}
+            onChange={(e) => set("openings", Math.max(1, Number(e.target.value) || 1))}
             className={INPUT_CLASS}
           />
         </Field>
         <Field label="就業場所">
           <input
             value={form.work_location}
-            onChange={(e) => set("work_location", e.target.value)}
+            onChange={(e) => setWithFbAuto({ work_location: e.target.value })}
             placeholder="福岡県久留米市◯◯工場"
             className={INPUT_CLASS}
           />
@@ -421,11 +531,123 @@ export function PostingForm({
 
       {!simple && (
       <>
+      <Fieldset legend="Facebook掲載用">
+        <Field label="掲載用の会社名">
+          <input
+            value={form.display_company}
+            onChange={(e) => set("display_company", e.target.value)}
+            placeholder="食品製造工場（福岡県）"
+            className={INPUT_CLASS}
+          />
+        </Field>
+        <Field label="掲載用の簡易住所">
+          <input
+            value={form.display_address}
+            onChange={(e) => set("display_address", e.target.value)}
+            placeholder="福岡県久留米市"
+            className={INPUT_CLASS}
+          />
+        </Field>
+        <div className="grid grid-cols-2 gap-2.5">
+          <Field label="募集人数">
+            <input
+              type="number"
+              inputMode="numeric"
+              min={1}
+              value={form.openings}
+              onChange={(e) => set("openings", Math.max(1, Number(e.target.value) || 1))}
+              className={INPUT_CLASS}
+            />
+          </Field>
+          <Field label="性別">
+            <select
+              value={form.gender}
+              onChange={(e) => set("gender", e.target.value as GenderReq)}
+              className={INPUT_CLASS}
+            >
+              {GENDER_REQS.map((g) => (
+                <option key={g} value={g}>
+                  {g}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        <div className="grid grid-cols-2 gap-2.5">
+          <Field label="対象国籍">
+            <input
+              value={form.target_nationality}
+              onChange={(e) => set("target_nationality", e.target.value)}
+              placeholder="ベトナム・不問 など"
+              className={INPUT_CLASS}
+            />
+          </Field>
+          <Field label="採用予定時期">
+            <input
+              value={form.hire_timing}
+              onChange={(e) => set("hire_timing", e.target.value)}
+              placeholder="2026年9月頃"
+              className={INPUT_CLASS}
+            />
+          </Field>
+        </div>
+        <div className="grid grid-cols-2 gap-2.5">
+          <Field label="家賃（掲載用・Tiền nhà）">
+            <input
+              value={form.rent}
+              onChange={(e) => set("rent", e.target.value)}
+              placeholder="約1万円 / 15000円 など"
+              className={INPUT_CLASS}
+            />
+          </Field>
+          <Field label="光熱費（掲載用・Điện nước ga）">
+            <input
+              value={form.utilities}
+              onChange={(e) => set("utilities", e.target.value)}
+              placeholder="自己負担 など"
+              className={INPUT_CLASS}
+            />
+          </Field>
+        </div>
+        <Field label="備考（シフト・寮の有無など）">
+          <textarea
+            rows={2}
+            value={form.note}
+            onChange={(e) => set("note", e.target.value)}
+            className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm focus:border-brand focus:outline-none"
+          />
+        </Field>
+        <Field label="状態">
+          <select
+            value={form.status}
+            onChange={(e) => set("status", e.target.value as PostingStatus)}
+            className={INPUT_CLASS}
+          >
+            {POSTING_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </Fieldset>
+
       <Fieldset legend="求人票（会社に書いてもらう内容）">
         <p className="text-[11px] leading-relaxed text-muted">
           特定技能1号の求人票に書いてもらった内容をそのまま入れる欄です。
           職種・就業場所・採用人数・基本給は上の「求人管理簿」の入力を使います。
         </p>
+        {/* 所属機関に未登録の「求人票に記載する内容」は、ここから随時登録できる */}
+        {baseOrg && (
+          <OrgPostingInfoEditor
+            key={baseOrg.id}
+            org={selectedOrg ?? baseOrg}
+            onSaved={(intake) => {
+              setIntakeOverrides((m) => ({ ...m, [baseOrg.id]: intake }));
+              setSheet(sheetFromOrgIntake(intake));
+            }}
+          />
+        )}
         <div className="grid grid-cols-2 gap-2.5">
           <Field label="記入日">
             <input
@@ -709,32 +931,17 @@ export function PostingForm({
           </div>
         </Field>
 
-        {/* 控除内容 */}
-        <Field label="控除項目（給与から引くもの）">
-          <div className="flex flex-wrap gap-1.5">
-            {POSTING_DEDUCTION_ITEMS.map((d) => (
-              <button
-                key={d}
-                type="button"
-                onClick={() => setSheet({ deduction_items: toggle(sheet.deduction_items, d) })}
-                className={`min-h-[36px] rounded-lg border px-3 text-sm font-bold ${
-                  sheet.deduction_items.includes(d)
-                    ? "border-brand bg-brand text-brand-foreground"
-                    : "border-border bg-background text-muted"
-                }`}
-              >
-                {d}
-              </button>
-            ))}
-          </div>
-        </Field>
         <div className="grid grid-cols-3 gap-2.5">
-          <Field label="源泉所得税（扶養0人・円。徴収しない会社は「なし」）">
+          {/* 源泉所得税は月給換算（扶養0人・保険料控除後）から自動計算して保存する */}
+          <Field label="源泉所得税（扶養0人・円。給与から自動計算）">
             <input
-              value={sheet.income_tax}
-              onChange={(e) => setSheet({ income_tax: e.target.value })}
-              placeholder="3000／なし"
-              className={INPUT_CLASS}
+              value={(() => {
+                const tax = autoIncomeTax();
+                return tax != null ? String(tax) : sheet.income_tax;
+              })()}
+              readOnly
+              placeholder="給与を入力すると自動で入ります"
+              className={`${INPUT_CLASS} bg-border/30`}
             />
           </Field>
           <Field label="社会保険料">
@@ -1029,106 +1236,6 @@ export function PostingForm({
         />
       </Fieldset>
 
-      <Fieldset legend="Facebook掲載用">
-        <Field label="掲載用の会社名">
-          <input
-            value={form.display_company}
-            onChange={(e) => set("display_company", e.target.value)}
-            placeholder="食品製造工場（福岡県）"
-            className={INPUT_CLASS}
-          />
-        </Field>
-        <Field label="掲載用の簡易住所">
-          <input
-            value={form.display_address}
-            onChange={(e) => set("display_address", e.target.value)}
-            placeholder="福岡県久留米市"
-            className={INPUT_CLASS}
-          />
-        </Field>
-        <div className="grid grid-cols-2 gap-2.5">
-          <Field label="募集人数">
-            <input
-              type="number"
-              inputMode="numeric"
-              min={1}
-              value={form.openings}
-              onChange={(e) => set("openings", Math.max(1, Number(e.target.value) || 1))}
-              className={INPUT_CLASS}
-            />
-          </Field>
-          <Field label="性別">
-            <select
-              value={form.gender}
-              onChange={(e) => set("gender", e.target.value as GenderReq)}
-              className={INPUT_CLASS}
-            >
-              {GENDER_REQS.map((g) => (
-                <option key={g} value={g}>
-                  {g}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
-        <div className="grid grid-cols-2 gap-2.5">
-          <Field label="対象国籍">
-            <input
-              value={form.target_nationality}
-              onChange={(e) => set("target_nationality", e.target.value)}
-              placeholder="ベトナム・不問 など"
-              className={INPUT_CLASS}
-            />
-          </Field>
-          <Field label="採用予定時期">
-            <input
-              value={form.hire_timing}
-              onChange={(e) => set("hire_timing", e.target.value)}
-              placeholder="2026年9月頃"
-              className={INPUT_CLASS}
-            />
-          </Field>
-        </div>
-        <div className="grid grid-cols-2 gap-2.5">
-          <Field label="家賃（掲載用・Tiền nhà）">
-            <input
-              value={form.rent}
-              onChange={(e) => set("rent", e.target.value)}
-              placeholder="約1万円 / 15000円 など"
-              className={INPUT_CLASS}
-            />
-          </Field>
-          <Field label="光熱費（掲載用・Điện nước ga）">
-            <input
-              value={form.utilities}
-              onChange={(e) => set("utilities", e.target.value)}
-              placeholder="自己負担 など"
-              className={INPUT_CLASS}
-            />
-          </Field>
-        </div>
-        <Field label="備考（シフト・寮の有無など）">
-          <textarea
-            rows={2}
-            value={form.note}
-            onChange={(e) => set("note", e.target.value)}
-            className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm focus:border-brand focus:outline-none"
-          />
-        </Field>
-        <Field label="状態">
-          <select
-            value={form.status}
-            onChange={(e) => set("status", e.target.value as PostingStatus)}
-            className={INPUT_CLASS}
-          >
-            {POSTING_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </Field>
-      </Fieldset>
       </>
       )}
 
@@ -1248,6 +1355,140 @@ function FlexYearDocs({ org }: { org?: Organization }) {
   );
 }
 
+// 所属機関の「求人票に記載する内容」を求人の画面から登録・修正する欄。
+// 所属機関に未登録の情報があっても、ここで入力して保存すればそのまま求人票に反映できる
+function OrgPostingInfoEditor({
+  org,
+  onSaved,
+}: {
+  org: Organization;
+  onSaved: (intake: OrganizationIntake) => void;
+}) {
+  const [draft, setDraft] = useState<OrganizationIntake | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const current = draft ?? normalizeOrganizationIntake(org.intake);
+  const set = (patch: Partial<OrganizationIntake>) => setDraft({ ...current, ...patch });
+
+  const save = async () => {
+    setSaving(true);
+    setMessage(null);
+    const { error } = await createClient()
+      .from("organizations")
+      .update({ intake: current })
+      .eq("id", org.id);
+    if (error) {
+      setMessage({ ok: false, text: `保存に失敗しました: ${error.message}` });
+    } else {
+      setMessage({ ok: true, text: "所属機関に保存し、下の求人票の欄にも反映しました。" });
+      onSaved(current);
+    }
+    setSaving(false);
+  };
+
+  const input = (
+    label: string,
+    key: keyof OrganizationIntake,
+    placeholder?: string,
+  ) => (
+    <label className="flex flex-col gap-1">
+      <span className="text-[11px] font-bold text-muted">{label}</span>
+      <input
+        value={String(current[key] ?? "")}
+        onChange={(e) => set({ [key]: e.target.value } as Partial<OrganizationIntake>)}
+        placeholder={placeholder}
+        className={INPUT_CLASS}
+      />
+    </label>
+  );
+
+  return (
+    <details className="rounded-xl border border-dashed border-border p-2.5">
+      <summary className="cursor-pointer text-xs font-bold text-brand">
+        {org.name} の「求人票に記載する内容」を登録・修正する（未登録の情報はここから入れられます）
+      </summary>
+      <div className="mt-2 flex flex-col gap-2">
+        {message && (
+          <p
+            className={`rounded-lg px-2.5 py-1.5 text-xs ${
+              message.ok ? "bg-brand/10 text-brand" : "bg-seal/10 text-seal"
+            }`}
+          >
+            {message.text}
+          </p>
+        )}
+        <div className="grid grid-cols-2 gap-2">
+          {input("水道光熱費（約・円）", "posting_utility_cost", "8000")}
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-bold text-muted">水道光熱費の徴収</span>
+            <select
+              value={current.posting_utility_kind}
+              onChange={(e) => set({ posting_utility_kind: e.target.value })}
+              className={INPUT_CLASS}
+            >
+              <option value="">—</option>
+              <option value="実費">実費</option>
+              <option value="固定">固定</option>
+            </select>
+          </label>
+          {input("通信費（約・円。徴収しない会社は「無し」）", "posting_comm_cost", "3000／無し")}
+          {input("通信費を徴収しない理由", "posting_comm_reason")}
+          {input("月平均所定労働時間数", "posting_monthly_hours", "173時間20分／173.3")}
+          {input("年間所定労働時間数", "posting_annual_hours", "2080")}
+          {input("給与の締切日", "posting_pay_closing", "末日")}
+          {input("給与の支払日", "posting_pay_day", "翌月10日")}
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-bold text-muted">支払方法</span>
+            <select
+              value={current.pay_method}
+              onChange={(e) => set({ pay_method: e.target.value })}
+              className={INPUT_CLASS}
+            >
+              <option value="">—</option>
+              <option value="口座振込">口座振込</option>
+              <option value="通貨払い">通貨払い</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-bold text-muted">変形労働時間制</span>
+            <select
+              value={current.flex_hours_kind}
+              onChange={(e) => set({ flex_hours_kind: e.target.value })}
+              className={INPUT_CLASS}
+            >
+              <option value="">—</option>
+              <option value="なし">なし</option>
+              <option value="1ヶ月単位">1ヶ月単位</option>
+              <option value="1年単位">1年単位</option>
+            </select>
+          </label>
+        </div>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-bold text-muted">
+            その他（応募条件。タトゥー（刺青）不可など採用の際の注意）
+          </span>
+          <textarea
+            rows={2}
+            value={current.posting_other_conditions}
+            onChange={(e) => set({ posting_other_conditions: e.target.value })}
+            placeholder="例: タトゥー（刺青）のある人は不可 など"
+            className={TEXTAREA_CLASS}
+          />
+        </label>
+        <button
+          type="button"
+          onClick={() => void save()}
+          disabled={saving}
+          className="self-start rounded-lg bg-brand px-4 py-2 text-xs font-bold text-brand-foreground disabled:opacity-50"
+        >
+          {saving ? "保存中…" : "所属機関に保存して求人票へ反映"}
+        </button>
+      </div>
+    </details>
+  );
+}
+
 // 手取りプレビューの1行（項目名と概算額）
 function PreviewRow({ label, value, bold = false }: { label: string; value: number; bold?: boolean }) {
   return (
@@ -1271,7 +1512,6 @@ function NetPayPreview({
   sheet: PostingSheet;
   org?: Organization;
 }) {
-  const deducts = sheet.deduction_items;
   const detail: WageDetail = {
     ...emptyWageDetail(),
     annual_hours: orgAnnualHours(org),
@@ -1282,17 +1522,12 @@ function NetPayPreview({
     fixed_ot_amount: Number(sheet.fixed_overtime) || 0,
     social_enabled: sheet.social_insurance === "適用",
     employment_enabled: sheet.employment_insurance === "適用",
-    employment_kind:
-      sheet.field_name === "農業" || sheet.field_name === "漁業"
-        ? "農林水産・清酒製造の事業"
-        : sheet.field_name === "建設"
-          ? "建設の事業"
-          : "一般の事業",
-    // 控除は「控除項目」でチェックしたものだけ手取りの計算に入れる
-    housing_amount: deducts.includes("社宅（居住費）") ? Number(sheet.housing_cost) || 0 : 0,
-    utility_amount: deducts.includes("水道光熱費") ? Number(sheet.utility_cost) || 0 : 0,
+    employment_kind: employmentKindForField(sheet.field_name),
+    // 金額が入っている控除（居住費・水道光熱費・通信費）を手取りの計算に入れる
+    housing_amount: Number(sheet.housing_cost) || 0,
+    utility_amount: Number(sheet.utility_cost) || 0,
     others:
-      deducts.includes("通信費") && Number(sheet.communication_cost) > 0
+      Number(sheet.communication_cost) > 0
         ? [{ name: "通信費", amount: Number(sheet.communication_cost) || 0 }]
         : [],
   };

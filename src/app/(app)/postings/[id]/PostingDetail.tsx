@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronRight, ClipboardList, Copy, Megaphone, Pencil, Share2, Trash2, Users } from "lucide-react";
+import { ChevronRight, ClipboardList, Megaphone, Pencil, Share2, Trash2, Users } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -17,11 +17,9 @@ import { deletePosting, updatePosting } from "@/lib/supabase/queries/postings";
 import { postingDisplayName } from "@/lib/posting-output";
 import {
   contractText,
-  deductionItemsText,
   holidayText,
   insurancesText,
   normalizePostingSheet,
-  postingSheetText,
   smokingText,
   workHoursText,
 } from "@/lib/posting-sheet";
@@ -47,22 +45,10 @@ export function PostingDetail({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-
   const orgName = posting.organizations?.name;
 
   // 求人票（会社に書いてもらった内容）
   const sheet = normalizePostingSheet(posting.sheet);
-
-  const copySheet = async () => {
-    try {
-      await navigator.clipboard.writeText(postingSheetText(posting, sheet, orgName));
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setCopied(false);
-    }
-  };
 
   const hired = applicants.filter((a) => a.result === "採用").length;
   // 所属機関が求人で必須としている他条件（所属機関の情報で登録）
@@ -164,14 +150,6 @@ export function PostingDetail({
             <ClipboardList size={15} className="text-brand" />
             求人票（特定技能1号）
           </h2>
-          <button
-            type="button"
-            onClick={() => void copySheet()}
-            className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-bold"
-          >
-            <Copy size={13} />
-            {copied ? "コピーしました" : "内容をコピー"}
-          </button>
         </div>
         <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
           <Info label="分野名" value={sheet.field_name} />
@@ -200,10 +178,13 @@ export function PostingDetail({
                 wide
               />
             ))}
-          <Info label="控除項目" value={deductionItemsText(sheet)} wide />
           <Info
             label="源泉所得税（扶養0人）"
-            value={sheet.income_tax ? `${Number(sheet.income_tax).toLocaleString("ja-JP")}円` : ""}
+            value={
+              /^\d+$/.test(sheet.income_tax)
+                ? `${Number(sheet.income_tax).toLocaleString("ja-JP")}円`
+                : sheet.income_tax
+            }
           />
           <Info
             label="社会保険料・雇用保険料"
@@ -236,9 +217,9 @@ export function PostingDetail({
           <Info
             label="通信費"
             value={
-              sheet.communication_cost
+              /^\d+$/.test(sheet.communication_cost)
                 ? `約${Number(sheet.communication_cost).toLocaleString("ja-JP")}円`
-                : ""
+                : sheet.communication_cost
             }
           />
           <Info label="昇給" value={[sheet.raise, sheet.raise_note].filter(Boolean).join("／")} />

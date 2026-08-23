@@ -968,6 +968,52 @@ function IntakeSection({
           placeholder="例: Wi-Fiは会社負担で本人契約のスマホ代のみのため など"
           locked={locks.intake("posting_comm_reason")}
         />
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+          <IntakeField
+            label="給与の締切日"
+            value={intake.posting_pay_closing}
+            onChange={(v) => setIntake({ posting_pay_closing: v })}
+            placeholder="例: 末日"
+            locked={locks.intake("posting_pay_closing")}
+          />
+          <IntakeField
+            label="給与の支払日"
+            value={intake.posting_pay_day}
+            onChange={(v) => setIntake({ posting_pay_day: v })}
+            placeholder="例: 翌月10日"
+            locked={locks.intake("posting_pay_day")}
+          />
+          <IntakeSelect
+            label="支払方法"
+            value={intake.pay_method}
+            onChange={(v) => setIntake({ pay_method: v })}
+            options={["口座振込", "通貨払い"]}
+            hint="上の「給与支払い方法」と同じ項目です。"
+            locked={locks.intake("pay_method")}
+          />
+        </div>
+        {locks.intake("posting_other_conditions") ? (
+          <StaticValue
+            label="その他（応募条件。採用の際に必ず確認）"
+            value={intake.posting_other_conditions}
+          />
+        ) : (
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-bold text-muted">
+              その他（応募条件。採用の際に必ず確認）
+            </span>
+            <textarea
+              value={intake.posting_other_conditions}
+              onChange={(e) => setIntake({ posting_other_conditions: e.target.value })}
+              rows={2}
+              placeholder="例: タトゥー（刺青）のある人は不可 など"
+              className={`${INPUT_CLASS} min-h-[60px] py-2 leading-relaxed`}
+            />
+            <span className={HINT_CLASS}>
+              求人票の「その他（応募条件）」へ自動で反映されます。タトゥー（刺青）不可などの条件はここに登録しておくと採用の際に見落としません。
+            </span>
+          </label>
+        )}
         {/* 月平均と年間はどちらかを入れると片方が自動で入る（月平均×12＝年間） */}
         <div className="grid grid-cols-2 gap-2.5">
           {/* 「173時間20分」の形で入れても小数（173.3）に自動で直して計算に使う */}
