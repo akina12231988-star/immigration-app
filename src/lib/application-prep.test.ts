@@ -294,6 +294,9 @@ describe("合格証の組み合わせ（cert_pattern）", () => {
   it("専門級なし・技能実習2号を良好修了 → 技能評価調書", () => {
     expect(ids("技能評価調書")).toEqual(["hyoka_chosho"]);
   });
+  it("専門級以外の分野で就職（技能評価調書あり）→ 専門外＋技能評価調書", () => {
+    expect(ids("専門外・技能評価調書")).toEqual(["cert_senmongai", "hyoka_chosho"].sort());
+  });
   it("更新申請には合格証・調書は出ない", () => {
     const updateIds = evaluatePrepChecklist(
       meta({ app_type: "更新", cert_pattern: "専門級" }),

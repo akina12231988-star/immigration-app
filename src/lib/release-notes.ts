@@ -23,6 +23,16 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-08-23",
+    title: "合格証の組み合わせに「専門外＋技能評価調書」が追加されました",
+    where: "申請準備のTODO ＞ 詳細 ＞ 合格証の組み合わせ",
+    href: "/workers/renewals",
+    items: [
+      "「専門級以外の分野で就職（技能評価調書あり）→ 専門外＋技能評価調書」を選ぶと、必要な書類の一覧に専門外の合格証と技能評価調書が表示されます。",
+      "DBの変更が必要です: 0113_prep_cert_pattern_senmongai_chosho.sql をSQL Editorで実行してください（選択肢のCHECK制約の入れ替え）。",
+    ],
+  },
+  {
+    date: "2026-08-23",
     title: "健康診断書の受診日チェックと、外国人詳細のTODOリンクから詳細が開けるようになりました",
     where: "申請準備のTODO ＞ 詳細 ＞ 健康診断書／外国人詳細 ＞ TODO",
     href: "/workers/renewals",
