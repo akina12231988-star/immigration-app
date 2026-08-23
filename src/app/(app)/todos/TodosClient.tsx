@@ -6,6 +6,10 @@ import { ClipboardList, Plus, Settings2, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Combobox } from "@/components/ui/Combobox";
+import { Modal } from "@/components/ui/Modal";
+import { ApplicationPrepChecklist } from "@/components/workers/ApplicationPrepChecklist";
+import { APPLICATION_CONTENT_CHOICES } from "@/lib/worker-situation";
+import { listFilingAgents } from "@/lib/supabase/queries/agents";
 import { createClient } from "@/lib/supabase/client";
 import { dbErrorMessage } from "@/lib/errors";
 import {
@@ -96,6 +100,35 @@ export function TodosClient({
   const [kind, setKind] = useState<TodoKind>(fixedKind ?? "申請準備");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // 申請取次士の名簿（申請準備のTODOで誰が取次するかを選ぶ）
+  const [agents, setAgents] = useState<string[]>([]);
+  // TODOの詳細（申請準備 書類チェックリスト）をその場で開くモーダル
+  const [prepModal, setPrepModal] = useState<{
+    workerId: string;
+    name: string;
+    photoPath: string | null;
+    healthCheckOn: string | null;
+  } | null>(null);
+
+  // TODOの行から申請準備の詳細（必要な書類）を開く。写真・健診日は開くときに取得する
+  const openPrep = (t: TodoRow) => {
+    if (!t.worker_id) return;
+    const workerId = t.worker_id;
+    void createClient()
+      .from("workers")
+      .select("photo_path, health_check_on")
+      .eq("id", workerId)
+      .maybeSingle()
+      .then(({ data }) => {
+        const w = data as { photo_path: string | null; health_check_on: string | null } | null;
+        setPrepModal({
+          workerId,
+          name: t.worker_name ?? "（外国人）",
+          photoPath: w?.photo_path ?? null,
+          healthCheckOn: w?.health_check_on ?? null,
+        });
+      });
+  };
 
   // 追加フォーム
   const [newWorkerId, setNewWorkerId] = useState("");
@@ -245,6 +278,10 @@ export function TodosClient({
           })),
         );
       });
+    // 申請取次士の名簿（無くても他の機能は使える）
+    listFilingAgents(createClient())
+      .then((rows) => setAgents(rows.map((a) => a.name)))
+      .catch(() => undefined);
   }, []);
 
   // まだ申請準備のTODOに入っていない「申請前＜準備中＞」の人（外国人・番号のどちらでも重複を除く）
@@ -296,12 +333,12 @@ export function TodosClient({
   );
   const kindTodos = useMemo(() => todos.filter((t) => t.kind === kind), [todos, kind]);
 
-  const run = async (fn: () => Promise<void>) => {
+  const run = async (fn: () => Promise<void>, migration = "0102_todos.sql") => {
     try {
       await fn();
       await load();
     } catch (err) {
-      setError(dbErrorMessage(err, "0102_todos.sql", "保存に失敗しました"));
+      setError(dbErrorMessage(err, migration, "保存に失敗しました"));
     }
   };
 
@@ -510,11 +547,21 @@ export function TodosClient({
                       statusOptions={kindOptions}
                       checkOptions={checkOptions}
                       canEdit={canEdit}
+                      agents={agents}
+                      onOpenPrep={t.kind === "申請準備" && t.worker_id ? () => openPrep(t) : undefined}
                       jobFlows={jobFlows.filter((f) => f.worker_id === t.worker_id)}
                       mailings={mailings.filter(
                         (m) => m.todoKey && m.todoKey === normalizeTodoKey(t.todo_no),
                       )}
-                      onChange={(patch) => run(() => updateTodo(createClient(), t.id, patch))}
+                      onChange={(patch) =>
+                        run(
+                          () => updateTodo(createClient(), t.id, patch),
+                          // 取次士・本人申請の列は 0106 で追加。未適用ならその案内を出す
+                          "agent_name" in patch || "self_apply" in patch
+                            ? "0106_todos_apply_fields.sql"
+                            : "0102_todos.sql",
+                        )
+                      }
                       onDelete={() => {
                         if (
                           window.confirm(
@@ -558,6 +605,26 @@ export function TodosClient({
           </div>
         </details>
       )}
+
+      {/* TODOの詳細（申請準備 書類チェックリスト）。行の「必要な書類・準備の詳細」から開く */}
+      {prepModal && (
+        <Modal
+          open
+          wide
+          title={`${prepModal.name}｜申請準備`}
+          onClose={() => {
+            setPrepModal(null);
+            void load(); // ステータスなどの変更を一覧に反映
+          }}
+        >
+          <ApplicationPrepChecklist
+            workerId={prepModal.workerId}
+            canEdit={canEdit}
+            photoPath={prepModal.photoPath}
+            healthCheckOn={prepModal.healthCheckOn}
+          />
+        </Modal>
+      )}
     </div>
   );
 }
@@ -567,6 +634,8 @@ function TodoItem({
   statusOptions,
   checkOptions,
   canEdit,
+  agents = [],
+  onOpenPrep,
   jobFlows = [],
   mailings = [],
   onChange,
@@ -576,11 +645,23 @@ function TodoItem({
   statusOptions: TodoStatusOption[];
   checkOptions: TodoStatusOption[];
   canEdit: boolean;
+  agents?: string[]; // 申請取次士の名簿（申請準備のTODOで選ぶ）
+  onOpenPrep?: () => void; // TODOの詳細（申請準備 書類チェックリスト）を開く
   jobFlows?: JobFlowRow[]; // あっせん有りのときに出す、求人への採用の流れ
   mailings?: MailingSummary[]; // 同じTODO番号の郵送請求（判定記録）の状況
   onChange: (
     patch: Partial<
-      Pick<TodoRow, "todo_no" | "title" | "status" | "check_status" | "assen" | "assen_note">
+      Pick<
+        TodoRow,
+        | "todo_no"
+        | "title"
+        | "status"
+        | "check_status"
+        | "assen"
+        | "assen_note"
+        | "agent_name"
+        | "self_apply"
+      >
     >,
   ) => void;
   onDelete: () => void;
@@ -632,7 +713,7 @@ function TodoItem({
           }}
           disabled={!canEdit}
           aria-label="TODO番号"
-          className="w-20 rounded-lg border border-border bg-surface px-2 py-1 text-center text-sm font-bold tabular-nums"
+          className="w-28 rounded-lg border border-border bg-surface px-2 py-1 text-center text-sm font-bold tabular-nums"
         />
         <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-0.5">
           {todo.worker_id ? (
@@ -644,6 +725,17 @@ function TodoItem({
                   会社の同意の確認チェックもその中にある */}
               {todo.kind === "申請準備" && (
                 <>
+                  {/* TODOの詳細（必要な書類のチェックリスト）はここから開く。
+                      氏名クリック（外国人詳細）とは別の導線 */}
+                  {onOpenPrep && (
+                    <button
+                      type="button"
+                      onClick={onOpenPrep}
+                      className="shrink-0 rounded-full bg-brand px-2.5 py-1 text-[10px] font-bold text-brand-foreground"
+                    >
+                      📋 必要な書類・準備の詳細
+                    </button>
+                  )}
                   <Link
                     href={`/workers/${todo.worker_id}#wages`}
                     className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] font-bold text-brand"
@@ -678,16 +770,44 @@ function TodoItem({
         )}
       </div>
       <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onBlur={() => {
-            if (title !== todo.title) onChange({ title });
-          }}
-          disabled={!canEdit}
-          placeholder="内容"
-          className={`${INPUT} min-w-0`}
-        />
+        {todo.kind === "申請準備" ? (
+          /* 申請準備の内容は自由入力ではなく、申請登録と同じ申請内容の候補から選ぶ。
+             「※本人申請」の候補を選ぶと本人申請にもチェックが入る */
+          <select
+            value={title}
+            disabled={!canEdit}
+            onChange={(e) => {
+              const v = e.target.value;
+              setTitle(v);
+              const choice = APPLICATION_CONTENT_CHOICES.find((c) => c.label === v);
+              onChange({ title: v, ...(choice?.selfApply ? { self_apply: true } : {}) });
+            }}
+            aria-label="申請の内容"
+            className={`${INPUT} min-w-0`}
+          >
+            <option value="">内容を選択</option>
+            {/* 旧の自由入力の値（「申請準備」など）もそのまま残す */}
+            {title && !APPLICATION_CONTENT_CHOICES.some((c) => c.label === title) && (
+              <option value={title}>{title}</option>
+            )}
+            {APPLICATION_CONTENT_CHOICES.map((c) => (
+              <option key={c.label} value={c.label}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onBlur={() => {
+              if (title !== todo.title) onChange({ title });
+            }}
+            disabled={!canEdit}
+            placeholder="内容"
+            className={`${INPUT} min-w-0`}
+          />
+        )}
         {selectFor(todo.status, statusOptions, (v) => onChange({ status: v }))}
       </div>
       {/* 経過が「〜チェック中」のときは確認ステータスも出す */}
@@ -698,9 +818,42 @@ function TodoItem({
         </div>
       )}
 
-      {/* 申請準備のTODO: あっせんの有無と、チェック後の訂正記録 */}
+      {/* 申請準備のTODO: 申請取次士・本人申請、あっせんの有無、チェック後の訂正記録 */}
       {todo.kind === "申請準備" && (
         <div className="mt-2 space-y-2 border-t border-dashed border-border pt-2">
+          {/* 誰が取次するか（申請取次士）と、本人申請でするかの記録（0106） */}
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2 text-[11px] font-bold text-muted">
+              申請取次士
+              <select
+                value={todo.agent_name ?? ""}
+                disabled={!canEdit}
+                onChange={(e) => onChange({ agent_name: e.target.value })}
+                className="min-h-[36px] rounded-lg border border-border bg-surface px-2 text-xs"
+              >
+                <option value="">未定</option>
+                {/* 名簿から外れた保存済みの名前も選択肢として残す */}
+                {todo.agent_name && !agents.includes(todo.agent_name) && (
+                  <option value={todo.agent_name}>{todo.agent_name}</option>
+                )}
+                {agents.map((a) => (
+                  <option key={a} value={a}>
+                    {a}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-1.5 text-[11px] font-bold">
+              <input
+                type="checkbox"
+                checked={todo.self_apply ?? false}
+                disabled={!canEdit}
+                onChange={(e) => onChange({ self_apply: e.target.checked })}
+                className="h-4 w-4"
+              />
+              本人申請でする
+            </label>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="shrink-0 text-[11px] font-bold text-muted">あっせん</span>
             <select
@@ -763,7 +916,11 @@ function TodoItem({
           <div className="rounded-lg bg-background p-2">
             <p className="mb-1 flex flex-wrap items-center justify-between gap-1 text-[11px] font-bold text-muted">
               📮 郵送請求の状況（TODO番号 {todo.todo_no} とリンク）
-              <Link href="/mailing" className="font-bold text-brand hover:underline">
+              {/* 開いた先で、その人の記録一覧を最初から表示する */}
+              <Link
+                href={`/mailing?q=${encodeURIComponent(todo.worker_name || todo.todo_no)}`}
+                className="font-bold text-brand hover:underline"
+              >
                 郵送請求を開く →
               </Link>
             </p>

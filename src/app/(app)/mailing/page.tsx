@@ -11,9 +11,15 @@ import { MailingClient } from "./MailingClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function MailingPage() {
+export default async function MailingPage({
+  searchParams,
+}: {
+  // q: 記録一覧を開いて氏名・TODO番号で絞り込む（申請準備のTODOの「郵送請求を開く」から）
+  searchParams: Promise<{ q?: string }>;
+}) {
   const me = await getMyProfile();
   if (!me) redirect("/login");
+  const { q } = await searchParams;
 
   const supabase = await createClient();
   const [municipalities, records, workers] = await Promise.all([
@@ -30,6 +36,7 @@ export default async function MailingPage() {
         initialRecords={records}
         workers={workers.map((w) => ({ id: w.id, name: w.name, address: w.address }))}
         canEdit={me.role !== "viewer"}
+        initialKeyword={q ?? ""}
       />
     </>
   );
