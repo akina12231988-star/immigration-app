@@ -368,6 +368,9 @@ export interface Worker {
   photo_path: string | null; // 顔写真（worker-files バケット）
   messenger_link: string; // Messenger グループ/個人リンク
   specialty_grade: string; // 専門級の合格名
+  jisshu2_shokushu?: string; // 良好に修了した技能実習2号の職種名（0110）
+  jisshu2_sagyo?: string; // 良好に修了した技能実習2号の作業名（0110）
+  jisshu2_proof?: string; // 良好修了の証明（'' / 実技試験の合格 / 書面による証明。0110）
   ssw2_exam: string; // 特定技能2号の合格試験名（入力があれば2号合格として扱う）
   other_qualifications: string; // その他の資格・合格名
   my_number: string; // 個人番号（マイナンバー）

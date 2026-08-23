@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { FileDropArea } from "@/components/ui/FileDropArea";
+import { WorkerCertDocRows } from "@/components/workers/WorkerCertDocRows";
+import { Jisshu2Section } from "@/components/workers/Jisshu2Section";
 import {
   WorkerRenewalFields,
   type RenewalFieldsWorker,
@@ -37,6 +39,7 @@ import {
   type PrepDocStatusInput,
 } from "@/lib/supabase/queries/application-prep";
 import {
+  deleteTodo,
   insertTodo,
   listTodoStatusOptions,
   renameTodoNo,
@@ -173,6 +176,11 @@ export function ApplicationPrepChecklist({
     application_prep_organization_id: string | null;
     specialty_grade: string;
     other_qualifications: string;
+    residence_status: string;
+    residence_card_no: string;
+    residence_expiry_date: string;
+    passport_no: string;
+    passport_expiry_date: string;
   } | null>(null);
 
   // 申請準備のTODO（この外国人分）とステータスの選択肢。名前の下に常時表示して編集できる
@@ -231,7 +239,7 @@ export function ApplicationPrepChecklist({
     void createClient()
       .from("workers")
       .select(
-        "name, address, current_organization_id, application_prep_organization_id, specialty_grade, other_qualifications",
+        "name, address, current_organization_id, application_prep_organization_id, specialty_grade, other_qualifications, residence_status, residence_card_no, residence_expiry_date, passport_no, passport_expiry_date",
       )
       .eq("id", workerId)
       .maybeSingle()
@@ -243,6 +251,11 @@ export function ApplicationPrepChecklist({
           application_prep_organization_id: string | null;
           specialty_grade: string | null;
           other_qualifications: string | null;
+          residence_status: string | null;
+          residence_card_no: string | null;
+          residence_expiry_date: string | null;
+          passport_no: string | null;
+          passport_expiry_date: string | null;
         } | null;
         if (w) {
           setWorkerRow({
@@ -252,6 +265,11 @@ export function ApplicationPrepChecklist({
             application_prep_organization_id: w.application_prep_organization_id,
             specialty_grade: w.specialty_grade ?? "",
             other_qualifications: w.other_qualifications ?? "",
+            residence_status: w.residence_status ?? "",
+            residence_card_no: w.residence_card_no ?? "",
+            residence_expiry_date: w.residence_expiry_date ?? "",
+            passport_no: w.passport_no ?? "",
+            passport_expiry_date: w.passport_expiry_date ?? "",
           });
         }
       });
@@ -287,7 +305,10 @@ export function ApplicationPrepChecklist({
   // 追加項目（単独/連名・連名相手・署名ステータス）の保存（0105）
   async function saveExtras(
     patch: Partial<
-      Pick<PrepChecklistRow, "joint_kind" | "joint_worker_id" | "joint_todo_no" | "sign_status">
+      Pick<
+        PrepChecklistRow,
+        "joint_kind" | "joint_worker_id" | "joint_todo_no" | "joint_lead" | "sign_status"
+      >
     >,
   ) {
     if (current == null) return;
@@ -505,18 +526,35 @@ export function ApplicationPrepChecklist({
     }
   }
 
-  // 表示中のTODOの準備リストを削除する（添付済みの書類ファイル自体は消えない）
+  // 表示中のTODOの準備リストを削除する（添付済みの書類ファイル自体は消えない）。
+  // 間違えて「リストを追加」したときは、番号のチップの🗑からもここに来る
   async function removeList() {
     if (selected == null) return;
     const label = selected || "（番号未設定）";
-    if (!window.confirm(`「${label}」の準備リストを削除します。添付済みの書類ファイルは削除されません。よろしいですか？`))
+    if (!window.confirm(`「${label}」の準備リストを削除します。添付済みの書類ファイルは削除されません。TODO一覧の同じ番号のTODOは削除フォルダに移動します。よろしいですか？`))
       return;
     setError(null);
     try {
       await deletePrepChecklist(createClient(), workerId, selected);
+      // TODO一覧（/todos）にできた同じ番号の行も削除フォルダへ移す（無ければ何もしない）
+      if (selected) {
+        const supabase = createClient();
+        const { data: t } = await supabase
+          .from("todos")
+          .select("id")
+          .eq("kind", "申請準備")
+          .eq("worker_id", workerId)
+          .eq("todo_no", selected)
+          .is("deleted_at", null)
+          .limit(1)
+          .then((res) => (res.error ? { data: null } : res));
+        const todoId = ((t as { id: string }[] | null) ?? [])[0]?.id;
+        if (todoId) await deleteTodo(supabase, todoId).catch(() => undefined);
+      }
       const rows = lists.filter((l) => l.todo_no !== selected);
       setLists(rows);
       setSelected(rows[0]?.todo_no ?? null);
+      loadWorkerTodos();
     } catch (err) {
       setError(err instanceof Error ? err.message : "削除に失敗しました");
     }
@@ -726,18 +764,33 @@ export function ApplicationPrepChecklist({
         {lists.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
             {lists.map((l) => (
-              <button
+              <span
                 key={l.id}
-                type="button"
-                onClick={() => setSelected(l.todo_no)}
-                className={`rounded-full px-3 py-1.5 text-xs font-bold ${
+                className={`inline-flex items-center overflow-hidden rounded-full ${
                   selected === l.todo_no
                     ? "bg-brand text-brand-foreground"
                     : "border border-border text-muted"
                 }`}
               >
-                {l.todo_no || "（番号未設定）"}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setSelected(l.todo_no)}
+                  className="px-3 py-1.5 text-xs font-bold"
+                >
+                  {l.todo_no || "（番号未設定）"}
+                </button>
+                {/* 間違えて追加したリストはここからすぐ削除できる（選択中のものだけ表示） */}
+                {canEdit && selected === l.todo_no && (
+                  <button
+                    type="button"
+                    aria-label={`準備リスト ${l.todo_no || "（番号未設定）"} を削除`}
+                    onClick={removeList}
+                    className="py-1.5 pl-0.5 pr-2.5"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                )}
+              </span>
             ))}
           </div>
         )}
@@ -950,31 +1003,97 @@ export function ApplicationPrepChecklist({
               <p className="text-[10px] text-muted">
                 この登録状況とデータを見て、上の「合格証の組み合わせ」を選んでください。
               </p>
+              {/* まだ添付していない合格証・調書はここから添付できる（外国人詳細と同じ保存先） */}
+              <div className="border-t border-dashed border-border pt-1.5">
+                <p className="mb-1 text-[10px] font-bold text-muted">
+                  添付・差し替え（外国人詳細と同じ保存先に入ります）
+                </p>
+                <WorkerCertDocRows
+                  workerId={workerId}
+                  canEdit={canEdit}
+                  defs={[
+                    { key: "cert_senmonkyu", label: "専門級の合格証" },
+                    { key: "cert_nihongo", label: "日本語の合格証" },
+                    { key: "cert_senmongai", label: "専門外の合格証" },
+                    { key: "prep_hyoka_chosho", label: "技能評価調書" },
+                  ]}
+                />
+              </div>
+              {/* 良好に修了した技能実習2号（職種名・作業名・良好修了の証明）もこの場で入力できる */}
+              <Jisshu2Section workerId={workerId} canEdit={canEdit} />
             </div>
           </div>
         )}
-        <div className="flex flex-wrap items-center gap-4">
-          <label className="flex items-center gap-1.5 text-xs font-bold">
-            <input
-              type="checkbox"
-              checked={meta.has_kokuho}
-              disabled={!canEdit}
-              onChange={(e) => patchMeta({ has_kokuho: e.target.checked })}
-              className="h-4 w-4"
-            />
-            国民健康保険に加入
-          </label>
-          <label className="flex items-center gap-1.5 text-xs font-bold">
-            <input
-              type="checkbox"
-              checked={meta.has_nenkin}
-              disabled={!canEdit}
-              onChange={(e) => patchMeta({ has_nenkin: e.target.checked })}
-              className="h-4 w-4"
-            />
-            国民年金に加入
-          </label>
-        </div>
+        {/* 在留カード・パスポート情報（外国人詳細から自動反映。どの申請種別でも表示） */}
+        {workerRow && (
+          <div className="space-y-0.5 rounded-lg bg-surface/60 p-2">
+            <p className="flex flex-wrap items-center justify-between gap-1 text-[11px] font-bold text-muted">
+              在留カード・パスポート情報（外国人詳細から自動反映）
+              <Link
+                href={`/workers/${workerId}`}
+                className="font-bold text-brand hover:underline"
+              >
+                外国人詳細で直す →
+              </Link>
+            </p>
+            {(
+              [
+                ["在留資格", workerRow.residence_status],
+                ["在留カード番号", workerRow.residence_card_no],
+                ["在留期限", workerRow.residence_expiry_date],
+                ["パスポート番号", workerRow.passport_no],
+                ["パスポート有効期限", workerRow.passport_expiry_date],
+              ] as const
+            ).map(([label, value]) => (
+              <p key={label} className="text-[11px] leading-relaxed">
+                <span className="text-muted">{label}: </span>
+                {value ? (
+                  <span className="font-bold">{value}</span>
+                ) : (
+                  <span className="text-seal">未登録</span>
+                )}
+              </p>
+            ))}
+            {/* 外国人詳細の登録内容から自動で作られる履歴書もここから確認できる */}
+            <p className="border-t border-dashed border-border pt-1 text-[11px]">
+              <Link
+                href={`/workers/${workerId}/resume`}
+                target="_blank"
+                className="font-bold text-brand hover:underline"
+              >
+                📄 履歴書を開く →
+              </Link>
+              <span className="ml-1 text-muted">
+                （外国人詳細の登録内容から自動作成。職歴・住所もここで確認できます）
+              </span>
+            </p>
+          </div>
+        )}
+        {/* 在留資格認定・特定活動は国保・国民年金の加入を問わないため、チェック欄を出さない */}
+        {meta.app_type !== "認定" && meta.app_type !== "特定活動" && (
+          <div className="flex flex-wrap items-center gap-4">
+            <label className="flex items-center gap-1.5 text-xs font-bold">
+              <input
+                type="checkbox"
+                checked={meta.has_kokuho}
+                disabled={!canEdit}
+                onChange={(e) => patchMeta({ has_kokuho: e.target.checked })}
+                className="h-4 w-4"
+              />
+              国民健康保険に加入
+            </label>
+            <label className="flex items-center gap-1.5 text-xs font-bold">
+              <input
+                type="checkbox"
+                checked={meta.has_nenkin}
+                disabled={!canEdit}
+                onChange={(e) => patchMeta({ has_nenkin: e.target.checked })}
+                className="h-4 w-4"
+              />
+              国民年金に加入
+            </label>
+          </div>
+        )}
       </div>
       )}
 
