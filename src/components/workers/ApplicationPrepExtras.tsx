@@ -372,11 +372,13 @@ function OrgYearlyFilesLine({
 
 export function JointApplicationField({
   workerId,
+  workerName = "",
   row,
   canEdit,
   onChange,
 }: {
   workerId: string;
+  workerName?: string; // この人の名前（筆頭者の表示に使う）
   row: PrepChecklistRow;
   canEdit: boolean;
   onChange: (
@@ -514,11 +516,15 @@ export function JointApplicationField({
               className={INPUT}
             >
               <option value="">未選択</option>
-              <option value="本人">この人（本人）が筆頭者</option>
-              <option value="相手">連名相手が筆頭者</option>
+              <option value="本人">{workerName || "この人"}（本人）が筆頭者</option>
+              <option value="相手">
+                {partnerName ? `${partnerName}（連名相手）が筆頭者` : "連名相手が筆頭者"}
+              </option>
             </select>
             {row.joint_lead === "本人" && (
-              <span className="font-bold text-brand">筆頭者はこの人です</span>
+              <span className="font-bold text-brand">
+                筆頭者は {workerName || "この人"} さんです
+              </span>
             )}
             {row.joint_lead === "相手" && partnerName && (
               <span className="font-bold text-brand">筆頭者は {partnerName} さんです</span>
@@ -546,7 +552,7 @@ export function JointApplicationField({
                 {l.joint_lead === "本人"
                   ? `${l.worker_name || "相手"} さん`
                   : l.joint_lead === "相手"
-                    ? "この人"
+                    ? `${workerName || "この人"} さん`
                     : "未選択"}
               </span>
             </p>

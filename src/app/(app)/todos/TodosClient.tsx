@@ -179,6 +179,18 @@ export function TodosClient({
       });
   };
 
+  // 外国人詳細のTODOリンク（?openPrep=workerId）から来たときは、
+  // その人の申請準備の詳細（📋）を自動で開く
+  const openedFromQuery = useRef(false);
+  useEffect(() => {
+    if (loading || openedFromQuery.current) return;
+    const wid = new URLSearchParams(window.location.search).get("openPrep");
+    if (!wid) return;
+    openedFromQuery.current = true;
+    const t = todos.find((x) => x.kind === "申請準備" && x.worker_id === wid && !x.deleted_at);
+    if (t) openPrep(t);
+  }, [loading, todos]);
+
   // 追加フォーム
   const [newWorkerId, setNewWorkerId] = useState("");
   const [newTitle, setNewTitle] = useState("");

@@ -23,6 +23,18 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-08-23",
+    title: "健康診断書の受診日チェックと、外国人詳細のTODOリンクから詳細が開けるようになりました",
+    where: "申請準備のTODO ＞ 詳細 ＞ 健康診断書／外国人詳細 ＞ TODO",
+    href: "/workers/renewals",
+    items: [
+      "健康診断書の行に受診日・申請予定日の入力が付きました。受診日から1年後までが有効期限で、申請予定日（未入力なら今日）に対して「✓ 使用できます」「⚠ 使用できません（再受診が必要）」を自動でチェックします。",
+      "外国人詳細のTODOの行（申請準備）を押すと、申請準備のページでその人の詳細（📋 必要な書類・準備の詳細）が自動で開くようになりました。",
+      "連名申請の筆頭者は「この人」ではなく名前で表示されるようになりました。",
+      "DBの変更が必要です: 0112_prep_planned_app_on.sql をSQL Editorで実行してください。",
+    ],
+  },
+  {
+    date: "2026-08-23",
     title: "申請TODO番号を登録したら「リストを追加」は出なくなりました",
     where: "申請準備のTODO ＞ 詳細 ＞ 申請TODO番号",
     href: "/workers/renewals",
