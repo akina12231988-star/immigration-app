@@ -237,6 +237,20 @@ export function WorkerWages({
   const lodgingsOf = (orgId: string | null): OrgLodging[] =>
     (orgId ? organizations.find((o) => o.id === orgId)?.intake?.lodgings : undefined) ?? [];
 
+  // 1-6号別紙のフォームに反映して表示する、所属機関の登録情報
+  // （給与支払い方法・年間/月平均労働時間数・社保か国保か・雇用保険の適用）
+  const orgInfoFor = (orgId: string | null) => {
+    const org = organizations.find((o) => o.id === orgId);
+    if (!org) return undefined;
+    return {
+      payMethod: org.intake?.pay_method ?? "",
+      annualHours: annualHours(orgId),
+      healthInsurance: org.intake?.health_insurance ?? "",
+      pension: org.intake?.pension ?? "",
+      koyoCovered: org.intake?.koyo_covered ?? "",
+    };
+  };
+
   // 記録の行を開いて、1-6号別紙の内容を入れ直す
   const openDetail = (w: WorkerWage) => {
     if (openDetailId === w.id) {
@@ -505,6 +519,7 @@ export function WorkerWages({
                   lodgings={lodgingsOf(currentOrganizationId)}
                   orgName={orgName(currentOrganizationId)}
                   fallbackAnnualHours={annualHours(currentOrganizationId)}
+                  orgInfo={orgInfoFor(currentOrganizationId)}
                 />
               </div>
             )}
@@ -676,6 +691,7 @@ export function WorkerWages({
                   lodgings={lodgingsOf(w.organization_id ?? currentOrganizationId)}
                   orgName={orgName(w.organization_id ?? currentOrganizationId)}
                   fallbackAnnualHours={annualHours(w.organization_id)}
+                  orgInfo={orgInfoFor(w.organization_id ?? currentOrganizationId)}
                   readOnly={!canEdit}
                 />
                 {canEdit && (

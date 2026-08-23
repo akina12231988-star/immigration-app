@@ -110,7 +110,9 @@ export function TodosClient({
         setTodos(t);
         setOptions(o);
         setError(null);
-        // あっせん有りのときに出す「求人への採用の流れ」（申請準備のTODOの外国人分）
+        // あっせん有りのときに出す「求人への採用の流れ」（申請準備のTODOの外国人分）。
+        // ここで return しないこと（下の「申請前＜準備中＞」や郵送請求の読み込みも必要。
+        // 以前は TODO が0件のとき return していて、準備中の人の取り込みが動かないバグがあった）
         const workerIds = [
           ...new Set(
             t.filter((r) => r.kind === "申請準備" && r.worker_id).map((r) => r.worker_id as string),
@@ -118,41 +120,41 @@ export function TodosClient({
         ];
         if (workerIds.length === 0) {
           setJobFlows([]);
-          return;
+        } else {
+          void supabase
+            .from("job_applications")
+            .select(
+              "id, worker_id, applied_on, interview_on, result_on, result, organizations(name), job_postings(received_on, job_type)",
+            )
+            .in("worker_id", workerIds)
+            .order("applied_on", { ascending: false })
+            .then(({ data }) => {
+              const rows =
+                (data as unknown as {
+                  id: string;
+                  worker_id: string;
+                  applied_on: string;
+                  interview_on: string | null;
+                  result_on: string | null;
+                  result: string;
+                  organizations: { name: string } | null;
+                  job_postings: { received_on: string | null; job_type: string } | null;
+                }[]) ?? [];
+              setJobFlows(
+                rows.map((r) => ({
+                  id: r.id,
+                  worker_id: r.worker_id,
+                  applied_on: r.applied_on,
+                  interview_on: r.interview_on,
+                  result_on: r.result_on,
+                  result: r.result,
+                  orgName: r.organizations?.name ?? "",
+                  postingReceivedOn: r.job_postings?.received_on ?? null,
+                  postingJobType: r.job_postings?.job_type ?? "",
+                })),
+              );
+            });
         }
-        void supabase
-          .from("job_applications")
-          .select(
-            "id, worker_id, applied_on, interview_on, result_on, result, organizations(name), job_postings(received_on, job_type)",
-          )
-          .in("worker_id", workerIds)
-          .order("applied_on", { ascending: false })
-          .then(({ data }) => {
-            const rows =
-              (data as unknown as {
-                id: string;
-                worker_id: string;
-                applied_on: string;
-                interview_on: string | null;
-                result_on: string | null;
-                result: string;
-                organizations: { name: string } | null;
-                job_postings: { received_on: string | null; job_type: string } | null;
-              }[]) ?? [];
-            setJobFlows(
-              rows.map((r) => ({
-                id: r.id,
-                worker_id: r.worker_id,
-                applied_on: r.applied_on,
-                interview_on: r.interview_on,
-                result_on: r.result_on,
-                result: r.result,
-                orgName: r.organizations?.name ?? "",
-                postingReceivedOn: r.job_postings?.received_on ?? null,
-                postingJobType: r.job_postings?.job_type ?? "",
-              })),
-            );
-          });
         // 申請一覧の「申請前＜準備中＞」の人（同じ判定 isPrepListTarget）を新着として出す
         void supabase
           .from("workers")
@@ -160,7 +162,12 @@ export function TodosClient({
             "id, name, status, residence_expiry_date, residence_renewal_status, application_prep_kind, residence_renewal_todo, organizations(name)",
           )
           .eq("residence_renewal_status", "準備中")
-          .then(({ data: pw }) => {
+          .then(({ data: pw, error: pwErr }) => {
+            // 読み込みに失敗したときは黙って0件にせず、理由を表示する
+            if (pwErr) {
+              setError(`「申請前＜準備中＞」の人の読み込みに失敗しました: ${pwErr.message}`);
+              return;
+            }
             const rows =
               (pw as unknown as {
                 id: string;

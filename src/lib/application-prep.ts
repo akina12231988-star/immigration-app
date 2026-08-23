@@ -54,6 +54,15 @@ export const EMPTY_PREP_META: PrepChecklistMeta = {
   cert_pattern: "",
 };
 
+// 本人から署名をもらったかどうかのステータス（NotionのTODOで使っていた選択肢）
+export const PREP_SIGN_STATUSES = [
+  "未着手",
+  "本人にコンビニで印刷して署名してもらうように依頼中",
+  "タァンに本人に署名してもらうように依頼中",
+  "🙌本人に署名もらいました！",
+  "😖本人が署名送ってこなかったので急遽マネして記載した",
+] as const;
+
 // 申請準備・申請一覧で選ぶ担当者の名簿
 export const PREP_TANTOU_OPTIONS = [
   "市原　彩奈",
