@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { Combobox } from "@/components/ui/Combobox";
 import { createClient } from "@/lib/supabase/client";
 import {
   GENDER_REQS,
@@ -167,23 +168,16 @@ export function PostingForm({
 
       <Fieldset legend="求人管理簿（記録用）">
         <Field label="所属機関（必須）">
-          <select
-            required
+          {/* 会社名の一部を入力すると候補が出る。選ぶと前回の求人の内容を反映する */}
+          <Combobox
+            options={organizations.map((o) => ({ id: o.id, label: o.name }))}
             value={form.organization_id}
-            onChange={(e) => {
-              set("organization_id", e.target.value);
-              // 会社を選び直したら、その会社の前回の求人の内容を反映する
-              applyPrevPosting(e.target.value);
+            onChange={(id) => {
+              set("organization_id", id);
+              applyPrevPosting(id);
             }}
-            className={INPUT_CLASS}
-          >
-            <option value="">選択してください</option>
-            {organizations.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-              </option>
-            ))}
-          </select>
+            placeholder="会社名の一部を入力して検索"
+          />
         </Field>
         {prefillNotice && (
           <p className="rounded-xl border border-brand/40 bg-brand/5 px-3 py-2.5 text-xs leading-relaxed text-brand">
