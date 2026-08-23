@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { nextTodoNo, type TodoKind, type TodoStatusOption } from "@/lib/todo";
+import { nextTodoNo, type TodoExam, type TodoKind, type TodoStatusOption } from "@/lib/todo";
 
 // TODO（NotionのTODOデータベースの置き換え）の読み書き。
 // テーブルは 0102_todos.sql（todos / todo_status_options）
@@ -18,6 +18,7 @@ export interface TodoRow {
   agent_name: string; // 申請取次士（申請準備のTODOで使う・0106）
   self_apply: boolean; // 本人申請でするか（0106）
   deleted_at: string | null; // 削除フォルダに入れた日時（null = 通常。30日で完全削除・0108）
+  exam: Partial<TodoExam> | null; // 試験の申込の詳細（jsonb・0109。未適用の環境では null）
   note: string;
   created_at: string;
   updated_at: string;
@@ -42,6 +43,7 @@ export async function listTodos(supabase: SupabaseClient): Promise<TodoRow[]> {
     agent_name: r.agent_name ?? "",
     self_apply: r.self_apply ?? false,
     deleted_at: r.deleted_at ?? null,
+    exam: r.exam ?? null,
   }));
 }
 
@@ -109,6 +111,7 @@ export async function updateTodo(
       | "assen_note"
       | "agent_name"
       | "self_apply"
+      | "exam"
       | "note"
     >
   >,

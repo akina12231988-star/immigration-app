@@ -265,6 +265,18 @@ export interface PostingFileRow {
   created_at: string;
 }
 
+// TODOに添付するファイル（発行されたアプリケーションNo.のPDF・画像など・0109）
+export interface TodoFileRow {
+  id: string;
+  todo_id: string;
+  kind: string; // アプリケーションNo. など
+  storage_path: string;
+  file_name: string;
+  mime_type: string;
+  uploaded_by: string | null;
+  created_at: string;
+}
+
 // 扶養家族の1人分（workers.dependents jsonb に配列で保存）。
 // 外国人から届く扶養親族証明書の内容を記録し、扶養控除等申告書の作成に使う
 export interface WorkerDependent {

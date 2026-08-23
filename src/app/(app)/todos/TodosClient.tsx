@@ -16,6 +16,7 @@ import { PREP_TANTOU_OPTIONS } from "@/lib/application-prep";
 import { createClient } from "@/lib/supabase/client";
 import { dbErrorMessage } from "@/lib/errors";
 import {
+  EXAM_TODO_TITLES,
   TODO_CHECK_KIND,
   TODO_KINDS,
   TODO_STAGES,
@@ -27,6 +28,7 @@ import {
   type TodoStage,
   type TodoStatusOption,
 } from "@/lib/todo";
+import { ExamTodoSection } from "@/components/todos/ExamTodoSection";
 import {
   TODO_TRASH_DAYS,
   deleteTodo,
@@ -531,13 +533,31 @@ export function TodosClient({
             />
           </label>
           <label className="flex min-w-[12rem] flex-[2] flex-col gap-1">
-            <span className="text-[11px] font-bold text-muted">内容（任意）</span>
-            <input
-              value={newTitle}
-              onChange={(e) => setNewTitle(e.target.value)}
-              placeholder={`例: ${kind}のTODO`}
-              className={INPUT}
-            />
+            <span className="text-[11px] font-bold text-muted">
+              {kind === "試験の申込" ? "内容" : "内容（任意）"}
+            </span>
+            {/* 試験の申込は自由入力ではなく3つの内容から選ぶ */}
+            {kind === "試験の申込" ? (
+              <select
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                className={INPUT}
+              >
+                <option value="">内容を選択</option>
+                {EXAM_TODO_TITLES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                placeholder={`例: ${kind}のTODO`}
+                className={INPUT}
+              />
+            )}
           </label>
           <label className="flex w-28 flex-col gap-1">
             <span className="text-[11px] font-bold text-muted">番号（空で自動）</span>
@@ -703,10 +723,13 @@ export function TodosClient({
                       onChange={(patch) =>
                         run(
                           () => updateTodo(createClient(), t.id, patch),
-                          // 取次士・本人申請の列は 0106 で追加。未適用ならその案内を出す
-                          "agent_name" in patch || "self_apply" in patch
-                            ? "0106_todos_apply_fields.sql"
-                            : "0102_todos.sql",
+                          // 取次士・本人申請の列は 0106、試験の申込の詳細は 0109 で追加。
+                          // 未適用ならその案内を出す
+                          "exam" in patch
+                            ? "0109_todo_exam_fields.sql"
+                            : "agent_name" in patch || "self_apply" in patch
+                              ? "0106_todos_apply_fields.sql"
+                              : "0102_todos.sql",
                         )
                       }
                       onDelete={() => {
@@ -895,6 +918,7 @@ function TodoItem({
         | "assen_note"
         | "agent_name"
         | "self_apply"
+        | "exam"
       >
     >,
   ) => void;
@@ -1007,6 +1031,29 @@ function TodoItem({
               </option>
             ))}
           </select>
+        ) : todo.kind === "試験の申込" ? (
+          /* 試験の申込の内容は自由入力ではなく3つの内容から選ぶ */
+          <select
+            value={title}
+            disabled={!canEdit}
+            onChange={(e) => {
+              setTitle(e.target.value);
+              onChange({ title: e.target.value });
+            }}
+            aria-label="試験の申込の内容"
+            className={`${INPUT} min-w-0`}
+          >
+            <option value="">内容を選択</option>
+            {/* 旧の自由入力の値もそのまま残す */}
+            {title && !EXAM_TODO_TITLES.some((t) => t === title) && (
+              <option value={title}>{title}</option>
+            )}
+            {EXAM_TODO_TITLES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
         ) : (
           <input
             value={title}
@@ -1019,7 +1066,14 @@ function TodoItem({
             className={`${INPUT} min-w-0`}
           />
         )}
-        {selectFor(todo.status, statusOptions, (v) => onChange({ status: v }))}
+        {selectFor(
+          todo.status,
+          // 試験の申込のステータスは「未着手」の区分には「未着手」だけを出す
+          todo.kind === "試験の申込"
+            ? statusOptions.filter((o) => o.stage !== "未着手" || o.name === "未着手")
+            : statusOptions,
+          (v) => onChange({ status: v }),
+        )}
       </div>
       {/* 経過が「〜チェック中」のときは確認ステータスも出す */}
       {isCheckingStatus(todo.status) && (
@@ -1027,6 +1081,16 @@ function TodoItem({
           <span className="shrink-0 text-[11px] font-bold text-muted">チェック</span>
           {selectFor(todo.check_status ?? "", checkOptions, (v) => onChange({ check_status: v }), "未選択")}
         </div>
+      )}
+
+      {/* 試験の申込のTODO: 希望する受験内容・申込日・試験日・アプリケーションNo.・
+          プロメトリックID・ログイン先メール・外国人詳細からの必要データ・職歴 */}
+      {todo.kind === "試験の申込" && (
+        <ExamTodoSection
+          todo={todo}
+          canEdit={canEdit}
+          onChangeExam={(exam) => onChange({ exam })}
+        />
       )}
 
       {/* 申請準備のTODO: 申請取次士・本人申請、あっせんの有無、チェック後の訂正記録 */}
