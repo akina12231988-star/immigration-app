@@ -23,6 +23,15 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-08-23",
+    title: "申請TODO番号を登録したら「リストを追加」は出なくなりました",
+    where: "申請準備のTODO ＞ 詳細 ＞ 申請TODO番号",
+    href: "/workers/renewals",
+    items: [
+      "TODO番号が1件でも登録されていると追加フォームは表示されません（1人1番号が基本）。間違えて登録した番号は、チップの🗑で削除するとまた追加フォームが出ます。",
+    ],
+  },
+  {
+    date: "2026-08-23",
     title: "申請TODO番号のリストをその場で削除でき、連名申請の筆頭者が両方のTODOから分かるようになりました",
     where: "申請準備のTODO ＞ 詳細 ＞ 申請TODO番号",
     href: "/workers/renewals",

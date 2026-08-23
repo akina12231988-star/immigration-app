@@ -794,13 +794,10 @@ export function ApplicationPrepChecklist({
             ))}
           </div>
         )}
+        {/* 追加フォームはTODO番号がまだ無いときだけ出す（1人1番号が基本。
+            間違えて登録した番号は上のチップの🗑で削除してから登録し直す） */}
         {canEdit ? (
-          current?.joint_kind === "単独" ? (
-            /* 単独申請の場合はリストを追加しない（連名にする場合は下の選択を変える） */
-            <p className="text-[11px] text-muted">
-              単独申請のため、リストの追加はありません。
-            </p>
-          ) : (
+          lists.length === 0 && (
             <div className="flex gap-2">
               <input
                 value={newTodo}
