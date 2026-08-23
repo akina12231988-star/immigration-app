@@ -28,13 +28,17 @@ import {
   type TodoStatusOption,
 } from "@/lib/todo";
 import {
+  TODO_TRASH_DAYS,
   deleteTodo,
   deleteTodoStatusOption,
   insertTodo,
   insertTodoStatusOption,
   listTodoStatusOptions,
   listTodos,
+  purgeExpiredTodos,
+  purgeTodo,
   renameTodoStatusOption,
+  restoreTodo,
   updateTodo,
   type TodoRow,
 } from "@/lib/supabase/queries/todos";
@@ -179,7 +183,10 @@ export function TodosClient({
 
   const load = () => {
     const supabase = createClient();
-    return Promise.all([listTodos(supabase), listTodoStatusOptions(supabase)])
+    // 削除フォルダで30日を過ぎたTODOを完全に削除してから読み込む（0108未適用・権限なしは無視）
+    return purgeExpiredTodos(supabase)
+      .catch(() => undefined)
+      .then(() => Promise.all([listTodos(supabase), listTodoStatusOptions(supabase)]))
       .then(([t, o]) => {
         setTodos(t);
         setOptions(o);
@@ -403,7 +410,16 @@ export function TodosClient({
     () => options.filter((o) => o.kind === TODO_CHECK_KIND),
     [options],
   );
-  const kindTodos = useMemo(() => todos.filter((t) => t.kind === kind), [todos, kind]);
+  // 表示するTODO（削除フォルダに入っているものは除く）
+  const kindTodos = useMemo(
+    () => todos.filter((t) => !t.deleted_at && t.kind === kind),
+    [todos, kind],
+  );
+  // 削除フォルダ（この構成の分）。30日たつと完全に削除される
+  const trashedTodos = useMemo(
+    () => todos.filter((t) => t.deleted_at && t.kind === kind),
+    [todos, kind],
+  );
 
   const run = async (fn: () => Promise<void>, migration = "0102_todos.sql") => {
     try {
@@ -451,7 +467,10 @@ export function TodosClient({
         {TODO_KINDS.map((k) => {
           const active = kind === k;
           const count = todos.filter(
-            (t) => t.kind === k && stageOfStatus(t.status, options.filter((o) => o.kind === k)) !== "完了",
+            (t) =>
+              !t.deleted_at &&
+              t.kind === k &&
+              stageOfStatus(t.status, options.filter((o) => o.kind === k)) !== "完了",
           ).length;
           return (
             <button
@@ -693,10 +712,13 @@ export function TodosClient({
                       onDelete={() => {
                         if (
                           window.confirm(
-                            `TODO No.${t.todo_no}（${t.worker_name ?? (t.title || "内容なし")}）を削除します。よろしいですか？`,
+                            `TODO No.${t.todo_no}（${t.worker_name ?? (t.title || "内容なし")}）を削除フォルダに移動します。${TODO_TRASH_DAYS}日間は下の削除フォルダから復元でき、その後完全に削除されます。よろしいですか？`,
                           )
                         ) {
-                          void run(() => deleteTodo(createClient(), t.id));
+                          void run(
+                            () => deleteTodo(createClient(), t.id),
+                            "0108_todos_soft_delete.sql",
+                          );
                         }
                       }}
                     />
@@ -708,6 +730,81 @@ export function TodosClient({
             </Card>
           );
         })
+      )}
+
+      {/* 削除フォルダ（ごみ箱）。削除したTODOを30日間保存し、復元・完全削除できる */}
+      {!loading && trashedTodos.length > 0 && (
+        <details className="rounded-2xl border border-border bg-surface p-4">
+          <summary className="cursor-pointer select-none text-sm font-bold text-muted">
+            🗑 削除フォルダ（{trashedTodos.length}件）— {TODO_TRASH_DAYS}
+            日間保存し、その後完全に削除されます
+          </summary>
+          <div className="mt-3 space-y-1.5">
+            {trashedTodos.map((t) => {
+              // 削除日から今日までの経過日数（日付単位）で残り日数を出す
+              const daysLeft = t.deleted_at
+                ? Math.max(
+                    0,
+                    TODO_TRASH_DAYS -
+                      Math.floor(
+                        (new Date(todayStr()).getTime() -
+                          new Date(t.deleted_at.slice(0, 10)).getTime()) /
+                          86400000,
+                      ),
+                  )
+                : TODO_TRASH_DAYS;
+              return (
+                <div
+                  key={t.id}
+                  className="flex flex-wrap items-center gap-2 rounded-lg bg-background px-2 py-1.5 text-xs"
+                >
+                  <span className="shrink-0 font-bold tabular-nums">
+                    {displayTodoNo(t.todo_no) || "番号なし"}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">
+                    <span className="font-bold">{t.worker_name ?? ""}</span>
+                    {t.worker_name && "　"}
+                    {t.title || "（内容なし）"}
+                  </span>
+                  <span className="shrink-0 text-[10px] text-muted">
+                    削除 {(t.deleted_at ?? "").slice(0, 10)}・あと{daysLeft}日で完全削除
+                  </span>
+                  {canEdit && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void run(
+                            () => restoreTodo(createClient(), t.id),
+                            "0108_todos_soft_delete.sql",
+                          )
+                        }
+                        className="shrink-0 rounded-lg border border-border px-2 py-1 text-[11px] font-bold text-brand"
+                      >
+                        復元
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              `TODO No.${t.todo_no}（${t.worker_name ?? (t.title || "内容なし")}）を今すぐ完全に削除します。元に戻せません。よろしいですか？`,
+                            )
+                          ) {
+                            void run(() => purgeTodo(createClient(), t.id));
+                          }
+                        }}
+                        className="shrink-0 rounded-lg border border-border px-2 py-1 text-[11px] font-bold text-seal"
+                      >
+                        完全に削除
+                      </button>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </details>
       )}
 
       {/* ステータス（経過）の選択肢の編集。状況に応じて随時変更してそのまま運用できる */}

@@ -17,10 +17,14 @@ export interface TodoRow {
   assen_note: string; // あっせん無しの場合の申請書類作成の経緯
   agent_name: string; // 申請取次士（申請準備のTODOで使う・0106）
   self_apply: boolean; // 本人申請でするか（0106）
+  deleted_at: string | null; // 削除フォルダに入れた日時（null = 通常。30日で完全削除・0108）
   note: string;
   created_at: string;
   updated_at: string;
 }
+
+// 削除フォルダの保存期間（日）。これを過ぎたら完全に削除する
+export const TODO_TRASH_DAYS = 30;
 
 export async function listTodos(supabase: SupabaseClient): Promise<TodoRow[]> {
   const { data, error } = await supabase
@@ -29,7 +33,7 @@ export async function listTodos(supabase: SupabaseClient): Promise<TodoRow[]> {
     .order("created_at", { ascending: false });
   if (error) throw error;
   const rows = (data as (TodoRow & { workers: { name: string } | null })[]) ?? [];
-  // 0103/0106 が未適用でも画面が壊れないよう、無い列は既定値で補う
+  // 0103/0106/0108 が未適用でも画面が壊れないよう、無い列は既定値で補う
   return rows.map((r) => ({
     ...r,
     worker_name: r.workers?.name ?? null,
@@ -37,6 +41,7 @@ export async function listTodos(supabase: SupabaseClient): Promise<TodoRow[]> {
     assen_note: r.assen_note ?? "",
     agent_name: r.agent_name ?? "",
     self_apply: r.self_apply ?? false,
+    deleted_at: r.deleted_at ?? null,
   }));
 }
 
@@ -132,8 +137,32 @@ export async function renameTodoNo(
   if (error) throw error;
 }
 
+// 削除 = 削除フォルダ（ごみ箱）へ移動。30日間は復元でき、その後完全に削除される（0108）
 export async function deleteTodo(supabase: SupabaseClient, id: string): Promise<void> {
+  const { error } = await supabase
+    .from("todos")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+// 削除フォルダから元に戻す
+export async function restoreTodo(supabase: SupabaseClient, id: string): Promise<void> {
+  const { error } = await supabase.from("todos").update({ deleted_at: null }).eq("id", id);
+  if (error) throw error;
+}
+
+// 完全に削除する（削除フォルダからの手動削除）
+export async function purgeTodo(supabase: SupabaseClient, id: string): Promise<void> {
   const { error } = await supabase.from("todos").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// 削除フォルダで30日を過ぎたTODOを完全に削除する（画面を開いたときに呼ぶ）。
+// 0108未適用・権限なしなどで失敗しても呼び出し側で握りつぶしてよい
+export async function purgeExpiredTodos(supabase: SupabaseClient): Promise<void> {
+  const cutoff = new Date(Date.now() - TODO_TRASH_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const { error } = await supabase.from("todos").delete().lt("deleted_at", cutoff);
   if (error) throw error;
 }
 

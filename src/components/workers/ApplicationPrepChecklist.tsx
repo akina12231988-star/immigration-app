@@ -186,7 +186,10 @@ export function ApplicationPrepChecklist({
       .eq("worker_id", workerId)
       .eq("kind", "申請準備")
       .order("created_at", { ascending: false })
-      .then(({ data }) => setWorkerTodos((data as TodoRow[] | null) ?? []));
+      .then(({ data }) =>
+        // 削除フォルダ（0108）に入っているTODOは除く
+        setWorkerTodos((((data as TodoRow[] | null) ?? [])).filter((t) => !t.deleted_at)),
+      );
     listTodoStatusOptions(supabase).then(setTodoOptions).catch(() => undefined);
   };
 

@@ -156,7 +156,8 @@ export function ApplicationsExplorer({
     const workerIds = new Set<string>();
     const todoKeys = new Set<string>();
     for (const t of prepTodos) {
-      if (t.kind !== "申請準備" || !isImmigrationAppliedStatus(t.status)) continue;
+      // 削除フォルダ（0108）に入っているTODOは数えない
+      if (t.deleted_at || t.kind !== "申請準備" || !isImmigrationAppliedStatus(t.status)) continue;
       if (t.worker_id) workerIds.add(t.worker_id);
       const key = normalizeTodoKey(t.todo_no);
       if (key) todoKeys.add(key);
