@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, X } from "lucide-react";
+import { AppHeader } from "@/components/AppHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
@@ -81,6 +82,10 @@ export function OrganizationDetail({
 
   return (
     <div className="flex flex-col gap-4">
+      {/* 会社名のバー〜支援体制までは上部に固定して、下にスクロールしても常に見えるようにする。
+          ボタンは表示モードでは「編集」、編集モードでは「編集した内容を保存」に切り替わる */}
+      <div className="sticky top-0 z-20 -mx-4 -mt-4 flex flex-col gap-3 border-b border-border bg-background px-4 pb-3 pt-2 shadow-sm md:-mx-8 md:-mt-6 md:px-8 md:pt-3">
+      <AppHeader title={organization.name} backHref="/organizations" />
       {notice && (
         <p
           role="status"
@@ -98,27 +103,49 @@ export function OrganizationDetail({
             : "未記入の欄はこの画面でそのまま入力して保存できます。入力済みの項目を修正する場合は「編集」を押してください。"}
         </p>
         {editing ? (
-          <button
-            type="button"
-            onClick={() => {
-              // 変更を破棄して表示モードに戻す
-              setForm(snapshot);
-              setEditing(false);
-            }}
-            className="flex shrink-0 items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted"
-          >
-            <X size={14} />
-            編集をやめる（変更を破棄）
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                // 変更を破棄して表示モードに戻す
+                setForm(snapshot);
+                setEditing(false);
+              }}
+              className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted"
+            >
+              <X size={14} />
+              編集をやめる
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleSave()}
+              disabled={busy || !dirty}
+              className="rounded-lg bg-brand px-4 py-2 text-xs font-bold text-brand-foreground disabled:opacity-50"
+            >
+              {busy ? "保存中…" : "編集した内容を保存"}
+            </button>
+          </div>
         ) : (
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            className="flex shrink-0 items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold"
-          >
-            <Pencil size={14} />
-            編集
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {dirty && (
+              <button
+                type="button"
+                onClick={() => void handleSave()}
+                disabled={busy}
+                className="rounded-lg bg-brand px-4 py-2 text-xs font-bold text-brand-foreground disabled:opacity-50"
+              >
+                {busy ? "保存中…" : "入力した内容を保存"}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold"
+            >
+              <Pencil size={14} />
+              編集
+            </button>
+          </div>
         )}
       </div>
       {/* 支援体制（令和9年4月1日施行の要件）。在籍数と選任状況をひと目で確認できるようにする */}
@@ -159,6 +186,7 @@ export function OrganizationDetail({
         </p>
         {dual.length > 0 && <p className="text-xs text-muted">兼任: {dual.join("・")}</p>}
       </Card>
+      </div>
 
       <Card className="p-4">
         <div className="flex flex-col gap-2.5">

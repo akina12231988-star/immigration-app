@@ -90,7 +90,7 @@ export function WageDetailForm({
     }
   };
 
-  // 社宅を選ぶと、家賃÷最大入居人数を1人当たりの居住費として入れ、算定方法の文も作る
+  // 社宅を選ぶと、家賃（1人あたりで登録）を居住費として入れ、算定方法の文も作る
   const selectLodging = (id: string) => {
     if (!id) {
       set({ housing_lodging_id: "", housing_amount: 0, housing_note: "" });
@@ -565,15 +565,15 @@ export function WageDetailForm({
                 disabled={readOnly}
                 rows={2}
                 onChange={(e) => set({ housing_note: e.target.value })}
-                placeholder="例：賃貸借契約書に基づく家賃月額60,000円を入居者3名で除した金額を徴収する。"
+                placeholder="例：家賃月額を入居者3名で按分した1人当たり月額20,000円を徴収する。"
                 className="rounded-lg border border-border bg-surface px-2 py-1 text-xs"
               />
             </label>
             {lodgings.length === 0 && (
               <p className="w-full text-[10px] text-muted">
                 {orgName || "所属機関"}に寮・社宅が登録されていません。
-                所属機関の申込書内容（寮・宿泊物件）に家賃と最大入居人数を入れると、
-                ここで選ぶだけで1人当たりの居住費を計算できます。
+                所属機関の申込書内容（寮・宿泊物件）に家賃（1人あたり）を入れると、
+                ここで選ぶだけで1人当たりの居住費が入ります。
               </p>
             )}
           </>

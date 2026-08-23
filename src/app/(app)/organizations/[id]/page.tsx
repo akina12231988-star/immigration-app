@@ -1,5 +1,4 @@
 import { notFound, redirect } from "next/navigation";
-import { AppHeader } from "@/components/AppHeader";
 import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { getOrgRoster, getOrganization } from "@/lib/supabase/queries/organizations";
@@ -52,7 +51,8 @@ export default async function OrganizationDetailPage({
 
   return (
     <>
-      <AppHeader title={organization.name} backHref="/organizations" />
+      {/* 会社名のバー・編集/保存ボタン・支援体制は OrganizationDetail の中で
+          上部に固定表示する（スクロールしても見える） */}
       <OrganizationDetail
         organization={organization}
         managerNames={supportManagerOptions(employees, todayStr())}

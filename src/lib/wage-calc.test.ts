@@ -127,28 +127,26 @@ describe("healthInsuranceRate", () => {
 });
 
 describe("lodgingPerPerson", () => {
-  it("家賃 ÷ 最大入居人数", () => {
-    expect(lodgingPerPerson({ rent: "60000", max_residents: "3" })).toBe(20_000);
+  it("家賃（1人あたりで登録）をそのまま使う", () => {
+    expect(lodgingPerPerson({ rent: "20000", max_residents: "3" })).toBe(20_000);
   });
 
-  it("「60,000円」のような書き方でも読み取る", () => {
-    expect(lodgingPerPerson({ rent: "60,000円", max_residents: "3人" })).toBe(20_000);
+  it("「20,000円」のような書き方でも読み取る", () => {
+    expect(lodgingPerPerson({ rent: "20,000円", max_residents: "3人" })).toBe(20_000);
   });
 
-  it("家賃か人数が未入力なら0", () => {
+  it("家賃が未入力なら0", () => {
     expect(lodgingPerPerson({ rent: "", max_residents: "3" })).toBe(0);
-    expect(lodgingPerPerson({ rent: "60000", max_residents: "" })).toBe(0);
   });
 });
 
 describe("lodgingNoteTemplate", () => {
-  it("家賃と人数が分かれば按分の根拠を書いた文になる", () => {
+  it("人数が分かれば按分の根拠を書いた文になる", () => {
     const text = lodgingNoteTemplate(
-      { name: "女子寮", rent: "60000", max_residents: "3" },
+      { name: "女子寮", rent: "20000", max_residents: "3" },
       20_000,
     );
     expect(text).toContain("女子寮");
-    expect(text).toContain("60,000円");
     expect(text).toContain("3名");
     expect(text).toContain("20,000円");
     expect(text).toContain("賃貸借契約書");

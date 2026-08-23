@@ -210,33 +210,27 @@ export function employmentInsuranceAmount(
 }
 
 // ---- 4-(e) 居住費（社宅） ----
-// 所属機関に登録した寮の「家賃 ÷ 最大入居人数」を1人当たりの目安にする
+// 所属機関に登録した寮の家賃（1人あたり・月額）をそのまま1人当たりの目安にする
 export function lodgingPerPerson(lodging: Pick<OrgLodging, "rent" | "max_residents">): number {
-  const rent = Number(String(lodging.rent).replace(/[^0-9]/g, "")) || 0;
-  const people = Number(String(lodging.max_residents).replace(/[^0-9]/g, "")) || 0;
-  if (!rent || !people) return 0;
-  return Math.round(rent / people);
+  return Number(String(lodging.rent).replace(/[^0-9]/g, "")) || 0;
 }
 
-// 居住費の算定方法の文例（入管に説明できる形。家賃と人数が分かるときだけ具体的に書く）
+// 居住費の算定方法の文例（入管に説明できる形。人数が分かるときだけ具体的に書く）
 export function lodgingNoteTemplate(
   lodging: Pick<OrgLodging, "name" | "rent" | "max_residents">,
   perPerson: number,
 ): string {
-  const rent = Number(String(lodging.rent).replace(/[^0-9]/g, "")) || 0;
   const people = Number(String(lodging.max_residents).replace(/[^0-9]/g, "")) || 0;
   const where = lodging.name ? `${lodging.name}（会社が借り上げた社宅）` : "会社が借り上げた社宅";
-  if (rent && people) {
+  if (people) {
     return (
-      `${where}について、賃貸借契約書に基づく家賃月額${formatYen(rent)}円を入居者${people}名で除した` +
-      `1人当たり月額${formatYen(perPerson)}円を徴収する。敷金・礼金・仲介手数料等の初期費用は含まない。` +
-      `（算出根拠：賃貸借契約書、入居者名簿）`
+      `${where}について、家賃月額を入居者${people}名で按分した1人当たり月額${formatYen(perPerson)}円を徴収する。` +
+      `敷金・礼金・仲介手数料等の初期費用は含まない。（算出根拠：賃貸借契約書、入居者名簿）`
     );
   }
   return (
-    `${where}について、賃貸借契約書に基づく家賃月額を入居人数で除した1人当たり月額` +
-    `${formatYen(perPerson)}円を徴収する。敷金・礼金・仲介手数料等の初期費用は含まない。` +
-    `（算出根拠：賃貸借契約書、入居者名簿）`
+    `${where}について、家賃月額を入居人数で按分した1人当たり月額${formatYen(perPerson)}円を徴収する。` +
+    `敷金・礼金・仲介手数料等の初期費用は含まない。（算出根拠：賃貸借契約書、入居者名簿）`
   );
 }
 

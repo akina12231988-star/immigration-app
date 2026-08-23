@@ -10,12 +10,39 @@ import {
   normalizeOrganizationIntake,
   orgStaffLabel,
   flexDocsValidUntil,
+  formatHoursDecimal,
   ownedMonthlyRent,
   parseAmount,
+  parseHoursMinutes,
   perResidentCost,
   reverseLodgingCost,
   suggestedUsefulYears,
 } from "./organization-intake";
+
+describe("parseHoursMinutes", () => {
+  it("「173時間20分」を小数の時間に直す", () => {
+    expect(parseHoursMinutes("173時間20分")).toBeCloseTo(173.333, 2);
+    expect(parseHoursMinutes("173:20")).toBeCloseTo(173.333, 2);
+    expect(parseHoursMinutes("１７３：２０")).toBeCloseTo(173.333, 2);
+    expect(parseHoursMinutes("173時間")).toBe(173);
+  });
+
+  it("小数のままの入力もそのまま読む", () => {
+    expect(parseHoursMinutes("173.3")).toBe(173.3);
+    expect(parseHoursMinutes("2080")).toBe(2080);
+  });
+
+  it("時間と読めなければ null", () => {
+    expect(parseHoursMinutes("")).toBeNull();
+    expect(parseHoursMinutes("173時間70分")).toBeNull();
+    expect(parseHoursMinutes("約173時間")).toBeNull();
+  });
+
+  it("表示は小数1桁に丸める", () => {
+    expect(formatHoursDecimal(173 + 20 / 60)).toBe("173.3");
+    expect(formatHoursDecimal(173)).toBe("173");
+  });
+});
 
 describe("suggestedUsefulYears", () => {
   it("新品は木造住宅の法定耐用年数22年", () => {
@@ -36,14 +63,15 @@ describe("suggestedUsefulYears", () => {
 });
 
 describe("reverseLodgingCost", () => {
-  it("家賃×耐用年数×12でかかった費用の想定額を逆算する", () => {
-    expect(reverseLodgingCost("100000", "15")).toBe(18_000_000);
-    expect(reverseLodgingCost("100,000円", "22")).toBe(26_400_000);
+  it("1人あたり家賃×最大入居人数×耐用年数×12でかかった費用の想定額を逆算する", () => {
+    expect(reverseLodgingCost("13000", "6", "15")).toBe(14_040_000);
+    expect(reverseLodgingCost("10,000円", "3", "22")).toBe(7_920_000);
   });
 
-  it("家賃か耐用年数が無ければ出さない", () => {
-    expect(reverseLodgingCost("", "15")).toBeNull();
-    expect(reverseLodgingCost("100000", "")).toBeNull();
+  it("家賃・入居人数・耐用年数のどれかが無ければ出さない", () => {
+    expect(reverseLodgingCost("", "6", "15")).toBeNull();
+    expect(reverseLodgingCost("13000", "", "15")).toBeNull();
+    expect(reverseLodgingCost("13000", "6", "")).toBeNull();
   });
 });
 
