@@ -175,6 +175,11 @@ export function ApplicationPrepChecklist({
     application_prep_organization_id: string | null;
     specialty_grade: string;
     other_qualifications: string;
+    residence_status: string;
+    residence_card_no: string;
+    residence_expiry_date: string;
+    passport_no: string;
+    passport_expiry_date: string;
   } | null>(null);
 
   // 申請準備のTODO（この外国人分）とステータスの選択肢。名前の下に常時表示して編集できる
@@ -233,7 +238,7 @@ export function ApplicationPrepChecklist({
     void createClient()
       .from("workers")
       .select(
-        "name, address, current_organization_id, application_prep_organization_id, specialty_grade, other_qualifications",
+        "name, address, current_organization_id, application_prep_organization_id, specialty_grade, other_qualifications, residence_status, residence_card_no, residence_expiry_date, passport_no, passport_expiry_date",
       )
       .eq("id", workerId)
       .maybeSingle()
@@ -245,6 +250,11 @@ export function ApplicationPrepChecklist({
           application_prep_organization_id: string | null;
           specialty_grade: string | null;
           other_qualifications: string | null;
+          residence_status: string | null;
+          residence_card_no: string | null;
+          residence_expiry_date: string | null;
+          passport_no: string | null;
+          passport_expiry_date: string | null;
         } | null;
         if (w) {
           setWorkerRow({
@@ -254,6 +264,11 @@ export function ApplicationPrepChecklist({
             application_prep_organization_id: w.application_prep_organization_id,
             specialty_grade: w.specialty_grade ?? "",
             other_qualifications: w.other_qualifications ?? "",
+            residence_status: w.residence_status ?? "",
+            residence_card_no: w.residence_card_no ?? "",
+            residence_expiry_date: w.residence_expiry_date ?? "",
+            passport_no: w.passport_no ?? "",
+            passport_expiry_date: w.passport_expiry_date ?? "",
           });
         }
       });
@@ -971,6 +986,38 @@ export function ApplicationPrepChecklist({
               {/* 良好に修了した技能実習2号（職種名・作業名・良好修了の証明）もこの場で入力できる */}
               <Jisshu2Section workerId={workerId} canEdit={canEdit} />
             </div>
+          </div>
+        )}
+        {/* 在留カード・パスポート情報（外国人詳細から自動反映。どの申請種別でも表示） */}
+        {workerRow && (
+          <div className="space-y-0.5 rounded-lg bg-surface/60 p-2">
+            <p className="flex flex-wrap items-center justify-between gap-1 text-[11px] font-bold text-muted">
+              在留カード・パスポート情報（外国人詳細から自動反映）
+              <Link
+                href={`/workers/${workerId}`}
+                className="font-bold text-brand hover:underline"
+              >
+                外国人詳細で直す →
+              </Link>
+            </p>
+            {(
+              [
+                ["在留資格", workerRow.residence_status],
+                ["在留カード番号", workerRow.residence_card_no],
+                ["在留期限", workerRow.residence_expiry_date],
+                ["パスポート番号", workerRow.passport_no],
+                ["パスポート有効期限", workerRow.passport_expiry_date],
+              ] as const
+            ).map(([label, value]) => (
+              <p key={label} className="text-[11px] leading-relaxed">
+                <span className="text-muted">{label}: </span>
+                {value ? (
+                  <span className="font-bold">{value}</span>
+                ) : (
+                  <span className="text-seal">未登録</span>
+                )}
+              </p>
+            ))}
           </div>
         )}
         {/* 在留資格認定・特定活動は国保・国民年金の加入を問わないため、チェック欄を出さない */}
