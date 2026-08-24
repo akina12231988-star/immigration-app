@@ -31,7 +31,7 @@ import { OnboardingDocuments } from "@/components/workers/OnboardingDocuments";
 import { HealthCheckSection } from "@/components/workers/HealthCheckSection";
 import { GensenDocuments } from "@/components/workers/GensenDocuments";
 import { WorkerCertDocRows } from "@/components/workers/WorkerCertDocRows";
-import { CertExamField } from "@/components/workers/CertExamField";
+import { CertExamList } from "@/components/workers/CertExamList";
 import {
   NIHONGO_EXAM_NAME_OPTIONS,
   SENMONGAI_EXAM_NAME_OPTIONS,
@@ -1101,33 +1101,18 @@ export function WorkerDetail({
             />
           </div>
           <div>
-            <InfoItem
-              label="その他の資格・合格名"
-              value={worker.other_qualifications}
-              edit={textInput("other_qualifications")}
-            />
-            <WorkerCertDocRows
+            {/* 日本語・専門外の合格証は「受験情報（試験名・受験地・レベル）＋その試験の合格証」を
+                1組にして、何件でも登録できる（取り違えを防ぐため合格証は枠の中に置く） */}
+            <CertExamList
               workerId={worker.id}
               canEdit={canEdit}
-              defs={[
-                { key: "cert_nihongo", label: "日本語の合格証" },
-                { key: "cert_senmongai", label: "専門外の合格証" },
-              ]}
-            />
-            <CertExamField
-              workerId={worker.id}
-              canEdit={canEdit}
-              title="日本語の合格証"
-              nameKey="cert_nihongo_name"
-              locationKey="cert_nihongo_location"
+              kind="nihongo"
               nameOptions={NIHONGO_EXAM_NAME_OPTIONS}
             />
-            <CertExamField
+            <CertExamList
               workerId={worker.id}
               canEdit={canEdit}
-              title="専門外の合格証"
-              nameKey="cert_senmongai_name"
-              locationKey="cert_senmongai_location"
+              kind="senmongai"
               nameOptions={SENMONGAI_EXAM_NAME_OPTIONS}
             />
           </div>

@@ -1,0 +1,12 @@
+-- 日本語の合格証・専門外の合格証の受験情報を「複数」記録できるようにする。
+--
+-- 1件目は 0114 で追加した cert_nihongo_name / cert_nihongo_location（専門外も同様）に
+-- 入っているため、この列には2件目以降を入れる。合格証のファイルは受験情報ごとに分けて
+-- 保存し（1件目は従来どおり cert_nihongo / cert_senmongai、2件目以降は cert_nihongo_xxxxxx）、
+-- どの試験名の合格証かが取り違えられないようにする。
+--
+-- 1件分の形（配列で入る）:
+--   { "id": "xxxxxx", "kind": "nihongo" | "senmongai",
+--     "name": "受験した試験名", "location": "受験地", "level": "N4",
+--     "doc_key": "cert_nihongo_xxxxxx" }
+alter table workers add column if not exists cert_exams jsonb not null default '[]'::jsonb;

@@ -13,6 +13,7 @@
 //  - 保険証 / 年金記録 … このチェックリスト専用・最新のみ（prep_*）
 
 import { gensenDocKey } from "@/lib/onboarding";
+import { isCertDocKeyOf } from "@/lib/cert-exam";
 import { normalizeTodoKey } from "@/lib/todo";
 
 // 申請準備の詳細（書類チェックリスト）のページ。TODO一覧・申請一覧・外国人詳細から開く
@@ -342,8 +343,13 @@ export function isSatisfied(
   sources: PrepDocSources,
 ): boolean {
   switch (def.source.kind) {
-    case "doc":
-      return sources.filledDocKeys.has(def.source.docKey);
+    case "doc": {
+      const key = def.source.docKey;
+      if (sources.filledDocKeys.has(key)) return true;
+      // 合格証は受験情報ごとに分けて添付できる（cert_nihongo_xxxxxx）。どれかがあれば添付あり
+      if (!key.startsWith("cert_")) return false;
+      return [...sources.filledDocKeys].some((k) => isCertDocKeyOf(key, k));
+    }
     case "docYear":
       // 対象年度ごとに蓄積したキー（{baseKey}_r{令和年}）。旧形式（年度なしキー）も揃っている扱いにする
       return (

@@ -67,6 +67,8 @@ export function OnboardingDocuments({
   const [downloading, setDownloading] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // 個人番号（マイナンバー）。扶養控除等申告書・労働者名簿はこれが無いと作れない
+  const [myNumber, setMyNumber] = useState<string | null>(null);
 
   const uploadDefRef = useRef<OnboardingDocDef | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -89,6 +91,16 @@ export function OnboardingDocuments({
 
   useEffect(() => {
     void load();
+    // 個人番号の有無だけ見る（未入力なら作成ボタンを押せないようにする）
+    void createClient()
+      .from("workers")
+      .select("my_number")
+      .eq("id", workerId)
+      .maybeSingle()
+      .then(({ data }) => {
+        const w = data as { my_number: string | null } | null;
+        setMyNumber(w?.my_number ?? "");
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workerId]);
 
@@ -176,9 +188,18 @@ export function OnboardingDocuments({
     fuyokojo: "扶養控除等申告書",
     meibo: "労働者名簿",
   };
+  // 個人番号が未入力だと、扶養控除等申告書・労働者名簿は正しく作れない
+  const needsMyNumber = (key: string) => !!GENERATABLE[key] && myNumber !== null && !myNumber.trim();
+
   const createAndAttach = async (def: OnboardingDocDef) => {
     const label = GENERATABLE[def.key];
     if (!label) return;
+    if (needsMyNumber(def.key)) {
+      setError(
+        `個人番号が未入力のため「${label}」は添付できません。外国人詳細の「個人番号（マイナンバー）」を登録してから作成してください。`,
+      );
+      return;
+    }
     if (
       !window.confirm(
         `外国人詳細の登録内容で「${label}」を作成し、この欄に添付します。\n` +
@@ -364,7 +385,12 @@ export function OnboardingDocuments({
                           )}
                           {GENERATABLE[def.key] && (
                             <IconButton
-                              label={`${GENERATABLE[def.key]}を作成して添付`}
+                              label={
+                                needsMyNumber(def.key)
+                                  ? "個人番号が未入力のため添付できません"
+                                  : `${GENERATABLE[def.key]}を作成して添付`
+                              }
+                              disabled={needsMyNumber(def.key)}
                               onClick={() => void createAndAttach(def)}
                             >
                               <FileText size={13} />
@@ -495,20 +521,23 @@ function IconButton({
   label,
   onClick,
   tone = "default",
+  disabled = false,
   children,
 }: {
   label: string;
   onClick: () => void;
   tone?: "default" | "danger";
+  disabled?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       aria-label={label}
       title={label}
-      className={`flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[11px] font-bold ${
+      className={`flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[11px] font-bold disabled:opacity-50 ${
         tone === "danger" ? "text-seal" : "text-brand"
       }`}
     >

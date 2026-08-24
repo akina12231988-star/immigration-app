@@ -57,11 +57,13 @@ import {
   getOnboardingDocDownloadUrl,
 } from "./actions";
 import { downloadBlob, toPdfBlob } from "@/lib/onboarding-pdf";
+import { updateWorker } from "@/lib/supabase/queries/workers";
 import type { WorkerForOnboarding } from "@/lib/supabase/queries/workers";
 import type {
   OnboardingDocStatus,
   OnboardingDocumentRow,
   OnboardingFollowupRow,
+  WorkerInput,
 } from "@/types/db";
 
 const INPUT =
@@ -477,6 +479,18 @@ export function OnboardingClient({
         gmail_link: gmailLink.trim(),
         mail_sent_on: mailSentOn || null,
       });
+      // 配属先営業所・居住地は外国人詳細（配属先営業所・居住先）にも反映する。
+      // 入社書類メールで確定した内容がそのまま名簿・印刷にも使われるようにする
+      const workerPatch: Partial<WorkerInput> = {};
+      if (office.trim() !== (worker.assigned_office ?? "")) {
+        workerPatch.assigned_office = office.trim();
+      }
+      if (residence.trim() !== (worker.residence_note ?? "")) {
+        workerPatch.residence_note = residence.trim();
+      }
+      if (Object.keys(workerPatch).length > 0) {
+        await updateWorker(supabase, worker.id, workerPatch);
+      }
       await upsertOnboardingDocStatuses(
         supabase,
         defs.map((def) => {
@@ -792,23 +806,11 @@ export function OnboardingClient({
           {/* 右: 生成結果・Gmailリンク・後送 */}
           <div className="space-y-4">
             <Card className="p-4">
-              <div className="mb-2 flex items-center justify-between">
-                <h2 className="text-sm font-bold text-muted">生成されたメール文</h2>
-                <button
-                  type="button"
-                  onClick={copyMail}
-                  disabled={!mail}
-                  className={`flex items-center gap-1 rounded-lg px-3 py-2 text-xs font-bold text-brand-foreground disabled:opacity-40 ${
-                    copied ? "bg-status-approved-fg" : "bg-brand"
-                  }`}
-                >
-                  {copied ? <Check size={13} /> : <Copy size={13} />}
-                  {copied ? "コピーしました" : "コピー"}
-                </button>
-              </div>
-              {/* 件名（Gmailの件名欄にそのまま貼る） */}
-              <div className="mb-3">
-                <p className="mb-1 text-[11px] font-bold text-muted">件名</p>
+              {/* 件名（Gmailの件名欄にそのまま貼る）。
+                  どちらのコピーが件名か分かるよう、件名を上・メール文を下にして、
+                  それぞれの見出しのすぐ横にコピーを置く */}
+              <div className="mb-4">
+                <p className="mb-1 text-sm font-bold text-muted">件名</p>
                 <div className="flex items-center gap-2">
                   <p className="min-w-0 flex-1 truncate rounded-xl border border-border bg-background px-3 py-2.5 text-sm">
                     {subject || "外国人を選ぶと出ます"}
@@ -822,9 +824,24 @@ export function OnboardingClient({
                     }`}
                   >
                     {subjectCopied ? <Check size={13} /> : <Copy size={13} />}
-                    {subjectCopied ? "コピーしました" : "コピー"}
+                    {subjectCopied ? "件名をコピーしました" : "件名をコピー"}
                   </button>
                 </div>
+              </div>
+
+              <div className="mb-2 flex items-center justify-between border-t border-border pt-3">
+                <h2 className="text-sm font-bold text-muted">生成されたメール文</h2>
+                <button
+                  type="button"
+                  onClick={copyMail}
+                  disabled={!mail}
+                  className={`flex items-center gap-1 rounded-lg px-3 py-2 text-xs font-bold text-brand-foreground disabled:opacity-40 ${
+                    copied ? "bg-status-approved-fg" : "bg-brand"
+                  }`}
+                >
+                  {copied ? <Check size={13} /> : <Copy size={13} />}
+                  {copied ? "本文をコピーしました" : "本文をコピー"}
+                </button>
               </div>
 
               {mail ? (
