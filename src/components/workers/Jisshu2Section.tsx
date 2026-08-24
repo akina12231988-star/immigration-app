@@ -87,6 +87,9 @@ export function Jisshu2Section({
     }
   };
 
+  // 添付の保存先。書面による証明なら技能評価調書、それ以外は専門級の合格証
+  const proofDocKey = proof === JISSHU2_PROOF_DOCUMENT ? "prep_hyoka_chosho" : "cert_senmonkyu";
+
   return (
     <div className="space-y-1.5 rounded-lg border border-dashed border-border p-2">
       <p className="text-[11px] font-bold text-muted">良好に修了した技能実習2号</p>
@@ -153,13 +156,20 @@ export function Jisshu2Section({
         />
         実習状況に関する書面による証明（実技試験が不合格の場合。技能評価調書を添付）
       </label>
-      {proof === JISSHU2_PROOF_DOCUMENT && (
+      {/* 良好修了を証明する書類の添付。実技試験の合格なら専門級の合格証、
+          書面による証明なら技能評価調書と、選んだ証明に合う保存先に入る */}
+      <div>
         <WorkerCertDocRows
           workerId={workerId}
           canEdit={canEdit}
-          defs={[{ key: "prep_hyoka_chosho", label: "技能評価調書" }]}
+          defs={[{ key: proofDocKey, label: "専門級合格証or技能評価調書" }]}
         />
-      )}
+        <p className="mt-0.5 text-[10px] leading-relaxed text-muted">
+          {proof === JISSHU2_PROOF_DOCUMENT
+            ? "「技能評価調書」として保存されます（申請準備の技能評価調書と同じ保存先）。"
+            : "「専門級の合格証」として保存されます。上で「実習状況に関する書面による証明」を選ぶと、技能評価調書の保存先に切り替わります。"}
+        </p>
+      </div>
     </div>
   );
 }

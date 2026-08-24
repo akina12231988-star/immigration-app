@@ -1065,19 +1065,10 @@ export function WorkerDetail({
             value={worker.residence_note}
             edit={textInput("residence_note", "例: 社宅 / 自分のアパート")}
           />
-          {/* 各合格名の下に、その合格証のPDF・画像を保存できる（旧「外国人書類」カードから移動） */}
+          {/* 良好に修了した技能実習2号（職種名・作業名・良好修了の証明）。
+              その証明の書類（専門級合格証or技能評価調書）もこの枠の中で添付する */}
           <div>
-            <InfoItem label="専門級の合格名" value={worker.specialty_grade} edit={textInput("specialty_grade")} />
-            <WorkerCertDocRows
-              workerId={worker.id}
-              canEdit={canEdit}
-              defs={[{ key: "cert_senmonkyu", label: "専門級の合格証" }]}
-            />
-            {/* 良好に修了した技能実習2号（職種名・作業名・良好修了の証明）。
-                実技試験に合格していれば合格による証明、不合格なら書面（技能評価調書）で証明する */}
-            <div className="mt-1.5">
-              <Jisshu2Section workerId={worker.id} canEdit={canEdit} />
-            </div>
+            <Jisshu2Section workerId={worker.id} canEdit={canEdit} />
           </div>
           <div>
             <InfoItem
