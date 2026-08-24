@@ -410,6 +410,7 @@ export interface WorkHistoryRow {
   start_date: string; // YYYY-MM-DD
   end_date: string | null; // null = 継続中
   org_name: string;
+  prefecture: string; // 勤務先の都道府県（労働者名簿の「前職」欄へ転記する）
   role: string;
   note: string;
   kept_residence_status: boolean; // 在留資格（特定技能1号）を保持したまま帰国した期間か

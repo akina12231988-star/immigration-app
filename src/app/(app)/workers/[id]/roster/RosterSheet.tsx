@@ -71,7 +71,7 @@ export function RosterSheet({
   canEdit: boolean;
   orgName: string;
   worker: RosterWorker;
-  defaultPreviousJobs: string[];
+  defaultPreviousJobs: RosterPreviousJob[]; // 職歴から作った前職（会社名・都道府県）
   employmentStarts: { orgName: string; startOn: string }[]; // 所属機関別の雇用開始日
   initialRosters: WorkerRoster[];
 }) {
@@ -89,7 +89,8 @@ export function RosterSheet({
       worker.residenceStatus,
       worker.residencePermitDate,
     ),
-    previous_jobs: defaultPreviousJobs.map((company) => ({ company, prefecture: "" })),
+    // 前職は職歴からそのまま持ってくる（職歴に都道府県を入れておくとここにも入る）
+    previous_jobs: defaultPreviousJobs.map((j) => ({ ...j })),
     leaving_on: worker.status === "退職" ? rosterJpDate(worker.leavingOn) : "",
     leaving_reason:
       worker.status === "退職"

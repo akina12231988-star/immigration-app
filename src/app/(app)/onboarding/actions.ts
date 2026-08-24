@@ -1,6 +1,17 @@
 "use server";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { getWorkerWithHistories } from "@/lib/supabase/queries/workers";
+import {
+  insertWorkerRoster,
+  listWorkerRosters,
+  updateWorkerRoster,
+} from "@/lib/supabase/queries/rosters";
+import { normalizeOrgEmploymentStarts } from "@/lib/org-employment";
+import { buildRosterDraft, type RosterDraft } from "@/lib/roster-draft";
+import { dbErrorMessage } from "@/lib/errors";
+import { todayStr } from "@/lib/ssw/calc";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { LINKABLE_DOC_KINDS, onboardingDownloadName, onboardingPdfName } from "@/lib/onboarding";
 import type { OnboardingDocumentRow } from "@/types/db";
@@ -284,4 +295,78 @@ export async function getOnboardingDocPreviewUrl(
   const { data: signed, error } = await admin.storage.from(BUCKET).createSignedUrl(path, TTL);
   if (error || !signed) return { ok: false, message: `URL発行に失敗: ${error?.message}` };
   return { ok: true, url: signed.signedUrl };
+}
+
+// 入社書類の「作成」で使う労働者名簿の中身。
+// プレビューの画面で直せるように、まず今の内容（保存済みの名簿があればその内容、
+// 無ければ外国人の登録データから組み立てたもの）を返す
+export async function getOnboardingRosterDraft(
+  workerId: string,
+): Promise<{ ok: true; draft: RosterDraft } | Err> {
+  if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
+  const supabase = await createClient();
+  const worker = await getWorkerWithHistories(supabase, workerId).catch(() => null);
+  if (!worker) return { ok: false, message: "外国人が見つかりません" };
+
+  const [rosters, orgRows] = await Promise.all([
+    listWorkerRosters(supabase, workerId).catch(() => []),
+    supabase.from("organizations").select("id, name"),
+  ]);
+  const orgNameById = new Map(
+    ((orgRows.data as { id: string; name: string }[] | null) ?? []).map((o) => [o.id, o.name]),
+  );
+  const orgName = worker.current_organization_id
+    ? (orgNameById.get(worker.current_organization_id) ?? "")
+    : "";
+  const startAtOrg = normalizeOrgEmploymentStarts(worker.org_employment_starts).find(
+    (e) => e.organization_id === worker.current_organization_id && e.start_on,
+  )?.start_on;
+
+  const draft = buildRosterDraft(
+    {
+      orgName,
+      field: worker.field,
+      employmentStartOn: startAtOrg ?? worker.employment_start_on,
+      residenceStatus: worker.residence_status,
+      residencePermitDate: worker.residence_permit_date,
+      status: worker.status,
+      leavingOn: worker.leaving_on,
+      leavingKind: worker.leaving_kind,
+      leavingReason: worker.leaving_reason,
+      workHistories: worker.work_histories,
+    },
+    rosters.find((r) => r.company_name === orgName) ?? rosters[0] ?? null,
+    todayStr(),
+  );
+  return { ok: true, draft };
+}
+
+// プレビューで直した内容を、その会社の労働者名簿としても保存する。
+// これで労働者名簿の画面（/workers/[id]/roster）と添付したPDFの中身がそろう
+export async function saveOnboardingRosterDraft(
+  workerId: string,
+  draft: RosterDraft,
+): Promise<{ ok: true } | Err> {
+  if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
+  const supabase = await createClient();
+  try {
+    const rosters = await listWorkerRosters(supabase, workerId);
+    const saved =
+      rosters.find((r) => r.company_name === draft.company_name) ??
+      (draft.company_name ? null : (rosters[0] ?? null));
+    const input = {
+      company_name: draft.company_name,
+      work_kind: draft.work_kind,
+      history: draft.history,
+      previous_jobs: draft.previous_jobs,
+      leaving_on: draft.leaving_on,
+      leaving_reason: draft.leaving_reason,
+      issued_on: draft.issued_on || null,
+    };
+    if (saved) await updateWorkerRoster(supabase, saved.id, input);
+    else await insertWorkerRoster(supabase, { worker_id: workerId, ...input });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, message: dbErrorMessage(err, "0054_worker_rosters.sql") };
+  }
 }

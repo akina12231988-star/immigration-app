@@ -16,13 +16,23 @@ export function toCalcHistory(row: WorkHistoryRow): WorkHistory {
   };
 }
 
+// 都道府県は 0117_work_history_prefecture.sql で足した列。未適用のDBでも
+// これまでどおり職歴を保存できるように、空欄のときは書き込む項目から外す
+// （都道府県を入れたときだけ「列がありません」のエラーで気付ける）
+function withoutEmptyPrefecture<T extends { prefecture?: string }>(input: T): T {
+  if (input.prefecture) return input;
+  const rest = { ...input };
+  delete rest.prefecture;
+  return rest;
+}
+
 export async function insertHistory(
   supabase: SupabaseClient,
   input: WorkHistoryInput,
 ): Promise<WorkHistoryRow> {
   const { data, error } = await supabase
     .from("work_histories")
-    .insert(input)
+    .insert(withoutEmptyPrefecture(input))
     .select()
     .single();
   if (error) throw error;
@@ -36,7 +46,7 @@ export async function updateHistory(
 ): Promise<WorkHistoryRow> {
   const { data, error } = await supabase
     .from("work_histories")
-    .update(input)
+    .update(withoutEmptyPrefecture(input))
     .eq("id", id)
     .select()
     .single();

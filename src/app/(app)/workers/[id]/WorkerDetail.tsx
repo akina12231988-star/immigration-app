@@ -1530,9 +1530,9 @@ export function WorkerDetail({
                     {h.start_date} 〜 {h.end_date ?? "継続中"}
                     <span className="ml-2 text-xs font-medium text-muted">{days}日</span>
                   </p>
-                  {(h.org_name || h.role) && (
+                  {(h.org_name || h.prefecture || h.role) && (
                     <p className="mt-0.5 truncate text-xs text-muted">
-                      {[h.org_name, h.role].filter(Boolean).join(" ・ ")}
+                      {[h.org_name, h.prefecture, h.role].filter(Boolean).join(" ・ ")}
                     </p>
                   )}
                   {h.note && <p className="mt-0.5 truncate text-xs text-muted">{h.note}</p>}
