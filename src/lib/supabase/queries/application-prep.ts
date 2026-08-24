@@ -1,5 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { PrepChecklistMeta } from "@/lib/application-prep";
+import {
+  evaluatePrepChecklist,
+  prepProgressOf,
+  type PrepChecklistMeta,
+  type PrepProgress,
+} from "@/lib/application-prep";
 
 // TODO番号ごとの準備リスト1件分（メタ情報＋識別子＋追加項目）
 export interface PrepChecklistRow extends PrepChecklistMeta {
@@ -276,4 +281,107 @@ export async function listMailAfterApplyDocs(
     doc_id: r.doc_id,
     todo_no: todoById.get(r.checklist_id) ?? "",
   }));
+}
+
+// ---- 必要書類がどれだけ揃ったか（申請準備のTODO一覧の「書類 ○%」） ----
+
+// 外国人×TODO番号ごとの進捗。キーは `${worker_id} ${todo_no}`（listPrepTantou と同じ引き方）。
+// 判定に使う材料（準備リスト・書類の準備状況・添付・顔写真・在留カード・パスポート）を
+// まとめて取得して、チェックリストと同じ evaluatePrepChecklist で計算する。
+// 材料の一部が読めなくても「揃っていない」として計算し、画面が止まらないようにする
+export async function listPrepProgress(
+  supabase: SupabaseClient,
+  workerIds: string[],
+): Promise<Record<string, PrepProgress>> {
+  if (workerIds.length === 0) return {};
+
+  // 準備リスト（0105以降の追加列が無くても動くよう select("*")）
+  const { data: listData, error } = await supabase
+    .from("application_prep_checklists")
+    .select("*")
+    .in("worker_id", workerIds)
+    .order("updated_at", { ascending: false });
+  if (error) throw error;
+  const lists =
+    (listData as (PrepChecklistRow & { worker_id: string })[] | null) ?? [];
+  if (lists.length === 0) return {};
+
+  const [docsRes, workersRes, cardsRes, passportsRes, statusRes] = await Promise.all([
+    supabase
+      .from("onboarding_documents")
+      .select("worker_id, doc_key, storage_path")
+      .in("worker_id", workerIds),
+    supabase.from("workers").select("id, photo_path").in("id", workerIds),
+    supabase
+      .from("worker_documents")
+      .select("worker_id")
+      .eq("kind", "在留カード")
+      .in("worker_id", workerIds),
+    supabase.from("worker_passport_files").select("worker_id").in("worker_id", workerIds),
+    supabase
+      .from("prep_doc_statuses")
+      .select("checklist_id, doc_id, status")
+      .in("checklist_id", lists.map((l) => l.id)),
+  ]);
+
+  // 外国人ごとの添付済みキー（storage_path があるものだけ）
+  const filledByWorker = new Map<string, Set<string>>();
+  for (const d of (docsRes.data as
+    | { worker_id: string; doc_key: string; storage_path: string | null }[]
+    | null) ?? []) {
+    if (!d.storage_path) continue;
+    const set = filledByWorker.get(d.worker_id) ?? new Set<string>();
+    set.add(d.doc_key);
+    filledByWorker.set(d.worker_id, set);
+  }
+  const photoByWorker = new Map(
+    (((workersRes.data as { id: string; photo_path: string | null }[] | null) ?? [])).map((w) => [
+      w.id,
+      w.photo_path,
+    ]),
+  );
+  const cardWorkers = new Set(
+    (((cardsRes.data as { worker_id: string }[] | null) ?? [])).map((r) => r.worker_id),
+  );
+  const passportWorkers = new Set(
+    (((passportsRes.data as { worker_id: string }[] | null) ?? [])).map((r) => r.worker_id),
+  );
+  // 準備リストごとの「書類ID → 選択中の準備状況」
+  const statusByList = new Map<string, Record<string, string>>();
+  for (const r of (statusRes.data as
+    | { checklist_id: string; doc_id: string; status: string | null }[]
+    | null) ?? []) {
+    const cur = statusByList.get(r.checklist_id) ?? {};
+    cur[r.doc_id] = r.status ?? "";
+    statusByList.set(r.checklist_id, cur);
+  }
+
+  const out: Record<string, PrepProgress> = {};
+  for (const l of lists) {
+    const filledDocKeys = filledByWorker.get(l.worker_id) ?? new Set<string>();
+    const meta: PrepChecklistMeta = {
+      app_type: l.app_type ?? "",
+      has_kokuho: l.has_kokuho ?? false,
+      has_nenkin: l.has_nenkin ?? false,
+      target_reiwa: l.target_reiwa ?? null,
+      kenshin_items_ok: l.kenshin_items_ok ?? false,
+      tantou: l.tantou ?? "",
+      cert_pattern: l.cert_pattern ?? "",
+    };
+    const { items } = evaluatePrepChecklist(
+      meta,
+      {
+        filledDocKeys,
+        photoPath: photoByWorker.get(l.worker_id) ?? null,
+        healthComplete: filledDocKeys.has("kenshin"),
+        hasResidenceCard: cardWorkers.has(l.worker_id),
+        hasPassportFile: passportWorkers.has(l.worker_id),
+      },
+      statusByList.get(l.id) ?? {},
+    );
+    const key = `${l.worker_id} ${l.todo_no ?? ""}`;
+    // 同じ組み合わせが複数あるときは更新の新しい方を優先（並びが updated_at の降順のため先勝ち）
+    if (out[key] === undefined) out[key] = prepProgressOf(items);
+  }
+  return out;
 }
