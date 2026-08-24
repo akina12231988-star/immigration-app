@@ -1,11 +1,13 @@
 import { PDFDocument, degrees } from "pdf-lib";
 
-// PDFのページ大きさをA4縦にそろえる。
+// PDFのページ大きさをA4にそろえる。
 //
 // スマホのスキャンアプリで作ったPDFは、ページごとに大きさがバラバラなことがあり
 // （撮った範囲がそのままページの大きさになる）、開いたときに1ページ目だけ
 // 小さく見えたりする。アップロード時に各ページをA4に載せ直して統一する。
 // 中身は縮小・拡大するだけで、切れたり歪んだりはしない（縦横比は保つ）。
+// 横長のページ（扶養控除等申告書などのA4横の様式）はA4横のまま置く
+// （縦に押し込むと小さく縮んでしまうため）。
 
 const A4 = { width: 595.28, height: 841.89 };
 const MARGIN = 20;
@@ -16,8 +18,13 @@ function isA4Portrait(width: number, height: number): boolean {
   return Math.abs(width - A4.width) <= TOLERANCE && Math.abs(height - A4.height) <= TOLERANCE;
 }
 
-// ページの大きさがそろっていないPDFをA4縦に統一して返す。
-// 変換が要らない（すでに全ページA4縦）・PDFとして読めない場合は null（原本のまま使う）
+// A4横（扶養控除等申告書など）。そのままにする
+function isA4Landscape(width: number, height: number): boolean {
+  return isA4Portrait(height, width);
+}
+
+// ページの大きさがそろっていないPDFをA4（縦横はページの向きに合わせる）に統一して返す。
+// 変換が要らない（すでに全ページA4）・PDFとして読めない場合は null（原本のまま使う）
 export async function normalizePdfToA4(
   bytes: ArrayBuffer | Uint8Array,
 ): Promise<Uint8Array | null> {
@@ -31,7 +38,10 @@ export async function normalizePdfToA4(
   if (pages.length === 0) return null;
   const needsFix = pages.some((p) => {
     const { width, height } = p.getSize();
-    return !isA4Portrait(width, height) || p.getRotation().angle !== 0;
+    return (
+      (!isA4Portrait(width, height) && !isA4Landscape(width, height)) ||
+      p.getRotation().angle !== 0
+    );
   });
   if (!needsFix) return null;
 
@@ -45,12 +55,17 @@ export async function normalizePdfToA4(
       const sideways = rot === 90 || rot === 270;
       const srcW = sideways ? ep.height : ep.width;
       const srcH = sideways ? ep.width : ep.height;
-      const scale = Math.min((A4.width - MARGIN * 2) / srcW, (A4.height - MARGIN * 2) / srcH);
+      // 横長のページはA4横に、縦長のページはA4縦に載せる（向きを保つ）
+      const target = srcW > srcH ? { width: A4.height, height: A4.width } : A4;
+      const scale = Math.min(
+        (target.width - MARGIN * 2) / srcW,
+        (target.height - MARGIN * 2) / srcH,
+      );
       const w = ep.width * scale;
       const h = ep.height * scale;
-      const page = out.addPage([A4.width, A4.height]);
-      const cx = A4.width / 2;
-      const cy = A4.height / 2;
+      const page = out.addPage([target.width, target.height]);
+      const cx = target.width / 2;
+      const cy = target.height / 2;
       if (rot === 0) {
         page.drawPage(ep, { x: cx - w / 2, y: cy - h / 2, width: w, height: h });
       } else {
