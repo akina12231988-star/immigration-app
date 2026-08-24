@@ -14,6 +14,7 @@ import {
   PREP_DOC_STATUS_OPTIONS,
   prepDocLabel,
   prepPageKey,
+  prepProgressOf,
   prepStatusOption,
   serializeAttachItems,
   type PrepChecklistMeta,
@@ -304,5 +305,42 @@ describe("合格証の組み合わせ（cert_pattern）", () => {
     ).items.map((x) => x.def.id);
     expect(updateIds).not.toContain("cert_senmonkyu");
     expect(updateIds).not.toContain("hyoka_chosho");
+  });
+});
+
+describe("prepProgressOf", () => {
+  // 申請準備のTODO一覧に出す「書類 ○%（○/○件）」の計算
+  const items = (n: number, doneCount: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      def: PREP_DOC_DEFS[i],
+      required: true,
+      satisfied: i < doneCount,
+      fileSatisfied: i < doneCount,
+    }));
+
+  it("必要書類が0件（申請種別未選択）のときは0%", () => {
+    expect(prepProgressOf([])).toEqual({ done: 0, total: 0, percent: 0 });
+  });
+
+  it("何件中何件そろったかと％を返す", () => {
+    expect(prepProgressOf(items(4, 1))).toEqual({ done: 1, total: 4, percent: 25 });
+    expect(prepProgressOf(items(3, 3))).toEqual({ done: 3, total: 3, percent: 100 });
+  });
+
+  it("割り切れないときは四捨五入する", () => {
+    expect(prepProgressOf(items(3, 1)).percent).toBe(33);
+    expect(prepProgressOf(items(3, 2)).percent).toBe(67);
+  });
+
+  it("チェックリストの判定（evaluatePrepChecklist）とつないで計算できる", () => {
+    const { items: evaluated } = evaluatePrepChecklist(
+      meta({ app_type: "更新", target_reiwa: 7 }),
+      sources({}),
+    );
+    expect(prepProgressOf(evaluated)).toEqual({
+      done: 0,
+      total: evaluated.length,
+      percent: 0,
+    });
   });
 });

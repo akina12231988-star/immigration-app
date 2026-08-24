@@ -402,6 +402,21 @@ export function evaluatePrepChecklist(
   return { items, missing: items.filter((i) => !i.satisfied) };
 }
 
+// 必要書類がどれだけ揃ったか（何件中何件・0〜100%）。
+// 申請準備のTODO一覧に「書類 80%（8/10件）」の形で出す。
+// 申請種別が未選択のときは必要書類が決まらないため total=0（画面では「種別未選択」を出す）
+export interface PrepProgress {
+  done: number; // 完了した書類の件数
+  total: number; // 必要書類の件数
+  percent: number; // 0〜100（total=0 のときは 0）
+}
+
+export function prepProgressOf(items: PrepDocStatus[]): PrepProgress {
+  const total = items.length;
+  const done = items.filter((i) => i.satisfied).length;
+  return { done, total, percent: total === 0 ? 0 : Math.round((done / total) * 100) };
+}
+
 // ---- 書類ごとの準備状況（ステータス） ----
 // 各書類に「準備中／完了」の選択肢を持たせ、選択肢に応じた付随入力
 // （依頼先・金額・受診日・レターパック追跡番号・理由書メモなど）を保存する。

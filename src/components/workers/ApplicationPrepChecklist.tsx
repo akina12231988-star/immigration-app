@@ -88,6 +88,7 @@ import { todayStr } from "@/lib/ssw/calc";
 import {
   EMPTY_PREP_META,
   evaluatePrepChecklist,
+  prepProgressOf,
   isPrepPageKeyOf,
   letterPackTrackingUrl,
   parseAttachItems,
@@ -411,6 +412,9 @@ export function ApplicationPrepChecklist({
     },
     statusValues,
   );
+
+  // 必要書類がどれだけ揃ったか（0%〜100%）。申請準備のTODO一覧と同じ計算
+  const progress = prepProgressOf(items);
 
   const currentReiwa = reiwaYear(today);
   // 課税・納税証明書の基準日（対象年度の1月1日）時点の住所
@@ -1134,13 +1138,14 @@ export function ApplicationPrepChecklist({
           {missing.length === 0 ? (
             <p className="mb-3 flex items-center gap-1.5 rounded-xl bg-status-approved-bg px-3 py-2.5 text-sm font-bold text-status-approved-fg">
               <CheckCircle2 size={15} />
-              必要書類はすべて揃っています
+              必要書類はすべて揃っています（100%・{progress.total}件）
             </p>
           ) : (
             <div className="mb-3 rounded-xl border border-seal/40 bg-seal/5 px-3 py-2.5">
               <p className="mb-1 flex items-center gap-1.5 text-sm font-bold text-seal">
                 <TriangleAlert size={15} />
-                不足 {missing.length}件
+                不足 {missing.length}件（{progress.percent}% 揃いました・{progress.done}/
+                {progress.total}件）
               </p>
               <ul className="list-disc space-y-0.5 pl-5 text-xs text-seal">
                 {missing.map((m) => (

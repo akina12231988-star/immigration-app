@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Check, ClipboardList, Copy, Plus, Settings2, Trash2 } from "lucide-react";
+import { Check, ClipboardList, Copy, Plus, Settings2, Trash2, TriangleAlert } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Combobox } from "@/components/ui/Combobox";
@@ -11,8 +11,13 @@ import { ApplicationPrepChecklist } from "@/components/workers/ApplicationPrepCh
 import { SavedPlanDatesSection } from "@/components/workers/ApplicationPrepExtras";
 import { APPLICATION_CONTENT_CHOICES } from "@/lib/worker-situation";
 import { listFilingAgents } from "@/lib/supabase/queries/agents";
-import { listPrepTantou, upsertPrepTantou } from "@/lib/supabase/queries/application-prep";
-import { PREP_TANTOU_OPTIONS } from "@/lib/application-prep";
+import {
+  listPrepProgress,
+  listPrepTantou,
+  upsertPrepTantou,
+} from "@/lib/supabase/queries/application-prep";
+import { PREP_TANTOU_OPTIONS, type PrepProgress } from "@/lib/application-prep";
+import { isExpiryWithinTwoMonths, remainingLabel } from "@/lib/worker-alerts";
 import { createClient } from "@/lib/supabase/client";
 import { dbErrorMessage } from "@/lib/errors";
 import {
@@ -125,6 +130,12 @@ export function TodosClient({
   const [tantouFilter, setTantouFilter] = useState("");
   // 外国人の名前・TODO番号での検索（申請準備のTODOで使う）
   const [nameFilter, setNameFilter] = useState("");
+  // 在留期限（外国人ID → YYYY-MM-DD）。申請準備のTODOに太字で出し、残り2ヶ月を切ったらアラート
+  const [expiryByWorker, setExpiryByWorker] = useState<Record<string, string>>({});
+  // 必要書類がどれだけ揃ったか（キーは `${worker_id} ${todo_no}`。書類 ○% の表示に使う）
+  const [prepProgress, setPrepProgress] = useState<Record<string, PrepProgress>>({});
+  // 並び順（申請準備のTODOのみ。既定は登録順、在留期限が近い順に並べ替えられる）
+  const [sortKey, setSortKey] = useState<"既定" | "在留期限">("既定");
 
   // そのTODOの書類担当者（番号の書き方の揺れは正規化して突き合わせ。無ければその人の担当者）
   const tantouOf = (t: TodoRow): string => {
@@ -136,6 +147,21 @@ export function TodosClient({
       const no = k.slice(t.worker_id.length + 1);
       if (key && normalizeTodoKey(no) === key) return v;
       if (!fallback && v) fallback = v;
+    }
+    return fallback;
+  };
+
+  // そのTODOの必要書類の進捗（番号の書き方の揺れは正規化して突き合わせ。
+  // 番号が一致する準備リストが無ければ、その人の最新の準備リストの進捗を出す）
+  const progressOf = (t: TodoRow): PrepProgress | null => {
+    if (!t.worker_id) return null;
+    const key = normalizeTodoKey(t.todo_no);
+    let fallback: PrepProgress | null = null;
+    for (const [k, v] of Object.entries(prepProgress)) {
+      if (!k.startsWith(`${t.worker_id} `)) continue;
+      const no = k.slice(t.worker_id.length + 1);
+      if (key && normalizeTodoKey(no) === key) return v;
+      if (!fallback) fallback = v;
     }
     return fallback;
   };
@@ -252,12 +278,14 @@ export function TodosClient({
               );
             });
         }
-        // TODOの行に出す所属機関名（申請準備の所属機関→現在の所属機関の順）
+        // TODOの行に出す所属機関名（申請準備の所属機関→現在の所属機関の順）と在留期限
         if (workerIds.length > 0) {
           void Promise.all([
             supabase
               .from("workers")
-              .select("id, application_prep_organization_id, current_organization_id")
+              .select(
+                "id, application_prep_organization_id, current_organization_id, residence_expiry_date",
+              )
               .in("id", workerIds),
             supabase.from("organizations").select("id, name"),
           ]).then(([w, o]) => {
@@ -265,19 +293,27 @@ export function TodosClient({
               (((o.data as { id: string; name: string }[] | null) ?? [])).map((r) => [r.id, r.name]),
             );
             const out: Record<string, string> = {};
+            const expiry: Record<string, string> = {};
             for (const r of (w.data as
               | {
                   id: string;
                   application_prep_organization_id: string | null;
                   current_organization_id: string | null;
+                  residence_expiry_date: string | null;
                 }[]
               | null) ?? []) {
               out[r.id] =
                 orgMap.get(r.application_prep_organization_id ?? r.current_organization_id ?? "") ??
                 "";
+              if (r.residence_expiry_date) expiry[r.id] = r.residence_expiry_date;
             }
             setOrgNameByWorker(out);
+            setExpiryByWorker(expiry);
           });
+          // 必要書類がどれだけ揃ったか（読めなくても他の表示は使えるようにする）
+          listPrepProgress(supabase, workerIds)
+            .then(setPrepProgress)
+            .catch(() => undefined);
         }
         // 書類担当者（申請準備の担当者）。0083未適用でも他は使えるようにする
         listPrepTantou(supabase).then(setPrepTantou).catch(() => undefined);
@@ -436,6 +472,16 @@ export function TodosClient({
     () => todos.filter((t) => t.deleted_at && t.kind === kind),
     [todos, kind],
   );
+  // 在留期限まで2ヶ月を切った（またはすでに過ぎた）人。まだ完了していない申請準備だけ出す
+  const expiryAlerts = useMemo(() => {
+    if (kind !== "申請準備") return [];
+    const today = todayStr();
+    return kindTodos
+      .filter((t) => stageOfStatus(t.status, kindOptions) !== "完了")
+      .map((t) => ({ todo: t, expiry: t.worker_id ? (expiryByWorker[t.worker_id] ?? "") : "" }))
+      .filter((r) => r.expiry && isExpiryWithinTwoMonths(r.expiry, today))
+      .sort((a, b) => a.expiry.localeCompare(b.expiry));
+  }, [kind, kindTodos, kindOptions, expiryByWorker]);
 
   const run = async (fn: () => Promise<void>, migration = "0102_todos.sql") => {
     try {
@@ -667,6 +713,24 @@ export function TodosClient({
         </Card>
       )}
 
+      {/* 在留期限まで2ヶ月を切った人のまとめ（急いで申請する必要がある人がひと目で分かるようにする） */}
+      {kind === "申請準備" && !loading && expiryAlerts.length > 0 && (
+        <div className="rounded-2xl border border-seal/40 bg-seal/5 px-3 py-2.5">
+          <p className="flex items-center gap-1.5 text-sm font-bold text-seal">
+            <TriangleAlert size={15} />
+            在留期限まで2ヶ月を切っています（{expiryAlerts.length}件）— 申請を急いでください
+          </p>
+          <ul className="mt-1 space-y-0.5 pl-6 text-xs text-seal">
+            {expiryAlerts.map(({ todo: t, expiry }) => (
+              <li key={t.id}>
+                {displayTodoNo(t.todo_no)}　{t.worker_name ?? "（外国人）"}　在留期限 {expiry}（
+                {remainingLabel(expiry, todayStr())}）
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* 外国人の名前・書類担当者での絞り込み（申請準備のTODOのみ） */}
       {kind === "申請準備" && !loading && (
         <div className="flex flex-wrap items-center gap-2">
@@ -698,6 +762,18 @@ export function TodosClient({
               )}
             </select>
           </label>
+          {/* 並び順（担当者で絞り込んだまま、在留期限が近い順に並べ替えられる） */}
+          <label className="flex items-center gap-1.5 text-xs font-bold text-muted">
+            並び順
+            <select
+              value={sortKey}
+              onChange={(e) => setSortKey(e.target.value as "既定" | "在留期限")}
+              className="min-h-[36px] rounded-lg border border-border bg-surface px-2 text-sm font-bold focus:border-brand focus:outline-none"
+            >
+              <option value="既定">登録が新しい順</option>
+              <option value="在留期限">在留期限が近い順</option>
+            </select>
+          </label>
         </div>
       )}
 
@@ -720,7 +796,17 @@ export function TodosClient({
                 (t.worker_name ?? "").toLowerCase().includes(q) ||
                 (normalizeTodoKey(q) !== "" &&
                   normalizeTodoKey(t.todo_no).includes(normalizeTodoKey(q))),
-            );
+            )
+            // 在留期限が近い順に並べ替え（未登録の人は最後にまとめる）
+            .sort((a, b) => {
+              if (kind !== "申請準備" || sortKey !== "在留期限") return 0;
+              const ea = a.worker_id ? (expiryByWorker[a.worker_id] ?? "") : "";
+              const eb = b.worker_id ? (expiryByWorker[b.worker_id] ?? "") : "";
+              if (!ea && !eb) return 0;
+              if (!ea) return 1;
+              if (!eb) return -1;
+              return ea.localeCompare(eb);
+            });
           return (
             <Card key={stage} className="p-4">
               <details open>
@@ -744,6 +830,8 @@ export function TodosClient({
                       agents={agents}
                       orgName={t.worker_id ? (orgNameByWorker[t.worker_id] ?? "") : ""}
                       tantou={tantouOf(t)}
+                      residenceExpiry={t.worker_id ? (expiryByWorker[t.worker_id] ?? "") : ""}
+                      progress={progressOf(t)}
                       onChangeTantou={
                         t.kind === "申請準備" && t.worker_id
                           ? (v) => changeTantou(t, v)
@@ -914,6 +1002,55 @@ export function TodosClient({
   );
 }
 
+// 在留期限の表示（太字で誰の期限かすぐ分かるようにする）。
+// 残り2ヶ月を切った人・すでに過ぎた人は赤いアラートにして、申請を急ぐ必要が分かるようにする
+function ResidenceExpiryBadge({ expiry }: { expiry: string }) {
+  if (!expiry) {
+    return <span className="shrink-0 text-[11px] text-muted">在留期限 未登録</span>;
+  }
+  const today = todayStr();
+  const remaining = remainingLabel(expiry, today);
+  if (isExpiryWithinTwoMonths(expiry, today)) {
+    return (
+      <span className="flex shrink-0 items-center gap-1 rounded-full bg-seal/10 px-2 py-0.5 text-[11px] font-bold text-seal">
+        <TriangleAlert size={12} />
+        在留期限 {expiry}（{remaining}）
+      </span>
+    );
+  }
+  return (
+    <span className="shrink-0 text-[11px] font-bold text-foreground">
+      在留期限 {expiry}
+      <span className="ml-1 font-normal text-muted">（{remaining}）</span>
+    </span>
+  );
+}
+
+// 必要書類がどれだけ揃ったか（0%〜100%）。100%になったら緑にして、揃った人がひと目で分かるようにする
+function PrepProgressBadge({ progress }: { progress: PrepProgress | null }) {
+  if (!progress || progress.total === 0) {
+    return (
+      <span className="shrink-0 text-[11px] text-muted">
+        書類 —（申請種別が未選択です）
+      </span>
+    );
+  }
+  const done = progress.percent >= 100;
+  return (
+    <span className="flex shrink-0 items-center gap-1.5">
+      <span className="block h-1.5 w-16 overflow-hidden rounded-full bg-border">
+        <span
+          className={`block h-full rounded-full ${done ? "bg-status-approved-fg" : "bg-brand"}`}
+          style={{ width: `${progress.percent}%` }}
+        />
+      </span>
+      <span className={`text-[11px] font-bold ${done ? "text-status-approved-fg" : "text-muted"}`}>
+        書類 {progress.percent}%（{progress.done}/{progress.total}件）
+      </span>
+    </span>
+  );
+}
+
 function TodoItem({
   todo,
   statusOptions,
@@ -922,6 +1059,8 @@ function TodoItem({
   agents = [],
   orgName = "",
   tantou = "",
+  residenceExpiry = "",
+  progress = null,
   onChangeTantou,
   onOpenPrep,
   jobFlows = [],
@@ -936,6 +1075,8 @@ function TodoItem({
   agents?: string[]; // 申請取次士の名簿（申請準備のTODOで選ぶ）
   orgName?: string; // 申請準備の所属機関名（転職先→現在の順）
   tantou?: string; // 書類担当者（申請準備の担当者）
+  residenceExpiry?: string; // 在留期限（'' = 未登録）
+  progress?: PrepProgress | null; // 必要書類がどれだけ揃ったか
   onChangeTantou?: (v: string) => void;
   onOpenPrep?: () => void; // TODOの詳細（申請準備 書類チェックリスト）を開く
   jobFlows?: JobFlowRow[]; // あっせん有りのときに出す、求人への採用の流れ
@@ -1027,6 +1168,12 @@ function TodoItem({
                   📋 申請書類の準備状況の詳細
                 </button>
               )}
+              {/* 在留期限（太字）と、残り2ヶ月を切ったときのアラート */}
+              {todo.kind === "申請準備" && (
+                <ResidenceExpiryBadge expiry={residenceExpiry} />
+              )}
+              {/* 必要書類が何%揃ったか */}
+              {todo.kind === "申請準備" && <PrepProgressBadge progress={progress} />}
             </>
           ) : (
             <span className="text-xs text-muted">外国人ひも付けなし</span>
