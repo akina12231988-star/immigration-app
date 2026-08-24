@@ -30,6 +30,7 @@ import {
 } from "@/app/(app)/onboarding/actions";
 import { uploadOnboardingDoc } from "@/lib/onboarding-files";
 import { downloadBlob, toPdfBlob } from "@/lib/onboarding-pdf";
+import { Modal } from "@/components/ui/Modal";
 import { isPrepDocKey } from "@/lib/application-prep";
 import {
   DOC_REFERENCE_LINKS,
@@ -74,6 +75,14 @@ export function OnboardingDocuments({
   // 外国人詳細から渡されていればそれを使い（登録・修正がすぐ反映される）、
   // 渡されていないときだけ自分で読む
   const [loadedMyNumber, setLoadedMyNumber] = useState<string | null>(null);
+  // 作成した書類のプレビュー（内容を見てから添付する）
+  const [preview, setPreview] = useState<{
+    def: OnboardingDocDef;
+    label: string;
+    file: File;
+    url: string;
+  } | null>(null);
+  const [attaching, setAttaching] = useState(false);
   const myNumber = myNumberProp !== undefined ? myNumberProp : loadedMyNumber;
 
   const uploadDefRef = useRef<OnboardingDocDef | null>(null);
@@ -202,21 +211,15 @@ export function OnboardingDocuments({
   // 個人番号が未入力だと、扶養控除等申告書・労働者名簿は正しく作れない
   const needsMyNumber = (key: string) => !!GENERATABLE[key] && myNumber !== null && !myNumber.trim();
 
-  const createAndAttach = async (def: OnboardingDocDef) => {
+  // 「作成」を押したら、まず作った書類をプレビューで見せる。
+  // 内容を確かめてから「添付する」を押したときに保存する
+  const createAndPreview = async (def: OnboardingDocDef) => {
     const label = GENERATABLE[def.key];
     if (!label) return;
     if (needsMyNumber(def.key)) {
       setError(
         `個人番号が未入力のため「${label}」は添付できません。外国人詳細の「個人番号（マイナンバー）」を登録してから作成してください。`,
       );
-      return;
-    }
-    if (
-      !window.confirm(
-        `外国人詳細の登録内容で「${label}」を作成し、この欄に添付します。\n` +
-          "内容に間違いがなければOKを押してください（添付後も差し替えできます）。",
-      )
-    ) {
       return;
     }
     setBusyKey(def.key);
@@ -235,16 +238,36 @@ export function OnboardingDocuments({
       const cd = res.headers.get("content-disposition") ?? "";
       const m = /filename\*=UTF-8''([^;]+)/.exec(cd);
       const fileName = m ? decodeURIComponent(m[1]) : `${label}.pdf`;
-      await uploadOnboardingDoc(
-        workerId,
-        def,
-        new File([blob], fileName, { type: "application/pdf" }),
-      );
-      await load();
+      const file = new File([blob], fileName, { type: "application/pdf" });
+      setPreview({ def, label, file, url: URL.createObjectURL(file) });
     } catch (err) {
       setError(err instanceof Error ? err.message : `${label}の作成に失敗しました`);
     } finally {
       setBusyKey(null);
+    }
+  };
+
+  // プレビューを閉じる（表示に使った一時的なURLを片づける）
+  const closePreview = () => {
+    setPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev.url);
+      return null;
+    });
+  };
+
+  // プレビューの内容でよければ添付する
+  const attachPreview = async () => {
+    if (!preview) return;
+    setAttaching(true);
+    setError(null);
+    try {
+      await uploadOnboardingDoc(workerId, preview.def, preview.file);
+      await load();
+      closePreview();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `${preview.label}の添付に失敗しました`);
+    } finally {
+      setAttaching(false);
     }
   };
 
@@ -407,7 +430,7 @@ export function OnboardingDocuments({
                                   : `${GENERATABLE[def.key]}を作成して添付`
                               }
                               disabled={needsMyNumber(def.key)}
-                              onClick={() => void createAndAttach(def)}
+                              onClick={() => void createAndPreview(def)}
                             >
                               <FileText size={13} />
                               {hasFile ? "作り直す" : "作成"}
@@ -529,6 +552,54 @@ export function OnboardingDocuments({
           e.target.value = "";
         }}
       />
+
+      {/* 作成した書類のプレビュー。中身を見てから「添付する」で保存する */}
+      {preview && (
+        <Modal open wide title={`${preview.label}のプレビュー`} onClose={closePreview}>
+          <div className="flex flex-col gap-3">
+            <p className="text-sm">
+              外国人詳細の登録内容で作成しました。
+              <span className="font-bold">内容に間違いがなければ「添付する」を押してください。</span>
+              <span className="block text-[11px] text-muted">
+                添付後も「差し替え」でやり直せます。直すところがあるときは「やめる」で閉じ、外国人詳細を直してからもう一度作成してください。
+              </span>
+            </p>
+            <iframe
+              src={preview.url}
+              title={`${preview.label}のプレビュー`}
+              className="h-[60vh] w-full rounded-xl border border-border bg-background"
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void attachPreview()}
+                disabled={attaching}
+                className="flex items-center gap-1 rounded-lg bg-brand px-4 py-2 text-sm font-bold text-brand-foreground disabled:opacity-50"
+              >
+                <Upload size={14} />
+                {attaching ? "添付中…" : "添付する"}
+              </button>
+              <button
+                type="button"
+                onClick={closePreview}
+                disabled={attaching}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-bold text-muted"
+              >
+                やめる
+              </button>
+              <a
+                href={preview.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 text-[11px] font-bold text-brand hover:underline"
+              >
+                <ExternalLink size={12} />
+                別のタブで大きく開く
+              </a>
+            </div>
+          </div>
+        </Modal>
+      )}
     </Card>
   );
 }
