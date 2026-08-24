@@ -1,7 +1,8 @@
 // 添付データをPDF化してダウンロードするためのクライアント側ユーティリティ。
-// PDFはそのまま、画像（JPEG/PNG/WebPなど）はブラウザで描画してPDF1ページに変換する。
+// PDFはページの大きさをA4にそろえて、画像（JPEG/PNG/WebPなど）はブラウザで描画してPDF1ページに変換する。
 // Blob（同一オリジン）としてダウンロードするので、日本語のファイル名も文字化けせず保存できる。
 import { jsPDF } from "jspdf";
+import { normalizePdfToA4 } from "@/lib/pdf-normalize";
 
 const isPdf = (mimeType: string) => mimeType === "application/pdf";
 
@@ -39,13 +40,22 @@ async function imageToPdfBlob(bytes: ArrayBuffer, mimeType: string): Promise<Blo
   }
 }
 
-// 添付データのバイト列をPDFのBlobにする。PDFはそのまま返す。
+// 添付データのバイト列をPDFのBlobにする。
+// PDFはページの大きさをA4にそろえて返す（ページごとに大きさがバラバラなスキャンPDFでも、
+// 昔に大きさをそろえる前へ登録されたものでも、ダウンロードは全ページ同じ大きさになる）。
 // 画像はPDF化する。変換できない場合は元データのBlobを返す（呼び出し側でフォールバック名を使う）。
 export async function toPdfBlob(
   bytes: ArrayBuffer,
   mimeType: string,
 ): Promise<{ blob: Blob; converted: boolean }> {
-  if (isPdf(mimeType)) return { blob: new Blob([bytes], { type: "application/pdf" }), converted: true };
+  if (isPdf(mimeType)) {
+    // そろっていない（またはPDFとして読めない）ときだけ変換される。null は原本のままでよい印
+    const normalized = await normalizePdfToA4(bytes).catch(() => null);
+    return {
+      blob: new Blob([(normalized ?? bytes) as BlobPart], { type: "application/pdf" }),
+      converted: true,
+    };
+  }
   if (mimeType.startsWith("image/")) {
     try {
       return { blob: await imageToPdfBlob(bytes, mimeType), converted: true };
