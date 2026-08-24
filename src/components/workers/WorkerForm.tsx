@@ -213,6 +213,7 @@ export function WorkerForm({
         next.residence_status,
         !!next.current_organization_id,
         !!next.employment_start_on,
+        next.current_situation,
       );
       return auto ? { ...next, ...auto } : next;
     });

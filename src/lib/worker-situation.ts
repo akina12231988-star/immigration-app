@@ -177,6 +177,22 @@ export function mergeSituation(
   return keep ? `${ENTRUSTED_SITUATION}${SITUATION_SEPARATOR}${next}` : next;
 }
 
+// 在籍中になったときに只今の状況へ自動で入れる内容。
+// 特定技能1号で支援対象なら「特定技能1号＜支援委託中＞」。
+// 判断できない（＝何も入れない方がよい）ときは null を返す。
+// すでに只今の状況が入っている人は上書きしないよう、呼び出し側で未入力のときだけ使う
+export function situationOnEnrolled(
+  residenceStatus: string | null | undefined,
+  support: string | null | undefined,
+): string | null {
+  const s = (residenceStatus ?? "").trim();
+  if (support !== "支援対象") return null;
+  // 特定技能1号（「特定活動（特定技能1号移行準備）」などは対象外にする）
+  if (!/特定技能/.test(s)) return null;
+  if (!/[1１]号/.test(s)) return null;
+  return ENTRUSTED_SITUATION;
+}
+
 // 許可がおりたときの只今の状況。
 // 特定技能の更新（特定技能更新許可の審査中）の許可なら、その部分を「更新」に変える
 // （＜支援委託中＞などの併記は残す。例: 特定技能1号＜支援委託中＞・更新）。

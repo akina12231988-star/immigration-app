@@ -1,7 +1,7 @@
 "use client";
 
 import { messengerWebUrl } from "@/lib/messenger-link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -87,7 +87,7 @@ import {
   changedFieldCount,
   workerFieldString,
 } from "@/lib/worker-inline-edit";
-import { employmentStartPatch } from "@/lib/worker-support";
+import { employmentStartPatch, type EnrollPatch } from "@/lib/worker-support";
 import { RESIDENCE_PERIODS } from "@/lib/residence-card";
 import { WORKER_SITUATIONS, autoSituation, situationDescription } from "@/lib/worker-situation";
 import { isCountedHistory, type WorkHistory } from "@/types/ssw";
@@ -212,6 +212,41 @@ export function WorkerDetail({
     }
   };
 
+  // 所属機関と雇用開始日がそろっているのに「申請準備中」のまま止まっている人を、
+  // このページを開いたときに在籍中（＋支援区分・只今の状況）へ直して保存する。
+  // 前は保存したときにしか動かず、登録済みの人がずっと申請準備中のままだったため。
+  // 直したことは下の案内で知らせる（黙って書き換えない）
+  const [autoEnrolled, setAutoEnrolled] = useState<EnrollPatch | null>(null);
+  const autoEnrollRan = useRef(false);
+  useEffect(() => {
+    if (!canEdit || autoEnrollRan.current) return;
+    const auto = employmentStartPatch(
+      worker.status,
+      worker.residence_status,
+      !!worker.current_organization_id,
+      !!(worker.employment_start_on || currentOrgStart),
+      worker.current_situation,
+    );
+    if (!auto) return;
+    autoEnrollRan.current = true; // 失敗しても繰り返さない
+    void updateWorker(createClient(), worker.id, auto)
+      .then(() => {
+        setAutoEnrolled(auto);
+        router.refresh();
+      })
+      .catch(() => undefined); // 直せなくても詳細の表示は続ける
+  }, [
+    canEdit,
+    worker.id,
+    worker.status,
+    worker.residence_status,
+    worker.current_organization_id,
+    worker.employment_start_on,
+    worker.current_situation,
+    currentOrgStart,
+    router,
+  ]);
+
   // 職歴は開始日昇順で表示（calc と同じ並び）
   const histories = useMemo(
     () =>
@@ -313,10 +348,16 @@ export function WorkerDetail({
                   : worker.residence_status,
                 !!nextOrg,
                 !!nextStart,
+                "current_situation" in payload
+                  ? payload.current_situation
+                  : worker.current_situation,
               );
         if (auto) {
           payload.status = auto.status;
           if (!("support" in payload)) payload.support = auto.support;
+          if (auto.current_situation && !("current_situation" in payload)) {
+            payload.current_situation = auto.current_situation;
+          }
         }
       }
       if (Object.keys(payload).length > 0) {
@@ -437,6 +478,21 @@ export function WorkerDetail({
       {error && (
         <p role="alert" className="rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
           {error}
+        </p>
+      )}
+
+      {/* 開いたときに状態を自動で直したときの案内（黙って書き換えたと思われないように出す） */}
+      {autoEnrolled && (
+        <p
+          role="status"
+          className="rounded-lg bg-status-approved-bg px-3 py-2 text-sm text-status-approved-fg"
+        >
+          所属機関と雇用開始日が登録されていたため、状態を「{autoEnrolled.status}」・支援区分を「
+          {autoEnrolled.support}」
+          {autoEnrolled.current_situation
+            ? `・只今の状況を「${autoEnrolled.current_situation}」`
+            : ""}
+          に変更しました。違うときは「編集」から直してください。
         </p>
       )}
 
@@ -1314,6 +1370,7 @@ export function WorkerDetail({
         currentEmploymentStartOn={worker.employment_start_on}
         workerStatus={worker.status}
         residenceStatus={worker.residence_status}
+        currentSituation={worker.current_situation}
         organizations={organizations}
         canEdit={canEdit}
       />

@@ -8,6 +8,7 @@
 // 退職月の日割り請求が名簿から消えてしまうため（請求は退職日まで行う）。
 
 import type { SupportScope, WorkerStatus } from "@/types/db";
+import { situationOnEnrolled } from "@/lib/worker-situation";
 
 // 特定技能2号にあたるか（特定活動〔特定技能2号移行準備〕を含む）
 function isSsw2Scope(residenceStatus: string): boolean {
@@ -43,21 +44,34 @@ export function suggestSupportScope(
   return "支援開始前";
 }
 
-// 所属機関と雇用開始日がそろったときの状態・支援区分の自動更新。
+// 所属機関と雇用開始日がそろったときの状態・支援区分・只今の状況の自動更新。
 // 「申請準備中」の人だけを「在籍中」へ進める（在籍中・退職・帰国・求職活動中は触らない）。
 // 支援区分は在留資格から判別し（特定技能1号=支援対象・2号=支援対象外）、
-// 判別できないときは支援対象にする
+// 判別できないときは支援対象にする。
+// 只今の状況は、まだ何も入っていない人にだけ入れる（入力済みの内容は上書きしない）
+export interface EnrollPatch {
+  status: WorkerStatus;
+  support: SupportScope;
+  current_situation?: string;
+}
+
 export function employmentStartPatch(
   status: WorkerStatus | string | null | undefined,
   residenceStatus: string | null | undefined,
   hasOrganization: boolean,
   hasEmploymentStart: boolean,
-): { status: WorkerStatus; support: SupportScope } | null {
+  currentSituation?: string | null,
+): EnrollPatch | null {
   if (!hasOrganization || !hasEmploymentStart) return null;
   if (status !== "申請準備中") return null;
+  const support = suggestSupportScope(residenceStatus, "在籍中") ?? "支援対象";
+  const situation = (currentSituation ?? "").trim()
+    ? null // すでに入力されている只今の状況は変えない
+    : situationOnEnrolled(residenceStatus, support);
   return {
     status: "在籍中",
-    support: suggestSupportScope(residenceStatus, "在籍中") ?? "支援対象",
+    support,
+    ...(situation ? { current_situation: situation } : {}),
   };
 }
 

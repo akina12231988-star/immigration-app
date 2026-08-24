@@ -22,6 +22,7 @@ export function WorkerEmploymentStarts({
   currentEmploymentStartOn,
   workerStatus = "",
   residenceStatus = "",
+  currentSituation = "",
   organizations,
   canEdit,
 }: {
@@ -31,6 +32,7 @@ export function WorkerEmploymentStarts({
   currentEmploymentStartOn: string | null;
   workerStatus?: string; // 状態（申請準備中なら、雇用開始日の登録で在籍中へ自動で進める）
   residenceStatus?: string; // 在留資格（支援区分の自動判別に使う）
+  currentSituation?: string; // 只今の状況（未入力のときだけ自動で入れる）
   organizations: Organization[];
   canEdit: boolean;
 }) {
@@ -69,10 +71,12 @@ export function WorkerEmploymentStarts({
         residenceStatus,
         !!currentOrganizationId,
         !!current,
+        currentSituation,
       );
       if (auto) {
         payload.status = auto.status;
         payload.support = auto.support;
+        if (auto.current_situation) payload.current_situation = auto.current_situation;
       }
       await updateWorker(createClient(), workerId, payload);
       setSaved(true);
