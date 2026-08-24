@@ -208,7 +208,8 @@ export function OnboardingDocuments({
     fuyokojo: "扶養控除等申告書",
     meibo: "労働者名簿",
   };
-  // 個人番号が未入力だと、扶養控除等申告書・労働者名簿は正しく作れない
+  // 個人番号が未入力のまま作る書類か（扶養控除等申告書・労働者名簿）。
+  // 空欄のまま発行して、あとから本人に記入してもらう運用もあるため、作成は止めない
   const needsMyNumber = (key: string) => !!GENERATABLE[key] && myNumber !== null && !myNumber.trim();
 
   // 「作成」を押したら、まず作った書類をプレビューで見せる。
@@ -216,12 +217,6 @@ export function OnboardingDocuments({
   const createAndPreview = async (def: OnboardingDocDef) => {
     const label = GENERATABLE[def.key];
     if (!label) return;
-    if (needsMyNumber(def.key)) {
-      setError(
-        `個人番号が未入力のため「${label}」は添付できません。外国人詳細の「個人番号（マイナンバー）」を登録してから作成してください。`,
-      );
-      return;
-    }
     setBusyKey(def.key);
     setError(null);
     try {
@@ -407,8 +402,8 @@ export function OnboardingDocuments({
                         {hasFile ? row!.file_name : "未登録"}
                       </span>
                       {needsMyNumber(def.key) && (
-                        <span className="block text-[11px] font-bold text-seal">
-                          個人番号が未入力のため作成できません（外国人詳細の「個人番号（マイナンバー）」を登録してください）
+                        <span className="block text-[11px] font-bold text-status-notice-fg">
+                          個人番号が未入力です。空欄のまま作成して、あとから本人に記入してもらうこともできます
                         </span>
                       )}
                     </span>
@@ -426,10 +421,9 @@ export function OnboardingDocuments({
                             <IconButton
                               label={
                                 needsMyNumber(def.key)
-                                  ? "個人番号が未入力のため添付できません"
+                                  ? `${GENERATABLE[def.key]}を作成（個人番号は空欄）`
                                   : `${GENERATABLE[def.key]}を作成して添付`
                               }
-                              disabled={needsMyNumber(def.key)}
                               onClick={() => void createAndPreview(def)}
                             >
                               <FileText size={13} />
@@ -557,6 +551,11 @@ export function OnboardingDocuments({
       {preview && (
         <Modal open wide title={`${preview.label}のプレビュー`} onClose={closePreview}>
           <div className="flex flex-col gap-3">
+            {needsMyNumber(preview.def.key) && (
+              <p className="rounded-lg bg-status-notice-bg px-3 py-2 text-sm font-bold text-status-notice-fg">
+                個人番号は空欄のまま作成しています。印刷して本人に記入してもらうか、外国人詳細に個人番号を登録してから作り直してください。
+              </p>
+            )}
             <p className="text-sm">
               外国人詳細の登録内容で作成しました。
               <span className="font-bold">内容に間違いがなければ「添付する」を押してください。</span>
