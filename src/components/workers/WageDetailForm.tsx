@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Copy, Plus, Trash2 } from "lucide-react";
+import { formatAmountInput } from "@/lib/amount-format";
 import {
   EMPLOYMENT_INSURANCE_KINDS,
   HEALTH_INSURANCE_RATES,
@@ -35,6 +36,7 @@ import {
 const FIELD = "min-h-[34px] rounded-lg border border-border bg-surface px-2 text-xs";
 const NUM = `${FIELD} w-28 text-right tabular-nums`;
 
+// 金額は「,」入りで表示する（打ちながら桁数が分かる）。数値にするときは numValue が「,」を落とす
 function numValue(v: string): number {
   return Number(v.replace(/[^0-9]/g, "")) || 0;
 }
@@ -236,7 +238,7 @@ export function WageDetailForm({
               <label className="flex flex-col gap-0.5">
                 <span className={labelClass}>金額（円）</span>
                 <input
-                  value={a.amount || ""}
+                  value={formatAmountInput(a.amount)}
                   disabled={readOnly}
                   inputMode="numeric"
                   onChange={(e) => {
@@ -329,7 +331,7 @@ export function WageDetailForm({
               <label className="flex flex-col gap-0.5">
                 <span className={labelClass}>固定残業代（円）</span>
                 <input
-                  value={detail.fixed_ot_amount || ""}
+                  value={formatAmountInput(detail.fixed_ot_amount)}
                   disabled={readOnly}
                   inputMode="numeric"
                   onChange={(e) => set({ fixed_ot_amount: numValue(e.target.value) })}
@@ -507,7 +509,7 @@ export function WageDetailForm({
         <label className="flex flex-col gap-0.5">
           <span className={labelClass}>金額（円・任意）</span>
           <input
-            value={detail.food_cost || ""}
+            value={formatAmountInput(detail.food_cost)}
             disabled={readOnly}
             inputMode="numeric"
             onChange={(e) => set({ food_cost: numValue(e.target.value) })}
@@ -551,7 +553,7 @@ export function WageDetailForm({
             <label className="flex flex-col gap-0.5">
               <span className={labelClass}>1人当たり居住費（円/月）</span>
               <input
-                value={detail.housing_amount || ""}
+                value={formatAmountInput(detail.housing_amount)}
                 disabled={readOnly}
                 inputMode="numeric"
                 onChange={(e) => set({ housing_amount: numValue(e.target.value) })}
@@ -602,7 +604,7 @@ export function WageDetailForm({
         <label className="flex flex-col gap-0.5">
           <span className={labelClass}>金額（円）</span>
           <input
-            value={detail.utility_amount || ""}
+            value={formatAmountInput(detail.utility_amount)}
             disabled={readOnly}
             inputMode="numeric"
             onChange={(e) => set({ utility_amount: numValue(e.target.value) })}
@@ -636,7 +638,7 @@ export function WageDetailForm({
               <label className="flex flex-col gap-0.5">
                 <span className={labelClass}>金額（円）</span>
                 <input
-                  value={o.amount || ""}
+                  value={formatAmountInput(o.amount)}
                   disabled={readOnly}
                   inputMode="numeric"
                   onChange={(e) =>

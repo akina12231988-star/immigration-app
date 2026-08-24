@@ -98,6 +98,7 @@ import {
   useWorkerPhotoChanged,
 } from "@/lib/worker-docs-events";
 import { todayStr } from "@/lib/ssw/calc";
+import { formatAmountInput } from "@/lib/amount-format";
 import {
   EMPTY_PREP_META,
   evaluatePrepChecklist,
@@ -1984,11 +1985,11 @@ function StatusExtraField({
         <label className="block">
           <span className="mb-0.5 block text-[11px] text-muted">{extra.label}</span>
           <input
-            value={ds.amount}
+            value={formatAmountInput(ds.amount)}
             readOnly={!canEdit}
             inputMode="numeric"
             placeholder="例: 12,000円"
-            onChange={(e) => onPatch({ amount: e.target.value }, false)}
+            onChange={(e) => onPatch({ amount: formatAmountInput(e.target.value) }, false)}
             onBlur={() => onPatch({}, true)}
             className={inputCls}
           />

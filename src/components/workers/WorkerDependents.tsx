@@ -23,6 +23,7 @@ import {
   REMITTANCE_HIGH_TARGET,
 } from "@/lib/dependents";
 import { todayStr } from "@/lib/ssw/calc";
+import { formatAmountInput } from "@/lib/amount-format";
 import type { WorkerDependent } from "@/types/db";
 
 const RELATION_OPTIONS = [
@@ -296,8 +297,8 @@ export function WorkerDependents({
                 </Field>
                 <Field label="所得の見積額メモ">
                   <input
-                    value={r.income}
-                    onChange={(e) => setAt(i, "income", e.target.value)}
+                    value={formatAmountInput(r.income)}
+                    onChange={(e) => setAt(i, "income", formatAmountInput(e.target.value))}
                     placeholder="例: 0円"
                     disabled={!canEdit}
                     className={INPUT}
@@ -424,8 +425,8 @@ function RemittanceRows({
               ref={(el) => {
                 refs.current[i] = el;
               }}
-              value={v}
-              onChange={(e) => setAt(i, e.target.value)}
+              value={formatAmountInput(v)}
+              onChange={(e) => setAt(i, formatAmountInput(e.target.value))}
               onKeyDown={(e) => handleKeyDown(e, i)}
               inputMode="numeric"
               placeholder="0"

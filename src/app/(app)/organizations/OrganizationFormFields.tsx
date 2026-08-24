@@ -5,6 +5,7 @@ import { Eye, Loader2, Trash2, Upload } from "lucide-react";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { createClient } from "@/lib/supabase/client";
 import { compressImage } from "@/lib/image-compress";
+import { formatAmountInput } from "@/lib/amount-format";
 import { listOrganizationFiles } from "@/lib/supabase/queries/organization-files";
 import {
   createOrgFileTicket,
@@ -257,10 +258,11 @@ function IntakeYen({
       <span className="text-xs font-bold text-muted">{label}</span>
       <span className="flex items-center gap-2">
         <input
-          value={digits}
+          // 打ちながら3桁ごとに「,」を出して桁数が分かるようにする（保存は数字だけ）
+          value={formatAmountInput(digits)}
           onChange={(e) => onChange(digitsOnly(e.target.value))}
           inputMode="numeric"
-          placeholder="例: 20000"
+          placeholder="例: 20,000"
           className={`${INPUT_CLASS} text-right`}
         />
         <span className="shrink-0 text-sm text-muted">円</span>
@@ -715,8 +717,8 @@ function IntakeSection({
           />
           <IntakeField
             label="資本金（法人）"
-            value={intake.capital}
-            onChange={(v) => setIntake({ capital: v })}
+            value={formatAmountInput(intake.capital)}
+            onChange={(v) => setIntake({ capital: formatAmountInput(v) })}
             placeholder="例: 3,000,000円"
             locked={locks.intake("capital")}
           />
@@ -932,16 +934,16 @@ function IntakeSection({
         <div className="grid grid-cols-2 gap-2.5">
           <IntakeField
             label="通信費（約・円）"
-            value={intake.posting_comm_cost}
-            onChange={(v) => setIntake({ posting_comm_cost: v })}
+            value={formatAmountInput(intake.posting_comm_cost)}
+            onChange={(v) => setIntake({ posting_comm_cost: formatAmountInput(v) })}
             placeholder="例: 3000／無し"
             hint="徴収しない会社は「無し」と入力してください。"
             locked={locks.intake("posting_comm_cost")}
           />
           <IntakeField
             label="水道光熱費（約・円）"
-            value={intake.posting_utility_cost}
-            onChange={(v) => setIntake({ posting_utility_cost: digitsOnly(v) })}
+            value={formatAmountInput(intake.posting_utility_cost)}
+            onChange={(v) => setIntake({ posting_utility_cost: formatAmountInput(digitsOnly(v)) })}
             placeholder="例: 8000"
             locked={locks.intake("posting_utility_cost")}
           />
@@ -1229,8 +1231,8 @@ function IntakeSection({
               />
               <IntakeField
                 label="報酬（月給/時給）"
-                value={row.pay}
-                onChange={(v) => setStaff(i, { pay: v })}
+                value={formatAmountInput(row.pay)}
+                onChange={(v) => setStaff(i, { pay: formatAmountInput(v) })}
                 placeholder="例: 月給250,000円"
                 locked={locks.staff(i, "pay")}
               />
@@ -1392,15 +1394,15 @@ function IntakeSection({
                 <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
                   <IntakeField
                     label="かかった総費用（円）"
-                    value={lodging.total_cost}
-                    onChange={(v) => setLodging(i, { total_cost: v })}
+                    value={formatAmountInput(lodging.total_cost)}
+                    onChange={(v) => setLodging(i, { total_cost: formatAmountInput(v) })}
                     placeholder="例: 15,000,000"
                     locked={locks.lodging(i, "total_cost")}
                   />
                   <IntakeField
                     label="備品代（円）"
-                    value={lodging.equipment_cost}
-                    onChange={(v) => setLodging(i, { equipment_cost: v })}
+                    value={formatAmountInput(lodging.equipment_cost)}
+                    onChange={(v) => setLodging(i, { equipment_cost: formatAmountInput(v) })}
                     placeholder="例: 500,000"
                     locked={locks.lodging(i, "equipment_cost")}
                   />
@@ -1456,7 +1458,7 @@ function IntakeSection({
                       {!locks.lodging(i, "total_cost") && (
                         <button
                           type="button"
-                          onClick={() => setLodging(i, { total_cost: String(reverse) })}
+                          onClick={() => setLodging(i, { total_cost: formatAmountInput(String(reverse)) })}
                           className="mt-1.5 rounded-lg border border-border px-2.5 py-1.5 text-[11px] font-bold text-brand"
                         >
                           この金額を「かかった総費用」に入れる（あとで微調整できます）
@@ -1487,8 +1489,8 @@ function IntakeSection({
                 <div className="grid grid-cols-2 gap-2.5">
                   <IntakeField
                     label="家賃（1人あたり・月額・円）"
-                    value={lodging.rent}
-                    onChange={(v) => setLodging(i, { rent: v })}
+                    value={formatAmountInput(lodging.rent)}
+                    onChange={(v) => setLodging(i, { rent: formatAmountInput(v) })}
                     placeholder="例: 13,000"
                     hint={
                       lodging.kind === "自己所有物件"
