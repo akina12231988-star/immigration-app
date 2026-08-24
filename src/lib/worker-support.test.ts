@@ -40,18 +40,42 @@ describe("支援区分の自動判別", () => {
 });
 
 describe("employmentStartPatch（所属機関＋雇用開始日で在籍中へ）", () => {
+  it("只今の状況が未入力なら、特定技能1号・支援対象の人に「特定技能1号＜支援委託中＞」を入れる", () => {
+    expect(employmentStartPatch("申請準備中", "特定技能1号", true, true, "")).toEqual({
+      status: "在籍中",
+      support: "支援対象",
+      current_situation: "特定技能1号＜支援委託中＞",
+    });
+    // すでに入力されている只今の状況は上書きしない
+    expect(employmentStartPatch("申請準備中", "特定技能1号", true, true, "更新")).toEqual({
+      status: "在籍中",
+      support: "支援対象",
+    });
+    // 支援対象外（2号）は只今の状況を入れない
+    expect(employmentStartPatch("申請準備中", "特定技能2号", true, true, "")).toEqual({
+      status: "在籍中",
+      support: "支援対象外",
+    });
+    // 在留資格が未設定なら只今の状況は入れない
+    expect(employmentStartPatch("申請準備中", "", true, true, "")).toEqual({
+      status: "在籍中",
+      support: "支援対象",
+    });
+  });
+
   it("申請準備中で両方そろったら在籍中＋支援区分になる", () => {
-    expect(employmentStartPatch("申請準備中", "特定技能1号", true, true)).toEqual({
+    // 只今の状況が入力済みの人（＝状況は変えない）で、状態・支援区分だけを見る
+    expect(employmentStartPatch("申請準備中", "特定技能1号", true, true, "更新")).toEqual({
       status: "在籍中",
       support: "支援対象",
     });
     // 2号は在籍しても支援計画の対象外
-    expect(employmentStartPatch("申請準備中", "特定技能2号", true, true)).toEqual({
+    expect(employmentStartPatch("申請準備中", "特定技能2号", true, true, "更新")).toEqual({
       status: "在籍中",
       support: "支援対象外",
     });
     // 在留資格が未設定でも、雇用が始まるなら支援対象にする
-    expect(employmentStartPatch("申請準備中", "", true, true)).toEqual({
+    expect(employmentStartPatch("申請準備中", "", true, true, "更新")).toEqual({
       status: "在籍中",
       support: "支援対象",
     });
