@@ -373,6 +373,11 @@ export interface Worker {
   jisshu2_proof?: string; // 良好修了の証明（'' / 実技試験の合格 / 書面による証明。0110）
   ssw2_exam: string; // 特定技能2号の合格試験名（入力があれば2号合格として扱う）
   other_qualifications: string; // その他の資格・合格名
+  // 日本語の合格証・専門外の合格証: 受験した試験名・受験地（0114）
+  cert_nihongo_name?: string; // 例:「日本語能力試験　JLPT」
+  cert_nihongo_location?: string; // 「日本国内」、または海外の場合はその国名
+  cert_senmongai_name?: string;
+  cert_senmongai_location?: string;
   my_number: string; // 個人番号（マイナンバー）
   employment_insurance_no: string; // 雇用保険被保険者番号
   pension_no: string; // 基礎年金番号

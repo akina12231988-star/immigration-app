@@ -31,6 +31,11 @@ import { OnboardingDocuments } from "@/components/workers/OnboardingDocuments";
 import { HealthCheckSection } from "@/components/workers/HealthCheckSection";
 import { GensenDocuments } from "@/components/workers/GensenDocuments";
 import { WorkerCertDocRows } from "@/components/workers/WorkerCertDocRows";
+import { CertExamField } from "@/components/workers/CertExamField";
+import {
+  NIHONGO_EXAM_NAME_OPTIONS,
+  SENMONGAI_EXAM_NAME_OPTIONS,
+} from "@/lib/cert-exam-options";
 import { Jisshu2Section } from "@/components/workers/Jisshu2Section";
 import { WorkerContracts } from "@/components/workers/WorkerContracts";
 import { WorkerTodoLinks } from "@/components/workers/WorkerTodoLinks";
@@ -1024,6 +1029,22 @@ export function WorkerDetail({
                 { key: "cert_nihongo", label: "日本語の合格証" },
                 { key: "cert_senmongai", label: "専門外の合格証" },
               ]}
+            />
+            <CertExamField
+              workerId={worker.id}
+              canEdit={canEdit}
+              title="日本語の合格証"
+              nameKey="cert_nihongo_name"
+              locationKey="cert_nihongo_location"
+              nameOptions={NIHONGO_EXAM_NAME_OPTIONS}
+            />
+            <CertExamField
+              workerId={worker.id}
+              canEdit={canEdit}
+              title="専門外の合格証"
+              nameKey="cert_senmongai_name"
+              locationKey="cert_senmongai_location"
+              nameOptions={SENMONGAI_EXAM_NAME_OPTIONS}
             />
           </div>
           {/* 連絡リンク（在留カードの欄の写真の下のボタンのリンク先）。
