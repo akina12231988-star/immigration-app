@@ -1412,7 +1412,7 @@ export function WorkerDetail({
           この画面では下の「TODO」カードから各TODOのページへ飛べる */}
 
       {/* 入社書類メールで登録した添付データ（選択ダウンロード・Gmailリンク） */}
-      <OnboardingDocuments workerId={worker.id} canEdit={canEdit} />
+      <OnboardingDocuments workerId={worker.id} canEdit={canEdit} myNumber={worker.my_number} />
 
       <GensenDocuments workerId={worker.id} canEdit={canEdit} />
 

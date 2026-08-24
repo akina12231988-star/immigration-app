@@ -165,6 +165,28 @@ export async function setWorkerDocOrganization(
   return { ok: true };
 }
 
+// 間違えて登録した書類を削除する（保存したファイルの実体も消す）。
+// worker_documents に delete のRLSポリシーが無いため、管理クライアントで削除する。
+// 申請登録時の画像（fromApplication）はこの表には無いため、ここでは消せない
+export async function deleteWorkerDoc(docId: string): Promise<{ ok: true } | Err> {
+  if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
+  const admin = createAdminClient();
+  if (!admin) return { ok: false, message: "サーバー設定エラー" };
+
+  const { data } = await admin
+    .from("worker_documents")
+    .select("storage_path")
+    .eq("id", docId)
+    .maybeSingle();
+  const path = (data as { storage_path: string } | null)?.storage_path;
+  if (path) {
+    await admin.storage.from(BUCKET).remove([path]).catch(() => undefined);
+  }
+  const { error } = await admin.from("worker_documents").delete().eq("id", docId);
+  if (error) return { ok: false, message: error.message };
+  return { ok: true };
+}
+
 // ダウンロード時のファイル名: 氏名_書類名_所属機関名.拡張子
 // （雇用契約書・雇用条件書は会社ごとに保管するため会社名まで入れる）。
 // ファイル名に使えない文字は全角・中黒に置き換える

@@ -1,12 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CreditCard, FileText, ImagePlus } from "lucide-react";
+import { CreditCard, FileText, ImagePlus, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { uploadWorkerDoc } from "@/lib/worker-docs";
 import { todayStr } from "@/lib/application-alerts";
-import { listWorkerDocs, type WorkerDocView } from "@/app/(app)/workers/actions";
+import {
+  deleteWorkerDoc,
+  listWorkerDocs,
+  type WorkerDocView,
+} from "@/app/(app)/workers/actions";
 import { buildPastPeriods, docPeriodDate, periodKeyFor } from "@/lib/worker-doc-periods";
 import type { WorkHistoryRow } from "@/types/db";
 
@@ -49,6 +53,24 @@ export function WorkerDocuments({
 
   const load = () => {
     listWorkerDocs(workerId).then(setDocs).catch(() => undefined);
+  };
+
+  // 間違えて登録した画像の削除（保存したファイルの実体も消える）
+  const removeDoc = async (doc: WorkerDocView) => {
+    if (
+      !window.confirm(
+        `「${doc.kind}」の登録データ（${doc.downloadName || doc.fileName || ""}）を削除します。元に戻せません。よろしいですか？`,
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    const res = await deleteWorkerDoc(doc.id);
+    if (!res.ok) {
+      setError(res.message);
+      return;
+    }
+    load();
   };
   useEffect(() => {
     load();
@@ -107,6 +129,7 @@ export function WorkerDocuments({
           fallback={isCurrent ? newestFor("在留カード") : null}
           workerId={workerId}
           canEdit={canEdit}
+          onDelete={removeDoc}
           effectiveOn={selectedPast?.end ?? null}
           uploadLabel={isCurrent ? "差し替え" : "この期間に登録"}
           emptyLabel={isCurrent ? "未登録" : "この期間の登録はありません"}
@@ -120,6 +143,7 @@ export function WorkerDocuments({
           fallback={isCurrent ? newestFor("指定書") : null}
           workerId={workerId}
           canEdit={canEdit}
+          onDelete={removeDoc}
           effectiveOn={selectedPast?.end ?? null}
           uploadLabel={isCurrent ? "差し替え" : "この期間に登録"}
           emptyLabel={isCurrent ? "未登録" : "この期間の登録はありません"}
@@ -165,6 +189,7 @@ function DocColumn({
   fallback = null,
   workerId,
   canEdit,
+  onDelete,
   effectiveOn = null,
   uploadLabel = "差し替え",
   emptyLabel,
@@ -178,6 +203,7 @@ function DocColumn({
   fallback?: WorkerDocView | null;
   workerId: string;
   canEdit: boolean;
+  onDelete: (doc: WorkerDocView) => void | Promise<void>;
   // 過去の在籍期間タブでは、その期間の日付を付けて登録する（当時の画像として振り分けるため）
   effectiveOn?: string | null;
   uploadLabel?: string;
@@ -253,6 +279,17 @@ function DocColumn({
         >
           PDFを別タブで大きく開く
         </a>
+      )}
+      {/* 間違えて登録したときの削除（申請登録時の画像はここでは消せない） */}
+      {latest && canEdit && !latest.fromApplication && (
+        <button
+          type="button"
+          onClick={() => void onDelete(latest)}
+          className="mt-1 flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11px] font-bold text-seal"
+        >
+          <Trash2 size={12} />
+          削除
+        </button>
       )}
       {latest?.fromApplication && (
         <p className="mt-1 text-[10px] text-muted">申請登録時の画像を表示中（差し替えると最新になります）</p>

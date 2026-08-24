@@ -56,9 +56,12 @@ import type {
 export function OnboardingDocuments({
   workerId,
   canEdit = false,
+  myNumber: myNumberProp,
 }: {
   workerId: string;
   canEdit?: boolean;
+  // 個人番号（外国人詳細から渡す）。渡されていれば、詳細で登録・修正した内容がすぐ反映される
+  myNumber?: string;
 }) {
   const [record, setRecord] = useState<OnboardingRecordRow | null>(null);
   const [docs, setDocs] = useState<OnboardingDocumentRow[]>([]);
@@ -67,8 +70,11 @@ export function OnboardingDocuments({
   const [downloading, setDownloading] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // 個人番号（マイナンバー）。扶養控除等申告書・労働者名簿はこれが無いと作れない
-  const [myNumber, setMyNumber] = useState<string | null>(null);
+  // 個人番号（マイナンバー）。扶養控除等申告書・労働者名簿はこれが無いと作れない。
+  // 外国人詳細から渡されていればそれを使い（登録・修正がすぐ反映される）、
+  // 渡されていないときだけ自分で読む
+  const [loadedMyNumber, setLoadedMyNumber] = useState<string | null>(null);
+  const myNumber = myNumberProp !== undefined ? myNumberProp : loadedMyNumber;
 
   const uploadDefRef = useRef<OnboardingDocDef | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -91,18 +97,21 @@ export function OnboardingDocuments({
 
   useEffect(() => {
     void load();
-    // 個人番号の有無だけ見る（未入力なら作成ボタンを押せないようにする）
-    void createClient()
-      .from("workers")
-      .select("my_number")
-      .eq("id", workerId)
-      .maybeSingle()
-      .then(({ data, error: err }) => {
-        // 読み込めなかったときは作成を止めない（保存時にサーバー側でも同じ確認をする）
-        if (err || !data) return;
-        const w = data as { my_number: string | null };
-        setMyNumber(w.my_number ?? "");
-      });
+    // 個人番号の有無だけ見る（未入力なら作成ボタンを押せないようにする）。
+    // 外国人詳細から渡されているときは読まない
+    if (myNumberProp === undefined) {
+      void createClient()
+        .from("workers")
+        .select("my_number")
+        .eq("id", workerId)
+        .maybeSingle()
+        .then(({ data, error: err }) => {
+          // 読み込めなかったときは作成を止めない（保存時にサーバー側でも同じ確認をする）
+          if (err || !data) return;
+          const w = data as { my_number: string | null };
+          setLoadedMyNumber(w.my_number ?? "");
+        });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workerId]);
 

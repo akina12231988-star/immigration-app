@@ -1,12 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Download, ExternalLink, FileSignature, FileText, MessageCircle, Upload } from "lucide-react";
+import {
+  Download,
+  ExternalLink,
+  FileSignature,
+  FileText,
+  MessageCircle,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { uploadWorkerDoc } from "@/lib/worker-docs";
 import { messengerWebUrl } from "@/lib/messenger-link";
 import {
+  deleteWorkerDoc,
   listWorkerDocs,
   setWorkerDocOrganization,
   type WorkerDocView,
@@ -122,6 +131,25 @@ export function WorkerContracts({
     }
   };
 
+  // 間違えて登録した書類の削除（保存したファイルの実体も消える）
+  const removeDoc = async (doc: WorkerDocView) => {
+    if (
+      !window.confirm(
+        `「${doc.kind}」の登録データ（${doc.downloadName || doc.fileName || ""}）を削除します。元に戻せません。よろしいですか？`,
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    try {
+      const res = await deleteWorkerDoc(doc.id);
+      if (!res.ok) throw new Error(res.message);
+      load();
+    } catch (err) {
+      handleError(err);
+    }
+  };
+
   // 付け替え先の候補（この外国人に関係する会社を先に、その他の会社も選べる）
   const allOrgOptions = [
     ...orgChoices.map((o) => ({ id: o.id, name: o.name + (o.current ? "（現在）" : "") })),
@@ -199,6 +227,7 @@ export function WorkerContracts({
                   orgOptions={allOrgOptions}
                   reassigningId={reassigning}
                   onReassign={reassign}
+                  onDelete={removeDoc}
                   onUploaded={load}
                   onError={handleError}
                 />
@@ -230,6 +259,7 @@ export function WorkerContracts({
                       orgOptions={allOrgOptions}
                       reassigningId={reassigning}
                       onReassign={reassign}
+                      onDelete={removeDoc}
                       onUploaded={load}
                       onError={handleError}
                     />
@@ -309,6 +339,7 @@ function ContractColumn({
   orgOptions,
   reassigningId,
   onReassign,
+  onDelete,
   onUploaded,
   onError,
 }: {
@@ -320,6 +351,7 @@ function ContractColumn({
   orgOptions: { id: string; name: string }[];
   reassigningId: string | null;
   onReassign: (docId: string, organizationId: string) => void | Promise<void>;
+  onDelete: (doc: WorkerDocView) => void | Promise<void>;
   onUploaded: () => void;
   onError: (err: unknown) => void;
 }) {
@@ -407,6 +439,18 @@ function ContractColumn({
             <Download size={12} />
             ダウンロード
           </a>
+          {/* 間違えて登録したときの削除（申請登録時の画像はここでは消せない） */}
+          {canEdit && !latest.fromApplication && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void onDelete(latest)}
+              className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11px] font-bold text-seal disabled:opacity-50"
+            >
+              <Trash2 size={12} />
+              削除
+            </button>
+          )}
         </div>
       )}
       {/* 会社を間違えて登録したときは、ここで別の会社に移せる */}
