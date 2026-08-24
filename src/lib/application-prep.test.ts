@@ -131,12 +131,19 @@ describe("evaluatePrepChecklist", () => {
 });
 
 describe("isDocComplete", () => {
-  it("完了ステータス＋添付ありで完了", () => {
+  it("準備状況が完了なら完了（添付が無くても完了。紙で受け取っている場合など）", () => {
     expect(isDocComplete("zairyu", true, "預かった")).toBe(true);
-    expect(isDocComplete("zairyu", false, "預かった")).toBe(false);
+    expect(isDocComplete("zairyu", false, "預かった")).toBe(true);
     expect(isDocComplete("zairyu", true, "写真だけ先に本人に依頼中")).toBe(false);
+    // 健康診断書・推薦状も、準備状況が完了なら完了になる
+    expect(isDocComplete("kenshin", false, "完了")).toBe(true);
+    expect(isDocComplete("kenshin", false, "受診済み・発行待ち")).toBe(false);
+    expect(isDocComplete("suisenjo", false, "発行済")).toBe(true);
   });
-  it("発行できない系（noFile）の完了ステータスは添付なしでも完了", () => {
+  it("準備状況が未選択なら、添付があっても完了にならない", () => {
+    expect(isDocComplete("kenshin", true, "")).toBe(false);
+  });
+  it("発行できない系（noFile）の完了ステータスも完了", () => {
     expect(isDocComplete("nozei_shiken", false, "非課税のため発行できなかった")).toBe(true);
     expect(
       isDocComplete("kazei", false, "1月1日時点で日本に在住していなかった為発行できなかった"),
