@@ -503,11 +503,21 @@ export function WorkerDetail({
         style={{ top: stickyTop }}
       >
         <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {/* 状態・支援区分の変更は「基本情報」の欄から（編集モードでその場で直せる） */}
-            <WorkerStatusBadge status={worker.status} />
-            <SswStatusBadge status={calc.status} />
-            <SupportBadge support={worker.support} />
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {/* 状態・支援区分の変更は「基本情報」の欄から（編集モードでその場で直せる） */}
+              <WorkerStatusBadge status={worker.status} />
+              <SswStatusBadge status={calc.status} />
+              <SupportBadge support={worker.support} />
+            </div>
+            {/* 名前・フリガナ。下へスクロールしても誰の詳細を見ているか分かるように、
+                固定されるこのバーの中に出す */}
+            <p className="min-w-0 truncate text-sm font-bold">
+              {worker.name}
+              {worker.kana && (
+                <span className="ml-2 text-[11px] font-medium text-muted">{worker.kana}</span>
+              )}
+            </p>
           </div>
           <div className="flex shrink-0 flex-wrap justify-end gap-2">
             {canEdit && editing ? (
