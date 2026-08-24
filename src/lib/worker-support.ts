@@ -43,6 +43,24 @@ export function suggestSupportScope(
   return "支援開始前";
 }
 
+// 所属機関と雇用開始日がそろったときの状態・支援区分の自動更新。
+// 「申請準備中」の人だけを「在籍中」へ進める（在籍中・退職・帰国・求職活動中は触らない）。
+// 支援区分は在留資格から判別し（特定技能1号=支援対象・2号=支援対象外）、
+// 判別できないときは支援対象にする
+export function employmentStartPatch(
+  status: WorkerStatus | string | null | undefined,
+  residenceStatus: string | null | undefined,
+  hasOrganization: boolean,
+  hasEmploymentStart: boolean,
+): { status: WorkerStatus; support: SupportScope } | null {
+  if (!hasOrganization || !hasEmploymentStart) return null;
+  if (status !== "申請準備中") return null;
+  return {
+    status: "在籍中",
+    support: suggestSupportScope(residenceStatus, "在籍中") ?? "支援対象",
+  };
+}
+
 // 自動判別の理由（画面で「なぜこの区分になるか」を出すため）
 export function supportScopeReason(
   residenceStatus: string | null | undefined,

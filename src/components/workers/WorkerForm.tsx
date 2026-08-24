@@ -14,7 +14,11 @@ import { Combobox } from "@/components/ui/Combobox";
 import { createClient } from "@/lib/supabase/client";
 import { insertOrganization } from "@/lib/supabase/queries/organizations";
 import { SSW_INDUSTRIES, categoriesFor } from "@/lib/industries";
-import { suggestSupportScope, supportScopeReason } from "@/lib/worker-support";
+import {
+  employmentStartPatch,
+  suggestSupportScope,
+  supportScopeReason,
+} from "@/lib/worker-support";
 import {
   RESIDENCE_STATUSES,
   SUPPORT_SCOPES,
@@ -134,7 +138,7 @@ export function WorkerForm({
       setOrgs((prev) =>
         [...prev, org].sort((a, b) => a.name.localeCompare(b.name, "ja")),
       );
-      set("current_organization_id", org.id);
+      setWithEmployment({ current_organization_id: org.id });
       setNewOrgName("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "所属機関の登録に失敗しました");
@@ -197,6 +201,20 @@ export function WorkerForm({
       const next = { ...f, ...patch };
       const suggested = suggestSupportScope(next.residence_status, next.status);
       return suggested ? { ...next, support: suggested } : next;
+    });
+
+  // 所属機関・雇用開始日を変えたときの反映。両方そろったら、
+  // 申請準備中の人は状態を在籍中・支援区分を支援対象（在留資格から判別）へ自動で進める
+  const setWithEmployment = (patch: Partial<WorkerInput>) =>
+    setForm((f) => {
+      const next = { ...f, ...patch };
+      const auto = employmentStartPatch(
+        next.status,
+        next.residence_status,
+        !!next.current_organization_id,
+        !!next.employment_start_on,
+      );
+      return auto ? { ...next, ...auto } : next;
     });
 
   // date input は空文字を返すため null へ正規化する
@@ -424,7 +442,7 @@ export function WorkerForm({
           <Combobox
             options={orgs.map((o) => ({ id: o.id, label: o.name }))}
             value={form.current_organization_id ?? ""}
-            onChange={(id) => set("current_organization_id", id || null)}
+            onChange={(id) => setWithEmployment({ current_organization_id: id || null })}
             placeholder="所属機関名を入力して検索"
           />
           {!form.current_organization_id && (
@@ -456,7 +474,9 @@ export function WorkerForm({
             <input
               type="date"
               value={form.employment_start_on ?? ""}
-              onChange={setDate("employment_start_on")}
+              onChange={(e) =>
+                setWithEmployment({ employment_start_on: e.target.value || null })
+              }
               className={INPUT_CLASS}
             />
           </Field>

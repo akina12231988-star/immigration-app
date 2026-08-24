@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { suggestSupportScope } from "./worker-support";
+import { employmentStartPatch, suggestSupportScope } from "./worker-support";
 
 describe("支援区分の自動判別", () => {
   it("特定技能2号とその移行準備は支援対象外", () => {
@@ -36,5 +36,36 @@ describe("支援区分の自動判別", () => {
   it("在留資格が未設定なら判断しない", () => {
     expect(suggestSupportScope("", "在籍中")).toBeNull();
     expect(suggestSupportScope(null, "在籍中")).toBeNull();
+  });
+});
+
+describe("employmentStartPatch（所属機関＋雇用開始日で在籍中へ）", () => {
+  it("申請準備中で両方そろったら在籍中＋支援区分になる", () => {
+    expect(employmentStartPatch("申請準備中", "特定技能1号", true, true)).toEqual({
+      status: "在籍中",
+      support: "支援対象",
+    });
+    // 2号は在籍しても支援計画の対象外
+    expect(employmentStartPatch("申請準備中", "特定技能2号", true, true)).toEqual({
+      status: "在籍中",
+      support: "支援対象外",
+    });
+    // 在留資格が未設定でも、雇用が始まるなら支援対象にする
+    expect(employmentStartPatch("申請準備中", "", true, true)).toEqual({
+      status: "在籍中",
+      support: "支援対象",
+    });
+  });
+
+  it("どちらかが未入力なら何もしない", () => {
+    expect(employmentStartPatch("申請準備中", "特定技能1号", false, true)).toBeNull();
+    expect(employmentStartPatch("申請準備中", "特定技能1号", true, false)).toBeNull();
+  });
+
+  it("申請準備中以外の状態は触らない", () => {
+    expect(employmentStartPatch("在籍中", "特定技能1号", true, true)).toBeNull();
+    expect(employmentStartPatch("退職", "特定技能1号", true, true)).toBeNull();
+    expect(employmentStartPatch("帰国", "特定技能1号", true, true)).toBeNull();
+    expect(employmentStartPatch("求職活動中", "特定技能1号", true, true)).toBeNull();
   });
 });
