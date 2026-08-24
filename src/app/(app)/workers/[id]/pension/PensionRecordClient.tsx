@@ -10,6 +10,7 @@ import {
   Loader2,
   Upload,
 } from "lucide-react";
+import { FileDropArea } from "@/components/ui/FileDropArea";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
@@ -245,8 +246,13 @@ export function PensionRecordClient({
         )}
       </Card>
 
-      {/* 年金記録票ファイル（結果の添付） */}
+      {/* 年金記録票ファイル（結果の添付）。枠にドラッグ＆ドロップでも添付できる */}
       <Card className="p-4">
+        <FileDropArea
+          onFiles={(files) => void handleFile(files[0])}
+          disabled={!canEdit || busy}
+          className="rounded-xl"
+        >
         <div className="flex items-center gap-2.5 text-sm">
           <span className="min-w-0 flex-1">
             <span className="block font-bold">年金記録票（結果の添付）</span>
@@ -270,7 +276,10 @@ export function PensionRecordClient({
                   </>
                 )}
                 {canEdit && (
-                  <IconButton label={hasFile ? "差し替え" : "添付"} onClick={() => fileInputRef.current?.click()}>
+                  <IconButton
+                    label={hasFile ? "差し替え" : "添付"}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
                     <Upload size={13} />
                     {hasFile ? "差し替え" : "添付"}
                   </IconButton>
@@ -284,6 +293,12 @@ export function PensionRecordClient({
             )}
           </div>
         </div>
+        {canEdit && (
+          <p className="mt-1.5 text-[11px] text-muted">
+            画像・PDFをこの枠にドラッグ＆ドロップしても添付できます。
+          </p>
+        )}
+        </FileDropArea>
       </Card>
 
       <input

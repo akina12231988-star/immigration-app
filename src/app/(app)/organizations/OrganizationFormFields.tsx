@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Eye, Loader2, Trash2, Upload } from "lucide-react";
+import { FileDropArea } from "@/components/ui/FileDropArea";
 import { createClient } from "@/lib/supabase/client";
 import { compressImage } from "@/lib/image-compress";
 import { listOrganizationFiles } from "@/lib/supabase/queries/organization-files";
@@ -1762,6 +1763,12 @@ export function OrgYearlyFiles({
     inputRef.current?.click();
   }
 
+  // 年度の枠にドラッグ＆ドロップしたとき（入力中の年度で登録する）
+  async function dropYearlyFiles(list: FileList) {
+    uploadKindRef.current = orgYearlyKind(baseKind, newLabel);
+    await handleFiles(list);
+  }
+
   async function handleFiles(list: FileList | null) {
     if (!list || list.length === 0) return;
     const kind = uploadKindRef.current;
@@ -1863,6 +1870,16 @@ export function OrgYearlyFiles({
             {busy ? "アップロード中…" : "アップロード"}
           </button>
         </div>
+        {/* 年度を入れてから、この枠にドラッグ＆ドロップしても添付できる */}
+        <FileDropArea
+          onFiles={(files) => void dropYearlyFiles(files)}
+          disabled={busy}
+          className="mt-1 rounded-lg border border-dashed border-border px-2 py-1.5"
+        >
+          <p className="text-[11px] text-muted">
+            画像・PDFをこの枠にドラッグ＆ドロップしても添付できます（上の年度で登録されます）。
+          </p>
+        </FileDropArea>
       </div>
       <input
         ref={inputRef}
@@ -1968,15 +1985,25 @@ export function OrgFileAttachments({
           </button>
         </div>
       ))}
-      <button
-        type="button"
-        onClick={() => inputRef.current?.click()}
+      {/* ボタンからでも、枠にドラッグ＆ドロップでも添付できる */}
+      <FileDropArea
+        onFiles={(files) => void handleFiles(files)}
         disabled={busy}
-        className="flex items-center gap-1.5 self-start rounded-lg border border-dashed border-brand px-3 py-2 text-xs font-bold text-brand disabled:opacity-50"
+        className="flex flex-col gap-1 rounded-lg border border-dashed border-border p-2"
       >
-        {busy ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
-        {busy ? "アップロード中…" : addLabel}
-      </button>
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={busy}
+          className="flex items-center gap-1.5 self-start rounded-lg border border-dashed border-brand px-3 py-2 text-xs font-bold text-brand disabled:opacity-50"
+        >
+          {busy ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+          {busy ? "アップロード中…" : addLabel}
+        </button>
+        <p className="text-[11px] text-muted">
+          画像・PDFをこの枠にドラッグ＆ドロップしても添付できます。
+        </p>
+      </FileDropArea>
       <input
         ref={inputRef}
         type="file"

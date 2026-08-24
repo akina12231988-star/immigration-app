@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Camera, ImagePlus, Stamp } from "lucide-react";
+import { FileDropArea } from "@/components/ui/FileDropArea";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Combobox } from "@/components/ui/Combobox";
@@ -253,15 +254,22 @@ export function NewCustodyForm({
             return (
               <div key={slot}>
                 <p className="mb-1.5 text-xs font-bold text-muted">{slot === "front" ? "表面" : "裏面"}</p>
-                <div className="flex min-h-[90px] items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-border bg-surface">
+                {/* 枠に画像をドラッグ＆ドロップしても添付できる */}
+                <FileDropArea
+                  onFiles={(files) => void handleImage(slot, files[0])}
+                  className="flex min-h-[90px] items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-border bg-surface"
+                >
                   {img ? (
                     // 処理済みプレビュー（dataURL）のため next/image ではなく img を使う
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={img.dataUrl} alt={slot === "front" ? "在留カード表面" : "在留カード裏面"} className="max-h-44 w-full object-contain" />
                   ) : (
-                    <span className="p-3 text-[11px] text-muted">未選択</span>
+                    <span className="p-3 text-center text-[11px] text-muted">
+                      未選択
+                      <span className="block">ここにドロップでも添付できます</span>
+                    </span>
                   )}
-                </div>
+                </FileDropArea>
                 <div className="mt-2 flex gap-1.5">
                   <label className="flex flex-1 cursor-pointer items-center justify-center gap-1 rounded-lg border border-border bg-surface px-2 py-2 text-xs font-bold">
                     <Camera size={14} />
