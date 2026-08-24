@@ -87,6 +87,7 @@ import {
   changedFieldCount,
   workerFieldString,
 } from "@/lib/worker-inline-edit";
+import { employmentStartPatch } from "@/lib/worker-support";
 import { RESIDENCE_PERIODS } from "@/lib/residence-card";
 import { WORKER_SITUATIONS, autoSituation, situationDescription } from "@/lib/worker-situation";
 import { isCountedHistory, type WorkHistory } from "@/types/ssw";
@@ -291,6 +292,33 @@ export function WorkerDetail({
         return;
       }
       if (relativesDraft !== null) payload.relatives = relativesDraft;
+      // 所属機関と雇用開始日がそろったら、申請準備中の人は在籍中＋支援区分へ自動で進める
+      // （状態・支援区分をこの保存で手で選んでいるときは、その選択を優先する）
+      {
+        const nextOrg =
+          "current_organization_id" in payload
+            ? payload.current_organization_id
+            : worker.current_organization_id;
+        const nextStart =
+          "employment_start_on" in payload
+            ? payload.employment_start_on
+            : worker.employment_start_on || currentOrgStart;
+        const auto =
+          "status" in payload
+            ? null // 状態を手で選んで保存したときは自動では進めない
+            : employmentStartPatch(
+                worker.status,
+                "residence_status" in payload
+                  ? payload.residence_status
+                  : worker.residence_status,
+                !!nextOrg,
+                !!nextStart,
+              );
+        if (auto) {
+          payload.status = auto.status;
+          if (!("support" in payload)) payload.support = auto.support;
+        }
+      }
       if (Object.keys(payload).length > 0) {
         await updateWorker(createClient(), worker.id, payload);
       }
@@ -1284,6 +1312,8 @@ export function WorkerDetail({
         initial={worker.org_employment_starts}
         currentOrganizationId={worker.current_organization_id}
         currentEmploymentStartOn={worker.employment_start_on}
+        workerStatus={worker.status}
+        residenceStatus={worker.residence_status}
         organizations={organizations}
         canEdit={canEdit}
       />
@@ -1311,6 +1341,8 @@ export function WorkerDetail({
         organizations={organizations}
         currentOrganizationId={worker.current_organization_id}
         orgEmploymentStarts={worker.org_employment_starts ?? []}
+        // 日付なし（印鑑・署名あり）版は申請準備の詳細で保管するため、外国人詳細では出さない
+        showUndated={false}
       />
 
       {/* 雇用保険（離職票・被保険者証）が届いたときの保管 */}

@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
+import { employmentStartPatch } from "@/lib/worker-support";
 import { normalizeOrgEmploymentStarts } from "@/lib/org-employment";
 import { organizationSuggestions } from "@/lib/org-search";
 import type { Organization, WorkerInput, WorkerOrgEmploymentStart } from "@/types/db";
@@ -19,6 +20,8 @@ export function WorkerEmploymentStarts({
   initial,
   currentOrganizationId,
   currentEmploymentStartOn,
+  workerStatus = "",
+  residenceStatus = "",
   organizations,
   canEdit,
 }: {
@@ -26,6 +29,8 @@ export function WorkerEmploymentStarts({
   initial: unknown; // workers.org_employment_starts（jsonb）
   currentOrganizationId: string | null;
   currentEmploymentStartOn: string | null;
+  workerStatus?: string; // 状態（申請準備中なら、雇用開始日の登録で在籍中へ自動で進める）
+  residenceStatus?: string; // 在留資格（支援区分の自動判別に使う）
   organizations: Organization[];
   canEdit: boolean;
 }) {
@@ -58,6 +63,17 @@ export function WorkerEmploymentStarts({
         (r) => r.organization_id === currentOrganizationId && r.start_on,
       );
       if (current) payload.employment_start_on = current.start_on;
+      // 現在の所属機関の雇用開始日がそろったら、申請準備中の人は在籍中＋支援区分へ自動で進める
+      const auto = employmentStartPatch(
+        workerStatus,
+        residenceStatus,
+        !!currentOrganizationId,
+        !!current,
+      );
+      if (auto) {
+        payload.status = auto.status;
+        payload.support = auto.support;
+      }
       await updateWorker(createClient(), workerId, payload);
       setSaved(true);
       router.refresh();
