@@ -31,6 +31,7 @@ import { OnboardingDocuments } from "@/components/workers/OnboardingDocuments";
 import { HealthCheckSection } from "@/components/workers/HealthCheckSection";
 import { GensenDocuments } from "@/components/workers/GensenDocuments";
 import { WorkerCertDocRows } from "@/components/workers/WorkerCertDocRows";
+import { CopyButton } from "@/components/ui/CopyButton";
 import { CertExamList } from "@/components/workers/CertExamList";
 import {
   NIHONGO_EXAM_NAME_OPTIONS,
@@ -510,14 +511,23 @@ export function WorkerDetail({
               <SswStatusBadge status={calc.status} />
               <SupportBadge support={worker.support} />
             </div>
-            {/* 名前・フリガナ。下へスクロールしても誰の詳細を見ているか分かるように、
-                固定されるこのバーの中に出す */}
-            <p className="min-w-0 truncate text-sm font-bold">
-              {worker.name}
+            {/* 名前（上）・フリガナ（下）。下へスクロールしても誰の詳細を見ているか分かるように、
+                固定されるこのバーの中に出す。長い名前でも省略せず折り返して全部見せる */}
+            <div className="min-w-0">
+              {/* 申請書類への転記用に、名前・フリガナはその場でコピーできる */}
+              <p className="flex items-start gap-1 text-sm font-bold leading-snug">
+                <span className="min-w-0 break-words">{worker.name}</span>
+                {worker.name && (
+                  <CopyButton value={worker.name} label="名前をコピー" size={13} className="mt-0.5" />
+                )}
+              </p>
               {worker.kana && (
-                <span className="ml-2 text-[11px] font-medium text-muted">{worker.kana}</span>
+                <p className="flex items-start gap-1 text-[11px] leading-snug text-muted">
+                  <span className="min-w-0 break-words">{worker.kana}</span>
+                  <CopyButton value={worker.kana} label="フリガナをコピー" size={12} />
+                </p>
               )}
-            </p>
+            </div>
           </div>
           <div className="flex shrink-0 flex-wrap justify-end gap-2">
             {canEdit && editing ? (
@@ -560,20 +570,23 @@ export function WorkerDetail({
                   <Printer size={14} />
                   印刷
                 </Link>
-                <Link
-                  href={`/workers/${worker.id}/resume`}
-                  className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted"
-                >
-                  <FileText size={14} />
-                  履歴書
-                </Link>
-                <Link
-                  href={`/workers/${worker.id}/roster`}
-                  className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted"
-                >
-                  <ClipboardList size={14} />
-                  労働者名簿
-                </Link>
+                {/* 履歴書・労働者名簿は上下に並べて、名前の表示に横幅を空ける */}
+                <div className="flex flex-col gap-1">
+                  <Link
+                    href={`/workers/${worker.id}/resume`}
+                    className="flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-bold text-muted"
+                  >
+                    <FileText size={14} />
+                    履歴書
+                  </Link>
+                  <Link
+                    href={`/workers/${worker.id}/roster`}
+                    className="flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-bold text-muted"
+                  >
+                    <ClipboardList size={14} />
+                    労働者名簿
+                  </Link>
+                </div>
                 {canEdit && <NotionTransferButton worker={worker} />}
               </>
             )}
