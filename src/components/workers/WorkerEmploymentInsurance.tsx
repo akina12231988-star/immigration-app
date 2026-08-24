@@ -1,12 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Download, ExternalLink, FileText, ShieldCheck, Upload } from "lucide-react";
+import { Download, ExternalLink, FileText, ShieldCheck, Trash2, Upload } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { uploadWorkerDoc } from "@/lib/worker-docs";
 import { dbErrorMessage } from "@/lib/errors";
-import { listWorkerDocs, type WorkerDocView } from "@/app/(app)/workers/actions";
+import {
+  deleteWorkerDoc,
+  listWorkerDocs,
+  type WorkerDocView,
+} from "@/app/(app)/workers/actions";
 
 type Kind = "雇用保険 離職票" | "雇用保険 被保険者証";
 
@@ -44,6 +48,24 @@ export function WorkerEmploymentInsurance({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workerId]);
 
+  // 間違えて登録した書類の削除（保存したファイルの実体も消える）
+  const removeDoc = async (doc: WorkerDocView) => {
+    if (
+      !window.confirm(
+        `「${doc.kind}」の登録データ（${doc.downloadName || doc.fileName || ""}）を削除します。元に戻せません。よろしいですか？`,
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    const res = await deleteWorkerDoc(doc.id);
+    if (!res.ok) {
+      setError(res.message);
+      return;
+    }
+    load();
+  };
+
   // 0085 が未適用だと worker_documents の種別の制約で弾かれるので、実行する
   // マイグレーション名を画面に出す
   const handleError = (err: unknown) =>
@@ -79,6 +101,7 @@ export function WorkerEmploymentInsurance({
               docs={docs.filter((d) => d.kind === k.kind)}
               workerId={workerId}
               canEdit={canEdit}
+              onDelete={removeDoc}
               onUploaded={load}
               onError={handleError}
             />
@@ -96,6 +119,7 @@ function InsuranceColumn({
   docs,
   workerId,
   canEdit,
+  onDelete,
   onUploaded,
   onError,
 }: {
@@ -105,6 +129,7 @@ function InsuranceColumn({
   docs: WorkerDocView[];
   workerId: string;
   canEdit: boolean;
+  onDelete: (doc: WorkerDocView) => void | Promise<void>;
   onUploaded: () => void;
   onError: (err: unknown) => void;
 }) {
@@ -192,6 +217,18 @@ function InsuranceColumn({
             <Download size={12} />
             ダウンロード
           </a>
+          {/* 間違えて登録したときの削除（申請登録時の画像はここでは消せない） */}
+          {canEdit && !latest.fromApplication && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void onDelete(latest)}
+              className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11px] font-bold text-seal disabled:opacity-50"
+            >
+              <Trash2 size={12} />
+              削除
+            </button>
+          )}
         </div>
       )}
       {history.length > 0 && (
