@@ -20,6 +20,7 @@ import {
   type RosterFill,
 } from "@/lib/org-roster-fill";
 import type { OrgRosterWorker } from "@/lib/supabase/queries/organizations";
+import { formatAmountInput } from "@/lib/amount-format";
 
 // 所属機関に今いる人と、過去にいた人の一覧。
 // 「誰がいつからいて、誰がいつ辞めて今どこにいるか」をこの機関の画面だけで追えるようにする。
@@ -263,9 +264,11 @@ function Section({
                             <input
                               inputMode="numeric"
                               aria-label={`${w.name} の賃金の金額`}
-                              value={fill.wageAmount}
-                              onChange={(e) => setFill(w.id, { wageAmount: e.target.value })}
-                              placeholder="例: 1100"
+                              value={formatAmountInput(fill.wageAmount)}
+                              onChange={(e) =>
+                                setFill(w.id, { wageAmount: formatAmountInput(e.target.value) })
+                              }
+                              placeholder="例: 1,100"
                               className={`w-[88px] ${FILL_INPUT}`}
                             />
                             <span className="text-[10px] text-muted">円</span>

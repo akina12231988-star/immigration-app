@@ -22,6 +22,7 @@ import {
 import { digitsOnly, parseAmount } from "@/lib/organization-intake";
 import { dbErrorMessage } from "@/lib/errors";
 import type { SalesEntryRow } from "@/types/db";
+import { formatAmountInput } from "@/lib/amount-format";
 
 // 退職時の売上精算（freee販売）。退職日までの支援代を日割りで計上し、
 // 定期売上の対象期間を退職日で締める作業を促す
@@ -175,10 +176,10 @@ export function WorkerSalesResignation({
               </span>
               <span className="flex items-center gap-2">
                 <input
-                  value={digitsOnly(supportFee)}
+                  value={formatAmountInput(digitsOnly(supportFee))}
                   onChange={(e) => setSupportFee(digitsOnly(e.target.value))}
                   inputMode="numeric"
-                  placeholder="例: 20000"
+                  placeholder="例: 20,000"
                   className={`${INPUT} text-right`}
                 />
                 <span className="shrink-0 text-sm text-muted">円</span>

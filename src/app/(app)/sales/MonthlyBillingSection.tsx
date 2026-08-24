@@ -101,6 +101,7 @@ import {
 } from "@/lib/monthly-billing-sheets";
 import { buildXlsx, downloadBlob } from "@/lib/xlsx-export";
 import { InvoicePdfCheck } from "./InvoicePdfCheck";
+import { formatAmountInput, formatAmountWhileTyping } from "@/lib/amount-format";
 
 // 月末の請求書作成。年月を選ぶと、その月に1日でも在籍していた支援対象者を
 // 所属機関ごとに並べ、支援費の請求額（満額・日割り）を出す。
@@ -1503,10 +1504,10 @@ export function MonthlyBillingSection({
                   <AlertTriangle size={14} className="shrink-0" />
                   <span className="font-bold">支援代（月額）が未登録です。ここから登録できます:</span>
                   <input
-                    value={feeDraft}
+                    value={formatAmountInput(feeDraft)}
                     onChange={(e) => setFeeDraft(e.target.value.replace(/[^0-9]/g, ""))}
                     inputMode="numeric"
-                    placeholder="例: 12000"
+                    placeholder="例: 12,000"
                     className="min-h-[32px] w-28 rounded-lg border border-border bg-surface px-2 text-xs text-foreground focus:border-brand focus:outline-none"
                   />
                   <span>円</span>
@@ -1569,7 +1570,7 @@ export function MonthlyBillingSection({
                             税抜金額（集計 {formatSalesYen(org.total)}）
                           </span>
                           <input
-                            value={currentAmountExcl}
+                            value={formatAmountInput(currentAmountExcl)}
                             onChange={(e) =>
                               setExclAndFill(
                                 e.target.value,
@@ -1586,7 +1587,7 @@ export function MonthlyBillingSection({
                         <label className="flex flex-col gap-0.5">
                           <span className="text-[10px] font-bold text-muted">消費税額</span>
                           <input
-                            value={currentTax}
+                            value={formatAmountInput(currentTax)}
                             onChange={(e) =>
                               setTaxAndFill(
                                 e.target.value,
@@ -1603,7 +1604,7 @@ export function MonthlyBillingSection({
                         <label className="flex flex-col gap-0.5">
                           <span className="text-[10px] font-bold text-muted">非課税額</span>
                           <input
-                            value={currentTaxFree}
+                            value={formatAmountInput(currentTaxFree)}
                             onChange={(e) =>
                               setTaxFreeAndFill(
                                 e.target.value,
@@ -1622,7 +1623,7 @@ export function MonthlyBillingSection({
                         <label className="flex flex-col gap-0.5">
                           <span className="text-[10px] font-bold text-muted">税込金額（請求額）</span>
                           <input
-                            value={currentAmount}
+                            value={formatAmountInput(currentAmount)}
                             onChange={(e) => setCurrentAmount(digits(e.target.value))}
                             inputMode="numeric"
                             className="min-h-[36px] w-28 rounded-lg border border-border bg-surface px-2 text-right text-xs font-bold tabular-nums"
@@ -1701,7 +1702,7 @@ export function MonthlyBillingSection({
                               <label className="flex flex-col gap-0.5">
                                 <span className="text-[10px] font-bold text-muted">税抜金額</span>
                                 <input
-                                  value={pastAmountExcl}
+                                  value={formatAmountInput(pastAmountExcl)}
                                   onChange={(e) =>
                                     setExclAndFill(
                                       e.target.value,
@@ -1719,7 +1720,7 @@ export function MonthlyBillingSection({
                               <label className="flex flex-col gap-0.5">
                                 <span className="text-[10px] font-bold text-muted">消費税額</span>
                                 <input
-                                  value={pastTax}
+                                  value={formatAmountInput(pastTax)}
                                   onChange={(e) =>
                                     setTaxAndFill(
                                       e.target.value,
@@ -1737,7 +1738,7 @@ export function MonthlyBillingSection({
                               <label className="flex flex-col gap-0.5">
                                 <span className="text-[10px] font-bold text-muted">非課税額</span>
                                 <input
-                                  value={pastTaxFree}
+                                  value={formatAmountInput(pastTaxFree)}
                                   onChange={(e) =>
                                     setTaxFreeAndFill(
                                       e.target.value,
@@ -1756,7 +1757,7 @@ export function MonthlyBillingSection({
                               <label className="flex flex-col gap-0.5">
                                 <span className="text-[10px] font-bold text-muted">税込金額（請求額）</span>
                                 <input
-                                  value={pastAmount}
+                                  value={formatAmountInput(pastAmount)}
                                   onChange={(e) => setPastAmount(digits(e.target.value))}
                                   inputMode="numeric"
                                   placeholder="0"
@@ -1768,7 +1769,7 @@ export function MonthlyBillingSection({
                                   入金済み額（税込・任意）
                                 </span>
                                 <input
-                                  value={pastPaid}
+                                  value={formatAmountInput(pastPaid)}
                                   onChange={(e) => setPastPaid(e.target.value.replace(/[^0-9]/g, ""))}
                                   inputMode="numeric"
                                   placeholder="0"
@@ -1867,7 +1868,8 @@ export function MonthlyBillingSection({
                                     <td className="py-1.5 pr-2 text-right">
                                       <input
                                         key={`${inv.id}-excl-${inv.amount_excl}`}
-                                        defaultValue={inv.amount_excl ? String(inv.amount_excl) : ""}
+                                        defaultValue={inv.amount_excl ? formatAmountInput(String(inv.amount_excl)) : ""}
+                                        onChange={(e) => formatAmountWhileTyping(e.target)}
                                         onBlur={(e) => {
                                           const v = Number(digits(e.target.value)) || 0;
                                           if (v === inv.amount_excl) return;
@@ -1887,7 +1889,8 @@ export function MonthlyBillingSection({
                                     <td className="py-1.5 pr-2 text-right">
                                       <input
                                         key={`${inv.id}-tax-${inv.tax}`}
-                                        defaultValue={inv.tax ? String(inv.tax) : ""}
+                                        defaultValue={inv.tax ? formatAmountInput(String(inv.tax)) : ""}
+                                        onChange={(e) => formatAmountWhileTyping(e.target)}
                                         onBlur={(e) => {
                                           const v = Number(digits(e.target.value)) || 0;
                                           if (v === inv.tax) return;
@@ -1904,7 +1907,8 @@ export function MonthlyBillingSection({
                                     <td className="py-1.5 pr-2 text-right">
                                       <input
                                         key={`${inv.id}-free-${inv.tax_free}`}
-                                        defaultValue={inv.tax_free ? String(inv.tax_free) : ""}
+                                        defaultValue={inv.tax_free ? formatAmountInput(String(inv.tax_free)) : ""}
+                                        onChange={(e) => formatAmountWhileTyping(e.target)}
                                         onBlur={(e) => {
                                           const v = Number(digits(e.target.value)) || 0;
                                           if (v === inv.tax_free) return;
@@ -1922,7 +1926,8 @@ export function MonthlyBillingSection({
                                     <td className="py-1.5 pr-2 text-right">
                                       <input
                                         key={`${inv.id}-amt-${inv.amount}`}
-                                        defaultValue={inv.amount ? String(inv.amount) : ""}
+                                        defaultValue={inv.amount ? formatAmountInput(String(inv.amount)) : ""}
+                                        onChange={(e) => formatAmountWhileTyping(e.target)}
                                         onBlur={(e) => {
                                           const v = Number(digits(e.target.value)) || 0;
                                           if (v !== inv.amount) void patchInvoice(inv.id, { amount: v });
@@ -1954,7 +1959,8 @@ export function MonthlyBillingSection({
                                     <td className="py-1.5 pr-2 text-right">
                                       <input
                                         key={`${inv.id}-${inv.paid}`}
-                                        defaultValue={inv.paid ? String(inv.paid) : ""}
+                                        defaultValue={inv.paid ? formatAmountInput(String(inv.paid)) : ""}
+                                        onChange={(e) => formatAmountWhileTyping(e.target)}
                                         onBlur={(e) => {
                                           const v = Number(e.target.value.replace(/[^0-9]/g, "")) || 0;
                                           if (v !== inv.paid) void patchInvoice(inv.id, { paid: v });

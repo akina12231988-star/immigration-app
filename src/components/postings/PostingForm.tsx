@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Combobox } from "@/components/ui/Combobox";
+import { formatAmountInput } from "@/lib/amount-format";
 import { createClient } from "@/lib/supabase/client";
 import {
   GENDER_REQS,
@@ -495,13 +496,14 @@ export function PostingForm({
           </Field>
           <Field label="金額（円）">
             <input
-              type="number"
               inputMode="numeric"
-              value={form.wage_amount ?? ""}
-              onChange={(e) =>
-                set("wage_amount", e.target.value === "" ? null : Number(e.target.value))
-              }
-              placeholder="1100"
+              value={formatAmountInput(form.wage_amount)}
+              onChange={(e) => {
+                // 「,」を落として数値にする（表示は3桁ごとの「,」入り）
+                const digits = e.target.value.replace(/[^0-9]/g, "");
+                set("wage_amount", digits === "" ? null : Number(digits));
+              }}
+              placeholder="1,100"
               className={INPUT_CLASS}
             />
           </Field>
@@ -834,12 +836,14 @@ export function PostingForm({
           </Field>
           <Field label="固定残業代（あれば・円／月）">
             <input
-              value={sheet.fixed_overtime}
+              value={formatAmountInput(sheet.fixed_overtime)}
               onChange={(e) =>
-                setSheet({ fixed_overtime: e.target.value.replace(/[^0-9]/g, "") })
+                setSheet({
+                  fixed_overtime: formatAmountInput(e.target.value.replace(/[^0-9,]/g, "")),
+                })
               }
               inputMode="numeric"
-              placeholder="20000"
+              placeholder="20,000"
               className={INPUT_CLASS}
             />
           </Field>
@@ -894,7 +898,12 @@ export function PostingForm({
                     onChange={(e) =>
                       setSheet({
                         allowances: sheet.allowances.map((x, j) =>
-                          j === i ? { ...x, amount: e.target.value.replace(/[^0-9]/g, "") } : x,
+                          j === i
+                            ? {
+                                ...x,
+                                amount: formatAmountInput(e.target.value.replace(/[^0-9,]/g, "")),
+                              }
+                            : x,
                         ),
                       })
                     }
@@ -1018,8 +1027,10 @@ export function PostingForm({
         <div className="grid grid-cols-2 gap-2.5">
           <Field label="居住費（円）">
             <input
-              value={sheet.housing_cost}
-              onChange={(e) => setSheet({ housing_cost: e.target.value.replace(/[^0-9]/g, "") })}
+              value={formatAmountInput(sheet.housing_cost)}
+              onChange={(e) =>
+                setSheet({ housing_cost: formatAmountInput(e.target.value.replace(/[^0-9,]/g, "")) })
+              }
               inputMode="numeric"
               placeholder="20000"
               className={INPUT_CLASS}
@@ -1049,8 +1060,10 @@ export function PostingForm({
         <div className="grid grid-cols-3 gap-2.5">
           <Field label="水道光熱費（約・円）">
             <input
-              value={sheet.utility_cost}
-              onChange={(e) => setSheet({ utility_cost: e.target.value.replace(/[^0-9]/g, "") })}
+              value={formatAmountInput(sheet.utility_cost)}
+              onChange={(e) =>
+                setSheet({ utility_cost: formatAmountInput(e.target.value.replace(/[^0-9,]/g, "")) })
+              }
               inputMode="numeric"
               placeholder="8000"
               className={INPUT_CLASS}
@@ -1069,8 +1082,8 @@ export function PostingForm({
           </Field>
           <Field label="通信費（約・円。徴収しない会社は「無し」）">
             <input
-              value={sheet.communication_cost}
-              onChange={(e) => setSheet({ communication_cost: e.target.value })}
+              value={formatAmountInput(sheet.communication_cost)}
+              onChange={(e) => setSheet({ communication_cost: formatAmountInput(e.target.value) })}
               placeholder="3000／無し"
               className={INPUT_CLASS}
             />
@@ -1412,6 +1425,26 @@ function OrgPostingInfoEditor({
     </label>
   );
 
+  // 金額の欄。打ちながら3桁ごとに「,」を入れて桁数がすぐ分かるようにする
+  const money = (
+    label: string,
+    key: keyof OrganizationIntake,
+    placeholder?: string,
+  ) => (
+    <label className="flex flex-col gap-1">
+      <span className="text-[11px] font-bold text-muted">{label}</span>
+      <input
+        value={formatAmountInput(String(current[key] ?? ""))}
+        onChange={(e) =>
+          set({ [key]: formatAmountInput(e.target.value) } as Partial<OrganizationIntake>)
+        }
+        placeholder={placeholder}
+        inputMode="numeric"
+        className={INPUT_CLASS}
+      />
+    </label>
+  );
+
   return (
     <details className="rounded-xl border border-dashed border-border p-2.5">
       <summary className="cursor-pointer text-xs font-bold text-brand">
@@ -1428,7 +1461,7 @@ function OrgPostingInfoEditor({
           </p>
         )}
         <div className="grid grid-cols-2 gap-2">
-          {input("水道光熱費（約・円）", "posting_utility_cost", "8000")}
+          {money("水道光熱費（約・円）", "posting_utility_cost", "8,000")}
           <label className="flex flex-col gap-1">
             <span className="text-[11px] font-bold text-muted">水道光熱費の徴収</span>
             <select
@@ -1441,7 +1474,7 @@ function OrgPostingInfoEditor({
               <option value="固定">固定</option>
             </select>
           </label>
-          {input("通信費（約・円。徴収しない会社は「無し」）", "posting_comm_cost", "3000／無し")}
+          {money("通信費（約・円。徴収しない会社は「無し」）", "posting_comm_cost", "3,000／無し")}
           {input("通信費を徴収しない理由", "posting_comm_reason")}
           {input("月平均所定労働時間数", "posting_monthly_hours", "173時間20分／173.3")}
           {input("年間所定労働時間数", "posting_annual_hours", "2080")}

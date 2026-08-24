@@ -64,6 +64,7 @@ import type { ApplicationWithRefs } from "@/lib/supabase/queries/jobs";
 import type { JobApplicationValues } from "@/components/workers/JobApplicationDialog";
 import type { PostingWithStats } from "@/lib/supabase/queries/postings";
 import type { Organization } from "@/types/db";
+import { formatAmountInput } from "@/lib/amount-format";
 
 // 絞り込み。採否のほかに「雇用開始済み」（雇用開始日が入っている人）と
 // 「台帳未追加」（採用なのに紹介手数料台帳へ入れていない人）でも絞れる
@@ -552,9 +553,9 @@ export function JobsExplorer({
                           <span className="text-[11px] text-muted">紹介手数料（円・税抜）</span>
                           <input
                             inputMode="numeric"
-                            value={feeDraft(a).fee}
-                            onChange={(e) => setFeeDraft(a, { fee: e.target.value })}
-                            placeholder="例: 30000"
+                            value={formatAmountInput(feeDraft(a).fee)}
+                            onChange={(e) => setFeeDraft(a, { fee: formatAmountInput(e.target.value) })}
+                            placeholder="例: 30,000"
                             className="min-h-[36px] w-32 rounded-lg border border-border bg-background px-2 text-xs tabular-nums focus:border-brand focus:outline-none"
                           />
                         </label>

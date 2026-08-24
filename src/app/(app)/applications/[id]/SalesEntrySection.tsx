@@ -27,6 +27,7 @@ import { digitsOnly, normalizeSalesItems, parseAmount } from "@/lib/organization
 import { dbErrorMessage } from "@/lib/errors";
 import type { Application } from "@/types/application";
 import type { OrgSalesItem, OrgSalesItems, SalesEntryRow } from "@/types/db";
+import { formatAmountInput } from "@/lib/amount-format";
 
 // 在留カード受領後の売上登録。作った明細は「請求書作成」で確認する。所属機関マスタの
 // 「申請種別ごとの売上明細」「毎月の支援代」「特定技能総合保険の負担」を読み込み、
@@ -321,7 +322,7 @@ export function SalesEntrySection({ app }: { app: Application }) {
                     <span className="text-[11px] font-bold text-muted">金額（円・税抜）</span>
                     <span className="flex items-center gap-1.5">
                       <input
-                        value={digitsOnly(it.amount)}
+                        value={formatAmountInput(digitsOnly(it.amount))}
                         onChange={(e) => setItemAt(i, { amount: digitsOnly(e.target.value) })}
                         inputMode="numeric"
                         placeholder="0"
@@ -365,10 +366,10 @@ export function SalesEntrySection({ app }: { app: Application }) {
               </span>
               <span className="flex items-center gap-2">
                 <input
-                  value={digitsOnly(supportFee)}
+                  value={formatAmountInput(digitsOnly(supportFee))}
                   onChange={(e) => setSupportFee(digitsOnly(e.target.value))}
                   inputMode="numeric"
-                  placeholder="例: 20000"
+                  placeholder="例: 20,000"
                   className={`${INPUT} text-right`}
                 />
                 <span className="shrink-0 text-sm text-muted">円</span>

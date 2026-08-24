@@ -20,6 +20,7 @@ import { normalizeSalesItems, parseAmount } from "@/lib/organization-intake";
 import { isMonthStr, monthLabel } from "@/lib/monthly-billing";
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
 import type { Organization } from "@/types/db";
+import { formatAmountInput, formatAmountWhileTyping } from "@/lib/amount-format";
 
 export interface ReferralWorkerOption {
   id: string;
@@ -370,10 +371,10 @@ export function ReferralsClient({
             <label className="flex flex-col gap-1">
               <span className="text-[11px] font-bold text-muted">手数料（円・税抜）</span>
               <input
-                value={fee}
+                value={formatAmountInput(fee)}
                 onChange={(e) => setFee(e.target.value.replace(/[^0-9]/g, ""))}
                 inputMode="numeric"
-                placeholder="例: 30000"
+                placeholder="例: 30,000"
                 className={`${INPUT} text-right`}
               />
             </label>
@@ -475,7 +476,8 @@ export function ReferralsClient({
                     <td className="py-1.5 pr-2 text-right">
                       {canEdit ? (
                         <input
-                          defaultValue={r.fee ? String(r.fee) : ""}
+                          defaultValue={r.fee ? formatAmountInput(String(r.fee)) : ""}
+                          onChange={(e) => formatAmountWhileTyping(e.target)}
                           onBlur={(e) => {
                             const v = Number(e.target.value.replace(/[^0-9]/g, "")) || 0;
                             if (v !== r.fee) void patchRow(r.id, { fee: v });

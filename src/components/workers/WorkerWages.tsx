@@ -38,6 +38,7 @@ import {
   normalizeWageDetail,
 } from "@/lib/wage-calc";
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
+import { formatAmountInput, formatAmountWhileTyping } from "@/lib/amount-format";
 import {
   WORKER_WAGE_KINDS,
   type OrgLodging,
@@ -457,10 +458,10 @@ export function WorkerWages({
           <label className="flex flex-col gap-0.5">
             <span className="text-[10px] font-bold text-muted">金額（円）</span>
             <input
-              value={amount}
+              value={formatAmountInput(amount)}
               onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, ""))}
               inputMode="numeric"
-              placeholder="1100"
+              placeholder="1,100"
               className="min-h-[36px] w-28 rounded-lg border border-border bg-surface px-2 text-right text-xs tabular-nums"
             />
           </label>
@@ -603,7 +604,8 @@ export function WorkerWages({
                       {canEdit ? (
                         <input
                           key={`${w.id}-${w.amount}`}
-                          defaultValue={String(w.amount)}
+                          defaultValue={formatAmountInput(String(w.amount))}
+                          onChange={(e) => formatAmountWhileTyping(e.target)}
                           onBlur={(e) => {
                             const v = Number(e.target.value.replace(/[^0-9]/g, "")) || 0;
                             if (v !== w.amount) void patch(w.id, { amount: v });
