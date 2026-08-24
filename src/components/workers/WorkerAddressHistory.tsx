@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MapPin, Plus, Trash2 } from "lucide-react";
+import { Check, MapPin, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
@@ -10,6 +10,7 @@ import {
   deleteWorkerAddress,
   insertWorkerAddress,
   listWorkerAddresses,
+  updateWorkerAddress,
 } from "@/lib/supabase/queries/worker-addresses";
 import { updateWorker } from "@/lib/supabase/queries/workers";
 import type { WorkerAddress } from "@/lib/worker-address";
@@ -127,6 +128,47 @@ export function WorkerAddressHistory({
     }
   }
 
+  // 行の編集（転入日・区分・住所をあとから直せる）。editing は編集中の行の入力値
+  const [editing, setEditing] = useState<{
+    id: string;
+    movedOn: string;
+    address: string;
+    kind: string;
+  } | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+
+  const startEdit = (row: WorkerAddress) => {
+    setError(null);
+    setEditing({ id: row.id, movedOn: row.moved_on, address: row.address, kind: row.kind });
+  };
+
+  async function saveEdit() {
+    if (!editing || !editing.movedOn || !editing.address.trim()) return;
+    setEditSaving(true);
+    setError(null);
+    try {
+      const updated = await updateWorkerAddress(createClient(), editing.id, {
+        moved_on: editing.movedOn,
+        address: editing.address.trim(),
+        kind: editing.kind.trim(),
+      });
+      if (updated === 0) {
+        // 権限（RLS）が足りないと、エラーにならず直らないことがある
+        setError(
+          "住所歴を修正できませんでした。権限の設定が足りない可能性があります／マイグレーション 0088_worker_address_policies.sql が未適用の可能性があります。Supabase の SQL Editor で適用してください。",
+        );
+        return;
+      }
+      setEditing(null);
+      // 転入日を変えると最新の行が入れ替わることがあるため、読み直してから基本情報へ反映する
+      await syncCurrentAddress(await load());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "住所歴の修正に失敗しました");
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
   async function remove(row: WorkerAddress) {
     if (!window.confirm(`${row.moved_on}「${row.address}」の住所歴を削除します。よろしいですか？`)) {
       return;
@@ -210,28 +252,93 @@ export function WorkerAddressHistory({
         </p>
       ) : (
         <ul className="overflow-hidden rounded-xl border border-border">
-          {rows.map((r) => (
-            <li
-              key={r.id}
-              className="flex items-center gap-2.5 border-b border-border bg-background px-3 py-2.5 text-sm last:border-b-0"
-            >
-              <span className="shrink-0 tabular-nums text-muted">{r.moved_on}</span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-bold">{r.address}</span>
-                {r.kind && <span className="block text-[11px] text-muted">{r.kind}</span>}
-              </span>
-              {canEdit && (
-                <button
-                  type="button"
-                  aria-label="削除"
-                  onClick={() => void remove(r)}
-                  className="shrink-0 rounded-lg border border-border px-2 py-1 text-seal"
-                >
-                  <Trash2 size={13} />
-                </button>
-              )}
-            </li>
-          ))}
+          {rows.map((r) =>
+            editing?.id === r.id ? (
+              /* 編集中の行: 転入日・区分・住所をその場で直して保存できる */
+              <li
+                key={r.id}
+                className="flex flex-wrap items-end gap-2 border-b border-border bg-background px-3 py-2.5 text-sm last:border-b-0"
+              >
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] font-bold text-muted">転入日</span>
+                  <input
+                    type="date"
+                    value={editing.movedOn}
+                    onChange={(e) => setEditing({ ...editing, movedOn: e.target.value })}
+                    className={`${INPUT} w-40`}
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] font-bold text-muted">区分</span>
+                  <input
+                    value={editing.kind}
+                    onChange={(e) => setEditing({ ...editing, kind: e.target.value })}
+                    placeholder="例: 国内転入 / 転入"
+                    className={`${INPUT} w-32`}
+                  />
+                </label>
+                <label className="flex min-w-[160px] flex-1 flex-col gap-1">
+                  <span className="text-[11px] font-bold text-muted">住所</span>
+                  <input
+                    value={editing.address}
+                    onChange={(e) => setEditing({ ...editing, address: e.target.value })}
+                    className={INPUT}
+                  />
+                </label>
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => void saveEdit()}
+                    disabled={!editing.movedOn || !editing.address.trim() || editSaving}
+                    className="flex items-center gap-1 rounded-lg bg-brand px-3 py-2 text-xs font-bold text-brand-foreground disabled:opacity-50"
+                  >
+                    <Check size={13} />
+                    {editSaving ? "保存中…" : "保存"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditing(null)}
+                    disabled={editSaving}
+                    className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted"
+                  >
+                    <X size={13} />
+                    キャンセル
+                  </button>
+                </div>
+              </li>
+            ) : (
+              <li
+                key={r.id}
+                className="flex items-center gap-2.5 border-b border-border bg-background px-3 py-2.5 text-sm last:border-b-0"
+              >
+                <span className="shrink-0 tabular-nums text-muted">{r.moved_on}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-bold">{r.address}</span>
+                  {r.kind && <span className="block text-[11px] text-muted">{r.kind}</span>}
+                </span>
+                {canEdit && (
+                  <button
+                    type="button"
+                    aria-label="編集"
+                    onClick={() => startEdit(r)}
+                    className="shrink-0 rounded-lg border border-border px-2 py-1 text-brand"
+                  >
+                    <Pencil size={13} />
+                  </button>
+                )}
+                {canEdit && (
+                  <button
+                    type="button"
+                    aria-label="削除"
+                    onClick={() => void remove(r)}
+                    className="shrink-0 rounded-lg border border-border px-2 py-1 text-seal"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                )}
+              </li>
+            ),
+          )}
         </ul>
       )}
 
