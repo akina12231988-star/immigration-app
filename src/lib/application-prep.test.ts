@@ -12,6 +12,7 @@ import {
   PREP_DOC_ATTACH_ITEMS,
   PREP_DOC_DEFS,
   PREP_DOC_STATUS_OPTIONS,
+  prepApplyDocKey,
   prepDocLabel,
   prepPageKey,
   prepProgressOf,
@@ -342,5 +343,33 @@ describe("prepProgressOf", () => {
       total: evaluated.length,
       percent: 0,
     });
+  });
+});
+
+describe("prepApplyDocKey", () => {
+  // 申請する書類（最後に添付する完成した書類）の保存キー
+  it("TODO番号ごとに別のキーになる", () => {
+    expect(prepApplyDocKey("TODO-1306")).toBe("prep_shinsei_1306");
+    expect(prepApplyDocKey("1306")).toBe("prep_shinsei_1306");
+    expect(prepApplyDocKey("todo 1306")).toBe("prep_shinsei_1306");
+  });
+
+  it("番号未設定のときは基本キー", () => {
+    expect(prepApplyDocKey("")).toBe("prep_shinsei");
+  });
+
+  it("保存キーの制限（英数字と_のみ・32文字まで）に収まる", () => {
+    for (const no of ["TODO-1306", "", "TODO-999999999999999999"]) {
+      const key = prepApplyDocKey(no);
+      expect(key).toMatch(/^[a-z0-9_]{1,32}$/);
+      // 2枚目以降の枝番を足しても収まる
+      expect(prepPageKey(key, 99)).toMatch(/^[a-z0-9_]{1,32}$/);
+    }
+  });
+
+  it("枝番キーは同じ書類として扱われる", () => {
+    const key = prepApplyDocKey("TODO-1306");
+    expect(isPrepPageKeyOf(key, prepPageKey(key, 2))).toBe(true);
+    expect(isPrepPageKeyOf(key, prepApplyDocKey("TODO-1307"))).toBe(false);
   });
 });

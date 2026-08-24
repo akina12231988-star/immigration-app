@@ -20,16 +20,14 @@ import {
   X,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
-import { Modal } from "@/components/ui/Modal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { AlertBadge } from "@/components/applications/AlertBadge";
 import { ApplicantMeta } from "@/components/applications/ApplicantMeta";
-import { ApplicationPrepChecklist } from "@/components/workers/ApplicationPrepChecklist";
 import { createClient } from "@/lib/supabase/client";
 import { listPrepStatuses, type PrepStatus } from "@/lib/supabase/queries/prep-status";
 import { upsertPrepTantou } from "@/lib/supabase/queries/application-prep";
-import { PREP_TANTOU_OPTIONS } from "@/lib/application-prep";
+import { PREP_TANTOU_OPTIONS, prepDetailHref } from "@/lib/application-prep";
 import { matchesApplicationTantou, tantouFilterOptions } from "@/lib/application-tantou";
 import {
   advanceSituationOnApproval,
@@ -391,13 +389,6 @@ export function ApplicationsExplorer({
     [sorted, safePage, pageSize],
   );
 
-  // 申請前＜準備中＞: その場で添付するモーダル
-  const [prepModal, setPrepModal] = useState<{
-    id: string;
-    name: string;
-    photoPath: string | null;
-    healthCheckOn: string | null;
-  } | null>(null);
 
   const prepWorkerIds = useMemo(
     () =>
@@ -438,15 +429,10 @@ export function ApplicationsExplorer({
     }
   };
 
+  // 申請前＜準備中＞: 準備状況の確認とその場での書類添付（1ページで開く）
   const openPrepModal = (a: Application) => {
     if (!a.workerId) return;
-    const st = prepStatuses.get(a.workerId);
-    setPrepModal({
-      id: a.workerId,
-      name: a.name,
-      photoPath: st?.photoPath ?? null,
-      healthCheckOn: st?.healthCheckOn ?? null,
-    });
+    router.push(prepDetailHref(a.workerId));
   };
 
   // 担当者のインライン編集。外国人の申請TODO番号の準備リストに保存する（無ければ作成）
@@ -1087,26 +1073,6 @@ export function ApplicationsExplorer({
         onCancel={() => setApproveTarget(null)}
       />
 
-      {/* 申請前＜準備中＞: 準備状況の確認とその場での書類添付 */}
-      {prepModal && (
-        <Modal
-          open
-          wide
-          title={`${prepModal.name}｜申請準備`}
-          onClose={() => {
-            setPrepModal(null);
-            setPrepReload((k) => k + 1); // 添付結果を一覧のバッジに反映
-          }}
-        >
-          <ApplicationPrepChecklist
-            workerId={prepModal.id}
-            canEdit={canEdit}
-            photoPath={prepModal.photoPath}
-            healthCheckOn={prepModal.healthCheckOn}
-            embedEmployment
-          />
-        </Modal>
-      )}
     </div>
   );
 }

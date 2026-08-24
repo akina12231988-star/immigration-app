@@ -75,6 +75,18 @@ import {
 import { getWorkerPhotoUrl } from "@/app/(app)/workers/actions";
 import { uploadOnboardingDoc } from "@/lib/onboarding-files";
 import { uploadWorkerPhoto } from "@/lib/worker-photo";
+import { uploadWorkerDoc } from "@/lib/worker-docs";
+import { listWorkerDocs, type WorkerDocView } from "@/app/(app)/workers/actions";
+import { compressImage } from "@/lib/image-compress";
+import {
+  createPassportFileTicket,
+  getPassportFilePreviewUrl,
+  registerPassportFile,
+} from "@/app/(app)/workers/passport-file-actions";
+import {
+  listWorkerPassportFiles,
+  type WorkerPassportFileRow,
+} from "@/lib/supabase/queries/worker-travels";
 import { listWorkerAddresses } from "@/lib/supabase/queries/worker-addresses";
 import { addressOnDate, reiwaJan1, type WorkerAddress } from "@/lib/worker-address";
 import { gensenDocKey, reiwaYear } from "@/lib/onboarding";
@@ -101,6 +113,7 @@ import {
   PREP_MAIL_AFTER_HIDDEN,
   PREP_TANTOU_OPTIONS,
   serializeAttachItems,
+  prepApplyDocKey,
   prepDocLabel,
   prepPageKey,
   prepStatusOption,
@@ -111,6 +124,10 @@ import {
   type PrepStatusExtra,
 } from "@/lib/application-prep";
 import type { OnboardingDocumentRow } from "@/types/db";
+
+// 在留カード・パスポートのアップロード中を示すキー（onboarding_documents の書類キーとは別枠）
+const CARD_BUSY_KEY = "zairyu_card_file";
+const PASSPORT_BUSY_KEY = "passport_file";
 
 // 申請準備の書類チェックリスト。申請種別（変更/更新）と国保・年金の加入で必要書類が
 // 切り替わり、今どれが不足しているかを一覧で把握できる。各書類はこの画面から直接添付でき、
@@ -156,7 +173,8 @@ export function ApplicationPrepChecklist({
   const saveHealthOn = (v: string | null) => {
     setHealthOn(v);
     void updateWorker(createClient(), workerId, { health_check_on: v }).catch((err) =>
-      setError(err instanceof Error ? err.message : "受診日の保存に失敗しました"),
+      // Supabaseのエラーは Error ではないため、dbErrorMessage で理由まで出す
+      setError(dbErrorMessage(err, "0001_init.sql", "受診日の保存に失敗しました")),
     );
   };
   const [addresses, setAddresses] = useState<WorkerAddress[]>([]);
@@ -167,7 +185,13 @@ export function ApplicationPrepChecklist({
   const [photoExists, setPhotoExists] = useState<boolean>(!!photoPath);
   const [photoUrl, setPhotoUrl] = useState<string>("");
 
-  const uploadRef = useRef<{ docKey: string; label: string } | null>(null);
+  // 隠しファイル入力で選んだファイルの保存先。
+  // kind を付けて、在留カード（worker_documents）・パスポート（worker_passport_files）にも保存できるようにする
+  const uploadRef = useRef<{
+    docKey: string;
+    label: string;
+    kind?: "doc" | "card" | "passport";
+  } | null>(null);
   const docInputRef = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
@@ -178,9 +202,12 @@ export function ApplicationPrepChecklist({
   // 在留カード・パスポートの「預かった」で表示する預かり番号（保管ボックスと連動）
   const [custodyNo, setCustodyNo] = useState<number | null>(null);
 
-  // 在留カード・パスポートの充足判定は移行先（在留カード・指定書／パスポートの記録）を見る
-  const [hasResidenceCard, setHasResidenceCard] = useState(false);
-  const [hasPassportFile, setHasPassportFile] = useState(false);
+  // 在留カード・パスポートの充足判定は移行先（在留カード・指定書／パスポートの記録）を見る。
+  // この画面からも添付できるよう、添付済みのファイルも一覧で持つ
+  const [cardDocs, setCardDocs] = useState<WorkerDocView[]>([]);
+  const [passportFiles, setPassportFiles] = useState<WorkerPassportFileRow[]>([]);
+  const hasResidenceCard = cardDocs.length > 0;
+  const hasPassportFile = passportFiles.length > 0;
 
   // 外国人の基本情報（現在の住所・所属機関・合格名）。モーダル表示でも使えるようこの場で取得する
   const [workerRow, setWorkerRow] = useState<{
@@ -219,20 +246,12 @@ export function ApplicationPrepChecklist({
     listOnboardingDocs(createClient(), workerId).then(setDocs).catch(() => undefined);
 
   const loadMovedDocs = () => {
-    const supabase = createClient();
-    void supabase
-      .from("worker_documents")
-      .select("id")
-      .eq("worker_id", workerId)
-      .eq("kind", "在留カード")
-      .limit(1)
-      .then(({ data }) => setHasResidenceCard(!!data && data.length > 0));
-    void supabase
-      .from("worker_passport_files")
-      .select("id")
-      .eq("worker_id", workerId)
-      .limit(1)
-      .then(({ data }) => setHasPassportFile(!!data && data.length > 0));
+    listWorkerDocs(workerId)
+      .then((rows) => setCardDocs(rows.filter((d) => d.kind === "在留カード")))
+      .catch(() => undefined);
+    listWorkerPassportFiles(createClient(), workerId)
+      .then(setPassportFiles)
+      .catch(() => undefined); // 0096未適用のときは空のまま
   };
 
   useEffect(() => {
@@ -337,7 +356,14 @@ export function ApplicationPrepChecklist({
     try {
       await updatePrepChecklistExtras(createClient(), id, patch);
     } catch (err) {
-      setError(dbErrorMessage(err, "0105_prep_checklist_extras.sql", "保存に失敗しました"));
+      // あとから足した項目（筆頭者=0111・申請予定日=0112）は、その分の案内を出す
+      const migration =
+        "joint_lead" in patch
+          ? "0111_prep_joint_lead.sql"
+          : "planned_app_on" in patch
+            ? "0112_prep_planned_app_on.sql"
+            : "0105_prep_checklist_extras.sql";
+      setError(dbErrorMessage(err, migration, "保存に失敗しました"));
     }
   }
 
@@ -383,7 +409,7 @@ export function ApplicationPrepChecklist({
     }));
     if (save) {
       upsertPrepDocStatus(createClient(), currentId, docId, next).catch((err) =>
-        setError(err instanceof Error ? err.message : "準備状況の保存に失敗しました"),
+        setError(dbErrorMessage(err, "0045_prep_doc_statuses.sql", "準備状況の保存に失敗しました")),
       );
     }
   };
@@ -443,6 +469,24 @@ export function ApplicationPrepChecklist({
     }
   };
 
+  // 保存に失敗したときに画面を元の値へ戻すための、変更前の値
+  function currentValuesOf(
+    row: PrepChecklistMeta | null,
+    patch: Partial<PrepChecklistMeta>,
+  ): Partial<PrepChecklistMeta> {
+    if (!row) return {};
+    const keys = Object.keys(patch) as (keyof PrepChecklistMeta)[];
+    return Object.fromEntries(keys.map((k) => [k, row[k]])) as Partial<PrepChecklistMeta>;
+  }
+
+  // 保存できなかったときに案内するマイグレーション（選択肢を増やしたものを優先して案内する）
+  function metaMigrationFor(patch: Partial<PrepChecklistMeta>): string {
+    if ("cert_pattern" in patch) return "0113_prep_cert_pattern_senmongai_chosho.sql";
+    if ("app_type" in patch) return "0046_prep_tokutei_katsudo.sql";
+    if ("tantou" in patch) return "0044_prep_checklist_tantou.sql";
+    return "0036_application_prep_checklist.sql";
+  }
+
   async function patchMeta(patch: Partial<PrepChecklistMeta>) {
     if (selected == null || current == null) return;
     const next: PrepChecklistMeta = {
@@ -460,7 +504,12 @@ export function ApplicationPrepChecklist({
     try {
       await upsertPrepChecklist(createClient(), workerId, selected, next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存に失敗しました");
+      // 保存できなかった理由（選択肢がDB側の制約に無い・列が無い など）と、
+      // 適用すべきマイグレーションまで出す。失敗した項目は画面も元に戻す
+      setLists((ls) =>
+        ls.map((l) => (l.todo_no === selected ? { ...l, ...currentValuesOf(current, patch) } : l)),
+      );
+      setError(dbErrorMessage(err, metaMigrationFor(patch), "保存に失敗しました"));
     }
   }
 
@@ -588,6 +637,16 @@ export function ApplicationPrepChecklist({
       photoInputRef.current?.click();
       return;
     }
+    // 在留カード・パスポートは移行先（在留カード・指定書／パスポートの記録）へ保存する
+    if (def.source.kind === "residenceCardDoc" || def.source.kind === "passportFile") {
+      uploadRef.current = {
+        docKey: def.source.kind === "residenceCardDoc" ? CARD_BUSY_KEY : PASSPORT_BUSY_KEY,
+        label: def.label,
+        kind: def.source.kind === "residenceCardDoc" ? "card" : "passport",
+      };
+      docInputRef.current?.click();
+      return;
+    }
     const key = resolveDocKey(def);
     if (!key) {
       setError("先に対象年度（令和）を入力してください。");
@@ -648,7 +707,62 @@ export function ApplicationPrepChecklist({
 
   async function handleDocFile(file: File | undefined) {
     const target = uploadRef.current;
-    if (target) await uploadDoc(target, file);
+    if (!target || !file) return;
+    if (target.kind === "card") await uploadResidenceCard(file);
+    else if (target.kind === "passport") await uploadPassportFile(file);
+    else await uploadDoc(target, file);
+  }
+
+  // 在留カード（worker_documents）への保存。差し替えても前の分は履歴として残る
+  async function uploadResidenceCard(file: File) {
+    setBusyKey(CARD_BUSY_KEY);
+    setError(null);
+    try {
+      await uploadWorkerDoc(workerId, "在留カード", file);
+      loadMovedDocs();
+      notifyWorkerDocsChanged(workerId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "アップロードに失敗しました");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  // パスポート（worker_passport_files）への保存。出入国の記録のページと共有する
+  async function uploadPassportFile(file: File) {
+    setBusyKey(PASSPORT_BUSY_KEY);
+    setError(null);
+    try {
+      const { blob, mimeType, fileName } = await compressImage(file);
+      const ticket = await createPassportFileTicket(workerId, fileName, mimeType);
+      if (!ticket.ok) throw new Error(ticket.message);
+      const { error: upErr } = await createClient()
+        .storage.from("app-files")
+        .uploadToSignedUrl(ticket.path, ticket.token, blob, { contentType: mimeType });
+      if (upErr) throw new Error(`アップロードに失敗しました: ${upErr.message}`);
+      const res = await registerPassportFile(
+        workerId,
+        "スタンプページ",
+        ticket.path,
+        fileName,
+        mimeType,
+      );
+      if (!res.ok) throw new Error(res.message);
+      loadMovedDocs();
+    } catch (err) {
+      setError(
+        dbErrorMessage(err, "0096_worker_passport_files.sql", "アップロードに失敗しました"),
+      );
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  // パスポートの記録に添付したファイルを開く
+  async function previewPassportFile(id: string) {
+    const res = await getPassportFilePreviewUrl(id);
+    if (res.ok) window.open(res.url, "_blank", "noopener");
+    else setError(res.message);
   }
 
   // ドラッグ&ドロップでの添付。顔写真はそのまま、書類は既存の枚数に応じた枝番キーへ保存する
@@ -657,6 +771,14 @@ export function ApplicationPrepChecklist({
     setError(null);
     if (def.source.kind === "photo") {
       await handlePhotoFile(file);
+      return;
+    }
+    if (def.source.kind === "residenceCardDoc") {
+      await uploadResidenceCard(file);
+      return;
+    }
+    if (def.source.kind === "passportFile") {
+      await uploadPassportFile(file);
       return;
     }
     const key = resolveDocKey(def);
@@ -698,6 +820,43 @@ export function ApplicationPrepChecklist({
       setError(err instanceof Error ? err.message : "写真のアップロードに失敗しました");
     } finally {
       setBusyKey(null);
+    }
+  }
+
+  // 申請する書類（最後に添付する、入管へ提出する完成した書類一式）。
+  // TODO番号ごとのキーに、何枚でも（_p2, _p3 …）ためられる
+  const applyDocBase = prepApplyDocKey(current?.todo_no ?? "");
+  const applyDocFiles = docs
+    .filter((d) => d.storage_path && isPrepPageKeyOf(applyDocBase, d.doc_key))
+    .sort((a, b) => a.doc_key.localeCompare(b.doc_key, "en"));
+  const applyDocBusy = busyKey != null && busyKey.startsWith(applyDocBase);
+
+  const applyDocLabel = (page: number) => {
+    const no = current?.todo_no ? `（${current.todo_no}）` : "";
+    return `申請する書類${no} ${page}枚目`;
+  };
+
+  // 空いている枝番キーを1つ返す（1枚目は基本キーのまま）
+  function nextApplyDocKey(used: Set<string>): { docKey: string; label: string } {
+    let page = 1;
+    while (used.has(prepPageKey(applyDocBase, page))) page++;
+    return { docKey: prepPageKey(applyDocBase, page), label: applyDocLabel(page) };
+  }
+
+  function startAttachApplyDoc() {
+    setError(null);
+    uploadRef.current = nextApplyDocKey(new Set(applyDocFiles.map((f) => f.doc_key)));
+    docInputRef.current?.click();
+  }
+
+  // ドラッグ&ドロップでの添付（複数ファイルをまとめて添付できる）
+  async function dropApplyDocs(list: FileList) {
+    setError(null);
+    const used = new Set(applyDocFiles.map((f) => f.doc_key));
+    for (const file of Array.from(list)) {
+      const target = nextApplyDocKey(used);
+      used.add(target.docKey);
+      await uploadDoc(target, file);
     }
   }
 
@@ -1175,6 +1334,22 @@ export function ApplicationPrepChecklist({
               const key = resolveDocKey(item.def);
               const files = docFilesFor(item.def);
               const isPhoto = item.def.source.kind === "photo";
+              // 在留カード・パスポートは別のセクション（在留カード・指定書／出入国の記録）で
+              // 管理しているファイルを、この行にも表示する
+              const isCard = item.def.source.kind === "residenceCardDoc";
+              const isPassport = item.def.source.kind === "passportFile";
+              const sharedFiles = isCard
+                ? cardDocs.map((d) => ({ id: d.id, name: d.fileName || "在留カード", url: d.url }))
+                : isPassport
+                  ? passportFiles.map((f) => ({ id: f.id, name: f.file_name, url: null }))
+                  : [];
+              const busyForRow = isPhoto
+                ? busyKey === "photo"
+                : isCard
+                  ? busyKey === CARD_BUSY_KEY
+                  : isPassport
+                    ? busyKey === PASSPORT_BUSY_KEY
+                    : busyKey != null && key != null && busyKey.startsWith(key);
               return (
                 <DocRow
                   key={item.def.id}
@@ -1182,9 +1357,14 @@ export function ApplicationPrepChecklist({
                   meta={meta}
                   workerId={workerId}
                   files={files}
+                  sharedFiles={sharedFiles}
+                  onPreviewShared={(f) => {
+                    if (f.url) window.open(f.url, "_blank", "noopener");
+                    else void previewPassportFile(f.id);
+                  }}
                   isPhoto={isPhoto}
                   canEdit={canEdit}
-                  busy={busyKey != null && (isPhoto ? busyKey === "photo" : busyKey.startsWith(key ?? " "))}
+                  busy={busyForRow}
                   ds={{ ...EMPTY_PREP_DOC_STATUS, ...(docStatuses[item.def.id] ?? {}) }}
                   custodyNo={custodyNo}
                   healthOn={healthOn}
@@ -1249,6 +1429,61 @@ export function ApplicationPrepChecklist({
           📅 日付計算: 支援計画書の日付計算ツール（求人日付のカレンダー表示付き）を開く →
         </Link>
         <SavedPlanDatesSection workerId={workerId} todoNo={current.todo_no} canEdit={canEdit} />
+
+        {/* 申請する書類（最後に添付する、入管へ提出する完成した書類一式） */}
+        <FileDropArea
+          onFiles={(list) => void dropApplyDocs(list)}
+          disabled={!canEdit || busyKey != null}
+          className="rounded-xl border border-dashed border-border bg-background p-3"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-sm font-bold">📎 申請する書類（入管へ提出する完成した書類）</p>
+              <p className="mt-0.5 text-[11px] text-muted">
+                必要な書類がそろったら、実際に申請する書類（申請書・理由書など）をここに添付します。
+                ここにドラッグ＆ドロップしても添付できます（画像・PDF／何枚でも）。
+              </p>
+            </div>
+            {canEdit &&
+              (applyDocBusy ? (
+                <Loader2 size={15} className="animate-spin text-muted" />
+              ) : (
+                <IconButton label="申請する書類を添付" onClick={startAttachApplyDoc}>
+                  <Upload size={13} />
+                  添付
+                </IconButton>
+              ))}
+          </div>
+          {applyDocFiles.length === 0 ? (
+            <p className="mt-2 text-[11px] text-muted">まだ添付はありません。</p>
+          ) : (
+            <div className="mt-2 space-y-1">
+              {applyDocFiles.map((f, i) => (
+                <div key={f.id} className="flex items-center gap-1.5">
+                  <span className="min-w-0 flex-1 truncate text-[11px] text-muted">
+                    <span className="mr-1 font-bold">{i + 1}枚目:</span>
+                    {f.file_name}
+                  </span>
+                  <IconButton label="表示" onClick={() => void previewDoc(f.id)}>
+                    <Eye size={12} />
+                  </IconButton>
+                  <IconButton label="ダウンロード" onClick={() => void downloadDoc(f.id)}>
+                    <Download size={12} />
+                  </IconButton>
+                  {canEdit && (
+                    <IconButton
+                      label="削除"
+                      tone="danger"
+                      onClick={() => void removeDoc(f.doc_key, `申請する書類（${f.file_name}）`)}
+                    >
+                      <Trash2 size={12} />
+                    </IconButton>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </FileDropArea>
       </div>
 
       {canEdit && (
@@ -1308,6 +1543,8 @@ function DocRow({
   meta,
   workerId,
   files,
+  sharedFiles = [],
+  onPreviewShared,
   isPhoto,
   canEdit,
   busy,
@@ -1330,6 +1567,9 @@ function DocRow({
   meta: PrepChecklistMeta;
   workerId: string;
   files: OnboardingDocumentRow[];
+  // 他のセクションで管理している添付（在留カード・パスポート）。この行では表示のみ
+  sharedFiles?: { id: string; name: string; url: string | null }[];
+  onPreviewShared?: (f: { id: string; name: string; url: string | null }) => void;
   isPhoto: boolean;
   canEdit: boolean;
   busy: boolean;
@@ -1454,6 +1694,26 @@ function DocRow({
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* 他のセクションで管理している添付（在留カード・パスポート）。表示のみ・削除は元の画面で行う */}
+      {sharedFiles.length > 0 && (
+        <div className="ml-[18px] mt-1.5 space-y-1">
+          {sharedFiles.map((f, i) => (
+            <div key={f.id} className="flex items-center gap-1.5">
+              <span className="min-w-0 flex-1 truncate text-[11px] text-muted">
+                {sharedFiles.length > 1 && <span className="mr-1 font-bold">{i + 1}枚目:</span>}
+                {f.name}
+              </span>
+              <IconButton label="表示" onClick={() => onPreviewShared?.(f)}>
+                <Eye size={12} />
+              </IconButton>
+            </div>
+          ))}
+          <p className="text-[10px] text-muted">
+            削除・並べ替えは「{def.managedIn}」で行えます。
+          </p>
         </div>
       )}
 

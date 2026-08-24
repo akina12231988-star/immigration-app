@@ -13,6 +13,12 @@
 //  - 保険証 / 年金記録 … このチェックリスト専用・最新のみ（prep_*）
 
 import { gensenDocKey } from "@/lib/onboarding";
+import { normalizeTodoKey } from "@/lib/todo";
+
+// 申請準備の詳細（書類チェックリスト）のページ。TODO一覧・申請一覧・外国人詳細から開く
+export function prepDetailHref(workerId: string): string {
+  return `/workers/${workerId}/application-prep`;
+}
 
 export type PrepAppType = "変更" | "更新" | "認定" | "特定活動";
 export const PREP_APP_TYPES: PrepAppType[] = ["変更", "更新", "認定", "特定活動"];
@@ -586,6 +592,17 @@ export function serializeAttachItems(items: string[]): string {
 
 // 「申請後に入管へ郵送する」チェックを表示しない書類（本人から預かる・撮影するもの）
 export const PREP_MAIL_AFTER_HIDDEN = new Set(["zairyu", "passport", "photo"]);
+
+// 申請する書類（入管へ提出する完成した書類一式）の保存キー。
+// 申請ごとに分けて残せるよう、TODO番号ごとのキーにする（番号未設定は prep_shinsei）。
+// 2枚目以降は prepPageKey で枝番（_p2, _p3 …）を付ける
+export const PREP_APPLY_DOC_BASE = "prep_shinsei";
+
+export function prepApplyDocKey(todoNo: string): string {
+  // 保存キーは英数字と _ のみ・32文字までのため、番号は正規化して12文字までにする
+  const key = normalizeTodoKey(todoNo).slice(0, 12);
+  return key ? `${PREP_APPLY_DOC_BASE}_${key}` : PREP_APPLY_DOC_BASE;
+}
 
 // 追加添付（2枚目以降）の保存キー（例: prep_kazei_r7_p2）。1枚目は基本キーのまま
 export function prepPageKey(baseKey: string, page: number): string {
