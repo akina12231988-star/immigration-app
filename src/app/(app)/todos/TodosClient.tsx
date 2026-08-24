@@ -2,12 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Check, ClipboardList, Copy, Plus, Settings2, Trash2, TriangleAlert } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Combobox } from "@/components/ui/Combobox";
-import { Modal } from "@/components/ui/Modal";
-import { ApplicationPrepChecklist } from "@/components/workers/ApplicationPrepChecklist";
 import { SavedPlanDatesSection } from "@/components/workers/ApplicationPrepExtras";
 import { APPLICATION_CONTENT_CHOICES } from "@/lib/worker-situation";
 import { listFilingAgents } from "@/lib/supabase/queries/agents";
@@ -16,7 +15,11 @@ import {
   listPrepTantou,
   upsertPrepTantou,
 } from "@/lib/supabase/queries/application-prep";
-import { PREP_TANTOU_OPTIONS, type PrepProgress } from "@/lib/application-prep";
+import {
+  PREP_TANTOU_OPTIONS,
+  prepDetailHref,
+  type PrepProgress,
+} from "@/lib/application-prep";
 import { isExpiryWithinTwoMonths, remainingLabel } from "@/lib/worker-alerts";
 import { createClient } from "@/lib/supabase/client";
 import { dbErrorMessage } from "@/lib/errors";
@@ -177,45 +180,17 @@ export function TodosClient({
         setError("書類担当者の保存に失敗しました。通信状況を確認してもう一度お試しください。"),
       );
   };
-  // TODOの詳細（申請準備 書類チェックリスト）をその場で開くモーダル
-  const [prepModal, setPrepModal] = useState<{
-    workerId: string;
-    name: string;
-    photoPath: string | null;
-    healthCheckOn: string | null;
-  } | null>(null);
-
-  // TODOの行から申請準備の詳細（必要な書類）を開く。写真・健診日は開くときに取得する
-  const openPrep = (t: TodoRow) => {
-    if (!t.worker_id) return;
-    const workerId = t.worker_id;
-    void createClient()
-      .from("workers")
-      .select("photo_path, health_check_on")
-      .eq("id", workerId)
-      .maybeSingle()
-      .then(({ data }) => {
-        const w = data as { photo_path: string | null; health_check_on: string | null } | null;
-        setPrepModal({
-          workerId,
-          name: t.worker_name ?? "（外国人）",
-          photoPath: w?.photo_path ?? null,
-          healthCheckOn: w?.health_check_on ?? null,
-        });
-      });
-  };
-
-  // 外国人詳細のTODOリンク（?openPrep=workerId）から来たときは、
-  // その人の申請準備の詳細（📋）を自動で開く
-  const openedFromQuery = useRef(false);
+  // 申請準備の詳細（書類チェックリスト）は1ページで開く（旧: モーダル）。
+  // 以前の外国人詳細のリンク（?openPrep=外国人ID）で来たときも、その人の詳細ページへ送る
+  const router = useRouter();
+  const movedFromQuery = useRef(false);
   useEffect(() => {
-    if (loading || openedFromQuery.current) return;
+    if (movedFromQuery.current) return;
     const wid = new URLSearchParams(window.location.search).get("openPrep");
     if (!wid) return;
-    openedFromQuery.current = true;
-    const t = todos.find((x) => x.kind === "申請準備" && x.worker_id === wid && !x.deleted_at);
-    if (t) openPrep(t);
-  }, [loading, todos]);
+    movedFromQuery.current = true;
+    router.replace(prepDetailHref(wid));
+  }, [router]);
 
   // 追加フォーム
   const [newWorkerId, setNewWorkerId] = useState("");
@@ -837,7 +812,9 @@ export function TodosClient({
                           ? (v) => changeTantou(t, v)
                           : undefined
                       }
-                      onOpenPrep={t.kind === "申請準備" && t.worker_id ? () => openPrep(t) : undefined}
+                      prepHref={
+                        t.kind === "申請準備" && t.worker_id ? prepDetailHref(t.worker_id) : undefined
+                      }
                       jobFlows={jobFlows.filter((f) => f.worker_id === t.worker_id)}
                       mailings={mailings.filter(
                         (m) => m.todoKey && m.todoKey === normalizeTodoKey(t.todo_no),
@@ -978,26 +955,6 @@ export function TodosClient({
         </details>
       )}
 
-      {/* TODOの詳細（申請準備 書類チェックリスト）。行の「必要な書類・準備の詳細」から開く */}
-      {prepModal && (
-        <Modal
-          open
-          wide
-          title={`${prepModal.name}｜申請準備`}
-          onClose={() => {
-            setPrepModal(null);
-            void load(); // ステータスなどの変更を一覧に反映
-          }}
-        >
-          <ApplicationPrepChecklist
-            workerId={prepModal.workerId}
-            canEdit={canEdit}
-            photoPath={prepModal.photoPath}
-            healthCheckOn={prepModal.healthCheckOn}
-            embedEmployment
-          />
-        </Modal>
-      )}
     </div>
   );
 }
@@ -1062,7 +1019,7 @@ function TodoItem({
   residenceExpiry = "",
   progress = null,
   onChangeTantou,
-  onOpenPrep,
+  prepHref,
   jobFlows = [],
   mailings = [],
   onChange,
@@ -1078,7 +1035,7 @@ function TodoItem({
   residenceExpiry?: string; // 在留期限（'' = 未登録）
   progress?: PrepProgress | null; // 必要書類がどれだけ揃ったか
   onChangeTantou?: (v: string) => void;
-  onOpenPrep?: () => void; // TODOの詳細（申請準備 書類チェックリスト）を開く
+  prepHref?: string; // 申請準備の詳細（書類チェックリスト）のページ
   jobFlows?: JobFlowRow[]; // あっせん有りのときに出す、求人への採用の流れ
   mailings?: MailingSummary[]; // 同じTODO番号の郵送請求（判定記録）の状況
   onChange: (
@@ -1159,14 +1116,13 @@ function TodoItem({
               {/* 申請準備の所属機関（転職先。未設定なら現在の所属機関） */}
               {orgName && <span className="truncate text-[11px] text-muted">{orgName}</span>}
               {/* 必要な書類・賃金・雇用契約書・日付はすべてこの詳細ボタンにまとめた */}
-              {todo.kind === "申請準備" && onOpenPrep && (
-                <button
-                  type="button"
-                  onClick={onOpenPrep}
+              {todo.kind === "申請準備" && prepHref && (
+                <Link
+                  href={prepHref}
                   className="shrink-0 rounded-full bg-brand px-2.5 py-1 text-[10px] font-bold text-brand-foreground"
                 >
                   📋 申請書類の準備状況の詳細
-                </button>
+                </Link>
               )}
               {/* 在留期限（太字）と、残り2ヶ月を切ったときのアラート */}
               {todo.kind === "申請準備" && (

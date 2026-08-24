@@ -6,6 +6,7 @@ import { ClipboardList } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
 import { TODO_STAGES, stageOfStatus, type TodoKind } from "@/lib/todo";
+import { prepDetailHref } from "@/lib/application-prep";
 import {
   listTodoStatusOptions,
   type TodoRow,
@@ -89,10 +90,10 @@ export function WorkerTodoLinks({ workerId }: { workerId: string }) {
           {todos.map((t) => (
             <Link
               key={t.id}
-              // 申請準備は開いた先でこの人の詳細（📋 必要な書類・準備の詳細）を自動で開く
+              // 申請準備はこの人の申請準備の詳細（📋 必要な書類・準備の詳細）のページを開く
               href={
                 t.kind === "申請準備"
-                  ? `/workers/renewals?openPrep=${workerId}`
+                  ? prepDetailHref(workerId)
                   : (KIND_HREF[t.kind] ?? "/todos")
               }
               className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-background px-3 py-2 text-xs hover:border-brand"
