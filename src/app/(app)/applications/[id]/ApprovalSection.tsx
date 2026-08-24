@@ -63,7 +63,9 @@ export function ApprovalSection({
   const [form, setForm] = useState({
     receiptScheduledOn: app.receiptScheduledOn ?? "",
     grantedCardNo: app.grantedCardNo ?? "",
-    grantedPermitDate: app.grantedPermitDate ?? "",
+    // 在留許可日は、未登録ならこのページを開いた日（今日）を初期表示する
+    // （在留カードを受け取った当日に入力することが多いため。違う日付なら直して保存）
+    grantedPermitDate: app.grantedPermitDate || todayStr(),
     grantedExpiryDate: app.grantedExpiryDate ?? "",
   });
   const [honorific, setHonorific] = useState<OrgHonorific>(app.reportOrgHonorific ?? "御中");

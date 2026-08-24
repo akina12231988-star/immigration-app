@@ -27,6 +27,22 @@ export async function insertWorkerAddress(
   return data as WorkerAddress;
 }
 
+// 住所歴の1行を修正し、実際に直った件数を返す。
+// 権限（RLS）が足りないと、エラーにならず0件のことがあるため件数で判断する
+export async function updateWorkerAddress(
+  supabase: SupabaseClient,
+  id: string,
+  patch: Partial<Pick<WorkerAddress, "moved_on" | "address" | "kind" | "note">>,
+): Promise<number> {
+  const { data, error } = await supabase
+    .from("worker_addresses")
+    .update(patch)
+    .eq("id", id)
+    .select("id");
+  if (error) throw error;
+  return ((data as { id: string }[] | null) ?? []).length;
+}
+
 // 住所歴を削除し、実際に消えた件数を返す。
 // 権限（RLS）が足りないと、エラーにならず0件のことがあるため件数で判断する
 export async function deleteWorkerAddress(
