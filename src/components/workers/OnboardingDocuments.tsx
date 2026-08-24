@@ -97,9 +97,11 @@ export function OnboardingDocuments({
       .select("my_number")
       .eq("id", workerId)
       .maybeSingle()
-      .then(({ data }) => {
-        const w = data as { my_number: string | null } | null;
-        setMyNumber(w?.my_number ?? "");
+      .then(({ data, error: err }) => {
+        // 読み込めなかったときは作成を止めない（保存時にサーバー側でも同じ確認をする）
+        if (err || !data) return;
+        const w = data as { my_number: string | null };
+        setMyNumber(w.my_number ?? "");
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workerId]);
@@ -372,6 +374,11 @@ export function OnboardingDocuments({
                       <span className="block truncate text-[11px] text-muted">
                         {hasFile ? row!.file_name : "未登録"}
                       </span>
+                      {needsMyNumber(def.key) && (
+                        <span className="block text-[11px] font-bold text-seal">
+                          個人番号が未入力のため作成できません（外国人詳細の「個人番号（マイナンバー）」を登録してください）
+                        </span>
+                      )}
                     </span>
                     <div className="flex shrink-0 items-center gap-1">
                       {busy ? (
