@@ -23,6 +23,17 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-08-24",
+    title: "「保存に失敗しました」だけで理由が分からなかった不具合を直しました",
+    where: "申請準備のTODO ＞ 📋 申請書類の準備状況の詳細",
+    href: "/workers/renewals",
+    items: [
+      "申請種別・合格証の組み合わせ・担当者などが保存できないとき、理由（どの選択肢が保存できなかったか）と、適用が必要なマイグレーション名まで表示するようにしました。",
+      "とくに合格証の組み合わせで「専門外・技能評価調書」を選ぶと保存できない場合は、0113_prep_cert_pattern_senmongai_chosho.sql が未適用です。Supabase の SQL Editor で実行してください。",
+      "保存に失敗した項目は、画面の表示も保存前の値に戻すようにしました（保存できたように見えてしまうのを防ぎます）。",
+    ],
+  },
+  {
+    date: "2026-08-24",
     title: "申請準備の詳細が1ページになり、申請する書類の添付とドラッグ＆ドロップができるようになりました",
     where: "TODO ＞ 申請準備のTODO ＞ 📋 申請書類の準備状況の詳細",
     href: "/workers/renewals",

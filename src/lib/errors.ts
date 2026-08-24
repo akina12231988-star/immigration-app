@@ -32,6 +32,16 @@ export function isMissingColumnError(err: unknown): boolean {
   return /Could not find the .* column|column .* does not exist/i.test(text);
 }
 
+// 選択肢のCHECK制約に引っかかったエラーか。
+// アプリ側で増やした選択肢（例: 合格証の組み合わせ）が、DB側の制約にまだ無いときに出る
+export function isCheckConstraintError(err: unknown): boolean {
+  const e = asPostgrestError(err);
+  if (!e) return false;
+  if (e.code === "23514") return true;
+  const text = [e.message, e.details].filter((v) => typeof v === "string").join(" ");
+  return /violates check constraint/i.test(text);
+}
+
 // 表示用のメッセージ（原因がわかるよう details・hint・code も添える）
 export function errorMessage(err: unknown, fallback = "エラーが発生しました"): string {
   if (err instanceof Error && err.message) return err.message;
@@ -55,7 +65,7 @@ export function dbErrorMessage(
   migration: string,
   fallback = "保存に失敗しました",
 ): string {
-  if (isMissingTableError(err) || isMissingColumnError(err)) {
+  if (isMissingTableError(err) || isMissingColumnError(err) || isCheckConstraintError(err)) {
     return `${errorMessage(err, fallback)}／マイグレーション ${migration} が未適用の可能性があります。Supabase の SQL Editor で適用してください。`;
   }
   return errorMessage(err, fallback);

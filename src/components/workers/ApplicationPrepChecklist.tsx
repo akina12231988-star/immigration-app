@@ -173,7 +173,8 @@ export function ApplicationPrepChecklist({
   const saveHealthOn = (v: string | null) => {
     setHealthOn(v);
     void updateWorker(createClient(), workerId, { health_check_on: v }).catch((err) =>
-      setError(err instanceof Error ? err.message : "受診日の保存に失敗しました"),
+      // Supabaseのエラーは Error ではないため、dbErrorMessage で理由まで出す
+      setError(dbErrorMessage(err, "0001_init.sql", "受診日の保存に失敗しました")),
     );
   };
   const [addresses, setAddresses] = useState<WorkerAddress[]>([]);
@@ -355,7 +356,14 @@ export function ApplicationPrepChecklist({
     try {
       await updatePrepChecklistExtras(createClient(), id, patch);
     } catch (err) {
-      setError(dbErrorMessage(err, "0105_prep_checklist_extras.sql", "保存に失敗しました"));
+      // あとから足した項目（筆頭者=0111・申請予定日=0112）は、その分の案内を出す
+      const migration =
+        "joint_lead" in patch
+          ? "0111_prep_joint_lead.sql"
+          : "planned_app_on" in patch
+            ? "0112_prep_planned_app_on.sql"
+            : "0105_prep_checklist_extras.sql";
+      setError(dbErrorMessage(err, migration, "保存に失敗しました"));
     }
   }
 
@@ -401,7 +409,7 @@ export function ApplicationPrepChecklist({
     }));
     if (save) {
       upsertPrepDocStatus(createClient(), currentId, docId, next).catch((err) =>
-        setError(err instanceof Error ? err.message : "準備状況の保存に失敗しました"),
+        setError(dbErrorMessage(err, "0045_prep_doc_statuses.sql", "準備状況の保存に失敗しました")),
       );
     }
   };
@@ -461,6 +469,24 @@ export function ApplicationPrepChecklist({
     }
   };
 
+  // 保存に失敗したときに画面を元の値へ戻すための、変更前の値
+  function currentValuesOf(
+    row: PrepChecklistMeta | null,
+    patch: Partial<PrepChecklistMeta>,
+  ): Partial<PrepChecklistMeta> {
+    if (!row) return {};
+    const keys = Object.keys(patch) as (keyof PrepChecklistMeta)[];
+    return Object.fromEntries(keys.map((k) => [k, row[k]])) as Partial<PrepChecklistMeta>;
+  }
+
+  // 保存できなかったときに案内するマイグレーション（選択肢を増やしたものを優先して案内する）
+  function metaMigrationFor(patch: Partial<PrepChecklistMeta>): string {
+    if ("cert_pattern" in patch) return "0113_prep_cert_pattern_senmongai_chosho.sql";
+    if ("app_type" in patch) return "0046_prep_tokutei_katsudo.sql";
+    if ("tantou" in patch) return "0044_prep_checklist_tantou.sql";
+    return "0036_application_prep_checklist.sql";
+  }
+
   async function patchMeta(patch: Partial<PrepChecklistMeta>) {
     if (selected == null || current == null) return;
     const next: PrepChecklistMeta = {
@@ -478,7 +504,12 @@ export function ApplicationPrepChecklist({
     try {
       await upsertPrepChecklist(createClient(), workerId, selected, next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存に失敗しました");
+      // 保存できなかった理由（選択肢がDB側の制約に無い・列が無い など）と、
+      // 適用すべきマイグレーションまで出す。失敗した項目は画面も元に戻す
+      setLists((ls) =>
+        ls.map((l) => (l.todo_no === selected ? { ...l, ...currentValuesOf(current, patch) } : l)),
+      );
+      setError(dbErrorMessage(err, metaMigrationFor(patch), "保存に失敗しました"));
     }
   }
 

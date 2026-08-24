@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   dbErrorMessage,
   errorMessage,
+  isCheckConstraintError,
   isMissingColumnError,
   isMissingTableError,
 } from "./errors";
@@ -73,5 +74,36 @@ describe("dbErrorMessage", () => {
 
   it("それ以外はメッセージのみ", () => {
     expect(dbErrorMessage(new Error("権限がありません"), "0061")).toBe("権限がありません");
+  });
+});
+
+describe("isCheckConstraintError", () => {
+  // アプリで増やした選択肢が、DB側の CHECK 制約にまだ無いときのエラー
+  it("CHECK制約違反を見分ける", () => {
+    expect(isCheckConstraintError({ code: "23514", message: "violates check constraint" })).toBe(
+      true,
+    );
+    expect(
+      isCheckConstraintError({
+        message:
+          'new row for relation "application_prep_checklists" violates check constraint "application_prep_checklists_cert_pattern_check"',
+      }),
+    ).toBe(true);
+    expect(isCheckConstraintError({ code: "23505", message: "duplicate key" })).toBe(false);
+    expect(isCheckConstraintError(new Error("保存に失敗"))).toBe(false);
+  });
+
+  it("選択肢が保存できないときも、適用するマイグレーションを案内する", () => {
+    const msg = dbErrorMessage(
+      {
+        code: "23514",
+        message:
+          'new row for relation "application_prep_checklists" violates check constraint "application_prep_checklists_cert_pattern_check"',
+      },
+      "0113_prep_cert_pattern_senmongai_chosho.sql",
+    );
+    expect(msg).toContain("check constraint");
+    expect(msg).toContain("0113_prep_cert_pattern_senmongai_chosho.sql");
+    expect(msg).toContain("未適用");
   });
 });
