@@ -453,10 +453,30 @@ export function TodosClient({
     const today = todayStr();
     return kindTodos
       .filter((t) => stageOfStatus(t.status, kindOptions) !== "完了")
-      .map((t) => ({ todo: t, expiry: t.worker_id ? (expiryByWorker[t.worker_id] ?? "") : "" }))
+      .map((t) => ({
+        todo: t,
+        expiry: t.worker_id ? (expiryByWorker[t.worker_id] ?? "") : "",
+        tantou: tantouOf(t),
+      }))
       .filter((r) => r.expiry && isExpiryWithinTwoMonths(r.expiry, today))
       .sort((a, b) => a.expiry.localeCompare(b.expiry));
-  }, [kind, kindTodos, kindOptions, expiryByWorker]);
+    // tantouOf は prepTantou を読むだけの関数（依存はそちらに含めている）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kind, kindTodos, kindOptions, expiryByWorker, prepTantou]);
+
+  // 在留期限アラートの担当者ごとのまとめ（同じ担当者の人数が多い順）。担当者未定はまとめて最後に出す
+  const expiryAlertsByTantou = useMemo(() => {
+    const groups = new Map<string, typeof expiryAlerts>();
+    for (const r of expiryAlerts) {
+      const key = r.tantou || "（担当者未定）";
+      groups.set(key, [...(groups.get(key) ?? []), r]);
+    }
+    return [...groups.entries()].sort((a, b) => {
+      if (a[0] === "（担当者未定）") return 1;
+      if (b[0] === "（担当者未定）") return -1;
+      return b[1].length - a[1].length;
+    });
+  }, [expiryAlerts]);
 
   const run = async (fn: () => Promise<void>, migration = "0102_todos.sql") => {
     try {
@@ -695,14 +715,24 @@ export function TodosClient({
             <TriangleAlert size={15} />
             在留期限まで2ヶ月を切っています（{expiryAlerts.length}件）— 申請を急いでください
           </p>
-          <ul className="mt-1 space-y-0.5 pl-6 text-xs text-seal">
-            {expiryAlerts.map(({ todo: t, expiry }) => (
-              <li key={t.id}>
-                {displayTodoNo(t.todo_no)}　{t.worker_name ?? "（外国人）"}　在留期限 {expiry}（
-                {remainingLabel(expiry, todayStr())}）
-              </li>
+          {/* 担当者ごとにまとめて表示（同じ担当者の人が多い順。担当者未定は最後） */}
+          <div className="mt-1.5 space-y-2">
+            {expiryAlertsByTantou.map(([tantou, rows]) => (
+              <div key={tantou}>
+                <p className="text-xs font-bold text-seal">
+                  {tantou}（{rows.length}件）
+                </p>
+                <ul className="space-y-0.5 pl-6 text-xs text-seal">
+                  {rows.map(({ todo: t, expiry }) => (
+                    <li key={t.id}>
+                      {displayTodoNo(t.todo_no)}　{t.worker_name ?? "（外国人）"}　在留期限 {expiry}（
+                      {remainingLabel(expiry, todayStr())}）
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ))}
-          </ul>
+          </div>
         </div>
       )}
 
