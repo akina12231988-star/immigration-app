@@ -13,6 +13,7 @@ import {
   Search,
   SearchX,
 } from "lucide-react";
+import { FileDropArea } from "@/components/ui/FileDropArea";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -112,9 +113,16 @@ export function NoticeSearch() {
       <section>
         <h2 className="mb-2 text-sm font-bold text-muted">① 通知書の画像（任意）</h2>
         {!noticePreview ? (
-          <Card className="space-y-3 p-4">
+          <Card className="p-0">
+            <FileDropArea
+              onFiles={(files) => handleFile(files[0])}
+              className="space-y-3 rounded-2xl p-4"
+            >
             <p className="text-sm text-muted">
               届いた通知書ハガキを撮影・選択しておくと、検索でヒットした人にそのまま登録できます
+              <span className="mt-1 block text-[11px]">
+                パソコンからは、この枠に画像をドラッグ＆ドロップしても取り込めます。
+              </span>
             </p>
             <div className="grid grid-cols-2 gap-3">
               <Button
@@ -132,6 +140,7 @@ export function NoticeSearch() {
                 画像を選択
               </Button>
             </div>
+            </FileDropArea>
           </Card>
         ) : (
           <Card className="overflow-hidden p-3">

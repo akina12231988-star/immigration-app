@@ -7,6 +7,7 @@ import {
   type InvoiceCheckResult,
   type PdfTextLine,
 } from "@/lib/invoice-pdf-check";
+import { FileDropArea } from "@/components/ui/FileDropArea";
 import type { MonthlyBillingOrg } from "@/lib/monthly-billing";
 import { formatSalesYen } from "@/lib/sales";
 import { downloadBlob } from "@/lib/xlsx-export";
@@ -148,16 +149,27 @@ export function InvoicePdfCheck({
           if (f) void onFile(f);
         }}
       />
-      <button
-        type="button"
+      {/* ボタンからでも、この枠にPDFをドラッグ＆ドロップしても照合できる */}
+      <FileDropArea
+        onFiles={(files) => {
+          const f = files[0];
+          if (f) void onFile(f);
+        }}
         disabled={busy}
-        onClick={() => inputRef.current?.click()}
-        title="freeeの請求書PDFをアップロードして名簿と照合し、支援代・サポート代の行に名簿のNo.を書き込んだPDFを作ります"
-        className="flex min-h-[36px] items-center gap-1 rounded-lg border border-border px-2.5 text-xs font-bold text-brand disabled:opacity-50"
+        title="請求書PDFをここにドロップしても照合できます"
+        className="rounded-lg"
       >
-        {busy ? <Loader2 size={14} className="animate-spin" /> : <FileSearch size={14} />}
-        請求書と照合
-      </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => inputRef.current?.click()}
+          title="freeeの請求書PDFをアップロード（この枠にドラッグ＆ドロップも可）して名簿と照合し、支援代・サポート代の行に名簿のNo.を書き込んだPDFを作ります"
+          className="flex min-h-[36px] items-center gap-1 rounded-lg border border-border px-2.5 text-xs font-bold text-brand disabled:opacity-50"
+        >
+          {busy ? <Loader2 size={14} className="animate-spin" /> : <FileSearch size={14} />}
+          請求書と照合
+        </button>
+      </FileDropArea>
 
       {(error || result) && (
         <div className="w-full rounded-lg border border-border bg-surface p-2.5 text-xs">

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Eye, Loader2, Plus, Trash2, Upload } from "lucide-react";
+import { FileDropArea } from "@/components/ui/FileDropArea";
 import { createClient } from "@/lib/supabase/client";
 import { compressImage } from "@/lib/image-compress";
 import { listTodoFiles } from "@/lib/supabase/queries/todo-files";
@@ -290,15 +291,25 @@ function TodoFileAttachments({
       ))}
       {canEdit && (
         <>
-          <button
-            type="button"
-            onClick={() => inputRef.current?.click()}
+          {/* ボタンからでも、枠にドラッグ＆ドロップでも添付できる */}
+          <FileDropArea
+            onFiles={(files) => void handleFiles(files)}
             disabled={busy}
-            className="flex items-center gap-1.5 self-start rounded-lg border border-dashed border-brand px-3 py-2 text-xs font-bold text-brand disabled:opacity-50"
+            className="flex flex-col gap-1 rounded-lg border border-dashed border-border p-2"
           >
-            {busy ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
-            {busy ? "アップロード中…" : "発行されたものを添付（PDF・画像）"}
-          </button>
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              disabled={busy}
+              className="flex items-center gap-1.5 self-start rounded-lg border border-dashed border-brand px-3 py-2 text-xs font-bold text-brand disabled:opacity-50"
+            >
+              {busy ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+              {busy ? "アップロード中…" : "発行されたものを添付（PDF・画像）"}
+            </button>
+            <p className="text-[11px] text-muted">
+              PDF・画像をこの枠にドラッグ＆ドロップしても添付できます。
+            </p>
+          </FileDropArea>
           <input
             ref={inputRef}
             type="file"

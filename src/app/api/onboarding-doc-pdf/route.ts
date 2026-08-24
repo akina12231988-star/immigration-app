@@ -54,17 +54,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "外国人が見つかりません" }, { status: 404 });
     }
 
-    // 扶養控除等申告書・労働者名簿はどちらも個人番号を書く書類のため、
-    // 未入力のまま作ると空欄のPDFができてしまう。作らずに理由を返す
-    if (!(worker.my_number ?? "").trim()) {
-      const label = kind === "fuyokojo" ? "扶養控除等申告書" : "労働者名簿";
-      return NextResponse.json(
-        {
-          error: `個人番号が未入力のため「${label}」は添付できません。外国人詳細の「個人番号（マイナンバー）」を登録してから作成してください。`,
-        },
-        { status: 400 },
-      );
-    }
+    // 扶養控除等申告書・労働者名簿はどちらも個人番号を書く書類だが、
+    // 個人番号だけ空欄で先に発行し、あとから本人に記入してもらう運用もあるため、
+    // 未入力でも作成はできるようにしている（画面のプレビューで空欄だと分かるようにする）
 
     if (kind === "fuyokojo") {
       const [template, font] = await Promise.all([

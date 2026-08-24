@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Check, ClipboardList, Copy, Plus, Settings2, Trash2, TriangleAlert } from "lucide-react";
+import { FileDropArea } from "@/components/ui/FileDropArea";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Combobox } from "@/components/ui/Combobox";
@@ -1565,13 +1566,22 @@ function CorrectionSection({ todoId, canEdit }: { todoId: string; canEdit: boole
               placeholder="訂正内容"
               className="w-full rounded-lg border border-border bg-surface px-2 py-1.5 text-xs"
             />
-            <div className="flex flex-wrap items-center gap-2">
+            {/* ファイルを選ぶか、この枠にドラッグ＆ドロップして添付する */}
+            <FileDropArea
+              onFiles={(files) => setFile(files[0] ?? null)}
+              className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-border p-1.5"
+            >
               <input
                 type="file"
                 accept="image/*,application/pdf"
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                 className="min-w-0 flex-1 text-[11px]"
               />
+              {file && (
+                <span className="max-w-full truncate text-[11px] font-bold text-brand">
+                  選択中: {file.name}
+                </span>
+              )}
               <button
                 type="button"
                 disabled={busy}
@@ -1581,7 +1591,7 @@ function CorrectionSection({ todoId, canEdit }: { todoId: string; canEdit: boole
                 <Plus size={12} />
                 {busy ? "保存中…" : "訂正記録を追加"}
               </button>
-            </div>
+            </FileDropArea>
           </div>
         )}
       </div>

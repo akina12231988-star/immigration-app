@@ -13,6 +13,7 @@ import {
   UserPlus,
   UserRound,
 } from "lucide-react";
+import { FileDropArea } from "@/components/ui/FileDropArea";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { useApplications } from "@/lib/application-store";
@@ -341,9 +342,16 @@ export function ReceiptRegistrationForm({
         <section>
           <h2 className="mb-2 text-sm font-bold text-muted">① 受付票の画像</h2>
           {!imagePreview ? (
-            <Card className="flex flex-col items-center gap-3 p-6 text-center">
+            <Card className="p-0">
+              <FileDropArea
+                onFiles={(files) => handleFile(files[0])}
+                className="flex flex-col items-center gap-3 rounded-2xl p-6 text-center"
+              >
               <p className="text-sm text-muted">
                 入管窓口で受け取った受付票を撮影するか、画像を選択してください
+                <span className="mt-1 block text-[11px]">
+                  パソコンからは、この枠に画像をドラッグ＆ドロップしても取り込めます。
+                </span>
               </p>
               <div className="grid w-full max-w-md grid-cols-2 gap-3">
                 <Button variant="primary" icon={<Camera size={19} />} onClick={() => cameraInputRef.current?.click()}>
@@ -359,6 +367,7 @@ export function ReceiptRegistrationForm({
                   画像なしで手入力する
                 </button>
               )}
+              </FileDropArea>
             </Card>
           ) : (
             <Card className="overflow-hidden p-3">

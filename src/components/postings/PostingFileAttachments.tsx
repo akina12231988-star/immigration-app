@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Eye, Loader2, Trash2, Upload } from "lucide-react";
+import { FileDropArea } from "@/components/ui/FileDropArea";
 import { createClient } from "@/lib/supabase/client";
 import { compressImage } from "@/lib/image-compress";
 import { listPostingFiles } from "@/lib/supabase/queries/posting-files";
@@ -118,15 +119,25 @@ export function PostingFileAttachments({
       ))}
       {canEdit && (
         <>
-          <button
-            type="button"
-            onClick={() => inputRef.current?.click()}
+          {/* ボタンからでも、枠にドラッグ＆ドロップでも添付できる */}
+          <FileDropArea
+            onFiles={(files) => void handleFiles(files)}
             disabled={busy}
-            className="flex items-center gap-1.5 self-start rounded-lg border border-dashed border-brand px-3 py-2 text-xs font-bold text-brand disabled:opacity-50"
+            className="flex flex-col gap-1 rounded-lg border border-dashed border-border p-2"
           >
-            {busy ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
-            {busy ? "アップロード中…" : addLabel}
-          </button>
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              disabled={busy}
+              className="flex items-center gap-1.5 self-start rounded-lg border border-dashed border-brand px-3 py-2 text-xs font-bold text-brand disabled:opacity-50"
+            >
+              {busy ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+              {busy ? "アップロード中…" : addLabel}
+            </button>
+            <p className="text-[11px] text-muted">
+              画像・PDFをこの枠にドラッグ＆ドロップしても添付できます。
+            </p>
+          </FileDropArea>
           <input
             ref={inputRef}
             type="file"

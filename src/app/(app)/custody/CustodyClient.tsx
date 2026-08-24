@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Archive, Download, FileUp, Printer, QrCode, Stamp, Tag } from "lucide-react";
+import { FileDropArea } from "@/components/ui/FileDropArea";
 import { Card } from "@/components/ui/Card";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -737,9 +738,17 @@ function ImportModal({
           預かり証発行ツール（azk-receipt）の「バックアップ保存」で出力したJSONファイルを選ぶと、
           保管番号ごとの預かり記録をこの台帳へ取り込みます。外国人は在留カード番号（無ければ氏名）で照合します。
         </p>
+        <FileDropArea
+          onFiles={(files) => {
+            const f = files[0];
+            if (f) void handleFile(f);
+          }}
+          disabled={busy}
+          className="rounded-xl"
+        >
         <label className="flex min-h-[52px] cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border p-4 text-sm font-bold text-brand">
           <FileUp size={18} />
-          {busy ? "取込中…" : "バックアップJSONを選択"}
+          {busy ? "取込中…" : "バックアップJSONを選択（ドラッグ＆ドロップも可）"}
           <input
             type="file"
             accept=".json,application/json"
@@ -752,6 +761,7 @@ function ImportModal({
             }}
           />
         </label>
+        </FileDropArea>
         {result.length > 0 && (
           <div className="max-h-60 overflow-y-auto rounded-xl bg-background p-3">
             {result.map((line, i) => (

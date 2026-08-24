@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, FileJson, TriangleAlert, Upload } from "lucide-react";
+import { FileDropArea } from "@/components/ui/FileDropArea";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
@@ -83,9 +84,18 @@ export function ImportClient() {
               外国人ID（Notionのページ）で突き合わせるため、同じファイルを取り込んでも重複しません。
             </span>
           </Card>
-          <Button fullWidth icon={<Upload size={19} />} onClick={() => inputRef.current?.click()}>
-            CSV / JSON ファイルを選択
-          </Button>
+          {/* ボタンからでも、枠にドラッグ＆ドロップでも取り込める */}
+          <FileDropArea
+            onFiles={(files) => handleFile(files[0])}
+            className="flex flex-col gap-2 rounded-xl border-2 border-dashed border-border p-3"
+          >
+            <Button fullWidth icon={<Upload size={19} />} onClick={() => inputRef.current?.click()}>
+              CSV / JSON ファイルを選択
+            </Button>
+            <p className="text-center text-[11px] text-muted">
+              CSV・JSONをこの枠にドラッグ＆ドロップしても取り込めます。
+            </p>
+          </FileDropArea>
         </>
       )}
 
