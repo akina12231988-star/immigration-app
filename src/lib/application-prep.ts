@@ -378,15 +378,14 @@ export interface PrepDocStatus {
   fileSatisfied: boolean; // 添付（登録）があるか
 }
 
-// 書類の完了判定: 添付があり、かつ準備状況が完了の選択肢になっていること。
-// 「発行できない」等の noFile な完了選択肢は添付なしで完了扱い。
+// 書類の完了判定: 準備状況が完了の選択肢になっていること。
+// 紙で受け取っている・発行できなかった等、アプリに添付が無くても完了にできる
+// （添付が無いものは画面で「完了（添付なし）」と分かるように出す）。
 // ステータス選択肢の無い書類（合格証など）は添付のみで完了。
 export function isDocComplete(docId: string, fileSatisfied: boolean, status: string): boolean {
   const options = PREP_DOC_STATUS_OPTIONS[docId];
   if (!options) return fileSatisfied;
-  const opt = options.find((o) => o.value === status);
-  if (!opt?.done) return false;
-  return opt.noFile ? true : fileSatisfied;
+  return !!options.find((o) => o.value === status)?.done;
 }
 
 // 必要書類それぞれの状態と、不足件数を返す。
@@ -442,7 +441,7 @@ export type PrepStatusExtra =
 export interface PrepDocStatusOption {
   value: string; // 保存値＝表示ラベル
   done: boolean; // 完了扱いの選択肢か
-  noFile?: boolean; // true: 発行できない等でファイル添付なしでも完了扱いにする
+  noFile?: boolean; // true: 発行できない等、そもそもファイルが出ない選択肢（添付を促さない）
   appTypes?: PrepAppType[]; // この申請種別のときだけ選択肢に出す（省略 = 全種別）
   extras?: PrepStatusExtra[];
 }

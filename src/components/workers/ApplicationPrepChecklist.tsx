@@ -1630,7 +1630,13 @@ function DocRow({
                   : "bg-seal/10 text-seal"
               }`}
             >
-              {satisfied ? "完了" : "不足"}
+              {/* 準備状況が完了なら完了。アプリにファイルが無いものはその旨も出す
+                  （発行できない等、そもそもファイルが出ない選択肢は「完了」のまま） */}
+              {satisfied
+                ? fileSatisfied || selectedOption?.noFile
+                  ? "完了"
+                  : "完了（添付なし）"
+                : "不足"}
             </span>
             {!satisfied && fileSatisfied && (
               <span className="rounded-full bg-background px-1.5 py-0.5 text-[10px] font-bold text-muted ring-1 ring-border">
