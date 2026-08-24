@@ -183,7 +183,7 @@ export function CertExamList({
     } catch (err) {
       const migration =
         "cert_nihongo_level" in patch
-          ? "0115_worker_cert_exams.sql"
+          ? "0116_cert_nihongo_level.sql"
           : "0114_cert_exam_name_location.sql";
       setError(dbErrorMessage(err, migration, "保存に失敗しました"));
     } finally {
