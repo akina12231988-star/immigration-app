@@ -2,6 +2,7 @@
 // スキーマ確定後は `supabase gen types typescript` による自動生成へ置き換える。
 
 import type { VisaType } from "@/types/ssw";
+import type { WorkerCertExam } from "@/lib/cert-exam";
 
 export type StaffRole = "admin" | "staff" | "viewer";
 
@@ -297,6 +298,9 @@ export interface DependentRemittance {
   amount: string; // 金額（入力したままの文字列）
 }
 
+// 合格証の受験情報の1件分（workers.cert_exams jsonb に配列で保存。詳細は lib/cert-exam.ts）
+export type { WorkerCertExam };
+
 // 所属機関別の雇用開始日の1件分（workers.org_employment_starts jsonb に配列で保存）。
 // 転職すると機関ごとに雇用開始日が異なるため機関別に記録する
 export interface WorkerOrgEmploymentStart {
@@ -373,11 +377,13 @@ export interface Worker {
   jisshu2_proof?: string; // 良好修了の証明（'' / 実技試験の合格 / 書面による証明。0110）
   ssw2_exam: string; // 特定技能2号の合格試験名（入力があれば2号合格として扱う）
   other_qualifications: string; // その他の資格・合格名
-  // 日本語の合格証・専門外の合格証: 受験した試験名・受験地（0114）
+  // 日本語の合格証・専門外の合格証: 1件目の受験した試験名・受験地（0114）とレベル（0115）
   cert_nihongo_name?: string; // 例:「日本語能力試験　JLPT」
   cert_nihongo_location?: string; // 「日本国内」、または海外の場合はその国名
+  cert_nihongo_level?: string; // 日本語の合格証のレベル（N4/N3/N2/N1）
   cert_senmongai_name?: string;
   cert_senmongai_location?: string;
+  cert_exams?: WorkerCertExam[]; // 2件目以降の受験情報（0115）
   my_number: string; // 個人番号（マイナンバー）
   employment_insurance_no: string; // 雇用保険被保険者番号
   pension_no: string; // 基礎年金番号

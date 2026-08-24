@@ -58,6 +58,7 @@ import {
   SavedPlanDatesSection,
 } from "@/components/workers/ApplicationPrepExtras";
 import { dbErrorMessage } from "@/lib/errors";
+import { isCertDocKeyOf } from "@/lib/cert-exam";
 import { listActiveCustodyNoByWorker } from "@/lib/supabase/queries/custody";
 import { formatStorageNo } from "@/lib/custody";
 import { getHealthCheckDetail } from "@/lib/supabase/queries/health-check";
@@ -1122,7 +1123,8 @@ export function ApplicationPrepChecklist({
                   ["技能評価調書", "prep_hyoka_chosho"],
                 ] as const
               ).map(([certLabel, certKey]) => {
-                const has = filledDocKeys.has(certKey);
+                // 合格証は受験情報ごとに分けて添付できるため、枝番のキーも登録済みとして数える
+                const has = [...filledDocKeys].some((k) => isCertDocKeyOf(certKey, k));
                 return (
                   <span
                     key={certKey}
@@ -1156,7 +1158,9 @@ export function ApplicationPrepChecklist({
                 ] as const
               ).map(([certLabel, certKey]) => {
                 const certFiles = docs.filter(
-                  (d) => d.storage_path && isPrepPageKeyOf(certKey, d.doc_key),
+                  (d) =>
+                    d.storage_path &&
+                    (isPrepPageKeyOf(certKey, d.doc_key) || isCertDocKeyOf(certKey, d.doc_key)),
                 );
                 return (
                   <div key={certKey} className="flex flex-wrap items-center gap-1.5 text-[11px]">
