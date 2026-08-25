@@ -14,6 +14,13 @@ import { Card } from "@/components/ui/Card";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { uploadWorkerDoc } from "@/lib/worker-docs";
 import { messengerWebUrl } from "@/lib/messenger-link";
+import { createClient } from "@/lib/supabase/client";
+import { updateWorker } from "@/lib/supabase/queries/workers";
+import {
+  contractDatesForOrg,
+  normalizeOrgEmploymentStarts,
+  upsertOrgContractDates,
+} from "@/lib/org-employment";
 import {
   deleteWorkerDoc,
   listWorkerDocs,
@@ -65,6 +72,12 @@ export function WorkerContracts({
 }) {
   const [docs, setDocs] = useState<WorkerDocView[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // 雇用契約日・雇用条件書の作成日（所属機関別。org_employment_starts の中に持つ）
+  const [dateRows, setDateRows] = useState(() =>
+    normalizeOrgEmploymentStarts(orgEmploymentStarts),
+  );
+  const [dateBusy, setDateBusy] = useState(false);
+  const [dateSaved, setDateSaved] = useState(true);
 
   const load = () => {
     listWorkerDocs(workerId).then(setDocs).catch(() => undefined);
@@ -114,6 +127,26 @@ export function WorkerContracts({
   };
 
   const selectedOrgName = orgName(selectedOrgId);
+
+  // 表示中の会社の契約書の日付
+  const dates = contractDatesForOrg(dateRows, selectedOrgId);
+  const setDate = (key: "contract_on" | "conditions_on", value: string) => {
+    if (!selectedOrgId) return;
+    setDateRows((rows) => upsertOrgContractDates(rows, selectedOrgId, { [key]: value }));
+    setDateSaved(false);
+  };
+  const saveDates = async () => {
+    setDateBusy(true);
+    setError(null);
+    try {
+      await updateWorker(createClient(), workerId, { org_employment_starts: dateRows });
+      setDateSaved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "日付の保存に失敗しました");
+    } finally {
+      setDateBusy(false);
+    }
+  };
 
   // 登録済みの書類を別の会社に付け替える（会社を間違えて登録したときの訂正）
   const [reassigning, setReassigning] = useState<string | null>(null);
@@ -233,6 +266,56 @@ export function WorkerContracts({
                 />
               ))}
             </div>
+
+            {/* 契約書の日付（添付の下）。求職一覧の応募のカードにも出る */}
+            {selectedOrgId && (
+              <div className="mt-3 rounded-xl border border-border bg-background p-3">
+                <p className="mb-1 text-xs font-bold text-muted">
+                  契約書の日付（{selectedOrgName}）
+                </p>
+                <p className="mb-2 text-[11px] leading-relaxed text-muted">
+                  雇用契約日と雇用条件書の作成日を入れておくと、求職一覧の応募のカードにも出ます。
+                  所属機関ごとに持つので、転職しても混ざりません。
+                </p>
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] font-bold text-muted">雇用契約日</span>
+                    <input
+                      type="date"
+                      value={dates.contract_on}
+                      onChange={(e) => setDate("contract_on", e.target.value)}
+                      disabled={!canEdit}
+                      className="min-h-[40px] w-full rounded-lg border border-border bg-surface px-2.5 text-sm focus:border-brand focus:outline-none disabled:opacity-60"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] font-bold text-muted">雇用条件書の作成日</span>
+                    <input
+                      type="date"
+                      value={dates.conditions_on}
+                      onChange={(e) => setDate("conditions_on", e.target.value)}
+                      disabled={!canEdit}
+                      className="min-h-[40px] w-full rounded-lg border border-border bg-surface px-2.5 text-sm focus:border-brand focus:outline-none disabled:opacity-60"
+                    />
+                  </label>
+                </div>
+                {canEdit && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void saveDates()}
+                      disabled={dateBusy || dateSaved}
+                      className="min-h-[36px] rounded-lg bg-brand px-4 text-xs font-bold text-brand-foreground disabled:opacity-50"
+                    >
+                      {dateBusy ? "保存中…" : dateSaved ? "保存済み" : "日付を保存"}
+                    </button>
+                    {!dateSaved && (
+                      <span className="text-[11px] text-seal">保存されていない変更があります</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* 一旦、日付なしで印鑑・署名をもらってきた版。正式な日付入りは上に登録する。
                 外国人詳細では出さない（showUndated=false。申請準備の詳細で保管する） */}

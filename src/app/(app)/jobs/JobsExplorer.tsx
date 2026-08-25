@@ -68,6 +68,7 @@ import type { PostingWithStats } from "@/lib/supabase/queries/postings";
 import type { Organization } from "@/types/db";
 import { formatAmountInput } from "@/lib/amount-format";
 import { checkLedgerDates } from "@/lib/ledger-date-check";
+import { contractDatesForOrg, normalizeOrgEmploymentStarts } from "@/lib/org-employment";
 
 // 絞り込み。採否のほかに「雇用開始済み」（雇用開始日が入っている人）と
 // 「台帳未追加」（採用なのに紹介手数料台帳へ入れていない人）でも絞れる
@@ -193,6 +194,12 @@ export function JobsExplorer({
   const workerById = useMemo(() => new Map(workerList.map((w) => [w.id, w])), [workerList]);
   const startedOn = (a: ApplicationWithRefs) =>
     employmentStartAt(workerById.get(a.worker_id), a.organization_id);
+  // 応募先の会社の契約書の日付（外国人詳細の「雇用契約書・雇用条件書」で入れる）
+  const contractDates = (a: ApplicationWithRefs) =>
+    contractDatesForOrg(
+      normalizeOrgEmploymentStarts(workerById.get(a.worker_id)?.org_employment_starts),
+      a.organization_id,
+    );
   const isEmployed = (a: ApplicationWithRefs) =>
     hasEmploymentStarted(workerById.get(a.worker_id), a.organization_id);
 
@@ -614,6 +621,9 @@ export function JobsExplorer({
                         <CalendarClock size={12} />
                         応募 {a.applied_on}
                         {a.result_on && ` ・ 結果 ${a.result_on}`}
+                        {contractDates(a).contract_on && ` ・ 契約 ${contractDates(a).contract_on}`}
+                        {contractDates(a).conditions_on &&
+                          ` ・ 条件書 ${contractDates(a).conditions_on}`}
                         {startedOn(a) && ` ・ 雇用開始 ${startedOn(a)}`}
                       </p>
                     </Link>
