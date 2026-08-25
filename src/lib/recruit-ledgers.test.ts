@@ -106,6 +106,16 @@ describe("buildPostingLedgerSheet", () => {
     expect(c[13]).toBe("不採用");
     expect(c[14]).toBe(""); // 不採用に採用年月日は無い
   });
+  it("omitNote を付けると「備考」の列を出さない（労働局に出す分）", () => {
+    const entries = [{ ...postingBase, applications: [] }];
+    const full = buildPostingLedgerSheet(entries);
+    const cut = buildPostingLedgerSheet(entries, { omitNote: true });
+    expect(full.rows[1].at(-1)).toBe("備考");
+    expect(cut.rows[1].at(-1)).not.toBe("備考");
+    expect(cut.rows[1]).toHaveLength((full.rows[1] as string[]).length - 1);
+    expect(cut.rows[2]).toHaveLength((full.rows[2] as string[]).length - 1);
+    expect(cut.columnWidths).toHaveLength((full.columnWidths ?? []).length - 1);
+  });
 });
 
 describe("buildSeekerLedgerSheet", () => {

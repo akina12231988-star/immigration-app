@@ -90,11 +90,20 @@ const POSTING_HEADER = [
   "備考",
 ];
 
-export function buildPostingLedgerSheet(entries: PostingLedgerEntry[]): SheetSpec {
-  const rows: CellValue[][] = [
-    ["求人管理簿", ...Array(POSTING_HEADER.length - 2).fill(null), "[有効期間の終了後２年間保存]"],
-    POSTING_HEADER,
-  ];
+const POSTING_WIDTHS = [12, 24, 28, 22, 12, 12, 7, 14, 22, 14, 14, 12, 18, 9, 12, 10, 14, 30, 20];
+
+// 帳簿の出し方。備考は社内の覚え書きが入るため、労働局に出す分では外せるようにする
+export interface LedgerTableOptions {
+  omitNote?: boolean; // true なら「備考」の列を出さない
+}
+
+// 求人管理簿の表（見出しと明細）。Excelにも印刷用の画面にも同じものを使う
+export function postingLedgerTable(
+  entries: PostingLedgerEntry[],
+  opts: LedgerTableOptions = {},
+): { header: string[]; rows: CellValue[][]; widths: number[] } {
+  const cut = (row: CellValue[]) => (opts.omitNote ? row.slice(0, -1) : row);
+  const rows: CellValue[][] = [];
   for (const p of entries) {
     const base: CellValue[] = [
       p.acceptance_no,
@@ -111,30 +120,48 @@ export function buildPostingLedgerSheet(entries: PostingLedgerEntry[]): SheetSpe
     ];
     // 紹介実績が無い求人も1行出す（取扱状況は空欄）
     if (p.applications.length === 0) {
-      rows.push([...base, "", "", "", "", "", "", "", p.note]);
+      rows.push(cut([...base, "", "", "", "", "", "", "", p.note]));
       continue;
     }
     for (const a of p.applications) {
       const hiredOn = a.result === "採用" ? (a.result_on ?? "") : "";
       const term = a.employment_term ?? "";
-      rows.push([
-        ...base,
-        a.applied_on,
-        a.worker_name,
-        a.result,
-        hiredOn,
-        term,
-        indefiniteOnly(term, hiredOn ? noPoachingUntil(hiredOn) : ""),
-        indefiniteOnly(term, separationSummary(a)),
-        p.note,
-      ]);
+      rows.push(
+        cut([
+          ...base,
+          a.applied_on,
+          a.worker_name,
+          a.result,
+          hiredOn,
+          term,
+          indefiniteOnly(term, hiredOn ? noPoachingUntil(hiredOn) : ""),
+          indefiniteOnly(term, separationSummary(a)),
+          p.note,
+        ]),
+      );
     }
   }
   return {
-    name: "求人管理簿",
+    header: opts.omitNote ? POSTING_HEADER.slice(0, -1) : POSTING_HEADER,
     rows,
+    widths: opts.omitNote ? POSTING_WIDTHS.slice(0, -1) : POSTING_WIDTHS,
+  };
+}
+
+export function buildPostingLedgerSheet(
+  entries: PostingLedgerEntry[],
+  opts: LedgerTableOptions = {},
+): SheetSpec {
+  const table = postingLedgerTable(entries, opts);
+  return {
+    name: "求人管理簿",
+    rows: [
+      ["求人管理簿", ...Array(table.header.length - 2).fill(null), "[有効期間の終了後２年間保存]"],
+      table.header,
+      ...table.rows,
+    ],
     headerRows: 2,
-    columnWidths: [12, 24, 28, 22, 12, 12, 7, 14, 22, 14, 14, 12, 18, 9, 12, 10, 14, 30, 20],
+    columnWidths: table.widths,
   };
 }
 
@@ -183,11 +210,15 @@ const SEEKER_HEADER = [
   "備考",
 ];
 
-export function buildSeekerLedgerSheet(entries: SeekerLedgerEntry[]): SheetSpec {
-  const rows: CellValue[][] = [
-    ["求職管理簿", ...Array(SEEKER_HEADER.length - 2).fill(null), "[有効期間の終了後２年間保存]"],
-    SEEKER_HEADER,
-  ];
+const SEEKER_WIDTHS = [12, 20, 30, 12, 14, 12, 12, 12, 12, 24, 9, 12, 10, 14, 30, 20];
+
+// 求職管理簿の表（見出しと明細）。Excelにも印刷用の画面にも同じものを使う
+export function seekerLedgerTable(
+  entries: SeekerLedgerEntry[],
+  opts: LedgerTableOptions = {},
+): { header: string[]; rows: CellValue[][]; widths: number[] } {
+  const cut = (row: CellValue[]) => (opts.omitNote ? row.slice(0, -1) : row);
+  const rows: CellValue[][] = [];
   for (const s of entries) {
     const base: CellValue[] = [
       s.jobseeker_no,
@@ -199,31 +230,49 @@ export function buildSeekerLedgerSheet(entries: SeekerLedgerEntry[]): SheetSpec 
       s.valid_until,
     ];
     if (s.applications.length === 0) {
-      rows.push([...base, "", "", "", "", "", "", "", "", s.note]);
+      rows.push(cut([...base, "", "", "", "", "", "", "", "", s.note]));
       continue;
     }
     for (const a of s.applications) {
       const hiredOn = a.result === "採用" ? (a.result_on ?? "") : "";
       const term = a.employment_term ?? "";
-      rows.push([
-        ...base,
-        a.applied_on,
-        a.acceptance_no,
-        a.employer_name,
-        a.result,
-        hiredOn,
-        term,
-        indefiniteOnly(term, hiredOn ? noPoachingUntil(hiredOn) : ""),
-        indefiniteOnly(term, separationSummary(a)),
-        s.note,
-      ]);
+      rows.push(
+        cut([
+          ...base,
+          a.applied_on,
+          a.acceptance_no,
+          a.employer_name,
+          a.result,
+          hiredOn,
+          term,
+          indefiniteOnly(term, hiredOn ? noPoachingUntil(hiredOn) : ""),
+          indefiniteOnly(term, separationSummary(a)),
+          s.note,
+        ]),
+      );
     }
   }
   return {
-    name: "求職管理簿",
+    header: opts.omitNote ? SEEKER_HEADER.slice(0, -1) : SEEKER_HEADER,
     rows,
+    widths: opts.omitNote ? SEEKER_WIDTHS.slice(0, -1) : SEEKER_WIDTHS,
+  };
+}
+
+export function buildSeekerLedgerSheet(
+  entries: SeekerLedgerEntry[],
+  opts: LedgerTableOptions = {},
+): SheetSpec {
+  const table = seekerLedgerTable(entries, opts);
+  return {
+    name: "求職管理簿",
+    rows: [
+      ["求職管理簿", ...Array(table.header.length - 2).fill(null), "[有効期間の終了後２年間保存]"],
+      table.header,
+      ...table.rows,
+    ],
     headerRows: 2,
-    columnWidths: [12, 20, 30, 12, 14, 12, 12, 12, 12, 24, 9, 12, 10, 14, 30, 20],
+    columnWidths: table.widths,
   };
 }
 

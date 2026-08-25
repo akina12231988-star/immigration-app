@@ -30,9 +30,11 @@ import {
   fetchSeekerLedger,
 } from "@/lib/supabase/queries/recruit-ledgers";
 import {
+  auditPairs,
   filterPostingLedger,
   filterSeekerLedger,
   listNoLabel,
+  type AuditTarget,
 } from "@/lib/recruit-ledger-filter";
 import { updateOrganization } from "@/lib/supabase/queries/organizations";
 import { dbErrorMessage } from "@/lib/errors";
@@ -191,7 +193,23 @@ export function Form30Client({
       prev.includes(postingId) ? prev.filter((x) => x !== postingId) : [...prev, postingId],
     );
 
-  // 選んだリストNo.の分だけの求人管理簿・求職管理簿
+  // 点検する組み合わせ（求人 × 選んだ求職者）
+  const inspectTargets: AuditTarget[] = inspectRows.map((r) => ({
+    listNo: r.listNo,
+    postingId: r.candidate.postingId,
+    workerName: inspectWorker[r.candidate.postingId] ?? "",
+  }));
+
+  // 印刷（A4横）の画面へのリンク。点検する組み合わせをそのまま渡す
+  const printHref = `/postings/audit/ledger?${[
+    ...inspectTargets.map(
+      (t) => `t=${encodeURIComponent(`${t.listNo}|${t.postingId}|${t.workerName}`)}`,
+    ),
+    `date=${baseDate}`,
+  ].join("&")}`;
+
+  // 選んだリストNo.の分だけの求人管理簿・求職管理簿。
+  // 労働局に出す分なので、社内の覚え書きが入る「備考」は出さない
   const exportInspectLedger = async (kind: "posting" | "seeker") => {
     if (inspectRows.length === 0) return;
     setLedgerBusy(kind);
@@ -199,23 +217,18 @@ export function Form30Client({
     try {
       const supabase = createClient();
       const label = listNoLabel(inspectRows.map((r) => r.listNo));
-      const ids = inspectRows.map((r) => r.candidate.postingId);
+      const postings = await fetchPostingLedger(supabase);
       if (kind === "posting") {
-        const entries = filterPostingLedger(await fetchPostingLedger(supabase), ids);
+        const entries = filterPostingLedger(postings, inspectTargets);
         downloadBlob(
-          await buildXlsx([buildPostingLedgerSheet(entries)]),
+          await buildXlsx([buildPostingLedgerSheet(entries, { omitNote: true })]),
           `求人管理簿_当日点検_リストNo${label}_${baseDate}.xlsx`,
         );
       } else {
-        // 求人ごとに選んだ求職者（未選択なら採用になった人を全員）
-        const names = inspectRows.flatMap((r) => {
-          const chosen = inspectWorker[r.candidate.postingId];
-          const hired = r.candidate.hired.map((a) => a.worker_name).filter(Boolean);
-          return chosen ? [chosen] : hired;
-        });
-        const entries = filterSeekerLedger(await fetchSeekerLedger(supabase), names);
+        const pairs = auditPairs(postings, inspectTargets);
+        const entries = filterSeekerLedger(await fetchSeekerLedger(supabase), pairs);
         downloadBlob(
-          await buildXlsx([buildSeekerLedgerSheet(entries)]),
+          await buildXlsx([buildSeekerLedgerSheet(entries, { omitNote: true })]),
           `求職管理簿_当日点検_リストNo${label}_${baseDate}.xlsx`,
         );
       }
@@ -423,6 +436,15 @@ export function Form30Client({
                   <FileText size={14} />
                   {ledgerBusy === "seeker" ? "出力中…" : "求職管理簿（点検分だけ・Excel）"}
                 </button>
+                {inspectRows.length > 0 && (
+                  <Link
+                    href={printHref}
+                    className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg bg-brand px-3 text-xs font-bold text-brand-foreground"
+                  >
+                    <Printer size={14} />
+                    A4横で印刷（一覧）
+                  </Link>
+                )}
                 <Link
                   href="/postings/audit"
                   className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-bold text-brand"
