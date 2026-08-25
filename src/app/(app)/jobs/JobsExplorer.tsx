@@ -12,6 +12,7 @@ import {
   FileText,
   HandCoins,
   NotebookPen,
+  Pencil,
   Plus,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
@@ -111,6 +112,8 @@ export function JobsExplorer({
 
   // 新規の応募登録（求職一覧から直接記入する）
   const [adding, setAdding] = useState(false);
+  // 応募の内容（応募日＝紹介年月日、結果日＝採用年月日など）を直す
+  const [editing, setEditing] = useState<ApplicationWithRefs | null>(null);
 
   // 帳簿情報（求職受付・採用後の記載事項）の編集ダイアログ
   const [ledgerFor, setLedgerFor] = useState<ApplicationWithRefs | null>(null);
@@ -250,6 +253,33 @@ export function JobsExplorer({
       },
       ...prev,
     ]);
+    router.refresh();
+  };
+
+  // 応募の内容を直す（応募日＝紹介年月日、結果日＝採用年月日、応募先など）
+  const editApplication = async (values: JobApplicationValues) => {
+    if (!editing) return;
+    const row = await updateJobApplication(createClient(), editing.id, values);
+    const org = orgList.find((o) => o.id === values.organization_id);
+    const posting = postings.find((p) => p.id === values.job_posting_id);
+    setRows((prev) =>
+      prev.map((r) =>
+        r.id === editing.id
+          ? {
+              ...r,
+              ...row,
+              organizations: org ? { id: org.id, name: org.name } : r.organizations,
+              job_postings: posting
+                ? {
+                    id: posting.id,
+                    display_company: posting.display_company,
+                    job_type: posting.job_type,
+                  }
+                : null,
+            }
+          : r,
+      ),
+    );
     router.refresh();
   };
 
@@ -609,13 +639,32 @@ export function JobsExplorer({
                     </select>
                     <button
                       type="button"
+                      onClick={() => setEditing(a)}
+                      className="flex items-center gap-1 rounded-lg border border-brand px-2.5 py-1.5 text-[11px] font-bold text-brand"
+                      title="応募日（紹介年月日）・結果日（採用年月日）・応募先を直します"
+                    >
+                      <Pencil size={12} />
+                      応募を編集
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setLedgerFor(a)}
                       className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-[11px] font-bold text-muted"
-                      title="求職受付番号や採用後の記載事項（求職管理簿・求人管理簿に出ます）"
+                      title="求職受付番号（求職管理簿の受付年月日）や採用後の記載事項を入れます"
                     >
                       <NotebookPen size={12} />
                       帳簿情報
                     </button>
+                    {a.job_postings?.id && (
+                      <Link
+                        href={`/postings/${a.job_postings.id}`}
+                        className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-[11px] font-bold text-muted"
+                        title="求人管理簿の受付年月日（求人受付日）は求人の画面で直します"
+                      >
+                        <NotebookPen size={12} />
+                        求人受付日を直す
+                      </Link>
+                    )}
                     {a.result === "採用" && (
                       <Link
                         href={`/workers/${a.worker_id}#contracts`}
@@ -647,6 +696,19 @@ export function JobsExplorer({
               [...prev, w].sort((a, b) => a.name.localeCompare(b.name, "ja")),
             )
           }
+          onOrganizationCreated={(o) =>
+            setOrgList((prev) => [...prev, o].sort((a, b) => a.name.localeCompare(b.name, "ja")))
+          }
+        />
+      )}
+
+      {editing && (
+        <JobApplicationDialog
+          initial={editing}
+          postings={postings}
+          organizations={orgList}
+          onClose={() => setEditing(null)}
+          onSubmit={editApplication}
           onOrganizationCreated={(o) =>
             setOrgList((prev) => [...prev, o].sort((a, b) => a.name.localeCompare(b.name, "ja")))
           }
@@ -779,7 +841,9 @@ function LedgerInfoDialog({
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-bold text-muted">受付年月日</span>
+            <span className="text-xs font-bold text-muted">
+              受付年月日（求職管理簿）
+            </span>
             <input
               type="date"
               value={acceptedOn}
