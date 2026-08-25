@@ -24,13 +24,19 @@ import {
 } from "@/lib/form30";
 import { createClient } from "@/lib/supabase/client";
 import { buildXlsx } from "@/lib/xlsx-export";
-import { buildPostingLedgerSheet, buildSeekerLedgerSheet } from "@/lib/recruit-ledgers";
+import {
+  buildFeeLedgerSheet,
+  buildPostingLedgerSheet,
+  buildSeekerLedgerSheet,
+} from "@/lib/recruit-ledgers";
 import {
   fetchPostingLedger,
   fetchSeekerLedger,
 } from "@/lib/supabase/queries/recruit-ledgers";
+import { listReferralFees } from "@/lib/supabase/queries/referrals";
 import {
   auditPairs,
+  filterFeeLedger,
   filterPostingLedger,
   filterSeekerLedger,
   listNoLabel,
@@ -180,7 +186,7 @@ export function Form30Client({
   const [inspectIds, setInspectIds] = useState<string[]>([]);
   // 求人ごとに選ぶ求職者（就職にいたった人。求人ID → 氏名）
   const [inspectWorker, setInspectWorker] = useState<Record<string, string>>({});
-  const [ledgerBusy, setLedgerBusy] = useState<"posting" | "seeker" | null>(null);
+  const [ledgerBusy, setLedgerBusy] = useState<"posting" | "seeker" | "fee" | null>(null);
   const [ledgerError, setLedgerError] = useState<string | null>(null);
 
   // 点検対象に選んだ求人（様式に載せる順＝リストNo.の順）
@@ -210,7 +216,7 @@ export function Form30Client({
 
   // 選んだリストNo.の分だけの求人管理簿・求職管理簿。
   // 労働局に出す分なので、社内の覚え書きが入る「備考」は出さない
-  const exportInspectLedger = async (kind: "posting" | "seeker") => {
+  const exportInspectLedger = async (kind: "posting" | "seeker" | "fee") => {
     if (inspectRows.length === 0) return;
     setLedgerBusy(kind);
     setLedgerError(null);
@@ -224,12 +230,32 @@ export function Form30Client({
           await buildXlsx([buildPostingLedgerSheet(entries, { omitNote: true })]),
           `求人管理簿_当日点検_リストNo${label}_${baseDate}.xlsx`,
         );
-      } else {
+      } else if (kind === "seeker") {
         const pairs = auditPairs(postings, inspectTargets);
         const entries = filterSeekerLedger(await fetchSeekerLedger(supabase), pairs);
         downloadBlob(
           await buildXlsx([buildSeekerLedgerSheet(entries, { omitNote: true })]),
           `求職管理簿_当日点検_リストNo${label}_${baseDate}.xlsx`,
+        );
+      } else {
+        // 手数料管理簿も、点検する組み合わせ（求人 × 就職した求職者）の分だけにする
+        const pairs = auditPairs(postings, inspectTargets);
+        const rows = filterFeeLedger(await listReferralFees(supabase), pairs);
+        downloadBlob(
+          await buildXlsx([
+            buildFeeLedgerSheet(
+              rows.map((f) => ({
+                payer_name: f.employer_name || f.organizations?.name || "",
+                paid_on: f.paid_on,
+                fee_kind: f.fee_kind || "紹介手数料",
+                fee: f.fee,
+                calc_basis: f.calc_basis ?? "",
+                worker_name: f.workers?.name ?? f.worker_name,
+                note: f.note,
+              })),
+            ),
+          ]),
+          `手数料管理簿_当日点検_リストNo${label}_${baseDate}.xlsx`,
         );
       }
     } catch (err) {
@@ -437,6 +463,15 @@ export function Form30Client({
                 >
                   <FileText size={14} />
                   {ledgerBusy === "seeker" ? "出力中…" : "求職管理簿（点検分だけ・Excel）"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void exportInspectLedger("fee")}
+                  disabled={inspectRows.length === 0 || ledgerBusy !== null}
+                  className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg border border-brand px-3 text-xs font-bold text-brand disabled:opacity-50"
+                >
+                  <FileText size={14} />
+                  {ledgerBusy === "fee" ? "出力中…" : "手数料管理簿（点検分だけ・Excel）"}
                 </button>
                 {inspectRows.length > 0 && (
                   <Link

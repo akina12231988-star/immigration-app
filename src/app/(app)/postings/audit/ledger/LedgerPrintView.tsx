@@ -72,11 +72,13 @@ export function LedgerPrintView({
   baseDate,
   posting,
   seeker,
+  fee,
 }: {
   listNos: string;
   baseDate: string;
   posting: LedgerTable;
   seeker: LedgerTable;
+  fee: LedgerTable;
 }) {
   return (
     <>
@@ -101,7 +103,7 @@ export function LedgerPrintView({
             印刷・PDF保存（A4横）
           </button>
           <span className="text-[11px] leading-relaxed text-muted">
-            求人管理簿と求職管理簿を、点検に選ばれた分だけA4横で並べています（備考の欄は出していません）。
+            求人管理簿・求職管理簿・手数料管理簿を、点検に選ばれた分だけA4横で並べています（求人・求職管理簿の備考の欄は出していません）。
             印刷の設定で用紙は「A4」、向きは「横」、拡大縮小は「用紙に合わせる」にしてください。
           </span>
         </div>
@@ -119,6 +121,13 @@ export function LedgerPrintView({
           title="求職管理簿"
           retention="[有効期間の終了後２年間保存]"
           table={seeker}
+          listNos={listNos}
+          baseDate={baseDate}
+        />
+        <LedgerSheet
+          title="手数料管理簿"
+          retention="[手数料の徴収完了後２年間保存]"
+          table={fee}
           listNos={listNos}
           baseDate={baseDate}
         />

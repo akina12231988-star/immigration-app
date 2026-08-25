@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   auditPairs,
+  filterFeeLedger,
   filterPostingLedger,
   filterSeekerLedger,
   listNoLabel,
@@ -13,8 +14,8 @@ import type {
   SeekerLedgerEntry,
 } from "./recruit-ledgers";
 
-function app(worker_name: string, result = "採用"): PostingLedgerApp {
-  return { applied_on: "2026-05-01", worker_name, result, result_on: "2026-06-01" };
+function app(worker_name: string, result = "採用", id?: string): PostingLedgerApp {
+  return { id, applied_on: "2026-05-01", worker_name, result, result_on: "2026-06-01" };
 }
 
 function posting(id: string, orgName: string, apps: PostingLedgerApp[]): PostingLedgerEntry {
@@ -62,9 +63,13 @@ function seeker(name: string, apps: SeekerLedgerApp[]): SeekerLedgerEntry {
 }
 
 const ENTRIES = [
-  posting("p1", "井上洋介", [app("KPA PHI LA"), app("別の応募者"), app("さらに別の人", "不採用")]),
-  posting("p2", "井上　雅夫", [app("関係ない人")]),
-  posting("p3", "BASE株式会社", [app("NGET CHITTHA"), app("もう一人")]),
+  posting("p1", "井上洋介", [
+    app("KPA PHI LA", "採用", "a1"),
+    app("別の応募者", "採用", "a2"),
+    app("さらに別の人", "不採用", "a3"),
+  ]),
+  posting("p2", "井上　雅夫", [app("関係ない人", "採用", "a4")]),
+  posting("p3", "BASE株式会社", [app("NGET CHITTHA", "採用", "a5"), app("もう一人", "採用", "a6")]),
 ];
 
 const TARGETS: AuditTarget[] = [
@@ -97,18 +102,69 @@ describe("filterPostingLedger", () => {
 });
 
 describe("auditPairs", () => {
-  it("求人受理番号と選んだ求職者の組み合わせを作る", () => {
+  it("求人受理番号・求人者・応募と、選んだ求職者の組み合わせを作る", () => {
     expect(auditPairs(ENTRIES, TARGETS)).toEqual([
-      { acceptanceNo: "8-p1", workerName: "KPA PHI LA" },
-      { acceptanceNo: "8-p3", workerName: "NGET CHITTHA" },
+      {
+        acceptanceNo: "8-p1",
+        organizationId: null,
+        workerName: "KPA PHI LA",
+        applicationId: "a1",
+      },
+      {
+        acceptanceNo: "8-p3",
+        organizationId: null,
+        workerName: "NGET CHITTHA",
+        applicationId: "a5",
+      },
     ]);
   });
 
   it("求職者を選んでいなければ、採用になった人すべてを組み合わせにする", () => {
-    expect(auditPairs(ENTRIES, [{ listNo: 1, postingId: "p1", workerName: "" }])).toEqual([
-      { acceptanceNo: "8-p1", workerName: "KPA PHI LA" },
-      { acceptanceNo: "8-p1", workerName: "別の応募者" },
+    expect(
+      auditPairs(ENTRIES, [{ listNo: 1, postingId: "p1", workerName: "" }]).map(
+        (p) => p.workerName,
+      ),
+    ).toEqual(["KPA PHI LA", "別の応募者"]);
+  });
+});
+
+describe("filterFeeLedger", () => {
+  const pairs = auditPairs(ENTRIES, TARGETS);
+  const fee = (over: Partial<Parameters<typeof filterFeeLedger>[0][number]> = {}) => ({
+    organization_id: null as string | null,
+    worker_name: "KPA PHI LA",
+    job_application_id: null as string | null,
+    ...over,
+  });
+
+  it("応募と紐づいた行は、その応募の分だけ残す", () => {
+    const rows = [
+      fee({ job_application_id: "a1" }),
+      fee({ job_application_id: "a2", worker_name: "別の応募者" }),
+      fee({ job_application_id: "a5", worker_name: "NGET CHITTHA" }),
+    ];
+    expect(filterFeeLedger(rows, pairs).map((f) => f.worker_name)).toEqual([
+      "KPA PHI LA",
+      "NGET CHITTHA",
     ]);
+  });
+
+  it("台帳から直接入れた行（応募と紐づいていない）は求人者と氏名で突き合わせる", () => {
+    const withOrg = auditPairs(
+      [{ ...ENTRIES[0], organization_id: "o1" }],
+      [{ listNo: 1, postingId: "p1", workerName: "KPA PHI LA" }],
+    );
+    const rows = [
+      fee({ organization_id: "o1", worker_name: "KPA　PHI　LA" }), // 全角の空白でも同じ人
+      fee({ organization_id: "o1", worker_name: "別の人" }),
+      fee({ organization_id: "o2", worker_name: "KPA PHI LA" }), // 別の会社の分
+    ];
+    expect(filterFeeLedger(rows, withOrg)).toHaveLength(1);
+    expect(filterFeeLedger(rows, withOrg)[0].worker_name).toBe("KPA　PHI　LA");
+  });
+
+  it("何も選ばれていなければ0件（うっかり全件出さない）", () => {
+    expect(filterFeeLedger([fee()], [])).toEqual([]);
   });
 });
 

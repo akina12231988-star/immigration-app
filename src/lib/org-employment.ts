@@ -10,6 +10,9 @@ export function normalizeOrgEmploymentStarts(raw: unknown): WorkerOrgEmploymentS
     return {
       organization_id: typeof src.organization_id === "string" ? src.organization_id : "",
       start_on: typeof src.start_on === "string" ? src.start_on : "",
+      // 契約書の日付（あとから足した項目。保存済みの行に無くても消さない）
+      contract_on: typeof src.contract_on === "string" ? src.contract_on : "",
+      conditions_on: typeof src.conditions_on === "string" ? src.conditions_on : "",
     };
   });
 }
@@ -37,4 +40,34 @@ export function employmentStartForOrg(
   if (!organizationId) return null;
   const hit = entries.find((e) => e.organization_id === organizationId && e.start_on);
   return hit ? hit.start_on : null;
+}
+
+// ---- 雇用契約書・雇用条件書の日付（同じ jsonb の中に持つ） ----
+
+export interface OrgContractDates {
+  contract_on: string; // 雇用契約日
+  conditions_on: string; // 雇用条件書の作成日
+}
+
+// 機関IDに対応する契約書の日付（未登録は空）
+export function contractDatesForOrg(
+  entries: WorkerOrgEmploymentStart[],
+  organizationId: string | null | undefined,
+): OrgContractDates {
+  const hit = organizationId
+    ? entries.find((e) => e.organization_id === organizationId)
+    : undefined;
+  return { contract_on: hit?.contract_on ?? "", conditions_on: hit?.conditions_on ?? "" };
+}
+
+// 機関の契約書の日付を追加・更新した新しい配列を返す（雇用開始日は変えない）
+export function upsertOrgContractDates(
+  entries: WorkerOrgEmploymentStart[],
+  organizationId: string,
+  dates: Partial<OrgContractDates>,
+): WorkerOrgEmploymentStart[] {
+  if (entries.some((e) => e.organization_id === organizationId)) {
+    return entries.map((e) => (e.organization_id === organizationId ? { ...e, ...dates } : e));
+  }
+  return [...entries, { organization_id: organizationId, start_on: "", ...dates }];
 }

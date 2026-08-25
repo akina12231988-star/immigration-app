@@ -306,6 +306,10 @@ export type { WorkerCertExam };
 export interface WorkerOrgEmploymentStart {
   organization_id: string; // 所属機関ID（organizations.id）
   start_on: string; // 雇用開始日 YYYY-MM-DD（未入力は ''）
+  // 雇用契約書・雇用条件書の日付（外国人詳細の契約書の欄で入れる）。
+  // org_employment_starts（jsonb）の中に足しているため、列の追加は不要
+  contract_on?: string; // 雇用契約日 YYYY-MM-DD（未入力は ''）
+  conditions_on?: string; // 雇用条件書の作成日 YYYY-MM-DD（未入力は ''）
 }
 
 // 過去の定期売上No.の1件分（workers.past_recurring_sales jsonb に配列で保存）。
