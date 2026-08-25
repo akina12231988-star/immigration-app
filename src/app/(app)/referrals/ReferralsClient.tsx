@@ -235,7 +235,6 @@ export function ReferralsClient({
       fee_kind: r.fee_kind || "紹介手数料",
       fee: r.fee,
       calc_basis: r.calc_basis ?? "",
-      worker_name: r.workers?.name ?? r.worker_name,
       note: r.note,
       billed_on: r.billed_on,
     }));

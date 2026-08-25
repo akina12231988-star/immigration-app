@@ -163,7 +163,7 @@ describe("buildSeekerLedgerSheet", () => {
 });
 
 describe("buildFeeLedgerSheet", () => {
-  it("算出根拠は入力された分だけを出し、誰の分かと未徴収は備考に書く", () => {
+  it("算出根拠も備考も、入力された分だけを出す（未徴収だけ備考に書く）", () => {
     const sheet = buildFeeLedgerSheet([
       {
         payer_name: "株式会社テスト",
@@ -171,7 +171,6 @@ describe("buildFeeLedgerSheet", () => {
         fee_kind: "紹介手数料",
         fee: 30000,
         calc_basis: "",
-        worker_name: "NGUYEN VAN A",
         note: "",
       },
     ]);
@@ -183,7 +182,7 @@ describe("buildFeeLedgerSheet", () => {
       30000,
       "",
       "",
-      "NGUYEN VAN A 分・未徴収",
+      "未徴収",
       "",
       "",
     ]);
@@ -197,7 +196,6 @@ describe("buildFeeLedgerSheet", () => {
         fee_kind: "紹介手数料",
         fee: 30000,
         calc_basis: "賃金総額150万円×11％",
-        worker_name: "NGUYEN VAN A",
         note: "初回",
         billed_on: "2026-08-01",
       },
@@ -210,7 +208,7 @@ describe("buildFeeLedgerSheet", () => {
       30000,
       "",
       "賃金総額150万円×11％",
-      "NGUYEN VAN A 分・初回",
+      "初回",
       "2026-08-01",
       "2026-08-20",
     ]);

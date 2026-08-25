@@ -37,7 +37,6 @@ export default async function FeeLedgerPrintPage({
       fee_kind: f.fee_kind || "紹介手数料",
       fee: f.fee,
       calc_basis: f.calc_basis ?? "",
-      worker_name: f.workers?.name ?? f.worker_name,
       note: f.note,
       billed_on: f.billed_on,
     })),

@@ -285,7 +285,6 @@ export interface FeeLedgerEntry {
   fee_kind: string; // 手数料の種類
   fee: number; // 手数料の額（円）
   calc_basis: string; // 算出根拠（賃金、割合等）。入力されたものだけを出す
-  worker_name: string; // 誰の分か（備考に出す）
   note: string;
   billed_on?: string | null; // 請求年月日
 }
@@ -309,11 +308,8 @@ export function buildFeeLedgerSheet(entries: FeeLedgerEntry[]): SheetSpec {
     FEE_HEADER,
   ];
   for (const f of entries) {
-    // 算出根拠（賃金、割合等）は入力されたものだけを出す。
-    // 誰の分かは備考に書く（手数料の種類と同じ言葉を算出根拠に入れない）
-    const note = [f.worker_name ? `${f.worker_name} 分` : "", f.note, f.paid_on ? "" : "未徴収"]
-      .filter(Boolean)
-      .join("・");
+    // 算出根拠（賃金、割合等）も備考も、入力されたものだけを出す
+    const note = [f.note, f.paid_on ? "" : "未徴収"].filter(Boolean).join("・");
     rows.push([
       f.payer_name,
       f.paid_on ?? "",
