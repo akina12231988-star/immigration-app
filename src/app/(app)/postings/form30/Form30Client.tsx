@@ -253,8 +253,10 @@ export function Form30Client({
         <div className="flex flex-col gap-4 px-4 py-4 lg:px-8">
           <p className="text-xs leading-relaxed text-muted">
             訪問予定日から過去1年間に紹介実績のある求人を出しています。
-            様式に載せるのは<b>手数料管理簿で入金済みの企業</b>だけなので、
+            様式に載せるのは<b>手数料管理簿で入金済みのもの</b>だけなので、
             入金済みのものに最初からチェックが入っています（{FORM30_MAX_ROWS}件まで）。
+            入金の状況は<b>その求人で採用になった人の手数料</b>で見ています
+            （同じ会社でも、別の求人で採用した人の入金はこの行には出しません）。
             選び直したら「Wordで出力」または「印刷」してください。
           </p>
           <p className="text-xs leading-relaxed text-muted">
@@ -510,6 +512,14 @@ export function Form30Client({
                         {c.paidWorkers.length > 0 && (
                           <span className="block text-[10px] text-muted">
                             {c.paidWorkers.join("・")}
+                          </span>
+                        )}
+                        {/* この求人で採用になった人の手数料が台帳に無いとき（会社の他の求人の分は数えない） */}
+                        {c.payStatus === "台帳に無し" && (
+                          <span className="block text-[10px] leading-relaxed text-muted">
+                            {c.hired.length === 0
+                              ? "この求人の採用者がいません"
+                              : "この求人の採用者の手数料が台帳にありません"}
                           </span>
                         )}
                       </td>

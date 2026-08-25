@@ -20,6 +20,7 @@ interface PostingRow {
   note: string;
   organizations: { name: string; address: string; contact: string } | null;
   job_applications: {
+    id: string;
     applied_on: string;
     result: string;
     result_on: string | null;
@@ -40,7 +41,7 @@ export async function fetchPostingLedger(
     .select(
       "id, organization_id, acceptance_no, received_on, valid_until, openings, job_type, work_location, employment_period, wage_kind, wage_amount, note, " +
         "organizations(name, address, contact), " +
-        "job_applications(applied_on, result, result_on, employment_term, separation_status, separation_checked_on, separation_check_method, workers(name))",
+        "job_applications(id, applied_on, result, result_on, employment_term, separation_status, separation_checked_on, separation_check_method, workers(name))",
     )
     .order("received_on", { ascending: true });
   if (error) throw error;
@@ -63,6 +64,7 @@ export async function fetchPostingLedger(
     applications: [...p.job_applications]
       .sort((a, b) => (a.applied_on < b.applied_on ? -1 : 1))
       .map((a) => ({
+        id: a.id,
         applied_on: a.applied_on,
         worker_name: a.workers?.name ?? "",
         result: a.result,

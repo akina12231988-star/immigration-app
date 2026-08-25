@@ -20,6 +20,7 @@ export interface Form30Application {
   applied_on: string; // 紹介年月日
   result: string; // 採用 / 不採用 / 辞退 / 選考中
   result_on: string | null; // 採用年月日
+  application_id?: string | null; // 手数料管理簿の行と突き合わせるための応募ID
 }
 
 // 期間内の応募だけに絞る
@@ -37,6 +38,7 @@ export interface Form30Fee {
   worker_name: string;
   billed_on: string | null;
   paid_on: string | null;
+  job_application_id?: string | null; // どの応募の手数料か（0078。古い行は空）
 }
 
 // 画面に出す求人1件
@@ -126,20 +128,44 @@ export function oneYearBefore(baseDate: string): string {
 // その企業の入金の状況を求める。
 // 入金日が入った手数料が1件でもあれば「入金済み」。
 // 1件も無ければ、請求済みがあれば「請求済み・未入金」、行はあるが請求前なら「未請求」
+// 氏名の突き合わせ用（全角・半角の空白の違いで別人にしない）
+function nameKey(s: string): string {
+  return (s ?? "").replace(/[\s　]+/g, "").trim();
+}
+
+// 入金の状況。
+//
+// 手数料はその求人で採用になった人ごとに発生するため、会社が同じというだけでは
+// 「この求人の分が入金済み」とは言えない（同じ会社に複数の求人があると、別の求人の
+// 入金がこの求人の行に出てしまう）。採用になった人と結びつく行だけを見る。
+// 応募との紐づけ（job_application_id）があればそれを優先し、
+// 手数料管理簿から直接入れた古い行は氏名で突き合わせる。
 export function payStatusOf(
   fees: Form30Fee[],
   organizationId: string | null,
+  hired: Form30Application[] = [],
 ): { status: Form30PayStatus; paidOn: string | null; paidWorkers: string[] } {
   if (!organizationId) return { status: "台帳に無し", paidOn: null, paidWorkers: [] };
   const own = fees.filter((f) => f.organization_id === organizationId);
   if (own.length === 0) return { status: "台帳に無し", paidOn: null, paidWorkers: [] };
-  const paid = own.filter((f) => !!f.paid_on);
+
+  const hiredIds = new Set(hired.map((a) => a.application_id).filter(Boolean) as string[]);
+  const hiredNames = new Set(hired.map((a) => nameKey(a.worker_name)).filter(Boolean));
+  const mine = own.filter((f) =>
+    f.job_application_id && hiredIds.size > 0
+      ? hiredIds.has(f.job_application_id)
+      : hiredNames.has(nameKey(f.worker_name)),
+  );
+  // この求人で採用になった人の手数料が台帳に無い
+  if (mine.length === 0) return { status: "台帳に無し", paidOn: null, paidWorkers: [] };
+
+  const paid = mine.filter((f) => !!f.paid_on);
   if (paid.length > 0) {
     const paidOn = paid.map((f) => f.paid_on ?? "").sort().at(-1) ?? null;
     const names = [...new Set(paid.map((f) => f.worker_name).filter(Boolean))];
     return { status: "入金済み", paidOn, paidWorkers: names };
   }
-  const billed = own.some((f) => !!f.billed_on);
+  const billed = mine.some((f) => !!f.billed_on);
   return { status: billed ? "請求済み・未入金" : "未請求", paidOn: null, paidWorkers: [] };
 }
 
@@ -187,8 +213,10 @@ export function buildForm30Candidates(
     matchedBy: "求人" | "会社",
     applications: Form30Application[],
   ): Form30Candidate => {
-    const pay = payStatusOf(fees, p.organizationId);
     const sorted = [...applications].sort((a, b) => (a.applied_on < b.applied_on ? 1 : -1));
+    const hired = sorted.filter((a) => a.result === "採用");
+    // 入金の状況は、この求人で採用になった人の手数料だけを見る
+    const pay = payStatusOf(fees, p.organizationId, hired);
     return {
       postingId: p.postingId,
       organizationId: p.organizationId,
@@ -198,7 +226,7 @@ export function buildForm30Candidates(
       job_type: p.job_type,
       note: form30Note(p.note),
       applications: sorted,
-      hired: sorted.filter((a) => a.result === "採用"),
+      hired,
       payStatus: pay.status,
       paidOn: pay.paidOn,
       paidWorkers: pay.paidWorkers,

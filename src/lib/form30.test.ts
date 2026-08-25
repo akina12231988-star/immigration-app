@@ -60,8 +60,11 @@ describe("oneYearBefore", () => {
 });
 
 describe("payStatusOf", () => {
+  // その求人で採用になった人（この人の手数料だけを見る）
+  const hiredA = [app()];
+
   it("入金日が入った手数料が1件でもあれば入金済み", () => {
-    const r = payStatusOf([fee({ billed_on: "2026-07-01", paid_on: "2026-07-31" })], "o1");
+    const r = payStatusOf([fee({ billed_on: "2026-07-01", paid_on: "2026-07-31" })], "o1", hiredA);
     expect(r.status).toBe("入金済み");
     expect(r.paidOn).toBe("2026-07-31");
     expect(r.paidWorkers).toEqual(["NGUYEN VAN A"]);
@@ -74,26 +77,58 @@ describe("payStatusOf", () => {
         fee({ paid_on: "2026-07-31", worker_name: "B" }),
       ],
       "o1",
+      [app({ worker_name: "A" }), app({ worker_name: "B" })],
     );
     expect(r.paidOn).toBe("2026-07-31");
     expect(r.paidWorkers).toEqual(["A", "B"]);
   });
 
   it("請求済みで入金が無ければ請求済み・未入金", () => {
-    expect(payStatusOf([fee({ billed_on: "2026-07-01" })], "o1").status).toBe("請求済み・未入金");
+    expect(payStatusOf([fee({ billed_on: "2026-07-01" })], "o1", hiredA).status).toBe(
+      "請求済み・未入金",
+    );
   });
 
   it("台帳に行はあるが請求前なら未請求", () => {
-    expect(payStatusOf([fee()], "o1").status).toBe("未請求");
+    expect(payStatusOf([fee()], "o1", hiredA).status).toBe("未請求");
   });
 
   it("台帳に行が無ければ台帳に無し", () => {
-    expect(payStatusOf([fee({ organization_id: "other" })], "o1").status).toBe("台帳に無し");
-    expect(payStatusOf([], "o1").status).toBe("台帳に無し");
+    expect(payStatusOf([fee({ organization_id: "other" })], "o1", hiredA).status).toBe("台帳に無し");
+    expect(payStatusOf([], "o1", hiredA).status).toBe("台帳に無し");
   });
 
   it("会社が分からない求人は台帳に無し", () => {
-    expect(payStatusOf([fee()], null).status).toBe("台帳に無し");
+    expect(payStatusOf([fee()], null, hiredA).status).toBe("台帳に無し");
+  });
+
+  it("同じ会社でも、別の求人で採用した人の入金はこの求人に出さない", () => {
+    // 会社は同じだが、台帳にあるのは別の人（別の求人の採用者）の分
+    const r = payStatusOf([fee({ worker_name: "別の人", paid_on: "2026-07-31" })], "o1", hiredA);
+    expect(r.status).toBe("台帳に無し");
+    expect(r.paidWorkers).toEqual([]);
+  });
+
+  it("採用者がいない求人は、会社に入金があっても台帳に無し", () => {
+    expect(payStatusOf([fee({ paid_on: "2026-07-31" })], "o1", []).status).toBe("台帳に無し");
+  });
+
+  it("氏名の空白の違いは同じ人として扱う", () => {
+    const r = payStatusOf(
+      [fee({ worker_name: "NGUYEN　VAN A", paid_on: "2026-07-31" })],
+      "o1",
+      [app({ worker_name: "NGUYEN VAN A" })],
+    );
+    expect(r.status).toBe("入金済み");
+  });
+
+  it("応募と紐づいた台帳の行は、その応募の求人にだけ出す", () => {
+    const fees = [
+      fee({ worker_name: "NGUYEN VAN A", paid_on: "2026-07-31", job_application_id: "a2" }),
+    ];
+    // この求人の採用者は応募a1。台帳の行は別の応募a2の分なので出さない
+    expect(payStatusOf(fees, "o1", [app({ application_id: "a1" })]).status).toBe("台帳に無し");
+    expect(payStatusOf(fees, "o1", [app({ application_id: "a2" })]).status).toBe("入金済み");
   });
 });
 

@@ -35,6 +35,7 @@ export default async function Form30Page() {
       applied_on: a.applied_on,
       result: a.result,
       result_on: a.result_on,
+      application_id: a.id,
     });
   }
 
@@ -51,6 +52,7 @@ export default async function Form30Page() {
       applied_on: a.applied_on,
       result: a.result,
       result_on: a.result_on,
+      application_id: a.id ?? null,
     })),
   }));
 
@@ -62,6 +64,7 @@ export default async function Form30Page() {
         worker_name: f.worker_name || (f.workers?.name ?? ""),
         billed_on: f.billed_on,
         paid_on: f.paid_on,
+        job_application_id: f.job_application_id ?? null,
       }))}
       orgApplications={orgApplications}
       today={todayStr()}

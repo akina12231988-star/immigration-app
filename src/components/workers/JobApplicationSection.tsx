@@ -145,7 +145,6 @@ export function JobApplicationSection({
               </div>
               <p className="text-xs tabular-nums text-muted">
                 応募日 {a.applied_on}
-                {a.interview_on && ` ・ 面接 ${a.interview_on}`}
                 {a.result_on && ` ・ 結果 ${a.result_on}`}
               </p>
               {a.note && <p className="mt-0.5 truncate text-xs text-muted">{a.note}</p>}

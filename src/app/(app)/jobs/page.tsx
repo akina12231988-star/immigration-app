@@ -28,7 +28,9 @@ export default async function JobsPage() {
       // 新規登録フォームの外国人候補＋「雇用開始済み」の判定に使う雇用開始日
       supabase
         .from("workers")
-        .select("id, name, employment_start_on, current_organization_id, org_employment_starts")
+        .select(
+          "id, name, employment_start_on, current_organization_id, org_employment_starts, jobseeker_accepted_on",
+        )
         .order("name", { ascending: true }),
       // 応募 → 紹介手数料台帳の状態（0078未適用でも一覧は使えるようにする）
       listReferralFeesByApplication(supabase).catch(() => ({})),

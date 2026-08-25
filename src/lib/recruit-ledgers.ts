@@ -40,6 +40,7 @@ function indefiniteOnly(employmentTerm: string, value: string): string {
 // ---- 求人管理簿 ----
 
 export interface PostingLedgerApp {
+  id?: string; // 応募（job_applications.id）。手数料管理簿の行と突き合わせるのに使う
   applied_on: string; // 紹介年月日
   worker_name: string; // 求職者氏名
   result: string; // 採否結果
