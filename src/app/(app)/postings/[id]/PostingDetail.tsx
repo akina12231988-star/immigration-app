@@ -3,7 +3,16 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronRight, ClipboardList, Megaphone, Pencil, Share2, Trash2, Users } from "lucide-react";
+import {
+  ChevronRight,
+  ClipboardList,
+  Megaphone,
+  Pencil,
+  Printer,
+  Share2,
+  Trash2,
+  Users,
+} from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -240,6 +249,15 @@ export function PostingDetail({
           <Info label="必要条件" value={sheet.requirements} />
           <Info label="その他（応募条件）" value={sheet.other_requirements} wide />
         </dl>
+        <div className="mt-2">
+          <Link
+            href={`/postings/${posting.id}/sheet`}
+            className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-brand px-3 text-xs font-bold text-brand"
+          >
+            <Printer size={14} />
+            求人票の様式で出す（印刷・PDF）
+          </Link>
+        </div>
         <p className="mt-2 text-[11px] leading-relaxed text-muted">
           会社からもらった求人票の内容です。空欄は上の鉛筆マーク（編集）から入力できます。
           職種・就業場所・採用人数・基本給・連絡先は上の求人管理簿の欄と共通です。
