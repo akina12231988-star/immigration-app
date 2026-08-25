@@ -899,7 +899,7 @@ export function PostingDetail({
           orgName={postingOrg?.name ?? orgName ?? ""}
           orgAddress={postingOrg?.address ?? ""}
           repName={(postingOrg?.intake?.rep_name ?? "").trim()}
-          dateOn={posting.received_on ?? ""}
+          dateOn={sheet.filled_on || posting.received_on || ""}
           canEdit={canEdit}
         />
       </Card>

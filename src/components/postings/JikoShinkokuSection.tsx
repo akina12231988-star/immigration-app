@@ -114,7 +114,7 @@ export function JikoShinkokuSection({
         求人不受理に係る自己申告書（様式例第7号）
       </p>
       <p className="mb-2 text-[11px] leading-relaxed text-muted">
-        事業所名・事業所所在地・代表者名は所属機関の登録内容、右上の年月日はこの求人の受付年月日（
+        事業所名・事業所所在地・代表者名は所属機関の登録内容、右上の年月日は求人票の記入日（
         {dateOn || "未入力"}）が入ります。チェックシートは全て空欄で作ります（1つでも該当すると求人不受理になるため）。
       </p>
       {missing.length > 0 && (

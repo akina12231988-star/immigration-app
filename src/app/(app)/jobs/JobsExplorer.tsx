@@ -67,11 +67,8 @@ import type { JobApplicationValues } from "@/components/workers/JobApplicationDi
 import type { PostingWithStats } from "@/lib/supabase/queries/postings";
 import type { Organization } from "@/types/db";
 import { formatAmountInput } from "@/lib/amount-format";
-import {
-  checkLedgerDates,
-  issueKinds,
-  type LedgerDateKind,
-} from "@/lib/ledger-date-check";
+import { checkLedgerDates, issueKinds } from "@/lib/ledger-date-check";
+import { LedgerDateFlow, type LedgerDateStep } from "@/components/jobs/LedgerDateFlow";
 import { contractDatesForOrg, normalizeOrgEmploymentStarts } from "@/lib/org-employment";
 
 // 絞り込み。採否のほかに「雇用開始済み」（雇用開始日が入っている人）と
@@ -222,6 +219,26 @@ export function JobsExplorer({
       contractOn: contractDates(a).contract_on,
       employmentStartOn: startedOn(a),
     });
+  // 棒線の上に並べる日付（求職受付 → 求人受付 → 紹介 → 採用 → 条件書 → 契約 → 雇用開始）
+  const dateStepsOf = (a: ApplicationWithRefs): LedgerDateStep[] => {
+    const c = contractDates(a);
+    return [
+      {
+        label: "求職受付",
+        value: workerById.get(a.worker_id)?.jobseeker_accepted_on ?? "",
+      },
+      {
+        label: "求人受付",
+        value: a.job_posting_id ? (postingById.get(a.job_posting_id)?.received_on ?? "") : "",
+      },
+      { label: "紹介", value: a.applied_on, kind: "紹介年月日" },
+      { label: "採用", value: a.result_on ?? "", kind: "採用年月日" },
+      { label: "条件書", value: c.conditions_on, kind: "雇用条件書の作成日" },
+      { label: "契約", value: c.contract_on, kind: "雇用契約日" },
+      { label: "雇用開始", value: startedOn(a) ?? "", kind: "雇用開始日" },
+    ];
+  };
+
   // 訂正が必要な応募（期間・企業の絞り込みの中から探す）
   const dateIssueRows = useMemo(
     () => inOrg.map((a) => ({ a, issues: dateIssuesOf(a) })).filter((r) => r.issues.length > 0),
@@ -629,44 +646,19 @@ export function JobsExplorer({
                       <p className="truncate text-xs text-muted">
                         {a.job_postings?.display_company || a.organizations?.name || "応募先"}
                       </p>
-                      <p className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-xs tabular-nums text-muted">
-                        <CalendarClock size={12} />
-                        {/* 日付の流れがおかしいところは赤い枠を付けて、どこを直すか分かるようにする */}
-                        {(() => {
-                          const bad = issueKinds(dateIssuesOf(a));
-                          const c = contractDates(a);
-                          const cells = (
-                            [
-                              { kind: "紹介年月日", label: "応募", value: a.applied_on },
-                              { kind: "採用年月日", label: "結果", value: a.result_on ?? "" },
-                              {
-                                kind: "雇用条件書の作成日",
-                                label: "条件書",
-                                value: c.conditions_on,
-                              },
-                              { kind: "雇用契約日", label: "契約", value: c.contract_on },
-                              { kind: "雇用開始日", label: "雇用開始", value: startedOn(a) ?? "" },
-                            ] satisfies { kind: LedgerDateKind; label: string; value: string }[]
-                          ).filter((x) => x.value);
-                          return cells.map((x, i) => (
-                            <span key={x.kind} className="whitespace-nowrap">
-                              {i > 0 && <span className="mr-1">・</span>}
-                              <span
-                                className={
-                                  bad.has(x.kind)
-                                    ? "rounded border border-seal bg-seal/10 px-1 font-bold text-seal"
-                                    : ""
-                                }
-                              >
-                                {x.label} {x.value}
-                              </span>
-                            </span>
-                          ));
-                        })()}
-                      </p>
                     </Link>
                   </div>
                   <ChevronRight size={16} className="shrink-0 text-muted" />
+                </div>
+
+                {/* 受付から雇用開始までの日付の流れ。
+                    棒線の上に並べて、どこまで進んでいて、どこを直すかが分かるようにする */}
+                <div className="mt-2 border-t border-border pt-2">
+                  <p className="mb-1 flex items-center gap-1 text-[10px] font-bold text-muted">
+                    <CalendarClock size={11} />
+                    受付から雇用開始までの流れ
+                  </p>
+                  <LedgerDateFlow steps={dateStepsOf(a)} bad={issueKinds(dateIssuesOf(a))} />
                 </div>
 
                 {/* 帳簿の日付の並びがおかしいときは、そのカードにも出す */}

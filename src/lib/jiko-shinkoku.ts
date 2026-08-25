@@ -14,7 +14,7 @@ export interface JikoShinkokuData {
   orgName: string; // 事業所名
   orgAddress: string; // 事業所所在地
   repName: string; // 代表者名
-  dateOn: string; // 右上の年月日（YYYY-MM-DD。求人の受付年月日を入れる）
+  dateOn: string; // 右上の年月日（YYYY-MM-DD。求人票の記入日を入れる）
 }
 
 // 様式の文字位置（1ページ目・A4縦 595.2 x 841.92pt）。
