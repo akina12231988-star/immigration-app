@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ExternalLink, FileSpreadsheet, Loader2, Plus, Trash2 } from "lucide-react";
+import { ExternalLink, FileSpreadsheet, Loader2, Plus, Printer, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
@@ -54,6 +54,8 @@ export function ReferralsClient({
   const [month, setMonth] = useState(today.slice(0, 7));
   const [allMonths, setAllMonths] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // 訪問指導で出す分（選んだ台帳の行）。選んでいなければ表示中の分をそのまま出す
+  const [picked, setPicked] = useState<string[]>([]);
 
   // 追加フォーム
   const [adding, setAdding] = useState(false);
@@ -215,6 +217,38 @@ export function ReferralsClient({
   );
   const total = filtered.reduce((sum, r) => sum + r.fee, 0);
 
+  // 手数料管理簿に出す行。人を選んでいればその分だけ、選んでいなければ表示中の分
+  const targets = useMemo(
+    () => (picked.length ? filtered.filter((r) => picked.includes(r.id)) : filtered),
+    [filtered, picked],
+  );
+  const allPicked = filtered.length > 0 && filtered.every((r) => picked.includes(r.id));
+  const togglePick = (id: string) =>
+    setPicked((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]));
+  const togglePickAll = () =>
+    setPicked(allPicked ? [] : filtered.map((r) => r.id));
+
+  const feeLedgerRows = () =>
+    targets.map((r) => ({
+      payer_name: r.employer_name || r.organizations?.name || "",
+      paid_on: r.paid_on,
+      fee_kind: r.fee_kind || "紹介手数料",
+      fee: r.fee,
+      calc_basis: r.calc_basis ?? "",
+      worker_name: r.workers?.name ?? r.worker_name,
+      note: r.note,
+    }));
+
+  // 訪問指導用にA4横で印刷する（PDF保存もここから）
+  const openPrint = () => {
+    const ids = targets.map((r) => r.id).join(",");
+    window.open(
+      `/referrals/print?ids=${encodeURIComponent(ids)}&date=${encodeURIComponent(today)}`,
+      "_blank",
+      "noopener",
+    );
+  };
+
   const INPUT =
     "min-h-[40px] rounded-xl border border-border bg-surface px-3 text-sm focus:border-brand focus:outline-none";
   const CELL_INPUT =
@@ -236,6 +270,8 @@ export function ReferralsClient({
         <ExternalLink size={11} className="mx-0.5 inline" />
         からfreee販売を開いて売上登録を確かめ、「売上登録確認」にチェックを入れると入力できるようになります
         （No.はコピーされるので、freee販売の検索に貼り付けられます）。
+        労働局の訪問指導で出すときは、左の四角で対象の人を選んでから「手数料管理簿を印刷（A4横・PDF）」を押してください
+        （選ばなければ、いま表示している分をそのまま出します）。
       </p>
 
       <div className="flex flex-wrap items-end gap-2">
@@ -259,26 +295,26 @@ export function ReferralsClient({
           全期間を表示
         </label>
         <span className="ml-auto flex items-center gap-2">
-          {/* 労働局の訪問指導（監査）で提出する手数料管理簿（表示中の絞り込みのまま出力） */}
+          {/* 労働局の訪問指導（監査）で出す手数料管理簿。
+              人を選んでいればその分だけ、選んでいなければ表示中の分を出す */}
           <button
             type="button"
+            disabled={targets.length === 0}
+            onClick={openPrint}
+            className="flex items-center gap-1.5 rounded-lg border border-brand px-3 py-2 text-xs font-bold text-brand disabled:opacity-50"
+          >
+            <Printer size={14} />
+            手数料管理簿を印刷（A4横・PDF）
+          </button>
+          <button
+            type="button"
+            disabled={targets.length === 0}
             onClick={() => {
-              const today = new Date().toISOString().slice(0, 10);
-              void buildXlsx([
-                buildFeeLedgerSheet(
-                  filtered.map((r) => ({
-                    payer_name: r.employer_name || r.organizations?.name || "",
-                    paid_on: r.paid_on,
-                    fee_kind: r.fee_kind || "紹介手数料",
-                    fee: r.fee,
-                    calc_basis: r.calc_basis ?? "",
-                    worker_name: r.workers?.name ?? r.worker_name,
-                    note: r.note,
-                  })),
-                ),
-              ]).then((blob) => downloadBlob(blob, `手数料管理簿_${today}.xlsx`));
+              void buildXlsx([buildFeeLedgerSheet(feeLedgerRows())]).then((blob) =>
+                downloadBlob(blob, `手数料管理簿_${today}.xlsx`),
+              );
             }}
-            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-bold text-brand"
+            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-bold text-brand disabled:opacity-50"
           >
             <FileSpreadsheet size={14} />
             手数料管理簿（Excel）
@@ -397,6 +433,18 @@ export function ReferralsClient({
       <p className="text-sm font-bold text-muted">
         {allMonths ? "全期間" : monthLabel(month)} ・ {filtered.length}件 ・ 手数料合計{" "}
         {formatSalesYen(total)}
+        {picked.length > 0 && (
+          <span className="ml-2 text-brand">
+            訪問指導用に{picked.length}件を選んでいます
+            <button
+              type="button"
+              onClick={() => setPicked([])}
+              className="ml-1.5 underline underline-offset-2"
+            >
+              選択を外す
+            </button>
+          </span>
+        )}
       </p>
 
       {loading ? (
@@ -412,6 +460,19 @@ export function ReferralsClient({
             <table className="w-full min-w-[1650px] border-collapse text-xs">
               <thead>
                 <tr className="border-b border-border text-left text-muted">
+                  {/* 訪問指導で出す分を選ぶ欄 */}
+                  <th className="py-1.5 pr-2 font-bold">
+                    <label className="flex items-center gap-1">
+                      <input
+                        type="checkbox"
+                        checked={allPicked}
+                        onChange={togglePickAll}
+                        aria-label="表示中をすべて選ぶ"
+                        className="h-4 w-4 accent-brand"
+                      />
+                      選ぶ
+                    </label>
+                  </th>
                   <th className="py-1.5 pr-2 font-bold">氏名</th>
                   <th className="py-1.5 pr-2 font-bold">所属機関</th>
                   <th className="py-1.5 pr-2 font-bold">国内・国外</th>
@@ -435,6 +496,15 @@ export function ReferralsClient({
               <tbody>
                 {filtered.map((r) => (
                   <tr key={r.id} className="border-b border-border/60">
+                    <td className="py-1.5 pr-2">
+                      <input
+                        type="checkbox"
+                        checked={picked.includes(r.id)}
+                        onChange={() => togglePick(r.id)}
+                        aria-label={`${r.workers?.name ?? r.worker_name}を訪問指導用に選ぶ`}
+                        className="h-4 w-4 accent-brand"
+                      />
+                    </td>
                     <td className="py-1.5 pr-2">
                       {r.worker_id ? (
                         <Link

@@ -20,8 +20,10 @@ import type { PostingWithStats } from "@/lib/supabase/queries/postings";
 const COL_WIDTHS = [10.71, 11.86, 11, 8.29, 12.29, 11.86, 8.43, 10];
 const TOTAL_W = COL_WIDTHS.reduce((a, b) => a + b, 0);
 
-// エクセルの行の高さ（pt）をA4縦1枚に収まるように縮める倍率
-const H = 0.64;
+// エクセルの行の高さ（pt）をA4縦1枚に収まるように縮める倍率。
+// 全41行の高さの合計は 1225pt なので、0.60 倍で約259mm。
+// A4縦（297mm）から上下の余白6mmずつを引いた285mmに収まる
+const H = 0.6;
 const pt = (h: number) => `${(h * H).toFixed(1)}pt`;
 
 // 読み取りだけの人（閲覧者）には入力欄を出さず、文字のまま見せる
@@ -123,8 +125,9 @@ function Pick({
   onClick: () => void;
 }) {
   const canEdit = useContext(EditCtx);
+  // pick-on … 印刷のときも丸を残すための目印（下の印刷用の指定で使う）
   const className = on
-    ? "rounded-full border border-black px-[3px] font-bold leading-none"
+    ? "pick-on rounded-full border border-black px-[3px] font-bold leading-none"
     : "px-[3px] leading-none text-gray-500 print:text-black";
   if (!canEdit) return <span className={className}>{label}</span>;
   return (
@@ -255,10 +258,18 @@ export function PostingSheetPrint({
   return (
     <EditCtx.Provider value={canEdit}>
       <style>{
-        "@media print{@page{size:A4 portrait;margin:8mm}" +
-        "input,select,textarea,button{border:0!important;background:transparent!important;color:#000!important}" +
-        ".pick-on{border:1px solid #000!important;border-radius:9999px!important}" +
-        "input[type=date]::-webkit-calendar-picker-indicator{display:none}}"
+        "@media print{@page{size:A4 portrait;margin:6mm}" +
+        // 入力欄の枠・背景は消して、紙の上では文字だけが見えるようにする
+        "input,select,textarea,button{border:0!important;background:transparent!important;" +
+        "color:#000!important;padding:0!important;line-height:1.1!important;" +
+        "-webkit-appearance:none!important;appearance:none!important}" +
+        // 選んだところの丸は残す（上の指定より後に書いて打ち消す）
+        ".pick-on{border:1px solid #000!important;border-radius:9999px!important;" +
+        "padding:0 3px!important}" +
+        "input[type=date]::-webkit-calendar-picker-indicator{display:none}" +
+        // 行の途中で改ページさせない（1枚に収める）
+        "tr{break-inside:avoid;page-break-inside:avoid}" +
+        ".sheet-paper{max-width:none!important;width:100%!important}}"
       }</style>
 
       <div className="print:hidden">
@@ -293,6 +304,8 @@ export function PostingSheetPrint({
           )}
           <span className="text-[11px] leading-relaxed text-muted">
             この様式の上でそのまま書けます。点線の欄は入力、「月給・時給」「有・無」などは押すと丸が付き、□は押すと☑になります。
+            選んだ丸と☑は印刷にもそのまま出ます。A4縦1枚に収まるので、印刷の設定は用紙「A4」・向き「縦」・
+            余白「既定」・拡大縮小「100%（または用紙に合わせる）」にしてください。
             会社名・所在地は所属機関の登録内容です（直すときは会社・機関マスタから）。
           </span>
         </div>
@@ -309,7 +322,7 @@ export function PostingSheetPrint({
       </div>
 
       <div className="px-4 pb-6 lg:px-8 print:p-0">
-        <div className="mx-auto max-w-[180mm] bg-white text-black">
+        <div className="sheet-paper mx-auto max-w-[180mm] bg-white text-black">
           <table className="w-full table-fixed border-collapse text-[7pt] leading-tight">
             <colgroup>
               {COL_WIDTHS.map((w, i) => (

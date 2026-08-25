@@ -4,32 +4,30 @@ import { Printer } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
 import { LedgerSheet, type LedgerTable } from "@/components/ledgers/LedgerSheet";
 
-export function LedgerPrintView({
-  listNos,
+// 訪問指導（監査）で出す手数料管理簿の印刷用（A4横）。
+// 紹介手数料台帳で選んだ人だけを載せる
+export function FeeLedgerPrintView({
+  table,
   baseDate,
-  posting,
-  seeker,
-  fee,
+  names,
+  picked,
 }: {
-  listNos: string;
+  table: LedgerTable;
   baseDate: string;
-  posting: LedgerTable;
-  seeker: LedgerTable;
-  fee: LedgerTable;
+  // 選んだ人の氏名（見出しに出して、誰の分を出したか分かるようにする）
+  names: string[];
+  // 台帳で人を選んで出したか（選ばずに表示中の分をそのまま出したか）
+  picked: boolean;
 }) {
-  const subtitle = listNos ? `当日点検 リストNo.${listNos}` : undefined;
   return (
     <>
       {/* A4横で刷る。1枚に収まるように少し縮める */}
-      <style>{
-        "@media print{@page{size:A4 landscape;margin:8mm}" +
-        ".ledger-sheet{break-after:page}.ledger-sheet:last-of-type{break-after:auto}}"
-      }</style>
+      <style>{"@media print{@page{size:A4 landscape;margin:8mm}}"}</style>
 
       <div className="print:hidden">
         <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-brand px-4 py-3 text-brand-foreground lg:px-8">
-          <BackButton fallbackHref="/postings/form30" />
-          <h1 className="flex-1 text-lg font-bold">当日点検の帳簿（A4横で印刷）</h1>
+          <BackButton fallbackHref="/referrals" />
+          <h1 className="flex-1 text-lg font-bold">手数料管理簿（A4横で印刷）</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2 px-4 py-3 lg:px-8">
           <button
@@ -41,33 +39,23 @@ export function LedgerPrintView({
             印刷・PDF保存（A4横）
           </button>
           <span className="text-[11px] leading-relaxed text-muted">
-            求人管理簿・求職管理簿・手数料管理簿を、点検に選ばれた分だけA4横で並べています（求人・求職管理簿の備考の欄は出していません）。
+            {picked
+              ? `紹介手数料台帳で選んだ${names.length}名分をA4横で出しています。`
+              : "紹介手数料台帳で表示していた分をそのままA4横で出しています。"}
             印刷の設定で用紙は「A4」、向きは「横」、拡大縮小は「用紙に合わせる」にしてください。
+            PDFで残すときは、印刷先（送信先）を「PDFに保存」にしてください。
           </span>
         </div>
       </div>
 
       <div className="px-4 pb-6 lg:px-8 print:p-0">
         <LedgerSheet
-          title="求人管理簿"
-          retention="[有効期間の終了後２年間保存]"
-          table={posting}
-          subtitle={subtitle}
-          baseDate={baseDate}
-        />
-        <LedgerSheet
-          title="求職管理簿"
-          retention="[有効期間の終了後２年間保存]"
-          table={seeker}
-          subtitle={subtitle}
-          baseDate={baseDate}
-        />
-        <LedgerSheet
           title="手数料管理簿"
           retention="[手数料の徴収完了後２年間保存]"
-          table={fee}
-          subtitle={subtitle}
+          table={table}
+          subtitle={picked && names.length > 0 ? `訪問指導 ${names.join("・")}` : undefined}
           baseDate={baseDate}
+          empty="選んだ人の手数料の記録がありません。紹介手数料台帳に戻って選び直してください。"
         />
       </div>
     </>
