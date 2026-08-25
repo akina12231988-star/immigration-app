@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { jobseekerAge, jobseekerCerts, normalizeJobseekerCard } from "./jobseeker-card";
+import {
+  jobseekerAge,
+  jobseekerCerts,
+  jobseekerReferrals,
+  normalizeJobseekerCard,
+  type JobseekerReferral,
+} from "./jobseeker-card";
 
 describe("jobseekerAge", () => {
   it("誕生日を過ぎていれば満年齢そのまま", () => {
@@ -71,5 +77,36 @@ describe("normalizeJobseekerCard", () => {
 
   it("文字でない値は空として扱う", () => {
     expect(normalizeJobseekerCard({ phone: 123, other_wish: ["x"] }).phone).toBe("");
+  });
+});
+
+describe("jobseekerReferrals", () => {
+  const ref = (appliedOn: string, employerName: string): JobseekerReferral => ({
+    appliedOn,
+    acceptanceNo: "",
+    employerName,
+    result: "採用",
+    resultOn: "",
+  });
+
+  it("受付年月日より前の紹介は載せない（前回の求職受付のときの分）", () => {
+    const rows = [ref("2025-09-01", "大家聖矢"), ref("2026-04-03", "髙濱伸吉")];
+    expect(jobseekerReferrals(rows, "2026-04-01").map((r) => r.employerName)).toEqual([
+      "髙濱伸吉",
+    ]);
+  });
+
+  it("受付年月日と同じ日の紹介は載せる", () => {
+    const rows = [ref("2026-04-01", "髙濱伸吉")];
+    expect(jobseekerReferrals(rows, "2026-04-01")).toHaveLength(1);
+  });
+
+  it("受付年月日が未入力なら全部載せる", () => {
+    const rows = [ref("2025-09-01", "大家聖矢"), ref("2026-04-03", "髙濱伸吉")];
+    expect(jobseekerReferrals(rows, "")).toHaveLength(2);
+  });
+
+  it("紹介年月日が入っていない記録はそのまま載せる", () => {
+    expect(jobseekerReferrals([ref("", "未入力")], "2026-04-01")).toHaveLength(1);
   });
 });

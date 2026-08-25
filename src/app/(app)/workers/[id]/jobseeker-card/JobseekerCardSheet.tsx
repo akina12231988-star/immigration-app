@@ -8,7 +8,12 @@ import { useWorkHistoryRows } from "@/components/workers/useWorkHistoryRows";
 import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
 import { dbErrorMessage } from "@/lib/errors";
-import { jobseekerAge, JOBSEEKER_AGENT_NAME } from "@/lib/jobseeker-card";
+import {
+  jobseekerAge,
+  jobseekerReferrals,
+  JOBSEEKER_AGENT_NAME,
+  type JobseekerReferral,
+} from "@/lib/jobseeker-card";
 import type { JobseekerCardExtras } from "@/types/db";
 
 // 求職票（求職申込書）。労働局の訪問指導で求職管理簿と一緒に見せる1人分の申込内容。
@@ -41,14 +46,6 @@ export interface JobseekerCardHistory {
   end: string | null;
   org: string;
   role: string;
-}
-
-export interface JobseekerCardReferral {
-  appliedOn: string;
-  acceptanceNo: string;
-  employerName: string;
-  result: string;
-  resultOn: string;
 }
 
 const B = "border border-black";
@@ -110,7 +107,7 @@ export function JobseekerCardSheet({
   extras: JobseekerCardExtras;
   certs: { label: string; value: string }[];
   histories: JobseekerCardHistory[];
-  referrals: JobseekerCardReferral[];
+  referrals: JobseekerReferral[];
 }) {
   const router = useRouter();
   const [worker, setWorker] = useState(initialWorker);
@@ -193,10 +190,12 @@ export function JobseekerCardSheet({
 
   const age = jobseekerAge(worker.birth || null, worker.acceptedOn || "");
   // 紹介の記録は求職管理簿と同じ内容なので直せない。
-  // 実際にある記録だけを出し、まだ1件も無いときだけ空の1行を出す
+  // この求職受付より前の紹介（前回の求職受付のときの分）は載せず、
+  // 1件も無いときだけ空の1行を出す
+  const forThisCard = jobseekerReferrals(referrals, worker.acceptedOn);
   const shownReferrals =
-    referrals.length > 0
-      ? referrals
+    forThisCard.length > 0
+      ? forThisCard
       : [{ appliedOn: "", acceptanceNo: "", employerName: "", result: "", resultOn: "" }];
   const shownCerts = certs.length > 0 ? certs : [{ label: "", value: "" }];
 
@@ -250,6 +249,7 @@ export function JobseekerCardSheet({
             求職管理簿と一緒に見せる求職票です。点線の欄はこの画面でそのまま書けて、「保存する」で外国人の登録内容に書き戻します。
             職歴は「職歴を追加」で増やせ、直すと期間の古い順に並べ直します。
             作成年月日には求職の受付年月日が入ります。
+            紹介の記録は、この受付年月日より後の紹介だけを出します（前回の求職受付のときの紹介は、そのときの求職票に載ります）。
             印刷の設定は用紙「A4」・向き「縦」・拡大縮小「100%（または用紙に合わせる）」にしてください。
           </span>
           {message && (
