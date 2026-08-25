@@ -13,6 +13,7 @@ import {
 import { buildFeeLedgerSheet, postingLedgerTable, seekerLedgerTable } from "@/lib/recruit-ledgers";
 import { listReferralFees } from "@/lib/supabase/queries/referrals";
 import { todayStr } from "@/lib/application-alerts";
+import { ledgerCell as cell } from "@/components/ledgers/LedgerSheet";
 import { LedgerPrintView } from "./LedgerPrintView";
 
 export const dynamic = "force-dynamic";
@@ -83,10 +84,4 @@ export default async function AuditLedgerPrintPage({
       }}
     />
   );
-}
-
-// 表に出す文字（数値・空欄もそのまま読める形にする）
-function cell(v: unknown): string {
-  if (v === null || v === undefined) return "";
-  return String(v);
 }
