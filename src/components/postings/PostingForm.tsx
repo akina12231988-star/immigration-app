@@ -414,7 +414,7 @@ export function PostingForm({
           />
         </Field>
         <div className="grid grid-cols-2 gap-2.5">
-          <Field label="求人受付日">
+          <Field label="求人受付日（求人管理簿・様式30の受付年月日／自己申告書の年月日）">
             <input
               type="date"
               value={form.received_on}
