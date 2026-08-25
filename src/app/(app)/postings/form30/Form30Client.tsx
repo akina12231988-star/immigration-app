@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { FileText, Printer, Save } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
 import { buildDocx } from "@/lib/docx-export";
@@ -22,6 +23,17 @@ import {
   type Form30PayStatus,
 } from "@/lib/form30";
 import { createClient } from "@/lib/supabase/client";
+import { buildXlsx } from "@/lib/xlsx-export";
+import { buildPostingLedgerSheet, buildSeekerLedgerSheet } from "@/lib/recruit-ledgers";
+import {
+  fetchPostingLedger,
+  fetchSeekerLedger,
+} from "@/lib/supabase/queries/recruit-ledgers";
+import {
+  filterPostingLedger,
+  filterSeekerLedger,
+  listNoLabel,
+} from "@/lib/recruit-ledger-filter";
 import { updateOrganization } from "@/lib/supabase/queries/organizations";
 import { dbErrorMessage } from "@/lib/errors";
 
@@ -160,6 +172,60 @@ export function Form30Client({
     }
   };
 
+  // ---- 当日点検（労働局が選んだリストNo.の分だけ帳簿を出す） ----
+  // 様式30を出すと「リストNo.◯とNo.◯を当日点検します」と連絡が来る。
+  // その2件と、その求人で就職にいたった求職者（1件につき1人）の分だけを出す
+  const [inspectIds, setInspectIds] = useState<string[]>([]);
+  // 求人ごとに選ぶ求職者（就職にいたった人。求人ID → 氏名）
+  const [inspectWorker, setInspectWorker] = useState<Record<string, string>>({});
+  const [ledgerBusy, setLedgerBusy] = useState<"posting" | "seeker" | null>(null);
+  const [ledgerError, setLedgerError] = useState<string | null>(null);
+
+  // 点検対象に選んだ求人（様式に載せる順＝リストNo.の順）
+  const inspectRows = selectedRows
+    .map((c, i) => ({ candidate: c, listNo: i + 1 }))
+    .filter((r) => inspectIds.includes(r.candidate.postingId));
+
+  const toggleInspect = (postingId: string) =>
+    setInspectIds((prev) =>
+      prev.includes(postingId) ? prev.filter((x) => x !== postingId) : [...prev, postingId],
+    );
+
+  // 選んだリストNo.の分だけの求人管理簿・求職管理簿
+  const exportInspectLedger = async (kind: "posting" | "seeker") => {
+    if (inspectRows.length === 0) return;
+    setLedgerBusy(kind);
+    setLedgerError(null);
+    try {
+      const supabase = createClient();
+      const label = listNoLabel(inspectRows.map((r) => r.listNo));
+      const ids = inspectRows.map((r) => r.candidate.postingId);
+      if (kind === "posting") {
+        const entries = filterPostingLedger(await fetchPostingLedger(supabase), ids);
+        downloadBlob(
+          await buildXlsx([buildPostingLedgerSheet(entries)]),
+          `求人管理簿_当日点検_リストNo${label}_${baseDate}.xlsx`,
+        );
+      } else {
+        // 求人ごとに選んだ求職者（未選択なら採用になった人を全員）
+        const names = inspectRows.flatMap((r) => {
+          const chosen = inspectWorker[r.candidate.postingId];
+          const hired = r.candidate.hired.map((a) => a.worker_name).filter(Boolean);
+          return chosen ? [chosen] : hired;
+        });
+        const entries = filterSeekerLedger(await fetchSeekerLedger(supabase), names);
+        downloadBlob(
+          await buildXlsx([buildSeekerLedgerSheet(entries)]),
+          `求職管理簿_当日点検_リストNo${label}_${baseDate}.xlsx`,
+        );
+      }
+    } catch (err) {
+      setLedgerError(dbErrorMessage(err, "0079_recruit_ledgers.sql", "出力に失敗しました"));
+    } finally {
+      setLedgerBusy(null);
+    }
+  };
+
   return (
     <>
       {/* A4横で刷る。印刷のときは様式のプレビューだけを出す */}
@@ -273,6 +339,109 @@ export function Form30Client({
               {notPaidSelected.map((c) => c.org_name).join("・")}）。
               入金済みの企業だけを載せる場合は外してください。
             </p>
+          )}
+
+          {/* 当日点検（労働局が選んだリストNo.の分だけ帳簿を出す） */}
+          {selectedRows.length > 0 && (
+            <div className="rounded-xl border border-border bg-surface p-3">
+              <p className="text-sm font-bold">訪問指導の当日点検（リストNo.を選んで帳簿を出す）</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-muted">
+                様式30を提出すると、労働局から「リストNo.◯とNo.◯を当日点検します」と連絡が来ます。
+                その番号にチェックを入れると、求人管理簿・求職管理簿を<b>その分だけ</b>出せます（全件は出しません）。
+                求職管理簿は、その求人で就職にいたった求職者を1人選んでください（労働局から「1件につき1人選定」と言われる分です）。
+                下の番号は、この画面で選んでいる求人の並び順＝様式30のリストNo.です。
+              </p>
+
+              <div className="mt-2 space-y-1">
+                {selectedRows.map((c, i) => {
+                  const listNo = i + 1;
+                  const checked = inspectIds.includes(c.postingId);
+                  const hired = [
+                    ...new Set(c.hired.map((a) => a.worker_name).filter(Boolean)),
+                  ];
+                  return (
+                    <div
+                      key={c.postingId}
+                      className="flex flex-wrap items-center gap-2 rounded-lg bg-background px-2.5 py-1.5 text-xs"
+                    >
+                      <label className="flex items-center gap-1.5">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleInspect(c.postingId)}
+                          className="h-4 w-4"
+                        />
+                        <span className="font-bold tabular-nums">リストNo.{listNo}</span>
+                      </label>
+                      <span className="min-w-0 flex-1 truncate">{c.org_name}</span>
+                      <span className="truncate text-muted">{c.job_type}</span>
+                      {checked && (
+                        <label className="flex items-center gap-1.5">
+                          <span className="shrink-0 text-[11px] text-muted">就職した求職者</span>
+                          <select
+                            value={inspectWorker[c.postingId] ?? ""}
+                            onChange={(e) =>
+                              setInspectWorker((prev) => ({
+                                ...prev,
+                                [c.postingId]: e.target.value,
+                              }))
+                            }
+                            className="min-h-[32px] rounded-lg border border-border bg-surface px-2 text-xs"
+                          >
+                            <option value="">
+                              {hired.length > 0 ? "採用になった人すべて" : "採用者なし"}
+                            </option>
+                            {hired.map((n) => (
+                              <option key={n} value={n}>
+                                {n}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void exportInspectLedger("posting")}
+                  disabled={inspectRows.length === 0 || ledgerBusy !== null}
+                  className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg border border-brand px-3 text-xs font-bold text-brand disabled:opacity-50"
+                >
+                  <FileText size={14} />
+                  {ledgerBusy === "posting" ? "出力中…" : "求人管理簿（点検分だけ・Excel）"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void exportInspectLedger("seeker")}
+                  disabled={inspectRows.length === 0 || ledgerBusy !== null}
+                  className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg border border-brand px-3 text-xs font-bold text-brand disabled:opacity-50"
+                >
+                  <FileText size={14} />
+                  {ledgerBusy === "seeker" ? "出力中…" : "求職管理簿（点検分だけ・Excel）"}
+                </button>
+                <Link
+                  href="/postings/audit"
+                  className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-bold text-brand"
+                >
+                  <FileText size={14} />
+                  規程・手数料表など他の確認書類
+                </Link>
+                <span className="text-[11px] text-muted">
+                  {inspectRows.length === 0
+                    ? "点検するリストNo.にチェックを入れてください"
+                    : `点検対象: リストNo.${listNoLabel(inspectRows.map((r) => r.listNo))}`}
+                </span>
+              </div>
+              {ledgerError && (
+                <p role="alert" className="mt-2 rounded-lg bg-seal/10 px-3 py-2 text-xs text-seal">
+                  {ledgerError}
+                </p>
+              )}
+            </div>
           )}
 
           {candidates.length === 0 ? (
