@@ -163,7 +163,7 @@ describe("buildSeekerLedgerSheet", () => {
 });
 
 describe("buildFeeLedgerSheet", () => {
-  it("算出根拠の補完と未徴収の備考を付ける", () => {
+  it("算出根拠も備考も、入力された分だけを出す（未徴収だけ備考に書く）", () => {
     const sheet = buildFeeLedgerSheet([
       {
         payer_name: "株式会社テスト",
@@ -171,18 +171,46 @@ describe("buildFeeLedgerSheet", () => {
         fee_kind: "紹介手数料",
         fee: 30000,
         calc_basis: "",
-        worker_name: "NGUYEN VAN A",
         note: "",
       },
     ]);
+    // 算出根拠（6番目）に手数料の種類は入れない
     expect(sheet.rows[2]).toEqual([
       "株式会社テスト",
       "",
       "紹介手数料",
       30000,
       "",
-      "紹介手数料（NGUYEN VAN A 分）",
+      "",
       "未徴収",
+      "",
+      "",
+    ]);
+  });
+
+  it("入力された算出根拠はそのまま出し、請求年月日・入金年月日を後ろに足す", () => {
+    const sheet = buildFeeLedgerSheet([
+      {
+        payer_name: "株式会社テスト",
+        paid_on: "2026-08-20",
+        fee_kind: "紹介手数料",
+        fee: 30000,
+        calc_basis: "賃金総額150万円×11％",
+        note: "初回",
+        billed_on: "2026-08-01",
+      },
+    ]);
+    expect(sheet.rows[1].slice(-2)).toEqual(["請求年月日", "入金年月日"]);
+    expect(sheet.rows[2]).toEqual([
+      "株式会社テスト",
+      "2026-08-20",
+      "紹介手数料",
+      30000,
+      "",
+      "賃金総額150万円×11％",
+      "初回",
+      "2026-08-01",
+      "2026-08-20",
     ]);
   });
 });
