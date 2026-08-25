@@ -346,6 +346,13 @@ export function JobsExplorer({
               <FileSpreadsheet size={14} />
               {exporting ? "出力中…" : "求職管理簿（Excel）"}
             </button>
+            <Link
+              href="/postings/form30"
+              title="訪問指導の当日点検で労働局から指定されたリストNo.の分だけ出すときはこちら"
+              className="text-[11px] font-bold text-brand hover:underline"
+            >
+              点検分だけ出す（様式30の画面）
+            </Link>
             {canEdit && (
               <button
                 type="button"
