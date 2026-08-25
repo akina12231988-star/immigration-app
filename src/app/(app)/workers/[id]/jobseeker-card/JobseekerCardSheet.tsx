@@ -392,18 +392,16 @@ export function JobseekerCardSheet({
 
           <table className="mt-2 w-full table-fixed border-collapse text-[8.5pt] leading-tight">
             <colgroup>
-              <col style={{ width: "26%" }} />
-              <col style={{ width: "34%" }} />
-              <col style={{ width: "34%" }} />
-              <col style={{ width: "6%" }} />
+              <col style={{ width: "28%" }} />
+              <col style={{ width: "36%" }} />
+              <col style={{ width: "36%" }} />
             </colgroup>
             <tbody>
-              <Band colSpan={4}>職歴</Band>
+              <Band colSpan={3}>職歴</Band>
               <tr>
                 <Head>期間</Head>
                 <Head>勤務先</Head>
                 <Head>仕事内容</Head>
-                <Head className="print:hidden" />
               </tr>
               {jobs.map((j) => (
                 <tr key={j.key} className={j.auto ? "text-gray-500 print:text-black" : ""}>
@@ -429,18 +427,20 @@ export function JobseekerCardSheet({
                     )}
                   </Cell>
                   <Cell>{F(j.org, (v) => setRow(j.key, { org: v }))}</Cell>
-                  <Cell>{F(j.role, (v) => setRow(j.key, { role: v }))}</Cell>
-                  <Cell className="print:hidden">
-                    {canEdit && !j.auto && (
-                      <button
-                        type="button"
-                        onClick={() => removeRow(j.key)}
-                        aria-label="この職歴を消す"
-                        className="text-gray-400 hover:text-red-700"
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    )}
+                  <Cell>
+                    <span className="flex items-center gap-1">
+                      {F(j.role, (v) => setRow(j.key, { role: v }))}
+                      {canEdit && !j.auto && (
+                        <button
+                          type="button"
+                          onClick={() => removeRow(j.key)}
+                          aria-label="この職歴を消す"
+                          className="shrink-0 text-gray-400 hover:text-red-700 print:hidden"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </span>
                   </Cell>
                 </tr>
               ))}
