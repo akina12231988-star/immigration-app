@@ -36,14 +36,18 @@ describe("canShareFile", () => {
 
 describe("saveOrShareFile", () => {
   it("スマホでは共有シートへファイルそのものを渡す（リンクではなくファイル）", async () => {
-    const share = vi.fn(() => Promise.resolve());
+    const shared: { files: File[] }[] = [];
+    const share = vi.fn((data: { files: File[] }) => {
+      shared.push(data);
+      return Promise.resolve();
+    });
     setNavigator({ share, canShare: () => true });
 
     const result = await saveOrShareFile(new Blob(["x"]), "預かり証_テスト.pdf", "application/pdf");
 
     expect(result).toBe("shared");
     expect(share).toHaveBeenCalledTimes(1);
-    const arg = share.mock.calls[0][0] as { files: File[]; url?: string; title?: string };
+    const arg = shared[0];
     // files だけを渡す（url や title を混ぜると iPhone でリンクの共有に化けることがある）
     expect(Object.keys(arg)).toEqual(["files"]);
     expect(arg.files[0].name).toBe("預かり証_テスト.pdf");

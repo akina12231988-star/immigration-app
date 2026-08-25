@@ -1,5 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { nextTodoNo, type TodoExam, type TodoKind, type TodoStatusOption } from "@/lib/todo";
+import {
+  findExistingPrepTodo,
+  nextTodoNo,
+  type TodoExam,
+  type TodoKind,
+  type TodoStatusOption,
+} from "@/lib/todo";
 
 // TODO（NotionのTODOデータベースの置き換え）の読み書き。
 // テーブルは 0102_todos.sql（todos / todo_status_options）
@@ -94,6 +100,48 @@ export async function insertTodo(supabase: SupabaseClient, input: NewTodo): Prom
     .single();
   if (error) throw error;
   return data as TodoRow;
+}
+
+// 申請準備のTODOに確実に入れる。
+//
+// 申請準備の画面から追加したのに一覧に出てこない、ということが起きないよう、
+// 「すでに入っている」「新しく作った」「作れなかった」をはっきり返す。
+// 番号が重なっている（todos.todo_no は重複できない）ときは、その旨が分かる文言にする。
+export async function ensurePrepTodo(
+  supabase: SupabaseClient,
+  input: { worker_id: string; title: string; todo_no?: string },
+): Promise<{ row: TodoRow; created: boolean }> {
+  const { data, error } = await supabase
+    .from("todos")
+    .select("*")
+    .eq("kind", "申請準備")
+    .is("deleted_at", null)
+    .then((res) =>
+      // deleted_at（0108）が未適用の環境でも動くように、絞り込み無しでやり直す
+      res.error ? supabase.from("todos").select("*").eq("kind", "申請準備") : res,
+    );
+  if (error) throw error;
+  const rows = (data as TodoRow[] | null) ?? [];
+  const existing = findExistingPrepTodo(rows, input.worker_id, input.todo_no ?? "");
+  if (existing) return { row: existing, created: false };
+
+  try {
+    const row = await insertTodo(supabase, {
+      kind: "申請準備",
+      worker_id: input.worker_id,
+      title: input.title,
+      todo_no: input.todo_no || undefined,
+    });
+    return { row, created: true };
+  } catch (err) {
+    const code = (err as { code?: string } | null)?.code;
+    if (code === "23505" && input.todo_no) {
+      throw new Error(
+        `TODO番号「${input.todo_no}」はすでに他のTODOで使われています。別の番号にするか、番号を空欄にして自動採番にしてください。`,
+      );
+    }
+    throw err;
+  }
 }
 
 export async function updateTodo(
