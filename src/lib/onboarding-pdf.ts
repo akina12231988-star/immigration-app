@@ -67,7 +67,9 @@ export async function toPdfBlob(
   return { blob: new Blob([bytes], { type: mimeType }), converted: false };
 }
 
-// Blobを指定ファイル名でダウンロードする（同一オリジンのため download 属性が有効）
+// Blobを指定ファイル名でダウンロードする（同一オリジンのため download 属性が有効）。
+// ここは書類をまとめて連続で保存するところなので、1件ずつ共有シートを出さない
+// （1件だけを送るところは lib/file-save の saveOrShareFile を使う）
 export function downloadBlob(blob: Blob, fileName: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
