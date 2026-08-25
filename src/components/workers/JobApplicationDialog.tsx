@@ -268,7 +268,9 @@ export function JobApplicationDialog({
 
         <div className="grid grid-cols-2 gap-2.5">
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-bold text-muted">応募日</span>
+            <span className="text-xs font-bold text-muted">
+              応募日 ＝ 帳簿の「紹介年月日」
+            </span>
             <input
               type="date"
               required
@@ -278,7 +280,7 @@ export function JobApplicationDialog({
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-bold text-muted">面接日</span>
+            <span className="text-xs font-bold text-muted">面接日（帳簿には出ません）</span>
             <input
               type="date"
               value={form.interview_on ?? ""}
@@ -290,7 +292,7 @@ export function JobApplicationDialog({
 
         <div className="grid grid-cols-2 gap-2.5">
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-bold text-muted">結果</span>
+            <span className="text-xs font-bold text-muted">結果 ＝ 帳簿の「採否結果」</span>
             <select
               value={form.result}
               onChange={(e) => set("result", e.target.value as ApplicationResult)}
@@ -304,7 +306,9 @@ export function JobApplicationDialog({
             </select>
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-bold text-muted">結果日</span>
+            <span className="text-xs font-bold text-muted">
+              結果日 ＝ 帳簿の「採用年月日」
+            </span>
             <input
               type="date"
               value={form.result_on ?? ""}
@@ -315,7 +319,7 @@ export function JobApplicationDialog({
         </div>
 
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-bold text-muted">備考</span>
+          <span className="text-xs font-bold text-muted">備考（帳簿には出ません）</span>
           <input
             value={form.note}
             onChange={(e) => set("note", e.target.value)}
@@ -328,6 +332,26 @@ export function JobApplicationDialog({
             保存後、続けて「採用記録」を登録すると現在の所属機関が自動更新されます。
           </p>
         )}
+
+        {/* どの欄が帳簿のどの項目になるかを、この画面で分かるようにする */}
+        <div className="rounded-lg bg-background px-3 py-2 text-[11px] leading-relaxed text-muted">
+          <p className="font-bold">求職管理簿の日付との対応</p>
+          <ul className="mt-0.5 list-disc pl-4">
+            <li>
+              <span className="font-bold">受付年月日</span> … この画面ではなく、求職一覧の
+              「帳簿情報」で入れます（求職受付番号・有効期間と同じところ。外国人ごとに1つ）。
+              未入力のときは、その人のいちばん古い応募日で代用して出力します。
+            </li>
+            <li>
+              <span className="font-bold">紹介年月日</span> … 上の「応募日」
+            </li>
+            <li>
+              <span className="font-bold">採用年月日</span> … 上の「結果日」。
+              結果が「採用」のときだけ帳簿に出ます（不採用・辞退のときは空欄になります）。
+            </li>
+          </ul>
+          <p className="mt-1">求人管理簿の「紹介年月日・採否結果・採用年月日」も同じ欄を使います。</p>
+        </div>
 
         <Button type="submit" fullWidth disabled={busy || creating} className="mt-1">
           {busy ? "保存中…" : creating ? "新規登録中…" : initial ? "更新する" : "登録する"}
