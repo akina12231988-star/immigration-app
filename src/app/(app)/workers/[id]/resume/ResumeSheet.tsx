@@ -1,9 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { BackButton } from "@/components/BackButton";
-import { Printer, UserRound } from "lucide-react";
+import { Plus, Printer, Save, Trash2, UserRound } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import { updateWorker } from "@/lib/supabase/queries/workers";
+import { deleteHistory, insertHistory, updateHistory } from "@/lib/supabase/queries/histories";
+import { errorMessage } from "@/lib/errors";
 import { todayStr } from "@/lib/ssw/calc";
+import { VISA_TYPES, type VisaType } from "@/types/ssw";
 
 interface ResumeWorker {
   name: string;
@@ -27,20 +33,162 @@ interface ResumeHistory {
   role: string;
 }
 
+// 画面に並べる職歴の1行。
+// auto … 所属機関の雇用開始日から自動で足した行（work_histories にはまだ無い）
+// added … この画面で足した行（保存で work_histories に入る）
+interface Row {
+  key: string;
+  id: string;
+  visa: string;
+  start: string;
+  end: string;
+  org: string;
+  role: string;
+  auto: boolean;
+  added: boolean;
+  dirty: boolean;
+  removed: boolean;
+}
+
+const FIELD =
+  "w-full min-w-0 bg-transparent outline-none border-b border-dashed border-gray-300 focus:bg-yellow-100 print:border-0 print:bg-transparent";
+
+const toRow = (h: ResumeHistory): Row => ({
+  key: h.id,
+  id: h.id,
+  visa: h.visa,
+  start: h.start,
+  end: h.end ?? "",
+  org: h.org,
+  role: h.role,
+  auto: h.id.startsWith("employment-"),
+  added: false,
+  dirty: false,
+  removed: false,
+});
+
+// 履歴書。氏名・住所などの本人情報と職歴を、この画面でそのまま直して印刷できる
 export function ResumeSheet({
+  workerId,
+  canEdit,
   photoUrl,
-  worker,
+  worker: initialWorker,
   histories,
 }: {
+  workerId: string;
+  canEdit: boolean;
   photoUrl: string;
   worker: ResumeWorker;
   histories: ResumeHistory[];
 }) {
+  const router = useRouter();
   // 発行年月日は自動表示ではなく、印刷前に指定できるようにする（初期値は今日）
   const [issuedOn, setIssuedOn] = useState(todayStr());
+  const [worker, setWorker] = useState(initialWorker);
+  const [rows, setRows] = useState<Row[]>(() => histories.map(toRow));
+  const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+
   const issuedText = issuedOn
     ? new Date(`${issuedOn}T00:00:00`).toLocaleDateString("ja-JP")
     : "";
+
+  const setField = <K extends keyof ResumeWorker>(key: K, value: ResumeWorker[K]) => {
+    setWorker((w) => ({ ...w, [key]: value }));
+    setDirty(true);
+    setMessage(null);
+  };
+  const setRow = (key: string, patch: Partial<Row>) => {
+    setRows((list) => list.map((r) => (r.key === key ? { ...r, ...patch, dirty: true } : r)));
+    setDirty(true);
+    setMessage(null);
+  };
+  const addRow = () => {
+    setRows((list) => [
+      ...list,
+      {
+        key: `new-${list.length}-${issuedOn}`,
+        id: "",
+        visa: "特定技能1号",
+        start: "",
+        end: "",
+        org: "",
+        role: "",
+        auto: false,
+        added: true,
+        dirty: true,
+        removed: false,
+      },
+    ]);
+    setDirty(true);
+    setMessage(null);
+  };
+  const removeRow = (key: string) => {
+    setRows((list) =>
+      list
+        // まだ保存していない行はその場で消す。保存済みの行は保存のときに消す
+        .filter((r) => !(r.key === key && r.added))
+        .map((r) => (r.key === key ? { ...r, removed: true } : r)),
+    );
+    setDirty(true);
+    setMessage(null);
+  };
+
+  const save = async () => {
+    setBusy(true);
+    setMessage(null);
+    const supabase = createClient();
+    try {
+      await updateWorker(supabase, workerId, {
+        name: worker.name,
+        kana: worker.kana,
+        birth: worker.birth || null,
+        gender: worker.gender,
+        address: worker.address,
+        nationality: worker.nationality,
+        residence_status: worker.residenceStatus,
+        field: worker.field,
+        specialty_grade: worker.specialtyGrade,
+        other_qualifications: worker.otherQualifications,
+      });
+      for (const r of rows) {
+        if (r.removed) {
+          if (r.id && !r.auto) await deleteHistory(supabase, r.id);
+          continue;
+        }
+        if (!r.dirty) continue;
+        const input = {
+          worker_id: workerId,
+          // 画面の選択肢は VISA_TYPES から出しているので、そのまま在留資格として保存する
+          visa: r.visa as VisaType,
+          start_date: r.start,
+          end_date: r.end || null,
+          org_name: r.org,
+          prefecture: "",
+          role: r.role,
+          note: "",
+          kept_residence_status: false,
+        };
+        // 自動で足した行とこの画面で足した行は、保存のときに職歴として登録する
+        if (r.auto || r.added) {
+          if (!r.start) continue;
+          await insertHistory(supabase, input);
+        } else {
+          await updateHistory(supabase, r.id, input);
+        }
+      }
+      setDirty(false);
+      setMessage({ ok: true, text: "保存しました。このまま印刷できます。" });
+      router.refresh();
+    } catch (err) {
+      setMessage({ ok: false, text: errorMessage(err, "保存に失敗しました") });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const shown = rows.filter((r) => !r.removed);
 
   return (
     <>
@@ -60,14 +208,48 @@ export function ResumeSheet({
               className="min-h-[44px] rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none"
             />
           </label>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={busy || !dirty}
+              className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-brand px-5 py-3 text-sm font-bold text-brand-foreground disabled:opacity-50"
+            >
+              <Save size={18} />
+              {busy ? "保存中…" : dirty ? "保存する" : "保存済み"}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => window.print()}
-            className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-brand px-5 py-3 text-sm font-bold text-brand-foreground"
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-brand px-5 py-3 text-sm font-bold text-brand"
           >
             <Printer size={18} />
             印刷・PDF保存
           </button>
+          {dirty && (
+            <span className="text-[11px] font-bold text-seal">
+              保存されていない変更があります（先に保存してから印刷してください）
+            </span>
+          )}
+          {canEdit && (
+            <span className="w-full text-[11px] leading-relaxed text-muted">
+              点線の欄はこの画面でそのまま直せます（外国人の登録内容と職歴に書き戻します）。
+              職歴は「職歴を追加」で増やせ、ごみ箱のボタンで消せます。
+              うすい色の行は所属機関の雇用開始日から自動で出している職歴です。直して保存すると職歴として登録され、
+              以後は普通の行と同じように消せます（消すときは所属機関の雇用開始日も見直してください）。
+            </span>
+          )}
+          {message && (
+            <p
+              role="status"
+              className={`w-full rounded-lg px-3 py-2 text-xs ${
+                message.ok ? "bg-brand/10 text-brand" : "bg-seal/10 text-seal"
+              }`}
+            >
+              {message.text}
+            </p>
+          )}
         </div>
       </div>
 
@@ -81,14 +263,58 @@ export function ResumeSheet({
           {/* 氏名・写真 */}
           <div className="mb-5 flex gap-6">
             <dl className="grid flex-1 grid-cols-2 gap-x-4 gap-y-2 text-sm">
-              <Row label="氏名" value={worker.name} big />
-              <Row label="フリガナ" value={worker.kana} />
-              <Row label="生年月日" value={worker.birth} />
-              <Row label="性別" value={worker.gender} />
-              <Row label="国籍" value={worker.nationality} />
-              <Row label="現在の在留資格" value={worker.residenceStatus} />
-              <Row label="住所" value={worker.address} wide />
-              <Row label="分野・職種" value={worker.field} wide />
+              <Row
+                label="氏名"
+                value={worker.name}
+                onChange={(v) => setField("name", v)}
+                canEdit={canEdit}
+                big
+              />
+              <Row
+                label="フリガナ"
+                value={worker.kana}
+                onChange={(v) => setField("kana", v)}
+                canEdit={canEdit}
+              />
+              <Row
+                label="生年月日"
+                value={worker.birth ?? ""}
+                onChange={(v) => setField("birth", v)}
+                canEdit={canEdit}
+                type="date"
+              />
+              <Row
+                label="性別"
+                value={worker.gender}
+                onChange={(v) => setField("gender", v)}
+                canEdit={canEdit}
+              />
+              <Row
+                label="国籍"
+                value={worker.nationality}
+                onChange={(v) => setField("nationality", v)}
+                canEdit={canEdit}
+              />
+              <Row
+                label="現在の在留資格"
+                value={worker.residenceStatus}
+                onChange={(v) => setField("residenceStatus", v)}
+                canEdit={canEdit}
+              />
+              <Row
+                label="住所"
+                value={worker.address}
+                onChange={(v) => setField("address", v)}
+                canEdit={canEdit}
+                wide
+              />
+              <Row
+                label="分野・職種"
+                value={worker.field}
+                onChange={(v) => setField("field", v)}
+                canEdit={canEdit}
+                wide
+              />
             </dl>
             <div className="flex h-[40mm] w-[32mm] shrink-0 items-center justify-center overflow-hidden border border-gray-400 bg-gray-50">
               {photoUrl ? (
@@ -102,38 +328,136 @@ export function ResumeSheet({
 
           {/* 職歴 */}
           <h3 className="mb-2 border-b border-black pb-1 text-base font-bold">職歴</h3>
-          {histories.length === 0 ? (
-            <p className="mb-5 text-sm text-gray-500">職歴の登録はありません。</p>
+          {shown.length === 0 ? (
+            <p className="mb-2 text-sm text-gray-500">職歴の登録はありません。</p>
           ) : (
-            <table className="mb-5 w-full border-collapse text-sm">
+            <table className="mb-2 w-full border-collapse text-sm">
               <thead>
                 <tr className="border-b border-gray-400 text-left text-xs text-gray-600">
-                  <th className="py-1 pr-2">期間</th>
-                  <th className="py-1 pr-2">在留資格</th>
-                  <th className="py-1 pr-2">勤務先・受入機関</th>
+                  <th className="w-[24%] py-1 pr-2">期間</th>
+                  <th className="w-[20%] py-1 pr-2">在留資格</th>
+                  <th className="w-[28%] py-1 pr-2">勤務先・受入機関</th>
                   <th className="py-1">職種・仕事内容</th>
+                  {canEdit && <th className="w-[28px] py-1 print:hidden" />}
                 </tr>
               </thead>
               <tbody>
-                {histories.map((h) => (
-                  <tr key={h.id} className="border-b border-gray-200 align-top">
+                {shown.map((h) => (
+                  <tr
+                    key={h.key}
+                    className={`border-b border-gray-200 align-top ${
+                      h.auto ? "text-gray-500 print:text-black" : ""
+                    }`}
+                  >
                     <td className="py-1.5 pr-2 tabular-nums">
-                      {h.start} 〜 {h.end ?? "現在"}
+                      {canEdit ? (
+                        <span className="flex items-center gap-0.5">
+                          <input
+                            type="date"
+                            value={h.start}
+                            onChange={(e) => setRow(h.key, { start: e.target.value })}
+                            className={`${FIELD} text-xs`}
+                          />
+                          <span className="shrink-0">〜</span>
+                          <input
+                            type="date"
+                            value={h.end}
+                            onChange={(e) => setRow(h.key, { end: e.target.value })}
+                            className={`${FIELD} text-xs`}
+                          />
+                        </span>
+                      ) : (
+                        `${h.start} 〜 ${h.end || "現在"}`
+                      )}
                     </td>
-                    <td className="py-1.5 pr-2">{h.visa}</td>
-                    <td className="py-1.5 pr-2">{h.org || "—"}</td>
-                    <td className="py-1.5">{h.role || "—"}</td>
+                    <td className="py-1.5 pr-2">
+                      {canEdit ? (
+                        <select
+                          value={h.visa}
+                          onChange={(e) => setRow(h.key, { visa: e.target.value })}
+                          className={`${FIELD} text-xs`}
+                        >
+                          {!VISA_TYPES.includes(h.visa as (typeof VISA_TYPES)[number]) && (
+                            <option value={h.visa}>{h.visa || "（未選択）"}</option>
+                          )}
+                          {VISA_TYPES.map((v) => (
+                            <option key={v} value={v}>
+                              {v}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        h.visa
+                      )}
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      {canEdit ? (
+                        <input
+                          value={h.org}
+                          onChange={(e) => setRow(h.key, { org: e.target.value })}
+                          className={FIELD}
+                        />
+                      ) : (
+                        h.org || "—"
+                      )}
+                    </td>
+                    <td className="py-1.5">
+                      {canEdit ? (
+                        <input
+                          value={h.role}
+                          onChange={(e) => setRow(h.key, { role: e.target.value })}
+                          className={FIELD}
+                        />
+                      ) : (
+                        h.role || "—"
+                      )}
+                    </td>
+                    {canEdit && (
+                      <td className="py-1.5 print:hidden">
+                        {/* 自動で出している行は職歴として登録するまで消せない（保存すると消せるようになる） */}
+                        {!h.auto && (
+                          <button
+                            type="button"
+                            onClick={() => removeRow(h.key)}
+                            aria-label="この職歴を消す"
+                            className="text-gray-400 hover:text-seal"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
+          {canEdit && (
+            <button
+              type="button"
+              onClick={addRow}
+              className="mb-5 inline-flex items-center gap-1 rounded-lg border border-gray-400 px-2.5 py-1 text-xs font-bold text-gray-600 print:hidden"
+            >
+              <Plus size={13} />
+              職歴を追加
+            </button>
+          )}
 
           {/* 資格 */}
           <h3 className="mb-2 border-b border-black pb-1 text-base font-bold">資格・合格</h3>
           <dl className="grid grid-cols-1 gap-y-1.5 text-sm">
-            <Row label="専門級の合格名" value={worker.specialtyGrade} />
-            <Row label="その他の資格・合格名" value={worker.otherQualifications} />
+            <Row
+              label="専門級の合格名"
+              value={worker.specialtyGrade}
+              onChange={(v) => setField("specialtyGrade", v)}
+              canEdit={canEdit}
+            />
+            <Row
+              label="その他の資格・合格名"
+              value={worker.otherQualifications}
+              onChange={(v) => setField("otherQualifications", v)}
+              canEdit={canEdit}
+            />
           </dl>
         </div>
       </div>
@@ -149,6 +473,17 @@ export function ResumeSheet({
             min-height: 297mm;
             box-sizing: border-box;
           }
+          input,
+          select {
+            border: 0 !important;
+            background: transparent !important;
+            color: #000 !important;
+            -webkit-appearance: none !important;
+            appearance: none !important;
+          }
+          input[type="date"]::-webkit-calendar-picker-indicator {
+            display: none;
+          }
         }
       `}</style>
     </>
@@ -158,18 +493,36 @@ export function ResumeSheet({
 function Row({
   label,
   value,
+  onChange,
+  canEdit,
+  type = "text",
   big = false,
   wide = false,
 }: {
   label: string;
-  value: string | null;
+  value: string;
+  onChange: (v: string) => void;
+  canEdit: boolean;
+  type?: "text" | "date";
   big?: boolean;
   wide?: boolean;
 }) {
+  const textClass = big ? "text-lg font-black" : "text-sm font-bold";
   return (
     <div className={`flex flex-col border-b border-gray-200 pb-1${wide ? " col-span-2" : ""}`}>
       <dt className="text-[10px] font-bold text-gray-500">{label}</dt>
-      <dd className={big ? "text-lg font-black" : "text-sm font-bold"}>{value || "—"}</dd>
+      <dd className={textClass}>
+        {canEdit ? (
+          <input
+            type={type}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            className={`${FIELD} ${textClass}`}
+          />
+        ) : (
+          value || "—"
+        )}
+      </dd>
     </div>
   );
 }

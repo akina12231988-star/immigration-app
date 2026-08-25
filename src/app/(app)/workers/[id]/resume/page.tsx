@@ -51,6 +51,8 @@ export default async function WorkerResumePage({
 
   return (
     <ResumeSheet
+      workerId={worker.id}
+      canEdit={me.role !== "viewer"}
       photoUrl={photoUrl}
       worker={{
         name: worker.name,

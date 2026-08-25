@@ -8,6 +8,7 @@ import {
   Building2,
   CalendarClock,
   ChevronRight,
+  ClipboardList,
   FileSpreadsheet,
   FileText,
   HandCoins,
@@ -657,6 +658,14 @@ export function JobsExplorer({
                   <p className="mb-1 flex items-center gap-1 text-[10px] font-bold text-muted">
                     <CalendarClock size={11} />
                     受付から雇用開始までの流れ
+                    {/* 求職票は求職受付のときに作る書類なので、この流れの並びに置く */}
+                    <Link
+                      href={`/workers/${a.worker_id}/jobseeker-card`}
+                      className="ml-auto flex items-center gap-1 rounded-lg border border-border px-2 py-1 font-bold text-brand"
+                    >
+                      <ClipboardList size={11} />
+                      求職票
+                    </Link>
                   </p>
                   <LedgerDateFlow steps={dateStepsOf(a)} bad={issueKinds(dateIssuesOf(a))} />
                 </div>

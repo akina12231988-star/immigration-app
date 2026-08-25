@@ -10,11 +10,17 @@ import type {
 export interface ApplicationWithRefs extends JobApplicationRow {
   workers: { id: string; name: string } | null;
   organizations: { id: string; name: string } | null;
-  job_postings: { id: string; display_company: string; job_type: string } | null;
+  job_postings: {
+    id: string;
+    display_company: string;
+    job_type: string;
+    // 求職票の「求人受理番号」に使う。画面上で組み立てた行には無いことがある
+    acceptance_no?: string;
+  } | null;
 }
 
 const APP_SELECT =
-  "*, workers(id, name), organizations(id, name), job_postings(id, display_company, job_type)";
+  "*, workers(id, name), organizations(id, name), job_postings(id, display_company, job_type, acceptance_no)";
 
 export async function listApplicationsByWorker(
   supabase: SupabaseClient,
