@@ -24,6 +24,28 @@ export function normalizeJobseekerCard(raw: unknown): JobseekerCardExtras {
   };
 }
 
+export interface JobseekerReferral {
+  appliedOn: string; // 紹介年月日
+  acceptanceNo: string; // 求人受理番号
+  employerName: string; // 求人者の氏名又は名称
+  result: string; // 採否結果
+  resultOn: string; // 採用年月日
+}
+
+// この求職票に載せる紹介の記録。
+//
+// 求職票は求職受付のたびに作る書類なので、その受付より前の紹介（前回の求職受付
+// のときの紹介）は載せない。受付年月日がまだ入っていないときは全部載せる。
+export function jobseekerReferrals(
+  referrals: JobseekerReferral[],
+  acceptedOn: string,
+): JobseekerReferral[] {
+  const from = (acceptedOn ?? "").trim();
+  if (!from) return referrals;
+  // 紹介年月日が入っていない記録は、いつのものか分からないのでそのまま載せる
+  return referrals.filter((r) => !r.appliedOn || r.appliedOn >= from);
+}
+
 // 満年齢（生年月日が未入力・不正なら空）
 export function jobseekerAge(birth: string | null, today: string): string {
   const age = dependentAge((birth ?? "").trim(), today);
