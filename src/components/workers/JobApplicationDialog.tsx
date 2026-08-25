@@ -267,7 +267,7 @@ export function JobApplicationDialog({
         </label>
 
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-bold text-muted">応募日 ＝ 帳簿の「紹介年月日」</span>
+          <span className="text-xs font-bold text-muted">紹介年月日（応募日）</span>
           <input
             type="date"
             required
@@ -282,7 +282,7 @@ export function JobApplicationDialog({
 
         <div className="grid grid-cols-2 gap-2.5">
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-bold text-muted">結果 ＝ 帳簿の「採否結果」</span>
+            <span className="text-xs font-bold text-muted">採否結果（結果）</span>
             <select
               value={form.result}
               onChange={(e) => set("result", e.target.value as ApplicationResult)}
@@ -296,9 +296,7 @@ export function JobApplicationDialog({
             </select>
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-bold text-muted">
-              結果日 ＝ 帳簿の「採用年月日」
-            </span>
+            <span className="text-xs font-bold text-muted">採用年月日（結果日）</span>
             <input
               type="date"
               value={form.result_on ?? ""}
@@ -333,10 +331,10 @@ export function JobApplicationDialog({
               未入力のときは、その人のいちばん古い応募日で代用して出力します。
             </li>
             <li>
-              <span className="font-bold">紹介年月日</span> … 上の「応募日」
+              <span className="font-bold">紹介年月日</span> … 上の「紹介年月日（応募日）」
             </li>
             <li>
-              <span className="font-bold">採用年月日</span> … 上の「結果日」。
+              <span className="font-bold">採用年月日</span> … 上の「採用年月日（結果日）」。
               結果が「採用」のときだけ帳簿に出ます（不採用・辞退のときは空欄になります）。
             </li>
           </ul>
