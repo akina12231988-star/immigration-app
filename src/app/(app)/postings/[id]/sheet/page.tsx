@@ -8,7 +8,7 @@ import { PostingSheetPrint } from "./PostingSheetPrint";
 
 export const dynamic = "force-dynamic";
 
-// 特定技能1号 求人票の印刷用（A4縦）。会社に渡す様式の形で出す
+// 特定技能1号 求人票。会社に渡す様式の形のまま画面で書けて、そのまま印刷できる
 export default async function PostingSheetPage({
   params,
 }: {
@@ -33,6 +33,7 @@ export default async function PostingSheetPage({
       orgName={posting.display_company || org?.name || posting.organizations?.name || ""}
       orgAddress={org?.address ?? ""}
       orgContact={posting.contact || org?.contact || ""}
+      canEdit={me.role !== "viewer"}
     />
   );
 }
