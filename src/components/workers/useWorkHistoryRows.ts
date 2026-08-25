@@ -107,23 +107,28 @@ export function useWorkHistoryRows(
         continue;
       }
       if (!r.dirty) continue;
-      const input = {
-        worker_id: workerId,
+      // この画面で出している項目だけを書き戻す。
+      // 都道府県・備考・通算の扱いは職歴の画面でしか触らないので、ここでは触らない
+      // （空で上書きすると、外国人詳細の職歴から消えてしまう）
+      const edited = {
         // 画面の選択肢は VISA_TYPES から出しているので、そのまま在留資格として保存する
         visa: r.visa as VisaType,
         start_date: r.start,
         end_date: r.end || null,
         org_name: r.org,
-        prefecture: "",
         role: r.role,
-        note: "",
-        kept_residence_status: false,
       };
       if (r.auto || r.added) {
         if (!r.start) continue;
-        await insertHistory(supabase, input);
+        await insertHistory(supabase, {
+          worker_id: workerId,
+          ...edited,
+          prefecture: "",
+          note: "",
+          kept_residence_status: false,
+        });
       } else {
-        await updateHistory(supabase, r.id, input);
+        await updateHistory(supabase, r.id, edited);
       }
     }
   };
