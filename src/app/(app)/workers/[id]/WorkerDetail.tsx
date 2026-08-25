@@ -570,7 +570,7 @@ export function WorkerDetail({
                   <Printer size={14} />
                   印刷
                 </Link>
-                {/* 履歴書・労働者名簿は上下に並べて、名前の表示に横幅を空ける */}
+                {/* 履歴書・労働者名簿・求職票は上下に並べて、名前の表示に横幅を空ける */}
                 <div className="flex flex-col gap-1">
                   <Link
                     href={`/workers/${worker.id}/resume`}
@@ -585,6 +585,14 @@ export function WorkerDetail({
                   >
                     <ClipboardList size={14} />
                     労働者名簿
+                  </Link>
+                  {/* 労働局の訪問指導で求職管理簿と一緒に見せる求職票 */}
+                  <Link
+                    href={`/workers/${worker.id}/jobseeker-card`}
+                    className="flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-bold text-muted"
+                  >
+                    <ClipboardList size={14} />
+                    求職票
                   </Link>
                 </div>
                 {canEdit && <NotionTransferButton worker={worker} />}
