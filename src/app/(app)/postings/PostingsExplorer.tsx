@@ -10,6 +10,8 @@ import { createClient } from "@/lib/supabase/client";
 import { updatePosting } from "@/lib/supabase/queries/postings";
 import { formatWage, POSTING_STATUSES, type PostingStatus } from "@/types/recruiting";
 import { postingDisplayName } from "@/lib/posting-output";
+import { NameSearchBox } from "@/components/ui/NameSearchBox";
+import { matchesOrganizationName, organizationSuggestions } from "@/lib/org-search";
 import { buildXlsx, downloadBlob } from "@/lib/xlsx-export";
 import {
   buildForm30Sheet,
@@ -37,6 +39,10 @@ export function PostingsExplorer({
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [rows, setRows] = useState(postings);
+  // 会社名で探す（法人格・全角半角・異体字の違いがあっても探せる）。
+  // 入力中は募集中/充足/終了のタブに関わらず、期間内の全体から探す
+  const [orgQuery, setOrgQuery] = useState("");
+  const query = orgQuery.trim();
 
   // 期間（求人受付日）で絞った母集団 → 集計に使用
   const inPeriod = useMemo(
@@ -55,14 +61,33 @@ export function PostingsExplorer({
     return s;
   }, [inPeriod]);
 
+  // カードに出す会社名（求人票の掲載名 → 所属機関の名称の順）
+  const companyOf = (p: PostingWithStats) => postingDisplayName(p, p.organizations?.name);
+
+  // 会社名の検索の候補（期間内の求人に出てくる会社。求人の多い順）
+  const companyOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const p of inPeriod) {
+      const name = companyOf(p);
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ja"))
+      .map(([name, count]) => ({ id: name, name, count }));
+  }, [inPeriod]);
+
   // 募集中を上に出す（それぞれの中は受付日の新しい順のまま）
   const filtered = useMemo(() => {
-    const list =
-      statusFilter === "all" ? inPeriod : inPeriod.filter((p) => p.status === statusFilter);
+    // 会社名で探しているときは、募集中/充足/終了のタブを気にせず期間内の全体から探す
+    const list = query
+      ? inPeriod.filter((p) => matchesOrganizationName({ name: companyOf(p) }, query))
+      : statusFilter === "all"
+        ? inPeriod
+        : inPeriod.filter((p) => p.status === statusFilter);
     return [...list].sort(
       (a, b) => (a.status === "募集中" ? 0 : 1) - (b.status === "募集中" ? 0 : 1),
     );
-  }, [inPeriod, statusFilter]);
+  }, [inPeriod, statusFilter, query]);
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -218,13 +243,28 @@ export function PostingsExplorer({
         ))}
       </div>
 
-      <p className="text-sm font-bold text-muted">{filtered.length}件</p>
+      {/* 会社名で探す（「BASE株式会社」を「BASE」だけでも、「髙濱」を「高浜」でも探せる） */}
+      <NameSearchBox
+        candidates={companyOptions}
+        value={orgQuery}
+        onChange={setOrgQuery}
+        suggest={organizationSuggestions}
+        placeholder="会社名を入力して検索（「BASE」だけ・「高浜」など常用の字でも探せます）"
+        hintOf={(o) => `求人${o.count}件`}
+      />
+
+      <p className="text-sm font-bold text-muted">
+        {filtered.length}件
+        {query && <span className="ml-2 font-medium">「{query}」で検索中（すべての状態から）</span>}
+      </p>
 
       {filtered.length === 0 ? (
         <p className="py-12 text-center text-sm text-muted">
           {rows.length === 0
             ? "まだ求人がありません。「求人を登録」から追加してください。"
-            : "条件に合う求人がありません"}
+            : query
+              ? `「${query}」に一致する会社の求人はありません。`
+              : "条件に合う求人がありません"}
         </p>
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
