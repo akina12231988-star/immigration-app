@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { FileText, Printer, Save } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
 import { buildDocx } from "@/lib/docx-export";
@@ -422,6 +423,13 @@ export function Form30Client({
                   <FileText size={14} />
                   {ledgerBusy === "seeker" ? "出力中…" : "求職管理簿（点検分だけ・Excel）"}
                 </button>
+                <Link
+                  href="/postings/audit"
+                  className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-bold text-brand"
+                >
+                  <FileText size={14} />
+                  規程・手数料表など他の確認書類
+                </Link>
                 <span className="text-[11px] text-muted">
                   {inspectRows.length === 0
                     ? "点検するリストNo.にチェックを入れてください"

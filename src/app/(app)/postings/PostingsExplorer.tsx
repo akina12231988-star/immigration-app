@@ -168,6 +168,13 @@ export function PostingsExplorer({
           <FileSpreadsheet size={14} />
           {exporting === "form30" ? "出力中…" : "様式30（Excel）"}
         </button>
+        <Link
+          href="/postings/audit"
+          className="flex items-center gap-1.5 rounded-lg border border-brand px-3 py-2 text-xs font-bold text-brand"
+        >
+          <FileText size={14} />
+          訪問指導の確認書類（規程・手数料表）
+        </Link>
         <span className="text-[11px] text-muted">労働局の訪問指導（監査）用</span>
       </div>
       <p className="-mt-1 mb-3 text-[11px] leading-relaxed text-muted">
