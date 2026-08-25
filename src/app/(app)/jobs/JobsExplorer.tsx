@@ -67,7 +67,11 @@ import type { JobApplicationValues } from "@/components/workers/JobApplicationDi
 import type { PostingWithStats } from "@/lib/supabase/queries/postings";
 import type { Organization } from "@/types/db";
 import { formatAmountInput } from "@/lib/amount-format";
-import { checkLedgerDates } from "@/lib/ledger-date-check";
+import {
+  checkLedgerDates,
+  issueKinds,
+  type LedgerDateKind,
+} from "@/lib/ledger-date-check";
 import { contractDatesForOrg, normalizeOrgEmploymentStarts } from "@/lib/org-employment";
 
 // 絞り込み。採否のほかに「雇用開始済み」（雇用開始日が入っている人）と
@@ -214,6 +218,9 @@ export function JobsExplorer({
       appliedOn: a.applied_on,
       resultOn: a.result_on,
       result: a.result,
+      conditionsOn: contractDates(a).conditions_on,
+      contractOn: contractDates(a).contract_on,
+      employmentStartOn: startedOn(a),
     });
   // 訂正が必要な応募（期間・企業の絞り込みの中から探す）
   const dateIssueRows = useMemo(
@@ -531,8 +538,13 @@ export function JobsExplorer({
             日付の流れがおかしい応募が {dateIssueRows.length} 件あります。訂正してください。
           </p>
           <p className="mt-1 text-[11px] leading-relaxed text-muted">
-            正しい流れは「求人受付年月日 → 紹介年月日 → 採用年月日」です。求職受付日は求人受付年月日より前でも構いませんが、
-            紹介年月日より後にはなりません。このまま帳簿を出すと労働局の訪問指導で指摘されます。
+            正しい流れは「求人受付年月日 → 応募（紹介年月日） → 結果（採用年月日） →
+            条件書・契約 → 雇用開始」です。求職受付日は求人受付年月日より前でも構いませんが、応募より後にはなりません。
+            各カードの日付のうち、
+            <span className="mx-0.5 rounded border border-seal bg-seal/10 px-1 font-bold text-seal">
+              赤い枠
+            </span>
+            が付いているところを直してください。このまま帳簿を出すと労働局の訪問指導で指摘されます。
           </p>
           <ul className="mt-1.5 flex flex-col gap-1">
             {dateIssueRows.slice(0, 20).map(({ a, issues }) => (
@@ -617,14 +629,40 @@ export function JobsExplorer({
                       <p className="truncate text-xs text-muted">
                         {a.job_postings?.display_company || a.organizations?.name || "応募先"}
                       </p>
-                      <p className="flex items-center gap-1 text-xs tabular-nums text-muted">
+                      <p className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-xs tabular-nums text-muted">
                         <CalendarClock size={12} />
-                        応募 {a.applied_on}
-                        {a.result_on && ` ・ 結果 ${a.result_on}`}
-                        {contractDates(a).contract_on && ` ・ 契約 ${contractDates(a).contract_on}`}
-                        {contractDates(a).conditions_on &&
-                          ` ・ 条件書 ${contractDates(a).conditions_on}`}
-                        {startedOn(a) && ` ・ 雇用開始 ${startedOn(a)}`}
+                        {/* 日付の流れがおかしいところは赤い枠を付けて、どこを直すか分かるようにする */}
+                        {(() => {
+                          const bad = issueKinds(dateIssuesOf(a));
+                          const c = contractDates(a);
+                          const cells = (
+                            [
+                              { kind: "紹介年月日", label: "応募", value: a.applied_on },
+                              { kind: "採用年月日", label: "結果", value: a.result_on ?? "" },
+                              {
+                                kind: "雇用条件書の作成日",
+                                label: "条件書",
+                                value: c.conditions_on,
+                              },
+                              { kind: "雇用契約日", label: "契約", value: c.contract_on },
+                              { kind: "雇用開始日", label: "雇用開始", value: startedOn(a) ?? "" },
+                            ] satisfies { kind: LedgerDateKind; label: string; value: string }[]
+                          ).filter((x) => x.value);
+                          return cells.map((x, i) => (
+                            <span key={x.kind} className="whitespace-nowrap">
+                              {i > 0 && <span className="mr-1">・</span>}
+                              <span
+                                className={
+                                  bad.has(x.kind)
+                                    ? "rounded border border-seal bg-seal/10 px-1 font-bold text-seal"
+                                    : ""
+                                }
+                              >
+                                {x.label} {x.value}
+                              </span>
+                            </span>
+                          ));
+                        })()}
                       </p>
                     </Link>
                   </div>

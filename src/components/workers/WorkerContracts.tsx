@@ -76,8 +76,7 @@ export function WorkerContracts({
   const [dateRows, setDateRows] = useState(() =>
     normalizeOrgEmploymentStarts(orgEmploymentStarts),
   );
-  const [dateBusy, setDateBusy] = useState(false);
-  const [dateSaved, setDateSaved] = useState(true);
+  const [dateStatus, setDateStatus] = useState<"" | "保存中…" | "保存しました">("");
 
   const load = () => {
     listWorkerDocs(workerId).then(setDocs).catch(() => undefined);
@@ -128,24 +127,40 @@ export function WorkerContracts({
 
   const selectedOrgName = orgName(selectedOrgId);
 
-  // 表示中の会社の契約書の日付
+  // 表示中の会社の契約書の日付。欄を直したらその場で保存する
   const dates = contractDatesForOrg(dateRows, selectedOrgId);
-  const setDate = (key: "contract_on" | "conditions_on", value: string) => {
+  const setDate = async (key: "contract_on" | "conditions_on", value: string) => {
     if (!selectedOrgId) return;
-    setDateRows((rows) => upsertOrgContractDates(rows, selectedOrgId, { [key]: value }));
-    setDateSaved(false);
-  };
-  const saveDates = async () => {
-    setDateBusy(true);
+    const next = upsertOrgContractDates(dateRows, selectedOrgId, { [key]: value });
+    setDateRows(next);
+    setDateStatus("保存中…");
     setError(null);
     try {
-      await updateWorker(createClient(), workerId, { org_employment_starts: dateRows });
-      setDateSaved(true);
+      await updateWorker(createClient(), workerId, { org_employment_starts: next });
+      setDateStatus("保存しました");
     } catch (err) {
+      setDateStatus("");
       setError(err instanceof Error ? err.message : "日付の保存に失敗しました");
-    } finally {
-      setDateBusy(false);
     }
+  };
+
+  // 契約書の列の下に出す日付の欄（雇用契約書＝雇用契約日、雇用条件書＝作成日）
+  const dateFooter = (kind: Kind) => {
+    const key = kind === "雇用契約書" ? "contract_on" : "conditions_on";
+    const label = kind === "雇用契約書" ? "雇用契約日" : "雇用条件書の作成日";
+    if (!selectedOrgId) return null;
+    return (
+      <label className="mt-1.5 flex items-center gap-1.5">
+        <span className="shrink-0 text-[11px] font-bold text-muted">{label}</span>
+        <input
+          type="date"
+          value={dates[key]}
+          onChange={(e) => void setDate(key, e.target.value)}
+          disabled={!canEdit}
+          className="min-w-0 flex-1 rounded-lg border border-border bg-background px-1.5 py-1 text-[11px] disabled:opacity-60"
+        />
+      </label>
+    );
   };
 
   // 登録済みの書類を別の会社に付け替える（会社を間違えて登録したときの訂正）
@@ -251,6 +266,7 @@ export function WorkerContracts({
                 <ContractColumn
                   key={`${selectedOrgId}-${kind}`}
                   kind={kind}
+                  footer={dateFooter(kind)}
                   docs={docs.filter(
                     (d) => d.kind === kind && d.organizationId === selectedOrgId,
                   )}
@@ -267,54 +283,13 @@ export function WorkerContracts({
               ))}
             </div>
 
-            {/* 契約書の日付（添付の下）。求職一覧の応募のカードにも出る */}
-            {selectedOrgId && (
-              <div className="mt-3 rounded-xl border border-border bg-background p-3">
-                <p className="mb-1 text-xs font-bold text-muted">
-                  契約書の日付（{selectedOrgName}）
-                </p>
-                <p className="mb-2 text-[11px] leading-relaxed text-muted">
-                  雇用契約日と雇用条件書の作成日を入れておくと、求職一覧の応募のカードにも出ます。
-                  所属機関ごとに持つので、転職しても混ざりません。
-                </p>
-                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                  <label className="flex flex-col gap-1">
-                    <span className="text-[11px] font-bold text-muted">雇用契約日</span>
-                    <input
-                      type="date"
-                      value={dates.contract_on}
-                      onChange={(e) => setDate("contract_on", e.target.value)}
-                      disabled={!canEdit}
-                      className="min-h-[40px] w-full rounded-lg border border-border bg-surface px-2.5 text-sm focus:border-brand focus:outline-none disabled:opacity-60"
-                    />
-                  </label>
-                  <label className="flex flex-col gap-1">
-                    <span className="text-[11px] font-bold text-muted">雇用条件書の作成日</span>
-                    <input
-                      type="date"
-                      value={dates.conditions_on}
-                      onChange={(e) => setDate("conditions_on", e.target.value)}
-                      disabled={!canEdit}
-                      className="min-h-[40px] w-full rounded-lg border border-border bg-surface px-2.5 text-sm focus:border-brand focus:outline-none disabled:opacity-60"
-                    />
-                  </label>
-                </div>
-                {canEdit && (
-                  <div className="mt-2 flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => void saveDates()}
-                      disabled={dateBusy || dateSaved}
-                      className="min-h-[36px] rounded-lg bg-brand px-4 text-xs font-bold text-brand-foreground disabled:opacity-50"
-                    >
-                      {dateBusy ? "保存中…" : dateSaved ? "保存済み" : "日付を保存"}
-                    </button>
-                    {!dateSaved && (
-                      <span className="text-[11px] text-seal">保存されていない変更があります</span>
-                    )}
-                  </div>
-                )}
-              </div>
+            {/* 日付は各列の下（この会社の分）。入れるとその場で保存される */}
+            {selectedOrgId && canEdit && (
+              <p className="mt-1.5 text-[11px] leading-relaxed text-muted">
+                各列の下の「雇用契約日」「雇用条件書の作成日」は、入れるとその場で保存されます（
+                {selectedOrgName} の分）。求職一覧の応募のカードにも出ます。
+                {dateStatus && <span className="ml-1 font-bold text-brand">{dateStatus}</span>}
+              </p>
             )}
 
             {/* 一旦、日付なしで印鑑・署名をもらってきた版。正式な日付入りは上に登録する。
@@ -425,6 +400,7 @@ function ContractColumn({
   onDelete,
   onUploaded,
   onError,
+  footer,
 }: {
   kind: Kind;
   docs: WorkerDocView[];
@@ -437,6 +413,7 @@ function ContractColumn({
   onDelete: (doc: WorkerDocView) => void | Promise<void>;
   onUploaded: () => void;
   onError: (err: unknown) => void;
+  footer?: React.ReactNode; // この書類の日付など、列の下に出すもの
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -554,6 +531,7 @@ function ContractColumn({
           </select>
         </label>
       )}
+      {footer}
       {history.length > 0 && (
         <div className="mt-2">
           <p className="mb-1 text-[10px] text-muted">履歴（{history.length}件）</p>
