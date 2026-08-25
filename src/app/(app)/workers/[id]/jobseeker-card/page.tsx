@@ -51,11 +51,10 @@ export default async function JobseekerCardPage({
       // 0118 がまだ適用されていないDBでも、空のまま画面が出るようにしている
       extras={normalizeJobseekerCard(worker.jobseeker_card)}
       certs={jobseekerCerts(worker)}
+      // 求職票でまだ直していないときの初期値（外国人の職歴）
       histories={(worker.work_histories ?? []).map((h) => ({
-        id: h.id,
-        visa: h.visa,
         start: h.start_date,
-        end: h.end_date,
+        end: h.end_date ?? "",
         org: h.org_name,
         role: h.role,
       }))}

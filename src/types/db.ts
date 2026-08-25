@@ -327,6 +327,38 @@ export interface JobseekerCardExtras {
   desired_wage: string; // 希望賃金
   available_from: string; // 就業できる時期
   other_wish: string; // その他の希望
+  // 求職票に書く職歴。最初は外国人の職歴をそのまま出し、この画面で直したら
+  // ここに求職票のぶんとして残す（外国人の職歴には書き戻さない）
+  jobs: JobseekerCardJob[];
+  // 氏名・住所・在留資格などを求職票で直したときの控え。
+  // 求職票は求職受付のときの控えなので、あとから外国人の登録が変わっても
+  // ここに入っているぶんはそのまま残す（入っていない項目は外国人の登録内容を出す）
+  fields: Partial<Record<JobseekerCardFieldKey, string>>;
+}
+
+// 求職票で直せる、外国人の登録内容と同じ項目
+export type JobseekerCardFieldKey =
+  | "name"
+  | "kana"
+  | "gender"
+  | "birth"
+  | "nationality"
+  | "address"
+  | "homeAddress"
+  | "residenceStatus"
+  | "residencePeriod"
+  | "residenceExpiry"
+  | "residenceCardNo"
+  | "passportNo"
+  | "passportExpiry"
+  | "field";
+
+// 求職票に書く職歴の1行
+export interface JobseekerCardJob {
+  start: string; // 開始 YYYY-MM-DD
+  end: string; // 終了 YYYY-MM-DD（継続中は空）
+  org: string; // 勤務先
+  role: string; // 仕事内容
 }
 
 // 同居している在日親族の1人分（workers.relatives jsonb に配列で保存）

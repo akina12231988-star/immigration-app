@@ -2,19 +2,22 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Printer, Save, Trash2 } from "lucide-react";
+import { Plus, Printer, RotateCcw, Save, Trash2 } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
-import { useWorkHistoryRows } from "@/components/workers/useWorkHistoryRows";
 import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
 import { dbErrorMessage } from "@/lib/errors";
 import {
   jobseekerAge,
+  jobseekerCardFields,
+  jobseekerCardFieldsOf,
+  jobseekerCardJobs,
   jobseekerReferrals,
+  sortJobseekerJobs,
   JOBSEEKER_AGENT_NAME,
   type JobseekerReferral,
 } from "@/lib/jobseeker-card";
-import type { JobseekerCardExtras } from "@/types/db";
+import type { JobseekerCardExtras, JobseekerCardJob } from "@/types/db";
 
 // 求職票（求職申込書）。労働局の訪問指導で求職管理簿と一緒に見せる1人分の申込内容。
 // A4縦1枚。画面の上でそのまま書けて、そのまま印刷できる。
@@ -37,15 +40,6 @@ export interface JobseekerCardWorker {
   passportNo: string;
   passportExpiry: string;
   field: string;
-}
-
-export interface JobseekerCardHistory {
-  id: string;
-  visa: string;
-  start: string;
-  end: string | null;
-  org: string;
-  role: string;
 }
 
 const B = "border border-black";
@@ -106,11 +100,16 @@ export function JobseekerCardSheet({
   worker: JobseekerCardWorker;
   extras: JobseekerCardExtras;
   certs: { label: string; value: string }[];
-  histories: JobseekerCardHistory[];
+  // 外国人の職歴。求職票でまだ直していないときの初期値として使う
+  histories: JobseekerCardJob[];
   referrals: JobseekerReferral[];
 }) {
   const router = useRouter();
-  const [worker, setWorker] = useState(initialWorker);
+  // 求職票は求職受付のときの控え。氏名・住所などは、求職票で直したぶんがあれば
+  // それを出し、まだ直していなければ外国人の登録内容を出す
+  const [worker, setWorker] = useState(() =>
+    jobseekerCardFields(initialWorker, initialExtras.fields),
+  );
   const [extras, setExtras] = useState(initialExtras);
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -120,12 +119,30 @@ export function JobseekerCardSheet({
     setDirty(true);
     setMessage(null);
   };
-  // 職歴。直すと開始日の古い順に並べ直す
-  const { rows: jobs, setRow, addRow, removeRow, saveRows } = useWorkHistoryRows(
-    histories,
-    touched,
-    "特定技能1号",
+
+  // 職歴は求職票のもの。最初は外国人の職歴をそのまま出し、ここで直したら
+  // 求職票のぶんとして残す（外国人詳細の職歴には書き戻さない）
+  const [jobs, setJobs] = useState<JobseekerCardJob[]>(() =>
+    jobseekerCardJobs(initialExtras.jobs, histories),
   );
+  const setJob = (i: number, patch: Partial<JobseekerCardJob>) => {
+    setJobs((list) => sortJobseekerJobs(list.map((j, k) => (k === i ? { ...j, ...patch } : j))));
+    touched();
+  };
+  const addJob = () => {
+    setJobs((list) => [...list, { start: "", end: "", org: "", role: "" }]);
+    touched();
+  };
+  const removeJob = (i: number) => {
+    setJobs((list) => list.filter((_, k) => k !== i));
+    touched();
+  };
+  // 外国人詳細の内容を入れ直す（求職票のぶんを捨てて、登録し直したいとき）
+  const resetFromWorker = () => {
+    setWorker(initialWorker);
+    setJobs(sortJobseekerJobs(histories));
+    touched();
+  };
 
   const set = <K extends keyof JobseekerCardWorker>(key: K, value: JobseekerCardWorker[K]) => {
     setWorker((w) => ({ ...w, [key]: value }));
@@ -142,26 +159,14 @@ export function JobseekerCardSheet({
     const supabase = createClient();
     try {
       await updateWorker(supabase, workerId, {
-        name: worker.name,
-        kana: worker.kana,
-        gender: worker.gender,
-        birth: worker.birth || null,
-        nationality: worker.nationality,
-        address: worker.address,
-        home_address: worker.homeAddress,
-        residence_status: worker.residenceStatus,
-        residence_period: worker.residencePeriod,
-        residence_expiry_date: worker.residenceExpiry || null,
-        residence_card_no: worker.residenceCardNo,
-        passport_no: worker.passportNo,
-        passport_expiry_date: worker.passportExpiry || null,
-        field: worker.field,
+        // 求職の受付は求職管理簿と同じ記録なので、外国人の登録内容に書き戻す
         jobseeker_no: worker.jobseekerNo,
         jobseeker_accepted_on: worker.acceptedOn || null,
         jobseeker_valid_until: worker.validUntil || null,
-        jobseeker_card: extras,
+        // 氏名・住所・在留資格・職歴は求職票のぶんとして残す
+        // （外国人詳細の登録内容は変えない）
+        jobseeker_card: { ...extras, jobs, fields: jobseekerCardFieldsOf(worker) },
       });
-      await saveRows(supabase, workerId);
       setDirty(false);
       setMessage({ ok: true, text: "保存しました。このまま印刷できます。" });
       router.refresh();
@@ -248,6 +253,9 @@ export function JobseekerCardSheet({
           <span className="w-full text-[11px] leading-relaxed text-muted">
             求職管理簿と一緒に見せる求職票です。点線の欄はこの画面でそのまま書けて、「保存する」で外国人の登録内容に書き戻します。
             職歴は「職歴を追加」で増やせ、直すと期間の古い順に並べ直します。
+            求職票は求職受付のときの控えなので、氏名・住所・在留資格・職歴をここで直しても外国人詳細は変わりません
+            （最初は外国人詳細の内容を入れています。入れ直したいときは職歴の下のボタンから）。
+            求職受付番号・受付年月日・有効期間だけは求職管理簿と同じ記録なので、外国人の登録内容にも書き戻します。
             作成年月日には求職の受付年月日が入ります。
             紹介の記録は、この受付年月日より後の紹介だけを出します（前回の求職受付のときの紹介は、そのときの求職票に載ります）。
             印刷の設定は用紙「A4」・向き「縦」・拡大縮小「100%（または用紙に合わせる）」にしてください。
@@ -403,22 +411,22 @@ export function JobseekerCardSheet({
                 <Head>勤務先</Head>
                 <Head>仕事内容</Head>
               </tr>
-              {jobs.map((j) => (
-                <tr key={j.key} className={j.auto ? "text-gray-500 print:text-black" : ""}>
+              {jobs.map((j, i) => (
+                <tr key={i}>
                   <Cell>
                     {canEdit ? (
                       <span className="flex items-center gap-0.5">
                         <input
                           type="date"
                           value={j.start}
-                          onChange={(e) => setRow(j.key, { start: e.target.value })}
+                          onChange={(e) => setJob(i, { start: e.target.value })}
                           className={`${FIELD} date-small`}
                         />
                         <span className="shrink-0">〜</span>
                         <input
                           type="date"
                           value={j.end}
-                          onChange={(e) => setRow(j.key, { end: e.target.value })}
+                          onChange={(e) => setJob(i, { end: e.target.value })}
                           className={`${FIELD} date-small`}
                         />
                       </span>
@@ -426,14 +434,14 @@ export function JobseekerCardSheet({
                       `${j.start} 〜 ${j.end || "現在"}`
                     )}
                   </Cell>
-                  <Cell>{F(j.org, (v) => setRow(j.key, { org: v }))}</Cell>
+                  <Cell>{F(j.org, (v) => setJob(i, { org: v }))}</Cell>
                   <Cell>
                     <span className="flex items-center gap-1">
-                      {F(j.role, (v) => setRow(j.key, { role: v }))}
-                      {canEdit && !j.auto && (
+                      {F(j.role, (v) => setJob(i, { role: v }))}
+                      {canEdit && (
                         <button
                           type="button"
-                          onClick={() => removeRow(j.key)}
+                          onClick={() => removeJob(i)}
                           aria-label="この職歴を消す"
                           className="shrink-0 text-gray-400 hover:text-red-700 print:hidden"
                         >
@@ -447,14 +455,27 @@ export function JobseekerCardSheet({
             </tbody>
           </table>
           {canEdit && (
-            <button
-              type="button"
-              onClick={addRow}
-              className="mt-1 inline-flex items-center gap-1 rounded-lg border border-gray-400 px-2.5 py-1 text-[8pt] font-bold text-gray-600 print:hidden"
-            >
-              <Plus size={12} />
-              職歴を追加
-            </button>
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 print:hidden">
+              <button
+                type="button"
+                onClick={addJob}
+                className="inline-flex items-center gap-1 rounded-lg border border-gray-400 px-2.5 py-1 text-[8pt] font-bold text-gray-600"
+              >
+                <Plus size={12} />
+                職歴を追加
+              </button>
+              <button
+                type="button"
+                onClick={resetFromWorker}
+                className="inline-flex items-center gap-1 rounded-lg border border-gray-400 px-2.5 py-1 text-[8pt] font-bold text-gray-600"
+              >
+                <RotateCcw size={12} />
+                外国人詳細の内容を入れ直す
+              </button>
+              <span className="text-[8pt] text-gray-500">
+                ここで直した内容は求職票だけに残ります（外国人詳細は変わりません）。
+              </span>
+            </div>
           )}
 
           <table className="mt-2 w-full table-fixed border-collapse text-[8.5pt] leading-tight">

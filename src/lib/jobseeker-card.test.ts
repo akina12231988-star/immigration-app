@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   jobseekerAge,
+  jobseekerCardFields,
+  jobseekerCardFieldsOf,
+  jobseekerCardJobs,
   jobseekerCerts,
   jobseekerReferrals,
   normalizeJobseekerCard,
+  sortJobseekerJobs,
   type JobseekerReferral,
 } from "./jobseeker-card";
 
@@ -62,6 +66,8 @@ describe("normalizeJobseekerCard", () => {
       desired_wage: "",
       available_from: "",
       other_wish: "",
+      fields: {},
+      jobs: [],
     });
   });
 
@@ -72,6 +78,8 @@ describe("normalizeJobseekerCard", () => {
       desired_wage: "",
       available_from: "",
       other_wish: "",
+      fields: {},
+      jobs: [],
     });
   });
 
@@ -108,5 +116,65 @@ describe("jobseekerReferrals", () => {
 
   it("紹介年月日が入っていない記録はそのまま載せる", () => {
     expect(jobseekerReferrals([ref("", "未入力")], "2026-04-01")).toHaveLength(1);
+  });
+});
+
+describe("求職票の職歴", () => {
+  const job = (start: string, end: string, org: string) => ({ start, end, org, role: "" });
+
+  it("まだ求職票で直していなければ、外国人の職歴をそのまま出す", () => {
+    const histories = [job("2016-08-01", "2019-08-01", "楢崎茂行"), job("2025-10-28", "", "大家聖矢")];
+    expect(jobseekerCardJobs([], histories).map((j) => j.org)).toEqual(["楢崎茂行", "大家聖矢"]);
+  });
+
+  it("求職票で直したあとは、求職票に残したぶんだけを出す", () => {
+    const histories = [job("2016-08-01", "2019-08-01", "楢崎茂行")];
+    const saved = [job("2025-10-28", "", "大家聖矢")];
+    expect(jobseekerCardJobs(saved, histories).map((j) => j.org)).toEqual(["大家聖矢"]);
+  });
+
+  it("期間の古い順に並べ直す（日付が未入力の行は最後）", () => {
+    const rows = [job("2025-10-28", "", "後"), job("", "", "未入力"), job("2016-08-01", "", "前")];
+    expect(sortJobseekerJobs(rows).map((j) => j.org)).toEqual(["前", "後", "未入力"]);
+  });
+});
+
+describe("求職票の記載内容（受付のときの控え）", () => {
+  const fromWorker = {
+    name: "NGUYEN QUANG LAN",
+    kana: "グエン クアン ラン",
+    gender: "男",
+    birth: "1995-09-13",
+    nationality: "ベトナム",
+    address: "熊本県玉名市横島町共栄60番地",
+    homeAddress: "",
+    residenceStatus: "特定技能1号",
+    residencePeriod: "1年",
+    residenceExpiry: "2026-10-28",
+    residenceCardNo: "UH49798823RG",
+    passportNo: "E03436288",
+    passportExpiry: "2035-04-28",
+    field: "農業分野・耕種農業",
+  };
+
+  it("まだ求職票で直していなければ、外国人の登録内容を出す", () => {
+    expect(jobseekerCardFields(fromWorker, {})).toEqual(fromWorker);
+  });
+
+  it("求職票で直したぶんは、外国人の登録が変わってもそのまま残る", () => {
+    const shown = jobseekerCardFields(fromWorker, { address: "熊本県八代市鏡町内田1515番地1" });
+    expect(shown.address).toBe("熊本県八代市鏡町内田1515番地1");
+    // 直していない項目は外国人の登録内容のまま
+    expect(shown.name).toBe("NGUYEN QUANG LAN");
+  });
+
+  it("空にしたぶんも控えとして残す（登録内容に戻らない）", () => {
+    expect(jobseekerCardFields(fromWorker, { residencePeriod: "" }).residencePeriod).toBe("");
+  });
+
+  it("画面に出ている内容をそのまま控えにする", () => {
+    const saved = jobseekerCardFieldsOf({ ...fromWorker, address: "新しい住所" });
+    expect(saved.address).toBe("新しい住所");
+    expect(Object.keys(saved)).toHaveLength(14);
   });
 });
