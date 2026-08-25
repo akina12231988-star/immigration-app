@@ -12,6 +12,7 @@ import { PostingStatusBadge } from "@/components/postings/PostingStatusBadge";
 import { PostingOutputDialog } from "@/components/postings/PostingOutputDialog";
 import { ApplicationResultBadge } from "@/components/postings/ApplicationResultBadge";
 import { PostingFileAttachments } from "@/components/postings/PostingFileAttachments";
+import { JikoShinkokuSection } from "@/components/postings/JikoShinkokuSection";
 import { createClient } from "@/lib/supabase/client";
 import { deletePosting, updatePosting } from "@/lib/supabase/queries/postings";
 import { postingDisplayName } from "@/lib/posting-output";
@@ -248,6 +249,15 @@ export function PostingDetail({
           <p className="mb-1.5 text-[11px] font-bold text-muted">求人票の原本（PDF・画像）</p>
           <PostingFileAttachments postingId={posting.id} canEdit={canEdit} />
         </div>
+        {/* 求人不受理に係る自己申告書（訪問指導の確認書類⑦）。この求人の内容で作って添付する */}
+        <JikoShinkokuSection
+          postingId={posting.id}
+          orgName={postingOrg?.name ?? orgName ?? ""}
+          orgAddress={postingOrg?.address ?? ""}
+          repName={(postingOrg?.intake?.rep_name ?? "").trim()}
+          dateOn={posting.received_on ?? ""}
+          canEdit={canEdit}
+        />
       </Card>
         </>
       )}
