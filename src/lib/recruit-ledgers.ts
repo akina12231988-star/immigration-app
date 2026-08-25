@@ -284,11 +284,13 @@ export interface FeeLedgerEntry {
   paid_on: string | null; // 徴収年月日（未徴収は空欄）
   fee_kind: string; // 手数料の種類
   fee: number; // 手数料の額（円）
-  calc_basis: string; // 算出根拠（賃金、割合等）
-  worker_name: string; // 誰の分か（算出根拠の補足に使う）
+  calc_basis: string; // 算出根拠（賃金、割合等）。入力されたものだけを出す
+  worker_name: string; // 誰の分か（備考に出す）
   note: string;
+  billed_on?: string | null; // 請求年月日
 }
 
+// 前の7つは様式どおりの欄。請求年月日・入金年月日は社内で追う分として後ろに足している
 const FEE_HEADER = [
   "手数料を支払う者の氏名又は名称",
   "徴収年月日",
@@ -297,6 +299,8 @@ const FEE_HEADER = [
   "第二種特別加入保険料",
   "手数料の算出根拠（賃金、割合等）",
   "備考",
+  "請求年月日",
+  "入金年月日",
 ];
 
 export function buildFeeLedgerSheet(entries: FeeLedgerEntry[]): SheetSpec {
@@ -305,16 +309,28 @@ export function buildFeeLedgerSheet(entries: FeeLedgerEntry[]): SheetSpec {
     FEE_HEADER,
   ];
   for (const f of entries) {
-    // 算出根拠が未入力でも、誰の分の紹介手数料かは分かるようにする
-    const basis = f.calc_basis || (f.worker_name ? `${f.fee_kind}（${f.worker_name} 分）` : "");
-    const note = [f.note, f.paid_on ? "" : "未徴収"].filter(Boolean).join("・");
-    rows.push([f.payer_name, f.paid_on ?? "", f.fee_kind, f.fee, "", basis, note]);
+    // 算出根拠（賃金、割合等）は入力されたものだけを出す。
+    // 誰の分かは備考に書く（手数料の種類と同じ言葉を算出根拠に入れない）
+    const note = [f.worker_name ? `${f.worker_name} 分` : "", f.note, f.paid_on ? "" : "未徴収"]
+      .filter(Boolean)
+      .join("・");
+    rows.push([
+      f.payer_name,
+      f.paid_on ?? "",
+      f.fee_kind,
+      f.fee,
+      "",
+      f.calc_basis,
+      note,
+      f.billed_on ?? "",
+      f.paid_on ?? "",
+    ]);
   }
   return {
     name: "手数料管理簿",
     rows,
     headerRows: 2,
-    columnWidths: [28, 12, 16, 14, 14, 40, 20],
+    columnWidths: [28, 12, 16, 14, 14, 40, 20, 12, 12],
   };
 }
 
