@@ -3,8 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { getWorkerWithHistories } from "@/lib/supabase/queries/workers";
 import { listApplicationsByWorker } from "@/lib/supabase/queries/jobs";
-import { jobseekerCerts, jobseekerJobs } from "@/lib/jobseeker-card";
-import { todayStr } from "@/lib/ssw/calc";
+import { jobseekerCerts, normalizeJobseekerCard } from "@/lib/jobseeker-card";
 import { JobseekerCardSheet } from "./JobseekerCardSheet";
 
 export const dynamic = "force-dynamic";
@@ -28,15 +27,16 @@ export default async function JobseekerCardPage({
 
   return (
     <JobseekerCardSheet
-      today={todayStr()}
-      data={{
+      workerId={worker.id}
+      canEdit={me.role !== "viewer"}
+      worker={{
         jobseekerNo: worker.jobseeker_no ?? "",
         acceptedOn: worker.jobseeker_accepted_on ?? "",
         validUntil: worker.jobseeker_valid_until ?? "",
         name: worker.name,
         kana: worker.kana,
         gender: worker.gender,
-        birth: worker.birth,
+        birth: worker.birth ?? "",
         nationality: worker.nationality,
         address: worker.address,
         homeAddress: worker.home_address,
@@ -47,19 +47,28 @@ export default async function JobseekerCardPage({
         passportNo: worker.passport_no,
         passportExpiry: worker.passport_expiry_date ?? "",
         field: worker.field,
-        certs: jobseekerCerts(worker),
-        jobs: jobseekerJobs(worker.work_histories ?? []),
-        // 紹介の記録は求職管理簿と同じ並び（古い順）にする
-        referrals: [...apps]
-          .sort((a, b) => (a.applied_on ?? "").localeCompare(b.applied_on ?? ""))
-          .map((a) => ({
-            appliedOn: a.applied_on ?? "",
-            acceptanceNo: a.job_postings?.acceptance_no ?? "",
-            employerName: a.organizations?.name ?? a.job_postings?.display_company ?? "",
-            result: a.result,
-            resultOn: a.result_on ?? "",
-          })),
       }}
+      // 0118 がまだ適用されていないDBでも、空のまま画面が出るようにしている
+      extras={normalizeJobseekerCard(worker.jobseeker_card)}
+      certs={jobseekerCerts(worker)}
+      histories={(worker.work_histories ?? []).map((h) => ({
+        id: h.id,
+        visa: h.visa,
+        start: h.start_date,
+        end: h.end_date,
+        org: h.org_name,
+        role: h.role,
+      }))}
+      // 紹介の記録は求職管理簿と同じ並び（古い順）にする
+      referrals={[...apps]
+        .sort((a, b) => (a.applied_on ?? "").localeCompare(b.applied_on ?? ""))
+        .map((a) => ({
+          appliedOn: a.applied_on ?? "",
+          acceptanceNo: a.job_postings?.acceptance_no ?? "",
+          employerName: a.organizations?.name ?? a.job_postings?.display_company ?? "",
+          result: a.result,
+          resultOn: a.result_on ?? "",
+        }))}
     />
   );
 }
