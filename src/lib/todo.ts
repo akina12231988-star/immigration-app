@@ -112,6 +112,20 @@ export function normalizeTodoKey(s: string): string {
     .replace(/^todo/, "");
 }
 
+// すでに申請準備のTODOに入っているか（同じ外国人、または同じTODO番号なら「入っている」）。
+// 申請準備の画面から追加したのに一覧に出てこない、二重に入る、のどちらも起きないようにする
+export function findExistingPrepTodo<T extends { worker_id: string | null; todo_no: string }>(
+  rows: T[],
+  workerId: string,
+  todoNo: string,
+): T | null {
+  const byWorker = rows.find((r) => r.worker_id === workerId);
+  if (byWorker) return byWorker;
+  const key = normalizeTodoKey(todoNo);
+  if (!key) return null;
+  return rows.find((r) => normalizeTodoKey(r.todo_no) === key) ?? null;
+}
+
 // 新規の自動採番はこの番号（TODO-2000）から始める。
 // Notion由来の既存番号（TODO-1305 など）と混ざらないよう、まとまった大きい番号にしている
 export const TODO_NO_START = 2000;

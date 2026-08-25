@@ -25,6 +25,7 @@ import {
 } from "@/lib/supabase/queries/workers";
 import { insertOrganization } from "@/lib/supabase/queries/organizations";
 import { upsertPrepTantou } from "@/lib/supabase/queries/application-prep";
+import { ensurePrepTodo } from "@/lib/supabase/queries/todos";
 import { PREP_TANTOU_OPTIONS } from "@/lib/application-prep";
 import { blankWorkerInput } from "@/lib/worker-defaults";
 import { nameCounts } from "@/lib/worker-label";
@@ -35,7 +36,11 @@ import { NameSearchBox } from "@/components/ui/NameSearchBox";
 import { TodosClient } from "@/app/(app)/todos/TodosClient";
 import { todayStr } from "@/lib/application-alerts";
 import { RESIDENCE_RENEWAL_STATUSES, type ResidenceRenewalStatus } from "@/types/db";
-import { PREP_SITUATION_CHOICES, mergeSituation } from "@/lib/worker-situation";
+import {
+  APPLICATION_CONTENT_CHOICES,
+  PREP_SITUATION_CHOICES,
+  mergeSituation,
+} from "@/lib/worker-situation";
 import {
   WorkerRenewalCard,
   RENEWAL_STATUS_LABEL as STATUS_LABEL,
@@ -510,8 +515,21 @@ function NewPrepForm({
       if (tantou) {
         await upsertPrepTantou(createClient(), workerId, todo.trim(), tantou);
       }
+      // 下の「申請準備のTODO」に確実に入れる。
+      // 取り込みの結果をそのまま知らせる（入っていないのに「追加しました」と出さない）
+      const title =
+        APPLICATION_CONTENT_CHOICES.find((c) => prepSituation.includes(c.prepSituation))?.label ||
+        "申請準備";
+      const { row, created } = await ensurePrepTodo(createClient(), {
+        worker_id: workerId,
+        title,
+        todo_no: todo.trim() || undefined,
+      });
+      const who = selected?.label ?? "対象者";
       setNotice(
-        `${selected?.label ?? "対象者"}を新規の申請準備に追加しました。下の申請準備のTODOに入ります。`,
+        created
+          ? `${who}を新規の申請準備に追加しました（TODO番号 ${row.todo_no}）。下の申請準備のTODOに入っています。`
+          : `${who}はすでに申請準備のTODOに入っています（TODO番号 ${row.todo_no}）。対応状況などの内容は保存しました。`,
       );
       setAddedNewWorker(newWorker);
       onSaved?.();

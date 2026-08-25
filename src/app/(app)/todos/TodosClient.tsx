@@ -42,6 +42,7 @@ import {
   TODO_TRASH_DAYS,
   deleteTodo,
   deleteTodoStatusOption,
+  ensurePrepTodo,
   insertTodo,
   insertTodoStatusOption,
   listTodoStatusOptions,
@@ -420,13 +421,21 @@ export function TodosClient({
     autoImportedRef.current = true;
     void (async () => {
       setAutoImporting(true);
+      // 取り込めなかった人は黙って消さずに知らせる（番号の重複などで入らないことがあるため）
+      const failed: string[] = [];
       for (const w of prepPending) {
-        await insertTodo(createClient(), {
-          kind: "申請準備",
-          worker_id: w.workerId,
-          title: prepTitleOf(w.situation) || "申請準備",
-          todo_no: w.todoNo || undefined,
-        }).catch(() => undefined);
+        try {
+          await ensurePrepTodo(createClient(), {
+            worker_id: w.workerId,
+            title: prepTitleOf(w.situation) || "申請準備",
+            todo_no: w.todoNo || undefined,
+          });
+        } catch (err) {
+          failed.push(`${w.name}: ${err instanceof Error ? err.message : "取り込みに失敗しました"}`);
+        }
+      }
+      if (failed.length > 0) {
+        setError(`申請準備のTODOに取り込めなかった人がいます。${failed.join(" / ")}`);
       }
       await load();
       setAutoImporting(false);
@@ -650,13 +659,25 @@ export function TodosClient({
                 type="button"
                 onClick={() =>
                   void run(async () => {
+                    // 取り込めなかった人（番号の重複など）は、まとめて理由を出す
+                    const failed: string[] = [];
                     for (const w of prepPending) {
-                      await insertTodo(createClient(), {
-                        kind: "申請準備",
-                        worker_id: w.workerId,
-                        title: prepTitleOf(w.situation) || "申請準備",
-                        todo_no: w.todoNo || undefined,
-                      }).catch(() => undefined);
+                      try {
+                        await ensurePrepTodo(createClient(), {
+                          worker_id: w.workerId,
+                          title: prepTitleOf(w.situation) || "申請準備",
+                          todo_no: w.todoNo || undefined,
+                        });
+                      } catch (err) {
+                        failed.push(
+                          `${w.name}: ${err instanceof Error ? err.message : "取り込みに失敗しました"}`,
+                        );
+                      }
+                    }
+                    if (failed.length > 0) {
+                      throw new Error(
+                        `申請準備のTODOに取り込めなかった人がいます。${failed.join(" / ")}`,
+                      );
                     }
                   })
                 }
@@ -690,8 +711,7 @@ export function TodosClient({
                     type="button"
                     onClick={() =>
                       void run(async () => {
-                        await insertTodo(createClient(), {
-                          kind: "申請準備",
+                        await ensurePrepTodo(createClient(), {
                           worker_id: w.workerId,
                           title: prepTitleOf(w.situation) || "申請準備",
                           todo_no: w.todoNo || undefined,

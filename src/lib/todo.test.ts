@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   displayTodoNo,
+  findExistingPrepTodo,
   isCheckingStatus,
   isImmigrationAppliedStatus,
   nextTodoNo,
@@ -75,5 +76,27 @@ describe("normalizeTodoKey", () => {
     expect(normalizeTodoKey(" 812 ")).toBe("812");
     expect(normalizeTodoKey("todo 42")).toBe("42");
     expect(normalizeTodoKey("")).toBe("");
+  });
+});
+
+describe("findExistingPrepTodo", () => {
+  const rows = [
+    { worker_id: "w1", todo_no: "TODO-1234" },
+    { worker_id: "w2", todo_no: "TODO-2001" },
+    { worker_id: null, todo_no: "TODO-2002" },
+  ];
+
+  test("同じ外国人がすでに入っていればその行を返す（二重に作らない）", () => {
+    expect(findExistingPrepTodo(rows, "w2", "")?.todo_no).toBe("TODO-2001");
+  });
+
+  test("同じTODO番号がすでに使われていればその行を返す（番号の重複で保存が失敗しない）", () => {
+    expect(findExistingPrepTodo(rows, "w9", "todo1234")?.worker_id).toBe("w1");
+    expect(findExistingPrepTodo(rows, "w9", "TODO-2002")?.todo_no).toBe("TODO-2002");
+  });
+
+  test("どちらも当てはまらなければ null（新しく作る）", () => {
+    expect(findExistingPrepTodo(rows, "w9", "TODO-3000")).toBeNull();
+    expect(findExistingPrepTodo(rows, "w9", "")).toBeNull();
   });
 });
