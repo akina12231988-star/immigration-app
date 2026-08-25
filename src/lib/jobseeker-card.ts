@@ -1,5 +1,5 @@
 import { dependentAge } from "./dependents";
-import type { WorkHistoryRow } from "@/types/db";
+import type { JobseekerCardExtras } from "@/types/db";
 
 // ---- 求職票（求職申込書）----
 //
@@ -7,33 +7,27 @@ import type { WorkHistoryRow } from "@/types/db";
 // 求職管理簿の記載事項（求職受付番号・氏名・住所・生年月日・希望職種・
 // 受付年月日・有効期間・紹介の記録）に、本人の在留資格と資格・職歴を足している。
 
+// 職業紹介事業者（この事業所の名前）。求職票には必ずこの名前を出す
+export const JOBSEEKER_AGENT_NAME = "VUONG VAN THANH";
+
+// 求職票だけで使う項目（workers.jobseeker_card）。
+// 列がまだ無いDB・古いデータでも画面が崩れないよう、必ず全部の項目を埋めて返す
+export function normalizeJobseekerCard(raw: unknown): JobseekerCardExtras {
+  const o = (raw ?? {}) as Partial<Record<keyof JobseekerCardExtras, unknown>>;
+  const str = (v: unknown): string => (typeof v === "string" ? v : "");
+  return {
+    phone: str(o.phone),
+    desired_location: str(o.desired_location),
+    desired_wage: str(o.desired_wage),
+    available_from: str(o.available_from),
+    other_wish: str(o.other_wish),
+  };
+}
+
 // 満年齢（生年月日が未入力・不正なら空）
 export function jobseekerAge(birth: string | null, today: string): string {
   const age = dependentAge((birth ?? "").trim(), today);
   return age === null ? "" : `${age}`;
-}
-
-export interface JobseekerJob {
-  period: string; // 例: 2021-04 〜 2024-03（継続中は「〜 現在」）
-  orgName: string;
-  role: string;
-}
-
-// 職歴（古い順）。労働者名簿と違い、続いている勤務先も出す
-export function jobseekerJobs(histories: WorkHistoryRow[]): JobseekerJob[] {
-  return [...histories]
-    .filter((h) => h.start_date)
-    .sort((a, b) => a.start_date.localeCompare(b.start_date))
-    .map((h) => ({
-      period: `${ym(h.start_date)} 〜 ${h.end_date ? ym(h.end_date) : "現在"}`,
-      orgName: h.org_name,
-      role: [h.role, h.prefecture].filter(Boolean).join("／"),
-    }));
-}
-
-function ym(date: string): string {
-  const m = /^(\d{4})-(\d{2})/.exec(date);
-  return m ? `${m[1]}-${m[2]}` : date;
 }
 
 export interface JobseekerCertSource {
@@ -63,10 +57,4 @@ export function jobseekerCerts(w: JobseekerCertSource): { label: string; value: 
   add("日本語の試験", nihongo);
   add("その他の資格・合格", w.other_qualifications);
   return rows;
-}
-
-// 印刷して保存するときのファイル名
-export function jobseekerCardFileName(name: string, today: string): string {
-  const who = (name || "").trim().replace(/[\\/:*?"<>|]/g, "");
-  return `求職票_${who}_${today}`.replace(/_$/, "");
 }

@@ -319,6 +319,16 @@ export interface WorkerPastRecurringSale {
   sales_no: string; // 当時の定期売上No.（例: SP-0000000225）
 }
 
+// 求職票（求職申込書）だけで使う項目（workers.jobseeker_card jsonb に保存。0118）。
+// 電話番号・希望条件は求職票にしか出てこないため、列を増やさずまとめて持つ
+export interface JobseekerCardExtras {
+  phone: string; // 電話番号
+  desired_location: string; // 希望勤務地
+  desired_wage: string; // 希望賃金
+  available_from: string; // 就業できる時期
+  other_wish: string; // その他の希望
+}
+
 // 同居している在日親族の1人分（workers.relatives jsonb に配列で保存）
 export interface WorkerRelative {
   name: string; // 氏名
@@ -395,6 +405,7 @@ export interface Worker {
   ssw_insurance_expiry_date: string | null; // 特定技能総合保険の有効期限
   ssw_insurance_self_join: boolean; // 自己負担加入希望（所属機関が外国人負担の場合に本人が加入を希望）
   note: string;
+  jobseeker_card?: JobseekerCardExtras; // 求職票だけで使う項目（0118）
   jobseeker_no?: string; // 求職受付番号（求職管理簿。例: R8KS-2。0079）
   jobseeker_accepted_on?: string | null; // 求職受付年月日（0079）
   jobseeker_valid_until?: string | null; // 求職の有効期間（終了日。0079）

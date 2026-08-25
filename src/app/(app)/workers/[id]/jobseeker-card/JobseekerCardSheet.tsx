@@ -1,20 +1,27 @@
 "use client";
 
-import { Printer } from "lucide-react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Plus, Printer, Save, Trash2 } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
-import { jobseekerAge, type JobseekerJob } from "@/lib/jobseeker-card";
+import { useWorkHistoryRows } from "@/components/workers/useWorkHistoryRows";
+import { createClient } from "@/lib/supabase/client";
+import { updateWorker } from "@/lib/supabase/queries/workers";
+import { dbErrorMessage } from "@/lib/errors";
+import { jobseekerAge, JOBSEEKER_AGENT_NAME } from "@/lib/jobseeker-card";
+import type { JobseekerCardExtras } from "@/types/db";
 
 // 求職票（求職申込書）。労働局の訪問指導で求職管理簿と一緒に見せる1人分の申込内容。
-// A4縦1枚。登録がないところは手書きできるよう空欄のまま出す。
+// A4縦1枚。画面の上でそのまま書けて、そのまま印刷できる。
 
-export interface JobseekerCardData {
+export interface JobseekerCardWorker {
   jobseekerNo: string;
   acceptedOn: string;
   validUntil: string;
   name: string;
   kana: string;
   gender: string;
-  birth: string | null;
+  birth: string;
   nationality: string;
   address: string;
   homeAddress: string;
@@ -25,23 +32,39 @@ export interface JobseekerCardData {
   passportNo: string;
   passportExpiry: string;
   field: string;
-  certs: { label: string; value: string }[];
-  jobs: JobseekerJob[];
-  referrals: {
-    appliedOn: string;
-    acceptanceNo: string;
-    employerName: string;
-    result: string;
-    resultOn: string;
-  }[];
+}
+
+export interface JobseekerCardHistory {
+  id: string;
+  visa: string;
+  start: string;
+  end: string | null;
+  org: string;
+  role: string;
+}
+
+export interface JobseekerCardReferral {
+  appliedOn: string;
+  acceptanceNo: string;
+  employerName: string;
+  result: string;
+  resultOn: string;
 }
 
 const B = "border border-black";
+const FIELD =
+  "w-full min-w-0 bg-transparent outline-none border-b border-dashed border-gray-300 focus:bg-yellow-100 print:border-0 print:bg-transparent";
 
-function Head({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+function Head({
+  children,
+  className = "",
+}: {
+  children?: React.ReactNode;
+  className?: string;
+}) {
   return (
     <td className={`${B} bg-gray-100 px-1.5 py-1 text-left align-middle font-bold ${className}`}>
-      {children}
+      {children ?? " "}
     </td>
   );
 }
@@ -57,54 +80,186 @@ function Cell({
 }) {
   return (
     <td colSpan={colSpan} className={`${B} px-1.5 py-1 align-middle ${className}`}>
-      {children || " "}
+      {children ?? " "}
     </td>
   );
 }
 
-function Band({ children }: { children: React.ReactNode }) {
+function Band({ children, colSpan = 4 }: { children: React.ReactNode; colSpan?: number }) {
   return (
     <tr>
-      <td colSpan={4} className={`${B} bg-gray-200 px-1.5 py-1 font-black`}>
+      <td colSpan={colSpan} className={`${B} bg-gray-200 px-1.5 py-1 font-black`}>
         {children}
       </td>
     </tr>
   );
 }
 
-export function JobseekerCardSheet({ data, today }: { data: JobseekerCardData; today: string }) {
-  const age = jobseekerAge(data.birth, today);
-  // 職歴・紹介の記録は、少なくとも3行・2行は枠を出して手書きできるようにする
-  const jobs = [...data.jobs];
-  while (jobs.length < 3) jobs.push({ period: "", orgName: "", role: "" });
-  const referrals = [...data.referrals];
-  while (referrals.length < 2) {
-    referrals.push({ appliedOn: "", acceptanceNo: "", employerName: "", result: "", resultOn: "" });
+export function JobseekerCardSheet({
+  workerId,
+  canEdit,
+  worker: initialWorker,
+  extras: initialExtras,
+  certs,
+  histories,
+  referrals,
+}: {
+  workerId: string;
+  canEdit: boolean;
+  worker: JobseekerCardWorker;
+  extras: JobseekerCardExtras;
+  certs: { label: string; value: string }[];
+  histories: JobseekerCardHistory[];
+  referrals: JobseekerCardReferral[];
+}) {
+  const router = useRouter();
+  const [worker, setWorker] = useState(initialWorker);
+  const [extras, setExtras] = useState(initialExtras);
+  const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const touched = () => {
+    setDirty(true);
+    setMessage(null);
+  };
+  // 職歴。直すと開始日の古い順に並べ直す
+  const { rows: jobs, setRow, addRow, removeRow, saveRows } = useWorkHistoryRows(
+    histories,
+    touched,
+    "特定技能1号",
+  );
+
+  const set = <K extends keyof JobseekerCardWorker>(key: K, value: JobseekerCardWorker[K]) => {
+    setWorker((w) => ({ ...w, [key]: value }));
+    touched();
+  };
+  const setExtra = <K extends keyof JobseekerCardExtras>(key: K, value: string) => {
+    setExtras((e) => ({ ...e, [key]: value }));
+    touched();
+  };
+
+  const save = async () => {
+    setBusy(true);
+    setMessage(null);
+    const supabase = createClient();
+    try {
+      await updateWorker(supabase, workerId, {
+        name: worker.name,
+        kana: worker.kana,
+        gender: worker.gender,
+        birth: worker.birth || null,
+        nationality: worker.nationality,
+        address: worker.address,
+        home_address: worker.homeAddress,
+        residence_status: worker.residenceStatus,
+        residence_period: worker.residencePeriod,
+        residence_expiry_date: worker.residenceExpiry || null,
+        residence_card_no: worker.residenceCardNo,
+        passport_no: worker.passportNo,
+        passport_expiry_date: worker.passportExpiry || null,
+        field: worker.field,
+        jobseeker_no: worker.jobseekerNo,
+        jobseeker_accepted_on: worker.acceptedOn || null,
+        jobseeker_valid_until: worker.validUntil || null,
+        jobseeker_card: extras,
+      });
+      await saveRows(supabase, workerId);
+      setDirty(false);
+      setMessage({ ok: true, text: "保存しました。このまま印刷できます。" });
+      router.refresh();
+    } catch (err) {
+      setMessage({
+        ok: false,
+        text: dbErrorMessage(err, "0118_worker_jobseeker_card.sql", "保存に失敗しました"),
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // 入力欄（読み取りだけの人には文字のまま見せる）
+  const F = (value: string, onChange: (v: string) => void, type: "text" | "date" = "text") =>
+    canEdit ? (
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={FIELD}
+      />
+    ) : (
+      <span>{value}</span>
+    );
+
+  const age = jobseekerAge(worker.birth || null, worker.acceptedOn || "");
+  // 紹介の記録は求職管理簿と同じ内容なので直せない。手書きできるよう2行は枠を出す
+  const shownReferrals = [...referrals];
+  while (shownReferrals.length < 2) {
+    shownReferrals.push({
+      appliedOn: "",
+      acceptanceNo: "",
+      employerName: "",
+      result: "",
+      resultOn: "",
+    });
   }
+  const shownCerts = certs.length > 0 ? certs : [{ label: "", value: "" }, { label: "", value: "" }];
 
   return (
     <>
-      <style>{"@media print{@page{size:A4 portrait;margin:10mm}}"}</style>
+      <style>{
+        "@media print{@page{size:A4 portrait;margin:10mm}" +
+        "input,select{border:0!important;background:transparent!important;color:#000!important;" +
+        "padding:0!important;-webkit-appearance:none!important;appearance:none!important}" +
+        "input[type=date]::-webkit-calendar-picker-indicator{display:none}}"
+      }</style>
 
       <div className="print:hidden">
         <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-brand px-4 py-3 text-brand-foreground lg:px-8">
-          <BackButton fallbackHref="/workers" />
+          <BackButton fallbackHref="/jobs" />
           <h1 className="flex-1 text-lg font-bold">求職票（A4縦で印刷）</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2 px-4 py-3 lg:px-8">
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={busy || !dirty}
+              className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-brand px-5 text-sm font-bold text-brand-foreground disabled:opacity-50"
+            >
+              <Save size={18} />
+              {busy ? "保存中…" : dirty ? "保存する" : "保存済み"}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => window.print()}
-            className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-brand px-5 text-sm font-bold text-brand-foreground"
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-brand px-5 text-sm font-bold text-brand"
           >
             <Printer size={18} />
             印刷・PDF保存（A4縦）
           </button>
-          <span className="text-[11px] leading-relaxed text-muted">
-            求職管理簿と一緒に見せる求職票です。登録のないところは空欄で出るので、印刷してから手書きで足せます。
-            求職受付番号・受付年月日・有効期間は外国人詳細の「求職」の欄、氏名・住所・在留資格は在留カードの欄が元になっています。
+          {dirty && (
+            <span className="text-[11px] font-bold text-seal">
+              保存されていない変更があります（先に保存してから印刷してください）
+            </span>
+          )}
+          <span className="w-full text-[11px] leading-relaxed text-muted">
+            求職管理簿と一緒に見せる求職票です。点線の欄はこの画面でそのまま書けて、「保存する」で外国人の登録内容に書き戻します。
+            職歴は「職歴を追加」で増やせ、直すと期間の古い順に並べ直します。
+            作成年月日には求職の受付年月日が入ります。
             印刷の設定は用紙「A4」・向き「縦」・拡大縮小「100%（または用紙に合わせる）」にしてください。
           </span>
+          {message && (
+            <p
+              role="status"
+              className={`w-full rounded-lg px-3 py-2 text-xs ${
+                message.ok ? "bg-brand/10 text-brand" : "bg-seal/10 text-seal"
+              }`}
+            >
+              {message.text}
+            </p>
+          )}
         </div>
       </div>
 
@@ -112,7 +267,8 @@ export function JobseekerCardSheet({ data, today }: { data: JobseekerCardData; t
         <div className="mx-auto max-w-[190mm] bg-white text-black">
           <div className="mb-2 flex items-end justify-between">
             <h2 className="text-[15pt] font-black">求職票</h2>
-            <p className="text-[8pt]">作成日: {today}</p>
+            {/* 作成年月日は求職の受付年月日（この日に作る書類のため） */}
+            <p className="text-[8pt]">作成年月日: {worker.acceptedOn || "—"}</p>
           </div>
 
           <table className="w-full table-fixed border-collapse text-[8.5pt] leading-tight">
@@ -126,93 +282,92 @@ export function JobseekerCardSheet({ data, today }: { data: JobseekerCardData; t
               <Band>求職の受付</Band>
               <tr>
                 <Head>求職受付番号</Head>
-                <Cell>{data.jobseekerNo}</Cell>
+                <Cell>{F(worker.jobseekerNo, (v) => set("jobseekerNo", v))}</Cell>
                 <Head>受付年月日</Head>
-                <Cell>{data.acceptedOn}</Cell>
+                <Cell>{F(worker.acceptedOn, (v) => set("acceptedOn", v), "date")}</Cell>
               </tr>
               <tr>
                 <Head>有効期間</Head>
-                <Cell>{data.validUntil}</Cell>
-                {/* 職業紹介事業者（自社）は登録がないので、名前を書く・判を押す欄として空けておく */}
+                <Cell>{F(worker.validUntil, (v) => set("validUntil", v), "date")}</Cell>
                 <Head>職業紹介事業者</Head>
-                <Cell />
-              </tr>
-              <tr>
-                <Head>事業所所在地</Head>
-                <Cell colSpan={3} />
+                <Cell className="font-bold">{JOBSEEKER_AGENT_NAME}</Cell>
               </tr>
 
               <Band>求職者</Band>
               <tr>
                 <Head>フリガナ</Head>
-                <Cell colSpan={3}>{data.kana}</Cell>
+                <Cell colSpan={3}>{F(worker.kana, (v) => set("kana", v))}</Cell>
               </tr>
               <tr>
                 <Head>氏名</Head>
                 <Cell colSpan={3} className="text-[11pt] font-bold">
-                  {data.name}
+                  {F(worker.name, (v) => set("name", v))}
                 </Cell>
               </tr>
               <tr>
                 <Head>生年月日（年齢）</Head>
                 <Cell>
-                  {data.birth ?? ""}
-                  {age && `（${age}歳）`}
+                  <span className="flex items-center gap-1">
+                    {F(worker.birth, (v) => set("birth", v), "date")}
+                    <span className="shrink-0">{age && `（${age}歳）`}</span>
+                  </span>
                 </Cell>
                 <Head>性別</Head>
-                <Cell>{data.gender}</Cell>
+                <Cell>{F(worker.gender, (v) => set("gender", v))}</Cell>
               </tr>
               <tr>
                 <Head>国籍</Head>
-                <Cell>{data.nationality}</Cell>
+                <Cell>{F(worker.nationality, (v) => set("nationality", v))}</Cell>
                 <Head>電話番号</Head>
-                <Cell />
+                <Cell>{F(extras.phone, (v) => setExtra("phone", v))}</Cell>
               </tr>
               <tr>
                 <Head>住所（日本）</Head>
-                <Cell colSpan={3}>{data.address}</Cell>
+                <Cell colSpan={3}>{F(worker.address, (v) => set("address", v))}</Cell>
               </tr>
               <tr>
                 <Head>住所（本国）</Head>
-                <Cell colSpan={3}>{data.homeAddress}</Cell>
+                <Cell colSpan={3}>{F(worker.homeAddress, (v) => set("homeAddress", v))}</Cell>
               </tr>
 
-              <Band>在留資格</Band>
+              <Band>現在所持している在留資格</Band>
               <tr>
                 <Head>在留資格</Head>
-                <Cell>{data.residenceStatus}</Cell>
+                <Cell>{F(worker.residenceStatus, (v) => set("residenceStatus", v))}</Cell>
                 <Head>在留期間</Head>
-                <Cell>{data.residencePeriod}</Cell>
+                <Cell>{F(worker.residencePeriod, (v) => set("residencePeriod", v))}</Cell>
               </tr>
               <tr>
                 <Head>在留期限</Head>
-                <Cell>{data.residenceExpiry}</Cell>
+                <Cell>{F(worker.residenceExpiry, (v) => set("residenceExpiry", v), "date")}</Cell>
                 <Head>在留カード番号</Head>
-                <Cell>{data.residenceCardNo}</Cell>
+                <Cell>{F(worker.residenceCardNo, (v) => set("residenceCardNo", v))}</Cell>
               </tr>
               <tr>
                 <Head>旅券番号</Head>
-                <Cell>{data.passportNo}</Cell>
+                <Cell>{F(worker.passportNo, (v) => set("passportNo", v))}</Cell>
                 <Head>旅券有効期限</Head>
-                <Cell>{data.passportExpiry}</Cell>
+                <Cell>{F(worker.passportExpiry, (v) => set("passportExpiry", v), "date")}</Cell>
               </tr>
 
               <Band>希望する仕事</Band>
               <tr>
                 <Head>希望職種</Head>
-                <Cell>{data.field}</Cell>
+                <Cell>{F(worker.field, (v) => set("field", v))}</Cell>
                 <Head>希望勤務地</Head>
-                <Cell />
+                <Cell>
+                  {F(extras.desired_location, (v) => setExtra("desired_location", v))}
+                </Cell>
               </tr>
               <tr>
                 <Head>希望賃金</Head>
-                <Cell />
+                <Cell>{F(extras.desired_wage, (v) => setExtra("desired_wage", v))}</Cell>
                 <Head>就業できる時期</Head>
-                <Cell />
+                <Cell>{F(extras.available_from, (v) => setExtra("available_from", v))}</Cell>
               </tr>
               <tr>
                 <Head>その他の希望</Head>
-                <Cell colSpan={3} className="h-[12mm] align-top" />
+                <Cell colSpan={3}>{F(extras.other_wish, (v) => setExtra("other_wish", v))}</Cell>
               </tr>
             </tbody>
           </table>
@@ -223,17 +378,10 @@ export function JobseekerCardSheet({ data, today }: { data: JobseekerCardData; t
               <col style={{ width: "70%" }} />
             </colgroup>
             <tbody>
-              <tr>
-                <td colSpan={2} className={`${B} bg-gray-200 px-1.5 py-1 font-black`}>
-                  資格・試験
-                </td>
-              </tr>
-              {(data.certs.length > 0
-                ? data.certs
-                : [{ label: "", value: "" }, { label: "", value: "" }]
-              ).map((c, i) => (
+              <Band colSpan={2}>資格・試験</Band>
+              {shownCerts.map((c, i) => (
                 <tr key={`${c.label}-${i}`}>
-                  <Head>{c.label || " "}</Head>
+                  <Head>{c.label || " "}</Head>
                   <Cell>{c.value}</Cell>
                 </tr>
               ))}
@@ -243,29 +391,69 @@ export function JobseekerCardSheet({ data, today }: { data: JobseekerCardData; t
           <table className="mt-2 w-full table-fixed border-collapse text-[8.5pt] leading-tight">
             <colgroup>
               <col style={{ width: "26%" }} />
-              <col style={{ width: "40%" }} />
               <col style={{ width: "34%" }} />
+              <col style={{ width: "34%" }} />
+              <col style={{ width: "6%" }} />
             </colgroup>
             <tbody>
-              <tr>
-                <td colSpan={3} className={`${B} bg-gray-200 px-1.5 py-1 font-black`}>
-                  職歴
-                </td>
-              </tr>
+              <Band colSpan={4}>職歴</Band>
               <tr>
                 <Head>期間</Head>
                 <Head>勤務先</Head>
                 <Head>仕事内容</Head>
+                <Head className="print:hidden" />
               </tr>
-              {jobs.map((j, i) => (
-                <tr key={i}>
-                  <Cell>{j.period}</Cell>
-                  <Cell>{j.orgName}</Cell>
-                  <Cell>{j.role}</Cell>
+              {jobs.map((j) => (
+                <tr key={j.key} className={j.auto ? "text-gray-500 print:text-black" : ""}>
+                  <Cell>
+                    {canEdit ? (
+                      <span className="flex items-center gap-0.5">
+                        <input
+                          type="date"
+                          value={j.start}
+                          onChange={(e) => setRow(j.key, { start: e.target.value })}
+                          className={`${FIELD} text-[7.5pt]`}
+                        />
+                        <span className="shrink-0">〜</span>
+                        <input
+                          type="date"
+                          value={j.end}
+                          onChange={(e) => setRow(j.key, { end: e.target.value })}
+                          className={`${FIELD} text-[7.5pt]`}
+                        />
+                      </span>
+                    ) : (
+                      `${j.start} 〜 ${j.end || "現在"}`
+                    )}
+                  </Cell>
+                  <Cell>{F(j.org, (v) => setRow(j.key, { org: v }))}</Cell>
+                  <Cell>{F(j.role, (v) => setRow(j.key, { role: v }))}</Cell>
+                  <Cell className="print:hidden">
+                    {canEdit && !j.auto && (
+                      <button
+                        type="button"
+                        onClick={() => removeRow(j.key)}
+                        aria-label="この職歴を消す"
+                        className="text-gray-400 hover:text-red-700"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    )}
+                  </Cell>
                 </tr>
               ))}
             </tbody>
           </table>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={addRow}
+              className="mt-1 inline-flex items-center gap-1 rounded-lg border border-gray-400 px-2.5 py-1 text-[8pt] font-bold text-gray-600 print:hidden"
+            >
+              <Plus size={12} />
+              職歴を追加
+            </button>
+          )}
 
           <table className="mt-2 w-full table-fixed border-collapse text-[8.5pt] leading-tight">
             <colgroup>
@@ -276,11 +464,7 @@ export function JobseekerCardSheet({ data, today }: { data: JobseekerCardData; t
               <col style={{ width: "17%" }} />
             </colgroup>
             <tbody>
-              <tr>
-                <td colSpan={5} className={`${B} bg-gray-200 px-1.5 py-1 font-black`}>
-                  紹介の記録（求職管理簿と同じ内容）
-                </td>
-              </tr>
+              <Band colSpan={5}>紹介の記録（求職管理簿と同じ内容）</Band>
               <tr>
                 <Head>紹介年月日</Head>
                 <Head>求人受理番号</Head>
@@ -288,7 +472,7 @@ export function JobseekerCardSheet({ data, today }: { data: JobseekerCardData; t
                 <Head>採否結果</Head>
                 <Head>採用年月日</Head>
               </tr>
-              {referrals.map((r, i) => (
+              {shownReferrals.map((r, i) => (
                 <tr key={i}>
                   <Cell>{r.appliedOn}</Cell>
                   <Cell>{r.acceptanceNo}</Cell>
@@ -299,20 +483,6 @@ export function JobseekerCardSheet({ data, today }: { data: JobseekerCardData; t
               ))}
             </tbody>
           </table>
-
-          <p className="mt-3 text-[8pt] leading-relaxed">
-            上記のとおり求職を申し込みます。
-          </p>
-          <div className="mt-1 flex items-end gap-6 text-[8.5pt]">
-            <span className="flex-1">
-              求職者署名：
-              <span className="ml-1 inline-block w-[60mm] border-b border-black">&nbsp;</span>
-            </span>
-            <span>
-              年月日：
-              <span className="ml-1 inline-block w-[35mm] border-b border-black">&nbsp;</span>
-            </span>
-          </div>
         </div>
       </div>
     </>

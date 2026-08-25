@@ -6,10 +6,10 @@ import { BackButton } from "@/components/BackButton";
 import { Plus, Printer, Save, Trash2, UserRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
-import { deleteHistory, insertHistory, updateHistory } from "@/lib/supabase/queries/histories";
+import { useWorkHistoryRows } from "@/components/workers/useWorkHistoryRows";
 import { errorMessage } from "@/lib/errors";
 import { todayStr } from "@/lib/ssw/calc";
-import { VISA_TYPES, type VisaType } from "@/types/ssw";
+import { VISA_TYPES } from "@/types/ssw";
 
 interface ResumeWorker {
   name: string;
@@ -33,39 +33,8 @@ interface ResumeHistory {
   role: string;
 }
 
-// 画面に並べる職歴の1行。
-// auto … 所属機関の雇用開始日から自動で足した行（work_histories にはまだ無い）
-// added … この画面で足した行（保存で work_histories に入る）
-interface Row {
-  key: string;
-  id: string;
-  visa: string;
-  start: string;
-  end: string;
-  org: string;
-  role: string;
-  auto: boolean;
-  added: boolean;
-  dirty: boolean;
-  removed: boolean;
-}
-
 const FIELD =
   "w-full min-w-0 bg-transparent outline-none border-b border-dashed border-gray-300 focus:bg-yellow-100 print:border-0 print:bg-transparent";
-
-const toRow = (h: ResumeHistory): Row => ({
-  key: h.id,
-  id: h.id,
-  visa: h.visa,
-  start: h.start,
-  end: h.end ?? "",
-  org: h.org,
-  role: h.role,
-  auto: h.id.startsWith("employment-"),
-  added: false,
-  dirty: false,
-  removed: false,
-});
 
 // 履歴書。氏名・住所などの本人情報と職歴を、この画面でそのまま直して印刷できる
 export function ResumeSheet({
@@ -85,10 +54,20 @@ export function ResumeSheet({
   // 発行年月日は自動表示ではなく、印刷前に指定できるようにする（初期値は今日）
   const [issuedOn, setIssuedOn] = useState(todayStr());
   const [worker, setWorker] = useState(initialWorker);
-  const [rows, setRows] = useState<Row[]>(() => histories.map(toRow));
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // 職歴。直すと開始日の古い順に並べ直す
+  const touched = () => {
+    setDirty(true);
+    setMessage(null);
+  };
+  const { rows: shown, setRow, addRow, removeRow, saveRows } = useWorkHistoryRows(
+    histories,
+    touched,
+    "特定技能1号",
+  );
 
   const issuedText = issuedOn
     ? new Date(`${issuedOn}T00:00:00`).toLocaleDateString("ja-JP")
@@ -99,42 +78,6 @@ export function ResumeSheet({
     setDirty(true);
     setMessage(null);
   };
-  const setRow = (key: string, patch: Partial<Row>) => {
-    setRows((list) => list.map((r) => (r.key === key ? { ...r, ...patch, dirty: true } : r)));
-    setDirty(true);
-    setMessage(null);
-  };
-  const addRow = () => {
-    setRows((list) => [
-      ...list,
-      {
-        key: `new-${list.length}-${issuedOn}`,
-        id: "",
-        visa: "特定技能1号",
-        start: "",
-        end: "",
-        org: "",
-        role: "",
-        auto: false,
-        added: true,
-        dirty: true,
-        removed: false,
-      },
-    ]);
-    setDirty(true);
-    setMessage(null);
-  };
-  const removeRow = (key: string) => {
-    setRows((list) =>
-      list
-        // まだ保存していない行はその場で消す。保存済みの行は保存のときに消す
-        .filter((r) => !(r.key === key && r.added))
-        .map((r) => (r.key === key ? { ...r, removed: true } : r)),
-    );
-    setDirty(true);
-    setMessage(null);
-  };
-
   const save = async () => {
     setBusy(true);
     setMessage(null);
@@ -152,32 +95,7 @@ export function ResumeSheet({
         specialty_grade: worker.specialtyGrade,
         other_qualifications: worker.otherQualifications,
       });
-      for (const r of rows) {
-        if (r.removed) {
-          if (r.id && !r.auto) await deleteHistory(supabase, r.id);
-          continue;
-        }
-        if (!r.dirty) continue;
-        const input = {
-          worker_id: workerId,
-          // 画面の選択肢は VISA_TYPES から出しているので、そのまま在留資格として保存する
-          visa: r.visa as VisaType,
-          start_date: r.start,
-          end_date: r.end || null,
-          org_name: r.org,
-          prefecture: "",
-          role: r.role,
-          note: "",
-          kept_residence_status: false,
-        };
-        // 自動で足した行とこの画面で足した行は、保存のときに職歴として登録する
-        if (r.auto || r.added) {
-          if (!r.start) continue;
-          await insertHistory(supabase, input);
-        } else {
-          await updateHistory(supabase, r.id, input);
-        }
-      }
+      await saveRows(supabase, workerId);
       setDirty(false);
       setMessage({ ok: true, text: "保存しました。このまま印刷できます。" });
       router.refresh();
@@ -187,8 +105,6 @@ export function ResumeSheet({
       setBusy(false);
     }
   };
-
-  const shown = rows.filter((r) => !r.removed);
 
   return (
     <>
