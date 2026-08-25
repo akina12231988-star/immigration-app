@@ -4,6 +4,7 @@ import { useState } from "react";
 import { BackButton } from "@/components/BackButton";
 import { Download, ImageIcon } from "lucide-react";
 import { renderPostingsGrid, type GridPosting } from "@/lib/posting-grid";
+import { saveOrShareFile } from "@/lib/file-save";
 
 export interface FlyerItem {
   id: string;
@@ -41,12 +42,11 @@ export function FlyerClient({ items }: { items: FlyerItem[] }) {
     setImageUrl(url);
   };
 
-  const download = () => {
+  // スマホは共有シート、PCはダウンロード（iOS Safari は download 属性が効かない）
+  const download = async () => {
     if (!imageUrl) return;
-    const a = document.createElement("a");
-    a.href = imageUrl;
-    a.download = `求人掲載_${new Date().toISOString().slice(0, 10)}.png`;
-    a.click();
+    const blob = await (await fetch(imageUrl)).blob();
+    await saveOrShareFile(blob, `求人掲載_${new Date().toISOString().slice(0, 10)}.png`, "image/png");
   };
 
   const INPUT = "min-h-[44px] w-full rounded-xl border border-border bg-surface px-3.5 text-sm focus:border-brand focus:outline-none";

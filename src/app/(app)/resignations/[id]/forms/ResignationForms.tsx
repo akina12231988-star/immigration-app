@@ -36,6 +36,7 @@ import {
   matchFormField,
 } from "@/lib/resignation-forms";
 import type { ResignationKind } from "@/types/db";
+import { saveOrShareFile } from "@/lib/file-save";
 
 // 法務省「特定技能所属機関による届出」ページ（参考様式の最新版はここで確認する）
 const MOJ_URL = "https://www.moj.go.jp/isa/applications/ssw/nyuukokukanri10_00002.html";
@@ -274,12 +275,8 @@ export function ResignationForms({
               ? "契約機関に関する届出"
               : "参考様式第3-1-2号";
       const fileName = m ? decodeURIComponent(m[1]) : `${fallbackLabel}_${worker.name}`;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileName;
-      a.click();
-      URL.revokeObjectURL(url);
+      // スマホは共有シートにPDFそのものを渡す（iOS Safari は download 属性が効かない）
+      await saveOrShareFile(blob, fileName, "application/pdf");
 
       // 様式を作った＝会社・本人へ署名をお願いする段階。退職一覧のタブを進める
       await markSignatureRequested();

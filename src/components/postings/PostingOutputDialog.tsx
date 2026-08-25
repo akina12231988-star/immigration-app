@@ -6,6 +6,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { generatePostingText, renderPostingCard } from "@/lib/posting-output";
 import type { JobPosting } from "@/types/recruiting";
+import { saveOrShareFile } from "@/lib/file-save";
 
 // Facebook掲載用の出力ダイアログ（テキストコピー / 画像PNG保存）
 export function PostingOutputDialog({
@@ -35,12 +36,15 @@ export function PostingOutputDialog({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const download = () => {
+  // スマホは共有シート、PCはダウンロード（iOS Safari は download 属性が効かない）
+  const download = async () => {
     if (!imageUrl) return;
-    const a = document.createElement("a");
-    a.href = imageUrl;
-    a.download = `求人_${posting.display_company || orgName || "posting"}.png`;
-    a.click();
+    const blob = await (await fetch(imageUrl)).blob();
+    await saveOrShareFile(
+      blob,
+      `求人_${posting.display_company || orgName || "posting"}.png`,
+      "image/png",
+    );
   };
 
   return (

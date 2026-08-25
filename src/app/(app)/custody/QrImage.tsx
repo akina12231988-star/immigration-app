@@ -3,6 +3,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { Check, Link2 } from "lucide-react";
 import QRCode from "qrcode";
+import { saveOrShareFile } from "@/lib/file-save";
 
 // 保管番号QR: 読み取ると /custody?no=番号 が開き、その番号の持出・返却画面に直行する
 export function custodyQrUrl(origin: string, storageNo: number): string {
@@ -161,23 +162,7 @@ export async function buildTepraLabel(
 
 // スマホは共有シート、PCはダウンロードで画像を保存する共通処理
 async function saveImageBlob(blob: Blob, filename: string): Promise<void> {
-  const file = new File([blob], filename, { type: blob.type });
-  if (typeof navigator.canShare === "function" && navigator.canShare({ files: [file] })) {
-    try {
-      await navigator.share({ files: [file], title: filename });
-      return;
-    } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") return; // キャンセルは正常終了
-    }
-  }
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  await saveOrShareFile(blob, filename, blob.type || "image/png");
 }
 
 // テプラ用ラベル画像を保存するボタン（保存できない端末では長押し保存の案内を表示）
@@ -268,28 +253,8 @@ export function QrSaveButton({
     try {
       const dataUrl = await QRCode.toDataURL(text, { margin: 2, width: 512 });
       const blob = await (await fetch(dataUrl)).blob();
-      const file = new File([blob], filename, { type: "image/png" });
-
-      // スマホ: 共有シートから写真に保存できる（iOS Safari は download 属性が効かないため）
-      if (typeof navigator.canShare === "function" && navigator.canShare({ files: [file] })) {
-        try {
-          await navigator.share({ files: [file], title: filename });
-          return;
-        } catch (err) {
-          // キャンセルは正常終了扱い。それ以外はフォールバックへ
-          if (err instanceof Error && err.name === "AbortError") return;
-        }
-      }
-
-      // PCブラウザ: 通常のダウンロード
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      // スマホは共有シート（iOS Safari は download 属性が効かない）、PCはダウンロード
+      await saveOrShareFile(blob, filename, "image/png");
     } catch {
       setFallback(true);
     } finally {

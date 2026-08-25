@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { ArrowLeft, FileDown, ImageDown, Printer } from "lucide-react";
 import type { CustodyWithWorker } from "@/lib/supabase/queries/custody";
 import { CUSTODIAN_INFO, formatStorageNo, receiptTranslation } from "@/lib/custody";
+import { canShareFile, fileSaveMessage, saveOrShareFile } from "@/lib/file-save";
 
 const DOC_WIDTH = 794; // A4幅（px, azk-receipt と同じ）
 
@@ -42,6 +43,13 @@ export function ReceiptSheet({
   const docRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  // スマホなど、共有シートにPDFそのものを渡せる端末か（ボタンの文言を変えるため）。
+  // サーバー側の表示と食い違わないように、ブラウザ側でだけ判定する
+  const shareable = useSyncExternalStore(
+    () => () => {},
+    () => canShareFile(new File(["a"], "test.pdf", { type: "application/pdf" })),
+    () => false,
+  );
 
   // 画面幅に合わせて794px固定の帳票を縮小表示（azk の updateDocScale 相当）
   const updateScale = useCallback(() => {
@@ -58,6 +66,7 @@ export function ReceiptSheet({
     window.addEventListener("resize", updateScale);
     return () => window.removeEventListener("resize", updateScale);
   }, [updateScale]);
+
 
   const baseFilename = `預かり証_${name.replace(/[\s　]+/g, "")}_No${boxno}`;
 
@@ -79,15 +88,8 @@ export function ReceiptSheet({
     }
   };
 
-  const download = (url: string, filename: string) => {
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  };
-
+  // 保存（パソコン）／共有（スマホ）。スマホでは共有シートにPDFそのものを渡すため、
+  // LINEやMessengerに「預かり証_名前_No015.pdf」のまま送れる
   const savePdf = async () => {
     setBusy(true);
     setMessage(null);
@@ -106,8 +108,14 @@ export function ReceiptSheet({
       }
       const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
       pdf.addImage(imgData, "JPEG", 0, 0, drawW, drawH);
-      download(URL.createObjectURL(pdf.output("blob")), `${baseFilename}.pdf`);
-      setMessage({ ok: true, text: `${baseFilename}.pdf を保存しました` });
+      const fileName = `${baseFilename}.pdf`;
+      const result = await saveOrShareFile(
+        pdf.output("blob"),
+        fileName,
+        "application/pdf",
+      );
+      const text = fileSaveMessage(result, fileName);
+      if (text) setMessage({ ok: true, text });
     } catch (err) {
       setMessage({
         ok: false,
@@ -125,8 +133,10 @@ export function ReceiptSheet({
       const canvas = await capture();
       const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", 0.95));
       if (!blob) throw new Error("画像の変換に失敗しました");
-      download(URL.createObjectURL(blob), `${baseFilename}.jpg`);
-      setMessage({ ok: true, text: `${baseFilename}.jpg を保存しました` });
+      const fileName = `${baseFilename}.jpg`;
+      const result = await saveOrShareFile(blob, fileName, "image/jpeg");
+      const text = fileSaveMessage(result, fileName);
+      if (text) setMessage({ ok: true, text });
     } catch (err) {
       setMessage({
         ok: false,
@@ -155,7 +165,7 @@ export function ReceiptSheet({
           className="inline-flex items-center gap-1.5 rounded-xl bg-brand px-4 py-3 text-sm font-bold text-brand-foreground disabled:opacity-50"
         >
           <FileDown size={16} />
-          {busy ? "作成中…" : "PDFで保存"}
+          {busy ? "作成中…" : shareable ? "PDFで送る・保存" : "PDFで保存"}
         </button>
         <button
           type="button"
@@ -164,7 +174,7 @@ export function ReceiptSheet({
           className="inline-flex items-center gap-1.5 rounded-xl bg-[#1a6891] px-4 py-3 text-sm font-bold text-white disabled:opacity-50"
         >
           <ImageDown size={16} />
-          JPEGで保存
+          {shareable ? "JPEGで送る・保存" : "JPEGで保存"}
         </button>
         <button
           type="button"
@@ -175,6 +185,12 @@ export function ReceiptSheet({
           ブラウザで印刷
         </button>
       </div>
+      {shareable && (
+        <p className="mb-3 text-[11px] leading-relaxed text-muted print:hidden">
+          スマホでは共有画面が開きます。LINE・Messengerを選ぶと「{baseFilename}.pdf」のまま送れます。
+          「”ファイル”に保存」を選ぶと端末にも保存できます。
+        </p>
+      )}
       {message && (
         <p className={`mb-3 text-sm font-bold print:hidden ${message.ok ? "text-status-reported-fg" : "text-seal"}`}>
           {message.text}
