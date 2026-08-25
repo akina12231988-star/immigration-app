@@ -55,10 +55,15 @@ import {
   registerOnboardingDocFile,
   getOnboardingDocPreviewUrl,
   getOnboardingDocDownloadUrl,
+  saveOnboardingRosterDraft,
 } from "./actions";
 import { downloadBlob, toPdfBlob } from "@/lib/onboarding-pdf";
 import { updateWorker } from "@/lib/supabase/queries/workers";
 import type { WorkerForOnboarding } from "@/lib/supabase/queries/workers";
+import {
+  GeneratedDocPreviewModal,
+  useGeneratedDocPreview,
+} from "@/components/workers/GeneratedDocPreview";
 import type {
   OnboardingDocStatus,
   OnboardingDocumentRow,
@@ -1052,10 +1057,13 @@ function DocRow({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  const [attaching, setAttaching] = useState(false);
+  const gen = useGeneratedDocPreview(workerId, onError);
   const uploaded = !!state.row?.storage_path;
 
-  async function handleFile(file: File | undefined) {
-    if (!file) return;
+  // 添付できたら true（プレビューはうまくいったときだけ閉じる）
+  async function handleFile(file: File | undefined): Promise<boolean> {
+    if (!file) return false;
     setBusy(true);
     try {
       const { blob, mimeType, fileName } = await compressImage(file);
@@ -1076,48 +1084,36 @@ function DocRow({
       );
       if (!result.ok) throw new Error(result.message);
       onUploaded();
+      return true;
     } catch (err) {
       onError(err instanceof Error ? err.message : "アップロードに失敗しました");
+      return false;
     } finally {
       setBusy(false);
     }
   }
 
-  // アプリで作れる書類（扶養控除等申告書・労働者名簿）を、その場で作って添付する
+  // アプリで作れる書類（扶養控除等申告書・労働者名簿）。
+  // 「作成」を押すとまずプレビューを出し、内容を確かめてから添付する
+  // （労働者名簿はプレビューの中で中身を直して作り直せる）
   const generatable: Record<string, string> = {
     fuyokojo: "扶養控除等申告書",
     meibo: "労働者名簿",
   };
-  async function createAndAttach() {
-    const label = generatable[def.key];
-    if (!label) return;
-    if (
-      !window.confirm(
-        `外国人詳細の登録内容で「${label}」を作成し、この書類に添付します。\n` +
-          "内容に間違いがなければOKを押してください（添付後も差し替えできます）。",
-      )
-    ) {
-      return;
-    }
-    setBusy(true);
+  async function attachPreview() {
+    const preview = gen.preview;
+    if (!preview) return;
+    setAttaching(true);
     try {
-      const res = await fetch("/api/onboarding-doc-pdf", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ workerId, kind: def.key }),
-      });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(body?.error ?? `${label}の作成に失敗しました`);
+      if (!(await handleFile(preview.file))) return;
+      if (gen.rosterDraft) {
+        const saved = await saveOnboardingRosterDraft(workerId, gen.rosterDraft);
+        // 添付そのものは終わっているため、名簿の保存だけ失敗したときは知らせるだけにする
+        if (!saved.ok) onError(`添付しましたが労働者名簿の保存に失敗しました: ${saved.message}`);
       }
-      const blob = await res.blob();
-      const cd = res.headers.get("content-disposition") ?? "";
-      const m = /filename\*=UTF-8''([^;]+)/.exec(cd);
-      const fileName = m ? decodeURIComponent(m[1]) : `${label}.pdf`;
-      await handleFile(new File([blob], fileName, { type: "application/pdf" }));
-    } catch (err) {
-      onError(err instanceof Error ? err.message : `${label}の作成に失敗しました`);
-      setBusy(false);
+      gen.close();
+    } finally {
+      setAttaching(false);
     }
   }
   async function openPreview() {
@@ -1186,9 +1182,9 @@ function DocRow({
         {canEdit && generatable[def.key] && (
           <button
             type="button"
-            onClick={() => void createAndAttach()}
-            disabled={busy}
-            title={`登録内容から${generatable[def.key]}を作って添付します`}
+            onClick={() => void gen.create(def, generatable[def.key])}
+            disabled={busy || gen.creatingKey === def.key}
+            title={`登録内容から${generatable[def.key]}を作り、内容を見てから添付します`}
             className="flex min-h-[36px] items-center gap-1 rounded-lg border border-border px-2.5 text-[11px] font-bold text-brand disabled:opacity-50"
           >
             <FileText size={12} />
@@ -1269,6 +1265,20 @@ function DocRow({
           e.target.value = "";
         }}
       />
+      {/* 作成した書類のプレビュー。中身を見てから「添付する」で保存する */}
+      {gen.preview && (
+        <GeneratedDocPreviewModal
+          preview={gen.preview}
+          rosterDraft={gen.rosterDraft}
+          onDraftChange={gen.setRosterDraft}
+          onRebuild={() => void gen.rebuild()}
+          rebuilding={gen.rebuilding}
+          onAttach={() => void attachPreview()}
+          attaching={attaching}
+          onClose={gen.close}
+          myNumberBlank={false}
+        />
+      )}
     </FileDropArea>
   );
 }

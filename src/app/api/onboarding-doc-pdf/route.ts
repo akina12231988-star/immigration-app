@@ -9,7 +9,7 @@ import { normalizeDependents } from "@/lib/dependents";
 import { normalizeOrgEmploymentStarts } from "@/lib/org-employment";
 import { fillFuyoForm } from "@/lib/fuyo-form";
 import { buildRosterPdf } from "@/lib/roster-pdf";
-import { rosterJpDate, rosterWorkKind, withResidencePermitHistory } from "@/lib/roster";
+import { buildRosterDraft, type RosterDraft } from "@/lib/roster-draft";
 import { todayStr } from "@/lib/ssw/calc";
 
 // 入社書類の「作成して添付」用。外国人の登録内容から書類のPDFを作って返す。
@@ -36,13 +36,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "権限がありません" }, { status: 401 });
   }
 
-  let body: { workerId?: string; kind?: string };
+  // roster: 労働者名簿のプレビューで直した内容（渡されたときはその内容でPDFを作る）
+  let body: { workerId?: string; kind?: string; roster?: RosterDraft };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "不正なリクエストです" }, { status: 400 });
   }
-  const { workerId, kind } = body;
+  const { workerId, kind, roster } = body;
   if (!workerId || (kind !== "fuyokojo" && kind !== "meibo")) {
     return NextResponse.json({ error: "不正なリクエストです" }, { status: 400 });
   }
@@ -104,6 +105,26 @@ export async function POST(req: NextRequest) {
     const startOn = startAtOrg ?? worker.employment_start_on;
     const saved = rosters.find((r) => r.company_name === orgName) ?? rosters[0];
 
+    // プレビューで直した内容が渡されていればそれを使い、無ければ登録データから組み立てる
+    const draft =
+      roster ??
+      buildRosterDraft(
+        {
+          orgName,
+          field: worker.field,
+          employmentStartOn: startOn,
+          residenceStatus: worker.residence_status,
+          residencePermitDate: worker.residence_permit_date,
+          status: worker.status,
+          leavingOn: worker.leaving_on,
+          leavingKind: worker.leaving_kind,
+          leavingReason: worker.leaving_reason,
+          workHistories: worker.work_histories,
+        },
+        saved ?? null,
+        todayStr(),
+      );
+
     const bytes = await buildRosterPdf(font, {
       workerName: worker.name,
       kana: worker.kana,
@@ -111,30 +132,16 @@ export async function POST(req: NextRequest) {
       gender: worker.gender,
       address: worker.address,
       myNumber: worker.my_number,
-      companyName: saved?.company_name || orgName,
-      workKind: saved?.work_kind || rosterWorkKind(worker.field),
+      companyName: draft.company_name,
+      workKind: draft.work_kind,
       employmentStartOn: startOn,
-      // 在留資格の許可も履歴に残す（画面の労働者名簿と同じ）
-      history: withResidencePermitHistory(
-        saved?.history ?? (startOn ? [{ on: rosterJpDate(startOn), content: "入社" }] : []),
-        worker.residence_status,
-        worker.residence_permit_date,
-      ),
-      previousJobs:
-        saved?.previous_jobs ??
-        [...worker.work_histories]
-          .filter((h) => h.end_date !== null && h.org_name)
-          .sort((a, b) => (a.start_date < b.start_date ? -1 : 1))
-          .map((h) => ({ company: h.org_name, prefecture: "" })),
-      leavingOn: saved?.leaving_on ?? (worker.status === "退職" ? rosterJpDate(worker.leaving_on) : ""),
-      leavingReason:
-        saved?.leaving_reason ??
-        (worker.status === "退職"
-          ? [worker.leaving_kind, worker.leaving_reason].filter(Boolean).join("・")
-          : ""),
-      issuedOn: saved?.issued_on ?? startOn ?? todayStr(),
+      history: draft.history,
+      previousJobs: draft.previous_jobs,
+      leavingOn: draft.leaving_on,
+      leavingReason: draft.leaving_reason,
+      issuedOn: draft.issued_on,
     });
-    return pdfResponse(bytes, `労働者名簿_${worker.name}_${saved?.company_name || orgName}.pdf`);
+    return pdfResponse(bytes, `労働者名簿_${worker.name}_${draft.company_name || orgName}.pdf`);
   } catch (err) {
     console.error("onboarding-doc-pdf generation failed:", err);
     return NextResponse.json({ error: "書類の作成に失敗しました" }, { status: 500 });

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { COUNTED_VISAS, KEEPABLE_VISAS, VISA_TYPES, type VisaType } from "@/types/ssw";
+import { PREFECTURES } from "@/lib/minimum-wage";
 import type { WorkHistoryRow } from "@/types/db";
 
 export interface HistoryFormValues {
@@ -11,6 +12,7 @@ export interface HistoryFormValues {
   start_date: string;
   end_date: string | null;
   org_name: string;
+  prefecture: string;
   role: string;
   note: string;
   kept_residence_status: boolean;
@@ -22,6 +24,7 @@ function toValues(row: WorkHistoryRow | null): HistoryFormValues {
     start_date: row?.start_date ?? "",
     end_date: row?.end_date ?? null,
     org_name: row?.org_name ?? "",
+    prefecture: row?.prefecture ?? "",
     role: row?.role ?? "",
     note: row?.note ?? "",
     kept_residence_status: row?.kept_residence_status ?? false,
@@ -165,6 +168,25 @@ function HistoryFormDialogInner({
             placeholder="株式会社◯◯食品"
             className={INPUT_CLASS}
           />
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-muted">都道府県（勤務先の所在地）</span>
+          <select
+            value={form.prefecture}
+            onChange={(e) => set("prefecture", e.target.value)}
+            className={INPUT_CLASS}
+          >
+            <option value="">—（未選択）</option>
+            {PREFECTURES.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+          <span className="px-1 text-[11px] leading-relaxed text-muted">
+            ここに都道府県を入れておくと、労働者名簿の「前職」欄の都道府県にも自動で転記されます（名簿を作るときに入れ直さなくて済みます）。
+          </span>
         </label>
 
         <label className="flex flex-col gap-1">

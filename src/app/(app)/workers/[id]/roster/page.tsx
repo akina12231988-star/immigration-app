@@ -4,6 +4,7 @@ import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { getWorkerWithHistories } from "@/lib/supabase/queries/workers";
 import { listWorkerRosters } from "@/lib/supabase/queries/rosters";
 import { normalizeOrgEmploymentStarts } from "@/lib/org-employment";
+import { rosterPreviousJobs } from "@/lib/roster-draft";
 import { RosterSheet } from "./RosterSheet";
 
 export const dynamic = "force-dynamic";
@@ -39,10 +40,8 @@ export default async function WorkerRosterPage({
       startOn: e.start_on,
     }));
 
-  // 前職の初期値: 終了済みの職歴（開始日昇順）
-  const previousJobs = [...worker.work_histories]
-    .filter((h) => h.end_date !== null && h.org_name)
-    .sort((a, b) => (a.start_date < b.start_date ? -1 : 1));
+  // 前職の初期値: 終了済みの職歴（開始日昇順。職歴に入れた都道府県もそのまま転記する）
+  const previousJobs = rosterPreviousJobs(worker.work_histories);
 
   return (
     <RosterSheet
@@ -65,7 +64,7 @@ export default async function WorkerRosterPage({
         leavingKind: worker.leaving_kind,
         leavingReason: worker.leaving_reason,
       }}
-      defaultPreviousJobs={previousJobs.map((h) => h.org_name)}
+      defaultPreviousJobs={previousJobs}
       employmentStarts={employmentStarts}
       initialRosters={rosters}
     />

@@ -461,6 +461,7 @@ function ExamHistoryEditor({
                 start_date: todayStr(),
                 end_date: null,
                 org_name: "",
+                prefecture: "",
                 role: "",
                 note: "",
                 kept_residence_status: false,

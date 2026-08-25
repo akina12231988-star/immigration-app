@@ -1,6 +1,6 @@
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
-import { rosterJpDate, rosterRetentionEnd, sortRosterHistory } from "@/lib/roster";
+import { rosterJpDate, sortRosterHistory } from "@/lib/roster";
 import type { RosterHistoryEntry, RosterPreviousJob } from "@/types/db";
 
 // 労働者名簿（労働基準法第107条）のPDFを組み立てる。
@@ -146,14 +146,16 @@ export async function buildRosterPdf(
     [data.leavingOn || "—", data.leavingReason || "—"],
   ]);
 
-  // 保存期間の注記
+  // 保存期間の注記（画面の労働者名簿と同じ文にそろえる）
   c.y -= 18;
-  const note1 = `送付先: ${data.companyName || "—"}`;
-  const note2 = `労働基準法第107条に基づいて作成し、同法第109条により発行から5年間保存します。保存期限: ${rosterJpDate(
-    rosterRetentionEnd(data.issuedOn),
-  )}`;
-  text(page, jp, note1, MARGIN, c.y, 9);
-  text(page, jp, note2, MARGIN, c.y - 14, 9);
+  text(
+    page,
+    jp,
+    "本名簿は労働基準法第107条に基づき作成し、同法第109条により発行日から5年間保存する。",
+    MARGIN,
+    c.y,
+    9,
+  );
 
   return doc.save();
 }
