@@ -63,7 +63,7 @@ function Head({
   className?: string;
 }) {
   return (
-    <td className={`${B} bg-gray-100 px-1.5 py-1 text-left align-middle font-bold ${className}`}>
+    <td className={`${B} bg-gray-100 px-1.5 py-[1.5px] text-left align-middle font-bold ${className}`}>
       {children ?? " "}
     </td>
   );
@@ -79,7 +79,7 @@ function Cell({
   className?: string;
 }) {
   return (
-    <td colSpan={colSpan} className={`${B} px-1.5 py-1 align-middle ${className}`}>
+    <td colSpan={colSpan} className={`${B} px-1.5 py-[1.5px] align-middle ${className}`}>
       {children ?? " "}
     </td>
   );
@@ -88,7 +88,7 @@ function Cell({
 function Band({ children, colSpan = 4 }: { children: React.ReactNode; colSpan?: number }) {
   return (
     <tr>
-      <td colSpan={colSpan} className={`${B} bg-gray-200 px-1.5 py-1 font-black`}>
+      <td colSpan={colSpan} className={`${B} bg-gray-200 px-1.5 py-[1.5px] font-black`}>
         {children}
       </td>
     </tr>
@@ -192,26 +192,28 @@ export function JobseekerCardSheet({
     );
 
   const age = jobseekerAge(worker.birth || null, worker.acceptedOn || "");
-  // 紹介の記録は求職管理簿と同じ内容なので直せない。手書きできるよう2行は枠を出す
-  const shownReferrals = [...referrals];
-  while (shownReferrals.length < 2) {
-    shownReferrals.push({
-      appliedOn: "",
-      acceptanceNo: "",
-      employerName: "",
-      result: "",
-      resultOn: "",
-    });
-  }
-  const shownCerts = certs.length > 0 ? certs : [{ label: "", value: "" }, { label: "", value: "" }];
+  // 紹介の記録は求職管理簿と同じ内容なので直せない。
+  // 実際にある記録だけを出し、まだ1件も無いときだけ空の1行を出す
+  const shownReferrals =
+    referrals.length > 0
+      ? referrals
+      : [{ appliedOn: "", acceptanceNo: "", employerName: "", result: "", resultOn: "" }];
+  const shownCerts = certs.length > 0 ? certs : [{ label: "", value: "" }];
 
   return (
     <>
       <style>{
+        // 入力欄は放っておくとブラウザ既定の大きさになり、本文より背が高くなって
+        // A4縦1枚に収まらなくなる。表の文字と同じ大きさにそろえる
+        ".jobseeker-sheet input{font:inherit;height:auto;padding:0;margin:0}" +
+        // 期間の欄は日付が2つ並ぶので、そこだけ少し小さくする
+        ".jobseeker-sheet input.date-small{font-size:7pt}" +
         "@media print{@page{size:A4 portrait;margin:10mm}" +
         "input,select{border:0!important;background:transparent!important;color:#000!important;" +
         "padding:0!important;-webkit-appearance:none!important;appearance:none!important}" +
-        "input[type=date]::-webkit-calendar-picker-indicator{display:none}}"
+        "input[type=date]::-webkit-calendar-picker-indicator{display:none}" +
+        // 行の途中で改ページさせない
+        "tr{break-inside:avoid;page-break-inside:avoid}}"
       }</style>
 
       <div className="print:hidden">
@@ -264,7 +266,7 @@ export function JobseekerCardSheet({
       </div>
 
       <div className="px-4 pb-6 lg:px-8 print:p-0">
-        <div className="mx-auto max-w-[190mm] bg-white text-black">
+        <div className="jobseeker-sheet mx-auto max-w-[190mm] bg-white text-black">
           <div className="mb-2 flex items-end justify-between">
             <h2 className="text-[15pt] font-black">求職票</h2>
             {/* 作成年月日は求職の受付年月日（この日に作る書類のため） */}
@@ -412,14 +414,14 @@ export function JobseekerCardSheet({
                           type="date"
                           value={j.start}
                           onChange={(e) => setRow(j.key, { start: e.target.value })}
-                          className={`${FIELD} text-[7.5pt]`}
+                          className={`${FIELD} date-small`}
                         />
                         <span className="shrink-0">〜</span>
                         <input
                           type="date"
                           value={j.end}
                           onChange={(e) => setRow(j.key, { end: e.target.value })}
-                          className={`${FIELD} text-[7.5pt]`}
+                          className={`${FIELD} date-small`}
                         />
                       </span>
                     ) : (
