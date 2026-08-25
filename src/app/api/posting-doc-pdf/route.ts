@@ -7,6 +7,7 @@ import { getPosting } from "@/lib/supabase/queries/postings";
 import { getOrganization } from "@/lib/supabase/queries/organizations";
 import { buildJikoShinkokuPdf, jikoShinkokuFileName } from "@/lib/jiko-shinkoku";
 import { normalizeOrganizationIntake } from "@/lib/organization-intake";
+import { normalizePostingSheet } from "@/lib/posting-sheet";
 
 // 求人ごとに作る書類のPDF。いまは「求人不受理に係る自己申告書（様式例第7号）」。
 // 事業所名・所在地・代表者名は所属機関の登録内容から、右上の年月日は
@@ -47,8 +48,11 @@ export async function POST(req: NextRequest) {
 
     const [form, font] = await Promise.all([FORM(), FONT()]);
     const orgName = org?.name ?? posting.organizations?.name ?? "";
-    // 求人作成年月日 = 求人の受付年月日（求人管理簿・様式30に載る日付）
-    const dateOn = posting.received_on || (posting.created_at ?? "").slice(0, 10);
+    // 右上の年月日 = 求人票の記入日。
+    // 求人票がまだ書かれていないときは、求人の受付年月日・作成日の順に使う
+    const sheet = normalizePostingSheet(posting.sheet);
+    const dateOn =
+      sheet.filled_on || posting.received_on || (posting.created_at ?? "").slice(0, 10);
 
     const bytes = await buildJikoShinkokuPdf(form, font, {
       orgName,
