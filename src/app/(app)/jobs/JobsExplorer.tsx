@@ -14,6 +14,7 @@ import {
   NotebookPen,
   Pencil,
   Plus,
+  TriangleAlert,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -66,13 +67,19 @@ import type { JobApplicationValues } from "@/components/workers/JobApplicationDi
 import type { PostingWithStats } from "@/lib/supabase/queries/postings";
 import type { Organization } from "@/types/db";
 import { formatAmountInput } from "@/lib/amount-format";
+import { checkLedgerDates } from "@/lib/ledger-date-check";
 
 // 絞り込み。採否のほかに「雇用開始済み」（雇用開始日が入っている人）と
 // 「台帳未追加」（採用なのに紹介手数料台帳へ入れていない人）でも絞れる
-type ResultFilter = ApplicationResult | "all" | "employed" | "no_referral";
+type ResultFilter = ApplicationResult | "all" | "employed" | "no_referral" | "date_issue";
 
-// 一覧で使う外国人。氏名の選択肢に加えて、雇用開始日の判定にも使う
-export type JobsWorker = { id: string; name: string } & EmploymentStartWorker;
+// 一覧で使う外国人。氏名の選択肢に加えて、雇用開始日の判定と
+// 帳簿の日付の並びの確認（求職受付日）にも使う
+export type JobsWorker = {
+  id: string;
+  name: string;
+  jobseeker_accepted_on?: string | null;
+} & EmploymentStartWorker;
 
 export function JobsExplorer({
   applications,
@@ -189,6 +196,25 @@ export function JobsExplorer({
   const isEmployed = (a: ApplicationWithRefs) =>
     hasEmploymentStarted(workerById.get(a.worker_id), a.organization_id);
 
+  // 帳簿の日付の並びの確認（求人受付年月日 → 紹介年月日 → 採用年月日、求職受付日 → 紹介年月日）
+  const postingById = useMemo(() => new Map(postings.map((p) => [p.id, p])), [postings]);
+  const dateIssuesOf = (a: ApplicationWithRefs) =>
+    checkLedgerDates({
+      postingReceivedOn: a.job_posting_id
+        ? (postingById.get(a.job_posting_id)?.received_on ?? null)
+        : null,
+      jobseekerAcceptedOn: workerById.get(a.worker_id)?.jobseeker_accepted_on ?? null,
+      appliedOn: a.applied_on,
+      resultOn: a.result_on,
+      result: a.result,
+    });
+  // 訂正が必要な応募（期間・企業の絞り込みの中から探す）
+  const dateIssueRows = useMemo(
+    () => inOrg.map((a) => ({ a, issues: dateIssuesOf(a) })).filter((r) => r.issues.length > 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [inOrg, workerById, postingById],
+  );
+
   const stats = useMemo(() => {
     const s = { total: inOrg.length, 選考中: 0, 採用: 0, 不採用: 0, 辞退: 0, 雇用開始済み: 0 };
     for (const a of inOrg) {
@@ -209,10 +235,12 @@ export function JobsExplorer({
           ? inOrg.filter(isEmployed)
           : filter === "no_referral"
             ? inOrg.filter((a) => ledgerStatus(a) === "未追加")
-            : inOrg.filter((a) => a.result === filter);
+            : filter === "date_issue"
+              ? inOrg.filter((a) => dateIssuesOf(a).length > 0)
+              : inOrg.filter((a) => a.result === filter);
     return sortJobApplications(list, sort, startedOn);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inOrg, filter, sort, query, workerById, referralFees, unlinkedReferralKeys]);
+  }, [inOrg, filter, sort, query, workerById, postingById, referralFees, unlinkedReferralKeys]);
 
   // 紹介手数料台帳にまだ追加していない採用の件数（絞り込みのボタンに出す）
   const missingReferralCount = useMemo(
@@ -423,6 +451,14 @@ export function JobsExplorer({
           active={filter === "no_referral"}
           onClick={() => setFilter("no_referral")}
         />
+        {/* 帳簿に出る日付の並びがおかしい人（訪問指導の前に直す） */}
+        {dateIssueRows.length > 0 && (
+          <Chip
+            label={`日付の要訂正 ${dateIssueRows.length}`}
+            active={filter === "date_issue"}
+            onClick={() => setFilter("date_issue")}
+          />
+        )}
       </div>
 
       {/* 応募先の企業で絞り込む（採用が出ている会社が上に来る） */}
@@ -480,6 +516,48 @@ export function JobsExplorer({
           </select>
         </label>
       </div>
+      {/* 帳簿の日付の並びがおかしい人のお知らせ（訪問指導の前に直す） */}
+      {dateIssueRows.length > 0 && (
+        <div className="rounded-xl border border-seal/40 bg-seal/10 p-3">
+          <p className="flex items-center gap-1.5 text-sm font-bold text-seal">
+            <TriangleAlert size={15} className="shrink-0" />
+            日付の流れがおかしい応募が {dateIssueRows.length} 件あります。訂正してください。
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-muted">
+            正しい流れは「求人受付年月日 → 紹介年月日 → 採用年月日」です。求職受付日は求人受付年月日より前でも構いませんが、
+            紹介年月日より後にはなりません。このまま帳簿を出すと労働局の訪問指導で指摘されます。
+          </p>
+          <ul className="mt-1.5 flex flex-col gap-1">
+            {dateIssueRows.slice(0, 20).map(({ a, issues }) => (
+              <li key={a.id} className="text-[11px] leading-relaxed">
+                <span className="font-bold">{a.workers?.name ?? "（削除済み）"}</span>
+                <span className="text-muted">
+                  {" "}
+                  ／ {a.job_postings?.display_company || a.organizations?.name || "応募先"} ／{" "}
+                  {issues.map((i) => i.message).join("・")}
+                </span>
+              </li>
+            ))}
+            {dateIssueRows.length > 20 && (
+              <li className="text-[11px] text-muted">ほか {dateIssueRows.length - 20} 件</li>
+            )}
+          </ul>
+          {filter !== "date_issue" && (
+            <button
+              type="button"
+              onClick={() => setFilter("date_issue")}
+              className="mt-2 rounded-lg border border-seal px-3 py-1.5 text-[11px] font-bold text-seal"
+            >
+              この {dateIssueRows.length} 件だけ出す
+            </button>
+          )}
+        </div>
+      )}
+      {filter === "date_issue" && !query && (
+        <p className="-mt-2 text-[11px] text-muted">
+          帳簿に出る日付の並びがおかしい応募だけを出しています。各カードの「応募を編集」「帳簿情報」「求人受付日を直す」から直してください。
+        </p>
+      )}
       {filter === "no_referral" && !query && (
         <p className="-mt-2 text-[11px] text-muted">
           採用なのに紹介手数料台帳へ追加していない応募だけを出しています。
@@ -535,7 +613,6 @@ export function JobsExplorer({
                       <p className="flex items-center gap-1 text-xs tabular-nums text-muted">
                         <CalendarClock size={12} />
                         応募 {a.applied_on}
-                        {a.interview_on && ` ・ 面接 ${a.interview_on}`}
                         {a.result_on && ` ・ 結果 ${a.result_on}`}
                         {startedOn(a) && ` ・ 雇用開始 ${startedOn(a)}`}
                       </p>
@@ -543,6 +620,16 @@ export function JobsExplorer({
                   </div>
                   <ChevronRight size={16} className="shrink-0 text-muted" />
                 </div>
+
+                {/* 帳簿の日付の並びがおかしいときは、そのカードにも出す */}
+                {dateIssuesOf(a).length > 0 && (
+                  <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-seal/10 px-2.5 py-1.5 text-[11px] leading-relaxed text-seal">
+                    <TriangleAlert size={13} className="mt-0.5 shrink-0" />
+                    <span>
+                      日付を訂正してください（{dateIssuesOf(a).map((i) => i.message).join("・")}）
+                    </span>
+                  </p>
+                )}
 
                 {/* 紹介手数料台帳との紐づけ（採用 → 台帳に追加 → 請求・入金の状態を表示） */}
                 {referral ? (

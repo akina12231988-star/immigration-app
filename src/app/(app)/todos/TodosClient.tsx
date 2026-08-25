@@ -1390,9 +1390,8 @@ function TodoItem({
                     <p key={f.id} className="text-[11px] leading-relaxed">
                       <span className="font-bold">{f.orgName}</span>
                       {f.postingJobType && `（${f.postingJobType}）`}
-                      求人申込日 {f.postingReceivedOn ?? "—"} → 求職申込日 {f.applied_on} → 面接日{" "}
-                      {f.interview_on ?? "—"} → {f.result === "採用" ? "採用日" : f.result}{" "}
-                      {f.result_on ?? "—"}
+                      求人受付日 {f.postingReceivedOn ?? "—"} → 紹介年月日 {f.applied_on} →{" "}
+                      {f.result === "採用" ? "採用年月日" : f.result} {f.result_on ?? "—"}
                     </p>
                   ))}
                   <p className="text-[10px] text-muted">

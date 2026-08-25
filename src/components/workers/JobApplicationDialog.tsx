@@ -266,29 +266,19 @@ export function JobApplicationDialog({
           </select>
         </label>
 
-        <div className="grid grid-cols-2 gap-2.5">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-bold text-muted">
-              応募日 ＝ 帳簿の「紹介年月日」
-            </span>
-            <input
-              type="date"
-              required
-              value={form.applied_on}
-              onChange={(e) => set("applied_on", e.target.value)}
-              className={INPUT_CLASS}
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-bold text-muted">面接日（帳簿には出ません）</span>
-            <input
-              type="date"
-              value={form.interview_on ?? ""}
-              onChange={(e) => set("interview_on", e.target.value || null)}
-              className={INPUT_CLASS}
-            />
-          </label>
-        </div>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-muted">応募日 ＝ 帳簿の「紹介年月日」</span>
+          <input
+            type="date"
+            required
+            value={form.applied_on}
+            onChange={(e) => set("applied_on", e.target.value)}
+            className={INPUT_CLASS}
+          />
+          <span className="text-[11px] leading-relaxed text-muted">
+            面接日は紹介年月日と同じ日付になるため、欄をなくしました。
+          </span>
+        </label>
 
         <div className="grid grid-cols-2 gap-2.5">
           <label className="flex flex-col gap-1">
