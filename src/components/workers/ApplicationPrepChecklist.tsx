@@ -113,6 +113,7 @@ import {
   PREP_DOC_ATTACH_ITEMS,
   PREP_DOC_STATUS_OPTIONS,
   PREP_MAIL_AFTER_HIDDEN,
+  PREP_ISSUE_REQUEST_OPTIONS,
   PREP_TANTOU_OPTIONS,
   serializeAttachItems,
   prepApplyDocKey,
@@ -1943,6 +1944,10 @@ function StatusExtraField({
         </label>
       );
     case "tantou":
+    case "issuer": {
+      // 担当者（社内の名簿）と発行依頼先（社外も含む名簿）で、出す名簿だけが違う
+      const names: readonly string[] =
+        extra.kind === "issuer" ? PREP_ISSUE_REQUEST_OPTIONS : PREP_TANTOU_OPTIONS;
       return (
         <label className="block">
           <span className="mb-0.5 block text-[11px] text-muted">{extra.label}</span>
@@ -1954,11 +1959,8 @@ function StatusExtraField({
           >
             <option value="">選択してください</option>
             {/* 名簿から外れた保存済みの値（旧・自由入力など）も選択肢として残す */}
-            {ds.note &&
-              !PREP_TANTOU_OPTIONS.includes(ds.note as (typeof PREP_TANTOU_OPTIONS)[number]) && (
-                <option value={ds.note}>{ds.note}</option>
-              )}
-            {PREP_TANTOU_OPTIONS.map((t) => (
+            {ds.note && !names.includes(ds.note) && <option value={ds.note}>{ds.note}</option>}
+            {names.map((t) => (
               <option key={t} value={t}>
                 {t}
               </option>
@@ -1966,6 +1968,7 @@ function StatusExtraField({
           </select>
         </label>
       );
+    }
     case "textarea":
       return (
         <label className="block">
