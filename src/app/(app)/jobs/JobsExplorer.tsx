@@ -553,7 +553,7 @@ export function JobsExplorer({
         </label>
       </div>
       {/* 一旦消している間の控えめなお知らせ（消したままにならないよう、戻す口を残す） */}
-      {dateIssueRows.length > 0 && dateIssueSnooze.snoozedUntil && (
+      {dateIssueRows.length > 0 && dateIssueSnooze.ready && dateIssueSnooze.snoozedUntil && (
         <p className="-mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
           <TriangleAlert size={13} className="shrink-0" />
           日付の流れがおかしい応募 {dateIssueRows.length} 件のお知らせは、
@@ -568,7 +568,7 @@ export function JobsExplorer({
         </p>
       )}
       {/* 帳簿の日付の並びがおかしい人のお知らせ（訪問指導の前に直す） */}
-      {dateIssueRows.length > 0 && !dateIssueSnooze.snoozedUntil && (
+      {dateIssueRows.length > 0 && dateIssueSnooze.ready && !dateIssueSnooze.snoozedUntil && (
         <div className="rounded-xl border border-seal/40 bg-seal/10 p-3">
           <p className="flex items-center gap-1.5 text-sm font-bold text-seal">
             <TriangleAlert size={15} className="shrink-0" />

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextNoon, snoozeUntilLabel } from "@/lib/date-issue-snooze";
+import { INITIAL_SNOOZE_UNTIL, nextNoon, snoozeUntilLabel, snoozedUntilFrom } from "@/lib/date-issue-snooze";
 
 describe("nextNoon", () => {
   it("お昼より前なら今日の12:00", () => {
@@ -48,5 +48,32 @@ describe("snoozeUntilLabel", () => {
   it("日付が変わる時間帯でも「今日・明日」を取り違えない", () => {
     const now = new Date(2026, 7, 26, 23, 50);
     expect(snoozeUntilLabel(nextNoon(now), now)).toBe("明日 12:00");
+  });
+});
+
+describe("snoozedUntilFrom", () => {
+  const initial = INITIAL_SNOOZE_UNTIL.getTime();
+
+  it("まだ何も押していない端末は、はじめの期限まで隠す", () => {
+    expect(snoozedUntilFrom(null)).toBe(initial);
+  });
+
+  it("値が壊れていても、はじめの期限として扱う", () => {
+    expect(snoozedUntilFrom("")).toBe(initial);
+    expect(snoozedUntilFrom("あとで")).toBe(initial);
+  });
+
+  it("「今すぐ出す」を押した端末（0）は隠さない", () => {
+    expect(snoozedUntilFrom("0")).toBe(0);
+  });
+
+  it("「一旦消す」で入れた期限はそのまま使う", () => {
+    const at = new Date(2026, 8, 1, 12, 0).getTime();
+    expect(snoozedUntilFrom(String(at))).toBe(at);
+  });
+
+  it("はじめの期限は 2026-08-26 12:00（この時刻を過ぎたらもう隠さない）", () => {
+    expect(INITIAL_SNOOZE_UNTIL).toEqual(new Date(2026, 7, 26, 12, 0, 0, 0));
+    expect(initial > 0).toBe(true);
   });
 });
