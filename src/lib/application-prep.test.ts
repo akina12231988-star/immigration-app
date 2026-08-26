@@ -12,6 +12,8 @@ import {
   PREP_DOC_ATTACH_ITEMS,
   PREP_DOC_DEFS,
   PREP_DOC_STATUS_OPTIONS,
+  PREP_ISSUE_REQUEST_OPTIONS,
+  PREP_TANTOU_OPTIONS,
   prepApplyDocKey,
   prepDocLabel,
   prepPageKey,
@@ -378,5 +380,34 @@ describe("prepApplyDocKey", () => {
     const key = prepApplyDocKey("TODO-1306");
     expect(isPrepPageKeyOf(key, prepPageKey(key, 2))).toBe(true);
     expect(isPrepPageKeyOf(key, prepApplyDocKey("TODO-1307"))).toBe(false);
+  });
+});
+
+describe("発行依頼先（課税証明書・納税証明書の「発行依頼中」）", () => {
+  const 依頼先を出す書類 = ["kazei", "nozei_shiken", "nozei_kokuho"];
+
+  it("依頼先の名簿はこの4名", () => {
+    expect([...PREP_ISSUE_REQUEST_OPTIONS]).toEqual([
+      "VUONG VAN THANH",
+      "NGAさん",
+      "野口　明菜",
+      "秋吉　伽恋",
+    ]);
+  });
+
+  it.each(依頼先を出す書類)("%s の「発行依頼中」で発行依頼先を選べる", (docId) => {
+    const opt = PREP_DOC_STATUS_OPTIONS[docId].find((o) => o.value === "発行依頼中");
+    expect(opt?.extras).toEqual([{ kind: "issuer", label: "発行依頼先（誰に依頼したか）" }]);
+  });
+
+  it.each(依頼先を出す書類)("%s の「発行依頼中」はまだ完了ではない", (docId) => {
+    const opt = PREP_DOC_STATUS_OPTIONS[docId].find((o) => o.value === "発行依頼中");
+    expect(opt?.done).toBe(false);
+  });
+
+  it("担当者の名簿（社内）は発行依頼先とは別のまま", () => {
+    // 申請準備の担当者は社内の名簿。VUONG VAN THANH などは入れない
+    expect(PREP_TANTOU_OPTIONS).not.toContain("VUONG VAN THANH");
+    expect(PREP_ISSUE_REQUEST_OPTIONS).not.toContain("市原　彩奈");
   });
 });

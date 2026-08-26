@@ -88,6 +88,15 @@ export const PREP_TANTOU_OPTIONS = [
   "野口　明菜",
 ] as const;
 
+// 課税証明書・納税証明書を「発行依頼中」にしたときの、発行依頼先の名簿。
+// 社内の担当者（PREP_TANTOU_OPTIONS）とは別で、社外の依頼先も入る。
+export const PREP_ISSUE_REQUEST_OPTIONS = [
+  "VUONG VAN THANH",
+  "NGAさん",
+  "野口　明菜",
+  "秋吉　伽恋",
+] as const;
+
 // 書類の判定元
 type Source =
   | { kind: "doc"; docKey: string } // onboarding_documents の固定キー（cert_* / prep_*）
@@ -437,6 +446,7 @@ export function prepProgressOf(items: PrepDocStatus[]): PrepProgress {
 export type PrepStatusExtra =
   | { kind: "text"; label: string } // 1行テキスト（note に保存）
   | { kind: "tantou"; label: string } // 担当者の選択（名簿から。note に保存）
+  | { kind: "issuer"; label: string } // 発行依頼先の選択（発行依頼先の名簿から。note に保存）
   | { kind: "textarea"; label: string } // 理由書などの長文（note に保存）
   | { kind: "amount"; label: string } // 金額（amount に保存）
   | { kind: "date"; label: string } // 日付（date_on に保存）
@@ -475,7 +485,7 @@ export const PREP_DOC_STATUS_OPTIONS: Record<string, PrepDocStatusOption[]> = {
     { value: "本人にまだ届いていないから納税証明書その３で対応", done: true, noFile: true },
   ],
   kazei: [
-    { value: "発行依頼中", done: false, extras: [{ kind: "tantou", label: "誰に発行依頼中か（担当者）" }] },
+    { value: "発行依頼中", done: false, extras: [{ kind: "issuer", label: "発行依頼先（誰に依頼したか）" }] },
     { value: "郵送請求中", done: false, extras: [{ kind: "mailing" }] },
     { value: "発行完了", done: true },
     {
@@ -486,7 +496,7 @@ export const PREP_DOC_STATUS_OPTIONS: Record<string, PrepDocStatusOption[]> = {
     },
   ],
   nozei_shiken: [
-    { value: "発行依頼中", done: false, extras: [{ kind: "tantou", label: "誰に発行依頼中か（担当者）" }] },
+    { value: "発行依頼中", done: false, extras: [{ kind: "issuer", label: "発行依頼先（誰に依頼したか）" }] },
     { value: "郵送請求中", done: false, extras: [{ kind: "mailing" }] },
     {
       value: "未納のため領収書発行待ち",
@@ -503,7 +513,7 @@ export const PREP_DOC_STATUS_OPTIONS: Record<string, PrepDocStatusOption[]> = {
     { value: "非課税のため発行できなかった", done: true, noFile: true },
   ],
   nozei_kokuho: [
-    { value: "発行依頼中", done: false, extras: [{ kind: "tantou", label: "誰に発行依頼中か（担当者）" }] },
+    { value: "発行依頼中", done: false, extras: [{ kind: "issuer", label: "発行依頼先（誰に依頼したか）" }] },
     { value: "郵送請求中", done: false, extras: [{ kind: "mailing" }] },
     {
       value: "未納のため領収書発行待ち",
