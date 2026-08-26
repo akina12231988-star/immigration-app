@@ -1,0 +1,13 @@
+-- あとでやる手続きの宿題（忘れ防止のアラート）を1つの jsonb にまとめて持つ。
+--
+-- 1) 転居手続き … 転居の必要があり、転居手続きを依頼する人
+-- 2) 国保・国民年金の加入 … 前職が社保だと退職に関わる書類が発行されるまで
+--    加入手続きができないため、書類が出てから加入する必要がある人
+--
+-- どちらも「必要かどうか」と「終わったかどうか」だけの短い記録なので、
+-- 列を増やさず jsonb に入れる。
+-- 中身の例:
+--   {"moving":{"needed":true,"planned_on":"2026-09-01","status":"依頼中","note":""},
+--    "kokuho":{"needed":true,"docs_ready_on":null,
+--              "kokuho_done":false,"nenkin_done":false,"note":"前職が社保"}}
+alter table workers add column if not exists followups jsonb not null default '{}'::jsonb;

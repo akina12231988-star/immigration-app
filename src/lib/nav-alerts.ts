@@ -3,18 +3,25 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { isPassportRenewalListTarget } from "@/lib/worker-alerts";
+import { hasFollowup } from "@/lib/worker-followups";
 import { todayStr } from "@/lib/application-alerts";
 
 // メニューに出すアラート件数。
 //  passports    … パスポート更新必要の人数（有効期限まで半年以内。パスポート更新必要のページと同じ判定）
 //  orientations … 実施予定日を過ぎた未実施の生活オリエンテーションの件数
+//  followups    … あとでやる手続き（転居手続き・国保/国民年金の加入）が残っている人数
 export interface NavAlerts {
   passports: number;
   orientations: number;
+  followups: number;
 }
 
 export function useNavAlerts(): NavAlerts {
-  const [alerts, setAlerts] = useState<NavAlerts>({ passports: 0, orientations: 0 });
+  const [alerts, setAlerts] = useState<NavAlerts>({
+    passports: 0,
+    orientations: 0,
+    followups: 0,
+  });
 
   useEffect(() => {
     const supabase = createClient();
@@ -36,6 +43,16 @@ export function useNavAlerts(): NavAlerts {
           ),
         ).length;
         setAlerts((a) => ({ ...a, passports: count }));
+      });
+    // 0119 が未適用だと followups 列が無く失敗するので、そのときは0のままにする
+    void supabase
+      .from("workers")
+      .select("status, followups")
+      .then(({ data }) => {
+        const rows = (data as { status: string; followups?: unknown }[] | null) ?? [];
+        // 退職した人は手続きの宿題から外す（一覧の絞り込みと同じ扱い）
+        const count = rows.filter((w) => w.status !== "退職" && hasFollowup(w)).length;
+        setAlerts((a) => ({ ...a, followups: count }));
       });
     void supabase
       .from("orientations")

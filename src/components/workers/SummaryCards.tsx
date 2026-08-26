@@ -1,4 +1,4 @@
-import { Users, BadgeCheck, TimerReset, Flag, CalendarClock, LogOut } from "lucide-react";
+import { Users, BadgeCheck, TimerReset, Flag, CalendarClock, BellRing, LogOut } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import type { WorkerQuickFilter } from "@/components/workers/WorkerFilters";
 
@@ -8,6 +8,7 @@ export interface WorkerSummary {
   withinOneYear: number; // 1号で残り1年以内
   reachedCap: number; // 5年到達
   expiry3m: number; // 在留期限まで4ヶ月以内
+  followups: number; // あとでやる手続きが残っている人
   retired: number; // 退職者
 }
 
@@ -46,6 +47,13 @@ const CARDS: {
     label: "在留期限4ヶ月以内",
     icon: CalendarClock,
     accent: "text-status-notice-fg bg-status-notice-bg",
+  },
+  {
+    key: "followups",
+    quick: "followups",
+    label: "あとでやる手続き",
+    icon: BellRing,
+    accent: "text-seal bg-seal/10",
   },
   {
     key: "retired",

@@ -3,6 +3,7 @@
 
 import type { VisaType } from "@/types/ssw";
 import type { WorkerCertExam } from "@/lib/cert-exam";
+import type { WorkerFollowups } from "@/lib/worker-followups";
 
 export type StaffRole = "admin" | "staff" | "viewer";
 
@@ -438,6 +439,7 @@ export interface Worker {
   ssw_insurance_self_join: boolean; // 自己負担加入希望（所属機関が外国人負担の場合に本人が加入を希望）
   note: string;
   jobseeker_card?: JobseekerCardExtras; // 求職票だけで使う項目（0118）
+  followups?: WorkerFollowups; // あとでやる手続きの宿題（転居手続き・国保/国民年金の加入。0119）
   jobseeker_no?: string; // 求職受付番号（求職管理簿。例: R8KS-2。0079）
   jobseeker_accepted_on?: string | null; // 求職受付年月日（0079）
   jobseeker_valid_until?: string | null; // 求職の有効期間（終了日。0079）

@@ -16,6 +16,7 @@ import { SswStatusBadge, SupportBadge, WorkerStatusBadge } from "@/components/wo
 import { calcSsw, todayStr, type SswCalcResult } from "@/lib/ssw/calc";
 import { toCalcHistory } from "@/lib/supabase/queries/histories";
 import { isResidenceRenewalTarget } from "@/lib/worker-alerts";
+import { followupLabels, hasFollowup } from "@/lib/worker-followups";
 import { WorkerRenewalCard } from "@/components/workers/WorkerRenewalCard";
 import type { Organization, WorkerWithHistories } from "@/types/db";
 
@@ -112,6 +113,8 @@ export function WorkersExplorer({
       withinOneYear: rows.filter(isWithin1Year).length,
       reachedCap: rows.filter((r) => r.calc.status === "5年到達").length,
       expiry3m: rows.filter((r) => isExpiry3m(r.worker)).length,
+      // 退職した人は数えない（手続きはもう発生しない）
+      followups: rows.filter((r) => r.worker.status !== "退職" && hasFollowup(r.worker)).length,
       retired: rows.filter((r) => r.worker.status === "退職").length,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -134,6 +137,9 @@ export function WorkersExplorer({
           break;
         case "expiry3m":
           if (!isExpiry3m(worker)) return false;
+          break;
+        case "followups":
+          if (worker.status === "退職" || !hasFollowup(worker)) return false;
           break;
         case "retired":
           if (worker.status !== "退職") return false;
@@ -268,6 +274,12 @@ export function WorkersExplorer({
         </label>
       </div>
 
+      {filter.quick === "followups" && (
+        <p className="-mt-2 text-[11px] leading-relaxed text-muted">
+          あとでやる手続き（転居手続きの依頼／退職書類が出てからの国保・国民年金の加入）が残っている人だけを出しています。
+          各カードに残っている手続きが出ます。終わったら外国人詳細の「あとでやる手続き（忘れ防止）」で印を付けてください。
+        </p>
+      )}
       {filtered.length === 0 ? (
         <p className="py-12 text-center text-sm text-muted">
           {workers.length === 0
@@ -313,6 +325,15 @@ export function WorkersExplorer({
                   <SupportBadge support={worker.support} />
                 </div>
                 <SswGauge calc={calc} compact />
+                {/* 誰の何が残っているかが一覧で分かるようにする */}
+                {followupLabels(worker).map((label) => (
+                  <p
+                    key={label}
+                    className="mt-2 rounded-lg border border-seal/40 bg-seal/10 px-2 py-1 text-[11px] font-bold leading-relaxed text-seal"
+                  >
+                    {label}
+                  </p>
+                ))}
                 <div className="mt-2 flex items-center justify-between text-xs text-muted">
                   <span className="truncate">
                     {worker.current_organization_id
