@@ -48,6 +48,7 @@ import {
 } from "@/lib/job-employment-start";
 import { matchesWorkerName } from "@/lib/worker-search";
 import { jobOrgOptions } from "@/lib/job-org-filter";
+import { useDateIssueSnooze } from "@/lib/date-issue-snooze";
 import { NameSearchBox } from "@/components/ui/NameSearchBox";
 import { CopyButton } from "@/components/ui/CopyButton";
 import {
@@ -246,6 +247,9 @@ export function JobsExplorer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [inOrg, workerById, postingById],
   );
+
+  // お知らせを一旦消しているか（この端末に覚えさせる。次のお昼12:00で戻る）
+  const dateIssueSnooze = useDateIssueSnooze();
 
   const stats = useMemo(() => {
     const s = { total: inOrg.length, 選考中: 0, 採用: 0, 不採用: 0, 辞退: 0, 雇用開始済み: 0 };
@@ -548,8 +552,23 @@ export function JobsExplorer({
           </select>
         </label>
       </div>
+      {/* 一旦消している間の控えめなお知らせ（消したままにならないよう、戻す口を残す） */}
+      {dateIssueRows.length > 0 && dateIssueSnooze.snoozedUntil && (
+        <p className="-mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
+          <TriangleAlert size={13} className="shrink-0" />
+          日付の流れがおかしい応募 {dateIssueRows.length} 件のお知らせは、
+          {dateIssueSnooze.untilLabel} まで隠しています。
+          <button
+            type="button"
+            onClick={dateIssueSnooze.show}
+            className="font-bold text-brand underline"
+          >
+            今すぐ出す
+          </button>
+        </p>
+      )}
       {/* 帳簿の日付の並びがおかしい人のお知らせ（訪問指導の前に直す） */}
-      {dateIssueRows.length > 0 && (
+      {dateIssueRows.length > 0 && !dateIssueSnooze.snoozedUntil && (
         <div className="rounded-xl border border-seal/40 bg-seal/10 p-3">
           <p className="flex items-center gap-1.5 text-sm font-bold text-seal">
             <TriangleAlert size={15} className="shrink-0" />
@@ -579,15 +598,25 @@ export function JobsExplorer({
               <li className="text-[11px] text-muted">ほか {dateIssueRows.length - 20} 件</li>
             )}
           </ul>
-          {filter !== "date_issue" && (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {filter !== "date_issue" && (
+              <button
+                type="button"
+                onClick={() => setFilter("date_issue")}
+                className="rounded-lg border border-seal px-3 py-1.5 text-[11px] font-bold text-seal"
+              >
+                この {dateIssueRows.length} 件だけ出す
+              </button>
+            )}
+            {/* 今は直せないときに一旦消す。次のお昼12:00にまた出る */}
             <button
               type="button"
-              onClick={() => setFilter("date_issue")}
-              className="mt-2 rounded-lg border border-seal px-3 py-1.5 text-[11px] font-bold text-seal"
+              onClick={dateIssueSnooze.snooze}
+              className="rounded-lg border border-border px-3 py-1.5 text-[11px] font-bold text-muted"
             >
-              この {dateIssueRows.length} 件だけ出す
+              一旦消す{dateIssueSnooze.nextLabel && `（${dateIssueSnooze.nextLabel} まで）`}
             </button>
-          )}
+          </div>
         </div>
       )}
       {filter === "date_issue" && !query && (
