@@ -2,8 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { isPassportRenewalListTarget } from "@/lib/worker-alerts";
-import { hasFollowup } from "@/lib/worker-followups";
+import {
+  countFollowupAlerts,
+  countPassportAlerts,
+  type NavAlertWorker,
+} from "@/lib/nav-alert-counts";
 import { todayStr } from "@/lib/application-alerts";
 
 // メニューに出すアラート件数。
@@ -16,6 +19,12 @@ export interface NavAlerts {
   followups: number;
 }
 
+// メニューはどのページにも出るので、問い合わせは少なくする。
+// パスポートと手続きの宿題はどちらも workers を丸ごと見るため、1回の取得から両方を数える。
+const WORKER_COLUMNS = "support, status, passport_expiry_date, followups";
+// 0119（followups 列）が未適用の環境では上の取得が失敗するので、その列を外して取り直す
+const WORKER_COLUMNS_LEGACY = "support, status, passport_expiry_date";
+
 export function useNavAlerts(): NavAlerts {
   const [alerts, setAlerts] = useState<NavAlerts>({
     passports: 0,
@@ -24,42 +33,47 @@ export function useNavAlerts(): NavAlerts {
   });
 
   useEffect(() => {
+    let cancelled = false;
     const supabase = createClient();
     const today = todayStr();
+
+    const applyWorkers = (rows: NavAlertWorker[]) => {
+      if (cancelled) return;
+      setAlerts((a) => ({
+        ...a,
+        passports: countPassportAlerts(rows, today),
+        followups: countFollowupAlerts(rows),
+      }));
+    };
+
     // テーブル未作成などで失敗しても、メニュー表示自体は影響を受けないよう握りつぶす
     void supabase
       .from("workers")
-      .select("support, status, passport_expiry_date")
-      .not("passport_expiry_date", "is", null)
-      .then(({ data }) => {
-        const rows =
-          (data as { support: string; status: string; passport_expiry_date: string | null }[] | null) ??
-          [];
-        // 一覧（パスポート更新必要）と同じ判定: 現在も支援中の人だけ数える
-        const count = rows.filter((w) =>
-          isPassportRenewalListTarget(
-            w as Parameters<typeof isPassportRenewalListTarget>[0],
-            today,
-          ),
-        ).length;
-        setAlerts((a) => ({ ...a, passports: count }));
+      .select(WORKER_COLUMNS)
+      .then(({ data, error }) => {
+        if (!error) {
+          applyWorkers((data as NavAlertWorker[] | null) ?? []);
+          return;
+        }
+        // followups 列が無いだけのときは、パスポートの件数まで出なくならないようにする
+        return supabase
+          .from("workers")
+          .select(WORKER_COLUMNS_LEGACY)
+          .then(({ data: legacy }) => applyWorkers((legacy as NavAlertWorker[] | null) ?? []));
       });
-    // 0119 が未適用だと followups 列が無く失敗するので、そのときは0のままにする
-    void supabase
-      .from("workers")
-      .select("status, followups")
-      .then(({ data }) => {
-        const rows = (data as { status: string; followups?: unknown }[] | null) ?? [];
-        // 退職した人は手続きの宿題から外す（一覧の絞り込みと同じ扱い）
-        const count = rows.filter((w) => w.status !== "退職" && hasFollowup(w)).length;
-        setAlerts((a) => ({ ...a, followups: count }));
-      });
+
     void supabase
       .from("orientations")
       .select("id", { count: "exact", head: true })
       .eq("status", "未実施")
       .lte("scheduled_on", today)
-      .then(({ count }) => setAlerts((a) => ({ ...a, orientations: count ?? 0 })));
+      .then(({ count }) => {
+        if (!cancelled) setAlerts((a) => ({ ...a, orientations: count ?? 0 }));
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return alerts;
