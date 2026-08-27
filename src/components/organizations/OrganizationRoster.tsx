@@ -21,6 +21,7 @@ import {
 } from "@/lib/org-roster-fill";
 import type { OrgRosterWorker } from "@/lib/supabase/queries/organizations";
 import { formatAmountInput } from "@/lib/amount-format";
+import { notCountedReason, splitCurrentRoster } from "@/lib/org-roster-groups";
 
 // 所属機関に今いる人と、過去にいた人の一覧。
 // 「誰がいつからいて、誰がいつ辞めて今どこにいるか」をこの機関の画面だけで追えるようにする。
@@ -44,6 +45,9 @@ export function OrganizationRoster({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
+
+  // 「在籍中」は状態が在籍中の方だけにする。それ以外は「在籍前・その他」へ回す
+  const { active, notYet } = splitCurrentRoster(current);
 
   const fillOf = (id: string) => fills[id] ?? emptyRosterFill();
   const setFill = (id: string, patch: Partial<RosterFill>) =>
@@ -97,8 +101,12 @@ export function OrganizationRoster({
         在籍者・過去の在籍者
       </h2>
       <p className="mb-3 text-[11px] leading-relaxed text-muted">
-        在籍中は今この機関に紐づいている方、過去に在籍は退職記録・機関別の雇用開始日が残っている方です。
-        転職された方は、今どちらにいるかも出します。
+        在籍中は状態が「在籍中」の方、在籍前・その他はこの機関に紐づいているけれど状態がまだ
+        「在籍中」ではない方（申請準備中など）、過去に在籍は退職記録・機関別の雇用開始日が
+        残っている方です。転職された方は、今どちらにいるかも出します。
+        上の支援体制の「在籍（1号特定技能）」は、状態が「在籍中」・支援区分が「支援対象」・
+        在留資格が特定技能1号の3つがそろった方だけを数えます。数に入っていない方は、
+        表の「状態」「支援区分」の欄に理由を出します。
         雇用開始日・賃金が未登録の方は、この表の点線の枠に入れて「保存」で登録できます
         （外国人詳細の「所属機関別の雇用開始日」「賃金（時給・月給）」に入ります）。
         登録済みの内容を直すときは、氏名から外国人詳細を開いてください。
@@ -122,16 +130,34 @@ export function OrganizationRoster({
 
       <Section
         title="在籍中"
-        countLabel={`${current.length}名`}
-        rows={current}
-        emptyText="在籍中の方はいません。"
+        countLabel={`${active.length}名`}
+        rows={active}
+        emptyText="状態が「在籍中」の方はいません。"
         showLeaving={false}
+        showWhyNotCounted
         today={today}
         fillOf={fillOf}
         setFill={setFill}
         onSave={save}
         busyId={busyId}
       />
+      {/* この機関に紐づいているが、状態がまだ「在籍中」ではない方（許可前・申請準備中など） */}
+      {notYet.length > 0 && (
+        <div className="mt-4">
+          <Section
+            title="在籍前・その他"
+            countLabel={`${notYet.length}名`}
+            rows={notYet}
+            emptyText=""
+            showLeaving={false}
+            today={today}
+            fillOf={fillOf}
+            setFill={setFill}
+            onSave={save}
+            busyId={busyId}
+          />
+        </div>
+      )}
       <div className="mt-4">
         <Section
           title="過去に在籍"
@@ -160,6 +186,7 @@ function Section({
   rows,
   emptyText,
   showLeaving,
+  showWhyNotCounted = false,
   today,
   fillOf,
   setFill,
@@ -171,6 +198,8 @@ function Section({
   rows: OrgRosterWorker[];
   emptyText: string;
   showLeaving: boolean;
+  // 支援体制の数に入らない人に、その理由を氏名の下に出すか（在籍中の表だけ）
+  showWhyNotCounted?: boolean;
   today: string;
   fillOf: (id: string) => RosterFill;
   setFill: (id: string, patch: Partial<RosterFill>) => void;
@@ -186,12 +215,14 @@ function Section({
         <p className="rounded-xl bg-background p-3 text-xs text-muted">{emptyText}</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[960px] border-collapse text-xs">
+          <table className="w-full min-w-[1120px] border-collapse text-xs">
             <thead>
               <tr className="border-b border-border text-left text-muted">
                 <th className="py-1.5 pr-2 font-bold">氏名</th>
                 <th className="py-1.5 pr-2 font-bold">国籍</th>
                 <th className="py-1.5 pr-2 font-bold">在留資格</th>
+                <th className="py-1.5 pr-2 font-bold">状態</th>
+                <th className="py-1.5 pr-2 font-bold">支援区分</th>
                 <th className="py-1.5 pr-2 font-bold">雇用開始</th>
                 <th className="py-1.5 pr-2 font-bold">賃金</th>
                 {showLeaving ? (
@@ -200,10 +231,7 @@ function Section({
                     <th className="py-1.5 pr-2 font-bold">現在の所属</th>
                   </>
                 ) : (
-                  <>
-                    <th className="py-1.5 pr-2 font-bold">在留期限</th>
-                    <th className="py-1.5 pr-2 font-bold">支援区分</th>
-                  </>
+                  <th className="py-1.5 pr-2 font-bold">在留期限</th>
                 )}
                 <th className="py-1.5 font-bold" />
               </tr>
@@ -222,9 +250,29 @@ function Section({
                         {w.name}
                       </Link>
                       {w.kana && <span className="block text-[10px] text-muted">{w.kana}</span>}
+                      {showWhyNotCounted && notCountedReason(w) && (
+                        <span className="mt-0.5 block text-[10px] leading-relaxed text-seal">
+                          支援体制の数に入りません（{notCountedReason(w)}）
+                        </span>
+                      )}
                     </td>
                     <td className="py-1.5 pr-2 text-muted">{w.nationality || "—"}</td>
                     <td className="py-1.5 pr-2 text-muted">{w.residenceStatus || "—"}</td>
+                    {/* 支援体制の「在籍（1号特定技能）」に数えられない人は、その欄を色で示す */}
+                    <td
+                      className={`py-1.5 pr-2 ${
+                        w.status === "在籍中" ? "text-muted" : "font-bold text-seal"
+                      }`}
+                    >
+                      {w.status || "—"}
+                    </td>
+                    <td
+                      className={`py-1.5 pr-2 ${
+                        w.support === "支援対象" ? "text-muted" : "font-bold text-seal"
+                      }`}
+                    >
+                      {w.support || "—"}
+                    </td>
                     <td className="py-1.5 pr-2 tabular-nums">
                       {w.startOn ?? (
                         <input
@@ -295,10 +343,7 @@ function Section({
                         </td>
                       </>
                     ) : (
-                      <>
-                        <td className="py-1.5 pr-2 tabular-nums">{w.residenceExpiryDate ?? "—"}</td>
-                        <td className="py-1.5 pr-2 text-muted">{w.support}</td>
-                      </>
+                      <td className="py-1.5 pr-2 tabular-nums">{w.residenceExpiryDate ?? "—"}</td>
                     )}
                     <td className="py-1.5">
                       {dirty && (
