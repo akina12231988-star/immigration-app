@@ -27,6 +27,7 @@ import { WorkerPhoto } from "@/components/workers/WorkerPhoto";
 import { FieldJumpSearch } from "@/components/workers/FieldJumpSearch";
 import { WorkerDocuments } from "@/components/workers/WorkerDocuments";
 import { WorkerEmploymentInsurance } from "@/components/workers/WorkerEmploymentInsurance";
+import { WorkerFollowups } from "@/components/workers/WorkerFollowups";
 import { OnboardingDocuments } from "@/components/workers/OnboardingDocuments";
 import { HealthCheckSection } from "@/components/workers/HealthCheckSection";
 import { GensenDocuments } from "@/components/workers/GensenDocuments";
@@ -1403,6 +1404,9 @@ export function WorkerDetail({
 
       {/* 雇用保険（離職票・被保険者証）が届いたときの保管 */}
       <WorkerEmploymentInsurance workerId={worker.id} canEdit={canEdit} />
+
+      {/* あとでやる手続き（転居手続き・退職書類が出てからの国保/国民年金の加入） */}
+      <WorkerFollowups workerId={worker.id} followups={worker.followups} canEdit={canEdit} />
 
       {/* 旧「外国人書類（PDF・画像で保存）」カードは解体した:
           合格証4種→基本情報の各合格名の下 / パスポート→出入国の記録のパスポートの記録 /

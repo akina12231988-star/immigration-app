@@ -30,8 +30,10 @@ export interface NavItem {
   short: string; // 下部タブ用の短縮ラベル
   icon: LucideIcon;
   emphasize?: boolean;
-  // メニューにアラート件数を出す項目（passports=パスポート更新必要 / orientations=要実施の生活オリエン）
-  alert?: "passports" | "orientations";
+  // メニューにアラート件数を出す項目
+  // passports=パスポート更新必要 / orientations=要実施の生活オリエン
+  // followups=あとでやる手続き（転居手続き・国保/国民年金の加入）が残っている人
+  alert?: "passports" | "orientations" | "followups";
 }
 
 // トグル表示のグループ（サイドナビで開閉できる。下部タブでは中身を並べる）
@@ -54,7 +56,7 @@ export const NAV_ENTRIES: NavEntry[] = [
   { href: "/", label: "ホーム", short: "ホーム", icon: Home },
   { href: "/notifications", label: "入管メール通知", short: "お知らせ", icon: Bell },
   { href: "/organizations", label: "所属機関の情報", short: "所属機関", icon: Building2 },
-  { href: "/workers", label: "外国人", short: "外国人", icon: Users },
+  { href: "/workers", label: "外国人", short: "外国人", icon: Users, alert: "followups" },
   // ★指定の並びに無かった項目（仮置き）: 外国人まわりの書類のためここに置いている
   { href: "/onboarding", label: "入社書類メール", short: "入社書類", icon: MailPlus },
   { href: "/custody", label: "保管ボックス（原本預かり）", short: "保管", icon: Archive },

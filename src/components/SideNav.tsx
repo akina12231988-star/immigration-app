@@ -25,6 +25,7 @@ function badgeFor(
   if (item.href === "/updates") return counts.unreadUpdates;
   if (item.alert === "passports") return counts.alerts.passports;
   if (item.alert === "orientations") return counts.alerts.orientations;
+  if (item.alert === "followups") return counts.alerts.followups;
   return 0;
 }
 

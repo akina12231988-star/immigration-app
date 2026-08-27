@@ -114,7 +114,9 @@ function NavTab({
           ? alerts.passports
           : item.alert === "orientations"
             ? alerts.orientations
-            : 0;
+            : item.alert === "followups"
+              ? alerts.followups
+              : 0;
   return (
     <Link href={href} onClick={onNavigate} className="flex flex-col items-center gap-0.5 py-1">
       <span
