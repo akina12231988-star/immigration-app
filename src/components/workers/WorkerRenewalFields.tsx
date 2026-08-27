@@ -11,6 +11,8 @@ import {
   type PrepChecklistRow,
 } from "@/lib/supabase/queries/application-prep";
 import { PREP_TANTOU_OPTIONS } from "@/lib/application-prep";
+import { Ssw2Instructees } from "@/components/workers/Ssw2Instructees";
+import { SSW2_PREP_SITUATION } from "@/lib/ssw2-instructees";
 import {
   PREP_SITUATIONS,
   PREP_SITUATION_CHOICES,
@@ -47,6 +49,7 @@ export type RenewalFieldsWorker = Pick<
 > & {
   current_organization_id?: string | null;
   application_prep_organization_id?: string | null;
+  field?: string; // 特定産業分野（特定技能2号の指導対象者の必要人数の判定に使う）
   application_prep_kind?: string | null;
   current_situation?: string | null; // 只今の状況（準備の内容の初期値に使う。0093）
 };
@@ -284,6 +287,16 @@ export function WorkerRenewalFields({
             保存すると外国人詳細の「只今の状況」に入り、「Notionに登録／更新」でNotionにも反映できます。
           </span>
         </label>
+      )}
+      {/* 特定技能2号（本人申請）のときだけ、誓約書に書く指導対象者を選ぶ */}
+      {status === "準備中" && prepSituation === SSW2_PREP_SITUATION && (
+        <Ssw2Instructees
+          workerId={worker.id}
+          workerName={worker.name}
+          organizationId={prepOrgId || worker.current_organization_id}
+          field={worker.field ?? ""}
+          canEdit={canEdit}
+        />
       )}
       {showTantou && (
         <label className="flex flex-col gap-1">
