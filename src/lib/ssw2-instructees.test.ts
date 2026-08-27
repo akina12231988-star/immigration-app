@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  candidateNote,
   instructeeCandidates,
+  isSsw2Holder,
   instructeeMissingFields,
   orgSsw2Field,
   ssw2Capacity,
@@ -87,28 +89,51 @@ describe("instructeeMissingFields", () => {
   });
 });
 
+describe("isSsw2Holder", () => {
+  it("すでに特定技能2号の人", () => {
+    expect(isSsw2Holder("特定技能2号")).toBe(true);
+    expect(isSsw2Holder("特定技能２号")).toBe(true); // 全角でも同じ
+  });
+
+  it("2号への移行準備中はまだ2号ではない", () => {
+    expect(isSsw2Holder("特定活動（特定技能2号移行準備）")).toBe(false);
+  });
+
+  it("1号・技能実習・未登録は2号ではない", () => {
+    expect(isSsw2Holder("特定技能1号")).toBe(false);
+    expect(isSsw2Holder("技能実習2号")).toBe(false);
+    expect(isSsw2Holder("")).toBe(false);
+    expect(isSsw2Holder(null)).toBe(false);
+  });
+});
+
 describe("instructeeCandidates", () => {
   const workers = [
     { id: "self", name: "本人", status: "在籍中", current_organization_id: "org1" },
-    { id: "a", name: "あさひ", status: "在籍中", residence_card_no: "A1", current_organization_id: "org1" },
-    { id: "b", name: "いろは", status: "在籍中", current_organization_id: "org1" },
+    {
+      id: "a",
+      name: "あさひ",
+      status: "在籍中",
+      residence_status: "特定技能1号",
+      residence_card_no: "A1",
+      current_organization_id: "org1",
+    },
+    { id: "b", name: "いろは", status: "申請準備中", residence_status: "技能実習2号", current_organization_id: "org1" },
     { id: "c", name: "うえだ", status: "退職", current_organization_id: "org1" },
     { id: "d", name: "えのき", status: "在籍中", current_organization_id: "org2" },
+    { id: "e", name: "おおた", status: "在籍中", residence_status: "特定技能2号", current_organization_id: "org1" },
   ];
   const opts = { selfWorkerId: "self", organizationId: "org1", takenBy: new Map<string, string>() };
 
-  it("本人と退職者は候補に出さない", () => {
-    expect(instructeeCandidates(workers, opts).map((c) => c.id)).toEqual(["a", "b", "d"]);
+  it("本人・退職者・ほかの所属機関の人・すでに2号の人は出さない", () => {
+    expect(instructeeCandidates(workers, opts).map((c) => c.id)).toEqual(["a", "b"]);
   });
 
-  it("ほかの所属機関の人も選べるが、同じ機関の人を先に並べる", () => {
-    const list = instructeeCandidates(workers, opts);
-    expect(list.map((c) => c.sameOrg)).toEqual([true, true, false]);
-    expect(list.find((c) => c.id === "d")?.sameOrg).toBe(false);
-  });
-
-  it("在留カード番号も一緒に返す（様式に書くため）", () => {
-    expect(instructeeCandidates(workers, opts).find((c) => c.id === "a")?.residence_card_no).toBe("A1");
+  it("在留資格と在籍の状態も返す（候補の横に出すため）", () => {
+    const a = instructeeCandidates(workers, opts).find((c) => c.id === "a");
+    expect(a?.residenceStatus).toBe("特定技能1号");
+    expect(a?.workerStatus).toBe("在籍中");
+    expect(a?.residence_card_no).toBe("A1");
   });
 
   it("他の2号申請者が押さえている人には、誰の対象者かを付ける", () => {
@@ -118,9 +143,36 @@ describe("instructeeCandidates", () => {
     expect(list.find((c) => c.id === "b")?.takenBy).toBeNull();
   });
 
-  it("所属機関が分からないときは全員を同じ機関として扱う", () => {
+  it("所属機関が分からないときは会社で絞らない", () => {
     const list = instructeeCandidates(workers, { ...opts, organizationId: null });
-    expect(list.every((c) => c.sameOrg)).toBe(true);
+    expect(list.map((c) => c.id)).toEqual(["a", "b", "d"]);
+  });
+});
+
+describe("candidateNote", () => {
+  const c = {
+    id: "a",
+    name: "あさひ",
+    residenceStatus: "特定技能1号",
+    workerStatus: "在籍中",
+    residence_card_no: "",
+    takenBy: null as string | null,
+  };
+
+  it("在留資格と在籍の状態を並べる", () => {
+    expect(candidateNote(c)).toBe("特定技能1号・在籍中");
+  });
+
+  it("押さえられている人は理由も付ける", () => {
+    expect(candidateNote({ ...c, takenBy: "グエン" })).toBe(
+      "特定技能1号・在籍中・グエンさんの対象者のため選べません",
+    );
+  });
+
+  it("未登録でも文言が壊れない", () => {
+    expect(candidateNote({ ...c, residenceStatus: "", workerStatus: "" })).toBe(
+      "在留資格未登録・状態未登録",
+    );
   });
 });
 

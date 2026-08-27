@@ -80,6 +80,7 @@ export interface InstructeeCandidateWorker {
   name: string;
   status: string;
   field?: string;
+  residence_status?: string;
   residence_card_no?: string;
   current_situation?: string;
   current_organization_id?: string | null;
@@ -88,15 +89,27 @@ export interface InstructeeCandidateWorker {
 export interface InstructeeCandidate {
   id: string;
   name: string;
+  residenceStatus: string; // 現在の在留資格（候補の横に出す）
+  workerStatus: string; // 在籍中・申請準備中など（候補の横に出す）
   residence_card_no: string;
-  sameOrg: boolean; // この所属機関の人か（様式の留意事項3は同一の事業所に出勤する者に限る）
   takenBy: string | null; // すでに押さえている2号申請者の氏名。空いていれば null
+}
+
+// すでに特定技能2号を持っている人か。
+// 2号の人は「指導を受ける対象者」にはならないので候補に出さない。
+// 全角の「２号」で登録されていても同じ扱いにする
+export function isSsw2Holder(residenceStatus: string | null | undefined): boolean {
+  const s = (residenceStatus ?? "").replace(/２/g, "2").trim();
+  // 「特定活動（特定技能2号移行準備）」はまだ2号ではないので対象者にできる
+  if (s.includes("特定活動")) return false;
+  return s.includes("特定技能2号");
 }
 
 // 対象者に選べる人の候補。
 //  ・本人（2号を申請する人）と退職した人は除く
-//  ・同じ所属機関の人を先に並べる。ほかの所属機関の人も選べるようにする
-//    （日本人など登録の無い人は、画面で氏名を直接入力する）
+//  ・同じ所属機関の人だけ（様式の留意事項3: 同一の事業所に出勤する者に限る）。
+//    ほかの機関の人・日本人は、画面で氏名を直接入力する
+//  ・すでに特定技能2号を持っている人は除く（指導する側なので対象者にならない）
 //  ・すでに他の2号申請者の対象者になっている人は takenBy に誰が押さえているかを入れる
 //    （様式の留意事項4: 他の2号特定技能外国人に指導を受けている者は記載しない）
 export function instructeeCandidates(
@@ -111,16 +124,25 @@ export function instructeeCandidates(
   return workers
     .filter((w) => w.id !== selfWorkerId)
     .filter((w) => w.status !== "退職")
+    .filter((w) => !isSsw2Holder(w.residence_status))
+    // 所属機関が分かっているときは、その機関に在籍している人だけ
+    .filter((w) => !organizationId || w.current_organization_id === organizationId)
     .map((w) => ({
       id: w.id,
       name: w.name,
+      residenceStatus: (w.residence_status ?? "").trim(),
+      workerStatus: (w.status ?? "").trim(),
       residence_card_no: w.residence_card_no ?? "",
-      sameOrg: !organizationId || w.current_organization_id === organizationId,
       takenBy: takenBy.get(w.id) ?? null,
     }))
-    .sort((a, b) =>
-      a.sameOrg === b.sameOrg ? a.name.localeCompare(b.name, "ja") : a.sameOrg ? -1 : 1,
-    );
+    .sort((a, b) => a.name.localeCompare(b.name, "ja"));
+}
+
+// 候補の横に出す説明（在留資格・在籍の状態・すでに押さえられているか）
+export function candidateNote(c: InstructeeCandidate): string {
+  const parts = [c.residenceStatus || "在留資格未登録", c.workerStatus || "状態未登録"];
+  if (c.takenBy) parts.push(`${c.takenBy}さんの対象者のため選べません`);
+  return parts.join("・");
 }
 
 // ---- 所属機関ごとの「２号を何人まで受け入れられるか」 ----

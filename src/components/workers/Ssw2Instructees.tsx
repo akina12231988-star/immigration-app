@@ -5,6 +5,7 @@ import { Plus, Trash2, UserCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { dbErrorMessage } from "@/lib/errors";
 import {
+  candidateNote,
   instructeeCandidates,
   instructeeMissingFields,
   instructeeShortage,
@@ -54,7 +55,11 @@ export function Ssw2Instructees({
     Promise.all([
       listSsw2Instructees(supabase, workerId),
       fetchTakenInstructees(supabase, workerId),
-      supabase.from("workers").select("id, name, status, residence_card_no, current_organization_id"),
+      supabase
+        .from("workers")
+        .select(
+          "id, name, status, residence_status, residence_card_no, current_organization_id",
+        ),
     ])
       .then(([list, taken, res]) => {
         if (cancelled) return;
@@ -156,8 +161,10 @@ export function Ssw2Instructees({
         指導を受ける対象者（誓約書 参考様式第１－３２号）
       </p>
       <p className="mb-2 text-[11px] leading-relaxed text-muted">
-        {workerName}さんが指導する相手を選びます。同じ所属機関の方が先に並びますが、
-        ほかの所属機関の方も選べます（同じ事業所に出勤している場合）。
+        {workerName}さんが指導する相手を選びます。候補に出るのは
+        <span className="font-bold">同じ所属機関に在籍している外国人</span>だけです
+        （すでに特定技能２号を持っている方は、指導する側なので出ません）。
+        日本人従業員や、ほかの所属機関の方は「選ばない」にして氏名を直接入力してください。
         対象者は同じ事業所に出勤し、原則同じ部署でフルタイムで働いている人に限ります。
         <span className="font-bold">
           すでに他の２号申請者の対象者になっている人は選べません
@@ -204,7 +211,7 @@ export function Ssw2Instructees({
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <label className="block sm:col-span-2">
                   <span className="mb-0.5 block text-[11px] text-muted">
-                    登録のある外国人から選ぶ（日本人など登録が無い人は、下の氏名に直接入力）
+                    この所属機関の外国人から選ぶ（日本人・ほかの所属機関の方は、下の氏名に直接入力）
                   </span>
                   <select
                     value={row.target_worker_id ?? ""}
@@ -213,33 +220,16 @@ export function Ssw2Instructees({
                     className={INPUT}
                   >
                     <option value="">選ばない（氏名を直接入力する）</option>
-                    {/* 同じ所属機関の人を先に、ほかの機関の人は分けて並べる */}
-                    {[true, false].map((sameOrg) => {
-                      const group = candidates.filter((c) => c.sameOrg === sameOrg);
-                      if (group.length === 0) return null;
-                      return (
-                        <optgroup
-                          key={sameOrg ? "same" : "other"}
-                          label={
-                            sameOrg
-                              ? "この所属機関の方"
-                              : "ほかの所属機関の方（同じ事業所に出勤している場合のみ）"
-                          }
-                        >
-                          {group.map((c) => (
-                            <option
-                              key={c.id}
-                              value={c.id}
-                              // 他の2号申請者に押さえられている人は選べないようにする
-                              disabled={c.takenBy !== null && c.id !== row.target_worker_id}
-                            >
-                              {c.name}
-                              {c.takenBy ? `（${c.takenBy}さんの対象者のため選べません）` : ""}
-                            </option>
-                          ))}
-                        </optgroup>
-                      );
-                    })}
+                    {candidates.map((c) => (
+                      <option
+                        key={c.id}
+                        value={c.id}
+                        // 他の2号申請者に押さえられている人は選べないようにする
+                        disabled={c.takenBy !== null && c.id !== row.target_worker_id}
+                      >
+                        {c.name}（{candidateNote(c)}）
+                      </option>
+                    ))}
                   </select>
                 </label>
                 <label className="block">

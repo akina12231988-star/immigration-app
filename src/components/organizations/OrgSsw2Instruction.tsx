@@ -12,6 +12,7 @@ import {
 } from "@/lib/org-ssw2-duties";
 import { updateOrganizationSsw2Duties } from "@/lib/supabase/queries/organizations";
 import {
+  isSsw2Holder,
   orgSsw2Field,
   requiredInstructeeCount,
   SSW2_PREP_SITUATION,
@@ -72,7 +73,7 @@ export function OrgSsw2Instruction({
       supabase
         .from("workers")
         .select(
-          "id, name, status, field, residence_card_no, current_situation, current_organization_id",
+          "id, name, status, field, residence_status, residence_card_no, current_situation, current_organization_id",
         ),
     ])
       .then(([linkRows, res]) => {
@@ -117,7 +118,10 @@ export function OrgSsw2Instruction({
 
   const applicantIds = new Set(applicants.map((a) => a.workerId));
   // まだ誰の対象者にもなっていない、この機関の在籍者（2号申請者本人は数えない）
-  const freeMembers = members.filter((w) => !takenBy.has(w.id) && !applicantIds.has(w.id));
+  // すでに特定技能2号の人は指導する側なので、対象者の候補には数えない
+  const freeMembers = members.filter(
+    (w) => !takenBy.has(w.id) && !applicantIds.has(w.id) && !isSsw2Holder(w.residence_status),
+  );
 
   const cap = ssw2Capacity({ field, applicants, free: freeMembers.length });
 
