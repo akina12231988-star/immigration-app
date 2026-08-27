@@ -155,9 +155,12 @@ export function Ssw2PledgeClient({
         {instructees.length === 0 ? (
           <p className="rounded-lg border border-seal/40 bg-seal/10 px-2 py-1.5 text-[11px] leading-relaxed text-seal">
             <TriangleAlert size={12} className="mr-1 inline" />
-            指導対象者が登録されていません。
+            指導対象者が登録されていません。申請準備の詳細を開き、
+            <span className="font-bold">申請種別</span>のすぐ下にある
+            <span className="font-bold">「指導を受ける対象者」</span>で
+            「対象者を足す」から選んでください。
             <Link href={prepDetailHref(workerId)} className="ml-1 font-bold underline">
-              申請準備で登録する →
+              申請準備を開く →
             </Link>
           </p>
         ) : (

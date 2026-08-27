@@ -73,6 +73,7 @@ export function WorkerRenewalFields({
   showTantou = true,
   showLinks = true,
   showPrepKind = false,
+  showSsw2Instructees = true,
   onDraftChange,
   onSaved,
 }: {
@@ -88,6 +89,9 @@ export function WorkerRenewalFields({
   showLinks?: boolean;
   // 「新規で申請書類準備」として扱うかを選べるようにする（外国人詳細用）
   showPrepKind?: boolean;
+  // 特定技能2号の指導対象者をこの中に出すか。
+  // 申請準備の詳細では申請種別のすぐ下に出すので、二重にならないよう false を渡す
+  showSsw2Instructees?: boolean;
   // 入力中の値を親（カードの見出しなど）へ伝える
   onDraftChange?: (draft: { status: ResidenceRenewalStatus; prepOrgId: string }) => void;
   onSaved?: () => void;
@@ -303,7 +307,7 @@ export function WorkerRenewalFields({
         </label>
       )}
       {/* 特定技能2号（本人申請）のときだけ、誓約書に書く指導対象者を選ぶ */}
-      {status === "準備中" && prepSituation === SSW2_PREP_SITUATION && (
+      {showSsw2Instructees && status === "準備中" && prepSituation === SSW2_PREP_SITUATION && (
         <Ssw2Instructees
           workerId={worker.id}
           workerName={worker.name}
