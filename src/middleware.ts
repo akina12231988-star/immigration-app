@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { AUTH_DOWN_PARAM, withAuthTimeout } from "@/lib/auth-timeout";
 
 // 未ログインユーザーを /login へ誘導し、Supabase セッションを更新する
 export async function middleware(request: NextRequest) {
@@ -24,9 +25,12 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Supabase が不調だと getUser() が返ってこなくなり、全ページが 504（真っ白）になる。
+  // 上限を付けて、返らないときはログイン画面へ流し、画面で状況を伝えられるようにする
+  const auth = await withAuthTimeout(supabase.auth.getUser());
+  const user = auth?.data.user ?? null;
+  // 返事が来なかった（＝ログインしていないのか、サーバーが不調なのか分からない）
+  const authUnknown = auth === null;
 
   const isLoginPage = request.nextUrl.pathname.startsWith("/login");
   if (!user && !isLoginPage) {
@@ -34,7 +38,11 @@ export async function middleware(request: NextRequest) {
     const dest = request.nextUrl.pathname + request.nextUrl.search;
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";
-    redirectUrl.search = dest && dest !== "/" ? `?next=${encodeURIComponent(dest)}` : "";
+    const params = new URLSearchParams();
+    if (dest && dest !== "/") params.set("next", dest);
+    // サーバーが不調のときは、ログイン画面でその旨を出す
+    if (authUnknown) params.set(AUTH_DOWN_PARAM, "1");
+    redirectUrl.search = params.toString() ? `?${params.toString()}` : "";
     return NextResponse.redirect(redirectUrl);
   }
   if (user && isLoginPage) {
