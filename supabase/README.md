@@ -39,7 +39,70 @@ update profiles set role = 'admin' where email = '<自分のメールアドレ�
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 同 → anon public key |
 | `SUPABASE_SERVICE_ROLE_KEY` | 同 → service_role key（**サーバー専用・絶対に公開しない**） |
 
-## 5. 型の自動生成
+## 5. バックアップ（手動）
+
+無料プランには自動バックアップが付かない。ダッシュボードの **Database ＞ Backups**
+を開いても「Pro プラン以上で利用できます」と出るだけで、落とせるファイルは無い
+（トップの `LAST BACKUP: No backups` はこのため）。
+
+在留資格の管理データは消えると取り返しがつかないので、**月に1回**を目安に
+自分で吸い出して保管する。所要時間は数分。
+
+### 準備（初回だけ）
+
+1. Supabase CLI を入れる
+
+   ```bash
+   npm install -g supabase
+   ```
+
+2. プロジェクトにつなぐ（`<プロジェクトRef>` は Project URL の
+   `https://<ここ>.supabase.co` の部分）
+
+   ```bash
+   supabase link --project-ref <プロジェクトRef>
+   ```
+
+   データベースのパスワードを聞かれる。分からなければ
+   **Settings ＞ Database ＞ Database password ＞ Reset database password** で
+   作り直す（アプリは `NEXT_PUBLIC_SUPABASE_ANON_KEY` でつなぐので、
+   ここを変えてもアプリは止まらない）。
+
+### 毎回の手順
+
+```bash
+# 保管用のフォルダへ移動（例）
+cd ~/Documents/immigration-app-backup
+
+# 1) 中身（データ）… これがいちばん大事
+supabase db dump -f "data-$(date +%Y%m%d).sql" --data-only
+
+# 2) 入れもの（テーブルの形）… 作り直すときに要る
+supabase db dump -f "schema-$(date +%Y%m%d).sql"
+```
+
+`data-20260827.sql` と `schema-20260827.sql` の2つができる。
+この2つを Google ドライブなど、**Supabase とは別の場所**に置いておく。
+
+### 気をつけること
+
+- **添付ファイルは含まれない。** 在留カードの画像・PDFなどは Storage にあり、
+  上のコマンドでは落ちてこない。必要なら **Storage ＞ 各バケット** から
+  まとめてダウンロードする
+- **ログインユーザーは含まれない。** 職員のアカウントは `auth` スキーマにあり、
+  上のコマンドの対象外。人数が少ないので、消えたら招待し直せばよい
+- 落としたファイルには全員分の個人情報が入っている。**共有フォルダに置かない**
+
+### 戻すとき
+
+```bash
+psql "<Settings ＞ Database ＞ Connection string の URI>" -f schema-20260827.sql
+psql "<同上>" -f data-20260827.sql
+```
+
+戻すのは事故のときだけなので、迷ったら実行する前に相談する。
+
+## 6. 型の自動生成
 
 スキーマ変更のたびに実行:
 
