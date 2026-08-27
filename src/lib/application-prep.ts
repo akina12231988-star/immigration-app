@@ -25,6 +25,9 @@ export function prepDetailHref(workerId: string): string {
 // この内容のときだけ出す／出さない選択肢の判定に使う
 export const SSW2_APP_CONTENT = "特定技能2号申請準備中";
 
+// 在留期間の更新許可（特定活動）。短い期間の延長なので、税に関する書類は要らない
+export const TOKUTEI_KATSUDO_RENEWAL_CONTENT = "特定活動ビザ更新の申請準備";
+
 export type PrepAppType = "変更" | "更新" | "認定" | "特定活動";
 export const PREP_APP_TYPES: PrepAppType[] = ["変更", "更新", "認定", "特定活動"];
 
@@ -133,6 +136,9 @@ export interface PrepDocDef {
   requiredIf?: "kokuho" | "nenkin"; // 条件付き（加入時のみ必要）
   certPatterns?: PrepCertPattern[]; // 合格証の組み合わせで必要になる書類（未選択時は調書以外を表示）
   nationalities?: string[]; // この国籍のときだけ必要（省略 = 国籍を問わない）
+  // この申請の内容（準備の内容と同じ7つ。app_content）のときは必要ない書類。
+  // 例: 特定活動ビザの更新は短い期間の延長なので、税の証明書は求められない
+  excludeAppContents?: string[];
   viaMail?: boolean; // 郵送請求（課税・納税証明書）で取得するもの
   // 年つき書類の対象年（令和）の決め方:
   // target=対象年度そのまま / target-1=対象年度の前年（源泉徴収票） / current=現時点の最新年度（国保税）
@@ -186,6 +192,7 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
   },
   {
     id: "gensen",
+    excludeAppContents: [TOKUTEI_KATSUDO_RENEWAL_CONTENT],
     label: "源泉徴収票",
     yearKind: "年分",
     yearMode: "target-1", // 課税○年度に対して源泉徴収票は前年分（例: 令和7年度課税→令和6年分源泉）
@@ -197,6 +204,7 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
   },
   {
     id: "kazei",
+    excludeAppContents: [TOKUTEI_KATSUDO_RENEWAL_CONTENT],
     label: "課税証明書",
     yearKind: "年度",
     appliesTo: ["変更", "更新"],
@@ -207,6 +215,7 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
   },
   {
     id: "nozei_shiken",
+    excludeAppContents: [TOKUTEI_KATSUDO_RENEWAL_CONTENT],
     label: "納税証明書（市県民税）",
     yearKind: "年度",
     appliesTo: ["変更", "更新"],
@@ -216,6 +225,7 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
   },
   {
     id: "nozei_kokuho",
+    excludeAppContents: [TOKUTEI_KATSUDO_RENEWAL_CONTENT],
     label: "納税証明書（国保税）",
     yearKind: "年度",
     yearMode: "current", // 国保税は現時点の最新年度を発行
@@ -352,6 +362,8 @@ export function isRequired(
   if (!def.appliesTo.includes(meta.app_type)) return false;
   // 国籍が決まっている書類（推薦状＝カンボジアのみ）。国籍が未登録のときは出す
   if (def.nationalities && nationality && !def.nationalities.includes(nationality)) return false;
+  // 申請の内容で外す書類（特定活動ビザの更新のときの税の証明書など）
+  if (def.excludeAppContents?.includes(meta.app_content)) return false;
   // 在留資格認定・特定活動は国保・国民年金の加入を問わない（チェック欄も出さない）ため、
   // 加入時のみ必要な書類（国保税の納税証明書・保険証・年金記録）は求めない
   if (def.requiredIf && (meta.app_type === "認定" || meta.app_type === "特定活動")) return false;
