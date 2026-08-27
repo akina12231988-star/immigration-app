@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
 import { OnboardingPendingAlert } from "@/components/OnboardingPendingAlert";
+import { AlertSection } from "@/components/dashboard/AlertSection";
 import { UpdatesBanner } from "@/components/UpdatesBanner";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -214,15 +215,13 @@ export default function DashboardPage() {
       <AppHeader title="ダッシュボード" />
       <div className="space-y-6 px-4 pt-5">
         {expiryAlerts.length > 0 && (
-          <section>
-            <div className="rounded-2xl border-2 border-seal bg-seal/10 p-4">
-              <div className="mb-2 flex items-center gap-2 font-bold text-seal">
-                <TriangleAlert size={18} />
-                在留期限アラート {expiryAlerts.length}件
-              </div>
-              <p className="mb-2 text-xs text-seal/90">
-                申請時点の在留期限から1か月が経過し、まだ受取処理が済んでいない申請です。
-              </p>
+          <AlertSection
+            id="expiry"
+            icon={<TriangleAlert size={18} />}
+            title="在留期限アラート"
+            count={expiryAlerts.length}
+            lead="申請時点の在留期限から1か月が経過し、まだ受取処理が済んでいない申請です。"
+          >
               <div className="space-y-1.5">
                 {expiryAlerts.map((a) => (
                   <Link
@@ -241,20 +240,17 @@ export default function DashboardPage() {
                   </Link>
                 ))}
               </div>
-            </div>
-          </section>
+          </AlertSection>
         )}
 
         {insuranceAlerts.length > 0 && (
-          <section>
-            <div className="rounded-2xl border-2 border-seal bg-seal/10 p-4">
-              <div className="mb-2 flex items-center gap-2 font-bold text-seal">
-                <ShieldAlert size={18} />
-                特定技能総合保険 期限アラート {insuranceAlerts.length}件
-              </div>
-              <p className="mb-2 text-xs text-seal/90">
-                特定技能総合保険の有効期限まで1か月を切った（または期限切れの）外国人です。更新手続きをしてください。
-              </p>
+          <AlertSection
+            id="insurance"
+            icon={<ShieldAlert size={18} />}
+            title="特定技能総合保険 期限アラート"
+            count={insuranceAlerts.length}
+            lead="特定技能総合保険の有効期限まで1か月を切った（または期限切れの）外国人です。更新手続きをしてください。"
+          >
               <div className="space-y-1.5">
                 {insuranceAlerts.map((w) => (
                   <Link
@@ -276,25 +272,19 @@ export default function DashboardPage() {
                   </Link>
                 ))}
               </div>
-            </div>
-          </section>
+          </AlertSection>
         )}
 
         {/* 支援体制: 人数の不足（令和9年4月1日施行の要件） */}
         {(supportSummary.managerShortage > 0 ||
           supportSummary.staffShortage > 0 ||
           supportSummary.understaffedOrgs.length > 0) && (
-          <section>
-            <div className="rounded-2xl border-2 border-seal bg-seal/10 p-4">
-              <div className="mb-2 flex items-center gap-2 font-bold text-seal">
-                <ShieldAlert size={18} />
-                支援体制の人数が不足しています
-              </div>
-              <p className="mb-2 text-xs text-seal/90">
-                委託 {supportSummary.orgCount}社には支援責任者 {supportSummary.requiredManagers}名（現在{" "}
-                {supportSummary.currentManagers}名）、1号特定技能外国人 {supportSummary.workerCount}名には
-                支援担当者 {supportSummary.requiredStaff}名（現在 {supportSummary.currentStaff}名）が必要です。
-              </p>
+          <AlertSection
+            id="support"
+            icon={<ShieldAlert size={18} />}
+            title="支援体制の人数が不足しています"
+            lead={`委託 ${supportSummary.orgCount}社には支援責任者 ${supportSummary.requiredManagers}名（現在 ${supportSummary.currentManagers}名）、1号特定技能外国人 ${supportSummary.workerCount}名には支援担当者 ${supportSummary.requiredStaff}名（現在 ${supportSummary.currentStaff}名）が必要です。`}
+          >
               {supportSummary.understaffedOrgs.length > 0 && (
                 <div className="mb-2 space-y-1">
                   {supportSummary.understaffedOrgs.map((org) => (
@@ -326,21 +316,19 @@ export default function DashboardPage() {
                 支援体制を確認する
                 <ChevronRight size={16} className="shrink-0 text-seal" />
               </Link>
-            </div>
-          </section>
+          </AlertSection>
         )}
 
         {/* 支援体制: 支援責任者に該当できる従業員 */}
         {managerCandidates.length > 0 && (
-          <section>
-            <div className="rounded-2xl border-2 border-brand bg-brand/10 p-4">
-              <div className="mb-2 flex items-center gap-2 font-bold text-brand">
-                <UserCheck size={18} />
-                支援責任者に該当できます {managerCandidates.length}名
-              </div>
-              <p className="mb-2 text-xs text-brand/90">
-                入社から{SUPPORT_MANAGER_MIN_YEARS}年以上経過した常勤の従業員です。所属機関の「支援責任者」に選任できます。
-              </p>
+          <AlertSection
+            id="manager-candidates"
+            tone="brand"
+            icon={<UserCheck size={18} />}
+            title="支援責任者に該当できます"
+            count={managerCandidates.length}
+            lead={`入社から${SUPPORT_MANAGER_MIN_YEARS}年以上経過した常勤の従業員です。所属機関の「支援責任者」に選任できます。`}
+          >
               <div className="space-y-1.5">
                 {managerCandidates.map((role) => (
                   <Link
@@ -360,21 +348,18 @@ export default function DashboardPage() {
                   </Link>
                 ))}
               </div>
-            </div>
-          </section>
+          </AlertSection>
         )}
 
         {/* 入社書類メールの訂正アラート: 送信後に雇用開始日が変わった外国人 */}
         {correctionAlerts.length > 0 && (
-          <section>
-            <div className="rounded-2xl border-2 border-seal bg-seal/10 p-4">
-              <div className="mb-2 flex items-center gap-2 font-bold text-seal">
-                <MailWarning size={18} />
-                入社書類の訂正が必要 {correctionAlerts.length}件
-              </div>
-              <p className="mb-2 text-xs text-seal/90">
-                入社書類メールを送った後に雇用開始日が変わった外国人です。訂正版（雇用条件書・労働者名簿など）を送ってください。
-              </p>
+          <AlertSection
+            id="onboarding-correction"
+            icon={<MailWarning size={18} />}
+            title="入社書類の訂正が必要"
+            count={correctionAlerts.length}
+            lead="入社書類メールを送った後に雇用開始日が変わった外国人です。訂正版（雇用条件書・労働者名簿など）を送ってください。"
+          >
               <div className="space-y-1.5">
                 {correctionAlerts.map(({ w, r }) => (
                   <Link
@@ -394,8 +379,7 @@ export default function DashboardPage() {
                   </Link>
                 ))}
               </div>
-            </div>
-          </section>
+          </AlertSection>
         )}
 
         {/* 新しく追加した機能のお知らせ（未読があるときだけ出る） */}
