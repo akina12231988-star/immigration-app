@@ -4,6 +4,7 @@
 import type { VisaType } from "@/types/ssw";
 import type { WorkerCertExam } from "@/lib/cert-exam";
 import type { WorkerFollowups } from "@/lib/worker-followups";
+import type { OrgSsw2Duties } from "@/lib/org-ssw2-duties";
 
 export type StaffRole = "admin" | "staff" | "viewer";
 
@@ -100,6 +101,7 @@ export interface Organization {
   note: string;
   intake: Partial<OrganizationIntake>; // 登録支援機関への申込書の内容（0043）。旧行は {}
   annual_work_hours?: number; // 年間所定労働時間（時給⇔月給の換算に使う。0 = 未登録。0082）
+  ssw2_duties?: OrgSsw2Duties; // 特定技能2号の誓約書に書く業務内容の雛形（0123）
   created_at: string;
   updated_at: string;
 }

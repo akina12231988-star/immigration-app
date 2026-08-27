@@ -9,6 +9,7 @@ import {
   Download,
   ExternalLink,
   Eye,
+  FileText,
   Loader2,
   Mail,
   Trash2,
@@ -219,12 +220,17 @@ export function ApplicationPrepChecklist({
   // 外国人の基本情報（現在の住所・所属機関・合格名）。モーダル表示でも使えるようこの場で取得する
   const [workerRow, setWorkerRow] = useState<{
     name: string;
+    kana: string;
+    birth: string;
+    nationality: string;
+    home_address: string; // 本国における居住地
     address: string;
     current_organization_id: string | null;
     application_prep_organization_id: string | null;
     specialty_grade: string;
     other_qualifications: string;
     residence_status: string;
+    residence_period: string; // 在留期間（例: 1年・3年）
     residence_card_no: string;
     residence_expiry_date: string;
     passport_no: string;
@@ -279,19 +285,24 @@ export function ApplicationPrepChecklist({
     void createClient()
       .from("workers")
       .select(
-        "name, address, current_organization_id, application_prep_organization_id, specialty_grade, other_qualifications, residence_status, residence_card_no, residence_expiry_date, passport_no, passport_expiry_date",
+        "name, kana, birth, nationality, home_address, address, current_organization_id, application_prep_organization_id, specialty_grade, other_qualifications, residence_status, residence_period, residence_card_no, residence_expiry_date, passport_no, passport_expiry_date",
       )
       .eq("id", workerId)
       .maybeSingle()
       .then(({ data }) => {
         const w = data as {
           name: string;
+          kana: string | null;
+          birth: string | null;
+          nationality: string | null;
+          home_address: string | null;
           address: string | null;
           current_organization_id: string | null;
           application_prep_organization_id: string | null;
           specialty_grade: string | null;
           other_qualifications: string | null;
           residence_status: string | null;
+          residence_period: string | null;
           residence_card_no: string | null;
           residence_expiry_date: string | null;
           passport_no: string | null;
@@ -300,12 +311,17 @@ export function ApplicationPrepChecklist({
         if (w) {
           setWorkerRow({
             name: w.name,
+            kana: w.kana ?? "",
+            birth: w.birth ?? "",
+            nationality: w.nationality ?? "",
+            home_address: w.home_address ?? "",
             address: w.address ?? "",
             current_organization_id: w.current_organization_id,
             application_prep_organization_id: w.application_prep_organization_id,
             specialty_grade: w.specialty_grade ?? "",
             other_qualifications: w.other_qualifications ?? "",
             residence_status: w.residence_status ?? "",
+            residence_period: w.residence_period ?? "",
             residence_card_no: w.residence_card_no ?? "",
             residence_expiry_date: w.residence_expiry_date ?? "",
             passport_no: w.passport_no ?? "",
@@ -951,7 +967,8 @@ export function ApplicationPrepChecklist({
 
       {/* PC: TODO番号〜保険の選択までを左に、書類関係を右に表示して下にスクロールする */}
       <div className="lg:grid lg:grid-cols-2 lg:items-start lg:gap-4">
-      <div className="lg:sticky lg:top-0 lg:self-start">
+      {/* 左側は貼り付けたまま。中身が画面より長いときは、この列だけスクロールできるようにする */}
+      <div className="lg:sticky lg:top-0 lg:max-h-[calc(100vh-1rem)] lg:self-start lg:overflow-y-auto lg:pr-1">
 
       {/* TODO番号ごとの準備リスト切り替え */}
       <div className="mb-3 rounded-xl border border-border bg-background p-3">
@@ -1051,7 +1068,9 @@ export function ApplicationPrepChecklist({
       {current != null && (
       <div className="mb-3 space-y-2.5 rounded-xl border border-border bg-background p-3">
         <div className="flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-1.5 text-xs font-bold text-muted">
+          {/* 候補の文字が長いので、横並びにすると欄が枠からはみ出す。
+              縦に並べて幅いっぱいにし、文字が長くても収まるようにする */}
+          <label className="flex w-full min-w-0 flex-col gap-1 text-xs font-bold text-muted">
             申請種別
             {/* 準備の内容（只今の状況）と同じ7つから選ぶ。必要書類のチェックリストを
                 決める app_type は、選んだ内容から自動で決まる */}
@@ -1071,7 +1090,7 @@ export function ApplicationPrepChecklist({
                         : meta.cert_pattern,
                 })
               }
-              className={inputCls}
+              className={`${inputCls} w-full min-w-0`}
             >
               <option value="">
                 {/* 0121より前に申請種別だけ選んでいたぶんは、その言い方のまま出す */}
@@ -1243,11 +1262,21 @@ export function ApplicationPrepChecklist({
             </div>
           </div>
         )}
+        {/* 特定技能２号のときだけ、誓約書（参考様式第１－３２号）の出力ページへの導線を出す */}
+        {isSsw2Prep && (
+          <Link
+            href={`/workers/${workerId}/ssw2-pledge`}
+            className="flex items-center gap-1.5 rounded-lg border border-brand bg-brand/5 px-3 py-2 text-xs font-bold text-brand"
+          >
+            <FileText size={14} />
+            ２号の誓約書（参考様式第１－３２号）をWordで出す →
+          </Link>
+        )}
         {/* 在留カード・パスポート情報（外国人詳細から自動反映。どの申請種別でも表示） */}
         {workerRow && (
           <div className="space-y-0.5 rounded-lg bg-surface/60 p-2">
             <p className="flex flex-wrap items-center justify-between gap-1 text-[11px] font-bold text-muted">
-              在留カード・パスポート情報（外国人詳細から自動反映）
+              外国人の情報（外国人詳細から自動反映）
               <Link
                 href={`/workers/${workerId}`}
                 className="font-bold text-brand hover:underline"
@@ -1257,7 +1286,13 @@ export function ApplicationPrepChecklist({
             </p>
             {(
               [
+                ["氏名", workerRow.kana ? `${workerRow.name}（${workerRow.kana}）` : workerRow.name],
+                ["生年月日", workerRow.birth],
+                ["国籍", workerRow.nationality],
+                ["本国における居住地", workerRow.home_address],
+                ["住所", workerRow.address],
                 ["在留資格", workerRow.residence_status],
+                ["在留期間", workerRow.residence_period],
                 ["在留カード番号", workerRow.residence_card_no],
                 ["在留期限", workerRow.residence_expiry_date],
                 ["パスポート番号", workerRow.passport_no],
