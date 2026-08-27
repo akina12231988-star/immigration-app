@@ -34,6 +34,7 @@ export async function listPrepChecklists(
     id: r.id,
     todo_no: r.todo_no ?? "",
     app_type: r.app_type ?? "",
+    app_content: r.app_content ?? "",
     has_kokuho: r.has_kokuho ?? false,
     has_nenkin: r.has_nenkin ?? false,
     target_reiwa: r.target_reiwa ?? null,
@@ -361,6 +362,7 @@ export async function listPrepProgress(
     const filledDocKeys = filledByWorker.get(l.worker_id) ?? new Set<string>();
     const meta: PrepChecklistMeta = {
       app_type: l.app_type ?? "",
+      app_content: l.app_content ?? "",
       has_kokuho: l.has_kokuho ?? false,
       has_nenkin: l.has_nenkin ?? false,
       target_reiwa: l.target_reiwa ?? null,
@@ -384,4 +386,23 @@ export async function listPrepProgress(
     if (out[key] === undefined) out[key] = prepProgressOf(items);
   }
   return out;
+}
+
+// 申請準備に追加したときに、選んだ準備の内容（只今の状況）を
+// そのTODO番号の準備リストの「申請種別」に入れる（0121）。
+// 必要書類のチェックリストを決める app_type も、内容から自動で決まる。
+export async function upsertPrepAppContent(
+  supabase: SupabaseClient,
+  workerId: string,
+  todoNo: string,
+  appContent: string,
+  appType: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("application_prep_checklists")
+    .upsert(
+      { worker_id: workerId, todo_no: todoNo, app_content: appContent, app_type: appType },
+      { onConflict: "worker_id,todo_no" },
+    );
+  if (error) throw error;
 }

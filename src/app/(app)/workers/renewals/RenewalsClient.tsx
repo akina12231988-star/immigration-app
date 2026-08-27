@@ -24,7 +24,10 @@ import {
   type WorkerWithOrg,
 } from "@/lib/supabase/queries/workers";
 import { insertOrganization } from "@/lib/supabase/queries/organizations";
-import { upsertPrepTantou } from "@/lib/supabase/queries/application-prep";
+import {
+  upsertPrepAppContent,
+  upsertPrepTantou,
+} from "@/lib/supabase/queries/application-prep";
 import { ensurePrepTodo } from "@/lib/supabase/queries/todos";
 import { PREP_TANTOU_OPTIONS } from "@/lib/application-prep";
 import { blankWorkerInput } from "@/lib/worker-defaults";
@@ -38,6 +41,7 @@ import { todayStr } from "@/lib/application-alerts";
 import { RESIDENCE_RENEWAL_STATUSES, type ResidenceRenewalStatus } from "@/types/db";
 import {
   APPLICATION_CONTENT_CHOICES,
+  appTypeOfPrepSituation,
   PREP_SITUATION_CHOICES,
   mergeSituation,
 } from "@/lib/worker-situation";
@@ -514,6 +518,17 @@ function NewPrepForm({
       // 担当者を選んだ場合は、TODO番号の準備リストに紐づけて保存する
       if (tantou) {
         await upsertPrepTantou(createClient(), workerId, todo.trim(), tantou);
+      }
+      // 準備の内容を選んでいれば、準備リストの「申請種別」にも入れる。
+      // 0121 が未適用でも追加そのものは通すよう、失敗しても止めない
+      if (prepSituation) {
+        await upsertPrepAppContent(
+          createClient(),
+          workerId,
+          todo.trim(),
+          prepSituation,
+          appTypeOfPrepSituation(prepSituation),
+        ).catch(() => undefined);
       }
       // 下の「申請準備のTODO」に確実に入れる。
       // 取り込みの結果をそのまま知らせる（入っていないのに「追加しました」と出さない）
