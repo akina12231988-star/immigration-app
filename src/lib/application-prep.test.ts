@@ -12,6 +12,7 @@ import {
   PREP_DOC_ATTACH_ITEMS,
   PREP_DOC_DEFS,
   PREP_DOC_STATUS_OPTIONS,
+  TOKUTEI_KATSUDO_RENEWAL_CONTENT,
   PREP_ISSUE_REQUEST_OPTIONS,
   PREP_TANTOU_OPTIONS,
   prepApplyDocKey,
@@ -409,5 +410,43 @@ describe("発行依頼先（課税証明書・納税証明書の「発行依頼�
     // 申請準備の担当者は社内の名簿。VUONG VAN THANH などは入れない
     expect(PREP_TANTOU_OPTIONS).not.toContain("VUONG VAN THANH");
     expect(PREP_ISSUE_REQUEST_OPTIONS).not.toContain("市原　彩奈");
+  });
+});
+
+describe("在留期間の更新許可（特定活動）で外す書類", () => {
+  // 特定活動ビザの更新は短い期間の延長なので、税に関する書類は求められない
+  const meta = {
+    ...EMPTY_PREP_META,
+    app_type: "更新" as const,
+    app_content: TOKUTEI_KATSUDO_RENEWAL_CONTENT,
+    has_kokuho: true,
+    has_nenkin: true,
+  };
+  const 税の書類 = ["gensen", "kazei", "nozei_shiken", "nozei_kokuho"];
+
+  it.each(税の書類)("%s は必要書類に出ない", (docId) => {
+    const def = PREP_DOC_DEFS.find((d) => d.id === docId)!;
+    expect(isRequired(def, meta)).toBe(false);
+  });
+
+  it("特定技能の更新では、これまでどおり出る", () => {
+    const ssw = { ...meta, app_content: "特定技能更新の準備中" };
+    for (const docId of ["gensen", "kazei", "nozei_shiken"]) {
+      const def = PREP_DOC_DEFS.find((d) => d.id === docId)!;
+      expect(isRequired(def, ssw)).toBe(true);
+    }
+  });
+
+  it("税以外の書類は、特定活動の更新でも出る", () => {
+    for (const docId of ["zairyu", "passport", "photo"]) {
+      const def = PREP_DOC_DEFS.find((d) => d.id === docId)!;
+      expect(isRequired(def, meta)).toBe(true);
+    }
+  });
+
+  it("申請の内容を選んでいなければ、これまでどおり出る（既存データを消さない）", () => {
+    const old = { ...meta, app_content: "" };
+    const def = PREP_DOC_DEFS.find((d) => d.id === "kazei")!;
+    expect(isRequired(def, old)).toBe(true);
   });
 });
