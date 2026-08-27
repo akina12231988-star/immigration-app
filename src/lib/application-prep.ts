@@ -21,6 +21,10 @@ export function prepDetailHref(workerId: string): string {
   return `/workers/${workerId}/application-prep`;
 }
 
+// 特定技能2号の申請（準備の内容・只今の状況の保存値）。
+// この内容のときだけ出す／出さない選択肢の判定に使う
+export const SSW2_APP_CONTENT = "特定技能2号申請準備中";
+
 export type PrepAppType = "変更" | "更新" | "認定" | "特定活動";
 export const PREP_APP_TYPES: PrepAppType[] = ["変更", "更新", "認定", "特定活動"];
 
@@ -51,7 +55,8 @@ export type PrepCertPattern =
   | "別分野・専門級"
   | "専門外・日本語"
   | "専門外・技能評価調書"
-  | "技能評価調書";
+  | "技能評価調書"
+  | "特定技能2号"; // 特定技能2号の申請。ほかの合格証は要らず、2号の合格証だけ（0122）
 export const PREP_CERT_PATTERNS: { value: PrepCertPattern; label: string }[] = [
   { value: "専門級", label: "専門級の合格証あり（同じ分野で就職）→ 専門級のみ" },
   { value: "別分野・専門級", label: "専門級以外の分野で就職（専門級あり）→ 専門外＋専門級" },
@@ -61,6 +66,10 @@ export const PREP_CERT_PATTERNS: { value: PrepCertPattern; label: string }[] = [
     label: "専門級以外の分野で就職（技能評価調書あり）→ 専門外＋技能評価調書",
   },
   { value: "技能評価調書", label: "専門級なし・技能実習2号を良好修了 → 技能評価調書" },
+  {
+    value: "特定技能2号",
+    label: "特定技能２号の合格証のみ（特定技能２号の申請）",
+  },
 ];
 
 export const EMPTY_PREP_META: PrepChecklistMeta = {
@@ -123,6 +132,7 @@ export interface PrepDocDef {
   appliesTo: PrepAppType[]; // 必要になる申請種別
   requiredIf?: "kokuho" | "nenkin"; // 条件付き（加入時のみ必要）
   certPatterns?: PrepCertPattern[]; // 合格証の組み合わせで必要になる書類（未選択時は調書以外を表示）
+  nationalities?: string[]; // この国籍のときだけ必要（省略 = 国籍を問わない）
   viaMail?: boolean; // 郵送請求（課税・納税証明書）で取得するもの
   // 年つき書類の対象年（令和）の決め方:
   // target=対象年度そのまま / target-1=対象年度の前年（源泉徴収票） / current=現時点の最新年度（国保税）
@@ -247,7 +257,9 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
     id: "suisenjo",
     label: "推薦状",
     appliesTo: ["変更", "認定"],
-    note: "送り出し機関、または大使館への郵送請求で取得する（ベトナム: 技能実習→特定活動→特定技能の資格変更の場合は発行はいらない）",
+    // 推薦状が要るのはカンボジア国籍だけ（ベトナムは資格変更なら発行不要）
+    nationalities: ["カンボジア"],
+    note: "送り出し機関、または大使館への郵送請求で取得する（カンボジア国籍のみ必要）",
     source: { kind: "doc", docKey: "prep_suisenjo" },
     manageInline: true,
   },
@@ -279,6 +291,16 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
     source: { kind: "doc", docKey: "cert_senmongai" },
     manageInline: false,
     managedIn: "基本情報（その他の資格・合格名の下）",
+  },
+  {
+    id: "cert_ssw2",
+    label: "特定技能２号の合格証",
+    appliesTo: ["変更"],
+    certPatterns: ["特定技能2号"],
+    note: "特定技能２号の申請で必要。合格試験名も外国人詳細に入れる",
+    source: { kind: "doc", docKey: "cert_ssw2" },
+    manageInline: false,
+    managedIn: "基本情報（特定技能2号の合格試験名の下）",
   },
   {
     id: "hyoka_chosho",
@@ -321,9 +343,15 @@ export function prepDocLabel(
 }
 
 // その申請種別・条件で必要な書類か
-export function isRequired(def: PrepDocDef, meta: PrepChecklistMeta): boolean {
+export function isRequired(
+  def: PrepDocDef,
+  meta: PrepChecklistMeta,
+  nationality = "",
+): boolean {
   if (!meta.app_type) return false;
   if (!def.appliesTo.includes(meta.app_type)) return false;
+  // 国籍が決まっている書類（推薦状＝カンボジアのみ）。国籍が未登録のときは出す
+  if (def.nationalities && nationality && !def.nationalities.includes(nationality)) return false;
   // 在留資格認定・特定活動は国保・国民年金の加入を問わない（チェック欄も出さない）ため、
   // 加入時のみ必要な書類（国保税の納税証明書・保険証・年金記録）は求めない
   if (def.requiredIf && (meta.app_type === "認定" || meta.app_type === "特定活動")) return false;
@@ -413,8 +441,9 @@ export function evaluatePrepChecklist(
   meta: PrepChecklistMeta,
   sources: PrepDocSources,
   docStatuses: Record<string, string> = {},
+  nationality = "",
 ): { items: PrepDocStatus[]; missing: PrepDocStatus[] } {
-  const items = PREP_DOC_DEFS.filter((def) => isRequired(def, meta)).map((def) => {
+  const items = PREP_DOC_DEFS.filter((def) => isRequired(def, meta, nationality)).map((def) => {
     const fileSatisfied = isSatisfied(def, meta, sources);
     return {
       def,
@@ -463,6 +492,9 @@ export interface PrepDocStatusOption {
   done: boolean; // 完了扱いの選択肢か
   noFile?: boolean; // true: 発行できない等、そもそもファイルが出ない選択肢（添付を促さない）
   appTypes?: PrepAppType[]; // この申請種別のときだけ選択肢に出す（省略 = 全種別）
+  // 申請の内容（準備の内容と同じ7つ。app_content）で出し分ける。0121・0122
+  appContents?: string[]; // この内容のときだけ出す
+  hideAppContents?: string[]; // この内容のときは出さない
   extras?: PrepStatusExtra[];
 }
 
@@ -470,13 +502,25 @@ export interface PrepDocStatusOption {
 export const PREP_DOC_STATUS_OPTIONS: Record<string, PrepDocStatusOption[]> = {
   zairyu: [
     { value: "写真だけ先に本人に依頼中", done: false },
-    { value: "預かった", done: true, extras: [{ kind: "custody" }] },
+    // 特定技能2号は本人申請なので原本を預からない（現時点の両面の画像をもらえば完了）
+    { value: "預かった", done: true, hideAppContents: [SSW2_APP_CONTENT], extras: [{ kind: "custody" }] },
+    {
+      value: "両面・現住所がわかる画像を送ってもらった",
+      done: true,
+      appContents: [SSW2_APP_CONTENT],
+    },
   ],
   passport: [
     { value: "写真だけ先に本人に依頼中", done: false },
-    { value: "預かった", done: true, extras: [{ kind: "custody" }] },
+    // 特定技能2号は本人申請なので原本を預からない（変更がないことの確認で完了）
+    { value: "預かった", done: true, hideAppContents: [SSW2_APP_CONTENT], extras: [{ kind: "custody" }] },
     // 在留資格認定は本人が海外にいるため、パスポートは画像で受け取る
     { value: "画像を送ってもらった", done: true, appTypes: ["認定"] },
+    {
+      value: "変更がないことを確認した",
+      done: true,
+      appContents: [SSW2_APP_CONTENT],
+    },
   ],
   photo: [
     { value: "本人に依頼中", done: false },

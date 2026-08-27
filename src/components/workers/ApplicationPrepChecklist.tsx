@@ -119,6 +119,7 @@ import {
   prepDocLabel,
   prepPageKey,
   prepStatusOption,
+  SSW2_APP_CONTENT,
   prepYearDocKey,
   type PrepChecklistMeta,
   type PrepDocDef,
@@ -443,7 +444,12 @@ export function ApplicationPrepChecklist({
       hasPassportFile,
     },
     statusValues,
+    // 推薦状はカンボジア国籍だけ必要（国籍が未登録のときは出す）
+    worker?.nationality ?? "",
   );
+
+  // 特定技能２号の申請か（合格証の組み合わせ・在留カード/パスポートの扱いが変わる）
+  const isSsw2Prep = meta.app_content === SSW2_APP_CONTENT;
 
   // 必要書類がどれだけ揃ったか（0%〜100%）。申請準備のTODO一覧と同じ計算
   const progress = prepProgressOf(items);
@@ -1056,6 +1062,13 @@ export function ApplicationPrepChecklist({
                 patchMeta({
                   app_content: e.target.value,
                   app_type: appTypeOfPrepSituation(e.target.value),
+                  // 特定技能２号は２号の合格証だけ。ほかへ切り替えたときは未選択に戻す
+                  cert_pattern:
+                    e.target.value === SSW2_APP_CONTENT
+                      ? "特定技能2号"
+                      : meta.cert_pattern === "特定技能2号"
+                        ? ""
+                        : meta.cert_pattern,
                 })
               }
               className={inputCls}
@@ -1110,7 +1123,8 @@ export function ApplicationPrepChecklist({
         {/* 申請種別の下: 所属機関の情報（住所・電話・代表者・協力確認書・売上高・定期報告/賃金台帳） */}
         <PrepOrgInfo orgId={prepOrgId} />
 
-        {/* 合格証の組み合わせ（申請内容で必要な合格証が変わる。更新申請では不要） */}
+        {/* 合格証の組み合わせ（申請内容で必要な合格証が変わる。更新申請では不要）。
+            特定技能２号の申請では２号の合格証だけなので、選び直せないようにする */}
         {meta.app_type && meta.app_type !== "更新" && (
           <div className="flex flex-col gap-1">
             <label className="flex flex-col gap-1 text-xs font-bold text-muted">
@@ -1123,8 +1137,11 @@ export function ApplicationPrepChecklist({
                 }
                 className={inputCls}
               >
-                <option value="">未選択（合格証3種をすべて表示）</option>
-                {PREP_CERT_PATTERNS.map((p) => (
+                {/* 特定技能２号の申請では、要るのは２号の合格証だけ。ほかの組み合わせは出さない */}
+                {!isSsw2Prep && <option value="">未選択（合格証3種をすべて表示）</option>}
+                {PREP_CERT_PATTERNS.filter((p) =>
+                  isSsw2Prep ? p.value === "特定技能2号" : p.value !== "特定技能2号",
+                ).map((p) => (
                   <option key={p.value} value={p.value}>
                     {p.label}
                   </option>
@@ -1616,10 +1633,16 @@ function DocRow({
   const hasFile = files.length > 0;
 
   // 書類ごとの準備状況（ステータス）。選択肢と、選択に応じた付随入力を表示する。
-  // 申請種別の指定がある選択肢（例: 認定のみの「画像を送ってもらった」）はその種別のときだけ出す
-  const statusOptions = PREP_DOC_STATUS_OPTIONS[def.id]?.filter(
-    (o) => !o.appTypes || (meta.app_type !== "" && o.appTypes.includes(meta.app_type)),
-  );
+  // 申請種別の指定がある選択肢（例: 認定のみの「画像を送ってもらった」）はその種別のときだけ出す。
+  // 申請の内容（特定技能2号など）で出し分ける選択肢もある。
+  // すでに選んである値は、条件から外れても選択肢に残す（保存済みの内容が消えないように）
+  const statusOptions = PREP_DOC_STATUS_OPTIONS[def.id]?.filter((o) => {
+    if (o.value === ds.status) return true;
+    if (o.appTypes && !(meta.app_type !== "" && o.appTypes.includes(meta.app_type))) return false;
+    if (o.appContents && !o.appContents.includes(meta.app_content)) return false;
+    if (o.hideAppContents?.includes(meta.app_content)) return false;
+    return true;
+  });
   const selectedOption = prepStatusOption(def.id, ds.status);
   const extras: PrepStatusExtra[] = [
     ...(selectedOption?.extras ?? []),

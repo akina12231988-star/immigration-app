@@ -14,6 +14,7 @@ import {
   BookMarked,
   Mailbox,
   MailPlus,
+  MailQuestionMark,
   Archive,
   UserMinus,
   Coins,
@@ -74,6 +75,8 @@ export const NAV_ENTRIES: NavEntry[] = [
   { href: "/applications/new", label: "申請登録", short: "申請登録", icon: FilePlus2, emphasize: true },
   // ★指定の並びに無かった項目（仮置き）: 申請準備で使う証明書の請求のためここに置いている
   { href: "/mailing", label: "郵送請求", short: "郵送請求", icon: Mailbox },
+  // 発行依頼中の書類を、誰に頼んだかでまとめて見る
+  { href: "/issue-requests", label: "発行依頼のまとめ", short: "発行依頼", icon: MailQuestionMark },
   { href: "/notices/search", label: "通知書", short: "通知書", icon: ScanLine },
   {
     href: "/workers/passports",
