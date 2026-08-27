@@ -39,7 +39,13 @@ interface NotificationsContextValue {
 
 const NotificationsContext = createContext<NotificationsContextValue | null>(null);
 
-const REFRESH_INTERVAL_MS = 60_000;
+// 通知の読み直しの間隔。メールは1日に数通なので、1分ごとに読み直す必要はない。
+// 全ページ・全員ぶんが1分ごとに走ると、データベースへの問い合わせが積み上がる
+const REFRESH_INTERVAL_MS = 180_000;
+
+// 画面に戻ってきたときの読み直しは、この間隔より短ければ見送る。
+// タブを行き来するたびに何度も読みに行かないようにする
+const REFRESH_MIN_GAP_MS = 30_000;
 
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<MailNotification[]>([]);
@@ -47,7 +53,11 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const supabaseRef = useRef(createClient());
 
+  // 最後に読みに行った時刻。短い間に何度も読みに行かないようにする
+  const lastFetchedRef = useRef(0);
+
   const refresh = useCallback(async () => {
+    lastFetchedRef.current = Date.now();
     try {
       const list = await listMailNotifications(supabaseRef.current);
       setNotifications(list);
@@ -61,9 +71,17 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void refresh();
-    const onFocus = () => void refresh();
+    // タブを行き来するたびに読みに行かない（前回から30秒たっていなければ見送る）
+    const onFocus = () => {
+      if (Date.now() - lastFetchedRef.current < REFRESH_MIN_GAP_MS) return;
+      void refresh();
+    };
     window.addEventListener("focus", onFocus);
-    const timer = window.setInterval(() => void refresh(), REFRESH_INTERVAL_MS);
+    const timer = window.setInterval(() => {
+      // 裏に回っているタブは読みに行かない（開きっぱなしのぶんが積み上がる）
+      if (document.visibilityState === "hidden") return;
+      void refresh();
+    }, REFRESH_INTERVAL_MS);
     return () => {
       window.removeEventListener("focus", onFocus);
       window.clearInterval(timer);

@@ -2,14 +2,32 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MailCategory, MailNotificationRow } from "@/types/db";
 
 // workers / immigration_applications を埋め込んだときの行型
-type RowWithRefs = MailNotificationRow & {
+type RowWithRefs = Omit<MailNotificationRow, "body" | "updated_at"> & {
   workers: { id: string; name: string } | null;
   immigration_applications: { id: string; name: string; status: string } | null;
 };
 
+// 一覧に出す列だけを取る。
+// 本文（body）はメール1通ぶんの全文が入っていて重く、画面では使っていないので取らない
+// （1分ごとに全ページから読み直すため、* にすると読み込み量が跳ね上がる）。
+const COLUMNS = [
+  "id",
+  "gmail_message_id",
+  "category",
+  "subject",
+  "from_address",
+  "snippet",
+  "received_at",
+  "gmail_link",
+  "matched_worker_id",
+  "matched_application_id",
+  "matched_name",
+  "is_read",
+  "created_at",
+].join(", ");
+
 // 埋め込みは FK 列名でリレーションを明示する（列が2本あるため）
-const SELECT =
-  "*, workers:workers!matched_worker_id(id, name), immigration_applications:immigration_applications!matched_application_id(id, name, status)";
+const SELECT = `${COLUMNS}, workers:workers!matched_worker_id(id, name), immigration_applications:immigration_applications!matched_application_id(id, name, status)`;
 
 export interface MailNotification {
   id: string;
@@ -38,7 +56,7 @@ function toNotification(row: RowWithRefs): MailNotification {
     subject: row.subject,
     fromAddress: row.from_address,
     snippet: row.snippet,
-    body: row.body,
+    body: "", // 本文は取っていない（重いため。画面でも使っていない）
     receivedAt: row.received_at,
     gmailLink: row.gmail_link,
     matchedWorkerId: row.matched_worker_id,
@@ -61,7 +79,7 @@ export async function listMailNotifications(
     .order("received_at", { ascending: false })
     .limit(limit);
   if (error) throw error;
-  return ((data as RowWithRefs[]) ?? []).map(toNotification);
+  return ((data as unknown as RowWithRefs[]) ?? []).map(toNotification);
 }
 
 export async function setMailNotificationRead(
