@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { FileDropArea } from "@/components/ui/FileDropArea";
+import { Ssw2Instructees } from "@/components/workers/Ssw2Instructees";
 import { WorkerCertDocRows } from "@/components/workers/WorkerCertDocRows";
 import { Jisshu2Section } from "@/components/workers/Jisshu2Section";
 import {
@@ -223,6 +224,7 @@ export function ApplicationPrepChecklist({
     kana: string;
     birth: string;
     nationality: string;
+    field: string; // 特定産業分野（指導対象者の必要人数の判定に使う）
     home_address: string; // 本国における居住地
     address: string;
     current_organization_id: string | null;
@@ -285,7 +287,7 @@ export function ApplicationPrepChecklist({
     void createClient()
       .from("workers")
       .select(
-        "name, kana, birth, nationality, home_address, address, current_organization_id, application_prep_organization_id, specialty_grade, other_qualifications, residence_status, residence_period, residence_card_no, residence_expiry_date, passport_no, passport_expiry_date",
+        "name, kana, birth, nationality, field, home_address, address, current_organization_id, application_prep_organization_id, specialty_grade, other_qualifications, residence_status, residence_period, residence_card_no, residence_expiry_date, passport_no, passport_expiry_date",
       )
       .eq("id", workerId)
       .maybeSingle()
@@ -295,6 +297,7 @@ export function ApplicationPrepChecklist({
           kana: string | null;
           birth: string | null;
           nationality: string | null;
+          field: string | null;
           home_address: string | null;
           address: string | null;
           current_organization_id: string | null;
@@ -314,6 +317,7 @@ export function ApplicationPrepChecklist({
             kana: w.kana ?? "",
             birth: w.birth ?? "",
             nationality: w.nationality ?? "",
+            field: w.field ?? "",
             home_address: w.home_address ?? "",
             address: w.address ?? "",
             current_organization_id: w.current_organization_id,
@@ -1059,6 +1063,7 @@ export function ApplicationPrepChecklist({
               showTantou={false}
               showLinks={false}
               showPrepKind
+              showSsw2Instructees={false}
             />
           </div>
         )}
@@ -1261,6 +1266,17 @@ export function ApplicationPrepChecklist({
               <Jisshu2Section workerId={workerId} canEdit={canEdit} />
             </div>
           </div>
+        )}
+        {/* 特定技能２号のときだけ、誓約書に書く指導対象者をここで選ぶ。
+            申請種別のすぐ下に置いて、探さなくても目に入るようにする */}
+        {isSsw2Prep && workerRow && (
+          <Ssw2Instructees
+            workerId={workerId}
+            workerName={workerRow.name}
+            organizationId={prepOrgId || workerRow.current_organization_id}
+            field={workerRow.field}
+            canEdit={canEdit}
+          />
         )}
         {/* 特定技能２号のときだけ、誓約書（参考様式第１－３２号）の出力ページへの導線を出す */}
         {isSsw2Prep && (
