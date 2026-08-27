@@ -156,7 +156,8 @@ export function Ssw2Instructees({
         指導を受ける対象者（誓約書 参考様式第１－３２号）
       </p>
       <p className="mb-2 text-[11px] leading-relaxed text-muted">
-        {workerName}さんが指導する相手を、同じ所属機関の中から選びます。
+        {workerName}さんが指導する相手を選びます。同じ所属機関の方が先に並びますが、
+        ほかの所属機関の方も選べます（同じ事業所に出勤している場合）。
         対象者は同じ事業所に出勤し、原則同じ部署でフルタイムで働いている人に限ります。
         <span className="font-bold">
           すでに他の２号申請者の対象者になっている人は選べません
@@ -212,17 +213,33 @@ export function Ssw2Instructees({
                     className={INPUT}
                   >
                     <option value="">選ばない（氏名を直接入力する）</option>
-                    {candidates.map((c) => (
-                      <option
-                        key={c.id}
-                        value={c.id}
-                        // 他の2号申請者に押さえられている人は選べないようにする
-                        disabled={c.takenBy !== null && c.id !== row.target_worker_id}
-                      >
-                        {c.name}
-                        {c.takenBy ? `（${c.takenBy}さんの対象者のため選べません）` : ""}
-                      </option>
-                    ))}
+                    {/* 同じ所属機関の人を先に、ほかの機関の人は分けて並べる */}
+                    {[true, false].map((sameOrg) => {
+                      const group = candidates.filter((c) => c.sameOrg === sameOrg);
+                      if (group.length === 0) return null;
+                      return (
+                        <optgroup
+                          key={sameOrg ? "same" : "other"}
+                          label={
+                            sameOrg
+                              ? "この所属機関の方"
+                              : "ほかの所属機関の方（同じ事業所に出勤している場合のみ）"
+                          }
+                        >
+                          {group.map((c) => (
+                            <option
+                              key={c.id}
+                              value={c.id}
+                              // 他の2号申請者に押さえられている人は選べないようにする
+                              disabled={c.takenBy !== null && c.id !== row.target_worker_id}
+                            >
+                              {c.name}
+                              {c.takenBy ? `（${c.takenBy}さんの対象者のため選べません）` : ""}
+                            </option>
+                          ))}
+                        </optgroup>
+                      );
+                    })}
                   </select>
                 </label>
                 <label className="block">

@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   instructeeCandidates,
   instructeeMissingFields,
+  orgSsw2Field,
+  ssw2Capacity,
   instructeeShortage,
   requiredInstructeeCount,
   SSW2_PREP_SITUATION,
+  type Ssw2Applicant,
   type Ssw2InstructeeInput,
 } from "@/lib/ssw2-instructees";
 
@@ -94,13 +97,18 @@ describe("instructeeCandidates", () => {
   ];
   const opts = { selfWorkerId: "self", organizationId: "org1", takenBy: new Map<string, string>() };
 
-  it("本人・退職者・別の所属機関の人は候補に出さない", () => {
-    expect(instructeeCandidates(workers, opts).map((c) => c.id)).toEqual(["a", "b"]);
+  it("本人と退職者は候補に出さない", () => {
+    expect(instructeeCandidates(workers, opts).map((c) => c.id)).toEqual(["a", "b", "d"]);
+  });
+
+  it("ほかの所属機関の人も選べるが、同じ機関の人を先に並べる", () => {
+    const list = instructeeCandidates(workers, opts);
+    expect(list.map((c) => c.sameOrg)).toEqual([true, true, false]);
+    expect(list.find((c) => c.id === "d")?.sameOrg).toBe(false);
   });
 
   it("在留カード番号も一緒に返す（様式に書くため）", () => {
-    const a = instructeeCandidates(workers, opts).find((c) => c.id === "a");
-    expect(a?.residence_card_no).toBe("A1");
+    expect(instructeeCandidates(workers, opts).find((c) => c.id === "a")?.residence_card_no).toBe("A1");
   });
 
   it("他の2号申請者が押さえている人には、誰の対象者かを付ける", () => {
@@ -110,8 +118,88 @@ describe("instructeeCandidates", () => {
     expect(list.find((c) => c.id === "b")?.takenBy).toBeNull();
   });
 
-  it("所属機関が分からないときは会社で絞らない", () => {
+  it("所属機関が分からないときは全員を同じ機関として扱う", () => {
     const list = instructeeCandidates(workers, { ...opts, organizationId: null });
-    expect(list.map((c) => c.id)).toEqual(["a", "b", "d"]);
+    expect(list.every((c) => c.sameOrg)).toBe(true);
+  });
+});
+
+describe("orgSsw2Field", () => {
+  it("在籍者の分野のうち、いちばん多いものを使う", () => {
+    expect(
+      orgSsw2Field([
+        { field: "農業", status: "在籍中" },
+        { field: "農業", status: "在籍中" },
+        { field: "外食業", status: "在籍中" },
+      ]),
+    ).toBe("農業");
+  });
+
+  it("退職した人と未入力は数えない", () => {
+    expect(
+      orgSsw2Field([
+        { field: "外食業", status: "退職" },
+        { field: "", status: "在籍中" },
+        { field: "建設", status: "在籍中" },
+      ]),
+    ).toBe("建設");
+  });
+
+  it("誰も分野を登録していなければ空", () => {
+    expect(orgSsw2Field([{ field: "", status: "在籍中" }])).toBe("");
+  });
+});
+
+describe("ssw2Capacity", () => {
+  const applicant = (n: number, field = "農業"): Ssw2Applicant => ({
+    workerId: `w${n}`,
+    name: `申請者${n}`,
+    field,
+    instructeeCount: 0,
+  });
+
+  it("空いている人数を必要人数で割った数だけ受け入れられる", () => {
+    const cap = ssw2Capacity({ field: "農業", applicants: [], free: 7 });
+    expect(cap.required).toBe(2);
+    expect(cap.more).toBe(3); // 7名 ÷ 2名 = 3名
+  });
+
+  it("準備中の人に足りないぶんを先に引く", () => {
+    // 農業は1人あたり2名。準備中が1人で対象者0名なので、まず2名が要る
+    const cap = ssw2Capacity({ field: "農業", applicants: [applicant(1)], free: 6 });
+    expect(cap.shortage).toBe(2);
+    expect(cap.more).toBe(2); // (6 - 2) ÷ 2 = 2名
+  });
+
+  it("準備中の人が満たされていれば引かない", () => {
+    const cap = ssw2Capacity({
+      field: "農業",
+      applicants: [{ ...applicant(1), instructeeCount: 2 }],
+      free: 4,
+    });
+    expect(cap.shortage).toBe(0);
+    expect(cap.more).toBe(2);
+  });
+
+  it("足りていないときは受け入れ0名になる", () => {
+    const cap = ssw2Capacity({ field: "農業", applicants: [applicant(1)], free: 1 });
+    expect(cap.shortage).toBe(2);
+    expect(cap.more).toBe(0); // マイナスにはしない
+  });
+
+  it("人数の決まりが無い分野は more を出さない", () => {
+    const cap = ssw2Capacity({ field: "外食業", applicants: [], free: 3 });
+    expect(cap.required).toBe(0);
+    expect(cap.more).toBeNull();
+  });
+
+  it("申請者ごとに分野が違うときは、その人の分野で必要人数を見る", () => {
+    const cap = ssw2Capacity({
+      field: "農業",
+      applicants: [applicant(1, "自動車整備")], // 1名以上
+      free: 5,
+    });
+    expect(cap.shortage).toBe(1);
+    expect(cap.more).toBe(2); // (5 - 1) ÷ 2 = 2名
   });
 });

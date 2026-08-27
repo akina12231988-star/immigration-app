@@ -71,3 +71,42 @@ export async function deleteSsw2Instructee(
   const { error } = await supabase.from("ssw2_instructees").delete().eq("id", id);
   if (error) throw error;
 }
+
+// 所属機関の画面で使う一覧。
+// 「誰（2号申請者）が、誰を指導対象にしているか」を全件まとめて取る。
+export interface Ssw2InstructionLink {
+  applicantId: string; // 2号を申請する人
+  applicantName: string;
+  targetWorkerId: string | null; // 対象者がアプリに登録のある外国人のとき
+  targetName: string; // 対象者の氏名（手入力もある）
+  office: string;
+}
+
+export async function listSsw2InstructionLinks(
+  supabase: SupabaseClient,
+): Promise<Ssw2InstructionLink[]> {
+  const { data, error } = await supabase
+    .from("ssw2_instructees")
+    .select(
+      "worker_id, target_worker_id, name, office, workers!ssw2_instructees_worker_id_fkey(name)",
+    )
+    .order("sort_order", { ascending: true });
+  if (error) throw error;
+  const rows =
+    (data as
+      | {
+          worker_id: string;
+          target_worker_id: string | null;
+          name: string;
+          office: string;
+          workers?: { name?: string } | null;
+        }[]
+      | null) ?? [];
+  return rows.map((r) => ({
+    applicantId: r.worker_id,
+    applicantName: r.workers?.name ?? "（不明）",
+    targetWorkerId: r.target_worker_id,
+    targetName: r.name,
+    office: r.office,
+  }));
+}

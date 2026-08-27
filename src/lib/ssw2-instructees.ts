@@ -79,7 +79,9 @@ export interface InstructeeCandidateWorker {
   id: string;
   name: string;
   status: string;
+  field?: string;
   residence_card_no?: string;
+  current_situation?: string;
   current_organization_id?: string | null;
 }
 
@@ -87,15 +89,21 @@ export interface InstructeeCandidate {
   id: string;
   name: string;
   residence_card_no: string;
+  sameOrg: boolean; // この所属機関の人か（様式の留意事項3は同一の事業所に出勤する者に限る）
   takenBy: string | null; // すでに押さえている2号申請者の氏名。空いていれば null
 }
 
+// 対象者に選べる人の候補。
+//  ・本人（2号を申請する人）と退職した人は除く
+//  ・同じ所属機関の人を先に並べる。ほかの所属機関の人も選べるようにする
+//    （日本人など登録の無い人は、画面で氏名を直接入力する）
+//  ・すでに他の2号申請者の対象者になっている人は takenBy に誰が押さえているかを入れる
+//    （様式の留意事項4: 他の2号特定技能外国人に指導を受けている者は記載しない）
 export function instructeeCandidates(
   workers: InstructeeCandidateWorker[],
   opts: {
     selfWorkerId: string;
     organizationId: string | null | undefined;
-    // 対象者として使われている外国人ID → 押さえている2号申請者の氏名
     takenBy: Map<string, string>;
   },
 ): InstructeeCandidate[] {
@@ -103,13 +111,76 @@ export function instructeeCandidates(
   return workers
     .filter((w) => w.id !== selfWorkerId)
     .filter((w) => w.status !== "退職")
-    // 所属機関が分かっているときは同じ会社の人だけ。分からないときは絞らない
-    .filter((w) => !organizationId || w.current_organization_id === organizationId)
     .map((w) => ({
       id: w.id,
       name: w.name,
       residence_card_no: w.residence_card_no ?? "",
+      sameOrg: !organizationId || w.current_organization_id === organizationId,
       takenBy: takenBy.get(w.id) ?? null,
     }))
-    .sort((a, b) => a.name.localeCompare(b.name, "ja"));
+    .sort((a, b) =>
+      a.sameOrg === b.sameOrg ? a.name.localeCompare(b.name, "ja") : a.sameOrg ? -1 : 1,
+    );
+}
+
+// ---- 所属機関ごとの「２号を何人まで受け入れられるか」 ----
+
+// この機関の分野。在籍している外国人の分野のうち、いちばん多いものを使う
+// （所属機関の業種は自由入力なので、様式の分野名と一致しないことがある）
+export function orgSsw2Field(workers: { field?: string; status: string }[]): string {
+  const count = new Map<string, number>();
+  for (const w of workers) {
+    const f = (w.field ?? "").trim();
+    if (!f || w.status === "退職") continue;
+    count.set(f, (count.get(f) ?? 0) + 1);
+  }
+  let best = "";
+  let max = 0;
+  for (const [f, n] of count) {
+    if (n > max) {
+      best = f;
+      max = n;
+    }
+  }
+  return best;
+}
+
+export interface Ssw2Applicant {
+  workerId: string;
+  name: string;
+  field: string;
+  instructeeCount: number; // いま登録してある対象者の人数
+}
+
+export interface Ssw2Capacity {
+  field: string; // 判定に使った分野
+  required: number; // 2号1人あたりに必要な対象者の人数（0 = 決まりなし）
+  applicants: number; // いま2号の準備をしている人数
+  shortage: number; // 準備中の人たちを満たすのに、あと何人の対象者が要るか
+  free: number; // まだ誰の対象者にもなっていない、選べる人数
+  more: number | null; // あと何人まで新しく2号を受け入れられるか（null = 決まりなし）
+}
+
+// この機関が、いまの人数であと何人２号を受け入れられるかを見積もる。
+//  free（空いている候補）から、準備中の人に足りないぶん（shortage）を先に引き、
+//  残りを1人あたりの必要人数で割る。
+export function ssw2Capacity(input: {
+  field: string;
+  applicants: Ssw2Applicant[];
+  free: number;
+}): Ssw2Capacity {
+  const required = requiredInstructeeCount(input.field);
+  const shortage = input.applicants.reduce(
+    (sum, a) => sum + Math.max(0, requiredInstructeeCount(a.field || input.field) - a.instructeeCount),
+    0,
+  );
+  const rest = input.free - shortage;
+  return {
+    field: input.field,
+    required,
+    applicants: input.applicants.length,
+    shortage,
+    free: input.free,
+    more: required > 0 ? Math.max(0, Math.floor(rest / required)) : null,
+  };
 }
