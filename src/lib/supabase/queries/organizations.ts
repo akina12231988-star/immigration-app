@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { OrgSsw2Duties } from "@/lib/org-ssw2-duties";
 import type { Organization, OrganizationInput } from "@/types/db";
 
 export async function listOrganizations(
@@ -258,4 +259,17 @@ export async function getOrgRoster(
   });
 
   return { current, past };
+}
+
+// 特定技能2号の誓約書に書く業務内容（organizations.ssw2_duties・0123）を保存する
+export async function updateOrganizationSsw2Duties(
+  supabase: SupabaseClient,
+  organizationId: string,
+  duties: OrgSsw2Duties,
+): Promise<void> {
+  const { error } = await supabase
+    .from("organizations")
+    .update({ ssw2_duties: duties })
+    .eq("id", organizationId);
+  if (error) throw error;
 }

@@ -12,6 +12,7 @@ import {
 import { todayStr } from "@/lib/application-alerts";
 import { OrganizationRoster } from "@/components/organizations/OrganizationRoster";
 import { OrgSsw2Instruction } from "@/components/organizations/OrgSsw2Instruction";
+import { ssw2DutiesOf } from "@/lib/org-ssw2-duties";
 import { OrganizationDetail } from "./OrganizationDetail";
 
 export const dynamic = "force-dynamic";
@@ -71,7 +72,11 @@ export default async function OrganizationDetailPage({
       </div>
       {/* 特定技能２号の指導体制（誰が誰を指導するか・あと何人受け入れられるか） */}
       <div className="mt-4">
-        <OrgSsw2Instruction organizationId={id} />
+        <OrgSsw2Instruction
+          organizationId={id}
+          duties={ssw2DutiesOf(organization)}
+          canEdit
+        />
       </div>
     </>
   );
