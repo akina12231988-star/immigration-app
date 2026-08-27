@@ -52,6 +52,7 @@ export type RenewalFieldsWorker = Pick<
   current_organization_id?: string | null;
   application_prep_organization_id?: string | null;
   field?: string; // 特定産業分野（特定技能2号の指導対象者の必要人数の判定に使う）
+  nationality?: string; // 推薦状（カンボジアのみ）の判定に使う
   application_prep_kind?: string | null;
   current_situation?: string | null; // 只今の状況（準備の内容の初期値に使う。0093）
 };

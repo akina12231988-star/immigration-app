@@ -261,6 +261,40 @@ export function WorkerContracts({
               </p>
             </div>
 
+            {/* 一旦、日付なしで印鑑・署名をもらってきた版。正式な日付入りは上に登録する。
+                外国人詳細では出さない（showUndated=false。申請準備の詳細で保管する） */}
+            {showUndated && (
+              <>
+                <p className="mb-1 text-xs font-bold text-muted">
+                  日付なし（印鑑・署名あり）版
+                </p>
+                <p className="mb-2 text-[11px] leading-relaxed text-muted">
+                  先に日付なしで印鑑・署名をもらってきた雇用契約書・雇用条件書はここに保管してください。
+                  あとから正式な日付が入ったものは、下の「雇用契約書」「雇用条件書」に登録します。
+                </p>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {UNDATED_KINDS.map((kind) => (
+                    <ContractColumn
+                      key={`${selectedOrgId}-${kind}`}
+                      kind={kind}
+                      docs={docs.filter(
+                        (d) => d.kind === kind && d.organizationId === selectedOrgId,
+                      )}
+                      workerId={workerId}
+                      organizationId={selectedOrgId}
+                      canEdit={canEdit}
+                      orgOptions={allOrgOptions}
+                      reassigningId={reassigning}
+                      onReassign={reassign}
+                      onDelete={removeDoc}
+                      onUploaded={load}
+                      onError={handleError}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+            <p className="mb-1 mt-4 text-xs font-bold text-muted">日付あり（正式）版</p>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {KINDS.map((kind) => (
                 <ContractColumn
@@ -292,39 +326,6 @@ export function WorkerContracts({
               </p>
             )}
 
-            {/* 一旦、日付なしで印鑑・署名をもらってきた版。正式な日付入りは上に登録する。
-                外国人詳細では出さない（showUndated=false。申請準備の詳細で保管する） */}
-            {showUndated && (
-              <>
-                <p className="mb-1 mt-4 text-xs font-bold text-muted">
-                  日付なし（印鑑・署名あり）版
-                </p>
-                <p className="mb-2 text-[11px] leading-relaxed text-muted">
-                  先に日付なしで印鑑・署名をもらってきた雇用契約書・雇用条件書はここに保管してください。
-                  あとから正式な日付が入ったものは、上の「雇用契約書」「雇用条件書」に登録します。
-                </p>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  {UNDATED_KINDS.map((kind) => (
-                    <ContractColumn
-                      key={`${selectedOrgId}-${kind}`}
-                      kind={kind}
-                      docs={docs.filter(
-                        (d) => d.kind === kind && d.organizationId === selectedOrgId,
-                      )}
-                      workerId={workerId}
-                      organizationId={selectedOrgId}
-                      canEdit={canEdit}
-                      orgOptions={allOrgOptions}
-                      reassigningId={reassigning}
-                      onReassign={reassign}
-                      onDelete={removeDoc}
-                      onUploaded={load}
-                      onError={handleError}
-                    />
-                  ))}
-                </div>
-              </>
-            )}
           </>
         )}
 
