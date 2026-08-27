@@ -4,9 +4,11 @@ import {
   ENTRUSTED_SITUATION,
   PREP_SITUATIONS,
   WORKER_SITUATIONS,
+  appTypeOfPrepSituation,
   autoSituation,
   mergeSituation,
   situationAfterApproval,
+  prepSituationLabel,
   situationDescription,
   splitSituations,
 } from "@/lib/worker-situation";
@@ -158,5 +160,50 @@ describe("autoSituation（未入力のときの自動表示）", () => {
       "在留認定許可申請の審査中",
     );
     expect(autoSituation("", null)).toBe("");
+  });
+});
+
+describe("appTypeOfPrepSituation（申請準備の申請種別）", () => {
+  test("7つの候補すべてに申請種別がある", () => {
+    for (const c of APPLICATION_CONTENT_CHOICES) {
+      expect(["変更", "更新", "認定", "特定活動"]).toContain(c.appType);
+    }
+  });
+
+  test("只今の状況の保存値から申請種別が決まる", () => {
+    const table: [string, string][] = [
+      ["在留資格認定申請書の準備中", "認定"],
+      ["特定活動で申請準備中", "特定活動"],
+      ["特定活動ビザ更新の申請準備", "更新"],
+      ["特定活動（特定技能２号移行準備のため）準備中", "特定活動"],
+      ["特定技能更新の準備中", "更新"],
+      ["特定技能申請準備中", "変更"],
+      ["特定技能2号申請準備中", "変更"],
+    ];
+    for (const [situation, appType] of table) {
+      expect(appTypeOfPrepSituation(situation)).toBe(appType);
+    }
+  });
+
+  test("知らない値・空のときは未選択のまま", () => {
+    expect(appTypeOfPrepSituation("")).toBe("");
+    expect(appTypeOfPrepSituation("なにか")).toBe("");
+  });
+
+  test("特定活動への資格変更は「特定活動」、特定活動の期間更新は「更新」", () => {
+    expect(appTypeOfPrepSituation("特定活動で申請準備中")).toBe("特定活動");
+    expect(appTypeOfPrepSituation("特定活動ビザ更新の申請準備")).toBe("更新");
+  });
+});
+
+describe("prepSituationLabel", () => {
+  test("保存値を画面の言い方に直す", () => {
+    expect(prepSituationLabel("特定技能2号申請準備中")).toBe(
+      "在留資格の変更許可（特定技能２号）※本人申請",
+    );
+  });
+
+  test("知らない値はそのまま返す", () => {
+    expect(prepSituationLabel("なにか")).toBe("なにか");
   });
 });

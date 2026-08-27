@@ -5,6 +5,7 @@
 // description が空の選択肢は、意味の説明をまだもらっていないもの。
 
 import type { ApplicationContent } from "@/types/application";
+import type { PrepAppType } from "@/lib/application-prep";
 
 export interface WorkerSituation {
   value: string;
@@ -253,29 +254,36 @@ export interface ApplicationContentChoice {
   situation: string; // 外国人詳細の「只今の状況」に入れる値
   selfApply?: boolean; // 本人申請の候補（選ぶと本人申請にチェックが入る）
   prepSituation: string; // 準備中のときの只今の状況（PREP_SITUATIONS の値。表記の統一用）
+  // 申請準備の「申請種別」に入れる値。必要書類のチェックリストはこの4種類で決まる。
+  // 特定活動への資格変更は「特定活動」、特定活動の期間更新は「更新」として扱う
+  appType: PrepAppType;
 }
 
 export const APPLICATION_CONTENT_CHOICES: ApplicationContentChoice[] = [
   {
     label: "在留認定許可申請（特定技能）",
+    appType: "認定",
     content: "在留認定許可申請",
     situation: "特定技能（認定）の審査中",
     prepSituation: "在留資格認定申請書の準備中",
   },
   {
     label: "在留資格の変更許可（特定活動）",
+    appType: "特定活動",
     content: "在留資格の変更許可",
     situation: "特定活動の審査中",
     prepSituation: "特定活動で申請準備中",
   },
   {
     label: "在留期間の更新許可（特定活動）",
+    appType: "更新",
     content: "在留期間の更新許可",
     situation: "特定活動更新許可の審査中",
     prepSituation: "特定活動ビザ更新の申請準備",
   },
   {
     label: "在留資格の変更許可（特定活動・２号以降準備）※本人申請",
+    appType: "特定活動",
     content: "在留資格の変更許可",
     situation: "特定活動（２号以降準備）の審査中",
     selfApply: true,
@@ -283,18 +291,21 @@ export const APPLICATION_CONTENT_CHOICES: ApplicationContentChoice[] = [
   },
   {
     label: "在留期間の更新許可（特定技能）",
+    appType: "更新",
     content: "在留期間の更新許可",
     situation: "特定技能更新許可の審査中",
     prepSituation: "特定技能更新の準備中",
   },
   {
     label: "在留資格の変更許可（特定技能）",
+    appType: "変更",
     content: "在留資格の変更許可",
     situation: "特定技能の審査中",
     prepSituation: "特定技能申請準備中",
   },
   {
     label: "在留資格の変更許可（特定技能２号）※本人申請",
+    appType: "変更",
     content: "在留資格の変更許可",
     situation: "２号特定技能の審査中",
     selfApply: true,
@@ -307,3 +318,17 @@ export const APPLICATION_CONTENT_CHOICES: ApplicationContentChoice[] = [
 // （既存データと互換）。TODOの内容の選択肢と表記が統一される
 export const PREP_SITUATION_CHOICES: { label: string; situation: string }[] =
   APPLICATION_CONTENT_CHOICES.map((c) => ({ label: c.label, situation: c.prepSituation }));
+
+// 準備の内容（只今の状況）の保存値から、申請準備の「申請種別」を決める。
+// 選んでいない・知らない値のときは空（＝未選択）。
+export function appTypeOfPrepSituation(prepSituation: string): PrepAppType | "" {
+  const hit = APPLICATION_CONTENT_CHOICES.find((c) => c.prepSituation === prepSituation);
+  return hit?.appType ?? "";
+}
+
+// 準備の内容（只今の状況）の保存値から、画面に出す言い方を返す
+export function prepSituationLabel(prepSituation: string): string {
+  return (
+    APPLICATION_CONTENT_CHOICES.find((c) => c.prepSituation === prepSituation)?.label ?? prepSituation
+  );
+}

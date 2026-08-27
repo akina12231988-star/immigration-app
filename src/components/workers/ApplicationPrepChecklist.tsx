@@ -107,7 +107,6 @@ import {
   letterPackTrackingUrl,
   parseAttachItems,
   PREP_APP_TYPE_LABELS,
-  PREP_APP_TYPES,
   PREP_CERT_PATTERNS,
   PREP_DOC_ALWAYS_EXTRAS,
   PREP_DOC_ATTACH_ITEMS,
@@ -126,6 +125,10 @@ import {
   type PrepDocStatus,
   type PrepStatusExtra,
 } from "@/lib/application-prep";
+import {
+  appTypeOfPrepSituation,
+  PREP_SITUATION_CHOICES,
+} from "@/lib/worker-situation";
 import type { OnboardingDocumentRow } from "@/types/db";
 
 // 在留カード・パスポートのアップロード中を示すキー（onboarding_documents の書類キーとは別枠）
@@ -485,6 +488,7 @@ export function ApplicationPrepChecklist({
   // 保存できなかったときに案内するマイグレーション（選択肢を増やしたものを優先して案内する）
   function metaMigrationFor(patch: Partial<PrepChecklistMeta>): string {
     if ("cert_pattern" in patch) return "0113_prep_cert_pattern_senmongai_chosho.sql";
+    if ("app_content" in patch) return "0121_prep_app_content.sql";
     if ("app_type" in patch) return "0046_prep_tokutei_katsudo.sql";
     if ("tantou" in patch) return "0044_prep_checklist_tantou.sql";
     return "0036_application_prep_checklist.sql";
@@ -494,6 +498,7 @@ export function ApplicationPrepChecklist({
     if (selected == null || current == null) return;
     const next: PrepChecklistMeta = {
       app_type: current.app_type,
+      app_content: current.app_content ?? "",
       has_kokuho: current.has_kokuho,
       has_nenkin: current.has_nenkin,
       target_reiwa: current.target_reiwa,
@@ -1042,16 +1047,28 @@ export function ApplicationPrepChecklist({
         <div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-1.5 text-xs font-bold text-muted">
             申請種別
+            {/* 準備の内容（只今の状況）と同じ7つから選ぶ。必要書類のチェックリストを
+                決める app_type は、選んだ内容から自動で決まる */}
             <select
-              value={meta.app_type}
+              value={meta.app_content}
               disabled={!canEdit}
-              onChange={(e) => patchMeta({ app_type: e.target.value as PrepChecklistMeta["app_type"] })}
+              onChange={(e) =>
+                patchMeta({
+                  app_content: e.target.value,
+                  app_type: appTypeOfPrepSituation(e.target.value),
+                })
+              }
               className={inputCls}
             >
-              <option value="">選択してください</option>
-              {PREP_APP_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {PREP_APP_TYPE_LABELS[t]}
+              <option value="">
+                {/* 0121より前に申請種別だけ選んでいたぶんは、その言い方のまま出す */}
+                {!meta.app_content && meta.app_type
+                  ? `${PREP_APP_TYPE_LABELS[meta.app_type]}（以前の選び方）`
+                  : "選択してください"}
+              </option>
+              {PREP_SITUATION_CHOICES.map((c) => (
+                <option key={c.situation} value={c.situation}>
+                  {c.label}
                 </option>
               ))}
             </select>

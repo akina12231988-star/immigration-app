@@ -34,6 +34,9 @@ export const PREP_APP_TYPE_LABELS: Record<PrepAppType, string> = {
 
 export interface PrepChecklistMeta {
   app_type: "" | PrepAppType;
+  // 選んだ申請の内容（準備の内容・只今の状況と同じ7つ。0121）。
+  // app_type はこれを元に決まる（必要書類のチェックリストは従来どおり app_type で決まる）
+  app_content: string;
   has_kokuho: boolean;
   has_nenkin: boolean;
   target_reiwa: number | null;
@@ -62,6 +65,7 @@ export const PREP_CERT_PATTERNS: { value: PrepCertPattern; label: string }[] = [
 
 export const EMPTY_PREP_META: PrepChecklistMeta = {
   app_type: "",
+  app_content: "",
   has_kokuho: false,
   has_nenkin: false,
   target_reiwa: null,

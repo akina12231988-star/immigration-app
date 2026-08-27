@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { fetchWorkerSituationInfo, updateWorker } from "@/lib/supabase/queries/workers";
 import {
   listPrepChecklists,
+  upsertPrepAppContent,
   upsertPrepTantou,
   type PrepChecklistRow,
 } from "@/lib/supabase/queries/application-prep";
@@ -14,6 +15,7 @@ import { PREP_TANTOU_OPTIONS } from "@/lib/application-prep";
 import { Ssw2Instructees } from "@/components/workers/Ssw2Instructees";
 import { SSW2_PREP_SITUATION } from "@/lib/ssw2-instructees";
 import {
+  appTypeOfPrepSituation,
   PREP_SITUATIONS,
   PREP_SITUATION_CHOICES,
   mergeSituation,
@@ -196,6 +198,17 @@ export function WorkerRenewalFields({
             ? rows.map((r) => (r.todo_no === todoNo ? { ...r, tantou } : r))
             : rows,
         );
+      }
+      // 準備の内容を選んでいれば、その番号の準備リストの「申請種別」にも入れる。
+      // 0121 が未適用でも保存そのものは通すよう、失敗しても止めない
+      if (prepSituation) {
+        await upsertPrepAppContent(
+          createClient(),
+          worker.id,
+          todoNo,
+          prepSituation,
+          appTypeOfPrepSituation(prepSituation),
+        ).catch(() => undefined);
       }
       setSaved(true);
       onSaved?.();
