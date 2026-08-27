@@ -17,6 +17,12 @@ import { SSW_INDUSTRIES, categoriesFor } from "@/lib/industries";
 import { REFERRAL_SALES_KEY, SALES_APP_KINDS } from "@/lib/sales";
 import { todayStr } from "@/lib/ssw/calc";
 import {
+  EMPTY_SSW2_DUTIES,
+  SSW2_DUTY_FIELDS,
+  ssw2DutiesOf,
+  type OrgSsw2Duties,
+} from "@/lib/org-ssw2-duties";
+import {
   emptyCouncilSubmission,
   emptyFinancialYear,
   emptyJapaneseStaff,
@@ -68,6 +74,7 @@ export function emptyOrganizationInput(): OrganizationInput {
     corporate_no: "",
     note: "",
     intake: emptyOrganizationIntake(),
+    ssw2_duties: EMPTY_SSW2_DUTIES,
   };
 }
 
@@ -84,6 +91,8 @@ export function organizationToInput(org: Organization): OrganizationInput {
     corporate_no: org.corporate_no,
     note: org.note,
     intake: { ...intake, phone: "" },
+    // 特定技能2号の誓約書に書く業務内容（0123 未適用でも空で始める）
+    ssw2_duties: ssw2DutiesOf(org),
   };
 }
 
@@ -400,6 +409,10 @@ export function OrganizationFormBody({
     setForm((f) => ({ ...f, [key]: value }));
 
   const intake = normalizeOrganizationIntake(form.intake);
+  // 特定技能2号の誓約書に書く業務内容（欠けているキーは空で補う）
+  const ssw2Duties = ssw2DutiesOf(form);
+  const setSsw2Duties = (patch: Partial<OrgSsw2Duties>) =>
+    setForm((f) => ({ ...f, ssw2_duties: { ...ssw2DutiesOf(f), ...patch } }));
   const setIntake = (patch: Partial<OrganizationIntake>) =>
     setForm((f) => ({ ...f, intake: { ...normalizeOrganizationIntake(f.intake), ...patch } }));
 
@@ -599,6 +612,8 @@ export function OrganizationFormBody({
       <IntakeSection
         intake={intake}
         setIntake={setIntake}
+        ssw2Duties={ssw2Duties}
+        setSsw2Duties={setSsw2Duties}
         orgId={orgId}
         locks={locks}
         companyFields={companyFields}
@@ -611,12 +626,17 @@ export function OrganizationFormBody({
 function IntakeSection({
   intake,
   setIntake,
+  ssw2Duties,
+  setSsw2Duties,
   orgId,
   locks,
   companyFields,
 }: {
   intake: OrganizationIntake;
   setIntake: (patch: Partial<OrganizationIntake>) => void;
+  // 特定技能2号の誓約書に書く業務内容（organizations.ssw2_duties・0123）
+  ssw2Duties: OrgSsw2Duties;
+  setSsw2Duties: (patch: Partial<OrgSsw2Duties>) => void;
   orgId: string | null; // 見積書の添付に使う（新規登録時は保存後に添付可）
   locks: FieldLocks;
   companyFields?: React.ReactNode; // 会社の基本情報（名称・業種・所在地など。ここにまとめて表示）
@@ -1142,6 +1162,37 @@ function IntakeSection({
         ) : (
           <p className={HINT_CLASS}>見積書は、会社・機関を登録したあとに編集画面から添付できます。</p>
         )}
+
+        <p className={GROUP_CLASS}>
+          特定技能２号の業務内容（誓約書 参考様式第１－３２号）
+        </p>
+        <p className={HINT_CLASS}>
+          この会社で特定技能２号を申請するときに出す誓約書の「１ 当該２号特定技能外国人の業務内容」です。
+          一度登録しておくと、同じ会社で２号を申請するたびに誓約書の出力ページへ自動で入ります。
+          在留諸申請の許否に大きく影響するため、具体的に書いてください。
+        </p>
+        {SSW2_DUTY_FIELDS.map((f) => (
+          <label key={f.key} className="flex flex-col gap-1">
+            <span className="text-xs font-bold text-muted">
+              {f.no} {f.label}
+            </span>
+            {f.multiline ? (
+              <textarea
+                rows={3}
+                value={ssw2Duties[f.key]}
+                onChange={(e) => setSsw2Duties({ [f.key]: e.target.value })}
+                className={`${INPUT_CLASS} min-h-[72px] py-2 leading-relaxed`}
+              />
+            ) : (
+              <input
+                value={ssw2Duties[f.key]}
+                onChange={(e) => setSsw2Duties({ [f.key]: e.target.value })}
+                className={INPUT_CLASS}
+              />
+            )}
+            {f.hint && <span className={HINT_CLASS}>{f.hint}</span>}
+          </label>
+        ))}
 
         <p className={GROUP_CLASS}>申請種別ごとの売上明細（freee販売）</p>
         <p className={HINT_CLASS}>
