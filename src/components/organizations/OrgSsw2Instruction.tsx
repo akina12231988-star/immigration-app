@@ -2,10 +2,15 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { GraduationCap } from "lucide-react";
+import { ClipboardList, GraduationCap } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
 import { dbErrorMessage } from "@/lib/errors";
+import {
+  SSW2_DUTY_FIELDS,
+  type OrgSsw2Duties,
+} from "@/lib/org-ssw2-duties";
+import { updateOrganizationSsw2Duties } from "@/lib/supabase/queries/organizations";
 import {
   orgSsw2Field,
   requiredInstructeeCount,
@@ -23,7 +28,37 @@ import {
 //  ・誰が誰の指導対象になっているかを一覧で見せる（在籍者ごとにも出す）
 //  ・この機関があと何人２号を受け入れられるかを出す
 // 入力そのものは、各人の申請準備（準備の内容＝特定技能2号申請準備中）で行う。
-export function OrgSsw2Instruction({ organizationId }: { organizationId: string }) {
+const DUTY_INPUT =
+  "min-h-[34px] w-full rounded-lg border border-border bg-background px-2 text-xs focus:border-brand focus:outline-none disabled:opacity-60";
+
+export function OrgSsw2Instruction({
+  organizationId,
+  duties: initialDuties,
+  canEdit = false,
+}: {
+  organizationId: string;
+  duties: OrgSsw2Duties;
+  canEdit?: boolean;
+}) {
+  // 誓約書の「１ 業務内容」。この会社に一度登録しておけば、２号の申請のたびに自動で入る
+  const [duties, setDuties] = useState<OrgSsw2Duties>(initialDuties);
+  const [dutiesBusy, setDutiesBusy] = useState(false);
+  const [dutiesSaved, setDutiesSaved] = useState(false);
+  const [dutiesError, setDutiesError] = useState<string | null>(null);
+
+  const saveDuties = async (next: OrgSsw2Duties) => {
+    setDutiesBusy(true);
+    setDutiesError(null);
+    try {
+      await updateOrganizationSsw2Duties(createClient(), organizationId, next);
+      setDutiesSaved(true);
+    } catch (err) {
+      setDutiesError(dbErrorMessage(err, "0123_org_ssw2_duties.sql", "保存に失敗しました"));
+    } finally {
+      setDutiesBusy(false);
+    }
+  };
+
   const [workers, setWorkers] = useState<InstructeeCandidateWorker[]>([]);
   const [links, setLinks] = useState<Ssw2InstructionLink[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -107,6 +142,71 @@ export function OrgSsw2Instruction({ organizationId }: { organizationId: string 
           {error}
         </p>
       )}
+
+      {/* 誓約書の「１ 業務内容」。この会社に一度登録しておけば、２号の申請のたびに自動で入る */}
+      <div className="mb-3 rounded-xl border border-border p-3">
+        <p className="mb-1 flex flex-wrap items-center justify-between gap-2 text-xs font-bold">
+          １　当該２号特定技能外国人の業務内容
+          <Link
+            href={`/organizations/${organizationId}/ssw2-interview`}
+            className="flex items-center gap-1 rounded-lg border border-brand px-2.5 py-1 text-[11px] font-bold text-brand"
+          >
+            <ClipboardList size={12} />
+            聞き取りの質問票を印刷
+          </Link>
+        </p>
+        <p className="mb-2 text-[11px] leading-relaxed text-muted">
+          この会社で２号を申請するときに出す誓約書の欄です。一度入れておけば、同じ会社で申請する
+          たびに誓約書へ自動で入ります。会社に聞かないと分からないときは、右の質問票を印刷して
+          そのまま聞いてください。在留諸申請の許否に大きく影響するため、具体的に書きます。
+        </p>
+        {dutiesError && (
+          <p role="alert" className="mb-2 rounded-lg bg-seal/10 px-2 py-1.5 text-[11px] text-seal">
+            {dutiesError}
+          </p>
+        )}
+        <div className="flex flex-col gap-2">
+          {SSW2_DUTY_FIELDS.map((f) => (
+            <label key={f.key} className="block">
+              <span className="mb-0.5 block text-[11px] font-bold text-muted">
+                {f.no} {f.label}
+              </span>
+              {f.multiline ? (
+                <textarea
+                  rows={3}
+                  value={duties[f.key]}
+                  disabled={!canEdit || dutiesBusy}
+                  onChange={(e) => {
+                    setDuties({ ...duties, [f.key]: e.target.value });
+                    setDutiesSaved(false);
+                  }}
+                  onBlur={() => void saveDuties(duties)}
+                  className={`${DUTY_INPUT} min-h-[72px] py-1.5 leading-relaxed`}
+                />
+              ) : (
+                <input
+                  value={duties[f.key]}
+                  disabled={!canEdit || dutiesBusy}
+                  onChange={(e) => {
+                    setDuties({ ...duties, [f.key]: e.target.value });
+                    setDutiesSaved(false);
+                  }}
+                  onBlur={() => void saveDuties(duties)}
+                  className={DUTY_INPUT}
+                />
+              )}
+              {f.hint && <span className="mt-0.5 block text-[11px] text-muted">{f.hint}</span>}
+            </label>
+          ))}
+        </div>
+        <p className="mt-1.5 text-[11px] text-muted">
+          {dutiesBusy
+            ? "保存中…"
+            : dutiesSaved
+              ? "保存しました。"
+              : "欄から離れると保存されます。"}
+        </p>
+      </div>
 
       {/* 受け入れ可能人数 */}
       <div className="mb-3 rounded-xl border border-border p-3">

@@ -16,12 +16,7 @@ import {
 import { SSW_INDUSTRIES, categoriesFor } from "@/lib/industries";
 import { REFERRAL_SALES_KEY, SALES_APP_KINDS } from "@/lib/sales";
 import { todayStr } from "@/lib/ssw/calc";
-import {
-  EMPTY_SSW2_DUTIES,
-  SSW2_DUTY_FIELDS,
-  ssw2DutiesOf,
-  type OrgSsw2Duties,
-} from "@/lib/org-ssw2-duties";
+import { EMPTY_SSW2_DUTIES, ssw2DutiesOf } from "@/lib/org-ssw2-duties";
 import {
   emptyCouncilSubmission,
   emptyFinancialYear,
@@ -175,6 +170,74 @@ function IntakeField({
       />
       {hint && <span className={HINT_CLASS}>{hint}</span>}
     </label>
+  );
+}
+
+// 「同上」を押すと上の欄と同じ内容を入れる欄。
+// 作業する住所・TEL/FAX は会社の所在地・連絡先と同じことが多いので、
+// 押すだけで済むようにする。押し直すと空にして、自分で入力できる。
+function SameAsAboveField({
+  label,
+  value,
+  onChange,
+  sameAsLabel,
+  sameValue,
+  sameHint,
+  placeholder,
+  locked,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  sameAsLabel: string; // チェックの見出し（例: 上の所在地と同じ（同上））
+  sameValue: string; // 上の欄の内容
+  sameHint: string; // 上の欄が空のときの案内
+  placeholder?: string;
+  locked?: boolean;
+}) {
+  if (locked) return <StaticValue label={label} value={value} />;
+  const trimmed = sameValue.trim();
+  // 中身が上と同じなら「同上」が入っている扱いにする（保存しても判定が変わらない）
+  const isSame = trimmed !== "" && value.trim() === trimmed;
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-xs font-bold text-muted">{label}</span>
+      <span className="flex items-center gap-1.5 text-xs font-bold">
+        <input
+          type="checkbox"
+          checked={isSame}
+          disabled={trimmed === ""}
+          onChange={(e) => onChange(e.target.checked ? trimmed : "")}
+          className="size-4 shrink-0"
+        />
+        {sameAsLabel}
+      </span>
+      {isSame ? (
+        <p className="flex min-h-[44px] items-center rounded-xl bg-border/30 px-3 text-sm">
+          {trimmed}
+        </p>
+      ) : (
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className={INPUT_CLASS}
+        />
+      )}
+      {trimmed === "" && <span className={HINT_CLASS}>{sameHint}</span>}
+    </label>
+  );
+}
+
+// 法人だけの欄（資本金・決算月）。個人事業主のときは入力させない
+function NotForSoleProprietor({ label }: { label: string }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs font-bold text-muted">{label}</span>
+      <p className="flex min-h-[44px] items-center rounded-xl bg-border/30 px-3 text-[11px] leading-tight text-muted">
+        個人事業主は記入不要
+      </p>
+    </div>
   );
 }
 
@@ -409,10 +472,6 @@ export function OrganizationFormBody({
     setForm((f) => ({ ...f, [key]: value }));
 
   const intake = normalizeOrganizationIntake(form.intake);
-  // 特定技能2号の誓約書に書く業務内容（欠けているキーは空で補う）
-  const ssw2Duties = ssw2DutiesOf(form);
-  const setSsw2Duties = (patch: Partial<OrgSsw2Duties>) =>
-    setForm((f) => ({ ...f, ssw2_duties: { ...ssw2DutiesOf(f), ...patch } }));
   const setIntake = (patch: Partial<OrganizationIntake>) =>
     setForm((f) => ({ ...f, intake: { ...normalizeOrganizationIntake(f.intake), ...patch } }));
 
@@ -612,8 +671,14 @@ export function OrganizationFormBody({
       <IntakeSection
         intake={intake}
         setIntake={setIntake}
-        ssw2Duties={ssw2Duties}
-        setSsw2Duties={setSsw2Duties}
+        companyAddress={form.address}
+        // 「上の電話番号・FAX」は連絡先とFAXを合わせたもの
+        companyContact={[
+          form.contact.trim() && `TEL ${form.contact.trim()}`,
+          intake.fax.trim() && `FAX ${intake.fax.trim()}`,
+        ]
+          .filter(Boolean)
+          .join(" / ")}
         orgId={orgId}
         locks={locks}
         companyFields={companyFields}
@@ -626,21 +691,24 @@ export function OrganizationFormBody({
 function IntakeSection({
   intake,
   setIntake,
-  ssw2Duties,
-  setSsw2Duties,
+  companyAddress,
+  companyContact,
   orgId,
   locks,
   companyFields,
 }: {
   intake: OrganizationIntake;
   setIntake: (patch: Partial<OrganizationIntake>) => void;
-  // 特定技能2号の誓約書に書く業務内容（organizations.ssw2_duties・0123）
-  ssw2Duties: OrgSsw2Duties;
-  setSsw2Duties: (patch: Partial<OrgSsw2Duties>) => void;
+  // 「同上」で入れる元になる、会社の所在地と電話番号・FAX
+  companyAddress: string;
+  companyContact: string;
   orgId: string | null; // 見積書の添付に使う（新規登録時は保存後に添付可）
   locks: FieldLocks;
   companyFields?: React.ReactNode; // 会社の基本情報（名称・業種・所在地など。ここにまとめて表示）
 }) {
+  // 資本金・決算月は法人だけの欄。個人事業主のときは入力させない
+  const isSoleProprietor = intake.fiscal_kind === "個人事業主";
+
   const setFinancial = (i: number, patch: Partial<OrgFinancialYear>) =>
     setIntake({
       financials: intake.financials.map((row, idx) => (idx === i ? { ...row, ...patch } : row)),
@@ -708,17 +776,24 @@ function IntakeSection({
             locked={locks.intake("pay_method")}
           />
         </div>
-        <IntakeField
+        {/* 会社の所在地・連絡先と同じことが多いので、「同上」を押せば入力しなくてよい */}
+        <SameAsAboveField
           label="作業する住所（会社の住所と別の場合）"
           value={intake.work_address}
           onChange={(v) => setIntake({ work_address: v })}
+          sameAsLabel="上の所在地と同じ（同上）"
+          sameValue={companyAddress}
+          sameHint="所在地が未登録です。先に上の「所在地」を入れてください。"
           placeholder="〒　住所"
           locked={locks.intake("work_address")}
         />
-        <IntakeField
+        <SameAsAboveField
           label="作業する住所のTEL・FAX"
           value={intake.work_contact}
           onChange={(v) => setIntake({ work_contact: v })}
+          sameAsLabel="上の電話番号・FAXと同じ（同上）"
+          sameValue={companyContact}
+          sameHint="電話番号・FAXが未登録です。先に上の欄を入れてください。"
           locked={locks.intake("work_contact")}
         />
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
@@ -735,20 +810,29 @@ function IntakeSection({
             placeholder="例: 代表取締役 ◯◯ ◯◯"
             locked={locks.intake("rep_name")}
           />
-          <IntakeField
-            label="資本金（法人）"
-            value={formatAmountInput(intake.capital)}
-            onChange={(v) => setIntake({ capital: formatAmountInput(v) })}
-            placeholder="例: 3,000,000円"
-            locked={locks.intake("capital")}
-          />
-          <IntakeField
-            label="決算月（法人）"
-            value={intake.fiscal_month}
-            onChange={(v) => setIntake({ fiscal_month: v })}
-            placeholder="例: 3月"
-            locked={locks.intake("fiscal_month")}
-          />
+          {/* 資本金・決算月は法人だけの欄。個人事業主のときは入力しない */}
+          {isSoleProprietor ? (
+            <NotForSoleProprietor label="資本金（法人）" />
+          ) : (
+            <IntakeField
+              label="資本金（法人）"
+              value={formatAmountInput(intake.capital)}
+              onChange={(v) => setIntake({ capital: formatAmountInput(v) })}
+              placeholder="例: 3,000,000円"
+              locked={locks.intake("capital")}
+            />
+          )}
+          {isSoleProprietor ? (
+            <NotForSoleProprietor label="決算月（法人）" />
+          ) : (
+            <IntakeField
+              label="決算月（法人）"
+              value={intake.fiscal_month}
+              onChange={(v) => setIntake({ fiscal_month: v })}
+              placeholder="例: 3月"
+              locked={locks.intake("fiscal_month")}
+            />
+          )}
         </div>
 
         <p className={GROUP_CLASS}>
@@ -1162,37 +1246,6 @@ function IntakeSection({
         ) : (
           <p className={HINT_CLASS}>見積書は、会社・機関を登録したあとに編集画面から添付できます。</p>
         )}
-
-        <p className={GROUP_CLASS}>
-          特定技能２号の業務内容（誓約書 参考様式第１－３２号）
-        </p>
-        <p className={HINT_CLASS}>
-          この会社で特定技能２号を申請するときに出す誓約書の「１ 当該２号特定技能外国人の業務内容」です。
-          一度登録しておくと、同じ会社で２号を申請するたびに誓約書の出力ページへ自動で入ります。
-          在留諸申請の許否に大きく影響するため、具体的に書いてください。
-        </p>
-        {SSW2_DUTY_FIELDS.map((f) => (
-          <label key={f.key} className="flex flex-col gap-1">
-            <span className="text-xs font-bold text-muted">
-              {f.no} {f.label}
-            </span>
-            {f.multiline ? (
-              <textarea
-                rows={3}
-                value={ssw2Duties[f.key]}
-                onChange={(e) => setSsw2Duties({ [f.key]: e.target.value })}
-                className={`${INPUT_CLASS} min-h-[72px] py-2 leading-relaxed`}
-              />
-            ) : (
-              <input
-                value={ssw2Duties[f.key]}
-                onChange={(e) => setSsw2Duties({ [f.key]: e.target.value })}
-                className={INPUT_CLASS}
-              />
-            )}
-            {f.hint && <span className={HINT_CLASS}>{f.hint}</span>}
-          </label>
-        ))}
 
         <p className={GROUP_CLASS}>申請種別ごとの売上明細（freee販売）</p>
         <p className={HINT_CLASS}>
