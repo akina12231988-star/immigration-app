@@ -50,6 +50,7 @@ import {
   parseHoursMinutes,
 } from "@/lib/organization-intake";
 import { prefCityOnly } from "@/lib/posting-grid";
+import { postingValidUntil, POSTING_VALID_MONTHS } from "@/lib/posting-validity";
 import { todayStr } from "@/lib/ssw/calc";
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
 import { listOrganizationFiles } from "@/lib/supabase/queries/organization-files";
@@ -67,7 +68,10 @@ function toInput(p: JobPosting | null, orgId: string): JobPostingInput {
     organization_id: p?.organization_id ?? orgId,
     acceptance_no: p?.acceptance_no ?? "",
     received_on: p?.received_on ?? new Date().toISOString().slice(0, 10),
-    valid_until: p?.valid_until ?? null,
+    // 有効期限は受付日から3か月。入っていなければ受付日から自動で入れる（手で直せる）
+    valid_until:
+      p?.valid_until ??
+      (postingValidUntil(p?.received_on ?? new Date().toISOString().slice(0, 10)) || null),
     closed_on: p?.closed_on ?? null,
     openings: p?.openings ?? 1,
     job_type: p?.job_type ?? "",
@@ -424,11 +428,22 @@ export function PostingForm({
             <input
               type="date"
               value={form.received_on}
-              onChange={(e) => set("received_on", e.target.value)}
+              onChange={(e) => {
+                const received = e.target.value;
+                // 有効期限は受付日から3か月。手で直したものはそのまま残し、
+                // 自動で入っていたぶんだけ新しい受付日に合わせて入れ直す
+                const wasAuto =
+                  !form.valid_until || form.valid_until === postingValidUntil(form.received_on);
+                setForm((f) => ({
+                  ...f,
+                  received_on: received,
+                  valid_until: wasAuto ? postingValidUntil(received) || null : f.valid_until,
+                }));
+              }}
               className={INPUT_CLASS}
             />
           </Field>
-          <Field label="有効期限">
+          <Field label={`有効期限（受付日から${POSTING_VALID_MONTHS}か月。自動で入ります）`}>
             <input
               type="date"
               value={form.valid_until ?? ""}
