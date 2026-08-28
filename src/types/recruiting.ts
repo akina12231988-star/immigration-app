@@ -79,7 +79,10 @@ export interface PostingSheet {
   job_description: string; // 仕事内容
   contract_term_kind: string; // 期間の定めなし / 期間の定めあり
   contract_term: string; // 雇用契約期間（期間の定めありの場合）
-  contract_renewal: string; // 契約の更新（無 / 有: 条件）
+  contract_renewal: string; // 契約の更新（無 / 有: 条件）。下の3つから組み立てる（古いデータは自由入力のまま）
+  contract_renewal_kind: string; // 契約の更新の有無（自動的に更新する / 更新する場合があり得る / 契約の更新はしない）
+  contract_renewal_criteria: string[]; // 更新の判断基準（「更新する場合があり得る」のときだけ・複数選べる）
+  contract_renewal_other: string; // 更新の判断基準の「その他」の中身
   work_start: string; // 始業
   work_end: string; // 終業
   daily_hours: string; // 1日の所定労働時間

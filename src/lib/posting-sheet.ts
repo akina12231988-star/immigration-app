@@ -19,6 +19,9 @@ export function emptyPostingSheet(): PostingSheet {
     contract_term_kind: "期間の定めあり",
     contract_term: "",
     contract_renewal: "",
+    contract_renewal_kind: "",
+    contract_renewal_criteria: [],
+    contract_renewal_other: "",
     work_start: "",
     work_end: "",
     daily_hours: "",
@@ -138,7 +141,12 @@ export function normalizePostingSheet(raw: unknown): PostingSheet {
     const v = r[key];
     if (v === undefined) continue;
     if (key === "allowances") continue;
-    if (key === "holidays" || key === "insurances" || key === "deduction_items") {
+    if (
+      key === "holidays" ||
+      key === "insurances" ||
+      key === "deduction_items" ||
+      key === "contract_renewal_criteria"
+    ) {
       out[key] = strList(v, base[key]);
       continue;
     }
@@ -168,11 +176,67 @@ export function workHoursText(sheet: PostingSheet): string {
   return `${span}${daily}`;
 }
 
+// ---- 契約期間・契約の更新 ----
+
+// 雇用契約期間の選択肢（期間の定めありの場合）
+export const CONTRACT_TERMS = ["1年", "2年", "3年"] as const;
+
+// 契約の更新の有無（雇用条件書「2. 契約の更新の有無」の3つ）
+export const CONTRACT_RENEWAL_AUTO = "自動的に更新する";
+export const CONTRACT_RENEWAL_MAYBE = "更新する場合があり得る";
+export const CONTRACT_RENEWAL_NONE = "契約の更新はしない";
+export const CONTRACT_RENEWAL_KINDS = [
+  CONTRACT_RENEWAL_AUTO,
+  CONTRACT_RENEWAL_MAYBE,
+  CONTRACT_RENEWAL_NONE,
+] as const;
+
+// 「更新する場合があり得る」としたときの更新の判断基準（雇用条件書の※の6つ。
+// 「その他」は自由入力なのでここには入れない）
+export const CONTRACT_RENEWAL_CRITERIA = [
+  "契約期間満了時の業務量",
+  "労働者の勤務成績、態度",
+  "労働者の業務を遂行する能力",
+  "会社の経営状況",
+  "従事している業務の進捗状況",
+] as const;
+
+// 判断基準を選べるのは「更新する場合があり得る」のときだけ。
+// 「自動的に更新する」は自動更新のみで、基準は要らない
+export function canPickRenewalCriteria(kind: string): boolean {
+  return kind === CONTRACT_RENEWAL_MAYBE;
+}
+
+// 更新の判断基準の表示（選んだもの＋その他）
+export function renewalCriteriaText(sheet: PostingSheet): string {
+  const list = [...sheet.contract_renewal_criteria];
+  if (sheet.contract_renewal_other) list.push(`その他（${sheet.contract_renewal_other}）`);
+  return list.join("・");
+}
+
+// 契約の更新の表示（求人票の「契約の更新　無／有：…」の欄に入る文字）。
+// 更新の有無を選んでいない古いデータは、保存されている自由入力をそのまま使う
+export function contractRenewalText(sheet: PostingSheet): string {
+  const kind = sheet.contract_renewal_kind;
+  if (!kind) return sheet.contract_renewal;
+  if (kind === CONTRACT_RENEWAL_NONE) return "無";
+  if (!canPickRenewalCriteria(kind)) return `有：${kind}`;
+  const criteria = renewalCriteriaText(sheet);
+  return criteria ? `有：${kind}（${criteria}）` : `有：${kind}`;
+}
+
+// 契約の更新が「有」か（求人票のチェック欄の表示に使う）
+export function isContractRenewalYes(sheet: PostingSheet): boolean {
+  const text = contractRenewalText(sheet);
+  return text.startsWith("有");
+}
+
 // 契約期間の表示
 export function contractText(sheet: PostingSheet): string {
   const kind = sheet.contract_term_kind;
   const term = sheet.contract_term ? `：${sheet.contract_term}` : "";
-  const renewal = sheet.contract_renewal ? ` ／ 契約の更新：${sheet.contract_renewal}` : "";
+  const renewalText = contractRenewalText(sheet);
+  const renewal = renewalText ? ` ／ 契約の更新：${renewalText}` : "";
   return `${kind}${term}${renewal}`;
 }
 

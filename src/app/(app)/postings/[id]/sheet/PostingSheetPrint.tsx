@@ -7,7 +7,17 @@ import { BackButton } from "@/components/BackButton";
 import { createClient } from "@/lib/supabase/client";
 import { updatePosting } from "@/lib/supabase/queries/postings";
 import { formatAmountInput, stripAmountCommas } from "@/lib/amount-format";
-import { dailyWorkHours, emptyPostingAllowance } from "@/lib/posting-sheet";
+import {
+  canPickRenewalCriteria,
+  contractRenewalText,
+  dailyWorkHours,
+  emptyPostingAllowance,
+  isContractRenewalYes,
+  renewalCriteriaText,
+  CONTRACT_RENEWAL_MAYBE,
+  CONTRACT_RENEWAL_NONE,
+  CONTRACT_TERMS,
+} from "@/lib/posting-sheet";
 import type { PostingSheet, WageKind } from "@/types/recruiting";
 import type { PostingWithStats } from "@/lib/supabase/queries/postings";
 
@@ -59,6 +69,38 @@ function F({
       placeholder={placeholder}
       className={`${FIELD} ${className}`}
     />
+  );
+}
+
+// 選ぶ欄。印刷では下線だけの空欄に見えるよう、選択の矢印を消して F と同じ見た目にする。
+// 保存済みの値が選択肢に無いときは、その値も選択肢に残して消えないようにする
+function S({
+  value,
+  onChange,
+  options,
+  className = "",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: readonly string[];
+  className?: string;
+}) {
+  const canEdit = useContext(EditCtx);
+  if (!canEdit) return <span className={className}>{value}</span>;
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={`${FIELD} appearance-none ${className}`}
+    >
+      <option value=""> </option>
+      {options.map((o) => (
+        <option key={o} value={o}>
+          {o}
+        </option>
+      ))}
+      {value && !options.includes(value) && <option value={value}>{value}</option>}
+    </select>
   );
 }
 
@@ -474,7 +516,11 @@ export function PostingSheetPrint({
                       onClick={() => set("contract_term_kind", "期間の定めあり")}
                     />
                     <span className="inline-block w-[40mm]">
-                      <F value={sheet.contract_term} onChange={(v) => set("contract_term", v)} />
+                      <S
+                        value={sheet.contract_term}
+                        onChange={(v) => set("contract_term", v)}
+                        options={CONTRACT_TERMS}
+                      />
                     </span>
                     ）
                   </p>
@@ -482,23 +528,42 @@ export function PostingSheetPrint({
                     　　契約の更新
                     <Check
                       label="　無"
-                      on={sheet.contract_renewal.startsWith("無")}
-                      onClick={() => set("contract_renewal", "無")}
+                      on={!isContractRenewalYes(sheet) && !!contractRenewalText(sheet)}
+                      onClick={() => {
+                        set("contract_renewal_kind", CONTRACT_RENEWAL_NONE);
+                        set("contract_renewal_criteria", []);
+                        set("contract_renewal_other", "");
+                      }}
                     />
                   </p>
                   <p className="flex items-center">
-
                     <Check
                       label="　有："
-                      on={sheet.contract_renewal.startsWith("有")}
-                      onClick={() => set("contract_renewal", "有：")}
+                      on={isContractRenewalYes(sheet)}
+                      onClick={() => {
+                        // すでに「有」の中身を選んでいればそのまま。無・未選択からは
+                        // 判断基準を選べる「更新する場合があり得る」にする
+                        if (!isContractRenewalYes(sheet)) {
+                          set("contract_renewal_kind", CONTRACT_RENEWAL_MAYBE);
+                        }
+                      }}
                     />
                     <span className="inline-block flex-1">
-                      <F
-                        value={sheet.contract_renewal.replace(/^[有無][:：]?/, "")}
-                        onChange={(v) => set("contract_renewal", `有：${v}`)}
-                        placeholder="更新する場合の基準"
-                      />
+                      {/* 更新の有無を選んでいれば、その内容を出す（中身は求人票の入力画面で選ぶ）。
+                          選んでいない古い求人は、これまでどおり自由に書ける */}
+                      {sheet.contract_renewal_kind ? (
+                        <span>
+                          {canPickRenewalCriteria(sheet.contract_renewal_kind)
+                            ? renewalCriteriaText(sheet) || sheet.contract_renewal_kind
+                            : sheet.contract_renewal_kind}
+                        </span>
+                      ) : (
+                        <F
+                          value={sheet.contract_renewal.replace(/^[有無][:：]?/, "")}
+                          onChange={(v) => set("contract_renewal", `有：${v}`)}
+                          placeholder="更新する場合の基準"
+                        />
+                      )}
                     </span>
                   </p>
                 </C>

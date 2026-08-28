@@ -21,10 +21,16 @@ import {
   type WageKind,
 } from "@/types/recruiting";
 import {
+  canPickRenewalCriteria,
+  contractRenewalText,
   dailyWorkHours,
   emptyPostingAllowance,
   normalizePostingSheet,
   normalizeTimeInput,
+  CONTRACT_RENEWAL_CRITERIA,
+  CONTRACT_RENEWAL_KINDS,
+  CONTRACT_RENEWAL_NONE,
+  CONTRACT_TERMS,
 } from "@/lib/posting-sheet";
 import {
   calcIncomeTaxMonthly,
@@ -719,32 +725,98 @@ export function PostingForm({
               className={INPUT_CLASS}
             >
               <option value="">—</option>
-              {["1年", "2年", "3年"].map((t) => (
+              {CONTRACT_TERMS.map((t) => (
                 <option key={t} value={t}>
                   {t}
                 </option>
               ))}
               {/* 前回の求人などで別の書き方が保存されていたら、選択肢に残して消えないようにする */}
-              {sheet.contract_term && !["1年", "2年", "3年"].includes(sheet.contract_term) && (
-                <option value={sheet.contract_term}>{sheet.contract_term}</option>
-              )}
+              {sheet.contract_term &&
+                !CONTRACT_TERMS.includes(sheet.contract_term as (typeof CONTRACT_TERMS)[number]) && (
+                  <option value={sheet.contract_term}>{sheet.contract_term}</option>
+                )}
             </select>
           </Field>
         </div>
-        <Field label="契約の更新">
+        {/* 契約の更新の有無（雇用条件書「2. 契約の更新の有無」の3つ）。
+            「更新する場合があり得る」を選んだときだけ、判断基準を複数選べる */}
+        <Field label="契約の更新の有無">
           <select
-            value={sheet.contract_renewal}
-            onChange={(e) => setSheet({ contract_renewal: e.target.value })}
+            value={sheet.contract_renewal_kind}
+            onChange={(e) => {
+              const kind = e.target.value;
+              setSheet({
+                contract_renewal_kind: kind,
+                // 自動更新・更新しないのときは判断基準を持たない
+                ...(canPickRenewalCriteria(kind)
+                  ? {}
+                  : { contract_renewal_criteria: [], contract_renewal_other: "" }),
+              });
+            }}
             className={INPUT_CLASS}
           >
             <option value="">—</option>
-            <option value="有">有</option>
-            <option value="無">無</option>
-            {sheet.contract_renewal && !["有", "無"].includes(sheet.contract_renewal) && (
-              <option value={sheet.contract_renewal}>{sheet.contract_renewal}</option>
-            )}
+            {CONTRACT_RENEWAL_KINDS.map((k) => (
+              <option key={k} value={k}>
+                {k}
+              </option>
+            ))}
           </select>
         </Field>
+
+        {canPickRenewalCriteria(sheet.contract_renewal_kind) && (
+          <>
+            <Field label="更新の判断基準（複数選べます）">
+              <div className="flex flex-wrap gap-1.5">
+                {CONTRACT_RENEWAL_CRITERIA.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() =>
+                      setSheet({
+                        contract_renewal_criteria: toggle(sheet.contract_renewal_criteria, c),
+                      })
+                    }
+                    className={`min-h-[36px] rounded-lg border px-3 text-sm font-bold ${
+                      sheet.contract_renewal_criteria.includes(c)
+                        ? "border-brand bg-brand text-brand-foreground"
+                        : "border-border bg-background text-muted"
+                    }`}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </Field>
+            <Field label="更新の判断基準のその他">
+              <input
+                value={sheet.contract_renewal_other}
+                onChange={(e) => setSheet({ contract_renewal_other: e.target.value })}
+                placeholder="ほかに基準があれば記入"
+                className={INPUT_CLASS}
+              />
+            </Field>
+          </>
+        )}
+
+        {/* 求人票に出る文字。選んだ内容がそのまま「契約の更新」の欄に入る */}
+        {sheet.contract_renewal_kind && (
+          <p className="rounded-lg bg-surface/60 px-2.5 py-1.5 text-xs text-muted">
+            求人票の「契約の更新」欄:{" "}
+            <b className="text-foreground">{contractRenewalText(sheet)}</b>
+            {sheet.contract_renewal_kind === CONTRACT_RENEWAL_NONE &&
+              "（契約期間は「期間の定めあり」のままで、更新しない扱いになります）"}
+          </p>
+        )}
+
+        {/* 更新の有無をまだ選んでいない求人（以前の入力）は、そのままの文字を出して消さない */}
+        {!sheet.contract_renewal_kind && sheet.contract_renewal && (
+          <p className="rounded-lg bg-surface/60 px-2.5 py-1.5 text-xs text-muted">
+            以前の入力: <b className="text-foreground">{sheet.contract_renewal}</b>
+            <br />
+            上で更新の有無を選ぶと、こちらは置き換わります。
+          </p>
+        )}
 
         {/* 時刻は「800」と入れても欄を離れると「8:00」に整い、
             始業・終業・休憩から1日の所定労働時間を自動で計算する */}
