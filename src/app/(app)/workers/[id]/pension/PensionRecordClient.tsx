@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Check,
   CheckCircle2,
+  ChevronDown,
   Download,
   Eye,
   Loader2,
@@ -22,13 +23,48 @@ import {
   getOnboardingDocPreviewUrl,
 } from "@/app/(app)/onboarding/actions";
 import { uploadOnboardingDoc } from "@/lib/onboarding-files";
-import { judgePension, parsePensionSymbols, PENSION_SYMBOLS } from "@/lib/pension";
+import {
+  assignPastedCodes,
+  judgePension,
+  parsePensionSymbols,
+  pensionMonths,
+  pensionSymbolByCode,
+  summarizeMonths,
+  warekiMonthLabel,
+  PENSION_ACTION_LABELS,
+  PENSION_MONTH_COUNT,
+  PENSION_MONTH_LAG,
+  PENSION_SYMBOLS,
+  type PensionAction,
+  type PensionMonthCodes,
+} from "@/lib/pension";
 import type { OnboardingDocumentRow } from "@/types/db";
 
 const NENKIN_KEY = "prep_nenkin";
 
-// 年金記録票の記号を選び、意味とアラート（未納なら支払い/免除申請が必要）を表示し、
-// 年金記録票のファイルを添付できるページ。
+// 対応区分ごとの色。Tailwind は書いてあるクラス名しか作らないので literal で持つ
+const ACTION_TONE: Record<PensionAction, string> = {
+  pay: "bg-seal/10 text-seal",
+  exempt: "bg-status-notice-bg text-status-notice-fg",
+  ok: "bg-status-approved-bg text-status-approved-fg",
+  check: "bg-status-notice-bg text-status-notice-fg",
+};
+
+// 記号を選ぶ <select> の並び（対応区分ごとにまとめる）
+const SYMBOL_GROUPS: { action: PensionAction; label: string }[] = [
+  { action: "pay", label: "未納（要支払い/免除申請）" },
+  { action: "exempt", label: "免除・猶予・特例" },
+  { action: "ok", label: "納付済み" },
+  { action: "check", label: "要確認" },
+];
+
+// 今月を "YYYY-MM" で返す
+function thisMonth(): string {
+  return new Date().toISOString().slice(0, 7);
+}
+
+// 年金記録票の記号を月ごとに控え、意味とアラート（未納なら支払い/免除申請が必要）を
+// 表示し、年金記録票のファイルを添付できるページ。
 export function PensionRecordClient({
   workerId,
   workerName,
@@ -38,8 +74,13 @@ export function PensionRecordClient({
   workerName: string;
   canEdit: boolean;
 }) {
-  const [symbols, setSymbols] = useState<Set<string>>(new Set());
+  const [applyMonth, setApplyMonth] = useState(thisMonth());
+  const [monthCodes, setMonthCodes] = useState<PensionMonthCodes>({});
+  // 月が分からない古い記録（記号だけを控えていたころのもの）
+  const [legacySymbols, setLegacySymbols] = useState<string[]>([]);
   const [note, setNote] = useState("");
+  const [paste, setPaste] = useState("");
+  const [showLegend, setShowLegend] = useState(false);
   const [file, setFile] = useState<OnboardingDocumentRow | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -55,7 +96,9 @@ export function PensionRecordClient({
   useEffect(() => {
     getPensionRecord(createClient(), workerId)
       .then((r) => {
-        setSymbols(new Set(parsePensionSymbols(r.symbols)));
+        setMonthCodes(r.months);
+        setLegacySymbols(parsePensionSymbols(r.symbols));
+        setApplyMonth(r.apply_month || thisMonth());
         setNote(r.note);
       })
       .catch(() => undefined);
@@ -63,26 +106,53 @@ export function PensionRecordClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workerId]);
 
-  const codes = [...symbols];
+  const months = useMemo(() => pensionMonths(applyMonth), [applyMonth]);
+  const summary = useMemo(() => summarizeMonths(monthCodes, months), [monthCodes, months]);
+
+  // 月ごとに入っていればそれで判定し、まだ無ければ古い記録の記号で判定する
+  const monthCodeList = months.map((m) => monthCodes[m]).filter((c): c is string => !!c);
+  const codes = monthCodeList.length ? monthCodeList : legacySymbols;
   const result = judgePension(codes);
   const hasFile = !!file?.storage_path;
 
-  const toggle = (code: string) =>
-    setSymbols((prev) => {
-      const next = new Set(prev);
-      if (next.has(code)) next.delete(code);
-      else next.add(code);
+  const setMonth = (month: string, code: string) =>
+    setMonthCodes((prev) => {
+      const next = { ...prev };
+      if (code) next[month] = code;
+      else delete next[month];
       return next;
     });
+
+  // 記録票の並びをそのまま貼り付けて、24か月分をまとめて入れる
+  const applyPaste = () => {
+    const filled = assignPastedCodes(paste, months);
+    if (!Object.keys(filled).length) {
+      setError("記号を読み取れませんでした。記録票の記号をそのまま貼り付けてください。");
+      return;
+    }
+    setMonthCodes((prev) => ({ ...prev, ...filled }));
+    setPaste("");
+    setError(null);
+  };
+
+  const clearMonths = () => {
+    if (!window.confirm("入力した24か月分の記号をすべて消します。よろしいですか？")) return;
+    setMonthCodes({});
+  };
 
   async function save() {
     setSaving(true);
     setError(null);
     try {
+      // 月ごとに入れたときは、そこに出てくる記号で記号欄も置き換える（記録票の並び順）
+      const used = PENSION_SYMBOLS.filter((s) => monthCodeList.includes(s.code)).map((s) => s.code);
       await upsertPensionRecord(createClient(), workerId, {
-        symbols: PENSION_SYMBOLS.filter((s) => symbols.has(s.code)).map((s) => s.code).join(","),
+        symbols: (used.length ? used : legacySymbols).join(","),
         note,
+        apply_month: applyMonth,
+        months: monthCodes,
       });
+      if (used.length) setLegacySymbols(used);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (err) {
@@ -145,26 +215,30 @@ export function PensionRecordClient({
         ? "bg-status-approved-bg text-status-approved-fg"
         : "bg-status-notice-bg text-status-notice-fg";
 
+  const INPUT =
+    "min-h-[40px] rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none";
+
   return (
     <div className="mx-auto max-w-2xl space-y-4 pb-10">
       <Card className="p-4">
         <p className="mb-2 text-sm font-bold">{workerName}</p>
-        <p className="text-[11px] text-muted">
-          年金記録票（通知書）に記載の記号を選ぶと、意味と対応が判定されます。国民年金加入者向け。
+        <p className="text-[11px] leading-relaxed text-muted">
+          年金記録票（被保険者記録照会回答票）の記号を月ごとに控えると、意味と対応が判定されます。
+          申請では、申請月の{PENSION_MONTH_LAG}か月前までの{PENSION_MONTH_COUNT}か月分を見ます。国民年金加入者向け。
         </p>
         {codes.length > 0 && (
           <div
             className={`mt-3 flex items-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-bold ${alertTone}`}
           >
-            {result.judgment === "pay" ? (
-              <AlertTriangle size={15} />
-            ) : result.judgment === "ok" ? (
-              <CheckCircle2 size={15} />
-            ) : (
-              <AlertTriangle size={15} />
-            )}
+            {result.judgment === "ok" ? <CheckCircle2 size={15} /> : <AlertTriangle size={15} />}
             {result.alert}
           </div>
+        )}
+        {summary.payMonths.length > 0 && (
+          <p className="mt-1.5 text-xs leading-relaxed text-seal">
+            未納の月（{summary.payMonths.length}か月）:{" "}
+            {summary.payMonths.map((m) => warekiMonthLabel(m)).join("・")}
+          </p>
         )}
       </Card>
 
@@ -174,47 +248,111 @@ export function PensionRecordClient({
         </p>
       )}
 
-      {/* 記号の選択（通知書に出てくる記号にチェック） */}
+      {/* 月ごとの記号（申請月の2か月前までの24か月分） */}
       <Card className="space-y-3 p-4">
-        <p className="text-xs font-bold text-muted">記録票に出てくる記号（複数選択可）</p>
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-bold text-muted">申請月</span>
+            <input
+              type="month"
+              value={applyMonth}
+              disabled={!canEdit}
+              onChange={(e) => setApplyMonth(e.target.value)}
+              className={INPUT}
+            />
+          </label>
+          <p className="text-[11px] leading-relaxed text-muted">
+            確認する期間
+            <br />
+            <span className="font-bold tabular-nums text-foreground">
+              {months.length ? `${warekiMonthLabel(months[0])} 〜 ${warekiMonthLabel(months[months.length - 1])}` : "—"}
+            </span>
+            <br />
+            入力済み {summary.filled} / {summary.total} か月
+          </p>
+        </div>
+
+        {canEdit && (
+          <div className="rounded-xl bg-background p-3">
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-bold text-muted">
+                まとめて入力（記録票の記号をそのまま貼り付け・古い月から順に入ります）
+              </span>
+              <textarea
+                rows={2}
+                value={paste}
+                placeholder="例: AAA AAA AAA AAA AAA AAA A／A ＊＊＊"
+                onChange={(e) => setPaste(e.target.value)}
+                className="w-full rounded-xl border border-border bg-surface px-3 py-2.5 text-sm focus:border-brand focus:outline-none"
+              />
+            </label>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button type="button" variant="secondary" onClick={applyPaste} disabled={!paste.trim()}>
+                24か月分に割り当てる
+              </Button>
+              <Button type="button" variant="secondary" onClick={clearMonths}>
+                すべて消す
+              </Button>
+            </div>
+          </div>
+        )}
+
         <div className="overflow-hidden rounded-xl border border-border">
-          {PENSION_SYMBOLS.map((s) => {
-            const on = symbols.has(s.code);
+          {months.map((month, i) => {
+            const code = monthCodes[month] ?? "";
+            const sym = pensionSymbolByCode(code);
             return (
-              <label
-                key={s.code}
-                className="flex items-center gap-2.5 border-b border-border bg-background px-3 py-2 text-sm last:border-b-0"
+              <div
+                key={month}
+                className={`flex items-center gap-2 border-b border-border px-2.5 py-1.5 text-sm last:border-b-0 ${
+                  i % 2 === 0 ? "bg-background" : "bg-surface/60"
+                }`}
               >
-                <input
-                  type="checkbox"
-                  checked={on}
-                  disabled={!canEdit}
-                  onChange={() => toggle(s.code)}
-                  className="h-4 w-4 shrink-0"
-                />
-                <span className="w-16 shrink-0 font-bold">{s.code}</span>
-                <span className="min-w-0 flex-1 text-muted">{s.meaning}</span>
-                <span
-                  className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                    s.action === "pay"
-                      ? "bg-seal/10 text-seal"
-                      : s.action === "ok"
-                        ? "bg-status-approved-bg text-status-approved-fg"
-                        : "bg-status-notice-bg text-status-notice-fg"
-                  }`}
-                >
-                  {s.action === "pay"
-                    ? "要支払い/免除申請"
-                    : s.action === "exempt"
-                      ? "免除・猶予"
-                      : s.action === "ok"
-                        ? "問題なし"
-                        : "要確認"}
+                <span className="w-[104px] shrink-0 text-[11px] font-bold tabular-nums">
+                  {warekiMonthLabel(month)}
+                  <span className="ml-1 font-normal text-muted">{month}</span>
                 </span>
-              </label>
+                <select
+                  value={code}
+                  disabled={!canEdit}
+                  aria-label={`${warekiMonthLabel(month)}の記号`}
+                  onChange={(e) => setMonth(month, e.target.value)}
+                  className="w-[68px] shrink-0 rounded-lg border border-border bg-background px-1.5 py-1 text-sm font-bold focus:border-brand focus:outline-none"
+                >
+                  <option value="">—</option>
+                  {SYMBOL_GROUPS.map((g) => (
+                    <optgroup key={g.action} label={g.label}>
+                      {PENSION_SYMBOLS.filter((s) => s.action === g.action).map((s) => (
+                        <option key={s.code} value={s.code}>
+                          {s.code}　{s.meaning}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+                <span className="min-w-0 flex-1 truncate text-[11px] text-muted" title={sym?.meaning}>
+                  {sym?.meaning ?? "未入力"}
+                </span>
+                {sym && (
+                  <span
+                    className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${ACTION_TONE[sym.action]}`}
+                  >
+                    {PENSION_ACTION_LABELS[sym.action]}
+                  </span>
+                )}
+              </div>
             );
           })}
         </div>
+
+        {/* 月が分からない古い記録。月ごとに入力すると置き換わる */}
+        {!monthCodeList.length && legacySymbols.length > 0 && (
+          <p className="rounded-lg bg-status-notice-bg px-3 py-2 text-[11px] leading-relaxed text-status-notice-fg">
+            以前に記号だけを控えた記録があります: <b>{legacySymbols.join("・")}</b>
+            <br />
+            月ごとに入力して保存すると、こちらは自動で置き換わります。
+          </p>
+        )}
 
         <label className="block">
           <span className="mb-1 block text-[11px] font-bold text-muted">
@@ -243,6 +381,40 @@ export function PensionRecordClient({
               "保存する"
             )}
           </Button>
+        )}
+      </Card>
+
+      {/* 記号の一覧（記録票の凡例そのまま） */}
+      <Card className="p-4">
+        <button
+          type="button"
+          onClick={() => setShowLegend((v) => !v)}
+          aria-expanded={showLegend}
+          className="flex w-full items-center justify-between gap-2 text-sm font-bold"
+        >
+          記号の一覧（国民年金納付記録の見方）
+          <ChevronDown
+            size={16}
+            className={`shrink-0 text-muted transition-transform ${showLegend ? "rotate-180" : ""}`}
+          />
+        </button>
+        {showLegend && (
+          <div className="mt-3 overflow-hidden rounded-xl border border-border">
+            {PENSION_SYMBOLS.map((s) => (
+              <div
+                key={s.code}
+                className="flex items-center gap-2.5 border-b border-border bg-background px-3 py-1.5 text-sm last:border-b-0"
+              >
+                <span className="w-8 shrink-0 text-center font-bold">{s.code}</span>
+                <span className="min-w-0 flex-1 text-[11px] text-muted">{s.meaning}</span>
+                <span
+                  className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${ACTION_TONE[s.action]}`}
+                >
+                  {PENSION_ACTION_LABELS[s.action]}
+                </span>
+              </div>
+            ))}
+          </div>
         )}
       </Card>
 
