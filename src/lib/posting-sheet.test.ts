@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  canPickRenewalCriteria,
+  contractRenewalText,
   contractText,
   dailyWorkHours,
   deductionItemsText,
@@ -10,8 +12,13 @@ import {
   normalizePostingSheet,
   normalizeTimeInput,
   postingSheetText,
+  isContractRenewalYes,
+  renewalCriteriaText,
   smokingText,
   workHoursText,
+  CONTRACT_RENEWAL_AUTO,
+  CONTRACT_RENEWAL_MAYBE,
+  CONTRACT_RENEWAL_NONE,
 } from "./posting-sheet";
 
 const POSTING = {
@@ -220,5 +227,94 @@ describe("postingSheetText", () => {
     });
     expect(withText).toContain("源泉所得税（扶養0人として）：なし");
     expect(withText).toContain("通信費：無し");
+  });
+});
+
+describe("契約の更新の有無（雇用条件書の3つ）", () => {
+  const sheet = (patch: Partial<ReturnType<typeof emptyPostingSheet>>) => ({
+    ...emptyPostingSheet(),
+    ...patch,
+  });
+
+  it("判断基準を選べるのは「更新する場合があり得る」のときだけ", () => {
+    expect(canPickRenewalCriteria(CONTRACT_RENEWAL_MAYBE)).toBe(true);
+    expect(canPickRenewalCriteria(CONTRACT_RENEWAL_AUTO)).toBe(false);
+    expect(canPickRenewalCriteria(CONTRACT_RENEWAL_NONE)).toBe(false);
+    expect(canPickRenewalCriteria("")).toBe(false);
+  });
+
+  it("自動的に更新するは、基準を付けずに「有：自動的に更新する」", () => {
+    const s = sheet({
+      contract_renewal_kind: CONTRACT_RENEWAL_AUTO,
+      // 自動更新なので基準は使わない（間違って残っていても出さない）
+      contract_renewal_criteria: ["会社の経営状況"],
+    });
+    expect(contractRenewalText(s)).toBe("有：自動的に更新する");
+    expect(isContractRenewalYes(s)).toBe(true);
+  });
+
+  it("更新する場合があり得るは、選んだ基準を並べる", () => {
+    const s = sheet({
+      contract_renewal_kind: CONTRACT_RENEWAL_MAYBE,
+      contract_renewal_criteria: ["契約期間満了時の業務量", "労働者の勤務成績、態度"],
+    });
+    expect(contractRenewalText(s)).toBe(
+      "有：更新する場合があり得る（契約期間満了時の業務量・労働者の勤務成績、態度）",
+    );
+  });
+
+  it("基準のその他は、かっこ書きで最後に付ける", () => {
+    const s = sheet({
+      contract_renewal_kind: CONTRACT_RENEWAL_MAYBE,
+      contract_renewal_criteria: ["会社の経営状況"],
+      contract_renewal_other: "取引先の状況",
+    });
+    expect(renewalCriteriaText(s)).toBe("会社の経営状況・その他（取引先の状況）");
+    expect(contractRenewalText(s)).toBe(
+      "有：更新する場合があり得る（会社の経営状況・その他（取引先の状況））",
+    );
+  });
+
+  it("基準を1つも選んでいなければ、種別だけを出す", () => {
+    const s = sheet({ contract_renewal_kind: CONTRACT_RENEWAL_MAYBE });
+    expect(contractRenewalText(s)).toBe("有：更新する場合があり得る");
+  });
+
+  it("契約の更新はしないは「無」", () => {
+    const s = sheet({ contract_renewal_kind: CONTRACT_RENEWAL_NONE });
+    expect(contractRenewalText(s)).toBe("無");
+    expect(isContractRenewalYes(s)).toBe(false);
+  });
+
+  it("更新の有無を選んでいない求人は、以前の自由入力をそのまま使う", () => {
+    const s = sheet({ contract_renewal: "有：勤務成績により判断" });
+    expect(contractRenewalText(s)).toBe("有：勤務成績により判断");
+    expect(isContractRenewalYes(s)).toBe(true);
+    expect(contractText(s)).toBe("期間の定めあり ／ 契約の更新：有：勤務成績により判断");
+  });
+
+  it("どちらも空なら、契約の更新の欄は出さない", () => {
+    const s = emptyPostingSheet();
+    expect(contractRenewalText(s)).toBe("");
+    expect(isContractRenewalYes(s)).toBe(false);
+    expect(contractText(s)).toBe("期間の定めあり");
+  });
+
+  it("契約期間のまとめにも、選んだ更新の内容が入る", () => {
+    const s = sheet({
+      contract_term: "3年",
+      contract_renewal_kind: CONTRACT_RENEWAL_AUTO,
+    });
+    expect(contractText(s)).toBe("期間の定めあり：3年 ／ 契約の更新：有：自動的に更新する");
+  });
+
+  it("保存された判断基準は配列として読み込む", () => {
+    const s = normalizePostingSheet({
+      contract_renewal_kind: CONTRACT_RENEWAL_MAYBE,
+      contract_renewal_criteria: ["会社の経営状況", "従事している業務の進捗状況"],
+    });
+    expect(s.contract_renewal_criteria).toEqual(["会社の経営状況", "従事している業務の進捗状況"]);
+    // 項目が無い古いデータは空の配列になる
+    expect(normalizePostingSheet({}).contract_renewal_criteria).toEqual([]);
   });
 });

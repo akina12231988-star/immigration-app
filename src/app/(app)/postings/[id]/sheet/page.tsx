@@ -26,11 +26,15 @@ export default async function PostingSheetPage({
     ? await getOrganization(supabase, posting.organization_id).catch(() => null)
     : null;
 
+  // 求人票は労働局に出す様式なので、Facebook掲載用の伏せた会社名（display_company）ではなく
+  // 所属機関の正式な名前を出す
+  const orgName = org?.name || posting.organizations?.name || "";
+
   return (
     <PostingSheetPrint
       posting={posting}
       sheet={normalizePostingSheet(posting.sheet)}
-      orgName={posting.display_company || org?.name || posting.organizations?.name || ""}
+      orgName={orgName}
       orgAddress={org?.address ?? ""}
       orgContact={posting.contact || org?.contact || ""}
       canEdit={me.role !== "viewer"}
