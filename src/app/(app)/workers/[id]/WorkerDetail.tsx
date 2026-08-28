@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  AlertTriangle,
   BookOpen,
   CalendarClock,
   Check,
@@ -67,7 +68,16 @@ import {
 } from "@/components/workers/HistoryFormDialog";
 import { SswGauge } from "@/components/workers/SswGauge";
 import { SswStatusBadge, SupportBadge, WorkerStatusBadge } from "@/components/workers/badges";
-import { calcDocumentTotal, calcSsw, entryDays, todayStr, ymdFullText } from "@/lib/ssw/calc";
+import {
+  calcDocumentTotal,
+  calcSsw,
+  entryDays,
+  sswGaps,
+  toYMD,
+  todayStr,
+  ymdFullText,
+  type SswGap,
+} from "@/lib/ssw/calc";
 import { isSswInsuranceRenewalTarget, remainingLabel } from "@/lib/worker-alerts";
 import { orgStaffLabel } from "@/lib/organization-intake";
 import { createClient } from "@/lib/supabase/client";
@@ -173,6 +183,11 @@ export function WorkerDetail({
   // 月単位の通算（1日でも在留した月は1か月）。申請書類用と同じ数え方の今日時点の値
   const monthTotal = useMemo(
     () => calcDocumentTotal(worker.work_histories.map(toCalcHistory), today),
+    [worker.work_histories, today],
+  );
+  // 通算に数えていない期間（職歴の登録漏れに気づけるようにするための表示用）
+  const gaps = useMemo(
+    () => sswGaps(worker.work_histories.map(toCalcHistory), today),
     [worker.work_histories, today],
   );
 
@@ -1454,6 +1469,7 @@ export function WorkerDetail({
           <InfoItem label="起算日" value={calc.firstStart} />
           <InfoItem label="満了予定日" value={calc.expiry} />
         </dl>
+        <SswGapNotice gaps={gaps} className="mt-3" />
         <p className="mt-3 text-[11px] leading-relaxed text-muted">
           通算在留日数は日数合算による目安です（特定活動〔1号移行準備〕を含む）。
           月単位の通算は申請書類用と同じ数え方（1日でも在留した月は1か月）の今日時点の値です。
@@ -1766,6 +1782,34 @@ function InfoItem({
   );
 }
 
+// 通算に数えていない期間（空白）のお知らせ。
+//
+// 「起算日から今日まで通しで数えたはず」の月数と画面の通算が食い違うときは、
+// たいていこの空白に職歴の登録漏れがある。ただし在留資格を切って帰国していた期間なら
+// 空白があるのが正しいので、数字は変えずにお知らせだけ出す。
+function SswGapNotice({ gaps, className = "" }: { gaps: SswGap[]; className?: string }) {
+  if (!gaps.length) return null;
+  return (
+    <div className={`rounded-lg bg-seal/10 px-3 py-2 text-xs text-seal ${className}`}>
+      <p className="flex items-center gap-1.5 font-bold">
+        <AlertTriangle size={14} className="shrink-0" />
+        通算に数えていない期間があります（{gaps.length}件）
+      </p>
+      <ul className="mt-1.5 flex flex-col gap-0.5 tabular-nums">
+        {gaps.map((g) => (
+          <li key={g.start}>
+            {g.start} 〜 {g.end}（{ymdFullText(toYMD(g.days))}・{g.days}日）
+          </li>
+        ))}
+      </ul>
+      <p className="mt-1.5 text-[11px] leading-relaxed">
+        この期間の職歴が登録されていません。特定技能1号・特定活動〔1号移行準備〕で在留していた期間なら、
+        職歴に追加すると通算に入ります。在留資格を切って帰国していた期間なら、このままで正しいです。
+      </p>
+    </div>
+  );
+}
+
 // 申請書類用の通算: 通算対象（特定技能1号・特定活動〔1号移行準備〕・在留資格を保持したままの
 // 帰国）の期間について「1日でも在留した月」を1か月と数えて「◯年◯か月」を出す。
 // 在留資格を切って帰国していた期間などの空白は数えない（通算期間ゲージと同じ範囲）
@@ -1774,6 +1818,7 @@ function DocumentTotalPanel({ histories }: { histories: WorkHistory[] }) {
   const [copied, setCopied] = useState(false);
   const calc = useMemo(() => calcSsw(histories, docDate), [histories, docDate]);
   const totalMonths = useMemo(() => calcDocumentTotal(histories, docDate), [histories, docDate]);
+  const gaps = useMemo(() => sswGaps(histories, docDate), [histories, docDate]);
 
   const firstStart = calc.firstStart;
   const shinsei = `${Math.floor((totalMonths ?? 0) / 12)}年${(totalMonths ?? 0) % 12}か月`;
@@ -1829,6 +1874,7 @@ function DocumentTotalPanel({ histories }: { histories: WorkHistory[] }) {
               　1日でも在留した月を1か月と数えています（帰国などの空白は含まず）
             </p>
           </div>
+          <SswGapNotice gaps={gaps} />
           <Button
             variant="secondary"
             fullWidth
