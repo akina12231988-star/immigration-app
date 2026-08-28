@@ -26,6 +26,7 @@ import {
   type RenewalFieldsWorker,
 } from "@/components/workers/WorkerRenewalFields";
 import { createClient } from "@/lib/supabase/client";
+import { CopyButton } from "@/components/ui/CopyButton";
 import { updateWorker } from "@/lib/supabase/queries/workers";
 import { listOnboardingDocs } from "@/lib/supabase/queries/onboarding";
 import {
@@ -131,6 +132,8 @@ import {
 import {
   appTypeOfPrepSituation,
   PREP_SITUATION_CHOICES,
+  prepTodoName,
+  prepTodoFileName,
 } from "@/lib/worker-situation";
 import type { OnboardingDocumentRow } from "@/types/db";
 
@@ -361,6 +364,33 @@ export function ApplicationPrepChecklist({
   // 申請準備の所属機関（転職先）が入っていればそちら、無ければ現在の所属機関
   const prepOrgId =
     workerRow?.application_prep_organization_id ?? workerRow?.current_organization_id ?? null;
+
+  // 申請TODOのファイル名に使う所属機関名。一覧を渡されていればそこから、
+  // 渡されていない画面（申請準備のページ）では名前だけを1件読む
+  const orgNameFromProp = prepOrgId
+    ? (organizations?.find((o) => o.id === prepOrgId)?.name ?? "")
+    : "";
+  const [orgNameCache, setOrgNameCache] = useState<{ orgId: string; name: string } | null>(null);
+  useEffect(() => {
+    if (!prepOrgId || orgNameFromProp) return;
+    let cancelled = false;
+    void createClient()
+      .from("organizations")
+      .select("name")
+      .eq("id", prepOrgId)
+      .maybeSingle()
+      .then(({ data }) => {
+        // 機関が切り替わった直後に前の機関の名前を出さないよう、どの機関のぶんかも持つ
+        if (!cancelled) {
+          setOrgNameCache({ orgId: prepOrgId, name: (data as { name: string } | null)?.name ?? "" });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [prepOrgId, orgNameFromProp]);
+  const prepOrgName =
+    orgNameFromProp || (orgNameCache?.orgId === prepOrgId ? orgNameCache.name : "");
 
   // 追加項目（単独/連名・連名相手・署名ステータス）の保存（0105）
   async function saveExtras(
@@ -1010,6 +1040,21 @@ export function ApplicationPrepChecklist({
             ))}
           </div>
         )}
+        {/* TODO番号の下: そのまま貼れる名称（メッセンジャー用・ファイル名用）。
+            毎回手で組み立てなくてよいように、右のボタンでコピーできる */}
+        {current != null && (
+          <PrepTodoNames
+            messenger={prepTodoName(current.todo_no, meta.app_content, meta.app_type)}
+            fileName={prepTodoFileName(
+              current.todo_no,
+              meta.app_content,
+              workerRow?.name ?? "",
+              prepOrgName,
+              meta.app_type,
+            )}
+          />
+        )}
+
         {/* 追加フォームはTODO番号がまだ無いときだけ出す（1人1番号が基本。
             間違えて登録した番号は上のチップの🗑で削除してから登録し直す） */}
         {canEdit ? (
@@ -1626,6 +1671,35 @@ export function ApplicationPrepChecklist({
         }}
       />
     </Card>
+  );
+}
+
+// 申請TODOの名称を2つ並べて、それぞれコピーできるようにする。
+// メッセンジャー用は「TODO番号 申請種別：準備中」、ファイル名用は
+// 「TODO番号_申請種別_名前_所属機関名」。まだ組み立てられないものは出さない。
+function PrepTodoNames({ messenger, fileName }: { messenger: string; fileName: string }) {
+  const names = [
+    { label: "メッセンジャー用", value: messenger },
+    { label: "ファイル名用", value: fileName },
+  ].filter((n) => !!n.value);
+  if (!names.length) return null;
+  return (
+    <div className="mb-2 space-y-1.5">
+      {names.map((n) => (
+        <div key={n.label} className="rounded-lg bg-surface/60 px-2.5 py-1.5">
+          <p className="text-[10px] font-bold text-muted">{n.label}</p>
+          <div className="flex items-start gap-1.5">
+            <p className="min-w-0 flex-1 break-all text-xs font-bold">{n.value}</p>
+            <CopyButton
+              value={n.value}
+              label={`${n.label}の名称をコピー`}
+              size={13}
+              className="mt-0.5"
+            />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 

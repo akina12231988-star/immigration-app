@@ -5,7 +5,7 @@
 // description が空の選択肢は、意味の説明をまだもらっていないもの。
 
 import type { ApplicationContent } from "@/types/application";
-import type { PrepAppType } from "@/lib/application-prep";
+import { PREP_APP_TYPE_LABELS, type PrepAppType } from "@/lib/application-prep";
 
 export interface WorkerSituation {
   value: string;
@@ -324,6 +324,49 @@ export const PREP_SITUATION_CHOICES: { label: string; situation: string }[] =
 export function appTypeOfPrepSituation(prepSituation: string): PrepAppType | "" {
   const hit = APPLICATION_CONTENT_CHOICES.find((c) => c.prepSituation === prepSituation);
   return hit?.appType ?? "";
+}
+
+// ---- 申請TODOの名称（申請準備の画面でコピーして使う） ----
+
+// 申請種別の言い方。選んだ準備の内容（app_content）を使い、0121 より前に申請種別
+// （変更/更新/認定/特定活動）だけを選んでいたぶんは、その言い方で組み立てる
+function prepAppTypeText(appContent: string, appType: "" | PrepAppType): string {
+  if (appContent) return prepSituationLabel(appContent);
+  return appType ? PREP_APP_TYPE_LABELS[appType] : "";
+}
+
+// メッセンジャー用の名称（「TODO番号 申請種別：準備中」）。
+// 番号・申請種別が空のときは、あるものだけでつなぐ（両方とも空なら空文字）。
+export const PREP_TODO_NAME_SUFFIX = "準備中";
+
+export function prepTodoName(
+  todoNo: string,
+  appContent: string,
+  appType: "" | PrepAppType = "",
+): string {
+  const head = [todoNo.trim(), prepAppTypeText(appContent, appType)].filter(Boolean).join(" ");
+  return head ? `${head}：${PREP_TODO_NAME_SUFFIX}` : "";
+}
+
+// ファイル名に使えない文字（Windows・macOS）。名前に「/」などが入っていても壊れないようにする
+const FILE_NAME_NG = /[\\/:*?"<>|\u0000-\u001f]/g;
+
+// ファイル名用の名称（「TODO番号_申請種別_名前_所属機関名」）。
+//
+// 名前や所属機関名にはもともと空白が入る（「HOANG QUOC DINH」「株式会社　高正」）ため、
+// 項目の区切りは「_」にして、どこまでが1項目か分かるようにしている。
+// 全角の空白は半角にそろえ、使えない文字は「_」に置き換える。
+export function prepTodoFileName(
+  todoNo: string,
+  appContent: string,
+  workerName: string,
+  orgName: string,
+  appType: "" | PrepAppType = "",
+): string {
+  return [todoNo, prepAppTypeText(appContent, appType), workerName, orgName]
+    .map((part) => (part ?? "").replace(FILE_NAME_NG, "_").replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join("_");
 }
 
 // 準備の内容（只今の状況）の保存値から、画面に出す言い方を返す
