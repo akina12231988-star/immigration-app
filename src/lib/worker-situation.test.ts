@@ -9,6 +9,8 @@ import {
   mergeSituation,
   situationAfterApproval,
   prepSituationLabel,
+  prepTodoName,
+  prepTodoFileName,
   situationDescription,
   splitSituations,
 } from "@/lib/worker-situation";
@@ -205,5 +207,54 @@ describe("prepSituationLabel", () => {
 
   test("知らない値はそのまま返す", () => {
     expect(prepSituationLabel("なにか")).toBe("なにか");
+  });
+});
+
+describe("prepTodoName（メッセンジャー用の名称）", () => {
+  test("TODO番号＋申請種別＋「：準備中」でつなぐ", () => {
+    expect(prepTodoName("TODO-1343", "特定技能更新の準備中")).toBe(
+      "TODO-1343 在留期間の更新許可（特定技能）：準備中",
+    );
+  });
+
+  test("0121より前の申請種別だけのぶんは、その言い方で組み立てる", () => {
+    expect(prepTodoName("TODO-1343", "", "更新")).toBe("TODO-1343 在留資格更新申請：準備中");
+  });
+
+  test("申請種別が未選択なら番号だけ", () => {
+    expect(prepTodoName("TODO-1343", "")).toBe("TODO-1343：準備中");
+  });
+
+  test("番号が未設定なら申請種別だけ", () => {
+    expect(prepTodoName("", "特定技能更新の準備中")).toBe(
+      "在留期間の更新許可（特定技能）：準備中",
+    );
+  });
+
+  test("どちらも空なら空文字（コピー欄を出さない）", () => {
+    expect(prepTodoName("", "")).toBe("");
+  });
+});
+
+describe("prepTodoFileName（ファイル名用の名称）", () => {
+  test("TODO番号_申請種別_名前_所属機関名 でつなぐ", () => {
+    expect(
+      prepTodoFileName("TODO-1343", "特定技能更新の準備中", "HOANG QUOC DINH", "株式会社　高正"),
+    ).toBe("TODO-1343_在留期間の更新許可（特定技能）_HOANG QUOC DINH_株式会社 高正");
+  });
+
+  test("ファイル名に使えない文字は _ に置き換える", () => {
+    expect(prepTodoFileName("TODO/1", "", "A:B", "C*D")).toBe("TODO_1_A_B_C_D");
+  });
+
+  test("空の項目は詰める", () => {
+    expect(prepTodoFileName("TODO-1343", "", "HOANG QUOC DINH", "")).toBe(
+      "TODO-1343_HOANG QUOC DINH",
+    );
+    expect(prepTodoFileName("", "", "", "")).toBe("");
+  });
+
+  test("前後の空白は落とす", () => {
+    expect(prepTodoFileName(" TODO-1343 ", "", " 山田 太郎 ", "")).toBe("TODO-1343_山田 太郎");
   });
 });
