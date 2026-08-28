@@ -45,7 +45,8 @@ export interface YMD {
   d: number;
 }
 
-function toYMD(days: number): YMD {
+// 日数を年月日に換算する（1か月 = 30.4375日の近似）
+export function toYMD(days: number): YMD {
   const months = Math.floor(days / AVG_MONTH);
   return {
     y: Math.floor(months / 12),
@@ -70,6 +71,55 @@ export interface SswCalcResult {
   usedMonths: number; // 0〜60（ゲージ表示用）
   expiry: string | null; // 満了予定日（継続中かつ残あり時のみ）
   status: SswStatus;
+}
+
+// ---- 通算に数えていない期間（空白）の洗い出し ----
+
+export interface SswGap {
+  start: string; // 空白の開始日（前の期間の翌日）
+  end: string; // 空白の終了日（次の期間の前日）
+  days: number; // 空白の日数（両端を含む）
+}
+
+function addDays(dateStr: string, n: number): string {
+  const dt = d(dateStr);
+  dt.setUTCDate(dt.getUTCDate() + n);
+  return toDateStr(dt);
+}
+
+// 通算対象の期間と期間のあいだにある空白を洗い出す。
+//
+// 「起算日から今日まで通しで数えたはずの月数」と画面の通算が食い違うのは、
+// たいてい職歴の登録漏れでここに空白ができているため。計算そのものには影響せず、
+// 登録漏れに気づいてもらうための表示用。
+// 在留資格を切って帰国していた期間なら、空白があるのが正しい。
+export function sswGaps(history: WorkHistory[], asOf: string): SswGap[] {
+  const counted = history
+    .filter(isCountedHistory)
+    .filter((h) => h.start && h.start <= asOf)
+    .sort((a, b) => (a.start < b.start ? -1 : 1));
+  if (!counted.length) return [];
+
+  // 終了日が空（継続中）または基準日より先なら、基準日までとみなす
+  const endOf = (h: WorkHistory): string => (!h.end || h.end > asOf ? asOf : h.end);
+
+  const gaps: SswGap[] = [];
+  let prevEnd = endOf(counted[0]);
+  for (const h of counted.slice(1)) {
+    const gapStart = addDays(prevEnd, 1);
+    // 隣り合っている（翌日から始まる）か重なっていれば空白なし
+    if (h.start > gapStart) {
+      const gapEnd = addDays(h.start, -1);
+      gaps.push({
+        start: gapStart,
+        end: gapEnd,
+        days: Math.round((d(gapEnd).getTime() - d(gapStart).getTime()) / DAY) + 1,
+      });
+    }
+    const end = endOf(h);
+    if (end > prevEnd) prevEnd = end;
+  }
+  return gaps;
 }
 
 // ---- 申請書類用の通算（通算対象期間の合算・月単位） ----
