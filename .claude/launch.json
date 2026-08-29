@@ -6,6 +6,13 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 3000
+    },
+    {
+      "name": "website",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cp \"$PWD/website/index.html\" /private/tmp/thanh-website-preview/ 2>/dev/null; cd /private/tmp/thanh-website-preview && exec python3 -m http.server \"${PORT:-8787}\""],
+      "port": 8787,
+      "autoPort": true
     }
   ]
 }

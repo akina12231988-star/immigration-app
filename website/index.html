@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VUONG VAN THANH｜登録支援機関・人材紹介・通訳（熊本）</title>
+<meta name="description" content="登録支援機関 VUONG VAN THANH（登録番号 20登-005746）は、熊本県を中心に、特定技能外国人の支援・人材紹介・通訳を通じて外国人材と日本の企業をつなぎます。ベトナム語・クメール語・インドネシア語・タガログ語対応。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;700;800&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #101820;
+    --ink-2: #3a4550;
+    --gray: #6b7680;
+    --green: #00a968;
+    --green-dark: #008554;
+    --green-pale: #e8f6ef;
+    --bg: #ffffff;
+    --bg-soft: #f5f7f6;
+    --line: #e4e9e7;
+    --radius: 20px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: "Noto Sans JP", "Hiragino Kaku Gothic ProN", sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    line-height: 1.85;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  a { color: inherit; text-decoration: none; }
+  .en { font-family: "Outfit", "Noto Sans JP", sans-serif; }
+  .container { max-width: 1160px; margin: 0 auto; padding: 0 28px; }
+  section, .band { scroll-margin-top: 84px; }
+
+  /* ===== Header ===== */
+  header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    background: rgba(255,255,255,.88);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(16,24,32,.06);
+  }
+  .header-inner { display: flex; align-items: center; justify-content: space-between; height: 76px; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand-mark {
+    width: 42px; height: 42px; border-radius: 12px;
+    background: linear-gradient(135deg, var(--green), #35c48e);
+    display: grid; place-items: center;
+    color: #fff; font-family: "Outfit", sans-serif; font-weight: 800; font-size: 20px;
+  }
+  .brand-text { line-height: 1.25; }
+  .brand-text .n { font-family: "Outfit", sans-serif; font-weight: 800; font-size: 16px; letter-spacing: .02em; }
+  .brand-text .d { font-size: 11px; color: var(--gray); letter-spacing: .12em; }
+  nav ul { display: flex; align-items: center; gap: 30px; list-style: none; }
+  nav a { font-size: 14px; font-weight: 500; color: var(--ink-2); transition: color .2s; }
+  nav a:hover { color: var(--green); }
+  .nav-cta {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--green); color: #fff !important;
+    padding: 11px 26px; border-radius: 999px; font-weight: 700;
+    transition: background .2s, transform .2s;
+  }
+  .nav-cta:hover { background: var(--green-dark); transform: translateY(-1px); }
+  .nav-cta .arrow { font-family: "Outfit", sans-serif; }
+  .menu-btn { display: none; background: none; border: none; font-size: 28px; color: var(--ink); cursor: pointer; }
+
+  /* ===== Hero ===== */
+  .hero {
+    position: relative;
+    padding: 200px 0 0;
+    background:
+      radial-gradient(900px 520px at 88% 8%, rgba(0,169,104,.10), transparent 65%),
+      radial-gradient(700px 460px at 4% 92%, rgba(53,196,142,.12), transparent 60%),
+      linear-gradient(180deg, #fbfdfc 0%, #f2f7f4 100%);
+    overflow: hidden;
+  }
+  .hero-inner { position: relative; z-index: 2; }
+  .hero-tag {
+    display: inline-flex; align-items: center; gap: 10px;
+    background: #fff; border: 1px solid var(--line); border-radius: 999px;
+    padding: 8px 20px; font-size: 13px; font-weight: 700; color: var(--green-dark);
+    letter-spacing: .06em; margin-bottom: 30px;
+    box-shadow: 0 2px 10px rgba(16,24,32,.05);
+  }
+  .hero-tag::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+  .hero h1 {
+    font-family: "Outfit", "Noto Sans JP", sans-serif;
+    font-size: clamp(44px, 7.2vw, 96px);
+    font-weight: 800; line-height: 1.06; letter-spacing: -0.015em;
+    margin-bottom: 30px;
+  }
+  .hero h1 .g { color: var(--green); }
+  .hero .ja-copy {
+    font-size: clamp(17px, 2vw, 22px); font-weight: 700; letter-spacing: .06em;
+    margin-bottom: 18px;
+  }
+  .hero p.lead { font-size: 15.5px; color: var(--gray); max-width: 620px; margin-bottom: 40px; }
+  .hero-actions { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 90px; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    padding: 16px 40px; font-size: 15px; font-weight: 700; border-radius: 999px;
+    transition: all .25s; letter-spacing: .04em;
+  }
+  .btn-green { background: var(--green); color: #fff; box-shadow: 0 10px 26px rgba(0,169,104,.28); }
+  .btn-green:hover { background: var(--green-dark); transform: translateY(-2px); }
+  .btn-ghost { border: 1.5px solid rgba(16,24,32,.18); color: var(--ink); background: #fff; }
+  .btn-ghost:hover { border-color: var(--green); color: var(--green-dark); }
+
+  /* connection art */
+  .hero-art { position: absolute; right: 24px; top: 120px; width: 600px; max-width: 48vw; z-index: 1; opacity: .95; pointer-events: none; }
+  .hero-art .dash { stroke-dasharray: 6 8; animation: dashmove 18s linear infinite; }
+  @keyframes dashmove { to { stroke-dashoffset: -280; } }
+  .hero-art .pulse { animation: pulse 2.6s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
+  @keyframes pulse { 0%,100% { opacity: .5; transform: scale(1); } 50% { opacity: 1; transform: scale(1.35); } }
+
+  /* language marquee */
+  .marquee { border-top: 1px solid var(--line); background: #fff; padding: 22px 0; overflow: hidden; position: relative; z-index: 2; }
+  .marquee-track { display: flex; gap: 64px; white-space: nowrap; animation: scroll 30s linear infinite; width: max-content; }
+  @keyframes scroll { to { transform: translateX(-50%); } }
+  .marquee span {
+    font-family: "Outfit", "Noto Sans JP", sans-serif; font-weight: 700; font-size: 17px;
+    color: var(--ink-2); display: inline-flex; align-items: center; gap: 64px;
+  }
+  .marquee .dot { color: var(--green); }
+
+  /* ===== Sections ===== */
+  section { padding: 110px 0; }
+  .section-soft { background: var(--bg-soft); }
+  .sec-head { margin-bottom: 60px; }
+  .sec-head.center { text-align: center; }
+  .sec-en {
+    font-family: "Outfit", sans-serif; font-size: clamp(34px, 4.6vw, 60px);
+    font-weight: 800; letter-spacing: -0.01em; line-height: 1.05; margin-bottom: 14px;
+  }
+  .sec-en .g { color: var(--green); }
+  .sec-ja { font-size: 15px; font-weight: 700; color: var(--green-dark); letter-spacing: .18em; margin-bottom: 22px; }
+  .sec-desc { color: var(--gray); max-width: 700px; font-size: 15.5px; }
+  .sec-head.center .sec-desc { margin: 0 auto; }
+
+  /* mission */
+  .mission-copy {
+    font-size: clamp(22px, 3vw, 34px); font-weight: 900; line-height: 1.75;
+    letter-spacing: .04em; max-width: 900px;
+  }
+  .mission-copy .hl { background: linear-gradient(transparent 68%, rgba(0,169,104,.25) 68%); }
+  .mission-sub { margin-top: 30px; color: var(--gray); max-width: 780px; }
+
+  /* ===== Services ===== */
+  .services { display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px; }
+  .service-card {
+    background: #fff; border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 42px 34px 36px; position: relative; overflow: hidden;
+    transition: transform .25s, box-shadow .25s;
+  }
+  .service-card:hover { transform: translateY(-6px); box-shadow: 0 24px 48px rgba(16,24,32,.10); }
+  .service-num {
+    font-family: "Outfit", sans-serif; font-size: 15px; font-weight: 700;
+    color: var(--green); letter-spacing: .1em; margin-bottom: 20px;
+  }
+  .service-icon { width: 60px; height: 60px; border-radius: 16px; background: var(--green-pale); color: var(--green-dark); display: grid; place-items: center; margin-bottom: 22px; }
+  .service-icon svg { width: 30px; height: 30px; }
+  .service-card h3 { font-size: 21px; font-weight: 900; margin-bottom: 4px; letter-spacing: .03em; }
+  .service-card .sub { font-family: "Outfit", sans-serif; font-size: 12px; font-weight: 700; color: var(--gray); letter-spacing: .14em; margin-bottom: 16px; }
+  .service-card p { font-size: 14.5px; color: var(--gray); }
+  .service-card .license {
+    margin-top: 18px; padding-top: 16px; border-top: 1px dashed var(--line);
+    font-size: 12.5px; color: var(--gray);
+  }
+  .service-card .license a { color: var(--green-dark); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+  .service-card .license a:hover { color: var(--green); }
+
+  /* ===== Numbers ===== */
+  .numbers { display: grid; grid-template-columns: repeat(4, 1fr); gap: 26px; }
+  .number-card { background: #fff; border-radius: var(--radius); border: 1px solid var(--line); padding: 34px 28px; text-align: center; }
+  .number-card .v {
+    font-family: "Outfit", "Noto Sans JP", sans-serif; font-weight: 800;
+    font-size: clamp(26px, 3vw, 38px); color: var(--ink); line-height: 1.2; margin-bottom: 8px;
+  }
+  .number-card .v .small { font-size: .55em; font-weight: 700; }
+  .number-card .v.long { font-size: clamp(20px, 2vw, 27px); white-space: nowrap; padding-top: 8px; }
+  .number-card .v.long .small { display: block; font-size: 13px; margin-bottom: 6px; }
+  .number-card .v .g { color: var(--green); }
+  .number-card .l { font-size: 13px; color: var(--gray); font-weight: 500; }
+
+  /* ===== Support 10 ===== */
+  .support-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; }
+  .support-item {
+    background: #fff; border: 1px solid var(--line); border-radius: 16px;
+    padding: 28px 18px 24px; text-align: center;
+    transition: border-color .2s, transform .2s;
+  }
+  .support-item:hover { border-color: var(--green); transform: translateY(-3px); }
+  .support-item .num {
+    font-family: "Outfit", sans-serif; font-weight: 800; font-size: 15px;
+    width: 34px; height: 34px; margin: 0 auto 14px; border-radius: 50%;
+    background: var(--green-pale); color: var(--green-dark);
+    display: grid; place-items: center;
+  }
+  .support-item .name { font-size: 13.5px; font-weight: 700; line-height: 1.6; }
+  .support-note { margin-top: 30px; font-size: 13.5px; color: var(--gray); text-align: center; }
+
+  /* ===== CEO ===== */
+  .ceo-wrap { display: grid; grid-template-columns: 1fr 1.6fr; gap: 60px; align-items: center; }
+  .ceo-visual {
+    background: linear-gradient(150deg, var(--green), #35c48e);
+    border-radius: var(--radius); aspect-ratio: 4/4.6;
+    display: flex; flex-direction: column; justify-content: flex-end;
+    padding: 34px; color: #fff; position: relative; overflow: hidden;
+  }
+  .ceo-visual::before {
+    content: "V"; position: absolute; top: -40px; right: -20px;
+    font-family: "Outfit", sans-serif; font-weight: 800; font-size: 280px;
+    color: rgba(255,255,255,.14); line-height: 1;
+  }
+  .ceo-visual .role { font-size: 12.5px; letter-spacing: .14em; opacity: .9; margin-bottom: 6px; }
+  .ceo-visual .name-en { font-family: "Outfit", sans-serif; font-weight: 800; font-size: 26px; line-height: 1.25; }
+  .ceo-visual .name-ja { font-size: 13px; opacity: .92; margin-top: 4px; }
+  .ceo-msg h3 { font-size: clamp(21px, 2.6vw, 30px); font-weight: 900; line-height: 1.6; margin-bottom: 24px; letter-spacing: .04em; }
+  .ceo-msg p { color: var(--ink-2); font-size: 15px; margin-bottom: 16px; }
+  .ceo-badges { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 24px; }
+  .ceo-badge {
+    font-size: 12.5px; font-weight: 700; color: var(--green-dark);
+    background: var(--green-pale); border-radius: 999px; padding: 7px 18px;
+  }
+
+  /* ===== Flow ===== */
+  .flow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px; counter-reset: step; }
+  .flow-step {
+    background: #fff; border-radius: var(--radius); border: 1px solid var(--line);
+    padding: 34px 28px; position: relative;
+  }
+  .flow-step::before {
+    counter-increment: step; content: "0" counter(step);
+    font-family: "Outfit", sans-serif; font-weight: 800; font-size: 34px;
+    color: var(--green); display: block; line-height: 1; margin-bottom: 18px;
+  }
+  .flow-step h4 { font-size: 16.5px; font-weight: 900; margin-bottom: 10px; }
+  .flow-step p { font-size: 13.5px; color: var(--gray); }
+
+  /* ===== Company ===== */
+  .company-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); }
+  .company-table th, .company-table td {
+    padding: 22px 28px; font-size: 14.5px; text-align: left; vertical-align: top;
+    border-bottom: 1px solid var(--line);
+  }
+  .company-table tr:last-child th, .company-table tr:last-child td { border-bottom: none; }
+  .company-table th { width: 30%; color: var(--gray); font-weight: 500; background: #fafcfb; white-space: nowrap; }
+  .company-table td { font-weight: 500; }
+  .company-table a { color: var(--green-dark); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+  .company-table a:hover { color: var(--green); }
+  .ext-icon { font-size: 11px; vertical-align: super; }
+
+  /* ===== Contact ===== */
+  .contact-band {
+    background:
+      radial-gradient(700px 400px at 90% 0%, rgba(255,255,255,.14), transparent 60%),
+      linear-gradient(135deg, #0c8f5c, var(--green) 55%, #2bbd85);
+    border-radius: 28px; color: #fff; text-align: center;
+    padding: 90px 40px; position: relative; overflow: hidden;
+  }
+  .contact-band .sec-en { color: #fff; }
+  .contact-band p.msg { color: rgba(255,255,255,.92); max-width: 640px; margin: 8px auto 40px; font-size: 15.5px; }
+  .btn-white { background: #fff; color: var(--green-dark); }
+  .btn-white:hover { transform: translateY(-2px); box-shadow: 0 14px 30px rgba(0,0,0,.15); }
+  .contact-tel { margin-top: 30px; font-size: 13.5px; color: rgba(255,255,255,.85); }
+  .contact-tel strong { display: block; font-family: "Outfit", sans-serif; font-size: 30px; letter-spacing: .04em; margin-top: 2px; color: #fff; }
+
+  /* ===== Footer ===== */
+  footer { padding: 54px 0 40px; font-size: 13px; color: var(--gray); }
+  .footer-inner { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 20px; border-top: 1px solid var(--line); padding-top: 36px; }
+  .footer-brand .n { font-family: "Outfit", sans-serif; font-weight: 800; font-size: 18px; color: var(--ink); }
+  .footer-brand .d { font-size: 12px; margin-top: 2px; }
+  .footer-brand .a { font-size: 12px; margin-top: 8px; }
+
+  /* reveal */
+  .reveal { opacity: 0; transform: translateY(26px); transition: opacity .7s ease, transform .7s ease; }
+  .reveal.on { opacity: 1; transform: none; }
+
+  /* ===== Responsive ===== */
+  @media (max-width: 1080px) {
+    .hero-art { display: none; }
+  }
+  @media (max-width: 960px) {
+    nav { display: none; }
+    nav.open {
+      display: block; position: absolute; top: 76px; left: 0; right: 0;
+      background: #fff; border-bottom: 1px solid var(--line); box-shadow: 0 20px 40px rgba(16,24,32,.08);
+    }
+    nav.open ul { flex-direction: column; align-items: stretch; gap: 0; padding: 10px 28px 24px; }
+    nav.open a { display: block; padding: 14px 0; border-bottom: 1px solid var(--line); }
+    nav.open .nav-cta { margin-top: 16px; text-align: center; justify-content: center; }
+    .menu-btn { display: block; }
+    .hero { padding-top: 150px; }
+    .services, .numbers, .flow { grid-template-columns: 1fr; }
+    .numbers { grid-template-columns: repeat(2, 1fr); }
+    .support-grid { grid-template-columns: repeat(2, 1fr); }
+    .ceo-wrap { grid-template-columns: 1fr; gap: 34px; }
+    .ceo-visual { aspect-ratio: 16/9; }
+    section { padding: 76px 0; }
+    .company-table th { width: 36%; }
+    .company-table th, .company-table td { padding: 16px 18px; font-size: 13.5px; }
+  }
+  @media (max-width: 560px) {
+    .numbers { grid-template-columns: 1fr; }
+    .support-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="container header-inner">
+    <a href="#top" class="brand">
+      <div class="brand-mark">V</div>
+      <div class="brand-text">
+        <div class="n">VUONG VAN THANH</div>
+        <div class="d">登録支援機関｜熊本</div>
+      </div>
+    </a>
+    <button class="menu-btn" aria-label="メニュー" onclick="document.getElementById('gnav').classList.toggle('open')">☰</button>
+    <nav id="gnav">
+      <ul>
+        <li><a href="#about">私たちについて</a></li>
+        <li><a href="#services">事業内容</a></li>
+        <li><a href="#support">支援体制</a></li>
+        <li><a href="#ceo">代表メッセージ</a></li>
+        <li><a href="#company">会社概要</a></li>
+        <li><a href="#contact" class="nav-cta">お問い合わせ <span class="arrow">→</span></a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<!-- ===== Hero ===== -->
+<div class="hero" id="top">
+  <svg class="hero-art" viewBox="0 0 620 560" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <!-- connection arcs from 4 origins to Japan node -->
+    <path class="dash" d="M60 470 Q 260 300 470 150" stroke="#00a968" stroke-width="2" opacity=".55"/>
+    <path class="dash" d="M140 520 Q 320 360 470 150" stroke="#00a968" stroke-width="2" opacity=".4" style="animation-delay:-4s"/>
+    <path class="dash" d="M250 545 Q 400 400 470 150" stroke="#00a968" stroke-width="2" opacity=".5" style="animation-delay:-9s"/>
+    <path class="dash" d="M370 540 Q 460 380 470 150" stroke="#00a968" stroke-width="2" opacity=".35" style="animation-delay:-13s"/>
+    <!-- origin nodes -->
+    <circle class="pulse" cx="60" cy="470" r="9" fill="#00a968" opacity=".8"/>
+    <circle class="pulse" cx="140" cy="520" r="9" fill="#2bbd85" opacity=".8" style="animation-delay:-.6s"/>
+    <circle class="pulse" cx="250" cy="545" r="9" fill="#00a968" opacity=".8" style="animation-delay:-1.2s"/>
+    <circle class="pulse" cx="370" cy="540" r="9" fill="#2bbd85" opacity=".8" style="animation-delay:-1.8s"/>
+    <!-- Japan node -->
+    <circle cx="470" cy="150" r="22" fill="#00a968" opacity=".14"/>
+    <circle cx="470" cy="150" r="40" stroke="#00a968" stroke-width="1.5" opacity=".25"/>
+    <circle cx="470" cy="150" r="58" stroke="#00a968" stroke-width="1" opacity=".14"/>
+    <circle class="pulse" cx="470" cy="150" r="12" fill="#00a968"/>
+    <text x="500" y="130" font-family="Outfit, sans-serif" font-size="15" font-weight="700" fill="#008554">KUMAMOTO</text>
+    <text x="500" y="150" font-family="Outfit, sans-serif" font-size="11" font-weight="500" fill="#6b7680">JAPAN</text>
+    <text x="20" y="448" font-family="Outfit, sans-serif" font-size="11" font-weight="600" fill="#6b7680">VIETNAM</text>
+    <text x="100" y="498" font-family="Outfit, sans-serif" font-size="11" font-weight="600" fill="#6b7680">CAMBODIA</text>
+    <text x="205" y="523" font-family="Outfit, sans-serif" font-size="11" font-weight="600" fill="#6b7680">INDONESIA</text>
+    <text x="322" y="518" font-family="Outfit, sans-serif" font-size="11" font-weight="600" fill="#6b7680">PHILIPPINES</text>
+  </svg>
+
+  <div class="container hero-inner">
+    <div class="hero-tag">登録支援機関（登録番号 20登-005746）</div>
+    <h1>People Meet Japan<br>for a <span class="g">Better Future</span></h1>
+    <div class="ja-copy">外国人材と日本の企業を、誠実につなぐ。</div>
+    <p class="lead">
+      VUONG VAN THANH は、熊本県を中心に、特定技能外国人への支援・人材紹介・通訳を行う登録支援機関です。
+      外国人スタッフの安心と、受入れ企業の適正な雇用体制づくりを、母国語でまるごと支えます。
+    </p>
+    <div class="hero-actions">
+      <a href="#contact" class="btn btn-green">お問い合わせ →</a>
+      <a href="#services" class="btn btn-ghost">事業内容を見る</a>
+    </div>
+  </div>
+
+  <div class="marquee" aria-hidden="true">
+    <div class="marquee-track">
+      <span>TIẾNG VIỆT <span class="dot">●</span> ភាសាខ្មែរ <span class="dot">●</span> BAHASA INDONESIA <span class="dot">●</span> TAGALOG <span class="dot">●</span> 日本語 <span class="dot">●</span></span>
+      <span>TIẾNG VIỆT <span class="dot">●</span> ភាសាខ្មែរ <span class="dot">●</span> BAHASA INDONESIA <span class="dot">●</span> TAGALOG <span class="dot">●</span> 日本語 <span class="dot">●</span></span>
+    </div>
+  </div>
+</div>
+
+<!-- ===== About / Mission ===== -->
+<section id="about">
+  <div class="container">
+    <div class="sec-head reveal">
+      <div class="sec-ja">MISSION｜私たちについて</div>
+      <h2 class="sec-en">Bridging People,<br>Bridging <span class="g">Cultures.</span></h2>
+    </div>
+    <p class="mission-copy reveal">
+      ことばの壁も、制度の壁も、文化の壁も。<br>
+      <span class="hl">私たちが「橋」になる。</span>
+    </p>
+    <p class="mission-sub reveal">
+      代表自身がベトナム出身。外国人として日本で働き、暮らしてきた経験があるからこそ、
+      外国人材の不安も、受入れ企業の悩みも、どちらの目線にも立てます。
+      ベトナム語・クメール語・インドネシア語・タガログ語の4言語に対応し、
+      採用から入社後の定着まで、ひとつの窓口でサポートします。
+    </p>
+  </div>
+</section>
+
+<!-- ===== Numbers ===== -->
+<section class="section-soft">
+  <div class="container">
+    <div class="sec-head center reveal">
+      <div class="sec-ja">FACTS｜数字で見るVUONG VAN THANH</div>
+    </div>
+    <div class="numbers reveal">
+      <div class="number-card">
+        <div class="v long"><span class="small">登録番号</span>20登-005746</div>
+        <div class="l">出入国在留管理庁 登録支援機関</div>
+      </div>
+      <div class="number-card">
+        <div class="v"><span class="g">4</span><span class="small"> 言語</span></div>
+        <div class="l">ベトナム語・クメール語<br>インドネシア語・タガログ語</div>
+      </div>
+      <div class="number-card">
+        <div class="v"><span class="g">4</span><span class="small"> 名</span></div>
+        <div class="l">支援担当者数</div>
+      </div>
+      <div class="number-card">
+        <div class="v">熊本<span class="small">県中心</span></div>
+        <div class="l">支援対応地域</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Services ===== -->
+<section id="services">
+  <div class="container">
+    <div class="sec-head reveal">
+      <div class="sec-ja">SERVICES｜事業内容</div>
+      <h2 class="sec-en">What <span class="g">We Do</span></h2>
+      <p class="sec-desc">外国人材の受入れに必要な「支援」「採用」「ことば」を、ワンストップでご提供します。</p>
+    </div>
+    <div class="services">
+      <div class="service-card reveal">
+        <div class="service-num">SERVICE 01</div>
+        <div class="service-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/>
+          </svg>
+        </div>
+        <h3>登録支援機関</h3>
+        <div class="sub">SUPPORT ORGANIZATION</div>
+        <p>
+          出入国在留管理庁に登録された支援機関として、特定技能1号外国人への義務的支援を法令に基づき確実に実施。
+          受入れ企業様の支援業務をまるごとお任せいただけます。
+        </p>
+        <div class="license">登録支援機関 登録番号：20登-005746</div>
+      </div>
+      <div class="service-card reveal">
+        <div class="service-num">SERVICE 02</div>
+        <div class="service-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+        </div>
+        <h3>人材紹介事業</h3>
+        <div class="sub">RECRUITMENT</div>
+        <p>
+          厚生労働大臣許可の有料職業紹介事業者として、特定技能をはじめとする外国人材をご紹介。
+          在留資格・技能水準・日本語能力を丁寧に確認し、定着まで見据えたマッチングを行います。
+        </p>
+        <div class="license">
+          有料職業紹介事業 許可番号：43-ユ-300259<br>
+          <a href="https://jinzai.hellowork.mhlw.go.jp/JinzaiWeb/GICB102030.do?screenId=GICB102030&action=detail&detkey_Detail=43-%E3%83%A6-300259%2C1+++++" target="_blank" rel="noopener">許可通知書を確認する（厚生労働省 人材サービス総合サイト）<span class="ext-icon">↗</span></a>
+        </div>
+      </div>
+      <div class="service-card reveal">
+        <div class="service-num">SERVICE 03</div>
+        <div class="service-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8"/><path d="M8 13h5"/>
+          </svg>
+        </div>
+        <h3>通訳・翻訳</h3>
+        <div class="sub">INTERPRETATION</div>
+        <p>
+          ベトナム語・クメール語・インドネシア語・タガログ語の通訳・翻訳に対応。
+          行政手続・面接・社内研修・生活相談など、現場で本当に伝わる通訳で「ことばの壁」をなくします。
+        </p>
+        <div class="license">対応言語：4言語＋日本語</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Support 10 ===== -->
+<section id="support" class="section-soft">
+  <div class="container">
+    <div class="sec-head center reveal">
+      <div class="sec-ja">SUPPORT｜特定技能外国人への支援体制</div>
+      <h2 class="sec-en">10 Kinds of <span class="g">Support</span></h2>
+      <p class="sec-desc">
+        「1号特定技能外国人支援計画」に基づく10項目の義務的支援を、すべて実施できる体制を整えています。
+      </p>
+    </div>
+    <div class="support-grid reveal">
+      <div class="support-item"><div class="num">1</div><div class="name">事前ガイダンス</div></div>
+      <div class="support-item"><div class="num">2</div><div class="name">出入国する際の送迎</div></div>
+      <div class="support-item"><div class="num">3</div><div class="name">住居確保・生活に必要な契約支援</div></div>
+      <div class="support-item"><div class="num">4</div><div class="name">生活オリエンテーション</div></div>
+      <div class="support-item"><div class="num">5</div><div class="name">公的手続等への同行</div></div>
+      <div class="support-item"><div class="num">6</div><div class="name">日本語学習の機会の提供</div></div>
+      <div class="support-item"><div class="num">7</div><div class="name">相談・苦情への対応</div></div>
+      <div class="support-item"><div class="num">8</div><div class="name">日本人との交流促進</div></div>
+      <div class="support-item"><div class="num">9</div><div class="name">転職支援（人員整理等の場合）</div></div>
+      <div class="support-item"><div class="num">10</div><div class="name">定期的な面談・行政機関への通報</div></div>
+    </div>
+    <p class="support-note">
+      支援責任者・支援担当者（4名）を選任し、母国語による相談体制を常時確保しています。
+    </p>
+  </div>
+</section>
+
+<!-- ===== CEO ===== -->
+<section id="ceo">
+  <div class="container ceo-wrap">
+    <div class="ceo-visual reveal">
+      <div>
+        <div class="role">REPRESENTATIVE｜代表・支援責任者・支援担当者</div>
+        <div class="name-en">VUONG VAN THANH</div>
+        <div class="name-ja">ヴオン・ヴァン・タイン（ベトナム出身）</div>
+      </div>
+    </div>
+    <div class="ceo-msg reveal">
+      <div class="sec-ja">MESSAGE｜代表メッセージ</div>
+      <h3>「外国人だからこそ、<br>わかることがある。」</h3>
+      <p>
+        私自身、ベトナムから日本に来て、働き、暮らしてきました。
+        ことばが通じない不安、制度がわからない心細さ、文化の違いに戸惑う気持ち——
+        すべて、私が実際に経験してきたことです。
+      </p>
+      <p>
+        だからこそ、日本で頑張る外国人スタッフには母国語で寄り添い、
+        受入れ企業様には制度と現場の両方がわかる立場から、実務に役立つサポートをお届けできます。
+        外国人材と日本の企業、どちらにとっても「頼れる橋」であり続けます。
+      </p>
+      <div class="ceo-badges">
+        <span class="ceo-badge">支援責任者</span>
+        <span class="ceo-badge">支援担当者</span>
+        <span class="ceo-badge">ベトナム語ネイティブ</span>
+        <span class="ceo-badge">日本語対応</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Flow ===== -->
+<section id="flow" class="section-soft">
+  <div class="container">
+    <div class="sec-head reveal">
+      <div class="sec-ja">FLOW｜ご利用の流れ</div>
+      <h2 class="sec-en">How It <span class="g">Works</span></h2>
+    </div>
+    <div class="flow reveal">
+      <div class="flow-step">
+        <h4>お問い合わせ・ヒアリング</h4>
+        <p>受入れのご状況やお困りごとをお聞かせください。制度のご説明から丁寧に対応します。</p>
+      </div>
+      <div class="flow-step">
+        <h4>ご提案・お見積り</h4>
+        <p>人材のご紹介内容や支援委託の範囲を明確にし、費用を透明にご提示します。</p>
+      </div>
+      <div class="flow-step">
+        <h4>契約・受入れ準備</h4>
+        <p>支援委託契約の締結後、在留資格申請のサポートや事前ガイダンスを実施します。</p>
+      </div>
+      <div class="flow-step">
+        <h4>就労開始・継続支援</h4>
+        <p>入社後も定期面談・生活支援・通訳対応を継続し、長期的な定着を支えます。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Company ===== -->
+<section id="company">
+  <div class="container">
+    <div class="sec-head reveal">
+      <div class="sec-ja">COMPANY｜会社概要</div>
+      <h2 class="sec-en">Company <span class="g">Profile</span></h2>
+    </div>
+    <table class="company-table reveal">
+      <tr><th>名称（支援業務を行う事業所）</th><td>VUONG VAN THANH（ヴオン・ヴァン・タイン）</td></tr>
+      <tr><th>代表者</th><td>VUONG VAN THANH（ベトナム出身／支援責任者・支援担当者）</td></tr>
+      <tr><th>所在地</th><td>〒861-8045　熊本県熊本市東区小山2丁目13-20　日産共同住宅201号</td></tr>
+      <tr><th>電話番号</th><td>050-8890-4000</td></tr>
+      <tr><th>メールアドレス</th><td><a href="mailto:thanhktc2017@gmail.com">thanhktc2017@gmail.com</a></td></tr>
+      <tr><th>事業内容</th><td>登録支援機関（特定技能外国人支援）／有料職業紹介事業／通訳・翻訳</td></tr>
+      <tr><th>登録支援機関 登録番号</th><td>20登-005746</td></tr>
+      <tr>
+        <th>有料職業紹介事業</th>
+        <td>
+          許可番号：43-ユ-300259（許可年月日：2024年7月1日）<br>
+          雇用保険 適用事業所番号:4301-629022-2<br>
+          <a href="https://jinzai.hellowork.mhlw.go.jp/JinzaiWeb/GICB102030.do?screenId=GICB102030&action=detail&detkey_Detail=43-%E3%83%A6-300259%2C1+++++" target="_blank" rel="noopener">有料職業紹介事業許可通知書（厚生労働省 人材サービス総合サイト）<span class="ext-icon">↗</span></a>
+        </td>
+      </tr>
+      <tr><th>支援担当者数</th><td>4名</td></tr>
+      <tr><th>対応言語</th><td>ベトナム語・クメール語・インドネシア語・タガログ語・日本語</td></tr>
+      <tr><th>支援対応地域</th><td>熊本県を中心に対応</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ===== Contact ===== -->
+<section id="contact">
+  <div class="container">
+    <div class="contact-band reveal">
+      <div class="sec-ja" style="color:rgba(255,255,255,.9);">CONTACT｜お問い合わせ</div>
+      <h2 class="sec-en">Let's Talk!</h2>
+      <p class="msg">
+        特定技能外国人の受入れをご検討中の企業様、支援機関の切替えをお考えの企業様、
+        まずはお気軽にご相談ください。制度のご説明から丁寧に対応いたします。
+      </p>
+      <a href="mailto:thanhktc2017@gmail.com" class="btn btn-white">メールでお問い合わせ →</a>
+      <div class="contact-tel">
+        お電話でのご相談（平日 9:00〜18:00）
+        <strong><a href="tel:05088904000">050-8890-4000</a></strong>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="container footer-inner">
+    <div class="footer-brand">
+      <div class="n">VUONG VAN THANH</div>
+      <div class="d">登録支援機関（20登-005746）｜有料職業紹介（43-ユ-300259）｜通訳・翻訳</div>
+      <div class="a">〒861-8045 熊本県熊本市東区小山2丁目13-20 日産共同住宅201号</div>
+    </div>
+    <div>© 2026 VUONG VAN THANH. All Rights Reserved.</div>
+  </div>
+</footer>
+
+<script>
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("on"); io.unobserve(e.target); } });
+  }, { threshold: 0.1 });
+  document.querySelectorAll(".reveal").forEach((el) => io.observe(el));
+
+  document.querySelectorAll("#gnav a").forEach((a) => {
+    a.addEventListener("click", () => document.getElementById("gnav").classList.remove("open"));
+  });
+</script>
+
+</body>
+</html>
