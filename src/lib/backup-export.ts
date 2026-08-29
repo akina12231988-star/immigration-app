@@ -38,6 +38,7 @@ export const BACKUP_TABLES: string[] = [
   "organization_files",
   "organizations",
   "orientations",
+  "passport_renewal_guides",
   "pension_records",
   "posting_files",
   "prep_doc_statuses",
