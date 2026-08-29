@@ -17,6 +17,7 @@ import {
   ShieldAlert,
   UserCheck,
   TriangleAlert,
+  DatabaseBackup,
 } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
 import { OnboardingPendingAlert } from "@/components/OnboardingPendingAlert";
@@ -478,6 +479,7 @@ export default function DashboardPage() {
               { href: "/jobs", label: "選考状況", desc: "選考中の応募を横断表示", icon: ClipboardList },
               { href: "/admin/organizations", label: "会社・機関マスタ", desc: "所属先の登録（管理者のみ）", icon: Building2 },
               { href: "/admin/users", label: "職員・権限管理", desc: "招待・ロール設定（管理者のみ）", icon: ShieldCheck },
+              { href: "/admin/backup", label: "バックアップ", desc: "全データをダウンロード（管理者のみ）", icon: DatabaseBackup },
             ].map(({ href, label, desc, icon: Icon }) => (
               <Link key={href} href={href} className="flex items-center gap-3 p-3.5">
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
