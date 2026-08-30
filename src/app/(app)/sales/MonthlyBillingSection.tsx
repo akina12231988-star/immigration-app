@@ -1181,12 +1181,13 @@ export function MonthlyBillingSection({
                 {permittedRows.length === 0 ? (
                   <p className="text-xs text-muted">当月に在留許可が下りた方はいません。</p>
                 ) : (
-                  <table className="w-full min-w-[620px] border-collapse text-xs">
+                  <table className="w-full min-w-[720px] border-collapse text-xs">
                     <thead>
                       <tr className="border-b border-border text-left text-muted">
                         <th className="py-1.5 pr-2 font-bold">許可日</th>
                         <th className="py-1.5 pr-2 font-bold">氏名</th>
                         <th className="py-1.5 pr-2 font-bold">所属機関</th>
+                        <th className="py-1.5 pr-2 font-bold">定期売上No.</th>
                         <th className="py-1.5 pr-2 font-bold">在留資格</th>
                         <th className="py-1.5 pr-2 font-bold">在留期限</th>
                         <th className="py-1.5 pr-2 font-bold">区分</th>
@@ -1208,6 +1209,9 @@ export function MonthlyBillingSection({
                             </Link>
                           </td>
                           <td className="py-1.5 pr-2">{org.organizationName}</td>
+                          <td className="py-1.5 pr-2 tabular-nums">
+                            {row.worker.recurring_sales_no || "—"}
+                          </td>
                           <td className="py-1.5 pr-2">{row.worker.residence_status}</td>
                           <td className="py-1.5 pr-2 tabular-nums">
                             {row.worker.residence_expiry_date ?? "—"}
@@ -1239,12 +1243,13 @@ export function MonthlyBillingSection({
                 {leftRows.length === 0 ? (
                   <p className="text-xs text-muted">当月に退職された方はいません。</p>
                 ) : (
-                  <table className="w-full min-w-[620px] border-collapse text-xs">
+                  <table className="w-full min-w-[720px] border-collapse text-xs">
                     <thead>
                       <tr className="border-b border-border text-left text-muted">
                         <th className="py-1.5 pr-2 font-bold">退職日</th>
                         <th className="py-1.5 pr-2 font-bold">氏名</th>
                         <th className="py-1.5 pr-2 font-bold">所属機関</th>
+                        <th className="py-1.5 pr-2 font-bold">定期売上No.</th>
                         <th className="py-1.5 pr-2 font-bold">在留資格</th>
                         <th className="py-1.5 pr-2 font-bold">支援費算定期間</th>
                         <th className="py-1.5 pr-2 font-bold">日数</th>
@@ -1264,6 +1269,9 @@ export function MonthlyBillingSection({
                             </Link>
                           </td>
                           <td className="py-1.5 pr-2">{org.organizationName}</td>
+                          <td className="py-1.5 pr-2 tabular-nums">
+                            {row.worker.recurring_sales_no || "—"}
+                          </td>
                           <td className="py-1.5 pr-2">{row.worker.residence_status}</td>
                           <td className="py-1.5 pr-2 tabular-nums">{periodText(row)}</td>
                           <td className="py-1.5 pr-2 tabular-nums">{daysText(row)}</td>
