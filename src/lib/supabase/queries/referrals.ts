@@ -57,14 +57,16 @@ export interface WorkerReferralFee {
   fee: number; // 手数料（円・税抜）
 }
 
-// 外国人ID → 紹介手数料（1人に複数あるときは新しい1件）。
-// 名簿で紹介手数料No.を出すために使う
+// 「外国人|所属機関」の鍵（referralWorkerOrgKey） → 紹介手数料（複数あるときは新しい1件）。
+// 名簿（請求書作成）で、その機関の行にはその機関のあっせんの手数料だけを出すために使う
+// （転職した人の前の機関の手数料が、新しい機関の行に出ないようにする）。
+// 機関が入っていない行（古い記録）は「外国人|」の鍵で引ける
 export async function listWorkerReferralFees(
   supabase: SupabaseClient,
 ): Promise<Record<string, WorkerReferralFee>> {
   const { data, error } = await supabase
     .from("referral_fees")
-    .select("id, worker_id, sales_no, paid_on, fee, created_at")
+    .select("id, worker_id, organization_id, sales_no, paid_on, fee, created_at")
     .not("worker_id", "is", null)
     .order("created_at", { ascending: false });
   if (error) throw error;
@@ -73,6 +75,7 @@ export async function listWorkerReferralFees(
       | {
           id: string;
           worker_id: string;
+          organization_id: string | null;
           sales_no: string;
           paid_on: string | null;
           fee: number;
@@ -81,9 +84,10 @@ export async function listWorkerReferralFees(
 
   const out: Record<string, WorkerReferralFee> = {};
   for (const r of rows) {
+    const key = referralWorkerOrgKey(r.worker_id, r.organization_id);
     // 新しい順に並んでいるので、最初に来たものだけを採る
-    if (out[r.worker_id]) continue;
-    out[r.worker_id] = {
+    if (out[key]) continue;
+    out[key] = {
       feeId: r.id,
       salesNo: r.sales_no,
       paidOn: r.paid_on,
