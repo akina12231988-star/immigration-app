@@ -94,6 +94,7 @@ import {
 } from "@/lib/supabase/queries/histories";
 import { JobApplicationSection } from "@/components/workers/JobApplicationSection";
 import { warekiDate } from "@/lib/dependents";
+import { fileLinkCopyPath, isWebFileLink } from "@/lib/file-link";
 import { formatStorageNo } from "@/lib/custody";
 import { filledFieldCount, overwrittenFields, type FieldChange } from "@/lib/field-overwrite";
 import {
@@ -592,17 +593,21 @@ export function WorkerDetail({
                     Notion
                   </a>
                 )}
-                {worker.file_link && (
-                  <a
-                    href={worker.file_link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex min-h-[28px] items-center gap-1 rounded-lg border border-border bg-surface px-2 text-[11px] font-bold text-brand"
-                  >
-                    <FolderOpen size={12} />
-                    ファイル
-                  </a>
-                )}
+                {worker.file_link &&
+                  (isWebFileLink(worker.file_link) ? (
+                    <a
+                      href={worker.file_link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex min-h-[28px] items-center gap-1 rounded-lg border border-border bg-surface px-2 text-[11px] font-bold text-brand"
+                    >
+                      <FolderOpen size={12} />
+                      ファイル
+                    </a>
+                  ) : (
+                    /* パソコン上のフォルダはブラウザから直接開けないため、パスをコピーする */
+                    <FileLinkCopyButton path={fileLinkCopyPath(worker.file_link)} />
+                  ))}
               </div>
             )}
           </div>
@@ -915,10 +920,20 @@ export function WorkerDetail({
               edit={textInput("notion_link", "https://www.notion.so/... または https://app.notion.com/...", true)}
             />
             <CardItem
-              label="資料ファイルのリンク（Google Drive のフォルダなど）"
+              label="資料ファイルのリンク（パソコン上のフォルダのパス、または https://... ）"
               value=""
-              edit={textInput("file_link", "https://drive.google.com/...", true)}
+              edit={textInput(
+                "file_link",
+                "/Users/◯◯/Documents/… や C:\\…、https://drive.google.com/... など",
+                true,
+              )}
             />
+            <p className="text-[10px] leading-relaxed text-muted">
+              パソコン上のフォルダはブラウザの決まりで直接開けないため、上部の「ファイル」ボタンを
+              押すとパスがコピーされます（Finder の ⌘⇧G やエクスプローラーに貼り付けて開けます）。
+              Mac のパスは、Finder でフォルダを右クリック → option キーを押しながら
+              「…のパス名をコピー」で取れます。https:// のリンクはそのまま開きます。
+            </p>
           </div>
         )}
         {/* 住所歴（転入日ごと）。最新はそのまま住居地へ反映される */}
@@ -1881,6 +1896,40 @@ export function WorkerDetail({
 }
 
 // 氏名のコピー（押すと一瞬チェックに変わる）
+// パソコン上のフォルダ・ファイルのパス用のボタン。
+// ブラウザの安全上の決まりでウェブページからは直接開けないため、
+// 押すとパスをコピーして、Finder（⌘⇧G）やエクスプローラーに貼り付けて開いてもらう
+function FileLinkCopyButton({ path }: { path: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(path);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 8000);
+          } catch {
+            // クリップボードが使えない環境では何もしない
+          }
+        }}
+        title={`パソコン上のパス:\n${path}\n押すとコピーします（ブラウザからは直接開けないため）`}
+        className="inline-flex min-h-[28px] items-center gap-1 rounded-lg border border-border bg-surface px-2 text-[11px] font-bold text-brand"
+      >
+        {copied ? <Check size={12} /> : <FolderOpen size={12} />}
+        {copied ? "パスをコピーしました" : "ファイル"}
+      </button>
+      {copied && (
+        <span className="text-[10px] leading-tight text-muted">
+          Finder は ⌘⇧G（移動 &gt; フォルダへ移動）、Windows
+          はエクスプローラーのアドレス欄に貼り付けて開けます
+        </span>
+      )}
+    </>
+  );
+}
+
 function CopyNameButton({ name }: { name: string }) {
   const [done, setDone] = useState(false);
   if (!name) return null;
