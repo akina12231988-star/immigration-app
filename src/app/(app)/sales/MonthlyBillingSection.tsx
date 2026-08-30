@@ -607,7 +607,10 @@ export function MonthlyBillingSection({
   // 請求書（freee）の備考欄に貼る文章を自動で作る。
   // ＜許可おりた人＞（在留資格ごと）と＜退職者＞をその機関の名簿から組み立てる
   const orgRemarks = (org: MonthlyBillingOrg): string => {
-    const permitted = org.rows.filter((r) => permitInMonth(r.worker.residence_permit_date));
+    // 転職した人の前の機関側の行（退職精算）は、許可は新しい機関のことなので許可の欄に出さない
+    const permitted = org.rows.filter(
+      (r) => !r.transferredOut && permitInMonth(r.worker.residence_permit_date),
+    );
     const left = org.rows.filter((r) => r.leftThisMonth);
     const lines: string[] = [];
     // 新規（在留資格の変更・認定）と更新（在留期間の更新）を分けて書く。
@@ -2205,12 +2208,14 @@ export function MonthlyBillingSection({
                               size={12}
                               className="ml-0.5 align-middle"
                             />
-                            {/* 対象の年月に許可が下りた人はグリーンのバッジで表示 */}
-                            {permitInMonth(row.worker.residence_permit_date) && (
-                              <span className="ml-1 rounded-full bg-status-approved-bg px-1.5 py-0.5 text-[10px] font-bold text-status-approved-fg">
-                                許可日 {mdText(row.worker.residence_permit_date ?? "")}
-                              </span>
-                            )}
+                            {/* 対象の年月に許可が下りた人はグリーンのバッジで表示
+                                （転職者の前の機関側の行では、許可は新しい機関のことなので出さない） */}
+                            {!row.transferredOut &&
+                              permitInMonth(row.worker.residence_permit_date) && (
+                                <span className="ml-1 rounded-full bg-status-approved-bg px-1.5 py-0.5 text-[10px] font-bold text-status-approved-fg">
+                                  許可日 {mdText(row.worker.residence_permit_date ?? "")}
+                                </span>
+                              )}
                             {row.leftThisMonth && (
                               <span className="ml-1 rounded-full bg-seal/10 px-1.5 py-0.5 text-[10px] font-bold text-seal">
                                 退職 {row.worker.leaving_on}

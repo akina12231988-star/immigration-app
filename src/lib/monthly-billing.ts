@@ -16,6 +16,7 @@
 import { dailyFee, daysInMonth, monthEnd, monthStart, nextMonthStart } from "@/lib/sales";
 import { parseAmount } from "@/lib/organization-intake";
 import { isSsw1Residence } from "@/lib/support-system";
+import { normalizeOrgEmploymentStarts } from "@/lib/org-employment";
 import type { Organization, Worker } from "@/types/db";
 
 // 請求額の区分
@@ -47,6 +48,8 @@ export type BillingWorker = Pick<
   | "support"
   | "status"
   | "leaving_on"
+  | "org_employment_starts"
+  | "leaving_org_name"
 > & {
   // 在留許可日が対象月より後でも、その月にはすでに同じ在留資格で在籍していたと
   // 分かっている場合に立てる印（あとから下りた更新許可から割り出す）。
@@ -66,6 +69,8 @@ export interface MonthlyBillingRow {
   kind: BillingKind;
   amount: number; // 支援費請求額
   leftThisMonth: boolean; // その月に退職した
+  // 当月中に転職した人の「前の所属機関」側の退職精算の行（許可・定期売上のリストには出さない）
+  transferredOut?: boolean;
 }
 
 export interface MonthlyBillingOrg {
@@ -183,6 +188,64 @@ export function billingExclusionReason(worker: BillingWorker, month: string): st
   return "掲載条件を満たしていません"; // 想定外（条件を増やしたときの取りこぼし防止）
 }
 
+// 当月中の転職（前の所属機関を退職 → 現在の所属機関で開始）か。
+// 退職日がその月内で、そのあとに現在の機関の雇用開始日または在留許可日が来ている場合。
+// この場合、退職日は前の機関のものなので、現在の機関の行では退職あつかいにしない
+export function isMidMonthTransfer(worker: BillingWorker, month: string): boolean {
+  const { from, to } = monthRange(month);
+  const left = worker.leaving_on ?? "";
+  if (!left || left < from || left > to) return false;
+  const permit = worker.residence_permit_date ?? "";
+  const newStart = worker.employment_start_on ?? "";
+  return Boolean(
+    (newStart && newStart > left) ||
+      (permit && permit >= from && permit <= to && permit > left),
+  );
+}
+
+// 当月中に転職した人の「前の所属機関」のID。
+// 所属機関別の雇用開始日（org_employment_starts）から、現在の機関以外で
+// 開始日が退職日以前のいちばん新しいものを採る。見つからなければ null
+export function transferredFromOrgId(worker: BillingWorker, month: string): string | null {
+  if (!isMidMonthTransfer(worker, month)) return null;
+  const left = worker.leaving_on ?? "";
+  const candidates = normalizeOrgEmploymentStarts(worker.org_employment_starts)
+    .filter(
+      (e) =>
+        e.organization_id &&
+        e.organization_id !== worker.current_organization_id &&
+        (!e.start_on || e.start_on <= left),
+    )
+    .sort((a, b) => (a.start_on ?? "").localeCompare(b.start_on ?? ""));
+  return candidates.length > 0 ? candidates[candidates.length - 1].organization_id : null;
+}
+
+// 当月中に転職した人の、前の所属機関側の退職精算の行（月初〜退職日の日割り）
+export function transferResignationRowFor(
+  worker: BillingWorker,
+  month: string,
+  monthlyFee: number,
+): MonthlyBillingRow {
+  const { from } = monthRange(month);
+  const monthDays = daysInMonth(from);
+  const left = worker.leaving_on ?? "";
+  const days = dayNumber(left);
+  const full = days === monthDays;
+  const amount = monthlyFee <= 0 ? 0 : full ? monthlyFee : dailyFee(monthlyFee, monthDays) * days;
+  return {
+    worker,
+    monthlyFee,
+    periodFrom: from,
+    periodTo: left,
+    days,
+    monthDays,
+    kind: "退職日まで日割",
+    amount,
+    leftThisMonth: true,
+    transferredOut: true,
+  };
+}
+
 // 1人分の請求額を出す。支援代（月額）が0以下なら金額0で区分は満額として返す
 export function billingRowFor(
   worker: BillingWorker,
@@ -193,7 +256,10 @@ export function billingRowFor(
   const monthDays = daysInMonth(from);
   const permit = worker.residence_permit_date ?? "";
   const left = worker.leaving_on ?? "";
-  const leftThisMonth = Boolean(left && left >= from && left <= to);
+  // 当月中の転職は、退職日を前の機関の行（transferResignationRowFor）で使い、
+  // 現在の機関のこの行では退職あつかいにしない
+  const leftThisMonth =
+    Boolean(left && left >= from && left <= to) && !isMidMonthTransfer(worker, month);
 
   // その月に支援が始まったか（更新で許可が下りただけの人は日割りしない）
   const permitThisMonth = Boolean(permit && permit >= from && permit <= to);
@@ -253,14 +319,8 @@ export function summarizeMonthlyBilling(
   const byOrg = new Map<string, MonthlyBillingOrg>();
   const unpriced: MonthlyBillingRow[] = [];
 
-  for (const worker of workers) {
-    if (!isBilledInMonth(worker, month)) continue;
-    const orgId = worker.current_organization_id ?? "";
+  const pushRow = (orgId: string, row: MonthlyBillingRow) => {
     const org = orgById.get(orgId);
-    let row = billingRowFor(worker, month, orgMonthlyFee(org));
-    if (noCharge.has(worker.id)) row = { ...row, amount: 0, kind: "請求しない" };
-    if (row.monthlyFee <= 0) unpriced.push(row);
-
     if (!byOrg.has(orgId)) {
       byOrg.set(orgId, {
         organizationId: orgId,
@@ -274,6 +334,25 @@ export function summarizeMonthlyBilling(
     bucket.rows.push(row);
     bucket.total += row.amount;
     if (row.leftThisMonth) bucket.leftCount += 1;
+  };
+
+  for (const worker of workers) {
+    if (!isBilledInMonth(worker, month)) continue;
+    const orgId = worker.current_organization_id ?? "";
+    const org = orgById.get(orgId);
+    let row = billingRowFor(worker, month, orgMonthlyFee(org));
+    if (noCharge.has(worker.id)) row = { ...row, amount: 0, kind: "請求しない" };
+    if (row.monthlyFee <= 0) unpriced.push(row);
+    pushRow(orgId, row);
+
+    // 当月中に転職した人は、前の所属機関にも退職精算（月初〜退職日の日割り）の行を出す
+    const oldOrgId = transferredFromOrgId(worker, month);
+    if (oldOrgId && oldOrgId !== orgId) {
+      let oldRow = transferResignationRowFor(worker, month, orgMonthlyFee(orgById.get(oldOrgId)));
+      if (noCharge.has(worker.id)) oldRow = { ...oldRow, amount: 0, kind: "請求しない" };
+      if (oldRow.monthlyFee <= 0) unpriced.push(oldRow);
+      pushRow(oldOrgId, oldRow);
+    }
   }
 
   const orgs = [...byOrg.values()].sort((a, b) =>
@@ -313,10 +392,15 @@ function crossOrgRows(billing: MonthlyBilling): CrossOrgBillingRow[] {
   return billing.orgs.flatMap((org) => org.rows.map((row) => ({ org, row })));
 }
 
-// 当月に在留許可が下りた人（新規・更新の両方。見分けは区分 row.kind）。許可日の古い順
+// 当月に在留許可が下りた人（新規・更新の両方。見分けは区分 row.kind）。許可日の古い順。
+// 転職した人の前の機関側の行（退職精算）は、許可は新しい機関のことなので出さない
 export function permittedThisMonthRows(billing: MonthlyBilling): CrossOrgBillingRow[] {
   return crossOrgRows(billing)
-    .filter(({ row }) => (row.worker.residence_permit_date ?? "").startsWith(billing.month))
+    .filter(
+      ({ row }) =>
+        !row.transferredOut &&
+        (row.worker.residence_permit_date ?? "").startsWith(billing.month),
+    )
     .sort((a, b) => {
       const d = (a.row.worker.residence_permit_date ?? "").localeCompare(
         b.row.worker.residence_permit_date ?? "",
