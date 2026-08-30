@@ -84,7 +84,9 @@ export async function listWorkersForBilling(
     .select(
       "id, name, kana, nationality, gender, birth, residence_status, residence_card_no, " +
         "residence_permit_date, residence_expiry_date, employment_start_on, assigned_office, " +
-        "residence_note, recurring_sales_no, current_organization_id, support, status, leaving_on",
+        "residence_note, recurring_sales_no, current_organization_id, support, status, leaving_on, " +
+        // 当月中の転職（前の機関の退職精算と新しい機関の日割りに分ける）の判定用
+        "org_employment_starts, leaving_org_name",
     )
     .order("name", { ascending: true });
   if (error) throw error;

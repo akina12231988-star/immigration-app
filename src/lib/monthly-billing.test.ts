@@ -13,6 +13,8 @@ import {
   monthRange,
   orgMonthlyFee,
   periodText,
+  leftThisMonthRows,
+  permittedThisMonthRows,
   summarizeMonthlyBilling,
   type BillingOrg,
   type BillingWorker,
@@ -39,6 +41,8 @@ function worker(over: Partial<BillingWorker> & { name: string }): BillingWorker 
     support: "支援対象",
     status: "在籍中",
     leaving_on: null,
+    org_employment_starts: [],
+    leaving_org_name: "",
     ...over,
   };
 }
@@ -383,5 +387,92 @@ describe("支援区分が理由で名簿に載らない人", () => {
         MONTH,
       ),
     ).toBeNull();
+  });
+});
+
+describe("当月中の転職（前の機関を退職 → 新しい機関で開始）", () => {
+  // LE THI DIU の例: 8/9 に org-old を退職し、8/10 に org-new で許可・雇用開始
+  const transferWorker = () =>
+    worker({
+      name: "LE THI DIU",
+      residence_permit_date: "2026-08-10",
+      employment_start_on: "2026-08-10",
+      leaving_on: "2026-08-09",
+      current_organization_id: "org-new",
+      org_employment_starts: [
+        { organization_id: "org-old", start_on: "2024-04-01", contract_on: "", conditions_on: "" },
+        { organization_id: "org-new", start_on: "2026-08-10", contract_on: "", conditions_on: "" },
+      ],
+      leaving_org_name: "前の会社",
+    });
+  const orgs = [org("org-old", "前の会社", "10,000円"), org("org-new", "新しい会社", "10,000円")];
+
+  it("新しい機関の行は許可日から日割（退職あつかいにしない）", () => {
+    const billing = summarizeMonthlyBilling([transferWorker()], orgs, "2026-08");
+    const newOrg = billing.orgs.find((o) => o.organizationId === "org-new")!;
+    expect(newOrg.rows).toHaveLength(1);
+    const row = newOrg.rows[0];
+    expect(row.kind).toBe("許可日から日割");
+    expect(row.periodFrom).toBe("2026-08-10");
+    expect(row.periodTo).toBe("2026-08-31");
+    expect(row.days).toBe(22);
+    expect(row.amount).toBe(Math.floor(10000 / 31) * 22); // 322円 × 22日 = 7,084円
+    expect(row.leftThisMonth).toBe(false);
+    expect(newOrg.leftCount).toBe(0);
+  });
+
+  it("前の機関には退職日までの日割りの行が出る", () => {
+    const billing = summarizeMonthlyBilling([transferWorker()], orgs, "2026-08");
+    const oldOrg = billing.orgs.find((o) => o.organizationId === "org-old")!;
+    expect(oldOrg.rows).toHaveLength(1);
+    const row = oldOrg.rows[0];
+    expect(row.kind).toBe("退職日まで日割");
+    expect(row.periodFrom).toBe("2026-08-01");
+    expect(row.periodTo).toBe("2026-08-09");
+    expect(row.days).toBe(9);
+    expect(row.amount).toBe(Math.floor(10000 / 31) * 9); // 322円 × 9日 = 2,898円
+    expect(row.leftThisMonth).toBe(true);
+    expect(row.transferredOut).toBe(true);
+    expect(oldOrg.leftCount).toBe(1);
+  });
+
+  it("許可者リストには新しい機関の行だけ出る（前の機関の退職精算は出さない）", () => {
+    const billing = summarizeMonthlyBilling([transferWorker()], orgs, "2026-08");
+    const permitted = permittedThisMonthRows(billing);
+    expect(permitted).toHaveLength(1);
+    expect(permitted[0].org.organizationId).toBe("org-new");
+  });
+
+  it("退職者リストには前の機関の行が出る", () => {
+    const billing = summarizeMonthlyBilling([transferWorker()], orgs, "2026-08");
+    const left = leftThisMonthRows(billing);
+    expect(left).toHaveLength(1);
+    expect(left[0].org.organizationId).toBe("org-old");
+  });
+
+  it("前の機関が分からないときは、新しい機関の行だけ（退職あつかいにしない）", () => {
+    const w = { ...transferWorker(), org_employment_starts: [] };
+    const billing = summarizeMonthlyBilling([w], orgs, "2026-08");
+    expect(billing.orgs).toHaveLength(1);
+    const row = billing.orgs[0].rows[0];
+    expect(row.kind).toBe("許可日から日割");
+    expect(row.periodTo).toBe("2026-08-31");
+  });
+
+  it("同じ機関で許可のあとに退職した人は今までどおり1行（転職あつかいにしない）", () => {
+    const w = worker({
+      name: "普通の退職",
+      residence_permit_date: "2026-08-05",
+      employment_start_on: "2026-08-05",
+      leaving_on: "2026-08-20",
+      current_organization_id: "org-new",
+    });
+    const billing = summarizeMonthlyBilling([w], orgs, "2026-08");
+    expect(billing.orgs).toHaveLength(1);
+    const row = billing.orgs[0].rows[0];
+    expect(row.kind).toBe("許可日から日割");
+    expect(row.periodFrom).toBe("2026-08-05");
+    expect(row.periodTo).toBe("2026-08-20");
+    expect(row.leftThisMonth).toBe(true);
   });
 });

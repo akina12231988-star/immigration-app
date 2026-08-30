@@ -27,6 +27,8 @@ import {
   insertApplication,
   updateApplication as updateJobApplication,
 } from "@/lib/supabase/queries/jobs";
+import { updatePosting } from "@/lib/supabase/queries/postings";
+import { planLedgerDateFixes } from "@/lib/ledger-date-fix";
 import { insertReferralFee, type ApplicationReferralFee } from "@/lib/supabase/queries/referrals";
 import {
   feeDraftOf,
@@ -252,6 +254,101 @@ export function JobsExplorer({
 
   // お知らせを一旦消しているか（この端末に覚えさせる。次のお昼12:00で戻る）
   const dateIssueSnooze = useDateIssueSnooze();
+
+  // ---- 日付の自動訂正（内容を確かめてからまとめて適用する） ----
+  const [fixOpen, setFixOpen] = useState(false);
+  const [fixBusy, setFixBusy] = useState(false);
+  const fixPlan = useMemo(() => {
+    if (!fixOpen) return null;
+    return planLedgerDateFixes(
+      dateIssueRows.map(({ a }) => ({
+        id: a.id,
+        workerId: a.worker_id,
+        workerName: a.workers?.name ?? "（削除済み）",
+        company: a.job_postings?.display_company || a.organizations?.name || "応募先",
+        postingId: a.job_posting_id,
+        postingReceivedOn: a.job_posting_id
+          ? (postingById.get(a.job_posting_id)?.received_on ?? null)
+          : null,
+        jobseekerAcceptedOn: workerById.get(a.worker_id)?.jobseeker_accepted_on ?? null,
+        appliedOn: a.applied_on,
+        resultOn: a.result_on,
+        result: a.result,
+      })),
+    );
+  }, [fixOpen, dateIssueRows, postingById, workerById]);
+
+  // 訂正案を当てはめても残る指摘（契約書類などに合わせて手で直してもらうもの）
+  const fixLeftovers = useMemo(() => {
+    if (!fixOpen || !fixPlan) return [];
+    const out: string[] = [];
+    for (const { a } of dateIssueRows) {
+      const patch = fixPlan.applicationPatches.get(a.id);
+      const issues = checkLedgerDates({
+        postingReceivedOn: a.job_posting_id
+          ? (fixPlan.postingPatches.get(a.job_posting_id) ??
+            postingById.get(a.job_posting_id)?.received_on ??
+            null)
+          : null,
+        jobseekerAcceptedOn:
+          fixPlan.workerPatches.get(a.worker_id) ??
+          workerById.get(a.worker_id)?.jobseeker_accepted_on ??
+          null,
+        appliedOn: patch?.applied_on ?? a.applied_on,
+        resultOn: patch?.result_on ?? a.result_on,
+        result: a.result,
+        conditionsOn: contractDates(a).conditions_on,
+        contractOn: contractDates(a).contract_on,
+        employmentStartOn: startedOn(a),
+      });
+      for (const i of issues) out.push(`${a.workers?.name ?? "（削除済み）"}: ${i.message}`);
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fixOpen, fixPlan, dateIssueRows, postingById, workerById]);
+
+  const applyDateFixes = async () => {
+    if (!fixPlan) return;
+    setFixBusy(true);
+    setError(null);
+    try {
+      const supabase = createClient();
+      for (const [id, patch] of fixPlan.applicationPatches) {
+        await updateJobApplication(supabase, id, patch);
+      }
+      for (const [id, receivedOn] of fixPlan.postingPatches) {
+        await updatePosting(supabase, id, { received_on: receivedOn });
+      }
+      for (const [id, acceptedOn] of fixPlan.workerPatches) {
+        const { error: err } = await supabase
+          .from("workers")
+          .update({ jobseeker_accepted_on: acceptedOn })
+          .eq("id", id);
+        if (err) throw err;
+      }
+      // 画面にもすぐ反映する（求人受付日は再読み込みで反映される）
+      setRows((prev) =>
+        prev.map((r) =>
+          fixPlan.applicationPatches.has(r.id)
+            ? { ...r, ...fixPlan.applicationPatches.get(r.id) }
+            : r,
+        ),
+      );
+      setWorkerList((prev) =>
+        prev.map((w) =>
+          fixPlan.workerPatches.has(w.id)
+            ? { ...w, jobseeker_accepted_on: fixPlan.workerPatches.get(w.id) }
+            : w,
+        ),
+      );
+      setFixOpen(false);
+      router.refresh();
+    } catch (err) {
+      setError(dbErrorMessage(err, "0079_recruit_ledgers.sql", "日付の訂正に失敗しました"));
+    } finally {
+      setFixBusy(false);
+    }
+  };
 
   const stats = useMemo(() => {
     const s = { total: inOrg.length, 選考中: 0, 採用: 0, 不採用: 0, 辞退: 0, 雇用開始済み: 0 };
@@ -609,6 +706,16 @@ export function JobsExplorer({
             )}
           </ul>
           <div className="mt-2 flex flex-wrap items-center gap-2">
+            {/* 決まったルールで直せるものをまとめて訂正する（内容の確認ダイアログが開く） */}
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => setFixOpen(true)}
+                className="rounded-lg bg-seal px-3 py-1.5 text-[11px] font-bold text-seal-foreground"
+              >
+                日付を自動で直す…
+              </button>
+            )}
             {filter !== "date_issue" && (
               <button
                 type="button"
@@ -633,6 +740,67 @@ export function JobsExplorer({
         <p className="-mt-2 text-[11px] text-muted">
           帳簿に出る日付の並びがおかしい応募だけを出しています。各カードの「応募を編集」「帳簿情報」「求人受付日を直す」から直してください。
         </p>
+      )}
+      {/* 日付の自動訂正: 訂正案を一覧で確かめてからまとめて適用する */}
+      {fixOpen && fixPlan && (
+        <Modal open title="日付の自動訂正" onClose={() => !fixBusy && setFixOpen(false)}>
+          <div className="flex flex-col gap-2.5 text-sm">
+            <p className="text-[11px] leading-relaxed text-muted">
+              決まったルールで最小限に直します。採用年月日が紹介より1年近く前なら年の入れ違いとして1年あとへ、
+              少しだけ前なら紹介年月日を採用年月日へ、
+              求人受付年月日・求職受付日はいちばん早い紹介年月日に合わせます。
+              内容を確かめてから「まとめて直す」を押してください。
+            </p>
+            {fixPlan.changes.length === 0 ? (
+              <p className="rounded-lg bg-background p-3 text-xs text-muted">
+                自動で直せる日付はありませんでした。
+              </p>
+            ) : (
+              <ul className="flex max-h-72 flex-col gap-1.5 overflow-auto rounded-xl border border-border bg-background p-3 text-xs">
+                {fixPlan.changes.map((c, i) => (
+                  <li key={i} className="leading-relaxed">
+                    <span className="font-bold">{c.who}</span>
+                    <span className="text-muted">（{c.target}）</span> {c.fieldLabel}:{" "}
+                    <span className="tabular-nums line-through">{c.from}</span> →{" "}
+                    <span className="font-bold tabular-nums">{c.to}</span>
+                    <span className="block text-[10px] text-muted">{c.reason}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {fixLeftovers.length > 0 && (
+              <div className="rounded-lg bg-status-notice-bg p-3 text-[11px] leading-relaxed text-status-notice-fg">
+                <p className="font-bold">
+                  自動では直せない指摘が {fixLeftovers.length} 件あります。
+                  契約書類などの実物に合わせて手で直してください。
+                </p>
+                <ul className="mt-1 list-disc pl-4">
+                  {fixLeftovers.slice(0, 10).map((s, i) => (
+                    <li key={i}>{s}</li>
+                  ))}
+                  {fixLeftovers.length > 10 && <li>ほか {fixLeftovers.length - 10} 件</li>}
+                </ul>
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button
+                fullWidth
+                disabled={fixBusy || fixPlan.changes.length === 0}
+                onClick={() => void applyDateFixes()}
+              >
+                {fixBusy ? "訂正中…" : `この内容でまとめて直す（${fixPlan.changes.length}件）`}
+              </Button>
+              <button
+                type="button"
+                onClick={() => setFixOpen(false)}
+                disabled={fixBusy}
+                className="shrink-0 rounded-xl border border-border px-4 text-sm font-bold text-muted"
+              >
+                やめる
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
       {filter === "no_referral" && !query && (
         <p className="-mt-2 text-[11px] text-muted">

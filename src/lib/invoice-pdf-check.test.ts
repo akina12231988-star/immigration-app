@@ -28,6 +28,8 @@ function worker(over: Partial<BillingWorker> & { name: string }): BillingWorker 
     support: "支援対象",
     status: "在籍中",
     leaving_on: null,
+    org_employment_starts: [],
+    leaving_org_name: "",
     ...over,
   };
 }
