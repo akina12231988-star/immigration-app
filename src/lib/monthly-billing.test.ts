@@ -13,6 +13,7 @@ import {
   monthRange,
   orgMonthlyFee,
   periodText,
+  recurringSalesNoForRow,
   leftThisMonthRows,
   permittedThisMonthRows,
   summarizeMonthlyBilling,
@@ -43,6 +44,7 @@ function worker(over: Partial<BillingWorker> & { name: string }): BillingWorker 
     leaving_on: null,
     org_employment_starts: [],
     leaving_org_name: "",
+    past_recurring_sales: [],
     ...over,
   };
 }
@@ -474,5 +476,85 @@ describe("当月中の転職（前の機関を退職 → 新しい機関で開�
     expect(row.periodFrom).toBe("2026-08-05");
     expect(row.periodTo).toBe("2026-08-20");
     expect(row.leftThisMonth).toBe(true);
+  });
+});
+
+describe("recurringSalesNoForRow（転職者の前の機関の行は過去の番号）", () => {
+  const orgs2 = [org("org-old", "前の会社", "10,000円"), org("org-new", "新しい会社", "10,000円")];
+  const w = () =>
+    worker({
+      name: "LE THI DIU",
+      residence_permit_date: "2026-08-10",
+      employment_start_on: "2026-08-10",
+      leaving_on: "2026-08-09",
+      current_organization_id: "org-new",
+      recurring_sales_no: "SP-0000000391",
+      org_employment_starts: [
+        { organization_id: "org-old", start_on: "2024-04-01", contract_on: "", conditions_on: "" },
+        { organization_id: "org-new", start_on: "2026-08-10", contract_on: "", conditions_on: "" },
+      ],
+      past_recurring_sales: [{ organization_id: "org-old", sales_no: "SP-0000000327" }],
+    });
+
+  it("前の機関の行は過去の定期売上No.、新しい機関の行は現在の番号", () => {
+    const billing = summarizeMonthlyBilling([w()], orgs2, "2026-08");
+    const oldRow = billing.orgs.find((o) => o.organizationId === "org-old")!.rows[0];
+    const newRow = billing.orgs.find((o) => o.organizationId === "org-new")!.rows[0];
+    expect(recurringSalesNoForRow(oldRow, "org-old")).toBe("SP-0000000327");
+    expect(recurringSalesNoForRow(newRow, "org-new")).toBe("SP-0000000391");
+  });
+
+  it("過去の番号が未登録なら空（画面では「—」）", () => {
+    const noPast = { ...w(), past_recurring_sales: [] };
+    const billing = summarizeMonthlyBilling([noPast], orgs2, "2026-08");
+    const oldRow = billing.orgs.find((o) => o.organizationId === "org-old")!.rows[0];
+    expect(recurringSalesNoForRow(oldRow, "org-old")).toBe("");
+  });
+});
+
+describe("特定技能2号への移行月（許可日の前日まで日割りで支援終了）", () => {
+  const orgs2 = [org("org-1", "田中輝久", "10,000円")];
+  const ssw2 = (over: Partial<BillingWorker> = {}) =>
+    worker({
+      name: "TRAN THI LAN PHUONG",
+      residence_status: "特定技能2号",
+      residence_permit_date: "2026-08-24",
+      employment_start_on: "2022-07-29",
+      ...over,
+    });
+
+  it("2号の許可月は、月初〜許可日の前日の日割りで名簿に載る", () => {
+    const billing = summarizeMonthlyBilling([ssw2()], orgs2, "2026-08");
+    expect(billing.orgs).toHaveLength(1);
+    const row = billing.orgs[0].rows[0];
+    expect(row.kind).toBe("2号移行前日まで日割");
+    expect(row.periodFrom).toBe("2026-08-01");
+    expect(row.periodTo).toBe("2026-08-23");
+    expect(row.days).toBe(23);
+    expect(row.amount).toBe(Math.floor(10000 / 31) * 23); // 322円 × 23日 = 7,406円
+    expect(billingExclusionReason(ssw2(), "2026-08")).toBe(null);
+  });
+
+  it("支援区分を支援対象外に変えたあとも、移行月の行は出る", () => {
+    const billing = summarizeMonthlyBilling([ssw2({ support: "支援対象外" })], orgs2, "2026-08");
+    expect(billing.orgs[0].rows[0].kind).toBe("2号移行前日まで日割");
+  });
+
+  it("移行月の翌月からは請求しない（支援区分の変え忘れは除外理由で知らせる）", () => {
+    const billing = summarizeMonthlyBilling([ssw2()], orgs2, "2026-09");
+    expect(billing.orgs).toHaveLength(0);
+    expect(billingExclusionReason(ssw2(), "2026-09")).toContain("在留資格が対象外");
+  });
+
+  it("2号の更新許可の月は対象にしない（支援はすでに終わっている）", () => {
+    const renewed = ssw2({ residence_status: "特定技能2号更新" });
+    const billing = summarizeMonthlyBilling([renewed], orgs2, "2026-08");
+    expect(billing.orgs).toHaveLength(0);
+  });
+
+  it("許可日が1日のときは前日が前月になるため、その月の請求は無し", () => {
+    const firstDay = ssw2({ residence_permit_date: "2026-08-01" });
+    const billing = summarizeMonthlyBilling([firstDay], orgs2, "2026-08");
+    expect(billing.orgs).toHaveLength(0);
   });
 });

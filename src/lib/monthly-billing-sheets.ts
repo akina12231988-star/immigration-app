@@ -7,6 +7,7 @@ import {
   monthLabel,
   periodText,
   permittedThisMonthRows,
+  recurringSalesNoForRow,
   type MonthlyBilling,
   type MonthlyBillingOrg,
   type MonthlyBillingRow,
@@ -41,9 +42,16 @@ export const ROSTER_HEADERS = [
 
 const ROSTER_WIDTHS = [5, 26, 22, 12, 6, 12, 22, 16, 12, 8, 12, 12, 12, 14, 18, 12, 24, 8, 16, 12, 10, 12];
 
-function rosterRow(row: MonthlyBillingRow, index: number, month: string): CellValue[] {
+function rosterRow(
+  row: MonthlyBillingRow,
+  index: number,
+  month: string,
+  organizationId: string,
+): CellValue[] {
   const w = row.worker;
-  const permitThisMonth = (w.residence_permit_date ?? "").startsWith(month);
+  // 転職者の前の機関の行では、許可は新しい機関のことなので⭕を付けない
+  const permitThisMonth =
+    !row.transferredOut && (w.residence_permit_date ?? "").startsWith(month);
   return [
     index + 1,
     w.name,
@@ -59,7 +67,8 @@ function rosterRow(row: MonthlyBillingRow, index: number, month: string): CellVa
     w.employment_start_on ?? "",
     w.assigned_office,
     w.residence_note,
-    w.recurring_sales_no,
+    // 転職者の前の機関の行は当時の番号（過去の定期売上No.）
+    recurringSalesNoForRow(row, organizationId),
     row.monthlyFee,
     periodText(row),
     daysText(row),
@@ -85,7 +94,7 @@ export function orgRosterSheet(org: MonthlyBillingOrg, billing: MonthlyBilling):
       ["基準日", billing.monthEndOn, "掲載人数", countText],
       [],
       [...ROSTER_HEADERS],
-      ...org.rows.map((row, i) => rosterRow(row, i, billing.month)),
+      ...org.rows.map((row, i) => rosterRow(row, i, billing.month, org.organizationId)),
       [],
       ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "合計", org.total],
     ],
@@ -178,7 +187,8 @@ export function leftThisMonthSheet(billing: MonthlyBilling): SheetSpec {
         row.worker.residence_status,
         row.worker.leaving_on ?? "",
         row.worker.employment_start_on ?? "",
-        row.worker.recurring_sales_no,
+        // 転職者は当時の機関の番号（過去の定期売上No.）。freeeの定期売上の停止の突き合わせ用
+        recurringSalesNoForRow(row, org.organizationId),
         periodText(row),
         daysText(row),
         row.amount,

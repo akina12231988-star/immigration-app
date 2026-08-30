@@ -91,6 +91,7 @@ import {
   monthLabel,
   permittedThisMonthRows,
   periodText,
+  recurringSalesNoForRow,
   summarizeMonthlyBilling,
   type BillingOrg,
   type BillingWorker,
@@ -1309,8 +1310,9 @@ export function MonthlyBillingSection({
                             </Link>
                           </td>
                           <td className="py-1.5 pr-2">{org.organizationName}</td>
+                          {/* 転職者は当時の機関の番号（過去の定期売上No.）を出す。freeeの定期売上の停止の突き合わせ用 */}
                           <td className="py-1.5 pr-2 tabular-nums">
-                            {row.worker.recurring_sales_no || "—"}
+                            {recurringSalesNoForRow(row, org.organizationId) || "—"}
                           </td>
                           <td className="py-1.5 pr-2">{row.worker.residence_status}</td>
                           <td className="py-1.5 pr-2 tabular-nums">{periodText(row)}</td>
@@ -2251,7 +2253,17 @@ export function MonthlyBillingSection({
                           <td className="py-1.5 pr-2 text-muted">{row.worker.residence_status}</td>
                           <td className="py-1.5 pr-2 align-top">
                             <div className="flex w-36 flex-col items-start gap-1">
-                              {canEdit ? (
+                              {row.transferredOut ? (
+                                /* 転職者の前の機関の行は、当時の番号（過去の定期売上No.）を出す。
+                                   直すのは外国人詳細の「過去の定期売上No.」から */
+                                <span
+                                  className="tabular-nums text-muted"
+                                  title="転職前の所属機関の定期売上No.（過去の番号）。直すときは外国人詳細の「過去の定期売上No.」で"
+                                >
+                                  {recurringSalesNoForRow(row, org.organizationId) || "—"}
+                                  <span className="block text-[10px]">過去の番号（転職前）</span>
+                                </span>
+                              ) : canEdit ? (
                                 <input
                                   defaultValue={row.worker.recurring_sales_no}
                                   onBlur={(e) => {

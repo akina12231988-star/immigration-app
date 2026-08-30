@@ -17,6 +17,7 @@ import { dailyFee, daysInMonth, monthEnd, monthStart, nextMonthStart } from "@/l
 import { parseAmount } from "@/lib/organization-intake";
 import { isSsw1Residence } from "@/lib/support-system";
 import { normalizeOrgEmploymentStarts } from "@/lib/org-employment";
+import { normalizePastRecurringSales } from "@/lib/recurring-sales";
 import type { Organization, Worker } from "@/types/db";
 
 // 請求額の区分
@@ -25,6 +26,7 @@ export type BillingKind =
   | "満額（更新月）"
   | "許可日から日割"
   | "退職日まで日割"
+  | "2号移行前日まで日割" // 特定技能2号の許可月（許可日の前日で支援終了）
   | "請求しない"; // 病欠・帰国などでその月の支援代をあえて請求しない（金額0円）
 
 // 集計に必要な外国人の項目だけ（一覧の取得を軽くするため）
@@ -50,6 +52,7 @@ export type BillingWorker = Pick<
   | "leaving_on"
   | "org_employment_starts"
   | "leaving_org_name"
+  | "past_recurring_sales"
 > & {
   // 在留許可日が対象月より後でも、その月にはすでに同じ在留資格で在籍していたと
   // 分かっている場合に立てる印（あとから下りた更新許可から割り出す）。
@@ -164,6 +167,8 @@ function residedInMonth(worker: BillingWorker, to: string): boolean {
 // 挙げると一覧がうるさくなるが、支援区分の変え忘れは拾いたいため
 export function billingExclusionReason(worker: BillingWorker, month: string): string | null {
   if (isBilledInMonth(worker, month)) return null;
+  // 2号への移行月は「許可日の前日まで日割り」で名簿に載るので、除外理由には出さない
+  if (isSsw2TransitionMonth(worker, month)) return null;
   const { from, to } = monthRange(month);
 
   if (worker.support !== "支援対象") {
@@ -243,6 +248,65 @@ export function transferResignationRowFor(
     amount,
     leftThisMonth: true,
     transferredOut: true,
+  };
+}
+
+// その機関の行に出す定期売上No.。
+// 転職した人の前の機関の行では、当時の番号（過去の定期売上No.）を出す
+export function recurringSalesNoForRow(row: MonthlyBillingRow, organizationId: string): string {
+  if (!row.transferredOut) return row.worker.recurring_sales_no;
+  const past = normalizePastRecurringSales(row.worker.past_recurring_sales);
+  return past.find((e) => e.organization_id === organizationId)?.sales_no ?? "";
+}
+
+// 特定技能2号か（支援の対象外になる在留資格）
+function isSsw2Residence(status: string | null | undefined): boolean {
+  return (status ?? "").normalize("NFKC").includes("特定技能2号");
+}
+
+// 前日（YYYY-MM-DD）
+function prevDay(dateStr: string): string {
+  const t = Date.parse(`${dateStr}T00:00:00Z`);
+  if (Number.isNaN(t)) return dateStr;
+  return new Date(t - 86400000).toISOString().slice(0, 10);
+}
+
+// 特定技能2号への移行月か。
+// 2号の許可日がその月内で、月初より前から在籍している（それまで1号として支援していた）人。
+// この月は許可日の前日まで支援代を日割りで請求し、以後は支援対象外として請求しない。
+// 2号の更新許可（すでに支援は終わっている）は対象にしない。
+// 許可日が1日のときは前日が前月になるため、その月の請求は無し
+export function isSsw2TransitionMonth(worker: BillingWorker, month: string): boolean {
+  const s = (worker.residence_status ?? "").normalize("NFKC").trim();
+  if (!isSsw2Residence(s) || /更新$/.test(s)) return false;
+  const { from, to } = monthRange(month);
+  const permit = worker.residence_permit_date ?? "";
+  if (!permit || permit < from || permit > to) return false;
+  if (dayNumber(permit) <= 1) return false;
+  return Boolean(worker.employment_start_on && worker.employment_start_on < from);
+}
+
+// 特定技能2号への移行月の行（月初〜許可日の前日の日割り。支援終了の精算）
+export function ssw2TransitionRowFor(
+  worker: BillingWorker,
+  month: string,
+  monthlyFee: number,
+): MonthlyBillingRow {
+  const { from } = monthRange(month);
+  const monthDays = daysInMonth(from);
+  const periodTo = prevDay(worker.residence_permit_date ?? "");
+  const days = dayNumber(periodTo);
+  const amount = monthlyFee <= 0 ? 0 : dailyFee(monthlyFee, monthDays) * days;
+  return {
+    worker,
+    monthlyFee,
+    periodFrom: from,
+    periodTo,
+    days,
+    monthDays,
+    kind: "2号移行前日まで日割",
+    amount,
+    leftThisMonth: false,
   };
 }
 
@@ -337,7 +401,17 @@ export function summarizeMonthlyBilling(
   };
 
   for (const worker of workers) {
-    if (!isBilledInMonth(worker, month)) continue;
+    if (!isBilledInMonth(worker, month)) {
+      // 特定技能2号への移行月は、許可日の前日まで支援代を日割りで請求する（支援終了の精算）
+      if (isSsw2TransitionMonth(worker, month)) {
+        const orgId = worker.current_organization_id ?? "";
+        let row = ssw2TransitionRowFor(worker, month, orgMonthlyFee(orgById.get(orgId)));
+        if (noCharge.has(worker.id)) row = { ...row, amount: 0, kind: "請求しない" };
+        if (row.monthlyFee <= 0) unpriced.push(row);
+        pushRow(orgId, row);
+      }
+      continue;
+    }
     const orgId = worker.current_organization_id ?? "";
     const org = orgById.get(orgId);
     let row = billingRowFor(worker, month, orgMonthlyFee(org));
