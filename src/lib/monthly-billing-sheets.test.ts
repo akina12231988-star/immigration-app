@@ -33,6 +33,7 @@ function worker(over: Partial<BillingWorker> & { name: string }): BillingWorker 
     leaving_on: null,
     org_employment_starts: [],
     leaving_org_name: "",
+    past_recurring_sales: [],
     ...over,
   };
 }
