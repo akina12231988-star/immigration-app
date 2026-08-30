@@ -64,6 +64,18 @@ export function normalizeMrz(text: string): string {
     .replace(/[^A-Z0-9<]/g, "");
 }
 
+// 1行目の末尾の < を44文字まで自動で埋める。
+// 1行目の末尾は氏名のあとの埋め草（<）なので、途中まで入力しても安全に補完できる。
+// 2行目は末尾がチェックディジットのため補完しない（44文字ちょうど必要）。
+// 44文字を超えていて、はみ出しがすべて < なら切り落とす（< を入れすぎたとき用）
+export function padMrzLine1(line: string): string {
+  const v = normalizeMrz(line);
+  if (!v) return "";
+  if (v.length < 44) return v.padEnd(44, "<");
+  if (v.length > 44 && /^<+$/.test(v.slice(44))) return v.slice(0, 44);
+  return v;
+}
+
 // 貼り付けた2行を取り出す。改行が無くても88文字なら半分に割る
 export function splitMrzLines(text: string): string[] {
   const lines = text

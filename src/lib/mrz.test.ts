@@ -5,6 +5,7 @@ import {
   mrzDate,
   mrzToWorkerFields,
   normalizeMrz,
+  padMrzLine1,
   parseMrz,
   parseMrzName,
   splitMrzLines,
@@ -237,5 +238,40 @@ describe("mrzCopyItems", () => {
     const broken = `${LINE1}\n${LINE2.slice(0, 19)}9${LINE2.slice(20)}`;
     const items = mrzCopyItems(parseMrz(broken, TODAY));
     expect(items.find((i) => i.label === "生年月日")?.value).toBe("1974-08-12");
+  });
+});
+
+describe("padMrzLine1", () => {
+  it("足りない末尾の < を44文字まで埋める", () => {
+    const short = "P<VNMHOANG<<KIM<HUONG";
+    const padded = padMrzLine1(short);
+    expect(padded.length).toBe(44);
+    expect(padded).toBe(short.padEnd(44, "<"));
+  });
+
+  it("44文字ちょうどはそのまま", () => {
+    expect(padMrzLine1("P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<")).toBe(
+      "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<",
+    );
+  });
+
+  it("全角の＜・空白・小文字もそろえてから埋める", () => {
+    const padded = padMrzLine1("p＜vnmhoang＜＜kim＜huong ");
+    expect(padded.length).toBe(44);
+    expect(padded.startsWith("P<VNMHOANG<<KIM<HUONG<")).toBe(true);
+  });
+
+  it("< を入れすぎて44文字を超えたぶんは切り落とす", () => {
+    expect(padMrzLine1("P<VNMHOANG<<KIM<HUONG".padEnd(50, "<")).length).toBe(44);
+  });
+
+  it("< 以外で44文字を超えているときは直さない（読み取りで文字数エラーにする）", () => {
+    const long = "P<VNMHOANG<<KIM<HUONG".padEnd(44, "<") + "ABC";
+    expect(padMrzLine1(long)).toBe(long);
+  });
+
+  it("空は空のまま", () => {
+    expect(padMrzLine1("")).toBe("");
+    expect(padMrzLine1("  ")).toBe("");
   });
 });
