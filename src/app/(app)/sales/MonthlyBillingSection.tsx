@@ -654,7 +654,13 @@ export function MonthlyBillingSection({
       for (const [visa, group] of byVisa) {
         lines.push(`${visa}ビザ`);
         for (const r of group) {
-          lines.push(`${r.worker.name}さん　許可日：${mdText(r.worker.residence_permit_date ?? "")}`);
+          const base = `${r.worker.name}さん　許可日：${mdText(r.worker.residence_permit_date ?? "")}`;
+          // 特定技能2号の許可は、許可日の前日で1号の支援委託が終わることも書き添える
+          lines.push(
+            r.kind === "2号移行前日まで日割"
+              ? `${base}→${mdText(r.periodTo)}をもって特定技能１号の支援委託終了となります。`
+              : base,
+          );
         }
       }
     };
