@@ -23,6 +23,15 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-08-30",
+    title: "請求書作成の名簿に許可日・期限日の列を足しました",
+    where: "売上 ＞ 月末の請求書作成",
+    href: "/sales",
+    items: [
+      "各機関の名簿の在留資格の隣に、在留許可日と在留期限日の列を追加しました。機関からの問い合わせにこの画面だけで答えられます。",
+    ],
+  },
+  {
+    date: "2026-08-30",
     title: "特定技能2号になった月は、許可日の前日まで日割りで支援終了になりました",
     where: "売上 ＞ 月末の請求書作成",
     href: "/sales",

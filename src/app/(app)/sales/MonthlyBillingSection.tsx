@@ -2188,11 +2188,13 @@ export function MonthlyBillingSection({
 
               {open && (
                 <div className="mt-2 overflow-x-auto">
-                  <table className="w-full min-w-[1120px] border-collapse text-xs">
+                  <table className="w-full min-w-[1280px] border-collapse text-xs">
                     <thead>
                       <tr className="border-b border-border text-left text-muted">
                         <th className="py-1.5 pr-2 font-bold">氏名</th>
                         <th className="py-1.5 pr-2 font-bold">在留資格</th>
+                        <th className="py-1.5 pr-2 font-bold">許可日</th>
+                        <th className="py-1.5 pr-2 font-bold">期限日</th>
                         <th className="py-1.5 pr-2 font-bold">
                           <button
                             type="button"
@@ -2257,6 +2259,13 @@ export function MonthlyBillingSection({
                             )}
                           </td>
                           <td className="py-1.5 pr-2 text-muted">{row.worker.residence_status}</td>
+                          {/* 在留許可日・在留期限（機関からの問い合わせにこの画面だけで答えられるように） */}
+                          <td className="py-1.5 pr-2 tabular-nums text-muted">
+                            {row.worker.residence_permit_date ?? "—"}
+                          </td>
+                          <td className="py-1.5 pr-2 tabular-nums text-muted">
+                            {row.worker.residence_expiry_date ?? "—"}
+                          </td>
                           <td className="py-1.5 pr-2 align-top">
                             <div className="flex w-36 flex-col items-start gap-1">
                               {row.transferredOut ? (
@@ -2465,7 +2474,7 @@ export function MonthlyBillingSection({
                         </tr>
                       ))}
                       <tr>
-                        <td colSpan={8} className="py-1.5 pr-2 text-right font-bold">
+                        <td colSpan={10} className="py-1.5 pr-2 text-right font-bold">
                           合計
                         </td>
                         <td className="py-1.5 pr-2 text-right font-bold tabular-nums text-brand">
