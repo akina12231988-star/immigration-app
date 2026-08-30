@@ -2588,9 +2588,13 @@ function ReferralNoCell({
       </td>
     );
   }
-  if (!active && !fee) {
+  // あっせんの記録がある人は、許可月でなくてもあっせんの売上No.を入れられる
+  if (!active && !fee && applicationState !== "has") {
     return (
-      <td className="py-1.5 pr-2 text-muted" title="対象月に許可が下りた人だけ入力できます">
+      <td
+        className="py-1.5 pr-2 text-muted"
+        title="対象月に許可が下りた人と、あっせんの記録がある人が入力できます"
+      >
         —
       </td>
     );
