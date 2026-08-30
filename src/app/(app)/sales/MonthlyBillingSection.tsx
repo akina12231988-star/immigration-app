@@ -654,7 +654,13 @@ export function MonthlyBillingSection({
       for (const [visa, group] of byVisa) {
         lines.push(`${visa}ビザ`);
         for (const r of group) {
-          lines.push(`${r.worker.name}さん　許可日：${mdText(r.worker.residence_permit_date ?? "")}`);
+          const base = `${r.worker.name}さん　許可日：${mdText(r.worker.residence_permit_date ?? "")}`;
+          // 特定技能2号の許可は、許可日の前日で1号の支援委託が終わることも書き添える
+          lines.push(
+            r.kind === "2号移行前日まで日割"
+              ? `${base}→${mdText(r.periodTo)}をもって特定技能１号の支援委託終了となります。`
+              : base,
+          );
         }
       }
     };
@@ -2337,13 +2343,19 @@ export function MonthlyBillingSection({
                             canEdit={canEdit}
                             active={permitInMonth(row.worker.residence_permit_date)}
                             placeholder="保険No."
-                            // 特定技能総合保険が外国人負担の機関は、弊社の売上にならないので❌
+                            // 特定技能2号は特定技能総合保険に加入できないので❌。
+                            // 外国人負担の機関も弊社の売上にならないので❌
                             disabledText={
+                              isSsw2Row(row) ||
                               insuranceBurdenOf(org.organizationId) === "外国人負担"
                                 ? "❌"
                                 : null
                             }
-                            disabledTitle="特定技能総合保険が外国人負担のため、保険No.はありません"
+                            disabledTitle={
+                              isSsw2Row(row)
+                                ? "特定技能2号は特定技能総合保険に加入できないため、保険No.はありません"
+                                : "特定技能総合保険が外国人負担のため、保険No.はありません"
+                            }
                             onSave={(v, entryId) =>
                               void saveEntryNo(
                                 row.worker.id,
@@ -2471,6 +2483,11 @@ export function MonthlyBillingSection({
       )}
     </div>
   );
+}
+
+// 特定技能2号の行か（2号は特定技能総合保険に加入できないため、保険No.は発生しない）
+function isSsw2Row(row: MonthlyBillingRow): boolean {
+  return (row.worker.residence_status ?? "").normalize("NFKC").includes("特定技能2号");
 }
 
 // 許可売上No.・保険No.の1マス。売上明細の行があればその場で直せる。
