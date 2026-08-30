@@ -20,6 +20,7 @@ import {
   Square,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { CopyButton } from "@/components/ui/CopyButton";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
 import { setWorkerRecurringSalesNo } from "@/lib/supabase/queries/workers";
@@ -2197,6 +2198,13 @@ export function MonthlyBillingSection({
                             >
                               {row.worker.name}
                             </Link>
+                            {/* 氏名を freee の検索やメールに貼りやすいようにコピーできる */}
+                            <CopyButton
+                              value={row.worker.name}
+                              label="氏名をコピー"
+                              size={12}
+                              className="ml-0.5 align-middle"
+                            />
                             {/* 対象の年月に許可が下りた人はグリーンのバッジで表示 */}
                             {permitInMonth(row.worker.residence_permit_date) && (
                               <span className="ml-1 rounded-full bg-status-approved-bg px-1.5 py-0.5 text-[10px] font-bold text-status-approved-fg">
@@ -2536,21 +2544,36 @@ function ReferralNoCell({
   return (
     <td className="py-1.5 pr-2 align-top">
       <div className="flex w-32 flex-col items-start gap-1">
-        <input
-          key={`${fee?.feeId ?? "new"}-${current}`}
-          defaultValue={current}
-          onBlur={(e) => {
-            const v = e.target.value.trim();
-            if (v !== current) onSave(v);
-          }}
-          placeholder="紹介手数料No."
-          title={
-            fee
-              ? "紹介手数料台帳の記録につながっています"
-              : "番号を入れると紹介手数料台帳に記録を作ります"
-          }
-          className="w-32 rounded-lg border border-border bg-background px-1.5 py-1 text-xs"
-        />
+        {/* あっせん（応募）の記録の有無。紹介手数料を請求できるのはあっせんした人だけ */}
+        {applicationState !== "unknown" && (
+          <span
+            className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
+              applicationState === "has"
+                ? "bg-status-approved-bg text-status-approved-fg"
+                : "bg-seal/10 text-seal"
+            }`}
+          >
+            {applicationState === "has" ? "あっせん有り" : "あっせん無し"}
+          </span>
+        )}
+        {/* 番号の入力は、あっせんの記録がある人（または既に台帳に記録がある人）だけ出す */}
+        {(applicationState !== "none" || fee) && (
+          <input
+            key={`${fee?.feeId ?? "new"}-${current}`}
+            defaultValue={current}
+            onBlur={(e) => {
+              const v = e.target.value.trim();
+              if (v !== current) onSave(v);
+            }}
+            placeholder="紹介手数料No."
+            title={
+              fee
+                ? "紹介手数料台帳の記録につながっています"
+                : "番号を入れると紹介手数料台帳に記録を作ります"
+            }
+            className="w-32 rounded-lg border border-border bg-background px-1.5 py-1 text-xs"
+          />
+        )}
         {/* 台帳に記録がまだ無い人への案内。あっせんの記録（求職一覧）→台帳に追加、の順が正しい流れ */}
         {!fee &&
           (applicationState === "none" ? (

@@ -352,6 +352,25 @@ export function flexDocsValidUntil(start: string): string {
   return d.toISOString().slice(0, 10);
 }
 
+// 変形労働時間制の書類の有効期限のお知らせ。
+// 期限の2か月前から「そろそろ切れる」、期限を過ぎたら「期限切れ」を返し、
+// 新しい年間カレンダー・労使協定書の作成へ早めに動けるようにする
+export function flexDocsAlert(
+  start: string,
+  today: string,
+): { kind: "expired" | "expiring"; until: string } | null {
+  const until = flexDocsValidUntil(start);
+  if (!until) return null;
+  if (until < today) return { kind: "expired", until };
+  const m = until.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  // 期限の2か月前の日。この日以降はお知らせを出す
+  const from = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 3, Number(m[3])))
+    .toISOString()
+    .slice(0, 10);
+  return today >= from ? { kind: "expiring", until } : null;
+}
+
 // 1人あたりの居住費用 = 家賃（月額）÷ 最大入居人数 円未満四捨五入
 export function perResidentCost(rent: string, maxResidents: string): number | null {
   const r = parseAmount(rent);
