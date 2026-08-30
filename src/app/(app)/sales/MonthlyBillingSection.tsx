@@ -43,7 +43,8 @@ import {
   updateReferralFee,
   type WorkerReferralFee,
 } from "@/lib/supabase/queries/referrals";
-import { listApplicationWorkerIds } from "@/lib/supabase/queries/jobs";
+import { listApplicationWorkerOrgKeys } from "@/lib/supabase/queries/jobs";
+import { referralWorkerOrgKey } from "@/lib/referral-ledger-status";
 import {
   addMonthlySupportRegistration,
   clearMonthlySupportRegistration,
@@ -492,11 +493,14 @@ export function MonthlyBillingSection({
   };
 
   // 紹介手数料No.（紹介手数料台帳 referral_fees の行と1対1）。
+  // 「外国人|所属機関」の鍵で持ち、その機関の行にはその機関のあっせんの手数料だけを出す
+  // （転職した人の前の機関の手数料が、新しい機関の行に出ないようにする）。
   // 名簿から番号を入れ、入金があったら入金年月日を記録する
   const [referralFees, setReferralFees] = useState<Record<string, WorkerReferralFee>>({});
-  const [referralBusyId, setReferralBusyId] = useState<string | null>(null);
-  // あっせん（応募）の記録がある外国人ID。null = 読み込み前・読めなかった（案内を出さない）
-  const [appWorkerIds, setAppWorkerIds] = useState<Set<string> | null>(null);
+  const [referralBusyKey, setReferralBusyKey] = useState<string | null>(null);
+  // あっせん（応募）の記録がある「外国人|応募先の機関」の鍵。
+  // null = 読み込み前・読めなかった（案内を出さない）
+  const [appOrgKeys, setAppOrgKeys] = useState<Set<string> | null>(null);
   useEffect(() => {
     let cancelled = false;
     void Promise.resolve().then(() =>
@@ -510,9 +514,9 @@ export function MonthlyBillingSection({
         }),
     );
     void Promise.resolve().then(() =>
-      listApplicationWorkerIds(createClient())
-        .then((ids) => {
-          if (!cancelled) setAppWorkerIds(ids);
+      listApplicationWorkerOrgKeys(createClient())
+        .then((keys) => {
+          if (!cancelled) setAppOrgKeys(keys);
         })
         .catch(() => undefined),
     );
@@ -521,10 +525,27 @@ export function MonthlyBillingSection({
     };
   }, []);
 
+  // その機関の行に出す紹介手数料（機関が合う行 → 無ければ機関未設定の古い行）
+  const feeFor = (workerId: string, orgId: string): WorkerReferralFee | null =>
+    referralFees[referralWorkerOrgKey(workerId, orgId)] ??
+    referralFees[referralWorkerOrgKey(workerId, null)] ??
+    null;
+  // その手数料が入っている鍵（無ければ、これから作るときの機関つきの鍵）
+  const feeKeyFor = (workerId: string, orgId: string): string => {
+    if (referralFees[referralWorkerOrgKey(workerId, orgId)]) {
+      return referralWorkerOrgKey(workerId, orgId);
+    }
+    if (referralFees[referralWorkerOrgKey(workerId, null)]) {
+      return referralWorkerOrgKey(workerId, null);
+    }
+    return referralWorkerOrgKey(workerId, orgId);
+  };
+
   // 紹介手数料No.を入れたとき。台帳に行が無ければ作り、あれば番号を書き換える
   const saveReferralNo = async (row: MonthlyBillingRow, organizationId: string, value: string) => {
     const workerId = row.worker.id;
-    const cur = referralFees[workerId];
+    const cur = feeFor(workerId, organizationId);
+    const key = feeKeyFor(workerId, organizationId);
     if (!cur) {
       if (!value) return;
       try {
@@ -534,13 +555,13 @@ export function MonthlyBillingSection({
           workerName: row.worker.name,
           salesNo: value,
         });
-        setReferralFees((prev) => ({ ...prev, [workerId]: created }));
+        setReferralFees((prev) => ({ ...prev, [key]: created }));
       } catch (err) {
         setError(errorMessage(err, "紹介手数料No.の保存に失敗しました"));
       }
       return;
     }
-    setReferralFees((prev) => ({ ...prev, [workerId]: { ...cur, salesNo: value } }));
+    setReferralFees((prev) => ({ ...prev, [key]: { ...cur, salesNo: value } }));
     try {
       await updateReferralFee(createClient(), cur.feeId, { sales_no: value });
     } catch (err) {
@@ -550,18 +571,23 @@ export function MonthlyBillingSection({
 
   // 紹介手数料の入金日を記録する（null で取り消し）。
   // 手数料管理簿（紹介手数料台帳）の入金年月日にそのまま入る
-  const recordReferralPaid = async (workerId: string, paidOn: string | null) => {
-    const cur = referralFees[workerId];
+  const recordReferralPaid = async (
+    workerId: string,
+    organizationId: string,
+    paidOn: string | null,
+  ) => {
+    const cur = feeFor(workerId, organizationId);
     if (!cur) return;
-    setReferralBusyId(workerId);
-    setReferralFees((prev) => ({ ...prev, [workerId]: { ...cur, paidOn } }));
+    const key = feeKeyFor(workerId, organizationId);
+    setReferralBusyKey(key);
+    setReferralFees((prev) => ({ ...prev, [key]: { ...cur, paidOn } }));
     try {
       await updateReferralFee(createClient(), cur.feeId, { paid_on: paidOn });
     } catch (err) {
-      setReferralFees((prev) => ({ ...prev, [workerId]: cur })); // 失敗したら戻す
+      setReferralFees((prev) => ({ ...prev, [key]: cur })); // 失敗したら戻す
       setError(errorMessage(err, "紹介手数料の入金の記録に失敗しました"));
     } finally {
-      setReferralBusyId(null);
+      setReferralBusyKey(null);
     }
   };
 
@@ -2317,24 +2343,33 @@ export function MonthlyBillingSection({
                               )
                             }
                           />
-                          {/* 紹介手数料No.（紹介手数料台帳の行とつながっていて、入金も記録できる） */}
+                          {/* 紹介手数料No.（紹介手数料台帳の行とつながっていて、入金も記録できる）。
+                              手数料・あっせんの有無は「この機関の分」だけを見る */}
                           <ReferralNoCell
-                            fee={referralFees[row.worker.id] ?? null}
+                            fee={feeFor(row.worker.id, org.organizationId)}
                             canEdit={canEdit}
-                            active={permitInMonth(row.worker.residence_permit_date)}
+                            active={
+                              permitInMonth(row.worker.residence_permit_date) ||
+                              row.transferredOut === true
+                            }
                             renewal={/更新$/.test((row.worker.residence_status ?? "").trim())}
-                            busy={referralBusyId === row.worker.id}
+                            busy={
+                              referralBusyKey ===
+                              referralWorkerOrgKey(row.worker.id, org.organizationId)
+                            }
                             applicationState={
-                              appWorkerIds === null
+                              appOrgKeys === null
                                 ? "unknown"
-                                : appWorkerIds.has(row.worker.id)
+                                : appOrgKeys.has(
+                                      referralWorkerOrgKey(row.worker.id, org.organizationId),
+                                    )
                                   ? "has"
                                   : "none"
                             }
                             today={today}
                             onSave={(v) => void saveReferralNo(row, org.organizationId, v)}
                             onRecordPaid={(paidOn) =>
-                              void recordReferralPaid(row.worker.id, paidOn)
+                              void recordReferralPaid(row.worker.id, org.organizationId, paidOn)
                             }
                           />
                           <td className="py-1.5 pr-2 text-right tabular-nums">

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { referralWorkerOrgKey } from "@/lib/referral-ledger-status";
 import type {
   EmploymentInput,
   EmploymentRow,
@@ -73,14 +74,19 @@ export async function listAllApplications(
   return (data as ApplicationWithRefs[]) ?? [];
 }
 
-// あっせん（応募）の記録がある外国人のID。
-// 請求書作成の紹介手数料No.欄で「まずはあっせんの記録から」の案内を出すのに使う
-export async function listApplicationWorkerIds(
+// あっせん（応募）の記録がある「外国人|応募先の機関」の鍵（referralWorkerOrgKey）。
+// 請求書作成の紹介手数料No.欄で、その機関へのあっせんの有無を出すのに使う
+// （転職した人は、あっせんした機関の行だけ「有り」になる）
+export async function listApplicationWorkerOrgKeys(
   supabase: SupabaseClient,
 ): Promise<Set<string>> {
-  const { data, error } = await supabase.from("job_applications").select("worker_id");
+  const { data, error } = await supabase
+    .from("job_applications")
+    .select("worker_id, organization_id");
   if (error) throw error;
-  return new Set(((data as { worker_id: string }[] | null) ?? []).map((r) => r.worker_id));
+  const rows =
+    (data as { worker_id: string; organization_id: string | null }[] | null) ?? [];
+  return new Set(rows.map((r) => referralWorkerOrgKey(r.worker_id, r.organization_id)));
 }
 
 export async function insertApplication(
