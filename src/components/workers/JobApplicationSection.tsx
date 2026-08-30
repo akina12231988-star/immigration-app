@@ -168,6 +168,7 @@ export function JobApplicationSection({
           initial={editing}
           postings={postings}
           organizations={orgList}
+          fixedWorkerId={workerId}
           onClose={() => setDialogOpen(false)}
           onSubmit={submitApplication}
           onOrganizationCreated={(o) =>
