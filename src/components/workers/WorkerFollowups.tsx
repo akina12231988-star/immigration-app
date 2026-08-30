@@ -1,12 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BellRing, Home, ShieldPlus } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
+import { listWorkerInsuranceCards } from "@/lib/supabase/queries/insurance-cards";
 import { dbErrorMessage } from "@/lib/errors";
+import {
+  kokuhoInsuranceHint,
+  type InsuranceHistoryRef,
+  type WorkerInsuranceCardRow,
+} from "@/lib/insurance-card";
 import {
   followupLabels,
   followupsOf,
@@ -26,15 +32,32 @@ export function WorkerFollowups({
   workerId,
   followups: initial,
   canEdit = false,
+  histories = [],
 }: {
   workerId: string;
   followups: unknown;
   canEdit?: boolean;
+  histories?: InsuranceHistoryRef[]; // 現在の保険証が社保のとき、会社名を出すのに使う
 }) {
   const router = useRouter();
   const [value, setValue] = useState<Followups>(() => followupsOf({ followups: initial }));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 現在の保険証（保険証の欄の最新）。国保加入が必要そうかの目安を出すのに使う
+  const [currentCard, setCurrentCard] = useState<WorkerInsuranceCardRow | null>(null);
+  useEffect(() => {
+    listWorkerInsuranceCards(createClient(), workerId)
+      .then((rows) => setCurrentCard(rows[0] ?? null))
+      .catch(() => undefined); // 0129未適用のときは未登録あつかい
+  }, [workerId]);
+  const insuranceHint = kokuhoInsuranceHint(currentCard, histories);
+  const insuranceHintCls =
+    insuranceHint.tone === "ok"
+      ? "bg-status-approved-bg text-status-approved-fg"
+      : insuranceHint.tone === "attention"
+        ? "bg-status-notice-bg text-status-notice-fg"
+        : "bg-background text-muted";
 
   // 画面に出ている片方だけを差し替えて保存する（もう片方は消さない）
   const save = async (patch: {
@@ -103,6 +126,10 @@ export function WorkerFollowups({
               />
               転居の必要があり、転居手続きをする
             </label>
+            {/* 申請準備の段階（入社前の住まい決めなど）でも使えることを添える */}
+            <p className="mt-1 text-[11px] leading-relaxed text-muted">
+              入社前・申請準備の段階の転居にも使えます。転居がすんだら、上の住所歴（転入日ごと）にも登録してください。
+            </p>
             {value.moving.needed && (
               <div className="mt-2.5 space-y-2.5">
                 <label className="block">
@@ -165,6 +192,13 @@ export function WorkerFollowups({
             <p className="mt-1 text-[11px] leading-relaxed text-muted">
               前職が社会保険だと、退職に関わる書類（資格喪失証明書・離職票など）が発行されるまで
               加入手続きができません。書類待ちのあいだも忘れないよう、ここに付けておきます。
+            </p>
+            {/* 現在の保険証（保険証の欄の最新）から、加入が必要そうかの目安を出す */}
+            <p className={`mt-1.5 rounded-lg px-2.5 py-1.5 text-[11px] leading-relaxed ${insuranceHintCls}`}>
+              {insuranceHint.text}{" "}
+              <a href="#insurance-cards" className="font-bold underline underline-offset-2">
+                保険証の欄へ
+              </a>
             </p>
             {value.kokuho.needed && (
               <div className="mt-2.5 space-y-2.5">

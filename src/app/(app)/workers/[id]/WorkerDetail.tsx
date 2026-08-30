@@ -30,6 +30,7 @@ import { FieldJumpSearch } from "@/components/workers/FieldJumpSearch";
 import { WorkerDocuments } from "@/components/workers/WorkerDocuments";
 import { WorkerEmploymentInsurance } from "@/components/workers/WorkerEmploymentInsurance";
 import { WorkerFollowups } from "@/components/workers/WorkerFollowups";
+import { WorkerInsuranceCards } from "@/components/workers/WorkerInsuranceCards";
 import { OnboardingDocuments } from "@/components/workers/OnboardingDocuments";
 import { HealthCheckSection } from "@/components/workers/HealthCheckSection";
 import { GensenDocuments } from "@/components/workers/GensenDocuments";
@@ -1577,8 +1578,17 @@ export function WorkerDetail({
       {/* 雇用保険（離職票・被保険者証）が届いたときの保管 */}
       <WorkerEmploymentInsurance workerId={worker.id} canEdit={canEdit} />
 
-      {/* あとでやる手続き（転居手続き・退職書類が出てからの国保/国民年金の加入） */}
-      <WorkerFollowups workerId={worker.id} followups={worker.followups} canEdit={canEdit} />
+      {/* 保険証（健康保険）。現在の保険証と履歴。社保は職歴（会社）に紐付けられる */}
+      <WorkerInsuranceCards workerId={worker.id} canEdit={canEdit} histories={histories} />
+
+      {/* あとでやる手続き（転居手続き・退職書類が出てからの国保/国民年金の加入）。
+          国保の欄には現在の保険証（上の保険証の欄の最新）からの目安も出す */}
+      <WorkerFollowups
+        workerId={worker.id}
+        followups={worker.followups}
+        canEdit={canEdit}
+        histories={histories}
+      />
 
       {/* 旧「外国人書類（PDF・画像で保存）」カードは解体した:
           合格証4種→基本情報の各合格名の下 / パスポート→出入国の記録のパスポートの記録 /
