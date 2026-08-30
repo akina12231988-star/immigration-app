@@ -50,6 +50,28 @@ export async function listOrgInvoicesByMonth(
   return (data as unknown as OrgInvoiceStatus[]) ?? [];
 }
 
+// 未入金（対象の年月より前の請求で、入金済み額が請求額に満たないもの）が
+// 残っている所属機関のID一覧。請求書作成の機関名の横に「未入金あり」を出すために使う。
+// 「対象の年月より前」で見るのは、当月分はまだ支払期限が来ていないため
+export async function listUnpaidInvoiceOrgIds(
+  supabase: SupabaseClient,
+  beforeMonth: string,
+): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from("org_invoices")
+    .select("organization_id, amount, paid")
+    .lt("month", beforeMonth);
+  if (error) throw error;
+  const out = new Set<string>();
+  const rows =
+    (data as { organization_id: string; amount: number | null; paid: number | null }[] | null) ??
+    [];
+  for (const r of rows) {
+    if ((r.amount ?? 0) - (r.paid ?? 0) > 0) out.add(r.organization_id);
+  }
+  return out;
+}
+
 // 請求書を作成した・督促状を発行した（またはその取り消し）を記録する。
 // 記録がまだ無い機関×月なら作る。渡した列だけ書き換わるので、
 // すでに入っている請求書番号や入金の記録は消えない

@@ -27,6 +27,7 @@ import { setWorkerRecurringSalesNo } from "@/lib/supabase/queries/workers";
 import { updateOrganization } from "@/lib/supabase/queries/organizations";
 import {
   listGrantedPermits,
+  listInReviewWorkerIds,
   listPermitContentsByMonth,
   type GrantedPermit,
 } from "@/lib/supabase/queries/applications";
@@ -57,6 +58,7 @@ import {
   deleteOrgInvoice,
   listOrgInvoices,
   listOrgInvoicesByMonth,
+  listUnpaidInvoiceOrgIds,
   stampOrgInvoice,
   updateOrgInvoice,
   upsertOrgInvoice,
@@ -113,6 +115,14 @@ import { formatAmountInput, formatAmountWhileTyping } from "@/lib/amount-format"
 
 // 選んだ対象の年月の保存キー（タブ内で保持し、ページを離れて戻っても選択が消えないように）
 const MONTH_STORE_KEY = "monthly-billing-month";
+// 名簿の並び替えの保存キー（毎回指定し直さなくて済むよう、ブラウザに保存して次回も同じ並びで開く）
+const SORT_STORE_KEY = "monthly-billing-sort";
+type SortDir = "asc" | "desc" | null;
+interface SortPrefs {
+  recurring: SortDir; // 定期売上No.の並び順
+  permit: SortDir; // 許可売上No.の並び順
+  daily: boolean; // 日割り計算の人を先頭にまとめるか
+}
 export function MonthlyBillingSection({
   workers,
   organizations,
@@ -146,7 +156,60 @@ export function MonthlyBillingSection({
   };
   const [salesNos, setSalesNos] = useState<Record<string, string>>({});
   // 定期売上No.の並び順（null=氏名順・asc=昇順・desc=降順）
-  const [salesNoSort, setSalesNoSort] = useState<"asc" | "desc" | null>(null);
+  const [salesNoSort, setSalesNoSort] = useState<SortDir>(null);
+  // 許可売上No.の並び順（降順は「これから入力する人」が先頭に来る）
+  const [permitNoSort, setPermitNoSort] = useState<SortDir>(null);
+  // 日割り計算の人を先頭にまとめて表示するか（freeeの定期売上の調整をまとめて確認する用）
+  const [groupDaily, setGroupDaily] = useState(false);
+  // 保存しておいた並び替えを次回も使う（毎回指定し直さなくて済むように）
+  useEffect(() => {
+    // レンダー中の同期setStateを避けるため、反映はマイクロタスクで行う
+    void Promise.resolve().then(() => {
+      try {
+        const raw = window.localStorage.getItem(SORT_STORE_KEY);
+        if (!raw) return;
+        const saved = JSON.parse(raw) as Partial<Record<keyof SortPrefs, unknown>>;
+        if (saved.recurring === "asc" || saved.recurring === "desc") {
+          setSalesNoSort(saved.recurring);
+        } else if (saved.permit === "asc" || saved.permit === "desc") {
+          setPermitNoSort(saved.permit);
+        }
+        if (saved.daily === true) setGroupDaily(true);
+      } catch {
+        /* 壊れた保存値は無視して氏名順で出す */
+      }
+    });
+  }, []);
+  const saveSortPrefs = (prefs: SortPrefs) => {
+    try {
+      window.localStorage.setItem(SORT_STORE_KEY, JSON.stringify(prefs));
+    } catch {
+      /* プライベートブラウズなどで保存できなくても並び替え自体は動かす */
+    }
+  };
+  // 定期売上No.と許可売上No.の並び替えは同時には使えない（後から押したほうを使う）
+  const cycleSalesNoSort = () => {
+    const next: SortDir = salesNoSort === null ? "asc" : salesNoSort === "asc" ? "desc" : null;
+    setSalesNoSort(next);
+    setPermitNoSort(null);
+    saveSortPrefs({ recurring: next, permit: null, daily: groupDaily });
+  };
+  // 許可売上No.は降順から始める（未入力の人が先頭に来て、入力漏れに気づけるように）
+  const cyclePermitNoSort = () => {
+    const next: SortDir = permitNoSort === null ? "desc" : permitNoSort === "desc" ? "asc" : null;
+    setPermitNoSort(next);
+    setSalesNoSort(null);
+    saveSortPrefs({ recurring: null, permit: next, daily: groupDaily });
+  };
+  const toggleGroupDaily = () => {
+    const next = !groupDaily;
+    setGroupDaily(next);
+    saveSortPrefs({
+      recurring: permitNoSort ? null : salesNoSort,
+      permit: permitNoSort,
+      daily: next,
+    });
+  };
   // このページで登録した支援代（月額）。organization_id → 数字だけの文字列
   const [orgFees, setOrgFees] = useState<Record<string, string>>({});
   const [feeDraft, setFeeDraft] = useState("");
@@ -183,6 +246,47 @@ export function MonthlyBillingSection({
       cancelled = true;
     };
   }, []);
+
+  // 審査中の申請（受付済みでまだ許可・取下げになっていない）がある外国人。
+  // 対応状況の欄が「審査中」になっていなくても、入管申請の記録から審査中のマークを出す
+  const [inReviewIds, setInReviewIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve().then(() =>
+      listInReviewWorkerIds(createClient())
+        .then((ids) => {
+          if (!cancelled) setInReviewIds(ids);
+        })
+        .catch(() => {
+          // 取れなくても名簿は使える（その場合は対応状況の欄だけで判定する）
+          if (!cancelled) setInReviewIds(new Set());
+        }),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 未入金（対象の年月より前の請求で残額があるもの）が残っている機関。
+  // 機関名の横に「未入金あり」を出す。入金を記録したら読み込み直す
+  const [unpaidOrgIds, setUnpaidOrgIds] = useState<Set<string>>(new Set());
+  const [unpaidReloadKey, setUnpaidReloadKey] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve().then(() =>
+      listUnpaidInvoiceOrgIds(createClient(), month)
+        .then((ids) => {
+          if (!cancelled) setUnpaidOrgIds(ids);
+        })
+        .catch(() => {
+          // 台帳が未作成でも名簿は使えるようにする
+          if (!cancelled) setUnpaidOrgIds(new Set());
+        }),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [month, unpaidReloadKey]);
 
   // 定期売上No. は画面で編集した内容を優先して集計に反映する
   const merged = useMemo(
@@ -394,18 +498,48 @@ export function MonthlyBillingSection({
     return orgs;
   }, [billing.orgs, orgQuery, onlyUncreated, onlyReminded, invoiceCreatedOn, reminderSentOn]);
 
-  // 定期売上No.でのソート。未登録は常に最後（氏名順のままの集計順は billing 側）
-  const sortRows = (rows: MonthlyBillingRow[]): MonthlyBillingRow[] => {
-    if (!salesNoSort) return rows;
-    return [...rows].sort((a, b) => {
-      const av = a.worker.recurring_sales_no || "";
-      const bv = b.worker.recurring_sales_no || "";
-      if (!av && !bv) return a.worker.name.localeCompare(b.worker.name, "ja");
-      if (!av) return 1;
-      if (!bv) return -1;
-      const cmp = av.localeCompare(bv, "ja");
-      return salesNoSort === "asc" ? cmp : -cmp;
-    });
+  // 名簿の並び替え。定期売上No.（転職者の行は表示している過去の番号）または
+  // 許可売上No.で並べ替え、「日割りを上へ」を選んだら日割りの行を先頭に寄せる。
+  // 未登録は常に最後（氏名順のままの集計順は billing 側）
+  const sortRows = (rows: MonthlyBillingRow[], organizationId: string): MonthlyBillingRow[] => {
+    const byName = (a: MonthlyBillingRow, b: MonthlyBillingRow) =>
+      a.worker.name.localeCompare(b.worker.name, "ja");
+    let sorted = [...rows];
+    if (salesNoSort) {
+      sorted.sort((a, b) => {
+        const av = recurringSalesNoForRow(a, organizationId) || "";
+        const bv = recurringSalesNoForRow(b, organizationId) || "";
+        if (!av && !bv) return byName(a, b);
+        if (!av) return 1;
+        if (!bv) return -1;
+        const cmp = av.localeCompare(bv, "ja");
+        return salesNoSort === "asc" ? cmp : -cmp;
+      });
+    } else if (permitNoSort) {
+      // 0=当月許可なのに未入力（これから入れる人）→ 1=番号あり → 2=それ以外
+      const rank = (r: MonthlyBillingRow): number => {
+        if (salesNos2[r.worker.id]?.permit?.freeeNo) return 1;
+        return permitInMonth(r.worker.residence_permit_date) && !r.transferredOut ? 0 : 2;
+      };
+      sorted.sort((a, b) => {
+        const ra = rank(a);
+        const rb = rank(b);
+        if (ra !== rb) return ra - rb;
+        if (ra !== 1) return byName(a, b);
+        const av = salesNos2[a.worker.id]?.permit?.freeeNo ?? "";
+        const bv = salesNos2[b.worker.id]?.permit?.freeeNo ?? "";
+        const cmp = av.localeCompare(bv, "ja");
+        return permitNoSort === "asc" ? cmp : -cmp;
+      });
+    }
+    if (groupDaily) {
+      // 選んだ並び順は保ったまま、日割りの行だけ先頭へ寄せる
+      sorted = [
+        ...sorted.filter((r) => r.kind.includes("日割")),
+        ...sorted.filter((r) => !r.kind.includes("日割")),
+      ];
+    }
+    return sorted;
   };
 
   // 対象月に許可が下りた申請の「申請内容」（worker_id → 在留資格の変更許可／在留期間の更新許可）。
@@ -870,6 +1004,8 @@ export function MonthlyBillingSection({
         setCurrentAmount(String(row.amount || ""));
       }
       resetPastForm();
+      // 過去分は未入金の元になるので「未入金あり」の表示も読み込み直す
+      setUnpaidReloadKey((k) => k + 1);
     } catch (err) {
       setError(
         dbErrorMessage(err, "0070_org_invoices.sql", errorMessage(err, "過去分の請求の保存に失敗しました")),
@@ -907,6 +1043,10 @@ export function MonthlyBillingSection({
     }
     try {
       await updateOrgInvoice(createClient(), id, patch);
+      // 入金や金額を書き換えたら「未入金あり」の表示も読み込み直す
+      if (patch.paid !== undefined || patch.amount !== undefined) {
+        setUnpaidReloadKey((k) => k + 1);
+      }
     } catch (err) {
       setError(errorMessage(err, "入金記録の保存に失敗しました"));
     }
@@ -917,6 +1057,7 @@ export function MonthlyBillingSection({
     try {
       await deleteOrgInvoice(createClient(), id);
       setOrgInvoices((prev) => prev.filter((r) => r.id !== id));
+      setUnpaidReloadKey((k) => k + 1);
     } catch (err) {
       setError(errorMessage(err, "削除に失敗しました"));
     }
@@ -1472,6 +1613,16 @@ export function MonthlyBillingSection({
                       {reminderSentOn[org.organizationId] && (
                         <span className="shrink-0 rounded-full bg-seal/10 px-2 py-0.5 text-[10px] font-bold text-seal">
                           督促状 発行済み
+                        </span>
+                      )}
+                      {/* 過去の請求に残額が残っている機関のアラート（追いかけ漏れの防止） */}
+                      {unpaidOrgIds.has(org.organizationId) && (
+                        <span
+                          className="inline-flex shrink-0 items-center gap-1 rounded-full bg-seal/10 px-2 py-0.5 text-[10px] font-bold text-seal"
+                          title="支払残がある過去の請求があります。機関を開いて「請求・入金の記録」で確認してください"
+                        >
+                          <AlertTriangle size={11} />
+                          未入金あり
                         </span>
                       )}
                     </span>
@@ -2198,12 +2349,8 @@ export function MonthlyBillingSection({
                         <th className="py-1.5 pr-2 font-bold">
                           <button
                             type="button"
-                            onClick={() =>
-                              setSalesNoSort((s) =>
-                                s === null ? "asc" : s === "asc" ? "desc" : null,
-                              )
-                            }
-                            title="クリックで 昇順 → 降順 → 氏名順 に切り替え"
+                            onClick={cycleSalesNoSort}
+                            title="クリックで 昇順 → 降順 → 氏名順 に切り替え（並び順は次回も引き継がれます）"
                             className="inline-flex items-center gap-1 font-bold hover:text-brand"
                           >
                             定期売上No.
@@ -2216,19 +2363,52 @@ export function MonthlyBillingSection({
                             )}
                           </button>
                         </th>
-                        <th className="py-1.5 pr-2 font-bold">許可売上No.</th>
+                        <th className="py-1.5 pr-2 font-bold">
+                          <button
+                            type="button"
+                            onClick={cyclePermitNoSort}
+                            title="クリックで 降順（これから入力する人が上）→ 昇順 → 氏名順 に切り替え（並び順は次回も引き継がれます）"
+                            className="inline-flex items-center gap-1 font-bold hover:text-brand"
+                          >
+                            許可売上No.
+                            {permitNoSort === "asc" ? (
+                              <ArrowUp size={12} />
+                            ) : permitNoSort === "desc" ? (
+                              <ArrowDown size={12} />
+                            ) : (
+                              <ArrowUpDown size={12} className="opacity-50" />
+                            )}
+                          </button>
+                        </th>
                         <th className="py-1.5 pr-2 font-bold">保険No.</th>
                         <th className="py-1.5 pr-2 font-bold">紹介手数料No.</th>
                         <th className="py-1.5 pr-2 text-right font-bold">支援代（月額）</th>
                         <th className="py-1.5 pr-2 font-bold">支援費算定期間</th>
                         <th className="py-1.5 pr-2 font-bold">日数</th>
-                        <th className="py-1.5 pr-2 font-bold">区分</th>
+                        <th className="py-1.5 pr-2 font-bold">
+                          {/* 日割り計算の人を先頭にまとめる切り替え（まとめて確認・調整する用） */}
+                          <button
+                            type="button"
+                            onClick={toggleGroupDaily}
+                            title="クリックで日割り計算の人を先頭にまとめて表示します（もう一度押すと戻ります。次回も引き継がれます）"
+                            className={`inline-flex items-center gap-1 font-bold hover:text-brand ${
+                              groupDaily ? "text-brand" : ""
+                            }`}
+                          >
+                            区分
+                            {groupDaily ? (
+                              <ArrowUp size={12} />
+                            ) : (
+                              <ArrowUpDown size={12} className="opacity-50" />
+                            )}
+                          </button>
+                        </th>
                         <th className="py-1.5 pr-2 text-right font-bold">支援費請求額</th>
                         <th className="py-1.5 pr-2 font-bold">メモ</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {sortRows(org.rows).map((row) => (
+                      {sortRows(org.rows, org.organizationId).map((row) => (
                         <tr key={row.worker.id} className="border-b border-border/60">
                           <td className="py-1.5 pr-2">
                             <Link
@@ -2266,10 +2446,12 @@ export function MonthlyBillingSection({
                           <td className="py-1.5 pr-2 tabular-nums text-muted">
                             {row.worker.residence_expiry_date ?? "—"}
                             {/* 期限切れ: 更新申請の審査中（特例期間）ならそのマーク、
-                                対応状況が入っていなければ注意を出す */}
+                                対応状況が入っていなければ注意を出す。
+                                対応状況の欄が空でも、入管申請に受付済みの記録があれば審査中と扱う */}
                             {!!row.worker.residence_expiry_date &&
                               row.worker.residence_expiry_date < today &&
-                              (row.worker.residence_renewal_status === "審査中" ? (
+                              (row.worker.residence_renewal_status === "審査中" ||
+                              inReviewIds.has(row.worker.id) ? (
                                 <span
                                   className="mt-0.5 block w-fit rounded-full bg-brand/10 px-1.5 py-0.5 text-[10px] font-bold text-brand"
                                   title="在留期限は過ぎていますが、更新申請の審査中です（特例期間）"
@@ -2321,6 +2503,16 @@ export function MonthlyBillingSection({
                                 />
                               ) : (
                                 <span className="text-muted">{row.worker.recurring_sales_no || "—"}</span>
+                              )}
+                              {/* 日割りの月はfreeeの定期売上の金額をそのまま使えないため、番号の下に注意を出す */}
+                              {row.kind.includes("日割") && (
+                                <span
+                                  className="inline-flex items-center gap-1 rounded-full bg-seal/10 px-1.5 py-0.5 text-[10px] font-bold text-seal"
+                                  title={`この月は「${row.kind}」です。freeeの定期売上の金額をそのまま使わず、日割りの金額に調整してください`}
+                                >
+                                  <AlertTriangle size={11} />
+                                  日割り計算対象
+                                </span>
                               )}
                               {/* ◯月分の支援代をfreeeに登録した記録（登録漏れ・二重登録の防止） */}
                               {regs[row.worker.id]?.registered_on ? (
