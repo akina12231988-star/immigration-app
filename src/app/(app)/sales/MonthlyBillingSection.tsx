@@ -2317,6 +2317,7 @@ export function MonthlyBillingSection({
                             fee={referralFees[row.worker.id] ?? null}
                             canEdit={canEdit}
                             active={permitInMonth(row.worker.residence_permit_date)}
+                            renewal={/更新$/.test((row.worker.residence_status ?? "").trim())}
                             busy={referralBusyId === row.worker.id}
                             applicationState={
                               appWorkerIds === null
@@ -2501,6 +2502,7 @@ function ReferralNoCell({
   active,
   busy,
   applicationState,
+  renewal = false,
   today,
   onSave,
   onRecordPaid,
@@ -2512,6 +2514,8 @@ function ReferralNoCell({
   busy: boolean;
   // あっせん（応募）の記録の有無。無ければ「まずはあっせんの記録から」の案内を出す
   applicationState: "has" | "none" | "unknown";
+  // 在留資格が「〇〇更新」（更新許可）の月。更新はあっせんではないので紹介手数料は無い
+  renewal?: boolean;
   today: string; // 入金日の初期値
   onSave: (value: string) => void;
   // 入金日を記録する（null で取り消し）。手数料管理簿の入金年月日にそのまま入る
@@ -2521,6 +2525,17 @@ function ReferralNoCell({
   const [recording, setRecording] = useState(false);
   const [paidDate, setPaidDate] = useState(today);
 
+  // 更新許可の月は紹介手数料の対象外（台帳に記録が残っている人だけそのまま出す）
+  if (renewal && !fee) {
+    return (
+      <td
+        className="py-1.5 pr-2 text-muted"
+        title="在留資格の更新のため、紹介手数料はありません"
+      >
+        —<span className="block text-[10px]">更新のため不要</span>
+      </td>
+    );
+  }
   if (!active && !fee) {
     return (
       <td className="py-1.5 pr-2 text-muted" title="対象月に許可が下りた人だけ入力できます">
