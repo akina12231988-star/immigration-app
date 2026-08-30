@@ -36,6 +36,92 @@ export function normalizeCardDate(text: string): string {
   return "";
 }
 
+// 券面の日付表記（例: 2028年08月24日）。YYYY-MM-DD 以外は空
+export function cardFaceDate(iso: string): string {
+  const m = (iso ?? "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[1]}年${m[2]}月${m[3]}日` : "";
+}
+
+// 在留資格から券面の「就労制限の有無」を導く（このアプリで扱う在留資格のみ）。
+// 分からない在留資格は空を返し、画面では「—」になる
+export function workRestrictionLabel(status: string): string {
+  const s = (status ?? "").normalize("NFKC").trim();
+  if (!s) return "";
+  if (s.startsWith("特定活動")) return "指定書により指定された就労活動のみ可";
+  if (s.startsWith("技能実習") || s.startsWith("特定技能")) {
+    return "在留資格に基づく就労活動のみ可";
+  }
+  return "";
+}
+
+// ---- 在留期間の自動計算 ----
+
+function parseYmd(iso: string): { y: number; m: number; d: number } | null {
+  const m = (iso ?? "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  return { y: Number(m[1]), m: Number(m[2]), d: Number(m[3]) };
+}
+
+function daysInMonth(y: number, m: number): number {
+  return new Date(Date.UTC(y, m, 0)).getUTCDate();
+}
+
+// 基準日に months か月を足した応当日（無い日は月末に丸め）
+function addMonths(p: { y: number; m: number; d: number }, months: number) {
+  const total = p.m - 1 + months;
+  const y = p.y + Math.floor(total / 12);
+  const m = ((total % 12) + 12) % 12 + 1;
+  return { y, m, d: Math.min(p.d, daysInMonth(y, m)) };
+}
+
+function sameDay(a: { y: number; m: number; d: number }, b: { y: number; m: number; d: number }) {
+  return a.y === b.y && a.m === b.m && a.d === b.d;
+}
+
+function daysBetween(a: { y: number; m: number; d: number }, b: { y: number; m: number; d: number }) {
+  return Math.round((Date.UTC(b.y, b.m - 1, b.d) - Date.UTC(a.y, a.m - 1, a.d)) / 86400000);
+}
+
+function formatPeriodMonths(months: number): string {
+  if (months % 12 === 0) return `${months / 12}年`;
+  if (months < 12) return `${months}月`;
+  return `${Math.floor(months / 12)}年${months % 12}月`;
+}
+
+// 実際にある在留期間（月数）。更新許可のときの推定に使う
+const STANDARD_PERIOD_MONTHS = [3, 4, 6, 12, 24, 36, 48, 60];
+
+// 許可年月日と在留期間満了日から在留期間（「2年」「6月」など）を求める。
+//
+// - 変更・上陸許可: 満了日は許可日のちょうど N か月後（応当日。無い日は月末）なので
+//   その月数をそのまま期間にする
+// - 更新許可: 新しい満了日は「前の満了日 + 期間」なので許可日からは計算がずれる。
+//   そこで「満了日から標準の期間を引いた日」（＝前の満了日）が、許可日から見て
+//   後ろ3か月（更新は満了日の3か月前から申請できる）〜前2か月（満了日を過ぎても
+//   特例期間中に許可が出ることがある）に収まる期間を探し、いちばん近いものを採る
+// - どれにも当てはまらない（日付の入れ違いなど）は null。画面では登録値に戻し、
+//   両方の日付が入っているのに計算できないときは注意を出して気付けるようにする
+export function residencePeriodFromDates(permitDate: string, expiryDate: string): string | null {
+  const p = parseYmd(permitDate);
+  const e = parseYmd(expiryDate);
+  if (!p || !e) return null;
+  if (daysBetween(p, e) <= 0) return null;
+
+  // 許可日のちょうど N か月後なら、その月数（標準に無い期間もそのまま出す）
+  const months = (e.y - p.y) * 12 + (e.m - p.m);
+  if (months > 0 && sameDay(addMonths(p, months), e)) return formatPeriodMonths(months);
+
+  // 更新許可: 満了日から期間を引いた日（＝前の満了日）が許可日の前後3か月以内のもの
+  let best: { months: number; delta: number } | null = null;
+  for (const n of STANDARD_PERIOD_MONTHS) {
+    const base = addMonths(e, -n);
+    const diff = daysBetween(p, base); // 前の満了日 − 許可日（後ろが+）
+    const delta = Math.abs(diff);
+    if (diff >= -62 && diff <= 92 && (!best || delta < best.delta)) best = { months: n, delta };
+  }
+  return best ? formatPeriodMonths(best.months) : null;
+}
+
 // 在留カード番号の形式（英字2 + 数字8 + 英字2。例: AB12345678CD）。
 // 形が違っても保存はできる（入力途中・特例の番号もあるため）。画面で注意だけ出す
 export function isValidResidenceCardNo(value: string): boolean {

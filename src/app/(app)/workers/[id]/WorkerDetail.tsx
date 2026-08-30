@@ -100,7 +100,12 @@ import {
   workerFieldString,
 } from "@/lib/worker-inline-edit";
 import { employmentStartPatch, type EnrollPatch } from "@/lib/worker-support";
-import { RESIDENCE_PERIODS } from "@/lib/residence-card";
+import {
+  RESIDENCE_PERIODS,
+  cardFaceDate,
+  residencePeriodFromDates,
+  workRestrictionLabel,
+} from "@/lib/residence-card";
 import { WORKER_SITUATIONS, autoSituation, situationDescription } from "@/lib/worker-situation";
 import { isCountedHistory, type WorkHistory } from "@/types/ssw";
 import type { Application } from "@/types/application";
@@ -490,6 +495,17 @@ export function WorkerDetail({
       ? [worker.status, ...WORKER_STATUSES]
       : [...WORKER_STATUSES];
 
+  // 在留期間は許可年月日と満了日から自動計算（券面の下の欄に表示）。
+  // 計算した期間と登録値が食い違うときは、どちらかの入力間違いに気付けるよう注意を出す
+  const autoPeriod = residencePeriodFromDates(
+    worker.residence_permit_date ?? "",
+    worker.residence_expiry_date ?? "",
+  );
+  const periodMismatch =
+    !!autoPeriod &&
+    !!worker.residence_period.trim() &&
+    worker.residence_period.normalize("NFKC").trim() !== autoPeriod;
+
   return (
     <div className="space-y-4">
       {error && (
@@ -625,30 +641,46 @@ export function WorkerDetail({
           </p>
         )}
 
-        {/* 実物の在留カードと同じ並び: 氏名 → 生年月日・性別・国籍 → 住居地 → 在留資格 →
-            在留期間 → 満了日・許可日 → 番号。右に顔写真とID・連絡リンク */}
-        <div className="rounded-2xl border border-border bg-background p-3">
-          <div className="mb-2 flex items-center justify-between gap-2 border-b border-border pb-2">
-            <span className="flex items-center gap-1.5 text-[11px] font-bold text-muted">
-              <CreditCard size={13} />
-              在留カード RESIDENCE CARD
-            </span>
-            {canEdit && (
-              <button
-                type="button"
-                onClick={() => setCardOpen(true)}
-                className="flex min-h-[32px] items-center gap-1 rounded-lg border border-brand px-2.5 text-[11px] font-bold text-brand"
-              >
-                <CreditCard size={12} />
-                在留カードから入力
-              </button>
-            )}
+        {canEdit && (
+          <div className="mb-2 flex justify-end">
+            <button
+              type="button"
+              onClick={() => setCardOpen(true)}
+              className="flex min-h-[32px] items-center gap-1 rounded-lg border border-brand px-2.5 text-[11px] font-bold text-brand"
+            >
+              <CreditCard size={12} />
+              在留カードから入力
+            </button>
+          </div>
+        )}
+
+        {/* 実物の在留カードの券面に合わせた表示: ヘッダー → 氏名 → 生年月日・性別・国籍 →
+            住居地 → 就労制限の有無 → 在留資格 → 満了日 → 番号 → 有効期限。右に顔写真。
+            色も券面に合わせて固定（ダークモードでもカードは明るいまま） */}
+        <div className="rounded-2xl border border-[#d9bc93] bg-gradient-to-br from-[#fdf2ea] via-[#fbe7dc] to-[#f7dcd1] p-3 text-[#101828]">
+          <div className="mb-2 flex items-center justify-between gap-2 border-b-2 border-[#e3c9a8] pb-1.5">
+            <div className="shrink-0">
+              <p className="text-[11px] font-black leading-tight">日本国政府</p>
+              <p className="text-[7px] font-bold leading-tight text-[#475467]">
+                GOVERNMENT OF JAPAN
+              </p>
+            </div>
+            <div className="min-w-0 text-center">
+              <p className="text-base font-black leading-tight tracking-[0.25em]">在留カード</p>
+              <p className="text-[7px] font-bold leading-tight tracking-widest text-[#475467]">
+                RESIDENCE CARD
+              </p>
+            </div>
+            {/* 実物の右上の金色のラベルの位置 */}
+            <div className="shrink-0 rounded-sm bg-gradient-to-br from-[#d8b74a] via-[#c19a2e] to-[#a37f1d] px-2 py-0.5 text-[10px] font-black italic tracking-widest text-white">
+              ISA
+            </div>
           </div>
 
           <div className="flex gap-3">
             <div className="flex min-w-0 flex-1 flex-col gap-2">
               <div>
-                <p className="text-[10px] font-bold text-muted">氏名 NAME</p>
+                <p className="text-[10px] font-bold text-[#33415c]">氏名 NAME</p>
                 {editing && canEdit ? (
                   <div className="flex flex-col gap-1.5">
                     <input
@@ -674,14 +706,14 @@ export function WorkerDetail({
                       {custodyNo != null && (
                         <Link
                           href={`/custody?no=${custodyNo}`}
-                          className="ml-2 inline-flex align-middle rounded border-2 border-seal px-1.5 text-xs font-black tabular-nums tracking-widest text-seal"
+                          className="ml-2 inline-flex align-middle rounded border-2 border-[#b7282e] px-1.5 text-xs font-black tabular-nums tracking-widest text-[#b7282e]"
                           title="原本を預かり中（保管ボックスを開く）"
                         >
                           {formatStorageNo(custodyNo)}
                         </Link>
                       )}
                     </p>
-                    {worker.kana && <p className="text-xs text-muted">{worker.kana}</p>}
+                    {worker.kana && <p className="text-xs text-[#475467]">{worker.kana}</p>}
                   </>
                 )}
               </div>
@@ -690,14 +722,15 @@ export function WorkerDetail({
                   縦に積む（横に並べると項目名が折り返してぎゅっと詰まる） */}
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <CardItem
+                  onCard
                   label="生年月日 DATE OF BIRTH"
                   value={
                     worker.birth ? (
                       <>
-                        {worker.birth}
+                        {cardFaceDate(worker.birth) || worker.birth}
                         {/* 申請書類は和暦で書くため、西暦の下に和暦も出す */}
                         {warekiDate(worker.birth) && (
-                          <span className="block text-[11px] font-normal text-muted">
+                          <span className="block text-[11px] font-normal text-[#475467]">
                             {warekiDate(worker.birth)}
                           </span>
                         )}
@@ -709,11 +742,18 @@ export function WorkerDetail({
                   edit={dateInput("birth", true)}
                 />
                 <CardItem
+                  onCard
                   label="性別 SEX"
                   value={worker.gender}
                   edit={selectInput("gender", ["男", "女"], true)}
                 />
               </div>
+              <CardItem
+                onCard
+                label="国籍・地域 NATIONALITY/REGION"
+                value={worker.nationality}
+                edit={textInput("nationality", "例: ベトナム", true)}
+              />
             </div>
 
             {/* 右: 顔写真。下にID・Messenger・Notion */}
@@ -725,14 +765,14 @@ export function WorkerDetail({
                 size={96}
               />
               {worker.worker_code && (
-                <span className="text-xs font-bold text-brand">ID {worker.worker_code}</span>
+                <span className="text-xs font-bold text-[#16325c]">ID {worker.worker_code}</span>
               )}
               {worker.messenger_link && (
                 <a
                   href={messengerWebUrl(worker.messenger_link)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-[11px] font-bold text-brand"
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-[#16325c]"
                 >
                   <MessageCircle size={12} />
                   Messenger
@@ -741,7 +781,7 @@ export function WorkerDetail({
               {worker.notion_link && (
                 <a
                   href={notionAppUrl(worker.notion_link)}
-                  className="inline-flex items-center gap-1 text-[11px] font-bold text-brand"
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-[#16325c]"
                 >
                   <ExternalLink size={12} />
                   Notion
@@ -752,87 +792,155 @@ export function WorkerDetail({
 
           {/* 写真の下からは横幅いっぱいに使う（スマホで潰れないように） */}
           <div className="mt-2 flex flex-col gap-2">
-            {/* 編集モードでは、写真の下のMessenger・Notionのリンク先もここで変更できる */}
-            {editing && canEdit && (
-              <>
-                <CardItem
-                  label="Messenger グループ/個人リンク"
-                  value=""
-                  edit={textInput("messenger_link", "https://m.me/... または https://www.messenger.com/...", true)}
-                />
-                <CardItem
-                  label="Notion 個人ページのリンク"
-                  value=""
-                  edit={textInput("notion_link", "https://www.notion.so/... または https://app.notion.com/...", true)}
-                />
-              </>
-            )}
             <CardItem
-              label="国籍・地域 NATIONALITY/REGION"
-              value={worker.nationality}
-              edit={textInput("nationality", "例: ベトナム", true)}
-            />
-            <CardItem
+              onCard
               label="住居地 ADDRESS"
               value={worker.address}
               edit={textInput("address", "例: 熊本県熊本市中央区◯◯1-2-3", true)}
             />
-            {/* 住所の下に住所歴（転入日ごと）。最新はそのまま住居地へ反映される */}
-            <WorkerAddressHistory workerId={worker.id} canEdit={canEdit} embedded />
-
-            <div className="grid grid-cols-2 gap-2">
-                <CardItem
-                  label="在留資格 STATUS"
-                  value={worker.residence_status}
-                  edit={selectInput("residence_status", residenceStatusOptions, true)}
-                />
-                <CardItem
-                  label="在留期間 PERIOD OF STAY"
-                  value={worker.residence_period}
-                  edit={
-                    showInput("residence_period") ? (
-                      <>
-                        <input
-                          list="detail-residence-periods"
-                          value={val("residence_period")}
-                          onChange={(e) => setField("residence_period", e.target.value)}
-                          placeholder="1年"
-                          autoComplete="off"
-                          className={inputCls(true)}
-                        />
-                        <datalist id="detail-residence-periods">
-                          {RESIDENCE_PERIODS.map((p) => (
-                            <option key={p} value={p} />
-                          ))}
-                        </datalist>
-                      </>
-                    ) : undefined
-                  }
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <CardItem
-                  label="在留期間満了日 DATE OF EXPIRATION"
-                  value={worker.residence_expiry_date}
-                  edit={dateInput("residence_expiry_date", true)}
-                />
-                <CardItem
-                  label="許可年月日 DATE OF PERMISSION"
-                  value={worker.residence_permit_date}
-                  edit={dateInput("residence_permit_date", true)}
-                />
-              </div>
+            {/* 就労制限の有無は在留資格から自動表示（実物と同じ水色の帯） */}
+            <div className="rounded-lg bg-[#cfe4f2]/80 px-2.5 py-1.5">
               <CardItem
+                onCard
+                label="就労制限の有無 WORK RESTRICTIONS"
+                value={workRestrictionLabel(worker.residence_status)}
+              />
+            </div>
+            <CardItem
+              onCard
+              label="在留資格 STATUS"
+              value={worker.residence_status}
+              edit={selectInput("residence_status", residenceStatusOptions, true)}
+            />
+            <CardItem
+              onCard
+              label="在留期間満了日 THE EXPIRY DATE OF THE PERIOD OF STAY"
+              value={
+                worker.residence_expiry_date ? (
+                  <span className="tabular-nums underline underline-offset-2">
+                    {cardFaceDate(worker.residence_expiry_date)}
+                  </span>
+                ) : (
+                  ""
+                )
+              }
+              edit={dateInput("residence_expiry_date", true)}
+            />
+            {/* 番号と有効期限は実物と同じ水色の帯にまとめる */}
+            <div className="rounded-lg bg-[#cfe4f2]/80 px-2.5 py-1.5">
+              <CardItem
+                onCard
                 label="番号 No."
                 value={
                   worker.residence_card_no ? (
-                    <span className="tabular-nums tracking-wider">{worker.residence_card_no}</span>
+                    <span className="tabular-nums tracking-[0.25em]">
+                      {worker.residence_card_no}
+                    </span>
                   ) : (
                     ""
                   )
                 }
                 edit={textInput("residence_card_no", "AB12345678CD", true)}
               />
+              <p className="mt-1.5 border-t border-[#a9c8de] pt-1.5 text-center text-xs">
+                このカードは{" "}
+                <span className="font-black tabular-nums underline underline-offset-2">
+                  {cardFaceDate(worker.residence_expiry_date ?? "") || "—"}
+                </span>{" "}
+                まで有効 です。
+              </p>
+              <p className="text-center text-[7px] font-bold tracking-wider text-[#475467]">
+                PERIOD OF VALIDITY OF THIS CARD
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* 券面に無いものはカードの下に: 連絡リンクの変更・住所歴 */}
+        {editing && canEdit && (
+          <div className="mt-2 flex flex-col gap-2">
+            <CardItem
+              label="Messenger グループ/個人リンク"
+              value=""
+              edit={textInput("messenger_link", "https://m.me/... または https://www.messenger.com/...", true)}
+            />
+            <CardItem
+              label="Notion 個人ページのリンク"
+              value=""
+              edit={textInput("notion_link", "https://www.notion.so/... または https://app.notion.com/...", true)}
+            />
+          </div>
+        )}
+        {/* 住所歴（転入日ごと）。最新はそのまま住居地へ反映される */}
+        <div className="mt-2">
+          <WorkerAddressHistory workerId={worker.id} canEdit={canEdit} embedded />
+        </div>
+
+        {/* 読取アプリの表示と同じく、券面の下に在留期間と許可。
+            在留期間は許可年月日と満了日から自動計算する */}
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <p className="text-sm font-black">
+              在留期間 <span className="text-[10px] font-bold text-muted">Period of stay</span>
+            </p>
+            <div className="mt-1 rounded-xl bg-background px-3 py-2.5">
+              <p className="text-lg font-black">
+                {autoPeriod ?? (worker.residence_period || "—")}
+              </p>
+              {autoPeriod ? (
+                <p className="mt-0.5 text-[10px] text-muted">
+                  許可年月日と在留期間満了日から自動計算しています
+                </p>
+              ) : worker.residence_permit_date && worker.residence_expiry_date ? (
+                <p className="mt-0.5 text-[10px] font-bold text-seal">
+                  許可年月日と満了日の組み合わせから期間を計算できません。日付を確かめてください
+                </p>
+              ) : (
+                <p className="mt-0.5 text-[10px] text-muted">
+                  許可年月日と在留期間満了日を入れると自動計算します
+                </p>
+              )}
+              {periodMismatch && (
+                <p className="mt-0.5 text-[10px] font-bold text-seal">
+                  登録済みの「{worker.residence_period}」と違います。日付か登録値を確かめてください
+                </p>
+              )}
+              {/* 自動計算できないときの登録値。編集モードではいつでも直せる */}
+              {showInput("residence_period") && (editing || !autoPeriod) && (
+                <div className="mt-1.5">
+                  <input
+                    list="detail-residence-periods"
+                    value={val("residence_period")}
+                    onChange={(e) => setField("residence_period", e.target.value)}
+                    placeholder="例: 1年"
+                    autoComplete="off"
+                    className={inputCls(true)}
+                  />
+                  <datalist id="detail-residence-periods">
+                    {RESIDENCE_PERIODS.map((p) => (
+                      <option key={p} value={p} />
+                    ))}
+                  </datalist>
+                  <p className="mt-0.5 text-[10px] text-muted">
+                    登録値（日付から計算できないときはこちらを表示します）
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+          <div>
+            <p className="text-sm font-black">
+              許可 <span className="text-[10px] font-bold text-muted">Permission</span>
+            </p>
+            <div className="mt-1 rounded-xl bg-background px-3 py-2.5">
+              <CardItem
+                label="許可年月日 DATE OF PERMISSION"
+                value={
+                  cardFaceDate(worker.residence_permit_date ?? "") || worker.residence_permit_date
+                }
+                edit={dateInput("residence_permit_date", true)}
+              />
+            </div>
           </div>
         </div>
         {saveBar}
@@ -1741,22 +1849,29 @@ function CopyNameButton({ name }: { name: string }) {
 }
 
 // 在留カード・パスポート枠の1項目（実物のカードに合わせた小さいラベル）。
-// edit があれば入力欄（編集モードや未記入のとき）、なければ値を出す
+// edit があれば入力欄（編集モードや未記入のとき）、なければ値を出す。
+// onCard は在留カードの券面の上に置くとき（ダークモードでも読めるよう色を固定する）
 function CardItem({
   label,
   value,
   edit,
+  onCard = false,
 }: {
   label: string;
   value?: React.ReactNode; // 空文字・null は未記入扱い
   edit?: React.ReactNode;
+  onCard?: boolean;
 }) {
   return (
     <label className="flex min-w-0 flex-col gap-0.5">
-      <span className="text-[10px] font-bold text-muted">{label}</span>
+      <span className={`text-[10px] font-bold ${onCard ? "text-[#33415c]" : "text-muted"}`}>
+        {label}
+      </span>
       {edit ?? (
         <span className="min-h-[20px] whitespace-pre-wrap break-words text-sm font-bold">
-          {value || <span className="font-normal text-muted">—</span>}
+          {value || (
+            <span className={`font-normal ${onCard ? "text-[#667085]" : "text-muted"}`}>—</span>
+          )}
         </span>
       )}
     </label>
