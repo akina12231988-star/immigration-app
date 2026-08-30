@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Combobox } from "@/components/ui/Combobox";
 import { createClient } from "@/lib/supabase/client";
 import { insertWorker } from "@/lib/supabase/queries/workers";
 import { blankWorkerInput } from "@/lib/worker-defaults";
+import { jobseekerNoPrefix, nextJobseekerNo } from "@/lib/jobseeker-no";
 import { dbErrorMessage } from "@/lib/errors";
 import {
   APPLICATION_RESULTS,
@@ -56,6 +57,7 @@ export function JobApplicationDialog({
   postings,
   workers,
   organizations,
+  fixedWorkerId,
   onClose,
   onSubmit,
   onWorkerCreated,
@@ -65,6 +67,7 @@ export function JobApplicationDialog({
   postings: PostingWithStats[];
   workers?: NameOption[];
   organizations?: NameOption[];
+  fixedWorkerId?: string; // 外国人詳細から開くとき（本人が決まっている）の外国人ID
   onClose: () => void;
   onSubmit: (values: JobApplicationValues, workerId?: string) => Promise<void>;
   onWorkerCreated?: (worker: NameOption) => void;
@@ -72,6 +75,73 @@ export function JobApplicationDialog({
 }) {
   const [form, setForm] = useState<JobApplicationValues>(() => toValues(initial));
   const [workerId, setWorkerId] = useState(initial?.worker_id ?? "");
+
+  // ---- 求職受付（求職管理簿。外国人ごとに1つ） ----
+  // 新規の応募登録のとき、受付年月日をここで入れ、番号が無い人には保存時に自動で振る。
+  // 編集のときは求職一覧の「帳簿情報」で直す（この画面には出さない）
+  const receptionWorkerId = workers ? workerId : (fixedWorkerId ?? "");
+  const [jsNo, setJsNo] = useState("");
+  const [jsAcceptedOn, setJsAcceptedOn] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    if (initial || !receptionWorkerId) {
+      // 人を選び直したときに前の人の番号が残らないようにする
+      void Promise.resolve().then(() => {
+        if (!cancelled) setJsNo("");
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+    void Promise.resolve().then(() =>
+      createClient()
+        .from("workers")
+        .select("jobseeker_no, jobseeker_accepted_on")
+        .eq("id", receptionWorkerId)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (cancelled) return;
+          const w = data as {
+            jobseeker_no: string | null;
+            jobseeker_accepted_on: string | null;
+          } | null;
+          setJsNo(w?.jobseeker_no ?? "");
+          if (w?.jobseeker_accepted_on) setJsAcceptedOn(w.jobseeker_accepted_on);
+        }, () => undefined),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [receptionWorkerId, initial]);
+
+  // 応募の保存前に、求職受付を外国人へ保存する。
+  // 番号が無ければ「R{令和の年}KS-{連番}」で自動採番する（同じ年の最大+1）
+  const saveJobseekerReception = async () => {
+    if (initial || !receptionWorkerId) return;
+    const supabase = createClient();
+    const acceptedOn = jsAcceptedOn || form.applied_on;
+    const patch: { jobseeker_no?: string; jobseeker_accepted_on?: string } = {};
+    if (!jsNo.trim()) {
+      const { data, error: err } = await supabase
+        .from("workers")
+        .select("jobseeker_no")
+        .neq("jobseeker_no", "");
+      if (err) throw err;
+      const numbers = ((data as { jobseeker_no: string | null }[] | null) ?? []).map(
+        (r) => r.jobseeker_no,
+      );
+      patch.jobseeker_no = nextJobseekerNo(numbers, acceptedOn);
+    }
+    if (acceptedOn) patch.jobseeker_accepted_on = acceptedOn;
+    if (Object.keys(patch).length === 0) return;
+    const { error: err } = await supabase
+      .from("workers")
+      .update(patch)
+      .eq("id", receptionWorkerId);
+    if (err) throw err;
+    // 保存に失敗してやり直したとき、二重に採番しないよう画面側にも控える
+    if (patch.jobseeker_no) setJsNo(patch.jobseeker_no);
+  };
   // その場で新規登録した外国人・企業も候補に出すための追加分
   const [extraWorkers, setExtraWorkers] = useState<NameOption[]>([]);
   const [extraOrgs, setExtraOrgs] = useState<NameOption[]>([]);
@@ -185,6 +255,9 @@ export function JobApplicationDialog({
     setBusy(true);
     setError(null);
     try {
+      // 先に求職受付（番号の自動採番・受付年月日）を保存する。
+      // ここで失敗したら応募は登録せず、エラーを見てやり直せるようにする
+      await saveJobseekerReception();
       await onSubmit(form, workerId || undefined);
       onClose();
     } catch (err) {
@@ -280,6 +353,41 @@ export function JobApplicationDialog({
           </span>
         </label>
 
+        {/* 求職受付（新規の応募登録のときだけ）。番号は保存時に自動採番する */}
+        {!initial && (
+          <div className="rounded-lg border border-border bg-background px-3 py-2">
+            <p className="text-xs font-bold text-muted">求職受付（求職管理簿・外国人ごとに1つ）</p>
+            <div className="mt-1.5 grid grid-cols-2 gap-2.5">
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-bold text-muted">求職受付番号</span>
+                {jsNo ? (
+                  <p className="flex min-h-[44px] items-center text-sm font-bold tabular-nums">
+                    {jsNo}
+                    <span className="ml-1.5 text-[10px] font-normal text-muted">登録済み</span>
+                  </p>
+                ) : (
+                  <p className="flex min-h-[44px] items-center text-[11px] leading-relaxed text-muted">
+                    保存時に自動で採番します（例:{" "}
+                    {jobseekerNoPrefix(jsAcceptedOn || form.applied_on) || "R8KS"}-1）
+                  </p>
+                )}
+              </div>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-bold text-muted">求職受付年月日</span>
+                <input
+                  type="date"
+                  value={jsAcceptedOn || form.applied_on}
+                  onChange={(e) => setJsAcceptedOn(e.target.value)}
+                  className={INPUT_CLASS}
+                />
+              </label>
+            </div>
+            <p className="mt-1 text-[11px] leading-relaxed text-muted">
+              番号・受付年月日は、あとから求職一覧の「帳簿情報」で直せます。
+            </p>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-2.5">
           <label className="flex flex-col gap-1">
             <span className="text-xs font-bold text-muted">採否結果（結果）</span>
@@ -326,9 +434,8 @@ export function JobApplicationDialog({
           <p className="font-bold">求職管理簿の日付との対応</p>
           <ul className="mt-0.5 list-disc pl-4">
             <li>
-              <span className="font-bold">受付年月日</span> … この画面ではなく、求職一覧の
-              「帳簿情報」で入れます（求職受付番号・有効期間と同じところ。外国人ごとに1つ）。
-              未入力のときは、その人のいちばん古い応募日で代用して出力します。
+              <span className="font-bold">受付年月日</span> … 上の「求職受付年月日」
+              （外国人ごとに1つ。有効期間とあわせて、あとから求職一覧の「帳簿情報」で直せます）
             </li>
             <li>
               <span className="font-bold">紹介年月日</span> … 上の「紹介年月日（応募日）」

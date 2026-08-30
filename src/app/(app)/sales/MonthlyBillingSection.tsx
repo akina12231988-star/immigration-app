@@ -547,11 +547,11 @@ export function MonthlyBillingSection({
     }
   };
 
-  // 紹介手数料の入金を記録する（取り消しもできる）。台帳の入金年月日にそのまま入る
-  const toggleReferralPaid = async (workerId: string) => {
+  // 紹介手数料の入金日を記録する（null で取り消し）。
+  // 手数料管理簿（紹介手数料台帳）の入金年月日にそのまま入る
+  const recordReferralPaid = async (workerId: string, paidOn: string | null) => {
     const cur = referralFees[workerId];
     if (!cur) return;
-    const paidOn = cur.paidOn ? null : today;
     setReferralBusyId(workerId);
     setReferralFees((prev) => ({ ...prev, [workerId]: { ...cur, paidOn } }));
     try {
@@ -2317,8 +2317,11 @@ export function MonthlyBillingSection({
                                   ? "has"
                                   : "none"
                             }
+                            today={today}
                             onSave={(v) => void saveReferralNo(row, org.organizationId, v)}
-                            onTogglePaid={() => void toggleReferralPaid(row.worker.id)}
+                            onRecordPaid={(paidOn) =>
+                              void recordReferralPaid(row.worker.id, paidOn)
+                            }
                           />
                           <td className="py-1.5 pr-2 text-right tabular-nums">
                             {row.monthlyFee > 0 ? formatSalesYen(row.monthlyFee) : "未登録"}
@@ -2490,8 +2493,9 @@ function ReferralNoCell({
   active,
   busy,
   applicationState,
+  today,
   onSave,
-  onTogglePaid,
+  onRecordPaid,
 }: {
   fee: WorkerReferralFee | null;
   canEdit: boolean;
@@ -2500,9 +2504,15 @@ function ReferralNoCell({
   busy: boolean;
   // あっせん（応募）の記録の有無。無ければ「まずはあっせんの記録から」の案内を出す
   applicationState: "has" | "none" | "unknown";
+  today: string; // 入金日の初期値
   onSave: (value: string) => void;
-  onTogglePaid: () => void;
+  // 入金日を記録する（null で取り消し）。手数料管理簿の入金年月日にそのまま入る
+  onRecordPaid: (paidOn: string | null) => void;
 }) {
+  // 「入金を記録」を押したら日付を選んで記録する（既定は今日）
+  const [recording, setRecording] = useState(false);
+  const [paidDate, setPaidDate] = useState(today);
+
   if (!active && !fee) {
     return (
       <td className="py-1.5 pr-2 text-muted" title="対象月に許可が下りた人だけ入力できます">
@@ -2562,7 +2572,7 @@ function ReferralNoCell({
               求職一覧の「台帳に追加」からも登録できます
             </Link>
           ) : null)}
-        {/* 入金があったら記録する（台帳の入金年月日にそのまま入る） */}
+        {/* 入金があったら入金日を選んで記録する（手数料管理簿の入金年月日にそのまま入る） */}
         {fee &&
           (fee.paidOn ? (
             <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-status-approved-bg px-2 py-0.5 text-[10px] font-bold text-status-approved-fg">
@@ -2570,19 +2580,54 @@ function ReferralNoCell({
               入金 {mdText(fee.paidOn)}
               <button
                 type="button"
-                onClick={onTogglePaid}
+                onClick={() => onRecordPaid(null)}
                 disabled={busy}
+                title="入金の記録を取り消します（手数料管理簿の入金年月日も消えます）"
                 className="ml-0.5 underline"
               >
                 取消
               </button>
             </span>
+          ) : recording ? (
+            <div className="flex w-32 flex-col gap-1">
+              <input
+                type="date"
+                value={paidDate}
+                onChange={(e) => setPaidDate(e.target.value)}
+                className="w-32 rounded-lg border border-border bg-background px-1.5 py-1 text-xs"
+              />
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onRecordPaid(paidDate);
+                    setRecording(false);
+                  }}
+                  disabled={busy || !paidDate}
+                  title="この入金日を手数料管理簿の入金年月日に記録します"
+                  className="rounded-lg bg-brand px-2 py-1 text-[10px] font-bold text-brand-foreground disabled:opacity-50"
+                >
+                  記録
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRecording(false)}
+                  disabled={busy}
+                  className="rounded-lg border border-border px-2 py-1 text-[10px] font-bold text-muted"
+                >
+                  やめる
+                </button>
+              </div>
+            </div>
           ) : (
             <button
               type="button"
-              onClick={onTogglePaid}
+              onClick={() => {
+                setPaidDate(today);
+                setRecording(true);
+              }}
               disabled={busy}
-              title="紹介手数料の入金があったら押して記録します"
+              title="紹介手数料の入金があったら押して、入金日を記録します（手数料管理簿と連動）"
               className="rounded-lg border border-brand px-2 py-1 text-[10px] font-bold text-brand disabled:opacity-50"
             >
               入金を記録

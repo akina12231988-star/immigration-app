@@ -46,7 +46,8 @@ import {
   hasEmploymentStarted,
   type EmploymentStartWorker,
 } from "@/lib/job-employment-start";
-import { matchesWorkerName } from "@/lib/worker-search";
+import { matchesWorkerName, normalizeSearchText } from "@/lib/worker-search";
+import { nextJobseekerNo } from "@/lib/jobseeker-no";
 import { jobOrgOptions } from "@/lib/job-org-filter";
 import { useDateIssueSnooze } from "@/lib/date-issue-snooze";
 import { NameSearchBox } from "@/components/ui/NameSearchBox";
@@ -83,6 +84,7 @@ export type JobsWorker = {
   id: string;
   name: string;
   jobseeker_accepted_on?: string | null;
+  jobseeker_no?: string | null; // 求職受付番号（検索でヒットさせる）
 } & EmploymentStartWorker;
 
 export function JobsExplorer({
@@ -261,10 +263,17 @@ export function JobsExplorer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inOrg, workerById]);
 
+  // 検索は氏名のほか、求職受付番号（R8KS-2 など）でもヒットする
+  const matchesQuery = (a: ApplicationWithRefs, q: string) => {
+    if (matchesWorkerName({ name: a.workers?.name ?? "" }, q)) return true;
+    const no = workerById.get(a.worker_id)?.jobseeker_no ?? "";
+    return !!no && normalizeSearchText(no).includes(normalizeSearchText(q));
+  };
+
   const filtered = useMemo(() => {
-    // 氏名で検索しているときは、採否のタブを気にせず期間内の全体から探す
+    // 氏名・求職受付番号で検索しているときは、採否のタブを気にせず期間内の全体から探す
     const list = query
-      ? inOrg.filter((a) => matchesWorkerName({ name: a.workers?.name ?? "" }, query))
+      ? inOrg.filter((a) => matchesQuery(a, query))
       : filter === "all"
         ? inOrg
         : filter === "employed"
@@ -520,11 +529,12 @@ export function JobsExplorer({
         )}
       </label>
 
-      {/* 氏名で検索: 入力すると候補が出て、選ぶとその人の応募だけ表示される */}
+      {/* 氏名・求職受付番号で検索: 入力すると候補が出て、選ぶとその人の応募だけ表示される */}
       <NameSearchBox
         candidates={searchCandidates}
         value={nameQuery}
         onChange={setNameQuery}
+        placeholder="氏名か求職受付番号で検索（例: R8KS-2。ふりがなでも探せます）"
         hintOf={(w) => w.hint}
       />
 
@@ -949,6 +959,26 @@ function LedgerInfoDialog({
     };
   }, [application.worker_id]);
 
+  // 番号が空のとき、登録済みの番号から次の番号（R{令和の年}KS-{連番}）を入れる
+  const autoNumber = async () => {
+    setError(null);
+    try {
+      const { data, error: err } = await createClient()
+        .from("workers")
+        .select("jobseeker_no")
+        .neq("jobseeker_no", "");
+      if (err) throw err;
+      const numbers = ((data as { jobseeker_no: string | null }[] | null) ?? []).map(
+        (r) => r.jobseeker_no,
+      );
+      setJobseekerNo(
+        nextJobseekerNo(numbers, acceptedOn || new Date().toISOString().slice(0, 10)),
+      );
+    } catch (err) {
+      setError(dbErrorMessage(err, "0079_recruit_ledgers.sql", "自動採番に失敗しました"));
+    }
+  };
+
   const save = async () => {
     setBusy(true);
     setError(null);
@@ -1004,6 +1034,16 @@ function LedgerInfoDialog({
               disabled={loading}
               className={INPUT}
             />
+            {/* 番号が空のときは、登録済みの番号から次の番号を入れられる */}
+            {!loading && !jobseekerNo.trim() && (
+              <button
+                type="button"
+                onClick={() => void autoNumber()}
+                className="self-start text-[11px] font-bold text-brand underline underline-offset-2"
+              >
+                自動採番する
+              </button>
+            )}
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-xs font-bold text-muted">

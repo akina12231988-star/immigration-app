@@ -177,6 +177,7 @@ export const WORKER_LIST_FIELDS = [
   "ssw_insurance_expiry_date",
   "ssw_insurance_self_join",
   "worker_code",
+  "jobseeker_no",
 ] as const;
 
 const WORKER_LIST_COLUMNS = `${WORKER_LIST_FIELDS.join(", ")}, organizations(name)`;

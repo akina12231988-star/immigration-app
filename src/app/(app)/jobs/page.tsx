@@ -29,7 +29,7 @@ export default async function JobsPage() {
       supabase
         .from("workers")
         .select(
-          "id, name, employment_start_on, current_organization_id, org_employment_starts, jobseeker_accepted_on",
+          "id, name, employment_start_on, current_organization_id, org_employment_starts, jobseeker_accepted_on, jobseeker_no",
         )
         .order("name", { ascending: true }),
       // 応募 → 紹介手数料台帳の状態（0078未適用でも一覧は使えるようにする）

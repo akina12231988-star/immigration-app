@@ -166,7 +166,14 @@ export function WorkersExplorer({
         if (worker.current_organization_id !== filter.orgId) return false;
       }
       if (!kw) return true;
-      return [worker.name, worker.kana, worker.nationality, worker.residence_card_no, worker.field]
+      return [
+        worker.name,
+        worker.kana,
+        worker.nationality,
+        worker.residence_card_no,
+        worker.field,
+        worker.jobseeker_no ?? "", // 求職受付番号（R8KS-2 など）でも探せる
+      ]
         .join("\n")
         .toLowerCase()
         .includes(kw);
