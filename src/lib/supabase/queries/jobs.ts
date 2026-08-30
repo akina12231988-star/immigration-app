@@ -73,6 +73,16 @@ export async function listAllApplications(
   return (data as ApplicationWithRefs[]) ?? [];
 }
 
+// あっせん（応募）の記録がある外国人のID。
+// 請求書作成の紹介手数料No.欄で「まずはあっせんの記録から」の案内を出すのに使う
+export async function listApplicationWorkerIds(
+  supabase: SupabaseClient,
+): Promise<Set<string>> {
+  const { data, error } = await supabase.from("job_applications").select("worker_id");
+  if (error) throw error;
+  return new Set(((data as { worker_id: string }[] | null) ?? []).map((r) => r.worker_id));
+}
+
 export async function insertApplication(
   supabase: SupabaseClient,
   input: JobApplicationInput,

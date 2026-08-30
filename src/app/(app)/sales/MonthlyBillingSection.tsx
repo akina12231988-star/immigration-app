@@ -42,6 +42,7 @@ import {
   updateReferralFee,
   type WorkerReferralFee,
 } from "@/lib/supabase/queries/referrals";
+import { listApplicationWorkerIds } from "@/lib/supabase/queries/jobs";
 import {
   addMonthlySupportRegistration,
   clearMonthlySupportRegistration,
@@ -493,6 +494,8 @@ export function MonthlyBillingSection({
   // 名簿から番号を入れ、入金があったら入金年月日を記録する
   const [referralFees, setReferralFees] = useState<Record<string, WorkerReferralFee>>({});
   const [referralBusyId, setReferralBusyId] = useState<string | null>(null);
+  // あっせん（応募）の記録がある外国人ID。null = 読み込み前・読めなかった（案内を出さない）
+  const [appWorkerIds, setAppWorkerIds] = useState<Set<string> | null>(null);
   useEffect(() => {
     let cancelled = false;
     void Promise.resolve().then(() =>
@@ -504,6 +507,13 @@ export function MonthlyBillingSection({
           // 台帳が未作成でも名簿は使えるようにする
           if (!cancelled) setReferralFees({});
         }),
+    );
+    void Promise.resolve().then(() =>
+      listApplicationWorkerIds(createClient())
+        .then((ids) => {
+          if (!cancelled) setAppWorkerIds(ids);
+        })
+        .catch(() => undefined),
     );
     return () => {
       cancelled = true;
@@ -2300,6 +2310,13 @@ export function MonthlyBillingSection({
                             canEdit={canEdit}
                             active={permitInMonth(row.worker.residence_permit_date)}
                             busy={referralBusyId === row.worker.id}
+                            applicationState={
+                              appWorkerIds === null
+                                ? "unknown"
+                                : appWorkerIds.has(row.worker.id)
+                                  ? "has"
+                                  : "none"
+                            }
                             onSave={(v) => void saveReferralNo(row, org.organizationId, v)}
                             onTogglePaid={() => void toggleReferralPaid(row.worker.id)}
                           />
@@ -2472,6 +2489,7 @@ function ReferralNoCell({
   canEdit,
   active,
   busy,
+  applicationState,
   onSave,
   onTogglePaid,
 }: {
@@ -2480,6 +2498,8 @@ function ReferralNoCell({
   // 対象月に許可が下りた人だけ入力できる（紹介手数料は請求しない場合もあるので空欄のままでもよい）
   active: boolean;
   busy: boolean;
+  // あっせん（応募）の記録の有無。無ければ「まずはあっせんの記録から」の案内を出す
+  applicationState: "has" | "none" | "unknown";
   onSave: (value: string) => void;
   onTogglePaid: () => void;
 }) {
@@ -2521,6 +2541,27 @@ function ReferralNoCell({
           }
           className="w-32 rounded-lg border border-border bg-background px-1.5 py-1 text-xs"
         />
+        {/* 台帳に記録がまだ無い人への案内。あっせんの記録（求職一覧）→台帳に追加、の順が正しい流れ */}
+        {!fee &&
+          (applicationState === "none" ? (
+            <Link
+              href="/jobs"
+              className="text-[10px] font-bold leading-tight text-seal underline underline-offset-2"
+              title="番号の前に、求職一覧であっせん（応募・採用）の記録をしてください"
+            >
+              あっせんの記録がありません。
+              <br />
+              まずは求職一覧で記録から →
+            </Link>
+          ) : applicationState === "has" ? (
+            <Link
+              href="/jobs"
+              className="text-[10px] leading-tight text-muted underline underline-offset-2"
+              title="求職一覧の「紹介手数料台帳に追加」から登録すると、あっせんの記録と紐づきます"
+            >
+              求職一覧の「台帳に追加」からも登録できます
+            </Link>
+          ) : null)}
         {/* 入金があったら記録する（台帳の入金年月日にそのまま入る） */}
         {fee &&
           (fee.paidOn ? (
