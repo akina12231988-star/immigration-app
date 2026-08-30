@@ -49,6 +49,7 @@ export type BillingWorker = Pick<
   | "current_organization_id"
   | "support"
   | "status"
+  | "residence_renewal_status"
   | "leaving_on"
   | "org_employment_starts"
   | "leaving_org_name"

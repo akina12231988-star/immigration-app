@@ -2265,6 +2265,31 @@ export function MonthlyBillingSection({
                           </td>
                           <td className="py-1.5 pr-2 tabular-nums text-muted">
                             {row.worker.residence_expiry_date ?? "—"}
+                            {/* 期限切れ: 更新申請の審査中（特例期間）ならそのマーク、
+                                対応状況が入っていなければ注意を出す */}
+                            {!!row.worker.residence_expiry_date &&
+                              row.worker.residence_expiry_date < today &&
+                              (row.worker.residence_renewal_status === "審査中" ? (
+                                <span
+                                  className="mt-0.5 block w-fit rounded-full bg-brand/10 px-1.5 py-0.5 text-[10px] font-bold text-brand"
+                                  title="在留期限は過ぎていますが、更新申請の審査中です（特例期間）"
+                                >
+                                  審査中
+                                </span>
+                              ) : ["転職先にて対応中", "他登録支援機関にて対応中", "帰国"].includes(
+                                  row.worker.residence_renewal_status ?? "",
+                                ) ? (
+                                <span className="mt-0.5 block w-fit rounded-full bg-background px-1.5 py-0.5 text-[10px] font-bold text-muted">
+                                  {row.worker.residence_renewal_status}
+                                </span>
+                              ) : (
+                                <span
+                                  className="mt-0.5 block w-fit rounded-full bg-seal/10 px-1.5 py-0.5 text-[10px] font-bold text-seal"
+                                  title="在留期限を過ぎていますが、更新申請が審査中になっていません。外国人詳細の在留更新の対応状況を確かめてください"
+                                >
+                                  期限切れ・審査中になっていません
+                                </span>
+                              ))}
                           </td>
                           <td className="py-1.5 pr-2 align-top">
                             <div className="flex w-36 flex-col items-start gap-1">
