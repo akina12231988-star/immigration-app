@@ -26,6 +26,7 @@ import {
   emptyOrganizationIntake,
   emptySalesItem,
   digitsOnly,
+  flexDocsAlert,
   flexDocsValidUntil,
   formatHoursDecimal,
   formatYen,
@@ -1219,6 +1220,39 @@ function IntakeSection({
                 })()}
               </div>
             </div>
+            {/* 有効期限の2か月前からお知らせを出し、新しい書類の作成ツールへ案内する */}
+            {(() => {
+              const alert = flexDocsAlert(intake.flex_docs_start, todayStr());
+              if (!alert) return null;
+              const expired = alert.kind === "expired";
+              return (
+                <div
+                  className={`rounded-xl p-3 text-xs leading-relaxed ${
+                    expired
+                      ? "bg-seal/10 text-seal"
+                      : "bg-status-notice-bg text-status-notice-fg"
+                  }`}
+                >
+                  <p className="font-bold">
+                    {expired
+                      ? `年間カレンダー・労使協定書の有効期限（${alert.until}）が切れています。`
+                      : `年間カレンダー・労使協定書の有効期限（${alert.until}）まで2か月を切りました。`}
+                  </p>
+                  <p className="mt-1">
+                    新しい年間カレンダーと労使協定書を作成して下に添付し、
+                    「書類の有効期間の開始日」を新しい開始日に直してください。
+                  </p>
+                  <a
+                    href="https://kyu-yo-keisan.vercel.app/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1.5 inline-flex items-center gap-1 rounded-lg border border-current bg-surface px-3 py-1.5 font-bold"
+                  >
+                    給与計算ツールで年間カレンダー・労使協定書を作成する →
+                  </a>
+                </div>
+              );
+            })()}
             {orgId ? (
               <>
                 <OrgFileAttachments

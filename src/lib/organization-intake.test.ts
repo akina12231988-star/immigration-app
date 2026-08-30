@@ -9,6 +9,7 @@ import {
   lodgingContractKind,
   normalizeOrganizationIntake,
   orgStaffLabel,
+  flexDocsAlert,
   flexDocsValidUntil,
   formatHoursDecimal,
   ownedMonthlyRent,
@@ -259,5 +260,32 @@ describe("orgStaffLabel / isOrgStaff", () => {
     expect(isOrgStaff(intake, "大元　麗奈")).toBe(false);
     expect(isOrgStaff(intake, "")).toBe(false);
     expect(isOrgStaff(undefined, "市原　彩奈")).toBe(false);
+  });
+});
+
+describe("flexDocsAlert", () => {
+  it("期限の2か月前から「そろそろ切れる」", () => {
+    // 開始 2025-10-01 → 期限 2026-09-30。2か月前は 2026-07-30
+    expect(flexDocsAlert("2025-10-01", "2026-07-29")).toBe(null);
+    expect(flexDocsAlert("2025-10-01", "2026-07-30")).toEqual({
+      kind: "expiring",
+      until: "2026-09-30",
+    });
+    expect(flexDocsAlert("2025-10-01", "2026-09-30")).toEqual({
+      kind: "expiring",
+      until: "2026-09-30",
+    });
+  });
+
+  it("期限を過ぎたら「期限切れ」", () => {
+    expect(flexDocsAlert("2025-10-01", "2026-10-01")).toEqual({
+      kind: "expired",
+      until: "2026-09-30",
+    });
+  });
+
+  it("開始日が無い・読めないときは出さない", () => {
+    expect(flexDocsAlert("", "2026-08-30")).toBe(null);
+    expect(flexDocsAlert("未定", "2026-08-30")).toBe(null);
   });
 });
