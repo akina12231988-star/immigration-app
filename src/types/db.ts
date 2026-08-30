@@ -420,6 +420,7 @@ export interface Worker {
   residence_note: string; // 居住先（社宅・自分のアパート など）
   photo_path: string | null; // 顔写真（worker-files バケット）
   messenger_link: string; // Messenger グループ/個人リンク
+  file_link?: string; // 資料ファイル（Google Drive のフォルダなど）へのリンク（0127）
   specialty_grade: string; // 専門級の合格名
   jisshu2_shokushu?: string; // 良好に修了した技能実習2号の職種名（0110）
   jisshu2_sagyo?: string; // 良好に修了した技能実習2号の作業名（0110）

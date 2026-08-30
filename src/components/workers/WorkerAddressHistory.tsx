@@ -1,18 +1,29 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, MapPin, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Check, Eye, Loader2, MapPin, Paperclip, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { FileDropArea } from "@/components/ui/FileDropArea";
 import { createClient } from "@/lib/supabase/client";
+import { compressImage } from "@/lib/image-compress";
 import {
   deleteWorkerAddress,
   insertWorkerAddress,
   listWorkerAddresses,
+  listWorkerAddressFiles,
   updateWorkerAddress,
+  type WorkerAddressFileRow,
 } from "@/lib/supabase/queries/worker-addresses";
+import {
+  createAddressFileTicket,
+  deleteAddressFile,
+  getAddressFilePreviewUrl,
+  registerAddressFile,
+} from "@/app/(app)/workers/address-file-actions";
 import { updateWorker } from "@/lib/supabase/queries/workers";
+import { dbErrorMessage } from "@/lib/errors";
 import type { WorkerAddress } from "@/lib/worker-address";
 
 const INPUT =
@@ -54,11 +65,59 @@ export function WorkerAddressHistory({
     return next;
   };
 
+  // ---- 根拠の添付（住民票やマイナポータルのスクショなど。行ごとにD&Dで添付） ----
+  const [files, setFiles] = useState<WorkerAddressFileRow[]>([]);
+  const [uploadingFor, setUploadingFor] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const pickForRef = useRef<string | null>(null); // クリップのボタンで選択中の行
+
   useEffect(() => {
     listWorkerAddresses(createClient(), workerId).then(setRows).catch(() => undefined);
     fetchCurrentAddress().then(setCurrentAddress, () => undefined);
+    // 根拠の添付（0128未適用のときは空のまま。添付時に案内を出す）
+    listWorkerAddressFiles(createClient(), workerId).then(setFiles).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workerId]);
+
+  async function handleAddressFiles(addressId: string, list: FileList | null) {
+    if (!list || list.length === 0 || uploadingFor) return;
+    setUploadingFor(addressId);
+    setError(null);
+    try {
+      for (const file of Array.from(list)) {
+        const { blob, mimeType, fileName } = await compressImage(file);
+        const ticket = await createAddressFileTicket(workerId, fileName, mimeType);
+        if (!ticket.ok) throw new Error(ticket.message);
+        const { error: upErr } = await createClient()
+          .storage.from("app-files")
+          .uploadToSignedUrl(ticket.path, ticket.token, blob, { contentType: mimeType });
+        if (upErr) throw new Error(`アップロードに失敗しました: ${upErr.message}`);
+        const res = await registerAddressFile(workerId, addressId, ticket.path, fileName, mimeType);
+        if (!res.ok) throw new Error(res.message);
+      }
+      setFiles(await listWorkerAddressFiles(createClient(), workerId));
+    } catch (err) {
+      setError(dbErrorMessage(err, "0128_worker_address_files.sql", "添付に失敗しました"));
+    } finally {
+      setUploadingFor(null);
+    }
+  }
+
+  async function previewFile(id: string) {
+    const res = await getAddressFilePreviewUrl(id);
+    if (res.ok) window.open(res.url, "_blank", "noopener");
+    else setError(res.message);
+  }
+
+  async function removeAddressFile(f: WorkerAddressFileRow) {
+    if (!window.confirm(`添付「${f.file_name || "ファイル"}」を削除します。よろしいですか？`)) {
+      return;
+    }
+    setError(null);
+    const res = await deleteAddressFile(f.id);
+    if (res.ok) setFiles((prev) => prev.filter((x) => x.id !== f.id));
+    else setError(res.message);
+  }
 
   // 住所歴の最新（転入日が最も新しい行）を、外国人の現在の住所（基本情報の住所欄）へ
   // 自動反映する。住所歴が空になった場合は手入力の住所を消さないよう何もしない。
@@ -205,7 +264,25 @@ export function WorkerAddressHistory({
       <p className="mb-3 text-[11px] text-muted">
         転入日ごとに住所を記録します。課税・納税証明書の「1月1日時点の住所」判定に使われます。
         最新の住所は、上の「住居地」へ現在の住所として自動反映されます。
+        根拠となる画像・PDF（住民票やマイナポータルのスクショなど）は、
+        各行にドラッグ&ドロップするかクリップのボタンで添付できます。
       </p>
+
+      {/* クリップのボタン用のファイル選択（どの行に付けるかは pickForRef で覚えておく） */}
+      {canEdit && (
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,application/pdf"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            const addressId = pickForRef.current;
+            if (addressId) void handleAddressFiles(addressId, e.target.files);
+            e.target.value = ""; // 同じファイルをもう一度選べるように
+          }}
+        />
+      )}
 
       {error && (
         <p role="alert" className="mb-3 rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
@@ -307,35 +384,98 @@ export function WorkerAddressHistory({
                 </div>
               </li>
             ) : (
-              <li
-                key={r.id}
-                className="flex items-center gap-2.5 border-b border-border bg-background px-3 py-2.5 text-sm last:border-b-0"
-              >
-                <span className="shrink-0 tabular-nums text-muted">{r.moved_on}</span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-bold">{r.address}</span>
-                  {r.kind && <span className="block text-[11px] text-muted">{r.kind}</span>}
-                </span>
-                {canEdit && (
-                  <button
-                    type="button"
-                    aria-label="編集"
-                    onClick={() => startEdit(r)}
-                    className="shrink-0 rounded-lg border border-border px-2 py-1 text-brand"
-                  >
-                    <Pencil size={13} />
-                  </button>
-                )}
-                {canEdit && (
-                  <button
-                    type="button"
-                    aria-label="削除"
-                    onClick={() => void remove(r)}
-                    className="shrink-0 rounded-lg border border-border px-2 py-1 text-seal"
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                )}
+              /* 通常の行: 根拠の画像・PDFをこの行にドロップ（またはクリップのボタン）で添付できる */
+              <li key={r.id} className="border-b border-border bg-background last:border-b-0">
+                <FileDropArea
+                  onFiles={(list) => void handleAddressFiles(r.id, list)}
+                  disabled={!canEdit || uploadingFor !== null}
+                  title="ここに住民票などの画像・PDFをドロップして添付できます"
+                  className="flex flex-col gap-1.5 rounded-lg border border-transparent px-3 py-2.5 text-sm"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <span className="shrink-0 tabular-nums text-muted">{r.moved_on}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-bold">{r.address}</span>
+                      {r.kind && <span className="block text-[11px] text-muted">{r.kind}</span>}
+                    </span>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        aria-label="根拠の画像・PDFを添付"
+                        title="根拠の画像・PDFを添付（この行にドロップでも添付できます）"
+                        disabled={uploadingFor !== null}
+                        onClick={() => {
+                          pickForRef.current = r.id;
+                          fileInputRef.current?.click();
+                        }}
+                        className="shrink-0 rounded-lg border border-border px-2 py-1 text-brand disabled:opacity-50"
+                      >
+                        <Paperclip size={13} />
+                      </button>
+                    )}
+                    {canEdit && (
+                      <button
+                        type="button"
+                        aria-label="編集"
+                        onClick={() => startEdit(r)}
+                        className="shrink-0 rounded-lg border border-border px-2 py-1 text-brand"
+                      >
+                        <Pencil size={13} />
+                      </button>
+                    )}
+                    {canEdit && (
+                      <button
+                        type="button"
+                        aria-label="削除"
+                        onClick={() => void remove(r)}
+                        className="shrink-0 rounded-lg border border-border px-2 py-1 text-seal"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
+                  {/* この行の添付（押すと別タブで開く）とアップロード中の表示 */}
+                  {(files.some((f) => f.address_id === r.id) || uploadingFor === r.id) && (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {files
+                        .filter((f) => f.address_id === r.id)
+                        .map((f) => (
+                          <span
+                            key={f.id}
+                            className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-1.5 py-0.5 text-[11px]"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => void previewFile(f.id)}
+                              className="inline-flex items-center gap-1 font-bold text-brand"
+                            >
+                              <Eye size={11} />
+                              <span className="max-w-[140px] truncate">
+                                {f.file_name || "添付"}
+                              </span>
+                            </button>
+                            <span className="text-muted">{f.created_at.slice(0, 10)}</span>
+                            {canEdit && (
+                              <button
+                                type="button"
+                                aria-label="添付を削除"
+                                onClick={() => void removeAddressFile(f)}
+                                className="text-seal"
+                              >
+                                <X size={11} />
+                              </button>
+                            )}
+                          </span>
+                        ))}
+                      {uploadingFor === r.id && (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-muted">
+                          <Loader2 size={11} className="animate-spin" />
+                          アップロード中…
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </FileDropArea>
               </li>
             ),
           )}
