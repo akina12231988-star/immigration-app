@@ -54,6 +54,7 @@ export const BACKUP_TABLES: string[] = [
   "todo_status_options",
   "todos",
   "work_histories",
+  "worker_address_files",
   "worker_addresses",
   "worker_documents",
   "worker_files",

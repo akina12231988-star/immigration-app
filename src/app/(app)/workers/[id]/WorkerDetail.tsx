@@ -15,6 +15,7 @@ import {
   CreditCard,
   ExternalLink,
   FileText,
+  FolderOpen,
   MessageCircle,
   Pencil,
   Plus,
@@ -391,8 +392,14 @@ export function WorkerDetail({
       setApplied(null);
       router.refresh();
     } catch (err) {
-      // パスポートMRZ（0095）など、列が無いときは何を適用すればよいか案内する
-      setError(dbErrorMessage(err, "0095_worker_passport_mrz.sql", "保存に失敗しました"));
+      // 列が無いときは何を適用すればよいか案内する（新しい列から順に案内）
+      setError(
+        dbErrorMessage(
+          err,
+          "file_link" in draft ? "0127_worker_file_link.sql" : "0095_worker_passport_mrz.sql",
+          "保存に失敗しました",
+        ),
+      );
     } finally {
       setSaveBusy(false);
     }
@@ -560,6 +567,43 @@ export function WorkerDetail({
                 </p>
               )}
             </div>
+            {/* 連絡・資料へのリンク。登録があるものだけボタンで出す
+                （リンク先の登録・変更は「編集」で。ファイルは0127） */}
+            {(worker.messenger_link || worker.notion_link || worker.file_link) && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                {worker.messenger_link && (
+                  <a
+                    href={messengerWebUrl(worker.messenger_link)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex min-h-[28px] items-center gap-1 rounded-lg border border-border bg-surface px-2 text-[11px] font-bold text-brand"
+                  >
+                    <MessageCircle size={12} />
+                    Messenger
+                  </a>
+                )}
+                {worker.notion_link && (
+                  <a
+                    href={notionAppUrl(worker.notion_link)}
+                    className="inline-flex min-h-[28px] items-center gap-1 rounded-lg border border-border bg-surface px-2 text-[11px] font-bold text-brand"
+                  >
+                    <ExternalLink size={12} />
+                    Notion
+                  </a>
+                )}
+                {worker.file_link && (
+                  <a
+                    href={worker.file_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex min-h-[28px] items-center gap-1 rounded-lg border border-border bg-surface px-2 text-[11px] font-bold text-brand"
+                  >
+                    <FolderOpen size={12} />
+                    ファイル
+                  </a>
+                )}
+              </div>
+            )}
           </div>
           <div className="flex shrink-0 flex-wrap justify-end gap-2">
             {canEdit && editing ? (
@@ -868,6 +912,11 @@ export function WorkerDetail({
               label="Notion 個人ページのリンク"
               value=""
               edit={textInput("notion_link", "https://www.notion.so/... または https://app.notion.com/...", true)}
+            />
+            <CardItem
+              label="資料ファイルのリンク（Google Drive のフォルダなど）"
+              value=""
+              edit={textInput("file_link", "https://drive.google.com/...", true)}
             />
           </div>
         )}
