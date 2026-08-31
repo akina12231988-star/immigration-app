@@ -177,6 +177,26 @@ export async function listPermitContentsByMonth(
   return out;
 }
 
+// 審査中（申請済みでまだ許可も取下げもされていない）の申請がある外国人のID一覧。
+// 外国人詳細の「在留更新の対応状況」が審査中になっていなくても、
+// 入管申請の記録から審査中と分かるようにする（請求書作成の期限切れ表示で使う）
+export async function listInReviewWorkerIds(
+  supabase: SupabaseClient,
+): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from("immigration_applications")
+    .select("worker_id")
+    .in("status", ["申請済", "LINE報告済", "通知書到着"])
+    .is("granted_permit_date", null)
+    .is("withdrawn_on", null);
+  if (error) throw error;
+  const out = new Set<string>();
+  for (const r of ((data as { worker_id: string | null }[] | null) ?? [])) {
+    if (r.worker_id) out.add(r.worker_id);
+  }
+  return out;
+}
+
 // 許可が下りた申請の記録（外国人ごとの在留許可の履歴）。
 //
 // workers.residence_permit_date は「現在の在留資格の許可日」なので、更新許可が
