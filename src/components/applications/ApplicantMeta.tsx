@@ -16,7 +16,7 @@ export function ApplicantMeta({
 }: {
   app: Pick<Application, "isSelfApply" | "assignee">;
   nationality?: string | null;
-  // まだ申請していない行（申請前＜準備中＞の擬似行）では取次士を出さない
+  // まだ申請していない行（申請前＜入管提出！！＞の擬似行）では取次士を出さない
   showApplicant?: boolean;
   className?: string;
 }) {

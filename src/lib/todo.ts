@@ -95,7 +95,7 @@ export function isCheckingStatus(status: string): boolean {
 }
 
 // 申請準備のTODOが「入管へ申請！！」（入管へ申請済み）のステータスか。
-// 申請一覧の「申請前＜準備中＞」には、この状態になった人だけを表示する
+// 申請一覧の「申請前＜入管提出！！＞」には、この状態になった人だけを表示する
 // （準備中の人は申請準備のTODOで管理する）。選択肢名は画面から変更できるため、
 // 「！！」の有無などの揺れを許容して部分一致で判定する
 export function isImmigrationAppliedStatus(status: string): boolean {

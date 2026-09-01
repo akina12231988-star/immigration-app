@@ -85,7 +85,7 @@ describe("buildRenewalPlaceholders", () => {
     expect(rows[0].organizationName).toBe("テスト機関");
   });
 
-  it("準備中かつ在留更新対象の外国人を「申請前＜準備中＞」の擬似行にする", () => {
+  it("準備中かつ在留更新対象の外国人を「申請前＜入管提出！！＞」の擬似行にする", () => {
     const rows = buildRenewalPlaceholders([makeWorker({})], [], TODAY);
     expect(rows).toHaveLength(1);
     expect(rows[0].status).toBe("申請前");

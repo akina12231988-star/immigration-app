@@ -11,7 +11,7 @@ import { ApplicationsExplorer } from "./ApplicationsExplorer";
 function ApplicationsPageInner() {
   const { applications } = useApplications();
   const viewParam = useSearchParams().get("view");
-  // pre-prep（申請前＜準備中＞）はダッシュボードのカードから開く既定タブ
+  // pre-prep（申請前＜入管提出！！＞）はダッシュボードのカードから開く既定タブ
   const view =
     viewParam === "pre-prep" ? "pre-prep" : isStatViewKey(viewParam) ? viewParam : null;
 

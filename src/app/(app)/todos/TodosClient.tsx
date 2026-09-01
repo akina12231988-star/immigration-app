@@ -113,7 +113,7 @@ export function TodosClient({
   const [workers, setWorkers] = useState<{ id: string; label: string }[]>([]);
   const [jobFlows, setJobFlows] = useState<JobFlowRow[]>([]);
   const [mailings, setMailings] = useState<MailingSummary[]>([]);
-  // 申請一覧の「申請前＜準備中＞」に出ている人（申請準備のTODOにも新着として表示する）
+  // 申請一覧の「申請前＜入管提出！！＞」に出ている人（申請準備のTODOにも新着として表示する）
   const [prepWorkers, setPrepWorkers] = useState<
     { workerId: string; name: string; todoNo: string; orgName: string; situation: string }[]
   >([]);
@@ -211,7 +211,7 @@ export function TodosClient({
         setOptions(o);
         setError(null);
         // あっせん有りのときに出す「求人への採用の流れ」（申請準備のTODOの外国人分）。
-        // ここで return しないこと（下の「申請前＜準備中＞」や郵送請求の読み込みも必要。
+        // ここで return しないこと（下の「申請前＜入管提出！！＞」や郵送請求の読み込みも必要。
         // 以前は TODO が0件のとき return していて、準備中の人の取り込みが動かないバグがあった）
         const workerIds = [
           ...new Set(
@@ -294,7 +294,7 @@ export function TodosClient({
         }
         // 書類担当者（申請準備の担当者）。0083未適用でも他は使えるようにする
         listPrepTantou(supabase).then(setPrepTantou).catch(() => undefined);
-        // 申請一覧の「申請前＜準備中＞」の人（同じ判定 isPrepListTarget）を新着として出す
+        // 申請一覧の「申請前＜入管提出！！＞」の人（同じ判定 isPrepListTarget）を新着として出す
         void supabase
           .from("workers")
           .select(
@@ -304,7 +304,7 @@ export function TodosClient({
           .then(({ data: pw, error: pwErr }) => {
             // 読み込みに失敗したときは黙って0件にせず、理由を表示する
             if (pwErr) {
-              setError(`「申請前＜準備中＞」の人の読み込みに失敗しました: ${pwErr.message}`);
+              setError(`「申請前＜入管提出！！＞」の人の読み込みに失敗しました: ${pwErr.message}`);
               return;
             }
             const rows =
@@ -392,7 +392,7 @@ export function TodosClient({
       .catch(() => undefined);
   }, []);
 
-  // まだ申請準備のTODOに入っていない「申請前＜準備中＞」の人（外国人・番号のどちらでも重複を除く）
+  // まだ申請準備のTODOに入っていない「申請前＜入管提出！！＞」の人（外国人・番号のどちらでも重複を除く）
   const prepPending = useMemo(() => {
     const importedWorkers = new Set(
       todos.filter((t) => t.kind === "申請準備" && t.worker_id).map((t) => t.worker_id),
@@ -410,7 +410,7 @@ export function TodosClient({
     });
   }, [prepWorkers, todos]);
 
-  // 「申請前＜準備中＞」の人は自動で申請準備のTODOに取り込む（準備中の管理はTODOで行い、
+  // 「申請前＜入管提出！！＞」の人は自動で申請準備のTODOに取り込む（準備中の管理はTODOで行い、
   // ステータスが「入管へ申請！！」になった人だけが申請一覧に表示される）
   const [autoImporting, setAutoImporting] = useState(false);
   const autoImportedRef = useRef(false); // 取り込み失敗時に何度も繰り返さないよう1回だけ実行
@@ -639,20 +639,20 @@ export function TodosClient({
         </Card>
       )}
 
-      {/* 申請前＜準備中＞の人の自動取り込み中の表示 */}
+      {/* 申請前＜入管提出！！＞の人の自動取り込み中の表示 */}
       {kind === "申請準備" && autoImporting && (
         <Card className="border-brand/40 p-4 text-center text-xs text-muted">
-          「申請前＜準備中＞」の人を申請準備のTODOに取り込んでいます…（{prepPending.length}件）
+          「申請前＜入管提出！！＞」の人を申請準備のTODOに取り込んでいます…（{prepPending.length}件）
         </Card>
       )}
 
-      {/* 「申請前＜準備中＞」の人は自動でTODOに入る。ここに出るのは、
+      {/* 「申請前＜入管提出！！＞」の人は自動でTODOに入る。ここに出るのは、
           自動取り込みができなかったとき（権限なし・保存失敗など）の案内と手動取り込み */}
       {kind === "申請準備" && !loading && !autoImporting && prepPending.length > 0 && (
         <Card className="border-brand/40 p-4">
           <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-bold">
-              まだTODOに入っていない「申請前＜準備中＞」の人（{prepPending.length}件）
+              まだTODOに入っていない「申請前＜入管提出！！＞」の人（{prepPending.length}件）
             </p>
             {canEdit && (
               <button

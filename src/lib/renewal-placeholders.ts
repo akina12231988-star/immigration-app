@@ -13,7 +13,7 @@ function prepOrgName(
   return w.organizations?.name ?? null;
 }
 
-// 申請一覧の「申請前＜準備中＞」に出る人かどうか。
+// 申請一覧の「申請前＜入管提出！！＞」に出る人かどうか。
 // 「準備中」にしていても、更新の人は在留期限の4か月前になるまでは出ない
 // （「新規で申請書類準備」にした人は在留期限に関係なく出る）。
 export function isPrepListTarget(
@@ -36,7 +36,7 @@ export function isRenewalPlaceholder(app: Application): boolean {
   return app.id.startsWith(PLACEHOLDER_PREFIX);
 }
 
-// 申請準備で「準備中」にした外国人を、申請一覧に「申請前＜準備中＞」として
+// 申請準備で「準備中」にした外国人を、申請一覧に「申請前＜入管提出！！＞」として
 // 表示するための擬似行を作る。実際に申請したら申請登録（/applications/new）で
 // 実レコードを作成し、審査中になった時点で擬似行は消える。
 // 「新規で申請書類準備」の人は在留期限に関係なく、「更新」の人は4か月前から対象。

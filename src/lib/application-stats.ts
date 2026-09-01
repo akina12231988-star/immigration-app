@@ -43,9 +43,9 @@ export function isStatViewKey(v: string | null): v is StatViewKey {
   return v !== null && v in STAT_VIEWS;
 }
 
-// 申請前＜準備中＞の実レコード件数（「申請前」かつ在留更新が準備中）。
+// 申請前＜入管提出！！＞の実レコード件数（「申請前」かつ在留更新が準備中）。
 // ダッシュボードでは buildRenewalPlaceholders の擬似行の件数を足して、
-// 申請一覧の「申請前＜準備中＞」タブと同じ件数を表示する
+// 申請一覧の「申請前＜入管提出！！＞」タブと同じ件数を表示する
 export function countPrePrepApplications(applications: Application[]): number {
   return applications.filter(
     (a) => a.status === "申請前" && a.workerRenewalStatus === "準備中",

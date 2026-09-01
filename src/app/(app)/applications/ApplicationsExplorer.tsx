@@ -82,12 +82,12 @@ const SORT_OPTIONS = [
 ] as const;
 type SortKey = (typeof SORT_OPTIONS)[number]["key"];
 
-// フィルタータブ（ダッシュボードの集計と同じ区分＋在留更新の「申請前＜準備中＞」）
+// フィルタータブ（ダッシュボードの集計と同じ区分＋在留更新の「申請前＜入管提出！！＞」）
 type ViewKey = StatViewKey | "all" | "pre-prep" | "extra-request";
 
-// 「申請前＜準備中＞」を最初に表示するため先頭に、「すべて」は一番右に置く
+// 「申請前＜入管提出！！＞」を最初に表示するため先頭に、「すべて」は一番右に置く
 const VIEW_CHIPS: { key: ViewKey; label: string }[] = [
-  { key: "pre-prep", label: "申請前＜準備中＞" },
+  { key: "pre-prep", label: "申請前＜入管提出！！＞" },
   { key: "unreported", label: "LINE未報告" },
   { key: "waiting-notice", label: "審査中" },
   { key: "extra-request", label: "＜入管＞追加資料" },
@@ -106,8 +106,8 @@ export function ApplicationsExplorer({
   const router = useRouter();
   const { updateApplication } = useApplications();
   const [keyword, setKeyword] = useState("");
-  // タブ＝ダッシュボードと同じ集計区分＋申請前＜準備中＞。
-  // 指定がなければ「申請前＜準備中＞」を最初に表示する
+  // タブ＝ダッシュボードと同じ集計区分＋申請前＜入管提出！！＞。
+  // 指定がなければ「申請前＜入管提出！！＞」を最初に表示する
   const [view, setView] = useState<ViewKey>(initialView ?? "pre-prep");
 
   // 在留カード新規発行済みタブの「在留許可日」期間検索
@@ -118,7 +118,7 @@ export function ApplicationsExplorer({
   const [pageSize, setPageSize] = useState<number>(50);
   const [page, setPage] = useState(1);
 
-  // 在留更新で「準備中」の外国人を「申請前＜準備中＞」の擬似行として出すための外国人一覧
+  // 在留更新で「準備中」の外国人を「申請前＜入管提出！！＞」の擬似行として出すための外国人一覧
   const [renewalWorkers, setRenewalWorkers] = useState<WorkerWithOrg[]>([]);
   useEffect(() => {
     let cancelled = false;
@@ -133,7 +133,7 @@ export function ApplicationsExplorer({
   }, []);
 
   // 申請準備のTODO。準備中の人はTODOで管理し、ステータスが「入管へ申請！！」に
-  // なった人だけを「申請前＜準備中＞」の擬似行として表示する。
+  // なった人だけを「申請前＜入管提出！！＞」の擬似行として表示する。
   // null のままなら（読み込み中・0102未適用）絞り込まず従来どおり全員表示する
   const [prepTodos, setPrepTodos] = useState<TodoRow[] | null>(null);
   useEffect(() => {
@@ -244,7 +244,7 @@ export function ApplicationsExplorer({
   const showIssued = view === "card-issued";
   const showPrep = view === "pre-prep";
 
-  // 申請前＜準備中＞タブで TODO番号・Notion・Messenger を表示するための外国人引き当て
+  // 申請前＜入管提出！！＞タブで TODO番号・Notion・Messenger を表示するための外国人引き当て
   const workersById = useMemo(
     () => new Map(renewalWorkers.map((w) => [w.id, w])),
     [renewalWorkers],
@@ -311,7 +311,7 @@ export function ApplicationsExplorer({
 
     const rows = applications.filter((a) => {
       if (view === "pre-prep") {
-        // 申請前＜準備中＞タブ: 実レコードは「申請前」かつ在留更新が準備中の案件のみ
+        // 申請前＜入管提出！！＞タブ: 実レコードは「申請前」かつ在留更新が準備中の案件のみ
         if (a.status !== "申請前" || a.workerRenewalStatus !== "準備中") return false;
       } else if (view !== "all" && view !== "extra-request" && !STAT_VIEWS[view].test(a)) {
         return false;
@@ -325,7 +325,7 @@ export function ApplicationsExplorer({
       return matchesKeyword(a) && matchesTantou(a);
     });
 
-    // 「すべて」と「申請前＜準備中＞」では、在留更新で準備中の外国人のうち、
+    // 「すべて」と「申請前＜入管提出！！＞」では、在留更新で準備中の外国人のうち、
     // 申請準備のTODOが「入管へ申請！！」になった人を擬似行として先頭に出す
     // （準備中の人は申請準備のTODOで管理する）。
     // 申請登録して審査中になると、この擬似行は実レコードの行に置き換わる。
@@ -376,7 +376,7 @@ export function ApplicationsExplorer({
     setPage(1);
   }
 
-  // 擬似行（申請前＜準備中＞）は申請登録へ、実レコードは詳細へ遷移する
+  // 擬似行（申請前＜入管提出！！＞）は申請登録へ、実レコードは詳細へ遷移する
   const hrefFor = (a: Application) =>
     isRenewalPlaceholder(a)
       ? `/applications/new?workerId=${a.workerId}`
@@ -429,7 +429,7 @@ export function ApplicationsExplorer({
     }
   };
 
-  // 申請前＜準備中＞: 準備状況の確認とその場での書類添付（1ページで開く）
+  // 申請前＜入管提出！！＞: 準備状況の確認とその場での書類添付（1ページで開く）
   const openPrepModal = (a: Application) => {
     if (!a.workerId) return;
     router.push(prepDetailHref(a.workerId));
@@ -455,7 +455,7 @@ export function ApplicationsExplorer({
     }
   };
 
-  // 申請前＜準備中＞の所属機関のインライン編集。
+  // 申請前＜入管提出！！＞の所属機関のインライン編集。
   // 擬似行（まだ申請登録していない人）は外国人の「申請準備の所属機関」（転職先）に、
   // 申請登録済みの行はその申請の所属機関に保存する
   const changeOrg = async (a: Application, orgId: string) => {
@@ -545,10 +545,11 @@ export function ApplicationsExplorer({
         ))}
       </div>
 
-      {/* 申請前＜準備中＞: 準備中の人は申請準備のTODOで管理するようになった案内 */}
+      {/* 申請前＜入管提出！！＞: 準備中の人は申請準備のTODOで管理するようになった案内 */}
       {showPrep && appliedPrep !== null && (
         <p className="rounded-xl border border-border bg-surface px-3.5 py-2.5 text-xs leading-relaxed text-muted">
-          申請準備のTODOのステータスが「入管へ申請！！」になった人が表示されます。準備中の人は
+          申請準備のTODOのステータスが「入管へ申請！！」になった、あとは入管へ提出するだけの人が表示されます。
+          提出したら行の「申請登録へ進む」ボタンから申請登録してください。準備中の人は
           <Link href="/workers/renewals" className="mx-1 font-bold text-brand hover:underline">
             申請準備
           </Link>
@@ -809,13 +810,19 @@ export function ApplicationsExplorer({
                       <WorkerLink href={w?.messenger_link ? messengerWebUrl(w.messenger_link) : undefined} icon={<MessageCircle size={13} />}>
                         Messenger
                       </WorkerLink>
-                      {/* 行クリックは申請準備の内容表示に変えたため、申請登録はここから */}
-                      {isRenewalPlaceholder(a) && (
-                        <WorkerLink href={hrefFor(a)} icon={<FilePlus2 size={13} />}>
-                          申請登録へ進む
-                        </WorkerLink>
-                      )}
                     </div>
+                    {/* 入管に提出したら、ここから申請登録する（行クリックは準備内容の表示） */}
+                    {isRenewalPlaceholder(a) && (
+                      <span className="mt-2 block" onClick={(e) => e.stopPropagation()}>
+                        <Link
+                          href={hrefFor(a)}
+                          className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand py-2.5 text-xs font-bold text-brand-foreground"
+                        >
+                          <FilePlus2 size={15} />
+                          申請登録へ進む
+                        </Link>
+                      </span>
+                    )}
                   </div>
                   <div
                     className="mt-2 flex items-center justify-between gap-2 border-t border-border pt-2"
@@ -870,7 +877,7 @@ export function ApplicationsExplorer({
                   <Th>所属機関</Th>
                   <Th>支援責任者・支援担当者</Th>
                   {showPrep ? (
-                    /* 申請前＜準備中＞: 申請内容・申請日・申請番号はまだ空のため、
+                    /* 申請前＜入管提出！！＞: 申請内容・申請日・申請番号はまだ空のため、
                        代わりに在留更新の TODO番号・Notion・Messenger を表示する */
                     <>
                       <Th>申請TODO番号</Th>
@@ -926,12 +933,16 @@ export function ApplicationsExplorer({
                             <WorkerInfoLink workerId={a.workerId} />
                           </span>
                         )}
-                        {/* 行クリックは申請準備の内容表示に変えたため、申請登録はここから */}
+                        {/* 入管に提出したら、ここから申請登録する（行クリックは準備内容の表示） */}
                         {isRenewalPlaceholder(a) && (
-                          <span className="mt-1 block" onClick={(e) => e.stopPropagation()}>
-                            <WorkerLink href={hrefFor(a)} icon={<FilePlus2 size={13} />}>
+                          <span className="mt-1.5 block" onClick={(e) => e.stopPropagation()}>
+                            <Link
+                              href={hrefFor(a)}
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-xs font-bold text-brand-foreground"
+                            >
+                              <FilePlus2 size={14} />
                               申請登録へ進む
-                            </WorkerLink>
+                            </Link>
                           </span>
                         )}
                       </Td>
@@ -1077,7 +1088,7 @@ export function ApplicationsExplorer({
   );
 }
 
-// 申請TODO番号のコピー（申請前＜準備中＞）。Notionで検索して開く時に使う
+// 申請TODO番号のコピー（申請前＜入管提出！！＞）。Notionで検索して開く時に使う
 function CopyTodoButton({ todo }: { todo: string }) {
   const [copied, setCopied] = useState(false);
   const copy = async (e: React.MouseEvent) => {
@@ -1102,7 +1113,7 @@ function CopyTodoButton({ todo }: { todo: string }) {
   );
 }
 
-// 所属機関のインライン選択（申請前＜準備中＞）。
+// 所属機関のインライン選択（申請前＜入管提出！！＞）。
 // 転職の準備では転職先をここで選ぶ。まだ申請登録していない人は外国人の
 // 「申請準備の所属機関」に、申請登録済みならその申請の所属機関に保存される
 function PrepOrgSelect({
@@ -1136,7 +1147,7 @@ function PrepOrgSelect({
   );
 }
 
-// 申請TODO番号のインライン入力（申請前＜準備中＞）。入力欄から離れたときに保存する
+// 申請TODO番号のインライン入力（申請前＜入管提出！！＞）。入力欄から離れたときに保存する
 function PrepTodoInput({
   value,
   onSave,
@@ -1161,7 +1172,7 @@ function PrepTodoInput({
   );
 }
 
-// 担当者のインライン選択（申請前＜準備中＞）。外国人の申請TODO番号の準備リストに紐づく
+// 担当者のインライン選択（申請前＜入管提出！！＞）。外国人の申請TODO番号の準備リストに紐づく
 function TantouSelect({
   value,
   disabled,
@@ -1192,7 +1203,7 @@ function TantouSelect({
   );
 }
 
-// 申請前＜準備中＞の準備状況バッジ（未設定 / 不足N件 / 準備完了）
+// 申請前＜入管提出！！＞の準備状況バッジ（未設定 / 不足N件 / 準備完了）
 function PrepStatusBadge({ status }: { status: PrepStatus | undefined }) {
   if (!status || !status.appTypeSet) {
     return (
@@ -1279,7 +1290,7 @@ function Pagination({
   );
 }
 
-// 申請前＜準備中＞: 在留期限が2ヶ月以内に迫ったら「期限まであと〇ヶ月〇日！早く申請して」
+// 申請前＜入管提出！！＞: 在留期限が2ヶ月以内に迫ったら「期限まであと〇ヶ月〇日！早く申請して」
 function ApplyRushBadge({ expiry }: { expiry: string }) {
   const d = daysUntil(expiry, TODAY);
   const label =
