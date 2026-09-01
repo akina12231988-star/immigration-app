@@ -11,6 +11,7 @@ import {
   ClipboardList,
   PencilLine,
   CalendarClock,
+  CalendarSync,
   BookMarked,
   Mailbox,
   MailPlus,
@@ -66,6 +67,8 @@ export const NAV_ENTRIES: NavEntry[] = [
     label: "TODO",
     icon: ListTodo,
     children: [
+      // 更新準備: 在留期限が4か月以内でTODO番号が未入力の人の一覧（TODO作成の入口）
+      { href: "/workers/renewal-prep", label: "更新準備", short: "更新準備", icon: CalendarSync },
       { href: "/workers/renewals", label: "申請準備", short: "申請準備", icon: CalendarClock },
       { href: "/resignations", label: "退職＜随時報告＞", short: "退職", icon: UserMinus },
       { href: "/todos/exams", label: "試験の申込", short: "試験", icon: PencilLine },
