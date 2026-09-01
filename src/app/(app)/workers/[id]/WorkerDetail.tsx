@@ -52,6 +52,7 @@ import { WorkerPermitSalesNos } from "@/components/workers/WorkerPermitSalesNos"
 import { WorkerWages } from "@/components/workers/WorkerWages";
 import { WorkerRecurringSales } from "@/components/workers/WorkerRecurringSales";
 import { NotionTransferButton } from "@/components/workers/NotionTransferButton";
+import { WorkerRequestLogs } from "@/components/workers/WorkerRequestLogs";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -647,6 +648,8 @@ export function WorkerDetail({
                     編集
                   </button>
                 )}
+                {/* 対応の記録: いつ本人から依頼があって、いつ何をやったかを残す */}
+                <WorkerRequestLogs workerId={worker.id} canEdit={canEdit} />
                 <Link
                   href={`/workers/print?worker=${worker.id}`}
                   className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted"
