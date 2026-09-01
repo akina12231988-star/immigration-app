@@ -53,6 +53,7 @@ export function WorkerRenewalCard({
   organizations,
   today,
   canEdit,
+  todoGuide = false,
 }: {
   worker: RenewalCardWorker;
   orgName?: string | null;
@@ -60,6 +61,8 @@ export function WorkerRenewalCard({
   organizations?: { id: string; name: string }[];
   today: string;
   canEdit: boolean;
+  // TODO番号が未入力の人に「NotionでTODOを作成→番号を入力」の案内を出す（更新準備用）
+  todoGuide?: boolean;
 }) {
   // 見出しのバッジ・所属機関名は入力中の値に追従させる（保存前でも見た目が変わる）
   const [status, setStatus] = useState<ResidenceRenewalStatus>(worker.residence_renewal_status);
@@ -120,6 +123,24 @@ export function WorkerRenewalCard({
           </a>
         )}
       </div>
+
+      {/* TODO番号が未入力の人は、NotionでTODOを作成するところから案内する */}
+      {todoGuide && !(worker.residence_renewal_todo ?? "").trim() && (
+        <div className="mt-3 rounded-xl border border-brand/40 bg-brand/5 px-3 py-2.5 text-[11px] leading-relaxed text-muted">
+          <p className="mb-1 text-xs font-bold text-brand">
+            まずNotionで申請TODOを作成しましょう
+          </p>
+          <p>
+            ① 「Notionを開く」からこの人のNotionページを開き、申請TODOを作成します
+            {!worker.notion_link && "（Notion未登録の場合は下の欄でリンクを登録できます）"}。
+            <br />
+            ② できたTODO番号（例: TODO-1234）を下の「Notion 申請TODO番号」に入力して保存します。
+          </p>
+          <p className="mt-1">
+            保存すると対応状況が「準備中」になってこの一覧からは消え、申請準備の方に表示されます。
+          </p>
+        </div>
+      )}
 
       {canEdit && (
         <div className="mt-3 border-t border-border pt-3">

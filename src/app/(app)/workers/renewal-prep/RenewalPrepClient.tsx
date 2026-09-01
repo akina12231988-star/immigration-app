@@ -18,8 +18,9 @@ interface OrgOption {
 const SELECT_CLASS =
   "min-h-[40px] flex-1 rounded-xl border border-border bg-surface px-2.5 text-xs font-bold focus:border-brand focus:outline-none";
 
-// 更新準備: 在留期限が近い人（初期値は4か月以内）を在留期限順に並べ、
-// 所属機関・支援区分・国籍で絞り込める一覧
+// 更新準備: 在留期限が近い人（初期値は4か月以内）のうちTODO番号が未入力の人を
+// 在留期限順に並べ、所属機関・支援区分・国籍で絞り込める一覧。
+// NotionでTODOを作成して番号を保存すると、申請準備の方に表示が移る
 export function RenewalPrepClient({
   workers,
   organizations,
@@ -46,8 +47,10 @@ export function RenewalPrepClient({
   const prepOrgIdOf = (w: WorkerWithOrg) =>
     w.application_prep_organization_id ?? w.current_organization_id;
 
-  // 表示対象: 在留期限が「いつまで」以前の人（超過も含む）。
-  // 退職者・新規準備で追加した人・申請の途中（受付済みで許可待ち）の人は対象外
+  // 表示対象: 在留期限が「いつまで」以前で、Notion 申請TODO番号がまだ未入力の人。
+  // TODO番号を入力して保存した人は申請準備の方に表示される（この一覧からは消える）。
+  // 退職者・新規準備で追加した人・申請の途中（受付済みで許可待ち）の人と、
+  // 転職先・他機関・帰国などで弊社が準備しない人も対象外
   const targets = useMemo(() => {
     const limit = until || defaultUntil;
     return workers
@@ -57,7 +60,9 @@ export function RenewalPrepClient({
           w.application_prep_kind !== "新規" &&
           w.residence_expiry_date &&
           w.residence_expiry_date <= limit &&
-          !underReview.has(w.id),
+          !underReview.has(w.id) &&
+          !w.residence_renewal_todo.trim() &&
+          (w.residence_renewal_status === "" || w.residence_renewal_status === "準備中"),
       )
       .sort((a, b) =>
         (a.residence_expiry_date ?? "").localeCompare(b.residence_expiry_date ?? ""),
@@ -90,8 +95,10 @@ export function RenewalPrepClient({
       <p className="flex items-start gap-1.5 text-xs leading-relaxed text-muted">
         <CalendarSync size={14} className="mt-0.5 shrink-0" />
         在留期限の{RESIDENCE_RENEWAL_MONTHS}
-        か月前になった人を、在留期限が近い順に表示しています。前もって更新の準備を始めてください。
-        退職した人と、すでに入管申請が受付済みで結果待ちの人は表示されません。
+        か月前になった人のうち、Notion
+        申請TODO番号がまだ未入力の人を、在留期限が近い順に表示しています。
+        各カードの案内に沿ってNotionで申請TODOを作成し、番号を入力して保存すると、この一覧からは消えて申請準備の方に表示されます。
+        退職した人・すでに入管申請が受付済みで結果待ちの人・転職先や他機関などで弊社が準備しない人は表示されません。
       </p>
 
       {/* 絞り込み: 所属機関・支援区分・国籍（並びは在留期限が近い順で固定） */}
@@ -168,7 +175,9 @@ export function RenewalPrepClient({
       <p className="text-sm font-bold text-muted">{filtered.length}名</p>
 
       {filtered.length === 0 ? (
-        <Card className="p-8 text-center text-sm text-muted">該当者はいません。</Card>
+        <Card className="p-8 text-center text-sm text-muted">
+          該当者はいません。TODO番号を入力済みの人は申請準備の方に表示されています。
+        </Card>
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {filtered.map((w) => (
@@ -184,6 +193,7 @@ export function RenewalPrepClient({
               organizations={organizations}
               today={today}
               canEdit={canEdit}
+              todoGuide
             />
           ))}
         </div>

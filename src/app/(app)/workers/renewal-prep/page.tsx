@@ -10,7 +10,7 @@ import { RenewalPrepClient } from "./RenewalPrepClient";
 
 export const dynamic = "force-dynamic";
 
-// 更新準備: 在留期限が4か月以内になった人を一覧で確認する画面
+// 更新準備: 在留期限が4か月以内でTODO番号が未入力の人に、TODO作成を案内する画面
 export default async function RenewalPrepPage() {
   // ログイン確認とデータ取得を並列に行い、ページ表示までの待ち時間を短縮する
   const supabase = await createClient();
