@@ -6,6 +6,8 @@ import { Card } from "@/components/ui/Card";
 import type { WorkerWithOrg } from "@/lib/supabase/queries/workers";
 import { residenceRenewalDefaultUntil, RESIDENCE_RENEWAL_MONTHS } from "@/lib/worker-alerts";
 import { todayStr } from "@/lib/application-alerts";
+import { matchesWorkerName } from "@/lib/worker-search";
+import { NameSearchBox } from "@/components/ui/NameSearchBox";
 import { SUPPORT_SCOPES, type SupportScope } from "@/types/db";
 import { WorkerRenewalCard } from "@/components/workers/WorkerRenewalCard";
 
@@ -39,6 +41,10 @@ export function RenewalPrepClient({
   const [orgId, setOrgId] = useState<"all" | "none" | string>("all");
   const [support, setSupport] = useState<SupportScope | "all">("all");
   const [nationality, setNationality] = useState<string>("all");
+
+  // 氏名で検索（候補から選ぶ・部分一致）。入力中は絞り込みに関わらず対象者全体から探す
+  const [nameQuery, setNameQuery] = useState("");
+  const query = nameQuery.trim();
 
   const underReview = useMemo(() => new Set(underReviewWorkerIds), [underReviewWorkerIds]);
   const orgNames = useMemo(() => new Map(organizations.map((o) => [o.id, o.name])), [organizations]);
@@ -78,17 +84,17 @@ export function RenewalPrepClient({
     [targets],
   );
 
-  const filtered = useMemo(
-    () =>
-      targets.filter((w) => {
-        if (support !== "all" && w.support !== support) return false;
-        if (nationality !== "all" && w.nationality !== nationality) return false;
-        if (orgId === "none") return !prepOrgIdOf(w);
-        if (orgId !== "all") return prepOrgIdOf(w) === orgId;
-        return true;
-      }),
-    [targets, orgId, support, nationality],
-  );
+  const filtered = useMemo(() => {
+    // 氏名で検索しているときは、所属機関などの絞り込みを気にせず対象者全体から探す
+    if (query) return targets.filter((w) => matchesWorkerName(w, query));
+    return targets.filter((w) => {
+      if (support !== "all" && w.support !== support) return false;
+      if (nationality !== "all" && w.nationality !== nationality) return false;
+      if (orgId === "none") return !prepOrgIdOf(w);
+      if (orgId !== "all") return prepOrgIdOf(w) === orgId;
+      return true;
+    });
+  }, [targets, orgId, support, nationality, query]);
 
   return (
     <div className="space-y-4">
@@ -100,6 +106,18 @@ export function RenewalPrepClient({
         各カードの案内に沿ってNotionで申請TODOを作成し、番号を入力して保存すると、この一覧からは消えて申請準備の方に表示されます。
         退職した人・すでに入管申請が受付済みで結果待ちの人・転職先や他機関などで弊社が準備しない人は表示されません。
       </p>
+
+      {/* 氏名で検索: 入力すると候補が出て、選ぶとその人だけ表示される */}
+      <NameSearchBox
+        candidates={targets}
+        value={nameQuery}
+        onChange={setNameQuery}
+        hintOf={(w) =>
+          w.residence_expiry_date
+            ? `在留期限 ${w.residence_expiry_date}`
+            : (w.organizations?.name ?? "")
+        }
+      />
 
       {/* 絞り込み: 所属機関・支援区分・国籍（並びは在留期限が近い順で固定） */}
       <div className="flex flex-wrap gap-2">
@@ -172,11 +190,20 @@ export function RenewalPrepClient({
         </p>
       </div>
 
-      <p className="text-sm font-bold text-muted">{filtered.length}名</p>
+      <p className="text-sm font-bold text-muted">
+        {query ? `「${query}」の検索結果 ${filtered.length}名` : `${filtered.length}名`}
+        {query && (
+          <span className="ml-1 text-[11px] font-normal">
+            （所属機関などの絞り込みに関わらず探しています）
+          </span>
+        )}
+      </p>
 
       {filtered.length === 0 ? (
         <Card className="p-8 text-center text-sm text-muted">
-          該当者はいません。TODO番号を入力済みの人は申請準備の方に表示されています。
+          {query
+            ? `「${query}」に一致する対象者はいません。TODO番号を入力済みの人・在留期限が「いつまで」より先の人は、この一覧には出ません。`
+            : "該当者はいません。TODO番号を入力済みの人は申請準備の方に表示されています。"}
         </Card>
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

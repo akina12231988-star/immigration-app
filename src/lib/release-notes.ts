@@ -23,6 +23,16 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-09-01",
+    title: "更新準備で氏名検索ができるようになりました",
+    where: "メニュー ＞ TODO ＞ 更新準備",
+    href: "/workers/renewal-prep",
+    items: [
+      "氏名を入力すると候補が出て、選ぶとその人だけ表示されます（ふりがな・空白の入れ方の違いでも探せます）。",
+      "検索中は所属機関・支援区分・国籍の絞り込みに関わらず、表示対象の全体から探します。",
+    ],
+  },
+  {
+    date: "2026-09-01",
     title: "「申請前＜準備中＞」を「申請前＜入管提出！！＞」に変え、申請登録ボタンを目立たせました",
     where: "申請 ＞ 申請一覧 ＞ 申請前＜入管提出！！＞",
     href: "/applications",
