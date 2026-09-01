@@ -23,6 +23,17 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-09-01",
+    title: "年齢の表示と、パスポート発行年月日の記録を足しました",
+    where: "外国人 ＞ 外国人詳細 ／ 履歴書",
+    href: "/workers",
+    items: [
+      "外国人詳細の生年月日の横に、今日時点で何歳かが出ます。",
+      "履歴書にも生年月日の横に年齢が出ます（印刷にもそのまま出ます）。",
+      "外国人詳細のパスポート欄と外国人の登録・編集フォームに「発行年月日（DATE OF ISSUE）」を追加し、記録できるようにしました。",
+    ],
+  },
+  {
+    date: "2026-09-01",
     title: "TODOに「更新準備」のメニューを足しました",
     where: "メニュー ＞ TODO ＞ 更新準備（申請準備の上）",
     href: "/workers/renewal-prep",

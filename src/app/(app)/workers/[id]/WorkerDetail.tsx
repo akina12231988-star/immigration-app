@@ -93,7 +93,7 @@ import {
   updateHistory,
 } from "@/lib/supabase/queries/histories";
 import { JobApplicationSection } from "@/components/workers/JobApplicationSection";
-import { warekiDate } from "@/lib/dependents";
+import { dependentAge, warekiDate } from "@/lib/dependents";
 import { fileLinkCopyPath, isWebFileLink } from "@/lib/file-link";
 import { formatStorageNo } from "@/lib/custody";
 import { filledFieldCount, overwrittenFields, type FieldChange } from "@/lib/field-overwrite";
@@ -184,6 +184,8 @@ export function WorkerDetail({
   }, []);
 
   const today = todayStr();
+  // 生年月日の横に出す今日時点の満年齢
+  const birthAge = worker.birth ? dependentAge(worker.birth, today) : null;
   const calc = useMemo(
     () => calcSsw(worker.work_histories.map(toCalcHistory), today),
     [worker.work_histories, today],
@@ -778,6 +780,12 @@ export function WorkerDetail({
                     worker.birth ? (
                       <>
                         {cardFaceDate(worker.birth) || worker.birth}
+                        {/* 今日時点で何歳かをすぐ分かるように添える */}
+                        {birthAge !== null && (
+                          <span className="ml-1 text-[11px] font-normal text-[#475467]">
+                            （現在{birthAge}歳）
+                          </span>
+                        )}
                         {/* 申請書類は和暦で書くため、西暦の下に和暦も出す */}
                         {warekiDate(worker.birth) && (
                           <span className="block text-[11px] font-normal text-[#475467]">
@@ -1048,8 +1056,14 @@ export function WorkerDetail({
 
           {/* 写真の下からは横幅いっぱいに使う */}
           <div className="mt-2 flex flex-col gap-2">
+            <CardItem label="国籍 NATIONALITY" value={worker.nationality} />
+            {/* 実物の券面と同じく、発行年月日と有効期限を並べて出す */}
             <div className="grid grid-cols-2 gap-2">
-              <CardItem label="国籍 NATIONALITY" value={worker.nationality} />
+              <CardItem
+                label="発行年月日 DATE OF ISSUE"
+                value={worker.passport_issue_date}
+                edit={dateInput("passport_issue_date", true)}
+              />
               <CardItem
                 label="有効期限 DATE OF EXPIRY"
                 value={worker.passport_expiry_date}

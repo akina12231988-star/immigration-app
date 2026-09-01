@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
 import { useWorkHistoryRows } from "@/components/workers/useWorkHistoryRows";
 import { errorMessage } from "@/lib/errors";
+import { dependentAge } from "@/lib/dependents";
 import { todayStr } from "@/lib/ssw/calc";
 import { VISA_TYPES } from "@/types/ssw";
 
@@ -72,6 +73,9 @@ export function ResumeSheet({
   const issuedText = issuedOn
     ? new Date(`${issuedOn}T00:00:00`).toLocaleDateString("ja-JP")
     : "";
+
+  // 生年月日の横に出す今日時点の満年齢（生年月日を直すとその場で変わる）
+  const birthAge = dependentAge(worker.birth ?? "", todayStr());
 
   const setField = <K extends keyof ResumeWorker>(key: K, value: ResumeWorker[K]) => {
     setWorker((w) => ({ ...w, [key]: value }));
@@ -198,6 +202,7 @@ export function ResumeSheet({
                 onChange={(v) => setField("birth", v)}
                 canEdit={canEdit}
                 type="date"
+                suffix={birthAge !== null ? `（${birthAge}歳）` : undefined}
               />
               <Row
                 label="性別"
@@ -414,6 +419,7 @@ function Row({
   type = "text",
   big = false,
   wide = false,
+  suffix,
 }: {
   label: string;
   value: string;
@@ -422,12 +428,14 @@ function Row({
   type?: "text" | "date";
   big?: boolean;
   wide?: boolean;
+  // 値の後ろに添える表示（年齢など。印刷にもそのまま出る）
+  suffix?: string;
 }) {
   const textClass = big ? "text-lg font-black" : "text-sm font-bold";
   return (
     <div className={`flex flex-col border-b border-gray-200 pb-1${wide ? " col-span-2" : ""}`}>
       <dt className="text-[10px] font-bold text-gray-500">{label}</dt>
-      <dd className={textClass}>
+      <dd className={`${textClass}${suffix ? " flex items-baseline gap-1" : ""}`}>
         {canEdit ? (
           <input
             type={type}
@@ -438,6 +446,7 @@ function Row({
         ) : (
           value || "—"
         )}
+        {suffix && <span className="shrink-0">{suffix}</span>}
       </dd>
     </div>
   );

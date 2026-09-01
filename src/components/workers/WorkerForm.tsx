@@ -49,6 +49,7 @@ function toInput(w: Worker | null): WorkerInput {
     residence_permit_date: w?.residence_permit_date ?? null,
     residence_expiry_date: w?.residence_expiry_date ?? null,
     passport_no: w?.passport_no ?? "",
+    passport_issue_date: w?.passport_issue_date ?? null,
     passport_expiry_date: w?.passport_expiry_date ?? null,
     passport_mrz: w?.passport_mrz ?? "",
     residence_period: w?.residence_period ?? "",
@@ -224,6 +225,7 @@ export function WorkerForm({
       | "birth"
       | "residence_permit_date"
       | "residence_expiry_date"
+      | "passport_issue_date"
       | "passport_expiry_date"
       | "leaving_on"
       | "employment_start_on"
@@ -655,6 +657,14 @@ export function WorkerForm({
             onChange={(e) => set("home_address", e.target.value)}
             placeholder="例: Số 12, Thôn A, Xã B, Huyện C, Tỉnh Nghệ An, Việt Nam"
             className={TEXTAREA_CLASS}
+          />
+        </Field>
+        <Field label="パスポート発行年月日">
+          <input
+            type="date"
+            value={form.passport_issue_date ?? ""}
+            onChange={setDate("passport_issue_date")}
+            className={INPUT_CLASS}
           />
         </Field>
         <Field label="パスポート有効期限">

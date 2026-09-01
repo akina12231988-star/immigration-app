@@ -22,6 +22,7 @@ function worker(over: Partial<Worker>): Worker {
     residence_permit_date: null,
     residence_expiry_date: null,
     passport_no: "",
+    passport_issue_date: null,
     passport_expiry_date: null,
     passport_mrz: "",
     notion_link: "",
