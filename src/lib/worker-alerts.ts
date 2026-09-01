@@ -59,6 +59,11 @@ export function isExpiryWithinTwoMonths(expiry: string, today: string): boolean 
 // 前もって準備できるよう4か月前からにしている。
 export const RESIDENCE_RENEWAL_MONTHS = 4;
 
+// 更新準備の一覧「在留期限をいつまで表示するか」の初期値（今日から4か月後）
+export function residenceRenewalDefaultUntil(today: string): string {
+  return addMonths(today, RESIDENCE_RENEWAL_MONTHS);
+}
+
 // 在留更新対象: 在留期限まで4か月以内（または既に超過）。期限未登録は対象外。
 // 退職者は在留更新の対象から外す。
 export function isResidenceRenewalTarget(
