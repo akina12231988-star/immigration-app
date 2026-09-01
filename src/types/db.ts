@@ -390,6 +390,7 @@ export interface Worker {
   residence_permit_date: string | null;
   residence_expiry_date: string | null;
   passport_no: string; // パスポート番号
+  passport_issue_date: string | null; // パスポート発行年月日（DATE OF ISSUE。0130）
   passport_expiry_date: string | null; // パスポート有効期限
   passport_mrz: string; // パスポートMRZの2行（読み取り反映時に保存。コピー用。0095）
   residence_period: string; // 在留カードの在留期間（例: 1年・3年・6月。0092）

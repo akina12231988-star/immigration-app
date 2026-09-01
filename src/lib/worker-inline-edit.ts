@@ -13,6 +13,7 @@ const NULLABLE_KEYS = new Set<string>([
   "birth",
   "residence_permit_date",
   "residence_expiry_date",
+  "passport_issue_date",
   "passport_expiry_date",
   "current_organization_id",
 ]);
