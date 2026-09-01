@@ -20,20 +20,62 @@ export function isHealthCheckValid(examOn: string | null, today: string): boolea
 
 // 健康診断書に必要な受診項目（健康診断個人票 13号様式相当）。病院書式のとき、これらが
 // 揃っているかをチェックする。1〜3号の公式様式に医師が記入している場合はチェック不要。
-export const HEALTH_EXAM_ITEMS: { id: string; label: string }[] = [
-  { id: "history", label: "既往歴・業務歴" },
-  { id: "symptoms", label: "自覚症状・他覚症状" },
-  { id: "physique", label: "身長・体重・BMI・腹囲" },
-  { id: "vision", label: "視力" },
-  { id: "hearing", label: "聴力（1000Hz・4000Hz）" },
-  { id: "chest_xray", label: "胸部エックス線検査（結核等）" },
-  { id: "blood_pressure", label: "血圧" },
-  { id: "anemia", label: "貧血検査（血色素量・赤血球数）" },
-  { id: "liver", label: "肝機能検査（GOT・GPT・γ-GTP）" },
-  { id: "lipids", label: "血中脂質検査（LDL・HDL・トリグリセライド）" },
-  { id: "blood_sugar", label: "血糖検査" },
-  { id: "urine", label: "尿検査（糖・蛋白）" },
-  { id: "ecg", label: "心電図検査" },
+// 並びは1〜3号の様式と同じ順にしてあり、様式を見ながら上から順に確認できる。
+// aliases は病院独自の書式でよくある別の表記（この表記があればその項目に該当する）
+export const HEALTH_EXAM_ITEMS: { id: string; label: string; aliases: string[] }[] = [
+  { id: "history", label: "既往歴・業務歴", aliases: ["既往症", "病歴", "職歴・業務経歴"] },
+  {
+    id: "symptoms",
+    label: "自覚症状・他覚症状",
+    aliases: ["自覚症状の有無", "他覚所見", "医師の診察（所見）"],
+  },
+  {
+    id: "physique",
+    label: "身長・体重・BMI・腹囲",
+    aliases: ["身体計測", "体格指数（＝BMI）", "ウエスト周囲径（＝腹囲）"],
+  },
+  { id: "vision", label: "視力", aliases: ["裸眼視力・矯正視力"] },
+  {
+    id: "hearing",
+    label: "聴力（1000Hz・4000Hz）",
+    aliases: ["オージオメトリー（オージオ）", "選別聴力検査"],
+  },
+  {
+    id: "chest_xray",
+    label: "胸部エックス線検査（結核等）",
+    aliases: ["胸部X線", "胸部レントゲン", "胸部単純撮影"],
+  },
+  {
+    id: "blood_pressure",
+    label: "血圧",
+    aliases: ["BP", "収縮期／拡張期血圧（＝最高／最低血圧）"],
+  },
+  {
+    id: "anemia",
+    label: "貧血検査（血色素量・赤血球数）",
+    aliases: ["ヘモグロビン（Hb・HGB＝血色素量）", "RBC（＝赤血球数）"],
+  },
+  {
+    id: "liver",
+    label: "肝機能検査（GOT・GPT・γ-GTP）",
+    aliases: ["AST（＝GOT）", "ALT（＝GPT）", "γ-GT・ガンマGTP（＝γ-GTP）"],
+  },
+  {
+    id: "lipids",
+    label: "血中脂質検査（LDL・HDL・トリグリセライド）",
+    aliases: [
+      "空腹時中性脂肪・TG（＝トリグリセライド）",
+      "LDLコレステロール（＝LDL）",
+      "HDLコレステロール（＝HDL）",
+    ],
+  },
+  {
+    id: "blood_sugar",
+    label: "血糖検査",
+    aliases: ["空腹時血糖", "グルコース（GLU）", "HbA1c（血糖の代わりに記載されることがあります）"],
+  },
+  { id: "urine", label: "尿検査（糖・蛋白）", aliases: ["検尿", "尿糖（＝糖）", "尿蛋白（＝蛋白）"] },
+  { id: "ecg", label: "心電図検査", aliases: ["ECG", "EKG", "12誘導心電図"] },
 ];
 
 export type HealthFormType = "" | "official" | "hospital";

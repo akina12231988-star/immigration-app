@@ -206,15 +206,25 @@ export function HealthCheckDetailClient({
           </div>
         )}
 
-        {/* 病院書式: 受診項目チェック */}
+        {/* 病院書式: 受診項目チェック。1〜3号の様式と同じ並び・番号で出し、
+            様式と病院の書式を見比べながら上から順に確認できるようにする */}
         {detail.form_type === "hospital" && (
           <div className="rounded-xl border border-border bg-background p-3">
-            <p className="mb-2 text-[11px] font-bold text-muted">
-              受診項目（1〜3号と同じ項目・{checked.size}/{HEALTH_EXAM_ITEMS.length}）
+            <p className="mb-1 text-[11px] font-bold text-muted">
+              受診項目（1〜3号の様式と同じ並び・{checked.size}/{HEALTH_EXAM_ITEMS.length}）
             </p>
-            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-              {HEALTH_EXAM_ITEMS.map((item) => (
-                <label key={item.id} className="flex items-start gap-2 text-sm">
+            <p className="mb-2 text-[11px] leading-relaxed text-muted">
+              1〜3号の様式を見ながら、上から順にチェックできます。
+              病院の書式では別の名前で書かれていることがあるため、各項目の「この表記でも該当」にある表記が書類にあれば、その項目にチェックしてください。
+            </p>
+            <div className="grid grid-cols-1 gap-2">
+              {HEALTH_EXAM_ITEMS.map((item, i) => (
+                <label
+                  key={item.id}
+                  className={`flex items-start gap-2 rounded-lg border px-2.5 py-2 text-sm ${
+                    checked.has(item.id) ? "border-brand/40 bg-brand/5" : "border-border bg-surface"
+                  }`}
+                >
                   <input
                     type="checkbox"
                     checked={checked.has(item.id)}
@@ -222,7 +232,20 @@ export function HealthCheckDetailClient({
                     onChange={() => toggleItem(item.id)}
                     className="mt-0.5 h-4 w-4 shrink-0"
                   />
-                  <span>{item.label}</span>
+                  <span className="min-w-0">
+                    <span className="flex items-baseline gap-1.5">
+                      {/* 1〜3号の様式の並びに合わせた通し番号（様式と見比べるときの目印） */}
+                      <span className="shrink-0 text-[11px] font-bold tabular-nums text-muted">
+                        {i + 1}.
+                      </span>
+                      <span className="font-bold">{item.label}</span>
+                    </span>
+                    {item.aliases.length > 0 && (
+                      <span className="mt-0.5 block text-[11px] leading-relaxed text-muted">
+                        この表記でも該当: {item.aliases.join("／")}
+                      </span>
+                    )}
+                  </span>
                 </label>
               ))}
             </div>
