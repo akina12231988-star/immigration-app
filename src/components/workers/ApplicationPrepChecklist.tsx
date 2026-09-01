@@ -158,7 +158,7 @@ export function ApplicationPrepChecklist({
   photoPath: string | null;
   healthCheckOn: string | null;
   // 渡すと、申請準備（在留更新対象）と同じ入力欄をこの画面にも出す。
-  // ここで「準備中」にすると申請一覧の「申請前＜準備中＞」に出る
+  // ここで「準備中」にすると申請一覧の「申請前＜入管提出！！＞」に出る
   worker?: RenewalFieldsWorker;
   organizations?: { id: string; name: string }[];
   // モーダル表示（TODO・申請一覧）のとき true: 賃金（1-6号別紙）もこの中で直接入力する。
@@ -607,7 +607,7 @@ export function ApplicationPrepChecklist({
       }
       await upsertPrepChecklist(createClient(), workerId, todo, EMPTY_PREP_META);
       // 申請準備で番号を入れたときと同じように、この番号で「準備中」にする。
-      // これで申請一覧の「申請前＜準備中＞」にも出る（すでに対応状況が
+      // これで申請一覧の「申請前＜入管提出！！＞」にも出る（すでに対応状況が
       // 入っている人は、その状況を変えない）
       if (worker) {
         await updateWorker(createClient(), workerId, {
@@ -1092,11 +1092,11 @@ export function ApplicationPrepChecklist({
         )}
 
         {/* 申請準備（在留更新対象）と同じ入力欄。ここで「準備中」にすると
-            申請一覧の「申請前＜準備中＞」に出る（担当者は下の欄で選ぶ） */}
+            申請一覧の「申請前＜入管提出！！＞」に出る（担当者は下の欄で選ぶ） */}
         {renewalWorker && canEdit && (
           <div className="mt-3 border-t border-dashed border-border pt-3">
             <p className="mb-2 text-xs font-bold text-muted">
-              申請準備の対応状況（申請一覧の「申請前＜準備中＞」に反映されます）
+              申請準備の対応状況（申請一覧の「申請前＜入管提出！！＞」に反映されます）
             </p>
             <WorkerRenewalFields
               key={`${renewalWorker.residence_renewal_todo}/${renewalWorker.residence_renewal_status}`}

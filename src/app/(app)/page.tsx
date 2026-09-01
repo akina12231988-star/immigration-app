@@ -49,7 +49,7 @@ const STAT_CARDS = [
   {
     key: "prePrepCount",
     view: "pre-prep",
-    label: "申請前＜準備中＞件数",
+    label: "申請前＜入管提出！！＞件数",
     icon: FileClock,
     accent: "text-status-before-fg bg-status-before-bg",
   },
@@ -79,7 +79,7 @@ const STAT_CARDS = [
 export default function DashboardPage() {
   const { applications } = useApplications();
 
-  // 在留更新で「準備中」の外国人（申請前＜準備中＞の擬似行の件数に使う）
+  // 在留更新で「準備中」の外国人（申請前＜入管提出！！＞の擬似行の件数に使う）
   const [renewalWorkers, setRenewalWorkers] = useState<WorkerWithOrg[]>([]);
   useEffect(() => {
     let cancelled = false;
@@ -177,7 +177,7 @@ export default function DashboardPage() {
   const managerCandidates = supportRoles.filter((r) => r.suggestManager);
   const supportSummary = summarizeSupportSystem(supportRoles, orgSupportSummaries);
 
-  // 申請前＜準備中＞: 実レコード＋在留更新準備中の擬似行（申請一覧のタブと同じ件数）
+  // 申請前＜入管提出！！＞: 実レコード＋在留更新準備中の擬似行（申請一覧のタブと同じ件数）
   const prePrepCount =
     countPrePrepApplications(applications) +
     buildRenewalPlaceholders(renewalWorkers, applications, today).length;

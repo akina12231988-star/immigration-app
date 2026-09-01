@@ -9,7 +9,7 @@ import { ReceiptRegistrationForm } from "./ReceiptRegistrationForm";
 import type { ApplicationMethod } from "@/types/application";
 
 // 申請の登録は 窓口（受付票あり）/ オンライン（受付メールのリンクを記録）の2通り。
-// 申請一覧の「申請前＜準備中＞」から来た場合は ?workerId= で外国人を自動選択する。
+// 申請一覧の「申請前＜入管提出！！＞」から来た場合は ?workerId= で外国人を自動選択する。
 // useSearchParams は Suspense 境界の内側で使う必要がある
 function NewApplicationPageInner() {
   const [method, setMethod] = useState<ApplicationMethod | null>(null);

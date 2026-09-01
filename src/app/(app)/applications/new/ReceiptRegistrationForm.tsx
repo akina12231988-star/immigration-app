@@ -132,7 +132,7 @@ export function ReceiptRegistrationForm({
         if (cancelled || !data) return;
         const list = data as WorkerOption[];
         setWorkers(list);
-        // 申請一覧の「申請前＜準備中＞」から遷移した場合、対象の外国人を自動選択する
+        // 申請一覧の「申請前＜入管提出！！＞」から遷移した場合、対象の外国人を自動選択する
         const w = initialWorkerId ? list.find((x) => x.id === initialWorkerId) : undefined;
         if (w) {
           setWorkerId(w.id);

@@ -63,7 +63,7 @@ const INPUT =
 // 申請準備の入力欄（所属機関・申請TODO番号・対応状況・担当者）。
 // 申請準備（在留更新対象）のカードと、外国人詳細の申請準備 書類チェックリストで
 // 同じものを使う。どちらから入力しても「準備中」にすれば申請一覧の
-// 「申請前＜準備中＞」に出る。
+// 「申請前＜入管提出！！＞」に出る。
 export function WorkerRenewalFields({
   worker,
   organizations,
@@ -159,7 +159,7 @@ export function WorkerRenewalFields({
     setTantou(prepRows.find((r) => r.todo_no === v.trim())?.tantou ?? "");
   };
 
-  // 保存後に申請一覧の「申請前＜準備中＞」へ出るかどうか（出ないときは理由を案内する）
+  // 保存後に申請一覧の「申請前＜入管提出！！＞」へ出るかどうか（出ないときは理由を案内する）
   const willAppear = isPrepListTarget(
     {
       status: worker.status,
@@ -246,7 +246,7 @@ export function WorkerRenewalFields({
             ))}
           </select>
           <span className="text-[11px] text-muted">
-            転職はここで転職先を選ぶと、申請一覧の「申請前＜準備中＞」にその会社で表示されます。
+            転職はここで転職先を選ぶと、申請一覧の「申請前＜入管提出！！＞」にその会社で表示されます。
             現在の所属機関は在留カードを受け取るまで変わりません。
           </span>
         </label>
@@ -397,8 +397,8 @@ export function WorkerRenewalFields({
       {status === "準備中" && !willAppear && (
         <p className="rounded-lg bg-status-notice-bg px-2.5 py-1.5 text-[11px] text-status-notice-fg">
           {worker.status === "退職"
-            ? "退職の人は申請一覧の「申請前＜準備中＞」には出ません。"
-            : "在留期限が4か月より先（または未登録）のため、このままでは申請一覧の「申請前＜準備中＞」に出ません。" +
+            ? "退職の人は申請一覧の「申請前＜入管提出！！＞」には出ません。"
+            : "在留期限が4か月より先（または未登録）のため、このままでは申請一覧の「申請前＜入管提出！！＞」に出ません。" +
               (showPrepKind ? "上の「新規で申請書類準備として扱う」を選ぶと出ます。" : "")}
         </p>
       )}
