@@ -39,6 +39,12 @@ const RELATION_OPTIONS = [
   "祖母",
 ];
 
+// 「その他」を選んだときの select の値（保存値には使わない画面内だけの印）
+const RELATION_OTHER = "__other__";
+
+const INPUT =
+  "min-h-[40px] w-full rounded-lg border border-border bg-surface px-2.5 text-sm focus:border-brand focus:outline-none disabled:opacity-60";
+
 // 扶養家族（扶養親族証明書の内容）の記録と控除区分の自動判定。
 // 生年月日は西暦で入力すると和暦と現時点の年齢を表示し、
 // 配偶者控除・老人扶養親族・特定扶養親族などの該当区分をバッジで示す
@@ -121,9 +127,6 @@ export function WorkerDependents({
       setBusy(false);
     }
   };
-
-  const INPUT =
-    "min-h-[40px] w-full rounded-lg border border-border bg-surface px-2.5 text-sm focus:border-brand focus:outline-none disabled:opacity-60";
 
   return (
     <Card className="p-4">
@@ -252,21 +255,11 @@ export function WorkerDependents({
                   />
                 </Field>
                 <Field label="続柄">
-                  <>
-                    <input
-                      value={r.relation}
-                      onChange={(e) => setAt(i, "relation", e.target.value)}
-                      placeholder="父・母・妹・配偶者 など"
-                      disabled={!canEdit}
-                      list="dependent-relations"
-                      className={INPUT}
-                    />
-                    <datalist id="dependent-relations">
-                      {RELATION_OPTIONS.map((o) => (
-                        <option key={o} value={o} />
-                      ))}
-                    </datalist>
-                  </>
+                  <RelationInput
+                    value={r.relation}
+                    disabled={!canEdit}
+                    onChange={(v) => setAt(i, "relation", v)}
+                  />
                 </Field>
                 <Field label="生年月日（西暦）">
                   <input
@@ -484,6 +477,57 @@ function RemittanceRows({
             </button>
           )}
         </p>
+      )}
+    </div>
+  );
+}
+
+// 続柄の入力。定番の続柄は選択肢から選び、「その他」を選ぶと自由入力できる。
+// 選択肢に無い続柄が保存されている場合は、最初から「その他」＋その値で表示する
+function RelationInput({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: string;
+  disabled: boolean;
+  onChange: (v: string) => void;
+}) {
+  const [other, setOther] = useState(() => value !== "" && !RELATION_OPTIONS.includes(value));
+  const select = (v: string) => {
+    if (v === RELATION_OTHER) {
+      // その他に切り替えたら自由入力から書き始める（選択肢の値は残さない）
+      setOther(true);
+      onChange("");
+      return;
+    }
+    setOther(false);
+    onChange(v);
+  };
+  return (
+    <div className="flex flex-col gap-1.5">
+      <select
+        value={other ? RELATION_OTHER : value}
+        onChange={(e) => select(e.target.value)}
+        disabled={disabled}
+        className={INPUT}
+      >
+        <option value="">未選択</option>
+        {RELATION_OPTIONS.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+        <option value={RELATION_OTHER}>その他（自由入力）</option>
+      </select>
+      {other && (
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="例: 叔父・叔母・孫 など"
+          disabled={disabled}
+          className={INPUT}
+        />
       )}
     </div>
   );
