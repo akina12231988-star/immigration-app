@@ -134,6 +134,7 @@ export function OrganizationRoster({
         rows={active}
         emptyText="状態が「在籍中」の方はいません。"
         showLeaving={false}
+        showAddress
         showWhyNotCounted
         today={today}
         fillOf={fillOf}
@@ -186,6 +187,7 @@ function Section({
   rows,
   emptyText,
   showLeaving,
+  showAddress = false,
   showWhyNotCounted = false,
   today,
   fillOf,
@@ -198,6 +200,8 @@ function Section({
   rows: OrgRosterWorker[];
   emptyText: string;
   showLeaving: boolean;
+  // 現在の住所の列を出すか（在籍中の表だけ。機関からの問い合わせに答えられるように）
+  showAddress?: boolean;
   // 支援体制の数に入らない人に、その理由を氏名の下に出すか（在籍中の表だけ）
   showWhyNotCounted?: boolean;
   today: string;
@@ -215,12 +219,17 @@ function Section({
         <p className="rounded-xl bg-background p-3 text-xs text-muted">{emptyText}</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1120px] border-collapse text-xs">
+          <table
+            className={`w-full border-collapse text-xs ${
+              showAddress ? "min-w-[1320px]" : "min-w-[1120px]"
+            }`}
+          >
             <thead>
               <tr className="border-b border-border text-left text-muted">
                 <th className="py-1.5 pr-2 font-bold">氏名</th>
                 <th className="py-1.5 pr-2 font-bold">国籍</th>
                 <th className="py-1.5 pr-2 font-bold">在留資格</th>
+                {showAddress && <th className="py-1.5 pr-2 font-bold">現在の住所</th>}
                 <th className="py-1.5 pr-2 font-bold">状態</th>
                 <th className="py-1.5 pr-2 font-bold">支援区分</th>
                 <th className="py-1.5 pr-2 font-bold">雇用開始</th>
@@ -258,6 +267,11 @@ function Section({
                     </td>
                     <td className="py-1.5 pr-2 text-muted">{w.nationality || "—"}</td>
                     <td className="py-1.5 pr-2 text-muted">{w.residenceStatus || "—"}</td>
+                    {showAddress && (
+                      <td className="min-w-[200px] max-w-[280px] py-1.5 pr-2 text-muted">
+                        <span className="select-text">{w.address || "未登録"}</span>
+                      </td>
+                    )}
                     {/* 支援体制の「在籍（1号特定技能）」に数えられない人は、その欄を色で示す */}
                     <td
                       className={`py-1.5 pr-2 ${

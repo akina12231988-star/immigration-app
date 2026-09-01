@@ -76,6 +76,7 @@ export interface OrgRosterWorker {
   kana: string;
   nationality: string;
   residenceStatus: string;
+  address: string; // 現在の住所（日本での住居地）
   residencePermitDate: string | null;
   residenceExpiryDate: string | null;
   support: string;
@@ -99,6 +100,7 @@ interface RosterRow {
   kana: string;
   nationality: string;
   residence_status: string;
+  address: string;
   residence_permit_date: string | null;
   residence_expiry_date: string | null;
   support: string;
@@ -110,7 +112,7 @@ interface RosterRow {
 }
 
 const ROSTER_COLUMNS =
-  "id, name, kana, nationality, residence_status, residence_permit_date, residence_expiry_date, support, status, employment_start_on, leaving_on, current_organization_id, org_employment_starts";
+  "id, name, kana, nationality, residence_status, address, residence_permit_date, residence_expiry_date, support, status, employment_start_on, leaving_on, current_organization_id, org_employment_starts";
 
 // org_employment_starts から、その機関での雇用開始日を取り出す
 function startAtOrg(row: RosterRow, organizationId: string): string | null {
@@ -231,6 +233,7 @@ export async function getOrgRoster(
       kana: row.kana,
       nationality: row.nationality,
       residenceStatus: row.residence_status,
+      address: row.address,
       residencePermitDate: row.residence_permit_date,
       residenceExpiryDate: row.residence_expiry_date,
       support: row.support,
