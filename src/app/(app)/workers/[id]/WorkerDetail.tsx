@@ -648,8 +648,13 @@ export function WorkerDetail({
                     編集
                   </button>
                 )}
-                {/* 対応の記録: いつ本人から依頼があって、いつ何をやったかを残す */}
-                <WorkerRequestLogs workerId={worker.id} canEdit={canEdit} />
+                {/* 相談・対応の記録: そのまま相談記録書（参考様式第５－４号）の1行になる */}
+                <WorkerRequestLogs
+                  workerId={worker.id}
+                  organizationId={worker.current_organization_id}
+                  organizationName={orgName}
+                  canEdit={canEdit}
+                />
                 <Link
                   href={`/workers/print?worker=${worker.id}`}
                   className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted"
