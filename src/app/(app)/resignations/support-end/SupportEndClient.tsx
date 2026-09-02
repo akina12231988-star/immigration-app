@@ -46,6 +46,8 @@ import {
   supportEndMinor,
 } from "@/lib/support-end";
 import { AdhocPosting } from "../AdhocPosting";
+import { AdhocOrgSearch } from "../AdhocOrgSearch";
+import { matchesAdhocOrg } from "@/lib/adhoc-report-org";
 import {
   RESIGNATION_STATUSES,
   type Organization,
@@ -87,6 +89,8 @@ export function SupportEndClient({
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<ResignationStatus | "all">("all");
+  // 所属機関の名称での絞り込み
+  const [orgQuery, setOrgQuery] = useState("");
 
   // 投函日・追跡番号・進み具合はこの画面で直せるので、手元でも最新の値を持つ
   const [rows, setRows] = useState(records);
@@ -100,8 +104,13 @@ export function SupportEndClient({
 
   const statusCounts = useMemo(() => countByAdhocStatus(rows), [rows]);
   const filtered = useMemo(
-    () => rows.filter((r) => statusFilter === "all" || adhocReportStatus(r) === statusFilter),
-    [rows, statusFilter],
+    () =>
+      rows.filter(
+        (r) =>
+          (statusFilter === "all" || adhocReportStatus(r) === statusFilter) &&
+          matchesAdhocOrg(r, orgQuery),
+      ),
+    [rows, statusFilter, orgQuery],
   );
 
   const remove = async () => {
@@ -183,9 +192,14 @@ export function SupportEndClient({
         })}
       </div>
 
+      {/* 所属機関の名称で絞り込み */}
+      <AdhocOrgSearch rows={rows} value={orgQuery} onChange={setOrgQuery} />
+
       {filtered.length === 0 ? (
         <Card className="p-8 text-center text-sm text-muted">
-          支援委託終了の記録はありません。
+          {orgQuery.trim()
+            ? `「${orgQuery}」に当てはまる支援委託終了の記録はありません。`
+            : "支援委託終了の記録はありません。"}
         </Card>
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
