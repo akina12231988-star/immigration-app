@@ -50,6 +50,7 @@ import {
   type OnboardingDocDef,
 } from "@/lib/onboarding";
 import { isCashPay } from "@/lib/pay-proof";
+import { koyoFileName, needsKoyoJokyoForm } from "@/lib/koyo-jokyo";
 import { todayStr } from "@/lib/ssw/calc";
 import type {
   OnboardingDocumentRow,
@@ -65,6 +66,7 @@ export function OnboardingDocuments({
   canEdit = false,
   myNumber: myNumberProp,
   payMethod = "",
+  koyoCovered = "",
 }: {
   workerId: string;
   canEdit?: boolean;
@@ -72,6 +74,8 @@ export function OnboardingDocuments({
   myNumber?: string;
   // 現在の所属機関の給与支払い方法（通貨払いなら報酬支払証明書の印刷が要る）
   payMethod?: string;
+  // 現在の所属機関が雇用保険の適用事業所か（いいえなら外国人雇用状況届出書が要る）
+  koyoCovered?: string;
 }) {
   const [record, setRecord] = useState<OnboardingRecordRow | null>(null);
   const [docs, setDocs] = useState<OnboardingDocumentRow[]>([]);
@@ -85,6 +89,8 @@ export function OnboardingDocuments({
   // 渡されていないときだけ自分で読む
   const [loadedMyNumber, setLoadedMyNumber] = useState<string | null>(null);
   const [attaching, setAttaching] = useState(false);
+  // 外国人雇用状況届出書（様式第3号）の作成中
+  const [koyoBusy, setKoyoBusy] = useState(false);
   // 作成した書類のプレビュー（内容を見てから添付する。労働者名簿はその場で直せる）
   const gen = useGeneratedDocPreview(workerId, setError);
   const myNumber = myNumberProp !== undefined ? myNumberProp : loadedMyNumber;
@@ -292,6 +298,31 @@ export function OnboardingDocuments({
     }
   };
 
+  // 外国人雇用状況届出書（様式第3号）を作ってダウンロードする。
+  // 雇入れの届出として使うので、標題の「離職」には取り消し線が入る
+  const createKoyoJokyo = async () => {
+    setKoyoBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/koyo-jokyo-form", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ workerId }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? "様式の生成に失敗しました");
+      }
+      const header = res.headers.get("x-file-name");
+      const name = header ? decodeURIComponent(header) : `${koyoFileName("")}.docx`;
+      downloadBlob(await res.blob(), name);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "様式の生成に失敗しました");
+    } finally {
+      setKoyoBusy(false);
+    }
+  };
+
   return (
     <Card className="p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
@@ -331,6 +362,25 @@ export function OnboardingDocuments({
                 <Printer size={13} />
                 作成
               </Link>
+            </div>
+          )}
+
+          {/* 雇用保険の適用事業所でない会社は、外国人雇用状況届出書（様式第3号）が要る */}
+          {needsKoyoJokyoForm(koyoCovered) && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-seal/40 bg-seal/10 px-3 py-2.5">
+              <p className="flex items-start gap-1.5 text-xs font-bold leading-relaxed text-seal">
+                <TriangleAlert size={13} className="mt-0.5 shrink-0" />
+                外国人雇用状況届出書（様式第3号）… 作成必要（雇用保険の適用事業所ではありません）
+              </p>
+              <button
+                type="button"
+                onClick={() => void createKoyoJokyo()}
+                disabled={koyoBusy}
+                className="flex shrink-0 items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-[11px] font-bold text-brand disabled:opacity-50"
+              >
+                {koyoBusy ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
+                {koyoBusy ? "作成中…" : "作成"}
+              </button>
             </div>
           )}
 

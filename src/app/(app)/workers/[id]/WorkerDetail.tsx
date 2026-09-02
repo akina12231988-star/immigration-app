@@ -1641,6 +1641,8 @@ export function WorkerDetail({
         myNumber={worker.my_number}
         // 通貨払いの会社は報酬支払証明書の印刷が要るので、入社書類の中で知らせる
         payMethod={currentOrg?.intake?.pay_method ?? ""}
+        // 雇用保険の適用事業所でない会社は、外国人雇用状況届出書が要る
+        koyoCovered={currentOrg?.intake?.koyo_covered ?? ""}
       />
 
       <GensenDocuments workerId={worker.id} canEdit={canEdit} />
