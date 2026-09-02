@@ -48,8 +48,13 @@ import {
 import { listOrganizations } from "@/lib/supabase/queries/organizations";
 import { orgStaffLabel } from "@/lib/organization-intake";
 import type { Organization } from "@/types/db";
-import { listActiveCustodyNoByWorker } from "@/lib/supabase/queries/custody";
+import { listActiveCustodyNoIndex } from "@/lib/supabase/queries/custody";
 import { formatStorageNo } from "@/lib/custody";
+import {
+  buildCustodyNoIndex,
+  findCustodyNo,
+  type CustodyNoIndex,
+} from "@/lib/custody-lookup";
 import {
   daysUntil,
   isExpiryWithinTwoMonths,
@@ -255,15 +260,16 @@ export function ApplicationsExplorer({
   // 全タブで表示する国籍（外国人一覧から引き当てる）
   const nationalityOf = (a: Application) => workerFor(a)?.nationality;
 
-  // 全タブで表示する「預かり番号」（返却済み以外の保管番号）。外国人ごとに引き当てる。
-  const [custodyNoByWorker, setCustodyNoByWorker] = useState<Map<string, number>>(
-    new Map(),
+  // 全タブで表示する「預かり番号」（返却済み以外の保管番号）。外国人で引き当て、
+  // 申請に外国人が紐づいていないときは申請者の氏名でも照合する。
+  const [custodyNoIndex, setCustodyNoIndex] = useState<CustodyNoIndex>(() =>
+    buildCustodyNoIndex([]),
   );
   useEffect(() => {
     let cancelled = false;
-    listActiveCustodyNoByWorker(createClient())
-      .then((m) => {
-        if (!cancelled) setCustodyNoByWorker(m);
+    listActiveCustodyNoIndex(createClient())
+      .then((idx) => {
+        if (!cancelled) setCustodyNoIndex(idx);
       })
       .catch(() => undefined);
     return () => {
@@ -286,9 +292,9 @@ export function ApplicationsExplorer({
   }, []);
   const openExtraCount = countOpenExtraRequests(extraRequests);
 
-  // 表示用の預かり番号文字列（未預かり・外国人未紐づけは「—」）
+  // 表示用の預かり番号文字列（預かっていなければ「—」）
   const custodyNoLabel = (a: Application) => {
-    const no = a.workerId ? custodyNoByWorker.get(a.workerId) : undefined;
+    const no = findCustodyNo(custodyNoIndex, a.workerId, a.name);
     return no != null ? formatStorageNo(no) : "—";
   };
 
