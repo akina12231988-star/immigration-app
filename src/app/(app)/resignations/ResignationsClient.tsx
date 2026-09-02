@@ -85,7 +85,8 @@ export function ResignationsClient({
   const [deleting, setDeleting] = useState<ResignationWithRefs | null>(null);
   const [busyDelete, setBusyDelete] = useState(false);
   const [kindFilter, setKindFilter] = useState<ResignationKind | "all">("all");
-  const [statusFilter, setStatusFilter] = useState<ResignationStatus | "all">("all");
+  // 進み具合は3つのどれかを必ず選ぶ（既定は準備中＝これからやる分）
+  const [statusFilter, setStatusFilter] = useState<ResignationStatus>("準備中");
   // 所属機関の名称での絞り込み
   const [orgQuery, setOrgQuery] = useState("");
 
@@ -106,7 +107,7 @@ export function ResignationsClient({
       rows.filter(
         (r) =>
           (kindFilter === "all" || r.kind === kindFilter) &&
-          (statusFilter === "all" || adhocReportStatus(r) === statusFilter) &&
+          adhocReportStatus(r) === statusFilter &&
           matchesAdhocOrg(r, orgQuery),
       ),
     [rows, kindFilter, statusFilter, orgQuery],
@@ -163,9 +164,9 @@ export function ResignationsClient({
 
       {/* 進み具合フィルター（準備中 → 署名依頼中 → 投函完了） */}
       <div className="flex flex-wrap gap-2">
-        {(["all", ...RESIGNATION_STATUSES] as (ResignationStatus | "all")[]).map((st) => {
+        {RESIGNATION_STATUSES.map((st) => {
           const active = statusFilter === st;
-          const count = st === "all" ? rows.length : statusCounts[st];
+          const count = statusCounts[st];
           return (
             <button
               key={st}
@@ -177,7 +178,7 @@ export function ResignationsClient({
                   : "border-border bg-surface text-muted"
               }`}
             >
-              {st === "all" ? "すべての進み具合" : st}（{count}）
+              {st}（{count}）
             </button>
           );
         })}
@@ -189,8 +190,8 @@ export function ResignationsClient({
       {filtered.length === 0 ? (
         <Card className="p-8 text-center text-sm text-muted">
           {orgQuery.trim()
-            ? `「${orgQuery}」に当てはまる退職の記録はありません。`
-            : "退職の記録はありません。"}
+            ? `「${orgQuery}」に当てはまる${statusFilter}の退職の記録はありません。`
+            : `${statusFilter}の退職の記録はありません。`}
         </Card>
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

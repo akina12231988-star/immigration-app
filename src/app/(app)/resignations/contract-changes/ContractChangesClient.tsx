@@ -85,7 +85,8 @@ export function ContractChangesClient({
   const [busyDelete, setBusyDelete] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<ResignationStatus | "all">("all");
+  // 進み具合は3つのどれかを必ず選ぶ（既定は準備中＝これからやる分）
+  const [statusFilter, setStatusFilter] = useState<ResignationStatus>("準備中");
   // 所属機関の名称での絞り込み
   const [orgQuery, setOrgQuery] = useState("");
 
@@ -104,7 +105,7 @@ export function ContractChangesClient({
     () =>
       rows.filter(
         (r) =>
-          (statusFilter === "all" || adhocReportStatus(r) === statusFilter) &&
+          adhocReportStatus(r) === statusFilter &&
           matchesAdhocOrg(r, orgQuery),
       ),
     [rows, statusFilter, orgQuery],
@@ -170,9 +171,9 @@ export function ContractChangesClient({
 
       {/* 進み具合フィルター（準備中 → 署名依頼中 → 投函完了） */}
       <div className="flex flex-wrap gap-2">
-        {(["all", ...RESIGNATION_STATUSES] as (ResignationStatus | "all")[]).map((st) => {
+        {RESIGNATION_STATUSES.map((st) => {
           const active = statusFilter === st;
-          const count = st === "all" ? rows.length : statusCounts[st];
+          const count = statusCounts[st];
           return (
             <button
               key={st}
@@ -184,7 +185,7 @@ export function ContractChangesClient({
                   : "border-border bg-surface text-muted"
               }`}
             >
-              {st === "all" ? "すべての進み具合" : st}（{count}）
+              {st}（{count}）
             </button>
           );
         })}
@@ -196,8 +197,8 @@ export function ContractChangesClient({
       {filtered.length === 0 ? (
         <Card className="p-8 text-center text-sm text-muted">
           {orgQuery.trim()
-            ? `「${orgQuery}」に当てはまる契約内容変更の記録はありません。`
-            : "契約内容変更の記録はありません。"}
+            ? `「${orgQuery}」に当てはまる${statusFilter}の契約内容変更の記録はありません。`
+            : `${statusFilter}の契約内容変更の記録はありません。`}
         </Card>
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
