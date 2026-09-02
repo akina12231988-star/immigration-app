@@ -174,12 +174,6 @@ function PayProofPage({
       <p className="text-[10pt]">参考様式第５－７号</p>
       <h2 className="my-4 text-center text-[14pt] font-bold tracking-[0.3em]">報酬支払証明書</h2>
 
-      {/* 誰が支払ったかを示す欄。所属機関名をそのまま入れる */}
-      <p className="mb-3 flex items-end gap-2 text-[10.5pt]">
-        <span className="shrink-0">特定技能所属機関の氏名又は名称</span>
-        <span className="min-w-0 flex-1 border-b border-black pb-0.5">{orgName}</span>
-      </p>
-
       <p className="mb-4 text-[10.5pt]">
         <Blank w="w-12" />月分（<Blank w="w-10" />月<Blank w="w-10" />日から
         <Blank w="w-10" />月<Blank w="w-10" />日 分）の報酬について、以下のとおり支払いました。
@@ -239,7 +233,39 @@ function PayProofPage({
         <p>２　上記２②は、控除後の手取り報酬額を記載すること。</p>
       </div>
 
+      {/* 様式の下半分（会社の署名欄）。特定技能所属機関の氏名又は名称だけ入れておき、
+          日付・作成責任者・給与支給者は会社に手書きしてもらう */}
+      <p className="mt-5 text-[10.5pt]">上記の記載内容は、事実と相違ありません。</p>
+      <div className="ml-auto mt-3 w-[78%] space-y-2 text-[10.5pt]">
+        <p>
+          <Blank w="w-16" />年<Blank w="w-12" />月<Blank w="w-12" />日
+        </p>
+        <SignLine label="特定技能所属機関の氏名又は名称" value={orgName} />
+        <SignLine label="作成責任者　役職・氏名" />
+        <SignLine label="給与支給者　役職・氏名" />
+      </div>
+
+      {/* 本人の署名欄 */}
+      <p className="mt-5 text-[10.5pt] leading-relaxed">
+        報酬について、雇用条件書どおりの報酬額であることを確認し十分に理解した上で、上記の内容どおり支給を受けました。
+      </p>
+      <div className="ml-auto mt-3 w-[78%] space-y-2 text-[10.5pt]">
+        <p>
+          <Blank w="w-16" />年<Blank w="w-12" />月<Blank w="w-12" />日
+        </p>
+        <SignLine label="特定技能外国人の署名" />
+      </div>
     </section>
+  );
+}
+
+// 様式の署名欄の1行（ラベルのうしろに下線を引く。value があればその上に入れる）
+function SignLine({ label, value = "" }: { label: string; value?: string }) {
+  return (
+    <p className="flex items-end gap-2">
+      <span className="shrink-0">{label}</span>
+      <span className="min-w-0 flex-1 border-b border-black pb-0.5">{value}</span>
+    </p>
   );
 }
 
