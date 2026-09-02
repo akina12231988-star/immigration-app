@@ -6,6 +6,7 @@ import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { getContractChangeForForms } from "@/lib/supabase/queries/contract-changes";
 import { normalizeOrganizationIntake } from "@/lib/organization-intake";
 import { fill311 } from "@/lib/contract-change-forms";
+import { statusAfterFormDownload } from "@/lib/adhoc-report-progress";
 
 // 契約内容変更の届出書（参考様式第3-1-1号）を作る。
 // 様式の生成はサーバー側で行う（ブラウザ側でのExcel生成は本番ビルドで
@@ -65,12 +66,22 @@ export async function POST(req: NextRequest) {
         normalizeOrganizationIntake(record.organizations?.intake).report_staff,
     });
 
-    // いつ届出書を作ったかを残す（一覧に「作成済み」と出す）
-    if (!record.forms_downloaded_at && me.role !== "viewer") {
-      await supabase
-        .from("contract_changes")
-        .update({ forms_downloaded_at: new Date().toISOString() })
-        .eq("id", record.id);
+    // 届出書を作ったら「署名依頼中」へ進める（退職の記録と同じ運用）。
+    // 作成日時と進み具合は別々に書く（0134 が未適用でも作成日時は残るように）
+    if (me.role !== "viewer") {
+      if (!record.forms_downloaded_at) {
+        await supabase
+          .from("contract_changes")
+          .update({ forms_downloaded_at: new Date().toISOString() })
+          .eq("id", record.id);
+      }
+      const nextStatus = statusAfterFormDownload(record);
+      if (nextStatus) {
+        await supabase
+          .from("contract_changes")
+          .update({ status: nextStatus })
+          .eq("id", record.id);
+      }
     }
 
     const fileName = `${LABEL}_${w.name || "届出"}.xlsx`;

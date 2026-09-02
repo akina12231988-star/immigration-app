@@ -6,42 +6,45 @@ import { createClient } from "@/lib/supabase/client";
 import { compressImage } from "@/lib/image-compress";
 import { dbErrorMessage } from "@/lib/errors";
 import {
-  createResignationFileTicket,
-  deleteResignationFile,
-  getResignationFilePreviewUrl,
-  listResignationFiles,
-  registerResignationFile,
-  type ResignationFileView,
+  createAdhocFileTicket,
+  deleteAdhocFile,
+  getAdhocFilePreviewUrl,
+  listAdhocFiles,
+  registerAdhocFile,
+  type AdhocFileView,
 } from "./actions";
-
-const MIGRATION = "0086_resignation_progress.sql";
+import { ADHOC_FILE_TARGETS, type AdhocFileKind } from "@/lib/adhoc-report-files";
 
 // 署名済みの届出書（スキャンしたPDF・画像）の添付。
 // ドラッグ＆ドロップでも、ボタンから選んでも登録できる。
-export function ResignationFileAttachments({
-  resignationId,
+// kind で退職の記録・契約内容変更の記録のどちらの添付かを切り替える。
+export function AdhocFileAttachments({
+  kind,
+  recordId,
   canEdit,
   onCountChange,
 }: {
-  resignationId: string;
+  kind: AdhocFileKind;
+  recordId: string;
   canEdit: boolean;
   // 添付の件数（投函完了にできるかの判定に使う）
   onCountChange?: (count: number) => void;
 }) {
-  const [files, setFiles] = useState<ResignationFileView[]>([]);
+  const MIGRATION = ADHOC_FILE_TARGETS[kind].migration;
+  const [files, setFiles] = useState<AdhocFileView[]>([]);
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const apply = (rows: ResignationFileView[]) => {
+  const apply = (rows: AdhocFileView[]) => {
     setFiles(rows);
     onCountChange?.(rows.length);
   };
 
   useEffect(() => {
     let cancelled = false;
-    listResignationFiles(resignationId)
+    listAdhocFiles(kind, recordId)
       .then((rows) => {
         if (!cancelled) apply(rows);
       })
@@ -50,7 +53,7 @@ export function ResignationFileAttachments({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resignationId]);
+  }, [kind, recordId]);
 
   async function handleFiles(list: FileList | null) {
     if (!list || list.length === 0) return;
@@ -59,16 +62,16 @@ export function ResignationFileAttachments({
     try {
       for (const file of Array.from(list)) {
         const { blob, mimeType, fileName } = await compressImage(file);
-        const ticket = await createResignationFileTicket(resignationId, fileName, mimeType);
+        const ticket = await createAdhocFileTicket(kind, recordId, fileName, mimeType);
         if (!ticket.ok) throw new Error(ticket.message);
         const { error: upErr } = await createClient()
           .storage.from("app-files")
           .uploadToSignedUrl(ticket.path, ticket.token, blob, { contentType: mimeType });
         if (upErr) throw new Error(`アップロードに失敗しました: ${upErr.message}`);
-        const res = await registerResignationFile(resignationId, ticket.path, fileName, mimeType);
+        const res = await registerAdhocFile(kind, recordId, ticket.path, fileName, mimeType);
         if (!res.ok) throw new Error(res.message);
       }
-      apply(await listResignationFiles(resignationId));
+      apply(await listAdhocFiles(kind, recordId));
     } catch (err) {
       setError(dbErrorMessage(err, MIGRATION, "アップロードに失敗しました"));
     } finally {
@@ -77,15 +80,15 @@ export function ResignationFileAttachments({
   }
 
   async function preview(id: string) {
-    const res = await getResignationFilePreviewUrl(id);
+    const res = await getAdhocFilePreviewUrl(kind, id);
     if (res.ok) window.open(res.url, "_blank", "noopener");
     else setError(res.message);
   }
 
-  async function remove(f: ResignationFileView) {
+  async function remove(f: AdhocFileView) {
     if (!window.confirm(`「${f.file_name}」を削除します。よろしいですか？`)) return;
     setError(null);
-    const res = await deleteResignationFile(f.id);
+    const res = await deleteAdhocFile(kind, f.id);
     if (res.ok) apply(files.filter((x) => x.id !== f.id));
     else setError(res.message);
   }

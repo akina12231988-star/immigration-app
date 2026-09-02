@@ -840,6 +840,10 @@ export interface ContractChangeRow {
   todo_no: string; // Notion随時報告TODO番号
   note: string;
   forms_downloaded_at: string | null; // 届出書を最初に作った日時
+  // 進み具合と投函の記録（0134）。マイグレーション未適用の環境では欠けることがある
+  status?: ResignationStatus;
+  posted_on?: string | null; // レターパックで投函した日
+  tracking_no?: string; // レターパックの追跡番号
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -847,7 +851,14 @@ export interface ContractChangeRow {
 
 export type ContractChangeInput = Omit<
   ContractChangeRow,
-  "id" | "created_by" | "created_at" | "updated_at" | "forms_downloaded_at"
+  | "id"
+  | "created_by"
+  | "created_at"
+  | "updated_at"
+  | "forms_downloaded_at"
+  | "status"
+  | "posted_on"
+  | "tracking_no"
 >;
 
 // 在留カード・指定書の履歴（0015）

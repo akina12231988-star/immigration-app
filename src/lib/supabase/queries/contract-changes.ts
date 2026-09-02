@@ -66,10 +66,15 @@ export async function insertContractChange(
   return data as ContractChangeRow;
 }
 
+// 記録の書き換え（内容の編集だけでなく、進み具合・投函日・追跡番号の更新にも使う）
+export type ContractChangePatch = Partial<
+  Omit<ContractChangeRow, "id" | "created_by" | "created_at" | "updated_at">
+>;
+
 export async function updateContractChange(
   supabase: SupabaseClient,
   id: string,
-  input: Partial<ContractChangeInput>,
+  input: ContractChangePatch,
 ): Promise<ContractChangeRow> {
   const { data, error } = await supabase
     .from("contract_changes")

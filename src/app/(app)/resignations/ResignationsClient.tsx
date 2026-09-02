@@ -34,10 +34,10 @@ import { dbErrorMessage } from "@/lib/errors";
 import { notionAppUrl } from "@/lib/notion-link";
 import { formsForKind } from "@/lib/resignation";
 import {
-  countByResignationStatus,
-  resignationStatus,
-} from "@/lib/resignation-progress";
-import { ResignationPosting } from "./ResignationPosting";
+  countByAdhocStatus,
+  adhocReportStatus,
+} from "@/lib/adhoc-report-progress";
+import { AdhocPosting } from "./AdhocPosting";
 import {
   RESIGNATION_KINDS,
   RESIGNATION_STATUSES,
@@ -95,14 +95,14 @@ export function ResignationsClient({
   const patchRow = (id: string, patch: Partial<ResignationWithRefs>) =>
     setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
 
-  const statusCounts = useMemo(() => countByResignationStatus(rows), [rows]);
+  const statusCounts = useMemo(() => countByAdhocStatus(rows), [rows]);
 
   const filtered = useMemo(
     () =>
       rows.filter(
         (r) =>
           (kindFilter === "all" || r.kind === kindFilter) &&
-          (statusFilter === "all" || resignationStatus(r) === statusFilter),
+          (statusFilter === "all" || adhocReportStatus(r) === statusFilter),
       ),
     [rows, kindFilter, statusFilter],
   );
@@ -199,9 +199,9 @@ export function ResignationsClient({
                     {r.kind}
                   </span>
                   <span
-                    className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${STATUS_CLASS[resignationStatus(r)]}`}
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${STATUS_CLASS[adhocReportStatus(r)]}`}
                   >
-                    {resignationStatus(r)}
+                    {adhocReportStatus(r)}
                   </span>
                 </div>
               </div>
@@ -276,15 +276,20 @@ export function ResignationsClient({
                   </div>
                   <p className="text-center text-[11px] text-muted">
                     作成する様式: {formsForKind(r.kind).join("・")}
-                    {resignationStatus(r) === "準備中" &&
+                    {adhocReportStatus(r) === "準備中" &&
                       "（ダウンロードすると「署名依頼中」になります）"}
                   </p>
 
                   {/* 署名済みの届出書を郵送したときの記録 */}
-                  <ResignationPosting
-                    resignation={r}
+                  <AdhocPosting
+                    kind="resignation"
+                    recordId={r.id}
+                    record={r}
                     canEdit={canEdit}
-                    onPatched={(patch) => patchRow(r.id, patch)}
+                    onPatch={async (patch) => {
+                      patchRow(r.id, patch);
+                      await updateResignation(createClient(), r.id, patch);
+                    }}
                   />
                   <div className="flex justify-between">
                     <button

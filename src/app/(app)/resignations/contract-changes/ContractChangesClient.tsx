@@ -22,6 +22,7 @@ import {
   deleteContractChange,
   insertContractChange,
   updateContractChange,
+  type ContractChangePatch,
   type ContractChangeWithRefs,
 } from "@/lib/supabase/queries/contract-changes";
 import type { WorkerForResignation } from "@/lib/supabase/queries/workers";
@@ -35,7 +36,16 @@ import {
   contractChangeLabels,
 } from "@/lib/contract-change";
 import { downloadBlob } from "@/lib/xlsx-export";
-import type { Organization } from "@/types/db";
+import {
+  adhocReportStatus,
+  countByAdhocStatus,
+} from "@/lib/adhoc-report-progress";
+import { AdhocPosting } from "../AdhocPosting";
+import {
+  RESIGNATION_STATUSES,
+  type Organization,
+  type ResignationStatus,
+} from "@/types/db";
 
 const INPUT =
   "min-h-[44px] w-full rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none";
@@ -43,6 +53,13 @@ const TEXTAREA =
   "w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm focus:border-brand focus:outline-none";
 
 const MIGRATION = "0133_contract_changes.sql";
+
+// 進み具合のバッジの色（準備中 → 署名依頼中 → 投函完了。退職の記録と同じ）
+const STATUS_CLASS: Record<ResignationStatus, string> = {
+  準備中: "bg-background text-muted",
+  署名依頼中: "bg-status-notice-bg text-status-notice-fg",
+  投函完了: "bg-status-approved-bg text-status-approved-fg",
+};
 
 // 契約内容変更の随時報告書（参考様式第3-1-1号）の記録一覧。
 // 何をいつ変更したかを記録し、そのまま届出書（Excel）を作る。
@@ -66,6 +83,26 @@ export function ContractChangesClient({
   const [busyDelete, setBusyDelete] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<ResignationStatus | "all">("all");
+
+  // 投函日・追跡番号・進み具合はこの画面で直せるので、手元でも最新の値を持つ
+  const [rows, setRows] = useState(changes);
+  const [prevRows, setPrevRows] = useState(changes);
+  if (changes !== prevRows) {
+    setPrevRows(changes);
+    setRows(changes);
+  }
+  const patchRow = (id: string, patch: ContractChangePatch) =>
+    setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+
+  const statusCounts = useMemo(() => countByAdhocStatus(rows), [rows]);
+  const filtered = useMemo(
+    () =>
+      rows.filter(
+        (r) => statusFilter === "all" || adhocReportStatus(r) === statusFilter,
+      ),
+    [rows, statusFilter],
+  );
 
   const remove = async () => {
     if (!deleting) return;
@@ -125,13 +162,35 @@ export function ContractChangesClient({
         </p>
       )}
 
-      {changes.length === 0 ? (
+      {/* 進み具合フィルター（準備中 → 署名依頼中 → 投函完了） */}
+      <div className="flex flex-wrap gap-2">
+        {(["all", ...RESIGNATION_STATUSES] as (ResignationStatus | "all")[]).map((st) => {
+          const active = statusFilter === st;
+          const count = st === "all" ? rows.length : statusCounts[st];
+          return (
+            <button
+              key={st}
+              type="button"
+              onClick={() => setStatusFilter(st)}
+              className={`rounded-full border px-3.5 py-1.5 text-xs font-bold ${
+                active
+                  ? "border-brand bg-brand text-brand-foreground"
+                  : "border-border bg-surface text-muted"
+              }`}
+            >
+              {st === "all" ? "すべての進み具合" : st}（{count}）
+            </button>
+          );
+        })}
+      </div>
+
+      {filtered.length === 0 ? (
         <Card className="p-8 text-center text-sm text-muted">
           契約内容変更の記録はありません。
         </Card>
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {changes.map((r) => (
+          {filtered.map((r) => (
             <Card key={r.id} className="p-4">
               <div className="mb-1 flex items-start justify-between gap-2">
                 <Link href={r.workers ? `/workers/${r.workers.id}` : "#"} className="min-w-0">
@@ -141,11 +200,11 @@ export function ContractChangesClient({
                     {r.org_name || r.organizations?.name || "所属機関未設定"}
                   </p>
                 </Link>
-                {r.forms_downloaded_at && (
-                  <span className="shrink-0 rounded-full bg-status-approved-bg px-2.5 py-1 text-[11px] font-bold text-status-approved-fg">
-                    届出書 作成済み
-                  </span>
-                )}
+                <span
+                  className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${STATUS_CLASS[adhocReportStatus(r)]}`}
+                >
+                  {adhocReportStatus(r)}
+                </span>
               </div>
 
               <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs tabular-nums text-muted">
@@ -215,7 +274,22 @@ export function ContractChangesClient({
                     {r.items.length === 0
                       ? "変更事項を選ぶと届出書を作れます（「記録を編集」から）"
                       : "変更後の雇用条件書（参考様式第1-6号）の添付を忘れずに"}
+                    {adhocReportStatus(r) === "準備中" &&
+                      r.items.length > 0 &&
+                      "（ダウンロードすると「署名依頼中」になります）"}
                   </p>
+
+                  {/* 署名済みの届出書を郵送したときの記録 */}
+                  <AdhocPosting
+                    kind="contract-change"
+                    recordId={r.id}
+                    record={r}
+                    canEdit={canEdit}
+                    onPatch={async (patch) => {
+                      patchRow(r.id, patch);
+                      await updateContractChange(createClient(), r.id, patch);
+                    }}
+                  />
                   <div className="flex justify-between">
                     <button
                       type="button"
