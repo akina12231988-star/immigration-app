@@ -10,6 +10,7 @@ import {
   Link2,
   Loader2,
   MailPlus,
+  Printer,
   Trash2,
   TriangleAlert,
   Upload,
@@ -48,6 +49,7 @@ import {
   WORKER_DETAIL_DOC_KEYS,
   type OnboardingDocDef,
 } from "@/lib/onboarding";
+import { isCashPay } from "@/lib/pay-proof";
 import { todayStr } from "@/lib/ssw/calc";
 import type {
   OnboardingDocumentRow,
@@ -62,11 +64,14 @@ export function OnboardingDocuments({
   workerId,
   canEdit = false,
   myNumber: myNumberProp,
+  payMethod = "",
 }: {
   workerId: string;
   canEdit?: boolean;
   // 個人番号（外国人詳細から渡す）。渡されていれば、詳細で登録・修正した内容がすぐ反映される
   myNumber?: string;
+  // 現在の所属機関の給与支払い方法（通貨払いなら報酬支払証明書の印刷が要る）
+  payMethod?: string;
 }) {
   const [record, setRecord] = useState<OnboardingRecordRow | null>(null);
   const [docs, setDocs] = useState<OnboardingDocumentRow[]>([]);
@@ -312,6 +317,23 @@ export function OnboardingDocuments({
         </p>
       ) : (
         <div className="space-y-3">
+          {/* 通貨払い（現金手渡し）の会社は、報酬支払証明書を印刷して渡す必要がある */}
+          {isCashPay(payMethod) && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-seal/40 bg-seal/10 px-3 py-2.5">
+              <p className="flex items-start gap-1.5 text-xs font-bold leading-relaxed text-seal">
+                <TriangleAlert size={13} className="mt-0.5 shrink-0" />
+                通貨払いのため印刷必要（報酬支払証明書・参考様式第５－７号）
+              </p>
+              <Link
+                href={`/workers/${workerId}/pay-proof`}
+                className="flex shrink-0 items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-[11px] font-bold text-brand"
+              >
+                <Printer size={13} />
+                作成
+              </Link>
+            </div>
+          )}
+
           {/* 後送のまま未受領の書類 */}
           {pending.length > 0 && (
             <div className="rounded-xl border border-status-notice-fg/40 bg-status-notice-bg/40 px-3 py-2.5">

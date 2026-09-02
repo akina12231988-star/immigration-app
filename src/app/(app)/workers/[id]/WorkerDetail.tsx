@@ -1635,7 +1635,13 @@ export function WorkerDetail({
           この画面では下の「TODO」カードから各TODOのページへ飛べる */}
 
       {/* 入社書類メールで登録した添付データ（選択ダウンロード・Gmailリンク） */}
-      <OnboardingDocuments workerId={worker.id} canEdit={canEdit} myNumber={worker.my_number} />
+      <OnboardingDocuments
+        workerId={worker.id}
+        canEdit={canEdit}
+        myNumber={worker.my_number}
+        // 通貨払いの会社は報酬支払証明書の印刷が要るので、入社書類の中で知らせる
+        payMethod={currentOrg?.intake?.pay_method ?? ""}
+      />
 
       <GensenDocuments workerId={worker.id} canEdit={canEdit} />
 
