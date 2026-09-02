@@ -5,6 +5,14 @@ import type {
   CustodyInput,
   CustodyRecord,
 } from "@/types/db";
+import { buildCustodyNoIndex, type CustodyNoIndex } from "@/lib/custody-lookup";
+
+// 預かり番号の索引を作るための最小の行（workers は1件だが配列で返ることがある）
+type CustodyNoRow = {
+  worker_id: string;
+  storage_no: number;
+  workers: { name: string } | null;
+};
 
 // 一覧・預かり証表示用: 預かりレコード＋外国人の基本情報
 export interface CustodyWithWorker extends CustodyRecord {
@@ -83,6 +91,25 @@ export async function getActiveCustodyNoForWorker(
     .limit(1);
   if (error) throw error;
   return ((data as { storage_no: number }[] | null) ?? [])[0]?.storage_no ?? null;
+}
+
+// 申請一覧の「預かり番号」用の索引。申請に外国人が紐づいていないことがあるので、
+// 外国人IDだけでなく氏名でも引けるようにする（custody-lookup を参照）。
+export async function listActiveCustodyNoIndex(
+  supabase: SupabaseClient,
+): Promise<CustodyNoIndex> {
+  const { data, error } = await supabase
+    .from("custody_records")
+    .select("worker_id, storage_no, workers(name)")
+    .neq("status", "返却済み")
+    .order("storage_no", { ascending: true });
+  if (error) throw error;
+  const rows = ((data as unknown as CustodyNoRow[]) ?? []).map((r) => ({
+    worker_id: r.worker_id,
+    worker_name: r.workers?.name ?? "",
+    storage_no: r.storage_no,
+  }));
+  return buildCustodyNoIndex(rows);
 }
 
 // 現に預かり中（返却済み以外）の保管番号一覧（自動採番・重複チェック用）
