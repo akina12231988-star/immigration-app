@@ -204,7 +204,8 @@ export function InvoicePdfCheck({
                 <div className="text-seal">
                   <p className="font-bold">名簿にいない人の行（対象月・所属機関違いの疑い）:</p>
                   {result.unknown.map((u, i) => (
-                    <p key={i}>{u.name}</p>
+                    // 氏名を切り出せなかった行は摘要をそのまま出す（何の行か分かるように）
+                    <p key={i}>{u.name || u.text}</p>
                   ))}
                 </div>
               )}
