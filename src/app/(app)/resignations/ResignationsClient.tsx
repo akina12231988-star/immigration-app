@@ -38,6 +38,8 @@ import {
   adhocReportStatus,
 } from "@/lib/adhoc-report-progress";
 import { AdhocPosting } from "./AdhocPosting";
+import { AdhocOrgSearch } from "./AdhocOrgSearch";
+import { matchesAdhocOrg } from "@/lib/adhoc-report-org";
 import {
   RESIGNATION_KINDS,
   RESIGNATION_STATUSES,
@@ -84,6 +86,8 @@ export function ResignationsClient({
   const [busyDelete, setBusyDelete] = useState(false);
   const [kindFilter, setKindFilter] = useState<ResignationKind | "all">("all");
   const [statusFilter, setStatusFilter] = useState<ResignationStatus | "all">("all");
+  // 所属機関の名称での絞り込み
+  const [orgQuery, setOrgQuery] = useState("");
 
   // 投函日・追跡番号・進み具合はこの画面で直せるので、手元でも最新の値を持つ
   const [rows, setRows] = useState(resignations);
@@ -102,9 +106,10 @@ export function ResignationsClient({
       rows.filter(
         (r) =>
           (kindFilter === "all" || r.kind === kindFilter) &&
-          (statusFilter === "all" || adhocReportStatus(r) === statusFilter),
+          (statusFilter === "all" || adhocReportStatus(r) === statusFilter) &&
+          matchesAdhocOrg(r, orgQuery),
       ),
-    [rows, kindFilter, statusFilter],
+    [rows, kindFilter, statusFilter, orgQuery],
   );
 
   const remove = async () => {
@@ -178,8 +183,15 @@ export function ResignationsClient({
         })}
       </div>
 
+      {/* 所属機関の名称で絞り込み */}
+      <AdhocOrgSearch rows={rows} value={orgQuery} onChange={setOrgQuery} />
+
       {filtered.length === 0 ? (
-        <Card className="p-8 text-center text-sm text-muted">退職の記録はありません。</Card>
+        <Card className="p-8 text-center text-sm text-muted">
+          {orgQuery.trim()
+            ? `「${orgQuery}」に当てはまる退職の記録はありません。`
+            : "退職の記録はありません。"}
+        </Card>
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {filtered.map((r) => (
