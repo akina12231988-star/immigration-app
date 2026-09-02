@@ -82,9 +82,17 @@ export function WorkerTodoLinks({ workerId }: { workerId: string }) {
         必要な書類・準備の詳細」で管理します。行を押すとそのTODOのページに移動します。
       </p>
       {!loaded ? null : todos.length === 0 ? (
-        <p className="rounded-xl bg-background p-3 text-center text-xs text-muted">
-          この人のTODOはまだありません。
-        </p>
+        <div className="rounded-xl bg-background p-3 text-center text-xs text-muted">
+          <p>この人のTODOはまだありません。</p>
+          {/* 外国人がひも付いていないTODOはここに出ないので、直し方を書いておく */}
+          <p className="mt-1 leading-relaxed">
+            TODO一覧で「外国人ひも付けなし」になっているTODOは、ここに出ません。
+            <Link href="/todos" className="mx-1 font-bold text-brand hover:underline">
+              TODO一覧
+            </Link>
+            でその人を選んで結び付けてください。
+          </p>
+        </div>
       ) : (
         <div className="space-y-1.5">
           {todos.map((t) => (

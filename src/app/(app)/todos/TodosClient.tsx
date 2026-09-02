@@ -870,6 +870,7 @@ export function TodosClient({
                       mailings={mailings.filter(
                         (m) => m.todoKey && m.todoKey === normalizeTodoKey(t.todo_no),
                       )}
+                      workers={workers}
                       onChange={(patch) =>
                         run(
                           () => updateTodo(createClient(), t.id, patch),
@@ -1073,6 +1074,7 @@ function TodoItem({
   prepHref,
   jobFlows = [],
   mailings = [],
+  workers = [],
   onChange,
   onDelete,
 }: {
@@ -1089,11 +1091,13 @@ function TodoItem({
   prepHref?: string; // 申請準備の詳細（書類チェックリスト）のページ
   jobFlows?: JobFlowRow[]; // あっせん有りのときに出す、求人への採用の流れ
   mailings?: MailingSummary[]; // 同じTODO番号の郵送請求（判定記録）の状況
+  workers?: { id: string; label: string }[]; // 外国人の候補（ひも付けし直すときに使う）
   onChange: (
     patch: Partial<
       Pick<
         TodoRow,
         | "todo_no"
+        | "worker_id"
         | "title"
         | "status"
         | "check_status"
@@ -1182,6 +1186,19 @@ function TodoItem({
               {/* 必要書類が何%揃ったか */}
               {todo.kind === "申請準備" && <PrepProgressBadge progress={progress} />}
             </>
+          ) : canEdit ? (
+            /* ひも付けが無いTODOは外国人詳細のTODO欄に出てこないので、ここで結び付ける */
+            <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+              <span className="shrink-0 text-xs font-bold text-seal">外国人ひも付けなし</span>
+              <span className="min-w-[14rem] flex-1">
+                <Combobox
+                  options={workers}
+                  value=""
+                  onChange={(id) => id && onChange({ worker_id: id })}
+                  placeholder="氏名で検索して結び付ける"
+                />
+              </span>
+            </span>
           ) : (
             <span className="text-xs text-muted">外国人ひも付けなし</span>
           )}

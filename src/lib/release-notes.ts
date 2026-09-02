@@ -23,6 +23,17 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-09-02",
+    title: "外国人がひも付いていないTODOを、あとから結び付けられるようにしました",
+    where: "メニュー ＞ TODO ／ 外国人 ＞ 外国人詳細 ＞ TODO",
+    href: "/todos",
+    items: [
+      "TODO一覧で外国人を選ばずに作ったTODOは「外国人ひも付けなし」となり、外国人詳細のTODO欄に出てきませんでした。",
+      "その行から氏名で検索して、あとから結び付けられるようにしました。結び付けると外国人詳細のTODOにも出ます。",
+      "外国人詳細のTODOが空のときは、ひも付けが無いTODOは出ない旨とTODO一覧へのリンクを出すようにしました。",
+    ],
+  },
+  {
+    date: "2026-09-02",
     title: "随時報告書を所属機関の名称で絞り込めるようにしました",
     where: "随時報告書 ＞ 退職・契約内容変更・支援委託終了の各記録",
     href: "/resignations",
