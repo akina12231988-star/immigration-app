@@ -49,8 +49,9 @@ export function PayProofSheet({
     window.print();
   };
 
-  // 在留カードの内容で足りないところ（印刷前に気づけるように出す）
+  // 印刷前に足りないところ（気づけるように出す）
   const missing = [
+    orgName.trim() ? "" : "特定技能所属機関の氏名又は名称",
     worker.name.trim() ? "" : "氏名",
     worker.gender.trim() ? "" : "性別",
     worker.birth ? "" : "生年月日",
@@ -77,10 +78,9 @@ export function PayProofSheet({
 
           {/* 印刷前の確認（１ 対象労働者に入る内容＝今の在留カードの情報） */}
           <div className="rounded-xl border border-border bg-surface p-3">
-            <p className="mb-2 text-xs font-bold text-muted">
-              印刷される内容（１　対象労働者）
-            </p>
+            <p className="mb-2 text-xs font-bold text-muted">印刷される内容</p>
             <dl className="grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+              <Row label="特定技能所属機関の氏名又は名称" value={orgName} />
               <Row label="氏名（ローマ字）" value={worker.name} />
               <Row label="性別" value={worker.gender} />
               <Row label="生年月日" value={rosterJpDate(worker.birth)} />
@@ -99,7 +99,7 @@ export function PayProofSheet({
             </dl>
             {missing.length > 0 && (
               <p className="mt-2 rounded-lg bg-seal/10 px-2.5 py-1.5 text-xs font-bold text-seal">
-                {missing.join("・")}が未登録です。外国人詳細で在留カードの内容を入れてから印刷してください。
+                {missing.join("・")}が未登録です。外国人詳細で在留カードの内容・所属機関を入れてから印刷してください。
               </p>
             )}
           </div>
@@ -148,7 +148,7 @@ export function PayProofSheet({
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex gap-2">
-      <dt className="w-32 shrink-0 text-muted">{label}</dt>
+      <dt className="w-44 shrink-0 text-muted">{label}</dt>
       <dd className="min-w-0 flex-1 font-bold">{value || "未登録"}</dd>
     </div>
   );
@@ -173,6 +173,12 @@ function PayProofPage({
     >
       <p className="text-[10pt]">参考様式第５－７号</p>
       <h2 className="my-4 text-center text-[14pt] font-bold tracking-[0.3em]">報酬支払証明書</h2>
+
+      {/* 誰が支払ったかを示す欄。所属機関名をそのまま入れる */}
+      <p className="mb-3 flex items-end gap-2 text-[10.5pt]">
+        <span className="shrink-0">特定技能所属機関の氏名又は名称</span>
+        <span className="min-w-0 flex-1 border-b border-black pb-0.5">{orgName}</span>
+      </p>
 
       <p className="mb-4 text-[10.5pt]">
         <Blank w="w-12" />月分（<Blank w="w-10" />月<Blank w="w-10" />日から
@@ -233,8 +239,6 @@ function PayProofPage({
         <p>２　上記２②は、控除後の手取り報酬額を記載すること。</p>
       </div>
 
-      {/* どの会社の分か分かるように、様式の外に小さく出す（提出時の仕分け用） */}
-      {orgName && <p className="mt-3 text-[9pt] text-black/60">所属機関: {orgName}</p>}
     </section>
   );
 }
