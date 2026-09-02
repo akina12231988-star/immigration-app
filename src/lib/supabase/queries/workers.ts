@@ -147,6 +147,28 @@ export async function listWorkersForResignation(
   return (data as WorkerForResignation[]) ?? [];
 }
 
+// 支援委託終了＜随時報告書＞用: 退職と同じ項目に加え、届出書①欄の初期値
+// （特定技能1号のときの在留カード番号・分野）と、特定技能2号の許可日の候補を取る
+export interface WorkerForSupportEnd extends WorkerForResignation {
+  residence_card_no: string;
+  field: string;
+  residence_permit_date: string | null;
+}
+
+export async function listWorkersForSupportEnd(
+  supabase: SupabaseClient,
+): Promise<WorkerForSupportEnd[]> {
+  const { data, error } = await supabase
+    .from("workers")
+    .select(
+      "id, name, kana, messenger_link, notion_link, current_organization_id, leaving_on, " +
+        "leaving_todo, residence_card_no, field, residence_permit_date",
+    )
+    .order("name", { ascending: true });
+  if (error) throw error;
+  return (data as unknown as WorkerForSupportEnd[]) ?? [];
+}
+
 // 在留更新・パスポート更新の一覧用: 外国人＋現在の所属機関名。
 // 一覧は全件を取るので、表示・判定に使う列だけに絞って通信量を抑える
 // （メモ・家族・住所・扶養などの長い項目は詳細ページで取る）。

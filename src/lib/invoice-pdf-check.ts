@@ -58,7 +58,30 @@ export function normalizeName(name: string): string {
 // 支援代・サポート代の行か。摘要は「◯◯さん　特定技能　7月分の支援代」のような形。
 // 一度No.を書き込んだPDFでは文字の切れ方が変わり「1 人」「サポート 代」のように
 // 空白が挟まることがあるため、語の間の空白は許して判定する
-const SUPPORT_LINE_RE = /^(.+?)さ\s*ん.*?(支\s*援\s*代|サ\s*ポ\s*ー\s*ト\s*代)/;
+const SUPPORT_KIND_RE = /支\s*援\s*代|サ\s*ポ\s*ー\s*ト\s*代/;
+
+// 摘要の氏名のうしろに付く「さん」
+const HONORIFIC_RE = /さ\s*ん/;
+
+// 摘要から氏名を取り出す。基本は「◯◯さん　特定技能　7月分の支援代」だが、
+// 「さん」を付け忘れた行（「◯◯　特定技能　7月分の支援代」）もあるので、
+// その場合は全角スペースの手前までを氏名として読む。
+// どちらも無ければ空文字（照合は checkInvoiceLines 側で行頭一致に任せる）
+export function supportLineName(text: string): string {
+  const kind = SUPPORT_KIND_RE.exec(text);
+  const kindAt = kind ? kind.index : text.length;
+
+  // 「さん」が支援代・サポート代より前にあれば、その手前までが氏名
+  const honorific = HONORIFIC_RE.exec(text);
+  if (honorific && honorific.index > 0 && honorific.index < kindAt) {
+    return text.slice(0, honorific.index).trim();
+  }
+
+  // 「さん」が無い行。氏名の中の空白は半角なので、全角スペースを区切りとみなす
+  const sep = text.indexOf("　");
+  if (sep > 0 && sep < kindAt) return text.slice(0, sep).trim();
+  return "";
+}
 
 // 明細の数量「1人」。備考欄にも「支援代なし」のような文が書かれることがあるため、
 // 数量がある行だけを明細として扱う（備考の行にNo.を振らないように）
@@ -72,8 +95,7 @@ const AMOUNT_RE = /\d{1,3}(?:,\d{3})*(?![\d,])/g;
 // 行頭の「No.12」は氏名に入れない
 export function parseSupportLine(line: PdfTextLine): InvoiceSupportLine | null {
   const text = line.text.replace(/^No\.\d+\s*/, "");
-  const m = SUPPORT_LINE_RE.exec(text);
-  if (!m) return null;
+  if (!SUPPORT_KIND_RE.test(text)) return null;
 
   // 数量「1人」より右にある一番右の数字を明細金額として読む。
   // 摘要の「7月2日までの」のような日付の数字を金額と読み間違えないため
@@ -86,7 +108,7 @@ export function parseSupportLine(line: PdfTextLine): InvoiceSupportLine | null {
     page: line.page,
     x: line.x,
     y: line.y,
-    name: m[1].trim(),
+    name: supportLineName(text),
     text,
     amount: last !== null && Number.isFinite(last) ? last : null,
   };
@@ -111,13 +133,29 @@ export function checkInvoiceLines(
   });
   const noteOf = (row: MonthlyBillingRow): string => (notes[row.worker.id] ?? "").trim();
 
+  // 摘要から氏名を切り出せなかった行（「さん」も全角スペースも無い書き方）でも
+  // 拾えるように、行の書き出しが名簿の氏名と一致するかで引き当てる。
+  // 同じ書き出しの人が複数いるときは、より長く一致する方を採る
+  const matchByHead = (line: InvoiceSupportLine) => {
+    const flat = normalizeName(line.text);
+    let best: { no: number; row: MonthlyBillingRow } | undefined;
+    let bestLen = 0;
+    for (const [key, hit] of byName) {
+      if (key.length > bestLen && flat.startsWith(key)) {
+        best = hit;
+        bestLen = key.length;
+      }
+    }
+    return best;
+  };
+
   const matched: InvoiceCheckResult["matched"] = [];
   const unknown: InvoiceSupportLine[] = [];
   const notedButBilled: InvoiceCheckResult["notedButBilled"] = [];
   const found = new Set<number>(); // 請求書に出てきた名簿のNo.
 
   for (const line of supportLines) {
-    const hit = byName.get(normalizeName(line.name));
+    const hit = byName.get(normalizeName(line.name)) ?? matchByHead(line);
     if (!hit) {
       unknown.push(line);
       continue;

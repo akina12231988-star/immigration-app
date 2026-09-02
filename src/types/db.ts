@@ -825,6 +825,83 @@ export type ResignationInput = Omit<
   "id" | "created_by" | "created_at" | "updated_at"
 >;
 
+// 契約内容変更の随時報告書（参考様式第3-1-1号。0133）
+export interface ContractChangeRow {
+  id: string;
+  worker_id: string;
+  organization_id: string | null;
+  org_name: string; // 届出機関のスナップショット
+  org_address: string;
+  org_contact: string; // 電話番号
+  org_staff: string; // 担当者
+  changed_on: string; // 変更年月日 YYYY-MM-DD
+  items: string[]; // 変更事項のコード（I〜IX）
+  detail: string; // 何を変えたかのメモ（社内用）
+  todo_no: string; // Notion随時報告TODO番号
+  note: string;
+  forms_downloaded_at: string | null; // 届出書を最初に作った日時
+  // 進み具合と投函の記録（0134）。マイグレーション未適用の環境では欠けることがある
+  status?: ResignationStatus;
+  posted_on?: string | null; // レターパックで投函した日
+  tracking_no?: string; // レターパックの追跡番号
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ContractChangeInput = Omit<
+  ContractChangeRow,
+  | "id"
+  | "created_by"
+  | "created_at"
+  | "updated_at"
+  | "forms_downloaded_at"
+  | "status"
+  | "posted_on"
+  | "tracking_no"
+>;
+
+// 支援委託終了の随時報告書（参考様式第3-3-2号。0135）
+export interface SupportEndRow {
+  id: string;
+  worker_id: string;
+  organization_id: string | null;
+  org_name: string; // 届出機関のスナップショット
+  org_address: string;
+  org_contact: string; // 電話番号
+  org_staff: string; // 担当者
+  // ① 届出の対象者（特定技能1号のときの内容）
+  card_no: string; // 在留カード番号
+  field: string; // 特定産業分野
+  business_category: string; // 業務区分
+  permit_date_2go: string | null; // 特定技能2号の許可日
+  ended_on: string; // 終了年月日（許可日の前の日）
+  major_reason: string; // 終了の事由（大分類）
+  minor_reason: string; // 終了の事由（小分類）
+  other_reason: string; // 小分類が「その他」のときの理由
+  todo_no: string;
+  note: string;
+  status?: ResignationStatus; // 進み具合
+  forms_downloaded_at: string | null;
+  posted_on?: string | null;
+  tracking_no?: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type SupportEndInput = Omit<
+  SupportEndRow,
+  | "id"
+  | "created_by"
+  | "created_at"
+  | "updated_at"
+  | "forms_downloaded_at"
+  | "status"
+  | "posted_on"
+  | "tracking_no"
+>;
+
 // 在留カード・指定書の履歴（0015）
 export interface WorkerDocumentRow {
   id: string;

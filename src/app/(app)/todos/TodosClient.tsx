@@ -555,12 +555,12 @@ export function TodosClient({
       </div>
       )}
 
-      {/* ② 退職の随時報告書は、退職＜随時報告＞のページと連動して使う */}
+      {/* ② 退職の随時報告書は、随時報告書のページと連動して使う */}
       {kind === "退職の随時報告書" && (
         <p className="rounded-xl border border-border bg-background px-3 py-2.5 text-xs text-muted">
           退職の随時報告書には
           <Link href="/resignations" className="mx-1 font-bold text-brand hover:underline">
-            退職＜随時報告＞
+            随時報告書
           </Link>
           のページがあります。届出書の作成・署名済み届出書の添付・投函の記録はそちらで行い、TODO番号はそのページの「TODO番号」から自動発行できます。ここでは番号と経過の一覧管理だけを行います。
         </p>

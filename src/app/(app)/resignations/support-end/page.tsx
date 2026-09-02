@@ -2,23 +2,24 @@ import { redirect } from "next/navigation";
 import { AppHeader } from "@/components/AppHeader";
 import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
-import { listResignations } from "@/lib/supabase/queries/resignations";
-import { listWorkersForResignation } from "@/lib/supabase/queries/workers";
+import { listSupportEnds } from "@/lib/supabase/queries/support-end";
+import { listWorkersForSupportEnd } from "@/lib/supabase/queries/workers";
 import { listOrganizations } from "@/lib/supabase/queries/organizations";
-import { AdhocReportTabs } from "./AdhocReportTabs";
-import { ResignationsClient } from "./ResignationsClient";
+import { AdhocReportTabs } from "../AdhocReportTabs";
+import { SupportEndClient } from "./SupportEndClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function ResignationsPage() {
+export default async function SupportEndPage() {
   const me = await getMyProfile();
   if (!me) redirect("/login");
 
   const supabase = await createClient();
   const canEdit = me.role !== "viewer";
-  const [resignations, workers, organizations] = await Promise.all([
-    listResignations(supabase).catch(() => []),
-    canEdit ? listWorkersForResignation(supabase).catch(() => []) : Promise.resolve([]),
+  const [records, workers, organizations] = await Promise.all([
+    // 0135 が未適用でもページは開けるようにする（一覧は0件になる）
+    listSupportEnds(supabase).catch(() => []),
+    canEdit ? listWorkersForSupportEnd(supabase).catch(() => []) : Promise.resolve([]),
     canEdit ? listOrganizations(supabase).catch(() => []) : Promise.resolve([]),
   ]);
 
@@ -28,8 +29,8 @@ export default async function ResignationsPage() {
       <div className="mb-4">
         <AdhocReportTabs />
       </div>
-      <ResignationsClient
-        resignations={resignations}
+      <SupportEndClient
+        records={records}
         workers={workers}
         organizations={organizations}
         canEdit={canEdit}

@@ -2,9 +2,15 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
+import {
+  ADHOC_FILE_TARGETS,
+  isAdhocFileKind,
+  type AdhocFileKind,
+} from "@/lib/adhoc-report-files";
 
-// 退職＜随時報告＞の署名済み届出書（スキャンしたPDF・画像）。
-// 非公開バケット app-files（resignation-files/）に保存し、署名付きURLで
+// 随時報告書の署名済み届出書（スキャンしたPDF・画像）。
+// 退職の記録と契約内容変更の記録で同じ処理を使う（kind で置き場所を切り替える）。
+// 非公開バケット app-files に保存し、署名付きURLで
 // アップロード・表示する（郵送請求の添付と同じ方式）。
 const BUCKET = "app-files";
 const TTL = 60 * 60;
@@ -15,7 +21,7 @@ interface Err {
   message: string;
 }
 
-export interface ResignationFileView {
+export interface AdhocFileView {
   id: string;
   file_name: string;
   mime_type: string;
@@ -27,26 +33,31 @@ async function requireStaff(): Promise<boolean> {
   return !!me && me.role !== "viewer";
 }
 
-export async function listResignationFiles(
-  resignationId: string,
-): Promise<ResignationFileView[]> {
+export async function listAdhocFiles(
+  kind: AdhocFileKind,
+  recordId: string,
+): Promise<AdhocFileView[]> {
+  if (!isAdhocFileKind(kind)) return [];
+  const target = ADHOC_FILE_TARGETS[kind];
   const me = await getMyProfile();
   const admin = createAdminClient();
   if (!me || !admin) return [];
   const { data } = await admin
-    .from("resignation_files")
+    .from(target.table)
     .select("id, file_name, mime_type, created_at")
-    .eq("resignation_id", resignationId)
+    .eq(target.column, recordId)
     .order("created_at", { ascending: true });
-  return (data as ResignationFileView[]) ?? [];
+  return (data as AdhocFileView[]) ?? [];
 }
 
 // アップロード用の署名付きURLを発行
-export async function createResignationFileTicket(
-  resignationId: string,
+export async function createAdhocFileTicket(
+  kind: AdhocFileKind,
+  recordId: string,
   fileName: string,
   mimeType: string,
 ): Promise<{ ok: true; path: string; token: string } | Err> {
+  if (!isAdhocFileKind(kind)) return { ok: false, message: "不正な種別です" };
   if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
   if (!ALLOWED_MIME.test(mimeType)) return { ok: false, message: "画像またはPDFのみ登録できます" };
   const admin = createAdminClient();
@@ -54,28 +65,32 @@ export async function createResignationFileTicket(
   await admin.storage.createBucket(BUCKET, { public: false }).catch(() => undefined);
   const rawExt = fileName.includes(".") ? (fileName.split(".").pop() ?? "") : "";
   const ext = /^[a-zA-Z0-9]{1,8}$/.test(rawExt) ? rawExt.toLowerCase() : "bin";
-  const path = `resignation-files/${resignationId}/${crypto.randomUUID()}.${ext}`;
+  const path = `${ADHOC_FILE_TARGETS[kind].prefix}/${recordId}/${crypto.randomUUID()}.${ext}`;
   const { data, error } = await admin.storage.from(BUCKET).createSignedUploadUrl(path);
   if (error || !data) return { ok: false, message: `準備に失敗: ${error?.message}` };
   return { ok: true, path, token: data.token };
 }
 
 // アップロード完了後にメタデータを記録する
-export async function registerResignationFile(
-  resignationId: string,
+export async function registerAdhocFile(
+  kind: AdhocFileKind,
+  recordId: string,
   path: string,
   fileName: string,
   mimeType: string,
 ): Promise<{ ok: true } | Err> {
+  if (!isAdhocFileKind(kind)) return { ok: false, message: "不正な種別です" };
   if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
-  if (!path.startsWith(`resignation-files/${resignationId}/`)) {
+  const target = ADHOC_FILE_TARGETS[kind];
+  // 発行時と同じ規則のパスのみ受け付ける（他の記録のパスを紐づけさせない）
+  if (!path.startsWith(`${target.prefix}/${recordId}/`)) {
     return { ok: false, message: "不正なパス" };
   }
   const me = await getMyProfile();
   const admin = createAdminClient();
   if (!admin) return { ok: false, message: "サーバー設定エラー" };
-  const { error } = await admin.from("resignation_files").insert({
-    resignation_id: resignationId,
+  const { error } = await admin.from(target.table).insert({
+    [target.column]: recordId,
     storage_path: path,
     file_name: fileName,
     mime_type: mimeType,
@@ -86,14 +101,16 @@ export async function registerResignationFile(
 }
 
 // 表示用の署名付きURL
-export async function getResignationFilePreviewUrl(
+export async function getAdhocFilePreviewUrl(
+  kind: AdhocFileKind,
   fileId: string,
 ): Promise<{ ok: true; url: string } | Err> {
+  if (!isAdhocFileKind(kind)) return { ok: false, message: "不正な種別です" };
   const me = await getMyProfile();
   const admin = createAdminClient();
   if (!me || !admin) return { ok: false, message: "権限がありません" };
   const { data } = await admin
-    .from("resignation_files")
+    .from(ADHOC_FILE_TARGETS[kind].table)
     .select("storage_path")
     .eq("id", fileId)
     .maybeSingle();
@@ -105,18 +122,23 @@ export async function getResignationFilePreviewUrl(
 }
 
 // 添付の削除（ストレージの実体も消す）
-export async function deleteResignationFile(fileId: string): Promise<{ ok: true } | Err> {
+export async function deleteAdhocFile(
+  kind: AdhocFileKind,
+  fileId: string,
+): Promise<{ ok: true } | Err> {
+  if (!isAdhocFileKind(kind)) return { ok: false, message: "不正な種別です" };
   if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
   const admin = createAdminClient();
   if (!admin) return { ok: false, message: "サーバー設定エラー" };
+  const table = ADHOC_FILE_TARGETS[kind].table;
   const { data } = await admin
-    .from("resignation_files")
+    .from(table)
     .select("storage_path")
     .eq("id", fileId)
     .maybeSingle();
   const path = (data as { storage_path: string } | null)?.storage_path;
   if (path) await admin.storage.from(BUCKET).remove([path]).catch(() => undefined);
-  const { error } = await admin.from("resignation_files").delete().eq("id", fileId);
+  const { error } = await admin.from(table).delete().eq("id", fileId);
   if (error) return { ok: false, message: error.message };
   return { ok: true };
 }

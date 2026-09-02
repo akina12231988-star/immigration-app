@@ -93,6 +93,15 @@ describe("parseSupportLine", () => {
     ).toBeNull();
   });
 
+  it("「さん」が付いていない行でも氏名を読む", () => {
+    // 実際の請求書にあった行。摘要に「さん」を付け忘れても照合できるようにする
+    const l = parseSupportLine(
+      line("TRAN THI BICH THAO　特定技能　8月分の支援代 1人 12,000 12,000"),
+    );
+    expect(l?.name).toBe("TRAN THI BICH THAO");
+    expect(l?.amount).toBe(12000);
+  });
+
   it("摘要の日付の数字を金額と読み間違えない（金額は数量より右から読む）", () => {
     const l = parseSupportLine(line("NGUYEN THI NHIさん　特定技能　7月4日までの支援代 1人 1,932 1,932"));
     expect(l?.amount).toBe(1932);
@@ -136,6 +145,49 @@ describe("checkInvoiceLines", () => {
       [3, "CHEN SOLEU"],
     ]);
     expect(result.unknown.map((u) => u.name)).toEqual(["NGUYEN VAN A"]);
+  });
+
+  it("「さん」が付いていない行でも名簿のNo.を振る", () => {
+    const result = checkInvoiceLines([row("TRAN THI BICH THAO", 12000)], [
+      line("TRAN THI BICH THAO　特定技能　8月分の支援代 1人 12,000 12,000"),
+    ]);
+    expect(result.matched.map((m) => [m.no, m.name])).toEqual([[1, "TRAN THI BICH THAO"]]);
+    expect(result.missing).toEqual([]);
+    expect(result.unknown).toEqual([]);
+  });
+
+  it("実際のPDFの切れ方（氏名と摘要が別々に取れる）でも振れる", () => {
+    // pdfjs は「TRAN THI BICH THAO」と「　特定技能　」を別々に取り出し、空白でつなぐ
+    const result = checkInvoiceLines([row("TRAN THI BICH THAO", 12000)], [
+      line("TRAN THI BICH THAO 　特定技能　 8 月分の支援代 1 人 12,000 12,000"),
+    ]);
+    expect(result.matched.map((m) => [m.no, m.line.amount])).toEqual([[1, 12000]]);
+    expect(result.missing).toEqual([]);
+  });
+
+  it("「さん」も全角スペースも無い行は、名簿の氏名との行頭一致で拾う", () => {
+    // No.付きPDFを読み直すと全角スペースが半角に崩れることがある
+    const result = checkInvoiceLines([row("TRAN THI BICH THAO", 12000)], [
+      line("TRAN THI BICH THAO 特定技能 8 月分の支援代 1 人 12,000 12,000"),
+    ]);
+    expect(result.matched.map((m) => m.no)).toEqual([1]);
+    expect(result.missing).toEqual([]);
+  });
+
+  it("同じ書き出しの人がいるときは長く一致する方に振る", () => {
+    const two = [row("NGUYEN THI THAM", 12000), row("NGUYEN THI THAM NHUNG", 12000)];
+    const result = checkInvoiceLines(two, [
+      line("NGUYEN THI THAM NHUNG 特定技能 8 月分の支援代 1 人 12,000 12,000"),
+    ]);
+    expect(result.matched.map((m) => m.name)).toEqual(["NGUYEN THI THAM NHUNG"]);
+  });
+
+  it("人材紹介手数料の行は「さん」が無くても支援代の行として拾わない", () => {
+    const result = checkInvoiceLines([row("KPA PHI LA", 12000)], [
+      line("KPA PHI LA　人材紹介手数料代 1人 30,000 30,000"),
+    ]);
+    expect(result.matched).toEqual([]);
+    expect(result.missing.map((m) => m.name)).toEqual(["KPA PHI LA"]);
   });
 
   it("請求額0円の人は請求書に無くても漏れにしない", () => {
