@@ -825,6 +825,31 @@ export type ResignationInput = Omit<
   "id" | "created_by" | "created_at" | "updated_at"
 >;
 
+// 契約内容変更の随時報告書（参考様式第3-1-1号。0133）
+export interface ContractChangeRow {
+  id: string;
+  worker_id: string;
+  organization_id: string | null;
+  org_name: string; // 届出機関のスナップショット
+  org_address: string;
+  org_contact: string; // 電話番号
+  org_staff: string; // 担当者
+  changed_on: string; // 変更年月日 YYYY-MM-DD
+  items: string[]; // 変更事項のコード（I〜IX）
+  detail: string; // 何を変えたかのメモ（社内用）
+  todo_no: string; // Notion随時報告TODO番号
+  note: string;
+  forms_downloaded_at: string | null; // 届出書を最初に作った日時
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ContractChangeInput = Omit<
+  ContractChangeRow,
+  "id" | "created_by" | "created_at" | "updated_at" | "forms_downloaded_at"
+>;
+
 // 在留カード・指定書の履歴（0015）
 export interface WorkerDocumentRow {
   id: string;

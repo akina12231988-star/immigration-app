@@ -1,13 +1,20 @@
-// 随時届出の参考様式（public/forms/ の公式テンプレート）へ退職記録を転記する。
-// 3-1-2号・3-4号は Excel、5-11号は Word。いずれも jszip でテンプレートのXMLを
-// 直接編集する（対象セル・トークン以外はテンプレートをバイト単位でそのまま残す）。
-// テンプレートのセル座標は公式様式（アップロードされた実ファイル）から特定したもの。
-//
-// 以前は Excel を exceljs で読み込み直して書き出していたが、デプロイ環境によっては
-// 壊れたファイルが生成され、Excel が開くときに「修復」してシートが空になる問題が
-// 起きたため、テンプレートを解釈し直さないこの方式に変更した。
+// 退職の随時届出の参考様式（public/forms/ の公式テンプレート）へ退職記録を転記する。
+// 3-1-2号・3-4号は Excel、5-11号は Word。テンプレートのセル座標は公式様式の
+// 実ファイルから特定したもの。Excelへの転記の仕組みは xlsx-form-fill に置いている。
 
 import type { ResignationKind } from "@/types/db";
+import {
+  CHECKED,
+  UNCHECKED,
+  cardChars,
+  checkMarks,
+  corporateChars,
+  dateParts,
+  escapeXml,
+  fillXlsxTemplate,
+  withPostalMark,
+  type CellValues,
+} from "@/lib/xlsx-form-fill";
 
 export const FORM_TEMPLATE_PATHS = {
   form312: "/forms/sanko-3-1-2.xlsx",
@@ -16,9 +23,6 @@ export const FORM_TEMPLATE_PATHS = {
   form14: "/forms/sanko-1-4.xlsx",
   form15: "/forms/sanko-1-5.xlsx",
 } as const;
-
-const CHECKED = "☑";
-const UNCHECKED = "□";
 
 // 3-1-2号「終了の事由」（実様式のチェック体系）
 export const END_REASONS_312 = [
@@ -173,93 +177,11 @@ export interface FormFillData {
 }
 // 作成年月日・届出年月日は署名してもらった日を手書きするため、どの様式にも記載しない
 
-interface DateParts {
-  y: string;
-  m: string;
-  d: string;
-}
-
-function dateParts(dateStr: string | null | undefined): DateParts {
-  if (!dateStr) return { y: "", m: "", d: "" };
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
-  if (!m) return { y: "", m: "", d: "" };
-  return { y: m[1], m: String(Number(m[2])), d: String(Number(m[3])) };
-}
-
 // 性別の自由入力から様式記入用の「男/女」を判定（判定不能は空）
 export function genderMark(gender: string): "男" | "女" | "" {
   if (gender.includes("女") || /^f/i.test(gender)) return "女";
   if (gender.includes("男") || /^m/i.test(gender)) return "男";
   return "";
-}
-
-// 在留カード番号を1文字ずつ12個のマスへ（スペース除去・大文字化）
-function cardChars(cardNo: string): string[] {
-  const chars = cardNo.replace(/\s/g, "").toUpperCase().split("");
-  return Array.from({ length: 12 }, (_, i) => chars[i] ?? "");
-}
-
-// 法人番号を1桁ずつ13個のマスへ（数字以外は除去。空なら全マス空欄のまま）
-function corporateChars(corporateNo: string): string[] {
-  const digits = corporateNo.replace(/\D/g, "").split("");
-  return Array.from({ length: 13 }, (_, i) => digits[i] ?? "");
-}
-
-function escapeXml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
-
-// 書き込むセルの値一式（セル番地 → 文字列）
-type CellValues = Record<string, string>;
-
-// チェックボックス群: 該当セルだけ ☑、それ以外は □ にする
-function checkMarks(cells: string[], checkedCell: string | null): CellValues {
-  return Object.fromEntries(cells.map((c) => [c, c === checkedCell ? CHECKED : UNCHECKED]));
-}
-
-// sheet1.xml 内の <c r="番地" ...> 要素だけを書き換える。
-// スタイル属性（s="n"）は残し、値は inlineStr（テンプレートと同じ文字列形式）で入れる。
-function setSheetCell(xml: string, addr: string, value: string): string {
-  const key = `<c r="${addr}"`;
-  const start = xml.indexOf(key);
-  if (start < 0) {
-    throw new Error(`テンプレートにセル ${addr} が見つかりません（様式が変わった可能性があります）`);
-  }
-  const tagEnd = xml.indexOf(">", start);
-  const selfClosing = xml[tagEnd - 1] === "/";
-  const end = selfClosing ? tagEnd + 1 : xml.indexOf("</c>", tagEnd) + "</c>".length;
-  const openTag = xml.slice(start, tagEnd);
-  const sAttr = / s="\d+"/.exec(openTag)?.[0] ?? "";
-  const cell =
-    value === ""
-      ? `<c r="${addr}"${sAttr}/>`
-      : `<c r="${addr}"${sAttr} t="inlineStr"><is><t xml:space="preserve">${escapeXml(value)}</t></is></c>`;
-  return xml.slice(0, start) + cell + xml.slice(end);
-}
-
-// Excel テンプレートの先頭シートへセル値を転記する（対象セル以外は一切変更しない）
-async function fillXlsxTemplate(template: ArrayBuffer, cells: CellValues): Promise<Uint8Array> {
-  const { default: JSZip } = await import("jszip");
-  const zip = await JSZip.loadAsync(template);
-  const sheetPath = "xl/worksheets/sheet1.xml";
-  const sheet = zip.file(sheetPath);
-  if (!sheet) throw new Error("テンプレートの形式が不正です（sheet1.xml がありません）");
-  let xml = await sheet.async("string");
-  for (const [addr, value] of Object.entries(cells)) {
-    xml = setSheetCell(xml, addr, value);
-  }
-  // createFolders: false — テンプレートに無いフォルダエントリを zip に増やさない
-  zip.file(sheetPath, xml, { createFolders: false });
-  return zip.generateAsync({
-    type: "uint8array",
-    compression: "DEFLATE",
-    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
 }
 
 // ---- 参考様式第3-1-2号（Excel） ----
@@ -436,11 +358,6 @@ const SEX_OPTIONS_14: Record<"男" | "女", string> = {
 const STATUS_SSW_14 = "特定技能　（　Specified Skilled Worker　）";
 
 // 住居地・所在地の入力欄は「〒」が欄内に印字されているため、上書きしても残るように付け直す
-function withPostalMark(address: string): string {
-  const a = address.trim();
-  return a.startsWith("〒") ? a : `〒　${a}`;
-}
-
 export async function fill14(template: ArrayBuffer, data: FormFillData): Promise<Uint8Array> {
   const birth = dateParts(data.birth);
   const leave = dateParts(data.leavingOn);
