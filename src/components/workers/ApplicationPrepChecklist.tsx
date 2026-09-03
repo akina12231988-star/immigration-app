@@ -119,6 +119,7 @@ import {
   PREP_TANTOU_OPTIONS,
   serializeAttachItems,
   prepApplyDocKey,
+  prepDetailHref,
   prepDocLabel,
   prepPageKey,
   prepStatusOption,
@@ -968,9 +969,19 @@ export function ApplicationPrepChecklist({
 
   return (
     <Card className="p-4">
-      <h2 className="mb-1 flex items-center gap-1.5 text-sm font-bold text-muted">
+      <h2 className="mb-1 flex flex-wrap items-center gap-1.5 text-sm font-bold text-muted">
         <ClipboardList size={15} />
         申請準備 書類チェックリスト
+        {/* この内容（所属機関・外国人・チェックリスト・賃金・日付）をA4縦1枚にまとめて印刷する */}
+        {current != null && (
+          <Link
+            href={`${prepDetailHref(workerId)}/print?todo=${encodeURIComponent(current.todo_no)}`}
+            target="_blank"
+            className="rounded-full bg-brand px-2.5 py-1 text-[10px] font-bold text-brand-foreground"
+          >
+            🖨 A4で印刷
+          </Link>
+        )}
       </h2>
       <p className="mb-3 text-[11px] text-muted">
         Notion申請TODO番号ごとに準備リストを作成できます。申請種別と加入状況を選ぶと、必要書類と不足がわかります。各書類はこの場で添付できます。
