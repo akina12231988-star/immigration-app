@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { summarizeMonthlyBilling, type BillingOrg, type BillingWorker } from "./monthly-billing";
+import {
+  rosterOrderRows,
+  summarizeMonthlyBilling,
+  type BillingOrg,
+  type BillingWorker,
+} from "./monthly-billing";
+import { checkInvoiceLines } from "./invoice-pdf-check";
 import {
   ROSTER_HEADERS,
   billingFileName,
@@ -132,6 +138,44 @@ describe("orgBillingSheets", () => {
     expect(sheet.rows.slice(4, 7).map((r) => r[1])).toEqual(["CCC", "AAA", "BBB"]);
     // No. は並べ替えたあとの順番で振る
     expect(sheet.rows.slice(4, 7).map((r) => r[0])).toEqual([1, 2, 3]);
+  });
+
+  it("エクセルのNo.と、請求書と照合で押すNo.が一致する", () => {
+    // 名簿のNo.は rosterOrderRows の並びで振る。エクセルと照合で違う並びを使うと
+    // PDFに押すNo.がずれるため、同じ番号になることをここで固定する
+    const b = summarizeMonthlyBilling(
+      [
+        worker({ name: "AAA", employment_start_on: "2026-05-01" }),
+        worker({ name: "BBB", employment_start_on: "" }),
+        worker({ name: "CCC", employment_start_on: "2025-04-01" }),
+      ],
+      orgs,
+      MONTH,
+    );
+    const org = b.orgs[0];
+    const [sheet] = orgBillingSheets(org, b);
+    // エクセルの「No. → 氏名」
+    const excel = new Map(
+      sheet.rows.slice(4, 7).map((r) => [r[0] as number, r[1] as string]),
+    );
+
+    // 照合（PDFに押すNo.）。摘要は「◯◯さん　特定技能　7月分の支援代」の形
+    const line = (name: string) => ({
+      page: 0,
+      x: 60,
+      y: 700,
+      text: `${name}さん　特定技能　7月分の支援代 1人 15,000 15,000`,
+    });
+    const checked = checkInvoiceLines(rosterOrderRows(org), [
+      line("AAA"),
+      line("BBB"),
+      line("CCC"),
+    ]);
+    for (const m of checked.matched) {
+      expect(excel.get(m.no)).toBe(m.name);
+    }
+    expect(checked.matched).toHaveLength(3);
+    expect(checked.missing).toEqual([]);
   });
 });
 

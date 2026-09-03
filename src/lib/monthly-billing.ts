@@ -242,6 +242,15 @@ export function sortRowsByEmploymentStart(
   });
 }
 
+// 在籍名簿のNo.を振る並び（エクセルの在籍名簿と、請求書と照合のPDFで必ず同じにする）。
+// 画面の並び替え（氏名順・売上No.順など）とは切り離し、いつでも雇用開始日の古い順にする
+export function rosterOrderRows(org: {
+  organizationId: string;
+  rows: MonthlyBillingRow[];
+}): MonthlyBillingRow[] {
+  return sortRowsByEmploymentStart(org.rows, org.organizationId);
+}
+
 // 所属機関別の雇用開始日（org_employment_starts）から、現在の機関以外で
 // 開始日が退職日以前のいちばん新しいものを採る。見つからなければ null
 export function transferredFromOrgId(worker: BillingWorker, month: string): string | null {
@@ -465,7 +474,7 @@ export function summarizeMonthlyBilling(
   const orgs = [...byOrg.values()].sort((a, b) =>
     a.organizationName.localeCompare(b.organizationName, "ja"),
   );
-  // 機関の中は氏名順（エクセルの在籍名簿と同じ並び）
+  // 機関の中は氏名順（名簿のNo.は rosterOrderRows で雇用開始日順に振る）
   for (const o of orgs) o.rows.sort((a, b) => a.worker.name.localeCompare(b.worker.name, "ja"));
 
   return {

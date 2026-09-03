@@ -8,7 +8,7 @@ import {
   type PdfTextLine,
 } from "@/lib/invoice-pdf-check";
 import { FileDropArea } from "@/components/ui/FileDropArea";
-import type { MonthlyBillingOrg } from "@/lib/monthly-billing";
+import { rosterOrderRows, type MonthlyBillingOrg } from "@/lib/monthly-billing";
 import { formatSalesYen } from "@/lib/sales";
 import { downloadBlob } from "@/lib/xlsx-export";
 import { errorMessage } from "@/lib/errors";
@@ -108,7 +108,9 @@ export function InvoicePdfCheck({
       const data = await file.arrayBuffer();
       // pdfjs は渡したバッファを作業用に持っていってしまう（空になる）ので、コピーを渡す
       const lines = await extractTextLines(data.slice(0));
-      const checked = checkInvoiceLines(org.rows, lines, notes);
+      // No.は在籍名簿（エクセル）と同じ並び＝雇用開始日の古い順で振る。
+      // 画面の並び替えに関係なく、名簿のNo.と必ず一致させる
+      const checked = checkInvoiceLines(rosterOrderRows(org), lines, notes);
       if (checked.matched.length === 0) {
         setError(
           "支援代・サポート代の行が見つかりませんでした。freeeから出した請求書PDFか、所属機関が合っているかご確認ください",

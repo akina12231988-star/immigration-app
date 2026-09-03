@@ -19,6 +19,7 @@ import {
   summarizeMonthlyBilling,
   type BillingOrg,
   employmentStartForOrg,
+  rosterOrderRows,
   sortRowsByEmploymentStart,
   type BillingWorker,
 } from "./monthly-billing";
@@ -590,6 +591,22 @@ describe("employmentStartForOrg / sortRowsByEmploymentStart", () => {
     expect(
       employmentStartForOrg({ employment_start_on: null, org_employment_starts: [] }, ORG),
     ).toBe("");
+  });
+
+  it("rosterOrderRows は名簿のNo.の並び（雇用開始日の古い順）を返す", () => {
+    // エクセルの在籍名簿と、請求書と照合で押すPDFのNo.は、必ずこの並びで振る
+    const row = (name: string, start: string | null) => ({
+      worker: worker({ name, employment_start_on: start }),
+    });
+    const rows = [
+      row("B", "2026-05-01"),
+      row("A", "2025-04-01"),
+      row("C", null),
+    ] as unknown as Parameters<typeof sortRowsByEmploymentStart>[0];
+    const ordered = rosterOrderRows({ organizationId: ORG, rows });
+    expect(ordered.map((r) => r.worker.name)).toEqual(["A", "B", "C"]);
+    // 渡した配列は並べ替えない（画面の並びに影響しない）
+    expect(rows.map((r) => r.worker.name)).toEqual(["B", "A", "C"]);
   });
 
   it("雇用開始日の古い順に並べ、未登録は最後・同じ日は氏名順にする", () => {
