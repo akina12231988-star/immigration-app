@@ -111,9 +111,27 @@ describe("orgBillingSheets", () => {
     );
     const [sheet] = orgBillingSheets(b.orgs[0], b);
     const row = sheet.rows[4];
-    expect(row[9]).toBe("⭕"); // 当月許可
+    expect(row[8]).toBe("2026-07-18"); // 雇用開始（許可日の前の列）
+    expect(row[9]).toBe("2026-07-17"); // 在留許可日
+    expect(row[10]).toBe("⭕"); // 当月許可
     expect(row[18]).toBe("許可日から日割");
     expect(row[19]).toBe(7245); // 1日あたり 15000÷31 = 483（切り捨て）× 15日
+  });
+
+  it("在籍名簿は雇用開始日の古い順に並ぶ（未登録は最後）", () => {
+    const b = summarizeMonthlyBilling(
+      [
+        worker({ name: "AAA", employment_start_on: "2026-05-01" }),
+        worker({ name: "BBB", employment_start_on: "" }),
+        worker({ name: "CCC", employment_start_on: "2025-04-01" }),
+      ],
+      orgs,
+      MONTH,
+    );
+    const [sheet] = orgBillingSheets(b.orgs[0], b);
+    expect(sheet.rows.slice(4, 7).map((r) => r[1])).toEqual(["CCC", "AAA", "BBB"]);
+    // No. は並べ替えたあとの順番で振る
+    expect(sheet.rows.slice(4, 7).map((r) => r[0])).toEqual([1, 2, 3]);
   });
 });
 
