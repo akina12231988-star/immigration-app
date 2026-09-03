@@ -648,6 +648,7 @@ export function MonthlyBillingSection({
         });
       } catch (err) {
         setError(errorMessage(err, "売上No.の保存に失敗しました"));
+        throw err; // セル側で「未保存」と出し、入力した番号を消さないため
       }
       return;
     }
@@ -660,6 +661,7 @@ export function MonthlyBillingSection({
       await setSalesEntryFreeeNo(createClient(), entryId, value);
     } catch (err) {
       setError(errorMessage(err, "売上No.の保存に失敗しました"));
+      throw err; // セル側で「未保存」と出し、入力した番号を消さないため
     }
   };
 
@@ -2612,7 +2614,7 @@ export function MonthlyBillingSection({
                             active={permitInMonth(row.worker.residence_permit_date)}
                             placeholder="許可売上No."
                             onSave={(v, entryId) =>
-                              void saveEntryNo(
+                              saveEntryNo(
                                 row.worker.id,
                                 "permit",
                                 entryId,
@@ -2641,7 +2643,7 @@ export function MonthlyBillingSection({
                                 : "特定技能総合保険が外国人負担のため、保険No.はありません"
                             }
                             onSave={(v, entryId) =>
-                              void saveEntryNo(
+                              saveEntryNo(
                                 row.worker.id,
                                 "insurance",
                                 entryId,
@@ -2777,7 +2779,11 @@ function isSsw2Row(row: MonthlyBillingRow): boolean {
 
 // 許可売上No.・保険No.の1マス。売上明細の行があればその場で直せる。
 // 明細がまだ無い人（更新申請などで売上登録を通していない人）も、
-// ここに番号を入れればその時点で明細を作るので、更新でも入力できる
+// ここに番号を入れればその時点で明細を作るので、更新でも入力できる。
+//
+// 入力中の値はこのマスで持つ。以前は入力欄を作り直していたため、
+// 売上明細の読み込みが終わったタイミングや他の行の保存で、
+// 入力した番号が消えてしまうことがあった。
 function SalesNoCell({
   entry,
   canEdit,
@@ -2795,8 +2801,41 @@ function SalesNoCell({
   placeholder: string;
   disabledText?: string | null; // そもそも番号が発生しないときの表示（❌ など）
   disabledTitle?: string;
-  onSave: (value: string, entryId: string) => void;
+  onSave: (value: string, entryId: string) => Promise<void>;
 }) {
+  const saved = entry?.freeeNo ?? "";
+  const [value, setValue] = useState(saved);
+  const [shownSaved, setShownSaved] = useState(saved);
+  const [dirty, setDirty] = useState(false); // 入力中（まだ保存していない）
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  // 保存済みの番号が外から変わったら、入力中でないときだけ追従する
+  if (saved !== shownSaved) {
+    setShownSaved(saved);
+    if (!dirty) setValue(saved);
+  }
+
+  const commit = async () => {
+    const v = value.trim();
+    if (v !== value) setValue(v);
+    if (v === saved) {
+      setDirty(false);
+      setFailed(false);
+      return;
+    }
+    setBusy(true);
+    setFailed(false);
+    try {
+      await onSave(v, entry?.entryId ?? "");
+      setDirty(false);
+    } catch {
+      // 画面の上にもエラーが出る。入力した番号は消さずに「未保存」と出す
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (disabledText) {
     return (
       <td className="py-1.5 pr-2 text-muted" title={disabledTitle}>
@@ -2824,16 +2863,24 @@ function SalesNoCell({
   if (!canEdit) {
     return <td className="py-1.5 pr-2 tabular-nums">{entry?.freeeNo || "—"}</td>;
   }
-  const current = entry?.freeeNo ?? "";
   return (
     <td className="py-1.5 pr-2">
       <input
-        key={`${entry?.entryId ?? "new"}-${current}`}
-        defaultValue={current}
-        onBlur={(e) => {
-          const v = e.target.value.trim();
-          if (v !== current) onSave(v, entry?.entryId ?? "");
+        value={value}
+        onChange={(e) => {
+          setValue(e.target.value);
+          setDirty(true);
+          setFailed(false);
         }}
+        onBlur={() => void commit()}
+        // Enterでも保存できるようにする（入れてからそのまま次の行へ進めるように）
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            e.currentTarget.blur();
+          }
+        }}
+        disabled={busy}
         placeholder={placeholder}
         title={
           entry
@@ -2841,9 +2888,22 @@ function SalesNoCell({
             : "売上明細がまだありません。番号を入れるとこの名簿から明細を作ります"
         }
         className={`w-32 rounded-lg border px-1.5 py-1 text-xs ${
-          current ? "border-border bg-background" : "border-seal/40 bg-seal/5"
+          failed
+            ? "border-seal bg-seal/10"
+            : value
+              ? "border-border bg-background"
+              : "border-seal/40 bg-seal/5"
         }`}
       />
+      {busy && <span className="ml-1 text-[10px] text-muted">保存中…</span>}
+      {failed && (
+        <span className="ml-1 text-[10px] font-bold text-seal" title="もう一度お試しください">
+          未保存
+        </span>
+      )}
+      {!busy && !failed && dirty && (
+        <span className="ml-1 text-[10px] text-muted">未確定</span>
+      )}
     </td>
   );
 }

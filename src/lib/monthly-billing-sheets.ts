@@ -9,7 +9,7 @@ import {
   permittedThisMonthRows,
   employmentStartForOrg,
   recurringSalesNoForRow,
-  sortRowsByEmploymentStart,
+  rosterOrderRows,
   type MonthlyBilling,
   type MonthlyBillingOrg,
   type MonthlyBillingRow,
@@ -97,8 +97,9 @@ export function orgRosterSheet(org: MonthlyBillingOrg, billing: MonthlyBilling):
       ["基準日", billing.monthEndOn, "掲載人数", countText],
       [],
       [...ROSTER_HEADERS],
-      // 在籍名簿は雇用開始日の古い順（未登録は最後）で並べる
-      ...sortRowsByEmploymentStart(org.rows, org.organizationId).map((row, i) =>
+      // 在籍名簿は雇用開始日の古い順（未登録は最後）。No.は rosterOrderRows の順で振り、
+      // 請求書と照合のPDFに押すNo.と必ず一致させる
+      ...rosterOrderRows(org).map((row, i) =>
         rosterRow(row, i, billing.month, org.organizationId),
       ),
       [],

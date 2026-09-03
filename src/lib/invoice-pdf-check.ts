@@ -114,8 +114,9 @@ export function parseSupportLine(line: PdfTextLine): InvoiceSupportLine | null {
   };
 }
 
-// 名簿（org.rows。エクセルの在籍名簿と同じ氏名順）と請求書の行を照合する。
-// No.はエクセルのNo.列と同じ「氏名順の並びで1はじまり」。
+// 名簿と請求書の行を照合する。
+// 渡す名簿は必ず在籍名簿（エクセル）と同じ並び（rosterOrderRows＝雇用開始日の古い順）にする。
+// No.はその並びで1はじまり＝エクセルのNo.列と同じ番号になる。
 // notes は名簿のメモ（請求しない理由。worker.id → メモ）。メモが入力されている人は
 // 請求書に載っていなくても漏れではなく「意図して請求しない人」として扱う
 export function checkInvoiceLines(
