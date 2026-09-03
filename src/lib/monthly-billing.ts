@@ -210,6 +210,38 @@ export function isMidMonthTransfer(worker: BillingWorker, month: string): boolea
 }
 
 // 当月中に転職した人の「前の所属機関」のID。
+// その機関での雇用開始日。所属機関別の記録（org_employment_starts）を優先し、
+// 無ければ外国人情報の雇用開始年月日を使う。未登録は空文字。
+// 在籍名簿（画面・エクセル）で「雇用開始日」の列と並び順に使う
+export function employmentStartForOrg(
+  worker: Pick<BillingWorker, "employment_start_on" | "org_employment_starts">,
+  organizationId: string,
+): string {
+  const e = normalizeOrgEmploymentStarts(worker.org_employment_starts).find(
+    (x) => x.organization_id === organizationId && x.start_on,
+  );
+  return e?.start_on || worker.employment_start_on || "";
+}
+
+// 在籍名簿の既定の並び順: 雇用開始日の古い順。
+// 未登録の人は最後にまとめ、同じ日は氏名順にする
+export function sortRowsByEmploymentStart(
+  rows: MonthlyBillingRow[],
+  organizationId: string,
+  dir: "asc" | "desc" = "asc",
+): MonthlyBillingRow[] {
+  return [...rows].sort((a, b) => {
+    const av = employmentStartForOrg(a.worker, organizationId);
+    const bv = employmentStartForOrg(b.worker, organizationId);
+    const byName = a.worker.name.localeCompare(b.worker.name, "ja");
+    if (!av && !bv) return byName;
+    if (!av) return 1;
+    if (!bv) return -1;
+    if (av === bv) return byName;
+    return dir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+  });
+}
+
 // 所属機関別の雇用開始日（org_employment_starts）から、現在の機関以外で
 // 開始日が退職日以前のいちばん新しいものを採る。見つからなければ null
 export function transferredFromOrgId(worker: BillingWorker, month: string): string | null {

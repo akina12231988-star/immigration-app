@@ -96,6 +96,8 @@ import {
   recurringSalesNoForRow,
   summarizeMonthlyBilling,
   type BillingOrg,
+  employmentStartForOrg,
+  sortRowsByEmploymentStart,
   type BillingWorker,
   type MonthlyBillingOrg,
   type MonthlyBillingRow,
@@ -119,6 +121,7 @@ const MONTH_STORE_KEY = "monthly-billing-month";
 const SORT_STORE_KEY = "monthly-billing-sort";
 type SortDir = "asc" | "desc" | null;
 interface SortPrefs {
+  employment: SortDir; // 雇用開始日の並び順（既定）
   recurring: SortDir; // 定期売上No.の並び順
   permit: SortDir; // 許可売上No.の並び順
   daily: boolean; // 日割り計算の人を先頭にまとめるか
@@ -155,6 +158,8 @@ export function MonthlyBillingSection({
     }
   };
   const [salesNos, setSalesNos] = useState<Record<string, string>>({});
+  // 在籍名簿の既定の並び順は雇用開始日の古い順（asc）。null=氏名順・desc=新しい順
+  const [employmentSort, setEmploymentSort] = useState<SortDir>("asc");
   // 定期売上No.の並び順（null=氏名順・asc=昇順・desc=降順）
   const [salesNoSort, setSalesNoSort] = useState<SortDir>(null);
   // 許可売上No.の並び順（降順は「これから入力する人」が先頭に来る）
@@ -171,8 +176,15 @@ export function MonthlyBillingSection({
         const saved = JSON.parse(raw) as Partial<Record<keyof SortPrefs, unknown>>;
         if (saved.recurring === "asc" || saved.recurring === "desc") {
           setSalesNoSort(saved.recurring);
+          setEmploymentSort(null);
         } else if (saved.permit === "asc" || saved.permit === "desc") {
           setPermitNoSort(saved.permit);
+          setEmploymentSort(null);
+        } else if (saved.employment === null) {
+          // 氏名順を選んで保存していたときはそのまま
+          setEmploymentSort(null);
+        } else if (saved.employment === "desc") {
+          setEmploymentSort("desc");
         }
         if (saved.daily === true) setGroupDaily(true);
       } catch {
@@ -187,24 +199,45 @@ export function MonthlyBillingSection({
       /* プライベートブラウズなどで保存できなくても並び替え自体は動かす */
     }
   };
-  // 定期売上No.と許可売上No.の並び替えは同時には使えない（後から押したほうを使う）
+  // 雇用開始日・定期売上No.・許可売上No.の並び替えは同時には使えない（後から押したほうを使う）
+  const cycleEmploymentSort = () => {
+    const next: SortDir =
+      employmentSort === "asc" ? "desc" : employmentSort === "desc" ? null : "asc";
+    setEmploymentSort(next);
+    setSalesNoSort(null);
+    setPermitNoSort(null);
+    saveSortPrefs({ employment: next, recurring: null, permit: null, daily: groupDaily });
+  };
   const cycleSalesNoSort = () => {
     const next: SortDir = salesNoSort === null ? "asc" : salesNoSort === "asc" ? "desc" : null;
     setSalesNoSort(next);
     setPermitNoSort(null);
-    saveSortPrefs({ recurring: next, permit: null, daily: groupDaily });
+    setEmploymentSort(next === null ? "asc" : null);
+    saveSortPrefs({
+      employment: next === null ? "asc" : null,
+      recurring: next,
+      permit: null,
+      daily: groupDaily,
+    });
   };
   // 許可売上No.は降順から始める（未入力の人が先頭に来て、入力漏れに気づけるように）
   const cyclePermitNoSort = () => {
     const next: SortDir = permitNoSort === null ? "desc" : permitNoSort === "desc" ? "asc" : null;
     setPermitNoSort(next);
     setSalesNoSort(null);
-    saveSortPrefs({ recurring: null, permit: next, daily: groupDaily });
+    setEmploymentSort(next === null ? "asc" : null);
+    saveSortPrefs({
+      employment: next === null ? "asc" : null,
+      recurring: null,
+      permit: next,
+      daily: groupDaily,
+    });
   };
   const toggleGroupDaily = () => {
     const next = !groupDaily;
     setGroupDaily(next);
     saveSortPrefs({
+      employment: employmentSort,
       recurring: permitNoSort ? null : salesNoSort,
       permit: permitNoSort,
       daily: next,
@@ -498,14 +531,17 @@ export function MonthlyBillingSection({
     return orgs;
   }, [billing.orgs, orgQuery, onlyUncreated, onlyReminded, invoiceCreatedOn, reminderSentOn]);
 
-  // 名簿の並び替え。定期売上No.（転職者の行は表示している過去の番号）または
-  // 許可売上No.で並べ替え、「日割りを上へ」を選んだら日割りの行を先頭に寄せる。
-  // 未登録は常に最後（氏名順のままの集計順は billing 側）
+  // 名簿の並び替え。既定は雇用開始日の古い順で、雇用開始日・定期売上No.
+  // （転職者の行は表示している過去の番号）・許可売上No. のどれかで並べ替える。
+  // 「日割りを上へ」を選んだら日割りの行を先頭に寄せる。未登録は常に最後
   const sortRows = (rows: MonthlyBillingRow[], organizationId: string): MonthlyBillingRow[] => {
     const byName = (a: MonthlyBillingRow, b: MonthlyBillingRow) =>
       a.worker.name.localeCompare(b.worker.name, "ja");
     let sorted = [...rows];
-    if (salesNoSort) {
+    if (employmentSort) {
+      // 既定の並び。雇用開始日の古い順（未登録は最後・同じ日は氏名順）
+      sorted = sortRowsByEmploymentStart(sorted, organizationId, employmentSort);
+    } else if (salesNoSort) {
       sorted.sort((a, b) => {
         const av = recurringSalesNoForRow(a, organizationId) || "";
         const bv = recurringSalesNoForRow(b, organizationId) || "";
@@ -2339,11 +2375,29 @@ export function MonthlyBillingSection({
 
               {open && (
                 <div className="mt-2 overflow-x-auto">
-                  <table className="w-full min-w-[1280px] border-collapse text-xs">
+                  <table className="w-full min-w-[1380px] border-collapse text-xs">
                     <thead>
                       <tr className="border-b border-border text-left text-muted">
                         <th className="py-1.5 pr-2 font-bold">氏名</th>
                         <th className="py-1.5 pr-2 font-bold">在留資格</th>
+                        <th className="py-1.5 pr-2 font-bold">
+                          {/* 在籍名簿は雇用開始日の古い順が既定。押すと並び順を変えられる */}
+                          <button
+                            type="button"
+                            onClick={cycleEmploymentSort}
+                            title="クリックで 古い順 → 新しい順 → 氏名順 に切り替え（並び順は次回も引き継がれます）"
+                            className="inline-flex items-center gap-1 font-bold hover:text-brand"
+                          >
+                            雇用開始日
+                            {employmentSort === "asc" ? (
+                              <ArrowUp size={12} />
+                            ) : employmentSort === "desc" ? (
+                              <ArrowDown size={12} />
+                            ) : (
+                              <ArrowUpDown size={12} className="opacity-50" />
+                            )}
+                          </button>
+                        </th>
                         <th className="py-1.5 pr-2 font-bold">許可日</th>
                         <th className="py-1.5 pr-2 font-bold">期限日</th>
                         <th className="py-1.5 pr-2 font-bold">
@@ -2439,6 +2493,10 @@ export function MonthlyBillingSection({
                             )}
                           </td>
                           <td className="py-1.5 pr-2 text-muted">{row.worker.residence_status}</td>
+                          {/* その機関での雇用開始日（所属機関別の記録を優先）。許可日の前に置く */}
+                          <td className="py-1.5 pr-2 tabular-nums text-muted">
+                            {employmentStartForOrg(row.worker, org.organizationId) || "—"}
+                          </td>
                           {/* 在留許可日・在留期限（機関からの問い合わせにこの画面だけで答えられるように） */}
                           <td className="py-1.5 pr-2 tabular-nums text-muted">
                             {row.worker.residence_permit_date ?? "—"}
@@ -2691,7 +2749,8 @@ export function MonthlyBillingSection({
                         </tr>
                       ))}
                       <tr>
-                        <td colSpan={10} className="py-1.5 pr-2 text-right font-bold">
+                        {/* 雇用開始日の列を足したぶん、合計の位置も1つ右へ */}
+                        <td colSpan={11} className="py-1.5 pr-2 text-right font-bold">
                           合計
                         </td>
                         <td className="py-1.5 pr-2 text-right font-bold tabular-nums text-brand">

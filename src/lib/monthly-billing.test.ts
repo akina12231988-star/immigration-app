@@ -18,6 +18,8 @@ import {
   permittedThisMonthRows,
   summarizeMonthlyBilling,
   type BillingOrg,
+  employmentStartForOrg,
+  sortRowsByEmploymentStart,
   type BillingWorker,
 } from "./monthly-billing";
 
@@ -558,5 +560,60 @@ describe("特定技能2号への移行月（許可日の前日まで日割りで
     const firstDay = ssw2({ residence_permit_date: "2026-08-01" });
     const billing = summarizeMonthlyBilling([firstDay], orgs2, "2026-08");
     expect(billing.orgs).toHaveLength(0);
+  });
+});
+
+describe("employmentStartForOrg / sortRowsByEmploymentStart", () => {
+  const ORG = "org-1";
+
+  it("所属機関別の雇用開始日を優先し、無ければ雇用開始年月日を使う", () => {
+    expect(
+      employmentStartForOrg(
+        {
+          employment_start_on: "2026-01-01",
+          org_employment_starts: [{ organization_id: ORG, start_on: "2026-04-01" }],
+        },
+        ORG,
+      ),
+    ).toBe("2026-04-01");
+    // 別の機関の記録しか無いときは雇用開始年月日
+    expect(
+      employmentStartForOrg(
+        {
+          employment_start_on: "2026-01-01",
+          org_employment_starts: [{ organization_id: "other", start_on: "2026-04-01" }],
+        },
+        ORG,
+      ),
+    ).toBe("2026-01-01");
+    // どちらも無ければ空
+    expect(
+      employmentStartForOrg({ employment_start_on: null, org_employment_starts: [] }, ORG),
+    ).toBe("");
+  });
+
+  it("雇用開始日の古い順に並べ、未登録は最後・同じ日は氏名順にする", () => {
+    const row = (name: string, start: string | null) => ({
+      worker: worker({ name, employment_start_on: start }),
+    });
+    const rows = [
+      row("B", "2026-05-01"),
+      row("X", null),
+      row("A", "2026-05-01"),
+      row("C", "2025-04-01"),
+    ] as unknown as Parameters<typeof sortRowsByEmploymentStart>[0];
+    expect(sortRowsByEmploymentStart(rows, ORG).map((r) => r.worker.name)).toEqual([
+      "C",
+      "A",
+      "B",
+      "X",
+    ]);
+    // 新しい順（降順）でも未登録は最後
+    expect(sortRowsByEmploymentStart(rows, ORG, "desc").map((r) => r.worker.name)).toEqual([
+      "A",
+      "B",
+      "C",
+      "X",
+    ]);
   });
 });
