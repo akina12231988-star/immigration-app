@@ -2,13 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   prepPrintAppType,
   prepPrintDateLines,
-  prepPrintDocCount,
   prepPrintDocRows,
   prepPrintFileName,
   prepPrintOrgLines,
   prepPrintWageLines,
   prepPrintWorkerLines,
-  type PrepPrintDocRow,
 } from "./application-prep-print";
 import { EMPTY_PREP_META, PREP_DOC_DEFS, type PrepDocStatus } from "./application-prep";
 import type { WorkerWage } from "@/types/db";
@@ -81,29 +79,18 @@ describe("prepPrintDocRows", () => {
     { def: def("kazei"), required: true, satisfied: false, fileSatisfied: false },
   ];
 
-  it("完了・不足を出し、選んでいる準備状況を備考にする", () => {
+  it("完了・不足を出し、選んでいる準備状況をメモ欄の初めの値にする", () => {
     const rows = prepPrintDocRows(items, { zairyu: "預かった" }, 7, 8);
     expect(rows[0]).toEqual({
       id: "zairyu",
       label: "在留カード（両面・現住所がわかるもの）",
       state: "完了",
-      note: "預かった",
+      memo: "預かった",
     });
     // 年度が付く書類は「令和○年度」を頭に付ける
     expect(rows[1].label).toBe("令和7年度 課税証明書");
     expect(rows[1].state).toBe("不足");
-    expect(rows[1].note).toBe("");
-  });
-});
-
-describe("prepPrintDocCount", () => {
-  it("対象外にした書類は件数から外す", () => {
-    const rows: PrepPrintDocRow[] = [
-      { id: "a", label: "A", state: "完了", note: "" },
-      { id: "b", label: "B", state: "不足", note: "" },
-      { id: "c", label: "C", state: "対象外", note: "" },
-    ];
-    expect(prepPrintDocCount(rows)).toEqual({ done: 1, total: 2 });
+    expect(rows[1].memo).toBe("");
   });
 });
 

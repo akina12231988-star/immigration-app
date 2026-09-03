@@ -7,7 +7,6 @@ import { BackButton } from "@/components/BackButton";
 import { prepDetailHref } from "@/lib/application-prep";
 import {
   PREP_PRINT_DOC_STATES,
-  prepPrintDocCount,
   prepPrintFileName,
   type PrepPrintDocRow,
   type PrepPrintDocState,
@@ -21,6 +20,7 @@ import { rosterJpDate } from "@/lib/roster";
 //  ・右: 準備チェックリスト / 採用時の賃金情報 / 日付計算結果
 // 印刷する前に上の「印刷前の確認・訂正」で内容を確かめ、違うところはその場で直せる
 // （直した内容はこの印刷にだけ使う。元のデータを直すときは詳細画面から入力する）。
+// 登録が無いところは何も書かずに空けておき、紙の上で書き足せるようにする。
 export function PrepDetailSheet({
   workerId,
   workerName,
@@ -81,7 +81,6 @@ export function PrepDetailSheet({
     window.print();
   };
 
-  const count = prepPrintDocCount(docs);
   const printedDocs = docs.filter((d) => d.state !== "対象外");
 
   return (
@@ -157,7 +156,7 @@ export function PrepDetailSheet({
                 </EditGroup>
               </div>
               <div className="space-y-1.5">
-                <EditGroup title={`準備チェックリスト（完了 ${count.done}/${count.total}件）`}>
+                <EditGroup title="準備チェックリスト（右側のメモは紙に印刷されます）">
                   {docs.length === 0 ? (
                     <p className="text-[11px] text-muted">
                       申請種別を選ぶと必要書類が決まります（詳細画面で選んでください）。
@@ -187,12 +186,12 @@ export function PrepDetailSheet({
                           ))}
                         </select>
                         <input
-                          value={d.note}
-                          aria-label={`${d.label}の準備状況`}
-                          placeholder="準備状況・メモ"
+                          value={d.memo}
+                          aria-label={`${d.label}のメモ`}
+                          placeholder="メモ"
                           onChange={(e) =>
                             setDocs((prev) =>
-                              prev.map((x) => (x.id === d.id ? { ...x, note: e.target.value } : x)),
+                              prev.map((x) => (x.id === d.id ? { ...x, memo: e.target.value } : x)),
                             )
                           }
                           className="min-h-[32px] w-40 rounded-lg border border-border bg-background px-2 text-xs"
@@ -256,16 +255,15 @@ export function PrepDetailSheet({
           {/* 一番上: 申請番号と申請種別 */}
           <div className="mb-2 border-2 border-black px-3 py-2">
             <div className="flex flex-wrap items-end justify-between gap-2">
-              <p className="text-[15pt] font-bold tabular-nums">
-                {head.todoNo || "（申請番号未設定）"}
-              </p>
-              <p className="text-[12pt] font-bold">{head.appType || "申請種別未選択"}</p>
+              <p className="min-h-[1.2em] text-[15pt] font-bold tabular-nums">{head.todoNo}</p>
+              <p className="text-[12pt] font-bold">{head.appType}</p>
             </div>
             <div className="mt-1 flex flex-wrap justify-between gap-2 text-[8.5pt]">
               <span>
                 外国人: <span className="font-bold">{workerName}</span>
               </span>
-              <span>担当者: {head.tantou || "未定"}</span>
+              {/* 未登録のところは何も書かずに空けておく */}
+              {head.tantou && <span>担当者: {head.tantou}</span>}
               <span>印刷日: {rosterJpDate(printedOn)}</span>
             </div>
           </div>
@@ -283,10 +281,8 @@ export function PrepDetailSheet({
 
             {/* 右: 準備チェックリスト・採用時の賃金情報・日付計算結果 */}
             <div className="space-y-2">
-              <SheetBlock title={`準備チェックリスト（完了 ${count.done}/${count.total}件）`}>
-                {printedDocs.length === 0 ? (
-                  <p className="px-1.5 py-1">必要書類はまだ決まっていません。</p>
-                ) : (
+              <SheetBlock title="準備チェックリスト">
+                {printedDocs.length > 0 && (
                   <table className="w-full border-collapse">
                     <tbody>
                       {printedDocs.map((d) => (
@@ -294,12 +290,10 @@ export function PrepDetailSheet({
                           <td className="w-[1.4em] border border-black px-1 py-0.5 text-center align-top">
                             {d.state === "完了" ? "☑" : "☐"}
                           </td>
-                          <td className="border border-black px-1.5 py-0.5 align-top">
-                            {d.label}
-                            {d.note && <span className="ml-1">（{d.note}）</span>}
-                          </td>
-                          <td className="w-[3.2em] border border-black px-1 py-0.5 text-center align-top font-bold">
-                            {d.state}
+                          <td className="border border-black px-1.5 py-0.5 align-top">{d.label}</td>
+                          {/* 右側はメモ欄。空のときは手書きできるように空けておく */}
+                          <td className="w-[32%] border border-black px-1.5 py-0.5 align-top">
+                            {d.memo}
                           </td>
                         </tr>
                       ))}
@@ -308,11 +302,7 @@ export function PrepDetailSheet({
                 )}
               </SheetBlock>
               <SheetBlock title="採用時の賃金情報">
-                {wages.length === 0 ? (
-                  <p className="px-1.5 py-1">賃金の記録がありません。</p>
-                ) : (
-                  <LineTable lines={wages} />
-                )}
+                <LineTable lines={wages} />
               </SheetBlock>
               <SheetBlock title="日付計算結果（支援計画書の日付）">
                 <LineTable lines={dates} />
@@ -332,13 +322,15 @@ function SheetBlock({ title, children }: { title: string; children: React.ReactN
       <p className="border-b border-black bg-black/5 px-1.5 py-0.5 text-[9.5pt] font-bold">
         {title}
       </p>
-      <div className="p-1">{children}</div>
+      {/* 中身が無いときも枠を少し空けて、紙の上で書き足せるようにする */}
+      <div className="min-h-[3em] p-1">{children}</div>
     </div>
   );
 }
 
-// 「ラベル: 値」の表。値が空のところは「未登録」と出して、書き足せるようにする
+// 「ラベル: 値」の表。値が無いところは何も書かずに空けておき、紙に書き足せるようにする
 function LineTable({ lines }: { lines: PrepPrintLine[] }) {
+  if (lines.length === 0) return null;
   return (
     <table className="w-full border-collapse">
       <tbody>
@@ -347,9 +339,7 @@ function LineTable({ lines }: { lines: PrepPrintLine[] }) {
             <th className="w-[38%] border border-black px-1.5 py-0.5 text-left align-top font-normal">
               {l.label}
             </th>
-            <td className="border border-black px-1.5 py-0.5 align-top font-bold">
-              {l.value || <span className="font-normal">未登録</span>}
-            </td>
+            <td className="border border-black px-1.5 py-0.5 align-top font-bold">{l.value}</td>
           </tr>
         ))}
       </tbody>

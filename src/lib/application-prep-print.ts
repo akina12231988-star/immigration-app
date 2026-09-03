@@ -19,7 +19,7 @@ export interface PrepPrintLine {
   value: string;
 }
 
-// 書類1件の印刷状態。対象外にすると、その行は印刷しない
+// 書類1件の印刷状態。完了はチェック（☑）を付け、対象外にするとその行は印刷しない
 export const PREP_PRINT_DOC_STATES = ["完了", "不足", "対象外"] as const;
 export type PrepPrintDocState = (typeof PREP_PRINT_DOC_STATES)[number];
 
@@ -27,7 +27,7 @@ export interface PrepPrintDocRow {
   id: string;
   label: string;
   state: PrepPrintDocState;
-  note: string; // 準備状況（選んでいるステータス）
+  memo: string; // 右側のメモ欄（選んでいる準備状況を初めに入れる。書き換えられる）
 }
 
 // 印刷する申請種別。申請の内容（7つの選び方）を優先し、
@@ -128,8 +128,8 @@ export function prepPrintWorkerLines(w: PrepPrintWorker): PrepPrintLine[] {
   ];
 }
 
-// 右側「準備チェックリスト」。完了していない書類は「不足」で出す。
-// statuses は書類ID→選んでいる準備状況（そのまま備考として印刷する）
+// 右側「準備チェックリスト」。完了した書類にはチェック（☑）が付く。
+// statuses は書類ID→選んでいる準備状況（右側のメモ欄の初めの値にする）
 export function prepPrintDocRows(
   items: PrepDocStatus[],
   statuses: Record<string, string>,
@@ -140,14 +140,8 @@ export function prepPrintDocRows(
     id: it.def.id,
     label: prepDocLabel(it.def, targetReiwa, currentReiwa),
     state: it.satisfied ? "完了" : "不足",
-    note: statuses[it.def.id] ?? "",
+    memo: statuses[it.def.id] ?? "",
   }));
-}
-
-// 印刷する書類の件数（対象外にしたものは数えない）
-export function prepPrintDocCount(rows: PrepPrintDocRow[]): { done: number; total: number } {
-  const target = rows.filter((r) => r.state !== "対象外");
-  return { done: target.filter((r) => r.state === "完了").length, total: target.length };
 }
 
 // 右側「採用時の賃金情報」。新しい順に並んだ賃金の記録をそのまま行にする
