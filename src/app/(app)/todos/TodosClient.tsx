@@ -106,6 +106,10 @@ export interface JobFlowRow {
 // TODO（NotionのTODOデータベースの置き換え）。
 // 申請準備・退職の随時報告書・試験の申込の3つの構成で、番号は通しで自動採番。
 // ステータス（経過）の選択肢は「選択肢の編集」から随時追加・変更・削除して運用できる
+// 「書類担当者で絞り込み」で、まだ担当者が決まっていないTODOだけを出すときの値。
+// 担当者の名簿に出てこない文字にして、実在の名前とぶつからないようにしている
+const NO_TANTOU = "（担当者未定）";
+
 export function TodosClient({
   canEdit,
   fixedKind,
@@ -136,7 +140,7 @@ export function TodosClient({
   const [orgNameByWorker, setOrgNameByWorker] = useState<Record<string, string>>({});
   // 書類担当者（申請準備の担当者。キーは `${worker_id} ${todo_no}`）
   const [prepTantou, setPrepTantou] = useState<Record<string, string>>({});
-  // 書類担当者での絞り込み（'' = すべて）
+  // 書類担当者での絞り込み（'' = すべて。NO_TANTOU = まだ決まっていないものだけ）
   const [tantouFilter, setTantouFilter] = useState("");
   // 外国人の名前・TODO番号での検索（申請準備のTODOで使う）
   const [nameFilter, setNameFilter] = useState("");
@@ -510,6 +514,22 @@ export function TodosClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind, kindTodos, kindOptions, expiryByWorker, prepTantou]);
 
+  // 書類担当者がまだ決まっていない申請準備のTODO（完了したものは除く）。
+  // 誰も手を付けていないまま残るのを防ぐため、一覧の上にアラートで出す
+  const noTantouAlerts = useMemo(() => {
+    if (kind !== "申請準備") return [];
+    return kindTodos
+      .filter((t) => stageOfStatus(t.status, kindOptions) !== "完了")
+      .filter((t) => !tantouOf(t))
+      .map((t) => ({
+        todo: t,
+        orgName: t.worker_id ? (orgNameByWorker[t.worker_id] ?? "") : "",
+        expiry: t.worker_id ? (expiryByWorker[t.worker_id] ?? "") : "",
+      }));
+    // tantouOf は prepTantou を読むだけの関数（依存はそちらに含めている）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kind, kindTodos, kindOptions, prepTantou, orgNameByWorker, expiryByWorker]);
+
   // 在留期限アラートの担当者ごとのまとめ（同じ担当者の人数が多い順）。担当者未定はまとめて最後に出す
   const expiryAlertsByTantou = useMemo(() => {
     const groups = new Map<string, typeof expiryAlerts>();
@@ -765,6 +785,53 @@ export function TodosClient({
         </Card>
       )}
 
+      {/* 書類担当者がまだ決まっていないTODO（この場で担当者を決められる） */}
+      {kind === "申請準備" && !loading && noTantouAlerts.length > 0 && (
+        <div className="rounded-2xl border border-seal/40 bg-seal/5 px-3 py-2.5">
+          <p className="flex items-center gap-1.5 text-sm font-bold text-seal">
+            <TriangleAlert size={15} />
+            書類担当者が決まっていません（{noTantouAlerts.length}件）— 担当者を決めてください
+          </p>
+          <div className="mt-1.5 space-y-1">
+            {noTantouAlerts.map(({ todo: t, orgName, expiry }) => (
+              <div key={t.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-seal">
+                <span className="font-bold tabular-nums">{displayTodoNo(t.todo_no)}</span>
+                {t.worker_id ? (
+                  <Link href={`/workers/${t.worker_id}`} className="font-bold hover:underline">
+                    {t.worker_name ?? "（外国人）"}
+                  </Link>
+                ) : (
+                  <span className="font-bold">{t.worker_name ?? "（外国人ひも付けなし）"}</span>
+                )}
+                {orgName && <span className="text-muted">{orgName}</span>}
+                {expiry && <span>在留期限 {expiry}</span>}
+                {/* その場で担当者を決められるようにする（TODOの行まで探しに行かなくてよい） */}
+                {canEdit && t.worker_id && (
+                  <select
+                    value=""
+                    aria-label={`${displayTodoNo(t.todo_no)}の書類担当者`}
+                    onChange={(e) => e.target.value && changeTantou(t, e.target.value)}
+                    className="min-h-[32px] rounded-lg border border-seal/40 bg-surface px-2 text-xs font-bold text-foreground focus:border-brand focus:outline-none"
+                  >
+                    <option value="">担当者を決める</option>
+                    {[
+                      ...new Set([
+                        ...PREP_TANTOU_OPTIONS,
+                        ...Object.values(prepTantou).filter(Boolean),
+                      ]),
+                    ].map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* 在留期限まで2ヶ月を切った人のまとめ（急いで申請する必要がある人がひと目で分かるようにする） */}
       {kind === "申請準備" && !loading && expiryAlerts.length > 0 && (
         <div className="rounded-2xl border border-seal/40 bg-seal/5 px-3 py-2.5">
@@ -824,6 +891,8 @@ export function TodosClient({
               className="min-h-[36px] rounded-lg border border-border bg-surface px-2 text-sm font-bold focus:border-brand focus:outline-none"
             >
               <option value="">すべて</option>
+              {/* まだ担当者が決まっていないTODOだけを出す（上のアラートと同じ人たち） */}
+              <option value={NO_TANTOU}>担当者未定だけ</option>
               {/* 名簿＋保存済みの名前（名簿から外れた人も選べる） */}
               {[...new Set([...PREP_TANTOU_OPTIONS, ...Object.values(prepTantou).filter(Boolean)])].map(
                 (t) => (
@@ -857,9 +926,12 @@ export function TodosClient({
           const q = nameFilter.trim().toLowerCase();
           const rows = kindTodos
             .filter((t) => stageOfStatus(t.status, kindOptions) === stage)
-            .filter(
-              (t) => kind !== "申請準備" || !tantouFilter || tantouOf(t) === tantouFilter,
-            )
+            .filter((t) => {
+              if (kind !== "申請準備" || !tantouFilter) return true;
+              // 「担当者未定」を選んだときは、担当者が決まっていないものだけ出す
+              if (tantouFilter === NO_TANTOU) return !tantouOf(t);
+              return tantouOf(t) === tantouFilter;
+            })
             // 所属機関名での絞り込み（法人格の有無・全角半角の違いは吸収する）
             .filter(
               (t) =>
