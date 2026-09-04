@@ -22,6 +22,11 @@ import {
   type PrepProgress,
 } from "@/lib/application-prep";
 import { isExpiryWithinTwoMonths, remainingLabel } from "@/lib/worker-alerts";
+import { NameSearchBox } from "@/components/ui/NameSearchBox";
+import { matchesOrganizationName, organizationSuggestions } from "@/lib/org-search";
+import { listActiveCustodyNoIndex } from "@/lib/supabase/queries/custody";
+import { formatStorageNo } from "@/lib/custody";
+import { buildCustodyNoIndex, findCustodyNo, type CustodyNoIndex } from "@/lib/custody-lookup";
 import { createClient } from "@/lib/supabase/client";
 import { dbErrorMessage } from "@/lib/errors";
 import {
@@ -135,6 +140,12 @@ export function TodosClient({
   const [tantouFilter, setTantouFilter] = useState("");
   // 外国人の名前・TODO番号での検索（申請準備のTODOで使う）
   const [nameFilter, setNameFilter] = useState("");
+  // 所属機関名での絞り込み（'' = すべて。書き方の揺れは org-search が吸収する）
+  const [orgFilter, setOrgFilter] = useState("");
+  // 保管ボックスに預かり中の番号（外国人ID・氏名で引き当てる）。行に赤字で出す
+  const [custodyNoIndex, setCustodyNoIndex] = useState<CustodyNoIndex>(() =>
+    buildCustodyNoIndex([]),
+  );
   // 在留期限（外国人ID → YYYY-MM-DD）。申請準備のTODOに太字で出し、残り2ヶ月を切ったらアラート
   const [expiryByWorker, setExpiryByWorker] = useState<Record<string, string>>({});
   // 必要書類がどれだけ揃ったか（キーは `${worker_id} ${todo_no}`。書類 ○% の表示に使う）
@@ -170,6 +181,27 @@ export function TodosClient({
     }
     return fallback;
   };
+
+  // その外国人の所属機関名（申請準備の所属機関→現在の所属機関）
+  const orgNameOf = (t: TodoRow): string =>
+    t.worker_id ? (orgNameByWorker[t.worker_id] ?? "") : "";
+
+  // 所属機関名の検索候補（今の一覧に出ている機関だけ・重複なし・五十音順）
+  const orgCandidates = useMemo(() => {
+    const names = new Set<string>();
+    for (const t of todos) {
+      const name = t.worker_id ? (orgNameByWorker[t.worker_id] ?? "") : "";
+      if (name) names.add(name);
+    }
+    return [...names]
+      .sort((a, b) => a.localeCompare(b, "ja"))
+      .map((name) => ({ id: name, name }));
+  }, [todos, orgNameByWorker]);
+
+  // 預かり番号（保管ボックスに預かり中なら番号、無ければ null）。
+  // 外国人で引き当て、紐付けが無いTODOは氏名でも照合する
+  const custodyNoOf = (t: TodoRow): number | null =>
+    findCustodyNo(custodyNoIndex, t.worker_id, t.worker_name ?? "");
 
   // 書類担当者の変更（外国人×TODO番号の準備リストに保存。無ければ作成される）
   const changeTantou = (t: TodoRow, v: string) => {
@@ -389,6 +421,10 @@ export function TodosClient({
     // 申請取次士の名簿（無くても他の機能は使える）
     listFilingAgents(createClient())
       .then((rows) => setAgents(rows.map((a) => a.name)))
+      .catch(() => undefined);
+    // 保管ボックスに預かり中の番号（読めなくても他の表示は使える）
+    listActiveCustodyNoIndex(createClient())
+      .then(setCustodyNoIndex)
       .catch(() => undefined);
   }, []);
 
@@ -770,6 +806,16 @@ export function TodosClient({
               className="min-h-[36px] w-full rounded-lg border border-border bg-surface px-2.5 text-sm focus:border-brand focus:outline-none"
             />
           </label>
+          {/* 所属機関名で絞り込み（「BASE」など一部でも探せる） */}
+          <div className="min-w-[16rem] flex-1">
+            <NameSearchBox
+              candidates={orgCandidates}
+              value={orgFilter}
+              onChange={setOrgFilter}
+              placeholder="所属機関名で絞り込み（「BASE」などでも探せます）"
+              suggest={organizationSuggestions}
+            />
+          </div>
           <label className="flex items-center gap-1.5 text-xs font-bold text-muted">
             書類担当者で絞り込み
             <select
@@ -814,6 +860,13 @@ export function TodosClient({
             .filter(
               (t) => kind !== "申請準備" || !tantouFilter || tantouOf(t) === tantouFilter,
             )
+            // 所属機関名での絞り込み（法人格の有無・全角半角の違いは吸収する）
+            .filter(
+              (t) =>
+                kind !== "申請準備" ||
+                !orgFilter.trim() ||
+                matchesOrganizationName({ name: orgNameOf(t) }, orgFilter),
+            )
             // 外国人の名前・TODO番号の部分一致で検索（申請準備のTODOのみ）
             .filter(
               (t) =>
@@ -854,7 +907,8 @@ export function TodosClient({
                       checkOptions={checkOptions}
                       canEdit={canEdit}
                       agents={agents}
-                      orgName={t.worker_id ? (orgNameByWorker[t.worker_id] ?? "") : ""}
+                      orgName={orgNameOf(t)}
+                      custodyNo={custodyNoOf(t)}
                       tantou={tantouOf(t)}
                       residenceExpiry={t.worker_id ? (expiryByWorker[t.worker_id] ?? "") : ""}
                       progress={progressOf(t)}
@@ -1067,6 +1121,7 @@ function TodoItem({
   canEdit,
   agents = [],
   orgName = "",
+  custodyNo = null,
   tantou = "",
   residenceExpiry = "",
   progress = null,
@@ -1084,6 +1139,7 @@ function TodoItem({
   canEdit: boolean;
   agents?: string[]; // 申請取次士の名簿（申請準備のTODOで選ぶ）
   orgName?: string; // 申請準備の所属機関名（転職先→現在の順）
+  custodyNo?: number | null; // 保管ボックスの預かり番号（預かり中でなければ null）
   tantou?: string; // 書類担当者（申請準備の担当者）
   residenceExpiry?: string; // 在留期限（'' = 未登録）
   progress?: PrepProgress | null; // 必要書類がどれだけ揃ったか
@@ -1170,6 +1226,12 @@ function TodoItem({
               </Link>
               {/* 申請準備の所属機関（転職先。未設定なら現在の所属機関） */}
               {orgName && <span className="truncate text-[11px] text-muted">{orgName}</span>}
+              {/* 保管ボックスに在留カード・パスポートを預かっている人は預かり番号を赤で出す */}
+              {custodyNo != null && (
+                <span className="shrink-0 rounded-full border border-seal px-2 py-0.5 text-[10px] font-bold text-seal">
+                  預かり番号 {formatStorageNo(custodyNo)}
+                </span>
+              )}
               {/* 必要な書類・賃金・雇用契約書・日付はすべてこの詳細ボタンにまとめた */}
               {todo.kind === "申請準備" && prepHref && (
                 <Link
