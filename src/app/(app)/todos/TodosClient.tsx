@@ -149,6 +149,8 @@ export function TodosClient({
   );
   // 在留期限（外国人ID → YYYY-MM-DD）。申請準備のTODOに太字で出し、残り2ヶ月を切ったらアラート
   const [expiryByWorker, setExpiryByWorker] = useState<Record<string, string>>({});
+  // 国籍（外国人ID → 国籍）。預かり番号がまだ出ていない人の一覧に出す
+  const [nationalityByWorker, setNationalityByWorker] = useState<Record<string, string>>({});
   // 必要書類がどれだけ揃ったか（キーは `${worker_id} ${todo_no}`。書類 ○% の表示に使う）
   const [prepProgress, setPrepProgress] = useState<Record<string, PrepProgress>>({});
   // 並び順（申請準備のTODOのみ。既定は登録順、在留期限が近い順に並べ替えられる）
@@ -294,7 +296,7 @@ export function TodosClient({
             supabase
               .from("workers")
               .select(
-                "id, application_prep_organization_id, current_organization_id, residence_expiry_date",
+                "id, application_prep_organization_id, current_organization_id, residence_expiry_date, nationality",
               )
               .in("id", workerIds),
             supabase.from("organizations").select("id, name"),
@@ -304,21 +306,25 @@ export function TodosClient({
             );
             const out: Record<string, string> = {};
             const expiry: Record<string, string> = {};
+            const nationality: Record<string, string> = {};
             for (const r of (w.data as
               | {
                   id: string;
                   application_prep_organization_id: string | null;
                   current_organization_id: string | null;
                   residence_expiry_date: string | null;
+                  nationality: string | null;
                 }[]
               | null) ?? []) {
               out[r.id] =
                 orgMap.get(r.application_prep_organization_id ?? r.current_organization_id ?? "") ??
                 "";
               if (r.residence_expiry_date) expiry[r.id] = r.residence_expiry_date;
+              if (r.nationality) nationality[r.id] = r.nationality;
             }
             setOrgNameByWorker(out);
             setExpiryByWorker(expiry);
+            setNationalityByWorker(nationality);
           });
           // 必要書類がどれだけ揃ったか（読めなくても他の表示は使えるようにする）
           listPrepProgress(supabase, workerIds)
@@ -531,14 +537,15 @@ export function TodosClient({
   // 所属機関ごとにまとめる。どの会社の誰から原本を預かればよいかが分かるようにする
   const noCustodyByOrg = useMemo(() => {
     if (kind !== "申請準備") return [];
-    const groups = new Map<string, { todo: TodoRow; expiry: string }[]>();
+    const groups = new Map<string, { todo: TodoRow; expiry: string; nationality: string }[]>();
     for (const t of kindTodos) {
       if (stageOfStatus(t.status, kindOptions) === "完了") continue;
       if (findCustodyNo(custodyNoIndex, t.worker_id, t.worker_name ?? "") != null) continue;
       const orgName = t.worker_id ? (orgNameByWorker[t.worker_id] ?? "") : "";
       const key = orgName || NO_ORG;
       const expiry = t.worker_id ? (expiryByWorker[t.worker_id] ?? "") : "";
-      groups.set(key, [...(groups.get(key) ?? []), { todo: t, expiry }]);
+      const nationality = t.worker_id ? (nationalityByWorker[t.worker_id] ?? "") : "";
+      groups.set(key, [...(groups.get(key) ?? []), { todo: t, expiry, nationality }]);
     }
     return [...groups.entries()].sort((a, b) => {
       // 所属機関が決まっていない人は最後にまとめる
@@ -546,7 +553,15 @@ export function TodosClient({
       if (b[0] === NO_ORG) return -1;
       return a[0].localeCompare(b[0], "ja");
     });
-  }, [kind, kindTodos, kindOptions, custodyNoIndex, orgNameByWorker, expiryByWorker]);
+  }, [
+    kind,
+    kindTodos,
+    kindOptions,
+    custodyNoIndex,
+    orgNameByWorker,
+    expiryByWorker,
+    nationalityByWorker,
+  ]);
 
   const noCustodyCount = useMemo(
     () => noCustodyByOrg.reduce((sum, [, rows]) => sum + rows.length, 0),
@@ -855,55 +870,6 @@ export function TodosClient({
         </div>
       )}
 
-      {/* 預かり番号がまだ出ていない人（原本を預かっていない人）を所属機関別に出す。
-          件数が多くなるので、見出しを押して開く形にしている */}
-      {kind === "申請準備" && !loading && noCustodyCount > 0 && (
-        <div className="rounded-2xl border border-border bg-surface px-3 py-2.5">
-          <details>
-            <summary className="cursor-pointer select-none text-sm font-bold text-muted">
-              📦 預かり番号がまだ出ていない人（{noCustodyCount}件・所属機関{noCustodyByOrg.length}社）
-              — 押すと所属機関別に出ます
-            </summary>
-            <p className="mt-1 text-[11px] text-muted">
-              保管ボックスに在留カード・パスポートの預かりが登録されていない人です。預かったら
-              <Link href="/custody" className="mx-1 font-bold text-brand hover:underline">
-                保管ボックス
-              </Link>
-              で登録すると、この一覧から消えて行に預かり番号が出ます。
-            </p>
-            <div className="mt-1.5 space-y-2">
-              {noCustodyByOrg.map(([orgName, rows]) => (
-                <div key={orgName}>
-                  <p className="text-xs font-bold text-foreground">
-                    {orgName}（{rows.length}件）
-                  </p>
-                  <ul className="space-y-0.5 pl-5 text-xs text-muted">
-                    {rows.map(({ todo: t, expiry }) => (
-                      <li key={t.id} className="flex flex-wrap items-center gap-x-2">
-                        <span className="font-bold tabular-nums">{displayTodoNo(t.todo_no)}</span>
-                        {t.worker_id ? (
-                          <Link
-                            href={`/workers/${t.worker_id}`}
-                            className="font-bold text-brand hover:underline"
-                          >
-                            {t.worker_name ?? "（外国人）"}
-                          </Link>
-                        ) : (
-                          <span className="font-bold">
-                            {t.worker_name ?? "（外国人ひも付けなし）"}
-                          </span>
-                        )}
-                        {expiry && <span>在留期限 {expiry}</span>}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          </details>
-        </div>
-      )}
-
       {/* 在留期限まで2ヶ月を切った人のまとめ（急いで申請する必要がある人がひと目で分かるようにする） */}
       {kind === "申請準備" && !loading && expiryAlerts.length > 0 && (
         <div className="rounded-2xl border border-seal/40 bg-seal/5 px-3 py-2.5">
@@ -987,6 +953,56 @@ export function TodosClient({
               <option value="在留期限">在留期限が近い順</option>
             </select>
           </label>
+        </div>
+      )}
+
+      {/* 預かり番号がまだ出ていない人（原本を預かっていない人）を所属機関別に出す。
+          件数が多くなるので、見出しを押して開く形にしている */}
+      {kind === "申請準備" && !loading && noCustodyCount > 0 && (
+        <div className="rounded-2xl border border-border bg-surface px-3 py-2.5">
+          <details>
+            <summary className="cursor-pointer select-none text-sm font-bold text-muted">
+              📦 預かり番号がまだ出ていない人（{noCustodyCount}件・所属機関{noCustodyByOrg.length}社）
+              — 押すと所属機関別に出ます
+            </summary>
+            <p className="mt-1 text-[11px] text-muted">
+              保管ボックスに在留カード・パスポートの預かりが登録されていない人です。預かったら
+              <Link href="/custody" className="mx-1 font-bold text-brand hover:underline">
+                保管ボックス
+              </Link>
+              で登録すると、この一覧から消えて行に預かり番号が出ます。
+            </p>
+            <div className="mt-1.5 space-y-2">
+              {noCustodyByOrg.map(([orgName, rows]) => (
+                <div key={orgName}>
+                  <p className="text-xs font-bold text-foreground">
+                    {orgName}（{rows.length}件）
+                  </p>
+                  <ul className="space-y-0.5 pl-5 text-xs text-muted">
+                    {rows.map(({ todo: t, expiry, nationality }) => (
+                      <li key={t.id} className="flex flex-wrap items-center gap-x-2">
+                        <span className="font-bold tabular-nums">{displayTodoNo(t.todo_no)}</span>
+                        {t.worker_id ? (
+                          <Link
+                            href={`/workers/${t.worker_id}`}
+                            className="font-bold text-brand hover:underline"
+                          >
+                            {t.worker_name ?? "（外国人）"}
+                          </Link>
+                        ) : (
+                          <span className="font-bold">
+                            {t.worker_name ?? "（外国人ひも付けなし）"}
+                          </span>
+                        )}
+                        {nationality && <span>{nationality}</span>}
+                        {expiry && <span>在留期限 {expiry}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </details>
         </div>
       )}
 
