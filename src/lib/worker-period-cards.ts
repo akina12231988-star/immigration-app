@@ -3,9 +3,11 @@
 // 過去に在籍していた会社の個人票を、当時の内容で発行するために使う。
 // workers には「今の値」しか無いので、当時の内容は次の順番で決める:
 //   1. 在籍期間ごとに手で入れて保存した内容（worker_period_cards）
-//   2. 申請一覧に残っている、その時点で最後に許可された内容
+//   2. 在留カードの記録（worker_card_history・0137）。
+//      在留カードの内容を書き換えるたびに、書き換える前の内容が自動で残る
+//   3. 申請一覧に残っている、その時点で最後に許可された内容
 //      （許可時の在留カード番号・在留資格・許可日・在留期限）
-//   3. 雇用開始日・退職日は在籍期間の日付
+//   4. 雇用開始日・退職日は在籍期間の日付
 // 今の値は使わない（最新の在留カードの内容が混ざると、当時の個人票にならないため）。
 
 import type { OrgPeriod } from "@/lib/worker-doc-periods";
@@ -95,6 +97,33 @@ export function grantAsOf(apps: GrantRecord[], onDate: string): GrantValues | nu
     residenceStatus: last.visa_at_grant ?? "",
     residencePermitDate: permitDateOf(last) || null,
     residenceExpiryDate: last.granted_expiry_date,
+  };
+}
+
+// 在留カードの記録（書き換える前の内容。0137のトリガーが自動で残す）
+export interface CardHistoryRecord {
+  residence_card_no: string;
+  residence_status: string;
+  residence_permit_date: string | null;
+  residence_expiry_date: string | null;
+  recorded_at: string; // この内容を書き換えた日時（この時点まではこの内容だった）
+}
+
+// 指定した日（退職日など）の時点で使っていた在留カードの内容を、記録から探す。
+// 記録は「書き換える前の内容」なので、その日より後に書き換えられた記録のうち
+// いちばん早いものが、その日に使っていた内容にあたる。
+// 見つからなければ null（その日より後の書き換えが記録されていない）
+export function cardAsOf(rows: CardHistoryRecord[], onDate: string): GrantValues | null {
+  const after = rows
+    .filter((r) => r.recorded_at.slice(0, 10) >= onDate)
+    .sort((a, b) => a.recorded_at.localeCompare(b.recorded_at));
+  const hit = after[0];
+  if (!hit) return null;
+  return {
+    residenceCardNo: hit.residence_card_no ?? "",
+    residenceStatus: hit.residence_status ?? "",
+    residencePermitDate: hit.residence_permit_date,
+    residenceExpiryDate: hit.residence_expiry_date,
   };
 }
 

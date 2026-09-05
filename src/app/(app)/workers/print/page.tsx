@@ -6,8 +6,10 @@ import { getWorkerPhotoUrl, getWorkerLatestDocUrls, listWorkerDocs } from "../ac
 import { PrintClient, type PrintPeriod, type PrintWorker } from "./PrintClient";
 import { buildPastPeriods, docPeriodDate, periodKeyFor } from "@/lib/worker-doc-periods";
 import {
+  cardAsOf,
   grantAsOf,
   periodCardKey,
+  type CardHistoryRecord,
   type GrantRecord,
   type PeriodCardInput,
 } from "@/lib/worker-period-cards";
@@ -119,7 +121,7 @@ export default async function WorkersPrintPage({
   // 保存してある当時の在留カード情報（0136）をまとめて渡す
   let periods: PrintPeriod[] = [];
   if (workerParam && workers.length === 1) {
-    const [{ data: histories }, docs, cards, { data: apps }] = await Promise.all([
+    const [{ data: histories }, docs, cards, { data: apps }, { data: cardHistory }] = await Promise.all([
       supabase.from("work_histories").select("*").eq("worker_id", workerParam),
       listWorkerDocs(workerParam),
       listWorkerPeriodCards(supabase, workerParam).catch(() => []),
@@ -131,7 +133,15 @@ export default async function WorkersPrintPage({
           "granted_card_no, granted_permit_date, granted_expiry_date, visa_at_grant, approval_date",
         )
         .eq("worker_id", workerParam),
+      // 在留カードを書き換える前の内容の記録（0137）。当時の内容はこれがいちばん確か
+      supabase
+        .from("worker_card_history")
+        .select(
+          "residence_card_no, residence_status, residence_permit_date, residence_expiry_date, recorded_at",
+        )
+        .eq("worker_id", workerParam),
     ]);
+    const cardRecords = (cardHistory as CardHistoryRecord[] | null) ?? [];
     const grants = ((apps as GrantRecord[] | null) ?? []).map((a) => ({
       granted_card_no: a.granted_card_no ?? "",
       granted_permit_date: a.granted_permit_date,
@@ -158,8 +168,14 @@ export default async function WorkersPrintPage({
         end: p.end,
         residenceCardUrl: newest("在留カード"),
         designationUrl: newest("指定書"),
-        // 退職日の時点で最後に許可された内容（＝当時の最終版の在留カード）
-        grant: grantAsOf(grants, p.end),
+        // 退職日の時点で使っていた在留カードの内容。
+        // 書き換え前の記録があればそれ、無ければその時点で最後に許可された内容
+        grant: cardAsOf(cardRecords, p.end) ?? grantAsOf(grants, p.end),
+        grantSource: cardAsOf(cardRecords, p.end)
+          ? "在留カードの記録"
+          : grantAsOf(grants, p.end)
+            ? "申請一覧の許可"
+            : "",
         card: saved
           ? ({
               residence_card_no: saved.residence_card_no ?? "",

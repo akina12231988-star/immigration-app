@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  cardAsOf,
   EMPTY_PERIOD_CARD,
   grantAsOf,
   isPeriodCardEmpty,
@@ -62,6 +63,36 @@ describe("grantAsOf", () => {
   it("その日までに許可が無ければ null（当時の内容は分からない）", () => {
     expect(grantAsOf(apps, "2024-01-01")).toBeNull();
     expect(grantAsOf([], "2026-08-09")).toBeNull();
+  });
+});
+
+describe("cardAsOf", () => {
+  // 記録は「書き換える前の内容」。2026-08-10 に今の内容へ書き換えている
+  const history = [
+    {
+      residence_card_no: "AB12345678CD",
+      residence_status: "特定技能1号",
+      residence_permit_date: "2024-03-20",
+      residence_expiry_date: "2026-03-20",
+      recorded_at: "2026-03-01T09:00:00Z",
+    },
+    {
+      residence_card_no: "EF98765432GH",
+      residence_status: "特定技能1号",
+      residence_permit_date: "2026-03-01",
+      residence_expiry_date: "2026-09-01",
+      recorded_at: "2026-08-10T09:00:00Z",
+    },
+  ];
+
+  it("その日より後に書き換えられた記録のうち、いちばん早いものを使う", () => {
+    expect(cardAsOf(history, "2026-08-09")?.residenceCardNo).toBe("EF98765432GH");
+    expect(cardAsOf(history, "2026-02-01")?.residenceCardNo).toBe("AB12345678CD");
+  });
+
+  it("その日より後の書き換えが記録されていなければ null", () => {
+    expect(cardAsOf(history, "2026-08-11")).toBeNull();
+    expect(cardAsOf([], "2026-08-09")).toBeNull();
   });
 });
 
