@@ -110,6 +110,9 @@ export interface JobFlowRow {
 // 担当者の名簿に出てこない文字にして、実在の名前とぶつからないようにしている
 const NO_TANTOU = "（担当者未定）";
 
+// 所属機関が決まっていない人のまとめ方（預かり番号のまとめで使う見出し）
+const NO_ORG = "（所属機関未設定）";
+
 export function TodosClient({
   canEdit,
   fixedKind,
@@ -530,6 +533,32 @@ export function TodosClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind, kindTodos, kindOptions, prepTantou, orgNameByWorker, expiryByWorker]);
 
+  // 預かり番号がまだ出ていない人（保管ボックスに在留カード・パスポートが入っていない人）を
+  // 所属機関ごとにまとめる。どの会社の誰から原本を預かればよいかが分かるようにする
+  const noCustodyByOrg = useMemo(() => {
+    if (kind !== "申請準備") return [];
+    const groups = new Map<string, { todo: TodoRow; expiry: string }[]>();
+    for (const t of kindTodos) {
+      if (stageOfStatus(t.status, kindOptions) === "完了") continue;
+      if (findCustodyNo(custodyNoIndex, t.worker_id, t.worker_name ?? "") != null) continue;
+      const orgName = t.worker_id ? (orgNameByWorker[t.worker_id] ?? "") : "";
+      const key = orgName || NO_ORG;
+      const expiry = t.worker_id ? (expiryByWorker[t.worker_id] ?? "") : "";
+      groups.set(key, [...(groups.get(key) ?? []), { todo: t, expiry }]);
+    }
+    return [...groups.entries()].sort((a, b) => {
+      // 所属機関が決まっていない人は最後にまとめる
+      if (a[0] === NO_ORG) return 1;
+      if (b[0] === NO_ORG) return -1;
+      return a[0].localeCompare(b[0], "ja");
+    });
+  }, [kind, kindTodos, kindOptions, custodyNoIndex, orgNameByWorker, expiryByWorker]);
+
+  const noCustodyCount = useMemo(
+    () => noCustodyByOrg.reduce((sum, [, rows]) => sum + rows.length, 0),
+    [noCustodyByOrg],
+  );
+
   // 在留期限アラートの担当者ごとのまとめ（同じ担当者の人数が多い順）。担当者未定はまとめて最後に出す
   const expiryAlertsByTantou = useMemo(() => {
     const groups = new Map<string, typeof expiryAlerts>();
@@ -829,6 +858,55 @@ export function TodosClient({
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* 預かり番号がまだ出ていない人（原本を預かっていない人）を所属機関別に出す。
+          件数が多くなるので、見出しを押して開く形にしている */}
+      {kind === "申請準備" && !loading && noCustodyCount > 0 && (
+        <div className="rounded-2xl border border-border bg-surface px-3 py-2.5">
+          <details>
+            <summary className="cursor-pointer select-none text-sm font-bold text-muted">
+              📦 預かり番号がまだ出ていない人（{noCustodyCount}件・所属機関{noCustodyByOrg.length}社）
+              — 押すと所属機関別に出ます
+            </summary>
+            <p className="mt-1 text-[11px] text-muted">
+              保管ボックスに在留カード・パスポートの預かりが登録されていない人です。預かったら
+              <Link href="/custody" className="mx-1 font-bold text-brand hover:underline">
+                保管ボックス
+              </Link>
+              で登録すると、この一覧から消えて行に預かり番号が出ます。
+            </p>
+            <div className="mt-1.5 space-y-2">
+              {noCustodyByOrg.map(([orgName, rows]) => (
+                <div key={orgName}>
+                  <p className="text-xs font-bold text-foreground">
+                    {orgName}（{rows.length}件）
+                  </p>
+                  <ul className="space-y-0.5 pl-5 text-xs text-muted">
+                    {rows.map(({ todo: t, expiry }) => (
+                      <li key={t.id} className="flex flex-wrap items-center gap-x-2">
+                        <span className="font-bold tabular-nums">{displayTodoNo(t.todo_no)}</span>
+                        {t.worker_id ? (
+                          <Link
+                            href={`/workers/${t.worker_id}`}
+                            className="font-bold text-brand hover:underline"
+                          >
+                            {t.worker_name ?? "（外国人）"}
+                          </Link>
+                        ) : (
+                          <span className="font-bold">
+                            {t.worker_name ?? "（外国人ひも付けなし）"}
+                          </span>
+                        )}
+                        {expiry && <span>在留期限 {expiry}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </details>
         </div>
       )}
 
