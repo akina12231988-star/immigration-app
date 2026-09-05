@@ -33,7 +33,8 @@ export interface PrintPeriod {
   end: string; // 退職日
   residenceCardUrl: string; // その期間に登録した在留カードの画像
   designationUrl: string; // その期間に登録した指定書の画像
-  grant: GrantValues | null; // 当時の最終版の許可内容（申請一覧から）
+  grant: GrantValues | null; // 当時の在留カードの内容（記録・申請一覧から）
+  grantSource: string; // どこから出した内容か（在留カードの記録 / 申請一覧の許可 / 空）
   card: PeriodCardInput | null; // 保存してある当時の在留カード情報
 }
 
@@ -951,12 +952,12 @@ function PeriodCardEditor({
         {period.org} に在籍していた時の在留カード情報
       </p>
       <p className="mb-2 text-[11px] leading-relaxed text-muted">
-        空欄のままなら、退職日の時点で最後に許可された内容（申請一覧の許可欄）と在籍期間の日付で印刷します。
+        空欄のままなら、退職日の時点で使っていた在留カードの内容と在籍期間の日付で印刷します。
         違うところがあれば入れてください。入れた内容が優先されます。今の在留カードの内容は使いません。
         {isPeriodCardEmpty(period.card) &&
           (period.grant
-            ? `　※今は当時の許可（${period.grant.residencePermitDate ?? ""}）の内容で印刷します。`
-            : "　※申請一覧に当時の許可が見つからないため、在留カードの欄は空欄で印刷します。")}
+            ? `　※今は${period.grantSource}（${period.grant.residenceCardNo || "番号未記入"}）の内容で印刷します。`
+            : "　※当時の内容が見つからないため、在留カードの欄は空欄で印刷します。ここに入れて保存してください。")}
       </p>
       {error && (
         <p className="mb-2 rounded-lg bg-seal/10 px-2 py-1.5 text-[11px] text-seal">{error}</p>
