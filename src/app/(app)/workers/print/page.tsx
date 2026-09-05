@@ -2,9 +2,13 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { listOrganizations } from "@/lib/supabase/queries/organizations";
-import { getWorkerPhotoUrl, getWorkerLatestDocUrls } from "../actions";
-import { PrintClient, type PrintWorker } from "./PrintClient";
-import type { Worker } from "@/types/db";
+import { getWorkerPhotoUrl, getWorkerLatestDocUrls, listWorkerDocs } from "../actions";
+import { PrintClient, type PrintPeriod, type PrintWorker } from "./PrintClient";
+import { buildPastPeriods, docPeriodDate, periodKeyFor } from "@/lib/worker-doc-periods";
+import { periodCardKey, type PeriodCardInput } from "@/lib/worker-period-cards";
+import { listWorkerPeriodCards } from "@/lib/supabase/queries/worker-period-cards";
+import { todayStr } from "@/lib/application-alerts";
+import type { WorkHistoryRow, Worker } from "@/types/db";
 
 export const dynamic = "force-dynamic";
 
@@ -105,6 +109,50 @@ export default async function WorkersPrintPage({
 
   const orgName = organizations.find((o) => o.id === org)?.name ?? "";
 
+  // 個人単位のときは、過去に在籍していた期間の分も発行できるようにする。
+  // 当時の在留カード・指定書の画像（effective_on で期間に振り分け）と、
+  // 保存してある当時の在留カード情報（0136）をまとめて渡す
+  let periods: PrintPeriod[] = [];
+  if (workerParam && workers.length === 1) {
+    const [{ data: histories }, docs, cards] = await Promise.all([
+      supabase.from("work_histories").select("*").eq("worker_id", workerParam),
+      listWorkerDocs(workerParam),
+      listWorkerPeriodCards(supabase, workerParam).catch(() => []),
+    ]);
+    const today = todayStr();
+    const past = buildPastPeriods(((histories as WorkHistoryRow[] | null) ?? []), today);
+    const hasOngoing = ((histories as WorkHistoryRow[] | null) ?? []).some(
+      (h) => h.visa !== "本国での職歴" && (h.end_date === null || h.end_date >= today),
+    );
+    periods = past.map((p) => {
+      const forPeriod = docs.filter(
+        (d) => periodKeyFor(docPeriodDate(d), past, hasOngoing) === p.key,
+      );
+      const newest = (kind: string) =>
+        forPeriod.find((d) => d.kind === kind)?.url ?? "";
+      const saved = cards.find((c) => c.period_key === periodCardKey(p)) ?? null;
+      return {
+        key: p.key,
+        org: p.org,
+        start: p.start,
+        end: p.end,
+        residenceCardUrl: newest("在留カード"),
+        designationUrl: newest("指定書"),
+        card: saved
+          ? ({
+              residence_card_no: saved.residence_card_no ?? "",
+              residence_status: saved.residence_status ?? "",
+              residence_permit_date: saved.residence_permit_date,
+              residence_expiry_date: saved.residence_expiry_date,
+              employment_start_on: saved.employment_start_on,
+              leaving_on: saved.leaving_on,
+              note: saved.note ?? "",
+            } satisfies PeriodCardInput)
+          : null,
+      };
+    });
+  }
+
   return (
     <PrintClient
       organizations={organizations}
@@ -119,6 +167,7 @@ export default async function WorkersPrintPage({
       forList={forList}
       listForCompany={listForCompany}
       workers={printWorkers}
+      periods={periods}
       canEdit={me.role !== "viewer"}
     />
   );

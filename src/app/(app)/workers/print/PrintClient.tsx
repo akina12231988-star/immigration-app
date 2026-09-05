@@ -13,7 +13,27 @@ import { updateWorker } from "@/lib/supabase/queries/workers";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { uploadWorkerPhoto } from "@/lib/worker-photo";
 import { uploadWorkerDoc } from "@/lib/worker-docs";
+import {
+  EMPTY_PERIOD_CARD,
+  isPeriodCardEmpty,
+  PERIOD_CARD_FIELDS,
+  periodCardKey,
+  periodCardValues,
+  type PeriodCardInput,
+} from "@/lib/worker-period-cards";
+import { upsertWorkerPeriodCard } from "@/lib/supabase/queries/worker-period-cards";
 import type { Organization, WorkerInput } from "@/types/db";
+
+// 過去に在籍していた期間（この期間の個人票も発行できる）
+export interface PrintPeriod {
+  key: string;
+  org: string; // そのときの所属機関名
+  start: string; // 雇用開始日
+  end: string; // 退職日
+  residenceCardUrl: string; // その期間に登録した在留カードの画像
+  designationUrl: string; // その期間に登録した指定書の画像
+  card: PeriodCardInput | null; // 保存してある当時の在留カード情報
+}
 
 export interface PrintWorker {
   id: string;
@@ -54,6 +74,7 @@ export function PrintClient({
   forList,
   listForCompany,
   workers,
+  periods,
   canEdit,
 }: {
   organizations: Organization[];
@@ -68,11 +89,35 @@ export function PrintClient({
   forList: boolean;
   listForCompany: boolean;
   workers: PrintWorker[];
+  periods: PrintPeriod[]; // 過去に在籍していた期間（個人単位のときだけ）
   canEdit: boolean; // この画面から情報を訂正できるか（admin / staff）
 }) {
   const router = useRouter();
   const printDate = new Date().toLocaleDateString("ja-JP");
   const dateLabel = byLeaving ? "退職日" : "在留許可日";
+
+  // どの在籍期間の個人票を出すか（"current" = 今の内容。過去は在籍期間のキー）
+  const [periodKey, setPeriodKey] = useState("current");
+  const selectedPeriod = periods.find((p) => p.key === periodKey) ?? null;
+  const baseWorker = workers[0] ?? null;
+
+  // 過去の在籍期間を選んでいるときは、その当時の内容に差し替えて印刷する
+  const sheetWorkers: PrintWorker[] =
+    selectedPeriod && baseWorker
+      ? [
+          {
+            ...baseWorker,
+            ...periodCardValues(selectedPeriod, selectedPeriod.card, {
+              residenceCardNo: baseWorker.residenceCardNo,
+              residenceStatus: baseWorker.residenceStatus,
+              residencePermitDate: baseWorker.residencePermitDate,
+              residenceExpiryDate: baseWorker.residenceExpiryDate,
+            }),
+            residenceCardUrl: selectedPeriod.residenceCardUrl,
+            designationUrl: selectedPeriod.designationUrl,
+          },
+        ]
+      : workers;
 
   // 条件変更でURLを組み立て直す（個人単位は worker パラメータを維持。
   // これが消えると誰の印刷か分からなくなり、切替した瞬間に真っ白になる）
@@ -101,8 +146,8 @@ export function PrintClient({
   const sanitize = (s: string) => s.replace(/[\\/:*?"<>|]/g, "").trim();
   const fileName = forList
     ? sanitize(`${orgName || "外国人"}_一覧表`)
-    : individual && workers.length === 1
-      ? sanitize(`${workers[0].name}_${workers[0].orgName || orgName}_個人票`)
+    : individual && sheetWorkers.length === 1
+      ? sanitize(`${sheetWorkers[0].name}_${sheetWorkers[0].orgName || orgName}_個人票`)
       : sanitize(`${orgName || "外国人"}_個人票`);
   const printWithName = () => {
     const prev = document.title;
@@ -168,6 +213,35 @@ export function PrintClient({
               >
                 会社提出用（QRなし）
               </button>
+            </div>
+          )}
+
+          {/* いつの在籍分の個人票かを選ぶ（過去に在籍していた会社の分も発行できる） */}
+          {individual && periods.length > 0 && (
+            <div className="space-y-2 rounded-xl border border-border bg-surface p-3">
+              <p className="text-xs font-bold text-muted">いつの在籍分を発行しますか</p>
+              <div className="flex flex-wrap gap-1.5">
+                <PeriodChip active={!selectedPeriod} onClick={() => setPeriodKey("current")}>
+                  現在の内容
+                </PeriodChip>
+                {periods.map((p) => (
+                  <PeriodChip
+                    key={p.key}
+                    active={periodKey === p.key}
+                    onClick={() => setPeriodKey(p.key)}
+                  >
+                    {p.org}（{p.start}〜{p.end}）
+                  </PeriodChip>
+                ))}
+              </div>
+              {selectedPeriod && baseWorker && (
+                <PeriodCardEditor
+                  workerId={baseWorker.id}
+                  period={selectedPeriod}
+                  canEdit={canEdit}
+                  onSaved={() => router.refresh()}
+                />
+              )}
             </div>
           )}
 
@@ -292,14 +366,16 @@ export function PrintClient({
         </div>
       ) : (
         <div className="print-root">
-          {workers.map((w) => (
+          {sheetWorkers.map((w) => (
             <WorkerSheet
-              key={w.id}
+              key={`${w.id}-${periodKey}`}
               worker={w}
               orgName={w.orgName || orgName}
               printDate={printDate}
               forCompany={forCompany}
-              canEdit={canEdit}
+              /* 過去の在籍期間はその期間の欄（下の入力欄）で直す。
+                 ここで直すと今の情報が書き換わってしまうため編集は出さない */
+              canEdit={canEdit && !selectedPeriod}
               onSaved={() => router.refresh()}
             />
           ))}
@@ -802,6 +878,126 @@ function DocBox({
             <span className="text-[10px] text-gray-400">未登録</span>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+// 在籍期間の切り替えチップ
+function PeriodChip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ${
+        active ? "bg-brand text-brand-foreground" : "border border-border text-muted"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+// その在籍期間の在留カード情報（当時の内容）の入力。
+// 空欄のままにした項目は、今の情報・在籍期間の日付で印刷される
+function PeriodCardEditor({
+  workerId,
+  period,
+  canEdit,
+  onSaved,
+}: {
+  workerId: string;
+  period: PrintPeriod;
+  canEdit: boolean;
+  onSaved: () => void;
+}) {
+  const [card, setCard] = useState<PeriodCardInput>(period.card ?? EMPTY_PERIOD_CARD);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  // 期間を切り替えたら、その期間の保存済みの内容に入れ替える
+  const [prevKey, setPrevKey] = useState(period.key);
+  if (prevKey !== period.key) {
+    setPrevKey(period.key);
+    setCard(period.card ?? EMPTY_PERIOD_CARD);
+    setSaved(false);
+    setError(null);
+  }
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await upsertWorkerPeriodCard(createClient(), {
+        workerId,
+        periodKey: periodCardKey(period),
+        orgName: period.org,
+        periodStart: period.start,
+        periodEnd: period.end,
+        card,
+      });
+      setSaved(true);
+      onSaved();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? `保存に失敗しました: ${err.message}（Supabaseで 0136_worker_period_cards.sql を適用してください）`
+          : "保存に失敗しました",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-border bg-background p-2.5">
+      <p className="mb-1 text-[11px] font-bold text-muted">
+        {period.org} に在籍していた時の在留カード情報
+      </p>
+      <p className="mb-2 text-[11px] leading-relaxed text-muted">
+        当時の内容を入れると、この期間の個人票はその内容で印刷されます。空欄のままにした項目は、
+        今の情報（雇用開始日・退職日は在籍期間の日付）で印刷されます。
+        {isPeriodCardEmpty(period.card) && "　※この期間の内容はまだ入力されていません。"}
+      </p>
+      {error && (
+        <p className="mb-2 rounded-lg bg-seal/10 px-2 py-1.5 text-[11px] text-seal">{error}</p>
+      )}
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        {PERIOD_CARD_FIELDS.map((f) => (
+          <label key={f.key} className="flex flex-col gap-0.5 text-[11px] font-bold text-muted">
+            {f.label}
+            <input
+              type={f.date ? "date" : "text"}
+              value={(card[f.key] as string | null) ?? ""}
+              disabled={!canEdit}
+              onChange={(e) => {
+                const v = e.target.value;
+                setSaved(false);
+                setCard((prev) => ({ ...prev, [f.key]: f.date ? v || null : v }));
+              }}
+              className="min-h-[34px] rounded-lg border border-border bg-surface px-2 text-xs font-normal tabular-nums text-foreground disabled:opacity-60"
+            />
+          </label>
+        ))}
+      </div>
+      {canEdit && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void save()}
+          className="mt-2 rounded-lg bg-brand px-3 py-1.5 text-xs font-bold text-brand-foreground disabled:opacity-50"
+        >
+          {busy ? "保存中…" : saved ? "保存しました" : "この期間の内容を保存"}
+        </button>
       )}
     </div>
   );
