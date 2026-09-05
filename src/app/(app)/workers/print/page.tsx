@@ -5,6 +5,8 @@ import { listOrganizations } from "@/lib/supabase/queries/organizations";
 import { getWorkerPhotoUrl, getWorkerLatestDocUrls, listWorkerDocs } from "../actions";
 import { PrintClient, type PrintPeriod, type PrintWorker } from "./PrintClient";
 import { buildPastPeriods, docPeriodDate, periodKeyFor } from "@/lib/worker-doc-periods";
+import { orgEmploymentDates, type OrgHistoryRow } from "@/lib/worker-org-dates";
+import { normalizeOrgEmploymentStarts } from "@/lib/org-employment";
 import {
   cardAsOf,
   grantAsOf,
@@ -72,6 +74,23 @@ export default async function WorkersPrintPage({
     workers = (data as Worker[]) ?? [];
   }
 
+  // 表示する人の職歴（雇用開始日・退職日を、表示している所属機関のものにそろえるために使う）。
+  // workers.leaving_on は最新の1件なので、そのままでは前の会社の退職日が出てしまう
+  const workerIds = workers.map((w) => w.id);
+  let historiesByWorker: Record<string, OrgHistoryRow[]> = {};
+  if (workerIds.length > 0) {
+    const { data: rows } = await supabase
+      .from("work_histories")
+      .select("worker_id, org_name, start_date, end_date, visa")
+      .in("worker_id", workerIds);
+    historiesByWorker = ((rows as (OrgHistoryRow & { worker_id: string })[] | null) ?? []).reduce<
+      Record<string, OrgHistoryRow[]>
+    >((acc, r) => {
+      acc[r.worker_id] = [...(acc[r.worker_id] ?? []), r];
+      return acc;
+    }, {});
+  }
+
   // 各外国人の顔写真・最新書類の署名付きURL（一覧表では不要なので取得しない）
   const printWorkers: PrintWorker[] = await Promise.all(
     workers.map(async (w) => {
@@ -86,6 +105,19 @@ export default async function WorkersPrintPage({
         docs = d;
       }
       const orgId = w.current_organization_id;
+      const displayOrgName = orgId ? (organizations.find((o) => o.id === orgId)?.name ?? "") : "";
+      // 表示している所属機関の雇用開始日・退職日（在籍中なら退職日は出さない）
+      const dates = orgEmploymentDates({
+        orgName: displayOrgName,
+        histories: historiesByWorker[w.id] ?? [],
+        orgStartOn:
+          normalizeOrgEmploymentStarts(w.org_employment_starts).find(
+            (e) => e.organization_id === orgId && e.start_on,
+          )?.start_on ?? null,
+        employmentStartOn: w.employment_start_on,
+        leavingOn: w.leaving_on,
+        hasCurrentOrg: Boolean(orgId),
+      });
       return {
         id: w.id,
         workerCode: w.worker_code ?? "",
@@ -101,8 +133,8 @@ export default async function WorkersPrintPage({
         residenceStatus: w.residence_status,
         residencePermitDate: w.residence_permit_date,
         residenceExpiryDate: w.residence_expiry_date,
-        employmentStartOn: w.employment_start_on,
-        leavingOn: w.leaving_on,
+        employmentStartOn: dates.employmentStartOn,
+        leavingOn: dates.leavingOn,
         assignedOffice: w.assigned_office,
         residenceNote: w.residence_note,
         messengerLink: w.messenger_link,
@@ -121,8 +153,7 @@ export default async function WorkersPrintPage({
   // 保存してある当時の在留カード情報（0136）をまとめて渡す
   let periods: PrintPeriod[] = [];
   if (workerParam && workers.length === 1) {
-    const [{ data: histories }, docs, cards, { data: apps }, { data: cardHistory }] = await Promise.all([
-      supabase.from("work_histories").select("*").eq("worker_id", workerParam),
+    const [docs, cards, { data: apps }, { data: cardHistory }] = await Promise.all([
       listWorkerDocs(workerParam),
       listWorkerPeriodCards(supabase, workerParam).catch(() => []),
       // 当時の最終版の在留カード（その時点で最後に許可された内容）を出すため、
@@ -150,8 +181,10 @@ export default async function WorkersPrintPage({
       approval_date: a.approval_date,
     }));
     const today = todayStr();
-    const past = buildPastPeriods(((histories as WorkHistoryRow[] | null) ?? []), today);
-    const hasOngoing = ((histories as WorkHistoryRow[] | null) ?? []).some(
+    // 職歴は上でまとめて読んだものを使う
+    const histories = (historiesByWorker[workerParam] ?? []) as WorkHistoryRow[];
+    const past = buildPastPeriods(histories, today);
+    const hasOngoing = histories.some(
       (h) => h.visa !== "本国での職歴" && (h.end_date === null || h.end_date >= today),
     );
     periods = past.map((p) => {
