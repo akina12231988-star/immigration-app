@@ -5,7 +5,12 @@ import { listOrganizations } from "@/lib/supabase/queries/organizations";
 import { getWorkerPhotoUrl, getWorkerLatestDocUrls, listWorkerDocs } from "../actions";
 import { PrintClient, type PrintPeriod, type PrintWorker } from "./PrintClient";
 import { buildPastPeriods, docPeriodDate, periodKeyFor } from "@/lib/worker-doc-periods";
-import { periodCardKey, type PeriodCardInput } from "@/lib/worker-period-cards";
+import {
+  grantAsOf,
+  periodCardKey,
+  type GrantRecord,
+  type PeriodCardInput,
+} from "@/lib/worker-period-cards";
 import { listWorkerPeriodCards } from "@/lib/supabase/queries/worker-period-cards";
 import { todayStr } from "@/lib/application-alerts";
 import type { WorkHistoryRow, Worker } from "@/types/db";
@@ -114,11 +119,26 @@ export default async function WorkersPrintPage({
   // 保存してある当時の在留カード情報（0136）をまとめて渡す
   let periods: PrintPeriod[] = [];
   if (workerParam && workers.length === 1) {
-    const [{ data: histories }, docs, cards] = await Promise.all([
+    const [{ data: histories }, docs, cards, { data: apps }] = await Promise.all([
       supabase.from("work_histories").select("*").eq("worker_id", workerParam),
       listWorkerDocs(workerParam),
       listWorkerPeriodCards(supabase, workerParam).catch(() => []),
+      // 当時の最終版の在留カード（その時点で最後に許可された内容）を出すため、
+      // 申請一覧の許可欄を読む
+      supabase
+        .from("immigration_applications")
+        .select(
+          "granted_card_no, granted_permit_date, granted_expiry_date, visa_at_grant, approval_date",
+        )
+        .eq("worker_id", workerParam),
     ]);
+    const grants = ((apps as GrantRecord[] | null) ?? []).map((a) => ({
+      granted_card_no: a.granted_card_no ?? "",
+      granted_permit_date: a.granted_permit_date,
+      granted_expiry_date: a.granted_expiry_date,
+      visa_at_grant: a.visa_at_grant ?? "",
+      approval_date: a.approval_date,
+    }));
     const today = todayStr();
     const past = buildPastPeriods(((histories as WorkHistoryRow[] | null) ?? []), today);
     const hasOngoing = ((histories as WorkHistoryRow[] | null) ?? []).some(
@@ -138,6 +158,8 @@ export default async function WorkersPrintPage({
         end: p.end,
         residenceCardUrl: newest("在留カード"),
         designationUrl: newest("指定書"),
+        // 退職日の時点で最後に許可された内容（＝当時の最終版の在留カード）
+        grant: grantAsOf(grants, p.end),
         card: saved
           ? ({
               residence_card_no: saved.residence_card_no ?? "",

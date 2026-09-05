@@ -19,6 +19,7 @@ import {
   PERIOD_CARD_FIELDS,
   periodCardKey,
   periodCardValues,
+  type GrantValues,
   type PeriodCardInput,
 } from "@/lib/worker-period-cards";
 import { upsertWorkerPeriodCard } from "@/lib/supabase/queries/worker-period-cards";
@@ -32,6 +33,7 @@ export interface PrintPeriod {
   end: string; // 退職日
   residenceCardUrl: string; // その期間に登録した在留カードの画像
   designationUrl: string; // その期間に登録した指定書の画像
+  grant: GrantValues | null; // 当時の最終版の許可内容（申請一覧から）
   card: PeriodCardInput | null; // 保存してある当時の在留カード情報
 }
 
@@ -107,12 +109,7 @@ export function PrintClient({
       ? [
           {
             ...baseWorker,
-            ...periodCardValues(selectedPeriod, selectedPeriod.card, {
-              residenceCardNo: baseWorker.residenceCardNo,
-              residenceStatus: baseWorker.residenceStatus,
-              residencePermitDate: baseWorker.residencePermitDate,
-              residenceExpiryDate: baseWorker.residenceExpiryDate,
-            }),
+            ...periodCardValues(selectedPeriod, selectedPeriod.card, selectedPeriod.grant),
             residenceCardUrl: selectedPeriod.residenceCardUrl,
             designationUrl: selectedPeriod.designationUrl,
           },
@@ -743,28 +740,16 @@ function WorkerSheet({
         <DocBox
           label="最新 在留カード"
           url={worker.residenceCardUrl}
-          edit={
-            editing
-              ? {
-                  busy: uploading === "在留カード",
-                  inputRef: cardInputRef,
-                  onFile: (f) => void uploadImage("在留カード", f),
-                }
-              : undefined
-          }
+          busy={uploading === "在留カード"}
+          inputRef={cardInputRef}
+          edit={editing ? { onFile: (f) => void uploadImage("在留カード", f) } : undefined}
         />
         <DocBox
           label="最新 指定書"
           url={worker.designationUrl}
-          edit={
-            editing
-              ? {
-                  busy: uploading === "指定書",
-                  inputRef: designationInputRef,
-                  onFile: (f) => void uploadImage("指定書", f),
-                }
-              : undefined
-          }
+          busy={uploading === "指定書"}
+          inputRef={designationInputRef}
+          edit={editing ? { onFile: (f) => void uploadImage("指定書", f) } : undefined}
         />
       </div>
     </div>
@@ -809,14 +794,16 @@ function Row({
 function DocBox({
   label,
   url,
+  busy = false,
+  inputRef,
   edit,
 }: {
   label: string;
   url: string;
+  busy?: boolean; // アップロード中
+  inputRef?: React.RefObject<HTMLInputElement | null>; // 隠しファイル入力（refはそのまま渡す）
   // 編集モードのときだけ渡される（クリック / ドロップで差し替え）
   edit?: {
-    busy: boolean;
-    inputRef: React.RefObject<HTMLInputElement | null>;
     onFile: (file: File | undefined) => void;
   };
 }) {
@@ -834,7 +821,7 @@ function DocBox({
       {edit ? (
         <>
           <input
-            ref={edit.inputRef}
+            ref={inputRef}
             type="file"
             accept="image/*"
             className="hidden"
@@ -846,13 +833,13 @@ function DocBox({
           />
           <FileDropArea
             onFiles={(files) => edit.onFile(files[0])}
-            disabled={edit.busy}
+            disabled={busy}
             title="クリックまたは画像をドロップして差し替えます"
             className={`${frame} relative cursor-pointer border border-dashed border-gray-400`}
           >
             <button
               type="button"
-              onClick={() => edit.inputRef.current?.click()}
+              onClick={() => inputRef?.current?.click()}
               className="absolute inset-0 z-10 print:hidden"
               aria-label={`${label}をアップロード`}
             />
@@ -862,7 +849,7 @@ function DocBox({
             ) : (
               <span className="text-[10px] text-gray-400">未登録（クリックで追加）</span>
             )}
-            {edit.busy && (
+            {busy && (
               <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40">
                 <Loader2 size={24} className="animate-spin text-white" />
               </div>
@@ -964,9 +951,12 @@ function PeriodCardEditor({
         {period.org} に在籍していた時の在留カード情報
       </p>
       <p className="mb-2 text-[11px] leading-relaxed text-muted">
-        当時の内容を入れると、この期間の個人票はその内容で印刷されます。空欄のままにした項目は、
-        今の情報（雇用開始日・退職日は在籍期間の日付）で印刷されます。
-        {isPeriodCardEmpty(period.card) && "　※この期間の内容はまだ入力されていません。"}
+        空欄のままなら、退職日の時点で最後に許可された内容（申請一覧の許可欄）と在籍期間の日付で印刷します。
+        違うところがあれば入れてください。入れた内容が優先されます。今の在留カードの内容は使いません。
+        {isPeriodCardEmpty(period.card) &&
+          (period.grant
+            ? `　※今は当時の許可（${period.grant.residencePermitDate ?? ""}）の内容で印刷します。`
+            : "　※申請一覧に当時の許可が見つからないため、在留カードの欄は空欄で印刷します。")}
       </p>
       {error && (
         <p className="mb-2 rounded-lg bg-seal/10 px-2 py-1.5 text-[11px] text-seal">{error}</p>
