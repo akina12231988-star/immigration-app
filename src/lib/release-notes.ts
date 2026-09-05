@@ -23,6 +23,16 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-09-05",
+    title: "「預かり番号がまだ出ていない人」にフリガナとMessengerを出すようにしました",
+    where: "申請準備（TODO一覧の申請準備も同じ） ＞ 📦 預かり番号がまだ出ていない人",
+    href: "/workers/renewals",
+    items: [
+      "各行に外国人詳細のフリガナを出すようにしました（未登録の人は出ません）。",
+      "Messengerのリンクが登録されている人は「Messenger」のリンクが出て、その場で本人に連絡できます。原本を送ってもらう連絡がすぐできます。",
+    ],
+  },
+  {
+    date: "2026-09-05",
     title: "A4で印刷のあと「←」で行ったり来たりになるのを直しました",
     where: "申請準備 ＞ 📋 申請書類の準備状況の詳細 ＞ 🖨 A4で印刷",
     items: [
