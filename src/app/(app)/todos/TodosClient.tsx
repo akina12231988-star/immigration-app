@@ -3,7 +3,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, ClipboardList, Copy, Plus, Settings2, Trash2, TriangleAlert } from "lucide-react";
+import {
+  Check,
+  ClipboardList,
+  Copy,
+  MessageCircle,
+  Plus,
+  Settings2,
+  Trash2,
+  TriangleAlert,
+} from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Combobox } from "@/components/ui/Combobox";
@@ -24,6 +33,7 @@ import { NameSearchBox } from "@/components/ui/NameSearchBox";
 import { matchesOrganizationName, organizationSuggestions } from "@/lib/org-search";
 import { listActiveCustodyNoIndex } from "@/lib/supabase/queries/custody";
 import { formatStorageNo } from "@/lib/custody";
+import { messengerWebUrl } from "@/lib/messenger-link";
 import { buildCustodyNoIndex, findCustodyNo, type CustodyNoIndex } from "@/lib/custody-lookup";
 import {
   CUSTODY_GROUP_MODES,
@@ -154,6 +164,10 @@ export function TodosClient({
   const [expiryByWorker, setExpiryByWorker] = useState<Record<string, string>>({});
   // 国籍（外国人ID → 国籍）。預かり番号がまだ出ていない人の一覧に出す
   const [nationalityByWorker, setNationalityByWorker] = useState<Record<string, string>>({});
+  // フリガナ（外国人ID → カナ）。預かり番号がまだ出ていない人の一覧に出す
+  const [kanaByWorker, setKanaByWorker] = useState<Record<string, string>>({});
+  // Messengerのリンク（外国人ID → リンク）。登録があれば一覧から連絡できるようにする
+  const [messengerByWorker, setMessengerByWorker] = useState<Record<string, string>>({});
   // 必要書類がどれだけ揃ったか（キーは `${worker_id} ${todo_no}`。書類 ○% の表示に使う）
   const [prepProgress, setPrepProgress] = useState<Record<string, PrepProgress>>({});
   // 並び順（申請準備のTODOのみ。既定は登録順、在留期限が近い順に並べ替えられる）
@@ -301,7 +315,7 @@ export function TodosClient({
             supabase
               .from("workers")
               .select(
-                "id, application_prep_organization_id, current_organization_id, residence_expiry_date, nationality",
+                "id, application_prep_organization_id, current_organization_id, residence_expiry_date, nationality, kana, messenger_link",
               )
               .in("id", workerIds),
             supabase.from("organizations").select("id, name"),
@@ -312,6 +326,8 @@ export function TodosClient({
             const out: Record<string, string> = {};
             const expiry: Record<string, string> = {};
             const nationality: Record<string, string> = {};
+            const kana: Record<string, string> = {};
+            const messenger: Record<string, string> = {};
             for (const r of (w.data as
               | {
                   id: string;
@@ -319,6 +335,8 @@ export function TodosClient({
                   current_organization_id: string | null;
                   residence_expiry_date: string | null;
                   nationality: string | null;
+                  kana: string | null;
+                  messenger_link: string | null;
                 }[]
               | null) ?? []) {
               out[r.id] =
@@ -326,10 +344,14 @@ export function TodosClient({
                 "";
               if (r.residence_expiry_date) expiry[r.id] = r.residence_expiry_date;
               if (r.nationality) nationality[r.id] = r.nationality;
+              if (r.kana) kana[r.id] = r.kana;
+              if (r.messenger_link) messenger[r.id] = r.messenger_link;
             }
             setOrgNameByWorker(out);
             setExpiryByWorker(expiry);
             setNationalityByWorker(nationality);
+            setKanaByWorker(kana);
+            setMessengerByWorker(messenger);
           });
           // 必要書類がどれだけ揃ったか（読めなくても他の表示は使えるようにする）
           listPrepProgress(supabase, workerIds)
@@ -550,6 +572,8 @@ export function TodosClient({
         orgName: t.worker_id ? (orgNameByWorker[t.worker_id] ?? "") : "",
         nationality: t.worker_id ? (nationalityByWorker[t.worker_id] ?? "") : "",
         expiry: t.worker_id ? (expiryByWorker[t.worker_id] ?? "") : "",
+        kana: t.worker_id ? (kanaByWorker[t.worker_id] ?? "") : "",
+        messenger: t.worker_id ? (messengerByWorker[t.worker_id] ?? "") : "",
       }));
   }, [
     kind,
@@ -559,6 +583,8 @@ export function TodosClient({
     orgNameByWorker,
     expiryByWorker,
     nationalityByWorker,
+    kanaByWorker,
+    messengerByWorker,
   ]);
 
   // 選んだまとめ方（所属機関別・国籍別、2段のまとめ）で並べたもの
@@ -1003,7 +1029,7 @@ export function TodosClient({
                         </p>
                       )}
                       <ul className="space-y-0.5 pl-5 text-xs text-muted">
-                        {sub.rows.map(({ todo: t, expiry, nationality, orgName }) => (
+                        {sub.rows.map(({ todo: t, expiry, nationality, orgName, kana, messenger }) => (
                           <li key={t.id} className="flex flex-wrap items-center gap-x-2">
                             <span className="font-bold tabular-nums">
                               {displayTodoNo(t.todo_no)}
@@ -1020,12 +1046,25 @@ export function TodosClient({
                                 {t.worker_name ?? "（外国人ひも付けなし）"}
                               </span>
                             )}
+                            {kana && <span>{kana}</span>}
                             {/* 見出しに出ていないほうだけを行に出す（同じ言葉を繰り返さない） */}
                             {custodyGroupMode === "所属機関別" && nationality && (
                               <span>{nationality}</span>
                             )}
                             {custodyGroupMode === "国籍別" && orgName && <span>{orgName}</span>}
                             {expiry && <span>在留期限 {expiry}</span>}
+                            {/* Messengerのリンクが登録されている人は、ここから連絡できる */}
+                            {messenger && (
+                              <a
+                                href={messengerWebUrl(messenger)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-0.5 font-bold text-brand hover:underline"
+                              >
+                                <MessageCircle size={12} />
+                                Messenger
+                              </a>
+                            )}
                           </li>
                         ))}
                       </ul>

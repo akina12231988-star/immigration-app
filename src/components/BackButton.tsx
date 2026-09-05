@@ -12,6 +12,7 @@ const BACK_TIMEOUT_MS = 400;
 // fallbackHref へ移動する。
 // ブラウザによっては新しいタブでも history.length が2以上になり、戻るを押しても
 // 何も起きないことがあるため、少し待っても画面が変わらなければ fallbackHref へ移動する。
+// このときは履歴に足さず今の画面を置き換える（足すと「←」で元の画面と行ったり来たりになる）。
 export function BackButton({
   fallbackHref,
   className = "flex h-9 w-9 items-center justify-center rounded-full hover:bg-brand-foreground/10",
@@ -36,7 +37,7 @@ export function BackButton({
       aria-label="戻る"
       onClick={() => {
         if (window.history.length <= 1) {
-          router.push(fallbackHref);
+          router.replace(fallbackHref);
           return;
         }
         const before = window.location.href;
@@ -44,7 +45,7 @@ export function BackButton({
         if (timerRef.current) clearTimeout(timerRef.current);
         timerRef.current = setTimeout(() => {
           // 戻る先が無くてURLが変わらないときは、決めておいた画面へ移動する
-          if (window.location.href === before) router.push(fallbackHref);
+          if (window.location.href === before) router.replace(fallbackHref);
         }, BACK_TIMEOUT_MS);
       }}
       className={className}
