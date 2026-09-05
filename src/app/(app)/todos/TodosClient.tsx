@@ -25,6 +25,12 @@ import { matchesOrganizationName, organizationSuggestions } from "@/lib/org-sear
 import { listActiveCustodyNoIndex } from "@/lib/supabase/queries/custody";
 import { formatStorageNo } from "@/lib/custody";
 import { buildCustodyNoIndex, findCustodyNo, type CustodyNoIndex } from "@/lib/custody-lookup";
+import {
+  CUSTODY_GROUP_MODES,
+  custodyGroupCountLabel,
+  groupCustodyRows,
+  type CustodyGroupMode,
+} from "@/lib/todo-custody-groups";
 import { createClient } from "@/lib/supabase/client";
 import { dbErrorMessage } from "@/lib/errors";
 import {
@@ -104,9 +110,6 @@ export interface JobFlowRow {
 // 担当者の名簿に出てこない文字にして、実在の名前とぶつからないようにしている
 const NO_TANTOU = "（担当者未定）";
 
-// 所属機関が決まっていない人のまとめ方（預かり番号のまとめで使う見出し）
-const NO_ORG = "（所属機関未設定）";
-
 export function TodosClient({
   canEdit,
   fixedKind,
@@ -155,6 +158,8 @@ export function TodosClient({
   const [prepProgress, setPrepProgress] = useState<Record<string, PrepProgress>>({});
   // 並び順（申請準備のTODOのみ。既定は登録順、在留期限が近い順に並べ替えられる）
   const [sortKey, setSortKey] = useState<"既定" | "在留期限">("既定");
+  // 預かり番号がまだ出ていない人のまとめ方（所属機関別・国籍別。既定は所属機関の中を国籍別）
+  const [custodyGroupMode, setCustodyGroupMode] = useState<CustodyGroupMode>("所属機関別＞国籍別");
 
   // そのTODOの書類担当者（番号の書き方の揺れは正規化して突き合わせ。無ければその人の担当者）
   const tantouOf = (t: TodoRow): string => {
@@ -533,26 +538,19 @@ export function TodosClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind, kindTodos, kindOptions, prepTantou, orgNameByWorker, expiryByWorker]);
 
-  // 預かり番号がまだ出ていない人（保管ボックスに在留カード・パスポートが入っていない人）を
-  // 所属機関ごとにまとめる。どの会社の誰から原本を預かればよいかが分かるようにする
-  const noCustodyByOrg = useMemo(() => {
+  // 預かり番号がまだ出ていない人（保管ボックスに在留カード・パスポートが入っていない人）。
+  // どの会社の誰から原本を預かればよいかが分かるよう、下でまとめ方を選んで並べる
+  const noCustodyRows = useMemo(() => {
     if (kind !== "申請準備") return [];
-    const groups = new Map<string, { todo: TodoRow; expiry: string; nationality: string }[]>();
-    for (const t of kindTodos) {
-      if (stageOfStatus(t.status, kindOptions) === "完了") continue;
-      if (findCustodyNo(custodyNoIndex, t.worker_id, t.worker_name ?? "") != null) continue;
-      const orgName = t.worker_id ? (orgNameByWorker[t.worker_id] ?? "") : "";
-      const key = orgName || NO_ORG;
-      const expiry = t.worker_id ? (expiryByWorker[t.worker_id] ?? "") : "";
-      const nationality = t.worker_id ? (nationalityByWorker[t.worker_id] ?? "") : "";
-      groups.set(key, [...(groups.get(key) ?? []), { todo: t, expiry, nationality }]);
-    }
-    return [...groups.entries()].sort((a, b) => {
-      // 所属機関が決まっていない人は最後にまとめる
-      if (a[0] === NO_ORG) return 1;
-      if (b[0] === NO_ORG) return -1;
-      return a[0].localeCompare(b[0], "ja");
-    });
+    return kindTodos
+      .filter((t) => stageOfStatus(t.status, kindOptions) !== "完了")
+      .filter((t) => findCustodyNo(custodyNoIndex, t.worker_id, t.worker_name ?? "") == null)
+      .map((t) => ({
+        todo: t,
+        orgName: t.worker_id ? (orgNameByWorker[t.worker_id] ?? "") : "",
+        nationality: t.worker_id ? (nationalityByWorker[t.worker_id] ?? "") : "",
+        expiry: t.worker_id ? (expiryByWorker[t.worker_id] ?? "") : "",
+      }));
   }, [
     kind,
     kindTodos,
@@ -563,9 +561,10 @@ export function TodosClient({
     nationalityByWorker,
   ]);
 
-  const noCustodyCount = useMemo(
-    () => noCustodyByOrg.reduce((sum, [, rows]) => sum + rows.length, 0),
-    [noCustodyByOrg],
+  // 選んだまとめ方（所属機関別・国籍別、2段のまとめ）で並べたもの
+  const noCustodyGroups = useMemo(
+    () => groupCustodyRows(noCustodyRows, custodyGroupMode),
+    [noCustodyRows, custodyGroupMode],
   );
 
   // 在留期限アラートの担当者ごとのまとめ（同じ担当者の人数が多い順）。担当者未定はまとめて最後に出す
@@ -956,14 +955,16 @@ export function TodosClient({
         </div>
       )}
 
-      {/* 預かり番号がまだ出ていない人（原本を預かっていない人）を所属機関別に出す。
+      {/* 預かり番号がまだ出ていない人（原本を預かっていない人）。
+          所属機関別・国籍別など、まとめ方を選んで出せる。
           件数が多くなるので、見出しを押して開く形にしている */}
-      {kind === "申請準備" && !loading && noCustodyCount > 0 && (
+      {kind === "申請準備" && !loading && noCustodyRows.length > 0 && (
         <div className="rounded-2xl border border-border bg-surface px-3 py-2.5">
           <details>
             <summary className="cursor-pointer select-none text-sm font-bold text-muted">
-              📦 預かり番号がまだ出ていない人（{noCustodyCount}件・所属機関{noCustodyByOrg.length}社）
-              — 押すと所属機関別に出ます
+              📦 預かり番号がまだ出ていない人（{noCustodyRows.length}件・
+              {custodyGroupCountLabel(custodyGroupMode, noCustodyGroups.length)}）
+              — 押すと{custodyGroupMode}に出ます
             </summary>
             <p className="mt-1 text-[11px] text-muted">
               保管ボックスに在留カード・パスポートの預かりが登録されていない人です。預かったら
@@ -972,33 +973,64 @@ export function TodosClient({
               </Link>
               で登録すると、この一覧から消えて行に預かり番号が出ます。
             </p>
+            {/* どういうまとめ方で見たいかを選ぶ */}
+            <label className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] font-bold text-muted">
+              まとめ方
+              <select
+                value={custodyGroupMode}
+                onChange={(e) => setCustodyGroupMode(e.target.value as CustodyGroupMode)}
+                className="min-h-[32px] rounded-lg border border-border bg-background px-2 text-xs font-bold focus:border-brand focus:outline-none"
+              >
+                {CUSTODY_GROUP_MODES.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </label>
             <div className="mt-1.5 space-y-2">
-              {noCustodyByOrg.map(([orgName, rows]) => (
-                <div key={orgName}>
+              {noCustodyGroups.map((group) => (
+                <div key={group.label}>
                   <p className="text-xs font-bold text-foreground">
-                    {orgName}（{rows.length}件）
+                    {group.label}（{group.count}件）
                   </p>
-                  <ul className="space-y-0.5 pl-5 text-xs text-muted">
-                    {rows.map(({ todo: t, expiry, nationality }) => (
-                      <li key={t.id} className="flex flex-wrap items-center gap-x-2">
-                        <span className="font-bold tabular-nums">{displayTodoNo(t.todo_no)}</span>
-                        {t.worker_id ? (
-                          <Link
-                            href={`/workers/${t.worker_id}`}
-                            className="font-bold text-brand hover:underline"
-                          >
-                            {t.worker_name ?? "（外国人）"}
-                          </Link>
-                        ) : (
-                          <span className="font-bold">
-                            {t.worker_name ?? "（外国人ひも付けなし）"}
-                          </span>
-                        )}
-                        {nationality && <span>{nationality}</span>}
-                        {expiry && <span>在留期限 {expiry}</span>}
-                      </li>
-                    ))}
-                  </ul>
+                  {group.sub.map((sub) => (
+                    <div key={sub.label} className={sub.label ? "pl-3" : ""}>
+                      {/* 2段のまとめのときだけ、中の見出し（国籍・所属機関）を出す */}
+                      {sub.label && (
+                        <p className="mt-0.5 text-[11px] font-bold text-muted">
+                          {sub.label}（{sub.rows.length}件）
+                        </p>
+                      )}
+                      <ul className="space-y-0.5 pl-5 text-xs text-muted">
+                        {sub.rows.map(({ todo: t, expiry, nationality, orgName }) => (
+                          <li key={t.id} className="flex flex-wrap items-center gap-x-2">
+                            <span className="font-bold tabular-nums">
+                              {displayTodoNo(t.todo_no)}
+                            </span>
+                            {t.worker_id ? (
+                              <Link
+                                href={`/workers/${t.worker_id}`}
+                                className="font-bold text-brand hover:underline"
+                              >
+                                {t.worker_name ?? "（外国人）"}
+                              </Link>
+                            ) : (
+                              <span className="font-bold">
+                                {t.worker_name ?? "（外国人ひも付けなし）"}
+                              </span>
+                            )}
+                            {/* 見出しに出ていないほうだけを行に出す（同じ言葉を繰り返さない） */}
+                            {custodyGroupMode === "所属機関別" && nationality && (
+                              <span>{nationality}</span>
+                            )}
+                            {custodyGroupMode === "国籍別" && orgName && <span>{orgName}</span>}
+                            {expiry && <span>在留期限 {expiry}</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
