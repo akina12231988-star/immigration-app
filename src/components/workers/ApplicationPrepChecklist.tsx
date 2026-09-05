@@ -975,8 +975,8 @@ export function ApplicationPrepChecklist({
         {/* この内容（所属機関・外国人・チェックリスト・賃金・日付）をA4縦1枚にまとめて印刷する */}
         {current != null && (
           <Link
+            /* 同じタブで開く。別のタブだと戻る先が無く、「←」で行き来できなくなるため */
             href={`${prepDetailHref(workerId)}/print?todo=${encodeURIComponent(current.todo_no)}`}
-            target="_blank"
             className="rounded-full bg-brand px-2.5 py-1 text-[10px] font-bold text-brand-foreground"
           >
             🖨 A4で印刷
