@@ -4,11 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Check, ClipboardList, Copy, Plus, Settings2, Trash2, TriangleAlert } from "lucide-react";
-import { FileDropArea } from "@/components/ui/FileDropArea";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Combobox } from "@/components/ui/Combobox";
-import { SavedPlanDatesSection } from "@/components/workers/ApplicationPrepExtras";
 import { APPLICATION_CONTENT_CHOICES } from "@/lib/worker-situation";
 import { listFilingAgents } from "@/lib/supabase/queries/agents";
 import {
@@ -60,14 +58,6 @@ import {
   type TodoRow,
 } from "@/lib/supabase/queries/todos";
 import {
-  createTodoCorrectionTicket,
-  deleteTodoCorrection,
-  listTodoCorrections,
-  registerTodoCorrection,
-  type TodoCorrectionView,
-} from "./correction-actions";
-import { compressImage } from "@/lib/image-compress";
-import {
   paymentStatusLabel,
   requestKindLabel,
   type JudgmentRecord,
@@ -77,6 +67,10 @@ import { todayStr } from "@/lib/application-alerts";
 
 const INPUT =
   "min-h-[40px] rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none";
+
+// TODOの行から開くボタン（郵送請求・日付計算・訂正記録）の見た目
+const ROW_LINK =
+  "rounded-lg border border-border bg-background px-2.5 py-1.5 text-[11px] font-bold text-brand hover:border-brand";
 
 // 郵送請求（判定記録）のTODO番号でリンクした状況の要約
 export interface MailingSummary {
@@ -1630,45 +1624,26 @@ function TodoItem({
               )}
             </div>
           )}
-          {/* 郵送請求の状況（同じTODO番号の判定記録とリンク） */}
-          <div className="rounded-lg bg-background p-2">
-            <p className="mb-1 flex flex-wrap items-center justify-between gap-1 text-[11px] font-bold text-muted">
-              📮 郵送請求の状況（TODO番号 {todo.todo_no} とリンク）
-              {/* 開いた先で、その人の記録一覧を最初から表示する */}
+          {/* 郵送請求・日付計算・訂正記録はボタンにして、行が長くならないようにする */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href={`/mailing?q=${encodeURIComponent(todo.worker_name || todo.todo_no)}`}
+              className={ROW_LINK}
+            >
+              📮 郵送請求{mailings.length > 0 && `（${mailings.length}件）`}
+            </Link>
+            {todo.worker_id && (
               <Link
-                href={`/mailing?q=${encodeURIComponent(todo.worker_name || todo.todo_no)}`}
-                className="font-bold text-brand hover:underline"
+                href={`/todos/plan-dates?workerId=${todo.worker_id}&todo=${encodeURIComponent(todo.todo_no)}`}
+                className={ROW_LINK}
               >
-                郵送請求を開く →
+                📅 支援計画書の日付計算
               </Link>
-            </p>
-            {mailings.length === 0 ? (
-              <p className="text-[11px] text-muted">
-                このTODO番号の郵送請求はまだありません（郵送請求の判定記録にTODO番号を入れるとここに出ます）。
-              </p>
-            ) : (
-              <div className="space-y-0.5">
-                {mailings.map((m) => (
-                  <p key={m.id} className="text-[11px] leading-relaxed">
-                    <span className="font-bold">{m.kindLabel}</span>
-                    {m.to && `（${m.to}）`}　{m.progress}
-                    {m.payment && `　納付: ${m.payment}`}
-                    <span className="text-[10px] text-muted">　記録 {m.createdAt.slice(0, 10)}</span>
-                  </p>
-                ))}
-              </div>
             )}
+            <Link href={`/todos/corrections/${todo.id}`} className={ROW_LINK}>
+              📝 申請書類の訂正記録
+            </Link>
           </div>
-          {/* 支援計画書の日付（日付計算の保存結果）。この場で見られて編集もできる */}
-          {todo.worker_id && (
-            <SavedPlanDatesSection
-              workerId={todo.worker_id}
-              todoNo={todo.todo_no}
-              canEdit={canEdit}
-            />
-          )}
-          {/* チェック後の申請書類の訂正記録 */}
-          <CorrectionSection todoId={todo.id} canEdit={canEdit} />
         </div>
       )}
     </div>
@@ -1699,151 +1674,6 @@ function CopyTodoLineButton({ todo }: { todo: TodoRow }) {
     >
       {copied ? <Check size={14} className="text-status-approved-fg" /> : <Copy size={14} />}
     </button>
-  );
-}
-
-// 申請書類の訂正記録（チェック後）。訂正書類名・訂正箇所の画像・訂正内容を複数保存できる
-function CorrectionSection({ todoId, canEdit }: { todoId: string; canEdit: boolean }) {
-  const [rows, setRows] = useState<TodoCorrectionView[]>([]);
-  const [open, setOpen] = useState(false);
-  const [docName, setDocName] = useState("");
-  const [content, setContent] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = () => listTodoCorrections(todoId).then(setRows).catch(() => undefined);
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [todoId]);
-
-  const add = async () => {
-    if (!docName.trim() && !content.trim() && !file) return;
-    setBusy(true);
-    setError(null);
-    try {
-      let path: string | undefined;
-      let fileName: string | undefined;
-      let mimeType: string | undefined;
-      if (file) {
-        const { blob, mimeType: mt, fileName: fn } = await compressImage(file);
-        const ticket = await createTodoCorrectionTicket(todoId, fn, mt);
-        if (!ticket.ok) throw new Error(ticket.message);
-        const { error: upErr } = await createClient()
-          .storage.from("app-files")
-          .uploadToSignedUrl(ticket.path, ticket.token, blob, { contentType: mt });
-        if (upErr) throw new Error(`アップロードに失敗しました: ${upErr.message}`);
-        path = ticket.path;
-        fileName = fn;
-        mimeType = mt;
-      }
-      const res = await registerTodoCorrection(todoId, {
-        doc_name: docName.trim(),
-        content: content.trim(),
-        path,
-        fileName,
-        mimeType,
-      });
-      if (!res.ok) throw new Error(res.message);
-      setDocName("");
-      setContent("");
-      setFile(null);
-      await load();
-    } catch (err) {
-      setError(
-        dbErrorMessage(err, "0103_todo_prep_extras.sql", "訂正記録の保存に失敗しました"),
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <details
-      open={open}
-      onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
-      className="rounded-lg bg-background p-2"
-    >
-      <summary className="cursor-pointer text-[11px] font-bold text-muted">
-        📝 申請書類の訂正記録（チェック後）{rows.length > 0 && `（${rows.length}件）`}
-      </summary>
-      <div className="mt-2 space-y-2">
-        {error && <p className="rounded-lg bg-seal/10 px-2 py-1.5 text-[11px] text-seal">{error}</p>}
-        {rows.map((r) => (
-          <div key={r.id} className="flex items-start gap-2 rounded-lg border border-border bg-surface p-2">
-            {r.url && (
-              <a href={r.url} target="_blank" rel="noopener noreferrer" className="shrink-0">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={r.url} alt="訂正箇所" className="h-14 w-14 rounded border border-border object-cover" />
-              </a>
-            )}
-            <span className="min-w-0 flex-1 text-[11px]">
-              <span className="block font-bold">{r.doc_name || "（書類名なし）"}</span>
-              <span className="block whitespace-pre-wrap">{r.content}</span>
-              <span className="block text-[10px] text-muted">{r.created_at.slice(0, 10)}</span>
-            </span>
-            {canEdit && (
-              <button
-                type="button"
-                aria-label="この訂正記録を削除"
-                onClick={() => {
-                  if (window.confirm("この訂正記録を削除します。よろしいですか？")) {
-                    void deleteTodoCorrection(r.id).then(load);
-                  }
-                }}
-                className="shrink-0 text-seal"
-              >
-                <Trash2 size={13} />
-              </button>
-            )}
-          </div>
-        ))}
-        {canEdit && (
-          <div className="space-y-1.5 rounded-lg border border-dashed border-border p-2">
-            <input
-              value={docName}
-              onChange={(e) => setDocName(e.target.value)}
-              placeholder="訂正書類名（例: 1-6号別紙）"
-              className="min-h-[34px] w-full rounded-lg border border-border bg-surface px-2 text-xs"
-            />
-            <textarea
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              rows={2}
-              placeholder="訂正内容"
-              className="w-full rounded-lg border border-border bg-surface px-2 py-1.5 text-xs"
-            />
-            {/* ファイルを選ぶか、この枠にドラッグ＆ドロップして添付する */}
-            <FileDropArea
-              onFiles={(files) => setFile(files[0] ?? null)}
-              className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-border p-1.5"
-            >
-              <input
-                type="file"
-                accept="image/*,application/pdf"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                className="min-w-0 flex-1 text-[11px]"
-              />
-              {file && (
-                <span className="max-w-full truncate text-[11px] font-bold text-brand">
-                  選択中: {file.name}
-                </span>
-              )}
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void add()}
-                className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-[11px] font-bold text-brand disabled:opacity-50"
-              >
-                <Plus size={12} />
-                {busy ? "保存中…" : "訂正記録を追加"}
-              </button>
-            </FileDropArea>
-          </div>
-        )}
-      </div>
-    </details>
   );
 }
 
