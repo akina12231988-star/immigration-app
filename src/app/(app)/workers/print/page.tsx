@@ -10,6 +10,7 @@ import { normalizeOrgSearchText } from "@/lib/org-search";
 import { listVisaHistory } from "@/lib/supabase/queries/visa-history";
 import {
   buildVisaHistory,
+  visaHistoryInPeriod,
   type VisaHistoryApplication,
   type VisaHistoryCard,
   type VisaHistoryRow,
@@ -246,7 +247,7 @@ export default async function WorkersPrintPage({
       ongoing?.start_date ??
       "";
     currentHistory = currentStart
-      ? visaRows.filter((r) => r.permitDate >= currentStart)
+      ? visaHistoryInPeriod(visaRows, currentStart, "")
       : visaRows.slice(-1);
 
     periods = past.map((p) => {
@@ -265,10 +266,9 @@ export default async function WorkersPrintPage({
         normalizeOrgEmploymentStarts(workers[0].org_employment_starts).find(
           (e) => e.organization_id === periodOrgId && e.start_on,
         )?.start_on ?? null;
-      // この在籍期間の中で受けた許可（在留資格の履歴のうち、期間に入るもの）
-      const periodHistory = visaRows.filter(
-        (r) => r.permitDate >= p.start && r.permitDate <= p.end,
-      );
+      // この在籍期間のあいだ使っていた在留カード（期間の前に受けて期間中も使っていた分も含む）。
+      // 雇用開始日は所属機関別の日付を優先する（職歴の開始日とずれていることがあるため）
+      const periodHistory = visaHistoryInPeriod(visaRows, periodOrgStart || p.start, p.end);
       const lastGrant = periodHistory[periodHistory.length - 1];
       return {
         key: p.key,

@@ -5,6 +5,7 @@ import {
   groupVisaHistoryByOrg,
   NO_ORG_GROUP,
   orgAtDate,
+  visaHistoryInPeriod,
   grantLabel,
   statusFromContent,
   type VisaHistoryApplication,
@@ -236,6 +237,31 @@ describe("orgAtDate / groupVisaHistoryByOrg", () => {
       ["有限会社 國崎青果", ["2024-04-23", "2025-04-23"]],
       ["西田 博幸", ["2026-09-15"]],
       [NO_ORG_GROUP, ["2021-05-05"]],
+    ]);
+  });
+});
+
+describe("visaHistoryInPeriod", () => {
+  const rows = [
+    { permitDate: "2026-04-23" }, // 入社の前に受けた許可。在籍中もこれを使っていた
+    { permitDate: "2026-08-10" }, // 転職後に受けた許可
+  ];
+
+  it("在籍期間の前に受けた許可でも、期間中に使っていれば含める", () => {
+    expect(visaHistoryInPeriod(rows, "2026-05-01", "2026-08-09")).toEqual([
+      { permitDate: "2026-04-23" },
+    ]);
+  });
+
+  it("今の在籍（終わりなし）は、その時点で使っている許可を含める", () => {
+    expect(visaHistoryInPeriod(rows, "2026-08-12", "")).toEqual([{ permitDate: "2026-08-10" }]);
+  });
+
+  it("在籍中に更新した場合は、どちらの許可も含める", () => {
+    const many = [{ permitDate: "2024-04-23" }, { permitDate: "2025-04-23" }, { permitDate: "2026-08-10" }];
+    expect(visaHistoryInPeriod(many, "2024-05-01", "2026-08-09")).toEqual([
+      { permitDate: "2024-04-23" },
+      { permitDate: "2025-04-23" },
     ]);
   });
 });

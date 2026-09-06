@@ -243,3 +243,24 @@ export function groupVisaHistoryByOrg<T extends { permitDate: string }>(
       return a.rows[0].permitDate.localeCompare(b.rows[0].permitDate);
     });
 }
+
+// ---- 在籍期間のあいだ使っていた在留カード（許可）を選ぶ ----
+
+// 在籍期間（start〜end。end が空なら今も在籍中）のあいだに使っていた許可を返す。
+// 許可は次の許可を受けるまで有効なので、期間の中で受けた許可だけでなく、
+// 期間が始まる前に受けて期間中も使っていた許可も含める。
+export function visaHistoryInPeriod<T extends { permitDate: string }>(
+  rows: T[],
+  start: string,
+  end: string,
+): T[] {
+  const sorted = [...rows].sort((a, b) => a.permitDate.localeCompare(b.permitDate));
+  return sorted.filter((r, i) => {
+    const next = sorted[i + 1]?.permitDate ?? "";
+    // 期間が終わったあとに受けた許可は関係ない
+    if (end && r.permitDate > end) return false;
+    // 期間が始まる前に次の許可へ切り替わっていれば、その許可は使っていない
+    if (next && start && next <= start) return false;
+    return true;
+  });
+}
