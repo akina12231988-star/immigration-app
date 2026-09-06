@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  attachVisaHistoryDocs,
   buildVisaHistory,
   grantLabel,
   statusFromContent,
@@ -120,6 +121,47 @@ describe("buildVisaHistory", () => {
     expect(rows).toEqual([]);
   });
 
+  it("手で入れた分は、自動で出る分より優先して出る", () => {
+    const rows = buildVisaHistory({
+      apps: [
+        app({
+          content: "在留期間更新許可",
+          granted_permit_date: "2026-04-23",
+          granted_expiry_date: "2027-04-23",
+          visa_at_grant: "特定技能1号",
+        }),
+      ],
+      cards: [],
+      current: null,
+      manual: [
+        {
+          id: "m1",
+          permit_date: "2022-06-01",
+          status: "特定活動",
+          kind: "ビザ許可",
+          expiry_date: "2023-06-01",
+          card_no: "ZZ00000000ZZ",
+          note: "紙の記録から入力",
+        },
+        // 自動で出る分と同じ許可日・在留資格。手で入れたほうに差し替わる
+        {
+          id: "m2",
+          permit_date: "2026-04-23",
+          status: "特定技能1号",
+          kind: "更新許可",
+          expiry_date: "2027-04-23",
+          card_no: "LJ8268506RD",
+          note: "",
+        },
+      ],
+    });
+    expect(rows.map((r) => [r.permitDate, r.label, r.manualId])).toEqual([
+      ["2022-06-01", "特定活動 ビザ許可", "m1"],
+      ["2026-04-23", "特定技能1号 更新許可", "m2"],
+    ]);
+    expect(rows[1].cardNo).toBe("LJ8268506RD");
+  });
+
   it("在留許可日が無い申請は許可日で並べる", () => {
     const rows = buildVisaHistory({
       apps: [app({ content: "在留期間更新許可", approved: true, approval_date: "2022-06-01" })],
@@ -127,5 +169,36 @@ describe("buildVisaHistory", () => {
       current: null,
     });
     expect(rows[0].permitDate).toBe("2022-06-01");
+  });
+});
+
+describe("attachVisaHistoryDocs", () => {
+  const docs = [
+    { kind: "在留カード", url: "card-2024", date: "2024-04-25" },
+    { kind: "指定書", url: "shitei-2024", date: "2024-04-26" },
+    { kind: "在留カード", url: "card-2026", date: "2026-04-24" },
+    { kind: "在留カード", url: "card-2026-new", date: "2026-05-01" },
+    // 最初の許可より前に登録した画像は、どの許可にも付けない
+    { kind: "在留カード", url: "card-old", date: "2023-01-01" },
+  ];
+
+  it("その許可の日から次の許可の前日までに登録した画像を結び付ける", () => {
+    const rows = attachVisaHistoryDocs(
+      [{ permitDate: "2024-04-23" }, { permitDate: "2026-04-23" }],
+      docs,
+    );
+    expect(rows[0]).toMatchObject({
+      residenceCardUrl: "card-2024",
+      designationUrl: "shitei-2024",
+    });
+    // いちばん新しい許可は、それ以降でいちばん新しい画像
+    expect(rows[1]).toMatchObject({ residenceCardUrl: "card-2026-new", designationUrl: "" });
+  });
+
+  it("許可の日より前の画像しか無ければ空のまま", () => {
+    const rows = attachVisaHistoryDocs([{ permitDate: "2026-04-23" }], [
+      { kind: "在留カード", url: "card-old", date: "2023-01-01" },
+    ]);
+    expect(rows[0].residenceCardUrl).toBe("");
   });
 });

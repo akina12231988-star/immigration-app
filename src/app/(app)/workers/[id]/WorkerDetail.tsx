@@ -1600,6 +1600,7 @@ export function WorkerDetail({
         status={worker.residence_status}
         permitDate={worker.residence_permit_date}
         expiryDate={worker.residence_expiry_date}
+        canEdit={canEdit}
       />
 
       {/* 在留カード・指定書の差し替え（履歴保持） */}

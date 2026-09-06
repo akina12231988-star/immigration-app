@@ -1,11 +1,13 @@
 // 在留資格の履歴（いつ何のビザが許可されたか）。
 //
 // 「2026年4月23日 特定技能1号 更新許可」のように、許可の日付と在留資格を古い順に並べる。
-// 元にするのは次の3つ:
+// 元にするのは次の4つ:
+//   ・手で入れた分（worker_visa_history・0138）＝昔の許可などを自分で足せる
 //   ・申請一覧（immigration_applications）の許可欄（許可日・許可時の在留資格・在留期限・カード番号）
 //   ・在留カードの記録（worker_card_history・0137）＝書き換える前の内容
 //   ・今の在留カード（workers）＝いちばん新しい許可
-// 同じ許可が2つの元に入っていることがあるので、許可日と在留資格が同じものはまとめる。
+// 同じ許可が2つ以上の元に入っていることがあるので、許可日と在留資格が同じものはまとめる。
+// 手で入れた分がいちばん優先（直した内容がそのまま出る）。
 
 // 申請一覧の許可欄
 export interface VisaHistoryApplication {
@@ -31,6 +33,21 @@ export interface VisaHistoryCurrent extends VisaHistoryCard {
   residence_period: string;
 }
 
+// 許可の種類（手で入れるときに選ぶ）
+export const VISA_GRANT_KINDS = ["ビザ許可", "更新許可", "認定"] as const;
+export type VisaGrantKind = (typeof VISA_GRANT_KINDS)[number];
+
+// 手で入れた分
+export interface VisaHistoryManual {
+  id: string;
+  permit_date: string;
+  status: string;
+  kind: string; // VISA_GRANT_KINDS のどれか
+  expiry_date: string | null;
+  card_no: string;
+  note: string;
+}
+
 export interface VisaHistoryRow {
   permitDate: string; // 許可日（YYYY-MM-DD）
   status: string; // 在留資格（特定技能1号 など）
@@ -38,6 +55,8 @@ export interface VisaHistoryRow {
   expiryDate: string; // 在留期限（'' = 未登録）
   cardNo: string; // そのときの在留カード番号
   isCurrent: boolean; // 今の在留カードか
+  manualId?: string; // 手で入れた分（直す・消すときに使う）
+  note?: string; // 手で入れた分のメモ
 }
 
 // 申請の内容から、許可の言い方を決める（更新 / 変更 / 認定）
@@ -70,6 +89,7 @@ export function buildVisaHistory(input: {
   apps: VisaHistoryApplication[];
   cards: VisaHistoryCard[];
   current: VisaHistoryCurrent | null;
+  manual?: VisaHistoryManual[];
 }): VisaHistoryRow[] {
   const rows: VisaHistoryRow[] = [];
 
@@ -130,5 +150,50 @@ export function buildVisaHistory(input: {
     });
   }
 
+  // 手で入れた分は、同じ許可（許可日＋在留資格）があっても入れ替える（直した内容を出す）
+  for (const m of input.manual ?? []) {
+    if (!m.permit_date) continue;
+    const key = `${m.permit_date}_${m.status ?? ""}`;
+    merged.set(key, {
+      permitDate: m.permit_date,
+      status: m.status ?? "",
+      label: `${m.status || "在留資格"} ${m.kind || "ビザ許可"}`,
+      expiryDate: m.expiry_date ?? "",
+      cardNo: m.card_no ?? "",
+      isCurrent: merged.get(key)?.isCurrent ?? false,
+      manualId: m.id,
+      note: m.note ?? "",
+    });
+  }
+
   return [...merged.values()].sort((a, b) => a.permitDate.localeCompare(b.permitDate));
+}
+
+// ---- 在留カード・指定書の画像を、どの許可のものかで結び付ける ----
+
+// 画像1件（在留カード・指定書）。date はいつ時点の画像か（effective_on、無ければ登録日）
+export interface VisaHistoryDoc {
+  kind: string; // 在留カード / 指定書
+  url: string;
+  date: string; // YYYY-MM-DD
+}
+
+// 履歴の行に、その許可のときの在留カード・指定書の画像を付ける。
+// その許可の日から次の許可の日の前日までに登録した画像を、その許可のものとみなす
+// （いちばん新しい許可は、それ以降に登録した画像すべてが対象）。
+export function attachVisaHistoryDocs<T extends { permitDate: string }>(
+  rows: T[],
+  docs: VisaHistoryDoc[],
+): (T & { residenceCardUrl: string; designationUrl: string })[] {
+  const sorted = [...rows].sort((a, b) => a.permitDate.localeCompare(b.permitDate));
+  return sorted.map((row, i) => {
+    const from = row.permitDate;
+    const to = sorted[i + 1]?.permitDate ?? ""; // 次の許可の日（無ければ今まで）
+    const inRange = docs.filter((d) => d.date >= from && (!to || d.date < to));
+    const newest = (kind: string) =>
+      inRange
+        .filter((d) => d.kind === kind)
+        .sort((a, b) => b.date.localeCompare(a.date))[0]?.url ?? "";
+    return { ...row, residenceCardUrl: newest("在留カード"), designationUrl: newest("指定書") };
+  });
 }
