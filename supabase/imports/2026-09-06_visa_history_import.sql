@@ -436,9 +436,10 @@ select
   (select count(*) from workers w
     where upper(regexp_replace(w.name, '[[:space:]　]', '', 'g'))
         = upper(regexp_replace(t.name, '[[:space:]　]', '', 'g'))) as hit_count,
-  (select min(w.id) from workers w
+  (select w.id from workers w
     where upper(regexp_replace(w.name, '[[:space:]　]', '', 'g'))
-        = upper(regexp_replace(t.name, '[[:space:]　]', '', 'g'))) as worker_id
+        = upper(regexp_replace(t.name, '[[:space:]　]', '', 'g'))
+    order by w.created_at, w.id limit 1) as worker_id
 from tmp_visa_import t;
 
 -- 取り込み（1人に決まる名前だけ・同じ許可日と在留資格が無いものだけ）
