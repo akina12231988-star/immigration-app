@@ -90,3 +90,27 @@ export function startDateMismatches(params: {
   }
   return out;
 }
+
+// ---- 退職者情報を入れたときに、職歴の退職日にも反映する ----
+
+// 退職日を入れる職歴（在籍していた会社の職歴）。見つからなければ null。
+//  ・退職した所属機関が入っていれば、その会社の職歴（いちばん新しく始まったもの）
+//  ・空欄なら、まだ続いている職歴（継続中）のうちいちばん新しく始まったもの
+//  ・すでに同じ退職日が入っている職歴は返さない（保存の必要が無い）
+//  ・雇用開始日より前の退職日は入れない（入力ミスを広げないため）
+export function historyToCloseOnLeaving<T extends OrgHistoryRow & { id: string; end_date: string | null }>(
+  histories: T[],
+  leaving: { orgName: string; leavingOn: string },
+): T | null {
+  if (!leaving.leavingOn) return null;
+  const rows = histories.filter((h) => h.visa !== "本国での職歴");
+  const key = normalizeOrgSearchText(leaving.orgName);
+  const candidates = key
+    ? rows.filter((h) => normalizeOrgSearchText(h.org_name) === key)
+    : rows.filter((h) => h.end_date === null);
+  const hit = [...candidates].sort((a, b) => a.start_date.localeCompare(b.start_date)).pop();
+  if (!hit) return null;
+  if (hit.end_date === leaving.leavingOn) return null;
+  if (hit.start_date && leaving.leavingOn < hit.start_date) return null;
+  return hit;
+}
