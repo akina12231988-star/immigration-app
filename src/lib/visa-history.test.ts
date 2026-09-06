@@ -120,6 +120,47 @@ describe("buildVisaHistory", () => {
     expect(rows).toEqual([]);
   });
 
+  it("手で入れた分は、自動で出る分より優先して出る", () => {
+    const rows = buildVisaHistory({
+      apps: [
+        app({
+          content: "在留期間更新許可",
+          granted_permit_date: "2026-04-23",
+          granted_expiry_date: "2027-04-23",
+          visa_at_grant: "特定技能1号",
+        }),
+      ],
+      cards: [],
+      current: null,
+      manual: [
+        {
+          id: "m1",
+          permit_date: "2022-06-01",
+          status: "特定活動",
+          kind: "ビザ許可",
+          expiry_date: "2023-06-01",
+          card_no: "ZZ00000000ZZ",
+          note: "紙の記録から入力",
+        },
+        // 自動で出る分と同じ許可日・在留資格。手で入れたほうに差し替わる
+        {
+          id: "m2",
+          permit_date: "2026-04-23",
+          status: "特定技能1号",
+          kind: "更新許可",
+          expiry_date: "2027-04-23",
+          card_no: "LJ8268506RD",
+          note: "",
+        },
+      ],
+    });
+    expect(rows.map((r) => [r.permitDate, r.label, r.manualId])).toEqual([
+      ["2022-06-01", "特定活動 ビザ許可", "m1"],
+      ["2026-04-23", "特定技能1号 更新許可", "m2"],
+    ]);
+    expect(rows[1].cardNo).toBe("LJ8268506RD");
+  });
+
   it("在留許可日が無い申請は許可日で並べる", () => {
     const rows = buildVisaHistory({
       apps: [app({ content: "在留期間更新許可", approved: true, approval_date: "2022-06-01" })],
