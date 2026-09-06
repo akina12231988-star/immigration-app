@@ -140,6 +140,20 @@ describe("periodCardValues", () => {
     });
   });
 
+  it("所属機関別の雇用開始日があれば、職歴の開始日よりそちらを使う", () => {
+    const v = periodCardValues(period, null, grantAtThatTime, "2026-05-01");
+    expect(v.employmentStartOn).toBe("2026-05-01");
+    // 手で入れた雇用開始日のほうが優先される
+    expect(
+      periodCardValues(
+        period,
+        { ...EMPTY_PERIOD_CARD, employment_start_on: "2026-04-01" },
+        grantAtThatTime,
+        "2026-05-01",
+      ).employmentStartOn,
+    ).toBe("2026-04-01");
+  });
+
   it("雇用開始日・退職日を入れ直したときはその日付で出す", () => {
     const saved = {
       ...EMPTY_PERIOD_CARD,

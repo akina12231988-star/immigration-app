@@ -197,3 +197,49 @@ export function attachVisaHistoryDocs<T extends { permitDate: string }>(
     return { ...row, residenceCardUrl: newest("在留カード"), designationUrl: newest("指定書") };
   });
 }
+
+// ---- どの所属機関にいたときの許可かでまとめる ----
+
+// 職歴1件（どの会社にいつからいつまでいたか）
+export interface VisaHistoryEmployment {
+  org_name: string;
+  start_date: string;
+  end_date: string | null; // null = 継続中
+  visa: string;
+}
+
+export const NO_ORG_GROUP = "所属機関の記録なし";
+
+// その日にどこの所属機関にいたか（在籍期間に入っている職歴。複数あれば新しく始まったほう）
+export function orgAtDate(histories: VisaHistoryEmployment[], date: string): string {
+  const hit = histories
+    .filter((h) => h.visa !== "本国での職歴")
+    .filter((h) => h.start_date <= date && (h.end_date === null || date <= h.end_date))
+    .sort((a, b) => a.start_date.localeCompare(b.start_date));
+  return hit[hit.length - 1]?.org_name ?? "";
+}
+
+export interface VisaHistoryOrgGroup<T> {
+  org: string;
+  rows: T[];
+}
+
+// 許可を所属機関ごとにまとめる。並びは、その機関でいちばん古い許可の日の順。
+// 在籍期間に当てはまる職歴が無い許可は最後にまとめる
+export function groupVisaHistoryByOrg<T extends { permitDate: string }>(
+  rows: T[],
+  histories: VisaHistoryEmployment[],
+): VisaHistoryOrgGroup<T>[] {
+  const groups = new Map<string, T[]>();
+  for (const row of [...rows].sort((a, b) => a.permitDate.localeCompare(b.permitDate))) {
+    const org = orgAtDate(histories, row.permitDate) || NO_ORG_GROUP;
+    groups.set(org, [...(groups.get(org) ?? []), row]);
+  }
+  return [...groups.entries()]
+    .map(([org, list]) => ({ org, rows: list }))
+    .sort((a, b) => {
+      if (a.org === NO_ORG_GROUP) return 1;
+      if (b.org === NO_ORG_GROUP) return -1;
+      return a.rows[0].permitDate.localeCompare(b.rows[0].permitDate);
+    });
+}

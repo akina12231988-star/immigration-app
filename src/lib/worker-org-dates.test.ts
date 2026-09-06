@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { orgEmploymentDates, type OrgHistoryRow } from "./worker-org-dates";
+import {
+  orgEmploymentDates,
+  startDateMismatches,
+  type OrgHistoryRow,
+} from "./worker-org-dates";
 
 const history = (over: Partial<OrgHistoryRow>): OrgHistoryRow => ({
   org_name: "有限会社國崎青果",
@@ -92,5 +96,38 @@ describe("orgEmploymentDates", () => {
         hasCurrentOrg: true,
       }),
     ).toEqual({ employmentStartOn: "2023-01-05", leavingOn: "2024-03-31" });
+  });
+});
+
+describe("startDateMismatches", () => {
+  const histories = [
+    history({ org_name: "有限会社國崎青果", start_date: "2026-01-05", end_date: "2026-08-09" }),
+    history({ org_name: "西田　博幸", start_date: "2026-08-12", end_date: null }),
+  ];
+
+  it("同じ会社で日付が違うものだけを返す", () => {
+    expect(
+      startDateMismatches({
+        orgStarts: [
+          { orgName: "有限会社國崎青果", startOn: "2026-05-01" },
+          { orgName: "西田　博幸", startOn: "2026-08-12" },
+        ],
+        histories,
+      }),
+    ).toEqual([
+      { orgName: "有限会社國崎青果", historyStart: "2026-01-05", orgStart: "2026-05-01" },
+    ]);
+  });
+
+  it("職歴が無い・日付が空のものは食い違いにしない", () => {
+    expect(
+      startDateMismatches({
+        orgStarts: [
+          { orgName: "まだ職歴が無い会社", startOn: "2026-05-01" },
+          { orgName: "有限会社國崎青果", startOn: "" },
+        ],
+        histories,
+      }),
+    ).toEqual([]);
   });
 });

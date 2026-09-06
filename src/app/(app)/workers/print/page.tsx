@@ -6,6 +6,7 @@ import { getWorkerPhotoUrl, getWorkerLatestDocUrls, listWorkerDocs } from "../ac
 import { PrintClient, type PrintPeriod, type PrintWorker } from "./PrintClient";
 import { buildPastPeriods, docPeriodDate, periodKeyFor } from "@/lib/worker-doc-periods";
 import { orgEmploymentDates, type OrgHistoryRow } from "@/lib/worker-org-dates";
+import { normalizeOrgSearchText } from "@/lib/org-search";
 import { normalizeOrgEmploymentStarts } from "@/lib/org-employment";
 import {
   cardAsOf,
@@ -194,6 +195,15 @@ export default async function WorkersPrintPage({
       const newest = (kind: string) =>
         forPeriod.find((d) => d.kind === kind)?.url ?? "";
       const saved = cards.find((c) => c.period_key === periodCardKey(p)) ?? null;
+      // その機関の雇用開始日（所属機関別の雇用開始日）。職歴の開始日よりこちらを優先する。
+      // 在籍期間は機関名で持っているため、機関名から機関を探して突き合わせる
+      const periodOrgId = organizations.find(
+        (o) => normalizeOrgSearchText(o.name) === normalizeOrgSearchText(p.org),
+      )?.id;
+      const periodOrgStart =
+        normalizeOrgEmploymentStarts(workers[0].org_employment_starts).find(
+          (e) => e.organization_id === periodOrgId && e.start_on,
+        )?.start_on ?? null;
       return {
         key: p.key,
         org: p.org,
@@ -201,6 +211,7 @@ export default async function WorkersPrintPage({
         end: p.end,
         residenceCardUrl: newest("在留カード"),
         designationUrl: newest("指定書"),
+        orgStartOn: periodOrgStart,
         // 退職日の時点で使っていた在留カードの内容。
         // 書き換え前の記録があればそれ、無ければその時点で最後に許可された内容
         grant: cardAsOf(cardRecords, p.end) ?? grantAsOf(grants, p.end),

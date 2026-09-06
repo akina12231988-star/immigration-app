@@ -1576,6 +1576,7 @@ export function WorkerDetail({
       {/* 雇用開始日（所属機関別）。現在の所属機関の分は雇用開始年月日に自動反映 */}
       <WorkerEmploymentStarts
         workerId={worker.id}
+        histories={worker.work_histories}
         initial={worker.org_employment_starts}
         currentOrganizationId={worker.current_organization_id}
         currentEmploymentStartOn={worker.employment_start_on}
@@ -1600,6 +1601,7 @@ export function WorkerDetail({
         status={worker.residence_status}
         permitDate={worker.residence_permit_date}
         expiryDate={worker.residence_expiry_date}
+        histories={worker.work_histories}
         canEdit={canEdit}
       />
 

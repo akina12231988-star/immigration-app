@@ -33,6 +33,7 @@ export interface PrintPeriod {
   end: string; // 退職日
   residenceCardUrl: string; // その期間に登録した在留カードの画像
   designationUrl: string; // その期間に登録した指定書の画像
+  orgStartOn: string | null; // その機関の雇用開始日（所属機関別の雇用開始日）
   grant: GrantValues | null; // 当時の在留カードの内容（記録・申請一覧から）
   grantSource: string; // どこから出した内容か（在留カードの記録 / 申請一覧の許可 / 空）
   card: PeriodCardInput | null; // 保存してある当時の在留カード情報
@@ -110,7 +111,12 @@ export function PrintClient({
       ? [
           {
             ...baseWorker,
-            ...periodCardValues(selectedPeriod, selectedPeriod.card, selectedPeriod.grant),
+            ...periodCardValues(
+              selectedPeriod,
+              selectedPeriod.card,
+              selectedPeriod.grant,
+              selectedPeriod.orgStartOn,
+            ),
             residenceCardUrl: selectedPeriod.residenceCardUrl,
             designationUrl: selectedPeriod.designationUrl,
           },
