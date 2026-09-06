@@ -168,3 +168,32 @@ export function buildVisaHistory(input: {
 
   return [...merged.values()].sort((a, b) => a.permitDate.localeCompare(b.permitDate));
 }
+
+// ---- 在留カード・指定書の画像を、どの許可のものかで結び付ける ----
+
+// 画像1件（在留カード・指定書）。date はいつ時点の画像か（effective_on、無ければ登録日）
+export interface VisaHistoryDoc {
+  kind: string; // 在留カード / 指定書
+  url: string;
+  date: string; // YYYY-MM-DD
+}
+
+// 履歴の行に、その許可のときの在留カード・指定書の画像を付ける。
+// その許可の日から次の許可の日の前日までに登録した画像を、その許可のものとみなす
+// （いちばん新しい許可は、それ以降に登録した画像すべてが対象）。
+export function attachVisaHistoryDocs<T extends { permitDate: string }>(
+  rows: T[],
+  docs: VisaHistoryDoc[],
+): (T & { residenceCardUrl: string; designationUrl: string })[] {
+  const sorted = [...rows].sort((a, b) => a.permitDate.localeCompare(b.permitDate));
+  return sorted.map((row, i) => {
+    const from = row.permitDate;
+    const to = sorted[i + 1]?.permitDate ?? ""; // 次の許可の日（無ければ今まで）
+    const inRange = docs.filter((d) => d.date >= from && (!to || d.date < to));
+    const newest = (kind: string) =>
+      inRange
+        .filter((d) => d.kind === kind)
+        .sort((a, b) => b.date.localeCompare(a.date))[0]?.url ?? "";
+    return { ...row, residenceCardUrl: newest("在留カード"), designationUrl: newest("指定書") };
+  });
+}

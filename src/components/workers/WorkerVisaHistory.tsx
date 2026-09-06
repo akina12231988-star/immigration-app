@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Stamp, Trash2 } from "lucide-react";
+import { CreditCard, FileText, Plus, Stamp, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
 import { rosterJpDate } from "@/lib/roster";
@@ -13,7 +13,10 @@ import {
   updateVisaHistory,
   type VisaHistoryInput,
 } from "@/lib/supabase/queries/visa-history";
+import { listWorkerDocs, type WorkerDocView } from "@/app/(app)/workers/actions";
+import { docPeriodDate } from "@/lib/worker-doc-periods";
 import {
+  attachVisaHistoryDocs,
   buildVisaHistory,
   VISA_GRANT_KINDS,
   type VisaHistoryApplication,
@@ -58,6 +61,8 @@ export function WorkerVisaHistory({
   const [apps, setApps] = useState<VisaHistoryApplication[]>([]);
   const [cards, setCards] = useState<VisaHistoryCard[]>([]);
   const [manual, setManual] = useState<VisaHistoryManual[]>([]);
+  // 在留カード・指定書の画像（どの許可のときのものかを日付で結び付ける）
+  const [docs, setDocs] = useState<WorkerDocView[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -94,11 +99,13 @@ export function WorkerVisaHistory({
         .eq("worker_id", workerId)
         .then(({ data }) => (data as VisaHistoryCard[] | null) ?? []),
       listVisaHistory(supabase, workerId).catch(() => [] as VisaHistoryManual[]),
-    ]).then(([a, c, m]) => {
+      listWorkerDocs(workerId).catch(() => [] as WorkerDocView[]),
+    ]).then(([a, c, m, d]) => {
       if (cancelled) return;
       setApps(a);
       setCards(c);
       setManual(m);
+      setDocs(d);
       setLoaded(true);
     });
     return () => {
@@ -106,7 +113,7 @@ export function WorkerVisaHistory({
     };
   }, [workerId]);
 
-  const rows: VisaHistoryRow[] = buildVisaHistory({
+  const baseRows: VisaHistoryRow[] = buildVisaHistory({
     apps,
     cards,
     manual,
@@ -120,6 +127,12 @@ export function WorkerVisaHistory({
         }
       : null,
   });
+
+  // 各行に、その許可のときの在留カード・指定書の画像を付ける
+  const rows = attachVisaHistoryDocs(
+    baseRows,
+    docs.map((d) => ({ kind: d.kind, url: d.url, date: docPeriodDate(d) })),
+  );
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -249,6 +262,7 @@ export function WorkerVisaHistory({
       <p className="mb-3 text-[11px] leading-relaxed text-muted">
         いつ何のビザが許可されたかを古い順に並べています。申請一覧の許可欄・在留カードの記録・今の在留カードから自動で作られ、
         足りない昔の分はここで足せます。行の「直す」で内容を書き換えられます（手で入れた内容が優先されます）。
+        在留カード・指定書の画像は、その許可の日から次の許可の日までに登録したものを結び付けて出しています。
       </p>
 
       {error && (
@@ -321,6 +335,29 @@ export function WorkerVisaHistory({
                     )}
                     {r.cardNo && <span className="text-muted">在留カード {r.cardNo}</span>}
                     {r.note && <span className="text-muted">{r.note}</span>}
+                    {/* その許可のときの在留カード・指定書の画像 */}
+                    {r.residenceCardUrl && (
+                      <a
+                        href={r.residenceCardUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-0.5 font-bold text-brand hover:underline"
+                      >
+                        <CreditCard size={12} />
+                        在留カードの画像
+                      </a>
+                    )}
+                    {r.designationUrl && (
+                      <a
+                        href={r.designationUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-0.5 font-bold text-brand hover:underline"
+                      >
+                        <FileText size={12} />
+                        指定書の画像
+                      </a>
+                    )}
                     {r.isCurrent && (
                       <span className="rounded-full bg-status-approved-bg px-1.5 py-0.5 text-[10px] font-bold text-status-approved-fg">
                         現在
