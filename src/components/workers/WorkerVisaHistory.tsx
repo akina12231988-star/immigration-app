@@ -18,9 +18,11 @@ import { docPeriodDate } from "@/lib/worker-doc-periods";
 import {
   attachVisaHistoryDocs,
   buildVisaHistory,
+  groupVisaHistoryByOrg,
   VISA_GRANT_KINDS,
   type VisaHistoryApplication,
   type VisaHistoryCard,
+  type VisaHistoryEmployment,
   type VisaHistoryManual,
   type VisaHistoryRow,
 } from "@/lib/visa-history";
@@ -47,6 +49,7 @@ export function WorkerVisaHistory({
   status,
   permitDate,
   expiryDate,
+  histories = [],
   canEdit = false,
 }: {
   workerId: string;
@@ -56,6 +59,8 @@ export function WorkerVisaHistory({
   status: string;
   permitDate: string | null;
   expiryDate: string | null;
+  // 職歴（どの会社にいたときの許可かを出すのに使う）
+  histories?: VisaHistoryEmployment[];
   canEdit?: boolean;
 }) {
   const [apps, setApps] = useState<VisaHistoryApplication[]>([]);
@@ -133,6 +138,8 @@ export function WorkerVisaHistory({
     baseRows,
     docs.map((d) => ({ kind: d.kind, url: d.url, date: docPeriodDate(d) })),
   );
+  // どの所属機関にいたときの許可かでまとめる（同じ機関で複数あるときは開閉できる）
+  const groups = groupVisaHistoryByOrg(rows, histories);
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -300,8 +307,14 @@ export function WorkerVisaHistory({
           許可の記録がまだありません。「過去の許可を追加」から入れるか、申請一覧の申請に許可日を入れると、ここに並びます。
         </p>
       ) : (
-        <ol className="space-y-1.5">
-          {rows.map((r) => {
+        <div className="space-y-2">
+          {groups.map((g) => {
+            // その機関の許可が2件以上のときは開閉できるようにする。
+            // 今の在留カードを含む機関（＝いちばん新しい）は開いた状態で出す
+            const multiple = g.rows.length > 1;
+            const list = (
+              <ol className="space-y-1.5">
+                {g.rows.map((r) => {
             const key = r.manualId ?? `auto:${r.permitDate}_${r.status}`;
             return (
               <li key={key} className="rounded-lg bg-background px-3 py-2 text-xs">
@@ -396,9 +409,28 @@ export function WorkerVisaHistory({
                   </div>
                 )}
               </li>
+            );})}
+              </ol>
+            );
+            return (
+              <div key={g.org} className="rounded-xl border border-border p-2">
+                {multiple ? (
+                  <details open={g.rows.some((r) => r.isCurrent)}>
+                    <summary className="cursor-pointer select-none text-xs font-bold text-muted">
+                      {g.org}（{g.rows.length}件）
+                    </summary>
+                    <div className="mt-1.5">{list}</div>
+                  </details>
+                ) : (
+                  <>
+                    <p className="mb-1.5 text-xs font-bold text-muted">{g.org}</p>
+                    {list}
+                  </>
+                )}
+              </div>
             );
           })}
-        </ol>
+        </div>
       )}
     </Card>
   );

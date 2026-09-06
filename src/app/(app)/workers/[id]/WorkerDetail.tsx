@@ -1600,6 +1600,7 @@ export function WorkerDetail({
         status={worker.residence_status}
         permitDate={worker.residence_permit_date}
         expiryDate={worker.residence_expiry_date}
+        histories={worker.work_histories}
         canEdit={canEdit}
       />
 

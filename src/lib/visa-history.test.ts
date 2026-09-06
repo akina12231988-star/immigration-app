@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   attachVisaHistoryDocs,
   buildVisaHistory,
+  groupVisaHistoryByOrg,
+  NO_ORG_GROUP,
+  orgAtDate,
   grantLabel,
   statusFromContent,
   type VisaHistoryApplication,
@@ -200,5 +203,39 @@ describe("attachVisaHistoryDocs", () => {
       { kind: "在留カード", url: "card-old", date: "2023-01-01" },
     ]);
     expect(rows[0].residenceCardUrl).toBe("");
+  });
+});
+
+describe("orgAtDate / groupVisaHistoryByOrg", () => {
+  const histories = [
+    { org_name: "有限会社 國崎青果", start_date: "2024-04-01", end_date: "2026-08-09", visa: "特定技能1号" },
+    { org_name: "西田 博幸", start_date: "2026-08-12", end_date: null, visa: "特定技能1号" },
+    // 本国での職歴は所属機関として使わない
+    { org_name: "ベトナムの会社", start_date: "2020-01-01", end_date: "2023-12-31", visa: "本国での職歴" },
+  ];
+
+  it("その許可の日に在籍していた会社を返す", () => {
+    expect(orgAtDate(histories, "2025-04-23")).toBe("有限会社 國崎青果");
+    expect(orgAtDate(histories, "2026-09-01")).toBe("西田 博幸");
+    // どの在籍期間にも入らない日（入社前・在籍の切れ目）は空
+    expect(orgAtDate(histories, "2026-08-10")).toBe("");
+    expect(orgAtDate(histories, "2021-05-05")).toBe("");
+  });
+
+  it("所属機関ごとにまとめ、いちばん古い許可の順に並べる", () => {
+    const groups = groupVisaHistoryByOrg(
+      [
+        { permitDate: "2026-09-15" },
+        { permitDate: "2024-04-23" },
+        { permitDate: "2025-04-23" },
+        { permitDate: "2021-05-05" }, // 在籍期間に当てはまらない
+      ],
+      histories,
+    );
+    expect(groups.map((g) => [g.org, g.rows.map((r) => r.permitDate)])).toEqual([
+      ["有限会社 國崎青果", ["2024-04-23", "2025-04-23"]],
+      ["西田 博幸", ["2026-09-15"]],
+      [NO_ORG_GROUP, ["2021-05-05"]],
+    ]);
   });
 });
