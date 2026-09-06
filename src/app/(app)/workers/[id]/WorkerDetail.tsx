@@ -94,6 +94,7 @@ import {
   toCalcHistory,
   updateHistory,
 } from "@/lib/supabase/queries/histories";
+import { historyToCloseOnLeaving } from "@/lib/worker-org-dates";
 import { JobApplicationSection } from "@/components/workers/JobApplicationSection";
 import { dependentAge, warekiDate } from "@/lib/dependents";
 import { fileLinkCopyPath, isWebFileLink } from "@/lib/file-link";
@@ -2179,7 +2180,8 @@ function LeavingSection({
     setBusy(true);
     setError(null);
     try {
-      await updateWorker(createClient(), worker.id, {
+      const supabase = createClient();
+      await updateWorker(supabase, worker.id, {
         leaving_on: leavingOn || null,
         leaving_todo: leavingTodo.trim(),
         leaving_kind: leavingKind,
@@ -2187,6 +2189,14 @@ function LeavingSection({
         leaving_org_name: leavingOrgName.trim(),
         leaving_org_address: leavingOrgAddress.trim(),
       });
+      // その会社の職歴にも退職日を入れる（個人票などは職歴の退職日を使うため）
+      const target = historyToCloseOnLeaving(worker.work_histories ?? [], {
+        orgName: leavingOrgName.trim(),
+        leavingOn,
+      });
+      if (target) {
+        await updateHistory(supabase, target.id, { end_date: leavingOn });
+      }
       setSaved(true);
       router.refresh();
     } catch (err) {

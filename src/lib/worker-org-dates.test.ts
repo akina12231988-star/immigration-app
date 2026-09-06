@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  historyToCloseOnLeaving,
   orgEmploymentDates,
   startDateMismatches,
   type OrgHistoryRow,
@@ -56,6 +57,64 @@ describe("orgEmploymentDates", () => {
         hasCurrentOrg: true,
       }).employmentStartOn,
     ).toBe("2026-08-20");
+  });
+
+  it("退職者情報の「退職した所属機関」がこの会社なら、職歴が無くても退職日を出す", () => {
+    expect(
+      orgEmploymentDates({
+        orgName: "有限会社國崎青果",
+        histories: [history({ org_name: "有限会社國崎青果", start_date: "2025-12-22", end_date: null })],
+        orgStartOn: null,
+        employmentStartOn: "2025-12-22",
+        leavingOn: "2026-08-31",
+        leavingOrgName: "有限会社國崎青果",
+        hasCurrentOrg: true,
+      }),
+    ).toEqual({ employmentStartOn: "2025-12-22", leavingOn: "2026-08-31" });
+  });
+
+  it("退職した所属機関が別の会社なら、その会社の個人票には退職日を出さない", () => {
+    expect(
+      orgEmploymentDates({
+        orgName: "西田　博幸",
+        histories,
+        orgStartOn: null,
+        employmentStartOn: "2026-08-12",
+        leavingOn: "2026-08-09",
+        leavingOrgName: "有限会社國崎青果",
+        hasCurrentOrg: true,
+      }).leavingOn,
+    ).toBeNull();
+  });
+
+  it("退職した所属機関が空欄でも、退職・帰国した人の今の所属機関なら退職日を出す", () => {
+    expect(
+      orgEmploymentDates({
+        orgName: "有限会社國崎青果",
+        histories: [history({ org_name: "有限会社國崎青果", start_date: "2025-12-22", end_date: null })],
+        orgStartOn: null,
+        employmentStartOn: "2025-12-22",
+        leavingOn: "2026-08-31",
+        isCurrentOrg: true,
+        workerLeft: true,
+        hasCurrentOrg: true,
+      }).leavingOn,
+    ).toBe("2026-08-31");
+  });
+
+  it("在籍中の人は、今の所属機関でも退職日を出さない", () => {
+    expect(
+      orgEmploymentDates({
+        orgName: "西田　博幸",
+        histories,
+        orgStartOn: null,
+        employmentStartOn: "2026-08-12",
+        leavingOn: "2026-08-09",
+        isCurrentOrg: true,
+        workerLeft: false,
+        hasCurrentOrg: true,
+      }).leavingOn,
+    ).toBeNull();
   });
 
   it("職歴が無くても、今どこかに所属していれば退職日は出さない", () => {
@@ -129,5 +188,38 @@ describe("startDateMismatches", () => {
         histories,
       }),
     ).toEqual([]);
+  });
+});
+
+describe("historyToCloseOnLeaving", () => {
+  const rows = [
+    { id: "h1", org_name: "有限会社國崎青果", start_date: "2025-12-22", end_date: null, visa: "特定技能1号" },
+    { id: "h2", org_name: "ベトナムの会社", start_date: "2020-01-01", end_date: "2023-12-31", visa: "本国での職歴" },
+  ];
+
+  it("退職した所属機関の職歴を返す", () => {
+    expect(
+      historyToCloseOnLeaving(rows, { orgName: "有限会社國崎青果", leavingOn: "2026-08-31" })?.id,
+    ).toBe("h1");
+  });
+
+  it("退職した所属機関が空欄なら、続いている職歴を返す", () => {
+    expect(historyToCloseOnLeaving(rows, { orgName: "", leavingOn: "2026-08-31" })?.id).toBe("h1");
+  });
+
+  it("すでに同じ退職日が入っていれば返さない", () => {
+    const closed = [{ ...rows[0], end_date: "2026-08-31" }];
+    expect(historyToCloseOnLeaving(closed, { orgName: "有限会社國崎青果", leavingOn: "2026-08-31" })).toBeNull();
+  });
+
+  it("雇用開始日より前の退職日は入れない", () => {
+    expect(
+      historyToCloseOnLeaving(rows, { orgName: "有限会社國崎青果", leavingOn: "2025-01-01" }),
+    ).toBeNull();
+  });
+
+  it("退職日が空・当てはまる職歴が無いときは返さない", () => {
+    expect(historyToCloseOnLeaving(rows, { orgName: "有限会社國崎青果", leavingOn: "" })).toBeNull();
+    expect(historyToCloseOnLeaving(rows, { orgName: "別の会社", leavingOn: "2026-08-31" })).toBeNull();
   });
 });

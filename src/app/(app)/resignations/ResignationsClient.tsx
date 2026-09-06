@@ -29,6 +29,8 @@ import {
   type ResignationWithRefs,
 } from "@/lib/supabase/queries/resignations";
 import { updateWorker, type WorkerForResignation } from "@/lib/supabase/queries/workers";
+import { updateHistory } from "@/lib/supabase/queries/histories";
+import { historyToCloseOnLeaving, type OrgHistoryRow } from "@/lib/worker-org-dates";
 import { fetchNextTodoNo, insertTodo } from "@/lib/supabase/queries/todos";
 import { dbErrorMessage } from "@/lib/errors";
 import { notionAppUrl } from "@/lib/notion-link";
@@ -463,6 +465,18 @@ function ResignationDialog({
         leaving_org_address: targetOrg.address,
         ...(markRetired ? { status: "退職" as const } : {}),
       });
+      // その会社の職歴にも退職日を入れる（個人票などは職歴の退職日を使うため）
+      if (leavingOn) {
+        const { data: hs } = await supabase
+          .from("work_histories")
+          .select("id, org_name, start_date, end_date, visa")
+          .eq("worker_id", workerId);
+        const target = historyToCloseOnLeaving(
+          ((hs as (OrgHistoryRow & { id: string })[] | null) ?? []),
+          { orgName: targetOrg.name, leavingOn },
+        );
+        if (target) await updateHistory(supabase, target.id, { end_date: leavingOn });
+      }
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存に失敗しました");

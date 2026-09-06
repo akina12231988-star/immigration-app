@@ -31,21 +31,35 @@ function historyOf(histories: OrgHistoryRow[], orgName: string): OrgHistoryRow |
 
 // 表示している所属機関の雇用開始日・退職日を返す。
 //  ・雇用開始日: 所属機関別の雇用開始日 → その機関の職歴の開始日 → 雇用開始年月日
-//  ・退職日: その機関の職歴の退職日。まだ在籍中（継続中）なら空欄。
-//    職歴が無いときは、今の所属機関がある人は空欄（前の会社の退職日を出さない）、
-//    どこにも所属していない人だけ workers の退職日を出す
+//  ・退職日: その機関の職歴の退職日 → 退職者情報の退職日（退職した所属機関がこの機関のとき）。
+//    まだ在籍中（継続中）なら空欄。どこにも所属していない人は workers の退職日を出す
 export function orgEmploymentDates(params: {
   orgName: string;
   histories: OrgHistoryRow[];
   orgStartOn: string | null; // その機関の雇用開始日（org_employment_starts）
   employmentStartOn: string | null; // workers.employment_start_on
   leavingOn: string | null; // workers.leaving_on
+  leavingOrgName?: string; // workers.leaving_org_name（退職者情報の退職した所属機関）
+  isCurrentOrg?: boolean; // 表示している機関が、その人の今の所属機関か
+  workerLeft?: boolean; // 状態が退職・帰国（今の所属機関を辞めた人）
   hasCurrentOrg: boolean; // 今どこかに所属しているか
 }): OrgDates {
   const hit = historyOf(params.histories, params.orgName);
+  // 退職者情報の退職日が、この機関を辞めたときのものか
+  const leftThisOrg =
+    !!params.leavingOn &&
+    !!params.leavingOrgName &&
+    !!params.orgName &&
+    normalizeOrgSearchText(params.leavingOrgName) === normalizeOrgSearchText(params.orgName);
+  // 退職した所属機関が入っていない古い記録でも、その人が退職・帰国していて
+  // 表示しているのが今の所属機関なら、退職者情報の退職日はその機関のもの
+  const leftCurrentOrg = !!params.leavingOn && !!params.isCurrentOrg && !!params.workerLeft;
   return {
     employmentStartOn: params.orgStartOn || hit?.start_date || params.employmentStartOn || null,
-    leavingOn: hit ? hit.end_date : params.hasCurrentOrg ? null : params.leavingOn,
+    leavingOn:
+      hit?.end_date ||
+      (leftThisOrg || leftCurrentOrg ? params.leavingOn : null) ||
+      (params.hasCurrentOrg ? null : params.leavingOn),
   };
 }
 
@@ -75,4 +89,28 @@ export function startDateMismatches(params: {
     }
   }
   return out;
+}
+
+// ---- 退職者情報を入れたときに、職歴の退職日にも反映する ----
+
+// 退職日を入れる職歴（在籍していた会社の職歴）。見つからなければ null。
+//  ・退職した所属機関が入っていれば、その会社の職歴（いちばん新しく始まったもの）
+//  ・空欄なら、まだ続いている職歴（継続中）のうちいちばん新しく始まったもの
+//  ・すでに同じ退職日が入っている職歴は返さない（保存の必要が無い）
+//  ・雇用開始日より前の退職日は入れない（入力ミスを広げないため）
+export function historyToCloseOnLeaving<T extends OrgHistoryRow & { id: string; end_date: string | null }>(
+  histories: T[],
+  leaving: { orgName: string; leavingOn: string },
+): T | null {
+  if (!leaving.leavingOn) return null;
+  const rows = histories.filter((h) => h.visa !== "本国での職歴");
+  const key = normalizeOrgSearchText(leaving.orgName);
+  const candidates = key
+    ? rows.filter((h) => normalizeOrgSearchText(h.org_name) === key)
+    : rows.filter((h) => h.end_date === null);
+  const hit = [...candidates].sort((a, b) => a.start_date.localeCompare(b.start_date)).pop();
+  if (!hit) return null;
+  if (hit.end_date === leaving.leavingOn) return null;
+  if (hit.start_date && leaving.leavingOn < hit.start_date) return null;
+  return hit;
 }

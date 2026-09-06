@@ -125,6 +125,11 @@ export default async function WorkersPrintPage({
           )?.start_on ?? null,
         employmentStartOn: w.employment_start_on,
         leavingOn: w.leaving_on,
+        leavingOrgName: w.leaving_org_name ?? "",
+        // 退職者情報の退職した所属機関が空欄の記録でも、退職・帰国した人の
+        // 今の所属機関なら、その退職日はこの機関のもの
+        isCurrentOrg: true,
+        workerLeft: w.status === "退職" || w.status === "帰国",
         hasCurrentOrg: Boolean(orgId),
       });
       return {
