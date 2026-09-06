@@ -19,14 +19,39 @@ export interface OrgDates {
   leavingOn: string | null;
 }
 
-// その所属機関の職歴（同じ名前の在籍のうち、いちばん新しく始まったもの）
-function historyOf(histories: OrgHistoryRow[], orgName: string): OrgHistoryRow | null {
+// その所属機関の「ひと続きの在籍」（在籍期間の始まり・終わり）。
+// 同じ会社の職歴は、更新のたびに行が分かれていることがある（期間が重なる・つながる）。
+// つながっている行はひとまとめにして、いちばん古い開始日と、最後の退職日を返す。
+// いったん辞めてから入り直した（期間が離れている）場合は、新しいほうの在籍を使う
+export function mergedOrgPeriod(
+  histories: OrgHistoryRow[],
+  orgName: string,
+): { start: string; end: string | null } | null {
   const key = normalizeOrgSearchText(orgName);
   if (!key) return null;
   const rows = histories
     .filter((h) => h.visa !== "本国での職歴" && normalizeOrgSearchText(h.org_name) === key)
     .sort((a, b) => a.start_date.localeCompare(b.start_date));
-  return rows[rows.length - 1] ?? null;
+  if (rows.length === 0) return null;
+
+  let current = { start: rows[0].start_date, end: rows[0].end_date };
+  for (const row of rows.slice(1)) {
+    // 前の在籍が続いている、または期間が重なる・つながるなら同じ在籍とみなす
+    const continues = current.end === null || row.start_date <= current.end;
+    if (continues) {
+      current = {
+        start: current.start,
+        end: current.end === null || row.end_date === null ? null : maxDate(current.end, row.end_date),
+      };
+    } else {
+      current = { start: row.start_date, end: row.end_date };
+    }
+  }
+  return current;
+}
+
+function maxDate(a: string, b: string): string {
+  return a >= b ? a : b;
 }
 
 // 表示している所属機関の雇用開始日・退職日を返す。
@@ -44,7 +69,7 @@ export function orgEmploymentDates(params: {
   workerLeft?: boolean; // 状態が退職・帰国（今の所属機関を辞めた人）
   hasCurrentOrg: boolean; // 今どこかに所属しているか
 }): OrgDates {
-  const hit = historyOf(params.histories, params.orgName);
+  const period = mergedOrgPeriod(params.histories, params.orgName);
   // 退職者情報の退職日が、この機関を辞めたときのものか
   const leftThisOrg =
     !!params.leavingOn &&
@@ -55,9 +80,9 @@ export function orgEmploymentDates(params: {
   // 表示しているのが今の所属機関なら、退職者情報の退職日はその機関のもの
   const leftCurrentOrg = !!params.leavingOn && !!params.isCurrentOrg && !!params.workerLeft;
   return {
-    employmentStartOn: params.orgStartOn || hit?.start_date || params.employmentStartOn || null,
+    employmentStartOn: params.orgStartOn || period?.start || params.employmentStartOn || null,
     leavingOn:
-      hit?.end_date ||
+      period?.end ||
       (leftThisOrg || leftCurrentOrg ? params.leavingOn : null) ||
       (params.hasCurrentOrg ? null : params.leavingOn),
   };
@@ -82,10 +107,11 @@ export function startDateMismatches(params: {
   const out: StartDateMismatch[] = [];
   for (const s of params.orgStarts) {
     if (!s.orgName || !s.startOn) continue;
-    const hit = historyOf(params.histories, s.orgName);
-    if (!hit?.start_date) continue;
-    if (hit.start_date !== s.startOn) {
-      out.push({ orgName: s.orgName, historyStart: hit.start_date, orgStart: s.startOn });
+    // 同じ会社で行が分かれている職歴はまとめて、ひと続きの在籍の開始日と比べる
+    const period = mergedOrgPeriod(params.histories, s.orgName);
+    if (!period?.start) continue;
+    if (period.start !== s.startOn) {
+      out.push({ orgName: s.orgName, historyStart: period.start, orgStart: s.startOn });
     }
   }
   return out;

@@ -223,3 +223,41 @@ describe("historyToCloseOnLeaving", () => {
     expect(historyToCloseOnLeaving(rows, { orgName: "別の会社", leavingOn: "2026-08-31" })).toBeNull();
   });
 });
+
+describe("orgEmploymentDates（同じ会社の職歴が分かれているとき）", () => {
+  // 更新のたびに行が分かれ、期間が重なっている（入社は2025-07-22、いまも在籍中）
+  const split = [
+    history({ org_name: "有限会社 國崎青果", start_date: "2025-07-22", end_date: "2026-07-22" }),
+    history({ org_name: "有限会社 國崎青果", start_date: "2026-07-08", end_date: null }),
+  ];
+
+  it("つながっている職歴はまとめて、いちばん古い開始日を雇用開始日にする", () => {
+    expect(
+      orgEmploymentDates({
+        orgName: "有限会社 國崎青果",
+        histories: split,
+        orgStartOn: null,
+        employmentStartOn: null,
+        leavingOn: null,
+        hasCurrentOrg: true,
+      }),
+    ).toEqual({ employmentStartOn: "2025-07-22", leavingOn: null });
+  });
+
+  it("いったん辞めて入り直した（期間が離れている）ときは、新しいほうの在籍を使う", () => {
+    const rehired = [
+      history({ org_name: "有限会社 國崎青果", start_date: "2022-04-01", end_date: "2023-03-31" }),
+      history({ org_name: "有限会社 國崎青果", start_date: "2025-07-22", end_date: "2026-07-22" }),
+    ];
+    expect(
+      orgEmploymentDates({
+        orgName: "有限会社 國崎青果",
+        histories: rehired,
+        orgStartOn: null,
+        employmentStartOn: null,
+        leavingOn: null,
+        hasCurrentOrg: true,
+      }),
+    ).toEqual({ employmentStartOn: "2025-07-22", leavingOn: "2026-07-22" });
+  });
+});
