@@ -129,11 +129,14 @@ export function cardAsOf(rows: CardHistoryRecord[], onDate: string): GrantValues
 
 // その在籍期間の個人票に出す値を決める。
 // 手で入れた当時の内容 → 当時の最終版の許可内容 → 在籍期間の日付 の順に使う。
-// どれも無い項目は空欄（今の在留カードの内容は使わない）
+// どれも無い項目は空欄（今の在留カードの内容は使わない）。
+// 雇用開始日は、所属機関別の雇用開始日（org_employment_starts）があればそれを使う
+// （職歴の開始日より、機関ごとに入れたこちらのほうが正確なため）
 export function periodCardValues(
   period: OrgPeriod,
   saved: PeriodCardInput | null,
   grant: GrantValues | null,
+  orgStartOn: string | null = null,
 ): PeriodCardValues {
   return {
     orgName: period.org,
@@ -141,7 +144,7 @@ export function periodCardValues(
     residenceStatus: saved?.residence_status || grant?.residenceStatus || "",
     residencePermitDate: saved?.residence_permit_date || grant?.residencePermitDate || null,
     residenceExpiryDate: saved?.residence_expiry_date || grant?.residenceExpiryDate || null,
-    employmentStartOn: saved?.employment_start_on || period.start,
+    employmentStartOn: saved?.employment_start_on || orgStartOn || period.start,
     leavingOn: saved?.leaving_on || period.end,
   };
 }
