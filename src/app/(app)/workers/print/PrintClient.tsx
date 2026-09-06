@@ -718,10 +718,28 @@ function WorkerSheet({
             value={worker.otherQualifications}
             edit={edit("other_qualifications")}
           />
-          <Row label="在留資格" value={worker.residenceStatus} edit={edit("residence_status")} />
-          <Row label="在留カード番号" value={worker.residenceCardNo} edit={edit("residence_card_no")} />
-          <Row label="許可日" value={worker.residencePermitDate} edit={edit("residence_permit_date", true)} />
-          <Row label="在留期限" value={worker.residenceExpiryDate} edit={edit("residence_expiry_date", true)} />
+          {/* 在留資格・在留カード番号・許可日・在留期限は、下の「在留資格の履歴」に出す。
+              履歴が無いとき（機関ごとにまとめて印刷する分など）だけ、ここに出す */}
+          {history.length === 0 && (
+            <>
+              <Row label="在留資格" value={worker.residenceStatus} edit={edit("residence_status")} />
+              <Row
+                label="在留カード番号"
+                value={worker.residenceCardNo}
+                edit={edit("residence_card_no")}
+              />
+              <Row
+                label="許可日"
+                value={worker.residencePermitDate}
+                edit={edit("residence_permit_date", true)}
+              />
+              <Row
+                label="在留期限"
+                value={worker.residenceExpiryDate}
+                edit={edit("residence_expiry_date", true)}
+              />
+            </>
+          )}
           <Row label="雇用開始日" value={worker.employmentStartOn} edit={edit("employment_start_on", true)} />
           <Row label="退職日" value={worker.leavingOn} edit={edit("leaving_on", true)} />
         </dl>
@@ -754,7 +772,7 @@ function WorkerSheet({
       {history.length > 0 && (
         <div className="mt-5">
           <p className="mb-1 text-[10px] font-bold text-gray-500">
-            在留資格の履歴（{orgName || "この所属機関"}にいた間の許可）
+            在留資格の履歴（{orgName || "この所属機関"}にいた間の許可・古い順）
           </p>
           <table className="w-full border-collapse text-[10px]">
             <thead>
