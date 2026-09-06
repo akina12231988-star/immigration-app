@@ -19,11 +19,11 @@ export interface OrgDates {
   leavingOn: string | null;
 }
 
-// その所属機関の「ひと続きの在籍」。
+// その所属機関の「ひと続きの在籍」（在籍期間の始まり・終わり）。
 // 同じ会社の職歴は、更新のたびに行が分かれていることがある（期間が重なる・つながる）。
 // つながっている行はひとまとめにして、いちばん古い開始日と、最後の退職日を返す。
 // いったん辞めてから入り直した（期間が離れている）場合は、新しいほうの在籍を使う
-function mergedOrgPeriod(
+export function mergedOrgPeriod(
   histories: OrgHistoryRow[],
   orgName: string,
 ): { start: string; end: string | null } | null {

@@ -5,7 +5,7 @@ import { listOrganizations } from "@/lib/supabase/queries/organizations";
 import { getWorkerPhotoUrl, getWorkerLatestDocUrls, listWorkerDocs } from "../actions";
 import { PrintClient, type PrintPeriod, type PrintWorker } from "./PrintClient";
 import { buildPastPeriods, docPeriodDate, periodKeyFor } from "@/lib/worker-doc-periods";
-import { orgEmploymentDates, type OrgHistoryRow } from "@/lib/worker-org-dates";
+import { mergedOrgPeriod, orgEmploymentDates, type OrgHistoryRow } from "@/lib/worker-org-dates";
 import { normalizeOrgSearchText } from "@/lib/org-search";
 import { listVisaHistory } from "@/lib/supabase/queries/visa-history";
 import {
@@ -29,6 +29,13 @@ import { todayStr } from "@/lib/application-alerts";
 import type { WorkHistoryRow, Worker } from "@/types/db";
 
 export const dynamic = "force-dynamic";
+
+// 2つの日付のうち早いほう（片方が空ならもう片方）
+function earliestDate(a: string, b: string): string {
+  if (!a) return b;
+  if (!b) return a;
+  return a <= b ? a : b;
+}
 
 export default async function WorkersPrintPage({
   searchParams,
@@ -236,21 +243,15 @@ export default async function WorkersPrintPage({
     );
     // 今の所属機関にいる間に受けた許可（現在の内容の個人票に載せる）
     const currentOrgName = organizations.find((o) => o.id === workers[0].current_organization_id)?.name ?? "";
-    const ongoing = histories
-      .filter((h) => h.visa !== "本国での職歴")
-      .filter(
-        (h) =>
-          normalizeOrgSearchText(h.org_name) === normalizeOrgSearchText(currentOrgName) &&
-          currentOrgName !== "",
-      )
-      .sort((a, b) => a.start_date.localeCompare(b.start_date))
-      .pop();
-    const currentStart =
+    // 今の所属機関のひと続きの在籍（更新で行が分かれていてもまとめる）
+    const ongoing = currentOrgName ? mergedOrgPeriod(histories, currentOrgName) : null;
+    // 在籍のあいだに使っていた許可を拾う範囲。所属機関別の雇用開始日と、
+    // つながった職歴の入社日の早いほうを使う（その会社にいた全期間をカバーする）
+    const currentOrgStart =
       normalizeOrgEmploymentStarts(workers[0].org_employment_starts).find(
         (e) => e.organization_id === workers[0].current_organization_id && e.start_on,
-      )?.start_on ??
-      ongoing?.start_date ??
-      "";
+      )?.start_on ?? "";
+    const currentStart = earliestDate(currentOrgStart, ongoing?.start ?? "");
     currentHistory = currentStart
       ? visaHistoryInPeriod(visaRows, currentStart, "")
       : visaRows.slice(-1);
@@ -273,7 +274,11 @@ export default async function WorkersPrintPage({
         )?.start_on ?? null;
       // この在籍期間のあいだ使っていた在留カード（期間の前に受けて期間中も使っていた分も含む）。
       // 雇用開始日は所属機関別の日付を優先する（職歴の開始日とずれていることがあるため）
-      const periodHistory = visaHistoryInPeriod(visaRows, periodOrgStart || p.start, p.end);
+      const periodHistory = visaHistoryInPeriod(
+        visaRows,
+        earliestDate(periodOrgStart ?? "", p.start),
+        p.end,
+      );
       const lastGrant = periodHistory[periodHistory.length - 1];
       return {
         key: p.key,
