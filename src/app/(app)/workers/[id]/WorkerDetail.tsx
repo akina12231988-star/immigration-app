@@ -28,6 +28,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { WorkerPhoto } from "@/components/workers/WorkerPhoto";
 import { FieldJumpSearch } from "@/components/workers/FieldJumpSearch";
 import { WorkerDocuments } from "@/components/workers/WorkerDocuments";
+import { WorkerVisaHistory } from "@/components/workers/WorkerVisaHistory";
 import { WorkerEmploymentInsurance } from "@/components/workers/WorkerEmploymentInsurance";
 import { WorkerFollowups } from "@/components/workers/WorkerFollowups";
 import { WorkerInsuranceCards } from "@/components/workers/WorkerInsuranceCards";
@@ -1590,6 +1591,15 @@ export function WorkerDetail({
         workerId={worker.id}
         initial={worker.dependents}
         canEdit={canEdit}
+      />
+
+      {/* 在留資格の履歴（いつ何のビザが許可されたか） */}
+      <WorkerVisaHistory
+        workerId={worker.id}
+        cardNo={worker.residence_card_no}
+        status={worker.residence_status}
+        permitDate={worker.residence_permit_date}
+        expiryDate={worker.residence_expiry_date}
       />
 
       {/* 在留カード・指定書の差し替え（履歴保持） */}
