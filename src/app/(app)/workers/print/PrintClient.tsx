@@ -23,6 +23,8 @@ import {
   type PeriodCardInput,
 } from "@/lib/worker-period-cards";
 import { upsertWorkerPeriodCard } from "@/lib/supabase/queries/worker-period-cards";
+import { rosterJpDate } from "@/lib/roster";
+import type { VisaHistoryRow } from "@/lib/visa-history";
 import type { Organization, WorkerInput } from "@/types/db";
 
 // 過去に在籍していた期間（この期間の個人票も発行できる）
@@ -34,6 +36,7 @@ export interface PrintPeriod {
   residenceCardUrl: string; // その期間に登録した在留カードの画像
   designationUrl: string; // その期間に登録した指定書の画像
   orgStartOn: string | null; // その機関の雇用開始日（所属機関別の雇用開始日）
+  history: VisaHistoryRow[]; // この在籍期間の中で受けた許可（在留資格の履歴）
   grant: GrantValues | null; // 当時の在留カードの内容（記録・申請一覧から）
   grantSource: string; // どこから出した内容か（在留カードの記録 / 申請一覧の許可 / 空）
   card: PeriodCardInput | null; // 保存してある当時の在留カード情報
@@ -79,6 +82,7 @@ export function PrintClient({
   listForCompany,
   workers,
   periods,
+  currentHistory,
   canEdit,
 }: {
   organizations: Organization[];
@@ -94,6 +98,7 @@ export function PrintClient({
   listForCompany: boolean;
   workers: PrintWorker[];
   periods: PrintPeriod[]; // 過去に在籍していた期間（個人単位のときだけ）
+  currentHistory: VisaHistoryRow[]; // 今の所属機関にいる間に受けた許可
   canEdit: boolean; // この画面から情報を訂正できるか（admin / staff）
 }) {
   const router = useRouter();
@@ -377,6 +382,8 @@ export function PrintClient({
               orgName={w.orgName || orgName}
               printDate={printDate}
               forCompany={forCompany}
+              /* その所属機関にいた間に受けた許可（在留資格の履歴） */
+              history={individual ? (selectedPeriod?.history ?? currentHistory) : []}
               /* 過去の在籍期間はその期間の欄（下の入力欄）で直す。
                  ここで直すと今の情報が書き換わってしまうため編集は出さない */
               canEdit={canEdit && !selectedPeriod}
@@ -510,6 +517,7 @@ function WorkerSheet({
   orgName,
   printDate,
   forCompany,
+  history = [],
   canEdit,
   onSaved,
 }: {
@@ -517,6 +525,7 @@ function WorkerSheet({
   orgName: string;
   printDate: string;
   forCompany: boolean;
+  history?: VisaHistoryRow[]; // その所属機関にいた間に受けた許可（在留資格の履歴）
   canEdit: boolean;
   onSaved: () => void; // 保存後にページのデータを読み直す
 }) {
@@ -740,6 +749,41 @@ function WorkerSheet({
           </div>
         )}
       </div>
+
+      {/* その所属機関にいた間の在留資格の履歴（許可が複数あるときは全部出す） */}
+      {history.length > 0 && (
+        <div className="mt-5">
+          <p className="mb-1 text-[10px] font-bold text-gray-500">
+            在留資格の履歴（{orgName || "この所属機関"}にいた間の許可）
+          </p>
+          <table className="w-full border-collapse text-[10px]">
+            <thead>
+              <tr className="bg-gray-100">
+                <th className="border border-gray-400 px-1 py-0.5 text-left font-bold">許可日</th>
+                <th className="border border-gray-400 px-1 py-0.5 text-left font-bold">在留資格</th>
+                <th className="border border-gray-400 px-1 py-0.5 text-left font-bold">在留期限</th>
+                <th className="border border-gray-400 px-1 py-0.5 text-left font-bold">
+                  在留カード番号
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((h) => (
+                <tr key={`${h.permitDate}_${h.status}`}>
+                  <td className="border border-gray-400 px-1 py-0.5 tabular-nums">
+                    {rosterJpDate(h.permitDate)}
+                  </td>
+                  <td className="border border-gray-400 px-1 py-0.5">{h.label}</td>
+                  <td className="border border-gray-400 px-1 py-0.5 tabular-nums">
+                    {rosterJpDate(h.expiryDate)}
+                  </td>
+                  <td className="border border-gray-400 px-1 py-0.5 tracking-wide">{h.cardNo}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* 最新在留カード画像・指定書画像（下半分を目いっぱい使う）。
           編集モードではクリック / ドロップで差し替えできる（履歴に追記される） */}
