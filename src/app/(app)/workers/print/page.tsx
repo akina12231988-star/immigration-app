@@ -7,6 +7,13 @@ import { PrintClient, type PrintPeriod, type PrintWorker } from "./PrintClient";
 import { buildPastPeriods, docPeriodDate, periodKeyFor } from "@/lib/worker-doc-periods";
 import { orgEmploymentDates, type OrgHistoryRow } from "@/lib/worker-org-dates";
 import { normalizeOrgSearchText } from "@/lib/org-search";
+import { listVisaHistory } from "@/lib/supabase/queries/visa-history";
+import {
+  buildVisaHistory,
+  type VisaHistoryApplication,
+  type VisaHistoryCard,
+  type VisaHistoryRow,
+} from "@/lib/visa-history";
 import { normalizeOrgEmploymentStarts } from "@/lib/org-employment";
 import {
   cardAsOf,
@@ -153,8 +160,10 @@ export default async function WorkersPrintPage({
   // 当時の在留カード・指定書の画像（effective_on で期間に振り分け）と、
   // 保存してある当時の在留カード情報（0136）をまとめて渡す
   let periods: PrintPeriod[] = [];
+  // 今の所属機関にいる間に受けた許可（在留資格の履歴のうち現在の分）
+  let currentHistory: VisaHistoryRow[] = [];
   if (workerParam && workers.length === 1) {
-    const [docs, cards, { data: apps }, { data: cardHistory }] = await Promise.all([
+    const [docs, cards, { data: apps }, { data: cardHistory }, manualVisa] = await Promise.all([
       listWorkerDocs(workerParam),
       listWorkerPeriodCards(supabase, workerParam).catch(() => []),
       // 当時の最終版の在留カード（その時点で最後に許可された内容）を出すため、
@@ -162,7 +171,7 @@ export default async function WorkersPrintPage({
       supabase
         .from("immigration_applications")
         .select(
-          "granted_card_no, granted_permit_date, granted_expiry_date, visa_at_grant, approval_date",
+          "content, approved, granted_card_no, granted_permit_date, granted_expiry_date, visa_at_grant, approval_date",
         )
         .eq("worker_id", workerParam),
       // 在留カードを書き換える前の内容の記録（0137）。当時の内容はこれがいちばん確か
@@ -172,6 +181,8 @@ export default async function WorkersPrintPage({
           "residence_card_no, residence_status, residence_permit_date, residence_expiry_date, recorded_at",
         )
         .eq("worker_id", workerParam),
+      // 在留資格の履歴のうち手で入れた分（0138）
+      listVisaHistory(supabase, workerParam).catch(() => []),
     ]);
     const cardRecords = (cardHistory as CardHistoryRecord[] | null) ?? [];
     const grants = ((apps as GrantRecord[] | null) ?? []).map((a) => ({
@@ -181,6 +192,35 @@ export default async function WorkersPrintPage({
       visa_at_grant: a.visa_at_grant ?? "",
       approval_date: a.approval_date,
     }));
+    // 在留資格の履歴（外国人詳細と同じ組み立て）。個人票にも載せ、当時の在留カードにも使う
+    const visaRows = buildVisaHistory({
+      apps: ((apps as VisaHistoryApplication[] | null) ?? []).map((a) => ({
+        content: a.content ?? "",
+        approved: a.approved ?? false,
+        approval_date: a.approval_date,
+        granted_permit_date: a.granted_permit_date,
+        granted_expiry_date: a.granted_expiry_date,
+        granted_card_no: a.granted_card_no ?? "",
+        visa_at_grant: a.visa_at_grant ?? "",
+      })),
+      cards: ((cardHistory as VisaHistoryCard[] | null) ?? []).map((c) => ({
+        residence_card_no: c.residence_card_no ?? "",
+        residence_status: c.residence_status ?? "",
+        residence_permit_date: c.residence_permit_date,
+        residence_expiry_date: c.residence_expiry_date,
+      })),
+      manual: manualVisa,
+      current: workers[0].residence_permit_date
+        ? {
+            residence_card_no: workers[0].residence_card_no,
+            residence_status: workers[0].residence_status,
+            residence_permit_date: workers[0].residence_permit_date,
+            residence_expiry_date: workers[0].residence_expiry_date,
+            residence_period: workers[0].residence_period ?? "",
+          }
+        : null,
+    });
+
     const today = todayStr();
     // 職歴は上でまとめて読んだものを使う
     const histories = (historiesByWorker[workerParam] ?? []) as WorkHistoryRow[];
@@ -188,6 +228,27 @@ export default async function WorkersPrintPage({
     const hasOngoing = histories.some(
       (h) => h.visa !== "本国での職歴" && (h.end_date === null || h.end_date >= today),
     );
+    // 今の所属機関にいる間に受けた許可（現在の内容の個人票に載せる）
+    const currentOrgName = organizations.find((o) => o.id === workers[0].current_organization_id)?.name ?? "";
+    const ongoing = histories
+      .filter((h) => h.visa !== "本国での職歴")
+      .filter(
+        (h) =>
+          normalizeOrgSearchText(h.org_name) === normalizeOrgSearchText(currentOrgName) &&
+          currentOrgName !== "",
+      )
+      .sort((a, b) => a.start_date.localeCompare(b.start_date))
+      .pop();
+    const currentStart =
+      normalizeOrgEmploymentStarts(workers[0].org_employment_starts).find(
+        (e) => e.organization_id === workers[0].current_organization_id && e.start_on,
+      )?.start_on ??
+      ongoing?.start_date ??
+      "";
+    currentHistory = currentStart
+      ? visaRows.filter((r) => r.permitDate >= currentStart)
+      : visaRows.slice(-1);
+
     periods = past.map((p) => {
       const forPeriod = docs.filter(
         (d) => periodKeyFor(docPeriodDate(d), past, hasOngoing) === p.key,
@@ -204,6 +265,11 @@ export default async function WorkersPrintPage({
         normalizeOrgEmploymentStarts(workers[0].org_employment_starts).find(
           (e) => e.organization_id === periodOrgId && e.start_on,
         )?.start_on ?? null;
+      // この在籍期間の中で受けた許可（在留資格の履歴のうち、期間に入るもの）
+      const periodHistory = visaRows.filter(
+        (r) => r.permitDate >= p.start && r.permitDate <= p.end,
+      );
+      const lastGrant = periodHistory[periodHistory.length - 1];
       return {
         key: p.key,
         org: p.org,
@@ -212,14 +278,24 @@ export default async function WorkersPrintPage({
         residenceCardUrl: newest("在留カード"),
         designationUrl: newest("指定書"),
         orgStartOn: periodOrgStart,
+        history: periodHistory,
         // 退職日の時点で使っていた在留カードの内容。
-        // 書き換え前の記録があればそれ、無ければその時点で最後に許可された内容
-        grant: cardAsOf(cardRecords, p.end) ?? grantAsOf(grants, p.end),
-        grantSource: cardAsOf(cardRecords, p.end)
-          ? "在留カードの記録"
-          : grantAsOf(grants, p.end)
-            ? "申請一覧の許可"
-            : "",
+        // 在籍中に受けた最後の許可 → 書き換え前の記録 → その時点で最後に許可された内容
+        grant: lastGrant
+          ? {
+              residenceCardNo: lastGrant.cardNo,
+              residenceStatus: lastGrant.status,
+              residencePermitDate: lastGrant.permitDate,
+              residenceExpiryDate: lastGrant.expiryDate || null,
+            }
+          : (cardAsOf(cardRecords, p.end) ?? grantAsOf(grants, p.end)),
+        grantSource: lastGrant
+          ? "在留資格の履歴"
+          : cardAsOf(cardRecords, p.end)
+            ? "在留カードの記録"
+            : grantAsOf(grants, p.end)
+              ? "申請一覧の許可"
+              : "",
         card: saved
           ? ({
               residence_card_no: saved.residence_card_no ?? "",
@@ -250,6 +326,7 @@ export default async function WorkersPrintPage({
       listForCompany={listForCompany}
       workers={printWorkers}
       periods={periods}
+      currentHistory={currentHistory}
       canEdit={me.role !== "viewer"}
     />
   );
