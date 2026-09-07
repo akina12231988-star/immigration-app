@@ -27,6 +27,8 @@ import {
   buildFollowupMail,
   buildOnboardingMail,
   followupMailDocs,
+  FOLLOWUP_REASON_PRESETS,
+  followupReasonSentence,
   formatDateSlash,
   isPendingStatus,
   isStartDateCorrectionNeeded,
@@ -634,15 +636,39 @@ export function OnboardingClient({
                       <span className={LABEL}>送信者名</span>
                       <input value={sender} onChange={(e) => setSender(e.target.value)} className={INPUT} />
                     </label>
-                    <label className="flex flex-col gap-1">
+                    <div className="flex flex-col gap-1">
                       <span className={LABEL}>訂正・追送の理由（本文に入ります）</span>
+                      <p className="text-[11px] leading-relaxed text-muted">
+                        「〇〇の訂正」「〇〇の追加」のように、できごとの名前で入れてください
+                        （本文では「〜について、<span className="font-bold">ここに入れた言葉</span>がありましたので、」と続きます）。
+                      </p>
+                      {/* よく使う言い方はボタンで入れられる */}
+                      <div className="flex flex-wrap gap-1.5">
+                        {FOLLOWUP_REASON_PRESETS.map((r) => (
+                          <button
+                            key={r}
+                            type="button"
+                            onClick={() => setFuReason(r)}
+                            className="rounded-full border border-border px-2.5 py-1 text-[11px] font-bold text-brand"
+                          >
+                            {r}
+                          </button>
+                        ))}
+                      </div>
                       <input
                         value={fuReason}
                         onChange={(e) => setFuReason(e.target.value)}
-                        placeholder="例: 雇用開始年月日の訂正（2026/08/01 → 2026/08/05）"
+                        placeholder="例: 通帳の見開きの追加 ／ 雇用開始年月日の訂正（2026/08/01 → 2026/08/05）"
                         className={INPUT}
                       />
-                    </label>
+                      {/* 入れた言葉で本文の1行目がどうなるかをその場で出す */}
+                      <p className="rounded-lg bg-background px-2.5 py-2 text-[11px] leading-relaxed text-muted">
+                        本文の書き出し:{" "}
+                        <span className="font-bold text-foreground">
+                          {followupReasonSentence(worker.name, fuReason)}
+                        </span>
+                      </p>
+                    </div>
                   </div>
                 </Card>
 

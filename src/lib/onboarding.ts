@@ -233,19 +233,34 @@ export function followupMailDocs(
   return ordered.map((d, i) => ({ ...d, num: i + 1 }));
 }
 
+// 訂正・追送の理由の書き方の例（画面のボタンから入れられる）。
+// 本文では「〜について、{理由}がありましたので、」の形に入るため、
+// 「〇〇の訂正」「〇〇の追加」のような言い方にそろえる
+export const FOLLOWUP_REASON_PRESETS = [
+  "記載内容の訂正",
+  "不足資料の追加",
+  "雇用開始年月日の訂正",
+  "書類の差し替え",
+] as const;
+
+// 理由を入れたときに本文の1行目がどうなるか（画面のプレビューと本文で同じものを使う）
+export function followupReasonSentence(workerName: string, reason: string): string {
+  const name = workerName.trim() || "（氏名未入力）";
+  const text = reason.trim();
+  return text
+    ? `先日お送りした${name}さんの入社書類について、${text}がありましたので、下記の資料を添付いたします。`
+    : `先日お送りした${name}さんの入社書類について、下記の資料を追加で添付いたします。`;
+}
+
 // 訂正・追送メールの本文。初回メール（buildOnboardingMail）と同じ宛名・結びの体裁で、
 // 【訂正版】【追加資料】の2区分に通し番号を振る。訂正版があるときは差し替えのお願いを入れる
 export function buildFollowupMail(input: FollowupMailInput): string {
-  const name = input.workerName.trim() || "（氏名未入力）";
   const numbered = followupMailDocs(input.docs);
-  const reason = input.reason.trim();
 
   let body = "";
   if (input.orgName.trim()) body += `${input.orgName.trim()} ${input.honorific}\n\n`;
   body += "お世話になっております。\n\n";
-  body += reason
-    ? `先日お送りした${name}さんの入社書類について、${reason}がありましたので、下記の資料を添付いたします。\n\n`
-    : `先日お送りした${name}さんの入社書類について、下記の資料を追加で添付いたします。\n\n`;
+  body += `${followupReasonSentence(input.workerName, input.reason)}\n\n`;
 
   const sections: [string, FollowupKind][] = [
     ["【訂正版】", "訂正版"],
