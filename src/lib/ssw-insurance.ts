@@ -306,11 +306,15 @@ export function sswRowTodo(row: SswInsuranceRow): SswTodoRef | undefined {
   return row.state === "cancel" ? row.todos.cancel : row.todos.join;
 }
 
+// そのTODOで手続きを進めているか（経過が未着手以外＝「申込手続中」の列に出る人）。
+// ダッシュボードの期限アラートも、この人たちは手続き中なので出さない
+export function isSswTodoInProgress(todo: SswTodoRef | undefined): boolean {
+  return !!todo && todo.stage !== "未着手";
+}
+
 // どちらの列に出すか。TODOが無い・経過が未着手なら左、それ以外は右
 export function sswColumnOf(row: SswInsuranceRow): SswColumnKey {
-  const todo = sswRowTodo(row);
-  if (!todo || todo.stage === "未着手") return "notStarted";
-  return "inProgress";
+  return isSswTodoInProgress(sswRowTodo(row)) ? "inProgress" : "notStarted";
 }
 
 // 手続きの種類。加入手続きと解約手続きは別の欄に分けて出す

@@ -30,7 +30,13 @@ import { isExpiryAlert, todayStr } from "@/lib/application-alerts";
 import { useApplications } from "@/lib/application-store";
 import { buildRenewalPlaceholders } from "@/lib/renewal-placeholders";
 import { isSswInsuranceRenewalTarget, remainingLabel } from "@/lib/worker-alerts";
-import { isSswInsuranceCandidate } from "@/lib/ssw-insurance";
+import {
+  isSswInsuranceCandidate,
+  isSswTodoInProgress,
+  sswTodosByWorker,
+} from "@/lib/ssw-insurance";
+import { listTodos, listTodoStatusOptions, type TodoRow } from "@/lib/supabase/queries/todos";
+import type { TodoStatusOption } from "@/lib/todo";
 import { formatDateSlash, isStartDateCorrectionNeeded } from "@/lib/onboarding";
 import { listWorkersWithOrg, type WorkerWithOrg } from "@/lib/supabase/queries/workers";
 import { listOrganizations } from "@/lib/supabase/queries/organizations";
@@ -161,12 +167,33 @@ export default function DashboardPage() {
         : false,
     );
 
+  // 特定技能総合保険の加入手続きのTODO（申込手続中の人をアラートから外すために見る）
+  const [sswTodos, setSswTodos] = useState<TodoRow[]>([]);
+  const [todoOptions, setTodoOptions] = useState<TodoStatusOption[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+    Promise.all([listTodos(supabase), listTodoStatusOptions(supabase)])
+      .then(([ts, opts]) => {
+        if (cancelled) return;
+        setSswTodos(ts);
+        setTodoOptions(opts);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const sswTodosOf = sswTodosByWorker(sswTodos, todoOptions);
+
   // 特定技能総合保険の期限アラート: 有効期限まで1か月以内（または超過）の外国人。
-  // 所属機関が外国人負担で本人が自己負担加入を希望していない場合（未加入）は対象外
+  // 所属機関が外国人負担で本人が自己負担加入を希望していない場合（未加入）は対象外。
+  // 加入手続きのTODOを進めている人（一覧の「申込手続中」）は、手続き中なので出さない
   const insuranceAlerts = renewalWorkers.filter((w) => {
     // まだ入社前（申請準備中・支援開始前）の人は保険に入らないので出さない
     if (!isSswInsuranceCandidate(w)) return false;
     if (!isSswInsuranceRenewalTarget(w, today)) return false;
+    if (isSswTodoInProgress(sswTodosOf.get(w.id)?.join)) return false;
     const burden =
       (w.current_organization_id
         ? orgById.get(w.current_organization_id)?.intake?.ssw_insurance_burden
@@ -253,7 +280,7 @@ export default function DashboardPage() {
             icon={<ShieldAlert size={18} />}
             title="特定技能総合保険 期限アラート"
             count={insuranceAlerts.length}
-            lead="特定技能総合保険の有効期限まで1か月を切った（または期限切れの）外国人です。更新手続きをしてください。"
+            lead="特定技能総合保険の有効期限まで1か月を切った（または期限切れの）外国人です。更新手続きをしてください。加入手続きのTODOを進めている人（申込手続中）はここには出ません。"
           >
               {/* 未加入の人・解約手続きも含めた管理はTODOの「特定技能総合保険」で行う */}
               <Link
