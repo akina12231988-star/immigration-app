@@ -95,6 +95,7 @@ import {
   updateHistory,
 } from "@/lib/supabase/queries/histories";
 import { historyToCloseOnLeaving } from "@/lib/worker-org-dates";
+import { ensureSswCancelTodoOnLeaving } from "@/lib/supabase/queries/ssw-insurance";
 import { JobApplicationSection } from "@/components/workers/JobApplicationSection";
 import { dependentAge, warekiDate } from "@/lib/dependents";
 import { fileLinkCopyPath, isWebFileLink } from "@/lib/file-link";
@@ -2196,6 +2197,11 @@ function LeavingSection({
       });
       if (target) {
         await updateHistory(supabase, target.id, { end_date: leavingOn });
+      }
+      // 退職したら特定技能総合保険の解約手続きが必要なので、そのTODOを作る
+      // （保険に入っていない人には作らない。未適用の環境でも退職者情報の保存は止めない）
+      if (leavingOn) {
+        await ensureSswCancelTodoOnLeaving(supabase, worker.id).catch(() => undefined);
       }
       setSaved(true);
       router.refresh();

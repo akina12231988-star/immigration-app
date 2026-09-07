@@ -1,14 +1,19 @@
 // TODO機能（NotionのTODOデータベースの置き換え）。
-// TODOは3つの構成で、番号は通しで自動採番する。
+// TODOは4つの構成で、番号は通しで自動採番する。
 // ステータス（経過）の選択肢は todo_status_options に保存し、画面から随時変更できる。
 
-export const TODO_KINDS = ["申請準備", "退職の随時報告書", "試験の申込"] as const;
+export const TODO_KINDS = [
+  "申請準備",
+  "退職の随時報告書",
+  "試験の申込",
+  "特定技能総合保険",
+] as const;
 export type TodoKind = (typeof TODO_KINDS)[number];
 
 export const TODO_STAGES = ["未着手", "進行中", "完了"] as const;
 export type TodoStage = (typeof TODO_STAGES)[number];
 
-// 選択肢の種類。3つの構成に加えて、経過が「〜チェック中」のときに出す
+// 選択肢の種類。4つの構成に加えて、経過が「〜チェック中」のときに出す
 // 確認ステータス用の「チェック」がある
 export const TODO_CHECK_KIND = "チェック" as const;
 export type TodoOptionKind = TodoKind | typeof TODO_CHECK_KIND;

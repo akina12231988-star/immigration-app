@@ -23,6 +23,7 @@ import {
   Bell,
   Handshake,
   Sparkles,
+  ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 
@@ -72,6 +73,12 @@ export const NAV_ENTRIES: NavEntry[] = [
       { href: "/workers/renewals", label: "申請準備", short: "申請準備", icon: CalendarClock },
       { href: "/resignations", label: "随時報告書", short: "随時報告", icon: UserMinus },
       { href: "/todos/exams", label: "試験の申込", short: "試験", icon: PencilLine },
+      {
+        href: "/todos/ssw-insurance",
+        label: "特定技能総合保険",
+        short: "総合保険",
+        icon: ShieldCheck,
+      },
     ],
   },
   { href: "/applications", label: "申請一覧", short: "申請一覧", icon: List },

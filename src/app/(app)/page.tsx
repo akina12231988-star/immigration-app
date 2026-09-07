@@ -252,6 +252,14 @@ export default function DashboardPage() {
             count={insuranceAlerts.length}
             lead="特定技能総合保険の有効期限まで1か月を切った（または期限切れの）外国人です。更新手続きをしてください。"
           >
+              {/* 未加入の人・解約手続きも含めた管理はTODOの「特定技能総合保険」で行う */}
+              <Link
+                href="/todos/ssw-insurance"
+                className="mb-1.5 flex items-center justify-between gap-2 rounded-lg border border-brand/40 bg-surface px-3 py-2 text-sm font-bold text-brand"
+              >
+                特定技能総合保険の一覧を開く（未加入・加入手続き・解約手続き）
+                <ChevronRight size={16} className="shrink-0" />
+              </Link>
               <div className="space-y-1.5">
                 {insuranceAlerts.map((w) => (
                   <Link

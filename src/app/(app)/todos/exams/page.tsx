@@ -5,7 +5,7 @@ import { TodosClient } from "../TodosClient";
 
 export const dynamic = "force-dynamic";
 
-// 試験の申込のTODO（3つの構成のうち「試験の申込」だけの画面）
+// 試験の申込のTODO（4つの構成のうち「試験の申込」だけの画面）
 export default async function ExamTodosPage() {
   const me = await getMyProfile();
   if (!me) redirect("/login");
