@@ -20,6 +20,11 @@ describe("rosterWorkKind", () => {
     expect(rosterWorkKind("農業／畜産農業全般")).toBe("畜産農業の一般社員（役員なし）");
   });
 
+  it("分野・職種が未入力なら空のまま（画面で直接書ける）", () => {
+    expect(rosterWorkKind("")).toBe("");
+    expect(rosterWorkKind("　")).toBe("");
+  });
+
   it("職種が1つの分野は分野名で言い表す（介護）", () => {
     expect(rosterWorkKind("介護／身体介護等")).toBe("介護の一般社員（役員なし）");
   });
