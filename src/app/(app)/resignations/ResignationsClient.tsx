@@ -30,6 +30,7 @@ import {
 } from "@/lib/supabase/queries/resignations";
 import { updateWorker, type WorkerForResignation } from "@/lib/supabase/queries/workers";
 import { updateHistory } from "@/lib/supabase/queries/histories";
+import { ensureSswCancelTodoOnLeaving } from "@/lib/supabase/queries/ssw-insurance";
 import { historyToCloseOnLeaving, type OrgHistoryRow } from "@/lib/worker-org-dates";
 import { fetchNextTodoNo, insertTodo } from "@/lib/supabase/queries/todos";
 import { dbErrorMessage } from "@/lib/errors";
@@ -477,6 +478,9 @@ function ResignationDialog({
         );
         if (target) await updateHistory(supabase, target.id, { end_date: leavingOn });
       }
+      // 退職したら特定技能総合保険の解約手続きが必要なので、そのTODOを作る
+      // （保険に入っていない人には作らない。未適用の環境でも退職の保存は止めない）
+      await ensureSswCancelTodoOnLeaving(supabase, workerId).catch(() => undefined);
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存に失敗しました");
