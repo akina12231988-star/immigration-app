@@ -76,9 +76,29 @@ export function parseSswApplyLine(raw: string): SswApplyLine | null {
   };
 }
 
+// アルファベットの氏名で始まる行を1人分の区切りとみなす。
+// PDFやサイトからコピーすると、1人分が「氏名の行」「生年月日の行」…と
+// 何行かに分かれることがあるため、次の氏名が出てくるまでを1人分にまとめる
+const NAME_LINE_RE = /[A-Za-z][A-Za-z'.-]*(?:\s+[A-Za-z'.-]+)+/;
+
+export function groupSswApplyRecords(lines: string[]): string[] {
+  const records: string[] = [];
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (records.length === 0 || NAME_LINE_RE.test(line)) records.push(line);
+    else records[records.length - 1] += ` ${line}`;
+  }
+  return records;
+}
+
 export function parseSswApplyText(text: string): SswApplyLine[] {
-  return text
-    .split(/\r?\n/)
+  return parseSswApplyLines(text.split(/\r?\n/));
+}
+
+// PDFから取り出した行など、行の配列から読み取る
+export function parseSswApplyLines(lines: string[]): SswApplyLine[] {
+  return groupSswApplyRecords(lines)
     .map(parseSswApplyLine)
     .filter((l): l is SswApplyLine => l !== null);
 }

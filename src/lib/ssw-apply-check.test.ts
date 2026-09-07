@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   checkSswApply,
+  groupSswApplyRecords,
+  parseSswApplyLines,
   parseSswApplyLine,
   parseSswApplyText,
   sswApplySummary,
@@ -71,6 +73,31 @@ describe("parseSswApplyLine", () => {
   it("空行は読み飛ばす", () => {
     expect(parseSswApplyLine("   ")).toBeNull();
     expect(parseSswApplyText("a\n\n \n")).toHaveLength(1);
+  });
+});
+
+describe("PDFのように1人分が何行かに分かれているとき", () => {
+  it("氏名の行から次の氏名の行までを1人分にまとめる", () => {
+    const lines = [
+      "被保険者情報",
+      "VU THI NHAN",
+      "ベトナム 女",
+      "1988/09/30",
+      "7ヶ月 2026/09/08",
+      "株式会社ベース",
+      "LE XUAN THOAI",
+      "ベトナム 男",
+      "1998/03/03",
+      "1ヶ月 2026/09/08",
+      "株式会社高正",
+    ];
+    expect(groupSswApplyRecords(lines)).toHaveLength(3); // 見出し＋2人
+    const parsed = parseSswApplyLines(lines);
+    const nhan = parsed.find((p) => p.name === "VU THI NHAN");
+    expect(nhan?.birth).toBe("1988-09-30");
+    expect(nhan?.months).toBe(7);
+    expect(nhan?.startOn).toBe("2026-09-08");
+    expect(nhan?.gender).toBe("女");
   });
 });
 
