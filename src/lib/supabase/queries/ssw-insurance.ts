@@ -17,6 +17,7 @@ const COLUMNS = [
   "gender",
   "birth",
   "status",
+  "support",
   "residence_status",
   "residence_expiry_date",
   "leaving_on",

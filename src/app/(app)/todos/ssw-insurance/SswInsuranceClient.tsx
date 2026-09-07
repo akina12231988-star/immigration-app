@@ -53,6 +53,7 @@ import {
   slashDate,
   sswApplyCopyText,
   sswApplyFields,
+  sswAutoDeclineReason,
   sswDeclineNote,
   sswInsuranceMonths,
   sswTodosByWorker,
@@ -486,12 +487,19 @@ function SswWorkerRow({
             type="button"
             className={`${ROW_BTN} text-seal`}
             onClick={() => {
+              // 外国人負担のときは理由が決まっているので、そのまま保存する
+              const auto = sswAutoDeclineReason(row.burden);
+              if (auto) {
+                onWill(false, auto);
+                return;
+              }
               setDeclineReason(SSW_DECLINE_REASONS[0]);
               setDeclineOther("");
               setDeclining(true);
             }}
           >
             加入しない
+            {sswAutoDeclineReason(row.burden) && "（外国人負担）"}
           </button>
         )}
         {row.state === "declined" && canEdit && (

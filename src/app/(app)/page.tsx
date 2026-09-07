@@ -30,6 +30,7 @@ import { isExpiryAlert, todayStr } from "@/lib/application-alerts";
 import { useApplications } from "@/lib/application-store";
 import { buildRenewalPlaceholders } from "@/lib/renewal-placeholders";
 import { isSswInsuranceRenewalTarget, remainingLabel } from "@/lib/worker-alerts";
+import { isSswInsuranceCandidate } from "@/lib/ssw-insurance";
 import { formatDateSlash, isStartDateCorrectionNeeded } from "@/lib/onboarding";
 import { listWorkersWithOrg, type WorkerWithOrg } from "@/lib/supabase/queries/workers";
 import { listOrganizations } from "@/lib/supabase/queries/organizations";
@@ -163,6 +164,8 @@ export default function DashboardPage() {
   // 特定技能総合保険の期限アラート: 有効期限まで1か月以内（または超過）の外国人。
   // 所属機関が外国人負担で本人が自己負担加入を希望していない場合（未加入）は対象外
   const insuranceAlerts = renewalWorkers.filter((w) => {
+    // まだ入社前（申請準備中・支援開始前）の人は保険に入らないので出さない
+    if (!isSswInsuranceCandidate(w)) return false;
     if (!isSswInsuranceRenewalTarget(w, today)) return false;
     const burden =
       (w.current_organization_id
