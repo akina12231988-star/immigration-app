@@ -9,6 +9,7 @@ import {
   sswActionCount,
   sswApplyCopyText,
   sswApplyFields,
+  sswAutoDeclineReason,
   sswColumnOf,
   sswDeclineNote,
   sswInsuranceMonths,
@@ -215,6 +216,12 @@ describe("buildSswInsuranceRows", () => {
 });
 
 describe("加入しない理由", () => {
+  it("外国人負担のときは理由を選ばず自動で残す", () => {
+    expect(sswAutoDeclineReason("外国人負担")).toBe("外国人負担だから");
+    expect(sswAutoDeclineReason("会社負担")).toBeNull();
+    expect(sswAutoDeclineReason("")).toBeNull();
+  });
+
   it("選んだ理由をそのまま備考にする", () => {
     expect(sswDeclineNote("特定技能２号になったから", "")).toBe("特定技能２号になったから");
   });

@@ -385,6 +385,15 @@ export function sswActionCount(rows: SswInsuranceRow[]): number {
 export const SSW_DECLINE_REASONS = ["特定技能２号になったから", "その他"] as const;
 export type SswDeclineReason = (typeof SSW_DECLINE_REASONS)[number];
 
+// 所属機関が外国人負担のときの理由。本人が希望しなければ加入しないので、
+// 「加入しない」を押した時点でこの理由を自動で備考に残す（理由を選ばせない）
+export const SSW_BURDEN_DECLINE_REASON = "外国人負担だから";
+
+// 押しただけで決まる理由（外国人負担）。それ以外は理由を選んでもらうので null
+export function sswAutoDeclineReason(burden: string): string | null {
+  return burden === "外国人負担" ? SSW_BURDEN_DECLINE_REASON : null;
+}
+
 // 備考に残す文言。その他のときは入力した内容をそのまま残す
 export function sswDeclineNote(reason: string, other: string): string {
   return reason === "その他" ? other.trim() : reason;
