@@ -103,7 +103,9 @@ export function RosterSheet({
 
   const toForm = (r: WorkerRoster): RosterForm => ({
     company_name: r.company_name,
-    work_kind: r.work_kind,
+    // 業務の種類が空のまま保存された名簿は、分野・職種から作り直して補う
+    // （あとから分野・職種を入れたときに空欄のままにならないように）
+    work_kind: r.work_kind || rosterWorkKind(worker.field),
     // 保存済みの名簿にも在留資格の許可を出す（同じ年月日の行があるときはそのまま）
     history: withResidencePermitHistory(
       r.history ?? [],
@@ -335,12 +337,20 @@ export function RosterSheet({
               <BasicRow label="住所">{worker.address || "　"}</BasicRow>
               <BasicRow label="業務の種類">
                 {canEdit ? (
-                  <input
-                    value={form.work_kind}
-                    onChange={(e) => set("work_kind", e.target.value)}
-                    placeholder="例: 耕種農業の一般社員（役員なし）"
-                    className={CELL_INPUT}
-                  />
+                  <>
+                    <input
+                      value={form.work_kind}
+                      onChange={(e) => set("work_kind", e.target.value)}
+                      placeholder="例: 耕種農業の一般社員（役員なし）"
+                      className={CELL_INPUT}
+                    />
+                    {/* 分野・職種が未入力だと自動で作れないので、その場で知らせる */}
+                    {!form.work_kind && !worker.field && (
+                      <span className="mt-0.5 block text-[10px] text-seal print:hidden">
+                        外国人詳細の「分野・職種」が未入力です。入れると自動で入ります（ここに直接書いてもOK）。
+                      </span>
+                    )}
+                  </>
                 ) : (
                   form.work_kind || "　"
                 )}
