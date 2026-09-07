@@ -70,6 +70,7 @@ import {
   updateSswInsurance,
   type SswCertRow,
 } from "@/lib/supabase/queries/ssw-insurance";
+import { SswBurdenSettings } from "./SswBurdenSettings";
 import {
   createSswCertTicket,
   deleteSswCert,
@@ -316,6 +317,16 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
           特定技能の人だけ表示
         </label>
       </Card>
+
+      {/* 所属機関ごとの負担区分（会社負担／外国人負担）をここから決められる */}
+      {!loading && (
+        <SswBurdenSettings
+          orgs={orgs}
+          canEdit={canEdit}
+          onSaved={() => void reload()}
+          onError={setError}
+        />
+      )}
 
       {loading ? (
         <Card className="p-6 text-center text-sm text-muted">読み込み中…</Card>

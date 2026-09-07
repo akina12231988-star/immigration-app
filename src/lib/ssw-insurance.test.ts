@@ -10,6 +10,8 @@ import {
   sswApplyCopyText,
   sswApplyFields,
   sswAutoDeclineReason,
+  sswBurdenRows,
+  sswBurdenUnsetCount,
   sswColumnOf,
   sswDeclineNote,
   sswInsuranceMonths,
@@ -437,5 +439,27 @@ describe("並び替え", () => {
     const before = rows.map((r) => r.worker.name);
     sortSswRows(rows, "name");
     expect(rows.map((r) => r.worker.name)).toEqual(before);
+  });
+});
+
+describe("所属機関の負担区分の設定", () => {
+  const orgs = [
+    { id: "1", name: "みらい", intake: { ssw_insurance_burden: "会社負担" } },
+    { id: "2", name: "さくら", intake: {} },
+    { id: "3", name: "あおば", intake: { ssw_insurance_burden: "外国人負担" } },
+    { id: "4", name: "かえで", intake: null },
+  ];
+
+  it("未設定の機関を先に、そのあと名前順に並べる", () => {
+    expect(sswBurdenRows(orgs).map((r) => r.name)).toEqual([
+      "かえで",
+      "さくら",
+      "あおば",
+      "みらい",
+    ]);
+  });
+
+  it("未設定の件数を数える", () => {
+    expect(sswBurdenUnsetCount(sswBurdenRows(orgs))).toBe(2);
   });
 });

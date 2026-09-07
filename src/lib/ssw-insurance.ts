@@ -488,3 +488,32 @@ export function sswApplyFields(
 export function sswApplyCopyText(fields: SswApplyField[]): string {
   return fields.map((f) => f.value).join("\n");
 }
+
+// ---- 所属機関の負担区分（会社負担 / 外国人負担）の設定 ----
+
+// 選べる負担区分。所属機関の情報の「特定技能総合保険の負担」と同じ2つ
+export const SSW_BURDEN_OPTIONS = ["会社負担", "外国人負担"] as const;
+
+export interface SswBurdenRow {
+  id: string;
+  name: string;
+  burden: string; // '' = 未設定
+}
+
+// 負担区分の設定に出す所属機関の並び。
+// まだ決めていない機関を先に出し、そのあとは名前順にする
+export function sswBurdenRows(
+  orgs: { id: string; name: string; intake?: { ssw_insurance_burden?: string } | null }[],
+): SswBurdenRow[] {
+  return orgs
+    .map((o) => ({ id: o.id, name: o.name, burden: o.intake?.ssw_insurance_burden ?? "" }))
+    .sort((a, b) => {
+      if (!a.burden !== !b.burden) return a.burden ? 1 : -1;
+      return a.name.localeCompare(b.name, "ja");
+    });
+}
+
+// まだ負担区分を決めていない所属機関の数（トグルの見出しに出す）
+export function sswBurdenUnsetCount(rows: SswBurdenRow[]): number {
+  return rows.filter((r) => !r.burden).length;
+}
