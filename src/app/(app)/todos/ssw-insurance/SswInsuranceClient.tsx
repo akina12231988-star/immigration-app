@@ -27,6 +27,7 @@ import { compressImage } from "@/lib/image-compress";
 import { todayStr } from "@/lib/application-alerts";
 import { remainingLabel } from "@/lib/worker-alerts";
 import { organizationSuggestions, matchesOrganizationName } from "@/lib/org-search";
+import { matchesWorkerName } from "@/lib/worker-search";
 import { listOrganizations } from "@/lib/supabase/queries/organizations";
 import {
   listTodoStatusOptions,
@@ -87,6 +88,8 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [orgFilter, setOrgFilter] = useState("");
+  // 氏名でも探せるようにする（所属機関名の欄に人の名前を入れても出てこないため）
+  const [nameFilter, setNameFilter] = useState("");
   // 特定技能総合保険は特定技能の人の保険なので、既定では特定技能の人だけを出す
   const [onlySsw, setOnlySsw] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -156,13 +159,16 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
     );
   }, [workers, orgBurden, todos, options, onlySsw, today]);
 
-  const shown = useMemo(
-    () =>
-      orgFilter.trim()
-        ? rows.filter((r) => r.orgName && matchesOrganizationName({ name: r.orgName }, orgFilter))
-        : rows,
-    [rows, orgFilter],
-  );
+  const shown = useMemo(() => {
+    let list = rows;
+    if (orgFilter.trim()) {
+      list = list.filter((r) => r.orgName && matchesOrganizationName({ name: r.orgName }, orgFilter));
+    }
+    if (nameFilter.trim()) {
+      list = list.filter((r) => matchesWorkerName(r.worker, nameFilter));
+    }
+    return list;
+  }, [rows, orgFilter, nameFilter]);
 
   // 所属機関名の検索候補（今の一覧に出ている機関だけ）
   const orgCandidates = useMemo(() => {
@@ -234,6 +240,16 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
       )}
 
       <Card className="flex flex-wrap items-center gap-3 p-3">
+        <label className="flex min-w-[14rem] flex-1 items-center gap-1.5 text-sm">
+          🔍
+          <input
+            value={nameFilter}
+            onChange={(e) => setNameFilter(e.target.value)}
+            placeholder="外国人の氏名で検索（ふりがなでも探せます）"
+            aria-label="外国人の氏名で検索"
+            className="min-h-[38px] w-full rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none"
+          />
+        </label>
         <div className="min-w-[16rem] flex-1">
           <NameSearchBox
             candidates={orgCandidates}
@@ -315,6 +331,11 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
       {!loading && shown.length === 0 && (
         <Card className="p-6 text-center text-sm text-muted">
           該当する人はいません。
+          {onlySsw && (
+            <span className="mt-1 block text-[11px]">
+              在留資格が特定技能で登録されていない人は出ません。「特定技能の人だけ表示」のチェックを外すと出てくることがあります。
+            </span>
+          )}
         </Card>
       )}
     </div>
