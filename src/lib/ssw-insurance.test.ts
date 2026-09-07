@@ -4,6 +4,7 @@ import {
   SSW_JOIN_TODO_TITLE,
   addMonthsDate,
   buildSswInsuranceRows,
+  isSswInsuranceCandidate,
   isSswInsuranceTarget,
   sswActionCount,
   sswApplyCopyText,
@@ -32,6 +33,7 @@ function worker(over: Partial<SswInsuranceWorker> = {}): SswInsuranceWorker {
     gender: "女",
     birth: "1988-09-30",
     status: "在籍中",
+    support: "支援対象",
     residence_status: "特定技能1号",
     residence_expiry_date: "2027-04-07",
     leaving_on: null,
@@ -113,6 +115,20 @@ describe("sswInsuranceState", () => {
 
   it("退職者で未加入なら一覧に出さない", () => {
     expect(sswInsuranceState(worker({ status: "退職" }), "会社負担", TODAY)).toBe("none");
+  });
+});
+
+describe("保険に入る候補の人か", () => {
+  it("申請準備中で支援開始前の人は一覧に出さない", () => {
+    const w = worker({ status: "申請準備中", support: "支援開始前" });
+    expect(isSswInsuranceCandidate(w)).toBe(false);
+    expect(sswInsuranceState(w, "会社負担", TODAY)).toBe("none");
+  });
+
+  it("申請準備中でも支援対象なら出す（更新の準備中など）", () => {
+    const w = worker({ status: "申請準備中", support: "支援対象" });
+    expect(isSswInsuranceCandidate(w)).toBe(true);
+    expect(sswInsuranceState(w, "会社負担", TODAY)).toBe("notJoined");
   });
 });
 

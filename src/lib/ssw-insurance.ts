@@ -29,7 +29,8 @@ export interface SswInsuranceWorker {
   nationality: string;
   gender: string; // 男 / 女（申込フォームの性別）
   birth: string | null; // 生年月日（申込フォームで使う）
-  status: string; // 在籍中 / 退職 など
+  status: string; // 申請準備中 / 在籍中 / 退職 など
+  support: string; // 支援開始前 / 支援対象 / 支援対象外
   residence_status: string;
   residence_expiry_date: string | null; // 在留期限（加入月数の計算に使う）
   leaving_on: string | null;
@@ -50,6 +51,14 @@ export interface SswInsuranceWorker {
 // 特定技能総合保険の対象になる在留資格か（特定技能の人だけが加入する保険）
 export function isSswInsuranceTarget(residenceStatus: string): boolean {
   return (residenceStatus ?? "").includes("特定技能");
+}
+
+// 保険に入る候補の人か。
+// 「申請準備中」で「支援開始前」の人は、まだ入社（許可）前で保険に入らないので候補にしない
+export function isSswInsuranceCandidate(
+  w: Pick<SswInsuranceWorker, "status" | "support">,
+): boolean {
+  return !(w.status === "申請準備中" && w.support === "支援開始前");
 }
 
 // 加入しているか（有効期限が入っていれば加入している）
@@ -92,6 +101,8 @@ export function sswInsuranceState(
   today: string,
   cancelDone = false, // 解約手続きのTODOが完了しているか
 ): SswGroupKey {
+  // まだ入社前（申請準備中・支援開始前）の人は一覧に出さない
+  if (!isSswInsuranceCandidate(w)) return "none";
   const joined = isSswJoined(w);
   // 退職した人は、加入したままなら解約手続きが必要（解約が済んだら一覧から外す）
   if (w.status === "退職") return joined && !cancelDone ? "cancel" : "none";
