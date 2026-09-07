@@ -33,6 +33,7 @@ export interface SswInsuranceWorker {
   support: string; // 支援開始前 / 支援対象 / 支援対象外
   residence_status: string;
   residence_expiry_date: string | null; // 在留期限（加入月数の計算に使う）
+  residence_permit_date: string | null; // 在留許可日
   leaving_on: string | null;
   current_organization_id: string | null;
   organizations?: { name: string } | null; // 一覧では機関マスタから引くので任意
@@ -516,4 +517,27 @@ export function sswBurdenRows(
 // まだ負担区分を決めていない所属機関の数（トグルの見出しに出す）
 export function sswBurdenUnsetCount(rows: SswBurdenRow[]): number {
   return rows.filter((r) => !r.burden).length;
+}
+
+// ---- 保険No.（特定技能総合保険の売上） ----
+
+// 外国人ID → その人の保険の売上（新しい順で渡す前提）
+export function sswSalesByWorker<T extends { worker_id: string }>(
+  rows: T[],
+): Map<string, T[]> {
+  const map = new Map<string, T[]>();
+  for (const r of rows) {
+    const list = map.get(r.worker_id);
+    if (list) list.push(r);
+    else map.set(r.worker_id, [r]);
+  }
+  return map;
+}
+
+// 請求（保険No.）は立てたのに、まだ加入の記録が無い売上があるか。
+// 「請求したのに未加入」を見つけるための印
+export function hasUnjoinedSales(
+  rows: { freee_no: string; insurance_joined_on: string | null }[] | undefined,
+): boolean {
+  return (rows ?? []).some((r) => !r.insurance_joined_on);
 }

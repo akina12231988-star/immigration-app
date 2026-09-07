@@ -10,6 +10,7 @@ import {
   sswApplyCopyText,
   sswApplyFields,
   sswAutoDeclineReason,
+  hasUnjoinedSales,
   sswBurdenRows,
   sswBurdenUnsetCount,
   sswColumnOf,
@@ -17,6 +18,7 @@ import {
   sswInsuranceMonths,
   sswInsuranceState,
   sswTodosByWorker,
+  sswSalesByWorker,
   sswTaskOf,
   sortSswRows,
   isSswActionRow,
@@ -39,6 +41,7 @@ function worker(over: Partial<SswInsuranceWorker> = {}): SswInsuranceWorker {
     support: "支援対象",
     residence_status: "特定技能1号",
     residence_expiry_date: "2027-04-07",
+    residence_permit_date: "2026-02-19",
     leaving_on: null,
     current_organization_id: "o1",
     organizations: { name: "株式会社ベース" },
@@ -461,5 +464,26 @@ describe("所属機関の負担区分の設定", () => {
 
   it("未設定の件数を数える", () => {
     expect(sswBurdenUnsetCount(sswBurdenRows(orgs))).toBe(2);
+  });
+});
+
+describe("保険No.（売上）", () => {
+  const sales = [
+    { id: "s1", worker_id: "w1", freee_no: "S-0000004592", insurance_joined_on: null },
+    { id: "s2", worker_id: "w1", freee_no: "S-0000004000", insurance_joined_on: "2026-03-01" },
+    { id: "s3", worker_id: "w2", freee_no: "S-0000004601", insurance_joined_on: "2026-09-01" },
+  ];
+
+  it("外国人ごとにまとめる", () => {
+    const map = sswSalesByWorker(sales);
+    expect(map.get("w1")?.map((r) => r.id)).toEqual(["s1", "s2"]);
+    expect(map.get("w2")).toHaveLength(1);
+  });
+
+  it("請求はあるのに加入の記録が無い売上があるか分かる", () => {
+    const map = sswSalesByWorker(sales);
+    expect(hasUnjoinedSales(map.get("w1"))).toBe(true);
+    expect(hasUnjoinedSales(map.get("w2"))).toBe(false);
+    expect(hasUnjoinedSales(undefined)).toBe(false);
   });
 });

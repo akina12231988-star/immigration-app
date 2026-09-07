@@ -20,6 +20,7 @@ const COLUMNS = [
   "support",
   "residence_status",
   "residence_expiry_date",
+  "residence_permit_date",
   "leaving_on",
   "current_organization_id",
   "messenger_link",
@@ -133,4 +134,53 @@ export async function ensureSswCancelTodoOnLeaving(
     ?.ssw_insurance_expiry_date;
   if (!expiry) return;
   await ensureSswTodo(supabase, workerId, SSW_CANCEL_TODO_TITLE);
+}
+
+// 特定技能総合保険の売上（保険No.）。請求を立てた人の番号を一覧に出し、
+// その番号に対して「保険に加入した」記録を残せるようにする（0142）
+export interface SswSalesRow {
+  id: string;
+  worker_id: string;
+  freee_no: string;
+  amount: number;
+  registered_on: string | null;
+  insurance_joined_on: string | null;
+  created_at: string;
+}
+
+export async function listSswInsuranceSales(
+  supabase: SupabaseClient,
+): Promise<SswSalesRow[]> {
+  const { data, error } = await supabase
+    .from("sales_entries")
+    .select("id, worker_id, freee_no, amount, registered_on, insurance_joined_on, created_at")
+    .eq("kind", "保険")
+    .order("created_at", { ascending: false });
+  // 0142 が未適用でも画面が開けるように、列が無いときは番号だけ取り直す
+  if (error) {
+    const { data: fallback, error: err2 } = await supabase
+      .from("sales_entries")
+      .select("id, worker_id, freee_no, amount, registered_on, created_at")
+      .eq("kind", "保険")
+      .order("created_at", { ascending: false });
+    if (err2) throw error;
+    return ((fallback as Omit<SswSalesRow, "insurance_joined_on">[] | null) ?? []).map((r) => ({
+      ...r,
+      insurance_joined_on: null,
+    }));
+  }
+  return (data as SswSalesRow[]) ?? [];
+}
+
+// 売上（保険No.）に、保険へ加入した日を記録する（null で取り消し）
+export async function setSalesInsuranceJoined(
+  supabase: SupabaseClient,
+  salesEntryId: string,
+  joinedOn: string | null,
+): Promise<void> {
+  const { error } = await supabase
+    .from("sales_entries")
+    .update({ insurance_joined_on: joinedOn })
+    .eq("id", salesEntryId);
+  if (error) throw error;
 }

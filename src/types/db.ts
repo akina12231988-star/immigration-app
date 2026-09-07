@@ -540,6 +540,8 @@ export interface SalesEntryRow {
   status: SalesEntryStatus;
   freee_no: string; // freee販売の伝票番号など
   registered_on: string | null;
+  // 特定技能総合保険（kind='保険'）で、実際に保険へ加入した日（0142。未加入は null）
+  insurance_joined_on?: string | null;
   note: string;
   created_at: string;
   updated_at: string;

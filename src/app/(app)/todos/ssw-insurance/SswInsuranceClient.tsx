@@ -10,6 +10,7 @@ import {
   FileText,
   Loader2,
   Plus,
+  Receipt,
   ShieldCheck,
   Trash2,
   Upload,
@@ -23,6 +24,7 @@ import { FileDropArea } from "@/components/ui/FileDropArea";
 import { createClient } from "@/lib/supabase/client";
 import { dbErrorMessage } from "@/lib/errors";
 import { compressImage } from "@/lib/image-compress";
+import { formatSalesYen } from "@/lib/sales";
 import { todayStr } from "@/lib/application-alerts";
 import { remainingLabel } from "@/lib/worker-alerts";
 import { organizationSuggestions, matchesOrganizationName } from "@/lib/org-search";
@@ -36,6 +38,7 @@ import {
 } from "@/lib/supabase/queries/todos";
 import { displayTodoNo, type TodoStatusOption } from "@/lib/todo";
 import {
+  hasUnjoinedSales,
   SSW_CANCEL_TODO_TITLE,
   SSW_COLUMNS,
   SSW_DECLINE_REASONS,
@@ -50,6 +53,7 @@ import {
   isSswInsuranceTarget,
   sortSswRows,
   sswColumnOf,
+  sswSalesByWorker,
   slashDate,
   sswApplyCopyText,
   sswApplyFields,
@@ -66,9 +70,12 @@ import {
 import {
   ensureSswTodo,
   listSswCerts,
+  listSswInsuranceSales,
   listSswInsuranceWorkers,
+  setSalesInsuranceJoined,
   updateSswInsurance,
   type SswCertRow,
+  type SswSalesRow,
 } from "@/lib/supabase/queries/ssw-insurance";
 import { SswBurdenSettings } from "./SswBurdenSettings";
 import {
@@ -95,6 +102,8 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [todos, setTodos] = useState<TodoRow[]>([]);
   const [options, setOptions] = useState<TodoStatusOption[]>([]);
+  // 保険No.（特定技能総合保険の売上）。請求した番号と、加入したかの記録を出す
+  const [sales, setSales] = useState<SswSalesRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [orgFilter, setOrgFilter] = useState("");
@@ -114,26 +123,29 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
       listOrganizations(supabase),
       listTodos(supabase),
       listTodoStatusOptions(supabase),
+      listSswInsuranceSales(supabase),
     ]);
   };
 
   const reload = useCallback(async () => {
-    const [ws, os, ts, opts] = await fetchAll();
+    const [ws, os, ts, opts, sl] = await fetchAll();
     setWorkers(ws);
     setOrgs(os);
     setTodos(ts);
     setOptions(opts);
+    setSales(sl);
   }, []);
 
   useEffect(() => {
     let cancelled = false;
     fetchAll()
-      .then(([ws, os, ts, opts]) => {
+      .then(([ws, os, ts, opts, sl]) => {
         if (cancelled) return;
         setWorkers(ws);
         setOrgs(os);
         setTodos(ts);
         setOptions(opts);
+        setSales(sl);
         setLoading(false);
       })
       .catch((err) => {
@@ -221,6 +233,19 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
     }
   };
 
+  const salesByWorker = useMemo(() => sswSalesByWorker(sales), [sales]);
+
+  // 保険No.（売上）に「保険に加入した」記録を付ける・取り消す
+  const setJoined = async (salesEntryId: string, joined: boolean) => {
+    setError(null);
+    try {
+      await setSalesInsuranceJoined(createClient(), salesEntryId, joined ? today : null);
+      await reload();
+    } catch (err) {
+      setError(dbErrorMessage(err, "0142_sales_entry_insurance_joined.sql", "保存に失敗しました"));
+    }
+  };
+
   // TODOの経過（未着手／申込手続中／完了）を変える
   const setTodoStatus = async (todoId: string, status: string) => {
     setError(null);
@@ -255,6 +280,8 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
       onWill={(join, note) => void setWill(row, join, note)}
       onMakeTodo={(title) => void makeTodo(row.worker.id, title)}
       onTodoStatus={(todoId, status) => void setTodoStatus(todoId, status)}
+      sales={salesByWorker.get(row.worker.id) ?? []}
+      onJoined={(salesEntryId, joined) => void setJoined(salesEntryId, joined)}
       onSaved={() => void reload()}
       onError={setError}
     />
@@ -410,7 +437,9 @@ function SswWorkerRow({
   today,
   statusOptions,
   open,
+  sales,
   onToggle,
+  onJoined,
   onWill,
   onMakeTodo,
   onTodoStatus,
@@ -422,7 +451,9 @@ function SswWorkerRow({
   today: string;
   statusOptions: TodoStatusOption[];
   open: boolean;
+  sales: SswSalesRow[]; // この人の保険No.（売上）
   onToggle: () => void;
+  onJoined: (salesEntryId: string, joined: boolean) => void;
   onWill: (join: boolean, note?: string) => void;
   onMakeTodo: (title: string) => void;
   onTodoStatus: (todoId: string, status: string) => void;
@@ -479,6 +510,9 @@ function SswWorkerRow({
             </p>
           ) : (
             <p className="font-bold text-seal">未加入</p>
+          )}
+          {w.residence_permit_date && (
+            <p className="text-muted">在留許可日 {slashDate(w.residence_permit_date)}</p>
           )}
           {w.ssw_insurance_no && <p className="text-muted">証明書番号 {w.ssw_insurance_no}</p>}
           {w.ssw_insurance_declined && w.ssw_insurance_declined_on && (
@@ -619,6 +653,45 @@ function SswWorkerRow({
         </div>
       )}
 
+      {/* 保険No.（請求した売上）と、その番号に対する加入の記録 */}
+      {sales.length > 0 && (
+        <div
+          className={`mt-2 space-y-1 rounded-xl p-1 ${
+            // 請求（保険No.）はあるのに加入の記録が無いものがあるときは目立たせる
+            hasUnjoinedSales(sales) ? "border border-seal/40" : ""
+          }`}
+        >
+          {sales.map((sale) => (
+            <div
+              key={sale.id}
+              className="flex flex-wrap items-center gap-2 rounded-lg bg-surface px-2.5 py-1.5 text-[11px]"
+            >
+              <Receipt size={12} className="shrink-0 text-muted" />
+              <span className="font-bold">保険No. {sale.freee_no || "（番号未登録）"}</span>
+              <span className="text-muted">{formatSalesYen(sale.amount)}</span>
+              {sale.insurance_joined_on ? (
+                <span className="rounded-full bg-brand/10 px-2 py-0.5 font-bold text-brand">
+                  加入済み {slashDate(sale.insurance_joined_on)}
+                </span>
+              ) : (
+                <span className="rounded-full bg-seal/10 px-2 py-0.5 font-bold text-seal">
+                  加入の記録なし
+                </span>
+              )}
+              {canEdit && (
+                <button
+                  type="button"
+                  className={ROW_BTN}
+                  onClick={() => onJoined(sale.id, !sale.insurance_joined_on)}
+                >
+                  {sale.insurance_joined_on ? "取り消す" : "加入済みにする"}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* 備考（加入しない理由など） */}
       {!declining && w.ssw_insurance_note && (
         <p className="mt-2 rounded-lg bg-surface px-2.5 py-1.5 text-[11px] leading-relaxed text-muted">
@@ -756,6 +829,12 @@ function SswWorkerPanel({
         <span className="text-muted">
           現在の在留資格{" "}
           <b className="text-sm text-foreground">{w.residence_status || "未登録"}</b>
+        </span>
+        <span className="text-muted">
+          在留許可日{" "}
+          <b className="text-sm text-foreground">
+            {w.residence_permit_date ? slashDate(w.residence_permit_date) : "未登録"}
+          </b>
         </span>
         <span className="text-muted">
           在留期限{" "}
