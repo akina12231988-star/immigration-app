@@ -5,54 +5,17 @@ import { Check, Download, FileSearch, Loader2 } from "lucide-react";
 import {
   checkInvoiceLines,
   type InvoiceCheckResult,
-  type PdfTextLine,
 } from "@/lib/invoice-pdf-check";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { rosterOrderRows, type MonthlyBillingOrg } from "@/lib/monthly-billing";
 import { formatSalesYen } from "@/lib/sales";
 import { downloadBlob } from "@/lib/xlsx-export";
 import { errorMessage } from "@/lib/errors";
+import { extractPdfTextLines } from "@/lib/pdf-text-lines";
 
 // 請求書PDF（freee）をアップロードして在籍名簿と照合し、
 // 支援代・サポート代の行に名簿のNo.を書き込んだPDFをダウンロードする。
 // これまで手書きでNo.を振っていた作業（書き間違い・振り忘れが起きやすい）の置き換え
-
-// PDFの文字を行ごとに取り出す。pdfjs は重いので押されたときだけ読み込む
-async function extractTextLines(data: ArrayBuffer): Promise<PdfTextLine[]> {
-  const pdfjs = await import("pdfjs-dist");
-  pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-    "pdfjs-dist/build/pdf.worker.min.mjs",
-    import.meta.url,
-  ).toString();
-
-  const task = pdfjs.getDocument({ data });
-  const doc = await task.promise;
-  const lines: PdfTextLine[] = [];
-  for (let p = 0; p < doc.numPages; p++) {
-    const page = await doc.getPage(p + 1);
-    const content = await page.getTextContent();
-    // 同じ高さ（y）の文字を1つの行にまとめる。表の1行は同じベースラインに並ぶ
-    const byY = new Map<number, { x: number; str: string }[]>();
-    for (const item of content.items) {
-      if (!("str" in item) || !item.str.trim()) continue;
-      const x = item.transform[4] as number;
-      const y = item.transform[5] as number;
-      const key = Math.round(y);
-      (byY.get(key) ?? byY.set(key, []).get(key)!).push({ x, str: item.str });
-    }
-    for (const [y, items] of byY) {
-      items.sort((a, b) => a.x - b.x);
-      lines.push({
-        page: p,
-        x: items[0].x,
-        y,
-        text: items.map((i) => i.str).join(" "),
-      });
-    }
-  }
-  await task.destroy();
-  return lines;
-}
 
 // 照合の結果からNo.を書き込んだPDFを作る（左余白・見本と同じ位置）
 async function annotatePdf(
@@ -107,7 +70,7 @@ export function InvoicePdfCheck({
     try {
       const data = await file.arrayBuffer();
       // pdfjs は渡したバッファを作業用に持っていってしまう（空になる）ので、コピーを渡す
-      const lines = await extractTextLines(data.slice(0));
+      const lines = await extractPdfTextLines(data.slice(0));
       // No.は在籍名簿（エクセル）と同じ並び＝雇用開始日の古い順で振る。
       // 画面の並び替えに関係なく、名簿のNo.と必ず一致させる
       const checked = checkInvoiceLines(rosterOrderRows(org), lines, notes);
