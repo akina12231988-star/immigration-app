@@ -65,9 +65,17 @@ const OPTIONS: TodoStatusOption[] = [
 ];
 
 describe("isSswInsuranceTarget", () => {
-  it("特定技能の在留資格だけを対象にする", () => {
+  it("特定技能1号だけを対象にする", () => {
     expect(isSswInsuranceTarget("特定技能1号")).toBe(true);
-    expect(isSswInsuranceTarget("特定技能2号")).toBe(true);
+    expect(isSswInsuranceTarget("特定技能１号")).toBe(true);
+    expect(isSswInsuranceTarget("特定技能1号（農業）")).toBe(true);
+  });
+
+  it("移行準備の特定活動・特定技能2号・技能実習は対象にしない", () => {
+    expect(isSswInsuranceTarget("特定活動（特定技能1号以降準備）")).toBe(false);
+    expect(isSswInsuranceTarget("特定活動（特定技能1号移行準備）")).toBe(false);
+    expect(isSswInsuranceTarget("特定活動（特定技能2号移行準備）")).toBe(false);
+    expect(isSswInsuranceTarget("特定技能2号")).toBe(false);
     expect(isSswInsuranceTarget("技能実習2号ロ")).toBe(false);
     expect(isSswInsuranceTarget("")).toBe(false);
   });
