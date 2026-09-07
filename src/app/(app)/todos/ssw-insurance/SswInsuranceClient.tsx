@@ -12,7 +12,6 @@ import {
   Plus,
   ShieldCheck,
   Trash2,
-  TriangleAlert,
   Upload,
   X,
 } from "lucide-react";
@@ -38,12 +37,16 @@ import {
 import { displayTodoNo, type TodoStatusOption } from "@/lib/todo";
 import {
   SSW_CANCEL_TODO_TITLE,
+  SSW_COLUMNS,
   SSW_DECLINE_REASONS,
   SSW_INSURANCE_TODO_KIND,
   SSW_JOIN_TODO_TITLE,
   SSW_SECTIONS,
+  SSW_STATE_LABELS,
   buildSswInsuranceRows,
+  isSswActionRow,
   isSswInsuranceTarget,
+  sswColumnOf,
   slashDate,
   sswApplyCopyText,
   sswApplyFields,
@@ -226,6 +229,26 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
     [options],
   );
 
+  // 対応が必要な人（期限切れ・退職の解約・まもなく期限・未加入・意思確認）
+  const actionRows = useMemo(() => shown.filter(isSswActionRow), [shown]);
+
+  const renderRow = (row: SswInsuranceRow) => (
+    <SswWorkerRow
+      key={row.worker.id}
+      row={row}
+      canEdit={canEdit}
+      today={today}
+      statusOptions={statusOptions}
+      open={openId === row.worker.id}
+      onToggle={() => setOpenId(openId === row.worker.id ? null : row.worker.id)}
+      onWill={(join, note) => void setWill(row, join, note)}
+      onMakeTodo={(title) => void makeTodo(row.worker.id, title)}
+      onTodoStatus={(todoId, status) => void setTodoStatus(todoId, status)}
+      onSaved={() => void reload()}
+      onError={setError}
+    />
+  );
+
   return (
     <div className="space-y-4 p-4">
       <p className="flex items-start gap-1.5 rounded-xl border border-border bg-surface px-3 py-2.5 text-xs leading-relaxed text-muted">
@@ -273,59 +296,46 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
       {loading ? (
         <Card className="p-6 text-center text-sm text-muted">読み込み中…</Card>
       ) : (
-        SSW_SECTIONS.map((section) => {
-          const list = shown.filter((r) => r.state === section.key);
-          if (list.length === 0) return null;
-          const alert = section.key === "expired" || section.key === "cancel";
-          const rowsBlock = (
-            <>
-              <p className="mt-1 mb-3 text-[11px] leading-relaxed text-muted">{section.lead}</p>
-              <div className="space-y-2">
-                {list.map((row) => (
-                  <SswWorkerRow
-                    key={row.worker.id}
-                    row={row}
-                    canEdit={canEdit}
-                    today={today}
-                    statusOptions={statusOptions}
-                    open={openId === row.worker.id}
-                    onToggle={() =>
-                      setOpenId(openId === row.worker.id ? null : row.worker.id)
-                    }
-                    onWill={(join, note) => void setWill(row, join, note)}
-                    onMakeTodo={(title) => void makeTodo(row.worker.id, title)}
-                    onTodoStatus={(todoId, status) => void setTodoStatus(todoId, status)}
-                    onSaved={() => void reload()}
-                    onError={setError}
-                  />
-                ))}
-              </div>
-            </>
-          );
-          return (
-            <Card key={section.key} className={`p-4 ${alert ? "border-seal/40" : ""}`}>
-              {/* 対応が要らない欄（加入中・加入しない）は畳んでおく */}
-              {section.collapsed ? (
+        <>
+          {/* 対応が必要な人を、左＝未着手・右＝申込手続中の2列で出す */}
+          <div className="grid gap-3 md:grid-cols-2">
+            {SSW_COLUMNS.map((column) => {
+              const list = actionRows.filter((r) => sswColumnOf(r) === column.key);
+              return (
+                <Card key={column.key} className="p-4">
+                  <p className="text-sm font-bold">
+                    {column.title}（{list.length}件）
+                  </p>
+                  <p className="mt-1 mb-3 text-[11px] leading-relaxed text-muted">{column.lead}</p>
+                  {list.length === 0 ? (
+                    <p className="rounded-xl border border-border bg-background p-4 text-center text-[11px] text-muted">
+                      この列に出す人はいません。
+                    </p>
+                  ) : (
+                    <div className="space-y-2">{list.map(renderRow)}</div>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+
+          {/* 対応が要らない人（加入中・加入しない）は畳んで下に置く */}
+          {SSW_SECTIONS.filter((section) => section.collapsed).map((section) => {
+            const list = shown.filter((r) => r.state === section.key);
+            if (list.length === 0) return null;
+            return (
+              <Card key={section.key} className="p-4">
                 <details>
                   <summary className="cursor-pointer text-sm font-bold text-muted">
                     {section.title}（{list.length}件）
                   </summary>
-                  {rowsBlock}
+                  <p className="mt-1 mb-3 text-[11px] leading-relaxed text-muted">{section.lead}</p>
+                  <div className="space-y-2">{list.map(renderRow)}</div>
                 </details>
-              ) : (
-                <>
-                  <p
-                    className={`flex items-center gap-1.5 text-sm font-bold ${alert ? "text-seal" : ""}`}
-                  >
-                    {alert && <TriangleAlert size={15} />}
-                    {section.title}（{list.length}件）
-                  </p>
-                  {rowsBlock}
-                </>
-              )}
-            </Card>
-          );
-        })
+              </Card>
+            );
+          })}
+        </>
       )}
 
       {!loading && shown.length === 0 && (
@@ -389,9 +399,21 @@ function SswWorkerRow({
     <div className="rounded-xl border border-border bg-background p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <Link href={`/workers/${w.id}`} className="text-sm font-bold text-brand hover:underline">
-            {w.name}
-          </Link>
+          <span className="flex flex-wrap items-center gap-1.5">
+            <Link href={`/workers/${w.id}`} className="text-sm font-bold text-brand hover:underline">
+              {w.name}
+            </Link>
+            {/* 2列にすると欄の見出しが無くなるので、区分を行に付ける */}
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                row.state === "expired" || row.state === "cancel"
+                  ? "bg-seal/10 text-seal"
+                  : "bg-background text-muted"
+              }`}
+            >
+              {SSW_STATE_LABELS[row.state]}
+            </span>
+          </span>
           <p className="mt-0.5 text-[11px] text-muted">
             {w.kana && <span className="mr-2">{w.kana}</span>}
             {w.nationality && <span className="mr-2">{w.nationality}</span>}

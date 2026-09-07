@@ -8,10 +8,12 @@ import {
   sswActionCount,
   sswApplyCopyText,
   sswApplyFields,
+  sswColumnOf,
   sswDeclineNote,
   sswInsuranceMonths,
   sswInsuranceState,
   sswTodosByWorker,
+  isSswActionRow,
   tomorrowOf,
   type SswInsuranceWorker,
 } from "./ssw-insurance";
@@ -285,5 +287,80 @@ describe("sswApplyFields", () => {
     expect(fields[2].hint).toBe("外国人詳細の性別が未登録です");
     expect(fields[3].value).toBe("");
     expect(fields[5].hint).toBe("現在の所属機関が未設定です");
+  });
+});
+
+describe("未着手／申込手続中の2列", () => {
+  const base = {
+    worker: worker({ ssw_insurance_expiry_date: "2026-09-01" }),
+    orgName: "株式会社ベース",
+    burden: "会社負担",
+    state: "expired" as const,
+  };
+
+  it("TODOが無い人は未着手の列に出す", () => {
+    expect(sswColumnOf({ ...base, todos: {} })).toBe("notStarted");
+  });
+
+  it("経過が未着手のTODOも未着手の列", () => {
+    const todos = sswTodosByWorker(
+      [
+        {
+          id: "t1",
+          todo_no: "TODO-2001",
+          kind: "特定技能総合保険",
+          worker_id: "w1",
+          title: SSW_JOIN_TODO_TITLE,
+          status: "未着手",
+          deleted_at: null,
+        },
+      ],
+      OPTIONS,
+    );
+    expect(sswColumnOf({ ...base, todos: todos.get("w1") ?? {} })).toBe("notStarted");
+  });
+
+  it("申込手続中のTODOは申込手続中の列", () => {
+    const todos = sswTodosByWorker(
+      [
+        {
+          id: "t1",
+          todo_no: "TODO-2001",
+          kind: "特定技能総合保険",
+          worker_id: "w1",
+          title: SSW_JOIN_TODO_TITLE,
+          status: "申込手続中",
+          deleted_at: null,
+        },
+      ],
+      OPTIONS,
+    );
+    expect(sswColumnOf({ ...base, todos: todos.get("w1") ?? {} })).toBe("inProgress");
+  });
+
+  it("退職の行は解約手続きのTODOで列を決める", () => {
+    const todos = sswTodosByWorker(
+      [
+        {
+          id: "t2",
+          todo_no: "TODO-2002",
+          kind: "特定技能総合保険",
+          worker_id: "w1",
+          title: SSW_CANCEL_TODO_TITLE,
+          status: "申込手続中",
+          deleted_at: null,
+        },
+      ],
+      OPTIONS,
+    );
+    expect(
+      sswColumnOf({ ...base, state: "cancel", todos: todos.get("w1") ?? {} }),
+    ).toBe("inProgress");
+  });
+
+  it("加入中・加入しないは列に出さない", () => {
+    expect(isSswActionRow({ ...base, todos: {} })).toBe(true);
+    expect(isSswActionRow({ ...base, state: "active", todos: {} })).toBe(false);
+    expect(isSswActionRow({ ...base, state: "declined", todos: {} })).toBe(false);
   });
 });

@@ -6,7 +6,7 @@
 // 意思確認をして「加入しない」と決めたらその記録（ssw_insurance_declined）を残す。
 
 import { daysUntil } from "@/lib/worker-alerts";
-import { stageOfStatus, type TodoStatusOption } from "@/lib/todo";
+import { stageOfStatus, type TodoStage, type TodoStatusOption } from "@/lib/todo";
 
 // TODOの構成名（0139 で todos.kind に追加）
 export const SSW_INSURANCE_TODO_KIND = "特定技能総合保険";
@@ -115,6 +115,7 @@ export interface SswTodoRef {
   todo_no: string;
   title: string;
   status: string;
+  stage: TodoStage; // 未着手 / 進行中 / 完了
   done: boolean;
 }
 
@@ -140,12 +141,14 @@ export function sswTodosByWorker(
   const map = new Map<string, SswTodoPair>();
   for (const t of todos) {
     if (t.kind !== SSW_INSURANCE_TODO_KIND || !t.worker_id || t.deleted_at) continue;
+    const stage = stageOfStatus(t.status, opts);
     const ref: SswTodoRef = {
       id: t.id,
       todo_no: t.todo_no,
       title: t.title,
       status: t.status,
-      done: stageOfStatus(t.status, opts) === "完了",
+      stage,
+      done: stage === "完了",
     };
     const pair = map.get(t.worker_id) ?? {};
     // 解約手続き以外（既定は加入手続き）は加入のTODOとして扱う
@@ -247,6 +250,62 @@ export const SSW_SECTIONS: {
     collapsed: true,
   },
 ];
+
+// ---- 未着手／申込手続中の2列表示 ----
+
+// 対応が必要な区分（この人たちを左右の列に分けて出す）。
+// 加入中・加入しないは対応が要らないので列には出さない
+export const SSW_ACTION_STATES: SswGroupKey[] = [
+  "expired",
+  "cancel",
+  "soon",
+  "notJoined",
+  "willCheck",
+];
+
+export function isSswActionRow(row: SswInsuranceRow): boolean {
+  return SSW_ACTION_STATES.includes(row.state);
+}
+
+// 列（左: まだ手続きを始めていない人 ／ 右: 申込手続き中の人）
+export type SswColumnKey = "notStarted" | "inProgress";
+
+export const SSW_COLUMNS: { key: SswColumnKey; title: string; lead: string }[] = [
+  {
+    key: "notStarted",
+    title: "未着手",
+    lead: "まだTODOを作っていない人、経過が未着手の人です。",
+  },
+  {
+    key: "inProgress",
+    title: "申込手続中",
+    lead: "加入・解約の手続きを進めている人です（経過が未着手以外）。",
+  },
+];
+
+// その行のTODO（退職の人は解約手続き、それ以外は加入手続き）
+export function sswRowTodo(row: SswInsuranceRow): SswTodoRef | undefined {
+  return row.state === "cancel" ? row.todos.cancel : row.todos.join;
+}
+
+// どちらの列に出すか。TODOが無い・経過が未着手なら左、それ以外は右
+export function sswColumnOf(row: SswInsuranceRow): SswColumnKey {
+  const todo = sswRowTodo(row);
+  if (!todo || todo.stage === "未着手") return "notStarted";
+  return "inProgress";
+}
+
+// 行に付ける区分の短いラベル（2列にすると欄の見出しが無くなるため）
+export const SSW_STATE_LABELS: Record<SswGroupKey, string> = {
+  expired: "期限切れ",
+  cancel: "退職（解約手続き）",
+  soon: "まもなく期限",
+  notJoined: "未加入",
+  willCheck: "未加入（意思確認）",
+  declined: "加入しない",
+  active: "加入中",
+  none: "",
+};
 
 // 一覧に出す件数（未加入・期限切れなど、対応が必要な行の合計）
 export function sswActionCount(rows: SswInsuranceRow[]): number {
