@@ -49,9 +49,15 @@ export interface SswInsuranceWorker {
   ssw_insurance_note: string; // 加入しない理由などの備考
 }
 
-// 特定技能総合保険の対象になる在留資格か（特定技能の人だけが加入する保険）
+// 特定技能総合保険の対象になる在留資格か。
+// 加入できるのは「特定技能1号」の人だけ。
+// 「特定活動（特定技能1号以降準備）」はまだ移行前なので加入しない（対象外）。
+// 「特定技能2号」も対象外（1号のあいだの保険のため）。
+// 全角の数字・空白の揺れ（特定技能１号 など）はそろえてから見る
 export function isSswInsuranceTarget(residenceStatus: string): boolean {
-  return (residenceStatus ?? "").includes("特定技能");
+  const s = (residenceStatus ?? "").normalize("NFKC").replace(/[\s　]/g, "");
+  if (s.startsWith("特定活動")) return false;
+  return s.startsWith("特定技能1号");
 }
 
 // 保険に入る候補の人か。

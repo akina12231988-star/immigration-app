@@ -109,7 +109,7 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
   const [orgFilter, setOrgFilter] = useState("");
   // 氏名でも探せるようにする（所属機関名の欄に人の名前を入れても出てこないため）
   const [nameFilter, setNameFilter] = useState("");
-  // 特定技能総合保険は特定技能の人の保険なので、既定では特定技能の人だけを出す
+  // 加入できるのは特定技能1号の人だけなので、既定では特定技能1号の人だけを出す
   const [onlySsw, setOnlySsw] = useState(true);
   const [sort, setSort] = useState<SswSortKey>("expiry");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -341,7 +341,7 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
             onChange={(e) => setOnlySsw(e.target.checked)}
             className="h-4 w-4"
           />
-          特定技能の人だけ表示
+          特定技能1号の人だけ表示
         </label>
       </Card>
 
@@ -421,7 +421,7 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
           該当する人はいません。
           {onlySsw && (
             <span className="mt-1 block text-[11px]">
-              在留資格が特定技能で登録されていない人は出ません。「特定技能の人だけ表示」のチェックを外すと出てくることがあります。
+              在留資格が特定技能1号で登録されていない人（特定活動（特定技能1号以降準備）・特定技能2号など）は出ません。「特定技能1号の人だけ表示」のチェックを外すと出てくることがあります。
             </span>
           )}
         </Card>
