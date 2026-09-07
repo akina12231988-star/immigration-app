@@ -61,6 +61,7 @@ import type {
   OnboardingFollowupRow,
   OnboardingRecordRow,
   Organization,
+  OrganizationIntake,
 } from "@/types/db";
 
 // 入社書類メールで使うデータの管理。書類ごとに保存・差し替え・削除ができ、
@@ -70,8 +71,8 @@ export function OnboardingDocuments({
   workerId,
   canEdit = false,
   myNumber: myNumberProp,
-  payMethod = "",
-  koyoCovered = "",
+  payMethod: payMethodProp = "",
+  koyoCovered: koyoCoveredProp = "",
   org = null,
 }: {
   workerId: string;
@@ -99,11 +100,14 @@ export function OnboardingDocuments({
   const [attaching, setAttaching] = useState(false);
   // 外国人雇用状況届出書（様式第3号）の作成中
   const [koyoBusy, setKoyoBusy] = useState(false);
-  // 会社に渡す外国人資料のやりとり方法（所属機関の申込書の項目）。
-  // ここで決めたら所属機関に保存し、画面を読み直すまでは決めた値を優先して出す
-  const [savedHandover, setSavedHandover] = useState<string | null>(null);
-  const [handoverSaving, setHandoverSaving] = useState(false);
-  const handoverMethod = savedHandover ?? org?.intake?.handover_method ?? "";
+  // 所属機関の申込書の項目のうち、入社書類に関わるもの（会社に渡す外国人資料のやりとり方法・
+  // 雇用保険の適用事業所か・給与支払い方法）。未登録ならここで決めて所属機関に保存し、
+  // 画面を読み直すまでは決めた値を優先して出す
+  const [savedIntake, setSavedIntake] = useState<Partial<OrganizationIntake>>({});
+  const [intakeSaving, setIntakeSaving] = useState<keyof OrganizationIntake | null>(null);
+  const handoverMethod = savedIntake.handover_method ?? org?.intake?.handover_method ?? "";
+  const payMethod = savedIntake.pay_method ?? payMethodProp;
+  const koyoCovered = savedIntake.koyo_covered ?? koyoCoveredProp;
   // 作成した書類のプレビュー（内容を見てから添付する。労働者名簿はその場で直せる）
   const gen = useGeneratedDocPreview(workerId, setError);
   const myNumber = myNumberProp !== undefined ? myNumberProp : loadedMyNumber;
@@ -314,21 +318,24 @@ export function OnboardingDocuments({
     }
   };
 
-  // 会社に渡す外国人資料のやりとり方法を所属機関に保存する。
+  // 所属機関の申込書の項目を1つ保存する。
   // intake は1つのまとまり（jsonb）なので、他の項目を消さないように混ぜて保存する
-  const saveHandover = async (method: string) => {
+  const saveIntake = async (
+    key: "handover_method" | "koyo_covered" | "pay_method",
+    value: string,
+  ) => {
     if (!org) return;
-    setHandoverSaving(true);
+    setIntakeSaving(key);
     setError(null);
     try {
       await updateOrganization(createClient(), org.id, {
-        intake: { ...(org.intake ?? {}), handover_method: method },
+        intake: { ...(org.intake ?? {}), ...savedIntake, [key]: value },
       });
-      setSavedHandover(method);
+      setSavedIntake((prev) => ({ ...prev, [key]: value }));
     } catch (err) {
-      setError(dbErrorMessage(err, "0043_organization_intake.sql", "やりとり方法の保存に失敗しました"));
+      setError(dbErrorMessage(err, "0043_organization_intake.sql", "所属機関の情報の保存に失敗しました"));
     } finally {
-      setHandoverSaving(false);
+      setIntakeSaving(null);
     }
   };
 
@@ -377,27 +384,35 @@ export function OnboardingDocuments({
                 >
                   {handoverMethod}
                 </span>
-              ) : canEdit ? (
-                <select
-                  value=""
-                  disabled={handoverSaving}
-                  onChange={(e) => {
-                    if (e.target.value) void saveHandover(e.target.value);
-                  }}
-                  aria-label="会社に渡す外国人資料のやりとり方法"
-                  className="min-h-[28px] rounded-lg border border-seal/40 bg-seal/5 px-1.5 text-[11px] font-bold text-seal"
-                >
-                  <option value="">資料のやりとり方法を選ぶ（未登録）</option>
-                  {HANDOVER_METHODS.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
               ) : (
-                <span className="text-seal">資料のやりとり方法 未登録</span>
+                <IntakePicker
+                  label="資料のやりとり方法"
+                  options={[...HANDOVER_METHODS]}
+                  canEdit={canEdit}
+                  saving={intakeSaving === "handover_method"}
+                  onPick={(v) => void saveIntake("handover_method", v)}
+                />
               )}
-              {handoverSaving && <Loader2 size={12} className="animate-spin text-muted" />}
+              {/* 雇用保険の適用事業所か・給与支払い方法は、入社書類の知らせ（外国人雇用状況届出書・
+                  報酬支払証明書・通帳の見開き）の元になるので、未登録ならここで決められる */}
+              {!koyoCovered && (
+                <IntakePicker
+                  label="雇用保険の適用事業所か"
+                  options={["はい", "いいえ"]}
+                  canEdit={canEdit}
+                  saving={intakeSaving === "koyo_covered"}
+                  onPick={(v) => void saveIntake("koyo_covered", v)}
+                />
+              )}
+              {!payMethod && (
+                <IntakePicker
+                  label="給与支払い方法"
+                  options={["通貨払い", "口座振込"]}
+                  canEdit={canEdit}
+                  saving={intakeSaving === "pay_method"}
+                  onPick={(v) => void saveIntake("pay_method", v)}
+                />
+              )}
             </span>
           )}
         </div>
@@ -743,5 +758,44 @@ function IconButton({
     >
       {children}
     </button>
+  );
+}
+
+// 所属機関の未登録の項目を、その場で選んで保存する小さな選択欄。
+// 見られるだけの人には「未登録」とだけ出す
+function IntakePicker({
+  label,
+  options,
+  canEdit,
+  saving,
+  onPick,
+}: {
+  label: string;
+  options: string[];
+  canEdit: boolean;
+  saving: boolean;
+  onPick: (value: string) => void;
+}) {
+  if (!canEdit) return <span className="text-seal">{label} 未登録</span>;
+  return (
+    <span className="inline-flex items-center gap-1">
+      <select
+        value=""
+        disabled={saving}
+        onChange={(e) => {
+          if (e.target.value) onPick(e.target.value);
+        }}
+        aria-label={label}
+        className="min-h-[28px] rounded-lg border border-seal/40 bg-seal/5 px-1.5 text-[11px] font-bold text-seal disabled:opacity-50"
+      >
+        <option value="">{label}を選ぶ（未登録）</option>
+        {options.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+      {saving && <Loader2 size={12} className="animate-spin text-muted" />}
+    </span>
   );
 }
