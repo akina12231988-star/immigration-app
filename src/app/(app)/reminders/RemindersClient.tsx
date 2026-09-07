@@ -85,9 +85,8 @@ export function RemindersClient({
 }) {
   const [reminders, setReminders] = useState(initialReminders);
   const [imageCounts, setImageCounts] = useState(initialImageCounts);
-  const [error, setError] = useState<string | null>(
-    loadError ? dbErrorMessage(new Error(loadError), MIGRATION, loadError) : null,
-  );
+  // 読み込みのエラーはサーバー側で文字にしてある（マイグレーションの案内込み）
+  const [error, setError] = useState<string | null>(loadError);
   const [filter, setFilter] = useState<Filter>("進行中");
   const [q, setQ] = useState("");
   // 外国人詳細から来たときは、その人に絞って新規登録の欄を開く
