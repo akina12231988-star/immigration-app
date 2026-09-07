@@ -295,10 +295,64 @@ export function sswColumnOf(row: SswInsuranceRow): SswColumnKey {
   return "inProgress";
 }
 
+// 手続きの種類。加入手続きと解約手続きは別の欄に分けて出す
+export type SswTaskKey = "join" | "cancel";
+
+export const SSW_TASK_GROUPS: { key: SswTaskKey; title: string; lead: string }[] = [
+  {
+    key: "join",
+    title: "加入手続き",
+    lead: "未加入・期限切れ・まもなく期限の人です。加入（更新）の手続きをします。",
+  },
+  {
+    key: "cancel",
+    title: "解約手続き",
+    lead: "退職して保険に加入したままの人です。解約の手続きをします。",
+  },
+];
+
+export function sswTaskOf(row: SswInsuranceRow): SswTaskKey {
+  return row.state === "cancel" ? "cancel" : "join";
+}
+
+// ---- 並び替え ----
+
+export type SswSortKey = "expiry" | "expiryDesc" | "name" | "org";
+
+export const SSW_SORTS: { key: SswSortKey; label: string }[] = [
+  { key: "expiry", label: "有効期限が古い順（期限切れが先）" },
+  { key: "expiryDesc", label: "有効期限が新しい順" },
+  { key: "name", label: "氏名順" },
+  { key: "org", label: "所属機関名順" },
+];
+
+function byName(a: SswInsuranceRow, b: SswInsuranceRow): number {
+  return a.worker.name.localeCompare(b.worker.name, "ja");
+}
+
+// 並び替えた新しい配列を返す（元の配列は変えない）
+export function sortSswRows(rows: SswInsuranceRow[], sort: SswSortKey): SswInsuranceRow[] {
+  const list = [...rows];
+  if (sort === "name") return list.sort(byName);
+  if (sort === "org") {
+    return list.sort((a, b) => a.orgName.localeCompare(b.orgName, "ja") || byName(a, b));
+  }
+  // 有効期限で並べる。未加入（期限なし）はどちらの並びでも最後にまとめる
+  return list.sort((a, b) => {
+    const ea = a.worker.ssw_insurance_expiry_date ?? "";
+    const eb = b.worker.ssw_insurance_expiry_date ?? "";
+    if (!ea && !eb) return byName(a, b);
+    if (!ea) return 1;
+    if (!eb) return -1;
+    if (ea === eb) return byName(a, b);
+    return sort === "expiryDesc" ? (ea > eb ? -1 : 1) : ea < eb ? -1 : 1;
+  });
+}
+
 // 行に付ける区分の短いラベル（2列にすると欄の見出しが無くなるため）
 export const SSW_STATE_LABELS: Record<SswGroupKey, string> = {
   expired: "期限切れ",
-  cancel: "退職（解約手続き）",
+  cancel: "退職",
   soon: "まもなく期限",
   notJoined: "未加入",
   willCheck: "未加入（意思確認）",

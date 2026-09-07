@@ -13,6 +13,8 @@ import {
   sswInsuranceMonths,
   sswInsuranceState,
   sswTodosByWorker,
+  sswTaskOf,
+  sortSswRows,
   isSswActionRow,
   tomorrowOf,
   type SswInsuranceWorker,
@@ -362,5 +364,55 @@ describe("未着手／申込手続中の2列", () => {
     expect(isSswActionRow({ ...base, todos: {} })).toBe(true);
     expect(isSswActionRow({ ...base, state: "active", todos: {} })).toBe(false);
     expect(isSswActionRow({ ...base, state: "declined", todos: {} })).toBe(false);
+  });
+});
+
+describe("加入手続きと解約手続きの仕分け", () => {
+  const row = (state: "expired" | "cancel" | "notJoined") => ({
+    worker: worker(),
+    orgName: "株式会社ベース",
+    burden: "会社負担",
+    state,
+    todos: {},
+  });
+
+  it("退職の行だけ解約手続き、そのほかは加入手続き", () => {
+    expect(sswTaskOf(row("cancel"))).toBe("cancel");
+    expect(sswTaskOf(row("expired"))).toBe("join");
+    expect(sswTaskOf(row("notJoined"))).toBe("join");
+  });
+});
+
+describe("並び替え", () => {
+  const row = (name: string, expiry: string | null, orgName: string) => ({
+    worker: worker({ id: name, name, ssw_insurance_expiry_date: expiry }),
+    orgName,
+    burden: "会社負担",
+    state: "expired" as const,
+    todos: {},
+  });
+  const rows = [
+    row("B", "2026-10-01", "さくら"),
+    row("C", null, "あおば"),
+    row("A", "2026-08-01", "みらい"),
+  ];
+
+  it("既定は有効期限が古い順（期限なしは最後）", () => {
+    expect(sortSswRows(rows, "expiry").map((r) => r.worker.name)).toEqual(["A", "B", "C"]);
+  });
+
+  it("有効期限が新しい順でも、期限なしは最後にまとめる", () => {
+    expect(sortSswRows(rows, "expiryDesc").map((r) => r.worker.name)).toEqual(["B", "A", "C"]);
+  });
+
+  it("氏名順・所属機関名順に並べ替えられる", () => {
+    expect(sortSswRows(rows, "name").map((r) => r.worker.name)).toEqual(["A", "B", "C"]);
+    expect(sortSswRows(rows, "org").map((r) => r.orgName)).toEqual(["あおば", "さくら", "みらい"]);
+  });
+
+  it("元の配列は変えない", () => {
+    const before = rows.map((r) => r.worker.name);
+    sortSswRows(rows, "name");
+    expect(rows.map((r) => r.worker.name)).toEqual(before);
   });
 });
