@@ -1,18 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { currentWage, sortWages, wageRaise, wageText } from "./wage";
+import {
+  currentWage,
+  pendingWagePatch,
+  sortWages,
+  wageRaise,
+  wageStartedOn,
+  wageStartedOnLabel,
+  wageText,
+} from "./wage";
 import type { WorkerWage } from "@/types/db";
 
-const wage = (over: Partial<WorkerWage> & { started_on: string }): WorkerWage =>
+const wage = (over: Partial<WorkerWage> & { started_on: string | null }): WorkerWage =>
   ({
-    id: over.started_on,
+    id: over.started_on ?? "pending",
     worker_id: "W",
     organization_id: "org-1",
     kind: "時給",
     amount: 1100,
     reason: "",
     note: "",
-    created_at: `${over.started_on}T00:00:00Z`,
-    updated_at: `${over.started_on}T00:00:00Z`,
+    created_at: `${over.started_on ?? "2026-01-01"}T00:00:00Z`,
+    updated_at: `${over.started_on ?? "2026-01-01"}T00:00:00Z`,
     ...over,
   }) as WorkerWage;
 
@@ -75,5 +83,48 @@ describe("前回比（昇給額）", () => {
       wage({ started_on: "2025-04-01", amount: 220000, kind: "月給" }),
     ]);
     expect(wageRaise(mixed, mixed[0])).toBeNull();
+  });
+});
+
+describe("申請時の賃金（適用開始日が空＝雇用開始日から）", () => {
+  const pending = wage({ started_on: null, amount: 1200, reason: "申請時" });
+
+  it("適用開始日は雇用開始日になり、雇用開始日が無ければ未定", () => {
+    expect(wageStartedOn(pending, "2026-10-01")).toBe("2026-10-01");
+    expect(wageStartedOn(pending, null)).toBeNull();
+    expect(wageStartedOn(wage({ started_on: "2025-04-01" }), "2026-10-01")).toBe("2025-04-01");
+  });
+
+  it("表示は「雇用開始日（日付）から」、未定なら「雇用開始日から（未定）」", () => {
+    expect(wageStartedOnLabel(pending, "2026-10-01")).toBe("雇用開始日（2026-10-01）から");
+    expect(wageStartedOnLabel(pending)).toBe("雇用開始日から（未定）");
+    expect(wageStartedOnLabel(wage({ started_on: "2025-04-01" }))).toBe("2025-04-01");
+  });
+
+  it("申請時の賃金だけなら、雇用開始日が未定でもそれが現在の賃金", () => {
+    expect(currentWage([pending], "2026-09-07")?.amount).toBe(1200);
+  });
+
+  it("転職前の賃金があるときは、雇用開始日が来るまで前の賃金が現在の賃金", () => {
+    const old = wage({ started_on: "2024-04-01", amount: 1000 });
+    expect(currentWage([old, pending], "2026-09-07", "2026-10-01")?.amount).toBe(1000);
+    expect(currentWage([old, pending], "2026-10-01", "2026-10-01")?.amount).toBe(1200);
+    // 未定でも、これから始まる賃金として並びの先頭になる
+    expect(sortWages([old, pending])[0].amount).toBe(1200);
+    expect(currentWage([old, pending], "2026-09-07", null)?.amount).toBe(1000);
+  });
+
+  it("雇用開始になったら雇用開始日を書き込み、理由「申請時」は「採用時」になる", () => {
+    expect(pendingWagePatch(pending, "2026-10-01")).toEqual({
+      started_on: "2026-10-01",
+      reason: "採用時",
+    });
+    // 理由を自分で書いていたら、それは変えない
+    expect(pendingWagePatch(wage({ started_on: null, reason: "試用期間" }), "2026-10-01")).toEqual({
+      started_on: "2026-10-01",
+    });
+    // 雇用開始日が無い・すでに日付がある記録には何もしない
+    expect(pendingWagePatch(pending, null)).toBeNull();
+    expect(pendingWagePatch(wage({ started_on: "2025-04-01", reason: "申請時" }), "2026-10-01")).toBeNull();
   });
 });

@@ -5,18 +5,25 @@ import { AlertTriangle, Banknote, CheckCircle2, ExternalLink, FileText, Plus, Tr
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
 import {
+  applyEmploymentStartToWages,
   deleteWorkerWage,
   insertWorkerWage,
   listWorkerWages,
   updateWorkerWage,
 } from "@/lib/supabase/queries/wages";
 import {
+  WAGE_REASON_APPLY,
+  WAGE_REASON_HIRE,
+  WAGE_REASON_RAISE,
   currentWage,
   hourlyFromMonthly,
+  isWageFromEmploymentStart,
   sortWages,
   wageConversionText,
   wageRaise,
   wageRaiseRate,
+  wageStartedOn,
+  wageStartedOnLabel,
   wageText,
 } from "@/lib/wage";
 import {
@@ -49,19 +56,24 @@ import {
 } from "@/types/db";
 
 // 賃金（時給・月給など）の記録。
-// 採用時の賃金を1行目に入れ、昇給のたびに行を足す。
+// 申請時（または採用時）の賃金を1行目に入れ、昇給のたびに行を足す。
 // 適用開始日がいちばん新しい行が「現在の賃金」になり、過去の分もそのまま残る。
+// 申請準備の段階では雇用開始日が決まっていないことが多いので、申請時の賃金は
+// 適用開始日を「雇用開始日から」（日付なし）で入れられる。雇用開始（在籍中）になったら
+// 雇用開始日を適用開始日に書き込み、採用時の賃金として扱う。
 export function WorkerWages({
   workerId,
   currentOrganizationId,
   employmentStartOn,
+  employmentStarted,
   organizations,
   today,
   canEdit,
 }: {
   workerId: string;
   currentOrganizationId: string | null;
-  employmentStartOn: string | null; // 採用時の行を足すときの初期値
+  employmentStartOn: string | null; // 雇用開始日（申請時の賃金の適用開始日になる）
+  employmentStarted: boolean; // 在籍中か（雇用開始済み）。申請時の賃金を採用時の賃金にする
   organizations: Organization[];
   today: string;
   canEdit: boolean;
@@ -76,6 +88,8 @@ export function WorkerWages({
   const [kind, setKind] = useState<WorkerWageKind>("時給");
   const [amount, setAmount] = useState("");
   const [startedOn, setStartedOn] = useState("");
+  // 適用開始日を「雇用開始日から」にする（申請時の賃金。日付が未定でも入れられる）
+  const [fromEmploymentStart, setFromEmploymentStart] = useState(false);
   const [reason, setReason] = useState("");
   // 1-6号別紙（賃金の支払）の内容。追加フォームの分と、記録の行を開いて直す分
   const [newDetailOpen, setNewDetailOpen] = useState(false);
@@ -105,10 +119,33 @@ export function WorkerWages({
     };
   }, [workerId]);
 
+  // 雇用開始（在籍中）になっていたら、申請時に入れた賃金（適用開始日が空）に
+  // 雇用開始日を書き込み、理由を「採用時」にする。開いたときに自動で行う
+  useEffect(() => {
+    if (!loaded || !canEdit || !employmentStarted || !employmentStartOn) return;
+    if (!wages.some((w) => isWageFromEmploymentStart(w))) return;
+    let cancelled = false;
+    applyEmploymentStartToWages(createClient(), wages, employmentStartOn)
+      .then((updated) => {
+        if (cancelled || updated.length === 0) return;
+        setWages((prev) => prev.map((w) => updated.find((u) => u.id === w.id) ?? w));
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(errorMessage(err, "申請時の賃金に雇用開始日を書き込めませんでした"));
+      });
+    return () => {
+      cancelled = true;
+    };
+    // wages が変わるたびに走らせると更新のあと二重に動くので、読み込み完了と雇用開始の変化だけで動かす
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, canEdit, employmentStarted, employmentStartOn]);
+
   const orgName = (id: string | null) =>
     id ? (organizations.find((o) => o.id === id)?.name ?? "") : "";
 
-  const now = currentWage(wages, today);
+  const now = currentWage(wages, today, employmentStartOn);
+  // 適用開始日（申請時の賃金は雇用開始日）。未定なら null
+  const startedOnOf = (w: WorkerWage): string | null => wageStartedOn(w, employmentStartOn);
 
   // 時給⇔月給の換算に使う年間所定労働時間（会社ごと。所属機関に登録する）。
   // 賃金の行に機関が入っていればその会社、無ければ現在の所属機関のものを使う
@@ -140,16 +177,19 @@ export function WorkerWages({
 
   // その賃金が適用されていた期間（次の賃金の開始日まで。無ければ今日まで）で判定する。
   // 据え置いたまま最低賃金が上がって割れた場合も気づけるようにする
-  const periodOf = (w: WorkerWage): { from: string; to: string } => {
-    const sorted = sortWages(wages); // 新しい順
+  const periodOf = (w: WorkerWage): { from: string; to: string } | null => {
+    const from = startedOnOf(w);
+    if (!from) return null; // 雇用開始日が未定の申請時の賃金は、期間がまだ決まらない
+    const sorted = sortWages(wages, employmentStartOn); // 新しい順
     const i = sorted.findIndex((x) => x.id === w.id);
     const next = i > 0 ? sorted[i - 1] : null; // 1つ新しい賃金
-    return { from: w.started_on, to: next ? next.started_on : today };
+    return { from, to: (next && startedOnOf(next)) || today };
   };
 
   const minCheckOf = (w: WorkerWage) => {
-    const { from, to } = periodOf(w);
-    return checkMinimumWage(hourlyOf(w), prefectureOf(w.organization_id), from, to);
+    const period = periodOf(w);
+    if (!period) return null;
+    return checkMinimumWage(hourlyOf(w), prefectureOf(w.organization_id), period.from, period.to);
   };
 
   // 年間所定労働時間を所属機関に保存する（この会社の全員の換算に使われる）
@@ -177,20 +217,23 @@ export function WorkerWages({
     }
   };
 
-  const openForm = (asHire: boolean) => {
+  // 最初の1件は、雇用開始前なら「申請時の賃金」（雇用開始日から）、雇用開始後なら「採用時の賃金」
+  const openForm = (asFirst: boolean) => {
     setKind(now?.kind ?? "時給");
     setAmount("");
+    const applyTime = asFirst && !employmentStarted;
+    setFromEmploymentStart(applyTime);
     // 採用時なら雇用開始日、昇給なら今日を初期値にする
-    setStartedOn(asHire ? (employmentStartOn ?? "") : today);
-    setReason(asHire ? "採用時" : "昇給");
+    setStartedOn(asFirst ? (employmentStartOn ?? "") : today);
+    setReason(applyTime ? WAGE_REASON_APPLY : asFirst ? WAGE_REASON_HIRE : WAGE_REASON_RAISE);
     setNewDetail(emptyWageDetail());
     setNewDetailOpen(false);
     setOpen(true);
   };
 
   const add = async () => {
-    if (!startedOn) {
-      setError("適用開始日を入れてください");
+    if (!fromEmploymentStart && !startedOn) {
+      setError("適用開始日を入れてください（雇用開始日が未定なら「雇用開始日から」を選んでください）");
       return;
     }
     setBusy(true);
@@ -201,7 +244,8 @@ export function WorkerWages({
         organization_id: currentOrganizationId,
         kind,
         amount: Number(amount) || 0,
-        started_on: startedOn,
+        // 「雇用開始日から」は日付を持たない（雇用開始日が決まったらその日から適用）
+        started_on: fromEmploymentStart ? null : startedOn,
         reason: reason.trim(),
         note: "",
         // 別紙の内容は開いて入力したときだけ残す（開かなければ空）
@@ -210,7 +254,13 @@ export function WorkerWages({
       setWages((prev) => [row, ...prev]);
       setOpen(false);
     } catch (err) {
-      setError(dbErrorMessage(err, "0074_worker_wages.sql", errorMessage(err, "賃金の保存に失敗しました")));
+      setError(
+        dbErrorMessage(
+          err,
+          fromEmploymentStart ? "0143_worker_wage_apply_time.sql" : "0074_worker_wages.sql",
+          errorMessage(err, "賃金の保存に失敗しました"),
+        ),
+      );
     } finally {
       setBusy(false);
     }
@@ -297,7 +347,9 @@ export function WorkerWages({
         賃金（時給・月給）
       </h2>
       <p className="mb-3 text-[11px] leading-relaxed text-muted">
-        採用時の賃金を入れ、昇給のたびに行を足してください。
+        申請時（採用時）の賃金を入れ、昇給のたびに行を足してください。
+        申請準備の段階では適用開始日を「雇用開始日から」にしておけば、雇用開始日が決まっていなくても入れられ、
+        雇用開始（在籍中）になったら自動で採用時の賃金になります。
         適用開始日がいちばん新しいものが現在の賃金になり、過去の賃金もそのまま残ります。
         所属機関の在籍者一覧にも現在の賃金が出ます。
         賃金を入れるときに「どういう内容で1-6号別紙（賃金の支払）を作ったか」も一緒に残せます
@@ -356,14 +408,17 @@ export function WorkerWages({
         )}
         {now && (
           <p className="text-[11px] text-muted">
-            {now.started_on}から
+            {wageStartedOnLabel(now, employmentStartOn)}
+            {!isWageFromEmploymentStart(now) && "から"}
             {now.reason && ` ・ ${now.reason}`}
             {orgName(now.organization_id) && ` ・ ${orgName(now.organization_id)}`}
           </p>
         )}
         {!now && loaded && (
           <p className="text-[11px] text-muted">
-            採用時の賃金がまだ入っていません。下の「賃金を追加」から入れてください。
+            {employmentStarted
+              ? "採用時の賃金がまだ入っていません。下の「採用時の賃金を入れる」から入れてください。"
+              : "申請時の賃金がまだ入っていません。下の「申請時の賃金を入れる」から入れてください（雇用開始日が未定でも入れられます）。"}
           </p>
         )}
       </div>
@@ -434,7 +489,11 @@ export function WorkerWages({
             className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-bold"
           >
             <Plus size={13} />
-            {wages.length === 0 ? "採用時の賃金を入れる" : "昇給を記録する"}
+            {wages.length === 0
+              ? employmentStarted
+                ? "採用時の賃金を入れる"
+                : "申請時の賃金を入れる"
+              : "昇給を記録する"}
           </button>
         </div>
       )}
@@ -470,16 +529,34 @@ export function WorkerWages({
             <input
               type="date"
               value={startedOn}
+              disabled={fromEmploymentStart}
               onChange={(e) => setStartedOn(e.target.value)}
-              className="min-h-[36px] rounded-lg border border-border bg-surface px-2 text-xs"
+              className="min-h-[36px] rounded-lg border border-border bg-surface px-2 text-xs disabled:opacity-50"
             />
+          </label>
+          {/* 申請時の賃金は、雇用開始日が決まっていなくても入れられるようにする */}
+          <label className="flex min-h-[36px] items-center gap-1.5 text-xs">
+            <input
+              type="checkbox"
+              checked={fromEmploymentStart}
+              onChange={(e) => {
+                setFromEmploymentStart(e.target.checked);
+                if (e.target.checked && reason === WAGE_REASON_HIRE) setReason(WAGE_REASON_APPLY);
+                if (!e.target.checked && reason === WAGE_REASON_APPLY) setReason(WAGE_REASON_HIRE);
+              }}
+              className="h-4 w-4"
+            />
+            雇用開始日から
+            <span className="text-[10px] text-muted">
+              {employmentStartOn ? `（${employmentStartOn}）` : "（未定でも可）"}
+            </span>
           </label>
           <label className="flex flex-col gap-0.5">
             <span className="text-[10px] font-bold text-muted">理由</span>
             <input
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="採用時 / 昇給"
+              placeholder="申請時 / 採用時 / 昇給"
               className="min-h-[36px] w-28 rounded-lg border border-border bg-surface px-2 text-xs"
             />
           </label>
@@ -545,9 +622,9 @@ export function WorkerWages({
               </tr>
             </thead>
             <tbody>
-              {sortWages(wages).map((w) => {
-                const raise = wageRaise(wages, w);
-                const raiseRate = wageRaiseRate(wages, w);
+              {sortWages(wages, employmentStartOn).map((w) => {
+                const raise = wageRaise(wages, w, employmentStartOn);
+                const raiseRate = wageRaiseRate(wages, w, employmentStartOn);
                 // 割合の表示（+10.0% / -2.5%）
                 const rateText =
                   raiseRate === null
@@ -556,10 +633,30 @@ export function WorkerWages({
                 return (
                   <tr key={w.id} className="border-b border-border/60">
                     <td className="py-1.5 pr-2 tabular-nums">
-                      {canEdit ? (
+                      {isWageFromEmploymentStart(w) ? (
+                        // 申請時の賃金（雇用開始日から）。雇用開始日が決まるまで日付は持たない
+                        <span className={w.id === now?.id ? "font-bold" : ""}>
+                          {wageStartedOnLabel(w, employmentStartOn)}
+                          {canEdit && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void patch(w.id, {
+                                  started_on: employmentStartOn ?? today,
+                                  ...(w.reason === WAGE_REASON_APPLY ? { reason: WAGE_REASON_HIRE } : {}),
+                                })
+                              }
+                              className="ml-1 rounded-lg border border-border px-1.5 py-0.5 text-[10px] font-bold text-brand"
+                              title="適用開始日を日付で持たせる（雇用開始日が無ければ今日）"
+                            >
+                              日付を決める
+                            </button>
+                          )}
+                        </span>
+                      ) : canEdit ? (
                         <input
                           type="date"
-                          value={w.started_on}
+                          value={w.started_on ?? ""}
                           onChange={(e) => {
                             if (e.target.value) void patch(w.id, { started_on: e.target.value });
                           }}
@@ -683,7 +780,8 @@ export function WorkerWages({
               <>
                 <p className="mb-2 flex items-center gap-1.5 text-xs font-bold">
                   <FileText size={14} className="text-brand" />
-                  1-6号別紙（賃金の支払）・{w.started_on}からの{w.kind}
+                  1-6号別紙（賃金の支払）・{wageStartedOnLabel(w, employmentStartOn)}
+                  {!isWageFromEmploymentStart(w) && "から"}の{w.kind}
                   {formatYen(w.amount)}円
                 </p>
                 <WageDetailForm

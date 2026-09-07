@@ -1556,6 +1556,7 @@ export function WorkerDetail({
         workerId={worker.id}
         currentOrganizationId={worker.current_organization_id}
         employmentStartOn={worker.employment_start_on}
+        employmentStarted={worker.status === "在籍中"}
         organizations={organizations}
         today={todayStr()}
         canEdit={canEdit}

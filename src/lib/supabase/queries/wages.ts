@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { pendingWagePatch } from "@/lib/wage";
 import type { WorkerWage, WorkerWageInput } from "@/types/db";
 
 // ---- 賃金の記録（worker_wages） ----
@@ -53,6 +54,23 @@ export async function updateWorkerWage(
 ): Promise<void> {
   const { error } = await supabase.from("worker_wages").update(patch).eq("id", id);
   if (error) throw error;
+}
+
+// 雇用開始になったとき、申請時に入れた賃金（適用開始日が空）に雇用開始日を書き込み、
+// 理由「申請時」を「採用時」に変える。書き込んだ記録を返す（無ければ空）
+export async function applyEmploymentStartToWages(
+  supabase: SupabaseClient,
+  wages: WorkerWage[],
+  employmentStartOn: string | null | undefined,
+): Promise<WorkerWage[]> {
+  const updated: WorkerWage[] = [];
+  for (const w of wages) {
+    const patch = pendingWagePatch(w, employmentStartOn);
+    if (!patch) continue;
+    await updateWorkerWage(supabase, w.id, patch);
+    updated.push({ ...w, ...patch });
+  }
+  return updated;
 }
 
 export async function deleteWorkerWage(

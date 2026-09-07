@@ -10,6 +10,7 @@
 import { PREP_APP_TYPE_LABELS, prepDocLabel, type PrepChecklistMeta, type PrepDocStatus } from "@/lib/application-prep";
 import { PLAN_DATE_FIELDS } from "@/lib/support-plan-dates";
 import { rosterJpDate } from "@/lib/roster";
+import { sortWages, wageStartedOnLabel } from "@/lib/wage";
 import type { OrgCouncilSubmission, OrgFinancialYear, WorkerWage } from "@/types/db";
 
 // 印刷する1行（ラベルと値）。値が空のときは印刷側で「未登録」を出す
@@ -144,15 +145,15 @@ export function prepPrintDocRows(
   }));
 }
 
-// 右側「採用時の賃金情報」。新しい順に並んだ賃金の記録をそのまま行にする
+// 右側「採用時の賃金情報」。賃金の記録を新しい順（申請時の賃金＝雇用開始日からが先頭）に行にする
 export function prepPrintWageLines(
   wages: WorkerWage[],
   orgNames: Record<string, string> = {},
 ): PrepPrintLine[] {
-  return wages.map((w, i) => {
+  return sortWages(wages).map((w, i) => {
     const orgName = w.organization_id ? (orgNames[w.organization_id] ?? "") : "";
     const detail = [
-      `${w.started_on}〜`,
+      `${wageStartedOnLabel(w)}〜`,
       w.reason,
       orgName,
       w.detail && Object.keys(w.detail).length > 0 ? "1-6号別紙あり" : "",

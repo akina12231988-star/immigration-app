@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { OrgSsw2Duties } from "@/lib/org-ssw2-duties";
+import { currentWage, wageStartedOn } from "@/lib/wage";
 import type { Organization, OrganizationInput } from "@/types/db";
 
 export async function listOrganizations(
@@ -186,17 +187,20 @@ export async function getOrgRoster(
     }[]).map((o) => [o.id, o.name]),
   );
 
-  // 賃金も新しい順なので、1人につき最初の1件が現在の賃金になる。
+  // 1人ずつの賃金の記録（現在の賃金は、この機関での雇用開始日を踏まえて下で選ぶ。
+  // 申請時に入れた賃金は適用開始日が空＝雇用開始日から）。
   // テーブル未作成（マイグレーション未実行）でも一覧は出す
-  const wageByWorker = new Map<
-    string,
-    { kind: string; amount: number; started_on: string }
-  >();
+  type WageRow = {
+    worker_id: string;
+    kind: string;
+    amount: number;
+    started_on: string | null;
+    created_at: string;
+  };
+  const wagesByWorker = new Map<string, WageRow[]>();
   if (!wages.error) {
-    for (const w of ((wages.data as
-      | { worker_id: string; kind: string; amount: number; started_on: string }[]
-      | null) ?? [])) {
-      if (!wageByWorker.has(w.worker_id)) wageByWorker.set(w.worker_id, w);
+    for (const w of ((wages.data as WageRow[] | null) ?? [])) {
+      (wagesByWorker.get(w.worker_id) ?? wagesByWorker.set(w.worker_id, []).get(w.worker_id)!).push(w);
     }
   }
 
@@ -227,6 +231,8 @@ export async function getOrgRoster(
     const isCurrent = here && !row.leaving_on;
     const leavingOn = resignedOn.get(row.id) ?? (here ? row.leaving_on : null);
 
+    const startOn = startAtOrg(row, organizationId);
+    const wage = currentWage(wagesByWorker.get(row.id) ?? [], undefined, startOn);
     const item: OrgRosterWorker = {
       id: row.id,
       name: row.name,
@@ -238,15 +244,15 @@ export async function getOrgRoster(
       residenceExpiryDate: row.residence_expiry_date,
       support: row.support,
       status: row.status,
-      startOn: startAtOrg(row, organizationId),
+      startOn,
       leavingOn: isCurrent ? null : leavingOn,
       currentOrgName:
         here || !row.current_organization_id
           ? null
           : (orgNameById.get(row.current_organization_id) ?? null),
-      wageKind: wageByWorker.get(row.id)?.kind ?? null,
-      wageAmount: wageByWorker.get(row.id)?.amount ?? null,
-      wageStartedOn: wageByWorker.get(row.id)?.started_on ?? null,
+      wageKind: wage?.kind ?? null,
+      wageAmount: wage?.amount ?? null,
+      wageStartedOn: wage ? wageStartedOn(wage, startOn) : null,
     };
     (isCurrent ? current : past).push(item);
   }
