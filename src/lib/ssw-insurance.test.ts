@@ -13,6 +13,7 @@ import {
   hasUnjoinedSales,
   sswBurdenRows,
   sswBurdenUnsetCount,
+  isSswTodoInProgress,
   sswColumnOf,
   sswDeclineNote,
   sswInsuranceMonths,
@@ -374,6 +375,28 @@ describe("未着手／申込手続中の2列", () => {
       OPTIONS,
     );
     expect(sswColumnOf({ ...base, todos: todos.get("w1") ?? {} })).toBe("inProgress");
+  });
+
+  it("手続き中の判定: TODOが無い・未着手は手続き中でない。申込手続中・完了は手続き中（ダッシュボードのアラートから外す）", () => {
+    const todo = (status: string) =>
+      sswTodosByWorker(
+        [
+          {
+            id: "t1",
+            todo_no: "TODO-2001",
+            kind: "特定技能総合保険",
+            worker_id: "w1",
+            title: SSW_JOIN_TODO_TITLE,
+            status,
+            deleted_at: null,
+          },
+        ],
+        OPTIONS,
+      ).get("w1")?.join;
+    expect(isSswTodoInProgress(undefined)).toBe(false);
+    expect(isSswTodoInProgress(todo("未着手"))).toBe(false);
+    expect(isSswTodoInProgress(todo("申込手続中"))).toBe(true);
+    expect(isSswTodoInProgress(todo("完了"))).toBe(true);
   });
 
   it("退職の行は解約手続きのTODOで列を決める", () => {

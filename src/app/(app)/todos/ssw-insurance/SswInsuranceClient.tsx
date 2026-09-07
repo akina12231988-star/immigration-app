@@ -355,7 +355,11 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
 
       {/* 申込サイトの内容と、申込手続中の人を突き合わせる（添削） */}
       {!loading && (
-        <SswApplyCheck rows={shown} expected={applyingRows} />
+        <SswApplyCheck
+          rows={shown}
+          expected={applyingRows}
+          orgNames={orgs.map((o) => o.name)}
+        />
       )}
 
       {/* 所属機関ごとの負担区分（会社負担／外国人負担）をここから決められる */}

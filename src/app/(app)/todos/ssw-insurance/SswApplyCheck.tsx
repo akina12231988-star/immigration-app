@@ -11,20 +11,24 @@ import {
   checkSswApply,
   parseSswApplyLines,
   parseSswApplyText,
+  sswApplyKnownNames,
   sswApplySummary,
   type SswApplyCheckResult,
 } from "@/lib/ssw-apply-check";
 import type { SswInsuranceRow } from "@/lib/ssw-insurance";
 
 // 申込内容の添削。
-// 保険の申込サイト（被保険者情報の一覧）をコピーして貼り付けると、
+// 保険の申込サイト（被保険者情報の一覧）のPDFを落とす（または内容を貼り付ける）と、
 // 申込手続中の人と、氏名・生年月日・性別・保険期間・所属機関名が合っているかを見る。
+// 読み取りは、システムの氏名・機関名を手がかりに行う（請求書の照合と同じ考え方）
 export function SswApplyCheck({
   rows,
   expected,
+  orgNames,
 }: {
   rows: SswInsuranceRow[]; // 氏名を探す先（一覧に出ている人みんな）
   expected: SswInsuranceRow[]; // 申込に出てくるはずの人（申込手続中）
+  orgNames: string[]; // システムの所属機関名（申込に書かれた機関名の読み取りに使う）
 }) {
   const [text, setText] = useState("");
   const [result, setResult] = useState<SswApplyCheckResult | null>(null);
@@ -33,7 +37,9 @@ export function SswApplyCheck({
   const [fileName, setFileName] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const run = () => setResult(checkSswApply(parseSswApplyText(text), rows, expected));
+  const knownNames = sswApplyKnownNames(rows);
+  const run = () =>
+    setResult(checkSswApply(parseSswApplyText(text, knownNames, orgNames), rows, expected));
 
   // 申込内容のPDF（申込サイトの画面を印刷したもの）をそのまま読み取って照合する。
   // 1人ずつ名前をコピーしなくてよいように、ドラッグ＆ドロップだけで済ませる
@@ -46,7 +52,7 @@ export function SswApplyCheck({
       const data = await file.arrayBuffer();
       // pdfjs は渡したバッファを持っていってしまう（空になる）のでコピーを渡す
       const lines = pdfLinesInReadingOrder(await extractPdfTextLines(data.slice(0)));
-      const parsed = parseSswApplyLines(lines);
+      const parsed = parseSswApplyLines(lines, knownNames, orgNames);
       if (parsed.length === 0) {
         setError(
           "PDFから被保険者情報を読み取れませんでした。文字が画像になっているPDF（スキャン）は読めません。その場合は内容をコピーして下に貼り付けてください",
@@ -166,6 +172,13 @@ export function SswApplyCheck({
                     </span>
                   )}
                 </p>
+                {/* 該当者なしのときは、どの行を読んだか分かるように読み取った文字を出す */}
+                {!r.workerId && r.line.raw && (
+                  <p className="mt-1 break-all text-muted">
+                    読み取った内容: {r.line.raw.slice(0, 120)}
+                    {r.line.raw.length > 120 && "…"}
+                  </p>
+                )}
                 {r.issues.length > 0 && (
                   <ul className="mt-1 space-y-0.5">
                     {r.issues.map((issue) => (

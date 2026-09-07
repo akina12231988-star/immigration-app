@@ -26,6 +26,12 @@ import { createClient } from "@/lib/supabase/client";
 import { deletePosting, updatePosting } from "@/lib/supabase/queries/postings";
 import { postingDisplayName } from "@/lib/posting-output";
 import {
+  CONTRACT_RENEWAL_CRITERIA,
+  CONTRACT_RENEWAL_KINDS,
+  CONTRACT_RENEWAL_NONE,
+  CONTRACT_TERMS,
+  canPickRenewalCriteria,
+  contractRenewalText,
   contractText,
   holidayText,
   insurancesText,
@@ -384,6 +390,8 @@ export function PostingDetail({
               />
             )}
           </Field>
+          {/* 契約期間。契約の更新は自由入力ではなく、更新の有無（雇用条件書の3つ）を選び、
+              「更新する場合があり得る」のときだけ判断基準を複数選ぶ（求人の編集画面と同じ） */}
           <Field
             label="契約期間"
             value={contractText(sheet)}
@@ -392,27 +400,108 @@ export function PostingDetail({
               contract_term_kind: sheet.contract_term_kind,
               contract_term: sheet.contract_term,
               contract_renewal: sheet.contract_renewal,
+              contract_renewal_kind: sheet.contract_renewal_kind,
+              contract_renewal_criteria: sheet.contract_renewal_criteria,
+              contract_renewal_other: sheet.contract_renewal_other,
             })}
             onSave={saveSheet}
           >
             {(d, set) => (
               <>
                 <SelectIn
+                  label="契約期間"
                   value={d.contract_term_kind}
                   options={["期間の定めなし", "期間の定めあり"]}
                   allowEmpty
                   onChange={(v) => set({ contract_term_kind: v })}
                 />
-                <TextIn
+                <SelectIn
+                  label="雇用契約期間（定めありの場合）"
                   value={d.contract_term}
+                  // 以前に別の書き方（6ヶ月 など）で保存されていたら、選択肢に残して消えないようにする
+                  options={
+                    d.contract_term &&
+                    !CONTRACT_TERMS.includes(d.contract_term as (typeof CONTRACT_TERMS)[number])
+                      ? [...CONTRACT_TERMS, d.contract_term]
+                      : CONTRACT_TERMS
+                  }
+                  allowEmpty
                   onChange={(v) => set({ contract_term: v })}
-                  placeholder="雇用契約期間（例: 1年）"
                 />
-                <TextIn
-                  value={d.contract_renewal}
-                  onChange={(v) => set({ contract_renewal: v })}
-                  placeholder="契約の更新（無 / 有：条件）"
+                <SelectIn
+                  label="契約の更新の有無"
+                  value={d.contract_renewal_kind}
+                  options={CONTRACT_RENEWAL_KINDS}
+                  allowEmpty
+                  onChange={(kind) =>
+                    set({
+                      contract_renewal_kind: kind,
+                      // 自動更新・更新しないのときは判断基準を持たない
+                      ...(canPickRenewalCriteria(kind)
+                        ? {}
+                        : { contract_renewal_criteria: [], contract_renewal_other: "" }),
+                    })
+                  }
                 />
+                {canPickRenewalCriteria(d.contract_renewal_kind) && (
+                  <>
+                    <div>
+                      <span className="text-[11px] font-bold text-muted">
+                        更新の判断基準（複数選べます）
+                      </span>
+                      <div className="mt-0.5 flex flex-wrap gap-1.5">
+                        {CONTRACT_RENEWAL_CRITERIA.map((c) => {
+                          const on = d.contract_renewal_criteria.includes(c);
+                          return (
+                            <button
+                              key={c}
+                              type="button"
+                              aria-pressed={on}
+                              onClick={() =>
+                                set({
+                                  contract_renewal_criteria: on
+                                    ? d.contract_renewal_criteria.filter((x) => x !== c)
+                                    : [...d.contract_renewal_criteria, c],
+                                })
+                              }
+                              className={`min-h-[34px] rounded-lg border px-2.5 text-xs font-bold ${
+                                on
+                                  ? "border-brand bg-brand text-brand-foreground"
+                                  : "border-border bg-background text-muted"
+                              }`}
+                            >
+                              {c}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <TextIn
+                      value={d.contract_renewal_other}
+                      onChange={(v) => set({ contract_renewal_other: v })}
+                      placeholder="更新の判断基準のその他（ほかに基準があれば記入）"
+                    />
+                  </>
+                )}
+                {/* 求人票に出る文字。選んだ内容がそのまま「契約の更新」の欄に入る */}
+                {d.contract_renewal_kind && (
+                  <p className="rounded-lg bg-surface/60 px-2.5 py-1.5 text-[11px] text-muted">
+                    求人票の「契約の更新」欄:{" "}
+                    <b className="text-foreground">
+                      {contractRenewalText({ ...sheet, ...d })}
+                    </b>
+                    {d.contract_renewal_kind === CONTRACT_RENEWAL_NONE &&
+                      "（契約期間は「期間の定めあり」のままで、更新しない扱いになります）"}
+                  </p>
+                )}
+                {/* 更新の有無をまだ選んでいない求人（以前の自由入力）は、そのまま出して消さない */}
+                {!d.contract_renewal_kind && d.contract_renewal && (
+                  <p className="rounded-lg bg-surface/60 px-2.5 py-1.5 text-[11px] text-muted">
+                    以前の入力: <b className="text-foreground">{d.contract_renewal}</b>
+                    <br />
+                    上で更新の有無を選ぶと、こちらは置き換わります。
+                  </p>
+                )}
               </>
             )}
           </Field>
