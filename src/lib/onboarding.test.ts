@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   WORKER_DETAIL_DOC_KEYS,
   buildFollowupMail,
+  followupReasonSentence,
   buildOnboardingMail,
   followupMailDocs,
   formatDateSlash,
@@ -287,5 +288,23 @@ describe("onboardingMailSubject", () => {
 
   it("氏名が無いときは「資料」だけにする", () => {
     expect(onboardingMailSubject("")).toBe("資料");
+  });
+});
+
+describe("followupReasonSentence", () => {
+  it("理由を入れると、本文の1行目がその言い方になる", () => {
+    expect(followupReasonSentence("EDRIANO PUTRA ZIKRI", "記載内容の訂正")).toBe(
+      "先日お送りしたEDRIANO PUTRA ZIKRIさんの入社書類について、記載内容の訂正がありましたので、下記の資料を添付いたします。",
+    );
+  });
+
+  it("理由が空欄なら「追加で添付」の言い方にする", () => {
+    expect(followupReasonSentence("EDRIANO PUTRA ZIKRI", "  ")).toBe(
+      "先日お送りしたEDRIANO PUTRA ZIKRIさんの入社書類について、下記の資料を追加で添付いたします。",
+    );
+  });
+
+  it("氏名が空欄でも文になる", () => {
+    expect(followupReasonSentence("", "不足資料の追加")).toContain("（氏名未入力）さんの入社書類について");
   });
 });
