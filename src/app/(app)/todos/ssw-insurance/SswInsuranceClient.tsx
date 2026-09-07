@@ -77,6 +77,7 @@ import {
   type SswCertRow,
   type SswSalesRow,
 } from "@/lib/supabase/queries/ssw-insurance";
+import { SswApplyCheck } from "./SswApplyCheck";
 import { SswBurdenSettings } from "./SswBurdenSettings";
 import {
   createSswCertTicket,
@@ -268,6 +269,13 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
     [shown, sort],
   );
 
+  // 加入手続きが「申込手続中」の人（申込内容の添削で、申込もれを見つけるのに使う）
+  const applyingRows = useMemo(
+    () =>
+      actionRows.filter((r) => sswTaskOf(r) === "join" && sswColumnOf(r) === "inProgress"),
+    [actionRows],
+  );
+
   const renderRow = (row: SswInsuranceRow) => (
     <SswWorkerRow
       key={row.worker.id}
@@ -344,6 +352,11 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
           特定技能1号の人だけ表示
         </label>
       </Card>
+
+      {/* 申込サイトの内容と、申込手続中の人を突き合わせる（添削） */}
+      {!loading && (
+        <SswApplyCheck rows={shown} expected={applyingRows} />
+      )}
 
       {/* 所属機関ごとの負担区分（会社負担／外国人負担）をここから決められる */}
       {!loading && (
