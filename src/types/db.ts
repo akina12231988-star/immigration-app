@@ -946,6 +946,45 @@ export const CUSTODY_ITEMS = [
   "在留カードのみ",
 ] as const;
 
+// ---- 督促（外国人への連絡と返事の進捗。0144_reminders.sql） ----
+
+// 進捗の並び（未連絡 → 連絡済み（返事待ち） → 返事あり → 完了）
+export const REMINDER_STATUSES = ["未連絡", "連絡済み（返事待ち）", "返事あり", "完了"] as const;
+export type ReminderStatus = (typeof REMINDER_STATUSES)[number];
+
+// 種類の選択肢（自由入力もできる）
+export const REMINDER_KINDS = ["市役所からの通知", "領収書", "納付書", "その他"] as const;
+
+export interface Reminder {
+  id: string;
+  reminder_no: number; // 番号（1〜30を保管ボックスのように使い、完了で空きになる）
+  worker_id: string;
+  kind: string; // 種類
+  content: string; // 内容（何を知らせるか・何をしてもらうか）
+  status: ReminderStatus;
+  contacted_on: string | null; // 本人に連絡した日
+  replied_on: string | null; // 返事があった日
+  completed_on: string | null; // 完了した日
+  note: string; // メモ（返事の内容・引き継ぎ）
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ReminderInput = Omit<Reminder, "id" | "created_by" | "created_at" | "updated_at">;
+
+// 会話のスクショ（画像）。実体は app-files バケット
+export interface ReminderImage {
+  id: string;
+  reminder_id: string;
+  storage_path: string;
+  file_name: string;
+  mime_type: string;
+  caption: string;
+  uploaded_by: string | null;
+  created_at: string;
+}
+
 export interface CustodyRecord {
   id: string;
   worker_id: string;

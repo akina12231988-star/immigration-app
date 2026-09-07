@@ -16,6 +16,7 @@ import {
   ExternalLink,
   FileText,
   FolderOpen,
+  BellRing,
   MessageCircle,
   Pencil,
   Plus,
@@ -100,6 +101,7 @@ import { JobApplicationSection } from "@/components/workers/JobApplicationSectio
 import { dependentAge, warekiDate } from "@/lib/dependents";
 import { fileLinkCopyPath, isWebFileLink } from "@/lib/file-link";
 import { formatStorageNo } from "@/lib/custody";
+import { formatReminderNo, reminderAlertText } from "@/lib/reminders";
 import { filledFieldCount, overwrittenFields, type FieldChange } from "@/lib/field-overwrite";
 import {
   buildUpdatePayload,
@@ -121,6 +123,7 @@ import {
   SUPPORT_SCOPES,
   WORKER_STATUSES,
   type Organization,
+  type Reminder,
   type WorkHistoryRow,
   type WorkerRelative,
   type WorkerWithHistories,
@@ -135,6 +138,7 @@ export function WorkerDetail({
   jobApplications,
   postings,
   custodyNo,
+  reminders,
   canEdit,
 }: {
   worker: WorkerWithHistories;
@@ -143,6 +147,7 @@ export function WorkerDetail({
   jobApplications: ApplicationWithRefs[];
   postings: PostingWithStats[];
   custodyNo: number | null; // 預かり中の保管番号（預かっていなければ null）
+  reminders: Reminder[]; // 進行中の督促（連絡・返事待ち）。無ければ空
   canEdit: boolean;
 }) {
   const router = useRouter();
@@ -529,6 +534,32 @@ export function WorkerDetail({
         </p>
       )}
 
+      {/* 督促（市役所からの通知・領収書などの連絡）が進行中なら、誰から返事をもらっていないかが
+          分かるように一番上に出す。押すと督促の画面でその番号を開く */}
+      {reminders.length > 0 && (
+        <div
+          role="alert"
+          className="rounded-xl border border-seal/40 bg-seal/10 px-3 py-2.5 text-sm text-seal"
+        >
+          <p className="mb-1 flex items-center gap-1.5 font-bold">
+            <BellRing size={15} />
+            督促 {reminders.length}件（連絡・返事の確認が必要です）
+          </p>
+          <ul className="space-y-0.5 text-xs">
+            {reminders.map((r) => (
+              <li key={r.id}>
+                <Link
+                  href={`/reminders?no=${r.reminder_no}`}
+                  className="font-bold underline underline-offset-2 hover:opacity-80"
+                >
+                  {reminderAlertText(r, today)}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* 開いたときに状態を自動で直したときの案内（黙って書き換えたと思われないように出す） */}
       {autoEnrolled && (
         <p
@@ -576,9 +607,23 @@ export function WorkerDetail({
               )}
             </div>
             {/* 連絡・資料へのリンク。登録があるものだけボタンで出す
-                （リンク先の登録・変更は「編集」で。ファイルは0127） */}
-            {(worker.messenger_link || worker.notion_link || worker.file_link) && (
-              <div className="flex flex-wrap items-center gap-1.5">
+                （リンク先の登録・変更は「編集」で。ファイルは0127）。
+                督促はこの人の督促を登録・確認する画面への入口としていつも出す */}
+            <div className="flex flex-wrap items-center gap-1.5">
+                <Link
+                  href={`/reminders?worker=${worker.id}`}
+                  className={`inline-flex min-h-[28px] items-center gap-1 rounded-lg border px-2 text-[11px] font-bold ${
+                    reminders.length > 0
+                      ? "border-seal/40 bg-seal/10 text-seal"
+                      : "border-border bg-surface text-brand"
+                  }`}
+                  title="督促（市役所からの通知・領収書などの連絡）を登録・確認する"
+                >
+                  <BellRing size={12} />
+                  督促
+                  {reminders.length > 0 &&
+                    `（${reminders.map((r) => formatReminderNo(r.reminder_no)).join("・")}）`}
+                </Link>
                 {worker.messenger_link && (
                   <a
                     href={messengerWebUrl(worker.messenger_link)}
@@ -615,7 +660,6 @@ export function WorkerDetail({
                     <FileLinkCopyButton path={fileLinkCopyPath(worker.file_link)} />
                   ))}
               </div>
-            )}
           </div>
           <div className="flex shrink-0 flex-wrap justify-end gap-2">
             {canEdit && editing ? (
