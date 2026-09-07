@@ -205,6 +205,7 @@ export interface OrganizationIntake {
   flex_hours_kind: string; // 変形労働時間制（'' / なし / 1ヶ月単位 / 1年単位）
   flex_docs_start: string; // 変形労働時間制（1年単位）の書類の有効期間の開始日（1年間有効）
   contact_method: string; // 資料のやりとり方法（FAX / グループLINE / email）
+  handover_method: string; // 会社に渡す外国人資料のやりとり方法（'' / 紙で資料を渡す / mailで資料を送る）
   health_insurance: string; // 保険（国民健康保険 / 社会保険 / その他）
   pension: string; // 年金（国民年金 / 厚生年金）
   pay_method: string; // 給与支払い方法（'' / 通貨払い / 口座振込。1-6号別紙に反映）

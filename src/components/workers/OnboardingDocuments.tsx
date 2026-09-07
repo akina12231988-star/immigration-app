@@ -49,7 +49,7 @@ import {
   WORKER_DETAIL_DOC_KEYS,
   type OnboardingDocDef,
 } from "@/lib/onboarding";
-import { isCashPay } from "@/lib/pay-proof";
+import { isBankTransferPay, isCashPay } from "@/lib/pay-proof";
 import { koyoFileName, needsKoyoJokyoForm } from "@/lib/koyo-jokyo";
 import { todayStr } from "@/lib/ssw/calc";
 import type {
@@ -221,6 +221,9 @@ export function OnboardingDocuments({
   // 個人番号が未入力のまま作る書類か（扶養控除等申告書・労働者名簿）。
   // 空欄のまま発行して、あとから本人に記入してもらう運用もあるため、作成は止めない
   const needsMyNumber = (key: string) => !!GENERATABLE[key] && myNumber !== null && !myNumber.trim();
+  // 口座振込の会社は通帳の見開き（振込先）が要る。未登録のあいだ、その行に知らせを出す
+  const needsBankbook = (key: string, hasFile: boolean) =>
+    key === "tsuchou" && isBankTransferPay(payMethod) && !hasFile;
 
   // 「作成」を押したら、まず作った書類をプレビューで見せる。
   // 内容を確かめてから「添付する」を押したときに保存する。
@@ -365,6 +368,16 @@ export function OnboardingDocuments({
             </div>
           )}
 
+          {/* 口座振込の会社は、振込先として通帳の見開きが要る（登録されるまで知らせる） */}
+          {isBankTransferPay(payMethod) && !docByKey.get("tsuchou")?.storage_path && (
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-seal/40 bg-seal/10 px-3 py-2.5">
+              <p className="flex items-start gap-1.5 text-xs font-bold leading-relaxed text-seal">
+                <TriangleAlert size={13} className="mt-0.5 shrink-0" />
+                給与：口座振込！ 通帳の見開き（振込先）を入社書類に添付してください
+              </p>
+            </div>
+          )}
+
           {/* 雇用保険の適用事業所でない会社は、外国人雇用状況届出書（様式第3号）が要る */}
           {needsKoyoJokyoForm(koyoCovered) && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-seal/40 bg-seal/10 px-3 py-2.5">
@@ -451,6 +464,12 @@ export function OnboardingDocuments({
                       <span className="block truncate text-[11px] text-muted">
                         {hasFile ? row!.file_name : "未登録"}
                       </span>
+                      {needsBankbook(def.key, hasFile) && (
+                        <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-seal/10 px-2 py-0.5 text-[11px] font-bold text-seal">
+                          <TriangleAlert size={12} />
+                          給与：口座振込！ 通帳の見開きを添付してください
+                        </span>
+                      )}
                       {needsMyNumber(def.key) && (
                         <span className="block text-[11px] font-bold text-status-notice-fg">
                           個人番号が未入力です。空欄のまま作成して、あとから本人に記入してもらうこともできます

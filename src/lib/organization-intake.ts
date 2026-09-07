@@ -127,6 +127,7 @@ export function emptyOrganizationIntake(): OrganizationIntake {
     flex_hours_kind: "",
     flex_docs_start: "",
     contact_method: "",
+    handover_method: "",
     health_insurance: "",
     pension: "",
     pay_method: "",
@@ -187,6 +188,9 @@ export function isOrgStaff(
 }
 
 // 保存済みの intake（欠けたキーや古い形があり得る）を完全な形に補完する
+// 会社に渡す外国人資料のやりとり方法（紙で渡すか、mailで送るか）
+export const HANDOVER_METHODS = ["紙で資料を渡す", "mailで資料を送る"] as const;
+
 export function normalizeOrganizationIntake(raw: unknown): OrganizationIntake {
   const base = emptyOrganizationIntake();
   const src = (raw && typeof raw === "object" ? raw : {}) as Partial<OrganizationIntake>;

@@ -5,10 +5,17 @@
 // 毎月1枚ずつ書いてもらう運用のため、在留期間のぶんだけ枚数を出す。
 
 export const PAY_METHOD_CASH = "通貨払い";
+export const PAY_METHOD_TRANSFER = "口座振込";
 
 // 所属機関の給与支払い方法が通貨払いか（organizations.intake.pay_method）
 export function isCashPay(payMethod: string | null | undefined): boolean {
   return (payMethod ?? "").trim() === PAY_METHOD_CASH;
+}
+
+// 所属機関の給与支払い方法が口座振込か。
+// 口座振込の会社は、入社書類に通帳の見開き（振込先）が要る
+export function isBankTransferPay(payMethod: string | null | undefined): boolean {
+  return (payMethod ?? "").trim() === PAY_METHOD_TRANSFER;
 }
 
 export const PAY_PROOF_SHEET_COUNTS = [6, 12] as const;
