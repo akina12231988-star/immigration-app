@@ -34,7 +34,7 @@ export interface SswInsuranceWorker {
   residence_expiry_date: string | null; // 在留期限（加入月数の計算に使う）
   leaving_on: string | null;
   current_organization_id: string | null;
-  organizations: { name: string } | null;
+  organizations?: { name: string } | null; // 一覧では機関マスタから引くので任意
   messenger_link: string;
   ssw_insurance_link: string;
   ssw_insurance_expiry_date: string | null;

@@ -37,7 +37,9 @@ export async function listSswInsuranceWorkers(
 ): Promise<SswInsuranceWorker[]> {
   const { data, error } = await supabase
     .from("workers")
-    .select(`${COLUMNS}, organizations(name)`)
+    // 所属機関名は画面側で機関マスタから引くので、ここでは埋め込まない
+    // （workers から organizations への関連が増えると埋め込みがあいまいになるため）
+    .select(COLUMNS)
     .order("name", { ascending: true });
   if (error) throw error;
   return (data as unknown as SswInsuranceWorker[]) ?? [];
