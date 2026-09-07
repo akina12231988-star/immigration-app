@@ -28,6 +28,7 @@ const COLUMNS = [
   "ssw_insurance_no",
   "ssw_insurance_declined",
   "ssw_insurance_declined_on",
+  "ssw_insurance_declined_org_id",
   "ssw_insurance_note",
 ].join(", ");
 
@@ -49,6 +50,7 @@ export interface SswInsurancePatch {
   ssw_insurance_self_join?: boolean;
   ssw_insurance_declined?: boolean;
   ssw_insurance_declined_on?: string | null;
+  ssw_insurance_declined_org_id?: string | null;
   ssw_insurance_note?: string;
 }
 

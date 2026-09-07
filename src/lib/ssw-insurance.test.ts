@@ -8,6 +8,7 @@ import {
   sswActionCount,
   sswApplyCopyText,
   sswApplyFields,
+  sswDeclineNote,
   sswInsuranceMonths,
   sswInsuranceState,
   sswTodosByWorker,
@@ -39,6 +40,7 @@ function worker(over: Partial<SswInsuranceWorker> = {}): SswInsuranceWorker {
     ssw_insurance_no: "",
     ssw_insurance_declined: false,
     ssw_insurance_declined_on: null,
+    ssw_insurance_declined_org_id: null,
     ssw_insurance_note: "",
     ...over,
   };
@@ -189,6 +191,54 @@ describe("buildSswInsuranceRows", () => {
     expect(rows.map((r) => r.state)).toEqual(["expired", "soon", "willCheck"]);
     expect(rows[2].orgName).toBe("株式会社さくら");
     expect(sswActionCount(rows)).toBe(2);
+  });
+});
+
+describe("加入しない理由", () => {
+  it("選んだ理由をそのまま備考にする", () => {
+    expect(sswDeclineNote("特定技能２号になったから", "")).toBe("特定技能２号になったから");
+  });
+
+  it("その他のときは入力した内容を備考にする", () => {
+    expect(sswDeclineNote("その他", " 本人が希望しなかった ")).toBe("本人が希望しなかった");
+  });
+});
+
+describe("加入しないの引き継ぎ（転職したらまた出す）", () => {
+  it("判断したときの所属機関にいる間はTODOに出さない", () => {
+    const w = worker({
+      ssw_insurance_declined: true,
+      ssw_insurance_declined_org_id: "o1",
+      current_organization_id: "o1",
+    });
+    expect(sswInsuranceState(w, "外国人負担", TODAY)).toBe("declined");
+  });
+
+  it("別の所属機関に転職したら、また未加入として出す", () => {
+    const w = worker({
+      ssw_insurance_declined: true,
+      ssw_insurance_declined_org_id: "o1",
+      current_organization_id: "o2",
+    });
+    expect(sswInsuranceState(w, "会社負担", TODAY)).toBe("notJoined");
+  });
+
+  it("期限切れでも、加入しないと決めた人はTODOに出さない", () => {
+    const w = worker({
+      ssw_insurance_declined: true,
+      ssw_insurance_declined_org_id: "o1",
+      ssw_insurance_expiry_date: "2026-09-01",
+    });
+    expect(sswInsuranceState(w, "会社負担", TODAY)).toBe("declined");
+  });
+
+  it("有効期限に余裕がある間は加入中のまま", () => {
+    const w = worker({
+      ssw_insurance_declined: true,
+      ssw_insurance_declined_org_id: "o1",
+      ssw_insurance_expiry_date: "2027-04-07",
+    });
+    expect(sswInsuranceState(w, "会社負担", TODAY)).toBe("active");
   });
 });
 
