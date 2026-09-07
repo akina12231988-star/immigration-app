@@ -639,8 +639,11 @@ export interface WorkerWage {
   organization_id: string | null; // どの機関での賃金か
   kind: WorkerWageKind;
   amount: number; // 金額（円）
-  started_on: string; // 適用開始日（採用日・昇給日）YYYY-MM-DD
-  reason: string; // 採用時 / 昇給 など
+  // 適用開始日（採用日・昇給日）YYYY-MM-DD。
+  // 空（null）は「雇用開始日から」＝申請時に入れた賃金で、雇用開始日が決まったら
+  // その日から適用される（0143_worker_wage_apply_time.sql）
+  started_on: string | null;
+  reason: string; // 申請時 / 採用時 / 昇給 など
   note: string;
   // 1-6号別紙（賃金の支払）の内容。未入力は {}（0089_worker_wage_detail.sql）
   detail: Partial<WageDetail> | null;

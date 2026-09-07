@@ -25,6 +25,7 @@ import { getOrgFilePreviewUrl } from "@/app/(app)/organizations/actions";
 import { orgYearlyFileGroups, type OrgYearlyFileGroup } from "@/lib/org-yearly-files";
 import { normalizeOrganizationIntake } from "@/lib/organization-intake";
 import { listWorkerWages } from "@/lib/supabase/queries/wages";
+import { sortWages, wageStartedOnLabel } from "@/lib/wage";
 import {
   findPlanDatesForTodo,
   listPlanDates,
@@ -645,16 +646,16 @@ export function PrepWageSummary({ workerId }: { workerId: string }) {
       </p>
       {!loaded ? null : wages.length === 0 ? (
         <p className="text-[11px] text-muted">
-          賃金の記録がまだありません。「賃金（1-6号別紙）を開く」から採用時の賃金を登録してください。
+          賃金の記録がまだありません。「賃金（1-6号別紙）を開く」から申請時の賃金を登録してください（雇用開始日が未定でも入れられます）。
         </p>
       ) : (
         <div className="space-y-0.5 text-[11px] leading-relaxed">
-          {wages.map((w, i) => (
+          {sortWages(wages).map((w, i) => (
             <p key={w.id}>
               <span className="font-bold">
                 {w.kind} {w.amount.toLocaleString("ja-JP")}円
               </span>
-              （{w.started_on}〜{w.reason && `・${w.reason}`}）
+              （{wageStartedOnLabel(w)}〜{w.reason && `・${w.reason}`}）
               {w.organization_id && orgNames.get(w.organization_id) && (
                 <span className="text-muted">　{orgNames.get(w.organization_id)}</span>
               )}
@@ -795,6 +796,7 @@ export function PrepEmploymentSection({
     current_organization_id: string | null;
     application_prep_organization_id: string | null;
     employment_start_on: string | null;
+    status: string; // 申請準備中 / 在籍中 など（在籍中なら申請時の賃金が採用時の賃金になる）
     messenger_link: string;
     org_employment_starts: WorkerOrgEmploymentStart[];
   } | null>(null);
@@ -810,7 +812,7 @@ export function PrepEmploymentSection({
     void supabase
       .from("workers")
       .select(
-        "current_organization_id, application_prep_organization_id, employment_start_on, messenger_link, org_employment_starts",
+        "current_organization_id, application_prep_organization_id, employment_start_on, status, messenger_link, org_employment_starts",
       )
       .eq("id", workerId)
       .maybeSingle()
@@ -820,6 +822,7 @@ export function PrepEmploymentSection({
           current_organization_id: string | null;
           application_prep_organization_id: string | null;
           employment_start_on: string | null;
+          status: string | null;
           messenger_link: string | null;
           org_employment_starts: WorkerOrgEmploymentStart[] | null;
         } | null;
@@ -828,6 +831,7 @@ export function PrepEmploymentSection({
             current_organization_id: w.current_organization_id,
             application_prep_organization_id: w.application_prep_organization_id,
             employment_start_on: w.employment_start_on,
+            status: w.status ?? "",
             messenger_link: w.messenger_link ?? "",
             org_employment_starts: w.org_employment_starts ?? [],
           });
@@ -851,6 +855,7 @@ export function PrepEmploymentSection({
           workerId={workerId}
           currentOrganizationId={prepOrgId}
           employmentStartOn={info.employment_start_on}
+          employmentStarted={info.status === "在籍中"}
           organizations={orgs}
           today={todayStr()}
           canEdit={canEdit}
