@@ -9,6 +9,11 @@ import {
   letterPackTrackingUrl,
   parseAttachItems,
   PREP_DOC_ALWAYS_EXTRAS,
+  compareGensenKazei,
+  parsePrepAmounts,
+  prepAmountValue,
+  serializePrepAmounts,
+  sumPrepAmounts,
   PREP_DOC_ATTACH_ITEMS,
   PREP_DOC_DEFS,
   PREP_DOC_STATUS_OPTIONS,
@@ -448,5 +453,34 @@ describe("在留期間の更新許可（特定活動）で外す書類", () => {
     const old = { ...meta, app_content: "" };
     const def = PREP_DOC_DEFS.find((d) => d.id === "kazei")!;
     expect(isRequired(def, old)).toBe(true);
+  });
+});
+
+describe("源泉徴収票と課税証明書の金額の照合", () => {
+  it("金額の読み取り・「+」区切りの保存形式", () => {
+    expect(prepAmountValue("1,710,036")).toBe(1710036);
+    expect(prepAmountValue("８７１，６０８円")).toBe(871608);
+    expect(prepAmountValue("")).toBeNull();
+    expect(parsePrepAmounts("871608+500000")).toEqual(["871608", "500000"]);
+    expect(parsePrepAmounts("")).toEqual([]);
+    expect(serializePrepAmounts(["871,608", "", "500,000円"])).toBe("871608+500000");
+    expect(sumPrepAmounts("871608+500000")).toBe(1371608);
+    // 以前の1件だけの保存（「,」入り）もそのまま読める
+    expect(sumPrepAmounts("871,608")).toBe(871608);
+  });
+
+  it("一致・足りない・多い・未入力を判定する", () => {
+    expect(compareGensenKazei("1,710,036", "1710036").ok).toBe(true);
+    const short = compareGensenKazei("1,710,036", "871608");
+    expect(short.ok).toBe(false);
+    expect(short.diff).toBe(838428);
+    expect(short.text).toContain("源泉徴収票が 838,428円 足りません");
+    const over = compareGensenKazei("1,710,036", "871608+1000000");
+    expect(over.ok).toBe(false);
+    expect(over.text).toContain("161,572円 多く");
+    expect(compareGensenKazei("", "871608").ok).toBeNull();
+    expect(compareGensenKazei("1,710,036", "").text).toContain("源泉徴収票の金額が未入力");
+    expect(compareGensenKazei("", "").ok).toBeNull();
+    expect(compareGensenKazei("1,710,036", "871608+838428").ok).toBe(true);
   });
 });

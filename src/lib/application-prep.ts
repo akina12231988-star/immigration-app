@@ -494,6 +494,7 @@ export type PrepStatusExtra =
   | { kind: "issuer"; label: string } // 発行依頼先の選択（発行依頼先の名簿から。note に保存）
   | { kind: "textarea"; label: string } // 理由書などの長文（note に保存）
   | { kind: "amount"; label: string } // 金額（amount に保存）
+  | { kind: "amounts"; label: string } // 金額を何件でも（源泉徴収票が複数枚のとき。amount に「+」区切りで保存）
   | { kind: "date"; label: string } // 日付（date_on に保存）
   | { kind: "custody" } // 預かり番号の表示（保管ボックスと連動）
   | { kind: "mailing" } // 郵送請求ツールへの導線
@@ -637,9 +638,95 @@ export const PREP_DOC_ALWAYS_EXTRAS: Record<string, PrepStatusExtra[]> = {
         "備考（前回と同じ写真を使う場合の理由。在留カードの顔写真は提出日の6ヶ月前までOKなら前回と同じでも可）",
     },
   ],
-  gensen: [{ kind: "amount", label: "源泉徴収票の金額（課税証明書の金額と合うか確認用）" }],
+  // 源泉徴収票の支払金額は、転職などで複数枚あることがあるので1枚ずつ足せる。
+  // 合計を課税証明書の給与収入と突き合わせる（compareGensenKazei）
+  gensen: [{ kind: "amounts", label: "源泉徴収票の支払金額（複数枚あれば1枚ずつ追加）" }],
+  kazei: [{ kind: "amount", label: "課税証明書の給与収入の金額（源泉徴収票の合計と合うか確認用）" }],
   nenkin: [{ kind: "textarea", label: "理由書（添付したほうがいい場合に記入して保存）" }],
 };
+
+// ---- 源泉徴収票と課税証明書の金額の照合 ----
+//
+// 課税証明書の「給与収入」は、その年に受け取った給与の合計なので、
+// 源泉徴収票（会社ごとに1枚）の「支払金額」を全部足した額と一致するはず。
+// 合わなければ、別の会社の源泉徴収票が抜けている（足りない）ことが多い。
+// 源泉徴収票の金額は amount 列に「871608+500000」のように「+」区切りで保存する
+// （列を増やさずに何件でも持てる）。
+
+// 「1,710,036」「1710036円」などから数値にする。数字が無ければ null
+export function prepAmountValue(text: string): number | null {
+  const digits = (text ?? "").normalize("NFKC").replace(/[^0-9]/g, "");
+  if (!digits) return null;
+  return Number(digits);
+}
+
+// 「+」区切りの金額の並びを配列にする（空の項目は残さない）
+export function parsePrepAmounts(amount: string): string[] {
+  return (amount ?? "")
+    .split("+")
+    .map((s) => s.trim())
+    .filter((s) => s !== "");
+}
+
+// 配列を保存形式にする（数字だけ・「+」区切り。空の項目は落とす）
+export function serializePrepAmounts(list: string[]): string {
+  return list
+    .map((s) => (s ?? "").normalize("NFKC").replace(/[^0-9]/g, ""))
+    .filter((s) => s !== "")
+    .join("+");
+}
+
+// 「+」区切りの金額の合計
+export function sumPrepAmounts(amount: string): number {
+  return parsePrepAmounts(amount).reduce((sum, s) => sum + (prepAmountValue(s) ?? 0), 0);
+}
+
+export interface GensenKazeiCheck {
+  kazei: number | null; // 課税証明書の給与収入（未入力は null）
+  gensen: number; // 源泉徴収票の支払金額の合計
+  gensenCount: number; // 源泉徴収票の枚数（金額を入れた数）
+  diff: number | null; // 課税証明書 − 源泉徴収票の合計（どちらか未入力なら null）
+  ok: boolean | null; // 一致しているか（比べられないときは null）
+  text: string; // 画面に出す文
+}
+
+export function compareGensenKazei(kazeiAmount: string, gensenAmount: string): GensenKazeiCheck {
+  const kazei = prepAmountValue(kazeiAmount);
+  const gensen = sumPrepAmounts(gensenAmount);
+  const gensenCount = parsePrepAmounts(gensenAmount).filter((s) => prepAmountValue(s) !== null).length;
+  const yen = (n: number) => `${n.toLocaleString("ja-JP")}円`;
+  if (kazei === null && gensenCount === 0) {
+    return { kazei, gensen, gensenCount, diff: null, ok: null, text: "課税証明書と源泉徴収票の金額を入れると照合します" };
+  }
+  if (kazei === null) {
+    return { kazei, gensen, gensenCount, diff: null, ok: null, text: `源泉徴収票の合計 ${yen(gensen)}。課税証明書の給与収入が未入力です` };
+  }
+  if (gensenCount === 0) {
+    return { kazei, gensen, gensenCount, diff: null, ok: null, text: `課税証明書の給与収入 ${yen(kazei)}。源泉徴収票の金額が未入力です` };
+  }
+  const diff = kazei - gensen;
+  if (diff === 0) {
+    return { kazei, gensen, gensenCount, diff, ok: true, text: `一致しています（課税証明書 ${yen(kazei)} ＝ 源泉徴収票の合計 ${yen(gensen)}）` };
+  }
+  if (diff > 0) {
+    return {
+      kazei,
+      gensen,
+      gensenCount,
+      diff,
+      ok: false,
+      text: `源泉徴収票が ${yen(diff)} 足りません（課税証明書 ${yen(kazei)} － 源泉徴収票の合計 ${yen(gensen)}）。別の会社の源泉徴収票が無いか確認してください`,
+    };
+  }
+  return {
+    kazei,
+    gensen,
+    gensenCount,
+    diff,
+    ok: false,
+    text: `源泉徴収票の合計が ${yen(-diff)} 多くなっています（課税証明書 ${yen(kazei)} ＜ 源泉徴収票の合計 ${yen(gensen)}）。年分が違う源泉徴収票が混ざっていないか確認してください`,
+  };
+}
 
 // 選択中のステータスの選択肢定義を返す
 export function prepStatusOption(docId: string, status: string): PrepDocStatusOption | null {

@@ -12,9 +12,11 @@ import {
   FileText,
   Loader2,
   Mail,
+  Plus,
   Trash2,
   TriangleAlert,
   Upload,
+  X,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { FileDropArea } from "@/components/ui/FileDropArea";
@@ -112,6 +114,10 @@ import {
   PREP_APP_TYPE_LABELS,
   PREP_CERT_PATTERNS,
   PREP_DOC_ALWAYS_EXTRAS,
+  compareGensenKazei,
+  parsePrepAmounts,
+  serializePrepAmounts,
+  sumPrepAmounts,
   PREP_DOC_ATTACH_ITEMS,
   PREP_DOC_STATUS_OPTIONS,
   PREP_MAIL_AFTER_HIDDEN,
@@ -129,6 +135,7 @@ import {
   type PrepDocDef,
   type PrepDocStatus,
   type PrepStatusExtra,
+  type GensenKazeiCheck,
 } from "@/lib/application-prep";
 import {
   appTypeOfPrepSituation,
@@ -1513,6 +1520,15 @@ export function ApplicationPrepChecklist({
                   canEdit={canEdit}
                   busy={busyForRow}
                   ds={{ ...EMPTY_PREP_DOC_STATUS, ...(docStatuses[item.def.id] ?? {}) }}
+                  // 源泉徴収票と課税証明書は金額を突き合わせるので、相手の金額も渡す
+                  gensenKazei={
+                    item.def.id === "gensen" || item.def.id === "kazei"
+                      ? compareGensenKazei(
+                          docStatuses.kazei?.amount ?? "",
+                          docStatuses.gensen?.amount ?? "",
+                        )
+                      : null
+                  }
                   custodyNo={custodyNo}
                   healthOn={healthOn}
                   plannedAppOn={current?.planned_app_on ?? null}
@@ -1725,6 +1741,7 @@ function DocRow({
   canEdit,
   busy,
   ds,
+  gensenKazei = null,
   custodyNo,
   healthOn = null,
   plannedAppOn = null,
@@ -1750,6 +1767,7 @@ function DocRow({
   canEdit: boolean;
   busy: boolean;
   ds: PrepDocStatusInput;
+  gensenKazei?: GensenKazeiCheck | null; // 源泉徴収票・課税証明書の行だけ: 金額の照合結果
   custodyNo: number | null;
   healthOn?: string | null; // 健康診断の受診日（健康診断書の行で使う）
   plannedAppOn?: string | null; // 申請予定日（健康診断書の有効チェックに使う）
@@ -2042,6 +2060,25 @@ function DocRow({
               onPatch={onPatchStatus}
             />
           ))}
+          {/* 源泉徴収票の合計と課税証明書の給与収入の照合（両方の行に同じ結果を出す） */}
+          {gensenKazei && (
+            <p
+              className={`flex items-start gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-bold ${
+                gensenKazei.ok === true
+                  ? "bg-status-approved-bg text-status-approved-fg"
+                  : gensenKazei.ok === false
+                    ? "bg-seal/10 text-seal"
+                    : "bg-surface text-muted"
+              }`}
+            >
+              {gensenKazei.ok === true ? (
+                <CheckCircle2 size={13} className="mt-0.5 shrink-0" />
+              ) : gensenKazei.ok === false ? (
+                <TriangleAlert size={13} className="mt-0.5 shrink-0" />
+              ) : null}
+              <span>源泉徴収票と課税証明書の照合: {gensenKazei.text}</span>
+            </p>
+          )}
           {/* 添付する資料項目の選択（年金記録: 年金記録／免除申請書） */}
           {PREP_DOC_ATTACH_ITEMS[def.id] && (
             <div className="flex flex-wrap items-center gap-3">
@@ -2174,6 +2211,68 @@ function StatusExtraField({
           />
         </label>
       );
+    case "amounts": {
+      // 何件でも入れられる金額（源泉徴収票が複数枚のとき）。空の欄を1つは出しておく
+      const list = parsePrepAmounts(ds.amount);
+      const rows = list.length === 0 ? [""] : list;
+      const total = sumPrepAmounts(ds.amount);
+      const update = (next: string[], save: boolean) =>
+        onPatch({ amount: serializePrepAmounts(next) }, save);
+      return (
+        <div className="block">
+          <span className="mb-0.5 block text-[11px] text-muted">{extra.label}</span>
+          <div className="space-y-1">
+            {rows.map((v, i) => (
+              <div key={i} className="flex items-center gap-1.5">
+                <span className="w-10 shrink-0 text-[11px] text-muted">{i + 1}枚目</span>
+                <input
+                  value={formatAmountInput(v)}
+                  readOnly={!canEdit}
+                  inputMode="numeric"
+                  placeholder="例: 871,608円"
+                  onChange={(e) => {
+                    const next = [...rows];
+                    next[i] = e.target.value.replace(/[^0-9０-９]/g, "");
+                    // 入力中は空欄も残す（保存は「+」区切りで空欄を落とす）
+                    onPatch({ amount: next.join("+") }, false);
+                  }}
+                  onBlur={() => update(rows, true)}
+                  className={inputCls}
+                />
+                {canEdit && rows.length > 1 && (
+                  <button
+                    type="button"
+                    aria-label={`${i + 1}枚目を削除`}
+                    onClick={() => update(rows.filter((_, j) => j !== i), true)}
+                    className="shrink-0 text-muted hover:text-seal"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+            ))}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              {canEdit ? (
+                <button
+                  type="button"
+                  onClick={() => onPatch({ amount: [...rows, ""].join("+") }, false)}
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-brand"
+                >
+                  <Plus size={12} />
+                  源泉徴収票をもう1枚追加
+                </button>
+              ) : (
+                <span />
+              )}
+              <span className="text-[11px] font-bold tabular-nums">
+                合計 {total.toLocaleString("ja-JP")}円
+                <span className="ml-1 font-medium text-muted">（{rows.filter((v) => v).length}枚）</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      );
+    }
     case "date":
       return (
         <label className="block">
