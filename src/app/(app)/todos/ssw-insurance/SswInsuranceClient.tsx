@@ -42,10 +42,13 @@ import {
   SSW_INSURANCE_TODO_KIND,
   SSW_JOIN_TODO_TITLE,
   SSW_SECTIONS,
+  SSW_SORTS,
   SSW_STATE_LABELS,
+  SSW_TASK_GROUPS,
   buildSswInsuranceRows,
   isSswActionRow,
   isSswInsuranceTarget,
+  sortSswRows,
   sswColumnOf,
   slashDate,
   sswApplyCopyText,
@@ -54,8 +57,10 @@ import {
   sswInsuranceMonths,
   sswTodosByWorker,
   tomorrowOf,
+  sswTaskOf,
   type SswInsuranceRow,
   type SswInsuranceWorker,
+  type SswSortKey,
 } from "@/lib/ssw-insurance";
 import {
   ensureSswTodo,
@@ -95,6 +100,7 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
   const [nameFilter, setNameFilter] = useState("");
   // 特定技能総合保険は特定技能の人の保険なので、既定では特定技能の人だけを出す
   const [onlySsw, setOnlySsw] = useState(true);
+  const [sort, setSort] = useState<SswSortKey>("expiry");
   const [openId, setOpenId] = useState<string | null>(null);
   const today = todayStr();
 
@@ -230,7 +236,10 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
   );
 
   // 対応が必要な人（期限切れ・退職の解約・まもなく期限・未加入・意思確認）
-  const actionRows = useMemo(() => shown.filter(isSswActionRow), [shown]);
+  const actionRows = useMemo(
+    () => sortSswRows(shown.filter(isSswActionRow), sort),
+    [shown, sort],
+  );
 
   const renderRow = (row: SswInsuranceRow) => (
     <SswWorkerRow
@@ -283,6 +292,20 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
           />
         </div>
         <label className="flex items-center gap-1.5 text-xs font-bold text-muted">
+          並び替え
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SswSortKey)}
+            className={INPUT}
+          >
+            {SSW_SORTS.map((o) => (
+              <option key={o.key} value={o.key}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center gap-1.5 text-xs font-bold text-muted">
           <input
             type="checkbox"
             checked={onlySsw}
@@ -297,27 +320,43 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
         <Card className="p-6 text-center text-sm text-muted">読み込み中…</Card>
       ) : (
         <>
-          {/* 対応が必要な人を、左＝未着手・右＝申込手続中の2列で出す */}
-          <div className="grid gap-3 md:grid-cols-2">
-            {SSW_COLUMNS.map((column) => {
-              const list = actionRows.filter((r) => sswColumnOf(r) === column.key);
-              return (
-                <Card key={column.key} className="p-4">
-                  <p className="text-sm font-bold">
-                    {column.title}（{list.length}件）
+          {/* 加入手続きと解約手続きは別の欄に分け、それぞれ左＝未着手・右＝申込手続中の2列で出す */}
+          {SSW_TASK_GROUPS.map((group) => {
+            const groupRows = actionRows.filter((r) => sswTaskOf(r) === group.key);
+            if (groupRows.length === 0) return null;
+            return (
+              <div key={group.key} className="space-y-2">
+                <div className="px-0.5">
+                  <p className="text-sm font-black">
+                    {group.title}（{groupRows.length}件）
                   </p>
-                  <p className="mt-1 mb-3 text-[11px] leading-relaxed text-muted">{column.lead}</p>
-                  {list.length === 0 ? (
-                    <p className="rounded-xl border border-border bg-background p-4 text-center text-[11px] text-muted">
-                      この列に出す人はいません。
-                    </p>
-                  ) : (
-                    <div className="space-y-2">{list.map(renderRow)}</div>
-                  )}
-                </Card>
-              );
-            })}
-          </div>
+                  <p className="text-[11px] leading-relaxed text-muted">{group.lead}</p>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {SSW_COLUMNS.map((column) => {
+                    const list = groupRows.filter((r) => sswColumnOf(r) === column.key);
+                    return (
+                      <Card key={column.key} className="p-4">
+                        <p className="text-sm font-bold">
+                          {column.title}（{list.length}件）
+                        </p>
+                        <p className="mt-1 mb-3 text-[11px] leading-relaxed text-muted">
+                          {column.lead}
+                        </p>
+                        {list.length === 0 ? (
+                          <p className="rounded-xl border border-border bg-background p-4 text-center text-[11px] text-muted">
+                            この列に出す人はいません。
+                          </p>
+                        ) : (
+                          <div className="space-y-2">{list.map(renderRow)}</div>
+                        )}
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
 
           {/* 対応が要らない人（加入中・加入しない）は畳んで下に置く */}
           {SSW_SECTIONS.filter((section) => section.collapsed).map((section) => {
