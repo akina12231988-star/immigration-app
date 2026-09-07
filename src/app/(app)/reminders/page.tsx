@@ -5,6 +5,7 @@ import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { countReminderImages, listReminders } from "@/lib/supabase/queries/reminders";
 import { listWorkersWithOrg } from "@/lib/supabase/queries/workers";
 import { todayStr } from "@/lib/ssw/calc";
+import { dbErrorMessage } from "@/lib/errors";
 import { RemindersClient } from "./RemindersClient";
 
 export const dynamic = "force-dynamic";
@@ -27,9 +28,14 @@ export default async function RemindersPage({
   const supabase = await createClient();
   // reminders 未作成（マイグレーション未実行）でも画面は開き、案内を出す
   const [loaded, workers, imageCounts] = await Promise.all([
+    // Supabase のエラーは Error 型ではないオブジェクトなので、dbErrorMessage で文字にする
+    // （テーブル未作成なら、どのマイグレーションを適用すればよいかまで案内する）
     listReminders(supabase).then(
       (rows) => ({ rows, error: null as string | null }),
-      (err: unknown) => ({ rows: [], error: err instanceof Error ? err.message : String(err) }),
+      (err: unknown) => ({
+        rows: [],
+        error: dbErrorMessage(err, "0144_reminders.sql", "督促の読み込みに失敗しました"),
+      }),
     ),
     listWorkersWithOrg(supabase).catch(() => []),
     countReminderImages(supabase).catch(() => new Map<string, number>()),
