@@ -8,9 +8,12 @@ import {
   sswActionCount,
   sswApplyCopyText,
   sswApplyFields,
+  sswColumnOf,
+  sswDeclineNote,
   sswInsuranceMonths,
   sswInsuranceState,
   sswTodosByWorker,
+  isSswActionRow,
   tomorrowOf,
   type SswInsuranceWorker,
 } from "./ssw-insurance";
@@ -39,6 +42,7 @@ function worker(over: Partial<SswInsuranceWorker> = {}): SswInsuranceWorker {
     ssw_insurance_no: "",
     ssw_insurance_declined: false,
     ssw_insurance_declined_on: null,
+    ssw_insurance_declined_org_id: null,
     ssw_insurance_note: "",
     ...over,
   };
@@ -192,6 +196,54 @@ describe("buildSswInsuranceRows", () => {
   });
 });
 
+describe("加入しない理由", () => {
+  it("選んだ理由をそのまま備考にする", () => {
+    expect(sswDeclineNote("特定技能２号になったから", "")).toBe("特定技能２号になったから");
+  });
+
+  it("その他のときは入力した内容を備考にする", () => {
+    expect(sswDeclineNote("その他", " 本人が希望しなかった ")).toBe("本人が希望しなかった");
+  });
+});
+
+describe("加入しないの引き継ぎ（転職したらまた出す）", () => {
+  it("判断したときの所属機関にいる間はTODOに出さない", () => {
+    const w = worker({
+      ssw_insurance_declined: true,
+      ssw_insurance_declined_org_id: "o1",
+      current_organization_id: "o1",
+    });
+    expect(sswInsuranceState(w, "外国人負担", TODAY)).toBe("declined");
+  });
+
+  it("別の所属機関に転職したら、また未加入として出す", () => {
+    const w = worker({
+      ssw_insurance_declined: true,
+      ssw_insurance_declined_org_id: "o1",
+      current_organization_id: "o2",
+    });
+    expect(sswInsuranceState(w, "会社負担", TODAY)).toBe("notJoined");
+  });
+
+  it("期限切れでも、加入しないと決めた人はTODOに出さない", () => {
+    const w = worker({
+      ssw_insurance_declined: true,
+      ssw_insurance_declined_org_id: "o1",
+      ssw_insurance_expiry_date: "2026-09-01",
+    });
+    expect(sswInsuranceState(w, "会社負担", TODAY)).toBe("declined");
+  });
+
+  it("有効期限に余裕がある間は加入中のまま", () => {
+    const w = worker({
+      ssw_insurance_declined: true,
+      ssw_insurance_declined_org_id: "o1",
+      ssw_insurance_expiry_date: "2027-04-07",
+    });
+    expect(sswInsuranceState(w, "会社負担", TODAY)).toBe("active");
+  });
+});
+
 describe("加入月数の計算", () => {
   it("月末は日を丸めて月を足す", () => {
     expect(addMonthsDate("2026-01-31", 1)).toBe("2026-02-28");
@@ -235,5 +287,80 @@ describe("sswApplyFields", () => {
     expect(fields[2].hint).toBe("外国人詳細の性別が未登録です");
     expect(fields[3].value).toBe("");
     expect(fields[5].hint).toBe("現在の所属機関が未設定です");
+  });
+});
+
+describe("未着手／申込手続中の2列", () => {
+  const base = {
+    worker: worker({ ssw_insurance_expiry_date: "2026-09-01" }),
+    orgName: "株式会社ベース",
+    burden: "会社負担",
+    state: "expired" as const,
+  };
+
+  it("TODOが無い人は未着手の列に出す", () => {
+    expect(sswColumnOf({ ...base, todos: {} })).toBe("notStarted");
+  });
+
+  it("経過が未着手のTODOも未着手の列", () => {
+    const todos = sswTodosByWorker(
+      [
+        {
+          id: "t1",
+          todo_no: "TODO-2001",
+          kind: "特定技能総合保険",
+          worker_id: "w1",
+          title: SSW_JOIN_TODO_TITLE,
+          status: "未着手",
+          deleted_at: null,
+        },
+      ],
+      OPTIONS,
+    );
+    expect(sswColumnOf({ ...base, todos: todos.get("w1") ?? {} })).toBe("notStarted");
+  });
+
+  it("申込手続中のTODOは申込手続中の列", () => {
+    const todos = sswTodosByWorker(
+      [
+        {
+          id: "t1",
+          todo_no: "TODO-2001",
+          kind: "特定技能総合保険",
+          worker_id: "w1",
+          title: SSW_JOIN_TODO_TITLE,
+          status: "申込手続中",
+          deleted_at: null,
+        },
+      ],
+      OPTIONS,
+    );
+    expect(sswColumnOf({ ...base, todos: todos.get("w1") ?? {} })).toBe("inProgress");
+  });
+
+  it("退職の行は解約手続きのTODOで列を決める", () => {
+    const todos = sswTodosByWorker(
+      [
+        {
+          id: "t2",
+          todo_no: "TODO-2002",
+          kind: "特定技能総合保険",
+          worker_id: "w1",
+          title: SSW_CANCEL_TODO_TITLE,
+          status: "申込手続中",
+          deleted_at: null,
+        },
+      ],
+      OPTIONS,
+    );
+    expect(
+      sswColumnOf({ ...base, state: "cancel", todos: todos.get("w1") ?? {} }),
+    ).toBe("inProgress");
+  });
+
+  it("加入中・加入しないは列に出さない", () => {
+    expect(isSswActionRow({ ...base, todos: {} })).toBe(true);
+    expect(isSswActionRow({ ...base, state: "active", todos: {} })).toBe(false);
+    expect(isSswActionRow({ ...base, state: "declined", todos: {} })).toBe(false);
   });
 });

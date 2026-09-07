@@ -6,7 +6,7 @@
 // 意思確認をして「加入しない」と決めたらその記録（ssw_insurance_declined）を残す。
 
 import { daysUntil } from "@/lib/worker-alerts";
-import { stageOfStatus, type TodoStatusOption } from "@/lib/todo";
+import { stageOfStatus, type TodoStage, type TodoStatusOption } from "@/lib/todo";
 
 // TODOの構成名（0139 で todos.kind に追加）
 export const SSW_INSURANCE_TODO_KIND = "特定技能総合保険";
@@ -42,7 +42,9 @@ export interface SswInsuranceWorker {
   ssw_insurance_no: string;
   ssw_insurance_declined: boolean;
   ssw_insurance_declined_on: string | null;
-  ssw_insurance_note: string;
+  // どの所属機関にいたときに「加入しない」と決めたか（転職したら決め直す・0140）
+  ssw_insurance_declined_org_id: string | null;
+  ssw_insurance_note: string; // 加入しない理由などの備考
 }
 
 // 特定技能総合保険の対象になる在留資格か（特定技能の人だけが加入する保険）
@@ -74,6 +76,16 @@ export type SswGroupKey =
   | "active"
   | "none";
 
+// 「加入しない」の判断が今も効いているか。
+// 判断したときの所属機関から別の機関に移った（転職した）ときは、
+// その機関で改めて検討するため効かなくなる（また一覧に出る）
+export function isSswDeclineActive(w: SswInsuranceWorker): boolean {
+  if (!w.ssw_insurance_declined) return false;
+  // 判断したときの機関が分からない古い記録は、そのまま「加入しない」を続ける
+  if (!w.ssw_insurance_declined_org_id) return true;
+  return w.ssw_insurance_declined_org_id === w.current_organization_id;
+}
+
 export function sswInsuranceState(
   w: SswInsuranceWorker,
   burden: string, // 所属機関の負担区分（'' / 会社負担 / 外国人負担）
@@ -83,13 +95,15 @@ export function sswInsuranceState(
   const joined = isSswJoined(w);
   // 退職した人は、加入したままなら解約手続きが必要（解約が済んだら一覧から外す）
   if (w.status === "退職") return joined && !cancelDone ? "cancel" : "none";
-  if (joined) {
-    const days = daysUntil(w.ssw_insurance_expiry_date as string, today);
-    if (days < 0) return "expired";
-    return days < SSW_SOON_DAYS ? "soon" : "active";
+  // まだ期限に余裕があるうちは、加入しないと決めていても加入中のまま
+  if (joined && daysUntil(w.ssw_insurance_expiry_date as string, today) >= SSW_SOON_DAYS) {
+    return "active";
   }
-  // 未加入。意思確認の結果が「加入しない」ならその欄へ
-  if (w.ssw_insurance_declined) return "declined";
+  // 加入しないと決めた人は、その所属機関にいる間はTODO（未加入・期限切れ）に出さない
+  if (isSswDeclineActive(w)) return "declined";
+  if (joined) {
+    return daysUntil(w.ssw_insurance_expiry_date as string, today) < 0 ? "expired" : "soon";
+  }
   // 外国人負担のときは、本人が希望したときだけ加入する（希望が無ければ意思確認から）
   if (burden === "外国人負担" && !w.ssw_insurance_self_join) return "willCheck";
   return "notJoined";
@@ -101,6 +115,7 @@ export interface SswTodoRef {
   todo_no: string;
   title: string;
   status: string;
+  stage: TodoStage; // 未着手 / 進行中 / 完了
   done: boolean;
 }
 
@@ -126,12 +141,14 @@ export function sswTodosByWorker(
   const map = new Map<string, SswTodoPair>();
   for (const t of todos) {
     if (t.kind !== SSW_INSURANCE_TODO_KIND || !t.worker_id || t.deleted_at) continue;
+    const stage = stageOfStatus(t.status, opts);
     const ref: SswTodoRef = {
       id: t.id,
       todo_no: t.todo_no,
       title: t.title,
       status: t.status,
-      done: stageOfStatus(t.status, opts) === "完了",
+      stage,
+      done: stage === "完了",
     };
     const pair = map.get(t.worker_id) ?? {};
     // 解約手続き以外（既定は加入手続き）は加入のTODOとして扱う
@@ -187,7 +204,12 @@ export function buildSswInsuranceRows(
 }
 
 // 欄（セクション）の並びと見出し
-export const SSW_SECTIONS: { key: Exclude<SswGroupKey, "none">; title: string; lead: string }[] = [
+export const SSW_SECTIONS: {
+  key: Exclude<SswGroupKey, "none">;
+  title: string;
+  lead: string;
+  collapsed?: boolean; // 既定で閉じておく欄（対応が要らない人たち）
+}[] = [
   {
     key: "expired",
     title: "期限切れ",
@@ -217,16 +239,90 @@ export const SSW_SECTIONS: { key: Exclude<SswGroupKey, "none">; title: string; l
   {
     key: "declined",
     title: "加入しない（意思確認済み）",
-    lead: "意思確認をして加入しないと決めた人です。希望が変わったら「加入する」に戻せます。",
+    lead:
+      "加入しないと決めた人です。この所属機関にいる間は未加入・期限切れのTODOに出ません（別の所属機関に転職したら、また一覧に出ます）。希望が変わったら「加入する」に戻せます。",
+    collapsed: true,
   },
-  { key: "active", title: "加入中", lead: "有効期限まで1か月以上あります。" },
+  {
+    key: "active",
+    title: "加入中",
+    lead: "有効期限まで1か月以上あります。",
+    collapsed: true,
+  },
 ];
+
+// ---- 未着手／申込手続中の2列表示 ----
+
+// 対応が必要な区分（この人たちを左右の列に分けて出す）。
+// 加入中・加入しないは対応が要らないので列には出さない
+export const SSW_ACTION_STATES: SswGroupKey[] = [
+  "expired",
+  "cancel",
+  "soon",
+  "notJoined",
+  "willCheck",
+];
+
+export function isSswActionRow(row: SswInsuranceRow): boolean {
+  return SSW_ACTION_STATES.includes(row.state);
+}
+
+// 列（左: まだ手続きを始めていない人 ／ 右: 申込手続き中の人）
+export type SswColumnKey = "notStarted" | "inProgress";
+
+export const SSW_COLUMNS: { key: SswColumnKey; title: string; lead: string }[] = [
+  {
+    key: "notStarted",
+    title: "未着手",
+    lead: "まだTODOを作っていない人、経過が未着手の人です。",
+  },
+  {
+    key: "inProgress",
+    title: "申込手続中",
+    lead: "加入・解約の手続きを進めている人です（経過が未着手以外）。",
+  },
+];
+
+// その行のTODO（退職の人は解約手続き、それ以外は加入手続き）
+export function sswRowTodo(row: SswInsuranceRow): SswTodoRef | undefined {
+  return row.state === "cancel" ? row.todos.cancel : row.todos.join;
+}
+
+// どちらの列に出すか。TODOが無い・経過が未着手なら左、それ以外は右
+export function sswColumnOf(row: SswInsuranceRow): SswColumnKey {
+  const todo = sswRowTodo(row);
+  if (!todo || todo.stage === "未着手") return "notStarted";
+  return "inProgress";
+}
+
+// 行に付ける区分の短いラベル（2列にすると欄の見出しが無くなるため）
+export const SSW_STATE_LABELS: Record<SswGroupKey, string> = {
+  expired: "期限切れ",
+  cancel: "退職（解約手続き）",
+  soon: "まもなく期限",
+  notJoined: "未加入",
+  willCheck: "未加入（意思確認）",
+  declined: "加入しない",
+  active: "加入中",
+  none: "",
+};
 
 // 一覧に出す件数（未加入・期限切れなど、対応が必要な行の合計）
 export function sswActionCount(rows: SswInsuranceRow[]): number {
   return rows.filter(
     (r) => r.state === "expired" || r.state === "soon" || r.state === "notJoined" || r.state === "cancel",
   ).length;
+}
+
+// ---- 加入しない理由（備考） ----
+
+// 「加入しない」ときに選ぶ理由。その他を選んだときは自由入力にする
+export const SSW_DECLINE_REASONS = ["特定技能２号になったから", "その他"] as const;
+export type SswDeclineReason = (typeof SSW_DECLINE_REASONS)[number];
+
+// 備考に残す文言。その他のときは入力した内容をそのまま残す
+export function sswDeclineNote(reason: string, other: string): string {
+  return reason === "その他" ? other.trim() : reason;
 }
 
 // ---- 加入の申込フォームに入れる内容 ----

@@ -12,7 +12,6 @@ import {
   Plus,
   ShieldCheck,
   Trash2,
-  TriangleAlert,
   Upload,
   X,
 } from "lucide-react";
@@ -27,6 +26,7 @@ import { compressImage } from "@/lib/image-compress";
 import { todayStr } from "@/lib/application-alerts";
 import { remainingLabel } from "@/lib/worker-alerts";
 import { organizationSuggestions, matchesOrganizationName } from "@/lib/org-search";
+import { matchesWorkerName } from "@/lib/worker-search";
 import { listOrganizations } from "@/lib/supabase/queries/organizations";
 import {
   listTodoStatusOptions,
@@ -37,14 +37,20 @@ import {
 import { displayTodoNo, type TodoStatusOption } from "@/lib/todo";
 import {
   SSW_CANCEL_TODO_TITLE,
+  SSW_COLUMNS,
+  SSW_DECLINE_REASONS,
   SSW_INSURANCE_TODO_KIND,
   SSW_JOIN_TODO_TITLE,
   SSW_SECTIONS,
+  SSW_STATE_LABELS,
   buildSswInsuranceRows,
+  isSswActionRow,
   isSswInsuranceTarget,
+  sswColumnOf,
   slashDate,
   sswApplyCopyText,
   sswApplyFields,
+  sswDeclineNote,
   sswInsuranceMonths,
   sswTodosByWorker,
   tomorrowOf,
@@ -85,6 +91,8 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [orgFilter, setOrgFilter] = useState("");
+  // 氏名でも探せるようにする（所属機関名の欄に人の名前を入れても出てこないため）
+  const [nameFilter, setNameFilter] = useState("");
   // 特定技能総合保険は特定技能の人の保険なので、既定では特定技能の人だけを出す
   const [onlySsw, setOnlySsw] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -154,13 +162,16 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
     );
   }, [workers, orgBurden, todos, options, onlySsw, today]);
 
-  const shown = useMemo(
-    () =>
-      orgFilter.trim()
-        ? rows.filter((r) => r.orgName && matchesOrganizationName({ name: r.orgName }, orgFilter))
-        : rows,
-    [rows, orgFilter],
-  );
+  const shown = useMemo(() => {
+    let list = rows;
+    if (orgFilter.trim()) {
+      list = list.filter((r) => r.orgName && matchesOrganizationName({ name: r.orgName }, orgFilter));
+    }
+    if (nameFilter.trim()) {
+      list = list.filter((r) => matchesWorkerName(r.worker, nameFilter));
+    }
+    return list;
+  }, [rows, orgFilter, nameFilter]);
 
   // 所属機関名の検索候補（今の一覧に出ている機関だけ）
   const orgCandidates = useMemo(() => {
@@ -169,14 +180,17 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
     return [...names].sort((a, b) => a.localeCompare(b, "ja")).map((name) => ({ id: name, name }));
   }, [rows]);
 
-  // 意思確認の結果を保存する（加入する／加入しない）
-  const setWill = async (workerId: string, join: boolean) => {
+  // 意思確認の結果を保存する（加入する／加入しない）。
+  // 加入しないときは、理由（備考）と、どの所属機関にいたときの判断かも残す
+  const setWill = async (row: SswInsuranceRow, join: boolean, note?: string) => {
     setError(null);
     try {
-      await updateSswInsurance(createClient(), workerId, {
+      await updateSswInsurance(createClient(), row.worker.id, {
         ssw_insurance_self_join: join,
         ssw_insurance_declined: !join,
         ssw_insurance_declined_on: join ? null : today,
+        ssw_insurance_declined_org_id: join ? null : row.worker.current_organization_id,
+        ...(note === undefined ? {} : { ssw_insurance_note: note }),
       });
       await reload();
     } catch (err) {
@@ -215,6 +229,26 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
     [options],
   );
 
+  // 対応が必要な人（期限切れ・退職の解約・まもなく期限・未加入・意思確認）
+  const actionRows = useMemo(() => shown.filter(isSswActionRow), [shown]);
+
+  const renderRow = (row: SswInsuranceRow) => (
+    <SswWorkerRow
+      key={row.worker.id}
+      row={row}
+      canEdit={canEdit}
+      today={today}
+      statusOptions={statusOptions}
+      open={openId === row.worker.id}
+      onToggle={() => setOpenId(openId === row.worker.id ? null : row.worker.id)}
+      onWill={(join, note) => void setWill(row, join, note)}
+      onMakeTodo={(title) => void makeTodo(row.worker.id, title)}
+      onTodoStatus={(todoId, status) => void setTodoStatus(todoId, status)}
+      onSaved={() => void reload()}
+      onError={setError}
+    />
+  );
+
   return (
     <div className="space-y-4 p-4">
       <p className="flex items-start gap-1.5 rounded-xl border border-border bg-surface px-3 py-2.5 text-xs leading-relaxed text-muted">
@@ -229,6 +263,16 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
       )}
 
       <Card className="flex flex-wrap items-center gap-3 p-3">
+        <label className="flex min-w-[14rem] flex-1 items-center gap-1.5 text-sm">
+          🔍
+          <input
+            value={nameFilter}
+            onChange={(e) => setNameFilter(e.target.value)}
+            placeholder="外国人の氏名で検索（ふりがなでも探せます）"
+            aria-label="外国人の氏名で検索"
+            className="min-h-[38px] w-full rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none"
+          />
+        </label>
         <div className="min-w-[16rem] flex-1">
           <NameSearchBox
             candidates={orgCandidates}
@@ -252,45 +296,56 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
       {loading ? (
         <Card className="p-6 text-center text-sm text-muted">読み込み中…</Card>
       ) : (
-        SSW_SECTIONS.map((section) => {
-          const list = shown.filter((r) => r.state === section.key);
-          if (list.length === 0) return null;
-          const alert = section.key === "expired" || section.key === "cancel";
-          return (
-            <Card key={section.key} className={`p-4 ${alert ? "border-seal/40" : ""}`}>
-              <p className={`flex items-center gap-1.5 text-sm font-bold ${alert ? "text-seal" : ""}`}>
-                {alert && <TriangleAlert size={15} />}
-                {section.title}（{list.length}件）
-              </p>
-              <p className="mt-1 mb-3 text-[11px] leading-relaxed text-muted">{section.lead}</p>
-              <div className="space-y-2">
-                {list.map((row) => (
-                  <SswWorkerRow
-                    key={row.worker.id}
-                    row={row}
-                    canEdit={canEdit}
-                    today={today}
-                    statusOptions={statusOptions}
-                    open={openId === row.worker.id}
-                    onToggle={() =>
-                      setOpenId(openId === row.worker.id ? null : row.worker.id)
-                    }
-                    onWill={(join) => void setWill(row.worker.id, join)}
-                    onMakeTodo={(title) => void makeTodo(row.worker.id, title)}
-                    onTodoStatus={(todoId, status) => void setTodoStatus(todoId, status)}
-                    onSaved={() => void reload()}
-                    onError={setError}
-                  />
-                ))}
-              </div>
-            </Card>
-          );
-        })
+        <>
+          {/* 対応が必要な人を、左＝未着手・右＝申込手続中の2列で出す */}
+          <div className="grid gap-3 md:grid-cols-2">
+            {SSW_COLUMNS.map((column) => {
+              const list = actionRows.filter((r) => sswColumnOf(r) === column.key);
+              return (
+                <Card key={column.key} className="p-4">
+                  <p className="text-sm font-bold">
+                    {column.title}（{list.length}件）
+                  </p>
+                  <p className="mt-1 mb-3 text-[11px] leading-relaxed text-muted">{column.lead}</p>
+                  {list.length === 0 ? (
+                    <p className="rounded-xl border border-border bg-background p-4 text-center text-[11px] text-muted">
+                      この列に出す人はいません。
+                    </p>
+                  ) : (
+                    <div className="space-y-2">{list.map(renderRow)}</div>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+
+          {/* 対応が要らない人（加入中・加入しない）は畳んで下に置く */}
+          {SSW_SECTIONS.filter((section) => section.collapsed).map((section) => {
+            const list = shown.filter((r) => r.state === section.key);
+            if (list.length === 0) return null;
+            return (
+              <Card key={section.key} className="p-4">
+                <details>
+                  <summary className="cursor-pointer text-sm font-bold text-muted">
+                    {section.title}（{list.length}件）
+                  </summary>
+                  <p className="mt-1 mb-3 text-[11px] leading-relaxed text-muted">{section.lead}</p>
+                  <div className="space-y-2">{list.map(renderRow)}</div>
+                </details>
+              </Card>
+            );
+          })}
+        </>
       )}
 
       {!loading && shown.length === 0 && (
         <Card className="p-6 text-center text-sm text-muted">
           該当する人はいません。
+          {onlySsw && (
+            <span className="mt-1 block text-[11px]">
+              在留資格が特定技能で登録されていない人は出ません。「特定技能の人だけ表示」のチェックを外すと出てくることがあります。
+            </span>
+          )}
         </Card>
       )}
     </div>
@@ -317,7 +372,7 @@ function SswWorkerRow({
   statusOptions: TodoStatusOption[];
   open: boolean;
   onToggle: () => void;
-  onWill: (join: boolean) => void;
+  onWill: (join: boolean, note?: string) => void;
   onMakeTodo: (title: string) => void;
   onTodoStatus: (todoId: string, status: string) => void;
   onSaved: () => void;
@@ -326,6 +381,17 @@ function SswWorkerRow({
   const w = row.worker;
   const expiry = w.ssw_insurance_expiry_date;
   const cancelRow = row.state === "cancel";
+  // 「加入しない」を押したときに出す、理由（備考）の入力欄
+  const [declining, setDeclining] = useState(false);
+  const [declineReason, setDeclineReason] = useState<string>(SSW_DECLINE_REASONS[0]);
+  const [declineOther, setDeclineOther] = useState("");
+  // 加入しないを選べる行（未加入・意思確認・期限切れ・まもなく期限）。
+  // 退職の解約手続きと、加入中の人には出さない
+  const canDecline =
+    row.state === "notJoined" ||
+    row.state === "willCheck" ||
+    row.state === "expired" ||
+    row.state === "soon";
   const todo = cancelRow ? row.todos.cancel : row.todos.join;
   const todoTitle = cancelRow ? SSW_CANCEL_TODO_TITLE : SSW_JOIN_TODO_TITLE;
 
@@ -333,9 +399,21 @@ function SswWorkerRow({
     <div className="rounded-xl border border-border bg-background p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <Link href={`/workers/${w.id}`} className="text-sm font-bold text-brand hover:underline">
-            {w.name}
-          </Link>
+          <span className="flex flex-wrap items-center gap-1.5">
+            <Link href={`/workers/${w.id}`} className="text-sm font-bold text-brand hover:underline">
+              {w.name}
+            </Link>
+            {/* 2列にすると欄の見出しが無くなるので、区分を行に付ける */}
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                row.state === "expired" || row.state === "cancel"
+                  ? "bg-seal/10 text-seal"
+                  : "bg-background text-muted"
+              }`}
+            >
+              {SSW_STATE_LABELS[row.state]}
+            </span>
+          </span>
           <p className="mt-0.5 text-[11px] text-muted">
             {w.kana && <span className="mr-2">{w.kana}</span>}
             {w.nationality && <span className="mr-2">{w.nationality}</span>}
@@ -360,18 +438,22 @@ function SswWorkerRow({
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
         {row.state === "willCheck" && canEdit && (
-          <>
-            <button type="button" className={ROW_BTN} onClick={() => onWill(true)}>
-              本人が加入を希望
-            </button>
-            <button
-              type="button"
-              className={`${ROW_BTN} text-seal`}
-              onClick={() => onWill(false)}
-            >
-              加入しない
-            </button>
-          </>
+          <button type="button" className={ROW_BTN} onClick={() => onWill(true)}>
+            本人が加入を希望
+          </button>
+        )}
+        {canDecline && canEdit && !declining && (
+          <button
+            type="button"
+            className={`${ROW_BTN} text-seal`}
+            onClick={() => {
+              setDeclineReason(SSW_DECLINE_REASONS[0]);
+              setDeclineOther("");
+              setDeclining(true);
+            }}
+          >
+            加入しない
+          </button>
         )}
         {row.state === "declined" && canEdit && (
           <button type="button" className={ROW_BTN} onClick={() => onWill(true)}>
@@ -425,6 +507,66 @@ function SswWorkerRow({
           </button>
         )}
       </div>
+
+      {/* 加入しない理由（備考）。何が理由で加入しないのかを残す */}
+      {declining && (
+        <div className="mt-2 rounded-xl border border-seal/40 bg-surface p-2.5">
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-bold text-seal">加入しない理由（備考に残します）</span>
+            <select
+              value={declineReason}
+              onChange={(e) => setDeclineReason(e.target.value)}
+              className={INPUT}
+            >
+              {SSW_DECLINE_REASONS.map((r) => (
+                <option key={r} value={r}>
+                  {r === "その他" ? "その他（テキスト入力）" : r}
+                </option>
+              ))}
+            </select>
+          </label>
+          {declineReason === "その他" && (
+            <label className="mt-2 flex flex-col gap-1">
+              <span className="text-[11px] font-bold text-muted">
+                理由（あとで見たときに分かるように書いてください）
+              </span>
+              <textarea
+                value={declineOther}
+                onChange={(e) => setDeclineOther(e.target.value)}
+                rows={2}
+                placeholder="例: 外国人負担のため本人に確認したところ、加入を希望しなかった（2026/09/07 電話）"
+                className="min-h-[56px] rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-brand focus:outline-none"
+              />
+            </label>
+          )}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className={`${ROW_BTN} text-seal`}
+              disabled={declineReason === "その他" && !declineOther.trim()}
+              onClick={() => {
+                onWill(false, sswDeclineNote(declineReason, declineOther));
+                setDeclining(false);
+              }}
+            >
+              加入しないで保存
+            </button>
+            <button type="button" className={ROW_BTN} onClick={() => setDeclining(false)}>
+              やめる
+            </button>
+            <span className="text-[11px] text-muted">
+              保存すると、この所属機関にいる間は保険のTODOに出なくなります（転職したらまた出ます）。
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* 備考（加入しない理由など） */}
+      {!declining && w.ssw_insurance_note && (
+        <p className="mt-2 rounded-lg bg-surface px-2.5 py-1.5 text-[11px] leading-relaxed text-muted">
+          備考: {w.ssw_insurance_note}
+        </p>
+      )}
 
       {open && (
         <SswWorkerPanel
@@ -551,6 +693,21 @@ function SswWorkerPanel({
 
   return (
     <div className="mt-3 space-y-3 rounded-xl border border-border bg-surface p-3">
+      {/* 加入月数を決めるときに見る、今の在留資格と在留期限 */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-background px-2.5 py-2 text-[11px]">
+        <span className="text-muted">
+          現在の在留資格{" "}
+          <b className="text-sm text-foreground">{w.residence_status || "未登録"}</b>
+        </span>
+        <span className="text-muted">
+          在留期限{" "}
+          <b className="text-sm text-foreground">
+            {w.residence_expiry_date ? slashDate(w.residence_expiry_date) : "未登録"}
+          </b>
+          {w.residence_expiry_date && `（${remainingLabel(w.residence_expiry_date, today)}）`}
+        </span>
+      </div>
+
       {/* ① 加入の申込に入れる内容（外国人情報から。1つずつコピーできる） */}
       <div>
         <p className="mb-1.5 text-[11px] font-bold text-muted">
