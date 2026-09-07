@@ -1659,6 +1659,8 @@ export function WorkerDetail({
         payMethod={currentOrg?.intake?.pay_method ?? ""}
         // 雇用保険の適用事業所でない会社は、外国人雇用状況届出書が要る
         koyoCovered={currentOrg?.intake?.koyo_covered ?? ""}
+        // 会社に渡す外国人資料のやりとり方法（紙で渡す／mailで送る）を見出しの横に出す
+        org={currentOrg ?? null}
       />
 
       <GensenDocuments workerId={worker.id} canEdit={canEdit} />

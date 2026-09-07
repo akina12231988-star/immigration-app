@@ -30,6 +30,7 @@ import {
   flexDocsValidUntil,
   formatHoursDecimal,
   formatYen,
+  HANDOVER_METHODS,
   parseHoursMinutes,
   lodgingContractKind,
   normalizeOrganizationIntake,
@@ -745,6 +746,14 @@ function IntakeSection({
             onChange={(v) => setIntake({ contact_method: v })}
             options={["FAX", "グループLINE", "email"]}
             locked={locks.intake("contact_method")}
+          />
+          <IntakeSelect
+            label="会社に渡す外国人資料のやりとり方法"
+            value={intake.handover_method}
+            onChange={(v) => setIntake({ handover_method: v })}
+            options={[...HANDOVER_METHODS]}
+            hint="外国人の資料（入社書類など）を会社へ紙で渡すか、mailで送るかを選びます。"
+            locked={locks.intake("handover_method")}
           />
           <IntakeSelect
             label="保険（事業所としての適用内容）"

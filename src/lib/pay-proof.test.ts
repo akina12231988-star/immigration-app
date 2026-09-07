@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isCashPay, payProofFileName, payProofSheetCount } from "./pay-proof";
+import { isBankTransferPay, isCashPay, payProofFileName, payProofSheetCount } from "./pay-proof";
 
 describe("isCashPay", () => {
   it("所属機関の給与支払い方法が通貨払いのときだけ true", () => {
@@ -43,5 +43,15 @@ describe("payProofFileName", () => {
     // ファイル名に使えない文字は置き換える
     expect(payProofFileName("A/B")).toBe("報酬支払証明書_A-B");
     expect(payProofFileName("")).toBe("報酬支払証明書");
+  });
+});
+
+describe("isBankTransferPay", () => {
+  it("給与支払い方法が口座振込のときだけ true", () => {
+    expect(isBankTransferPay("口座振込")).toBe(true);
+    expect(isBankTransferPay(" 口座振込 ")).toBe(true);
+    expect(isBankTransferPay("通貨払い")).toBe(false);
+    expect(isBankTransferPay("")).toBe(false);
+    expect(isBankTransferPay(null)).toBe(false);
   });
 });

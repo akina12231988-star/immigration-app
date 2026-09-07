@@ -49,13 +49,18 @@ import {
   WORKER_DETAIL_DOC_KEYS,
   type OnboardingDocDef,
 } from "@/lib/onboarding";
-import { isCashPay } from "@/lib/pay-proof";
+import { isBankTransferPay, isCashPay } from "@/lib/pay-proof";
+import { HANDOVER_METHODS } from "@/lib/organization-intake";
+import { isPaperHandover } from "@/lib/onboarding-index";
+import { updateOrganization } from "@/lib/supabase/queries/organizations";
+import { dbErrorMessage } from "@/lib/errors";
 import { koyoFileName, needsKoyoJokyoForm } from "@/lib/koyo-jokyo";
 import { todayStr } from "@/lib/ssw/calc";
 import type {
   OnboardingDocumentRow,
   OnboardingFollowupRow,
   OnboardingRecordRow,
+  Organization,
 } from "@/types/db";
 
 // 入社書類メールで使うデータの管理。書類ごとに保存・差し替え・削除ができ、
@@ -67,6 +72,7 @@ export function OnboardingDocuments({
   myNumber: myNumberProp,
   payMethod = "",
   koyoCovered = "",
+  org = null,
 }: {
   workerId: string;
   canEdit?: boolean;
@@ -76,6 +82,8 @@ export function OnboardingDocuments({
   payMethod?: string;
   // 現在の所属機関が雇用保険の適用事業所か（いいえなら外国人雇用状況届出書が要る）
   koyoCovered?: string;
+  // 現在の所属機関（会社に渡す外国人資料のやりとり方法を見出しの横に出し、未登録ならその場で決める）
+  org?: Organization | null;
 }) {
   const [record, setRecord] = useState<OnboardingRecordRow | null>(null);
   const [docs, setDocs] = useState<OnboardingDocumentRow[]>([]);
@@ -91,6 +99,11 @@ export function OnboardingDocuments({
   const [attaching, setAttaching] = useState(false);
   // 外国人雇用状況届出書（様式第3号）の作成中
   const [koyoBusy, setKoyoBusy] = useState(false);
+  // 会社に渡す外国人資料のやりとり方法（所属機関の申込書の項目）。
+  // ここで決めたら所属機関に保存し、画面を読み直すまでは決めた値を優先して出す
+  const [savedHandover, setSavedHandover] = useState<string | null>(null);
+  const [handoverSaving, setHandoverSaving] = useState(false);
+  const handoverMethod = savedHandover ?? org?.intake?.handover_method ?? "";
   // 作成した書類のプレビュー（内容を見てから添付する。労働者名簿はその場で直せる）
   const gen = useGeneratedDocPreview(workerId, setError);
   const myNumber = myNumberProp !== undefined ? myNumberProp : loadedMyNumber;
@@ -221,6 +234,9 @@ export function OnboardingDocuments({
   // 個人番号が未入力のまま作る書類か（扶養控除等申告書・労働者名簿）。
   // 空欄のまま発行して、あとから本人に記入してもらう運用もあるため、作成は止めない
   const needsMyNumber = (key: string) => !!GENERATABLE[key] && myNumber !== null && !myNumber.trim();
+  // 口座振込の会社は通帳の見開き（振込先）が要る。未登録のあいだ、その行に知らせを出す
+  const needsBankbook = (key: string, hasFile: boolean) =>
+    key === "tsuchou" && isBankTransferPay(payMethod) && !hasFile;
 
   // 「作成」を押したら、まず作った書類をプレビューで見せる。
   // 内容を確かめてから「添付する」を押したときに保存する。
@@ -298,6 +314,24 @@ export function OnboardingDocuments({
     }
   };
 
+  // 会社に渡す外国人資料のやりとり方法を所属機関に保存する。
+  // intake は1つのまとまり（jsonb）なので、他の項目を消さないように混ぜて保存する
+  const saveHandover = async (method: string) => {
+    if (!org) return;
+    setHandoverSaving(true);
+    setError(null);
+    try {
+      await updateOrganization(createClient(), org.id, {
+        intake: { ...(org.intake ?? {}), handover_method: method },
+      });
+      setSavedHandover(method);
+    } catch (err) {
+      setError(dbErrorMessage(err, "0043_organization_intake.sql", "やりとり方法の保存に失敗しました"));
+    } finally {
+      setHandoverSaving(false);
+    }
+  };
+
   // 外国人雇用状況届出書（様式第3号）を作ってダウンロードする。
   // 雇入れの届出として使うので、標題の「離職」には取り消し線が入る
   const createKoyoJokyo = async () => {
@@ -325,15 +359,67 @@ export function OnboardingDocuments({
 
   return (
     <Card className="p-4">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="text-sm font-bold text-muted">入社書類（メール添付データ）</h2>
-        <Link
-          href={`/onboarding?worker=${workerId}`}
-          className="flex shrink-0 items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-[11px] font-bold text-brand"
-        >
-          <MailPlus size={13} />
-          入社書類メール
-        </Link>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <h2 className="text-sm font-bold text-muted">入社書類（メール添付データ）</h2>
+          {/* 所属機関名と、会社に渡す外国人資料のやりとり方法（紙で渡す／mailで送る）。
+              未登録ならここで選んで所属機関に保存できる */}
+          {org && (
+            <span className="flex flex-wrap items-center gap-1.5 text-[11px]">
+              <span className="font-bold">{org.name}</span>
+              {handoverMethod ? (
+                <span
+                  className={`rounded-full px-2 py-0.5 font-bold ${
+                    isPaperHandover(handoverMethod)
+                      ? "bg-status-notice-bg text-status-notice-fg"
+                      : "bg-brand/10 text-brand"
+                  }`}
+                >
+                  {handoverMethod}
+                </span>
+              ) : canEdit ? (
+                <select
+                  value=""
+                  disabled={handoverSaving}
+                  onChange={(e) => {
+                    if (e.target.value) void saveHandover(e.target.value);
+                  }}
+                  aria-label="会社に渡す外国人資料のやりとり方法"
+                  className="min-h-[28px] rounded-lg border border-seal/40 bg-seal/5 px-1.5 text-[11px] font-bold text-seal"
+                >
+                  <option value="">資料のやりとり方法を選ぶ（未登録）</option>
+                  {HANDOVER_METHODS.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className="text-seal">資料のやりとり方法 未登録</span>
+              )}
+              {handoverSaving && <Loader2 size={12} className="animate-spin text-muted" />}
+            </span>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {/* 紙で渡す会社は、資料の束に付ける目次をA4縦で印刷できる */}
+          {org && isPaperHandover(handoverMethod) && (
+            <Link
+              href={`/workers/${workerId}/onboarding-index`}
+              className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-[11px] font-bold text-brand"
+            >
+              <Printer size={13} />
+              目次を印刷（A4縦）
+            </Link>
+          )}
+          <Link
+            href={`/onboarding?worker=${workerId}`}
+            className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-[11px] font-bold text-brand"
+          >
+            <MailPlus size={13} />
+            入社書類メール
+          </Link>
+        </div>
       </div>
 
       {error && (
@@ -362,6 +448,16 @@ export function OnboardingDocuments({
                 <Printer size={13} />
                 作成
               </Link>
+            </div>
+          )}
+
+          {/* 口座振込の会社は、振込先として通帳の見開きが要る（登録されるまで知らせる） */}
+          {isBankTransferPay(payMethod) && !docByKey.get("tsuchou")?.storage_path && (
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-seal/40 bg-seal/10 px-3 py-2.5">
+              <p className="flex items-start gap-1.5 text-xs font-bold leading-relaxed text-seal">
+                <TriangleAlert size={13} className="mt-0.5 shrink-0" />
+                給与：口座振込！ 通帳の見開き（振込先）を入社書類に添付してください
+              </p>
             </div>
           )}
 
@@ -451,6 +547,12 @@ export function OnboardingDocuments({
                       <span className="block truncate text-[11px] text-muted">
                         {hasFile ? row!.file_name : "未登録"}
                       </span>
+                      {needsBankbook(def.key, hasFile) && (
+                        <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-seal/10 px-2 py-0.5 text-[11px] font-bold text-seal">
+                          <TriangleAlert size={12} />
+                          給与：口座振込！ 通帳の見開きを添付してください
+                        </span>
+                      )}
                       {needsMyNumber(def.key) && (
                         <span className="block text-[11px] font-bold text-status-notice-fg">
                           個人番号が未入力です。空欄のまま作成して、あとから本人に記入してもらうこともできます
