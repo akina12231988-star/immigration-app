@@ -21,6 +21,7 @@ import {
   Coins,
   UserCheck,
   Bell,
+  BellRing,
   Handshake,
   Sparkles,
   ShieldCheck,
@@ -63,6 +64,8 @@ export const NAV_ENTRIES: NavEntry[] = [
   // ★指定の並びに無かった項目（仮置き）: 外国人まわりの書類のためここに置いている
   { href: "/onboarding", label: "入社書類メール", short: "入社書類", icon: MailPlus },
   { href: "/custody", label: "保管ボックス（原本預かり）", short: "保管", icon: Archive },
+  // 督促: 市役所からの通知・領収書などを本人に知らせ、返事をもらうまでを追いかける
+  { href: "/reminders", label: "督促（連絡・返事待ち）", short: "督促", icon: BellRing },
   {
     key: "todo",
     label: "TODO",
