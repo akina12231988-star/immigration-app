@@ -57,7 +57,8 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // 静的ファイルと API ルート（Webhook 等は独自に認証）以外のすべてに適用
-    "/((?!_next/static|_next/image|api/|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // 静的ファイルと API ルート（Webhook 等は独自に認証）、
+    // 外国人本人が使う履歴書ツール（/resume）以外のすべてに適用
+    "/((?!_next/static|_next/image|api/|resume(?:/|$)|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
