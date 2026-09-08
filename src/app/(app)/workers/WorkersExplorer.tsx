@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Printer, Upload, UserPlus } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileSearch, Printer, Upload, UserPlus } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { LinkButton } from "@/components/ui/Button";
 import { SummaryCards } from "@/components/workers/SummaryCards";
@@ -239,6 +239,10 @@ export function WorkersExplorer({
           </LinkButton>
           <LinkButton href="/workers/import" variant="secondary" icon={<Upload size={18} />}>
             取込
+          </LinkButton>
+          {/* 履歴書ツールで本人が作った履歴書PDFから登録する */}
+          <LinkButton href="/workers/resume-import" variant="secondary" icon={<FileSearch size={18} />}>
+            履歴書PDF
           </LinkButton>
           <LinkButton href="/workers/print" variant="secondary" icon={<Printer size={18} />}>
             印刷

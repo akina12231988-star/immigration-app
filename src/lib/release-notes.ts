@@ -23,6 +23,17 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-09-08",
+    title: "履歴書ツールで作った履歴書PDFを取り込んで外国人を登録・更新できます。ツールの自動翻訳も使えるようになりました",
+    where: "外国人 ＞ 「履歴書PDF」ボタン（/workers/resume-import）",
+    href: "/workers/resume-import",
+    items: [
+      "履歴書ツール（tokutei-rireki）で本人が作ってPDF保存した履歴書を落とすと、氏名・フリガナ・性別・生年月日・国籍・在留資格・在留期限・住所・配偶者の有無・職歴を読み取って、新しく登録するか、同じ氏名の登録済みの人を更新できます（生年月日も一致する人は自動で選ばれます）。",
+      "PDFは入社書類の「履歴書」としても保存されます。画像として保存したPDFやスキャンは読めません（ツールの「履歴書を開く」からPDF保存したものを使ってください）。",
+      "履歴書ツールの「日本語に翻訳してPDF保存」で、会社名・住所・趣味などの自由記述を日本語に訳す受け口（/api/translate）ができました。使うには本番の環境変数 ANTHROPIC_API_KEY の設定と、ツール側の TRANSLATE_ENDPOINT にこのシステムのURL＋/api/translate を入れる必要があります。",
+    ],
+  },
+  {
+    date: "2026-09-08",
     title: "申請準備の「申請種別」が、登録時に選んだ内容と紐づくようになりました",
     where: "TODO ＞ 申請準備 ＞ 新規の申請準備を追加／申請準備の詳細（書類チェックリスト）",
     href: "/workers/renewals",
