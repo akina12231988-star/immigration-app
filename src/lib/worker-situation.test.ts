@@ -1,10 +1,13 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import {
   APPLICATION_CONTENT_CHOICES,
   ENTRUSTED_SITUATION,
   PREP_SITUATIONS,
   WORKER_SITUATIONS,
   appTypeOfPrepSituation,
+  derivePrepAppContent,
+  prepSituationOfLabel,
+  prepSituationOfSituation,
   autoSituation,
   mergeSituation,
   situationAfterApproval,
@@ -256,5 +259,36 @@ describe("prepTodoFileName（ファイル名用の名称）", () => {
 
   test("前後の空白は落とす", () => {
     expect(prepTodoFileName(" TODO-1343 ", "", " 山田 太郎 ", "")).toBe("TODO-1343_山田 太郎");
+  });
+});
+
+describe("申請準備の申請種別の引き当て（登録時の選択と紐づける）", () => {
+  it("TODOの内容（申請内容の候補の表記）から準備の内容の保存値を返す", () => {
+    expect(prepSituationOfLabel("在留資格の変更許可（特定活動・２号以降準備）※本人申請")).toBe(
+      "特定活動（特定技能２号移行準備のため）準備中",
+    );
+    expect(prepSituationOfLabel("在留期間の更新許可（特定技能）")).toBe("特定技能更新の準備中");
+    expect(prepSituationOfLabel("申請準備")).toBe("");
+    expect(prepSituationOfLabel("")).toBe("");
+  });
+
+  it("只今の状況（併記あり）から準備の内容の保存値を返す", () => {
+    expect(prepSituationOfSituation("特定技能1号＜支援委託中＞・特定技能更新の準備中")).toBe(
+      "特定技能更新の準備中",
+    );
+    expect(prepSituationOfSituation("特定技能1号＜支援委託中＞")).toBe("");
+  });
+
+  it("TODOの内容を優先し、無ければ只今の状況から。どちらも無ければ空", () => {
+    expect(
+      derivePrepAppContent({
+        todoTitle: "在留資格の変更許可（特定技能）",
+        currentSituation: "特定技能更新の準備中",
+      }),
+    ).toBe("特定技能申請準備中");
+    expect(derivePrepAppContent({ todoTitle: "申請準備", currentSituation: "特定技能更新の準備中" })).toBe(
+      "特定技能更新の準備中",
+    );
+    expect(derivePrepAppContent({ todoTitle: null, currentSituation: null })).toBe("");
   });
 });

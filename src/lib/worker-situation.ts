@@ -369,6 +369,31 @@ export function prepTodoFileName(
     .join("_");
 }
 
+// TODOの内容（申請内容の候補の表記）から、準備の内容（只今の状況）の保存値を返す。
+// 候補に無い表記（旧の自由入力「申請準備」など）は空
+export function prepSituationOfLabel(label: string): string {
+  return APPLICATION_CONTENT_CHOICES.find((c) => c.label === (label ?? "").trim())?.prepSituation ?? "";
+}
+
+// 外国人の只今の状況（「特定技能1号＜支援委託中＞・特定技能更新の準備中」など併記あり）から、
+// 準備の内容（只今の状況）の保存値を返す。含まれていなければ空
+export function prepSituationOfSituation(situation: string): string {
+  const s = situation ?? "";
+  return APPLICATION_CONTENT_CHOICES.find((c) => s.includes(c.prepSituation))?.prepSituation ?? "";
+}
+
+// 申請準備の詳細の「申請種別」が未選択のときに、登録時の選択から引き当てる。
+// 申請準備のTODOの内容（申請内容の候補と同じ表記）を優先し、無ければ只今の状況から。
+// どちらからも分からなければ空（＝手で選ぶ）
+export function derivePrepAppContent(input: {
+  todoTitle?: string | null;
+  currentSituation?: string | null;
+}): string {
+  return (
+    prepSituationOfLabel(input.todoTitle ?? "") || prepSituationOfSituation(input.currentSituation ?? "")
+  );
+}
+
 // 準備の内容（只今の状況）の保存値から、画面に出す言い方を返す
 export function prepSituationLabel(prepSituation: string): string {
   return (

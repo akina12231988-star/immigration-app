@@ -16,11 +16,12 @@ import {
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Combobox } from "@/components/ui/Combobox";
-import { APPLICATION_CONTENT_CHOICES } from "@/lib/worker-situation";
+import { APPLICATION_CONTENT_CHOICES, appTypeOfPrepSituation } from "@/lib/worker-situation";
 import { listFilingAgents } from "@/lib/supabase/queries/agents";
 import {
   listPrepProgress,
   listPrepTantou,
+  upsertPrepAppContent,
   upsertPrepTantou,
 } from "@/lib/supabase/queries/application-prep";
 import {
@@ -1514,6 +1515,17 @@ function TodoItem({
               setTitle(v);
               const choice = APPLICATION_CONTENT_CHOICES.find((c) => c.label === v);
               onChange({ title: v, ...(choice?.selfApply ? { self_apply: true } : {}) });
+              // 申請準備の詳細（書類チェックリスト）の「申請種別」も同じ内容にそろえる。
+              // 0121 が未適用でも内容の変更そのものは通すよう、失敗しても止めない
+              if (choice && todo.worker_id) {
+                void upsertPrepAppContent(
+                  createClient(),
+                  todo.worker_id,
+                  todo.todo_no,
+                  choice.prepSituation,
+                  appTypeOfPrepSituation(choice.prepSituation),
+                ).catch(() => undefined);
+              }
             }}
             aria-label="申請の内容"
             className={`${INPUT} min-w-0`}
