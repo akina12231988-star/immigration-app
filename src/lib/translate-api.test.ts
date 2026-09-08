@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isTranslateOriginAllowed, pickTranslateTexts, translateAllowedOrigins } from "./translate-api";
+import { isSameOrigin, isTranslateOriginAllowed, pickTranslateTexts, translateAllowedOrigins } from "./translate-api";
 
 describe("翻訳の受け口の判定", () => {
   it("履歴書ツールの公開URLだけを許す。環境変数で増やせる", () => {
@@ -11,6 +11,17 @@ describe("翻訳の受け口の判定", () => {
       "https://akina12231988-star.github.io",
       "https://a.example",
     ]);
+  });
+
+  it("このシステム自身（/resume の履歴書ツール）からの呼び出しは Host が同じなら許す", () => {
+    expect(isSameOrigin("https://app.vercel.app", "app.vercel.app")).toBe(true);
+    expect(isSameOrigin("https://App.vercel.app", "app.vercel.app")).toBe(true);
+    expect(isSameOrigin("http://localhost:3000", "localhost:3000")).toBe(true);
+    expect(isSameOrigin("https://evil.example", "app.vercel.app")).toBe(false);
+    expect(isSameOrigin("not a url", "app.vercel.app")).toBe(false);
+    expect(isSameOrigin(null, "app.vercel.app")).toBe(false);
+    expect(isTranslateOriginAllowed("https://app.vercel.app", undefined, "app.vercel.app")).toBe(true);
+    expect(isTranslateOriginAllowed("https://evil.example", undefined, "app.vercel.app")).toBe(false);
   });
 
   it("翻訳する項目は文字だけ・空でないものに絞り、件数と長さに上限を付ける", () => {

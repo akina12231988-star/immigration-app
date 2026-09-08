@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, FileSearch, Loader2, UserPlus, Users } from "lucide-react";
+import { CheckCircle2, Copy, ExternalLink, FileSearch, Loader2, UserPlus, Users } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { FileDropArea } from "@/components/ui/FileDropArea";
@@ -49,6 +49,7 @@ export function ResumeImportClient({ workers }: { workers: WorkerWithOrg[] }) {
   const [target, setTarget] = useState<"new" | string>("new"); // 'new' か 登録済みの外国人ID
   const [savePdf, setSavePdf] = useState(true);
   const [done, setDone] = useState<{ id: string; name: string; created: boolean; histories: number } | null>(null);
+  const [copiedUrl, setCopiedUrl] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const matches = useMemo(() => (payload ? findRirekiMatches(payload, workers) : []), [payload, workers]);
@@ -69,7 +70,7 @@ export function ResumeImportClient({ workers }: { workers: WorkerWithOrg[] }) {
       const p = extractRirekiPayload(lines.map((l) => l.text).join("\n"));
       if (!p) {
         setError(
-          "このPDFには履歴書ツールの埋め込みデータがありません。履歴書ツール（tokutei-rireki）で「履歴書を開く」→ PDF保存したファイルを使ってください（画像として保存したPDFやスキャンは読めません）。",
+          "このPDFには履歴書ツールの埋め込みデータがありません。履歴書ツール（/resume）で「PDFを開く」→ PDF保存したファイルを使ってください（画像として保存したPDFやスキャンは読めません）。",
         );
         return;
       }
@@ -138,13 +139,49 @@ export function ResumeImportClient({ workers }: { workers: WorkerWithOrg[] }) {
     }
   };
 
+  // 本人に送る履歴書ツールのURL（このシステムの /resume。ログイン不要）
+  const toolUrl = typeof window === "undefined" ? "/resume" : `${window.location.origin}/resume`;
+  const copyToolUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(toolUrl);
+      setCopiedUrl(true);
+      setTimeout(() => setCopiedUrl(false), 1600);
+    } catch {
+      window.prompt("このURLをコピーして本人に送ってください", toolUrl);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <p className="flex items-start gap-1.5 text-xs leading-relaxed text-muted">
         <FileSearch size={14} className="mt-0.5 shrink-0" />
-        履歴書ツール（tokutei-rireki）で本人が作った履歴書PDFを落とすと、書かれている内容を読み取って外国人に登録します。
+        履歴書ツールで本人が作った履歴書PDFを落とすと、書かれている内容を読み取って外国人に登録します。
         同じ氏名の人が登録済みなら、その人の更新もできます。PDFは入社書類の「履歴書」としても保存されます。
       </p>
+
+      {/* 本人へ送るツールのURL */}
+      <Card className="space-y-2 p-4">
+        <p className="text-sm font-bold">履歴書ツール（本人がスマホで入力する画面）</p>
+        <p className="text-xs leading-relaxed text-muted">
+          このURLを本人に送ると、ログインなしで6言語（日本語・インドネシア語・ベトナム語・クメール語・タガログ語・英語）の画面から
+          日本語の履歴書PDFを作れます。できたPDFをここに落として取り込みます。
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <code className="rounded-lg bg-background px-3 py-2 text-xs">{toolUrl}</code>
+          <Button variant="secondary" onClick={copyToolUrl} icon={<Copy size={16} />}>
+            {copiedUrl ? "コピーしました" : "URLをコピー"}
+          </Button>
+          <a
+            href="/resume"
+            target="_blank"
+            rel="noopener"
+            className="inline-flex min-h-[40px] items-center gap-1.5 rounded-xl border border-border px-4 text-sm font-bold"
+          >
+            <ExternalLink size={16} />
+            ツールを開く
+          </a>
+        </div>
+      </Card>
 
       {error && (
         <p role="alert" className="rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">

@@ -1,4 +1,5 @@
 // 履歴書ツールの自動翻訳の受け口（/api/translate）の判定ロジック（テストできる形）。
+// 呼び出し元は、このシステムの中の履歴書ツール（/resume）と、GitHub Pages の旧ツール。
 
 // 呼び出しを許す元のURL。環境変数 TRANSLATE_ALLOWED_ORIGINS（カンマ区切り）で増やせる
 export const DEFAULT_TRANSLATE_ORIGINS = ["https://akina12231988-star.github.io"];
@@ -13,8 +14,23 @@ export function translateAllowedOrigins(extra: string | undefined): string[] {
   return [...DEFAULT_TRANSLATE_ORIGINS, ...list];
 }
 
-export function isTranslateOriginAllowed(origin: string | null, extra: string | undefined): boolean {
-  return !!origin && translateAllowedOrigins(extra).includes(origin);
+// 呼び出し元がこのシステム自身（/resume の履歴書ツール）なら Host と一致する
+export function isSameOrigin(origin: string | null, host: string | null): boolean {
+  if (!origin || !host) return false;
+  try {
+    return new URL(origin).host.toLowerCase() === host.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+export function isTranslateOriginAllowed(
+  origin: string | null,
+  extra: string | undefined,
+  host: string | null = null,
+): boolean {
+  if (!origin) return false;
+  return isSameOrigin(origin, host) || translateAllowedOrigins(extra).includes(origin);
 }
 
 // 送られてきた texts のうち、翻訳する項目（文字だけ・空でない）を件数と長さで絞る
