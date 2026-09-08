@@ -506,32 +506,9 @@ function NewPrepForm({
         status === "準備中" && prepSituation
           ? mergeSituation(prepSituation, await fetchWorkerSituationInfo(createClient(), workerId))
           : "";
-      await updateWorker(createClient(), workerId, {
-        residence_renewal_todo: todo.trim(),
-        residence_renewal_status: status,
-        application_prep_kind: "新規",
-        // 転職の場合の転職先。現在の所属機関は在留カード受領まで変えない
-        application_prep_organization_id: orgId || null,
-        // 準備の内容を選んでいれば、外国人の「只今の状況」にも入れる
-        ...(situation ? { current_situation: situation } : {}),
-      });
-      // 担当者を選んだ場合は、TODO番号の準備リストに紐づけて保存する
-      if (tantou) {
-        await upsertPrepTantou(createClient(), workerId, todo.trim(), tantou);
-      }
-      // 準備の内容を選んでいれば、準備リストの「申請種別」にも入れる。
-      // 0121 が未適用でも追加そのものは通すよう、失敗しても止めない
-      if (prepSituation) {
-        await upsertPrepAppContent(
-          createClient(),
-          workerId,
-          todo.trim(),
-          prepSituation,
-          appTypeOfPrepSituation(prepSituation),
-        ).catch(() => undefined);
-      }
-      // 下の「申請準備のTODO」に確実に入れる。
-      // 取り込みの結果をそのまま知らせる（入っていないのに「追加しました」と出さない）
+      // 先に「申請準備のTODO」に確実に入れる（番号が空なら自動採番される）。
+      // 以降の保存はすべてこのTODOの番号で行い、準備リストの申請種別・担当者と番号がずれないようにする。
+      // 取り込みの結果はそのまま知らせる（入っていないのに「追加しました」と出さない）
       const title =
         APPLICATION_CONTENT_CHOICES.find((c) => prepSituation.includes(c.prepSituation))?.label ||
         "申請準備";
@@ -540,6 +517,31 @@ function NewPrepForm({
         title,
         todo_no: todo.trim() || undefined,
       });
+      const todoNo = row.todo_no;
+      await updateWorker(createClient(), workerId, {
+        residence_renewal_todo: todoNo,
+        residence_renewal_status: status,
+        application_prep_kind: "新規",
+        // 転職の場合の転職先。現在の所属機関は在留カード受領まで変えない
+        application_prep_organization_id: orgId || null,
+        // 申請種別を選んでいれば、外国人の「只今の状況」にも入れる
+        ...(situation ? { current_situation: situation } : {}),
+      });
+      // 担当者を選んだ場合は、TODO番号の準備リストに紐づけて保存する
+      if (tantou) {
+        await upsertPrepTantou(createClient(), workerId, todoNo, tantou);
+      }
+      // 申請種別を選んでいれば、準備リストの「申請種別」にも入れる（申請準備の詳細と紐づく）。
+      // 0121 が未適用でも追加そのものは通すよう、失敗しても止めない
+      if (prepSituation) {
+        await upsertPrepAppContent(
+          createClient(),
+          workerId,
+          todoNo,
+          prepSituation,
+          appTypeOfPrepSituation(prepSituation),
+        ).catch(() => undefined);
+      }
       const who = selected?.label ?? "対象者";
       setNotice(
         created
@@ -664,16 +666,17 @@ function NewPrepForm({
         </select>
       </label>
 
-      {/* 準備中のときは、どの準備かを選ぶ。追加すると外国人詳細の「只今の状況」に入る */}
+      {/* 準備中のときは、申請種別（どの申請の準備か）を選ぶ。
+          追加すると申請準備の詳細の「申請種別」と、外国人詳細の「只今の状況」に入る */}
       {status === "準備中" && (
         <label className="flex flex-col gap-1">
-          <span className="text-[11px] font-bold text-muted">準備の内容（只今の状況）</span>
+          <span className="text-[11px] font-bold text-muted">申請種別（準備の内容）</span>
           <select
             value={prepSituation}
             onChange={(e) => setPrepSituation(e.target.value)}
             className={INPUT_CLASS}
           >
-            <option value="">未選択（只今の状況は変えない）</option>
+            <option value="">未選択（申請種別はあとで選ぶ・只今の状況は変えない）</option>
             {/* 申請内容の候補（TODOの内容）と同じ表記で選ぶ。保存値は従来の準備中の文言 */}
             {PREP_SITUATION_CHOICES.map((c) => (
               <option key={c.situation} value={c.situation}>
@@ -682,7 +685,7 @@ function NewPrepForm({
             ))}
           </select>
           <span className="text-[11px] text-muted">
-            追加すると外国人詳細の「只今の状況」に入ります。
+            追加すると、申請準備の詳細の「申請種別」（必要書類のチェックリスト）と、外国人詳細の「只今の状況」に入ります。
           </span>
         </label>
       )}

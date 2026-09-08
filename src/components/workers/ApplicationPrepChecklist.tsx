@@ -139,6 +139,8 @@ import {
 } from "@/lib/application-prep";
 import {
   appTypeOfPrepSituation,
+  derivePrepAppContent,
+  prepSituationLabel,
   PREP_SITUATION_CHOICES,
   prepTodoName,
   prepTodoFileName,
@@ -253,6 +255,9 @@ export function ApplicationPrepChecklist({
   // 申請準備のTODO（この外国人分）とステータスの選択肢。名前の下に常時表示して編集できる
   const [workerTodos, setWorkerTodos] = useState<TodoRow[]>([]);
   const [todoOptions, setTodoOptions] = useState<TodoStatusOption[]>([]);
+  // 外国人の只今の状況（申請種別が未選択のときの引き当てに使う）と、自動で入れたリストの番号
+  const [currentSituation, setCurrentSituation] = useState("");
+  const autoFilledRef = useRef<Set<string>>(new Set());
   const loadWorkerTodos = () => {
     const supabase = createClient();
     void supabase
@@ -298,7 +303,7 @@ export function ApplicationPrepChecklist({
     void createClient()
       .from("workers")
       .select(
-        "name, kana, birth, nationality, field, home_address, address, current_organization_id, application_prep_organization_id, specialty_grade, other_qualifications, residence_status, residence_period, residence_card_no, residence_expiry_date, passport_no, passport_expiry_date",
+        "name, kana, birth, nationality, field, home_address, address, current_organization_id, application_prep_organization_id, specialty_grade, other_qualifications, residence_status, residence_period, residence_card_no, residence_expiry_date, passport_no, passport_expiry_date, current_situation",
       )
       .eq("id", workerId)
       .maybeSingle()
@@ -321,8 +326,10 @@ export function ApplicationPrepChecklist({
           residence_expiry_date: string | null;
           passport_no: string | null;
           passport_expiry_date: string | null;
+          current_situation: string | null;
         } | null;
         if (w) {
+          setCurrentSituation(w.current_situation ?? "");
           setWorkerRow({
             name: w.name,
             kana: w.kana ?? "",
@@ -359,15 +366,21 @@ export function ApplicationPrepChecklist({
     setPhotoUrl(url);
   });
 
+  // 表示中のTODO番号に対応する準備リスト（番号の書き方の揺れ「1332」「TODO-1332」は正規化して突き合わせる）
+  const selectedKey = selected != null ? normalizeTodoKey(selected) : "";
   const current =
-    selected != null ? (lists.find((l) => l.todo_no === selected) ?? null) : null;
+    selected != null
+      ? (lists.find((l) => l.todo_no === selected) ??
+        lists.find((l) => normalizeTodoKey(l.todo_no) === selectedKey) ??
+        null)
+      : null;
   const meta: PrepChecklistMeta = current ?? EMPTY_PREP_META;
 
   // 表示中のTODO番号に対応する申請準備のTODO（番号の書き方の揺れは正規化して突き合わせる）
-  const selectedKey = selected != null ? normalizeTodoKey(selected) : "";
   const currentTodo = selectedKey
     ? (workerTodos.find((t) => normalizeTodoKey(t.todo_no) === selectedKey) ?? null)
     : (workerTodos[0] ?? null);
+
 
   // 申請準備の所属機関（転職先）が入っていればそちら、無ければ現在の所属機関
   const prepOrgId =
@@ -585,6 +598,25 @@ export function ApplicationPrepChecklist({
     }
   }
 
+  // 申請種別が未選択なら、登録時に選んだ内容（申請準備のTODOの内容・只今の状況）から引き当てて保存する。
+  // 以前の登録や、TODO一覧で内容を変えたぶんも、この画面を開いたときに紐づく
+  const derivedAppContent = derivePrepAppContent({
+    todoTitle: currentTodo?.title,
+    currentSituation,
+  });
+  const autoFillKey = current && !current.app_content && derivedAppContent ? current.todo_no : null;
+  useEffect(() => {
+    if (!autoFillKey || !canEdit || autoFilledRef.current.has(autoFillKey)) return;
+    autoFilledRef.current.add(autoFillKey);
+    void patchMeta({
+      app_content: derivedAppContent,
+      app_type: appTypeOfPrepSituation(derivedAppContent),
+      ...(derivedAppContent === SSW2_APP_CONTENT ? { cert_pattern: "特定技能2号" as const } : {}),
+    });
+    // patchMeta は保存のあと画面に反映する。同じリストに二度は入れない
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoFillKey, canEdit, derivedAppContent]);
+
   // 新しい準備リストを作成する。番号が空なら通し番号で自動採番し、TODO一覧にも登録する
   async function createList() {
     let todo = newTodo.trim();
@@ -596,12 +628,15 @@ export function ApplicationPrepChecklist({
     setCreating(true);
     setError(null);
     try {
+      // 申請種別は、只今の状況（登録時に選んだ準備の内容）から引き当てて入れておく
+      const appContent = derivePrepAppContent({ currentSituation });
+      const title = appContent ? prepSituationLabel(appContent) : "申請準備";
       if (!todo) {
         // 自動採番（既存のNotion由来の番号の続き）。TODO一覧（/todos）にも行を作る
         const row = await insertTodo(createClient(), {
           kind: "申請準備",
           worker_id: workerId,
-          title: "申請準備",
+          title,
         });
         todo = row.todo_no;
       } else {
@@ -609,11 +644,16 @@ export function ApplicationPrepChecklist({
         await insertTodo(createClient(), {
           kind: "申請準備",
           worker_id: workerId,
-          title: "申請準備",
+          title,
           todo_no: todo,
         }).catch(() => undefined);
       }
-      await upsertPrepChecklist(createClient(), workerId, todo, EMPTY_PREP_META);
+      await upsertPrepChecklist(createClient(), workerId, todo, {
+        ...EMPTY_PREP_META,
+        app_content: appContent,
+        app_type: appTypeOfPrepSituation(appContent),
+        cert_pattern: appContent === SSW2_APP_CONTENT ? "特定技能2号" : "",
+      });
       // 申請準備で番号を入れたときと同じように、この番号で「準備中」にする。
       // これで申請一覧の「申請前＜入管提出！！＞」にも出る（すでに対応状況が
       // 入っている人は、その状況を変えない）

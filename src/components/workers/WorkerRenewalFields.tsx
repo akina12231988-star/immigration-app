@@ -284,7 +284,7 @@ export function WorkerRenewalFields({
       {/* 準備中のときは、どの準備かを選ぶ。保存すると外国人詳細の「只今の状況」に入る */}
       {status === "準備中" && (
         <label className="flex flex-col gap-1">
-          <span className="text-[11px] font-bold text-muted">準備の内容（只今の状況）</span>
+          <span className="text-[11px] font-bold text-muted">申請種別（準備の内容）</span>
           <select
             value={prepSituation}
             onChange={(e) => {
@@ -293,7 +293,7 @@ export function WorkerRenewalFields({
             }}
             className={INPUT}
           >
-            <option value="">未選択（只今の状況は変えない）</option>
+            <option value="">未選択（申請種別はあとで選ぶ・只今の状況は変えない）</option>
             {/* 申請内容の候補（TODOの内容）と同じ表記で選ぶ。保存値は従来の準備中の文言 */}
             {PREP_SITUATION_CHOICES.map((c) => (
               <option key={c.situation} value={c.situation}>
@@ -302,7 +302,7 @@ export function WorkerRenewalFields({
             ))}
           </select>
           <span className="text-[11px] text-muted">
-            保存すると外国人詳細の「只今の状況」に入り、「Notionに登録／更新」でNotionにも反映できます。
+            保存すると申請準備の詳細の「申請種別」と外国人詳細の「只今の状況」に入り、「Notionに登録／更新」でNotionにも反映できます。
           </span>
         </label>
       )}
