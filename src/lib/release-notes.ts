@@ -23,6 +23,17 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-09-08",
+    title: "「履歴書を依頼」ボタンで、履歴書ツールの案内文とリンクを本人にすぐ送れます",
+    where: "外国人 ＞ 一覧のボタン列／外国人詳細（履歴書・労働者名簿の下）／履歴書PDF取込",
+    href: "/workers",
+    items: [
+      "押すと、本人の言語（国籍から自動で選択。6言語で切替可）の案内文＋履歴書ツールのリンクが出ます。「案内文をコピー」でそのまま LINE・Messenger に貼れます。",
+      "スマホでは「LINE・Messengerなどで送る」で共有画面から直接送れます。「リンクだけコピー」でURLだけも取れます。",
+      "目の前にいる人にはQRコードをスマホのカメラで読んでもらえます。QR画像の保存もできます。",
+    ],
+  },
+  {
+    date: "2026-09-08",
     title: "履歴書ツール（本人がスマホで入力して日本語の履歴書PDFを作る画面）がこのシステムの中にできました",
     where: "外国人 ＞ 「履歴書PDF」 ＞ 履歴書ツールのURL／本人には /resume を送る",
     href: "/workers/resume-import",

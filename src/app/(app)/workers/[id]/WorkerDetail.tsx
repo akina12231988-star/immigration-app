@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { WorkerPhoto } from "@/components/workers/WorkerPhoto";
+import { ResumeToolShare } from "@/components/workers/ResumeToolShare";
 import { FieldJumpSearch } from "@/components/workers/FieldJumpSearch";
 import { WorkerDocuments } from "@/components/workers/WorkerDocuments";
 import { WorkerVisaHistory } from "@/components/workers/WorkerVisaHistory";
@@ -725,6 +726,8 @@ export function WorkerDetail({
                     <ClipboardList size={14} />
                     労働者名簿
                   </Link>
+                  {/* 本人に履歴書ツール（/resume）を案内する。案内文は国籍の言語で出る */}
+                  <ResumeToolShare nationality={worker.nationality} compact />
                 </div>
                 {canEdit && <NotionTransferButton worker={worker} />}
               </>

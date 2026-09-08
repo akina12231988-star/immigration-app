@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight, FileSearch, Printer, Upload, UserPlus } from
 import { Card } from "@/components/ui/Card";
 import { LinkButton } from "@/components/ui/Button";
 import { SummaryCards } from "@/components/workers/SummaryCards";
+import { ResumeToolShare } from "@/components/workers/ResumeToolShare";
 import {
   INITIAL_FILTER,
   WorkerFilters,
@@ -233,7 +234,7 @@ export function WorkersExplorer({
       />
 
       {canEdit && (
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <LinkButton href="/workers/new" fullWidth icon={<UserPlus size={20} />}>
             外国人を登録
           </LinkButton>
@@ -247,6 +248,8 @@ export function WorkersExplorer({
           <LinkButton href="/workers/print" variant="secondary" icon={<Printer size={18} />}>
             印刷
           </LinkButton>
+          {/* 履歴書ツール（/resume）のリンクと案内文を本人に送る */}
+          <ResumeToolShare />
         </div>
       )}
 

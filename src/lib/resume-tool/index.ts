@@ -6,3 +6,4 @@ export * from "./dates";
 export * from "./form";
 export * from "./translate";
 export * from "./build";
+export * from "./share";
