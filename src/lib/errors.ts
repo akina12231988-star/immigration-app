@@ -42,6 +42,16 @@ export function isCheckConstraintError(err: unknown): boolean {
   return /violates check constraint/i.test(text);
 }
 
+// 必須（NOT NULL）の制約に引っかかったエラーか。
+// アプリ側で空を許すようにした列（例: 賃金の適用開始日）が、DB側ではまだ必須のままのときに出る
+export function isNotNullConstraintError(err: unknown): boolean {
+  const e = asPostgrestError(err);
+  if (!e) return false;
+  if (e.code === "23502") return true;
+  const text = [e.message, e.details].filter((v) => typeof v === "string").join(" ");
+  return /violates not-null constraint/i.test(text);
+}
+
 // 表示用のメッセージ（原因がわかるよう details・hint・code も添える）
 export function errorMessage(err: unknown, fallback = "エラーが発生しました"): string {
   if (err instanceof Error && err.message) return err.message;
@@ -65,7 +75,12 @@ export function dbErrorMessage(
   migration: string,
   fallback = "保存に失敗しました",
 ): string {
-  if (isMissingTableError(err) || isMissingColumnError(err) || isCheckConstraintError(err)) {
+  if (
+    isMissingTableError(err) ||
+    isMissingColumnError(err) ||
+    isCheckConstraintError(err) ||
+    isNotNullConstraintError(err)
+  ) {
     return `${errorMessage(err, fallback)}／マイグレーション ${migration} が未適用の可能性があります。Supabase の SQL Editor で適用してください。`;
   }
   return errorMessage(err, fallback);

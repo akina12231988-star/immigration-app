@@ -3,6 +3,7 @@ import {
   dbErrorMessage,
   errorMessage,
   isCheckConstraintError,
+  isNotNullConstraintError,
   isMissingColumnError,
   isMissingTableError,
 } from "./errors";
@@ -105,5 +106,19 @@ describe("isCheckConstraintError", () => {
     expect(msg).toContain("check constraint");
     expect(msg).toContain("0113_prep_cert_pattern_senmongai_chosho.sql");
     expect(msg).toContain("未適用");
+  });
+});
+
+describe("isNotNullConstraintError", () => {
+  it("必須列の制約違反（23502）を見分け、マイグレーションの案内を出す", () => {
+    const err = {
+      code: "23502",
+      message: 'null value in column "started_on" of relation "worker_wages" violates not-null constraint',
+    };
+    expect(isNotNullConstraintError(err)).toBe(true);
+    expect(isNotNullConstraintError({ code: "23505", message: "duplicate key" })).toBe(false);
+    expect(dbErrorMessage(err, "0143_worker_wage_apply_time.sql")).toContain(
+      "マイグレーション 0143_worker_wage_apply_time.sql が未適用の可能性があります",
+    );
   });
 });
