@@ -145,6 +145,18 @@ describe("入力の日本語化と履歴書の生成", () => {
     expect(back?.careers[0].company).toBe("株式会社ベース");
   });
 
+  it("A4 1枚に収めるため、印刷余白は0で内側に余白を取り、行が多いときは詰めた表示にする", () => {
+    const f = sampleForm();
+    const html = buildResumeHtml(collectResumeData(f), "ja");
+    expect(html).toContain("@page{size:A4 portrait;margin:0}");
+    expect(html).toContain("text-size-adjust:100%"); // スマホの印刷で文字が勝手に大きくならない
+    expect(html).toContain('<div class="page">');
+    // 職歴4件＋家族3人 → 詰めた表示
+    f.careers = [...f.careers, ...f.careers, ...f.careers];
+    const many = buildResumeHtml(collectResumeData(f), "ja");
+    expect(many).toContain('<div class="page dense">');
+  });
+
   it("入力にタグが混ざっても履歴書のHTMLを壊さない", () => {
     const f = sampleForm();
     f.hob = "<script>alert(1)</script>";
