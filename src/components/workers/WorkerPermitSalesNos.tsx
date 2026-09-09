@@ -12,7 +12,7 @@ import { formatSalesYen } from "@/lib/sales";
 import { errorMessage } from "@/lib/errors";
 import type { SalesEntryRow } from "@/types/db";
 
-// 許可売上No.・保険No.（freee販売の伝票番号）。
+// 許可売上No.（freee販売の伝票番号）。保険No.は「特定技能総合保険」の枠に移した。
 // 番号の実体は売上明細（sales_entries）なので、ここでの編集はその行を書き換える。
 // 申請ごとに明細が残るため、更新のたびに履歴が積み上がる。
 export function WorkerPermitSalesNos({
@@ -32,8 +32,8 @@ export function WorkerPermitSalesNos({
       listSalesEntriesByWorker(createClient(), workerId)
         .then((rows) => {
           if (cancelled) return;
-          // 新しい順（クエリの並び）のまま、許可売上と保険だけ残す
-          setEntries(rows.filter((r) => r.kind === "申請" || r.kind === "保険"));
+          // 新しい順（クエリの並び）のまま、許可売上だけ残す（保険No.は特定技能総合保険の枠で扱う）
+          setEntries(rows.filter((r) => r.kind === "申請"));
           setLoaded(true);
         })
         .catch(() => {
@@ -54,17 +54,16 @@ export function WorkerPermitSalesNos({
     }
   };
 
-  const permits = entries.filter((r) => r.kind === "申請");
-  const insurances = entries.filter((r) => r.kind === "保険");
+  const permits = entries;
 
   return (
     <Card className="p-4">
       <h2 className="mb-1 flex items-center gap-2 text-sm font-bold">
         <Receipt size={16} />
-        許可売上No.・保険No.
+        許可売上No.
       </h2>
       <p className="mb-3 text-[11px] leading-relaxed text-muted">
-        許可時の売上（申請）と特定技能総合保険をfreee販売に登録したときの伝票番号です。
+        許可時の売上（申請）をfreee販売に登録したときの伝票番号です（保険No.は上の「特定技能総合保険」の枠にあります）。
         月末の請求書作成の名簿にも同じ番号が出ます。申請ごとに1件ずつ残るので、
         更新のたびに下へ積み上がります（一番上が最新）。
       </p>
@@ -83,16 +82,6 @@ export function WorkerPermitSalesNos({
         emptyText="許可時の売上明細がまだありません（在留カード受領後の売上登録で作られます）。"
         onSave={save}
       />
-      <div className="mt-3">
-        <Group
-          title="保険No."
-          rows={insurances}
-          canEdit={canEdit}
-          placeholder="保険No."
-          emptyText="特定技能総合保険の売上明細はありません（会社負担の新規申請のときに作られます）。"
-          onSave={save}
-        />
-      </div>
 
       {!loaded && <p className="mt-2 text-xs text-muted">読み込み中…</p>}
     </Card>

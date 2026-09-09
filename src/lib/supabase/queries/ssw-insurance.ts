@@ -34,6 +34,16 @@ const COLUMNS = [
   "ssw_insurance_note",
 ].join(", ");
 
+// 外国人詳細の「特定技能総合保険」の枠で使う項目（0139・0147）
+export const SSW_INSURANCE_DETAIL_COLUMNS = [
+  "ssw_insurance_no",
+  "ssw_insurance_expiry_date",
+  "ssw_insurance_cancel_mailed_on",
+  "ssw_insurance_cancel_tracking_no",
+  "ssw_insurance_refund_amount",
+  "ssw_insurance_refund_sales_no",
+].join(", ");
+
 export async function listSswInsuranceWorkers(
   supabase: SupabaseClient,
 ): Promise<SswInsuranceWorker[]> {
@@ -56,6 +66,11 @@ export interface SswInsurancePatch {
   ssw_insurance_declined_on?: string | null;
   ssw_insurance_declined_org_id?: string | null;
   ssw_insurance_note?: string;
+  // 解約手続き・解約金（0147）
+  ssw_insurance_cancel_mailed_on?: string | null;
+  ssw_insurance_cancel_tracking_no?: string;
+  ssw_insurance_refund_amount?: number | null;
+  ssw_insurance_refund_sales_no?: string;
 }
 
 export async function updateSswInsurance(
@@ -75,13 +90,28 @@ export interface SswCertRow {
   expiry_date: string | null;
   file_name: string;
   mime_type: string;
+  kind?: string; // 被保険者証 / 解約金（0147。未適用の環境では undefined ＝ 被保険者証）
   created_at: string;
+}
+
+export const SSW_CERT_KIND_CERT = "被保険者証";
+export const SSW_CERT_KIND_REFUND = "解約金";
+
+export function sswCertKind(row: Pick<SswCertRow, "kind">): string {
+  return row.kind || SSW_CERT_KIND_CERT;
 }
 
 export async function listSswCerts(
   supabase: SupabaseClient,
   workerId: string,
 ): Promise<SswCertRow[]> {
+  // kind 列は 0147 で追加。未適用の環境でも読めるように、失敗したら kind なしで読み直す
+  const withKind = await supabase
+    .from("worker_ssw_insurance_certs")
+    .select("id, worker_id, cert_no, expiry_date, file_name, mime_type, kind, created_at")
+    .eq("worker_id", workerId)
+    .order("created_at", { ascending: false });
+  if (!withKind.error) return (withKind.data as SswCertRow[]) ?? [];
   const { data, error } = await supabase
     .from("worker_ssw_insurance_certs")
     .select("id, worker_id, cert_no, expiry_date, file_name, mime_type, created_at")

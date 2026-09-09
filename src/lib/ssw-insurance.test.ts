@@ -25,6 +25,9 @@ import {
   isSswActionRow,
   tomorrowOf,
   type SswInsuranceWorker,
+  formatYenInput,
+  formatYenLabel,
+  parseYenDigits
 } from "./ssw-insurance";
 import type { TodoStatusOption } from "./todo";
 
@@ -516,5 +519,18 @@ describe("保険No.（売上）", () => {
     expect(hasUnjoinedSales(map.get("w1"))).toBe(true);
     expect(hasUnjoinedSales(map.get("w2"))).toBe(false);
     expect(hasUnjoinedSales(undefined)).toBe(false);
+  });
+});
+
+describe("解約金の金額入力", () => {
+  it("数字だけを取り出し、3桁ごとのカンマと円で表示する", () => {
+    expect(parseYenDigits("12,340")).toBe(12340);
+    expect(parseYenDigits("１２３４０円")).toBe(12340);
+    expect(parseYenDigits("abc")).toBeNull();
+    expect(parseYenDigits("")).toBeNull();
+    expect(formatYenInput(12340)).toBe("12,340");
+    expect(formatYenInput(null)).toBe("");
+    expect(formatYenLabel(12340)).toBe("12,340円");
+    expect(formatYenLabel(undefined)).toBe("");
   });
 });
