@@ -133,6 +133,20 @@ export const PLAN_DATE_FIELDS = [
 
 export type PlanDateKey = (typeof PLAN_DATE_FIELDS)[number]["key"];
 
+// 雇用契約期間（申請書「所属機関等作成用 1」の (1)）。
+// 雇用開始日から2年間の契約なので、終了日は2年後の前日（例: 2026-11-29 → 2028-11-28）
+export const CONTRACT_YEARS = 2;
+export function contractPeriodEnd(employStart: string, years: number = CONTRACT_YEARS): string {
+  return addDaysYmd(addYearsYmd(employStart, years), -1);
+}
+
+// 「2026年11月29日」の形
+export function formatYmdJa(ymd: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((ymd ?? "").trim());
+  if (!m) return ymd ?? "";
+  return `${Number(m[1])}年${Number(m[2])}月${Number(m[3])}日`;
+}
+
 // 申請の内容（TODOの内容）が特定活動か。
 // 特定活動の申請では、支援委託契約・事前ガイダンス・生活オリエンテーションの日付は使わない
 export function isTokuteiKatsudoContent(title: string): boolean {
