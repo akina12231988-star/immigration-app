@@ -88,35 +88,6 @@ export function orgEmploymentDates(params: {
   };
 }
 
-// ---- 職歴の開始日と、所属機関別の雇用開始日の食い違い ----
-
-// 同じ会社なのに日付が違う（＝どちらかが入力ミス）ときに知らせるための組み合わせ
-export interface StartDateMismatch {
-  orgName: string;
-  historyStart: string; // 職歴の開始日
-  orgStart: string; // 所属機関別の雇用開始日
-}
-
-// 所属機関別の雇用開始日と職歴の開始日を突き合わせ、違っているものを返す。
-// どちらかが空のときは食い違いとしない（まだ入れていないだけのため）
-export function startDateMismatches(params: {
-  // 所属機関別の雇用開始日（機関名と日付にほどいたもの）
-  orgStarts: { orgName: string; startOn: string }[];
-  histories: OrgHistoryRow[];
-}): StartDateMismatch[] {
-  const out: StartDateMismatch[] = [];
-  for (const s of params.orgStarts) {
-    if (!s.orgName || !s.startOn) continue;
-    // 同じ会社で行が分かれている職歴はまとめて、ひと続きの在籍の開始日と比べる
-    const period = mergedOrgPeriod(params.histories, s.orgName);
-    if (!period?.start) continue;
-    if (period.start !== s.startOn) {
-      out.push({ orgName: s.orgName, historyStart: period.start, orgStart: s.startOn });
-    }
-  }
-  return out;
-}
-
 // ---- 退職者情報を入れたときに、職歴の退職日にも反映する ----
 
 // 退職日を入れる職歴（在籍していた会社の職歴）。見つからなければ null。

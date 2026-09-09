@@ -1626,7 +1626,6 @@ export function WorkerDetail({
       {/* 雇用開始日（所属機関別）。現在の所属機関の分は雇用開始年月日に自動反映 */}
       <WorkerEmploymentStarts
         workerId={worker.id}
-        histories={worker.work_histories}
         initial={worker.org_employment_starts}
         currentOrganizationId={worker.current_organization_id}
         currentEmploymentStartOn={worker.employment_start_on}
@@ -1757,7 +1756,10 @@ export function WorkerDetail({
       {/* 職歴 */}
       <section>
         <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-bold text-muted">職歴（{histories.length}件）</h2>
+          <h2 className="text-sm font-bold text-muted">
+            職歴（{histories.length}件）
+            <span className="ml-2 text-[11px] font-normal">開始日・終了日は在留カード（指定書）の日付</span>
+          </h2>
           {canEdit && (
             <button
               type="button"
