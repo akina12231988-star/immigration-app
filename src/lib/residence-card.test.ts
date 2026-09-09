@@ -6,6 +6,7 @@ import {
   normalizeCardDate,
   normalizeResidenceCardNo,
   residenceCardToWorkerFields,
+  effectiveResidencePeriod,
   residencePeriodFromDates,
   workRestrictionLabel,
 } from "./residence-card";
@@ -128,6 +129,15 @@ describe("workRestrictionLabel", () => {
   it("分からない在留資格・未設定は空", () => {
     expect(workRestrictionLabel("")).toBe("");
     expect(workRestrictionLabel("永住者")).toBe("");
+  });
+});
+
+describe("effectiveResidencePeriod", () => {
+  it("許可年月日と満了日から計算できればその値、できなければ登録値", () => {
+    expect(effectiveResidencePeriod({ residence_period: "", residence_permit_date: "2026-05-28", residence_expiry_date: "2026-11-28" })).toBe("6月");
+    expect(effectiveResidencePeriod({ residence_period: "1年", residence_permit_date: "2026-05-28", residence_expiry_date: "2026-11-28" })).toBe("6月");
+    expect(effectiveResidencePeriod({ residence_period: "1年", residence_permit_date: null, residence_expiry_date: "2026-11-28" })).toBe("1年");
+    expect(effectiveResidencePeriod({ residence_period: null })).toBe("");
   });
 });
 

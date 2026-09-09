@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { getWorkerWithHistories } from "@/lib/supabase/queries/workers";
 import { PayProofSheet } from "./PayProofSheet";
+import { effectiveResidencePeriod } from "@/lib/residence-card";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +41,7 @@ export default async function WorkerPayProofPage({
         birth: worker.birth,
         nationality: worker.nationality,
         residenceCardNo: worker.residence_card_no,
-        residencePeriod: worker.residence_period,
+        residencePeriod: effectiveResidencePeriod(worker),
         residenceExpiryDate: worker.residence_expiry_date,
       }}
     />

@@ -5,6 +5,7 @@ import { getWorkerWithHistories } from "@/lib/supabase/queries/workers";
 import { listApplicationsByWorker } from "@/lib/supabase/queries/jobs";
 import { jobseekerCerts, normalizeJobseekerCard } from "@/lib/jobseeker-card";
 import { JobseekerCardSheet } from "./JobseekerCardSheet";
+import { effectiveResidencePeriod } from "@/lib/residence-card";
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +42,7 @@ export default async function JobseekerCardPage({
         address: worker.address,
         homeAddress: worker.home_address,
         residenceStatus: worker.residence_status,
-        residencePeriod: worker.residence_period,
+        residencePeriod: effectiveResidencePeriod(worker),
         residenceExpiry: worker.residence_expiry_date ?? "",
         residenceCardNo: worker.residence_card_no,
         passportNo: worker.passport_no,
