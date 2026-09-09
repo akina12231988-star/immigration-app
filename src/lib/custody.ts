@@ -101,6 +101,10 @@ export const CUSTODIAN_INFO = {
   agentName: "秋吉 伽恋",
   agentCertNo: "受-222024800268",
   agentCertExpiry: "2027-06-18",
+  // 申請書（所属機関等作成用 4「登録支援機関」）に書く内容
+  registeredOn: "2021-03-24", // 登録年月日
+  headOfficeAddress: "熊本県熊本市東区小山3-8-87 カームリーハウスB201", // 住所（所在地）
+  koyoNo: "4301-629022-2", // 雇用保険適用事業所番号
 } as const;
 
 // ---- azk-receipt バックアップJSONの取込 ----

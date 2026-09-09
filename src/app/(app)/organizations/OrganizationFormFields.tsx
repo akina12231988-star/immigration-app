@@ -1132,7 +1132,16 @@ function IntakeSection({
           </label>
         )}
         {/* 月平均と年間はどちらかを入れると片方が自動で入る（月平均×12＝年間） */}
-        <div className="grid grid-cols-2 gap-2.5">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+          {/* 申請書（所属機関等作成用）の「所定労働時間（週平均）」にそのまま使う */}
+          <IntakeField
+            label="週平均所定労働時間数"
+            value={intake.posting_weekly_hours}
+            onChange={(v) => setIntake({ posting_weekly_hours: v })}
+            placeholder="例: 40"
+            hint="申請書の所定労働時間（週平均）に使います。"
+            locked={locks.intake("posting_weekly_hours")}
+          />
           {/* 「173時間20分」の形で入れても小数（173.3）に自動で直して計算に使う */}
           <IntakeField
             label="月平均所定労働時間数"

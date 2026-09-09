@@ -32,7 +32,8 @@ import {
   updatePlanDates,
   type SavedPlanDates,
 } from "@/lib/supabase/queries/plan-dates";
-import { PLAN_DATE_FIELDS } from "@/lib/support-plan-dates";
+import { CONTRACT_YEARS, contractPeriodEnd, formatYmdJa, PLAN_DATE_FIELDS } from "@/lib/support-plan-dates";
+import { CopyButton } from "@/components/ui/CopyButton";
 import { listOrganizations } from "@/lib/supabase/queries/organizations";
 import { WorkerWages } from "@/components/workers/WorkerWages";
 import { WorkerContracts } from "@/components/workers/WorkerContracts";
@@ -313,6 +314,11 @@ export function PrepOrgInfo({ orgId }: { orgId: string | null }) {
       <p>
         代表者: {intake.rep_name || "未登録"}
         {intake.rep_kana && `（${intake.rep_kana}）`}
+      </p>
+      <p>
+        所定労働時間: 週平均 {intake.posting_weekly_hours || "未登録"}時間 ／ 月平均{" "}
+        {intake.posting_monthly_hours || "未登録"}時間
+        <span className="text-muted">（申請書の所定労働時間に使います。所属機関の求人の欄で直せます）</span>
       </p>
       <p>協力確認書（事業所の所在地）: {councilLine(intake.council_office_submissions)}</p>
       <p>協力確認書（住居地）: {councilLine(intake.council_residence_submissions)}</p>
@@ -748,19 +754,35 @@ export function SavedPlanDatesSection({
       ) : (
         <div className="space-y-1">
           {PLAN_DATE_FIELDS.map((f) => (
-            <label key={f.key} className="flex flex-wrap items-center gap-2 text-[11px]">
-              <span className="min-w-[14rem] flex-1">{f.label}</span>
-              <input
-                type="date"
-                value={dates[f.key] ?? ""}
-                disabled={!canEdit}
-                onChange={(e) => {
-                  setDates((prev) => ({ ...prev, [f.key]: e.target.value }));
-                  setDirty(true);
-                }}
-                className="min-h-[32px] rounded-lg border border-border bg-surface px-2 text-xs tabular-nums disabled:opacity-60"
-              />
-            </label>
+            <div key={f.key}>
+              <label className="flex flex-wrap items-center gap-2 text-[11px]">
+                <span className="min-w-[14rem] flex-1">{f.label}</span>
+                <input
+                  type="date"
+                  value={dates[f.key] ?? ""}
+                  disabled={!canEdit}
+                  onChange={(e) => {
+                    setDates((prev) => ({ ...prev, [f.key]: e.target.value }));
+                    setDirty(true);
+                  }}
+                  className="min-h-[32px] rounded-lg border border-border bg-surface px-2 text-xs tabular-nums disabled:opacity-60"
+                />
+              </label>
+              {/* 雇用開始日の下に、申請書に書く雇用契約期間（2年間契約。終了は2年後の前日） */}
+              {f.key === "es" && dates.es && (
+                <p className="mt-0.5 flex flex-wrap items-center gap-1 rounded-lg bg-surface px-2 py-1 text-[11px]">
+                  <span className="text-muted">雇用契約期間（{CONTRACT_YEARS}年間契約）:</span>
+                  <span className="font-bold">
+                    {formatYmdJa(dates.es)} から {formatYmdJa(contractPeriodEnd(dates.es))} まで
+                  </span>
+                  <CopyButton
+                    value={`${formatYmdJa(dates.es)} から ${formatYmdJa(contractPeriodEnd(dates.es))} まで`}
+                    label="雇用契約期間をコピー"
+                    size={13}
+                  />
+                </p>
+              )}
+            </div>
           ))}
           {canEdit && dirty && (
             <button

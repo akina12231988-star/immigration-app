@@ -200,6 +200,7 @@ export interface OrganizationIntake {
   posting_pay_closing: string; // 求人票に記載する給与の締切日（例: 末日）
   posting_pay_day: string; // 求人票に記載する給与の支払日（例: 翌月10日）
   posting_other_conditions: string; // 求人票のその他（応募条件）。タトゥー（刺青）不可など採用時の注意
+  posting_weekly_hours: string; // 週平均所定労働時間数（申請書の所定労働時間（週平均）に使う）
   posting_monthly_hours: string; // 月平均所定労働時間数（時給⇔月給の換算に使う）
   posting_annual_hours: string; // 年間所定労働時間数（月平均×12。時給⇔月給の換算・手取り計算に使う）
   flex_hours_kind: string; // 変形労働時間制（'' / なし / 1ヶ月単位 / 1年単位）

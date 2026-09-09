@@ -147,6 +147,8 @@ import {
 } from "@/lib/worker-situation";
 import type { OnboardingDocumentRow } from "@/types/db";
 import { effectiveResidencePeriod } from "@/lib/residence-card";
+import { ApplicationCopyPanel } from "@/components/workers/ApplicationCopyPanel";
+import { desiredResidenceStatus } from "@/lib/application-copy";
 
 // 在留カード・パスポートのアップロード中を示すキー（onboarding_documents の書類キーとは別枠）
 const CARD_BUSY_KEY = "zairyu_card_file";
@@ -1635,6 +1637,13 @@ export function ApplicationPrepChecklist({
           📅 日付計算: 支援計画書の日付計算ツール（求人日付のカレンダー表示付き）を開く →
         </Link>
         <SavedPlanDatesSection workerId={workerId} todoNo={current.todo_no} canEdit={canEdit} />
+        {/* 申請書に貼る情報（外国人・所属機関・賃金・職歴・日付から自動で抽出してコピー） */}
+        <ApplicationCopyPanel
+          workerId={workerId}
+          orgId={prepOrgId}
+          todoNo={current.todo_no}
+          desiredStatus={desiredResidenceStatus(meta.app_content, meta.app_type, workerRow?.residence_status ?? "")}
+        />
 
         {/* 申請する書類（最後に添付する、入管へ提出する完成した書類一式） */}
         <FileDropArea

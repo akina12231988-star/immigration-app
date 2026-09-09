@@ -122,6 +122,7 @@ export function emptyOrganizationIntake(): OrganizationIntake {
     posting_pay_closing: "",
     posting_pay_day: "",
     posting_other_conditions: "",
+    posting_weekly_hours: "",
     posting_monthly_hours: "",
     posting_annual_hours: "",
     flex_hours_kind: "",
