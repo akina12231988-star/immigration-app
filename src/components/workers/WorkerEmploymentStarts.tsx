@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarDays, Plus, Trash2, TriangleAlert } from "lucide-react";
+import { CalendarDays, Plus, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
@@ -10,7 +10,6 @@ import { updateWorker } from "@/lib/supabase/queries/workers";
 import { employmentStartPatch } from "@/lib/worker-support";
 import { normalizeOrgEmploymentStarts } from "@/lib/org-employment";
 import { organizationSuggestions } from "@/lib/org-search";
-import { startDateMismatches, type OrgHistoryRow } from "@/lib/worker-org-dates";
 import type { Organization, WorkerInput, WorkerOrgEmploymentStart } from "@/types/db";
 
 // 所属機関別の雇用開始日。転職すると機関ごとに雇用開始日が異なるため、
@@ -25,7 +24,6 @@ export function WorkerEmploymentStarts({
   residenceStatus = "",
   currentSituation = "",
   organizations,
-  histories = [],
   canEdit,
 }: {
   workerId: string;
@@ -36,7 +34,6 @@ export function WorkerEmploymentStarts({
   residenceStatus?: string; // 在留資格（支援区分の自動判別に使う）
   currentSituation?: string; // 只今の状況（未入力のときだけ自動で入れる）
   organizations: Organization[];
-  histories?: OrgHistoryRow[]; // 職歴（開始日の食い違いを知らせるのに使う）
   canEdit: boolean;
 }) {
   const router = useRouter();
@@ -52,15 +49,6 @@ export function WorkerEmploymentStarts({
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // 職歴の開始日と、ここに入れた雇用開始日が違う機関（どちらかが入力ミス）
-  const mismatches = startDateMismatches({
-    orgStarts: rows.map((r) => ({
-      orgName: organizations.find((o) => o.id === r.organization_id)?.name ?? "",
-      startOn: r.start_on ?? "",
-    })),
-    histories,
-  });
 
   const setAt = (i: number, key: keyof WorkerOrgEmploymentStart, value: string) => {
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, [key]: value } : r)));
@@ -112,29 +100,9 @@ export function WorkerEmploymentStarts({
       <p className="mb-3 text-[11px] leading-relaxed text-muted">
         転職すると機関ごとに雇用開始日が異なるため、所属機関別に記録・訂正できます。
         現在の所属機関の分は基本情報の「雇用開始年月日」にも自動で反映され、労働者名簿の入社日にも使われます。
+        ここには実際に会社が雇用を始めた日を入れます。職歴の開始日は在留カード（指定書）の日付なので、違っていて構いません。
       </p>
       {error && <p className="mb-2 rounded-lg bg-seal/10 px-3 py-2 text-xs text-seal">{error}</p>}
-
-      {/* 職歴の開始日と食い違っているとき（どちらかが入力ミス）は知らせる */}
-      {mismatches.length > 0 && (
-        <div className="mb-3 rounded-xl border border-seal/40 bg-seal/5 px-3 py-2.5">
-          <p className="flex items-center gap-1.5 text-xs font-bold text-seal">
-            <TriangleAlert size={14} />
-            職歴の開始日と雇用開始日が違います — どちらが正しいですか？
-          </p>
-          <ul className="mt-1 space-y-0.5 pl-5 text-[11px] text-seal">
-            {mismatches.map((m) => (
-              <li key={m.orgName}>
-                {m.orgName}：職歴 {m.historyStart} ／ ここの雇用開始日 {m.orgStart}
-              </li>
-            ))}
-          </ul>
-          <p className="mt-1 text-[11px] leading-relaxed text-muted">
-            正しいほうに合わせて直してください。職歴は「職歴（在籍していた会社）」の欄で直せます。
-            個人票・在留カードの在籍期間など、どちらの日付も他の画面で使われます。
-          </p>
-        </div>
-      )}
 
       {rows.length === 0 && (
         <p className="rounded-xl bg-background p-4 text-center text-sm text-muted">
