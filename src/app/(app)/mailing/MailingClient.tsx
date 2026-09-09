@@ -51,6 +51,9 @@ import {
   type RequestKind,
   type RequestMethod,
 } from "@/lib/tax-cert";
+import { MunicipalityBrowser } from "@/components/mailing/MunicipalityBrowser";
+import { effectivePrefecture, guessPrefecture, PREFECTURE_LIST } from "@/lib/prefectures";
+import { dbErrorMessage } from "@/lib/errors";
 import { MailingFileAttachments } from "./MailingFileAttachments";
 import { MoneyOrderFields } from "./MoneyOrderFields";
 
@@ -106,13 +109,6 @@ function CheckRow({
   );
 }
 
-function YNBadge({ on, yes, no }: { on: boolean; yes: string; no: string }) {
-  return (
-    <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-bold ${on ? "bg-status-reported-bg text-status-reported-fg" : "bg-background text-muted"}`}>
-      {on ? yes : no}
-    </span>
-  );
-}
 
 function useToast() {
   const [msg, setMsg] = useState<string | null>(null);
@@ -1474,7 +1470,7 @@ function MunicipalityTab({
       setModalOpen(false);
       setEditing(null);
     } catch (e) {
-      showToast("保存に失敗しました: " + (e instanceof Error ? e.message : String(e)));
+      showToast(dbErrorMessage(e, "0145_municipality_prefecture.sql", "保存に失敗しました"));
     } finally {
       setBusy(false);
     }
@@ -1505,33 +1501,15 @@ function MunicipalityTab({
           自治体が登録されていません。「自治体を追加」から登録してください。
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {municipalities.map((m) => (
-            <Card key={m.id} className="p-4">
-              <div className="mb-2 flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="truncate font-bold">{m.name}</p>
-                  <p className="truncate text-xs text-muted">{m.cert_name}</p>
-                </div>
-                {canEdit && (
-                  <div className="flex shrink-0 gap-1.5">
-                    <button type="button" onClick={() => { setEditing(m); setModalOpen(true); }} className="rounded-lg border border-border px-2.5 py-1 text-xs font-bold text-muted">編集</button>
-                    <button type="button" onClick={() => setDeleteTarget(m)} className="rounded-lg border border-seal/40 px-2.5 py-1 text-xs font-bold text-seal">削除</button>
-                  </div>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                <YNBadge on={m.has_income} yes="所得額あり" no="所得額なし" />
-                <YNBadge on={m.has_tax} yes="課税額あり" no="課税額なし" />
-                <YNBadge on={m.needs_tax_payment_cert} yes="納税証明書要" no="納税証明書不要" />
-                <YNBadge on={m.show_asterisk} yes="＊表示する" no="＊表示しない" />
-                <YNBadge on={m.tenshutsu_self_only} yes="転出届 本人のみ" no="転出届 代理可" />
-                <YNBadge on={m.juminhyo_self_only} yes="住民票 本人のみ" no="住民票 代理可" />
-              </div>
-              {m.note && <p className="mt-2 text-xs text-muted">{m.note}</p>}
-            </Card>
-          ))}
-        </div>
+        <Card className="p-4">
+          {/* 検索 ＋ タイル地図 ＋ 県ごとの名札（案B） */}
+          <MunicipalityBrowser
+            municipalities={municipalities}
+            canEdit={canEdit}
+            onEdit={(m) => { setEditing(m); setModalOpen(true); }}
+            onDelete={(m) => setDeleteTarget(m)}
+          />
+        </Card>
       )}
 
       {modalOpen && (
@@ -1567,10 +1545,13 @@ function MunicipalityModal({
 }) {
   const [form, setForm] = useState<MunicipalityInput>(
     initial
-      ? { name: initial.name, cert_name: initial.cert_name, has_income: initial.has_income, has_tax: initial.has_tax, needs_tax_payment_cert: initial.needs_tax_payment_cert, show_asterisk: initial.show_asterisk, note: initial.note, tenshutsu_self_only: initial.tenshutsu_self_only ?? false, juminhyo_self_only: initial.juminhyo_self_only ?? false }
-      : { name: "", cert_name: "課税証明書", has_income: true, has_tax: true, needs_tax_payment_cert: false, show_asterisk: false, note: "", tenshutsu_self_only: false, juminhyo_self_only: false },
+      ? { name: initial.name, prefecture: effectivePrefecture(initial), cert_name: initial.cert_name, has_income: initial.has_income, has_tax: initial.has_tax, needs_tax_payment_cert: initial.needs_tax_payment_cert, show_asterisk: initial.show_asterisk, note: initial.note, tenshutsu_self_only: initial.tenshutsu_self_only ?? false, juminhyo_self_only: initial.juminhyo_self_only ?? false }
+      : { name: "", prefecture: "", cert_name: "課税証明書", has_income: true, has_tax: true, needs_tax_payment_cert: false, show_asterisk: false, note: "", tenshutsu_self_only: false, juminhyo_self_only: false },
   );
   const set = <K extends keyof MunicipalityInput>(k: K, v: MunicipalityInput[K]) => setForm((f) => ({ ...f, [k]: v }));
+  // 自治体名を打つと都道府県を推定して入れる（手で選び直せる）
+  const setName = (name: string) =>
+    setForm((f) => ({ ...f, name, prefecture: f.prefecture && f.prefecture !== guessPrefecture(f.name) ? f.prefecture : guessPrefecture(name) }));
   const canSave = form.name.trim() !== "" && form.cert_name.trim() !== "";
 
   return (
@@ -1578,7 +1559,16 @@ function MunicipalityModal({
       <div className="flex flex-col gap-3">
         <label className="flex flex-col gap-1">
           <span className={LABEL}>自治体名</span>
-          <input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="例：熊本市" className={INPUT} />
+          <input value={form.name} onChange={(e) => setName(e.target.value)} placeholder="例：熊本市" className={INPUT} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className={LABEL}>都道府県（地図と一覧のまとまりに使う）</span>
+          <select value={form.prefecture} onChange={(e) => set("prefecture", e.target.value)} className={INPUT}>
+            <option value="">（未設定）</option>
+            {PREFECTURE_LIST.map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
         </label>
         <label className="flex flex-col gap-1">
           <span className={LABEL}>証明書名称</span>

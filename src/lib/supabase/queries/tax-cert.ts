@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Municipality, MunicipalityInput, JudgmentRecord } from "@/lib/tax-cert";
+import { guessPrefecture } from "@/lib/prefectures";
 
 // ---- 自治体マスタ ----
 export async function listMunicipalities(supabase: SupabaseClient): Promise<Municipality[]> {
@@ -111,6 +112,7 @@ export async function importMailingData(
     if (!name) continue;
     const row = {
       name,
+      prefecture: str(m.prefecture) || guessPrefecture(name),
       cert_name: str(m.cert_name ?? m.certName, "課税証明書"),
       has_income: bool(m.has_income ?? m.hasIncome, true),
       has_tax: bool(m.has_tax ?? m.hasTax, true),
