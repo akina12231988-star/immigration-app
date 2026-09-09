@@ -21,6 +21,7 @@ import { reiwaYear } from "@/lib/onboarding";
 import { todayStr } from "@/lib/ssw/calc";
 import type { Organization, Worker } from "@/types/db";
 import { PrepDetailSheet } from "./PrepDetailSheet";
+import { effectiveResidencePeriod } from "@/lib/residence-card";
 
 export const dynamic = "force-dynamic";
 
@@ -135,7 +136,7 @@ export default async function ApplicationPrepPrintPage({
         homeAddress: worker.home_address ?? "",
         address: worker.address ?? "",
         residenceStatus: worker.residence_status,
-        residencePeriod: worker.residence_period ?? "",
+        residencePeriod: effectiveResidencePeriod(worker),
         residenceCardNo: worker.residence_card_no,
         residenceExpiryDate: worker.residence_expiry_date ?? "",
         passportNo: worker.passport_no ?? "",

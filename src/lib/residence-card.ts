@@ -122,6 +122,20 @@ export function residencePeriodFromDates(permitDate: string, expiryDate: string)
   return best ? formatPeriodMonths(best.months) : null;
 }
 
+// 画面に出す在留期間。外国人詳細と同じく、許可年月日と満了日から計算できればその値、
+// できなければ登録してある在留期間（residence_period）を使う。
+// 申請準備の詳細・印刷や求職者カードなど、どの画面でも同じ値になるようにここを通す
+export function effectiveResidencePeriod(w: {
+  residence_period?: string | null;
+  residence_permit_date?: string | null;
+  residence_expiry_date?: string | null;
+}): string {
+  return (
+    residencePeriodFromDates(w.residence_permit_date ?? "", w.residence_expiry_date ?? "") ??
+    (w.residence_period ?? "").trim()
+  );
+}
+
 // 在留カード番号の形式（英字2 + 数字8 + 英字2。例: AB12345678CD）。
 // 形が違っても保存はできる（入力途中・特例の番号もあるため）。画面で注意だけ出す
 export function isValidResidenceCardNo(value: string): boolean {

@@ -146,6 +146,7 @@ import {
   prepTodoFileName,
 } from "@/lib/worker-situation";
 import type { OnboardingDocumentRow } from "@/types/db";
+import { effectiveResidencePeriod } from "@/lib/residence-card";
 
 // 在留カード・パスポートのアップロード中を示すキー（onboarding_documents の書類キーとは別枠）
 const CARD_BUSY_KEY = "zairyu_card_file";
@@ -245,7 +246,7 @@ export function ApplicationPrepChecklist({
     specialty_grade: string;
     other_qualifications: string;
     residence_status: string;
-    residence_period: string; // 在留期間（例: 1年・3年）
+    residence_period: string; // 在留期間（許可年月日と満了日からの自動計算。外国人詳細と同じ値）
     residence_card_no: string;
     residence_expiry_date: string;
     passport_no: string;
@@ -303,7 +304,7 @@ export function ApplicationPrepChecklist({
     void createClient()
       .from("workers")
       .select(
-        "name, kana, birth, nationality, field, home_address, address, current_organization_id, application_prep_organization_id, specialty_grade, other_qualifications, residence_status, residence_period, residence_card_no, residence_expiry_date, passport_no, passport_expiry_date, current_situation",
+        "name, kana, birth, nationality, field, home_address, address, current_organization_id, application_prep_organization_id, specialty_grade, other_qualifications, residence_status, residence_period, residence_permit_date, residence_card_no, residence_expiry_date, passport_no, passport_expiry_date, current_situation",
       )
       .eq("id", workerId)
       .maybeSingle()
@@ -322,6 +323,7 @@ export function ApplicationPrepChecklist({
           other_qualifications: string | null;
           residence_status: string | null;
           residence_period: string | null;
+          residence_permit_date: string | null;
           residence_card_no: string | null;
           residence_expiry_date: string | null;
           passport_no: string | null;
@@ -343,7 +345,8 @@ export function ApplicationPrepChecklist({
             specialty_grade: w.specialty_grade ?? "",
             other_qualifications: w.other_qualifications ?? "",
             residence_status: w.residence_status ?? "",
-            residence_period: w.residence_period ?? "",
+            // 外国人詳細と同じく、許可年月日と満了日から自動計算した在留期間（できなければ登録値）
+            residence_period: effectiveResidencePeriod(w),
             residence_card_no: w.residence_card_no ?? "",
             residence_expiry_date: w.residence_expiry_date ?? "",
             passport_no: w.passport_no ?? "",
