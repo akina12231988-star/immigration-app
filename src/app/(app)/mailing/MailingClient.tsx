@@ -52,7 +52,7 @@ import {
   type RequestMethod,
 } from "@/lib/tax-cert";
 import { MunicipalityBrowser } from "@/components/mailing/MunicipalityBrowser";
-import { effectivePrefecture, guessPrefecture, PREFECTURE_LIST } from "@/lib/prefectures";
+import { effectivePrefecture, guessPrefecture, municipalityOptionLabel, PREFECTURE_LIST } from "@/lib/prefectures";
 import { dbErrorMessage } from "@/lib/errors";
 import { MailingFileAttachments } from "./MailingFileAttachments";
 import { MoneyOrderFields } from "./MoneyOrderFields";
@@ -444,6 +444,11 @@ function JudgeTab({
   const [appDate, setAppDate] = useState(todayISO());
   const [hasNhi, setHasNhi] = useState(false);
   const [nhiMuniId, setNhiMuniId] = useState("");
+  // 自治体の候補（名前に県名が無ければ県名を添える）
+  const muniOptions = useMemo(
+    () => municipalities.map((m) => ({ id: m.id, label: municipalityOptionLabel(m) })),
+    [municipalities],
+  );
   const [result, setResult] = useState<JudgmentRecord | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -670,11 +675,13 @@ function JudgeTab({
           <div className="space-y-3">
             <label className="flex flex-col gap-1">
               <span className={LABEL}>自治体</span>
-              <select value={muniId} onChange={(e) => { setMuniId(e.target.value); resetResult(); }} className={INPUT}>
-                {municipalities.map((m) => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
+              {/* 文字を打つと候補が絞られる（自治体名・県名で探せる） */}
+              <Combobox
+                options={muniOptions}
+                value={muniId}
+                onChange={(id) => { setMuniId(id); resetResult(); }}
+                placeholder="自治体名・県名を入力して検索"
+              />
             </label>
             <div className="flex flex-col gap-1">
               <span className={LABEL}>徴収区分</span>
@@ -695,12 +702,12 @@ function JudgeTab({
             {hasNhi && (
               <label className="flex flex-col gap-1">
                 <span className={LABEL}>国保税納税証明書の取得先自治体（現在お住まいの自治体）</span>
-                <select value={nhiMuniId} onChange={(e) => { setNhiMuniId(e.target.value); resetResult(); }} className={INPUT}>
-                  <option value="">選択してください</option>
-                  {municipalities.map((m) => (
-                    <option key={m.id} value={m.id}>{m.name}</option>
-                  ))}
-                </select>
+                <Combobox
+                  options={muniOptions}
+                  value={nhiMuniId}
+                  onChange={(id) => { setNhiMuniId(id); resetResult(); }}
+                  placeholder="自治体名・県名を入力して検索"
+                />
                 <span className="text-[11px] text-muted">課税証明書の取得先と異なる場合があります。郵送請求時は特に注意してください。</span>
               </label>
             )}
@@ -972,12 +979,12 @@ function CityOfficeSelect({
           自治体マスタが未登録です。「＋ 自治体マスタに追加」から登録してください。
         </p>
       ) : (
-        <select value={value} onChange={(e) => onChange(e.target.value)} className={INPUT}>
-          <option value="">選択してください</option>
-          {municipalities.map((m) => (
-            <option key={m.id} value={m.id}>{m.name}</option>
-          ))}
-        </select>
+        <Combobox
+          options={municipalities.map((m) => ({ id: m.id, label: municipalityOptionLabel(m) }))}
+          value={value}
+          onChange={onChange}
+          placeholder="自治体名・県名を入力して検索"
+        />
       )}
       <span className="text-[11px] text-muted">
         上に表示している「外国人の現在の住所」から請求先の自治体を判断して選択してください。

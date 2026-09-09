@@ -4,6 +4,7 @@ import {
   groupByPrefecture,
   guessPrefecture,
   matchesMunicipality,
+  municipalityOptionLabel,
   municipalityShortName,
   PREFECTURE_LIST,
   PREFECTURE_REGIONS,
@@ -41,6 +42,12 @@ describe("自治体名から都道府県を推定", () => {
     expect(effectivePrefecture({ name: "熊本市", prefecture: "" })).toBe("熊本県");
     expect(effectivePrefecture({ name: "玉名市役所", prefecture: "福岡県" })).toBe("福岡県");
     expect(effectivePrefecture({ name: "玉名市役所", prefecture: "県" })).toBe("熊本県");
+  });
+
+  it("候補の表示名は、県名が無いときだけ県名を添える", () => {
+    expect(municipalityOptionLabel({ name: "愛知県あま市", prefecture: "愛知県" })).toBe("愛知県あま市");
+    expect(municipalityOptionLabel({ name: "玉名市役所", prefecture: "" })).toBe("玉名市役所（熊本県）");
+    expect(municipalityOptionLabel({ name: "どこか町", prefecture: "" })).toBe("どこか町");
   });
 
   it("名札に出す短い名前", () => {
