@@ -10,6 +10,7 @@ import {
   PREFECTURE_REGIONS,
   PREFECTURE_TILES,
   prefectureShortName,
+  suggestMunicipalityForAddress,
 } from "./prefectures";
 
 describe("都道府県の表", () => {
@@ -79,5 +80,21 @@ describe("検索とまとめ", () => {
     expect(g.map((x) => x.prefecture)).toEqual(["埼玉県", "愛知県", "熊本県", ""]);
     expect(g[2].rows.map((r) => r.name)).toEqual(["熊本市", "玉名市役所"]);
     expect(g[3].region).toBe("都道府県が未設定");
+  });
+});
+
+describe("suggestMunicipalityForAddress", () => {
+  const munis = [
+    { name: "熊本市", prefecture: "熊本県" },
+    { name: "玉名市役所", prefecture: "熊本県" },
+    { name: "熊本県菊池市", prefecture: "熊本県" },
+    { name: "埼玉県新座市", prefecture: "埼玉県" },
+  ];
+  it("住所に含まれる市区町村名で自治体を当てる", () => {
+    expect(suggestMunicipalityForAddress("熊本県玉名市中1234-5", munis)?.name).toBe("玉名市役所");
+    expect(suggestMunicipalityForAddress("〒861-1331 熊本県菊池市隈府100", munis)?.name).toBe("熊本県菊池市");
+    expect(suggestMunicipalityForAddress("埼玉県新座市野火止1-1", munis)?.name).toBe("埼玉県新座市");
+    expect(suggestMunicipalityForAddress("福岡県久留米市1-1", munis)).toBeNull();
+    expect(suggestMunicipalityForAddress("", munis)).toBeNull();
   });
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { ExternalLink, Search } from "lucide-react";
 import type { Municipality } from "@/lib/tax-cert";
 import {
   groupByPrefecture,
@@ -118,6 +118,12 @@ export function MunicipalityBrowser({
                         <Badge on={m.juminhyo_self_only} yes="住民票 本人のみ" no="住民票 代理可" seal />
                       </div>
                       {m.note && <p className="mt-1.5 text-xs text-muted">{m.note}</p>}
+                      {m.website_url && (
+                        <a href={m.website_url} target="_blank" rel="noopener noreferrer" className="mt-1.5 inline-flex items-center gap-1 text-xs font-bold text-brand underline">
+                          <ExternalLink size={12} />
+                          自治体のサイトを開く
+                        </a>
+                      )}
                       {canEdit && (
                         <div className="mt-2 flex gap-1.5">
                           <button type="button" onClick={() => onEdit(m)} className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-bold text-muted">

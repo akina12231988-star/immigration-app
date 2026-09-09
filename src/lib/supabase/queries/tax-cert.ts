@@ -113,6 +113,7 @@ export async function importMailingData(
     const row = {
       name,
       prefecture: str(m.prefecture) || guessPrefecture(name),
+      website_url: str(m.website_url ?? m.websiteUrl),
       cert_name: str(m.cert_name ?? m.certName, "課税証明書"),
       has_income: bool(m.has_income ?? m.hasIncome, true),
       has_tax: bool(m.has_tax ?? m.hasTax, true),

@@ -12,6 +12,9 @@ import {
   syncMoneyOrders,
   type MoneyOrder,
   type Municipality,
+  buildBothYearsDocs,
+  judgeWithYearMunicipalities,
+  latestFiscalStartYear,
 } from "./tax-cert";
 
 describe("requestKindLabel", () => {
@@ -44,6 +47,7 @@ describe("isSelfOnlyMunicipality", () => {
     id: "m1",
     name: "八代市",
     prefecture: "熊本県",
+    website_url: "",
     cert_name: "課税証明書",
     has_income: true,
     has_tax: true,
@@ -193,5 +197,64 @@ describe("定額小為替", () => {
       ]),
     ).toBe("定額小為替 2枚（番号入力済み 1枚）");
     expect(moneyOrderSummary([])).toBe("");
+  });
+});
+
+describe("年度ごとの自治体で判定する", () => {
+  const muni = (id: string, name: string, patch: Partial<Municipality> = {}): Municipality => ({
+    id,
+    name,
+    prefecture: "",
+    website_url: "",
+    cert_name: "課税証明書",
+    has_income: true,
+    has_tax: true,
+    needs_tax_payment_cert: false,
+    show_asterisk: false,
+    note: "",
+    tenshutsu_self_only: false,
+    juminhyo_self_only: false,
+    ...patch,
+  });
+  const a = muni("a", "熊本市");
+  const b = muni("b", "玉名市役所", { needs_tax_payment_cert: true });
+
+  it("最新年度は6月に切り替わる", () => {
+    expect(latestFiscalStartYear(new Date("2026-09-09T00:00:00"))).toBe(2026);
+    expect(latestFiscalStartYear(new Date("2026-05-31T00:00:00"))).toBe(2025);
+  });
+
+  it("判定した年度の自治体を返す（特別徴収の9月は前年度 → 前年度の自治体）", () => {
+    const r = judgeWithYearMunicipalities({ newMuni: a, prevMuni: b, collectionType: "special", appDate: new Date("2026-09-09T00:00:00") });
+    expect(r.yearType).toBe("prev");
+    expect(r.fiscalStartYear).toBe(2025);
+    expect(r.muni.id).toBe("b");
+    const n = judgeWithYearMunicipalities({ newMuni: a, prevMuni: b, collectionType: "normal", appDate: new Date("2026-03-01T00:00:00") });
+    expect(n.yearType).toBe("new");
+    expect(n.muni.id).toBe("a");
+  });
+
+  it("その年度の自治体が＊表示なら新年度になり、最新年度の自治体を返す", () => {
+    const star = muni("s", "＊の市", { show_asterisk: true });
+    const r = judgeWithYearMunicipalities({ newMuni: a, prevMuni: star, collectionType: "special", appDate: new Date("2026-09-09T00:00:00") });
+    expect(r.yearType).toBe("new");
+    expect(r.muni.id).toBe("a");
+  });
+
+  it("両年度の書類は年度ごとの自治体で作り、自治体が違えば題名に自治体名が付く。定額小為替も年度ごと", () => {
+    const docs = buildBothYearsDocs({ newMuni: a, prevMuni: b, hasNhi: false, appDate: new Date("2026-09-09T00:00:00"), nhiMuni: null });
+    expect(docs.map((d) => d.title)).toEqual([
+      "熊本市：課税証明書（新年度分）",
+      "玉名市役所：課税証明書（前年度分）",
+      "玉名市役所：納税証明書（前年度分）",
+    ]);
+    expect(mainMailedTitles({ requestMethod: "mail", requestBothYears: true, docs })).toEqual([
+      "熊本市：課税証明書（新年度分）",
+      "玉名市役所：課税証明書（前年度分）",
+      "玉名市役所：納税証明書（前年度分）",
+      "市県民税納税証明書（新年度分）",
+    ]);
+    const same = buildBothYearsDocs({ newMuni: a, prevMuni: a, hasNhi: false, appDate: new Date("2026-09-09T00:00:00"), nhiMuni: null });
+    expect(same.map((d) => d.title)).toEqual(["課税証明書（新年度分）", "課税証明書（前年度分）"]);
   });
 });
