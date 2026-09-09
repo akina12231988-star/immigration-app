@@ -48,6 +48,7 @@ export async function registerSswCert(input: {
   path?: string;
   fileName?: string;
   mimeType?: string;
+  kind?: string; // 被保険者証（既定） / 解約金（0147）
 }): Promise<{ ok: true } | Err> {
   if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
   const path = input.path ?? "";
@@ -58,7 +59,7 @@ export async function registerSswCert(input: {
   const me = await getMyProfile();
   const admin = createAdminClient();
   if (!admin) return { ok: false, message: "サーバー設定エラー" };
-  const { error } = await admin.from("worker_ssw_insurance_certs").insert({
+  const row = {
     worker_id: input.workerId,
     cert_no: input.certNo,
     expiry_date: input.expiryDate || null,
@@ -66,7 +67,11 @@ export async function registerSswCert(input: {
     file_name: input.fileName ?? "",
     mime_type: input.mimeType ?? "",
     uploaded_by: me?.id ?? null,
-  });
+  };
+  // 種類（kind）は 0147 で追加。解約金の書類は未適用の環境では登録できない
+  const { error } = input.kind && input.kind !== "被保険者証"
+    ? await admin.from("worker_ssw_insurance_certs").insert({ ...row, kind: input.kind })
+    : await admin.from("worker_ssw_insurance_certs").insert(row);
   if (error) return { ok: false, message: error.message };
   return { ok: true };
 }

@@ -443,6 +443,11 @@ export interface Worker {
   ssw_insurance_link: string; // 特定技能総合保険の加入ページリンク
   ssw_insurance_expiry_date: string | null; // 特定技能総合保険の有効期限
   ssw_insurance_self_join: boolean; // 自己負担加入希望（所属機関が外国人負担の場合に本人が加入を希望）
+  ssw_insurance_no?: string; // 被保険者証明書の番号（0139）
+  ssw_insurance_cancel_mailed_on?: string | null; // 解約手続きを郵送した日（0147）
+  ssw_insurance_cancel_tracking_no?: string; // 解約手続きの郵送の追跡番号（0147）
+  ssw_insurance_refund_amount?: number | null; // 解約金（返戻金・円。0147）
+  ssw_insurance_refund_sales_no?: string; // 返戻金の売上No.（0147）
   note: string;
   jobseeker_card?: JobseekerCardExtras; // 求職票だけで使う項目（0118）
   followups?: WorkerFollowups; // あとでやる手続きの宿題（転居手続き・国保/国民年金の加入。0119）

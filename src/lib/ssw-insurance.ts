@@ -551,3 +551,22 @@ export function hasUnjoinedSales(
 ): boolean {
   return (rows ?? []).some((r) => !r.insurance_joined_on);
 }
+
+// ---- 解約金（返戻金）の金額入力 ----
+
+// 入力された文字から数字だけを取り出して整数にする（全角数字・カンマ・「円」は取り除く）。数字が無ければ null
+export function parseYenDigits(input: string): number | null {
+  const digits = (input ?? "").normalize("NFKC").replace(/[^\d]/g, "");
+  if (!digits) return null;
+  return Number.parseInt(digits, 10);
+}
+
+// 入力欄に出す形（3桁ごとのカンマ。空なら空）
+export function formatYenInput(n: number | null | undefined): string {
+  return n == null ? "" : n.toLocaleString("ja-JP");
+}
+
+// 表示（例: 12,340円）
+export function formatYenLabel(n: number | null | undefined): string {
+  return n == null ? "" : `${n.toLocaleString("ja-JP")}円`;
+}

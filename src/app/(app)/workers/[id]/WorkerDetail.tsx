@@ -52,6 +52,7 @@ import { WorkerDependents } from "@/components/workers/WorkerDependents";
 import { WorkerEmploymentStarts } from "@/components/workers/WorkerEmploymentStarts";
 import { WorkerSalesResignation } from "@/components/workers/WorkerSalesResignation";
 import { WorkerPermitSalesNos } from "@/components/workers/WorkerPermitSalesNos";
+import { WorkerSswInsurance } from "@/components/workers/WorkerSswInsurance";
 import { WorkerWages } from "@/components/workers/WorkerWages";
 import { WorkerRecurringSales } from "@/components/workers/WorkerRecurringSales";
 import { NotionTransferButton } from "@/components/workers/NotionTransferButton";
@@ -1484,44 +1485,18 @@ export function WorkerDetail({
               </dd>
             </div>
           )}
-          {showInsuranceFields && (
-            <>
-              <InfoItem
-                label="特定技能総合保険の加入リンク先"
-                value={
-                  worker.ssw_insurance_link ? (
-                    <a
-                      href={worker.ssw_insurance_link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 font-bold text-brand"
-                    >
-                      <ExternalLink size={13} className="shrink-0" />
-                      加入ページを開く
-                    </a>
-                  ) : null
-                }
-                edit={textInput("ssw_insurance_link", "https://...")}
-              />
-              <InfoItem
-                label="特定技能総合保険 有効期限"
-                value={
-                  worker.ssw_insurance_expiry_date ? (
-                    <>
-                      {worker.ssw_insurance_expiry_date}
-                      {isSswInsuranceRenewalTarget(worker, today) && (
-                        <span className="ml-2 rounded-full bg-seal/10 px-2 py-0.5 text-[11px] font-bold text-seal">
-                          {remainingLabel(worker.ssw_insurance_expiry_date, today)}
-                        </span>
-                      )}
-                    </>
-                  ) : null
-                }
-                edit={dateInput("ssw_insurance_expiry_date")}
-              />
-            </>
-          )}
         </dl>
+        {/* 特定技能総合保険の枠（番号・被保険者証の画像・有効期限・TODO・保険No.・解約手続き・解約金）。
+            外国人負担で本人が希望していないときは出さない */}
+        {showInsuranceFields && (
+          <WorkerSswInsurance
+            worker={worker}
+            canEdit={canEdit}
+            today={today}
+            insuranceBurden={insuranceBurden}
+            onSaved={() => router.refresh()}
+          />
+        )}
         <p className="mb-1 text-[11px] font-bold text-muted">家族情報</p>
         <dl className="mb-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
           <InfoItem label="配偶者の有無" value={worker.has_spouse} edit={selectInput("has_spouse", ["有", "無"])} />
