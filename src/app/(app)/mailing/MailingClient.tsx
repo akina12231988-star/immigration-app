@@ -21,6 +21,7 @@ import {
 import { updateWorker } from "@/lib/supabase/queries/workers";
 import {
   applicantLabel,
+  buildBothYearsDocs,
   buildRequiredDocs,
   collectionLabel,
   fiscalYearLabel,
@@ -29,8 +30,9 @@ import {
   formatYen,
   judgeNhiYear,
   judgeTiming,
-  judgeYear,
+  judgeWithYearMunicipalities,
   juminhyoTitle,
+  latestFiscalStartYear,
   mailedDocTitles,
   mainMailedTitles,
   moneyOrderNo,
@@ -52,6 +54,7 @@ import {
   type RequestMethod,
 } from "@/lib/tax-cert";
 import { MunicipalityBrowser } from "@/components/mailing/MunicipalityBrowser";
+import { WorkerAddressGuide } from "@/components/mailing/WorkerAddressGuide";
 import { effectivePrefecture, guessPrefecture, municipalityOptionLabel, PREFECTURE_LIST } from "@/lib/prefectures";
 import { dbErrorMessage } from "@/lib/errors";
 import { MailingFileAttachments } from "./MailingFileAttachments";
@@ -439,7 +442,11 @@ function JudgeTab({
 }) {
   // 請求する書類の種別（課税・納税証明書 / 転出届 / 住民票）
   const [requestKind, setRequestKind] = useState<RequestKind>("tax");
-  const [muniId, setMuniId] = useState(municipalities[0]?.id ?? "");
+  // 課税証明書は年度の1月1日時点の住所地が発行するので、最新年度・前年度で自治体を分けられる
+  const [muniId, setMuniId] = useState(municipalities[0]?.id ?? ""); // 最新年度の自治体
+  const [prevSame, setPrevSame] = useState(true); // 前年度も同じ自治体
+  const [prevMuniId, setPrevMuniId] = useState("");
+  const [bothYears, setBothYears] = useState(false); // 最新年度と前年度の両方を請求する
   const [collectionType, setCollectionType] = useState<CollectionType>("special");
   const [appDate, setAppDate] = useState(todayISO());
   const [hasNhi, setHasNhi] = useState(false);
@@ -493,35 +500,61 @@ function JudgeTab({
     : [];
 
   const selectedMuni = municipalities.find((m) => m.id === muniId) ?? null;
+  const selectedPrevMuni = prevSame ? selectedMuni : (municipalities.find((m) => m.id === prevMuniId) ?? null);
   const selectedNhiMuni = municipalities.find((m) => m.id === nhiMuniId) ?? null;
-  const canJudge = !!selectedMuni && !!appDate && (!hasNhi || !!selectedNhiMuni);
+  const canJudge = !!selectedMuni && !!selectedPrevMuni && !!appDate && (!hasNhi || !!selectedNhiMuni);
   const resetResult = () => setResult(null);
+  // 申請予定日の時点の最新年度（表示と住所の案内に使う）
+  const latestYear = latestFiscalStartYear(new Date((appDate || todayISO()) + "T00:00:00"));
+  const pickYearMuni = (year: "new" | "prev", id: string) => {
+    if (year === "new") setMuniId(id);
+    else {
+      setPrevSame(false);
+      setPrevMuniId(id);
+    }
+    resetResult();
+  };
 
   const runJudge = () => {
-    if (!selectedMuni || !canJudge) return;
+    if (!selectedMuni || !selectedPrevMuni || !canJudge) return;
     const dateObj = new Date(appDate + "T00:00:00");
-    const y = judgeYear(selectedMuni.show_asterisk, collectionType, dateObj);
-    const timing = judgeTiming(collectionType, y.yearType, dateObj);
-    const docs = buildRequiredDocs(selectedMuni, y.yearType, hasNhi, dateObj, selectedNhiMuni);
     const nhiYear = hasNhi ? judgeNhiYear(dateObj) : null;
+    // 最新年度と前年度の両方を請求するときは、年度ごとの自治体で書類を作る。
+    // それ以外は徴収区分と時期から年度を判定し、その年度の自治体を請求先にする
+    const both = bothYears;
+    const judged = judgeWithYearMunicipalities({ newMuni: selectedMuni, prevMuni: selectedPrevMuni, collectionType, appDate: dateObj });
+    const yearType = both ? "new" : judged.yearType;
+    const fiscalStartYear = both ? latestFiscalStartYear(dateObj) : judged.fiscalStartYear;
+    const muni = both ? selectedMuni : judged.muni;
+    const timing = judgeTiming(collectionType, both ? "prev" : judged.yearType, dateObj);
+    const docs = both
+      ? buildBothYearsDocs({ newMuni: selectedMuni, prevMuni: selectedPrevMuni, hasNhi, appDate: dateObj, nhiMuni: selectedNhiMuni })
+      : buildRequiredDocs(muni, judged.yearType, hasNhi, dateObj, selectedNhiMuni);
+    const yearReason = both
+      ? `最新年度（${yearWithReiwa(fiscalStartYear)}）と前年度（${yearWithReiwa(fiscalStartYear - 1)}）の両方を請求します。年度ごとに、その年の1月1日時点の住所地の自治体へ請求してください。`
+      : judged.reason;
     setResult({
       id: "",
       createdAt: "",
-      municipalityId: selectedMuni.id,
-      municipalityName: selectedMuni.name,
+      municipalityId: muni.id,
+      municipalityName: muni.name,
       collectionType,
       appDate,
       hasNhi,
       nhiMunicipalityId: hasNhi && selectedNhiMuni ? selectedNhiMuni.id : "",
       nhiMunicipalityName: hasNhi && selectedNhiMuni ? selectedNhiMuni.name : "",
       nhiFiscalStartYear: hasNhi && nhiYear ? nhiYear.fiscalStartYear : null,
-      yearType: y.yearType,
-      fiscalStartYear: y.fiscalStartYear,
-      yearReason: y.reason,
+      yearType,
+      fiscalStartYear,
+      yearReason,
       timingStatus: timing.status,
       timingLabel: timing.label,
       timingDetail: timing.detail,
       docs,
+      requestBothYears: both,
+      prevMunicipalityId: both ? selectedPrevMuni.id : undefined,
+      prevMunicipalityName: both ? selectedPrevMuni.name : undefined,
+      prevFiscalStartYear: both ? fiscalStartYear - 1 : undefined,
       personName: "",
       todoNumber: "",
       mainAlternativeNote: "",
@@ -666,15 +699,34 @@ function JudgeTab({
         <>
       <Card className="p-4">
         <p className="mb-1 text-sm font-bold">判定フォーム</p>
-        <p className="mb-3 text-xs text-muted">自治体・徴収区分・申請予定日を選んで判定してください</p>
+        <p className="mb-3 text-xs text-muted">請求先の自治体（年度ごと）・徴収区分・申請予定日を選んで判定してください</p>
         {municipalities.length === 0 ? (
           <p className="rounded-xl bg-background p-6 text-center text-sm text-muted">
             自治体マスタが未登録です。「自治体マスタ」タブで追加してください。
           </p>
         ) : (
           <div className="space-y-3">
+            {/* 氏名を選んだら、年度ごとの1月1日時点の住所と当てはまる自治体を案内する */}
+            {selectedWorker && (
+              <WorkerAddressGuide
+                workerId={selectedWorker.id}
+                currentAddress={selectedWorker.address}
+                latestFiscalStartYear={latestYear}
+                municipalities={municipalities}
+                selectedNewId={muniId}
+                selectedPrevId={prevSame ? muniId : prevMuniId}
+                onPick={pickYearMuni}
+              />
+            )}
+            <div className="flex flex-col gap-1">
+              <span className={LABEL}>請求する年度</span>
+              <div className="flex gap-2">
+                <Pill active={!bothYears} onClick={() => { setBothYears(false); resetResult(); }}>判定に任せる（1年度）</Pill>
+                <Pill active={bothYears} onClick={() => { setBothYears(true); resetResult(); }}>最新年度と前年度の両方</Pill>
+              </div>
+            </div>
             <label className="flex flex-col gap-1">
-              <span className={LABEL}>自治体</span>
+              <span className={LABEL}>最新年度（{yearWithReiwa(latestYear)}）の自治体 ＝ {latestYear}年1月1日時点の住所地</span>
               {/* 文字を打つと候補が絞られる（自治体名・県名で探せる） */}
               <Combobox
                 options={muniOptions}
@@ -683,6 +735,21 @@ function JudgeTab({
                 placeholder="自治体名・県名を入力して検索"
               />
             </label>
+            <div className="flex flex-col gap-1">
+              <span className={LABEL}>前年度（{yearWithReiwa(latestYear - 1)}）の自治体 ＝ {latestYear - 1}年1月1日時点の住所地</span>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={prevSame} onChange={(e) => { setPrevSame(e.target.checked); resetResult(); }} className="h-4 w-4" />
+                最新年度と同じ自治体
+              </label>
+              {!prevSame && (
+                <Combobox
+                  options={muniOptions}
+                  value={prevMuniId}
+                  onChange={(id) => { setPrevMuniId(id); resetResult(); }}
+                  placeholder="自治体名・県名を入力して検索"
+                />
+              )}
+            </div>
             <div className="flex flex-col gap-1">
               <span className={LABEL}>徴収区分</span>
               <div className="flex gap-2">
@@ -728,9 +795,17 @@ function JudgeTab({
             <div className="p-4">
               <ResultStamp
                 warn={result.timingStatus === "warn"}
-                title={`${result.municipalityName}：${result.yearType === "prev" ? "前年度" : "新年度"}（${fiscalYearLabel(result.fiscalStartYear)}）の証明書を取得`}
+                title={
+                  result.requestBothYears
+                    ? `最新年度（${fiscalYearLabel(result.fiscalStartYear)}）：${result.municipalityName} ／ 前年度（${fiscalYearLabel(result.prevFiscalStartYear ?? result.fiscalStartYear - 1)}）：${result.prevMunicipalityName ?? ""} の証明書を取得`
+                    : `${result.municipalityName}：${result.yearType === "prev" ? "前年度" : "新年度"}（${fiscalYearLabel(result.fiscalStartYear)}）の証明書を取得`
+                }
                 label={result.timingLabel}
                 notes={[result.timingDetail, result.yearReason]}
+              />
+              <MunicipalitySiteLinks
+                municipalities={municipalities}
+                ids={[result.municipalityId, result.prevMunicipalityId ?? ""]}
               />
               <DocList docs={result.docs.filter((d) => !d.isNhi)} />
               <label className="mt-4 flex flex-col gap-1 border-t border-dashed border-border pt-4">
@@ -751,6 +826,7 @@ function JudgeTab({
                 orderTitles={mainMailedTitles({
                   requestMethod: method,
                   yearType: result.yearType,
+                  requestBothYears: result.requestBothYears,
                   docs: result.docs,
                 })}
                 orders={moneyOrders}
@@ -1408,6 +1484,23 @@ function ExtraEditModal({
   );
 }
 
+// 判定結果に、請求先の自治体のサイトへのリンクを出す（URLが登録されている自治体だけ）
+function MunicipalitySiteLinks({ municipalities, ids }: { municipalities: Municipality[]; ids: string[] }) {
+  const targets = Array.from(new Set(ids.filter(Boolean)))
+    .map((id) => municipalities.find((m) => m.id === id))
+    .filter((m): m is Municipality => !!m && !!m.website_url);
+  if (targets.length === 0) return null;
+  return (
+    <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+      {targets.map((m) => (
+        <a key={m.id} href={m.website_url} target="_blank" rel="noopener noreferrer" className="font-bold text-brand underline">
+          {m.name}のサイトを開く
+        </a>
+      ))}
+    </p>
+  );
+}
+
 function ResultStamp({ warn, title, label, notes }: { warn: boolean; title: string; label: string; notes: string[] }) {
   return (
     <div className={`flex items-start gap-3 rounded-xl border p-4 ${warn ? "border-status-notice-fg/40 bg-status-notice-bg" : "border-status-reported-fg/30 bg-status-reported-bg"}`}>
@@ -1552,8 +1645,8 @@ function MunicipalityModal({
 }) {
   const [form, setForm] = useState<MunicipalityInput>(
     initial
-      ? { name: initial.name, prefecture: effectivePrefecture(initial), cert_name: initial.cert_name, has_income: initial.has_income, has_tax: initial.has_tax, needs_tax_payment_cert: initial.needs_tax_payment_cert, show_asterisk: initial.show_asterisk, note: initial.note, tenshutsu_self_only: initial.tenshutsu_self_only ?? false, juminhyo_self_only: initial.juminhyo_self_only ?? false }
-      : { name: "", prefecture: "", cert_name: "課税証明書", has_income: true, has_tax: true, needs_tax_payment_cert: false, show_asterisk: false, note: "", tenshutsu_self_only: false, juminhyo_self_only: false },
+      ? { name: initial.name, prefecture: effectivePrefecture(initial), website_url: initial.website_url ?? "", cert_name: initial.cert_name, has_income: initial.has_income, has_tax: initial.has_tax, needs_tax_payment_cert: initial.needs_tax_payment_cert, show_asterisk: initial.show_asterisk, note: initial.note, tenshutsu_self_only: initial.tenshutsu_self_only ?? false, juminhyo_self_only: initial.juminhyo_self_only ?? false }
+      : { name: "", prefecture: "", website_url: "", cert_name: "課税証明書", has_income: true, has_tax: true, needs_tax_payment_cert: false, show_asterisk: false, note: "", tenshutsu_self_only: false, juminhyo_self_only: false },
   );
   const set = <K extends keyof MunicipalityInput>(k: K, v: MunicipalityInput[K]) => setForm((f) => ({ ...f, [k]: v }));
   // 自治体名を打つと都道府県を推定して入れる（手で選び直せる）
@@ -1578,6 +1671,10 @@ function MunicipalityModal({
           </select>
         </label>
         <label className="flex flex-col gap-1">
+          <span className={LABEL}>自治体のサイト（郵送請求の案内ページなどのURL）</span>
+          <input type="url" inputMode="url" value={form.website_url} onChange={(e) => set("website_url", e.target.value)} placeholder="https://www.city.example.lg.jp/..." className={INPUT} />
+        </label>
+        <label className="flex flex-col gap-1">
           <span className={LABEL}>証明書名称</span>
           <input value={form.cert_name} onChange={(e) => set("cert_name", e.target.value)} placeholder="例：市民税・県民税 課税証明書" className={INPUT} />
         </label>
@@ -1593,7 +1690,7 @@ function MunicipalityModal({
           <span className={LABEL}>備考</span>
           <textarea value={form.note} onChange={(e) => set("note", e.target.value)} placeholder="窓口情報、注意事項など" className={`${INPUT} min-h-[56px] py-2`} />
         </label>
-        <Button fullWidth disabled={!canSave || busy} onClick={() => onSave({ ...form, name: form.name.trim(), cert_name: form.cert_name.trim() })}>
+        <Button fullWidth disabled={!canSave || busy} onClick={() => onSave({ ...form, name: form.name.trim(), website_url: form.website_url.trim(), cert_name: form.cert_name.trim() })}>
           {busy ? "保存中…" : "保存する"}
         </Button>
       </div>
@@ -1818,7 +1915,13 @@ function RecordsTab({
                     {r.municipalityName}
                     <span className="font-medium text-muted">（{collectionLabel(r.collectionType)}）</span>
                   </p>
-                  <p className="text-muted">{r.yearType === "prev" ? "前年度" : "新年度"}：{yearWithReiwa(r.fiscalStartYear)}</p>
+                  {r.requestBothYears ? (
+                    <p className="text-muted">
+                      両年度：新年度 {yearWithReiwa(r.fiscalStartYear)}（{r.municipalityName}）／ 前年度 {yearWithReiwa(r.prevFiscalStartYear ?? r.fiscalStartYear - 1)}（{r.prevMunicipalityName ?? ""}）
+                    </p>
+                  ) : (
+                    <p className="text-muted">{r.yearType === "prev" ? "前年度" : "新年度"}：{yearWithReiwa(r.fiscalStartYear)}</p>
+                  )}
                   <p className="mt-1">受領：{methodText(r.requestMethod, r.mailRequestDate, r.recipientType, r.agentName)}</p>
                   {r.mainAlternativeNote && <p className="mt-1 text-status-notice-fg">代替：{r.mainAlternativeNote}</p>}
                   <PhoneLogView prefix="main" r={r} />
@@ -2049,6 +2152,7 @@ function RecipientEditModal({
           orderTitles={mainMailedTitles({
             requestMethod: method,
             yearType: record.yearType,
+            requestBothYears: record.requestBothYears,
             docs: record.docs,
           })}
           orders={moneyOrders}

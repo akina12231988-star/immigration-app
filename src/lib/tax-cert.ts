@@ -5,6 +5,7 @@ export interface Municipality {
   id: string;
   name: string;
   prefecture: string; // 都道府県（0145。空は未設定 → 画面では名前から推定）
+  website_url: string; // 自治体のサイトのURL（0146。空は未登録）
   cert_name: string;
   has_income: boolean;
   has_tax: boolean;
@@ -98,6 +99,11 @@ export interface JudgmentRecord {
   nhiRecipientType: RecipientType;
   nhiAgentName: string;
   nhiSameAsMain: boolean;
+  // ---- 最新年度と前年度の両方を請求するとき（年度ごとに1月1日時点の住所地が違うことがある） ----
+  requestBothYears?: boolean; // true なら municipalityId/Name は最新年度の分、prev* が前年度の分
+  prevMunicipalityId?: string;
+  prevMunicipalityName?: string;
+  prevFiscalStartYear?: number;
   // ---- 転出届・住民票の郵送請求（requestKind が tenshutsu / juminhyo のとき） ----
   requestKind?: RequestKind;
   cityOffice?: string; // 請求先の市役所（自治体マスタの名称）
@@ -184,6 +190,31 @@ export function judgeYear(
   }
 }
 
+// 申請予定日の時点の「最新年度」（課税年度の開始年・西暦）。6月に切り替わる
+export function latestFiscalStartYear(appDate: Date): number {
+  const month = appDate.getMonth() + 1;
+  const calYear = appDate.getFullYear();
+  return month >= 6 ? calYear : calYear - 1;
+}
+
+// 課税証明書は「その年度の1月1日時点の住所地」の自治体が発行する。
+// 最新年度と前年度で住所が違うことがあるため、年度ごとの自治体を受け取って判定する。
+// 判定の年度が決まったら、その年度の自治体（＊表示の設定はその自治体のもの）を返す。
+export function judgeWithYearMunicipalities(params: {
+  newMuni: Municipality; // 最新年度の1月1日時点の住所地
+  prevMuni: Municipality; // 前年度の1月1日時点の住所地
+  collectionType: CollectionType;
+  appDate: Date;
+}): { yearType: YearType; fiscalStartYear: number; reason: string; muni: Municipality } {
+  const { newMuni, prevMuni, collectionType, appDate } = params;
+  // まず徴収区分と時期だけで年度を決め、その年度の自治体の「＊」設定で判定し直す
+  const base = judgeYear(false, collectionType, appDate);
+  const muniOfBase = base.yearType === "new" ? newMuni : prevMuni;
+  const y = judgeYear(muniOfBase.show_asterisk, collectionType, appDate);
+  const muni = y.yearType === "new" ? newMuni : prevMuni;
+  return { ...y, muni };
+}
+
 export function judgeTiming(
   collectionType: CollectionType,
   yearType: YearType,
@@ -230,22 +261,25 @@ export function buildRequiredDocs(
   hasNhi: boolean,
   appDate: Date,
   nhiMuni: Municipality | null,
+  opts: { withMuniName?: boolean } = {},
 ): JudgmentDoc[] {
   const docs: JudgmentDoc[] = [];
   const yearLabel = yearType === "prev" ? "前年度" : "新年度";
+  // 両年度を別々の自治体に請求するときは、どの自治体の分か題名に付ける
+  const prefix = opts.withMuniName ? `${muni.name}：` : "";
 
   if (muni.has_income || muni.has_tax) {
     const metaParts: string[] = [];
     if (muni.has_income) metaParts.push("所得額の記載あり");
     if (muni.has_tax) metaParts.push("課税額の記載あり");
     docs.push({
-      title: `${muni.cert_name}（${yearLabel}分）`,
+      title: `${prefix}${muni.cert_name}（${yearLabel}分）`,
       meta: metaParts.join(" / "),
       starred: muni.show_asterisk,
     });
   } else {
     docs.push({
-      title: `${muni.cert_name}（${yearLabel}分）`,
+      title: `${prefix}${muni.cert_name}（${yearLabel}分）`,
       meta: "所得額・課税額の記載設定なし（要確認）",
       starred: muni.show_asterisk,
     });
@@ -253,7 +287,7 @@ export function buildRequiredDocs(
 
   if (muni.needs_tax_payment_cert) {
     docs.push({
-      title: `納税証明書（${yearLabel}分）`,
+      title: `${prefix}納税証明書（${yearLabel}分）`,
       meta: "課税証明書とは別途取得が必要です",
       starred: muni.show_asterisk,
     });
@@ -272,6 +306,22 @@ export function buildRequiredDocs(
   }
 
   return docs;
+}
+
+// 最新年度と前年度の両方を請求するときの書類。年度ごとの自治体で作り、国保税は1回だけ
+export function buildBothYearsDocs(params: {
+  newMuni: Municipality;
+  prevMuni: Municipality;
+  hasNhi: boolean;
+  appDate: Date;
+  nhiMuni: Municipality | null;
+}): JudgmentDoc[] {
+  const { newMuni, prevMuni, hasNhi, appDate, nhiMuni } = params;
+  const withMuniName = newMuni.id !== prevMuni.id;
+  return [
+    ...buildRequiredDocs(newMuni, "new", false, appDate, null, { withMuniName }),
+    ...buildRequiredDocs(prevMuni, "prev", hasNhi, appDate, nhiMuni, { withMuniName }),
+  ];
 }
 
 // ---- 定額小為替 ----
@@ -294,6 +344,7 @@ interface MailedSource {
   juminhyoCopies?: number;
   requestMethod?: RequestMethod;
   yearType?: YearType;
+  requestBothYears?: boolean;
   hasNhi?: boolean;
   nhiSameAsMain?: boolean;
   nhiRequestMethod?: RequestMethod;
@@ -303,12 +354,14 @@ interface MailedSource {
 // 課税証明書などの欄の分（課税証明書で1枚、市県民税納税証明書で1枚）
 export function mainMailedTitles(r: MailedSource): string[] {
   if (r.requestMethod !== "mail") return [];
-  const yearLabel = r.yearType === "new" ? "新年度" : "前年度";
   const titles = (r.docs ?? []).filter((d) => !d.isNhi).map((d) => d.title);
   // 市県民税の納税証明書は自治体によっては判定結果に出ないが、
-  // 課税証明書とは別に1枚同封するので行は必ず作る
-  if (!titles.some((t) => t.includes("納税証明書"))) {
-    titles.push(`市県民税納税証明書（${yearLabel}分）`);
+  // 課税証明書とは別に1枚同封するので行は必ず作る（両年度なら年度ごとに）
+  const yearLabels = r.requestBothYears ? ["新年度", "前年度"] : [r.yearType === "new" ? "新年度" : "前年度"];
+  for (const yearLabel of yearLabels) {
+    if (!titles.some((t) => t.includes("納税証明書") && t.includes(yearLabel))) {
+      titles.push(`市県民税納税証明書（${yearLabel}分）`);
+    }
   }
   return titles;
 }

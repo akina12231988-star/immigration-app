@@ -132,3 +132,24 @@ export function municipalityOptionLabel(m: { name: string; prefecture?: string |
   const p = effectivePrefecture(m);
   return p && !m.name.includes(p) ? `${m.name}（${p}）` : m.name;
 }
+
+// 住所（例: 熊本県玉名市中1234）から、自治体マスタの中で当てはまるものを探す。
+// 市区町村名（役所・役場を除いた名前）が住所に含まれるものを、長い名前から優先して返す。無ければ null
+export function suggestMunicipalityForAddress<T extends { name: string; prefecture?: string | null }>(
+  address: string,
+  municipalities: T[],
+): T | null {
+  const addr = (address ?? "").replace(/\s/g, "");
+  if (!addr) return null;
+  let best: { m: T; len: number } | null = null;
+  for (const m of municipalities) {
+    const pref = effectivePrefecture(m);
+    const short = municipalityShortName(m.name, pref);
+    if (!short || !addr.includes(short)) continue;
+    // 住所に県名があるのに違う県なら除く
+    const addrPref = guessPrefecture(addr);
+    if (addrPref && pref && addrPref !== pref) continue;
+    if (!best || short.length > best.len) best = { m, len: short.length };
+  }
+  return best?.m ?? null;
+}
