@@ -2,10 +2,9 @@
 
 import { useMemo } from "react";
 import { NameSearchBox } from "@/components/ui/NameSearchBox";
-import { organizationSuggestions } from "@/lib/org-search";
-import { adhocOrgCandidates, type AdhocOrgRow } from "@/lib/adhoc-report-org";
+import { adhocOrgCandidates, adhocSearchSuggestions, type AdhocOrgRow } from "@/lib/adhoc-report-org";
 
-// 随時報告書の一覧を所属機関の名称で絞り込む検索ボックス。
+// 随時報告書の一覧を所属機関の名称または外国人の氏名で絞り込む検索ボックス。
 // 3つの記録（退職・契約内容変更・支援委託終了）で同じものを使う。
 export function AdhocOrgSearch({
   rows,
@@ -23,8 +22,9 @@ export function AdhocOrgSearch({
       candidates={candidates}
       value={value}
       onChange={onChange}
-      placeholder="所属機関の名称を入力して絞り込み（「BASE」「国崎」などでも探せます）"
-      suggest={organizationSuggestions}
+      placeholder="所属機関の名称または外国人の氏名で絞り込み（「BASE」「国崎」、ふりがなでも探せます）"
+      hintOf={(c) => (c.kind === "worker" ? "外国人" : "所属機関")}
+      suggest={adhocSearchSuggestions}
     />
   );
 }
