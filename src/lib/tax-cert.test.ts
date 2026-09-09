@@ -43,6 +43,7 @@ describe("isSelfOnlyMunicipality", () => {
   const muni = (patch: Partial<Municipality>): Municipality => ({
     id: "m1",
     name: "八代市",
+    prefecture: "熊本県",
     cert_name: "課税証明書",
     has_income: true,
     has_tax: true,

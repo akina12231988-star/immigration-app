@@ -151,8 +151,8 @@ describe("入力の日本語化と履歴書の生成", () => {
     expect(html).toContain("@page{size:A4 portrait;margin:0}");
     expect(html).toContain("text-size-adjust:100%"); // スマホの印刷で文字が勝手に大きくならない
     expect(html).toContain('<div class="page">');
-    // 職歴4件＋家族3人 → 詰めた表示
-    f.careers = [...f.careers, ...f.careers, ...f.careers];
+    // 職歴6件＋家族1人（合計7行） → 詰めた表示
+    f.careers = Array.from({ length: 6 }, (_, i) => ({ ...f.careers[0], id: i + 100 }));
     const many = buildResumeHtml(collectResumeData(f), "ja");
     expect(many).toContain('<div class="page dense">');
   });

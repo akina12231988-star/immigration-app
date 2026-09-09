@@ -4,6 +4,7 @@
 export interface Municipality {
   id: string;
   name: string;
+  prefecture: string; // 都道府県（0145。空は未設定 → 画面では名前から推定）
   cert_name: string;
   has_income: boolean;
   has_tax: boolean;
