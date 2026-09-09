@@ -126,3 +126,9 @@ export function groupByPrefecture<T extends { name: string; prefecture?: string 
   if (unknown) out.push({ prefecture: "", region: "都道府県が未設定", rows: unknown });
   return out;
 }
+
+// 自治体を選ぶ候補の表示名。名前に県名が無ければ「熊本市（熊本県）」のように添えて、県名でも探せるようにする
+export function municipalityOptionLabel(m: { name: string; prefecture?: string | null }): string {
+  const p = effectivePrefecture(m);
+  return p && !m.name.includes(p) ? `${m.name}（${p}）` : m.name;
+}
