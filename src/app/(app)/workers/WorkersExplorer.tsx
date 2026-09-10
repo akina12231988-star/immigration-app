@@ -18,6 +18,7 @@ import { calcSsw, todayStr, type SswCalcResult } from "@/lib/ssw/calc";
 import { toCalcHistory } from "@/lib/supabase/queries/histories";
 import { isResidenceRenewalTarget } from "@/lib/worker-alerts";
 import { followupLabels, hasFollowup } from "@/lib/worker-followups";
+import { isSupportedSsw1 } from "@/lib/support-system";
 import { WorkerRenewalCard } from "@/components/workers/WorkerRenewalCard";
 import type { Organization, WorkerWithHistories } from "@/types/db";
 
@@ -111,6 +112,8 @@ export function WorkersExplorer({
     return {
       total: rows.length,
       active: rows.filter((r) => r.calc.status === "1号在留中").length,
+      // 支援中（支援対象・在籍中・在留資格が特定技能1号。特定活動は含めない）
+      supported: rows.filter((r) => isSupportedSsw1(r.worker)).length,
       withinOneYear: rows.filter(isWithin1Year).length,
       reachedCap: rows.filter((r) => r.calc.status === "5年到達").length,
       expiry3m: rows.filter((r) => isExpiry3m(r.worker)).length,
@@ -128,6 +131,9 @@ export function WorkersExplorer({
       switch (filter.quick) {
         case "active":
           if (calc.status !== "1号在留中") return false;
+          break;
+        case "supported":
+          if (!isSupportedSsw1(worker)) return false;
           break;
         case "within1year":
           if (!(calc.counted.length > 0 && calc.remainDays > 0 && calc.remainDays <= 365))
