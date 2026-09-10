@@ -91,6 +91,8 @@ export function receiptTranslation(nationality: string): ReceiptTranslation | nu
 }
 
 // 預かり者・申請取次者（azk-receipt の固定表記）
+// 登録支援機関（当社）の情報。ここは既定値で、画面（申請準備 ＞ 申請書に貼る情報）で編集した内容は
+// app_settings（key = CUSTODIAN_SETTING_KEY）に保存され、mergeCustodianInfo で上書きされる
 export const CUSTODIAN_INFO = {
   officeName: "VUONG VAN THANH",
   registrationNo: "20登-005746",
@@ -105,7 +107,26 @@ export const CUSTODIAN_INFO = {
   registeredOn: "2021-03-24", // 登録年月日
   headOfficeAddress: "熊本県熊本市東区小山3-8-87 カームリーハウスB201", // 住所（所在地）
   koyoNo: "4301-629022-2", // 雇用保険適用事業所番号
+  representativeName: "VUONG VAN THANH", // 代表者の氏名
+  supportOfficeName: "VUONG VAN THANH", // 支援を行う事業所の名称
+  supportManagerName: "VUONG VAN THANH", // 支援責任者名
+  supportStaffName: "VUONG VAN THANH", // 支援担当者名
 } as const;
+
+export type CustodianInfo = { [K in keyof typeof CUSTODIAN_INFO]: string };
+
+// app_settings のキー（登録支援機関の情報）
+export const CUSTODIAN_SETTING_KEY = "support_org";
+
+// 保存されている上書き（一部だけでもよい）を既定値にかぶせる。空文字は「未登録」として既定値も消す
+export function mergeCustodianInfo(override: Partial<Record<keyof CustodianInfo, unknown>> | null | undefined): CustodianInfo {
+  const out: Record<string, string> = { ...CUSTODIAN_INFO };
+  for (const k of Object.keys(CUSTODIAN_INFO) as (keyof CustodianInfo)[]) {
+    const v = override?.[k];
+    if (typeof v === "string") out[k] = v;
+  }
+  return out as CustodianInfo;
+}
 
 // ---- azk-receipt バックアップJSONの取込 ----
 

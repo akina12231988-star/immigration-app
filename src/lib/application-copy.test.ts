@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildApplicationCopyGroups, copyGroupText, desiredResidenceStatus, totalStaff, wageForApplication, ymdParts } from "./application-copy";
 import { emptyOrganizationIntake } from "./organization-intake";
+import { CUSTODIAN_INFO } from "./custody";
 import { contractPeriodEnd, formatYmdJa } from "./support-plan-dates";
 import type { WorkerWage } from "@/types/db";
 import type { WorkHistory } from "@/types/ssw";
@@ -40,6 +41,18 @@ describe("雇用契約期間と日付の部品", () => {
   });
 });
 
+describe("登録支援機関の上書き", () => {
+  it("custodian を渡すとその内容で出る", () => {
+    const groups = buildApplicationCopyGroups({
+      worker, org: null, intake: null, wages: [], histories: [], planDates: {},
+      custodian: { ...CUSTODIAN_INFO, supportStaffName: "秋吉 伽恋", registeredOn: "2021-03-24" },
+    });
+    const find = (label: string) => groups.flatMap((g) => g.items).find((i) => i.label === label);
+    expect(find("5 (11)支援担当者名")?.value).toBe("秋吉 伽恋");
+    expect(find("5 (10)支援責任者名")?.value).toBe("VUONG VAN THANH");
+  });
+});
+
 describe("申請書に貼る項目", () => {
   const intake = { ...emptyOrganizationIntake(), posting_weekly_hours: "40", posting_monthly_hours: "173時間20分", posting_annual_hours: "2080", koyo_no: "4301-625629-8", rep_name: "藤本　未和", staff_japanese: "8", staff_ssw1: "2", support_fee: "10,000（税別）", pay_method: "口座振込", health_insurance: "社会保険", rosai_covered: "はい", koyo_covered: "はい" };
   const histories: WorkHistory[] = [
@@ -55,6 +68,10 @@ describe("申請書に貼る項目", () => {
     expect(find("2 生年月日")).toMatchObject({ value: "1995年4月2日", parts: ["1995", "4", "2"] });
     expect(find("11 在留期間")?.value).toBe("1年");
     expect(find("13 希望する在留資格")?.value).toBe("特定技能1号");
+    // 登録支援機関の欄は既定値で出て、その場で編集できる（app_settings に保存）
+    expect(find("5 (11)支援担当者名")).toMatchObject({ value: "VUONG VAN THANH", edit: { target: "custodian", column: "supportStaffName" } });
+    expect(find("5 (7)登録年月日")).toMatchObject({ value: "2021年3月24日", editValue: "2021-03-24", edit: { target: "custodian", column: "registeredOn", kind: "date" } });
+    expect(find("5 (12)対応可能言語")?.edit).toBeUndefined();
     expect(find("2 (1)雇用契約期間")).toMatchObject({ value: "2024年5月15日 から 2026年5月14日 まで", parts: ["2024", "5", "15", "2026", "5", "14"] });
     expect(find("2 (3)所定労働時間（週平均）")?.value).toBe("40");
     expect(find("2 (3)所定労働時間（月平均）")?.value).toBe("173.3");
