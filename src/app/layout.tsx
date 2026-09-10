@@ -27,6 +27,9 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
+  // スマホは端末の幅で等倍表示（拡大された状態で開かないように明示する）
+  width: "device-width",
+  initialScale: 1,
   themeColor: "#16244d",
   // セーフエリア（iPhoneのホームインジケーター等）の余白を有効にし、
   // 下部タブがOSのジェスチャー領域と重ならないようにする

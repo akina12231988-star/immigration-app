@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef, useState } from "react";
 import { Search } from "lucide-react";
 import {
   SUPPORT_SCOPES,
@@ -66,6 +67,46 @@ export const INITIAL_FILTER: WorkerFilterState = {
 const SELECT_CLASS =
   "min-h-[40px] flex-1 rounded-xl border border-border bg-surface px-2.5 text-xs font-bold focus:border-brand focus:outline-none";
 
+// 検索欄。スマホの日本語入力（IME）で変換中に親の絞り込み・一覧の描画が走ると、
+// 変換が途中で切れてローマ字（英字）だけが残ることがあるため、
+// 変換中（compositionstart〜compositionend）は親に値を渡さず、確定してから絞り込む
+function KeywordInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [draft, setDraft] = useState(value);
+  const [prevValue, setPrevValue] = useState(value);
+  const composing = useRef(false);
+  // 外から値が変わったとき（クリアなど）は追従する。
+  // 変換中は親に値を渡さないので、変換中に親の値が変わることはない
+  if (value !== prevValue) {
+    setPrevValue(value);
+    if (value !== draft) setDraft(value);
+  }
+  return (
+    <input
+      type="text"
+      value={draft}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        if (!composing.current) onChange(e.target.value);
+      }}
+      onCompositionStart={() => {
+        composing.current = true;
+      }}
+      onCompositionEnd={(e) => {
+        composing.current = false;
+        onChange(e.currentTarget.value);
+      }}
+      autoComplete="off"
+      autoCorrect="off"
+      autoCapitalize="off"
+      spellCheck={false}
+      enterKeyHint="search"
+      placeholder="氏名・フリガナ・国籍・在留カード番号で検索"
+      aria-label="外国人を検索"
+      className="w-full rounded-xl border border-border bg-surface py-3 pl-10 pr-3 text-sm focus:border-brand focus:outline-none"
+    />
+  );
+}
+
 // 検索＋状態・支援対象・所属機関フィルター＋並び替え（拡張要件⑤）
 export function WorkerFilters({
   filter,
@@ -88,12 +129,7 @@ export function WorkerFilters({
           size={18}
           className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
         />
-        <input
-          value={filter.keyword}
-          onChange={(e) => set("keyword", e.target.value)}
-          placeholder="氏名・フリガナ・国籍・在留カード番号で検索"
-          className="w-full rounded-xl border border-border bg-surface py-3 pl-10 pr-3 text-sm focus:border-brand focus:outline-none"
-        />
+        <KeywordInput value={filter.keyword} onChange={(v) => set("keyword", v)} />
       </div>
 
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
