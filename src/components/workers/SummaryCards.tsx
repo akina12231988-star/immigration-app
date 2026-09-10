@@ -1,10 +1,11 @@
-import { Users, BadgeCheck, TimerReset, Flag, CalendarClock, BellRing, LogOut } from "lucide-react";
+import { Users, BadgeCheck, HeartHandshake, TimerReset, Flag, CalendarClock, BellRing, LogOut } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import type { WorkerQuickFilter } from "@/components/workers/WorkerFilters";
 
 export interface WorkerSummary {
   total: number; // 登録人数
   active: number; // 1号在留中（在籍中）
+  supported: number; // 支援中（支援対象・在籍中・在留資格が特定技能1号）
   withinOneYear: number; // 1号で残り1年以内
   reachedCap: number; // 5年到達
   expiry3m: number; // 在留期限まで4ヶ月以内
@@ -26,6 +27,13 @@ const CARDS: {
     label: "1号で在籍中",
     icon: BadgeCheck,
     accent: "text-status-applied-fg bg-status-applied-bg",
+  },
+  {
+    key: "supported",
+    quick: "supported",
+    label: "支援中の特定技能1号（在籍中）",
+    icon: HeartHandshake,
+    accent: "text-status-approved-fg bg-status-approved-bg",
   },
   {
     key: "withinOneYear",

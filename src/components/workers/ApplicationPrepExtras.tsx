@@ -767,6 +767,12 @@ export function SavedPlanDatesSection({
                   }}
                   className="min-h-[32px] rounded-lg border border-border bg-surface px-2 text-xs tabular-nums disabled:opacity-60"
                 />
+                {/* 申請書に貼るための日付のコピー（2026年10月1日 の形） */}
+                {dates[f.key] ? (
+                  <CopyButton value={formatYmdJa(dates[f.key])} label={`${f.label}（${formatYmdJa(dates[f.key])}）をコピー`} size={13} />
+                ) : (
+                  <span className="w-[21px]" aria-hidden />
+                )}
               </label>
               {/* 雇用開始日の下に、申請書に書く雇用契約期間（2年間契約。終了は2年後の前日） */}
               {f.key === "es" && dates.es && (

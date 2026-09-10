@@ -22,6 +22,7 @@ export const SORT_LABELS: Record<WorkerSortKey, string> = {
 export type WorkerQuickFilter =
   | "all"
   | "active" // 1号在留中（在籍中）
+  | "supported" // 支援中（支援対象・在籍中・在留資格が特定技能1号）
   | "within1year" // 1号で残り1年以内
   | "reached" // 5年到達
   | "expiry3m" // 在留期限まで4ヶ月以内

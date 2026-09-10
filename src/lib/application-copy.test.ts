@@ -58,6 +58,12 @@ describe("申請書に貼る項目", () => {
     expect(find("2 (1)雇用契約期間")).toMatchObject({ value: "2024年5月15日 から 2026年5月14日 まで", parts: ["2024", "5", "15", "2026", "5", "14"] });
     expect(find("2 (3)所定労働時間（週平均）")?.value).toBe("40");
     expect(find("2 (3)所定労働時間（月平均）")?.value).toBe("173.3");
+    // 登録済みの値を編集するときは、表示値ではなく保存されている値を入力欄に入れる
+    expect(find("2 生年月日")?.editValue).toBe("1995-04-02");
+    expect(find("2 (3)所定労働時間（月平均）")?.editValue).toBe("173時間20分");
+    expect(find("健康保険及び厚生年金保険の適用事業所")).toMatchObject({ value: "有", editValue: "社会保険" });
+    expect(find("3 (10)所在地")).toMatchObject({ value: org.address, editValue: "" });
+    expect(find("3 氏名")?.editValue).toBeUndefined();
     expect(find("2 (4)月額報酬")?.value).toBe("182070");
     expect(find("2 (4)基本給の時間換算額")?.value).toBe(String(Math.round((182070 * 12) / 2080)));
     expect(find("3 (8)常勤職員数")?.value).toBe("10");
