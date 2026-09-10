@@ -139,6 +139,7 @@ import {
   type PrepDocStatus,
   type PrepStatusExtra,
   type GensenKazeiCheck,
+  isNenkinAlwaysRequired,
 } from "@/lib/application-prep";
 import {
   appTypeOfPrepSituation,
@@ -1547,6 +1548,11 @@ export function ApplicationPrepChecklist({
               />
               国民年金に加入
             </label>
+            {isNenkinAlwaysRequired(meta.app_content) && (
+              <span className="text-[11px] font-bold text-seal">
+                この準備の内容（特定技能の更新・変更・2号）では、加入のチェックにかかわらず年金記録が必ず必要です
+              </span>
+            )}
           </div>
         )}
       </div>
