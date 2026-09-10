@@ -90,6 +90,15 @@ export function ApplicationCopyPanel({
       // 登録支援機関の情報は全員共通（app_settings に保存）
       const next = { ...mergeCustodianInfo(loaded?.custodian), [edit.column]: v };
       await setAppSetting(supabase, CUSTODIAN_SETTING_KEY, next);
+    } else if (edit.target === "council") {
+      // 協力確認書の提出（事業所の所在地 / 住居地）の index 行目の提出先・提出日を書き換える
+      if (!orgId || !loaded?.org) throw new Error("所属機関が未設定です");
+      const intake = normalizeOrganizationIntake(loaded.org.intake);
+      const key = edit.list === "office" ? "council_office_submissions" : "council_residence_submissions";
+      const rows = intake[key].map((r) => ({ ...r }));
+      while (rows.length <= edit.index) rows.push({ to: "", on: "" });
+      rows[edit.index] = { ...rows[edit.index], [edit.field]: v };
+      await updateOrganization(supabase, orgId, { intake: { ...intake, [key]: rows } });
     } else if (edit.target === "org") {
       if (!orgId) throw new Error("所属機関が未設定です");
       await updateOrganization(supabase, orgId, { [edit.column]: v });
@@ -170,7 +179,7 @@ export function ApplicationCopyList({
       {open && (
         <div className="mt-2 space-y-2">
           <p className="text-[11px] leading-relaxed text-muted">
-            申請書（申請人等作成用 1〜3・所属機関等作成用 1・2・4）の項目順に並んでいます。右のコピーで1項目ずつ、
+            申請書（申請人等作成用 1〜3・所属機関等作成用 1〜4）の項目順に並んでいます。右のコピーで1項目ずつ、
             年・月・日のように欄が分かれているものは部品ごとにもコピーできます。
             {canEdit && onSave
               ? "「未登録」の項目はその場で入力、登録済みの項目は鉛筆マークから編集して保存できます（外国人詳細・所属機関にも反映されます。所属機関等作成用 4 の登録支援機関の情報は全員共通の設定として保存されます）。"

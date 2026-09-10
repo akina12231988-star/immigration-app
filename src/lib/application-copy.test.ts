@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildApplicationCopyGroups, copyGroupText, desiredResidenceStatus, totalStaff, wageForApplication, ymdParts } from "./application-copy";
-import { emptyOrganizationIntake } from "./organization-intake";
+import { emptyOrganizationIntake, rosaiMeasureText } from "./organization-intake";
 import { CUSTODIAN_INFO } from "./custody";
 import { contractPeriodEnd, formatYmdJa } from "./support-plan-dates";
 import type { WorkerWage } from "@/types/db";
@@ -38,6 +38,43 @@ describe("雇用契約期間と日付の部品", () => {
     expect(formatYmdJa("2026-11-29")).toBe("2026年11月29日");
     expect(ymdParts("1995-04-02")).toEqual(["1995", "4", "2"]);
     expect(ymdParts("")).toBeUndefined();
+  });
+});
+
+describe("所属機関等作成用 3（労災保険・協力確認書）", () => {
+  it("労災の適用事業所なら措置は「労災保険加入」、協力確認書は登録行ごとに提出年月日と提出先を出す", () => {
+    const intake = {
+      ...emptyOrganizationIntake(),
+      rosai_covered: "はい",
+      council_office_submissions: [{ to: "八代市", on: "2026-04-01" }, { to: "", on: "" }],
+      council_residence_submissions: [{ to: "熊本市", on: "2026-04-02" }, { to: "宇城市", on: "" }],
+    };
+    const groups = buildApplicationCopyGroups({ worker, org, intake, wages: [], histories: [], planDates: {} });
+    const g = groups.find((x) => x.title.startsWith("所属機関等作成用 3"))!;
+    expect(groups.map((x) => x.title.replace(/（.*$/, ""))).toEqual([
+      "申請人等作成用 1", "申請人等作成用 2", "申請人等作成用 3", "所属機関等作成用 1", "所属機関等作成用 2", "所属機関等作成用 3", "所属機関等作成用 4",
+    ]);
+    expect(g.items[0]).toMatchObject({ label: "(29)労災保険加入等の措置の内容", value: "労災保険加入", editValue: "", edit: { target: "intake", column: "rosai_measure" } });
+    expect(g.items[1]).toMatchObject({ label: "協力確認書（外国人に活動させる事業所） 提出年月日", value: "2026年4月1日", parts: ["2026", "4", "1"], editValue: "2026-04-01", edit: { target: "council", list: "office", index: 0, field: "on", kind: "date" } });
+    expect(g.items[2]).toMatchObject({ label: "協力確認書（外国人に活動させる事業所） 提出先の市町村名", value: "八代市", edit: { target: "council", list: "office", index: 0, field: "to" } });
+    // 住居地は2件（提出日だけ空の行も出す）
+    expect(g.items.slice(3).map((i) => i.label)).toEqual([
+      "協力確認書（外国人の住居地） 提出年月日（1件目）",
+      "協力確認書（外国人の住居地） 提出先の市町村名（1件目）",
+      "協力確認書（外国人の住居地） 提出年月日（2件目）",
+      "協力確認書（外国人の住居地） 提出先の市町村名（2件目）",
+    ]);
+    expect(g.items[5]).toMatchObject({ value: "", edit: { target: "council", list: "residence", index: 1, field: "on" } });
+    expect(g.items[6].value).toBe("宇城市");
+    expect(rosaiMeasureText({ rosai_covered: "いいえ", rosai_measure: "" })).toBe("");
+    expect(rosaiMeasureText({ rosai_covered: "いいえ", rosai_measure: "民間の労災保険に加入" })).toBe("民間の労災保険に加入");
+  });
+
+  it("登録が無くても1行目を入力できる形で出し、所属機関が無ければ編集できない", () => {
+    const groups = buildApplicationCopyGroups({ worker, org: null, intake: null, wages: [], histories: [], planDates: {} });
+    const g = groups.find((x) => x.title.startsWith("所属機関等作成用 3"))!;
+    expect(g.items).toHaveLength(5);
+    expect(g.items.every((i) => i.value === "" && i.edit === undefined)).toBe(true);
   });
 });
 

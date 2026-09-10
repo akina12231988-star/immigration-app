@@ -150,6 +150,7 @@ export function emptyOrganizationIntake(): OrganizationIntake {
     wage_parity_reason: "",
     rosai_covered: "",
     rosai_no: "",
+    rosai_measure: "",
     koyo_covered: "",
     koyo_no: "",
     lodgings: [emptyLodging("lodging-1")],
@@ -191,6 +192,14 @@ export function isOrgStaff(
 // 保存済みの intake（欠けたキーや古い形があり得る）を完全な形に補完する
 // 会社に渡す外国人資料のやりとり方法（紙で渡すか、mailで送るか）
 export const HANDOVER_METHODS = ["紙で資料を渡す", "mailで資料を送る"] as const;
+
+// 労災保険加入等の措置の内容（申請書 所属機関等作成用 3 (29)）。
+// 入力があればそれ、無ければ労災の適用事業所なら「労災保険加入」、それ以外は空（未登録）
+export function rosaiMeasureText(intake: Pick<OrganizationIntake, "rosai_covered" | "rosai_measure"> | null): string {
+  if (!intake) return "";
+  if (intake.rosai_measure) return intake.rosai_measure;
+  return intake.rosai_covered === "はい" ? "労災保険加入" : "";
+}
 
 export function normalizeOrganizationIntake(raw: unknown): OrganizationIntake {
   const base = emptyOrganizationIntake();

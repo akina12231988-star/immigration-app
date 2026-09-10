@@ -28,6 +28,7 @@ import {
   serializeAttachItems,
   type PrepChecklistMeta,
   type PrepDocSources,
+  NENKIN_ALWAYS_APP_CONTENTS,
 } from "./application-prep";
 
 
@@ -75,6 +76,18 @@ describe("isRequired", () => {
   it("年金記録は国民年金加入時のみ必要", () => {
     expect(isRequired(def("nenkin"), meta({ app_type: "変更" }))).toBe(false);
     expect(isRequired(def("nenkin"), meta({ app_type: "変更", has_nenkin: true }))).toBe(true);
+  });
+
+  it("特定技能の更新・変更・2号への変更では、加入のチェックが無くても年金記録を必ず求める", () => {
+    expect(NENKIN_ALWAYS_APP_CONTENTS).toEqual(["特定技能更新の準備中", "特定技能申請準備中", "特定技能2号申請準備中"]);
+    expect(isRequired(def("nenkin"), meta({ app_type: "更新", app_content: "特定技能更新の準備中" }))).toBe(true);
+    expect(isRequired(def("nenkin"), meta({ app_type: "変更", app_content: "特定技能申請準備中" }))).toBe(true);
+    expect(isRequired(def("nenkin"), meta({ app_type: "変更", app_content: "特定技能2号申請準備中" }))).toBe(true);
+    // 特定活動・認定・特定活動ビザの更新はこれまでどおり
+    expect(isRequired(def("nenkin"), meta({ app_type: "更新", app_content: TOKUTEI_KATSUDO_RENEWAL_CONTENT }))).toBe(false);
+    expect(isRequired(def("nenkin"), meta({ app_type: "特定活動", app_content: "特定活動で申請準備中", has_nenkin: true }))).toBe(false);
+    // 保険証は加入のチェックどおり
+    expect(isRequired(def("hokensho"), meta({ app_type: "更新", app_content: "特定技能更新の準備中" }))).toBe(false);
   });
 });
 

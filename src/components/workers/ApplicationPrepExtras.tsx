@@ -60,61 +60,29 @@ const INPUT =
 
 // ---- 申請準備TODOのステータス（名前の下に常時表示） ----
 
-export function PrepTodoStatusField({
+// ステータスの選択（TODO一覧と同じ選択肢。経過が「〜チェック中」のときは確認ステータスも出す）
+function TodoStatusSelects({
   todo,
-  options,
+  kindOptions,
+  checkOptions,
   canEdit,
-  onError,
-  onChanged,
+  onSave,
 }: {
-  todo: TodoRow | null; // 表示中のTODO番号に対応する申請準備のTODO（無ければ null）
-  options: TodoStatusOption[]; // すべての選択肢（申請準備＋チェック）
+  todo: TodoRow;
+  kindOptions: TodoStatusOption[];
+  checkOptions: TodoStatusOption[];
   canEdit: boolean;
-  onError: (m: string) => void;
-  onChanged: () => void;
+  onSave: (patch: Partial<Pick<TodoRow, "status" | "check_status">>) => void;
 }) {
-  const kindOptions = options.filter((o) => o.kind === "申請準備");
-  const checkOptions = options.filter((o) => o.kind === TODO_CHECK_KIND);
-
-  if (!todo) {
-    return (
-      <div className="mb-3 rounded-xl border border-border bg-background px-3 py-2.5 text-[11px] text-muted">
-        このTODO番号の申請準備のTODOがまだありません（申請準備のページを開くと自動で作成されます）。
-      </div>
-    );
-  }
-
-  const stage = stageOfStatus(todo.status, kindOptions);
-  const save = (patch: Partial<Pick<TodoRow, "status" | "check_status">>) => {
-    updateTodo(createClient(), todo.id, patch)
-      .then(onChanged)
-      .catch((err) => onError(dbErrorMessage(err, "0102_todos.sql", "ステータスの保存に失敗しました")));
-  };
-
   return (
-    <div className="mb-3 rounded-xl border border-brand/40 bg-brand/5 px-3 py-2.5">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[11px] font-bold text-muted">
-          申請準備TODO（No.{todo.todo_no}）のステータス
-        </span>
-        <span
-          className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-            stage === "完了"
-              ? "bg-status-approved-bg text-status-approved-fg"
-              : stage === "進行中"
-                ? "bg-status-applied-bg text-status-applied-fg"
-                : "bg-background text-muted ring-1 ring-border"
-          }`}
-        >
-          {stage}
-        </span>
-      </div>
+    <>
       <div className="mt-1.5 flex flex-wrap items-center gap-2">
         <select
           value={todo.status}
           disabled={!canEdit}
-          onChange={(e) => save({ status: e.target.value })}
+          onChange={(e) => onSave({ status: e.target.value })}
           className={`${INPUT} min-w-0 flex-1`}
+          aria-label={`TODO ${todo.todo_no} のステータス`}
         >
           {/* 選択肢から消された（または自由入力の）値もそのまま残す */}
           {todo.status && !kindOptions.some((o) => o.name === todo.status) && (
@@ -142,7 +110,7 @@ export function PrepTodoStatusField({
           <select
             value={todo.check_status ?? ""}
             disabled={!canEdit}
-            onChange={(e) => save({ check_status: e.target.value })}
+            onChange={(e) => onSave({ check_status: e.target.value })}
             className={`${INPUT} min-w-0 flex-1`}
           >
             <option value="">未選択</option>
@@ -165,6 +133,177 @@ export function PrepTodoStatusField({
           </select>
         </div>
       )}
+    </>
+  );
+}
+
+function StageBadge({ stage }: { stage: string }) {
+  return (
+    <span
+      className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+        stage === "完了"
+          ? "bg-status-approved-bg text-status-approved-fg"
+          : stage === "進行中"
+            ? "bg-status-applied-bg text-status-applied-fg"
+            : "bg-background text-muted ring-1 ring-border"
+      }`}
+    >
+      {stage}
+    </span>
+  );
+}
+
+export function PrepTodoStatusField({
+  todo,
+  otherTodos = [],
+  listTodoNo = "",
+  options,
+  canEdit,
+  onError,
+  onChanged,
+  onUseTodoNo,
+  onRenameTodo,
+  onCreate,
+}: {
+  todo: TodoRow | null; // 表示中のTODO番号に対応する申請準備のTODO（無ければ null）
+  otherTodos?: TodoRow[]; // この外国人のほかの申請準備TODO（番号が食い違っているときの候補）
+  listTodoNo?: string; // 表示中の準備リストのTODO番号
+  options: TodoStatusOption[]; // すべての選択肢（申請準備＋チェック）
+  canEdit: boolean;
+  onError: (m: string) => void;
+  onChanged: () => void;
+  onUseTodoNo?: (no: string) => void; // 準備リストの番号をそのTODOの番号にそろえる（TODO側の番号に統一）
+  onRenameTodo?: (todo: TodoRow) => Promise<void>; // そのTODOの番号を準備リストの番号に変える（リスト側の番号に統一）
+  onCreate?: () => Promise<void>; // この番号の申請準備TODOを作る
+}) {
+  const kindOptions = options.filter((o) => o.kind === "申請準備");
+  const checkOptions = options.filter((o) => o.kind === TODO_CHECK_KIND);
+  const [creating, setCreating] = useState(false);
+  const [unifying, setUnifying] = useState<string | null>(null);
+
+  const saveFor = (t: TodoRow) => (patch: Partial<Pick<TodoRow, "status" | "check_status">>) => {
+    updateTodo(createClient(), t.id, patch)
+      .then(onChanged)
+      .catch((err) => onError(dbErrorMessage(err, "0102_todos.sql", "ステータスの保存に失敗しました")));
+  };
+
+  if (!todo) {
+    // 番号が食い違っているとき: この外国人のほかの申請準備TODO（進行中を先に）のステータスをここで変えられるようにし、
+    // 準備リストの番号をそろえるボタンも出す
+    const others = [...otherTodos].sort((a, b) => {
+      const sa = stageOfStatus(a.status, kindOptions) === "完了" ? 1 : 0;
+      const sb = stageOfStatus(b.status, kindOptions) === "完了" ? 1 : 0;
+      return sa - sb;
+    });
+    const create = async () => {
+      if (!onCreate || creating) return;
+      setCreating(true);
+      try {
+        await onCreate();
+      } catch (err) {
+        onError(dbErrorMessage(err, "0102_todos.sql", "申請準備TODOの作成に失敗しました"));
+      } finally {
+        setCreating(false);
+      }
+    };
+    const renameTodo = async (t: TodoRow) => {
+      if (!onRenameTodo || unifying) return;
+      setUnifying(t.id);
+      try {
+        await onRenameTodo(t);
+      } catch (err) {
+        onError(dbErrorMessage(err, "0102_todos.sql", "TODO番号の変更に失敗しました"));
+      } finally {
+        setUnifying(null);
+      }
+    };
+    return (
+      <div className="mb-3 rounded-xl border border-seal/40 bg-seal/5 px-3 py-2.5 text-[11px]">
+        <p className="font-bold text-seal">
+          この準備リストの番号{listTodoNo ? `（${listTodoNo}）` : ""}に対応する申請準備のTODOがTODO一覧にありません。
+        </p>
+        {others.length > 0 ? (
+          <div className="mt-1.5 space-y-2">
+            <p className="text-muted">
+              この外国人の申請準備TODOは次の番号で登録されています。番号が食い違っているので、どちらの番号に統一するか選んでください
+              （統一すると、ステータス・あっせんなどが常にこの画面とTODO一覧で同じものを指します）。
+              ステータス（印鑑済みなど）は統一前でもここで変えられます。
+            </p>
+            {others.map((t) => (
+              <div key={t.id} className="rounded-lg border border-border bg-surface px-2.5 py-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-bold">TODO-{t.todo_no.replace(/^TODO-?/i, "")}</span>
+                  <StageBadge stage={stageOfStatus(t.status, kindOptions)} />
+                  {t.title && <span className="text-muted">{t.title}</span>}
+                </div>
+                {canEdit && listTodoNo && listTodoNo !== t.todo_no && (
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    <span className="text-muted">統一する番号：</span>
+                    {onUseTodoNo && (
+                      <button
+                        type="button"
+                        disabled={unifying != null}
+                        onClick={() => onUseTodoNo(t.todo_no)}
+                        className="rounded-lg border border-brand bg-surface px-2 py-1 text-[10px] font-bold text-brand disabled:opacity-50"
+                      >
+                        {t.todo_no} に統一（準備リストの番号を変える）
+                      </button>
+                    )}
+                    {onRenameTodo && (
+                      <button
+                        type="button"
+                        disabled={unifying != null}
+                        onClick={() => void renameTodo(t)}
+                        className="rounded-lg border border-brand bg-surface px-2 py-1 text-[10px] font-bold text-brand disabled:opacity-50"
+                      >
+                        {unifying === t.id ? "変更中…" : `${listTodoNo} に統一（TODO一覧の番号を変える）`}
+                      </button>
+                    )}
+                  </div>
+                )}
+                <TodoStatusSelects
+                  todo={t}
+                  kindOptions={kindOptions}
+                  checkOptions={checkOptions}
+                  canEdit={canEdit}
+                  onSave={saveFor(t)}
+                />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-1 text-muted">この外国人の申請準備TODOはまだありません。</p>
+        )}
+        {canEdit && onCreate && listTodoNo && (
+          <button
+            type="button"
+            onClick={() => void create()}
+            disabled={creating}
+            className="mt-2 rounded-lg bg-brand px-3 py-1.5 text-[11px] font-bold text-brand-foreground disabled:opacity-50"
+          >
+            {creating ? "作成中…" : `${listTodoNo} の申請準備TODOをTODO一覧に作る`}
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  const stage = stageOfStatus(todo.status, kindOptions);
+  return (
+    <div className="mb-3 rounded-xl border border-brand/40 bg-brand/5 px-3 py-2.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[11px] font-bold text-muted">
+          申請準備TODO（No.{todo.todo_no}）のステータス（進捗。印鑑済み・署名済みなど。TODO一覧と同じ）
+        </span>
+        <StageBadge stage={stage} />
+      </div>
+      <TodoStatusSelects
+        todo={todo}
+        kindOptions={kindOptions}
+        checkOptions={checkOptions}
+        canEdit={canEdit}
+        onSave={saveFor(todo)}
+      />
     </div>
   );
 }
@@ -919,6 +1058,7 @@ interface PrepJobFlow {
 export function PrepAssenSection({
   workerId,
   todo,
+  mismatch = false,
   todoNo = "",
   todoTitle = "申請準備",
   canEdit,
@@ -927,6 +1067,7 @@ export function PrepAssenSection({
 }: {
   workerId: string;
   todo: TodoRow | null; // あっせんの有無はTODOに保存して /todos と共有する
+  mismatch?: boolean; // true: 準備リストの番号と違う番号のTODO（この外国人の申請準備TODO）に保存している
   todoNo?: string; // 表示中の準備リストのTODO番号（TODOがまだ無いとき、この番号で作る）
   todoTitle?: string; // TODOを作るときの題名（準備の内容から）
   canEdit: boolean;
@@ -1023,6 +1164,10 @@ export function PrepAssenSection({
         ) : !todo ? (
           <span className="text-[11px] text-muted">
             申請準備のTODOがまだ無いので、選ぶと{todoNo ? `番号「${todoNo}」で` : "自動採番で"}TODOを作って保存します（TODOと共有）。
+          </span>
+        ) : mismatch ? (
+          <span className="text-[11px] font-bold text-seal">
+            準備リストの番号（{todoNo || "未設定"}）と違う TODO-{todo.todo_no.replace(/^TODO-?/i, "")} に保存しています。上の欄で番号を統一してください。
           </span>
         ) : null}
       </div>
