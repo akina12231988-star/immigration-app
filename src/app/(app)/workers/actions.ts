@@ -1,6 +1,7 @@
 "use server";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { workerDocFileName } from "@/lib/worker-doc-name";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { dbErrorMessage } from "@/lib/errors";
 
@@ -187,29 +188,13 @@ export async function deleteWorkerDoc(docId: string): Promise<{ ok: true } | Err
   return { ok: true };
 }
 
-// ダウンロード時のファイル名: 氏名_書類名_所属機関名.拡張子
-// （雇用契約書・雇用条件書は会社ごとに保管するため会社名まで入れる）。
-// ファイル名に使えない文字は全角・中黒に置き換える
-function workerDocFileName(
-  workerName: string,
-  kind: string,
-  orgName: string,
-  original: string,
-): string {
-  const ext = original.includes(".") ? (original.split(".").pop() ?? "") : "";
-  const safe = (v: string) => v.replace(/[\\/:*?"<>|]/g, "・").trim();
-  const base = [safe(workerName), safe(kind), safe(orgName)].filter(Boolean).join("_");
-  const name = base || safe(original) || "document";
-  return ext ? `${name}.${ext.toLowerCase()}` : name;
-}
-
 export interface WorkerDocView {
   id: string;
   kind: WorkerDocKind;
   url: string;
-  downloadUrl?: string; // ダウンロード用（Content-Disposition: attachment の署名付きURL）
+  downloadUrl?: string; // ダウンロード用の予備（署名付きURLの download 指定。日本語名が壊れるため通常は使わない）
   fileName?: string;
-  downloadName?: string; // ダウンロード時の名前（氏名_書類名_所属機関名）
+  downloadName?: string; // ダウンロード時の名前（氏名_書類名.拡張子）
   mimeType?: string;
   organizationId?: string | null; // 雇用契約書・雇用条件書の所属機関（0081）
   effectiveOn?: string | null; // いつ時点の書類か（過去の在籍期間への登録用・0100）
@@ -246,35 +231,17 @@ export async function listWorkerDocs(workerId: string): Promise<WorkerDocView[]>
   if (rows.length > 0) {
     const paths = rows.map((r) => r.storage_path);
 
-    // ダウンロードしたときのファイル名を「氏名_書類名_所属機関名」にするため、
-    // 外国人の氏名と、書類に紐づく所属機関の名前を引く
+    // ダウンロードしたときのファイル名を「氏名_書類名」にするため、外国人の氏名を引く
     const { data: w } = await admin
       .from("workers")
       .select("name")
       .eq("id", workerId)
       .maybeSingle();
     const workerName = (w as { name: string } | null)?.name ?? "";
-    const orgIds = [...new Set(rows.map((r) => r.organization_id).filter(Boolean))] as string[];
-    const orgNames = new Map<string, string>();
-    if (orgIds.length > 0) {
-      const { data: orgs } = await admin
-        .from("organizations")
-        .select("id, name")
-        .in("id", orgIds);
-      for (const o of (orgs as { id: string; name: string }[] | null) ?? []) {
-        orgNames.set(o.id, o.name);
-      }
-    }
 
-    // 表示用（そのまま開く）と、ファイル保存用（名前を付けて保存）の署名付きURLを作る
-    const downloadNames = rows.map((r) =>
-      workerDocFileName(
-        workerName,
-        r.kind,
-        r.organization_id ? (orgNames.get(r.organization_id) ?? "") : "",
-        r.file_name,
-      ),
-    );
+    // 表示用（そのまま開く）と、予備のファイル保存用の署名付きURLを作る
+    // （保存時の名前付けは画面側で行う。downloadFileAs を参照）
+    const downloadNames = rows.map((r) => workerDocFileName(workerName, r.kind, r.file_name));
     const [{ data: signed }, signedDl] = await Promise.all([
       admin.storage.from(BUCKET).createSignedUrls(paths, TTL),
       Promise.all(
