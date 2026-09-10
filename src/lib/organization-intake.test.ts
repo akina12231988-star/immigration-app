@@ -15,6 +15,7 @@ import {
   ownedMonthlyRent,
   parseAmount,
   parseHoursMinutes,
+  weeklyHoursText,
   perResidentCost,
   reverseLodgingCost,
   suggestedUsefulYears,
@@ -287,5 +288,17 @@ describe("flexDocsAlert", () => {
   it("開始日が無い・読めないときは出さない", () => {
     expect(flexDocsAlert("", "2026-08-30")).toBe(null);
     expect(flexDocsAlert("未定", "2026-08-30")).toBe(null);
+  });
+});
+
+describe("weeklyHoursText（週平均所定労働時間の自動計算）", () => {
+  it("登録があればそれ、無ければ年間 ÷ 52、年間も無ければ月平均×12 ÷ 52", () => {
+    const base = emptyOrganizationIntake();
+    expect(weeklyHoursText({ ...base, posting_weekly_hours: "40" })).toEqual({ value: "40", auto: false });
+    expect(weeklyHoursText({ ...base, posting_annual_hours: "2080" })).toEqual({ value: "40", auto: true });
+    expect(weeklyHoursText({ ...base, posting_annual_hours: "2,000時間" })).toEqual({ value: "38.5", auto: true });
+    expect(weeklyHoursText({ ...base, posting_monthly_hours: "173時間20分" })).toEqual({ value: "40", auto: true });
+    expect(weeklyHoursText(base)).toEqual({ value: "", auto: false });
+    expect(weeklyHoursText(null)).toEqual({ value: "", auto: false });
   });
 });

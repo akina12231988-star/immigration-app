@@ -25,7 +25,7 @@ import {
 import { listOrganizationFiles } from "@/lib/supabase/queries/organization-files";
 import { getOrgFilePreviewUrl } from "@/app/(app)/organizations/actions";
 import { orgYearlyFileGroups, type OrgYearlyFileGroup } from "@/lib/org-yearly-files";
-import { normalizeOrganizationIntake } from "@/lib/organization-intake";
+import { normalizeOrganizationIntake, weeklyHoursText } from "@/lib/organization-intake";
 import { listWorkerWages } from "@/lib/supabase/queries/wages";
 import { sortWages, wageStartedOnLabel } from "@/lib/wage";
 import {
@@ -513,7 +513,8 @@ export function PrepOrgInfo({ orgId }: { orgId: string | null }) {
         {intake.rep_kana && `（${intake.rep_kana}）`}
       </p>
       <p>
-        所定労働時間: 週平均 {intake.posting_weekly_hours || "未登録"}時間 ／ 月平均{" "}
+        所定労働時間: 週平均 {weeklyHoursText(intake).value || "未登録"}時間
+        {weeklyHoursText(intake).auto && <span className="text-muted">（年間 ÷ 52 で自動計算）</span>} ／ 月平均{" "}
         {intake.posting_monthly_hours || "未登録"}時間
         <span className="text-muted">（申請書の所定労働時間に使います。所属機関の求人の欄で直せます）</span>
       </p>
