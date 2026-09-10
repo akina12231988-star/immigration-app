@@ -13,6 +13,7 @@ import { CUSTODIAN_INFO } from "@/lib/custody";
 import { RESUME_LANG_JA } from "@/lib/resume-tool/i18n";
 import { resumeLangForNationality } from "@/lib/resume-tool/share";
 import { contractPeriodEnd, formatYmdJa } from "@/lib/support-plan-dates";
+import { JLPT_LEVELS, normalizeCertExams, type WorkerCertExam } from "@/lib/cert-exam";
 
 // 未登録の項目をその場で入力するときの保存先（外国人・所属機関・所属機関の登録内容（intake））
 export type CopyEdit =
@@ -66,7 +67,23 @@ export type CopyWorker = Pick<
   | "residence_expiry_date"
   | "residence_card_no"
   | "employment_start_on"
->;
+> &
+  // 合格証（日本語・専門外の受験情報）と良好に修了した技能実習2号（0110・0114・0115。古いデータでは無いことがある）
+  Partial<
+    Pick<
+      Worker,
+      | "specialty_grade"
+      | "jisshu2_shokushu"
+      | "jisshu2_sagyo"
+      | "jisshu2_proof"
+      | "cert_nihongo_name"
+      | "cert_nihongo_location"
+      | "cert_nihongo_level"
+      | "cert_senmongai_name"
+      | "cert_senmongai_location"
+      | "cert_exams"
+    >
+  >;
 
 export interface ApplicationCopyInput {
   worker: CopyWorker;
@@ -185,10 +202,70 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
     },
   ];
 
+  // 合格証の受験情報（1件目は workers の列、2件目以降は cert_exams）
+  const exams: WorkerCertExam[] = normalizeCertExams(w.cert_exams);
+  const moreExams = (kind: WorkerCertExam["kind"], numbering: string): CopyItem[] =>
+    exams
+      .filter((e) => e.kind === kind && (e.name || e.location || e.level))
+      .flatMap((e, i) => [
+        { label: `${numbering} (1)試験名（${i + 2}件目）`, value: e.name, note: "外国人詳細 ＞ 合格証の受験情報（2件目以降）" },
+        { label: `${numbering} (2)受験地（${i + 2}件目）`, value: e.location },
+        ...(kind === "nihongo" ? [{ label: `${numbering} レベル（${i + 2}件目）`, value: e.level }] : []),
+      ]);
+
   const applicant2: CopyItem[] = [
     { label: "17 特定技能所属機関 (1)氏名又は名称", value: org?.name ?? "", edit: org ? og("name") : undefined },
     { label: "17 (2)住所（所在地）", value: org?.address ?? "", edit: org ? og("address") : undefined },
     { label: "17 電話番号", value: org?.contact ?? "", edit: org ? og("contact") : undefined },
+    // 18 技能水準（専門外の合格証 ＝ 技能試験）
+    {
+      label: "18 技能水準 (1)試験名",
+      value: w.cert_senmongai_name ?? "",
+      note: "外国人詳細 ＞ 専門外の合格証の受験情報（技能試験）。技能実習の専門級で代える人は下の専門級を使う",
+      edit: wk("cert_senmongai_name"),
+    },
+    {
+      label: "18 (2)受験地",
+      value: w.cert_senmongai_location ?? "",
+      note: "日本国内、または海外の国名",
+      edit: wk("cert_senmongai_location"),
+    },
+    ...moreExams("senmongai", "18"),
+    {
+      label: "18 専門級の合格名（技能実習）",
+      value: w.specialty_grade ?? "",
+      note: "外国人詳細 ＞ 専門級の合格名（技能実習の専門級で技能試験を免除する人）",
+      edit: wk("specialty_grade"),
+    },
+    // 19 日本語能力（日本語の合格証）
+    {
+      label: "19 日本語能力 (1)試験名",
+      value: w.cert_nihongo_name ?? "",
+      note: "外国人詳細 ＞ 日本語の合格証の受験情報",
+      edit: wk("cert_nihongo_name"),
+    },
+    {
+      label: "19 (2)受験地",
+      value: w.cert_nihongo_location ?? "",
+      note: "日本国内、または海外の国名",
+      edit: wk("cert_nihongo_location"),
+    },
+    { label: "19 レベル", value: w.cert_nihongo_level ?? "", edit: wk("cert_nihongo_level", JLPT_LEVELS) },
+    ...moreExams("nihongo", "19"),
+    // 20 良好に修了した技能実習2号（該当者のみ）
+    {
+      label: "20 技能実習2号良好修了 (1)職種名",
+      value: w.jisshu2_shokushu ?? "",
+      note: "技能実習2号を良好に修了した人だけ（外国人詳細 ＞ 良好に修了した技能実習2号）",
+      edit: wk("jisshu2_shokushu"),
+    },
+    { label: "20 (2)作業名", value: w.jisshu2_sagyo ?? "", edit: wk("jisshu2_sagyo") },
+    {
+      label: "20 (3)良好修了の証明方法",
+      value: w.jisshu2_proof ?? "",
+      note: "実技試験の合格（3級の技能検定等）か、実習状況に関する書面による証明（技能評価調書）",
+      edit: wk("jisshu2_proof", ["実技試験の合格", "書面による証明"]),
+    },
     {
       label: "21 申請時における特定技能1号での通算在留期間",
       value: ssw.usedDays > 0 ? `${ssw.used.y}年${ssw.used.m}月` : "",
