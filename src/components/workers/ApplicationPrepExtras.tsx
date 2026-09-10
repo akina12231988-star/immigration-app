@@ -7,6 +7,8 @@ import { Combobox } from "@/components/ui/Combobox";
 import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
 import { ensurePrepTodo, updateTodo, type TodoRow } from "@/lib/supabase/queries/todos";
+import { getPensionRecord } from "@/lib/supabase/queries/pension";
+import { pensionOverview, warekiMonthLabel, type PensionOverview } from "@/lib/pension";
 import {
   TODO_CHECK_KIND,
   TODO_STAGES,
@@ -304,6 +306,62 @@ export function PrepTodoStatusField({
         canEdit={canEdit}
         onSave={saveFor(todo)}
       />
+    </div>
+  );
+}
+
+// ---- 年金記録の確認結果（年金記録ページで控えた記号の判定を、申請準備の書類カードに出す） ----
+
+export function PrepPensionSummary({ workerId }: { workerId: string }) {
+  const [overview, setOverview] = useState<PensionOverview | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getPensionRecord(createClient(), workerId)
+      .then((r) => {
+        if (!cancelled) setOverview(pensionOverview(r));
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [workerId]);
+
+  if (failed || !overview) return null;
+  if (!overview.entered) {
+    return (
+      <p className="ml-[18px] mt-1 text-[11px] text-muted">
+        年金記録の記号はまだ控えていません。上のリンクから記録票の記号を入れると、ここに確認結果（未納の有無）が出ます。
+      </p>
+    );
+  }
+  const tone =
+    overview.judgment === "pay"
+      ? "bg-seal/10 text-seal"
+      : overview.judgment === "ok"
+        ? "bg-status-approved-bg text-status-approved-fg"
+        : "bg-status-notice-bg text-status-notice-fg";
+  return (
+    <div className={`ml-[18px] mt-1.5 rounded-lg px-2 py-1.5 text-[11px] leading-relaxed ${tone}`}>
+      <p className="font-bold">
+        {overview.judgment === "ok" ? "✓ " : "⚠ "}
+        年金記録の確認結果: {overview.alert}
+      </p>
+      {overview.total > 0 && (
+        <p>
+          確認する期間: {overview.periodLabel}
+          {overview.applyMonth && `（申請月 ${warekiMonthLabel(overview.applyMonth)}）`}・入力済み {overview.filled} / {overview.total} か月
+          {overview.filled < overview.total && "（未入力の月があります）"}
+        </p>
+      )}
+      {overview.payMonths.length > 0 && (
+        <p>
+          未納の月（{overview.payMonths.length}か月）: {overview.payMonths.map((m) => warekiMonthLabel(m)).join("・")}
+        </p>
+      )}
     </div>
   );
 }

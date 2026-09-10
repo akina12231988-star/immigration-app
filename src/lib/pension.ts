@@ -276,3 +276,41 @@ export function summarizeMonths(
     payMonths,
   };
 }
+
+// ---- 申請準備の「年金記録」カードに出す確認結果のまとめ ----
+
+export interface PensionOverview {
+  entered: boolean; // 記号が1つでも入っているか
+  judgment: PensionJudgment;
+  alert: string; // 判定の文言（問題ありません など）
+  applyMonth: string; // 申請月（"YYYY-MM"。未設定なら ""）
+  periodLabel: string; // 確認する期間（令和6年8月 〜 令和8年7月）
+  filled: number;
+  total: number;
+  payMonths: string[]; // 未納の月（"YYYY-MM"）
+}
+
+// 保存されている年金記録（申請月・月ごとの記号・古い記号）から、判定と入力状況をまとめる。
+// 月ごとの記号があればそれで判定し、無ければ古い記録の記号で判定する（年金記録ページと同じ）
+export function pensionOverview(record: {
+  apply_month: string;
+  months: PensionMonthCodes;
+  symbols: string;
+}): PensionOverview {
+  const months = record.apply_month ? pensionMonths(record.apply_month) : [];
+  const summary = summarizeMonths(record.months, months);
+  const monthCodes = months.map((m) => record.months[m]).filter((c): c is string => !!c);
+  const codes = monthCodes.length ? monthCodes : parsePensionSymbols(record.symbols);
+  const result = judgePension(codes);
+  return {
+    entered: codes.length > 0,
+    judgment: result.judgment,
+    alert: result.alert,
+    applyMonth: record.apply_month,
+    periodLabel:
+      months.length > 0 ? `${warekiMonthLabel(months[0])} 〜 ${warekiMonthLabel(months[months.length - 1])}` : "",
+    filled: summary.filled,
+    total: summary.total,
+    payMonths: summary.payMonths,
+  };
+}
