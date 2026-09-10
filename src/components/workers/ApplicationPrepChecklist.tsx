@@ -49,6 +49,7 @@ import {
   listTodoStatusOptions,
   renameTodoNo,
   type TodoRow,
+  ensurePrepTodo,
 } from "@/lib/supabase/queries/todos";
 import { normalizeTodoKey, type TodoStatusOption } from "@/lib/todo";
 import { listJudgmentRecordsByWorker } from "@/lib/supabase/queries/tax-office";
@@ -394,6 +395,10 @@ export function ApplicationPrepChecklist({
   const currentTodo = selectedKey
     ? (workerTodos.find((t) => normalizeTodoKey(t.todo_no) === selectedKey) ?? null)
     : (workerTodos[0] ?? null);
+  // 番号が食い違っているとき（この外国人の申請準備TODOはあるが番号が違う）は、
+  // あっせんなどTODOに保存する項目はそのTODOに保存する（ensurePrepTodo も同じTODOを返すため、
+  // ここで同じものを指しておかないと「保存したのに未設定のまま」になる）
+  const fallbackTodo = currentTodo ? null : (workerTodos[0] ?? null);
 
 
   // 申請準備の所属機関（転職先）が入っていればそちら、無ければ現在の所属機関
@@ -1075,10 +1080,40 @@ export function ApplicationPrepChecklist({
       {/* 申請準備TODOのステータス（本人の名前の下に常時表示・編集可） */}
       <PrepTodoStatusField
         todo={currentTodo}
+        otherTodos={workerTodos.filter((t) => t.id !== currentTodo?.id)}
+        listTodoNo={current?.todo_no ?? ""}
         options={todoOptions}
         canEdit={canEdit}
         onError={setError}
         onChanged={loadWorkerTodos}
+        onUseTodoNo={(no) => void assignTodoNo(no)}
+        onRenameTodo={
+          current?.todo_no
+            ? async (t) => {
+                // TODO一覧の番号を準備リストの番号に変える（外国人の申請TODO番号も同じなら合わせる）
+                const to = current.todo_no;
+                await renameTodoNo(createClient(), "申請準備", workerId, t.todo_no, to);
+                if (renewalWorker?.residence_renewal_todo === t.todo_no) {
+                  await updateWorker(createClient(), workerId, { residence_renewal_todo: to });
+                  setRenewalWorker((w) => (w ? { ...w, residence_renewal_todo: to } : w));
+                }
+                loadWorkerTodos();
+              }
+            : undefined
+        }
+        onCreate={
+          current?.todo_no
+            ? async () => {
+                // この番号の申請準備TODOをTODO一覧に作る（あれば何もしない）
+                await ensurePrepTodo(createClient(), {
+                  worker_id: workerId,
+                  title: meta.app_content ? prepSituationLabel(meta.app_content) : "申請準備",
+                  todo_no: current.todo_no,
+                });
+                loadWorkerTodos();
+              }
+            : undefined
+        }
       />
 
       {/* 現在の住所（未登録なら入力して保存できる） */}
@@ -1707,7 +1742,8 @@ export function ApplicationPrepChecklist({
         {/* あっせんの有無（申請準備のTODOと共有） */}
         <PrepAssenSection
           workerId={workerId}
-          todo={currentTodo}
+          todo={currentTodo ?? fallbackTodo}
+          mismatch={!currentTodo && fallbackTodo != null}
           todoNo={current.todo_no}
           todoTitle={meta.app_content ? prepSituationLabel(meta.app_content) : "申請準備"}
           canEdit={canEdit}
