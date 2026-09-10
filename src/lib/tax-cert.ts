@@ -24,8 +24,8 @@ export type RequestMethod = "window" | "agent_window" | "mail";
 export type RecipientType = "self" | "agent";
 export type PaymentStatus = "" | "unpaid" | "paid" | "receipt_sent";
 
-// 請求の種別（課税・納税証明書 / 転出届 / 住民票）。既存の記録は undefined = tax
-export type RequestKind = "tax" | "tenshutsu" | "juminhyo";
+// 請求の種別（課税・納税証明書 / 転出届 / 住民票 / 納税証明書その3（税務署））。既存の記録は undefined = tax
+export type RequestKind = "tax" | "tenshutsu" | "juminhyo" | "nozei3";
 export type ApplicantType = "self" | "agent"; // 本人申請 / 代理人
 export type JuminhyoMethod = "mail" | "window"; // 住民票の発行方法（郵送請求 / 窓口発行）
 
@@ -131,6 +131,13 @@ export interface JudgmentRecord {
   nhiPhoneNeeded?: string;
   nhiUnpaidAmount?: string;
   nhiPaymentStatus?: PaymentStatus;
+  // ---- 納税証明書その3の税務署への郵送請求（requestKind が nozei3 のとき） ----
+  taxOfficeId?: string; // 投函先の税務署（税務署マスタのID）
+  taxOfficeName?: string; // 投函先の税務署名（記録時点）
+  trackingNumber?: string; // 投函した郵便の追跡番号
+  mailingProgress?: "preparing" | "waiting" | "done"; // 進捗（準備中 / 税務署からの郵送待ち / 完了）
+  receivedDate?: string; // 税務署から証明書が届いた日
+  mailingNote?: string; // メモ
   [key: string]: unknown;
 }
 
@@ -381,6 +388,8 @@ export function mailedDocTitles(r: MailedSource): string[] {
   // 転出届は手数料がかからないため、定額小為替は自動では出さない
   // （同封した場合は手で1枚追加できる）
   if (r.requestKind === "tenshutsu") return [];
+  // 納税証明書その3の手数料は収入印紙（定額小為替ではない）
+  if (r.requestKind === "nozei3") return [];
   if (r.requestKind === "juminhyo") {
     if (r.juminhyoMethod === "window") return [];
     const title = juminhyoTitle(!!r.juminhyoMyNumber);
@@ -441,6 +450,7 @@ export function moneyOrderTotal(orders: MoneyOrder[] = []): number {
 export function requestKindLabel(kind?: RequestKind): string {
   if (kind === "tenshutsu") return "転出届";
   if (kind === "juminhyo") return "住民票";
+  if (kind === "nozei3") return "納税証明書その3（税務署）";
   return "課税・納税証明書";
 }
 

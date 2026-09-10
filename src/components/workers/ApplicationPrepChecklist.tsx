@@ -51,6 +51,9 @@ import {
   type TodoRow,
 } from "@/lib/supabase/queries/todos";
 import { normalizeTodoKey, type TodoStatusOption } from "@/lib/todo";
+import { listJudgmentRecordsByWorker } from "@/lib/supabase/queries/tax-office";
+import type { JudgmentRecord } from "@/lib/tax-cert";
+import { MailingRecordSummary } from "@/components/mailing/MailingRecordSummary";
 import {
   JointApplicationField,
   PrepAddressField,
@@ -226,6 +229,8 @@ export function ApplicationPrepChecklist({
   >({});
   // 在留カード・パスポートの「預かった」で表示する預かり番号（保管ボックスと連動）
   const [custodyNo, setCustodyNo] = useState<number | null>(null);
+  // 郵送請求ツールの記録（この外国人分）。「郵送請求中」の欄に投函先・投函日・追跡番号・進捗を出す
+  const [mailingRecords, setMailingRecords] = useState<JudgmentRecord[]>([]);
 
   // 在留カード・パスポートの充足判定は移行先（在留カード・指定書／パスポートの記録）を見る。
   // この画面からも添付できるよう、添付済みのファイルも一覧で持つ
@@ -299,6 +304,9 @@ export function ApplicationPrepChecklist({
     listWorkerAddresses(createClient(), workerId).then(setAddresses).catch(() => undefined);
     listActiveCustodyNoByWorker(createClient())
       .then((m) => setCustodyNo(m.get(workerId) ?? null))
+      .catch(() => undefined);
+    listJudgmentRecordsByWorker(createClient(), workerId)
+      .then(setMailingRecords)
       .catch(() => undefined);
     void loadDocs();
     loadMovedDocs();
@@ -1575,6 +1583,8 @@ export function ApplicationPrepChecklist({
                       : null
                   }
                   custodyNo={custodyNo}
+                  mailingRecords={mailingRecords}
+                  todoNo={current?.todo_no ?? ""}
                   healthOn={healthOn}
                   plannedAppOn={current?.planned_app_on ?? null}
                   onSaveHealthOn={saveHealthOn}
@@ -1795,6 +1805,8 @@ function DocRow({
   ds,
   gensenKazei = null,
   custodyNo,
+  mailingRecords = [],
+  todoNo = "",
   healthOn = null,
   plannedAppOn = null,
   onSaveHealthOn,
@@ -1811,6 +1823,8 @@ function DocRow({
   item: PrepDocStatus;
   meta: PrepChecklistMeta;
   workerId: string;
+  mailingRecords?: JudgmentRecord[]; // 郵送請求ツールの記録（この外国人分）
+  todoNo?: string; // 表示中のTODO番号（記録のTODO番号と突き合わせる）
   files: OnboardingDocumentRow[];
   // 他のセクションで管理している添付（在留カード・パスポート）。この行では表示のみ
   sharedFiles?: { id: string; name: string; url: string | null }[];
@@ -2108,6 +2122,9 @@ function DocRow({
               extra={extra}
               ds={ds}
               custodyNo={custodyNo}
+              mailingRecords={mailingRecords}
+              todoNo={todoNo}
+              docId={def.id}
               canEdit={canEdit}
               onPatch={onPatchStatus}
             />
@@ -2183,12 +2200,18 @@ function StatusExtraField({
   extra,
   ds,
   custodyNo,
+  mailingRecords = [],
+  todoNo = "",
+  docId = "",
   canEdit,
   onPatch,
 }: {
   extra: PrepStatusExtra;
   ds: PrepDocStatusInput;
   custodyNo: number | null;
+  mailingRecords?: JudgmentRecord[];
+  todoNo?: string;
+  docId?: string; // 書類ID（源泉徴収票の行では納税証明書その3の記録を優先して出す）
   canEdit: boolean;
   onPatch: (patch: Partial<PrepDocStatusInput>, save?: boolean) => void;
 }) {
@@ -2353,13 +2376,7 @@ function StatusExtraField({
       );
     case "mailing":
       return (
-        <Link
-          href="/mailing"
-          className="inline-flex items-center gap-1 text-[11px] font-bold text-brand hover:underline"
-        >
-          <ExternalLink size={11} />
-          郵送請求ツールで請求状況を確認する
-        </Link>
+        <MailingStatusField records={mailingRecords} todoNo={todoNo} docId={docId} />
       );
     case "tracking":
       return (
@@ -2467,5 +2484,50 @@ function IconButton({
     >
       {children}
     </button>
+  );
+}
+
+// 郵送請求ツールの記録をこの欄に出す（投函先・投函日・追跡番号・進捗）。
+// 表示中のTODO番号と同じ番号の記録を優先し、無ければこの外国人の記録を新しい順に出す。
+// 源泉徴収票の行では納税証明書その3（税務署）の記録を、課税・納税証明書の行では市区町村への請求を優先する
+function MailingStatusField({
+  records,
+  todoNo,
+  docId,
+}: {
+  records: JudgmentRecord[];
+  todoNo: string;
+  docId: string;
+}) {
+  const key = normalizeTodoKey(todoNo);
+  const wantNozei3 = docId === "gensen";
+  const byKind = records.filter((r) => (r.requestKind === "nozei3") === wantNozei3);
+  const sameTodo = key ? byKind.filter((r) => normalizeTodoKey(r.todoNumber ?? "") === key) : [];
+  const shown = (sameTodo.length > 0 ? sameTodo : byKind).slice(0, 3);
+  // 記録一覧をその人・そのTODOで絞った状態で開く
+  const q = sameTodo.length > 0 ? todoNo : (records[0]?.personName ?? "");
+  return (
+    <div className="space-y-1">
+      {shown.length === 0 ? (
+        <p className="text-[11px] text-muted">
+          {wantNozei3
+            ? "納税証明書その3の郵送請求はまだ記録されていません。郵送請求ツールで税務署への投函を記録すると、ここに投函日・追跡番号・進捗が出ます。"
+            : "郵送請求はまだ記録されていません。郵送請求ツールで記録すると、ここに請求先・投函日が出ます。"}
+        </p>
+      ) : (
+        shown.map((r) => (
+          <div key={r.id} className="rounded-lg bg-surface/60 px-2 py-1">
+            <MailingRecordSummary record={r} />
+          </div>
+        ))
+      )}
+      <Link
+        href={q ? `/mailing?q=${encodeURIComponent(q)}` : "/mailing"}
+        className="inline-flex items-center gap-1 text-[11px] font-bold text-brand hover:underline"
+      >
+        <ExternalLink size={11} />
+        郵送請求ツールで請求状況を確認する
+      </Link>
+    </div>
   );
 }
