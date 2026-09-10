@@ -71,6 +71,46 @@ describe("申請書に貼る項目", () => {
     expect(copyGroupText(groups[1])).toContain("17 特定技能所属機関 (1)氏名又は名称: 藤本　未和");
   });
 
+  it("合格証（日本語・専門外・2件目以降）と良好に修了した技能実習2号を申請人等作成用2に出す", () => {
+    const groups = buildApplicationCopyGroups({
+      worker: {
+        ...worker,
+        cert_senmongai_name: "外国人食品産業技能評価機構",
+        cert_senmongai_location: "日本国内",
+        cert_nihongo_name: "日本語能力試験　JLPT",
+        cert_nihongo_location: "ベトナム",
+        cert_nihongo_level: "N4",
+        cert_exams: [
+          { id: "a1", kind: "nihongo", name: "国際交流基金日本語基礎テスト", location: "日本国内", level: "", doc_key: "cert_nihongo_a1" },
+          { id: "b2", kind: "senmongai", name: "", location: "", level: "", doc_key: "cert_senmongai_b2" },
+        ],
+        specialty_grade: "農業（耕種）専門級",
+        jisshu2_shokushu: "耕種農業",
+        jisshu2_sagyo: "施設園芸",
+        jisshu2_proof: "実技試験の合格",
+      },
+      org, intake, wages: [], histories: [], planDates: {}, today: "2025-05-01",
+    });
+    const g = groups.find((x) => x.title.startsWith("申請人等作成用 2"))!;
+    const find = (label: string) => g.items.find((i) => i.label === label);
+    expect(find("18 技能水準 (1)試験名")?.value).toBe("外国人食品産業技能評価機構");
+    expect(find("18 (2)受験地")?.value).toBe("日本国内");
+    expect(find("18 専門級の合格名（技能実習）")?.value).toBe("農業（耕種）専門級");
+    expect(find("19 日本語能力 (1)試験名")?.value).toBe("日本語能力試験　JLPT");
+    expect(find("19 (2)受験地")?.value).toBe("ベトナム");
+    expect(find("19 レベル")).toMatchObject({ value: "N4", edit: { target: "worker", column: "cert_nihongo_level" } });
+    // 2件目以降は件数付きで出す。空の受験情報は出さない
+    expect(find("19 (1)試験名（2件目）")?.value).toBe("国際交流基金日本語基礎テスト");
+    expect(find("18 (1)試験名（2件目）")).toBeUndefined();
+    expect(find("20 技能実習2号良好修了 (1)職種名")?.value).toBe("耕種農業");
+    expect(find("20 (2)作業名")?.value).toBe("施設園芸");
+    expect(find("20 (3)良好修了の証明方法")?.value).toBe("実技試験の合格");
+    // 未登録ならその場で入力できる編集先が付く
+    const empty = buildApplicationCopyGroups({ worker, org, intake, wages: [], histories: [], planDates: {} });
+    const item = empty.flatMap((x) => x.items).find((i) => i.label === "20 (2)作業名");
+    expect(item).toMatchObject({ value: "", edit: { target: "worker", column: "jisshu2_sagyo" } });
+  });
+
   it("未登録は空。時給なら月額に換算する", () => {
     const groups = buildApplicationCopyGroups({ worker: { ...worker, passport_no: "" }, org: null, intake: null, wages: [], histories: [], planDates: {} });
     const find = (label: string) => groups.flatMap((g) => g.items).find((i) => i.label === label);
