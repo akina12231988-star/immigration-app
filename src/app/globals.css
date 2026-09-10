@@ -92,6 +92,18 @@ body {
   font-family: var(--font-sans);
 }
 
+/* スマホ（iOS Safari）は文字サイズが16px未満の入力欄にフォーカスすると画面全体を自動で拡大し、
+   フォーカスを外しても拡大が戻らない（「毎回拡大された画面になる」の原因）。
+   タッチ端末では入力欄・選択欄の文字を16pxにして、この自動拡大を起こさせない。
+   画面の見た目の文字サイズはそのまま（入力欄の中の文字だけ少し大きくなる） */
+@media (hover: none) and (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
 /* 帳票の印刷（領収書・督促状・労働者名簿・預り証）。
    画面用の背景色が用紙に出ないよう、印刷では白地に戻す。
    帳票そのものは 210mm × 297mm で原寸のまま出す */
