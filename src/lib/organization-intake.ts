@@ -321,6 +321,21 @@ export function formatHoursDecimal(n: number): string {
   return String(Math.round(n * 10) / 10);
 }
 
+// 週平均所定労働時間（申請書 所属機関等作成用 1 (3)）。
+// 登録があればそれ、無ければ年間所定労働時間（無ければ月平均×12）÷ 52 で自動計算する（例: 2080 ÷ 52 = 40）。
+// 戻り値の auto が true なら自動計算した値
+export function weeklyHoursText(
+  intake: Pick<OrganizationIntake, "posting_weekly_hours" | "posting_monthly_hours" | "posting_annual_hours"> | null,
+): { value: string; auto: boolean } {
+  if (!intake) return { value: "", auto: false };
+  if (intake.posting_weekly_hours.trim()) return { value: intake.posting_weekly_hours.trim(), auto: false };
+  const annualRaw = Number.parseFloat(intake.posting_annual_hours.replace(/[^\d.]/g, ""));
+  const monthly = parseHoursMinutes(intake.posting_monthly_hours);
+  const annual = Number.isFinite(annualRaw) && annualRaw > 0 ? annualRaw : monthly != null ? monthly * 12 : 0;
+  if (!annual) return { value: "", auto: false };
+  return { value: formatHoursDecimal(annual / 52), auto: true };
+}
+
 // 木造住宅の法定耐用年数（寮はほとんど木造のため、目安の計算に使う。直すこともできる）
 export const WOODEN_USEFUL_YEARS = 22;
 

@@ -39,6 +39,7 @@ import {
   reverseLodgingCost,
   suggestedUsefulYears,
   WOODEN_USEFUL_YEARS,
+  weeklyHoursText,
 } from "@/lib/organization-intake";
 import { orgYearlyFileGroups, orgYearlyKind } from "@/lib/org-yearly-files";
 import { SUPPORT_CONTRACT_STATUSES } from "@/types/db";
@@ -1139,7 +1140,12 @@ function IntakeSection({
             value={intake.posting_weekly_hours}
             onChange={(v) => setIntake({ posting_weekly_hours: v })}
             placeholder="例: 40"
-            hint="申請書の所定労働時間（週平均）に使います。"
+            hint={(() => {
+              const w = weeklyHoursText(intake);
+              return w.auto
+                ? `申請書の所定労働時間（週平均）に使います。空のままなら年間 ÷ 52 ＝ ${w.value}時間 として自動で出します。`
+                : "申請書の所定労働時間（週平均）に使います。空なら年間所定労働時間 ÷ 52 で自動計算します。";
+            })()}
             locked={locks.intake("posting_weekly_hours")}
           />
           {/* 「173時間20分」の形で入れても小数（173.3）に自動で直して計算に使う */}

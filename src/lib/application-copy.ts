@@ -7,7 +7,7 @@ import type { Organization, OrganizationIntake, Worker, WorkerWage } from "@/typ
 import type { WorkHistory } from "@/types/ssw";
 import { calcSsw } from "@/lib/ssw/calc";
 import { currentWage, hourlyFromMonthly, monthlyFromHourly } from "@/lib/wage";
-import { formatHoursDecimal, parseHoursMinutes, rosaiMeasureText } from "@/lib/organization-intake";
+import { formatHoursDecimal, parseHoursMinutes, rosaiMeasureText, weeklyHoursText } from "@/lib/organization-intake";
 import { effectiveResidencePeriod } from "@/lib/residence-card";
 import { CUSTODIAN_INFO, type CustodianInfo } from "@/lib/custody";
 import { RESUME_LANG_JA } from "@/lib/resume-tool/i18n";
@@ -205,7 +205,7 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
   const es = planDates.es || w.employment_start_on || "";
   const ee = es ? contractPeriodEnd(es) : "";
   const wage = wageForApplication(wages, intake, w.employment_start_on);
-  const weekly = intake?.posting_weekly_hours ?? "";
+  const weekly = weeklyHoursText(intake);
   const monthlyHours = parseHoursMinutes(intake?.posting_monthly_hours ?? "");
   const lang = resumeLangForNationality(w.nationality);
   const c: CustodianInfo = input.custodian ?? { ...CUSTODIAN_INFO };
@@ -336,9 +336,12 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
     { label: "2 (2)業務区分", value: org?.business_category ?? "", edit: org ? og("business_category") : undefined },
     {
       label: "2 (3)所定労働時間（週平均）",
-      value: weekly,
-      note: "所属機関 ＞ 週平均所定労働時間数",
+      value: weekly.value,
+      note: weekly.auto
+        ? "所属機関の週平均所定労働時間数が未登録のため、年間所定労働時間 ÷ 52 で自動計算（登録すればその値を出します）"
+        : "所属機関 ＞ 週平均所定労働時間数",
       edit: org ? it("posting_weekly_hours") : undefined,
+      editValue: intake?.posting_weekly_hours ?? "",
     },
     {
       label: "2 (3)所定労働時間（月平均）",
