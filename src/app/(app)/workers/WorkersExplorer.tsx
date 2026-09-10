@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, FileSearch, Printer, Upload, UserPlus } from "lucide-react";
 import { Card } from "@/components/ui/Card";
@@ -124,8 +124,11 @@ export function WorkersExplorer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, underReview]);
 
+  // 検索文字は useDeferredValue で受ける。一覧（数百件の絞り込みと描画）の更新を
+  // 入力より後回しにして、スマホでも文字入力・日本語変換が引っかからないようにする
+  const deferredKeyword = useDeferredValue(filter.keyword);
   const filtered = useMemo(() => {
-    const kw = filter.keyword.trim().toLowerCase();
+    const kw = deferredKeyword.trim().toLowerCase();
     const result = rows.filter(({ worker, calc }) => {
       // サマリーカードのクイック絞り込み
       switch (filter.quick) {
@@ -213,7 +216,7 @@ export function WorkersExplorer({
     }
     return result;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, filter, underReview]);
+  }, [rows, filter, deferredKeyword, underReview]);
 
   // ページ分割: 表示中のページ分だけ描画してデータが重くならないようにする
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
