@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { ExternalLink, FileText, Printer } from "lucide-react";
+import { ExternalLink, FileText, Printer, StickyNote } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { CopyButton } from "@/components/ui/CopyButton";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Combobox } from "@/components/ui/Combobox";
@@ -41,6 +42,11 @@ const NOZEI3_RECEIVED_KIND = "届いた納税証明書";
 
 // 委任状（様式のまま印刷）
 export const NOZEI3_ININJO_URL = "/forms/nozei-ininjo.pdf";
+
+// 税務署に送るときに付箋に書いて添付する代理人の連絡先
+// （税務署から問い合わせがあったときに、本人ではなく代理人へ連絡してもらうため）
+export const NOZEI3_AGENT_CONTACT = { name: "野口明菜", phone: "080-4281-1083" } as const;
+export const NOZEI3_STICKY_NOTE_TEXT = `代理人：${NOZEI3_AGENT_CONTACT.name}\n電話番号：${NOZEI3_AGENT_CONTACT.phone}\n何かありましたらこちらにご連絡ください`;
 
 // 自動入力した交付請求書を新しいタブで開く（印刷用）
 export function nozei3FormUrl(workerId: string, taxOfficeId: string): string {
@@ -310,6 +316,24 @@ export function Nozei3Fields({
             ))}
           </div>
           <span className="text-[11px] text-muted">投函日と追跡番号を入れて保存すると、準備中は自動で「税務署からの郵送待ち」になります。</span>
+        </div>
+        {/* 投函前の注意: 代理人の連絡先を書いた付箋を添付する */}
+        <div
+          role="alert"
+          className="flex items-start gap-2.5 rounded-xl border border-status-notice-fg/40 bg-status-notice-bg px-3 py-2.5 text-xs leading-relaxed text-status-notice-fg"
+        >
+          <StickyNote size={18} className="mt-0.5 shrink-0" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold">投函前に、付箋を書類に添付してください</p>
+            <p className="mt-0.5">
+              付箋に、代理人の名前（{NOZEI3_AGENT_CONTACT.name}）と電話番号（{NOZEI3_AGENT_CONTACT.phone}）を記載して、
+              「何かありましたらこちらにご連絡ください」と書いたものを添付します。
+            </p>
+            <div className="mt-1.5 flex items-start gap-1.5 rounded-lg bg-surface/70 px-2.5 py-1.5 text-foreground">
+              <p className="min-w-0 flex-1 whitespace-pre-line font-bold">{NOZEI3_STICKY_NOTE_TEXT}</p>
+              <CopyButton value={NOZEI3_STICKY_NOTE_TEXT} label="付箋の文面をコピー" size={13} className="mt-0.5" />
+            </div>
+          </div>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="flex flex-col gap-1">
