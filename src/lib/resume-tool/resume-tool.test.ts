@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { extractRirekiPayload } from "@/lib/rireki-import";
 import {
+  applyResumeDictionary,
   buildResumeHtml,
   buildResumePayload,
   calcAge,
   collectResumeData,
   dateParts,
   dictJa,
+  dictListJa,
+  languageJa,
+  OTHER_KEY,
+  RELATIONS,
   emptyResumeForm,
   formatCareerDateInput,
   formatFullDateInput,
@@ -125,6 +130,39 @@ describe("入力の日本語化と履歴書の生成", () => {
       throw new Error("呼ばれないはず");
     });
     expect(ja.nat).toBe("Việt Nam");
+  });
+
+  it("続柄は選択式で必ず日本語になり、その他のときだけ自由記述を使う", () => {
+    const f = sampleForm();
+    f.families[0] = { ...f.families[0], relationKey: "elder_sister", relation: "" };
+    f.families[1] = { ...f.families[1], relationKey: OTHER_KEY, relation: "Kakak ipar", name: "X" };
+    f.families[2] = { ...f.families[2], relationKey: "", relation: "Ayah", name: "Y" }; // 古い入力（選択なし）
+    const d = collectResumeData(f);
+    expect(d.families[0].rel).toBe("姉");
+    expect(d.families[1].rel).toBe("Kakak ipar");
+    expect(d.families[2].rel).toBe("Ayah");
+    expect(RELATIONS.map((r) => r.ja)).toEqual(["父", "母", "夫", "妻", "息子", "娘", "兄", "弟", "姉", "妹", "祖父", "祖母"]);
+  });
+
+  it("プレビューでも辞書で日本語にできる語（続柄・言語・国籍・仕事）は置き換える", () => {
+    const f = sampleForm();
+    f.nat = "Indonesia";
+    f.lang = "Indonesia , Jepang , Inggris";
+    f.families[0] = { ...f.families[0], relationKey: "", relation: "Ayah ", name: "Suheri", birthYear: "1967", job: "Welder" };
+    f.families[1] = { ...f.families[1], relationKey: "", relation: "Ibu", name: "Sarmiati", job: "Ibu Rumah Tangga" };
+    f.families[2] = { ...f.families[2], relationKey: "", relation: "Adik", name: "Bilgis", job: "Masih Sekolah" };
+    const d = applyResumeDictionary(collectResumeData(f), "id");
+    expect(d.nat).toBe("インドネシア");
+    expect(d.lang).toBe("インドネシア語、日本語、英語");
+    expect(d.families.map((x) => x.rel)).toEqual(["父", "母", "弟・妹"]);
+    expect(d.families.map((x) => x.job)).toEqual(["溶接工", "主婦", "学生"]);
+    expect(d.hob).toBe("Đá bóng"); // 辞書に無い自由記述はそのまま（翻訳サーバーは使わない）
+    expect(d.translateNote).toBe("");
+    // 言語の欄では国名の綴りでも「〜語」、国籍の欄では国名
+    expect(languageJa("Vietnam")).toBe("ベトナム語");
+    expect(dictListJa("Vietnam")).toBe("ベトナム");
+    expect(dictListJa("Indonesia dan Jepang", { indonesia: "インドネシア語", jepang: "日本語" })).toBe("インドネシア語、日本語");
+    expect(dictListJa("Indonesia, Xyz")).toBeNull(); // 1つでも引けなければ翻訳サーバーへ
   });
 
   it("埋め込みデータは取り込み側（rireki-import）で読める形になる", () => {

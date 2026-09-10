@@ -7,6 +7,7 @@ import {
   CURRENT_STATUS,
   JITSU_JOBS,
   OTHER_LABEL,
+  RELATIONS,
   RESIDENCE,
   SSW_FIELDS,
   type BilingualOption,
@@ -26,7 +27,8 @@ export interface CareerRow {
 
 export interface FamilyRow {
   id: number;
-  relation: string;
+  relationKey: string; // 続柄の key（選択式。other なら relation の自由記述を使う）
+  relation: string; // その他のときの自由記述（古い保存データは選択式になる前の入力）
   name: string;
   birthYear: string;
   job: string;
@@ -75,7 +77,7 @@ export function emptyCareer(): CareerRow {
 }
 
 export function emptyFamily(): FamilyRow {
-  return { id: nextRowId(), relation: "", name: "", birthYear: "", job: "" };
+  return { id: nextRowId(), relationKey: "", relation: "", name: "", birthYear: "", job: "" };
 }
 
 // 最初の画面は職歴2行・家族3行（ツールと同じ）
@@ -132,6 +134,13 @@ export function jaOf(list: BilingualOption[], key: string): string {
 }
 
 export const residenceJa = (key: string) => jaOf(RESIDENCE, key);
+export const relationJa = (key: string) => jaOf(RELATIONS, key);
+
+// 家族の続柄を日本語に確定する（選択していれば必ず日本語、その他・未選択なら自由記述のまま）
+export function familyRelationJa(r: Pick<FamilyRow, "relationKey" | "relation">): string {
+  if (r.relationKey && r.relationKey !== OTHER_KEY) return relationJa(r.relationKey) || r.relation;
+  return r.relation;
+}
 export const currentStatusJa = (key: string) => jaOf(CURRENT_STATUS, key);
 export const sswFieldJa = (key: string) => jaOf(SSW_FIELDS, key);
 
@@ -223,7 +232,7 @@ export function collectResumeData(f: ResumeForm): ResumeData {
     };
   });
   const families: ResumeFamily[] = f.families.map((r) => ({
-    rel: r.relation,
+    rel: familyRelationJa(r),
     name: r.name,
     age: r.birthYear,
     job: r.job,

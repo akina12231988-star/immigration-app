@@ -14,10 +14,12 @@ import {
   optionLabel,
   OTHER_KEY,
   otherLabel,
+  RELATIONS,
   RESIDENCE,
   RESUME_LANGS,
   resumeText,
   SSW_FIELDS,
+  applyResumeDictionary,
   translateResumeData,
   workOptions,
   type BilingualOption,
@@ -161,9 +163,9 @@ export function ResumeTool() {
     r.readAsDataURL(file);
   };
 
-  // プレビュー（翻訳なし）
+  // プレビュー（翻訳サーバーは使わず、辞書で日本語にできる語だけ置き換える）
   const preview = () => {
-    const data = collectResumeData(form);
+    const data = applyResumeDictionary(collectResumeData(form), L);
     setPending({ html: buildResumeHtml(data, L), data });
   };
 
@@ -234,8 +236,8 @@ export function ResumeTool() {
   const familyCols = forceMobile
     ? "grid-cols-2"
     : forcePc
-      ? "grid-cols-[80px_1fr_80px_1fr_26px]"
-      : "grid-cols-2 min-[601px]:grid-cols-[80px_1fr_80px_1fr_26px]";
+      ? "grid-cols-[150px_1fr_80px_1fr_26px]"
+      : "grid-cols-2 min-[601px]:grid-cols-[150px_1fr_80px_1fr_26px]";
 
   // ---- 言語選択 ----
   if (!lang) {
@@ -618,7 +620,24 @@ export function ResumeTool() {
                 <div key={r.id} className={`grid items-end gap-1.5 rounded-lg border border-[#e0eaf4] bg-[#f8fafc] p-2 ${familyCols}`}>
                   <div>
                     <label className="mb-0.5 block text-[10px] text-[#777]">{t.frel}</label>
-                    <input type="text" value={r.relation} onChange={(e) => patchFamily(r.id, { relation: e.target.value })} className={ROW_INPUT} />
+                    {/* 続柄は選択式（履歴書には必ず日本語で出す）。その他のときだけ自由記述 */}
+                    <select
+                      value={r.relationKey}
+                      onChange={(e) => patchFamily(r.id, { relationKey: e.target.value, relation: "" })}
+                      className={ROW_INPUT}
+                    >
+                      <Options list={RELATIONS} lang={L} placeholder={t.cstatPlaceholder} />
+                      <option value={OTHER_KEY}>{otherLabel(L)}</option>
+                    </select>
+                    {r.relationKey === OTHER_KEY && (
+                      <input
+                        type="text"
+                        value={r.relation}
+                        onChange={(e) => patchFamily(r.id, { relation: e.target.value })}
+                        placeholder={t.otherPh}
+                        className={`${ROW_INPUT} mt-1`}
+                      />
+                    )}
                   </div>
                   <div>
                     <label className="mb-0.5 block text-[10px] text-[#777]">{t.fname}</label>
