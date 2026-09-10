@@ -1702,6 +1702,8 @@ export function ApplicationPrepChecklist({
         <PrepAssenSection
           workerId={workerId}
           todo={currentTodo}
+          todoNo={current.todo_no}
+          todoTitle={meta.app_content ? prepSituationLabel(meta.app_content) : "申請準備"}
           canEdit={canEdit}
           onError={setError}
           onChanged={loadWorkerTodos}
@@ -1722,6 +1724,7 @@ export function ApplicationPrepChecklist({
           orgId={prepOrgId}
           todoNo={current.todo_no}
           desiredStatus={desiredResidenceStatus(meta.app_content, meta.app_type, workerRow?.residence_status ?? "")}
+          canEdit={canEdit}
         />
 
         {/* 申請する書類（最後に添付する、入管へ提出する完成した書類一式） */}

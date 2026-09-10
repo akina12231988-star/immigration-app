@@ -14,11 +14,32 @@ import { RESUME_LANG_JA } from "@/lib/resume-tool/i18n";
 import { resumeLangForNationality } from "@/lib/resume-tool/share";
 import { contractPeriodEnd, formatYmdJa } from "@/lib/support-plan-dates";
 
+// 未登録の項目をその場で入力するときの保存先（外国人・所属機関・所属機関の登録内容（intake））
+export type CopyEdit =
+  | { target: "worker"; column: keyof CopyWorker; kind?: "text" | "date"; options?: readonly string[] }
+  | { target: "org"; column: "name" | "industry" | "business_category" | "address" | "contact" | "corporate_no" }
+  | {
+      target: "intake";
+      column:
+        | "posting_weekly_hours"
+        | "posting_monthly_hours"
+        | "pay_method"
+        | "koyo_no"
+        | "capital"
+        | "rep_name"
+        | "work_address"
+        | "rosai_no"
+        | "health_insurance"
+        | "support_fee";
+      options?: readonly string[];
+    };
+
 export interface CopyItem {
   label: string;
   value: string; // 空なら未登録
   parts?: string[]; // 年・月・日など、欄が分かれているときに1つずつコピーできる部品
   note?: string; // 補足（どこから取ったか・注意）
+  edit?: CopyEdit; // 未登録ならこの場で入力して保存できる（無い項目は他の画面で登録する）
 }
 
 export interface CopyGroup {
@@ -71,12 +92,22 @@ function ymParts(ymd: string | null | undefined): string[] {
   return p ? [p[0], p[1]] : ["", ""];
 }
 
-const dateItem = (label: string, ymd: string | null | undefined, note?: string): CopyItem => ({
+const dateItem = (label: string, ymd: string | null | undefined, note?: string, edit?: CopyEdit): CopyItem => ({
   label,
   value: ymd ? formatYmdJa(ymd) : "",
   parts: ymdParts(ymd),
   note,
+  edit,
 });
+
+// 編集先の短い書き方
+const wk = (column: keyof CopyWorker, options?: readonly string[]): CopyEdit => ({ target: "worker", column, options });
+const wkDate = (column: keyof CopyWorker): CopyEdit => ({ target: "worker", column, kind: "date" });
+const og = (column: Extract<CopyEdit, { target: "org" }>["column"]): CopyEdit => ({ target: "org", column });
+const it = (
+  column: Extract<CopyEdit, { target: "intake" }>["column"],
+  options?: readonly string[],
+): CopyEdit => ({ target: "intake", column, options });
 
 const yen = (n: number | null | undefined) => (n == null || !Number.isFinite(n) ? "" : String(Math.round(n)));
 
@@ -128,27 +159,36 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
   const lang = resumeLangForNationality(w.nationality);
 
   const applicant1: CopyItem[] = [
-    { label: "1 国籍・地域", value: w.nationality },
-    dateItem("2 生年月日", w.birth),
-    { label: "3 氏名", value: w.name, note: w.kana ? `フリガナ: ${w.kana}` : undefined },
-    { label: "4 性別", value: w.gender },
-    { label: "6 配偶者の有無", value: w.has_spouse },
-    { label: "7 職業", value: w.field },
-    { label: "8 本国における居住地", value: w.home_address },
-    { label: "9 住居地", value: w.address },
-    { label: "10 旅券 (1)番号", value: w.passport_no },
-    dateItem("10 旅券 (2)有効期限", w.passport_expiry_date),
-    { label: "11 現に有する在留資格", value: w.residence_status },
-    { label: "11 在留期間", value: effectiveResidencePeriod(w) },
-    dateItem("11 在留期間の満了日", w.residence_expiry_date),
-    { label: "12 在留カード番号", value: w.residence_card_no },
-    { label: "13 希望する在留資格", value: input.desiredStatus ?? "" },
+    { label: "1 国籍・地域", value: w.nationality, edit: wk("nationality") },
+    dateItem("2 生年月日", w.birth, undefined, wkDate("birth")),
+    { label: "3 氏名", value: w.name, note: w.kana ? `フリガナ: ${w.kana}` : undefined, edit: wk("name") },
+    { label: "4 性別", value: w.gender, edit: wk("gender", ["男", "女"]) },
+    { label: "6 配偶者の有無", value: w.has_spouse, edit: wk("has_spouse", ["有", "無"]) },
+    { label: "7 職業", value: w.field, edit: wk("field") },
+    { label: "8 本国における居住地", value: w.home_address, edit: wk("home_address") },
+    { label: "9 住居地", value: w.address, edit: wk("address") },
+    { label: "10 旅券 (1)番号", value: w.passport_no, edit: wk("passport_no") },
+    dateItem("10 旅券 (2)有効期限", w.passport_expiry_date, undefined, wkDate("passport_expiry_date")),
+    { label: "11 現に有する在留資格", value: w.residence_status, edit: wk("residence_status") },
+    {
+      label: "11 在留期間",
+      value: effectiveResidencePeriod(w),
+      note: "許可年月日と満了日から自動計算（できないときは登録値）",
+      edit: wk("residence_period"),
+    },
+    dateItem("11 在留期間の満了日", w.residence_expiry_date, undefined, wkDate("residence_expiry_date")),
+    { label: "12 在留カード番号", value: w.residence_card_no, edit: wk("residence_card_no") },
+    {
+      label: "13 希望する在留資格",
+      value: input.desiredStatus ?? "",
+      note: input.desiredStatus ? undefined : "申請準備の「準備の内容」と申請種別を選ぶと出ます",
+    },
   ];
 
   const applicant2: CopyItem[] = [
-    { label: "17 特定技能所属機関 (1)氏名又は名称", value: org?.name ?? "" },
-    { label: "17 (2)住所（所在地）", value: org?.address ?? "" },
-    { label: "17 電話番号", value: org?.contact ?? "" },
+    { label: "17 特定技能所属機関 (1)氏名又は名称", value: org?.name ?? "", edit: org ? og("name") : undefined },
+    { label: "17 (2)住所（所在地）", value: org?.address ?? "", edit: org ? og("address") : undefined },
+    { label: "17 電話番号", value: org?.contact ?? "", edit: org ? og("contact") : undefined },
     {
       label: "21 申請時における特定技能1号での通算在留期間",
       value: ssw.usedDays > 0 ? `${ssw.used.y}年${ssw.used.m}月` : "",
@@ -175,45 +215,70 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
       label: "2 (1)雇用契約期間",
       value: es ? `${formatYmdJa(es)} から ${formatYmdJa(ee)} まで` : "",
       parts: es ? [...(ymdParts(es) ?? []), ...(ymdParts(ee) ?? [])] : undefined,
-      note: "雇用開始日から2年間（終了日は2年後の前日）",
+      note: "雇用開始日から2年間（終了日は2年後の前日）。支援計画書の日付の雇用開始日か、外国人の雇用開始日から",
+      edit: wkDate("employment_start_on"),
     },
-    { label: "2 (2)特定産業分野", value: w.field || org?.industry || "" },
-    { label: "2 (2)業務区分", value: org?.business_category ?? "" },
-    { label: "2 (3)所定労働時間（週平均）", value: weekly, note: "所属機関 ＞ 週平均所定労働時間数" },
+    { label: "2 (2)特定産業分野", value: w.field || org?.industry || "", edit: wk("field") },
+    { label: "2 (2)業務区分", value: org?.business_category ?? "", edit: org ? og("business_category") : undefined },
+    {
+      label: "2 (3)所定労働時間（週平均）",
+      value: weekly,
+      note: "所属機関 ＞ 週平均所定労働時間数",
+      edit: org ? it("posting_weekly_hours") : undefined,
+    },
     {
       label: "2 (3)所定労働時間（月平均）",
       value: monthlyHours != null ? formatHoursDecimal(monthlyHours) : (intake?.posting_monthly_hours ?? ""),
       note: "所属機関 ＞ 月平均所定労働時間数",
+      edit: org ? it("posting_monthly_hours") : undefined,
     },
     { label: "2 (4)月額報酬", value: wage.monthly, note: wage.note },
     { label: "2 (4)基本給の時間換算額", value: wage.hourly },
-    { label: "2 (5)報酬の支払方法", value: intake?.pay_method ?? "" },
+    {
+      label: "2 (5)報酬の支払方法",
+      value: intake?.pay_method ?? "",
+      edit: org ? it("pay_method", ["通貨払い", "口座振込"]) : undefined,
+    },
   ];
 
   const organization2: CopyItem[] = [
-    { label: "3 (1)氏名又は名称", value: org?.name ?? "" },
-    { label: "3 (2)法人番号（13桁）", value: org?.corporate_no ?? "" },
-    { label: "3 (3)雇用保険適用事業所番号（11桁）", value: intake?.koyo_no ?? "" },
-    { label: "3 (4)業種", value: org?.industry ?? "" },
-    { label: "3 (5)住所（所在地）", value: org?.address ?? "" },
-    { label: "3 (5)電話番号", value: org?.contact ?? "" },
-    { label: "3 (6)資本金", value: intake?.capital ?? "" },
-    { label: "3 (7)年間売上金額（直近年度）", value: intake?.financials.find((f) => f.sales)?.sales ?? "" },
-    { label: "3 (8)常勤職員数", value: totalStaff(intake), note: "日本人・技能実習生・特定技能・特定活動の合計" },
-    { label: "3 (9)代表者の氏名", value: intake?.rep_name ?? "" },
-    { label: "3 (10)勤務させる事業所名", value: org?.name ?? "" },
-    { label: "3 (10)所在地", value: intake?.work_address || org?.address || "" },
+    { label: "3 (1)氏名又は名称", value: org?.name ?? "", edit: org ? og("name") : undefined },
+    { label: "3 (2)法人番号（13桁）", value: org?.corporate_no ?? "", edit: org ? og("corporate_no") : undefined },
+    { label: "3 (3)雇用保険適用事業所番号（11桁）", value: intake?.koyo_no ?? "", edit: org ? it("koyo_no") : undefined },
+    { label: "3 (4)業種", value: org?.industry ?? "", edit: org ? og("industry") : undefined },
+    { label: "3 (5)住所（所在地）", value: org?.address ?? "", edit: org ? og("address") : undefined },
+    { label: "3 (5)電話番号", value: org?.contact ?? "", edit: org ? og("contact") : undefined },
+    { label: "3 (6)資本金", value: intake?.capital ?? "", edit: org ? it("capital") : undefined },
+    {
+      label: "3 (7)年間売上金額（直近年度）",
+      value: intake?.financials.find((f) => f.sales)?.sales ?? "",
+      note: "所属機関 ＞ 決算情報（直近3年分）で登録します",
+    },
+    {
+      label: "3 (8)常勤職員数",
+      value: totalStaff(intake),
+      note: "日本人・技能実習生・特定技能・特定活動の合計（所属機関 ＞ 常勤職員数で登録します）",
+    },
+    { label: "3 (9)代表者の氏名", value: intake?.rep_name ?? "", edit: org ? it("rep_name") : undefined },
+    { label: "3 (10)勤務させる事業所名", value: org?.name ?? "", edit: org ? og("name") : undefined },
+    {
+      label: "3 (10)所在地",
+      value: intake?.work_address || org?.address || "",
+      note: "作業する住所（会社の住所と別の場合）。無ければ会社の住所",
+      edit: org ? it("work_address") : undefined,
+    },
     {
       label: "健康保険及び厚生年金保険の適用事業所",
       value: intake?.health_insurance === "社会保険" ? "有" : intake?.health_insurance ? "無" : "",
       note: "所属機関の保険（社会保険なら有）",
+      edit: org ? it("health_insurance", ["社会保険", "国民健康保険", "その他"]) : undefined,
     },
     {
       label: "労災保険及び雇用保険の適用事業所",
       value: intake?.rosai_covered === "はい" && intake?.koyo_covered === "はい" ? "有" : intake?.rosai_covered || intake?.koyo_covered ? "無" : "",
       note: "所属機関の労災・雇用保険の登録から",
     },
-    { label: "3 (10)労働保険番号", value: intake?.rosai_no ?? "" },
+    { label: "3 (10)労働保険番号", value: intake?.rosai_no ?? "", edit: org ? it("rosai_no") : undefined },
   ];
 
   const support: CopyItem[] = [
@@ -229,7 +294,12 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
     { label: "5 (10)支援責任者名", value: CUSTODIAN_INFO.officeName },
     { label: "5 (11)支援担当者名", value: CUSTODIAN_INFO.officeName },
     { label: "5 (12)対応可能言語", value: lang === "en" ? "" : RESUME_LANG_JA[lang], note: "国籍から" },
-    { label: "5 (13)支援委託手数料（月額／人）", value: intake?.support_fee ?? "", note: "所属機関 ＞ 毎月の支援代" },
+    {
+      label: "5 (13)支援委託手数料（月額／人）",
+      value: intake?.support_fee ?? "",
+      note: "所属機関 ＞ 毎月の支援代",
+      edit: org ? it("support_fee") : undefined,
+    },
   ];
 
   return [

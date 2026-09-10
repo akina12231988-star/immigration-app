@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, ClipboardList, Copy } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { updateWorker } from "@/lib/supabase/queries/workers";
+import { updateOrganization } from "@/lib/supabase/queries/organizations";
 import { listWorkerWages } from "@/lib/supabase/queries/wages";
 import { toCalcHistory } from "@/lib/supabase/queries/histories";
 import { findPlanDatesForTodo, listPlanDates } from "@/lib/supabase/queries/plan-dates";
@@ -10,9 +12,11 @@ import { normalizeOrganizationIntake } from "@/lib/organization-intake";
 import {
   buildApplicationCopyGroups,
   copyGroupText,
+  type CopyEdit,
   type CopyGroup,
   type CopyWorker,
 } from "@/lib/application-copy";
+import { dbErrorMessage } from "@/lib/errors";
 import { CopyButton } from "@/components/ui/CopyButton";
 import type { Organization, WorkHistoryRow, WorkerWage } from "@/types/db";
 
@@ -24,12 +28,18 @@ export function ApplicationCopyPanel({
   orgId,
   todoNo,
   desiredStatus,
+  canEdit = false,
+  onSaved,
 }: {
   workerId: string;
   orgId: string | null;
   todoNo: string;
   desiredStatus?: string; // 希望する在留資格（申請種別から）
+  canEdit?: boolean; // true: 未登録の項目をこの場で入力して保存できる
+  onSaved?: () => void; // 保存したあと（親の表示を更新したいとき）
 }) {
+  // 保存したら読み直す（値を変えると useEffect が再実行される）
+  const [reloadKey, setReloadKey] = useState(0);
   const [loaded, setLoaded] = useState<{
     worker: CopyWorker | null;
     org: Organization | null;
@@ -61,7 +71,27 @@ export function ApplicationCopyPanel({
     return () => {
       cancelled = true;
     };
-  }, [workerId, orgId, todoNo]);
+  }, [workerId, orgId, todoNo, reloadKey]);
+
+  // 未登録の項目をこの場で保存する（外国人 / 所属機関 / 所属機関の登録内容）
+  const saveEdit = async (edit: CopyEdit, value: string) => {
+    const supabase = createClient();
+    const v = value.trim();
+    if (edit.target === "worker") {
+      await updateWorker(supabase, workerId, {
+        [edit.column]: edit.kind === "date" ? v || null : v,
+      } as Parameters<typeof updateWorker>[2]);
+    } else if (edit.target === "org") {
+      if (!orgId) throw new Error("所属機関が未設定です");
+      await updateOrganization(supabase, orgId, { [edit.column]: v });
+    } else {
+      if (!orgId || !loaded?.org) throw new Error("所属機関が未設定です");
+      const intake = normalizeOrganizationIntake(loaded.org.intake);
+      await updateOrganization(supabase, orgId, { intake: { ...intake, [edit.column]: v } });
+    }
+    setReloadKey((k) => k + 1);
+    onSaved?.();
+  };
 
   const groups = useMemo(() => {
     if (!loaded?.worker) return null;
@@ -77,11 +107,21 @@ export function ApplicationCopyPanel({
   }, [loaded, desiredStatus]);
 
   if (!groups) return null;
-  return <ApplicationCopyList groups={groups} orgMissing={!orgId} />;
+  return <ApplicationCopyList groups={groups} orgMissing={!orgId} canEdit={canEdit} onSave={saveEdit} />;
 }
 
 // 一覧の表示（データの読み込みと分けて、単体でも描ける）
-export function ApplicationCopyList({ groups, orgMissing = false }: { groups: CopyGroup[]; orgMissing?: boolean }) {
+export function ApplicationCopyList({
+  groups,
+  orgMissing = false,
+  canEdit = false,
+  onSave,
+}: {
+  groups: CopyGroup[];
+  orgMissing?: boolean;
+  canEdit?: boolean;
+  onSave?: (edit: CopyEdit, value: string) => Promise<void>; // 未登録の項目をその場で保存する
+}) {
   const [open, setOpen] = useState(false);
   const [openGroup, setOpenGroup] = useState<number>(0);
   const [copiedGroup, setCopiedGroup] = useState<number | null>(null);
@@ -119,7 +159,10 @@ export function ApplicationCopyList({ groups, orgMissing = false }: { groups: Co
         <div className="mt-2 space-y-2">
           <p className="text-[11px] leading-relaxed text-muted">
             申請書（申請人等作成用 1〜3・所属機関等作成用 1・2・4）の項目順に並んでいます。右のコピーで1項目ずつ、
-            年・月・日のように欄が分かれているものは部品ごとにもコピーできます。「未登録」は外国人詳細・所属機関で入れると出ます。
+            年・月・日のように欄が分かれているものは部品ごとにもコピーできます。
+            {canEdit && onSave
+              ? "「未登録」の項目は、その場で入力して保存できます（外国人詳細・所属機関にも反映されます）。"
+              : "「未登録」は外国人詳細・所属機関で入れると出ます。"}
             {orgMissing && "所属機関が未設定のため、所属機関の項目は空です。"}
           </p>
           <div className="flex flex-wrap gap-1">
@@ -162,6 +205,8 @@ export function ApplicationCopyList({ groups, orgMissing = false }: { groups: Co
                             <span className="min-w-0 break-all font-bold">{item.value}</span>
                             <CopyButton value={item.value} label={`${item.label}をコピー`} size={13} className="mt-0.5" />
                           </>
+                        ) : canEdit && onSave && item.edit ? (
+                          <InlineEditField label={item.label} edit={item.edit} onSave={onSave} />
                         ) : (
                           <span className="text-seal">未登録</span>
                         )}
@@ -212,5 +257,81 @@ function PartChip({ value }: { value: string }) {
       {copied ? <Check size={10} /> : <Copy size={10} />}
       {value}
     </button>
+  );
+}
+
+// 未登録の項目をその場で入力して保存する欄（文字・日付・選択肢）
+function InlineEditField({
+  label,
+  edit,
+  onSave,
+}: {
+  label: string;
+  edit: CopyEdit;
+  onSave: (edit: CopyEdit, value: string) => Promise<void>;
+}) {
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const options = "options" in edit ? edit.options : undefined;
+  const isDate = edit.target === "worker" && edit.kind === "date";
+  const cls =
+    "min-h-[28px] rounded border border-seal/40 bg-surface px-1.5 text-[11px] focus:border-brand focus:outline-none disabled:opacity-60";
+
+  const save = async () => {
+    if (!value.trim() || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onSave(edit, value);
+    } catch (err) {
+      setError(dbErrorMessage(err, "0001_init.sql", `${label}の保存に失敗しました`));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <span className="flex flex-wrap items-center gap-1">
+        <span className="text-seal">未登録</span>
+        {options ? (
+          <select value={value} onChange={(e) => setValue(e.target.value)} disabled={busy} className={cls} aria-label={label}>
+            <option value="">選択してください</option>
+            {options.map((o) => (
+              <option key={o} value={o}>
+                {o}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            type={isDate ? "date" : "text"}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void save();
+            }}
+            disabled={busy}
+            placeholder="ここに入力"
+            aria-label={label}
+            className={`${cls} ${isDate ? "" : "min-w-[10rem] flex-1"}`}
+          />
+        )}
+        <button
+          type="button"
+          onClick={() => void save()}
+          disabled={busy || !value.trim()}
+          className="rounded bg-brand px-2 py-1 text-[10px] font-bold text-brand-foreground disabled:opacity-50"
+        >
+          {busy ? "保存中…" : "保存"}
+        </button>
+      </span>
+      {error && (
+        <span role="alert" className="text-[10px] font-bold text-seal">
+          {error}
+        </span>
+      )}
+    </span>
   );
 }

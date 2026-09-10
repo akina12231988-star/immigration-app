@@ -6,7 +6,7 @@ import { Building2, ExternalLink, Eye } from "lucide-react";
 import { Combobox } from "@/components/ui/Combobox";
 import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
-import { updateTodo, type TodoRow } from "@/lib/supabase/queries/todos";
+import { ensurePrepTodo, updateTodo, type TodoRow } from "@/lib/supabase/queries/todos";
 import {
   TODO_CHECK_KIND,
   TODO_STAGES,
@@ -913,16 +913,21 @@ interface PrepJobFlow {
 export function PrepAssenSection({
   workerId,
   todo,
+  todoNo = "",
+  todoTitle = "申請準備",
   canEdit,
   onError,
   onChanged,
 }: {
   workerId: string;
   todo: TodoRow | null; // あっせんの有無はTODOに保存して /todos と共有する
+  todoNo?: string; // 表示中の準備リストのTODO番号（TODOがまだ無いとき、この番号で作る）
+  todoTitle?: string; // TODOを作るときの題名（準備の内容から）
   canEdit: boolean;
   onError: (m: string) => void;
   onChanged: () => void;
 }) {
+  const [creating, setCreating] = useState(false);
   const [flows, setFlows] = useState<PrepJobFlow[]>([]);
   const [note, setNote] = useState(todo?.assen_note ?? "");
   const [prevNote, setPrevNote] = useState(todo?.assen_note ?? "");
@@ -970,13 +975,27 @@ export function PrepAssenSection({
     };
   }, [workerId]);
 
-  const save = (patch: Partial<Pick<TodoRow, "assen" | "assen_note">>) => {
-    if (!todo) return;
-    updateTodo(createClient(), todo.id, patch)
-      .then(onChanged)
-      .catch((err) =>
-        onError(dbErrorMessage(err, "0103_todo_prep_extras.sql", "あっせんの保存に失敗しました")),
-      );
+  // TODOがまだ無いときは、この場で申請準備のTODOを作ってから保存する
+  // （以前は「TODOが作成されると設定できます」と出て入力できなかった）
+  const save = async (patch: Partial<Pick<TodoRow, "assen" | "assen_note">>) => {
+    try {
+      let target = todo;
+      if (!target) {
+        setCreating(true);
+        const { row } = await ensurePrepTodo(createClient(), {
+          worker_id: workerId,
+          title: todoTitle,
+          todo_no: todoNo || undefined,
+        });
+        target = row;
+      }
+      await updateTodo(createClient(), target.id, patch);
+      onChanged();
+    } catch (err) {
+      onError(dbErrorMessage(err, "0103_todo_prep_extras.sql", "あっせんの保存に失敗しました"));
+    } finally {
+      setCreating(false);
+    }
   };
 
   return (
@@ -985,19 +1004,21 @@ export function PrepAssenSection({
         <span className="text-[11px] font-bold text-muted">あっせん</span>
         <select
           value={todo?.assen ?? ""}
-          disabled={!canEdit || !todo}
-          onChange={(e) => save({ assen: e.target.value })}
+          disabled={!canEdit || creating}
+          onChange={(e) => void save({ assen: e.target.value })}
           className={INPUT}
         >
           <option value="">未設定</option>
           <option value="あり">あり（求人からの採用）</option>
           <option value="なし">なし</option>
         </select>
-        {!todo && (
+        {creating ? (
+          <span className="text-[11px] text-muted">申請準備のTODOを作って保存中…</span>
+        ) : !todo ? (
           <span className="text-[11px] text-muted">
-            申請準備のTODOが作成されると設定できます（TODOと共有）。
+            申請準備のTODOがまだ無いので、選ぶと{todoNo ? `番号「${todoNo}」で` : "自動採番で"}TODOを作って保存します（TODOと共有）。
           </span>
-        )}
+        ) : null}
       </div>
       {todo?.assen === "なし" && (
         <label className="mt-1.5 block">
@@ -1008,7 +1029,7 @@ export function PrepAssenSection({
             value={note}
             onChange={(e) => setNote(e.target.value)}
             onBlur={() => {
-              if (note !== (todo.assen_note ?? "")) save({ assen_note: note });
+              if (note !== (todo.assen_note ?? "")) void save({ assen_note: note });
             }}
             disabled={!canEdit}
             rows={2}
