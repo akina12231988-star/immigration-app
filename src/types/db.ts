@@ -228,6 +228,7 @@ export interface OrganizationIntake {
   wage_parity_reason: string; // 報酬が日本人と同等以上であると考えられる理由
   rosai_covered: string; // 労災保険の適用事業所か（'' / はい / いいえ）
   rosai_no: string; // 労働保険番号
+  rosai_measure: string; // 労災保険加入等の措置の内容（申請書 所属機関等作成用 3 (29)。空で労災の適用事業所なら「労災保険加入」）
   koyo_covered: string; // 雇用保険の適用事業所か（'' / はい / いいえ）
   koyo_no: string; // 雇用保険適用事業所番号
   lodgings: OrgLodging[]; // 寮・宿泊物件（複数可。旧フラット項目 lodging_* は normalize で1件目に移行）

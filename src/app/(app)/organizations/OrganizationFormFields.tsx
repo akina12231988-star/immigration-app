@@ -1448,6 +1448,14 @@ function IntakeSection({
             onChange={(v) => setIntake({ rosai_no: v })}
             locked={locks.intake("rosai_no")}
           />
+          <IntakeField
+            label="労災保険加入等の措置の内容"
+            value={intake.rosai_measure}
+            onChange={(v) => setIntake({ rosai_measure: v })}
+            placeholder={intake.rosai_covered === "はい" ? "労災保険加入（空ならこの内容で出ます）" : "例: 民間の労災保険に加入"}
+            hint="申請書（所属機関等作成用 3 (29)）に書く内容。労災の適用事業所で空なら「労災保険加入」になります。"
+            locked={locks.intake("rosai_measure")}
+          />
           <IntakeSelect
             label="雇用保険の適用事業所か"
             value={intake.koyo_covered}

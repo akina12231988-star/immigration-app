@@ -7,7 +7,7 @@ import type { Organization, OrganizationIntake, Worker, WorkerWage } from "@/typ
 import type { WorkHistory } from "@/types/ssw";
 import { calcSsw } from "@/lib/ssw/calc";
 import { currentWage, hourlyFromMonthly, monthlyFromHourly } from "@/lib/wage";
-import { formatHoursDecimal, parseHoursMinutes } from "@/lib/organization-intake";
+import { formatHoursDecimal, parseHoursMinutes, rosaiMeasureText } from "@/lib/organization-intake";
 import { effectiveResidencePeriod } from "@/lib/residence-card";
 import { CUSTODIAN_INFO, type CustodianInfo } from "@/lib/custody";
 import { RESUME_LANG_JA } from "@/lib/resume-tool/i18n";
@@ -19,6 +19,8 @@ import { JLPT_LEVELS, normalizeCertExams, type WorkerCertExam } from "@/lib/cert
 export type CopyEdit =
   | { target: "worker"; column: keyof CopyWorker; kind?: "text" | "date"; options?: readonly string[] }
   | { target: "custodian"; column: keyof CustodianInfo; kind?: "text" | "date" } // 登録支援機関（app_settings）
+  // 協力確認書の提出（所属機関の登録内容の council_office_submissions / council_residence_submissions の index 行目）
+  | { target: "council"; list: "office" | "residence"; index: number; field: "to" | "on"; kind?: "text" | "date" }
   | { target: "org"; column: "name" | "industry" | "business_category" | "address" | "contact" | "corporate_no" }
   | {
       target: "intake";
@@ -31,6 +33,7 @@ export type CopyEdit =
         | "rep_name"
         | "work_address"
         | "rosai_no"
+        | "rosai_measure"
         | "health_insurance"
         | "support_fee";
       options?: readonly string[];
@@ -130,6 +133,32 @@ const it = (
   options?: readonly string[],
 ): CopyEdit => ({ target: "intake", column, options });
 const cu = (column: keyof CustodianInfo, kind?: "text" | "date"): CopyEdit => ({ target: "custodian", column, kind });
+const council = (list: "office" | "residence", index: number, field: "to" | "on"): CopyEdit => ({
+  target: "council",
+  list,
+  index,
+  field,
+  kind: field === "on" ? "date" : "text",
+});
+
+// 協力確認書の提出（提出年月日・提出先の市町村名）を、登録がある行ごとに項目にする。無ければ1行目を入力できる形で出す
+function councilItems(
+  list: "office" | "residence",
+  rows: { to: string; on: string }[] | undefined,
+  title: string,
+  hasOrg: boolean,
+): CopyItem[] {
+  const filled = (rows ?? []).filter((r) => r.to || r.on);
+  const src = filled.length > 0 ? filled : [{ to: "", on: "" }];
+  const note = `所属機関 ＞ 協力確認書の提出（提出先・提出日）の${list === "office" ? "事業所の所在地" : "住居地"}から`;
+  return src.flatMap((r, i) => {
+    const nth = src.length > 1 ? `（${i + 1}件目）` : "";
+    return [
+      dateItem(`${title} 提出年月日${nth}`, r.on, i === 0 ? note : undefined, hasOrg ? council(list, i, "on") : undefined),
+      { label: `${title} 提出先の市町村名${nth}`, value: r.to, edit: hasOrg ? council(list, i, "to") : undefined },
+    ];
+  });
+}
 
 const yen = (n: number | null | undefined) => (n == null || !Number.isFinite(n) ? "" : String(Math.round(n)));
 
@@ -370,6 +399,20 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
   ];
 
   // 登録支援機関（当社）。編集すると app_settings に保存され、全員の申請準備に反映される
+  // 所属機関等作成用 3 は元の申請書では「有・無」のチェックがほとんどのため、
+  // 文章で書く (29) 労災保険加入等の措置の内容と、協力確認書の提出（事業所・住居地）だけを出す
+  const organization3: CopyItem[] = [
+    {
+      label: "(29)労災保険加入等の措置の内容",
+      value: rosaiMeasureText(intake),
+      note: "所属機関 ＞ 労災保険・雇用保険。労災の適用事業所なら「労災保険加入」、適用外なら措置の内容（民間の労災保険など）",
+      edit: org ? it("rosai_measure") : undefined,
+      editValue: intake?.rosai_measure ?? "",
+    },
+    ...councilItems("office", intake?.council_office_submissions, "協力確認書（外国人に活動させる事業所）", !!org),
+    ...councilItems("residence", intake?.council_residence_submissions, "協力確認書（外国人の住居地）", !!org),
+  ];
+
   const support: CopyItem[] = [
     { label: "5 (1)氏名又は名称", value: c.officeName, edit: cu("officeName") },
     { label: "5 (3)雇用保険適用事業所番号", value: c.koyoNo, edit: cu("koyoNo") },
@@ -397,6 +440,7 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
     { title: "申請人等作成用 3（職歴）", items: careers },
     { title: "所属機関等作成用 1（特定技能雇用契約）", items: organization1 },
     { title: "所属機関等作成用 2（特定技能所属機関）", items: organization2 },
+    { title: "所属機関等作成用 3（労災保険・協力確認書）", items: organization3 },
     { title: "所属機関等作成用 4（登録支援機関）", items: support },
   ];
 }
