@@ -40,7 +40,8 @@ export interface CopyItem {
   value: string; // 空なら未登録
   parts?: string[]; // 年・月・日など、欄が分かれているときに1つずつコピーできる部品
   note?: string; // 補足（どこから取ったか・注意）
-  edit?: CopyEdit; // 未登録ならこの場で入力して保存できる（無い項目は他の画面で登録する）
+  edit?: CopyEdit; // この場で入力・編集して保存できる（無い項目は他の画面で登録する）
+  editValue?: string; // 編集欄に最初に入れる値（表示値と保存されている値が違うとき。日付は YYYY-MM-DD）
 }
 
 export interface CopyGroup {
@@ -115,6 +116,7 @@ const dateItem = (label: string, ymd: string | null | undefined, note?: string, 
   parts: ymdParts(ymd),
   note,
   edit,
+  editValue: edit ? (ymd ?? "") : undefined,
 });
 
 // 編集先の短い書き方
@@ -192,6 +194,7 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
       value: effectiveResidencePeriod(w),
       note: "許可年月日と満了日から自動計算（できないときは登録値）",
       edit: wk("residence_period"),
+      editValue: w.residence_period,
     },
     dateItem("11 在留期間の満了日", w.residence_expiry_date, undefined, wkDate("residence_expiry_date")),
     { label: "12 在留カード番号", value: w.residence_card_no, edit: wk("residence_card_no") },
@@ -294,8 +297,9 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
       parts: es ? [...(ymdParts(es) ?? []), ...(ymdParts(ee) ?? [])] : undefined,
       note: "雇用開始日から2年間（終了日は2年後の前日）。支援計画書の日付の雇用開始日か、外国人の雇用開始日から",
       edit: wkDate("employment_start_on"),
+      editValue: w.employment_start_on ?? "",
     },
-    { label: "2 (2)特定産業分野", value: w.field || org?.industry || "", edit: wk("field") },
+    { label: "2 (2)特定産業分野", value: w.field || org?.industry || "", edit: wk("field"), editValue: w.field },
     { label: "2 (2)業務区分", value: org?.business_category ?? "", edit: org ? og("business_category") : undefined },
     {
       label: "2 (3)所定労働時間（週平均）",
@@ -308,6 +312,7 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
       value: monthlyHours != null ? formatHoursDecimal(monthlyHours) : (intake?.posting_monthly_hours ?? ""),
       note: "所属機関 ＞ 月平均所定労働時間数",
       edit: org ? it("posting_monthly_hours") : undefined,
+      editValue: intake?.posting_monthly_hours ?? "",
     },
     { label: "2 (4)月額報酬", value: wage.monthly, note: wage.note },
     { label: "2 (4)基本給の時間換算額", value: wage.hourly },
@@ -343,12 +348,14 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
       value: intake?.work_address || org?.address || "",
       note: "作業する住所（会社の住所と別の場合）。無ければ会社の住所",
       edit: org ? it("work_address") : undefined,
+      editValue: intake?.work_address ?? "",
     },
     {
       label: "健康保険及び厚生年金保険の適用事業所",
       value: intake?.health_insurance === "社会保険" ? "有" : intake?.health_insurance ? "無" : "",
       note: "所属機関の保険（社会保険なら有）",
       edit: org ? it("health_insurance", ["社会保険", "国民健康保険", "その他"]) : undefined,
+      editValue: intake?.health_insurance ?? "",
     },
     {
       label: "労災保険及び雇用保険の適用事業所",

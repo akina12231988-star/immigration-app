@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, ClipboardList, Copy } from "lucide-react";
+import { Check, ClipboardList, Copy, Pencil } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
 import { updateOrganization } from "@/lib/supabase/queries/organizations";
@@ -35,7 +35,7 @@ export function ApplicationCopyPanel({
   orgId: string | null;
   todoNo: string;
   desiredStatus?: string; // 希望する在留資格（申請種別から）
-  canEdit?: boolean; // true: 未登録の項目をこの場で入力して保存できる
+  canEdit?: boolean; // true: 項目をこの場で入力・編集して保存できる
   onSaved?: () => void; // 保存したあと（親の表示を更新したいとき）
 }) {
   // 保存したら読み直す（値を変えると useEffect が再実行される）
@@ -73,7 +73,7 @@ export function ApplicationCopyPanel({
     };
   }, [workerId, orgId, todoNo, reloadKey]);
 
-  // 未登録の項目をこの場で保存する（外国人 / 所属機関 / 所属機関の登録内容）
+  // 項目をこの場で保存する（外国人 / 所属機関 / 所属機関の登録内容）。空で保存すると消す
   const saveEdit = async (edit: CopyEdit, value: string) => {
     const supabase = createClient();
     const v = value.trim();
@@ -120,11 +120,13 @@ export function ApplicationCopyList({
   groups: CopyGroup[];
   orgMissing?: boolean;
   canEdit?: boolean;
-  onSave?: (edit: CopyEdit, value: string) => Promise<void>; // 未登録の項目をその場で保存する
+  onSave?: (edit: CopyEdit, value: string) => Promise<void>; // 項目をその場で保存する
 }) {
   const [open, setOpen] = useState(false);
   const [openGroup, setOpenGroup] = useState<number>(0);
   const [copiedGroup, setCopiedGroup] = useState<number | null>(null);
+  // 登録済みの値を編集中の項目（欄の番号-項目の番号）
+  const [editing, setEditing] = useState<string | null>(null);
 
   const copyAll = async (i: number) => {
     try {
@@ -161,7 +163,7 @@ export function ApplicationCopyList({
             申請書（申請人等作成用 1〜3・所属機関等作成用 1・2・4）の項目順に並んでいます。右のコピーで1項目ずつ、
             年・月・日のように欄が分かれているものは部品ごとにもコピーできます。
             {canEdit && onSave
-              ? "「未登録」の項目は、その場で入力して保存できます（外国人詳細・所属機関にも反映されます）。"
+              ? "「未登録」の項目はその場で入力、登録済みの項目は鉛筆マークから編集して保存できます（外国人詳細・所属機関にも反映されます）。"
               : "「未登録」は外国人詳細・所属機関で入れると出ます。"}
             {orgMissing && "所属機関が未設定のため、所属機関の項目は空です。"}
           </p>
@@ -196,17 +198,41 @@ export function ApplicationCopyList({
                 <p className="text-[11px] text-muted">登録がありません。</p>
               ) : (
                 <div className="divide-y divide-border">
-                  {groups[openGroup].items.map((item, i) => (
+                  {groups[openGroup].items.map((item, i) => {
+                    const key = `${openGroup}-${i}`;
+                    const editable = canEdit && !!onSave && !!item.edit;
+                    return (
                     <div key={`${item.label}-${i}`} className="flex flex-wrap items-start gap-x-2 gap-y-0.5 py-1 text-[11px]">
                       <span className="w-full text-muted sm:w-[15rem] sm:shrink-0">{item.label}</span>
                       <span className="flex min-w-0 flex-1 items-start gap-1">
-                        {item.value ? (
+                        {editable && item.edit && (editing === key || !item.value) ? (
+                          <InlineEditField
+                            label={item.label}
+                            edit={item.edit}
+                            initial={item.editValue ?? item.value}
+                            registered={!!item.value}
+                            onSave={async (e, v) => {
+                              await onSave!(e, v);
+                              setEditing(null);
+                            }}
+                            onCancel={item.value ? () => setEditing(null) : undefined}
+                          />
+                        ) : item.value ? (
                           <>
                             <span className="min-w-0 break-all font-bold">{item.value}</span>
                             <CopyButton value={item.value} label={`${item.label}をコピー`} size={13} className="mt-0.5" />
+                            {editable && (
+                              <button
+                                type="button"
+                                onClick={() => setEditing(key)}
+                                title={`${item.label}を編集`}
+                                aria-label={`${item.label}を編集`}
+                                className="mt-0.5 rounded p-0.5 text-muted hover:bg-background hover:text-foreground"
+                              >
+                                <Pencil size={12} />
+                              </button>
+                            )}
                           </>
-                        ) : canEdit && onSave && item.edit ? (
-                          <InlineEditField label={item.label} edit={item.edit} onSave={onSave} />
                         ) : (
                           <span className="text-seal">未登録</span>
                         )}
@@ -222,7 +248,8 @@ export function ApplicationCopyList({
                       )}
                       {item.note && <span className="w-full text-[10px] text-muted sm:pl-[15.5rem]">{item.note}</span>}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -260,26 +287,37 @@ function PartChip({ value }: { value: string }) {
   );
 }
 
-// 未登録の項目をその場で入力して保存する欄（文字・日付・選択肢）
+// 項目をその場で入力・編集して保存する欄（文字・日付・選択肢）。
+// 未登録なら「未登録」と入力欄、登録済みなら今の値を入れた入力欄と「やめる」を出す
 function InlineEditField({
   label,
   edit,
+  initial = "",
+  registered = false,
   onSave,
+  onCancel,
 }: {
   label: string;
   edit: CopyEdit;
+  initial?: string; // 最初に入れておく値（登録済みの値）
+  registered?: boolean; // true: 登録済みの値を編集している（空で保存すると消す）
   onSave: (edit: CopyEdit, value: string) => Promise<void>;
+  onCancel?: () => void;
 }) {
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const options = "options" in edit ? edit.options : undefined;
   const isDate = edit.target === "worker" && edit.kind === "date";
   const cls =
     "min-h-[28px] rounded border border-seal/40 bg-surface px-1.5 text-[11px] focus:border-brand focus:outline-none disabled:opacity-60";
+  // 未登録のときは空では保存しない。登録済みのときは変わっていなければ保存しない（空にして消すのは可）
+  const canSave = registered ? value.trim() !== initial.trim() : value.trim().length > 0;
+  // 選択肢に無い値（古い登録値）も選べるように残す
+  const optionList = options && value && !options.includes(value) ? [value, ...options] : options;
 
   const save = async () => {
-    if (!value.trim() || busy) return;
+    if (!canSave || busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -294,11 +332,11 @@ function InlineEditField({
   return (
     <span className="flex min-w-0 flex-1 flex-col gap-0.5">
       <span className="flex flex-wrap items-center gap-1">
-        <span className="text-seal">未登録</span>
-        {options ? (
+        {!registered && <span className="text-seal">未登録</span>}
+        {optionList ? (
           <select value={value} onChange={(e) => setValue(e.target.value)} disabled={busy} className={cls} aria-label={label}>
-            <option value="">選択してください</option>
-            {options.map((o) => (
+            <option value="">{registered ? "（空にする）" : "選択してください"}</option>
+            {optionList.map((o) => (
               <option key={o} value={o}>
                 {o}
               </option>
@@ -311,22 +349,39 @@ function InlineEditField({
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") void save();
+              if (e.key === "Escape") onCancel?.();
             }}
             disabled={busy}
             placeholder="ここに入力"
             aria-label={label}
+            autoFocus={registered}
             className={`${cls} ${isDate ? "" : "min-w-[10rem] flex-1"}`}
           />
         )}
         <button
           type="button"
           onClick={() => void save()}
-          disabled={busy || !value.trim()}
+          disabled={busy || !canSave}
           className="rounded bg-brand px-2 py-1 text-[10px] font-bold text-brand-foreground disabled:opacity-50"
         >
           {busy ? "保存中…" : "保存"}
         </button>
+        {onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="rounded border border-border px-2 py-1 text-[10px] font-bold text-muted disabled:opacity-50"
+          >
+            やめる
+          </button>
+        )}
       </span>
+      {registered && !error && (
+        <span className="text-[10px] text-muted">
+          空にして保存すると登録を消します。{optionList ? "" : "Enterで保存、Escでやめる"}
+        </span>
+      )}
       {error && (
         <span role="alert" className="text-[10px] font-bold text-seal">
           {error}
