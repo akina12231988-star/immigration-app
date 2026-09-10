@@ -11,6 +11,7 @@ import {
   summarizeMonths,
   warekiMonthLabel,
   PENSION_SYMBOLS,
+  pensionOverview,
 } from "./pension";
 
 describe("PENSION_SYMBOLS（記録票の凡例）", () => {
@@ -180,5 +181,27 @@ describe("summarizeMonths", () => {
     expect(s.total).toBe(24);
     expect(s.filled).toBe(3);
     expect(s.payMonths).toEqual(["2024-08", "2026-06"]);
+  });
+});
+
+describe("pensionOverview（申請準備の年金記録カードに出すまとめ）", () => {
+  it("月ごとの記号から判定・期間・入力数・未納の月をまとめる", () => {
+    const months: Record<string, string> = {};
+    for (let i = 0; i < 24; i++) {
+      const y = 2024 + Math.floor((7 + i) / 12);
+      const m = ((7 + i) % 12) + 1;
+      months[`${y}-${String(m).padStart(2, "0")}`] = "フ";
+    }
+    const ok = pensionOverview({ apply_month: "2026-09", months, symbols: "" });
+    expect(ok).toMatchObject({ entered: true, judgment: "ok", filled: 24, total: 24, payMonths: [], periodLabel: "令和6年8月 〜 令和8年7月" });
+
+    const pay = pensionOverview({ apply_month: "2026-09", months: { ...months, "2025-03": "*" }, symbols: "" });
+    expect(pay.judgment).toBe("pay");
+    expect(pay.payMonths).toEqual(["2025-03"]);
+  });
+
+  it("月ごとの記号が無ければ古い記号で判定し、何も無ければ未入力", () => {
+    expect(pensionOverview({ apply_month: "", months: {}, symbols: "A,フ" })).toMatchObject({ entered: true, judgment: "ok", periodLabel: "", total: 0 });
+    expect(pensionOverview({ apply_month: "", months: {}, symbols: "" })).toMatchObject({ entered: false, judgment: "none" });
   });
 });
