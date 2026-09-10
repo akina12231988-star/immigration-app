@@ -13,6 +13,7 @@ import {
 import { Card } from "@/components/ui/Card";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { uploadWorkerDoc } from "@/lib/worker-docs";
+import { downloadFileAs } from "@/lib/download-file";
 import { messengerWebUrl } from "@/lib/messenger-link";
 import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
@@ -493,13 +494,17 @@ function ContractColumn({
             <ExternalLink size={12} />
             開く
           </a>
-          <a
-            href={latest.downloadUrl || latest.url}
+          {/* 「氏名_書類名.pdf」の名前で保存する（署名付きURLの download 指定は日本語が壊れる） */}
+          <button
+            type="button"
+            onClick={() =>
+              void downloadFileAs(latest.url, latest.downloadName || latest.fileName || kind, latest.downloadUrl)
+            }
             className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11px] font-bold text-brand"
           >
             <Download size={12} />
             ダウンロード
-          </a>
+          </button>
           {/* 間違えて登録したときの削除（申請登録時の画像はここでは消せない） */}
           {canEdit && !latest.fromApplication && (
             <button
