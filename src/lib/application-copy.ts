@@ -9,15 +9,16 @@ import { calcSsw } from "@/lib/ssw/calc";
 import { currentWage, hourlyFromMonthly, monthlyFromHourly } from "@/lib/wage";
 import { formatHoursDecimal, parseHoursMinutes } from "@/lib/organization-intake";
 import { effectiveResidencePeriod } from "@/lib/residence-card";
-import { CUSTODIAN_INFO } from "@/lib/custody";
+import { CUSTODIAN_INFO, type CustodianInfo } from "@/lib/custody";
 import { RESUME_LANG_JA } from "@/lib/resume-tool/i18n";
 import { resumeLangForNationality } from "@/lib/resume-tool/share";
 import { contractPeriodEnd, formatYmdJa } from "@/lib/support-plan-dates";
 import { JLPT_LEVELS, normalizeCertExams, type WorkerCertExam } from "@/lib/cert-exam";
 
-// 未登録の項目をその場で入力するときの保存先（外国人・所属機関・所属機関の登録内容（intake））
+// 項目をその場で入力・編集するときの保存先（外国人・所属機関・所属機関の登録内容（intake）・登録支援機関）
 export type CopyEdit =
   | { target: "worker"; column: keyof CopyWorker; kind?: "text" | "date"; options?: readonly string[] }
+  | { target: "custodian"; column: keyof CustodianInfo; kind?: "text" | "date" } // 登録支援機関（app_settings）
   | { target: "org"; column: "name" | "industry" | "business_category" | "address" | "contact" | "corporate_no" }
   | {
       target: "intake";
@@ -94,6 +95,7 @@ export interface ApplicationCopyInput {
   histories: WorkHistory[]; // 職歴（calc の形）
   planDates: Record<string, string>; // 支援計画書の日付（es = 雇用開始日 など）
   desiredStatus?: string; // 希望する在留資格（申請種別から）
+  custodian?: CustodianInfo; // 登録支援機関の情報（無ければ既定値 CUSTODIAN_INFO）
   today?: string;
 }
 
@@ -127,6 +129,7 @@ const it = (
   column: Extract<CopyEdit, { target: "intake" }>["column"],
   options?: readonly string[],
 ): CopyEdit => ({ target: "intake", column, options });
+const cu = (column: keyof CustodianInfo, kind?: "text" | "date"): CopyEdit => ({ target: "custodian", column, kind });
 
 const yen = (n: number | null | undefined) => (n == null || !Number.isFinite(n) ? "" : String(Math.round(n)));
 
@@ -176,6 +179,7 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
   const weekly = intake?.posting_weekly_hours ?? "";
   const monthlyHours = parseHoursMinutes(intake?.posting_monthly_hours ?? "");
   const lang = resumeLangForNationality(w.nationality);
+  const c: CustodianInfo = input.custodian ?? { ...CUSTODIAN_INFO };
 
   const applicant1: CopyItem[] = [
     { label: "1 国籍・地域", value: w.nationality, edit: wk("nationality") },
@@ -365,18 +369,19 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
     { label: "3 (10)労働保険番号", value: intake?.rosai_no ?? "", edit: org ? it("rosai_no") : undefined },
   ];
 
+  // 登録支援機関（当社）。編集すると app_settings に保存され、全員の申請準備に反映される
   const support: CopyItem[] = [
-    { label: "5 (1)氏名又は名称", value: CUSTODIAN_INFO.officeName },
-    { label: "5 (3)雇用保険適用事業所番号", value: CUSTODIAN_INFO.koyoNo },
-    { label: "5 (4)住所（所在地）", value: CUSTODIAN_INFO.headOfficeAddress },
-    { label: "5 (4)電話番号", value: CUSTODIAN_INFO.tel },
-    { label: "5 (5)代表者の氏名", value: CUSTODIAN_INFO.officeName },
-    { label: "5 (6)登録番号", value: CUSTODIAN_INFO.registrationNo },
-    dateItem("5 (7)登録年月日", CUSTODIAN_INFO.registeredOn),
-    { label: "5 (8)支援を行う事業所の名称", value: CUSTODIAN_INFO.officeName },
-    { label: "5 (9)所在地", value: CUSTODIAN_INFO.address },
-    { label: "5 (10)支援責任者名", value: CUSTODIAN_INFO.officeName },
-    { label: "5 (11)支援担当者名", value: CUSTODIAN_INFO.officeName },
+    { label: "5 (1)氏名又は名称", value: c.officeName, edit: cu("officeName") },
+    { label: "5 (3)雇用保険適用事業所番号", value: c.koyoNo, edit: cu("koyoNo") },
+    { label: "5 (4)住所（所在地）", value: c.headOfficeAddress, edit: cu("headOfficeAddress") },
+    { label: "5 (4)電話番号", value: c.tel, edit: cu("tel") },
+    { label: "5 (5)代表者の氏名", value: c.representativeName, edit: cu("representativeName") },
+    { label: "5 (6)登録番号", value: c.registrationNo, edit: cu("registrationNo") },
+    dateItem("5 (7)登録年月日", c.registeredOn, undefined, cu("registeredOn", "date")),
+    { label: "5 (8)支援を行う事業所の名称", value: c.supportOfficeName, edit: cu("supportOfficeName") },
+    { label: "5 (9)所在地", value: c.address, edit: cu("address") },
+    { label: "5 (10)支援責任者名", value: c.supportManagerName, edit: cu("supportManagerName") },
+    { label: "5 (11)支援担当者名", value: c.supportStaffName, edit: cu("supportStaffName") },
     { label: "5 (12)対応可能言語", value: lang === "en" ? "" : RESUME_LANG_JA[lang], note: "国籍から" },
     {
       label: "5 (13)支援委託手数料（月額／人）",

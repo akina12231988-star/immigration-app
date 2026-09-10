@@ -9,6 +9,8 @@ import { listWorkerWages } from "@/lib/supabase/queries/wages";
 import { toCalcHistory } from "@/lib/supabase/queries/histories";
 import { findPlanDatesForTodo, listPlanDates } from "@/lib/supabase/queries/plan-dates";
 import { normalizeOrganizationIntake } from "@/lib/organization-intake";
+import { getAppSetting, setAppSetting } from "@/lib/supabase/queries/app-settings";
+import { CUSTODIAN_SETTING_KEY, mergeCustodianInfo, type CustodianInfo } from "@/lib/custody";
 import {
   buildApplicationCopyGroups,
   copyGroupText,
@@ -46,6 +48,7 @@ export function ApplicationCopyPanel({
     wages: WorkerWage[];
     histories: WorkHistoryRow[];
     planDates: Record<string, string>;
+    custodian: Partial<CustodianInfo> | null; // 登録支援機関の上書き（app_settings。無ければ既定値）
   } | null>(null);
 
   useEffect(() => {
@@ -65,8 +68,10 @@ export function ApplicationCopyPanel({
       listPlanDates(supabase, workerId)
         .then((rows) => findPlanDatesForTodo(rows, todoNo)?.dates ?? {})
         .catch(() => ({}) as Record<string, string>),
-    ]).then(([worker, org, wages, histories, planDates]) => {
-      if (!cancelled) setLoaded({ worker, org, wages, histories, planDates });
+      // 0149 未適用でも既定値で表示できるようにエラーは無視する
+      getAppSetting<CustodianInfo>(supabase, CUSTODIAN_SETTING_KEY).catch(() => null),
+    ]).then(([worker, org, wages, histories, planDates, custodian]) => {
+      if (!cancelled) setLoaded({ worker, org, wages, histories, planDates, custodian });
     });
     return () => {
       cancelled = true;
@@ -81,6 +86,10 @@ export function ApplicationCopyPanel({
       await updateWorker(supabase, workerId, {
         [edit.column]: edit.kind === "date" ? v || null : v,
       } as Parameters<typeof updateWorker>[2]);
+    } else if (edit.target === "custodian") {
+      // 登録支援機関の情報は全員共通（app_settings に保存）
+      const next = { ...mergeCustodianInfo(loaded?.custodian), [edit.column]: v };
+      await setAppSetting(supabase, CUSTODIAN_SETTING_KEY, next);
     } else if (edit.target === "org") {
       if (!orgId) throw new Error("所属機関が未設定です");
       await updateOrganization(supabase, orgId, { [edit.column]: v });
@@ -103,6 +112,7 @@ export function ApplicationCopyPanel({
       histories: loaded.histories.map(toCalcHistory),
       planDates: loaded.planDates,
       desiredStatus,
+      custodian: mergeCustodianInfo(loaded.custodian),
     });
   }, [loaded, desiredStatus]);
 
@@ -163,7 +173,7 @@ export function ApplicationCopyList({
             申請書（申請人等作成用 1〜3・所属機関等作成用 1・2・4）の項目順に並んでいます。右のコピーで1項目ずつ、
             年・月・日のように欄が分かれているものは部品ごとにもコピーできます。
             {canEdit && onSave
-              ? "「未登録」の項目はその場で入力、登録済みの項目は鉛筆マークから編集して保存できます（外国人詳細・所属機関にも反映されます）。"
+              ? "「未登録」の項目はその場で入力、登録済みの項目は鉛筆マークから編集して保存できます（外国人詳細・所属機関にも反映されます。所属機関等作成用 4 の登録支援機関の情報は全員共通の設定として保存されます）。"
               : "「未登録」は外国人詳細・所属機関で入れると出ます。"}
             {orgMissing && "所属機関が未設定のため、所属機関の項目は空です。"}
           </p>
@@ -308,7 +318,9 @@ function InlineEditField({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const options = "options" in edit ? edit.options : undefined;
-  const isDate = edit.target === "worker" && edit.kind === "date";
+  const isDate = "kind" in edit && edit.kind === "date";
+  // エラー文に出すマイグレーション名（登録支援機関の情報は app_settings に保存する）
+  const migration = edit.target === "custodian" ? "0149_app_settings.sql" : "0001_init.sql";
   const cls =
     "min-h-[28px] rounded border border-seal/40 bg-surface px-1.5 text-[11px] focus:border-brand focus:outline-none disabled:opacity-60";
   // 未登録のときは空では保存しない。登録済みのときは変わっていなければ保存しない（空にして消すのは可）
@@ -323,7 +335,7 @@ function InlineEditField({
     try {
       await onSave(edit, value);
     } catch (err) {
-      setError(dbErrorMessage(err, "0001_init.sql", `${label}の保存に失敗しました`));
+      setError(dbErrorMessage(err, migration, `${label}の保存に失敗しました`));
     } finally {
       setBusy(false);
     }

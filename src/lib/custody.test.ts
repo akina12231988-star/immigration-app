@@ -6,6 +6,8 @@ import {
   nextFreeStorageNo,
   parseAzkLedger,
   receiptTranslation,
+  CUSTODIAN_INFO,
+  mergeCustodianInfo,
 } from "./custody";
 
 describe("formatStorageNo", () => {
@@ -89,5 +91,16 @@ describe("parseAzkLedger", () => {
   it("配列以外・壊れたJSONはエラー", () => {
     expect(() => parseAzkLedger("{}")).toThrow();
     expect(() => parseAzkLedger("not json")).toThrow();
+  });
+});
+
+describe("登録支援機関の情報（既定値と app_settings の上書き）", () => {
+  it("上書きが無ければ既定値、あれば一部だけでもかぶせる。空文字は未登録として残す", () => {
+    expect(mergeCustodianInfo(null)).toEqual({ ...CUSTODIAN_INFO });
+    const m = mergeCustodianInfo({ supportStaffName: "秋吉 伽恋", tel: "", registeredOn: 123 as unknown as string });
+    expect(m.supportStaffName).toBe("秋吉 伽恋");
+    expect(m.tel).toBe("");
+    expect(m.registeredOn).toBe(CUSTODIAN_INFO.registeredOn); // 文字列でない値は無視
+    expect(m.officeName).toBe(CUSTODIAN_INFO.officeName);
   });
 });
