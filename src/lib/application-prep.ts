@@ -543,7 +543,10 @@ export const PREP_DOC_STATUS_OPTIONS: Record<string, PrepDocStatusOption[]> = {
     { value: "本人に依頼中", done: false },
     { value: "本人から送られてきた", done: true },
     { value: "本人が母国在住だった為発行できない", done: true, noFile: true },
-    { value: "本人にまだ届いていないから納税証明書その３で対応", done: true, noFile: true },
+    // 源泉徴収票の代わりに国税の納税証明書（その3）を税務署に郵送請求する。
+    // 郵送請求ツールで投函日・追跡番号・進捗を記録すると、この欄に表示される
+    { value: "納税証明書その3を税務署に郵送請求中", done: false, extras: [{ kind: "mailing" }] },
+    { value: "本人にまだ届いていないから納税証明書その３で対応", done: true, noFile: true, extras: [{ kind: "mailing" }] },
   ],
   kazei: [
     { value: "発行依頼中", done: false, extras: [{ kind: "issuer", label: "発行依頼先（誰に依頼したか）" }] },

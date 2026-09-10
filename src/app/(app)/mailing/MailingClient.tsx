@@ -55,62 +55,16 @@ import {
 } from "@/lib/tax-cert";
 import { MunicipalityBrowser } from "@/components/mailing/MunicipalityBrowser";
 import { WorkerAddressGuide } from "@/components/mailing/WorkerAddressGuide";
+import { SaveBlockers } from "@/components/mailing/SaveBlockers";
 import { effectivePrefecture, guessPrefecture, municipalityOptionLabel, PREFECTURE_LIST } from "@/lib/prefectures";
 import { dbErrorMessage } from "@/lib/errors";
+import { extraSaveBlockers, judgeBlockers, methodBlockers, taxSaveBlockers } from "@/lib/mailing-save-check";
+import { MAILING_PROGRESS_OPTIONS, type TaxOffice } from "@/lib/tax-office";
 import { MailingFileAttachments } from "./MailingFileAttachments";
 import { MoneyOrderFields } from "./MoneyOrderFields";
-
-// 郵送請求ツールで扱う外国人（現在の住所は転出届・住民票の請求先判断に表示する）
-interface MailingWorker {
-  id: string;
-  name: string;
-  address: string;
-}
-
-const INPUT =
-  "min-h-[42px] w-full rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none";
-const LABEL = "text-xs font-bold text-muted";
-
-function Pill({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex-1 rounded-xl border px-3 py-2.5 text-sm font-bold transition ${
-        active
-          ? "border-brand bg-brand text-brand-foreground"
-          : "border-border bg-surface text-muted hover:border-muted"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function CheckRow({
-  checked,
-  onChange,
-  label,
-}: {
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  label: string;
-}) {
-  return (
-    <label className="flex items-center gap-2 border-b border-border py-2 text-sm">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4" />
-      {label}
-    </label>
-  );
-}
+import { TaxOfficeTab } from "./TaxOfficeTab";
+import { Nozei3EditModal, Nozei3RecordView, Nozei3RequestForm } from "./Nozei3RequestForm";
+import { CheckRow, INPUT, LABEL, Pill, type MailingWorker } from "./ui";
 
 
 function useToast() {
@@ -130,22 +84,25 @@ function useToast() {
 export function MailingClient({
   initialMunicipalities,
   initialRecords,
+  initialTaxOffices = [],
   workers = [],
   canEdit,
   initialKeyword = "",
 }: {
   initialMunicipalities: Municipality[];
   initialRecords: JudgmentRecord[];
+  initialTaxOffices?: TaxOffice[]; // 税務署マスタ（納税証明書その3の投函先）
   workers?: MailingWorker[];
   canEdit: boolean;
   // 指定すると記録一覧タブを開き、氏名・TODO番号で絞り込んだ状態で表示する
   // （申請準備のTODOの「郵送請求を開く」から、その人の記録一覧に直接来られるように）
   initialKeyword?: string;
 }) {
-  const [tab, setTab] = useState<"judge" | "muni" | "records">(
+  const [tab, setTab] = useState<"judge" | "muni" | "taxoffice" | "records">(
     initialKeyword ? "records" : "judge",
   );
   const [municipalities, setMunicipalities] = useState(initialMunicipalities);
+  const [taxOffices, setTaxOffices] = useState(initialTaxOffices);
   const [records, setRecords] = useState(initialRecords);
   // 外国人の現在の住所（未登録なら請求フォームから登録でき、外国人詳細にも反映される）
   const [workerList, setWorkerList] = useState(workers);
@@ -157,6 +114,7 @@ export function MailingClient({
   const tabs = [
     { key: "judge" as const, label: "請求フォーム" },
     { key: "muni" as const, label: `自治体マスタ (${municipalities.length})` },
+    { key: "taxoffice" as const, label: `税務署マスタ (${taxOffices.length})` },
     { key: "records" as const, label: `記録一覧 (${records.length})` },
   ];
 
@@ -195,6 +153,16 @@ export function MailingClient({
           setRecords={setRecords}
           workers={workerList}
           onWorkerAddressSaved={updateWorkerAddressLocal}
+          taxOffices={taxOffices}
+          setTaxOffices={setTaxOffices}
+          canEdit={canEdit}
+          showToast={showToast}
+        />
+      )}
+      {tab === "taxoffice" && (
+        <TaxOfficeTab
+          taxOffices={taxOffices}
+          setTaxOffices={setTaxOffices}
           canEdit={canEdit}
           showToast={showToast}
         />
@@ -213,6 +181,9 @@ export function MailingClient({
           setRecords={setRecords}
           municipalities={municipalities}
           setMunicipalities={setMunicipalities}
+          taxOffices={taxOffices}
+          setTaxOffices={setTaxOffices}
+          workers={workerList}
           canEdit={canEdit}
           showToast={showToast}
           initialKeyword={initialKeyword}
@@ -220,7 +191,7 @@ export function MailingClient({
       )}
 
       <p className="rounded-xl bg-background p-3 text-[11px] leading-relaxed text-muted">
-        ※ 本ツールは課税・納税証明書の取得年度・タイミングの参考整理用です。最終判断は最新の入管庁案内・各自治体窓口でご確認ください。
+        ※ 本ツールは課税・納税証明書の取得年度・タイミングの参考整理用です。最終判断は最新の入管庁案内・各自治体窓口・税務署でご確認ください。
         <br />
         ※ 氏名等の個人情報を含む記録が保存されます。取り扱いにご注意ください。
       </p>
@@ -428,6 +399,8 @@ function JudgeTab({
   setRecords,
   workers,
   onWorkerAddressSaved,
+  taxOffices,
+  setTaxOffices,
   canEdit,
   showToast,
 }: {
@@ -437,10 +410,12 @@ function JudgeTab({
   setRecords: (r: JudgmentRecord[]) => void;
   workers: MailingWorker[];
   onWorkerAddressSaved: (id: string, address: string) => void;
+  taxOffices: TaxOffice[];
+  setTaxOffices: (o: TaxOffice[]) => void;
   canEdit: boolean;
   showToast: (m: string) => void;
 }) {
-  // 請求する書類の種別（課税・納税証明書 / 転出届 / 住民票）
+  // 請求する書類の種別（課税・納税証明書 / 転出届 / 住民票 / 納税証明書その3（税務署））
   const [requestKind, setRequestKind] = useState<RequestKind>("tax");
   // 課税証明書は年度の1月1日時点の住所地が発行するので、最新年度・前年度で自治体を分けられる
   const [muniId, setMuniId] = useState(municipalities[0]?.id ?? ""); // 最新年度の自治体
@@ -503,6 +478,31 @@ function JudgeTab({
   const selectedPrevMuni = prevSame ? selectedMuni : (municipalities.find((m) => m.id === prevMuniId) ?? null);
   const selectedNhiMuni = municipalities.find((m) => m.id === nhiMuniId) ?? null;
   const canJudge = !!selectedMuni && !!selectedPrevMuni && !!appDate && (!hasNhi || !!selectedNhiMuni);
+  // 「判定する」「この結果を記録として保存」が押せない理由（赤字で出す）
+  const judgeReasons = judgeBlockers({
+    hasMunicipalities: municipalities.length > 0,
+    newMuniSelected: !!selectedMuni,
+    prevSame,
+    prevMuniSelected: !!selectedPrevMuni,
+    appDate,
+    hasNhi,
+    nhiMuniSelected: !!selectedNhiMuni,
+  });
+  const saveReasons = taxSaveBlockers({
+    canEdit,
+    saved,
+    personName,
+    method,
+    mailDate,
+    recipient,
+    agent,
+    hasNhi: !!result?.hasNhi,
+    nhiSameAsMain,
+    nhiMethod,
+    nhiMailDate,
+    nhiRecipient,
+    nhiAgent,
+  });
   const resetResult = () => setResult(null);
   // 申請予定日の時点の最新年度（表示と住所の案内に使う）
   const latestYear = latestFiscalStartYear(new Date((appDate || todayISO()) + "T00:00:00"));
@@ -676,10 +676,28 @@ function JudgeTab({
           <Pill active={requestKind === "juminhyo"} onClick={() => setRequestKind("juminhyo")}>
             住民票を郵送請求
           </Pill>
+          <Pill active={requestKind === "nozei3"} onClick={() => setRequestKind("nozei3")}>
+            納税証明書その3を税務署に郵送請求
+          </Pill>
         </div>
       </Card>
 
-      {requestKind !== "tax" ? (
+      {requestKind === "nozei3" ? (
+        <Nozei3RequestForm
+          key={`nozei3-${workerId}`}
+          personName={personName}
+          workerId={workerId}
+          todoNumber={todoNumber}
+          worker={selectedWorker}
+          onWorkerAddressSaved={onWorkerAddressSaved}
+          taxOffices={taxOffices}
+          setTaxOffices={setTaxOffices}
+          records={records}
+          setRecords={setRecords}
+          canEdit={canEdit}
+          showToast={showToast}
+        />
+      ) : requestKind !== "tax" ? (
         <ExtraRequestForm
           key={requestKind}
           kind={requestKind}
@@ -779,6 +797,7 @@ function JudgeTab({
               </label>
             )}
             <Button fullWidth disabled={!canJudge} onClick={runJudge}>判定する</Button>
+            <SaveBlockers reasons={judgeReasons} />
           </div>
         )}
       </Card>
@@ -879,10 +898,11 @@ function JudgeTab({
           )}
 
           {canEdit && (
-            <Button fullWidth variant="secondary" disabled={saved || busy} onClick={save}>
+            <Button fullWidth variant="secondary" disabled={saved || busy || saveReasons.length > 0} onClick={save}>
               {busy ? "保存中…" : saved ? "記録済み" : "この結果を記録として保存"}
             </Button>
           )}
+          <SaveBlockers reasons={saveReasons} className="mt-2" />
         </Card>
       )}
         </>
@@ -1265,6 +1285,9 @@ function ExtraRequestForm({
     }
   };
 
+  // 「この請求を記録として保存」が押せない理由（赤字で出す）
+  const saveReasons = extraSaveBlockers({ canEdit, personName, formError: extraFormError(kind, v, muni) });
+
   const save = async () => {
     if (!personName.trim()) return showToast("対象者の氏名を入力してください");
     const err = extraFormError(kind, v, muni);
@@ -1392,10 +1415,11 @@ function ExtraRequestForm({
             showToast={showToast}
           />
           {canEdit && (
-            <Button fullWidth className="mt-4" disabled={busy} onClick={save}>
+            <Button fullWidth className="mt-4" disabled={busy || saveReasons.length > 0} onClick={save}>
               {busy ? "保存中…" : "この請求を記録として保存"}
             </Button>
           )}
+          <SaveBlockers reasons={saveReasons} className="mt-2" />
         </>
       )}
     </Card>
@@ -1427,7 +1451,8 @@ function ExtraEditModal({
   const set = (patch: Partial<ExtraFormValues>) => setV((x) => ({ ...x, ...patch }));
   const label = requestKindLabel(record.requestKind);
   const muni = municipalities.find((m) => m.id === v.muniId) ?? null;
-  const canSave = extraFormError(kind, v, muni) === null;
+  const editReasons = extraSaveBlockers({ canEdit, personName: record.personName || "-", formError: extraFormError(kind, v, muni) });
+  const canSave = editReasons.length === 0;
   const addMunicipality = (m: Municipality) =>
     setMunicipalities([...municipalities, m].sort((a, b) => a.name.localeCompare(b.name, "ja")));
 
@@ -1479,6 +1504,7 @@ function ExtraEditModal({
         >
           {busy ? "保存中…" : "保存する"}
         </Button>
+        <SaveBlockers reasons={editReasons} />
       </div>
     </Modal>
   );
@@ -1712,6 +1738,9 @@ function RecordsTab({
   setRecords,
   municipalities,
   setMunicipalities,
+  taxOffices,
+  setTaxOffices,
+  workers,
   canEdit,
   showToast,
   initialKeyword = "",
@@ -1720,6 +1749,9 @@ function RecordsTab({
   setRecords: (r: JudgmentRecord[]) => void;
   municipalities: Municipality[];
   setMunicipalities: (m: Municipality[]) => void;
+  taxOffices: TaxOffice[];
+  setTaxOffices: (o: TaxOffice[]) => void;
+  workers: MailingWorker[];
   canEdit: boolean;
   showToast: (m: string) => void;
   initialKeyword?: string; // その人の記録だけを最初から表示する（氏名・TODO番号）
@@ -1734,6 +1766,7 @@ function RecordsTab({
   const [fKeyword, setFKeyword] = useState(initialKeyword);
   const [fAgent, setFAgent] = useState("");
   const [fMailOnly, setFMailOnly] = useState(false);
+  const [fProgress, setFProgress] = useState(""); // 納税証明書その3の進捗
 
   const muniOptions = useMemo(() => {
     const names = Array.from(new Set(records.map((r) => r.municipalityName).filter(Boolean)));
@@ -1745,6 +1778,7 @@ function RecordsTab({
     const ag = fAgent.trim().toLowerCase();
     return records.filter((r) => {
       if (fKind && (r.requestKind ?? "tax") !== fKind) return false;
+      if (fProgress && (r.requestKind !== "nozei3" || (r.mailingProgress ?? "preparing") !== fProgress)) return false;
       if (fMuni && r.municipalityName !== fMuni) return false;
       if (fCollection && (r.requestKind ?? "tax") === "tax" && r.collectionType !== fCollection) return false;
       if (kw && !`${r.personName ?? ""} ${r.todoNumber ?? ""}`.toLowerCase().includes(kw)) return false;
@@ -1760,9 +1794,9 @@ function RecordsTab({
       }
       return true;
     });
-  }, [records, fKind, fMuni, fCollection, fKeyword, fAgent, fMailOnly]);
+  }, [records, fKind, fMuni, fCollection, fKeyword, fAgent, fMailOnly, fProgress]);
 
-  const hasFilter = !!(fKind || fMuni || fCollection || fKeyword || fAgent || fMailOnly);
+  const hasFilter = !!(fKind || fMuni || fCollection || fKeyword || fAgent || fMailOnly || fProgress);
 
   const persistUpdate = async (updated: JudgmentRecord) => {
     setBusy(true);
@@ -1805,10 +1839,20 @@ function RecordsTab({
                 <option value="tax">課税・納税証明書</option>
                 <option value="tenshutsu">転出届</option>
                 <option value="juminhyo">住民票</option>
+                <option value="nozei3">納税証明書その3（税務署）</option>
               </select>
             </label>
             <label className="flex flex-col gap-1">
-              <span className={LABEL}>自治体</span>
+              <span className={LABEL}>進捗（納税証明書その3）</span>
+              <select value={fProgress} onChange={(e) => setFProgress(e.target.value)} className={INPUT}>
+                <option value="">すべて</option>
+                {MAILING_PROGRESS_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>自治体・税務署</span>
               <select value={fMuni} onChange={(e) => setFMuni(e.target.value)} className={INPUT}>
                 <option value="">すべて</option>
                 {muniOptions.map((n) => <option key={n} value={n}>{n}</option>)}
@@ -1839,7 +1883,7 @@ function RecordsTab({
             <div className="flex items-center gap-3 text-xs text-muted">
               <span>全{records.length}件中 <strong className="text-foreground">{filtered.length}</strong>件</span>
               {hasFilter && (
-                <button type="button" onClick={() => { setFKind(""); setFMuni(""); setFCollection(""); setFKeyword(""); setFAgent(""); setFMailOnly(false); }} className="font-bold text-brand">クリア</button>
+                <button type="button" onClick={() => { setFKind(""); setFMuni(""); setFCollection(""); setFKeyword(""); setFAgent(""); setFMailOnly(false); setFProgress(""); }} className="font-bold text-brand">クリア</button>
               )}
             </div>
           </div>
@@ -1878,7 +1922,10 @@ function RecordsTab({
                 )}
               </div>
 
-              {r.requestKind === "tenshutsu" || r.requestKind === "juminhyo" ? (
+              {r.requestKind === "nozei3" ? (
+                /* 納税証明書その3（税務署）の請求記録 */
+                <Nozei3RecordView record={r} canEdit={canEdit} />
+              ) : r.requestKind === "tenshutsu" || r.requestKind === "juminhyo" ? (
                 /* 転出届・住民票の請求記録 */
                 <div className="rounded-xl bg-background p-3 text-xs leading-relaxed">
                   <p className="font-bold">
@@ -1948,7 +1995,19 @@ function RecordsTab({
       )}
 
       {editTarget &&
-        (editTarget.requestKind === "tenshutsu" || editTarget.requestKind === "juminhyo" ? (
+        (editTarget.requestKind === "nozei3" ? (
+          <Nozei3EditModal
+            record={editTarget}
+            worker={workers.find((w) => w.id === editTarget.workerId) ?? null}
+            taxOffices={taxOffices}
+            setTaxOffices={setTaxOffices}
+            busy={busy}
+            onClose={() => setEditTarget(null)}
+            onSave={persistUpdate}
+            canEdit={canEdit}
+            showToast={showToast}
+          />
+        ) : editTarget.requestKind === "tenshutsu" || editTarget.requestKind === "juminhyo" ? (
           <ExtraEditModal
             record={editTarget}
             municipalities={municipalities}
@@ -1984,6 +2043,8 @@ function MoneyOrderReceiptView({
   canEdit: boolean;
 }) {
   const orders = record.moneyOrders ?? [];
+  // 納税証明書その3は収入印紙で、添付欄はカードの中に別に出している
+  if (record.requestKind === "nozei3") return null;
   const mailed =
     record.requestMethod === "mail" ||
     (record.requestKind === "tenshutsu" && record.requestMethod !== "window") ||
@@ -2096,6 +2157,13 @@ function RecipientEditModal({
   const canSave =
     checkMethodValid(method, mailDate, recipient, agent) &&
     (!record.hasNhi || nhiSameAsMain || checkMethodValid(nhiMethod, nhiMailDate, nhiRecipient, nhiAgent));
+  // 「保存する」が押せない理由（赤字で出す）
+  const editReasons = [
+    ...methodBlockers(method, mailDate, recipient, agent, "受領方法："),
+    ...(record.hasNhi && !nhiSameAsMain
+      ? methodBlockers(nhiMethod, nhiMailDate, nhiRecipient, nhiAgent, "国保税納税証明書の受領方法：")
+      : []),
+  ];
 
   const submit = () => {
     if (!canSave) return;
@@ -2232,6 +2300,7 @@ function RecipientEditModal({
         <Button fullWidth className="mt-3" disabled={!canSave || busy} onClick={submit}>
           {busy ? "保存中…" : "保存する"}
         </Button>
+        <SaveBlockers reasons={editReasons} />
       </div>
     </Modal>
   );
