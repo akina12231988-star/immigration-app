@@ -700,12 +700,26 @@ export function ApplicationPrepChecklist({
   async function renameList() {
     if (selected == null || current == null) return;
     const next = window.prompt("新しいTODO番号を入力してください", selected)?.trim();
+    if (!next) return;
+    await assignTodoNo(next);
+  }
+
+  // 番号未設定のリストにあとから番号を入れる欄（チップの下に出す）
+  const [assignNo, setAssignNo] = useState("");
+  const [assigning, setAssigning] = useState(false);
+
+  // 表示中のリストに TODO番号を付ける／付け替える。
+  // 番号未設定（""）のリストにあとから番号を入れるときと、番号の変更で共用
+  async function assignTodoNo(raw: string) {
+    if (selected == null || current == null) return;
+    const next = raw.trim();
     if (!next || next === selected) return;
     if (lists.some((l) => l.todo_no === next)) {
       setError(`TODO番号「${next}」の準備リストはすでにあります。`);
       return;
     }
     setError(null);
+    setAssigning(true);
     try {
       await updatePrepChecklistTodoNo(createClient(), current.id, next);
       // TODO一覧（/todos）と申請準備の対応状況の番号もそろえる（無ければ何もしない）
@@ -717,8 +731,12 @@ export function ApplicationPrepChecklist({
       const rows = await listPrepChecklists(createClient(), workerId);
       setLists(rows);
       setSelected(next);
+      setAssignNo("");
+      loadWorkerTodos();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "番号の変更に失敗しました");
+      setError(dbErrorMessage(err, "0102_todos.sql", "番号の変更に失敗しました"));
+    } finally {
+      setAssigning(false);
     }
   }
 
@@ -1109,6 +1127,57 @@ export function ApplicationPrepChecklist({
                 )}
               </span>
             ))}
+          </div>
+        )}
+        {/* 番号未設定のリスト: あとからここで番号を入れられる（TODO一覧の申請準備TODOの番号を候補に出す） */}
+        {current != null && !current.todo_no && canEdit && (
+          <div className="mb-2 rounded-lg border border-status-notice-fg/40 bg-status-notice-bg px-2.5 py-2 text-xs">
+            <p className="font-bold text-status-notice-fg">
+              TODO番号が未設定です。番号が決まったらここで入力してください（申請一覧・TODO一覧と紐づきます）。
+            </p>
+            <div className="mt-1.5 flex gap-2">
+              <input
+                value={assignNo}
+                onChange={(e) => setAssignNo(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && assignNo.trim() && !assigning) void assignTodoNo(assignNo);
+                }}
+                placeholder="例：TODO-2008"
+                className={`${inputCls} min-w-0 flex-1`}
+              />
+              <button
+                type="button"
+                onClick={() => void assignTodoNo(assignNo)}
+                disabled={assigning || !assignNo.trim()}
+                className="shrink-0 rounded-lg bg-brand px-3 py-2 text-xs font-bold text-brand-foreground disabled:opacity-50"
+              >
+                {assigning ? "登録中…" : "番号を登録"}
+              </button>
+            </div>
+            {/* この外国人の申請準備TODO（TODO一覧）で、まだ準備リストに使っていない番号は1回で付けられる */}
+            {(() => {
+              const used = new Set(lists.map((l) => normalizeTodoKey(l.todo_no)));
+              const candidates = workerTodos
+                .map((t) => t.todo_no)
+                .filter((no) => no && !used.has(normalizeTodoKey(no)));
+              if (candidates.length === 0) return null;
+              return (
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  <span className="text-muted">TODO一覧の番号を使う：</span>
+                  {candidates.map((no) => (
+                    <button
+                      key={no}
+                      type="button"
+                      disabled={assigning}
+                      onClick={() => void assignTodoNo(no)}
+                      className="rounded-full border border-brand bg-surface px-2.5 py-1 font-bold text-brand disabled:opacity-50"
+                    >
+                      {no} を使う
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
         )}
         {/* TODO番号の下: そのまま貼れる名称（メッセンジャー用・ファイル名用）。
