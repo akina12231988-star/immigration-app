@@ -6,6 +6,11 @@ import {
   daysSince,
   isAdvanceRepaid,
   isAdvanceUnpaid,
+  payerLabel,
+  payerPatch,
+  reminderAmount,
+  remindersCsv,
+  repaymentLabel,
   formatReminderNo,
   nextReminderNo,
   reminderAlertText,
@@ -175,5 +180,37 @@ describe("立替払い（本人の代わりに支払った分の返金の追い�
     ];
     expect(reminderCounts(rows).advanceUnpaid).toBe(1);
     expect(reminderAlertText(rows[0], TODAY)).toBe("No.01 市役所からの通知 … 返事あり（手続き中） ／ 立替 3,000円 未返金（支払から6日）");
+  });
+});
+
+describe("金額・誰が払うか・一覧表", () => {
+  it("支払の表示と返金確認", () => {
+    expect(payerLabel(rem({ payer: "本人" }))).toBe("本人が払う");
+    expect(payerLabel(rem({ payer: "代わり" }))).toBe("代わりに払う");
+    expect(payerLabel(rem({ advance_paid: true }))).toBe("代わりに払う"); // 未設定でも立替なら代わり
+    expect(payerLabel(rem({}))).toBe("");
+    expect(repaymentLabel(rem({ payer: "本人" }))).toEqual({ text: "", unpaid: false });
+    expect(repaymentLabel(rem({ payer: "代わり" }))).toEqual({ text: "未返金", unpaid: true });
+    expect(repaymentLabel(rem({ payer: "代わり", advance_repaid_on: "2026-09-05" }))).toEqual({ text: "返金済み（2026-09-05）", unpaid: false });
+    expect(reminderAmount(rem({ amount: 12000, advance_amount: 11000 }))).toBe(12000);
+    expect(reminderAmount(rem({ advance_amount: 11000 }))).toBe(11000);
+    expect(reminderAmount(rem({}))).toBeNull();
+  });
+
+  it("代わりに払うに変えると立替払いが有効になり、金額が立替金額に入る", () => {
+    expect(payerPatch(rem({ amount: 8000 }), "代わり")).toEqual({ payer: "代わり", advance_paid: true, advance_amount: 8000 });
+    expect(payerPatch(rem({ amount: 8000, advance_amount: 7000 }), "代わり")).toEqual({ payer: "代わり", advance_paid: true });
+    expect(payerPatch(rem({}), "本人")).toEqual({ payer: "本人", advance_paid: false });
+    // 返金済みの記録があれば立替の記録は残す
+    expect(payerPatch(rem({ advance_repaid_on: "2026-09-05" }), "本人")).toEqual({ payer: "本人" });
+  });
+
+  it("一覧表のCSV", () => {
+    const csv = remindersCsv([
+      { ...rem({ reminder_no: 1, created_at: "2026-09-01T00:00:00Z", amount: 12000, payer: "代わり", advance_paid: true, advance_paid_on: "2026-09-02", content: "住民税 \"第2期\"" }), workerName: "NGUYEN VAN A", orgName: "有限会社國崎青果" },
+    ]);
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe('"作成日","番号","氏名","所属機関","種類","内容","金額","支払","返金確認","支払日（立替）","進捗"');
+    expect(lines[1]).toBe('"2026-09-01","No.01","NGUYEN VAN A","有限会社國崎青果","市役所からの通知","住民税 ""第2期""","12000","代わりに払う","未返金","2026-09-02","未連絡"');
   });
 });

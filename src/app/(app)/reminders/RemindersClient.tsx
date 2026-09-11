@@ -9,8 +9,11 @@ import {
   ImagePlus,
   Loader2,
   MessageCircle,
+  Download,
+  LayoutList,
   Plus,
   Receipt,
+  Table2,
   Trash2,
   X,
 } from "lucide-react";
@@ -32,6 +35,9 @@ import { deleteReminderImage, getReminderImageUrls } from "./actions";
 import { uploadReminderImage } from "@/lib/reminder-files";
 import {
   ADVANCE_MIGRATION,
+  AMOUNT_MIGRATION,
+  PAYER_LABELS,
+  REMINDER_PAYERS,
   REMINDER_BOX_SIZE,
   REMINDER_KINDS,
   REMINDER_STATUSES,
@@ -46,10 +52,16 @@ import {
   isAwaitingReply,
   isReminderOpen,
   nextReminderNo,
+  payerLabel,
+  payerPatch,
+  reminderAmount,
   reminderBoxes,
   reminderCounts,
   reminderImageKind,
+  reminderPayer,
   reminderStatusPatch,
+  remindersCsv,
+  repaymentLabel,
   sortReminders,
 } from "@/lib/reminders";
 import { formatYenInput, parseYenDigits } from "@/lib/ssw-insurance";
@@ -57,7 +69,7 @@ import { workerNameSuggestions } from "@/lib/worker-search";
 import { messengerWebUrl } from "@/lib/messenger-link";
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
 import type { WorkerWithOrg } from "@/lib/supabase/queries/workers";
-import type { ReminderImage, ReminderImageKind, ReminderStatus } from "@/types/db";
+import type { ReminderImage, ReminderImageKind, ReminderPayer, ReminderStatus } from "@/types/db";
 
 const MIGRATION = "0144_reminders.sql";
 
@@ -99,6 +111,8 @@ export function RemindersClient({
   const [error, setError] = useState<string | null>(loadError);
   const [filter, setFilter] = useState<Filter>("進行中");
   const [q, setQ] = useState("");
+  // 表示: カード（従来）／一覧表（作成日・名前・金額・支払・返金確認）
+  const [view, setView] = useState<"card" | "table">("card");
   // 外国人詳細から来たときは、その人に絞って新規登録の欄を開く
   const initialWorker = initialWorkerId ? (workers.find((w) => w.id === initialWorkerId) ?? null) : null;
   const [onlyWorkerId, setOnlyWorkerId] = useState<string | null>(initialWorker?.id ?? null);
@@ -166,7 +180,12 @@ export function RemindersClient({
       replace({ ...r, ...patch });
     } catch (err) {
       // 立替払いの項目（0150）は、その分の案内を出す
-      const migration = Object.keys(patch).some((k) => k.startsWith("advance_")) ? ADVANCE_MIGRATION : MIGRATION;
+      const keys = Object.keys(patch);
+      const migration = keys.some((k) => k === "amount" || k === "payer")
+        ? AMOUNT_MIGRATION
+        : keys.some((k) => k.startsWith("advance_"))
+          ? ADVANCE_MIGRATION
+          : MIGRATION;
       setError(dbErrorMessage(err, migration, errorMessage(err, "保存に失敗しました")));
     }
   };
@@ -183,6 +202,20 @@ export function RemindersClient({
   };
 
   const onlyWorker = onlyWorkerId ? workers.find((w) => w.id === onlyWorkerId) : null;
+
+  // 一覧表をCSVで保存（今の絞り込みのまま。Excelで文字化けしないよう BOM 付き）
+  const downloadCsv = () => {
+    const csv = remindersCsv(
+      shown.map((r) => ({ ...r, workerName: r.workers?.name ?? "", orgName: r.workers?.organizations?.name ?? "" })),
+    );
+    const blob = new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `督促一覧_${today}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-4">
@@ -310,14 +343,132 @@ export function RemindersClient({
             </button>
           ))}
         </div>
+        <div className="flex gap-1">
+          <button
+            type="button"
+            onClick={() => setView("card")}
+            aria-pressed={view === "card"}
+            className={`inline-flex min-h-[36px] items-center gap-1 rounded-lg border px-2.5 text-xs font-bold ${
+              view === "card" ? "border-brand bg-brand text-brand-foreground" : "border-border bg-surface text-muted"
+            }`}
+          >
+            <LayoutList size={13} />
+            カード
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("table")}
+            aria-pressed={view === "table"}
+            className={`inline-flex min-h-[36px] items-center gap-1 rounded-lg border px-2.5 text-xs font-bold ${
+              view === "table" ? "border-brand bg-brand text-brand-foreground" : "border-border bg-surface text-muted"
+            }`}
+          >
+            <Table2 size={13} />
+            一覧表
+          </button>
+        </div>
       </div>
+
+      {/* 一覧表（作成日・名前・金額・本人が払う／代わりに払う・返金確認） */}
+      {view === "table" && shown.length > 0 && (
+        <Card className="p-2">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-1">
+            <p className="text-[11px] text-muted">
+              {shown.length}件。行を押すと詳細を開きます。金額・支払は登録時と詳細で入れられます。
+            </p>
+            <button
+              type="button"
+              onClick={downloadCsv}
+              className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-bold text-brand"
+            >
+              <Download size={13} />
+              CSVで保存
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-xs">
+              <thead>
+                <tr className="border-b border-border text-left text-[11px] text-muted">
+                  <th className="px-2 py-1.5 font-bold">作成日</th>
+                  <th className="px-2 py-1.5 font-bold">No.</th>
+                  <th className="px-2 py-1.5 font-bold">名前</th>
+                  <th className="px-2 py-1.5 font-bold">種類・内容</th>
+                  <th className="px-2 py-1.5 text-right font-bold">金額</th>
+                  <th className="px-2 py-1.5 font-bold">支払</th>
+                  <th className="px-2 py-1.5 font-bold">返金確認</th>
+                  <th className="px-2 py-1.5 font-bold">進捗</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((r) => {
+                  const amount = reminderAmount(r);
+                  const rep = repaymentLabel(r);
+                  const payer = reminderPayer(r);
+                  return (
+                    <tr
+                      key={r.id}
+                      onClick={() => setSelected(r)}
+                      className="cursor-pointer border-b border-border last:border-0 hover:bg-background"
+                    >
+                      <td className="px-2 py-1.5 tabular-nums text-muted">{r.created_at.slice(0, 10)}</td>
+                      <td className="px-2 py-1.5 tabular-nums">{formatReminderNo(r.reminder_no).replace("No.", "")}</td>
+                      <td className="px-2 py-1.5 font-bold">
+                        {r.workers?.name ?? "（外国人不明）"}
+                        {r.workers?.organizations?.name && (
+                          <span className="block text-[10px] font-normal text-muted">{r.workers.organizations.name}</span>
+                        )}
+                      </td>
+                      <td className="max-w-[16rem] px-2 py-1.5">
+                        <span className="block truncate">
+                          {r.kind}
+                          {r.content && `：${r.content}`}
+                        </span>
+                      </td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{amount == null ? "—" : `${amount.toLocaleString("ja-JP")}円`}</td>
+                      <td className="px-2 py-1.5">
+                        {payer ? (
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              payer === "代わり" ? "bg-brand/10 text-brand" : "bg-background text-muted ring-1 ring-border"
+                            }`}
+                          >
+                            {PAYER_LABELS[payer]}
+                          </span>
+                        ) : (
+                          <span className="text-muted">—</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        {rep.text ? (
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              rep.unpaid ? "bg-seal text-white" : "bg-status-approved-bg text-status-approved-fg"
+                            }`}
+                          >
+                            {rep.unpaid ? `未返金${r.advance_paid_on ? `（支払 ${r.advance_paid_on}）` : ""}` : rep.text}
+                          </span>
+                        ) : (
+                          <span className="text-muted">—</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${statusClass(r.status)}`}>{r.status}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
 
       {/* 一覧 */}
       {shown.length === 0 ? (
         <p className="rounded-xl bg-surface p-6 text-center text-sm text-muted">
           該当する督促はありません。
         </p>
-      ) : (
+      ) : view === "table" ? null : (
         <div className="space-y-2">
           {shown.map((r) => {
             const waitDays = isAwaitingReply(r.status) ? daysSince(r.contacted_on, today) : null;
@@ -360,6 +511,8 @@ export function RemindersClient({
                     {r.workers?.organizations?.name && `${r.workers.organizations.name} ・ `}
                     {r.kind}
                     {r.content && `：${r.content}`}
+                    {reminderAmount(r) != null && ` ・ ${reminderAmount(r)!.toLocaleString("ja-JP")}円`}
+                    {payerLabel(r) && `（${payerLabel(r)}）`}
                   </span>
                   <span className="block text-[11px] text-muted">
                     {r.contacted_on && `連絡 ${r.contacted_on}`}
@@ -414,6 +567,8 @@ function NewReminderForm({
   const [kind, setKind] = useState<string>(REMINDER_KINDS[0]);
   const [kindOther, setKindOther] = useState("");
   const [content, setContent] = useState("");
+  const [amount, setAmount] = useState("");
+  const [payer, setPayer] = useState<ReminderPayer | "">("");
   const [busy, setBusy] = useState(false);
   const no = nextReminderNo(activeNos);
   const suggestions = useMemo(() => workerNameSuggestions(workers, query), [workers, query]);
@@ -425,6 +580,17 @@ function NewReminderForm({
     }
     setBusy(true);
     onError(null);
+    const amountNum = parseYenDigits(amount);
+    // 金額・支払は入れたときだけ送る（0151 未適用でも従来の登録はできる）
+    const extra: Partial<ReminderWithWorker> = {};
+    if (amountNum != null) extra.amount = amountNum;
+    if (payer) {
+      extra.payer = payer;
+      if (payer === "代わり") {
+        extra.advance_paid = true;
+        if (amountNum != null) extra.advance_amount = amountNum;
+      }
+    }
     try {
       const row = await insertReminder(createClient(), {
         reminder_no: no,
@@ -436,10 +602,12 @@ function NewReminderForm({
         replied_on: null,
         completed_on: null,
         note: "",
+        ...extra,
       });
       onCreated(row);
     } catch (err) {
-      onError(dbErrorMessage(err, MIGRATION, errorMessage(err, "登録に失敗しました")));
+      const migration = Object.keys(extra).length > 0 ? AMOUNT_MIGRATION : MIGRATION;
+      onError(dbErrorMessage(err, migration, errorMessage(err, "登録に失敗しました")));
     } finally {
       setBusy(false);
     }
@@ -536,6 +704,43 @@ function NewReminderForm({
           className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-brand focus:outline-none"
         />
       </label>
+
+      {/* 金額と誰が払うか（一覧表に出る。あとから詳細でも直せる） */}
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-muted">金額（円）</span>
+          <input
+            value={amount}
+            inputMode="numeric"
+            onChange={(e) => setAmount(e.target.value)}
+            onBlur={() => setAmount(formatYenInput(parseYenDigits(amount)))}
+            placeholder="例: 12,000"
+            className={`${INPUT} text-right tabular-nums`}
+          />
+        </label>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-muted">支払</span>
+          <div className="flex flex-wrap gap-1.5">
+            {REMINDER_PAYERS.map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setPayer((cur) => (cur === p ? "" : p))}
+                className={`min-h-[40px] rounded-xl border px-3 text-xs font-bold ${
+                  payer === p ? "border-brand bg-brand text-brand-foreground" : "border-border bg-surface text-muted"
+                }`}
+              >
+                {PAYER_LABELS[p]}
+              </button>
+            ))}
+          </div>
+          {payer === "代わり" && (
+            <span className="text-[11px] text-muted">
+              登録後、詳細の「立替払い」に領収書・支払日・返金の指示を入れ、本人から返金があったら返金日を入れてください。
+            </span>
+          )}
+        </div>
+      </div>
 
       <div className="flex gap-2">
         <Button
@@ -686,6 +891,9 @@ function ReminderModal({
             <p className="text-[11px] font-bold text-muted">種類</p>
             <p className="text-sm font-bold">{reminder.kind || "—"}</p>
           </div>
+
+          {/* 金額と誰が払うか（一覧表に出る） */}
+          <AmountPayerFields reminder={reminder} canWrite={canWrite} onPatch={onPatch} />
 
           <label className="flex flex-col gap-1">
             <span className="text-[11px] font-bold text-muted">内容</span>
@@ -927,11 +1135,13 @@ function AdvanceSection({
   onUpload: (files: FileList | File[], kind: ReminderImageKind) => void;
   onRemoveImage: (img: ReminderImage) => void;
 }) {
-  const [amount, setAmount] = useState(formatYenInput(reminder.advance_amount));
-  const [prevAmount, setPrevAmount] = useState(reminder.advance_amount ?? null);
-  if ((reminder.advance_amount ?? null) !== prevAmount) {
-    setPrevAmount(reminder.advance_amount ?? null);
-    setAmount(formatYenInput(reminder.advance_amount));
+  // 立て替えた金額。無ければ督促の金額を初期値にする
+  const effectiveAmount = reminder.advance_amount ?? reminder.amount ?? null;
+  const [amount, setAmount] = useState(formatYenInput(effectiveAmount));
+  const [prevAmount, setPrevAmount] = useState(effectiveAmount);
+  if (effectiveAmount !== prevAmount) {
+    setPrevAmount(effectiveAmount);
+    setAmount(formatYenInput(effectiveAmount));
   }
   const [repayTo, setRepayTo] = useState(reminder.advance_repay_to ?? "");
   const [repaidOn, setRepaidOn] = useState(today);
@@ -1146,6 +1356,66 @@ function AdvanceSection({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ---- 金額と誰が払うか（詳細で直す。一覧表の列に出る） ----
+
+function AmountPayerFields({
+  reminder,
+  canWrite,
+  onPatch,
+}: {
+  reminder: ReminderWithWorker;
+  canWrite: boolean;
+  onPatch: (patch: Partial<ReminderWithWorker>) => void;
+}) {
+  const [amount, setAmount] = useState(formatYenInput(reminder.amount ?? null));
+  const [prev, setPrev] = useState(reminder.amount ?? null);
+  if ((reminder.amount ?? null) !== prev) {
+    setPrev(reminder.amount ?? null);
+    setAmount(formatYenInput(reminder.amount ?? null));
+  }
+  const payer = reminderPayer(reminder);
+  const field =
+    "min-h-[36px] rounded-lg border border-border bg-background px-2 text-xs focus:border-brand focus:outline-none disabled:opacity-60";
+  return (
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <label className="flex flex-col gap-1">
+        <span className="text-[11px] font-bold text-muted">金額（円）</span>
+        <input
+          value={amount}
+          inputMode="numeric"
+          disabled={!canWrite}
+          onChange={(e) => setAmount(e.target.value)}
+          onBlur={() => {
+            const n = parseYenDigits(amount);
+            setAmount(formatYenInput(n));
+            if (n !== (reminder.amount ?? null)) onPatch({ amount: n });
+          }}
+          placeholder="例: 12,000"
+          className={`${field} text-right tabular-nums`}
+        />
+      </label>
+      <div className="flex flex-col gap-1">
+        <span className="text-[11px] font-bold text-muted">支払（本人が払う／代わりに払う）</span>
+        <div className="flex flex-wrap gap-1.5">
+          {REMINDER_PAYERS.map((p) => (
+            <button
+              key={p}
+              type="button"
+              disabled={!canWrite}
+              onClick={() => onPatch(payerPatch(reminder, payer === p ? "" : p))}
+              className={`min-h-[36px] rounded-lg border px-3 text-xs font-bold ${
+                payer === p ? "border-brand bg-brand text-brand-foreground" : "border-border bg-surface text-muted"
+              }`}
+            >
+              {PAYER_LABELS[p]}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

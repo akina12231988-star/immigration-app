@@ -7,9 +7,85 @@
 // 進捗は「未連絡 → 連絡済み（返事待ち） → 返事あり → 完了」。
 // 「返事待ち」の人を一覧の上に出して、誰から返事をもらっていないかを見えるようにする。
 
-import type { Reminder, ReminderImage, ReminderImageKind, ReminderStatus } from "@/types/db";
+import type { Reminder, ReminderImage, ReminderImageKind, ReminderPayer, ReminderStatus } from "@/types/db";
 
-export { REMINDER_KINDS, REMINDER_STATUSES } from "@/types/db";
+export { REMINDER_KINDS, REMINDER_PAYERS, REMINDER_STATUSES } from "@/types/db";
+
+// ---- 金額・誰が払うか（一覧表用。0151） ----
+
+export const AMOUNT_MIGRATION = "0151_reminder_amount.sql";
+
+export const PAYER_LABELS: Record<ReminderPayer, string> = { 本人: "本人が払う", 代わり: "代わりに払う" };
+
+// 誰が払うか。未設定でも立替払いにチェックがあれば「代わり」
+export function reminderPayer(r: Pick<Reminder, "payer" | "advance_paid">): ReminderPayer | "" {
+  if (r.payer === "本人" || r.payer === "代わり") return r.payer;
+  return r.advance_paid ? "代わり" : "";
+}
+
+export function payerLabel(r: Pick<Reminder, "payer" | "advance_paid">): string {
+  const p = reminderPayer(r);
+  return p ? PAYER_LABELS[p] : "";
+}
+
+// 一覧表に出す金額。金額が無ければ立て替えた金額
+export function reminderAmount(r: Pick<Reminder, "amount" | "advance_amount">): number | null {
+  return r.amount ?? r.advance_amount ?? null;
+}
+
+// 返金の確認（代わりに払ったときだけ）: 未返金 / 返金済み（日付）
+export function repaymentLabel(
+  r: Pick<Reminder, "payer" | "advance_paid" | "advance_repaid_on">,
+): { text: string; unpaid: boolean } {
+  if (reminderPayer(r) !== "代わり") return { text: "", unpaid: false };
+  if (r.advance_repaid_on) return { text: `返金済み（${r.advance_repaid_on}）`, unpaid: false };
+  return { text: "未返金", unpaid: true };
+}
+
+// 誰が払うかを変えたときの更新内容。代わりに払うなら立替払いを有効にし、金額を立替金額にも入れる
+export function payerPatch(
+  r: Pick<Reminder, "amount" | "advance_amount" | "advance_repaid_on">,
+  payer: ReminderPayer | "",
+): Partial<Reminder> {
+  const patch: Partial<Reminder> = { payer };
+  if (payer === "代わり") {
+    patch.advance_paid = true;
+    if (r.advance_amount == null && r.amount != null) patch.advance_amount = r.amount;
+  } else if (!r.advance_repaid_on) {
+    // 返金済みの記録があるときは立替の記録を消さない
+    patch.advance_paid = false;
+  }
+  return patch;
+}
+
+// 一覧表（CSV）。Excel で開けるように BOM は呼び出し側で付ける
+export function remindersCsv(
+  rows: (Pick<Reminder, "created_at" | "reminder_no" | "kind" | "content" | "status" | "amount" | "advance_amount" | "payer" | "advance_paid" | "advance_repaid_on" | "advance_paid_on"> & {
+    workerName: string;
+    orgName: string;
+  })[],
+): string {
+  const q = (v: string | number | null | undefined) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const head = ["作成日", "番号", "氏名", "所属機関", "種類", "内容", "金額", "支払", "返金確認", "支払日（立替）", "進捗"];
+  const lines = rows.map((r) =>
+    [
+      r.created_at.slice(0, 10),
+      formatReminderNo(r.reminder_no),
+      r.workerName,
+      r.orgName,
+      r.kind,
+      r.content,
+      reminderAmount(r) ?? "",
+      payerLabel(r),
+      repaymentLabel(r).text,
+      r.advance_paid_on ?? "",
+      r.status,
+    ]
+      .map(q)
+      .join(","),
+  );
+  return [head.map(q).join(","), ...lines].join("\r\n");
+}
 
 // ---- 立替払い（本人の代わりに支払った分の返金の追いかけ。0150） ----
 

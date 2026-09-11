@@ -977,8 +977,14 @@ export interface ReminderAdvance {
 export const REMINDER_IMAGE_KINDS = ["screenshot", "receipt", "repayment"] as const;
 export type ReminderImageKind = (typeof REMINDER_IMAGE_KINDS)[number];
 
+// 誰が払うか（0151）: 本人が払う / 当社が代わりに払う（立替）
+export const REMINDER_PAYERS = ["本人", "代わり"] as const;
+export type ReminderPayer = (typeof REMINDER_PAYERS)[number];
+
 export interface Reminder extends Partial<ReminderAdvance> {
   id: string;
+  amount?: number | null; // 金額（円。納付書などの額。0151）
+  payer?: ReminderPayer | ""; // 誰が払うか（0151。空は未設定）
   reminder_no: number; // 番号（1〜30を保管ボックスのように使い、完了で空きになる）
   worker_id: string;
   kind: string; // 種類
