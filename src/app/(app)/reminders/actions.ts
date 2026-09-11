@@ -2,6 +2,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
+import type { ReminderImageKind } from "@/types/db";
 
 // 督促の会話のスクショ（画像）。
 // 非公開バケット app-files（reminders/{reminder_id}/...）に保存し、
@@ -48,6 +49,7 @@ export async function registerReminderImage(input: {
   fileName: string;
   mimeType: string;
   caption?: string;
+  kind?: ReminderImageKind; // 会話のスクショ（既定）/ 立替の領収書 / 返金の証拠（0150）
 }): Promise<{ ok: true; id: string } | Err> {
   if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
   // 発行時と同じ規則のパスのみ受け付ける（別の督促のファイルを紐づけさせない）
@@ -57,6 +59,7 @@ export async function registerReminderImage(input: {
   const me = await getMyProfile();
   const admin = createAdminClient();
   if (!admin) return { ok: false, message: "サーバー設定エラー" };
+  const kind = input.kind ?? "screenshot";
   const { data, error } = await admin
     .from("reminder_images")
     .insert({
@@ -66,10 +69,18 @@ export async function registerReminderImage(input: {
       mime_type: input.mimeType,
       caption: input.caption ?? "",
       uploaded_by: me?.id ?? null,
+      // 0150 未適用でも会話のスクショは登録できるよう、既定のときは kind を送らない
+      ...(kind === "screenshot" ? {} : { kind }),
     })
     .select("id")
     .single();
-  if (error || !data) return { ok: false, message: error?.message ?? "登録に失敗しました" };
+  if (error || !data) {
+    const msg = error?.message ?? "登録に失敗しました";
+    if (kind !== "screenshot" && /kind/.test(msg)) {
+      return { ok: false, message: `領収書・返金の画像を登録するには Supabase でマイグレーション 0150_reminder_advance.sql の適用が必要です（${msg}）` };
+    }
+    return { ok: false, message: msg };
+  }
   return { ok: true, id: (data as { id: string }).id };
 }
 
