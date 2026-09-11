@@ -986,6 +986,8 @@ export interface ReminderAmountItem {
   label: string; // 内訳の名前（任意。例: 第1期）
   amount: number | null; // 金額（円）
   due_on: string | null; // 支払期限（YYYY-MM-DD）
+  paid_on?: string | null; // 支払った日（本人が払う: 本人が払った日 / 代わりに払う: 当社が払った日）
+  repaid_on?: string | null; // 代わりに払った分を本人から受け取った日
 }
 
 export interface Reminder extends Partial<ReminderAdvance> {

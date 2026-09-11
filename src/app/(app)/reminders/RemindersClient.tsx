@@ -45,7 +45,10 @@ import {
   advanceAlertText,
   advanceAmountLabel,
   advanceRepaidPatch,
+  amountItemStatus,
   amountItemsPatch,
+  amountItemsProgress,
+  amountItemsProgressText,
   amountItemsTotal,
   dueLabel,
   emptyAmountItem,
@@ -402,7 +405,7 @@ export function RemindersClient({
             <p className="px-1 pb-2 text-xs text-muted">支払いのある督促はありません。</p>
           )}
           <div className={tableRows.length === 0 ? "hidden" : "overflow-x-auto"}>
-            <table className="w-full min-w-[1000px] text-xs">
+            <table className="w-full min-w-[1120px] text-xs">
               <thead>
                 <tr className="border-b border-border text-left text-[11px] text-muted">
                   <th className="px-2 py-1.5 font-bold">作成日</th>
@@ -410,6 +413,7 @@ export function RemindersClient({
                   <th className="px-2 py-1.5 font-bold">名前</th>
                   <th className="px-2 py-1.5 font-bold">種類・内容</th>
                   <th className="px-2 py-1.5 text-right font-bold">金額（合計）</th>
+                  <th className="px-2 py-1.5 font-bold">支払・受取</th>
                   <th className="px-2 py-1.5 font-bold">支払期限</th>
                   <th className="px-2 py-1.5 font-bold">支払</th>
                   <th className="px-2 py-1.5 font-bold">返金確認</th>
@@ -450,6 +454,18 @@ export function RemindersClient({
                             {items.map((i) => `${i.label ? `${i.label} ` : ""}${i.amount == null ? "" : i.amount.toLocaleString("ja-JP")}`).join(" / ")}
                           </span>
                         )}
+                      </td>
+                      <td className="whitespace-nowrap px-2 py-1.5">
+                        {(() => {
+                          const prog = amountItemsProgress(items);
+                          const text = amountItemsProgressText(items, payer);
+                          if (!text) return <span className="text-muted">—</span>;
+                          const bad = prog.unrepaidAmount > 0 || (prog.unpaidAmount > 0 && due.overdue);
+                          const done = prog.paidCount === prog.count && (payer !== "代わり" || prog.repaidCount === prog.paidCount);
+                          return (
+                            <span className={`text-[11px] font-bold ${bad ? "text-seal" : done ? "text-status-approved-fg" : ""}`}>{text}</span>
+                          );
+                        })()}
                       </td>
                       <td className={`px-2 py-1.5 tabular-nums ${due.overdue ? "font-bold text-seal" : ""}`}>{due.text ? due.text.replace(/^期限 /, "") : "—"}</td>
                       <td className="whitespace-nowrap px-2 py-1.5">
@@ -546,9 +562,11 @@ export function RemindersClient({
                     {reminderAmount(r) != null && ` ・ ${reminderAmount(r)!.toLocaleString("ja-JP")}円`}
                     {payerLabel(r) && `（${payerLabel(r)}）`}
                   </span>
-                  {dueLabel(r.due_on, today, r.status).text && (
+                  {(dueLabel(r.due_on, today, r.status).text || amountItemsProgressText(normalizeAmountItems(r.amount_items), reminderPayer(r))) && (
                     <span className={`block text-[11px] ${dueLabel(r.due_on, today, r.status).overdue ? "font-bold text-seal" : "text-muted"}`}>
-                      {dueLabel(r.due_on, today, r.status).text}
+                      {[amountItemsProgressText(normalizeAmountItems(r.amount_items), reminderPayer(r)), dueLabel(r.due_on, today, r.status).text]
+                        .filter(Boolean)
+                        .join(" ／ ")}
                     </span>
                   )}
                   <span className="block text-[11px] text-muted">
@@ -1005,6 +1023,7 @@ function ReminderModal({
           {/* 金額（内訳・期限・合計）・納付書の画像・誰が払うか（一覧表に出る） */}
           <AmountPayerFields
             reminder={reminder}
+            today={today}
             canWrite={canWrite}
             onPatch={onPatch}
             slips={slips}
@@ -1509,17 +1528,33 @@ function AmountItemsEditor({
   onChange,
   onCommit,
   canWrite,
+  payer = "",
+  today = "",
+  showStatus = false,
 }: {
   items: ReminderAmountItem[];
   onChange: (items: ReminderAmountItem[]) => void;
   onCommit?: (items: ReminderAmountItem[]) => void; // 入力を終えたとき（保存用）
   canWrite: boolean;
+  payer?: ReminderPayer | ""; // 誰が払うか（内訳ごとの「支払済み」「本人から受取」の出し方が変わる）
+  today?: string;
+  showStatus?: boolean; // true: 内訳ごとに支払済み・受取の記録を出す（詳細）
 }) {
   const field =
     "min-h-[36px] rounded-lg border border-border bg-background px-2 text-xs focus:border-brand focus:outline-none disabled:opacity-60";
   const total = amountItemsTotal(items);
   const set = (i: number, patch: Partial<ReminderAmountItem>) =>
     onChange(items.map((it, j) => (j === i ? { ...it, ...patch } : it)));
+  // 支払済み・受取の日付はその場で保存する
+  const setAndCommit = (i: number, patch: Partial<ReminderAmountItem>) => {
+    const next = items.map((it, j) => (j === i ? { ...it, ...patch } : it));
+    onChange(next);
+    onCommit?.(next);
+  };
+  const progress = amountItemsProgress(items);
+  const toneClass = { ok: "bg-status-approved-bg text-status-approved-fg", warn: "bg-status-notice-bg text-status-notice-fg", bad: "bg-seal/10 text-seal", muted: "bg-background text-muted ring-1 ring-border" };
+  const chip = "inline-flex min-h-[28px] items-center rounded-lg border border-border bg-surface px-2 text-[11px] font-bold text-brand disabled:opacity-50";
+  const dateField = "min-h-[28px] rounded-lg border border-border bg-background px-1.5 text-[11px] disabled:opacity-60";
   return (
     <div className="rounded-xl border border-border bg-background px-3 py-2.5">
       <p className="text-xs font-bold">金額と支払期限</p>
@@ -1589,6 +1624,52 @@ function AmountItemsEditor({
             >
               <X size={14} />
             </button>
+            {/* 内訳ごとの支払済み・本人からの受取（詳細だけ） */}
+            {showStatus && it.amount != null && (
+              <div className="flex w-full flex-wrap items-center gap-1.5 pl-1">
+                {(() => {
+                  const st = amountItemStatus(it, payer, today);
+                  return <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${toneClass[st.tone]}`}>{st.text}</span>;
+                })()}
+                {!it.paid_on ? (
+                  <button type="button" disabled={!canWrite} onClick={() => setAndCommit(i, { paid_on: today })} className={chip}>
+                    <Check size={11} className="mr-0.5" />
+                    {payer === "代わり" ? "当社が支払った" : "支払済みにする"}
+                  </button>
+                ) : (
+                  <>
+                    <label className="flex items-center gap-1 text-[10px] text-muted">
+                      {payer === "代わり" ? "当社の支払日" : "支払日"}
+                      <input
+                        type="date"
+                        value={it.paid_on}
+                        disabled={!canWrite}
+                        onChange={(e) => setAndCommit(i, { paid_on: e.target.value || null, ...(e.target.value ? {} : { repaid_on: null }) })}
+                        className={dateField}
+                      />
+                    </label>
+                    {payer === "代わり" &&
+                      (!it.repaid_on ? (
+                        <button type="button" disabled={!canWrite} onClick={() => setAndCommit(i, { repaid_on: today })} className={chip}>
+                          <Check size={11} className="mr-0.5" />
+                          本人からお金を受け取った
+                        </button>
+                      ) : (
+                        <label className="flex items-center gap-1 text-[10px] text-muted">
+                          受取日
+                          <input
+                            type="date"
+                            value={it.repaid_on}
+                            disabled={!canWrite}
+                            onChange={(e) => setAndCommit(i, { repaid_on: e.target.value || null })}
+                            className={dateField}
+                          />
+                        </label>
+                      ))}
+                  </>
+                )}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -1610,6 +1691,11 @@ function AmountItemsEditor({
           {items.filter((i) => i.amount != null).length > 1 && (
             <span className="ml-1 text-[10px] font-normal text-muted">（{items.filter((i) => i.amount != null).length}件の内訳の合計）</span>
           )}
+          {showStatus && progress.count > 0 && (
+            <span className={`ml-2 text-[11px] font-bold ${progress.unrepaidAmount > 0 ? "text-seal" : "text-muted"}`}>
+              {amountItemsProgressText(items, payer)}
+            </span>
+          )}
         </span>
       </div>
     </div>
@@ -1620,6 +1706,7 @@ function AmountItemsEditor({
 
 function AmountPayerFields({
   reminder,
+  today,
   canWrite,
   onPatch,
   slips,
@@ -1629,6 +1716,7 @@ function AmountPayerFields({
   onRemoveImage,
 }: {
   reminder: ReminderWithWorker;
+  today: string;
   canWrite: boolean;
   onPatch: (patch: Partial<ReminderWithWorker>) => void;
   slips: ReminderImage[]; // 納付書の画像
@@ -1653,19 +1741,28 @@ function AmountPayerFields({
   const slipRef = useRef<HTMLInputElement>(null);
   const payer = reminderPayer(reminder);
 
-  // 入力を終えたら合計・期限と一緒に保存する（変わっていなければ何もしない）
+  // 入力を終えたら合計・期限と一緒に保存する（変わっていなければ何もしない）。
+  // 代わりに払った分を全部本人から受け取ったら、立替の返金日も入れて完了にする
   const commit = (next: ReminderAmountItem[]) => {
     const patch = amountItemsPatch(next);
     const same =
       JSON.stringify(patch.amount_items) === JSON.stringify(normalizeAmountItems(reminder.amount_items)) &&
       patch.amount === (reminder.amount ?? null) &&
       patch.due_on === (reminder.due_on ?? null);
-    if (!same) onPatch(patch);
+    if (same) return;
+    if (payer === "代わり" && !reminder.advance_repaid_on) {
+      const prog = amountItemsProgress(patch.amount_items ?? []);
+      if (prog.count > 0 && prog.paidCount === prog.count && prog.repaidCount === prog.count) {
+        const latest = (patch.amount_items ?? []).map((i) => i.repaid_on ?? "").sort().pop() || today;
+        Object.assign(patch, advanceRepaidPatch(reminder, latest, today));
+      }
+    }
+    onPatch(patch);
   };
 
   return (
     <div className="space-y-2">
-      <AmountItemsEditor items={items} onChange={setItems} onCommit={commit} canWrite={canWrite} />
+      <AmountItemsEditor items={items} onChange={setItems} onCommit={commit} canWrite={canWrite} payer={payer} today={today} showStatus />
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <FileDropArea
