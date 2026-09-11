@@ -960,7 +960,7 @@ export const REMINDER_STATUSES = ["未連絡", "連絡済み（返事待ち）",
 export type ReminderStatus = (typeof REMINDER_STATUSES)[number];
 
 // 種類の選択肢（自由入力もできる）
-export const REMINDER_KINDS = ["市役所からの通知", "領収書", "納付書", "その他"] as const;
+export const REMINDER_KINDS = ["市役所からの通知", "税務署からの通知", "領収書", "納付書", "その他"] as const;
 
 // 立替払い（本人の代わりに支払った分。0150_reminder_advance.sql）。
 // 古いデータ・0150未適用の環境では値が無いので、Reminder では省略可にしている
@@ -973,12 +973,27 @@ export interface ReminderAdvance {
   advance_repaid_on: string | null; // 本人から返金があった日（空なら未返金）
 }
 
-// 画像の種類（0150）: 会話のスクショ / 立替の領収書 / 返金の証拠
-export const REMINDER_IMAGE_KINDS = ["screenshot", "receipt", "repayment"] as const;
+// 画像の種類（0150）: 会話のスクショ / 立替の領収書 / 返金の証拠 / 納付書（0151）
+export const REMINDER_IMAGE_KINDS = ["screenshot", "receipt", "repayment", "slip"] as const;
 export type ReminderImageKind = (typeof REMINDER_IMAGE_KINDS)[number];
+
+// 誰が払うか（0151）: 本人が払う / 当社が代わりに払う（立替）
+export const REMINDER_PAYERS = ["本人", "代わり"] as const;
+export type ReminderPayer = (typeof REMINDER_PAYERS)[number];
+
+// 金額の内訳1件（第1期 8,500円 期限 9/30 など。0151）
+export interface ReminderAmountItem {
+  label: string; // 内訳の名前（任意。例: 第1期）
+  amount: number | null; // 金額（円）
+  due_on: string | null; // 支払期限（YYYY-MM-DD）
+}
 
 export interface Reminder extends Partial<ReminderAdvance> {
   id: string;
+  amount?: number | null; // 金額（円。内訳の合計。0151）
+  payer?: ReminderPayer | ""; // 誰が払うか（0151。空は未設定）
+  amount_items?: ReminderAmountItem[]; // 金額の内訳（0151）
+  due_on?: string | null; // 支払期限（内訳の一番早い期限。0151）
   reminder_no: number; // 番号（1〜30を保管ボックスのように使い、完了で空きになる）
   worker_id: string;
   kind: string; // 種類
