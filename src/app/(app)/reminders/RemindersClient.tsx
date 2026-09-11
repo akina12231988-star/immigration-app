@@ -629,11 +629,19 @@ function NewReminderForm({
         note: "",
         ...extra,
       });
-      // 納付書の画像は督促ができてから紐づける
+      // 納付書の画像は督促ができてから紐づける。
+      // 画像の登録に失敗しても督促自体はできているので、二重登録にならないよう一覧に出してからエラーを知らせる
+      let slipError: string | null = null;
       for (const f of slipFiles) {
-        await uploadReminderImage(row.id, f, "", "slip");
+        try {
+          await uploadReminderImage(row.id, f, "", "slip");
+        } catch (err) {
+          slipError = errorMessage(err, "納付書の画像の登録に失敗しました");
+          break;
+        }
       }
       onCreated(row);
+      if (slipError) onError(`督促は登録しましたが、納付書の画像は登録できませんでした: ${slipError}（詳細の「納付書を添付」からやり直せます）`);
     } catch (err) {
       const migration = Object.keys(extra).length > 0 ? AMOUNT_MIGRATION : MIGRATION;
       onError(dbErrorMessage(err, migration, errorMessage(err, "登録に失敗しました")));
@@ -755,7 +763,12 @@ function NewReminderForm({
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <div className="flex flex-col gap-1">
-          <span className="text-xs font-bold text-muted">納付書の画像（登録と同時に添付）</span>
+          <span className="text-xs font-bold text-muted">納付書の画像（登録と同時に添付。ここにドラッグ＆ドロップでも可）</span>
+          <FileDropArea
+            onFiles={(files) => setSlipFiles((prev) => [...prev, ...Array.from(files)])}
+            className="rounded-xl border border-dashed border-border bg-background p-2"
+            title="納付書の画像をここにドロップすると添付されます"
+          >
           <div className="flex flex-wrap items-center gap-2">
             <input
               ref={slipRef}
@@ -776,7 +789,7 @@ function NewReminderForm({
             ) : (
               <span className="text-[11px] text-muted">
                 {slipFiles.map((f, i) => (
-                  <span key={`${f.name}-${i}`} className="mr-1 inline-flex items-center gap-0.5 rounded-full bg-background px-2 py-0.5">
+                  <span key={`${f.name}-${i}`} className="mr-1 inline-flex items-center gap-0.5 rounded-full bg-surface px-2 py-0.5">
                     {f.name}
                     <button type="button" aria-label="外す" onClick={() => setSlipFiles((prev) => prev.filter((_, j) => j !== i))}>
                       <X size={11} />
@@ -786,6 +799,7 @@ function NewReminderForm({
               </span>
             )}
           </div>
+          </FileDropArea>
         </div>
         <div className="flex flex-col gap-1">
           <span className="text-xs font-bold text-muted">支払</span>
@@ -1297,9 +1311,14 @@ function AdvanceSection({
             </label>
           </div>
 
-          <div>
+          <FileDropArea
+            onFiles={(files) => onUpload(files, "receipt")}
+            disabled={!canWrite || uploading}
+            className="rounded-lg border border-dashed border-border bg-background p-2"
+            title="領収書の画像をここにドロップすると添付されます"
+          >
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[11px] font-bold text-muted">領収書の画像（支払った証拠）</span>
+              <span className="text-[11px] font-bold text-muted">領収書の画像（支払った証拠。ドラッグ＆ドロップでも可）</span>
               <input
                 ref={receiptRef}
                 type="file"
@@ -1323,7 +1342,7 @@ function AdvanceSection({
               {receipts.length === 0 && <span className="text-[11px] text-muted">まだありません</span>}
             </div>
             {thumbs(receipts)}
-          </div>
+          </FileDropArea>
 
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
             <label className="flex flex-col gap-1">
@@ -1623,9 +1642,14 @@ function AmountPayerFields({
       <AmountItemsEditor items={items} onChange={setItems} onCommit={commit} canWrite={canWrite} />
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <div>
+        <FileDropArea
+          onFiles={(files) => onUpload(files)}
+          disabled={!canWrite || uploading}
+          className="rounded-xl border border-dashed border-border bg-background p-2"
+          title="納付書の画像をここにドロップすると添付されます"
+        >
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[11px] font-bold text-muted">納付書の画像</span>
+            <span className="text-[11px] font-bold text-muted">納付書の画像（ドラッグ＆ドロップでも可）</span>
             <input
               ref={slipRef}
               type="file"
@@ -1649,7 +1673,7 @@ function AmountPayerFields({
             {slips.length === 0 && <span className="text-[11px] text-muted">まだありません</span>}
           </div>
           <ImageThumbs list={slips} urls={urls} canWrite={canWrite} onRemove={onRemoveImage} />
-        </div>
+        </FileDropArea>
         <div className="flex flex-col gap-1">
           <span className="text-[11px] font-bold text-muted">支払（本人が払う／代わりに払う）</span>
           <div className="flex flex-wrap gap-1.5">
