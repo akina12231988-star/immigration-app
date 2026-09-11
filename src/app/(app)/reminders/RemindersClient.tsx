@@ -655,9 +655,25 @@ function NewReminderForm({
       <div>
         <span className="text-xs font-bold text-muted">外国人</span>
         {worker ? (
-          <p className="mt-1 flex items-center gap-2 text-sm">
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-sm">
             <span className="font-bold">{worker.name}</span>
             {worker.organizations?.name && <span className="text-muted">{worker.organizations.name}</span>}
+            {/* 本人に連絡するときにすぐ開けるよう、名前の横に Messenger のリンクを出す */}
+            {worker.messenger_link ? (
+              <a
+                href={messengerWebUrl(worker.messenger_link)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2 py-1 text-xs font-bold text-brand"
+              >
+                <MessageCircle size={12} />
+                Messenger
+              </a>
+            ) : (
+              <Link href={`/workers/${worker.id}`} className="text-[11px] text-muted underline underline-offset-2">
+                Messenger未登録（外国人詳細で登録）
+              </Link>
+            )}
             <button
               type="button"
               className="text-xs font-bold text-brand underline"
@@ -1461,45 +1477,59 @@ function AmountItemsEditor({
     onChange(items.map((it, j) => (j === i ? { ...it, ...patch } : it)));
   return (
     <div className="rounded-xl border border-border bg-background px-3 py-2.5">
-      <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-        <span className="text-[11px] font-bold text-muted">金額（複数の内訳を入れると合計を自動で出します）・支払期限</span>
-        <span className="text-sm font-black tabular-nums">
-          合計 {total == null ? "—" : `${total.toLocaleString("ja-JP")}円`}
-        </span>
+      <p className="text-xs font-bold">金額と支払期限</p>
+      <p className="mb-2 text-[11px] leading-relaxed text-muted">
+        納付書に書いてある金額と支払期限を入れます。第1期・第2期のように分かれているときは「内訳を追加」で1行ずつ入れると、合計を自動で出します。
+      </p>
+      {/* 各入力の真上に、何を入れる欄かを出す */}
+      <div className="hidden gap-1.5 sm:flex">
+        <span className="min-w-[6rem] flex-1 text-[11px] font-bold text-muted">内訳の名前（例: 第1期。1つだけなら空でも可）</span>
+        <span className="w-28 text-[11px] font-bold text-muted">金額（円）</span>
+        <span className="w-[9.5rem] text-[11px] font-bold text-muted">支払期限</span>
+        <span className="w-9" />
       </div>
-      <div className="space-y-1.5">
+      <div className="space-y-2 sm:space-y-1.5">
         {items.map((it, i) => (
-          <div key={i} className="flex flex-wrap items-center gap-1.5">
-            <input
-              value={it.label}
-              disabled={!canWrite}
-              onChange={(e) => set(i, { label: e.target.value })}
-              onBlur={() => onCommit?.(items)}
-              placeholder={`内訳（例: 第${i + 1}期）`}
-              className={`${field} min-w-[6rem] flex-1`}
-            />
-            <input
-              value={formatYenInput(it.amount)}
-              inputMode="numeric"
-              disabled={!canWrite}
-              onChange={(e) => set(i, { amount: parseYenDigits(e.target.value) })}
-              onBlur={() => onCommit?.(items)}
-              placeholder="金額（円）"
-              aria-label={`金額 ${i + 1}`}
-              className={`${field} w-28 text-right tabular-nums`}
-            />
-            <input
-              type="date"
-              value={it.due_on ?? ""}
-              disabled={!canWrite}
-              onChange={(e) => {
-                const next = items.map((x, j) => (j === i ? { ...x, due_on: e.target.value || null } : x));
-                onChange(next);
-                onCommit?.(next);
-              }}
-              aria-label={`支払期限 ${i + 1}`}
-              className={`${field} w-[9.5rem]`}
-            />
+          <div key={i} className="flex flex-wrap items-end gap-1.5">
+            <label className="flex min-w-[6rem] flex-1 flex-col gap-0.5">
+              <span className="text-[10px] font-bold text-muted sm:hidden">内訳の名前（例: 第{i + 1}期）</span>
+              <input
+                value={it.label}
+                disabled={!canWrite}
+                onChange={(e) => set(i, { label: e.target.value })}
+                onBlur={() => onCommit?.(items)}
+                placeholder={`例: 第${i + 1}期`}
+                className={field}
+              />
+            </label>
+            <label className="flex w-28 flex-col gap-0.5">
+              <span className="text-[10px] font-bold text-muted sm:hidden">金額（円）</span>
+              <input
+                value={formatYenInput(it.amount)}
+                inputMode="numeric"
+                disabled={!canWrite}
+                onChange={(e) => set(i, { amount: parseYenDigits(e.target.value) })}
+                onBlur={() => onCommit?.(items)}
+                placeholder="例: 28,600"
+                aria-label={`金額 ${i + 1}`}
+                className={`${field} w-full text-right tabular-nums`}
+              />
+            </label>
+            <label className="flex w-[9.5rem] flex-col gap-0.5">
+              <span className="text-[10px] font-bold text-muted sm:hidden">支払期限</span>
+              <input
+                type="date"
+                value={it.due_on ?? ""}
+                disabled={!canWrite}
+                onChange={(e) => {
+                  const next = items.map((x, j) => (j === i ? { ...x, due_on: e.target.value || null } : x));
+                  onChange(next);
+                  onCommit?.(next);
+                }}
+                aria-label={`支払期限 ${i + 1}`}
+                className={`${field} w-full`}
+              />
+            </label>
             <button
               type="button"
               aria-label="この内訳を削除"
@@ -1517,16 +1547,26 @@ function AmountItemsEditor({
           </div>
         ))}
       </div>
-      {canWrite && (
-        <button
-          type="button"
-          onClick={() => onChange([...items, emptyAmountItem()])}
-          className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-bold text-brand"
-        >
-          <Plus size={12} />
-          内訳を追加（第2期など）
-        </button>
-      )}
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+        {canWrite ? (
+          <button
+            type="button"
+            onClick={() => onChange([...items, emptyAmountItem()])}
+            className="inline-flex items-center gap-1 text-[11px] font-bold text-brand"
+          >
+            <Plus size={12} />
+            内訳を追加（第2期など）
+          </button>
+        ) : (
+          <span />
+        )}
+        <span className="text-sm font-black tabular-nums">
+          合計 {total == null ? "—" : `${total.toLocaleString("ja-JP")}円`}
+          {items.filter((i) => i.amount != null).length > 1 && (
+            <span className="ml-1 text-[10px] font-normal text-muted">（{items.filter((i) => i.amount != null).length}件の内訳の合計）</span>
+          )}
+        </span>
+      </div>
     </div>
   );
 }
