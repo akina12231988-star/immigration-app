@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   advanceAlertText,
   advanceRepaidPatch,
+  amountItemsPatch,
+  amountItemsTotal,
+  dueLabel,
+  earliestDue,
+  normalizeAmountItems,
   completionBlockedReason,
   daysSince,
   isAdvanceRepaid,
@@ -210,7 +215,48 @@ describe("金額・誰が払うか・一覧表", () => {
       { ...rem({ reminder_no: 1, created_at: "2026-09-01T00:00:00Z", amount: 12000, payer: "代わり", advance_paid: true, advance_paid_on: "2026-09-02", content: "住民税 \"第2期\"" }), workerName: "NGUYEN VAN A", orgName: "有限会社國崎青果" },
     ]);
     const lines = csv.split("\r\n");
-    expect(lines[0]).toBe('"作成日","番号","氏名","所属機関","種類","内容","金額","支払","返金確認","支払日（立替）","進捗"');
-    expect(lines[1]).toBe('"2026-09-01","No.01","NGUYEN VAN A","有限会社國崎青果","市役所からの通知","住民税 ""第2期""","12000","代わりに払う","未返金","2026-09-02","未連絡"');
+    expect(lines[0]).toBe('"作成日","番号","氏名","所属機関","種類","内容","金額（合計）","内訳","支払期限","支払","返金確認","支払日（立替）","進捗"');
+    expect(lines[1]).toBe('"2026-09-01","No.01","NGUYEN VAN A","有限会社國崎青果","市役所からの通知","住民税 ""第2期""","12000","","","代わりに払う","未返金","2026-09-02","未連絡"');
+  });
+});
+
+describe("金額の内訳（複数行・合計・支払期限）", () => {
+  it("合計と一番早い期限を自動で出し、空行は保存しない", () => {
+    const items = [
+      { label: "第1期", amount: 8500, due_on: "2026-09-30" },
+      { label: "第2期", amount: 8500, due_on: "2026-11-30" },
+      { label: "", amount: null, due_on: null },
+    ];
+    expect(amountItemsTotal(items)).toBe(17000);
+    expect(earliestDue(items)).toBe("2026-09-30");
+    expect(amountItemsPatch(items)).toEqual({
+      amount_items: items.slice(0, 2),
+      amount: 17000,
+      due_on: "2026-09-30",
+    });
+    expect(amountItemsPatch([{ label: "", amount: null, due_on: null }])).toEqual({ amount_items: [], amount: null, due_on: null });
+  });
+
+  it("保存データの読み込みは不正な形を捨てる", () => {
+    expect(normalizeAmountItems(null)).toEqual([]);
+    expect(normalizeAmountItems([{ label: "第1期", amount: 8500.4, due_on: "2026-09-30" }, { amount: "x", due_on: "9/30" }, 3])).toEqual([
+      { label: "第1期", amount: 8500, due_on: "2026-09-30" },
+      { label: "", amount: null, due_on: null },
+    ]);
+  });
+
+  it("支払期限の表示（あと○日・過ぎ・完了）", () => {
+    expect(dueLabel("2026-09-10", TODAY, "未連絡")).toEqual({ text: "期限 2026-09-10（あと3日）", overdue: false });
+    expect(dueLabel("2026-09-07", TODAY, "未連絡")).toEqual({ text: "期限 2026-09-07（今日）", overdue: true });
+    expect(dueLabel("2026-09-01", TODAY, "返事あり")).toEqual({ text: "期限 2026-09-01（6日過ぎ）", overdue: true });
+    expect(dueLabel("2026-09-01", TODAY, "完了")).toEqual({ text: "期限 2026-09-01", overdue: false });
+    expect(dueLabel(null, TODAY, "未連絡")).toEqual({ text: "", overdue: false });
+  });
+
+  it("CSVに内訳と支払期限が入る", () => {
+    const csv = remindersCsv([
+      { ...rem({ reminder_no: 2, created_at: "2026-09-01T00:00:00Z", amount: 17000, due_on: "2026-09-30", amount_items: [{ label: "第1期", amount: 8500, due_on: "2026-09-30" }, { label: "第2期", amount: 8500, due_on: "2026-11-30" }], payer: "本人" }), workerName: "A", orgName: "" },
+    ]);
+    expect(csv.split("\r\n")[1]).toBe('"2026-09-01","No.02","A","","市役所からの通知","","17000","第1期 8500（期限 2026-09-30） / 第2期 8500（期限 2026-11-30）","2026-09-30","本人が払う","","","未連絡"');
   });
 });

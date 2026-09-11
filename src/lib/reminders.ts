@@ -7,7 +7,7 @@
 // 進捗は「未連絡 → 連絡済み（返事待ち） → 返事あり → 完了」。
 // 「返事待ち」の人を一覧の上に出して、誰から返事をもらっていないかを見えるようにする。
 
-import type { Reminder, ReminderImage, ReminderImageKind, ReminderPayer, ReminderStatus } from "@/types/db";
+import type { Reminder, ReminderAmountItem, ReminderImage, ReminderImageKind, ReminderPayer, ReminderStatus } from "@/types/db";
 
 export { REMINDER_KINDS, REMINDER_PAYERS, REMINDER_STATUSES } from "@/types/db";
 
@@ -31,6 +31,55 @@ export function payerLabel(r: Pick<Reminder, "payer" | "advance_paid">): string 
 // 一覧表に出す金額。金額が無ければ立て替えた金額
 export function reminderAmount(r: Pick<Reminder, "amount" | "advance_amount">): number | null {
   return r.amount ?? r.advance_amount ?? null;
+}
+
+// ---- 金額の内訳（複数行。合計と一番早い支払期限を自動で出す） ----
+
+export function emptyAmountItem(): ReminderAmountItem {
+  return { label: "", amount: null, due_on: null };
+}
+
+// 保存されている内訳を読み込む（不正な形は捨てる）
+export function normalizeAmountItems(raw: unknown): ReminderAmountItem[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ReminderAmountItem[] = [];
+  for (const it of raw) {
+    if (!it || typeof it !== "object") continue;
+    const o = it as Record<string, unknown>;
+    const amount = typeof o.amount === "number" && Number.isFinite(o.amount) ? Math.round(o.amount) : null;
+    const due = typeof o.due_on === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.due_on) ? o.due_on : null;
+    out.push({ label: typeof o.label === "string" ? o.label : "", amount, due_on: due });
+  }
+  return out;
+}
+
+// 合計（金額が1つも無ければ null）
+export function amountItemsTotal(items: ReminderAmountItem[]): number | null {
+  const nums = items.map((i) => i.amount).filter((n): n is number => n != null);
+  return nums.length === 0 ? null : nums.reduce((a, b) => a + b, 0);
+}
+
+// 一番早い支払期限
+export function earliestDue(items: ReminderAmountItem[]): string | null {
+  const dues = items.map((i) => i.due_on).filter((d): d is string => !!d).sort();
+  return dues[0] ?? null;
+}
+
+// 内訳を変えたときの更新内容（空行は除き、合計と期限も一緒に入れる）
+export function amountItemsPatch(items: ReminderAmountItem[]): Partial<Reminder> {
+  const kept = items.filter((i) => i.label.trim() || i.amount != null || i.due_on);
+  return { amount_items: kept, amount: amountItemsTotal(kept), due_on: earliestDue(kept) };
+}
+
+// 支払期限の表示（あと○日 / 期限切れ○日）。完了なら期限切れ扱いにしない
+export function dueLabel(dueOn: string | null | undefined, today: string, status: string): { text: string; overdue: boolean } {
+  if (!dueOn) return { text: "", overdue: false };
+  const d = daysSince(dueOn, today); // today - due
+  if (d === null) return { text: dueOn, overdue: false };
+  if (status === "完了") return { text: `期限 ${dueOn}`, overdue: false };
+  if (d > 0) return { text: `期限 ${dueOn}（${d}日過ぎ）`, overdue: true };
+  if (d === 0) return { text: `期限 ${dueOn}（今日）`, overdue: true };
+  return { text: `期限 ${dueOn}（あと${-d}日）`, overdue: false };
 }
 
 // 返金の確認（代わりに払ったときだけ）: 未返金 / 返金済み（日付）
@@ -60,13 +109,13 @@ export function payerPatch(
 
 // 一覧表（CSV）。Excel で開けるように BOM は呼び出し側で付ける
 export function remindersCsv(
-  rows: (Pick<Reminder, "created_at" | "reminder_no" | "kind" | "content" | "status" | "amount" | "advance_amount" | "payer" | "advance_paid" | "advance_repaid_on" | "advance_paid_on"> & {
+  rows: (Pick<Reminder, "created_at" | "reminder_no" | "kind" | "content" | "status" | "amount" | "advance_amount" | "payer" | "advance_paid" | "advance_repaid_on" | "advance_paid_on" | "amount_items" | "due_on"> & {
     workerName: string;
     orgName: string;
   })[],
 ): string {
   const q = (v: string | number | null | undefined) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const head = ["作成日", "番号", "氏名", "所属機関", "種類", "内容", "金額", "支払", "返金確認", "支払日（立替）", "進捗"];
+  const head = ["作成日", "番号", "氏名", "所属機関", "種類", "内容", "金額（合計）", "内訳", "支払期限", "支払", "返金確認", "支払日（立替）", "進捗"];
   const lines = rows.map((r) =>
     [
       r.created_at.slice(0, 10),
@@ -76,6 +125,10 @@ export function remindersCsv(
       r.kind,
       r.content,
       reminderAmount(r) ?? "",
+      normalizeAmountItems(r.amount_items)
+        .map((i) => `${i.label ? `${i.label} ` : ""}${i.amount ?? ""}${i.due_on ? `（期限 ${i.due_on}）` : ""}`.trim())
+        .join(" / "),
+      r.due_on ?? "",
       payerLabel(r),
       repaymentLabel(r).text,
       r.advance_paid_on ?? "",
@@ -137,7 +190,7 @@ export function completionBlockedReason(r: AdvanceFields): string | null {
 
 // 画像の種類（0150 より前の画像は会話のスクショ扱い）
 export function reminderImageKind(img: Pick<ReminderImage, "kind">): ReminderImageKind {
-  return img.kind === "receipt" || img.kind === "repayment" ? img.kind : "screenshot";
+  return img.kind === "receipt" || img.kind === "repayment" || img.kind === "slip" ? img.kind : "screenshot";
 }
 
 // 箱の数（この番号までを保管ボックスのように使う）

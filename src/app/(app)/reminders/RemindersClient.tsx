@@ -10,6 +10,7 @@ import {
   Loader2,
   MessageCircle,
   Download,
+  FileText,
   LayoutList,
   Plus,
   Receipt,
@@ -44,6 +45,11 @@ import {
   advanceAlertText,
   advanceAmountLabel,
   advanceRepaidPatch,
+  amountItemsPatch,
+  amountItemsTotal,
+  dueLabel,
+  emptyAmountItem,
+  normalizeAmountItems,
   completionBlockedReason,
   daysSince,
   formatReminderNo,
@@ -69,7 +75,7 @@ import { workerNameSuggestions } from "@/lib/worker-search";
 import { messengerWebUrl } from "@/lib/messenger-link";
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
 import type { WorkerWithOrg } from "@/lib/supabase/queries/workers";
-import type { ReminderImage, ReminderImageKind, ReminderPayer, ReminderStatus } from "@/types/db";
+import type { ReminderAmountItem, ReminderImage, ReminderImageKind, ReminderPayer, ReminderStatus } from "@/types/db";
 
 const MIGRATION = "0144_reminders.sql";
 
@@ -386,14 +392,15 @@ export function RemindersClient({
             </button>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-xs">
+            <table className="w-full min-w-[1000px] text-xs">
               <thead>
                 <tr className="border-b border-border text-left text-[11px] text-muted">
                   <th className="px-2 py-1.5 font-bold">作成日</th>
                   <th className="px-2 py-1.5 font-bold">No.</th>
                   <th className="px-2 py-1.5 font-bold">名前</th>
                   <th className="px-2 py-1.5 font-bold">種類・内容</th>
-                  <th className="px-2 py-1.5 text-right font-bold">金額</th>
+                  <th className="px-2 py-1.5 text-right font-bold">金額（合計）</th>
+                  <th className="px-2 py-1.5 font-bold">支払期限</th>
                   <th className="px-2 py-1.5 font-bold">支払</th>
                   <th className="px-2 py-1.5 font-bold">返金確認</th>
                   <th className="px-2 py-1.5 font-bold">進捗</th>
@@ -404,15 +411,17 @@ export function RemindersClient({
                   const amount = reminderAmount(r);
                   const rep = repaymentLabel(r);
                   const payer = reminderPayer(r);
+                  const due = dueLabel(r.due_on, today, r.status);
+                  const items = normalizeAmountItems(r.amount_items);
                   return (
                     <tr
                       key={r.id}
                       onClick={() => setSelected(r)}
                       className="cursor-pointer border-b border-border last:border-0 hover:bg-background"
                     >
-                      <td className="px-2 py-1.5 tabular-nums text-muted">{r.created_at.slice(0, 10)}</td>
+                      <td className="whitespace-nowrap px-2 py-1.5 tabular-nums text-muted">{r.created_at.slice(0, 10)}</td>
                       <td className="px-2 py-1.5 tabular-nums">{formatReminderNo(r.reminder_no).replace("No.", "")}</td>
-                      <td className="px-2 py-1.5 font-bold">
+                      <td className="whitespace-nowrap px-2 py-1.5 font-bold">
                         {r.workers?.name ?? "（外国人不明）"}
                         {r.workers?.organizations?.name && (
                           <span className="block text-[10px] font-normal text-muted">{r.workers.organizations.name}</span>
@@ -424,8 +433,16 @@ export function RemindersClient({
                           {r.content && `：${r.content}`}
                         </span>
                       </td>
-                      <td className="px-2 py-1.5 text-right tabular-nums">{amount == null ? "—" : `${amount.toLocaleString("ja-JP")}円`}</td>
-                      <td className="px-2 py-1.5">
+                      <td className="px-2 py-1.5 text-right tabular-nums">
+                        {amount == null ? "—" : `${amount.toLocaleString("ja-JP")}円`}
+                        {items.length > 1 && (
+                          <span className="block text-[10px] font-normal text-muted">
+                            {items.map((i) => `${i.label ? `${i.label} ` : ""}${i.amount == null ? "" : i.amount.toLocaleString("ja-JP")}`).join(" / ")}
+                          </span>
+                        )}
+                      </td>
+                      <td className={`px-2 py-1.5 tabular-nums ${due.overdue ? "font-bold text-seal" : ""}`}>{due.text ? due.text.replace(/^期限 /, "") : "—"}</td>
+                      <td className="whitespace-nowrap px-2 py-1.5">
                         {payer ? (
                           <span
                             className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
@@ -438,7 +455,7 @@ export function RemindersClient({
                           <span className="text-muted">—</span>
                         )}
                       </td>
-                      <td className="px-2 py-1.5">
+                      <td className="whitespace-nowrap px-2 py-1.5">
                         {rep.text ? (
                           <span
                             className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
@@ -451,7 +468,7 @@ export function RemindersClient({
                           <span className="text-muted">—</span>
                         )}
                       </td>
-                      <td className="px-2 py-1.5">
+                      <td className="whitespace-nowrap px-2 py-1.5">
                         <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${statusClass(r.status)}`}>{r.status}</span>
                       </td>
                     </tr>
@@ -514,6 +531,11 @@ export function RemindersClient({
                     {reminderAmount(r) != null && ` ・ ${reminderAmount(r)!.toLocaleString("ja-JP")}円`}
                     {payerLabel(r) && `（${payerLabel(r)}）`}
                   </span>
+                  {dueLabel(r.due_on, today, r.status).text && (
+                    <span className={`block text-[11px] ${dueLabel(r.due_on, today, r.status).overdue ? "font-bold text-seal" : "text-muted"}`}>
+                      {dueLabel(r.due_on, today, r.status).text}
+                    </span>
+                  )}
                   <span className="block text-[11px] text-muted">
                     {r.contacted_on && `連絡 ${r.contacted_on}`}
                     {r.replied_on && ` ／ 返事 ${r.replied_on}`}
@@ -567,8 +589,10 @@ function NewReminderForm({
   const [kind, setKind] = useState<string>(REMINDER_KINDS[0]);
   const [kindOther, setKindOther] = useState("");
   const [content, setContent] = useState("");
-  const [amount, setAmount] = useState("");
+  const [items, setItems] = useState<ReminderAmountItem[]>([emptyAmountItem()]);
   const [payer, setPayer] = useState<ReminderPayer | "">("");
+  const [slipFiles, setSlipFiles] = useState<File[]>([]); // 納付書の画像（登録後にアップロード）
+  const slipRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const no = nextReminderNo(activeNos);
   const suggestions = useMemo(() => workerNameSuggestions(workers, query), [workers, query]);
@@ -580,10 +604,11 @@ function NewReminderForm({
     }
     setBusy(true);
     onError(null);
-    const amountNum = parseYenDigits(amount);
+    const amountPatch = amountItemsPatch(items);
+    const amountNum = amountPatch.amount ?? null;
     // 金額・支払は入れたときだけ送る（0151 未適用でも従来の登録はできる）
     const extra: Partial<ReminderWithWorker> = {};
-    if (amountNum != null) extra.amount = amountNum;
+    if ((amountPatch.amount_items ?? []).length > 0) Object.assign(extra, amountPatch);
     if (payer) {
       extra.payer = payer;
       if (payer === "代わり") {
@@ -604,6 +629,10 @@ function NewReminderForm({
         note: "",
         ...extra,
       });
+      // 納付書の画像は督促ができてから紐づける
+      for (const f of slipFiles) {
+        await uploadReminderImage(row.id, f, "", "slip");
+      }
       onCreated(row);
     } catch (err) {
       const migration = Object.keys(extra).length > 0 ? AMOUNT_MIGRATION : MIGRATION;
@@ -705,19 +734,43 @@ function NewReminderForm({
         />
       </label>
 
-      {/* 金額と誰が払うか（一覧表に出る。あとから詳細でも直せる） */}
+      {/* 金額（複数の内訳・支払期限・合計）と誰が払うか（一覧表に出る。あとから詳細でも直せる） */}
+      <AmountItemsEditor items={items} onChange={setItems} canWrite />
+
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-bold text-muted">金額（円）</span>
-          <input
-            value={amount}
-            inputMode="numeric"
-            onChange={(e) => setAmount(e.target.value)}
-            onBlur={() => setAmount(formatYenInput(parseYenDigits(amount)))}
-            placeholder="例: 12,000"
-            className={`${INPUT} text-right tabular-nums`}
-          />
-        </label>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-muted">納付書の画像（登録と同時に添付）</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              ref={slipRef}
+              type="file"
+              accept="image/*,application/pdf"
+              multiple
+              hidden
+              onChange={(e) => {
+                if (e.target.files) setSlipFiles((prev) => [...prev, ...Array.from(e.target.files ?? [])]);
+                e.target.value = "";
+              }}
+            />
+            <Button variant="secondary" icon={<FileText size={14} />} onClick={() => slipRef.current?.click()}>
+              納付書を選ぶ
+            </Button>
+            {slipFiles.length === 0 ? (
+              <span className="text-[11px] text-muted">未選択（あとから詳細でも添付できます）</span>
+            ) : (
+              <span className="text-[11px] text-muted">
+                {slipFiles.map((f, i) => (
+                  <span key={`${f.name}-${i}`} className="mr-1 inline-flex items-center gap-0.5 rounded-full bg-background px-2 py-0.5">
+                    {f.name}
+                    <button type="button" aria-label="外す" onClick={() => setSlipFiles((prev) => prev.filter((_, j) => j !== i))}>
+                      <X size={11} />
+                    </button>
+                  </span>
+                ))}
+              </span>
+            )}
+          </div>
+        </div>
         <div className="flex flex-col gap-1">
           <span className="text-xs font-bold text-muted">支払</span>
           <div className="flex flex-wrap gap-1.5">
@@ -860,7 +913,8 @@ function ReminderModal({
   const waitDays = isAwaitingReply(reminder.status) ? daysSince(reminder.contacted_on, today) : null;
   // 会話のスクショ（右）と、立替の領収書・返金の証拠（左の立替払いの欄）を分ける
   const shots = (images ?? []).filter((img) => reminderImageKind(img) === "screenshot");
-  const advanceImages = (images ?? []).filter((img) => reminderImageKind(img) !== "screenshot");
+  const slips = (images ?? []).filter((img) => reminderImageKind(img) === "slip");
+  const advanceImages = (images ?? []).filter((img) => ["receipt", "repayment"].includes(reminderImageKind(img)));
 
   return (
     <Modal open title={`${formatReminderNo(reminder.reminder_no)} ${w?.name ?? ""}`} onClose={onClose} wide>
@@ -892,8 +946,17 @@ function ReminderModal({
             <p className="text-sm font-bold">{reminder.kind || "—"}</p>
           </div>
 
-          {/* 金額と誰が払うか（一覧表に出る） */}
-          <AmountPayerFields reminder={reminder} canWrite={canWrite} onPatch={onPatch} />
+          {/* 金額（内訳・期限・合計）・納付書の画像・誰が払うか（一覧表に出る） */}
+          <AmountPayerFields
+            reminder={reminder}
+            canWrite={canWrite}
+            onPatch={onPatch}
+            slips={slips}
+            urls={urls}
+            uploading={uploading}
+            onUpload={(files) => void upload(files, "slip")}
+            onRemoveImage={(img) => void removeImage(img)}
+          />
 
           <label className="flex flex-col gap-1">
             <span className="text-[11px] font-bold text-muted">内容</span>
@@ -1160,39 +1223,9 @@ function AdvanceSection({
     if (n !== (reminder.advance_amount ?? null)) onPatch({ advance_amount: n });
   };
 
-  const thumbs = (list: ReminderImage[]) =>
-    list.length === 0 ? null : (
-      <div className="mt-1.5 grid grid-cols-3 gap-1.5">
-        {list.map((img) => (
-          <div key={img.id} className="rounded-lg border border-border bg-surface p-1">
-            {urls[img.id] ? (
-              img.mime_type.startsWith("image/") ? (
-                <a href={urls[img.id]} target="_blank" rel="noopener noreferrer">
-                  {/* 署名付きURLの一時画像なので next/image は使わない */}
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={urls[img.id]} alt={img.file_name} className="max-h-28 w-full rounded object-contain" />
-                </a>
-              ) : (
-                <a href={urls[img.id]} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[11px] font-bold text-brand">
-                  <ExternalLink size={11} />
-                  {img.file_name}
-                </a>
-              )
-            ) : (
-              <div className="flex h-16 items-center justify-center text-[11px] text-muted">読み込み中…</div>
-            )}
-            <div className="mt-0.5 flex items-center justify-between text-[10px] text-muted">
-              <span>{img.created_at.slice(0, 10)}</span>
-              {canWrite && (
-                <button type="button" aria-label="この画像を削除" onClick={() => onRemoveImage(img)} className="hover:text-seal">
-                  <Trash2 size={12} />
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    );
+  const thumbs = (list: ReminderImage[]) => (
+    <ImageThumbs list={list} urls={urls} canWrite={canWrite} onRemove={onRemoveImage} />
+  );
 
   return (
     <div className={`rounded-xl border px-3 py-2.5 ${unpaid ? "border-seal/50 bg-seal/5" : "border-border bg-background"}`}>
@@ -1360,60 +1393,240 @@ function AdvanceSection({
   );
 }
 
-// ---- 金額と誰が払うか（詳細で直す。一覧表の列に出る） ----
+// ---- 画像のサムネイル（納付書・領収書・返金の証拠で共用） ----
+
+function ImageThumbs({
+  list,
+  urls,
+  canWrite,
+  onRemove,
+}: {
+  list: ReminderImage[];
+  urls: Record<string, string>;
+  canWrite: boolean;
+  onRemove: (img: ReminderImage) => void;
+}) {
+  if (list.length === 0) return null;
+  return (
+    <div className="mt-1.5 grid grid-cols-3 gap-1.5">
+      {list.map((img) => (
+        <div key={img.id} className="rounded-lg border border-border bg-surface p-1">
+          {urls[img.id] ? (
+            img.mime_type.startsWith("image/") ? (
+              <a href={urls[img.id]} target="_blank" rel="noopener noreferrer">
+                {/* 署名付きURLの一時画像なので next/image は使わない */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={urls[img.id]} alt={img.file_name} className="max-h-28 w-full rounded object-contain" />
+              </a>
+            ) : (
+              <a href={urls[img.id]} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[11px] font-bold text-brand">
+                <ExternalLink size={11} />
+                {img.file_name}
+              </a>
+            )
+          ) : (
+            <div className="flex h-16 items-center justify-center text-[11px] text-muted">読み込み中…</div>
+          )}
+          <div className="mt-0.5 flex items-center justify-between text-[10px] text-muted">
+            <span>{img.created_at.slice(0, 10)}</span>
+            {canWrite && (
+              <button type="button" aria-label="この画像を削除" onClick={() => onRemove(img)} className="hover:text-seal">
+                <Trash2 size={12} />
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---- 金額の内訳（複数行: 内訳名・金額・支払期限。合計は自動） ----
+
+function AmountItemsEditor({
+  items,
+  onChange,
+  onCommit,
+  canWrite,
+}: {
+  items: ReminderAmountItem[];
+  onChange: (items: ReminderAmountItem[]) => void;
+  onCommit?: (items: ReminderAmountItem[]) => void; // 入力を終えたとき（保存用）
+  canWrite: boolean;
+}) {
+  const field =
+    "min-h-[36px] rounded-lg border border-border bg-background px-2 text-xs focus:border-brand focus:outline-none disabled:opacity-60";
+  const total = amountItemsTotal(items);
+  const set = (i: number, patch: Partial<ReminderAmountItem>) =>
+    onChange(items.map((it, j) => (j === i ? { ...it, ...patch } : it)));
+  return (
+    <div className="rounded-xl border border-border bg-background px-3 py-2.5">
+      <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+        <span className="text-[11px] font-bold text-muted">金額（複数の内訳を入れると合計を自動で出します）・支払期限</span>
+        <span className="text-sm font-black tabular-nums">
+          合計 {total == null ? "—" : `${total.toLocaleString("ja-JP")}円`}
+        </span>
+      </div>
+      <div className="space-y-1.5">
+        {items.map((it, i) => (
+          <div key={i} className="flex flex-wrap items-center gap-1.5">
+            <input
+              value={it.label}
+              disabled={!canWrite}
+              onChange={(e) => set(i, { label: e.target.value })}
+              onBlur={() => onCommit?.(items)}
+              placeholder={`内訳（例: 第${i + 1}期）`}
+              className={`${field} min-w-[6rem] flex-1`}
+            />
+            <input
+              value={formatYenInput(it.amount)}
+              inputMode="numeric"
+              disabled={!canWrite}
+              onChange={(e) => set(i, { amount: parseYenDigits(e.target.value) })}
+              onBlur={() => onCommit?.(items)}
+              placeholder="金額（円）"
+              aria-label={`金額 ${i + 1}`}
+              className={`${field} w-28 text-right tabular-nums`}
+            />
+            <input
+              type="date"
+              value={it.due_on ?? ""}
+              disabled={!canWrite}
+              onChange={(e) => {
+                const next = items.map((x, j) => (j === i ? { ...x, due_on: e.target.value || null } : x));
+                onChange(next);
+                onCommit?.(next);
+              }}
+              aria-label={`支払期限 ${i + 1}`}
+              className={`${field} w-[9.5rem]`}
+            />
+            <button
+              type="button"
+              aria-label="この内訳を削除"
+              disabled={!canWrite}
+              onClick={() => {
+                const next = items.filter((_, j) => j !== i);
+                const fixed = next.length === 0 ? [emptyAmountItem()] : next;
+                onChange(fixed);
+                onCommit?.(fixed);
+              }}
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-muted hover:text-seal disabled:opacity-50"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        ))}
+      </div>
+      {canWrite && (
+        <button
+          type="button"
+          onClick={() => onChange([...items, emptyAmountItem()])}
+          className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-bold text-brand"
+        >
+          <Plus size={12} />
+          内訳を追加（第2期など）
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ---- 金額（内訳）・納付書の画像・誰が払うか（詳細で直す。一覧表の列に出る） ----
 
 function AmountPayerFields({
   reminder,
   canWrite,
   onPatch,
+  slips,
+  urls,
+  uploading,
+  onUpload,
+  onRemoveImage,
 }: {
   reminder: ReminderWithWorker;
   canWrite: boolean;
   onPatch: (patch: Partial<ReminderWithWorker>) => void;
+  slips: ReminderImage[]; // 納付書の画像
+  urls: Record<string, string>;
+  uploading: boolean;
+  onUpload: (files: FileList | File[]) => void;
+  onRemoveImage: (img: ReminderImage) => void;
 }) {
-  const [amount, setAmount] = useState(formatYenInput(reminder.amount ?? null));
-  const [prev, setPrev] = useState(reminder.amount ?? null);
-  if ((reminder.amount ?? null) !== prev) {
-    setPrev(reminder.amount ?? null);
-    setAmount(formatYenInput(reminder.amount ?? null));
+  // 保存されている内訳。無ければ金額1行（旧データの amount）を初期値にする
+  const fromReminder = () => {
+    const saved = normalizeAmountItems(reminder.amount_items);
+    if (saved.length > 0) return saved;
+    return [{ ...emptyAmountItem(), amount: reminder.amount ?? null, due_on: reminder.due_on ?? null }];
+  };
+  const [items, setItems] = useState<ReminderAmountItem[]>(fromReminder);
+  const [prevKey, setPrevKey] = useState(JSON.stringify(reminder.amount_items ?? null) + reminder.amount);
+  const key = JSON.stringify(reminder.amount_items ?? null) + reminder.amount;
+  if (key !== prevKey) {
+    setPrevKey(key);
+    setItems(fromReminder());
   }
+  const slipRef = useRef<HTMLInputElement>(null);
   const payer = reminderPayer(reminder);
-  const field =
-    "min-h-[36px] rounded-lg border border-border bg-background px-2 text-xs focus:border-brand focus:outline-none disabled:opacity-60";
+
+  // 入力を終えたら合計・期限と一緒に保存する（変わっていなければ何もしない）
+  const commit = (next: ReminderAmountItem[]) => {
+    const patch = amountItemsPatch(next);
+    const same =
+      JSON.stringify(patch.amount_items) === JSON.stringify(normalizeAmountItems(reminder.amount_items)) &&
+      patch.amount === (reminder.amount ?? null) &&
+      patch.due_on === (reminder.due_on ?? null);
+    if (!same) onPatch(patch);
+  };
+
   return (
-    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-      <label className="flex flex-col gap-1">
-        <span className="text-[11px] font-bold text-muted">金額（円）</span>
-        <input
-          value={amount}
-          inputMode="numeric"
-          disabled={!canWrite}
-          onChange={(e) => setAmount(e.target.value)}
-          onBlur={() => {
-            const n = parseYenDigits(amount);
-            setAmount(formatYenInput(n));
-            if (n !== (reminder.amount ?? null)) onPatch({ amount: n });
-          }}
-          placeholder="例: 12,000"
-          className={`${field} text-right tabular-nums`}
-        />
-      </label>
-      <div className="flex flex-col gap-1">
-        <span className="text-[11px] font-bold text-muted">支払（本人が払う／代わりに払う）</span>
-        <div className="flex flex-wrap gap-1.5">
-          {REMINDER_PAYERS.map((p) => (
+    <div className="space-y-2">
+      <AmountItemsEditor items={items} onChange={setItems} onCommit={commit} canWrite={canWrite} />
+
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-bold text-muted">納付書の画像</span>
+            <input
+              ref={slipRef}
+              type="file"
+              accept="image/*,application/pdf"
+              multiple
+              hidden
+              onChange={(e) => {
+                if (e.target.files && e.target.files.length > 0) onUpload(e.target.files);
+                e.target.value = "";
+              }}
+            />
             <button
-              key={p}
               type="button"
-              disabled={!canWrite}
-              onClick={() => onPatch(payerPatch(reminder, payer === p ? "" : p))}
-              className={`min-h-[36px] rounded-lg border px-3 text-xs font-bold ${
-                payer === p ? "border-brand bg-brand text-brand-foreground" : "border-border bg-surface text-muted"
-              }`}
+              disabled={!canWrite || uploading}
+              onClick={() => slipRef.current?.click()}
+              className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2 py-1 text-[11px] font-bold text-brand disabled:opacity-50"
             >
-              {PAYER_LABELS[p]}
+              {uploading ? <Loader2 size={12} className="animate-spin" /> : <FileText size={12} />}
+              納付書を添付
             </button>
-          ))}
+            {slips.length === 0 && <span className="text-[11px] text-muted">まだありません</span>}
+          </div>
+          <ImageThumbs list={slips} urls={urls} canWrite={canWrite} onRemove={onRemoveImage} />
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-[11px] font-bold text-muted">支払（本人が払う／代わりに払う）</span>
+          <div className="flex flex-wrap gap-1.5">
+            {REMINDER_PAYERS.map((p) => (
+              <button
+                key={p}
+                type="button"
+                disabled={!canWrite}
+                onClick={() => onPatch(payerPatch(reminder, payer === p ? "" : p))}
+                className={`min-h-[36px] rounded-lg border px-3 text-xs font-bold ${
+                  payer === p ? "border-brand bg-brand text-brand-foreground" : "border-border bg-surface text-muted"
+                }`}
+              >
+                {PAYER_LABELS[p]}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </div>
