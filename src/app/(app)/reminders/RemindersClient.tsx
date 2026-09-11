@@ -56,6 +56,8 @@ import {
   isAdvanceRepaid,
   isAdvanceUnpaid,
   isAwaitingReply,
+  isContactOnly,
+  isPaymentReminder,
   isReminderOpen,
   nextReminderNo,
   payerLabel,
@@ -209,10 +211,14 @@ export function RemindersClient({
 
   const onlyWorker = onlyWorkerId ? workers.find((w) => w.id === onlyWorkerId) : null;
 
+  // 一覧表に出すのは支払いのある督促だけ（支払なし・連絡のみの返事待ちは出さない）
+  const tableRows = useMemo(() => shown.filter((r) => isPaymentReminder(r)), [shown]);
+  const contactOnlyCount = shown.length - tableRows.length;
+
   // 一覧表をCSVで保存（今の絞り込みのまま。Excelで文字化けしないよう BOM 付き）
   const downloadCsv = () => {
     const csv = remindersCsv(
-      shown.map((r) => ({ ...r, workerName: r.workers?.name ?? "", orgName: r.workers?.organizations?.name ?? "" })),
+      tableRows.map((r) => ({ ...r, workerName: r.workers?.name ?? "", orgName: r.workers?.organizations?.name ?? "" })),
     );
     const blob = new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -380,7 +386,8 @@ export function RemindersClient({
         <Card className="p-2">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-1">
             <p className="text-[11px] text-muted">
-              {shown.length}件。行を押すと詳細を開きます。金額・支払は登録時と詳細で入れられます。
+              支払いのある督促 {tableRows.length}件。行を押すと詳細を開きます。金額・支払は登録時と詳細で入れられます。
+              {contactOnlyCount > 0 && `（支払なし・連絡のみの ${contactOnlyCount}件は一覧表に出しません。カード表示で確認できます）`}
             </p>
             <button
               type="button"
@@ -391,7 +398,10 @@ export function RemindersClient({
               CSVで保存
             </button>
           </div>
-          <div className="overflow-x-auto">
+          {tableRows.length === 0 && (
+            <p className="px-1 pb-2 text-xs text-muted">支払いのある督促はありません。</p>
+          )}
+          <div className={tableRows.length === 0 ? "hidden" : "overflow-x-auto"}>
             <table className="w-full min-w-[1000px] text-xs">
               <thead>
                 <tr className="border-b border-border text-left text-[11px] text-muted">
@@ -407,7 +417,7 @@ export function RemindersClient({
                 </tr>
               </thead>
               <tbody>
-                {shown.map((r) => {
+                {tableRows.map((r) => {
                   const amount = reminderAmount(r);
                   const rep = repaymentLabel(r);
                   const payer = reminderPayer(r);
@@ -509,6 +519,11 @@ export function RemindersClient({
                       {r.status}
                       {waitDays !== null && waitDays > 0 && `・${waitDays}日`}
                     </span>
+                    {isContactOnly(r) && (
+                      <span className="rounded-full bg-background px-2 py-0.5 text-[10px] font-bold text-muted ring-1 ring-border">
+                        連絡のみ（支払なし）
+                      </span>
+                    )}
                     {isAdvanceUnpaid(r) && (
                       <span className="inline-flex items-center gap-0.5 rounded-full bg-seal px-2 py-0.5 text-[10px] font-bold text-white">
                         <Receipt size={10} />
@@ -604,7 +619,7 @@ function NewReminderForm({
     }
     setBusy(true);
     onError(null);
-    const amountPatch = amountItemsPatch(items);
+    const amountPatch = amountItemsPatch(payer === "なし" ? [] : items);
     const amountNum = amountPatch.amount ?? null;
     // 金額・支払は入れたときだけ送る（0151 未適用でも従来の登録はできる）
     const extra: Partial<ReminderWithWorker> = {};
@@ -632,7 +647,7 @@ function NewReminderForm({
       // 納付書の画像は督促ができてから紐づける。
       // 画像の登録に失敗しても督促自体はできているので、二重登録にならないよう一覧に出してからエラーを知らせる
       let slipError: string | null = null;
-      for (const f of slipFiles) {
+      for (const f of payer === "なし" ? [] : slipFiles) {
         try {
           await uploadReminderImage(row.id, f, "", "slip");
         } catch (err) {
@@ -758,7 +773,38 @@ function NewReminderForm({
         />
       </label>
 
-      {/* 金額（複数の内訳・支払期限・合計）と誰が払うか（一覧表に出る。あとから詳細でも直せる） */}
+      {/* 誰が払うか。「支払なし（連絡のみ）」なら金額・納付書は無し（本人からの返事待ちだけを登録。一覧表には出ない） */}
+      <div className="flex flex-col gap-1">
+        <span className="text-xs font-bold text-muted">支払</span>
+        <div className="flex flex-wrap gap-1.5">
+          {REMINDER_PAYERS.map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => setPayer((cur) => (cur === p ? "" : p))}
+              className={`min-h-[40px] rounded-xl border px-3 text-xs font-bold ${
+                payer === p ? "border-brand bg-brand text-brand-foreground" : "border-border bg-surface text-muted"
+              }`}
+            >
+              {PAYER_LABELS[p]}
+            </button>
+          ))}
+        </div>
+        {payer === "代わり" && (
+          <span className="text-[11px] text-muted">
+            登録後、詳細の「立替払い」に領収書・支払日・返金の指示を入れ、本人から返金があったら返金日を入れてください。
+          </span>
+        )}
+        {payer === "なし" && (
+          <span className="text-[11px] text-muted">
+            支払いは無く、市役所への連絡などで本人からの返事を待つ件として登録します。金額・納付書は入れません。一覧表（支払いのある督促）には出ず、カードの一覧と返事待ちで追いかけます。
+          </span>
+        )}
+      </div>
+
+      {payer !== "なし" && (
+        <>
+      {/* 金額（複数の内訳・支払期限・合計）（一覧表に出る。あとから詳細でも直せる） */}
       <AmountItemsEditor items={items} onChange={setItems} canWrite />
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -801,29 +847,9 @@ function NewReminderForm({
           </div>
           </FileDropArea>
         </div>
-        <div className="flex flex-col gap-1">
-          <span className="text-xs font-bold text-muted">支払</span>
-          <div className="flex flex-wrap gap-1.5">
-            {REMINDER_PAYERS.map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => setPayer((cur) => (cur === p ? "" : p))}
-                className={`min-h-[40px] rounded-xl border px-3 text-xs font-bold ${
-                  payer === p ? "border-brand bg-brand text-brand-foreground" : "border-border bg-surface text-muted"
-                }`}
-              >
-                {PAYER_LABELS[p]}
-              </button>
-            ))}
-          </div>
-          {payer === "代わり" && (
-            <span className="text-[11px] text-muted">
-              登録後、詳細の「立替払い」に領収書・支払日・返金の指示を入れ、本人から返金があったら返金日を入れてください。
-            </span>
-          )}
-        </div>
       </div>
+        </>
+      )}
 
       <div className="flex gap-2">
         <Button
@@ -1675,7 +1701,7 @@ function AmountPayerFields({
           <ImageThumbs list={slips} urls={urls} canWrite={canWrite} onRemove={onRemoveImage} />
         </FileDropArea>
         <div className="flex flex-col gap-1">
-          <span className="text-[11px] font-bold text-muted">支払（本人が払う／代わりに払う）</span>
+          <span className="text-[11px] font-bold text-muted">支払（本人が払う／代わりに払う／支払なし）</span>
           <div className="flex flex-wrap gap-1.5">
             {REMINDER_PAYERS.map((p) => (
               <button
@@ -1691,6 +1717,9 @@ function AmountPayerFields({
               </button>
             ))}
           </div>
+          {payer === "なし" && (
+            <span className="text-[11px] text-muted">支払いの無い連絡・返事待ちの件です。一覧表（支払いのある督促）には出ません。</span>
+          )}
         </div>
       </div>
     </div>
