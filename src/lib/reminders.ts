@@ -202,6 +202,38 @@ export function payerPatch(
   return patch;
 }
 
+// ---- 一覧の絞り込み（画面と印刷ページで同じ条件を使う） ----
+
+export const REMINDER_FILTERS = ["進行中", "返事待ち", "立替未返金", "完了", "すべて"] as const;
+export type ReminderFilter = (typeof REMINDER_FILTERS)[number];
+
+export function parseReminderFilter(v: string | null | undefined): ReminderFilter {
+  return (REMINDER_FILTERS as readonly string[]).includes(v ?? "") ? (v as ReminderFilter) : "進行中";
+}
+
+export function filterReminders<
+  T extends Pick<Reminder, "reminder_no" | "status" | "completed_on" | "created_at" | "worker_id" | "kind" | "content" | "advance_paid" | "advance_repaid_on"> & {
+    workers?: { name: string; kana: string } | null;
+  },
+>(rows: T[], opts: { filter: ReminderFilter; q: string; onlyWorkerId: string | null }): T[] {
+  const query = opts.q.trim().toUpperCase();
+  return sortReminders(rows).filter((r) => {
+    if (opts.onlyWorkerId && r.worker_id !== opts.onlyWorkerId) return false;
+    if (opts.filter === "進行中" && !isReminderOpen(r.status)) return false;
+    if (opts.filter === "返事待ち" && !isAwaitingReply(r.status)) return false;
+    if (opts.filter === "立替未返金" && !isAdvanceUnpaid(r)) return false;
+    if (opts.filter === "完了" && isReminderOpen(r.status)) return false;
+    if (!query) return true;
+    return (
+      formatReminderNo(r.reminder_no).toUpperCase().includes(query) ||
+      (r.workers?.name ?? "").toUpperCase().includes(query) ||
+      (r.workers?.kana ?? "").toUpperCase().includes(query) ||
+      r.content.toUpperCase().includes(query) ||
+      r.kind.toUpperCase().includes(query)
+    );
+  });
+}
+
 // 一覧表（CSV）。Excel で開けるように BOM は呼び出し側で付ける
 export function remindersCsv(
   rows: (Pick<Reminder, "created_at" | "reminder_no" | "kind" | "content" | "status" | "amount" | "advance_amount" | "payer" | "advance_paid" | "advance_repaid_on" | "advance_paid_on" | "amount_items" | "due_on"> & {

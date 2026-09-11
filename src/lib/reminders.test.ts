@@ -9,7 +9,9 @@ import {
   amountItemsTotal,
   dueLabel,
   earliestDue,
+  filterReminders,
   normalizeAmountItems,
+  parseReminderFilter,
   completionBlockedReason,
   daysSince,
   isAdvanceRepaid,
@@ -310,5 +312,23 @@ describe("内訳ごとの支払済み・本人からの受取", () => {
     expect(repaymentLabel(rem({ payer: "代わり", amount_items: all }))).toEqual({ text: "返金済み（全部受取）", unpaid: false });
     const partial = [{ ...items[0], repaid_on: "2026-09-05" }, items[1]];
     expect(repaymentLabel(rem({ payer: "代わり", amount_items: partial }))).toEqual({ text: "受取 1/1（残り 1件は未払い）", unpaid: false });
+  });
+});
+
+describe("一覧の絞り込み（画面と印刷ページで共通）", () => {
+  const rows = [
+    { ...rem({ reminder_no: 1, status: "連絡済み（返事待ち）", content: "住民税" }), workers: { name: "NGUYEN VAN A", kana: "グエン" } },
+    { ...rem({ reminder_no: 2, status: "完了", completed_on: "2026-09-01", worker_id: "w2" }), workers: { name: "LE THI B", kana: "レ" } },
+    { ...rem({ reminder_no: 3, status: "返事あり", advance_paid: true }), workers: { name: "PHAM C", kana: "ファム" } },
+  ];
+  it("進捗・立替未返金・検索・外国人で絞る", () => {
+    expect(filterReminders(rows, { filter: "進行中", q: "", onlyWorkerId: null }).map((r) => r.reminder_no)).toEqual([1, 3]);
+    expect(filterReminders(rows, { filter: "返事待ち", q: "", onlyWorkerId: null }).map((r) => r.reminder_no)).toEqual([1]);
+    expect(filterReminders(rows, { filter: "立替未返金", q: "", onlyWorkerId: null }).map((r) => r.reminder_no)).toEqual([3]);
+    expect(filterReminders(rows, { filter: "完了", q: "", onlyWorkerId: null }).map((r) => r.reminder_no)).toEqual([2]);
+    expect(filterReminders(rows, { filter: "すべて", q: "グエン", onlyWorkerId: null }).map((r) => r.reminder_no)).toEqual([1]);
+    expect(filterReminders(rows, { filter: "すべて", q: "", onlyWorkerId: "w2" }).map((r) => r.reminder_no)).toEqual([2]);
+    expect(parseReminderFilter("完了")).toBe("完了");
+    expect(parseReminderFilter("x")).toBe("進行中");
   });
 });

@@ -13,6 +13,7 @@ import {
   FileText,
   LayoutList,
   Plus,
+  Printer,
   Receipt,
   Table2,
   Trash2,
@@ -55,6 +56,7 @@ import {
   normalizeAmountItems,
   completionBlockedReason,
   daysSince,
+  filterReminders,
   formatReminderNo,
   isAdvanceRepaid,
   isAdvanceUnpaid,
@@ -73,7 +75,8 @@ import {
   reminderStatusPatch,
   remindersCsv,
   repaymentLabel,
-  sortReminders,
+  type ReminderFilter,
+  REMINDER_FILTERS,
 } from "@/lib/reminders";
 import { formatYenInput, parseYenDigits } from "@/lib/ssw-insurance";
 import { workerNameSuggestions } from "@/lib/worker-search";
@@ -87,7 +90,7 @@ const MIGRATION = "0144_reminders.sql";
 const INPUT =
   "min-h-[40px] w-full rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none";
 
-type Filter = "進行中" | "返事待ち" | "立替未返金" | "完了" | "すべて";
+type Filter = ReminderFilter;
 
 // 進捗の色（返事待ちは赤・未連絡は黄・返事ありは青・完了は灰）
 function statusClass(status: string): string {
@@ -137,24 +140,10 @@ export function RemindersClient({
   const counts = reminderCounts(reminders);
   const boxes = reminderBoxes(reminders);
 
-  const shown = useMemo(() => {
-    const query = q.trim().toUpperCase();
-    return sortReminders(reminders).filter((r) => {
-      if (onlyWorkerId && r.worker_id !== onlyWorkerId) return false;
-      if (filter === "進行中" && !isReminderOpen(r.status)) return false;
-      if (filter === "返事待ち" && !isAwaitingReply(r.status)) return false;
-      if (filter === "立替未返金" && !isAdvanceUnpaid(r)) return false;
-      if (filter === "完了" && isReminderOpen(r.status)) return false;
-      if (!query) return true;
-      return (
-        formatReminderNo(r.reminder_no).toUpperCase().includes(query) ||
-        (r.workers?.name ?? "").toUpperCase().includes(query) ||
-        (r.workers?.kana ?? "").toUpperCase().includes(query) ||
-        r.content.toUpperCase().includes(query) ||
-        r.kind.toUpperCase().includes(query)
-      );
-    });
-  }, [reminders, filter, q, onlyWorkerId]);
+  const shown = useMemo(
+    () => filterReminders(reminders, { filter, q, onlyWorkerId }),
+    [reminders, filter, q, onlyWorkerId],
+  );
 
   const replace = (updated: ReminderWithWorker) => {
     setReminders((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
@@ -343,7 +332,7 @@ export function RemindersClient({
           className="min-h-[40px] flex-1 rounded-xl border border-border bg-surface px-3 text-sm focus:border-brand focus:outline-none"
         />
         <div className="flex flex-wrap gap-1">
-          {(["進行中", "返事待ち", "立替未返金", "完了", "すべて"] as Filter[]).map((f) => (
+          {REMINDER_FILTERS.map((f) => (
             <button
               key={f}
               type="button"
@@ -392,14 +381,25 @@ export function RemindersClient({
               支払いのある督促 {tableRows.length}件。行を押すと詳細を開きます。金額・支払は登録時と詳細で入れられます。
               {contactOnlyCount > 0 && `（支払なし・連絡のみの ${contactOnlyCount}件は一覧表に出しません。カード表示で確認できます）`}
             </p>
-            <button
-              type="button"
-              onClick={downloadCsv}
-              className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-bold text-brand"
-            >
-              <Download size={13} />
-              CSVで保存
-            </button>
+            <span className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={downloadCsv}
+                className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-bold text-brand"
+              >
+                <Download size={13} />
+                CSVで保存
+              </button>
+              {/* 今の絞り込み・検索のまま、A4横の印刷ページを開く */}
+              <Link
+                href={`/reminders/print?filter=${encodeURIComponent(filter)}&q=${encodeURIComponent(q.trim())}${onlyWorkerId ? `&worker=${onlyWorkerId}` : ""}`}
+                target="_blank"
+                className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-bold text-brand"
+              >
+                <Printer size={13} />
+                印刷（A4横）
+              </Link>
+            </span>
           </div>
           {tableRows.length === 0 && (
             <p className="px-1 pb-2 text-xs text-muted">支払いのある督促はありません。</p>
