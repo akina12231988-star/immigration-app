@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  advanceAlertText,
+  advanceRepaidPatch,
+  completionBlockedReason,
   daysSince,
+  isAdvanceRepaid,
+  isAdvanceUnpaid,
   formatReminderNo,
   nextReminderNo,
   reminderAlertText,
@@ -107,7 +112,7 @@ describe("sortReminders・reminderBoxes・reminderCounts", () => {
   });
 
   it("件数（進行中・未連絡・返事待ち・返事あり）", () => {
-    expect(reminderCounts(rows)).toEqual({ open: 3, notContacted: 1, awaiting: 1, replied: 1 });
+    expect(reminderCounts(rows)).toEqual({ open: 3, notContacted: 1, awaiting: 1, replied: 1, advanceUnpaid: 0 });
   });
 });
 
@@ -128,5 +133,47 @@ describe("daysSince・reminderAlertText", () => {
     expect(reminderAlertText(rem({ reminder_no: 5, status: "返事あり" }), TODAY)).toBe(
       "No.05 市役所からの通知 … 返事あり（手続き中）",
     );
+  });
+});
+
+describe("立替払い（本人の代わりに支払った分の返金の追いかけ）", () => {
+  it("立て替えて返金が無ければ未返金。返金日が入れば返金済み", () => {
+    const unpaid = rem({ advance_paid: true, advance_amount: 12000, advance_paid_on: "2026-08-28" });
+    expect(isAdvanceUnpaid(unpaid)).toBe(true);
+    expect(isAdvanceRepaid(unpaid)).toBe(false);
+    expect(advanceAlertText(unpaid, TODAY)).toBe("立替 12,000円 未返金（支払から10日）");
+    expect(advanceAlertText(rem({ advance_paid: true }), TODAY)).toBe("立替 金額未入力 未返金");
+    const repaid = rem({ advance_paid: true, advance_amount: 12000, advance_repaid_on: "2026-09-05" });
+    expect(isAdvanceUnpaid(repaid)).toBe(false);
+    expect(isAdvanceRepaid(repaid)).toBe(true);
+    expect(advanceAlertText(repaid, TODAY)).toBe("");
+    // 立て替えていない・古いデータ（項目なし）は対象外
+    expect(isAdvanceUnpaid(rem({}))).toBe(false);
+    expect(isAdvanceUnpaid({ advance_paid: undefined, advance_repaid_on: undefined })).toBe(false);
+  });
+
+  it("未返金の間は完了にできず、返金日を入れると完了になる", () => {
+    const r = rem({ status: "返事あり", advance_paid: true, advance_amount: 5000, completed_on: null });
+    expect(completionBlockedReason(r)).toContain("5,000円");
+    expect(completionBlockedReason(rem({}))).toBeNull();
+    expect(advanceRepaidPatch(r, "2026-09-06", TODAY)).toEqual({
+      advance_repaid_on: "2026-09-06",
+      status: "完了",
+      completed_on: TODAY,
+    });
+    // すでに完了なら返金日だけ入れる
+    expect(advanceRepaidPatch(rem({ status: "完了", completed_on: "2026-09-01" }), "2026-09-06", TODAY)).toEqual({
+      advance_repaid_on: "2026-09-06",
+    });
+  });
+
+  it("件数とアラート文に立替の未返金が入る", () => {
+    const rows = [
+      rem({ reminder_no: 1, status: "返事あり", advance_paid: true, advance_amount: 3000, advance_paid_on: "2026-09-01" }),
+      rem({ reminder_no: 2, status: "完了", advance_paid: true, advance_repaid_on: "2026-09-02" }),
+      rem({ reminder_no: 3 }),
+    ];
+    expect(reminderCounts(rows).advanceUnpaid).toBe(1);
+    expect(reminderAlertText(rows[0], TODAY)).toBe("No.01 市役所からの通知 … 返事あり（手続き中） ／ 立替 3,000円 未返金（支払から6日）");
   });
 });

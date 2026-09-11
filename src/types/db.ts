@@ -962,7 +962,22 @@ export type ReminderStatus = (typeof REMINDER_STATUSES)[number];
 // 種類の選択肢（自由入力もできる）
 export const REMINDER_KINDS = ["市役所からの通知", "領収書", "納付書", "その他"] as const;
 
-export interface Reminder {
+// 立替払い（本人の代わりに支払った分。0150_reminder_advance.sql）。
+// 古いデータ・0150未適用の環境では値が無いので、Reminder では省略可にしている
+export interface ReminderAdvance {
+  advance_paid: boolean; // 本人の代わりに支払ったか
+  advance_amount: number | null; // 立て替えた金額（円）
+  advance_paid_on: string | null; // 支払日
+  advance_repay_to: string; // 本人への返金の指示（振込先口座・期限など）
+  advance_instructed_on: string | null; // 返金を指示した日
+  advance_repaid_on: string | null; // 本人から返金があった日（空なら未返金）
+}
+
+// 画像の種類（0150）: 会話のスクショ / 立替の領収書 / 返金の証拠
+export const REMINDER_IMAGE_KINDS = ["screenshot", "receipt", "repayment"] as const;
+export type ReminderImageKind = (typeof REMINDER_IMAGE_KINDS)[number];
+
+export interface Reminder extends Partial<ReminderAdvance> {
   id: string;
   reminder_no: number; // 番号（1〜30を保管ボックスのように使い、完了で空きになる）
   worker_id: string;
@@ -988,6 +1003,7 @@ export interface ReminderImage {
   file_name: string;
   mime_type: string;
   caption: string;
+  kind?: ReminderImageKind; // 画像の種類（0150。無ければ会話のスクショ）
   uploaded_by: string | null;
   created_at: string;
 }

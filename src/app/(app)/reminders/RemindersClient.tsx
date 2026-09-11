@@ -10,6 +10,7 @@ import {
   Loader2,
   MessageCircle,
   Plus,
+  Receipt,
   Trash2,
   X,
 } from "lucide-react";
@@ -30,31 +31,40 @@ import {
 import { deleteReminderImage, getReminderImageUrls } from "./actions";
 import { uploadReminderImage } from "@/lib/reminder-files";
 import {
+  ADVANCE_MIGRATION,
   REMINDER_BOX_SIZE,
   REMINDER_KINDS,
   REMINDER_STATUSES,
+  advanceAlertText,
+  advanceAmountLabel,
+  advanceRepaidPatch,
+  completionBlockedReason,
   daysSince,
   formatReminderNo,
+  isAdvanceRepaid,
+  isAdvanceUnpaid,
   isAwaitingReply,
   isReminderOpen,
   nextReminderNo,
   reminderBoxes,
   reminderCounts,
+  reminderImageKind,
   reminderStatusPatch,
   sortReminders,
 } from "@/lib/reminders";
+import { formatYenInput, parseYenDigits } from "@/lib/ssw-insurance";
 import { workerNameSuggestions } from "@/lib/worker-search";
 import { messengerWebUrl } from "@/lib/messenger-link";
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
 import type { WorkerWithOrg } from "@/lib/supabase/queries/workers";
-import type { ReminderImage, ReminderStatus } from "@/types/db";
+import type { ReminderImage, ReminderImageKind, ReminderStatus } from "@/types/db";
 
 const MIGRATION = "0144_reminders.sql";
 
 const INPUT =
   "min-h-[40px] w-full rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none";
 
-type Filter = "進行中" | "返事待ち" | "完了" | "すべて";
+type Filter = "進行中" | "返事待ち" | "立替未返金" | "完了" | "すべて";
 
 // 進捗の色（返事待ちは赤・未連絡は黄・返事ありは青・完了は灰）
 function statusClass(status: string): string {
@@ -108,6 +118,7 @@ export function RemindersClient({
       if (onlyWorkerId && r.worker_id !== onlyWorkerId) return false;
       if (filter === "進行中" && !isReminderOpen(r.status)) return false;
       if (filter === "返事待ち" && !isAwaitingReply(r.status)) return false;
+      if (filter === "立替未返金" && !isAdvanceUnpaid(r)) return false;
       if (filter === "完了" && isReminderOpen(r.status)) return false;
       if (!query) return true;
       return (
@@ -127,6 +138,14 @@ export function RemindersClient({
 
   // 進捗を変える（日付も自動で入れる。完了にすると番号が空きになる）
   const setStatus = async (r: ReminderWithWorker, status: ReminderStatus) => {
+    // 立替が未返金のままでは完了にできない（返金日を入れると完了になる）
+    if (status === "完了") {
+      const blocked = completionBlockedReason(r);
+      if (blocked) {
+        setError(blocked);
+        return;
+      }
+    }
     const patch = reminderStatusPatch(r, status, today);
     setError(null);
     try {
@@ -146,7 +165,9 @@ export function RemindersClient({
       await updateReminder(createClient(), r.id, rest);
       replace({ ...r, ...patch });
     } catch (err) {
-      setError(dbErrorMessage(err, MIGRATION, errorMessage(err, "保存に失敗しました")));
+      // 立替払いの項目（0150）は、その分の案内を出す
+      const migration = Object.keys(patch).some((k) => k.startsWith("advance_")) ? ADVANCE_MIGRATION : MIGRATION;
+      setError(dbErrorMessage(err, migration, errorMessage(err, "保存に失敗しました")));
     }
   };
 
@@ -193,6 +214,16 @@ export function RemindersClient({
         <span className="rounded-full bg-status-before-bg px-3 py-1 text-xs font-bold text-status-before-fg">
           進行中 合計 {counts.open}
         </span>
+        {counts.advanceUnpaid > 0 && (
+          <button
+            type="button"
+            onClick={() => setFilter("立替未返金")}
+            className="inline-flex items-center gap-1 rounded-full bg-seal px-3 py-1 text-xs font-bold text-white"
+          >
+            <Receipt size={12} />
+            立替 未返金 {counts.advanceUnpaid}
+          </button>
+        )}
       </div>
 
       {/* 箱（番号の使用状況）。押すとその督促を開く */}
@@ -264,7 +295,7 @@ export function RemindersClient({
           className="min-h-[40px] flex-1 rounded-xl border border-border bg-surface px-3 text-sm focus:border-brand focus:outline-none"
         />
         <div className="flex flex-wrap gap-1">
-          {(["進行中", "返事待ち", "完了", "すべて"] as Filter[]).map((f) => (
+          {(["進行中", "返事待ち", "立替未返金", "完了", "すべて"] as Filter[]).map((f) => (
             <button
               key={f}
               type="button"
@@ -310,6 +341,17 @@ export function RemindersClient({
                       {r.status}
                       {waitDays !== null && waitDays > 0 && `・${waitDays}日`}
                     </span>
+                    {isAdvanceUnpaid(r) && (
+                      <span className="inline-flex items-center gap-0.5 rounded-full bg-seal px-2 py-0.5 text-[10px] font-bold text-white">
+                        <Receipt size={10} />
+                        {advanceAlertText(r, today)}
+                      </span>
+                    )}
+                    {isAdvanceRepaid(r) && (
+                      <span className="rounded-full bg-status-approved-bg px-2 py-0.5 text-[10px] font-bold text-status-approved-fg">
+                        立替 {advanceAmountLabel(r.advance_amount)} 返金済み
+                      </span>
+                    )}
                     {images > 0 && (
                       <span className="text-[10px] text-muted">画像 {images}枚</span>
                     )}
@@ -563,13 +605,13 @@ function ReminderModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reminder.id]);
 
-  const upload = async (files: FileList | File[]) => {
+  const upload = async (files: FileList | File[], kind: ReminderImageKind = "screenshot") => {
     if (!canWrite) return;
     setUploading(true);
     onError(null);
     try {
       for (const file of Array.from(files)) {
-        await uploadReminderImage(reminder.id, file);
+        await uploadReminderImage(reminder.id, file, "", kind);
       }
       loadImages();
     } catch (err) {
@@ -611,6 +653,9 @@ function ReminderModal({
   }, [reminder.id, canWrite]);
 
   const waitDays = isAwaitingReply(reminder.status) ? daysSince(reminder.contacted_on, today) : null;
+  // 会話のスクショ（右）と、立替の領収書・返金の証拠（左の立替払いの欄）を分ける
+  const shots = (images ?? []).filter((img) => reminderImageKind(img) === "screenshot");
+  const advanceImages = (images ?? []).filter((img) => reminderImageKind(img) !== "screenshot");
 
   return (
     <Modal open title={`${formatReminderNo(reminder.reminder_no)} ${w?.name ?? ""}`} onClose={onClose} wide>
@@ -681,6 +726,9 @@ function ReminderModal({
                 完了したので {formatReminderNo(reminder.reminder_no)} は空き番号になりました。
               </p>
             )}
+            {completionBlockedReason(reminder) && (
+              <p className="mt-1 text-xs font-bold text-seal">{completionBlockedReason(reminder)}</p>
+            )}
           </div>
 
           <div className="grid grid-cols-3 gap-2">
@@ -703,6 +751,19 @@ function ReminderModal({
               </label>
             ))}
           </div>
+
+          {/* 立替払い（本人の代わりに支払った分の記録と返金の追いかけ） */}
+          <AdvanceSection
+            reminder={reminder}
+            today={today}
+            canWrite={canWrite}
+            uploading={uploading}
+            images={advanceImages}
+            urls={urls}
+            onPatch={onPatch}
+            onUpload={(files, kind) => void upload(files, kind)}
+            onRemoveImage={(img) => void removeImage(img)}
+          />
 
           <label className="flex flex-col gap-1">
             <span className="text-[11px] font-bold text-muted">メモ（返事の内容・引き継ぎ）</span>
@@ -770,11 +831,11 @@ function ReminderModal({
 
           {images === null ? (
             <p className="text-xs text-muted">読み込み中…</p>
-          ) : images.length === 0 ? (
+          ) : shots.length === 0 ? (
             <p className="text-xs text-muted">まだ画像はありません。</p>
           ) : (
             <div className="grid grid-cols-2 gap-2">
-              {images.map((img) => (
+              {shots.map((img) => (
                 <div key={img.id} className="rounded-xl border border-border bg-surface p-1.5">
                   {urls[img.id] ? (
                     img.mime_type.startsWith("image/") ? (
@@ -840,5 +901,251 @@ function ReminderModal({
         onCancel={() => setConfirmDelete(false)}
       />
     </Modal>
+  );
+}
+
+// ---- 立替払い（本人の代わりに支払った分。領収書・金額・支払日・返金の指示・返金日） ----
+
+function AdvanceSection({
+  reminder,
+  today,
+  canWrite,
+  uploading,
+  images,
+  urls,
+  onPatch,
+  onUpload,
+  onRemoveImage,
+}: {
+  reminder: ReminderWithWorker;
+  today: string;
+  canWrite: boolean;
+  uploading: boolean;
+  images: ReminderImage[]; // 立替の領収書・返金の証拠
+  urls: Record<string, string>;
+  onPatch: (patch: Partial<ReminderWithWorker>) => void;
+  onUpload: (files: FileList | File[], kind: ReminderImageKind) => void;
+  onRemoveImage: (img: ReminderImage) => void;
+}) {
+  const [amount, setAmount] = useState(formatYenInput(reminder.advance_amount));
+  const [prevAmount, setPrevAmount] = useState(reminder.advance_amount ?? null);
+  if ((reminder.advance_amount ?? null) !== prevAmount) {
+    setPrevAmount(reminder.advance_amount ?? null);
+    setAmount(formatYenInput(reminder.advance_amount));
+  }
+  const [repayTo, setRepayTo] = useState(reminder.advance_repay_to ?? "");
+  const [repaidOn, setRepaidOn] = useState(today);
+  const receiptRef = useRef<HTMLInputElement>(null);
+  const repaymentRef = useRef<HTMLInputElement>(null);
+  const on = !!reminder.advance_paid;
+  const unpaid = isAdvanceUnpaid(reminder);
+  const receipts = images.filter((img) => reminderImageKind(img) === "receipt");
+  const proofs = images.filter((img) => reminderImageKind(img) === "repayment");
+  const field =
+    "min-h-[36px] rounded-lg border border-border bg-background px-2 text-xs focus:border-brand focus:outline-none disabled:opacity-60";
+
+  const saveAmount = () => {
+    const n = parseYenDigits(amount);
+    setAmount(formatYenInput(n));
+    if (n !== (reminder.advance_amount ?? null)) onPatch({ advance_amount: n });
+  };
+
+  const thumbs = (list: ReminderImage[]) =>
+    list.length === 0 ? null : (
+      <div className="mt-1.5 grid grid-cols-3 gap-1.5">
+        {list.map((img) => (
+          <div key={img.id} className="rounded-lg border border-border bg-surface p-1">
+            {urls[img.id] ? (
+              img.mime_type.startsWith("image/") ? (
+                <a href={urls[img.id]} target="_blank" rel="noopener noreferrer">
+                  {/* 署名付きURLの一時画像なので next/image は使わない */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={urls[img.id]} alt={img.file_name} className="max-h-28 w-full rounded object-contain" />
+                </a>
+              ) : (
+                <a href={urls[img.id]} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[11px] font-bold text-brand">
+                  <ExternalLink size={11} />
+                  {img.file_name}
+                </a>
+              )
+            ) : (
+              <div className="flex h-16 items-center justify-center text-[11px] text-muted">読み込み中…</div>
+            )}
+            <div className="mt-0.5 flex items-center justify-between text-[10px] text-muted">
+              <span>{img.created_at.slice(0, 10)}</span>
+              {canWrite && (
+                <button type="button" aria-label="この画像を削除" onClick={() => onRemoveImage(img)} className="hover:text-seal">
+                  <Trash2 size={12} />
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+
+  return (
+    <div className={`rounded-xl border px-3 py-2.5 ${unpaid ? "border-seal/50 bg-seal/5" : "border-border bg-background"}`}>
+      <label className="flex items-center gap-2 text-sm font-bold">
+        <input
+          type="checkbox"
+          checked={on}
+          disabled={!canWrite}
+          onChange={(e) => onPatch({ advance_paid: e.target.checked })}
+          className="h-4 w-4"
+        />
+        <Receipt size={14} className={unpaid ? "text-seal" : "text-muted"} />
+        本人の代わりに支払った（立替払い）
+      </label>
+      {!on ? (
+        <p className="mt-1 text-[11px] text-muted">
+          納付書などを本人の代わりに支払ったときにチェックすると、領収書・金額・支払日と、本人への返金の指示を記録し、返金があるまで未返金のアラートを出します。
+        </p>
+      ) : (
+        <div className="mt-2 space-y-2.5">
+          {unpaid ? (
+            <p className="rounded-lg bg-seal/10 px-2.5 py-1.5 text-xs font-bold text-seal">
+              ⚠ {advanceAlertText(reminder, today)}。本人から返金があったら下の「返金日」を入れてください（入れるとこの督促は完了になります）。
+            </p>
+          ) : (
+            <p className="rounded-lg bg-status-approved-bg px-2.5 py-1.5 text-xs font-bold text-status-approved-fg">
+              ✓ 返金済み（{reminder.advance_repaid_on}）
+            </p>
+          )}
+
+          <div className="grid grid-cols-2 gap-2">
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-bold text-muted">立て替えた金額（円）</span>
+              <input
+                value={amount}
+                inputMode="numeric"
+                disabled={!canWrite}
+                onChange={(e) => setAmount(e.target.value)}
+                onBlur={saveAmount}
+                placeholder="例: 12,000"
+                className={`${field} text-right tabular-nums`}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-bold text-muted">支払日</span>
+              <input
+                type="date"
+                value={reminder.advance_paid_on ?? ""}
+                disabled={!canWrite}
+                onChange={(e) => onPatch({ advance_paid_on: e.target.value || null })}
+                className={field}
+              />
+            </label>
+          </div>
+
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-bold text-muted">領収書の画像（支払った証拠）</span>
+              <input
+                ref={receiptRef}
+                type="file"
+                accept="image/*,application/pdf"
+                multiple
+                hidden
+                onChange={(e) => {
+                  if (e.target.files && e.target.files.length > 0) onUpload(e.target.files, "receipt");
+                  e.target.value = "";
+                }}
+              />
+              <button
+                type="button"
+                disabled={!canWrite || uploading}
+                onClick={() => receiptRef.current?.click()}
+                className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2 py-1 text-[11px] font-bold text-brand disabled:opacity-50"
+              >
+                {uploading ? <Loader2 size={12} className="animate-spin" /> : <ImagePlus size={12} />}
+                領収書を添付
+              </button>
+              {receipts.length === 0 && <span className="text-[11px] text-muted">まだありません</span>}
+            </div>
+            {thumbs(receipts)}
+          </div>
+
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-bold text-muted">本人への返金の指示（どの口座に払ってもらうか・期限）</span>
+              <textarea
+                value={repayTo}
+                onChange={(e) => setRepayTo(e.target.value)}
+                onBlur={() => repayTo !== (reminder.advance_repay_to ?? "") && onPatch({ advance_repay_to: repayTo })}
+                rows={2}
+                disabled={!canWrite}
+                placeholder="例: ○○銀行 ○○支店 普通 1234567 カ）○○ へ 12,000円を 9/30 までに振込"
+                className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-xs focus:border-brand focus:outline-none disabled:opacity-60"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-bold text-muted">指示した日</span>
+              <input
+                type="date"
+                value={reminder.advance_instructed_on ?? ""}
+                disabled={!canWrite}
+                onChange={(e) => onPatch({ advance_instructed_on: e.target.value || null })}
+                className={field}
+              />
+            </label>
+          </div>
+
+          <div className="rounded-lg border border-border bg-surface/60 p-2">
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] font-bold text-muted">返金日（本人から支払ってもらった日）</span>
+                {unpaid ? (
+                  <input type="date" value={repaidOn} disabled={!canWrite} onChange={(e) => setRepaidOn(e.target.value)} className={field} />
+                ) : (
+                  <input
+                    type="date"
+                    value={reminder.advance_repaid_on ?? ""}
+                    disabled={!canWrite}
+                    onChange={(e) => onPatch({ advance_repaid_on: e.target.value || null })}
+                    className={field}
+                  />
+                )}
+              </label>
+              {unpaid && (
+                <button
+                  type="button"
+                  disabled={!canWrite || !repaidOn}
+                  onClick={() => onPatch(advanceRepaidPatch(reminder, repaidOn, today))}
+                  className="inline-flex min-h-[36px] items-center gap-1 rounded-lg bg-brand px-3 text-xs font-bold text-brand-foreground disabled:opacity-50"
+                >
+                  <Check size={13} />
+                  返金を確認して完了にする
+                </button>
+              )}
+              <input
+                ref={repaymentRef}
+                type="file"
+                accept="image/*,application/pdf"
+                multiple
+                hidden
+                onChange={(e) => {
+                  if (e.target.files && e.target.files.length > 0) onUpload(e.target.files, "repayment");
+                  e.target.value = "";
+                }}
+              />
+              <button
+                type="button"
+                disabled={!canWrite || uploading}
+                onClick={() => repaymentRef.current?.click()}
+                className="inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-border bg-surface px-2 text-[11px] font-bold text-brand disabled:opacity-50"
+              >
+                <ImagePlus size={12} />
+                返金の証拠を添付
+              </button>
+            </div>
+            {!unpaid && (
+              <p className="mt-1 text-[10px] text-muted">返金日を空にすると未返金に戻ります（完了は自動では戻りません）。</p>
+            )}
+            {thumbs(proofs)}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

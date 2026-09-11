@@ -7,9 +7,62 @@
 // 進捗は「未連絡 → 連絡済み（返事待ち） → 返事あり → 完了」。
 // 「返事待ち」の人を一覧の上に出して、誰から返事をもらっていないかを見えるようにする。
 
-import type { Reminder, ReminderStatus } from "@/types/db";
+import type { Reminder, ReminderImage, ReminderImageKind, ReminderStatus } from "@/types/db";
 
 export { REMINDER_KINDS, REMINDER_STATUSES } from "@/types/db";
+
+// ---- 立替払い（本人の代わりに支払った分の返金の追いかけ。0150） ----
+
+export const ADVANCE_MIGRATION = "0150_reminder_advance.sql";
+
+type AdvanceFields = Pick<Reminder, "advance_paid" | "advance_amount" | "advance_paid_on" | "advance_repaid_on">;
+
+// 立て替えたのに本人からまだ返金が無いか（未返金アラートの対象）
+export function isAdvanceUnpaid(r: Pick<Reminder, "advance_paid" | "advance_repaid_on">): boolean {
+  return !!r.advance_paid && !r.advance_repaid_on;
+}
+
+// 立て替えて、本人から返金済みか
+export function isAdvanceRepaid(r: Pick<Reminder, "advance_paid" | "advance_repaid_on">): boolean {
+  return !!r.advance_paid && !!r.advance_repaid_on;
+}
+
+// 金額の表示（12,000円）。無ければ「金額未入力」
+export function advanceAmountLabel(amount: number | null | undefined): string {
+  return amount == null ? "金額未入力" : `${amount.toLocaleString("ja-JP")}円`;
+}
+
+// 未返金のアラート文（一覧・外国人詳細）。例: 立替 12,000円 未返金（支払から10日）
+export function advanceAlertText(r: AdvanceFields, today: string): string {
+  if (!isAdvanceUnpaid(r)) return "";
+  const d = daysSince(r.advance_paid_on ?? null, today);
+  return `立替 ${advanceAmountLabel(r.advance_amount)} 未返金${d !== null && d > 0 ? `（支払から${d}日）` : ""}`;
+}
+
+// 本人から返金があったときの更新内容。返金日を入れ、督促も完了にする（完了日も入れる）
+export function advanceRepaidPatch(
+  r: Pick<Reminder, "completed_on" | "status">,
+  repaidOn: string,
+  today: string,
+): Partial<Reminder> {
+  const patch: Partial<Reminder> = { advance_repaid_on: repaidOn };
+  if (r.status !== "完了") {
+    patch.status = "完了";
+    patch.completed_on = r.completed_on ?? today;
+  }
+  return patch;
+}
+
+// 立替が未返金のままでは完了にできない
+export function completionBlockedReason(r: AdvanceFields): string | null {
+  if (!isAdvanceUnpaid(r)) return null;
+  return `立替 ${advanceAmountLabel(r.advance_amount)} が未返金です。本人から返金があったら「返金日」を入れてください（入れると完了になります）。`;
+}
+
+// 画像の種類（0150 より前の画像は会話のスクショ扱い）
+export function reminderImageKind(img: Pick<ReminderImage, "kind">): ReminderImageKind {
+  return img.kind === "receipt" || img.kind === "repayment" ? img.kind : "screenshot";
+}
 
 // 箱の数（この番号までを保管ボックスのように使う）
 export const REMINDER_BOX_SIZE = 30;
@@ -102,27 +155,34 @@ export function reminderBoxes<T extends Pick<Reminder, "reminder_no" | "status">
 }
 
 // 進捗ごとの件数（画面の見出し用）
-export function reminderCounts<T extends Pick<Reminder, "status">>(rows: T[]): {
+export function reminderCounts<T extends Pick<Reminder, "status" | "advance_paid" | "advance_repaid_on">>(rows: T[]): {
   open: number;
   notContacted: number;
   awaiting: number;
   replied: number;
+  advanceUnpaid: number; // 立替の未返金
 } {
   return {
     open: rows.filter((r) => isReminderOpen(r.status)).length,
     notContacted: rows.filter((r) => r.status === "未連絡").length,
     awaiting: rows.filter((r) => isAwaitingReply(r.status)).length,
     replied: rows.filter((r) => r.status === "返事あり").length,
+    advanceUnpaid: rows.filter((r) => isAdvanceUnpaid(r)).length,
   };
 }
 
-// 外国人詳細のアラート文（進行中の督促だけ）
-export function reminderAlertText(r: Pick<Reminder, "reminder_no" | "status" | "kind" | "content" | "contacted_on">, today: string): string {
+// 外国人詳細のアラート文（進行中の督促だけ）。立替が未返金ならそれも添える
+export function reminderAlertText(
+  r: Pick<Reminder, "reminder_no" | "status" | "kind" | "content" | "contacted_on"> & Partial<AdvanceFields>,
+  today: string,
+): string {
   const head = `${formatReminderNo(r.reminder_no)} ${r.kind || "督促"}${r.content ? `：${r.content}` : ""}`;
+  const advance = isAdvanceUnpaid(r) ? ` ／ ${advanceAlertText(r, today)}` : "";
   if (isAwaitingReply(r.status)) {
     const d = daysSince(r.contacted_on, today);
-    return `${head} … 返事待ち${d !== null && d > 0 ? `（連絡から${d}日）` : ""}`;
+    return `${head} … 返事待ち${d !== null && d > 0 ? `（連絡から${d}日）` : ""}${advance}`;
   }
-  if (r.status === "返事あり") return `${head} … 返事あり（手続き中）`;
-  return `${head} … 未連絡`;
+  if (r.status === "返事あり") return `${head} … 返事あり（手続き中）${advance}`;
+  if (r.status === "完了") return `${head} … 完了${advance}`;
+  return `${head} … 未連絡${advance}`;
 }
