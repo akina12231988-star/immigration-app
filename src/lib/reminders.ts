@@ -57,8 +57,10 @@ export function reminderAmount(r: Pick<Reminder, "amount" | "advance_amount">): 
 // ---- 金額の内訳（複数行。合計と一番早い支払期限を自動で出す） ----
 
 export function emptyAmountItem(): ReminderAmountItem {
-  return { label: "", amount: null, due_on: null };
+  return { label: "", amount: null, due_on: null, paid_on: null, repaid_on: null };
 }
+
+const isYmd = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
 
 // 保存されている内訳を読み込む（不正な形は捨てる）
 export function normalizeAmountItems(raw: unknown): ReminderAmountItem[] {
@@ -68,8 +70,13 @@ export function normalizeAmountItems(raw: unknown): ReminderAmountItem[] {
     if (!it || typeof it !== "object") continue;
     const o = it as Record<string, unknown>;
     const amount = typeof o.amount === "number" && Number.isFinite(o.amount) ? Math.round(o.amount) : null;
-    const due = typeof o.due_on === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.due_on) ? o.due_on : null;
-    out.push({ label: typeof o.label === "string" ? o.label : "", amount, due_on: due });
+    out.push({
+      label: typeof o.label === "string" ? o.label : "",
+      amount,
+      due_on: isYmd(o.due_on) ? o.due_on : null,
+      paid_on: isYmd(o.paid_on) ? o.paid_on : null,
+      repaid_on: isYmd(o.repaid_on) ? o.repaid_on : null,
+    });
   }
   return out;
 }
@@ -80,16 +87,73 @@ export function amountItemsTotal(items: ReminderAmountItem[]): number | null {
   return nums.length === 0 ? null : nums.reduce((a, b) => a + b, 0);
 }
 
-// 一番早い支払期限
+// まだ支払っていない内訳の中で一番早い支払期限（全部支払済みなら null）
 export function earliestDue(items: ReminderAmountItem[]): string | null {
-  const dues = items.map((i) => i.due_on).filter((d): d is string => !!d).sort();
+  const dues = items
+    .filter((i) => !i.paid_on)
+    .map((i) => i.due_on)
+    .filter((d): d is string => !!d)
+    .sort();
   return dues[0] ?? null;
 }
 
 // 内訳を変えたときの更新内容（空行は除き、合計と期限も一緒に入れる）
 export function amountItemsPatch(items: ReminderAmountItem[]): Partial<Reminder> {
-  const kept = items.filter((i) => i.label.trim() || i.amount != null || i.due_on);
+  const kept = items.filter((i) => i.label.trim() || i.amount != null || i.due_on || i.paid_on || i.repaid_on);
   return { amount_items: kept, amount: amountItemsTotal(kept), due_on: earliestDue(kept) };
+}
+
+// 内訳ごとの支払・受取の進み具合（一覧表・カード・詳細の見出しに出す）
+export interface AmountItemsProgress {
+  count: number; // 金額の入っている内訳の数
+  paidCount: number; // 支払済みの数
+  unpaidAmount: number; // まだ支払っていない金額の合計
+  repaidCount: number; // 本人から受け取った数（代わりに払うときだけ）
+  unrepaidAmount: number; // 当社が払ったのにまだ本人から受け取っていない金額の合計
+}
+
+export function amountItemsProgress(items: ReminderAmountItem[]): AmountItemsProgress {
+  const withAmount = items.filter((i) => i.amount != null);
+  const paid = withAmount.filter((i) => !!i.paid_on);
+  return {
+    count: withAmount.length,
+    paidCount: paid.length,
+    unpaidAmount: withAmount.filter((i) => !i.paid_on).reduce((a, i) => a + (i.amount ?? 0), 0),
+    repaidCount: paid.filter((i) => !!i.repaid_on).length,
+    unrepaidAmount: paid.filter((i) => !i.repaid_on).reduce((a, i) => a + (i.amount ?? 0), 0),
+  };
+}
+
+// 進み具合の短い文（例: 支払 1/3（残り 50,000円）・受取 0/1（未 27,000円））。内訳が無ければ空
+export function amountItemsProgressText(items: ReminderAmountItem[], payer: ReminderPayer | ""): string {
+  const p = amountItemsProgress(items);
+  if (p.count === 0) return "";
+  const yen = (n: number) => `${n.toLocaleString("ja-JP")}円`;
+  const parts = [`支払 ${p.paidCount}/${p.count}${p.unpaidAmount > 0 ? `（残り ${yen(p.unpaidAmount)}）` : ""}`];
+  if (payer === "代わり") {
+    parts.push(`受取 ${p.repaidCount}/${p.paidCount}${p.unrepaidAmount > 0 ? `（未 ${yen(p.unrepaidAmount)}）` : ""}`);
+  }
+  return parts.join("・");
+}
+
+// 内訳1件の状態（詳細の行に出すチップ）
+export function amountItemStatus(
+  item: ReminderAmountItem,
+  payer: ReminderPayer | "",
+  today: string,
+): { text: string; tone: "ok" | "warn" | "bad" | "muted" } {
+  if (item.paid_on) {
+    if (payer === "代わり") {
+      return item.repaid_on
+        ? { text: `受取済み ${item.repaid_on}`, tone: "ok" }
+        : { text: `当社が支払済み ${item.paid_on}・本人から未受取`, tone: "bad" };
+    }
+    return { text: `支払済み ${item.paid_on}`, tone: "ok" };
+  }
+  const due = dueLabel(item.due_on, today, "");
+  if (due.overdue) return { text: `未払い・${due.text}`, tone: "bad" };
+  if (due.text) return { text: `未払い・${due.text}`, tone: "warn" };
+  return { text: "未払い", tone: "muted" };
 }
 
 // 支払期限の表示（あと○日 / 期限切れ○日）。完了なら期限切れ扱いにしない
@@ -105,9 +169,18 @@ export function dueLabel(dueOn: string | null | undefined, today: string, status
 
 // 返金の確認（代わりに払ったときだけ）: 未返金 / 返金済み（日付）
 export function repaymentLabel(
-  r: Pick<Reminder, "payer" | "advance_paid" | "advance_repaid_on">,
+  r: Pick<Reminder, "payer" | "advance_paid" | "advance_repaid_on" | "amount_items">,
 ): { text: string; unpaid: boolean } {
   if (reminderPayer(r) !== "代わり") return { text: "", unpaid: false };
+  // 内訳ごとの記録があればそれで（当社が払った分のうち、本人から受け取っていないものがあれば未返金）
+  const p = amountItemsProgress(normalizeAmountItems(r.amount_items));
+  if (p.paidCount > 0) {
+    if (p.unrepaidAmount > 0 || p.repaidCount < p.paidCount) {
+      return { text: `未返金（受取 ${p.repaidCount}/${p.paidCount}・未 ${p.unrepaidAmount.toLocaleString("ja-JP")}円）`, unpaid: true };
+    }
+    if (p.paidCount === p.count) return { text: "返金済み（全部受取）", unpaid: false };
+    return { text: `受取 ${p.repaidCount}/${p.paidCount}（残り ${p.count - p.paidCount}件は未払い）`, unpaid: false };
+  }
   if (r.advance_repaid_on) return { text: `返金済み（${r.advance_repaid_on}）`, unpaid: false };
   return { text: "未返金", unpaid: true };
 }
@@ -137,7 +210,7 @@ export function remindersCsv(
   })[],
 ): string {
   const q = (v: string | number | null | undefined) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const head = ["作成日", "番号", "氏名", "所属機関", "種類", "内容", "金額（合計）", "内訳", "支払期限", "支払", "返金確認", "支払日（立替）", "進捗"];
+  const head = ["作成日", "番号", "氏名", "所属機関", "種類", "内容", "金額（合計）", "内訳", "支払・受取", "支払期限", "支払", "返金確認", "支払日（立替）", "進捗"];
   const lines = rows.map((r) =>
     [
       r.created_at.slice(0, 10),
@@ -148,8 +221,11 @@ export function remindersCsv(
       r.content,
       reminderAmount(r) ?? "",
       normalizeAmountItems(r.amount_items)
-        .map((i) => `${i.label ? `${i.label} ` : ""}${i.amount ?? ""}${i.due_on ? `（期限 ${i.due_on}）` : ""}`.trim())
+        .map((i) =>
+          `${i.label ? `${i.label} ` : ""}${i.amount ?? ""}${i.due_on ? `（期限 ${i.due_on}）` : ""}${i.paid_on ? ` 支払${i.paid_on}` : ""}${i.repaid_on ? ` 受取${i.repaid_on}` : ""}`.trim(),
+        )
         .join(" / "),
+      amountItemsProgressText(normalizeAmountItems(r.amount_items), reminderPayer(r)),
       r.due_on ?? "",
       payerLabel(r),
       repaymentLabel(r).text,
