@@ -15,12 +15,33 @@ export { REMINDER_KINDS, REMINDER_PAYERS, REMINDER_STATUSES } from "@/types/db";
 
 export const AMOUNT_MIGRATION = "0151_reminder_amount.sql";
 
-export const PAYER_LABELS: Record<ReminderPayer, string> = { 本人: "本人が払う", 代わり: "代わりに払う" };
+export const PAYER_LABELS: Record<ReminderPayer, string> = {
+  本人: "本人が払う",
+  代わり: "代わりに払う",
+  なし: "支払なし（連絡のみ）",
+};
 
 // 誰が払うか。未設定でも立替払いにチェックがあれば「代わり」
 export function reminderPayer(r: Pick<Reminder, "payer" | "advance_paid">): ReminderPayer | "" {
-  if (r.payer === "本人" || r.payer === "代わり") return r.payer;
+  if (r.payer === "本人" || r.payer === "代わり" || r.payer === "なし") return r.payer;
   return r.advance_paid ? "代わり" : "";
+}
+
+// 支払いのある督促か（一覧表・CSVに出すもの）。
+// 「支払なし（連絡のみ）」や、金額も支払も入っていない督促（本人からの返事待ちだけ）は出さない
+export function isPaymentReminder(
+  r: Pick<Reminder, "payer" | "advance_paid" | "amount" | "advance_amount">,
+): boolean {
+  const p = reminderPayer(r);
+  if (p === "なし") return false;
+  return p !== "" || reminderAmount(r) != null;
+}
+
+// 連絡・返事待ちだけの督促か（支払いが無い）
+export function isContactOnly(
+  r: Pick<Reminder, "payer" | "advance_paid" | "amount" | "advance_amount">,
+): boolean {
+  return !isPaymentReminder(r);
 }
 
 export function payerLabel(r: Pick<Reminder, "payer" | "advance_paid">): string {
@@ -101,6 +122,7 @@ export function payerPatch(
     patch.advance_paid = true;
     if (r.advance_amount == null && r.amount != null) patch.advance_amount = r.amount;
   } else if (!r.advance_repaid_on) {
+    // 本人が払う・支払なし・未設定: 立替払いは無し
     // 返金済みの記録があるときは立替の記録を消さない
     patch.advance_paid = false;
   }

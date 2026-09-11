@@ -11,6 +11,8 @@ import {
   daysSince,
   isAdvanceRepaid,
   isAdvanceUnpaid,
+  isContactOnly,
+  isPaymentReminder,
   payerLabel,
   payerPatch,
   reminderAmount,
@@ -258,5 +260,19 @@ describe("金額の内訳（複数行・合計・支払期限）", () => {
       { ...rem({ reminder_no: 2, created_at: "2026-09-01T00:00:00Z", amount: 17000, due_on: "2026-09-30", amount_items: [{ label: "第1期", amount: 8500, due_on: "2026-09-30" }, { label: "第2期", amount: 8500, due_on: "2026-11-30" }], payer: "本人" }), workerName: "A", orgName: "" },
     ]);
     expect(csv.split("\r\n")[1]).toBe('"2026-09-01","No.02","A","","市役所からの通知","","17000","第1期 8500（期限 2026-09-30） / 第2期 8500（期限 2026-11-30）","2026-09-30","本人が払う","","","未連絡"');
+  });
+});
+
+describe("支払なし（連絡のみ）の督促", () => {
+  it("支払なし・金額も支払も無い督促は一覧表に出さない（連絡のみ）", () => {
+    expect(payerLabel(rem({ payer: "なし" }))).toBe("支払なし（連絡のみ）");
+    expect(isPaymentReminder(rem({ payer: "なし", amount: 1000 }))).toBe(false); // 支払なしなら金額があっても出さない
+    expect(isPaymentReminder(rem({}))).toBe(false);
+    expect(isContactOnly(rem({}))).toBe(true);
+    expect(isPaymentReminder(rem({ payer: "本人" }))).toBe(true);
+    expect(isPaymentReminder(rem({ amount: 8500 }))).toBe(true);
+    expect(isPaymentReminder(rem({ advance_paid: true }))).toBe(true);
+    expect(payerPatch(rem({}), "なし")).toEqual({ payer: "なし", advance_paid: false });
+    expect(repaymentLabel(rem({ payer: "なし" }))).toEqual({ text: "", unpaid: false });
   });
 });
