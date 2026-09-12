@@ -420,3 +420,29 @@ export function digitsOnly(s: string): string {
     .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
     .replace(/[^0-9]/g, "");
 }
+
+// 決算情報の期の表記。個人事業主は「令和7年分」、法人は「第12期（令和7年4月〜令和8年3月）」。
+// 区分が未選択のときは、入っている項目（年 / 期・期間）から判断する
+export function financialTermLabel(f: OrgFinancialYear, fiscalKind: string): string {
+  const corporate =
+    fiscalKind === "法人" || (!f.year && !!(f.term || f.period_from || f.period_to));
+  if (corporate) {
+    const term = f.term ? `第${f.term}期` : "期未記入";
+    if (!f.period_from && !f.period_to) return term;
+    return `${term}（令和${f.period_from || "未記入"}〜令和${f.period_to || "未記入"}）`;
+  }
+  return f.year ? `令和${f.year}年分` : "年度未記入";
+}
+
+// 売上高の表示（数字だけなら「13,903,547円」。「約1億円」のような文字はそのまま）
+export function financialAmountText(s: string): string {
+  const half = s.trim().replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
+  const digits = half.replace(/[,，]/g, "").replace(/円$/, "");
+  if (!/^\d+$/.test(digits)) return s.trim();
+  return formatYen(Number(digits));
+}
+
+// 申請準備に出す直近の売上高の1件分（例: 「令和7年分 13,903,547円」）
+export function financialSalesText(f: OrgFinancialYear, fiscalKind: string): string {
+  return `${financialTermLabel(f, fiscalKind)} ${financialAmountText(f.sales)}`;
+}

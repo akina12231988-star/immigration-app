@@ -4,6 +4,9 @@ import {
   digitsOnly,
   emptyLodging,
   emptyOrganizationIntake,
+  financialAmountText,
+  financialSalesText,
+  financialTermLabel,
   formatYen,
   isOrgStaff,
   lodgingContractKind,
@@ -300,5 +303,39 @@ describe("weeklyHoursText（週平均所定労働時間の自動計算）", () =
     expect(weeklyHoursText({ ...base, posting_monthly_hours: "173時間20分" })).toEqual({ value: "40", auto: true });
     expect(weeklyHoursText(base)).toEqual({ value: "", auto: false });
     expect(weeklyHoursText(null)).toEqual({ value: "", auto: false });
+  });
+});
+
+describe("決算情報の売上高の表示", () => {
+  const row = { year: "", term: "", period_from: "", period_to: "", sales: "", ordinary: "", net: "", assets: "" };
+
+  it("個人事業主は「令和◯年分」、法人は「第◯期（期間）」で出す", () => {
+    expect(financialTermLabel({ ...row, year: "7" }, "個人事業主")).toBe("令和7年分");
+    expect(financialTermLabel({ ...row, year: "" }, "個人事業主")).toBe("年度未記入");
+    expect(financialTermLabel({ ...row, term: "12", period_from: "7年4月", period_to: "8年3月" }, "法人")).toBe(
+      "第12期（令和7年4月〜令和8年3月）",
+    );
+    expect(financialTermLabel({ ...row, term: "12" }, "法人")).toBe("第12期");
+    expect(financialTermLabel({ ...row, term: "", period_from: "7年4月" }, "法人")).toBe(
+      "期未記入（令和7年4月〜令和未記入）",
+    );
+  });
+
+  it("区分が未選択でも、期や期間が入っていれば法人の形で出す", () => {
+    expect(financialTermLabel({ ...row, term: "3" }, "")).toBe("第3期");
+    expect(financialTermLabel({ ...row, year: "6" }, "")).toBe("令和6年分");
+  });
+
+  it("金額は数字だけなら3桁区切りと円を付け、文字が混じるものはそのまま", () => {
+    expect(financialAmountText("13903547")).toBe("13,903,547円");
+    expect(financialAmountText("13,903,547")).toBe("13,903,547円");
+    expect(financialAmountText("１３９０３５４７円")).toBe("13,903,547円");
+    expect(financialAmountText("約1億円")).toBe("約1億円");
+  });
+
+  it("年度と金額が「7 13903547」のように連結せず、読める形になる", () => {
+    expect(financialSalesText({ ...row, year: "7", sales: "13903547" }, "個人事業主")).toBe(
+      "令和7年分 13,903,547円",
+    );
   });
 });

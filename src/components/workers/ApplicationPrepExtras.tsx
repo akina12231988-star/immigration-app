@@ -25,7 +25,7 @@ import {
 import { listOrganizationFiles } from "@/lib/supabase/queries/organization-files";
 import { getOrgFilePreviewUrl } from "@/app/(app)/organizations/actions";
 import { orgYearlyFileGroups, type OrgYearlyFileGroup } from "@/lib/org-yearly-files";
-import { normalizeOrganizationIntake, weeklyHoursText } from "@/lib/organization-intake";
+import { financialSalesText, normalizeOrganizationIntake, weeklyHoursText } from "@/lib/organization-intake";
 import { listWorkerWages } from "@/lib/supabase/queries/wages";
 import { sortWages, wageStartedOnLabel } from "@/lib/wage";
 import {
@@ -476,7 +476,7 @@ export function PrepOrgInfo({ orgId }: { orgId: string | null }) {
   }
   if (!org) return null;
 
-  // 直近の売上高（決算情報のうち売上が入っている行）
+  // 直近の売上高（決算情報のうち売上が入っている行。例: 「令和7年分 13,903,547円」）
   const sales = intake.financials.filter((f) => f.sales).slice(0, 2);
   const reportGroups = orgYearlyFileGroups(files, "定期報告書");
   const ledgerGroups = orgYearlyFileGroups(files, "賃金台帳");
@@ -524,9 +524,7 @@ export function PrepOrgInfo({ orgId }: { orgId: string | null }) {
       <p>
         直近の売上高:{" "}
         {sales.length > 0
-          ? sales
-              .map((f) => `${f.year || "年度未記入"}${f.term ? `（${f.term}）` : ""} ${f.sales}`)
-              .join("、")
+          ? sales.map((f) => financialSalesText(f, intake.fiscal_kind)).join("、")
           : "未登録（所属機関の決算情報に入力すると表示されます）"}
       </p>
       <OrgYearlyFilesLine label="直近の定期報告" groups={reportGroups} onPreview={preview} />
