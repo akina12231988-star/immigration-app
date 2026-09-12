@@ -38,15 +38,16 @@ describe("prepPrintOrgLines", () => {
       ],
       councilResidence: [{ to: "", on: "" }],
       councilNote: "住居地は提出待ち",
+      fiscalKind: "法人",
       financials: [
-        { year: "令和7年度", term: "第10期", period_from: "", period_to: "", sales: "1億円", ordinary: "", net: "", assets: "" },
+        { year: "", term: "10", period_from: "7年4月", period_to: "8年3月", sales: "13903547", ordinary: "", net: "", assets: "" },
       ],
     });
     expect(line(lines, "org_rep")).toBe("髙濱　伸吉（たかはま　しんきち）");
     expect(line(lines, "org_council_office")).toBe("建設分野協議会（2026-04-01）");
     // 未記入の協力確認書は空にして、印刷側で「未登録」と出す
     expect(line(lines, "org_council_residence")).toBe("");
-    expect(line(lines, "org_sales")).toBe("令和7年度（第10期） 1億円");
+    expect(line(lines, "org_sales")).toBe("第10期（令和7年4月〜令和8年3月） 13,903,547円");
   });
 });
 

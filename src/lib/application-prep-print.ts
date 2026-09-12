@@ -9,6 +9,7 @@
 
 import { PREP_APP_TYPE_LABELS, prepDocLabel, type PrepChecklistMeta, type PrepDocStatus } from "@/lib/application-prep";
 import { PLAN_DATE_FIELDS } from "@/lib/support-plan-dates";
+import { financialSalesText } from "@/lib/organization-intake";
 import { rosterJpDate } from "@/lib/roster";
 import { sortWages, wageStartedOnLabel } from "@/lib/wage";
 import type { OrgCouncilSubmission, OrgFinancialYear, WorkerWage } from "@/types/db";
@@ -46,13 +47,11 @@ function councilLine(rows: OrgCouncilSubmission[]): string {
   return filled.map((r) => `${r.to || "提出先未記入"}（${r.on || "提出日未記入"}）`).join("、");
 }
 
-// 直近の売上高（売上が入っている決算情報の新しい2件）
-function salesLine(financials: OrgFinancialYear[]): string {
+// 直近の売上高（売上が入っている決算情報の新しい2件。例: 「令和7年分 13,903,547円」）
+function salesLine(financials: OrgFinancialYear[], fiscalKind: string): string {
   const rows = financials.filter((f) => f.sales).slice(0, 2);
   if (rows.length === 0) return "";
-  return rows
-    .map((f) => `${f.year || "年度未記入"}${f.term ? `（${f.term}）` : ""} ${f.sales}`)
-    .join("、");
+  return rows.map((f) => financialSalesText(f, fiscalKind)).join("、");
 }
 
 export interface PrepPrintOrg {
@@ -64,6 +63,7 @@ export interface PrepPrintOrg {
   councilOffice: OrgCouncilSubmission[];
   councilResidence: OrgCouncilSubmission[];
   councilNote: string;
+  fiscalKind: string; // 決算情報の区分（個人事業主 / 法人）
   financials: OrgFinancialYear[];
 }
 
@@ -89,7 +89,7 @@ export function prepPrintOrgLines(org: PrepPrintOrg): PrepPrintLine[] {
       value: councilLine(org.councilResidence),
     },
     { key: "org_council_note", label: "協議会メモ", value: org.councilNote },
-    { key: "org_sales", label: "直近の売上高", value: salesLine(org.financials) },
+    { key: "org_sales", label: "直近の売上高", value: salesLine(org.financials, org.fiscalKind) },
   ];
 }
 
