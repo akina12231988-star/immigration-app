@@ -1763,7 +1763,7 @@ export function ApplicationPrepChecklist({
         >
           📅 日付計算: 支援計画書の日付計算ツール（求人日付のカレンダー表示付き）を開く →
         </Link>
-        <SavedPlanDatesSection workerId={workerId} todoNo={current.todo_no} canEdit={canEdit} />
+        <SavedPlanDatesSection workerId={workerId} todoNo={current.todo_no} canEdit={canEdit} workerName={workerRow?.name ?? ""} />
         {/* 申請書に貼る情報（外国人・所属機関・賃金・職歴・日付から自動で抽出してコピー） */}
         <ApplicationCopyPanel
           workerId={workerId}
