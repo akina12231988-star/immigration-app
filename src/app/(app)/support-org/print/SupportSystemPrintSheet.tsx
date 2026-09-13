@@ -4,7 +4,6 @@ import { useState } from "react";
 import { Printer, RotateCcw } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
 import type { CustodianInfo } from "@/lib/custody";
-import { rosterJpDate } from "@/lib/roster";
 import { supportSystemPrintFileName, type PrintPerson, type SupportSystemPrintPeople } from "@/lib/support-system-print";
 
 export interface ListingImage {
@@ -24,14 +23,12 @@ export function SupportSystemPrintSheet({
   orgId,
   orgName,
   listingImages,
-  printedOn,
 }: {
   info: CustodianInfo;
   people: SupportSystemPrintPeople;
   orgId: string;
   orgName: string;
   listingImages: ListingImage[];
-  printedOn: string;
 }) {
   const [note, setNote] = useState(info.supportSystemNote);
   const [managers, setManagers] = useState(people.managers);
@@ -87,7 +84,7 @@ export function SupportSystemPrintSheet({
 
   return (
     <>
-      <style>{"@media print{@page{size:A4 portrait;margin:15mm} body{background:#fff}}"}</style>
+      <style>{"@media print{@page{size:A4 portrait;margin:35mm 30mm 30mm 30mm} body{background:#fff}}"}</style>
 
       <div className="print:hidden">
         <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-brand px-4 py-3 text-brand-foreground lg:px-8">
@@ -156,48 +153,61 @@ export function SupportSystemPrintSheet({
         </div>
       </div>
 
-      {/* ここから下が印刷される部分 */}
-      <div className="mx-auto max-w-[180mm] px-4 pb-10 lg:px-0 print:max-w-none print:p-0">
-        <section className={`text-[11pt] leading-relaxed text-black ${images.length > 0 ? "break-after-page" : ""}`}>
-          <h1 className="mb-6 text-center text-[16pt] font-bold tracking-wide">支援業務を行う体制についての説明</h1>
-          <p className="mb-6 whitespace-pre-wrap text-justify indent-[1em]">{note}</p>
-
-          <p className="mb-4">
-            登録支援機関　<span className="font-bold">{info.officeName}</span>
-            {info.registrationNo && <span className="ml-3 text-[10pt]">（登録番号 {info.registrationNo}）</span>}
+      {/* ここから下が印刷される部分。見本の Word と同じ書式:
+          余白 上35mm・左右下30mm、タイトル20pt太字（2文字下げ）、説明文14pt（1文字下げ）、
+          登録支援機関20pt、＜支援担当者一覧＞16pt太字、氏名16pt中央揃え、行間1.08・段落後8pt */}
+      <div className="mx-auto max-w-[150mm] px-4 pb-10 lg:px-0 print:max-w-none print:p-0">
+        <section
+          className={`text-black ${images.length > 0 ? "break-after-page" : ""}`}
+          style={{ lineHeight: 1.08, fontFamily: '"Yu Mincho", "Hiragino Mincho ProN", "Noto Serif JP", serif' }}
+        >
+          <p className="font-bold" style={{ fontSize: "20pt", textIndent: "2em", marginBottom: "8pt" }}>
+            支援業務を行う体制についての説明
+          </p>
+          <p
+            className="whitespace-pre-wrap text-justify"
+            style={{ fontSize: "14pt", marginLeft: "1em", marginBottom: "8pt" }}
+          >
+            {note}
+          </p>
+          <p style={{ fontSize: "20pt", marginBottom: "8pt" }}>&nbsp;</p>
+          <p style={{ fontSize: "20pt", marginBottom: "8pt" }}>&nbsp;</p>
+          <p style={{ fontSize: "20pt", textIndent: "1em", marginBottom: "8pt" }}>
+            登録支援機関　{info.officeName}
           </p>
           {orgName && (
-            <p className="mb-4 text-[10pt]">
-              特定技能所属機関　<span className="font-bold">{orgName}</span>
+            <p style={{ fontSize: "20pt", textIndent: "1em", marginBottom: "8pt" }}>
+              特定技能所属機関　{orgName}
             </p>
           )}
 
-          <div className="mb-4">
-            <p className="mb-1 font-bold">＜支援責任者＞</p>
-            <ul className="ml-6 list-none space-y-0.5">
+          {selectedManagers.length > 0 && (
+            <>
+              <p className="font-bold" style={{ fontSize: "16pt", textIndent: "3em", marginBottom: "8pt" }}>
+                　　　　　　＜支援責任者＞
+              </p>
               {selectedManagers.map((p) => (
-                <li key={p.id}>
+                <p key={p.id} className="text-center font-bold" style={{ fontSize: "16pt", marginBottom: "8pt" }}>
                   {p.name}
-                  {p.office && <span className="ml-3 text-[9.5pt]">{p.office}</span>}
-                </li>
+                </p>
               ))}
-              {selectedManagers.length === 0 && <li className="text-[9.5pt]">（未選択）</li>}
-            </ul>
-          </div>
-          <div className="mb-4">
-            <p className="mb-1 font-bold">＜支援担当者一覧＞</p>
-            <ul className="ml-6 list-none space-y-0.5">
-              {selectedStaff.map((p) => (
-                <li key={p.id}>
-                  {p.name}
-                  {p.office && <span className="ml-3 text-[9.5pt]">{p.office}</span>}
-                </li>
-              ))}
-              {selectedStaff.length === 0 && <li className="text-[9.5pt]">（未選択）</li>}
-            </ul>
-          </div>
+            </>
+          )}
 
-          <p className="mt-8 text-right text-[10pt]">{rosterJpDate(printedOn)}</p>
+          <p className="font-bold" style={{ fontSize: "16pt", textIndent: "3em", marginBottom: "8pt" }}>
+            　　　　　　＜支援担当者一覧＞
+          </p>
+          {selectedStaff.map((p, i) => (
+            // 見本では1人目（支援責任者を兼ねる人）だけ太字
+            <p key={p.id} className={`text-center ${i === 0 ? "font-bold" : ""}`} style={{ fontSize: "16pt", marginBottom: "8pt" }}>
+              {p.name}
+            </p>
+          ))}
+          {selectedStaff.length === 0 && (
+            <p className="text-center" style={{ fontSize: "16pt", marginBottom: "8pt" }}>
+              （未選択）
+            </p>
+          )}
         </section>
 
         {/* 人材サービス総合サイトの掲載画面（1画像 = 1ページ） */}

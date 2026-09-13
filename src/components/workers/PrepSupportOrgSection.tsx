@@ -11,6 +11,9 @@ import { listEmployees } from "@/lib/supabase/queries/employees";
 import { listWorkersForSupport } from "@/lib/supabase/queries/workers";
 import { listOrganizationFiles } from "@/lib/supabase/queries/organization-files";
 import { getOrgFilePreviewUrl } from "@/app/(app)/organizations/actions";
+import { getSupportOrgFilePreviewUrl, listSupportOrgFiles, type SupportOrgFileView } from "@/app/(app)/support-org/actions";
+import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
+import { SUPPORT_ORG_LISTING_FILE_KIND } from "@/lib/support-org-info";
 import { CUSTODIAN_SETTING_KEY, mergeCustodianInfo, type CustodianInfo } from "@/lib/custody";
 import {
   WORKERS_PER_SUPPORT_STAFF,
@@ -129,6 +132,8 @@ export function PrepSupportOrgSection({ orgId }: { orgId: string | null }) {
             ))}
           </tbody>
         </table>
+        {/* 人材サービス総合サイトに掲載している画面（最新版の画像。登録支援機関の画面で添付） */}
+        <ListingImages />
       </Card>
 
       {/* 2. 支援している特定技能外国人の人数 */}
@@ -218,6 +223,84 @@ export function PrepSupportOrgSection({ orgId }: { orgId: string | null }) {
           </div>
         )}
       </Card>
+    </div>
+  );
+}
+
+// 人材サービス総合サイトの掲載画面（最新版 = いちばん新しいアップロード日の分）を表示する。
+// 画像はその場に、PDF は「添付済み」ボタンで別タブに開く
+function ListingImages() {
+  const [files, setFiles] = useState<SupportOrgFileView[] | null>(null);
+  const [urls, setUrls] = useState<Record<string, string>>({});
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    listSupportOrgFiles(SUPPORT_ORG_LISTING_FILE_KIND)
+      .then((rows) => {
+        if (cancelled) return;
+        const newestDay = rows[0]?.created_at.slice(0, 10) ?? "";
+        const latest = rows.filter((f) => f.created_at.slice(0, 10) === newestDay).reverse();
+        setFiles(latest);
+        return Promise.all(
+          latest
+            .filter((f) => f.mime_type.startsWith("image/"))
+            .map(async (f) => {
+              const res = await getSupportOrgFilePreviewUrl(f.id);
+              return [f.id, res.ok ? res.url : ""] as const;
+            }),
+        ).then((pairs) => {
+          if (!cancelled) setUrls(Object.fromEntries(pairs));
+        });
+      })
+      // 0153 未適用などで読めないときは、この枠だけ出さない
+      .catch(() => {
+        if (!cancelled) setFiles([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const open = async (id: string) => {
+    const res = await getSupportOrgFilePreviewUrl(id);
+    if (res.ok) window.open(res.url, "_blank", "noopener");
+    else setError(res.message);
+  };
+
+  if (!files) return null;
+  return (
+    <div className="mt-2 border-t border-border pt-2 text-[11px]">
+      <p className="mb-1 font-bold">
+        {SUPPORT_ORG_LISTING_FILE_KIND}の掲載画面（最新版）
+        {files[0] && <span className="font-normal text-muted">（{files[0].created_at.slice(0, 10)} にアップロード）</span>}
+      </p>
+      {error && <p className="mb-1 rounded-lg bg-seal/10 px-2 py-1 text-seal">{error}</p>}
+      {files.length === 0 ? (
+        <p className="text-muted">
+          未登録（
+          <Link href="/support-org" className="font-bold text-brand hover:underline">
+            登録支援機関の画面
+          </Link>
+          の職業紹介事業者の欄からアップロードできます）
+        </p>
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          {files.map((f) => (
+            <div key={f.id} className="flex flex-col gap-1">
+              <AttachedFileButton fileName={f.file_name} onOpen={() => void open(f.id)} className="self-start" />
+              {f.mime_type.startsWith("image/") && urls[f.id] && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={urls[f.id]}
+                  alt={`${SUPPORT_ORG_LISTING_FILE_KIND} ${f.file_name}`}
+                  className="max-h-80 w-auto max-w-full self-start rounded-lg border border-border bg-white object-contain"
+                />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
