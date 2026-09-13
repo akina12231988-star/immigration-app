@@ -120,8 +120,41 @@ describe("prepPrintWageLines", () => {
     );
     expect(lines[0].label).toBe("月給（現在）");
     expect(lines[0].value).toBe("180,000円（2026-04-01〜・採用時・BASE株式会社・1-6号別紙あり）");
-    expect(lines[1].label).toBe("月給");
-    expect(lines[1].value).toBe("170,000円（2025-04-01〜・BASE株式会社）");
+    // 現在の賃金に別紙があるので、その内訳の行のあとに2件目が来る
+    const second = lines.find((l) => l.key === "w2")!;
+    expect(second.label).toBe("月給");
+    expect(second.value).toBe("170,000円（2025-04-01〜・BASE株式会社）");
+  });
+
+  it("現在の賃金に1-6号別紙の内容があれば、月額換算・税金・雇用保険・居住費・手取りを続けて出す", () => {
+    const lines = prepPrintWageLines(
+      [
+        wage({
+          kind: "時給",
+          amount: 1042,
+          detail: {
+            social_enabled: false,
+            employment_enabled: true,
+            employment_kind: "一般の事業",
+            housing_amount: 20000,
+            housing_self_contract: false,
+            food_cost: 0,
+            utility_amount: 0,
+          },
+        }),
+      ],
+      { o1: "BASE株式会社" },
+      { o1: 2080 },
+    );
+    // 時給 1,042円 × 2,080時間 ÷ 12 = 180,613円
+    expect(line(lines, "w1-base")).toBe("180,613円（時給1,042円 × 年間2,080時間 ÷ 12）");
+    expect(line(lines, "w1-social")).toBe("加入なし");
+    expect(line(lines, "w1-employment")).toMatch(/円$/);
+    expect(line(lines, "w1-housing")).toBe("20,000円");
+    expect(line(lines, "w1-tax")).toMatch(/円$/);
+    expect(line(lines, "w1-net")).toMatch(/円$/);
+    // 別紙が無い記録には内訳を出さない
+    expect(prepPrintWageLines([wage({ detail: null })]).some((l) => l.key.endsWith("-base"))).toBe(false);
   });
 });
 
