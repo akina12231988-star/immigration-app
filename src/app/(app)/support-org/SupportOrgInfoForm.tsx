@@ -101,7 +101,7 @@ export function SupportOrgInfoForm({
     }
   };
 
-  const display = (v: string, kind?: "text" | "date") => (v && kind === "date" ? formatYmdJa(v) : v);
+  const display = (v: string, kind?: "text" | "date" | "textarea") => (v && kind === "date" ? formatYmdJa(v) : v);
 
   // 通訳者の一覧（対応可能言語の下に出す）
   const interpreterBlock = editing ? (
@@ -185,14 +185,23 @@ export function SupportOrgInfoForm({
             {editing ? (
               <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                 {g.fields.map((f) => (
-                  <label key={f.key} className={`flex flex-col gap-1 ${f.key === "languages" ? "sm:col-span-2" : ""}`}>
+                  <label key={f.key} className={`flex flex-col gap-1 ${f.key === "languages" || f.kind === "textarea" ? "sm:col-span-2" : ""}`}>
                     <span className="text-xs font-bold text-muted">{f.label}</span>
-                    <input
-                      type={f.kind === "date" ? "date" : "text"}
-                      value={draft.info[f.key]}
-                      onChange={(e) => setInfo(f.key, e.target.value)}
-                      className={INPUT_CLASS}
-                    />
+                    {f.kind === "textarea" ? (
+                      <textarea
+                        value={draft.info[f.key]}
+                        onChange={(e) => setInfo(f.key, e.target.value)}
+                        rows={4}
+                        className={`${INPUT_CLASS} py-2 leading-relaxed`}
+                      />
+                    ) : (
+                      <input
+                        type={f.kind === "date" ? "date" : "text"}
+                        value={draft.info[f.key]}
+                        onChange={(e) => setInfo(f.key, e.target.value)}
+                        className={INPUT_CLASS}
+                      />
+                    )}
                     {f.hint && <span className="text-[11px] leading-relaxed text-muted">{f.hint}</span>}
                   </label>
                 ))}
@@ -203,7 +212,7 @@ export function SupportOrgInfoForm({
                 {g.fields.map((f) => (
                   <div key={f.key} className="flex flex-col gap-0.5 border-b border-border bg-background px-3 py-2 text-sm last:border-b-0 sm:flex-row sm:items-center sm:gap-3">
                     <dt className="shrink-0 text-xs text-muted sm:w-64">{f.label}</dt>
-                    <dd className="min-w-0 flex-1 break-words font-bold">
+                    <dd className={`min-w-0 flex-1 break-words ${f.kind === "textarea" ? "whitespace-pre-wrap text-xs leading-relaxed" : "font-bold"}`}>
                       {display(saved.info[f.key], f.kind) || <span className="font-normal text-muted">未登録</span>}
                     </dd>
                   </div>

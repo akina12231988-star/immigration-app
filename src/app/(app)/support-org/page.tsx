@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Printer } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
 import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
@@ -38,7 +40,17 @@ export default async function SupportOrgPage() {
           initialLists={mergeSupportOrgLists(custodian)}
           canEdit
         />
-        <h2 className="text-sm font-bold">支援体制（従業員）</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-bold">支援体制（従業員）</h2>
+          {/* 支援責任者・支援担当者が誰かを「支援業務を行う体制についての説明」としてA4で印刷する */}
+          <Link
+            href="/support-org/print"
+            className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full bg-brand px-3 text-xs font-bold text-brand-foreground"
+          >
+            <Printer size={14} />
+            支援体制を印刷（A4）
+          </Link>
+        </div>
         <EmployeesClient
           employees={employees}
           organizations={organizations.map((o) => ({ id: o.id, name: o.name, intake: o.intake }))}

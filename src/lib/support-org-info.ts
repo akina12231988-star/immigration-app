@@ -6,7 +6,7 @@ import type { CustodianInfo } from "@/lib/custody";
 export interface SupportOrgField {
   key: keyof CustodianInfo;
   label: string;
-  kind?: "text" | "date";
+  kind?: "text" | "date" | "textarea";
   hint?: string;
 }
 
@@ -47,6 +47,12 @@ export const SUPPORT_ORG_FIELD_GROUPS: SupportOrgFieldGroup[] = [
         key: "languages",
         label: "5 (12) 対応可能言語",
         hint: "空のままだと、申請準備では外国人の国籍から自動で出します（例: ベトナム語）。複数あるときは「ベトナム語、英語」のように書きます。言語ごとの通訳者はこの下に登録します",
+      },
+      {
+        key: "supportSystemNote",
+        label: "支援業務を行う体制についての説明（A4印刷の文章）",
+        kind: "textarea",
+        hint: "「支援体制を印刷（A4）」の一番上に出る文章です",
       },
     ],
   },
