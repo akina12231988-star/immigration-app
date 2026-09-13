@@ -53,8 +53,9 @@ export function planDatesCardColumns(dates: Record<string, string>): [CardLine[]
   return [lines.slice(0, 2).flat(), lines.slice(2).flat()];
 }
 
-// 保存するファイル名（氏名_申請番号_支援計画書の日付.png）
-export function planDatesCardFileName(workerName: string, todoNo: string): string {
+// 保存するファイル名（氏名_申請番号_支援計画書の日付（横）.png）
+export function planDatesCardFileName(workerName: string, todoNo: string, orientation: "landscape" | "portrait" = "landscape"): string {
   const safe = (v: string) => v.replace(/[\\/:*?"<>|]/g, "・").trim();
-  return `${[safe(workerName), safe(todoNo), "支援計画書の日付"].filter(Boolean).join("_")}.png`;
+  const kind = orientation === "portrait" ? "支援計画書の日付（縦）" : "支援計画書の日付（横）";
+  return `${[safe(workerName), safe(todoNo), kind].filter(Boolean).join("_")}.png`;
 }

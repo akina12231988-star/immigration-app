@@ -27,7 +27,8 @@ const STEP_LABELS = ["雇用開始日", "申請予定日", "雇用契約日", "�
 
 interface RecruitMark {
   date: string; // YYYY-MM-DD
-  label: string; // 求人申込日 など
+  label: string; // 求人申込日（機関名） など（一覧用）
+  short: string; // カレンダーの日付の下に出す短い名前（求人申込日 など）
 }
 
 const ymdOf = (y: number, m: number, d: number) =>
@@ -133,11 +134,13 @@ export function PlanDatesClient({
         for (const r of rows) {
           const org = r.organizations?.name ?? "";
           if (r.job_postings?.received_on)
-            marks.push({ date: r.job_postings.received_on, label: `求人申込日（${org}）` });
-          marks.push({ date: r.applied_on, label: `求職申込日（${org}）` });
-          if (r.interview_on) marks.push({ date: r.interview_on, label: `面接日（${org}）` });
-          if (r.result_on)
-            marks.push({ date: r.result_on, label: `${r.result === "採用" ? "採用日" : r.result}（${org}）` });
+            marks.push({ date: r.job_postings.received_on, label: `求人申込日（${org}）`, short: "求人申込日" });
+          marks.push({ date: r.applied_on, label: `求職申込日（${org}）`, short: "求職申込日" });
+          if (r.interview_on) marks.push({ date: r.interview_on, label: `面接日（${org}）`, short: "面接日" });
+          if (r.result_on) {
+            const name = r.result === "採用" ? "採用日" : r.result;
+            marks.push({ date: r.result_on, label: `${name}（${org}）`, short: name });
+          }
         }
         setRecruitMarks(marks);
       });
@@ -313,8 +316,8 @@ export function PlanDatesClient({
   const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
   const todayYmd = ymdOf(today.getFullYear(), today.getMonth(), today.getDate());
   const markMap = useMemo(() => {
-    const m = new Map<string, string[]>();
-    for (const r of recruitMarks) m.set(r.date, [...(m.get(r.date) ?? []), r.label]);
+    const m = new Map<string, RecruitMark[]>();
+    for (const r of recruitMarks) m.set(r.date, [...(m.get(r.date) ?? []), r]);
     return m;
   }, [recruitMarks]);
 
@@ -410,34 +413,46 @@ export function PlanDatesClient({
               const sel = selected[step] === ymd;
               const rec = !disabled && recommendedYmd === ymd;
               const marks = markMap.get(ymd) ?? [];
+              // 日付の数字は丸で、その下に求人申込日・求職申込日・採用日などの名前を出す（点だけでは分からないため）
               return (
                 <button
                   key={d}
                   type="button"
                   disabled={disabled}
                   onClick={() => select(ymd)}
-                  title={marks.join(" / ")}
-                  className={`relative flex aspect-square items-center justify-center rounded-full text-[13px] transition ${
-                    disabled
-                      ? "cursor-not-allowed text-border"
-                      : sel
-                        ? "bg-brand font-bold text-brand-foreground"
-                        : rec
-                          ? "bg-status-notice-bg font-bold text-status-notice-fg"
-                          : dow === 0
-                            ? "text-seal hover:bg-brand/10"
-                            : dow === 6
-                              ? "text-brand hover:bg-brand/10"
-                              : "hover:bg-brand/10"
-                  }`}
+                  title={marks.map((m) => m.label).join(" / ")}
+                  className={`flex min-h-[3.4rem] flex-col items-center rounded-lg px-0.5 pt-0.5 transition ${
+                    disabled ? "cursor-not-allowed" : "hover:bg-brand/10"
+                  } ${marks.length > 0 && !disabled ? "bg-seal/5" : ""}`}
                 >
-                  {d}
-                  {ymd === todayYmd && !sel && (
-                    <span className="absolute bottom-0.5 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-brand" />
-                  )}
-                  {marks.length > 0 && (
-                    <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-seal" />
-                  )}
+                  <span
+                    className={`relative flex h-7 w-7 items-center justify-center rounded-full text-[13px] ${
+                      disabled
+                        ? "text-border"
+                        : sel
+                          ? "bg-brand font-bold text-brand-foreground"
+                          : rec
+                            ? "bg-status-notice-bg font-bold text-status-notice-fg"
+                            : dow === 0
+                              ? "text-seal"
+                              : dow === 6
+                                ? "text-brand"
+                                : ""
+                    }`}
+                  >
+                    {d}
+                    {ymd === todayYmd && !sel && (
+                      <span className="absolute bottom-0 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-brand" />
+                    )}
+                  </span>
+                  {marks.map((m, i) => (
+                    <span
+                      key={i}
+                      className={`w-full truncate text-center text-[9px] font-bold leading-tight ${disabled ? "text-border" : "text-seal"}`}
+                    >
+                      {m.short}
+                    </span>
+                  ))}
                 </button>
               );
             })}
@@ -448,6 +463,7 @@ export function PlanDatesClient({
               <p className="mb-1 font-bold">
                 <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-seal align-middle" />
                 求人への採用の流れ（求職管理簿から）
+                <span className="ml-1 font-normal">カレンダーの日付の下にも名前で出ます</span>
               </p>
               {recruitMarks.map((m, i) => (
                 <p key={i} className="tabular-nums">{fmtSlash(m.date)}　{m.label}</p>

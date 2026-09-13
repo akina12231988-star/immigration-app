@@ -1259,20 +1259,26 @@ export function SavedPlanDatesSection({
       <p className="mb-1 flex flex-wrap items-center justify-between gap-1 text-[11px] font-bold text-muted">
         📅 支援計画書の日付（日付計算の保存結果）
         <span className="flex flex-wrap items-center gap-2">
-          {/* 名刺サイズ（91×55mm）の画像にして保存。印刷して手元に置ける */}
-          {saved && (
-            <button
-              type="button"
-              onClick={() =>
-                void downloadPlanDatesCard(dates, workerName || "支援計画書の日付", todoNo, planDatesCardFileName(workerName, todoNo)).catch(
-                  (err) => setError(err instanceof Error ? err.message : "画像の作成に失敗しました"),
-                )
-              }
-              className="inline-flex items-center gap-1 rounded-full border border-brand px-2 py-0.5 text-[10px] font-bold text-brand"
-            >
-              名刺サイズの画像を保存
-            </button>
-          )}
+          {/* 名刺サイズ（横 91×55mm / 縦 55×91mm）の白黒画像にして保存。印刷して手元に置ける */}
+          {saved &&
+            (["landscape", "portrait"] as const).map((o) => (
+              <button
+                key={o}
+                type="button"
+                onClick={() =>
+                  void downloadPlanDatesCard(
+                    dates,
+                    workerName || "支援計画書の日付",
+                    todoNo,
+                    planDatesCardFileName(workerName, todoNo, o),
+                    o,
+                  ).catch((err) => setError(err instanceof Error ? err.message : "画像の作成に失敗しました"))
+                }
+                className="inline-flex items-center gap-1 rounded-full border border-brand px-2 py-0.5 text-[10px] font-bold text-brand"
+              >
+                名刺サイズの画像を保存（{o === "landscape" ? "横" : "縦"}）
+              </button>
+            ))}
           <Link
             href={`/todos/plan-dates?workerId=${workerId}&todo=${encodeURIComponent(todoNo)}`}
             className="font-bold text-brand hover:underline"
