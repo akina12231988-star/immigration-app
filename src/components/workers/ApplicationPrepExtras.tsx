@@ -807,7 +807,7 @@ function OrgInfoLine({
 // 所属機関の添付ファイル（農業特定技能加入通知書・年間カレンダー・労使協定書）の最新版を、
 // 画像はその場で表示し、PDF もその場に埋め込んで内容を見られるようにする。
 // 「添付済み」ボタンで別タブでも開ける。印刷リンクは別タブで A4縦の印刷ページを開く
-function OrgAttachmentPreview({
+export function OrgAttachmentPreview({
   label,
   latest,
   onPreview,

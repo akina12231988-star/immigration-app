@@ -155,6 +155,7 @@ import {
 import type { OnboardingDocumentRow } from "@/types/db";
 import { effectiveResidencePeriod } from "@/lib/residence-card";
 import { ApplicationCopyPanel } from "@/components/workers/ApplicationCopyPanel";
+import { PrepSupportOrgSection } from "@/components/workers/PrepSupportOrgSection";
 import { desiredResidenceStatus } from "@/lib/application-copy";
 
 // 在留カード・パスポートのアップロード中を示すキー（onboarding_documents の書類キーとは別枠）
@@ -1771,6 +1772,8 @@ export function ApplicationPrepChecklist({
           desiredStatus={desiredResidenceStatus(meta.app_content, meta.app_type, workerRow?.residence_status ?? "")}
           canEdit={canEdit}
         />
+        {/* 申請書に貼る情報の下: 職業紹介事業者の情報 → 支援している人数 → 支援責任者・支援担当者の名簿（A4印刷） → 農業特定技能加入通知書 */}
+        <PrepSupportOrgSection orgId={prepOrgId} />
 
         {/* 申請する書類（最後に添付する、入管へ提出する完成した書類一式） */}
         <FileDropArea
