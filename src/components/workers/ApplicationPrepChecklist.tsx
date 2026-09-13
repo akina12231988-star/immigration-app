@@ -18,6 +18,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
+import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { Card } from "@/components/ui/Card";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { Ssw2Instructees } from "@/components/workers/Ssw2Instructees";
@@ -1452,10 +1453,11 @@ export function ApplicationPrepChecklist({
                     ) : (
                       certFiles.map((f) => (
                         <span key={f.id} className="inline-flex items-center gap-1">
-                          <span className="max-w-[11rem] truncate">{f.file_name}</span>
-                          <IconButton label="表示" onClick={() => void previewDoc(f.id)}>
-                            <Eye size={11} />
-                          </IconButton>
+                          <AttachedFileButton
+                            fileName={f.file_name}
+                            onOpen={() => void previewDoc(f.id)}
+                            className="max-w-[14rem]"
+                          />
                           <IconButton label="ダウンロード" onClick={() => void downloadDoc(f.id)}>
                             <Download size={11} />
                           </IconButton>
@@ -1800,13 +1802,12 @@ export function ApplicationPrepChecklist({
             <div className="mt-2 space-y-1">
               {applyDocFiles.map((f, i) => (
                 <div key={f.id} className="flex items-center gap-1.5">
-                  <span className="min-w-0 flex-1 truncate text-[11px] text-muted">
-                    <span className="mr-1 font-bold">{i + 1}枚目:</span>
-                    {f.file_name}
-                  </span>
-                  <IconButton label="表示" onClick={() => void previewDoc(f.id)}>
-                    <Eye size={12} />
-                  </IconButton>
+                  <AttachedFileButton
+                    fileName={f.file_name}
+                    prefix={`${i + 1}枚目:`}
+                    onOpen={() => void previewDoc(f.id)}
+                    className="flex-1"
+                  />
                   <IconButton label="ダウンロード" onClick={() => void downloadDoc(f.id)}>
                     <Download size={12} />
                   </IconButton>
@@ -2064,13 +2065,12 @@ function DocRow({
         <div className="ml-[18px] mt-1.5 space-y-1">
           {files.map((f, i) => (
             <div key={f.id} className="flex items-center gap-1.5">
-              <span className="min-w-0 flex-1 truncate text-[11px] text-muted">
-                {files.length > 1 && <span className="mr-1 font-bold">{i + 1}枚目:</span>}
-                {f.file_name}
-              </span>
-              <IconButton label="表示" onClick={() => onPreviewFile(f)}>
-                <Eye size={12} />
-              </IconButton>
+              <AttachedFileButton
+                fileName={f.file_name}
+                prefix={files.length > 1 ? `${i + 1}枚目:` : undefined}
+                onOpen={() => onPreviewFile(f)}
+                className="flex-1"
+              />
               <IconButton label="ダウンロード" onClick={() => onDownloadFile(f)}>
                 <Download size={12} />
               </IconButton>

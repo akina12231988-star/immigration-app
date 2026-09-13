@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Check, Download, Eye, HeartPulse, Loader2, Trash2, Upload, ClipboardCheck } from "lucide-react";
+import { Check, Download, HeartPulse, Loader2, Trash2, Upload, ClipboardCheck } from "lucide-react";
+import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { Card } from "@/components/ui/Card";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { createClient } from "@/lib/supabase/client";
@@ -176,9 +177,11 @@ export function HealthCheckSection({
       >
         <span className="min-w-0 flex-1">
           <span className="block truncate font-bold">健康診断データ</span>
-          <span className="block truncate text-[11px] text-muted">
-            {hasFile ? doc!.file_name : "未登録"}
-          </span>
+          {hasFile ? (
+            <AttachedFileButton fileName={doc!.file_name} onOpen={openPreview} className="mt-0.5" />
+          ) : (
+            <span className="block truncate text-[11px] text-muted">未登録</span>
+          )}
         </span>
         <div className="flex shrink-0 items-center gap-1">
           {busy ? (
@@ -186,14 +189,9 @@ export function HealthCheckSection({
           ) : (
             <>
               {hasFile && (
-                <>
-                  <IconButton label="表示" onClick={openPreview}>
-                    <Eye size={13} />
-                  </IconButton>
-                  <IconButton label="ダウンロード" onClick={download}>
-                    <Download size={13} />
-                  </IconButton>
-                </>
+                <IconButton label="ダウンロード" onClick={download}>
+                  <Download size={13} />
+                </IconButton>
               )}
               {canEdit && (
                 <IconButton label={hasFile ? "差し替え" : "アップロード"} onClick={() => fileInputRef.current?.click()}>

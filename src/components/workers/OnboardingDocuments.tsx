@@ -2,19 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import {
-  Download,
-  ExternalLink,
-  Eye,
-  FileText,
-  Link2,
-  Loader2,
-  MailPlus,
-  Printer,
-  Trash2,
-  TriangleAlert,
-  Upload,
-} from "lucide-react";
+import { Download, ExternalLink, FileText, Link2, Loader2, MailPlus, Printer, Trash2, TriangleAlert, Upload } from "lucide-react";
+import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { Card } from "@/components/ui/Card";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { createClient } from "@/lib/supabase/client";
@@ -559,9 +548,15 @@ export function OnboardingDocuments({
                           国税庁の様式ページ
                         </a>
                       )}
-                      <span className="block truncate text-[11px] text-muted">
-                        {hasFile ? row!.file_name : "未登録"}
-                      </span>
+                      {hasFile ? (
+                        <AttachedFileButton
+                          fileName={row!.file_name}
+                          onOpen={() => openPreview(row!.id)}
+                          className="mt-0.5"
+                        />
+                      ) : (
+                        <span className="block truncate text-[11px] text-muted">未登録</span>
+                      )}
                       {needsBankbook(def.key, hasFile) && (
                         <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-seal/10 px-2 py-0.5 text-[11px] font-bold text-seal">
                           <TriangleAlert size={12} />
@@ -579,11 +574,6 @@ export function OnboardingDocuments({
                         <Loader2 size={15} className="animate-spin text-muted" />
                       ) : (
                         <>
-                          {hasFile && (
-                            <IconButton label="表示" onClick={() => openPreview(row!.id)}>
-                              <Eye size={13} />
-                            </IconButton>
-                          )}
                           {GENERATABLE[def.key] && (
                             <IconButton
                               label={
@@ -639,7 +629,11 @@ export function OnboardingDocuments({
                   />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-bold">{d.label}</span>
-                    <span className="block truncate text-[11px] text-muted">{d.file_name}</span>
+                    <AttachedFileButton
+                      fileName={d.file_name}
+                      onOpen={() => void openPreview(d.id)}
+                      className="mt-0.5"
+                    />
                   </span>
                 </label>
               ))}

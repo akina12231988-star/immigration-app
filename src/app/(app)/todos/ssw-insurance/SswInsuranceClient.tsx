@@ -2,20 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import {
-  Check,
-  ChevronDown,
-  ChevronRight,
-  Eye,
-  FileText,
-  Loader2,
-  Plus,
-  Receipt,
-  ShieldCheck,
-  Trash2,
-  Upload,
-  X,
-} from "lucide-react";
+import { Check, ChevronDown, ChevronRight, FileText, Loader2, Plus, Receipt, ShieldCheck, Trash2, Upload, X } from "lucide-react";
+import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { CopyButton } from "@/components/ui/CopyButton";
@@ -1003,23 +991,15 @@ function SswWorkerPanel({
                 className="flex items-center gap-2 rounded-lg bg-background px-2.5 py-1.5 text-[11px]"
               >
                 <FileText size={13} className="shrink-0 text-muted" />
-                <span className="min-w-0 flex-1 truncate">
-                  {c.file_name || "（ファイルなし）"}
-                  {c.cert_no && <span className="ml-2 text-muted">番号 {c.cert_no}</span>}
-                  {c.expiry_date && (
-                    <span className="ml-2 text-muted">期限 {slashDate(c.expiry_date)}</span>
+                <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
+                  {c.file_name ? (
+                    <AttachedFileButton fileName={c.file_name} onOpen={() => void preview(c.id)} />
+                  ) : (
+                    <span>（ファイルなし）</span>
                   )}
+                  {c.cert_no && <span className="text-muted">番号 {c.cert_no}</span>}
+                  {c.expiry_date && <span className="text-muted">期限 {slashDate(c.expiry_date)}</span>}
                 </span>
-                {c.file_name && (
-                  <button
-                    type="button"
-                    onClick={() => void preview(c.id)}
-                    aria-label="表示"
-                    className="text-muted hover:text-brand"
-                  >
-                    <Eye size={14} />
-                  </button>
-                )}
                 {canEdit && (
                   <button
                     type="button"

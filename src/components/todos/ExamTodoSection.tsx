@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Eye, Loader2, Plus, Trash2, Upload } from "lucide-react";
+import { Loader2, Plus, Trash2, Upload } from "lucide-react";
+import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { createClient } from "@/lib/supabase/client";
 import { compressImage } from "@/lib/image-compress";
@@ -265,18 +266,12 @@ function TodoFileAttachments({
       )}
       {files.map((f) => (
         <div key={f.id} className="flex items-center gap-1.5">
-          <span className="min-w-0 flex-1 truncate text-[11px] text-muted">{f.file_name}</span>
-          <span className="shrink-0 text-[10px] tabular-nums text-muted">
-            {f.created_at.slice(0, 10)}
-          </span>
-          <button
-            type="button"
-            onClick={() => preview(f.id)}
-            aria-label="表示"
-            className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-muted hover:text-brand"
-          >
-            <Eye size={13} />
-          </button>
+          <AttachedFileButton
+            fileName={f.file_name}
+            note={f.created_at.slice(0, 10)}
+            onOpen={() => preview(f.id)}
+            className="flex-1"
+          />
           {canEdit && (
             <button
               type="button"
