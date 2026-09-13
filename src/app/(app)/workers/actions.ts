@@ -200,6 +200,44 @@ export interface WorkerDocView {
   effectiveOn?: string | null; // いつ時点の書類か（過去の在籍期間への登録用・0100）
   createdAt: string;
   fromApplication?: boolean; // 申請登録時の画像（差し替え前の現データ）
+  externalUrl?: string; // Google ドライブなどのリンクで登録した書類（0155）。ファイルの実体は無い
+}
+
+// 雇用契約書・雇用条件書を Google ドライブなどのリンクで登録する（ストレージは使わない・0155）
+export async function registerWorkerDocLink(
+  workerId: string,
+  kind: WorkerDocKind,
+  url: string,
+  organizationId?: string | null,
+): Promise<{ ok: true } | Err> {
+  if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
+  const trimmed = url.trim();
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return { ok: false, message: "リンクの形が正しくありません（https:// から始まるURLを貼ってください）" };
+  }
+  if (parsed.protocol !== "https:") return { ok: false, message: "https:// から始まるリンクだけ登録できます" };
+  const admin = createAdminClient();
+  if (!admin) return { ok: false, message: "サーバー設定エラー" };
+  const isDrive = /(^|\.)(drive|docs)\.google\.com$/.test(parsed.hostname);
+  const { error } = await admin.from("worker_documents").insert({
+    worker_id: workerId,
+    kind,
+    storage_path: "",
+    file_name: isDrive ? "Google ドライブ" : parsed.hostname,
+    mime_type: "text/uri-list",
+    external_url: trimmed,
+    ...(organizationId ? { organization_id: organizationId } : {}),
+  });
+  if (error) {
+    return {
+      ok: false,
+      message: dbErrorMessage(error, "0155_worker_documents_external_url.sql", "リンクの登録に失敗しました"),
+    };
+  }
+  return { ok: true };
 }
 
 // 在留カード・指定書の全履歴（新しい順・署名付きURL）。
@@ -224,12 +262,15 @@ export async function listWorkerDocs(workerId: string): Promise<WorkerDocView[]>
       mime_type: string;
       organization_id?: string | null;
       effective_on?: string | null;
+      external_url?: string | null;
       created_at: string;
     }[]) ?? [];
 
   const result: WorkerDocView[] = [];
   if (rows.length > 0) {
-    const paths = rows.map((r) => r.storage_path);
+    // リンクで登録した行（storage_path が空）には署名付きURLを作らない
+    const paths = rows.map((r) => r.storage_path).filter(Boolean);
+    const pathIndex = new Map(paths.map((p, i) => [p, i]));
 
     // ダウンロードしたときのファイル名を「氏名_書類名」にするため、外国人の氏名を引く
     const { data: w } = await admin
@@ -243,30 +284,36 @@ export async function listWorkerDocs(workerId: string): Promise<WorkerDocView[]>
     // （保存時の名前付けは画面側で行う。downloadFileAs を参照）
     const downloadNames = rows.map((r) => workerDocFileName(workerName, r.kind, r.file_name));
     const [{ data: signed }, signedDl] = await Promise.all([
-      admin.storage.from(BUCKET).createSignedUrls(paths, TTL),
+      paths.length > 0 ? admin.storage.from(BUCKET).createSignedUrls(paths, TTL) : Promise.resolve({ data: null }),
       Promise.all(
         rows.map((r, i) =>
-          admin.storage
-            .from(BUCKET)
-            .createSignedUrl(r.storage_path, TTL, { download: downloadNames[i] })
-            .then((res) => res.data?.signedUrl ?? ""),
+          r.storage_path
+            ? admin.storage
+                .from(BUCKET)
+                .createSignedUrl(r.storage_path, TTL, { download: downloadNames[i] })
+                .then((res) => res.data?.signedUrl ?? "")
+            : Promise.resolve(""),
         ),
       ),
     ]);
-    rows.forEach((r, i) =>
+    rows.forEach((r, i) => {
+      const external = (r.external_url ?? "").trim();
+      const si = r.storage_path ? pathIndex.get(r.storage_path) : undefined;
       result.push({
         id: r.id,
         kind: r.kind,
-        url: signed?.[i]?.signedUrl ?? "",
-        downloadUrl: signedDl[i] ?? "",
+        // リンクで登録した書類はそのリンクをそのまま開く
+        url: external || (si != null ? (signed?.[si]?.signedUrl ?? "") : ""),
+        downloadUrl: external ? "" : (signedDl[i] ?? ""),
         fileName: r.file_name,
-        downloadName: downloadNames[i],
+        downloadName: external ? "" : downloadNames[i],
         mimeType: r.mime_type,
         organizationId: r.organization_id ?? null,
         effectiveOn: r.effective_on ?? null,
         createdAt: r.created_at,
-      }),
-    );
+        ...(external ? { externalUrl: external } : {}),
+      });
+    });
   }
 
   // worker_documents に無い種別は申請登録時の画像を現データとして補う

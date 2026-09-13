@@ -1,18 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  Download,
-  ExternalLink,
-  FileSignature,
-  FileText,
-  MessageCircle,
-  Trash2,
-  Upload,
-} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Download, ExternalLink, FileSignature, FileText, Link2, MessageCircle, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
-import { FileDropArea } from "@/components/ui/FileDropArea";
-import { uploadWorkerDoc } from "@/lib/worker-docs";
 import { downloadFileAs } from "@/lib/download-file";
 import { messengerWebUrl } from "@/lib/messenger-link";
 import { createClient } from "@/lib/supabase/client";
@@ -25,6 +15,7 @@ import {
 import {
   deleteWorkerDoc,
   listWorkerDocs,
+  registerWorkerDocLink,
   setWorkerDocOrganization,
   type WorkerDocView,
 } from "@/app/(app)/workers/actions";
@@ -50,8 +41,8 @@ interface OrgChoice {
 
 // 雇用契約書・雇用条件書（採用時に外国人へ紐づける書類）。
 // 転職すると会社ごとに契約書が発生するため、所属機関ごとに保管する。
-// PDF・画像をアップロードして保管し、ダウンロードや
-// Messenger での本人への送付（ダウンロード→添付）に使う。
+// ストレージの容量を使わないよう、Google ドライブのリンクで登録する（0155）。
+// 以前にアップロードしたファイルはそのまま開ける・ダウンロードできる。
 // 求職一覧で「採用」にした人のカードからもここへ飛べる（#contracts）
 export function WorkerContracts({
   workerId,
@@ -118,7 +109,7 @@ export function WorkerContracts({
   );
 
   const handleError = (err: unknown) => {
-    let message = err instanceof Error ? err.message : "アップロードに失敗しました";
+    let message = err instanceof Error ? err.message : "登録に失敗しました";
     // 0079・0081が未適用だと worker_documents の制約・列で弾かれる
     if (/check|制約|column|organization_id/i.test(message)) {
       message += "／マイグレーション 0079_recruit_ledgers.sql・0081_worker_documents_organization.sql・0104_worker_contract_undated.sql が未適用の可能性があります。Supabase の SQL Editor で適用してください。";
@@ -216,7 +207,7 @@ export function WorkerContracts({
         </h2>
         <p className="mb-3 text-[11px] leading-relaxed text-muted">
           採用時の雇用契約書・雇用条件書を所属機関ごとに保管します（転職しても混ざりません）。
-          PDF・画像で登録でき、ダウンロードして Messenger で本人に送れます。
+          Google ドライブに置いたファイルの「リンクをコピー」を貼って登録します（このアプリの容量は使いません）。
           同じ会社で新しく登録すると最新になり、以前の分も履歴に残ります。
         </p>
         {error && (
@@ -382,7 +373,7 @@ export function WorkerContracts({
             </span>
           )}
           <span className="text-[11px] text-muted">
-            ダウンロードした書類をチャットに添付して送ってください。
+            Google ドライブのリンクをチャットに貼るか、ダウンロードした書類を添付して送ってください。
           </span>
         </div>
       </Card>
@@ -417,16 +408,20 @@ function ContractColumn({
   onError: (err: unknown) => void;
   footer?: React.ReactNode; // この書類の日付など、列の下に出すもの
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  const [link, setLink] = useState("");
   const latest = docs[0];
   const history = docs.slice(1);
 
-  async function handleFile(file: File | undefined) {
-    if (!file) return;
+  // Google ドライブのリンクを登録する（ファイルはアップロードしない）
+  async function registerLink() {
+    const url = link.trim();
+    if (!url) return;
     setBusy(true);
     try {
-      await uploadWorkerDoc(workerId, kind, file, organizationId);
+      const res = await registerWorkerDocLink(workerId, kind, url, organizationId);
+      if (!res.ok) throw new Error(res.message);
+      setLink("");
       onUploaded();
     } catch (err) {
       onError(err);
@@ -435,7 +430,7 @@ function ContractColumn({
     }
   }
 
-  const isImage = (d: WorkerDocView) => (d.mimeType ?? "").startsWith("image/");
+  const isImage = (d: WorkerDocView) => !d.externalUrl && (d.mimeType ?? "").startsWith("image/");
 
   return (
     <div>
@@ -444,25 +439,23 @@ function ContractColumn({
           <FileText size={14} />
           {kind}
         </span>
-        {canEdit && (
-          <button
-            type="button"
-            onClick={() => inputRef.current?.click()}
-            disabled={busy}
-            className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11px] font-bold text-brand disabled:opacity-50"
-          >
-            {busy ? "登録中…" : <><Upload size={12} /> 登録</>}
-          </button>
-        )}
       </div>
-      {/* 枠にファイルを落としてもアップロードできる */}
-      <FileDropArea
-        onFiles={(files) => void handleFile(files[0])}
-        disabled={!canEdit || busy}
-        className="overflow-hidden rounded-xl border border-border bg-background"
-      >
+      <div className="overflow-hidden rounded-xl border border-border bg-background">
         {latest ? (
-          isImage(latest) ? (
+          latest.externalUrl ? (
+            // Google ドライブのリンクで登録した書類
+            <a
+              href={latest.externalUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex h-32 flex-col items-center justify-center gap-1 px-2 text-center hover:bg-brand/5"
+            >
+              <Link2 size={24} className="text-brand" />
+              <p className="max-w-full truncate text-xs font-bold text-brand">{latest.fileName || "リンク"}で開く</p>
+              <p className="max-w-full truncate text-[10px] text-muted">{latest.externalUrl}</p>
+              <p className="text-[10px] text-muted">{latest.createdAt.slice(0, 10)} 登録</p>
+            </a>
+          ) : isImage(latest) ? (
             <a href={latest.url} target="_blank" rel="noopener noreferrer">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={latest.url} alt={kind} className="max-h-56 w-full object-contain" />
@@ -479,10 +472,38 @@ function ContractColumn({
           )
         ) : (
           <div className="flex h-32 items-center justify-center px-2 text-center text-xs text-muted">
-            {canEdit ? "未登録（PDF・画像をここにドロップでも登録できます）" : "未登録"}
+            未登録{canEdit && "（下に Google ドライブのリンクを貼って登録します）"}
           </div>
         )}
-      </FileDropArea>
+      </div>
+      {/* リンクの登録欄。Google ドライブで「リンクをコピー」したものを貼る */}
+      {canEdit && (
+        <div className="mt-1.5 flex items-center gap-1.5">
+          <input
+            value={link}
+            onChange={(e) => setLink(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void registerLink();
+              }
+            }}
+            disabled={busy}
+            placeholder="Google ドライブのリンクを貼る（https://drive.google.com/…）"
+            aria-label={`${kind}の Google ドライブのリンク`}
+            className="min-h-[36px] min-w-0 flex-1 rounded-lg border border-border bg-background px-2 text-[11px] focus:border-brand focus:outline-none disabled:opacity-60"
+          />
+          <button
+            type="button"
+            onClick={() => void registerLink()}
+            disabled={busy || !link.trim()}
+            className="flex shrink-0 items-center gap-1 rounded-lg bg-brand px-2.5 py-2 text-[11px] font-bold text-brand-foreground disabled:opacity-50"
+          >
+            <Link2 size={12} />
+            {busy ? "登録中…" : "登録"}
+          </button>
+        </div>
+      )}
       {latest && (
         <div className="mt-1.5 flex items-center gap-2">
           <a
@@ -494,17 +515,19 @@ function ContractColumn({
             <ExternalLink size={12} />
             開く
           </a>
-          {/* 「氏名_書類名.pdf」の名前で保存する（署名付きURLの download 指定は日本語が壊れる） */}
-          <button
-            type="button"
-            onClick={() =>
-              void downloadFileAs(latest.url, latest.downloadName || latest.fileName || kind, latest.downloadUrl)
-            }
-            className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11px] font-bold text-brand"
-          >
-            <Download size={12} />
-            ダウンロード
-          </button>
+          {/* 以前にアップロードしたファイルは「氏名_書類名.pdf」の名前で保存できる（リンク登録には無い） */}
+          {!latest.externalUrl && (
+            <button
+              type="button"
+              onClick={() =>
+                void downloadFileAs(latest.url, latest.downloadName || latest.fileName || kind, latest.downloadUrl)
+              }
+              className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11px] font-bold text-brand"
+            >
+              <Download size={12} />
+              ダウンロード
+            </button>
+          )}
           {/* 間違えて登録したときの削除（申請登録時の画像はここでは消せない） */}
           {canEdit && !latest.fromApplication && (
             <button
@@ -550,22 +573,12 @@ function ContractColumn({
                 rel="noopener noreferrer"
                 className="truncate text-[11px] text-muted underline-offset-2 hover:text-brand hover:underline"
               >
-                {d.createdAt.slice(0, 10)} — {d.downloadName || d.fileName || kind}
+                {d.createdAt.slice(0, 10)} — {d.externalUrl ? `${d.fileName || "リンク"}: ${d.externalUrl}` : d.downloadName || d.fileName || kind}
               </a>
             ))}
           </div>
         </div>
       )}
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*,application/pdf"
-        className="hidden"
-        onChange={(e) => {
-          handleFile(e.target.files?.[0]);
-          e.target.value = "";
-        }}
-      />
     </div>
   );
 }
