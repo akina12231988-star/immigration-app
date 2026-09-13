@@ -192,19 +192,19 @@ export function prepPrintWageLines(
     if (r.allowanceTotal > 0) {
       lines.push({ key: `${w.id}-gross`, label: "支払概算額（諸手当込み）", value: yen(r.gross) });
     }
-    lines.push(
-      { key: `${w.id}-tax`, label: "所得税", value: yen(r.tax) },
-      { key: `${w.id}-social`, label: "社会保険料", value: d.social_enabled ? yen(r.social) : "加入なし" },
-      { key: `${w.id}-employment`, label: "雇用保険料", value: d.employment_enabled ? yen(r.employment) : "加入なし" },
-      {
-        key: `${w.id}-housing`,
-        label: "居住費",
-        value: d.housing_self_contract ? "本人契約のため徴収なし" : yen(r.housing),
-      },
-    );
-    if (r.food > 0) lines.push({ key: `${w.id}-food`, label: "食費", value: yen(r.food) });
-    if (r.utility > 0) lines.push({ key: `${w.id}-utility`, label: "水道光熱費", value: yen(r.utility) });
-    if (r.otherTotal > 0) lines.push({ key: `${w.id}-others`, label: "その他控除", value: yen(r.otherTotal) });
+    // A4縦1枚に収めるため、税・保険と居住費などはそれぞれ1行にまとめる
+    lines.push({
+      key: `${w.id}-deduct`,
+      label: "所得税／社会保険料／雇用保険料",
+      value: `${yen(r.tax)}／${d.social_enabled ? yen(r.social) : "加入なし"}／${d.employment_enabled ? yen(r.employment) : "加入なし"}`,
+    });
+    const living = [
+      `居住費 ${d.housing_self_contract ? "本人契約のため徴収なし" : yen(r.housing)}`,
+      r.food > 0 ? `食費 ${yen(r.food)}` : "",
+      r.utility > 0 ? `水道光熱費 ${yen(r.utility)}` : "",
+      r.otherTotal > 0 ? `その他控除 ${yen(r.otherTotal)}` : "",
+    ].filter(Boolean);
+    lines.push({ key: `${w.id}-living`, label: "居住費など", value: living.join("／") });
     lines.push({ key: `${w.id}-net`, label: "手取り概算", value: yen(r.net) });
     return lines;
   });

@@ -90,7 +90,7 @@ export function PrepDetailSheet({
 
   return (
     <>
-      <style>{"@media print{@page{size:A4 portrait;margin:12mm}}"}</style>
+      <style>{"@media print{@page{size:A4 portrait;margin:10mm}}"}</style>
 
       <div className="print:hidden">
         <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-brand px-4 py-3 text-brand-foreground lg:px-8">
@@ -271,9 +271,9 @@ export function PrepDetailSheet({
 
       {/* ここから下が印刷される部分（A4縦1枚） */}
       <div className="mx-auto max-w-[190mm] px-4 pb-10 lg:px-0">
-        <section className="text-[9pt] leading-snug text-black">
+        <section className="text-[8.5pt] leading-tight text-black">
           {/* 一番上: 申請番号と申請種別 */}
-          <div className="mb-2 border-2 border-black px-3 py-2">
+          <div className="mb-1.5 border-2 border-black px-3 py-1">
             <div className="flex flex-wrap items-end justify-between gap-2">
               <p className="min-h-[1.2em] text-[15pt] font-bold tabular-nums">{head.todoNo}</p>
               <p className="text-[12pt] font-bold">{head.appType}</p>
@@ -289,9 +289,9 @@ export function PrepDetailSheet({
           </div>
 
           {/* 左右2列。左の列は右の列と同じ高さになり、余った分をメモが埋める（A4縦1枚に収める） */}
-          <div className="grid grid-cols-2 items-stretch gap-3">
+          <div className="grid grid-cols-2 items-stretch gap-2">
             {/* 左: 所属機関の情報・外国人の情報・メモ */}
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-1.5">
               <SheetBlock title="所属機関の情報">
                 <LineTable lines={org} />
               </SheetBlock>
@@ -300,7 +300,7 @@ export function PrepDetailSheet({
               </SheetBlock>
               {/* メモ。左の列の余った高さをそのまま使う（高さを固定すると1ページに収まらず2ページ目に押し出されるため）。
                   書いた内容を出し、空のときは手書きできるよう罫線だけを引く */}
-              <SheetBlock title="メモ" className="flex min-h-0 flex-1 flex-col" bodyClassName="flex-1">
+              <SheetBlock title="メモ" className="flex min-h-0 flex-1 flex-col break-inside-auto" bodyClassName="flex-1">
                 {memo.trim() ? (
                   <p className="whitespace-pre-wrap px-1 py-0.5 leading-relaxed">{memo}</p>
                 ) : (
@@ -316,19 +316,19 @@ export function PrepDetailSheet({
             </div>
 
             {/* 右: 準備チェックリスト・採用時の賃金情報・日付計算結果 */}
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <SheetBlock title="準備チェックリスト">
                 {printedDocs.length > 0 && (
                   <table className="w-full border-collapse">
                     <tbody>
                       {printedDocs.map((d) => (
                         <tr key={d.id}>
-                          <td className="w-[1.4em] border border-black px-1 py-0.5 text-center align-top">
+                          <td className="w-[1.4em] border border-black px-1 py-px text-center align-top">
                             {d.state === "完了" ? "☑" : "☐"}
                           </td>
-                          <td className="border border-black px-1.5 py-0.5 align-top">{d.label}</td>
+                          <td className="border border-black px-1.5 py-px align-top">{d.label}</td>
                           {/* 右側はメモ欄。空のときは手書きできるように空けておく */}
-                          <td className="w-[32%] border border-black px-1.5 py-0.5 align-top">
+                          <td className="w-[32%] border border-black px-1.5 py-px align-top">
                             {d.memo}
                           </td>
                         </tr>
@@ -365,11 +365,11 @@ function SheetBlock({
 }) {
   return (
     <div className={`break-inside-avoid border border-black ${className}`}>
-      <p className="border-b border-black bg-black/5 px-1.5 py-0.5 text-[9.5pt] font-bold">
+      <p className="border-b border-black bg-black/5 px-1.5 py-px text-[9pt] font-bold">
         {title}
       </p>
       {/* 中身が無いときも枠を少し空けて、紙の上で書き足せるようにする */}
-      <div className={`min-h-[3em] p-1 ${bodyClassName}`}>{children}</div>
+      <div className={`min-h-[2.5em] p-0.5 ${bodyClassName}`}>{children}</div>
     </div>
   );
 }
@@ -384,16 +384,16 @@ function LineTable({ lines }: { lines: PrepPrintLine[] }) {
           l.heading ? (
             // 参考様式ごとの枠の見出し（太字・全幅）
             <tr key={l.key}>
-              <th colSpan={2} className="border border-black bg-black/5 px-1.5 py-0.5 text-left font-bold">
+              <th colSpan={2} className="border border-black bg-black/5 px-1.5 py-px text-left font-bold">
                 {l.label}
               </th>
             </tr>
           ) : (
             <tr key={l.key}>
-              <th className="w-[38%] border border-black px-1.5 py-0.5 text-left align-top font-normal">
+              <th className="w-[38%] border border-black px-1.5 py-px text-left align-top font-normal">
                 {l.label}
               </th>
-              <td className="border border-black px-1.5 py-0.5 align-top font-bold">{l.value}</td>
+              <td className="border border-black px-1.5 py-px align-top font-bold">{l.value}</td>
             </tr>
           ),
         )}

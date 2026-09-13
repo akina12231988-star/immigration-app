@@ -148,10 +148,9 @@ describe("prepPrintWageLines", () => {
     );
     // 時給 1,042円 × 2,080時間 ÷ 12 = 180,613円
     expect(line(lines, "w1-base")).toBe("180,613円（時給1,042円 × 年間2,080時間 ÷ 12）");
-    expect(line(lines, "w1-social")).toBe("加入なし");
-    expect(line(lines, "w1-employment")).toMatch(/円$/);
-    expect(line(lines, "w1-housing")).toBe("20,000円");
-    expect(line(lines, "w1-tax")).toMatch(/円$/);
+    // 税・保険は1行、居住費などは1行にまとめる
+    expect(line(lines, "w1-deduct")).toMatch(/^[\d,]+円／加入なし／[\d,]+円$/);
+    expect(line(lines, "w1-living")).toBe("居住費 20,000円");
     expect(line(lines, "w1-net")).toMatch(/円$/);
     // 別紙が無い記録には内訳を出さない
     expect(prepPrintWageLines([wage({ detail: null })]).some((l) => l.key.endsWith("-base"))).toBe(false);
