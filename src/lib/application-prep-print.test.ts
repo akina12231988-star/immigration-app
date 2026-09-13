@@ -126,12 +126,19 @@ describe("prepPrintWageLines", () => {
 });
 
 describe("prepPrintDateLines", () => {
-  it("支援計画書の項目の並びで、保存済みの日付を和暦なしの年月日で出す", () => {
-    const lines = prepPrintDateLines({ apply: "2026-09-10", es: "2026-10-01" });
-    expect(lines[0]).toEqual({ key: "apply", label: "申請予定日（入管）", value: "2026年9月10日" });
-    expect(line(lines, "es")).toBe("2026年10月1日");
-    // 未計算の項目は空のまま（印刷側で「未登録」と出す）
-    expect(line(lines, "sign")).toBe("");
+  it("参考様式ごとの見出し行に分けて、保存済みの日付を年月日で出す", () => {
+    const lines = prepPrintDateLines({ apply: "2026-09-10", es: "2026-10-01", con: "2026-08-05" });
+    expect(lines[0]).toEqual({ key: "group-0", label: "参考様式1-5号（雇用契約書）", value: "", heading: true });
+    expect(line(lines, "0-con")).toBe("2026年8月5日");
+    expect(line(lines, "1-es")).toBe("2026年10月1日");
+    // 雇用契約期間（2年間）と支援委託契約の契約期間（5年間）は自動で出す
+    expect(line(lines, "1-period")).toBe("2026年10月1日 から 2028年9月30日 まで");
+    expect(line(lines, "3-scPeriod")).toBe("2026年8月5日 から 2031年8月4日 まで");
+    // 支援委託契約日は雇用契約日と同じ日
+    expect(line(lines, "3-con")).toBe("2026年8月5日");
+    // 未計算の項目は空のまま（印刷側で空けておく）
+    expect(line(lines, "4-sign")).toBe("");
+    expect(line(lines, "4-apply")).toBe("2026年9月10日");
   });
 });
 

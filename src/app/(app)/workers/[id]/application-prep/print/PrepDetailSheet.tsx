@@ -214,15 +214,21 @@ export function PrepDetailSheet({
                     ))
                   )}
                 </EditGroup>
-                <EditGroup title="日付計算結果">
-                  {dates.map((l) => (
-                    <EditRow
-                      key={l.key}
-                      label={l.label}
-                      value={l.value}
-                      onChange={(v) => editLine(setDates)(l.key, v)}
-                    />
-                  ))}
+                <EditGroup title="日付計算結果（参考様式ごと）">
+                  {dates.map((l) =>
+                    l.heading ? (
+                      <p key={l.key} className="pt-1 text-[11px] font-bold">
+                        {l.label}
+                      </p>
+                    ) : (
+                      <EditRow
+                        key={l.key}
+                        label={l.label}
+                        value={l.value}
+                        onChange={(v) => editLine(setDates)(l.key, v)}
+                      />
+                    ),
+                  )}
                 </EditGroup>
               </div>
             </div>
@@ -334,14 +340,23 @@ function LineTable({ lines }: { lines: PrepPrintLine[] }) {
   return (
     <table className="w-full border-collapse">
       <tbody>
-        {lines.map((l) => (
-          <tr key={l.key}>
-            <th className="w-[38%] border border-black px-1.5 py-0.5 text-left align-top font-normal">
-              {l.label}
-            </th>
-            <td className="border border-black px-1.5 py-0.5 align-top font-bold">{l.value}</td>
-          </tr>
-        ))}
+        {lines.map((l) =>
+          l.heading ? (
+            // 参考様式ごとの枠の見出し（太字・全幅）
+            <tr key={l.key}>
+              <th colSpan={2} className="border border-black bg-black/5 px-1.5 py-0.5 text-left font-bold">
+                {l.label}
+              </th>
+            </tr>
+          ) : (
+            <tr key={l.key}>
+              <th className="w-[38%] border border-black px-1.5 py-0.5 text-left align-top font-normal">
+                {l.label}
+              </th>
+              <td className="border border-black px-1.5 py-0.5 align-top font-bold">{l.value}</td>
+            </tr>
+          ),
+        )}
       </tbody>
     </table>
   );

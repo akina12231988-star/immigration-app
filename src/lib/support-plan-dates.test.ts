@@ -95,13 +95,13 @@ describe("PLAN_DATE_GROUPS（申請準備の一覧表の枠）", () => {
     expect(PLAN_DATE_GROUPS[3].rows.map((r) => r.key)).toEqual(["con", "scPeriod"]);
     expect(keys.filter((k) => k === "con")).toHaveLength(2);
     expect(PLAN_DATE_GROUPS.map((g) => g.title)).toEqual([
-      "参考様式1-6号（雇用条件書）",
       "参考様式1-5号（雇用契約書）",
+      "参考様式1-6号（雇用条件書）",
       "参考様式1-17号（支援計画書）",
       "参考様式1-25号（支援委託契約書）",
       "その他の申請書類",
     ]);
     // 雇用開始日・雇用契約期間・雇用終了日は1-6号の枠
-    expect(PLAN_DATE_GROUPS[0].rows.map((r) => r.key)).toEqual(["cond", "es", "period", "eeEnd"]);
+    expect(PLAN_DATE_GROUPS[1].rows.map((r) => r.key)).toEqual(["cond", "es", "period", "eeEnd"]);
   });
 });
