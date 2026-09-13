@@ -212,16 +212,28 @@ export function prepPrintWageLines(
 
 // 右側「日付計算結果」。画面と同じく参考様式ごとの枠（見出し行）に分けて、保存済みの日付を出す。
 // 雇用契約期間（2年間）と支援委託契約の契約期間（5年間）は保存した日付から自動で出す
+// 印刷用の短い項目名（画面の項目名は長く、A4の狭い列では2行に折り返して行数が増えるため）
+const PRINT_DATE_LABELS: Record<string, string> = {
+  cond: "雇用条件書の作成日",
+  period: "雇用契約期間（2年）",
+  doc: "書類作成日",
+  guid: "事前ガイダンス",
+  orient: "生活オリエン実施日",
+  scPeriod: "契約期間（5年）",
+  apply: "申請予定日",
+};
+
 // 特定活動の申請は 1-5号・1-6号・その他（書類作成日を含む）の枠だけ
 export function prepPrintDateLines(dates: Record<string, string>, tokuteiKatsudo = false): PrepPrintLine[] {
   const ymd = (v: string | undefined) => rosterJpDate(v ?? "") || (v ?? "");
   const period = (start: string | undefined, years?: number) =>
-    start ? `${ymd(start)} から ${ymd(contractPeriodEnd(start, years))} まで` : "";
+    start ? `${ymd(start)}〜${ymd(contractPeriodEnd(start, years))}` : "";
   return planDateGroupsFor(tokuteiKatsudo).flatMap((g, gi) => [
     { key: `group-${gi}`, label: g.title, value: "", heading: true },
     ...g.rows.map((r) => ({
       key: `${gi}-${r.key}`,
-      label: r.label,
+      // 1-25号の支援委託契約日は雇用契約日と同じ日（画面の項目名の補足は印刷では省く）
+      label: r.key === "con" && g.title.includes("1-25") ? "支援委託契約日" : (PRINT_DATE_LABELS[r.key] ?? r.label),
       value:
         r.key === "period" ? period(dates.es) : r.key === "scPeriod" ? period(dates.con, SUPPORT_CONTRACT_YEARS) : ymd(dates[r.key]),
     })),
