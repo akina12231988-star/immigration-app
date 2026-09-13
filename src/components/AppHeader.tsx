@@ -5,9 +5,11 @@ import { NotificationBell } from "@/components/NotificationBell";
 export function AppHeader({
   title,
   backHref,
+  right,
 }: {
   title: string;
   backHref?: string;
+  right?: React.ReactNode; // 見出しの右側に出すリンク・ボタン（申請準備の Messenger・Notion など）
 }) {
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-brand text-brand-foreground">
@@ -27,10 +29,13 @@ export function AppHeader({
             <h1 className="text-lg font-bold">{title}</h1>
           </div>
         </div>
-        {/* PC はサイドナビに集約するため非表示 */}
-        <div className="flex items-center gap-1 text-brand-foreground md:hidden">
-          <NotificationBell tone="dark" />
-          <LogoutButton />
+        <div className="flex items-center gap-2">
+          {right && <div className="flex flex-wrap items-center justify-end gap-1.5">{right}</div>}
+          {/* PC はサイドナビに集約するため非表示 */}
+          <div className="flex items-center gap-1 text-brand-foreground md:hidden">
+            <NotificationBell tone="dark" />
+            <LogoutButton />
+          </div>
         </div>
       </div>
     </header>
