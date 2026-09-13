@@ -1752,6 +1752,7 @@ export function ApplicationPrepChecklist({
           todoTitle={meta.app_content ? prepSituationLabel(meta.app_content) : "申請準備"}
           prepOrgId={prepOrgId}
           prepOrgName={prepOrgName}
+          isRenewal={meta.app_type === "更新"}
           canEdit={canEdit}
           onError={setError}
           onChanged={loadWorkerTodos}

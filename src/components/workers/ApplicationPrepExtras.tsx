@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Building2, ExternalLink, Printer } from "lucide-react";
 import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
@@ -1491,6 +1491,9 @@ export function PrepEmploymentSection({
 
 // ---- あっせんの有無（申請準備のTODOと共有）と求人への採用の流れ ----
 
+// 更新申請のときに自動で入れる、あっせん無しの理由
+export const RENEWAL_ASSEN_NOTE = "特定技能の更新申請のため";
+
 interface PrepJobFlow {
   id: string;
   organizationId: string | null; // 採用された（応募した）所属機関のID。準備中の所属機関と照合する
@@ -1511,12 +1514,14 @@ export function PrepAssenSection({
   todoTitle = "申請準備",
   prepOrgId = null,
   prepOrgName = "",
+  isRenewal = false,
   canEdit,
   onError,
   onChanged,
 }: {
   workerId: string;
   todo: TodoRow | null; // あっせんの有無はTODOに保存して /todos と共有する
+  isRenewal?: boolean; // 更新申請（あっせんは自動で「なし」、理由は「特定技能の更新申請のため」）
   mismatch?: boolean; // true: 準備リストの番号と違う番号のTODO（この外国人の申請準備TODO）に保存している
   todoNo?: string; // 表示中の準備リストのTODO番号（TODOがまだ無いとき、この番号で作る）
   todoTitle?: string; // TODOを作るときの題名（準備の内容から）
@@ -1527,6 +1532,18 @@ export function PrepAssenSection({
   onChanged: () => void;
 }) {
   const [creating, setCreating] = useState(false);
+  // 更新申請は職業紹介（あっせん）を通らないので、TODOがあれば自動で「なし」と理由を保存する（1回だけ）
+  const autoSavedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isRenewal || !canEdit || !todo) return;
+    const needs = todo.assen !== "なし" || !todo.assen_note;
+    if (!needs || autoSavedRef.current === todo.id) return;
+    autoSavedRef.current = todo.id;
+    updateTodo(createClient(), todo.id, { assen: "なし", assen_note: RENEWAL_ASSEN_NOTE })
+      .then(onChanged)
+      .catch((err) => onError(dbErrorMessage(err, "0103_todo_prep_extras.sql", "あっせんの保存に失敗しました")));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRenewal, canEdit, todo?.id, todo?.assen, todo?.assen_note]);
   const [flows, setFlows] = useState<PrepJobFlow[]>([]);
   const [note, setNote] = useState(todo?.assen_note ?? "");
   const [prevNote, setPrevNote] = useState(todo?.assen_note ?? "");
@@ -1611,7 +1628,7 @@ export function PrepAssenSection({
         <span className="text-[11px] font-bold text-muted">あっせん</span>
         <select
           value={todo?.assen ?? ""}
-          disabled={!canEdit || creating}
+          disabled={!canEdit || creating || isRenewal}
           onChange={(e) => void save({ assen: e.target.value })}
           className={INPUT}
         >
@@ -1619,6 +1636,9 @@ export function PrepAssenSection({
           <option value="あり">あり（求人からの採用）</option>
           <option value="なし">なし</option>
         </select>
+        {isRenewal && (
+          <span className="text-[11px] font-bold text-muted">更新申請のため「なし」になります（理由は自動で入ります）</span>
+        )}
         {creating ? (
           <span className="text-[11px] text-muted">申請準備のTODOを作って保存中…</span>
         ) : !todo ? (
