@@ -805,8 +805,8 @@ function OrgInfoLine({
 }
 
 // 所属機関の添付ファイル（農業特定技能加入通知書・年間カレンダー・労使協定書）の最新版を、
-// 画像はその場で表示し、PDF もその場に埋め込んで内容を見られるようにする。
-// 「添付済み」ボタンで別タブでも開ける。印刷リンクは別タブで A4縦の印刷ページを開く
+// 画像はその場で表示し、PDF は「添付済み」ボタンで別タブに開く（埋め込みはしない）。
+// 印刷リンクは別タブで A4縦の印刷ページを開く
 export function OrgAttachmentPreview({
   label,
   latest,
@@ -820,9 +820,9 @@ export function OrgAttachmentPreview({
   printHref?: string;
   printLabel?: string;
 }) {
-  // 表示用の署名付きURL（ファイルIDごと。画像はそのまま、PDF は埋め込みで出す）
+  // 画像の表示用の署名付きURL（ファイルIDごと。PDF は「添付済み」ボタンで別タブに開く）
   const [urls, setUrls] = useState<Record<string, string>>({});
-  const imageIds = (latest?.files ?? []).map((f) => f.id);
+  const imageIds = (latest?.files ?? []).filter(isImageFile).map((f) => f.id);
   const imageKey = imageIds.join(",");
 
   useEffect(() => {
@@ -875,22 +875,14 @@ export function OrgAttachmentPreview({
               onOpen={() => void onPreview(f.id)}
               className="self-start"
             />
-            {urls[f.id] &&
-              (isImageFile(f) ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={urls[f.id]}
-                  alt={`${label} ${f.file_name}`}
-                  className="max-h-64 w-auto max-w-full self-start rounded border border-border bg-white object-contain"
-                />
-              ) : (
-                // PDF はその場に埋め込む（見づらいときは「添付済み」ボタンで別タブに開く）
-                <iframe
-                  src={urls[f.id]}
-                  title={`${label} ${f.file_name}`}
-                  className="h-80 w-full rounded border border-border bg-white"
-                />
-              ))}
+            {isImageFile(f) && urls[f.id] && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={urls[f.id]}
+                alt={`${label} ${f.file_name}`}
+                className="max-h-64 w-auto max-w-full self-start rounded border border-border bg-white object-contain"
+              />
+            )}
           </div>
         ))}
       </div>
