@@ -555,6 +555,16 @@ export function PrepOrgInfo({ orgId, canEdit = false }: { orgId: string | null; 
         >
           所属機関を開く →
         </Link>
+        {/* この機関の支援責任者・支援担当者を「支援業務を行う体制についての説明」としてA4で印刷する */}
+        <a
+          href={`/support-org/print?org=${encodeURIComponent(org.id)}`}
+          target="_blank"
+          rel="noopener"
+          className="inline-flex items-center gap-1 rounded-full bg-brand px-2 py-0.5 text-[10px] font-bold text-brand-foreground"
+        >
+          <Printer size={11} />
+          支援体制を印刷（A4）
+        </a>
       </p>
       {error && <p className="rounded-lg bg-seal/10 px-2 py-1 text-seal">{error}</p>}
       {fill && (

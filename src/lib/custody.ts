@@ -112,6 +112,9 @@ export const CUSTODIAN_INFO = {
   supportManagerName: "VUONG VAN THANH", // 支援責任者名
   supportStaffName: "VUONG VAN THANH", // 支援担当者名
   languages: "", // 対応可能言語（空なら外国人の国籍から自動で出す）
+  // 「支援業務を行う体制についての説明」（A4印刷）の文章
+  supportSystemNote:
+    "現在、弊社では特定技能外国人が増えたことにより支援担当者を増やし各所属機関ごとに外国人の人数に応じて担当者や担当者数を決めて対応しております。本人と意思疎通ができない時は、通訳を介して対応しております。",
   // 職業紹介事業者（国内）として申請書に書く内容
   placementLicenseNo: "43-ユ-300259", // 許可・届出受理番号
   placementLicensedOn: "2024-07-01", // 受理年月日
