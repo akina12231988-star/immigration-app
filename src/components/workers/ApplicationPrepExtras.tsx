@@ -46,9 +46,16 @@ import {
   findPlanDatesForTodo,
   listPlanDates,
   updatePlanDates,
+  upsertPlanDates,
   type SavedPlanDates,
 } from "@/lib/supabase/queries/plan-dates";
-import { contractPeriodEnd, formatYmdJa, PLAN_DATE_GROUPS, SUPPORT_CONTRACT_YEARS } from "@/lib/support-plan-dates";
+import {
+  contractPeriodEnd,
+  formatYmdJa,
+  isTokuteiKatsudoContent,
+  planDateGroupsFor,
+  SUPPORT_CONTRACT_YEARS,
+} from "@/lib/support-plan-dates";
 import { planDatesCardFileName } from "@/lib/plan-dates-card";
 import { downloadPlanDatesCard } from "@/lib/plan-dates-card-image";
 import { CopyButton } from "@/components/ui/CopyButton";
@@ -1231,12 +1238,17 @@ export function SavedPlanDatesSection({
   todoNo,
   canEdit,
   workerName = "",
+  appContent = "",
 }: {
   workerId: string;
   todoNo: string;
   canEdit: boolean;
   workerName?: string; // 名刺サイズの画像の見出しとファイル名に使う
+  appContent?: string; // 申請の内容。特定活動なら 1-5号・1-6号・その他だけを出し、日付計算なしで直接入力できる
 }) {
+  // 特定活動の申請は支援計画書の日付計算を使わないので、この欄で直接入力して保存する
+  const tokuteiKatsudo = isTokuteiKatsudoContent(appContent);
+  const groups = planDateGroupsFor(tokuteiKatsudo);
   const [saved, setSaved] = useState<SavedPlanDates | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [dates, setDates] = useState<Record<string, string>>({});
@@ -1262,13 +1274,27 @@ export function SavedPlanDatesSection({
   }, [workerId, todoNo]);
 
   const save = async () => {
-    if (!saved) return;
     setBusy(true);
     setError(null);
     try {
       // 空にした項目は消して保存する
       const next = Object.fromEntries(Object.entries(dates).filter(([, v]) => v));
-      await updatePlanDates(createClient(), saved.id, next);
+      if (saved) {
+        await updatePlanDates(createClient(), saved.id, next);
+      } else {
+        // 保存記録がまだ無いとき（特定活動で直接入力したとき）は、この外国人×TODO番号で新しく作る
+        await upsertPlanDates(createClient(), {
+          worker_id: workerId,
+          todo_no: todoNo,
+          name: workerName,
+          org: "",
+          is_legal: false,
+          inputs: {},
+          dates: next,
+        });
+        const rows = await listPlanDates(createClient(), workerId);
+        setSaved(findPlanDatesForTodo(rows, todoNo));
+      }
       setDates(next);
       setDirty(false);
     } catch (err) {
@@ -1298,6 +1324,7 @@ export function SavedPlanDatesSection({
                     todoNo,
                     planDatesCardFileName(workerName, todoNo, o),
                     o,
+                    tokuteiKatsudo,
                   ).catch((err) => setError(err instanceof Error ? err.message : "画像の作成に失敗しました"))
                 }
                 className="inline-flex items-center gap-1 rounded-full border border-brand px-2 py-0.5 text-[10px] font-bold text-brand"
@@ -1314,16 +1341,21 @@ export function SavedPlanDatesSection({
         </span>
       </p>
       {error && <p className="mb-1 rounded-lg bg-seal/10 px-2 py-1 text-[11px] text-seal">{error}</p>}
-      {!saved ? (
+      {!saved && !tokuteiKatsudo ? (
         <p className="text-[11px] text-muted">
           保存された日付はまだありません。日付計算で算出して「この結果を保存」すると、ここに表示され編集できます。
         </p>
       ) : (
         <div className="space-y-1">
+          {tokuteiKatsudo && (
+            <p className="text-[11px] text-muted">
+              特定活動の申請は支援計画書の日付計算を使わないため、ここに直接入力して「日付の変更を保存」を押してください。
+            </p>
+          )}
           {/* 参考様式ごとの枠に分けた一覧表。同じ日付が2つの枠に出ることがある（雇用契約日＝支援委託契約日） */}
           <table className="w-full border-collapse text-[11px]">
             <tbody>
-              {PLAN_DATE_GROUPS.map((g) => (
+              {groups.map((g) => (
                 <Fragment key={g.title}>
                   <tr>
                     <th colSpan={3} className="border-t border-border bg-surface px-2 py-1 text-left text-xs font-bold">

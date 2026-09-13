@@ -208,6 +208,23 @@ export function isTokuteiKatsudoContent(title: string): boolean {
   return title.includes("特定活動");
 }
 
+// 申請の内容に合わせた枠。特定活動は 1-5号・1-6号と「その他」（申請予定日・署名日・書類作成日）だけで、
+// 支援計画書（1-17号）と支援委託契約書（1-25号）の枠は出さない
+export function planDateGroupsFor(tokuteiKatsudo: boolean): PlanDateGroup[] {
+  if (!tokuteiKatsudo) return PLAN_DATE_GROUPS;
+  return [
+    ...PLAN_DATE_GROUPS.filter((g) => g.title.startsWith("参考様式1-5号") || g.title.startsWith("参考様式1-6号")),
+    {
+      title: "その他の申請書類",
+      rows: [
+        { key: "apply", label: "申請予定日（入管）" },
+        { key: "sign", label: "署名日" },
+        { key: "doc", label: "書類作成日" },
+      ],
+    },
+  ];
+}
+
 // 算出結果 → 保存する日付一覧（未設定の項目は入れない）。
 // hideSupport=true（特定活動）のときは支援委託契約終了日・事前ガイダンス・生活オリエンを除く
 export function planDatesToMap(

@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   PLAN_DATE_FIELDS,
   PLAN_DATE_GROUPS,
+  planDateGroupsFor,
   addDaysYmd,
   addYearsYmd,
   computePlanDates,
@@ -103,5 +104,14 @@ describe("PLAN_DATE_GROUPS（申請準備の一覧表の枠）", () => {
     ]);
     // 雇用開始日・雇用契約期間・雇用終了日は1-6号の枠
     expect(PLAN_DATE_GROUPS[1].rows.map((r) => r.key)).toEqual(["cond", "es", "period", "eeEnd"]);
+  });
+});
+
+describe("planDateGroupsFor（特定活動の枠）", () => {
+  test("特定活動は 1-5号・1-6号・その他（申請予定日・署名日・書類作成日）だけ", () => {
+    const groups = planDateGroupsFor(true);
+    expect(groups.map((g) => g.title)).toEqual(["参考様式1-5号（雇用契約書）", "参考様式1-6号（雇用条件書）", "その他の申請書類"]);
+    expect(groups[2].rows.map((r) => r.key)).toEqual(["apply", "sign", "doc"]);
+    expect(planDateGroupsFor(false)).toBe(PLAN_DATE_GROUPS);
   });
 });

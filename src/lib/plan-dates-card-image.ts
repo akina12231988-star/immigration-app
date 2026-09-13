@@ -27,6 +27,7 @@ export function drawPlanDatesCard(
   title: string, // 外国人の氏名など（一番上に出す）
   sub: string, // 申請番号など
   orientation: CardOrientation = "landscape",
+  tokuteiKatsudo = false, // 特定活動（1-5号・1-6号・その他だけ）
 ): void {
   const mm = CARD_PX_PER_MM;
   const wMm = orientation === "landscape" ? CARD_WIDTH_MM : CARD_HEIGHT_MM;
@@ -67,7 +68,7 @@ export function drawPlanDatesCard(
   ctx.stroke();
   y += 1.2 * mm;
 
-  const [left, right] = planDatesCardColumns(dates);
+  const [left, right] = planDatesCardColumns(dates, tokuteiKatsudo);
   const gap = 2 * mm;
   const columns: { lines: CardLine[]; x: number; width: number }[] =
     orientation === "landscape"
@@ -158,9 +159,10 @@ export async function downloadPlanDatesCard(
   sub: string,
   fileName: string,
   orientation: CardOrientation = "landscape",
+  tokuteiKatsudo = false,
 ): Promise<void> {
   const canvas = document.createElement("canvas");
-  drawPlanDatesCard(canvas, dates, title, sub, orientation);
+  drawPlanDatesCard(canvas, dates, title, sub, orientation, tokuteiKatsudo);
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
   if (!blob) throw new Error("画像の作成に失敗しました");
   const url = URL.createObjectURL(blob);
