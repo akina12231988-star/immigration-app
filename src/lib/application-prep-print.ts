@@ -8,7 +8,7 @@
 // の形で並べる。値はすべて文字列にしてあるので、印刷前にその場で直せる。
 
 import { PREP_APP_TYPE_LABELS, prepDocLabel, type PrepChecklistMeta, type PrepDocStatus } from "@/lib/application-prep";
-import { PLAN_DATE_FIELDS } from "@/lib/support-plan-dates";
+import { PLAN_DATE_GROUPS, SUPPORT_CONTRACT_YEARS, contractPeriodEnd } from "@/lib/support-plan-dates";
 import { flexHoursLabel } from "@/lib/org-attachments";
 import { financialSalesText } from "@/lib/organization-intake";
 import { rosterJpDate } from "@/lib/roster";
@@ -20,6 +20,7 @@ export interface PrepPrintLine {
   key: string;
   label: string;
   value: string;
+  heading?: boolean; // 見出しの行（参考様式ごとの枠）。値は無く、訂正もできない
 }
 
 // 書類1件の印刷状態。完了はチェック（☑）を付け、対象外にするとその行は印刷しない
@@ -172,13 +173,21 @@ export function prepPrintWageLines(
   });
 }
 
-// 右側「日付計算結果」。保存済みの日付を支援計画書の項目の並びで出す
+// 右側「日付計算結果」。画面と同じく参考様式ごとの枠（見出し行）に分けて、保存済みの日付を出す。
+// 雇用契約期間（2年間）と支援委託契約の契約期間（5年間）は保存した日付から自動で出す
 export function prepPrintDateLines(dates: Record<string, string>): PrepPrintLine[] {
-  return PLAN_DATE_FIELDS.map((f) => ({
-    key: f.key,
-    label: f.label,
-    value: rosterJpDate(dates[f.key] ?? "") || (dates[f.key] ?? ""),
-  }));
+  const ymd = (v: string | undefined) => rosterJpDate(v ?? "") || (v ?? "");
+  const period = (start: string | undefined, years?: number) =>
+    start ? `${ymd(start)} から ${ymd(contractPeriodEnd(start, years))} まで` : "";
+  return PLAN_DATE_GROUPS.flatMap((g, gi) => [
+    { key: `group-${gi}`, label: g.title, value: "", heading: true },
+    ...g.rows.map((r) => ({
+      key: `${gi}-${r.key}`,
+      label: r.label,
+      value:
+        r.key === "period" ? period(dates.es) : r.key === "scPeriod" ? period(dates.con, SUPPORT_CONTRACT_YEARS) : ymd(dates[r.key]),
+    })),
+  ]);
 }
 
 // 印刷（PDF保存）したときのファイル名。「申請番号_氏名_申請準備の詳細」

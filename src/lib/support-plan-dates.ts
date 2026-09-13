@@ -153,6 +153,10 @@ export interface PlanDateGroup {
 }
 export const PLAN_DATE_GROUPS: PlanDateGroup[] = [
   {
+    title: "参考様式1-5号（雇用契約書）",
+    rows: [{ key: "con", label: "雇用契約日" }],
+  },
+  {
     title: "参考様式1-6号（雇用条件書）",
     rows: [
       { key: "cond", label: "雇用条件書の作成日" },
@@ -160,10 +164,6 @@ export const PLAN_DATE_GROUPS: PlanDateGroup[] = [
       { key: "period", label: `雇用契約期間（${CONTRACT_YEARS_LABEL}）` },
       { key: "eeEnd", label: "雇用終了日" },
     ],
-  },
-  {
-    title: "参考様式1-5号（雇用契約書）",
-    rows: [{ key: "con", label: "雇用契約日" }],
   },
   {
     title: "参考様式1-17号（支援計画書）",
