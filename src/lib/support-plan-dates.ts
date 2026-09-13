@@ -118,6 +118,12 @@ export function recommendedDocDate(applyDate: string | null, employStart: string
 // 保存する日付一覧の項目（キー → 表示名）。
 // 日付計算の「保存」でこの形の Record<string, string> にして support_plan_dates.dates に入れ、
 // 申請準備のTODO・日付計算のどちらからでも編集できる
+// 雇用契約は2年間（雇用契約期間の終了日は雇用開始日の2年後の前日）
+export const CONTRACT_YEARS = 2;
+const CONTRACT_YEARS_LABEL = `${CONTRACT_YEARS}年間契約`;
+// 支援委託契約は5年間（契約期間の終了日は支援委託契約日の5年後の前日）
+export const SUPPORT_CONTRACT_YEARS = 5;
+
 export const PLAN_DATE_FIELDS = [
   { key: "apply", label: "申請予定日（入管）" },
   { key: "cond", label: "雇用条件書の作成日（参考様式1-6号）" },
@@ -133,9 +139,58 @@ export const PLAN_DATE_FIELDS = [
 
 export type PlanDateKey = (typeof PLAN_DATE_FIELDS)[number]["key"];
 
+// 申請準備の「支援計画書の日付」一覧表の枠（参考様式ごと）。
+// 同じ日付を2つの枠に出すこともある（雇用契約日＝支援委託契約日）。
+// key "period" は雇用開始日から自動で出す雇用契約期間（2年間）、
+// key "scPeriod" は支援委託契約日から自動で出す支援委託契約の契約期間（5年間）
+export interface PlanDateGroupRow {
+  key: PlanDateKey | "period" | "scPeriod";
+  label: string;
+}
+export interface PlanDateGroup {
+  title: string;
+  rows: PlanDateGroupRow[];
+}
+export const PLAN_DATE_GROUPS: PlanDateGroup[] = [
+  {
+    title: "参考様式1-6号（雇用条件書）",
+    rows: [
+      { key: "cond", label: "雇用条件書の作成日" },
+      { key: "es", label: "雇用開始日" },
+      { key: "period", label: `雇用契約期間（${CONTRACT_YEARS_LABEL}）` },
+      { key: "eeEnd", label: "雇用終了日" },
+    ],
+  },
+  {
+    title: "参考様式1-5号（雇用契約書）",
+    rows: [{ key: "con", label: "雇用契約日" }],
+  },
+  {
+    title: "参考様式1-17号（支援計画書）",
+    rows: [
+      { key: "doc", label: "書類作成日（支援計画書）" },
+      { key: "guid", label: "事前ガイダンス実施日" },
+      { key: "orient", label: "生活オリエンテーション実施日" },
+    ],
+  },
+  {
+    title: "参考様式1-25号（支援委託契約書）",
+    rows: [
+      { key: "con", label: "支援委託契約日（雇用契約日と同日）" },
+      { key: "scPeriod", label: `契約期間（支援委託契約日から${SUPPORT_CONTRACT_YEARS}年間）` },
+    ],
+  },
+  {
+    title: "その他の申請書類",
+    rows: [
+      { key: "apply", label: "申請予定日（入管）" },
+      { key: "sign", label: "署名日" },
+    ],
+  },
+];
+
 // 雇用契約期間（申請書「所属機関等作成用 1」の (1)）。
 // 雇用開始日から2年間の契約なので、終了日は2年後の前日（例: 2026-11-29 → 2028-11-28）
-export const CONTRACT_YEARS = 2;
 export function contractPeriodEnd(employStart: string, years: number = CONTRACT_YEARS): string {
   return addDaysYmd(addYearsYmd(employStart, years), -1);
 }
