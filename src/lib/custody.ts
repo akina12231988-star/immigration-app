@@ -91,7 +91,7 @@ export function receiptTranslation(nationality: string): ReceiptTranslation | nu
 }
 
 // 預かり者・申請取次者（azk-receipt の固定表記）
-// 登録支援機関（当社）の情報。ここは既定値で、画面（申請準備 ＞ 申請書に貼る情報）で編集した内容は
+// 登録支援機関（当社）の情報。ここは既定値で、画面（メニューの「登録支援機関」、申請準備 ＞ 申請書に貼る情報）で編集した内容は
 // app_settings（key = CUSTODIAN_SETTING_KEY）に保存され、mergeCustodianInfo で上書きされる
 export const CUSTODIAN_INFO = {
   officeName: "VUONG VAN THANH",
@@ -111,6 +111,7 @@ export const CUSTODIAN_INFO = {
   supportOfficeName: "VUONG VAN THANH", // 支援を行う事業所の名称
   supportManagerName: "VUONG VAN THANH", // 支援責任者名
   supportStaffName: "VUONG VAN THANH", // 支援担当者名
+  languages: "", // 対応可能言語（空なら外国人の国籍から自動で出す）
 } as const;
 
 export type CustodianInfo = { [K in keyof typeof CUSTODIAN_INFO]: string };

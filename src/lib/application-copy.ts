@@ -428,7 +428,14 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
     { label: "5 (9)所在地", value: c.address, edit: cu("address") },
     { label: "5 (10)支援責任者名", value: c.supportManagerName, edit: cu("supportManagerName") },
     { label: "5 (11)支援担当者名", value: c.supportStaffName, edit: cu("supportStaffName") },
-    { label: "5 (12)対応可能言語", value: lang === "en" ? "" : RESUME_LANG_JA[lang], note: "国籍から" },
+    {
+      label: "5 (12)対応可能言語",
+      // 登録支援機関の情報に登録があればそれを使い、無ければ外国人の国籍から自動で出す
+      value: c.languages || (lang === "en" ? "" : RESUME_LANG_JA[lang]),
+      note: c.languages ? "登録支援機関の情報から（全員共通）" : "国籍から（変更すると全員共通の登録支援機関の情報に保存されます）",
+      edit: cu("languages"),
+      editValue: c.languages,
+    },
     {
       label: "5 (13)支援委託手数料（月額／人）",
       value: intake?.support_fee ?? "",

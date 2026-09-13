@@ -116,7 +116,7 @@ export const NAV_ENTRIES: NavEntry[] = [
       { href: "/referrals", label: "紹介手数料台帳", short: "紹介料", icon: Handshake },
     ],
   },
-  { href: "/employees", label: "支援体制（従業員）", short: "支援体制", icon: UserCheck },
+  { href: "/support-org", label: "登録支援機関（情報・支援体制）", short: "支援機関", icon: UserCheck },
   { href: "/updates", label: "更新のお知らせ", short: "更新情報", icon: Sparkles },
 ];
 
