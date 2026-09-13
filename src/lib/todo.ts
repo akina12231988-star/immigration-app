@@ -99,6 +99,13 @@ export function isCheckingStatus(status: string): boolean {
   return status.includes("チェック中");
 }
 
+// 申請準備のTODOが「必要な書類まち」（書類待ち）のステータスか。
+// このときは何の書類を待っているかを記入でき、TODO一覧・申請準備・A4印刷のメモに出す。
+// 選択肢名は画面から変更できるため「まち／待ち」の揺れを許容して部分一致で判定する
+export function isWaitingDocsStatus(status: string): boolean {
+  return status.includes("書類まち") || status.includes("書類待ち");
+}
+
 // 申請準備のTODOが「入管へ申請！！」（入管へ申請済み）のステータスか。
 // 申請一覧の「申請前＜入管提出！！＞」には、この状態になった人だけを表示する
 // （準備中の人は申請準備のTODOで管理する）。選択肢名は画面から変更できるため、

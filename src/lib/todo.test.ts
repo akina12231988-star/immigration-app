@@ -4,6 +4,7 @@ import {
   findExistingPrepTodo,
   isCheckingStatus,
   isImmigrationAppliedStatus,
+  isWaitingDocsStatus,
   nextTodoNo,
   normalizeTodoKey,
   stageOfStatus,
@@ -98,5 +99,14 @@ describe("findExistingPrepTodo", () => {
   test("どちらも当てはまらなければ null（新しく作る）", () => {
     expect(findExistingPrepTodo(rows, "w9", "TODO-3000")).toBeNull();
     expect(findExistingPrepTodo(rows, "w9", "")).toBeNull();
+  });
+});
+
+describe("isWaitingDocsStatus", () => {
+  test("「必要な書類まち」「書類待ち」は書類待ち、それ以外は違う", () => {
+    expect(isWaitingDocsStatus("必要な書類まち（AKINAチェック済み）")).toBe(true);
+    expect(isWaitingDocsStatus("書類待ち")).toBe(true);
+    expect(isWaitingDocsStatus("印鑑済み")).toBe(false);
+    expect(isWaitingDocsStatus("")).toBe(false);
   });
 });

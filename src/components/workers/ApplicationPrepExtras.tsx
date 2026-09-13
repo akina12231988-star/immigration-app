@@ -14,6 +14,7 @@ import {
   TODO_CHECK_KIND,
   TODO_STAGES,
   isCheckingStatus,
+  isWaitingDocsStatus,
   stageOfStatus,
   type TodoStatusOption,
 } from "@/lib/todo";
@@ -90,8 +91,15 @@ function TodoStatusSelects({
   kindOptions: TodoStatusOption[];
   checkOptions: TodoStatusOption[];
   canEdit: boolean;
-  onSave: (patch: Partial<Pick<TodoRow, "status" | "check_status">>) => void;
+  onSave: (patch: Partial<Pick<TodoRow, "status" | "check_status" | "waiting_note">>) => void;
 }) {
+  // 「必要な書類まち」のときに何の書類を待っているか（保存されている値と違うときだけ保存）
+  const [waitingNote, setWaitingNote] = useState(todo.waiting_note ?? "");
+  const [prevWaiting, setPrevWaiting] = useState(todo.waiting_note ?? "");
+  if ((todo.waiting_note ?? "") !== prevWaiting) {
+    setPrevWaiting(todo.waiting_note ?? "");
+    setWaitingNote(todo.waiting_note ?? "");
+  }
   return (
     <>
       <div className="mt-1.5 flex flex-wrap items-center gap-2">
@@ -121,6 +129,24 @@ function TodoStatusSelects({
           })}
         </select>
       </div>
+      {/* 「必要な書類まち」のときは、何の書類を待っているかを記入できる（TODO一覧・A4印刷のメモにも出る） */}
+      {isWaitingDocsStatus(todo.status) && (
+        <label className="mt-1.5 block">
+          <span className="text-[11px] font-bold text-status-notice-fg">
+            何の書類を待っていますか？（TODO一覧と A4 印刷のメモに出ます）
+          </span>
+          <input
+            value={waitingNote}
+            onChange={(e) => setWaitingNote(e.target.value)}
+            onBlur={() => {
+              if (waitingNote.trim() !== (todo.waiting_note ?? "")) onSave({ waiting_note: waitingNote.trim() });
+            }}
+            disabled={!canEdit}
+            placeholder="例: 課税証明書（本人が市役所で取得中）・雇用契約書の会社印"
+            className={`${INPUT} mt-0.5 w-full`}
+          />
+        </label>
+      )}
       {/* 経過が「〜チェック中」のときは確認ステータスも出す */}
       {isCheckingStatus(todo.status) && (
         <div className="mt-1.5 flex items-center gap-2">
@@ -199,7 +225,7 @@ export function PrepTodoStatusField({
   const [creating, setCreating] = useState(false);
   const [unifying, setUnifying] = useState<string | null>(null);
 
-  const saveFor = (t: TodoRow) => (patch: Partial<Pick<TodoRow, "status" | "check_status">>) => {
+  const saveFor = (t: TodoRow) => (patch: Partial<Pick<TodoRow, "status" | "check_status" | "waiting_note">>) => {
     updateTodo(createClient(), t.id, patch)
       .then(onChanged)
       .catch((err) => onError(dbErrorMessage(err, "0102_todos.sql", "ステータスの保存に失敗しました")));
@@ -1573,6 +1599,8 @@ export function PrepAssenSection({
     }
   };
 
+  // 求人への採用の流れは、準備している所属機関への応募だけを出す（過去の他の機関の応募は出さない）
+  const shownFlows = prepOrgId ? flows.filter((f) => f.organizationId === prepOrgId) : flows;
   // 採用になった応募（求職管理簿）。準備している所属機関と同じ機関での採用かを確かめる
   const hired = flows.filter((f) => f.result === "採用");
   const hiredAtPrepOrg = prepOrgId ? hired.find((f) => f.organizationId === prepOrgId) : undefined;
@@ -1664,9 +1692,11 @@ export function PrepAssenSection({
           <p className="mb-1 text-[11px] font-bold text-muted">
             求人への採用の一連の流れ（求職管理簿から）
           </p>
-          {flows.length === 0 ? (
+          {shownFlows.length === 0 ? (
             <p className="text-[11px] text-muted">
-              この外国人の応募（求職管理簿）が見つかりません。
+              {flows.length > 0
+                ? `準備している所属機関（${prepOrgName || "選択中の機関"}）への応募が求職管理簿にありません（他の機関への応募は ${flows.length} 件）。`
+                : "この外国人の応募（求職管理簿）が見つかりません。"}
               <Link href="/jobs" className="mx-1 font-bold text-brand hover:underline">
                 求職一覧
               </Link>
@@ -1674,7 +1704,7 @@ export function PrepAssenSection({
             </p>
           ) : (
             <div className="space-y-1">
-              {flows.map((f) => (
+              {shownFlows.map((f) => (
                 <p key={f.id} className="text-[11px] leading-relaxed">
                   <span className="font-bold">{f.orgName}</span>
                   {f.postingJobType && `（${f.postingJobType}）`}

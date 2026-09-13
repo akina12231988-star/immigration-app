@@ -51,6 +51,7 @@ import {
   TODO_STAGES,
   displayTodoNo,
   isCheckingStatus,
+  isWaitingDocsStatus,
   normalizeTodoKey,
   stageOfStatus,
   type TodoKind,
@@ -105,6 +106,7 @@ export interface MailingSummary {
 export interface JobFlowRow {
   id: string;
   worker_id: string;
+  organizationId: string | null; // 応募先の所属機関ID（準備中の所属機関の応募だけを出すのに使う）
   applied_on: string; // 求職申込日
   interview_on: string | null; // 面接日
   result_on: string | null; // 採用日（result が採用のとき）
@@ -149,6 +151,8 @@ export function TodosClient({
   const [agents, setAgents] = useState<string[]>([]);
   // TODOの行に出す所属機関名（外国人ID → 申請準備の所属機関名。無ければ現在の所属機関名）
   const [orgNameByWorker, setOrgNameByWorker] = useState<Record<string, string>>({});
+  // 申請準備の所属機関ID（外国人ID → 転職先。無ければ現在の所属機関）。あっせんの流れをこの機関の分だけに絞る
+  const [prepOrgIdByWorker, setPrepOrgIdByWorker] = useState<Record<string, string>>({});
   // 書類担当者（申請準備の担当者。キーは `${worker_id} ${todo_no}`）
   const [prepTantou, setPrepTantou] = useState<Record<string, string>>({});
   // 書類担当者での絞り込み（'' = すべて。NO_TANTOU = まだ決まっていないものだけ）
@@ -279,7 +283,7 @@ export function TodosClient({
           void supabase
             .from("job_applications")
             .select(
-              "id, worker_id, applied_on, interview_on, result_on, result, organizations(name), job_postings(received_on, job_type)",
+              "id, worker_id, organization_id, applied_on, interview_on, result_on, result, organizations(name), job_postings(received_on, job_type)",
             )
             .in("worker_id", workerIds)
             .order("applied_on", { ascending: false })
@@ -288,6 +292,7 @@ export function TodosClient({
                 (data as unknown as {
                   id: string;
                   worker_id: string;
+                  organization_id: string | null;
                   applied_on: string;
                   interview_on: string | null;
                   result_on: string | null;
@@ -299,6 +304,7 @@ export function TodosClient({
                 rows.map((r) => ({
                   id: r.id,
                   worker_id: r.worker_id,
+                  organizationId: r.organization_id,
                   applied_on: r.applied_on,
                   interview_on: r.interview_on,
                   result_on: r.result_on,
@@ -325,6 +331,7 @@ export function TodosClient({
               (((o.data as { id: string; name: string }[] | null) ?? [])).map((r) => [r.id, r.name]),
             );
             const out: Record<string, string> = {};
+            const orgIds: Record<string, string> = {};
             const expiry: Record<string, string> = {};
             const nationality: Record<string, string> = {};
             const kana: Record<string, string> = {};
@@ -340,15 +347,16 @@ export function TodosClient({
                   messenger_link: string | null;
                 }[]
               | null) ?? []) {
-              out[r.id] =
-                orgMap.get(r.application_prep_organization_id ?? r.current_organization_id ?? "") ??
-                "";
+              const prepOrgId = r.application_prep_organization_id ?? r.current_organization_id ?? "";
+              out[r.id] = orgMap.get(prepOrgId) ?? "";
+              if (prepOrgId) orgIds[r.id] = prepOrgId;
               if (r.residence_expiry_date) expiry[r.id] = r.residence_expiry_date;
               if (r.nationality) nationality[r.id] = r.nationality;
               if (r.kana) kana[r.id] = r.kana;
               if (r.messenger_link) messenger[r.id] = r.messenger_link;
             }
             setOrgNameByWorker(out);
+            setPrepOrgIdByWorker(orgIds);
             setExpiryByWorker(expiry);
             setNationalityByWorker(nationality);
             setKanaByWorker(kana);
@@ -611,7 +619,12 @@ export function TodosClient({
                       prepHref={
                         t.kind === "申請準備" && t.worker_id ? prepDetailHref(t.worker_id) : undefined
                       }
-                      jobFlows={jobFlows.filter((f) => f.worker_id === t.worker_id)}
+                      jobFlows={jobFlows.filter(
+                        (f) =>
+                          f.worker_id === t.worker_id &&
+                          // 準備中の所属機関が分かるときは、その機関への応募だけ（過去の他の機関の分は出さない）
+                          (!t.worker_id || !prepOrgIdByWorker[t.worker_id] || f.organizationId === prepOrgIdByWorker[t.worker_id]),
+                      )}
                       mailings={mailings.filter(
                         (m) => m.todoKey && m.todoKey === normalizeTodoKey(t.todo_no),
                       )}
@@ -1493,6 +1506,7 @@ function TodoItem({
         | "check_status"
         | "assen"
         | "assen_note"
+        | "waiting_note"
         | "agent_name"
         | "self_apply"
         | "exam"
@@ -1504,6 +1518,13 @@ function TodoItem({
   const [no, setNo] = useState(todo.todo_no);
   const [title, setTitle] = useState(todo.title);
   const [assenNote, setAssenNote] = useState(todo.assen_note ?? "");
+  // 「必要な書類まち」のときに何の書類を待っているか
+  const [waitingNote, setWaitingNote] = useState(todo.waiting_note ?? "");
+  const [prevWaitingNote, setPrevWaitingNote] = useState(todo.waiting_note ?? "");
+  if ((todo.waiting_note ?? "") !== prevWaitingNote) {
+    setPrevWaitingNote(todo.waiting_note ?? "");
+    setWaitingNote(todo.waiting_note ?? "");
+  }
 
   const selectFor = (
     value: string,
@@ -1590,6 +1611,12 @@ function TodoItem({
               {/* 在留期限（太字）と、残り2ヶ月を切ったときのアラート */}
               {todo.kind === "申請準備" && (
                 <ResidenceExpiryBadge expiry={residenceExpiry} />
+              )}
+              {/* 書類待ちの内容を名前のそばに出し、一目で何を待っているか分かるようにする */}
+              {todo.kind === "申請準備" && isWaitingDocsStatus(todo.status) && (todo.waiting_note ?? "").trim() && (
+                <span className="rounded-full bg-status-notice-bg px-2 py-0.5 text-[11px] font-bold text-status-notice-fg">
+                  書類待ち: {todo.waiting_note}
+                </span>
               )}
               {/* 必要書類が何%揃ったか */}
               {todo.kind === "申請準備" && <PrepProgressBadge progress={progress} />}
@@ -1699,6 +1726,22 @@ function TodoItem({
           (v) => onChange({ status: v }),
         )}
       </div>
+      {/* 「必要な書類まち」のときは、何の書類を待っているかを記入できる（申請準備の詳細・A4印刷のメモにも出る） */}
+      {todo.kind === "申請準備" && isWaitingDocsStatus(todo.status) && (
+        <label className="mt-2 flex flex-wrap items-center gap-2 text-[11px] font-bold text-status-notice-fg">
+          何の書類待ち？
+          <input
+            value={waitingNote}
+            onChange={(e) => setWaitingNote(e.target.value)}
+            onBlur={() => {
+              if (waitingNote.trim() !== (todo.waiting_note ?? "")) onChange({ waiting_note: waitingNote.trim() });
+            }}
+            disabled={!canEdit}
+            placeholder="例: 課税証明書（本人が市役所で取得中）"
+            className={`${INPUT} min-w-[14rem] flex-1 font-normal text-foreground`}
+          />
+        </label>
+      )}
       {/* 経過が「〜チェック中」のときは確認ステータスも出す */}
       {isCheckingStatus(todo.status) && (
         <div className="mt-2 flex items-center gap-2">

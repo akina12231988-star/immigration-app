@@ -33,6 +33,7 @@ export function PrepDetailSheet({
   docRows,
   wageLines,
   dateLines,
+  memoDefault = "",
   hasList,
 }: {
   workerId: string;
@@ -46,6 +47,7 @@ export function PrepDetailSheet({
   docRows: PrepPrintDocRow[];
   wageLines: PrepPrintLine[];
   dateLines: PrepPrintLine[];
+  memoDefault?: string; // メモの初期値（申請準備のTODOが「必要な書類まち」なら、待っている書類の内容）
   hasList: boolean;
 }) {
   const [head, setHead] = useState({ todoNo, appType, tantou });
@@ -55,7 +57,7 @@ export function PrepDetailSheet({
   const [wages, setWages] = useState(wageLines);
   const [dates, setDates] = useState(dateLines);
   // 左下の空きに出すメモ（印刷前に書ける。空なら手書き用の罫線だけを印刷する）
-  const [memo, setMemo] = useState("");
+  const [memo, setMemo] = useState(memoDefault);
 
   const editLine =
     (setter: React.Dispatch<React.SetStateAction<PrepPrintLine[]>>) =>
@@ -69,7 +71,7 @@ export function PrepDetailSheet({
     setDocs(docRows);
     setWages(wageLines);
     setDates(dateLines);
-    setMemo("");
+    setMemo(memoDefault);
   };
 
   // 印刷（PDF保存）のとき、保存されるファイル名を「申請番号_氏名_申請準備の詳細」にする
