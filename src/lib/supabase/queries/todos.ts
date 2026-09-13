@@ -21,6 +21,7 @@ export interface TodoRow {
   check_status: string; // 経過が「〜チェック中」のときの確認ステータス
   assen: string; // あっせんの有無（'' / あり / なし。申請準備のTODOで使う・0103）
   assen_note: string; // あっせん無しの場合の申請書類作成の経緯
+  waiting_note: string; // 「必要な書類まち」のときに待っている書類の内容（0154）
   agent_name: string; // 申請取次士（申請準備のTODOで使う・0106）
   self_apply: boolean; // 本人申請でするか（0106）
   deleted_at: string | null; // 削除フォルダに入れた日時（null = 通常。30日で完全削除・0108）
@@ -46,6 +47,7 @@ export async function listTodos(supabase: SupabaseClient): Promise<TodoRow[]> {
     worker_name: r.workers?.name ?? null,
     assen: r.assen ?? "",
     assen_note: r.assen_note ?? "",
+    waiting_note: r.waiting_note ?? "",
     agent_name: r.agent_name ?? "",
     self_apply: r.self_apply ?? false,
     deleted_at: r.deleted_at ?? null,
@@ -157,6 +159,7 @@ export async function updateTodo(
       | "check_status"
       | "assen"
       | "assen_note"
+      | "waiting_note"
       | "agent_name"
       | "self_apply"
       | "exam"

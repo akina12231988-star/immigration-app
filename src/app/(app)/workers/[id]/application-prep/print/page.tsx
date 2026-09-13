@@ -16,7 +16,8 @@ import {
   prepPrintWageLines,
   prepPrintWorkerLines,
 } from "@/lib/application-prep-print";
-import { normalizeTodoKey } from "@/lib/todo";
+import { isWaitingDocsStatus, normalizeTodoKey } from "@/lib/todo";
+import type { TodoRow } from "@/lib/supabase/queries/todos";
 import { reiwaYear } from "@/lib/onboarding";
 import { todayStr } from "@/lib/ssw/calc";
 import type { Organization, Worker } from "@/types/db";
@@ -109,6 +110,23 @@ export default async function ApplicationPrepPrintPage({
   const intake = normalizeOrganizationIntake(org?.intake);
   const savedDates = findPlanDatesForTodo(planDateRows, current?.todo_no ?? "");
 
+  // 申請準備のTODOが「必要な書類まち」なら、待っている書類の内容をメモの初期値にする
+  const { data: todoRows } = await supabase
+    .from("todos")
+    .select("todo_no, status, waiting_note, deleted_at")
+    .eq("worker_id", id)
+    .eq("kind", "申請準備")
+    .order("created_at", { ascending: false });
+  const todos = ((todoRows as Pick<TodoRow, "todo_no" | "status" | "waiting_note" | "deleted_at">[] | null) ?? []).filter(
+    (t) => !t.deleted_at,
+  );
+  const todoKey = normalizeTodoKey(current?.todo_no ?? "");
+  const prepTodo = (todoKey ? todos.find((t) => normalizeTodoKey(t.todo_no) === todoKey) : undefined) ?? todos[0];
+  const memoDefault =
+    prepTodo && isWaitingDocsStatus(prepTodo.status) && (prepTodo.waiting_note ?? "").trim()
+      ? `書類待ち: ${prepTodo.waiting_note.trim()}`
+      : "";
+
   return (
     <PrepDetailSheet
       workerId={id}
@@ -147,6 +165,7 @@ export default async function ApplicationPrepPrintPage({
       docRows={prepPrintDocRows(items, statusValues, meta.target_reiwa, reiwaYear(todayStr()))}
       wageLines={prepPrintWageLines(wages, wageOrgNames)}
       dateLines={prepPrintDateLines(savedDates?.dates ?? {})}
+      memoDefault={memoDefault}
       hasList={current != null}
     />
   );
