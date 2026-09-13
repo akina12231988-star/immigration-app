@@ -13,7 +13,12 @@ export interface SupportOrgField {
 export interface SupportOrgFieldGroup {
   title: string;
   fields: SupportOrgField[];
+  hasInterpreters?: boolean; // 対応可能言語の下に通訳者の一覧を出す
+  hasListingImage?: boolean; // 人材サービス総合サイトの掲載画面の画像を出す
 }
+
+// 登録支援機関の添付ファイルの種類（support_org_files.kind）
+export const SUPPORT_ORG_LISTING_FILE_KIND = "人材サービス総合サイト";
 
 export const SUPPORT_ORG_FIELD_GROUPS: SupportOrgFieldGroup[] = [
   {
@@ -27,10 +32,12 @@ export const SUPPORT_ORG_FIELD_GROUPS: SupportOrgFieldGroup[] = [
       { key: "representativeName", label: "5 (5) 代表者の氏名" },
       { key: "registrationNo", label: "5 (6) 登録番号" },
       { key: "registeredOn", label: "5 (7) 登録年月日", kind: "date" },
+      { key: "invoiceRegistrationNo", label: "適格請求書発行事業者（インボイス）登録番号", hint: "領収書に印字します" },
     ],
   },
   {
     title: "支援を行う事業所",
+    hasInterpreters: true,
     fields: [
       { key: "supportOfficeName", label: "5 (8) 支援を行う事業所の名称" },
       { key: "address", label: "5 (9) 所在地" },
@@ -39,17 +46,25 @@ export const SUPPORT_ORG_FIELD_GROUPS: SupportOrgFieldGroup[] = [
       {
         key: "languages",
         label: "5 (12) 対応可能言語",
-        hint: "空のままだと、申請準備では外国人の国籍から自動で出します（例: ベトナム語）。複数あるときは「ベトナム語・英語」のように書きます",
+        hint: "空のままだと、申請準備では外国人の国籍から自動で出します（例: ベトナム語）。複数あるときは「ベトナム語、英語」のように書きます。言語ごとの通訳者はこの下に登録します",
       },
     ],
   },
   {
-    title: "申請取次者・インボイス",
+    title: "職業紹介事業者（国内）",
+    hasListingImage: true,
     fields: [
-      { key: "agentName", label: "申請取次者の氏名" },
-      { key: "agentCertNo", label: "届出済証明書の番号" },
-      { key: "agentCertExpiry", label: "届出済証明書の有効期限", kind: "date" },
-      { key: "invoiceRegistrationNo", label: "適格請求書発行事業者（インボイス）登録番号" },
+      { key: "placementLicenseNo", label: "許可・届出受理番号", hint: "例: 43-ユ-300259" },
+      { key: "placementLicensedOn", label: "受理年月日", kind: "date" },
+      { key: "placementKind", label: "職業紹介事業者の区分", hint: "有料職業紹介事業者 / 無料職業紹介事業者" },
+      { key: "placementName", label: "職業紹介事業者の氏名" },
+      { key: "placementPostal", label: "郵便番号", hint: "例: 861-8045" },
+      { key: "placementAddress", label: "住所" },
+      { key: "placementTel", label: "電話番号" },
     ],
   },
 ];
+
+// 申請取次者（複数可）は一覧で登録する。ここは1人分の欄の見出し
+export const SUPPORT_ORG_AGENT_GROUP_TITLE = "申請取次者";
+export const SUPPORT_ORG_INTERPRETER_TITLE = "通訳者（対応可能言語ごと）";

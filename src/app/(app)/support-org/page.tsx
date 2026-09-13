@@ -7,7 +7,7 @@ import { listEmployees } from "@/lib/supabase/queries/employees";
 import { listOrganizations } from "@/lib/supabase/queries/organizations";
 import { listWorkersForSupport } from "@/lib/supabase/queries/workers";
 import { todayStr } from "@/lib/application-alerts";
-import { CUSTODIAN_SETTING_KEY, mergeCustodianInfo, type CustodianInfo } from "@/lib/custody";
+import { CUSTODIAN_SETTING_KEY, mergeCustodianInfo, mergeSupportOrgLists } from "@/lib/custody";
 import { EmployeesClient } from "../employees/EmployeesClient";
 import { SupportOrgInfoForm } from "./SupportOrgInfoForm";
 
@@ -23,7 +23,7 @@ export default async function SupportOrgPage() {
 
   const supabase = await createClient();
   const [custodian, employees, organizations, workers] = await Promise.all([
-    getAppSetting<CustodianInfo>(supabase, CUSTODIAN_SETTING_KEY).catch(() => null),
+    getAppSetting<Record<string, unknown>>(supabase, CUSTODIAN_SETTING_KEY).catch(() => null),
     listEmployees(supabase),
     listOrganizations(supabase),
     listWorkersForSupport(supabase),
@@ -33,7 +33,11 @@ export default async function SupportOrgPage() {
     <>
       <AppHeader title="登録支援機関" backHref="/" />
       <div className="flex flex-col gap-4">
-        <SupportOrgInfoForm initial={mergeCustodianInfo(custodian)} canEdit />
+        <SupportOrgInfoForm
+          initial={mergeCustodianInfo(custodian)}
+          initialLists={mergeSupportOrgLists(custodian)}
+          canEdit
+        />
         <h2 className="text-sm font-bold">支援体制（従業員）</h2>
         <EmployeesClient
           employees={employees}
