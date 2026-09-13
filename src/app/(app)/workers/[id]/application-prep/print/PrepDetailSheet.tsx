@@ -286,25 +286,29 @@ export function PrepDetailSheet({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            {/* 左: 所属機関の情報・外国人の情報 */}
-            <div className="space-y-2">
+          {/* 左右2列。左の列は右の列と同じ高さになり、余った分をメモが埋める（A4縦1枚に収める） */}
+          <div className="grid grid-cols-2 items-stretch gap-3">
+            {/* 左: 所属機関の情報・外国人の情報・メモ */}
+            <div className="flex flex-col gap-2">
               <SheetBlock title="所属機関の情報">
                 <LineTable lines={org} />
               </SheetBlock>
               <SheetBlock title="外国人の情報">
                 <LineTable lines={person} />
               </SheetBlock>
-              {/* メモ。書いた内容を出し、空のときは手書きできるよう罫線だけを引く */}
-              <SheetBlock title="メモ">
+              {/* メモ。左の列の余った高さをそのまま使う（高さを固定すると1ページに収まらず2ページ目に押し出されるため）。
+                  書いた内容を出し、空のときは手書きできるよう罫線だけを引く */}
+              <SheetBlock title="メモ" className="flex min-h-0 flex-1 flex-col" bodyClassName="flex-1">
                 {memo.trim() ? (
-                  <p className="min-h-[24em] whitespace-pre-wrap px-1 py-0.5 leading-relaxed">{memo}</p>
+                  <p className="whitespace-pre-wrap px-1 py-0.5 leading-relaxed">{memo}</p>
                 ) : (
-                  <div className="min-h-[24em]">
-                    {Array.from({ length: 12 }, (_, i) => (
-                      <div key={i} className="h-[2em] border-b border-dotted border-black/60" />
-                    ))}
-                  </div>
+                  <div
+                    className="h-full min-h-[6em]"
+                    style={{
+                      backgroundImage:
+                        "repeating-linear-gradient(to bottom, transparent 0, transparent calc(2em - 1px), rgba(0,0,0,0.5) calc(2em - 1px), rgba(0,0,0,0.5) 2em)",
+                    }}
+                  />
                 )}
               </SheetBlock>
             </div>
@@ -346,14 +350,24 @@ export function PrepDetailSheet({
 }
 
 // 印刷する枠（見出し付き）
-function SheetBlock({ title, children }: { title: string; children: React.ReactNode }) {
+function SheetBlock({
+  title,
+  children,
+  className = "",
+  bodyClassName = "",
+}: {
+  title: string;
+  children: React.ReactNode;
+  className?: string;
+  bodyClassName?: string;
+}) {
   return (
-    <div className="break-inside-avoid border border-black">
+    <div className={`break-inside-avoid border border-black ${className}`}>
       <p className="border-b border-black bg-black/5 px-1.5 py-0.5 text-[9.5pt] font-bold">
         {title}
       </p>
       {/* 中身が無いときも枠を少し空けて、紙の上で書き足せるようにする */}
-      <div className="min-h-[3em] p-1">{children}</div>
+      <div className={`min-h-[3em] p-1 ${bodyClassName}`}>{children}</div>
     </div>
   );
 }
