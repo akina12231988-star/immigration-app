@@ -42,6 +42,12 @@ import {
   weeklyHoursText,
 } from "@/lib/organization-intake";
 import { orgYearlyFileGroups, orgYearlyKind } from "@/lib/org-yearly-files";
+import {
+  ORG_FILE_KIND_AGRI_NOTICE,
+  ORG_FILE_KIND_LABOR_AGREEMENT,
+  ORG_FILE_KIND_YEAR_CALENDAR,
+  isAgricultureIndustry,
+} from "@/lib/org-attachments";
 import { SUPPORT_CONTRACT_STATUSES } from "@/types/db";
 import type {
   OrgCouncilSubmission,
@@ -548,6 +554,23 @@ export function OrganizationFormBody({
             </select>
           </label>
         ))}
+      {/* 農業の会社は「農業特定技能加入通知書」を添付する（申請準備でも表示・印刷できる） */}
+      {isAgricultureIndustry(form.industry) && (
+        <div className="flex flex-col gap-1 sm:col-span-2">
+          <span className="text-xs font-bold text-muted">{ORG_FILE_KIND_AGRI_NOTICE}</span>
+          {orgId ? (
+            <OrgFileAttachments
+              orgId={orgId}
+              kind={ORG_FILE_KIND_AGRI_NOTICE}
+              addLabel={`${ORG_FILE_KIND_AGRI_NOTICE}を追加（画像・PDF）`}
+            />
+          ) : (
+            <p className={HINT_CLASS}>
+              {ORG_FILE_KIND_AGRI_NOTICE}は、会社・機関を登録したあとに編集画面から添付できます。
+            </p>
+          )}
+        </div>
+      )}
       <div className="sm:col-span-2">
         {locks.top("address") ? (
           <StaticValue label="所在地" value={form.address} />
@@ -1281,12 +1304,12 @@ function IntakeSection({
               <>
                 <OrgFileAttachments
                   orgId={orgId}
-                  kind="年間カレンダー"
+                  kind={ORG_FILE_KIND_YEAR_CALENDAR}
                   addLabel="年間カレンダーを追加（画像・PDF）"
                 />
                 <OrgFileAttachments
                   orgId={orgId}
-                  kind="労使協定書"
+                  kind={ORG_FILE_KIND_LABOR_AGREEMENT}
                   addLabel="労使協定書を追加（画像・PDF）"
                 />
               </>

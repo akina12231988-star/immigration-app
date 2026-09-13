@@ -126,6 +126,7 @@ export default async function ApplicationPrepPrintPage({
         councilOffice: intake.council_office_submissions,
         councilResidence: intake.council_residence_submissions,
         councilNote: intake.council_note,
+        flexHoursKind: intake.flex_hours_kind,
         fiscalKind: intake.fiscal_kind,
         financials: intake.financials,
       })}
