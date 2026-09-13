@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Printer, RotateCcw } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
-import type { CustodianInfo, SupportOrgInterpreter } from "@/lib/custody";
+import type { CustodianInfo } from "@/lib/custody";
 import { rosterJpDate } from "@/lib/roster";
 import { supportSystemPrintFileName, type PrintPerson, type SupportSystemPrintPeople } from "@/lib/support-system-print";
 
@@ -15,12 +15,11 @@ export interface ListingImage {
   uploadedOn: string;
 }
 
-// 「支援業務を行う体制についての説明」（A4縦）。
+// 「支援業務を行う体制についての説明」（A4縦）。説明文・登録支援機関名・支援責任者・支援担当者一覧を載せる。
 // 印刷する前に、載せる支援責任者・支援担当者をチェックで選び、説明文もその場で直せる
 // （直した内容はこの印刷にだけ使う。文章そのものを直すときは登録支援機関の画面で編集する）。
 export function SupportSystemPrintSheet({
   info,
-  interpreters,
   people,
   orgId,
   orgName,
@@ -28,7 +27,6 @@ export function SupportSystemPrintSheet({
   printedOn,
 }: {
   info: CustodianInfo;
-  interpreters: SupportOrgInterpreter[];
   people: SupportSystemPrintPeople;
   orgId: string;
   orgName: string;
@@ -38,7 +36,6 @@ export function SupportSystemPrintSheet({
   const [note, setNote] = useState(info.supportSystemNote);
   const [managers, setManagers] = useState(people.managers);
   const [staff, setStaff] = useState(people.staff);
-  const [withPlacement, setWithPlacement] = useState(true);
   const [withListing, setWithListing] = useState(listingImages.some((f) => f.isImage && f.url));
 
   const reset = () => {
@@ -101,7 +98,7 @@ export function SupportSystemPrintSheet({
           <p className="text-xs leading-relaxed text-muted">
             下の内容がA4縦で印刷されます。載せる支援責任者・支援担当者はチェックで選べます
             {orgName && `（${orgName} に選任されている人を最初から選んでいます）`}。
-            文章はここで直すとこの印刷にだけ使われます。文章そのものや職業紹介事業者の情報を直すときは「登録支援機関」の画面で編集してください。
+            文章はここで直すとこの印刷にだけ使われます。文章そのものを直すときは「登録支援機関」の画面で編集してください。
           </p>
           <div className="rounded-xl border border-border bg-surface p-3">
             <p className="mb-2 text-xs font-bold text-muted">印刷前の確認・選択</p>
@@ -115,10 +112,6 @@ export function SupportSystemPrintSheet({
                     rows={5}
                     className="rounded-lg border border-border bg-background px-2 py-1.5 text-xs leading-relaxed"
                   />
-                </label>
-                <label className="flex items-center gap-2 text-xs">
-                  <input type="checkbox" checked={withPlacement} onChange={(e) => setWithPlacement(e.target.checked)} className="h-4 w-4" />
-                  職業紹介事業者（国内）の情報を載せる
                 </label>
                 <label className="flex items-center gap-2 text-xs">
                   <input
@@ -203,43 +196,6 @@ export function SupportSystemPrintSheet({
               {selectedStaff.length === 0 && <li className="text-[9.5pt]">（未選択）</li>}
             </ul>
           </div>
-
-          {(info.languages || interpreters.length > 0) && (
-            <div className="mb-4">
-              <p className="mb-1 font-bold">＜対応可能言語・通訳者＞</p>
-              {info.languages && <p className="ml-6">対応可能言語: {info.languages}</p>}
-              <ul className="ml-6 list-none space-y-0.5">
-                {interpreters.map((r, i) => (
-                  <li key={i}>
-                    {r.language}: {r.name}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {withPlacement && (
-            <div className="mb-4">
-              <p className="mb-1 font-bold">＜職業紹介事業者（国内）＞</p>
-              <table className="w-full border-collapse text-[10pt]">
-                <tbody>
-                  {[
-                    ["許可・届出受理番号", info.placementLicenseNo],
-                    ["受理年月日", rosterJpDate(info.placementLicensedOn)],
-                    ["職業紹介事業者の区分", info.placementKind],
-                    ["職業紹介事業者の氏名", info.placementName],
-                    ["住所", `${info.placementPostal ? `〒${info.placementPostal}　` : ""}${info.placementAddress}`],
-                    ["電話番号", info.placementTel],
-                  ].map(([k, v]) => (
-                    <tr key={k}>
-                      <th className="w-[38%] border border-black px-2 py-1 text-left font-normal">{k}</th>
-                      <td className="border border-black px-2 py-1 font-bold">{v}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
 
           <p className="mt-8 text-right text-[10pt]">{rosterJpDate(printedOn)}</p>
         </section>

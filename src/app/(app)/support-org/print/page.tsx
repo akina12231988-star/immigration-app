@@ -6,7 +6,7 @@ import { getAppSetting } from "@/lib/supabase/queries/app-settings";
 import { listEmployees } from "@/lib/supabase/queries/employees";
 import { getOrganization } from "@/lib/supabase/queries/organizations";
 import { todayStr } from "@/lib/application-alerts";
-import { CUSTODIAN_SETTING_KEY, mergeCustodianInfo, mergeSupportOrgLists } from "@/lib/custody";
+import { CUSTODIAN_SETTING_KEY, mergeCustodianInfo } from "@/lib/custody";
 import { SUPPORT_ORG_LISTING_FILE_KIND } from "@/lib/support-org-info";
 import { supportSystemPrintPeople } from "@/lib/support-system-print";
 import { SupportSystemPrintSheet, type ListingImage } from "./SupportSystemPrintSheet";
@@ -19,7 +19,7 @@ const TTL = 60 * 60;
 // 「支援業務を行う体制についての説明」をA4縦で印刷するページ。
 // 登録支援機関の画面と申請準備の「支援体制を印刷（A4）」から開く。
 //   ?org=所属機関ID … その機関の支援責任者・支援担当者だけを最初から選んだ状態にし、機関名も出す
-// 説明文・登録支援機関名・支援責任者・支援担当者一覧・対応可能言語と通訳者・職業紹介事業者（国内）の情報に加えて、
+// 説明文・登録支援機関名・支援責任者・支援担当者一覧に加えて、
 // 人材サービス総合サイトの掲載画面（最新版の画像）を別ページで印刷する
 export default async function SupportSystemPrintPage({
   searchParams,
@@ -37,7 +37,6 @@ export default async function SupportSystemPrintPage({
     orgId ? getOrganization(supabase, orgId).catch(() => null) : Promise.resolve(null),
   ]);
   const info = mergeCustodianInfo(setting);
-  const lists = mergeSupportOrgLists(setting);
   const people = supportSystemPrintPeople(employees, todayStr(), org?.intake ?? null);
 
   // 人材サービス総合サイトの掲載画面（最新版 = いちばん新しいアップロード日の分）の画像に署名付きURLを付ける
@@ -69,7 +68,6 @@ export default async function SupportSystemPrintPage({
   return (
     <SupportSystemPrintSheet
       info={info}
-      interpreters={lists.interpreters}
       people={people}
       orgId={org?.id ?? ""}
       orgName={org?.name ?? ""}
