@@ -16,6 +16,7 @@ describe("planDatesCardColumns", () => {
   });
 
   it("ファイル名は氏名と申請番号付き", () => {
-    expect(planDatesCardFileName("NGUYEN VAN A", "TODO-2007")).toBe("NGUYEN VAN A_TODO-2007_支援計画書の日付.png");
+    expect(planDatesCardFileName("NGUYEN VAN A", "TODO-2007")).toBe("NGUYEN VAN A_TODO-2007_支援計画書の日付（横）.png");
+    expect(planDatesCardFileName("NGUYEN VAN A", "TODO-2007", "portrait")).toBe("NGUYEN VAN A_TODO-2007_支援計画書の日付（縦）.png");
   });
 });
