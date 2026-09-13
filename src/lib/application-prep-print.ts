@@ -13,6 +13,7 @@ import { flexHoursLabel } from "@/lib/org-attachments";
 import { financialSalesText } from "@/lib/organization-intake";
 import { rosterJpDate } from "@/lib/roster";
 import { sortWages, wageStartedOnLabel } from "@/lib/wage";
+import { calcWageDetail, formatYen, hasWageDetail, normalizeWageDetail } from "@/lib/wage-calc";
 import type { OrgCouncilSubmission, OrgFinancialYear, WorkerWage } from "@/types/db";
 
 // 印刷する1行（ラベルと値）。値が空のときは印刷側で「未登録」を出す
@@ -150,12 +151,17 @@ export function prepPrintDocRows(
   }));
 }
 
-// 右側「採用時の賃金情報」。賃金の記録を新しい順（申請時の賃金＝雇用開始日からが先頭）に行にする
+// 右側「採用時の賃金情報」。賃金の記録を新しい順（申請時の賃金＝雇用開始日からが先頭）に行にする。
+// 現在の賃金に1-6号別紙の内容が入っていれば、その下に月額換算・所得税・社会保険料・雇用保険料・
+// 居住費（食費・水道光熱費があればそれも）・手取り概算を続けて出す。
+// orgHours は時給→月給の換算に使う所属機関ごとの年間所定労働時間
 export function prepPrintWageLines(
   wages: WorkerWage[],
   orgNames: Record<string, string> = {},
+  orgHours: Record<string, number> = {},
 ): PrepPrintLine[] {
-  return sortWages(wages).map((w, i) => {
+  const yen = (n: number) => `${formatYen(n)}円`;
+  return sortWages(wages).flatMap((w, i) => {
     const orgName = w.organization_id ? (orgNames[w.organization_id] ?? "") : "";
     const detail = [
       `${wageStartedOnLabel(w)}〜`,
@@ -165,11 +171,42 @@ export function prepPrintWageLines(
     ]
       .filter(Boolean)
       .join("・");
-    return {
-      key: w.id,
-      label: `${w.kind}${i === 0 ? "（現在）" : ""}`,
-      value: `${w.amount.toLocaleString("ja-JP")}円（${detail}）`,
-    };
+    const lines: PrepPrintLine[] = [
+      {
+        key: w.id,
+        label: `${w.kind}${i === 0 ? "（現在）" : ""}`,
+        value: `${w.amount.toLocaleString("ja-JP")}円（${detail}）`,
+      },
+    ];
+    // 1-6号別紙の内訳は現在の賃金だけ（A4縦1枚に収めるため）
+    if (i !== 0 || !hasWageDetail(w.detail)) return lines;
+    const d = normalizeWageDetail(w.detail);
+    const r = calcWageDetail(w, d, w.organization_id ? (orgHours[w.organization_id] ?? 0) : 0);
+    const conversion =
+      w.kind === "時給" && r.annualHours > 0
+        ? `（時給${w.amount.toLocaleString("ja-JP")}円 × 年間${r.annualHours.toLocaleString("ja-JP")}時間 ÷ 12）`
+        : "";
+    lines.push(
+      { key: `${w.id}-base`, label: "基本賃金（月額換算）", value: r.base > 0 ? `${yen(r.base)}${conversion}` : "" },
+    );
+    if (r.allowanceTotal > 0) {
+      lines.push({ key: `${w.id}-gross`, label: "支払概算額（諸手当込み）", value: yen(r.gross) });
+    }
+    lines.push(
+      { key: `${w.id}-tax`, label: "所得税", value: yen(r.tax) },
+      { key: `${w.id}-social`, label: "社会保険料", value: d.social_enabled ? yen(r.social) : "加入なし" },
+      { key: `${w.id}-employment`, label: "雇用保険料", value: d.employment_enabled ? yen(r.employment) : "加入なし" },
+      {
+        key: `${w.id}-housing`,
+        label: "居住費",
+        value: d.housing_self_contract ? "本人契約のため徴収なし" : yen(r.housing),
+      },
+    );
+    if (r.food > 0) lines.push({ key: `${w.id}-food`, label: "食費", value: yen(r.food) });
+    if (r.utility > 0) lines.push({ key: `${w.id}-utility`, label: "水道光熱費", value: yen(r.utility) });
+    if (r.otherTotal > 0) lines.push({ key: `${w.id}-others`, label: "その他控除", value: yen(r.otherTotal) });
+    lines.push({ key: `${w.id}-net`, label: "手取り概算", value: yen(r.net) });
+    return lines;
   });
 }
 

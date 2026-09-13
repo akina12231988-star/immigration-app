@@ -84,12 +84,17 @@ export default async function ApplicationPrepPrintPage({
 
   // 賃金の記録に付いている所属機関の名前（印刷に出す）
   const wageOrgIds = [...new Set(wages.map((w) => w.organization_id).filter(Boolean))] as string[];
+  // 1-6号別紙の時給→月給の換算に使う年間所定労働時間も一緒に引く
   let wageOrgNames: Record<string, string> = {};
+  let wageOrgHours: Record<string, number> = {};
   if (wageOrgIds.length > 0) {
-    const { data: rows } = await supabase.from("organizations").select("id, name").in("id", wageOrgIds);
-    wageOrgNames = Object.fromEntries(
-      ((rows as { id: string; name: string }[] | null) ?? []).map((o) => [o.id, o.name]),
-    );
+    const { data: rows } = await supabase
+      .from("organizations")
+      .select("id, name, annual_work_hours")
+      .in("id", wageOrgIds);
+    const orgRows = (rows as { id: string; name: string; annual_work_hours: number | null }[] | null) ?? [];
+    wageOrgNames = Object.fromEntries(orgRows.map((o) => [o.id, o.name]));
+    wageOrgHours = Object.fromEntries(orgRows.map((o) => [o.id, o.annual_work_hours ?? 0]));
   }
 
   const statusValues = Object.fromEntries(docStatusRows.map((r) => [r.doc_id, r.status]));
@@ -163,7 +168,7 @@ export default async function ApplicationPrepPrintPage({
         passportExpiryDate: worker.passport_expiry_date ?? "",
       })}
       docRows={prepPrintDocRows(items, statusValues, meta.target_reiwa, reiwaYear(todayStr()))}
-      wageLines={prepPrintWageLines(wages, wageOrgNames)}
+      wageLines={prepPrintWageLines(wages, wageOrgNames, wageOrgHours)}
       dateLines={prepPrintDateLines(savedDates?.dates ?? {})}
       memoDefault={memoDefault}
       hasList={current != null}
