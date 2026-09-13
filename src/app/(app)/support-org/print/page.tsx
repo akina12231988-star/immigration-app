@@ -72,7 +72,6 @@ export default async function SupportSystemPrintPage({
       orgId={org?.id ?? ""}
       orgName={org?.name ?? ""}
       listingImages={listingImages}
-      printedOn={todayStr()}
     />
   );
 }
