@@ -49,7 +49,7 @@ import {
 } from "@/lib/supabase/queries/plan-dates";
 import { CONTRACT_YEARS, contractPeriodEnd, formatYmdJa, PLAN_DATE_FIELDS } from "@/lib/support-plan-dates";
 import { CopyButton } from "@/components/ui/CopyButton";
-import { listOrganizations } from "@/lib/supabase/queries/organizations";
+import { listOrganizations, updateOrganization } from "@/lib/supabase/queries/organizations";
 import { WorkerWages } from "@/components/workers/WorkerWages";
 import { WorkerContracts } from "@/components/workers/WorkerContracts";
 import { todayStr } from "@/lib/ssw/calc";
@@ -57,6 +57,7 @@ import { dbErrorMessage } from "@/lib/errors";
 import type {
   Organization,
   OrganizationFileRow,
+  OrganizationIntake,
   WorkerOrgEmploymentStart,
   WorkerWage,
 } from "@/types/db";
@@ -447,7 +448,7 @@ export function PrepAddressField({
 
 // ---- 所属機関の情報（申請種別の下に表示） ----
 
-export function PrepOrgInfo({ orgId }: { orgId: string | null }) {
+export function PrepOrgInfo({ orgId, canEdit = false }: { orgId: string | null; canEdit?: boolean }) {
   // どの機関のデータかも一緒に持ち、機関が切り替わった直後に前の機関の情報を出さないようにする
   const [loadedData, setLoadedData] = useState<{
     orgId: string;
@@ -455,6 +456,8 @@ export function PrepOrgInfo({ orgId }: { orgId: string | null }) {
     files: OrganizationFileRow[];
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // 未登録の欄をこの場で保存したあとに読み直すためのキー
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!orgId) return;
@@ -474,7 +477,7 @@ export function PrepOrgInfo({ orgId }: { orgId: string | null }) {
     return () => {
       cancelled = true;
     };
-  }, [orgId]);
+  }, [orgId, reloadKey]);
 
   const org = loadedData?.orgId === orgId ? loadedData.org : null;
   const files = loadedData?.orgId === orgId ? loadedData.files : [];
@@ -509,9 +512,37 @@ export function PrepOrgInfo({ orgId }: { orgId: string | null }) {
 
   const councilLine = (rows: { to: string; on: string }[]) => {
     const filled = rows.filter((r) => r.to || r.on);
-    if (filled.length === 0) return "未登録";
+    if (filled.length === 0) return "";
     return filled.map((r) => `${r.to || "提出先未記入"}（${r.on || "提出日未記入"}）`).join("、");
   };
+
+  // 未登録の欄をこの場で保存する（所属機関の基本情報 / 申込書の内容）。保存後は読み直す
+  const saveOrg = async (patch: { address?: string; contact?: string }) => {
+    await updateOrganization(createClient(), org.id, patch);
+    setReloadKey((k) => k + 1);
+  };
+  const saveIntake = async (patch: Partial<OrganizationIntake>) => {
+    await updateOrganization(createClient(), org.id, { intake: { ...intake, ...patch } });
+    setReloadKey((k) => k + 1);
+  };
+  // 協力確認書の1行目（提出先・提出日）を保存する
+  const saveCouncil = (key: "council_office_submissions" | "council_residence_submissions") =>
+    async (values: string[]) => {
+      const rows = intake[key].map((r) => ({ ...r }));
+      if (rows.length === 0) rows.push({ to: "", on: "" });
+      rows[0] = { to: values[0] ?? "", on: values[1] ?? "" };
+      await saveIntake({ [key]: rows });
+    };
+  // 直近の売上高（決算情報の1行目）を保存する。個人事業主は令和何年分、法人は何期分
+  const saveSales = async (values: string[]) => {
+    const rows = intake.financials.map((r) => ({ ...r }));
+    if (rows.length === 0) rows.push({ year: "", term: "", period_from: "", period_to: "", sales: "", ordinary: "", net: "", assets: "" });
+    rows[0] = intake.fiscal_kind === "法人"
+      ? { ...rows[0], term: values[0] ?? "", sales: values[1] ?? "" }
+      : { ...rows[0], year: values[0] ?? "", sales: values[1] ?? "" };
+    await saveIntake({ financials: rows });
+  };
+  const fill = canEdit;
 
   return (
     <div className="space-y-1.5 rounded-lg bg-surface/60 p-2.5 text-[11px] leading-relaxed">
@@ -526,27 +557,49 @@ export function PrepOrgInfo({ orgId }: { orgId: string | null }) {
         </Link>
       </p>
       {error && <p className="rounded-lg bg-seal/10 px-2 py-1 text-seal">{error}</p>}
-      <p>住所: {org.address || "未登録"}</p>
-      <p>電話番号: {org.contact || "未登録"}</p>
-      <p>
-        代表者: {intake.rep_name || "未登録"}
-        {intake.rep_kana && `（${intake.rep_kana}）`}
-      </p>
-      <p>
-        所定労働時間: 週平均 {weeklyHoursText(intake).value || "未登録"}時間
-        {weeklyHoursText(intake).auto && <span className="text-muted">（年間 ÷ 52 で自動計算）</span>} ／ 月平均{" "}
-        {intake.posting_monthly_hours || "未登録"}時間
-        <span className="text-muted">（申請書の所定労働時間に使います。所属機関の求人の欄で直せます）</span>
-      </p>
-      <p>
-        変形労働時間制: <span className="font-bold">{flexHoursLabel(intake.flex_hours_kind)}</span>
-        {flexDocs && (
-          <span className="text-muted">
-            （年間カレンダー・労使協定書が必要です
-            {intake.flex_docs_start && `。書類の有効期間の開始日: ${intake.flex_docs_start}`}）
-          </span>
-        )}
-      </p>
+      {fill && (
+        <p className="text-muted">
+          「未登録」の欄は、この場で入力して保存できます（所属機関の登録内容に保存されます）。登録済みの内容を直すときは「所属機関を開く」から編集してください。
+        </p>
+      )}
+      <OrgInfoLine label="住所" value={org.address} canFill={fill} inputs={[{ placeholder: "住所" }]} onSave={(v) => saveOrg({ address: v[0] })} />
+      <OrgInfoLine label="電話番号" value={org.contact} canFill={fill} inputs={[{ placeholder: "電話番号" }]} onSave={(v) => saveOrg({ contact: v[0] })} />
+      <OrgInfoLine
+        label="代表者"
+        value={intake.rep_name ? `${intake.rep_name}${intake.rep_kana ? `（${intake.rep_kana}）` : ""}` : ""}
+        canFill={fill}
+        inputs={[{ placeholder: "代表者の氏名" }, { placeholder: "フリガナ" }]}
+        onSave={(v) => saveIntake({ rep_name: v[0], rep_kana: v[1] })}
+      />
+      <OrgInfoLine
+        label="所定労働時間"
+        value={
+          weeklyHoursText(intake).value || intake.posting_monthly_hours
+            ? `週平均 ${weeklyHoursText(intake).value || "未登録"}時間${weeklyHoursText(intake).auto ? "（年間 ÷ 52 で自動計算）" : ""} ／ 月平均 ${intake.posting_monthly_hours || "未登録"}時間`
+            : ""
+        }
+        note="申請書の所定労働時間に使います。所属機関の求人の欄で直せます"
+        canFill={fill}
+        inputs={[{ placeholder: "週平均（時間）", width: "w-28" }, { placeholder: "月平均（例: 173時間20分）", width: "w-40" }]}
+        onSave={(v) => saveIntake({ posting_weekly_hours: v[0], posting_monthly_hours: v[1] })}
+      />
+      <OrgInfoLine
+        label="変形労働時間制"
+        value={intake.flex_hours_kind ? flexHoursLabel(intake.flex_hours_kind) : ""}
+        note={flexDocs ? `年間カレンダー・労使協定書が必要です${intake.flex_docs_start ? `。書類の有効期間の開始日: ${intake.flex_docs_start}` : ""}` : undefined}
+        canFill={fill}
+        inputs={[{ options: ["なし", "1ヶ月単位", "1年単位"] }]}
+        onSave={(v) => saveIntake({ flex_hours_kind: v[0] })}
+      />
+      {flexDocs && (
+        <OrgInfoLine
+          label="書類の有効期間の開始日"
+          value={intake.flex_docs_start}
+          canFill={fill}
+          inputs={[{ type: "date" }]}
+          onSave={(v) => saveIntake({ flex_docs_start: v[0] })}
+        />
+      )}
       {flexDocs && (
         <>
           <OrgAttachmentPreview
@@ -572,15 +625,39 @@ export function PrepOrgInfo({ orgId }: { orgId: string | null }) {
           printLabel="印刷（A4縦）"
         />
       )}
-      <p>協力確認書（事業所の所在地）: {councilLine(intake.council_office_submissions)}</p>
-      <p>協力確認書（住居地）: {councilLine(intake.council_residence_submissions)}</p>
-      {intake.council_note && <p>協議会メモ: {intake.council_note}</p>}
-      <p>
-        直近の売上高:{" "}
-        {sales.length > 0
-          ? sales.map((f) => financialSalesText(f, intake.fiscal_kind)).join("、")
-          : "未登録（所属機関の決算情報に入力すると表示されます）"}
-      </p>
+      <OrgInfoLine
+        label="協力確認書（事業所の所在地）"
+        value={councilLine(intake.council_office_submissions)}
+        canFill={fill}
+        inputs={[{ placeholder: "提出先（例: 農業特定技能協議会）" }, { type: "date" }]}
+        onSave={saveCouncil("council_office_submissions")}
+      />
+      <OrgInfoLine
+        label="協力確認書（住居地）"
+        value={councilLine(intake.council_residence_submissions)}
+        canFill={fill}
+        inputs={[{ placeholder: "提出先" }, { type: "date" }]}
+        onSave={saveCouncil("council_residence_submissions")}
+      />
+      <OrgInfoLine
+        label="協議会メモ"
+        value={intake.council_note}
+        canFill={fill}
+        inputs={[{ placeholder: "例: 上天草市 2026/4/25" }]}
+        onSave={(v) => saveIntake({ council_note: v[0] })}
+      />
+      <OrgInfoLine
+        label="直近の売上高"
+        value={sales.length > 0 ? sales.map((f) => financialSalesText(f, intake.fiscal_kind)).join("、") : ""}
+        note={sales.length === 0 ? "所属機関の決算情報に入力すると表示されます" : undefined}
+        canFill={fill}
+        inputs={
+          intake.fiscal_kind === "法人"
+            ? [{ placeholder: "第何期（例: 12）", width: "w-28" }, { placeholder: "売上高（数字だけ）" }]
+            : [{ placeholder: "令和何年分（例: 7）", width: "w-32" }, { placeholder: "売上高（数字だけ）" }]
+        }
+        onSave={saveSales}
+      />
       <OrgYearlyFilesLine label="直近の定期報告" groups={reportGroups} onPreview={preview} />
       <OrgYearlyFilesLine label="賃金台帳" groups={ledgerGroups} onPreview={preview} />
     </div>
@@ -620,8 +697,106 @@ function OrgYearlyFilesLine({
   );
 }
 
+// 所属機関の情報の1行。登録があればそのまま出し、未登録なら（編集できる人には）この場で入力して保存できる。
+// 入力欄は項目ごとに1つ以上（代表者は氏名とフリガナ、協力確認書は提出先と提出日など）
+interface OrgInfoInput {
+  placeholder?: string;
+  type?: "text" | "date";
+  options?: string[]; // 選択式にするとき
+  width?: string; // 入力欄の幅（Tailwind のクラス）
+}
+function OrgInfoLine({
+  label,
+  value,
+  note,
+  canFill,
+  inputs,
+  onSave,
+}: {
+  label: string;
+  value: string; // 空なら未登録
+  note?: string;
+  canFill: boolean;
+  inputs: OrgInfoInput[];
+  onSave: (values: string[]) => Promise<void>;
+}) {
+  const [values, setValues] = useState<string[]>(() => inputs.map(() => ""));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const filled = values.some((v) => v.trim());
+
+  if (value || !canFill) {
+    return (
+      <p>
+        {label}: {value || "未登録"}
+        {note && <span className="text-muted">（{note}）</span>}
+      </p>
+    );
+  }
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave(values.map((v) => v.trim()));
+      setValues(inputs.map(() => ""));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存に失敗しました");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="shrink-0">{label}:</span>
+      {inputs.map((inp, i) =>
+        inp.options ? (
+          <select
+            key={i}
+            value={values[i]}
+            aria-label={label}
+            onChange={(e) => setValues((prev) => prev.map((v, idx) => (idx === i ? e.target.value : v)))}
+            className={`${INPUT} ${inp.width ?? ""}`}
+          >
+            <option value="">選択</option>
+            {inp.options.map((o) => (
+              <option key={o} value={o}>
+                {o}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            key={i}
+            type={inp.type ?? "text"}
+            value={values[i]}
+            aria-label={inp.placeholder ? `${label} ${inp.placeholder}` : label}
+            placeholder={inp.placeholder ?? "未登録（入力して保存）"}
+            onChange={(e) => setValues((prev) => prev.map((v, idx) => (idx === i ? e.target.value : v)))}
+            className={`${INPUT} ${inp.width ?? "min-w-[10rem] flex-1"}`}
+          />
+        ),
+      )}
+      {filled && (
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => void save()}
+          className="shrink-0 rounded-lg bg-brand px-3 py-1.5 text-[11px] font-bold text-brand-foreground disabled:opacity-50"
+        >
+          {saving ? "保存中…" : "保存"}
+        </button>
+      )}
+      {note && <span className="text-muted">（{note}）</span>}
+      {error && <span className="text-seal">{error}</span>}
+    </div>
+  );
+}
+
 // 所属機関の添付ファイル（農業特定技能加入通知書・年間カレンダー・労使協定書）の最新版を、
-// 画像はその場で表示し、PDF は表示ボタンで開く。印刷リンクは別タブで A4縦の印刷ページを開く
+// 画像はその場で表示し、PDF もその場に埋め込んで内容を見られるようにする。
+// 「添付済み」ボタンで別タブでも開ける。印刷リンクは別タブで A4縦の印刷ページを開く
 function OrgAttachmentPreview({
   label,
   latest,
@@ -635,9 +810,9 @@ function OrgAttachmentPreview({
   printHref?: string;
   printLabel?: string;
 }) {
-  // 画像の表示用の署名付きURL（ファイルIDごと）
+  // 表示用の署名付きURL（ファイルIDごと。画像はそのまま、PDF は埋め込みで出す）
   const [urls, setUrls] = useState<Record<string, string>>({});
-  const imageIds = (latest?.files ?? []).filter(isImageFile).map((f) => f.id);
+  const imageIds = (latest?.files ?? []).map((f) => f.id);
   const imageKey = imageIds.join(",");
 
   useEffect(() => {
@@ -690,14 +865,22 @@ function OrgAttachmentPreview({
               onOpen={() => void onPreview(f.id)}
               className="self-start"
             />
-            {isImageFile(f) && urls[f.id] && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={urls[f.id]}
-                alt={`${label} ${f.file_name}`}
-                className="max-h-64 w-auto max-w-full self-start rounded border border-border bg-white object-contain"
-              />
-            )}
+            {urls[f.id] &&
+              (isImageFile(f) ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={urls[f.id]}
+                  alt={`${label} ${f.file_name}`}
+                  className="max-h-64 w-auto max-w-full self-start rounded border border-border bg-white object-contain"
+                />
+              ) : (
+                // PDF はその場に埋め込む（見づらいときは「添付済み」ボタンで別タブに開く）
+                <iframe
+                  src={urls[f.id]}
+                  title={`${label} ${f.file_name}`}
+                  className="h-80 w-full rounded border border-border bg-white"
+                />
+              ))}
           </div>
         ))}
       </div>

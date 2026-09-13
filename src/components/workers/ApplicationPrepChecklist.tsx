@@ -1368,7 +1368,7 @@ export function ApplicationPrepChecklist({
         </div>
 
         {/* 申請種別の下: 所属機関の情報（住所・電話・代表者・協力確認書・売上高・定期報告/賃金台帳） */}
-        <PrepOrgInfo orgId={prepOrgId} />
+        <PrepOrgInfo orgId={prepOrgId} canEdit={canEdit} />
 
         {/* 合格証の組み合わせ（申請内容で必要な合格証が変わる。更新申請では不要）。
             特定技能２号の申請では２号の合格証だけなので、選び直せないようにする */}
