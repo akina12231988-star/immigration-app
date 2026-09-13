@@ -155,11 +155,13 @@ export function SupportSystemPrintSheet({
 
       {/* ここから下が印刷される部分。見本の Word と同じ書式:
           余白 上35mm・左右下30mm、タイトル20pt太字（2文字下げ）、説明文14pt（1文字下げ）、
-          登録支援機関20pt、＜支援担当者一覧＞16pt太字、氏名16pt中央揃え、行間1.08・段落後8pt */}
+          登録支援機関20pt、＜支援担当者一覧＞16pt太字、氏名16pt中央揃え（1人目は太字、2人目からは下線）。
+          Word は行グリッド（18pt）に行を合わせる設定で、14〜20pt の行はどれもグリッド2行分（36pt）になるため、
+          全部の行を 36pt 間隔にして段落のあとに 8pt 空ける（見本と同じ上下の間隔になる） */}
       <div className="mx-auto max-w-[150mm] px-4 pb-10 lg:px-0 print:max-w-none print:p-0">
         <section
           className={`text-black ${images.length > 0 ? "break-after-page" : ""}`}
-          style={{ lineHeight: 1.08, fontFamily: '"Yu Mincho", "Hiragino Mincho ProN", "Noto Serif JP", serif' }}
+          style={{ lineHeight: "36pt", fontFamily: '"Yu Mincho", "Hiragino Mincho ProN", "Noto Serif JP", serif' }}
         >
           <p className="font-bold" style={{ fontSize: "20pt", textIndent: "2em", marginBottom: "8pt" }}>
             支援業務を行う体制についての説明
@@ -198,8 +200,12 @@ export function SupportSystemPrintSheet({
             　　　　　　＜支援担当者一覧＞
           </p>
           {selectedStaff.map((p, i) => (
-            // 見本では1人目（支援責任者を兼ねる人）だけ太字
-            <p key={p.id} className={`text-center ${i === 0 ? "font-bold" : ""}`} style={{ fontSize: "16pt", marginBottom: "8pt" }}>
+            // 見本では1人目（支援責任者を兼ねる人）だけ太字、2人目からは下線
+            <p
+              key={p.id}
+              className={`text-center ${i === 0 ? "font-bold" : "underline"}`}
+              style={{ fontSize: "16pt", marginBottom: "8pt", textUnderlineOffset: "3pt" }}
+            >
               {p.name}
             </p>
           ))}
