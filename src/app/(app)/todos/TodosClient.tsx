@@ -600,6 +600,7 @@ export function TodosClient({
                       orgName={orgNameOf(t)}
                       custodyNo={custodyNoOf(t)}
                       tantou={tantouOf(t)}
+                      messenger={t.worker_id ? (messengerByWorker[t.worker_id] ?? "") : ""}
                       residenceExpiry={t.worker_id ? (expiryByWorker[t.worker_id] ?? "") : ""}
                       progress={progressOf(t)}
                       onChangeTantou={
@@ -978,15 +979,16 @@ export function TodosClient({
                 key={b.name}
                 type="button"
                 onClick={() => setBoardTantou((cur) => (cur === b.name ? null : b.name))}
-                className={`inline-flex min-h-[36px] items-center gap-1.5 rounded-full border px-3 text-xs font-bold ${
+                className={`flex min-w-[9rem] flex-col items-center rounded-xl border-2 px-4 py-2 ${
                   boardTantou === b.name
                     ? "border-brand bg-brand text-brand-foreground"
                     : "border-border bg-background text-foreground hover:border-brand"
                 }`}
               >
-                {b.name}
-                <span className={`rounded-full px-1.5 py-0.5 text-[10px] tabular-nums ${boardTantou === b.name ? "bg-brand-foreground/20" : "bg-surface"}`}>
-                  未着手 {b.todo}・進行中 {b.doing}
+                {/* 名前を大きく、その下に件数 */}
+                <span className="text-base font-bold leading-tight">{b.name}</span>
+                <span className={`mt-1 text-[11px] tabular-nums ${boardTantou === b.name ? "text-brand-foreground/90" : "text-muted"}`}>
+                  未着手 <span className="font-bold">{b.todo}</span>件・進行中 <span className="font-bold">{b.doing}</span>件
                 </span>
               </button>
             ))}
@@ -994,7 +996,7 @@ export function TodosClient({
               <button
                 type="button"
                 onClick={() => setBoardTantou(null)}
-                className="inline-flex min-h-[36px] items-center rounded-full border border-border px-3 text-xs font-bold text-muted"
+                className="inline-flex items-center self-center rounded-xl border border-border px-4 py-2 text-sm font-bold text-muted"
               >
                 一覧に戻る
               </button>
@@ -1234,13 +1236,16 @@ export function TodosClient({
 
       {/* 担当者を選んでいるとき: 左に未着手、右に進行中を並べる（それぞれ別にスクロールできる） */}
       {!loading && boardTantou && (
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <div>
+          {/* 担当者名は上に1回だけ出し、各列は「未着手（n件）」「進行中（n件）」にする */}
+          <p className="mb-2 text-lg font-bold">{boardTantou}</p>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {(["未着手", "進行中"] as const).map((stage) => {
             const rows = stageRows(stage).filter((t) => (tantouOf(t) || NO_TANTOU) === boardTantou);
             return (
               <Card key={stage} className="flex min-h-0 flex-col p-4">
                 <p className="mb-2 text-sm font-bold">
-                  {boardTantou} の{stage}（{rows.length}件）
+                  {stage}（{rows.length}件）
                 </p>
                 <div className="max-h-[70vh] min-h-[10rem] space-y-2 overflow-y-auto pr-1">
                   {rows.length === 0 ? (
@@ -1254,6 +1259,7 @@ export function TodosClient({
               </Card>
             );
           })}
+          </div>
         </div>
       )}
 
@@ -1449,6 +1455,7 @@ function TodoItem({
   orgName = "",
   custodyNo = null,
   tantou = "",
+  messenger = "",
   residenceExpiry = "",
   progress = null,
   onChangeTantou,
@@ -1467,6 +1474,7 @@ function TodoItem({
   orgName?: string; // 申請準備の所属機関名（転職先→現在の順）
   custodyNo?: number | null; // 保管ボックスの預かり番号（預かり中でなければ null）
   tantou?: string; // 書類担当者（申請準備の担当者）
+  messenger?: string; // 外国人の Messenger のリンク（'' = 未登録）
   residenceExpiry?: string; // 在留期限（'' = 未登録）
   progress?: PrepProgress | null; // 必要書類がどれだけ揃ったか
   onChangeTantou?: (v: string) => void;
@@ -1550,8 +1558,20 @@ function TodoItem({
               <Link href={`/workers/${todo.worker_id}`} className="truncate font-bold text-brand hover:underline">
                 {todo.worker_name ?? "（外国人）"}
               </Link>
-              {/* 申請準備の所属機関（転職先。未設定なら現在の所属機関） */}
-              {orgName && <span className="truncate text-[11px] text-muted">{orgName}</span>}
+              {/* Messengerのリンクが登録されている人は、名前の横から連絡できる */}
+              {messenger && (
+                <a
+                  href={messengerWebUrl(messenger)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-brand/40 px-2 py-0.5 text-[10px] font-bold text-brand hover:bg-brand/10"
+                >
+                  <MessageCircle size={11} />
+                  Messenger
+                </a>
+              )}
+              {/* 申請準備の所属機関（転職先。未設定なら現在の所属機関）。薄い字だと見落とすので濃い太字で出す */}
+              {orgName && <span className="truncate text-xs font-bold text-foreground">{orgName}</span>}
               {/* 保管ボックスに在留カード・パスポートを預かっている人は預かり番号を赤で出す */}
               {custodyNo != null && (
                 <span className="shrink-0 rounded-full border border-seal px-2 py-0.5 text-[10px] font-bold text-seal">
