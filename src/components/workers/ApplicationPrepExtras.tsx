@@ -48,6 +48,8 @@ import {
   type SavedPlanDates,
 } from "@/lib/supabase/queries/plan-dates";
 import { contractPeriodEnd, formatYmdJa, PLAN_DATE_GROUPS, SUPPORT_CONTRACT_YEARS } from "@/lib/support-plan-dates";
+import { planDatesCardFileName } from "@/lib/plan-dates-card";
+import { downloadPlanDatesCard } from "@/lib/plan-dates-card-image";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { listOrganizations, updateOrganization } from "@/lib/supabase/queries/organizations";
 import { WorkerWages } from "@/components/workers/WorkerWages";
@@ -1202,10 +1204,12 @@ export function SavedPlanDatesSection({
   workerId,
   todoNo,
   canEdit,
+  workerName = "",
 }: {
   workerId: string;
   todoNo: string;
   canEdit: boolean;
+  workerName?: string; // 名刺サイズの画像の見出しとファイル名に使う
 }) {
   const [saved, setSaved] = useState<SavedPlanDates | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -1254,12 +1258,28 @@ export function SavedPlanDatesSection({
     <div className="rounded-lg bg-background p-2">
       <p className="mb-1 flex flex-wrap items-center justify-between gap-1 text-[11px] font-bold text-muted">
         📅 支援計画書の日付（日付計算の保存結果）
-        <Link
-          href={`/todos/plan-dates?workerId=${workerId}&todo=${encodeURIComponent(todoNo)}`}
-          className="font-bold text-brand hover:underline"
-        >
-          日付計算を開く →
-        </Link>
+        <span className="flex flex-wrap items-center gap-2">
+          {/* 名刺サイズ（91×55mm）の画像にして保存。印刷して手元に置ける */}
+          {saved && (
+            <button
+              type="button"
+              onClick={() =>
+                void downloadPlanDatesCard(dates, workerName || "支援計画書の日付", todoNo, planDatesCardFileName(workerName, todoNo)).catch(
+                  (err) => setError(err instanceof Error ? err.message : "画像の作成に失敗しました"),
+                )
+              }
+              className="inline-flex items-center gap-1 rounded-full border border-brand px-2 py-0.5 text-[10px] font-bold text-brand"
+            >
+              名刺サイズの画像を保存
+            </button>
+          )}
+          <Link
+            href={`/todos/plan-dates?workerId=${workerId}&todo=${encodeURIComponent(todoNo)}`}
+            className="font-bold text-brand hover:underline"
+          >
+            日付計算を開く →
+          </Link>
+        </span>
       </p>
       {error && <p className="mb-1 rounded-lg bg-seal/10 px-2 py-1 text-[11px] text-seal">{error}</p>}
       {!saved ? (

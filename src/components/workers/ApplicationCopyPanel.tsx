@@ -162,18 +162,20 @@ export function ApplicationCopyList({
   const total = groups.reduce((n, g) => n + g.items.length, 0);
 
   return (
-    <div className="rounded-lg bg-background p-2">
+    <div className="rounded-xl border-2 border-brand bg-background p-2">
+      {/* 他の欄に埋もれないよう、見出しは青い帯にして大きめの文字で出す */}
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex w-full flex-wrap items-center justify-between gap-1 text-left text-[11px] font-bold text-muted"
+        className="flex min-h-[44px] w-full flex-wrap items-center justify-between gap-1 rounded-lg bg-brand px-3 py-2 text-left text-sm font-bold text-brand-foreground"
       >
-        <span className="flex items-center gap-1">
-          <ClipboardList size={13} className="text-brand" />
-          申請書に貼る情報をコピー（外国人・所属機関・賃金・職歴・日付から自動で抽出）
+        <span className="flex items-center gap-1.5">
+          <ClipboardList size={16} />
+          申請書に貼る情報をコピー
+          <span className="text-[11px] font-normal opacity-90">（外国人・所属機関・賃金・職歴・日付から自動で抽出）</span>
         </span>
-        <span className="tabular-nums">
+        <span className="rounded-full bg-brand-foreground/15 px-2 py-0.5 text-xs tabular-nums">
           {filled} / {total}項目 {open ? "▲ 閉じる" : "▼ 開く"}
         </span>
       </button>
