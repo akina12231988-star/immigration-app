@@ -547,6 +547,123 @@ export function TodosClient({
 
   // 書類担当者がまだ決まっていない申請準備のTODO（完了したものは除く）。
   // 誰も手を付けていないまま残るのを防ぐため、一覧の上にアラートで出す
+
+  // ステージ（未着手 / 進行中 / 完了）ごとの行。絞り込みと並べ替えは一覧と担当者別の表示で共通
+  const stageRows = (stage: TodoStage): TodoRow[] => {
+          const q = nameFilter.trim().toLowerCase();
+          const rows = kindTodos
+            .filter((t) => stageOfStatus(t.status, kindOptions) === stage)
+            .filter((t) => {
+              if (kind !== "申請準備" || !tantouFilter) return true;
+              // 「担当者未定」を選んだときは、担当者が決まっていないものだけ出す
+              if (tantouFilter === NO_TANTOU) return !tantouOf(t);
+              return tantouOf(t) === tantouFilter;
+            })
+            // 所属機関名での絞り込み（法人格の有無・全角半角の違いは吸収する）
+            .filter(
+              (t) =>
+                kind !== "申請準備" ||
+                !orgFilter.trim() ||
+                matchesOrganizationName({ name: orgNameOf(t) }, orgFilter),
+            )
+            // 外国人の名前・TODO番号の部分一致で検索（申請準備のTODOのみ）
+            .filter(
+              (t) =>
+                kind !== "申請準備" ||
+                !q ||
+                (t.worker_name ?? "").toLowerCase().includes(q) ||
+                (normalizeTodoKey(q) !== "" &&
+                  normalizeTodoKey(t.todo_no).includes(normalizeTodoKey(q))),
+            )
+            // 在留期限が近い順に並べ替え（未登録の人は最後にまとめる）
+            .sort((a, b) => {
+              if (kind !== "申請準備" || sortKey !== "在留期限") return 0;
+              const ea = a.worker_id ? (expiryByWorker[a.worker_id] ?? "") : "";
+              const eb = b.worker_id ? (expiryByWorker[b.worker_id] ?? "") : "";
+              if (!ea && !eb) return 0;
+              if (!ea) return 1;
+              if (!eb) return -1;
+              return ea.localeCompare(eb);
+            });
+    return rows;
+  };
+
+  // TODOの1行（一覧と担当者別の表示で共通）
+  const renderTodoItem = (t: TodoRow) => (
+    <TodoItem
+                      key={t.id}
+                      todo={t}
+                      statusOptions={kindOptions}
+                      checkOptions={checkOptions}
+                      canEdit={canEdit}
+                      agents={agents}
+                      orgName={orgNameOf(t)}
+                      custodyNo={custodyNoOf(t)}
+                      tantou={tantouOf(t)}
+                      residenceExpiry={t.worker_id ? (expiryByWorker[t.worker_id] ?? "") : ""}
+                      progress={progressOf(t)}
+                      onChangeTantou={
+                        t.kind === "申請準備" && t.worker_id
+                          ? (v) => changeTantou(t, v)
+                          : undefined
+                      }
+                      prepHref={
+                        t.kind === "申請準備" && t.worker_id ? prepDetailHref(t.worker_id) : undefined
+                      }
+                      jobFlows={jobFlows.filter((f) => f.worker_id === t.worker_id)}
+                      mailings={mailings.filter(
+                        (m) => m.todoKey && m.todoKey === normalizeTodoKey(t.todo_no),
+                      )}
+                      workers={workers}
+                      onChange={(patch) =>
+                        run(
+                          () => updateTodo(createClient(), t.id, patch),
+                          // 取次士・本人申請の列は 0106、試験の申込の詳細は 0109 で追加。
+                          // 未適用ならその案内を出す
+                          "exam" in patch
+                            ? "0109_todo_exam_fields.sql"
+                            : "agent_name" in patch || "self_apply" in patch
+                              ? "0106_todos_apply_fields.sql"
+                              : "0102_todos.sql",
+                        )
+                      }
+                      onDelete={() => {
+                        if (
+                          window.confirm(
+                            `TODO No.${t.todo_no}（${t.worker_name ?? (t.title || "内容なし")}）を削除フォルダに移動します。${TODO_TRASH_DAYS}日間は下の削除フォルダから復元でき、その後完全に削除されます。よろしいですか？`,
+                          )
+                        ) {
+                          void run(
+                            () => deleteTodo(createClient(), t.id),
+                            "0108_todos_soft_delete.sql",
+                          );
+                        }
+                      }}
+                    />
+  );
+
+  // 担当者別の表示（左: 未着手 / 右: 進行中）。ボタンで担当者を選ぶ。null は一覧表示
+  const [boardTantou, setBoardTantou] = useState<string | null>(null);
+  const tantouButtons = useMemo(() => {
+    if (kind !== "申請準備") return [];
+    const counts = new Map<string, { todo: number; doing: number }>();
+    const names = new Set<string>(PREP_TANTOU_OPTIONS);
+    for (const t of kindTodos) {
+      const stage = stageOfStatus(t.status, kindOptions);
+      if (stage === "完了") continue;
+      const name = tantouOf(t) || NO_TANTOU;
+      names.add(name);
+      const c = counts.get(name) ?? { todo: 0, doing: 0 };
+      if (stage === "未着手") c.todo += 1;
+      else c.doing += 1;
+      counts.set(name, c);
+    }
+    return [...names]
+      .filter((n) => n !== NO_TANTOU || counts.has(n))
+      .map((name) => ({ name, ...(counts.get(name) ?? { todo: 0, doing: 0 }) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kind, kindTodos, kindOptions, prepTantou]);
+
   const noTantouAlerts = useMemo(() => {
     if (kind !== "申請準備") return [];
     return kindTodos
@@ -849,6 +966,43 @@ export function TodosClient({
         </Card>
       )}
 
+      {/* 担当者別のボタン。押すと、その担当者のTODOを左（未着手）・右（進行中）の2列で表示する */}
+      {kind === "申請準備" && !loading && tantouButtons.length > 0 && (
+        <div className="rounded-2xl border border-border bg-surface px-3 py-2.5">
+          <p className="mb-1.5 text-[11px] font-bold text-muted">
+            担当者別に見る（押すと左に未着手、右に進行中を並べて表示します）
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {tantouButtons.map((b) => (
+              <button
+                key={b.name}
+                type="button"
+                onClick={() => setBoardTantou((cur) => (cur === b.name ? null : b.name))}
+                className={`inline-flex min-h-[36px] items-center gap-1.5 rounded-full border px-3 text-xs font-bold ${
+                  boardTantou === b.name
+                    ? "border-brand bg-brand text-brand-foreground"
+                    : "border-border bg-background text-foreground hover:border-brand"
+                }`}
+              >
+                {b.name}
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] tabular-nums ${boardTantou === b.name ? "bg-brand-foreground/20" : "bg-surface"}`}>
+                  未着手 {b.todo}・進行中 {b.doing}
+                </span>
+              </button>
+            ))}
+            {boardTantou && (
+              <button
+                type="button"
+                onClick={() => setBoardTantou(null)}
+                className="inline-flex min-h-[36px] items-center rounded-full border border-border px-3 text-xs font-bold text-muted"
+              >
+                一覧に戻る
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* 書類担当者がまだ決まっていないTODO（この場で担当者を決められる） */}
       {kind === "申請準備" && !loading && noTantouAlerts.length > 0 && (
         <div className="rounded-2xl border border-seal/40 bg-seal/5 px-3 py-2.5">
@@ -1078,46 +1232,37 @@ export function TodosClient({
         </div>
       )}
 
+      {/* 担当者を選んでいるとき: 左に未着手、右に進行中を並べる（それぞれ別にスクロールできる） */}
+      {!loading && boardTantou && (
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          {(["未着手", "進行中"] as const).map((stage) => {
+            const rows = stageRows(stage).filter((t) => (tantouOf(t) || NO_TANTOU) === boardTantou);
+            return (
+              <Card key={stage} className="flex min-h-0 flex-col p-4">
+                <p className="mb-2 text-sm font-bold">
+                  {boardTantou} の{stage}（{rows.length}件）
+                </p>
+                <div className="max-h-[70vh] min-h-[10rem] space-y-2 overflow-y-auto pr-1">
+                  {rows.length === 0 ? (
+                    <p className="rounded-xl bg-background p-3 text-center text-xs text-muted">
+                      {stage}のTODOはありません。
+                    </p>
+                  ) : (
+                    rows.map((t) => renderTodoItem(t))
+                  )}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
       {/* 未着手 → 進行中 → 完了 の順に表示（見出しを押すと開閉できる） */}
       {loading ? (
         <Card className="p-6 text-center text-sm text-muted">読み込み中…</Card>
-      ) : (
+      ) : boardTantou ? null : (
         TODO_STAGES.map((stage) => {
-          const q = nameFilter.trim().toLowerCase();
-          const rows = kindTodos
-            .filter((t) => stageOfStatus(t.status, kindOptions) === stage)
-            .filter((t) => {
-              if (kind !== "申請準備" || !tantouFilter) return true;
-              // 「担当者未定」を選んだときは、担当者が決まっていないものだけ出す
-              if (tantouFilter === NO_TANTOU) return !tantouOf(t);
-              return tantouOf(t) === tantouFilter;
-            })
-            // 所属機関名での絞り込み（法人格の有無・全角半角の違いは吸収する）
-            .filter(
-              (t) =>
-                kind !== "申請準備" ||
-                !orgFilter.trim() ||
-                matchesOrganizationName({ name: orgNameOf(t) }, orgFilter),
-            )
-            // 外国人の名前・TODO番号の部分一致で検索（申請準備のTODOのみ）
-            .filter(
-              (t) =>
-                kind !== "申請準備" ||
-                !q ||
-                (t.worker_name ?? "").toLowerCase().includes(q) ||
-                (normalizeTodoKey(q) !== "" &&
-                  normalizeTodoKey(t.todo_no).includes(normalizeTodoKey(q))),
-            )
-            // 在留期限が近い順に並べ替え（未登録の人は最後にまとめる）
-            .sort((a, b) => {
-              if (kind !== "申請準備" || sortKey !== "在留期限") return 0;
-              const ea = a.worker_id ? (expiryByWorker[a.worker_id] ?? "") : "";
-              const eb = b.worker_id ? (expiryByWorker[b.worker_id] ?? "") : "";
-              if (!ea && !eb) return 0;
-              if (!ea) return 1;
-              if (!eb) return -1;
-              return ea.localeCompare(eb);
-            });
+          const rows = stageRows(stage);
           return (
             <Card key={stage} className="p-4">
               <details open>
@@ -1131,58 +1276,7 @@ export function TodosClient({
                 </p>
               ) : (
                 <div className="space-y-2">
-                  {rows.map((t) => (
-                    <TodoItem
-                      key={t.id}
-                      todo={t}
-                      statusOptions={kindOptions}
-                      checkOptions={checkOptions}
-                      canEdit={canEdit}
-                      agents={agents}
-                      orgName={orgNameOf(t)}
-                      custodyNo={custodyNoOf(t)}
-                      tantou={tantouOf(t)}
-                      residenceExpiry={t.worker_id ? (expiryByWorker[t.worker_id] ?? "") : ""}
-                      progress={progressOf(t)}
-                      onChangeTantou={
-                        t.kind === "申請準備" && t.worker_id
-                          ? (v) => changeTantou(t, v)
-                          : undefined
-                      }
-                      prepHref={
-                        t.kind === "申請準備" && t.worker_id ? prepDetailHref(t.worker_id) : undefined
-                      }
-                      jobFlows={jobFlows.filter((f) => f.worker_id === t.worker_id)}
-                      mailings={mailings.filter(
-                        (m) => m.todoKey && m.todoKey === normalizeTodoKey(t.todo_no),
-                      )}
-                      workers={workers}
-                      onChange={(patch) =>
-                        run(
-                          () => updateTodo(createClient(), t.id, patch),
-                          // 取次士・本人申請の列は 0106、試験の申込の詳細は 0109 で追加。
-                          // 未適用ならその案内を出す
-                          "exam" in patch
-                            ? "0109_todo_exam_fields.sql"
-                            : "agent_name" in patch || "self_apply" in patch
-                              ? "0106_todos_apply_fields.sql"
-                              : "0102_todos.sql",
-                        )
-                      }
-                      onDelete={() => {
-                        if (
-                          window.confirm(
-                            `TODO No.${t.todo_no}（${t.worker_name ?? (t.title || "内容なし")}）を削除フォルダに移動します。${TODO_TRASH_DAYS}日間は下の削除フォルダから復元でき、その後完全に削除されます。よろしいですか？`,
-                          )
-                        ) {
-                          void run(
-                            () => deleteTodo(createClient(), t.id),
-                            "0108_todos_soft_delete.sql",
-                          );
-                        }
-                      }}
-                    />
-                  ))}
+                  {rows.map((t) => renderTodoItem(t))}
                 </div>
               )}
               </div>
