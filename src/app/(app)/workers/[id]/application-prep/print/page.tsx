@@ -7,6 +7,7 @@ import { listWorkerPassportFiles } from "@/lib/supabase/queries/worker-travels";
 import { listWorkerWages } from "@/lib/supabase/queries/wages";
 import { findPlanDatesForTodo, listPlanDates } from "@/lib/supabase/queries/plan-dates";
 import { normalizeOrganizationIntake } from "@/lib/organization-intake";
+import { isTokuteiKatsudoContent } from "@/lib/support-plan-dates";
 import { evaluatePrepChecklist, EMPTY_PREP_META } from "@/lib/application-prep";
 import {
   prepPrintAppType,
@@ -169,7 +170,7 @@ export default async function ApplicationPrepPrintPage({
       })}
       docRows={prepPrintDocRows(items, statusValues, meta.target_reiwa, reiwaYear(todayStr()))}
       wageLines={prepPrintWageLines(wages, wageOrgNames, wageOrgHours)}
-      dateLines={prepPrintDateLines(savedDates?.dates ?? {})}
+      dateLines={prepPrintDateLines(savedDates?.dates ?? {}, isTokuteiKatsudoContent(meta.app_content ?? ""))}
       memoDefault={memoDefault}
       hasList={current != null}
     />

@@ -1,4 +1,4 @@
-import { PLAN_DATE_GROUPS, SUPPORT_CONTRACT_YEARS, contractPeriodEnd } from "@/lib/support-plan-dates";
+import { SUPPORT_CONTRACT_YEARS, contractPeriodEnd, planDateGroupsFor } from "@/lib/support-plan-dates";
 
 // 「支援計画書の日付」を名刺サイズ（91mm × 55mm）の画像にして保存するための組み立て。
 // 画面の一覧表と同じ参考様式ごとの枠を、左右2列に分けて1枚に収める
@@ -36,11 +36,15 @@ export function cardDate(ymd: string | undefined): string {
   return `${Number(m[1])}/${Number(m[2])}/${Number(m[3])}`;
 }
 
-// 左列: 1-5号・1-6号 / 右列: 1-17号・1-25号・その他（行数がほぼ釣り合う分け方）
-export function planDatesCardColumns(dates: Record<string, string>): [CardLine[], CardLine[]] {
+// 左列: 1-5号・1-6号 / 右列: 1-17号・1-25号・その他（行数がほぼ釣り合う分け方）。
+// 特定活動は 1-5号・1-6号 / その他 の2列
+export function planDatesCardColumns(
+  dates: Record<string, string>,
+  tokuteiKatsudo = false,
+): [CardLine[], CardLine[]] {
   const period = (start: string | undefined, years?: number) =>
     start ? `${cardDate(start)}〜${cardDate(contractPeriodEnd(start, years))}` : "";
-  const lines = PLAN_DATE_GROUPS.map((g) => [
+  const lines = planDateGroupsFor(tokuteiKatsudo).map((g) => [
     { kind: "heading" as const, label: g.title, value: "" },
     ...g.rows.map((r) => ({
       kind: "row" as const,

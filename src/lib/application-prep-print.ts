@@ -8,7 +8,7 @@
 // の形で並べる。値はすべて文字列にしてあるので、印刷前にその場で直せる。
 
 import { PREP_APP_TYPE_LABELS, prepDocLabel, type PrepChecklistMeta, type PrepDocStatus } from "@/lib/application-prep";
-import { PLAN_DATE_GROUPS, SUPPORT_CONTRACT_YEARS, contractPeriodEnd } from "@/lib/support-plan-dates";
+import { SUPPORT_CONTRACT_YEARS, contractPeriodEnd, planDateGroupsFor } from "@/lib/support-plan-dates";
 import { flexHoursLabel } from "@/lib/org-attachments";
 import { financialSalesText } from "@/lib/organization-intake";
 import { rosterJpDate } from "@/lib/roster";
@@ -212,11 +212,12 @@ export function prepPrintWageLines(
 
 // 右側「日付計算結果」。画面と同じく参考様式ごとの枠（見出し行）に分けて、保存済みの日付を出す。
 // 雇用契約期間（2年間）と支援委託契約の契約期間（5年間）は保存した日付から自動で出す
-export function prepPrintDateLines(dates: Record<string, string>): PrepPrintLine[] {
+// 特定活動の申請は 1-5号・1-6号・その他（書類作成日を含む）の枠だけ
+export function prepPrintDateLines(dates: Record<string, string>, tokuteiKatsudo = false): PrepPrintLine[] {
   const ymd = (v: string | undefined) => rosterJpDate(v ?? "") || (v ?? "");
   const period = (start: string | undefined, years?: number) =>
     start ? `${ymd(start)} から ${ymd(contractPeriodEnd(start, years))} まで` : "";
-  return PLAN_DATE_GROUPS.flatMap((g, gi) => [
+  return planDateGroupsFor(tokuteiKatsudo).flatMap((g, gi) => [
     { key: `group-${gi}`, label: g.title, value: "", heading: true },
     ...g.rows.map((r) => ({
       key: `${gi}-${r.key}`,

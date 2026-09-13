@@ -173,6 +173,17 @@ describe("prepPrintDateLines", () => {
     expect(line(lines, "4-sign")).toBe("");
     expect(line(lines, "4-apply")).toBe("2026年9月10日");
   });
+
+  it("特定活動は 1-5号・1-6号・その他（書類作成日を含む）だけ", () => {
+    const lines = prepPrintDateLines({ doc: "2026-09-01", es: "2026-10-01" }, true);
+    expect(lines.filter((l) => l.heading).map((l) => l.label)).toEqual([
+      "参考様式1-5号（雇用契約書）",
+      "参考様式1-6号（雇用条件書）",
+      "その他の申請書類",
+    ]);
+    expect(line(lines, "2-doc")).toBe("2026年9月1日");
+    expect(lines.some((l) => l.label.includes("事前ガイダンス"))).toBe(false);
+  });
 });
 
 describe("prepPrintFileName", () => {
