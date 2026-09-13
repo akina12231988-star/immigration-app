@@ -82,11 +82,13 @@ describe("登録支援機関の上書き", () => {
   it("custodian を渡すとその内容で出る", () => {
     const groups = buildApplicationCopyGroups({
       worker, org: null, intake: null, wages: [], histories: [], planDates: {},
-      custodian: { ...CUSTODIAN_INFO, supportStaffName: "秋吉 伽恋", registeredOn: "2021-03-24" },
+      custodian: { ...CUSTODIAN_INFO, supportStaffName: "秋吉 伽恋", registeredOn: "2021-03-24", languages: "ベトナム語・英語" },
     });
     const find = (label: string) => groups.flatMap((g) => g.items).find((i) => i.label === label);
     expect(find("5 (11)支援担当者名")?.value).toBe("秋吉 伽恋");
     expect(find("5 (10)支援責任者名")?.value).toBe("VUONG VAN THANH");
+    // 対応可能言語は登録支援機関の情報に登録があれば国籍より優先する
+    expect(find("5 (12)対応可能言語")).toMatchObject({ value: "ベトナム語・英語", editValue: "ベトナム語・英語" });
   });
 });
 
@@ -108,7 +110,8 @@ describe("申請書に貼る項目", () => {
     // 登録支援機関の欄は既定値で出て、その場で編集できる（app_settings に保存）
     expect(find("5 (11)支援担当者名")).toMatchObject({ value: "VUONG VAN THANH", edit: { target: "custodian", column: "supportStaffName" } });
     expect(find("5 (7)登録年月日")).toMatchObject({ value: "2021年3月24日", editValue: "2021-03-24", edit: { target: "custodian", column: "registeredOn", kind: "date" } });
-    expect(find("5 (12)対応可能言語")?.edit).toBeUndefined();
+    // 対応可能言語は登録支援機関の情報に登録が無ければ国籍から出し、その場で編集できる（全員共通）
+    expect(find("5 (12)対応可能言語")).toMatchObject({ value: "ベトナム語", editValue: "", edit: { target: "custodian", column: "languages" } });
     expect(find("2 (1)雇用契約期間")).toMatchObject({ value: "2024年5月15日 から 2026年5月14日 まで", parts: ["2024", "5", "15", "2026", "5", "14"] });
     expect(find("2 (3)所定労働時間（週平均）")?.value).toBe("40");
     expect(find("2 (3)所定労働時間（月平均）")?.value).toBe("173.3");

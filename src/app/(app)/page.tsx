@@ -349,7 +349,7 @@ export default function DashboardPage() {
                 </div>
               )}
               <Link
-                href="/employees"
+                href="/support-org"
                 className="flex items-center justify-between gap-2 rounded-lg bg-surface px-3 py-2 text-sm font-bold"
               >
                 支援体制を確認する
@@ -372,7 +372,7 @@ export default function DashboardPage() {
                 {managerCandidates.map((role) => (
                   <Link
                     key={role.employee.id}
-                    href="/employees"
+                    href="/support-org"
                     className="flex items-center justify-between gap-2 rounded-lg bg-surface px-3 py-2"
                   >
                     <span className="min-w-0">
