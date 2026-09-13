@@ -54,6 +54,8 @@ export function PrepDetailSheet({
   const [docs, setDocs] = useState(docRows);
   const [wages, setWages] = useState(wageLines);
   const [dates, setDates] = useState(dateLines);
+  // 左下の空きに出すメモ（印刷前に書ける。空なら手書き用の罫線だけを印刷する）
+  const [memo, setMemo] = useState("");
 
   const editLine =
     (setter: React.Dispatch<React.SetStateAction<PrepPrintLine[]>>) =>
@@ -67,6 +69,7 @@ export function PrepDetailSheet({
     setDocs(docRows);
     setWages(wageLines);
     setDates(dateLines);
+    setMemo("");
   };
 
   // 印刷（PDF保存）のとき、保存されるファイル名を「申請番号_氏名_申請準備の詳細」にする
@@ -153,6 +156,15 @@ export function PrepDetailSheet({
                       onChange={(v) => editLine(setPerson)(l.key, v)}
                     />
                   ))}
+                </EditGroup>
+                <EditGroup title="メモ（左下の空きに印刷されます）">
+                  <textarea
+                    value={memo}
+                    onChange={(e) => setMemo(e.target.value)}
+                    rows={4}
+                    placeholder="空のままだと、手書き用の罫線だけを印刷します"
+                    className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-xs leading-relaxed"
+                  />
                 </EditGroup>
               </div>
               <div className="space-y-1.5">
@@ -282,6 +294,18 @@ export function PrepDetailSheet({
               </SheetBlock>
               <SheetBlock title="外国人の情報">
                 <LineTable lines={person} />
+              </SheetBlock>
+              {/* メモ。書いた内容を出し、空のときは手書きできるよう罫線だけを引く */}
+              <SheetBlock title="メモ">
+                {memo.trim() ? (
+                  <p className="min-h-[24em] whitespace-pre-wrap px-1 py-0.5 leading-relaxed">{memo}</p>
+                ) : (
+                  <div className="min-h-[24em]">
+                    {Array.from({ length: 12 }, (_, i) => (
+                      <div key={i} className="h-[2em] border-b border-dotted border-black/60" />
+                    ))}
+                  </div>
+                )}
               </SheetBlock>
             </div>
 
