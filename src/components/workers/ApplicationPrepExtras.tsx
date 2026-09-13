@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Building2, ExternalLink, Eye } from "lucide-react";
+import { Building2, ExternalLink, Eye, Printer } from "lucide-react";
 import { Combobox } from "@/components/ui/Combobox";
 import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
@@ -25,6 +25,18 @@ import {
 import { listOrganizationFiles } from "@/lib/supabase/queries/organization-files";
 import { getOrgFilePreviewUrl } from "@/app/(app)/organizations/actions";
 import { orgYearlyFileGroups, type OrgYearlyFileGroup } from "@/lib/org-yearly-files";
+import {
+  ORG_FILE_KIND_AGRI_NOTICE,
+  ORG_FILE_KIND_LABOR_AGREEMENT,
+  ORG_FILE_KIND_YEAR_CALENDAR,
+  flexHoursLabel,
+  isAgricultureIndustry,
+  isImageFile,
+  latestOrgFiles,
+  needsFlexDocs,
+  orgFilesPrintHref,
+  type OrgLatestFiles,
+} from "@/lib/org-attachments";
 import { financialSalesText, normalizeOrganizationIntake, weeklyHoursText } from "@/lib/organization-intake";
 import { listWorkerWages } from "@/lib/supabase/queries/wages";
 import { sortWages, wageStartedOnLabel } from "@/lib/wage";
@@ -480,6 +492,13 @@ export function PrepOrgInfo({ orgId }: { orgId: string | null }) {
   const sales = intake.financials.filter((f) => f.sales).slice(0, 2);
   const reportGroups = orgYearlyFileGroups(files, "定期報告書");
   const ledgerGroups = orgYearlyFileGroups(files, "賃金台帳");
+  // 農業の会社は農業特定技能加入通知書、1年単位の変形労働時間制の会社は年間カレンダー・労使協定書を
+  // 最新版（いちばん新しいアップロード日の分）だけ表示する
+  const isAgri = isAgricultureIndustry(org.industry);
+  const flexDocs = needsFlexDocs(intake.flex_hours_kind);
+  const agriNotice = isAgri ? latestOrgFiles(files, ORG_FILE_KIND_AGRI_NOTICE) : null;
+  const yearCalendar = flexDocs ? latestOrgFiles(files, ORG_FILE_KIND_YEAR_CALENDAR) : null;
+  const laborAgreement = flexDocs ? latestOrgFiles(files, ORG_FILE_KIND_LABOR_AGREEMENT) : null;
 
   const preview = async (id: string) => {
     const res = await getOrgFilePreviewUrl(id);
@@ -518,6 +537,40 @@ export function PrepOrgInfo({ orgId }: { orgId: string | null }) {
         {intake.posting_monthly_hours || "未登録"}時間
         <span className="text-muted">（申請書の所定労働時間に使います。所属機関の求人の欄で直せます）</span>
       </p>
+      <p>
+        変形労働時間制: <span className="font-bold">{flexHoursLabel(intake.flex_hours_kind)}</span>
+        {flexDocs && (
+          <span className="text-muted">
+            （年間カレンダー・労使協定書が必要です
+            {intake.flex_docs_start && `。書類の有効期間の開始日: ${intake.flex_docs_start}`}）
+          </span>
+        )}
+      </p>
+      {flexDocs && (
+        <>
+          <OrgAttachmentPreview
+            label="年間カレンダー（最新版）"
+            latest={yearCalendar}
+            onPreview={preview}
+            printHref={orgFilesPrintHref(org.id, [ORG_FILE_KIND_YEAR_CALENDAR, ORG_FILE_KIND_LABOR_AGREEMENT])}
+            printLabel="年間カレンダー・労使協定書を印刷（A4縦）"
+          />
+          <OrgAttachmentPreview
+            label="労使協定書（最新版）"
+            latest={laborAgreement}
+            onPreview={preview}
+          />
+        </>
+      )}
+      {isAgri && (
+        <OrgAttachmentPreview
+          label={ORG_FILE_KIND_AGRI_NOTICE}
+          latest={agriNotice}
+          onPreview={preview}
+          printHref={orgFilesPrintHref(org.id, [ORG_FILE_KIND_AGRI_NOTICE])}
+          printLabel="印刷（A4縦）"
+        />
+      )}
       <p>協力確認書（事業所の所在地）: {councilLine(intake.council_office_submissions)}</p>
       <p>協力確認書（住居地）: {councilLine(intake.council_residence_submissions)}</p>
       {intake.council_note && <p>協議会メモ: {intake.council_note}</p>}
@@ -565,6 +618,97 @@ function OrgYearlyFilesLine({
               <Eye size={12} />
             </button>
           </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// 所属機関の添付ファイル（農業特定技能加入通知書・年間カレンダー・労使協定書）の最新版を、
+// 画像はその場で表示し、PDF は表示ボタンで開く。印刷リンクは別タブで A4縦の印刷ページを開く
+function OrgAttachmentPreview({
+  label,
+  latest,
+  onPreview,
+  printHref,
+  printLabel,
+}: {
+  label: string;
+  latest: OrgLatestFiles | null;
+  onPreview: (id: string) => Promise<void>;
+  printHref?: string;
+  printLabel?: string;
+}) {
+  // 画像の表示用の署名付きURL（ファイルIDごと）
+  const [urls, setUrls] = useState<Record<string, string>>({});
+  const imageIds = (latest?.files ?? []).filter(isImageFile).map((f) => f.id);
+  const imageKey = imageIds.join(",");
+
+  useEffect(() => {
+    if (!imageKey) return;
+    let cancelled = false;
+    void Promise.all(
+      imageKey.split(",").map(async (id) => {
+        const res = await getOrgFilePreviewUrl(id);
+        return [id, res.ok ? res.url : ""] as const;
+      }),
+    ).then((pairs) => {
+      if (!cancelled) setUrls(Object.fromEntries(pairs));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [imageKey]);
+
+  const printLink = printHref && (
+    <a
+      href={printHref}
+      target="_blank"
+      rel="noopener"
+      className="inline-flex items-center gap-1 rounded-full bg-brand px-2 py-0.5 text-[10px] font-bold text-brand-foreground"
+    >
+      <Printer size={11} />
+      {printLabel ?? "印刷（A4縦）"}
+    </a>
+  );
+
+  if (!latest) {
+    return (
+      <p className="flex flex-wrap items-center gap-1.5">
+        <span>{label}: 未登録（所属機関の編集画面からアップロードできます）</span>
+      </p>
+    );
+  }
+  return (
+    <div>
+      <p className="flex flex-wrap items-center gap-1.5 font-bold">
+        {label}
+        <span className="font-normal text-muted">（{latest.uploadedOn} にアップロード）</span>
+        {printLink}
+      </p>
+      <div className="mt-0.5 flex flex-col gap-1">
+        {latest.files.map((f) => (
+          <div key={f.id} className="flex flex-col gap-0.5">
+            <span className="flex items-center gap-1.5">
+              <span className="min-w-0 flex-1 truncate">{f.file_name}</span>
+              <button
+                type="button"
+                onClick={() => void onPreview(f.id)}
+                aria-label="表示"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded border border-border text-muted hover:text-brand"
+              >
+                <Eye size={12} />
+              </button>
+            </span>
+            {isImageFile(f) && urls[f.id] && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={urls[f.id]}
+                alt={`${label} ${f.file_name}`}
+                className="max-h-64 w-auto max-w-full self-start rounded border border-border bg-white object-contain"
+              />
+            )}
+          </div>
         ))}
       </div>
     </div>

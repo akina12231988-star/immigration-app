@@ -9,6 +9,7 @@
 
 import { PREP_APP_TYPE_LABELS, prepDocLabel, type PrepChecklistMeta, type PrepDocStatus } from "@/lib/application-prep";
 import { PLAN_DATE_FIELDS } from "@/lib/support-plan-dates";
+import { flexHoursLabel } from "@/lib/org-attachments";
 import { financialSalesText } from "@/lib/organization-intake";
 import { rosterJpDate } from "@/lib/roster";
 import { sortWages, wageStartedOnLabel } from "@/lib/wage";
@@ -63,6 +64,7 @@ export interface PrepPrintOrg {
   councilOffice: OrgCouncilSubmission[];
   councilResidence: OrgCouncilSubmission[];
   councilNote: string;
+  flexHoursKind: string; // 変形労働時間制（'' / なし / 1ヶ月単位 / 1年単位）
   fiscalKind: string; // 決算情報の区分（個人事業主 / 法人）
   financials: OrgFinancialYear[];
 }
@@ -78,6 +80,8 @@ export function prepPrintOrgLines(org: PrepPrintOrg): PrepPrintLine[] {
       label: "代表者",
       value: org.repName ? `${org.repName}${org.repKana ? `（${org.repKana}）` : ""}` : "",
     },
+    // 1年単位のときは年間カレンダー・労使協定書が要るので「1年単位の変形労働」と出す（未登録は空のまま）
+    { key: "org_flex_hours", label: "変形労働時間制", value: org.flexHoursKind ? flexHoursLabel(org.flexHoursKind) : "" },
     {
       key: "org_council_office",
       label: "協力確認書（事業所の所在地）",
