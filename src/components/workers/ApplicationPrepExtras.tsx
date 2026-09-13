@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Building2, ExternalLink, Printer } from "lucide-react";
 import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
@@ -47,7 +47,7 @@ import {
   updatePlanDates,
   type SavedPlanDates,
 } from "@/lib/supabase/queries/plan-dates";
-import { CONTRACT_YEARS, contractPeriodEnd, formatYmdJa, PLAN_DATE_FIELDS } from "@/lib/support-plan-dates";
+import { contractPeriodEnd, formatYmdJa, PLAN_DATE_GROUPS, SUPPORT_CONTRACT_YEARS } from "@/lib/support-plan-dates";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { listOrganizations, updateOrganization } from "@/lib/supabase/queries/organizations";
 import { WorkerWages } from "@/components/workers/WorkerWages";
@@ -1268,43 +1268,62 @@ export function SavedPlanDatesSection({
         </p>
       ) : (
         <div className="space-y-1">
-          {PLAN_DATE_FIELDS.map((f) => (
-            <div key={f.key}>
-              <label className="flex flex-wrap items-center gap-2 text-[11px]">
-                <span className="min-w-[14rem] flex-1">{f.label}</span>
-                <input
-                  type="date"
-                  value={dates[f.key] ?? ""}
-                  disabled={!canEdit}
-                  onChange={(e) => {
-                    setDates((prev) => ({ ...prev, [f.key]: e.target.value }));
-                    setDirty(true);
-                  }}
-                  className="min-h-[32px] rounded-lg border border-border bg-surface px-2 text-xs tabular-nums disabled:opacity-60"
-                />
-                {/* 申請書に貼るための日付のコピー（2026年10月1日 の形） */}
-                {dates[f.key] ? (
-                  <CopyButton value={formatYmdJa(dates[f.key])} label={`${f.label}（${formatYmdJa(dates[f.key])}）をコピー`} size={13} />
-                ) : (
-                  <span className="w-[21px]" aria-hidden />
-                )}
-              </label>
-              {/* 雇用開始日の下に、申請書に書く雇用契約期間（2年間契約。終了は2年後の前日） */}
-              {f.key === "es" && dates.es && (
-                <p className="mt-0.5 flex flex-wrap items-center gap-1 rounded-lg bg-surface px-2 py-1 text-[11px]">
-                  <span className="text-muted">雇用契約期間（{CONTRACT_YEARS}年間契約）:</span>
-                  <span className="font-bold">
-                    {formatYmdJa(dates.es)} から {formatYmdJa(contractPeriodEnd(dates.es))} まで
-                  </span>
-                  <CopyButton
-                    value={`${formatYmdJa(dates.es)} から ${formatYmdJa(contractPeriodEnd(dates.es))} まで`}
-                    label="雇用契約期間をコピー"
-                    size={13}
-                  />
-                </p>
-              )}
-            </div>
-          ))}
+          {/* 参考様式ごとの枠に分けた一覧表。同じ日付が2つの枠に出ることがある（雇用契約日＝支援委託契約日） */}
+          <table className="w-full border-collapse text-[11px]">
+            <tbody>
+              {PLAN_DATE_GROUPS.map((g) => (
+                <Fragment key={g.title}>
+                  <tr>
+                    <th colSpan={3} className="border-t border-border bg-surface px-2 py-1 text-left text-xs font-bold">
+                      {g.title}
+                    </th>
+                  </tr>
+                  {g.rows.map((r) => {
+                    // 契約期間は保存した日付から自動で出す。
+                    // 雇用契約期間は雇用開始日から2年間、支援委託契約の契約期間は支援委託契約日から5年間（終了はその前日）
+                    if (r.key === "period" || r.key === "scPeriod") {
+                      const start = r.key === "period" ? dates.es : dates.con;
+                      const years = r.key === "period" ? undefined : SUPPORT_CONTRACT_YEARS;
+                      const period = start ? `${formatYmdJa(start)} から ${formatYmdJa(contractPeriodEnd(start, years))} まで` : "";
+                      const hint = r.key === "period" ? "雇用開始日を入れると自動で出ます" : "支援委託契約日を入れると自動で出ます";
+                      return (
+                        <tr key={r.key} className="border-t border-border">
+                          <th className="w-[45%] px-2 py-1 text-left font-normal">{r.label}</th>
+                          <td className="px-2 py-1 font-bold">{period || <span className="font-normal text-muted">{hint}</span>}</td>
+                          <td className="w-8 px-1 py-1">{period && <CopyButton value={period} label={`${r.label}をコピー`} size={13} />}</td>
+                        </tr>
+                      );
+                    }
+                    const value = dates[r.key] ?? "";
+                    return (
+                      <tr key={`${g.title}-${r.key}`} className="border-t border-border">
+                        <th className="w-[45%] px-2 py-1 text-left font-normal">
+                          <label htmlFor={`plan-date-${g.title}-${r.key}`}>{r.label}</label>
+                        </th>
+                        <td className="px-2 py-1">
+                          <input
+                            id={`plan-date-${g.title}-${r.key}`}
+                            type="date"
+                            value={value}
+                            disabled={!canEdit}
+                            onChange={(e) => {
+                              setDates((prev) => ({ ...prev, [r.key]: e.target.value }));
+                              setDirty(true);
+                            }}
+                            className="min-h-[32px] rounded-lg border border-border bg-surface px-2 text-xs tabular-nums disabled:opacity-60"
+                          />
+                        </td>
+                        {/* 申請書に貼るための日付のコピー（2026年10月1日 の形） */}
+                        <td className="w-8 px-1 py-1">
+                          {value && <CopyButton value={formatYmdJa(value)} label={`${r.label}（${formatYmdJa(value)}）をコピー`} size={13} />}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
           {canEdit && dirty && (
             <button
               type="button"

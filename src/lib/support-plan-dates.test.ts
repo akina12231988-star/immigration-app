@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
+  PLAN_DATE_FIELDS,
+  PLAN_DATE_GROUPS,
   addDaysYmd,
   addYearsYmd,
   computePlanDates,
@@ -82,5 +84,24 @@ describe("planDatesText", () => {
     expect(text).toContain("TODO: 812");
     expect(text).toContain("申請予定日：2026年9月1日");
     expect(text).toContain("生活オリエンテーション実施日（参考様式1-17号）：2026年10月15日");
+  });
+});
+
+describe("PLAN_DATE_GROUPS（申請準備の一覧表の枠）", () => {
+  test("保存する日付は全部どこかの枠に出て、雇用契約日は1-5号と1-25号の両方に出る", () => {
+    const keys = PLAN_DATE_GROUPS.flatMap((g) => g.rows.map((r) => r.key));
+    // 支援委託契約の終了日は「契約期間（5年間）」として自動で出すので、枠には入れない
+    for (const f of PLAN_DATE_FIELDS) if (f.key !== "scEnd") expect(keys).toContain(f.key);
+    expect(PLAN_DATE_GROUPS[3].rows.map((r) => r.key)).toEqual(["con", "scPeriod"]);
+    expect(keys.filter((k) => k === "con")).toHaveLength(2);
+    expect(PLAN_DATE_GROUPS.map((g) => g.title)).toEqual([
+      "参考様式1-6号（雇用条件書）",
+      "参考様式1-5号（雇用契約書）",
+      "参考様式1-17号（支援計画書）",
+      "参考様式1-25号（支援委託契約書）",
+      "その他の申請書類",
+    ]);
+    // 雇用開始日・雇用契約期間・雇用終了日は1-6号の枠
+    expect(PLAN_DATE_GROUPS[0].rows.map((r) => r.key)).toEqual(["cond", "es", "period", "eeEnd"]);
   });
 });
