@@ -9,7 +9,7 @@ import { calcSsw } from "@/lib/ssw/calc";
 import { currentWage, hourlyFromMonthly, monthlyFromHourly } from "@/lib/wage";
 import { formatHoursDecimal, parseHoursMinutes, rosaiMeasureText, weeklyHoursText } from "@/lib/organization-intake";
 import { effectiveResidencePeriod } from "@/lib/residence-card";
-import { CUSTODIAN_INFO, type CustodianInfo } from "@/lib/custody";
+import { CUSTODIAN_INFO, type CustodianInfo, type SupportOrgInterpreter } from "@/lib/custody";
 import { RESUME_LANG_JA } from "@/lib/resume-tool/i18n";
 import { resumeLangForNationality } from "@/lib/resume-tool/share";
 import { contractPeriodEnd, formatYmdJa } from "@/lib/support-plan-dates";
@@ -99,6 +99,7 @@ export interface ApplicationCopyInput {
   planDates: Record<string, string>; // 支援計画書の日付（es = 雇用開始日 など）
   desiredStatus?: string; // 希望する在留資格（申請種別から）
   custodian?: CustodianInfo; // 登録支援機関の情報（無ければ既定値 CUSTODIAN_INFO）
+  interpreters?: SupportOrgInterpreter[]; // 対応可能言語ごとの通訳者（登録支援機関の情報）
   today?: string;
 }
 
@@ -436,12 +437,33 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
       edit: cu("languages"),
       editValue: c.languages,
     },
+    // 言語ごとの通訳者（登録支援機関の情報で登録。申請書の欄ではないが、対応可能言語の根拠として添える）
+    ...(input.interpreters && input.interpreters.length > 0
+      ? [
+          {
+            label: "通訳者（言語ごと）",
+            value: input.interpreters.map((r) => `${r.language}: ${r.name}`).join("、"),
+            note: "登録支援機関の情報から（メニュー ＞ 登録支援機関 で変更）",
+          },
+        ]
+      : []),
     {
       label: "5 (13)支援委託手数料（月額／人）",
       value: intake?.support_fee ?? "",
       note: "所属機関 ＞ 毎月の支援代",
       edit: org ? it("support_fee") : undefined,
     },
+  ];
+
+  // 職業紹介事業者（国内）。登録支援機関の情報で登録・変更する（全員共通）
+  const placement: CopyItem[] = [
+    { label: "2 許可・届出受理番号", value: c.placementLicenseNo, edit: cu("placementLicenseNo") },
+    dateItem("2 受理年月日", c.placementLicensedOn, undefined, cu("placementLicensedOn", "date")),
+    { label: "3 職業紹介事業者の区分", value: c.placementKind, edit: cu("placementKind") },
+    { label: "4 職業紹介事業者の氏名", value: c.placementName, edit: cu("placementName") },
+    { label: "5 郵便番号", value: c.placementPostal, edit: cu("placementPostal") },
+    { label: "5 住所", value: c.placementAddress, edit: cu("placementAddress") },
+    { label: "5 電話番号", value: c.placementTel, edit: cu("placementTel") },
   ];
 
   return [
@@ -452,6 +474,7 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
     { title: "所属機関等作成用 2（特定技能所属機関）", items: organization2 },
     { title: "所属機関等作成用 3（労災保険・協力確認書）", items: organization3 },
     { title: "所属機関等作成用 4（登録支援機関）", items: support },
+    { title: "職業紹介事業者（国内）", items: placement },
   ];
 }
 

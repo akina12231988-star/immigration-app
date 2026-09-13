@@ -112,9 +112,71 @@ export const CUSTODIAN_INFO = {
   supportManagerName: "VUONG VAN THANH", // 支援責任者名
   supportStaffName: "VUONG VAN THANH", // 支援担当者名
   languages: "", // 対応可能言語（空なら外国人の国籍から自動で出す）
+  // 職業紹介事業者（国内）として申請書に書く内容
+  placementLicenseNo: "43-ユ-300259", // 許可・届出受理番号
+  placementLicensedOn: "2024-07-01", // 受理年月日
+  placementKind: "有料職業紹介事業者", // 区分（有料職業紹介事業者 / 無料職業紹介事業者）
+  placementName: "VUONG VAN THANH", // 氏名
+  placementPostal: "861-8045", // 郵便番号
+  placementAddress: "熊本県熊本市東区小山2丁目13-20 日産共同住宅201号", // 住所
+  placementTel: "050-8890-4000", // 電話番号
 } as const;
 
 export type CustodianInfo = { [K in keyof typeof CUSTODIAN_INFO]: string };
+
+// 登録支援機関の情報のうち、複数行になるもの（同じ app_settings の値に一緒に保存する）
+export interface SupportOrgInterpreter {
+  language: string; // 言語（例: ベトナム語）
+  name: string; // 通訳者の氏名
+}
+export interface SupportOrgAgent {
+  name: string; // 申請取次者の氏名
+  certNo: string; // 届出済証明書の番号
+  certExpiry: string; // 届出済証明書の有効期限（YYYY-MM-DD）
+}
+export interface SupportOrgLists {
+  interpreters: SupportOrgInterpreter[]; // 対応可能言語ごとの通訳者
+  agents: SupportOrgAgent[]; // 申請取次者（複数可）
+}
+
+const str = (v: unknown): string => (typeof v === "string" ? v : "");
+
+// 保存されている一覧を取り出す。申請取次者が未保存のときは、従来の1人分（agentName など）から作る
+export function mergeSupportOrgLists(override: Record<string, unknown> | null | undefined): SupportOrgLists {
+  const rawI = Array.isArray(override?.interpreters) ? (override!.interpreters as unknown[]) : [];
+  const interpreters = rawI
+    .map((r) => {
+      const o = (r ?? {}) as Record<string, unknown>;
+      return { language: str(o.language), name: str(o.name) };
+    })
+    .filter((r) => r.language || r.name);
+  let agents: SupportOrgAgent[];
+  if (Array.isArray(override?.agents)) {
+    agents = (override!.agents as unknown[])
+      .map((r) => {
+        const o = (r ?? {}) as Record<string, unknown>;
+        return { name: str(o.name), certNo: str(o.certNo), certExpiry: str(o.certExpiry) };
+      })
+      .filter((r) => r.name || r.certNo || r.certExpiry);
+  } else {
+    const c = mergeCustodianInfo(override as Partial<Record<keyof CustodianInfo, unknown>> | null | undefined);
+    agents = c.agentName || c.agentCertNo || c.agentCertExpiry ? [{ name: c.agentName, certNo: c.agentCertNo, certExpiry: c.agentCertExpiry }] : [];
+  }
+  return { interpreters, agents };
+}
+
+// 保存する値。一覧に加えて、従来の1人分の欄（agentName など）にも1人目を入れて古い画面でも使えるようにする
+export function supportOrgSettingValue(info: CustodianInfo, lists: SupportOrgLists): Record<string, unknown> {
+  const first = lists.agents[0];
+  return {
+    ...info,
+    agentName: first?.name ?? "",
+    agentCertNo: first?.certNo ?? "",
+    agentCertExpiry: first?.certExpiry ?? "",
+    interpreters: lists.interpreters,
+    agents: lists.agents,
+  };
+}
 
 // app_settings のキー（登録支援機関の情報）
 export const CUSTODIAN_SETTING_KEY = "support_org";

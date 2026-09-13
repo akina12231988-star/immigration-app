@@ -10,7 +10,7 @@ import { toCalcHistory } from "@/lib/supabase/queries/histories";
 import { findPlanDatesForTodo, listPlanDates } from "@/lib/supabase/queries/plan-dates";
 import { normalizeOrganizationIntake } from "@/lib/organization-intake";
 import { getAppSetting, setAppSetting } from "@/lib/supabase/queries/app-settings";
-import { CUSTODIAN_SETTING_KEY, mergeCustodianInfo, type CustodianInfo } from "@/lib/custody";
+import { CUSTODIAN_SETTING_KEY, mergeCustodianInfo, mergeSupportOrgLists } from "@/lib/custody";
 import {
   buildApplicationCopyGroups,
   copyGroupText,
@@ -48,7 +48,7 @@ export function ApplicationCopyPanel({
     wages: WorkerWage[];
     histories: WorkHistoryRow[];
     planDates: Record<string, string>;
-    custodian: Partial<CustodianInfo> | null; // 登録支援機関の上書き（app_settings。無ければ既定値）
+    custodian: Record<string, unknown> | null; // 登録支援機関の上書き（app_settings。無ければ既定値）
   } | null>(null);
 
   useEffect(() => {
@@ -69,7 +69,7 @@ export function ApplicationCopyPanel({
         .then((rows) => findPlanDatesForTodo(rows, todoNo)?.dates ?? {})
         .catch(() => ({}) as Record<string, string>),
       // 0149 未適用でも既定値で表示できるようにエラーは無視する
-      getAppSetting<CustodianInfo>(supabase, CUSTODIAN_SETTING_KEY).catch(() => null),
+      getAppSetting<Record<string, unknown>>(supabase, CUSTODIAN_SETTING_KEY).catch(() => null),
     ]).then(([worker, org, wages, histories, planDates, custodian]) => {
       if (!cancelled) setLoaded({ worker, org, wages, histories, planDates, custodian });
     });
@@ -87,8 +87,8 @@ export function ApplicationCopyPanel({
         [edit.column]: edit.kind === "date" ? v || null : v,
       } as Parameters<typeof updateWorker>[2]);
     } else if (edit.target === "custodian") {
-      // 登録支援機関の情報は全員共通（app_settings に保存）
-      const next = { ...mergeCustodianInfo(loaded?.custodian), [edit.column]: v };
+      // 登録支援機関の情報は全員共通（app_settings に保存）。通訳者・申請取次者の一覧など他の項目は残す
+      const next = { ...(loaded?.custodian ?? {}), ...mergeCustodianInfo(loaded?.custodian), [edit.column]: v };
       await setAppSetting(supabase, CUSTODIAN_SETTING_KEY, next);
     } else if (edit.target === "council") {
       // 協力確認書の提出（事業所の所在地 / 住居地）の index 行目の提出先・提出日を書き換える
@@ -122,6 +122,7 @@ export function ApplicationCopyPanel({
       planDates: loaded.planDates,
       desiredStatus,
       custodian: mergeCustodianInfo(loaded.custodian),
+      interpreters: mergeSupportOrgLists(loaded.custodian).interpreters,
     });
   }, [loaded, desiredStatus]);
 

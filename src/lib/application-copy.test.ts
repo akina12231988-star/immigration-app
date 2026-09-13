@@ -52,7 +52,7 @@ describe("所属機関等作成用 3（労災保険・協力確認書）", () =>
     const groups = buildApplicationCopyGroups({ worker, org, intake, wages: [], histories: [], planDates: {} });
     const g = groups.find((x) => x.title.startsWith("所属機関等作成用 3"))!;
     expect(groups.map((x) => x.title.replace(/（.*$/, ""))).toEqual([
-      "申請人等作成用 1", "申請人等作成用 2", "申請人等作成用 3", "所属機関等作成用 1", "所属機関等作成用 2", "所属機関等作成用 3", "所属機関等作成用 4",
+      "申請人等作成用 1", "申請人等作成用 2", "申請人等作成用 3", "所属機関等作成用 1", "所属機関等作成用 2", "所属機関等作成用 3", "所属機関等作成用 4", "職業紹介事業者",
     ]);
     expect(g.items[0]).toMatchObject({ label: "(29)労災保険加入等の措置の内容", value: "労災保険加入", editValue: "", edit: { target: "intake", column: "rosai_measure" } });
     expect(g.items[1]).toMatchObject({ label: "協力確認書（外国人に活動させる事業所） 提出年月日", value: "2026年4月1日", parts: ["2026", "4", "1"], editValue: "2026-04-01", edit: { target: "council", list: "office", index: 0, field: "on", kind: "date" } });
@@ -87,8 +87,19 @@ describe("登録支援機関の上書き", () => {
     const find = (label: string) => groups.flatMap((g) => g.items).find((i) => i.label === label);
     expect(find("5 (11)支援担当者名")?.value).toBe("秋吉 伽恋");
     expect(find("5 (10)支援責任者名")?.value).toBe("VUONG VAN THANH");
+    // 通訳者は登録があるときだけ出す（無ければ項目自体が無い）
+    expect(find("通訳者（言語ごと）")).toBeUndefined();
+    const withInterpreters = buildApplicationCopyGroups({
+      worker, org: null, intake: null, wages: [], histories: [], planDates: {},
+      interpreters: [{ language: "ベトナム語", name: "グエン" }, { language: "タガログ語", name: "サントス" }],
+    }).flatMap((g) => g.items).find((i) => i.label === "通訳者（言語ごと）");
+    expect(withInterpreters?.value).toBe("ベトナム語: グエン、タガログ語: サントス");
     // 対応可能言語は登録支援機関の情報に登録があれば国籍より優先する
     expect(find("5 (12)対応可能言語")).toMatchObject({ value: "ベトナム語・英語", editValue: "ベトナム語・英語" });
+    // 職業紹介事業者（国内）も登録支援機関の情報から出て、その場で編集できる
+    expect(find("2 許可・届出受理番号")).toMatchObject({ value: "43-ユ-300259", edit: { target: "custodian", column: "placementLicenseNo" } });
+    expect(find("2 受理年月日")).toMatchObject({ value: "2024年7月1日", parts: ["2024", "7", "1"] });
+    expect(find("3 職業紹介事業者の区分")?.value).toBe("有料職業紹介事業者");
   });
 });
 

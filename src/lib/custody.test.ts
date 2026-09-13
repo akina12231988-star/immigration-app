@@ -8,6 +8,8 @@ import {
   receiptTranslation,
   CUSTODIAN_INFO,
   mergeCustodianInfo,
+  mergeSupportOrgLists,
+  supportOrgSettingValue,
 } from "./custody";
 
 describe("formatStorageNo", () => {
@@ -102,5 +104,35 @@ describe("登録支援機関の情報（既定値と app_settings の上書き�
     expect(m.tel).toBe("");
     expect(m.registeredOn).toBe(CUSTODIAN_INFO.registeredOn); // 文字列でない値は無視
     expect(m.officeName).toBe(CUSTODIAN_INFO.officeName);
+  });
+});
+
+describe("登録支援機関の一覧（通訳者・申請取次者）", () => {
+  it("未保存なら申請取次者は従来の1人分から作り、通訳者は空", () => {
+    const lists = mergeSupportOrgLists(null);
+    expect(lists.interpreters).toEqual([]);
+    expect(lists.agents).toEqual([
+      { name: CUSTODIAN_INFO.agentName, certNo: CUSTODIAN_INFO.agentCertNo, certExpiry: CUSTODIAN_INFO.agentCertExpiry },
+    ]);
+  });
+
+  it("保存されている一覧を読み、空の行は捨てる", () => {
+    const lists = mergeSupportOrgLists({
+      interpreters: [{ language: "ベトナム語", name: "グエン" }, { language: "", name: "" }],
+      agents: [{ name: "秋吉 伽恋", certNo: "受-1", certExpiry: "2027-06-18" }, { name: "山田", certNo: "", certExpiry: "" }],
+    });
+    expect(lists.interpreters).toEqual([{ language: "ベトナム語", name: "グエン" }]);
+    expect(lists.agents.map((a) => a.name)).toEqual(["秋吉 伽恋", "山田"]);
+  });
+
+  it("保存する値には1人目の申請取次者を従来の欄にも入れる", () => {
+    const v = supportOrgSettingValue(mergeCustodianInfo(null), {
+      interpreters: [],
+      agents: [{ name: "山田", certNo: "受-9", certExpiry: "2028-01-01" }],
+    });
+    expect(v.agentName).toBe("山田");
+    expect(v.agentCertNo).toBe("受-9");
+    expect(v.agentCertExpiry).toBe("2028-01-01");
+    expect(v.agents).toHaveLength(1);
   });
 });
