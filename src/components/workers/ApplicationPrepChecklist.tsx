@@ -1750,6 +1750,8 @@ export function ApplicationPrepChecklist({
           mismatch={!currentTodo && fallbackTodo != null}
           todoNo={current.todo_no}
           todoTitle={meta.app_content ? prepSituationLabel(meta.app_content) : "申請準備"}
+          prepOrgId={prepOrgId}
+          prepOrgName={prepOrgName}
           canEdit={canEdit}
           onError={setError}
           onChanged={loadWorkerTodos}

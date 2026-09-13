@@ -1467,6 +1467,7 @@ export function PrepEmploymentSection({
 
 interface PrepJobFlow {
   id: string;
+  organizationId: string | null; // 採用された（応募した）所属機関のID。準備中の所属機関と照合する
   applied_on: string;
   interview_on: string | null;
   result_on: string | null;
@@ -1482,6 +1483,8 @@ export function PrepAssenSection({
   mismatch = false,
   todoNo = "",
   todoTitle = "申請準備",
+  prepOrgId = null,
+  prepOrgName = "",
   canEdit,
   onError,
   onChanged,
@@ -1491,6 +1494,8 @@ export function PrepAssenSection({
   mismatch?: boolean; // true: 準備リストの番号と違う番号のTODO（この外国人の申請準備TODO）に保存している
   todoNo?: string; // 表示中の準備リストのTODO番号（TODOがまだ無いとき、この番号で作る）
   todoTitle?: string; // TODOを作るときの題名（準備の内容から）
+  prepOrgId?: string | null; // 申請準備で選んでいる所属機関（採用された機関と一致しているかを確かめる）
+  prepOrgName?: string;
   canEdit: boolean;
   onError: (m: string) => void;
   onChanged: () => void;
@@ -1509,7 +1514,7 @@ export function PrepAssenSection({
     void createClient()
       .from("job_applications")
       .select(
-        "id, applied_on, interview_on, result_on, result, organizations(name), job_postings(received_on, job_type)",
+        "id, organization_id, applied_on, interview_on, result_on, result, organizations(name), job_postings(received_on, job_type)",
       )
       .eq("worker_id", workerId)
       .order("applied_on", { ascending: false })
@@ -1518,6 +1523,7 @@ export function PrepAssenSection({
         const rows =
           (data as unknown as {
             id: string;
+            organization_id: string | null;
             applied_on: string;
             interview_on: string | null;
             result_on: string | null;
@@ -1528,6 +1534,7 @@ export function PrepAssenSection({
         setFlows(
           rows.map((r) => ({
             id: r.id,
+            organizationId: r.organization_id,
             applied_on: r.applied_on,
             interview_on: r.interview_on,
             result_on: r.result_on,
@@ -1565,6 +1572,10 @@ export function PrepAssenSection({
       setCreating(false);
     }
   };
+
+  // 採用になった応募（求職管理簿）。準備している所属機関と同じ機関での採用かを確かめる
+  const hired = flows.filter((f) => f.result === "採用");
+  const hiredAtPrepOrg = prepOrgId ? hired.find((f) => f.organizationId === prepOrgId) : undefined;
 
   return (
     <div className="rounded-xl border border-border bg-background px-3 py-2.5">
@@ -1612,6 +1623,44 @@ export function PrepAssenSection({
       )}
       {todo?.assen === "あり" && (
         <div className="mt-1.5 rounded-lg bg-surface/60 p-2">
+          {/* あっせん有りの申請では、雇用の経緯に係る説明書（参考様式1-16号）が必要 */}
+          <p className="mb-2 rounded-lg bg-status-notice-bg px-2.5 py-1.5 text-xs font-bold text-status-notice-fg">
+            あっせん有りのため、参考様式1-16号（雇用の経緯に係る説明書）を作成してください。
+          </p>
+          {/* どこの所属機関に採用されたかを大きく出し、準備している所属機関と一致しているかを確かめる */}
+          {hired.length > 0 && (
+            <div
+              className={`mb-2 rounded-lg border-2 px-2.5 py-2 ${
+                !prepOrgId ? "border-border" : hiredAtPrepOrg ? "border-brand bg-brand/5" : "border-seal bg-seal/5"
+              }`}
+            >
+              <p className="text-[11px] text-muted">求職管理簿で採用された所属機関</p>
+              {hired.map((f) => (
+                <p key={f.id} className="text-base font-bold leading-snug">
+                  {f.orgName || "（機関名なし）"}
+                  <span className="ml-2 text-xs font-normal text-muted">採用年月日 {f.result_on ?? "—"}</span>
+                </p>
+              ))}
+              {!prepOrgId ? (
+                <p className="mt-1 text-[11px] text-muted">
+                  申請準備の所属機関が未設定のため、一致しているか確かめられません。上の「申請準備の対応状況」で所属機関を選んでください。
+                </p>
+              ) : hiredAtPrepOrg ? (
+                <p className="mt-1 text-[11px] font-bold text-brand">
+                  ✓ 準備している所属機関（{prepOrgName || "選択中の機関"}）での採用と一致しています。
+                </p>
+              ) : (
+                <p className="mt-1 text-[11px] font-bold text-seal">
+                  ！ 準備している所属機関（{prepOrgName || "選択中の機関"}）と違います。所属機関の選択か、求職管理簿の採用の登録を確認してください。
+                </p>
+              )}
+            </div>
+          )}
+          {flows.length > 0 && hired.length === 0 && (
+            <p className="mb-2 text-[11px] font-bold text-seal">
+              求職管理簿に「採用」の登録がありません。採用が決まっていれば求職一覧で採用年月日を登録してください。
+            </p>
+          )}
           <p className="mb-1 text-[11px] font-bold text-muted">
             求人への採用の一連の流れ（求職管理簿から）
           </p>
