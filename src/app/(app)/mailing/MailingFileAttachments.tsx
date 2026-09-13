@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Eye, Loader2, Trash2, Upload } from "lucide-react";
+import { Loader2, Trash2, Upload } from "lucide-react";
+import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { createClient } from "@/lib/supabase/client";
 import { compressImage } from "@/lib/image-compress";
 import { listMailingFiles, type MailingFileRow } from "@/lib/supabase/queries/mailing-files";
@@ -105,15 +106,7 @@ export function MailingFileAttachments({
       {shown.length === 0 && !canEdit && <p className="text-[11px] text-muted">添付はありません</p>}
       {shown.map((f) => (
         <div key={f.id} className="flex items-center gap-1.5">
-          <span className="min-w-0 flex-1 truncate text-[11px] text-muted">{f.file_name}</span>
-          <button
-            type="button"
-            onClick={() => preview(f.id)}
-            aria-label="表示"
-            className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-muted hover:text-brand"
-          >
-            <Eye size={13} />
-          </button>
+          <AttachedFileButton fileName={f.file_name} onOpen={() => preview(f.id)} className="flex-1" />
           {canEdit && (
             <button
               type="button"

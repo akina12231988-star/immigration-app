@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Building2, ExternalLink, Eye, Printer } from "lucide-react";
+import { Building2, ExternalLink, Printer } from "lucide-react";
+import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { Combobox } from "@/components/ui/Combobox";
 import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
@@ -607,17 +608,12 @@ function OrgYearlyFilesLine({
       </p>
       <div className="mt-0.5 flex flex-col gap-0.5">
         {latest.files.map((f) => (
-          <span key={f.id} className="flex items-center gap-1.5">
-            <span className="min-w-0 flex-1 truncate">{f.file_name}</span>
-            <button
-              type="button"
-              onClick={() => void onPreview(f.id)}
-              aria-label="表示"
-              className="flex h-6 w-6 shrink-0 items-center justify-center rounded border border-border text-muted hover:text-brand"
-            >
-              <Eye size={12} />
-            </button>
-          </span>
+          <AttachedFileButton
+            key={f.id}
+            fileName={f.file_name}
+            onOpen={() => void onPreview(f.id)}
+            className="self-start"
+          />
         ))}
       </div>
     </div>
@@ -689,17 +685,11 @@ function OrgAttachmentPreview({
       <div className="mt-0.5 flex flex-col gap-1">
         {latest.files.map((f) => (
           <div key={f.id} className="flex flex-col gap-0.5">
-            <span className="flex items-center gap-1.5">
-              <span className="min-w-0 flex-1 truncate">{f.file_name}</span>
-              <button
-                type="button"
-                onClick={() => void onPreview(f.id)}
-                aria-label="表示"
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded border border-border text-muted hover:text-brand"
-              >
-                <Eye size={12} />
-              </button>
-            </span>
+            <AttachedFileButton
+              fileName={f.file_name}
+              onOpen={() => void onPreview(f.id)}
+              className="self-start"
+            />
             {isImageFile(f) && urls[f.id] && (
               // eslint-disable-next-line @next/next/no-img-element
               <img

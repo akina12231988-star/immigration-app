@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Eye, Home, Loader2, Pencil, Plane, Plus, Stamp, Trash2, Upload } from "lucide-react";
+import { Home, Loader2, Pencil, Plane, Plus, Stamp, Trash2, Upload } from "lucide-react";
+import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -393,19 +394,13 @@ export function WorkerPassportTravel({
         <div className="flex flex-col gap-1.5">
           {files.map((f) => (
             <div key={f.id} className="flex items-center gap-1.5">
-              <span className="min-w-0 flex-1 truncate text-[11px] text-muted">{f.file_name}</span>
-              {/* 添付した日付（自動で記録される） */}
-              <span className="shrink-0 text-[10px] tabular-nums text-muted">
-                添付 {f.created_at.slice(0, 10)}
-              </span>
-              <button
-                type="button"
-                onClick={() => void preview(f.id)}
-                aria-label="表示"
-                className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-muted hover:text-brand"
-              >
-                <Eye size={13} />
-              </button>
+              {/* 添付した日付（自動で記録される）も一緒に出す */}
+              <AttachedFileButton
+                fileName={f.file_name}
+                note={`添付 ${f.created_at.slice(0, 10)}`}
+                onOpen={() => void preview(f.id)}
+                className="flex-1"
+              />
               {canEdit && (
                 <button
                   type="button"

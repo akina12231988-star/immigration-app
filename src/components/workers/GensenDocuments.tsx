@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Download, Eye, FileText, Loader2, Plus, Trash2, Upload } from "lucide-react";
+import { Download, FileText, Loader2, Plus, Trash2, Upload } from "lucide-react";
+import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { Card } from "@/components/ui/Card";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { createClient } from "@/lib/supabase/client";
@@ -162,16 +163,17 @@ export function GensenDocuments({
                       return y != null ? gensenLabel(y) : row.label;
                     })()}
                   </span>
-                  <span className="block truncate text-[11px] text-muted">{row.file_name}</span>
+                  <AttachedFileButton
+                    fileName={row.file_name}
+                    onOpen={() => openPreview(row.id)}
+                    className="mt-0.5"
+                  />
                 </span>
                 <div className="flex shrink-0 items-center gap-1">
                   {busy ? (
                     <Loader2 size={15} className="animate-spin text-muted" />
                   ) : (
                     <>
-                      <IconButton label="表示" onClick={() => openPreview(row.id)}>
-                        <Eye size={13} />
-                      </IconButton>
                       <IconButton label="ダウンロード" onClick={() => download(row.id)}>
                         <Download size={13} />
                       </IconButton>
