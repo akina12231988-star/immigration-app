@@ -269,11 +269,16 @@ export function PrepDetailSheet({
         </div>
       </div>
 
-      {/* ここから下が印刷される部分（A4縦1枚） */}
-      <div className="mx-auto max-w-[190mm] px-4 pb-10 lg:px-0">
-        <section className="text-[8.5pt] leading-tight text-black">
+      {/* ここから下が印刷される部分（A4縦1枚）。
+          上段: 所属機関・外国人（左）／準備チェックリスト・賃金（右）
+          中段: 日付計算結果（横いっぱい。参考様式の枠を左右2列に分ける）
+          下段: メモ（余った高さを使う。途中で切れてもよい）
+          2列の表をひとかたまりにすると、右の列が長いとき全体が次のページへ送られて1ページ目が白紙になるため、
+          長くなりやすい日付の表は横いっぱいの2列にして高さを半分にしている */}
+      <div className="mx-auto max-w-[190mm] px-4 pb-10 lg:px-0 print:pb-0">
+        <section className="text-[9pt] leading-snug text-black">
           {/* 一番上: 申請番号と申請種別 */}
-          <div className="mb-1.5 border-2 border-black px-3 py-1">
+          <div className="mb-2 border-2 border-black px-3 py-1.5">
             <div className="flex flex-wrap items-end justify-between gap-2">
               <p className="min-h-[1.2em] text-[15pt] font-bold tabular-nums">{head.todoNo}</p>
               <p className="text-[12pt] font-bold">{head.appType}</p>
@@ -288,47 +293,31 @@ export function PrepDetailSheet({
             </div>
           </div>
 
-          {/* 左右2列。左の列は右の列と同じ高さになり、余った分をメモが埋める（A4縦1枚に収める） */}
-          <div className="grid grid-cols-2 items-stretch gap-2">
-            {/* 左: 所属機関の情報・外国人の情報・メモ */}
-            <div className="flex flex-col gap-1.5">
+          <div className="grid grid-cols-2 items-start gap-3">
+            {/* 左: 所属機関の情報・外国人の情報 */}
+            <div className="space-y-2">
               <SheetBlock title="所属機関の情報">
                 <LineTable lines={org} />
               </SheetBlock>
               <SheetBlock title="外国人の情報">
                 <LineTable lines={person} />
               </SheetBlock>
-              {/* メモ。左の列の余った高さをそのまま使う（高さを固定すると1ページに収まらず2ページ目に押し出されるため）。
-                  書いた内容を出し、空のときは手書きできるよう罫線だけを引く */}
-              <SheetBlock title="メモ" className="flex min-h-0 flex-1 flex-col break-inside-auto" bodyClassName="flex-1">
-                {memo.trim() ? (
-                  <p className="whitespace-pre-wrap px-1 py-0.5 leading-relaxed">{memo}</p>
-                ) : (
-                  <div
-                    className="h-full min-h-[6em]"
-                    style={{
-                      backgroundImage:
-                        "repeating-linear-gradient(to bottom, transparent 0, transparent calc(2em - 1px), rgba(0,0,0,0.5) calc(2em - 1px), rgba(0,0,0,0.5) 2em)",
-                    }}
-                  />
-                )}
-              </SheetBlock>
             </div>
 
-            {/* 右: 準備チェックリスト・採用時の賃金情報・日付計算結果 */}
-            <div className="space-y-1.5">
+            {/* 右: 準備チェックリスト・採用時の賃金情報 */}
+            <div className="space-y-2">
               <SheetBlock title="準備チェックリスト">
                 {printedDocs.length > 0 && (
                   <table className="w-full border-collapse">
                     <tbody>
                       {printedDocs.map((d) => (
                         <tr key={d.id}>
-                          <td className="w-[1.4em] border border-black px-1 py-px text-center align-top">
+                          <td className="w-[1.4em] border border-black px-1 py-[2px] text-center align-top">
                             {d.state === "完了" ? "☑" : "☐"}
                           </td>
-                          <td className="border border-black px-1.5 py-px align-top">{d.label}</td>
+                          <td className="border border-black px-1.5 py-[2px] align-top">{d.label}</td>
                           {/* 右側はメモ欄。空のときは手書きできるように空けておく */}
-                          <td className="w-[32%] border border-black px-1.5 py-px align-top">
+                          <td className="w-[32%] border border-black px-1.5 py-[2px] align-top">
                             {d.memo}
                           </td>
                         </tr>
@@ -340,15 +329,48 @@ export function PrepDetailSheet({
               <SheetBlock title="採用時の賃金情報">
                 <LineTable lines={wages} />
               </SheetBlock>
-              <SheetBlock title="日付計算結果（支援計画書の日付）">
-                <LineTable lines={dates} />
-              </SheetBlock>
             </div>
+          </div>
+
+          {/* 日付計算結果: 参考様式の枠を左右2列に分けて横いっぱいに出す */}
+          <div className="mt-2">
+            <SheetBlock title="日付計算結果（支援計画書の日付）">
+              <div className="grid grid-cols-2 items-start gap-2">
+                {splitDateLines(dates).map((half, i) => (
+                  <LineTable key={i} lines={half} />
+                ))}
+              </div>
+            </SheetBlock>
+          </div>
+
+          {/* メモ。書いた内容を出し、空のときは手書きできるよう罫線だけを引く（高さは固定しない） */}
+          <div className="mt-2">
+            <SheetBlock title="メモ" className="break-inside-auto">
+              {memo.trim() ? (
+                <p className="whitespace-pre-wrap px-1 py-0.5 leading-relaxed">{memo}</p>
+              ) : (
+                <div
+                  className="min-h-[4em]"
+                  style={{
+                    backgroundImage:
+                      "repeating-linear-gradient(to bottom, transparent 0, transparent calc(2em - 1px), rgba(0,0,0,0.5) calc(2em - 1px), rgba(0,0,0,0.5) 2em)",
+                  }}
+                />
+              )}
+            </SheetBlock>
           </div>
         </section>
       </div>
     </>
   );
+}
+
+// 日付の行を参考様式の枠（見出し行）の切れ目で左右2つに分ける（前半の枠を左、後半を右）
+function splitDateLines(lines: PrepPrintLine[]): [PrepPrintLine[], PrepPrintLine[]] {
+  const headings = lines.map((l, i) => (l.heading ? i : -1)).filter((i) => i >= 0);
+  if (headings.length < 2) return [lines, []];
+  const split = headings[Math.ceil(headings.length / 2)] ?? lines.length;
+  return [lines.slice(0, split), lines.slice(split)];
 }
 
 // 印刷する枠（見出し付き）
@@ -360,16 +382,16 @@ function SheetBlock({
 }: {
   title: string;
   children: React.ReactNode;
-  className?: string;
+  className?: string; // 指定すると break-inside-avoid の代わりに使う（メモは途中で切れてもよい）
   bodyClassName?: string;
 }) {
   return (
-    <div className={`break-inside-avoid border border-black ${className}`}>
-      <p className="border-b border-black bg-black/5 px-1.5 py-px text-[9pt] font-bold">
+    <div className={`border border-black ${className || "break-inside-avoid"}`}>
+      <p className="border-b border-black bg-black/5 px-1.5 py-0.5 text-[9.5pt] font-bold">
         {title}
       </p>
       {/* 中身が無いときも枠を少し空けて、紙の上で書き足せるようにする */}
-      <div className={`min-h-[2.5em] p-0.5 ${bodyClassName}`}>{children}</div>
+      <div className={`min-h-[3em] p-1 ${bodyClassName}`}>{children}</div>
     </div>
   );
 }
@@ -384,16 +406,16 @@ function LineTable({ lines }: { lines: PrepPrintLine[] }) {
           l.heading ? (
             // 参考様式ごとの枠の見出し（太字・全幅）
             <tr key={l.key}>
-              <th colSpan={2} className="border border-black bg-black/5 px-1.5 py-px text-left font-bold">
+              <th colSpan={2} className="border border-black bg-black/5 px-1.5 py-[2px] text-left font-bold">
                 {l.label}
               </th>
             </tr>
           ) : (
             <tr key={l.key}>
-              <th className="w-[38%] border border-black px-1.5 py-px text-left align-top font-normal">
+              <th className="w-[38%] border border-black px-1.5 py-[2px] text-left align-top font-normal">
                 {l.label}
               </th>
-              <td className="border border-black px-1.5 py-px align-top font-bold">{l.value}</td>
+              <td className="border border-black px-1.5 py-[2px] align-top font-bold">{l.value}</td>
             </tr>
           ),
         )}

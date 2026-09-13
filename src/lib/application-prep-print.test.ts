@@ -164,8 +164,11 @@ describe("prepPrintDateLines", () => {
     expect(line(lines, "0-con")).toBe("2026年8月5日");
     expect(line(lines, "1-es")).toBe("2026年10月1日");
     // 雇用契約期間（2年間）と支援委託契約の契約期間（5年間）は自動で出す
-    expect(line(lines, "1-period")).toBe("2026年10月1日 から 2028年9月30日 まで");
-    expect(line(lines, "3-scPeriod")).toBe("2026年8月5日 から 2031年8月4日 まで");
+    expect(line(lines, "1-period")).toBe("2026年10月1日〜2028年9月30日");
+    expect(line(lines, "3-scPeriod")).toBe("2026年8月5日〜2031年8月4日");
+    // 印刷用に項目名は短くする
+    expect(lines.find((l) => l.key === "1-period")?.label).toBe("雇用契約期間（2年）");
+    expect(lines.find((l) => l.key === "3-con")?.label).toBe("支援委託契約日");
     // 支援委託契約日は雇用契約日と同じ日
     expect(line(lines, "3-con")).toBe("2026年8月5日");
     // 未計算の項目は空のまま（印刷側で空けておく）
