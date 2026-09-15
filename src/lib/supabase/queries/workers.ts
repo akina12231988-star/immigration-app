@@ -132,6 +132,7 @@ export interface WorkerForResignation {
   current_organization_id: string | null;
   leaving_on: string | null;
   leaving_todo: string;
+  residence_status: string; // 現在の在留資格（特定活動なら随時報告書は不要）
 }
 
 export async function listWorkersForResignation(
@@ -140,7 +141,7 @@ export async function listWorkersForResignation(
   const { data, error } = await supabase
     .from("workers")
     .select(
-      "id, name, kana, messenger_link, notion_link, current_organization_id, leaving_on, leaving_todo",
+      "id, name, kana, messenger_link, notion_link, current_organization_id, leaving_on, leaving_todo, residence_status",
     )
     .order("name", { ascending: true });
   if (error) throw error;
@@ -162,7 +163,7 @@ export async function listWorkersForSupportEnd(
     .from("workers")
     .select(
       "id, name, kana, messenger_link, notion_link, current_organization_id, leaving_on, " +
-        "leaving_todo, residence_card_no, field, residence_permit_date",
+        "leaving_todo, residence_status, residence_card_no, field, residence_permit_date",
     )
     .order("name", { ascending: true });
   if (error) throw error;

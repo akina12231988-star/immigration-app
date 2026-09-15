@@ -828,6 +828,10 @@ export interface ResignationRow {
   forms_downloaded_at?: string | null; // 様式を最初にダウンロードした日時
   posted_on?: string | null; // レターパックで投函した日
   tracking_no?: string; // レターパックの追跡番号
+  // 記録したときの在留資格と、随時報告書が要るか（0157）。
+  // 特定活動の人は届出書が要らないので report_needed = false（退職扱いと日割り計算だけ）
+  residence_status?: string;
+  report_needed?: boolean;
   created_by: string | null;
   created_at: string;
   updated_at: string;

@@ -33,7 +33,6 @@ import { updateHistory } from "@/lib/supabase/queries/histories";
 import { ensureSswCancelTodoOnLeaving } from "@/lib/supabase/queries/ssw-insurance";
 import { historyToCloseOnLeaving, type OrgHistoryRow } from "@/lib/worker-org-dates";
 import { fetchNextTodoNo, insertTodo } from "@/lib/supabase/queries/todos";
-import { dbErrorMessage } from "@/lib/errors";
 import { notionAppUrl } from "@/lib/notion-link";
 import { formsForKind } from "@/lib/resignation";
 import {
@@ -42,6 +41,13 @@ import {
 } from "@/lib/adhoc-report-progress";
 import { AdhocPosting } from "./AdhocPosting";
 import { adhocReportFileName } from "@/lib/adhoc-report-files";
+import {
+  isPastLeavingDate,
+  resignationFlowLabel,
+  resignationReportNeeded,
+} from "@/lib/resignation-report";
+import { todayStr } from "@/lib/application-alerts";
+import { dbErrorMessage } from "@/lib/errors";
 import { AdhocOrgSearch } from "./AdhocOrgSearch";
 import { matchesAdhocOrg } from "@/lib/adhoc-report-org";
 import {
@@ -56,6 +62,15 @@ const INPUT =
   "min-h-[44px] w-full rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none";
 const TEXTAREA =
   "w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm focus:border-brand focus:outline-none";
+
+// 随時報告書が要らない退職（特定活動の人）の絞り込み
+const NO_REPORT = "届出不要" as const;
+type StatusFilter = ResignationStatus | typeof NO_REPORT;
+
+// 随時報告書を作る記録か（0157 未適用の古い記録は「作る」あつかい）
+function needsReport(r: { report_needed?: boolean }): boolean {
+  return r.report_needed !== false;
+}
 
 const KIND_CLASS: Record<ResignationKind, string> = {
   会社都合: "bg-seal/10 text-seal",
@@ -89,8 +104,9 @@ export function ResignationsClient({
   const [deleting, setDeleting] = useState<ResignationWithRefs | null>(null);
   const [busyDelete, setBusyDelete] = useState(false);
   const [kindFilter, setKindFilter] = useState<ResignationKind | "all">("all");
-  // 進み具合は3つのどれかを必ず選ぶ（既定は準備中＝これからやる分）
-  const [statusFilter, setStatusFilter] = useState<ResignationStatus>("準備中");
+  // 進み具合は3つのどれかを必ず選ぶ（既定は準備中＝これからやる分）。
+  // 特定活動の人は随時報告書が要らないので、進み具合とは別に「届出不要」でまとめて見る
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("準備中");
   // 所属機関の名称での絞り込み
   const [orgQuery, setOrgQuery] = useState("");
 
@@ -104,14 +120,18 @@ export function ResignationsClient({
   const patchRow = (id: string, patch: Partial<ResignationWithRefs>) =>
     setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
 
-  const statusCounts = useMemo(() => countByAdhocStatus(rows), [rows]);
+  // 進み具合の件数は届出書を作る記録だけで数える（届出不要の分は別に数える）
+  const statusCounts = useMemo(() => countByAdhocStatus(rows.filter(needsReport)), [rows]);
+  const noReportCount = useMemo(() => rows.filter((r) => !needsReport(r)).length, [rows]);
 
   const filtered = useMemo(
     () =>
       rows.filter(
         (r) =>
           (kindFilter === "all" || r.kind === kindFilter) &&
-          adhocReportStatus(r) === statusFilter &&
+          (statusFilter === NO_REPORT
+            ? !needsReport(r)
+            : needsReport(r) && adhocReportStatus(r) === statusFilter) &&
           matchesAdhocOrg(r, orgQuery),
       ),
     [rows, kindFilter, statusFilter, orgQuery],
@@ -135,6 +155,8 @@ export function ResignationsClient({
         <p className="flex items-start gap-1.5 text-xs leading-relaxed text-muted">
           <UserMinus size={14} className="mt-0.5 shrink-0" />
           退職を記録して外国人情報の退職者情報へ転記し、所属機関の随時届出（参考様式第3-1-2号ほか）を作成します。
+          特定活動の人は随時報告書を作らず、退職扱い（退職日で請求の日割り計算）だけにします。
+          ステータスは退職日を過ぎてから自動で「退職」になります。
         </p>
         {canEdit && (
           <Button className="shrink-0" icon={<Plus size={16} />} onClick={() => setCreating(true)}>
@@ -166,11 +188,11 @@ export function ResignationsClient({
         })}
       </div>
 
-      {/* 進み具合フィルター（準備中 → 署名依頼中 → 投函完了） */}
+      {/* 進み具合フィルター（準備中 → 署名依頼中 → 投函完了）＋ 届出不要（特定活動） */}
       <div className="flex flex-wrap gap-2">
-        {RESIGNATION_STATUSES.map((st) => {
+        {([...RESIGNATION_STATUSES, NO_REPORT] as StatusFilter[]).map((st) => {
           const active = statusFilter === st;
-          const count = statusCounts[st];
+          const count = st === NO_REPORT ? noReportCount : statusCounts[st];
           return (
             <button
               key={st}
@@ -182,7 +204,7 @@ export function ResignationsClient({
                   : "border-border bg-surface text-muted"
               }`}
             >
-              {st}（{count}）
+              {st === NO_REPORT ? "届出不要（特定活動）" : st}（{count}）
             </button>
           );
         })}
@@ -195,7 +217,9 @@ export function ResignationsClient({
         <Card className="p-8 text-center text-sm text-muted">
           {orgQuery.trim()
             ? `「${orgQuery}」に当てはまる${statusFilter}の退職の記録はありません。`
-            : `${statusFilter}の退職の記録はありません。`}
+            : statusFilter === NO_REPORT
+              ? "随時報告書が不要（特定活動）の退職の記録はありません。"
+              : `${statusFilter}の退職の記録はありません。`}
         </Card>
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -215,13 +239,28 @@ export function ResignationsClient({
                   >
                     {r.kind}
                   </span>
-                  <span
-                    className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${STATUS_CLASS[adhocReportStatus(r)]}`}
-                  >
-                    {adhocReportStatus(r)}
-                  </span>
+                  {needsReport(r) ? (
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${STATUS_CLASS[adhocReportStatus(r)]}`}
+                    >
+                      {adhocReportStatus(r)}
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-background px-2.5 py-1 text-[11px] font-bold text-muted">
+                      届出不要
+                    </span>
+                  )}
                 </div>
               </div>
+              {r.residence_status && (
+                <p className="text-xs text-muted">在留資格 {r.residence_status}</p>
+              )}
+              {!needsReport(r) && (
+                <p className="mt-1 rounded-lg bg-background px-2.5 py-1.5 text-xs text-muted">
+                  特定活動のため随時報告書は作りません。退職日を過ぎるとステータスが「退職」になり、
+                  請求書は退職日まで日割り計算になります。
+                </p>
+              )}
               <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs tabular-nums text-muted">
                 <span className="flex items-center gap-1">
                   <CalendarClock size={12} />
@@ -264,55 +303,61 @@ export function ResignationsClient({
 
               {canEdit && (
                 <div className="mt-3 flex flex-col gap-2">
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button
-                      variant={r.todo_no ? "secondary" : "primary"}
-                      icon={<Pencil size={15} />}
-                      onClick={() => setTodoTarget(r)}
-                    >
-                      TODO番号
-                    </Button>
-                    {r.leaving_on ? (
-                      <Link
-                        href={`/resignations/${r.id}/forms`}
-                        className="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-xl bg-brand px-5 py-3.5 text-base font-bold text-brand-foreground transition hover:bg-brand-strong active:scale-[0.98]"
+                  {needsReport(r) && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        variant={r.todo_no ? "secondary" : "primary"}
+                        icon={<Pencil size={15} />}
+                        onClick={() => setTodoTarget(r)}
                       >
-                        <FileOutput size={15} />
-                        届出書作成
-                      </Link>
-                    ) : (
-                      // 様式には退職日を書く欄があるため、決まるまでは作れない
-                      <span
-                        title="退職日が決まったら「記録を編集」で入れてください"
-                        className="inline-flex min-h-[52px] cursor-not-allowed items-center justify-center gap-2 rounded-xl border border-border bg-background px-5 py-3.5 text-sm font-bold text-muted"
-                      >
-                        <FileOutput size={15} />
-                        届出書作成（退職日待ち）
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-center text-[11px] text-muted">
-                    作成する様式: {formsForKind(r.kind).join("・")}
-                    {adhocReportStatus(r) === "準備中" &&
-                      "（ダウンロードすると「署名依頼中」になります）"}
-                  </p>
+                        TODO番号
+                      </Button>
+                      {r.leaving_on ? (
+                        <Link
+                          href={`/resignations/${r.id}/forms`}
+                          className="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-xl bg-brand px-5 py-3.5 text-base font-bold text-brand-foreground transition hover:bg-brand-strong active:scale-[0.98]"
+                        >
+                          <FileOutput size={15} />
+                          届出書作成
+                        </Link>
+                      ) : (
+                        // 様式には退職日を書く欄があるため、決まるまでは作れない
+                        <span
+                          title="退職日が決まったら「記録を編集」で入れてください"
+                          className="inline-flex min-h-[52px] cursor-not-allowed items-center justify-center gap-2 rounded-xl border border-border bg-background px-5 py-3.5 text-sm font-bold text-muted"
+                        >
+                          <FileOutput size={15} />
+                          届出書作成（退職日待ち）
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {needsReport(r) && (
+                    <p className="text-center text-[11px] text-muted">
+                      作成する様式: {formsForKind(r.kind).join("・")}
+                      {adhocReportStatus(r) === "準備中" &&
+                        "（ダウンロードすると「署名依頼中」になります）"}
+                    </p>
+                  )}
 
-                  {/* 署名済みの届出書を郵送したときの記録 */}
-                  <AdhocPosting
-                    kind="resignation"
-                    recordId={r.id}
-                    record={r}
-                    canEdit={canEdit}
-                    fileName={adhocReportFileName("resignation", {
-                      todoNo: r.todo_no,
-                      orgName: r.organizations?.name ?? r.org_name,
-                      workerName: r.workers?.name ?? "",
-                    })}
-                    onPatch={async (patch) => {
-                      patchRow(r.id, patch);
-                      await updateResignation(createClient(), r.id, patch);
-                    }}
-                  />
+                  {/* 署名済みの届出書を郵送したときの記録（届出不要の記録には出さない） */}
+                  {needsReport(r) && (
+                    <AdhocPosting
+                      kind="resignation"
+                      recordId={r.id}
+                      record={r}
+                      canEdit={canEdit}
+                      fileName={adhocReportFileName("resignation", {
+                        todoNo: r.todo_no,
+                        orgName: r.organizations?.name ?? r.org_name,
+                        workerName: r.workers?.name ?? "",
+                      })}
+                      onPatch={async (patch) => {
+                        patchRow(r.id, patch);
+                        await updateResignation(createClient(), r.id, patch);
+                      }}
+                    />
+                  )}
                   <div className="flex justify-between">
                     <button
                       type="button"
@@ -403,11 +448,16 @@ function ResignationDialog({
   const [kind, setKind] = useState<ResignationKind>(editing?.kind ?? "自己都合");
   const [reason, setReason] = useState(editing?.reason ?? "");
   const [leavingOn, setLeavingOn] = useState(editing?.leaving_on ?? "");
-  const [markRetired, setMarkRetired] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const worker = findWorker(workers, workerId);
+  // 在留資格で流れが分かれる: 特定技能1号・2号は随時報告書を作る、特定活動は退職扱いだけ。
+  // 編集時は記録したときの在留資格（スナップショット）を優先する
+  const residenceStatus = editing?.residence_status || worker?.residence_status || "";
+  const reportNeeded = resignationReportNeeded(residenceStatus);
+  // 退職日を過ぎていれば、保存と同時にステータスを「退職」にする（それまでは在籍中のまま）
+  const pastLeaving = isPastLeavingDate(leavingOn || null, todayStr());
   const registeredOrg = useMemo(
     () => organizations.find((o) => o.id === worker?.current_organization_id) ?? null,
     [organizations, worker],
@@ -456,6 +506,9 @@ function ResignationDialog({
         leaving_on: leavingOn || null,
         todo_no: editing?.todo_no ?? "",
         note: editing?.note ?? "",
+        // 記録したときの在留資格と、随時報告書を作るか（特定活動は不要）
+        residence_status: residenceStatus,
+        report_needed: reportNeeded,
       };
       if (editing) {
         await updateResignation(supabase, editing.id, input);
@@ -470,7 +523,9 @@ function ResignationDialog({
         leaving_reason: reason.trim(),
         leaving_org_name: targetOrg.name,
         leaving_org_address: targetOrg.address,
-        ...(markRetired ? { status: "退職" as const } : {}),
+        // 退職扱い（ステータス「退職」）は退職日を過ぎてから。
+        // まだなら退職日の翌日以降に一覧を開いたときに自動で切り替わる
+        ...(pastLeaving ? { status: "退職" as const } : {}),
       });
       // その会社の職歴にも退職日を入れる（個人票などは職歴の退職日を使うため）
       if (leavingOn) {
@@ -489,7 +544,7 @@ function ResignationDialog({
       await ensureSswCancelTodoOnLeaving(supabase, workerId).catch(() => undefined);
       onSaved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存に失敗しました");
+      setError(dbErrorMessage(err, "0157_resignation_report_needed.sql"));
       setBusy(false);
     }
   };
@@ -543,6 +598,19 @@ function ResignationDialog({
             ) : (
               <span className="text-xs text-muted">Notion未登録</span>
             )}
+          </div>
+        )}
+
+        {worker && (
+          <div
+            className={`rounded-xl px-3 py-2.5 text-sm ${
+              reportNeeded ? "bg-brand/10 text-brand" : "bg-status-notice-bg text-status-notice-fg"
+            }`}
+          >
+            <p className="text-xs font-bold">
+              在留資格: {residenceStatus || "未設定（特定技能として扱います）"}
+            </p>
+            <p className="mt-0.5 text-xs">{resignationFlowLabel(residenceStatus)}</p>
           </div>
         )}
 
@@ -603,9 +671,11 @@ function ResignationDialog({
               </button>
             ))}
           </div>
-          <p className="text-[11px] text-muted">
-            作成する様式: {formsForKind(kind).join("・")}
-          </p>
+          {reportNeeded && (
+            <p className="text-[11px] text-muted">
+              作成する様式: {formsForKind(kind).join("・")}
+            </p>
+          )}
         </div>
 
         <label className="flex flex-col gap-1">
@@ -638,21 +708,20 @@ function ResignationDialog({
           </span>
         </label>
 
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={markRetired}
-            onChange={(e) => setMarkRetired(e.target.checked)}
-            className="h-4 w-4"
-          />
-          外国人のステータスを「退職」に変更する
-        </label>
+        <p className="rounded-lg bg-background px-3 py-2 text-[11px] text-muted">
+          {pastLeaving
+            ? "退職日を過ぎているので、保存すると外国人のステータスが「退職」になります。"
+            : "外国人のステータスは退職日を過ぎてから自動で「退職」になります（退職日までは在籍中のまま）。"}
+          {!reportNeeded && " 請求書作成では退職日まで日割り計算になります。"}
+        </p>
 
         <Button fullWidth disabled={busy} onClick={save}>
           {busy ? "保存中…" : "この内容で記録保存"}
         </Button>
         <p className="text-center text-[11px] text-muted">
-          保存後、一覧の「TODO番号」からNotion随時報告TODO番号を入力し、「届出書作成」で様式に転記します。
+          {reportNeeded
+            ? "保存後、一覧の「TODO番号」からNotion随時報告TODO番号を入力し、「届出書作成」で様式に転記します。"
+            : "特定活動のため随時報告書は作りません。保存後は一覧の「届出不要（特定活動）」に表示されます。"}
         </p>
       </div>
     </Modal>
