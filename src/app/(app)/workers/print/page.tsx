@@ -26,6 +26,11 @@ import {
 } from "@/lib/worker-period-cards";
 import { listWorkerPeriodCards } from "@/lib/supabase/queries/worker-period-cards";
 import { todayStr } from "@/lib/application-alerts";
+import {
+  employmentStartInRange,
+  printDateMode,
+  printEmploymentStart,
+} from "@/lib/worker-print-filter";
 import type { WorkHistoryRow, Worker } from "@/types/db";
 
 export const dynamic = "force-dynamic";
@@ -56,9 +61,21 @@ export default async function WorkersPrintPage({
   const forCompany = mode === "company"; // 会社提出用（MessengerのQRを消す）
   const forList = mode === "list" || mode === "list-company"; // 一覧表
   const listForCompany = mode === "list-company"; // 会社提出用の一覧表（IDを出さない）
-  // 期間で絞り込む日付。既定は在留許可日、date=leaving なら退職日で絞り込む
-  const byLeaving = date === "leaving";
+  // 期間で絞り込む日付。既定は在留許可日、date=leaving なら退職日、
+  // date=employment ならその所属機関での雇用開始日（請求書作成の「当月雇用開始」の印刷）
+  const dateMode = printDateMode(date);
+  const byLeaving = dateMode === "leaving";
+  const byEmployment = dateMode === "employment";
   const dateColumn = byLeaving ? "leaving_on" : "residence_permit_date";
+  // 雇用開始日は所属機関別の記録（org_employment_starts）を優先するため、
+  // DBの列では絞れない。取ってから手元で絞り込む
+  const filterByEmployment = (rows: Worker[]): Worker[] =>
+    rows
+      .filter((w) => employmentStartInRange(w, org ?? "", from ?? "", to ?? ""))
+      .sort((a, b) =>
+        printEmploymentStart(a, org ?? "").localeCompare(printEmploymentStart(b, org ?? "")) ||
+        a.name.localeCompare(b.name, "ja"),
+      );
   const supabase = await createClient();
   const organizations = await listOrganizations(supabase);
 
@@ -72,10 +89,11 @@ export default async function WorkersPrintPage({
     // 支援開始前の人は許可が下りておらず在留許可日が予定のため載せない
     let q = supabase.from("workers").select("*").neq("support", "支援開始前");
     if (org) q = q.eq("current_organization_id", org);
-    if (from) q = q.gte(dateColumn, from);
-    if (to) q = q.lte(dateColumn, to);
+    if (!byEmployment && from) q = q.gte(dateColumn, from);
+    if (!byEmployment && to) q = q.lte(dateColumn, to);
     const { data } = await q.order(dateColumn, { ascending: true });
     workers = (data as Worker[]) ?? [];
+    if (byEmployment) workers = filterByEmployment(workers);
   } else if (org) {
     // 所属機関 AND 在留許可日または退職日の期間で絞り込み（1人1ページのシート）。
     // こちらも支援開始前の人は載せない（個人単位の印刷では本人を選んでいるので出せる）
@@ -84,10 +102,11 @@ export default async function WorkersPrintPage({
       .select("*")
       .eq("current_organization_id", org)
       .neq("support", "支援開始前");
-    if (from) q = q.gte(dateColumn, from);
-    if (to) q = q.lte(dateColumn, to);
+    if (!byEmployment && from) q = q.gte(dateColumn, from);
+    if (!byEmployment && to) q = q.lte(dateColumn, to);
     const { data } = await q.order("name");
     workers = (data as Worker[]) ?? [];
+    if (byEmployment) workers = filterByEmployment(workers);
   }
 
   // 表示する人の職歴（雇用開始日・退職日を、表示している所属機関のものにそろえるために使う）。
@@ -328,7 +347,7 @@ export default async function WorkersPrintPage({
       orgName={orgName}
       individual={Boolean(workerParam)}
       workerId={workerParam ?? ""}
-      byLeaving={byLeaving}
+      dateMode={dateMode}
       from={from ?? ""}
       to={to ?? ""}
       forCompany={forCompany}

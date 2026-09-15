@@ -1,6 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import {
+  printDateLabel,
+  printDateParam,
+  type PrintDateMode,
+} from "@/lib/worker-print-filter";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BackButton } from "@/components/BackButton";
@@ -74,7 +79,7 @@ export function PrintClient({
   orgName,
   individual,
   workerId,
-  byLeaving,
+  dateMode,
   from,
   to,
   forCompany,
@@ -90,7 +95,7 @@ export function PrintClient({
   orgName: string;
   individual: boolean;
   workerId: string; // 個人単位の印刷の対象（空なら所属機関などの絞り込み）
-  byLeaving: boolean; // 期間の絞り込みを退職日で行う（既定は在留許可日）
+  dateMode: PrintDateMode; // 期間の絞り込みに使う日付（在留許可日 / 退職日 / 雇用開始日）
   from: string;
   to: string;
   forCompany: boolean;
@@ -103,7 +108,7 @@ export function PrintClient({
 }) {
   const router = useRouter();
   const printDate = new Date().toLocaleDateString("ja-JP");
-  const dateLabel = byLeaving ? "退職日" : "在留許可日";
+  const dateLabel = printDateLabel(dateMode);
 
   // どの在籍期間の個人票を出すか（"current" = 今の内容。過去は在籍期間のキー）
   const [periodKey, setPeriodKey] = useState("current");
@@ -141,7 +146,7 @@ export function PrintClient({
     const nextTo = patch.to ?? to;
     if (nextFrom) p.set("from", nextFrom);
     if (nextTo) p.set("to", nextTo);
-    const nextDate = patch.date ?? (byLeaving ? "leaving" : "");
+    const nextDate = patch.date ?? printDateParam(dateMode);
     if (nextDate) p.set("date", nextDate);
     const nextMode =
       patch.mode ??
@@ -287,23 +292,24 @@ export function PrintClient({
                   className="max-w-md"
                 />
               </div>
-              {/* 期間で絞り込む日付の切替（在留許可日 / 退職日） */}
-              <div className="flex max-w-md rounded-xl border border-border p-0.5">
-                <button
-                  type="button"
-                  onClick={() => router.push(buildUrl({ date: "" }))}
-                  className={`flex-1 rounded-lg py-2 text-sm font-bold ${!byLeaving ? "bg-brand text-brand-foreground" : "text-muted"}`}
-                >
-                  在留許可日で絞り込み
-                </button>
-                <button
-                  type="button"
-                  onClick={() => router.push(buildUrl({ date: "leaving" }))}
-                  className={`flex-1 rounded-lg py-2 text-sm font-bold ${byLeaving ? "bg-brand text-brand-foreground" : "text-muted"}`}
-                >
-                  退職日で絞り込み
-                </button>
+              {/* 期間で絞り込む日付の切替（在留許可日 / 退職日 / 雇用開始日） */}
+              <div className="flex max-w-lg rounded-xl border border-border p-0.5">
+                {(["permit", "leaving", "employment"] as PrintDateMode[]).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => router.push(buildUrl({ date: printDateParam(m) }))}
+                    className={`flex-1 rounded-lg py-2 text-sm font-bold ${dateMode === m ? "bg-brand text-brand-foreground" : "text-muted"}`}
+                  >
+                    {printDateLabel(m)}で絞り込み
+                  </button>
+                ))}
               </div>
+              {dateMode === "employment" && (
+                <p className="text-[11px] text-muted">
+                  所属機関を指定したときは、その機関での雇用開始日（所属機関別の記録を優先）で絞り込みます。
+                </p>
+              )}
               <div className="flex flex-wrap items-end gap-3">
                 <label className="flex flex-col gap-1">
                   <span className="text-xs font-bold text-muted">{dateLabel}（開始）</span>
