@@ -89,6 +89,52 @@ export async function registerOnboardingDocFile(
   return { ok: true };
 }
 
+// Google ドライブなどのリンクで書類を登録する（ファイルはアップロードしない。0159）。
+// 申請準備の「申請する書類」で使う。リンクで登録した行は storage_path が空で external_url にURLが入る
+export async function registerOnboardingDocLink(
+  workerId: string,
+  docKey: string,
+  label: string,
+  url: string,
+): Promise<{ ok: true } | Err> {
+  if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
+  if (!/^[a-z0-9_]{1,32}$/.test(docKey)) return { ok: false, message: "不正な書類キー" };
+  const trimmed = url.trim();
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return { ok: false, message: "リンクの形が正しくありません（https:// から始まるURLを貼ってください）" };
+  }
+  if (parsed.protocol !== "https:") return { ok: false, message: "https:// から始まるリンクだけ登録できます" };
+  const admin = createAdminClient();
+  if (!admin) return { ok: false, message: "サーバー設定エラー" };
+  const isDrive = /(^|\.)(drive|docs)\.google\.com$/.test(parsed.hostname);
+  const { error } = await admin.from("onboarding_documents").upsert(
+    {
+      worker_id: workerId,
+      doc_key: docKey,
+      label,
+      sort_no: 0,
+      status: "添付",
+      pending_since: null,
+      storage_path: "",
+      file_name: isDrive ? "Google ドライブ" : parsed.hostname,
+      mime_type: "text/uri-list",
+      external_url: trimmed,
+      uploaded_at: new Date().toISOString(),
+    },
+    { onConflict: "worker_id,doc_key" },
+  );
+  if (error) {
+    return {
+      ok: false,
+      message: dbErrorMessage(error, "0159_onboarding_documents_external_url.sql", "リンクの登録に失敗しました"),
+    };
+  }
+  return { ok: true };
+}
+
 // 添付ファイルの取り消し（間違って添付した場合の削除）。
 // ストレージの実体を消し、書類行のファイル列を空にする（備考などの行自体は残す）。
 // ファイルが無くなったので「添付」は維持できず、ステータスは「未入手」に戻す。
@@ -103,11 +149,11 @@ export async function clearOnboardingDocFile(
 
   const { data } = await admin
     .from("onboarding_documents")
-    .select("storage_path, status")
+    .select("*")
     .eq("worker_id", workerId)
     .eq("doc_key", docKey)
     .maybeSingle();
-  const row = data as { storage_path: string; status: string } | null;
+  const row = data as { storage_path: string; status: string; external_url?: string } | null;
   if (row?.storage_path) {
     await admin.storage.from(BUCKET).remove([row.storage_path]).catch(() => undefined);
   }
@@ -119,6 +165,8 @@ export async function clearOnboardingDocFile(
       file_name: "",
       mime_type: "",
       uploaded_at: null,
+      // リンクで登録した行はリンクも消す（列が無い＝0159未適用の環境では触らない）
+      ...(row && "external_url" in row ? { external_url: "" } : {}),
       ...(row?.status === "添付"
         ? { status: "未入手", pending_since: new Date().toISOString().slice(0, 10) }
         : {}),
