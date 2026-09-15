@@ -446,3 +446,51 @@ export function financialAmountText(s: string): string {
 export function financialSalesText(f: OrgFinancialYear, fiscalKind: string): string {
   return `${financialTermLabel(f, fiscalKind)} ${financialAmountText(f.sales)}`;
 }
+
+// ---- 常勤職員数（日本人・技能実習生・特定技能1号・特定技能2号・特定活動） ----
+//
+// 申請準備の「所属機関の情報」に1行で出す。年1回の更新なので最終更新日も添え、
+// 1年以上たっていれば更新を促す。
+
+export type StaffCountKey =
+  | "staff_japanese"
+  | "staff_trainee"
+  | "staff_ssw1"
+  | "staff_ssw2"
+  | "staff_katsudo";
+
+export const STAFF_COUNT_FIELDS: { key: StaffCountKey; label: string }[] = [
+  { key: "staff_japanese", label: "日本人" },
+  { key: "staff_trainee", label: "技能実習生" },
+  { key: "staff_ssw1", label: "特定技能1号" },
+  { key: "staff_ssw2", label: "特定技能2号" },
+  { key: "staff_katsudo", label: "特定活動" },
+];
+
+// 「日本人 5・技能実習生 0・特定技能1号 12・特定技能2号 0・特定活動 0（合計 17）」。
+// どれも未入力なら空文字（＝未登録）
+export function staffCountText(intake: Pick<OrganizationIntake, StaffCountKey>): string {
+  const parts: string[] = [];
+  let total = 0;
+  let any = false;
+  for (const f of STAFF_COUNT_FIELDS) {
+    const raw = String(intake[f.key] ?? "").trim();
+    if (raw === "") continue;
+    const n = Number.parseInt(raw.replace(/[^\d]/g, ""), 10);
+    if (!Number.isFinite(n)) continue;
+    any = true;
+    total += n;
+    parts.push(`${f.label} ${n}`);
+  }
+  return any ? `${parts.join("・")}（合計 ${total}）` : "";
+}
+
+// 最終更新日の添え書き。1年以上前なら更新を促す
+export function staffCountUpdatedNote(updatedOn: string, today: string): string {
+  if (!updatedOn) return "最終更新日が未記録";
+  const [y, m, d] = updatedOn.split("-");
+  const limit = `${Number(y) + 1}-${m}-${d}`;
+  return today >= limit
+    ? `最終更新 ${updatedOn}。1年以上たっているので所属機関で更新してください`
+    : `最終更新 ${updatedOn}`;
+}

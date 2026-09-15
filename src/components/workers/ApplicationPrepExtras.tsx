@@ -39,7 +39,14 @@ import {
   orgFilesPrintHref,
   type OrgLatestFiles,
 } from "@/lib/org-attachments";
-import { financialSalesText, normalizeOrganizationIntake, weeklyHoursText } from "@/lib/organization-intake";
+import {
+  STAFF_COUNT_FIELDS,
+  financialSalesText,
+  normalizeOrganizationIntake,
+  staffCountText,
+  staffCountUpdatedNote,
+  weeklyHoursText,
+} from "@/lib/organization-intake";
 import { listWorkerWages } from "@/lib/supabase/queries/wages";
 import { sortWages, wageStartedOnLabel } from "@/lib/wage";
 import {
@@ -693,6 +700,24 @@ export function PrepOrgInfo({
         canFill={fill}
         inputs={[{ placeholder: "代表者の氏名" }, { placeholder: "フリガナ" }]}
         onSave={(v) => saveIntake({ rep_name: v[0], rep_kana: v[1] })}
+      />
+      {/* 常勤職員数（申請書の所属機関の欄に書く。年1回更新なので最終更新日も出す） */}
+      <OrgInfoLine
+        label="常勤職員数"
+        value={staffCountText(intake)}
+        note={
+          staffCountText(intake)
+            ? staffCountUpdatedNote(intake.staff_updated_on, todayStr())
+            : "日本人・技能実習生・特定技能1号・特定技能2号・特定活動の人数"
+        }
+        canFill={fill}
+        inputs={STAFF_COUNT_FIELDS.map((f) => ({ placeholder: f.label, width: "w-24" }))}
+        onSave={(v) =>
+          saveIntake({
+            ...Object.fromEntries(STAFF_COUNT_FIELDS.map((f, i) => [f.key, (v[i] ?? "").trim()])),
+            staff_updated_on: todayStr(),
+          })
+        }
       />
       <OrgInfoLine
         label="所定労働時間"
