@@ -339,3 +339,27 @@ describe("決算情報の売上高の表示", () => {
     );
   });
 });
+
+describe("staffCountText / staffCountUpdatedNote", () => {
+  it("常勤職員数を1行にまとめ合計を添える", async () => {
+    const { staffCountText } = await import("./organization-intake");
+    expect(
+      staffCountText({ staff_japanese: "5", staff_trainee: "0", staff_ssw1: "12", staff_ssw2: "0", staff_katsudo: "0" }),
+    ).toBe("日本人 5・技能実習生 0・特定技能1号 12・特定技能2号 0・特定活動 0（合計 17）");
+    expect(
+      staffCountText({ staff_japanese: "", staff_trainee: "", staff_ssw1: "3", staff_ssw2: "", staff_katsudo: "" }),
+    ).toBe("特定技能1号 3（合計 3）");
+  });
+  it("どれも未入力なら空（未登録あつかい）", async () => {
+    const { staffCountText } = await import("./organization-intake");
+    expect(
+      staffCountText({ staff_japanese: "", staff_trainee: "", staff_ssw1: "", staff_ssw2: "", staff_katsudo: "" }),
+    ).toBe("");
+  });
+  it("最終更新から1年以上たっていれば更新を促す", async () => {
+    const { staffCountUpdatedNote } = await import("./organization-intake");
+    expect(staffCountUpdatedNote("2026-09-15", "2026-09-15")).toBe("最終更新 2026-09-15");
+    expect(staffCountUpdatedNote("2025-09-15", "2026-09-15")).toContain("1年以上");
+    expect(staffCountUpdatedNote("", "2026-09-15")).toBe("最終更新日が未記録");
+  });
+});
