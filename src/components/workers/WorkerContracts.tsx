@@ -440,20 +440,24 @@ function ContractColumn({
           {kind}
         </span>
       </div>
+      {/* リンク登録が基本になったので、未登録のときは大きな枠を出さず1行だけにする */}
+      {!latest ? (
+        <p className="mb-1 text-[11px] text-muted">未登録</p>
+      ) : (
       <div className="overflow-hidden rounded-xl border border-border bg-background">
-        {latest ? (
-          latest.externalUrl ? (
-            // Google ドライブのリンクで登録した書類
+        {latest.externalUrl ? (
+            // Google ドライブのリンクで登録した書類（縦に場所を取らないよう1〜2行にまとめる）
             <a
               href={latest.externalUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex h-32 flex-col items-center justify-center gap-1 px-2 text-center hover:bg-brand/5"
+              className="flex items-center gap-2 px-2.5 py-2 hover:bg-brand/5"
             >
-              <Link2 size={24} className="text-brand" />
-              <p className="max-w-full truncate text-xs font-bold text-brand">{latest.fileName || "リンク"}で開く</p>
-              <p className="max-w-full truncate text-[10px] text-muted">{latest.externalUrl}</p>
-              <p className="text-[10px] text-muted">{latest.createdAt.slice(0, 10)} 登録</p>
+              <Link2 size={18} className="shrink-0 text-brand" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-xs font-bold text-brand">{latest.fileName || "リンク"}で開く</span>
+                <span className="block truncate text-[10px] text-muted">{latest.createdAt.slice(0, 10)} 登録</span>
+              </span>
             </a>
           ) : isImage(latest) ? (
             <a href={latest.url} target="_blank" rel="noopener noreferrer">
@@ -469,13 +473,9 @@ function ContractColumn({
               </p>
               <p className="text-[10px] text-muted">{latest.createdAt.slice(0, 10)} 登録</p>
             </div>
-          )
-        ) : (
-          <div className="flex h-32 items-center justify-center px-2 text-center text-xs text-muted">
-            未登録{canEdit && "（下に Google ドライブのリンクを貼って登録します）"}
-          </div>
-        )}
+          )}
       </div>
+      )}
       {/* リンクの登録欄。Google ドライブで「リンクをコピー」したものを貼る */}
       {canEdit && (
         <div className="mt-1.5 flex items-center gap-1.5">
