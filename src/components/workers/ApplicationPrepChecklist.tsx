@@ -17,6 +17,7 @@ import {
   TriangleAlert,
   Upload,
   X,
+  Link2,
 } from "lucide-react";
 import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { Card } from "@/components/ui/Card";
@@ -86,6 +87,7 @@ import {
   clearOnboardingDocFile,
   getOnboardingDocDownloadUrl,
   getOnboardingDocPreviewUrl,
+  registerOnboardingDocLink,
 } from "@/app/(app)/onboarding/actions";
 import { getWorkerPhotoUrl } from "@/app/(app)/workers/actions";
 import { uploadOnboardingDoc } from "@/lib/onboarding-files";
@@ -1060,10 +1062,13 @@ export function ApplicationPrepChecklist({
   // 申請する書類（最後に添付する、入管へ提出する完成した書類一式）。
   // TODO番号ごとのキーに、何枚でも（_p2, _p3 …）ためられる
   const applyDocBase = prepApplyDocKey(current?.todo_no ?? "");
+  // ファイルをアップロードした分と、Google ドライブのリンクで登録した分（0159）の両方
   const applyDocFiles = docs
-    .filter((d) => d.storage_path && isPrepPageKeyOf(applyDocBase, d.doc_key))
+    .filter((d) => (d.storage_path || d.external_url) && isPrepPageKeyOf(applyDocBase, d.doc_key))
     .sort((a, b) => a.doc_key.localeCompare(b.doc_key, "en"));
   const applyDocBusy = busyKey != null && busyKey.startsWith(applyDocBase);
+  // Google ドライブのリンクの入力欄
+  const [applyDocLink, setApplyDocLink] = useState("");
 
   const applyDocLabel = (page: number) => {
     const no = current?.todo_no ? `（${current.todo_no}）` : "";
@@ -1081,6 +1086,26 @@ export function ApplicationPrepChecklist({
     setError(null);
     uploadRef.current = nextApplyDocKey(new Set(applyDocFiles.map((f) => f.doc_key)));
     docInputRef.current?.click();
+  }
+
+  // Google ドライブのリンクで登録する（ファイルはアップロードしない。空いている枝番キーに入れる）
+  async function registerApplyDocLink() {
+    const url = applyDocLink.trim();
+    if (!url) return;
+    const target = nextApplyDocKey(new Set(applyDocFiles.map((f) => f.doc_key)));
+    setBusyKey(target.docKey);
+    setError(null);
+    try {
+      const res = await registerOnboardingDocLink(workerId, target.docKey, target.label, url);
+      if (!res.ok) throw new Error(res.message);
+      setApplyDocLink("");
+      await loadDocs();
+      notifyWorkerDocsChanged(workerId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "リンクの登録に失敗しました");
+    } finally {
+      setBusyKey(null);
+    }
   }
 
   // ドラッグ&ドロップでの添付（複数ファイルをまとめて添付できる）
@@ -1111,6 +1136,12 @@ export function ApplicationPrepChecklist({
   }
 
   async function previewDoc(id: string) {
+    // リンクで登録した書類はそのリンクをそのまま開く
+    const link = docs.find((d) => d.id === id)?.external_url;
+    if (link) {
+      window.open(link, "_blank", "noopener,noreferrer");
+      return;
+    }
     const res = await getOnboardingDocPreviewUrl(id);
     if (!res.ok) return setError(res.message);
     window.open(res.url, "_blank", "noopener,noreferrer");
@@ -1891,7 +1922,7 @@ export function ApplicationPrepChecklist({
               <p className="text-sm font-bold">📎 申請する書類（入管へ提出する完成した書類）</p>
               <p className="mt-0.5 text-[11px] text-muted">
                 必要な書類がそろったら、実際に申請する書類（申請書・理由書など）をここに添付します。
-                ここにドラッグ＆ドロップしても添付できます（画像・PDF／何枚でも）。
+                Google ドライブの「リンクをコピー」を貼って登録するか、ファイルをドラッグ＆ドロップ・添付できます（画像・PDF／何枚でも）。
               </p>
             </div>
             {canEdit &&
@@ -1904,6 +1935,34 @@ export function ApplicationPrepChecklist({
                 </IconButton>
               ))}
           </div>
+          {/* Google ドライブのリンクの登録欄（ストレージ容量を使わない） */}
+          {canEdit && (
+            <div className="mt-2 flex items-center gap-1.5">
+              <input
+                value={applyDocLink}
+                onChange={(e) => setApplyDocLink(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void registerApplyDocLink();
+                  }
+                }}
+                disabled={applyDocBusy}
+                placeholder="Google ドライブのリンクを貼る（https://drive.google.com/…）"
+                aria-label="申請する書類の Google ドライブのリンク"
+                className="min-h-[36px] min-w-0 flex-1 rounded-lg border border-border bg-surface px-2 text-[11px] focus:border-brand focus:outline-none disabled:opacity-60"
+              />
+              <button
+                type="button"
+                onClick={() => void registerApplyDocLink()}
+                disabled={applyDocBusy || !applyDocLink.trim()}
+                className="flex shrink-0 items-center gap-1 rounded-lg bg-brand px-2.5 py-2 text-[11px] font-bold text-brand-foreground disabled:opacity-50"
+              >
+                <Link2 size={12} />
+                リンクを登録
+              </button>
+            </div>
+          )}
           {applyDocFiles.length === 0 ? (
             <p className="mt-2 text-[11px] text-muted">まだ添付はありません。</p>
           ) : (
@@ -1911,14 +1970,17 @@ export function ApplicationPrepChecklist({
               {applyDocFiles.map((f, i) => (
                 <div key={f.id} className="flex items-center gap-1.5">
                   <AttachedFileButton
-                    fileName={f.file_name}
+                    fileName={f.external_url ? `${f.file_name || "リンク"}（リンク）` : f.file_name}
                     prefix={`${i + 1}枚目:`}
                     onOpen={() => void previewDoc(f.id)}
                     className="flex-1"
                   />
-                  <IconButton label="ダウンロード" onClick={() => void downloadDoc(f.id)}>
-                    <Download size={12} />
-                  </IconButton>
+                  {/* リンク登録には保存するファイルが無いのでダウンロードは出さない */}
+                  {!f.external_url && (
+                    <IconButton label="ダウンロード" onClick={() => void downloadDoc(f.id)}>
+                      <Download size={12} />
+                    </IconButton>
+                  )}
                   {canEdit && (
                     <IconButton
                       label="削除"

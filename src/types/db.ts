@@ -1119,6 +1119,9 @@ export interface OnboardingDocumentRow {
   file_name: string;
   mime_type: string;
   uploaded_at: string | null;
+  // Google ドライブなどのリンクで登録した書類のURL（0159）。ファイルの実体は無い。
+  // マイグレーション未適用の環境では欠けることがある
+  external_url?: string;
   created_at: string;
   updated_at: string;
 }
