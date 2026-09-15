@@ -483,14 +483,89 @@ export function PrepAddressField({
 
 // ---- 所属機関の情報（申請種別の下に表示） ----
 
-export function PrepOrgInfo({ orgId, canEdit = false }: { orgId: string | null; canEdit?: boolean }) {
+export function PrepOrgInfo({
+  orgId,
+  canEdit = false,
+  workerId,
+  currentOrganizationId = null,
+  onOrgChanged,
+}: {
+  orgId: string | null;
+  canEdit?: boolean;
+  workerId?: string; // 渡すと、この画面で申請準備の所属機関（転職先）を選び直せる
+  currentOrganizationId?: string | null; // 現在の所属機関（これを選ぶと「転職先の指定なし」に戻す）
+  onOrgChanged?: (orgId: string | null) => void; // 保存後に呼ぶ（application_prep_organization_id の新しい値）
+}) {
+  const [error, setError] = useState<string | null>(null);
+  // 所属機関の選び直し用の一覧（workerId を渡された画面だけ読む）
+  const [orgChoices, setOrgChoices] = useState<{ id: string; name: string }[]>([]);
+  const [switching, setSwitching] = useState(false);
+  useEffect(() => {
+    if (!workerId) return;
+    let cancelled = false;
+    listOrganizations(createClient())
+      .then((rows) => {
+        if (!cancelled) setOrgChoices(rows.map((o) => ({ id: o.id, name: o.name })));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [workerId]);
+
+  // 申請準備の所属機関を変える。現在の所属機関を選んだときは「転職先の指定なし」（null）で保存し、
+  // 以後は現在の所属機関に自動で追従する
+  const switchOrg = async (nextId: string) => {
+    if (!workerId) return;
+    setSwitching(true);
+    setError(null);
+    try {
+      const value = nextId && nextId !== currentOrganizationId ? nextId : null;
+      await updateWorker(createClient(), workerId, { application_prep_organization_id: value });
+      onOrgChanged?.(value);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "所属機関の変更に失敗しました");
+    } finally {
+      setSwitching(false);
+    }
+  };
+
+  // 所属機関の選択欄（見出しの下に出す。未設定のときも出す）
+  const orgSelector =
+    workerId && canEdit ? (
+      <label className="flex flex-wrap items-center gap-1.5 rounded-lg border border-brand/40 bg-brand/5 px-2 py-1.5">
+        <span className="font-bold text-brand">申請準備の所属機関</span>
+        <select
+          value={orgId ?? ""}
+          disabled={switching}
+          onChange={(e) => void switchOrg(e.target.value)}
+          className={`${INPUT} min-w-[12rem] flex-1`}
+          aria-label="申請準備の所属機関"
+        >
+          <option value="">未設定</option>
+          {orgChoices.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.name}
+              {o.id === currentOrganizationId ? "（現在の所属機関）" : ""}
+            </option>
+          ))}
+        </select>
+        <span className="text-muted">
+          {switching
+            ? "変更中…"
+            : orgId && orgId !== currentOrganizationId
+              ? "転職先として指定しています（現在の所属機関を選ぶと指定を外します）"
+              : "転職の場合は転職先を選んでください（賃金・契約書・申請書の情報もこの機関になります）"}
+        </span>
+      </label>
+    ) : null;
+
   // どの機関のデータかも一緒に持ち、機関が切り替わった直後に前の機関の情報を出さないようにする
   const [loadedData, setLoadedData] = useState<{
     orgId: string;
     org: Organization | null;
     files: OrganizationFileRow[];
   } | null>(null);
-  const [error, setError] = useState<string | null>(null);
   // 未登録の欄をこの場で保存したあとに読み直すためのキー
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -520,9 +595,11 @@ export function PrepOrgInfo({ orgId, canEdit = false }: { orgId: string | null; 
 
   if (!orgId) {
     return (
-      <p className="rounded-lg bg-surface/60 px-2.5 py-2 text-[11px] text-muted">
-        所属機関が未設定です。上の「申請準備の対応状況」または申請一覧で所属機関（転職の場合は転職先）を選んでください。
-      </p>
+      <div className="space-y-1.5 rounded-lg bg-surface/60 px-2.5 py-2 text-[11px] text-muted">
+        {orgSelector}
+        {error && <p className="rounded-lg bg-seal/10 px-2 py-1 text-seal">{error}</p>}
+        <p>所属機関が未設定です。{orgSelector ? "上で所属機関（転職の場合は転職先）を選んでください。" : "上の「申請準備の対応状況」または申請一覧で所属機関（転職の場合は転職先）を選んでください。"}</p>
+      </div>
     );
   }
   if (!org) return null;
@@ -601,6 +678,7 @@ export function PrepOrgInfo({ orgId, canEdit = false }: { orgId: string | null; 
           支援体制を印刷（A4）
         </a>
       </p>
+      {orgSelector}
       {error && <p className="rounded-lg bg-seal/10 px-2 py-1 text-seal">{error}</p>}
       {fill && (
         <p className="text-muted">
