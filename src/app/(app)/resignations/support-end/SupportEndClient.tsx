@@ -46,6 +46,7 @@ import {
   supportEndMinor,
 } from "@/lib/support-end";
 import { AdhocPosting } from "../AdhocPosting";
+import { adhocReportFileName } from "@/lib/adhoc-report-files";
 import { AdhocOrgSearch } from "../AdhocOrgSearch";
 import { matchesAdhocOrg } from "@/lib/adhoc-report-org";
 import {
@@ -288,6 +289,11 @@ export function SupportEndClient({
                     recordId={r.id}
                     record={r}
                     canEdit={canEdit}
+                    fileName={adhocReportFileName("support-end", {
+                      todoNo: r.todo_no,
+                      orgName: r.organizations?.name ?? r.org_name,
+                      workerName: r.workers?.name ?? "",
+                    })}
                     onPatch={async (patch) => {
                       patchRow(r.id, patch);
                       await updateSupportEnd(createClient(), r.id, patch);

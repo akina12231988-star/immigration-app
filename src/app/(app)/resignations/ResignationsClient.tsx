@@ -41,6 +41,7 @@ import {
   adhocReportStatus,
 } from "@/lib/adhoc-report-progress";
 import { AdhocPosting } from "./AdhocPosting";
+import { adhocReportFileName } from "@/lib/adhoc-report-files";
 import { AdhocOrgSearch } from "./AdhocOrgSearch";
 import { matchesAdhocOrg } from "@/lib/adhoc-report-org";
 import {
@@ -302,6 +303,11 @@ export function ResignationsClient({
                     recordId={r.id}
                     record={r}
                     canEdit={canEdit}
+                    fileName={adhocReportFileName("resignation", {
+                      todoNo: r.todo_no,
+                      orgName: r.organizations?.name ?? r.org_name,
+                      workerName: r.workers?.name ?? "",
+                    })}
                     onPatch={async (patch) => {
                       patchRow(r.id, patch);
                       await updateResignation(createClient(), r.id, patch);

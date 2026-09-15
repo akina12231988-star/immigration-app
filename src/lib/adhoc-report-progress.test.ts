@@ -34,7 +34,7 @@ describe("canCompletePosting / postingMissingLabel", () => {
 
   it("足りないものを案内する", () => {
     expect(postingMissingLabel({ posted_on: null, tracking_no: "" }, 0)).toBe(
-      "あと 署名済み届出書のスキャン・レターパックの追跡番号・投函日 を入れると投函完了になります",
+      "あと 署名済み届出書（Google ドライブのリンク）・レターパックの追跡番号・投函日 を入れると投函完了になります",
     );
     expect(postingMissingLabel({ posted_on: "2026-08-19", tracking_no: "1" }, 1)).toBe("");
   });

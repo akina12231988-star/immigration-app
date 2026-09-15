@@ -38,3 +38,21 @@ export const ADHOC_FILE_TARGETS: Record<AdhocFileKind, AdhocFileTarget> = {
 export function isAdhocFileKind(value: unknown): value is AdhocFileKind {
   return typeof value === "string" && (ADHOC_FILE_KINDS as readonly string[]).includes(value);
 }
+
+// Google ドライブに置く署名済み届出書のファイル名（TODO番号_所属機関名_氏名_退職随時報告 など）。
+// 画面に出してコピーできるようにし、ドライブ側のファイル名をそろえる
+export const ADHOC_FILE_NAME_SUFFIX: Record<AdhocFileKind, string> = {
+  resignation: "退職随時報告",
+  "contract-change": "契約変更随時報告",
+  "support-end": "支援委託終了随時報告",
+};
+
+export function adhocReportFileName(
+  kind: AdhocFileKind,
+  parts: { todoNo: string; orgName: string; workerName: string },
+): string {
+  const safe = (v: string) => v.replace(/[\\/:*?"<>|]/g, "・").trim();
+  return [safe(parts.todoNo), safe(parts.orgName), safe(parts.workerName), ADHOC_FILE_NAME_SUFFIX[kind]]
+    .filter(Boolean)
+    .join("_");
+}

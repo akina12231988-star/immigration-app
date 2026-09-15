@@ -17,7 +17,7 @@ import { AdhocFileAttachments } from "./AdhocFileAttachments";
 const CELL =
   "rounded-lg border border-border bg-background px-2 py-1 text-xs focus:border-brand focus:outline-none";
 
-// 届出書を郵送したときの記録（署名済みのスキャン・レターパックの追跡番号・投函日）。
+// 届出書を郵送したときの記録（署名済みのスキャンの Google ドライブのリンク・レターパックの追跡番号・投函日）。
 // 3つそろうと自動で「投函完了」になる。
 // 退職の記録と契約内容変更の記録で同じものを使う（保存は onPatch に任せる）。
 export function AdhocPosting({
@@ -25,12 +25,14 @@ export function AdhocPosting({
   recordId,
   record,
   canEdit,
+  fileName = "",
   onPatch,
 }: {
   kind: AdhocFileKind;
   recordId: string;
   record: AdhocProgressFields;
   canEdit: boolean;
+  fileName?: string; // Google ドライブに置くときのファイル名（TODO番号_所属機関名_氏名_退職随時報告）
   // 画面の値の更新と保存（呼び出し側のテーブルへ書き込む）
   onPatch: (patch: Partial<AdhocProgressFields>) => Promise<void>;
 }) {
@@ -77,6 +79,7 @@ export function AdhocPosting({
         kind={kind}
         recordId={recordId}
         canEdit={canEdit}
+        fileName={fileName}
         onCountChange={onCountChange}
       />
 

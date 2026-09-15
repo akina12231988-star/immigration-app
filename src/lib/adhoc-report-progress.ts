@@ -39,7 +39,7 @@ export function postingMissingLabel(
   fileCount: number,
 ): string {
   const missing = [
-    fileCount > 0 ? "" : "署名済み届出書のスキャン",
+    fileCount > 0 ? "" : "署名済み届出書（Google ドライブのリンク）",
     (r.tracking_no ?? "").trim() ? "" : "レターパックの追跡番号",
     r.posted_on ? "" : "投函日",
   ].filter(Boolean);
