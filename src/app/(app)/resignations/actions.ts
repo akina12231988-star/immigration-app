@@ -26,6 +26,7 @@ export interface AdhocFileView {
   file_name: string;
   mime_type: string;
   created_at: string;
+  external_url?: string; // Google ドライブなどのリンクで登録した届出書（0156）。ファイルの実体は無い
 }
 
 async function requireStaff(): Promise<boolean> {
@@ -44,10 +45,46 @@ export async function listAdhocFiles(
   if (!me || !admin) return [];
   const { data } = await admin
     .from(target.table)
-    .select("id, file_name, mime_type, created_at")
+    .select("id, file_name, mime_type, created_at, external_url")
     .eq(target.column, recordId)
     .order("created_at", { ascending: true });
-  return (data as AdhocFileView[]) ?? [];
+  return ((data as (AdhocFileView & { external_url?: string | null })[] | null) ?? []).map((r) => ({
+    ...r,
+    external_url: r.external_url ?? "",
+  }));
+}
+
+// 署名済みの届出書を Google ドライブなどのリンクで登録する（ストレージは使わない・0156）
+export async function registerAdhocFileLink(
+  kind: AdhocFileKind,
+  recordId: string,
+  url: string,
+): Promise<{ ok: true } | Err> {
+  if (!isAdhocFileKind(kind)) return { ok: false, message: "不正な種別です" };
+  if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
+  const trimmed = url.trim();
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return { ok: false, message: "リンクの形が正しくありません（https:// から始まるURLを貼ってください）" };
+  }
+  if (parsed.protocol !== "https:") return { ok: false, message: "https:// から始まるリンクだけ登録できます" };
+  const target = ADHOC_FILE_TARGETS[kind];
+  const me = await getMyProfile();
+  const admin = createAdminClient();
+  if (!admin) return { ok: false, message: "サーバー設定エラー" };
+  const isDrive = /(^|\.)(drive|docs)\.google\.com$/.test(parsed.hostname);
+  const { error } = await admin.from(target.table).insert({
+    [target.column]: recordId,
+    storage_path: "",
+    file_name: isDrive ? "Google ドライブ" : parsed.hostname,
+    mime_type: "text/uri-list",
+    external_url: trimmed,
+    uploaded_by: me?.id ?? null,
+  });
+  if (error) return { ok: false, message: error.message };
+  return { ok: true };
 }
 
 // アップロード用の署名付きURLを発行
@@ -111,10 +148,13 @@ export async function getAdhocFilePreviewUrl(
   if (!me || !admin) return { ok: false, message: "権限がありません" };
   const { data } = await admin
     .from(ADHOC_FILE_TARGETS[kind].table)
-    .select("storage_path")
+    .select("storage_path, external_url")
     .eq("id", fileId)
     .maybeSingle();
-  const path = (data as { storage_path: string } | null)?.storage_path;
+  const row = data as { storage_path: string; external_url?: string | null } | null;
+  // リンクで登録した届出書はそのリンクをそのまま開く
+  if (row?.external_url) return { ok: true, url: row.external_url };
+  const path = row?.storage_path;
   if (!path) return { ok: false, message: "ファイルが見つかりません" };
   const { data: signed, error } = await admin.storage.from(BUCKET).createSignedUrl(path, TTL);
   if (error || !signed) return { ok: false, message: `URL発行に失敗: ${error?.message}` };
