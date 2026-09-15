@@ -116,6 +116,7 @@ export function PriorApplicationCard({
       <p className="mt-0.5 text-[11px] text-muted">
         課税証明書・納税証明書（市県民税／国保税）・源泉徴収票・保険証・年金記録は、1年以内の申請で提出していれば
         この申請日と申請番号を書くことで再提出を省けます。
+        申請準備では各書類の行に、前回どの年度の書類を添付したかとあわせて出ます。
       </p>
       {prior?.source === "auto" ? (
         <AutoLine prior={prior} />
