@@ -407,6 +407,10 @@ export interface Worker {
   application_prep_organization_id: string | null;
   leaving_on: string | null; // 退職日
   leaving_todo: string; // 退職時のNotion随時報告TODO番号
+  // 前回の申請（手入力・0158）。申請一覧に1年以内の申請が無いときの申請日・申請番号。
+  // マイグレーション未適用の環境では欠けることがある
+  prior_application_on?: string | null;
+  prior_application_no?: string;
   leaving_kind: string; // 退職区分（'' / 会社都合 / 自己都合）
   leaving_reason: string; // 退職理由
   leaving_org_name: string; // 退職した所属機関の名称

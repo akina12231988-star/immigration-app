@@ -32,6 +32,8 @@ import { createClient } from "@/lib/supabase/client";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { updateWorker } from "@/lib/supabase/queries/workers";
 import { listOnboardingDocs } from "@/lib/supabase/queries/onboarding";
+import { isPriorAppDoc, priorApplicationText } from "@/lib/prior-application";
+import { PriorApplicationCard, usePriorApplication } from "./PriorApplicationCard";
 import {
   deletePrepChecklist,
   EMPTY_PREP_DOC_STATUS,
@@ -224,9 +226,12 @@ export function ApplicationPrepChecklist({
     docKey: string;
     label: string;
     kind?: "doc" | "card" | "passport";
+    def?: PrepDocDef; // 複数ファイルを選んだとき、2枚目以降の枝番キーを作るために持つ
   } | null>(null);
   const docInputRef = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  // 前回の申請（1年以内）の申請日・申請番号。課税・納税証明書などの行に案内として出す
+  const priorApp = usePriorApplication({ workerId });
 
   // 書類ごとの準備状況（ステータス）。チェックリストID → 書類ID → 入力値
   const [docStatusesByList, setDocStatusesByList] = useState<
@@ -804,7 +809,7 @@ export function ApplicationPrepChecklist({
       setError("先に対象年度（令和）を入力してください。");
       return;
     }
-    uploadRef.current = { docKey: key, label: prepDocLabel(def, meta.target_reiwa, currentReiwa) };
+    uploadRef.current = { docKey: key, label: prepDocLabel(def, meta.target_reiwa, currentReiwa), def };
     docInputRef.current?.click();
   }
 
@@ -822,6 +827,7 @@ export function ApplicationPrepChecklist({
     uploadRef.current = {
       docKey: prepPageKey(key, page),
       label: `${prepDocLabel(def, meta.target_reiwa, currentReiwa)}（${page}枚目）`,
+      def,
     };
     docInputRef.current?.click();
   }
@@ -857,12 +863,42 @@ export function ApplicationPrepChecklist({
     }
   }
 
-  async function handleDocFile(file: File | undefined) {
+  // 隠しファイル入力で選んだファイル（複数可）。
+  // 1枚目は選んだ保存先へ、2枚目以降は空いている枝番キー（_p2, _p3 …）へ順に保存する
+  async function handleDocFiles(fileList: FileList | null) {
     const target = uploadRef.current;
-    if (!target || !file) return;
-    if (target.kind === "card") await uploadResidenceCard(file);
-    else if (target.kind === "passport") await uploadPassportFile(file);
-    else await uploadDoc(target, file);
+    const files = Array.from(fileList ?? []);
+    if (!target || files.length === 0) return;
+    if (target.kind === "card") {
+      for (const f of files) await uploadResidenceCard(f);
+      return;
+    }
+    if (target.kind === "passport") {
+      for (const f of files) await uploadPassportFile(f);
+      return;
+    }
+    await uploadDoc(target, files[0]);
+    if (files.length > 1 && target.def) {
+      await uploadDocPages(target.def, files.slice(1), [target.docKey]);
+    }
+  }
+
+  // 複数の画像を、その書類の空いている枝番キーへ順に保存する。
+  // assigned はこの操作で先に使ったキー（docs の再読込を待たずに次の枝番を決めるため）
+  async function uploadDocPages(def: PrepDocDef, files: File[], assigned: string[]) {
+    const key = resolveDocKey(def);
+    if (!key) return;
+    const used = new Set([...docFilesFor(def).map((f) => f.doc_key), ...assigned]);
+    for (const f of files) {
+      let page = 2;
+      while (used.has(prepPageKey(key, page))) page++;
+      const docKey = prepPageKey(key, page);
+      used.add(docKey);
+      await uploadDoc(
+        { docKey, label: `${prepDocLabel(def, meta.target_reiwa, currentReiwa)}（${page}枚目）` },
+        f,
+      );
+    }
   }
 
   // 在留カード（worker_documents）への保存。差し替えても前の分は履歴として残る
@@ -918,19 +954,21 @@ export function ApplicationPrepChecklist({
   }
 
   // ドラッグ&ドロップでの添付。顔写真はそのまま、書類は既存の枚数に応じた枝番キーへ保存する
-  async function dropAttach(def: PrepDocDef, file: File | undefined) {
-    if (!file) return;
+  // ドロップしたファイル（複数可）。まだ無ければ1枚目、あれば追加の枝番へ順に保存する
+  async function dropAttach(def: PrepDocDef, fileList: FileList) {
+    const files = Array.from(fileList);
+    if (files.length === 0) return;
     setError(null);
     if (def.source.kind === "photo") {
-      await handlePhotoFile(file);
+      await handlePhotoFile(files[0]);
       return;
     }
     if (def.source.kind === "residenceCardDoc") {
-      await uploadResidenceCard(file);
+      for (const f of files) await uploadResidenceCard(f);
       return;
     }
     if (def.source.kind === "passportFile") {
-      await uploadPassportFile(file);
+      for (const f of files) await uploadPassportFile(f);
       return;
     }
     const key = resolveDocKey(def);
@@ -939,23 +977,17 @@ export function ApplicationPrepChecklist({
       return;
     }
     const existing = docFilesFor(def);
+    let rest = files;
+    const assigned: string[] = [];
     if (existing.length === 0) {
       await uploadDoc(
         { docKey: key, label: prepDocLabel(def, meta.target_reiwa, currentReiwa) },
-        file,
+        files[0],
       );
-      return;
+      rest = files.slice(1);
+      assigned.push(key);
     }
-    const keys = new Set(existing.map((f) => f.doc_key));
-    let page = 2;
-    while (keys.has(prepPageKey(key, page))) page++;
-    await uploadDoc(
-      {
-        docKey: prepPageKey(key, page),
-        label: `${prepDocLabel(def, meta.target_reiwa, currentReiwa)}（${page}枚目）`,
-      },
-      file,
-    );
+    if (rest.length > 0) await uploadDocPages(def, rest, assigned);
   }
 
   async function handlePhotoFile(file: File | undefined) {
@@ -1657,6 +1689,11 @@ export function ApplicationPrepChecklist({
             </div>
           )}
 
+          {/* 前回の申請（1年以内）の申請日・申請番号。課税・納税証明書などの再提出を省くときに書く */}
+          <div className="mb-3">
+            <PriorApplicationCard workerId={workerId} state={priorApp} canEdit={canEdit} />
+          </div>
+
           {/* 書類一覧 */}
           <div className="overflow-hidden rounded-xl border border-border">
             {items.map((item) => {
@@ -1713,7 +1750,8 @@ export function ApplicationPrepChecklist({
                   onSavePlannedAppOn={(v) => void saveExtras({ planned_app_on: v })}
                   onPatchStatus={(patch, save) => patchDocStatus(item.def.id, patch, save)}
                   onAttach={() => startAttach(item.def)}
-                  onDropFiles={(files) => void dropAttach(item.def, files[0])}
+                  onDropFiles={(files) => void dropAttach(item.def, files)}
+                  priorNote={isPriorAppDoc(item.def.id) ? priorApplicationText(priorApp.prior) : ""}
                   onAddPage={() => startAttachPage(item.def, files)}
                   onRemoveFile={(f) =>
                     void removeDoc(
@@ -1878,9 +1916,10 @@ export function ApplicationPrepChecklist({
         ref={docInputRef}
         type="file"
         accept="image/*,application/pdf"
+        multiple
         className="hidden"
         onChange={(e) => {
-          void handleDocFile(e.target.files?.[0]);
+          void handleDocFiles(e.target.files);
           e.target.value = "";
         }}
       />
@@ -1955,8 +1994,10 @@ function DocRow({
   onPreviewFile,
   onPreviewPhoto,
   onDownloadFile,
+  priorNote = "",
 }: {
   item: PrepDocStatus;
+  priorNote?: string; // 前回の申請（1年以内）で提出済みなら、その申請日・申請番号の案内
   meta: PrepChecklistMeta;
   workerId: string;
   mailingRecords?: JudgmentRecord[]; // 郵送請求ツールの記録（この外国人分）
@@ -2047,6 +2088,9 @@ function DocRow({
             )}
           </span>
           {def.note && <span className="mt-0.5 block text-[11px] text-muted">※ {def.note}</span>}
+          {priorNote && (
+            <span className="mt-0.5 block text-[11px] font-bold text-status-applied-fg">{priorNote}</span>
+          )}
           {def.managedIn && (
             <span className="mt-0.5 block text-[11px] text-muted">「{def.managedIn}」と共有</span>
           )}

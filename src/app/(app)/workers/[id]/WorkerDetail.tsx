@@ -120,6 +120,7 @@ import {
 import { WORKER_SITUATIONS, autoSituation, situationDescription } from "@/lib/worker-situation";
 import { isCountedHistory, type WorkHistory } from "@/types/ssw";
 import type { Application } from "@/types/application";
+import { PriorApplicationCard, usePriorApplication } from "@/components/workers/PriorApplicationCard";
 import {
   RESIDENCE_STATUSES,
   SUPPORT_SCOPES,
@@ -169,6 +170,13 @@ export function WorkerDetail({
   const [relativesDraft, setRelativesDraft] = useState<WorkerRelative[] | null>(null);
   const [saveBusy, setSaveBusy] = useState(false);
   const [applied, setApplied] = useState<string | null>(null);
+  // 前回の申請（1年以内）の申請日・申請番号（申請一覧から自動。無ければ手入力）
+  const priorApp = usePriorApplication({
+    workerId: worker.id,
+    applications,
+    manualOn: worker.prior_application_on ?? "",
+    manualNo: worker.prior_application_no ?? "",
+  });
 
   // 申請準備などから「詳細を入力する」で #edit 付きで来たら、その場編集を自動で始める。
   // location.hash は SSR では読めないため（遅延初期化はハイドレーション不整合になる）、
@@ -1849,6 +1857,10 @@ export function WorkerDetail({
               申請を登録
             </Link>
           )}
+        </div>
+        {/* 前回の申請（1年以内）の申請日・申請番号。申請準備の書類の行にも同じものが出る */}
+        <div className="mb-2">
+          <PriorApplicationCard workerId={worker.id} state={priorApp} canEdit={canEdit} />
         </div>
         {applications.length === 0 ? (
           <Card className="p-5 text-center text-sm text-muted">
