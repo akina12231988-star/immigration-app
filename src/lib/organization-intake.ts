@@ -494,3 +494,43 @@ export function staffCountUpdatedNote(updatedOn: string, today: string): string 
     ? `最終更新 ${updatedOn}。1年以上たっているので所属機関で更新してください`
     : `最終更新 ${updatedOn}`;
 }
+
+// ---- 寮の家賃の計算の説明文（コピー用・申請準備の居住費の説明にも使う） ----
+
+// 自己所有物件の1人あたりの家賃の目安（物件全体の月額 ÷ 最大入居人数）。計算できなければ null
+export function ownedRentPerPerson(
+  lodging: Pick<OrgLodging, "total_cost" | "equipment_cost" | "useful_years" | "max_residents">,
+): number | null {
+  const whole = ownedMonthlyRent(lodging.total_cost, lodging.equipment_cost, lodging.useful_years);
+  const n = parseAmount(lodging.max_residents);
+  return whole != null && n != null && n > 0 ? Math.round(whole / n) : null;
+}
+
+// 計算の内容を1文にまとめる（所属機関の画面でコピーして、申請書の別紙や説明に貼る）。
+// 自己所有: 取得費用を耐用年数で月割りして入居人数で按分。賃貸: 1人あたり家賃 × 人数 ＝ 物件全体
+export function lodgingCalcText(lodging: OrgLodging): string {
+  const name = lodging.name ? `${lodging.name}: ` : "";
+  if (lodging.kind === "自己所有物件") {
+    const total = parseAmount(lodging.total_cost);
+    const equipment = parseAmount(lodging.equipment_cost) ?? 0;
+    const years = parseAmount(lodging.useful_years);
+    const whole = ownedMonthlyRent(lodging.total_cost, lodging.equipment_cost, lodging.useful_years);
+    if (total == null || years == null || whole == null) return "";
+    const state = lodging.purchase_state ? `・${lodging.purchase_state}` : "";
+    const n = parseAmount(lodging.max_residents);
+    const per = ownedRentPerPerson(lodging);
+    const head =
+      `${name}自己所有物件${state}。かかった総費用 ${formatYen(total)} ＋ 備品代 ${formatYen(equipment)} ＝ ${formatYen(total + equipment)} を` +
+      `耐用年数 ${years}年（${years * 12}ヶ月）で月割り ＝ 物件全体の家賃 月額 ${formatYen(whole)}`;
+    return n != null && per != null
+      ? `${head}。最大入居人数 ${n}名で按分 ＝ 1人あたり 月額 ${formatYen(per)}`
+      : `${head}（最大入居人数を入れると1人あたりの金額が出ます）`;
+  }
+  const r = parseAmount(lodging.rent);
+  const n = parseAmount(lodging.max_residents);
+  if (r == null) return "";
+  const kind = lodging.kind ? `${lodging.kind}。` : "";
+  return n != null
+    ? `${name}${kind}家賃 1人あたり 月額 ${formatYen(r)} × 最大入居人数 ${n}名 ＝ 物件全体の家賃 月額 ${formatYen(r * n)}`
+    : `${name}${kind}家賃 1人あたり 月額 ${formatYen(r)}`;
+}
