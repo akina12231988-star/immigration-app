@@ -158,6 +158,29 @@ describe("lodgingNoteTemplate", () => {
     expect(text).toContain("3名");
     expect(text).toContain("20,000円");
     expect(text).toContain("賃貸借契約書");
+    expect(text).toContain("会社が借り上げた社宅");
+  });
+  it("自己所有物件は取得費用を耐用年数で月割りした按分の文になる（借り上げとは書かない）", () => {
+    const text = lodgingNoteTemplate(
+      {
+        name: "大家方面",
+        kind: "自己所有物件",
+        total_cost: "10,000,000",
+        equipment_cost: "",
+        useful_years: "10",
+        rent: "5208",
+        max_residents: "16",
+      },
+      5_208,
+    );
+    expect(text).toContain("大家方面（会社所有の社宅）");
+    expect(text).toContain("総費用10,000,000円");
+    expect(text).toContain("耐用年数10年");
+    expect(text).toContain("月額83,333円");
+    expect(text).toContain("入居者16名");
+    expect(text).toContain("5,208円");
+    expect(text).not.toContain("借り上げ");
+    expect(text).toContain("取得時の契約書");
   });
 });
 

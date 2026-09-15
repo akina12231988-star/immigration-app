@@ -226,21 +226,37 @@ export function lodgingPerPerson(lodging: Pick<OrgLodging, "rent" | "max_residen
   return Number(String(lodging.rent).replace(/[^0-9]/g, "")) || 0;
 }
 
-// 居住費の算定方法の文例（入管に説明できる形。人数が分かるときだけ具体的に書く）
+// 居住費の算定方法の文例（入管に説明できる形。人数が分かるときだけ具体的に書く）。
+// 宿泊物件の区分で書き分ける: 自己所有物件は取得費用を耐用年数で月割りした金額の按分、
+// 賃貸物件（区分が未設定の古い登録も）は会社が借り上げた社宅の家賃の按分
 export function lodgingNoteTemplate(
-  lodging: Pick<OrgLodging, "name" | "rent" | "max_residents">,
+  lodging: Pick<OrgLodging, "name" | "rent" | "max_residents"> &
+    Partial<Pick<OrgLodging, "kind" | "total_cost" | "equipment_cost" | "useful_years">>,
   perPerson: number,
 ): string {
-  const people = Number(String(lodging.max_residents).replace(/[^0-9]/g, "")) || 0;
-  const where = lodging.name ? `${lodging.name}（会社が借り上げた社宅）` : "会社が借り上げた社宅";
-  if (people) {
+  const num = (v: string | undefined) => Number(String(v ?? "").replace(/[^0-9]/g, "")) || 0;
+  const people = num(lodging.max_residents);
+  const per = `1人当たり月額${formatYen(perPerson)}円を徴収する。`;
+  if (lodging.kind === "自己所有物件") {
+    const where = lodging.name ? `${lodging.name}（会社所有の社宅）` : "会社所有の社宅";
+    const total = num(lodging.total_cost);
+    const equipment = num(lodging.equipment_cost);
+    const years = num(lodging.useful_years);
+    const whole = years > 0 ? Math.round((total + equipment) / (years * 12)) : 0;
+    const basis =
+      total > 0 && years > 0
+        ? `取得費用（総費用${formatYen(total)}円${equipment > 0 ? `＋備品代${formatYen(equipment)}円` : ""}）を耐用年数${years}年で月割りした物件全体の月額${formatYen(whole)}円を`
+        : "取得費用を耐用年数で月割りした物件全体の月額を";
+    const share = people ? `入居者${people}名で按分した` : "入居人数で按分した";
     return (
-      `${where}について、家賃月額を入居者${people}名で按分した1人当たり月額${formatYen(perPerson)}円を徴収する。` +
-      `敷金・礼金・仲介手数料等の初期費用は含まない。（算出根拠：賃貸借契約書、入居者名簿）`
+      `${where}について、${basis}${share}${per}` +
+      `敷金・礼金等の初期費用は含まない。（算出根拠：取得時の契約書・領収書、入居者名簿）`
     );
   }
+  const where = lodging.name ? `${lodging.name}（会社が借り上げた社宅）` : "会社が借り上げた社宅";
+  const share = people ? `家賃月額を入居者${people}名で按分した` : "家賃月額を入居人数で按分した";
   return (
-    `${where}について、家賃月額を入居人数で按分した1人当たり月額${formatYen(perPerson)}円を徴収する。` +
+    `${where}について、${share}${per}` +
     `敷金・礼金・仲介手数料等の初期費用は含まない。（算出根拠：賃貸借契約書、入居者名簿）`
   );
 }

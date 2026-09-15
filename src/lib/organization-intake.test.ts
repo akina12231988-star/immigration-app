@@ -363,3 +363,34 @@ describe("staffCountText / staffCountUpdatedNote", () => {
     expect(staffCountUpdatedNote("", "2026-09-15")).toBe("最終更新日が未記録");
   });
 });
+
+describe("ownedRentPerPerson / lodgingCalcText", () => {
+  const base = {
+    id: "l1",
+    name: "大家方面",
+    address: "",
+    kind: "自己所有物件",
+    purchase_state: "新品",
+    elapsed_years: "",
+    total_cost: "10,000,000",
+    equipment_cost: "",
+    useful_years: "10",
+    rent: "",
+    max_residents: "16",
+  };
+  it("自己所有物件は取得費用を耐用年数で月割りし、入居人数で按分する", async () => {
+    const { ownedRentPerPerson, lodgingCalcText } = await import("./organization-intake");
+    expect(ownedRentPerPerson(base)).toBe(5208);
+    expect(lodgingCalcText(base)).toBe(
+      "大家方面: 自己所有物件・新品。かかった総費用 10,000,000円 ＋ 備品代 0円 ＝ 10,000,000円 を耐用年数 10年（120ヶ月）で月割り ＝ 物件全体の家賃 月額 83,333円。最大入居人数 16名で按分 ＝ 1人あたり 月額 5,208円",
+    );
+    expect(ownedRentPerPerson({ ...base, max_residents: "" })).toBeNull();
+    expect(lodgingCalcText({ ...base, total_cost: "" })).toBe("");
+  });
+  it("賃貸物件は1人あたり家賃 × 人数 ＝ 物件全体", async () => {
+    const { lodgingCalcText } = await import("./organization-intake");
+    expect(lodgingCalcText({ ...base, kind: "賃貸物件", rent: "13,000", max_residents: "3" })).toBe(
+      "大家方面: 賃貸物件。家賃 1人あたり 月額 13,000円 × 最大入居人数 3名 ＝ 物件全体の家賃 月額 39,000円",
+    );
+  });
+});

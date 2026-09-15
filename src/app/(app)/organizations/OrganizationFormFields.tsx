@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Trash2, Upload } from "lucide-react";
 import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
+import { CopyButton } from "@/components/ui/CopyButton";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { createClient } from "@/lib/supabase/client";
 import { compressImage } from "@/lib/image-compress";
@@ -35,7 +36,9 @@ import {
   parseHoursMinutes,
   lodgingContractKind,
   normalizeOrganizationIntake,
+  lodgingCalcText,
   ownedMonthlyRent,
+  ownedRentPerPerson,
   parseAmount,
   reverseLodgingCost,
   suggestedUsefulYears,
@@ -754,6 +757,22 @@ function IntakeSection({
     setIntake({
       lodgings: intake.lodgings.map((row, idx) => (idx === i ? { ...row, ...patch } : row)),
     });
+  // 自己所有物件の費用・耐用年数・最大入居人数を入れたら、1人あたりの家賃の目安を
+  // 「家賃（1人あたり）」に自動で入れる。手で別の金額に直してあれば上書きしない
+  // （家賃が空か、前回の目安と同じ＝自動で入れた値のときだけ更新する）
+  const setOwnedLodging = (i: number, patch: Partial<OrgLodging>) => {
+    const before = intake.lodgings[i];
+    const after = { ...before, ...patch };
+    const prevEstimate = ownedRentPerPerson(before);
+    const nextEstimate = ownedRentPerPerson(after);
+    const rentNow = parseAmount(before.rent);
+    const autoFilled = rentNow == null || (prevEstimate != null && rentNow === prevEstimate);
+    if (nextEstimate != null && autoFilled && !locks.lodging(i, "rent")) {
+      setLodging(i, { ...patch, rent: formatAmountInput(String(nextEstimate)) });
+    } else {
+      setLodging(i, patch);
+    }
+  };
   // 常勤職員数は年1回更新するため、入力したらその日の日付を最終更新日として記録する
   const setStaffCount = (patch: Partial<OrganizationIntake>) =>
     setIntake({ ...patch, staff_updated_on: todayStr() });
@@ -1589,21 +1608,21 @@ function IntakeSection({
                   <IntakeField
                     label="かかった総費用（円）"
                     value={formatAmountInput(lodging.total_cost)}
-                    onChange={(v) => setLodging(i, { total_cost: formatAmountInput(v) })}
+                    onChange={(v) => setOwnedLodging(i, { total_cost: formatAmountInput(v) })}
                     placeholder="例: 15,000,000"
                     locked={locks.lodging(i, "total_cost")}
                   />
                   <IntakeField
                     label="備品代（円）"
                     value={formatAmountInput(lodging.equipment_cost)}
-                    onChange={(v) => setLodging(i, { equipment_cost: formatAmountInput(v) })}
+                    onChange={(v) => setOwnedLodging(i, { equipment_cost: formatAmountInput(v) })}
                     placeholder="例: 500,000"
                     locked={locks.lodging(i, "equipment_cost")}
                   />
                   <IntakeField
                     label="耐用年数（年）"
                     value={lodging.useful_years}
-                    onChange={(v) => setLodging(i, { useful_years: v })}
+                    onChange={(v) => setOwnedLodging(i, { useful_years: v })}
                     placeholder="例: 22"
                     hint="新品/中古を選ぶと目安が自動で入ります。直すこともできます。"
                     locked={locks.lodging(i, "useful_years")}
@@ -1620,17 +1639,14 @@ function IntakeSection({
                 />
                 <CalcResult
                   label="1人あたりの家賃の目安（物件全体の家賃 ÷ 最大入居人数）"
-                  value={(() => {
-                    const whole = ownedMonthlyRent(
-                      lodging.total_cost,
-                      lodging.equipment_cost,
-                      lodging.useful_years,
-                    );
-                    const n = parseAmount(lodging.max_residents);
-                    return whole != null && n != null ? Math.round(whole / n) : null;
-                  })()}
+                  value={ownedRentPerPerson(lodging)}
                   emptyHint="総費用・耐用年数・最大入居人数を入力すると自動計算されます"
                 />
+                {ownedRentPerPerson(lodging) != null && (
+                  <p className={HINT_CLASS}>
+                    この目安は下の「家賃（1人あたり）」に自動で入ります（手で直した金額はそのまま残ります）。
+                  </p>
+                )}
                 {/* 家賃から逆算: この家賃で説明するには最低これぐらいの費用がかかった想定になる */}
                 {(() => {
                   const reverse = reverseLodgingCost(
@@ -1688,7 +1704,7 @@ function IntakeSection({
                     placeholder="例: 13,000"
                     hint={
                       lodging.kind === "自己所有物件"
-                        ? "上の「1人あたりの家賃の目安」を参考に入力してください。"
+                        ? "上の「1人あたりの家賃の目安」が自動で入ります。別の金額にするときは直してください。"
                         : "物件全体の家賃を最大入居人数で割った1人あたりの金額を入力してください。"
                     }
                     locked={locks.lodging(i, "rent")}
@@ -1696,7 +1712,11 @@ function IntakeSection({
                   <IntakeField
                     label="最大入居人数"
                     value={lodging.max_residents}
-                    onChange={(v) => setLodging(i, { max_residents: v })}
+                    onChange={(v) =>
+                      lodging.kind === "自己所有物件"
+                        ? setOwnedLodging(i, { max_residents: v })
+                        : setLodging(i, { max_residents: v })
+                    }
                     placeholder="例: 3"
                     locked={locks.lodging(i, "max_residents")}
                   />
@@ -1710,6 +1730,16 @@ function IntakeSection({
                   })()}
                   emptyHint="1人あたりの家賃と最大入居人数を入力すると自動計算されます"
                 />
+                {/* 計算の内容を文章にしたもの。申請書の別紙や入管への説明にそのまま貼れる */}
+                {lodgingCalcText(lodging) && (
+                  <div className="flex items-start gap-2 rounded-xl border border-dashed border-border bg-background p-2.5">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[11px] font-bold text-muted">計算内容の説明（コピーして使えます）</p>
+                      <p className="mt-0.5 text-xs leading-relaxed">{lodgingCalcText(lodging)}</p>
+                    </div>
+                    <CopyButton value={lodgingCalcText(lodging)} label="計算内容の説明をコピー" />
+                  </div>
+                )}
               </>
             )}
             {!locks.detail && intake.lodgings.length > 1 && (
