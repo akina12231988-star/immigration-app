@@ -33,6 +33,7 @@ import { CopyButton } from "@/components/ui/CopyButton";
 import { updateWorker } from "@/lib/supabase/queries/workers";
 import { listOnboardingDocs } from "@/lib/supabase/queries/onboarding";
 import { isPriorAppDoc, priorApplicationText } from "@/lib/prior-application";
+import { previousChecklist, priorDocYearNote } from "@/lib/prior-prep-docs";
 import { PriorApplicationCard, usePriorApplication } from "./PriorApplicationCard";
 import {
   deletePrepChecklist,
@@ -135,6 +136,7 @@ import {
   prepApplyDocKey,
   prepDetailHref,
   prepDocLabel,
+  prepDocYear,
   prepPageKey,
   prepStatusOption,
   SSW2_APP_CONTENT,
@@ -472,6 +474,11 @@ export function ApplicationPrepChecklist({
     }
   }
 
+  // 前回の準備リスト（前回の申請日にいちばん近いもの）。課税・納税証明書などの行に
+  // 「前回はどの年度を添付したか」を出すのに使う。準備状況も読んでおく
+  const prevList = previousChecklist(lists, selected, priorApp.prior?.applicationOn ?? null);
+  const prevListId = prevList?.id ?? null;
+
   // 表示中のリストを切り替えたら、そのリストの書類ステータスを読み込む
   const currentId = current?.id ?? null;
   const docStatuses: Record<string, PrepDocStatusInput> = currentId
@@ -503,6 +510,49 @@ export function ApplicationPrepChecklist({
       cancelled = true;
     };
   }, [currentId]);
+  // 前回のリストの書類ステータス（前回の準備状況を行の案内に添える）
+  useEffect(() => {
+    if (!prevListId) return;
+    let cancelled = false;
+    listPrepDocStatuses(createClient(), prevListId)
+      .then((rows) => {
+        if (cancelled) return;
+        const next: Record<string, PrepDocStatusInput> = {};
+        for (const r of rows) {
+          next[r.doc_id] = {
+            status: r.status,
+            note: r.note,
+            amount: r.amount,
+            date_on: r.date_on,
+            tracking_out: r.tracking_out,
+            tracking_back: r.tracking_back,
+            mail_after_apply: r.mail_after_apply,
+            attach_items: r.attach_items ?? "",
+          };
+        }
+        setDocStatusesByList((prev) => ({ ...prev, [prevListId]: next }));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [prevListId]);
+
+  // 課税・納税証明書などの行に出す「前回提出」の案内。
+  // 申請日・申請番号（申請一覧または手入力）＋ 前回のリストで使った年度と添付の有無 ＋ 前回の準備状況
+  function priorNoteFor(def: PrepDocDef): string {
+    if (!isPriorAppDoc(def.id)) return "";
+    const head = priorApplicationText(priorApp.prior);
+    if (!prevList) return head;
+    const yearNote = priorDocYearNote(def, prevList, prepDocYear(def, meta.target_reiwa, currentReiwa), docs);
+    const prevStatus = prevListId ? (docStatusesByList[prevListId]?.[def.id]?.status ?? "") : "";
+    const parts = [
+      head || `前回のリスト（${prevList.todo_no || "番号なし"}）`,
+      yearNote,
+      prevStatus ? `前回の準備状況: ${prevStatus}` : "",
+    ].filter(Boolean);
+    return parts.join("　");
+  }
 
   // 書類ステータスの更新。save=false はテキスト入力中（保存はフォーカスが外れた時）
   const patchDocStatus = (docId: string, patch: Partial<PrepDocStatusInput>, save = true) => {
@@ -1751,7 +1801,7 @@ export function ApplicationPrepChecklist({
                   onPatchStatus={(patch, save) => patchDocStatus(item.def.id, patch, save)}
                   onAttach={() => startAttach(item.def)}
                   onDropFiles={(files) => void dropAttach(item.def, files)}
-                  priorNote={isPriorAppDoc(item.def.id) ? priorApplicationText(priorApp.prior) : ""}
+                  priorNote={priorNoteFor(item.def)}
                   onAddPage={() => startAttachPage(item.def, files)}
                   onRemoveFile={(f) =>
                     void removeDoc(
