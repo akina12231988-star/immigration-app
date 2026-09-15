@@ -91,6 +91,7 @@ import {
   isMonthStr,
   leftThisMonthRows,
   monthLabel,
+  monthRange,
   permittedThisMonthRows,
   periodText,
   recurringSalesNoForRow,
@@ -109,6 +110,7 @@ import {
 } from "@/lib/monthly-billing-sheets";
 import { buildXlsx, downloadBlob } from "@/lib/xlsx-export";
 import { InvoicePdfCheck } from "./InvoicePdfCheck";
+import { employmentStartInRange, employmentStartPrintUrl } from "@/lib/worker-print-filter";
 import { formatAmountInput, formatAmountWhileTyping } from "@/lib/amount-format";
 
 // 月末の請求書作成。年月を選ぶと、その月に1日でも在籍していた支援対象者を
@@ -2375,6 +2377,25 @@ export function MonthlyBillingSection({
                 </div>
               )}
 
+              {/* 対象の年月にこの機関で雇用開始した人の印刷（一覧表・A4個人票）。
+                  雇用開始日は所属機関別の記録を優先し、期間は対象の年月の初日〜末日 */}
+              {open && org.organizationId && (
+                <EmploymentStartPrintLinks
+                  organizationId={org.organizationId}
+                  month={month}
+                  count={
+                    org.rows.filter((r) =>
+                      employmentStartInRange(
+                        r.worker,
+                        org.organizationId,
+                        monthRange(month).from,
+                        monthRange(month).to,
+                      ),
+                    ).length
+                  }
+                />
+              )}
+
               {open && (
                 <div className="mt-2 overflow-x-auto">
                   <table className="w-full min-w-[1380px] border-collapse text-xs">
@@ -3091,5 +3112,46 @@ function ReferralNoCell({
           ))}
       </div>
     </td>
+  );
+}
+
+// 対象の年月にその所属機関で雇用開始した人の印刷リンク（一覧表・A4個人票）。
+// 件数は名簿に載っている人から数えるが、印刷画面は所属機関の全員から雇用開始日で絞り込む
+// （まだ許可が下りていない人など、名簿に載っていない人も雇用開始日が合えば出る）
+function EmploymentStartPrintLinks({
+  organizationId,
+  month,
+  count,
+}: {
+  organizationId: string;
+  month: string;
+  count: number;
+}) {
+  const LINK =
+    "inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-border px-2.5 text-xs font-bold text-brand";
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl bg-background px-3 py-2">
+      <span className="text-xs font-bold text-muted">
+        {monthLabel(month)}に雇用開始した人{count > 0 ? `（名簿に${count}名）` : ""}:
+      </span>
+      <Link
+        href={employmentStartPrintUrl(organizationId, month, "list")}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={LINK}
+      >
+        <Printer size={14} />
+        名簿を印刷（一覧表）
+      </Link>
+      <Link
+        href={employmentStartPrintUrl(organizationId, month, "sheets")}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={LINK}
+      >
+        <Printer size={14} />
+        A4印刷（個人票・1人1ページ）
+      </Link>
+    </div>
   );
 }
