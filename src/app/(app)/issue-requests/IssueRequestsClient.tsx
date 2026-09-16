@@ -6,20 +6,27 @@ import { CheckCircle2, Clock, Mailbox, TriangleAlert } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { prepDetailHref } from "@/lib/application-prep";
 import {
+  elapsedDays,
   groupByIssuer,
+  issueRequestHref,
   issueRequestSummary,
   NO_ISSUER_LABEL,
   type IssueRequestRow,
 } from "@/lib/issue-requests";
 
-// 「発行依頼中」の書類を、誰に依頼したかでまとめて出す。
-// 誰に頼んで、まだ届いていないのか・もう発行済みなのかが1画面で分かるようにする。
+// 依頼日からこれだけたっていたら赤く出す（催促の目安）
+const STALE_DAYS = 14;
+
+// 依頼中のもの（申請準備の発行依頼と、転居手続き・国保加入の依頼）を、誰に依頼したかでまとめて出す。
+// 誰に何を頼んで、いつ頼んで、まだ届いていないのか・もう済んだのかが1画面で分かるようにする。
 export function IssueRequestsClient({
   rows,
   error,
+  today,
 }: {
   rows: IssueRequestRow[];
   error: string | null;
+  today: string;
 }) {
   // 既定は「まだのものだけ」。済みも見たいときに切り替える
   const [showDone, setShowDone] = useState(false);
@@ -31,12 +38,13 @@ export function IssueRequestsClient({
       <Card className="p-4">
         <h2 className="mb-1 flex items-center gap-2 text-sm font-bold">
           <Mailbox size={16} />
-          発行依頼のまとめ
+          依頼中（発行依頼・手続きの依頼）
         </h2>
         <p className="mb-3 text-[11px] leading-relaxed text-muted">
-          申請準備で課税証明書・納税証明書の準備状況を「発行依頼中」にしたぶんを、
-          発行依頼先ごとにまとめています。書類名を押すと、その人の申請準備の詳細が開きます。
-          発行されたら、そちらで準備状況を「発行完了」にしてください。
+          申請準備で準備状況を「発行依頼中」「本人に依頼中」などにした書類（課税証明書・納税証明書・年金記録・保険証など）と、
+          外国人詳細の「あとでやる手続き」で依頼を記録した転居手続き・国保加入を、依頼先ごとにまとめています。
+          何を押しても、その人の申請準備の詳細（手続きは外国人詳細）が開きます。
+          届いたら、そちらで準備状況を「発行完了」などに変えてください。依頼日から{STALE_DAYS}日以上たったものは赤く出ます。
         </p>
 
         {error && (
@@ -52,7 +60,7 @@ export function IssueRequestsClient({
           </span>
           <span className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-muted">
             <CheckCircle2 size={13} />
-            発行済み {summary.done}件
+            済み {summary.done}件
           </span>
           {summary.noIssuer > 0 && (
             <span className="flex items-center gap-1 rounded-lg border border-seal/40 px-2.5 py-1 text-seal">
@@ -67,13 +75,13 @@ export function IssueRequestsClient({
               onChange={(e) => setShowDone(e.target.checked)}
               className="size-4"
             />
-            発行済みも出す
+            済みも出す
           </label>
         </div>
 
         {groups.length === 0 ? (
           <p className="rounded-xl bg-background p-4 text-center text-xs text-muted">
-            発行依頼はありません。
+            依頼中のものはありません。
           </p>
         ) : (
           <ul className="flex flex-col gap-3">
@@ -88,42 +96,56 @@ export function IssueRequestsClient({
                     </span>
                     <span className="font-normal text-muted">
                       依頼中 {g.pending.length}件
-                      {g.done.length > 0 && ` ／ 発行済み ${g.done.length}件`}
+                      {g.done.length > 0 && ` ／ 済み ${g.done.length}件`}
                     </span>
                   </p>
                   {!g.issuer && (
                     <p className="mb-1.5 text-[11px] leading-relaxed text-seal">
-                      誰に依頼したかが入っていません。申請準備の「発行依頼先（誰に依頼したか）」で選んでください。
+                      誰に依頼したかが入っていません。申請準備の「発行依頼先（誰に依頼したか）」か、外国人詳細の「あとでやる手続き」の依頼先で入れてください。
                     </p>
                   )}
                   <ul className="flex flex-col gap-1">
-                    {list.map((r) => (
-                      <li
-                        key={`${r.checklistId}-${r.docId}`}
-                        className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] leading-relaxed"
-                      >
-                        <span
-                          className={`shrink-0 rounded px-1.5 py-0.5 font-bold ${
-                            r.done
-                              ? "border border-border text-muted"
-                              : "border border-seal/40 bg-seal/10 text-seal"
-                          }`}
+                    {list.map((r) => {
+                      const days = r.done ? null : elapsedDays(r.requestedOn, today);
+                      const stale = days != null && days >= STALE_DAYS;
+                      return (
+                        <li
+                          key={`${r.checklistId}-${r.docId}-${r.workerId}`}
+                          className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] leading-relaxed"
                         >
-                          {r.done ? "発行済み" : "依頼中"}
-                        </span>
-                        <Link
-                          href={`/workers/${r.workerId}`}
-                          className="font-bold text-brand underline"
-                        >
-                          {r.workerName}
-                        </Link>
-                        <Link href={prepDetailHref(r.workerId)} className="underline">
-                          {r.docLabel}
-                        </Link>
-                        <span className="text-muted">{r.status}</span>
-                        {r.todoNo && <span className="text-muted">／ {r.todoNo}</span>}
-                      </li>
-                    ))}
+                          <span
+                            className={`shrink-0 rounded px-1.5 py-0.5 font-bold ${
+                              r.done
+                                ? "border border-border text-muted"
+                                : "border border-seal/40 bg-seal/10 text-seal"
+                            }`}
+                          >
+                            {r.done ? "済み" : "依頼中"}
+                          </span>
+                          <Link
+                            href={`/workers/${r.workerId}`}
+                            className="font-bold text-brand underline"
+                          >
+                            {r.workerName}
+                          </Link>
+                          <Link href={issueRequestHref(r, prepDetailHref)} className="underline">
+                            {r.docLabel}
+                          </Link>
+                          <span className="text-muted">{r.status}</span>
+                          {/* 依頼日と経過日数。依頼日が入っていないものは最終更新日で見当を付ける */}
+                          {r.requestedOn && (
+                            <span className={`tabular-nums ${stale ? "font-bold text-seal" : "text-muted"}`}>
+                              依頼日 {r.requestedOn}
+                              {days != null && `（${days}日経過）`}
+                            </span>
+                          )}
+                          {!r.requestedOn && !r.done && (
+                            <span className="text-seal">依頼日が未入力</span>
+                          )}
+                          {r.todoNo && <span className="text-muted">／ {r.todoNo}</span>}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </li>
               );

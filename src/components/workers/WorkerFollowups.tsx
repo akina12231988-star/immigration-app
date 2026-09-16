@@ -22,6 +22,11 @@ import {
   type MovingFollowup,
   type WorkerFollowups as Followups,
 } from "@/lib/worker-followups";
+import { PREP_ISSUE_REQUEST_OPTIONS } from "@/lib/application-prep";
+import { todayStr } from "@/lib/ssw/calc";
+
+// 依頼先の候補（発行依頼先の名簿＋本人）。自由に打つこともできる
+const REQUEST_TO_OPTIONS = ["本人", ...PREP_ISSUE_REQUEST_OPTIONS];
 
 const INPUT =
   "min-h-[36px] w-full rounded-lg border border-border bg-background px-2.5 text-sm focus:border-brand focus:outline-none disabled:opacity-60";
@@ -147,9 +152,18 @@ export function WorkerFollowups({
                   <select
                     value={value.moving.status}
                     disabled={disabled}
-                    onChange={(e) =>
-                      save({ moving: { status: e.target.value as MovingFollowup["status"] } })
-                    }
+                    onChange={(e) => {
+                      const status = e.target.value as MovingFollowup["status"];
+                      // 依頼中にしたら依頼日を今日にしておく（TODO ＞ 依頼中 の一覧で経過日数を出す）
+                      save({
+                        moving: {
+                          status,
+                          ...(status === "依頼中" && !value.moving.requested_on
+                            ? { requested_on: todayStr() }
+                            : {}),
+                        },
+                      });
+                    }}
                     className={INPUT}
                   >
                     {MOVING_STATUSES.map((s) => (
@@ -159,6 +173,16 @@ export function WorkerFollowups({
                     ))}
                   </select>
                 </label>
+                {/* 誰に・いつ依頼したか。TODO ＞ 依頼中 の一覧に出る */}
+                <RequestFields
+                  to={value.moving.requested_to}
+                  on={value.moving.requested_on}
+                  disabled={disabled}
+                  listId="moving-request-to"
+                  onEditTo={(v) => edit({ moving: { requested_to: v } })}
+                  onBlurTo={() => save({})}
+                  onChangeOn={(v) => save({ moving: { requested_on: v } })}
+                />
                 <label className="block">
                   <span className="mb-0.5 block text-[11px] text-muted">メモ（転居先など）</span>
                   <input
@@ -236,6 +260,16 @@ export function WorkerFollowups({
                     国民年金に加入した
                   </label>
                 </div>
+                {/* 誰に・いつ加入手続きを依頼したか。入れると TODO ＞ 依頼中 の一覧に出る */}
+                <RequestFields
+                  to={value.kokuho.requested_to}
+                  on={value.kokuho.requested_on}
+                  disabled={disabled}
+                  listId="kokuho-request-to"
+                  onEditTo={(v) => edit({ kokuho: { requested_to: v } })}
+                  onBlurTo={() => save({})}
+                  onChangeOn={(v) => save({ kokuho: { requested_on: v } })}
+                />
                 <label className="block">
                   <span className="mb-0.5 block text-[11px] text-muted">メモ（前職の会社名など）</span>
                   <input
@@ -252,5 +286,59 @@ export function WorkerFollowups({
         </div>
       </Card>
     </section>
+  );
+}
+
+// 依頼先（名簿から選ぶか自由に打つ）と依頼日。転居手続き・国保加入の両方で同じ形
+function RequestFields({
+  to,
+  on,
+  disabled,
+  listId,
+  onEditTo,
+  onBlurTo,
+  onChangeOn,
+}: {
+  to: string;
+  on: string | null;
+  disabled: boolean;
+  listId: string;
+  onEditTo: (v: string) => void;
+  onBlurTo: () => void;
+  onChangeOn: (v: string | null) => void;
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <label className="block">
+        <span className="mb-0.5 block text-[11px] text-muted">依頼先（誰に依頼したか）</span>
+        <input
+          list={listId}
+          value={to}
+          disabled={disabled}
+          onChange={(e) => onEditTo(e.target.value)}
+          onBlur={onBlurTo}
+          placeholder="例: 本人 / NGAさん"
+          className={INPUT}
+        />
+        <datalist id={listId}>
+          {REQUEST_TO_OPTIONS.map((o) => (
+            <option key={o} value={o} />
+          ))}
+        </datalist>
+      </label>
+      <label className="block">
+        <span className="mb-0.5 block text-[11px] text-muted">依頼日</span>
+        <input
+          type="date"
+          value={on ?? ""}
+          disabled={disabled}
+          onChange={(e) => onChangeOn(e.target.value || null)}
+          className={INPUT}
+        />
+      </label>
+      <p className="text-[10px] leading-relaxed text-muted sm:col-span-2">
+        依頼先か依頼日を入れると、TODO ＞ 依頼中 の一覧に「誰に・いつ依頼したか」と経過日数が出ます。
+      </p>
+    </div>
   );
 }

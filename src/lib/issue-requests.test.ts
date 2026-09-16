@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  elapsedDays,
+  followupRequestRows,
   groupByIssuer,
   isIssueRequestDoc,
   issueRequestState,
   issueRequestSummary,
+  issuerOf,
+  requestedOnOf,
   toIssueRequestRow,
   type IssueRequestRow,
 } from "@/lib/issue-requests";
@@ -28,9 +32,33 @@ describe("isIssueRequestDoc", () => {
     expect(isIssueRequestDoc("nozei_kokuho")).toBe(true);
   });
 
-  it("発行依頼のない書類は対象外", () => {
-    expect(isIssueRequestDoc("zairyu")).toBe(false);
-    expect(isIssueRequestDoc("photo")).toBe(false);
+  it("年金記録・保険証など「〜依頼中」がある書類も対象", () => {
+    expect(isIssueRequestDoc("nenkin")).toBe(true);
+    expect(isIssueRequestDoc("hokensho")).toBe(true);
+  });
+
+  it("依頼中の選択肢が無い書類（合格証など）は対象外", () => {
+    expect(isIssueRequestDoc("cert_nihongo")).toBe(false);
+    expect(isIssueRequestDoc("cert_senmonkyu")).toBe(false);
+  });
+});
+
+describe("issuerOf / requestedOnOf / elapsedDays", () => {
+  it("発行依頼先の欄があればそれ、無ければ状況の文から相手を読む", () => {
+    expect(issuerOf("発行依頼中", "NGAさん")).toBe("NGAさん");
+    expect(issuerOf("秋吉伽恋に発行依頼中", "")).toBe("秋吉伽恋");
+    expect(issuerOf("本人に依頼中", "")).toBe("本人");
+    expect(issuerOf("未払いのため本人に納付を依頼中", "")).toBe("未払いのため本人");
+    expect(issuerOf("年金免除手続きの発行依頼中", "")).toBe("");
+  });
+  it("依頼日は date_on を優先し、無ければ最終更新日", () => {
+    expect(requestedOnOf("2026-09-01", "2026-09-10T00:00:00Z")).toBe("2026-09-01");
+    expect(requestedOnOf(null, "2026-09-10T00:00:00Z")).toBe("2026-09-10");
+    expect(requestedOnOf(null, "")).toBeNull();
+  });
+  it("経過日数", () => {
+    expect(elapsedDays("2026-09-01", "2026-09-16")).toBe(15);
+    expect(elapsedDays(null, "2026-09-16")).toBeNull();
   });
 });
 
@@ -64,16 +92,57 @@ describe("toIssueRequestRow", () => {
     expect(toIssueRequestRow({ ...base, status: "" })).toBeNull();
   });
 
-  it("発行依頼のない書類は出さない", () => {
-    expect(toIssueRequestRow({ ...base, docId: "zairyu" })).toBeNull();
+  it("依頼中の選択肢が無い書類は出さない", () => {
+    expect(toIssueRequestRow({ ...base, docId: "cert_nihongo" })).toBeNull();
   });
 
   it("完了しているものは done になる", () => {
     expect(toIssueRequestRow({ ...base, status: "発行完了" })?.done).toBe(true);
   });
+
+  it("依頼中でも完了でもない状況（郵送請求中）は出さない", () => {
+    expect(toIssueRequestRow({ ...base, status: "郵送請求中" })).toBeNull();
+  });
+
+  it("依頼日は date_on、無ければ最終更新日", () => {
+    expect(toIssueRequestRow({ ...base, dateOn: "2026-08-01" })?.requestedOn).toBe("2026-08-01");
+    expect(toIssueRequestRow(base)?.requestedOn).toBe("2026-08-27");
+  });
+
+  it("年金記録の「秋吉伽恋に発行依頼中」は依頼先を文から読む", () => {
+    const r = toIssueRequestRow({ ...base, docId: "nenkin", status: "秋吉伽恋に発行依頼中", note: "" });
+    expect(r?.issuer).toBe("秋吉伽恋");
+    expect(r?.done).toBe(false);
+    expect(r?.docLabel).toBe("年金記録");
+  });
+});
+
+describe("followupRequestRows", () => {
+  it("転居手続きの依頼中と、依頼を記録した国保加入を行にする", () => {
+    const rows = followupRequestRows([
+      {
+        id: "w1",
+        name: "グエン",
+        followups: {
+          moving: { needed: true, status: "依頼中", requested_to: "NGAさん", requested_on: "2026-09-01", planned_on: "2026-10-01" },
+          kokuho: { needed: true, requested_to: "本人", requested_on: "2026-09-05" },
+        },
+      },
+      { id: "w2", name: "チャン", followups: { moving: { needed: true, status: "未依頼" }, kokuho: { needed: true } } },
+      { id: "w3", name: "レ", followups: { kokuho: { needed: true, requested_to: "本人", kokuho_done: true, nenkin_done: true } } },
+    ]);
+    expect(rows.map((r) => `${r.workerName}:${r.docLabel}:${r.issuer}:${r.requestedOn}`)).toEqual([
+      "グエン:転居手続き:NGAさん:2026-09-01",
+      "グエン:国民健康保険・国民年金の加入:本人:2026-09-05",
+    ]);
+    expect(rows[0].status).toContain("転居予定 2026-10-01");
+    expect(rows[1].status).toContain("退職書類の発行待ち");
+  });
 });
 
 const row = (patch: Partial<IssueRequestRow> = {}): IssueRequestRow => ({
+  kind: "doc",
+  requestedOn: "2026-08-27",
   checklistId: "c1",
   docId: "kazei",
   docLabel: "令和7年度 課税証明書",

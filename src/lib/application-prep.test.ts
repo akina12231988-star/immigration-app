@@ -414,9 +414,12 @@ describe("発行依頼先（課税証明書・納税証明書の「発行依頼�
     ]);
   });
 
-  it.each(依頼先を出す書類)("%s の「発行依頼中」で発行依頼先を選べる", (docId) => {
+  it.each(依頼先を出す書類)("%s の「発行依頼中」で発行依頼先と依頼日を入れられる", (docId) => {
     const opt = PREP_DOC_STATUS_OPTIONS[docId].find((o) => o.value === "発行依頼中");
-    expect(opt?.extras).toEqual([{ kind: "issuer", label: "発行依頼先（誰に依頼したか）" }]);
+    expect(opt?.extras).toEqual([
+      { kind: "issuer", label: "発行依頼先（誰に依頼したか）" },
+      { kind: "date", label: "依頼日" },
+    ]);
   });
 
   it.each(依頼先を出す書類)("%s の「発行依頼中」はまだ完了ではない", (docId) => {

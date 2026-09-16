@@ -563,7 +563,17 @@ export function ApplicationPrepChecklist({
   // 書類ステータスの更新。save=false はテキスト入力中（保存はフォーカスが外れた時）
   const patchDocStatus = (docId: string, patch: Partial<PrepDocStatusInput>, save = true) => {
     if (!currentId) return;
-    const next = { ...EMPTY_PREP_DOC_STATUS, ...(docStatuses[docId] ?? {}), ...patch };
+    const before = docStatuses[docId] ?? EMPTY_PREP_DOC_STATUS;
+    const next = { ...EMPTY_PREP_DOC_STATUS, ...before, ...patch };
+    // 「〜依頼中」に変えたときは、依頼日を今日にしておく（TODO ＞ 依頼中 の一覧で経過日数を出す）
+    if (
+      patch.status !== undefined &&
+      patch.status !== before.status &&
+      patch.status.includes("依頼中") &&
+      !next.date_on
+    ) {
+      next.date_on = todayStr();
+    }
     setDocStatusesByList((prev) => ({
       ...prev,
       [currentId]: { ...(prev[currentId] ?? {}), [docId]: next },

@@ -12,6 +12,8 @@ export interface MovingFollowup {
   planned_on: string | null; // 転居（予定）年月日
   status: MovingStatus;
   note: string;
+  requested_to: string; // 誰に依頼したか（TODO ＞ 依頼中 の一覧に出す）
+  requested_on: string | null; // 依頼日
 }
 
 export interface KokuhoFollowup {
@@ -20,6 +22,8 @@ export interface KokuhoFollowup {
   kokuho_done: boolean; // 国民健康保険に加入済み
   nenkin_done: boolean; // 国民年金に加入済み
   note: string;
+  requested_to: string; // 誰に依頼したか（TODO ＞ 依頼中 の一覧に出す）
+  requested_on: string | null; // 依頼日
 }
 
 export interface WorkerFollowups {
@@ -32,6 +36,8 @@ export const EMPTY_MOVING: MovingFollowup = {
   planned_on: null,
   status: "未依頼",
   note: "",
+  requested_to: "",
+  requested_on: null,
 };
 
 export const EMPTY_KOKUHO: KokuhoFollowup = {
@@ -40,7 +46,16 @@ export const EMPTY_KOKUHO: KokuhoFollowup = {
   kokuho_done: false,
   nenkin_done: false,
   note: "",
+  requested_to: "",
+  requested_on: null,
 };
+
+function strOf(v: unknown): string {
+  return typeof v === "string" ? v : "";
+}
+function dateOf(v: unknown): string | null {
+  return typeof v === "string" && v ? v : null;
+}
 
 export const EMPTY_FOLLOWUPS: WorkerFollowups = { moving: EMPTY_MOVING, kokuho: EMPTY_KOKUHO };
 
@@ -58,17 +73,25 @@ export function followupsOf(source: { followups?: unknown } | null | undefined):
       needed: moving.needed === true,
       planned_on: typeof moving.planned_on === "string" && moving.planned_on ? moving.planned_on : null,
       status,
-      note: typeof moving.note === "string" ? moving.note : "",
+      note: strOf(moving.note),
+      requested_to: strOf(moving.requested_to),
+      requested_on: dateOf(moving.requested_on),
     },
     kokuho: {
       needed: kokuho.needed === true,
-      docs_ready_on:
-        typeof kokuho.docs_ready_on === "string" && kokuho.docs_ready_on ? kokuho.docs_ready_on : null,
+      docs_ready_on: dateOf(kokuho.docs_ready_on),
       kokuho_done: kokuho.kokuho_done === true,
       nenkin_done: kokuho.nenkin_done === true,
-      note: typeof kokuho.note === "string" ? kokuho.note : "",
+      note: strOf(kokuho.note),
+      requested_to: strOf(kokuho.requested_to),
+      requested_on: dateOf(kokuho.requested_on),
     },
   };
+}
+
+// 国保・国民年金の加入を誰かに依頼してあるか（依頼先か依頼日が入っていれば依頼中）
+export function isKokuhoRequested(f: WorkerFollowups): boolean {
+  return needsKokuho(f) && Boolean(f.kokuho.requested_to || f.kokuho.requested_on);
 }
 
 // 転居手続きがまだ終わっていないか（アラートを出すか）

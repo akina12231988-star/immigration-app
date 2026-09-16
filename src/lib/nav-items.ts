@@ -75,6 +75,9 @@ export const NAV_ENTRIES: NavEntry[] = [
       { href: "/workers/renewal-prep", label: "更新準備", short: "更新準備", icon: CalendarSync },
       { href: "/workers/renewals", label: "申請準備", short: "申請準備", icon: CalendarClock },
       { href: "/resignations", label: "随時報告書", short: "随時報告", icon: UserMinus },
+      // 依頼中: 申請準備の発行依頼（課税・納税証明書・年金記録など）と、転居手続き・国保加入の依頼を
+      // 誰に・いつ頼んだかでまとめて見る
+      { href: "/issue-requests", label: "依頼中（発行依頼・手続き）", short: "依頼中", icon: MailQuestionMark },
       { href: "/todos/exams", label: "試験の申込", short: "試験", icon: PencilLine },
       {
         href: "/todos/ssw-insurance",
@@ -88,8 +91,6 @@ export const NAV_ENTRIES: NavEntry[] = [
   { href: "/applications/new", label: "申請登録", short: "申請登録", icon: FilePlus2, emphasize: true },
   // ★指定の並びに無かった項目（仮置き）: 申請準備で使う証明書の請求のためここに置いている
   { href: "/mailing", label: "郵送請求", short: "郵送請求", icon: Mailbox },
-  // 発行依頼中の書類を、誰に頼んだかでまとめて見る
-  { href: "/issue-requests", label: "発行依頼のまとめ", short: "発行依頼", icon: MailQuestionMark },
   { href: "/notices/search", label: "通知書", short: "通知書", icon: ScanLine },
   {
     href: "/workers/passports",

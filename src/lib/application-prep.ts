@@ -557,7 +557,7 @@ export const PREP_DOC_STATUS_OPTIONS: Record<string, PrepDocStatusOption[]> = {
     { value: "本人にまだ届いていないから納税証明書その３で対応", done: true, noFile: true, extras: [{ kind: "mailing" }] },
   ],
   kazei: [
-    { value: "発行依頼中", done: false, extras: [{ kind: "issuer", label: "発行依頼先（誰に依頼したか）" }] },
+    { value: "発行依頼中", done: false, extras: [{ kind: "issuer", label: "発行依頼先（誰に依頼したか）" }, { kind: "date", label: "依頼日" }] },
     { value: "郵送請求中", done: false, extras: [{ kind: "mailing" }] },
     { value: "発行完了", done: true },
     {
@@ -568,7 +568,7 @@ export const PREP_DOC_STATUS_OPTIONS: Record<string, PrepDocStatusOption[]> = {
     },
   ],
   nozei_shiken: [
-    { value: "発行依頼中", done: false, extras: [{ kind: "issuer", label: "発行依頼先（誰に依頼したか）" }] },
+    { value: "発行依頼中", done: false, extras: [{ kind: "issuer", label: "発行依頼先（誰に依頼したか）" }, { kind: "date", label: "依頼日" }] },
     { value: "郵送請求中", done: false, extras: [{ kind: "mailing" }] },
     {
       value: "未納のため領収書発行待ち",
@@ -585,7 +585,7 @@ export const PREP_DOC_STATUS_OPTIONS: Record<string, PrepDocStatusOption[]> = {
     { value: "非課税のため発行できなかった", done: true, noFile: true },
   ],
   nozei_kokuho: [
-    { value: "発行依頼中", done: false, extras: [{ kind: "issuer", label: "発行依頼先（誰に依頼したか）" }] },
+    { value: "発行依頼中", done: false, extras: [{ kind: "issuer", label: "発行依頼先（誰に依頼したか）" }, { kind: "date", label: "依頼日" }] },
     { value: "郵送請求中", done: false, extras: [{ kind: "mailing" }] },
     {
       value: "未納のため領収書発行待ち",
@@ -617,13 +617,13 @@ export const PREP_DOC_STATUS_OPTIONS: Record<string, PrepDocStatusOption[]> = {
     },
   ],
   nenkin: [
-    { value: "秋吉伽恋に発行依頼中", done: false },
+    { value: "秋吉伽恋に発行依頼中", done: false, extras: [{ kind: "date", label: "依頼日" }] },
     {
       value: "未払いのため本人に納付を依頼中",
       done: false,
-      extras: [{ kind: "amount", label: "未払いの金額" }],
+      extras: [{ kind: "amount", label: "未払いの金額" }, { kind: "date", label: "依頼日" }],
     },
-    { value: "年金免除手続きの発行依頼中", done: false },
+    { value: "年金免除手続きの発行依頼中", done: false, extras: [{ kind: "date", label: "依頼日" }] },
     { value: "発行済み", done: true },
   ],
   kenshin: [
