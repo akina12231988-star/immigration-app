@@ -1,24 +1,32 @@
-import { prepDocLabel, PREP_DOC_DEFS, prepStatusOption } from "@/lib/application-prep";
+import { prepDocLabel, PREP_DOC_DEFS, PREP_DOC_STATUS_OPTIONS, prepStatusOption } from "@/lib/application-prep";
+import { followupsOf, isKokuhoRequested, needsMoving } from "@/lib/worker-followups";
 
-// 「発行依頼中」の書類を、誰に依頼したかでまとめて見るための集計。
+// TODO ＞ 依頼中: 誰に何を依頼していて、いつ依頼して、いまどうなっているかをまとめて見る。
 //
-// 課税証明書・納税証明書などの準備状況を「発行依頼中」にすると、
-// 発行依頼先（PREP_ISSUE_REQUEST_OPTIONS）を note に持つ。
-// 依頼したまま止まっているものが分かるよう、依頼先ごとに並べる。
+// 1. 申請準備の書類（課税証明書・納税証明書・年金記録など）で準備状況を「〜依頼中」にしたもの。
+//    発行依頼先（PREP_ISSUE_REQUEST_OPTIONS）を note に、依頼日を date_on に持つ。
+//    「秋吉伽恋に発行依頼中」「本人に依頼中」のように状況の文に相手が入っているものは、そこから相手を読む。
+// 2. 外国人詳細の「あとでやる手続き」（転居手続き・国保/国民年金の加入）で依頼を記録したもの。
+//
+// 依頼したまま止まっているものが分かるよう、依頼先ごとに並べ、依頼日からの日数を出す。
 
-// 1件分（準備状況の1行＝外国人×TODO×書類）
+export type IssueRequestKind = "doc" | "moving" | "kokuho";
+
+// 1件分（準備状況の1行＝外国人×TODO×書類、または手続きの依頼1件）
 export interface IssueRequestRow {
-  checklistId: string;
-  docId: string;
-  docLabel: string; // 「令和7年度 課税証明書」など
-  status: string; // 選んでいる準備状況
-  issuer: string; // 発行依頼先（note）。未選択なら空
+  kind: IssueRequestKind;
+  checklistId: string; // 手続きの依頼のときは "followup"
+  docId: string; // 手続きの依頼のときは "moving" / "kokuho"
+  docLabel: string; // 「令和7年度 課税証明書」「転居手続き」など
+  status: string; // 選んでいる準備状況・手続きの状況
+  issuer: string; // 依頼先（note）。未選択なら空
   workerId: string;
   workerName: string;
   todoNo: string;
   targetReiwa: number | null;
   done: boolean; // その準備状況が完了扱いか
   updatedAt: string;
+  requestedOn: string | null; // 依頼日（入っていなければ最終更新日）
 }
 
 // 発行依頼の状況。「発行依頼中」＝まだ、それ以外の完了扱い＝済み
@@ -28,21 +36,51 @@ export function issueRequestState(docId: string, status: string): IssueRequestSt
   return prepStatusOption(docId, status)?.done ? "完了" : "依頼中";
 }
 
-// 「発行依頼中」の選択肢を持つ書類だけを対象にする（課税証明書・納税証明書など）
+// 準備状況の文が「〜依頼中」（誰かに頼んで待っている）か
+export function isRequestingStatus(status: string): boolean {
+  return status.includes("依頼中");
+}
+
+// 「〜依頼中」の選択肢を持つ書類だけを対象にする（課税証明書・納税証明書・年金記録・保険証など）
 export const ISSUE_REQUEST_DOC_IDS = PREP_DOC_DEFS.filter((d) =>
-  Boolean(prepStatusOption(d.id, "発行依頼中")),
+  (PREP_DOC_STATUS_OPTIONS[d.id] ?? []).some((o) => isRequestingStatus(o.value)),
 ).map((d) => d.id);
 
 export function isIssueRequestDoc(docId: string): boolean {
   return ISSUE_REQUEST_DOC_IDS.includes(docId);
 }
 
-// 準備状況の1行を、一覧に出す形にする。対象外の書類・未依頼のものは null
+// 依頼先。発行依頼先の欄（note）があればそれ、無ければ状況の文（「秋吉伽恋に発行依頼中」
+// 「本人に依頼中」「送り出し機関に依頼中」）から相手を読む。分からなければ空
+export function issuerOf(status: string, note: string): string {
+  const n = note.trim();
+  if (n) return n;
+  const m = /^(.+?)に(?:発行|納付を)?依頼中$/.exec(status.trim());
+  return m ? m[1] : "";
+}
+
+// 依頼日。準備状況の依頼日（date_on）が入っていればそれ、無ければ最終更新日
+export function requestedOnOf(dateOn: string | null | undefined, updatedAt: string): string | null {
+  if (dateOn) return dateOn;
+  return updatedAt ? updatedAt.slice(0, 10) : null;
+}
+
+// 依頼日からの経過日数（今日を含めない）。依頼日が無ければ null
+export function elapsedDays(requestedOn: string | null, today: string): number | null {
+  if (!requestedOn) return null;
+  const a = Date.parse(`${requestedOn}T00:00:00Z`);
+  const b = Date.parse(`${today}T00:00:00Z`);
+  if (Number.isNaN(a) || Number.isNaN(b)) return null;
+  return Math.max(0, Math.round((b - a) / 86_400_000));
+}
+
+// 準備状況の1行を、一覧に出す形にする。対象外の書類・依頼していないものは null
 export function toIssueRequestRow(input: {
   checklistId: string;
   docId: string;
   status: string;
   note: string;
+  dateOn?: string | null;
   updatedAt: string;
   workerId: string;
   workerName: string;
@@ -55,19 +93,81 @@ export function toIssueRequestRow(input: {
   if (!def) return null;
   // 何も選んでいないものは「依頼していない」ので出さない
   if (!input.status) return null;
+  const done = issueRequestState(input.docId, input.status) === "完了";
+  // 依頼中でも完了でもない状況（郵送請求中など）は、この一覧の対象外
+  if (!done && !isRequestingStatus(input.status)) return null;
   return {
+    kind: "doc",
     checklistId: input.checklistId,
     docId: input.docId,
     docLabel: prepDocLabel(def, input.targetReiwa, input.currentReiwa),
     status: input.status,
-    issuer: input.note.trim(),
+    issuer: issuerOf(input.status, input.note),
     workerId: input.workerId,
     workerName: input.workerName,
     todoNo: input.todoNo,
     targetReiwa: input.targetReiwa,
-    done: issueRequestState(input.docId, input.status) === "完了",
+    done,
     updatedAt: input.updatedAt,
+    requestedOn: requestedOnOf(input.dateOn, input.updatedAt),
   };
+}
+
+// 外国人詳細の「あとでやる手続き」から、依頼してある転居手続き・国保加入を一覧の行にする。
+// 転居手続きは状況が「依頼中」のもの、国保加入は依頼先か依頼日を入れたもの（残っている間だけ）
+export function followupRequestRows(
+  workers: { id: string; name: string; followups?: unknown }[],
+): IssueRequestRow[] {
+  const rows: IssueRequestRow[] = [];
+  for (const w of workers) {
+    const f = followupsOf(w);
+    if (needsMoving(f) && f.moving.status === "依頼中") {
+      rows.push({
+        kind: "moving",
+        checklistId: "followup",
+        docId: "moving",
+        docLabel: "転居手続き",
+        status: f.moving.planned_on ? `依頼中（転居予定 ${f.moving.planned_on}）` : "依頼中",
+        issuer: f.moving.requested_to.trim(),
+        workerId: w.id,
+        workerName: w.name,
+        todoNo: "",
+        targetReiwa: null,
+        done: false,
+        updatedAt: "",
+        requestedOn: f.moving.requested_on,
+      });
+    }
+    if (isKokuhoRequested(f)) {
+      const rest = [
+        f.kokuho.kokuho_done ? null : "国民健康保険",
+        f.kokuho.nenkin_done ? null : "国民年金",
+      ].filter((s): s is string => s !== null);
+      rows.push({
+        kind: "kokuho",
+        checklistId: "followup",
+        docId: "kokuho",
+        docLabel: `${rest.join("・")}の加入`,
+        status: f.kokuho.docs_ready_on
+          ? `依頼中（退職書類は ${f.kokuho.docs_ready_on} に発行済み）`
+          : "依頼中（退職書類の発行待ち）",
+        issuer: f.kokuho.requested_to.trim(),
+        workerId: w.id,
+        workerName: w.name,
+        todoNo: "",
+        targetReiwa: null,
+        done: false,
+        updatedAt: "",
+        requestedOn: f.kokuho.requested_on,
+      });
+    }
+  }
+  return rows;
+}
+
+// その行を開くリンク。書類は申請準備の詳細、手続きの依頼は外国人詳細の「あとでやる手続き」
+export function issueRequestHref(r: IssueRequestRow, prepHref: (workerId: string) => string): string {
+  return r.kind === "doc" ? prepHref(r.workerId) : `/workers/${r.workerId}#followups`;
 }
 
 // 依頼先ごとにまとめる。依頼先が未選択のものは最後に「（依頼先が未選択）」として置く
