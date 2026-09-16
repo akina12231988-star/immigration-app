@@ -128,10 +128,12 @@ export default async function ApplicationPrepPrintPage({
   );
   const todoKey = normalizeTodoKey(current?.todo_no ?? "");
   const prepTodo = (todoKey ? todos.find((t) => normalizeTodoKey(t.todo_no) === todoKey) : undefined) ?? todos[0];
-  const memoDefault =
+  // メモ欄の初期値: 準備リストのメモ（申請準備の画面で書いたもの）＋ 書類待ちの内容
+  const waitingLine =
     prepTodo && isWaitingDocsStatus(prepTodo.status) && (prepTodo.waiting_note ?? "").trim()
       ? `書類待ち: ${prepTodo.waiting_note.trim()}`
       : "";
+  const memoDefault = [(current?.memo ?? "").trim(), waitingLine].filter(Boolean).join("\n");
 
   return (
     <PrepDetailSheet
