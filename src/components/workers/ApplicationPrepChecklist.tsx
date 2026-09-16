@@ -63,6 +63,7 @@ import { MailingRecordSummary } from "@/components/mailing/MailingRecordSummary"
 import {
   JointApplicationField,
   PrepAddressField,
+  PrepMemoField,
   PrepAssenSection,
   PrepEmploymentSection,
   PrepOrgInfo,
@@ -455,6 +456,7 @@ export function ApplicationPrepChecklist({
         | "joint_lead"
         | "sign_status"
         | "planned_app_on"
+        | "memo"
       >
     >,
   ) {
@@ -467,11 +469,13 @@ export function ApplicationPrepChecklist({
     } catch (err) {
       // あとから足した項目（筆頭者=0111・申請予定日=0112）は、その分の案内を出す
       const migration =
-        "joint_lead" in patch
-          ? "0111_prep_joint_lead.sql"
-          : "planned_app_on" in patch
-            ? "0112_prep_planned_app_on.sql"
-            : "0105_prep_checklist_extras.sql";
+        "memo" in patch
+          ? "0160_prep_checklist_memo.sql"
+          : "joint_lead" in patch
+            ? "0111_prep_joint_lead.sql"
+            : "planned_app_on" in patch
+              ? "0112_prep_planned_app_on.sql"
+              : "0105_prep_checklist_extras.sql";
       setError(dbErrorMessage(err, migration, "保存に失敗しました"));
     }
   }
@@ -1231,6 +1235,16 @@ export function ApplicationPrepChecklist({
             : undefined
         }
       />
+
+      {/* メモ（いま何を依頼していて何を待っているか）。A4印刷のメモ欄にも印字される */}
+      {current && (
+        <PrepMemoField
+          key={current.id}
+          memo={current.memo}
+          canEdit={canEdit}
+          onSave={(memo) => saveExtras({ memo })}
+        />
+      )}
 
       {/* 現在の住所（未登録なら入力して保存できる） */}
       <PrepAddressField

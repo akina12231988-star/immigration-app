@@ -17,6 +17,7 @@ export interface PrepChecklistRow extends PrepChecklistMeta {
   sign_status: string; // 本人から署名をもらったかのステータス
   planned_app_on: string | null; // 申請予定日（健康診断書の有効チェックに使う。0112）
   updated_at: string; // 最終更新日時（前回の準備リストの見当を付けるのに使う）
+  memo: string; // メモ（いま何を依頼していて何を待っているか。A4印刷のメモ欄にも出す。0160）
 }
 
 // 外国人の準備リストを全件取得（更新が新しい順）。
@@ -49,6 +50,7 @@ export async function listPrepChecklists(
     sign_status: r.sign_status ?? "",
     planned_app_on: r.planned_app_on ?? null,
     updated_at: r.updated_at ?? "",
+    memo: r.memo ?? "",
   }));
 }
 
@@ -104,6 +106,7 @@ export async function updatePrepChecklistExtras(
       | "joint_lead"
       | "sign_status"
       | "planned_app_on"
+      | "memo"
     >
   >,
 ): Promise<void> {

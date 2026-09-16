@@ -90,6 +90,8 @@ import type {
 
 const INPUT =
   "min-h-[36px] rounded-lg border border-border bg-surface px-2 text-xs focus:border-brand focus:outline-none disabled:opacity-60";
+const TEXTAREA =
+  "w-full rounded-xl border border-border bg-background px-3 py-2 text-sm leading-relaxed focus:border-brand focus:outline-none";
 
 // ---- 申請準備TODOのステータス（名前の下に常時表示） ----
 
@@ -423,6 +425,68 @@ export function PrepPensionSummary({ workerId }: { workerId: string }) {
 }
 
 // ---- 現在の住所（未登録なら入力して保存できる） ----
+
+// 申請準備のメモ（いま何を依頼していて、何を待っているか）。
+// TODO番号ごとの準備リストに保存され、A4印刷（申請準備の詳細）のメモ欄にも印字される
+export function PrepMemoField({
+  memo,
+  canEdit,
+  onSave,
+}: {
+  memo: string; // 保存済みの値
+  canEdit: boolean;
+  onSave: (memo: string) => Promise<void>;
+}) {
+  const [value, setValue] = useState(memo);
+  const [prev, setPrev] = useState(memo);
+  if (memo !== prev) {
+    setPrev(memo);
+    setValue(memo);
+  }
+  const [saving, setSaving] = useState(false);
+  const changed = value.trim() !== memo.trim();
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await onSave(value.trim());
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="mb-3 rounded-xl border border-status-notice-fg/30 bg-status-notice-bg/40 px-3 py-2.5">
+      <p className="mb-1 text-[11px] font-bold text-muted">
+        メモ（いま何を依頼していて、何を待っているか）
+        <span className="ml-1 font-normal">A4印刷のメモ欄にもそのまま印字されます</span>
+      </p>
+      {canEdit ? (
+        <div className="flex items-start gap-2">
+          <textarea
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            rows={value.split("\n").length > 2 ? Math.min(value.split("\n").length, 6) : 2}
+            placeholder="例: 9/15 会社へ雇用契約書の押印を依頼中（返送待ち）。課税証明書は郵送請求中"
+            className={`${TEXTAREA} min-w-0 flex-1`}
+          />
+          {changed && (
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => void save()}
+              className="shrink-0 rounded-lg bg-brand px-3 py-2 text-xs font-bold text-brand-foreground disabled:opacity-50"
+            >
+              {saving ? "保存中…" : "保存"}
+            </button>
+          )}
+        </div>
+      ) : (
+        <p className="whitespace-pre-wrap text-xs">{memo || "（メモなし）"}</p>
+      )}
+    </div>
+  );
+}
 
 export function PrepAddressField({
   workerId,
