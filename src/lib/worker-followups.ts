@@ -25,7 +25,12 @@ export interface MovingFollowup {
   requested_to: string; // 誰に依頼したか（TODO ＞ 依頼中 の一覧に出す）
   requested_on: string | null; // 依頼日
   certificate_sent_on: string | null; // 転出証明書を郵送で送った日
+  certificate_received_on: string | null; // 転出証明書が届いた（発行できた）日。ここから転入手続きに進む
   new_address: string; // 転入先の住所
+  // 転入手続き（転出証明書が届いてから、別の人に頼むことがあるので転出とは別に持つ）
+  movein_status: MovingStatus;
+  movein_requested_to: string; // 転入手続きを誰に依頼したか
+  movein_requested_on: string | null; // 転入手続きの依頼日
   insurance_before: InsuranceBefore; // 現在の保険証
   insurance_after: InsuranceAfter; // 転居後の保険証
   loss_doc: LossDoc; // 社保→国保: 資格喪失確認書か離職票が発行されたか
@@ -57,7 +62,11 @@ export const EMPTY_MOVING: MovingFollowup = {
   requested_to: "",
   requested_on: null,
   certificate_sent_on: null,
+  certificate_received_on: null,
   new_address: "",
+  movein_status: "未依頼",
+  movein_requested_to: "",
+  movein_requested_on: null,
   insurance_before: "",
   insurance_after: "",
   loss_doc: "",
@@ -106,7 +115,11 @@ export function followupsOf(source: { followups?: unknown } | null | undefined):
       requested_to: strOf(moving.requested_to),
       requested_on: dateOf(moving.requested_on),
       certificate_sent_on: dateOf(moving.certificate_sent_on),
+      certificate_received_on: dateOf(moving.certificate_received_on),
       new_address: strOf(moving.new_address),
+      movein_status: oneOf(moving.movein_status, MOVING_STATUSES),
+      movein_requested_to: strOf(moving.movein_requested_to),
+      movein_requested_on: dateOf(moving.movein_requested_on),
       insurance_before: oneOf(moving.insurance_before, INSURANCE_BEFORE_OPTIONS),
       insurance_after: oneOf(moving.insurance_after, INSURANCE_AFTER_OPTIONS),
       loss_doc: oneOf(moving.loss_doc, LOSS_DOC_OPTIONS),
@@ -200,7 +213,18 @@ export function followupLabels(source: { followups?: unknown } | null | undefine
   const f = followupsOf(source);
   const labels: string[] = [];
   if (needsMoving(f)) {
-    labels.push(f.moving.status === "依頼中" ? "転居手続きを依頼中" : "転居手続きの依頼");
+    // 転出証明書が届いたあとは転入手続きの段階として出す
+    if (f.moving.certificate_received_on || f.moving.movein_status !== "未依頼") {
+      labels.push(
+        f.moving.movein_status === "依頼中"
+          ? "転入手続きを依頼中"
+          : f.moving.movein_status === "完了"
+            ? "転入手続きは完了（転居手続きを完了にしてください）"
+            : "転入手続きの依頼（転出証明書は届いています）",
+      );
+    } else {
+      labels.push(f.moving.status === "依頼中" ? "転出手続きを依頼中" : "転居手続きの依頼");
+    }
   }
   if (needsKokuho(f)) {
     const rest = [

@@ -127,7 +127,7 @@ export function WorkerFollowups({
           <div className="rounded-xl border border-border p-3">
             <p className="mb-1.5 flex items-center gap-1.5 text-xs font-bold">
               <Home size={13} className="shrink-0 text-muted" />
-              転居手続きの依頼
+              転居手続きの依頼（転出 → 転出証明書が届いたら転入）
             </p>
             <label className="flex items-start gap-2 text-xs font-bold">
               <input
@@ -155,6 +155,7 @@ export function WorkerFollowups({
                     className={INPUT}
                   />
                 </label>
+                <p className="text-[11px] font-bold text-muted">① 転出手続き（転出証明書をもらう）</p>
                 <label className="block">
                   <span className="mb-0.5 block text-[11px] text-muted">依頼の状況</span>
                   <select
@@ -191,7 +192,7 @@ export function WorkerFollowups({
                   onBlurTo={() => save({})}
                   onChangeOn={(v) => save({ moving: { requested_on: v } })}
                 />
-                {/* 転出証明書と転入先。郵送で送った日と、どこに移るか */}
+                {/* 転出証明書。郵送で送った日と、届いた（発行できた）日 */}
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <label className="block">
                     <span className="mb-0.5 block text-[11px] text-muted">転出証明書を郵送で送った日</span>
@@ -204,16 +205,78 @@ export function WorkerFollowups({
                     />
                   </label>
                   <label className="block">
-                    <span className="mb-0.5 block text-[11px] text-muted">転入先の住所</span>
+                    <span className="mb-0.5 block text-[11px] text-muted">転出証明書が届いた（発行できた）日</span>
                     <input
-                      value={value.moving.new_address}
+                      type="date"
+                      value={value.moving.certificate_received_on ?? ""}
                       disabled={disabled}
-                      onChange={(e) => edit({ moving: { new_address: e.target.value } })}
-                      onBlur={() => save({})}
-                      placeholder="〒　転入先の住所"
+                      onChange={(e) => save({ moving: { certificate_received_on: e.target.value || null } })}
                       className={INPUT}
                     />
                   </label>
+                </div>
+
+                {/* ② 転入手続き。転出証明書が届いてから、別の人に頼むことがあるので転出とは別に記録する */}
+                <div className="rounded-lg border border-dashed border-border p-2.5">
+                  <p className="mb-1.5 text-[11px] font-bold text-muted">
+                    ② 転入手続き（転出証明書が届いてから）
+                    {!value.moving.certificate_received_on && (
+                      <span className="ml-1 font-normal">— 転出証明書が届いたら上の日付を入れてください</span>
+                    )}
+                  </p>
+                  <div className="space-y-2">
+                    <label className="block">
+                      <span className="mb-0.5 block text-[11px] text-muted">転入先の住所</span>
+                      <input
+                        value={value.moving.new_address}
+                        disabled={disabled}
+                        onChange={(e) => edit({ moving: { new_address: e.target.value } })}
+                        onBlur={() => save({})}
+                        placeholder="〒　転入先の住所"
+                        className={INPUT}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-0.5 block text-[11px] text-muted">転入手続きの依頼の状況</span>
+                      <select
+                        value={value.moving.movein_status}
+                        disabled={disabled}
+                        onChange={(e) => {
+                          const status = e.target.value as MovingFollowup["status"];
+                          save({
+                            moving: {
+                              movein_status: status,
+                              ...(status === "依頼中" && !value.moving.movein_requested_on
+                                ? { movein_requested_on: todayStr() }
+                                : {}),
+                            },
+                          });
+                        }}
+                        className={INPUT}
+                      >
+                        {MOVING_STATUSES.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <RequestFields
+                      to={value.moving.movein_requested_to}
+                      on={value.moving.movein_requested_on}
+                      disabled={disabled}
+                      listId="movein-request-to"
+                      onEditTo={(v) => edit({ moving: { movein_requested_to: v } })}
+                      onBlurTo={() => save({})}
+                      onChangeOn={(v) => save({ moving: { movein_requested_on: v } })}
+                    />
+                    {value.moving.movein_status === "完了" && value.moving.status !== "完了" && (
+                      <p className="rounded-lg bg-status-notice-bg px-2.5 py-1.5 text-[11px] font-bold text-status-notice-fg">
+                        転入手続きが完了したら、上の「依頼の状況」を「完了」にすると宿題から外れます。
+                        住所歴（転入日ごと）への登録も忘れずに。
+                      </p>
+                    )}
+                  </div>
                 </div>
                 {/* 保険証の切り替え。現在の保険証は保険証の欄の最新から目安を出す */}
                 <MovingInsuranceFields

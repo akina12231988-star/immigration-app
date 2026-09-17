@@ -89,7 +89,7 @@ describe("followupLabels", () => {
       "転居手続きの依頼",
     ]);
     expect(followupLabels({ followups: { moving: { needed: true, status: "依頼中" } } })).toEqual([
-      "転居手続きを依頼中",
+      "転出手続きを依頼中",
     ]);
   });
 
@@ -137,6 +137,26 @@ describe("patchFollowups", () => {
     expect(next.moving).toEqual(base.moving);
     expect(next.kokuho.note).toBe("前職は社保");
     expect(next.kokuho.kokuho_done).toBe(true);
+  });
+});
+
+describe("転入手続き", () => {
+  it("転出証明書が届いたら、転入手続きの段階として案内が変わる", () => {
+    const base = { needed: true, status: "依頼中" as const };
+    expect(
+      followupLabels({ followups: { moving: { ...base, certificate_received_on: "2026-09-20" } } }),
+    ).toEqual(["転入手続きの依頼（転出証明書は届いています）"]);
+    expect(
+      followupLabels({
+        followups: { moving: { ...base, certificate_received_on: "2026-09-20", movein_status: "依頼中" } },
+      }),
+    ).toEqual(["転入手続きを依頼中"]);
+    expect(
+      followupLabels({ followups: { moving: { ...base, movein_status: "完了" } } })[0],
+    ).toContain("転入手続きは完了");
+  });
+  it("知らない転入の状況は未依頼として読む", () => {
+    expect(followupsOf({ followups: { moving: { movein_status: "xx" } } }).moving.movein_status).toBe("未依頼");
   });
 });
 

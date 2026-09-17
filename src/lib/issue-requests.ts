@@ -121,19 +121,22 @@ export function followupRequestRows(
   const rows: IssueRequestRow[] = [];
   for (const w of workers) {
     const f = followupsOf(w);
-    if (needsMoving(f) && f.moving.status === "依頼中") {
+    const insurance =
+      f.moving.insurance_before && f.moving.insurance_after
+        ? `保険証 ${f.moving.insurance_before}→${f.moving.insurance_after}`
+        : "";
+    // 転出手続き（転出証明書をもらう）。転出証明書が届いたら、この行は出さない
+    if (needsMoving(f) && f.moving.status === "依頼中" && !f.moving.certificate_received_on) {
       rows.push({
         kind: "moving",
         checklistId: "followup",
         docId: "moving",
-        docLabel: "転居手続き",
+        docLabel: "転出手続き（転出証明書）",
         status: [
           "依頼中",
           f.moving.planned_on ? `転居予定 ${f.moving.planned_on}` : "",
           f.moving.certificate_sent_on ? `転出証明書 ${f.moving.certificate_sent_on} 郵送` : "",
-          f.moving.insurance_before && f.moving.insurance_after
-            ? `保険証 ${f.moving.insurance_before}→${f.moving.insurance_after}`
-            : "",
+          insurance,
         ]
           .filter(Boolean)
           .join("・"),
@@ -145,6 +148,31 @@ export function followupRequestRows(
         done: false,
         updatedAt: "",
         requestedOn: f.moving.requested_on,
+      });
+    }
+    // 転入手続き（転出証明書が届いてから別の人に頼むことがある）
+    if (needsMoving(f) && f.moving.movein_status === "依頼中") {
+      rows.push({
+        kind: "moving",
+        checklistId: "followup",
+        docId: "movein",
+        docLabel: "転入手続き",
+        status: [
+          "依頼中",
+          f.moving.certificate_received_on ? `転出証明書は ${f.moving.certificate_received_on} に届いた` : "",
+          f.moving.new_address ? `転入先 ${f.moving.new_address}` : "",
+          insurance,
+        ]
+          .filter(Boolean)
+          .join("・"),
+        issuer: f.moving.movein_requested_to.trim(),
+        workerId: w.id,
+        workerName: w.name,
+        todoNo: "",
+        targetReiwa: null,
+        done: false,
+        updatedAt: "",
+        requestedOn: f.moving.movein_requested_on,
       });
     }
     if (isKokuhoRequested(f)) {
