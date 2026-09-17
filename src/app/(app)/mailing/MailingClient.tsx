@@ -29,6 +29,7 @@ import {
   isSelfOnlyMunicipality,
   formatDateJP,
   formatYen,
+  judgeEachYear,
   judgeNhiYear,
   judgeTiming,
   judgeWithYearMunicipalities,
@@ -823,9 +824,56 @@ function JudgeTab({
                 label={result.timingLabel}
                 notes={[result.timingDetail, result.yearReason]}
               />
+              {/* 最新年度と前年度で自治体が違うときは、年度ごと（自治体ごと）の判定も並べて出す。
+                  「もう片方の自治体は請求しなくてよいのか」がその場で分かるようにする */}
+              {!result.requestBothYears && selectedMuni && selectedPrevMuni && selectedMuni.id !== selectedPrevMuni.id && (
+                <div className="mt-3 space-y-2">
+                  <p className="text-xs font-bold text-muted">年度ごとの判定（最新年度と前年度で自治体が違うため）</p>
+                  {judgeEachYear({
+                    newMuni: selectedMuni,
+                    prevMuni: selectedPrevMuni,
+                    collectionType: result.collectionType,
+                    appDate: new Date(result.appDate + "T00:00:00"),
+                  }).map((y) => (
+                    <div
+                      key={y.yearType}
+                      className={`rounded-xl border px-3 py-2.5 text-xs ${
+                        y.needed
+                          ? y.timing.status === "warn"
+                            ? "border-status-notice-fg/40 bg-status-notice-bg"
+                            : "border-status-reported-fg/30 bg-status-reported-bg"
+                          : "border-border bg-background text-muted"
+                      }`}
+                    >
+                      <p className="flex flex-wrap items-center gap-2 font-bold">
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[11px] ${
+                            y.needed ? "bg-brand text-brand-foreground" : "border border-border text-muted"
+                          }`}
+                        >
+                          {y.needed ? "請求する" : "今回は不要"}
+                        </span>
+                        {y.yearType === "new" ? "最新年度" : "前年度"}（{fiscalYearLabel(y.fiscalStartYear)}）：{y.muni.name}
+                      </p>
+                      <p className="mt-1 leading-relaxed">{y.reason}</p>
+                      {y.needed && (
+                        <p className={`mt-0.5 leading-relaxed ${y.timing.status === "warn" ? "font-bold text-status-notice-fg" : "text-muted"}`}>
+                          {y.timing.label}：{y.timing.detail}
+                        </p>
+                      )}
+                      {y.muni.show_asterisk && (
+                        <p className="mt-0.5 leading-relaxed">この自治体は納期未到来額・未納額を「＊」表示する設定です。</p>
+                      )}
+                    </div>
+                  ))}
+                  <p className="text-[11px] text-muted">
+                    両方の自治体に請求したいときは、上の「最新年度と前年度の両方」を選んで判定し直してください。
+                  </p>
+                </div>
+              )}
               <MunicipalitySiteLinks
                 municipalities={municipalities}
-                ids={[result.municipalityId, result.prevMunicipalityId ?? ""]}
+                ids={[result.municipalityId, result.prevMunicipalityId ?? "", selectedMuni?.id ?? "", selectedPrevMuni?.id ?? ""]}
               />
               <DocList docs={result.docs.filter((d) => !d.isNhi)} />
               <label className="mt-4 flex flex-col gap-1 border-t border-dashed border-border pt-4">

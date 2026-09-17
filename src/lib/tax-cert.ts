@@ -222,6 +222,51 @@ export function judgeWithYearMunicipalities(params: {
   return { ...y, muni };
 }
 
+// 最新年度と前年度で自治体が違うときに、年度ごと（自治体ごと）に出す判定。
+// 「判定に任せる」ではどちらか1年度だけを請求するが、自治体が違うと
+// 「もう片方の自治体は請求しなくてよいのか」が分かりにくいので、年度ごとに
+// 必要かどうか・取得タイミング・その自治体の＊表示の扱いを並べて出す
+export interface YearJudgment {
+  yearType: YearType;
+  fiscalStartYear: number;
+  muni: Municipality;
+  needed: boolean; // 今回の判定で請求する年度か
+  timing: ReturnType<typeof judgeTiming>;
+  reason: string; // 必要／不要の理由
+}
+
+export function judgeEachYear(params: {
+  newMuni: Municipality;
+  prevMuni: Municipality;
+  collectionType: CollectionType;
+  appDate: Date;
+}): YearJudgment[] {
+  const { newMuni, prevMuni, collectionType, appDate } = params;
+  const judged = judgeWithYearMunicipalities(params);
+  const latest = latestFiscalStartYear(appDate);
+  const rows: { yearType: YearType; muni: Municipality; fiscalStartYear: number }[] = [
+    { yearType: "new", muni: newMuni, fiscalStartYear: latest },
+    { yearType: "prev", muni: prevMuni, fiscalStartYear: latest - 1 },
+  ];
+  return rows.map((r) => {
+    const needed = r.yearType === judged.yearType;
+    const other = r.yearType === "new" ? "前年度" : "新年度";
+    const reason = needed
+      ? judged.reason
+      : r.muni.show_asterisk && r.yearType === "new"
+        ? `この自治体は「＊」表示の設定ですが、判定した年度（${other}）の自治体の設定で判定しています。今回は請求しません。`
+        : `今回の判定では${other}の証明書を取得するため、この年度（この自治体）の証明書は請求しません。`;
+    return {
+      yearType: r.yearType,
+      fiscalStartYear: r.fiscalStartYear,
+      muni: r.muni,
+      needed,
+      timing: judgeTiming(collectionType, r.yearType, appDate),
+      reason,
+    };
+  });
+}
+
 export function judgeTiming(
   collectionType: CollectionType,
   yearType: YearType,

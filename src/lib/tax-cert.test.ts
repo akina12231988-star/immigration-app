@@ -13,6 +13,7 @@ import {
   type MoneyOrder,
   type Municipality,
   buildBothYearsDocs,
+  judgeEachYear,
   judgeWithYearMunicipalities,
   latestFiscalStartYear,
 } from "./tax-cert";
@@ -232,6 +233,18 @@ describe("年度ごとの自治体で判定する", () => {
     const n = judgeWithYearMunicipalities({ newMuni: a, prevMuni: b, collectionType: "normal", appDate: new Date("2026-03-01T00:00:00") });
     expect(n.yearType).toBe("new");
     expect(n.muni.id).toBe("a");
+  });
+
+  it("自治体が違うときは年度ごとの判定を並べて出す（請求する年度だけ needed）", () => {
+    const rows = judgeEachYear({ newMuni: a, prevMuni: b, collectionType: "normal", appDate: new Date("2026-09-17T00:00:00") });
+    expect(rows.map((r) => `${r.yearType}:${r.fiscalStartYear}:${r.muni.name}:${r.needed}`)).toEqual([
+      "new:2026:熊本市:false",
+      "prev:2025:玉名市役所:true",
+    ]);
+    expect(rows[0].reason).toContain("前年度の証明書を取得するため");
+    expect(rows[1].reason).toContain("普通徴収は6月〜12月の間");
+    const spring = judgeEachYear({ newMuni: a, prevMuni: b, collectionType: "normal", appDate: new Date("2026-03-01T00:00:00") });
+    expect(spring.map((r) => r.needed)).toEqual([true, false]);
   });
 
   it("その年度の自治体が＊表示なら新年度になり、最新年度の自治体を返す", () => {
