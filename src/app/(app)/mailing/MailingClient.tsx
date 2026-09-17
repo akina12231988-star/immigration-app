@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Combobox } from "@/components/ui/Combobox";
+import { PrepTodoPicker } from "@/components/workers/PrepTodoPicker";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -655,10 +656,10 @@ function JudgeTab({
               </Link>
             )}
           </div>
-          <label className="flex flex-col gap-1">
-            <span className={LABEL}>TODO番号</span>
-            <input value={todoNumber} onChange={(e) => setTodoNumber(e.target.value)} placeholder="管理しているTODO番号" className={INPUT} />
-          </label>
+          <div className="flex flex-col gap-1">
+            <span className={LABEL}>TODO番号（紐づく申請準備から選択。所属機関｜申請内容も表示）</span>
+            <PrepTodoPicker workerId={workerId} value={todoNumber} onChange={setTodoNumber} />
+          </div>
         </div>
       </Card>
 
