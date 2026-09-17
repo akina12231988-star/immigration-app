@@ -127,7 +127,16 @@ export function followupRequestRows(
         checklistId: "followup",
         docId: "moving",
         docLabel: "転居手続き",
-        status: f.moving.planned_on ? `依頼中（転居予定 ${f.moving.planned_on}）` : "依頼中",
+        status: [
+          "依頼中",
+          f.moving.planned_on ? `転居予定 ${f.moving.planned_on}` : "",
+          f.moving.certificate_sent_on ? `転出証明書 ${f.moving.certificate_sent_on} 郵送` : "",
+          f.moving.insurance_before && f.moving.insurance_after
+            ? `保険証 ${f.moving.insurance_before}→${f.moving.insurance_after}`
+            : "",
+        ]
+          .filter(Boolean)
+          .join("・"),
         issuer: f.moving.requested_to.trim(),
         workerId: w.id,
         workerName: w.name,

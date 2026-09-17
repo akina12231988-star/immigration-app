@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   EMPTY_FOLLOWUPS,
+  insuranceSwitchOf,
+  movingInsuranceGuide,
   followupLabels,
   followupsOf,
   hasFollowup,
@@ -135,5 +137,44 @@ describe("patchFollowups", () => {
     expect(next.moving).toEqual(base.moving);
     expect(next.kokuho.note).toBe("前職は社保");
     expect(next.kokuho.kokuho_done).toBe(true);
+  });
+});
+
+describe("転居の保険の切り替え", () => {
+  const moving = (patch: Partial<typeof EMPTY_FOLLOWUPS.moving>) =>
+    patchFollowups(EMPTY_FOLLOWUPS, { moving: { needed: true, status: "依頼中", ...patch } }).moving;
+
+  it("知らない値は未入力として読む", () => {
+    const f = followupsOf({ followups: { moving: { insurance_before: "xx", loss_doc: "yy" } } });
+    expect(f.moving.insurance_before).toBe("");
+    expect(f.moving.loss_doc).toBe("");
+  });
+
+  it("切り替えの種類", () => {
+    expect(insuranceSwitchOf({ insurance_before: "社保", insurance_after: "国民健康保険" })).toBe("shaho-to-kokuho");
+    expect(insuranceSwitchOf({ insurance_before: "国民健康保険", insurance_after: "社保" })).toBe("kokuho-to-shaho");
+    expect(insuranceSwitchOf({ insurance_before: "社保", insurance_after: "変更なし" })).toBe("none");
+    expect(insuranceSwitchOf({ insurance_before: "", insurance_after: "" })).toBe("none");
+  });
+
+  it("社保→国保は退職書類の発行を確認する案内。発行済みなら加入できると出す", () => {
+    const base = { insurance_before: "社保" as const, insurance_after: "国民健康保険" as const };
+    expect(movingInsuranceGuide(moving(base))?.tone).toBe("attention");
+    expect(movingInsuranceGuide(moving(base))?.text).toContain("資格喪失確認書か離職票");
+    const ok = movingInsuranceGuide(moving({ ...base, loss_doc: "離職票", loss_doc_on: "2026-09-10" }));
+    expect(ok?.tone).toBe("ok");
+    expect(ok?.text).toContain("離職票が発行済み（2026-09-10）");
+  });
+
+  it("国保→社保は、社保に入ったら国保の脱退を案内する", () => {
+    const base = { insurance_before: "国民健康保険" as const, insurance_after: "社保" as const };
+    expect(movingInsuranceGuide(moving(base))?.text).toContain("社保の加入手続きが済んだら");
+    expect(movingInsuranceGuide(moving({ ...base, shaho_joined: true }))?.text).toContain("脱退手続きをしてください");
+    expect(movingInsuranceGuide(moving({ ...base, shaho_joined: true, kokuho_withdrawn: true }))?.tone).toBe("ok");
+  });
+
+  it("変更なし・完了・不要なら案内は出ない", () => {
+    expect(movingInsuranceGuide(moving({ insurance_before: "社保", insurance_after: "変更なし" }))).toBeNull();
+    expect(movingInsuranceGuide(moving({ insurance_before: "社保", insurance_after: "国民健康保険", status: "完了" }))).toBeNull();
   });
 });

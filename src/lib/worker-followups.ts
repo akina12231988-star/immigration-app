@@ -7,6 +7,16 @@
 export const MOVING_STATUSES = ["未依頼", "依頼中", "完了"] as const;
 export type MovingStatus = (typeof MOVING_STATUSES)[number];
 
+// 転居前の保険証（何を持っているか）
+export const INSURANCE_BEFORE_OPTIONS = ["", "国民健康保険", "社保", "その他"] as const;
+export type InsuranceBefore = (typeof INSURANCE_BEFORE_OPTIONS)[number];
+// 転居後の保険証（変更なし／国保／社保）
+export const INSURANCE_AFTER_OPTIONS = ["", "変更なし", "国民健康保険", "社保"] as const;
+export type InsuranceAfter = (typeof INSURANCE_AFTER_OPTIONS)[number];
+// 社保→国保のときに要る、退職に関わる書類（どちらか発行されれば国保に加入できる）
+export const LOSS_DOC_OPTIONS = ["", "未発行", "資格喪失確認書", "離職票"] as const;
+export type LossDoc = (typeof LOSS_DOC_OPTIONS)[number];
+
 export interface MovingFollowup {
   needed: boolean; // 転居手続きが必要
   planned_on: string | null; // 転居（予定）年月日
@@ -14,6 +24,14 @@ export interface MovingFollowup {
   note: string;
   requested_to: string; // 誰に依頼したか（TODO ＞ 依頼中 の一覧に出す）
   requested_on: string | null; // 依頼日
+  certificate_sent_on: string | null; // 転出証明書を郵送で送った日
+  new_address: string; // 転入先の住所
+  insurance_before: InsuranceBefore; // 現在の保険証
+  insurance_after: InsuranceAfter; // 転居後の保険証
+  loss_doc: LossDoc; // 社保→国保: 資格喪失確認書か離職票が発行されたか
+  loss_doc_on: string | null; // その発行日
+  shaho_joined: boolean; // 国保→社保: 社保の加入手続きが済んだ
+  kokuho_withdrawn: boolean; // 国保→社保: 国保の脱退手続きをした
 }
 
 export interface KokuhoFollowup {
@@ -38,6 +56,14 @@ export const EMPTY_MOVING: MovingFollowup = {
   note: "",
   requested_to: "",
   requested_on: null,
+  certificate_sent_on: null,
+  new_address: "",
+  insurance_before: "",
+  insurance_after: "",
+  loss_doc: "",
+  loss_doc_on: null,
+  shaho_joined: false,
+  kokuho_withdrawn: false,
 };
 
 export const EMPTY_KOKUHO: KokuhoFollowup = {
@@ -55,6 +81,9 @@ function strOf(v: unknown): string {
 }
 function dateOf(v: unknown): string | null {
   return typeof v === "string" && v ? v : null;
+}
+function oneOf<T extends string>(v: unknown, options: readonly T[]): T {
+  return options.includes(v as T) ? (v as T) : options[0];
 }
 
 export const EMPTY_FOLLOWUPS: WorkerFollowups = { moving: EMPTY_MOVING, kokuho: EMPTY_KOKUHO };
@@ -76,6 +105,14 @@ export function followupsOf(source: { followups?: unknown } | null | undefined):
       note: strOf(moving.note),
       requested_to: strOf(moving.requested_to),
       requested_on: dateOf(moving.requested_on),
+      certificate_sent_on: dateOf(moving.certificate_sent_on),
+      new_address: strOf(moving.new_address),
+      insurance_before: oneOf(moving.insurance_before, INSURANCE_BEFORE_OPTIONS),
+      insurance_after: oneOf(moving.insurance_after, INSURANCE_AFTER_OPTIONS),
+      loss_doc: oneOf(moving.loss_doc, LOSS_DOC_OPTIONS),
+      loss_doc_on: dateOf(moving.loss_doc_on),
+      shaho_joined: moving.shaho_joined === true,
+      kokuho_withdrawn: moving.kokuho_withdrawn === true,
     },
     kokuho: {
       needed: kokuho.needed === true,
@@ -87,6 +124,53 @@ export function followupsOf(source: { followups?: unknown } | null | undefined):
       requested_on: dateOf(kokuho.requested_on),
     },
   };
+}
+
+// 転居にともなう保険の切り替えの種類。
+//   shaho-to-kokuho … 社保 → 国民健康保険（退職に関わる書類が要る）
+//   kokuho-to-shaho … 国民健康保険 → 社保（社保に入ったら国保の脱退手続きが要る）
+//   none            … 変更なし・未入力・その他
+export type InsuranceSwitch = "shaho-to-kokuho" | "kokuho-to-shaho" | "none";
+
+export function insuranceSwitchOf(m: Pick<MovingFollowup, "insurance_before" | "insurance_after">): InsuranceSwitch {
+  if (m.insurance_before === "社保" && m.insurance_after === "国民健康保険") return "shaho-to-kokuho";
+  if (m.insurance_before === "国民健康保険" && m.insurance_after === "社保") return "kokuho-to-shaho";
+  return "none";
+}
+
+// 転居の保険の切り替えで、いま出す案内（無ければ空）。
+// 転居手続きが残っている間だけ出す（完了・不要なら出さない）
+export function movingInsuranceGuide(m: MovingFollowup): { tone: "attention" | "ok"; text: string } | null {
+  if (!m.needed || m.status === "完了") return null;
+  const sw = insuranceSwitchOf(m);
+  if (sw === "shaho-to-kokuho") {
+    if (m.loss_doc === "資格喪失確認書" || m.loss_doc === "離職票") {
+      return {
+        tone: "ok",
+        text: `${m.loss_doc}が発行済み${m.loss_doc_on ? `（${m.loss_doc_on}）` : ""}なので、転入先で国民健康保険に加入できます。`,
+      };
+    }
+    return {
+      tone: "attention",
+      text: "社保から国民健康保険に切り替えます。資格喪失確認書か離職票が発行されないと国保に加入できません。発行されたか確認してください。",
+    };
+  }
+  if (sw === "kokuho-to-shaho") {
+    if (m.shaho_joined && m.kokuho_withdrawn) {
+      return { tone: "ok", text: "社保の加入と国民健康保険の脱退が済んでいます。" };
+    }
+    if (m.shaho_joined) {
+      return {
+        tone: "attention",
+        text: "社保の加入手続きが済んでいます。国民健康保険の脱退手続きをしてください（届出をしないと保険料が二重にかかります）。",
+      };
+    }
+    return {
+      tone: "attention",
+      text: "国民健康保険から社保に切り替えます。社保の加入手続きが済んだら、国民健康保険の脱退手続きをしてください。",
+    };
+  }
+  return null;
 }
 
 // 国保・国民年金の加入を誰かに依頼してあるか（依頼先か依頼日が入っていれば依頼中）
