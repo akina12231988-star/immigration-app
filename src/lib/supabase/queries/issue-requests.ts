@@ -11,7 +11,8 @@ export async function listIssueRequests(
 ): Promise<IssueRequestRow[]> {
   const { data, error } = await supabase
     .from("prep_doc_statuses")
-    .select("checklist_id, doc_id, status, note, date_on, updated_at")
+    // memo（0161）が未適用でも読めるよう * で取る
+    .select("*")
     .neq("status", "")
     .order("updated_at", { ascending: false });
   if (error) throw error;
@@ -21,6 +22,7 @@ export async function listIssueRequests(
     status: string;
     note: string | null;
     date_on: string | null;
+    memo?: string | null;
     updated_at: string;
   };
   const rows = (data as Row[] | null) ?? [];
@@ -54,6 +56,7 @@ export async function listIssueRequests(
         status: r.status,
         note: r.note ?? "",
         dateOn: r.date_on,
+        memo: r.memo ?? "",
         updatedAt: r.updated_at,
         workerId: list.worker_id,
         workerName: nameById.get(list.worker_id) ?? "（不明）",

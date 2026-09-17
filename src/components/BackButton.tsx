@@ -3,11 +3,14 @@
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
+import { popNavHistory } from "@/lib/nav-history";
 
 // 戻れなかったと判断するまでの待ち時間（ブラウザの戻る処理が終わるのを少し待つ）
 const BACK_TIMEOUT_MS = 400;
 
-// サイト内の「戻る」ボタン。直前に表示していた画面へ戻る（ブラウザ履歴のback）。
+// サイト内の「戻る」ボタン。直前に表示していた画面へ戻る。
+// まずサイト内で積んでいる履歴（nav-history）の1つ前の画面へ移動し、
+// 無ければブラウザ履歴のback、それも無ければ fallbackHref へ移動する。
 // 新しいタブで開いた画面（印刷用のページなど）やURLを直接開いたときは戻る先が無いので、
 // fallbackHref へ移動する。
 // ブラウザによっては新しいタブでも history.length が2以上になり、戻るを押しても
@@ -36,6 +39,13 @@ export function BackButton({
       type="button"
       aria-label="戻る"
       onClick={() => {
+        // サイト内で1つ前に表示していた画面が分かるときは、そこへ確実に移動する
+        const current = `${window.location.pathname}${window.location.search}`;
+        const prev = popNavHistory(current);
+        if (prev) {
+          router.push(prev);
+          return;
+        }
         if (window.history.length <= 1) {
           router.replace(fallbackHref);
           return;

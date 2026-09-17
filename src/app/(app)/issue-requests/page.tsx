@@ -31,7 +31,12 @@ export default async function IssueRequestsPage() {
   return (
     <>
       <AppHeader title="依頼中（発行依頼・手続きの依頼）" backHref="/" />
-      <IssueRequestsClient rows={[...docs.rows, ...followups]} error={docs.error} today={todayStr()} />
+      <IssueRequestsClient
+        rows={[...docs.rows, ...followups]}
+        error={docs.error}
+        today={todayStr()}
+        canEdit={me.role !== "viewer"}
+      />
     </>
   );
 }

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  doneStatusFor,
+  requestStatusFor,
   elapsedDays,
   followupRequestRows,
   groupByIssuer,
@@ -40,6 +42,20 @@ describe("isIssueRequestDoc", () => {
   it("依頼中の選択肢が無い書類（合格証など）は対象外", () => {
     expect(isIssueRequestDoc("cert_nihongo")).toBe(false);
     expect(isIssueRequestDoc("cert_senmonkyu")).toBe(false);
+  });
+});
+
+describe("doneStatusFor / requestStatusFor", () => {
+  it("完了にするときは、その書類の完了扱い（ファイルあり）の選択肢を使う", () => {
+    expect(doneStatusFor("kazei")).toBe("発行完了");
+    expect(doneStatusFor("nenkin")).toBe("発行済み");
+    expect(doneStatusFor("photo")).toBe("顔写真加工なし確認済み");
+    expect(doneStatusFor("cert_nihongo")).toBeNull();
+  });
+  it("依頼中に戻すときは、前の状況が依頼中ならそれ、無ければ最初の依頼中", () => {
+    expect(requestStatusFor("nenkin", "秋吉伽恋に発行依頼中")).toBe("秋吉伽恋に発行依頼中");
+    expect(requestStatusFor("kazei", "発行完了")).toBe("発行依頼中");
+    expect(requestStatusFor("cert_nihongo", "")).toBeNull();
   });
 });
 
@@ -170,6 +186,7 @@ describe("followupRequestRows", () => {
 const row = (patch: Partial<IssueRequestRow> = {}): IssueRequestRow => ({
   kind: "doc",
   requestedOn: "2026-08-27",
+  memo: "",
   checklistId: "c1",
   docId: "kazei",
   docLabel: "令和7年度 課税証明書",

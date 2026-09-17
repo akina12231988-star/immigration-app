@@ -1,4 +1,6 @@
+import { Suspense } from "react";
 import { BottomNav } from "@/components/BottomNav";
+import { NavHistoryTracker } from "@/components/NavHistoryTracker";
 import { SideNav } from "@/components/SideNav";
 import { ApplicationsProvider } from "@/lib/application-store";
 import { NotificationsProvider } from "@/lib/notification-store";
@@ -14,6 +16,10 @@ export default function AppLayout({
   return (
     <ApplicationsProvider>
       <NotificationsProvider>
+        {/* 表示した画面の履歴（「戻る」で1つ前の画面へ）。useSearchParams を使うため Suspense で包む */}
+        <Suspense fallback={null}>
+          <NavHistoryTracker />
+        </Suspense>
         <div className="md:flex">
           <SideNav />
           <div className="flex min-h-screen w-full min-w-0 flex-col">
