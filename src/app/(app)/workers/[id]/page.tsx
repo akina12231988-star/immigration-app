@@ -10,6 +10,8 @@ import { listPostings } from "@/lib/supabase/queries/postings";
 import { getActiveCustodyNoForWorker } from "@/lib/supabase/queries/custody";
 import { listOpenRemindersByWorker } from "@/lib/supabase/queries/reminders";
 import { WorkerDetail } from "./WorkerDetail";
+import { listSealsInBox } from "@/lib/supabase/queries/seals";
+import { sealsForWorker } from "@/lib/seals";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +25,7 @@ export default async function WorkerDetailPage({
 
   const { id } = await params;
   const supabase = await createClient();
-  const [worker, organizations, applications, jobApplications, postings, custodyNo, reminders] =
+  const [worker, organizations, applications, jobApplications, postings, custodyNo, reminders, sealsInBox] =
     await Promise.all([
       getWorkerWithHistories(supabase, id),
       listOrganizations(supabase),
@@ -35,8 +37,11 @@ export default async function WorkerDetailPage({
       getActiveCustodyNoForWorker(supabase, id).catch(() => null),
       // 進行中の督促（連絡・返事待ち）があればアラートを出す。テーブル未作成でも開ける
       listOpenRemindersByWorker(supabase, id).catch(() => []),
+      // 印鑑BOXに、この人のフリガナに当てはまる印鑑があれば名前の横に出す（0162 未適用なら無し）
+      listSealsInBox(supabase).catch(() => []),
     ]);
   if (!worker) notFound();
+  const seals = sealsForWorker(sealsInBox, worker.kana).map((s) => s.kana);
 
   return (
     <>
@@ -49,6 +54,7 @@ export default async function WorkerDetailPage({
         postings={postings}
         custodyNo={custodyNo}
         reminders={reminders}
+        seals={seals}
         canEdit={me.role !== "viewer"}
       />
     </>

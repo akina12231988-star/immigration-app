@@ -121,6 +121,7 @@ import { WORKER_SITUATIONS, autoSituation, situationDescription } from "@/lib/wo
 import { isCountedHistory, type WorkHistory } from "@/types/ssw";
 import type { Application } from "@/types/application";
 import { PriorApplicationCard, usePriorApplication } from "@/components/workers/PriorApplicationCard";
+import { sealBadgeText } from "@/lib/seals";
 import {
   RESIDENCE_STATUSES,
   SUPPORT_SCOPES,
@@ -142,6 +143,7 @@ export function WorkerDetail({
   postings,
   custodyNo,
   reminders,
+  seals = [],
   canEdit,
 }: {
   worker: WorkerWithHistories;
@@ -151,6 +153,7 @@ export function WorkerDetail({
   postings: PostingWithStats[];
   custodyNo: number | null; // 預かり中の保管番号（預かっていなければ null）
   reminders: Reminder[]; // 進行中の督促（連絡・返事待ち）。無ければ空
+  seals?: string[]; // 印鑑BOXにある、この人のフリガナに当てはまる印鑑のフリガナ
   canEdit: boolean;
 }) {
   const router = useRouter();
@@ -829,6 +832,16 @@ export function WorkerDetail({
                           title="原本を預かり中（保管ボックスを開く）"
                         >
                           {formatStorageNo(custodyNo)}
+                        </Link>
+                      )}
+                      {/* 印鑑BOXにこの人のフリガナに当てはまる印鑑があれば出す（押すと印鑑BOXを開く） */}
+                      {seals.length > 0 && (
+                        <Link
+                          href="/seals"
+                          className="ml-2 inline-flex align-middle rounded border-2 border-[#b7282e] px-1.5 text-xs font-black text-[#b7282e]"
+                          title="印鑑BOXに印鑑があります（印鑑BOXを開く）"
+                        >
+                          {sealBadgeText(seals.map((kana) => ({ kana })))}
                         </Link>
                       )}
                     </p>
