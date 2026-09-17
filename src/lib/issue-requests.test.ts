@@ -136,6 +136,7 @@ describe("followupRequestRows", () => {
       "グエン:国民健康保険・国民年金の加入:本人:2026-09-05",
     ]);
     expect(rows[0].status).toContain("転居予定 2026-10-01");
+    expect(rows[0].status).not.toContain("保険証");
     expect(rows[1].status).toContain("退職書類の発行待ち");
   });
 });

@@ -16,9 +16,17 @@ import {
 import {
   followupLabels,
   followupsOf,
+  INSURANCE_AFTER_OPTIONS,
+  INSURANCE_BEFORE_OPTIONS,
+  insuranceSwitchOf,
+  LOSS_DOC_OPTIONS,
   MOVING_STATUSES,
+  movingInsuranceGuide,
   patchFollowups,
+  type InsuranceAfter,
+  type InsuranceBefore,
   type KokuhoFollowup,
+  type LossDoc,
   type MovingFollowup,
   type WorkerFollowups as Followups,
 } from "@/lib/worker-followups";
@@ -183,6 +191,37 @@ export function WorkerFollowups({
                   onBlurTo={() => save({})}
                   onChangeOn={(v) => save({ moving: { requested_on: v } })}
                 />
+                {/* 転出証明書と転入先。郵送で送った日と、どこに移るか */}
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-0.5 block text-[11px] text-muted">転出証明書を郵送で送った日</span>
+                    <input
+                      type="date"
+                      value={value.moving.certificate_sent_on ?? ""}
+                      disabled={disabled}
+                      onChange={(e) => save({ moving: { certificate_sent_on: e.target.value || null } })}
+                      className={INPUT}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-0.5 block text-[11px] text-muted">転入先の住所</span>
+                    <input
+                      value={value.moving.new_address}
+                      disabled={disabled}
+                      onChange={(e) => edit({ moving: { new_address: e.target.value } })}
+                      onBlur={() => save({})}
+                      placeholder="〒　転入先の住所"
+                      className={INPUT}
+                    />
+                  </label>
+                </div>
+                {/* 保険証の切り替え。現在の保険証は保険証の欄の最新から目安を出す */}
+                <MovingInsuranceFields
+                  moving={value.moving}
+                  disabled={disabled}
+                  currentCardKind={currentCard?.kind ?? ""}
+                  onSave={(patch) => save({ moving: patch })}
+                />
                 <label className="block">
                   <span className="mb-0.5 block text-[11px] text-muted">メモ（転居先など）</span>
                   <input
@@ -339,6 +378,143 @@ function RequestFields({
       <p className="text-[10px] leading-relaxed text-muted sm:col-span-2">
         依頼先か依頼日を入れると、TODO ＞ 依頼中 の一覧に「誰に・いつ依頼したか」と経過日数が出ます。
       </p>
+    </div>
+  );
+}
+
+// 転居にともなう保険証の切り替え。
+// 現在の保険証（国保／社保／その他）と転居後の保険証（変更なし／国保／社保）を選ぶと、
+// 社保→国保なら退職に関わる書類（資格喪失確認書・離職票）の発行の確認欄、
+// 国保→社保なら「社保に入ったら国保を脱退」の案内とチェック欄を出す
+function MovingInsuranceFields({
+  moving,
+  disabled,
+  currentCardKind,
+  onSave,
+}: {
+  moving: MovingFollowup;
+  disabled: boolean;
+  currentCardKind: string; // 保険証の欄の最新の種類（国保 / 社保 / マイナ保険証 / その他 / ''）
+  onSave: (patch: Partial<MovingFollowup>) => void;
+}) {
+  const sw = insuranceSwitchOf(moving);
+  const guide = movingInsuranceGuide(moving);
+  // 保険証の欄から分かる現在の種類（未選択のときの目安として出す）
+  const cardHint =
+    currentCardKind === "国保"
+      ? "国民健康保険"
+      : currentCardKind === "社保"
+        ? "社保"
+        : "";
+  return (
+    <div className="rounded-lg border border-dashed border-border p-2.5">
+      <p className="mb-1.5 text-[11px] font-bold text-muted">保険証の切り替え</p>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <label className="block">
+          <span className="mb-0.5 block text-[11px] text-muted">
+            現在の保険証
+            {!moving.insurance_before && cardHint && (
+              <span className="ml-1">（保険証の欄では「{cardHint}」）</span>
+            )}
+          </span>
+          <select
+            value={moving.insurance_before}
+            disabled={disabled}
+            onChange={(e) => onSave({ insurance_before: e.target.value as InsuranceBefore })}
+            className={INPUT}
+          >
+            {INSURANCE_BEFORE_OPTIONS.map((o) => (
+              <option key={o} value={o}>
+                {o || "選択してください"}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className="mb-0.5 block text-[11px] text-muted">転居後の保険証</span>
+          <select
+            value={moving.insurance_after}
+            disabled={disabled}
+            onChange={(e) => onSave({ insurance_after: e.target.value as InsuranceAfter })}
+            className={INPUT}
+          >
+            {INSURANCE_AFTER_OPTIONS.map((o) => (
+              <option key={o} value={o}>
+                {o || "選択してください"}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {sw === "shaho-to-kokuho" && (
+        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <label className="block">
+            <span className="mb-0.5 block text-[11px] text-muted">
+              退職に関わる書類（資格喪失確認書か離職票）は発行されたか
+            </span>
+            <select
+              value={moving.loss_doc}
+              disabled={disabled}
+              onChange={(e) => onSave({ loss_doc: e.target.value as LossDoc })}
+              className={INPUT}
+            >
+              {LOSS_DOC_OPTIONS.map((o) => (
+                <option key={o} value={o}>
+                  {o || "未確認"}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-0.5 block text-[11px] text-muted">発行された日（分かれば）</span>
+            <input
+              type="date"
+              value={moving.loss_doc_on ?? ""}
+              disabled={disabled}
+              onChange={(e) => onSave({ loss_doc_on: e.target.value || null })}
+              className={INPUT}
+            />
+          </label>
+        </div>
+      )}
+
+      {sw === "kokuho-to-shaho" && (
+        <div className="mt-2 space-y-1.5">
+          <label className="flex items-center gap-2 text-xs font-bold">
+            <input
+              type="checkbox"
+              checked={moving.shaho_joined}
+              disabled={disabled}
+              onChange={(e) => onSave({ shaho_joined: e.target.checked })}
+              className="size-4 shrink-0"
+            />
+            社保の加入手続きが済んだ
+          </label>
+          <label className="flex items-center gap-2 text-xs font-bold">
+            <input
+              type="checkbox"
+              checked={moving.kokuho_withdrawn}
+              disabled={disabled}
+              onChange={(e) => onSave({ kokuho_withdrawn: e.target.checked })}
+              className="size-4 shrink-0"
+            />
+            国民健康保険の脱退手続きをした
+          </label>
+        </div>
+      )}
+
+      {guide && (
+        <p
+          className={`mt-2 rounded-lg px-2.5 py-1.5 text-[11px] font-bold leading-relaxed ${
+            guide.tone === "ok"
+              ? "bg-status-approved-bg text-status-approved-fg"
+              : "bg-status-notice-bg text-status-notice-fg"
+          }`}
+        >
+          {guide.text}
+        </p>
+      )}
     </div>
   );
 }
