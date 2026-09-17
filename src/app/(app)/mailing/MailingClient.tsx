@@ -58,7 +58,7 @@ import {
 import { MunicipalityBrowser } from "@/components/mailing/MunicipalityBrowser";
 import { WorkerAddressGuide } from "@/components/mailing/WorkerAddressGuide";
 import { SaveBlockers } from "@/components/mailing/SaveBlockers";
-import { effectivePrefecture, guessPrefecture, municipalityOptionLabel, PREFECTURE_LIST } from "@/lib/prefectures";
+import { effectivePrefecture, guessPrefecture, municipalityOptionLabel, PREFECTURE_LIST, suggestMunicipalityForAddress } from "@/lib/prefectures";
 import { dbErrorMessage } from "@/lib/errors";
 import { extraSaveBlockers, judgeBlockers, methodBlockers, taxSaveBlockers } from "@/lib/mailing-save-check";
 import { MAILING_PROGRESS_OPTIONS, type TaxOffice } from "@/lib/tax-office";
@@ -516,6 +516,16 @@ function JudgeTab({
     }
     resetResult();
   };
+  // 国保加入にチェックしたとき、現在の住所から当てはまる自治体を国保税の取得先に入れておく
+  // （課税証明書とは別の県のこともあるので、課税証明書の自治体は使わない）
+  const toggleNhi = (on: boolean) => {
+    setHasNhi(on);
+    if (on && !nhiMuniId && selectedWorker?.address) {
+      const suggested = suggestMunicipalityForAddress(selectedWorker.address, municipalities);
+      if (suggested) setNhiMuniId(suggested.id);
+    }
+    resetResult();
+  };
 
   const runJudge = () => {
     if (!selectedMuni || !selectedPrevMuni || !canJudge) return;
@@ -736,6 +746,9 @@ function JudgeTab({
                 selectedNewId={muniId}
                 selectedPrevId={prevSame ? muniId : prevMuniId}
                 onPick={pickYearMuni}
+                nhiEnabled={hasNhi}
+                selectedNhiId={nhiMuniId}
+                onPickNhi={(id) => { setNhiMuniId(id); resetResult(); }}
               />
             )}
             <div className="flex flex-col gap-1">
@@ -783,7 +796,7 @@ function JudgeTab({
               <span className="text-[11px] text-muted">在留資格変更申請を行う予定の日付を選択してください</span>
             </label>
             <label className="flex items-center gap-2 rounded-xl bg-background px-3 py-2.5 text-sm">
-              <input type="checkbox" checked={hasNhi} onChange={(e) => { setHasNhi(e.target.checked); resetResult(); }} className="h-4 w-4" />
+              <input type="checkbox" checked={hasNhi} onChange={(e) => toggleNhi(e.target.checked)} className="h-4 w-4" />
               国民健康保険に加入している（国保税の納税証明書も必要）
             </label>
             {hasNhi && (
@@ -795,7 +808,9 @@ function JudgeTab({
                   onChange={(id) => { setNhiMuniId(id); resetResult(); }}
                   placeholder="自治体名・県名を入力して検索"
                 />
-                <span className="text-[11px] text-muted">課税証明書の取得先と異なる場合があります。郵送請求時は特に注意してください。</span>
+                <span className="text-[11px] text-muted">
+                  国保税は「現在の住所地」の自治体が発行します。課税証明書の取得先（1月1日時点の住所地）と違う自治体・別の県のこともあるので、そのときは別々に請求してください。
+                </span>
               </label>
             )}
             <Button fullWidth disabled={!canJudge} onClick={runJudge}>判定する</Button>
@@ -914,8 +929,17 @@ function JudgeTab({
                   warn={false}
                   title={`${result.nhiMunicipalityName || "未選択"}：新年度（${fiscalYearLabel(result.nhiFiscalStartYear ?? 0)}）の証明書を取得`}
                   label="通常通り取得可能"
-                  notes={["国民健康保険税は6月になると常に最新年度に切り替わるため、6月以降は新年度の納税証明書を取得します。"]}
+                  notes={[
+                    "国民健康保険税は6月になると常に最新年度に切り替わるため、6月以降は新年度の納税証明書を取得します。",
+                    // 課税証明書の取得先と違う自治体（別の県のこともある）なら、別々に請求する旨を出す
+                    result.nhiMunicipalityId &&
+                    result.nhiMunicipalityId !== result.municipalityId &&
+                    result.nhiMunicipalityId !== (result.prevMunicipalityId ?? "")
+                      ? `課税証明書の取得先（${result.municipalityName}${result.prevMunicipalityName && result.prevMunicipalityName !== result.municipalityName ? `・${result.prevMunicipalityName}` : ""}）とは別の自治体です。現在の住所地（${result.nhiMunicipalityName}）へ別に請求してください。`
+                      : "",
+                  ]}
                 />
+                <MunicipalitySiteLinks municipalities={municipalities} ids={[result.nhiMunicipalityId]} />
                 <DocList docs={result.docs.filter((d) => d.isNhi)} />
                 <label className="mt-4 flex flex-col gap-1 border-t border-dashed border-border pt-4">
                   <span className={LABEL}>代替対応の備考</span>

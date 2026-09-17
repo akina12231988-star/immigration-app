@@ -19,6 +19,9 @@ export function WorkerAddressGuide({
   selectedNewId,
   selectedPrevId,
   onPick,
+  nhiEnabled = false,
+  selectedNhiId = "",
+  onPickNhi,
 }: {
   workerId: string;
   currentAddress: string;
@@ -27,6 +30,10 @@ export function WorkerAddressGuide({
   selectedNewId: string;
   selectedPrevId: string;
   onPick: (year: "new" | "prev", municipalityId: string) => void;
+  // 国保税の納税証明書は「現在の住所地」の自治体が発行する（課税証明書とは別の県のこともある）
+  nhiEnabled?: boolean;
+  selectedNhiId?: string;
+  onPickNhi?: (municipalityId: string) => void;
 }) {
   const [addresses, setAddresses] = useState<WorkerAddress[] | null>(null);
 
@@ -49,6 +56,10 @@ export function WorkerAddressGuide({
     { key: "new", fiscal: latestFiscalStartYear, label: "最新年度", selectedId: selectedNewId },
     { key: "prev", fiscal: latestFiscalStartYear - 1, label: "前年度", selectedId: selectedPrevId },
   ];
+
+  // 国保税の取得先（現在の住所から当てはまる自治体）
+  const nhiSuggested = currentAddress ? suggestMunicipalityForAddress(currentAddress, municipalities) : null;
+  const nhiAlready = nhiSuggested && nhiSuggested.id === selectedNhiId;
 
   return (
     <div className="rounded-xl border border-border bg-background p-3 text-xs leading-relaxed">
@@ -108,6 +119,42 @@ export function WorkerAddressGuide({
               </div>
             );
           })}
+          {/* 国保税の納税証明書は現在の住所地。課税証明書の自治体と県が違うこともあるので別に出す */}
+          {nhiEnabled && (
+            <div className="rounded-lg border border-status-notice-fg/30 bg-status-notice-bg/40 px-2.5 py-2">
+              <p className="font-bold">国民健康保険税の納税証明書 ＝ 現在の住所地（今住んでいる自治体）</p>
+              <p className={currentAddress ? "" : "text-muted"}>
+                {currentAddress || "現在の住所が未登録です（外国人詳細で登録してください）"}
+              </p>
+              {nhiSuggested ? (
+                <p className="mt-0.5 flex flex-wrap items-center gap-2">
+                  <span>
+                    当てはまる自治体：<span className="font-bold">{nhiSuggested.name}</span>
+                    {nhiSuggested.id !== selectedNewId && nhiSuggested.id !== selectedPrevId && (
+                      <span className="ml-1 text-status-notice-fg">（課税証明書の取得先とは別の自治体）</span>
+                    )}
+                  </span>
+                  {nhiAlready ? (
+                    <span className="text-status-reported-fg">選択済み</span>
+                  ) : (
+                    onPickNhi && (
+                      <button
+                        type="button"
+                        onClick={() => onPickNhi(nhiSuggested.id)}
+                        className="rounded-lg border border-brand px-2 py-0.5 text-[11px] font-bold text-brand"
+                      >
+                        国保税の取得先に選ぶ
+                      </button>
+                    )
+                  )}
+                </p>
+              ) : (
+                currentAddress && (
+                  <p className="mt-0.5 text-muted">自治体マスタに当てはまるものが無いので、下の「国保税納税証明書の取得先自治体」で選んでください（無ければ自治体マスタに追加）。</p>
+                )
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
