@@ -132,12 +132,38 @@ describe("followupRequestRows", () => {
       { id: "w3", name: "レ", followups: { kokuho: { needed: true, requested_to: "本人", kokuho_done: true, nenkin_done: true } } },
     ]);
     expect(rows.map((r) => `${r.workerName}:${r.docLabel}:${r.issuer}:${r.requestedOn}`)).toEqual([
-      "グエン:転居手続き:NGAさん:2026-09-01",
+      "グエン:転出手続き（転出証明書）:NGAさん:2026-09-01",
       "グエン:国民健康保険・国民年金の加入:本人:2026-09-05",
     ]);
     expect(rows[0].status).toContain("転居予定 2026-10-01");
     expect(rows[0].status).not.toContain("保険証");
     expect(rows[1].status).toContain("退職書類の発行待ち");
+  });
+
+  it("転出証明書が届いたら転出の行は消え、転入手続きを依頼中なら転入の行が出る", () => {
+    const rows = followupRequestRows([
+      {
+        id: "w1",
+        name: "グエン",
+        followups: {
+          moving: {
+            needed: true,
+            status: "依頼中",
+            requested_to: "NGAさん",
+            certificate_received_on: "2026-09-20",
+            movein_status: "依頼中",
+            movein_requested_to: "野口　明菜",
+            movein_requested_on: "2026-09-21",
+            new_address: "熊本市東区…",
+          },
+        },
+      },
+    ]);
+    expect(rows.map((r) => `${r.docLabel}:${r.issuer}:${r.requestedOn}`)).toEqual([
+      "転入手続き:野口　明菜:2026-09-21",
+    ]);
+    expect(rows[0].status).toContain("転出証明書は 2026-09-20 に届いた");
+    expect(rows[0].status).toContain("転入先 熊本市東区…");
   });
 });
 
