@@ -27,6 +27,7 @@ export interface IssueRequestRow {
   done: boolean; // その準備状況が完了扱いか
   updatedAt: string;
   requestedOn: string | null; // 依頼日（入っていなければ最終更新日）
+  memo: string; // 依頼中のメモ（書類は prep_doc_statuses.memo、手続きは followups の note）
 }
 
 // 発行依頼の状況。「発行依頼中」＝まだ、それ以外の完了扱い＝済み
@@ -59,6 +60,19 @@ export function issuerOf(status: string, note: string): string {
   return m ? m[1] : "";
 }
 
+// 「完了」にするときに入れる準備状況（その書類の完了扱いの選択肢のうち、ファイルを添付するもの）。
+// 無ければ null（完了にできない）
+export function doneStatusFor(docId: string): string | null {
+  const opts = PREP_DOC_STATUS_OPTIONS[docId] ?? [];
+  return (opts.find((o) => o.done && !o.noFile) ?? opts.find((o) => o.done))?.value ?? null;
+}
+
+// 「依頼中」に戻すときに入れる準備状況。前の状況が依頼中ならそれ、無ければ最初の依頼中の選択肢
+export function requestStatusFor(docId: string, previous: string): string | null {
+  if (isRequestingStatus(previous)) return previous;
+  return (PREP_DOC_STATUS_OPTIONS[docId] ?? []).find((o) => isRequestingStatus(o.value))?.value ?? null;
+}
+
 // 依頼日。準備状況の依頼日（date_on）が入っていればそれ、無ければ最終更新日
 export function requestedOnOf(dateOn: string | null | undefined, updatedAt: string): string | null {
   if (dateOn) return dateOn;
@@ -81,6 +95,7 @@ export function toIssueRequestRow(input: {
   status: string;
   note: string;
   dateOn?: string | null;
+  memo?: string;
   updatedAt: string;
   workerId: string;
   workerName: string;
@@ -110,6 +125,7 @@ export function toIssueRequestRow(input: {
     done,
     updatedAt: input.updatedAt,
     requestedOn: requestedOnOf(input.dateOn, input.updatedAt),
+    memo: input.memo ?? "",
   };
 }
 
@@ -148,6 +164,7 @@ export function followupRequestRows(
         done: false,
         updatedAt: "",
         requestedOn: f.moving.requested_on,
+        memo: f.moving.note,
       });
     }
     // 転入手続き（転出証明書が届いてから別の人に頼むことがある）
@@ -173,6 +190,7 @@ export function followupRequestRows(
         done: false,
         updatedAt: "",
         requestedOn: f.moving.movein_requested_on,
+        memo: f.moving.note,
       });
     }
     if (isKokuhoRequested(f)) {
@@ -196,6 +214,7 @@ export function followupRequestRows(
         done: false,
         updatedAt: "",
         requestedOn: f.kokuho.requested_on,
+        memo: f.kokuho.note,
       });
     }
   }
