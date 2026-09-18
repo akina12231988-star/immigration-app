@@ -143,6 +143,51 @@ function filled(v: unknown): boolean {
   return typeof v === "string" && v.trim() !== "";
 }
 
+// 業務区分の入力。分野に対応する区分の一覧から選ぶ。
+// 登録済みの値が一覧に無いときはその値も選択肢に残し、分野の表記が一覧に無くて区分が引けないときは
+// 自由入力にする（旧名称のまま登録した機関でも業務区分を入れられるように）
+function BusinessCategoryField({
+  industry,
+  value,
+  onChange,
+}: {
+  industry: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const categories = categoriesFor(industry);
+  if (categories.length === 0) {
+    return (
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-bold text-muted">業務区分</span>
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="例: 耕種農業全般"
+          className={INPUT_CLASS}
+        />
+        <span className="px-1 text-[11px] text-muted">
+          この業種の表記は一覧に無いため自由入力です。業種を一覧の名称に直すと区分を選べます。
+        </span>
+      </label>
+    );
+  }
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-xs font-bold text-muted">業務区分</span>
+      <select value={value} onChange={(e) => onChange(e.target.value)} className={INPUT_CLASS}>
+        <option value="">選択してください</option>
+        {value && !categories.includes(value) && <option value={value}>{value}</option>}
+        {categories.map((c) => (
+          <option key={c} value={c}>
+            {c}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 // 入力済み項目の表示（詳細表示モードでロックされた欄）
 function StaticValue({ label, value }: { label: string; value: string }) {
   return (
@@ -529,6 +574,10 @@ export function OrganizationFormBody({
             className={INPUT_CLASS}
           >
             <option value="">選択してください</option>
+            {/* 一覧に無い表記で登録済み（旧名称・自由入力）でも消さずに選択肢に残す */}
+            {form.industry && !SSW_INDUSTRIES.includes(form.industry) && (
+              <option value={form.industry}>{form.industry}</option>
+            )}
             {SSW_INDUSTRIES.map((ind) => (
               <option key={ind} value={ind}>
                 {ind}
@@ -537,26 +586,16 @@ export function OrganizationFormBody({
           </select>
         </label>
       )}
+      {/* 業務区分。分野が決まっていれば必ず出す（分野の表記が一覧に無くて区分が引けないときは自由入力） */}
       {form.industry &&
-        categoriesFor(form.industry).length > 0 &&
         (locks.top("business_category") ? (
           <StaticValue label="業務区分" value={form.business_category} />
         ) : (
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-bold text-muted">業務区分</span>
-            <select
-              value={form.business_category}
-              onChange={(e) => set("business_category", e.target.value)}
-              className={INPUT_CLASS}
-            >
-              <option value="">選択してください</option>
-              {categoriesFor(form.industry).map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </label>
+          <BusinessCategoryField
+            industry={form.industry}
+            value={form.business_category}
+            onChange={(v) => set("business_category", v)}
+          />
         ))}
       {/* 農業の会社は「農業特定技能加入通知書」を添付する（申請準備でも表示・印刷できる） */}
       {isAgricultureIndustry(form.industry) && (
