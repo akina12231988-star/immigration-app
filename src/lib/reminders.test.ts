@@ -129,7 +129,7 @@ describe("sortReminders・reminderBoxes・reminderCounts", () => {
   });
 
   it("件数（進行中・未連絡・返事待ち・返事あり）", () => {
-    expect(reminderCounts(rows)).toEqual({ open: 3, notContacted: 1, awaiting: 1, replied: 1, advanceUnpaid: 0 });
+    expect(reminderCounts(rows)).toEqual({ open: 3, notContacted: 1, awaiting: 1, replied: 1, advanceUnpaid: 0, awaitingRepayment: 0 });
   });
 });
 
@@ -330,5 +330,58 @@ describe("一覧の絞り込み（画面と印刷ページで共通）", () => {
     expect(filterReminders(rows, { filter: "すべて", q: "", onlyWorkerId: "w2" }).map((r) => r.reminder_no)).toEqual([2]);
     expect(parseReminderFilter("完了")).toBe("完了");
     expect(parseReminderFilter("x")).toBe("進行中");
+  });
+});
+
+describe("箱なし（当社が全部立て替えて納付書が無い督促）", () => {
+  const base = {
+    reminder_no: 5,
+    status: "連絡済み（返事待ち）" as const,
+    payer: "代わり" as const,
+    advance_paid: true,
+    advance_paid_on: null,
+    advance_repaid_on: null,
+    amount_items: [
+      { label: "第1期", amount: 8500, due_on: null, paid_on: "2026-09-01", repaid_on: null },
+      { label: "第2期", amount: 8500, due_on: null, paid_on: "2026-09-10", repaid_on: null },
+    ],
+  };
+  it("内訳を全部当社が払ったら箱から出す対象", async () => {
+    const { isFullyAdvanced, shouldReleaseBox, isAwaitingRepayment } = await import("./reminders");
+    expect(isFullyAdvanced(base)).toBe(true);
+    expect(shouldReleaseBox(base)).toBe(true);
+    expect(isAwaitingRepayment(base)).toBe(true);
+    const half = { ...base, amount_items: [base.amount_items[0], { ...base.amount_items[1], paid_on: null }] };
+    expect(isFullyAdvanced(half)).toBe(false);
+    expect(shouldReleaseBox(half)).toBe(false);
+  });
+  it("本人が払う督促や、まだ払っていない立替は対象外", async () => {
+    const { shouldReleaseBox } = await import("./reminders");
+    expect(shouldReleaseBox({ ...base, payer: "本人" })).toBe(false);
+    expect(shouldReleaseBox({ ...base, amount_items: [], advance_paid_on: null })).toBe(false);
+    expect(shouldReleaseBox({ ...base, amount_items: [], advance_paid_on: "2026-09-01" })).toBe(true);
+  });
+  it("本人から全額受け取ったら支払い待ちから外れる。完了も外れる", async () => {
+    const { isAwaitingRepayment } = await import("./reminders");
+    const repaid = { ...base, amount_items: base.amount_items.map((i) => ({ ...i, repaid_on: "2026-09-15" })) };
+    expect(isAwaitingRepayment(repaid)).toBe(false);
+    expect(isAwaitingRepayment({ ...base, status: "完了" as const })).toBe(false);
+  });
+  it("箱なし（0）は箱・番号の割り当て・表示から外れる", async () => {
+    const { formatReminderNo, nextReminderNo, reminderBoxes, usesBox, sortReminders } = await import("./reminders");
+    expect(formatReminderNo(0)).toBe("箱なし");
+    expect(usesBox({ reminder_no: 0, status: "連絡済み（返事待ち）" })).toBe(false);
+    expect(nextReminderNo([0, 1, 2])).toBe(3);
+    const boxes = reminderBoxes([
+      { reminder_no: 0, status: "連絡済み（返事待ち）" as const },
+      { reminder_no: 2, status: "連絡済み（返事待ち）" as const },
+    ]);
+    expect(boxes.find((b) => b.no === 2)?.reminder).not.toBeNull();
+    expect(boxes.every((b) => b.no >= 1)).toBe(true);
+    const sorted = sortReminders([
+      { reminder_no: 0, status: "連絡済み（返事待ち）" as const, completed_on: null, created_at: "2026-09-01" },
+      { reminder_no: 3, status: "連絡済み（返事待ち）" as const, completed_on: null, created_at: "2026-09-02" },
+    ]);
+    expect(sorted.map((r) => r.reminder_no)).toEqual([3, 0]);
   });
 });

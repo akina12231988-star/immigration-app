@@ -326,15 +326,53 @@ export function reminderImageKind(img: Pick<ReminderImage, "kind">): ReminderIma
 // 箱の数（この番号までを保管ボックスのように使う）
 export const REMINDER_BOX_SIZE = 30;
 
-// 番号の表示（No.01 のように2桁でそろえる。31番以降はそのまま）
+// 箱なし（番号 0）。当社が代わりに全部払って納付書が無く、本人からの返金を待つだけの督促
+export const NO_BOX_NO = 0;
+export const NO_BOX_MIGRATION = "0163_reminder_no_zero.sql";
+
+// 番号の表示（No.01 のように2桁でそろえる。31番以降はそのまま。箱なしは「箱なし」）
 export function formatReminderNo(no: number): string {
+  if (no <= NO_BOX_NO) return "箱なし";
   return `No.${String(no).padStart(2, "0")}`;
+}
+
+// 箱を使っている（納付書が入っている）督促か。進行中で番号を持っているもの
+export function usesBox(r: Pick<Reminder, "reminder_no" | "status">): boolean {
+  return isReminderOpen(r.status) && r.reminder_no > NO_BOX_NO;
+}
+
+// 当社が代わりに全部払ってしまい、納付書が手元に無い状態か。
+// 内訳があれば全部「当社が支払済み」、内訳が無ければ立替の支払日が入っていること
+export function isFullyAdvanced(
+  r: Pick<Reminder, "payer" | "advance_paid" | "amount_items" | "advance_paid_on">,
+): boolean {
+  if (reminderPayer(r) !== "代わり") return false;
+  const p = amountItemsProgress(normalizeAmountItems(r.amount_items));
+  if (p.count > 0) return p.paidCount === p.count;
+  return !!r.advance_paid_on;
+}
+
+// 箱から出して番号を返す対象か（進行中・当社が全部払った・まだ箱を使っている）
+export function shouldReleaseBox(
+  r: Pick<Reminder, "reminder_no" | "status" | "payer" | "advance_paid" | "amount_items" | "advance_paid_on">,
+): boolean {
+  return usesBox(r) && isFullyAdvanced(r);
+}
+
+// 立替・本人からの支払い待ちの一覧に載せる督促（進行中で、当社が全部払い、本人からまだ全額もらっていない）
+export function isAwaitingRepayment(
+  r: Pick<Reminder, "reminder_no" | "status" | "payer" | "advance_paid" | "amount_items" | "advance_paid_on" | "advance_repaid_on">,
+): boolean {
+  if (!isReminderOpen(r.status) || !isFullyAdvanced(r)) return false;
+  const p = amountItemsProgress(normalizeAmountItems(r.amount_items));
+  if (p.count > 0) return p.repaidCount < p.paidCount;
+  return !r.advance_repaid_on;
 }
 
 // 次に割り当てる番号。進行中の番号を避けて、1〜30の中で最小の空き番号。
 // 30番まで全部埋まっていれば、31番以降で最小の空き番号
 export function nextReminderNo(activeNos: number[]): number {
-  const used = new Set(activeNos);
+  const used = new Set(activeNos.filter((n) => n > NO_BOX_NO));
   for (let n = 1; n <= REMINDER_BOX_SIZE; n++) if (!used.has(n)) return n;
   let n = REMINDER_BOX_SIZE + 1;
   while (used.has(n)) n++;
@@ -388,7 +426,12 @@ export function sortReminders<T extends Pick<Reminder, "reminder_no" | "status" 
     const oa = isReminderOpen(a.status) ? 0 : 1;
     const ob = isReminderOpen(b.status) ? 0 : 1;
     if (oa !== ob) return oa - ob;
-    if (oa === 0) return a.reminder_no - b.reminder_no;
+    // 進行中は番号順。箱なし（0）は番号のあとに回す
+    if (oa === 0) {
+      const na = a.reminder_no > NO_BOX_NO ? a.reminder_no : Number.MAX_SAFE_INTEGER;
+      const nb = b.reminder_no > NO_BOX_NO ? b.reminder_no : Number.MAX_SAFE_INTEGER;
+      return na - nb;
+    }
     const ca = a.completed_on ?? a.created_at;
     const cb = b.completed_on ?? b.created_at;
     return cb.localeCompare(ca);
@@ -400,7 +443,8 @@ export function sortReminders<T extends Pick<Reminder, "reminder_no" | "status" 
 export function reminderBoxes<T extends Pick<Reminder, "reminder_no" | "status">>(
   rows: T[],
 ): { no: number; reminder: T | null }[] {
-  const open = rows.filter((r) => isReminderOpen(r.status));
+  // 箱なし（番号 0）の督促は箱に出さない
+  const open = rows.filter(usesBox);
   const byNo = new Map(open.map((r) => [r.reminder_no, r]));
   const max = Math.max(REMINDER_BOX_SIZE, ...open.map((r) => r.reminder_no));
   const boxes: { no: number; reminder: T | null }[] = [];
@@ -414,14 +458,19 @@ export function reminderBoxes<T extends Pick<Reminder, "reminder_no" | "status">
 }
 
 // 進捗ごとの件数（画面の見出し用）
-export function reminderCounts<T extends Pick<Reminder, "status" | "advance_paid" | "advance_repaid_on">>(rows: T[]): {
+export function reminderCounts<
+  T extends Pick<Reminder, "status" | "advance_paid" | "advance_repaid_on"> &
+    Partial<Pick<Reminder, "reminder_no" | "payer" | "amount_items" | "advance_paid_on">>,
+>(rows: T[]): {
   open: number;
   notContacted: number;
   awaiting: number;
   replied: number;
   advanceUnpaid: number; // 立替の未返金
+  awaitingRepayment: number; // 箱から出した、立替・本人からの支払い待ち
 } {
   return {
+    awaitingRepayment: rows.filter((r) => isAwaitingRepayment(r as Parameters<typeof isAwaitingRepayment>[0])).length,
     open: rows.filter((r) => isReminderOpen(r.status)).length,
     notContacted: rows.filter((r) => r.status === "未連絡").length,
     awaiting: rows.filter((r) => isAwaitingReply(r.status)).length,
