@@ -138,8 +138,11 @@ import {
   serializeAttachItems,
   prepApplyDocKey,
   prepDetailHref,
+  docYearFor,
+  otherAttachedYears,
   prepDocLabel,
   prepDocYear,
+  yearOfPrepDocKey,
   prepPageKey,
   prepStatusOption,
   SSW2_APP_CONTENT,
@@ -507,6 +510,8 @@ export function ApplicationPrepChecklist({
             tracking_back: r.tracking_back,
             mail_after_apply: r.mail_after_apply,
             attach_items: r.attach_items ?? "",
+            // 使う年度（0164）。列が無い環境では付けない（付けると保存で列エラーになる）
+            ...(r.use_reiwa !== undefined ? { use_reiwa: r.use_reiwa } : {}),
           };
         }
         setDocStatusesByList((prev) => ({ ...prev, [currentId]: next }));
@@ -585,6 +590,13 @@ export function ApplicationPrepChecklist({
     }
   };
 
+  // 書類ID → 使う年度（課税・納税証明書で対象年度と違う年度で対応するとき）
+  const yearOverrides: Record<string, number | null | undefined> = Object.fromEntries(
+    Object.entries(docStatuses).map(([id, v]) => [id, v.use_reiwa ?? null]),
+  );
+  // 年度付きの書類で実際に使う年度（使う年度が無ければ対象年度）
+  const docYearOf = (def: PrepDocDef): number | null => docYearFor(def, meta, yearOverrides);
+
   const today = todayStr();
   const filledDocKeys = new Set(docs.filter((d) => d.storage_path).map((d) => d.doc_key));
   // 健康診断書の完了判定は詳細（様式・受診項目・就労可の後日結果）まで含める
@@ -606,6 +618,7 @@ export function ApplicationPrepChecklist({
       healthComplete,
       hasResidenceCard,
       hasPassportFile,
+      yearOverrides,
     },
     statusValues,
     // 推薦状はカンボジア国籍だけ必要（国籍が未登録のときは出す）
@@ -628,11 +641,12 @@ export function ApplicationPrepChecklist({
     switch (def.source.kind) {
       case "doc":
         return def.source.docKey;
-      case "docYear":
-        // 課税・納税証明書は対象年度ごとに別ファイルとして蓄積する
-        return meta.target_reiwa != null
-          ? prepYearDocKey(def.source.baseKey, meta.target_reiwa)
-          : null;
+      case "docYear": {
+        // 課税・納税証明書は対象年度ごとに別ファイルとして蓄積する。
+        // 別の年度で対応すると決めた書類はその年度のキー
+        const year = docYearOf(def);
+        return year != null ? prepYearDocKey(def.source.baseKey, year) : null;
+      }
       case "gensenYear":
         return meta.target_reiwa != null ? gensenDocKey(meta.target_reiwa - 1) : null;
       case "health":
@@ -875,7 +889,7 @@ export function ApplicationPrepChecklist({
       setError("先に対象年度（令和）を入力してください。");
       return;
     }
-    uploadRef.current = { docKey: key, label: prepDocLabel(def, meta.target_reiwa, currentReiwa), def };
+    uploadRef.current = { docKey: key, label: prepDocLabel(def, docYearOf(def), currentReiwa), def };
     docInputRef.current?.click();
   }
 
@@ -892,7 +906,7 @@ export function ApplicationPrepChecklist({
     while (keys.has(prepPageKey(key, page))) page++;
     uploadRef.current = {
       docKey: prepPageKey(key, page),
-      label: `${prepDocLabel(def, meta.target_reiwa, currentReiwa)}（${page}枚目）`,
+      label: `${prepDocLabel(def, docYearOf(def), currentReiwa)}（${page}枚目）`,
       def,
     };
     docInputRef.current?.click();
@@ -961,7 +975,7 @@ export function ApplicationPrepChecklist({
       const docKey = prepPageKey(key, page);
       used.add(docKey);
       await uploadDoc(
-        { docKey, label: `${prepDocLabel(def, meta.target_reiwa, currentReiwa)}（${page}枚目）` },
+        { docKey, label: `${prepDocLabel(def, docYearOf(def), currentReiwa)}（${page}枚目）` },
         f,
       );
     }
@@ -1047,7 +1061,7 @@ export function ApplicationPrepChecklist({
     const assigned: string[] = [];
     if (existing.length === 0) {
       await uploadDoc(
-        { docKey: key, label: prepDocLabel(def, meta.target_reiwa, currentReiwa) },
+        { docKey: key, label: prepDocLabel(def, docYearOf(def), currentReiwa) },
         files[0],
       );
       rest = files.slice(1);
@@ -1857,11 +1871,19 @@ export function ApplicationPrepChecklist({
                   onAttach={() => startAttach(item.def)}
                   onDropFiles={(files) => void dropAttach(item.def, files)}
                   priorNote={priorNoteFor(item.def)}
+                  docYear={docYearOf(item.def)}
+                  otherYears={otherAttachedYears(item.def, docs, docYearOf(item.def)).map((y) => ({
+                    year: y,
+                    files: docs.filter(
+                      (d) => d.storage_path && item.def.source.kind === "docYear" && yearOfPrepDocKey(item.def.source.baseKey, d.doc_key) === y,
+                    ),
+                  }))}
+                  onUseYear={(y) => patchDocStatus(item.def.id, { use_reiwa: y })}
                   onAddPage={() => startAttachPage(item.def, files)}
                   onRemoveFile={(f) =>
                     void removeDoc(
                       f.doc_key,
-                      `${prepDocLabel(item.def, meta.target_reiwa, currentReiwa)}（${f.file_name}）`,
+                      `${prepDocLabel(item.def, docYearOf(item.def), currentReiwa)}（${f.file_name}）`,
                     )
                   }
                   onPreviewFile={(f) => void previewDoc(f.id)}
@@ -2131,9 +2153,15 @@ function DocRow({
   onPreviewPhoto,
   onDownloadFile,
   priorNote = "",
+  docYear = null,
+  otherYears = [],
+  onUseYear,
 }: {
   item: PrepDocStatus;
   priorNote?: string; // 前回の申請（1年以内）で提出済みなら、その申請日・申請番号の案内
+  docYear?: number | null; // 年度付きの書類で実際に使う年度（別の年度で対応しているときはその年度）
+  otherYears?: { year: number; files: OnboardingDocumentRow[] }[]; // 対象年度以外で添付されている年度とそのファイル
+  onUseYear?: (year: number | null) => void; // 対応する年度を切り替える（null で対象年度に戻す）
   meta: PrepChecklistMeta;
   workerId: string;
   mailingRecords?: JudgmentRecord[]; // 郵送請求ツールの記録（この外国人分）
@@ -2162,8 +2190,11 @@ function DocRow({
   onDownloadFile: (f: OnboardingDocumentRow) => void;
 }) {
   const { def, satisfied, fileSatisfied } = item;
-  const label = prepDocLabel(def, meta.target_reiwa, reiwaYear(todayStr()));
+  // 別の年度で対応しているときは、その年度で見出しを出す
+  const effectiveYear = def.source.kind === "docYear" ? docYear : meta.target_reiwa;
+  const label = prepDocLabel(def, effectiveYear, reiwaYear(todayStr()));
   const hasFile = files.length > 0;
+  const overriding = def.source.kind === "docYear" && docYear != null && docYear !== meta.target_reiwa;
 
   // 書類ごとの準備状況（ステータス）。選択肢と、選択に応じた付随入力を表示する。
   // 申請種別の指定がある選択肢（例: 認定のみの「画像を送ってもらった」）はその種別のときだけ出す。
@@ -2226,6 +2257,42 @@ function DocRow({
           {def.note && <span className="mt-0.5 block text-[11px] text-muted">※ {def.note}</span>}
           {priorNote && (
             <span className="mt-0.5 block text-[11px] font-bold text-status-applied-fg">{priorNote}</span>
+          )}
+          {/* 別の年度で対応中の表示と、対象年度に戻すボタン */}
+          {overriding && (
+            <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+              <span className="rounded-full bg-status-notice-bg px-2 py-0.5 font-bold text-status-notice-fg">
+                令和{docYear}{def.yearKind}で対応中（対象年度は令和{meta.target_reiwa ?? "?"}{def.yearKind}）
+              </span>
+              {canEdit && onUseYear && (
+                <button type="button" onClick={() => onUseYear(null)} className="font-bold text-brand underline">
+                  対象年度に戻す
+                </button>
+              )}
+            </span>
+          )}
+          {/* 対象年度以外の年度の添付があれば出して、その年度で対応するかを選べる */}
+          {otherYears.length > 0 && (
+            <span className="mt-1 block space-y-1 rounded-lg border border-dashed border-border bg-surface px-2 py-1.5 text-[11px]">
+              <span className="block font-bold text-muted">別の年度の{def.label}が添付されています</span>
+              {otherYears.map((o) => (
+                <span key={o.year} className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-bold">令和{o.year}{def.yearKind}</span>
+                  {o.files.map((f) => (
+                    <AttachedFileButton key={f.id} fileName={f.file_name} onOpen={() => onPreviewFile(f)} />
+                  ))}
+                  {canEdit && onUseYear && (
+                    <button
+                      type="button"
+                      onClick={() => onUseYear(o.year === meta.target_reiwa ? null : o.year)}
+                      className="rounded-lg border border-brand px-2 py-0.5 font-bold text-brand"
+                    >
+                      この年度で対応する
+                    </button>
+                  )}
+                </span>
+              ))}
+            </span>
           )}
           {def.managedIn && (
             <span className="mt-0.5 block text-[11px] text-muted">「{def.managedIn}」と共有</span>

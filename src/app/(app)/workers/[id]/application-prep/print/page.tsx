@@ -99,10 +99,13 @@ export default async function ApplicationPrepPrintPage({
   }
 
   const statusValues = Object.fromEntries(docStatusRows.map((r) => [r.doc_id, r.status]));
+  // 課税・納税証明書で対象年度と違う年度で対応している書類（0164）
+  const yearOverrides = Object.fromEntries(docStatusRows.map((r) => [r.doc_id, r.use_reiwa ?? null]));
   const { items } = evaluatePrepChecklist(
     meta,
     {
       filledDocKeys: new Set(docs.filter((d) => d.storage_path).map((d) => d.doc_key)),
+      yearOverrides,
       photoPath: worker.photo_path,
       // 健康診断書の充足は添付の有無で判定するため、この値は使われない
       healthComplete: false,
