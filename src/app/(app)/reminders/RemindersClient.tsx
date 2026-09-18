@@ -60,6 +60,11 @@ import {
   formatReminderNo,
   isAdvanceRepaid,
   isAdvanceUnpaid,
+  isAwaitingRepayment,
+  NO_BOX_MIGRATION,
+  NO_BOX_NO,
+  shouldReleaseBox,
+  usesBox,
   isAwaitingReply,
   isContactOnly,
   isPaymentReminder,
@@ -139,6 +144,8 @@ export function RemindersClient({
 
   const counts = reminderCounts(reminders);
   const boxes = reminderBoxes(reminders);
+  // 立替・本人からの支払い待ち（当社が全部払って納付書が無い人。箱には入れない）
+  const awaitingRepayment = useMemo(() => reminders.filter(isAwaitingRepayment), [reminders]);
 
   const shown = useMemo(
     () => filterReminders(reminders, { filter, q, onlyWorkerId }),
@@ -172,6 +179,9 @@ export function RemindersClient({
 
   const patchReminder = async (r: ReminderWithWorker, patch: Partial<ReminderWithWorker>) => {
     setError(null);
+    // 当社が代わりに全部払った（納付書が無くなった）ら、番号の箱から出して番号を返す
+    const merged = { ...r, ...patch };
+    if (shouldReleaseBox(merged)) patch = { ...patch, reminder_no: NO_BOX_NO };
     try {
       const { workers: _w, id: _i, ...rest } = patch;
       void _w;
@@ -185,7 +195,9 @@ export function RemindersClient({
         ? AMOUNT_MIGRATION
         : keys.some((k) => k.startsWith("advance_"))
           ? ADVANCE_MIGRATION
-          : MIGRATION;
+          : keys.includes("reminder_no")
+            ? NO_BOX_MIGRATION
+            : MIGRATION;
       setError(dbErrorMessage(err, migration, errorMessage(err, "保存に失敗しました")));
     }
   };
@@ -266,7 +278,8 @@ export function RemindersClient({
       {/* 箱（番号の使用状況）。押すとその督促を開く */}
       <Card className="p-3">
         <p className="mb-2 text-[11px] font-bold text-muted">
-          番号の箱（1〜{REMINDER_BOX_SIZE}）。空きは灰色、使っている番号は名前が出ます
+          番号の箱（1〜{REMINDER_BOX_SIZE}）＝納付書が入っている人。空きは灰色、使っている番号は名前が出ます。
+          当社が代わりに全部払って納付書が無くなった人は箱から出て、下の「立替・本人からの支払い待ち」に載ります
         </p>
         <div className="grid grid-cols-5 gap-1.5 sm:grid-cols-6 md:grid-cols-10">
           {boxes.map((b) => (
@@ -291,6 +304,50 @@ export function RemindersClient({
         </div>
       </Card>
 
+      {/* 立替・本人からの支払い待ち（納付書が無いので箱には入れない） */}
+      <Card className="p-3">
+        <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold text-muted">
+          <Receipt size={13} />
+          立替・本人からの支払い待ち（{awaitingRepayment.length}人）
+          <span className="font-normal">当社が代わりに全部払って納付書が無い人。本人から受け取ったら詳細で「本人からお金を受け取った」を押してください</span>
+        </p>
+        {awaitingRepayment.length === 0 ? (
+          <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted">支払い待ちの人はいません。</p>
+        ) : (
+          <ul className="grid grid-cols-1 gap-1.5 md:grid-cols-2">
+            {awaitingRepayment.map((r) => {
+              const prog = amountItemsProgress(normalizeAmountItems(r.amount_items));
+              const unrepaid = prog.count > 0 ? prog.unrepaidAmount : (r.advance_amount ?? 0);
+              const d = daysSince(r.advance_paid_on ?? normalizeAmountItems(r.amount_items).find((i) => i.paid_on)?.paid_on ?? null, today);
+              return (
+                <li key={r.id}>
+                  <button
+                    type="button"
+                    onClick={() => setSelected(r)}
+                    className="flex w-full items-center gap-2 rounded-lg border border-seal/40 bg-seal/10 px-3 py-2 text-left text-xs hover:border-seal"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-bold">{r.workers?.name ?? "（外国人不明）"}</span>
+                      <span className="block truncate text-[11px] text-muted">
+                        {r.kind}
+                        {r.content && `：${r.content}`}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-right">
+                      <span className="block font-bold text-seal">未回収 {unrepaid.toLocaleString("ja-JP")}円</span>
+                      <span className="block text-[10px] text-muted">
+                        {r.reminder_no > NO_BOX_NO ? "番号あり（箱から出せます）" : "箱なし"}
+                        {d !== null && d > 0 && `・支払から${d}日`}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Card>
+
       {/* 操作 */}
       <div className="flex flex-wrap items-center gap-2">
         {canWrite && (
@@ -312,7 +369,7 @@ export function RemindersClient({
         <NewReminderForm
           workers={workers}
           initialWorker={initialWorker}
-          activeNos={reminders.filter((r) => isReminderOpen(r.status)).map((r) => r.reminder_no)}
+          activeNos={reminders.filter(usesBox).map((r) => r.reminder_no)}
           onCreated={(row) => {
             setReminders((prev) => [...prev, row]);
             setCreating(false);
@@ -586,6 +643,7 @@ export function RemindersClient({
           reminder={selected}
           today={today}
           canWrite={canWrite}
+          activeNos={reminders.filter(usesBox).map((r) => r.reminder_no)}
           onClose={() => setSelected(null)}
           onStatus={(status) => void setStatus(selected, status)}
           onPatch={(patch) => void patchReminder(selected, patch)}
@@ -891,6 +949,7 @@ function ReminderModal({
   reminder,
   today,
   canWrite,
+  activeNos,
   onClose,
   onStatus,
   onPatch,
@@ -901,6 +960,7 @@ function ReminderModal({
   reminder: ReminderWithWorker;
   today: string;
   canWrite: boolean;
+  activeNos: number[]; // 箱を使っている番号（番号をもらい直すときに避ける）
   onClose: () => void;
   onStatus: (status: ReminderStatus) => void;
   onPatch: (patch: Partial<ReminderWithWorker>) => void;
@@ -1067,9 +1127,36 @@ function ReminderModal({
             {waitDays !== null && waitDays > 0 && (
               <p className="mt-1 text-xs font-bold text-seal">連絡から{waitDays}日たっています。返事をもらってください。</p>
             )}
-            {reminder.status === "完了" && (
+            {reminder.status === "完了" && reminder.reminder_no > NO_BOX_NO && (
               <p className="mt-1 text-xs text-muted">
                 完了したので {formatReminderNo(reminder.reminder_no)} は空き番号になりました。
+              </p>
+            )}
+            {/* 箱なし（当社が全部払って納付書が無い）。番号を返した旨と、間違いなら番号をもらい直せる */}
+            {reminder.status !== "完了" && reminder.reminder_no === NO_BOX_NO && (
+              <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
+                当社が代わりに全部払ったので納付書は無く、番号の箱からは出ています（立替・本人からの支払い待ち）。
+                {canWrite && (
+                  <button
+                    type="button"
+                    onClick={() => void onPatch({ reminder_no: nextReminderNo(activeNos) })}
+                    className="rounded-lg border border-border px-2 py-0.5 text-[11px] font-bold text-brand"
+                  >
+                    番号をもらい直す（納付書がまだある）
+                  </button>
+                )}
+              </p>
+            )}
+            {reminder.status !== "完了" && reminder.reminder_no > NO_BOX_NO && isAwaitingRepayment(reminder) && canWrite && (
+              <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
+                当社が全部払ったので納付書は無いはずです。
+                <button
+                  type="button"
+                  onClick={() => void onPatch({ reminder_no: NO_BOX_NO })}
+                  className="rounded-lg border border-border px-2 py-0.5 text-[11px] font-bold text-brand"
+                >
+                  番号を返して箱から出す
+                </button>
               </p>
             )}
             {completionBlockedReason(reminder) && (
