@@ -5,6 +5,8 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { COUNTED_VISAS, KEEPABLE_VISAS, VISA_TYPES, type VisaType } from "@/types/ssw";
 import { PREFECTURES } from "@/lib/minimum-wage";
+import { COVID_VISA, covidPeriodAlert } from "@/lib/covid-period";
+import { todayStr } from "@/lib/application-alerts";
 import type { WorkHistoryRow } from "@/types/db";
 
 export interface HistoryFormValues {
@@ -73,6 +75,8 @@ function HistoryFormDialogInner({
 
   const set = <K extends keyof HistoryFormValues>(key: K, value: HistoryFormValues[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
+  // コロナ帰国困難の特定活動なのに、期間がコロナの期間から外れているときの案内
+  const covidAlert = form.visa === COVID_VISA ? covidPeriodAlert(form.start_date, form.end_date, todayStr()) : "";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -114,12 +118,23 @@ function HistoryFormDialogInner({
           >
             {VISA_TYPES.map((v) => (
               <option key={v} value={v}>
+                {v === COVID_VISA ? "🦠 " : ""}
                 {v}
                 {COUNTED_VISAS.has(v) ? "（通算対象）" : ""}
               </option>
             ))}
           </select>
         </label>
+        {form.visa === COVID_VISA && (
+          <p className="px-1 text-[11px] leading-relaxed text-muted">
+            新型コロナで帰国できず、帰国困難を理由に特定活動（就労可）で在留していた期間です。通算5年にはカウントしません。
+          </p>
+        )}
+        {covidAlert && (
+          <p role="alert" className="rounded-lg border border-status-notice-fg/40 bg-status-notice-bg px-3 py-2 text-xs font-bold text-status-notice-fg">
+            {covidAlert}
+          </p>
+        )}
 
         {KEEPABLE_VISAS.has(form.visa) && (
           <label className="flex flex-col gap-1">

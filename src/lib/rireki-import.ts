@@ -229,6 +229,8 @@ export function rirekiVisaType(residenceStatus: string): VisaType {
   if (t.startsWith("特定技能1号")) return "特定技能1号";
   if (t.includes("特定技能1号")) return "特定活動（特定技能1号移行準備）";
   if (t.includes("特定技能2号")) return "特定活動（特定技能2号移行準備）";
+  // 「特定活動（コロナによる帰国困難）」「特定活動（帰国困難）」など
+  if (t.startsWith("特定活動") && (t.includes("コロナ") || t.includes("帰国困難"))) return "特定活動（コロナ帰国困難）";
   if (t === "留学") return "留学";
   return "その他";
 }
