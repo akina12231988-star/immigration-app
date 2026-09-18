@@ -213,6 +213,7 @@ export interface PrepDocStatusRow {
   tracking_back: string; // レターパック追跡番号（返信用）
   mail_after_apply: boolean; // 申請後に発行され次第、入管へ郵送する
   attach_items: string; // 添付する資料項目（カンマ区切り。年金記録: 年金記録/免除申請書）
+  use_reiwa?: number | null; // 課税・納税証明書で対応する年度（令和年。0164。null は対象年度）
 }
 
 export type PrepDocStatusInput = Omit<PrepDocStatusRow, "id" | "checklist_id" | "doc_id">;
@@ -324,9 +325,10 @@ export async function listPrepProgress(
       .eq("kind", "在留カード")
       .in("worker_id", workerIds),
     supabase.from("worker_passport_files").select("worker_id").in("worker_id", workerIds),
+    // use_reiwa（0164）が未適用でも読めるよう * で取る
     supabase
       .from("prep_doc_statuses")
-      .select("checklist_id, doc_id, status")
+      .select("*")
       .in("checklist_id", lists.map((l) => l.id)),
   ]);
 
@@ -352,14 +354,18 @@ export async function listPrepProgress(
   const passportWorkers = new Set(
     (((passportsRes.data as { worker_id: string }[] | null) ?? [])).map((r) => r.worker_id),
   );
-  // 準備リストごとの「書類ID → 選択中の準備状況」
+  // 準備リストごとの「書類ID → 選択中の準備状況」と「書類ID → 使う年度」
   const statusByList = new Map<string, Record<string, string>>();
+  const yearByList = new Map<string, Record<string, number | null>>();
   for (const r of (statusRes.data as
-    | { checklist_id: string; doc_id: string; status: string | null }[]
+    | { checklist_id: string; doc_id: string; status: string | null; use_reiwa?: number | null }[]
     | null) ?? []) {
     const cur = statusByList.get(r.checklist_id) ?? {};
     cur[r.doc_id] = r.status ?? "";
     statusByList.set(r.checklist_id, cur);
+    const years = yearByList.get(r.checklist_id) ?? {};
+    years[r.doc_id] = r.use_reiwa ?? null;
+    yearByList.set(r.checklist_id, years);
   }
 
   const out: Record<string, PrepProgress> = {};
@@ -383,6 +389,7 @@ export async function listPrepProgress(
         healthComplete: filledDocKeys.has("kenshin"),
         hasResidenceCard: cardWorkers.has(l.worker_id),
         hasPassportFile: passportWorkers.has(l.worker_id),
+        yearOverrides: yearByList.get(l.id) ?? {},
       },
       statusByList.get(l.id) ?? {},
     );

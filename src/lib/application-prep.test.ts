@@ -29,6 +29,9 @@ import {
   type PrepChecklistMeta,
   type PrepDocSources,
   NENKIN_ALWAYS_APP_CONTENTS,
+  docYearFor,
+  otherAttachedYears,
+  yearOfPrepDocKey,
 } from "./application-prep";
 
 
@@ -498,5 +501,37 @@ describe("源泉徴収票と課税証明書の金額の照合", () => {
     expect(compareGensenKazei("1,710,036", "").text).toContain("源泉徴収票の金額が未入力");
     expect(compareGensenKazei("", "").ok).toBeNull();
     expect(compareGensenKazei("1,710,036", "871608+838428").ok).toBe(true);
+  });
+});
+
+describe("別の年度の課税・納税証明書で対応する（use_reiwa）", () => {
+  const kazei = PREP_DOC_DEFS.find((d) => d.id === "kazei")!;
+  it("使う年度が入っていればそれ、無ければ対象年度", () => {
+    expect(docYearFor(kazei, { target_reiwa: 7 })).toBe(7);
+    expect(docYearFor(kazei, { target_reiwa: 7 }, { kazei: 6 })).toBe(6);
+    expect(docYearFor(kazei, { target_reiwa: 7 }, { kazei: null })).toBe(7);
+  });
+  it("キーから令和年を読む（枝番も）", () => {
+    expect(yearOfPrepDocKey("prep_kazei", "prep_kazei_r6")).toBe(6);
+    expect(yearOfPrepDocKey("prep_kazei", "prep_kazei_r6_p2")).toBe(6);
+    expect(yearOfPrepDocKey("prep_kazei", "prep_nozei_shiken_r6")).toBeNull();
+    expect(yearOfPrepDocKey("prep_kazei", "prep_kazei")).toBeNull();
+  });
+  it("対象年度以外で添付されている年度を新しい順に出す", () => {
+    const docs = [
+      { doc_key: "prep_kazei_r5", storage_path: "x" },
+      { doc_key: "prep_kazei_r6_p2", storage_path: "x" },
+      { doc_key: "prep_kazei_r7", storage_path: "x" },
+      { doc_key: "prep_kazei_r4", storage_path: "" },
+    ];
+    expect(otherAttachedYears(kazei, docs, 7)).toEqual([6, 5]);
+  });
+  it("別の年度で対応すると、その年度の添付で揃っている扱いになる", () => {
+    const meta = { ...EMPTY_PREP_META, app_type: "更新" as const, target_reiwa: 7 };
+    const filled = new Set(["prep_kazei_r6"]);
+    expect(isSatisfied(kazei, meta, { filledDocKeys: filled, photoPath: null, healthComplete: false })).toBe(false);
+    expect(
+      isSatisfied(kazei, meta, { filledDocKeys: filled, photoPath: null, healthComplete: false, yearOverrides: { kazei: 6 } }),
+    ).toBe(true);
   });
 });

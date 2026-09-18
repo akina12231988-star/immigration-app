@@ -388,6 +388,9 @@ export function isRequired(
 export interface PrepDocSources {
   // onboarding_documents のうち storage_path があるキーの集合
   filledDocKeys: Set<string>;
+  // 書類ID → 対応する年度（令和年）。課税・納税証明書で対象年度と違う年度の書類で対応するとき
+  // （prep_doc_statuses.use_reiwa・0164）。無ければ準備リストの対象年度
+  yearOverrides?: Record<string, number | null | undefined>;
   photoPath: string | null;
   // 在留カード・指定書（worker_documents）に在留カードの画像があるか
   hasResidenceCard?: boolean;
@@ -395,6 +398,41 @@ export interface PrepDocSources {
   hasPassportFile?: boolean;
   // 健康診断書が「揃っている」か（様式・受診項目・就労可の後日結果まで含めた判定。健康診断書の詳細ページで管理）
   healthComplete: boolean;
+}
+
+// 年度付きの書類（課税・納税証明書）で実際に使う年度。
+// 「使う年度」（use_reiwa）が入っていればそれ、無ければ対象年度
+export function docYearFor(
+  def: Pick<PrepDocDef, "id" | "source">,
+  meta: Pick<PrepChecklistMeta, "target_reiwa">,
+  overrides?: Record<string, number | null | undefined>,
+): number | null {
+  if (def.source.kind !== "docYear") return meta.target_reiwa;
+  const o = overrides?.[def.id];
+  return o != null ? o : meta.target_reiwa;
+}
+
+// 年度付きの書類のキーから令和年を読む（prep_kazei_r6 / prep_kazei_r6_p2 → 6）。違うキーなら null
+export function yearOfPrepDocKey(baseKey: string, key: string): number | null {
+  const m = new RegExp(`^${baseKey}_r(\\d+)(?:_p\\d+)?$`).exec(key);
+  return m ? Number(m[1]) : null;
+}
+
+// その書類について、対象年度以外で添付されている年度（新しい順）
+export function otherAttachedYears(
+  def: Pick<PrepDocDef, "source">,
+  docs: { doc_key: string; storage_path: string }[],
+  currentYear: number | null,
+): number[] {
+  if (def.source.kind !== "docYear") return [];
+  const base = def.source.baseKey;
+  const years = new Set<number>();
+  for (const d of docs) {
+    if (!d.storage_path) continue;
+    const y = yearOfPrepDocKey(base, d.doc_key);
+    if (y != null && y !== currentYear) years.add(y);
+  }
+  return [...years].sort((a, b) => b - a);
 }
 
 // その書類が揃っているか（登録済みか）
@@ -411,13 +449,15 @@ export function isSatisfied(
       if (!key.startsWith("cert_")) return false;
       return [...sources.filledDocKeys].some((k) => isCertDocKeyOf(key, k));
     }
-    case "docYear":
-      // 対象年度ごとに蓄積したキー（{baseKey}_r{令和年}）。旧形式（年度なしキー）も揃っている扱いにする
+    case "docYear": {
+      // 対象年度ごとに蓄積したキー（{baseKey}_r{令和年}）。旧形式（年度なしキー）も揃っている扱いにする。
+      // 別の年度で対応すると決めた書類は、その年度のキーで見る
+      const year = docYearFor(def, meta, sources.yearOverrides);
       return (
-        (meta.target_reiwa != null &&
-          sources.filledDocKeys.has(prepYearDocKey(def.source.baseKey, meta.target_reiwa))) ||
+        (year != null && sources.filledDocKeys.has(prepYearDocKey(def.source.baseKey, year))) ||
         sources.filledDocKeys.has(def.source.baseKey)
       );
+    }
     case "gensenYear": {
       // 源泉徴収票は課税年度の前年分（target-1）。その年の gensen_r{年} があれば充足。
       const y = meta.target_reiwa != null ? meta.target_reiwa - 1 : null;
