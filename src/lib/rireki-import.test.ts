@@ -151,7 +151,8 @@ describe("外国人の登録内容への変換", () => {
     expect(rirekiVisaType("技能実習1号で修了")).toBe("技能実習");
     expect(rirekiVisaType("特定技能1号")).toBe("特定技能1号");
     expect(rirekiVisaType("特定活動（特定技能1号移行準備）")).toBe("特定活動（特定技能1号移行準備）");
-    expect(rirekiVisaType("特定活動（コロナによる帰国困難）")).toBe("その他");
+    expect(rirekiVisaType("特定活動（コロナによる帰国困難）")).toBe("特定活動（コロナ帰国困難）");
+    expect(rirekiVisaType("特定活動（帰国困難）")).toBe("特定活動（コロナ帰国困難）");
     expect(rirekiVisaType("")).toBe("本国での職歴");
   });
 });

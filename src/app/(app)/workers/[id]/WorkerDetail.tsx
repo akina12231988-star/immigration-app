@@ -122,6 +122,7 @@ import { isCountedHistory, type WorkHistory } from "@/types/ssw";
 import type { Application } from "@/types/application";
 import { PriorApplicationCard, usePriorApplication } from "@/components/workers/PriorApplicationCard";
 import { sealBadgeText } from "@/lib/seals";
+import { COVID_VISA, covidPeriodAlert } from "@/lib/covid-period";
 import {
   RESIDENCE_STATUSES,
   SUPPORT_SCOPES,
@@ -1793,6 +1794,8 @@ export function WorkerDetail({
                           : "bg-status-before-bg text-status-before-fg"
                       }`}
                     >
+                      {/* コロナ帰国困難の期間にはコロナマークを付ける */}
+                      {h.visa === COVID_VISA && "🦠 "}
                       {h.visa}
                       {h.kept_residence_status && "（特定技能1号を保持）"}
                       {counted && " ★"}
@@ -1825,6 +1828,11 @@ export function WorkerDetail({
                     {h.start_date} 〜 {h.end_date ?? "継続中"}
                     <span className="ml-2 text-xs font-medium text-muted">{days}日</span>
                   </p>
+                  {h.visa === COVID_VISA && covidPeriodAlert(h.start_date, h.end_date, today) && (
+                    <p className="mt-0.5 text-[11px] font-bold text-status-notice-fg">
+                      {covidPeriodAlert(h.start_date, h.end_date, today)}
+                    </p>
+                  )}
                   {(h.org_name || h.prefecture || h.role) && (
                     <p className="mt-0.5 truncate text-xs text-muted">
                       {[h.org_name, h.prefecture, h.role].filter(Boolean).join(" ・ ")}
