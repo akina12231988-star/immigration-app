@@ -69,6 +69,9 @@ import { listTodos, type TodoRow } from "@/lib/supabase/queries/todos";
 import type { Application } from "@/types/application";
 import { ApprovedCard } from "./ApprovedCard";
 import { ExtraRequestBoard } from "./ExtraRequestBoard";
+import { PostApplyBoard } from "./PostApplyBoard";
+import { listPostApplyEntries } from "@/lib/supabase/queries/application-prep";
+import { openPostApplyCount, type PostApplyEntry } from "@/lib/post-apply";
 import { listAllExtraRequests } from "@/lib/supabase/queries/extra-requests";
 import { countOpenExtraRequests } from "@/lib/extra-request-alerts";
 import type { ApplicationExtraRequest } from "@/types/application";
@@ -88,7 +91,7 @@ const SORT_OPTIONS = [
 type SortKey = (typeof SORT_OPTIONS)[number]["key"];
 
 // フィルタータブ（ダッシュボードの集計と同じ区分＋在留更新の「申請前＜入管提出！！＞」）
-type ViewKey = StatViewKey | "all" | "pre-prep" | "extra-request";
+type ViewKey = StatViewKey | "all" | "pre-prep" | "extra-request" | "post-apply";
 
 // 「申請前＜入管提出！！＞」を最初に表示するため先頭に、「すべて」は一番右に置く
 const VIEW_CHIPS: { key: ViewKey; label: string }[] = [
@@ -96,6 +99,7 @@ const VIEW_CHIPS: { key: ViewKey; label: string }[] = [
   { key: "unreported", label: "LINE未報告" },
   { key: "waiting-notice", label: "審査中" },
   { key: "extra-request", label: "＜入管＞追加資料" },
+  { key: "post-apply", label: "申請後の郵送・タスク" },
   { key: "approved", label: "在留カード受け取り待ち" },
   { key: "card-issued", label: "在留カード新規発行済み" },
   { key: "all", label: "すべて" },
@@ -106,7 +110,7 @@ export function ApplicationsExplorer({
   initialView = null,
 }: {
   applications: Application[];
-  initialView?: StatViewKey | "pre-prep" | null;
+  initialView?: StatViewKey | "pre-prep" | "post-apply" | null;
 }) {
   const router = useRouter();
   const { updateApplication } = useApplications();
@@ -291,6 +295,20 @@ export function ApplicationsExplorer({
     };
   }, []);
   const openExtraCount = countOpenExtraRequests(extraRequests);
+  // 申請後に入管へ郵送する書類・タスク（「申請後の郵送・タスク」タブ用・全員ぶん）
+  const [postApply, setPostApply] = useState<PostApplyEntry[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    listPostApplyEntries(createClient())
+      .then((rows) => {
+        if (!cancelled) setPostApply(rows);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const openPostApply = postApply.reduce((n, e) => n + openPostApplyCount(e), 0);
 
   // 表示用の預かり番号文字列（預かっていなければ「—」）
   const custodyNoLabel = (a: Application) => {
@@ -319,7 +337,7 @@ export function ApplicationsExplorer({
       if (view === "pre-prep") {
         // 申請前＜入管提出！！＞タブ: 実レコードは「申請前」かつ在留更新が準備中の案件のみ
         if (a.status !== "申請前" || a.workerRenewalStatus !== "準備中") return false;
-      } else if (view !== "all" && view !== "extra-request" && !STAT_VIEWS[view].test(a)) {
+      } else if (view !== "all" && view !== "extra-request" && view !== "post-apply" && !STAT_VIEWS[view].test(a)) {
         return false;
       }
       // 新規発行済み: 在留許可日の期間（いつからいつまで）で絞り込む
@@ -543,7 +561,9 @@ export function ApplicationsExplorer({
             label={
               c.key === "extra-request" && openExtraCount > 0
                 ? `${c.label}（${openExtraCount}）`
-                : c.label
+                : c.key === "post-apply" && openPostApply > 0
+                  ? `${c.label}（${openPostApply}）`
+                  : c.label
             }
             active={view === c.key}
             onClick={() => setView(c.key)}
@@ -609,7 +629,17 @@ export function ApplicationsExplorer({
       )}
 
       {/* ＜入管＞追加資料: 提出期限のアラート付きで、郵送した日・追跡番号をこの場で入力する */}
-      {view === "extra-request" ? (
+      {view === "post-apply" ? (
+        <PostApplyBoard
+          entries={postApply}
+          applications={applications}
+          keyword={keyword}
+          canEdit={canEdit}
+          onChanged={(entry) =>
+            setPostApply((prev) => prev.map((e) => (e.checklistId === entry.checklistId ? entry : e)))
+          }
+        />
+      ) : view === "extra-request" ? (
         <ExtraRequestBoard
           rows={extraRequests}
           applications={applications}

@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { Card } from "@/components/ui/Card";
+import { PostApplyList } from "@/components/workers/PostApplyList";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { Ssw2Instructees } from "@/components/workers/Ssw2Instructees";
 import { WorkerCertDocRows } from "@/components/workers/WorkerCertDocRows";
@@ -467,6 +468,7 @@ export function ApplicationPrepChecklist({
         | "sign_status"
         | "planned_app_on"
         | "memo"
+        | "post_apply_tasks"
       >
     >,
   ) {
@@ -479,7 +481,9 @@ export function ApplicationPrepChecklist({
     } catch (err) {
       // あとから足した項目（筆頭者=0111・申請予定日=0112）は、その分の案内を出す
       const migration =
-        "memo" in patch
+        "post_apply_tasks" in patch
+          ? "0167_prep_post_apply_tasks.sql"
+          : "memo" in patch
           ? "0160_prep_checklist_memo.sql"
           : "joint_lead" in patch
             ? "0111_prep_joint_lead.sql"
@@ -2070,6 +2074,17 @@ export function ApplicationPrepChecklist({
             </div>
           )}
         </FileDropArea>
+
+        {/* 申請する書類の下: 申請後に入管へ郵送する書類とそのほかのタスク */}
+        <PostApplyList
+          docIds={Object.entries(docStatuses)
+            .filter(([, v]) => v.mail_after_apply)
+            .map(([id]) => id)}
+          tasks={current.post_apply_tasks ?? []}
+          canEdit={canEdit}
+          onMailed={(docId) => patchDocStatus(docId, { mail_after_apply: false })}
+          onSaveTasks={(post_apply_tasks) => void saveExtras({ post_apply_tasks })}
+        />
       </div>
 
       {canEdit && (

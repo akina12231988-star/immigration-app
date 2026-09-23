@@ -13,7 +13,11 @@ function ApplicationsPageInner() {
   const viewParam = useSearchParams().get("view");
   // pre-prep（申請前＜入管提出！！＞）はダッシュボードのカードから開く既定タブ
   const view =
-    viewParam === "pre-prep" ? "pre-prep" : isStatViewKey(viewParam) ? viewParam : null;
+    viewParam === "pre-prep" || viewParam === "post-apply"
+      ? viewParam
+      : isStatViewKey(viewParam)
+        ? viewParam
+        : null;
 
   return (
     <div className="-mx-4 -mt-4 lg:-mx-8 lg:-mt-6">
