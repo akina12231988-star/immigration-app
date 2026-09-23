@@ -26,7 +26,7 @@ import {
 } from "@/lib/tax-office";
 import { nozei3SaveBlockers } from "@/lib/mailing-save-check";
 import { dbErrorMessage } from "@/lib/errors";
-import { DEFAULT_NOZEI3_AGENT } from "@/lib/nozei3-form";
+import { DEFAULT_NOZEI3_AGENT, NOZEI3_AGENT_ADDRESS_OPTIONS, NOZEI3_AGENT_NAME_OPTIONS } from "@/lib/nozei3-form";
 import { SaveBlockers } from "@/components/mailing/SaveBlockers";
 import { ProgressBadge, TrackingLink } from "@/components/mailing/MailingRecordSummary";
 import { MailingFileAttachments } from "./MailingFileAttachments";
@@ -51,7 +51,7 @@ export const NOZEI3_AGENT_CONTACT = { name: "野口明菜", phone: "080-4281-108
 export const NOZEI3_STICKY_NOTE_TEXT = `代理人：${NOZEI3_AGENT_CONTACT.name}\n電話番号：${NOZEI3_AGENT_CONTACT.phone}\n何かありましたらこちらにご連絡ください`;
 
 // 自動入力した交付請求書を新しいタブで開く（印刷用）
-// 代理人窓口発行のときは、入力した代理人（住所・氏名）を代理人記入欄に入れる（郵送請求は様式の代理人のまま）
+// 選んだ代理人（住所・氏名）を代理人記入欄に入れる（指定が無ければ様式の代理人）
 export function nozei3FormUrl(
   workerId: string,
   taxOfficeId: string,
@@ -72,31 +72,37 @@ export const NOZEI3_METHOD_OPTIONS: { value: Nozei3Method; label: string }[] = [
 
 export interface Nozei3Values {
   method: Nozei3Method; // 郵送請求 / 代理人窓口発行
-  agentName: string; // 代理人窓口発行の代理人の氏名
-  agentAddress: string; // 代理人窓口発行の代理人の住所
+  agentName: string; // 代理人の氏名（郵送請求・窓口発行とも）
+  agentAddress: string; // 代理人の住所
   taxOfficeId: string; // 投函先の税務署（空なら住所からの自動判定に任せる）
   postDate: string; // 投函日
   trackingNumber: string; // 追跡番号
   progress: MailingProgress; // 準備中 / 税務署からの郵送待ち / 完了
-  receivedDate: string; // 証明書が届いた日
+  receivedDate: string; // 証明書が届いた日（郵送請求）
+  handedDate: string; // 代理人に交付請求書を渡した日（代理人窓口発行）
   note: string;
 }
 
 export function emptyNozei3Values(): Nozei3Values {
-  return { method: "mail", agentName: "", agentAddress: "", taxOfficeId: "", postDate: "", trackingNumber: "", progress: "preparing", receivedDate: "", note: "" };
+  return {
+    method: "mail",
+    agentName: DEFAULT_NOZEI3_AGENT.name,
+    agentAddress: DEFAULT_NOZEI3_AGENT.address, taxOfficeId: "", postDate: "", trackingNumber: "", progress: "preparing", receivedDate: "", handedDate: "", note: "" };
 }
 
 export function nozei3ValuesFromRecord(r: JudgmentRecord): Nozei3Values {
   const atWindow = r.nozei3Method === "window";
   return {
     method: atWindow ? "window" : "mail",
-    agentName: atWindow ? (r.applicantAgentName ?? "") : "",
-    agentAddress: atWindow ? (r.applicantAgentAddress ?? "") : "",
+    // 代理人を記録していない古い郵送請求は、様式に印字していた代理人
+    agentName: r.applicantAgentName ?? (atWindow ? "" : DEFAULT_NOZEI3_AGENT.name),
+    agentAddress: r.applicantAgentAddress ?? (atWindow ? "" : DEFAULT_NOZEI3_AGENT.address),
     taxOfficeId: r.taxOfficeId ?? "",
     postDate: r.postDate ?? "",
     trackingNumber: r.trackingNumber ?? "",
     progress: r.mailingProgress ?? "preparing",
     receivedDate: r.receivedDate ?? "",
+    handedDate: r.agentHandedDate ?? "",
     note: r.mailingNote ?? "",
   };
 }
@@ -118,8 +124,8 @@ export function nozei3RecordPatch(
     requestKind: "nozei3",
     nozei3Method: v.method,
     // 誰が代理人で請求・発行したか（郵送請求は様式に印字している代理人）
-    applicantAgentName: atWindow ? v.agentName.trim() : DEFAULT_NOZEI3_AGENT.name,
-    applicantAgentAddress: atWindow ? v.agentAddress.trim() : DEFAULT_NOZEI3_AGENT.address,
+    applicantAgentName: v.agentName.trim(),
+    applicantAgentAddress: v.agentAddress.trim(),
     taxOfficeId: office?.id ?? "",
     taxOfficeName: office?.name ?? "",
     municipalityId: "",
@@ -128,7 +134,8 @@ export function nozei3RecordPatch(
     postDate: atWindow ? "" : v.postDate,
     trackingNumber: atWindow ? "" : v.trackingNumber.trim(),
     mailingProgress: progress,
-    receivedDate: progress === "done" ? v.receivedDate : "",
+    receivedDate: !atWindow && progress === "done" ? v.receivedDate : "",
+    agentHandedDate: atWindow ? v.handedDate : "",
     mailingNote: v.note.trim(),
     requestMethod: atWindow ? "agent_window" : "mail",
     mailRequestDate: atWindow ? "" : v.postDate,
@@ -149,6 +156,45 @@ export function effectiveTaxOffice(
   const suggested = findTaxOfficeForAddress(workerAddress, taxOffices);
   const picked = v.taxOfficeId ? (taxOffices.find((o) => o.id === v.taxOfficeId) ?? null) : null;
   return { office: picked ?? suggested, suggested };
+}
+
+/* ============================ 代理人の氏名・住所（選択肢＋その他の手入力） ============================ */
+const OTHER = "__other__";
+function AgentSelect({
+  label,
+  value,
+  options,
+  placeholder,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: readonly string[];
+  placeholder: string;
+  onChange: (v: string) => void;
+}) {
+  // 選択肢に無い値（空を含む）は「その他（手入力）」として扱う
+  const preset = options.includes(value);
+  return (
+    <div className="flex flex-col gap-1">
+      <span className={LABEL}>{label}</span>
+      <select
+        value={preset ? value : OTHER}
+        onChange={(e) => onChange(e.target.value === OTHER ? "" : e.target.value)}
+        className={INPUT}
+      >
+        {options.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+        <option value={OTHER}>その他（手入力）</option>
+      </select>
+      {!preset && (
+        <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className={INPUT} />
+      )}
+    </div>
+  );
 }
 
 /* ============================ 入力欄（新規・編集で共用） ============================ */
@@ -223,37 +269,30 @@ export function Nozei3Fields({
             </Pill>
           ))}
         </div>
-        {atWindow ? (
-          <div className="rounded-xl border border-border p-3">
-            <p className="mb-2 text-[11px] text-muted">
-              代理人が税務署の窓口で発行を受けます。入力した代理人の住所・氏名が交付請求書の【代理人記入欄】に入り、記録一覧にも誰が代理人で発行したかが残ります。
-            </p>
-            <div className="grid gap-2 sm:grid-cols-[1fr_2fr]">
-              <label className="flex flex-col gap-1">
-                <span className={LABEL}>代理人の氏名（必須）</span>
-                <input
-                  value={v.agentName}
-                  onChange={(e) => set({ agentName: e.target.value })}
-                  placeholder="例：山田　花子"
-                  className={INPUT}
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className={LABEL}>代理人の住所</span>
-                <input
-                  value={v.agentAddress}
-                  onChange={(e) => set({ agentAddress: e.target.value })}
-                  placeholder="例：熊本県熊本市東区◯◯1-2-3"
-                  className={INPUT}
-                />
-              </label>
-            </div>
-          </div>
-        ) : (
-          <p className="text-[11px] text-muted">
-            税務署に郵送で請求します。交付請求書の【代理人記入欄】は、これまでどおり{DEFAULT_NOZEI3_AGENT.name}で入ります。
+        <div className="rounded-xl border border-border p-3">
+          <p className="mb-2 text-[11px] text-muted">
+            {atWindow
+              ? "代理人が税務署の窓口で発行を受けます。"
+              : "税務署に郵送で請求します。"}
+            選んだ代理人の氏名・住所が交付請求書の【代理人記入欄】に入り、記録一覧にも誰が代理人かが残ります。
           </p>
-        )}
+          <div className="grid gap-2 sm:grid-cols-[1fr_2fr]">
+            <AgentSelect
+              label="代理人の氏名（必須）"
+              value={v.agentName}
+              options={NOZEI3_AGENT_NAME_OPTIONS}
+              placeholder="例：山田　花子"
+              onChange={(agentName) => set({ agentName })}
+            />
+            <AgentSelect
+              label="代理人の住所"
+              value={v.agentAddress}
+              options={NOZEI3_AGENT_ADDRESS_OPTIONS}
+              placeholder="例：熊本県熊本市東区◯◯1-2-3"
+              onChange={(agentAddress) => set({ agentAddress })}
+            />
+          </div>
+        </div>
       </div>
 
       {/* 投函先・請求先の税務署 */}
@@ -360,7 +399,7 @@ export function Nozei3Fields({
                 nozei3FormUrl(
                   workerId,
                   office?.id ?? "",
-                  atWindow ? { address: v.agentAddress.trim(), name: v.agentName.trim() } : undefined,
+                  { address: v.agentAddress.trim(), name: v.agentName.trim() },
                 ),
                 "_blank",
                 "noopener",
@@ -472,11 +511,21 @@ export function Nozei3Fields({
             </div>
           </>
         )}
-        {v.progress === "done" && (
+        {atWindow ? (
           <label className="flex flex-col gap-1 sm:max-w-xs">
-            <span className={LABEL}>{atWindow ? "証明書の発行を受けた日" : "証明書が届いた日"}</span>
-            <input type="date" value={v.receivedDate} onChange={(e) => set({ receivedDate: e.target.value })} className={INPUT} />
+            <span className={LABEL}>代理人に交付請求書を渡した日</span>
+            <div className="flex gap-2">
+              <input type="date" value={v.handedDate} onChange={(e) => set({ handedDate: e.target.value })} className={INPUT} />
+              <Button type="button" variant="secondary" className="shrink-0 whitespace-nowrap" onClick={() => set({ handedDate: todayISO() })}>今日</Button>
+            </div>
           </label>
+        ) : (
+          v.progress === "done" && (
+            <label className="flex flex-col gap-1 sm:max-w-xs">
+              <span className={LABEL}>証明書が届いた日</span>
+              <input type="date" value={v.receivedDate} onChange={(e) => set({ receivedDate: e.target.value })} className={INPUT} />
+            </label>
+          )
         )}
         <label className="flex flex-col gap-1">
           <span className={LABEL}>メモ</span>
@@ -553,7 +602,7 @@ export function Nozei3RequestForm({
     personName,
     taxOfficeSelected: !!office,
     hasTaxOffices: taxOffices.length > 0,
-    agentNameMissing: v.method === "window" && !v.agentName.trim(),
+    agentNameMissing: !v.agentName.trim(),
   });
 
   const save = async () => {
@@ -728,7 +777,7 @@ export function Nozei3EditModal({
     personName: record.personName || "-",
     taxOfficeSelected: !!office,
     hasTaxOffices: taxOffices.length > 0,
-    agentNameMissing: v.method === "window" && !v.agentName.trim(),
+    agentNameMissing: !v.agentName.trim(),
   });
 
   return (
@@ -802,12 +851,18 @@ export function Nozei3RecordView({ record: r, canEdit }: { record: JudgmentRecor
           <>
             <p className="mt-1">代理人窓口発行：{applicantLabel("agent", r.applicantAgentName)}</p>
             {r.applicantAgentAddress && <p className="text-muted">代理人の住所：{r.applicantAgentAddress}</p>}
-            {r.mailingProgress === "done" && r.receivedDate && <p>発行を受けた日：{formatDateJP(r.receivedDate)}</p>}
+            <p>
+              代理人に交付請求書を渡した日：
+              {r.agentHandedDate ? formatDateJP(r.agentHandedDate) : <span className="text-muted">未記録</span>}
+            </p>
           </>
         ) : (
           <>
             <p className="mt-1">
               郵送請求：{applicantLabel("agent", r.applicantAgentName || DEFAULT_NOZEI3_AGENT.name)}
+            </p>
+            <p className="text-muted">
+              代理人の住所：{r.applicantAgentName ? r.applicantAgentAddress || "未入力" : DEFAULT_NOZEI3_AGENT.address}
             </p>
             <p>
               投函日：{r.postDate ? formatDateJP(r.postDate) : <span className="text-muted">未記録（準備中）</span>}

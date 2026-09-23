@@ -14,8 +14,8 @@ export default async function WorkerResidenceCardPage({ params }: { params: Prom
 
   const { id } = await params;
   const supabase = await createClient();
-  const { data } = await supabase.from("workers").select("id, name").eq("id", id).maybeSingle();
-  const worker = data as { id: string; name: string } | null;
+  const { data } = await supabase.from("workers").select("id, name, messenger_link").eq("id", id).maybeSingle();
+  const worker = data as { id: string; name: string; messenger_link: string | null } | null;
   if (!worker) notFound();
 
   const card = await getCurrentResidenceCard(id).catch(() => null);
@@ -23,6 +23,7 @@ export default async function WorkerResidenceCardPage({ params }: { params: Prom
     <ResidenceCardPrint
       workerId={worker.id}
       workerName={worker.name}
+      messengerLink={worker.messenger_link ?? ""}
       card={card}
       canEdit={me.role !== "viewer"}
     />

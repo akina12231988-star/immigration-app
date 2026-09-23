@@ -56,8 +56,8 @@ export function MailingRecordSummary({ record: r }: { record: JudgmentRecord }) 
         <>
           <span>窓口発行：{applicantLabel("agent", r.applicantAgentName)}</span>
           <ProgressBadge progress={r.mailingProgress} />
-          {r.mailingProgress === "done" && r.receivedDate && (
-            <span className="text-muted">発行日 {formatDateJP(r.receivedDate)}</span>
+          {r.agentHandedDate && (
+            <span className="text-muted">交付請求書を渡した日 {formatDateJP(r.agentHandedDate)}</span>
           )}
         </>
       ) : (

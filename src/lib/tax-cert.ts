@@ -171,7 +171,8 @@ export interface JudgmentRecord {
   receivedDate?: string; // 税務署から証明書が届いた日
   mailingNote?: string; // メモ
   nozei3Method?: Nozei3Method; // 郵送請求 / 代理人窓口発行（未設定は郵送請求）
-  applicantAgentAddress?: string; // 代理人の住所（納税証明書その3の代理人窓口発行）
+  applicantAgentAddress?: string; // 代理人の住所（納税証明書その3）
+  agentHandedDate?: string; // 代理人に交付請求書を渡した日（納税証明書その3の代理人窓口発行）
   [key: string]: unknown;
 }
 

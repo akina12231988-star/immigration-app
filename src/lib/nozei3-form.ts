@@ -23,8 +23,12 @@ export interface Nozei3FormData {
 // テンプレートに印字されている代理人（画面の初期値）
 export const DEFAULT_NOZEI3_AGENT = {
   address: "熊本県熊本市東区小山3-8-87カームリーハウスB201",
-  name: "野口　明菜",
+  name: "野口明菜",
 } as const;
+
+// 代理人の氏名・住所の選択肢（選択肢に無いときは「その他」で手入力）
+export const NOZEI3_AGENT_NAME_OPTIONS = ["VUONG VAN THANH", "野口明菜"] as const;
+export const NOZEI3_AGENT_ADDRESS_OPTIONS = [DEFAULT_NOZEI3_AGENT.address] as const;
 
 // 代理人記入欄で、テンプレートの印字を白く塗って消す範囲（pdf-lib の座標）。
 // 住所（上端 131〜146）と氏名（上端 166〜182）。見出しの「住所」「氏名」と括弧の線は残す
