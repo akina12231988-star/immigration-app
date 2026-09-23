@@ -160,6 +160,8 @@ export function PriorApplicationCard({
   };
 
   const ssw = prepOrganization ? state.sswChangeFor(prepOrganization.id) : null;
+  // 特定活動の申請は申請番号を転用できないので、前回使った書類の年度は出さない
+  const blocked = isNonTransferable(prior);
 
   return (
     <div className="rounded-xl border border-border bg-background px-3 py-2.5 text-xs">
@@ -186,33 +188,35 @@ export function PriorApplicationCard({
         </>
       )}
 
-      {/* 前回使った書類の年度 */}
-      <div className="mt-2 rounded-lg bg-surface px-2.5 py-2">
-        <p className="text-[11px] font-bold text-muted">前回の申請で使った書類の年度</p>
-        <ul className="mt-0.5 flex flex-col gap-0.5">
-          {YEAR_DOCS.map((d) => {
-            const auto = autoDocYears[d.id];
-            const manual = form.docYears[d.id];
-            const year = auto ?? manual ?? null;
-            return (
-              <li key={d.id} className="flex flex-wrap items-center gap-x-2">
-                <span className="min-w-[10rem]">{d.label}</span>
-                {year ? (
-                  <span className="font-bold">
-                    令和{year}
-                    {d.yearKind}
-                    <span className="ml-1 text-[10px] font-normal text-muted">
-                      （{auto != null ? "前回の申請準備から" : "手入力"}）
+      {/* 前回使った書類の年度（特定活動の申請は転用できないので出さない） */}
+      {!blocked && (
+        <div className="mt-2 rounded-lg bg-surface px-2.5 py-2">
+          <p className="text-[11px] font-bold text-muted">前回の申請で使った書類の年度</p>
+          <ul className="mt-0.5 flex flex-col gap-0.5">
+            {YEAR_DOCS.map((d) => {
+              const auto = autoDocYears[d.id];
+              const manual = form.docYears[d.id];
+              const year = auto ?? manual ?? null;
+              return (
+                <li key={d.id} className="flex flex-wrap items-center gap-x-2">
+                  <span className="min-w-[10rem]">{d.label}</span>
+                  {year ? (
+                    <span className="font-bold">
+                      令和{year}
+                      {d.yearKind}
+                      <span className="ml-1 text-[10px] font-normal text-muted">
+                        （{auto != null ? "前回の申請準備から" : "手入力"}）
+                      </span>
                     </span>
-                  </span>
-                ) : (
-                  <span className="text-muted">不明（下で入力できます）</span>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      </div>
+                  ) : (
+                    <span className="text-muted">不明（下で入力できます）</span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
 
       {/* 参考様式1-25号（支援委託契約書）は同じ所属機関の変更許可（特定技能）でだけ転用できる */}
       {prepOrganization && (
@@ -310,7 +314,7 @@ export function PriorApplicationCard({
             </div>
           )}
           <div className="flex flex-wrap items-end gap-2">
-            {YEAR_DOCS.map((d) => (
+            {!blocked && YEAR_DOCS.map((d) => (
               <label key={d.id} className="flex flex-col gap-0.5">
                 <span className="text-[10px] font-bold text-muted">
                   {d.label}（令和○{d.yearKind}）
