@@ -8,6 +8,7 @@ import {
   prepPrintWageLines,
   prepPrintWorkerLines,
 } from "./application-prep-print";
+import { councilPrintLine } from "./application-prep-print";
 import { EMPTY_PREP_META, PREP_DOC_DEFS, type PrepDocStatus } from "./application-prep";
 import type { WorkerWage } from "@/types/db";
 
@@ -195,5 +196,23 @@ describe("prepPrintFileName", () => {
     );
     expect(prepPrintFileName("", "")).toBe("申請準備の詳細");
     expect(prepPrintFileName("TODO/1234", "A:B")).toBe("TODO_1234_A_B_申請準備の詳細");
+  });
+});
+
+describe("協力確認書の提出先が多いときはQRコード", () => {
+  it("3か所以上はか所数とQRの文、2か所までは文章", () => {
+    const row = (to: string, on: string) => ({ to, on, method: "メール", method_note: "" });
+    const three = [row("（本社）長崎県雲仙市", "2025-04-22"), row("（愛野営業所）長崎県雲仙市", "2025-04-22"), row("（熊本営業所）熊本県八代市", "2025-04-21")];
+    const l = councilPrintLine("k", "協力確認書（住居地）", three);
+    expect(l.value).toBe("全3か所（QRコードを読み取ると一覧が出ます）");
+    expect(l.qr?.split("\n")).toEqual([
+      "協力確認書（住居地）",
+      "1. （本社）長崎県雲仙市 2025-04-22 メール",
+      "2. （愛野営業所）長崎県雲仙市 2025-04-22 メール",
+      "3. （熊本営業所）熊本県八代市 2025-04-21 メール",
+    ]);
+    const two = councilPrintLine("k", "協力確認書（住居地）", three.slice(0, 2));
+    expect(two.qr).toBeUndefined();
+    expect(two.value).toContain("（愛野営業所）長崎県雲仙市（2025-04-22・メール）");
   });
 });

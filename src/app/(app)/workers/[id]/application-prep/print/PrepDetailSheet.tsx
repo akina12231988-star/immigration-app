@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Printer, RotateCcw } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
+import { QrImage } from "@/app/(app)/custody/QrImage";
 import { prepDetailHref } from "@/lib/application-prep";
 import {
   PREP_PRINT_DOC_STATES,
@@ -415,7 +416,17 @@ function LineTable({ lines }: { lines: PrepPrintLine[] }) {
               <th className="w-[38%] border border-black px-1.5 py-[2px] text-left align-top font-normal">
                 {l.label}
               </th>
-              <td className="border border-black px-1.5 py-[2px] align-top font-bold">{l.value}</td>
+              <td className="border border-black px-1.5 py-[2px] align-top font-bold">
+                {l.qr ? (
+                  // 協力確認書の提出先が多いときは、か所数とQRコード（読み取ると一覧が出る）
+                  <span className="flex items-center gap-2">
+                    <QrImage text={l.qr} size={140} errorCorrectionLevel="L" className="shrink-0" />
+                    <span>{l.value}</span>
+                  </span>
+                ) : (
+                  l.value
+                )}
+              </td>
             </tr>
           ),
         )}

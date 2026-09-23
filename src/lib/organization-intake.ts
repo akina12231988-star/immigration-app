@@ -54,9 +54,25 @@ export function councilMethodText(r: Pick<OrgCouncilSubmission, "method" | "meth
   return m;
 }
 
+// 協力確認書の提出先がこの数以上あると、A4印刷では文章の代わりにQRコードで一覧を載せる
+export const COUNCIL_QR_MIN_ROWS = 3;
+
+// 入力のある提出の行
+export function filledCouncilSubmissions(rows: OrgCouncilSubmission[]): OrgCouncilSubmission[] {
+  return rows.filter((r) => r.to || r.on || councilMethodText(r));
+}
+
+// QRコードに入れる一覧（1行1か所。例: 「1. （本社）長崎県雲仙市 2025-04-22 提出した書面の控え」）
+export function councilQrText(title: string, rows: OrgCouncilSubmission[]): string {
+  const lines = filledCouncilSubmissions(rows).map((r, i) =>
+    [`${i + 1}.`, r.to || "提出先未記入", r.on || "提出日未記入", councilMethodText(r)].filter(Boolean).join(" "),
+  );
+  return [title, ...lines].join("\n");
+}
+
 // 協力確認書の提出を1行にする（例: 長崎県雲仙市（2025-04-22・郵送））。画面・印刷で共用
 export function councilSubmissionsLine(rows: OrgCouncilSubmission[]): string {
-  const filled = rows.filter((r) => r.to || r.on || councilMethodText(r));
+  const filled = filledCouncilSubmissions(rows);
   if (filled.length === 0) return "";
   return filled
     .map((r) => {
