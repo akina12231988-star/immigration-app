@@ -407,3 +407,63 @@ export async function getWorkerLatestDocUrls(
     designationUrl: await latest("指定書"),
   };
 }
+
+// 印刷用に、外国人の現在の在留カード（いちばん新しいもの）を1件返す。
+// worker_documents を優先し、無ければ申請の application_files。PDFか画像かも返す
+export interface CurrentResidenceCard {
+  url: string;
+  isPdf: boolean;
+  createdAt: string;
+  fromApplication: boolean;
+}
+
+export async function getCurrentResidenceCard(workerId: string): Promise<CurrentResidenceCard | null> {
+  const me = await getMyProfile();
+  const admin = createAdminClient();
+  if (!me || !admin) return null;
+
+  const isPdfPath = (path: string, mime?: string | null) =>
+    mime === "application/pdf" || /\.pdf$/i.test(path);
+
+  const { data: doc } = await admin
+    .from("worker_documents")
+    .select("storage_path, mime_type, external_url, created_at")
+    .eq("worker_id", workerId)
+    .eq("kind", "在留カード")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const d = doc as { storage_path: string; mime_type: string | null; external_url?: string | null; created_at: string } | null;
+  if (d) {
+    const external = (d.external_url ?? "").trim();
+    if (external) return { url: external, isPdf: true, createdAt: d.created_at, fromApplication: false };
+    if (d.storage_path) {
+      const { data } = await admin.storage.from(BUCKET).createSignedUrl(d.storage_path, TTL);
+      if (data?.signedUrl) {
+        return {
+          url: data.signedUrl,
+          isPdf: isPdfPath(d.storage_path, d.mime_type),
+          createdAt: d.created_at,
+          fromApplication: false,
+        };
+      }
+    }
+  }
+
+  const { data: apps } = await admin.from("immigration_applications").select("id").eq("worker_id", workerId);
+  const appIds = ((apps as { id: string }[]) ?? []).map((a) => a.id);
+  if (appIds.length === 0) return null;
+  const { data: f } = await admin
+    .from("application_files")
+    .select("storage_path, created_at")
+    .in("application_id", appIds)
+    .eq("kind", "在留カード")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const row = f as { storage_path: string; created_at: string } | null;
+  if (!row?.storage_path) return null;
+  const { data } = await admin.storage.from(BUCKET).createSignedUrl(row.storage_path, TTL);
+  if (!data?.signedUrl) return null;
+  return { url: data.signedUrl, isPdf: isPdfPath(row.storage_path), createdAt: row.created_at, fromApplication: true };
+}
