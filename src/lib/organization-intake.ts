@@ -39,7 +39,22 @@ export function emptyOfficer(): OrgOfficer {
 
 // 協力確認書の提出1件分（提出先・提出日）
 export function emptyCouncilSubmission(): OrgCouncilSubmission {
-  return { to: "", on: "" };
+  return { to: "", on: "", method: "" };
+}
+
+// 協力確認書の確認方法の候補（自由入力もできる）
+export const COUNCIL_METHOD_OPTIONS = ["郵送", "メール", "窓口", "電子申請（オンライン）", "FAX"] as const;
+
+// 協力確認書の提出を1行にする（例: 長崎県雲仙市（2025-04-22・郵送））。画面・印刷で共用
+export function councilSubmissionsLine(rows: OrgCouncilSubmission[]): string {
+  const filled = rows.filter((r) => r.to || r.on || r.method);
+  if (filled.length === 0) return "";
+  return filled
+    .map((r) => {
+      const detail = [r.on || "提出日未記入", r.method?.trim()].filter(Boolean).join("・");
+      return `${r.to || "提出先未記入"}（${detail}）`;
+    })
+    .join("、");
 }
 
 // 協力確認書の提出リストの正規化（不正な形は空行1件にする）
@@ -50,6 +65,7 @@ function normalizeCouncilSubmissions(raw: unknown): OrgCouncilSubmission[] {
     return {
       to: typeof s.to === "string" ? s.to : "",
       on: typeof s.on === "string" ? s.on : "",
+      method: typeof s.method === "string" ? s.method : "",
     };
   });
   return rows.length > 0 ? rows : [emptyCouncilSubmission()];

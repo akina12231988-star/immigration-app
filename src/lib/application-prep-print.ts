@@ -10,7 +10,7 @@
 import { PREP_APP_TYPE_LABELS, prepDocLabel, type PrepChecklistMeta, type PrepDocStatus } from "@/lib/application-prep";
 import { SUPPORT_CONTRACT_YEARS, contractPeriodEnd, planDateGroupsFor } from "@/lib/support-plan-dates";
 import { flexHoursLabel } from "@/lib/org-attachments";
-import { financialSalesText } from "@/lib/organization-intake";
+import { councilSubmissionsLine, financialSalesText } from "@/lib/organization-intake";
 import { rosterJpDate } from "@/lib/roster";
 import { sortWages, wageStartedOnLabel } from "@/lib/wage";
 import { calcWageDetail, formatYen, hasWageDetail, normalizeWageDetail } from "@/lib/wage-calc";
@@ -43,12 +43,8 @@ export function prepPrintAppType(meta: PrepChecklistMeta): string {
   return "";
 }
 
-// 協力確認書の提出先と提出日を1行にする（画面と同じ書き方）
-function councilLine(rows: OrgCouncilSubmission[]): string {
-  const filled = rows.filter((r) => r.to || r.on);
-  if (filled.length === 0) return "";
-  return filled.map((r) => `${r.to || "提出先未記入"}（${r.on || "提出日未記入"}）`).join("、");
-}
+// 協力確認書の提出先・提出日・確認方法を1行にする（画面と同じ書き方）
+const councilLine = councilSubmissionsLine;
 
 // 直近の売上高（売上が入っている決算情報の新しい2件。例: 「令和7年分 13,903,547円」）
 function salesLine(financials: OrgFinancialYear[], fiscalKind: string): string {

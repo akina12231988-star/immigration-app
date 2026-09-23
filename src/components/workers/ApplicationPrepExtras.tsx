@@ -46,6 +46,7 @@ import {
   staffCountText,
   staffCountUpdatedNote,
   weeklyHoursText,
+  councilSubmissionsLine,
 } from "@/lib/organization-intake";
 import { listWorkerWages } from "@/lib/supabase/queries/wages";
 import { sortWages, wageStartedOnLabel } from "@/lib/wage";
@@ -693,11 +694,7 @@ export function PrepOrgInfo({
     else setError(res.message);
   };
 
-  const councilLine = (rows: { to: string; on: string }[]) => {
-    const filled = rows.filter((r) => r.to || r.on);
-    if (filled.length === 0) return "";
-    return filled.map((r) => `${r.to || "提出先未記入"}（${r.on || "提出日未記入"}）`).join("、");
-  };
+  const councilLine = councilSubmissionsLine;
 
   // 未登録の欄をこの場で保存する（所属機関の基本情報 / 申込書の内容）。保存後は読み直す
   const saveOrg = async (patch: { address?: string; contact?: string }) => {
@@ -712,8 +709,8 @@ export function PrepOrgInfo({
   const saveCouncil = (key: "council_office_submissions" | "council_residence_submissions") =>
     async (values: string[]) => {
       const rows = intake[key].map((r) => ({ ...r }));
-      if (rows.length === 0) rows.push({ to: "", on: "" });
-      rows[0] = { to: values[0] ?? "", on: values[1] ?? "" };
+      if (rows.length === 0) rows.push({ to: "", on: "", method: "" });
+      rows[0] = { ...rows[0], to: values[0] ?? "", on: values[1] ?? "" };
       await saveIntake({ [key]: rows });
     };
   // 直近の売上高（決算情報の1行目）を保存する。個人事業主は令和何年分、法人は何期分

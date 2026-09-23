@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  councilSubmissionsLine,
   FINANCIAL_DEFAULT_ROWS,
   digitsOnly,
   emptyLodging,
@@ -392,5 +393,30 @@ describe("ownedRentPerPerson / lodgingCalcText", () => {
     expect(lodgingCalcText({ ...base, kind: "賃貸物件", rent: "13,000", max_residents: "3" })).toBe(
       "大家方面: 賃貸物件。家賃 1人あたり 月額 13,000円 × 最大入居人数 3名 ＝ 物件全体の家賃 月額 39,000円",
     );
+  });
+});
+
+describe("councilSubmissionsLine", () => {
+  it("提出先・提出日・確認方法を1行にする（確認方法が無ければ省く）", () => {
+    expect(
+      councilSubmissionsLine([
+        { to: "（本社）長崎県雲仙市", on: "2025-04-22", method: "郵送" },
+        { to: "（愛野営業所）長崎県雲仙市", on: "2025-04-22" },
+        { to: "", on: "", method: "" },
+      ]),
+    ).toBe("（本社）長崎県雲仙市（2025-04-22・郵送）、（愛野営業所）長崎県雲仙市（2025-04-22）");
+    expect(councilSubmissionsLine([{ to: "", on: "" }])).toBe("");
+  });
+});
+
+describe("協力確認書の確認方法の読み込み", () => {
+  it("確認方法を読み、無い古いデータは空にする", () => {
+    const i = normalizeOrganizationIntake({
+      council_office_submissions: [{ to: "雲仙市", on: "2025-04-22", method: "メール" }, { to: "旧", on: "2024-01-01" }],
+    });
+    expect(i.council_office_submissions).toEqual([
+      { to: "雲仙市", on: "2025-04-22", method: "メール" },
+      { to: "旧", on: "2024-01-01", method: "" },
+    ]);
   });
 });
