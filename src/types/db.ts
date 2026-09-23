@@ -204,6 +204,32 @@ export interface OrganizationIntake {
   posting_monthly_hours: string; // 月平均所定労働時間数（時給⇔月給の換算に使う）
   posting_annual_hours: string; // 年間所定労働時間数（月平均×12。時給⇔月給の換算・手取り計算に使う）
   flex_hours_kind: string; // 変形労働時間制（'' / なし / 1ヶ月単位 / 1年単位）
+  // ---- 求人票に記載する内容（雇用条件書の順番。lib/job-conditions.ts） ----
+  job_workplaces: OrgWorkplace[]; // 就業の場所（事業所名・所在地・連絡先）
+  job_workplace_change: string; // 就業の場所の変更の可能性（'' / 有 / 無）
+  job_workplace_changes: OrgWorkplace[]; // 変更の可能性が「有」のときの変更先（複数可）
+  job_work_start: string; // 始業時刻（HH:MM）
+  job_work_end: string; // 終業時刻（HH:MM）
+  job_break_minutes: string; // 休憩時間（分）
+  job_shift: boolean; // 交代制
+  job_shifts: OrgShift[]; // 交代制の勤務時間の組み合わせ
+  job_days_week: string; // 所定労働日数（週）
+  job_days_month: string; // 所定労働日数（月）
+  job_days_year: string; // 所定労働日数（年）
+  job_overtime: string; // 所定時間外労働の有無（'' / 有 / 無）
+  job_holiday_weekly: string; // 休日の定例日（毎週○曜日）
+  job_holiday_other: string; // 休日のその他
+  job_wage_deduction: string; // 労使協定に基づく賃金支払時の控除（'' / 有 / 無）
+  job_raise: string; // 昇給（'' / 有 / 無）
+  job_raise_note: string; // 昇給の内容（有のとき）
+  job_bonus: string; // 賞与（'' / 有 / 無）
+  job_bonus_note: string; // 賞与の内容（有のとき）
+  job_retirement_pay: string; // 退職金（'' / 有 / 無）
+  job_retirement_pay_note: string; // 退職金の内容（有のとき）
+  job_resign_notice_days: string; // 退職（自己都合）: 何日前に社長・工場長等に届けるか
+  job_insurances: string[]; // 社会保険の加入状況・労働保険の適用状況（複数選択）
+  job_insurance_other: string; // 同上の「その他」の内容
+  job_rules_where: string; // 就業規則を確認できる方法や場所
   flex_docs_start: string; // 変形労働時間制（1年単位）の書類の有効期間の開始日（1年間有効）
   contact_method: string; // 資料のやりとり方法（FAX / グループLINE / email）
   handover_method: string; // 会社に渡す外国人資料のやりとり方法（'' / 紙で資料を渡す / mailで資料を送る）
@@ -240,6 +266,20 @@ export interface OrganizationIntake {
   council_residence_submissions: OrgCouncilSubmission[]; // 協力確認書の提出（特定技能外国人の住居地・複数可）
   japanese_staff: OrgJapaneseStaff[]; // 一緒に働く日本人常勤職員
   officers: OrgOfficer[]; // 所属役員（法人）
+}
+
+// 就業の場所1件分（事業所名・所在地・連絡先）
+export interface OrgWorkplace {
+  name: string;
+  address: string;
+  contact: string;
+}
+
+// 交代制の勤務時間1件分（始業・終業・休憩）
+export interface OrgShift {
+  start: string; // HH:MM
+  end: string; // HH:MM
+  break_minutes: string; // 分
 }
 
 // 協力確認書の提出1件分（提出先と提出日を分けて持つ）

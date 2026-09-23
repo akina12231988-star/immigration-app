@@ -45,7 +45,10 @@ import {
   WOODEN_USEFUL_YEARS,
   weeklyHoursText,
   COUNCIL_METHOD_OPTIONS,
+  emptyShift,
+  emptyWorkplace,
 } from "@/lib/organization-intake";
+import { annualHolidays, dailyWorkText, JOB_INSURANCE_OPTIONS } from "@/lib/job-conditions";
 import { orgYearlyFileGroups, orgYearlyKind } from "@/lib/org-yearly-files";
 import {
   ORG_FILE_KIND_AGRI_NOTICE,
@@ -56,6 +59,7 @@ import {
 import { SUPPORT_CONTRACT_STATUSES } from "@/types/db";
 import type {
   OrgCouncilSubmission,
+  OrgWorkplace,
   OrgFinancialYear,
   OrgJapaneseStaff,
   OrgLodging,
@@ -72,6 +76,8 @@ export const INPUT_CLASS =
 
 const GROUP_CLASS = "mt-1 text-xs font-bold text-brand";
 const HINT_CLASS = "text-[11px] leading-relaxed text-muted";
+// 求人票に記載する内容の小見出し（雇用条件書の項目）
+const SUB_CLASS = "mt-1 border-b border-border pb-0.5 text-xs font-bold";
 
 export function emptyOrganizationInput(): OrganizationInput {
   return {
@@ -1125,96 +1131,110 @@ function IntakeSection({
           </label>
         )}
 
-        <p className={GROUP_CLASS}>求人票に記載する内容</p>
+        <p className={GROUP_CLASS}>求人票に記載する内容（雇用条件書の順番）</p>
         <p className={HINT_CLASS}>
-          この会社の求人を登録するときに、求人票の欄へ自動で反映されます（毎回同じ値を入れ直さなくて済みます）。
+          この会社の求人を登録するときに、求人票の欄へ自動で反映されます（毎回同じ値を入れ直さなくて済みます）。雇用条件書と同じ順番で並べています。
         </p>
-        <div className="grid grid-cols-2 gap-2.5">
-          <IntakeField
-            label="通信費（約・円）"
-            value={formatAmountInput(intake.posting_comm_cost)}
-            onChange={(v) => setIntake({ posting_comm_cost: formatAmountInput(v) })}
-            placeholder="例: 3000／無し"
-            hint="徴収しない会社は「無し」と入力してください。"
-            locked={locks.intake("posting_comm_cost")}
-          />
-          <IntakeField
-            label="水道光熱費（約・円）"
-            value={formatAmountInput(intake.posting_utility_cost)}
-            onChange={(v) => setIntake({ posting_utility_cost: formatAmountInput(digitsOnly(v)) })}
-            placeholder="例: 8000"
-            locked={locks.intake("posting_utility_cost")}
-          />
-          {locks.intake("posting_utility_kind") ? (
-            <StaticValue label="水道光熱費の徴収" value={intake.posting_utility_kind} />
-          ) : (
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-bold text-muted">水道光熱費の徴収</span>
-              <select
-                value={intake.posting_utility_kind}
-                onChange={(e) => setIntake({ posting_utility_kind: e.target.value })}
-                className={INPUT_CLASS}
-              >
-                <option value="">—</option>
-                <option value="実費">実費</option>
-                <option value="固定">固定</option>
-              </select>
-            </label>
-          )}
-        </div>
-        <IntakeField
-          label="通信費を徴収しない理由（聞いていたら記録）"
-          value={intake.posting_comm_reason}
-          onChange={(v) => setIntake({ posting_comm_reason: v })}
-          placeholder="例: Wi-Fiは会社負担で本人契約のスマホ代のみのため など"
-          locked={locks.intake("posting_comm_reason")}
+
+        <p className={SUB_CLASS}>1. 就業の場所</p>
+        <WorkplaceRows
+          rows={intake.job_workplaces}
+          onChange={(rows) => setIntake({ job_workplaces: rows })}
+          addLabel="＋ 就業の場所を追加"
+          minRows={1}
         />
-        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-          <IntakeField
-            label="給与の締切日"
-            value={intake.posting_pay_closing}
-            onChange={(v) => setIntake({ posting_pay_closing: v })}
-            placeholder="例: 末日"
-            locked={locks.intake("posting_pay_closing")}
+        <ToggleRow
+          label="変更の可能性"
+          value={intake.job_workplace_change}
+          options={["有", "無"]}
+          onChange={(v) => setIntake({ job_workplace_change: v, job_workplace_changes: v === "有" && intake.job_workplace_changes.length === 0 ? [emptyWorkplace()] : intake.job_workplace_changes })}
+        />
+        {intake.job_workplace_change === "有" && (
+          <WorkplaceRows
+            label="変更先の事業所"
+            rows={intake.job_workplace_changes}
+            onChange={(rows) => setIntake({ job_workplace_changes: rows })}
+            addLabel="＋ 変更先の事業所を追加"
+            minRows={1}
           />
-          <IntakeField
-            label="給与の支払日"
-            value={intake.posting_pay_day}
-            onChange={(v) => setIntake({ posting_pay_day: v })}
-            placeholder="例: 翌月10日"
-            locked={locks.intake("posting_pay_day")}
-          />
-          <IntakeSelect
-            label="支払方法"
-            value={intake.pay_method}
-            onChange={(v) => setIntake({ pay_method: v })}
-            options={["口座振込", "通貨払い"]}
-            hint="上の「給与支払い方法」と同じ項目です。"
-            locked={locks.intake("pay_method")}
-          />
-        </div>
-        {locks.intake("posting_other_conditions") ? (
-          <StaticValue
-            label="その他（応募条件。採用の際に必ず確認）"
-            value={intake.posting_other_conditions}
-          />
-        ) : (
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-bold text-muted">
-              その他（応募条件。採用の際に必ず確認）
-            </span>
-            <textarea
-              value={intake.posting_other_conditions}
-              onChange={(e) => setIntake({ posting_other_conditions: e.target.value })}
-              rows={2}
-              placeholder="例: タトゥー（刺青）のある人は不可 など"
-              className={`${INPUT_CLASS} min-h-[60px] py-2 leading-relaxed`}
-            />
-            <span className={HINT_CLASS}>
-              求人票の「その他（応募条件）」へ自動で反映されます。タトゥー（刺青）不可などの条件はここに登録しておくと採用の際に見落としません。
-            </span>
-          </label>
         )}
+
+        <p className={SUB_CLASS}>2. 始業・終業の時刻、休憩時間</p>
+        <WorkTimeRow
+          start={intake.job_work_start}
+          end={intake.job_work_end}
+          breakMinutes={intake.job_break_minutes}
+          onChange={(p) =>
+            setIntake({
+              ...(p.start !== undefined ? { job_work_start: p.start } : {}),
+              ...(p.end !== undefined ? { job_work_end: p.end } : {}),
+              ...(p.breakMinutes !== undefined ? { job_break_minutes: p.breakMinutes } : {}),
+            })
+          }
+        />
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={intake.job_shift}
+            onChange={(e) =>
+              setIntake({
+                job_shift: e.target.checked,
+                job_shifts: e.target.checked && intake.job_shifts.length === 0 ? [emptyShift()] : intake.job_shifts,
+              })
+            }
+            className="h-4 w-4"
+          />
+          交代制
+        </label>
+        {intake.job_shift && (
+          <div className="flex flex-col gap-2 rounded-xl border border-border p-2.5">
+            <p className="text-xs font-bold">交代制の勤務時間の組み合わせ</p>
+            {intake.job_shifts.map((sh, i) => (
+              <div key={i} className="flex items-end gap-2">
+                <div className="min-w-0 flex-1">
+                  <WorkTimeRow
+                    label={`勤務${i + 1}`}
+                    start={sh.start}
+                    end={sh.end}
+                    breakMinutes={sh.break_minutes}
+                    onChange={(p) =>
+                      setIntake({
+                        job_shifts: intake.job_shifts.map((x, j) =>
+                          j === i
+                            ? {
+                                start: p.start ?? x.start,
+                                end: p.end ?? x.end,
+                                break_minutes: p.breakMinutes ?? x.break_minutes,
+                              }
+                            : x,
+                        ),
+                      })
+                    }
+                  />
+                </div>
+                {intake.job_shifts.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setIntake({ job_shifts: intake.job_shifts.filter((_, j) => j !== i) })}
+                    aria-label="この勤務時間を削除"
+                    className="mb-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border text-seal"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => setIntake({ job_shifts: [...intake.job_shifts, emptyShift()] })}
+              className="self-start text-xs font-bold text-brand"
+            >
+              ＋ 勤務時間を追加
+            </button>
+          </div>
+        )}
+
+        <p className={SUB_CLASS}>3. 所定労働時間数（週・月・年間）</p>
         {/* 月平均と年間はどちらかを入れると片方が自動で入る（月平均×12＝年間） */}
         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
           {/* 申請書（所属機関等作成用）の「所定労働時間（週平均）」にそのまま使う */}
@@ -1268,6 +1288,256 @@ function IntakeSection({
           />
         </div>
 
+
+        <p className={SUB_CLASS}>4. 所定労働日数（週・月・年）</p>
+        <div className="grid grid-cols-3 gap-2.5">
+          <IntakeField
+            label="週（日）"
+            value={intake.job_days_week}
+            onChange={(v) => setIntake({ job_days_week: v })}
+            placeholder="例: 5"
+            locked={locks.intake("job_days_week")}
+          />
+          <IntakeField
+            label="月（日）"
+            value={intake.job_days_month}
+            onChange={(v) => setIntake({ job_days_month: v })}
+            placeholder="例: 21.6"
+            locked={locks.intake("job_days_month")}
+          />
+          <IntakeField
+            label="年（日）"
+            value={intake.job_days_year}
+            onChange={(v) => setIntake({ job_days_year: v })}
+            placeholder="例: 260"
+            locked={locks.intake("job_days_year")}
+          />
+        </div>
+
+        <p className={SUB_CLASS}>5. 所定時間外労働</p>
+        <ToggleRow
+          label="所定時間外労働の有無"
+          value={intake.job_overtime}
+          options={["有", "無"]}
+          onChange={(v) => setIntake({ job_overtime: v })}
+        />
+
+        <p className={SUB_CLASS}>6. 休日</p>
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-bold text-muted">定例日</span>
+            <span className="flex items-center gap-1.5 text-sm">
+              毎週
+              <input
+                value={intake.job_holiday_weekly}
+                onChange={(e) => setIntake({ job_holiday_weekly: e.target.value })}
+                placeholder="例: 土・日"
+                className={`${INPUT_CLASS} flex-1`}
+              />
+              曜日
+            </span>
+          </label>
+          <IntakeField
+            label="その他"
+            value={intake.job_holiday_other}
+            onChange={(v) => setIntake({ job_holiday_other: v })}
+            placeholder="例: 国民の祝日、年末年始（12/29〜1/3）"
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-muted">年間合計休日日数（365日 − 年間所定労働日数）</span>
+          <p className="flex min-h-[44px] items-center rounded-xl bg-border/30 px-3 text-sm font-bold">
+            {(() => {
+              const h = annualHolidays(intake.job_days_year);
+              return h != null
+                ? `${h}日（365日 − ${intake.job_days_year.trim()}日）`
+                : "上の「所定労働日数（年）」を入れると自動で入ります";
+            })()}
+          </p>
+        </div>
+
+        <p className={SUB_CLASS}>7. 年次有給休暇</p>
+        <div className="rounded-xl bg-background px-3 py-2.5 text-sm leading-relaxed">
+          <p>6ヶ月継続勤務した場合 → 10日付与</p>
+          <p>6ヶ月未満の年次有給休暇 → 無し</p>
+        </div>
+
+        <p className={SUB_CLASS}>8. 賃金</p>
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+          <IntakeField
+            label="賃金締切日（毎月○日）"
+            value={intake.posting_pay_closing}
+            onChange={(v) => setIntake({ posting_pay_closing: v })}
+            placeholder="例: 10日／末日"
+            locked={locks.intake("posting_pay_closing")}
+          />
+          <IntakeField
+            label="賃金の支払日（毎月○日）"
+            value={intake.posting_pay_day}
+            onChange={(v) => setIntake({ posting_pay_day: v })}
+            placeholder="例: 25日／翌月10日"
+            locked={locks.intake("posting_pay_day")}
+          />
+        </div>
+        <ToggleRow
+          label="賃金支払方法"
+          value={intake.pay_method}
+          options={["口座振込", "通貨払い"]}
+          onChange={(v) => setIntake({ pay_method: v })}
+          hint="上の「給与支払い方法」と同じ項目です。"
+        />
+        <ToggleRow
+          label="労使協定に基づく賃金支払時の控除"
+          value={intake.job_wage_deduction}
+          options={["有", "無"]}
+          onChange={(v) => setIntake({ job_wage_deduction: v })}
+        />
+
+        <ToggleWithNote
+          label="昇給"
+          value={intake.job_raise}
+          note={intake.job_raise_note}
+          onChange={(v) => setIntake({ job_raise: v })}
+          onNote={(v) => setIntake({ job_raise_note: v })}
+          placeholder="例: 年1回（4月）、業績・勤務成績による"
+        />
+        <ToggleWithNote
+          label="賞与"
+          value={intake.job_bonus}
+          note={intake.job_bonus_note}
+          onChange={(v) => setIntake({ job_bonus: v })}
+          onNote={(v) => setIntake({ job_bonus_note: v })}
+          placeholder="例: 年2回（7月・12月）、業績による"
+        />
+        <ToggleWithNote
+          label="退職金"
+          value={intake.job_retirement_pay}
+          note={intake.job_retirement_pay_note}
+          onChange={(v) => setIntake({ job_retirement_pay: v })}
+          onNote={(v) => setIntake({ job_retirement_pay_note: v })}
+          placeholder="例: 勤続3年以上、退職金規程による"
+        />
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-xs font-bold text-muted">休業手当</span>
+          <span className="rounded-lg bg-background px-3 py-1.5 font-bold">有（平均賃金の60%）</span>
+        </div>
+
+        <p className={SUB_CLASS}>9. 退職</p>
+        <label className="flex flex-wrap items-center gap-1.5 text-sm">
+          <span className="text-xs font-bold text-muted">自己都合の場合：</span>
+          <input
+            inputMode="numeric"
+            value={intake.job_resign_notice_days}
+            onChange={(e) => setIntake({ job_resign_notice_days: e.target.value.replace(/[^0-9]/g, "") })}
+            placeholder="例: 30"
+            className="min-h-[40px] w-24 rounded-xl border border-border bg-background px-3 text-right text-sm focus:border-brand focus:outline-none"
+          />
+          日前に社長・工場長等に届けること
+        </label>
+
+        <p className={SUB_CLASS}>10. 社会保険の加入状況・労働保険の適用状況</p>
+        <div className="flex flex-wrap gap-1.5">
+          {JOB_INSURANCE_OPTIONS.map((o) => {
+            const on = intake.job_insurances.includes(o);
+            return (
+              <button
+                key={o}
+                type="button"
+                onClick={() =>
+                  setIntake({
+                    job_insurances: on ? intake.job_insurances.filter((x) => x !== o) : [...intake.job_insurances, o],
+                  })
+                }
+                className={`rounded-lg border px-3 py-1.5 text-xs font-bold ${
+                  on ? "border-brand bg-brand text-brand-foreground" : "border-border bg-surface text-muted"
+                }`}
+              >
+                {on ? "✓ " : ""}
+                {o}
+              </button>
+            );
+          })}
+        </div>
+        {intake.job_insurances.includes("その他") && (
+          <IntakeField
+            label="その他の保険"
+            value={intake.job_insurance_other}
+            onChange={(v) => setIntake({ job_insurance_other: v })}
+            placeholder="例: 特定技能総合保険"
+          />
+        )}
+
+        <p className={SUB_CLASS}>11. 就業規則を確認できる方法や場所</p>
+        <IntakeField
+          label="確認できる方法・場所"
+          value={intake.job_rules_where}
+          onChange={(v) => setIntake({ job_rules_where: v })}
+          placeholder="例: 事務所の掲示板に掲示／休憩室に備え付け"
+        />
+
+        <p className={GROUP_CLASS}>求人票に記載するその他の内容</p>
+        <div className="grid grid-cols-2 gap-2.5">
+          <IntakeField
+            label="通信費（約・円）"
+            value={formatAmountInput(intake.posting_comm_cost)}
+            onChange={(v) => setIntake({ posting_comm_cost: formatAmountInput(v) })}
+            placeholder="例: 3000／無し"
+            hint="徴収しない会社は「無し」と入力してください。"
+            locked={locks.intake("posting_comm_cost")}
+          />
+          <IntakeField
+            label="水道光熱費（約・円）"
+            value={formatAmountInput(intake.posting_utility_cost)}
+            onChange={(v) => setIntake({ posting_utility_cost: formatAmountInput(digitsOnly(v)) })}
+            placeholder="例: 8000"
+            locked={locks.intake("posting_utility_cost")}
+          />
+          {locks.intake("posting_utility_kind") ? (
+            <StaticValue label="水道光熱費の徴収" value={intake.posting_utility_kind} />
+          ) : (
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-bold text-muted">水道光熱費の徴収</span>
+              <select
+                value={intake.posting_utility_kind}
+                onChange={(e) => setIntake({ posting_utility_kind: e.target.value })}
+                className={INPUT_CLASS}
+              >
+                <option value="">—</option>
+                <option value="実費">実費</option>
+                <option value="固定">固定</option>
+              </select>
+            </label>
+          )}
+        </div>
+        <IntakeField
+          label="通信費を徴収しない理由（聞いていたら記録）"
+          value={intake.posting_comm_reason}
+          onChange={(v) => setIntake({ posting_comm_reason: v })}
+          placeholder="例: Wi-Fiは会社負担で本人契約のスマホ代のみのため など"
+          locked={locks.intake("posting_comm_reason")}
+        />
+        {locks.intake("posting_other_conditions") ? (
+          <StaticValue
+            label="その他（応募条件。採用の際に必ず確認）"
+            value={intake.posting_other_conditions}
+          />
+        ) : (
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-bold text-muted">
+              その他（応募条件。採用の際に必ず確認）
+            </span>
+            <textarea
+              value={intake.posting_other_conditions}
+              onChange={(e) => setIntake({ posting_other_conditions: e.target.value })}
+              rows={2}
+              placeholder="例: タトゥー（刺青）のある人は不可 など"
+              className={`${INPUT_CLASS} min-h-[60px] py-2 leading-relaxed`}
+            />
+            <span className={HINT_CLASS}>
+              求人票の「その他（応募条件）」へ自動で反映されます。タトゥー（刺青）不可などの条件はここに登録しておくと採用の際に見落としません。
+            </span>
+          </label>
+        )}
         <p className={GROUP_CLASS}>変形労働時間制</p>
         {locks.intake("flex_hours_kind") ? (
           <StaticValue label="変形労働時間制" value={intake.flex_hours_kind} />
@@ -1925,6 +2195,179 @@ function IntakeSection({
         >
           ＋ 役員を追加
         </button>
+      </div>
+    </div>
+  );
+}
+
+// 有／無などをボタンで選ぶ行。同じボタンをもう一度押すと選択を外す
+function ToggleRow({
+  label,
+  value,
+  options,
+  onChange,
+  hint,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (v: string) => void;
+  hint?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-bold text-muted">{label}</span>
+        {options.map((o) => (
+          <button
+            key={o}
+            type="button"
+            onClick={() => onChange(value === o ? "" : o)}
+            className={`min-w-[4rem] rounded-lg border px-3 py-1.5 text-xs font-bold ${
+              value === o ? "border-brand bg-brand text-brand-foreground" : "border-border bg-surface text-muted"
+            }`}
+          >
+            {o}
+          </button>
+        ))}
+      </div>
+      {hint && <span className={HINT_CLASS}>{hint}</span>}
+    </div>
+  );
+}
+
+// 有／無を選び、有のときだけ内容を文字で入れる行（昇給・賞与・退職金）
+function ToggleWithNote({
+  label,
+  value,
+  note,
+  onChange,
+  onNote,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  note: string;
+  onChange: (v: string) => void;
+  onNote: (v: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <ToggleRow label={label} value={value} options={["有", "無"]} onChange={onChange} />
+      {value === "有" && (
+        <input
+          value={note}
+          onChange={(e) => onNote(e.target.value)}
+          placeholder={placeholder ?? `${label}の内容`}
+          className={INPUT_CLASS}
+        />
+      )}
+    </div>
+  );
+}
+
+// 就業の場所（事業所名・所在地・連絡先）の複数行入力
+function WorkplaceRows({
+  label,
+  rows,
+  onChange,
+  addLabel,
+  minRows = 0,
+}: {
+  label?: string;
+  rows: OrgWorkplace[];
+  onChange: (rows: OrgWorkplace[]) => void;
+  addLabel: string;
+  minRows?: number;
+}) {
+  const setRow = (i: number, patch: Partial<OrgWorkplace>) =>
+    onChange(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const input = "min-h-[40px] w-full rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none";
+  return (
+    <div className="flex flex-col gap-1.5 rounded-xl border border-border p-2.5">
+      {label && <p className="text-xs font-bold">{label}</p>}
+      {rows.map((row, i) => (
+        <div key={i} className="flex flex-wrap items-end gap-2">
+          <label className="flex min-w-[9rem] flex-1 flex-col gap-1">
+            <span className="text-[11px] text-muted">事業所名</span>
+            <input value={row.name} onChange={(e) => setRow(i, { name: e.target.value })} placeholder="例: 本社" className={input} />
+          </label>
+          <label className="flex min-w-[14rem] flex-[2] flex-col gap-1">
+            <span className="text-[11px] text-muted">所在地</span>
+            <input value={row.address} onChange={(e) => setRow(i, { address: e.target.value })} placeholder="例: 長崎県雲仙市…" className={input} />
+          </label>
+          <label className="flex min-w-[9rem] flex-1 flex-col gap-1">
+            <span className="text-[11px] text-muted">連絡先</span>
+            <input value={row.contact} onChange={(e) => setRow(i, { contact: e.target.value })} placeholder="例: 0957-00-0000" className={input} />
+          </label>
+          {rows.length > minRows && (
+            <button
+              type="button"
+              onClick={() => onChange(rows.filter((_, j) => j !== i))}
+              aria-label="この事業所を削除"
+              className="mb-1 flex h-9 w-9 items-center justify-center rounded-lg border border-border text-seal"
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => onChange([...rows, emptyWorkplace()])}
+        className="self-start text-xs font-bold text-brand"
+      >
+        {addLabel}
+      </button>
+    </div>
+  );
+}
+
+// 始業・終業・休憩の入力と、1日の所定労働時間（自動）
+function WorkTimeRow({
+  label,
+  start,
+  end,
+  breakMinutes,
+  onChange,
+}: {
+  label?: string;
+  start: string;
+  end: string;
+  breakMinutes: string;
+  onChange: (p: { start?: string; end?: string; breakMinutes?: string }) => void;
+}) {
+  const daily = dailyWorkText(start, end, breakMinutes);
+  const input = "min-h-[40px] w-full rounded-xl border border-border bg-background px-2 text-sm focus:border-brand focus:outline-none";
+  return (
+    <div className="flex flex-col gap-1">
+      {label && <span className="text-[11px] font-bold">{label}</span>}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] text-muted">始業時刻</span>
+          <input type="time" value={start} onChange={(e) => onChange({ start: e.target.value })} className={input} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] text-muted">終業時刻</span>
+          <input type="time" value={end} onChange={(e) => onChange({ end: e.target.value })} className={input} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] text-muted">休憩時間（分）</span>
+          <input
+            inputMode="numeric"
+            value={breakMinutes}
+            onChange={(e) => onChange({ breakMinutes: e.target.value.replace(/[^0-9]/g, "") })}
+            placeholder="例: 60"
+            className={input}
+          />
+        </label>
+        <div className="flex flex-col gap-1">
+          <span className="text-[11px] text-muted">1日の所定労働時間数</span>
+          <p className="flex min-h-[40px] items-center rounded-xl bg-border/30 px-3 text-sm font-bold">
+            {daily || "自動で表示"}
+          </p>
+        </div>
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { postingInsuranceName, workplaceChangeText } from "@/lib/job-conditions";
 import { Button } from "@/components/ui/Button";
 import { Combobox } from "@/components/ui/Combobox";
 import { formatAmountInput } from "@/lib/amount-format";
@@ -153,6 +154,29 @@ function sheetFromOrgIntake(intake?: Partial<OrganizationIntake>): Partial<Posti
   if (intake.posting_utility_cost) out.utility_cost = intake.posting_utility_cost;
   if (intake.posting_utility_kind) out.utility_kind = intake.posting_utility_kind;
   if (intake.posting_comm_cost) out.communication_cost = intake.posting_comm_cost;
+  // 雇用条件書の順番で登録した内容（就業の場所の変更・始業終業・休憩・時間外労働・休日）
+  const locChange = workplaceChangeText(intake.job_workplace_change ?? "", intake.job_workplace_changes ?? []);
+  if (locChange) out.work_location_change = locChange;
+  if (intake.job_work_start) out.work_start = intake.job_work_start;
+  if (intake.job_work_end) out.work_end = intake.job_work_end;
+  if (intake.job_break_minutes) out.break_minutes = intake.job_break_minutes;
+  if (intake.job_overtime) out.overtime = intake.job_overtime;
+  const holiday = [
+    intake.job_holiday_weekly?.trim() ? `毎週${intake.job_holiday_weekly.trim()}曜日` : "",
+    intake.job_holiday_other?.trim() ?? "",
+  ]
+    .filter(Boolean)
+    .join("、");
+  if (holiday) out.holiday_note = holiday;
+  if (intake.job_raise) out.raise = intake.job_raise;
+  if (intake.job_raise === "有" && intake.job_raise_note) out.raise_note = intake.job_raise_note;
+  if (intake.job_bonus) out.bonus = intake.job_bonus;
+  if (intake.job_bonus === "有" && intake.job_bonus_note) out.bonus_note = intake.job_bonus_note;
+  const ins = (intake.job_insurances ?? []).filter((x) => x !== "その他").map(postingInsuranceName);
+  if (ins.length > 0) out.insurances = ins;
+  if ((intake.job_insurances ?? []).includes("その他") && intake.job_insurance_other) {
+    out.insurance_other = intake.job_insurance_other;
+  }
   if (intake.flex_hours_kind) {
     out.flexible_hours =
       intake.flex_hours_kind === "なし"
