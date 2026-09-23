@@ -99,3 +99,37 @@ export function followWorkSite(
   rows[0] = { name, address, contact };
   return rows;
 }
+
+// 連絡先から電話番号だけを取り出す（「TEL 0957-00-0000 / FAX 0957-00-0001」→「0957-00-0000」）。
+// FAX 番号は就業場所の一覧表に載せない
+export function phoneOnly(contact: string): string {
+  const parts = contact
+    .split(/[\/／、,]/)
+    .map((p) => p.trim())
+    .filter((p) => p && !/^FAX/i.test(p));
+  return parts
+    .map((p) => p.replace(/^(TEL|電話)[\s:：]*/i, "").trim())
+    .filter(Boolean)
+    .join(" / ");
+}
+
+// 就業場所の一覧表（A4）の行。就業の場所 → 変更先の事業所（変更の可能性が「有」のとき）の順。
+// 事業所名・所在地・連絡先がすべて空の行は除く
+export function workplaceListRows(intake: {
+  job_workplaces?: OrgWorkplace[];
+  job_workplace_change?: string;
+  job_workplace_changes?: OrgWorkplace[];
+}): { name: string; address: string; phone: string }[] {
+  const rows = [
+    ...(intake.job_workplaces ?? []),
+    ...(intake.job_workplace_change === "有" ? (intake.job_workplace_changes ?? []) : []),
+  ];
+  return rows
+    .filter((w) => w.name.trim() || w.address.trim() || w.contact.trim())
+    .map((w) => ({ name: w.name.trim(), address: w.address.trim(), phone: phoneOnly(w.contact) }));
+}
+
+// 一覧表を印刷できるか（変更の可能性が「有」で、就業場所が2か所以上）
+export function canPrintWorkplaceList(intake: Parameters<typeof workplaceListRows>[0]): boolean {
+  return intake.job_workplace_change === "有" && workplaceListRows(intake).length >= 2;
+}

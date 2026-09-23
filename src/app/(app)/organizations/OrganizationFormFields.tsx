@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Trash2, Upload } from "lucide-react";
+import { Loader2, Printer, Trash2, Upload } from "lucide-react";
 import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { FileDropArea } from "@/components/ui/FileDropArea";
@@ -48,7 +48,13 @@ import {
   emptyShift,
   emptyWorkplace,
 } from "@/lib/organization-intake";
-import { annualHolidays, dailyWorkText, followWorkSite, JOB_INSURANCE_OPTIONS } from "@/lib/job-conditions";
+import {
+  annualHolidays,
+  canPrintWorkplaceList,
+  dailyWorkText,
+  followWorkSite,
+  JOB_INSURANCE_OPTIONS,
+} from "@/lib/job-conditions";
 import { orgYearlyFileGroups, orgYearlyKind } from "@/lib/org-yearly-files";
 import {
   ORG_FILE_KIND_AGRI_NOTICE,
@@ -1184,6 +1190,24 @@ function IntakeSection({
             minRows={1}
           />
         )}
+        {canPrintWorkplaceList(intake) &&
+          (orgId ? (
+            <a
+              href={`/organizations/${orgId}/workplaces/print`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 self-start rounded-lg border border-brand px-3 py-1.5 text-xs font-bold text-brand"
+            >
+              <Printer size={13} />
+              就業場所の一覧表を印刷（A4縦・PDF保存）
+            </a>
+          ) : null)}
+        {canPrintWorkplaceList(intake) &&
+          (orgId ? (
+            <p className={HINT_CLASS}>一覧表は保存済みの内容で作ります。事業所を直したときは、先に保存してから開いてください。</p>
+          ) : (
+            <p className={HINT_CLASS}>就業場所の一覧表（A4）は、会社・機関を登録したあとに印刷できます。</p>
+          ))}
 
         <p className={SUB_CLASS}>2. 始業・終業の時刻、休憩時間</p>
         <WorkTimeRow
