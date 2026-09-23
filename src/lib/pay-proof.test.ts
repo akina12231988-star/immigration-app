@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { isBankTransferPay, isCashPay, payProofFileName, payProofSheetCount } from "./pay-proof";
+import {
+  isBankTransferPay,
+  isCashPay,
+  payProofFileName,
+  payProofRange,
+  payProofSheetCount,
+  payProofStartMonth,
+} from "./pay-proof";
 
 describe("isCashPay", () => {
   it("所属機関の給与支払い方法が通貨払いのときだけ true", () => {
@@ -53,5 +60,28 @@ describe("isBankTransferPay", () => {
     expect(isBankTransferPay("通貨払い")).toBe(false);
     expect(isBankTransferPay("")).toBe(false);
     expect(isBankTransferPay(null)).toBe(false);
+  });
+});
+
+describe("payProofRange", () => {
+  it("開始月〜在留期限日の月まで、両端の月も1枚ずつ数える", () => {
+    expect(payProofRange("2026-09-01", "2028-01-27")).toEqual({
+      count: 17,
+      label: "2026年9月分〜2028年1月分",
+    });
+    expect(payProofRange("2026-09", "2026-09-30")).toEqual({ count: 1, label: "2026年9月分〜2026年9月分" });
+  });
+  it("読み取れない・期限が開始より前なら null", () => {
+    expect(payProofRange("", "2028-01-27")).toBeNull();
+    expect(payProofRange("2026-09", null)).toBeNull();
+    expect(payProofRange("2026-09", "2026-08-31")).toBeNull();
+  });
+});
+
+describe("payProofStartMonth", () => {
+  it("雇用開始がこれからなら雇用開始の月、すでに働いていれば今月", () => {
+    expect(payProofStartMonth("2026-09-23", "2026-11-01")).toBe("2026-11");
+    expect(payProofStartMonth("2026-09-23", "2025-04-01")).toBe("2026-09");
+    expect(payProofStartMonth("2026-09-23", null)).toBe("2026-09");
   });
 });
