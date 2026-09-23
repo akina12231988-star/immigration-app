@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Loader2, Trash2, Upload } from "lucide-react";
 import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { CopyButton } from "@/components/ui/CopyButton";
@@ -44,6 +44,7 @@ import {
   suggestedUsefulYears,
   WOODEN_USEFUL_YEARS,
   weeklyHoursText,
+  COUNCIL_METHOD_OPTIONS,
 } from "@/lib/organization-intake";
 import { orgYearlyFileGroups, orgYearlyKind } from "@/lib/org-yearly-files";
 import {
@@ -1824,9 +1825,9 @@ function IntakeSection({
             locked={locks.intake("missing_trainee")}
           />
         </div>
-        <p className={GROUP_CLASS}>協力確認書の提出（提出先・提出日）</p>
+        <p className={GROUP_CLASS}>協力確認書の提出（提出先・提出日・確認方法）</p>
         <p className={HINT_CLASS}>
-          提出先と提出日を分けて記録します。複数ある場合は「＋提出を追加」で行を足してください。協議会の加入通知書などがある場合はコピーをもらってください。
+          提出先・提出日・確認方法（郵送・メール・窓口など）を分けて記録します。複数ある場合は「＋提出を追加」で行を足してください。協議会の加入通知書などがある場合はコピーをもらってください。
         </p>
         <CouncilSubmissionRows
           label="特定技能外国人の活動する事業所の所在地での提出"
@@ -1941,6 +1942,8 @@ function CouncilSubmissionRows({
 }) {
   const setRow = (i: number, patch: Partial<OrgCouncilSubmission>) =>
     onChange(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  // 確認方法の候補（この欄は画面に2つあるので、候補リストの id を欄ごとに分ける）
+  const methodListId = useId();
   return (
     <div className="rounded-xl border border-border p-2.5">
       <p className="mb-1.5 text-xs font-bold">{label}</p>
@@ -1965,6 +1968,16 @@ function CouncilSubmissionRows({
                 className="min-h-[40px] rounded-xl border border-border bg-background px-2 text-sm focus:border-brand focus:outline-none"
               />
             </label>
+            <label className="flex w-44 flex-col gap-1">
+              <span className="text-[11px] text-muted">確認方法</span>
+              <input
+                list={methodListId}
+                value={row.method ?? ""}
+                onChange={(e) => setRow(i, { method: e.target.value })}
+                placeholder="例: 郵送"
+                className="min-h-[40px] w-full rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none"
+              />
+            </label>
             {rows.length > 1 && (
               <button
                 type="button"
@@ -1978,6 +1991,11 @@ function CouncilSubmissionRows({
           </div>
         ))}
       </div>
+      <datalist id={methodListId}>
+        {COUNCIL_METHOD_OPTIONS.map((o) => (
+          <option key={o} value={o} />
+        ))}
+      </datalist>
       <button
         type="button"
         onClick={() => onChange([...rows, emptyCouncilSubmission()])}
