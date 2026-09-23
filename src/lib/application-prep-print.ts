@@ -11,8 +11,7 @@ import { PREP_APP_TYPE_LABELS, prepDocLabel, type PrepChecklistMeta, type PrepDo
 import { SUPPORT_CONTRACT_YEARS, contractPeriodEnd, planDateGroupsFor } from "@/lib/support-plan-dates";
 import { flexHoursLabel } from "@/lib/org-attachments";
 import {
-  COUNCIL_QR_MIN_ROWS,
-  councilQrText,
+  COUNCIL_COUNT_MIN_ROWS,
   councilSubmissionsLine,
   filledCouncilSubmissions,
   financialSalesText,
@@ -28,7 +27,6 @@ export interface PrepPrintLine {
   label: string;
   value: string;
   heading?: boolean; // 見出しの行（参考様式ごとの枠）。値は無く、訂正もできない
-  qr?: string; // 値の横にQRコードで載せる文（協力確認書の提出先が多いとき。読み取ると一覧が出る）
 }
 
 // 書類1件の印刷状態。完了はチェック（☑）を付け、対象外にするとその行は印刷しない
@@ -50,13 +48,11 @@ export function prepPrintAppType(meta: PrepChecklistMeta): string {
   return "";
 }
 
-// 協力確認書の提出先・提出日・確認方法。提出先が多いと文章が長くなりすぎるので、
-// COUNCIL_QR_MIN_ROWS か所以上はか所数だけを書き、一覧はQRコード（読み取ると文で出る）にする
+// 協力確認書の提出先・提出日・確認方法。提出先が多いと文章が長くなってA4 1枚に収まらないので、
+// COUNCIL_COUNT_MIN_ROWS か所以上はか所数だけを書く（一覧は所属機関の画面の 3 V（別紙）・1-17号（別紙）で印刷できる）
 export function councilPrintLine(key: string, label: string, rows: OrgCouncilSubmission[]): PrepPrintLine {
   const count = filledCouncilSubmissions(rows).length;
-  if (count >= COUNCIL_QR_MIN_ROWS) {
-    return { key, label, value: `全${count}か所（QRコードを読み取ると一覧が出ます）`, qr: councilQrText(label, rows) };
-  }
+  if (count >= COUNCIL_COUNT_MIN_ROWS) return { key, label, value: `全${count}か所` };
   return { key, label, value: councilSubmissionsLine(rows) };
 }
 
