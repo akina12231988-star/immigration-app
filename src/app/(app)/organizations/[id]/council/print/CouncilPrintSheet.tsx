@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Languages, Loader2, Printer, Save } from "lucide-react";
+import { Languages, Printer, Save } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
 import { createClient } from "@/lib/supabase/client";
 import { updateOrganization } from "@/lib/supabase/queries/organizations";
@@ -11,14 +11,17 @@ import {
   councilDate,
   councilListRows,
   normalizeCouncilTranslations,
-  translateBranch,
-  translateCity,
-  translateMethod,
-  untranslatedTexts,
   type CouncilLang,
   type CouncilListRow,
   type CouncilTranslations,
 } from "@/lib/council-list";
+import {
+  autoTranslation,
+  translateBranch,
+  translateCity,
+  translateMethod,
+  translationSources,
+} from "@/lib/council-translate";
 import type { OrganizationIntake } from "@/types/db";
 
 type Form = "3v" | "1-17";
@@ -54,50 +57,41 @@ export function CouncilPrintSheet({
   const [lang, setLang] = useState<CouncilLang>(initialLang);
   const [saved, setSaved] = useState<CouncilTranslations>(() => normalizeCouncilTranslations(intake.council_i18n));
   const [draft, setDraft] = useState<CouncilTranslations>(() => normalizeCouncilTranslations(intake.council_i18n));
-  const [busy, setBusy] = useState<"translate" | "save" | null>(null);
+  const [busy, setBusy] = useState<"save" | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
   const office = councilListRows(intake.council_office_submissions);
   const residence = councilListRows(intake.council_residence_submissions);
   const allRows = [...office, ...residence];
   // 訳を確認・修正する文（営業所名・市区町村・その他の確認方法。本社・メールなど辞書で訳す語は除く）
-  const sources = Array.from(
-    new Set(
-      allRows.flatMap((r) => [
-        r.branch && r.branch !== "本社" ? r.branch : "",
-        r.city,
-        r.method && r.method !== "メール" && r.method !== "提出した書面の控え" ? r.method : "",
-      ]),
-    ),
-  ).filter(Boolean);
+  const sources = translationSources(allRows);
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
 
   const setDraftText = (src: string, text: string) =>
     setDraft((d) => ({ ...d, [lang]: { ...(d[lang] ?? {}), [src]: text } }));
 
-  const autoTranslate = async () => {
-    const texts = untranslatedTexts(allRows, lang, draft);
-    if (texts.length === 0) {
-      setMessage({ ok: true, text: "訳が無い項目はありません。" });
-      return;
-    }
-    setBusy("translate");
-    setMessage(null);
-    try {
-      const res = await fetch("/api/council-translate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lang, texts }),
-      });
-      const json = (await res.json()) as { translations?: Record<string, string>; error?: string };
-      if (!res.ok) throw new Error(json.error ?? "翻訳に失敗しました");
-      setDraft((d) => ({ ...d, [lang]: { ...(d[lang] ?? {}), ...(json.translations ?? {}) } }));
-      setMessage({ ok: true, text: "自動翻訳しました。内容を確認して「訳を保存」を押してください。" });
-    } catch (e) {
-      setMessage({ ok: false, text: e instanceof Error ? e.message : "翻訳に失敗しました" });
-    } finally {
-      setBusy(null);
-    }
+  // 住所データ（無料・オフライン）のローマ字で作った訳を、空の欄に入れる（そのあと手で直せる）
+  const fillAuto = () => {
+    let count = 0;
+    setDraft((d) => {
+      const cur = { ...(d[lang] ?? {}) };
+      for (const src of sources) {
+        if (cur[src]?.trim()) continue;
+        const auto = autoTranslation(src, lang);
+        if (auto) {
+          cur[src] = auto;
+          count += 1;
+        }
+      }
+      return { ...d, [lang]: cur };
+    });
+    setMessage({
+      ok: true,
+      text:
+        count > 0 || sources.some((src) => !draft[lang]?.[src]?.trim())
+          ? "辞書で分かる項目を入れました。日本語のまま残った欄（町名など）は手で入力し、「訳を保存」を押してください。"
+          : "空の欄はありません。",
+    });
   };
 
   const saveTranslations = async () => {
@@ -185,12 +179,12 @@ export function CouncilPrintSheet({
                   <>
                     <button
                       type="button"
-                      onClick={() => void autoTranslate()}
+                      onClick={fillAuto}
                       disabled={busy !== null}
                       className="inline-flex items-center gap-1 rounded-lg border border-brand px-3 py-1.5 text-xs font-bold text-brand disabled:opacity-50"
                     >
-                      {busy === "translate" ? <Loader2 size={13} className="animate-spin" /> : <Languages size={13} />}
-                      訳が無い項目を自動翻訳
+                      <Languages size={13} />
+                      自動の訳を空の欄に入れる（無料）
                     </button>
                     <button
                       type="button"
@@ -218,7 +212,7 @@ export function CouncilPrintSheet({
                     <input
                       value={draft[lang]?.[src] ?? ""}
                       onChange={(e) => setDraftText(src, e.target.value)}
-                      placeholder={translateCity(src, lang, {})}
+                      placeholder={autoTranslation(src, lang) || "訳を入力"}
                       disabled={!canEdit}
                       className="min-h-[34px] flex-1 rounded-lg border border-border bg-background px-2 text-sm"
                     />
@@ -226,7 +220,9 @@ export function CouncilPrintSheet({
                 ))}
               </div>
               <p className="mt-1.5 text-[11px] text-muted">
-                空欄のままの項目は、表では目安（都道府県だけローマ字）で表示します。本社・メール・提出した書面の控えは自動で訳します。
+                市区町村はデジタル庁の住所データ（アドレス・ベース・レジストリ）のローマ字で自動で訳します（料金はかかりません）。
+                営業所名は「鹿児島営業所」「北海道壮瞥営業所」のように地名なら自動で訳し、町名など辞書に無いものは日本語のまま表に出るので手で入力してください。
+                空欄の項目は、表では自動の訳（薄い字で見本を表示しています）を使います。本社・メール・提出した書面の控えは決まった訳を使います。
               </p>
             </div>
           )}
