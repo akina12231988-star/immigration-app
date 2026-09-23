@@ -26,6 +26,7 @@ import {
   X,
 } from "lucide-react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import { WorkerPhoto } from "@/components/workers/WorkerPhoto";
 import { ResumeToolShare } from "@/components/workers/ResumeToolShare";
 import { FieldJumpSearch } from "@/components/workers/FieldJumpSearch";
@@ -369,7 +370,8 @@ export function WorkerDetail({
       />
     ) : undefined;
 
-  const save = async () => {
+  // 保存できたら true（移動前の確認の「保存して移動」でも使う）
+  const save = async (): Promise<boolean> => {
     setSaveBusy(true);
     setError(null);
     try {
@@ -378,7 +380,7 @@ export function WorkerDetail({
       if ("name" in payload && !payload.name) {
         setError("氏名は空にできません。");
         setSaveBusy(false);
-        return;
+        return false;
       }
       if (relativesDraft !== null) payload.relatives = relativesDraft;
       // 所属機関と雇用開始日がそろったら、申請準備中の人は在籍中＋支援区分へ自動で進める
@@ -422,6 +424,7 @@ export function WorkerDetail({
       setEditing(false);
       setApplied(null);
       router.refresh();
+      return true;
     } catch (err) {
       // 列が無いときは何を適用すればよいか案内する（新しい列から順に案内）
       setError(
@@ -431,6 +434,7 @@ export function WorkerDetail({
           "保存に失敗しました",
         ),
       );
+      return false;
     } finally {
       setSaveBusy(false);
     }
@@ -517,7 +521,7 @@ export function WorkerDetail({
 
   // 変更がある間、各カードの下に出す保存ボタン（どこで入力しても押しやすいように）
   const saveBar = canEdit && dirty && (
-    <Button fullWidth className="mt-3" disabled={saveBusy} onClick={save}>
+    <Button fullWidth className="mt-3" disabled={saveBusy} onClick={() => void save()}>
       {saveBusy ? "保存中…" : editing ? "保存" : "入力した内容を保存"}
     </Button>
   );
@@ -546,6 +550,8 @@ export function WorkerDetail({
 
   return (
     <div className="space-y-4">
+      {/* 保存していない変更があるまま別の画面へ行くときの確認 */}
+      <UnsavedChangesGuard dirty={dirty} onSave={save} saveLabel={editing ? "保存" : "入力した内容を保存"} />
       {error && (
         <p role="alert" className="rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
           {error}
@@ -684,7 +690,7 @@ export function WorkerDetail({
               <>
                 <button
                   type="button"
-                  onClick={save}
+                  onClick={() => void save()}
                   disabled={saveBusy}
                   className="flex items-center gap-1 rounded-lg bg-brand px-3 py-2 text-xs font-bold text-brand-foreground disabled:opacity-50"
                 >

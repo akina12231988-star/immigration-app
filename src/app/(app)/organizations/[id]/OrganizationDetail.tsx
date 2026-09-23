@@ -6,6 +6,7 @@ import { Pencil, X } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import { createClient } from "@/lib/supabase/client";
 import { updateOrganization } from "@/lib/supabase/queries/organizations";
 import {
@@ -58,7 +59,8 @@ export function OrganizationDetail({
   const contractStatus = (organization.intake?.support_contract_status ?? "").trim();
   const contracted = isContractedOrg(organization.intake, workerCount);
 
-  const handleSave = async () => {
+  // 保存できたら true（移動前の確認の「保存して移動」でも使う）
+  const handleSave = async (): Promise<boolean> => {
     setBusy(true);
     setNotice(null);
     try {
@@ -70,11 +72,13 @@ export function OrganizationDetail({
       setEditing(false);
       setNotice({ ok: true, message: "保存しました" });
       router.refresh();
+      return true;
     } catch (err) {
       setNotice({
         ok: false,
         message: `保存に失敗しました: ${err instanceof Error ? err.message : String(err)}`,
       });
+      return false;
     } finally {
       setBusy(false);
     }
@@ -82,6 +86,12 @@ export function OrganizationDetail({
 
   return (
     <div className="flex flex-col gap-4">
+      {/* 保存していない変更があるまま別の画面へ行くときの確認 */}
+      <UnsavedChangesGuard
+        dirty={dirty}
+        onSave={handleSave}
+        saveLabel={editing ? "編集した内容を保存" : "入力した内容を保存"}
+      />
       {/* 会社名のバー〜支援体制までは上部に固定して、下にスクロールしても常に見えるようにする。
           ボタンは表示モードでは「編集」、編集モードでは「編集した内容を保存」に切り替わる */}
       <div className="sticky top-0 z-20 -mx-4 -mt-4 flex flex-col gap-3 border-b border-border bg-background px-4 pb-3 pt-2 shadow-sm md:-mx-8 md:-mt-6 md:px-8 md:pt-3">
@@ -198,7 +208,7 @@ export function OrganizationDetail({
             orgId={organization.id}
             snapshot={editing ? null : snapshot}
           />
-          <Button fullWidth disabled={busy || !dirty} onClick={handleSave} className="mt-1">
+          <Button fullWidth disabled={busy || !dirty} onClick={() => void handleSave()} className="mt-1">
             {busy ? "保存中…" : editing ? "編集した内容を保存" : "入力した内容を保存"}
           </Button>
         </div>

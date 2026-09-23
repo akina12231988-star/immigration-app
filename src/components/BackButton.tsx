@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { popNavHistory } from "@/lib/nav-history";
+import { checkNavGuard } from "@/lib/nav-guard";
 
 // 戻れなかったと判断するまでの待ち時間（ブラウザの戻る処理が終わるのを少し待つ）
 const BACK_TIMEOUT_MS = 400;
@@ -34,29 +35,35 @@ export function BackButton({
     [],
   );
 
+  const goBack = () => {
+    // サイト内で1つ前に表示していた画面が分かるときは、そこへ確実に移動する
+    const current = `${window.location.pathname}${window.location.search}`;
+    const prev = popNavHistory(current);
+    if (prev) {
+      router.push(prev);
+      return;
+    }
+    if (window.history.length <= 1) {
+      router.replace(fallbackHref);
+      return;
+    }
+    const before = window.location.href;
+    router.back();
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      // 戻る先が無くてURLが変わらないときは、決めておいた画面へ移動する
+      if (window.location.href === before) router.replace(fallbackHref);
+    }, BACK_TIMEOUT_MS);
+  };
+
   return (
     <button
       type="button"
       aria-label="戻る"
       onClick={() => {
-        // サイト内で1つ前に表示していた画面が分かるときは、そこへ確実に移動する
-        const current = `${window.location.pathname}${window.location.search}`;
-        const prev = popNavHistory(current);
-        if (prev) {
-          router.push(prev);
-          return;
-        }
-        if (window.history.length <= 1) {
-          router.replace(fallbackHref);
-          return;
-        }
-        const before = window.location.href;
-        router.back();
-        if (timerRef.current) clearTimeout(timerRef.current);
-        timerRef.current = setTimeout(() => {
-          // 戻る先が無くてURLが変わらないときは、決めておいた画面へ移動する
-          if (window.location.href === before) router.replace(fallbackHref);
-        }, BACK_TIMEOUT_MS);
+        // 保存していない変更がある画面では、先に確認を出す（「保存せずに移動」で続きを実行）
+        if (!checkNavGuard(goBack)) return;
+        goBack();
       }}
       className={className}
     >
