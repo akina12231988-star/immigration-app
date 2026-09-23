@@ -71,6 +71,21 @@ describe("mailingTargets", () => {
     const t = mailingTargets(rec({ hasNhi: true, nhiFiscalStartYear: 2026, nhiMunicipalityName: "熊本県八代郡氷川町" }));
     expect(t[1]).toEqual({ what: "国民健康保険税 納税証明書 2026年度（令和8年度）", where: "熊本県八代郡氷川町" });
   });
+  it("手順式の記録は年度ごとの自治体と、年度ごとの国保を出す", () => {
+    const t = mailingTargets(
+      rec({
+        yearRequests: [
+          { yearType: "prev", fiscalStartYear: 2025, municipalityId: "m2", municipalityName: "東京都荒川区", collectionType: "special", timingStatus: "ok", timingLabel: "", timingDetail: "" },
+        ],
+        nhiYears: [{ yearType: "new", fiscalStartYear: 2026, municipalityId: "m3", municipalityName: "八代郡氷川町" }],
+        hasNhi: true,
+      }),
+    );
+    expect(t).toEqual([
+      { what: "課税・納税証明書 2025年度（令和7年度）", where: "東京都荒川区" },
+      { what: "国民健康保険税 納税証明書 2026年度（令和8年度）", where: "八代郡氷川町" },
+    ]);
+  });
   it("税務署・転出届", () => {
     expect(mailingTargets(rec({ requestKind: "nozei3", taxOfficeName: "麹町税務署" }))[0].where).toBe("麹町税務署");
     expect(mailingTargets(rec({ requestKind: "tenshutsu", cityOffice: "八代市" }))[0]).toEqual({ what: "転出届", where: "八代市" });

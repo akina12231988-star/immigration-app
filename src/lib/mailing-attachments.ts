@@ -53,6 +53,16 @@ export function mailingTargets(r: JudgmentRecord): MailingTarget[] {
     return [{ what: requestKindLabel(r.requestKind), where: r.cityOffice || r.municipalityName || "請求先未入力" }];
   }
   const rows: MailingTarget[] = [];
+  // 手順式の請求フォームの記録（年度ごとの自治体・国保税も年度ごと）
+  if (Array.isArray(r.yearRequests)) {
+    for (const y of r.yearRequests) {
+      rows.push({ what: `課税・納税証明書 ${yearWithReiwa(y.fiscalStartYear)}`, where: y.municipalityName || "自治体未選択" });
+    }
+    for (const y of r.nhiYears ?? []) {
+      rows.push({ what: `国民健康保険税 納税証明書 ${yearWithReiwa(y.fiscalStartYear)}`, where: y.municipalityName || "自治体未選択" });
+    }
+    return rows;
+  }
   if (r.requestBothYears) {
     rows.push({ what: `課税・納税証明書 ${yearWithReiwa(r.fiscalStartYear)}`, where: r.municipalityName || "自治体未選択" });
     rows.push({

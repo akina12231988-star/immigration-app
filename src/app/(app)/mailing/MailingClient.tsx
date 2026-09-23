@@ -22,19 +22,11 @@ import {
 import { updateWorker } from "@/lib/supabase/queries/workers";
 import {
   applicantLabel,
-  buildBothYearsDocs,
-  buildRequiredDocs,
   collectionLabel,
-  fiscalYearLabel,
   isSelfOnlyMunicipality,
   formatDateJP,
   formatYen,
-  judgeEachYear,
-  judgeNhiYear,
-  judgeTiming,
-  judgeWithYearMunicipalities,
   juminhyoTitle,
-  latestFiscalStartYear,
   mailedDocTitles,
   mainMailedTitles,
   moneyOrderNo,
@@ -45,7 +37,6 @@ import {
   todayISO,
   yearWithReiwa,
   type ApplicantType,
-  type CollectionType,
   type JudgmentRecord,
   type JuminhyoMethod,
   type MoneyOrder,
@@ -56,19 +47,26 @@ import {
   type RequestMethod,
 } from "@/lib/tax-cert";
 import { MunicipalityBrowser } from "@/components/mailing/MunicipalityBrowser";
-import { WorkerAddressGuide } from "@/components/mailing/WorkerAddressGuide";
 import { SaveBlockers } from "@/components/mailing/SaveBlockers";
-import { effectivePrefecture, guessPrefecture, municipalityOptionLabel, PREFECTURE_LIST, suggestMunicipalityForAddress } from "@/lib/prefectures";
+import { municipalityOptionLabel } from "@/lib/prefectures";
 import { dbErrorMessage } from "@/lib/errors";
-import { extraSaveBlockers, judgeBlockers, methodBlockers, taxSaveBlockers } from "@/lib/mailing-save-check";
+import { extraSaveBlockers, methodBlockers } from "@/lib/mailing-save-check";
 import { MAILING_PROGRESS_OPTIONS, type TaxOffice } from "@/lib/tax-office";
 import { MailingFileAttachments } from "./MailingFileAttachments";
 import { MailingRecordAttachments } from "@/components/mailing/MailingRecordAttachments";
 import { MAIL_REQUEST_KIND, RECEIVED_CERT_KIND, RECEIPT_KIND } from "@/lib/mailing-attachments";
 import { MoneyOrderFields } from "./MoneyOrderFields";
 import { TaxOfficeTab } from "./TaxOfficeTab";
+import { TaxRequestWizard } from "./TaxRequestWizard";
+import { hasYearRequests, muniMoneyOrderGroup, recordMuniGroups } from "@/lib/tax-request-plan";
 import { Nozei3EditModal, Nozei3RecordView, Nozei3RequestForm } from "./Nozei3RequestForm";
-import { CheckRow, INPUT, LABEL, Pill, type MailingWorker } from "./ui";
+import { INPUT, LABEL, Pill, type MailingWorker } from "./ui";
+import {
+  buildMethodInfo,
+  checkMethodValid,
+  MethodToggleSection,
+  MunicipalityModal,
+} from "./tax-parts";
 
 
 function useToast() {
@@ -313,88 +311,6 @@ function PhoneLogFields({
   );
 }
 
-interface MethodState {
-  method: RequestMethod;
-  setMethod: (v: RequestMethod) => void;
-  mailDate: string;
-  setMailDate: (v: string) => void;
-  recipient: RecipientType;
-  setRecipient: (v: RecipientType) => void;
-  agent: string;
-  setAgent: (v: string) => void;
-  title?: string;
-  // 郵送請求のときに出す定額小為替の入力（証明書1枚につき1枚）
-  orderTitles?: string[];
-  orders?: MoneyOrder[];
-  setOrders?: (o: MoneyOrder[]) => void;
-}
-
-function MethodToggleSection(p: MethodState) {
-  return (
-    <div className="mt-4 border-t border-dashed border-border pt-4">
-      {p.title && <p className="mb-2 text-sm font-bold text-muted">{p.title}</p>}
-      <div className="mb-3 flex flex-wrap gap-2">
-        <Pill active={p.method === "window"} onClick={() => p.setMethod("window")}>本人が窓口で取得</Pill>
-        <Pill active={p.method === "agent_window"} onClick={() => p.setMethod("agent_window")}>代理人が窓口で取得</Pill>
-        <Pill active={p.method === "mail"} onClick={() => p.setMethod("mail")}>郵送請求した</Pill>
-      </div>
-      {p.method === "agent_window" && (
-        <label className="flex flex-col gap-1">
-          <span className={LABEL}>代理人の氏名・宛先</span>
-          <input value={p.agent} onChange={(e) => p.setAgent(e.target.value)} placeholder="例：山田太郎（行政書士事務所）" className={INPUT} />
-        </label>
-      )}
-      {p.method === "mail" && (
-        <div className="flex flex-col gap-2.5">
-          <label className="flex flex-col gap-1">
-            <span className={LABEL}>郵送請求した日</span>
-            <input type="date" value={p.mailDate} onChange={(e) => p.setMailDate(e.target.value)} className={INPUT} />
-          </label>
-          <div className="flex gap-2">
-            <Pill active={p.recipient === "self"} onClick={() => p.setRecipient("self")}>本人宛に届く</Pill>
-            <Pill active={p.recipient === "agent"} onClick={() => p.setRecipient("agent")}>代理人宛に届く</Pill>
-          </div>
-          {p.recipient === "agent" && (
-            <label className="flex flex-col gap-1">
-              <span className={LABEL}>代理人の氏名・宛先</span>
-              <input value={p.agent} onChange={(e) => p.setAgent(e.target.value)} placeholder="例：山田太郎（行政書士事務所）" className={INPUT} />
-            </label>
-          )}
-          {p.orders && p.setOrders && (
-            <div className="mt-1">
-              <p className="mb-1.5 text-sm font-bold text-muted">同封した定額小為替</p>
-              <MoneyOrderFields
-                titles={p.orderTitles ?? []}
-                orders={p.orders}
-                onChange={p.setOrders}
-                group="main"
-              />
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function checkMethodValid(method: RequestMethod, mDate: string, rType: RecipientType, aName: string): boolean {
-  return (
-    method === "window" ||
-    (method === "agent_window" && aName.trim() !== "") ||
-    (method === "mail" && mDate !== "" && (rType === "self" || (rType === "agent" && aName.trim() !== "")))
-  );
-}
-
-function buildMethodInfo(method: RequestMethod, mDate: string, rType: RecipientType, aName: string) {
-  if (method === "mail") {
-    return { requestMethod: "mail" as RequestMethod, mailRequestDate: mDate, recipientType: rType, agentName: rType === "agent" ? aName.trim() : "" };
-  }
-  if (method === "agent_window") {
-    return { requestMethod: "agent_window" as RequestMethod, mailRequestDate: "", recipientType: "agent" as RecipientType, agentName: aName.trim() };
-  }
-  return { requestMethod: "window" as RequestMethod, mailRequestDate: "", recipientType: "self" as RecipientType, agentName: "" };
-}
-
 /* ============================ 判定フォーム ============================ */
 function JudgeTab({
   municipalities,
@@ -421,24 +337,6 @@ function JudgeTab({
 }) {
   // 請求する書類の種別（課税・納税証明書 / 転出届 / 住民票 / 納税証明書その3（税務署））
   const [requestKind, setRequestKind] = useState<RequestKind>("tax");
-  // 課税証明書は年度の1月1日時点の住所地が発行するので、最新年度・前年度で自治体を分けられる
-  const [muniId, setMuniId] = useState(municipalities[0]?.id ?? ""); // 最新年度の自治体
-  const [prevSame, setPrevSame] = useState(true); // 前年度も同じ自治体
-  const [prevMuniId, setPrevMuniId] = useState("");
-  const [bothYears, setBothYears] = useState(false); // 最新年度と前年度の両方を請求する
-  const [collectionType, setCollectionType] = useState<CollectionType>("special");
-  const [appDate, setAppDate] = useState(todayISO());
-  const [hasNhi, setHasNhi] = useState(false);
-  const [nhiMuniId, setNhiMuniId] = useState("");
-  // 自治体の候補（名前に県名が無ければ県名を添える）
-  const muniOptions = useMemo(
-    () => municipalities.map((m) => ({ id: m.id, label: municipalityOptionLabel(m) })),
-    [municipalities],
-  );
-  const [result, setResult] = useState<JudgmentRecord | null>(null);
-  const [saved, setSaved] = useState(false);
-  const [busy, setBusy] = useState(false);
-
   const [personName, setPersonName] = useState("");
   const [workerId, setWorkerId] = useState("");
   const [todoNumber, setTodoNumber] = useState("");
@@ -450,204 +348,6 @@ function JudgeTab({
     const w = workers.find((x) => x.id === id);
     setPersonName(w?.name ?? "");
   };
-  const [mainAlt, setMainAlt] = useState("");
-  const [nhiAlt, setNhiAlt] = useState("");
-
-  const [method, setMethod] = useState<RequestMethod>("window");
-  const [mailDate, setMailDate] = useState(todayISO());
-  const [recipient, setRecipient] = useState<RecipientType>("self");
-  const [agent, setAgent] = useState("");
-
-  // 郵送請求に同封する定額小為替（証明書1枚につき1枚）
-  const [moneyOrders, setMoneyOrders] = useState<MoneyOrder[]>([]);
-
-  const [nhiSameAsMain, setNhiSameAsMain] = useState(true);
-  const [nhiMethod, setNhiMethod] = useState<RequestMethod>("window");
-  const [nhiMailDate, setNhiMailDate] = useState(todayISO());
-  const [nhiRecipient, setNhiRecipient] = useState<RecipientType>("self");
-  const [nhiAgent, setNhiAgent] = useState("");
-
-  // 国保税納税証明書の分の定額小為替（郵送で受け取るときだけ）
-  const nhiOrderTitles = result
-    ? nhiMailedTitles({
-        requestMethod: method,
-        hasNhi: result.hasNhi,
-        nhiSameAsMain,
-        nhiRequestMethod: nhiMethod,
-        docs: result.docs,
-      })
-    : [];
-
-  const selectedMuni = municipalities.find((m) => m.id === muniId) ?? null;
-  const selectedPrevMuni = prevSame ? selectedMuni : (municipalities.find((m) => m.id === prevMuniId) ?? null);
-  const selectedNhiMuni = municipalities.find((m) => m.id === nhiMuniId) ?? null;
-  const canJudge = !!selectedMuni && !!selectedPrevMuni && !!appDate && (!hasNhi || !!selectedNhiMuni);
-  // 「判定する」「この結果を記録として保存」が押せない理由（赤字で出す）
-  const judgeReasons = judgeBlockers({
-    hasMunicipalities: municipalities.length > 0,
-    newMuniSelected: !!selectedMuni,
-    prevSame,
-    prevMuniSelected: !!selectedPrevMuni,
-    appDate,
-    hasNhi,
-    nhiMuniSelected: !!selectedNhiMuni,
-  });
-  const saveReasons = taxSaveBlockers({
-    canEdit,
-    saved,
-    personName,
-    method,
-    mailDate,
-    recipient,
-    agent,
-    hasNhi: !!result?.hasNhi,
-    nhiSameAsMain,
-    nhiMethod,
-    nhiMailDate,
-    nhiRecipient,
-    nhiAgent,
-  });
-  const resetResult = () => setResult(null);
-  // 申請予定日の時点の最新年度（表示と住所の案内に使う）
-  const latestYear = latestFiscalStartYear(new Date((appDate || todayISO()) + "T00:00:00"));
-  const pickYearMuni = (year: "new" | "prev", id: string) => {
-    if (year === "new") setMuniId(id);
-    else {
-      setPrevSame(false);
-      setPrevMuniId(id);
-    }
-    resetResult();
-  };
-  // 国保加入にチェックしたとき、現在の住所から当てはまる自治体を国保税の取得先に入れておく
-  // （課税証明書とは別の県のこともあるので、課税証明書の自治体は使わない）
-  const toggleNhi = (on: boolean) => {
-    setHasNhi(on);
-    if (on && !nhiMuniId && selectedWorker?.address) {
-      const suggested = suggestMunicipalityForAddress(selectedWorker.address, municipalities);
-      if (suggested) setNhiMuniId(suggested.id);
-    }
-    resetResult();
-  };
-
-  const runJudge = () => {
-    if (!selectedMuni || !selectedPrevMuni || !canJudge) return;
-    const dateObj = new Date(appDate + "T00:00:00");
-    const nhiYear = hasNhi ? judgeNhiYear(dateObj) : null;
-    // 最新年度と前年度の両方を請求するときは、年度ごとの自治体で書類を作る。
-    // それ以外は徴収区分と時期から年度を判定し、その年度の自治体を請求先にする
-    const both = bothYears;
-    const judged = judgeWithYearMunicipalities({ newMuni: selectedMuni, prevMuni: selectedPrevMuni, collectionType, appDate: dateObj });
-    const yearType = both ? "new" : judged.yearType;
-    const fiscalStartYear = both ? latestFiscalStartYear(dateObj) : judged.fiscalStartYear;
-    const muni = both ? selectedMuni : judged.muni;
-    const timing = judgeTiming(collectionType, both ? "prev" : judged.yearType, dateObj);
-    const docs = both
-      ? buildBothYearsDocs({ newMuni: selectedMuni, prevMuni: selectedPrevMuni, hasNhi, appDate: dateObj, nhiMuni: selectedNhiMuni })
-      : buildRequiredDocs(muni, judged.yearType, hasNhi, dateObj, selectedNhiMuni);
-    const yearReason = both
-      ? `最新年度（${yearWithReiwa(fiscalStartYear)}）と前年度（${yearWithReiwa(fiscalStartYear - 1)}）の両方を請求します。年度ごとに、その年の1月1日時点の住所地の自治体へ請求してください。`
-      : judged.reason;
-    setResult({
-      id: "",
-      createdAt: "",
-      municipalityId: muni.id,
-      municipalityName: muni.name,
-      collectionType,
-      appDate,
-      hasNhi,
-      nhiMunicipalityId: hasNhi && selectedNhiMuni ? selectedNhiMuni.id : "",
-      nhiMunicipalityName: hasNhi && selectedNhiMuni ? selectedNhiMuni.name : "",
-      nhiFiscalStartYear: hasNhi && nhiYear ? nhiYear.fiscalStartYear : null,
-      yearType,
-      fiscalStartYear,
-      yearReason,
-      timingStatus: timing.status,
-      timingLabel: timing.label,
-      timingDetail: timing.detail,
-      docs,
-      requestBothYears: both,
-      prevMunicipalityId: both ? selectedPrevMuni.id : undefined,
-      prevMunicipalityName: both ? selectedPrevMuni.name : undefined,
-      prevFiscalStartYear: both ? fiscalStartYear - 1 : undefined,
-      personName: "",
-      todoNumber: "",
-      mainAlternativeNote: "",
-      nhiAlternativeNote: "",
-      requestMethod: "window",
-      mailRequestDate: "",
-      recipientType: "self",
-      agentName: "",
-      nhiRequestMethod: "window",
-      nhiMailRequestDate: "",
-      nhiRecipientType: "self",
-      nhiAgentName: "",
-      nhiSameAsMain: true,
-    });
-    setSaved(false);
-  };
-
-  const save = async () => {
-    if (!result) return;
-    if (!personName.trim()) return showToast("対象者の氏名を入力してください");
-    if (!checkMethodValid(method, mailDate, recipient, agent))
-      return showToast("代理人の氏名・宛先を入力してください");
-    if (hasNhi && !nhiSameAsMain && !checkMethodValid(nhiMethod, nhiMailDate, nhiRecipient, nhiAgent))
-      return showToast("国保税納税証明書の代理人の氏名・宛先を入力してください");
-
-    const mainInfo = buildMethodInfo(method, mailDate, recipient, agent);
-    let nhiInfoFields: Record<string, unknown> = {
-      nhiRequestMethod: "window",
-      nhiMailRequestDate: "",
-      nhiRecipientType: "self",
-      nhiAgentName: "",
-      nhiSameAsMain: true,
-    };
-    if (result.hasNhi) {
-      if (nhiSameAsMain) {
-        nhiInfoFields = {
-          nhiRequestMethod: mainInfo.requestMethod,
-          nhiMailRequestDate: mainInfo.mailRequestDate,
-          nhiRecipientType: mainInfo.recipientType,
-          nhiAgentName: mainInfo.agentName,
-          nhiSameAsMain: true,
-        };
-      } else {
-        const b = buildMethodInfo(nhiMethod, nhiMailDate, nhiRecipient, nhiAgent);
-        nhiInfoFields = {
-          nhiRequestMethod: b.requestMethod,
-          nhiMailRequestDate: b.mailRequestDate,
-          nhiRecipientType: b.recipientType,
-          nhiAgentName: b.agentName,
-          nhiSameAsMain: false,
-        };
-      }
-    }
-
-    const record: JudgmentRecord = {
-      ...result,
-      personName: personName.trim(),
-      workerId: workerId || undefined,
-      todoNumber: todoNumber.trim(),
-      mainAlternativeNote: mainAlt.trim(),
-      nhiAlternativeNote: result.hasNhi ? nhiAlt.trim() : "",
-      ...mainInfo,
-      ...nhiInfoFields,
-      moneyOrders,
-    } as JudgmentRecord;
-
-    setBusy(true);
-    try {
-      const saved = await insertJudgmentRecord(createClient(), record);
-      setRecords([saved, ...records]);
-      setSaved(true);
-      showToast("判定結果を記録しました");
-    } catch (e) {
-      showToast("保存に失敗しました: " + (e instanceof Error ? e.message : String(e)));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <div className="space-y-4">
       <Card className="p-4">
@@ -728,259 +428,19 @@ function JudgeTab({
           showToast={showToast}
         />
       ) : (
-        <>
-      <Card className="p-4">
-        <p className="mb-1 text-sm font-bold">判定フォーム</p>
-        <p className="mb-3 text-xs text-muted">請求先の自治体（年度ごと）・徴収区分・申請予定日を選んで判定してください</p>
-        {municipalities.length === 0 ? (
-          <p className="rounded-xl bg-background p-6 text-center text-sm text-muted">
-            自治体マスタが未登録です。「自治体マスタ」タブで追加してください。
-          </p>
-        ) : (
-          <div className="space-y-3">
-            {/* 氏名を選んだら、年度ごとの1月1日時点の住所と当てはまる自治体を案内する */}
-            {selectedWorker && (
-              <WorkerAddressGuide
-                workerId={selectedWorker.id}
-                currentAddress={selectedWorker.address}
-                latestFiscalStartYear={latestYear}
-                municipalities={municipalities}
-                selectedNewId={muniId}
-                selectedPrevId={prevSame ? muniId : prevMuniId}
-                onPick={pickYearMuni}
-                nhiEnabled={hasNhi}
-                selectedNhiId={nhiMuniId}
-                onPickNhi={(id) => { setNhiMuniId(id); resetResult(); }}
-              />
-            )}
-            <div className="flex flex-col gap-1">
-              <span className={LABEL}>請求する年度</span>
-              <div className="flex gap-2">
-                <Pill active={!bothYears} onClick={() => { setBothYears(false); resetResult(); }}>判定に任せる（1年度）</Pill>
-                <Pill active={bothYears} onClick={() => { setBothYears(true); resetResult(); }}>最新年度と前年度の両方</Pill>
-              </div>
-            </div>
-            <label className="flex flex-col gap-1">
-              <span className={LABEL}>最新年度（{yearWithReiwa(latestYear)}）の自治体 ＝ {latestYear}年1月1日時点の住所地</span>
-              {/* 文字を打つと候補が絞られる（自治体名・県名で探せる） */}
-              <Combobox
-                options={muniOptions}
-                value={muniId}
-                onChange={(id) => { setMuniId(id); resetResult(); }}
-                placeholder="自治体名・県名を入力して検索"
-              />
-            </label>
-            <div className="flex flex-col gap-1">
-              <span className={LABEL}>前年度（{yearWithReiwa(latestYear - 1)}）の自治体 ＝ {latestYear - 1}年1月1日時点の住所地</span>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={prevSame} onChange={(e) => { setPrevSame(e.target.checked); resetResult(); }} className="h-4 w-4" />
-                最新年度と同じ自治体
-              </label>
-              {!prevSame && (
-                <Combobox
-                  options={muniOptions}
-                  value={prevMuniId}
-                  onChange={(id) => { setPrevMuniId(id); resetResult(); }}
-                  placeholder="自治体名・県名を入力して検索"
-                />
-              )}
-            </div>
-            <div className="flex flex-col gap-1">
-              <span className={LABEL}>徴収区分</span>
-              <div className="flex gap-2">
-                <Pill active={collectionType === "special"} onClick={() => { setCollectionType("special"); resetResult(); }}>特別徴収</Pill>
-                <Pill active={collectionType === "normal"} onClick={() => { setCollectionType("normal"); resetResult(); }}>普通徴収</Pill>
-              </div>
-            </div>
-            <label className="flex flex-col gap-1">
-              <span className={LABEL}>申請予定日</span>
-              <input type="date" value={appDate} onChange={(e) => { setAppDate(e.target.value); resetResult(); }} className={INPUT} />
-              <span className="text-[11px] text-muted">在留資格変更申請を行う予定の日付を選択してください</span>
-            </label>
-            <label className="flex items-center gap-2 rounded-xl bg-background px-3 py-2.5 text-sm">
-              <input type="checkbox" checked={hasNhi} onChange={(e) => toggleNhi(e.target.checked)} className="h-4 w-4" />
-              国民健康保険に加入している（国保税の納税証明書も必要）
-            </label>
-            {hasNhi && (
-              <label className="flex flex-col gap-1">
-                <span className={LABEL}>国保税納税証明書の取得先自治体（現在お住まいの自治体）</span>
-                <Combobox
-                  options={muniOptions}
-                  value={nhiMuniId}
-                  onChange={(id) => { setNhiMuniId(id); resetResult(); }}
-                  placeholder="自治体名・県名を入力して検索"
-                />
-                <span className="text-[11px] text-muted">
-                  国保税は「現在の住所地」の自治体が発行します。課税証明書の取得先（1月1日時点の住所地）と違う自治体・別の県のこともあるので、そのときは別々に請求してください。
-                </span>
-              </label>
-            )}
-            <Button fullWidth disabled={!canJudge} onClick={runJudge}>判定する</Button>
-            <SaveBlockers reasons={judgeReasons} />
-          </div>
-        )}
-      </Card>
-
-      {result && (
-        <Card className="p-4">
-          <p className="mb-3 text-sm font-bold">判定結果</p>
-
-          {/* 課税証明書・市県民税納税証明書 */}
-          <div className="mb-4 overflow-hidden rounded-xl border border-border">
-            <div className="border-b border-border bg-brand/10 px-4 py-2.5 text-sm font-bold text-brand">
-              課税証明書・市県民税納税証明書の場合
-            </div>
-            <div className="p-4">
-              <ResultStamp
-                warn={result.timingStatus === "warn"}
-                title={
-                  result.requestBothYears
-                    ? `最新年度（${fiscalYearLabel(result.fiscalStartYear)}）：${result.municipalityName} ／ 前年度（${fiscalYearLabel(result.prevFiscalStartYear ?? result.fiscalStartYear - 1)}）：${result.prevMunicipalityName ?? ""} の証明書を取得`
-                    : `${result.municipalityName}：${result.yearType === "prev" ? "前年度" : "新年度"}（${fiscalYearLabel(result.fiscalStartYear)}）の証明書を取得`
-                }
-                label={result.timingLabel}
-                notes={[result.timingDetail, result.yearReason]}
-              />
-              {/* 最新年度と前年度で自治体が違うときは、年度ごと（自治体ごと）の判定も並べて出す。
-                  「もう片方の自治体は請求しなくてよいのか」がその場で分かるようにする */}
-              {!result.requestBothYears && selectedMuni && selectedPrevMuni && selectedMuni.id !== selectedPrevMuni.id && (
-                <div className="mt-3 space-y-2">
-                  <p className="text-xs font-bold text-muted">年度ごとの判定（最新年度と前年度で自治体が違うため）</p>
-                  {judgeEachYear({
-                    newMuni: selectedMuni,
-                    prevMuni: selectedPrevMuni,
-                    collectionType: result.collectionType,
-                    appDate: new Date(result.appDate + "T00:00:00"),
-                  }).map((y) => (
-                    <div
-                      key={y.yearType}
-                      className={`rounded-xl border px-3 py-2.5 text-xs ${
-                        y.needed
-                          ? y.timing.status === "warn"
-                            ? "border-status-notice-fg/40 bg-status-notice-bg"
-                            : "border-status-reported-fg/30 bg-status-reported-bg"
-                          : "border-border bg-background text-muted"
-                      }`}
-                    >
-                      <p className="flex flex-wrap items-center gap-2 font-bold">
-                        <span
-                          className={`rounded px-1.5 py-0.5 text-[11px] ${
-                            y.needed ? "bg-brand text-brand-foreground" : "border border-border text-muted"
-                          }`}
-                        >
-                          {y.needed ? "請求する" : "今回は不要"}
-                        </span>
-                        {y.yearType === "new" ? "最新年度" : "前年度"}（{fiscalYearLabel(y.fiscalStartYear)}）：{y.muni.name}
-                      </p>
-                      <p className="mt-1 leading-relaxed">{y.reason}</p>
-                      {y.needed && (
-                        <p className={`mt-0.5 leading-relaxed ${y.timing.status === "warn" ? "font-bold text-status-notice-fg" : "text-muted"}`}>
-                          {y.timing.label}：{y.timing.detail}
-                        </p>
-                      )}
-                      {y.muni.show_asterisk && (
-                        <p className="mt-0.5 leading-relaxed">この自治体は納期未到来額・未納額を「＊」表示する設定です。</p>
-                      )}
-                    </div>
-                  ))}
-                  <p className="text-[11px] text-muted">
-                    両方の自治体に請求したいときは、上の「最新年度と前年度の両方」を選んで判定し直してください。
-                  </p>
-                </div>
-              )}
-              <MunicipalitySiteLinks
-                municipalities={municipalities}
-                ids={[result.municipalityId, result.prevMunicipalityId ?? "", selectedMuni?.id ?? "", selectedPrevMuni?.id ?? ""]}
-              />
-              <DocList docs={result.docs.filter((d) => !d.isNhi)} />
-              <label className="mt-4 flex flex-col gap-1 border-t border-dashed border-border pt-4">
-                <span className={LABEL}>代替対応の備考</span>
-                <span className="text-[11px] text-muted">例：令和7年度の1月1日時点で対象者が国外転出していたため発行不可。今回は令和6年度で対応した、など</span>
-                <textarea value={mainAlt} onChange={(e) => setMainAlt(e.target.value)} placeholder="判定年度で発行できなかった場合の対応内容（任意）" className={`${INPUT} min-h-[56px] py-2`} />
-              </label>
-              <MethodToggleSection
-                title="受領方法"
-                method={method}
-                setMethod={setMethod}
-                mailDate={mailDate}
-                setMailDate={setMailDate}
-                recipient={recipient}
-                setRecipient={setRecipient}
-                agent={agent}
-                setAgent={setAgent}
-                orderTitles={mainMailedTitles({
-                  requestMethod: method,
-                  yearType: result.yearType,
-                  requestBothYears: result.requestBothYears,
-                  docs: result.docs,
-                })}
-                orders={moneyOrders}
-                setOrders={setMoneyOrders}
-              />
-            </div>
-          </div>
-
-          {/* 国保税納税証明書 */}
-          {result.hasNhi && (
-            <div className="mb-4 overflow-hidden rounded-xl border border-border">
-              <div className="border-b border-border bg-status-notice-bg px-4 py-2.5 text-sm font-bold text-status-notice-fg">
-                国民健康保険税納税証明書の場合
-              </div>
-              <div className="p-4">
-                <ResultStamp
-                  warn={false}
-                  title={`${result.nhiMunicipalityName || "未選択"}：新年度（${fiscalYearLabel(result.nhiFiscalStartYear ?? 0)}）の証明書を取得`}
-                  label="通常通り取得可能"
-                  notes={[
-                    "国民健康保険税は6月になると常に最新年度に切り替わるため、6月以降は新年度の納税証明書を取得します。",
-                    // 課税証明書の取得先と違う自治体（別の県のこともある）なら、別々に請求する旨を出す
-                    result.nhiMunicipalityId &&
-                    result.nhiMunicipalityId !== result.municipalityId &&
-                    result.nhiMunicipalityId !== (result.prevMunicipalityId ?? "")
-                      ? `課税証明書の取得先（${result.municipalityName}${result.prevMunicipalityName && result.prevMunicipalityName !== result.municipalityName ? `・${result.prevMunicipalityName}` : ""}）とは別の自治体です。現在の住所地（${result.nhiMunicipalityName}）へ別に請求してください。`
-                      : "",
-                  ]}
-                />
-                <MunicipalitySiteLinks municipalities={municipalities} ids={[result.nhiMunicipalityId]} />
-                <DocList docs={result.docs.filter((d) => d.isNhi)} />
-                <label className="mt-4 flex flex-col gap-1 border-t border-dashed border-border pt-4">
-                  <span className={LABEL}>代替対応の備考</span>
-                  <textarea value={nhiAlt} onChange={(e) => setNhiAlt(e.target.value)} placeholder="国保税納税証明書について判定通りに発行できなかった場合の対応内容（任意）" className={`${INPUT} min-h-[56px] py-2`} />
-                </label>
-                <div className="mt-4 border-t border-dashed border-border pt-4">
-                  <p className="mb-2 text-sm font-bold text-muted">受領方法</p>
-                  <div className="mb-3 flex flex-wrap gap-2">
-                    <Pill active={nhiSameAsMain} onClick={() => setNhiSameAsMain(true)}>課税証明書と同じ受領方法</Pill>
-                    <Pill active={!nhiSameAsMain} onClick={() => setNhiSameAsMain(false)}>別の受領方法</Pill>
-                  </div>
-                  {!nhiSameAsMain && (
-                    <MethodToggleSection method={nhiMethod} setMethod={setNhiMethod} mailDate={nhiMailDate} setMailDate={setNhiMailDate} recipient={nhiRecipient} setRecipient={setNhiRecipient} agent={nhiAgent} setAgent={setNhiAgent} />
-                  )}
-                  {nhiOrderTitles.length > 0 && (
-                    <div className="mt-3">
-                      <p className="mb-1.5 text-sm font-bold text-muted">同封した定額小為替</p>
-                      <MoneyOrderFields
-                        titles={nhiOrderTitles}
-                        orders={moneyOrders}
-                        onChange={setMoneyOrders}
-                        group="nhi"
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {canEdit && (
-            <Button fullWidth variant="secondary" disabled={saved || busy || saveReasons.length > 0} onClick={save}>
-              {busy ? "保存中…" : saved ? "記録済み" : "この結果を記録として保存"}
-            </Button>
-          )}
-          <SaveBlockers reasons={saveReasons} className="mt-2" />
-        </Card>
-      )}
-        </>
+        <TaxRequestWizard
+          key={`tax-${workerId}`}
+          municipalities={municipalities}
+          setMunicipalities={setMunicipalities}
+          records={records}
+          setRecords={setRecords}
+          personName={personName}
+          workerId={workerId}
+          todoNumber={todoNumber}
+          worker={selectedWorker}
+          canEdit={canEdit}
+          showToast={showToast}
+        />
       )}
     </div>
   );
@@ -1572,60 +1032,6 @@ function ExtraEditModal({
   );
 }
 
-// 判定結果に、請求先の自治体のサイトへのリンクを出す（URLが登録されている自治体だけ）
-function MunicipalitySiteLinks({ municipalities, ids }: { municipalities: Municipality[]; ids: string[] }) {
-  const targets = Array.from(new Set(ids.filter(Boolean)))
-    .map((id) => municipalities.find((m) => m.id === id))
-    .filter((m): m is Municipality => !!m && !!m.website_url);
-  if (targets.length === 0) return null;
-  return (
-    <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
-      {targets.map((m) => (
-        <a key={m.id} href={m.website_url} target="_blank" rel="noopener noreferrer" className="font-bold text-brand underline">
-          {m.name}のサイトを開く
-        </a>
-      ))}
-    </p>
-  );
-}
-
-function ResultStamp({ warn, title, label, notes }: { warn: boolean; title: string; label: string; notes: string[] }) {
-  return (
-    <div className={`flex items-start gap-3 rounded-xl border p-4 ${warn ? "border-status-notice-fg/40 bg-status-notice-bg" : "border-status-reported-fg/30 bg-status-reported-bg"}`}>
-      <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2 text-base font-black ${warn ? "border-status-notice-fg text-status-notice-fg" : "border-status-reported-fg text-status-reported-fg"}`}>
-        {warn ? "！" : "OK"}
-      </span>
-      <div className="min-w-0">
-        <p className="text-sm font-bold">{title}</p>
-        <p className={`mt-1 text-sm font-bold ${warn ? "text-status-notice-fg" : "text-status-reported-fg"}`}>{label}</p>
-        {notes.filter(Boolean).map((n, i) => (
-          <p key={i} className="mt-1 text-xs leading-relaxed text-muted">{n}</p>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function DocList({ docs }: { docs: { title: string; meta: string; starred: boolean }[] }) {
-  if (docs.length === 0) return null;
-  return (
-    <div className="mt-3 flex flex-col gap-2">
-      {docs.map((d, i) => (
-        <div key={i} className="flex items-start gap-2.5 rounded-xl border border-border bg-background px-3 py-2.5 text-sm">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand text-[11px] font-bold text-brand-foreground">{i + 1}</span>
-          <div>
-            <p className="font-bold">
-              {d.title}
-              {d.starred && <span className="text-seal"> ＊表示あり</span>}
-            </p>
-            <p className="mt-0.5 text-[11.5px] text-muted">{d.meta}</p>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 /* ============================ 自治体マスタ ============================ */
 function MunicipalityTab({
   municipalities,
@@ -1717,72 +1123,6 @@ function MunicipalityTab({
         onCancel={() => setDeleteTarget(null)}
       />
     </div>
-  );
-}
-
-function MunicipalityModal({
-  initial,
-  busy,
-  onClose,
-  onSave,
-}: {
-  initial: Municipality | null;
-  busy: boolean;
-  onClose: () => void;
-  onSave: (form: MunicipalityInput) => void;
-}) {
-  const [form, setForm] = useState<MunicipalityInput>(
-    initial
-      ? { name: initial.name, prefecture: effectivePrefecture(initial), website_url: initial.website_url ?? "", cert_name: initial.cert_name, has_income: initial.has_income, has_tax: initial.has_tax, needs_tax_payment_cert: initial.needs_tax_payment_cert, show_asterisk: initial.show_asterisk, note: initial.note, tenshutsu_self_only: initial.tenshutsu_self_only ?? false, juminhyo_self_only: initial.juminhyo_self_only ?? false }
-      : { name: "", prefecture: "", website_url: "", cert_name: "課税証明書", has_income: true, has_tax: true, needs_tax_payment_cert: false, show_asterisk: false, note: "", tenshutsu_self_only: false, juminhyo_self_only: false },
-  );
-  const set = <K extends keyof MunicipalityInput>(k: K, v: MunicipalityInput[K]) => setForm((f) => ({ ...f, [k]: v }));
-  // 自治体名を打つと都道府県を推定して入れる（手で選び直せる）
-  const setName = (name: string) =>
-    setForm((f) => ({ ...f, name, prefecture: f.prefecture && f.prefecture !== guessPrefecture(f.name) ? f.prefecture : guessPrefecture(name) }));
-  const canSave = form.name.trim() !== "" && form.cert_name.trim() !== "";
-
-  return (
-    <Modal open title={initial ? "自治体情報を編集" : "自治体を追加"} onClose={onClose}>
-      <div className="flex flex-col gap-3">
-        <label className="flex flex-col gap-1">
-          <span className={LABEL}>自治体名</span>
-          <input value={form.name} onChange={(e) => setName(e.target.value)} placeholder="例：熊本市" className={INPUT} />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className={LABEL}>都道府県（地図と一覧のまとまりに使う）</span>
-          <select value={form.prefecture} onChange={(e) => set("prefecture", e.target.value)} className={INPUT}>
-            <option value="">（未設定）</option>
-            {PREFECTURE_LIST.map((p) => (
-              <option key={p} value={p}>{p}</option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className={LABEL}>自治体のサイト（郵送請求の案内ページなどのURL）</span>
-          <input type="url" inputMode="url" value={form.website_url} onChange={(e) => set("website_url", e.target.value)} placeholder="https://www.city.example.lg.jp/..." className={INPUT} />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className={LABEL}>証明書名称</span>
-          <input value={form.cert_name} onChange={(e) => set("cert_name", e.target.value)} placeholder="例：市民税・県民税 課税証明書" className={INPUT} />
-        </label>
-        <div>
-          <CheckRow checked={form.has_income} onChange={(v) => set("has_income", v)} label="所得額の記載がある" />
-          <CheckRow checked={form.has_tax} onChange={(v) => set("has_tax", v)} label="課税額の記載がある" />
-          <CheckRow checked={form.needs_tax_payment_cert} onChange={(v) => set("needs_tax_payment_cert", v)} label="納税証明書が別途必要" />
-          <CheckRow checked={form.show_asterisk} onChange={(v) => set("show_asterisk", v)} label="納期未到来額・未納額を「＊」表示する" />
-          <CheckRow checked={form.tenshutsu_self_only} onChange={(v) => set("tenshutsu_self_only", v)} label="転出届は本人申請のみ（代理人申請不可）" />
-          <CheckRow checked={form.juminhyo_self_only} onChange={(v) => set("juminhyo_self_only", v)} label="住民票は個人番号なしでも本人申請のみ（代理人申請不可）" />
-        </div>
-        <label className="flex flex-col gap-1">
-          <span className={LABEL}>備考</span>
-          <textarea value={form.note} onChange={(e) => set("note", e.target.value)} placeholder="窓口情報、注意事項など" className={`${INPUT} min-h-[56px] py-2`} />
-        </label>
-        <Button fullWidth disabled={!canSave || busy} onClick={() => onSave({ ...form, name: form.name.trim(), website_url: form.website_url.trim(), cert_name: form.cert_name.trim() })}>
-          {busy ? "保存中…" : "保存する"}
-        </Button>
-      </div>
-    </Modal>
   );
 }
 
@@ -2020,11 +1360,23 @@ function RecordsTab({
                 </div>
               ) : (
                 <div className="rounded-xl bg-background p-3 text-xs leading-relaxed">
-                  <p className="font-bold">
-                    {r.municipalityName}
-                    <span className="font-medium text-muted">（{collectionLabel(r.collectionType)}）</span>
-                  </p>
-                  {r.requestBothYears ? (
+                  {!hasYearRequests(r) && (
+                    <p className="font-bold">
+                      {r.municipalityName}
+                      <span className="font-medium text-muted">（{collectionLabel(r.collectionType)}）</span>
+                    </p>
+                  )}
+                  {hasYearRequests(r) && (r.yearRequests ?? []).length === 0 && (
+                    <p className="text-muted">課税・納税証明書の請求なし（国保税の納税証明書のみ）</p>
+                  )}
+                  {hasYearRequests(r) ? (
+                    /* 手順式の請求フォームの記録: 年度ごとの自治体・徴収区分 */
+                    (r.yearRequests ?? []).map((y) => (
+                      <p key={y.yearType} className="text-muted">
+                        {y.yearType === "new" ? "最新年度" : "前年度"} {yearWithReiwa(y.fiscalStartYear)}：{y.municipalityName}（{collectionLabel(y.collectionType)}）
+                      </p>
+                    ))
+                  ) : r.requestBothYears ? (
                     <p className="text-muted">
                       両年度：新年度 {yearWithReiwa(r.fiscalStartYear)}（{r.municipalityName}）／ 前年度 {yearWithReiwa(r.prevFiscalStartYear ?? r.fiscalStartYear - 1)}（{r.prevMunicipalityName ?? ""}）
                     </p>
@@ -2042,8 +1394,19 @@ function RecordsTab({
 
               {r.hasNhi && (
                 <div className="mt-2 rounded-xl border-l-2 border-status-notice-fg bg-background p-3 text-xs leading-relaxed">
-                  <p className="font-bold">国保：{r.nhiMunicipalityName || "未選択"}</p>
-                  <p className="text-muted">新年度：{yearWithReiwa(r.nhiFiscalStartYear ?? 0)}</p>
+                  {r.nhiYears ? (
+                    r.nhiYears.map((y) => (
+                      <p key={y.yearType} className="font-bold">
+                        国保：{y.municipalityName}
+                        <span className="font-medium text-muted">（{y.yearType === "new" ? "最新年度" : "前年度"} {yearWithReiwa(y.fiscalStartYear)}）</span>
+                      </p>
+                    ))
+                  ) : (
+                    <>
+                      <p className="font-bold">国保：{r.nhiMunicipalityName || "未選択"}</p>
+                      <p className="text-muted">新年度：{yearWithReiwa(r.nhiFiscalStartYear ?? 0)}</p>
+                    </>
+                  )}
                   <p className="mt-1">
                     受領：{r.nhiSameAsMain ? "課税証明書と同じ" : methodText(r.nhiRequestMethod, r.nhiMailRequestDate, r.nhiRecipientType, r.nhiAgentName)}
                   </p>
@@ -2188,8 +1551,11 @@ function RecipientEditModal({
   const [nua, setNua] = useState((record.nhiUnpaidAmount as string) || "");
   const [nps, setNps] = useState((record.nhiPaymentStatus as string) || "");
 
+  // 手順式の請求フォームの記録は、定額小為替を自治体ごとの欄で持つ（国保税も同じ受領方法）
+  const perMuni = hasYearRequests(record);
   // 国保税納税証明書の分の定額小為替（郵送で受け取るときだけ）
   const nhiOrderTitles = nhiMailedTitles({
+    yearRequests: record.yearRequests,
     requestMethod: method,
     hasNhi: record.hasNhi,
     nhiSameAsMain,
@@ -2266,9 +1632,22 @@ function RecipientEditModal({
             requestBothYears: record.requestBothYears,
             docs: record.docs,
           })}
-          orders={moneyOrders}
-          setOrders={setMoneyOrders}
+          orders={perMuni ? undefined : moneyOrders}
+          setOrders={perMuni ? undefined : setMoneyOrders}
         />
+        {perMuni &&
+          method === "mail" &&
+          recordMuniGroups(record.docs).map((g) => (
+            <div key={g.municipalityId} className="mt-2">
+              <p className="mb-1.5 text-sm font-bold text-muted">{g.municipalityName || "自治体"} に同封した定額小為替</p>
+              <MoneyOrderFields
+                titles={g.titles}
+                orders={moneyOrders}
+                onChange={setMoneyOrders}
+                group={muniMoneyOrderGroup(g.municipalityId)}
+              />
+            </div>
+          ))}
         <label className="mt-3 flex flex-col gap-1">
           <span className={LABEL}>代替対応の備考（課税証明書等）</span>
           <textarea value={mainAlt} onChange={(e) => setMainAlt(e.target.value)} className={`${INPUT} min-h-[48px] py-2`} />
@@ -2282,11 +1661,13 @@ function RecipientEditModal({
           <>
             <div className="mt-3 border-t border-dashed border-border pt-3">
               <p className="mb-2 text-sm font-bold text-muted">国保税納税証明書</p>
-              <div className="mb-2 flex flex-wrap gap-2">
-                <Pill active={nhiSameAsMain} onClick={() => setNhiSameAsMain(true)}>課税証明書と同じ受領方法</Pill>
-                <Pill active={!nhiSameAsMain} onClick={() => setNhiSameAsMain(false)}>別の受領方法</Pill>
-              </div>
-              {!nhiSameAsMain && (
+              {!perMuni && (
+                <div className="mb-2 flex flex-wrap gap-2">
+                  <Pill active={nhiSameAsMain} onClick={() => setNhiSameAsMain(true)}>課税証明書と同じ受領方法</Pill>
+                  <Pill active={!nhiSameAsMain} onClick={() => setNhiSameAsMain(false)}>別の受領方法</Pill>
+                </div>
+              )}
+              {!perMuni && !nhiSameAsMain && (
                 <MethodToggleSection method={nhiMethod} setMethod={setNhiMethod} mailDate={nhiMailDate} setMailDate={setNhiMailDate} recipient={nhiRecipient} setRecipient={setNhiRecipient} agent={nhiAgent} setAgent={setNhiAgent} />
               )}
               {nhiOrderTitles.length > 0 && (
