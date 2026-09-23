@@ -373,7 +373,7 @@ export function TodosClient({
         void supabase
           .from("workers")
           .select(
-            "id, name, status, residence_expiry_date, residence_renewal_status, application_prep_kind, residence_renewal_todo, current_situation, organizations(name)",
+            "id, name, status, residence_expiry_date, residence_renewal_status, application_prep_kind, residence_renewal_todo, current_situation, organizations!workers_current_organization_id_fkey(name)",
           )
           .eq("residence_renewal_status", "準備中")
           .then(({ data: pw, error: pwErr }) => {

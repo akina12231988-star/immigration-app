@@ -14,7 +14,7 @@ export interface ReminderWithWorker extends Reminder {
   } | null;
 }
 
-const SELECT = "*, workers(id, name, kana, messenger_link, organizations(name))";
+const SELECT = "*, workers(id, name, kana, messenger_link, organizations!workers_current_organization_id_fkey(name))";
 
 export async function listReminders(supabase: SupabaseClient): Promise<ReminderWithWorker[]> {
   const { data, error } = await supabase

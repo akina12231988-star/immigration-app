@@ -23,6 +23,15 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-09-23",
+    title: "督促・外国人一覧などで「Could not embed because more than one relationship…」と出て読み込めない不具合を直しました",
+    where: "督促／外国人一覧／TODO／申請詳細の許可の欄",
+    href: "/workers",
+    items: [
+      "外国人に「前回の申請の所属機関」を持たせたことで、外国人と所属機関のつながりが2つになり、所属機関名を読み込む画面でエラーになっていました。現在の所属機関を読み込むように直しました。",
+    ],
+  },
+  {
+    date: "2026-09-23",
     title: "在留カードの印刷画面に、本人のMessengerのリンクを出すようにしました",
     where: "郵送請求 ＞ 納税証明書その3 ＞ 在留カードを印刷する",
     href: "/mailing",

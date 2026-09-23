@@ -208,7 +208,7 @@ export const WORKER_LIST_FIELDS = [
   "jobseeker_no",
 ] as const;
 
-const WORKER_LIST_COLUMNS = `${WORKER_LIST_FIELDS.join(", ")}, organizations(name)`;
+const WORKER_LIST_COLUMNS = `${WORKER_LIST_FIELDS.join(", ")}, organizations!workers_current_organization_id_fkey(name)`;
 
 export type WorkerWithOrg = Pick<Worker, (typeof WORKER_LIST_FIELDS)[number]> & {
   organizations: { name: string } | null;
