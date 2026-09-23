@@ -103,11 +103,11 @@ describe("extraSaveBlockers / nozei3SaveBlockers", () => {
   });
 });
 
-describe("nozei3SaveBlockers（代理人窓口発行）", () => {
+describe("nozei3SaveBlockers（代理人）", () => {
   const base = { canEdit: true, personName: "A", taxOfficeSelected: true, hasTaxOffices: true };
-  it("代理人窓口発行で代理人の氏名が無いと保存できない", () => {
+  it("代理人の氏名が無いと保存できない", () => {
     expect(nozei3SaveBlockers({ ...base, agentNameMissing: true })).toEqual([
-      "代理人窓口発行のときは、代理人の氏名を入力してください",
+      "代理人の氏名を選ぶか入力してください",
     ]);
     expect(nozei3SaveBlockers({ ...base, agentNameMissing: false })).toEqual([]);
     expect(nozei3SaveBlockers(base)).toEqual([]);
