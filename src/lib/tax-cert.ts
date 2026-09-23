@@ -31,7 +31,8 @@ export type JuminhyoMethod = "mail" | "window"; // 住民票の発行方法（�
 
 // 定額小為替（証明書1枚につき1枚同封する）。
 // 番号は「前半の数字-後半の数字」で控える
-export type MoneyOrderGroup = "main" | "nhi"; // 課税証明書など / 国民健康保険税
+// 手順式の請求フォームで保存した記録は、自治体ごとの欄（muni:自治体ID）に分ける
+export type MoneyOrderGroup = "main" | "nhi" | `muni:${string}`; // 課税証明書など / 国民健康保険税 / 自治体ごと
 
 export interface MoneyOrder {
   id: string;
@@ -64,6 +65,29 @@ export interface JudgmentDoc {
   meta: string;
   starred: boolean;
   isNhi?: boolean;
+  // どの自治体に請求する書類か（手順式の請求フォームで保存した記録だけ）
+  municipalityId?: string;
+  municipalityName?: string;
+}
+
+// 手順式の請求フォームで記録する、年度ごとの課税・納税証明書の請求
+export interface YearRequest {
+  yearType: YearType;
+  fiscalStartYear: number;
+  municipalityId: string;
+  municipalityName: string;
+  collectionType: CollectionType; // その年度の徴収区分
+  timingStatus: "ok" | "warn";
+  timingLabel: string;
+  timingDetail: string;
+}
+
+// 手順式の請求フォームで記録する、年度ごとの国保税の納税証明書の請求
+export interface NhiYearRequest {
+  yearType: YearType;
+  fiscalStartYear: number;
+  municipalityId: string;
+  municipalityName: string;
 }
 
 // 判定記録（DBの judgment_records.data に丸ごと保存する）
@@ -104,6 +128,9 @@ export interface JudgmentRecord {
   prevMunicipalityId?: string;
   prevMunicipalityName?: string;
   prevFiscalStartYear?: number;
+  // ---- 手順式の請求フォーム（年度ごとの自治体・徴収区分・国保加入） ----
+  yearRequests?: YearRequest[];
+  nhiYears?: NhiYearRequest[];
   // ---- 転出届・住民票の郵送請求（requestKind が tenshutsu / juminhyo のとき） ----
   requestKind?: RequestKind;
   cityOffice?: string; // 請求先の市役所（自治体マスタの名称）
@@ -391,6 +418,7 @@ export function moneyOrderNo(mo: { first: string; second: string }): string {
 
 interface MailedSource {
   requestKind?: RequestKind;
+  yearRequests?: unknown;
   juminhyoMethod?: JuminhyoMethod;
   juminhyoMyNumber?: boolean;
   juminhyoCopies?: number;
@@ -406,6 +434,8 @@ interface MailedSource {
 // 課税証明書などの欄の分（課税証明書で1枚、市県民税納税証明書で1枚）
 export function mainMailedTitles(r: MailedSource): string[] {
   if (r.requestMethod !== "mail") return [];
+  // 手順式の請求フォームの記録は、書類（国保税も含む）を自治体ごとに持っている
+  if (Array.isArray(r.yearRequests)) return (r.docs ?? []).map((d) => d.title);
   const titles = (r.docs ?? []).filter((d) => !d.isNhi).map((d) => d.title);
   // 市県民税の納税証明書は自治体によっては判定結果に出ないが、
   // 課税証明書とは別に1枚同封するので行は必ず作る（両年度なら年度ごとに）
@@ -421,6 +451,7 @@ export function mainMailedTitles(r: MailedSource): string[] {
 // 国民健康保険税納税証明書の欄の分（1枚）
 export function nhiMailedTitles(r: MailedSource): string[] {
   if (!r.hasNhi) return [];
+  if (Array.isArray(r.yearRequests)) return []; // 自治体ごとの欄にまとめている
   // 「課税証明書と同じ受領方法」か、別に指定した方法で判断する
   const byMail =
     r.nhiSameAsMain === false ? r.nhiRequestMethod === "mail" : r.requestMethod === "mail";
