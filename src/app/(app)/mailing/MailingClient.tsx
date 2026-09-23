@@ -391,7 +391,7 @@ function JudgeTab({
             住民票を郵送請求
           </Pill>
           <Pill active={requestKind === "nozei3"} onClick={() => setRequestKind("nozei3")}>
-            納税証明書その3を税務署に郵送請求
+            納税証明書その3を税務署に請求（郵送・窓口）
           </Pill>
         </div>
       </Card>

@@ -11,7 +11,7 @@ import { createClient } from "@/lib/supabase/client";
 import { insertJudgmentRecord } from "@/lib/supabase/queries/tax-cert";
 import { insertTaxOffice, updateTaxOffice } from "@/lib/supabase/queries/tax-office";
 import { updateWorker } from "@/lib/supabase/queries/workers";
-import { formatDateJP, todayISO, type JudgmentRecord } from "@/lib/tax-cert";
+import { applicantLabel, formatDateJP, todayISO, type JudgmentRecord, type Nozei3Method } from "@/lib/tax-cert";
 import {
   autoMailingProgress,
   findTaxOfficeForAddress,
@@ -26,6 +26,7 @@ import {
 } from "@/lib/tax-office";
 import { nozei3SaveBlockers } from "@/lib/mailing-save-check";
 import { dbErrorMessage } from "@/lib/errors";
+import { DEFAULT_NOZEI3_AGENT } from "@/lib/nozei3-form";
 import { SaveBlockers } from "@/components/mailing/SaveBlockers";
 import { ProgressBadge, TrackingLink } from "@/components/mailing/MailingRecordSummary";
 import { MailingFileAttachments } from "./MailingFileAttachments";
@@ -33,8 +34,9 @@ import { MAIL_REQUEST_KIND, NOZEI3_RECEIVED_KIND } from "@/lib/mailing-attachmen
 import { TAX_OFFICE_MIGRATION, TaxOfficeModal, sortTaxOffices } from "./TaxOfficeTab";
 import { INPUT, LABEL, Pill, type MailingWorker } from "./ui";
 
-// ---- 納税証明書その3（国税）の税務署への郵送請求 ----
-// 課税・納税証明書（市区町村）とは別に、税務署に「納税証明書交付請求書」と委任状を郵送して取り寄せる。
+// ---- 納税証明書その3（国税）の税務署への請求（郵送請求 / 代理人窓口発行） ----
+// 課税・納税証明書（市区町村）とは別に、税務署に「納税証明書交付請求書」と委任状を出して取り寄せる。
+// 郵送請求は様式に印字している代理人のまま郵送し、代理人窓口発行は入力した代理人（住所・氏名）を請求書に入れる。
 // 請求書は外国人の登録内容を自動入力したPDF、委任状は様式のまま印刷して本人に署名してもらう。
 
 // 添付の種別（郵送請求した書類・届いた証明書）
@@ -49,12 +51,29 @@ export const NOZEI3_AGENT_CONTACT = { name: "野口明菜", phone: "080-4281-108
 export const NOZEI3_STICKY_NOTE_TEXT = `代理人：${NOZEI3_AGENT_CONTACT.name}\n電話番号：${NOZEI3_AGENT_CONTACT.phone}\n何かありましたらこちらにご連絡ください`;
 
 // 自動入力した交付請求書を新しいタブで開く（印刷用）
-export function nozei3FormUrl(workerId: string, taxOfficeId: string): string {
+// 代理人窓口発行のときは、入力した代理人（住所・氏名）を代理人記入欄に入れる（郵送請求は様式の代理人のまま）
+export function nozei3FormUrl(
+  workerId: string,
+  taxOfficeId: string,
+  agent?: { address: string; name: string },
+): string {
   const q = new URLSearchParams({ workerId, taxOfficeId });
+  if (agent) {
+    q.set("agentAddress", agent.address);
+    q.set("agentName", agent.name);
+  }
   return `/api/nozei3-form?${q.toString()}`;
 }
 
+export const NOZEI3_METHOD_OPTIONS: { value: Nozei3Method; label: string }[] = [
+  { value: "mail", label: "郵送請求" },
+  { value: "window", label: "代理人窓口発行" },
+];
+
 export interface Nozei3Values {
+  method: Nozei3Method; // 郵送請求 / 代理人窓口発行
+  agentName: string; // 代理人窓口発行の代理人の氏名
+  agentAddress: string; // 代理人窓口発行の代理人の住所
   taxOfficeId: string; // 投函先の税務署（空なら住所からの自動判定に任せる）
   postDate: string; // 投函日
   trackingNumber: string; // 追跡番号
@@ -64,11 +83,15 @@ export interface Nozei3Values {
 }
 
 export function emptyNozei3Values(): Nozei3Values {
-  return { taxOfficeId: "", postDate: "", trackingNumber: "", progress: "preparing", receivedDate: "", note: "" };
+  return { method: "mail", agentName: "", agentAddress: "", taxOfficeId: "", postDate: "", trackingNumber: "", progress: "preparing", receivedDate: "", note: "" };
 }
 
 export function nozei3ValuesFromRecord(r: JudgmentRecord): Nozei3Values {
+  const atWindow = r.nozei3Method === "window";
   return {
+    method: atWindow ? "window" : "mail",
+    agentName: atWindow ? (r.applicantAgentName ?? "") : "",
+    agentAddress: atWindow ? (r.applicantAgentAddress ?? "") : "",
     taxOfficeId: r.taxOfficeId ?? "",
     postDate: r.postDate ?? "",
     trackingNumber: r.trackingNumber ?? "",
@@ -84,21 +107,31 @@ export function nozei3RecordPatch(
   office: TaxOffice | null,
   workerAddress: string,
 ): Partial<JudgmentRecord> {
-  const progress = autoMailingProgress(v.progress, v.postDate, v.trackingNumber);
+  const atWindow = v.method === "window";
+  // 窓口発行は投函が無いので、準備中 / 完了 だけ
+  const progress = window
+    ? v.progress === "done"
+      ? "done"
+      : "preparing"
+    : autoMailingProgress(v.progress, v.postDate, v.trackingNumber);
   return {
     requestKind: "nozei3",
+    nozei3Method: v.method,
+    // 誰が代理人で請求・発行したか（郵送請求は様式に印字している代理人）
+    applicantAgentName: atWindow ? v.agentName.trim() : DEFAULT_NOZEI3_AGENT.name,
+    applicantAgentAddress: atWindow ? v.agentAddress.trim() : DEFAULT_NOZEI3_AGENT.address,
     taxOfficeId: office?.id ?? "",
     taxOfficeName: office?.name ?? "",
     municipalityId: "",
     municipalityName: office?.name ?? "",
     workerAddress,
-    postDate: v.postDate,
-    trackingNumber: v.trackingNumber.trim(),
+    postDate: atWindow ? "" : v.postDate,
+    trackingNumber: atWindow ? "" : v.trackingNumber.trim(),
     mailingProgress: progress,
     receivedDate: progress === "done" ? v.receivedDate : "",
     mailingNote: v.note.trim(),
-    requestMethod: "mail",
-    mailRequestDate: v.postDate,
+    requestMethod: atWindow ? "agent_window" : "mail",
+    mailRequestDate: atWindow ? "" : v.postDate,
     recipientType: "agent",
     agentName: "",
     applicantType: "agent",
@@ -166,12 +199,66 @@ export function Nozei3Fields({
   const workerId = worker?.id ?? "";
   const kanaMissing = !!worker && !(worker.kana ?? "").trim();
   const myNumberMissing = !!worker && !isMyNumberFillable(worker.my_number ?? "");
+  const atWindow = v.method === "window";
 
   return (
     <div className="space-y-4">
-      {/* 投函先の税務署 */}
+      {/* 請求方法: 郵送請求 / 代理人窓口発行 */}
       <div className="space-y-2">
-        <span className={LABEL}>投函先の税務署（現在の住所を管轄する税務署）</span>
+        <span className={LABEL}>請求方法</span>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          {NOZEI3_METHOD_OPTIONS.map((o) => (
+            <Pill
+              key={o.value}
+              active={v.method === o.value}
+              onClick={() =>
+                set({
+                  method: o.value,
+                  // 窓口発行は「税務署からの郵送待ち」が無いので準備中に戻す
+                  ...(o.value === "window" && v.progress === "waiting" ? { progress: "preparing" as const } : {}),
+                })
+              }
+            >
+              {o.label}
+            </Pill>
+          ))}
+        </div>
+        {atWindow ? (
+          <div className="rounded-xl border border-border p-3">
+            <p className="mb-2 text-[11px] text-muted">
+              代理人が税務署の窓口で発行を受けます。入力した代理人の住所・氏名が交付請求書の【代理人記入欄】に入り、記録一覧にも誰が代理人で発行したかが残ります。
+            </p>
+            <div className="grid gap-2 sm:grid-cols-[1fr_2fr]">
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>代理人の氏名（必須）</span>
+                <input
+                  value={v.agentName}
+                  onChange={(e) => set({ agentName: e.target.value })}
+                  placeholder="例：山田　花子"
+                  className={INPUT}
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>代理人の住所</span>
+                <input
+                  value={v.agentAddress}
+                  onChange={(e) => set({ agentAddress: e.target.value })}
+                  placeholder="例：熊本県熊本市東区◯◯1-2-3"
+                  className={INPUT}
+                />
+              </label>
+            </div>
+          </div>
+        ) : (
+          <p className="text-[11px] text-muted">
+            税務署に郵送で請求します。交付請求書の【代理人記入欄】は、これまでどおり{DEFAULT_NOZEI3_AGENT.name}で入ります。
+          </p>
+        )}
+      </div>
+
+      {/* 投函先・請求先の税務署 */}
+      <div className="space-y-2">
+        <span className={LABEL}>{atWindow ? "発行を受ける税務署（現在の住所を管轄する税務署）" : "投函先の税務署（現在の住所を管轄する税務署）"}</span>
         <div className="rounded-xl bg-background p-3 text-xs leading-relaxed">
           {suggested ? (
             <p>
@@ -245,18 +332,22 @@ export function Nozei3Fields({
 
       {/* 送る書類 */}
       <div className="space-y-2 border-t border-dashed border-border pt-4">
-        <span className={LABEL}>税務署に送る書類（印刷して郵送）</span>
+        <span className={LABEL}>{atWindow ? "税務署の窓口に持っていく書類" : "税務署に送る書類（印刷して郵送）"}</span>
         <div className="rounded-xl bg-background p-3 text-xs leading-relaxed">
           <ol className="list-decimal space-y-1 pl-5">
             <li>
               <span className="font-bold">納税証明書交付請求書（その3）</span>
-              ：外国人の住所・フリガナ・氏名・個人番号と税務署名を自動入力したPDFを作ります。
+              ：外国人の住所・フリガナ・氏名・個人番号と税務署名、代理人記入欄を自動入力したPDFを作ります。
               収入印紙（手数料）を貼ってください。
             </li>
             <li>
               <span className="font-bold">委任状</span>：様式のまま印刷して、本人に住所・氏名を書いてもらいます（代理人欄も手書き）。
             </li>
-            <li>本人確認書類の写し（在留カードなど）と、返信用封筒（切手を貼る）。</li>
+            {atWindow ? (
+              <li>本人確認書類の写し（在留カードなど）と、代理人の本人確認書類（運転免許証など）。</li>
+            ) : (
+              <li>本人確認書類の写し（在留カードなど）と、返信用封筒（切手を貼る）。</li>
+            )}
           </ol>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
@@ -264,7 +355,17 @@ export function Nozei3Fields({
             type="button"
             variant="secondary"
             disabled={!workerId}
-            onClick={() => window.open(nozei3FormUrl(workerId, office?.id ?? ""), "_blank", "noopener")}
+            onClick={() =>
+              window.open(
+                nozei3FormUrl(
+                  workerId,
+                  office?.id ?? "",
+                  atWindow ? { address: v.agentAddress.trim(), name: v.agentName.trim() } : undefined,
+                ),
+                "_blank",
+                "noopener",
+              )
+            }
           >
             <span className="inline-flex items-center gap-1.5">
               <FileText size={15} />
@@ -309,54 +410,60 @@ export function Nozei3Fields({
         <div className="flex flex-col gap-1">
           <span className={LABEL}>進捗</span>
           <div className="flex flex-col gap-2 sm:flex-row">
-            {MAILING_PROGRESS_OPTIONS.map((o) => (
+            {MAILING_PROGRESS_OPTIONS.filter((o) => !atWindow || o.value !== "waiting").map((o) => (
               <Pill key={o.value} active={v.progress === o.value} onClick={() => set({ progress: o.value })}>
                 {o.label}
               </Pill>
             ))}
           </div>
-          <span className="text-[11px] text-muted">投函日と追跡番号を入れて保存すると、準備中は自動で「税務署からの郵送待ち」になります。</span>
+          {!atWindow && (
+            <span className="text-[11px] text-muted">投函日と追跡番号を入れて保存すると、準備中は自動で「税務署からの郵送待ち」になります。</span>
+          )}
         </div>
-        {/* 投函前の注意: 代理人の連絡先を書いた付箋を添付する */}
-        <div
-          role="alert"
-          className="flex items-start gap-2.5 rounded-xl border border-status-notice-fg/40 bg-status-notice-bg px-3 py-2.5 text-xs leading-relaxed text-status-notice-fg"
-        >
-          <StickyNote size={18} className="mt-0.5 shrink-0" aria-hidden />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold">投函前に、付箋を書類に添付してください</p>
-            <p className="mt-0.5">
-              付箋に、代理人の名前（{NOZEI3_AGENT_CONTACT.name}）と電話番号（{NOZEI3_AGENT_CONTACT.phone}）を記載して、
-              「何かありましたらこちらにご連絡ください」と書いたものを添付します。
-            </p>
-            <div className="mt-1.5 flex items-start gap-1.5 rounded-lg bg-surface/70 px-2.5 py-1.5 text-foreground">
-              <p className="min-w-0 flex-1 whitespace-pre-line font-bold">{NOZEI3_STICKY_NOTE_TEXT}</p>
-              <CopyButton value={NOZEI3_STICKY_NOTE_TEXT} label="付箋の文面をコピー" size={13} className="mt-0.5" />
+        {!atWindow && (
+          <>
+            {/* 投函前の注意: 代理人の連絡先を書いた付箋を添付する */}
+            <div
+              role="alert"
+              className="flex items-start gap-2.5 rounded-xl border border-status-notice-fg/40 bg-status-notice-bg px-3 py-2.5 text-xs leading-relaxed text-status-notice-fg"
+            >
+              <StickyNote size={18} className="mt-0.5 shrink-0" aria-hidden />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold">投函前に、付箋を書類に添付してください</p>
+                <p className="mt-0.5">
+                  付箋に、代理人の名前（{NOZEI3_AGENT_CONTACT.name}）と電話番号（{NOZEI3_AGENT_CONTACT.phone}）を記載して、
+                  「何かありましたらこちらにご連絡ください」と書いたものを添付します。
+                </p>
+                <div className="mt-1.5 flex items-start gap-1.5 rounded-lg bg-surface/70 px-2.5 py-1.5 text-foreground">
+                  <p className="min-w-0 flex-1 whitespace-pre-line font-bold">{NOZEI3_STICKY_NOTE_TEXT}</p>
+                  <CopyButton value={NOZEI3_STICKY_NOTE_TEXT} label="付箋の文面をコピー" size={13} className="mt-0.5" />
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <label className="flex flex-col gap-1">
-            <span className={LABEL}>税務署へ投函した日</span>
-            <div className="flex gap-2">
-              <input type="date" value={v.postDate} onChange={(e) => set({ postDate: e.target.value })} className={INPUT} />
-              <Button type="button" variant="secondary" className="shrink-0 whitespace-nowrap" onClick={() => set({ postDate: todayISO() })}>今日</Button>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>税務署へ投函した日</span>
+                <div className="flex gap-2">
+                  <input type="date" value={v.postDate} onChange={(e) => set({ postDate: e.target.value })} className={INPUT} />
+                  <Button type="button" variant="secondary" className="shrink-0 whitespace-nowrap" onClick={() => set({ postDate: todayISO() })}>今日</Button>
+                </div>
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>投函した郵便の追跡番号（書留・レターパックなど）</span>
+                <input
+                  value={v.trackingNumber}
+                  onChange={(e) => set({ trackingNumber: e.target.value })}
+                  placeholder="例：1234-5678-9012"
+                  inputMode="numeric"
+                  className={`${INPUT} tabular-nums`}
+                />
+              </label>
             </div>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className={LABEL}>投函した郵便の追跡番号（書留・レターパックなど）</span>
-            <input
-              value={v.trackingNumber}
-              onChange={(e) => set({ trackingNumber: e.target.value })}
-              placeholder="例：1234-5678-9012"
-              inputMode="numeric"
-              className={`${INPUT} tabular-nums`}
-            />
-          </label>
-        </div>
+          </>
+        )}
         {v.progress === "done" && (
           <label className="flex flex-col gap-1 sm:max-w-xs">
-            <span className={LABEL}>証明書が届いた日</span>
+            <span className={LABEL}>{atWindow ? "証明書の発行を受けた日" : "証明書が届いた日"}</span>
             <input type="date" value={v.receivedDate} onChange={(e) => set({ receivedDate: e.target.value })} className={INPUT} />
           </label>
         )}
@@ -435,6 +542,7 @@ export function Nozei3RequestForm({
     personName,
     taxOfficeSelected: !!office,
     hasTaxOffices: taxOffices.length > 0,
+    agentNameMissing: v.method === "window" && !v.agentName.trim(),
   });
 
   const save = async () => {
@@ -479,7 +587,7 @@ export function Nozei3RequestForm({
       const saved = await insertJudgmentRecord(createClient(), record);
       setRecords([saved, ...records]);
       setSavedRecord(saved);
-      showToast("納税証明書その3の郵送請求を記録しました");
+      showToast(v.method === "window" ? "納税証明書その3の代理人窓口発行を記録しました" : "納税証明書その3の郵送請求を記録しました");
     } catch (e) {
       showToast("保存に失敗しました: " + (e instanceof Error ? e.message : String(e)));
     } finally {
@@ -489,10 +597,10 @@ export function Nozei3RequestForm({
 
   return (
     <Card className="p-4">
-      <p className="mb-1 text-sm font-bold">納税証明書その3の郵送請求（税務署）</p>
+      <p className="mb-1 text-sm font-bold">納税証明書その3の請求（税務署）</p>
       <p className="mb-3 text-xs text-muted">
-        未納の税額がないことの証明（その3）を、現在の住所を管轄する税務署に郵送で請求します。
-        投函したら、投函日・追跡番号を記録すると申請準備にも表示されます。
+        未納の税額がないことの証明（その3）を、現在の住所を管轄する税務署に請求します。
+        郵送請求か代理人窓口発行かを選んでください。郵送請求は投函日・追跡番号を記録すると申請準備にも表示されます。
       </p>
 
       {/* 請求先判断のための現在の住所（外国人マスタの住所）。未登録ならこの場で登録できる */}
@@ -525,8 +633,19 @@ export function Nozei3RequestForm({
       {savedRecord ? (
         <div className="space-y-3">
           <div className="rounded-xl bg-status-reported-bg p-3 text-sm">
-            <p className="font-bold text-status-reported-fg">記録しました（投函先: {savedRecord.taxOfficeName}）</p>
-            <p className="mt-0.5 text-xs text-muted">投函日・追跡番号・進捗の変更は「記録一覧」タブの編集から行えます。</p>
+            {savedRecord.nozei3Method === "window" ? (
+              <>
+                <p className="font-bold text-status-reported-fg">
+                  記録しました（代理人窓口発行: {savedRecord.taxOfficeName}・{applicantLabel("agent", savedRecord.applicantAgentName)}）
+                </p>
+                <p className="mt-0.5 text-xs text-muted">発行を受けたら「記録一覧」タブの編集から進捗を「完了」にしてください。</p>
+              </>
+            ) : (
+              <>
+                <p className="font-bold text-status-reported-fg">記録しました（投函先: {savedRecord.taxOfficeName}）</p>
+                <p className="mt-0.5 text-xs text-muted">投函日・追跡番号・進捗の変更は「記録一覧」タブの編集から行えます。</p>
+              </>
+            )}
           </div>
           <div>
             <p className="mb-2 text-sm font-bold text-muted">郵送請求した書類のデータ（作った請求書のPDFなど・複数可）</p>
@@ -598,6 +717,7 @@ export function Nozei3EditModal({
     personName: record.personName || "-",
     taxOfficeSelected: !!office,
     hasTaxOffices: taxOffices.length > 0,
+    agentNameMissing: v.method === "window" && !v.agentName.trim(),
   });
 
   return (
@@ -661,17 +781,32 @@ export function Nozei3RecordView({ record: r, canEdit }: { record: JudgmentRecor
         <div className="flex flex-wrap items-center gap-2">
           <p className="font-bold">
             納税証明書その3
-            <span className="font-medium text-muted">（投函先: {r.taxOfficeName || "税務署未選択"}）</span>
+            <span className="font-medium text-muted">
+              （{r.nozei3Method === "window" ? "発行を受ける税務署" : "投函先"}: {r.taxOfficeName || "税務署未選択"}）
+            </span>
           </p>
           <ProgressBadge progress={r.mailingProgress} />
         </div>
-        <p className="mt-1">
-          投函日：{r.postDate ? formatDateJP(r.postDate) : <span className="text-muted">未記録（準備中）</span>}
-        </p>
-        <p>
-          追跡番号：<TrackingLink trackingNumber={r.trackingNumber} />
-        </p>
-        {r.mailingProgress === "done" && r.receivedDate && <p>届いた日：{formatDateJP(r.receivedDate)}</p>}
+        {r.nozei3Method === "window" ? (
+          <>
+            <p className="mt-1">代理人窓口発行：{applicantLabel("agent", r.applicantAgentName)}</p>
+            {r.applicantAgentAddress && <p className="text-muted">代理人の住所：{r.applicantAgentAddress}</p>}
+            {r.mailingProgress === "done" && r.receivedDate && <p>発行を受けた日：{formatDateJP(r.receivedDate)}</p>}
+          </>
+        ) : (
+          <>
+            <p className="mt-1">
+              郵送請求：{applicantLabel("agent", r.applicantAgentName || DEFAULT_NOZEI3_AGENT.name)}
+            </p>
+            <p>
+              投函日：{r.postDate ? formatDateJP(r.postDate) : <span className="text-muted">未記録（準備中）</span>}
+            </p>
+            <p>
+              追跡番号：<TrackingLink trackingNumber={r.trackingNumber} />
+            </p>
+            {r.mailingProgress === "done" && r.receivedDate && <p>届いた日：{formatDateJP(r.receivedDate)}</p>}
+          </>
+        )}
         {r.mailingNote && <p className="mt-1 text-muted">{r.mailingNote}</p>}
       </div>
       <div className="mt-2 rounded-xl bg-background p-3 text-xs leading-relaxed">

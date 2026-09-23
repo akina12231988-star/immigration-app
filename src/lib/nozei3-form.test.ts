@@ -83,3 +83,30 @@ describe("isMyNumberFillable", () => {
     expect(isMyNumberFillable("12345")).toBe(false);
   });
 });
+
+describe("buildNozei3DrawItems（代理人記入欄）", () => {
+  it("代理人の住所・氏名を左上の代理人記入欄（x=66〜238）に書く", () => {
+    const items = buildNozei3DrawItems({ ...base, agentAddress: "熊本県八代市本町1-1", agentName: "山田　花子" }, measure);
+    const addr = items.find((i) => i.text === "熊本県八代市本町1-1")!;
+    const name = items.find((i) => i.text === "山田　花子")!;
+    for (const it of [addr, name]) {
+      expect(it.x).toBeGreaterThanOrEqual(66);
+      expect(it.x + measure(it.text, it.size)).toBeLessThanOrEqual(238);
+    }
+    expect(842 - addr.y).toBeCloseTo(140);
+    expect(842 - name.y).toBeCloseTo(177.4);
+  });
+
+  it("長い住所は2行に分ける", () => {
+    const long = "熊本県熊本市東区小山3-8-87カームリーハウスB201号室（管理棟）";
+    const items = buildNozei3DrawItems({ ...base, agentAddress: long, agentName: "" }, measure);
+    const lines = items.filter((i) => 842 - i.y > 130 && 842 - i.y < 150 && i.x < 250);
+    expect(lines).toHaveLength(2);
+    expect(lines.map((l) => l.text).join("")).toBe(long);
+  });
+
+  it("空なら代理人記入欄には何も書かない", () => {
+    const items = buildNozei3DrawItems({ ...base, agentAddress: "", agentName: " " }, measure);
+    expect(items.filter((i) => i.x < 250 && 842 - i.y > 120)).toHaveLength(0);
+  });
+});
