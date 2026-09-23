@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Plus, Trash2, X } from "lucide-react";
-import { newPostApplyTask, prepDocLabel, type PostApplyTask } from "@/lib/post-apply";
+import { Plus, Trash2, X } from "lucide-react";
+import { newPostApplyTask, unmailedDocIds, type PostApplyMailing, type PostApplyTask } from "@/lib/post-apply";
+import { PostApplyMailingPanel } from "@/components/workers/PostApplyMailingPanel";
 
 // 申請準備の「申請後に入管へ郵送するリスト」。
 // 書類の行で「申請後に発行され次第、入管へ郵送する」にチェックした書類をまとめ、
@@ -10,15 +11,17 @@ import { newPostApplyTask, prepDocLabel, type PostApplyTask } from "@/lib/post-a
 // ここに出したものは申請一覧の「申請後の郵送・タスク」と、申請詳細のアラートにも出る。
 export function PostApplyList({
   docIds,
+  mailings,
   tasks,
   canEdit,
-  onMailed,
+  onSaveMailings,
   onSaveTasks,
 }: {
   docIds: string[];
+  mailings: PostApplyMailing[]; // 入管へ郵送した記録（投函日・追跡番号）
   tasks: PostApplyTask[];
   canEdit: boolean;
-  onMailed: (docId: string) => void; // 郵送した（チェックを外す）
+  onSaveMailings: (mailings: PostApplyMailing[]) => void;
   onSaveTasks: (tasks: PostApplyTask[]) => void;
 }) {
   const [draft, setDraft] = useState("");
@@ -33,31 +36,15 @@ export function PostApplyList({
       <p className="text-sm font-bold">📮 申請後に入管へ郵送するリスト</p>
       <p className="mt-0.5 text-[11px] text-muted">
         書類の行で「申請後に発行され次第、入管へ郵送する」にチェックした書類と、そのほかに申請後にすることです。
-        申請一覧の「申請後の郵送・タスク」と申請詳細にも出ます。郵送したら「郵送した」、済んだタスクはチェックを付けてください。
+        申請一覧の「申請後の郵送・タスク」と申請詳細にも出ます。郵送したら「入管へ郵送した」で投函日・追跡番号を記録してください（同じ日・同じ追跡番号なら「まとめて入管へ郵送した」で一度に入れられます）。済んだタスクはチェックを付けてください。
       </p>
 
-      <p className="mt-2 text-[11px] font-bold text-muted">入管へ郵送する書類（{docIds.length}件）</p>
-      {docIds.length === 0 ? (
-        <p className="text-[11px] text-muted">ありません。</p>
-      ) : (
-        <ul className="mt-1 space-y-1">
-          {docIds.map((id) => (
-            <li key={id} className="flex items-center justify-between gap-2 rounded-lg bg-surface px-2.5 py-1.5 text-xs">
-              <span className="font-bold">{prepDocLabel(id)}</span>
-              {canEdit && (
-                <button
-                  type="button"
-                  onClick={() => onMailed(id)}
-                  className="flex shrink-0 items-center gap-1 rounded-lg border border-border px-2 py-1 text-[11px] font-bold text-brand"
-                >
-                  <Check size={12} />
-                  郵送した
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+      <p className="mt-2 text-[11px] font-bold text-muted">
+        入管へ郵送する書類（{docIds.length}件・うち未郵送{unmailedDocIds(docIds, mailings).length}件）
+      </p>
+      <div className="mt-1">
+        <PostApplyMailingPanel docIds={docIds} mailings={mailings} canEdit={canEdit} onSave={onSaveMailings} />
+      </div>
 
       <p className="mt-3 text-[11px] font-bold text-muted">そのほかのタスク（{tasks.filter((t) => !t.done).length}件）</p>
       {tasks.length > 0 && (

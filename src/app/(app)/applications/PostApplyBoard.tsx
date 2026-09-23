@@ -5,8 +5,9 @@ import Link from "next/link";
 import { Check, ClipboardList, ExternalLink } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
-import { clearMailAfterApply, savePostApplyTasks } from "@/lib/supabase/queries/application-prep";
-import { openPostApplyCount, prepDocLabel, type PostApplyEntry } from "@/lib/post-apply";
+import { savePostApplyMailings, savePostApplyTasks } from "@/lib/supabase/queries/application-prep";
+import { PostApplyMailingPanel } from "@/components/workers/PostApplyMailingPanel";
+import { openPostApplyCount, type PostApplyEntry, type PostApplyMailing } from "@/lib/post-apply";
 import { dbErrorMessage } from "@/lib/errors";
 import type { Application } from "@/types/application";
 
@@ -47,13 +48,13 @@ export function PostApplyBoard({
       (!kw || e.workerName.toLowerCase().includes(kw) || e.todoNo.toLowerCase().includes(kw)),
   );
 
-  const mailed = async (e: PostApplyEntry, docId: string) => {
+  const saveMailings = async (e: PostApplyEntry, mailings: PostApplyMailing[]) => {
     setError(null);
     try {
-      await clearMailAfterApply(createClient(), e.checklistId, docId);
-      onChanged({ ...e, docIds: e.docIds.filter((d) => d !== docId) });
+      await savePostApplyMailings(createClient(), e.checklistId, mailings);
+      onChanged({ ...e, mailings });
     } catch (err) {
-      setError(dbErrorMessage(err, "0045_prep_doc_statuses.sql", "保存に失敗しました"));
+      setError(dbErrorMessage(err, "0168_prep_post_apply_mailings.sql", "保存に失敗しました"));
     }
   };
   const doneTask = async (e: PostApplyEntry, taskId: string) => {
@@ -71,7 +72,7 @@ export function PostApplyBoard({
     <div className="space-y-3">
       <p className="rounded-xl border border-border bg-surface px-3.5 py-2.5 text-xs leading-relaxed text-muted">
         申請準備で「申請後に発行され次第、入管へ郵送する」にチェックした書類と、「申請後に入管へ郵送するリスト」に入れたタスクを人ごとにまとめています。
-        郵送したら「郵送した」、済んだタスクは「済み」を押すとここから消えます。
+        郵送したら「入管へ郵送した」で投函日・追跡番号を記録します（同じ日・同じ追跡番号なら「まとめて入管へ郵送した」で一度に）。全部郵送してタスクも済むと、ここから消えます。
       </p>
       {error && (
         <p role="alert" className="rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
@@ -114,25 +115,18 @@ export function PostApplyBoard({
                   )}
                 </div>
               </div>
+              {e.docIds.length > 0 && (
+                <div className="mt-2">
+                  <p className="mb-1 text-[11px] font-bold text-status-notice-fg">入管へ郵送する書類</p>
+                  <PostApplyMailingPanel
+                    docIds={e.docIds}
+                    mailings={e.mailings}
+                    canEdit={canEdit}
+                    onSave={(mailings) => saveMailings(e, mailings)}
+                  />
+                </div>
+              )}
               <ul className="mt-2 space-y-1">
-                {e.docIds.map((docId) => (
-                  <li key={docId} className="flex items-center justify-between gap-2 rounded-lg bg-status-notice-bg/50 px-2.5 py-1.5 text-xs">
-                    <span>
-                      <span className="mr-1.5 rounded bg-status-notice-fg/15 px-1 text-[10px] font-bold text-status-notice-fg">入管へ郵送</span>
-                      <span className="font-bold">{prepDocLabel(docId)}</span>
-                    </span>
-                    {canEdit && (
-                      <button
-                        type="button"
-                        onClick={() => void mailed(e, docId)}
-                        className="flex shrink-0 items-center gap-1 rounded-lg border border-border bg-surface px-2 py-1 text-[11px] font-bold text-brand"
-                      >
-                        <Check size={12} />
-                        郵送した
-                      </button>
-                    )}
-                  </li>
-                ))}
                 {openTasks.map((t) => (
                   <li key={t.id} className="flex items-center justify-between gap-2 rounded-lg bg-background px-2.5 py-1.5 text-xs">
                     <span className="min-w-0 break-words">
