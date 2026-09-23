@@ -64,6 +64,7 @@ export function OnboardingDocuments({
   payMethod: payMethodProp = "",
   koyoCovered: koyoCoveredProp = "",
   org = null,
+  contractOrgNotNeeded = false,
 }: {
   workerId: string;
   canEdit?: boolean;
@@ -75,6 +76,8 @@ export function OnboardingDocuments({
   koyoCovered?: string;
   // 現在の所属機関（会社に渡す外国人資料のやりとり方法を見出しの横に出し、未登録ならその場で決める）
   org?: Organization | null;
+  // 特定技能1号の更新許可なので、契約機関に関する届出（参考様式1の5）が要らない
+  contractOrgNotNeeded?: boolean;
 }) {
   const [record, setRecord] = useState<OnboardingRecordRow | null>(null);
   const [docs, setDocs] = useState<OnboardingDocumentRow[]>([]);
@@ -499,24 +502,34 @@ export function OnboardingDocuments({
             </div>
           )}
 
-          {/* 本人の署名が要る書類: 契約機関に関する届出（申請詳細と同じExcelを作る） */}
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-background px-3 py-2.5">
-            <div className="min-w-0">
-              <p className="text-[11px] font-bold text-muted">外国人本人の署名が必要な書類</p>
-              <p className="text-xs font-bold leading-relaxed">
-                契約機関に関する届出（参考様式1の5・新たな契約の締結）
+          {/* 本人の署名が要る書類: 契約機関に関する届出（申請詳細と同じExcelを作る）。
+              特定技能1号の更新許可は所属機関が変わらないので要らない */}
+          {contractOrgNotNeeded ? (
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-status-approved-fg/30 bg-status-approved-bg px-3 py-2.5">
+              <p className="flex items-start gap-1.5 text-xs font-bold leading-relaxed text-status-approved-fg">
+                <TriangleAlert size={13} className="mt-0.5 shrink-0" />
+                契約機関に関する届出（参考様式1の5・新たな契約の締結）… 特定技能1号の更新許可なので必要ありません
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => void createContractOrgForm()}
-              disabled={contractBusy}
-              className="flex shrink-0 items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-[11px] font-bold text-brand disabled:opacity-50"
-            >
-              {contractBusy ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
-              {contractBusy ? "作成中…" : "作成"}
-            </button>
-          </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-background px-3 py-2.5">
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold text-muted">外国人本人の署名が必要な書類</p>
+                <p className="text-xs font-bold leading-relaxed">
+                  契約機関に関する届出（参考様式1の5・新たな契約の締結）
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void createContractOrgForm()}
+                disabled={contractBusy}
+                className="flex shrink-0 items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-[11px] font-bold text-brand disabled:opacity-50"
+              >
+                {contractBusy ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
+                {contractBusy ? "作成中…" : "作成"}
+              </button>
+            </div>
+          )}
 
           {/* 後送のまま未受領の書類 */}
           {pending.length > 0 && (
