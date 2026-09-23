@@ -29,6 +29,7 @@ import { dbErrorMessage } from "@/lib/errors";
 import { SaveBlockers } from "@/components/mailing/SaveBlockers";
 import { ProgressBadge, TrackingLink } from "@/components/mailing/MailingRecordSummary";
 import { MailingFileAttachments } from "./MailingFileAttachments";
+import { MAIL_REQUEST_KIND, NOZEI3_RECEIVED_KIND } from "@/lib/mailing-attachments";
 import { TAX_OFFICE_MIGRATION, TaxOfficeModal, sortTaxOffices } from "./TaxOfficeTab";
 import { INPUT, LABEL, Pill, type MailingWorker } from "./ui";
 
@@ -37,8 +38,7 @@ import { INPUT, LABEL, Pill, type MailingWorker } from "./ui";
 // 請求書は外国人の登録内容を自動入力したPDF、委任状は様式のまま印刷して本人に署名してもらう。
 
 // 添付の種別（郵送請求した書類・届いた証明書）
-const NOZEI3_SENT_KIND = "郵送請求した書類";
-const NOZEI3_RECEIVED_KIND = "届いた納税証明書";
+const NOZEI3_SENT_KIND = MAIL_REQUEST_KIND;
 
 // 委任状（様式のまま印刷）
 export const NOZEI3_ININJO_URL = "/forms/nozei-ininjo.pdf";

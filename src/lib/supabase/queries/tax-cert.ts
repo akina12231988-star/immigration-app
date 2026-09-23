@@ -135,3 +135,34 @@ export async function importMailingData(
 
   return { muniCount, recCount };
 }
+
+// 外国人詳細に出す、その人の郵送請求の記録（新しい順）。
+// 外国人に紐づけた記録（data.workerId）に加え、紐づけ前の古い記録は氏名が同じものも拾う
+export async function listJudgmentRecordsForWorker(
+  supabase: SupabaseClient,
+  workerId: string,
+  workerName: string,
+): Promise<JudgmentRecord[]> {
+  const byId = supabase
+    .from("judgment_records")
+    .select("id, data, created_at")
+    .eq("data->>workerId", workerId);
+  const name = workerName.trim();
+  const byName = name
+    ? supabase
+        .from("judgment_records")
+        .select("id, data, created_at")
+        .eq("data->>personName", name)
+        .is("data->>workerId", null)
+    : null;
+  const [a, b] = await Promise.all([byId, byName ?? Promise.resolve({ data: [], error: null })]);
+  if (a.error) throw a.error;
+  if (b.error) throw b.error;
+  const seen = new Set<string>();
+  const rows = [...((a.data as RecordRow[]) ?? []), ...((b.data as RecordRow[]) ?? [])].filter((r) => {
+    if (seen.has(r.id)) return false;
+    seen.add(r.id);
+    return true;
+  });
+  return rows.map(toRecord).sort((x, y) => y.createdAt.localeCompare(x.createdAt));
+}
