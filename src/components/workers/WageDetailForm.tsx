@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Copy, Plus, Trash2 } from "lucide-react";
 import { formatAmountInput } from "@/lib/amount-format";
+import { applyOrgCosts, matchesOrgCosts, type OrgCosts } from "@/lib/wage-org-costs";
 import {
   EMPLOYMENT_INSURANCE_KINDS,
   HEALTH_INSURANCE_RATES,
@@ -48,6 +49,7 @@ export interface WageOrgInfo {
   healthInsurance: string; // 保険（国民健康保険 / 社会保険 / その他）
   pension: string; // 年金（国民年金 / 厚生年金）
   koyoCovered: string; // 雇用保険の適用事業所か（はい / いいえ）
+  costs?: OrgCosts; // 1-6号別紙に記載する水道光熱費・通信費（所属機関の登録）
 }
 
 export function WageDetailForm({
@@ -159,8 +161,36 @@ export function WageDetailForm({
             　年金: <span className="font-bold">{orgInfo.pension || "未登録"}</span>
             　雇用保険の適用: <span className="font-bold">{orgInfo.koyoCovered || "未登録"}</span>
           </p>
+          {orgInfo.costs && (
+            <p>
+              水道光熱費:{" "}
+              <span className="font-bold">
+                {orgInfo.costs.utility > 0 ? `約${formatYen(orgInfo.costs.utility)}円` : "未登録"}
+                {orgInfo.costs.utilityKind ? `（${orgInfo.costs.utilityKind}）` : ""}
+              </span>
+              　通信費:{" "}
+              <span className="font-bold">
+                {orgInfo.costs.comm > 0 ? `約${formatYen(orgInfo.costs.comm)}円` : orgInfo.costs.registered ? "無し" : "未登録"}
+              </span>
+            </p>
+          )}
+          {orgInfo.costs?.registered && !readOnly && !matchesOrgCosts(detail, orgInfo.costs) && (
+            <div className="mt-1 flex flex-wrap items-center gap-2 rounded-md bg-status-notice-bg px-2 py-1.5">
+              <span className="font-bold text-status-notice-fg">
+                この別紙の水道光熱費・通信費が所属機関の登録と違います。
+              </span>
+              <button
+                type="button"
+                onClick={() => onChange(applyOrgCosts(detail, orgInfo.costs!))}
+                className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-bold text-brand"
+              >
+                所属機関の登録を入れる
+              </button>
+            </div>
+          )}
           <p className="text-[10px] text-muted">
             未登録の項目は所属機関の編集画面（申込書の情報）で登録すると表示されます。
+            水道光熱費は (f)、通信費は「その他控除」の「通信費」の行に入ります。
           </p>
         </div>
       )}

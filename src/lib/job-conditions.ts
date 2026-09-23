@@ -1,7 +1,7 @@
 // 所属機関 ＞ 求人票に記載する内容（雇用条件書の順番）の計算。
 // 始業・終業・休憩から1日の所定労働時間、年間所定労働日数から年間休日日数を出す。
 
-import type { OrgWorkplace } from "@/types/db";
+import type { OrganizationIntake, OrgWorkplace } from "@/types/db";
 
 // "8:00" / "08:00" → 分。読めなければ null
 export function timeToMinutes(t: string): number | null {
@@ -142,4 +142,124 @@ export function workplaceListRows(intake: {
 // 一覧表を印刷できるか（変更の可能性が「有」で、就業場所が2か所以上）
 export function canPrintWorkplaceList(intake: Parameters<typeof workplaceListRows>[0]): boolean {
   return intake.job_workplace_change === "有" && workplaceListRows(intake).length >= 2;
+}
+
+// ---- 雇用条件書に記載する内容の表示（外国人詳細の賃金の欄などで、所属機関の登録内容を読むだけ） ----
+
+export interface JobConditionSection {
+  title: string; // 例: 「1. 就業の場所」
+  lines: string[]; // 表示する行（未登録は「未登録」）
+}
+
+type JobIntake = Pick<
+  OrganizationIntake,
+  | "job_workplaces"
+  | "job_workplace_change"
+  | "job_workplace_changes"
+  | "job_work_start"
+  | "job_work_end"
+  | "job_break_minutes"
+  | "job_shift"
+  | "job_shifts"
+  | "flex_hours_kind"
+  | "posting_weekly_hours"
+  | "posting_monthly_hours"
+  | "posting_annual_hours"
+  | "job_days_week"
+  | "job_days_month"
+  | "job_days_year"
+  | "job_overtime"
+  | "job_holiday_weekly"
+  | "job_holiday_other"
+  | "posting_pay_closing"
+  | "posting_pay_day"
+  | "pay_method"
+  | "job_wage_deduction"
+  | "job_raise"
+  | "job_raise_note"
+  | "job_bonus"
+  | "job_bonus_note"
+  | "job_retirement_pay"
+  | "job_retirement_pay_note"
+  | "job_resign_notice_days"
+  | "job_insurances"
+  | "job_insurance_other"
+  | "job_rules_where"
+>;
+
+const orNone = (v: string) => v.trim() || "未登録";
+const withNote = (v: string, note: string) => (v === "有" && note.trim() ? `有（${note.trim()}）` : orNone(v));
+
+// 所属機関 ＞ 求人票に記載する内容（雇用条件書の順番）を、見出しごとの行にする
+export function jobConditionSections(intake: JobIntake): JobConditionSection[] {
+  const workplaces = (intake.job_workplaces ?? []).map(workplaceText).filter(Boolean);
+  const time = (start: string, end: string, brk: string) => {
+    if (!start.trim() && !end.trim()) return "";
+    const daily = dailyWorkText(start, end, brk);
+    return `${start || "?"}〜${end || "?"}（休憩${brk.trim() || "?"}分${daily ? `・1日${daily}` : ""}）`;
+  };
+  const holidays = annualHolidays(intake.job_days_year ?? "");
+  const insurances = (intake.job_insurances ?? []).map((o) =>
+    o === "その他" && intake.job_insurance_other.trim() ? `その他（${intake.job_insurance_other.trim()}）` : o,
+  );
+  return [
+    {
+      title: "1. 就業の場所",
+      lines: [
+        ...(workplaces.length > 0 ? workplaces : ["未登録"]),
+        `変更の可能性：${workplaceChangeText(intake.job_workplace_change, intake.job_workplace_changes ?? []) || "未登録"}`,
+      ],
+    },
+    {
+      title: "2. 始業・終業の時刻、休憩時間",
+      lines: [
+        time(intake.job_work_start, intake.job_work_end, intake.job_break_minutes) || "未登録",
+        ...(intake.job_shift
+          ? (intake.job_shifts ?? []).map((s, i) => `交代制${i + 1}：${time(s.start, s.end, s.break_minutes) || "未登録"}`)
+          : []),
+        `変形労働時間制：${orNone(intake.flex_hours_kind)}`,
+      ],
+    },
+    {
+      title: "3. 所定労働時間数",
+      lines: [
+        `週平均 ${orNone(intake.posting_weekly_hours)}　月平均 ${orNone(intake.posting_monthly_hours)}　年間 ${orNone(intake.posting_annual_hours)}`,
+      ],
+    },
+    {
+      title: "4. 所定労働日数",
+      lines: [`週 ${orNone(intake.job_days_week)}　月 ${orNone(intake.job_days_month)}　年 ${orNone(intake.job_days_year)}`],
+    },
+    { title: "5. 所定時間外労働", lines: [orNone(intake.job_overtime)] },
+    {
+      title: "6. 休日",
+      lines: [
+        `定例日：${intake.job_holiday_weekly.trim() ? `毎週${intake.job_holiday_weekly.trim()}` : "未登録"}`,
+        ...(intake.job_holiday_other.trim() ? [`その他：${intake.job_holiday_other.trim()}`] : []),
+        ...(holidays != null ? [`年間合計休日日数：${holidays}日`] : []),
+      ],
+    },
+    { title: "7. 年次有給休暇", lines: ["6ヶ月継続勤務した場合 → 10日付与", "6ヶ月未満の年次有給休暇 → 無し"] },
+    {
+      title: "8. 賃金",
+      lines: [
+        `締切日：${orNone(intake.posting_pay_closing)}　支払日：${orNone(intake.posting_pay_day)}　支払方法：${orNone(intake.pay_method)}`,
+        `労使協定に基づく賃金支払時の控除：${orNone(intake.job_wage_deduction)}`,
+        `昇給：${withNote(intake.job_raise, intake.job_raise_note)}`,
+        `賞与：${withNote(intake.job_bonus, intake.job_bonus_note)}`,
+        `退職金：${withNote(intake.job_retirement_pay, intake.job_retirement_pay_note)}`,
+        "休業手当：有（平均賃金の60%）",
+      ],
+    },
+    {
+      title: "9. 退職",
+      lines: [
+        intake.job_resign_notice_days.trim()
+          ? `自己都合の場合：${intake.job_resign_notice_days.trim()}前に社長・工場長等に届けること`
+          : "自己都合の場合：未登録",
+      ],
+    },
+    { title: "10. 社会保険の加入状況・労働保険の適用状況", lines: [insurances.length > 0 ? insurances.join("・") : "未登録"] },
+    { title: "11. 就業規則を確認できる方法や場所", lines: [orNone(intake.job_rules_where)] },
+  ];
 }
