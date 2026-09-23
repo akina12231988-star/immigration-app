@@ -33,8 +33,14 @@ import { createClient } from "@/lib/supabase/client";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { updateWorker } from "@/lib/supabase/queries/workers";
 import { listOnboardingDocs } from "@/lib/supabase/queries/onboarding";
-import { isPriorAppDoc, priorApplicationText } from "@/lib/prior-application";
-import { previousChecklist, priorDocYearNote } from "@/lib/prior-prep-docs";
+import {
+  isNonTransferable,
+  isPriorAppDoc,
+  manualDocYearNote,
+  PRIOR_YEAR_DOC_IDS,
+  priorApplicationText,
+} from "@/lib/prior-application";
+import { previousChecklist, priorDocYear, priorDocYearNote } from "@/lib/prior-prep-docs";
 import { PriorApplicationCard, usePriorApplication } from "./PriorApplicationCard";
 import {
   deletePrepChecklist,
@@ -142,6 +148,7 @@ import {
   otherAttachedYears,
   prepDocLabel,
   prepDocYear,
+  PREP_DOC_DEFS,
   yearOfPrepDocKey,
   prepPageKey,
   prepStatusOption,
@@ -487,6 +494,15 @@ export function ApplicationPrepChecklist({
   // 「前回はどの年度を添付したか」を出すのに使う。準備状況も読んでおく
   const prevList = previousChecklist(lists, selected, priorApp.prior?.applicationOn ?? null);
   const prevListId = prevList?.id ?? null;
+  // 前回の準備リストで使った書類の年度（前回の申請の欄に出す）
+  const prevListDocYears: Record<string, number | null> = prevList
+    ? Object.fromEntries(
+        PREP_DOC_DEFS.filter((d) => (PRIOR_YEAR_DOC_IDS as readonly string[]).includes(d.id)).map((d) => [
+          d.id,
+          priorDocYear(d, prevList),
+        ]),
+      )
+    : {};
 
   // 表示中のリストを切り替えたら、そのリストの書類ステータスを読み込む
   const currentId = current?.id ?? null;
@@ -554,7 +570,13 @@ export function ApplicationPrepChecklist({
   function priorNoteFor(def: PrepDocDef): string {
     if (!isPriorAppDoc(def.id)) return "";
     const head = priorApplicationText(priorApp.prior);
-    if (!prevList) return head;
+    // 特定活動の申請の申請番号は転用できないので、年度の案内は出さない
+    if (isNonTransferable(priorApp.prior)) return head;
+    if (!prevList) {
+      // 前回の準備リストが無いときは、手入力の「前回使った年度」で案内する
+      const manualNote = manualDocYearNote(def.yearKind, priorApp.manualDocYears[def.id], docYearOf(def));
+      return [head, manualNote].filter(Boolean).join("　");
+    }
     const yearNote = priorDocYearNote(def, prevList, prepDocYear(def, meta.target_reiwa, currentReiwa), docs);
     const prevStatus = prevListId ? (docStatusesByList[prevListId]?.[def.id]?.status ?? "") : "";
     const parts = [
@@ -1810,7 +1832,14 @@ export function ApplicationPrepChecklist({
 
           {/* 前回の申請（1年以内）の申請日・申請番号。課税・納税証明書などの再提出を省くときに書く */}
           <div className="mb-3">
-            <PriorApplicationCard workerId={workerId} state={priorApp} canEdit={canEdit} />
+            <PriorApplicationCard
+              workerId={workerId}
+              state={priorApp}
+              canEdit={canEdit}
+              prepOrganization={prepOrgId ? { id: prepOrgId, name: prepOrgName } : null}
+              organizations={organizations}
+              autoDocYears={prevListDocYears}
+            />
           </div>
 
           {/* 書類一覧 */}
