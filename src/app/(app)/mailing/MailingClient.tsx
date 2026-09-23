@@ -54,11 +54,11 @@ import { extraSaveBlockers, methodBlockers } from "@/lib/mailing-save-check";
 import { MAILING_PROGRESS_OPTIONS, type TaxOffice } from "@/lib/tax-office";
 import { MailingFileAttachments } from "./MailingFileAttachments";
 import { MailingRecordAttachments } from "@/components/mailing/MailingRecordAttachments";
-import { MAIL_REQUEST_KIND, RECEIVED_CERT_KIND, RECEIPT_KIND } from "@/lib/mailing-attachments";
 import { MoneyOrderFields } from "./MoneyOrderFields";
 import { TaxOfficeTab } from "./TaxOfficeTab";
 import { TaxRequestWizard } from "./TaxRequestWizard";
-import { hasYearRequests, muniMoneyOrderGroup, recordMuniGroups } from "@/lib/tax-request-plan";
+import { hasYearRequests, recordMoneyOrderGroups } from "@/lib/tax-request-plan";
+import { taxDocsLabel } from "@/lib/mailing-attachments";
 import { Nozei3EditModal, Nozei3RecordView, Nozei3RequestForm } from "./Nozei3RequestForm";
 import { INPUT, LABEL, Pill, type MailingWorker } from "./ui";
 import {
@@ -1017,7 +1017,7 @@ function ExtraEditModal({
           <p className="mb-2 text-[11px] text-muted">
             {label === "転出届" ? "転出証明書" : "住民票"}や手数料の領収書が郵送で届いたら、ここに画像・PDFを添付してください。
           </p>
-          <MailingRecordAttachments record={record} canEdit={canEdit} only={[RECEIVED_CERT_KIND, RECEIPT_KIND]} />
+          <MailingRecordAttachments record={record} canEdit={canEdit} only={["received", "receipt"]} />
         </div>
         <Button
           fullWidth
@@ -1373,7 +1373,7 @@ function RecordsTab({
                     /* 手順式の請求フォームの記録: 年度ごとの自治体・徴収区分 */
                     (r.yearRequests ?? []).map((y) => (
                       <p key={y.yearType} className="text-muted">
-                        {y.yearType === "new" ? "最新年度" : "前年度"} {yearWithReiwa(y.fiscalStartYear)}：{y.municipalityName}（{collectionLabel(y.collectionType)}）
+                        {y.yearType === "new" ? "最新年度" : "前年度"} {yearWithReiwa(y.fiscalStartYear)}：{y.municipalityName}（{collectionLabel(y.collectionType)}）{taxDocsLabel(y.taxCert, y.taxPayment)}
                       </p>
                     ))
                   ) : r.requestBothYears ? (
@@ -1637,15 +1637,10 @@ function RecipientEditModal({
         />
         {perMuni &&
           method === "mail" &&
-          recordMuniGroups(record.docs).map((g) => (
-            <div key={g.municipalityId} className="mt-2">
-              <p className="mb-1.5 text-sm font-bold text-muted">{g.municipalityName || "自治体"} に同封した定額小為替</p>
-              <MoneyOrderFields
-                titles={g.titles}
-                orders={moneyOrders}
-                onChange={setMoneyOrders}
-                group={muniMoneyOrderGroup(g.municipalityId)}
-              />
+          recordMoneyOrderGroups(record.docs).map((g) => (
+            <div key={g.group} className="mt-2">
+              <p className="mb-1.5 text-sm font-bold text-muted">{g.label}の分として同封した定額小為替</p>
+              <MoneyOrderFields titles={g.titles} orders={moneyOrders} onChange={setMoneyOrders} group={g.group} />
             </div>
           ))}
         <label className="mt-3 flex flex-col gap-1">
@@ -1694,24 +1689,10 @@ function RecipientEditModal({
         )}
 
         <div className="mt-3 border-t border-dashed border-border pt-3">
-          <p className="mb-1 text-sm font-bold text-muted">郵送請求した書類（申請書などのデータ）</p>
           <p className="mb-2 text-[11px] text-muted">
-            自治体に送った申請書のPDFや写真を残しておけます。ドラッグ＆ドロップでも添付できます。
+            自治体に送った申請書のPDFや写真、郵送で届いた証明書・手数料の領収書を添付できます。ドラッグ＆ドロップでも添付できます。
           </p>
-          <MailingFileAttachments
-            recordId={record.id}
-            kind={MAIL_REQUEST_KIND}
-            filterKind={MAIL_REQUEST_KIND}
-            addLabel="郵送請求した書類を添付（画像・PDF）"
-            canEdit={canEdit}
-          />
-        </div>
-
-        <div className="mt-3 border-t border-dashed border-border pt-3">
-          <p className="mb-2 text-[11px] text-muted">
-            証明書や手数料の領収書が郵送で届いたら、ここに画像・PDFを添付してください。
-          </p>
-          <MailingRecordAttachments record={record} canEdit={canEdit} only={[RECEIVED_CERT_KIND, RECEIPT_KIND]} />
+          <MailingRecordAttachments record={record} canEdit={canEdit} />
         </div>
 
         <Button fullWidth className="mt-3" disabled={!canSave || busy} onClick={submit}>

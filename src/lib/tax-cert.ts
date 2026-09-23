@@ -32,7 +32,7 @@ export type JuminhyoMethod = "mail" | "window"; // 住民票の発行方法（�
 // 定額小為替（証明書1枚につき1枚同封する）。
 // 番号は「前半の数字-後半の数字」で控える
 // 手順式の請求フォームで保存した記録は、自治体ごとの欄（muni:自治体ID）に分ける
-export type MoneyOrderGroup = "main" | "nhi" | `muni:${string}`; // 課税証明書など / 国民健康保険税 / 自治体ごと
+export type MoneyOrderGroup = "main" | "nhi" | `muni:${string}` | `year:${YearType}`; // 課税証明書など / 国民健康保険税 / 自治体ごと / 年度ごと
 
 export interface MoneyOrder {
   id: string;
@@ -68,6 +68,7 @@ export interface JudgmentDoc {
   // どの自治体に請求する書類か（手順式の請求フォームで保存した記録だけ）
   municipalityId?: string;
   municipalityName?: string;
+  yearType?: YearType; // どの年度の分か（年度ごとに定額小為替・添付を分ける記録だけ）
 }
 
 // 手順式の請求フォームで記録する、年度ごとの課税・納税証明書の請求
@@ -80,6 +81,9 @@ export interface YearRequest {
   timingStatus: "ok" | "warn";
   timingLabel: string;
   timingDetail: string;
+  // 請求した書類（未設定は両方。年度ごとに選べるようになる前の記録）
+  taxCert?: boolean; // 課税証明書
+  taxPayment?: boolean; // 市県民税納税証明書
 }
 
 // 手順式の請求フォームで記録する、年度ごとの国保税の納税証明書の請求

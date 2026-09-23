@@ -20,17 +20,21 @@ export interface YearPlanInput {
   yearType: YearType; // new = 最新年度 / prev = 前年度
   muni: Municipality; // その年度の1月1日時点の住所地
   collectionType: CollectionType; // その年度の徴収区分
-  requested: boolean; // 課税・納税証明書を請求する
+  taxCert: boolean; // 課税証明書を請求する
+  taxPayment: boolean; // 市県民税の納税証明書を請求する
   nhi: boolean; // その年度に国民健康保険に加入していた（国保税の納税証明書も請求する）
   nhiMuni: Municipality | null; // 国保税の納税証明書の請求先
 }
 
 export type { NhiYearRequest, YearRequest };
 
-// 自治体ごとのまとめ（この自治体に何年度の何を請求するか）
-export interface MuniGroup {
-  muni: Municipality;
-  docs: JudgmentDoc[];
+// 年度ごとのまとめ（その年度に何をどこへ請求するか）。
+// 定額小為替・郵送請求した書類の添付も年度ごとに分ける
+export interface YearGroup {
+  yearType: YearType;
+  fiscalStartYear: number;
+  muni: Municipality; // 課税・納税証明書の請求先（その年度の1月1日時点の住所地）
+  docs: JudgmentDoc[]; // 課税証明書・市県民税納税証明書・国保税の納税証明書（国保は請求先が違うことがある）
 }
 
 export function yearLabelOf(yearType: YearType): string {
@@ -78,28 +82,22 @@ function certMeta(muni: Municipality): string {
 export interface TaxRequestPlan {
   years: YearRequest[];
   nhiYears: NhiYearRequest[];
-  groups: MuniGroup[]; // 自治体ごと（最初に出てきた順）
-  docs: JudgmentDoc[]; // 全自治体の書類（groups を平らにしたもの）
+  groups: YearGroup[]; // 年度ごと（最新年度 → 前年度。請求する書類が無い年度は除く）
+  docs: JudgmentDoc[]; // 全年度の書類（groups を平らにしたもの）
 }
 
 export function buildTaxRequestPlan(params: { appDate: Date; years: YearPlanInput[] }): TaxRequestPlan {
   const fy = planFiscalYears(params.appDate);
   const years: YearRequest[] = [];
   const nhiYears: NhiYearRequest[] = [];
-  const groups: MuniGroup[] = [];
-  const groupOf = (muni: Municipality): MuniGroup => {
-    let g = groups.find((x) => x.muni.id === muni.id);
-    if (!g) {
-      g = { muni, docs: [] };
-      groups.push(g);
-    }
-    return g;
-  };
+  const groups: YearGroup[] = [];
   // 最新年度 → 前年度の順に並べる
   const ordered = [...params.years].sort((a, b) => (a.yearType === b.yearType ? 0 : a.yearType === "new" ? -1 : 1));
   for (const y of ordered) {
     const fiscal = fy[y.yearType];
-    if (y.requested) {
+    const docs: JudgmentDoc[] = [];
+    const at = { municipalityId: y.muni.id, municipalityName: y.muni.name, yearType: y.yearType };
+    if (y.taxCert || y.taxPayment) {
       const timing = judgeTiming(y.collectionType, y.yearType, params.appDate);
       years.push({
         yearType: y.yearType,
@@ -110,35 +108,42 @@ export function buildTaxRequestPlan(params: { appDate: Date; years: YearPlanInpu
         timingStatus: timing.status,
         timingLabel: timing.label,
         timingDetail: timing.detail,
+        taxCert: y.taxCert,
+        taxPayment: y.taxPayment,
       });
-      const g = groupOf(y.muni);
-      const at = { municipalityId: y.muni.id, municipalityName: y.muni.name };
-      g.docs.push({ title: taxCertTitle(y.muni, fiscal), meta: certMeta(y.muni), starred: y.muni.show_asterisk, ...at });
-      g.docs.push({
-        title: taxPaymentTitle(y.muni, fiscal),
-        meta: y.muni.needs_tax_payment_cert ? "課税証明書とは別途取得が必要です" : "課税証明書とは別に1枚請求します",
-        starred: y.muni.show_asterisk,
-        ...at,
+      if (y.taxCert) {
+        docs.push({ title: taxCertTitle(y.muni, fiscal), meta: certMeta(y.muni), starred: y.muni.show_asterisk, ...at });
+      }
+      if (y.taxPayment) {
+        docs.push({
+          title: taxPaymentTitle(y.muni, fiscal),
+          meta: y.muni.needs_tax_payment_cert ? "課税証明書とは別途取得が必要です" : "課税証明書とは別に1枚請求します",
+          starred: y.muni.show_asterisk,
+          ...at,
+        });
+      }
+    }
+    if (y.nhi && y.nhiMuni) {
+      nhiYears.push({
+        yearType: y.yearType,
+        fiscalStartYear: fiscal,
+        municipalityId: y.nhiMuni.id,
+        municipalityName: y.nhiMuni.name,
+      });
+      docs.push({
+        title: nhiCertTitle(y.nhiMuni, fiscal),
+        meta:
+          y.nhiMuni.id === y.muni.id
+            ? `${yearLabelOf(y.yearType)}に国民健康保険に加入していたため必要です`
+            : `${yearLabelOf(y.yearType)}に国民健康保険に加入していたため必要です。課税証明書とは別の自治体（${y.nhiMuni.name}）に請求します`,
+        starred: false,
+        isNhi: true,
+        municipalityId: y.nhiMuni.id,
+        municipalityName: y.nhiMuni.name,
+        yearType: y.yearType,
       });
     }
-  }
-  for (const y of ordered) {
-    if (!y.nhi || !y.nhiMuni) continue;
-    const fiscal = fy[y.yearType];
-    nhiYears.push({
-      yearType: y.yearType,
-      fiscalStartYear: fiscal,
-      municipalityId: y.nhiMuni.id,
-      municipalityName: y.nhiMuni.name,
-    });
-    groupOf(y.nhiMuni).docs.push({
-      title: nhiCertTitle(y.nhiMuni, fiscal),
-      meta: `${yearLabelOf(y.yearType)}に国民健康保険に加入していたため必要です`,
-      starred: false,
-      isNhi: true,
-      municipalityId: y.nhiMuni.id,
-      municipalityName: y.nhiMuni.name,
-    });
+    if (docs.length > 0) groups.push({ yearType: y.yearType, fiscalStartYear: fiscal, muni: y.muni, docs });
   }
   return { years, nhiYears, groups, docs: groups.flatMap((g) => g.docs) };
 }
@@ -160,24 +165,29 @@ export function taxPlanBlockers(p: {
   return out;
 }
 
-// 保存済みの記録の書類を自治体ごとにまとめる（定額小為替の欄を自治体ごとに出すときに使う）
-export function recordMuniGroups(docs: JudgmentDoc[] = []): { municipalityId: string; municipalityName: string; titles: string[] }[] {
-  const out: { municipalityId: string; municipalityName: string; titles: string[] }[] = [];
+// 定額小為替の欄（年度ごと）の group 名
+export function yearMoneyOrderGroup(yearType: YearType): `year:${YearType}` {
+  return `year:${yearType}`;
+}
+
+// 保存済みの記録の書類を、定額小為替の欄ごとにまとめる。
+// 年度ごとに保存した記録は年度ごと、それ以前（自治体ごと）の記録は自治体ごと
+export function recordMoneyOrderGroups(
+  docs: JudgmentDoc[] = [],
+): { group: `year:${YearType}` | `muni:${string}`; label: string; titles: string[] }[] {
+  const byYear = docs.some((d) => d.yearType);
+  const out: { group: `year:${YearType}` | `muni:${string}`; label: string; titles: string[] }[] = [];
   for (const d of docs) {
-    const id = d.municipalityId ?? "";
-    let g = out.find((x) => x.municipalityId === id);
+    const group = byYear && d.yearType ? yearMoneyOrderGroup(d.yearType) : (`muni:${d.municipalityId ?? ""}` as const);
+    const label = byYear && d.yearType ? yearLabelOf(d.yearType) : d.municipalityName || "自治体";
+    let g = out.find((x) => x.group === group);
     if (!g) {
-      g = { municipalityId: id, municipalityName: d.municipalityName ?? "", titles: [] };
+      g = { group, label, titles: [] };
       out.push(g);
     }
     g.titles.push(d.title);
   }
   return out;
-}
-
-// 定額小為替の欄（自治体ごと）の group 名
-export function muniMoneyOrderGroup(municipalityId: string): `muni:${string}` {
-  return `muni:${municipalityId}`;
 }
 
 // 手順式フォームで保存した記録か（年度ごとの請求 yearRequests を持つ）

@@ -30,12 +30,13 @@ import {
 } from "@/lib/tax-cert";
 import {
   buildTaxRequestPlan,
-  muniMoneyOrderGroup,
   planFiscalYears,
   suggestRequestedYears,
   taxPlanBlockers,
   yearLabelOf,
+  yearMoneyOrderGroup,
 } from "@/lib/tax-request-plan";
+import { MailingRecordAttachments } from "@/components/mailing/MailingRecordAttachments";
 import { MoneyOrderFields } from "./MoneyOrderFields";
 import {
   buildMethodInfo,
@@ -50,7 +51,7 @@ import { INPUT, LABEL, Pill, type MailingWorker } from "./ui";
 
 // 郵送請求 ＞ 課税証明書と納税証明書（手順式）。
 // ① 住所の確認 → ② 年度ごとの自治体 → ③ 年度ごとの徴収区分 → ④ 申請予定日 →
-// ⑤ 年度ごとの国保加入 → ⑥ 判定結果（自治体ごとに何年度を請求するか・定額小為替）の順に進む。
+// ⑤ 年度ごとの国保加入 → ⑥ 判定結果（年度ごとに何をどこへ請求するか・定額小為替・郵送請求した書類の添付）の順に進む。
 // 自治体マスタに無い自治体はポップアップで登録でき、閉じるとそのまま選んだ状態で入力に戻れる
 
 const YEARS: YearType[] = ["new", "prev"];
@@ -140,13 +141,11 @@ function WizardBody({
   const [nhi, setNhi] = useState<PerYear<boolean>>({ new: false, prev: false });
   const [nhiMuniIds, setNhiMuniIds] = useState<PerYear<string>>({ new: "", prev: "" });
 
-  // ⑥ 請求する年度（目安から外したり足したりできる）
-  const [requestedOverride, setRequestedOverride] = useState<Partial<PerYear<boolean>>>({});
+  // ⑥ 年度ごとに請求する書類（課税証明書・市県民税納税証明書）。目安の年度に最初からチェックを入れ、
+  // 両方の年度で取るときは付け足せる
+  const [docOverride, setDocOverride] = useState<Partial<Record<`${YearType}-${"cert" | "pay"}`, boolean>>>({});
   const suggestion = newMuni ? suggestRequestedYears({ newMuni, newCollection: collection.new, appDate: appDateObj }) : null;
-  const requested: PerYear<boolean> = {
-    new: requestedOverride.new ?? suggestion?.new ?? false,
-    prev: requestedOverride.prev ?? suggestion?.prev ?? false,
-  };
+  const wants = (y: YearType, doc: "cert" | "pay") => docOverride[`${y}-${doc}`] ?? suggestion?.[y] ?? false;
 
   // 受領方法・定額小為替
   const [method, setMethod] = useState<RequestMethod>("mail");
@@ -200,7 +199,8 @@ function WizardBody({
             yearType: y,
             muni: yearMuni[y] as Municipality,
             collectionType: collection[y],
-            requested: requested[y],
+            taxCert: wants(y, "cert"),
+            taxPayment: wants(y, "pay"),
             nhi: nhi[y],
             nhiMuni: muniOf(nhiMuniIds[y]),
           })),
@@ -246,7 +246,7 @@ function WizardBody({
       nhiRecipient: recipient,
       nhiAgent: agent,
     }),
-    ...(plan && plan.docs.length === 0 ? ["請求する年度（または国保税の納税証明書）を1つ以上選んでください"] : []),
+    ...(plan && plan.docs.length === 0 ? ["請求する書類（課税証明書・市県民税納税証明書・国保税の納税証明書）を1つ以上選んでください"] : []),
   ];
 
   const save = async () => {
@@ -256,7 +256,7 @@ function WizardBody({
     const both = plan.years.length === 2;
     const nhiFirst = plan.nhiYears[0];
     const mainInfo = buildMethodInfo(method, mailDate, recipient, agent);
-    const groups = new Set(plan.groups.map((g) => muniMoneyOrderGroup(g.muni.id)));
+    const groups = new Set<string>(plan.groups.map((g) => yearMoneyOrderGroup(g.yearType)));
     const record: JudgmentRecord = {
       id: "",
       createdAt: "",
@@ -294,8 +294,8 @@ function WizardBody({
       nhiRecipientType: mainInfo.recipientType,
       nhiAgentName: mainInfo.agentName,
       nhiSameAsMain: true,
-      // 今の判定結果に無い自治体の分は残さない
-      moneyOrders: method === "mail" ? moneyOrders.filter((o) => groups.has(o.group as `muni:${string}`)) : [],
+      // 今の判定結果に無い年度の分は残さない
+      moneyOrders: method === "mail" ? moneyOrders.filter((o) => groups.has(o.group ?? "")) : [],
     };
     setBusy(true);
     try {
@@ -554,39 +554,12 @@ function WizardBody({
       {step >= 6 && plan && newMuni && (
         <StepCard n={6} step={step}>
           <div className="flex flex-col gap-3">
-            <div className="rounded-xl border border-border p-3">
-              <p className="mb-1 text-sm font-bold">請求する年度（課税証明書・市県民税納税証明書）</p>
-              {suggestion && (
-                <p className="mb-2 text-xs text-muted">
-                  目安：{suggestion.new ? `最新年度（${yearWithReiwa(fy.new)}）` : `前年度（${yearWithReiwa(fy.prev)}）`}。
-                  {suggestion.reason}
-                </p>
-              )}
-              <div className="flex flex-col gap-1.5">
-                {YEARS.map((y) => (
-                  <label key={y} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={requested[y]}
-                      onChange={(e) => setRequestedOverride((o) => ({ ...o, [y]: e.target.checked }))}
-                      className="h-4 w-4"
-                    />
-                    {yearLabelOf(y)}（{fiscalYearLabel(fy[y])}）：{yearMuni[y]?.name}（{collectionLabel(collection[y])}）
-                    {suggestion?.[y] && <span className="text-[11px] font-bold text-brand">目安</span>}
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {plan.years.map((y) => (
-              <ResultStamp
-                key={y.yearType}
-                warn={y.timingStatus === "warn"}
-                title={`${y.municipalityName}：${yearLabelOf(y.yearType)}（${fiscalYearLabel(y.fiscalStartYear)}）の証明書を取得`}
-                label={y.timingLabel}
-                notes={[y.timingDetail]}
-              />
-            ))}
+            {suggestion && (
+              <p className="rounded-xl bg-background p-3 text-xs text-muted">
+                目安：{suggestion.new ? `最新年度（${yearWithReiwa(fy.new)}）` : `前年度（${yearWithReiwa(fy.prev)}）`}の証明書。
+                {suggestion.reason} 両方の年度で取るときは、もう一方の年度にもチェックを入れてください。
+              </p>
+            )}
 
             <MethodToggleSection
               title="受領方法"
@@ -600,31 +573,73 @@ function WizardBody({
               setAgent={setAgent}
             />
 
-            {plan.groups.map((g) => (
-              <div key={g.muni.id} className="overflow-hidden rounded-xl border border-border">
-                <div className="border-b border-border bg-brand/10 px-4 py-2.5 text-sm font-bold text-brand">
-                  {g.muni.name} に請求する書類（{g.docs.length}通）
-                </div>
-                <div className="p-3">
-                  <MunicipalitySiteLinks municipalities={municipalities} ids={[g.muni.id]} />
-                  <DocList docs={g.docs} />
-                  {method === "mail" && (
-                    <div className="mt-3">
-                      <p className="mb-1.5 text-sm font-bold text-muted">{g.muni.name} に同封した定額小為替</p>
-                      <MoneyOrderFields
-                        titles={g.docs.map((d) => d.title)}
-                        orders={moneyOrders}
-                        onChange={setMoneyOrders}
-                        group={muniMoneyOrderGroup(g.muni.id)}
-                        canEdit={canEdit && !saved}
-                      />
+            {YEARS.map((y) => {
+              const g = plan.groups.find((x) => x.yearType === y);
+              const req = plan.years.find((x) => x.yearType === y);
+              return (
+                <div key={y} className="overflow-hidden rounded-xl border border-border">
+                  <div className="border-b border-border bg-brand/10 px-4 py-2.5 text-sm font-bold text-brand">
+                    {yearLabelOf(y)}（{fiscalYearLabel(fy[y])}）：{yearMuni[y]?.name}（{collectionLabel(collection[y])}）
+                    {suggestion?.[y] && <span className="ml-2 rounded bg-brand px-1.5 py-0.5 text-[10px] text-brand-foreground">目安</span>}
+                  </div>
+                  <div className="flex flex-col gap-3 p-3">
+                    <div className="flex flex-wrap gap-x-6 gap-y-1.5">
+                      {(["cert", "pay"] as const).map((doc) => (
+                        <label key={doc} className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={wants(y, doc)}
+                            disabled={!!saved}
+                            onChange={(e) => setDocOverride((o) => ({ ...o, [`${y}-${doc}`]: e.target.checked }))}
+                            className="h-4 w-4"
+                          />
+                          {doc === "cert" ? yearMuni[y]?.cert_name || "課税証明書" : "市県民税納税証明書"}を請求する
+                        </label>
+                      ))}
                     </div>
-                  )}
+                    {req && (
+                      <ResultStamp
+                        warn={req.timingStatus === "warn"}
+                        title={`${req.municipalityName}：${yearLabelOf(y)}（${fiscalYearLabel(req.fiscalStartYear)}）の証明書を取得`}
+                        label={req.timingLabel}
+                        notes={[req.timingDetail]}
+                      />
+                    )}
+                    {g ? (
+                      <>
+                        <MunicipalitySiteLinks municipalities={municipalities} ids={Array.from(new Set(g.docs.map((d) => d.municipalityId ?? "")))} />
+                        <DocList docs={g.docs} />
+                        {method === "mail" && (
+                          <div>
+                            <p className="mb-1.5 text-sm font-bold text-muted">{yearLabelOf(y)}の分として同封した定額小為替</p>
+                            <MoneyOrderFields
+                              titles={g.docs.map((d) => d.title)}
+                              orders={moneyOrders}
+                              onChange={setMoneyOrders}
+                              group={yearMoneyOrderGroup(y)}
+                              canEdit={canEdit && !saved}
+                            />
+                          </div>
+                        )}
+                        <div className="border-t border-dashed border-border pt-3">
+                          {saved ? (
+                            <MailingRecordAttachments record={saved} canEdit={canEdit} year={y} />
+                          ) : (
+                            <p className="text-[11px] text-muted">
+                              記録として保存すると、ここで{yearLabelOf(y)}の郵送請求した書類（申請書のPDF・画像）・届いた証明書・領収書を添付できます。
+                            </p>
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-xs text-muted">この年度は請求しません。</p>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
             {plan.docs.length === 0 && (
-              <p className="rounded-xl bg-background p-3 text-sm text-muted">請求する書類がありません。上で請求する年度を選んでください。</p>
+              <p className="rounded-xl bg-background p-3 text-sm text-muted">請求する書類がありません。年度ごとに請求する書類にチェックを入れてください。</p>
             )}
 
             <label className="flex flex-col gap-1">
@@ -641,7 +656,7 @@ function WizardBody({
               <div className="space-y-2">
                 <p className="flex items-center gap-1 rounded-xl bg-status-reported-bg p-3 text-sm font-bold text-status-reported-fg">
                   <Check size={15} />
-                  記録しました。届いた証明書・領収書は「記録一覧」や外国人詳細から添付できます。
+                  記録しました。上の年度ごとの欄で郵送請求した書類を添付できます（届いた証明書・領収書は後から「記録一覧」や外国人詳細でも添付できます）。
                 </p>
                 <Button fullWidth variant="secondary" onClick={onReset}>
                   続けて別の請求を入力
