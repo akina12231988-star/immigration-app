@@ -63,6 +63,8 @@ import { dbErrorMessage } from "@/lib/errors";
 import { extraSaveBlockers, judgeBlockers, methodBlockers, taxSaveBlockers } from "@/lib/mailing-save-check";
 import { MAILING_PROGRESS_OPTIONS, type TaxOffice } from "@/lib/tax-office";
 import { MailingFileAttachments } from "./MailingFileAttachments";
+import { MailingRecordAttachments } from "@/components/mailing/MailingRecordAttachments";
+import { MAIL_REQUEST_KIND, RECEIVED_CERT_KIND, RECEIPT_KIND } from "@/lib/mailing-attachments";
 import { MoneyOrderFields } from "./MoneyOrderFields";
 import { TaxOfficeTab } from "./TaxOfficeTab";
 import { Nozei3EditModal, Nozei3RecordView, Nozei3RequestForm } from "./Nozei3RequestForm";
@@ -984,12 +986,6 @@ function JudgeTab({
   );
 }
 
-// 領収書の添付に使う種別名（後日届く手数料の領収書）
-const RECEIPT_KIND = "領収書";
-
-// 郵送請求した書類（自治体に送った申請書など）の添付に使う種別名
-const MAIL_REQUEST_KIND = "郵送請求した書類";
-
 /* ============================ 転出届・住民票の郵送請求 ============================ */
 
 // 転出届・住民票の請求フォームの入力値
@@ -1558,17 +1554,10 @@ function ExtraEditModal({
           />
         </div>
         <div className="border-t border-dashed border-border pt-3">
-          <p className="mb-1 text-sm font-bold text-muted">領収書（後日届いたら添付）</p>
           <p className="mb-2 text-[11px] text-muted">
-            手数料の領収書が郵送で届いたら、ここに画像・PDFを添付してください。
+            {label === "転出届" ? "転出証明書" : "住民票"}や手数料の領収書が郵送で届いたら、ここに画像・PDFを添付してください。
           </p>
-          <MailingFileAttachments
-            recordId={record.id}
-            kind={RECEIPT_KIND}
-            filterKind={RECEIPT_KIND}
-            addLabel="領収書を添付（画像・PDF）"
-            canEdit={canEdit}
-          />
+          <MailingRecordAttachments record={record} canEdit={canEdit} only={[RECEIVED_CERT_KIND, RECEIPT_KIND]} />
         </div>
         <Button
           fullWidth
@@ -2136,27 +2125,8 @@ function MoneyOrderReceiptView({
       {orders.length === 0 && (
         <p className="text-muted">「編集」から為替証書の番号を登録できます。</p>
       )}
-      {record.requestKind !== "tenshutsu" && record.requestKind !== "juminhyo" && (
-        <div className="mt-2 border-t border-dashed border-border pt-2">
-          <p className="mb-1 font-bold">郵送請求した書類（申請書などのデータ）</p>
-          <MailingFileAttachments
-            recordId={record.id}
-            kind={MAIL_REQUEST_KIND}
-            filterKind={MAIL_REQUEST_KIND}
-            addLabel="郵送請求した書類を添付（画像・PDF）"
-            canEdit={canEdit}
-          />
-        </div>
-      )}
       <div className="mt-2 border-t border-dashed border-border pt-2">
-        <p className="mb-1 font-bold">領収書（後日届いたら添付）</p>
-        <MailingFileAttachments
-          recordId={record.id}
-          kind={RECEIPT_KIND}
-          filterKind={RECEIPT_KIND}
-          addLabel="領収書を添付（画像・PDF）"
-          canEdit={canEdit}
-        />
+        <MailingRecordAttachments record={record} canEdit={canEdit} />
       </div>
     </div>
   );
@@ -2357,17 +2327,10 @@ function RecipientEditModal({
         </div>
 
         <div className="mt-3 border-t border-dashed border-border pt-3">
-          <p className="mb-1 text-sm font-bold text-muted">領収書（後日届いたら添付）</p>
           <p className="mb-2 text-[11px] text-muted">
-            手数料の領収書が郵送で届いたら、ここに画像・PDFを添付してください。
+            証明書や手数料の領収書が郵送で届いたら、ここに画像・PDFを添付してください。
           </p>
-          <MailingFileAttachments
-            recordId={record.id}
-            kind={RECEIPT_KIND}
-            filterKind={RECEIPT_KIND}
-            addLabel="領収書を添付（画像・PDF）"
-            canEdit={canEdit}
-          />
+          <MailingRecordAttachments record={record} canEdit={canEdit} only={[RECEIVED_CERT_KIND, RECEIPT_KIND]} />
         </div>
 
         <Button fullWidth className="mt-3" disabled={!canSave || busy} onClick={submit}>

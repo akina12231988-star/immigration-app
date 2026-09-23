@@ -33,6 +33,7 @@ import { WorkerDocuments } from "@/components/workers/WorkerDocuments";
 import { WorkerVisaHistory } from "@/components/workers/WorkerVisaHistory";
 import { WorkerEmploymentInsurance } from "@/components/workers/WorkerEmploymentInsurance";
 import { WorkerFollowups } from "@/components/workers/WorkerFollowups";
+import { WorkerMailingRecords } from "@/components/workers/WorkerMailingRecords";
 import { WorkerInsuranceCards } from "@/components/workers/WorkerInsuranceCards";
 import { OnboardingDocuments } from "@/components/workers/OnboardingDocuments";
 import { HealthCheckSection } from "@/components/workers/HealthCheckSection";
@@ -1685,6 +1686,9 @@ export function WorkerDetail({
         canEdit={canEdit}
         histories={histories}
       />
+
+      {/* 郵送請求（何年度をどこに請求したか・郵送請求した書類／届いた証明書／領収書の添付） */}
+      <WorkerMailingRecords workerId={worker.id} workerName={worker.name} canEdit={canEdit} />
 
       {/* 旧「外国人書類（PDF・画像で保存）」カードは解体した:
           合格証4種→基本情報の各合格名の下 / パスポート→出入国の記録のパスポートの記録 /
