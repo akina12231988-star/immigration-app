@@ -452,3 +452,11 @@ describe("就業の場所の初期値", () => {
     expect(j.job_workplaces[0].address).toBe("別");
   });
 });
+
+describe("退職（自己都合）の届け出", () => {
+  it("以前の数字だけの値は日数として読み、それ以外はそのまま", () => {
+    expect(normalizeOrganizationIntake({ job_resign_notice_days: "30" }).job_resign_notice_days).toBe("30日");
+    expect(normalizeOrganizationIntake({ job_resign_notice_days: "3ヶ月" }).job_resign_notice_days).toBe("3ヶ月");
+    expect(normalizeOrganizationIntake({}).job_resign_notice_days).toBe("");
+  });
+});

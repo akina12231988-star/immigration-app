@@ -1223,6 +1223,118 @@ function IntakeSection({
             })
           }
         />
+        {locks.intake("flex_hours_kind") ? (
+          <StaticValue label="変形労働時間制" value={intake.flex_hours_kind} />
+        ) : (
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-bold text-muted">
+              変形労働時間制（求人票へ自動反映されます）
+            </span>
+            <select
+              value={intake.flex_hours_kind}
+              onChange={(e) => setIntake({ flex_hours_kind: e.target.value })}
+              className={INPUT_CLASS}
+            >
+              <option value="">—</option>
+              <option value="なし">なし</option>
+              <option value="1ヶ月単位">1ヶ月単位</option>
+              <option value="1年単位">1年単位</option>
+            </select>
+          </label>
+        )}
+        {/* 書類の添付は1年単位の変形労働時間制をとっている会社だけ */}
+        {intake.flex_hours_kind === "1年単位" && (
+          <>
+            <p className={HINT_CLASS}>
+              1年単位の変形労働時間制の会社は、年間カレンダーと労使協定書を添付してください。書類は開始日から1年間有効です。求人票の入力画面から確認できます。
+            </p>
+            <div className="grid grid-cols-2 gap-2.5">
+              {locks.intake("flex_docs_start") ? (
+                <StaticValue label="書類の有効期間の開始日" value={intake.flex_docs_start} />
+              ) : (
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs font-bold text-muted">書類の有効期間の開始日</span>
+                  <input
+                    type="date"
+                    value={intake.flex_docs_start}
+                    onChange={(e) => setIntake({ flex_docs_start: e.target.value })}
+                    className={INPUT_CLASS}
+                  />
+                </label>
+              )}
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-bold text-muted">有効期限（開始日から1年間）</span>
+                {(() => {
+                  const until = flexDocsValidUntil(intake.flex_docs_start);
+                  const expired = until !== "" && until < todayStr();
+                  return (
+                    <p
+                      className={`flex min-h-[44px] items-center rounded-xl px-3 text-sm font-bold ${
+                        expired ? "bg-seal/10 text-seal" : "bg-border/30"
+                      }`}
+                    >
+                      {until
+                        ? `${until} まで${expired ? "（期限切れ・新しい書類を添付してください）" : ""}`
+                        : "開始日を入力すると自動で入ります"}
+                    </p>
+                  );
+                })()}
+              </div>
+            </div>
+            {/* 有効期限の2か月前からお知らせを出し、新しい書類の作成ツールへ案内する */}
+            {(() => {
+              const alert = flexDocsAlert(intake.flex_docs_start, todayStr());
+              if (!alert) return null;
+              const expired = alert.kind === "expired";
+              return (
+                <div
+                  className={`rounded-xl p-3 text-xs leading-relaxed ${
+                    expired
+                      ? "bg-seal/10 text-seal"
+                      : "bg-status-notice-bg text-status-notice-fg"
+                  }`}
+                >
+                  <p className="font-bold">
+                    {expired
+                      ? `年間カレンダー・労使協定書の有効期限（${alert.until}）が切れています。`
+                      : `年間カレンダー・労使協定書の有効期限（${alert.until}）まで2か月を切りました。`}
+                  </p>
+                  <p className="mt-1">
+                    新しい年間カレンダーと労使協定書を作成して下に添付し、
+                    「書類の有効期間の開始日」を新しい開始日に直してください。
+                  </p>
+                  <a
+                    href="https://kyu-yo-keisan.vercel.app/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1.5 inline-flex items-center gap-1 rounded-lg border border-current bg-surface px-3 py-1.5 font-bold"
+                  >
+                    給与計算ツールで年間カレンダー・労使協定書を作成する →
+                  </a>
+                </div>
+              );
+            })()}
+            {orgId ? (
+              <>
+                <OrgFileAttachments
+                  orgId={orgId}
+                  kind={ORG_FILE_KIND_YEAR_CALENDAR}
+                  addLabel="年間カレンダーを追加（画像・PDF）"
+                />
+                <OrgFileAttachments
+                  orgId={orgId}
+                  kind={ORG_FILE_KIND_LABOR_AGREEMENT}
+                  addLabel="労使協定書を追加（画像・PDF）"
+                />
+              </>
+            ) : (
+              <p className={HINT_CLASS}>
+                年間カレンダー・労使協定書は、会社・機関を登録したあとに編集画面から添付できます。
+              </p>
+            )}
+          </>
+        )}
+
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
@@ -1477,13 +1589,12 @@ function IntakeSection({
         <label className="flex flex-wrap items-center gap-1.5 text-sm">
           <span className="text-xs font-bold text-muted">自己都合の場合：</span>
           <input
-            inputMode="numeric"
             value={intake.job_resign_notice_days}
-            onChange={(e) => setIntake({ job_resign_notice_days: e.target.value.replace(/[^0-9]/g, "") })}
-            placeholder="例: 30"
-            className="min-h-[40px] w-24 rounded-xl border border-border bg-background px-3 text-right text-sm focus:border-brand focus:outline-none"
+            onChange={(e) => setIntake({ job_resign_notice_days: e.target.value })}
+            placeholder="例: 3ヶ月"
+            className="min-h-[40px] w-32 rounded-xl border border-border bg-background px-3 text-right text-sm focus:border-brand focus:outline-none"
           />
-          日前に社長・工場長等に届けること
+          前に社長・工場長等に届けること
         </label>
 
         <p className={SUB_CLASS}>10. 社会保険の加入状況・労働保険の適用状況</p>
@@ -1526,7 +1637,7 @@ function IntakeSection({
           placeholder="例: 事務所の掲示板に掲示／休憩室に備え付け"
         />
 
-        <p className={GROUP_CLASS}>求人票に記載するその他の内容</p>
+        <p className={GROUP_CLASS}>1-6号別紙に記載する内容（求人票に記載するその他の内容）</p>
         <div className="grid grid-cols-2 gap-2.5">
           <IntakeField
             label="通信費（約・円）"
@@ -1589,119 +1700,6 @@ function IntakeSection({
             </span>
           </label>
         )}
-        <p className={GROUP_CLASS}>変形労働時間制</p>
-        {locks.intake("flex_hours_kind") ? (
-          <StaticValue label="変形労働時間制" value={intake.flex_hours_kind} />
-        ) : (
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-bold text-muted">
-              変形労働時間制（求人票へ自動反映されます）
-            </span>
-            <select
-              value={intake.flex_hours_kind}
-              onChange={(e) => setIntake({ flex_hours_kind: e.target.value })}
-              className={INPUT_CLASS}
-            >
-              <option value="">—</option>
-              <option value="なし">なし</option>
-              <option value="1ヶ月単位">1ヶ月単位</option>
-              <option value="1年単位">1年単位</option>
-            </select>
-          </label>
-        )}
-        {/* 書類の添付は1年単位の変形労働時間制をとっている会社だけ */}
-        {intake.flex_hours_kind === "1年単位" && (
-          <>
-            <p className={HINT_CLASS}>
-              1年単位の変形労働時間制の会社は、年間カレンダーと労使協定書を添付してください。書類は開始日から1年間有効です。求人票の入力画面から確認できます。
-            </p>
-            <div className="grid grid-cols-2 gap-2.5">
-              {locks.intake("flex_docs_start") ? (
-                <StaticValue label="書類の有効期間の開始日" value={intake.flex_docs_start} />
-              ) : (
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs font-bold text-muted">書類の有効期間の開始日</span>
-                  <input
-                    type="date"
-                    value={intake.flex_docs_start}
-                    onChange={(e) => setIntake({ flex_docs_start: e.target.value })}
-                    className={INPUT_CLASS}
-                  />
-                </label>
-              )}
-              <div className="flex flex-col gap-1">
-                <span className="text-xs font-bold text-muted">有効期限（開始日から1年間）</span>
-                {(() => {
-                  const until = flexDocsValidUntil(intake.flex_docs_start);
-                  const expired = until !== "" && until < todayStr();
-                  return (
-                    <p
-                      className={`flex min-h-[44px] items-center rounded-xl px-3 text-sm font-bold ${
-                        expired ? "bg-seal/10 text-seal" : "bg-border/30"
-                      }`}
-                    >
-                      {until
-                        ? `${until} まで${expired ? "（期限切れ・新しい書類を添付してください）" : ""}`
-                        : "開始日を入力すると自動で入ります"}
-                    </p>
-                  );
-                })()}
-              </div>
-            </div>
-            {/* 有効期限の2か月前からお知らせを出し、新しい書類の作成ツールへ案内する */}
-            {(() => {
-              const alert = flexDocsAlert(intake.flex_docs_start, todayStr());
-              if (!alert) return null;
-              const expired = alert.kind === "expired";
-              return (
-                <div
-                  className={`rounded-xl p-3 text-xs leading-relaxed ${
-                    expired
-                      ? "bg-seal/10 text-seal"
-                      : "bg-status-notice-bg text-status-notice-fg"
-                  }`}
-                >
-                  <p className="font-bold">
-                    {expired
-                      ? `年間カレンダー・労使協定書の有効期限（${alert.until}）が切れています。`
-                      : `年間カレンダー・労使協定書の有効期限（${alert.until}）まで2か月を切りました。`}
-                  </p>
-                  <p className="mt-1">
-                    新しい年間カレンダーと労使協定書を作成して下に添付し、
-                    「書類の有効期間の開始日」を新しい開始日に直してください。
-                  </p>
-                  <a
-                    href="https://kyu-yo-keisan.vercel.app/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-1.5 inline-flex items-center gap-1 rounded-lg border border-current bg-surface px-3 py-1.5 font-bold"
-                  >
-                    給与計算ツールで年間カレンダー・労使協定書を作成する →
-                  </a>
-                </div>
-              );
-            })()}
-            {orgId ? (
-              <>
-                <OrgFileAttachments
-                  orgId={orgId}
-                  kind={ORG_FILE_KIND_YEAR_CALENDAR}
-                  addLabel="年間カレンダーを追加（画像・PDF）"
-                />
-                <OrgFileAttachments
-                  orgId={orgId}
-                  kind={ORG_FILE_KIND_LABOR_AGREEMENT}
-                  addLabel="労使協定書を追加（画像・PDF）"
-                />
-              </>
-            ) : (
-              <p className={HINT_CLASS}>
-                年間カレンダー・労使協定書は、会社・機関を登録したあとに編集画面から添付できます。
-              </p>
-            )}
-          </>
-        )}
-
         <p className={GROUP_CLASS}>見積書の添付（複数可）</p>
         {orgId ? (
           <OrgFileAttachments orgId={orgId} kind="見積書" addLabel="見積書を追加（画像・PDF）" />
