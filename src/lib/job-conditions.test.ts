@@ -89,3 +89,19 @@ describe("就業場所の一覧表", () => {
     expect(workplaceListRows({ ...intake, job_workplace_change: "無" })).toHaveLength(1);
   });
 });
+
+describe("就業場所の一覧表の重複", () => {
+  it("就業の場所と同じ住所が変更先にあれば、変更先の行だけを出す（郵便番号・全角数字の違いは無視）", () => {
+    const rows = workplaceListRows({
+      job_workplaces: [{ name: "有限会社國崎青果", address: "〒866-0031 熊本県八代市新浜町1-1", contact: "TEL 0965-32-5337" }],
+      job_workplace_change: "有",
+      job_workplace_changes: [
+        { name: "本社", address: "長崎県雲仙市南串山町丙１９３９", contact: "0957-88-3787" },
+        { name: "熊本営業所", address: "熊本県八代市新浜町１-１", contact: "0965-32-5337" },
+        { name: "埼玉営業所", address: "埼玉県深谷市後榛沢364", contact: "0485-85-5830" },
+        { name: "関東営業所", address: "埼玉県深谷市後榛沢364", contact: "048-585-5830" },
+      ],
+    });
+    expect(rows.map((r) => r.name)).toEqual(["本社", "熊本営業所", "埼玉営業所", "関東営業所"]);
+  });
+});

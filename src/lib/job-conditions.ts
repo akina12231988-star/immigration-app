@@ -113,20 +113,30 @@ export function phoneOnly(contact: string): string {
     .join(" / ");
 }
 
+// 住所の比べ方（郵便番号・空白を除き、全角の数字・ハイフンを半角にそろえる）
+function addressKey(address: string): string {
+  return address
+    .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+    .replace(/[－ー―‐−]/g, "-")
+    .replace(/〒?\s*\d{3}-?\d{4}/, "")
+    .replace(/\s|　/g, "");
+}
+
 // 就業場所の一覧表（A4）の行。就業の場所 → 変更先の事業所（変更の可能性が「有」のとき）の順。
-// 事業所名・所在地・連絡先がすべて空の行は除く
+// 就業の場所の行（作業する住所から自動で入った行など）と同じ住所が変更先にもあるときは、
+// 変更先に入力した行（事業所名つき）だけを出して二重にしない。空の行は除く
 export function workplaceListRows(intake: {
   job_workplaces?: OrgWorkplace[];
   job_workplace_change?: string;
   job_workplace_changes?: OrgWorkplace[];
 }): { name: string; address: string; phone: string }[] {
-  const rows = [
-    ...(intake.job_workplaces ?? []),
-    ...(intake.job_workplace_change === "有" ? (intake.job_workplace_changes ?? []) : []),
-  ];
-  return rows
-    .filter((w) => w.name.trim() || w.address.trim() || w.contact.trim())
-    .map((w) => ({ name: w.name.trim(), address: w.address.trim(), phone: phoneOnly(w.contact) }));
+  const filled = (w: OrgWorkplace) => !!(w.name.trim() || w.address.trim() || w.contact.trim());
+  const changes = intake.job_workplace_change === "有" ? (intake.job_workplace_changes ?? []).filter(filled) : [];
+  const changeKeys = new Set(changes.map((w) => addressKey(w.address)).filter(Boolean));
+  const base = (intake.job_workplaces ?? [])
+    .filter(filled)
+    .filter((w) => !changeKeys.has(addressKey(w.address)));
+  return [...base, ...changes].map((w) => ({ name: w.name.trim(), address: w.address.trim(), phone: phoneOnly(w.contact) }));
 }
 
 // 一覧表を印刷できるか（変更の可能性が「有」で、就業場所が2か所以上）
