@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { AlertTriangle, Banknote, CheckCircle2, ExternalLink, FileText, Plus, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
@@ -36,6 +37,9 @@ import {
 } from "@/lib/minimum-wage";
 import { updateOrganization } from "@/lib/supabase/queries/organizations";
 import { WageDetailForm } from "@/components/workers/WageDetailForm";
+import { jobConditionSections } from "@/lib/job-conditions";
+import { normalizeOrganizationIntake } from "@/lib/organization-intake";
+import { applyOrgCosts, orgCosts } from "@/lib/wage-org-costs";
 import {
   WAGE_CALC_TOOL_URL,
   calcWageDetail,
@@ -226,7 +230,9 @@ export function WorkerWages({
     // 採用時なら雇用開始日、昇給なら今日を初期値にする
     setStartedOn(asFirst ? (employmentStartOn ?? "") : today);
     setReason(applyTime ? WAGE_REASON_APPLY : asFirst ? WAGE_REASON_HIRE : WAGE_REASON_RAISE);
-    setNewDetail(emptyWageDetail());
+    // 1-6号別紙の水道光熱費・通信費は、所属機関の登録（求人票に記載するその他の内容）から入れておく
+    const org = organizations.find((o) => o.id === currentOrganizationId);
+    setNewDetail(applyOrgCosts(emptyWageDetail(), orgCosts(org?.intake)));
     setNewDetailOpen(false);
     setOpen(true);
   };
@@ -299,6 +305,7 @@ export function WorkerWages({
       healthInsurance: org.intake?.health_insurance ?? "",
       pension: org.intake?.pension ?? "",
       koyoCovered: org.intake?.koyo_covered ?? "",
+      costs: orgCosts(org.intake),
     };
   };
 
@@ -438,6 +445,38 @@ export function WorkerWages({
           のPDFを保存して渡してください（新しい年度の額に差し替えます）。
         </p>
       )}
+
+      {/* 所属機関の雇用条件書に記載する内容（所属機関 ＞ 求人票に記載する内容）。トグルで開く */}
+      {conversionOrgId && (() => {
+        const org = organizations.find((o) => o.id === conversionOrgId);
+        if (!org) return null;
+        const sections = jobConditionSections(normalizeOrganizationIntake(org.intake));
+        return (
+          <details className="mt-2 rounded-xl border border-border bg-background px-3 py-2 text-xs">
+            <summary className="cursor-pointer font-bold text-brand">
+              雇用条件書に記載する内容（{org.name}の登録）
+            </summary>
+            <div className="mt-2 space-y-2">
+              {sections.map((sec) => (
+                <div key={sec.title}>
+                  <p className="font-bold">{sec.title}</p>
+                  {sec.lines.map((l, i) => (
+                    <p key={i} className={`pl-3 leading-relaxed ${l.includes("未登録") ? "text-muted" : ""}`}>
+                      {l}
+                    </p>
+                  ))}
+                </div>
+              ))}
+              <p className="text-[10px] text-muted">
+                所属機関の編集画面の「求人票に記載する内容（雇用条件書の順番）」で登録・修正できます。
+                <Link href={`/organizations/${org.id}`} className="ml-1 font-bold text-brand underline">
+                  所属機関を開く
+                </Link>
+              </p>
+            </div>
+          </details>
+        );
+      })()}
 
       {/* 換算に使う年間所定労働時間（会社ごとに登録。雇用条件書の値を入れる） */}
       {conversionOrgId && (

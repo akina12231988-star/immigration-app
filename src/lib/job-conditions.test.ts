@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { normalizeOrganizationIntake } from "./organization-intake";
 import {
   annualHolidays,
+  jobConditionSections,
   dailyWorkMinutes,
   dailyWorkText,
   canPrintWorkplaceList,
@@ -103,5 +105,29 @@ describe("就業場所の一覧表の重複", () => {
       ],
     });
     expect(rows.map((r) => r.name)).toEqual(["本社", "熊本営業所", "埼玉営業所", "関東営業所"]);
+  });
+});
+
+describe("jobConditionSections", () => {
+  it("雇用条件書の順番（1〜11）で、登録内容を行にする（未登録は「未登録」）", () => {
+    const intake = normalizeOrganizationIntake({
+      job_workplaces: [{ name: "本社", address: "熊本県八代市", contact: "" }],
+      job_workplace_change: "無",
+      job_work_start: "8:00",
+      job_work_end: "17:00",
+      job_break_minutes: "60",
+      job_raise: "有",
+      job_raise_note: "年1回",
+      job_resign_notice_days: "30日",
+      pay_method: "口座振込",
+    });
+    const s = jobConditionSections(intake);
+    expect(s.map((x) => x.title.split(".")[0])).toEqual(["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"]);
+    expect(s[0].lines).toEqual(["本社（熊本県八代市）", "変更の可能性：変更なし"]);
+    expect(s[1].lines[0]).toBe("8:00〜17:00（休憩60分・1日8時間）");
+    expect(s[7].lines).toContain("昇給：有（年1回）");
+    expect(s[7].lines[0]).toContain("支払方法：口座振込");
+    expect(s[8].lines[0]).toBe("自己都合の場合：30日前に社長・工場長等に届けること");
+    expect(s[10].lines).toEqual(["未登録"]);
   });
 });
