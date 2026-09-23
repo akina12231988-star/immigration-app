@@ -1,5 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  buildPostApplyEntries,
+  normalizePostApplyTasks,
+  type PostApplyEntry,
+  type PostApplyTask,
+} from "@/lib/post-apply";
+import {
   evaluatePrepChecklist,
   prepProgressOf,
   type PrepChecklistMeta,
@@ -18,6 +24,7 @@ export interface PrepChecklistRow extends PrepChecklistMeta {
   planned_app_on: string | null; // 申請予定日（健康診断書の有効チェックに使う。0112）
   updated_at: string; // 最終更新日時（前回の準備リストの見当を付けるのに使う）
   memo: string; // メモ（いま何を依頼していて何を待っているか。A4印刷のメモ欄にも出す。0160）
+  post_apply_tasks: PostApplyTask[]; // 申請後に対応するタスク（0167）
 }
 
 // 外国人の準備リストを全件取得（更新が新しい順）。
@@ -51,6 +58,7 @@ export async function listPrepChecklists(
     planned_app_on: r.planned_app_on ?? null,
     updated_at: r.updated_at ?? "",
     memo: r.memo ?? "",
+    post_apply_tasks: normalizePostApplyTasks(r.post_apply_tasks),
   }));
 }
 
@@ -107,6 +115,7 @@ export async function updatePrepChecklistExtras(
       | "sign_status"
       | "planned_app_on"
       | "memo"
+      | "post_apply_tasks"
     >
   >,
 ): Promise<void> {
@@ -265,6 +274,23 @@ export interface MailAfterApplyDoc {
   todo_no: string;
 }
 
+// 外国人の申請後のタスク（済みでないもの・TODO番号つき）。申請詳細のアラート用。0167未適用なら空
+export async function listOpenPostApplyTasks(
+  supabase: SupabaseClient,
+  workerId: string,
+): Promise<{ todo_no: string; task: PostApplyTask }[]> {
+  const { data, error } = await supabase
+    .from("application_prep_checklists")
+    .select("*")
+    .eq("worker_id", workerId);
+  if (error) throw error;
+  return ((data as { todo_no: string | null; post_apply_tasks?: unknown }[]) ?? []).flatMap((c) =>
+    normalizePostApplyTasks(c.post_apply_tasks)
+      .filter((t) => !t.done)
+      .map((task) => ({ todo_no: c.todo_no ?? "", task })),
+  );
+}
+
 export async function listMailAfterApplyDocs(
   supabase: SupabaseClient,
   workerId: string,
@@ -416,5 +442,60 @@ export async function upsertPrepAppContent(
       { worker_id: workerId, todo_no: todoNo, app_content: appContent, app_type: appType },
       { onConflict: "worker_id,todo_no" },
     );
+  if (error) throw error;
+}
+
+// ---- 申請後の郵送・タスク（申請一覧の「申請後の郵送・タスク」タブ） ----
+
+// 郵送する書類（mail_after_apply）かタスクがある準備リストを、全員ぶんまとめて取得
+export async function listPostApplyEntries(supabase: SupabaseClient): Promise<PostApplyEntry[]> {
+  const [{ data: docs, error: docErr }, { data: lists, error: listErr }] = await Promise.all([
+    supabase.from("prep_doc_statuses").select("checklist_id, doc_id").eq("mail_after_apply", true),
+    // 0167未適用でも読めるよう select("*")（タスクは無しとして扱う）
+    supabase.from("application_prep_checklists").select("*"),
+  ]);
+  if (docErr) throw docErr;
+  if (listErr) throw listErr;
+  const checklists =
+    (lists as { id: string; worker_id: string; todo_no: string | null; post_apply_tasks?: unknown }[]) ?? [];
+  const mailDocs = (docs as { checklist_id: string; doc_id: string }[]) ?? [];
+  const wanted = checklists.filter(
+    (c) =>
+      mailDocs.some((d) => d.checklist_id === c.id) ||
+      normalizePostApplyTasks(c.post_apply_tasks).some((t) => !t.done),
+  );
+  const workerIds = [...new Set(wanted.map((c) => c.worker_id))];
+  const nameById = new Map<string, string>();
+  if (workerIds.length > 0) {
+    const { data: ws } = await supabase.from("workers").select("id, name").in("id", workerIds);
+    for (const w of (ws as { id: string; name: string }[] | null) ?? []) nameById.set(w.id, w.name);
+  }
+  return buildPostApplyEntries(wanted, mailDocs, nameById);
+}
+
+// 郵送した書類のチェックを外す（申請準備の「申請後に入管へ郵送する」を外すのと同じ）
+export async function clearMailAfterApply(
+  supabase: SupabaseClient,
+  checklistId: string,
+  docId: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("prep_doc_statuses")
+    .update({ mail_after_apply: false })
+    .eq("checklist_id", checklistId)
+    .eq("doc_id", docId);
+  if (error) throw error;
+}
+
+// 準備リストのタスクを保存（0167_prep_post_apply_tasks.sql が必要）
+export async function savePostApplyTasks(
+  supabase: SupabaseClient,
+  checklistId: string,
+  tasks: PostApplyTask[],
+): Promise<void> {
+  const { error } = await supabase
+    .from("application_prep_checklists")
+    .update({ post_apply_tasks: tasks })
+    .eq("id", checklistId);
   if (error) throw error;
 }

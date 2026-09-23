@@ -3,6 +3,7 @@
 import { messengerWebUrl } from "@/lib/messenger-link";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import type { PostApplyTask } from "@/lib/post-apply";
 import { useRouter } from "next/navigation";
 import {
   Copy,
@@ -31,6 +32,7 @@ import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
 import {
   listMailAfterApplyDocs,
+  listOpenPostApplyTasks,
   type MailAfterApplyDoc,
 } from "@/lib/supabase/queries/application-prep";
 import { PREP_DOC_DEFS } from "@/lib/application-prep";
@@ -96,12 +98,19 @@ export function ApplicationDetail({ id }: { id: string }) {
 
   // 申請準備で「申請後に入管へ郵送する」とした書類のアラート
   const [mailDocs, setMailDocs] = useState<MailAfterApplyDoc[]>([]);
+  // 申請準備の「申請後に入管へ郵送するリスト」に入れたタスク（済みでないもの）
+  const [postTasks, setPostTasks] = useState<{ todo_no: string; task: PostApplyTask }[]>([]);
   useEffect(() => {
     if (!workerId) return;
     let cancelled = false;
     listMailAfterApplyDocs(createClient(), workerId)
       .then((docs) => {
         if (!cancelled) setMailDocs(docs);
+      })
+      .catch(() => undefined);
+    listOpenPostApplyTasks(createClient(), workerId)
+      .then((tasks) => {
+        if (!cancelled) setPostTasks(tasks);
       })
       .catch(() => undefined);
     return () => {
@@ -292,18 +301,28 @@ export function ApplicationDetail({ id }: { id: string }) {
       )}
 
       {/* 申請準備で「申請後に入管へ郵送する」とした書類のアラート */}
-      {mailDocs.length > 0 && (
+      {(mailDocs.length > 0 || postTasks.length > 0) && (
         <div className="rounded-xl border-2 border-status-notice-fg bg-status-notice-bg/50 px-3 py-2.5">
           <p className="text-sm font-bold text-status-notice-fg">
-            申請後に入管へ郵送する書類が{mailDocs.length}件あります
+            申請後に入管へ郵送する書類・タスクが{mailDocs.length + postTasks.length}件あります
           </p>
           <ul className="mt-1 list-disc pl-5 text-xs text-status-notice-fg/90">
             {mailDocs.map((d) => (
-              <li key={`${d.todo_no}-${d.doc_id}`}>{mailDocLabel(d)}</li>
+              <li key={`${d.todo_no}-${d.doc_id}`}>入管へ郵送：{mailDocLabel(d)}</li>
+            ))}
+            {postTasks.map(({ todo_no, task }) => (
+              <li key={`${todo_no}-${task.id}`}>
+                タスク：{task.text}
+                {todo_no ? `（${todo_no}）` : ""}
+              </li>
             ))}
           </ul>
           <p className="mt-1 text-[11px] text-status-notice-fg/80">
-            発行され次第、入管へ郵送してください。郵送したら申請準備のチェックリストで「申請後に郵送する」のチェックを外すと、このアラートは消えます。
+            発行され次第、入管へ郵送してください。郵送した・済んだものは、申請一覧の
+            <Link href="/applications?view=post-apply" className="mx-0.5 font-bold underline">
+              「申請後の郵送・タスク」
+            </Link>
+            か申請準備の「申請後に入管へ郵送するリスト」で消し込むと、このアラートは消えます。
           </p>
         </div>
       )}
