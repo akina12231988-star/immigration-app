@@ -96,6 +96,11 @@ function workplacesWithWorkSite(rows: OrgWorkplace[], src: Partial<OrganizationI
   return [{ name: "", address, contact }, ...rows.slice(1)];
 }
 
+function resignNoticeText(raw: unknown): string {
+  const v = typeof raw === "string" ? raw.trim() : "";
+  return /^[0-9０-９]+$/.test(v) ? `${v}日` : v;
+}
+
 function normalizeShifts(raw: unknown): OrgShift[] {
   return (Array.isArray(raw) ? raw : []).map((r) => {
     const o = (r && typeof r === "object" ? r : {}) as Partial<OrgShift>;
@@ -354,6 +359,8 @@ export function normalizeOrganizationIntake(raw: unknown): OrganizationIntake {
     job_workplace_changes: normalizeWorkplaces(src.job_workplace_changes, false),
     job_shifts: normalizeShifts(src.job_shifts),
     job_shift: src.job_shift === true,
+    // 以前は日数（数字だけ）で保存していたので「30」は「30日」として読む
+    job_resign_notice_days: resignNoticeText(src.job_resign_notice_days),
     job_insurances: Array.isArray(src.job_insurances)
       ? src.job_insurances.filter((v): v is string => typeof v === "string")
       : [],

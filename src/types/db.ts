@@ -226,7 +226,7 @@ export interface OrganizationIntake {
   job_bonus_note: string; // 賞与の内容（有のとき）
   job_retirement_pay: string; // 退職金（'' / 有 / 無）
   job_retirement_pay_note: string; // 退職金の内容（有のとき）
-  job_resign_notice_days: string; // 退職（自己都合）: 何日前に社長・工場長等に届けるか
+  job_resign_notice_days: string; // 退職（自己都合）: いつまでに社長・工場長等に届けるか（例: 30日・3ヶ月。「○○前に」の○○）
   job_insurances: string[]; // 社会保険の加入状況・労働保険の適用状況（複数選択）
   job_insurance_other: string; // 同上の「その他」の内容
   job_rules_where: string; // 就業規則を確認できる方法や場所
