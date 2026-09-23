@@ -1,8 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   buildPostApplyEntries,
+  normalizePostApplyMailings,
   normalizePostApplyTasks,
+  unmailedDocIds,
   type PostApplyEntry,
+  type PostApplyMailing,
   type PostApplyTask,
 } from "@/lib/post-apply";
 import {
@@ -25,6 +28,7 @@ export interface PrepChecklistRow extends PrepChecklistMeta {
   updated_at: string; // 最終更新日時（前回の準備リストの見当を付けるのに使う）
   memo: string; // メモ（いま何を依頼していて何を待っているか。A4印刷のメモ欄にも出す。0160）
   post_apply_tasks: PostApplyTask[]; // 申請後に対応するタスク（0167）
+  post_apply_mailings: PostApplyMailing[]; // 申請後に入管へ郵送した記録（0168）
 }
 
 // 外国人の準備リストを全件取得（更新が新しい順）。
@@ -59,6 +63,7 @@ export async function listPrepChecklists(
     updated_at: r.updated_at ?? "",
     memo: r.memo ?? "",
     post_apply_tasks: normalizePostApplyTasks(r.post_apply_tasks),
+    post_apply_mailings: normalizePostApplyMailings(r.post_apply_mailings),
   }));
 }
 
@@ -116,6 +121,7 @@ export async function updatePrepChecklistExtras(
       | "planned_app_on"
       | "memo"
       | "post_apply_tasks"
+      | "post_apply_mailings"
     >
   >,
 ): Promise<void> {
@@ -268,7 +274,7 @@ export async function upsertPrepDocStatus(
 }
 
 // 申請後に入管へ郵送する書類（mail_after_apply）を外国人単位で取得。
-// 申請詳細でのアラート表示用（TODO番号つき）
+// 申請詳細でのアラート表示用（TODO番号つき・入管へ郵送済みは除く）
 export interface MailAfterApplyDoc {
   doc_id: string;
   todo_no: string;
@@ -295,12 +301,14 @@ export async function listMailAfterApplyDocs(
   supabase: SupabaseClient,
   workerId: string,
 ): Promise<MailAfterApplyDoc[]> {
+  // 郵送した記録（0168）も見るので select("*")
   const { data: lists, error: listErr } = await supabase
     .from("application_prep_checklists")
-    .select("id, todo_no")
+    .select("*")
     .eq("worker_id", workerId);
   if (listErr) throw listErr;
-  const checklists = (lists as { id: string; todo_no: string | null }[]) ?? [];
+  const checklists =
+    (lists as { id: string; todo_no: string | null; post_apply_mailings?: unknown }[]) ?? [];
   if (checklists.length === 0) return [];
 
   const { data, error } = await supabase
@@ -310,10 +318,14 @@ export async function listMailAfterApplyDocs(
     .eq("mail_after_apply", true);
   if (error) throw error;
   const todoById = new Map(checklists.map((c) => [c.id, c.todo_no ?? ""]));
-  return ((data as { doc_id: string; checklist_id: string }[]) ?? []).map((r) => ({
-    doc_id: r.doc_id,
-    todo_no: todoById.get(r.checklist_id) ?? "",
-  }));
+  const mailingsById = new Map(checklists.map((c) => [c.id, normalizePostApplyMailings(c.post_apply_mailings)]));
+  // 入管へ郵送した書類は除く（まだ郵送していないものだけをアラートに出す）
+  return ((data as { doc_id: string; checklist_id: string }[]) ?? [])
+    .filter((r) => unmailedDocIds([r.doc_id], mailingsById.get(r.checklist_id) ?? []).length > 0)
+    .map((r) => ({
+      doc_id: r.doc_id,
+      todo_no: todoById.get(r.checklist_id) ?? "",
+    }));
 }
 
 // ---- 必要書類がどれだけ揃ったか（申請準備のTODO一覧の「書類 ○%」） ----
@@ -457,11 +469,20 @@ export async function listPostApplyEntries(supabase: SupabaseClient): Promise<Po
   if (docErr) throw docErr;
   if (listErr) throw listErr;
   const checklists =
-    (lists as { id: string; worker_id: string; todo_no: string | null; post_apply_tasks?: unknown }[]) ?? [];
+    (lists as {
+      id: string;
+      worker_id: string;
+      todo_no: string | null;
+      post_apply_tasks?: unknown;
+      post_apply_mailings?: unknown;
+    }[]) ?? [];
   const mailDocs = (docs as { checklist_id: string; doc_id: string }[]) ?? [];
   const wanted = checklists.filter(
     (c) =>
-      mailDocs.some((d) => d.checklist_id === c.id) ||
+      unmailedDocIds(
+        mailDocs.filter((d) => d.checklist_id === c.id).map((d) => d.doc_id),
+        normalizePostApplyMailings(c.post_apply_mailings),
+      ).length > 0 ||
       normalizePostApplyTasks(c.post_apply_tasks).some((t) => !t.done),
   );
   const workerIds = [...new Set(wanted.map((c) => c.worker_id))];
@@ -473,17 +494,16 @@ export async function listPostApplyEntries(supabase: SupabaseClient): Promise<Po
   return buildPostApplyEntries(wanted, mailDocs, nameById);
 }
 
-// 郵送した書類のチェックを外す（申請準備の「申請後に入管へ郵送する」を外すのと同じ）
-export async function clearMailAfterApply(
+// 入管へ郵送した記録を保存（0168_prep_post_apply_mailings.sql が必要）
+export async function savePostApplyMailings(
   supabase: SupabaseClient,
   checklistId: string,
-  docId: string,
+  mailings: PostApplyMailing[],
 ): Promise<void> {
   const { error } = await supabase
-    .from("prep_doc_statuses")
-    .update({ mail_after_apply: false })
-    .eq("checklist_id", checklistId)
-    .eq("doc_id", docId);
+    .from("application_prep_checklists")
+    .update({ post_apply_mailings: mailings })
+    .eq("id", checklistId);
   if (error) throw error;
 }
 
