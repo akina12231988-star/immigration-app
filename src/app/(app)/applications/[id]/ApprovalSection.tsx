@@ -101,12 +101,12 @@ export function ApprovalSection({
       supabase.from("workers").select(columns).eq("id", app.workerId as string).maybeSingle();
     void (async () => {
       let res = await select(
-        "residence_status, residence_period, current_organization_id, employment_start_on, org_employment_starts, organizations(name)",
+        "residence_status, residence_period, current_organization_id, employment_start_on, org_employment_starts, organizations!workers_current_organization_id_fkey(name)",
       );
       if (res.error) {
         // residence_period が無い古いDB（0092未適用）でも表示できるように読み直す
         res = await select(
-          "residence_status, current_organization_id, employment_start_on, org_employment_starts, organizations(name)",
+          "residence_status, current_organization_id, employment_start_on, org_employment_starts, organizations!workers_current_organization_id_fkey(name)",
         );
       }
       const data = res.data;
