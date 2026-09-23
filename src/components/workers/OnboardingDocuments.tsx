@@ -44,6 +44,7 @@ import { isPaperHandover } from "@/lib/onboarding-index";
 import { updateOrganization } from "@/lib/supabase/queries/organizations";
 import { dbErrorMessage } from "@/lib/errors";
 import { koyoFileName, needsKoyoJokyoForm } from "@/lib/koyo-jokyo";
+import { downloadContractOrgForm } from "@/lib/contract-org-form";
 import { todayStr } from "@/lib/ssw/calc";
 import type {
   OnboardingDocumentRow,
@@ -89,6 +90,7 @@ export function OnboardingDocuments({
   const [attaching, setAttaching] = useState(false);
   // 外国人雇用状況届出書（様式第3号）の作成中
   const [koyoBusy, setKoyoBusy] = useState(false);
+  const [contractBusy, setContractBusy] = useState(false);
   // 所属機関の申込書の項目のうち、入社書類に関わるもの（会社に渡す外国人資料のやりとり方法・
   // 雇用保険の適用事業所か・給与支払い方法）。未登録ならここで決めて所属機関に保存し、
   // 画面を読み直すまでは決めた値を優先して出す
@@ -330,6 +332,19 @@ export function OnboardingDocuments({
 
   // 外国人雇用状況届出書（様式第3号）を作ってダウンロードする。
   // 雇入れの届出として使うので、標題の「離職」には取り消し線が入る
+  // 契約機関に関する届出（参考様式1の5・新たな契約の締結）のExcelを作る（本人の署名が要る）
+  const createContractOrgForm = async () => {
+    setContractBusy(true);
+    setError(null);
+    try {
+      await downloadContractOrgForm({ workerId });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "作成に失敗しました");
+    } finally {
+      setContractBusy(false);
+    }
+  };
+
   const createKoyoJokyo = async () => {
     setKoyoBusy(true);
     setError(null);
@@ -483,6 +498,25 @@ export function OnboardingDocuments({
               </button>
             </div>
           )}
+
+          {/* 本人の署名が要る書類: 契約機関に関する届出（申請詳細と同じExcelを作る） */}
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-background px-3 py-2.5">
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold text-muted">外国人本人の署名が必要な書類</p>
+              <p className="text-xs font-bold leading-relaxed">
+                契約機関に関する届出（参考様式1の5・新たな契約の締結）
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void createContractOrgForm()}
+              disabled={contractBusy}
+              className="flex shrink-0 items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-[11px] font-bold text-brand disabled:opacity-50"
+            >
+              {contractBusy ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
+              {contractBusy ? "作成中…" : "作成"}
+            </button>
+          </div>
 
           {/* 後送のまま未受領の書類 */}
           {pending.length > 0 && (
