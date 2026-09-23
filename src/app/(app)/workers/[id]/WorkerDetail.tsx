@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
+import { isSsw1Renewal } from "@/lib/contract-org-notice";
 import { WorkerPhoto } from "@/components/workers/WorkerPhoto";
 import { ResumeToolShare } from "@/components/workers/ResumeToolShare";
 import { FieldJumpSearch } from "@/components/workers/FieldJumpSearch";
@@ -1717,6 +1718,8 @@ export function WorkerDetail({
         koyoCovered={currentOrg?.intake?.koyo_covered ?? ""}
         // 会社に渡す外国人資料のやりとり方法（紙で渡す／mailで送る）を見出しの横に出す
         org={currentOrg ?? null}
+        // 特定技能1号の更新許可なら、契約機関に関する届出（参考様式1の5）は要らないと知らせる
+        contractOrgNotNeeded={isSsw1Renewal(applications, worker.residence_status)}
       />
 
       <GensenDocuments workerId={worker.id} canEdit={canEdit} />
