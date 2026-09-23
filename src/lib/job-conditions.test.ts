@@ -3,7 +3,10 @@ import {
   annualHolidays,
   dailyWorkMinutes,
   dailyWorkText,
+  canPrintWorkplaceList,
   followWorkSite,
+  phoneOnly,
+  workplaceListRows,
   timeToMinutes,
   workplaceChangeText,
   workplaceText,
@@ -59,5 +62,30 @@ describe("作業する住所 → 就業の場所の自動転記", () => {
   it("手で書き換えた1行目は上書きしない", () => {
     const rows = [{ name: "工場", address: "熊本県八代市", contact: "" }];
     expect(followWorkSite(rows, prev, { ...prev, address: "長崎県雲仙市2" }, "株式会社A")[0].address).toBe("熊本県八代市");
+  });
+});
+
+describe("就業場所の一覧表", () => {
+  it("電話番号だけを取り出す（FAXは除く）", () => {
+    expect(phoneOnly("TEL 0957-88-3787 / FAX 0957-88-3788")).toBe("0957-88-3787");
+    expect(phoneOnly("0957-36-0882")).toBe("0957-36-0882");
+    expect(phoneOnly("FAX 0957-00-0000")).toBe("");
+  });
+  it("就業の場所 → 変更先の順、空行は除き、変更の可能性が有で2か所以上なら印刷できる", () => {
+    const intake = {
+      job_workplaces: [{ name: "本社", address: "〒854-0703 長崎県雲仙市", contact: "TEL 0957-88-3787 / FAX 0957-88-3788" }],
+      job_workplace_change: "有",
+      job_workplace_changes: [
+        { name: "愛野営業所", address: "長崎県雲仙市愛野町", contact: "0957-36-0882" },
+        { name: "", address: "", contact: "" },
+      ],
+    };
+    expect(workplaceListRows(intake)).toEqual([
+      { name: "本社", address: "〒854-0703 長崎県雲仙市", phone: "0957-88-3787" },
+      { name: "愛野営業所", address: "長崎県雲仙市愛野町", phone: "0957-36-0882" },
+    ]);
+    expect(canPrintWorkplaceList(intake)).toBe(true);
+    expect(canPrintWorkplaceList({ ...intake, job_workplace_change: "無" })).toBe(false);
+    expect(workplaceListRows({ ...intake, job_workplace_change: "無" })).toHaveLength(1);
   });
 });
