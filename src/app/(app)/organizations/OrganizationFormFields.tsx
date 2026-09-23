@@ -48,7 +48,7 @@ import {
   emptyShift,
   emptyWorkplace,
 } from "@/lib/organization-intake";
-import { annualHolidays, dailyWorkText, JOB_INSURANCE_OPTIONS } from "@/lib/job-conditions";
+import { annualHolidays, dailyWorkText, followWorkSite, JOB_INSURANCE_OPTIONS } from "@/lib/job-conditions";
 import { orgYearlyFileGroups, orgYearlyKind } from "@/lib/org-yearly-files";
 import {
   ORG_FILE_KIND_AGRI_NOTICE,
@@ -748,6 +748,7 @@ export function OrganizationFormBody({
         intake={intake}
         setIntake={setIntake}
         companyAddress={form.address}
+        companyName={form.name}
         // 「上の電話番号・FAX」は連絡先とFAXを合わせたもの
         companyContact={[
           form.contact.trim() && `TEL ${form.contact.trim()}`,
@@ -768,6 +769,7 @@ function IntakeSection({
   intake,
   setIntake,
   companyAddress,
+  companyName,
   companyContact,
   orgId,
   locks,
@@ -777,6 +779,7 @@ function IntakeSection({
   setIntake: (patch: Partial<OrganizationIntake>) => void;
   // 「同上」で入れる元になる、会社の所在地と電話番号・FAX
   companyAddress: string;
+  companyName: string; // 就業の場所の事業所名に入れる会社名
   companyContact: string;
   orgId: string | null; // 見積書の添付に使う（新規登録時は保存後に添付可）
   locks: FieldLocks;
@@ -880,7 +883,17 @@ function IntakeSection({
         <SameAsAboveField
           label="作業する住所（会社の住所と別の場合）"
           value={intake.work_address}
-          onChange={(v) => setIntake({ work_address: v })}
+          onChange={(v) =>
+            setIntake({
+              work_address: v,
+              job_workplaces: followWorkSite(
+                intake.job_workplaces,
+                { address: intake.work_address, contact: intake.work_contact },
+                { address: v, contact: intake.work_contact },
+                companyName,
+              ),
+            })
+          }
           sameAsLabel="上の所在地と同じ（同上）"
           sameValue={companyAddress}
           sameHint="所在地が未登録です。先に上の「所在地」を入れてください。"
@@ -890,7 +903,17 @@ function IntakeSection({
         <SameAsAboveField
           label="作業する住所のTEL・FAX"
           value={intake.work_contact}
-          onChange={(v) => setIntake({ work_contact: v })}
+          onChange={(v) =>
+            setIntake({
+              work_contact: v,
+              job_workplaces: followWorkSite(
+                intake.job_workplaces,
+                { address: intake.work_address, contact: intake.work_contact },
+                { address: intake.work_address, contact: v },
+                companyName,
+              ),
+            })
+          }
           sameAsLabel="上の電話番号・FAXと同じ（同上）"
           sameValue={companyContact}
           sameHint="電話番号・FAXが未登録です。先に上の欄を入れてください。"
@@ -1137,6 +1160,9 @@ function IntakeSection({
         </p>
 
         <p className={SUB_CLASS}>1. 就業の場所</p>
+        <p className={HINT_CLASS}>
+          上の「作業する住所」「作業する住所のTEL・FAX」を1行目に自動で入れます（1行目を別の内容に書き換えた場合は上書きしません）。
+        </p>
         <WorkplaceRows
           rows={intake.job_workplaces}
           onChange={(rows) => setIntake({ job_workplaces: rows })}

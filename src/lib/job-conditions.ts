@@ -80,3 +80,22 @@ export const JOB_INSURANCE_OPTIONS = [
 export function postingInsuranceName(name: string): string {
   return name === "厚生年金" ? "厚生年金保険" : name;
 }
+
+// 就業の場所の1行目を「作業する住所・TEL/FAX」に合わせる（自動転記）。
+// 1行目が空か、前の作業する住所・TEL/FAX のままなら新しい値に置き換える。
+// 手で別の内容に書き換えた行は上書きしない。事業所名が空なら会社名を入れる
+export function followWorkSite(
+  workplaces: OrgWorkplace[],
+  prev: { address: string; contact: string },
+  next: { address: string; contact: string },
+  orgName: string,
+): OrgWorkplace[] {
+  const rows = workplaces.length > 0 ? [...workplaces] : [{ name: "", address: "", contact: "" }];
+  const first = rows[0];
+  const follows = (cur: string, before: string) => cur.trim() === "" || cur.trim() === before.trim();
+  const address = follows(first.address, prev.address) ? next.address : first.address;
+  const contact = follows(first.contact, prev.contact) ? next.contact : first.contact;
+  const name = first.name.trim() || !(address.trim() || contact.trim()) ? first.name : orgName.trim();
+  rows[0] = { name, address, contact };
+  return rows;
+}

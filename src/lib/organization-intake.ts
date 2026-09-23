@@ -87,6 +87,15 @@ function normalizeWorkplaces(raw: unknown, withRow: boolean): OrgWorkplace[] {
   return rows.length > 0 || !withRow ? rows : [emptyWorkplace()];
 }
 
+// 就業の場所が未入力なら、作業する住所・TEL/FAX（既存の欄）を1行目に入れて始める
+function workplacesWithWorkSite(rows: OrgWorkplace[], src: Partial<OrganizationIntake>): OrgWorkplace[] {
+  const blank = rows.every((r) => !r.name.trim() && !r.address.trim() && !r.contact.trim());
+  const address = typeof src.work_address === "string" ? src.work_address : "";
+  const contact = typeof src.work_contact === "string" ? src.work_contact : "";
+  if (!blank || (!address.trim() && !contact.trim())) return rows;
+  return [{ name: "", address, contact }, ...rows.slice(1)];
+}
+
 function normalizeShifts(raw: unknown): OrgShift[] {
   return (Array.isArray(raw) ? raw : []).map((r) => {
     const o = (r && typeof r === "object" ? r : {}) as Partial<OrgShift>;
@@ -341,7 +350,7 @@ export function normalizeOrganizationIntake(raw: unknown): OrganizationIntake {
     officers,
     lodgings,
     sales_items: normalizeSalesItems(src.sales_items),
-    job_workplaces: normalizeWorkplaces(src.job_workplaces, true),
+    job_workplaces: workplacesWithWorkSite(normalizeWorkplaces(src.job_workplaces, true), src),
     job_workplace_changes: normalizeWorkplaces(src.job_workplace_changes, false),
     job_shifts: normalizeShifts(src.job_shifts),
     job_shift: src.job_shift === true,
