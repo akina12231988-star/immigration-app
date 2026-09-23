@@ -4,7 +4,6 @@
 
 import type { OrgCouncilSubmission } from "@/types/db";
 import { councilMethodText } from "@/lib/organization-intake";
-import { PREFECTURE_LIST } from "@/lib/prefectures";
 
 export interface CouncilListRow {
   branch: string; // 営業所名（例: 本社・愛野営業所）
@@ -145,59 +144,9 @@ export const COUNCIL_DICT: Record<CouncilLang, CouncilDict> = {
   },
 };
 
-// 都道府県のローマ字（市区町村の訳が無いときの目安に使う）
-const PREF_ROMAJI: Record<string, string> = Object.fromEntries(
-  PREFECTURE_LIST.map((p, i) => [
-    p,
-    [
-      "Hokkaido", "Aomori", "Iwate", "Miyagi", "Akita", "Yamagata", "Fukushima",
-      "Ibaraki", "Tochigi", "Gunma", "Saitama", "Chiba", "Tokyo", "Kanagawa",
-      "Niigata", "Toyama", "Ishikawa", "Fukui", "Yamanashi", "Nagano", "Gifu", "Shizuoka", "Aichi",
-      "Mie", "Shiga", "Kyoto", "Osaka", "Hyogo", "Nara", "Wakayama",
-      "Tottori", "Shimane", "Okayama", "Hiroshima", "Yamaguchi",
-      "Tokushima", "Kagawa", "Ehime", "Kochi",
-      "Fukuoka", "Saga", "Nagasaki", "Kumamoto", "Oita", "Miyazaki", "Kagoshima", "Okinawa",
-    ][i],
-  ]),
-);
-
-// 訳の保存（organizations.intake.council_i18n）: 言語 → 日本語の元の文 → 訳
+// 訳の保存（organizations.intake.council_i18n）: 言語 → 日本語の元の文 → 訳。
+// 訳の作り方（辞書・ローマ字）は council-translate.ts（住所データを読むので、一覧表の画面だけで使う）
 export type CouncilTranslations = Partial<Record<CouncilLang, Record<string, string>>>;
-
-// 決まった語は辞書で訳す（本社・メール・提出した書面の控え）。それ以外は保存した訳、無ければ目安
-export function translateBranch(branch: string, lang: CouncilLang, saved: CouncilTranslations): string {
-  if (!branch) return "";
-  if (branch === "本社") return COUNCIL_DICT[lang].headOffice;
-  return saved[lang]?.[branch] ?? branch;
-}
-
-export function translateCity(city: string, lang: CouncilLang, saved: CouncilTranslations): string {
-  if (!city) return "";
-  const s = saved[lang]?.[city];
-  if (s) return s;
-  // 目安: 都道府県だけローマ字にして、市区町村はそのまま（自動翻訳・手で直せる）
-  const pref = PREFECTURE_LIST.find((p) => city.startsWith(p));
-  return pref ? `${PREF_ROMAJI[pref]}, ${city.slice(pref.length)}` : city;
-}
-
-export function translateMethod(method: string, lang: CouncilLang, saved: CouncilTranslations): string {
-  if (method === "メール") return COUNCIL_DICT[lang].mail;
-  if (method === "提出した書面の控え") return COUNCIL_DICT[lang].copy;
-  return method ? (saved[lang]?.[method] ?? method) : "";
-}
-
-// 自動翻訳にかける文（辞書で訳せる語と、すでに保存した訳は除く）
-export function untranslatedTexts(rows: CouncilListRow[], lang: CouncilLang, saved: CouncilTranslations): string[] {
-  const set = new Set<string>();
-  for (const r of rows) {
-    if (r.branch && r.branch !== "本社" && !saved[lang]?.[r.branch]) set.add(r.branch);
-    if (r.city && !saved[lang]?.[r.city]) set.add(r.city);
-    if (r.method && r.method !== "メール" && r.method !== "提出した書面の控え" && !saved[lang]?.[r.method]) {
-      set.add(r.method);
-    }
-  }
-  return [...set];
-}
 
 // 保存用に正規化（文字列だけを残す）
 export function normalizeCouncilTranslations(raw: unknown): CouncilTranslations {
