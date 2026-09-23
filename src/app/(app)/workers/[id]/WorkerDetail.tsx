@@ -181,6 +181,9 @@ export function WorkerDetail({
     applications,
     manualOn: worker.prior_application_on ?? "",
     manualNo: worker.prior_application_no ?? "",
+    manualContent: worker.prior_application_content ?? "",
+    manualOrgId: worker.prior_application_org_id ?? "",
+    manualDocYears: worker.prior_application_doc_years ?? {},
   });
 
   // 申請準備などから「詳細を入力する」で #edit 付きで来たら、その場編集を自動で始める。
@@ -1885,7 +1888,16 @@ export function WorkerDetail({
         </div>
         {/* 前回の申請（1年以内）の申請日・申請番号。申請準備の書類の行にも同じものが出る */}
         <div className="mb-2">
-          <PriorApplicationCard workerId={worker.id} state={priorApp} canEdit={canEdit} />
+          <PriorApplicationCard
+            workerId={worker.id}
+            state={priorApp}
+            canEdit={canEdit}
+            prepOrganization={(() => {
+              const id = worker.application_prep_organization_id ?? worker.current_organization_id;
+              return id ? { id, name: organizations.find((o) => o.id === id)?.name ?? "" } : null;
+            })()}
+            organizations={organizations}
+          />
         </div>
         {applications.length === 0 ? (
           <Card className="p-5 text-center text-sm text-muted">

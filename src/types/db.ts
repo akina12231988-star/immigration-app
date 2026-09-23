@@ -411,6 +411,10 @@ export interface Worker {
   // マイグレーション未適用の環境では欠けることがある
   prior_application_on?: string | null;
   prior_application_no?: string;
+  // 前回の申請の申請内容・所属機関・使った書類の年度（手入力・0166）
+  prior_application_content?: string;
+  prior_application_org_id?: string | null;
+  prior_application_doc_years?: Partial<Record<string, number | null>>;
   leaving_kind: string; // 退職区分（'' / 会社都合 / 自己都合）
   leaving_reason: string; // 退職理由
   leaving_org_name: string; // 退職した所属機関の名称
