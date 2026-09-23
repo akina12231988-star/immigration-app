@@ -72,7 +72,9 @@ export function PayProofSheet({
 
   return (
     <>
-      <style>{"@media print{@page{size:A4 portrait;margin:14mm}}"}</style>
+      {/* 用紙の余白を0にして、ブラウザが余白に印字するヘッダー・フッター（ファイル名・日時・URL・ページ番号）を出さない。
+          余白の代わりに1枚ごとの内側に14mmの余白をとる */}
+      <style>{"@media print{@page{size:A4 portrait;margin:0}}"}</style>
 
       <div className="print:hidden">
         <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-brand px-4 py-3 text-brand-foreground lg:px-8">
@@ -197,7 +199,7 @@ export function PayProofSheet({
       </div>
 
       {/* 以下が印刷される部分（1枚＝1ページ） */}
-      <div className="mx-auto max-w-[190mm] px-4 pb-10 lg:px-0">
+      <div className="mx-auto max-w-[190mm] px-4 pb-10 lg:px-0 print:max-w-none print:p-0">
         {Array.from({ length: count }, (_, i) => (
           <PayProofPage key={i} orgName={orgName} worker={worker} last={i === count - 1} />
         ))}
@@ -230,7 +232,7 @@ function PayProofPage({
 
   return (
     <section
-      className={`text-[11pt] leading-relaxed text-black ${last ? "" : "break-after-page"}`}
+      className={`text-[11pt] leading-relaxed text-black print:p-[14mm] ${last ? "" : "break-after-page"}`}
     >
       <p className="text-[10pt]">参考様式第５－７号</p>
       <h2 className="my-4 text-center text-[14pt] font-bold tracking-[0.3em]">報酬支払証明書</h2>
