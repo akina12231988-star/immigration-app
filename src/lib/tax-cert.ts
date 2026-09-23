@@ -28,6 +28,7 @@ export type PaymentStatus = "" | "unpaid" | "paid" | "receipt_sent";
 export type RequestKind = "tax" | "tenshutsu" | "juminhyo" | "nozei3";
 export type ApplicantType = "self" | "agent"; // 本人申請 / 代理人
 export type JuminhyoMethod = "mail" | "window"; // 住民票の発行方法（郵送請求 / 窓口発行）
+export type Nozei3Method = "mail" | "window"; // 納税証明書その3の請求方法（郵送請求 / 代理人窓口発行）
 
 // 定額小為替（証明書1枚につき1枚同封する）。
 // 番号は「前半の数字-後半の数字」で控える
@@ -169,6 +170,8 @@ export interface JudgmentRecord {
   mailingProgress?: "preparing" | "waiting" | "done"; // 進捗（準備中 / 税務署からの郵送待ち / 完了）
   receivedDate?: string; // 税務署から証明書が届いた日
   mailingNote?: string; // メモ
+  nozei3Method?: Nozei3Method; // 郵送請求 / 代理人窓口発行（未設定は郵送請求）
+  applicantAgentAddress?: string; // 代理人の住所（納税証明書その3の代理人窓口発行）
   [key: string]: unknown;
 }
 

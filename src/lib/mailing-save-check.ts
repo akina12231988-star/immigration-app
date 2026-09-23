@@ -103,6 +103,8 @@ export function nozei3SaveBlockers(p: {
   personName: string;
   taxOfficeSelected: boolean;
   hasTaxOffices: boolean;
+  // 代理人窓口発行で代理人の氏名が未入力（郵送請求では不要）
+  agentNameMissing?: boolean;
 }): string[] {
   const out: string[] = [];
   if (!p.canEdit) {
@@ -112,5 +114,6 @@ export function nozei3SaveBlockers(p: {
   if (!p.personName.trim()) out.push("対象者情報の「外国人の氏名」を選んでください（一覧にいなければ新規登録）");
   if (!p.hasTaxOffices) out.push("税務署マスタが未登録です。「税務署マスタ」タブで追加してください");
   else if (!p.taxOfficeSelected) out.push("投函先の税務署を選んでください（住所から自動判定できないときは手で選びます）");
+  if (p.agentNameMissing) out.push("代理人窓口発行のときは、代理人の氏名を入力してください");
   return out;
 }

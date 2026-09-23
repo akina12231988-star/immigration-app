@@ -1,4 +1,4 @@
-import { formatDateJP, requestKindLabel, type JudgmentRecord } from "@/lib/tax-cert";
+import { applicantLabel, formatDateJP, requestKindLabel, type JudgmentRecord } from "@/lib/tax-cert";
 import { mailingProgressLabel, normalizeTrackingNumber, trackingUrl } from "@/lib/tax-office";
 
 // 郵送請求の記録を1件ずつ短く出す（申請準備の「郵送請求中」の欄と、郵送請求の記録一覧で共用）。
@@ -51,8 +51,19 @@ export function MailingRecordSummary({ record: r }: { record: JudgmentRecord }) 
     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
       <span className="font-bold">{requestKindLabel(r.requestKind)}</span>
       <span>{mailingDestination(r)}</span>
-      <span className="text-muted">{post ? `投函 ${formatDateJP(post)}` : "投函日未記録"}</span>
-      {r.requestKind === "nozei3" && (
+      {r.requestKind === "nozei3" && r.nozei3Method === "window" ? (
+        /* 代理人窓口発行: 投函・追跡番号は無いので、誰が代理人で発行したかを出す */
+        <>
+          <span>窓口発行：{applicantLabel("agent", r.applicantAgentName)}</span>
+          <ProgressBadge progress={r.mailingProgress} />
+          {r.mailingProgress === "done" && r.receivedDate && (
+            <span className="text-muted">発行日 {formatDateJP(r.receivedDate)}</span>
+          )}
+        </>
+      ) : (
+        <span className="text-muted">{post ? `投函 ${formatDateJP(post)}` : "投函日未記録"}</span>
+      )}
+      {r.requestKind === "nozei3" && r.nozei3Method !== "window" && (
         <>
           <TrackingLink trackingNumber={r.trackingNumber} />
           <ProgressBadge progress={r.mailingProgress} />
