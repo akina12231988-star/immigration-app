@@ -400,23 +400,31 @@ describe("councilSubmissionsLine", () => {
   it("提出先・提出日・確認方法を1行にする（確認方法が無ければ省く）", () => {
     expect(
       councilSubmissionsLine([
-        { to: "（本社）長崎県雲仙市", on: "2025-04-22", method: "郵送" },
+        { to: "（本社）長崎県雲仙市", on: "2025-04-22", method: "提出した書面の控え" },
         { to: "（愛野営業所）長崎県雲仙市", on: "2025-04-22" },
+        { to: "（住居地）長崎県雲仙市", on: "2025-04-23", method: "その他", method_note: "電話で確認" },
         { to: "", on: "", method: "" },
       ]),
-    ).toBe("（本社）長崎県雲仙市（2025-04-22・郵送）、（愛野営業所）長崎県雲仙市（2025-04-22）");
+    ).toBe(
+      "（本社）長崎県雲仙市（2025-04-22・提出した書面の控え）、（愛野営業所）長崎県雲仙市（2025-04-22）、（住居地）長崎県雲仙市（2025-04-23・電話で確認）",
+    );
     expect(councilSubmissionsLine([{ to: "", on: "" }])).toBe("");
   });
 });
 
 describe("協力確認書の確認方法の読み込み", () => {
-  it("確認方法を読み、無い古いデータは空にする", () => {
+  it("確認方法を読み、無い古いデータは空、選択肢に無い値は「その他」にする", () => {
     const i = normalizeOrganizationIntake({
-      council_office_submissions: [{ to: "雲仙市", on: "2025-04-22", method: "メール" }, { to: "旧", on: "2024-01-01" }],
+      council_office_submissions: [
+        { to: "雲仙市", on: "2025-04-22", method: "メール" },
+        { to: "旧", on: "2024-01-01" },
+        { to: "自由入力", on: "2024-02-01", method: "郵送" },
+      ],
     });
     expect(i.council_office_submissions).toEqual([
-      { to: "雲仙市", on: "2025-04-22", method: "メール" },
-      { to: "旧", on: "2024-01-01", method: "" },
+      { to: "雲仙市", on: "2025-04-22", method: "メール", method_note: "" },
+      { to: "旧", on: "2024-01-01", method: "", method_note: "" },
+      { to: "自由入力", on: "2024-02-01", method: "その他", method_note: "郵送" },
     ]);
   });
 });
