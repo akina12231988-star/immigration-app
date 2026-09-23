@@ -428,3 +428,15 @@ describe("協力確認書の確認方法の読み込み", () => {
     ]);
   });
 });
+
+describe("求人票に記載する内容（雇用条件書の順番）の読み込み", () => {
+  it("未登録の会社は就業の場所1行・控除は有で始め、配列は安全に読む", () => {
+    const i = normalizeOrganizationIntake({ job_insurances: ["健康保険", 3], job_shifts: [{ start: "8:00" }] });
+    expect(i.job_workplaces).toEqual([{ name: "", address: "", contact: "" }]);
+    expect(i.job_workplace_changes).toEqual([]);
+    expect(i.job_wage_deduction).toBe("有");
+    expect(i.job_insurances).toEqual(["健康保険"]);
+    expect(i.job_shifts).toEqual([{ start: "8:00", end: "", break_minutes: "" }]);
+    expect(i.job_shift).toBe(false);
+  });
+});

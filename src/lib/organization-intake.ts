@@ -7,6 +7,8 @@ import type {
   OrgJapaneseStaff,
   OrgLodging,
   OrgOfficer,
+  OrgShift,
+  OrgWorkplace,
   OrgSalesItem,
   OrgSalesItems,
   OrganizationIntake,
@@ -62,6 +64,38 @@ export function councilSubmissionsLine(rows: OrgCouncilSubmission[]): string {
       return `${r.to || "提出先未記入"}（${detail}）`;
     })
     .join("、");
+}
+
+export function emptyWorkplace(): OrgWorkplace {
+  return { name: "", address: "", contact: "" };
+}
+
+export function emptyShift(): OrgShift {
+  return { start: "", end: "", break_minutes: "" };
+}
+
+// 就業の場所の正規化（withRow なら空でも1行は出す）
+function normalizeWorkplaces(raw: unknown, withRow: boolean): OrgWorkplace[] {
+  const rows = (Array.isArray(raw) ? raw : []).map((r) => {
+    const o = (r && typeof r === "object" ? r : {}) as Partial<OrgWorkplace>;
+    return {
+      name: typeof o.name === "string" ? o.name : "",
+      address: typeof o.address === "string" ? o.address : "",
+      contact: typeof o.contact === "string" ? o.contact : "",
+    };
+  });
+  return rows.length > 0 || !withRow ? rows : [emptyWorkplace()];
+}
+
+function normalizeShifts(raw: unknown): OrgShift[] {
+  return (Array.isArray(raw) ? raw : []).map((r) => {
+    const o = (r && typeof r === "object" ? r : {}) as Partial<OrgShift>;
+    return {
+      start: typeof o.start === "string" ? o.start : "",
+      end: typeof o.end === "string" ? o.end : "",
+      break_minutes: typeof o.break_minutes === "string" ? o.break_minutes : "",
+    };
+  });
 }
 
 // 確認方法の正規化。選択肢に無い値（以前の自由入力「郵送」など）は「その他」とその内容にする
@@ -158,6 +192,31 @@ export function emptyOrganizationIntake(): OrganizationIntake {
     posting_annual_hours: "",
     flex_hours_kind: "",
     flex_docs_start: "",
+    job_workplaces: [emptyWorkplace()],
+    job_workplace_change: "",
+    job_workplace_changes: [],
+    job_work_start: "",
+    job_work_end: "",
+    job_break_minutes: "",
+    job_shift: false,
+    job_shifts: [],
+    job_days_week: "",
+    job_days_month: "",
+    job_days_year: "",
+    job_overtime: "",
+    job_holiday_weekly: "",
+    job_holiday_other: "",
+    job_wage_deduction: "有",
+    job_raise: "",
+    job_raise_note: "",
+    job_bonus: "",
+    job_bonus_note: "",
+    job_retirement_pay: "",
+    job_retirement_pay_note: "",
+    job_resign_notice_days: "",
+    job_insurances: [],
+    job_insurance_other: "",
+    job_rules_where: "",
     contact_method: "",
     handover_method: "",
     health_insurance: "",
@@ -282,6 +341,13 @@ export function normalizeOrganizationIntake(raw: unknown): OrganizationIntake {
     officers,
     lodgings,
     sales_items: normalizeSalesItems(src.sales_items),
+    job_workplaces: normalizeWorkplaces(src.job_workplaces, true),
+    job_workplace_changes: normalizeWorkplaces(src.job_workplace_changes, false),
+    job_shifts: normalizeShifts(src.job_shifts),
+    job_shift: src.job_shift === true,
+    job_insurances: Array.isArray(src.job_insurances)
+      ? src.job_insurances.filter((v): v is string => typeof v === "string")
+      : [],
     council_office_submissions: normalizeCouncilSubmissions(src.council_office_submissions),
     council_residence_submissions: normalizeCouncilSubmissions(src.council_residence_submissions),
     support_managers: orgSupportManagers(src),
