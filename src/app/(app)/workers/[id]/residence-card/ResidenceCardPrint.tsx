@@ -2,10 +2,11 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLink, Loader2, Printer, Upload } from "lucide-react";
+import { ExternalLink, Loader2, MessageCircle, Printer, Upload } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { uploadWorkerDoc } from "@/lib/worker-docs";
+import { messengerWebUrl } from "@/lib/messenger-link";
 import type { CurrentResidenceCard } from "../../actions";
 
 // 現在の在留カードをA4縦で印刷する。
@@ -15,11 +16,13 @@ import type { CurrentResidenceCard } from "../../actions";
 export function ResidenceCardPrint({
   workerId,
   workerName,
+  messengerLink = "",
   card,
   canEdit,
 }: {
   workerId: string;
   workerName: string;
+  messengerLink?: string; // 本人のMessenger（在留カードの画像を送ってもらうときなど）
   card: CurrentResidenceCard | null;
   canEdit: boolean;
 }) {
@@ -89,6 +92,23 @@ export function ResidenceCardPrint({
         </div>
 
         <div className="flex flex-col gap-3 px-4 py-3 lg:px-8">
+          {/* 本人のMessenger（最新の在留カードの画像を送ってもらうときに使う） */}
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-xs">
+            <span className="font-bold text-muted">本人のMessenger</span>
+            {messengerLink.trim() ? (
+              <a
+                href={messengerWebUrl(messengerLink.trim())}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex min-w-0 items-center gap-1 break-all font-bold text-brand underline"
+              >
+                <MessageCircle size={13} className="shrink-0" />
+                {messengerWebUrl(messengerLink.trim())}
+              </a>
+            ) : (
+              <span className="text-muted">未登録（外国人詳細で登録できます）</span>
+            )}
+          </div>
           {error && (
             <p role="alert" className="rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
               {error}

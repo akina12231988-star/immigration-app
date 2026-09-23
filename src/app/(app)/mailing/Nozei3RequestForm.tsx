@@ -78,7 +78,8 @@ export interface Nozei3Values {
   postDate: string; // 投函日
   trackingNumber: string; // 追跡番号
   progress: MailingProgress; // 準備中 / 税務署からの郵送待ち / 完了
-  receivedDate: string; // 証明書が届いた日
+  receivedDate: string; // 証明書が届いた日（郵送請求）
+  handedDate: string; // 代理人に交付請求書を渡した日（代理人窓口発行）
   note: string;
 }
 
@@ -86,7 +87,7 @@ export function emptyNozei3Values(): Nozei3Values {
   return {
     method: "mail",
     agentName: DEFAULT_NOZEI3_AGENT.name,
-    agentAddress: DEFAULT_NOZEI3_AGENT.address, taxOfficeId: "", postDate: "", trackingNumber: "", progress: "preparing", receivedDate: "", note: "" };
+    agentAddress: DEFAULT_NOZEI3_AGENT.address, taxOfficeId: "", postDate: "", trackingNumber: "", progress: "preparing", receivedDate: "", handedDate: "", note: "" };
 }
 
 export function nozei3ValuesFromRecord(r: JudgmentRecord): Nozei3Values {
@@ -101,6 +102,7 @@ export function nozei3ValuesFromRecord(r: JudgmentRecord): Nozei3Values {
     trackingNumber: r.trackingNumber ?? "",
     progress: r.mailingProgress ?? "preparing",
     receivedDate: r.receivedDate ?? "",
+    handedDate: r.agentHandedDate ?? "",
     note: r.mailingNote ?? "",
   };
 }
@@ -132,7 +134,8 @@ export function nozei3RecordPatch(
     postDate: atWindow ? "" : v.postDate,
     trackingNumber: atWindow ? "" : v.trackingNumber.trim(),
     mailingProgress: progress,
-    receivedDate: progress === "done" ? v.receivedDate : "",
+    receivedDate: !atWindow && progress === "done" ? v.receivedDate : "",
+    agentHandedDate: atWindow ? v.handedDate : "",
     mailingNote: v.note.trim(),
     requestMethod: atWindow ? "agent_window" : "mail",
     mailRequestDate: atWindow ? "" : v.postDate,
@@ -508,11 +511,21 @@ export function Nozei3Fields({
             </div>
           </>
         )}
-        {v.progress === "done" && (
+        {atWindow ? (
           <label className="flex flex-col gap-1 sm:max-w-xs">
-            <span className={LABEL}>{atWindow ? "証明書の発行を受けた日" : "証明書が届いた日"}</span>
-            <input type="date" value={v.receivedDate} onChange={(e) => set({ receivedDate: e.target.value })} className={INPUT} />
+            <span className={LABEL}>代理人に交付請求書を渡した日</span>
+            <div className="flex gap-2">
+              <input type="date" value={v.handedDate} onChange={(e) => set({ handedDate: e.target.value })} className={INPUT} />
+              <Button type="button" variant="secondary" className="shrink-0 whitespace-nowrap" onClick={() => set({ handedDate: todayISO() })}>今日</Button>
+            </div>
           </label>
+        ) : (
+          v.progress === "done" && (
+            <label className="flex flex-col gap-1 sm:max-w-xs">
+              <span className={LABEL}>証明書が届いた日</span>
+              <input type="date" value={v.receivedDate} onChange={(e) => set({ receivedDate: e.target.value })} className={INPUT} />
+            </label>
+          )
         )}
         <label className="flex flex-col gap-1">
           <span className={LABEL}>メモ</span>
@@ -838,7 +851,10 @@ export function Nozei3RecordView({ record: r, canEdit }: { record: JudgmentRecor
           <>
             <p className="mt-1">代理人窓口発行：{applicantLabel("agent", r.applicantAgentName)}</p>
             {r.applicantAgentAddress && <p className="text-muted">代理人の住所：{r.applicantAgentAddress}</p>}
-            {r.mailingProgress === "done" && r.receivedDate && <p>発行を受けた日：{formatDateJP(r.receivedDate)}</p>}
+            <p>
+              代理人に交付請求書を渡した日：
+              {r.agentHandedDate ? formatDateJP(r.agentHandedDate) : <span className="text-muted">未記録</span>}
+            </p>
           </>
         ) : (
           <>
