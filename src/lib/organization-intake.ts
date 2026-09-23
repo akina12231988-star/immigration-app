@@ -39,22 +39,37 @@ export function emptyOfficer(): OrgOfficer {
 
 // 協力確認書の提出1件分（提出先・提出日）
 export function emptyCouncilSubmission(): OrgCouncilSubmission {
-  return { to: "", on: "", method: "" };
+  return { to: "", on: "", method: "", method_note: "" };
 }
 
-// 協力確認書の確認方法の候補（自由入力もできる）
-export const COUNCIL_METHOD_OPTIONS = ["郵送", "メール", "窓口", "電子申請（オンライン）", "FAX"] as const;
+// 協力確認書の確認方法（トグルで選ぶ。「その他」は内容を文字で入れる）
+export const COUNCIL_METHOD_OPTIONS = ["メール", "提出した書面の控え", "その他"] as const;
+
+// 確認方法の表示（「その他」は入れた内容。内容が無ければ「その他」）
+export function councilMethodText(r: Pick<OrgCouncilSubmission, "method" | "method_note">): string {
+  const m = (r.method ?? "").trim();
+  if (m === "その他") return (r.method_note ?? "").trim() || "その他";
+  return m;
+}
 
 // 協力確認書の提出を1行にする（例: 長崎県雲仙市（2025-04-22・郵送））。画面・印刷で共用
 export function councilSubmissionsLine(rows: OrgCouncilSubmission[]): string {
-  const filled = rows.filter((r) => r.to || r.on || r.method);
+  const filled = rows.filter((r) => r.to || r.on || councilMethodText(r));
   if (filled.length === 0) return "";
   return filled
     .map((r) => {
-      const detail = [r.on || "提出日未記入", r.method?.trim()].filter(Boolean).join("・");
+      const detail = [r.on || "提出日未記入", councilMethodText(r)].filter(Boolean).join("・");
       return `${r.to || "提出先未記入"}（${detail}）`;
     })
     .join("、");
+}
+
+// 確認方法の正規化。選択肢に無い値（以前の自由入力「郵送」など）は「その他」とその内容にする
+function normalizeCouncilMethod(method: unknown, note: unknown): { method: string; method_note: string } {
+  const m = typeof method === "string" ? method.trim() : "";
+  const n = typeof note === "string" ? note : "";
+  if (!m || (COUNCIL_METHOD_OPTIONS as readonly string[]).includes(m)) return { method: m, method_note: m === "その他" ? n : "" };
+  return { method: "その他", method_note: m };
 }
 
 // 協力確認書の提出リストの正規化（不正な形は空行1件にする）
@@ -65,7 +80,7 @@ function normalizeCouncilSubmissions(raw: unknown): OrgCouncilSubmission[] {
     return {
       to: typeof s.to === "string" ? s.to : "",
       on: typeof s.on === "string" ? s.on : "",
-      method: typeof s.method === "string" ? s.method : "",
+      ...normalizeCouncilMethod(s.method, s.method_note),
     };
   });
   return rows.length > 0 ? rows : [emptyCouncilSubmission()];

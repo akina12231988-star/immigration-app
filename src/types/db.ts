@@ -246,7 +246,8 @@ export interface OrganizationIntake {
 export interface OrgCouncilSubmission {
   to: string; // 提出先
   on: string; // 提出日（YYYY-MM-DD）
-  method?: string; // 確認方法（郵送・メール・窓口など。未入力は空）
+  method?: string; // 確認方法（メール / 提出した書面の控え / その他。未選択は空）
+  method_note?: string; // 確認方法が「その他」のときの内容
 }
 
 // 所属機関に添付するファイル（見積書など。0049_organization_files.sql）

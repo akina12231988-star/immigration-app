@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Trash2, Upload } from "lucide-react";
 import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { CopyButton } from "@/components/ui/CopyButton";
@@ -1827,7 +1827,7 @@ function IntakeSection({
         </div>
         <p className={GROUP_CLASS}>協力確認書の提出（提出先・提出日・確認方法）</p>
         <p className={HINT_CLASS}>
-          提出先・提出日・確認方法（郵送・メール・窓口など）を分けて記録します。複数ある場合は「＋提出を追加」で行を足してください。協議会の加入通知書などがある場合はコピーをもらってください。
+          提出先・提出日・確認方法（メール／提出した書面の控え／その他）を分けて記録します。複数ある場合は「＋提出を追加」で行を足してください。協議会の加入通知書などがある場合はコピーをもらってください。
         </p>
         <CouncilSubmissionRows
           label="特定技能外国人の活動する事業所の所在地での提出"
@@ -1942,14 +1942,13 @@ function CouncilSubmissionRows({
 }) {
   const setRow = (i: number, patch: Partial<OrgCouncilSubmission>) =>
     onChange(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
-  // 確認方法の候補（この欄は画面に2つあるので、候補リストの id を欄ごとに分ける）
-  const methodListId = useId();
   return (
     <div className="rounded-xl border border-border p-2.5">
       <p className="mb-1.5 text-xs font-bold">{label}</p>
       <div className="flex flex-col gap-1.5">
         {rows.map((row, i) => (
-          <div key={i} className="flex flex-wrap items-end gap-2">
+          <div key={i} className="flex flex-col gap-1.5 rounded-lg bg-background/60 p-1.5">
+          <div className="flex flex-wrap items-end gap-2">
             <label className="flex min-w-[12rem] flex-1 flex-col gap-1">
               <span className="text-[11px] text-muted">提出先</span>
               <input
@@ -1968,16 +1967,6 @@ function CouncilSubmissionRows({
                 className="min-h-[40px] rounded-xl border border-border bg-background px-2 text-sm focus:border-brand focus:outline-none"
               />
             </label>
-            <label className="flex w-44 flex-col gap-1">
-              <span className="text-[11px] text-muted">確認方法</span>
-              <input
-                list={methodListId}
-                value={row.method ?? ""}
-                onChange={(e) => setRow(i, { method: e.target.value })}
-                placeholder="例: 郵送"
-                className="min-h-[40px] w-full rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none"
-              />
-            </label>
             {rows.length > 1 && (
               <button
                 type="button"
@@ -1989,13 +1978,33 @@ function CouncilSubmissionRows({
               </button>
             )}
           </div>
+          {/* 確認方法（メール / 提出した書面の控え / その他）。同じボタンをもう一度押すと選択を外す */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] text-muted">確認方法</span>
+            {COUNCIL_METHOD_OPTIONS.map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setRow(i, { method: row.method === m ? "" : m })}
+                className={`rounded-lg border px-2.5 py-1 text-xs font-bold ${
+                  row.method === m ? "border-brand bg-brand text-brand-foreground" : "border-border bg-surface text-muted"
+                }`}
+              >
+                {m}
+              </button>
+            ))}
+            {row.method === "その他" && (
+              <input
+                value={row.method_note ?? ""}
+                onChange={(e) => setRow(i, { method_note: e.target.value })}
+                placeholder="確認方法を入力（例: 電話で確認）"
+                className="min-h-[34px] min-w-[12rem] flex-1 rounded-lg border border-border bg-background px-2.5 text-sm focus:border-brand focus:outline-none"
+              />
+            )}
+          </div>
+          </div>
         ))}
       </div>
-      <datalist id={methodListId}>
-        {COUNCIL_METHOD_OPTIONS.map((o) => (
-          <option key={o} value={o} />
-        ))}
-      </datalist>
       <button
         type="button"
         onClick={() => onChange([...rows, emptyCouncilSubmission()])}
