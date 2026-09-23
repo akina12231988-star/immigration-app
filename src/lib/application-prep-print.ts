@@ -10,7 +10,13 @@
 import { PREP_APP_TYPE_LABELS, prepDocLabel, type PrepChecklistMeta, type PrepDocStatus } from "@/lib/application-prep";
 import { SUPPORT_CONTRACT_YEARS, contractPeriodEnd, planDateGroupsFor } from "@/lib/support-plan-dates";
 import { flexHoursLabel } from "@/lib/org-attachments";
-import { councilSubmissionsLine, financialSalesText } from "@/lib/organization-intake";
+import {
+  COUNCIL_QR_MIN_ROWS,
+  councilQrText,
+  councilSubmissionsLine,
+  filledCouncilSubmissions,
+  financialSalesText,
+} from "@/lib/organization-intake";
 import { rosterJpDate } from "@/lib/roster";
 import { sortWages, wageStartedOnLabel } from "@/lib/wage";
 import { calcWageDetail, formatYen, hasWageDetail, normalizeWageDetail } from "@/lib/wage-calc";
@@ -22,6 +28,7 @@ export interface PrepPrintLine {
   label: string;
   value: string;
   heading?: boolean; // 見出しの行（参考様式ごとの枠）。値は無く、訂正もできない
+  qr?: string; // 値の横にQRコードで載せる文（協力確認書の提出先が多いとき。読み取ると一覧が出る）
 }
 
 // 書類1件の印刷状態。完了はチェック（☑）を付け、対象外にするとその行は印刷しない
@@ -43,8 +50,15 @@ export function prepPrintAppType(meta: PrepChecklistMeta): string {
   return "";
 }
 
-// 協力確認書の提出先・提出日・確認方法を1行にする（画面と同じ書き方）
-const councilLine = councilSubmissionsLine;
+// 協力確認書の提出先・提出日・確認方法。提出先が多いと文章が長くなりすぎるので、
+// COUNCIL_QR_MIN_ROWS か所以上はか所数だけを書き、一覧はQRコード（読み取ると文で出る）にする
+export function councilPrintLine(key: string, label: string, rows: OrgCouncilSubmission[]): PrepPrintLine {
+  const count = filledCouncilSubmissions(rows).length;
+  if (count >= COUNCIL_QR_MIN_ROWS) {
+    return { key, label, value: `全${count}か所（QRコードを読み取ると一覧が出ます）`, qr: councilQrText(label, rows) };
+  }
+  return { key, label, value: councilSubmissionsLine(rows) };
+}
 
 // 直近の売上高（売上が入っている決算情報の新しい2件。例: 「令和7年分 13,903,547円」）
 function salesLine(financials: OrgFinancialYear[], fiscalKind: string): string {
@@ -80,16 +94,8 @@ export function prepPrintOrgLines(org: PrepPrintOrg): PrepPrintLine[] {
     },
     // 1年単位のときは年間カレンダー・労使協定書が要るので「1年単位の変形労働」と出す（未登録は空のまま）
     { key: "org_flex_hours", label: "変形労働時間制", value: org.flexHoursKind ? flexHoursLabel(org.flexHoursKind) : "" },
-    {
-      key: "org_council_office",
-      label: "協力確認書（事業所の所在地）",
-      value: councilLine(org.councilOffice),
-    },
-    {
-      key: "org_council_residence",
-      label: "協力確認書（住居地）",
-      value: councilLine(org.councilResidence),
-    },
+    councilPrintLine("org_council_office", "協力確認書（事業所の所在地）", org.councilOffice),
+    councilPrintLine("org_council_residence", "協力確認書（住居地）", org.councilResidence),
     { key: "org_council_note", label: "協議会メモ", value: org.councilNote },
     { key: "org_sales", label: "直近の売上高", value: salesLine(org.financials, org.fiscalKind) },
   ];

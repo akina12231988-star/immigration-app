@@ -24,16 +24,19 @@ export function QrImage({
   text,
   size = 140,
   className = "",
+  errorCorrectionLevel = "M",
 }: {
   text: string;
   size?: number;
   className?: string;
+  // 文字が多いQR（協力確認書の一覧など）は L にすると点が粗くなり、印刷しても読み取りやすい
+  errorCorrectionLevel?: "L" | "M" | "Q" | "H";
 }) {
   const [url, setUrl] = useState("");
 
   useEffect(() => {
     let cancelled = false;
-    QRCode.toDataURL(text, { margin: 1, width: size * 2 })
+    QRCode.toDataURL(text, { margin: 1, width: size * 2, errorCorrectionLevel })
       .then((u) => {
         if (!cancelled) setUrl(u);
       })
@@ -41,7 +44,7 @@ export function QrImage({
     return () => {
       cancelled = true;
     };
-  }, [text, size]);
+  }, [text, size, errorCorrectionLevel]);
 
   if (!url) {
     return <div style={{ width: size, height: size }} className={`rounded bg-background ${className}`} />;
