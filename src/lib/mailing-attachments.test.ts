@@ -53,6 +53,21 @@ describe("mailingAttachmentSlots", () => {
     expect(mailingAttachmentSlots({ requestKind: "juminhyo" }).map((s) => s.kind)).toEqual(["住民票", RECEIVED_CERT_KIND, RECEIPT_KIND]);
     expect(mailingAttachmentSlots({ requestKind: "tenshutsu" })[1].title).toContain("転出証明書");
   });
+  it("年度ごとに保存した課税・納税証明書は年度ごとに3つずつ", () => {
+    const slots = mailingAttachmentSlots({
+      docs: [
+        { title: "a", meta: "", starred: false, yearType: "new" },
+        { title: "b", meta: "", starred: false, yearType: "prev" },
+      ],
+      yearRequests: [
+        { yearType: "new", fiscalStartYear: 2026, municipalityId: "m1", municipalityName: "A", collectionType: "special", timingStatus: "ok", timingLabel: "", timingDetail: "" },
+        { yearType: "prev", fiscalStartYear: 2025, municipalityId: "m2", municipalityName: "B", collectionType: "special", timingStatus: "ok", timingLabel: "", timingDetail: "" },
+      ],
+    });
+    expect(slots).toHaveLength(6);
+    expect(slots[0]).toMatchObject({ role: "sent", year: "new", kind: "郵送請求した書類：2026年度（令和8年度）" });
+    expect(slots[5]).toMatchObject({ role: "receipt", year: "prev", kind: "領収書：2025年度（令和7年度）" });
+  });
   it("納税証明書その3は領収書なし", () => {
     expect(mailingAttachmentSlots({ requestKind: "nozei3" }).map((s) => s.kind)).toEqual([MAIL_REQUEST_KIND, NOZEI3_RECEIVED_KIND]);
   });
@@ -75,14 +90,14 @@ describe("mailingTargets", () => {
     const t = mailingTargets(
       rec({
         yearRequests: [
-          { yearType: "prev", fiscalStartYear: 2025, municipalityId: "m2", municipalityName: "東京都荒川区", collectionType: "special", timingStatus: "ok", timingLabel: "", timingDetail: "" },
+          { yearType: "prev", fiscalStartYear: 2025, municipalityId: "m2", municipalityName: "東京都荒川区", collectionType: "special", timingStatus: "ok", timingLabel: "", timingDetail: "", taxCert: false, taxPayment: true },
         ],
         nhiYears: [{ yearType: "new", fiscalStartYear: 2026, municipalityId: "m3", municipalityName: "八代郡氷川町" }],
         hasNhi: true,
       }),
     );
     expect(t).toEqual([
-      { what: "課税・納税証明書 2025年度（令和7年度）", where: "東京都荒川区" },
+      { what: "市県民税納税証明書 2025年度（令和7年度）", where: "東京都荒川区" },
       { what: "国民健康保険税 納税証明書 2026年度（令和8年度）", where: "八代郡氷川町" },
     ]);
   });

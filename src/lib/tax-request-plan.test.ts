@@ -2,9 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildTaxRequestPlan,
   hasYearRequests,
-  muniMoneyOrderGroup,
   planFiscalYears,
-  recordMuniGroups,
+  recordMoneyOrderGroups,
   suggestRequestedYears,
   taxPlanBlockers,
 } from "./tax-request-plan";
@@ -59,28 +58,44 @@ describe("buildTaxRequestPlan", () => {
     const plan = buildTaxRequestPlan({
       appDate: sep,
       years: [
-        { yearType: "prev", muni: arakawa, collectionType: "special", requested: true, nhi: false, nhiMuni: null },
-        { yearType: "new", muni: setagaya, collectionType: "normal", requested: true, nhi: false, nhiMuni: null },
+        { yearType: "prev", muni: arakawa, collectionType: "special", taxCert: true, taxPayment: true, nhi: false, nhiMuni: null },
+        { yearType: "new", muni: setagaya, collectionType: "normal", taxCert: true, taxPayment: true, nhi: false, nhiMuni: null },
       ],
     });
     expect(plan.years.map((y) => [y.yearType, y.fiscalStartYear, y.municipalityName, y.collectionType])).toEqual([
       ["new", 2026, "東京都世田谷区", "normal"],
       ["prev", 2025, "東京都荒川区", "special"],
     ]);
-    expect(plan.groups.map((g) => [g.muni.name, g.docs.length])).toEqual([
-      ["東京都世田谷区", 2],
-      ["東京都荒川区", 2],
+    expect(plan.groups.map((g) => [g.yearType, g.muni.name, g.docs.length])).toEqual([
+      ["new", "東京都世田谷区", 2],
+      ["prev", "東京都荒川区", 2],
     ]);
     expect(plan.docs[0].title).toBe("東京都世田谷区：課税証明書（2026年度（令和8年度））");
     expect(plan.docs[1].title).toBe("東京都世田谷区：市県民税納税証明書（2026年度（令和8年度））");
   });
 
-  it("国保は加入していた年度ごとに、その請求先の自治体へまとめる", () => {
+  it("年度ごとに課税証明書・市県民税納税証明書を選べる", () => {
     const plan = buildTaxRequestPlan({
       appDate: sep,
       years: [
-        { yearType: "new", muni: setagaya, collectionType: "special", requested: false, nhi: true, nhiMuni: hikawa },
-        { yearType: "prev", muni: setagaya, collectionType: "special", requested: true, nhi: true, nhiMuni: setagaya },
+        { yearType: "new", muni: setagaya, collectionType: "special", taxCert: false, taxPayment: true, nhi: false, nhiMuni: null },
+        { yearType: "prev", muni: setagaya, collectionType: "special", taxCert: true, taxPayment: true, nhi: false, nhiMuni: null },
+      ],
+    });
+    expect(plan.years.map((y) => [y.yearType, y.taxCert, y.taxPayment])).toEqual([
+      ["new", false, true],
+      ["prev", true, true],
+    ]);
+    expect(plan.groups[0].docs.map((d) => d.title)).toEqual(["東京都世田谷区：市県民税納税証明書（2026年度（令和8年度））"]);
+    expect(plan.docs.every((d) => d.yearType)).toBe(true);
+  });
+
+  it("国保は加入していた年度ごとに、その年度の欄に入れる", () => {
+    const plan = buildTaxRequestPlan({
+      appDate: sep,
+      years: [
+        { yearType: "new", muni: setagaya, collectionType: "special", taxCert: false, taxPayment: false, nhi: true, nhiMuni: hikawa },
+        { yearType: "prev", muni: setagaya, collectionType: "special", taxCert: true, taxPayment: true, nhi: true, nhiMuni: setagaya },
       ],
     });
     expect(plan.years).toHaveLength(1);
@@ -88,17 +103,18 @@ describe("buildTaxRequestPlan", () => {
       [2026, "八代郡氷川町"],
       [2025, "東京都世田谷区"],
     ]);
-    // 世田谷区: 前年度の課税・納税 ＋ 前年度の国保 / 氷川町: 最新年度の国保
-    expect(plan.groups.map((g) => [g.muni.name, g.docs.map((d) => !!d.isNhi)])).toEqual([
-      ["東京都世田谷区", [false, false, true]],
-      ["八代郡氷川町", [true]],
+    // 最新年度: 氷川町の国保だけ / 前年度: 世田谷区の課税・納税 ＋ 国保
+    expect(plan.groups.map((g) => [g.yearType, g.docs.map((d) => d.municipalityName)])).toEqual([
+      ["new", ["八代郡氷川町"]],
+      ["prev", ["東京都世田谷区", "東京都世田谷区", "東京都世田谷区"]],
     ]);
+    expect(plan.groups[0].docs[0].meta).toContain("別の自治体");
   });
 
   it("前年度の特別徴収は6月前半に注意を出す", () => {
     const plan = buildTaxRequestPlan({
       appDate: new Date("2026-06-05T00:00:00"),
-      years: [{ yearType: "prev", muni: setagaya, collectionType: "special", requested: true, nhi: false, nhiMuni: null }],
+      years: [{ yearType: "prev", muni: setagaya, collectionType: "special", taxCert: true, taxPayment: true, nhi: false, nhiMuni: null }],
     });
     expect(plan.years[0].timingStatus).toBe("warn");
   });
@@ -116,16 +132,17 @@ describe("保存した記録の定額小為替", () => {
   const plan = buildTaxRequestPlan({
     appDate: sep,
     years: [
-      { yearType: "new", muni: setagaya, collectionType: "normal", requested: true, nhi: true, nhiMuni: hikawa },
-      { yearType: "prev", muni: arakawa, collectionType: "special", requested: false, nhi: false, nhiMuni: null },
+      { yearType: "new", muni: setagaya, collectionType: "normal", taxCert: true, taxPayment: true, nhi: true, nhiMuni: hikawa },
+      { yearType: "prev", muni: arakawa, collectionType: "special", taxCert: false, taxPayment: false, nhi: false, nhiMuni: null },
     ],
   });
-  it("自治体ごとにまとめ直せる", () => {
-    expect(recordMuniGroups(plan.docs).map((g) => [g.municipalityId, g.titles.length])).toEqual([
-      ["m1", 2],
-      ["m3", 1],
+  it("年度ごとにまとめ直せる（年度の無い以前の記録は自治体ごと）", () => {
+    expect(recordMoneyOrderGroups(plan.docs).map((g) => [g.group, g.titles.length])).toEqual([["year:new", 3]]);
+    const old = plan.docs.map((d) => ({ ...d, yearType: undefined }));
+    expect(recordMoneyOrderGroups(old).map((g) => [g.group, g.titles.length])).toEqual([
+      ["muni:m1", 2],
+      ["muni:m3", 1],
     ]);
-    expect(muniMoneyOrderGroup("m1")).toBe("muni:m1");
   });
   it("郵送する証明書は国保も含めて1つの欄で数える", () => {
     const r = { yearRequests: plan.years, requestMethod: "mail" as const, hasNhi: true, docs: plan.docs };
