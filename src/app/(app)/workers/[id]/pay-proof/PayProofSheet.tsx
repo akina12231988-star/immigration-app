@@ -5,10 +5,11 @@ import { Printer } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
 import { rosterJpDate } from "@/lib/roster";
 import {
-  PAY_PROOF_SHEET_COUNTS,
+  PAY_PROOF_MAX_SHEETS,
   payProofFileName,
+  payProofRange,
   payProofSheetCount,
-  type PayProofSheetCount,
+  payProofStartMonth,
 } from "@/lib/pay-proof";
 
 export interface PayProofWorker {
@@ -19,11 +20,16 @@ export interface PayProofWorker {
   residenceCardNo: string;
   residencePeriod: string; // 在留期間（印刷枚数の判定に使う）
   residenceExpiryDate: string | null;
+  employmentStartOn: string | null; // 現在の所属機関の雇用開始日（何月分から印刷するか）
 }
+
+// 今日の日付（日本時間・YYYY-MM-DD）
+const todayJst = () => new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
 
 // 報酬支払証明書（参考様式第５－７号）。
 // 通貨払い（現金手渡し）の会社は毎月1枚ずつ本人に書いてもらうため、
-// 在留期間のぶん（6枚または12枚）をまとめて印刷する。
+// 何月分から在留期限日の月までの月数ぶん（例: 2026年9月分〜2028年1月分なら17枚）をまとめて印刷する。
+// 在留期限日が無いときは在留期間から6枚または12枚にする。
 // 「１ 対象労働者」は今の在留カードの内容を入れ、「２ 報酬」は手書きの空欄にする。
 export function PayProofSheet({
   orgName,
@@ -32,9 +38,14 @@ export function PayProofSheet({
   orgName: string;
   worker: PayProofWorker;
 }) {
-  const [count, setCount] = useState<PayProofSheetCount>(
-    payProofSheetCount(worker.residencePeriod),
-  );
+  // 何月分から〜何日まで（在留期限日）。画面で直せる
+  const [from, setFrom] = useState(() => payProofStartMonth(todayJst(), worker.employmentStartOn));
+  const [to, setTo] = useState(worker.residenceExpiryDate ?? "");
+  const range = payProofRange(from, to);
+  const autoCount = range ? Math.min(range.count, PAY_PROOF_MAX_SHEETS) : payProofSheetCount(worker.residencePeriod);
+  // 枚数を手で変えたときはその枚数（期間を変えると自動の枚数に戻す）
+  const [manualCount, setManualCount] = useState<number | null>(null);
+  const count = manualCount ?? autoCount;
 
   // 印刷（PDF保存）のとき、保存されるファイル名を「報酬支払証明書_氏名」にする。
   // ブラウザは画面の題名（document.title）をPDFの既定のファイル名に使う
@@ -104,33 +115,83 @@ export function PayProofSheet({
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="flex items-center gap-2 text-sm">
-              <span className="font-bold text-muted">印刷する枚数</span>
-              <select
-                value={count}
-                onChange={(e) => setCount(Number(e.target.value) as PayProofSheetCount)}
-                className="min-h-[44px] rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none"
+          {/* 印刷する枚数: 何月分から在留期限日の月までを1か月1枚で数える */}
+          <div className="rounded-xl border border-border bg-surface p-3">
+            <p className="mb-2 text-xs font-bold text-muted">印刷する枚数（1か月に1枚）</p>
+            <div className="flex flex-wrap items-end gap-3 text-sm">
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] font-bold text-muted">何月分から</span>
+                <input
+                  type="month"
+                  value={from}
+                  onChange={(e) => {
+                    setFrom(e.target.value);
+                    setManualCount(null);
+                  }}
+                  className="min-h-[44px] rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none"
+                />
+              </label>
+              <span className="pb-3">〜</span>
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] font-bold text-muted">在留期限日</span>
+                <input
+                  type="date"
+                  value={to}
+                  onChange={(e) => {
+                    setTo(e.target.value);
+                    setManualCount(null);
+                  }}
+                  className="min-h-[44px] rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] font-bold text-muted">枚数</span>
+                <span className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    min={1}
+                    max={PAY_PROOF_MAX_SHEETS}
+                    value={count}
+                    onChange={(e) => {
+                      const n = Math.floor(Number(e.target.value));
+                      if (n >= 1) setManualCount(Math.min(n, PAY_PROOF_MAX_SHEETS));
+                    }}
+                    className="min-h-[44px] w-20 rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none"
+                  />
+                  枚
+                </span>
+              </label>
+              <button
+                type="button"
+                onClick={printSheet}
+                className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-brand px-5 text-sm font-bold text-brand-foreground"
               >
-                {PAY_PROOF_SHEET_COUNTS.map((n) => (
-                  <option key={n} value={n}>
-                    {n}枚
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button
-              type="button"
-              onClick={printSheet}
-              className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-brand px-5 text-sm font-bold text-brand-foreground"
-            >
-              <Printer size={18} />
-              印刷・PDF保存（A4縦）
-            </button>
-            <span className="text-[11px] leading-relaxed text-muted">
-              在留期間「{worker.residencePeriod || "未登録"}」から
-              {payProofSheetCount(worker.residencePeriod)}枚を選んでいます（1か月に1枚）。
-            </span>
+                <Printer size={18} />
+                印刷・PDF保存（A4縦）
+              </button>
+            </div>
+            <p className="mt-2 text-xs leading-relaxed">
+              {range ? (
+                <>
+                  <span className="font-bold">{range.label}</span>
+                  <span className="text-muted">で </span>
+                  <span className="font-bold">{range.count}か月分＝{Math.min(range.count, PAY_PROOF_MAX_SHEETS)}枚</span>
+                  <span className="text-muted">が必要です。</span>
+                  {range.count > PAY_PROOF_MAX_SHEETS && (
+                    <span className="text-seal">（一度に印刷できるのは{PAY_PROOF_MAX_SHEETS}枚までです）</span>
+                  )}
+                </>
+              ) : (
+                <span className="text-muted">
+                  {to
+                    ? "在留期限日が何月分より前になっています。日付を確かめてください。"
+                    : `在留期限日が未登録のため、在留期間「${worker.residencePeriod || "未登録"}」から${autoCount}枚にしています。`}
+                </span>
+              )}
+              {manualCount !== null && manualCount !== autoCount && (
+                <span className="text-muted">（枚数は手で{manualCount}枚に変えています）</span>
+              )}
+            </p>
           </div>
         </div>
       </div>

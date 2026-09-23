@@ -36,6 +36,42 @@ export function payProofSheetCount(
   return 12;
 }
 
+// ---- 在留期限日までの月数から枚数を出す ----
+// 例: 2026/9/1〜2028/1/27 → 2026年9月分〜2028年1月分 = 17枚（両端の月も1枚ずつ数える）
+
+export const PAY_PROOF_MAX_SHEETS = 60;
+
+// "YYYY-MM-DD" または "YYYY-MM" から年・月を取り出す
+function ym(value: string | null | undefined): { y: number; m: number } | null {
+  const m = /^(\d{4})-(\d{2})/.exec((value ?? "").trim());
+  if (!m) return null;
+  const month = Number(m[2]);
+  if (month < 1 || month > 12) return null;
+  return { y: Number(m[1]), m: month };
+}
+
+// 何月分から印刷するか（YYYY-MM）。雇用開始日がこれからなら雇用開始の月、
+// すでに働いているなら今月から
+export function payProofStartMonth(today: string, employmentStart?: string | null): string {
+  const t = ym(today);
+  const e = ym(employmentStart);
+  const pick = e && t && (e.y > t.y || (e.y === t.y && e.m > t.m)) ? e : t;
+  return pick ? `${pick.y}-${String(pick.m).padStart(2, "0")}` : "";
+}
+
+// 開始月〜在留期限日の月までの枚数と表示（読み取れない・期限が前のときは null）
+export function payProofRange(
+  from: string | null | undefined,
+  to: string | null | undefined,
+): { count: number; label: string } | null {
+  const a = ym(from);
+  const b = ym(to);
+  if (!a || !b) return null;
+  const count = (b.y - a.y) * 12 + (b.m - a.m) + 1;
+  if (count < 1) return null;
+  return { count, label: `${a.y}年${a.m}月分〜${b.y}年${b.m}月分` };
+}
+
 // 印刷（PDF保存）のときの既定のファイル名
 export function payProofFileName(workerName: string): string {
   const safe = (workerName ?? "").replace(/[\\/:*?"<>|]/g, "-").trim();
