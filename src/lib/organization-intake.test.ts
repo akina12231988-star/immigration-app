@@ -440,3 +440,15 @@ describe("求人票に記載する内容（雇用条件書の順番）の読み�
     expect(i.job_shift).toBe(false);
   });
 });
+
+describe("就業の場所の初期値", () => {
+  it("未入力なら作業する住所・TEL/FAXを1行目に入れる", () => {
+    const i = normalizeOrganizationIntake({ work_address: "長崎県雲仙市1", work_contact: "TEL 1" });
+    expect(i.job_workplaces).toEqual([{ name: "", address: "長崎県雲仙市1", contact: "TEL 1" }]);
+    const j = normalizeOrganizationIntake({
+      work_address: "長崎県雲仙市1",
+      job_workplaces: [{ name: "本社", address: "別", contact: "" }],
+    });
+    expect(j.job_workplaces[0].address).toBe("別");
+  });
+});

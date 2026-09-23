@@ -3,6 +3,7 @@ import {
   annualHolidays,
   dailyWorkMinutes,
   dailyWorkText,
+  followWorkSite,
   timeToMinutes,
   workplaceChangeText,
   workplaceText,
@@ -40,5 +41,23 @@ describe("就業の場所・交代制の表記", () => {
       workplaceChangeText("有", [{ name: "愛野営業所", address: "長崎県雲仙市愛野町", contact: "0957-00-0000" }]),
     ).toBe("変更あり: 愛野営業所（長崎県雲仙市愛野町／0957-00-0000）");
     expect(workplaceText({ name: "", address: "", contact: "" })).toBe("");
+  });
+});
+
+describe("作業する住所 → 就業の場所の自動転記", () => {
+  const prev = { address: "長崎県雲仙市1", contact: "TEL 0957-00-0000" };
+  it("空か前の値のままなら追いかける（事業所名は会社名）", () => {
+    expect(followWorkSite([{ name: "", address: "", contact: "" }], { address: "", contact: "" }, prev, "株式会社A")).toEqual([
+      { name: "株式会社A", address: "長崎県雲仙市1", contact: "TEL 0957-00-0000" },
+    ]);
+    const rows = [{ name: "本社", address: "長崎県雲仙市1", contact: "TEL 0957-00-0000" }, { name: "営業所", address: "X", contact: "" }];
+    expect(followWorkSite(rows, prev, { ...prev, address: "長崎県雲仙市2" }, "株式会社A")).toEqual([
+      { name: "本社", address: "長崎県雲仙市2", contact: "TEL 0957-00-0000" },
+      { name: "営業所", address: "X", contact: "" },
+    ]);
+  });
+  it("手で書き換えた1行目は上書きしない", () => {
+    const rows = [{ name: "工場", address: "熊本県八代市", contact: "" }];
+    expect(followWorkSite(rows, prev, { ...prev, address: "長崎県雲仙市2" }, "株式会社A")[0].address).toBe("熊本県八代市");
   });
 });
