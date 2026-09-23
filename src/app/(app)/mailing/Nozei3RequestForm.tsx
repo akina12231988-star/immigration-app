@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ExternalLink, FileText, Printer, StickyNote } from "lucide-react";
+import { ExternalLink, FileText, IdCard, Printer, StickyNote } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { Button } from "@/components/ui/Button";
@@ -344,13 +344,13 @@ export function Nozei3Fields({
               <span className="font-bold">委任状</span>：様式のまま印刷して、本人に住所・氏名を書いてもらいます（代理人欄も手書き）。
             </li>
             {atWindow ? (
-              <li>本人確認書類の写し（在留カードなど）と、代理人の本人確認書類（運転免許証など）。</li>
+              <li>本人確認書類の写し（在留カード。「在留カードを印刷する」で現在の在留カードを印刷できます）と、代理人の本人確認書類（運転免許証など）。</li>
             ) : (
-              <li>本人確認書類の写し（在留カードなど）と、返信用封筒（切手を貼る）。</li>
+              <li>本人確認書類の写し（在留カード。「在留カードを印刷する」で現在の在留カードを印刷できます）と、返信用封筒（切手を貼る）。</li>
             )}
           </ol>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           <Button
             type="button"
             variant="secondary"
@@ -376,6 +376,17 @@ export function Nozei3Fields({
             <span className="inline-flex items-center gap-1.5">
               <Printer size={15} />
               委任状を印刷する（様式のまま）
+            </span>
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={!workerId}
+            onClick={() => window.open(`/workers/${workerId}/residence-card`, "_blank", "noopener")}
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <IdCard size={15} />
+              在留カードを印刷する
             </span>
           </Button>
         </div>
