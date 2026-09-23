@@ -264,6 +264,8 @@ export interface OrganizationIntake {
   council_note: string; // 協議会の加入メモ（旧: 協力確認書の提出先/提出日をまとめて書いていた欄）
   council_office_submissions: OrgCouncilSubmission[]; // 協力確認書の提出（特定技能外国人の活動する事業所の所在地・複数可）
   council_residence_submissions: OrgCouncilSubmission[]; // 協力確認書の提出（特定技能外国人の住居地・複数可）
+  // 協力確認書の一覧表（1-17号別紙）の訳。言語 → 日本語の営業所名・市区町村など → 訳（lib/council-list.ts）
+  council_i18n?: Partial<Record<string, Record<string, string>>>;
   japanese_staff: OrgJapaneseStaff[]; // 一緒に働く日本人常勤職員
   officers: OrgOfficer[]; // 所属役員（法人）
 }

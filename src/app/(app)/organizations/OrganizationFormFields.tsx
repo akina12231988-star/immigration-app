@@ -48,6 +48,7 @@ import {
   emptyShift,
   emptyWorkplace,
 } from "@/lib/organization-intake";
+import { canPrintCouncilList } from "@/lib/council-list";
 import {
   annualHolidays,
   canPrintWorkplaceList,
@@ -2159,6 +2160,37 @@ function IntakeSection({
           rows={intake.council_residence_submissions}
           onChange={(rows) => setIntake({ council_residence_submissions: rows })}
         />
+        {/* 提出先が複数あるときは一覧表（3 V別紙・1-17号別紙）を印刷できる */}
+        {canPrintCouncilList(intake.council_office_submissions, intake.council_residence_submissions) &&
+          (orgId ? (
+            <div className="flex flex-col gap-1">
+              <div className="flex flex-wrap gap-2">
+                <a
+                  href={`/organizations/${orgId}/council/print?form=3v`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-brand px-3 py-1.5 text-xs font-bold text-brand"
+                >
+                  <Printer size={13} />
+                  所属機関等作成用3 V（別紙）を印刷（A4縦）
+                </a>
+                <a
+                  href={`/organizations/${orgId}/council/print?form=1-17`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-brand px-3 py-1.5 text-xs font-bold text-brand"
+                >
+                  <Printer size={13} />
+                  1-17号（別紙）を印刷（A4横・翻訳つき）
+                </a>
+              </div>
+              <p className={HINT_CLASS}>
+                一覧表は保存済みの内容で作ります。提出先は「（本社）長崎県雲仙市」のように営業所名を括弧で書くと、営業所名の列に分かれます。
+              </p>
+            </div>
+          ) : (
+            <p className={HINT_CLASS}>提出先の一覧表（3 V別紙・1-17号別紙）は、会社・機関を登録したあとに印刷できます。</p>
+          ))}
         <IntakeField
           label="協議会の加入メモ（旧: 提出先・提出日をまとめて書いていた欄）"
           value={intake.council_note}
