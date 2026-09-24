@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { dbErrorMessage } from "@/lib/errors";
 import {
   SSW2_DUTY_FIELDS,
+  SSW2_INSTRUCTEE_DEFAULT_FIELDS,
   type OrgSsw2Duties,
 } from "@/lib/org-ssw2-duties";
 import { updateOrganizationSsw2Duties } from "@/lib/supabase/queries/organizations";
@@ -161,7 +162,7 @@ export function OrgSsw2Instruction({
         </p>
         <p className="mb-2 text-[11px] leading-relaxed text-muted">
           この会社で２号を申請するときに出す誓約書の欄です。一度入れておけば、同じ会社で申請する
-          たびに誓約書へ自動で入ります。会社に聞かないと分からないときは、右の質問票を印刷して
+          たびに誓約書に貼る文章へ自動で入ります。会社に聞かないと分からないときは、右の質問票を印刷して
           そのまま聞いてください。在留諸申請の許否に大きく影響するため、具体的に書きます。
         </p>
         {dutiesError && (
@@ -200,6 +201,41 @@ export function OrgSsw2Instruction({
                 />
               )}
               {f.hint && <span className="mt-0.5 block text-[11px] text-muted">{f.hint}</span>}
+            </label>
+          ))}
+        </div>
+        <p className="mt-1.5 text-[11px] text-muted">
+          {dutiesBusy
+            ? "保存中…"
+            : dutiesSaved
+              ? "保存しました。"
+              : "欄から離れると保存されます。"}
+        </p>
+      </div>
+
+      {/* 誓約書の「２ 指導を受ける対象者一覧」の共通の内容。対象者が全員同じなら、ここに一度入れれば自動で入る */}
+      <div className="mb-3 rounded-xl border border-border p-3">
+        <p className="mb-1 text-xs font-bold">２　指導を受ける対象者の共通の内容</p>
+        <p className="mb-2 text-[11px] leading-relaxed text-muted">
+          対象者が全員同じ事業所・役職・職務内容なら、ここに一度入れておけば、各人の申請準備で
+          対象者を足したときと、誓約書に貼る文章に自動で入ります。対象者ごとに違うときは、
+          申請準備の「指導を受ける対象者」でその人の欄を直してください（そちらが優先されます）。
+        </p>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {SSW2_INSTRUCTEE_DEFAULT_FIELDS.map((f) => (
+            <label key={f.key} className={`block ${f.key === "instructee_duties" ? "sm:col-span-2" : ""}`}>
+              <span className="mb-0.5 block text-[11px] font-bold text-muted">{f.label}</span>
+              <input
+                value={duties[f.key]}
+                disabled={!canEdit || dutiesBusy}
+                placeholder={f.placeholder}
+                onChange={(e) => {
+                  setDuties({ ...duties, [f.key]: e.target.value });
+                  setDutiesSaved(false);
+                }}
+                onBlur={() => void saveDuties(duties)}
+                className={DUTY_INPUT}
+              />
             </label>
           ))}
         </div>
@@ -284,7 +320,7 @@ export function OrgSsw2Instruction({
                       <li key={`${l.applicantId}-${i}`}>
                         {i + 1}. {l.targetName || "（氏名未入力）"}
                         {l.targetWorkerId ? "" : "（登録の無い方・手入力）"}
-                        {l.office ? ` ／ ${l.office}` : ""}
+                        {(l.office || duties.instructee_office) ? ` ／ ${l.office || duties.instructee_office}` : ""}
                       </li>
                     ))}
                   </ol>

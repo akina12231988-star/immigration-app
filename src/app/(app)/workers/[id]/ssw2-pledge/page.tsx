@@ -12,8 +12,8 @@ import { Ssw2PledgeClient } from "./Ssw2PledgeClient";
 
 export const dynamic = "force-dynamic";
 
-// 特定技能2号の申請で出す「業務内容に関する誓約書」（参考様式第１－３２号）の出力ページ。
-// 外国人・所属機関・指導対象者の登録内容をそのまま差し込んで Word で出す。
+// 特定技能2号の申請で出す「業務内容に関する誓約書」（参考様式第１－３２号）に貼る文章のページ。
+// 外国人・所属機関・指導対象者の登録内容から、様式の欄ごとに貼る文章を並べる。
 export default async function Ssw2PledgePage({
   params,
 }: {
@@ -37,7 +37,7 @@ export default async function Ssw2PledgePage({
 
   return (
     <>
-      <AppHeader title={`${worker.name}｜２号の誓約書`} backHref={`/workers/${id}`} />
+      <AppHeader title={`${worker.name}｜２号の誓約書に貼る文章`} backHref={`/workers/${id}`} />
       <Ssw2PledgeClient
         workerId={id}
         workerName={worker.name}
