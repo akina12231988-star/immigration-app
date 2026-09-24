@@ -9,6 +9,7 @@ import { prepDetailHref } from "@/lib/application-prep";
 import { ssw2DutiesMissing, withInstructeeDefaults, type OrgSsw2Duties } from "@/lib/org-ssw2-duties";
 import { instructeeMissingFields, type Ssw2Instructee } from "@/lib/ssw2-instructees";
 import { buildSsw2PledgeCopy, PLEDGE_NOTES, type PledgeCopyItem } from "@/lib/ssw2-pledge";
+import { SSW2_PLEDGE_GUIDE_HREF } from "@/lib/ssw2-pledge-guide";
 
 const INPUT =
   "min-h-[40px] w-full rounded-lg border border-border bg-background px-2.5 text-sm focus:border-brand focus:outline-none";
@@ -73,6 +74,9 @@ export function Ssw2PledgeClient({
           入管の様式（Word）を開き、下の「貼る場所」の欄に、右のボタンでコピーした文章を貼り付けてください。
           登録してある内容がそのまま入ります。直したいところは、それぞれの登録画面で直してから
           この画面を開き直してください。作成年月日と作成責任者だけは、ここで直したものが出ます。
+          <Link href={SSW2_PLEDGE_GUIDE_HREF} className="ml-1 font-bold text-brand underline">
+            どこに何を入れるかの案内 →
+          </Link>
         </p>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Plus, Trash2, UserCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { dbErrorMessage } from "@/lib/errors";
@@ -27,6 +28,7 @@ import {
   listSsw2Instructees,
   updateSsw2Instructee,
 } from "@/lib/supabase/queries/ssw2-instructees";
+import { SSW2_PLEDGE_GUIDE_HREF } from "@/lib/ssw2-pledge-guide";
 
 const INPUT =
   "min-h-[34px] w-full rounded-lg border border-border bg-background px-2 text-xs focus:border-brand focus:outline-none disabled:opacity-60";
@@ -203,6 +205,9 @@ export function Ssw2Instructees({
         （様式の留意事項4）。登録の無い日本人従業員は、氏名を直接入力してください。
         事業所・役職・職務内容が全員同じなら、所属機関の情報の「特定技能２号の指導体制 ＞
         ２ 指導を受ける対象者の共通の内容」に一度入れておくと、空の欄に自動で入ります。
+        <Link href={SSW2_PLEDGE_GUIDE_HREF} className="ml-1 font-bold text-brand underline">
+          誓約書（1-32号）の作り方の案内 →
+        </Link>
       </p>
 
       {required > 0 && (

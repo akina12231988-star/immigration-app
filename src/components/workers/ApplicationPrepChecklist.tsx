@@ -24,6 +24,7 @@ import { Card } from "@/components/ui/Card";
 import { PostApplyList } from "@/components/workers/PostApplyList";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { Ssw2Instructees } from "@/components/workers/Ssw2Instructees";
+import { SSW2_PLEDGE_GUIDE_HREF } from "@/lib/ssw2-pledge-guide";
 import { WorkerCertDocRows } from "@/components/workers/WorkerCertDocRows";
 import { Jisshu2Section } from "@/components/workers/Jisshu2Section";
 import {
@@ -1699,6 +1700,11 @@ export function ApplicationPrepChecklist({
           >
             <FileText size={14} />
             ２号の誓約書（参考様式第１－３２号）に貼る文章を開く →
+          </Link>
+        )}
+        {isSsw2Prep && (
+          <Link href={SSW2_PLEDGE_GUIDE_HREF} className="text-[11px] font-bold text-brand underline">
+            どこに何を入れるかの案内（所属機関・申請準備・貼る文章）→
           </Link>
         )}
         {/* 在留カード・パスポート情報（外国人詳細から自動反映。どの申請種別でも表示） */}
