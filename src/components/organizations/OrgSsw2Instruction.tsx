@@ -12,6 +12,7 @@ import {
   type OrgSsw2Duties,
 } from "@/lib/org-ssw2-duties";
 import { updateOrganizationSsw2Duties } from "@/lib/supabase/queries/organizations";
+import { SSW2_PLEDGE_GUIDE_HREF } from "@/lib/ssw2-pledge-guide";
 import {
   isSsw2Holder,
   orgSsw2Field,
@@ -140,6 +141,9 @@ export function OrgSsw2Instruction({
         受け入れられるかが決まります。対象者の登録は、各人の
         <span className="font-bold">申請準備 ＞ 準備の内容「在留資格の変更許可（特定技能２号）※本人申請」</span>
         から行います。
+        <Link href={SSW2_PLEDGE_GUIDE_HREF} className="ml-1 font-bold text-brand underline">
+          誓約書（1-32号）の作り方の案内 →
+        </Link>
       </p>
 
       {error && (
