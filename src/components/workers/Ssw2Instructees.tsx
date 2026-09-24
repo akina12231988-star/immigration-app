@@ -5,6 +5,12 @@ import { Plus, Trash2, UserCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { dbErrorMessage } from "@/lib/errors";
 import {
+  EMPTY_SSW2_DUTIES,
+  ssw2DutiesOf,
+  withInstructeeDefaults,
+  type OrgSsw2Duties,
+} from "@/lib/org-ssw2-duties";
+import {
   candidateNote,
   instructeeCandidates,
   instructeeMissingFields,
@@ -43,6 +49,8 @@ export function Ssw2Instructees({
 }) {
   const [rows, setRows] = useState<Ssw2Instructee[]>([]);
   const [candidates, setCandidates] = useState<InstructeeCandidate[]>([]);
+  // 所属機関に入れた「対象者の共通の内容」（事業所・役職・職務内容）。空の欄はこれを使う
+  const [orgDuties, setOrgDuties] = useState<OrgSsw2Duties>(EMPTY_SSW2_DUTIES);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,10 +68,20 @@ export function Ssw2Instructees({
         .select(
           "id, name, status, residence_status, residence_card_no, current_organization_id",
         ),
+      // 0123 が未適用でも（列が無くても）空で続ける
+      organizationId
+        ? supabase
+            .from("organizations")
+            .select("ssw2_duties")
+            .eq("id", organizationId)
+            .maybeSingle()
+            .then(({ data }) => ssw2DutiesOf(data as { ssw2_duties?: unknown } | null))
+        : Promise.resolve(EMPTY_SSW2_DUTIES),
     ])
-      .then(([list, taken, res]) => {
+      .then(([list, taken, res, org]) => {
         if (cancelled) return;
         setRows(list);
+        setOrgDuties(org);
         setCandidates(
           instructeeCandidates(((res.data as InstructeeCandidateWorker[] | null) ?? []), {
             selfWorkerId: workerId,
@@ -109,6 +127,7 @@ export function Ssw2Instructees({
         target_worker_id: null,
         name: "",
         residence_card_no: "",
+        // 空のままにしておくと、所属機関の共通の内容が使われる（あとで会社側を直しても追従する）
         office: "",
         position: "",
         duties: "",
@@ -145,6 +164,18 @@ export function Ssw2Instructees({
     void save(next);
   };
 
+  // この人の事業所・役職・職務内容を空にして、所属機関の共通の内容を使う
+  const applyOrgDefaults = (row: Ssw2Instructee) => {
+    const next = { ...row, office: "", position: "", duties: "" };
+    setRows((prev) => prev.map((r) => (r.id === row.id ? next : r)));
+    void save(next);
+  };
+
+  const hasOrgDefaults =
+    !!orgDuties.instructee_office.trim() ||
+    !!orgDuties.instructee_position.trim() ||
+    !!orgDuties.instructee_duties.trim();
+
   const remove = (row: Ssw2Instructee) => {
     if (!window.confirm(`「${row.name || "未入力"}」を指導対象者から外します。よろしいですか？`)) return;
     void handle(() => deleteSsw2Instructee(createClient(), row.id));
@@ -170,6 +201,8 @@ export function Ssw2Instructees({
           すでに他の２号申請者の対象者になっている人は選べません
         </span>
         （様式の留意事項4）。登録の無い日本人従業員は、氏名を直接入力してください。
+        事業所・役職・職務内容が全員同じなら、所属機関の情報の「特定技能２号の指導体制 ＞
+        ２ 指導を受ける対象者の共通の内容」に一度入れておくと、空の欄に自動で入ります。
       </p>
 
       {required > 0 && (
@@ -191,7 +224,7 @@ export function Ssw2Instructees({
 
       <ul className="flex flex-col gap-2">
         {rows.map((row, i) => {
-          const missing = instructeeMissingFields(row);
+          const missing = instructeeMissingFields(withInstructeeDefaults(row, orgDuties));
           return (
             <li key={row.id} className="rounded-lg border border-border p-2">
               <div className="mb-1.5 flex items-center justify-between gap-2">
@@ -258,6 +291,7 @@ export function Ssw2Instructees({
                   <span className="mb-0.5 block text-[11px] text-muted">事業所及び所属部署名</span>
                   <input
                     value={row.office}
+                    placeholder={orgDuties.instructee_office ? `空なら「${orgDuties.instructee_office}」` : undefined}
                     disabled={disabled}
                     onChange={(e) => edit(row.id, { office: e.target.value })}
                     onBlur={() => save(row)}
@@ -268,6 +302,7 @@ export function Ssw2Instructees({
                   <span className="mb-0.5 block text-[11px] text-muted">役職又は地位</span>
                   <input
                     value={row.position}
+                    placeholder={orgDuties.instructee_position ? `空なら「${orgDuties.instructee_position}」` : undefined}
                     disabled={disabled}
                     onChange={(e) => edit(row.id, { position: e.target.value })}
                     onBlur={() => save(row)}
@@ -278,6 +313,7 @@ export function Ssw2Instructees({
                   <span className="mb-0.5 block text-[11px] text-muted">指導を受ける職務内容</span>
                   <input
                     value={row.duties}
+                    placeholder={orgDuties.instructee_duties ? `空なら「${orgDuties.instructee_duties}」` : undefined}
                     disabled={disabled}
                     onChange={(e) => edit(row.id, { duties: e.target.value })}
                     onBlur={() => save(row)}
@@ -285,6 +321,16 @@ export function Ssw2Instructees({
                   />
                 </label>
               </div>
+              {canEdit && hasOrgDefaults && (row.office || row.position || row.duties) && (
+                <button
+                  type="button"
+                  onClick={() => applyOrgDefaults(row)}
+                  disabled={busy}
+                  className="mt-1.5 text-[11px] font-bold text-brand underline disabled:opacity-40"
+                >
+                  事業所・役職・職務内容を所属機関の共通の内容にする
+                </button>
+              )}
               {missing.length > 0 && (
                 <p className="mt-1.5 text-[11px] text-seal">
                   誓約書に書けていない欄: {missing.join("・")}

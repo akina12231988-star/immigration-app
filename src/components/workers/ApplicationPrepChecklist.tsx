@@ -1691,14 +1691,14 @@ export function ApplicationPrepChecklist({
             canEdit={canEdit}
           />
         )}
-        {/* 特定技能２号のときだけ、誓約書（参考様式第１－３２号）の出力ページへの導線を出す */}
+        {/* 特定技能２号のときだけ、誓約書（参考様式第１－３２号）に貼る文章のページへの導線を出す */}
         {isSsw2Prep && (
           <Link
             href={`/workers/${workerId}/ssw2-pledge`}
             className="flex items-center gap-1.5 rounded-lg border border-brand bg-brand/5 px-3 py-2 text-xs font-bold text-brand"
           >
             <FileText size={14} />
-            ２号の誓約書（参考様式第１－３２号）をWordで出す →
+            ２号の誓約書（参考様式第１－３２号）に貼る文章を開く →
           </Link>
         )}
         {/* 在留カード・パスポート情報（外国人詳細から自動反映。どの申請種別でも表示） */}
