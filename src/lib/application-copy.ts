@@ -5,7 +5,7 @@
 
 import type { Organization, OrganizationIntake, Worker, WorkerWage } from "@/types/db";
 import type { WorkHistory } from "@/types/ssw";
-import { calcSsw, todayStr } from "@/lib/ssw/calc";
+import { calcDocumentTotal, todayStr } from "@/lib/ssw/calc";
 import { currentWage, hourlyFromMonthly, monthlyFromHourly } from "@/lib/wage";
 import { formatHoursDecimal, parseHoursMinutes, rosaiMeasureText, weeklyHoursText } from "@/lib/organization-intake";
 import { effectiveResidencePeriod } from "@/lib/residence-card";
@@ -207,7 +207,10 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
   // 書類作成日（支援計画書の日付計算で保存）があればその日、無ければ今日の時点
   const docOn = (planDates.doc ?? "").trim();
   const sswBase = docOn || input.today || todayStr();
-  const ssw = calcSsw(histories, sswBase);
+  // 外国人詳細の「申請書類用の通算」と同じ数え方（1日でも在留した月は1か月）
+  const docMonths = calcDocumentTotal(histories, sswBase);
+  const docY = docMonths ? String(Math.floor(docMonths / 12)) : "";
+  const docM = docMonths ? String(docMonths % 12) : "";
   const es = planDates.es || w.employment_start_on || "";
   const ee = es ? contractPeriodEnd(es) : "";
   const wage = wageForApplication(wages, intake, w.employment_start_on);
@@ -310,12 +313,12 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
     },
     {
       label: "21 申請時における特定技能1号での通算在留期間",
-      value: ssw.usedDays > 0 ? `${ssw.used.y}年${ssw.used.m}月` : "",
-      parts: ssw.usedDays > 0 ? [String(ssw.used.y), String(ssw.used.m)] : undefined,
+      value: docMonths ? `${docY}年${docM}か月` : "",
+      parts: docMonths ? [docY, docM] : undefined,
       asOf: `${formatYmdJa(sswBase)}時点${docOn ? "（書類作成日）" : "（今日。書類作成日が未登録）"}`,
       note: docOn
-        ? "職歴の通算（特定技能1号の期間）を、書類作成日まで数えています。書類作成日が変わったら「支援計画書の日付計算」で書類作成日を直してください"
-        : "職歴の通算（特定技能1号の期間）を、今日まで数えています。書類作成日の時点で数えるには「支援計画書の日付計算」で書類作成日を入れてください",
+        ? "職歴の特定技能1号（通算対象）の期間を、書類作成日まで、1日でも在留した月を1か月として数えています（外国人詳細の「申請書類用の通算」と同じ）。書類作成日が変わったら「支援計画書の日付計算」で直してください"
+        : "職歴の特定技能1号（通算対象）の期間を、今日まで、1日でも在留した月を1か月として数えています（外国人詳細の「申請書類用の通算」と同じ）。書類作成日の時点で数えるには「支援計画書の日付計算」で書類作成日を入れてください",
     },
   ];
 

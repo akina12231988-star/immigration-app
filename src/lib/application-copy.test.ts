@@ -141,7 +141,8 @@ describe("申請書に貼る項目", () => {
     const careers = groups.find((g) => g.title.includes("職歴"))!.items;
     expect(careers[0]).toMatchObject({ value: "2017年11月〜2021年7月 荒木農園", parts: ["2017", "11", "2021", "7", "荒木農園"] });
     expect(careers[1].value).toContain("〜現在");
-    expect(find("21 申請時における特定技能1号での通算在留期間")?.parts).toEqual(["1", "7"]);
+    // 2023年10月〜2025年5月（1日でも在留した月は1か月）= 20か月
+    expect(find("21 申請時における特定技能1号での通算在留期間")).toMatchObject({ value: "1年8か月", parts: ["1", "8"] });
     expect(copyGroupText(groups[1])).toContain("17 特定技能所属機関 (1)氏名又は名称: 藤本　未和");
   });
 
@@ -151,15 +152,16 @@ describe("申請書に貼る項目", () => {
     const today = buildApplicationCopyGroups({ worker, org, intake, wages: [], histories, planDates: {}, today: "2025-05-01" })
       .flatMap((g) => g.items)
       .find((i) => i.label === label)!;
-    expect(today.parts).toEqual(["1", "7"]);
+    expect(today.parts).toEqual(["1", "8"]);
     expect(today.asOf).toBe("2025年5月1日時点（今日。書類作成日が未登録）");
     // 書類作成日があれば、その日まで数える（今日より先でも）。申請予定日は使わない
     const apply = buildApplicationCopyGroups({ worker, org, intake, wages: [], histories, planDates: { doc: "2025-09-01", apply: "2026-03-01" }, today: "2025-05-01" })
       .flatMap((g) => g.items)
       .find((i) => i.label === label)!;
-    expect(apply.parts).toEqual(["1", "11"]);
+    // 2023年10月〜2025年9月 = 24か月（申請予定日の 2026年3月 ではない）
+    expect(apply.parts).toEqual(["2", "0"]);
     expect(apply.asOf).toBe("2025年9月1日時点（書類作成日）");
-    expect(apply.note).toContain("書類作成日まで数えています");
+    expect(apply.note).toContain("書類作成日まで");
   });
 
   it("合格証（日本語・専門外・2件目以降）と良好に修了した技能実習2号を申請人等作成用2に出す", () => {
