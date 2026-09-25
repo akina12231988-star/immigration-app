@@ -91,6 +91,7 @@ import {
 import { isSswInsuranceRenewalTarget, remainingLabel } from "@/lib/worker-alerts";
 import { orgStaffLabel } from "@/lib/organization-intake";
 import { createClient } from "@/lib/supabase/client";
+import { findPlanDatesForTodo, listPlanDates } from "@/lib/supabase/queries/plan-dates";
 import { dbErrorMessage } from "@/lib/errors";
 import { notionAppUrl } from "@/lib/notion-link";
 import { deleteWorker, updateWorker } from "@/lib/supabase/queries/workers";
@@ -1864,7 +1865,11 @@ export function WorkerDetail({
       </section>
 
       {/* 申請書類用の通算（書類作成日時点・月は切り上げ） */}
-      <DocumentTotalPanel histories={worker.work_histories.map(toCalcHistory)} />
+      <DocumentTotalPanel
+        workerId={worker.id}
+        todoNo={worker.residence_renewal_todo ?? ""}
+        histories={worker.work_histories.map(toCalcHistory)}
+      />
 
       {/* 求職・応募（採用→所属自動更新の起点） */}
       <JobApplicationSection
@@ -2166,8 +2171,32 @@ function SswGapNotice({ gaps, className = "" }: { gaps: SswGap[]; className?: st
 // 申請書類用の通算: 通算対象（特定技能1号・特定活動〔1号移行準備〕・在留資格を保持したままの
 // 帰国）の期間について「1日でも在留した月」を1か月と数えて「◯年◯か月」を出す。
 // 在留資格を切って帰国していた期間などの空白は数えない（通算期間ゲージと同じ範囲）
-function DocumentTotalPanel({ histories }: { histories: WorkHistory[] }) {
+function DocumentTotalPanel({
+  workerId,
+  todoNo,
+  histories,
+}: {
+  workerId: string;
+  todoNo: string;
+  histories: WorkHistory[];
+}) {
   const [docDate, setDocDate] = useState(todayStr());
+  // 支援計画書の日付計算で保存した書類作成日。申請準備の「21 通算在留期間」と同じ日を初期値にする
+  const [savedDocDate, setSavedDocDate] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    listPlanDates(createClient(), workerId)
+      .then((rows) => {
+        const doc = (findPlanDatesForTodo(rows, todoNo)?.dates.doc ?? "").trim();
+        if (cancelled || !doc) return;
+        setSavedDocDate(doc);
+        setDocDate(doc);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [workerId, todoNo]);
   const [copied, setCopied] = useState(false);
   const calc = useMemo(() => calcSsw(histories, docDate), [histories, docDate]);
   const totalMonths = useMemo(() => calcDocumentTotal(histories, docDate), [histories, docDate]);
@@ -2215,6 +2244,13 @@ function DocumentTotalPanel({ histories }: { histories: WorkHistory[] }) {
           <label className="flex flex-col gap-1">
             <span className="text-xs font-bold text-muted">書類作成日</span>
             <input type="date" value={docDate} onChange={(e) => setDocDate(e.target.value)} className={INPUT} />
+            <span className="text-[11px] leading-relaxed text-muted">
+              {savedDocDate
+                ? docDate === savedDocDate
+                  ? "支援計画書の日付計算で保存した書類作成日です（申請準備の「21 通算在留期間」も同じ日で数えます）。"
+                  : `保存した書類作成日（${savedDocDate}）と違う日で計算しています。申請準備の「21 通算在留期間」は保存した書類作成日で数えます。`
+                : "書類作成日が未保存のため今日にしています。申請準備の「支援計画書の日付計算」で書類作成日を保存すると、ここと申請準備の「21 通算在留期間」がその日になります。"}
+            </span>
           </label>
           <div className="rounded-xl bg-brand/10 p-3.5">
             <p className="text-xs font-bold text-muted">申請書記載</p>
