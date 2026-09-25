@@ -145,21 +145,21 @@ describe("申請書に貼る項目", () => {
     expect(copyGroupText(groups[1])).toContain("17 特定技能所属機関 (1)氏名又は名称: 藤本　未和");
   });
 
-  it("21 通算在留期間は申請予定日の時点で数え、いつの時点かを出す", () => {
+  it("21 通算在留期間は書類作成日の時点で数え、いつの時点かを出す", () => {
     const label = "21 申請時における特定技能1号での通算在留期間";
-    // 申請予定日が無ければ今日の時点
+    // 書類作成日が無ければ今日の時点
     const today = buildApplicationCopyGroups({ worker, org, intake, wages: [], histories, planDates: {}, today: "2025-05-01" })
       .flatMap((g) => g.items)
       .find((i) => i.label === label)!;
     expect(today.parts).toEqual(["1", "7"]);
-    expect(today.asOf).toBe("2025年5月1日時点（今日。申請予定日が未登録）");
-    // 申請予定日があれば、その日まで数える（今日より先でも）
-    const apply = buildApplicationCopyGroups({ worker, org, intake, wages: [], histories, planDates: { apply: "2025-09-01" }, today: "2025-05-01" })
+    expect(today.asOf).toBe("2025年5月1日時点（今日。書類作成日が未登録）");
+    // 書類作成日があれば、その日まで数える（今日より先でも）。申請予定日は使わない
+    const apply = buildApplicationCopyGroups({ worker, org, intake, wages: [], histories, planDates: { doc: "2025-09-01", apply: "2026-03-01" }, today: "2025-05-01" })
       .flatMap((g) => g.items)
       .find((i) => i.label === label)!;
     expect(apply.parts).toEqual(["1", "11"]);
-    expect(apply.asOf).toBe("2025年9月1日時点（申請予定日）");
-    expect(apply.note).toContain("申請予定日まで数えています");
+    expect(apply.asOf).toBe("2025年9月1日時点（書類作成日）");
+    expect(apply.note).toContain("書類作成日まで数えています");
   });
 
   it("合格証（日本語・専門外・2件目以降）と良好に修了した技能実習2号を申請人等作成用2に出す", () => {
