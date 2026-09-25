@@ -44,7 +44,7 @@ export interface CopyItem {
   value: string; // 空なら未登録
   parts?: string[]; // 年・月・日など、欄が分かれているときに1つずつコピーできる部品
   note?: string; // 補足（どこから取ったか・注意）
-  asOf?: string; // いつの時点で計算した値か（「2026年10月1日時点（申請予定日）」など。目立つ形で出す）
+  asOf?: string; // いつの時点で計算した値か（「2026年10月1日時点（書類作成日）」など。目立つ形で出す）
   edit?: CopyEdit; // この場で入力・編集して保存できる（無い項目は他の画面で登録する）
   editValue?: string; // 編集欄に最初に入れる値（表示値と保存されている値が違うとき。日付は YYYY-MM-DD）
 }
@@ -203,10 +203,10 @@ export function wageForApplication(
 
 export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGroup[] {
   const { worker: w, org, intake, wages, histories, planDates } = input;
-  // 「21 申請時における通算在留期間」は申請の時点で数える。
-  // 申請予定日（支援計画書の日付計算で保存）があればその日、無ければ今日の時点
-  const applyOn = (planDates.apply ?? "").trim();
-  const sswBase = applyOn || input.today || todayStr();
+  // 「21 申請時における通算在留期間」は書類作成日の時点で数える。
+  // 書類作成日（支援計画書の日付計算で保存）があればその日、無ければ今日の時点
+  const docOn = (planDates.doc ?? "").trim();
+  const sswBase = docOn || input.today || todayStr();
   const ssw = calcSsw(histories, sswBase);
   const es = planDates.es || w.employment_start_on || "";
   const ee = es ? contractPeriodEnd(es) : "";
@@ -312,10 +312,10 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
       label: "21 申請時における特定技能1号での通算在留期間",
       value: ssw.usedDays > 0 ? `${ssw.used.y}年${ssw.used.m}月` : "",
       parts: ssw.usedDays > 0 ? [String(ssw.used.y), String(ssw.used.m)] : undefined,
-      asOf: `${formatYmdJa(sswBase)}時点${applyOn ? "（申請予定日）" : "（今日。申請予定日が未登録）"}`,
-      note: applyOn
-        ? "職歴の通算（特定技能1号の期間）を、申請予定日まで数えています。申請日が変わったら「支援計画書の日付計算」で申請予定日を直してください"
-        : "職歴の通算（特定技能1号の期間）を、今日まで数えています。申請日の時点で数えるには「支援計画書の日付計算」で申請予定日（入管）を入れてください",
+      asOf: `${formatYmdJa(sswBase)}時点${docOn ? "（書類作成日）" : "（今日。書類作成日が未登録）"}`,
+      note: docOn
+        ? "職歴の通算（特定技能1号の期間）を、書類作成日まで数えています。書類作成日が変わったら「支援計画書の日付計算」で書類作成日を直してください"
+        : "職歴の通算（特定技能1号の期間）を、今日まで数えています。書類作成日の時点で数えるには「支援計画書の日付計算」で書類作成日を入れてください",
     },
   ];
 
