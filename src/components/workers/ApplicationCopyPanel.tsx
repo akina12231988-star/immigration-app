@@ -268,6 +268,14 @@ export function ApplicationCopyList({
                           )}
                         </span>
                       )}
+                      {/* いつの時点で計算した値か（通算在留期間など、日によって変わる項目） */}
+                      {item.asOf && (
+                        <span className="w-full sm:pl-[15.5rem]">
+                          <span className="inline-block rounded border border-brand/40 bg-brand/10 px-1.5 py-0.5 text-[11px] font-bold text-brand">
+                            {item.asOf}
+                          </span>
+                        </span>
+                      )}
                       {item.note && <span className="w-full text-[10px] text-muted sm:pl-[15.5rem]">{item.note}</span>}
                     </div>
                     );
