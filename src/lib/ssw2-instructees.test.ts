@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   candidateNote,
+  candidateUnavailable,
   instructeeCandidates,
   isSsw2Holder,
   instructeeMissingFields,
   orgSsw2Field,
+  ssw2ApplicantIds,
   ssw2Capacity,
+  ssw2PrepOrganizationId,
   instructeeShortage,
   requiredInstructeeCount,
   SSW2_PREP_SITUATION,
@@ -147,6 +150,58 @@ describe("instructeeCandidates", () => {
     const list = instructeeCandidates(workers, { ...opts, organizationId: null });
     expect(list.map((c) => c.id)).toEqual(["a", "b", "d"]);
   });
+
+  it("本人も2号の申請準備中の人は、選べないしるしを付ける", () => {
+    const list = instructeeCandidates(workers, { ...opts, applicantIds: new Set(["b"]) });
+    const b = list.find((c) => c.id === "b");
+    expect(b?.ssw2Applicant).toBe(true);
+    expect(b && candidateUnavailable(b)).toBe(true);
+    const a = list.find((c) => c.id === "a");
+    expect(a?.ssw2Applicant).toBe(false);
+    expect(a && candidateUnavailable(a)).toBe(false);
+  });
+});
+
+describe("ssw2ApplicantIds", () => {
+  const workers = [
+    // 申請種別が2号の準備リストがあるが、只今の状況は別の値
+    { id: "prep", name: "準備", status: "在籍中", current_situation: "特定技能更新の準備中" },
+    // 只今の状況だけ2号申請準備中
+    { id: "situ", name: "状況", status: "在籍中", current_situation: "特定技能2号申請準備中" },
+    // 対象者だけ登録してある
+    { id: "link", name: "紐付け", status: "在籍中" },
+    // 許可が出てすでに2号になった
+    { id: "done", name: "許可済み", status: "在籍中", residence_status: "特定技能２号", current_situation: "特定技能2号申請準備中" },
+    { id: "gone", name: "退職", status: "退職", current_situation: "特定技能2号申請準備中" },
+    { id: "none", name: "なし", status: "在籍中" },
+  ];
+
+  it("申請種別・只今の状況・対象者の登録のどれかで2号の申請準備中とみなす", () => {
+    const ids = ssw2ApplicantIds(workers, {
+      prepWorkerIds: ["prep", "done"],
+      linkedApplicantIds: ["link", "done"],
+    });
+    expect([...ids].sort()).toEqual(["link", "prep", "situ"]);
+  });
+
+  it("すでに2号になった人・退職した人は準備中に数えない", () => {
+    const ids = ssw2ApplicantIds(workers, { prepWorkerIds: ["done", "gone"] });
+    expect(ids.has("done")).toBe(false);
+    expect(ids.has("gone")).toBe(false);
+  });
+});
+
+describe("ssw2PrepOrganizationId", () => {
+  it("転職先で申請するときは申請準備の所属機関を使う", () => {
+    expect(
+      ssw2PrepOrganizationId({ current_organization_id: "org1", application_prep_organization_id: "org2" }),
+    ).toBe("org2");
+  });
+
+  it("申請準備の所属機関が無ければ、いまの所属機関", () => {
+    expect(ssw2PrepOrganizationId({ current_organization_id: "org1", application_prep_organization_id: null })).toBe("org1");
+    expect(ssw2PrepOrganizationId({})).toBeNull();
+  });
 });
 
 describe("candidateNote", () => {
@@ -157,6 +212,7 @@ describe("candidateNote", () => {
     workerStatus: "在籍中",
     residence_card_no: "",
     takenBy: null as string | null,
+    ssw2Applicant: false,
   };
 
   it("在留資格と在籍の状態を並べる", () => {
@@ -166,6 +222,12 @@ describe("candidateNote", () => {
   it("押さえられている人は理由も付ける", () => {
     expect(candidateNote({ ...c, takenBy: "グエン" })).toBe(
       "特定技能1号・在籍中・グエンさんの対象者のため選べません",
+    );
+  });
+
+  it("本人も2号の申請準備中の人は、その理由を付ける", () => {
+    expect(candidateNote({ ...c, ssw2Applicant: true })).toBe(
+      "特定技能1号・在籍中・本人も２号の申請準備中のため選べません",
     );
   });
 

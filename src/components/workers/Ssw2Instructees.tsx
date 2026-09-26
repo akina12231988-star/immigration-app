@@ -13,10 +13,12 @@ import {
 } from "@/lib/org-ssw2-duties";
 import {
   candidateNote,
+  candidateUnavailable,
   instructeeCandidates,
   instructeeMissingFields,
   instructeeShortage,
   requiredInstructeeCount,
+  ssw2ApplicantIds,
   type InstructeeCandidate,
   type InstructeeCandidateWorker,
   type Ssw2Instructee,
@@ -25,7 +27,9 @@ import {
   deleteSsw2Instructee,
   fetchTakenInstructees,
   insertSsw2Instructee,
+  listSsw2InstructionLinks,
   listSsw2Instructees,
+  listSsw2PrepWorkerIds,
   updateSsw2Instructee,
 } from "@/lib/supabase/queries/ssw2-instructees";
 import { SSW2_PLEDGE_GUIDE_HREF } from "@/lib/ssw2-pledge-guide";
@@ -68,8 +72,11 @@ export function Ssw2Instructees({
       supabase
         .from("workers")
         .select(
-          "id, name, status, residence_status, residence_card_no, current_organization_id",
+          "id, name, status, residence_status, residence_card_no, current_situation, current_organization_id",
         ),
+      // ほかの「2号の申請準備中」の人を候補で選べなくするために使う
+      listSsw2PrepWorkerIds(supabase),
+      listSsw2InstructionLinks(supabase),
       // 0123 が未適用でも（列が無くても）空で続ける
       organizationId
         ? supabase
@@ -80,15 +87,20 @@ export function Ssw2Instructees({
             .then(({ data }) => ssw2DutiesOf(data as { ssw2_duties?: unknown } | null))
         : Promise.resolve(EMPTY_SSW2_DUTIES),
     ])
-      .then(([list, taken, res, org]) => {
+      .then(([list, taken, res, prepIds, links, org]) => {
         if (cancelled) return;
         setRows(list);
         setOrgDuties(org);
+        const workers = (res.data as InstructeeCandidateWorker[] | null) ?? [];
         setCandidates(
-          instructeeCandidates(((res.data as InstructeeCandidateWorker[] | null) ?? []), {
+          instructeeCandidates(workers, {
             selfWorkerId: workerId,
             organizationId,
             takenBy: taken,
+            applicantIds: ssw2ApplicantIds(workers, {
+              prepWorkerIds: prepIds,
+              linkedApplicantIds: links.map((l) => l.applicantId),
+            }),
           }),
         );
       })
@@ -202,7 +214,7 @@ export function Ssw2Instructees({
         <span className="font-bold">
           すでに他の２号申請者の対象者になっている人は選べません
         </span>
-        （様式の留意事項4）。登録の無い日本人従業員は、氏名を直接入力してください。
+        （様式の留意事項4）。本人も２号の申請準備中の方も、指導する側になるので選べません。登録の無い日本人従業員は、氏名を直接入力してください。
         事業所・役職・職務内容が全員同じなら、所属機関の情報の「特定技能２号の指導体制 ＞
         ２ 指導を受ける対象者の共通の内容」に一度入れておくと、空の欄に自動で入ります。
         <Link href={SSW2_PLEDGE_GUIDE_HREF} className="ml-1 font-bold text-brand underline">
@@ -262,8 +274,8 @@ export function Ssw2Instructees({
                       <option
                         key={c.id}
                         value={c.id}
-                        // 他の2号申請者に押さえられている人は選べないようにする
-                        disabled={c.takenBy !== null && c.id !== row.target_worker_id}
+                        // 他の2号申請者に押さえられている人・本人も2号の申請準備中の人は選べないようにする
+                        disabled={candidateUnavailable(c) && c.id !== row.target_worker_id}
                       >
                         {c.name}（{candidateNote(c)}）
                       </option>

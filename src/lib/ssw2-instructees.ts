@@ -84,6 +84,7 @@ export interface InstructeeCandidateWorker {
   residence_card_no?: string;
   current_situation?: string;
   current_organization_id?: string | null;
+  application_prep_organization_id?: string | null;
 }
 
 export interface InstructeeCandidate {
@@ -93,6 +94,7 @@ export interface InstructeeCandidate {
   workerStatus: string; // 在籍中・申請準備中など（候補の横に出す）
   residence_card_no: string;
   takenBy: string | null; // すでに押さえている2号申請者の氏名。空いていれば null
+  ssw2Applicant: boolean; // 本人も2号の申請準備中（指導する側になるので対象者にできない）
 }
 
 // すでに特定技能2号を持っている人か。
@@ -112,15 +114,18 @@ export function isSsw2Holder(residenceStatus: string | null | undefined): boolea
 //  ・すでに特定技能2号を持っている人は除く（指導する側なので対象者にならない）
 //  ・すでに他の2号申請者の対象者になっている人は takenBy に誰が押さえているかを入れる
 //    （様式の留意事項4: 他の2号特定技能外国人に指導を受けている者は記載しない）
+//  ・本人も2号の申請準備中の人は ssw2Applicant を立てて選べないようにする
+//    （2号になれば指導する側なので、対象者にはならない）
 export function instructeeCandidates(
   workers: InstructeeCandidateWorker[],
   opts: {
     selfWorkerId: string;
     organizationId: string | null | undefined;
     takenBy: Map<string, string>;
+    applicantIds?: Set<string>;
   },
 ): InstructeeCandidate[] {
-  const { selfWorkerId, organizationId, takenBy } = opts;
+  const { selfWorkerId, organizationId, takenBy, applicantIds } = opts;
   return workers
     .filter((w) => w.id !== selfWorkerId)
     .filter((w) => w.status !== "退職")
@@ -134,6 +139,7 @@ export function instructeeCandidates(
       workerStatus: (w.status ?? "").trim(),
       residence_card_no: w.residence_card_no ?? "",
       takenBy: takenBy.get(w.id) ?? null,
+      ssw2Applicant: applicantIds?.has(w.id) ?? false,
     }))
     .sort((a, b) => a.name.localeCompare(b.name, "ja"));
 }
@@ -141,8 +147,45 @@ export function instructeeCandidates(
 // 候補の横に出す説明（在留資格・在籍の状態・すでに押さえられているか）
 export function candidateNote(c: InstructeeCandidate): string {
   const parts = [c.residenceStatus || "在留資格未登録", c.workerStatus || "状態未登録"];
-  if (c.takenBy) parts.push(`${c.takenBy}さんの対象者のため選べません`);
+  if (c.ssw2Applicant) parts.push("本人も２号の申請準備中のため選べません");
+  else if (c.takenBy) parts.push(`${c.takenBy}さんの対象者のため選べません`);
   return parts.join("・");
+}
+
+// 候補を選べないか（他の申請者に押さえられている・本人も2号の申請準備中）
+export function candidateUnavailable(c: InstructeeCandidate): boolean {
+  return c.takenBy !== null || c.ssw2Applicant;
+}
+
+// ---- 2号の申請準備中の人（画面ごとに判定がずれないよう、ここでまとめて決める） ----
+
+// 申請準備の所属機関。転職先で申請するときは application_prep_organization_id が入る
+export function ssw2PrepOrganizationId(w: {
+  current_organization_id?: string | null;
+  application_prep_organization_id?: string | null;
+}): string | null {
+  return w.application_prep_organization_id || w.current_organization_id || null;
+}
+
+// いま2号の申請準備をしている人の ID。
+//  ・申請準備の申請種別（app_content）が2号の準備リストがある人（申請準備の画面と同じ判定）
+//  ・只今の状況（current_situation）が2号申請準備中の人
+//  ・すでに指導対象者を登録している人
+//  のどれかに当たる人。ただし、退職した人と、許可が出てすでに特定技能2号になった人は除く
+export function ssw2ApplicantIds(
+  workers: InstructeeCandidateWorker[],
+  opts: {
+    prepWorkerIds: Iterable<string>; // 申請種別が2号の準備リストがある外国人
+    linkedApplicantIds?: Iterable<string>; // 指導対象者を登録している外国人
+  },
+): Set<string> {
+  const flagged = new Set<string>([...opts.prepWorkerIds, ...(opts.linkedApplicantIds ?? [])]);
+  const out = new Set<string>();
+  for (const w of workers) {
+    if (w.status === "退職" || isSsw2Holder(w.residence_status)) continue;
+    if (flagged.has(w.id) || w.current_situation === SSW2_PREP_SITUATION) out.add(w.id);
+  }
+  return out;
 }
 
 // ---- 所属機関ごとの「２号を何人まで受け入れられるか」 ----

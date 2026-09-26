@@ -1,5 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Ssw2Instructee, Ssw2InstructeeInput } from "@/lib/ssw2-instructees";
+import {
+  SSW2_PREP_SITUATION,
+  type Ssw2Instructee,
+  type Ssw2InstructeeInput,
+} from "@/lib/ssw2-instructees";
 
 // 「２号特定技能外国人に指導を受ける対象者一覧」（0120）の読み書き。
 
@@ -109,4 +113,15 @@ export async function listSsw2InstructionLinks(
     targetName: r.name,
     office: r.office,
   }));
+}
+
+// 申請準備の申請種別（app_content）が特定技能2号の準備リストがある外国人のID。
+// 申請準備の画面は申請種別で2号かどうかを決めているので、ほかの画面もこれに合わせる。
+export async function listSsw2PrepWorkerIds(supabase: SupabaseClient): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from("application_prep_checklists")
+    .select("worker_id")
+    .eq("app_content", SSW2_PREP_SITUATION);
+  if (error) throw error;
+  return new Set(((data as { worker_id: string }[] | null) ?? []).map((r) => r.worker_id));
 }
