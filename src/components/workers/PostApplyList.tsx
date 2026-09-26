@@ -16,6 +16,7 @@ export function PostApplyList({
   canEdit,
   onSaveMailings,
   onSaveTasks,
+  compact = false,
 }: {
   docIds: string[];
   mailings: PostApplyMailing[]; // 入管へ郵送した記録（投函日・追跡番号）
@@ -23,6 +24,7 @@ export function PostApplyList({
   canEdit: boolean;
   onSaveMailings: (mailings: PostApplyMailing[]) => void;
   onSaveTasks: (tasks: PostApplyTask[]) => void;
+  compact?: boolean; // 申請準備の左の列（ステータスの下）に置くとき。説明を短くする
 }) {
   const [draft, setDraft] = useState("");
   const add = () => {
@@ -34,10 +36,16 @@ export function PostApplyList({
   return (
     <div className="rounded-xl border border-status-notice-fg/40 bg-status-notice-bg/30 p-3">
       <p className="text-sm font-bold">📮 申請後に入管へ郵送するリスト</p>
+      {compact ? (
+        <p className="mt-0.5 text-[11px] text-muted">
+          必要な書類の「申請後に郵送」にチェックした書類と、申請後にすることです。申請一覧の「申請後の郵送・タスク」にも出ます。
+        </p>
+      ) : (
       <p className="mt-0.5 text-[11px] text-muted">
         書類の行で「申請後に発行され次第、入管へ郵送する」にチェックした書類と、そのほかに申請後にすることです。
         申請一覧の「申請後の郵送・タスク」と申請詳細にも出ます。郵送したら「入管へ郵送した」で投函日・追跡番号を記録してください（同じ日・同じ追跡番号なら「まとめて入管へ郵送した」で一度に入れられます）。済んだタスクはチェックを付けてください。
       </p>
+      )}
 
       <p className="mt-2 text-[11px] font-bold text-muted">
         入管へ郵送する書類（{docIds.length}件・うち未郵送{unmailedDocIds(docIds, mailings).length}件）

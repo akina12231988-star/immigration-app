@@ -176,13 +176,10 @@ import { Prep117Section, PrepAgriNoticeSection } from "@/components/workers/Prep
 import {
   PrepApplyConfirmDialog,
   PrepSection,
-  PrepToc,
   RequesteeAvatar,
   type PrepApplyConfirmDoc,
-  type PrepTocItem,
 } from "@/components/workers/PrepDetailLayout";
 import {
-  PREP_DETAIL_SECTIONS,
   REQUEST_OVERDUE_DAYS,
   assenDecided,
   daysSince,
@@ -1300,33 +1297,6 @@ export function ApplicationPrepChecklist({
   const assenTodo = currentTodo ?? fallbackTodo;
   const assenOk = assenDecided(assenTodo?.assen, assenTodo?.assen_note);
 
-  // 左の目次（済んだ章は ✓、足りない章は !）
-  const signDone = /もらいました|記載した/.test(current?.sign_status ?? "");
-  const tocItems: PrepTocItem[] = PREP_DETAIL_SECTIONS.filter((sec) => sec.id !== "prep-farm" || prepOrgAgri).map(
-    (sec): PrepTocItem => {
-      switch (sec.id) {
-        case "prep-basic":
-          return { ...sec, state: meta.app_content || meta.app_type ? "ok" : "ng", badge: meta.app_content || meta.app_type ? undefined : "申請種別" };
-        case "prep-prior":
-          return { ...sec, state: priorApp.prior ? "ok" : "none" };
-        case "prep-docs":
-          return meta.app_type
-            ? { ...sec, state: missingItems.length === 0 ? "ok" : "ng", badge: missingItems.length > 0 ? `不足${missingItems.length}` : undefined }
-            : { ...sec, state: "none" };
-        case "prep-sign":
-          return { ...sec, state: signDone ? "ok" : "none" };
-        case "prep-assen":
-          return { ...sec, state: assenOk ? "ok" : "ng", badge: assenOk ? undefined : "必須" };
-        case "prep-submit":
-          return { ...sec, state: "none", badge: mailItems.length > 0 ? `郵送${mailItems.length}` : undefined };
-        default:
-          return { ...sec, state: "none" };
-      }
-    },
-  );
-  const judged = tocItems.filter((t) => t.state !== "none");
-  const tocProgress = { done: judged.filter((t) => t.state === "ok").length, total: judged.length };
-
   // ステータスを変える前の確認。「入管へ申請！！」にするときだけ、足りない書類とあっせんを確かめる
   const confirmBeforeStatus = (next: string): Promise<boolean> => {
     if (!isImmigrationAppliedStatus(next) || current == null) return Promise.resolve(true);
@@ -1441,11 +1411,9 @@ export function ApplicationPrepChecklist({
         </p>
       )}
 
-      {/* 案B: 左に目次・ステータス・メモ（スクロールしてもついてくる）、右に章を上から並べる */}
+      {/* 左にステータス・申請後に郵送するリスト・メモ（スクロールしてもついてくる）、右に章を上から並べる */}
       <div className="lg:flex lg:items-start lg:gap-4">
       <aside className="mb-4 flex flex-col gap-3 lg:sticky lg:top-20 lg:mb-0 lg:max-h-[calc(100vh-5.5rem)] lg:w-72 lg:shrink-0 lg:overflow-y-auto lg:pb-2">
-        <PrepToc items={tocItems} progress={tocProgress} />
-
         {/* ステータス（TODO一覧と同じ）・待っている書類・メモ */}
         <div className="flex flex-col gap-2.5 rounded-2xl border border-border bg-surface p-3">
           <p className="flex items-center gap-2 text-sm font-bold">
@@ -1502,15 +1470,6 @@ export function ApplicationPrepChecklist({
         }
       />
 
-      {/* メモ（いま何を依頼していて何を待っているか）。A4印刷のメモ欄にも印字される */}
-      {current && (
-        <PrepMemoField
-          key={current.id}
-          memo={current.memo}
-          canEdit={canEdit}
-          onSave={(memo) => saveExtras({ memo })}
-        />
-      )}
 
           {current != null && (
             <dl className="grid grid-cols-[4.5rem_1fr] gap-x-2 gap-y-1 border-t border-border pt-2 text-[11px]">
@@ -1523,6 +1482,32 @@ export function ApplicationPrepChecklist({
             </dl>
           )}
         </div>
+        {current != null && (
+          <>
+          {/* ステータスの下: 申請後に入管へ郵送するリスト（申請一覧の「申請後の郵送・タスク」と同じ） */}
+          <PostApplyList
+            docIds={Object.entries(docStatuses)
+              .filter(([, v]) => v.mail_after_apply)
+              .map(([id]) => id)}
+            tasks={current.post_apply_tasks ?? []}
+            canEdit={canEdit}
+            mailings={current.post_apply_mailings ?? []}
+            onSaveMailings={(post_apply_mailings) => void saveExtras({ post_apply_mailings })}
+            onSaveTasks={(post_apply_tasks) => void saveExtras({ post_apply_tasks })}
+            compact
+          />
+          </>
+        )}
+
+        {/* メモ（いま何を依頼していて何を待っているか）。A4印刷のメモ欄にも印字される */}
+        {current && (
+          <PrepMemoField
+            key={current.id}
+            memo={current.memo}
+            canEdit={canEdit}
+            onSave={(memo) => saveExtras({ memo })}
+          />
+        )}
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col gap-4">
@@ -2273,7 +2258,7 @@ export function ApplicationPrepChecklist({
       )}
 
       {/* 10. 入管へ出す完成した書類・申請後の郵送 */}
-      <PrepSection id="prep-submit" title="入管へ出す完成した書類・申請後の郵送">
+      <PrepSection id="prep-submit" title="入管へ出す完成した書類">
         <div className="flex flex-col gap-3">
         {/* 申請する書類（最後に添付する、入管へ提出する完成した書類一式） */}
         <FileDropArea
@@ -2360,17 +2345,6 @@ export function ApplicationPrepChecklist({
           )}
         </FileDropArea>
 
-        {/* 申請する書類の下: 申請後に入管へ郵送する書類とそのほかのタスク */}
-        <PostApplyList
-          docIds={Object.entries(docStatuses)
-            .filter(([, v]) => v.mail_after_apply)
-            .map(([id]) => id)}
-          tasks={current.post_apply_tasks ?? []}
-          canEdit={canEdit}
-          mailings={current.post_apply_mailings ?? []}
-          onSaveMailings={(post_apply_mailings) => void saveExtras({ post_apply_mailings })}
-          onSaveTasks={(post_apply_tasks) => void saveExtras({ post_apply_tasks })}
-        />
         </div>
       {canEdit && (
         <div className="mt-3 flex flex-wrap items-center gap-4">
