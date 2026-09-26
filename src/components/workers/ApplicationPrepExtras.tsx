@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Building2, ExternalLink, Printer } from "lucide-react";
+import { Building2, ExternalLink, Printer, Upload } from "lucide-react";
 import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { Combobox } from "@/components/ui/Combobox";
 import { createClient } from "@/lib/supabase/client";
@@ -26,7 +26,7 @@ import {
 } from "@/lib/supabase/queries/application-prep";
 import { listOrganizationFiles } from "@/lib/supabase/queries/organization-files";
 import { getOrgFilePreviewUrl } from "@/app/(app)/organizations/actions";
-import { orgYearlyFileGroups, type OrgYearlyFileGroup } from "@/lib/org-yearly-files";
+import { orgYearlyFileGroups, orgYearlyKind, type OrgYearlyFileGroup } from "@/lib/org-yearly-files";
 import {
   ORG_FILE_KIND_AGRI_NOTICE,
   ORG_FILE_KIND_LABOR_AGREEMENT,
@@ -72,6 +72,10 @@ import { WorkerWages } from "@/components/workers/WorkerWages";
 import { WorkerContracts } from "@/components/workers/WorkerContracts";
 import { todayStr } from "@/lib/ssw/calc";
 import { dbErrorMessage } from "@/lib/errors";
+import { uploadOrgFiles } from "@/lib/org-file-upload";
+import { ASSEN_NONE_REASONS, ASSEN_OTHER, assenReasonChoice } from "@/lib/prep-detail";
+// 循環 import になるが、使うのは描画のときだけなので問題ない（PrepSupportOrgSection も OrgAttachmentPreview をここから使う）
+import { PlacementAgencyCard } from "@/components/workers/PrepSupportOrgSection";
 import type {
   Organization,
   OrganizationFileRow,
@@ -103,12 +107,14 @@ function TodoStatusSelects({
   checkOptions,
   canEdit,
   onSave,
+  waitingSuggestion = "",
 }: {
   todo: TodoRow;
   kindOptions: TodoStatusOption[];
   checkOptions: TodoStatusOption[];
   canEdit: boolean;
   onSave: (patch: Partial<Pick<TodoRow, "status" | "check_status" | "waiting_note">>) => void;
+  waitingSuggestion?: string; // 不足の書類から作った「待っている書類」の文（ボタン1つで入れられる）
 }) {
   // 「必要な書類まち」のときに何の書類を待っているか（保存されている値と違うときだけ保存）
   const [waitingNote, setWaitingNote] = useState(todo.waiting_note ?? "");
@@ -162,6 +168,18 @@ function TodoStatusSelects({
             placeholder="例: 課税証明書（本人が市役所で取得中）・雇用契約書の会社印"
             className={`${INPUT} mt-0.5 w-full`}
           />
+          {canEdit && waitingSuggestion && waitingSuggestion !== waitingNote.trim() && (
+            <button
+              type="button"
+              onClick={() => {
+                setWaitingNote(waitingSuggestion);
+                onSave({ waiting_note: waitingSuggestion });
+              }}
+              className="mt-1 rounded-lg border border-brand bg-surface px-2 py-1 text-[11px] font-bold text-brand"
+            >
+              不足の書類を入れる
+            </button>
+          )}
         </label>
       )}
       {/* 経過が「〜チェック中」のときは確認ステータスも出す */}
@@ -225,6 +243,9 @@ export function PrepTodoStatusField({
   onUseTodoNo,
   onRenameTodo,
   onCreate,
+  beforeStatusChange,
+  waitingSuggestion = "",
+  compact = false,
 }: {
   todo: TodoRow | null; // 表示中のTODO番号に対応する申請準備のTODO（無ければ null）
   otherTodos?: TodoRow[]; // この外国人のほかの申請準備TODO（番号が食い違っているときの候補）
@@ -236,6 +257,10 @@ export function PrepTodoStatusField({
   onUseTodoNo?: (no: string) => void; // 準備リストの番号をそのTODOの番号にそろえる（TODO側の番号に統一）
   onRenameTodo?: (todo: TodoRow) => Promise<void>; // そのTODOの番号を準備リストの番号に変える（リスト側の番号に統一）
   onCreate?: () => Promise<void>; // この番号の申請準備TODOを作る
+  // ステータスを変える前に呼ぶ（false を返すと変えない）。「入管へ申請！！」の前の確認に使う
+  beforeStatusChange?: (next: string) => Promise<boolean>;
+  waitingSuggestion?: string; // 「何の書類を待っていますか？」に入れる候補（不足の書類から）
+  compact?: boolean; // 左の目次の下に置くとき（見出しを短くする）
 }) {
   const kindOptions = options.filter((o) => o.kind === "申請準備");
   const checkOptions = options.filter((o) => o.kind === TODO_CHECK_KIND);
@@ -243,9 +268,15 @@ export function PrepTodoStatusField({
   const [unifying, setUnifying] = useState<string | null>(null);
 
   const saveFor = (t: TodoRow) => (patch: Partial<Pick<TodoRow, "status" | "check_status" | "waiting_note">>) => {
-    updateTodo(createClient(), t.id, patch)
-      .then(onChanged)
-      .catch((err) => onError(dbErrorMessage(err, "0102_todos.sql", "ステータスの保存に失敗しました")));
+    void (async () => {
+      // ステータスを変えるときは、先に確認（入管へ申請！！の前の不足書類など）
+      if (patch.status !== undefined && patch.status !== t.status && beforeStatusChange) {
+        const ok = await beforeStatusChange(patch.status);
+        if (!ok) return;
+      }
+      await updateTodo(createClient(), t.id, patch);
+      onChanged();
+    })().catch((err) => onError(dbErrorMessage(err, "0102_todos.sql", "ステータスの保存に失敗しました")));
   };
 
   if (!todo) {
@@ -351,10 +382,12 @@ export function PrepTodoStatusField({
 
   const stage = stageOfStatus(todo.status, kindOptions);
   return (
-    <div className="mb-3 rounded-xl border border-brand/40 bg-brand/5 px-3 py-2.5">
+    <div className={compact ? "" : "mb-3 rounded-xl border border-brand/40 bg-brand/5 px-3 py-2.5"}>
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[11px] font-bold text-muted">
-          申請準備TODO（No.{todo.todo_no}）のステータス（進捗。印鑑済み・署名済みなど。TODO一覧と同じ）
+          {compact
+            ? `TODO No.${todo.todo_no}（TODO一覧と同じ）`
+            : `申請準備TODO（No.${todo.todo_no}）のステータス（進捗。印鑑済み・署名済みなど。TODO一覧と同じ）`}
         </span>
         <StageBadge stage={stage} />
       </div>
@@ -364,6 +397,7 @@ export function PrepTodoStatusField({
         checkOptions={checkOptions}
         canEdit={canEdit}
         onSave={saveFor(todo)}
+        waitingSuggestion={waitingSuggestion}
       />
     </div>
   );
@@ -640,6 +674,10 @@ export function PrepOrgInfo({
   } | null>(null);
   // 未登録の欄をこの場で保存したあとに読み直すためのキー
   const [reloadKey, setReloadKey] = useState(0);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+  // 未登録の添付をこの場で入れるときの保存先の種類（農業特定技能加入通知書・定期報告書:年度 など）
+  const uploadKindRef = useRef<string>("");
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (!orgId) return;
@@ -695,6 +733,30 @@ export function PrepOrgInfo({
   };
 
   const councilLine = councilSubmissionsLine;
+
+  // 未登録の添付（農業特定技能加入通知書・定期報告・賃金台帳）をこの場で入れる。所属機関の添付に保存される
+  const startUpload = (kind: string) => {
+    uploadKindRef.current = kind;
+    uploadInputRef.current?.click();
+  };
+  const handleUpload = async (list: FileList | null) => {
+    if (!list || list.length === 0 || !uploadKindRef.current) return;
+    setUploading(true);
+    setError(null);
+    try {
+      await uploadOrgFiles(org.id, uploadKindRef.current, list);
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "アップロードに失敗しました");
+    } finally {
+      setUploading(false);
+    }
+  };
+  // 協力確認書: 提出先だけ入っていて提出日が無いときは、提出日だけをこの場で入れる
+  const councilDateMissing = (key: "council_office_submissions" | "council_residence_submissions") => {
+    const first = intake[key][0];
+    return !!first && !!first.to.trim() && !first.on;
+  };
 
   // 未登録の欄をこの場で保存する（所属機関の基本情報 / 申込書の内容）。保存後は読み直す
   const saveOrg = async (patch: { address?: string; contact?: string }) => {
@@ -832,8 +894,18 @@ export function PrepOrgInfo({
           onPreview={preview}
           printHref={orgFilesPrintHref(org.id, [ORG_FILE_KIND_AGRI_NOTICE])}
           printLabel="印刷（A4縦）"
+          onUpload={fill && !uploading ? () => startUpload(ORG_FILE_KIND_AGRI_NOTICE) : undefined}
         />
       )}
+      {councilDateMissing("council_office_submissions") ? (
+        <OrgInfoLine
+          label={`協力確認書（事業所の所在地） 提出先: ${intake.council_office_submissions[0].to} ／ 提出日`}
+          value=""
+          canFill={fill}
+          inputs={[{ type: "date" }]}
+          onSave={(v) => saveCouncil("council_office_submissions")([intake.council_office_submissions[0].to, v[0] ?? ""])}
+        />
+      ) : (
       <OrgInfoLine
         label="協力確認書（事業所の所在地）"
         value={councilLine(intake.council_office_submissions)}
@@ -841,6 +913,16 @@ export function PrepOrgInfo({
         inputs={[{ placeholder: "提出先（例: 農業特定技能協議会）" }, { type: "date" }]}
         onSave={saveCouncil("council_office_submissions")}
       />
+      )}
+      {councilDateMissing("council_residence_submissions") ? (
+        <OrgInfoLine
+          label={`協力確認書（住居地） 提出先: ${intake.council_residence_submissions[0].to} ／ 提出日`}
+          value=""
+          canFill={fill}
+          inputs={[{ type: "date" }]}
+          onSave={(v) => saveCouncil("council_residence_submissions")([intake.council_residence_submissions[0].to, v[0] ?? ""])}
+        />
+      ) : (
       <OrgInfoLine
         label="協力確認書（住居地）"
         value={councilLine(intake.council_residence_submissions)}
@@ -848,6 +930,7 @@ export function PrepOrgInfo({
         inputs={[{ placeholder: "提出先" }, { type: "date" }]}
         onSave={saveCouncil("council_residence_submissions")}
       />
+      )}
       <OrgInfoLine
         label="協議会メモ"
         value={intake.council_note}
@@ -867,8 +950,30 @@ export function PrepOrgInfo({
         }
         onSave={saveSales}
       />
-      <OrgYearlyFilesLine label="直近の定期報告" groups={reportGroups} onPreview={preview} />
-      <OrgYearlyFilesLine label="賃金台帳" groups={ledgerGroups} onPreview={preview} />
+      <OrgYearlyFilesLine
+        label="直近の定期報告"
+        groups={reportGroups}
+        onPreview={preview}
+        onUpload={fill && !uploading ? (year) => startUpload(orgYearlyKind("定期報告書", year)) : undefined}
+      />
+      <OrgYearlyFilesLine
+        label="賃金台帳"
+        groups={ledgerGroups}
+        onPreview={preview}
+        onUpload={fill && !uploading ? (year) => startUpload(orgYearlyKind("賃金台帳", year)) : undefined}
+      />
+      {uploading && <p className="text-muted">アップロード中…</p>}
+      <input
+        ref={uploadInputRef}
+        type="file"
+        accept="image/*,application/pdf"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          void handleUpload(e.target.files);
+          e.target.value = "";
+        }}
+      />
     </div>
   );
 }
@@ -878,14 +983,39 @@ function OrgYearlyFilesLine({
   label,
   groups,
   onPreview,
+  onUpload,
 }: {
   label: string;
   groups: OrgYearlyFileGroup[];
   onPreview: (id: string) => Promise<void>;
+  onUpload?: (yearLabel: string) => void; // 渡すと、未登録のときにこの場で添付できる（年度を入れて）
 }) {
+  const [year, setYear] = useState("");
   const latest = groups[0];
   if (!latest) {
-    return <p>{label}: 未登録（所属機関の編集画面からアップロードできます）</p>;
+    if (!onUpload) return <p>{label}: 未登録（所属機関の編集画面からアップロードできます）</p>;
+    return (
+      <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-seal/40 bg-seal/5 px-2 py-1.5">
+        <span className="shrink-0">
+          {label}: <span className="font-bold text-seal">未登録</span>
+        </span>
+        <input
+          value={year}
+          onChange={(e) => setYear(e.target.value)}
+          placeholder="年度（例: 令和7年）"
+          aria-label={`${label}の年度`}
+          className={`${INPUT} w-36`}
+        />
+        <button
+          type="button"
+          onClick={() => onUpload(year)}
+          className="flex shrink-0 items-center gap-1 rounded-lg bg-brand px-3 py-1.5 text-[11px] font-bold text-brand-foreground"
+        >
+          <Upload size={12} />
+          添付する
+        </button>
+      </div>
+    );
   }
   return (
     <div>
@@ -1012,12 +1142,14 @@ export function OrgAttachmentPreview({
   onPreview,
   printHref,
   printLabel,
+  onUpload,
 }: {
   label: string;
   latest: OrgLatestFiles | null;
   onPreview: (id: string) => Promise<void>;
   printHref?: string;
   printLabel?: string;
+  onUpload?: () => void; // 渡すと、未登録のときにこの場で添付できる
 }) {
   // 画像の表示用の署名付きURL（ファイルIDごと。PDF は「添付済み」ボタンで別タブに開く）
   const [urls, setUrls] = useState<Record<string, string>>({});
@@ -1053,6 +1185,23 @@ export function OrgAttachmentPreview({
   );
 
   if (!latest) {
+    if (onUpload) {
+      return (
+        <p className="flex flex-wrap items-center gap-1.5 rounded-lg border border-seal/40 bg-seal/5 px-2 py-1.5">
+          <span>
+            {label}: <span className="font-bold text-seal">未登録</span>
+          </span>
+          <button
+            type="button"
+            onClick={onUpload}
+            className="flex items-center gap-1 rounded-lg bg-brand px-3 py-1.5 text-[11px] font-bold text-brand-foreground"
+          >
+            <Upload size={12} />
+            添付する
+          </button>
+        </p>
+      );
+    }
     return (
       <p className="flex flex-wrap items-center gap-1.5">
         <span>{label}: 未登録（所属機関の編集画面からアップロードできます）</span>
@@ -1473,7 +1622,7 @@ export function SavedPlanDatesSection({
   return (
     <div className="rounded-lg bg-background p-2">
       <p className="mb-1 flex flex-wrap items-center justify-between gap-1 text-[11px] font-bold text-muted">
-        📅 支援計画書の日付（日付計算の保存結果）
+        📅 支援計画書の日付（入力して保存すると、申請書に貼る情報にも入ります）
         <span className="flex flex-wrap items-center gap-2">
           {/* 名刺サイズ（横 91×55mm / 縦 55×91mm）の白黒画像にして保存。印刷して手元に置ける */}
           {saved &&
@@ -1505,12 +1654,14 @@ export function SavedPlanDatesSection({
         </span>
       </p>
       {error && <p className="mb-1 rounded-lg bg-seal/10 px-2 py-1 text-[11px] text-seal">{error}</p>}
-      {!saved && !tokuteiKatsudo ? (
-        <p className="text-[11px] text-muted">
-          保存された日付はまだありません。日付計算で算出して「この結果を保存」すると、ここに表示され編集できます。
-        </p>
-      ) : (
+      {/* 保存がまだ無くても、ここで直接入力して保存できる（日付計算で出した結果もここに入る） */}
+      {(
         <div className="space-y-1">
+          {!saved && !tokuteiKatsudo && (
+            <p className="text-[11px] text-muted">
+              保存された日付はまだありません。ここに直接入力して「日付の変更を保存」を押すか、日付計算で算出して「この結果を保存」してください。
+            </p>
+          )}
           {tokuteiKatsudo && (
             <p className="text-[11px] text-muted">
               特定活動の申請は支援計画書の日付計算を使わないため、ここに直接入力して「日付の変更を保存」を押してください。
@@ -1818,22 +1969,43 @@ export function PrepAssenSection({
   const hired = flows.filter((f) => f.result === "採用");
   const hiredAtPrepOrg = prepOrgId ? hired.find((f) => f.organizationId === prepOrgId) : undefined;
 
+  // 「無し」の理由: 3つから選ぶ（その他は文字で入れる）
+  const reason = assenReasonChoice(note);
+  const [otherText, setOtherText] = useState(reason.choice === ASSEN_OTHER ? reason.other : "");
+  const [pickedOther, setPickedOther] = useState(false);
+  const showOther = reason.choice === ASSEN_OTHER || pickedOther;
+  const choiceBtn = (active: boolean) =>
+    `min-h-[48px] flex-1 rounded-xl border-2 px-4 text-base font-bold disabled:opacity-60 ${
+      active ? "border-brand bg-brand text-brand-foreground" : "border-border bg-surface text-foreground"
+    }`;
+
   return (
-    <div className="rounded-xl border border-border bg-background px-3 py-2.5">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[11px] font-bold text-muted">あっせん</span>
-        <select
-          value={todo?.assen ?? ""}
-          disabled={!canEdit || creating || isRenewal}
-          onChange={(e) => void save({ assen: e.target.value })}
-          className={INPUT}
-        >
-          <option value="">未設定</option>
-          <option value="あり">あり（求人からの採用）</option>
-          <option value="なし">なし</option>
-        </select>
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1.5">
+        <p className="text-sm font-bold">あっせんは有りましたか？</p>
+        <div className="flex max-w-md gap-2">
+          <button
+            type="button"
+            aria-pressed={todo?.assen === "あり"}
+            disabled={!canEdit || creating || isRenewal}
+            onClick={() => void save({ assen: "あり" })}
+            className={choiceBtn(todo?.assen === "あり")}
+          >
+            有り
+          </button>
+          <button
+            type="button"
+            aria-pressed={todo?.assen === "なし"}
+            disabled={!canEdit || creating || isRenewal}
+            onClick={() => void save({ assen: "なし" })}
+            className={choiceBtn(todo?.assen === "なし")}
+          >
+            無し
+          </button>
+        </div>
+        {!todo?.assen && <p className="text-xs font-bold text-seal">どちらかを選んでください（必須）。</p>}
         {isRenewal && (
-          <span className="text-[11px] font-bold text-muted">更新申請のため「なし」になります（理由は自動で入ります）</span>
+          <span className="text-[11px] font-bold text-muted">更新申請のため「無し」になります（理由は自動で入ります）</span>
         )}
         {creating ? (
           <span className="text-[11px] text-muted">申請準備のTODOを作って保存中…</span>
@@ -1848,25 +2020,65 @@ export function PrepAssenSection({
         ) : null}
       </div>
       {todo?.assen === "なし" && (
-        <label className="mt-1.5 block">
-          <span className="text-[11px] font-bold text-muted">
-            どのような経緯での申請書類作成か（あっせん無しの場合に記入）
-          </span>
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            onBlur={() => {
-              if (note !== (todo.assen_note ?? "")) void save({ assen_note: note });
-            }}
-            disabled={!canEdit}
-            rows={2}
-            placeholder="例: 知人の紹介で本人から直接依頼があり、会社と面談のうえ雇用が決まった など"
-            className={`${INPUT} mt-0.5 w-full py-1.5`}
-          />
-        </label>
+        <fieldset className="flex flex-col gap-2 rounded-xl border border-border p-3">
+          <legend className="px-1 text-xs font-bold text-muted">無しの理由</legend>
+          {isRenewal ? (
+            <p className="text-sm">{note || RENEWAL_ASSEN_NOTE}</p>
+          ) : (
+            <>
+              {ASSEN_NONE_REASONS.map((r) => (
+                <label key={r} className="flex min-h-[40px] items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name={`assen-reason-${todo.id}`}
+                    checked={reason.choice === r && !pickedOther}
+                    disabled={!canEdit}
+                    onChange={() => {
+                      setPickedOther(false);
+                      setNote(r);
+                      void save({ assen_note: r });
+                    }}
+                    className="h-5 w-5"
+                  />
+                  {r}
+                </label>
+              ))}
+              <label className="flex min-h-[40px] items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name={`assen-reason-${todo.id}`}
+                  checked={showOther}
+                  disabled={!canEdit}
+                  onChange={() => setPickedOther(true)}
+                  className="h-5 w-5"
+                />
+                {ASSEN_OTHER}
+              </label>
+              {showOther && (
+                <input
+                  value={otherText}
+                  onChange={(e) => setOtherText(e.target.value)}
+                  onBlur={() => {
+                    const v = otherText.trim();
+                    if (v && v !== note) {
+                      setNote(v);
+                      void save({ assen_note: v });
+                    }
+                  }}
+                  disabled={!canEdit}
+                  placeholder="その他の理由を入力（例: 知人の紹介で本人から直接依頼があった）"
+                  aria-label="その他の理由"
+                  className={`${INPUT} ml-7 py-2`}
+                />
+              )}
+              {!note.trim() && <p className="text-xs font-bold text-seal">理由を選んでください（必須）。</p>}
+            </>
+          )}
+        </fieldset>
       )}
+      {todo?.assen === "あり" && <PlacementAgencyCard />}
       {todo?.assen === "あり" && (
-        <div className="mt-1.5 rounded-lg bg-surface/60 p-2">
+        <div className="rounded-lg bg-surface/60 p-2">
           {/* あっせん有りの申請では、雇用の経緯に係る説明書（参考様式1-16号）が必要 */}
           <p className="mb-2 rounded-lg bg-status-notice-bg px-2.5 py-1.5 text-xs font-bold text-status-notice-fg">
             あっせん有りのため、参考様式1-16号（雇用の経緯に係る説明書）を作成してください。

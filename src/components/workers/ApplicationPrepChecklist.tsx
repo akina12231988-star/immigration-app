@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   CheckCircle2,
-  ClipboardList,
   Copy,
   Download,
   ExternalLink,
@@ -20,7 +19,6 @@ import {
   Link2,
 } from "lucide-react";
 import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
-import { Card } from "@/components/ui/Card";
 import { PostApplyList } from "@/components/workers/PostApplyList";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { Ssw2Instructees } from "@/components/workers/Ssw2Instructees";
@@ -64,7 +62,7 @@ import {
   type TodoRow,
   ensurePrepTodo,
 } from "@/lib/supabase/queries/todos";
-import { normalizeTodoKey, type TodoStatusOption } from "@/lib/todo";
+import { isImmigrationAppliedStatus, normalizeTodoKey, type TodoStatusOption } from "@/lib/todo";
 import { listJudgmentRecordsByWorker } from "@/lib/supabase/queries/tax-office";
 import type { JudgmentRecord } from "@/lib/tax-cert";
 import { MailingRecordSummary } from "@/components/mailing/MailingRecordSummary";
@@ -174,7 +172,26 @@ import {
 import type { OnboardingDocumentRow } from "@/types/db";
 import { effectiveResidencePeriod } from "@/lib/residence-card";
 import { ApplicationCopyPanel } from "@/components/workers/ApplicationCopyPanel";
-import { PrepSupportOrgSection } from "@/components/workers/PrepSupportOrgSection";
+import { Prep117Section, PrepAgriNoticeSection } from "@/components/workers/PrepSupportOrgSection";
+import {
+  PrepApplyConfirmDialog,
+  PrepSection,
+  PrepToc,
+  RequesteeAvatar,
+  type PrepApplyConfirmDoc,
+  type PrepTocItem,
+} from "@/components/workers/PrepDetailLayout";
+import {
+  PREP_DETAIL_SECTIONS,
+  REQUEST_OVERDUE_DAYS,
+  assenDecided,
+  daysSince,
+  prepDocRequestee,
+  requesteeCounts,
+  waitingNoteFromMissing,
+  type PrepRequesteeKind,
+} from "@/lib/prep-detail";
+import { isAgricultureIndustry } from "@/lib/org-attachments";
 import { desiredResidenceStatus } from "@/lib/application-copy";
 
 // 在留カード・パスポートのアップロード中を示すキー（onboarding_documents の書類キーとは別枠）
@@ -249,6 +266,18 @@ export function ApplicationPrepChecklist({
   const photoInputRef = useRef<HTMLInputElement>(null);
   // 前回の申請（1年以内）の申請日・申請番号。課税・納税証明書などの行に案内として出す
   const priorApp = usePriorApplication({ workerId });
+  // 必要な書類を依頼先で絞り込む（「いま誰に何を頼んでいるか」のボタン）
+  const [whoFilter, setWhoFilter] = useState<string | null>(null);
+  // 「入管へ申請！！」にする前の確認。答えを待つあいだ resolve を持っておく
+  const [applyConfirm, setApplyConfirm] = useState<{
+    missing: PrepApplyConfirmDoc[];
+    mailList: string[];
+    assenMissing: boolean;
+  } | null>(null);
+  const applyResolveRef = useRef<((ok: boolean) => void) | null>(null);
+  // 農業の所属機関か（農業特定技能加入通知書の章を出すか）と、添付後に所属機関の情報を読み直すためのキー
+  const [prepOrgAgri, setPrepOrgAgri] = useState(false);
+  const [orgInfoKey, setOrgInfoKey] = useState(0);
 
   // 書類ごとの準備状況（ステータス）。チェックリストID → 書類ID → 入力値
   const [docStatusesByList, setDocStatusesByList] = useState<
@@ -1225,35 +1254,218 @@ export function ApplicationPrepChecklist({
   const inputCls =
     "rounded-lg border border-border bg-surface px-2.5 py-2 text-sm focus:border-brand focus:outline-none disabled:opacity-60";
 
-  return (
-    <Card className="p-4">
-      <h2 className="mb-1 flex flex-wrap items-center gap-1.5 text-sm font-bold text-muted">
-        <ClipboardList size={15} />
-        申請準備 書類チェックリスト
-        {/* この内容（所属機関・外国人・チェックリスト・賃金・日付）をA4縦1枚にまとめて印刷する */}
-        {current != null && (
-          <Link
-            /* 同じタブで開く。別のタブだと戻る先が無く、「←」で行き来できなくなるため */
-            href={`${prepDetailHref(workerId)}/print?todo=${encodeURIComponent(current.todo_no)}`}
-            className="rounded-full bg-brand px-2.5 py-1 text-[10px] font-bold text-brand-foreground"
-          >
-            🖨 A4で印刷
-          </Link>
-        )}
-      </h2>
-      <p className="mb-3 text-[11px] text-muted">
-        Notion申請TODO番号ごとに準備リストを作成できます。申請種別と加入状況を選ぶと、必要書類と不足がわかります。各書類はこの場で添付できます。
-      </p>
+  // 所属機関の業種が農業なら、農業特定技能加入通知書の章を出す
+  useEffect(() => {
+    if (!prepOrgId) return;
+    let cancelled = false;
+    void createClient()
+      .from("organizations")
+      .select("industry")
+      .eq("id", prepOrgId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setPrepOrgAgri(isAgricultureIndustry((data as { industry?: string } | null)?.industry ?? ""));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [prepOrgId]);
 
+  // 書類ごとの「誰に・いつ」（依頼先と依頼日からの日数）
+  const docRequesteeOf = (item: (typeof items)[number]) => {
+    const ds = docStatuses[item.def.id];
+    if (!ds) return null;
+    const opt = prepStatusOption(item.def.id, ds.status);
+    const r = prepDocRequestee(ds.status, ds.note, {
+      hasIssuerField: !!opt?.extras?.some((e) => e.kind === "issuer"),
+      done: item.satisfied || !!opt?.done,
+    });
+    return r ? { ...r, days: daysSince(ds.date_on, today) } : null;
+  };
+  // 3つのグループ: まだ揃っていない（申請後に郵送のしるし無し）／申請後に郵送／揃った
+  const missingItems = items.filter((i) => !i.satisfied && !docStatuses[i.def.id]?.mail_after_apply);
+  const mailItems = items.filter((i) => !i.satisfied && !!docStatuses[i.def.id]?.mail_after_apply);
+  const doneItems = items.filter((i) => i.satisfied);
+  const requesteeChips = requesteeCounts(missingItems.map(docRequesteeOf));
+  const shownMissing = whoFilter
+    ? missingItems.filter((i) => docRequesteeOf(i)?.who === whoFilter)
+    : missingItems;
+  const docLabelOf = (item: (typeof items)[number]) => prepDocLabel(item.def, docYearOf(item.def), currentReiwa);
+  // 「何の書類を待っていますか？」に1回で入れる文（まだ揃っていない書類と依頼先）
+  const waitingSuggestion = waitingNoteFromMissing(
+    missingItems.map((i) => ({ label: docLabelOf(i), who: docRequesteeOf(i)?.who })),
+  );
+
+  // あっせんは必須（有り、または無しで理由まで）
+  const assenTodo = currentTodo ?? fallbackTodo;
+  const assenOk = assenDecided(assenTodo?.assen, assenTodo?.assen_note);
+
+  // 左の目次（済んだ章は ✓、足りない章は !）
+  const signDone = /もらいました|記載した/.test(current?.sign_status ?? "");
+  const tocItems: PrepTocItem[] = PREP_DETAIL_SECTIONS.filter((sec) => sec.id !== "prep-farm" || prepOrgAgri).map(
+    (sec): PrepTocItem => {
+      switch (sec.id) {
+        case "prep-basic":
+          return { ...sec, state: meta.app_content || meta.app_type ? "ok" : "ng", badge: meta.app_content || meta.app_type ? undefined : "申請種別" };
+        case "prep-prior":
+          return { ...sec, state: priorApp.prior ? "ok" : "none" };
+        case "prep-docs":
+          return meta.app_type
+            ? { ...sec, state: missingItems.length === 0 ? "ok" : "ng", badge: missingItems.length > 0 ? `不足${missingItems.length}` : undefined }
+            : { ...sec, state: "none" };
+        case "prep-sign":
+          return { ...sec, state: signDone ? "ok" : "none" };
+        case "prep-assen":
+          return { ...sec, state: assenOk ? "ok" : "ng", badge: assenOk ? undefined : "必須" };
+        case "prep-submit":
+          return { ...sec, state: "none", badge: mailItems.length > 0 ? `郵送${mailItems.length}` : undefined };
+        default:
+          return { ...sec, state: "none" };
+      }
+    },
+  );
+  const judged = tocItems.filter((t) => t.state !== "none");
+  const tocProgress = { done: judged.filter((t) => t.state === "ok").length, total: judged.length };
+
+  // ステータスを変える前の確認。「入管へ申請！！」にするときだけ、足りない書類とあっせんを確かめる
+  const confirmBeforeStatus = (next: string): Promise<boolean> => {
+    if (!isImmigrationAppliedStatus(next) || current == null) return Promise.resolve(true);
+    const missingDocs = meta.app_type ? missingItems : [];
+    if (missingDocs.length === 0 && assenOk) return Promise.resolve(true);
+    return new Promise<boolean>((resolve) => {
+      applyResolveRef.current = resolve;
+      setApplyConfirm({
+        missing: missingDocs.map((i) => ({
+          id: i.def.id,
+          label: docLabelOf(i),
+          note: docStatuses[i.def.id]?.status ?? "",
+          mailable: !PREP_MAIL_AFTER_HIDDEN.has(i.def.id),
+        })),
+        mailList: mailItems.map(docLabelOf),
+        assenMissing: !assenOk,
+      });
+    });
+  };
+  const closeApplyConfirm = (ok: boolean) => {
+    applyResolveRef.current?.(ok);
+    applyResolveRef.current = null;
+    setApplyConfirm(null);
+  };
+
+  // 書類1行ぶん（必要な書類の3つのグループで共用）。mailMode: 申請後に郵送のチェック（toggle）／取り消しだけ（undo）／出さない（none）
+  const renderDocRow = (item: (typeof items)[number], mailMode: "toggle" | "undo" | "none") => {
+              const key = resolveDocKey(item.def);
+              const files = docFilesFor(item.def);
+              const isPhoto = item.def.source.kind === "photo";
+              // 在留カード・パスポートは別のセクション（在留カード・指定書／出入国の記録）で
+              // 管理しているファイルを、この行にも表示する
+              const isCard = item.def.source.kind === "residenceCardDoc";
+              const isPassport = item.def.source.kind === "passportFile";
+              const sharedFiles = isCard
+                ? cardDocs.map((d) => ({ id: d.id, name: d.fileName || "在留カード", url: d.url }))
+                : isPassport
+                  ? passportFiles.map((f) => ({ id: f.id, name: f.file_name, url: null }))
+                  : [];
+              const busyForRow = isPhoto
+                ? busyKey === "photo"
+                : isCard
+                  ? busyKey === CARD_BUSY_KEY
+                  : isPassport
+                    ? busyKey === PASSPORT_BUSY_KEY
+                    : busyKey != null && key != null && busyKey.startsWith(key);
+              return (
+                <DocRow
+                  key={item.def.id}
+                  item={item}
+                  meta={meta}
+                  workerId={workerId}
+                  files={files}
+                  sharedFiles={sharedFiles}
+                  onPreviewShared={(f) => {
+                    if (f.url) window.open(f.url, "_blank", "noopener");
+                    else void previewPassportFile(f.id);
+                  }}
+                  isPhoto={isPhoto}
+                  canEdit={canEdit}
+                  busy={busyForRow}
+                  ds={{ ...EMPTY_PREP_DOC_STATUS, ...(docStatuses[item.def.id] ?? {}) }}
+                  // 源泉徴収票と課税証明書は金額を突き合わせるので、相手の金額も渡す
+                  gensenKazei={
+                    item.def.id === "gensen" || item.def.id === "kazei"
+                      ? compareGensenKazei(
+                          docStatuses.kazei?.amount ?? "",
+                          docStatuses.gensen?.amount ?? "",
+                        )
+                      : null
+                  }
+                  custodyNo={custodyNo}
+                  mailingRecords={mailingRecords}
+                  todoNo={current?.todo_no ?? ""}
+                  healthOn={healthOn}
+                  plannedAppOn={current?.planned_app_on ?? null}
+                  onSaveHealthOn={saveHealthOn}
+                  onSavePlannedAppOn={(v) => void saveExtras({ planned_app_on: v })}
+                  onPatchStatus={(patch, save) => patchDocStatus(item.def.id, patch, save)}
+                  onAttach={() => startAttach(item.def)}
+                  onDropFiles={(files) => void dropAttach(item.def, files)}
+                  priorNote={priorNoteFor(item.def)}
+                  docYear={docYearOf(item.def)}
+                  otherYears={otherAttachedYears(item.def, docs, docYearOf(item.def)).map((y) => ({
+                    year: y,
+                    files: docs.filter(
+                      (d) => d.storage_path && item.def.source.kind === "docYear" && yearOfPrepDocKey(item.def.source.baseKey, d.doc_key) === y,
+                    ),
+                  }))}
+                  onUseYear={(y) => patchDocStatus(item.def.id, { use_reiwa: y })}
+                  onAddPage={() => startAttachPage(item.def, files)}
+                  onRemoveFile={(f) =>
+                    void removeDoc(
+                      f.doc_key,
+                      `${prepDocLabel(item.def, docYearOf(item.def), currentReiwa)}（${f.file_name}）`,
+                    )
+                  }
+                  onPreviewFile={(f) => void previewDoc(f.id)}
+                  onPreviewPhoto={() => void previewPhoto()}
+                  onDownloadFile={(f) => void downloadDoc(f.id)}
+                  requestee={docRequesteeOf(item)}
+                  mailMode={mailMode}
+                />
+              );
+  };
+
+  return (
+    <div>
       {error && (
         <p role="alert" className="mb-3 rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
           {error}
         </p>
       )}
 
+      {/* 案B: 左に目次・ステータス・メモ（スクロールしてもついてくる）、右に章を上から並べる */}
+      <div className="lg:flex lg:items-start lg:gap-4">
+      <aside className="mb-4 flex flex-col gap-3 lg:sticky lg:top-20 lg:mb-0 lg:max-h-[calc(100vh-5.5rem)] lg:w-72 lg:shrink-0 lg:overflow-y-auto lg:pb-2">
+        <PrepToc items={tocItems} progress={tocProgress} />
+
+        {/* ステータス（TODO一覧と同じ）・待っている書類・メモ */}
+        <div className="flex flex-col gap-2.5 rounded-2xl border border-border bg-surface p-3">
+          <p className="flex items-center gap-2 text-sm font-bold">
+            <span className="flex-1">ステータス</span>
+            {current != null && (
+              <Link
+                /* 同じタブで開く。別のタブだと戻る先が無く、「←」で行き来できなくなるため */
+                href={`${prepDetailHref(workerId)}/print?todo=${encodeURIComponent(current.todo_no)}`}
+                className="rounded-full bg-brand px-2.5 py-1 text-[10px] font-bold text-brand-foreground"
+              >
+                🖨 A4で印刷
+              </Link>
+            )}
+          </p>
       {/* 申請準備TODOのステータス（本人の名前の下に常時表示・編集可） */}
       <PrepTodoStatusField
         todo={currentTodo}
+        compact
+        beforeStatusChange={confirmBeforeStatus}
+        waitingSuggestion={waitingSuggestion}
         otherTodos={workerTodos.filter((t) => t.id !== currentTodo?.id)}
         listTodoNo={current?.todo_no ?? ""}
         options={todoOptions}
@@ -1300,6 +1512,22 @@ export function ApplicationPrepChecklist({
         />
       )}
 
+          {current != null && (
+            <dl className="grid grid-cols-[4.5rem_1fr] gap-x-2 gap-y-1 border-t border-border pt-2 text-[11px]">
+              <dt className="text-muted">担当者</dt>
+              <dd className="font-bold">{meta.tantou || "未定"}</dd>
+              <dt className="text-muted">申請予定</dt>
+              <dd className="font-bold">{current.planned_app_on || "未定"}</dd>
+              <dt className="text-muted">署名</dt>
+              <dd className="font-bold">{current.sign_status || "未選択"}</dd>
+            </dl>
+          )}
+        </div>
+      </aside>
+
+      <div className="flex min-w-0 flex-1 flex-col gap-4">
+      {/* 1. 基本情報・所属機関（TODO番号・連名・申請種別・所属機関・合格証・外国人の情報・保険） */}
+      <PrepSection id="prep-basic" title="基本情報・所属機関">
       {/* 現在の住所（未登録なら入力して保存できる） */}
       <PrepAddressField
         workerId={workerId}
@@ -1307,11 +1535,6 @@ export function ApplicationPrepChecklist({
         canEdit={canEdit}
         onSaved={(a) => setWorkerRow((w) => (w ? { ...w, address: a } : w))}
       />
-
-      {/* PC: TODO番号〜保険の選択までを左に、書類関係を右に表示して下にスクロールする */}
-      <div className="lg:grid lg:grid-cols-2 lg:items-start lg:gap-4">
-      {/* 左側は貼り付けたまま。中身が画面より長いときは、この列だけスクロールできるようにする */}
-      <div className="lg:sticky lg:top-0 lg:max-h-[calc(100vh-1rem)] lg:self-start lg:overflow-y-auto lg:pr-1">
 
       {/* TODO番号ごとの準備リスト切り替え */}
       <div className="mb-3 rounded-xl border border-border bg-background p-3">
@@ -1551,6 +1774,7 @@ export function ApplicationPrepChecklist({
 
         {/* 申請種別の下: 所属機関の情報（住所・電話・代表者・協力確認書・売上高・定期報告/賃金台帳） */}
         <PrepOrgInfo
+          key={`${prepOrgId ?? "none"}-${orgInfoKey}`}
           orgId={prepOrgId}
           canEdit={canEdit}
           workerId={workerId}
@@ -1733,16 +1957,33 @@ export function ApplicationPrepChecklist({
                 ["パスポート番号", workerRow.passport_no],
                 ["パスポート有効期限", workerRow.passport_expiry_date],
               ] as const
-            ).map(([label, value]) => (
-              <p key={label} className="text-[11px] leading-relaxed">
-                <span className="text-muted">{label}: </span>
-                {value ? (
-                  <span className="font-bold">{value}</span>
-                ) : (
-                  <span className="text-seal">未登録</span>
-                )}
-              </p>
-            ))}
+            ).map(([label, value]) => {
+              // 未登録の欄は、この場で入力して外国人詳細に保存できる（外国人詳細の列と1対1のものだけ）
+              const fill = WORKER_INFO_FILL[label];
+              if (!value && canEdit && fill) {
+                return (
+                  <WorkerInfoFillLine
+                    key={label}
+                    label={label}
+                    type={fill.type}
+                    onSave={async (v) => {
+                      await updateWorker(createClient(), workerId, { [fill.column]: v });
+                      setWorkerRow((w) => (w ? { ...w, [fill.column]: v } : w));
+                    }}
+                  />
+                );
+              }
+              return (
+                <p key={label} className="text-[11px] leading-relaxed">
+                  <span className="text-muted">{label}: </span>
+                  {value ? (
+                    <span className="font-bold">{value}</span>
+                  ) : (
+                    <span className="text-seal">未登録</span>
+                  )}
+                </p>
+              );
+            })}
             {/* 外国人詳細の登録内容から自動で作られる履歴書もここから確認できる */}
             <p className="border-t border-dashed border-border pt-1 text-[11px]">
               <Link
@@ -1791,44 +2032,54 @@ export function ApplicationPrepChecklist({
       </div>
       )}
 
-      {/* 左カラムここまで */}
-      </div>
+      </PrepSection>
 
-      {/* 右カラム: 必要書類などの書類関係の情報（下にスクロールして見ていく） */}
-      <div>
+      {/* 2. 前回の申請（1年以内）。必要な書類の前に置き、転用できるかを先に確かめる */}
+          {/* 前回の申請（1年以内）の申請日・申請番号。課税・納税証明書などの再提出を省くときに書く */}
+      <PrepSection id="prep-prior" title="前回の申請（1年以内）">
+          <div>
+            <PriorApplicationCard
+              workerId={workerId}
+              state={priorApp}
+              canEdit={canEdit}
+              prepOrganization={prepOrgId ? { id: prepOrgId, name: prepOrgName } : null}
+              organizations={organizations}
+              autoDocYears={prevListDocYears}
+            />
+          </div>
+      </PrepSection>
+
       {current == null ? (
         <p className="rounded-xl bg-background p-4 text-center text-xs text-muted">
           TODO番号を追加すると、そのTODOに対する準備リストが表示されます。
         </p>
       ) : (
         <>
+      {/* 3. 必要な書類（まだ揃っていない／申請後に郵送／揃った） */}
+      <PrepSection
+        id="prep-docs"
+        title="必要な書類の準備"
+        right={
+          meta.app_type ? (
+            <span className="text-xs text-muted">
+              {progress.done} / {progress.total} 件（{progress.percent}%）
+            </span>
+          ) : undefined
+        }
+      >
       {!meta.app_type ? (
         <p className="rounded-xl bg-background p-4 text-center text-xs text-muted">
           申請種別を選ぶと、必要書類のチェックリストが表示されます。
         </p>
       ) : (
         <>
-          {/* 不足サマリ */}
-          {missing.length === 0 ? (
+          {/* 全部揃ったときだけ知らせる（足りない書類は下の「まだ揃っていない」に並ぶ） */}
+          {missing.length === 0 && (
             <p className="mb-3 flex items-center gap-1.5 rounded-xl bg-status-approved-bg px-3 py-2.5 text-sm font-bold text-status-approved-fg">
               <CheckCircle2 size={15} />
               必要書類はすべて揃っています（100%・{progress.total}件）
             </p>
-          ) : (
-            <div className="mb-3 rounded-xl border border-seal/40 bg-seal/5 px-3 py-2.5">
-              <p className="mb-1 flex items-center gap-1.5 text-sm font-bold text-seal">
-                <TriangleAlert size={15} />
-                不足 {missing.length}件（{progress.percent}% 揃いました・{progress.done}/
-                {progress.total}件）
-              </p>
-              <ul className="list-disc space-y-0.5 pl-5 text-xs text-seal">
-                {missing.map((m) => (
-                  <li key={m.def.id}>{prepDocLabel(m.def, meta.target_reiwa, currentReiwa)}</li>
-                ))}
-              </ul>
-            </div>
           )}
-
           {/* 課税・納税証明書の「1月1日時点の住所」案内（郵送請求先の判断用） */}
           {meta.target_reiwa != null && (
             <div className="mb-3 rounded-xl border border-status-applied-fg/30 bg-status-applied-bg/40 px-3 py-2.5 text-xs text-status-applied-fg">
@@ -1843,103 +2094,99 @@ export function ApplicationPrepChecklist({
             </div>
           )}
 
-          {/* 前回の申請（1年以内）の申請日・申請番号。課税・納税証明書などの再提出を省くときに書く */}
-          <div className="mb-3">
-            <PriorApplicationCard
-              workerId={workerId}
-              state={priorApp}
-              canEdit={canEdit}
-              prepOrganization={prepOrgId ? { id: prepOrgId, name: prepOrgName } : null}
-              organizations={organizations}
-              autoDocYears={prevListDocYears}
-            />
-          </div>
+          {/* いま誰に何を頼んでいるか（押すとその人の分だけ表示） */}
+          {requesteeChips.length > 0 && (
+            <div className="mb-3">
+              <p className="mb-1.5 text-xs font-bold text-muted">いま誰に何を頼んでいるか（押すとその人の分だけ表示）</p>
+              <div className="flex flex-wrap gap-1.5">
+                {requesteeChips.map((c) => (
+                  <button
+                    key={c.who}
+                    type="button"
+                    aria-pressed={whoFilter === c.who}
+                    onClick={() => setWhoFilter((w) => (w === c.who ? null : c.who))}
+                    className={`flex min-h-[36px] items-center gap-1.5 rounded-full border py-1 pl-1 pr-3 text-xs ${
+                      whoFilter === c.who ? "border-brand bg-brand/10" : "border-border bg-surface"
+                    }`}
+                  >
+                    <RequesteeAvatar who={c.who} kind={c.kind} />
+                    <span className="font-bold">{c.who}</span>
+                    <span className="text-muted">{c.count}件</span>
+                  </button>
+                ))}
+                {whoFilter && (
+                  <button type="button" onClick={() => setWhoFilter(null)} className="px-2 text-xs font-bold text-brand underline">
+                    絞り込みを外す
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
-          {/* 書類一覧 */}
-          <div className="overflow-hidden rounded-xl border border-border">
-            {items.map((item) => {
-              const key = resolveDocKey(item.def);
-              const files = docFilesFor(item.def);
-              const isPhoto = item.def.source.kind === "photo";
-              // 在留カード・パスポートは別のセクション（在留カード・指定書／出入国の記録）で
-              // 管理しているファイルを、この行にも表示する
-              const isCard = item.def.source.kind === "residenceCardDoc";
-              const isPassport = item.def.source.kind === "passportFile";
-              const sharedFiles = isCard
-                ? cardDocs.map((d) => ({ id: d.id, name: d.fileName || "在留カード", url: d.url }))
-                : isPassport
-                  ? passportFiles.map((f) => ({ id: f.id, name: f.file_name, url: null }))
-                  : [];
-              const busyForRow = isPhoto
-                ? busyKey === "photo"
-                : isCard
-                  ? busyKey === CARD_BUSY_KEY
-                  : isPassport
-                    ? busyKey === PASSPORT_BUSY_KEY
-                    : busyKey != null && key != null && busyKey.startsWith(key);
-              return (
-                <DocRow
-                  key={item.def.id}
-                  item={item}
-                  meta={meta}
-                  workerId={workerId}
-                  files={files}
-                  sharedFiles={sharedFiles}
-                  onPreviewShared={(f) => {
-                    if (f.url) window.open(f.url, "_blank", "noopener");
-                    else void previewPassportFile(f.id);
-                  }}
-                  isPhoto={isPhoto}
-                  canEdit={canEdit}
-                  busy={busyForRow}
-                  ds={{ ...EMPTY_PREP_DOC_STATUS, ...(docStatuses[item.def.id] ?? {}) }}
-                  // 源泉徴収票と課税証明書は金額を突き合わせるので、相手の金額も渡す
-                  gensenKazei={
-                    item.def.id === "gensen" || item.def.id === "kazei"
-                      ? compareGensenKazei(
-                          docStatuses.kazei?.amount ?? "",
-                          docStatuses.gensen?.amount ?? "",
-                        )
-                      : null
-                  }
-                  custodyNo={custodyNo}
-                  mailingRecords={mailingRecords}
-                  todoNo={current?.todo_no ?? ""}
-                  healthOn={healthOn}
-                  plannedAppOn={current?.planned_app_on ?? null}
-                  onSaveHealthOn={saveHealthOn}
-                  onSavePlannedAppOn={(v) => void saveExtras({ planned_app_on: v })}
-                  onPatchStatus={(patch, save) => patchDocStatus(item.def.id, patch, save)}
-                  onAttach={() => startAttach(item.def)}
-                  onDropFiles={(files) => void dropAttach(item.def, files)}
-                  priorNote={priorNoteFor(item.def)}
-                  docYear={docYearOf(item.def)}
-                  otherYears={otherAttachedYears(item.def, docs, docYearOf(item.def)).map((y) => ({
-                    year: y,
-                    files: docs.filter(
-                      (d) => d.storage_path && item.def.source.kind === "docYear" && yearOfPrepDocKey(item.def.source.baseKey, d.doc_key) === y,
-                    ),
-                  }))}
-                  onUseYear={(y) => patchDocStatus(item.def.id, { use_reiwa: y })}
-                  onAddPage={() => startAttachPage(item.def, files)}
-                  onRemoveFile={(f) =>
-                    void removeDoc(
-                      f.doc_key,
-                      `${prepDocLabel(item.def, docYearOf(item.def), currentReiwa)}（${f.file_name}）`,
-                    )
-                  }
-                  onPreviewFile={(f) => void previewDoc(f.id)}
-                  onPreviewPhoto={() => void previewPhoto()}
-                  onDownloadFile={(f) => void downloadDoc(f.id)}
-                />
-              );
-            })}
-          </div>
+          {/* まだ揃っていない */}
+          <p className="mb-1.5 border-b-2 border-seal/20 pb-1 text-sm font-bold text-seal">
+            まだ揃っていない {missingItems.length}件
+          </p>
+          <p className="mb-2 rounded-lg border border-status-notice-fg/30 bg-status-notice-bg px-3 py-2 text-[11px] leading-relaxed">
+            申請までに揃わない書類は、各行の<span className="font-bold">「申請後に郵送」</span>にチェックすると、下の「申請後に郵送」に移ります。ステータスを「入管へ申請！！」にしたときの確認でも追加できます。
+          </p>
+          {shownMissing.length === 0 ? (
+            <p className="mb-3 rounded-xl bg-background p-3 text-center text-xs text-muted">
+              {whoFilter ? `${whoFilter}に頼んでいる書類はありません。` : "まだ揃っていない書類はありません。"}
+            </p>
+          ) : (
+            <div className="mb-3 overflow-hidden rounded-xl border border-border">
+              {shownMissing.map((item) => renderDocRow(item, "toggle"))}
+            </div>
+          )}
+
+          {/* 申請後に郵送（上でチェックしたもの。申請一覧の「申請後の郵送・タスク」にも出る） */}
+          {mailItems.length > 0 && (
+            <>
+              <p className="mb-1.5 flex flex-wrap items-center gap-2 border-b-2 border-status-notice-fg/30 pb-1 text-sm font-bold text-status-notice-fg">
+                <span className="flex-1">申請後に郵送 {mailItems.length}件</span>
+                <Link href="/applications" className="text-[11px] font-bold text-brand hover:underline">
+                  申請一覧の「申請後の郵送・タスク」で見る →
+                </Link>
+              </p>
+              <div className="mb-3 overflow-hidden rounded-xl border border-status-notice-fg/30">
+                {mailItems.map((item) => renderDocRow(item, "undo"))}
+              </div>
+            </>
+          )}
+
+          {/* 揃った（たたんでおく） */}
+          <details className="group">
+            <summary className="flex min-h-[40px] cursor-pointer items-center border-b-2 border-status-approved-fg/30 pb-1 text-sm font-bold text-status-approved-fg">
+              <span className="flex-1">揃った {doneItems.length}件</span>
+              <span className="text-xs text-brand group-open:hidden">開く ▾</span>
+              <span className="hidden text-xs text-brand group-open:inline">閉じる ▴</span>
+            </summary>
+            {doneItems.length > 0 && (
+              <div className="mt-2 overflow-hidden rounded-xl border border-border">
+                {doneItems.map((item) => renderDocRow(item, "none"))}
+              </div>
+            )}
+          </details>
         </>
       )}
+      </PrepSection>
 
-      {/* 必要な書類の下: 署名・賃金（1-6号別紙）・あっせん・日付計算 */}
-      <div className="mt-3 space-y-3">
+      {/* 4. 申請書類に貼る情報のコピー（80項目・今と同じ） */}
+      <PrepSection id="prep-copy">
+        {/* 申請書に貼る情報（外国人・所属機関・賃金・職歴・日付から自動で抽出してコピー） */}
+        <ApplicationCopyPanel
+          workerId={workerId}
+          orgId={prepOrgId}
+          todoNo={current.todo_no}
+          desiredStatus={desiredResidenceStatus(meta.app_content, meta.app_type, workerRow?.residence_status ?? "")}
+          canEdit={canEdit}
+        />
+      </PrepSection>
+
+      {/* 5. 署名・賃金（1-6号別紙）・雇用契約書 */}
+      <PrepSection id="prep-sign" title="署名・賃金・雇用契約書">
+        <div className="flex flex-col gap-3">
         {/* 本人から署名をもらったかどうかのステータス */}
         <PrepSignStatusField
           value={current.sign_status}
@@ -1958,6 +2205,20 @@ export function ApplicationPrepChecklist({
             <PrepEmploymentSection workerId={workerId} canEdit={canEdit} showWages={false} />
           </>
         )}
+        </div>
+      </PrepSection>
+
+      {/* 6. あっせん（必須） */}
+      <PrepSection
+        id="prep-assen"
+        title="あっせんについて"
+        tone={assenOk ? "normal" : "alert"}
+        right={
+          assenOk ? undefined : (
+            <span className="rounded-md bg-seal px-2 py-0.5 text-[11px] font-bold text-seal-foreground">必須</span>
+          )
+        }
+      >
         {/* あっせんの有無（申請準備のTODOと共有） */}
         <PrepAssenSection
           workerId={workerId}
@@ -1972,6 +2233,11 @@ export function ApplicationPrepChecklist({
           onError={setError}
           onChanged={loadWorkerTodos}
         />
+      </PrepSection>
+
+      {/* 7. 支援計画書の日付 */}
+      <PrepSection id="prep-dates" title="支援計画書の日付">
+        <div className="flex flex-col gap-3">
         {/* 支援計画書の日付計算ツール（求人日付のカレンダー表示付き）と保存済みの日付 */}
         <Link
           href={`/todos/plan-dates?workerId=${workerId}&name=${encodeURIComponent(
@@ -1988,17 +2254,27 @@ export function ApplicationPrepChecklist({
           workerName={workerRow?.name ?? ""}
           appContent={meta.app_content ?? ""}
         />
-        {/* 申請書に貼る情報（外国人・所属機関・賃金・職歴・日付から自動で抽出してコピー） */}
-        <ApplicationCopyPanel
-          workerId={workerId}
-          orgId={prepOrgId}
-          todoNo={current.todo_no}
-          desiredStatus={desiredResidenceStatus(meta.app_content, meta.app_type, workerRow?.residence_status ?? "")}
-          canEdit={canEdit}
-        />
-        {/* 申請書に貼る情報の下: 職業紹介事業者の情報 → 支援している人数 → 支援責任者・支援担当者の名簿（A4印刷） → 農業特定技能加入通知書 */}
-        <PrepSupportOrgSection orgId={prepOrgId} />
+        </div>
+      </PrepSection>
 
+      {/* 8. １－１７号の特定技能外国人支援計画書に記載する項目 */}
+      <PrepSection id="prep-plan" title="１－１７号の特定技能外国人支援計画書に記載する項目">
+        <Prep117Section
+          orgId={prepOrgId}
+          workerIds={[workerId, ...(current.joint_worker_id ? [current.joint_worker_id] : [])]}
+        />
+      </PrepSection>
+
+      {/* 9. 農業の会社だけ: 所属機関の農業特定技能加入通知書 */}
+      {prepOrgAgri && prepOrgId && (
+        <PrepSection id="prep-farm" title="所属機関の農業特定技能加入通知書">
+          <PrepAgriNoticeSection orgId={prepOrgId} canEdit={canEdit} onChanged={() => setOrgInfoKey((k) => k + 1)} />
+        </PrepSection>
+      )}
+
+      {/* 10. 入管へ出す完成した書類・申請後の郵送 */}
+      <PrepSection id="prep-submit" title="入管へ出す完成した書類・申請後の郵送">
+        <div className="flex flex-col gap-3">
         {/* 申請する書類（最後に添付する、入管へ提出する完成した書類一式） */}
         <FileDropArea
           onFiles={(list) => void dropApplyDocs(list)}
@@ -2095,8 +2371,7 @@ export function ApplicationPrepChecklist({
           onSaveMailings={(post_apply_mailings) => void saveExtras({ post_apply_mailings })}
           onSaveTasks={(post_apply_tasks) => void saveExtras({ post_apply_tasks })}
         />
-      </div>
-
+        </div>
       {canEdit && (
         <div className="mt-3 flex flex-wrap items-center gap-4">
           <button
@@ -2116,12 +2391,24 @@ export function ApplicationPrepChecklist({
           </button>
         </div>
       )}
+      </PrepSection>
         </>
       )}
+      </div>
+      </div>
 
-      {/* 右カラム・PC2カラムのグリッドここまで */}
-      </div>
-      </div>
+      {/* ステータスを「入管へ申請！！」にしたときの確認（足りない書類を申請後に郵送するリストへ） */}
+      <PrepApplyConfirmDialog
+        open={applyConfirm != null}
+        missing={applyConfirm?.missing ?? []}
+        mailList={applyConfirm?.mailList ?? []}
+        assenMissing={applyConfirm?.assenMissing ?? false}
+        onCancel={() => closeApplyConfirm(false)}
+        onConfirm={async (ids) => {
+          for (const id of ids) patchDocStatus(id, { mail_after_apply: true }, true);
+          closeApplyConfirm(true);
+        }}
+      />
 
       {/* 書類（画像・PDF）用の隠しファイル入力 */}
       <input
@@ -2146,7 +2433,7 @@ export function ApplicationPrepChecklist({
           e.target.value = "";
         }}
       />
-    </Card>
+    </div>
   );
 }
 
@@ -2210,8 +2497,14 @@ function DocRow({
   docYear = null,
   otherYears = [],
   onUseYear,
+  requestee = null,
+  mailMode = "none",
 }: {
   item: PrepDocStatus;
+  // 誰に・いつ（依頼先と依頼日からの日数）。読み取れないときは null
+  requestee?: { who: string; kind: PrepRequesteeKind; days: number | null } | null;
+  // 申請後に郵送: toggle=チェックで郵送リストへ / undo=郵送リストから取り消すだけ / none=出さない
+  mailMode?: "toggle" | "undo" | "none";
   priorNote?: string; // 前回の申請（1年以内）で提出済みなら、その申請日・申請番号の案内
   docYear?: number | null; // 年度付きの書類で実際に使う年度（別の年度で対応しているときはその年度）
   otherYears?: { year: number; files: OnboardingDocumentRow[] }[]; // 対象年度以外で添付されている年度とそのファイル
@@ -2308,6 +2601,24 @@ function DocRow({
               </span>
             )}
           </span>
+          {/* 誰に・いつ（発行依頼中なら依頼先、本人に依頼中なら本人、郵送請求中なら郵送請求） */}
+          {requestee && (
+            <span className="mt-1 flex items-center gap-1.5">
+              <RequesteeAvatar who={requestee.who} kind={requestee.kind} />
+              <span className="flex flex-col leading-tight">
+                <span className="text-xs font-bold">
+                  {requestee.kind === "mail" ? requestee.who : `${requestee.who}に依頼`}
+                </span>
+                <span
+                  className={`text-[11px] ${
+                    requestee.days != null && requestee.days >= REQUEST_OVERDUE_DAYS ? "font-bold text-seal" : "text-muted"
+                  }`}
+                >
+                  {requestee.days != null ? `依頼から${requestee.days}日` : "依頼日 未入力"}
+                </span>
+              </span>
+            </span>
+          )}
           {def.note && <span className="mt-0.5 block text-[11px] text-muted">※ {def.note}</span>}
           {priorNote && (
             <span className="mt-0.5 block text-[11px] font-bold text-status-applied-fg">{priorNote}</span>
@@ -2353,6 +2664,28 @@ function DocRow({
           )}
         </span>
 
+        {/* 申請後に郵送（まだ揃っていない書類はチェックで郵送リストへ。郵送リストの書類は取り消しだけ） */}
+        {canEdit && mailMode === "toggle" && !PREP_MAIL_AFTER_HIDDEN.has(def.id) && (
+          <label className="flex shrink-0 flex-col items-center gap-0.5 text-[10px] font-bold text-status-notice-fg">
+            <input
+              type="checkbox"
+              checked={ds.mail_after_apply}
+              onChange={(e) => onPatchStatus({ mail_after_apply: e.target.checked })}
+              aria-label={`${label}を申請後に郵送する`}
+              className="h-5 w-5"
+            />
+            申請後に郵送
+          </label>
+        )}
+        {canEdit && mailMode === "undo" && (
+          <button
+            type="button"
+            onClick={() => onPatchStatus({ mail_after_apply: false })}
+            className="shrink-0 text-[11px] font-bold text-brand underline"
+          >
+            郵送をやめる
+          </button>
+        )}
         {/* 添付・操作 */}
         <div className="flex shrink-0 items-center gap-1">
           {busy ? (
@@ -2616,17 +2949,6 @@ function DocRow({
                 );
               })}
             </div>
-          )}
-          {canEdit && !PREP_MAIL_AFTER_HIDDEN.has(def.id) && (
-            <label className="flex items-center gap-1.5 text-[11px]">
-              <input
-                type="checkbox"
-                checked={ds.mail_after_apply}
-                onChange={(e) => onPatchStatus({ mail_after_apply: e.target.checked })}
-                className="h-3.5 w-3.5"
-              />
-              申請後に発行され次第、入管へ郵送する（申請詳細にアラート表示・郵送したらチェックを外す）
-            </label>
           )}
         </div>
       )}
@@ -2967,6 +3289,62 @@ function MailingStatusField({
         <ExternalLink size={11} />
         郵送請求ツールで請求状況を確認する
       </Link>
+    </div>
+  );
+}
+
+// 外国人の情報で、未登録ならこの場で入力できる欄（表示名 → workers の列）
+const WORKER_INFO_FILL: Record<string, { column: string; type: "text" | "date" }> = {
+  生年月日: { column: "birth", type: "date" },
+  国籍: { column: "nationality", type: "text" },
+  本国における居住地: { column: "home_address", type: "text" },
+  在留カード番号: { column: "residence_card_no", type: "text" },
+  在留期限: { column: "residence_expiry_date", type: "date" },
+  パスポート番号: { column: "passport_no", type: "text" },
+  パスポート有効期限: { column: "passport_expiry_date", type: "date" },
+};
+
+// 未登録の欄を入力して保存する1行（外国人詳細にも反映される）
+function WorkerInfoFillLine({
+  label,
+  type,
+  onSave,
+}: {
+  label: string;
+  type: "text" | "date";
+  onSave: (value: string) => Promise<void>;
+}) {
+  const [value, setValue] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-seal/40 bg-seal/5 px-2 py-1 text-[11px]">
+      <span className="shrink-0 font-bold text-seal">{label}（未登録）</span>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        aria-label={label}
+        placeholder="ここに入力"
+        className="min-h-[32px] min-w-[10rem] flex-1 rounded-lg border border-border bg-background px-2 text-xs focus:border-brand focus:outline-none"
+      />
+      {value.trim() && (
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => {
+            setSaving(true);
+            setError(null);
+            onSave(value.trim())
+              .catch((err) => setError(dbErrorMessage(err, "0001_init.sql", "保存に失敗しました")))
+              .finally(() => setSaving(false));
+          }}
+          className="shrink-0 rounded-lg bg-brand px-3 py-1.5 text-[11px] font-bold text-brand-foreground disabled:opacity-50"
+        >
+          {saving ? "保存中…" : "保存"}
+        </button>
+      )}
+      {error && <span className="text-seal">{error}</span>}
     </div>
   );
 }
