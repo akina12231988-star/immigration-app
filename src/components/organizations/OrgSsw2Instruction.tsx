@@ -14,15 +14,17 @@ import {
 import { updateOrganizationSsw2Duties } from "@/lib/supabase/queries/organizations";
 import { SSW2_PLEDGE_GUIDE_HREF } from "@/lib/ssw2-pledge-guide";
 import {
+  isSsw2Applicant,
   isSsw2Holder,
   orgSsw2Field,
   requiredInstructeeCount,
-  SSW2_PREP_SITUATION,
+  ssw2ApplicantOrgId,
   ssw2Capacity,
   type InstructeeCandidateWorker,
   type Ssw2Applicant,
 } from "@/lib/ssw2-instructees";
 import {
+  fetchSsw2PrepWorkerIds,
   listSsw2InstructionLinks,
   type Ssw2InstructionLink,
 } from "@/lib/supabase/queries/ssw2-instructees";
@@ -64,6 +66,8 @@ export function OrgSsw2Instruction({
 
   const [workers, setWorkers] = useState<InstructeeCandidateWorker[]>([]);
   const [links, setLinks] = useState<Ssw2InstructionLink[]>([]);
+  // 申請種別が「特定技能2号申請準備中」の申請準備がある人（申請準備の画面と同じ判定に使う）
+  const [ssw2PrepIds, setSsw2PrepIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
 
@@ -72,15 +76,17 @@ export function OrgSsw2Instruction({
     const supabase = createClient();
     Promise.all([
       listSsw2InstructionLinks(supabase),
+      fetchSsw2PrepWorkerIds(supabase),
       supabase
         .from("workers")
         .select(
-          "id, name, status, field, residence_status, residence_card_no, current_situation, current_organization_id",
+          "id, name, status, field, residence_status, residence_card_no, current_situation, current_organization_id, application_prep_organization_id",
         ),
     ])
-      .then(([linkRows, res]) => {
+      .then(([linkRows, prepIds, res]) => {
         if (cancelled) return;
         setLinks(linkRows);
+        setSsw2PrepIds(prepIds);
         setWorkers((res.data as InstructeeCandidateWorker[] | null) ?? []);
         setLoaded(true);
       })
@@ -100,13 +106,17 @@ export function OrgSsw2Instruction({
   );
   const field = orgSsw2Field(members);
 
-  // いま2号の準備をしている人（この機関の在籍者）
-  const applicants: Ssw2Applicant[] = members
-    .filter(
-      (w) =>
-        w.current_situation === SSW2_PREP_SITUATION ||
-        links.some((l) => l.applicantId === w.id),
-    )
+  // いま2号の準備をしている人（申請準備の画面と同じ判定）。
+  //  ・申請種別が２号の申請準備がある／只今の状況が２号の申請準備中／対象者を登録している
+  //  ・許可が出て、在留資格がすでに特定技能2号になった人は外す
+  const linkApplicantIds = new Set(links.map((l) => l.applicantId));
+  const allApplicants = workers.filter((w) =>
+    isSsw2Applicant(w, { ssw2PrepIds, linkApplicantIds }),
+  );
+  const allApplicantIds = new Set(allApplicants.map((w) => w.id));
+  // この機関で申請する人。申請準備の所属機関（転職先）があればそちらで数える
+  const applicants: Ssw2Applicant[] = allApplicants
+    .filter((w) => ssw2ApplicantOrgId(w) === organizationId)
     .map((w) => ({
       workerId: w.id,
       name: w.name,
@@ -118,12 +128,17 @@ export function OrgSsw2Instruction({
   const takenBy = new Map<string, string>();
   for (const l of links) if (l.targetWorkerId) takenBy.set(l.targetWorkerId, l.applicantName);
 
-  const applicantIds = new Set(applicants.map((a) => a.workerId));
-  // まだ誰の対象者にもなっていない、この機関の在籍者（2号申請者本人は数えない）
+  // まだ誰の対象者にもなっていない、この機関の在籍者。
+  // 2号の申請準備をしている人（ほかの機関へ転職して申請する人も）と、
   // すでに特定技能2号の人は指導する側なので、対象者の候補には数えない
   const freeMembers = members.filter(
-    (w) => !takenBy.has(w.id) && !applicantIds.has(w.id) && !isSsw2Holder(w.residence_status),
+    (w) => !takenBy.has(w.id) && !allApplicantIds.has(w.id) && !isSsw2Holder(w.residence_status),
   );
+  const workerById = new Map(workers.map((w) => [w.id, w]));
+  const orgIdOf = (id: string) => {
+    const w = workerById.get(id);
+    return w ? ssw2ApplicantOrgId(w) : null;
+  };
 
   const cap = ssw2Capacity({ field, applicants, free: freeMembers.length });
 
@@ -314,6 +329,8 @@ export function OrgSsw2Instruction({
                   <span className="ml-1.5 font-normal text-muted">
                     {a.field || field}
                     {need > 0 ? `・${need}名以上必要` : "・人数の決まりなし"}
+                    {workerById.get(a.workerId)?.current_organization_id !== organizationId &&
+                      "・この機関へ転職して申請"}
                   </span>
                 </p>
                 {mine.length === 0 ? (
@@ -346,7 +363,9 @@ export function OrgSsw2Instruction({
         <ul className="flex flex-col gap-1">
           {members.map((w) => {
             const by = takenBy.get(w.id);
-            const isApplicant = applicantIds.has(w.id);
+            const isApplicant = allApplicantIds.has(w.id);
+            // ほかの所属機関（転職先）で２号を申請する人
+            const elsewhere = isApplicant && orgIdOf(w.id) !== organizationId;
             return (
               <li key={w.id} className="flex flex-wrap items-center gap-1.5 text-[11px]">
                 <Link href={`/workers/${w.id}`} className="font-bold text-brand underline">
@@ -354,7 +373,11 @@ export function OrgSsw2Instruction({
                 </Link>
                 {isApplicant ? (
                   <span className="rounded border border-brand/40 bg-brand/10 px-1.5 py-0.5 font-bold text-brand">
-                    ２号の申請準備中
+                    {elsewhere ? "２号の申請準備中（転職先で申請）" : "２号の申請準備中"}
+                  </span>
+                ) : isSsw2Holder(w.residence_status) ? (
+                  <span className="rounded border border-border px-1.5 py-0.5 text-muted">
+                    特定技能２号（指導する側）
                   </span>
                 ) : by ? (
                   <span className="rounded border border-seal/40 bg-seal/10 px-1.5 py-0.5 font-bold text-seal">

@@ -84,6 +84,7 @@ export interface InstructeeCandidateWorker {
   residence_card_no?: string;
   current_situation?: string;
   current_organization_id?: string | null;
+  application_prep_organization_id?: string | null; // 申請準備の所属機関（転職先）
 }
 
 export interface InstructeeCandidate {
@@ -105,8 +106,38 @@ export function isSsw2Holder(residenceStatus: string | null | undefined): boolea
   return s.includes("特定技能2号");
 }
 
+// ---- 「いま2号の申請準備をしている人」の判定（申請準備・所属機関の画面で共通） ----
+
+// 2号の申請準備中か。次のどれかに当てはまり、まだ2号を持っておらず、退職していない人。
+//  ・申請準備の申請種別（app_content）が「特定技能2号申請準備中」のリストがある（ssw2PrepIds）
+//  ・只今の状況（current_situation）が「特定技能2号申請準備中」
+//    （申請準備を開くと申請種別に引き当てて保存されるが、まだ開いていない人の分）
+//  ・すでに指導を受ける対象者を登録している（linkApplicantIds）
+// 許可が出て在留資格が特定技能2号になった人は、準備中から外す（指導する側になる）
+export function isSsw2Applicant(
+  w: Pick<InstructeeCandidateWorker, "id" | "status" | "residence_status" | "current_situation">,
+  opts: { ssw2PrepIds: Set<string>; linkApplicantIds?: Set<string> },
+): boolean {
+  if (w.status === "退職") return false;
+  if (isSsw2Holder(w.residence_status)) return false;
+  return (
+    opts.ssw2PrepIds.has(w.id) ||
+    w.current_situation === SSW2_PREP_SITUATION ||
+    (opts.linkApplicantIds?.has(w.id) ?? false)
+  );
+}
+
+// 2号の申請先になる所属機関。申請準備で選んだ所属機関（転職先）があればそれ、無ければ現在の所属機関。
+// 申請準備の画面（指導を受ける対象者の候補）と同じ決め方にする
+export function ssw2ApplicantOrgId(
+  w: Pick<InstructeeCandidateWorker, "current_organization_id" | "application_prep_organization_id">,
+): string | null {
+  return w.application_prep_organization_id || w.current_organization_id || null;
+}
+
 // 対象者に選べる人の候補。
 //  ・本人（2号を申請する人）と退職した人は除く
+//  ・ほかに2号の申請準備をしている人は除く（その人も指導する側になるため）
 //  ・同じ所属機関の人だけ（様式の留意事項3: 同一の事業所に出勤する者に限る）。
 //    ほかの機関の人・日本人は、画面で氏名を直接入力する
 //  ・すでに特定技能2号を持っている人は除く（指導する側なので対象者にならない）
@@ -118,13 +149,19 @@ export function instructeeCandidates(
     selfWorkerId: string;
     organizationId: string | null | undefined;
     takenBy: Map<string, string>;
+    // 申請種別が「特定技能2号申請準備中」の申請準備がある人（ほかの2号申請者を候補から外すのに使う）
+    ssw2PrepIds?: Set<string>;
+    // すでに対象者を登録している2号申請者
+    linkApplicantIds?: Set<string>;
   },
 ): InstructeeCandidate[] {
   const { selfWorkerId, organizationId, takenBy } = opts;
+  const ssw2PrepIds = opts.ssw2PrepIds ?? new Set<string>();
   return workers
     .filter((w) => w.id !== selfWorkerId)
     .filter((w) => w.status !== "退職")
     .filter((w) => !isSsw2Holder(w.residence_status))
+    .filter((w) => !isSsw2Applicant(w, { ssw2PrepIds, linkApplicantIds: opts.linkApplicantIds }))
     // 所属機関が分かっているときは、その機関に在籍している人だけ
     .filter((w) => !organizationId || w.current_organization_id === organizationId)
     .map((w) => ({

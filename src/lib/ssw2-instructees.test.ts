@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   candidateNote,
   instructeeCandidates,
+  isSsw2Applicant,
   isSsw2Holder,
   instructeeMissingFields,
+  ssw2ApplicantOrgId,
   orgSsw2Field,
   ssw2Capacity,
   instructeeShortage,
@@ -143,6 +145,21 @@ describe("instructeeCandidates", () => {
     expect(list.find((c) => c.id === "b")?.takenBy).toBeNull();
   });
 
+  it("ほかに2号の申請準備をしている人は出さない（申請種別・只今の状況・対象者の登録のどれでも）", () => {
+    const more = [
+      ...workers,
+      { id: "f", name: "かとう", status: "在籍中", current_organization_id: "org1" },
+      { id: "g", name: "きむら", status: "在籍中", current_situation: SSW2_PREP_SITUATION, current_organization_id: "org1" },
+      { id: "h", name: "くどう", status: "在籍中", current_organization_id: "org1" },
+    ];
+    const list = instructeeCandidates(more, {
+      ...opts,
+      ssw2PrepIds: new Set(["f"]),
+      linkApplicantIds: new Set(["h"]),
+    });
+    expect(list.map((c) => c.id)).toEqual(["a", "b"]);
+  });
+
   it("所属機関が分からないときは会社で絞らない", () => {
     const list = instructeeCandidates(workers, { ...opts, organizationId: null });
     expect(list.map((c) => c.id)).toEqual(["a", "b", "d"]);
@@ -253,5 +270,47 @@ describe("ssw2Capacity", () => {
     });
     expect(cap.shortage).toBe(1);
     expect(cap.more).toBe(2); // (5 - 1) ÷ 2 = 2名
+  });
+});
+
+describe("isSsw2Applicant", () => {
+  const w = { id: "w", status: "在籍中", residence_status: "特定技能1号", current_situation: "" };
+  const none = { ssw2PrepIds: new Set<string>() };
+
+  it("申請種別が２号の申請準備があれば、只今の状況が空でも申請者", () => {
+    expect(isSsw2Applicant(w, { ssw2PrepIds: new Set(["w"]) })).toBe(true);
+  });
+
+  it("只今の状況が２号の申請準備中なら申請者", () => {
+    expect(isSsw2Applicant({ ...w, current_situation: SSW2_PREP_SITUATION }, none)).toBe(true);
+  });
+
+  it("対象者を登録していれば申請者", () => {
+    expect(isSsw2Applicant(w, { ...none, linkApplicantIds: new Set(["w"]) })).toBe(true);
+  });
+
+  it("どれにも当てはまらなければ申請者ではない", () => {
+    expect(isSsw2Applicant(w, none)).toBe(false);
+  });
+
+  it("許可が出て特定技能2号になった人・退職した人は外す", () => {
+    const prep = { ssw2PrepIds: new Set(["w"]) };
+    expect(isSsw2Applicant({ ...w, residence_status: "特定技能２号" }, prep)).toBe(false);
+    expect(isSsw2Applicant({ ...w, status: "退職" }, prep)).toBe(false);
+  });
+});
+
+describe("ssw2ApplicantOrgId", () => {
+  it("申請準備の所属機関（転職先）があればそちら", () => {
+    expect(
+      ssw2ApplicantOrgId({ current_organization_id: "org1", application_prep_organization_id: "org2" }),
+    ).toBe("org2");
+  });
+
+  it("無ければ現在の所属機関", () => {
+    expect(ssw2ApplicantOrgId({ current_organization_id: "org1", application_prep_organization_id: null })).toBe(
+      "org1",
+    );
+    expect(ssw2ApplicantOrgId({})).toBeNull();
   });
 });

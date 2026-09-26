@@ -23,8 +23,9 @@ import {
 } from "@/lib/ssw2-instructees";
 import {
   deleteSsw2Instructee,
-  fetchTakenInstructees,
+  fetchSsw2PrepWorkerIds,
   insertSsw2Instructee,
+  listSsw2InstructionLinks,
   listSsw2Instructees,
   updateSsw2Instructee,
 } from "@/lib/supabase/queries/ssw2-instructees";
@@ -64,11 +65,13 @@ export function Ssw2Instructees({
     const supabase = createClient();
     Promise.all([
       listSsw2Instructees(supabase, workerId),
-      fetchTakenInstructees(supabase, workerId),
+      listSsw2InstructionLinks(supabase),
+      // ほかに2号の申請準備をしている人は候補から外す（所属機関の画面と同じ判定）
+      fetchSsw2PrepWorkerIds(supabase),
       supabase
         .from("workers")
         .select(
-          "id, name, status, residence_status, residence_card_no, current_organization_id",
+          "id, name, status, residence_status, residence_card_no, current_situation, current_organization_id",
         ),
       // 0123 が未適用でも（列が無くても）空で続ける
       organizationId
@@ -80,15 +83,22 @@ export function Ssw2Instructees({
             .then(({ data }) => ssw2DutiesOf(data as { ssw2_duties?: unknown } | null))
         : Promise.resolve(EMPTY_SSW2_DUTIES),
     ])
-      .then(([list, taken, res, org]) => {
+      .then(([list, links, ssw2PrepIds, res, org]) => {
         if (cancelled) return;
         setRows(list);
         setOrgDuties(org);
+        // すでにほかの2号申請者の対象者になっている人（様式の留意事項4）
+        const taken = new Map<string, string>();
+        for (const l of links) {
+          if (l.applicantId !== workerId && l.targetWorkerId) taken.set(l.targetWorkerId, l.applicantName);
+        }
         setCandidates(
           instructeeCandidates(((res.data as InstructeeCandidateWorker[] | null) ?? []), {
             selfWorkerId: workerId,
             organizationId,
             takenBy: taken,
+            ssw2PrepIds,
+            linkApplicantIds: new Set(links.map((l) => l.applicantId)),
           }),
         );
       })
@@ -196,7 +206,7 @@ export function Ssw2Instructees({
       <p className="mb-2 text-[11px] leading-relaxed text-muted">
         {workerName}さんが指導する相手を選びます。候補に出るのは
         <span className="font-bold">同じ所属機関に在籍している外国人</span>だけです
-        （すでに特定技能２号を持っている方は、指導する側なので出ません）。
+        （すでに特定技能２号を持っている方と、ほかに２号の申請準備をしている方は、指導する側なので出ません）。
         日本人従業員や、ほかの所属機関の方は「選ばない」にして氏名を直接入力してください。
         対象者は同じ事業所に出勤し、原則同じ部署でフルタイムで働いている人に限ります。
         <span className="font-bold">
@@ -258,6 +268,12 @@ export function Ssw2Instructees({
                     className={INPUT}
                   >
                     <option value="">選ばない（氏名を直接入力する）</option>
+                    {/* 選んだあとで候補から外れた人（2号になった・ほかの所属機関に移った など）も、選んだまま見えるようにする */}
+                    {row.target_worker_id && !candidates.some((c) => c.id === row.target_worker_id) && (
+                      <option value={row.target_worker_id}>
+                        {row.name || "（氏名未入力）"}（いまは候補の条件から外れています）
+                      </option>
+                    )}
                     {candidates.map((c) => (
                       <option
                         key={c.id}
