@@ -1,13 +1,12 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Check, Mail, TriangleAlert } from "lucide-react";
+import { Mail, TriangleAlert } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import type { PrepDetailSectionId, PrepRequesteeKind } from "@/lib/prep-detail";
 
 // 申請準備の詳細ページ（案B）の部品。
 //  ・PrepSection: 右に並べる章（目次から飛べるよう id を付ける）
-//  ・PrepToc: 左の目次（済んだ章は ✓、足りない章は ! と件数）
 //  ・PrepApplyConfirmDialog: ステータスを「入管へ申請！！」にしたときの確認
 
 export function PrepSection({
@@ -39,60 +38,6 @@ export function PrepSection({
       )}
       {children}
     </section>
-  );
-}
-
-export interface PrepTocItem {
-  id: PrepDetailSectionId;
-  label: string;
-  state: "ok" | "ng" | "none"; // ok: 済み / ng: 足りない・未選択 / none: 判定しない
-  badge?: string; // 「不足7」「必須」など
-}
-
-export function PrepToc({ items, progress }: { items: PrepTocItem[]; progress?: { done: number; total: number } }) {
-  return (
-    <nav aria-label="申請準備の目次" className="rounded-2xl border border-border bg-surface p-3">
-      {progress && progress.total > 0 && (
-        <div className="mb-2 border-b border-border px-1 pb-2.5">
-          <p className="mb-1 flex justify-between text-[11px]">
-            <span className="text-muted">全体の進み</span>
-            <span className="font-bold">
-              {progress.done} / {progress.total}
-            </span>
-          </p>
-          <div className="h-2 rounded-full bg-background">
-            <div
-              className="h-2 rounded-full bg-brand"
-              style={{ width: `${Math.round((progress.done / progress.total) * 100)}%` }}
-            />
-          </div>
-        </div>
-      )}
-      <ul className="flex flex-col">
-        {items.map((it) => (
-          <li key={it.id}>
-            <a
-              href={`#${it.id}`}
-              className="flex min-h-[40px] items-center gap-2 rounded-lg px-1.5 text-[13px] hover:bg-background"
-            >
-              {it.state === "ok" ? (
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-status-approved-fg text-surface">
-                  <Check size={12} strokeWidth={3} />
-                </span>
-              ) : it.state === "ng" ? (
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-seal text-[11px] font-bold text-seal">
-                  !
-                </span>
-              ) : (
-                <span className="h-5 w-5 shrink-0 rounded-full border-2 border-border" />
-              )}
-              <span className="min-w-0 flex-1">{it.label}</span>
-              {it.badge && <span className="shrink-0 text-[11px] font-bold text-seal">{it.badge}</span>}
-            </a>
-          </li>
-        ))}
-      </ul>
-    </nav>
   );
 }
 
