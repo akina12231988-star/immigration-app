@@ -91,6 +91,7 @@ export interface SswCertRow {
   file_name: string;
   mime_type: string;
   kind?: string; // 被保険者証 / 解約金（0147。未適用の環境では undefined ＝ 被保険者証）
+  invoice_url?: string; // 請求書のリンク先（0170。未適用の環境では undefined）
   created_at: string;
 }
 
@@ -111,7 +112,17 @@ export async function listSswCerts(
     .select("id, worker_id, cert_no, expiry_date, file_name, mime_type, kind, created_at")
     .eq("worker_id", workerId)
     .order("created_at", { ascending: false });
-  if (!withKind.error) return (withKind.data as SswCertRow[]) ?? [];
+  if (!withKind.error) {
+    // 請求書のリンク先（0170）。未適用の環境では読めないので、読めたときだけ足す
+    const links = await supabase
+      .from("worker_ssw_insurance_certs")
+      .select("id, invoice_url")
+      .eq("worker_id", workerId);
+    const byId = new Map(
+      ((links.error ? [] : links.data) as { id: string; invoice_url: string }[] | null ?? []).map((r) => [r.id, r.invoice_url]),
+    );
+    return ((withKind.data as SswCertRow[]) ?? []).map((r) => ({ ...r, invoice_url: byId.get(r.id) ?? "" }));
+  }
   const { data, error } = await supabase
     .from("worker_ssw_insurance_certs")
     .select("id, worker_id, cert_no, expiry_date, file_name, mime_type, created_at")
