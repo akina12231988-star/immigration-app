@@ -23,6 +23,15 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-09-27",
+    title: "特定技能総合保険で、外国人の氏名をコピーできるようにしました",
+    where: "TODO ＞ 特定技能総合保険",
+    href: "/todos/ssw-insurance",
+    items: [
+      "各カードの氏名の横にコピーボタンを付けました。押すと氏名（例: HOANG THI MUI）がコピーされ、申込画面などにそのまま貼れます。",
+    ],
+  },
+  {
+    date: "2026-09-27",
     title: "所属機関の詳細をタブで分けて見やすくしました",
     where: "所属機関の情報 ＞ 会社を開く",
     href: "/organizations",
