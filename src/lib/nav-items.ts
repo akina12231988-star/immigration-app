@@ -129,6 +129,18 @@ export const NAV_ITEMS: NavItem[] = NAV_ENTRIES.flatMap((e) =>
   isNavGroup(e) ? e.children : [e],
 );
 
+// スマホの下部タブの1行目に出す項目（この順番）。残りは「その他」を開くと元の並びで出る
+export const MOBILE_PRIMARY_HREFS = ["/", "/workers", "/organizations", "/applications", "/notices/search"];
+
+// スマホの下部タブの並び: 1行目（MOBILE_PRIMARY_HREFS の順）と、「その他」に入れる残り
+export function mobileNavItems(items: NavItem[] = NAV_ITEMS): { primary: NavItem[]; rest: NavItem[] } {
+  const primary = MOBILE_PRIMARY_HREFS.map((h) => items.find((i) => i.href === h)).filter(
+    (i): i is NavItem => !!i,
+  );
+  const rest = items.filter((i) => !MOBILE_PRIMARY_HREFS.includes(i.href));
+  return { primary, rest };
+}
+
 // 現在パスがナビ項目にマッチするか（ホームは完全一致、他は前方一致）
 export function isActive(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";
