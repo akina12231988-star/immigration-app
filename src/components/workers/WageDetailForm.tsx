@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Copy, Plus, Trash2 } from "lucide-react";
+import { useMemo } from "react";
+import { Plus, Trash2 } from "lucide-react";
+import { CopyButton } from "@/components/ui/CopyButton";
 import { formatAmountInput } from "@/lib/amount-format";
 import { applyOrgCosts, matchesOrgCosts, type OrgCosts } from "@/lib/wage-org-costs";
 import {
@@ -17,7 +18,6 @@ import {
   formatYen,
   lodgingNoteTemplate,
   lodgingPerPerson,
-  wageDetailFormText,
 } from "@/lib/wage-calc";
 import {
   WAGE_AGE_BANDS,
@@ -71,28 +71,12 @@ export function WageDetailForm({
   orgInfo?: WageOrgInfo; // 所属機関の給与支払い方法・労働時間・保険適用の参考表示
   readOnly?: boolean;
 }) {
-  const [copied, setCopied] = useState(false);
   const set = (patch: Partial<WageDetail>) => onChange({ ...detail, ...patch });
 
   const result = useMemo(
     () => calcWageDetail(wage, detail, fallbackAnnualHours),
     [wage, detail, fallbackAnnualHours],
   );
-
-  const formText = useMemo(
-    () => wageDetailFormText(wage, detail, result),
-    [wage, detail, result],
-  );
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(formText);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setCopied(false);
-    }
-  };
 
   // 社宅を選ぶと、家賃（1人あたりで登録）を居住費として入れ、算定方法の文も作る
   const selectLodging = (id: string) => {
@@ -744,16 +728,8 @@ export function WageDetailForm({
       </label>
 
       {/* 正式な書類（参考様式第1-6号 別紙1「賃金の支払」）と同じ並びで計算結果を表示する */}
+      {/* 各項目の金額の横のボタンで、数字だけ（例: 177,848）をコピーできる */}
       <WageFormPreview wage={wage} detail={detail} result={result} />
-
-      <button
-        type="button"
-        onClick={() => void copy()}
-        className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 font-bold"
-      >
-        <Copy size={13} />
-        {copied ? "コピーしました" : "様式用テキストをコピー"}
-      </button>
     </div>
   );
 }
@@ -770,13 +746,24 @@ function WageFormPreview({
   result: ReturnType<typeof calcWageDetail>;
 }) {
   const yen = (n: number) => `約 ${formatYen(n)}円`;
+  // 数字だけ（例: 177,848）をコピーするボタン。様式の「約　円」の間に貼る
+  const copyNum = (n: number, label: string) => (
+    <CopyButton value={formatYen(n)} label={`${label}の金額（数字だけ）をコピー`} size={12} className="inline-flex shrink-0" />
+  );
   const deductRow = (label: string, amount: number, sub?: string) => (
     <div className="flex items-start justify-between gap-2 py-0.5">
       <span className="min-w-0">
         {label}
-        {sub && <span className="block text-[10px] font-normal text-muted">{sub}</span>}
+        {sub && (
+          <span className="flex items-start gap-1 text-[10px] font-normal text-muted">
+            <span className="min-w-0">{sub}</span>
+            <CopyButton value={sub} label={`${label.trim()}の説明をコピー`} size={11} className="inline-flex shrink-0" />
+          </span>
+        )}
       </span>
-      <span className="shrink-0 tabular-nums">（{yen(amount)}）</span>
+      <span className="flex shrink-0 items-center gap-1 tabular-nums">
+        （{yen(amount)}）{copyNum(amount, label.trim())}
+      </span>
     </div>
   );
   return (
@@ -785,8 +772,8 @@ function WageFormPreview({
       <p className="mb-2 text-center text-sm font-black">賃金の支払</p>
 
       <p className="font-bold">１．基本賃金</p>
-      <p className="pl-3">
-        {wage.kind}（{formatYen(wage.amount)}円）
+      <p className="flex items-center gap-1 pl-3">
+        {wage.kind}（{formatYen(wage.amount)}円）{copyNum(wage.amount, "基本賃金")}
       </p>
       <p className="pl-3 text-[10px] text-muted">
         {baseWageNote(wage.kind, wage.amount, result.annualHours)}
@@ -800,7 +787,7 @@ function WageFormPreview({
         {detail.allowances.map((a, i) => (
           <p key={i}>
             ({String.fromCharCode(97 + i)}) {a.type}
-            {a.name ? `／${a.name}` : ""}　{formatYen(a.amount)}円
+            {a.name ? `／${a.name}` : ""}　{formatYen(a.amount)}円 {copyNum(a.amount, a.name || a.type)}
             {a.method && (
               <span className="block pl-4 text-[10px] text-muted">計算方法：{a.method}</span>
             )}
@@ -808,7 +795,7 @@ function WageFormPreview({
         ))}
         {detail.fixed_ot_enabled && (
           <p>
-            【固定残業代】{formatYen(detail.fixed_ot_amount)}円
+            【固定残業代】{formatYen(detail.fixed_ot_amount)}円 {copyNum(detail.fixed_ot_amount, "固定残業代")}
             <span className="block pl-4 text-[10px] text-muted">
               支給要件：時間外労働の有無にかかわらず、{formatYen(detail.fixed_ot_hours)}
               時間分の時間外手当として支給。超える時間外労働分についての割増賃金は追加で支給。
@@ -819,7 +806,7 @@ function WageFormPreview({
 
       <p className="mt-2 flex items-center justify-between rounded-lg bg-background px-2 py-1.5 font-bold">
         <span>３．１か月当たりの支払概算額（１＋２）</span>
-        <span className="tabular-nums">{yen(result.gross)}（合計）</span>
+        <span className="flex items-center gap-1 tabular-nums">{yen(result.gross)}（合計）{copyNum(result.gross, "１か月当たりの支払概算額")}</span>
       </p>
 
       <p className="mt-2 font-bold">４．賃金支払時に控除する項目</p>
@@ -836,12 +823,12 @@ function WageFormPreview({
       </div>
       <p className="mt-1 flex items-center justify-between rounded-lg bg-background px-2 py-1.5 font-bold">
         <span>控除する金額</span>
-        <span className="tabular-nums">{yen(result.deductTotal)}（合計）</span>
+        <span className="flex items-center gap-1 tabular-nums">{yen(result.deductTotal)}（合計）{copyNum(result.deductTotal, "控除する金額")}</span>
       </p>
 
       <p className="mt-2 flex items-center justify-between rounded-lg bg-brand/10 px-2 py-2 text-sm font-black text-brand">
         <span>５．手取り支給額（３－４）</span>
-        <span className="tabular-nums">{yen(result.net)}（合計）</span>
+        <span className="flex items-center gap-1 tabular-nums">{yen(result.net)}（合計）{copyNum(result.net, "手取り支給額")}</span>
       </p>
       <p className="mt-1 text-[10px] text-muted">
         ※欠勤等がない場合であって、時間外労働の割増賃金等は除く。
