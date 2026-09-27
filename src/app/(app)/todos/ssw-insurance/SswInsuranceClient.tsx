@@ -26,19 +26,16 @@ import { displayTodoNo, type TodoStatusOption } from "@/lib/todo";
 import {
   hasUnjoinedSales,
   SSW_CANCEL_TODO_TITLE,
-  SSW_COLUMNS,
   SSW_DECLINE_REASONS,
   SSW_INSURANCE_TODO_KIND,
   SSW_JOIN_TODO_TITLE,
   SSW_SECTIONS,
   SSW_SORTS,
   SSW_STATE_LABELS,
-  SSW_TASK_GROUPS,
   buildSswInsuranceRows,
   isSswActionRow,
   isSswInsuranceTarget,
   sortSswRows,
-  sswColumnOf,
   sswSalesByWorker,
   slashDate,
   sswApplyCopyText,
@@ -65,6 +62,14 @@ import {
 } from "@/lib/supabase/queries/ssw-insurance";
 import { SswApplyCheck } from "./SswApplyCheck";
 import { SswBurdenSettings } from "./SswBurdenSettings";
+import {
+  SswCancelTable,
+  SswJoinTable,
+  SswResultTable,
+  SswTabBar,
+  isSswApplying,
+  type SswTabKey,
+} from "./SswTables";
 import {
   deleteSswCert,
   getSswCertPreviewUrl,
@@ -99,6 +104,7 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
   const [onlySsw, setOnlySsw] = useState(true);
   const [sort, setSort] = useState<SswSortKey>("expiry");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [tab, setTab] = useState<SswTabKey>("join");
   const today = todayStr();
 
   // 画面に出す4つ（外国人・所属機関・TODO・TODOの経過の選択肢）をまとめて取る
@@ -273,9 +279,22 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
   // 加入手続きが「申込手続中」の人（申込内容の添削で、申込もれを見つけるのに使う）
   const applyingRows = useMemo(
     () =>
-      actionRows.filter((r) => sswTaskOf(r) === "join" && sswColumnOf(r) === "inProgress"),
+      actionRows.filter((r) => sswTaskOf(r) === "join" && isSswApplying(r)),
     [actionRows],
   );
+
+  const joinRows = useMemo(() => actionRows.filter((r) => sswTaskOf(r) === "join"), [actionRows]);
+  const cancelRows = useMemo(() => actionRows.filter((r) => sswTaskOf(r) === "cancel"), [actionRows]);
+  const tabCounts = useMemo(
+    () => ({
+      join: joinRows.length,
+      cancel: cancelRows.length,
+      active: shown.filter((r) => r.state === "active").length,
+      declined: shown.filter((r) => r.state === "declined").length,
+    }),
+    [joinRows, cancelRows, shown],
+  );
+  const toggleOpen = (workerId: string) => setOpenId(openId === workerId ? null : workerId);
 
   const renderRow = (row: SswInsuranceRow) => (
     <SswWorkerRow
@@ -294,8 +313,6 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
       onJoined={(salesEntryId, joined) => void setJoined(salesEntryId, joined)}
       onSaved={() => void reload()}
       onError={setError}
-      // 加入手続きの申込手続中の人は、詳細を開かなくても被保険者証明書の番号・期限をすぐ入れられるようにする
-      quickCert={sswTaskOf(row) === "join" && sswColumnOf(row) === "inProgress"}
     />
   );
 
@@ -303,7 +320,7 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
     <div className="space-y-4 p-4">
       <p className="flex items-start gap-1.5 rounded-xl border border-border bg-surface px-3 py-2.5 text-xs leading-relaxed text-muted">
         <ShieldCheck size={14} className="mt-0.5 shrink-0" />
-        特定技能総合保険の加入状況をまとめた画面です。未加入・期限切れの人に「加入手続き」のTODO、退職した人に「解約手続き」のTODOを作れます（TODO一覧の「特定技能総合保険」にも入ります）。加入したら、申込手続中のカードで被保険者証明書の番号・有効期限と請求書のリンク先を登録してください。
+        特定技能総合保険の加入状況をまとめた画面です。未加入・期限切れの人に「加入手続き」のTODO、退職した人に「解約手続き」のTODOを作れます（TODO一覧の「特定技能総合保険」にも入ります）。「加入手続き」タブでは、①の表で振込日を入れてチェックした人を申込用のファイル（エクセル）に出力し、加入したら②の表に受付番号・保険期間・被保険者証・請求書のリンクを登録します。
       </p>
 
       {error && (
@@ -380,57 +397,65 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
         <Card className="p-6 text-center text-sm text-muted">読み込み中…</Card>
       ) : (
         <>
-          {/* 加入手続きと解約手続きは別の欄に分け、それぞれ左＝未着手・右＝申込手続中の2列で出す */}
-          {SSW_TASK_GROUPS.map((group) => {
-            const groupRows = actionRows.filter((r) => sswTaskOf(r) === group.key);
-            if (groupRows.length === 0) return null;
-            return (
-              <div key={group.key} className="space-y-2">
-                <div className="px-0.5">
-                  <p className="text-sm font-black">
-                    {group.title}（{groupRows.length}件）
-                  </p>
-                  <p className="text-[11px] leading-relaxed text-muted">{group.lead}</p>
-                </div>
-                <div className="grid gap-3 md:grid-cols-2">
-                  {SSW_COLUMNS.map((column) => {
-                    const list = groupRows.filter((r) => sswColumnOf(r) === column.key);
-                    return (
-                      <Card key={column.key} className="p-4">
-                        <p className="text-sm font-bold">
-                          {column.title}（{list.length}件）
-                        </p>
-                        <p className="mt-1 mb-3 text-[11px] leading-relaxed text-muted">
-                          {column.lead}
-                        </p>
-                        {list.length === 0 ? (
-                          <p className="rounded-xl border border-border bg-background p-4 text-center text-[11px] text-muted">
-                            この列に出す人はいません。
-                          </p>
-                        ) : (
-                          <div className="space-y-2">{list.map(renderRow)}</div>
-                        )}
-                      </Card>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
+          {/* 加入手続き・解約手続き・加入中・加入しないをタブで切り替える（解約が下に埋もれないように） */}
+          <SswTabBar tab={tab} counts={tabCounts} onChange={setTab} />
 
-          {/* 対応が要らない人（加入中・加入しない）は畳んで下に置く */}
-          {SSW_SECTIONS.filter((section) => section.collapsed).map((section) => {
+          {tab === "join" && (
+            <>
+              <SswJoinTable
+                rows={joinRows}
+                today={today}
+                canEdit={canEdit}
+                statusOptions={statusOptions}
+                openId={openId}
+                onToggle={toggleOpen}
+                renderDetail={renderRow}
+                onMakeTodo={(workerId, title) => void makeTodo(workerId, title)}
+                onTodoStatus={(todoId, status) => void setTodoStatus(todoId, status)}
+                onSaved={() => void reload()}
+                onError={setError}
+              />
+              <SswResultTable
+                rows={joinRows.filter(isSswApplying)}
+                canEdit={canEdit}
+                onSaved={() => void reload()}
+                onError={setError}
+              />
+            </>
+          )}
+
+          {tab === "cancel" && (
+            <SswCancelTable
+              rows={cancelRows}
+              canEdit={canEdit}
+              statusOptions={statusOptions}
+              openId={openId}
+              onToggle={toggleOpen}
+              renderDetail={renderRow}
+              onMakeTodo={(workerId, title) => void makeTodo(workerId, title)}
+              onTodoStatus={(todoId, status) => void setTodoStatus(todoId, status)}
+              onCancelled={(row) => void markCancelled(row)}
+            />
+          )}
+
+          {/* 対応が要らない人（加入中・加入しない）は今までどおりカードで出す */}
+          {SSW_SECTIONS.filter(
+            (section) => (tab === "active" || tab === "declined") && section.key === tab,
+          ).map((section) => {
             const list = shown.filter((r) => r.state === section.key);
-            if (list.length === 0) return null;
             return (
               <Card key={section.key} className="p-4">
-                <details>
-                  <summary className="cursor-pointer text-sm font-bold text-muted">
-                    {section.title}（{list.length}件）
-                  </summary>
-                  <p className="mt-1 mb-3 text-[11px] leading-relaxed text-muted">{section.lead}</p>
+                <p className="text-sm font-bold">
+                  {section.title}（{list.length}件）
+                </p>
+                <p className="mt-1 mb-3 text-[11px] leading-relaxed text-muted">{section.lead}</p>
+                {list.length === 0 ? (
+                  <p className="rounded-xl border border-border bg-background p-4 text-center text-[11px] text-muted">
+                    該当する人はいません。
+                  </p>
+                ) : (
                   <div className="space-y-2">{list.map(renderRow)}</div>
-                </details>
+                )}
               </Card>
             );
           })}
@@ -467,12 +492,10 @@ function SswWorkerRow({
   onCancelled,
   onSaved,
   onError,
-  quickCert = false,
 }: {
   row: SswInsuranceRow;
   canEdit: boolean;
   today: string;
-  quickCert?: boolean; // カードに被保険者証明書の登録欄をそのまま出す
   statusOptions: TodoStatusOption[];
   open: boolean;
   sales: SswSalesRow[]; // この人の保険No.（売上）
@@ -540,6 +563,10 @@ function SswWorkerRow({
           )}
           {w.residence_permit_date && (
             <p className="text-muted">在留許可日 {slashDate(w.residence_permit_date)}</p>
+          )}
+          {/* 退職した人は退職日も出す（解約手続きの期限の目安になる） */}
+          {w.leaving_on && (
+            <p className={cancelRow ? "font-bold text-seal" : "text-muted"}>退職日 {slashDate(w.leaving_on)}</p>
           )}
           {w.ssw_insurance_no && <p className="text-muted">証明書番号 {w.ssw_insurance_no}</p>}
           {w.ssw_insurance_declined && w.ssw_insurance_declined_on && (
@@ -731,13 +758,6 @@ function SswWorkerRow({
         <p className="mt-2 rounded-lg bg-surface px-2.5 py-1.5 text-[11px] leading-relaxed text-muted">
           備考: {w.ssw_insurance_note}
         </p>
-      )}
-
-      {/* 申込手続中の人: 加入したらすぐ番号・有効期限・請求書のリンクを入れられる（詳細を開かなくてよい） */}
-      {quickCert && canEdit && !open && (
-        <div className="mt-2">
-          <SswCertForm worker={w} canEdit={canEdit} onSaved={onSaved} onError={onError} />
-        </div>
       )}
 
       {open && (

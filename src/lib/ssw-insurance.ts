@@ -47,6 +47,11 @@ export interface SswInsuranceWorker {
   // どの所属機関にいたときに「加入しない」と決めたか（転職したら決め直す・0140）
   ssw_insurance_declined_org_id: string | null;
   ssw_insurance_note: string; // 加入しない理由などの備考
+  // 申込（0171）。未適用の環境では undefined
+  ssw_insurance_paid_on?: string | null; // 振込日（保険始期希望日は翌日。土日なら翌週の月曜日）
+  ssw_insurance_request_no?: string; // 加入依頼 受付番号
+  ssw_insurance_requested_on?: string | null; // 加入依頼日
+  ssw_insurance_start_on?: string | null; // 保険始期
 }
 
 // 特定技能総合保険の対象になる在留資格か。
@@ -429,8 +434,8 @@ export function sswDeclineNote(reason: string, other: string): string {
 
 // ---- 加入の申込フォームに入れる内容 ----
 
-// 保険の申込サイトで選べる加入月数の上限（1〜36ヶ月）
-export const SSW_MAX_MONTHS = 36;
+// 申込用のファイル（リストの保険期間）で選べる加入月数の上限（1〜60ヶ月）
+export const SSW_MAX_MONTHS = 60;
 
 // YYYY-MM-DD に月を足す（月末は日を丸める。例: 1/31 + 1ヶ月 = 2/28）
 export function addMonthsDate(dateStr: string, months: number): string {
@@ -586,4 +591,88 @@ export function formatYenInput(n: number | null | undefined): string {
 // 表示（例: 12,340円）
 export function formatYenLabel(n: number | null | undefined): string {
   return n == null ? "" : `${n.toLocaleString("ja-JP")}円`;
+}
+
+// ---- 申込用のファイル（申込サイトにアップロードする「特定技能名簿」） ----
+
+// 保険始期希望日: 振込日の翌日。翌日が土曜日・日曜日なら翌週の月曜日にする
+export function sswStartOnFromPaidOn(paidOn: string | null | undefined): string {
+  if (!paidOn || !/^\d{4}-\d{2}-\d{2}$/.test(paidOn)) return "";
+  const d = new Date(`${paidOn}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  const dow = d.getUTCDay(); // 0 = 日, 6 = 土
+  if (dow === 6) d.setUTCDate(d.getUTCDate() + 2);
+  if (dow === 0) d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+// 申込用のファイルに固定で入れる値
+export const SSW_UPLOAD_TYPE = "A"; // 加入タイプ（全員A）
+export const SSW_UPLOAD_FULL_COVER = "なし"; // 100％補償期間（なし）
+export const SSW_UPLOAD_FIRST_ROW = 2; // 1行目は見出し
+export const SSW_UPLOAD_MAX_ROWS = 200; // テンプレートの行数（No.1〜200）
+
+// Excel の日付（1900年方式のシリアル値）。申込用のファイルの生年月日・保険始期希望日は日付の欄のため
+export function excelDateSerial(dateStr: string): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (!m) return null;
+  const ms = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) - Date.UTC(1899, 11, 30);
+  return Math.round(ms / 86_400_000);
+}
+
+export interface SswUploadRow {
+  workerId: string;
+  name: string; // アルファベット半角（大文字）
+  nationality: string;
+  gender: string; // 男 / 女
+  birth: string; // YYYY-MM-DD
+  months: number | null; // 保険期間（在留期限までを計算）
+  startOn: string; // 保険始期希望日（振込日の翌日・土日は月曜）
+  orgName: string; // 特定技能所属機関名（転記）
+  problems: string[]; // 足りない・計算できない項目（出力前に知らせる）
+}
+
+// 1人分の申込用の行を作る（足りない項目は problems に入れる）
+export function sswUploadRow(row: Pick<SswInsuranceRow, "worker" | "orgName">): SswUploadRow {
+  const w = row.worker;
+  const startOn = sswStartOnFromPaidOn(w.ssw_insurance_paid_on);
+  const months = startOn ? sswInsuranceMonths(startOn, w.residence_expiry_date) : null;
+  const problems: string[] = [];
+  if (!w.name.trim()) problems.push("氏名");
+  if (!w.nationality.trim()) problems.push("国籍");
+  if (w.gender !== "男" && w.gender !== "女") problems.push("性別");
+  if (!w.birth) problems.push("生年月日");
+  if (!startOn) problems.push("振込日");
+  else if (!w.residence_expiry_date) problems.push("在留期限");
+  else if (months == null) problems.push("保険期間（在留期限が保険始期より前）");
+  if (!row.orgName.trim()) problems.push("所属機関");
+  return {
+    workerId: w.id,
+    name: w.name.trim().toUpperCase(),
+    nationality: w.nationality.trim(),
+    gender: w.gender,
+    birth: w.birth ?? "",
+    months,
+    startOn,
+    orgName: row.orgName.trim(),
+    problems,
+  };
+}
+
+// テンプレートのセルに入れる値（セル番地 → 値）。日付は Excel の日付（数値）で入れる
+export function sswUploadCells(rows: SswUploadRow[]): Record<string, string | number> {
+  const cells: Record<string, string | number> = {};
+  rows.slice(0, SSW_UPLOAD_MAX_ROWS).forEach((r, i) => {
+    const n = SSW_UPLOAD_FIRST_ROW + i;
+    cells[`B${n}`] = r.name;
+    cells[`C${n}`] = r.nationality;
+    cells[`D${n}`] = r.gender;
+    cells[`E${n}`] = excelDateSerial(r.birth) ?? "";
+    cells[`F${n}`] = r.months ? `${r.months}ヶ月` : "";
+    cells[`G${n}`] = excelDateSerial(r.startOn) ?? "";
+    cells[`H${n}`] = SSW_UPLOAD_TYPE;
+    cells[`I${n}`] = SSW_UPLOAD_FULL_COVER;
+    cells[`K${n}`] = r.orgName;
+  });
+  return cells;
 }

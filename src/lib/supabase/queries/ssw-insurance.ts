@@ -36,6 +36,14 @@ const COLUMNS = [
   "ssw_insurance_note",
 ].join(", ");
 
+// 申込サイトに合わせた申込の項目（0171）: 振込日・加入依頼 受付番号・加入依頼日・保険始期
+const APPLY_COLUMNS = [
+  "ssw_insurance_paid_on",
+  "ssw_insurance_request_no",
+  "ssw_insurance_requested_on",
+  "ssw_insurance_start_on",
+].join(", ");
+
 // 外国人詳細の「特定技能総合保険」の枠で使う項目（0139・0147）
 export const SSW_INSURANCE_DETAIL_COLUMNS = [
   "ssw_insurance_no",
@@ -49,10 +57,16 @@ export const SSW_INSURANCE_DETAIL_COLUMNS = [
 export async function listSswInsuranceWorkers(
   supabase: SupabaseClient,
 ): Promise<SswInsuranceWorker[]> {
+  // 所属機関名は画面側で機関マスタから引くので、ここでは埋め込まない
+  // （workers から organizations への関連が増えると埋め込みがあいまいになるため）。
+  // 申込の項目（0171）は未適用の環境でも読めるよう、失敗したら無しで読み直す
+  const withApply = await supabase
+    .from("workers")
+    .select(`${COLUMNS}, ${APPLY_COLUMNS}`)
+    .order("name", { ascending: true });
+  if (!withApply.error) return (withApply.data as unknown as SswInsuranceWorker[]) ?? [];
   const { data, error } = await supabase
     .from("workers")
-    // 所属機関名は画面側で機関マスタから引くので、ここでは埋め込まない
-    // （workers から organizations への関連が増えると埋め込みがあいまいになるため）
     .select(COLUMNS)
     .order("name", { ascending: true });
   if (error) throw error;
@@ -73,6 +87,11 @@ export interface SswInsurancePatch {
   ssw_insurance_cancel_tracking_no?: string;
   ssw_insurance_refund_amount?: number | null;
   ssw_insurance_refund_sales_no?: string;
+  // 申込（0171）
+  ssw_insurance_paid_on?: string | null;
+  ssw_insurance_request_no?: string;
+  ssw_insurance_requested_on?: string | null;
+  ssw_insurance_start_on?: string | null;
 }
 
 export async function updateSswInsurance(

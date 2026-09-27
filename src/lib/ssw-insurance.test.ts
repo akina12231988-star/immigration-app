@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  excelDateSerial,
+  sswStartOnFromPaidOn,
+  sswUploadCells,
+  sswUploadRow,
   SSW_CANCEL_TODO_TITLE,
   SSW_JOIN_TODO_TITLE,
   addMonthsDate,
@@ -550,5 +554,60 @@ describe("解約金の金額入力", () => {
     expect(formatYenInput(null)).toBe("");
     expect(formatYenLabel(12340)).toBe("12,340円");
     expect(formatYenLabel(undefined)).toBe("");
+  });
+});
+
+describe("sswStartOnFromPaidOn（保険始期希望日）", () => {
+  it("振込日の翌日", () => {
+    expect(sswStartOnFromPaidOn("2026-09-29")).toBe("2026-09-30"); // 火 → 水
+  });
+  it("翌日が土曜日・日曜日なら翌週の月曜日", () => {
+    expect(sswStartOnFromPaidOn("2026-10-02")).toBe("2026-10-05"); // 金 → 土 → 月
+    expect(sswStartOnFromPaidOn("2026-10-03")).toBe("2026-10-05"); // 土 → 日 → 月
+  });
+  it("振込日が無い・形が違うときは空", () => {
+    expect(sswStartOnFromPaidOn(null)).toBe("");
+    expect(sswStartOnFromPaidOn("2026/10/02")).toBe("");
+  });
+});
+
+describe("excelDateSerial", () => {
+  it("Excel の日付（1900年方式）にする", () => {
+    expect(excelDateSerial("2026-09-28")).toBe(46293);
+    expect(excelDateSerial("")).toBeNull();
+  });
+});
+
+describe("sswUploadRow・sswUploadCells（申込用のファイル）", () => {
+  const row = (over: Partial<SswInsuranceWorker> = {}) =>
+    sswUploadRow({ worker: worker({ name: "vu thi nhan", ssw_insurance_paid_on: "2026-10-02", ...over }), orgName: "株式会社ベース" });
+
+  it("氏名は大文字・保険始期は振込日の翌営業日・保険期間は在留期限まで", () => {
+    const r = row();
+    expect(r.name).toBe("VU THI NHAN");
+    expect(r.startOn).toBe("2026-10-05");
+    // 2026-10-05 から 2027-04-07 まで → 7ヶ月（6ヶ月だと 2027-04-05 で足りない）
+    expect(r.months).toBe(7);
+    expect(r.problems).toEqual([]);
+  });
+
+  it("足りない項目を知らせる", () => {
+    expect(row({ ssw_insurance_paid_on: null }).problems).toContain("振込日");
+    expect(row({ birth: null }).problems).toContain("生年月日");
+    expect(row({ gender: "" }).problems).toContain("性別");
+  });
+
+  it("テンプレートの2行目から、加入タイプA・100％補償期間なしで入れる", () => {
+    const cells = sswUploadCells([row()]);
+    expect(cells.B2).toBe("VU THI NHAN");
+    expect(cells.C2).toBe("ベトナム");
+    expect(cells.D2).toBe("女");
+    expect(cells.E2).toBe(excelDateSerial("1988-09-30"));
+    expect(cells.F2).toBe("7ヶ月");
+    expect(cells.G2).toBe(excelDateSerial("2026-10-05"));
+    expect(cells.H2).toBe("A");
+    expect(cells.I2).toBe("なし");
+    expect(cells.K2).toBe("株式会社ベース");
+    expect(cells.J2).toBeUndefined();
   });
 });
