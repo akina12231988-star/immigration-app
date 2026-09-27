@@ -627,6 +627,11 @@ export function ownedRentPerPerson(
   return whole != null && n != null && n > 0 ? Math.round(whole / n) : null;
 }
 
+// 計算内容の説明として出す文。手で直した文があればそれを、無ければ自動で作った文を使う
+export function lodgingCalcNote(lodging: OrgLodging): string {
+  return (lodging.calc_note ?? "").trim() || lodgingCalcText(lodging);
+}
+
 // 計算の内容を1文にまとめる（所属機関の画面でコピーして、申請書の別紙や説明に貼る）。
 // 自己所有: 取得費用を耐用年数で月割りして入居人数で按分。賃貸: 1人あたり家賃 × 人数 ＝ 物件全体
 export function lodgingCalcText(lodging: OrgLodging): string {

@@ -37,6 +37,7 @@ import {
   parseHoursMinutes,
   lodgingContractKind,
   normalizeOrganizationIntake,
+  lodgingCalcNote,
   lodgingCalcText,
   ownedMonthlyRent,
   ownedRentPerPerson,
@@ -2113,15 +2114,15 @@ function IntakeSection({
                   })()}
                   emptyHint="1人あたりの家賃と最大入居人数を入力すると自動計算されます"
                 />
-                {/* 計算の内容を文章にしたもの。申請書の別紙や入管への説明にそのまま貼れる */}
-                {lodgingCalcText(lodging) && (
-                  <div className="flex items-start gap-2 rounded-xl border border-dashed border-border bg-background p-2.5">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[11px] font-bold text-muted">計算内容の説明（コピーして使えます）</p>
-                      <p className="mt-0.5 text-xs leading-relaxed">{lodgingCalcText(lodging)}</p>
-                    </div>
-                    <CopyButton value={lodgingCalcText(lodging)} label="計算内容の説明をコピー" />
-                  </div>
+                {/* 計算の内容を文章にしたもの。申請書の別紙や入管への説明にそのまま貼れる。
+                    自動で作った文を手で直せる（直した文は所属機関に保存され、以後はその文を使う） */}
+                {lodgingCalcNote(lodging) && (
+                  <LodgingCalcNoteBox
+                    auto={lodgingCalcText(lodging)}
+                    note={lodging.calc_note ?? ""}
+                    canEdit={!locks.detail}
+                    onChange={(calc_note) => setLodging(i, { calc_note })}
+                  />
                 )}
               </>
             )}
@@ -2857,6 +2858,75 @@ export function OrgFileAttachments({
           e.target.value = "";
         }}
       />
+    </div>
+  );
+}
+
+// 寮の「計算内容の説明」。自動で作った文を表示し、「文章を編集」で手で直せる。
+// 直した文は家賃などを変えても自動では変わらないので、「自動の文に戻す」で作り直せる
+function LodgingCalcNoteBox({
+  auto,
+  note,
+  canEdit,
+  onChange,
+}: {
+  auto: string; // 家賃・人数などから自動で作った文
+  note: string; // 手で直した文（空なら自動の文を使う）
+  canEdit: boolean;
+  onChange: (note: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const edited = note.trim() !== "";
+  const text = edited ? note : auto;
+  return (
+    <div className="flex flex-col gap-1.5 rounded-xl border border-dashed border-border bg-background p-2.5">
+      <div className="flex items-start gap-2">
+        <p className="min-w-0 flex-1 text-[11px] font-bold text-muted">
+          計算内容の説明（コピーして使えます）
+          {edited && <span className="ml-1.5 rounded bg-brand/10 px-1.5 py-0.5 text-[10px] text-brand">手で直した文</span>}
+        </p>
+        <CopyButton value={text} label="計算内容の説明をコピー" />
+      </div>
+      {editing ? (
+        <textarea
+          value={text}
+          onChange={(e) => onChange(e.target.value)}
+          rows={4}
+          autoFocus
+          aria-label="計算内容の説明"
+          className="w-full rounded-lg border border-border bg-surface px-2.5 py-2 text-xs leading-relaxed focus:border-brand focus:outline-none"
+        />
+      ) : (
+        <p className="whitespace-pre-wrap text-xs leading-relaxed">{text}</p>
+      )}
+      {canEdit && (
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setEditing((v) => !v)}
+            className="min-h-[32px] rounded-lg border border-border bg-surface px-2.5 text-[11px] font-bold text-brand"
+          >
+            {editing ? "編集を閉じる" : "文章を編集"}
+          </button>
+          {edited && (
+            <button
+              type="button"
+              onClick={() => {
+                onChange("");
+                setEditing(false);
+              }}
+              className="min-h-[32px] rounded-lg border border-border bg-surface px-2.5 text-[11px] font-bold text-muted"
+            >
+              自動の文に戻す
+            </button>
+          )}
+          {edited && (
+            <span className="text-[10px] text-muted">
+              手で直した文は、家賃や人数を変えても自動では変わりません。所属機関を保存すると残ります。
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

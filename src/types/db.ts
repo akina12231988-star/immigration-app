@@ -150,6 +150,7 @@ export interface OrgLodging {
   useful_years: string; // 自己所有: 耐用年数（年）
   rent: string; // 家賃（1人あたり・月額・円）
   max_residents: string; // 最大入居人数
+  calc_note?: string; // 計算内容の説明を手で直した文（空なら自動で作った文を使う）
 }
 
 // 申請種別ごとの売上明細の1行（freee販売に登録する内容の雛形）

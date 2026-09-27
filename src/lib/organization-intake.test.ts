@@ -460,3 +460,15 @@ describe("退職（自己都合）の届け出", () => {
     expect(normalizeOrganizationIntake({}).job_resign_notice_days).toBe("");
   });
 });
+
+describe("lodgingCalcNote（寮の計算内容の説明）", () => {
+  it("手で直した文があればそれを、無ければ自動の文を使う", async () => {
+    const { emptyLodging, lodgingCalcNote, lodgingCalcText } = await import("./organization-intake");
+    const base = { ...emptyLodging("lodging-1"), name: "第1寮", kind: "賃貸物件", rent: "16,000", max_residents: "3" };
+    expect(lodgingCalcNote(base)).toBe(lodgingCalcText(base));
+    expect(lodgingCalcNote({ ...base, calc_note: "  " })).toBe(lodgingCalcText(base));
+    expect(lodgingCalcNote({ ...base, calc_note: "会社が借り上げた社宅の家賃を3名で按分" })).toBe(
+      "会社が借り上げた社宅の家賃を3名で按分",
+    );
+  });
+});
