@@ -400,3 +400,11 @@ export function prepSituationLabel(prepSituation: string): string {
     APPLICATION_CONTENT_CHOICES.find((c) => c.prepSituation === prepSituation)?.label ?? prepSituation
   );
 }
+
+// ---- 申請登録へ進むときの転記（申請準備 → 申請登録の画面） ----
+
+// 申請準備の「申請種別」（準備の内容 app_content）から、申請登録の「申請内容」の候補の表示名を決める。
+// 選んでいない・知らない値のときは空（申請登録の画面で選ぶ）
+export function applicationChoiceLabelOfPrep(appContent: string): string {
+  return APPLICATION_CONTENT_CHOICES.find((c) => c.prepSituation === appContent)?.label ?? "";
+}

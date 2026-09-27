@@ -24,7 +24,12 @@ import {
   insertWorker,
   updateWorker,
 } from "@/lib/supabase/queries/workers";
-import { APPLICATION_CONTENT_CHOICES, mergeSituation } from "@/lib/worker-situation";
+import {
+  APPLICATION_CONTENT_CHOICES,
+  applicationChoiceLabelOfPrep,
+  mergeSituation,
+} from "@/lib/worker-situation";
+import { fetchPrepForApplication } from "@/lib/supabase/queries/application-prep";
 import { blankWorkerInput } from "@/lib/worker-defaults";
 import { buildWorkerOptions } from "@/lib/worker-label";
 import { Combobox } from "@/components/ui/Combobox";
@@ -65,6 +70,7 @@ interface WorkerOption {
   // 申請準備で入れた所属機関（転職の場合の転職先）。あればこちらを申請の所属機関にする
   application_prep_organization_id: string | null;
   residence_expiry_date: string | null;
+  residence_renewal_todo?: string | null; // 申請TODO番号（申請準備の内容を引くのに使う）
 }
 
 // 申請の所属機関は「申請準備の所属機関（転職先）」を優先し、無ければ現在の所属機関
@@ -107,6 +113,9 @@ export function ReceiptRegistrationForm({
   const [workerId, setWorkerId] = useState<string>("");
   const [orgId, setOrgId] = useState<string>("");
   const [agentId, setAgentId] = useState<string>("");
+  // 申請準備から転記した申請取次士の名前（名簿を読み込んだら選択に反映する）と、転記したかどうか
+  const [prefillAgentName, setPrefillAgentName] = useState("");
+  const [prefilled, setPrefilled] = useState(false);
   const [newAgentName, setNewAgentName] = useState("");
   const [addingAgent, setAddingAgent] = useState(false);
   const [newName, setNewName] = useState("");
@@ -125,7 +134,7 @@ export function ReceiptRegistrationForm({
     void supabase
       .from("workers")
       .select(
-        "id, name, current_organization_id, application_prep_organization_id, residence_expiry_date",
+        "id, name, current_organization_id, application_prep_organization_id, residence_expiry_date, residence_renewal_todo",
       )
       .order("name")
       .then(({ data }) => {
@@ -140,6 +149,27 @@ export function ReceiptRegistrationForm({
           if (w.residence_expiry_date) {
             setFields((prev) => ({ ...prev, residenceExpiryAtApply: w.residence_expiry_date! }));
           }
+          // 申請準備に入れてある申請種別・申請取次士（本人申請）を転記する。
+          // 申請当日に変わったときは、この画面で選び直せる
+          void fetchPrepForApplication(supabase, w.id, w.residence_renewal_todo ?? "")
+            .then((prep) => {
+              if (cancelled) return;
+              const label = applicationChoiceLabelOfPrep(prep.appContent);
+              const choice = APPLICATION_CONTENT_CHOICES.find((c) => c.label === label);
+              if (choice) {
+                setContentChoice(choice.label);
+                setFields((prev) => ({
+                  ...prev,
+                  applicationContent: choice.content,
+                  isSelfApply: prep.selfApply || !!choice.selfApply,
+                }));
+              } else if (prep.selfApply) {
+                setFields((prev) => ({ ...prev, isSelfApply: true }));
+              }
+              setPrefillAgentName(prep.selfApply ? "" : prep.agentName);
+              setPrefilled(!!choice || prep.selfApply || !!prep.agentName);
+            })
+            .catch(() => undefined);
         }
       });
     void supabase
@@ -158,6 +188,14 @@ export function ReceiptRegistrationForm({
       cancelled = true;
     };
   }, [initialWorkerId]);
+
+  // 転記した申請取次士を、名簿（filing_agents）の中から選ぶ（名簿に無い名前なら選ばない）
+  const [appliedAgentName, setAppliedAgentName] = useState("");
+  if (prefillAgentName && prefillAgentName !== appliedAgentName && agents.length > 0) {
+    setAppliedAgentName(prefillAgentName);
+    const hit = agents.find((a) => a.name === prefillAgentName);
+    if (hit) setAgentId(hit.id);
+  }
 
   const selectedWorker = workers.find((w) => w.id === workerId) ?? null;
   const selectedAgent = agents.find((a) => a.id === agentId) ?? null;
@@ -480,6 +518,12 @@ export function ReceiptRegistrationForm({
                     : "新規の外国人は、現在の在留期限を入力してください。"}
                 </p>
               </div>
+
+              {prefilled && (
+                <p className="rounded-lg bg-brand/10 px-3 py-2 text-[11px] font-bold leading-relaxed text-brand">
+                  申請準備に入れてある申請種別・申請取次士を転記しました。申請当日に変わったときは、ここで選び直してください。
+                </p>
+              )}
 
               {/* 5. 申請内容（7つの候補。選ぶと保存する申請内容と、外国人の只今の状況が決まる） */}
               <label className="block">

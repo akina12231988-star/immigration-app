@@ -173,6 +173,7 @@ import type { OnboardingDocumentRow } from "@/types/db";
 import { effectiveResidencePeriod } from "@/lib/residence-card";
 import { ApplicationCopyPanel } from "@/components/workers/ApplicationCopyPanel";
 import { Prep117Section, PrepAgriNoticeSection } from "@/components/workers/PrepSupportOrgSection";
+import { PrepAgentField } from "@/components/workers/PrepAgentField";
 import {
   PrepApplyConfirmDialog,
   PrepSection,
@@ -1478,6 +1479,12 @@ export function ApplicationPrepChecklist({
             <dl className="grid grid-cols-[4.5rem_1fr] gap-x-2 gap-y-1 border-t border-border pt-2 text-[11px]">
               <dt className="text-muted">担当者</dt>
               <dd className="font-bold">{meta.tantou || "未定"}</dd>
+              <dt className="text-muted">取次士</dt>
+              <dd className="font-bold">
+                {(currentTodo ?? fallbackTodo)?.self_apply
+                  ? "本人申請"
+                  : (currentTodo ?? fallbackTodo)?.agent_name || "未定"}
+              </dd>
               <dt className="text-muted">申請予定</dt>
               <dd className="font-bold">{current.planned_app_on || "未定"}</dd>
               <dt className="text-muted">署名</dt>
@@ -1760,6 +1767,13 @@ export function ApplicationPrepChecklist({
               ))}
             </select>
           </label>
+          {/* 申請取次士（申請準備のTODOに保存。申請登録へ進むと申請登録の画面に転記される） */}
+          <PrepAgentField
+            todo={currentTodo ?? fallbackTodo}
+            canEdit={canEdit}
+            onChanged={loadWorkerTodos}
+            onError={setError}
+          />
         </div>
 
         {/* 申請種別の下: 所属機関の情報（住所・電話・代表者・協力確認書・売上高） */}

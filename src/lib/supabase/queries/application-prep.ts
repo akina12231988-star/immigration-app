@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { normalizeTodoKey } from "@/lib/todo";
 import {
   buildPostApplyEntries,
   normalizePostApplyMailings,
@@ -537,4 +538,38 @@ export async function savePostApplyNotes(
     .update({ post_apply_notes: notes })
     .eq("id", checklistId);
   if (error) throw error;
+}
+
+// 申請一覧の「申請登録へ進む」で申請登録の画面に転記する、申請準備の内容。
+// 申請TODO番号（外国人の residence_renewal_todo）の準備リストとTODOを優先し、無ければいちばん新しいものを使う
+export interface PrepForApplication {
+  appContent: string; // 申請種別（準備の内容）
+  agentName: string; // 申請取次士（申請準備のTODO）
+  selfApply: boolean; // 本人申請でするか（申請準備のTODO）
+}
+
+export async function fetchPrepForApplication(
+  supabase: SupabaseClient,
+  workerId: string,
+  todoNo: string,
+): Promise<PrepForApplication> {
+  const key = normalizeTodoKey(todoNo);
+  const [lists, { data: todos }] = await Promise.all([
+    listPrepChecklists(supabase, workerId).catch(() => [] as PrepChecklistRow[]),
+    supabase
+      .from("todos")
+      .select("todo_no, agent_name, self_apply, deleted_at, created_at")
+      .eq("worker_id", workerId)
+      .eq("kind", "申請準備")
+      .order("created_at", { ascending: false }),
+  ]);
+  const list = (key && lists.find((l) => normalizeTodoKey(l.todo_no) === key)) || lists[0];
+  type T = { todo_no: string; agent_name?: string; self_apply?: boolean; deleted_at: string | null };
+  const alive = ((todos as T[] | null) ?? []).filter((t) => !t.deleted_at);
+  const todo = (key && alive.find((t) => normalizeTodoKey(t.todo_no) === key)) || alive[0];
+  return {
+    appContent: list?.app_content ?? "",
+    agentName: todo?.agent_name ?? "",
+    selfApply: todo?.self_apply ?? false,
+  };
 }
