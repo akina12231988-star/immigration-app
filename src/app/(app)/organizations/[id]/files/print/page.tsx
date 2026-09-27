@@ -4,7 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { getOrganization } from "@/lib/supabase/queries/organizations";
 import { listOrganizationFiles } from "@/lib/supabase/queries/organization-files";
-import { isImageFile, latestOrgFiles, parsePrintKinds } from "@/lib/org-attachments";
+import { isImageFile, isLodgingContractKind, latestOrgFiles, parsePrintKinds } from "@/lib/org-attachments";
+import { lodgingContractKind, normalizeOrganizationIntake } from "@/lib/organization-intake";
 import { OrgFilesPrintView, type OrgPrintFile, type OrgPrintSection } from "./OrgFilesPrintView";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +14,7 @@ export const dynamic = "force-dynamic";
 const BUCKET = "app-files";
 const TTL = 60 * 60;
 
-// 所属機関の添付ファイル（農業特定技能加入通知書・年間カレンダー・労使協定書）を
+// 所属機関の添付ファイル（農業特定技能加入通知書・年間カレンダー・労使協定書・寮の賃貸契約書）を
 // A4縦で1枚に1画像ずつ印刷するページ。申請準備の「印刷（A4縦）」から別タブで開く。
 //   ?kind=年間カレンダー,労使協定書（種類はカンマ区切りで複数まとめられる）
 // それぞれ最新版（いちばん新しいアップロード日の分）だけを出す。
@@ -40,9 +41,20 @@ export default async function OrgFilesPrintPage({
   const admin = createAdminClient();
 
   // 画像は署名付きURLを付けてそのまま紙に出す。PDF は印刷ページに埋め込めないので開くリンクにする
+  const lodgings = normalizeOrganizationIntake(org.intake).lodgings;
   const sections: OrgPrintSection[] = await Promise.all(
     kinds.map(async (k) => {
-      const latest = latestOrgFiles(files, k);
+      // 賃貸契約書は複数ファイルをまとめて添付するので、最新版だけでなく全部を出す。見出しには寮の名前を付ける
+      const contract = isLodgingContractKind(k);
+      const lodgingName = contract ? lodgings.find((l) => lodgingContractKind(l) === k)?.name ?? "" : "";
+      const all = files
+        .filter((f) => f.kind === k)
+        .sort((a, b) => a.created_at.localeCompare(b.created_at));
+      const latest = contract
+        ? all.length > 0
+          ? { uploadedOn: all[all.length - 1].created_at.slice(0, 10), files: all }
+          : null
+        : latestOrgFiles(files, k);
       const rows: OrgPrintFile[] = await Promise.all(
         (latest?.files ?? []).map(async (f) => {
           let url = "";
@@ -53,7 +65,8 @@ export default async function OrgFilesPrintPage({
           return { id: f.id, fileName: f.file_name, isImage: isImageFile(f), url };
         }),
       );
-      return { kind: k, uploadedOn: latest?.uploadedOn ?? "", files: rows };
+      const label = contract ? `賃貸契約書${lodgingName ? `（${lodgingName}）` : ""}` : k;
+      return { kind: label, uploadedOn: latest?.uploadedOn ?? "", files: rows };
     }),
   );
 

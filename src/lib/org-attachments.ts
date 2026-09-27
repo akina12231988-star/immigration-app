@@ -14,6 +14,11 @@ export const ORG_PRINTABLE_FILE_KINDS = [
   ORG_FILE_KIND_LABOR_AGREEMENT,
 ] as const;
 
+// 寮・宿泊物件の賃貸契約書の種類か（1件目は「賃貸契約書」、2件目以降は「賃貸契約書:<寮のID>」）
+export function isLodgingContractKind(kind: string): boolean {
+  return kind === "賃貸契約書" || kind.startsWith("賃貸契約書:");
+}
+
 // 業種（特定技能 産業分野）が農業か
 export function isAgricultureIndustry(industry: string): boolean {
   return industry.trim() === "農業";
@@ -71,5 +76,7 @@ export function orgFilesPrintHref(orgId: string, kinds: string[]): string {
 export function parsePrintKinds(param: string | undefined): string[] {
   if (!param) return [];
   const allowed = new Set<string>(ORG_PRINTABLE_FILE_KINDS);
-  return [...new Set(param.split(",").map((s) => s.trim()))].filter((k) => allowed.has(k));
+  return [...new Set(param.split(",").map((s) => s.trim()))].filter(
+    (k) => allowed.has(k) || isLodgingContractKind(k),
+  );
 }
