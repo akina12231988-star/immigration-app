@@ -26,7 +26,6 @@ import {
 } from "@/lib/supabase/queries/application-prep";
 import { listOrganizationFiles } from "@/lib/supabase/queries/organization-files";
 import { getOrgFilePreviewUrl } from "@/app/(app)/organizations/actions";
-import { orgYearlyFileGroups, orgYearlyKind, type OrgYearlyFileGroup } from "@/lib/org-yearly-files";
 import {
   ORG_FILE_KIND_AGRI_NOTICE,
   ORG_FILE_KIND_LABOR_AGREEMENT,
@@ -87,7 +86,7 @@ import type {
 // 申請準備 書類チェックリストの追加表示・入力。
 //  - 申請準備TODOのステータス（本人の名前の下に常時表示・編集可）
 //  - 現在の住所（未登録なら入力して保存）
-//  - 所属機関の情報（住所・電話・代表者・協力確認書・売上高・定期報告/賃金台帳）
+//  - 所属機関の情報（住所・電話・代表者・協力確認書・売上高）
 //  - 単独/連名申請の選択と連名相手の紐づけ
 //  - 本人から署名をもらったかのステータス
 //  - 賃金（採用時いくらか）の表示とリンク
@@ -675,7 +674,7 @@ export function PrepOrgInfo({
   // 未登録の欄をこの場で保存したあとに読み直すためのキー
   const [reloadKey, setReloadKey] = useState(0);
   const uploadInputRef = useRef<HTMLInputElement>(null);
-  // 未登録の添付をこの場で入れるときの保存先の種類（農業特定技能加入通知書・定期報告書:年度 など）
+  // 未登録の添付をこの場で入れるときの保存先の種類（農業特定技能加入通知書）
   const uploadKindRef = useRef<string>("");
   const [uploading, setUploading] = useState(false);
 
@@ -716,8 +715,6 @@ export function PrepOrgInfo({
 
   // 直近の売上高（決算情報のうち売上が入っている行。例: 「令和7年分 13,903,547円」）
   const sales = intake.financials.filter((f) => f.sales).slice(0, 2);
-  const reportGroups = orgYearlyFileGroups(files, "定期報告書");
-  const ledgerGroups = orgYearlyFileGroups(files, "賃金台帳");
   // 農業の会社は農業特定技能加入通知書、1年単位の変形労働時間制の会社は年間カレンダー・労使協定書を
   // 最新版（いちばん新しいアップロード日の分）だけ表示する
   const isAgri = isAgricultureIndustry(org.industry);
@@ -734,7 +731,7 @@ export function PrepOrgInfo({
 
   const councilLine = councilSubmissionsLine;
 
-  // 未登録の添付（農業特定技能加入通知書・定期報告・賃金台帳）をこの場で入れる。所属機関の添付に保存される
+  // 未登録の添付（農業特定技能加入通知書）をこの場で入れる。所属機関の添付に保存される
   const startUpload = (kind: string) => {
     uploadKindRef.current = kind;
     uploadInputRef.current?.click();
@@ -950,18 +947,6 @@ export function PrepOrgInfo({
         }
         onSave={saveSales}
       />
-      <OrgYearlyFilesLine
-        label="直近の定期報告"
-        groups={reportGroups}
-        onPreview={preview}
-        onUpload={fill && !uploading ? (year) => startUpload(orgYearlyKind("定期報告書", year)) : undefined}
-      />
-      <OrgYearlyFilesLine
-        label="賃金台帳"
-        groups={ledgerGroups}
-        onPreview={preview}
-        onUpload={fill && !uploading ? (year) => startUpload(orgYearlyKind("賃金台帳", year)) : undefined}
-      />
       {uploading && <p className="text-muted">アップロード中…</p>}
       <input
         ref={uploadInputRef}
@@ -974,64 +959,6 @@ export function PrepOrgInfo({
           e.target.value = "";
         }}
       />
-    </div>
-  );
-}
-
-// 直近の年度グループのファイルを1行で表示する（表示ボタン付き）
-function OrgYearlyFilesLine({
-  label,
-  groups,
-  onPreview,
-  onUpload,
-}: {
-  label: string;
-  groups: OrgYearlyFileGroup[];
-  onPreview: (id: string) => Promise<void>;
-  onUpload?: (yearLabel: string) => void; // 渡すと、未登録のときにこの場で添付できる（年度を入れて）
-}) {
-  const [year, setYear] = useState("");
-  const latest = groups[0];
-  if (!latest) {
-    if (!onUpload) return <p>{label}: 未登録（所属機関の編集画面からアップロードできます）</p>;
-    return (
-      <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-seal/40 bg-seal/5 px-2 py-1.5">
-        <span className="shrink-0">
-          {label}: <span className="font-bold text-seal">未登録</span>
-        </span>
-        <input
-          value={year}
-          onChange={(e) => setYear(e.target.value)}
-          placeholder="年度（例: 令和7年）"
-          aria-label={`${label}の年度`}
-          className={`${INPUT} w-36`}
-        />
-        <button
-          type="button"
-          onClick={() => onUpload(year)}
-          className="flex shrink-0 items-center gap-1 rounded-lg bg-brand px-3 py-1.5 text-[11px] font-bold text-brand-foreground"
-        >
-          <Upload size={12} />
-          添付する
-        </button>
-      </div>
-    );
-  }
-  return (
-    <div>
-      <p className="font-bold">
-        {label}（{latest.label || "年度未設定"}）:
-      </p>
-      <div className="mt-0.5 flex flex-col gap-0.5">
-        {latest.files.map((f) => (
-          <AttachedFileButton
-            key={f.id}
-            fileName={f.file_name}
-            onOpen={() => void onPreview(f.id)}
-            className="self-start"
-          />
-        ))}
-      </div>
     </div>
   );
 }
