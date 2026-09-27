@@ -248,6 +248,22 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
     [options],
   );
 
+  // すでに解約の手続きが済んでいる人: 解約手続きのTODOを（無ければ作って）完了にし、一覧から外す
+  const markCancelled = async (row: SswInsuranceRow) => {
+    if (!window.confirm(`${row.worker.name}さんの特定技能総合保険を「解約済み」にします。よろしいですか？（解約手続きのTODOが完了になり、この一覧から外れます）`)) return;
+    setError(null);
+    try {
+      const supabase = createClient();
+      const todoId = row.todos.cancel?.id ?? (await ensureSswTodo(supabase, row.worker.id, SSW_CANCEL_TODO_TITLE)).row?.id;
+      if (!todoId) throw new Error("解約手続きのTODOを作れませんでした");
+      const doneName = statusOptions.find((o) => o.stage === "完了")?.name ?? "完了";
+      await updateTodo(supabase, todoId, { status: doneName });
+      await reload();
+    } catch (err) {
+      setError(dbErrorMessage(err, MIGRATION, "解約済みの保存に失敗しました"));
+    }
+  };
+
   // 対応が必要な人（期限切れ・退職の解約・まもなく期限・未加入・意思確認）
   const actionRows = useMemo(
     () => sortSswRows(shown.filter(isSswActionRow), sort),
@@ -273,6 +289,7 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
       onWill={(join, note) => void setWill(row, join, note)}
       onMakeTodo={(title) => void makeTodo(row.worker.id, title)}
       onTodoStatus={(todoId, status) => void setTodoStatus(todoId, status)}
+      onCancelled={() => void markCancelled(row)}
       sales={salesByWorker.get(row.worker.id) ?? []}
       onJoined={(salesEntryId, joined) => void setJoined(salesEntryId, joined)}
       onSaved={() => void reload()}
@@ -447,6 +464,7 @@ function SswWorkerRow({
   onWill,
   onMakeTodo,
   onTodoStatus,
+  onCancelled,
   onSaved,
   onError,
   quickCert = false,
@@ -463,6 +481,7 @@ function SswWorkerRow({
   onWill: (join: boolean, note?: string) => void;
   onMakeTodo: (title: string) => void;
   onTodoStatus: (todoId: string, status: string) => void;
+  onCancelled: () => void; // 解約済みにする（退職の解約手続きの行だけ）
   onSaved: () => void;
   onError: (message: string | null) => void;
 }) {
@@ -553,6 +572,13 @@ function SswWorkerRow({
           >
             加入しない
             {sswAutoDeclineReason(row.burden) && "（外国人負担）"}
+          </button>
+        )}
+        {/* 退職した人で、すでに解約の手続きが済んでいるとき */}
+        {cancelRow && canEdit && (
+          <button type="button" className={`${ROW_BTN} text-brand`} onClick={onCancelled}>
+            <Check size={12} className="mr-1 inline" />
+            解約済み
           </button>
         )}
         {row.state === "declined" && canEdit && (
