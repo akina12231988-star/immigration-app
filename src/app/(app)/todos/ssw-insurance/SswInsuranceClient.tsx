@@ -1,17 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, ChevronDown, ChevronRight, FileText, Loader2, Plus, Receipt, ShieldCheck, Trash2, Upload, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, FileText, Loader2, Plus, Receipt, ShieldCheck, Trash2 } from "lucide-react";
 import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { NameSearchBox } from "@/components/ui/NameSearchBox";
-import { FileDropArea } from "@/components/ui/FileDropArea";
 import { createClient } from "@/lib/supabase/client";
 import { dbErrorMessage } from "@/lib/errors";
-import { compressImage } from "@/lib/image-compress";
 import { formatSalesYen } from "@/lib/sales";
 import { todayStr } from "@/lib/application-alerts";
 import { remainingLabel } from "@/lib/worker-alerts";
@@ -68,7 +66,6 @@ import {
 import { SswApplyCheck } from "./SswApplyCheck";
 import { SswBurdenSettings } from "./SswBurdenSettings";
 import {
-  createSswCertTicket,
   deleteSswCert,
   getSswCertPreviewUrl,
   registerSswCert,
@@ -280,6 +277,8 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
       onJoined={(salesEntryId, joined) => void setJoined(salesEntryId, joined)}
       onSaved={() => void reload()}
       onError={setError}
+      // 加入手続きの申込手続中の人は、詳細を開かなくても被保険者証明書の番号・期限をすぐ入れられるようにする
+      quickCert={sswTaskOf(row) === "join" && sswColumnOf(row) === "inProgress"}
     />
   );
 
@@ -287,7 +286,7 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
     <div className="space-y-4 p-4">
       <p className="flex items-start gap-1.5 rounded-xl border border-border bg-surface px-3 py-2.5 text-xs leading-relaxed text-muted">
         <ShieldCheck size={14} className="mt-0.5 shrink-0" />
-        特定技能総合保険の加入状況をまとめた画面です。未加入・期限切れの人に「加入手続き」のTODO、退職した人に「解約手続き」のTODOを作れます（TODO一覧の「特定技能総合保険」にも入ります）。加入したら被保険者証明書を貼り付けて、証明書番号と有効期限を記録してください。
+        特定技能総合保険の加入状況をまとめた画面です。未加入・期限切れの人に「加入手続き」のTODO、退職した人に「解約手続き」のTODOを作れます（TODO一覧の「特定技能総合保険」にも入ります）。加入したら、申込手続中のカードで被保険者証明書の番号・有効期限と請求書のリンク先を登録してください。
       </p>
 
       {error && (
@@ -450,10 +449,12 @@ function SswWorkerRow({
   onTodoStatus,
   onSaved,
   onError,
+  quickCert = false,
 }: {
   row: SswInsuranceRow;
   canEdit: boolean;
   today: string;
+  quickCert?: boolean; // カードに被保険者証明書の登録欄をそのまま出す
   statusOptions: TodoStatusOption[];
   open: boolean;
   sales: SswSalesRow[]; // この人の保険No.（売上）
@@ -706,6 +707,13 @@ function SswWorkerRow({
         </p>
       )}
 
+      {/* 申込手続中の人: 加入したらすぐ番号・有効期限・請求書のリンクを入れられる（詳細を開かなくてよい） */}
+      {quickCert && canEdit && !open && (
+        <div className="mt-2">
+          <SswCertForm worker={w} canEdit={canEdit} onSaved={onSaved} onError={onError} />
+        </div>
+      )}
+
       {open && (
         <SswWorkerPanel
           row={row}
@@ -737,12 +745,6 @@ function SswWorkerPanel({
   // 保険始期希望日は「着金日以降」のため、既定は明日にしている
   const [startOn, setStartOn] = useState(tomorrowOf(today));
   const [certs, setCerts] = useState<SswCertRow[]>([]);
-  const [certNo, setCertNo] = useState(w.ssw_insurance_no ?? "");
-  const [expiry, setExpiry] = useState(w.ssw_insurance_expiry_date ?? "");
-  const [file, setFile] = useState<File | null>(null);
-  const [busy, setBusy] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
   const loadCerts = useCallback(async () => {
     try {
       setCerts(await listSswCerts(createClient(), w.id));
@@ -766,55 +768,6 @@ function SswWorkerPanel({
 
   const fields = sswApplyFields(w, row.orgName, startOn);
   const months = sswInsuranceMonths(startOn, w.residence_expiry_date);
-
-  const save = async () => {
-    if (!expiry) {
-      onError("有効期限を入力してください");
-      return;
-    }
-    setBusy(true);
-    onError(null);
-    try {
-      let path = "";
-      let fileName = "";
-      let mimeType = "";
-      if (file) {
-        const compressed = await compressImage(file);
-        fileName = compressed.fileName;
-        mimeType = compressed.mimeType;
-        const ticket = await createSswCertTicket(w.id, fileName, mimeType);
-        if (!ticket.ok) throw new Error(ticket.message);
-        const { error: upErr } = await createClient()
-          .storage.from("app-files")
-          .uploadToSignedUrl(ticket.path, ticket.token, compressed.blob, { contentType: mimeType });
-        if (upErr) throw new Error(`アップロードに失敗しました: ${upErr.message}`);
-        path = ticket.path;
-      }
-      const res = await registerSswCert({
-        workerId: w.id,
-        certNo: certNo.trim(),
-        expiryDate: expiry,
-        path,
-        fileName,
-        mimeType,
-      });
-      if (!res.ok) throw new Error(res.message);
-      // 一覧・アラートが見るのは workers 側なので、番号と期限をこちらにも入れる
-      await updateSswInsurance(createClient(), w.id, {
-        ssw_insurance_no: certNo.trim(),
-        ssw_insurance_expiry_date: expiry,
-        ssw_insurance_declined: false,
-        ssw_insurance_declined_on: null,
-      });
-      setFile(null);
-      await loadCerts();
-      onSaved();
-    } catch (err) {
-      onError(dbErrorMessage(err, MIGRATION, "登録に失敗しました"));
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const preview = async (id: string) => {
     const res = await getSswCertPreviewUrl(id);
@@ -912,78 +865,15 @@ function SswWorkerPanel({
 
       {/* ② 被保険者証明書（加入したら貼り付けて番号・期限を入れる） */}
       <div>
-        <p className="mb-1.5 text-[11px] font-bold text-muted">
-          加入したら被保険者証明書を登録（ドラッグ＆ドロップで貼り付け）
-        </p>
-        <FileDropArea
-          onFiles={(list) => {
-            if (canEdit && list.length > 0) setFile(list[0]);
+        <SswCertForm
+          worker={w}
+          canEdit={canEdit}
+          onSaved={() => {
+            void loadCerts();
+            onSaved();
           }}
-          disabled={!canEdit || busy}
-          className="rounded-xl border border-dashed border-border bg-background p-3"
-        >
-          <div className="flex flex-wrap items-end gap-2">
-            <label className="flex min-w-[10rem] flex-1 flex-col gap-1">
-              <span className="text-[11px] font-bold text-muted">被保険者証明書番号</span>
-              <input
-                value={certNo}
-                onChange={(e) => setCertNo(e.target.value)}
-                placeholder="証明書の番号"
-                disabled={!canEdit}
-                className={INPUT}
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-[11px] font-bold text-muted">有効期限</span>
-              <input
-                type="date"
-                value={expiry}
-                onChange={(e) => setExpiry(e.target.value)}
-                disabled={!canEdit}
-                className={INPUT}
-              />
-            </label>
-            <input
-              ref={inputRef}
-              type="file"
-              accept="image/*,application/pdf"
-              hidden
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            />
-            <Button
-              variant="secondary"
-              icon={<Upload size={14} />}
-              disabled={!canEdit || busy}
-              onClick={() => inputRef.current?.click()}
-            >
-              ファイルを選ぶ
-            </Button>
-            <Button
-              icon={busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-              disabled={!canEdit || busy}
-              onClick={() => void save()}
-            >
-              {busy ? "登録中…" : "登録する"}
-            </Button>
-          </div>
-          <p className="mt-2 text-[11px] text-muted">
-            {file ? (
-              <span className="font-bold text-brand">
-                {file.name}
-                <button
-                  type="button"
-                  className="ml-1.5 align-middle text-muted hover:text-seal"
-                  onClick={() => setFile(null)}
-                  aria-label="選んだファイルを取り消す"
-                >
-                  <X size={12} />
-                </button>
-              </span>
-            ) : (
-              "ここに被保険者証明書（画像・PDF）をドロップできます。ファイルなしで番号と期限だけの記録もできます。"
-            )}
-          </p>
-        </FileDropArea>
+          onError={onError}
+        />
 
         {certs.length > 0 && (
           <div className="mt-2 space-y-1">
@@ -997,10 +887,15 @@ function SswWorkerPanel({
                   {c.file_name ? (
                     <AttachedFileButton fileName={c.file_name} onOpen={() => void preview(c.id)} />
                   ) : (
-                    <span>（ファイルなし）</span>
+                    !c.invoice_url && <span>（ファイルなし）</span>
                   )}
                   {c.cert_no && <span className="text-muted">番号 {c.cert_no}</span>}
                   {c.expiry_date && <span className="text-muted">期限 {slashDate(c.expiry_date)}</span>}
+                  {c.invoice_url && (
+                    <a href={c.invoice_url} target="_blank" rel="noopener noreferrer" className="font-bold text-brand underline">
+                      請求書を開く
+                    </a>
+                  )}
                 </span>
                 {canEdit && (
                   <button
@@ -1016,6 +911,106 @@ function SswWorkerPanel({
             ))}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// 被保険者証明書の登録（番号・有効期限・請求書のリンク先）。カードと詳細の両方で使う
+function SswCertForm({
+  worker: w,
+  canEdit,
+  onSaved,
+  onError,
+}: {
+  worker: SswInsuranceRow["worker"];
+  canEdit: boolean;
+  onSaved: () => void;
+  onError: (message: string | null) => void;
+}) {
+  const [certNo, setCertNo] = useState(w.ssw_insurance_no ?? "");
+  const [expiry, setExpiry] = useState(w.ssw_insurance_expiry_date ?? "");
+  const [invoiceUrl, setInvoiceUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    if (!expiry) {
+      onError("有効期限を入力してください");
+      return;
+    }
+    const url = invoiceUrl.trim();
+    if (url && !/^https?:\/\//.test(url)) {
+      onError("請求書のリンク先は https:// から始まるURLを入れてください");
+      return;
+    }
+    setBusy(true);
+    onError(null);
+    try {
+      const res = await registerSswCert({
+        workerId: w.id,
+        certNo: certNo.trim(),
+        expiryDate: expiry,
+        invoiceUrl: url,
+      });
+      if (!res.ok) throw new Error(res.message);
+      // 一覧・アラートが見るのは workers 側なので、番号と期限をこちらにも入れる
+      await updateSswInsurance(createClient(), w.id, {
+        ssw_insurance_no: certNo.trim(),
+        ssw_insurance_expiry_date: expiry,
+        ssw_insurance_declined: false,
+        ssw_insurance_declined_on: null,
+      });
+      setInvoiceUrl("");
+      onSaved();
+    } catch (err) {
+      onError(dbErrorMessage(err, "0170_ssw_insurance_invoice_url.sql", "登録に失敗しました"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-dashed border-border bg-surface p-3">
+      <p className="mb-1.5 text-[11px] font-bold text-muted">加入したら被保険者証明書を登録</p>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex min-w-[9rem] flex-1 flex-col gap-1">
+          <span className="text-[11px] font-bold text-muted">被保険者証明書番号</span>
+          <input
+            value={certNo}
+            onChange={(e) => setCertNo(e.target.value)}
+            placeholder="証明書の番号"
+            disabled={!canEdit}
+            className={INPUT}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-bold text-muted">有効期限</span>
+          <input
+            type="date"
+            value={expiry}
+            onChange={(e) => setExpiry(e.target.value)}
+            disabled={!canEdit}
+            className={INPUT}
+          />
+        </label>
+        <label className="flex min-w-[12rem] flex-[2] flex-col gap-1">
+          <span className="text-[11px] font-bold text-muted">請求書のリンク先</span>
+          <input
+            type="url"
+            value={invoiceUrl}
+            onChange={(e) => setInvoiceUrl(e.target.value)}
+            placeholder="https://..."
+            disabled={!canEdit}
+            className={INPUT}
+          />
+        </label>
+        <Button
+          icon={busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+          disabled={!canEdit || busy}
+          onClick={() => void save()}
+        >
+          {busy ? "登録中…" : "登録する"}
+        </Button>
       </div>
     </div>
   );

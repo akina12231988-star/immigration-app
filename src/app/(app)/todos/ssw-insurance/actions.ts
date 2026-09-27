@@ -49,6 +49,7 @@ export async function registerSswCert(input: {
   fileName?: string;
   mimeType?: string;
   kind?: string; // 被保険者証（既定） / 解約金（0147）
+  invoiceUrl?: string; // 請求書のリンク先（0170）
 }): Promise<{ ok: true } | Err> {
   if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
   const path = input.path ?? "";
@@ -67,6 +68,8 @@ export async function registerSswCert(input: {
     file_name: input.fileName ?? "",
     mime_type: input.mimeType ?? "",
     uploaded_by: me?.id ?? null,
+    // 請求書のリンク先は入れたときだけ送る（0170 未適用の環境でも、リンクなしなら登録できる）
+    ...(input.invoiceUrl?.trim() ? { invoice_url: input.invoiceUrl.trim() } : {}),
   };
   // 種類（kind）は 0147 で追加。解約金の書類は未適用の環境では登録できない
   const { error } = input.kind && input.kind !== "被保険者証"
