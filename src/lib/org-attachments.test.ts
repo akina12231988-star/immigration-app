@@ -73,5 +73,7 @@ describe("印刷ページのURL", () => {
     expect(parsePrintKinds("年間カレンダー,労使協定書,見積書")).toEqual(["年間カレンダー", "労使協定書"]);
     expect(parsePrintKinds("農業特定技能加入通知書")).toEqual(["農業特定技能加入通知書"]);
     expect(parsePrintKinds(undefined)).toEqual([]);
+    // 寮の賃貸契約書（1件目は「賃貸契約書」、2件目以降は「賃貸契約書:<寮のID>」）も印刷できる
+    expect(parsePrintKinds("賃貸契約書,賃貸契約書:lodging-2")).toEqual(["賃貸契約書", "賃貸契約書:lodging-2"]);
   });
 });

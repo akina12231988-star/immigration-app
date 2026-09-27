@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Briefcase, Upload } from "lucide-react";
+import { Briefcase, Printer, Upload } from "lucide-react";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { createClient } from "@/lib/supabase/client";
 import { getAppSetting } from "@/lib/supabase/queries/app-settings";
@@ -24,7 +24,7 @@ import {
   type SupportWorker,
 } from "@/lib/support-system";
 import { ORG_FILE_KIND_AGRI_NOTICE, latestOrgFiles, orgFilesPrintHref } from "@/lib/org-attachments";
-import { filledCouncilSubmissions, normalizeOrganizationIntake } from "@/lib/organization-intake";
+import { filledCouncilSubmissions, lodgingContractKind, normalizeOrganizationIntake } from "@/lib/organization-intake";
 import { uploadOrgFiles } from "@/lib/org-file-upload";
 import { rosterJpDate } from "@/lib/roster";
 import { todayStr } from "@/lib/ssw/calc";
@@ -386,6 +386,18 @@ export function Prep117Section({
                 {housing.lodging?.address && <span className="text-muted">　{housing.lodging.address}</span>}
               </p>
               {housing.key !== "A" && <p>居住費 月額 {formatYen(housing.amount)}円</p>}
+              {/* 賃貸物件は、所属機関に保存している賃貸契約書を印刷できる */}
+              {housing.key === "C" && housing.lodging && orgId && (
+                <a
+                  href={orgFilesPrintHref(orgId, [lodgingContractKind(housing.lodging)])}
+                  target="_blank"
+                  rel="noopener"
+                  className="mt-1 inline-flex min-h-[36px] items-center gap-1.5 rounded-lg bg-brand px-3 text-[11px] font-bold text-brand-foreground"
+                >
+                  <Printer size={13} />
+                  賃貸契約書を印刷（A4縦）
+                </a>
+              )}
               {housing.note && <p className="whitespace-pre-wrap text-muted">{housing.note}</p>}
             </>
           )}

@@ -11,7 +11,7 @@ export interface OrgPrintFile {
 }
 
 export interface OrgPrintSection {
-  kind: string; // 農業特定技能加入通知書 / 年間カレンダー / 労使協定書
+  kind: string; // 見出し（農業特定技能加入通知書 / 年間カレンダー / 労使協定書 / 賃貸契約書（寮の名前））
   uploadedOn: string; // 最新版のアップロード日（無ければ空）
   files: OrgPrintFile[];
 }
