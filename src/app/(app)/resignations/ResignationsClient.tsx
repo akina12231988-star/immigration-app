@@ -40,6 +40,15 @@ import {
   adhocReportStatus,
 } from "@/lib/adhoc-report-progress";
 import { AdhocPosting } from "./AdhocPosting";
+import { LeavingDateChanges } from "./LeavingDateChanges";
+import {
+  LEAVING_TIMINGS,
+  appendLeavingDateChange,
+  isPlannedLeaving,
+  leavingTimingOf,
+  normalizeLeavingDateChanges,
+  type LeavingTiming,
+} from "@/lib/resignation-plan";
 import { adhocReportFileName } from "@/lib/adhoc-report-files";
 import {
   isPastLeavingDate,
@@ -268,8 +277,36 @@ export function ResignationsClient({
                 </span>
                 <span>随時報告TODO {r.todo_no || "未入力"}</span>
               </p>
-              {/* 退職希望は出ているが退職日がまだ決まっていない人。忘れないように目立たせる */}
-              {!r.leaving_on && (
+              {/* 退職予定（退職日がまだ来ていない・許可が降りてから退職）。その日を過ぎたら自動で退職扱い */}
+              {isPlannedLeaving(r, todayStr()) && (
+                <p className="mt-1.5 rounded-lg bg-status-notice-bg px-2.5 py-1.5 text-xs text-status-notice-fg">
+                  <b>
+                    退職予定
+                    {leavingTimingOf(r.leaving_timing) === "許可が降りてから退職" && !r.leaving_on
+                      ? "（許可が降りてから退職）"
+                      : `（${r.leaving_on}に退職）`}
+                  </b>
+                  <span className="block">
+                    {r.leaving_on
+                      ? "退職日を過ぎると自動で「退職」扱いになります。それまでは在籍中のままです。"
+                      : "許可が降りて退職日が決まったら「記録を編集」で退職日を入れてください。入れた日を過ぎると自動で「退職」扱いになります。"}
+                  </span>
+                </p>
+              )}
+              {r.leaving_plan_note && (
+                <p className="mt-1 whitespace-pre-wrap text-xs text-muted">退職予定のメモ: {r.leaving_plan_note}</p>
+              )}
+              {/* 退職日の変更ごとに、会社へ報告したか・報告日・了承を記録する */}
+              <LeavingDateChanges
+                changes={normalizeLeavingDateChanges(r.leaving_date_changes)}
+                canEdit={canEdit}
+                onSave={async (changes) => {
+                  patchRow(r.id, { leaving_date_changes: changes });
+                  await updateResignation(createClient(), r.id, { leaving_date_changes: changes });
+                }}
+              />
+              {/* 退職希望は出ているが退職日がまだ決まっていない人。忘れないように目立たせる（許可待ちの人は除く） */}
+              {!r.leaving_on && leavingTimingOf(r.leaving_timing) !== "許可が降りてから退職" && (
                 <p className="mt-1.5 flex items-center gap-1.5 rounded-lg bg-seal/10 px-2.5 py-1.5 text-xs font-bold text-seal">
                   <TriangleAlert size={14} className="shrink-0" />
                   退職日を聞いて！！（退職日が未定のままです）
@@ -448,6 +485,11 @@ function ResignationDialog({
   const [kind, setKind] = useState<ResignationKind>(editing?.kind ?? "自己都合");
   const [reason, setReason] = useState(editing?.reason ?? "");
   const [leavingOn, setLeavingOn] = useState(editing?.leaving_on ?? "");
+  // 退職日の決め方（許可が降りてから退職＝日付未定のまま退職予定として記録できる）と、退職予定のメモ
+  const [timing, setTiming] = useState<LeavingTiming>(leavingTimingOf(editing?.leaving_timing));
+  const [planNote, setPlanNote] = useState(editing?.leaving_plan_note ?? "");
+  // 編集で退職日が変わるときは、変更の記録（会社への報告のチェック用）を1件足す
+  const dateChanged = !!editing && (editing.leaving_on || null) !== (leavingOn || null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -490,26 +532,39 @@ function ResignationDialog({
       setError("退職する所属機関を選択してください");
       return;
     }
+    const input = {
+      worker_id: workerId,
+      organization_id: targetOrg.id,
+      org_name: targetOrg.name,
+      org_address: targetOrg.address,
+      org_contact: targetOrg.contact,
+      kind,
+      reason: reason.trim(),
+      // 退職希望は出ているが退職日が未定のことがある。空なら未定として残す
+      leaving_on: leavingOn || null,
+      todo_no: editing?.todo_no ?? "",
+      note: editing?.note ?? "",
+      // 記録したときの在留資格と、随時報告書を作るか（特定活動は不要）
+      residence_status: residenceStatus,
+      report_needed: reportNeeded,
+      // 退職予定と退職日の変更の記録（0173）。既定のままなら送らない（未実行の環境でも保存できるように）
+      ...(timing !== "日付で決まっている" || editing?.leaving_timing ? { leaving_timing: timing } : {}),
+      ...(planNote.trim() || editing?.leaving_plan_note ? { leaving_plan_note: planNote.trim() } : {}),
+      ...(dateChanged
+        ? {
+            leaving_date_changes: appendLeavingDateChange(
+              normalizeLeavingDateChanges(editing?.leaving_date_changes),
+              editing?.leaving_on ?? null,
+              leavingOn || null,
+              todayStr(),
+            ),
+          }
+        : {}),
+    };
     setBusy(true);
     setError(null);
     try {
       const supabase = createClient();
-      const input = {
-        worker_id: workerId,
-        organization_id: targetOrg.id,
-        org_name: targetOrg.name,
-        org_address: targetOrg.address,
-        org_contact: targetOrg.contact,
-        kind,
-        reason: reason.trim(),
-        // 退職希望は出ているが退職日が未定のことがある。空なら未定として残す
-        leaving_on: leavingOn || null,
-        todo_no: editing?.todo_no ?? "",
-        note: editing?.note ?? "",
-        // 記録したときの在留資格と、随時報告書を作るか（特定活動は不要）
-        residence_status: residenceStatus,
-        report_needed: reportNeeded,
-      };
       if (editing) {
         await updateResignation(supabase, editing.id, input);
       } else {
@@ -519,6 +574,8 @@ function ResignationDialog({
       await updateWorker(supabase, workerId, {
         // 退職日が未定のうちは、外国人情報の退職日は空のままにする
         ...(leavingOn ? { leaving_on: leavingOn } : {}),
+        // 決まっていた退職日を未定に戻したとき（許可待ちに変わったなど）は、外国人情報の退職日も空にする
+        ...(!leavingOn && editing?.leaving_on ? { leaving_on: null } : {}),
         leaving_kind: kind,
         leaving_reason: reason.trim(),
         leaving_org_name: targetOrg.name,
@@ -544,7 +601,14 @@ function ResignationDialog({
       await ensureSswCancelTodoOnLeaving(supabase, workerId).catch(() => undefined);
       onSaved();
     } catch (err) {
-      setError(dbErrorMessage(err, "0157_resignation_report_needed.sql"));
+      setError(
+        dbErrorMessage(
+          err,
+          "leaving_timing" in input || "leaving_plan_note" in input || "leaving_date_changes" in input
+            ? "0173_resignation_plan.sql"
+            : "0157_resignation_report_needed.sql",
+        ),
+      );
       setBusy(false);
     }
   };
@@ -693,8 +757,34 @@ function ResignationDialog({
           />
         </label>
 
+        {/* 退職日の決め方。特定活動の人が「許可が降りてから退職したい」ときなどは、日付未定の退職予定として記録する */}
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-muted">退職日の決め方</span>
+          <div className="grid grid-cols-2 gap-2">
+            {LEAVING_TIMINGS.map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTiming(t)}
+                aria-pressed={timing === t}
+                className={`min-h-[44px] rounded-xl border px-2 text-sm font-bold ${
+                  timing === t
+                    ? "border-brand bg-brand text-brand-foreground"
+                    : "border-border bg-surface text-muted"
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-bold text-muted">退職日（未定なら空のままでOK）</span>
+          <span className="text-xs font-bold text-muted">
+            {timing === "許可が降りてから退職"
+              ? "退職日（許可が降りて決まったら入れる。今は空のままでOK）"
+              : "退職日（未定なら空のままでOK）"}
+          </span>
           <input
             type="date"
             value={leavingOn}
@@ -706,6 +796,23 @@ function ResignationDialog({
             空のまま保存すると一覧に「退職日を聞いて！！」と出るので、決まったら入れてください
             （届出書の作成には退職日が必要です）。
           </span>
+          {dateChanged && (
+            <span className="rounded-lg bg-status-notice-bg px-2.5 py-1.5 text-[11px] font-bold text-status-notice-fg">
+              退職日を変更します（{editing?.leaving_on ?? "未定"} → {leavingOn || "未定"}）。
+              変更の記録が残るので、会社に報告したら一覧で「会社に報告した」にチェックし、報告日と了承をもらえたかを入れてください。
+            </span>
+          )}
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-muted">退職予定のメモ（わかれば）</span>
+          <textarea
+            value={planNote}
+            onChange={(e) => setPlanNote(e.target.value)}
+            rows={2}
+            placeholder="例: 特定技能の許可が降りたら退職したいとのこと（9/27 本人より）"
+            className={TEXTAREA}
+          />
         </label>
 
         <p className="rounded-lg bg-background px-3 py-2 text-[11px] text-muted">

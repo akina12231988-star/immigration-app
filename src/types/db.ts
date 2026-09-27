@@ -884,6 +884,10 @@ export interface ResignationRow {
   // 特定活動の人は届出書が要らないので report_needed = false（退職扱いと日割り計算だけ）
   residence_status?: string;
   report_needed?: boolean;
+  // 退職予定と退職日の変更の記録（0173）
+  leaving_timing?: string; // '' / 日付で決まっている / 許可が降りてから退職
+  leaving_plan_note?: string; // 退職予定のメモ
+  leaving_date_changes?: unknown; // LeavingDateChange[]（lib/resignation-plan で正規化して使う）
   created_by: string | null;
   created_at: string;
   updated_at: string;
