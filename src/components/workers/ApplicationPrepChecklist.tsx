@@ -497,6 +497,7 @@ export function ApplicationPrepChecklist({
         | "memo"
         | "post_apply_tasks"
         | "post_apply_mailings"
+        | "post_apply_notes"
       >
     >,
   ) {
@@ -509,7 +510,9 @@ export function ApplicationPrepChecklist({
     } catch (err) {
       // あとから足した項目（筆頭者=0111・申請予定日=0112）は、その分の案内を出す
       const migration =
-        "post_apply_mailings" in patch
+        "post_apply_notes" in patch
+          ? "0172_prep_post_apply_notes.sql"
+          : "post_apply_mailings" in patch
           ? "0168_prep_post_apply_mailings.sql"
           : "post_apply_tasks" in patch
           ? "0167_prep_post_apply_tasks.sql"
@@ -1494,6 +1497,8 @@ export function ApplicationPrepChecklist({
             mailings={current.post_apply_mailings ?? []}
             onSaveMailings={(post_apply_mailings) => void saveExtras({ post_apply_mailings })}
             onSaveTasks={(post_apply_tasks) => void saveExtras({ post_apply_tasks })}
+            notes={current.post_apply_notes ?? {}}
+            onSaveNotes={(post_apply_notes) => void saveExtras({ post_apply_notes })}
             compact
           />
           </>

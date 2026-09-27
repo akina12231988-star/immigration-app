@@ -80,6 +80,66 @@ export function prepDocLabel(docId: string): string {
   return PREP_DOC_DEFS.find((d) => d.id === docId)?.label ?? docId;
 }
 
+// 項目（書類・タスク）ごとのメモ。例：「現在発行手続き中との連絡あり」（0172）
+export interface PostApplyNote {
+  id: string;
+  text: string;
+  on: string; // 書いた日（YYYY-MM-DD）
+  by: string; // 記入者
+}
+
+// キーは項目（書類は "doc:<書類ID>"、タスクは "task:<タスクID>"）
+export type PostApplyNotes = Record<string, PostApplyNote[]>;
+
+export const postApplyDocKey = (docId: string) => `doc:${docId}`;
+export const postApplyTaskKey = (taskId: string) => `task:${taskId}`;
+
+// 保存されている値（jsonb）を正規化。0172未適用・壊れた値は空
+export function normalizePostApplyNotes(raw: unknown): PostApplyNotes {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: PostApplyNotes = {};
+  for (const [key, list] of Object.entries(raw as Record<string, unknown>)) {
+    if (!Array.isArray(list)) continue;
+    const notes = list
+      .filter((n): n is Record<string, unknown> => !!n && typeof n === "object")
+      .map((n, i) => ({
+        id: typeof n.id === "string" && n.id ? n.id : `n${i}`,
+        text: typeof n.text === "string" ? n.text : "",
+        on: typeof n.on === "string" ? n.on : "",
+        by: typeof n.by === "string" ? n.by : "",
+      }))
+      .filter((n) => n.text.trim() !== "");
+    if (notes.length > 0) out[key] = notes;
+  }
+  return out;
+}
+
+// メモを1件足す（新しいものを下に）
+export function addPostApplyNote(
+  notes: PostApplyNotes,
+  key: string,
+  text: string,
+  on: string,
+  by: string,
+): PostApplyNotes {
+  const note: PostApplyNote = {
+    id: `n${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+    text: text.trim(),
+    on,
+    by,
+  };
+  return { ...notes, [key]: [...(notes[key] ?? []), note] };
+}
+
+// メモを1件消す。空になった項目はキーごと消す
+export function removePostApplyNote(notes: PostApplyNotes, key: string, noteId: string): PostApplyNotes {
+  const rest = (notes[key] ?? []).filter((n) => n.id !== noteId);
+  const next = { ...notes };
+  if (rest.length > 0) next[key] = rest;
+  else delete next[key];
+  return next;
+}
+
 // 申請一覧に出す1人（準備リスト1件）ぶん
 export interface PostApplyEntry {
   checklistId: string;
@@ -89,6 +149,7 @@ export interface PostApplyEntry {
   docIds: string[]; // 申請後に入管へ郵送する書類（郵送済みも含む）
   mailings: PostApplyMailing[]; // 入管へ郵送した記録
   tasks: PostApplyTask[]; // そのほかのタスク（済みも含む）
+  notes: PostApplyNotes; // 項目ごとのメモ（0172）
 }
 
 // 残っている件数（まだ郵送していない書類＋済みでないタスク）
@@ -104,6 +165,7 @@ export function buildPostApplyEntries(
     todo_no?: string | null;
     post_apply_tasks?: unknown;
     post_apply_mailings?: unknown;
+    post_apply_notes?: unknown;
   }[],
   mailDocs: { checklist_id: string; doc_id: string }[],
   nameById: Map<string, string>,
@@ -121,6 +183,7 @@ export function buildPostApplyEntries(
       docIds: docsByList.get(c.id) ?? [],
       mailings: normalizePostApplyMailings(c.post_apply_mailings),
       tasks: normalizePostApplyTasks(c.post_apply_tasks),
+      notes: normalizePostApplyNotes(c.post_apply_notes),
     }))
     .filter((e) => openPostApplyCount(e) > 0);
   return entries.sort(

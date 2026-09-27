@@ -9,8 +9,13 @@ import {
   prepDocLabel,
   removeDocFromMailings,
   unmailedDocIds,
+  addPostApplyNote,
+  postApplyDocKey,
+  removePostApplyNote,
   type PostApplyMailing,
+  type PostApplyNotes,
 } from "@/lib/post-apply";
+import { PostApplyItemNotes } from "@/components/workers/PostApplyItemNotes";
 import { todayStr } from "@/lib/ssw/calc";
 
 const FIELD =
@@ -30,11 +35,15 @@ export function PostApplyMailingPanel({
   mailings,
   canEdit,
   onSave,
+  notes,
+  onSaveNotes,
 }: {
   docIds: string[];
   mailings: PostApplyMailing[];
   canEdit: boolean;
   onSave: (mailings: PostApplyMailing[]) => void | Promise<void>;
+  notes?: PostApplyNotes; // 書類ごとのメモ（0172）。渡したときだけメモ欄を出す
+  onSaveNotes?: (notes: PostApplyNotes) => void | Promise<void>;
 }) {
   const unmailed = unmailedDocIds(docIds, mailings);
   // 入力欄を開いているときに選んでいる書類（null = 閉じている）
@@ -114,6 +123,15 @@ export function PostApplyMailingPanel({
                   入管へ郵送した
                 </button>
               ))}
+            {/* 書類ごとのメモ（例：現在発行手続き中との連絡あり） */}
+            {notes && onSaveNotes && (
+              <PostApplyItemNotes
+                notes={notes[postApplyDocKey(id)] ?? []}
+                canEdit={canEdit}
+                onAdd={(text, by) => onSaveNotes(addPostApplyNote(notes, postApplyDocKey(id), text, todayStr(), by))}
+                onRemove={(noteId) => onSaveNotes(removePostApplyNote(notes, postApplyDocKey(id), noteId))}
+              />
+            )}
           </div>
         );
       })}

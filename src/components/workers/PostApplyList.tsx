@@ -2,8 +2,19 @@
 
 import { useState } from "react";
 import { Plus, Trash2, X } from "lucide-react";
-import { newPostApplyTask, unmailedDocIds, type PostApplyMailing, type PostApplyTask } from "@/lib/post-apply";
+import {
+  addPostApplyNote,
+  newPostApplyTask,
+  postApplyTaskKey,
+  removePostApplyNote,
+  unmailedDocIds,
+  type PostApplyMailing,
+  type PostApplyNotes,
+  type PostApplyTask,
+} from "@/lib/post-apply";
 import { PostApplyMailingPanel } from "@/components/workers/PostApplyMailingPanel";
+import { PostApplyItemNotes } from "@/components/workers/PostApplyItemNotes";
+import { todayStr } from "@/lib/ssw/calc";
 
 // 申請準備の「申請後に入管へ郵送するリスト」。
 // 書類の行で「申請後に発行され次第、入管へ郵送する」にチェックした書類をまとめ、
@@ -16,6 +27,8 @@ export function PostApplyList({
   canEdit,
   onSaveMailings,
   onSaveTasks,
+  notes,
+  onSaveNotes,
   compact = false,
 }: {
   docIds: string[];
@@ -24,6 +37,8 @@ export function PostApplyList({
   canEdit: boolean;
   onSaveMailings: (mailings: PostApplyMailing[]) => void;
   onSaveTasks: (tasks: PostApplyTask[]) => void;
+  notes: PostApplyNotes; // 項目ごとのメモ（0172）
+  onSaveNotes: (notes: PostApplyNotes) => void;
   compact?: boolean; // 申請準備の左の列（ステータスの下）に置くとき。説明を短くする
 }) {
   const [draft, setDraft] = useState("");
@@ -51,14 +66,21 @@ export function PostApplyList({
         入管へ郵送する書類（{docIds.length}件・うち未郵送{unmailedDocIds(docIds, mailings).length}件）
       </p>
       <div className="mt-1">
-        <PostApplyMailingPanel docIds={docIds} mailings={mailings} canEdit={canEdit} onSave={onSaveMailings} />
+        <PostApplyMailingPanel
+          docIds={docIds}
+          mailings={mailings}
+          canEdit={canEdit}
+          onSave={onSaveMailings}
+          notes={notes}
+          onSaveNotes={onSaveNotes}
+        />
       </div>
 
       <p className="mt-3 text-[11px] font-bold text-muted">そのほかのタスク（{tasks.filter((t) => !t.done).length}件）</p>
       {tasks.length > 0 && (
         <ul className="mt-1 space-y-1">
           {tasks.map((t) => (
-            <li key={t.id} className="flex items-center gap-2 rounded-lg bg-surface px-2.5 py-1.5 text-xs">
+            <li key={t.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-surface px-2.5 py-1.5 text-xs">
               <input
                 type="checkbox"
                 checked={t.done}
@@ -78,6 +100,12 @@ export function PostApplyList({
                   <Trash2 size={13} />
                 </button>
               )}
+              <PostApplyItemNotes
+                notes={notes[postApplyTaskKey(t.id)] ?? []}
+                canEdit={canEdit}
+                onAdd={(text, by) => onSaveNotes(addPostApplyNote(notes, postApplyTaskKey(t.id), text, todayStr(), by))}
+                onRemove={(noteId) => onSaveNotes(removePostApplyNote(notes, postApplyTaskKey(t.id), noteId))}
+              />
             </li>
           ))}
         </ul>

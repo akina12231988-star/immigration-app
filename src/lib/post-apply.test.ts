@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  addPostApplyNote,
   buildPostApplyEntries,
+  normalizePostApplyNotes,
+  postApplyDocKey,
+  postApplyTaskKey,
+  removePostApplyNote,
   mailingOf,
   newPostApplyMailing,
   normalizePostApplyMailings,
@@ -75,5 +80,47 @@ describe("入管へ郵送した記録", () => {
       new Map([["w1", "A"]]),
     );
     expect(entries).toEqual([]);
+  });
+});
+
+describe("申請後の郵送・タスクの項目ごとのメモ", () => {
+  it("書類とタスクで別のキーになる", () => {
+    expect(postApplyDocKey("kazei")).toBe("doc:kazei");
+    expect(postApplyTaskKey("t1")).toBe("task:t1");
+  });
+
+  it("メモを足すと下に積まれ、日付と記入者が残る", () => {
+    let notes = addPostApplyNote({}, "doc:kazei", " 現在発行手続き中との連絡あり ", "2026-09-27", "野口");
+    notes = addPostApplyNote(notes, "doc:kazei", "10/3に発行予定", "2026-09-28", "");
+    expect(notes["doc:kazei"].map((n) => [n.text, n.on, n.by])).toEqual([
+      ["現在発行手続き中との連絡あり", "2026-09-27", "野口"],
+      ["10/3に発行予定", "2026-09-28", ""],
+    ]);
+  });
+
+  it("消して空になった項目はキーごと消える", () => {
+    const notes = addPostApplyNote({}, "task:t1", "連絡待ち", "2026-09-27", "");
+    const id = notes["task:t1"][0].id;
+    expect(removePostApplyNote(notes, "task:t1", id)).toEqual({});
+  });
+
+  it("保存値を正規化する（未適用・壊れた値・空のメモは捨てる）", () => {
+    expect(normalizePostApplyNotes(null)).toEqual({});
+    expect(normalizePostApplyNotes([])).toEqual({});
+    expect(
+      normalizePostApplyNotes({
+        "doc:kazei": [{ id: "n1", text: "連絡あり", on: "2026-09-27", by: "野口" }, { text: "  " }, 3],
+        "task:t1": "壊れた値",
+      }),
+    ).toEqual({ "doc:kazei": [{ id: "n1", text: "連絡あり", on: "2026-09-27", by: "野口" }] });
+  });
+
+  it("一覧の1人ぶんにメモが入る", () => {
+    const [e] = buildPostApplyEntries(
+      [{ id: "c1", worker_id: "w1", post_apply_notes: { "doc:kazei": [{ id: "n1", text: "連絡あり", on: "", by: "" }] } }],
+      [{ checklist_id: "c1", doc_id: "kazei" }],
+      new Map([["w1", "NGUYEN VAN AN"]]),
+    );
+    expect(e.notes["doc:kazei"][0].text).toBe("連絡あり");
   });
 });
