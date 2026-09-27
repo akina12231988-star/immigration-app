@@ -490,6 +490,8 @@ function SswWorkerRow({
             <Link href={`/workers/${w.id}`} className="text-sm font-bold text-brand hover:underline">
               {w.name}
             </Link>
+            {/* 保険会社の申込画面などに貼れるよう、氏名をコピーできる */}
+            <CopyButton value={w.name} label={`${w.name}の氏名をコピー`} size={13} className="inline-flex" />
             {/* 2列にすると欄の見出しが無くなるので、区分を行に付ける */}
             <span
               className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
