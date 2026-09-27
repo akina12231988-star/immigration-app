@@ -292,3 +292,16 @@ describe("申請準備の申請種別の引き当て（登録時の選択と紐�
     expect(derivePrepAppContent({ todoTitle: null, currentSituation: null })).toBe("");
   });
 });
+
+describe("申請準備の申請種別 → 申請登録の申請内容", () => {
+  it("準備の内容から申請内容の候補を決める", async () => {
+    const { applicationChoiceLabelOfPrep, APPLICATION_CONTENT_CHOICES } = await import("./worker-situation");
+    for (const c of APPLICATION_CONTENT_CHOICES) {
+      expect(applicationChoiceLabelOfPrep(c.prepSituation)).toBe(
+        APPLICATION_CONTENT_CHOICES.find((x) => x.prepSituation === c.prepSituation)?.label,
+      );
+    }
+    expect(applicationChoiceLabelOfPrep("在留資格認定申請書の準備中")).toBe("在留認定許可申請（特定技能）");
+    expect(applicationChoiceLabelOfPrep("")).toBe("");
+  });
+});
