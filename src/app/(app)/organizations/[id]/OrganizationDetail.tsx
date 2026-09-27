@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, X } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
@@ -20,6 +20,7 @@ import {
   orgSupportStaff,
 } from "@/lib/support-system";
 import type { Organization } from "@/types/db";
+import { OrgTabBar, OrgTabProvider, type OrgTabId } from "@/components/organizations/OrgTabs";
 
 // 所属機関の詳細表示。開いた時点で入力済みの欄は表示のみ・未記入の欄はそのまま入力できる。
 // 「編集」を押すとこの画面がそのまま編集モードになり、入力済みの項目も直して保存できる
@@ -29,12 +30,18 @@ export function OrganizationDetail({
   managerNames = [],
   staffNames = [],
   workerCount = 0,
+  roster,
+  ssw2,
 }: {
   organization: Organization;
   managerNames?: string[]; // 支援責任者にしている従業員（/employees で設定）
   staffNames?: string[]; // 支援担当者にしている従業員（/employees で設定）
   workerCount?: number; // この機関に在籍している1号特定技能外国人数
+  roster?: ReactNode; // 在籍者・過去の在籍者（「支援体制・在籍者」のタブに出す）
+  ssw2?: ReactNode; // 特定技能２号の指導体制（「２号の指導体制」のタブに出す）
 }) {
+  // 案B: 中身はそのままで、タブに分けて見せる
+  const [tab, setTab] = useState<OrgTabId>("company");
   const router = useRouter();
   // snapshot = 表示のみにする基準（保存すると入力した欄も表示に切り替わる）
   const [snapshot, setSnapshot] = useState(() => organizationToInput(organization));
@@ -92,7 +99,7 @@ export function OrganizationDetail({
         onSave={handleSave}
         saveLabel={editing ? "編集した内容を保存" : "入力した内容を保存"}
       />
-      {/* 会社名のバー〜支援体制までは上部に固定して、下にスクロールしても常に見えるようにする。
+      {/* 会社名のバー・編集ボタン・タブは上部に固定して、下にスクロールしても常に見えるようにする。
           ボタンは表示モードでは「編集」、編集モードでは「編集した内容を保存」に切り替わる */}
       <div className="sticky top-0 z-20 -mx-4 -mt-4 flex flex-col gap-3 border-b border-border bg-background px-4 pb-3 pt-2 shadow-sm md:-mx-8 md:-mt-6 md:px-8 md:pt-3">
       <AppHeader title={organization.name} backHref="/organizations" />
@@ -158,47 +165,54 @@ export function OrganizationDetail({
           </div>
         )}
       </div>
-      {/* 支援体制（令和9年4月1日施行の要件）。在籍数と選任状況をひと目で確認できるようにする */}
-      <Card className="p-4">
-        <h2 className="mb-1 text-sm font-bold">支援体制</h2>
-        <p className="mb-1 text-xs">
-          <span className="text-muted">支援委託の状況: </span>
-          <span className="font-bold">{contractStatus || "未設定"}</span>
-          <span className="ml-2 text-muted">
-            {contracted
-              ? "委託を受けている機関として数えています"
-              : "委託を受けている機関として数えていません"}
-          </span>
-        </p>
-        <p className="text-xs">
-          <span className="text-muted">在籍（1号特定技能）: </span>
-          <span className="font-bold">{workerCount}名</span>
-          <span className="ml-2 text-muted">
-            必要な支援担当者: {needStaff}名（選任 {supportStaff.length}名）
-          </span>
-          {shortage > 0 && <span className="font-bold text-seal"> ← {shortage}名不足</span>}
-        </p>
-        <p className="mt-1 text-xs">
-          <span className="text-muted">支援責任者: </span>
-          {managers.length > 0 ? (
-            managers.join("・")
-          ) : (
-            <span className="font-bold text-seal">未選任（1人以上必要）</span>
-          )}
-        </p>
-        <p className="text-xs">
-          <span className="text-muted">支援担当者: </span>
-          {supportStaff.length > 0 ? (
-            supportStaff.join("・")
-          ) : (
-            <span className="font-bold text-seal">未選任（1人以上必要）</span>
-          )}
-        </p>
-        {dual.length > 0 && <p className="text-xs text-muted">兼任: {dual.join("・")}</p>}
-      </Card>
+      <OrgTabBar tab={tab} onChange={setTab} />
       </div>
 
-      <Card className="p-4">
+      {tab === "support" && (
+        <>
+          {/* 支援体制（令和9年4月1日施行の要件）。在籍数と選任状況をひと目で確認できるようにする */}
+          <Card className="p-4">
+            <h2 className="mb-1 text-sm font-bold">支援体制</h2>
+            <p className="mb-1 text-xs">
+              <span className="text-muted">支援委託の状況: </span>
+              <span className="font-bold">{contractStatus || "未設定"}</span>
+              <span className="ml-2 text-muted">
+                {contracted
+                  ? "委託を受けている機関として数えています"
+                  : "委託を受けている機関として数えていません"}
+              </span>
+            </p>
+            <p className="text-xs">
+              <span className="text-muted">在籍（1号特定技能）: </span>
+              <span className="font-bold">{workerCount}名</span>
+              <span className="ml-2 text-muted">
+                必要な支援担当者: {needStaff}名（選任 {supportStaff.length}名）
+              </span>
+              {shortage > 0 && <span className="font-bold text-seal"> ← {shortage}名不足</span>}
+            </p>
+            <p className="mt-1 text-xs">
+              <span className="text-muted">支援責任者: </span>
+              {managers.length > 0 ? (
+                managers.join("・")
+              ) : (
+                <span className="font-bold text-seal">未選任（1人以上必要）</span>
+              )}
+            </p>
+            <p className="text-xs">
+              <span className="text-muted">支援担当者: </span>
+              {supportStaff.length > 0 ? (
+                supportStaff.join("・")
+              ) : (
+                <span className="font-bold text-seal">未選任（1人以上必要）</span>
+              )}
+            </p>
+            {dual.length > 0 && <p className="text-xs text-muted">兼任: {dual.join("・")}</p>}
+          </Card>
+        </>
+      )}
+      {/* 入力欄はどのタブでも描いたままにして（入力中の内容が消えないように）、タブで見せる所だけ切り替える */}
+      <OrgTabProvider tab={tab}>
+      <Card className={`p-4 ${tab === "ssw2" ? "hidden" : ""}`}>
         <div className="flex flex-col gap-2.5">
           <OrganizationFormBody
             form={form}
@@ -213,6 +227,9 @@ export function OrganizationDetail({
           </Button>
         </div>
       </Card>
+      </OrgTabProvider>
+      {tab === "support" && roster}
+      {tab === "ssw2" && ssw2}
     </div>
   );
 }

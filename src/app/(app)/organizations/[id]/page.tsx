@@ -53,31 +53,25 @@ export default async function OrganizationDetailPage({
 
   return (
     <>
-      {/* 会社名のバー・編集/保存ボタン・支援体制は OrganizationDetail の中で
-          上部に固定表示する（スクロールしても見える） */}
+      {/* 会社名のバー・編集/保存ボタン・タブは OrganizationDetail の中で上部に固定表示する。
+          在籍者は「支援体制・在籍者」、２号の指導体制は「２号の指導体制」のタブに出す */}
       <OrganizationDetail
         organization={organization}
         managerNames={supportManagerOptions(employees, todayStr())}
         staffNames={supportStaffOptions(employees, todayStr())}
         workerCount={workerCount}
+        roster={
+          <OrganizationRoster
+            organizationId={id}
+            current={roster.current}
+            past={roster.past}
+            today={todayStr()}
+            error={roster.error}
+          />
+        }
+        // 特定技能２号の指導体制（誰が誰を指導するか・あと何人受け入れられるか）
+        ssw2={<OrgSsw2Instruction organizationId={id} duties={ssw2DutiesOf(organization)} canEdit />}
       />
-      <div className="mt-4">
-        <OrganizationRoster
-          organizationId={id}
-          current={roster.current}
-          past={roster.past}
-          today={todayStr()}
-          error={roster.error}
-        />
-      </div>
-      {/* 特定技能２号の指導体制（誰が誰を指導するか・あと何人受け入れられるか） */}
-      <div className="mt-4">
-        <OrgSsw2Instruction
-          organizationId={id}
-          duties={ssw2DutiesOf(organization)}
-          canEdit
-        />
-      </div>
     </>
   );
 }

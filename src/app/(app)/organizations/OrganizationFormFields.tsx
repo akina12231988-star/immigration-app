@@ -6,6 +6,7 @@ import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { createClient } from "@/lib/supabase/client";
+import { OrgTabPanel } from "@/components/organizations/OrgTabs";
 import { compressImage } from "@/lib/image-compress";
 import { formatAmountInput } from "@/lib/amount-format";
 import { listOrganizationFiles } from "@/lib/supabase/queries/organization-files";
@@ -687,6 +688,7 @@ export function OrganizationFormBody({
 
   return (
     <>
+      <OrgTabPanel tab="support">
       {/* この機関の支援責任者・支援担当者（複数可）。外国人詳細・申請一覧・ダッシュボードに表示され、
           申請一覧では担当者での絞り込みに使う。令和9年4月1日施行の省令改正に対応 */}
       <div className="flex flex-col gap-2.5 rounded-xl border border-border p-3">
@@ -723,6 +725,8 @@ export function OrganizationFormBody({
           <p className="text-xs font-bold text-brand">兼任: {dualNames.join("・")}</p>
         )}
       </div>
+      </OrgTabPanel>
+      <OrgTabPanel tab="company">
       {locks.top("corporate_no") ? (
         <StaticValue label="法人番号" value={form.corporate_no} />
       ) : (
@@ -750,6 +754,7 @@ export function OrganizationFormBody({
           />
         </label>
       )}
+      </OrgTabPanel>
 
       <IntakeSection
         intake={intake}
@@ -837,6 +842,7 @@ function IntakeSection({
     <div className="rounded-xl border border-border">
       <p className="px-3 pt-3 text-sm font-bold">申込書の情報（登録支援機関への申込書）</p>
       <div className="flex flex-col gap-2.5 p-3">
+        <OrgTabPanel tab="company">
         <p className={GROUP_CLASS}>会社の情報</p>
         {companyFields}
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
@@ -964,7 +970,9 @@ function IntakeSection({
             />
           )}
         </div>
+        </OrgTabPanel>
 
+        <OrgTabPanel tab="support">
         <p className={GROUP_CLASS}>
           常勤職員数（専従者も含む）
           <span className="ml-2 font-medium text-muted">
@@ -1006,7 +1014,9 @@ function IntakeSection({
             locked={locks.intake("staff_katsudo")}
           />
         </div>
+        </OrgTabPanel>
 
+        <OrgTabPanel tab="money">
         <p className={GROUP_CLASS}>決算情報（年月が経過したら行を追加）</p>
         <p className={HINT_CLASS}>
           個人事業主は、売上高＝青色決算書の「売上（収入）金額」、経常損益＝「所得金額」、
@@ -1160,7 +1170,9 @@ function IntakeSection({
             />
           </label>
         )}
+        </OrgTabPanel>
 
+        <OrgTabPanel tab="work">
         <p className={GROUP_CLASS}>求人票に記載する内容（雇用条件書の順番）</p>
         <p className={HINT_CLASS}>
           この会社の求人を登録するときに、求人票の欄へ自動で反映されます（毎回同じ値を入れ直さなくて済みます）。雇用条件書と同じ順番で並べています。
@@ -1636,7 +1648,9 @@ function IntakeSection({
           onChange={(v) => setIntake({ job_rules_where: v })}
           placeholder="例: 事務所の掲示板に掲示／休憩室に備え付け"
         />
+        </OrgTabPanel>
 
+        <OrgTabPanel tab="work">
         <p className={GROUP_CLASS}>1-6号別紙に記載する内容（求人票に記載するその他の内容）</p>
         <div className="grid grid-cols-2 gap-2.5">
           <IntakeField
@@ -1700,13 +1714,17 @@ function IntakeSection({
             </span>
           </label>
         )}
+        </OrgTabPanel>
+        <OrgTabPanel tab="docs">
         <p className={GROUP_CLASS}>見積書の添付（複数可）</p>
         {orgId ? (
           <OrgFileAttachments orgId={orgId} kind="見積書" addLabel="見積書を追加（画像・PDF）" />
         ) : (
           <p className={HINT_CLASS}>見積書は、会社・機関を登録したあとに編集画面から添付できます。</p>
         )}
+        </OrgTabPanel>
 
+        <OrgTabPanel tab="money">
         <p className={GROUP_CLASS}>申請種別ごとの売上明細（freee販売）</p>
         <p className={HINT_CLASS}>
           在留カード受領後の売上登録で、申請種別を選ぶとここに登録した明細が自動で入ります。
@@ -1768,7 +1786,9 @@ function IntakeSection({
             </div>
           );
         })}
+        </OrgTabPanel>
 
+        <OrgTabPanel tab="support">
         <p className={GROUP_CLASS}>一緒に働く日本人常勤職員（専従者）</p>
         <p className={HINT_CLASS}>記入した職員については、定期報告の際に賃金台帳を提出します。</p>
         {intake.japanese_staff.map((row, i) => (
@@ -1839,7 +1859,9 @@ function IntakeSection({
             />
           </label>
         )}
+        </OrgTabPanel>
 
+        <OrgTabPanel tab="insure">
         <p className={GROUP_CLASS}>労災保険・雇用保険</p>
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
           <IntakeSelect
@@ -1879,7 +1901,9 @@ function IntakeSection({
             locked={locks.intake("koyo_no")}
           />
         </div>
+        </OrgTabPanel>
 
+        <OrgTabPanel tab="insure">
         <p className={GROUP_CLASS}>寮・宿泊物件の情報（特定技能外国人の宿泊先）</p>
         <p className={HINT_CLASS}>女子寮・男子寮など物件が複数ある場合は「＋ 寮を追加」で登録してください。</p>
         {intake.lodgings.map((lodging, i) => (
@@ -2121,7 +2145,9 @@ function IntakeSection({
         >
           ＋ 寮を追加
         </button>
+        </OrgTabPanel>
 
+        <OrgTabPanel tab="company">
         <p className={GROUP_CLASS}>その他</p>
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
           <IntakeField
@@ -2144,6 +2170,8 @@ function IntakeSection({
             locked={locks.intake("missing_trainee")}
           />
         </div>
+        </OrgTabPanel>
+        <OrgTabPanel tab="docs">
         <p className={GROUP_CLASS}>協力確認書の提出（提出先・提出日・確認方法）</p>
         <p className={HINT_CLASS}>
           提出先・提出日・確認方法（メール／提出した書面の控え／その他）を分けて記録します。複数ある場合は「＋提出を追加」で行を足してください。協議会の加入通知書などがある場合はコピーをもらってください。
@@ -2196,7 +2224,9 @@ function IntakeSection({
           hint="以前この欄にまとめて書いていた提出先・提出日は、上の欄へ分けて記録し直せます。"
           locked={locks.intake("council_note")}
         />
+        </OrgTabPanel>
 
+        <OrgTabPanel tab="docs">
         <p className={GROUP_CLASS}>定期報告・賃金台帳（毎年の提出データ）</p>
         {orgId ? (
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
@@ -2218,7 +2248,9 @@ function IntakeSection({
             定期報告・賃金台帳のデータは、会社・機関を登録したあとに編集画面から添付できます。
           </p>
         )}
+        </OrgTabPanel>
 
+        <OrgTabPanel tab="company">
         <p className={GROUP_CLASS}>所属役員（法人の場合）</p>
         <p className={HINT_CLASS}>
           特定技能外国人の受入れ業務の執行に直接関与しない役員はチェックしてください。
@@ -2275,6 +2307,7 @@ function IntakeSection({
         >
           ＋ 役員を追加
         </button>
+        </OrgTabPanel>
       </div>
     </div>
   );
