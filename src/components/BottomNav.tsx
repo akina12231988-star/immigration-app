@@ -4,13 +4,10 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { NAV_ITEMS, activeHref, type NavItem } from "@/lib/nav-items";
+import { activeHref, mobileNavItems, type NavItem } from "@/lib/nav-items";
 import { useNotifications } from "@/lib/notification-store";
 import { useUnreadReleaseCount } from "@/lib/release-notes-read";
 import { useNavAlerts, type NavAlerts } from "@/lib/nav-alerts";
-
-// 1行目に常時表示する項目数（6列目は開閉ボタン）
-const PRIMARY_COUNT = 5;
 
 // モバイル専用の下部タブ。PC ではサイドナビを使うため非表示。
 // 画面を占有しすぎないよう通常は1行だけ表示し、「↑」ボタンで
@@ -23,8 +20,8 @@ export function BottomNav() {
   // パスポート更新必要・要実施の生活オリエンのアラート件数（タブごとに取らず親で1回）
   const alerts = useNavAlerts();
 
-  const primary = NAV_ITEMS.slice(0, PRIMARY_COUNT);
-  const rest = NAV_ITEMS.slice(PRIMARY_COUNT);
+  // 1行目はホーム・外国人・所属機関・申請一覧・通知書（6列目は開閉ボタン）。残りは「その他」に入れる
+  const { primary, rest } = mobileNavItems();
   // 畳んでいる中に現在ページがあるときは、開閉ボタンを現在地として強調する
   const restHasActive = rest.some((item) => item.href === active);
 
@@ -33,7 +30,8 @@ export function BottomNav() {
       {/* 2行目以降: 開いたときだけ上へスライドして表示 */}
       <div
         className={`overflow-hidden transition-all duration-300 ${
-          open ? "max-h-48 border-b border-border" : "max-h-0"
+          // 項目が4行以上あっても最後の行まで見えるよう、画面の6割まで広げて中でスクロールする
+          open ? "max-h-[60vh] overflow-y-auto border-b border-border" : "max-h-0"
         }`}
       >
         <div className="grid grid-cols-6 gap-x-0.5 gap-y-0.5 px-1 pb-1 pt-1">
