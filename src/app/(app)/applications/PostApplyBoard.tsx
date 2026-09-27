@@ -5,9 +5,23 @@ import Link from "next/link";
 import { Check, ClipboardList, ExternalLink } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
-import { savePostApplyMailings, savePostApplyTasks } from "@/lib/supabase/queries/application-prep";
+import {
+  savePostApplyMailings,
+  savePostApplyNotes,
+  savePostApplyTasks,
+} from "@/lib/supabase/queries/application-prep";
 import { PostApplyMailingPanel } from "@/components/workers/PostApplyMailingPanel";
-import { openPostApplyCount, type PostApplyEntry, type PostApplyMailing } from "@/lib/post-apply";
+import { PostApplyItemNotes } from "@/components/workers/PostApplyItemNotes";
+import {
+  addPostApplyNote,
+  openPostApplyCount,
+  postApplyTaskKey,
+  removePostApplyNote,
+  type PostApplyEntry,
+  type PostApplyMailing,
+  type PostApplyNotes,
+} from "@/lib/post-apply";
+import { todayStr } from "@/lib/ssw/calc";
 import { dbErrorMessage } from "@/lib/errors";
 import type { Application } from "@/types/application";
 
@@ -57,6 +71,16 @@ export function PostApplyBoard({
       setError(dbErrorMessage(err, "0168_prep_post_apply_mailings.sql", "保存に失敗しました"));
     }
   };
+  // 項目ごとのメモ（例：現在発行手続き中との連絡あり）
+  const saveNotes = async (e: PostApplyEntry, notes: PostApplyNotes) => {
+    setError(null);
+    try {
+      await savePostApplyNotes(createClient(), e.checklistId, notes);
+      onChanged({ ...e, notes });
+    } catch (err) {
+      setError(dbErrorMessage(err, "0172_prep_post_apply_notes.sql", "メモの保存に失敗しました"));
+    }
+  };
   const doneTask = async (e: PostApplyEntry, taskId: string) => {
     setError(null);
     const tasks = e.tasks.map((t) => (t.id === taskId ? { ...t, done: true } : t));
@@ -72,7 +96,7 @@ export function PostApplyBoard({
     <div className="space-y-3">
       <p className="rounded-xl border border-border bg-surface px-3.5 py-2.5 text-xs leading-relaxed text-muted">
         申請準備で「申請後に発行され次第、入管へ郵送する」にチェックした書類と、「申請後に入管へ郵送するリスト」に入れたタスクを人ごとにまとめています。
-        郵送したら「入管へ郵送した」で投函日・追跡番号を記録します（同じ日・同じ追跡番号なら「まとめて入管へ郵送した」で一度に）。全部郵送してタスクも済むと、ここから消えます。
+        「メモを追加」で、各項目に連絡の内容などを残せます（例：現在発行手続き中との連絡あり）。郵送したら「入管へ郵送した」で投函日・追跡番号を記録します（同じ日・同じ追跡番号なら「まとめて入管へ郵送した」で一度に）。全部郵送してタスクも済むと、ここから消えます。
       </p>
       {error && (
         <p role="alert" className="rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
@@ -123,12 +147,14 @@ export function PostApplyBoard({
                     mailings={e.mailings}
                     canEdit={canEdit}
                     onSave={(mailings) => saveMailings(e, mailings)}
+                    notes={e.notes}
+                    onSaveNotes={(notes) => saveNotes(e, notes)}
                   />
                 </div>
               )}
               <ul className="mt-2 space-y-1">
                 {openTasks.map((t) => (
-                  <li key={t.id} className="flex items-center justify-between gap-2 rounded-lg bg-background px-2.5 py-1.5 text-xs">
+                  <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-background px-2.5 py-1.5 text-xs">
                     <span className="min-w-0 break-words">
                       <span className="mr-1.5 rounded bg-brand/10 px-1 text-[10px] font-bold text-brand">タスク</span>
                       {t.text}
@@ -143,6 +169,14 @@ export function PostApplyBoard({
                         済み
                       </button>
                     )}
+                    <PostApplyItemNotes
+                      notes={e.notes[postApplyTaskKey(t.id)] ?? []}
+                      canEdit={canEdit}
+                      onAdd={(text, by) =>
+                        saveNotes(e, addPostApplyNote(e.notes, postApplyTaskKey(t.id), text, todayStr(), by))
+                      }
+                      onRemove={(noteId) => saveNotes(e, removePostApplyNote(e.notes, postApplyTaskKey(t.id), noteId))}
+                    />
                   </li>
                 ))}
               </ul>

@@ -2,11 +2,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   buildPostApplyEntries,
   normalizePostApplyMailings,
+  normalizePostApplyNotes,
   normalizePostApplyTasks,
   unmailedDocIds,
   type PostApplyEntry,
   type PostApplyMailing,
   type PostApplyTask,
+  type PostApplyNotes,
 } from "@/lib/post-apply";
 import {
   evaluatePrepChecklist,
@@ -29,6 +31,7 @@ export interface PrepChecklistRow extends PrepChecklistMeta {
   memo: string; // メモ（いま何を依頼していて何を待っているか。A4印刷のメモ欄にも出す。0160）
   post_apply_tasks: PostApplyTask[]; // 申請後に対応するタスク（0167）
   post_apply_mailings: PostApplyMailing[]; // 申請後に入管へ郵送した記録（0168）
+  post_apply_notes: PostApplyNotes; // 申請後の郵送・タスクの項目ごとのメモ（0172）
 }
 
 // 外国人の準備リストを全件取得（更新が新しい順）。
@@ -64,6 +67,7 @@ export async function listPrepChecklists(
     memo: r.memo ?? "",
     post_apply_tasks: normalizePostApplyTasks(r.post_apply_tasks),
     post_apply_mailings: normalizePostApplyMailings(r.post_apply_mailings),
+    post_apply_notes: normalizePostApplyNotes(r.post_apply_notes),
   }));
 }
 
@@ -122,6 +126,7 @@ export async function updatePrepChecklistExtras(
       | "memo"
       | "post_apply_tasks"
       | "post_apply_mailings"
+      | "post_apply_notes"
     >
   >,
 ): Promise<void> {
@@ -475,6 +480,7 @@ export async function listPostApplyEntries(supabase: SupabaseClient): Promise<Po
       todo_no: string | null;
       post_apply_tasks?: unknown;
       post_apply_mailings?: unknown;
+      post_apply_notes?: unknown;
     }[]) ?? [];
   const mailDocs = (docs as { checklist_id: string; doc_id: string }[]) ?? [];
   const wanted = checklists.filter(
@@ -516,6 +522,19 @@ export async function savePostApplyTasks(
   const { error } = await supabase
     .from("application_prep_checklists")
     .update({ post_apply_tasks: tasks })
+    .eq("id", checklistId);
+  if (error) throw error;
+}
+
+// 申請後の郵送・タスクの項目ごとのメモを保存（0172_prep_post_apply_notes.sql が必要）
+export async function savePostApplyNotes(
+  supabase: SupabaseClient,
+  checklistId: string,
+  notes: PostApplyNotes,
+): Promise<void> {
+  const { error } = await supabase
+    .from("application_prep_checklists")
+    .update({ post_apply_notes: notes })
     .eq("id", checklistId);
   if (error) throw error;
 }
