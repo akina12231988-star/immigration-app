@@ -28,8 +28,12 @@ import { filledCouncilSubmissions, normalizeOrganizationIntake } from "@/lib/org
 import { uploadOrgFiles } from "@/lib/org-file-upload";
 import { rosterJpDate } from "@/lib/roster";
 import { todayStr } from "@/lib/ssw/calc";
+import { findPlanDatesForTodo, listPlanDates } from "@/lib/supabase/queries/plan-dates";
+import { listWorkerWages } from "@/lib/supabase/queries/wages";
+import { HOUSING_PATTERNS, housingPatternOf, pickPrepWage } from "@/lib/prep-117-housing";
+import { formatYen } from "@/lib/wage-calc";
 import { OrgAttachmentPreview } from "@/components/workers/ApplicationPrepExtras";
-import type { Employee, Organization, OrganizationFileRow } from "@/types/db";
+import type { Employee, Organization, OrganizationFileRow, WorkerWage } from "@/types/db";
 
 // 申請準備の詳細ページで使う、登録支援機関・所属機関の情報。
 //  ・PlacementAgencyCard: 職業紹介事業者の情報（あっせん「有り」のときに出す。コピーできる）
@@ -105,8 +109,19 @@ interface PlanWorker {
 //  2. 所属機関: 会社名・住所・電話番号
 //  3. 支援している特定技能外国人の人数
 //  4. 支援責任者・支援担当者の名簿（A4で印刷）
-//  5. 所属機関の協力確認書: 提出先・提出日
-export function Prep117Section({ orgId, workerIds }: { orgId: string | null; workerIds: string[] }) {
+//  5. 事前ガイダンスの実施日（支援計画書の日付から）
+//  6. 住居（1-6号別紙の居住費から A 自分で契約／B 社宅・自己所有物件／C 社宅・賃貸物件。該当欄に雇用開始日）
+//  7. 生活オリエンテーションの実施日（支援計画書の日付から）
+//  8. 所属機関の協力確認書: 提出先・提出日
+export function Prep117Section({
+  orgId,
+  workerIds,
+  todoNo = "",
+}: {
+  orgId: string | null;
+  workerIds: string[];
+  todoNo?: string; // 支援計画書の日付（事前ガイダンス・雇用開始日・生活オリエンテーション）を引くTODO番号
+}) {
   const workerKey = workerIds.join(",");
   const [data, setData] = useState<{
     key: string;
@@ -114,6 +129,8 @@ export function Prep117Section({ orgId, workerIds }: { orgId: string | null; wor
     employees: Employee[];
     supportWorkers: SupportWorker[];
     org: Organization | null;
+    planDates: Record<string, string>; // 保存済みの支援計画書の日付（es / guid / orient など）
+    wage: WorkerWage | null; // 1-6号別紙（居住費）を見る賃金の記録
   } | null>(null);
 
   useEffect(() => {
@@ -133,20 +150,37 @@ export function Prep117Section({ orgId, workerIds }: { orgId: string | null; wor
       orgId
         ? supabase.from("organizations").select("*").eq("id", orgId).maybeSingle().then(({ data: o }) => (o as Organization | null) ?? null)
         : Promise.resolve(null),
-    ]).then(([workers, employees, supportWorkers, org]) => {
+      ids[0]
+        ? listPlanDates(supabase, ids[0])
+            .then((rows) => findPlanDatesForTodo(rows, todoNo)?.dates ?? {})
+            .catch(() => ({}) as Record<string, string>)
+        : Promise.resolve({} as Record<string, string>),
+      ids[0] ? listWorkerWages(supabase, ids[0]).catch(() => [] as WorkerWage[]) : Promise.resolve([] as WorkerWage[]),
+    ]).then(([workers, employees, supportWorkers, org, planDates, wages]) => {
       if (cancelled) return;
       // 本人を先に、連名の方をあとに並べる
       const order = new Map(ids.map((id, i) => [id, i]));
       workers.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
-      setData({ key: `${orgId ?? ""}|${workerKey}`, workers, employees, supportWorkers, org });
+      setData({
+        key: `${orgId ?? ""}|${workerKey}|${todoNo}`,
+        workers,
+        employees,
+        supportWorkers,
+        org,
+        planDates,
+        wage: pickPrepWage(wages, orgId),
+      });
     });
     return () => {
       cancelled = true;
     };
-  }, [orgId, workerKey]);
+  }, [orgId, workerKey, todoNo]);
 
-  if (!data || data.key !== `${orgId ?? ""}|${workerKey}`) return null;
-  const { workers, employees, supportWorkers, org } = data;
+  if (!data || data.key !== `${orgId ?? ""}|${workerKey}|${todoNo}`) return null;
+  const { workers, employees, supportWorkers, org, planDates, wage } = data;
+  const employStart = planDates.es ?? "";
+  const housing = housingPatternOf(wage?.detail ?? null, normalizeOrganizationIntake(org?.intake).lodgings);
+  const mainWorkerId = workerIds[0] ?? "";
   const today = todayStr();
   const intake = normalizeOrganizationIntake(org?.intake);
 
@@ -297,9 +331,84 @@ export function Prep117Section({ orgId, workerIds }: { orgId: string | null; wor
         )}
       </div>
 
-      {/* 5. 所属機関の協力確認書 */}
+      {/* 5. 事前ガイダンスの実施日 */}
       <div>
-        {heading("5. 所属機関の協力確認書")}
+        {heading("5. 事前ガイダンスの実施日")}
+        <div className="overflow-hidden rounded-xl border border-border">
+          <CopyRow label="事前ガイダンス" value={planDates.guid ? rosterJpDate(planDates.guid) : ""} />
+        </div>
+      </div>
+
+      {/* 6. 住居（1-6号別紙の居住費から A・B・C を決め、該当する欄に雇用開始日を書く） */}
+      <div>
+        {heading(
+          "6. 住居（社宅か、自分で契約する住居か）",
+          <Link
+            href={`/workers/${mainWorkerId}#wages`}
+            className="rounded-full border border-brand px-2.5 py-1 text-[10px] font-bold text-brand"
+          >
+            賃金（1-6号別紙）を開く
+          </Link>,
+        )}
+        <div className="overflow-hidden rounded-xl border border-border">
+          {HOUSING_PATTERNS.map((p) => {
+            const hit = housing.key === p.key;
+            return (
+              <div
+                key={p.key}
+                className={`flex min-h-[40px] items-center gap-2 border-t border-border px-3 py-1.5 text-xs first:border-t-0 ${hit ? "bg-brand/5" : ""}`}
+              >
+                <span className={`w-6 shrink-0 text-center text-sm font-black ${hit ? "text-brand" : "text-muted"}`}>{p.key}</span>
+                <span className={`w-44 shrink-0 text-[11px] ${hit ? "font-bold" : "text-muted"}`}>{p.label}</span>
+                <span className={`min-w-0 flex-1 ${hit ? "font-bold" : "text-muted"}`}>
+                  {hit ? (employStart ? `雇用開始日 ${rosterJpDate(employStart)}` : "雇用開始日が未登録") : "—"}
+                </span>
+                {hit && employStart && (
+                  <CopyButton value={rosterJpDate(employStart)} label={`${p.key}の雇用開始日をコピー`} size={13} className="inline-flex shrink-0" />
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {/* 1-6号別紙の居住費の内容 */}
+        <div className="mt-1.5 rounded-lg bg-background px-3 py-2 text-[11px] leading-relaxed">
+          <p className="font-bold text-muted">1-6号別紙の居住費</p>
+          {!wage ? (
+            <p className="text-muted">賃金（1-6号別紙）の記録がまだありません。「賃金（1-6号別紙）を開く」から居住費を入れてください。</p>
+          ) : housing.key === null ? (
+            <p className="text-seal">居住費（社宅か、外国人本人が契約か）が未入力です。「賃金（1-6号別紙）を開く」から入れてください。</p>
+          ) : (
+            <>
+              <p>
+                {housing.key === "A"
+                  ? "外国人本人が契約する住居"
+                  : `社宅：${housing.lodging?.name || "名称未登録"}（${housing.lodging?.kind || "区分未設定"}）`}
+                {housing.lodging?.address && <span className="text-muted">　{housing.lodging.address}</span>}
+              </p>
+              {housing.key !== "A" && <p>居住費 月額 {formatYen(housing.amount)}円</p>}
+              {housing.note && <p className="whitespace-pre-wrap text-muted">{housing.note}</p>}
+            </>
+          )}
+          {!employStart && (
+            <p className="mt-0.5 text-muted">雇用開始日は「支援計画書の日付」を保存すると入ります。</p>
+          )}
+        </div>
+      </div>
+
+      {/* 7. 生活オリエンテーションの実施日 */}
+      <div>
+        {heading("7. 生活オリエンテーションの実施日")}
+        <div className="overflow-hidden rounded-xl border border-border">
+          <CopyRow label="生活オリエンテーション" value={planDates.orient ? rosterJpDate(planDates.orient) : ""} />
+        </div>
+        {(!planDates.guid || !planDates.orient) && (
+          <p className="mt-1 text-[11px] text-muted">未登録の日付は、上の「支援計画書の日付」を保存すると入ります。</p>
+        )}
+      </div>
+
+      {/* 8. 所属機関の協力確認書 */}
+      <div>
+        {heading("8. 所属機関の協力確認書")}
         <div className="overflow-hidden rounded-xl border border-border">
           {councils.map((c) =>
             c.rows.length === 0 ? (

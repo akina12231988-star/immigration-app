@@ -2252,6 +2252,7 @@ export function ApplicationPrepChecklist({
         <Prep117Section
           orgId={prepOrgId}
           workerIds={[workerId, ...(current.joint_worker_id ? [current.joint_worker_id] : [])]}
+          todoNo={current.todo_no}
         />
       </PrepSection>
 
