@@ -23,6 +23,15 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-09-27",
+    title: "特定技能総合保険で、退職した人を「解約済み」にできるようにしました",
+    where: "TODO ＞ 特定技能総合保険 ＞ 解約手続き",
+    href: "/todos/ssw-insurance",
+    items: [
+      "退職した人のカードに「解約済み」ボタンを付けました。すでに解約の手続きが済んでいるときに押すと、解約手続きのTODOが完了になり（TODOが無ければ作って完了にします）、一覧から外れます。",
+    ],
+  },
+  {
+    date: "2026-09-27",
     title: "特定技能総合保険の被保険者証明書を、カードからすぐ登録できるようにしました",
     where: "TODO ＞ 特定技能総合保険 ＞ 加入手続き ＞ 申込手続中",
     href: "/todos/ssw-insurance",
