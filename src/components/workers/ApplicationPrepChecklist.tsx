@@ -1757,7 +1757,7 @@ export function ApplicationPrepChecklist({
           </label>
         </div>
 
-        {/* 申請種別の下: 所属機関の情報（住所・電話・代表者・協力確認書・売上高・定期報告/賃金台帳） */}
+        {/* 申請種別の下: 所属機関の情報（住所・電話・代表者・協力確認書・売上高） */}
         <PrepOrgInfo
           key={`${prepOrgId ?? "none"}-${orgInfoKey}`}
           orgId={prepOrgId}
