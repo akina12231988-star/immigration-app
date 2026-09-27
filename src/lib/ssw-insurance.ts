@@ -73,6 +73,22 @@ export function isSswJoined(w: Pick<SswInsuranceWorker, "ssw_insurance_expiry_da
   return !!w.ssw_insurance_expiry_date;
 }
 
+// 解約手続きができる期間（有効期限からこの月数を過ぎると解約できない）
+export const SSW_CANCEL_LIMIT_MONTHS = 4;
+
+// 退職した人の解約手続きの対象か。
+//  ・被保険者証明書番号と有効期限の両方が入っている
+//  ・有効期限から4か月以上たっていない（たっていると解約の手続きができない）
+export function isSswCancelable(
+  w: Pick<SswInsuranceWorker, "ssw_insurance_no" | "ssw_insurance_expiry_date">,
+  today: string,
+): boolean {
+  const no = (w.ssw_insurance_no ?? "").trim();
+  const expiry = w.ssw_insurance_expiry_date;
+  if (!no || !expiry) return false;
+  return addMonthsDate(expiry, SSW_CANCEL_LIMIT_MONTHS) > today;
+}
+
 // 行の仕分け。
 //   cancel     … 退職したので解約手続きが必要
 //   expired    … 有効期限が切れている（加入手続きのTODOを作る）
@@ -111,8 +127,9 @@ export function sswInsuranceState(
   // まだ入社前（申請準備中・支援開始前）の人は一覧に出さない
   if (!isSswInsuranceCandidate(w)) return "none";
   const joined = isSswJoined(w);
-  // 退職した人は、加入したままなら解約手続きが必要（解約が済んだら一覧から外す）
-  if (w.status === "退職") return joined && !cancelDone ? "cancel" : "none";
+  // 退職した人は、加入したままなら解約手続きが必要（解約が済んだら一覧から外す）。
+  // 証明書番号と有効期限が入っている人だけで、有効期限から4か月以上たった人は解約できないので出さない
+  if (w.status === "退職") return isSswCancelable(w, today) && !cancelDone ? "cancel" : "none";
   // まだ期限に余裕があるうちは、加入しないと決めていても加入中のまま
   if (joined && daysUntil(w.ssw_insurance_expiry_date as string, today) >= SSW_SOON_DAYS) {
     return "active";
@@ -236,7 +253,7 @@ export const SSW_SECTIONS: {
   {
     key: "cancel",
     title: "退職（解約手続き）",
-    lead: "退職した人で保険に加入したままです。解約手続きのTODOを作って手続きしてください。",
+    lead: "退職した人で保険に加入したままです（被保険者証明書番号と有効期限が入っていて、有効期限から4か月たっていない人だけ）。解約手続きのTODOを作って手続きしてください。",
   },
   {
     key: "soon",
@@ -329,7 +346,7 @@ export const SSW_TASK_GROUPS: { key: SswTaskKey; title: string; lead: string }[]
   {
     key: "cancel",
     title: "解約手続き",
-    lead: "退職して保険に加入したままの人です。解約の手続きをします。",
+    lead: "退職して保険に加入したままの人です。解約の手続きをします（被保険者証明書番号と有効期限が入っている人だけ。有効期限から4か月以上たった人は解約できないので出しません）。",
   },
 ];
 
