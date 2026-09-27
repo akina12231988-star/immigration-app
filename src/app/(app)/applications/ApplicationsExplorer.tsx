@@ -16,6 +16,7 @@ import {
   ExternalLink,
   MessageCircle,
   Search,
+  SlidersHorizontal,
   UserRound,
   X,
 } from "lucide-react";
@@ -94,11 +95,13 @@ type SortKey = (typeof SORT_OPTIONS)[number]["key"];
 type ViewKey = StatViewKey | "all" | "pre-prep" | "extra-request" | "post-apply";
 
 // 「申請前＜入管提出！！＞」を最初に表示するため先頭に、「すべて」は一番右に置く
-const VIEW_CHIPS: { key: ViewKey; label: string }[] = [
+// 段階の帯（案A）。申請の流れの順に並べ、件数を大きく出す。
+// alert の段階は、件数があるとき赤枠にして目立たせる
+const VIEW_CHIPS: { key: ViewKey; label: string; alert?: boolean }[] = [
   { key: "pre-prep", label: "申請前＜入管提出！！＞" },
-  { key: "unreported", label: "LINE未報告" },
+  { key: "unreported", label: "LINE未報告", alert: true },
   { key: "waiting-notice", label: "審査中" },
-  { key: "extra-request", label: "＜入管＞追加資料" },
+  { key: "extra-request", label: "＜入管＞追加資料", alert: true },
   { key: "post-apply", label: "申請後の郵送・タスク" },
   { key: "approved", label: "在留カード受け取り待ち" },
   { key: "card-issued", label: "在留カード新規発行済み" },
@@ -321,6 +324,41 @@ export function ApplicationsExplorer({
 
   // 並び順（申請日の早い/遅い順・在留期限の短い/遅い順）
   const [sort, setSort] = useState<SortKey>("date-desc");
+  // スマホで担当者・並び順・表示件数の欄を開いているか
+  const [showControls, setShowControls] = useState(false);
+
+  // 申請前＜入管提出！！＞の擬似行（申請準備のTODOが「入管へ申請！！」になった人）。
+  // TODOが読み込めない間（0102未適用を含む）は従来どおり全員表示する
+  const appliedPlaceholders = useMemo(() => {
+    const isApplied = (a: Application) => {
+      if (!appliedPrep) return true;
+      if (a.workerId && appliedPrep.workerIds.has(a.workerId)) return true;
+      const key = normalizeTodoKey(workersById.get(a.workerId ?? "")?.residence_renewal_todo ?? "");
+      return key ? appliedPrep.todoKeys.has(key) : false;
+    };
+    return buildRenewalPlaceholders(renewalWorkers, applications, TODAY, orgNameById).filter(isApplied);
+  }, [renewalWorkers, applications, orgNameById, appliedPrep, workersById]);
+
+  // 段階の帯に出す件数（検索・担当者の絞り込みの前の件数）
+  const viewCounts = useMemo(() => {
+    const counts = {} as Record<ViewKey, number>;
+    for (const c of VIEW_CHIPS) {
+      if (c.key === "pre-prep") {
+        counts[c.key] =
+          applications.filter((a) => a.status === "申請前" && a.workerRenewalStatus === "準備中").length +
+          appliedPlaceholders.length;
+      } else if (c.key === "all") {
+        counts[c.key] = applications.length + appliedPlaceholders.length;
+      } else if (c.key === "extra-request") {
+        counts[c.key] = openExtraCount;
+      } else if (c.key === "post-apply") {
+        counts[c.key] = openPostApply;
+      } else {
+        counts[c.key] = applications.filter(STAT_VIEWS[c.key].test).length;
+      }
+    }
+    return counts;
+  }, [applications, appliedPlaceholders, openExtraCount, openPostApply]);
 
   const filtered = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
@@ -354,26 +392,12 @@ export function ApplicationsExplorer({
     // （準備中の人は申請準備のTODOで管理する）。
     // 申請登録して審査中になると、この擬似行は実レコードの行に置き換わる。
     if (view === "all" || view === "pre-prep") {
-      // 申請準備のTODOが「入管へ申請！！」になった人か（外国人・TODO番号のどちらかで一致）。
-      // TODOが読み込めない間（0102未適用を含む）は従来どおり全員表示する
-      const isApplied = (a: Application) => {
-        if (!appliedPrep) return true;
-        if (a.workerId && appliedPrep.workerIds.has(a.workerId)) return true;
-        const key = normalizeTodoKey(workerFor(a)?.residence_renewal_todo ?? "");
-        return key ? appliedPrep.todoKeys.has(key) : false;
-      };
-      const placeholders = buildRenewalPlaceholders(
-        renewalWorkers,
-        applications,
-        TODAY,
-        orgNameById,
-      )
-        .filter((a) => isApplied(a) && matchesKeyword(a) && matchesTantou(a));
+      const placeholders = appliedPlaceholders.filter((a) => matchesKeyword(a) && matchesTantou(a));
       return [...placeholders, ...rows];
     }
     return rows;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [applications, renewalWorkers, keyword, view, showIssued, permitFrom, permitTo, tantouFilter, prepTantou, orgNameById, appliedPrep]);
+  }, [applications, appliedPlaceholders, keyword, view, showIssued, permitFrom, permitTo, tantouFilter, prepTantou]);
 
   // 並び替え。日付が未設定の行は末尾に回す
   const sorted = useMemo(() => {
@@ -554,17 +578,14 @@ export function ApplicationsExplorer({
         />
       </div>
 
-      <div className="flex items-center gap-2 overflow-x-auto pb-1">
+      {/* 段階の帯: 申請の流れの順に並べ、件数を大きく出す（スマホでは横にスクロール） */}
+      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 lg:mx-0 lg:grid lg:grid-cols-8 lg:px-0">
         {VIEW_CHIPS.map((c) => (
-          <FilterChip
+          <StageButton
             key={c.key}
-            label={
-              c.key === "extra-request" && openExtraCount > 0
-                ? `${c.label}（${openExtraCount}）`
-                : c.key === "post-apply" && openPostApply > 0
-                  ? `${c.label}（${openPostApply}）`
-                  : c.label
-            }
+            label={c.label}
+            count={viewCounts[c.key]}
+            alert={!!c.alert && viewCounts[c.key] > 0}
             active={view === c.key}
             onClick={() => setView(c.key)}
           />
@@ -654,13 +675,32 @@ export function ApplicationsExplorer({
         <>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-bold text-muted">{filtered.length}件</p>
-        <div className="flex flex-wrap items-center gap-3">
+        {/* スマホ: 担当者・並び順はたたんでおき、ボタンで開く。申請登録もここから */}
+        <div className="flex gap-2 lg:hidden">
+          <button
+            type="button"
+            onClick={() => setShowControls((v) => !v)}
+            aria-expanded={showControls}
+            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-xl border border-border bg-surface px-3.5 text-sm font-bold"
+          >
+            <SlidersHorizontal size={16} />
+            担当者・並び順
+          </button>
+          <Link
+            href="/applications/new"
+            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-xl border border-border bg-surface px-3.5 text-sm font-bold text-brand"
+          >
+            <FilePlus2 size={16} />
+            申請登録
+          </Link>
+        </div>
+        <div className={`${showControls ? "flex" : "hidden"} w-full flex-wrap items-center gap-3 lg:flex lg:w-auto`}>
           <label className="flex items-center gap-1.5 text-xs text-muted">
             担当者
             <select
               value={tantouFilter}
               onChange={(e) => setTantouFilter(e.target.value)}
-              className="min-h-[36px] rounded-lg border border-border bg-surface px-2 text-sm font-bold focus:border-brand focus:outline-none"
+              className="min-h-[44px] rounded-lg border border-border bg-surface px-2 text-sm font-bold focus:border-brand focus:outline-none lg:min-h-[36px]"
             >
               <option value="">すべて</option>
               {tantouOptions.map((t) => (
@@ -675,7 +715,7 @@ export function ApplicationsExplorer({
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value as SortKey)}
-              className="min-h-[36px] rounded-lg border border-border bg-surface px-2 text-sm font-bold focus:border-brand focus:outline-none"
+              className="min-h-[44px] rounded-lg border border-border bg-surface px-2 text-sm font-bold focus:border-brand focus:outline-none lg:min-h-[36px]"
             >
               {SORT_OPTIONS.map((o) => (
                 <option key={o.key} value={o.key}>
@@ -689,7 +729,7 @@ export function ApplicationsExplorer({
             <select
               value={pageSize}
               onChange={(e) => setPageSize(Number(e.target.value))}
-              className="min-h-[36px] rounded-lg border border-border bg-surface px-2 text-sm font-bold focus:border-brand focus:outline-none"
+              className="min-h-[44px] rounded-lg border border-border bg-surface px-2 text-sm font-bold focus:border-brand focus:outline-none lg:min-h-[36px]"
             >
               {PAGE_SIZES.map((n) => (
                 <option key={n} value={n}>
@@ -777,9 +817,9 @@ export function ApplicationsExplorer({
                       <button
                         type="button"
                         onClick={() => setApproveTarget(a)}
-                        className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-brand py-2.5 text-xs font-bold text-brand"
+                        className="flex min-h-[48px] w-full items-center justify-center gap-1.5 rounded-xl bg-brand text-sm font-bold text-brand-foreground"
                       >
-                        <BadgeCheck size={15} />
+                        <BadgeCheck size={16} />
                         許可が降りた（許可済みにする）
                       </button>
                     </span>
@@ -852,9 +892,9 @@ export function ApplicationsExplorer({
                       <span className="mt-2 block" onClick={(e) => e.stopPropagation()}>
                         <Link
                           href={hrefFor(a)}
-                          className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand py-2.5 text-xs font-bold text-brand-foreground"
+                          className="flex min-h-[48px] w-full items-center justify-center gap-1.5 rounded-xl bg-brand text-sm font-bold text-brand-foreground"
                         >
-                          <FilePlus2 size={15} />
+                          <FilePlus2 size={16} />
                           申請登録へ進む
                         </Link>
                       </span>
@@ -910,6 +950,7 @@ export function ApplicationsExplorer({
               <thead className="bg-background text-left text-xs font-bold text-muted">
                 <tr>
                   <Th>名前</Th>
+                  <Th>次にやること</Th>
                   <Th>所属機関</Th>
                   <Th>支援責任者・支援担当者</Th>
                   {showPrep ? (
@@ -969,18 +1010,31 @@ export function ApplicationsExplorer({
                             <WorkerInfoLink workerId={a.workerId} />
                           </span>
                         )}
-                        {/* 入管に提出したら、ここから申請登録する（行クリックは準備内容の表示） */}
-                        {isRenewalPlaceholder(a) && (
-                          <span className="mt-1.5 block" onClick={(e) => e.stopPropagation()}>
+                      </Td>
+                      {/* 段階ごとの次にやること（申請前＝申請登録、審査中＝許可が降りた） */}
+                      <Td>
+                        <span onClick={(e) => e.stopPropagation()}>
+                          {isRenewalPlaceholder(a) ? (
                             <Link
                               href={hrefFor(a)}
-                              className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-xs font-bold text-brand-foreground"
+                              className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg bg-brand px-3 text-xs font-bold text-brand-foreground"
                             >
                               <FilePlus2 size={14} />
                               申請登録へ進む
                             </Link>
-                          </span>
-                        )}
+                          ) : canEdit && canMarkApproved(a) ? (
+                            <button
+                              type="button"
+                              onClick={() => setApproveTarget(a)}
+                              className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg bg-brand px-3 text-xs font-bold text-brand-foreground"
+                            >
+                              <BadgeCheck size={14} />
+                              許可が降りた
+                            </button>
+                          ) : (
+                            <span className="text-xs text-muted">—</span>
+                          )}
+                        </span>
                       </Td>
                       <Td>
                         {showPrep && canEdit ? (
@@ -1391,25 +1445,35 @@ function Td({ children, className = "" }: { children: React.ReactNode; className
   return <td className={`whitespace-nowrap px-4 py-3 ${className}`}>{children}</td>;
 }
 
-function FilterChip({
+// 段階の帯の1つ（段階名と件数）。押すとその段階の一覧に切り替わる
+function StageButton({
   label,
+  count,
+  alert,
   active,
   onClick,
 }: {
   label: string;
+  count: number;
+  alert: boolean; // 件数があって急ぐ段階（赤枠）
   active: boolean;
   onClick: () => void;
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className={`shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-bold ${
+      aria-pressed={active}
+      className={`flex min-h-[60px] min-w-[7.5rem] shrink-0 flex-col items-start justify-center rounded-xl border px-3 py-1.5 text-left lg:min-w-0 ${
         active
           ? "border-brand bg-brand text-brand-foreground"
-          : "border-border bg-surface text-muted"
+          : alert
+            ? "border-2 border-seal bg-surface text-seal"
+            : "border-border bg-surface text-foreground"
       }`}
     >
-      {label}
+      <span className={`text-[11px] font-bold leading-tight ${active || alert ? "" : "text-muted"}`}>{label}</span>
+      <span className="text-xl font-black tabular-nums leading-tight">{count}</span>
     </button>
   );
 }
