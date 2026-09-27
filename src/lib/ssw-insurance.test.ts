@@ -124,8 +124,26 @@ describe("sswInsuranceState", () => {
     ).toBe("active");
   });
 
+  it("退職者で証明書番号・有効期限が無いものは解約手続きに出さない", () => {
+    expect(
+      sswInsuranceState(worker({ status: "退職", ssw_insurance_expiry_date: "2027-04-07", ssw_insurance_no: "" }), "会社負担", TODAY),
+    ).toBe("none");
+  });
+
+  it("退職者で有効期限から4か月以上たった人は解約できないので出さない", () => {
+    // TODAY から4か月より前に切れた人は出さない。4か月たっていなければ出す
+    const past = addMonthsDate(TODAY, -4);
+    expect(
+      sswInsuranceState(worker({ status: "退職", ssw_insurance_expiry_date: past, ssw_insurance_no: "B000000001" }), "会社負担", TODAY),
+    ).toBe("none");
+    const recent = addMonthsDate(TODAY, -3);
+    expect(
+      sswInsuranceState(worker({ status: "退職", ssw_insurance_expiry_date: recent, ssw_insurance_no: "B000000001" }), "会社負担", TODAY),
+    ).toBe("cancel");
+  });
+
   it("退職者で加入したままなら解約手続きが必要", () => {
-    const w = worker({ status: "退職", ssw_insurance_expiry_date: "2027-04-07" });
+    const w = worker({ status: "退職", ssw_insurance_expiry_date: "2027-04-07", ssw_insurance_no: "B000000001" });
     expect(sswInsuranceState(w, "会社負担", TODAY)).toBe("cancel");
     // 解約手続きのTODOが完了していれば一覧から外す
     expect(sswInsuranceState(w, "会社負担", TODAY, true)).toBe("none");

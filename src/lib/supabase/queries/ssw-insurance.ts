@@ -3,8 +3,10 @@ import {
   SSW_CANCEL_TODO_TITLE,
   SSW_INSURANCE_TODO_KIND,
   SSW_JOIN_TODO_TITLE,
+  isSswCancelable,
   type SswInsuranceWorker,
 } from "@/lib/ssw-insurance";
+import { todayStr } from "@/lib/ssw/calc";
 import { insertTodo, type TodoRow } from "@/lib/supabase/queries/todos";
 
 // 特定技能総合保険の読み書き（0139_ssw_insurance.sql）
@@ -159,7 +161,7 @@ export async function ensureSswTodo(
 }
 
 // 退職の記録を保存したときに、解約手続きのTODOを作る。
-// 保険に加入していない人には作らない。マイグレーション未適用など失敗しても
+// 保険に加入していない人・解約できない人（証明書番号か有効期限が無い、有効期限から4か月以上）には作らない。マイグレーション未適用など失敗しても
 // 退職の保存自体は止めない（呼び出し側で握りつぶす）
 export async function ensureSswCancelTodoOnLeaving(
   supabase: SupabaseClient,
@@ -167,13 +169,13 @@ export async function ensureSswCancelTodoOnLeaving(
 ): Promise<void> {
   const { data, error } = await supabase
     .from("workers")
-    .select("ssw_insurance_expiry_date")
+    .select("ssw_insurance_no, ssw_insurance_expiry_date")
     .eq("id", workerId)
     .maybeSingle();
   if (error) throw error;
-  const expiry = (data as { ssw_insurance_expiry_date: string | null } | null)
-    ?.ssw_insurance_expiry_date;
-  if (!expiry) return;
+  const w = data as { ssw_insurance_no: string | null; ssw_insurance_expiry_date: string | null } | null;
+  // 証明書番号と有効期限が入っていて、有効期限から4か月たっていない人だけ（それ以外は解約できない）
+  if (!w || !isSswCancelable({ ssw_insurance_no: w.ssw_insurance_no ?? "", ssw_insurance_expiry_date: w.ssw_insurance_expiry_date }, todayStr())) return;
   await ensureSswTodo(supabase, workerId, SSW_CANCEL_TODO_TITLE);
 }
 
