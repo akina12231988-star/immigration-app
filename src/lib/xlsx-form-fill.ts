@@ -57,7 +57,7 @@ export function escapeXml(s: string): string {
 
 // sheet1.xml 内の <c r="番地" ...> 要素だけを書き換える。
 // スタイル属性（s="n"）は残し、値は inlineStr（テンプレートと同じ文字列形式）で入れる。
-function setSheetCell(xml: string, addr: string, value: string): string {
+function setSheetCell(xml: string, addr: string, value: string | number): string {
   const key = `<c r="${addr}"`;
   const start = xml.indexOf(key);
   if (start < 0) {
@@ -68,17 +68,20 @@ function setSheetCell(xml: string, addr: string, value: string): string {
   const end = selfClosing ? tagEnd + 1 : xml.indexOf("</c>", tagEnd) + "</c>".length;
   const openTag = xml.slice(start, tagEnd);
   const sAttr = / s="\d+"/.exec(openTag)?.[0] ?? "";
+  // 数値（Excel の日付のシリアル値など）はそのまま数値で入れる（セルの表示形式はテンプレートのまま）
   const cell =
     value === ""
       ? `<c r="${addr}"${sAttr}/>`
-      : `<c r="${addr}"${sAttr} t="inlineStr"><is><t xml:space="preserve">${escapeXml(value)}</t></is></c>`;
+      : typeof value === "number"
+        ? `<c r="${addr}"${sAttr}><v>${value}</v></c>`
+        : `<c r="${addr}"${sAttr} t="inlineStr"><is><t xml:space="preserve">${escapeXml(value)}</t></is></c>`;
   return xml.slice(0, start) + cell + xml.slice(end);
 }
 
 // Excel テンプレートの先頭シートへセル値を転記する（対象セル以外は一切変更しない）
 export async function fillXlsxTemplate(
   template: ArrayBuffer,
-  cells: CellValues,
+  cells: CellValues | Record<string, string | number>,
 ): Promise<Uint8Array> {
   const { default: JSZip } = await import("jszip");
   const zip = await JSZip.loadAsync(template);
