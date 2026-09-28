@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Plus, Trash2, UserCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -15,7 +15,9 @@ import {
   candidateNote,
   instructeeCandidates,
   instructeeMissingFields,
+  instructeeNationalityOptions,
   instructeeShortage,
+  matchesInstructeeNationality,
   requiredInstructeeCount,
   type InstructeeCandidate,
   type InstructeeCandidateWorker,
@@ -52,6 +54,8 @@ export function Ssw2Instructees({
 }) {
   const [rows, setRows] = useState<Ssw2Instructee[]>([]);
   const [candidates, setCandidates] = useState<InstructeeCandidate[]>([]);
+  // 対象者の行ごとに選んでいる国籍（空 = すべて）。人数が多いとき、名前の前に国籍でしぼる
+  const [nationalityBy, setNationalityBy] = useState<Record<string, string>>({});
   // 所属機関に入れた「対象者の共通の内容」（事業所・役職・職務内容）。空の欄はこれを使う
   const [orgDuties, setOrgDuties] = useState<OrgSsw2Duties>(EMPTY_SSW2_DUTIES);
   const [busy, setBusy] = useState(false);
@@ -71,7 +75,7 @@ export function Ssw2Instructees({
       supabase
         .from("workers")
         .select(
-          "id, name, status, residence_status, residence_card_no, current_situation, current_organization_id",
+          "id, name, status, nationality, residence_status, residence_card_no, current_situation, current_organization_id",
         ),
       // 0123 が未適用でも（列が無くても）空で続ける
       organizationId
@@ -196,6 +200,8 @@ export function Ssw2Instructees({
   const required = requiredInstructeeCount(field);
   const shortage = instructeeShortage(field, rows.length);
   const disabled = !canEdit || busy;
+  // 候補に出ている国籍（五十音順・人数付き）
+  const nationalities = useMemo(() => instructeeNationalityOptions(candidates), [candidates]);
 
   return (
     <div className="rounded-xl border border-border p-3">
@@ -207,6 +213,7 @@ export function Ssw2Instructees({
         {workerName}さんが指導する相手を選びます。候補に出るのは
         <span className="font-bold">同じ所属機関に在籍している外国人</span>だけです
         （すでに特定技能２号を持っている方と、ほかに２号の申請準備をしている方は、指導する側なので出ません）。
+        人数が多いときは、先に<span className="font-bold">国籍</span>を選ぶと名前の一覧がしぼれます。
         日本人従業員や、ほかの所属機関の方は「選ばない」にして氏名を直接入力してください。
         対象者は同じ事業所に出勤し、原則同じ部署でフルタイムで働いている人に限ります。
         <span className="font-bold">
@@ -257,35 +264,60 @@ export function Ssw2Instructees({
                 )}
               </div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <label className="block sm:col-span-2">
-                  <span className="mb-0.5 block text-[11px] text-muted">
-                    この所属機関の外国人から選ぶ（日本人・ほかの所属機関の方は、下の氏名に直接入力）
-                  </span>
-                  <select
-                    value={row.target_worker_id ?? ""}
-                    disabled={disabled}
-                    onChange={(e) => pickWorker(row, e.target.value)}
-                    className={INPUT}
-                  >
-                    <option value="">選ばない（氏名を直接入力する）</option>
-                    {/* 選んだあとで候補から外れた人（2号になった・ほかの所属機関に移った など）も、選んだまま見えるようにする */}
-                    {row.target_worker_id && !candidates.some((c) => c.id === row.target_worker_id) && (
-                      <option value={row.target_worker_id}>
-                        {row.name || "（氏名未入力）"}（いまは候補の条件から外れています）
-                      </option>
-                    )}
-                    {candidates.map((c) => (
-                      <option
-                        key={c.id}
-                        value={c.id}
-                        // 他の2号申請者に押さえられている人は選べないようにする
-                        disabled={c.takenBy !== null && c.id !== row.target_worker_id}
-                      >
-                        {c.name}（{candidateNote(c)}）
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <div className="grid grid-cols-1 gap-2 sm:col-span-2 sm:grid-cols-[minmax(0,11rem)_minmax(0,1fr)]">
+                  <label className="block">
+                    <span className="mb-0.5 block text-[11px] text-muted">国籍でしぼる</span>
+                    <select
+                      value={nationalityBy[row.id] ?? ""}
+                      disabled={disabled}
+                      onChange={(e) => setNationalityBy((prev) => ({ ...prev, [row.id]: e.target.value }))}
+                      className={INPUT}
+                    >
+                      <option value="">すべての国籍（{candidates.length}人）</option>
+                      {nationalities.map((n) => (
+                        <option key={n.value} value={n.value}>
+                          {n.label}（{n.count}人）
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="mb-0.5 block text-[11px] text-muted">
+                      この所属機関の外国人から選ぶ（日本人・ほかの所属機関の方は、下の氏名に直接入力）
+                    </span>
+                    <select
+                      value={row.target_worker_id ?? ""}
+                      disabled={disabled}
+                      onChange={(e) => pickWorker(row, e.target.value)}
+                      className={INPUT}
+                    >
+                      <option value="">選ばない（氏名を直接入力する）</option>
+                      {/* 選んだあとで候補から外れた人（2号になった・ほかの所属機関に移った など）も、選んだまま見えるようにする */}
+                      {row.target_worker_id && !candidates.some((c) => c.id === row.target_worker_id) && (
+                        <option value={row.target_worker_id}>
+                          {row.name || "（氏名未入力）"}（いまは候補の条件から外れています）
+                        </option>
+                      )}
+                      {/* 選んだ国籍の人だけ出す。いま選んでいる人は、国籍でしぼっても消えないように残す */}
+                      {candidates
+                        .filter(
+                          (c) =>
+                            matchesInstructeeNationality(c, nationalityBy[row.id] ?? "") ||
+                            c.id === row.target_worker_id,
+                        )
+                        .map((c) => (
+                          <option
+                            key={c.id}
+                            value={c.id}
+                            // 他の2号申請者に押さえられている人は選べないようにする
+                            disabled={c.takenBy !== null && c.id !== row.target_worker_id}
+                          >
+                            {c.name}（{candidateNote(c)}）
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                </div>
                 <label className="block">
                   <span className="mb-0.5 block text-[11px] text-muted">対象者の氏名</span>
                   <input

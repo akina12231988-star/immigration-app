@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  INSTRUCTEE_NO_NATIONALITY,
   candidateNote,
   instructeeCandidates,
   isSsw2Applicant,
   isSsw2Holder,
   instructeeMissingFields,
+  instructeeNationalityOptions,
+  matchesInstructeeNationality,
   ssw2ApplicantOrgId,
   orgSsw2Field,
   ssw2Capacity,
@@ -116,6 +119,7 @@ describe("instructeeCandidates", () => {
       id: "a",
       name: "あさひ",
       status: "在籍中",
+      nationality: "ベトナム",
       residence_status: "特定技能1号",
       residence_card_no: "A1",
       current_organization_id: "org1",
@@ -131,8 +135,11 @@ describe("instructeeCandidates", () => {
     expect(instructeeCandidates(workers, opts).map((c) => c.id)).toEqual(["a", "b"]);
   });
 
-  it("在留資格と在籍の状態も返す（候補の横に出すため）", () => {
+  it("国籍・在留資格と在籍の状態も返す（候補の横に出す・しぼるため）", () => {
     const a = instructeeCandidates(workers, opts).find((c) => c.id === "a");
+    expect(a?.nationality).toBe("ベトナム");
+    // 国籍が登録されていない人は空文字にする
+    expect(instructeeCandidates(workers, opts).find((c) => c.id === "b")?.nationality).toBe("");
     expect(a?.residenceStatus).toBe("特定技能1号");
     expect(a?.workerStatus).toBe("在籍中");
     expect(a?.residence_card_no).toBe("A1");
@@ -170,26 +177,64 @@ describe("candidateNote", () => {
   const c = {
     id: "a",
     name: "あさひ",
+    nationality: "ベトナム",
     residenceStatus: "特定技能1号",
     workerStatus: "在籍中",
     residence_card_no: "",
     takenBy: null as string | null,
   };
 
-  it("在留資格と在籍の状態を並べる", () => {
-    expect(candidateNote(c)).toBe("特定技能1号・在籍中");
+  it("国籍・在留資格と在籍の状態を並べる", () => {
+    expect(candidateNote(c)).toBe("ベトナム・特定技能1号・在籍中");
   });
 
   it("押さえられている人は理由も付ける", () => {
     expect(candidateNote({ ...c, takenBy: "グエン" })).toBe(
-      "特定技能1号・在籍中・グエンさんの対象者のため選べません",
+      "ベトナム・特定技能1号・在籍中・グエンさんの対象者のため選べません",
     );
   });
 
   it("未登録でも文言が壊れない", () => {
-    expect(candidateNote({ ...c, residenceStatus: "", workerStatus: "" })).toBe(
-      "在留資格未登録・状態未登録",
+    expect(candidateNote({ ...c, nationality: "", residenceStatus: "", workerStatus: "" })).toBe(
+      "国籍未登録・在留資格未登録・状態未登録",
     );
+  });
+});
+
+describe("国籍でしぼる", () => {
+  const cand = (id: string, name: string, nationality: string) => ({
+    id,
+    name,
+    nationality,
+    residenceStatus: "特定技能1号",
+    workerStatus: "在籍中",
+    residence_card_no: "",
+    takenBy: null as string | null,
+  });
+  const list = [
+    cand("a", "あさひ", "ベトナム"),
+    cand("b", "いろは", "インドネシア"),
+    cand("c", "うえだ", "ベトナム"),
+    cand("d", "えのき", ""),
+  ];
+
+  it("国籍ごとの人数を五十音順で返し、登録なしは最後にする", () => {
+    expect(instructeeNationalityOptions(list)).toEqual([
+      { value: "インドネシア", label: "インドネシア", count: 1 },
+      { value: "ベトナム", label: "ベトナム", count: 2 },
+      { value: INSTRUCTEE_NO_NATIONALITY, label: "国籍の登録なし", count: 1 },
+    ]);
+  });
+
+  it("選んだ国籍の人だけ当てはまる（空の指定なら全員）", () => {
+    expect(list.filter((c) => matchesInstructeeNationality(c, "ベトナム")).map((c) => c.id)).toEqual([
+      "a",
+      "c",
+    ]);
+    expect(
+      list.filter((c) => matchesInstructeeNationality(c, INSTRUCTEE_NO_NATIONALITY)).map((c) => c.id),
+    ).toEqual(["d"]);
+    expect(list.filter((c) => matchesInstructeeNationality(c, "")).length).toBe(4);
   });
 });
 
