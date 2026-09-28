@@ -80,6 +80,7 @@ export interface InstructeeCandidateWorker {
   name: string;
   status: string;
   field?: string;
+  nationality?: string;
   residence_status?: string;
   residence_card_no?: string;
   current_situation?: string;
@@ -90,6 +91,7 @@ export interface InstructeeCandidateWorker {
 export interface InstructeeCandidate {
   id: string;
   name: string;
+  nationality: string; // 国籍（候補をしぼる・横に出す）
   residenceStatus: string; // 現在の在留資格（候補の横に出す）
   workerStatus: string; // 在籍中・申請準備中など（候補の横に出す）
   residence_card_no: string;
@@ -167,6 +169,7 @@ export function instructeeCandidates(
     .map((w) => ({
       id: w.id,
       name: w.name,
+      nationality: (w.nationality ?? "").trim(),
       residenceStatus: (w.residence_status ?? "").trim(),
       workerStatus: (w.status ?? "").trim(),
       residence_card_no: w.residence_card_no ?? "",
@@ -175,11 +178,49 @@ export function instructeeCandidates(
     .sort((a, b) => a.name.localeCompare(b.name, "ja"));
 }
 
-// 候補の横に出す説明（在留資格・在籍の状態・すでに押さえられているか）
+// 候補の横に出す説明（国籍・在留資格・在籍の状態・すでに押さえられているか）
 export function candidateNote(c: InstructeeCandidate): string {
-  const parts = [c.residenceStatus || "在留資格未登録", c.workerStatus || "状態未登録"];
+  const parts = [
+    c.nationality || "国籍未登録",
+    c.residenceStatus || "在留資格未登録",
+    c.workerStatus || "状態未登録",
+  ];
   if (c.takenBy) parts.push(`${c.takenBy}さんの対象者のため選べません`);
   return parts.join("・");
+}
+
+// ---- 候補を国籍でしぼる（人数が多いと名前だけでは探しにくいため） ----
+
+// 「国籍の登録がない人」をまとめて選ぶときの値。実在の国籍名と混ざらないようにする
+export const INSTRUCTEE_NO_NATIONALITY = "__none__";
+
+// 候補に出ている国籍の一覧（五十音順。国籍の登録がない人は最後）
+export function instructeeNationalityOptions(
+  candidates: InstructeeCandidate[],
+): { value: string; label: string; count: number }[] {
+  const count = new Map<string, number>();
+  for (const c of candidates) {
+    const key = c.nationality.trim() || INSTRUCTEE_NO_NATIONALITY;
+    count.set(key, (count.get(key) ?? 0) + 1);
+  }
+  return [...count.entries()]
+    .map(([value, n]) => ({
+      value,
+      label: value === INSTRUCTEE_NO_NATIONALITY ? "国籍の登録なし" : value,
+      count: n,
+    }))
+    .sort((a, b) => {
+      if (a.value === INSTRUCTEE_NO_NATIONALITY) return 1;
+      if (b.value === INSTRUCTEE_NO_NATIONALITY) return -1;
+      return a.label.localeCompare(b.label, "ja");
+    });
+}
+
+// 選んだ国籍に当てはまる候補か（空の指定なら全員）
+export function matchesInstructeeNationality(c: InstructeeCandidate, nationality: string): boolean {
+  if (!nationality) return true;
+  const n = c.nationality.trim();
+  return nationality === INSTRUCTEE_NO_NATIONALITY ? !n : n === nationality;
 }
 
 // ---- 所属機関ごとの「２号を何人まで受け入れられるか」 ----
