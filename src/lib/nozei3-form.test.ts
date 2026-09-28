@@ -30,24 +30,23 @@ describe("buildNozei3DrawItems", () => {
     expect(office.x + measure("熊本東", office.size)).toBeCloseTo(124);
   });
 
-  it("枠の右上（x=298〜528・上端から93〜200pt）に収まる", () => {
+  it("枠の右上（x=294〜528・上端から93〜200pt）に収まる", () => {
     const items = buildNozei3DrawItems(base, measure).filter((i) => i.text !== "熊本東");
     for (const it of items) {
-      expect(it.x).toBeGreaterThanOrEqual(298);
+      expect(it.x).toBeGreaterThanOrEqual(294.1);
       expect(it.x + measure(it.text, it.size)).toBeLessThanOrEqual(531.5);
       expect(842 - it.y).toBeGreaterThan(93);
       expect(842 - it.y).toBeLessThan(200.5);
     }
   });
 
-  it("個人番号は左端のマスを空けて、12マスに1桁ずつ中央に置く", () => {
+  it("個人番号は左詰めで、左端のマスから12マスに1桁ずつ中央に置く", () => {
     const digits = buildNozei3DrawItems(base, measure).filter((i) => /^[0-9]$/.test(i.text));
-    // 1桁目は 312.8〜330.8 のマスの中央（x + 幅/2）
-    expect(digits[0].x + measure("1", digits[0].size) / 2).toBeCloseTo((312.8 + 330.8) / 2);
-    // 左端のマス（294〜312.8）には何も置かない
-    expect(digits.every((d) => d.x >= 312.8)).toBe(true);
-    // 12桁目は右端のマス
-    expect(digits[11].x + measure("2", digits[11].size) / 2).toBeCloseTo((513.6 + 531) / 2);
+    // 1桁目は左端のマス（294.1〜312.8）の中央（x + 幅/2）
+    expect(digits[0].x + measure("1", digits[0].size) / 2).toBeCloseTo((294.1 + 312.8) / 2);
+    // 12桁目は 495.6〜513.6 のマス。右端のマス（513.6〜531）は空けたまま
+    expect(digits[11].x + measure("2", digits[11].size) / 2).toBeCloseTo((495.6 + 513.6) / 2);
+    expect(digits.every((d) => d.x + measure(d.text, d.size) <= 513.6)).toBe(true);
   });
 
   it("個人番号が12桁でなければ書かない（未登録・桁違いは空欄のまま）", () => {

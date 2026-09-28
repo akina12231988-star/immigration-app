@@ -61,8 +61,9 @@ const AGENT_LEFT = 69;
 const AGENT_RIGHT = 236;
 const AGENT_WIDTH = AGENT_RIGHT - AGENT_LEFT;
 
-// 個人番号の12マスの左右の境界（左端のマスは空欄にする決まり）
-const MY_NUMBER_CELLS = [312.8, 330.8, 348.8, 366.7, 384.7, 402.7, 420.7, 438.7, 456.6, 476.1, 495.6, 513.6, 531.0];
+// 個人番号のマスの左右の境界。様式の枠は13マス（法人番号13桁ぶん）あり、
+// 個人番号12桁は左詰めで入れる（左端のマスから書き、右端のマスを空ける）
+const MY_NUMBER_CELLS = [294.1, 312.8, 330.8, 348.8, 366.7, 384.7, 402.7, 420.7, 438.7, 456.6, 476.1, 495.6, 513.6];
 
 // 上端からの距離を pdf-lib の y に直す
 const fromTop = (t: number) => PAGE_H - t;
@@ -148,7 +149,7 @@ export function buildNozei3DrawItems(data: Nozei3FormData, measure: MeasureText)
     items.push({ text: agentName, x: AGENT_LEFT, y: fromTop(177.4), size });
   }
 
-  // 個人番号: 12桁のときだけ、右の12マスに1桁ずつ（左端のマスは空欄）
+  // 個人番号: 12桁のときだけ、左端のマスから1桁ずつ（右端のマスは空欄）
   const digits = (data.myNumber ?? "").replace(/[^0-9]/g, "");
   if (isMyNumberFillable(digits)) {
     const size = 9;
