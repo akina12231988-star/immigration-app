@@ -1479,12 +1479,14 @@ export function SavedPlanDatesSection({
   canEdit,
   workerName = "",
   appContent = "",
+  onSaved,
 }: {
   workerId: string;
   todoNo: string;
   canEdit: boolean;
   workerName?: string; // 名刺サイズの画像の見出しとファイル名に使う
   appContent?: string; // 申請の内容。特定活動なら 1-5号・1-6号・その他だけを出し、日付計算なしで直接入力できる
+  onSaved?: () => void; // 保存したあと（同じページの１－１７号・申請書に貼る情報を読み直したいとき）
 }) {
   // 特定活動の申請は支援計画書の日付計算を使わないので、この欄で直接入力して保存する
   const tokuteiKatsudo = isTokuteiKatsudoContent(appContent);
@@ -1537,6 +1539,7 @@ export function SavedPlanDatesSection({
       }
       setDates(next);
       setDirty(false);
+      onSaved?.();
     } catch (err) {
       setError(dbErrorMessage(err, "0107_support_plan_dates.sql", "日付の保存に失敗しました"));
     } finally {

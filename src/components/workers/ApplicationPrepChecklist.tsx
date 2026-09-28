@@ -276,6 +276,9 @@ export function ApplicationPrepChecklist({
   // 農業の所属機関か（農業特定技能加入通知書の章を出すか）と、添付後に所属機関の情報を読み直すためのキー
   const [prepOrgAgri, setPrepOrgAgri] = useState(false);
   const [orgInfoKey, setOrgInfoKey] = useState(0);
+  // 同じページで支援計画書の日付や申請書に貼る情報を保存したとき、
+  // １－１７号の記載項目と申請書に貼る情報を読み直すためのキー（開き直さなくても反映される）
+  const [prepInfoKey, setPrepInfoKey] = useState(0);
 
   // 書類ごとの準備状況（ステータス）。チェックリストID → 書類ID → 入力値
   const [docStatusesByList, setDocStatusesByList] = useState<
@@ -2185,6 +2188,8 @@ export function ApplicationPrepChecklist({
           todoNo={current.todo_no}
           desiredStatus={desiredResidenceStatus(meta.app_content, meta.app_type, workerRow?.residence_status ?? "")}
           canEdit={canEdit}
+          refreshKey={prepInfoKey}
+          onSaved={() => setPrepInfoKey((k) => k + 1)}
         />
       </PrepSection>
 
@@ -2257,6 +2262,7 @@ export function ApplicationPrepChecklist({
           canEdit={canEdit}
           workerName={workerRow?.name ?? ""}
           appContent={meta.app_content ?? ""}
+          onSaved={() => setPrepInfoKey((k) => k + 1)}
         />
         </div>
       </PrepSection>
@@ -2267,6 +2273,7 @@ export function ApplicationPrepChecklist({
           orgId={prepOrgId}
           workerIds={[workerId, ...(current.joint_worker_id ? [current.joint_worker_id] : [])]}
           todoNo={current.todo_no}
+          refreshKey={prepInfoKey}
         />
       </PrepSection>
 

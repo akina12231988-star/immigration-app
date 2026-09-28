@@ -117,10 +117,12 @@ export function Prep117Section({
   orgId,
   workerIds,
   todoNo = "",
+  refreshKey = 0,
 }: {
   orgId: string | null;
   workerIds: string[];
   todoNo?: string; // 支援計画書の日付（事前ガイダンス・雇用開始日・生活オリエンテーション）を引くTODO番号
+  refreshKey?: number; // 値が変わると読み直す（同じページで支援計画書の日付などを保存したとき）
 }) {
   const workerKey = workerIds.join(",");
   const [data, setData] = useState<{
@@ -174,7 +176,7 @@ export function Prep117Section({
     return () => {
       cancelled = true;
     };
-  }, [orgId, workerKey, todoNo]);
+  }, [orgId, workerKey, todoNo, refreshKey]);
 
   if (!data || data.key !== `${orgId ?? ""}|${workerKey}|${todoNo}`) return null;
   const { workers, employees, supportWorkers, org, planDates, wage } = data;
