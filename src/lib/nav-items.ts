@@ -9,6 +9,7 @@ import {
   GraduationCap,
   Briefcase,
   ClipboardList,
+  FileSearch,
   PencilLine,
   CalendarClock,
   CalendarSync,
@@ -81,6 +82,14 @@ export const NAV_ENTRIES: NavEntry[] = [
       // 依頼中: 申請準備の発行依頼（課税・納税証明書・年金記録など）と、転居手続き・国保加入の依頼を
       // 誰に・いつ頼んだかでまとめて見る
       { href: "/issue-requests", label: "依頼中（発行依頼・手続き）", short: "依頼中", icon: MailQuestionMark },
+      // まだ揃っていない書類: 申請準備の必要書類のうち完了していないものを、
+      // 書類別・外国人別・所属機関別・依頼先別にまとめて見る
+      {
+        href: "/todos/prep-docs",
+        label: "まだ揃っていない書類",
+        short: "未完了書類",
+        icon: FileSearch,
+      },
       { href: "/todos/exams", label: "試験の申込", short: "試験", icon: PencilLine },
       {
         href: "/todos/ssw-insurance",

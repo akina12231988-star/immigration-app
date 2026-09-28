@@ -2080,6 +2080,13 @@ export function ApplicationPrepChecklist({
         </p>
       ) : (
         <>
+          {/* 全員分をまとめて見る（書類別・外国人別・所属機関別・依頼先別にしぼれる） */}
+          <Link
+            href="/todos/prep-docs"
+            className="mb-3 inline-block text-xs font-bold text-brand underline"
+          >
+            ほかの人も含めて、まだ揃っていない書類を見る（書類別・所属機関別）→
+          </Link>
           {/* 全部揃ったときだけ知らせる（足りない書類は下の「まだ揃っていない」に並ぶ） */}
           {missing.length === 0 && (
             <p className="mb-3 flex items-center gap-1.5 rounded-xl bg-status-approved-bg px-3 py-2.5 text-sm font-bold text-status-approved-fg">
