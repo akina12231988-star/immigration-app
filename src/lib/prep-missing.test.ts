@@ -5,6 +5,7 @@ import {
   PREP_MISSING_NONE,
   PREP_MISSING_NO_ISSUER_LABEL,
   PREP_MISSING_NO_ORG_LABEL,
+  PREP_MISSING_NO_TANTOU_LABEL,
   PREP_MISSING_NO_STATUS,
   filterPrepMissing,
   groupPrepMissing,
@@ -121,8 +122,8 @@ const row = (over: Partial<PrepMissingRow>): PrepMissingRow => ({
 });
 
 const rows: PrepMissingRow[] = [
-  row({ workerId: "w1", workerName: "あさひ", docId: "suisenjo", docBaseLabel: "推薦状" }),
-  row({ workerId: "w2", workerName: "いろは", docId: "suisenjo", docBaseLabel: "推薦状" }),
+  row({ workerId: "w1", workerName: "あさひ", docId: "suisenjo", docBaseLabel: "推薦状", tantou: "野口" }),
+  row({ workerId: "w2", workerName: "いろは", docId: "suisenjo", docBaseLabel: "推薦状", tantou: "秋吉" }),
   row({
     workerId: "w2",
     workerName: "いろは",
@@ -134,8 +135,17 @@ const rows: PrepMissingRow[] = [
     issuer: "本人",
     orgId: "org2",
     orgName: "DEF株式会社",
+    tantou: "秋吉",
   }),
-  row({ workerId: "w3", workerName: "うえだ", docId: "kazei", docBaseLabel: "課税証明書", orgId: "", orgName: "" }),
+  row({
+    workerId: "w3",
+    workerName: "うえだ",
+    docId: "kazei",
+    docBaseLabel: "課税証明書",
+    orgId: "",
+    orgName: "",
+    tantou: "",
+  }),
 ];
 
 describe("groupPrepMissing", () => {
@@ -160,6 +170,16 @@ describe("groupPrepMissing", () => {
     expect(g.at(-1)?.key).toBe("");
   });
 
+  it("担当者別にまとめ、担当者が未定のものは最後に置く", () => {
+    const g = groupPrepMissing(rows, "tantou");
+    expect(g.map((x) => [x.label, x.rows.length])).toEqual([
+      ["秋吉", 2],
+      ["野口", 1],
+      [PREP_MISSING_NO_TANTOU_LABEL, 1],
+    ]);
+    expect(g.at(-1)?.key).toBe("");
+  });
+
   it("依頼先別にまとめ、まだ依頼していないものは最後に置く", () => {
     const g = groupPrepMissing(rows, "issuer");
     expect(g[0].label).toBe("本人");
@@ -177,6 +197,23 @@ describe("filterPrepMissing", () => {
         (r) => r.workerName,
       ),
     ).toEqual(["いろは"]);
+  });
+
+  it("担当者と書類を組み合わせてしぼれる", () => {
+    expect(
+      filterPrepMissing(rows, { ...EMPTY_PREP_MISSING_FILTER, tantou: "秋吉" }).length,
+    ).toBe(2);
+    expect(
+      filterPrepMissing(rows, { ...EMPTY_PREP_MISSING_FILTER, tantou: "秋吉", docId: "suisenjo" }).map(
+        (r) => r.workerName,
+      ),
+    ).toEqual(["いろは"]);
+    // 担当者が未定のものだけ
+    expect(
+      filterPrepMissing(rows, { ...EMPTY_PREP_MISSING_FILTER, tantou: PREP_MISSING_NONE }).map(
+        (r) => r.workerName,
+      ),
+    ).toEqual(["うえだ"]);
   });
 
   it("所属機関が未登録の人・まだ依頼していないものだけを選べる", () => {
@@ -204,6 +241,20 @@ describe("prepMissingOptions", () => {
     // 書類の選択肢は、その書類自身のしぼり込みでは減らない（選び直せるようにする）
     const byDoc = prepMissingOptions(rows, { ...EMPTY_PREP_MISSING_FILTER, docId: "kazei" });
     expect(byDoc.docs.length).toBe(2);
+  });
+
+  it("担当者の選択肢も、ほかの条件でしぼったあとの件数を出す", () => {
+    const all = prepMissingOptions(rows, EMPTY_PREP_MISSING_FILTER);
+    expect(all.tantous.map((o) => [o.label, o.count])).toEqual([
+      ["秋吉", 2],
+      ["野口", 1],
+      [PREP_MISSING_NO_TANTOU_LABEL, 1],
+    ]);
+    const narrowed = prepMissingOptions(rows, { ...EMPTY_PREP_MISSING_FILTER, docId: "suisenjo" });
+    expect(narrowed.tantous.map((o) => [o.label, o.count])).toEqual([
+      ["秋吉", 1],
+      ["野口", 1],
+    ]);
   });
 
   it("所属機関が未登録の人はまとめて選べる", () => {
