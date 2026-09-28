@@ -32,6 +32,7 @@ export function ApplicationCopyPanel({
   desiredStatus,
   canEdit = false,
   onSaved,
+  refreshKey = 0,
 }: {
   workerId: string;
   orgId: string | null;
@@ -39,6 +40,7 @@ export function ApplicationCopyPanel({
   desiredStatus?: string; // 希望する在留資格（申請種別から）
   canEdit?: boolean; // true: 項目をこの場で入力・編集して保存できる
   onSaved?: () => void; // 保存したあと（親の表示を更新したいとき）
+  refreshKey?: number; // 値が変わると読み直す（同じページで支援計画書の日付などを保存したとき）
 }) {
   // 保存したら読み直す（値を変えると useEffect が再実行される）
   const [reloadKey, setReloadKey] = useState(0);
@@ -76,7 +78,7 @@ export function ApplicationCopyPanel({
     return () => {
       cancelled = true;
     };
-  }, [workerId, orgId, todoNo, reloadKey]);
+  }, [workerId, orgId, todoNo, reloadKey, refreshKey]);
 
   // 項目をこの場で保存する（外国人 / 所属機関 / 所属機関の登録内容）。空で保存すると消す
   const saveEdit = async (edit: CopyEdit, value: string) => {
