@@ -6,6 +6,7 @@ import {
   type HealthCheckDetail,
 } from "@/lib/health-check";
 import { reiwaYear } from "@/lib/onboarding";
+import { stageOfStatus, type TodoStatusOption } from "@/lib/todo";
 import { prepMissingRowsOf, type PrepDocStatusDetail, type PrepMissingRow } from "@/lib/prep-missing";
 
 // 申請準備で「まだ揃っていない書類」を、外国人をまたいで全件取る。
@@ -13,6 +14,7 @@ import { prepMissingRowsOf, type PrepDocStatusDetail, type PrepMissingRow } from
 // 対象にするのは、申請準備のリスト（application_prep_checklists）があり、申請種別が入っていて、
 // 退職・帰国していない外国人。TODO番号ごとに複数リストがあるので、
 // 申請一覧の進捗（listPrepStatuses）と同じく「申請種別が入っている最新のリスト」を代表として使う。
+// 申請準備のTODOの経過（進捗状況）が「完了」になっているものは、もう追いかけないので出さない。
 // 埋め込みの結合は外部キーやRLSの都合で失敗することがあるため、テーブルごとに読んでつなぐ。
 
 type ChecklistRow = {
@@ -50,6 +52,13 @@ type StatusRow = {
   use_reiwa?: number | null;
 };
 
+type TodoRow = {
+  todo_no: string | null;
+  worker_id: string | null;
+  status: string | null;
+  deleted_at: string | null;
+};
+
 type HealthRow = {
   worker_id: string;
   form_type: string | null;
@@ -80,6 +89,32 @@ export async function listPrepMissingRows(
   for (const c of ((checklists as ChecklistRow[] | null) ?? [])) {
     if (!c.app_type || excluded.has(c.worker_id)) continue;
     if (!listByWorker.has(c.worker_id)) listByWorker.set(c.worker_id, c);
+  }
+  if (listByWorker.size === 0) return [];
+
+  // 申請準備のTODOの経過（進捗状況）。完了のものは出さない
+  const [todosRes, todoOptionsRes] = await Promise.all([
+    supabase
+      .from("todos")
+      .select("todo_no, worker_id, status, deleted_at")
+      .eq("kind", "申請準備")
+      .then((r) => r, () => ({ data: [] as TodoRow[] })),
+    supabase
+      .from("todo_status_options")
+      .select("id, kind, stage, name, sort_no")
+      .eq("kind", "申請準備")
+      .then((r) => r, () => ({ data: [] as TodoStatusOption[] })),
+  ]);
+  const todoOptions = (todoOptionsRes.data as TodoStatusOption[] | null) ?? [];
+  const doneTodoKeys = new Set<string>();
+  for (const t of ((todosRes.data as TodoRow[] | null) ?? [])) {
+    if (t.deleted_at) continue;
+    if (stageOfStatus(t.status ?? "", todoOptions) === "完了") {
+      doneTodoKeys.add(`${t.worker_id ?? ""}|${t.todo_no ?? ""}`);
+    }
+  }
+  for (const [workerId, c] of [...listByWorker.entries()]) {
+    if (doneTodoKeys.has(`${workerId}|${c.todo_no ?? ""}`)) listByWorker.delete(workerId);
   }
   const workerIds = [...listByWorker.keys()];
   if (workerIds.length === 0) return [];

@@ -57,7 +57,8 @@ export function PrepMissingClient({
           申請準備の詳細で必要になっている書類のうち、まだ完了していないものを全員分まとめています。
           誰に・いつ依頼したか（発行依頼先・依頼日）と、いまの準備状況も出します。
           「書類別」にすると、たとえば推薦状がまだ揃っていない人が一度に分かります。
-          しぼり込みは組み合わせられます（例: 所属機関＝◯◯ ＋ 書類＝課税証明書）。
+          しぼり込みは組み合わせられます（例: 担当者＝◯◯ ＋ 書類＝課税証明書）。
+          申請準備のTODOの経過（進捗状況）が「完了」の人は出ません。
           直すときは行を押して、その人の申請準備の詳細で準備状況を変えてください。
           依頼日から{STALE_DAYS}日以上たったものは赤く出ます。
         </p>
@@ -83,7 +84,7 @@ export function PrepMissingClient({
         </div>
 
         {/* まとめ方としぼり込み */}
-        <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <label className="block">
             <span className="mb-0.5 block text-[11px] font-bold text-muted">まとめ方</span>
             <select
@@ -115,6 +116,12 @@ export function PrepMissingClient({
             value={filter.orgId}
             options={options.orgs}
             onChange={(v) => setFilter((f) => ({ ...f, orgId: v }))}
+          />
+          <FilterSelect
+            label="担当者でしぼる"
+            value={filter.tantou}
+            options={options.tantous}
+            onChange={(v) => setFilter((f) => ({ ...f, tantou: v }))}
           />
           <FilterSelect
             label="依頼先でしぼる"
@@ -238,7 +245,7 @@ function MissingRow({
         )}
         {groupBy !== "org" && r.orgName && <span className="text-muted">／ {r.orgName}</span>}
         {r.todoNo && <span className="text-muted">／ {r.todoNo}</span>}
-        {r.tantou && <span className="text-muted">／ 担当 {r.tantou}</span>}
+        {groupBy !== "tantou" && r.tantou && <span className="text-muted">／ 担当 {r.tantou}</span>}
         {r.memo && <span className="max-w-[16rem] truncate text-muted">／ {r.memo}</span>}
       </div>
     </li>

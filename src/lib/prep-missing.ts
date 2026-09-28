@@ -117,16 +117,18 @@ export function prepMissingStatusText(row: PrepMissingRow): string {
 
 // ---- まとめ方（書類別・外国人別・所属機関別・依頼先別） ----
 
-export type PrepMissingGroupBy = "doc" | "worker" | "org" | "issuer";
+export type PrepMissingGroupBy = "doc" | "worker" | "org" | "tantou" | "issuer";
 
 export const PREP_MISSING_GROUP_LABELS: { value: PrepMissingGroupBy; label: string }[] = [
   { value: "doc", label: "書類別" },
   { value: "worker", label: "外国人別" },
   { value: "org", label: "所属機関別" },
+  { value: "tantou", label: "担当者別" },
   { value: "issuer", label: "依頼先別" },
 ];
 
 export const PREP_MISSING_NO_ORG_LABEL = "（所属機関が未登録）";
+export const PREP_MISSING_NO_TANTOU_LABEL = "（担当者が未定）";
 export const PREP_MISSING_NO_ISSUER_LABEL = "（まだ依頼していない・依頼先が未入力）";
 
 export interface PrepMissingGroup {
@@ -144,6 +146,8 @@ function groupKeyOf(row: PrepMissingRow, by: PrepMissingGroupBy): string {
       return row.workerId;
     case "org":
       return row.orgId;
+    case "tantou":
+      return row.tantou;
     case "issuer":
       return row.issuer;
   }
@@ -157,6 +161,8 @@ function groupLabelOf(row: PrepMissingRow, by: PrepMissingGroupBy): string {
       return row.workerName;
     case "org":
       return row.orgName || PREP_MISSING_NO_ORG_LABEL;
+    case "tantou":
+      return row.tantou || PREP_MISSING_NO_TANTOU_LABEL;
     case "issuer":
       return row.issuer || PREP_MISSING_NO_ISSUER_LABEL;
   }
@@ -196,6 +202,7 @@ export interface PrepMissingFilter {
   docId: string; // 空 = すべて
   workerId: string;
   orgId: string; // PREP_MISSING_NONE = 所属機関が未登録の人
+  tantou: string; // PREP_MISSING_NONE = 担当者が未定のもの
   issuer: string; // PREP_MISSING_NONE = まだ依頼していない・依頼先が未入力
 }
 
@@ -203,22 +210,48 @@ export const EMPTY_PREP_MISSING_FILTER: PrepMissingFilter = {
   docId: "",
   workerId: "",
   orgId: "",
+  tantou: "",
   issuer: "",
 };
 
 export type PrepMissingField = keyof PrepMissingFilter;
 
+// しぼり込みの項目 → その行の値
+function valueOf(row: PrepMissingRow, field: PrepMissingField): string {
+  switch (field) {
+    case "docId":
+      return row.docId;
+    case "workerId":
+      return row.workerId;
+    case "orgId":
+      return row.orgId;
+    case "tantou":
+      return row.tantou;
+    case "issuer":
+      return row.issuer;
+  }
+}
+
+// しぼり込みの項目 → 選択肢に出す名前
+function labelOf(row: PrepMissingRow, field: PrepMissingField): string {
+  switch (field) {
+    case "docId":
+      return row.docBaseLabel;
+    case "workerId":
+      return row.workerName;
+    case "orgId":
+      return row.orgName;
+    case "tantou":
+      return row.tantou;
+    case "issuer":
+      return row.issuer;
+  }
+}
+
 // 1つの条件に当てはまるか（空 = すべて。PREP_MISSING_NONE = 未登録・未入力のものだけ）
 function matchesOne(row: PrepMissingRow, field: PrepMissingField, value: string): boolean {
   if (!value) return true;
-  const actual =
-    field === "docId"
-      ? row.docId
-      : field === "workerId"
-        ? row.workerId
-        : field === "orgId"
-          ? row.orgId
-          : row.issuer;
+  const actual = valueOf(row, field);
   return value === PREP_MISSING_NONE ? !actual : actual === value;
 }
 
@@ -228,7 +261,7 @@ function filterExcept(
   filter: PrepMissingFilter,
   except: PrepMissingField | null,
 ): PrepMissingRow[] {
-  const fields: PrepMissingField[] = ["docId", "workerId", "orgId", "issuer"];
+  const fields: PrepMissingField[] = ["docId", "workerId", "orgId", "tantou", "issuer"];
   return rows.filter((r) =>
     fields.every((f) => f === except || matchesOne(r, f, filter[f])),
   );
@@ -256,22 +289,8 @@ function optionsFor(
 ): PrepMissingOption[] {
   const map = new Map<string, PrepMissingOption>();
   for (const r of rows) {
-    const value =
-      field === "docId"
-        ? r.docId
-        : field === "workerId"
-          ? r.workerId
-          : field === "orgId"
-            ? r.orgId
-            : r.issuer;
-    const label =
-      field === "docId"
-        ? r.docBaseLabel
-        : field === "workerId"
-          ? r.workerName
-          : field === "orgId"
-            ? r.orgName
-            : r.issuer;
+    const value = valueOf(r, field);
+    const label = labelOf(r, field);
     const key = value || PREP_MISSING_NONE;
     const hit = map.get(key);
     if (hit) hit.count += 1;
@@ -294,6 +313,7 @@ export interface PrepMissingOptions {
   docs: PrepMissingOption[];
   workers: PrepMissingOption[];
   orgs: PrepMissingOption[];
+  tantous: PrepMissingOption[];
   issuers: PrepMissingOption[];
 }
 
@@ -305,6 +325,11 @@ export function prepMissingOptions(
     docs: optionsFor(filterExcept(rows, filter, "docId"), "docId", "（書類が不明）"),
     workers: optionsFor(filterExcept(rows, filter, "workerId"), "workerId", "（氏名が未登録）"),
     orgs: optionsFor(filterExcept(rows, filter, "orgId"), "orgId", PREP_MISSING_NO_ORG_LABEL),
+    tantous: optionsFor(
+      filterExcept(rows, filter, "tantou"),
+      "tantou",
+      PREP_MISSING_NO_TANTOU_LABEL,
+    ),
     issuers: optionsFor(
       filterExcept(rows, filter, "issuer"),
       "issuer",
