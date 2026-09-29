@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { MessageSquarePlus, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import type { PostApplyNote } from "@/lib/post-apply";
+import { postApplyNoteAuthor, type PostApplyNote } from "@/lib/post-apply";
 
 // "2026-09-25" → "9/25"
 function shortDate(d: string): string {
@@ -11,18 +11,18 @@ function shortDate(d: string): string {
   return m ? `${Number(m[1])}/${Number(m[2])}` : d;
 }
 
-// ログイン中の人の表示名（メモの記入者）。取れなければ空
+// ログイン中の人の表示名（メモの記入者）。表示名が未設定なら空にする
+// （メールアドレスは画面に出さない）
 async function currentAuthorName(): Promise<string> {
   const supabase = createClient();
   const { data } = await supabase.auth.getUser();
   if (!data.user) return "";
   const { data: p } = await supabase
     .from("profiles")
-    .select("display_name, email")
+    .select("display_name")
     .eq("id", data.user.id)
     .maybeSingle();
-  const prof = p as { display_name?: string; email?: string } | null;
-  return prof?.display_name || prof?.email || "";
+  return ((p as { display_name?: string } | null)?.display_name ?? "").trim();
 }
 
 // 申請後の郵送・タスクの1項目に付けるメモ（例：現在発行手続き中との連絡あり）。
@@ -58,14 +58,17 @@ export function PostApplyItemNotes({
 
   return (
     <div className="mt-1 w-full space-y-1">
-      {notes.map((n) => (
+      {notes.map((n) => {
+        // すでに保存されているメモの記入者がメールアドレスのときも出さない
+        const author = postApplyNoteAuthor(n.by);
+        return (
         <p
           key={n.id}
           className="flex items-start gap-1.5 rounded-md bg-background px-2 py-1 text-[11px] leading-relaxed"
         >
           <span className="shrink-0 tabular-nums text-muted">
             {shortDate(n.on)}
-            {n.by && ` ${n.by}`}
+            {author && ` ${author}`}
           </span>
           <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{n.text}</span>
           {canEdit && (
@@ -81,7 +84,8 @@ export function PostApplyItemNotes({
             </button>
           )}
         </p>
-      ))}
+        );
+      })}
       {canEdit &&
         (open ? (
           <div className="flex flex-wrap items-center gap-1.5">

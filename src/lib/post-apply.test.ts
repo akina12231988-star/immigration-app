@@ -3,6 +3,7 @@ import {
   addPostApplyNote,
   buildPostApplyEntries,
   isPostApplyDocDone,
+  postApplyNoteAuthor,
   unissuedDocIds,
   normalizePostApplyNotes,
   postApplyDocKey,
@@ -103,6 +104,20 @@ describe("申請後に発行はするが郵送しない書類（0174）", () => 
     expect(isPostApplyDocDone("nenkin", "発行済み")).toBe(true);
     expect(isPostApplyDocDone("nenkin", "秋吉伽恋に発行依頼中")).toBe(false);
     expect(isPostApplyDocDone("nenkin", "")).toBe(false);
+  });
+});
+
+describe("メモの記入者", () => {
+  it("メールアドレスは出さない（表示名が未設定のときに保存された分）", () => {
+    expect(postApplyNoteAuthor("akina.1223.1988@gmail.com")).toBe("");
+    expect(postApplyNoteAuthor("  someone@example.co.jp ")).toBe("");
+  });
+
+  it("名前はそのまま出す", () => {
+    expect(postApplyNoteAuthor("野口")).toBe("野口");
+    expect(postApplyNoteAuthor(" 秋吉伽恋 ")).toBe("秋吉伽恋");
+    expect(postApplyNoteAuthor("")).toBe("");
+    expect(postApplyNoteAuthor(null)).toBe("");
   });
 });
 
