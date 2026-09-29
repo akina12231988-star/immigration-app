@@ -2,14 +2,18 @@ import { describe, expect, it } from "vitest";
 import {
   addressHead,
   buildPdfCheckItems,
+  buildPrepCheckItems,
+  checkPdfPages,
   checkItem,
   checkPdfText,
   datesAfterLabel,
   findDates,
   findResidenceCardNos,
   normalizeForMatch,
+  otherCorpNames,
   pdfCheckHeadline,
   pdfCheckSummary,
+  splitCorpKind,
   toHiragana,
 } from "@/lib/pdf-doc-check";
 
@@ -153,5 +157,114 @@ describe("まとめ", () => {
     expect(s.different).toBeGreaterThan(0);
     expect(s.missingImportant).toBeGreaterThan(0);
     expect(pdfCheckHeadline(s)).toContain("違う値");
+  });
+});
+
+describe("会社の種類（法人格）", () => {
+  it("種類と名前の部分に分ける", () => {
+    expect(splitCorpKind("有限会社國崎青果")).toEqual({ kind: "有限会社", core: "國崎青果" });
+    expect(splitCorpKind("サンライズ工業株式会社")).toEqual({ kind: "株式会社", core: "サンライズ工業" });
+    expect(splitCorpKind("國崎青果")).toEqual({ kind: "", core: "國崎青果" });
+  });
+
+  it("名前は同じで種類だけ違う書き方を見つける", () => {
+    expect(otherCorpNames("有限会社國崎青果", "特定技能所属機関 株式会社 國崎青果")).toEqual([
+      "株式会社國崎青果",
+    ]);
+    expect(otherCorpNames("有限会社國崎青果", "特定技能所属機関 有限会社 國崎青果")).toEqual([]);
+  });
+
+  it("所属機関の名称は、種類だけ違えば「違う値」にする", () => {
+    const item = buildPdfCheckItems({ name: "本人" }, { name: "有限会社國崎青果" }).find(
+      (i) => i.key === "orgName",
+    )!;
+    expect(checkItem(item, "有限会社國崎青果").status).toBe("found");
+    // 種類を書いていないだけなら、名前は合っているので一致にする
+    expect(checkItem(item, "國崎青果 御中").status).toBe("found");
+    const r = checkItem(item, "特定技能所属機関の氏名または名称 株式会社國崎青果");
+    expect(r.status).toBe("different");
+    expect(r.found).toEqual(["株式会社國崎青果"]);
+  });
+});
+
+describe("buildPrepCheckItems（申請書に貼る情報から照合する項目を作る）", () => {
+  it("必ず書かれているはずの値だけを、見つからないときの注意の対象にする", () => {
+    const items = buildPrepCheckItems(
+      [
+        { label: "3 氏名", value: "SAN NAISORN" },
+        { label: "2 生年月日", value: "2000年5月2日" },
+        { label: "5 (1)氏名又は名称", value: "あっせん株式会社" },
+      ],
+      ["SAN NAISORN", "2000-05-02"],
+    );
+    expect(items.filter((i) => i.important).map((i) => i.label)).toEqual(["3 氏名", "2 生年月日"]);
+  });
+
+  it("短い値・計算した値・長い説明文は照合しない", () => {
+    const items = buildPrepCheckItems([
+      { label: "4 性別", value: "男" },
+      { label: "6 配偶者の有無", value: "無" },
+      { label: "21 申請時における特定技能1号での通算在留期間", value: "2年6か月" },
+      { label: "28 職歴", value: "2017年11月〜2019年10月 前の会社" },
+      { label: "1 国籍・地域", value: "カンボジア" },
+    ]);
+    expect(items.map((i) => i.label)).toEqual(["1 国籍・地域"]);
+  });
+
+  it("住所は市区町村までで見る", () => {
+    const [item] = buildPrepCheckItems([
+      { label: "9 住居地", value: "熊本県八代市新浜町2番1" },
+    ]);
+    expect(item.label).toBe("9 住居地（市区町村まで）");
+    expect(item.value).toBe("八代市");
+  });
+
+  it("期間は日付ごとに分けて見る", () => {
+    const items = buildPrepCheckItems([
+      { label: "2 (1)雇用契約期間", value: "2026年9月19日 から 2028年9月18日 まで" },
+    ]);
+    expect(items.map((i) => i.value)).toEqual(["2026年9月19日", "2028年9月18日"]);
+    // 生年月日以外の日付は「欄に別の日付がある」判定をしない（誤検知を避ける）
+    expect(items.every((i) => i.labels?.length === 0)).toBe(true);
+  });
+
+  it("同じ値の項目は1回だけ照合する", () => {
+    const items = buildPrepCheckItems([
+      { label: "3 (1)氏名又は名称", value: "有限会社國崎青果" },
+      { label: "3 (10)勤務させる事業所名", value: "有限会社國崎青果" },
+    ]);
+    expect(items).toHaveLength(1);
+    expect(items[0].kind).toBe("orgName");
+  });
+});
+
+describe("checkPdfPages（何ページもある書類一式）", () => {
+  const items = buildPrepCheckItems([
+    { label: "3 氏名", value: "SAN NAISORN" },
+    { label: "17 特定技能所属機関 (1)氏名又は名称", value: "有限会社國崎青果" },
+    { label: "12 在留カード番号", value: "AB12345678CD" },
+  ]);
+  const pages = [
+    { label: "1ページ", text: "申請する特定技能外国人の名簿 株式会社國崎青果" },
+    { label: "2ページ", text: "特定技能雇用契約書 特定技能所属機関 有限会社國崎青果 SAN NAISORN" },
+  ];
+  const by = (label: string) => checkPdfPages(items, pages).find((r) => r.label.includes(label))!;
+
+  it("どれか1ページに書かれていれば一致にし、ページ番号を出す", () => {
+    const r = by("氏名");
+    expect(r.status).toBe("found");
+    expect(r.where).toEqual(["2ページ"]);
+  });
+
+  it("他のページが合っていても、違う値のページがあれば知らせる", () => {
+    const r = by("所属機関");
+    expect(r.status).toBe("different");
+    expect(r.found).toEqual(["株式会社國崎青果"]);
+    expect(r.where).toEqual(["1ページ"]);
+    expect(r.alsoFound).toEqual(["2ページ"]);
+  });
+
+  it("どこにも書かれていなければ、見つからないにする", () => {
+    expect(by("在留カード番号").status).toBe("missing");
   });
 });
