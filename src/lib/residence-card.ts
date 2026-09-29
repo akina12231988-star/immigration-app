@@ -88,6 +88,25 @@ function formatPeriodMonths(months: number): string {
   return `${Math.floor(months / 12)}年${months % 12}月`;
 }
 
+// 許可年月日から在留期間満了日までの長さ（「1年6月」「6月」「2年と15日」）。
+// 在留期間そのもの（residencePeriodFromDates）とは別で、日付どうしの差をそのまま出す。
+// 更新許可のように「満了日 ＝ 前の満了日 ＋ 期間」で許可日からずれる場合でも、
+// 実際に何年何月あるのかが分かるようにするためのもの。日付が逆・未入力なら null
+export function periodLengthText(from: string, to: string): string | null {
+  const a = parseYmd(from);
+  const b = parseYmd(to);
+  if (!a || !b) return null;
+  if (daysBetween(a, b) < 0) return null;
+  // 応当日で数えられるだけ月を足し、残りを日で出す
+  let months = (b.y - a.y) * 12 + (b.m - a.m);
+  if (months > 0 && daysBetween(addMonths(a, months), b) < 0) months -= 1;
+  if (months < 0) months = 0;
+  const days = daysBetween(addMonths(a, months), b);
+  const ym = months > 0 ? formatPeriodMonths(months) : "";
+  if (!ym) return `${days}日`;
+  return days > 0 ? `${ym}と${days}日` : ym;
+}
+
 // 実際にある在留期間（月数）。更新許可のときの推定に使う
 const STANDARD_PERIOD_MONTHS = [3, 4, 6, 12, 24, 36, 48, 60];
 

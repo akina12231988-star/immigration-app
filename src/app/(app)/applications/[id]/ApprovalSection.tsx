@@ -26,7 +26,7 @@ import {
   normalizeOrgEmploymentStarts,
   upsertOrgEmploymentStart,
 } from "@/lib/org-employment";
-import { RESIDENCE_PERIODS } from "@/lib/residence-card";
+import { RESIDENCE_PERIODS, periodLengthText, residencePeriodFromDates } from "@/lib/residence-card";
 import { RESIDENCE_STATUSES, type WorkerInput, type WorkerOrgEmploymentStart } from "@/types/db";
 import {
   GRANT_VISA_OPTIONS,
@@ -136,6 +136,13 @@ export function ApprovalSection({
       cancelled = true;
     };
   }, [app.workerId]);
+
+  // 在留許可日と在留期限日から在留期間を自動で出す（外国人詳細の在留カードと同じ計算）。
+  // 手で入れていないときは自動計算の値を欄に出し、そのまま保存できるようにする
+  const autoPeriod = residencePeriodFromDates(form.grantedPermitDate, form.grantedExpiryDate);
+  // 許可日から期限日までの長さ（更新許可で在留期間と一致しないことがあるので別に出す）
+  const spanText = periodLengthText(form.grantedPermitDate, form.grantedExpiryDate);
+  const periodValue = grantResidencePeriod || autoPeriod || "";
 
   // この申請の所属機関での、登録済みの雇用開始日
   const existingStart =
@@ -285,7 +292,7 @@ export function ApprovalSection({
           residence_expiry_date: form.grantedExpiryDate || null,
           // 在留資格・在留期間も外国人詳細の在留カードと同じ内容として反映する（未入力なら変えない）
           ...(grantResidenceStatus ? { residence_status: grantResidenceStatus } : {}),
-          ...(grantResidencePeriod ? { residence_period: grantResidencePeriod } : {}),
+          ...(periodValue ? { residence_period: periodValue } : {}),
           // 新しい在留期限が決まったら、申請準備の対応状況をリセットして次の更新サイクルに備える
           ...(form.grantedExpiryDate
             ? {
@@ -538,7 +545,7 @@ export function ApprovalSection({
             <Labeled label="在留期間">
               <input
                 list="grant-residence-periods"
-                value={grantResidencePeriod}
+                value={periodValue}
                 onChange={(e) => setGrantResidencePeriod(e.target.value)}
                 placeholder="例: 1年"
                 autoComplete="off"
@@ -551,6 +558,24 @@ export function ApprovalSection({
               </datalist>
             </Labeled>
           </div>
+          {/* 許可日と期限日から出した在留期間。空欄なら自動で入り、違う値を入れたときは知らせる */}
+          {(autoPeriod || spanText) && (
+            <p className="-mt-1 text-[11px] leading-relaxed text-muted">
+              許可日と期限日から自動計算:
+              {autoPeriod && <span className="ml-1 font-bold text-brand">在留期間 {autoPeriod}</span>}
+              {spanText && <span className="ml-1">（許可日から期限日まで {spanText}）</span>}
+              {autoPeriod && grantResidencePeriod.trim() && grantResidencePeriod.trim() !== autoPeriod && (
+                <span className="ml-1 font-bold text-seal">
+                  入力してある「{grantResidencePeriod}」と違います。日付か在留期間を確かめてください
+                </span>
+              )}
+              {!autoPeriod && form.grantedPermitDate && form.grantedExpiryDate && (
+                <span className="ml-1 font-bold text-seal">
+                  この日付の組み合わせからは在留期間を決められません。在留期間は手で入れてください
+                </span>
+              )}
+            </p>
+          )}
           <p className="-mt-1 text-[11px] text-muted">
             在留カード番号・許可日・期限日・在留資格・在留期間は、「許可情報を保存」で外国人詳細の在留カードの内容にも反映されます。
           </p>

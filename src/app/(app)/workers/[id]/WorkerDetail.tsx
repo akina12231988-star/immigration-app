@@ -118,6 +118,7 @@ import { employmentStartPatch, type EnrollPatch } from "@/lib/worker-support";
 import {
   RESIDENCE_PERIODS,
   cardFaceDate,
+  periodLengthText,
   residencePeriodFromDates,
   workRestrictionLabel,
 } from "@/lib/residence-card";
@@ -542,6 +543,11 @@ export function WorkerDetail({
   // 在留期間は許可年月日と満了日から自動計算（券面の下の欄に表示）。
   // 計算した期間と登録値が食い違うときは、どちらかの入力間違いに気付けるよう注意を出す
   const autoPeriod = residencePeriodFromDates(
+    worker.residence_permit_date ?? "",
+    worker.residence_expiry_date ?? "",
+  );
+  // 許可日から期限日までの長さ（「1年6月」。在留期間と一致しないことがあるので添えて出す）
+  const periodSpan = periodLengthText(
     worker.residence_permit_date ?? "",
     worker.residence_expiry_date ?? "",
   );
@@ -1056,10 +1062,14 @@ export function WorkerDetail({
               {autoPeriod ? (
                 <p className="mt-0.5 text-[10px] text-muted">
                   許可年月日と在留期間満了日から自動計算しています
+                  {periodSpan && `（許可日から期限日まで ${periodSpan}）`}
                 </p>
               ) : worker.residence_permit_date && worker.residence_expiry_date ? (
                 <p className="mt-0.5 text-[10px] font-bold text-seal">
                   許可年月日と満了日の組み合わせから期間を計算できません。日付を確かめてください
+                  {periodSpan && (
+                    <span className="font-normal text-muted">（許可日から期限日まで {periodSpan}）</span>
+                  )}
                 </p>
               ) : (
                 <p className="mt-0.5 text-[10px] text-muted">
