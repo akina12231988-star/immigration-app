@@ -15,7 +15,9 @@ import { PostApplyItemNotes } from "@/components/workers/PostApplyItemNotes";
 import {
   addPostApplyNote,
   openPostApplyCount,
+  postApplyDocKey,
   postApplyTaskKey,
+  prepDocLabel,
   removePostApplyNote,
   type PostApplyEntry,
   type PostApplyMailing,
@@ -27,6 +29,7 @@ import type { Application } from "@/types/application";
 
 // 申請一覧の「申請後の郵送・タスク」タブ。
 // 申請準備で「申請後に発行され次第、入管へ郵送する」にチェックした書類と、
+// 「発行のみ（入管へは郵送しない）」にした書類、
 // 「申請後に入管へ郵送するリスト」に入れたタスクを、人ごとにまとめて出す。
 // 郵送した・済んだものはこの画面のまま消し込める。
 export function PostApplyBoard({
@@ -150,6 +153,48 @@ export function PostApplyBoard({
                     notes={e.notes}
                     onSaveNotes={(notes) => saveNotes(e, notes)}
                   />
+                </div>
+              )}
+              {/* 発行はするが入管へは郵送しない書類（郵送待ちと混ざらないよう別の欄に出す） */}
+              {e.issueOnlyDocs.length > 0 && (
+                <div className="mt-2">
+                  <p className="mb-1 text-[11px] font-bold text-muted">
+                    発行はするが入管へは郵送しない書類
+                  </p>
+                  <ul className="space-y-1">
+                    {e.issueOnlyDocs.map((d) => (
+                      <li
+                        key={d.docId}
+                        className="flex flex-wrap items-center gap-2 rounded-lg bg-background px-2.5 py-1.5 text-xs"
+                      >
+                        <span className={`min-w-0 flex-1 break-words ${d.done ? "text-muted" : ""}`}>
+                          {prepDocLabel(d.docId)}
+                        </span>
+                        <span
+                          className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
+                            d.done
+                              ? "bg-status-approved-bg text-status-approved-fg"
+                              : "bg-status-notice-bg text-status-notice-fg"
+                          }`}
+                        >
+                          {d.done ? "発行済み" : "発行待ち"}
+                        </span>
+                        <PostApplyItemNotes
+                          notes={e.notes[postApplyDocKey(d.docId)] ?? []}
+                          canEdit={canEdit}
+                          onAdd={(text, by) =>
+                            saveNotes(
+                              e,
+                              addPostApplyNote(e.notes, postApplyDocKey(d.docId), text, todayStr(), by),
+                            )
+                          }
+                          onRemove={(noteId) =>
+                            saveNotes(e, removePostApplyNote(e.notes, postApplyDocKey(d.docId), noteId))
+                          }
+                        />
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
               <ul className="mt-2 space-y-1">

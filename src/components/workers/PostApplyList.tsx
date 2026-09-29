@@ -5,9 +5,13 @@ import { Plus, Trash2, X } from "lucide-react";
 import {
   addPostApplyNote,
   newPostApplyTask,
+  postApplyDocKey,
+  prepDocLabel,
   postApplyTaskKey,
   removePostApplyNote,
+  unissuedDocIds,
   unmailedDocIds,
+  type PostApplyIssueOnlyDoc,
   type PostApplyMailing,
   type PostApplyNotes,
   type PostApplyTask,
@@ -22,6 +26,7 @@ import { todayStr } from "@/lib/ssw/calc";
 // ここに出したものは申請一覧の「申請後の郵送・タスク」と、申請詳細のアラートにも出る。
 export function PostApplyList({
   docIds,
+  issueOnlyDocs = [],
   mailings,
   tasks,
   canEdit,
@@ -32,6 +37,7 @@ export function PostApplyList({
   compact = false,
 }: {
   docIds: string[];
+  issueOnlyDocs?: PostApplyIssueOnlyDoc[]; // 申請後に発行はするが、入管へは郵送しない書類（0174）
   mailings: PostApplyMailing[]; // 入管へ郵送した記録（投函日・追跡番号）
   tasks: PostApplyTask[];
   canEdit: boolean;
@@ -75,6 +81,50 @@ export function PostApplyList({
           onSaveNotes={onSaveNotes}
         />
       </div>
+
+      {/* 申請後に発行はするが、入管へは郵送しない書類（郵送待ちと混ざらないよう別の欄に出す） */}
+      {issueOnlyDocs.length > 0 && (
+        <>
+          <p className="mt-3 text-[11px] font-bold text-muted">
+            発行はするが入管へは郵送しない書類（{issueOnlyDocs.length}件・うち未発行
+            {unissuedDocIds(issueOnlyDocs).length}件）
+          </p>
+          <ul className="mt-1 space-y-1">
+            {issueOnlyDocs.map((d) => (
+              <li
+                key={d.docId}
+                className="flex flex-wrap items-center gap-2 rounded-lg bg-surface px-2.5 py-1.5 text-xs"
+              >
+                <span className={`min-w-0 flex-1 break-words ${d.done ? "text-muted" : ""}`}>
+                  {prepDocLabel(d.docId)}
+                </span>
+                <span
+                  className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
+                    d.done
+                      ? "bg-status-approved-bg text-status-approved-fg"
+                      : "bg-status-notice-bg text-status-notice-fg"
+                  }`}
+                >
+                  {d.done ? "発行済み" : "発行待ち"}
+                </span>
+                <PostApplyItemNotes
+                  notes={notes[postApplyDocKey(d.docId)] ?? []}
+                  canEdit={canEdit}
+                  onAdd={(text, by) =>
+                    onSaveNotes(addPostApplyNote(notes, postApplyDocKey(d.docId), text, todayStr(), by))
+                  }
+                  onRemove={(noteId) =>
+                    onSaveNotes(removePostApplyNote(notes, postApplyDocKey(d.docId), noteId))
+                  }
+                />
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-[10px] leading-relaxed text-muted">
+            発行できたら、申請準備の詳細でその書類の準備状況を完了（年金記録なら「発行済み」）にしてください。入管へは郵送しません。
+          </p>
+        </>
+      )}
 
       <p className="mt-3 text-[11px] font-bold text-muted">そのほかのタスク（{tasks.filter((t) => !t.done).length}件）</p>
       {tasks.length > 0 && (

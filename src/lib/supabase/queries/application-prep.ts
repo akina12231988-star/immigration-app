@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizeTodoKey } from "@/lib/todo";
 import {
   buildPostApplyEntries,
+  isPostApplyDocDone,
   normalizePostApplyMailings,
   normalizePostApplyNotes,
   normalizePostApplyTasks,
@@ -233,6 +234,7 @@ export interface PrepDocStatusRow {
   tracking_out: string; // レターパック追跡番号（送付）
   tracking_back: string; // レターパック追跡番号（返信用）
   mail_after_apply: boolean; // 申請後に発行され次第、入管へ郵送する
+  issue_no_mail: boolean; // 申請後に発行はするが、入管へは郵送しない（0174）
   attach_items: string; // 添付する資料項目（カンマ区切り。年金記録: 年金記録/免除申請書）
   use_reiwa?: number | null; // 課税・納税証明書で対応する年度（令和年。0164。null は対象年度）
 }
@@ -247,6 +249,7 @@ export const EMPTY_PREP_DOC_STATUS: PrepDocStatusInput = {
   tracking_out: "",
   tracking_back: "",
   mail_after_apply: false,
+  issue_no_mail: false,
   attach_items: "",
 };
 
@@ -263,20 +266,34 @@ export async function listPrepDocStatuses(
   return (data as PrepDocStatusRow[]) ?? [];
 }
 
-// 書類1件分のステータスを保存（無ければ作成）
+// 書類1件分のステータスを保存（無ければ作成）。
+// 0174（issue_no_mail）が未適用の環境では、その項目を外して保存し直す
 export async function upsertPrepDocStatus(
   supabase: SupabaseClient,
   checklistId: string,
   docId: string,
   input: PrepDocStatusInput,
 ): Promise<void> {
-  const { error } = await supabase
-    .from("prep_doc_statuses")
-    .upsert(
-      { checklist_id: checklistId, doc_id: docId, ...input },
-      { onConflict: "checklist_id,doc_id" },
-    );
-  if (error) throw error;
+  const save = (row: Record<string, unknown>) =>
+    supabase
+      .from("prep_doc_statuses")
+      .upsert({ checklist_id: checklistId, doc_id: docId, ...row }, { onConflict: "checklist_id,doc_id" });
+  const { error } = await save(input);
+  if (!error) return;
+  if (isMissingColumnError(error, "issue_no_mail")) {
+    const rest: Record<string, unknown> = { ...input };
+    delete rest.issue_no_mail;
+    const retry = await save(rest);
+    if (retry.error) throw retry.error;
+    return;
+  }
+  throw error;
+}
+
+// その列がまだ無い（マイグレーション未適用）ことによるエラーか
+function isMissingColumnError(error: { message?: string; code?: string } | null, column: string): boolean {
+  if (!error) return false;
+  return (error.message ?? "").includes(column);
 }
 
 // 申請後に入管へ郵送する書類（mail_after_apply）を外国人単位で取得。
@@ -465,10 +482,23 @@ export async function upsertPrepAppContent(
 
 // ---- 申請後の郵送・タスク（申請一覧の「申請後の郵送・タスク」タブ） ----
 
-// 郵送する書類（mail_after_apply）かタスクがある準備リストを、全員ぶんまとめて取得
+// 郵送する書類（mail_after_apply）・発行だけする書類（issue_no_mail）か
+// タスクがある準備リストを、全員ぶんまとめて取得
 export async function listPostApplyEntries(supabase: SupabaseClient): Promise<PostApplyEntry[]> {
   const [{ data: docs, error: docErr }, { data: lists, error: listErr }] = await Promise.all([
-    supabase.from("prep_doc_statuses").select("checklist_id, doc_id").eq("mail_after_apply", true),
+    // 0174（issue_no_mail）が未適用の環境では列が無いので、読めなければ郵送分だけにする
+    supabase
+      .from("prep_doc_statuses")
+      .select("checklist_id, doc_id, status, mail_after_apply, issue_no_mail")
+      .or("mail_after_apply.eq.true,issue_no_mail.eq.true")
+      .then((r) =>
+        r.error
+          ? supabase
+              .from("prep_doc_statuses")
+              .select("checklist_id, doc_id, status, mail_after_apply")
+              .eq("mail_after_apply", true)
+          : r,
+      ),
     // 0167未適用でも読めるよう select("*")（タスクは無しとして扱う）
     supabase.from("application_prep_checklists").select("*"),
   ]);
@@ -483,13 +513,30 @@ export async function listPostApplyEntries(supabase: SupabaseClient): Promise<Po
       post_apply_mailings?: unknown;
       post_apply_notes?: unknown;
     }[]) ?? [];
-  const mailDocs = (docs as { checklist_id: string; doc_id: string }[]) ?? [];
+  type DocRow = {
+    checklist_id: string;
+    doc_id: string;
+    status?: string | null;
+    mail_after_apply?: boolean | null;
+    issue_no_mail?: boolean | null;
+  };
+  const docRows = (docs as DocRow[]) ?? [];
+  const mailDocs = docRows.filter((d) => d.mail_after_apply);
+  // 発行はするが郵送しない書類。準備状況が完了扱いなら「発行できた」とみなす
+  const issueOnlyDocs = docRows
+    .filter((d) => d.issue_no_mail && !d.mail_after_apply)
+    .map((d) => ({
+      checklist_id: d.checklist_id,
+      doc_id: d.doc_id,
+      done: isPostApplyDocDone(d.doc_id, d.status ?? ""),
+    }));
   const wanted = checklists.filter(
     (c) =>
       unmailedDocIds(
         mailDocs.filter((d) => d.checklist_id === c.id).map((d) => d.doc_id),
         normalizePostApplyMailings(c.post_apply_mailings),
       ).length > 0 ||
+      issueOnlyDocs.some((d) => d.checklist_id === c.id && !d.done) ||
       normalizePostApplyTasks(c.post_apply_tasks).some((t) => !t.done),
   );
   const workerIds = [...new Set(wanted.map((c) => c.worker_id))];
@@ -498,7 +545,7 @@ export async function listPostApplyEntries(supabase: SupabaseClient): Promise<Po
     const { data: ws } = await supabase.from("workers").select("id, name").in("id", workerIds);
     for (const w of (ws as { id: string; name: string }[] | null) ?? []) nameById.set(w.id, w.name);
   }
-  return buildPostApplyEntries(wanted, mailDocs, nameById);
+  return buildPostApplyEntries(wanted, mailDocs, nameById, issueOnlyDocs);
 }
 
 // 入管へ郵送した記録を保存（0168_prep_post_apply_mailings.sql が必要）
