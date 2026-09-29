@@ -5,6 +5,7 @@ import {
   isValidResidenceCardNo,
   normalizeCardDate,
   normalizeResidenceCardNo,
+  periodLengthText,
   residenceCardToWorkerFields,
   effectiveResidencePeriod,
   residencePeriodFromDates,
@@ -170,5 +171,30 @@ describe("residencePeriodFromDates", () => {
     expect(residencePeriodFromDates("", "2026-06-24")).toBe(null);
     expect(residencePeriodFromDates("2026-06-24", "")).toBe(null);
     expect(residencePeriodFromDates("2026-01-01", "2026-01-20")).toBe(null); // 期間にならない
+  });
+});
+
+describe("periodLengthText（許可日から期限日までの長さ）", () => {
+  it("ちょうどの月数は「◯年◯月」で出す", () => {
+    expect(periodLengthText("2026-03-01", "2027-03-01")).toBe("1年");
+    expect(periodLengthText("2026-03-01", "2027-09-01")).toBe("1年6月");
+    expect(periodLengthText("2026-03-01", "2026-09-01")).toBe("6月");
+    expect(periodLengthText("2026-03-01", "2029-03-01")).toBe("3年");
+  });
+
+  it("端数の日は「と◯日」で出す（更新許可で許可日からずれるとき）", () => {
+    // 更新許可 2026-08-20、新しい満了日 2027-03-15
+    expect(periodLengthText("2026-08-20", "2027-03-15")).toBe("6月と23日");
+    expect(periodLengthText("2026-03-01", "2026-03-20")).toBe("19日");
+  });
+
+  it("月末どうしは1か月として数える", () => {
+    expect(periodLengthText("2026-01-31", "2026-02-28")).toBe("1月");
+  });
+
+  it("日付が無い・逆のときは出さない", () => {
+    expect(periodLengthText("", "2027-03-01")).toBeNull();
+    expect(periodLengthText("2027-03-01", "")).toBeNull();
+    expect(periodLengthText("2027-03-01", "2026-03-01")).toBeNull();
   });
 });
