@@ -6,6 +6,7 @@ import {
   normalizeCardDate,
   normalizeResidenceCardNo,
   periodLengthText,
+  residencePeriodCandidates,
   residenceCardToWorkerFields,
   effectiveResidencePeriod,
   residencePeriodFromDates,
@@ -196,5 +197,26 @@ describe("periodLengthText（許可日から期限日までの長さ）", () => 
     expect(periodLengthText("", "2027-03-01")).toBeNull();
     expect(periodLengthText("2027-03-01", "")).toBeNull();
     expect(periodLengthText("2027-03-01", "2026-03-01")).toBeNull();
+  });
+});
+
+describe("residencePeriodCandidates（在留期間を決められないときの候補）", () => {
+  it("許可日から期限日までの長さに近いものから順に返す", () => {
+    // 1年8月と10日 → 1年6月・2年の順に近い（どちらもあり得るので順に出す）
+    expect(residencePeriodCandidates("2025-06-20", "2027-03-01").slice(0, 2)).toEqual(["1年6月", "2年"]);
+    // 11か月 → 1年がいちばん近い
+    expect(residencePeriodCandidates("2026-04-01", "2027-03-01")[0]).toBe("1年");
+    // 5か月 → 6月がいちばん近い
+    expect(residencePeriodCandidates("2026-04-01", "2026-09-01")[0]).toBe("6月");
+  });
+
+  it("件数を絞って返す（既定は4件）", () => {
+    expect(residencePeriodCandidates("2025-06-20", "2027-03-01")).toHaveLength(4);
+    expect(residencePeriodCandidates("2025-06-20", "2027-03-01", 2)).toHaveLength(2);
+  });
+
+  it("日付が無い・逆のときは出さない", () => {
+    expect(residencePeriodCandidates("", "2027-03-01")).toEqual([]);
+    expect(residencePeriodCandidates("2027-03-01", "2026-03-01")).toEqual([]);
   });
 });
