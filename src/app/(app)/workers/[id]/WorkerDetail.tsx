@@ -119,6 +119,7 @@ import {
   RESIDENCE_PERIODS,
   cardFaceDate,
   periodLengthText,
+  residencePeriodCandidates,
   residencePeriodFromDates,
   workRestrictionLabel,
 } from "@/lib/residence-card";
@@ -551,6 +552,10 @@ export function WorkerDetail({
     worker.residence_permit_date ?? "",
     worker.residence_expiry_date ?? "",
   );
+  // 自動で決められないときに、押すだけで入れられる候補（近い順）
+  const periodChoices = autoPeriod
+    ? []
+    : residencePeriodCandidates(worker.residence_permit_date ?? "", worker.residence_expiry_date ?? "");
   const periodMismatch =
     !!autoPeriod &&
     !!worker.residence_period.trim() &&
@@ -1064,22 +1069,47 @@ export function WorkerDetail({
                   許可年月日と在留期間満了日から自動計算しています
                   {periodSpan && `（許可日から期限日まで ${periodSpan}）`}
                 </p>
-              ) : worker.residence_permit_date && worker.residence_expiry_date ? (
-                <p className="mt-0.5 text-[10px] font-bold text-seal">
-                  許可年月日と満了日の組み合わせから期間を計算できません。日付を確かめてください
-                  {periodSpan && (
-                    <span className="font-normal text-muted">（許可日から期限日まで {periodSpan}）</span>
-                  )}
+              ) : !worker.residence_permit_date || !worker.residence_expiry_date ? (
+                <p className="mt-0.5 text-[10px] text-muted">
+                  許可年月日と在留期間満了日を入れると自動計算します
+                </p>
+              ) : worker.residence_period ? (
+                // 登録してある値がある: 自動で決められなかったことだけ添える（間違いとは限らない）
+                <p className="mt-0.5 text-[10px] text-muted">
+                  登録した在留期間です（許可日から期限日まで {periodSpan}）。
+                  更新許可は期限日を前の満了日から数えるため、自動では決められないことがあります
                 </p>
               ) : (
                 <p className="mt-0.5 text-[10px] text-muted">
-                  許可年月日と在留期間満了日を入れると自動計算します
+                  許可日から期限日まで {periodSpan}。更新許可は期限日を前の満了日から数えるため、
+                  在留期間を自動では決められません。下から選ぶか、直接入れてください
                 </p>
               )}
               {periodMismatch && (
                 <p className="mt-0.5 text-[10px] font-bold text-seal">
                   登録済みの「{worker.residence_period}」と違います。日付か登録値を確かめてください
                 </p>
+              )}
+              {/* 自動で決められないときは、押すだけで入れられる候補を出す（近い順） */}
+              {showInput("residence_period") && (editing || !autoPeriod) && periodChoices.length > 0 && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  <span className="text-[10px] text-muted">候補:</span>
+                  {periodChoices.map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setField("residence_period", p)}
+                      aria-pressed={val("residence_period") === p}
+                      className={`min-h-[32px] rounded-full border px-3 text-[11px] font-bold ${
+                        val("residence_period") === p
+                          ? "border-brand bg-brand/10 text-brand"
+                          : "border-border bg-surface text-foreground"
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
               )}
               {/* 自動計算できないときの登録値。編集モードではいつでも直せる */}
               {showInput("residence_period") && (editing || !autoPeriod) && (

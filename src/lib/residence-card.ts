@@ -107,6 +107,31 @@ export function periodLengthText(from: string, to: string): string | null {
   return days > 0 ? `${ym}と${days}日` : ym;
 }
 
+// 在留期間の候補に出す月数（上の RESIDENCE_PERIODS に、特定技能の4月・特定活動の1年6月などを足したもの）
+const CANDIDATE_PERIOD_MONTHS = [3, 4, 6, 12, 18, 24, 36, 48, 60];
+
+// 許可年月日と満了日から在留期間を決められないときに、画面で選べるようにする候補。
+// 許可日から期限日までの長さに近いものから順に返す（決め打ちはせず、人が選ぶ）
+export function residencePeriodCandidates(
+  permitDate: string,
+  expiryDate: string,
+  limit = 4,
+): string[] {
+  const a = parseYmd(permitDate);
+  const b = parseYmd(expiryDate);
+  if (!a || !b || daysBetween(a, b) < 0) return [];
+  let months = (b.y - a.y) * 12 + (b.m - a.m);
+  if (months > 0 && daysBetween(addMonths(a, months), b) < 0) months -= 1;
+  if (months < 0) months = 0;
+  const span = months + daysBetween(addMonths(a, months), b) / 30;
+  return [...CANDIDATE_PERIOD_MONTHS]
+    // 同じくらい近いときは長いほうを先にする（更新は満了日の前に許可が出るため、
+    // 許可日から期限日までの長さより在留期間が短いことはあまりない）
+    .sort((x, y) => Math.abs(x - span) - Math.abs(y - span) || y - x)
+    .slice(0, limit)
+    .map(formatPeriodMonths);
+}
+
 // 実際にある在留期間（月数）。更新許可のときの推定に使う
 const STANDARD_PERIOD_MONTHS = [3, 4, 6, 12, 24, 36, 48, 60];
 

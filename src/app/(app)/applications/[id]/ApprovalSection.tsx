@@ -26,7 +26,12 @@ import {
   normalizeOrgEmploymentStarts,
   upsertOrgEmploymentStart,
 } from "@/lib/org-employment";
-import { RESIDENCE_PERIODS, periodLengthText, residencePeriodFromDates } from "@/lib/residence-card";
+import {
+  RESIDENCE_PERIODS,
+  periodLengthText,
+  residencePeriodCandidates,
+  residencePeriodFromDates,
+} from "@/lib/residence-card";
 import { RESIDENCE_STATUSES, type WorkerInput, type WorkerOrgEmploymentStart } from "@/types/db";
 import {
   GRANT_VISA_OPTIONS,
@@ -143,6 +148,10 @@ export function ApprovalSection({
   // 許可日から期限日までの長さ（更新許可で在留期間と一致しないことがあるので別に出す）
   const spanText = periodLengthText(form.grantedPermitDate, form.grantedExpiryDate);
   const periodValue = grantResidencePeriod || autoPeriod || "";
+  // 自動で決められないときに、押すだけで入れられる候補（近い順）
+  const periodChoices = autoPeriod
+    ? []
+    : residencePeriodCandidates(form.grantedPermitDate, form.grantedExpiryDate);
 
   // この申請の所属機関での、登録済みの雇用開始日
   const existingStart =
@@ -556,6 +565,27 @@ export function ApprovalSection({
                   <option key={p} value={p} />
                 ))}
               </datalist>
+              {/* 自動で決められないときは、押すだけで入れられる候補を出す */}
+              {periodChoices.length > 0 && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] text-muted">候補:</span>
+                  {periodChoices.map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setGrantResidencePeriod(p)}
+                      aria-pressed={periodValue === p}
+                      className={`min-h-[32px] rounded-full border px-3 text-[11px] font-bold ${
+                        periodValue === p
+                          ? "border-brand bg-brand/10 text-brand"
+                          : "border-border bg-surface text-foreground"
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              )}
             </Labeled>
           </div>
           {/* 許可日と期限日から出した在留期間。空欄なら自動で入り、違う値を入れたときは知らせる */}
@@ -570,8 +600,9 @@ export function ApprovalSection({
                 </span>
               )}
               {!autoPeriod && form.grantedPermitDate && form.grantedExpiryDate && (
-                <span className="ml-1 font-bold text-seal">
-                  この日付の組み合わせからは在留期間を決められません。在留期間は手で入れてください
+                <span className="ml-1">
+                  更新許可は期限日を前の満了日から数えるため、在留期間を自動では決められません。
+                  在留期間の欄の「候補」から選ぶか、直接入れてください
                 </span>
               )}
             </p>
