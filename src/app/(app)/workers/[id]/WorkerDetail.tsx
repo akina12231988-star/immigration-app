@@ -31,6 +31,13 @@ import { isSsw1Renewal } from "@/lib/contract-org-notice";
 import { WorkerPhoto } from "@/components/workers/WorkerPhoto";
 import { ResumeToolShare } from "@/components/workers/ResumeToolShare";
 import { FieldJumpSearch } from "@/components/workers/FieldJumpSearch";
+import {
+  WORKER_TAB_SHOW_EVENT,
+  WorkerTabBar,
+  WorkerTabPanel,
+  WorkerTabProvider,
+  type WorkerTabId,
+} from "@/components/workers/WorkerTabs";
 import { WorkerDocuments } from "@/components/workers/WorkerDocuments";
 import { WorkerVisaHistory } from "@/components/workers/WorkerVisaHistory";
 import { WorkerEmploymentInsurance } from "@/components/workers/WorkerEmploymentInsurance";
@@ -204,6 +211,18 @@ export function WorkerDetail({
   // バッジと操作ボタンの列は、下へスクロールしても画面上部に固定する。
   // 上のヘッダー（sticky）の高さはページごとに違うため、測ってその真下に付ける
   const [stickyTop, setStickyTop] = useState(0);
+  // 章をタブで分けて見せる（所属機関の情報と同じ作り）。
+  // 切り替えても入力中の内容が消えないよう、見えないタブも描いたままにしている
+  const [tab, setTab] = useState<WorkerTabId>("person");
+  // 「項目を探す」から、いま見えていないタブの項目へ飛ぶときの切り替え
+  useEffect(() => {
+    const onShow = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail;
+      if (id) setTab(id as WorkerTabId);
+    };
+    window.addEventListener(WORKER_TAB_SHOW_EVENT, onShow);
+    return () => window.removeEventListener(WORKER_TAB_SHOW_EVENT, onShow);
+  }, []);
   useEffect(() => {
     const measure = () => {
       const el = document.querySelector("header");
@@ -770,7 +789,14 @@ export function WorkerDetail({
             )}
           </div>
         </div>
+        {/* 章のタブ。下へスクロールしても名前と一緒に固定されたまま残る */}
+        <div className="mt-2">
+          <WorkerTabBar tab={tab} onChange={setTab} />
+        </div>
       </div>
+
+      <WorkerTabProvider tab={tab}>
+      <WorkerTabPanel tab="person">
 
       {/* 在留カード（実物のカードの項目順で表示） */}
       <Card className="p-4">
@@ -1629,6 +1655,9 @@ export function WorkerDetail({
         {saveBar}
       </Card>
 
+      </WorkerTabPanel>
+      <WorkerTabPanel tab="work">
+
       {/* 退職者情報（状態が退職のとき、または退職日が残っているとき）。
           再雇用などで状態を在籍中に戻しても退職日が残っていると請求書作成の名簿から
           消えてしまうため、戻したあとも退職日を消せるように出しておく */}
@@ -1692,6 +1721,9 @@ export function WorkerDetail({
         canEdit={canEdit}
       />
 
+      </WorkerTabPanel>
+      <WorkerTabPanel tab="person">
+
       {/* 在留資格の履歴（いつ何のビザが許可されたか） */}
       <WorkerVisaHistory
         workerId={worker.id}
@@ -1702,6 +1734,9 @@ export function WorkerDetail({
         histories={worker.work_histories}
         canEdit={canEdit}
       />
+
+      </WorkerTabPanel>
+      <WorkerTabPanel tab="docs">
 
       {/* 在留カード・指定書の差し替え（履歴保持） */}
       <WorkerDocuments
@@ -1729,6 +1764,9 @@ export function WorkerDetail({
       {/* 保険証（健康保険）。現在の保険証と履歴。社保は職歴（会社）に紐付けられる */}
       <WorkerInsuranceCards workerId={worker.id} canEdit={canEdit} histories={histories} />
 
+      </WorkerTabPanel>
+      <WorkerTabPanel tab="todo">
+
       {/* あとでやる手続き（転居手続き・退職書類が出てからの国保/国民年金の加入）。
           国保の欄には現在の保険証（上の保険証の欄の最新）からの目安も出す */}
       <WorkerFollowups
@@ -1747,6 +1785,9 @@ export function WorkerDetail({
 
       {/* 申請準備 書類チェックリストは申請準備のTODO（📋 必要な書類・準備の詳細）に移動した。
           この画面では下の「TODO」カードから各TODOのページへ飛べる */}
+
+      </WorkerTabPanel>
+      <WorkerTabPanel tab="docs">
 
       {/* 入社書類メールで登録した添付データ（選択ダウンロード・Gmailリンク） */}
       <OnboardingDocuments
@@ -1770,6 +1811,9 @@ export function WorkerDetail({
         initialExamOn={worker.health_check_on ?? null}
         canEdit={canEdit}
       />
+
+      </WorkerTabPanel>
+      <WorkerTabPanel tab="person">
 
       {/* 通算期間 */}
       <Card className="p-4">
@@ -1806,6 +1850,9 @@ export function WorkerDetail({
           正式な判断は出入国在留管理庁にご確認ください。
         </p>
       </Card>
+
+      </WorkerTabPanel>
+      <WorkerTabPanel tab="work">
 
       {/* 職歴 */}
       <section>
@@ -1904,12 +1951,18 @@ export function WorkerDetail({
         <p className="mt-2 text-[11px] text-muted">★ = 通算対象の在留資格</p>
       </section>
 
+      </WorkerTabPanel>
+      <WorkerTabPanel tab="person">
+
       {/* 申請書類用の通算（書類作成日時点・月は切り上げ） */}
       <DocumentTotalPanel
         workerId={worker.id}
         todoNo={worker.residence_renewal_todo ?? ""}
         histories={worker.work_histories.map(toCalcHistory)}
       />
+
+      </WorkerTabPanel>
+      <WorkerTabPanel tab="todo">
 
       {/* 求職・応募（採用→所属自動更新の起点） */}
       <JobApplicationSection
@@ -1983,6 +2036,9 @@ export function WorkerDetail({
           </Card>
         )}
       </section>
+
+      </WorkerTabPanel>
+      </WorkerTabProvider>
 
       {/* 削除 */}
       {canEdit && (
