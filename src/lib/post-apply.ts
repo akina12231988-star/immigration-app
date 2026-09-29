@@ -91,6 +91,13 @@ export interface PostApplyNote {
 // キーは項目（書類は "doc:<書類ID>"、タスクは "task:<タスクID>"）
 export type PostApplyNotes = Record<string, PostApplyNote[]>;
 
+// メモに出す記入者。メールアドレスは画面に出さない
+// （表示名が未設定のときに、以前はメールアドレスを記入者として保存していた）
+export function postApplyNoteAuthor(by: string | null | undefined): string {
+  const s = (by ?? "").trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) ? "" : s;
+}
+
 export const postApplyDocKey = (docId: string) => `doc:${docId}`;
 export const postApplyTaskKey = (taskId: string) => `task:${taskId}`;
 
