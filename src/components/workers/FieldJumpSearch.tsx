@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Search, X } from "lucide-react";
+import { WORKER_TAB_SHOW_EVENT } from "@/components/workers/WorkerTabs";
 
 // 画面内の入力項目・見出しへ飛ぶための検索。
 // 外国人詳細は項目が多く、目当ての欄まで探すのに時間がかかるので、
@@ -96,7 +97,7 @@ export function FieldJumpSearch({
   };
 
   // その項目までスクロールして、入力欄があればカーソルも置く
-  const jumpTo = (t: Target) => {
+  const scrollToTarget = (t: Target) => {
     t.el.scrollIntoView({ behavior: "smooth", block: "center" });
     // どこへ飛んだかが分かるように一瞬だけ枠を光らせる
     const mark = t.el.tagName === "LABEL" ? t.el : (t.el.closest("div") ?? t.el);
@@ -104,6 +105,20 @@ export function FieldJumpSearch({
     window.setTimeout(() => mark.classList.remove("ring-2", "ring-brand", "rounded-xl"), 2000);
     const field = t.el.querySelector<HTMLElement>("input, select, textarea");
     if (field) window.setTimeout(() => field.focus({ preventScroll: true }), 400);
+  };
+
+  const jumpTo = (t: Target) => {
+    // タブで分けている画面では、今見えていないタブの項目も探せる。
+    // その項目が隠れているタブの中にあるときは、先にそのタブへ切り替えてから動かす
+    const panel = t.el.closest<HTMLElement>("[data-tab-panel]");
+    const tab = panel?.dataset.tabPanel;
+    if (panel?.hidden && tab) {
+      window.dispatchEvent(new CustomEvent(WORKER_TAB_SHOW_EVENT, { detail: tab }));
+      // 切り替えで画面が描き直されてから動かす
+      window.setTimeout(() => scrollToTarget(t), 60);
+    } else {
+      scrollToTarget(t);
+    }
     close();
   };
 
