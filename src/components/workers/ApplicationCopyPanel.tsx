@@ -5,22 +5,22 @@ import { Check, ClipboardList, Copy, Pencil } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
 import { updateOrganization } from "@/lib/supabase/queries/organizations";
-import { listWorkerWages } from "@/lib/supabase/queries/wages";
 import { toCalcHistory } from "@/lib/supabase/queries/histories";
-import { findPlanDatesForTodo, listPlanDates } from "@/lib/supabase/queries/plan-dates";
+import {
+  loadApplicationCopyData,
+  type ApplicationCopyData,
+} from "@/lib/supabase/queries/application-copy";
 import { normalizeOrganizationIntake } from "@/lib/organization-intake";
-import { getAppSetting, setAppSetting } from "@/lib/supabase/queries/app-settings";
+import { setAppSetting } from "@/lib/supabase/queries/app-settings";
 import { CUSTODIAN_SETTING_KEY, mergeCustodianInfo, mergeSupportOrgLists } from "@/lib/custody";
 import {
   buildApplicationCopyGroups,
   copyGroupText,
   type CopyEdit,
   type CopyGroup,
-  type CopyWorker,
 } from "@/lib/application-copy";
 import { dbErrorMessage } from "@/lib/errors";
 import { CopyButton } from "@/components/ui/CopyButton";
-import type { Organization, WorkHistoryRow, WorkerWage } from "@/types/db";
 
 // 申請準備 ＞ 申請書に貼る情報。
 // 外国人詳細・所属機関・賃金・職歴・支援計画書の日付から、申請書（申請人等作成用・所属機関等作成用）の
@@ -44,36 +44,12 @@ export function ApplicationCopyPanel({
 }) {
   // 保存したら読み直す（値を変えると useEffect が再実行される）
   const [reloadKey, setReloadKey] = useState(0);
-  const [loaded, setLoaded] = useState<{
-    worker: CopyWorker | null;
-    org: Organization | null;
-    wages: WorkerWage[];
-    histories: WorkHistoryRow[];
-    planDates: Record<string, string>;
-    custodian: Record<string, unknown> | null; // 登録支援機関の上書き（app_settings。無ければ既定値）
-  } | null>(null);
+  const [loaded, setLoaded] = useState<ApplicationCopyData | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    const supabase = createClient();
-    void Promise.all([
-      supabase.from("workers").select("*").eq("id", workerId).maybeSingle().then(({ data }) => (data as CopyWorker | null) ?? null),
-      orgId
-        ? supabase.from("organizations").select("*").eq("id", orgId).maybeSingle().then(({ data }) => (data as Organization | null) ?? null)
-        : Promise.resolve(null),
-      listWorkerWages(supabase, workerId).catch(() => [] as WorkerWage[]),
-      supabase
-        .from("work_histories")
-        .select("*")
-        .eq("worker_id", workerId)
-        .then(({ data }) => ((data as WorkHistoryRow[] | null) ?? [])),
-      listPlanDates(supabase, workerId)
-        .then((rows) => findPlanDatesForTodo(rows, todoNo)?.dates ?? {})
-        .catch(() => ({}) as Record<string, string>),
-      // 0149 未適用でも既定値で表示できるようにエラーは無視する
-      getAppSetting<Record<string, unknown>>(supabase, CUSTODIAN_SETTING_KEY).catch(() => null),
-    ]).then(([worker, org, wages, histories, planDates, custodian]) => {
-      if (!cancelled) setLoaded({ worker, org, wages, histories, planDates, custodian });
+    void loadApplicationCopyData(createClient(), { workerId, orgId, todoNo }).then((data) => {
+      if (!cancelled) setLoaded(data);
     });
     return () => {
       cancelled = true;

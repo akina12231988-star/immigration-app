@@ -2225,21 +2225,6 @@ export function ApplicationPrepChecklist({
             )}
           </details>
 
-          {/* 添付PDFの記載チェック（外国人・所属機関の登録内容と突き合わせる） */}
-          {workerRow && (
-            <PrepPdfCheck
-              worker={{
-                name: workerRow.name,
-                kana: workerRow.kana,
-                birth: workerRow.birth,
-                residence_card_no: workerRow.residence_card_no,
-                nationality: workerRow.nationality,
-                address: workerRow.address,
-              }}
-              orgId={prepOrgId}
-              docs={items.flatMap((i) => docFilesFor(i.def))}
-            />
-          )}
         </>
       )}
       </PrepSection>
@@ -2437,6 +2422,15 @@ export function ApplicationPrepChecklist({
           )}
         </FileDropArea>
 
+        {/* 添付した完成書類の記載チェック（申請準備の「申請書に貼る情報」と突き合わせる） */}
+        <PrepPdfCheck
+          workerId={workerId}
+          orgId={prepOrgId}
+          todoNo={current.todo_no}
+          desiredStatus={desiredResidenceStatus(meta.app_content, meta.app_type, workerRow?.residence_status ?? "")}
+          docs={applyDocFiles}
+          refreshKey={prepInfoKey}
+        />
         </div>
       {canEdit && (
         <div className="mt-3 flex flex-wrap items-center gap-4">
