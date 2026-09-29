@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   addPostApplyNote,
   buildPostApplyEntries,
+  isPostApplyDocDone,
+  unissuedDocIds,
   normalizePostApplyNotes,
   postApplyDocKey,
   postApplyTaskKey,
@@ -51,6 +53,56 @@ describe("buildPostApplyEntries", () => {
     expect(entries.map((e) => e.workerName)).toEqual(["TRAN B", "NGUYEN A"]);
     expect(entries[0].docIds).toEqual(["kazei", "gensen"]);
     expect(openPostApplyCount(entries[0])).toBe(3);
+  });
+});
+
+describe("申請後に発行はするが郵送しない書類（0174）", () => {
+  const names = new Map([["w1", "NGUYEN A"]]);
+
+  it("郵送する書類とは別の一覧になり、まだ発行できていないものは残りの件数に入る", () => {
+    const entries = buildPostApplyEntries(
+      [{ id: "c1", worker_id: "w1", todo_no: "TODO-1", post_apply_tasks: [] }],
+      [{ checklist_id: "c1", doc_id: "kazei" }],
+      names,
+      [
+        { checklist_id: "c1", doc_id: "nenkin", done: false },
+        { checklist_id: "c1", doc_id: "hokensho", done: true },
+      ],
+    );
+    expect(entries[0].docIds).toEqual(["kazei"]);
+    expect(entries[0].issueOnlyDocs).toEqual([
+      { docId: "nenkin", done: false },
+      { docId: "hokensho", done: true },
+    ]);
+    // 郵送1件＋未発行1件（発行済みは数えない）
+    expect(openPostApplyCount(entries[0])).toBe(2);
+    expect(unissuedDocIds(entries[0].issueOnlyDocs)).toEqual(["nenkin"]);
+  });
+
+  it("発行だけの書類しかなくても、まだ発行できていなければ一覧に出す", () => {
+    const entries = buildPostApplyEntries(
+      [{ id: "c1", worker_id: "w1", todo_no: "TODO-1", post_apply_tasks: [] }],
+      [],
+      names,
+      [{ checklist_id: "c1", doc_id: "nenkin", done: false }],
+    );
+    expect(entries.map((e) => e.workerName)).toEqual(["NGUYEN A"]);
+  });
+
+  it("全部発行できたら、一覧から消える", () => {
+    const entries = buildPostApplyEntries(
+      [{ id: "c1", worker_id: "w1", todo_no: "TODO-1", post_apply_tasks: [] }],
+      [],
+      names,
+      [{ checklist_id: "c1", doc_id: "nenkin", done: true }],
+    );
+    expect(entries).toEqual([]);
+  });
+
+  it("年金記録は準備状況が「発行済み」なら発行できたと見る", () => {
+    expect(isPostApplyDocDone("nenkin", "発行済み")).toBe(true);
+    expect(isPostApplyDocDone("nenkin", "秋吉伽恋に発行依頼中")).toBe(false);
+    expect(isPostApplyDocDone("nenkin", "")).toBe(false);
   });
 });
 

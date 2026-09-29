@@ -2,7 +2,7 @@
 // そのほかのタスク（テキスト）をまとめる。
 // 申請準備の「申請後に入管へ郵送するリスト」、申請一覧の「申請後の郵送・タスク」、申請詳細のアラートで使う。
 
-import { PREP_DOC_DEFS } from "@/lib/application-prep";
+import { PREP_DOC_DEFS, prepStatusOption } from "@/lib/application-prep";
 
 export interface PostApplyTask {
   id: string;
@@ -140,6 +140,23 @@ export function removePostApplyNote(notes: PostApplyNotes, key: string, noteId: 
   return next;
 }
 
+// 申請後に発行はするが、入管へは郵送しない書類（0174）。
+// 年金記録のように、発行して手元には置くが入管へは出さないもの。発行できたら done。
+export interface PostApplyIssueOnlyDoc {
+  docId: string;
+  done: boolean; // 準備状況が完了扱い（発行できた）
+}
+
+// その書類が完了扱いか（準備状況が完了の選択肢）。選択肢の無い書類は判定できないので false
+export function isPostApplyDocDone(docId: string, status: string): boolean {
+  return prepStatusOption(docId, status)?.done === true;
+}
+
+// まだ発行できていないもの
+export function unissuedDocIds(docs: PostApplyIssueOnlyDoc[]): string[] {
+  return docs.filter((d) => !d.done).map((d) => d.docId);
+}
+
 // 申請一覧に出す1人（準備リスト1件）ぶん
 export interface PostApplyEntry {
   checklistId: string;
@@ -147,14 +164,24 @@ export interface PostApplyEntry {
   workerName: string;
   todoNo: string;
   docIds: string[]; // 申請後に入管へ郵送する書類（郵送済みも含む）
+  issueOnlyDocs: PostApplyIssueOnlyDoc[]; // 申請後に発行するが郵送しない書類（発行済みも含む）
   mailings: PostApplyMailing[]; // 入管へ郵送した記録
   tasks: PostApplyTask[]; // そのほかのタスク（済みも含む）
   notes: PostApplyNotes; // 項目ごとのメモ（0172）
 }
 
-// 残っている件数（まだ郵送していない書類＋済みでないタスク）
-export function openPostApplyCount(e: Pick<PostApplyEntry, "docIds" | "tasks"> & { mailings?: PostApplyMailing[] }): number {
-  return unmailedDocIds(e.docIds, e.mailings ?? []).length + e.tasks.filter((t) => !t.done).length;
+// 残っている件数（まだ郵送していない書類＋まだ発行できていない書類＋済みでないタスク）
+export function openPostApplyCount(
+  e: Pick<PostApplyEntry, "docIds" | "tasks"> & {
+    mailings?: PostApplyMailing[];
+    issueOnlyDocs?: PostApplyIssueOnlyDoc[];
+  },
+): number {
+  return (
+    unmailedDocIds(e.docIds, e.mailings ?? []).length +
+    unissuedDocIds(e.issueOnlyDocs ?? []).length +
+    e.tasks.filter((t) => !t.done).length
+  );
 }
 
 // 郵送する書類かタスクがある準備リストだけを、残りの多い順→氏名順に並べる
@@ -169,10 +196,18 @@ export function buildPostApplyEntries(
   }[],
   mailDocs: { checklist_id: string; doc_id: string }[],
   nameById: Map<string, string>,
+  issueOnlyDocs: { checklist_id: string; doc_id: string; done: boolean }[] = [],
 ): PostApplyEntry[] {
   const docsByList = new Map<string, string[]>();
   for (const d of mailDocs) {
     docsByList.set(d.checklist_id, [...(docsByList.get(d.checklist_id) ?? []), d.doc_id]);
+  }
+  const issueByList = new Map<string, PostApplyIssueOnlyDoc[]>();
+  for (const d of issueOnlyDocs) {
+    issueByList.set(d.checklist_id, [
+      ...(issueByList.get(d.checklist_id) ?? []),
+      { docId: d.doc_id, done: d.done },
+    ]);
   }
   const entries: PostApplyEntry[] = checklists
     .map((c) => ({
@@ -181,6 +216,7 @@ export function buildPostApplyEntries(
       workerName: nameById.get(c.worker_id) ?? "",
       todoNo: c.todo_no ?? "",
       docIds: docsByList.get(c.id) ?? [],
+      issueOnlyDocs: issueByList.get(c.id) ?? [],
       mailings: normalizePostApplyMailings(c.post_apply_mailings),
       tasks: normalizePostApplyTasks(c.post_apply_tasks),
       notes: normalizePostApplyNotes(c.post_apply_notes),

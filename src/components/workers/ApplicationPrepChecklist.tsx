@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { PostApplyList } from "@/components/workers/PostApplyList";
+import { isPostApplyDocDone } from "@/lib/post-apply";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { Ssw2Instructees } from "@/components/workers/Ssw2Instructees";
 import { SSW2_PLEDGE_GUIDE_HREF } from "@/lib/ssw2-pledge-guide";
@@ -566,6 +567,8 @@ export function ApplicationPrepChecklist({
             tracking_out: r.tracking_out,
             tracking_back: r.tracking_back,
             mail_after_apply: r.mail_after_apply,
+            // 申請後に発行はするが郵送しない（0174）。列が無い環境では false
+            issue_no_mail: r.issue_no_mail ?? false,
             attach_items: r.attach_items ?? "",
             // 使う年度（0164）。列が無い環境では付けない（付けると保存で列エラーになる）
             ...(r.use_reiwa !== undefined ? { use_reiwa: r.use_reiwa } : {}),
@@ -595,6 +598,8 @@ export function ApplicationPrepChecklist({
             tracking_out: r.tracking_out,
             tracking_back: r.tracking_back,
             mail_after_apply: r.mail_after_apply,
+            // 申請後に発行はするが郵送しない（0174）。列が無い環境では false
+            issue_no_mail: r.issue_no_mail ?? false,
             attach_items: r.attach_items ?? "",
           };
         }
@@ -1286,9 +1291,21 @@ export function ApplicationPrepChecklist({
     });
     return r ? { ...r, days: daysSince(ds.date_on, today) } : null;
   };
-  // 3つのグループ: まだ揃っていない（申請後に郵送のしるし無し）／申請後に郵送／揃った
-  const missingItems = items.filter((i) => !i.satisfied && !docStatuses[i.def.id]?.mail_after_apply);
+  // 4つのグループ: まだ揃っていない（しるし無し）／申請後に郵送／申請後に発行のみ（郵送しない）／揃った
+  const missingItems = items.filter(
+    (i) =>
+      !i.satisfied &&
+      !docStatuses[i.def.id]?.mail_after_apply &&
+      !docStatuses[i.def.id]?.issue_no_mail,
+  );
   const mailItems = items.filter((i) => !i.satisfied && !!docStatuses[i.def.id]?.mail_after_apply);
+  // 申請後に発行はするが入管へは郵送しない書類（0174）。郵送のしるしが付いているものは郵送が優先
+  const issueOnlyItems = items.filter(
+    (i) =>
+      !i.satisfied &&
+      !docStatuses[i.def.id]?.mail_after_apply &&
+      !!docStatuses[i.def.id]?.issue_no_mail,
+  );
   const doneItems = items.filter((i) => i.satisfied);
   const requesteeChips = requesteeCounts(missingItems.map(docRequesteeOf));
   const shownMissing = whoFilter
@@ -1329,8 +1346,12 @@ export function ApplicationPrepChecklist({
     setApplyConfirm(null);
   };
 
-  // 書類1行ぶん（必要な書類の3つのグループで共用）。mailMode: 申請後に郵送のチェック（toggle）／取り消しだけ（undo）／出さない（none）
-  const renderDocRow = (item: (typeof items)[number], mailMode: "toggle" | "undo" | "none") => {
+  // 書類1行ぶん（必要な書類の4つのグループで共用）。mailMode: 申請後の扱いのチェック（toggle）／
+  // 郵送の取り消し（undo）／発行のみの取り消し（undo-issue）／出さない（none）
+  const renderDocRow = (
+    item: (typeof items)[number],
+    mailMode: "toggle" | "undo" | "undo-issue" | "none",
+  ) => {
               const key = resolveDocKey(item.def);
               const files = docFilesFor(item.def);
               const isPhoto = item.def.source.kind === "photo";
@@ -1502,6 +1523,9 @@ export function ApplicationPrepChecklist({
             docIds={Object.entries(docStatuses)
               .filter(([, v]) => v.mail_after_apply)
               .map(([id]) => id)}
+            issueOnlyDocs={Object.entries(docStatuses)
+              .filter(([, v]) => v.issue_no_mail && !v.mail_after_apply)
+              .map(([id, v]) => ({ docId: id, done: isPostApplyDocDone(id, v.status) }))}
             tasks={current.post_apply_tasks ?? []}
             canEdit={canEdit}
             mailings={current.post_apply_mailings ?? []}
@@ -2169,6 +2193,23 @@ export function ApplicationPrepChecklist({
             </>
           )}
 
+          {/* 申請後に発行はするが入管へは郵送しない（郵送待ちと分けて出す） */}
+          {issueOnlyItems.length > 0 && (
+            <>
+              <p className="mb-1.5 flex flex-wrap items-center gap-2 border-b-2 border-border pb-1 text-sm font-bold text-muted">
+                <span className="flex-1">
+                  申請後に発行（入管へは郵送しない） {issueOnlyItems.length}件
+                </span>
+                <Link href="/applications" className="text-[11px] font-bold text-brand hover:underline">
+                  申請一覧の「申請後の郵送・タスク」で見る →
+                </Link>
+              </p>
+              <div className="mb-3 overflow-hidden rounded-xl border border-border">
+                {issueOnlyItems.map((item) => renderDocRow(item, "undo-issue"))}
+              </div>
+            </>
+          )}
+
           {/* 揃った（たたんでおく） */}
           <details className="group">
             <summary className="flex min-h-[40px] cursor-pointer items-center border-b-2 border-status-approved-fg/30 pb-1 text-sm font-bold text-status-approved-fg">
@@ -2512,7 +2553,7 @@ function DocRow({
   // 誰に・いつ（依頼先と依頼日からの日数）。読み取れないときは null
   requestee?: { who: string; kind: PrepRequesteeKind; days: number | null } | null;
   // 申請後に郵送: toggle=チェックで郵送リストへ / undo=郵送リストから取り消すだけ / none=出さない
-  mailMode?: "toggle" | "undo" | "none";
+  mailMode?: "toggle" | "undo" | "undo-issue" | "none";
   priorNote?: string; // 前回の申請（1年以内）で提出済みなら、その申請日・申請番号の案内
   docYear?: number | null; // 年度付きの書類で実際に使う年度（別の年度で対応しているときはその年度）
   otherYears?: { year: number; files: OnboardingDocumentRow[] }[]; // 対象年度以外で添付されている年度とそのファイル
@@ -2674,16 +2715,41 @@ function DocRow({
 
         {/* 申請後に郵送（まだ揃っていない書類はチェックで郵送リストへ。郵送リストの書類は取り消しだけ） */}
         {canEdit && mailMode === "toggle" && !PREP_MAIL_AFTER_HIDDEN.has(def.id) && (
-          <label className="flex shrink-0 flex-col items-center gap-0.5 text-[10px] font-bold text-status-notice-fg">
-            <input
-              type="checkbox"
-              checked={ds.mail_after_apply}
-              onChange={(e) => onPatchStatus({ mail_after_apply: e.target.checked })}
-              aria-label={`${label}を申請後に郵送する`}
-              className="h-5 w-5"
-            />
-            申請後に郵送
-          </label>
+          <div className="flex shrink-0 flex-col items-center gap-1">
+            <label className="flex flex-col items-center gap-0.5 text-[10px] font-bold text-status-notice-fg">
+              <input
+                type="checkbox"
+                checked={ds.mail_after_apply}
+                // 郵送と「発行のみ」はどちらか一方（郵送を選んだら発行のみは外す）
+                onChange={(e) =>
+                  onPatchStatus(
+                    e.target.checked
+                      ? { mail_after_apply: true, issue_no_mail: false }
+                      : { mail_after_apply: false },
+                  )
+                }
+                aria-label={`${label}を申請後に郵送する`}
+                className="h-5 w-5"
+              />
+              申請後に郵送
+            </label>
+            <label className="flex flex-col items-center gap-0.5 text-[10px] font-bold text-muted">
+              <input
+                type="checkbox"
+                checked={ds.issue_no_mail}
+                onChange={(e) =>
+                  onPatchStatus(
+                    e.target.checked
+                      ? { issue_no_mail: true, mail_after_apply: false }
+                      : { issue_no_mail: false },
+                  )
+                }
+                aria-label={`${label}を申請後に発行するが入管へは郵送しない`}
+                className="h-5 w-5"
+              />
+              発行のみ
+            </label>
+          </div>
         )}
         {canEdit && mailMode === "undo" && (
           <button
@@ -2692,6 +2758,15 @@ function DocRow({
             className="shrink-0 text-[11px] font-bold text-brand underline"
           >
             郵送をやめる
+          </button>
+        )}
+        {canEdit && mailMode === "undo-issue" && (
+          <button
+            type="button"
+            onClick={() => onPatchStatus({ issue_no_mail: false })}
+            className="shrink-0 text-[11px] font-bold text-brand underline"
+          >
+            発行のみをやめる
           </button>
         )}
         {/* 添付・操作 */}
