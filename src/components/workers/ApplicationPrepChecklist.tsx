@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { PostApplyList } from "@/components/workers/PostApplyList";
+import { PrepPdfCheck } from "@/components/workers/PrepPdfCheck";
 import { isPostApplyDocDone } from "@/lib/post-apply";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { Ssw2Instructees } from "@/components/workers/Ssw2Instructees";
@@ -2223,6 +2224,22 @@ export function ApplicationPrepChecklist({
               </div>
             )}
           </details>
+
+          {/* 添付PDFの記載チェック（外国人・所属機関の登録内容と突き合わせる） */}
+          {workerRow && (
+            <PrepPdfCheck
+              worker={{
+                name: workerRow.name,
+                kana: workerRow.kana,
+                birth: workerRow.birth,
+                residence_card_no: workerRow.residence_card_no,
+                nationality: workerRow.nationality,
+                address: workerRow.address,
+              }}
+              orgId={prepOrgId}
+              docs={items.flatMap((i) => docFilesFor(i.def))}
+            />
+          )}
         </>
       )}
       </PrepSection>
