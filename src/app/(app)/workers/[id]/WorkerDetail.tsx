@@ -34,6 +34,7 @@ import { FieldJumpSearch } from "@/components/workers/FieldJumpSearch";
 import {
   WORKER_TAB_SHOW_EVENT,
   WorkerTabBar,
+  WorkerTabIndex,
   WorkerTabPanel,
   WorkerTabProvider,
   type WorkerTabId,
@@ -634,6 +635,7 @@ export function WorkerDetail({
       {/* バッジと操作ボタン。下へスクロールしてもヘッダーの真下に固定する
           （編集モードでは保存・やめるが常に見える） */}
       <div
+        data-worker-sticky
         className="sticky z-10 -mx-4 border-b border-border bg-background px-4 py-2 md:-mx-8 md:px-8 print:static"
         style={{ top: stickyTop }}
       >
@@ -795,10 +797,18 @@ export function WorkerDetail({
         </div>
       </div>
 
+      {/* 何がどこにあるか分かるように、開いているタブの中身を並べる（押すとその場所へ移動） */}
+      <WorkerTabIndex
+        tab={tab}
+        // 退職者情報は、退職しているときだけ出している
+        omit={worker.status === "退職" || worker.leaving_on ? [] : ["wd-resign"]}
+      />
+
       <WorkerTabProvider tab={tab}>
       <WorkerTabPanel tab="person">
 
       {/* 在留カード（実物のカードの項目順で表示） */}
+      <div id="wd-zairyu">
       <Card className="p-4">
         {applied && (
           <p role="status" className="mb-3 rounded-lg bg-brand/10 px-3 py-2 text-sm text-brand">
@@ -1177,8 +1187,10 @@ export function WorkerDetail({
         </div>
         {saveBar}
       </Card>
+      </div>
 
       {/* パスポート（名・番号・有効期限・PLACE OF BIRTH と、下部のMRZ 2行入力） */}
+      <div id="wd-passport">
       <Card className="p-4">
         <div className="rounded-2xl border border-border bg-background p-3">
           <div className="mb-2 flex items-center gap-1.5 border-b border-border pb-2 text-[11px] font-bold text-muted">
@@ -1285,11 +1297,15 @@ export function WorkerDetail({
         </p>
         {saveBar}
       </Card>
+      </div>
 
       {/* 出入国の記録（パスポートのスタンプの日付と、スタンプページのPDF・画像） */}
+      <div id="wd-entry">
       <WorkerPassportTravel workerId={worker.id} canEdit={canEdit} today={today} />
+      </div>
 
       {/* 基本情報（在留カード・パスポート以外の項目） */}
+      <div id="wd-basic">
       <Card className="p-4">
         <p className="mb-1 text-[11px] font-bold text-muted">基本情報</p>
         <dl className="mb-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
@@ -1654,6 +1670,7 @@ export function WorkerDetail({
         </dl>
         {saveBar}
       </Card>
+      </div>
 
       </WorkerTabPanel>
       <WorkerTabPanel tab="work">
@@ -1661,6 +1678,7 @@ export function WorkerDetail({
       {/* 退職者情報（状態が退職のとき、または退職日が残っているとき）。
           再雇用などで状態を在籍中に戻しても退職日が残っていると請求書作成の名簿から
           消えてしまうため、戻したあとも退職日を消せるように出しておく */}
+      <div id="wd-resign">
       {(worker.status === "退職" || worker.leaving_on) && (
         <>
           <LeavingSection worker={worker} canEdit={canEdit} />
@@ -1675,8 +1693,10 @@ export function WorkerDetail({
           />
         </>
       )}
+      </div>
 
       {/* 賃金（時給・月給）。採用時の賃金と昇給の履歴を残す */}
+      <div id="wd-wage">
       <WorkerWages
         workerId={worker.id}
         currentOrganizationId={worker.current_organization_id}
@@ -1686,11 +1706,15 @@ export function WorkerDetail({
         today={todayStr()}
         canEdit={canEdit}
       />
+      </div>
 
       {/* 許可売上No.・保険No.（売上明細の伝票番号をまとめて見る・直す） */}
+      <div id="wd-salesno">
       <WorkerPermitSalesNos workerId={worker.id} canEdit={canEdit} />
+      </div>
 
       {/* 定期売上（毎月の支援代）。定期売上No.が未登録ならここから登録できる */}
+      <div id="wd-sales">
       <WorkerRecurringSales
         workerId={worker.id}
         organizationId={worker.current_organization_id}
@@ -1700,8 +1724,10 @@ export function WorkerDetail({
         initialPast={worker.past_recurring_sales}
         canEdit={canEdit}
       />
+      </div>
 
       {/* 雇用開始日（所属機関別）。現在の所属機関の分は雇用開始年月日に自動反映 */}
+      <div id="wd-empstart">
       <WorkerEmploymentStarts
         workerId={worker.id}
         initial={worker.org_employment_starts}
@@ -1713,18 +1739,22 @@ export function WorkerDetail({
         organizations={organizations}
         canEdit={canEdit}
       />
+      </div>
 
       {/* 扶養家族（扶養親族証明書の内容→控除区分の自動判定・扶養控除等申告書の作成） */}
+      <div id="wd-dependents">
       <WorkerDependents
         workerId={worker.id}
         initial={worker.dependents}
         canEdit={canEdit}
       />
+      </div>
 
       </WorkerTabPanel>
       <WorkerTabPanel tab="person">
 
       {/* 在留資格の履歴（いつ何のビザが許可されたか） */}
+      <div id="wd-visa">
       <WorkerVisaHistory
         workerId={worker.id}
         cardNo={worker.residence_card_no}
@@ -1734,19 +1764,23 @@ export function WorkerDetail({
         histories={worker.work_histories}
         canEdit={canEdit}
       />
+      </div>
 
       </WorkerTabPanel>
       <WorkerTabPanel tab="docs">
 
       {/* 在留カード・指定書の差し替え（履歴保持） */}
+      <div id="wd-cardfile">
       <WorkerDocuments
         workerId={worker.id}
         canEdit={canEdit}
         histories={worker.work_histories}
       />
+      </div>
 
       {/* 雇用契約書・雇用条件書（雇用開始後の分を所属機関ごとに保管。
           申請時点の記録は申請準備のTODOの中でも同じ保管先を使う） */}
+      <div id="wd-contract">
       <WorkerContracts
         workerId={worker.id}
         canEdit={canEdit}
@@ -1757,27 +1791,36 @@ export function WorkerDetail({
         // 日付なし（印鑑・署名あり）版は申請準備の詳細で保管するため、外国人詳細では出さない
         showUndated={false}
       />
+      </div>
 
       {/* 雇用保険（離職票・被保険者証）が届いたときの保管 */}
+      <div id="wd-koyo">
       <WorkerEmploymentInsurance workerId={worker.id} canEdit={canEdit} />
+      </div>
 
       {/* 保険証（健康保険）。現在の保険証と履歴。社保は職歴（会社）に紐付けられる */}
+      <div id="wd-hoken">
       <WorkerInsuranceCards workerId={worker.id} canEdit={canEdit} histories={histories} />
+      </div>
 
       </WorkerTabPanel>
       <WorkerTabPanel tab="todo">
 
       {/* あとでやる手続き（転居手続き・退職書類が出てからの国保/国民年金の加入）。
           国保の欄には現在の保険証（上の保険証の欄の最新）からの目安も出す */}
+      <div id="wd-followup">
       <WorkerFollowups
         workerId={worker.id}
         followups={worker.followups}
         canEdit={canEdit}
         histories={histories}
       />
+      </div>
 
       {/* 郵送請求（何年度をどこに請求したか・郵送請求した書類／届いた証明書／領収書の添付） */}
+      <div id="wd-mailing">
       <WorkerMailingRecords workerId={worker.id} workerName={worker.name} canEdit={canEdit} />
+      </div>
 
       {/* 旧「外国人書類（PDF・画像で保存）」カードは解体した:
           合格証4種→基本情報の各合格名の下 / パスポート→出入国の記録のパスポートの記録 /
@@ -1790,6 +1833,7 @@ export function WorkerDetail({
       <WorkerTabPanel tab="docs">
 
       {/* 入社書類メールで登録した添付データ（選択ダウンロード・Gmailリンク） */}
+      <div id="wd-onboarding">
       <OnboardingDocuments
         workerId={worker.id}
         canEdit={canEdit}
@@ -1803,19 +1847,25 @@ export function WorkerDetail({
         // 特定技能1号の更新許可なら、契約機関に関する届出（参考様式1の5）は要らないと知らせる
         contractOrgNotNeeded={isSsw1Renewal(applications, worker.residence_status)}
       />
+      </div>
 
+      <div id="wd-gensen">
       <GensenDocuments workerId={worker.id} canEdit={canEdit} />
+      </div>
 
+      <div id="wd-kenshin">
       <HealthCheckSection
         workerId={worker.id}
         initialExamOn={worker.health_check_on ?? null}
         canEdit={canEdit}
       />
+      </div>
 
       </WorkerTabPanel>
-      <WorkerTabPanel tab="person">
+      <WorkerTabPanel tab="career">
 
       {/* 通算期間 */}
+      <div id="wd-total">
       <Card className="p-4">
         <h2 className="mb-3 flex items-center gap-2 text-sm font-bold">
           <CalendarClock size={16} />
@@ -1850,11 +1900,11 @@ export function WorkerDetail({
           正式な判断は出入国在留管理庁にご確認ください。
         </p>
       </Card>
+      </div>
 
-      </WorkerTabPanel>
-      <WorkerTabPanel tab="work">
 
       {/* 職歴 */}
+      <div id="wd-career">
       <section>
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-sm font-bold text-muted">
@@ -1950,21 +2000,23 @@ export function WorkerDetail({
         )}
         <p className="mt-2 text-[11px] text-muted">★ = 通算対象の在留資格</p>
       </section>
+      </div>
 
-      </WorkerTabPanel>
-      <WorkerTabPanel tab="person">
 
       {/* 申請書類用の通算（書類作成日時点・月は切り上げ） */}
+      <div id="wd-doctotal">
       <DocumentTotalPanel
         workerId={worker.id}
         todoNo={worker.residence_renewal_todo ?? ""}
         histories={worker.work_histories.map(toCalcHistory)}
       />
+      </div>
 
       </WorkerTabPanel>
       <WorkerTabPanel tab="todo">
 
       {/* 求職・応募（採用→所属自動更新の起点） */}
+      <div id="wd-job">
       <JobApplicationSection
         workerId={worker.id}
         applications={jobApplications}
@@ -1972,12 +2024,16 @@ export function WorkerDetail({
         organizations={organizations}
         canEdit={canEdit}
       />
+      </div>
 
       {/* この人のTODOへのリンク（申請準備・退職の随時報告書・試験の申込。
           申請準備の中身は申請準備のTODOで管理する） */}
+      <div id="wd-todo">
       <WorkerTodoLinks workerId={worker.id} />
+      </div>
 
       {/* 入管申請（申請受付日・申請番号） */}
+      <div id="wd-apply">
       <section>
         <div className="mb-2 flex items-center justify-between">
           <h2 className="flex items-center gap-1.5 text-sm font-bold text-muted">
@@ -2036,6 +2092,7 @@ export function WorkerDetail({
           </Card>
         )}
       </section>
+      </div>
 
       </WorkerTabPanel>
       </WorkerTabProvider>
