@@ -42,7 +42,17 @@ export function ExamTodoSection({
   onChangeExam: (exam: TodoExam) => void;
 }) {
   const exam = normalizeTodoExam(todo.exam);
-  const set = (patch: Partial<TodoExam>) => onChangeExam({ ...exam, ...patch });
+  // 続けて別の欄を直したとき、前の欄の内容が消えないように、
+  // いちばん新しい内容（保存を頼んだ直後のぶんも含む）に重ねて送る
+  const latest = useRef(exam);
+  useEffect(() => {
+    latest.current = normalizeTodoExam(todo.exam);
+  }, [todo.exam]);
+  const set = (patch: Partial<TodoExam>) => {
+    const next = { ...latest.current, ...patch };
+    latest.current = next;
+    onChangeExam(next);
+  };
 
   // 試験日を過ぎて結果が未確認ならアラートを出す
   const overdue =
@@ -115,44 +125,32 @@ export function ExamTodoSection({
 
       {/* アプリケーションNo.・プロメトリックID・パスワード・ログイン先メール */}
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <label className="flex flex-col gap-0.5 text-[11px] font-bold text-muted">
-          アプリケーションNo.
-          <input
-            value={exam.application_no}
-            disabled={!canEdit}
-            onChange={(e) => set({ application_no: e.target.value })}
-            placeholder="発行されたら入力"
-            className={INPUT}
-          />
-        </label>
-        <label className="flex flex-col gap-0.5 text-[11px] font-bold text-muted">
-          プロメトリックID
-          <input
-            value={exam.prometric_id}
-            disabled={!canEdit}
-            onChange={(e) => set({ prometric_id: e.target.value })}
-            className={INPUT}
-          />
-        </label>
-        <label className="flex flex-col gap-0.5 text-[11px] font-bold text-muted">
-          パスワード
-          <input
-            value={exam.password}
-            disabled={!canEdit}
-            onChange={(e) => set({ password: e.target.value })}
-            className={INPUT}
-          />
-        </label>
-        <label className="flex flex-col gap-0.5 text-[11px] font-bold text-muted">
-          ログイン先のメールアドレス
-          <input
-            value={exam.login_email}
-            disabled={!canEdit}
-            onChange={(e) => set({ login_email: e.target.value })}
-            placeholder="example@mail.com"
-            className={INPUT}
-          />
-        </label>
+        <ExamTextField
+          label="アプリケーションNo."
+          value={exam.application_no}
+          disabled={!canEdit}
+          placeholder="発行されたら入力"
+          onSave={(v) => set({ application_no: v })}
+        />
+        <ExamTextField
+          label="プロメトリックID"
+          value={exam.prometric_id}
+          disabled={!canEdit}
+          onSave={(v) => set({ prometric_id: v })}
+        />
+        <ExamTextField
+          label="パスワード"
+          value={exam.password}
+          disabled={!canEdit}
+          onSave={(v) => set({ password: v })}
+        />
+        <ExamTextField
+          label="ログイン先のメールアドレス"
+          value={exam.login_email}
+          disabled={!canEdit}
+          placeholder="example@mail.com"
+          onSave={(v) => set({ login_email: v })}
+        />
         <label className="flex flex-col gap-0.5 text-[11px] font-bold text-muted">
           メールアドレスを作ったのは
           <select
@@ -167,15 +165,12 @@ export function ExamTodoSection({
           </select>
         </label>
         {exam.login_email_owner === "弊社が作成" && (
-          <label className="flex flex-col gap-0.5 text-[11px] font-bold text-muted">
-            メールアドレスのパスワード（弊社作成のため記録）
-            <input
-              value={exam.login_email_password}
-              disabled={!canEdit}
-              onChange={(e) => set({ login_email_password: e.target.value })}
-              className={INPUT}
-            />
-          </label>
+          <ExamTextField
+            label="メールアドレスのパスワード（弊社作成のため記録）"
+            value={exam.login_email_password}
+            disabled={!canEdit}
+            onSave={(v) => set({ login_email_password: v })}
+          />
         )}
       </div>
 
@@ -190,6 +185,50 @@ export function ExamTodoSection({
       {/* ２号試験の申込に必要なデータ（外国人詳細から自動反映）＋職歴 */}
       {todo.worker_id && <ExamWorkerInfo workerId={todo.worker_id} canEdit={canEdit} />}
     </div>
+  );
+}
+
+// 文字を入れる欄。
+// 1文字ごとに保存すると、そのたびにTODO一覧を読み直すことになって入力が追いつかないため、
+// 入力しているあいだは画面の中だけで持ち、欄から離れたとき（Enterを押したとき）に保存する。
+// TODOの番号・内容・書類まちのメモと同じやり方
+function ExamTextField({
+  label,
+  value,
+  disabled,
+  placeholder,
+  onSave,
+}: {
+  label: string;
+  value: string;
+  disabled: boolean;
+  placeholder?: string;
+  onSave: (value: string) => void;
+}) {
+  const [text, setText] = useState(value);
+  // 保存が終わって新しい値が来たら、それに合わせる
+  const [prev, setPrev] = useState(value);
+  if (value !== prev) {
+    setPrev(value);
+    setText(value);
+  }
+  return (
+    <label className="flex flex-col gap-0.5 text-[11px] font-bold text-muted">
+      {label}
+      <input
+        value={text}
+        disabled={disabled}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => {
+          if (text !== value) onSave(text);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+        }}
+        placeholder={placeholder}
+        className={INPUT}
+      />
+    </label>
   );
 }
 

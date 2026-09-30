@@ -629,18 +629,21 @@ export function TodosClient({
                         (m) => m.todoKey && m.todoKey === normalizeTodoKey(t.todo_no),
                       )}
                       workers={workers}
-                      onChange={(patch) =>
-                        run(
-                          () => updateTodo(createClient(), t.id, patch),
-                          // 取次士・本人申請の列は 0106、試験の申込の詳細は 0109 で追加。
-                          // 未適用ならその案内を出す
+                      onChange={(patch) => {
+                        // 取次士・本人申請の列は 0106、試験の申込の詳細は 0109 で追加。
+                        // 未適用ならその案内を出す
+                        const migration =
                           "exam" in patch
                             ? "0109_todo_exam_fields.sql"
                             : "agent_name" in patch || "self_apply" in patch
                               ? "0106_todos_apply_fields.sql"
-                              : "0102_todos.sql",
-                        )
-                      }
+                              : "0102_todos.sql";
+                        const save = () => updateTodo(createClient(), t.id, patch);
+                        // 試験の申込の詳細は、この行の中だけの内容なので一覧は読み直さない
+                        return "exam" in patch && Object.keys(patch).length === 1
+                          ? runOnRow(t.id, patch, save, migration)
+                          : run(save, migration);
+                      }}
                       onDelete={() => {
                         if (
                           window.confirm(
@@ -745,6 +748,25 @@ export function TodosClient({
       await load();
     } catch (err) {
       setError(dbErrorMessage(err, migration, "保存に失敗しました"));
+    }
+  };
+
+  // その行だけ書き換えれば足りるときの保存。
+  // 一覧全部を読み直すと、入力のたびに画面が固まって文字の反映が遅くなるため、
+  // 画面はすぐ書き換えて、保存だけを裏で行う。失敗したときは読み直して元に戻す
+  const runOnRow = async (
+    id: string,
+    patch: Partial<TodoRow>,
+    fn: () => Promise<void>,
+    migration = "0102_todos.sql",
+  ) => {
+    setTodos((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+    try {
+      await fn();
+      setError(null);
+    } catch (err) {
+      setError(dbErrorMessage(err, migration, "保存に失敗しました"));
+      await load();
     }
   };
 
