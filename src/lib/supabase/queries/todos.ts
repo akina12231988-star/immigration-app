@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   findExistingPrepTodo,
   nextTodoNo,
+  stageOfStatus,
   type TodoExam,
   type TodoKind,
   type TodoStatusOption,
@@ -73,7 +74,34 @@ export async function fetchNextTodoNo(supabase: SupabaseClient): Promise<string>
     .select("todo_no")
     .then((res) => (res.error ? { data: null } : res));
   for (const r of (g as { todo_no: string | null }[] | null) ?? []) nos.push(r.todo_no ?? "");
+  // 外国人に直接書かれている番号（申請TODO番号・退職の随時報告TODO番号）も数える。
+  // TODO一覧に行が無い番号でも、同じ番号を二重に振らないようにするため
+  const { data: w } = await supabase
+    .from("workers")
+    .select("residence_renewal_todo, leaving_todo")
+    .then((res) => (res.error ? { data: null } : res));
+  for (const r of (w as { residence_renewal_todo: string | null; leaving_todo: string | null }[] | null) ?? []) {
+    nos.push(r.residence_renewal_todo ?? "", r.leaving_todo ?? "");
+  }
   return nextTodoNo(nos);
+}
+
+// この外国人の、まだ終わっていない申請準備のTODO番号（無ければ null）。
+// 更新準備で番号を自動でつけるとき、すでにあるTODOと二重にならないように先に見る
+export async function findOpenPrepTodoNo(
+  supabase: SupabaseClient,
+  workerId: string,
+): Promise<string | null> {
+  const { data } = await supabase
+    .from("todos")
+    .select("todo_no, status")
+    .eq("kind", "申請準備")
+    .eq("worker_id", workerId)
+    .then((res) => (res.error ? { data: null } : res));
+  const rows = (data as { todo_no: string; status: string }[] | null) ?? [];
+  if (rows.length === 0) return null;
+  const options = await listTodoStatusOptions(supabase).catch(() => []);
+  return rows.find((r) => stageOfStatus(r.status, options) !== "完了")?.todo_no ?? null;
 }
 
 export interface NewTodo {
@@ -112,6 +140,8 @@ export async function insertTodo(supabase: SupabaseClient, input: NewTodo): Prom
 export async function ensurePrepTodo(
   supabase: SupabaseClient,
   input: { worker_id: string; title: string; todo_no?: string },
+  // 終わったTODOは使い回さず、新しく作る（更新準備から番号を自動でつけるとき）
+  opts: { skipDone?: boolean } = {},
 ): Promise<{ row: TodoRow; created: boolean }> {
   const { data, error } = await supabase
     .from("todos")
@@ -124,7 +154,14 @@ export async function ensurePrepTodo(
     );
   if (error) throw error;
   const rows = (data as TodoRow[] | null) ?? [];
-  const existing = findExistingPrepTodo(rows, input.worker_id, input.todo_no ?? "");
+  // 完了しているTODOを除くときだけ、ステータスの選択肢（どれが完了か）を読む
+  const options = opts.skipDone ? await listTodoStatusOptions(supabase).catch(() => []) : [];
+  const existing = findExistingPrepTodo(
+    rows,
+    input.worker_id,
+    input.todo_no ?? "",
+    opts.skipDone ? (r) => stageOfStatus(r.status, options) !== "完了" : undefined,
+  );
   if (existing) return { row: existing, created: false };
 
   try {

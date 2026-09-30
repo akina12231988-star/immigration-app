@@ -101,9 +101,8 @@ export function RenewalPrepClient({
       <p className="flex items-start gap-1.5 text-xs leading-relaxed text-muted">
         <CalendarSync size={14} className="mt-0.5 shrink-0" />
         在留期限の{RESIDENCE_RENEWAL_MONTHS}
-        か月前になった人のうち、Notion
-        申請TODO番号がまだ未入力の人を、在留期限が近い順に表示しています。
-        各カードの案内に沿ってNotionで申請TODOを作成し、番号を入力して保存すると、この一覧からは消えて申請準備の方に表示されます。
+        か月前になった人のうち、申請TODO番号がまだ未入力の人を、在留期限が近い順に表示しています。
+        各カードで対応状況を「準備中」にして保存すると、申請TODO番号が自動でついてTODO一覧の「申請準備」に登録され、この一覧からは消えて申請準備の方に表示されます。
         退職した人・すでに入管申請が受付済みで結果待ちの人・転職先や他機関などで弊社が準備しない人は表示されません。
       </p>
 

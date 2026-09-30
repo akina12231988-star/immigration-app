@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Wand2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
@@ -12,9 +13,15 @@ import {
   type PrepChecklistRow,
 } from "@/lib/supabase/queries/application-prep";
 import { PREP_TANTOU_OPTIONS } from "@/lib/application-prep";
+import {
+  ensurePrepTodo,
+  fetchNextTodoNo,
+  findOpenPrepTodoNo,
+} from "@/lib/supabase/queries/todos";
 import { Ssw2Instructees } from "@/components/workers/Ssw2Instructees";
 import { SSW2_PREP_SITUATION } from "@/lib/ssw2-instructees";
 import {
+  APPLICATION_CONTENT_CHOICES,
   appTypeOfPrepSituation,
   PREP_SITUATIONS,
   PREP_SITUATION_CHOICES,
@@ -115,6 +122,8 @@ export function WorkerRenewalFields({
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 保存のときに番号が決まった／すでにあったTODOを使った、という知らせ
+  const [notice, setNotice] = useState<string | null>(null);
 
   // 担当者はTODO番号ごとの準備リスト（application_prep_checklists）に保存されている
   const [prepRows, setPrepRows] = useState<PrepChecklistRow[]>([]);
@@ -159,6 +168,29 @@ export function WorkerRenewalFields({
     setTantou(prepRows.find((r) => r.todo_no === v.trim())?.tantou ?? "");
   };
 
+  // TODO番号を自動で決める。
+  // すでにこの人の申請準備のTODO（終わっていないもの）があればその番号、
+  // 無ければ通し番号の続き（TODO一覧・申請準備・随時報告の既存番号の次）を出す。
+  // 保存するとその番号でTODO一覧の「申請準備」にも登録される
+  const [autoBusy, setAutoBusy] = useState(false);
+  const autoAssignTodo = async () => {
+    setAutoBusy(true);
+    setError(null);
+    try {
+      const open = await findOpenPrepTodoNo(createClient(), worker.id);
+      onTodoChange(open ?? (await fetchNextTodoNo(createClient())));
+      setNotice(
+        open
+          ? `この人にはすでに申請準備のTODO（${open}）があるので、その番号を使います。`
+          : null,
+      );
+    } catch (err) {
+      setError(dbErrorMessage(err, "0102_todos.sql", "番号の発行に失敗しました"));
+    } finally {
+      setAutoBusy(false);
+    }
+  };
+
   // 保存後に申請一覧の「申請前＜入管提出！！＞」へ出るかどうか（出ないときは理由を案内する）
   const willAppear = isPrepListTarget(
     {
@@ -173,6 +205,7 @@ export function WorkerRenewalFields({
   const save = async () => {
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
       // 只今の状況に入れる値。支援対象かつ在籍中の「特定技能1号＜支援委託中＞」は外さず併記する
       const situation =
@@ -182,8 +215,37 @@ export function WorkerRenewalFields({
               await fetchWorkerSituationInfo(createClient(), worker.id),
             )
           : "";
+      // 申請TODO番号は、この画面で入れられるときだけTODO一覧の「申請準備」にも登録する。
+      // 空欄のまま「準備中」で保存したら自動で番号を発行する（Notionで作らなくてよい）。
+      // 番号を画面側で決めているとき（申請準備の詳細）は、そちらで登録済みなのでそのまま使う
+      let todoNo = todo.trim();
+      if (fixedTodo === undefined && (todoNo || status === "準備中")) {
+        const title =
+          APPLICATION_CONTENT_CHOICES.find((c) => prepSituation.includes(c.prepSituation))?.label ||
+          "申請準備";
+        const { row, created } = await ensurePrepTodo(
+          createClient(),
+          { worker_id: worker.id, title, todo_no: todoNo || undefined },
+          // 前の申請の終わったTODOは使い回さず、新しい番号をつける
+          { skipDone: true },
+        );
+        // すでにこの人の申請準備TODOがあるときは、二重に作らずその番号を使う。
+        // 入力した番号と違うときは黙って入れ替えず、その場で知らせる
+        if (created) {
+          setNotice(`申請TODO番号 ${row.todo_no} を発行し、TODO一覧の「申請準備」に登録しました。`);
+        } else if (row.todo_no !== todoNo) {
+          setNotice(
+            `この人にはすでに申請準備のTODO（${row.todo_no}）があるため、その番号を使いました。` +
+              (todoNo ? `入力した「${todoNo}」は使っていません。` : ""),
+          );
+        } else {
+          setNotice(null);
+        }
+        todoNo = row.todo_no;
+        setTodo(todoNo);
+      }
       await updateWorker(createClient(), worker.id, {
-        residence_renewal_todo: todo.trim(),
+        residence_renewal_todo: todoNo,
         residence_renewal_status: status,
         ...(showLinks
           ? { notion_link: notionLink.trim(), messenger_link: messengerLink.trim() }
@@ -195,7 +257,6 @@ export function WorkerRenewalFields({
         ...(situation ? { current_situation: situation } : {}),
       });
       // 担当者はTODO番号の準備リストへ保存（選択済み、またはリストが既にある場合のみ）
-      const todoNo = todo.trim();
       if (showTantou && (tantou || prepRows.some((r) => r.todo_no === todoNo))) {
         await upsertPrepTantou(createClient(), worker.id, todoNo, tantou);
         setPrepRows((rows) =>
@@ -230,6 +291,11 @@ export function WorkerRenewalFields({
   return (
     <div className="space-y-2">
       {error && <p className="rounded-lg bg-seal/10 px-2.5 py-1.5 text-xs text-seal">{error}</p>}
+      {notice && (
+        <p role="status" className="rounded-lg bg-brand/10 px-2.5 py-1.5 text-[11px] leading-relaxed text-brand">
+          {notice}
+        </p>
+      )}
       {organizations && (
         <label className="flex flex-col gap-1">
           <span className="text-[11px] font-bold text-muted">所属機関（転職の場合は転職先）</span>
@@ -252,15 +318,34 @@ export function WorkerRenewalFields({
         </label>
       )}
       {fixedTodo === undefined ? (
-        <label className="flex flex-col gap-1">
-          <span className="text-[11px] font-bold text-muted">Notion 申請TODO番号</span>
-          <input
-            value={todo}
-            onChange={(e) => onTodoChange(e.target.value)}
-            placeholder="例: TODO-1234"
-            className={INPUT}
-          />
-        </label>
+        <div className="flex flex-col gap-1">
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-bold text-muted">申請TODO番号</span>
+            <div className="flex gap-1.5">
+              <input
+                value={todo}
+                onChange={(e) => onTodoChange(e.target.value)}
+                placeholder="例: TODO-1234（空欄なら自動）"
+                className={INPUT}
+              />
+              {/* 番号を考えなくてよいように、通し番号の続きをその場で発行する */}
+              <button
+                type="button"
+                onClick={() => void autoAssignTodo()}
+                disabled={autoBusy}
+                className="inline-flex min-h-[40px] shrink-0 items-center gap-1 rounded-xl border border-border bg-surface px-3 text-xs font-bold text-brand disabled:opacity-50"
+              >
+                <Wand2 size={13} />
+                {autoBusy ? "発行中…" : "自動で番号"}
+              </button>
+            </div>
+          </label>
+          <span className="text-[11px] leading-relaxed text-muted">
+            空欄のまま「準備中」で保存すると、自動で番号をつけます。
+            保存するとその番号でTODO一覧の「申請準備」にも登録されるので、Notionで作らなくても大丈夫です。
+            Notionで作った番号（TODO-1234 など）を使うときは、そのまま入力してください。
+          </span>
+        </div>
       ) : (
         <p className="text-[11px] text-muted">
           申請一覧に出す申請TODO番号：

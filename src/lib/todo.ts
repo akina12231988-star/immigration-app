@@ -125,17 +125,23 @@ export function normalizeTodoKey(s: string): string {
 }
 
 // すでに申請準備のTODOに入っているか（同じ外国人、または同じTODO番号なら「入っている」）。
-// 申請準備の画面から追加したのに一覧に出てこない、二重に入る、のどちらも起きないようにする
+// 申請準備の画面から追加したのに一覧に出てこない、二重に入る、のどちらも起きないようにする。
+//
+// usable を渡すと、その条件に合う行だけを「入っている」とみなす。
+// 更新準備から番号を自動でつけるときは、前の申請の終わったTODOを使い回さないよう、
+// 完了していないTODOだけを対象にする
 export function findExistingPrepTodo<T extends { worker_id: string | null; todo_no: string }>(
   rows: T[],
   workerId: string,
   todoNo: string,
+  usable?: (row: T) => boolean,
 ): T | null {
-  const byWorker = rows.find((r) => r.worker_id === workerId);
+  const list = usable ? rows.filter(usable) : rows;
+  const byWorker = list.find((r) => r.worker_id === workerId);
   if (byWorker) return byWorker;
   const key = normalizeTodoKey(todoNo);
   if (!key) return null;
-  return rows.find((r) => normalizeTodoKey(r.todo_no) === key) ?? null;
+  return list.find((r) => normalizeTodoKey(r.todo_no) === key) ?? null;
 }
 
 // 新規の自動採番はこの番号（TODO-2000）から始める。
