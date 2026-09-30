@@ -1,13 +1,21 @@
 import { describe, expect, test } from "vitest";
 import {
+  canAddExamAttempt,
   displayTodoNo,
+  emptyExamAttempt,
   findExistingPrepTodo,
   isCheckingStatus,
   isImmigrationAppliedStatus,
   isWaitingDocsStatus,
   nextTodoNo,
+  isSsw2ExamTitle,
+  normalizeTodoExam,
   normalizeTodoKey,
+  overdueExamAttempts,
+  passedExamAttempt,
+  ssw2ExamName,
   stageOfStatus,
+  withExamSummary,
   type TodoStatusOption,
 } from "@/lib/todo";
 
@@ -121,5 +129,95 @@ describe("isWaitingDocsStatus", () => {
     expect(isWaitingDocsStatus("書類待ち")).toBe(true);
     expect(isWaitingDocsStatus("印鑑済み")).toBe(false);
     expect(isWaitingDocsStatus("")).toBe(false);
+  });
+});
+
+describe("normalizeTodoExam（試験の申込）", () => {
+  test("何も無いときは、空の1回目だけを持つ", () => {
+    const e = normalizeTodoExam(null);
+    expect(e.attempts).toHaveLength(1);
+    expect(e.attempts[0]).toEqual(emptyExamAttempt());
+  });
+
+  test("回ごとの記録が無い古いデータは、そのときの申込日・試験日から1回目を組み立てる", () => {
+    const e = normalizeTodoExam({
+      applied_on: "2026-06-01",
+      exam_date: "2026-07-10",
+      result_checked: true,
+      application_no: "2N33452c",
+    });
+    expect(e.application_no).toBe("2N33452c");
+    expect(e.attempts).toHaveLength(1);
+    expect(e.attempts[0].applied).toBe(true);
+    expect(e.attempts[0].applied_on).toBe("2026-06-01");
+    expect(e.attempts[0].exam_date).toBe("2026-07-10");
+    // 古いデータは合否の別を持っていないので、確認済みとだけ残す
+    expect(e.attempts[0].result).toBe("");
+    expect(e.attempts[0].note).toContain("確認済み");
+  });
+
+  test("知らない合否の値は空（未確認）にする", () => {
+    const e = normalizeTodoExam({ attempts: [{ result: "たぶん合格" }] });
+    expect(e.attempts[0].result).toBe("");
+  });
+});
+
+describe("withExamSummary", () => {
+  test("互換のために残している欄を、最新の回に合わせる", () => {
+    const e = normalizeTodoExam({
+      attempts: [
+        { applied_on: "2026-06-01", exam_date: "2026-07-10", result: "不合格" },
+        { applied_on: "2026-08-01", exam_date: "2026-09-10", result: "" },
+      ],
+    });
+    const out = withExamSummary(e);
+    expect(out.applied_on).toBe("2026-06-01"); // 1回目の申込日
+    expect(out.exam_date).toBe("2026-09-10"); // 最新の回の試験日
+    expect(out.result_checked).toBe(false); // 最新の回はまだ未確認
+  });
+});
+
+describe("overdueExamAttempts", () => {
+  test("試験日を過ぎたのに合否が未確認の回だけを返す", () => {
+    const e = normalizeTodoExam({
+      attempts: [
+        { exam_date: "2026-07-10", result: "不合格" }, // 確認済み
+        { exam_date: "2026-08-10", result: "" }, // 過ぎていて未確認
+        { exam_date: "2026-12-10", result: "" }, // まだ先
+        { exam_date: "", result: "" }, // 試験日未登録
+      ],
+    });
+    expect(overdueExamAttempts(e, "2026-09-30").map((a) => a.exam_date)).toEqual(["2026-08-10"]);
+  });
+});
+
+describe("passedExamAttempt / canAddExamAttempt", () => {
+  const exam = (results: string[]) =>
+    normalizeTodoExam({ attempts: results.map((result) => ({ result })) });
+
+  test("合格した回と、それが何回目かを返す", () => {
+    expect(passedExamAttempt(exam(["不合格", "合格"]))?.no).toBe(2);
+    expect(passedExamAttempt(exam(["不合格", ""]))).toBeNull();
+  });
+
+  test("次の申込を足せるのは、最後の回が不合格のときだけ", () => {
+    expect(canAddExamAttempt(exam(["不合格"]))).toBe(true);
+    expect(canAddExamAttempt(exam([""]))).toBe(false); // まだ結果が出ていない
+    expect(canAddExamAttempt(exam(["不合格", "合格"]))).toBe(false); // 合格したのでもう要らない
+  });
+});
+
+describe("特定技能2号の試験", () => {
+  test("TODOの内容から2号の試験かどうかを見る", () => {
+    expect(isSsw2ExamTitle("２号農業試験申込")).toBe(true);
+    expect(isSsw2ExamTitle("２号アプリケーションナンバーの申込")).toBe(true);
+    expect(isSsw2ExamTitle("１号農業試験申込")).toBe(false);
+  });
+
+  test("本人の情報に入れる試験名は、受験内容があればそれ、無ければTODOの内容から", () => {
+    expect(ssw2ExamName("２号農業試験申込", "General crop farming Level 2（耕種農業全般）")).toBe(
+      "General crop farming Level 2（耕種農業全般）",
+    );
+    expect(ssw2ExamName("２号農業試験申込", "")).toBe("２号農業試験");
   });
 });

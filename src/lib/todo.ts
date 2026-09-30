@@ -41,18 +41,71 @@ export const EXAM_CONTENT_CHOICES = [
   "General livestock farming Level 2（畜産農業全般）",
 ] as const;
 
-// 試験の申込のTODOの詳細（todos.exam jsonb・0109）
+// 試験の合否
+export const EXAM_RESULTS = ["", "合格", "不合格"] as const;
+export type ExamResult = (typeof EXAM_RESULTS)[number];
+
+// 1回ぶんの試験の申込。
+// 不合格ならまた申し込むので、申込日・試験日・代金・合否は回ごとに残す
+export interface TodoExamAttempt {
+  applied: boolean; // 申込済みか
+  applied_on: string; // 申込日
+  exam_date: string; // 試験日（この日を過ぎて合否が未確認ならアラートを出す）
+  fee: string; // 代金
+  fee_received: boolean; // 代金を本人から受け取ったか
+  fee_received_on: string; // 受け取りを確認した日
+  result: ExamResult; // 合否（空は未確認）
+  result_on: string; // 合否を確認した日
+  note: string; // メモ（会場・不合格の理由など）
+}
+
+export function emptyExamAttempt(): TodoExamAttempt {
+  return {
+    applied: false,
+    applied_on: "",
+    exam_date: "",
+    fee: "",
+    fee_received: false,
+    fee_received_on: "",
+    result: "",
+    result_on: "",
+    note: "",
+  };
+}
+
+export function normalizeExamAttempt(raw: unknown): TodoExamAttempt {
+  const base = emptyExamAttempt();
+  if (!raw || typeof raw !== "object") return base;
+  const r = raw as Record<string, unknown>;
+  const str = (v: unknown, d: string) => (typeof v === "string" ? v : d);
+  return {
+    applied: Boolean(r.applied ?? base.applied),
+    applied_on: str(r.applied_on, base.applied_on),
+    exam_date: str(r.exam_date, base.exam_date),
+    fee: str(r.fee, base.fee),
+    fee_received: Boolean(r.fee_received ?? base.fee_received),
+    fee_received_on: str(r.fee_received_on, base.fee_received_on),
+    result: EXAM_RESULTS.includes(r.result as ExamResult) ? (r.result as ExamResult) : base.result,
+    result_on: str(r.result_on, base.result_on),
+    note: str(r.note, base.note),
+  };
+}
+
+// 試験の申込のTODOの詳細（todos.exam jsonb・0109）。
+// アカウントの情報（アプリケーションNo.・プロメトリックIDなど）は何回申し込んでも同じなので
+// 1つだけ持ち、申込日・試験日・代金・合否は attempts に回ごとに持つ
 export interface TodoExam {
   exam_choice: string; // 希望する受験内容（２号農業試験申込のとき）
-  applied_on: string; // 試験の申込日
-  exam_date: string; // 試験日（この日を過ぎたら結果確認のアラートを出す）
-  result_checked: boolean; // 試験結果を確認したか
+  applied_on: string; // 1回目の申込日（古いデータとの互換のため残す。最新の回に合わせる）
+  exam_date: string; // 最新の回の試験日（同上）
+  result_checked: boolean; // 最新の回の合否を確認したか（同上）
   application_no: string; // アプリケーションNo.
   prometric_id: string; // プロメトリックID
   password: string; // パスワード
   login_email: string; // ログイン先のメールアドレス
   login_email_owner: string; // メールアドレスを作ったのは（'' / 本人が作成 / 弊社が作成）
   login_email_password: string; // メールアドレスのパスワード（弊社が作成した場合に記録）
+  attempts: TodoExamAttempt[]; // 何回目の申込か（1件以上。不合格なら次の回を足す）
 }
 
 export function emptyTodoExam(): TodoExam {
@@ -67,30 +120,85 @@ export function emptyTodoExam(): TodoExam {
     login_email: "",
     login_email_owner: "",
     login_email_password: "",
+    attempts: [emptyExamAttempt()],
   };
 }
 
-// 保存された jsonb（項目が欠けていることがある）を、欠けを既定値で埋めた形にする
+// 保存された jsonb（項目が欠けていることがある）を、欠けを既定値で埋めた形にする。
+// attempts がまだ無い古いデータは、そのときの申込日・試験日・結果確認から1回目を組み立てる
 export function normalizeTodoExam(raw: unknown): TodoExam {
   const base = emptyTodoExam();
   if (!raw || typeof raw !== "object") return base;
   const r = raw as Record<string, unknown>;
+  const str = (v: unknown, d: string) => (typeof v === "string" ? v : d);
+  const applied_on = str(r.applied_on, base.applied_on);
+  const exam_date = str(r.exam_date, base.exam_date);
+  const result_checked = Boolean(r.result_checked ?? base.result_checked);
+  const attempts = Array.isArray(r.attempts)
+    ? r.attempts.map(normalizeExamAttempt)
+    : [
+        {
+          ...emptyExamAttempt(),
+          applied: applied_on !== "",
+          applied_on,
+          exam_date,
+          // 古いデータは合格・不合格の別を持っていないので、確認済みとだけ残す
+          note: result_checked ? "試験結果を確認済み（合否は未記録）" : "",
+        },
+      ];
   return {
-    exam_choice: typeof r.exam_choice === "string" ? r.exam_choice : base.exam_choice,
-    applied_on: typeof r.applied_on === "string" ? r.applied_on : base.applied_on,
-    exam_date: typeof r.exam_date === "string" ? r.exam_date : base.exam_date,
-    result_checked: Boolean(r.result_checked ?? base.result_checked),
-    application_no: typeof r.application_no === "string" ? r.application_no : base.application_no,
-    prometric_id: typeof r.prometric_id === "string" ? r.prometric_id : base.prometric_id,
-    password: typeof r.password === "string" ? r.password : base.password,
-    login_email: typeof r.login_email === "string" ? r.login_email : base.login_email,
-    login_email_owner:
-      typeof r.login_email_owner === "string" ? r.login_email_owner : base.login_email_owner,
-    login_email_password:
-      typeof r.login_email_password === "string"
-        ? r.login_email_password
-        : base.login_email_password,
+    exam_choice: str(r.exam_choice, base.exam_choice),
+    applied_on,
+    exam_date,
+    result_checked,
+    application_no: str(r.application_no, base.application_no),
+    prometric_id: str(r.prometric_id, base.prometric_id),
+    password: str(r.password, base.password),
+    login_email: str(r.login_email, base.login_email),
+    login_email_owner: str(r.login_email_owner, base.login_email_owner),
+    login_email_password: str(r.login_email_password, base.login_email_password),
+    attempts: attempts.length > 0 ? attempts : [emptyExamAttempt()],
   };
+}
+
+// 保存する形にそろえる。古い画面・古いデータと混ざっても困らないよう、
+// 互換のために残している applied_on / exam_date / result_checked を最新の回に合わせる
+export function withExamSummary(exam: TodoExam): TodoExam {
+  const last = exam.attempts.at(-1) ?? emptyExamAttempt();
+  return {
+    ...exam,
+    applied_on: exam.attempts[0]?.applied_on ?? "",
+    exam_date: last.exam_date,
+    result_checked: last.result !== "",
+  };
+}
+
+// 試験日を過ぎたのに合否が未確認の回（アラートに出す）
+export function overdueExamAttempts(exam: TodoExam, today: string): TodoExamAttempt[] {
+  return exam.attempts.filter((a) => a.exam_date !== "" && a.exam_date < today && a.result === "");
+}
+
+// 合格した回（あれば。何回目かも返す）
+export function passedExamAttempt(exam: TodoExam): { no: number; attempt: TodoExamAttempt } | null {
+  const i = exam.attempts.findIndex((a) => a.result === "合格");
+  return i < 0 ? null : { no: i + 1, attempt: exam.attempts[i] };
+}
+
+// 次の回を足せるか。合格していればもう要らず、最後の回が不合格のときだけ足せる
+export function canAddExamAttempt(exam: TodoExam): boolean {
+  if (passedExamAttempt(exam)) return false;
+  return (exam.attempts.at(-1)?.result ?? "") === "不合格";
+}
+
+// 特定技能2号の試験か（合格したら本人の情報に「2号合格」として残す）
+export function isSsw2ExamTitle(title: string): boolean {
+  return title.includes("２号") || title.includes("2号");
+}
+
+// 合格したときに本人の情報（workers.ssw2_exam）へ入れる試験名。
+// 希望する受験内容を選んでいればそれ、無ければTODOの内容から
+export function ssw2ExamName(todoTitle: string, examChoice: string): string {
+  return examChoice.trim() || todoTitle.replace(/申込$/, "").trim();
 }
 
 // 経過が「チェック中」（明菜　チェック中／彩奈　チェック中 など）か。
