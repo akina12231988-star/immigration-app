@@ -100,6 +100,19 @@ describe("findExistingPrepTodo", () => {
     expect(findExistingPrepTodo(rows, "w9", "TODO-3000")).toBeNull();
     expect(findExistingPrepTodo(rows, "w9", "")).toBeNull();
   });
+
+  test("usable を渡すと、その条件に合う行だけを「入っている」とみなす", () => {
+    // 前の申請の終わったTODOは使い回さず、新しい番号をつける（更新準備の自動採番）
+    const withStage = [
+      { worker_id: "w1", todo_no: "TODO-1234", done: true },
+      { worker_id: "w2", todo_no: "TODO-2001", done: false },
+    ];
+    const open = (r: (typeof withStage)[number]) => !r.done;
+    expect(findExistingPrepTodo(withStage, "w1", "", open)).toBeNull();
+    expect(findExistingPrepTodo(withStage, "w2", "", open)?.todo_no).toBe("TODO-2001");
+    // 番号での突き合わせにも効く（終わった番号は使い回さない）
+    expect(findExistingPrepTodo(withStage, "w9", "TODO-1234", open)).toBeNull();
+  });
 });
 
 describe("isWaitingDocsStatus", () => {

@@ -127,17 +127,19 @@ export function WorkerRenewalCard({
       {/* TODO番号が未入力の人は、NotionでTODOを作成するところから案内する */}
       {todoGuide && !(worker.residence_renewal_todo ?? "").trim() && (
         <div className="mt-3 rounded-xl border border-brand/40 bg-brand/5 px-3 py-2.5 text-[11px] leading-relaxed text-muted">
-          <p className="mb-1 text-xs font-bold text-brand">
-            まずNotionで申請TODOを作成しましょう
-          </p>
+          <p className="mb-1 text-xs font-bold text-brand">申請TODOを作りましょう</p>
           <p>
-            ① 「Notionを開く」からこの人のNotionページを開き、申請TODOを作成します
-            {!worker.notion_link && "（Notion未登録の場合は下の欄でリンクを登録できます）"}。
+            ① 下の「対応状況」を「準備中」にして、「申請種別（準備の内容）」を選びます。
             <br />
-            ② できたTODO番号（例: TODO-1234）を下の「Notion 申請TODO番号」に入力して保存します。
+            ② 申請TODO番号は<span className="font-bold">空欄のままで大丈夫です</span>
+            （「自動で番号」を押すと、先に番号を見ることもできます）。
+            <br />
+            ③ 「保存する」を押すと、自動で番号がついてTODO一覧の「申請準備」に登録されます。
           </p>
           <p className="mt-1">
-            保存すると対応状況が「準備中」になってこの一覧からは消え、申請準備の方に表示されます。
+            保存するとこの一覧からは消え、申請準備の方に表示されます。
+            Notionで作った番号を使うときは、その番号を入力してから保存してください
+            {!worker.notion_link && "（Notion未登録の場合は下の欄でリンクを登録できます）"}。
           </p>
         </div>
       )}
