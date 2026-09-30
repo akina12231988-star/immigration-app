@@ -14,6 +14,7 @@ import {
   Briefcase,
   ClipboardList,
   MailWarning,
+  PencilLine,
   ShieldAlert,
   UserCheck,
   TriangleAlert,
@@ -36,7 +37,7 @@ import {
   sswTodosByWorker,
 } from "@/lib/ssw-insurance";
 import { listTodos, listTodoStatusOptions, type TodoRow } from "@/lib/supabase/queries/todos";
-import type { TodoStatusOption } from "@/lib/todo";
+import { examResultChecks, type TodoStatusOption } from "@/lib/todo";
 import { formatDateSlash, isStartDateCorrectionNeeded } from "@/lib/onboarding";
 import { listWorkersWithOrg, type WorkerWithOrg } from "@/lib/supabase/queries/workers";
 import { listOrganizations } from "@/lib/supabase/queries/organizations";
@@ -186,6 +187,9 @@ export default function DashboardPage() {
   }, []);
   const sswTodosOf = sswTodosByWorker(sswTodos, todoOptions);
 
+  // 試験結果の確認: 試験日を過ぎたのに合否（合格／不合格）が未確認の申込
+  const examChecks = examResultChecks(sswTodos, today);
+
   // 特定技能総合保険の期限アラート: 有効期限まで1か月以内（または超過）の外国人。
   // 所属機関が外国人負担で本人が自己負担加入を希望していない場合（未加入）は対象外。
   // 加入手続きのTODOを進めている人（一覧の「申込手続中」）は、手続き中なので出さない
@@ -245,6 +249,38 @@ export default function DashboardPage() {
     <div className="-mx-4 -mt-4 lg:-mx-8 lg:-mt-6">
       <AppHeader title="ダッシュボード" />
       <div className="space-y-6 px-4 pt-5">
+        {/* 試験結果の確認: 試験日を過ぎたら、合格か不合格かを入れてもらう */}
+        {examChecks.length > 0 && (
+          <AlertSection
+            id="exam-results"
+            icon={<PencilLine size={18} />}
+            title="試験結果の確認"
+            count={examChecks.length}
+            lead="試験日を過ぎたのに、合格か不合格かがまだ入っていない申込です。試験の申込の画面で「編集」から合否を入れてください。不合格なら、そのまま次の申込を足せます。"
+          >
+            <div className="space-y-1.5">
+              {examChecks.map((c) => (
+                <Link
+                  key={`${c.todoId}-${c.no}`}
+                  href="/todos/exams"
+                  className="flex items-center justify-between gap-2 rounded-lg bg-surface px-3 py-2"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-bold">
+                      {c.workerName || "外国人未設定"}
+                      <span className="ml-1.5 text-xs font-normal text-muted">{c.title}</span>
+                    </span>
+                    <span className="block text-xs text-muted">
+                      {c.todoNo} ／ {c.no}回目 ／ 試験日 {c.examDate}
+                    </span>
+                  </span>
+                  <ChevronRight size={18} className="shrink-0 text-muted" />
+                </Link>
+              ))}
+            </div>
+          </AlertSection>
+        )}
+
         {expiryAlerts.length > 0 && (
           <AlertSection
             id="expiry"

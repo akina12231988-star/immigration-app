@@ -201,6 +201,55 @@ export function ssw2ExamName(todoTitle: string, examChoice: string): string {
   return examChoice.trim() || todoTitle.replace(/申込$/, "").trim();
 }
 
+// ---- 試験結果の確認（試験日を過ぎたのに合否が未確認） ----
+
+// メニューのアラート・ホームの一覧に出す1件
+export interface ExamResultCheck {
+  todoId: string;
+  todoNo: string;
+  workerId: string | null;
+  workerName: string;
+  title: string; // TODOの内容（２号農業試験申込 など）
+  no: number; // 何回目の申込か
+  examDate: string;
+}
+
+// 試験の申込のTODOのうち、試験日を過ぎたのに合否が未確認のもの。
+// 削除フォルダに入れたTODOは数えない
+export function examResultChecks(
+  todos: {
+    id: string;
+    todo_no: string;
+    kind: string;
+    worker_id: string | null;
+    worker_name?: string | null;
+    title: string;
+    exam: unknown;
+    deleted_at?: string | null;
+  }[],
+  today: string,
+): ExamResultCheck[] {
+  const out: ExamResultCheck[] = [];
+  for (const t of todos) {
+    if (t.kind !== "試験の申込" || t.deleted_at) continue;
+    const exam = normalizeTodoExam(t.exam);
+    exam.attempts.forEach((a, i) => {
+      if (a.exam_date === "" || a.exam_date >= today || a.result !== "") return;
+      out.push({
+        todoId: t.id,
+        todoNo: t.todo_no,
+        workerId: t.worker_id,
+        workerName: t.worker_name ?? "",
+        title: t.title,
+        no: i + 1,
+        examDate: a.exam_date,
+      });
+    });
+  }
+  // 試験日が古い（確認が遅れている）ものから
+  return out.sort((a, b) => a.examDate.localeCompare(b.examDate));
+}
+
 // 経過が「チェック中」（明菜　チェック中／彩奈　チェック中 など）か。
 // このとき確認ステータス（kind='チェック'）の欄を出す
 export function isCheckingStatus(status: string): boolean {

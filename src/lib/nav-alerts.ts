@@ -8,15 +8,18 @@ import {
   type NavAlertWorker,
 } from "@/lib/nav-alert-counts";
 import { todayStr } from "@/lib/application-alerts";
+import { examResultChecks } from "@/lib/todo";
 
 // メニューに出すアラート件数。
 //  passports    … パスポート更新必要の人数（有効期限まで半年以内。パスポート更新必要のページと同じ判定）
 //  orientations … 実施予定日を過ぎた未実施の生活オリエンテーションの件数
 //  followups    … あとでやる手続き（転居手続き・国保/国民年金の加入）が残っている人数
+//  examResults  … 試験日を過ぎたのに合否が未確認の試験の申込の件数（試験結果の確認）
 export interface NavAlerts {
   passports: number;
   orientations: number;
   followups: number;
+  examResults: number;
 }
 
 // メニューはどのページにも出るので、問い合わせは少なくする。
@@ -30,6 +33,7 @@ export function useNavAlerts(): NavAlerts {
     passports: 0,
     orientations: 0,
     followups: 0,
+    examResults: 0,
   });
 
   useEffect(() => {
@@ -60,6 +64,18 @@ export function useNavAlerts(): NavAlerts {
           .from("workers")
           .select(WORKER_COLUMNS_LEGACY)
           .then(({ data: legacy }) => applyWorkers((legacy as NavAlertWorker[] | null) ?? []));
+      });
+
+    // 試験結果の確認（試験日を過ぎたのに合否が未確認）。
+    // 0109（exam 列）が未適用の環境では失敗するので、そのときは0件のままにする
+    void supabase
+      .from("todos")
+      .select("id, todo_no, kind, worker_id, title, exam, deleted_at")
+      .eq("kind", "試験の申込")
+      .then(({ data, error }) => {
+        if (cancelled || error) return;
+        const rows = (data as Parameters<typeof examResultChecks>[0] | null) ?? [];
+        setAlerts((a) => ({ ...a, examResults: examResultChecks(rows, today).length }));
       });
 
     void supabase

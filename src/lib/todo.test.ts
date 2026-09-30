@@ -3,6 +3,7 @@ import {
   canAddExamAttempt,
   displayTodoNo,
   emptyExamAttempt,
+  examResultChecks,
   findExistingPrepTodo,
   isCheckingStatus,
   isImmigrationAppliedStatus,
@@ -219,5 +220,52 @@ describe("特定技能2号の試験", () => {
       "General crop farming Level 2（耕種農業全般）",
     );
     expect(ssw2ExamName("２号農業試験申込", "")).toBe("２号農業試験");
+  });
+});
+
+describe("examResultChecks（試験結果の確認）", () => {
+  const todo = (over: Partial<Parameters<typeof examResultChecks>[0][number]>) => ({
+    id: "t1",
+    todo_no: "TODO-2092",
+    kind: "試験の申込",
+    worker_id: "w1",
+    worker_name: "ソック チャンダラ",
+    title: "２号農業試験申込",
+    exam: null as unknown,
+    deleted_at: null as string | null,
+    ...over,
+  });
+
+  test("試験日を過ぎたのに合否が未確認の回だけを、回ごとに出す", () => {
+    const rows = [
+      todo({
+        exam: {
+          attempts: [
+            { exam_date: "2026-07-10", result: "不合格" }, // 確認済み
+            { exam_date: "2026-08-10", result: "" }, // これ
+          ],
+        },
+      }),
+      todo({ id: "t2", todo_no: "TODO-2093", exam: { attempts: [{ exam_date: "2026-12-01" }] } }), // まだ先
+    ];
+    const out = examResultChecks(rows, "2026-09-30");
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ todoId: "t1", no: 2, examDate: "2026-08-10" });
+  });
+
+  test("試験の申込以外・削除フォルダのTODOは数えない", () => {
+    const rows = [
+      todo({ kind: "申請準備", exam: { attempts: [{ exam_date: "2026-01-01" }] } }),
+      todo({ id: "t3", deleted_at: "2026-09-01", exam: { attempts: [{ exam_date: "2026-01-01" }] } }),
+    ];
+    expect(examResultChecks(rows, "2026-09-30")).toEqual([]);
+  });
+
+  test("確認が遅れているもの（試験日が古いもの）から並べる", () => {
+    const rows = [
+      todo({ id: "a", exam: { attempts: [{ exam_date: "2026-08-10" }] } }),
+      todo({ id: "b", exam: { attempts: [{ exam_date: "2026-05-01" }] } }),
+    ];
+    expect(examResultChecks(rows, "2026-09-30").map((c) => c.todoId)).toEqual(["b", "a"]);
   });
 });
