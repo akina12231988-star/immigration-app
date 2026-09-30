@@ -47,4 +47,13 @@ export interface WorkHistory {
   keptResidence?: boolean; // 在留資格（特定技能1号）を保持したまま帰国した期間か
 }
 
+// 在留資格が特定技能2号か（在留カードの「在留資格」の文字で見る）。
+// 2号には1号の通算5年の上限がないので、画面では1号の通算とは別のバッジを出す。
+// 「特定活動（特定技能2号移行準備）」はまだ2号ではないので含めない
+export function isSsw2Residence(residenceStatus: string | null | undefined): boolean {
+  const s = (residenceStatus ?? "").normalize("NFKC");
+  if (s.includes("移行準備")) return false;
+  return s.includes("特定技能2号");
+}
+
 export type SswStatus = "1号期間未登録" | "5年到達" | "1号在留中" | "中断中";
