@@ -733,19 +733,33 @@ function ExamWorkerInfo({ workerId, canEdit }: { workerId: string; canEdit: bool
           まだ読み取っていなければ、この画面から入れられる */}
       <div className="mt-2 border-t border-dashed border-border pt-1.5">
         <p className="mb-1 text-[11px] font-bold text-muted">パスポート（MRZ）から読み取った内容</p>
+        {/* 読み取れているときは、たたまずにそのまま出す（申込サイトへすぐ写せるように） */}
         {w.passport_mrz ? (
-          <SavedMrzCopyList mrz={w.passport_mrz} today={todayStr()} />
-        ) : canEdit ? (
-          <div className="space-y-1">
-            <p className="text-[11px] text-muted">
-              まだ読み取っていません。パスポートの画像の下2行（MRZ）を入れると、
-              ローマ字の氏名・パスポート番号・生年月日などをそのままコピーできるようになります。
-              読み取った内容は外国人詳細のパスポートにも入ります。
-            </p>
-            <PassportMrzPanel today={todayStr()} onApply={applyMrz} />
-          </div>
+          <SavedMrzCopyList
+            mrz={w.passport_mrz}
+            today={todayStr()}
+            open
+            note="保存済みのMRZから組み立てています。押すとコピーできます。パスポートを変えたときは下の「MRZを入れて読み取る」で入れ直してください。"
+          />
         ) : (
-          <p className="text-[11px] text-muted">まだ読み取っていません。</p>
+          <p className="text-[11px] text-muted">
+            まだ読み取っていません。下の「MRZを入れて読み取る」からパスポートの下2行を入れると、
+            ローマ字の氏名・パスポート番号・生年月日などをそのままコピーできるようになります。
+          </p>
+        )}
+        {/* 入力の欄は長いのでトグルに収める（読み取り済みでも、入れ直せるように出す） */}
+        {canEdit && (
+          <details className="mt-1.5 rounded-lg border border-border bg-surface px-3 py-2">
+            <summary className="cursor-pointer text-xs font-bold text-brand">
+              MRZを入れて読み取る（パスポートの下2行）
+            </summary>
+            <div className="mt-2 space-y-1">
+              <p className="text-[11px] text-muted">
+                読み取った内容は外国人詳細のパスポートにも入ります。
+              </p>
+              <PassportMrzPanel today={todayStr()} onApply={applyMrz} />
+            </div>
+          </details>
         )}
       </div>
 
