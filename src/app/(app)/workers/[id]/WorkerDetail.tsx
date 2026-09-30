@@ -646,6 +646,16 @@ export function WorkerDetail({
               <WorkerStatusBadge status={worker.status} />
               <SswStatusBadge status={calc.status} />
               <SupportBadge support={worker.support} />
+              {/* 特定技能2号の試験に合格している人は、どのタブにいても分かるように出す
+                  （試験の申込のTODOで「合格」にすると入る） */}
+              {worker.ssw2_exam && (
+                <span
+                  title={`特定技能2号の合格試験名: ${worker.ssw2_exam}`}
+                  className="rounded-full bg-status-approved-bg px-2 py-0.5 text-[11px] font-bold text-status-approved-fg"
+                >
+                  特定技能2号合格
+                </span>
+              )}
             </div>
             {/* 名前（上）・フリガナ（下）。下へスクロールしても誰の詳細を見ているか分かるように、
                 固定されるこのバーの中に出す。長い名前でも省略せず折り返して全部見せる */}
