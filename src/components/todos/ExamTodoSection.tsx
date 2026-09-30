@@ -75,6 +75,26 @@ export function ExamTodoSection({
       attempts: d.attempts.map((a, i) => (i === index ? { ...a, ...patch } : a)),
     }));
 
+  // 代金を本人から受け取ったかの確認は、確認するだけなので
+  // 「編集」を開かなくてもその場で押せるようにする（押すとすぐ保存する）
+  const toggleFeeReceived = (index: number) => {
+    const base = editing ? draft : saved;
+    const next = {
+      ...base,
+      attempts: base.attempts.map((a, i) =>
+        i === index
+          ? {
+              ...a,
+              fee_received: !a.fee_received,
+              fee_received_on: a.fee_received ? "" : today,
+            }
+          : a,
+      ),
+    };
+    if (editing) setDraft(next);
+    else onChangeExam(withExamSummary(next));
+  };
+
   const startEdit = () => {
     setDraft(normalizeTodoExam(todo.exam));
     setNotice(null);
@@ -268,8 +288,10 @@ export function ExamTodoSection({
               no={i + 1}
               attempt={a}
               editing={editing}
+              canEdit={canEdit}
               today={today}
               onChange={(patch) => setAttempt(i, patch)}
+              onToggleFeeReceived={() => toggleFeeReceived(i)}
             />
           ))}
         </div>
@@ -358,14 +380,19 @@ function ExamAttemptRow({
   no,
   attempt,
   editing,
+  canEdit,
   today,
   onChange,
+  onToggleFeeReceived,
 }: {
   no: number;
   attempt: TodoExamAttempt;
   editing: boolean;
+  canEdit: boolean;
   today: string;
   onChange: (patch: Partial<TodoExamAttempt>) => void;
+  // 代金の受け取りは「編集」を開かなくても押せる
+  onToggleFeeReceived: () => void;
 }) {
   const resultClass =
     attempt.result === "合格"
@@ -485,7 +512,8 @@ function ExamAttemptRow({
         )}
       </div>
 
-      {/* 代金を本人から受け取ったかの確認。編集中でなくても押せる（そのまま保存する） */}
+      {/* 代金を本人から受け取ったかの確認。
+          確認するだけなので「編集」を開かなくても押せる（押すとすぐ保存する） */}
       <div className="mt-1.5 flex flex-wrap items-center gap-2">
         {attempt.fee_received ? (
           <span className="flex items-center gap-1 text-[11px] font-bold text-status-approved-fg">
@@ -496,18 +524,24 @@ function ExamAttemptRow({
         ) : (
           <span className="text-[11px] font-bold text-seal">代金はまだ受け取っていません</span>
         )}
-        {editing && (
+        {canEdit && (
           <button
             type="button"
-            onClick={() =>
-              onChange({
-                fee_received: !attempt.fee_received,
-                fee_received_on: attempt.fee_received ? "" : today,
-              })
+            onClick={onToggleFeeReceived}
+            className={
+              attempt.fee_received
+                ? "min-h-[32px] rounded-lg border border-border bg-surface px-2.5 text-[11px] font-bold text-muted"
+                : "flex min-h-[32px] items-center gap-1 rounded-lg bg-brand px-3 text-[11px] font-bold text-brand-foreground"
             }
-            className="rounded-lg border border-border bg-surface px-2.5 py-1 text-[11px] font-bold text-brand"
           >
-            {attempt.fee_received ? "受け取りを取り消す" : "本人から受け取った"}
+            {attempt.fee_received ? (
+              "受け取りを取り消す"
+            ) : (
+              <>
+                <Check size={12} />
+                本人から代金を受け取った
+              </>
+            )}
           </button>
         )}
       </div>

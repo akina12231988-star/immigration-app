@@ -659,6 +659,29 @@ export function TodosClient({
                     />
   );
 
+  // ステージ1つぶんの枠（未着手 / 進行中 / 完了）
+  const stageCard = (stage: TodoStage) => {
+    const rows = stageRows(stage);
+    return (
+      <Card key={stage} className="p-4">
+        <details open>
+          <summary className="cursor-pointer select-none text-sm font-bold text-muted">
+            {stage}（{rows.length}件）
+          </summary>
+          <div className="mt-2">
+            {rows.length === 0 ? (
+              <p className="rounded-xl bg-background p-3 text-center text-xs text-muted">
+                {stage}のTODOはありません。
+              </p>
+            ) : (
+              <div className="space-y-2">{rows.map((t) => renderTodoItem(t))}</div>
+            )}
+          </div>
+        </details>
+      </Card>
+    );
+  };
+
   // 担当者別の表示（左: 未着手 / 右: 進行中）。ボタンで担当者を選ぶ。null は一覧表示
   const [boardTantou, setBoardTantou] = useState<string | null>(null);
   const tantouButtons = useMemo(() => {
@@ -1298,33 +1321,17 @@ export function TodosClient({
         </div>
       )}
 
-      {/* 未着手 → 進行中 → 完了 の順に表示（見出しを押すと開閉できる） */}
+      {/* 左に未着手、右に進行中を並べ、完了はその下に出す（見出しを押すと開閉できる）。
+          幅の狭い画面では、今までどおり縦に並ぶ */}
       {loading ? (
         <Card className="p-6 text-center text-sm text-muted">読み込み中…</Card>
       ) : boardTantou ? null : (
-        TODO_STAGES.map((stage) => {
-          const rows = stageRows(stage);
-          return (
-            <Card key={stage} className="p-4">
-              <details open>
-              <summary className="cursor-pointer select-none text-sm font-bold text-muted">
-                {stage}（{rows.length}件）
-              </summary>
-              <div className="mt-2">
-              {rows.length === 0 ? (
-                <p className="rounded-xl bg-background p-3 text-center text-xs text-muted">
-                  {stage}のTODOはありません。
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {rows.map((t) => renderTodoItem(t))}
-                </div>
-              )}
-              </div>
-              </details>
-            </Card>
-          );
-        })
+        <>
+          <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+            {(["未着手", "進行中"] as const).map((stage) => stageCard(stage))}
+          </div>
+          {stageCard("完了")}
+        </>
       )}
 
       {/* 削除フォルダ（ごみ箱）。削除したTODOを30日間保存し、復元・完全削除できる */}
