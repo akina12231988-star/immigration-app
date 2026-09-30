@@ -1,4 +1,4 @@
-import type { SswStatus } from "@/types/ssw";
+import { isSsw2Residence, type SswStatus } from "@/types/ssw";
 import type { SupportScope, WorkerStatus } from "@/types/db";
 
 const SSW_STATUS_CLASSES: Record<SswStatus, string> = {
@@ -8,7 +8,26 @@ const SSW_STATUS_CLASSES: Record<SswStatus, string> = {
   "1号期間未登録": "bg-status-before-bg text-status-before-fg",
 };
 
-export function SswStatusBadge({ status }: { status: SswStatus }) {
+// 特定技能1号の通算（5年）の状態を出すバッジ。
+// 在留資格が特定技能2号の人は、1号の通算の話ではないので「2号在留中」を
+// 1号とは違う色（塗りつぶし）で出す
+export function SswStatusBadge({
+  status,
+  residenceStatus,
+}: {
+  status: SswStatus;
+  residenceStatus?: string | null;
+}) {
+  if (isSsw2Residence(residenceStatus)) {
+    return (
+      <span
+        title="在留資格が特定技能2号です（1号の通算5年の上限はありません）"
+        className="inline-flex shrink-0 items-center rounded-full bg-brand px-2.5 py-1 text-[11px] font-bold text-brand-foreground"
+      >
+        2号在留中
+      </span>
+    );
+  }
   return (
     <span
       className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-bold ${SSW_STATUS_CLASSES[status]}`}

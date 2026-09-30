@@ -644,7 +644,7 @@ export function WorkerDetail({
             <div className="flex flex-wrap items-center gap-1.5">
               {/* 状態・支援区分の変更は「基本情報」の欄から（編集モードでその場で直せる） */}
               <WorkerStatusBadge status={worker.status} />
-              <SswStatusBadge status={calc.status} />
+              <SswStatusBadge status={calc.status} residenceStatus={worker.residence_status} />
               <SupportBadge support={worker.support} />
               {/* 特定技能2号の試験に合格している人は、どのタブにいても分かるように出す
                   （試験の申込のTODOで「合格」にすると入る） */}

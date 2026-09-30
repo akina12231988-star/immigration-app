@@ -344,7 +344,7 @@ export function WorkersExplorer({
                 </div>
                 <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
                   <WorkerStatusBadge status={worker.status} />
-                  <SswStatusBadge status={calc.status} />
+                  <SswStatusBadge status={calc.status} residenceStatus={worker.residence_status} />
                   <SupportBadge support={worker.support} />
                 </div>
                 <SswGauge calc={calc} compact />

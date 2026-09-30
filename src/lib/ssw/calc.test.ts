@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { WorkHistory } from "@/types/ssw";
+import { isSsw2Residence, type WorkHistory } from "@/types/ssw";
 import { calcDocumentTotal, calcSsw, entryDays, sswGaps, ymdFullText } from "./calc";
 
 let seq = 0;
@@ -315,5 +315,21 @@ describe("sswGaps（通算に数えていない期間）", () => {
     ).toEqual([]);
     expect(sswGaps([], "2026-08-28")).toEqual([]);
     expect(sswGaps([h("技能実習", "2020-01-01", "2022-12-31")], "2026-08-28")).toEqual([]);
+  });
+});
+
+describe("isSsw2Residence（在留資格が特定技能2号か）", () => {
+  it("特定技能2号のときだけ true", () => {
+    expect(isSsw2Residence("特定技能2号")).toBe(true);
+    // 全角の２でも同じに見る
+    expect(isSsw2Residence("特定技能２号")).toBe(true);
+    expect(isSsw2Residence("特定技能1号")).toBe(false);
+    expect(isSsw2Residence("技能実習2号ロ")).toBe(false);
+    expect(isSsw2Residence("")).toBe(false);
+    expect(isSsw2Residence(null)).toBe(false);
+  });
+
+  it("2号への移行準備中は、まだ2号ではないので false", () => {
+    expect(isSsw2Residence("特定活動（特定技能2号移行準備）")).toBe(false);
   });
 });
