@@ -39,7 +39,8 @@ export interface NavItem {
   // メニューにアラート件数を出す項目
   // passports=パスポート更新必要 / orientations=要実施の生活オリエン
   // followups=あとでやる手続き（転居手続き・国保/国民年金の加入）が残っている人
-  alert?: "passports" | "orientations" | "followups";
+  // examResults=試験日を過ぎたのに合否が未確認の試験の申込
+  alert?: "passports" | "orientations" | "followups" | "examResults";
 }
 
 // トグル表示のグループ（サイドナビで開閉できる。下部タブでは中身を並べる）
@@ -90,7 +91,13 @@ export const NAV_ENTRIES: NavEntry[] = [
         short: "未完了書類",
         icon: FileSearch,
       },
-      { href: "/todos/exams", label: "試験の申込", short: "試験", icon: PencilLine },
+      {
+        href: "/todos/exams",
+        label: "試験の申込",
+        short: "試験",
+        icon: PencilLine,
+        alert: "examResults",
+      },
       {
         href: "/todos/ssw-insurance",
         label: "特定技能総合保険",

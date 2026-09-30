@@ -26,6 +26,7 @@ function badgeFor(
   if (item.alert === "passports") return counts.alerts.passports;
   if (item.alert === "orientations") return counts.alerts.orientations;
   if (item.alert === "followups") return counts.alerts.followups;
+  if (item.alert === "examResults") return counts.alerts.examResults;
   return 0;
 }
 
