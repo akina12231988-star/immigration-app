@@ -33,7 +33,7 @@ import {
 } from "@/components/workers/WorkerRenewalFields";
 import { createClient } from "@/lib/supabase/client";
 import { CopyButton } from "@/components/ui/CopyButton";
-import { updateWorker } from "@/lib/supabase/queries/workers";
+import { fetchWorkerSituationInfo, updateWorker } from "@/lib/supabase/queries/workers";
 import { listOnboardingDocs } from "@/lib/supabase/queries/onboarding";
 import {
   isNonTransferable,
@@ -63,6 +63,7 @@ import {
   renameTodoNo,
   type TodoRow,
   ensurePrepTodo,
+  updateTodo,
 } from "@/lib/supabase/queries/todos";
 import { isImmigrationAppliedStatus, normalizeTodoKey, type TodoStatusOption } from "@/lib/todo";
 import { listJudgmentRecordsByWorker } from "@/lib/supabase/queries/tax-office";
@@ -167,9 +168,11 @@ import {
   appTypeOfPrepSituation,
   derivePrepAppContent,
   prepSituationLabel,
+  prepSituationOfSituation,
   PREP_SITUATION_CHOICES,
   prepTodoName,
   prepTodoFileName,
+  replacePrepSituation,
 } from "@/lib/worker-situation";
 import type { OnboardingDocumentRow } from "@/types/db";
 import { effectiveResidencePeriod } from "@/lib/residence-card";
@@ -747,6 +750,30 @@ export function ApplicationPrepChecklist({
     return "0036_application_prep_checklist.sql";
   }
 
+  // 申請種別（準備の内容）を変えたときに、外国人詳細の「只今の状況」と
+  // 申請準備のTODOの内容を同じ名前にそろえる。
+  // 只今の状況は、準備中の部分だけを入れ替えて「特定技能1号＜支援委託中＞」などの併記は残す。
+  // すでに審査中などに進んでいる人（準備中の部分が無い人）は書き換えない
+  async function syncAppContent(appContent: string) {
+    const supabase = createClient();
+    const info = await fetchWorkerSituationInfo(supabase, workerId).catch(() => null);
+    const situation = info?.current_situation ?? "";
+    if (prepSituationOfSituation(situation)) {
+      const nextSituation = replacePrepSituation(situation, appContent);
+      if (nextSituation !== situation) {
+        await updateWorker(supabase, workerId, { current_situation: nextSituation }).catch(
+          () => undefined,
+        );
+        setCurrentSituation(nextSituation);
+      }
+    }
+    // TODO一覧の「内容」も、選んだ申請種別と同じ言い方にする
+    const title = appContent ? prepSituationLabel(appContent) : "";
+    if (title && currentTodo && currentTodo.title !== title) {
+      await updateTodo(supabase, currentTodo.id, { title }).catch(() => undefined);
+    }
+  }
+
   async function patchMeta(patch: Partial<PrepChecklistMeta>) {
     if (selected == null || current == null) return;
     const next: PrepChecklistMeta = {
@@ -764,6 +791,9 @@ export function ApplicationPrepChecklist({
     setError(null);
     try {
       await upsertPrepChecklist(createClient(), workerId, selected, next);
+      // 申請種別を変えたら、外国人詳細の「只今の状況」とTODOの内容も合わせる。
+      // 合わせないと、前の申請種別の名前が外国人詳細に残ってしまう
+      if ("app_content" in patch) await syncAppContent(next.app_content);
     } catch (err) {
       // 保存できなかった理由（選択肢がDB側の制約に無い・列が無い など）と、
       // 適用すべきマイグレーションまで出す。失敗した項目は画面も元に戻す
