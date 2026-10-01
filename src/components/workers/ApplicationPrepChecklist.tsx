@@ -17,6 +17,8 @@ import {
   Upload,
   X,
   Link2,
+  IdCard,
+  Printer,
 } from "lucide-react";
 import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { PostApplyList } from "@/components/workers/PostApplyList";
@@ -2936,6 +2938,7 @@ function DocRow({
             記号の確認・支払/免除の判定
           </Link>
           <PrepPensionSummary workerId={workerId} />
+          <NenkinOfficeDocs workerId={workerId} />
         </>
       )}
 
@@ -3339,6 +3342,43 @@ function IconButton({
     >
       {children}
     </button>
+  );
+}
+
+// 年金事務所あての委任状と交付申請書（年金記録(新)）のURL
+export const NENKIN_ININJO_URL = "/forms/nenkin-ininjo.pdf";
+export const nenkinFormUrl = (workerId: string) => `/api/nenkin-form?workerId=${encodeURIComponent(workerId)}`;
+
+const NENKIN_DOC_BUTTON =
+  "inline-flex min-h-[32px] items-center gap-1 rounded-lg border border-brand bg-background px-2.5 text-[11px] font-bold text-brand hover:bg-brand/5";
+
+// 年金記録の行: 年金事務所へ提出する書類（交付申請書・委任状・在留カード）を印刷用に開く。
+// 交付申請書は外国人の登録内容を書き込んで作る（/api/nenkin-form）。委任状は様式のまま。
+// 在留カードは納税証明書その3と同じ印刷画面（現在の在留カードの両面）を使う
+function NenkinOfficeDocs({ workerId }: { workerId: string }) {
+  const open = (url: string) => window.open(url, "_blank", "noopener");
+  return (
+    <div className="ml-[18px] mt-2 rounded-lg border border-border bg-surface/60 p-2">
+      <p className="text-[11px] font-bold text-muted">年金事務所へ提出する書類</p>
+      <div className="mt-1.5 flex flex-wrap gap-1.5">
+        <button type="button" onClick={() => open(nenkinFormUrl(workerId))} className={NENKIN_DOC_BUTTON}>
+          <FileText size={13} />
+          交付申請書を作る（自動入力・印刷用）
+        </button>
+        <button type="button" onClick={() => open(NENKIN_ININJO_URL)} className={NENKIN_DOC_BUTTON}>
+          <Printer size={13} />
+          委任状を印刷する（様式のまま）
+        </button>
+        <button type="button" onClick={() => open(`/workers/${workerId}/residence-card`)} className={NENKIN_DOC_BUTTON}>
+          <IdCard size={13} />
+          在留カード（両面）を印刷する
+        </button>
+      </div>
+      <p className="mt-1 text-[11px] text-muted">
+        交付申請書には氏名・住所・生年月日と基礎年金番号を入れます（基礎年金番号が未登録なら、代わりに個人番号を「1.
+        交付申請者」の上に書きます）。性別の丸と申請日は手書きです。
+      </p>
+    </div>
   );
 }
 
