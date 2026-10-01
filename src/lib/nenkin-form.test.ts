@@ -5,6 +5,7 @@ import {
   NENKIN_MONTH_CELLS,
   NENKIN_PENSION_CELLS,
   NENKIN_YEAR_CELLS,
+  nenkinMissingFields,
   pensionNoDigits,
   type NenkinFormData,
 } from "./nenkin-form";
@@ -14,6 +15,7 @@ const measure = (text: string, size: number) => text.length * size;
 
 const base: NenkinFormData = {
   name: "NGUYEN VAN A",
+  kana: "グエン バン アー",
   address: "熊本県熊本市東区小山3-8-87カームリーハウスB201",
   birth: "1995-03-07",
   pensionNo: "1234-567890",
@@ -71,6 +73,20 @@ describe("buildNenkinDrawItems", () => {
     expect(name.x + measure(name.text, name.size)).toBeLessThanOrEqual(401);
   });
 
+  it("氏名の欄で、ローマ字の上にフリガナを小さく書く", () => {
+    const items = buildNenkinDrawItems(base, measure);
+    const kana = items.find((i) => i.text === base.kana)!;
+    const name = items.find((i) => i.text === base.name)!;
+    expect(kana.size).toBeLessThan(name.size);
+    // 同じ枠（上端 322〜358）の中で、フリガナが上・氏名が下
+    expect(838 - kana.y).toBeGreaterThan(322);
+    expect(838 - kana.y).toBeLessThan(838 - name.y);
+    expect(838 - name.y).toBeLessThan(358);
+    expect(kana.x).toBe(name.x);
+    // フリガナが未登録なら書かない
+    expect(buildNenkinDrawItems({ ...base, kana: "" }, measure).some((i) => i.text === base.kana)).toBe(false);
+  });
+
   it("長い住所は2行に分けて枠に収める", () => {
     const long = "熊本県熊本市中央区水前寺公園１丁目２番３号サンプルレジデンス水前寺イーストタワー１２３４号室（長い住所の例）";
     const items = buildNenkinDrawItems({ ...base, address: long }, measure);
@@ -109,5 +125,25 @@ describe("pensionNoDigits", () => {
   it("区切りを除いた数字だけにする", () => {
     expect(pensionNoDigits("1234-567890")).toBe("1234567890");
     expect(pensionNoDigits("")).toBe("");
+  });
+});
+
+describe("nenkinMissingFields", () => {
+  it("すべて登録済みなら何も返さない", () => {
+    expect(nenkinMissingFields(base)).toEqual([]);
+    // 基礎年金番号が無くても個人番号があれば足りる
+    expect(nenkinMissingFields({ ...base, pensionNo: "" })).toEqual([]);
+  });
+
+  it("足りない項目を順に返す", () => {
+    expect(nenkinMissingFields({ name: "", kana: "", address: "", birth: "", pensionNo: "", myNumber: "" })).toEqual([
+      "氏名",
+      "フリガナ",
+      "住所",
+      "生年月日",
+      "基礎年金番号（または個人番号）",
+    ]);
+    expect(nenkinMissingFields({ ...base, birth: "1995/03/07" })).toEqual(["生年月日"]);
+    expect(nenkinMissingFields({ ...base, pensionNo: "1234", myNumber: "12" })).toEqual(["基礎年金番号（または個人番号）"]);
   });
 });
