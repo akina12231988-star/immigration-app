@@ -21,13 +21,14 @@ export async function GET(req: NextRequest) {
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("workers")
-      .select("id, name, address, birth, pension_no, my_number")
+      .select("id, name, kana, address, birth, pension_no, my_number")
       .eq("id", workerId)
       .maybeSingle();
     if (error) throw error;
     const worker = data as {
       id: string;
       name: string;
+      kana: string | null;
       address: string | null;
       birth: string | null;
       pension_no: string | null;
@@ -41,6 +42,7 @@ export async function GET(req: NextRequest) {
     ]);
     const bytes = await fillNenkinForm(template, font, {
       name: worker.name,
+      kana: worker.kana ?? "",
       address: worker.address ?? "",
       birth: worker.birth ?? "",
       pensionNo: worker.pension_no ?? "",

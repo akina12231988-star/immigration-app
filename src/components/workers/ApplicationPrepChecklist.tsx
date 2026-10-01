@@ -85,6 +85,7 @@ import {
   PrepPensionSummary,
 } from "@/components/workers/ApplicationPrepExtras";
 import { dbErrorMessage } from "@/lib/errors";
+import { nenkinMissingFields, type NenkinFormData, type NenkinMissingField } from "@/lib/nenkin-form";
 import { isCertDocKeyOf } from "@/lib/cert-exam";
 import { listActiveCustodyNoByWorker } from "@/lib/supabase/queries/custody";
 import { formatStorageNo } from "@/lib/custody";
@@ -2968,7 +2969,7 @@ function DocRow({
             記号の確認・支払/免除の判定
           </Link>
           <PrepPensionSummary workerId={workerId} />
-          <NenkinOfficeDocs workerId={workerId} />
+          <NenkinOfficeDocs workerId={workerId} canEdit={canEdit} />
         </>
       )}
 
@@ -3382,14 +3383,89 @@ export const nenkinFormUrl = (workerId: string) => `/api/nenkin-form?workerId=${
 const NENKIN_DOC_BUTTON =
   "inline-flex min-h-[32px] items-center gap-1 rounded-lg border border-brand bg-background px-2.5 text-[11px] font-bold text-brand hover:bg-brand/5";
 
+// 交付申請書に入れる外国人の登録内容（足りないものはアラートを出してその場で入力する）
+type NenkinWorkerInfo = Pick<NenkinFormData, "name" | "kana" | "address" | "birth" | "pensionNo" | "myNumber">;
+const NENKIN_FILL: Record<NenkinMissingField, { column: keyof NenkinWorkerInfo; dbColumn: string; type: "text" | "date" }[]> = {
+  氏名: [{ column: "name", dbColumn: "name", type: "text" }],
+  フリガナ: [{ column: "kana", dbColumn: "kana", type: "text" }],
+  住所: [{ column: "address", dbColumn: "address", type: "text" }],
+  生年月日: [{ column: "birth", dbColumn: "birth", type: "date" }],
+  // どちらか一方があればよい（基礎年金番号が無ければ個人番号を書く）
+  "基礎年金番号（または個人番号）": [
+    { column: "pensionNo", dbColumn: "pension_no", type: "text" },
+    { column: "myNumber", dbColumn: "my_number", type: "text" },
+  ],
+};
+const NENKIN_FILL_LABELS: Record<string, string> = { pensionNo: "基礎年金番号", myNumber: "個人番号" };
+
 // 年金記録の行: 年金事務所へ提出する書類（交付申請書・委任状・在留カード）を印刷用に開く。
 // 交付申請書は外国人の登録内容を書き込んで作る（/api/nenkin-form）。委任状は様式のまま。
-// 在留カードは納税証明書その3と同じ印刷画面（現在の在留カードの両面）を使う
-function NenkinOfficeDocs({ workerId }: { workerId: string }) {
+// 在留カードは納税証明書その3と同じ印刷画面（現在の在留カードの両面）を使う。
+// 交付申請書に入れる登録内容が足りないときはアラートを出し、その場で入力して保存できる（外国人詳細にも反映）
+function NenkinOfficeDocs({ workerId, canEdit }: { workerId: string; canEdit: boolean }) {
   const open = (url: string) => window.open(url, "_blank", "noopener");
+  const [info, setInfo] = useState<NenkinWorkerInfo | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    createClient()
+      .from("workers")
+      .select("name, kana, address, birth, pension_no, my_number")
+      .eq("id", workerId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled || !data) return;
+        const w = data as {
+          name: string | null;
+          kana: string | null;
+          address: string | null;
+          birth: string | null;
+          pension_no: string | null;
+          my_number: string | null;
+        };
+        setInfo({
+          name: w.name ?? "",
+          kana: w.kana ?? "",
+          address: w.address ?? "",
+          birth: w.birth ?? "",
+          pensionNo: w.pension_no ?? "",
+          myNumber: w.my_number ?? "",
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [workerId]);
+  const missing = info ? nenkinMissingFields(info) : [];
   return (
     <div className="ml-[18px] mt-2 rounded-lg border border-border bg-surface/60 p-2">
       <p className="text-[11px] font-bold text-muted">年金事務所へ提出する書類</p>
+      {missing.length > 0 && (
+        <div className="mt-1.5 space-y-1">
+          <p className="flex items-start gap-1.5 rounded-lg bg-seal/10 px-2.5 py-1.5 text-[11px] font-bold text-seal">
+            <TriangleAlert size={13} className="mt-0.5 shrink-0" />
+            <span>
+              交付申請書に入れる登録内容が足りません: {missing.join("・")}
+              {canEdit
+                ? "。下に入力して保存すると、そのまま交付申請書に入ります（外国人詳細にも反映されます）。"
+                : "。外国人詳細で登録してください。"}
+            </span>
+          </p>
+          {canEdit &&
+            missing.flatMap((field) =>
+              NENKIN_FILL[field].map((f) => (
+                <WorkerInfoFillLine
+                  key={f.column}
+                  label={NENKIN_FILL_LABELS[f.column] ?? field}
+                  type={f.type}
+                  onSave={async (v) => {
+                    await updateWorker(createClient(), workerId, { [f.dbColumn]: v });
+                    setInfo((w) => (w ? { ...w, [f.column]: v } : w));
+                  }}
+                />
+              )),
+            )}
+        </div>
+      )}
       <div className="mt-1.5 flex flex-wrap gap-1.5">
         <button type="button" onClick={() => open(nenkinFormUrl(workerId))} className={NENKIN_DOC_BUTTON}>
           <FileText size={13} />
@@ -3405,7 +3481,7 @@ function NenkinOfficeDocs({ workerId }: { workerId: string }) {
         </button>
       </div>
       <p className="mt-1 text-[11px] text-muted">
-        交付申請書には氏名・住所・生年月日と基礎年金番号を入れます（基礎年金番号が未登録なら、代わりに個人番号を「1.
+        交付申請書には氏名（ローマ字の上にフリガナ）・住所・生年月日と基礎年金番号を入れます（基礎年金番号が未登録なら、代わりに個人番号を「1.
         交付申請者」の上に書きます）。性別の丸と申請日は手書きです。
       </p>
     </div>

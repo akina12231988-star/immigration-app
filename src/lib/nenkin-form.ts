@@ -11,6 +11,7 @@ import { isMyNumberFillable } from "@/lib/tax-office";
 
 export interface NenkinFormData {
   name: string; // 氏名（在留カードのローマ字表記）
+  kana: string; // フリガナ（氏名の上に小さく書く。無ければ書かない）
   address: string; // 住所（現在の住所）
   birth: string; // 生年月日 YYYY-MM-DD（無ければ空欄のまま）
   pensionNo: string; // 基礎年金番号（10桁。無ければ個人番号を上に書く）
@@ -40,10 +41,26 @@ export const NENKIN_DAY_CELLS = [293, 306.5, 320.3];
 const ADDRESS_LEFT = 180;
 const ADDRESS_RIGHT = 526;
 const ADDRESS_WIDTH = ADDRESS_RIGHT - ADDRESS_LEFT;
-// ③氏名の枠（上端 322〜358。④性別の仕切り 401 まで）
+// ③氏名の枠（上端 322〜358。④性別の仕切り 401 まで）。上段にフリガナ（小さく）、下段にローマ字の氏名
 const NAME_LEFT = 170;
 const NAME_RIGHT = 396;
 const NAME_WIDTH = NAME_RIGHT - NAME_LEFT;
+const KANA_BASELINE = 333; // フリガナのベースライン（上端から）
+const NAME_BASELINE = 351; // 氏名のベースライン（上端から）
+
+// 交付申請書を作るのに足りない登録内容（画面でアラートを出し、その場で入力してもらう）
+export type NenkinMissingField = "氏名" | "フリガナ" | "住所" | "生年月日" | "基礎年金番号（または個人番号）";
+export function nenkinMissingFields(data: NenkinFormData): NenkinMissingField[] {
+  const missing: NenkinMissingField[] = [];
+  if (!(data.name ?? "").trim()) missing.push("氏名");
+  if (!(data.kana ?? "").trim()) missing.push("フリガナ");
+  if (!(data.address ?? "").trim()) missing.push("住所");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test((data.birth ?? "").trim())) missing.push("生年月日");
+  if (pensionNoDigits(data.pensionNo).length !== 10 && !isMyNumberFillable((data.myNumber ?? "").replace(/[^0-9]/g, ""))) {
+    missing.push("基礎年金番号（または個人番号）");
+  }
+  return missing;
+}
 
 // 文字幅の計測（フォントに依存するので呼び出し側から渡す。テストでは固定幅）
 export type MeasureText = (text: string, size: number) => number;
@@ -110,11 +127,16 @@ export function buildNenkinDrawItems(data: NenkinFormData, measure: MeasureText)
     }
   }
 
-  // ③氏名
+  // ③氏名: 上段にフリガナ（小さく）、下段にローマ字の氏名
+  const kana = (data.kana ?? "").trim();
+  if (kana) {
+    const size = fitSize(kana, NAME_WIDTH, measure, 7, 5);
+    items.push({ text: kana, x: NAME_LEFT, y: fromTop(KANA_BASELINE), size });
+  }
   const name = (data.name ?? "").trim();
   if (name) {
     const size = fitSize(name, NAME_WIDTH, measure, 12, 7);
-    items.push({ text: name, x: NAME_LEFT, y: fromTop(346), size });
+    items.push({ text: name, x: NAME_LEFT, y: fromTop(NAME_BASELINE), size });
   }
 
   // ⑤生年月日: YYYY-MM-DD のときだけ、西暦4桁・月2桁・日2桁をマスに
