@@ -95,9 +95,13 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
+// QRの下に印字する文字（「変更許可」「更新許可」）の高さ。あるときはQRを少し小さくして下に空ける
+const TEPRA_SUB_MM = 4;
+
 export async function buildTepraLabel(
   text: string,
   numberLabel: string,
+  subLabel = "",
 ): Promise<{ blob: Blob; dataUrl: string }> {
   const W = TEPRA_W_MM * TEPRA_MM;
   const H = TEPRA_H_MM * TEPRA_MM;
@@ -110,12 +114,30 @@ export async function buildTepraLabel(
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, W, H);
 
-  // QR（折り線1の5mm手前までの領域 0〜20mm の中央に 18mm 角）
+  // QR（折り線1の5mm手前までの領域 0〜20mm の中央に 18mm 角）。
+  // 下に文字を印字するときは 15mm 角にして上に寄せ、空いた下の 4mm に文字を入れる
   const qrAreaW = (TEPRA_FOLD1_MM - TEPRA_FOLD_GAP_MM) * TEPRA_MM;
-  const qrSize = 18 * TEPRA_MM;
+  const sub = subLabel.trim();
+  const qrSize = (sub ? 18 - TEPRA_SUB_MM + 1 : 18) * TEPRA_MM;
+  const qrTop = sub ? 1.5 * TEPRA_MM : (H - qrSize) / 2;
   const qrDataUrl = await QRCode.toDataURL(text, { margin: 0, width: qrSize });
   const qrImg = await loadImage(qrDataUrl);
-  ctx.drawImage(qrImg, (qrAreaW - qrSize) / 2, (H - qrSize) / 2, qrSize, qrSize);
+  ctx.drawImage(qrImg, (qrAreaW - qrSize) / 2, qrTop, qrSize, qrSize);
+  if (sub) {
+    // QRの下・領域の中央に「変更許可」「更新許可」（領域の幅に収まるまで小さくする）
+    ctx.fillStyle = "#000000";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    let subSize = (TEPRA_SUB_MM - 0.6) * TEPRA_MM;
+    const subFont = (px: number) =>
+      `bold ${px}px "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", "Meiryo", sans-serif`;
+    ctx.font = subFont(subSize);
+    while (subSize > 20 && ctx.measureText(sub).width > qrAreaW - 1 * TEPRA_MM) {
+      subSize -= 2;
+      ctx.font = subFont(subSize);
+    }
+    ctx.fillText(sub, qrAreaW / 2, qrTop + qrSize + (H - qrTop - qrSize) / 2);
+  }
 
   // 折り線（目印用なので細く・短い破線で控えめに）
   const x1 = TEPRA_FOLD1_MM * TEPRA_MM;
@@ -169,12 +191,14 @@ async function saveImageBlob(blob: Blob, filename: string): Promise<void> {
 export function TepraSaveButton({
   text,
   numberLabel,
+  subLabel = "",
   filename,
   className = "",
   children,
 }: {
   text: string;
   numberLabel: string;
+  subLabel?: string; // QRの下に印字する文字（「変更許可」「更新許可」。空なら印字しない）
   filename: string;
   className?: string;
   children: React.ReactNode;
@@ -185,7 +209,7 @@ export function TepraSaveButton({
   const save = async () => {
     setBusy(true);
     try {
-      const { blob, dataUrl } = await buildTepraLabel(text, numberLabel);
+      const { blob, dataUrl } = await buildTepraLabel(text, numberLabel, subLabel);
       try {
         await saveImageBlob(blob, filename);
       } catch {

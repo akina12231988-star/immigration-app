@@ -17,7 +17,7 @@ import {
 } from "@/lib/supabase/queries/custody";
 import type { WorkerWithOrg } from "@/lib/supabase/queries/workers";
 import { CUSTODY_ITEMS, type CustodyEventRow, type CustodyStatus } from "@/types/db";
-import { CUSTODY_PURPOSES, formatStorageNo, parseAzkLedger } from "@/lib/custody";
+import { CUSTODY_PURPOSES, TEPRA_PERMIT_LABELS, formatStorageNo, parseAzkLedger, tepraPermitLabel } from "@/lib/custody";
 import { QrImage, QrLinkCopyButton, QrSaveButton, TepraSaveButton, custodyQrUrl, useOrigin } from "./QrImage";
 
 const STATUS_BADGE: Record<CustodyStatus, string> = {
@@ -464,7 +464,7 @@ function DetailModal({
           </p>
         )}
 
-        <QrSection storageNo={record.storage_no} />
+        <QrSection storageNo={record.storage_no} content={record.content} />
 
         {canWrite && record.status !== "返却済み" && (
           <div className="space-y-2 rounded-xl border border-border p-3">
@@ -580,8 +580,10 @@ function DetailModal({
 
 // ---- 保管番号QR（スマホで読み取るとこの番号の画面が直接開く） ----
 
-function QrSection({ storageNo }: { storageNo: number }) {
+function QrSection({ storageNo, content }: { storageNo: number; content: string }) {
   const origin = useOrigin();
+  // テプラのQRの下に印字する文字。申請内容から「変更許可」「更新許可」を引き当て、ここで変えられる
+  const [subLabel, setSubLabel] = useState<string>(() => tepraPermitLabel(content));
   if (!origin) return null;
 
   const url = custodyQrUrl(origin, storageNo);
@@ -605,6 +607,7 @@ function QrSection({ storageNo }: { storageNo: number }) {
           <TepraSaveButton
             text={url}
             numberLabel={formatStorageNo(storageNo)}
+            subLabel={subLabel}
             filename={`テプラQR_No${formatStorageNo(storageNo)}.png`}
             className="inline-flex items-center gap-1 text-xs font-bold text-brand"
           >
@@ -612,6 +615,22 @@ function QrSection({ storageNo }: { storageNo: number }) {
             テプラ用画像を保存
           </TepraSaveButton>
         </div>
+        <label className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
+          テプラのQRの下に印字:
+          <select
+            value={subLabel}
+            onChange={(e) => setSubLabel(e.target.value)}
+            className="min-h-[32px] rounded-lg border border-border bg-background px-1.5 text-xs font-bold text-foreground focus:border-brand focus:outline-none"
+          >
+            <option value="">印字しない</option>
+            {TEPRA_PERMIT_LABELS.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </select>
+          <span>（申請内容から自動で選びます）</span>
+        </label>
       </div>
     </div>
   );

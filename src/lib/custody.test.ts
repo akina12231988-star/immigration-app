@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  tepraPermitLabel,
   custodyRefNo,
   defaultExpireOn,
   formatStorageNo,
@@ -134,5 +135,19 @@ describe("登録支援機関の一覧（通訳者・申請取次者）", () => {
     expect(v.agentCertNo).toBe("受-9");
     expect(v.agentCertExpiry).toBe("2028-01-01");
     expect(v.agents).toHaveLength(1);
+  });
+});
+
+describe("tepraPermitLabel", () => {
+  it("申請内容から「変更許可」「更新許可」を取り出す", () => {
+    expect(tepraPermitLabel("福岡出入局管理局への在留資格変更許可申請")).toBe("変更許可");
+    expect(tepraPermitLabel("福岡出入局管理局への在留資格更新許可申請")).toBe("更新許可");
+    expect(tepraPermitLabel("在留期間更新")).toBe("更新許可");
+    expect(tepraPermitLabel("在留資格の変更")).toBe("変更許可");
+  });
+
+  it("どちらとも読めないときは印字しない", () => {
+    expect(tepraPermitLabel("")).toBe("");
+    expect(tepraPermitLabel("一時帰国のため")).toBe("");
   });
 });

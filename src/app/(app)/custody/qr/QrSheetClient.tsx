@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Download, Printer, QrCode, Tag } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import type { CustodyWithWorker } from "@/lib/supabase/queries/custody";
-import { STORAGE_NO_MAX, STORAGE_NO_MIN, formatStorageNo } from "@/lib/custody";
+import { STORAGE_NO_MAX, STORAGE_NO_MIN, formatStorageNo, tepraPermitLabel } from "@/lib/custody";
 import { QrImage, QrLinkCopyButton, QrSaveButton, TepraSaveButton, custodyQrUrl, useOrigin } from "../QrImage";
 
 const inputCls =
@@ -15,11 +15,13 @@ export function QrSheetClient({ records }: { records: CustodyWithWorker[] }) {
   const [from, setFrom] = useState("1");
   const [to, setTo] = useState("30");
 
-  // 番号 → 現在預かり中の人（QRシートの参考表示用）
-  const activeNames = useMemo(() => {
-    const map = new Map<number, string>();
+  // 番号 → 現在預かり中の人（QRシートの参考表示用）と、テプラのQRの下に印字する文字（申請内容から）
+  const active = useMemo(() => {
+    const map = new Map<number, { name: string; subLabel: string }>();
     for (const r of records) {
-      if (r.status !== "返却済み") map.set(r.storage_no, r.workers?.name ?? "");
+      if (r.status !== "返却済み") {
+        map.set(r.storage_no, { name: r.workers?.name ?? "", subLabel: tepraPermitLabel(r.content) });
+      }
     }
     return map;
   }, [records]);
@@ -61,14 +63,16 @@ export function QrSheetClient({ records }: { records: CustodyWithWorker[] }) {
         <div className="qr-grid grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 print:grid-cols-4 print:gap-2">
           {nos.map((no) => {
             const url = custodyQrUrl(origin, no);
-            const holder = activeNames.get(no);
+            const holder = active.get(no);
             return (
               <Card key={no} className="qr-card flex flex-col items-center gap-1.5 p-3 print:rounded-none print:border print:border-black/40 print:shadow-none">
                 <span className="rounded border-2 border-seal px-2 text-lg font-black tabular-nums tracking-widest text-seal">
                   {formatStorageNo(no)}
                 </span>
                 <QrImage text={url} size={120} className="rounded bg-white p-1" />
-                <p className="h-4 truncate text-[10px] text-muted">{holder ?? ""}</p>
+                <p className="h-4 truncate text-[10px] text-muted">
+                  {holder ? `${holder.name}${holder.subLabel ? `（${holder.subLabel}）` : ""}` : ""}
+                </p>
                 <div className="flex flex-wrap justify-center gap-2 print:hidden">
                   <QrSaveButton
                     text={url}
@@ -85,6 +89,7 @@ export function QrSheetClient({ records }: { records: CustodyWithWorker[] }) {
                   <TepraSaveButton
                     text={url}
                     numberLabel={formatStorageNo(no)}
+                    subLabel={holder?.subLabel ?? ""}
                     filename={`テプラQR_No${formatStorageNo(no)}.png`}
                     className="inline-flex items-center gap-1 text-[11px] font-bold text-brand"
                   >
