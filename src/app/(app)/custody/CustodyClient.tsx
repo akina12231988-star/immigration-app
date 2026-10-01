@@ -582,7 +582,7 @@ function DetailModal({
 
 function QrSection({ storageNo, content }: { storageNo: number; content: string }) {
   const origin = useOrigin();
-  // テプラのQRの下に印字する文字。申請内容から「変更許可」「更新許可」を引き当て、ここで変えられる
+  // テプラのQRの左端に印字する文字。申請内容から「変更許可」「更新許可」を引き当て、ここで変えられる
   const [subLabel, setSubLabel] = useState<string>(() => tepraPermitLabel(content));
   if (!origin) return null;
 
@@ -616,7 +616,7 @@ function QrSection({ storageNo, content }: { storageNo: number; content: string 
           </TepraSaveButton>
         </div>
         <label className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
-          テプラのQRの下に印字:
+          テプラのQRの左に印字:
           <select
             value={subLabel}
             onChange={(e) => setSubLabel(e.target.value)}
