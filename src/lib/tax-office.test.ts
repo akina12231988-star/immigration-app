@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   autoMailingProgress,
+  mailingProgressOptionsFor,
   findTaxOfficeForAddress,
   jurisdictionList,
   mailingProgressLabel,
@@ -89,7 +90,8 @@ describe("matchesTaxOffice", () => {
 describe("進捗", () => {
   it("表示名（未設定は準備中）", () => {
     expect(mailingProgressLabel("preparing")).toBe("準備中");
-    expect(mailingProgressLabel("waiting")).toBe("税務署からの郵送待ち");
+    // 請求書類が分からないときは「郵送待ち」のまま
+    expect(mailingProgressLabel("waiting")).toBe("郵送待ち");
     expect(mailingProgressLabel("done")).toBe("完了");
     expect(mailingProgressLabel(undefined)).toBe("準備中");
   });
@@ -106,5 +108,37 @@ describe("normalizeTrackingNumber", () => {
   it("数字だけにする", () => {
     expect(normalizeTrackingNumber("1234-5678-9012")).toBe("123456789012");
     expect(normalizeTrackingNumber("")).toBe("");
+  });
+});
+
+describe("郵送請求の進捗（請求書類ごとの呼び名）", () => {
+  it("郵送待ちの呼び名は請求先で変わる", () => {
+    expect(mailingProgressLabel("waiting", "nozei3")).toBe("税務署からの郵送待ち");
+    expect(mailingProgressLabel("waiting", "tax")).toBe("請求先からの郵送待ち");
+    expect(mailingProgressLabel("done", "tax")).toBe("完了");
+  });
+
+  it("選択肢も請求先に合わせた呼び名で返す", () => {
+    expect(mailingProgressOptionsFor("nozei3").map((o) => o.label)).toEqual([
+      "準備中",
+      "税務署からの郵送待ち",
+      "完了",
+    ]);
+    expect(mailingProgressOptionsFor("tax").map((o) => o.label)).toEqual([
+      "準備中",
+      "請求先からの郵送待ち",
+      "完了",
+    ]);
+  });
+
+  it("市区町村への請求は追跡番号が無くても、投函日だけで郵送待ちにする", () => {
+    // 納税証明書その3は追跡番号も要る（今までどおり）
+    expect(autoMailingProgress("preparing", "2026-10-01", "", true)).toBe("preparing");
+    expect(autoMailingProgress("preparing", "2026-10-01", "1234", true)).toBe("waiting");
+    // 課税証明書などは投函日だけ
+    expect(autoMailingProgress("preparing", "2026-10-01", "", false)).toBe("waiting");
+    expect(autoMailingProgress("preparing", "", "", false)).toBe("preparing");
+    // すでに決めてあるものは変えない
+    expect(autoMailingProgress("done", "", "", false)).toBe("done");
   });
 });

@@ -93,22 +93,45 @@ export type MailingProgress = "preparing" | "waiting" | "done";
 
 export const MAILING_PROGRESS_OPTIONS: { value: MailingProgress; label: string }[] = [
   { value: "preparing", label: "準備中" },
-  { value: "waiting", label: "税務署からの郵送待ち" },
+  { value: "waiting", label: "郵送待ち" },
   { value: "done", label: "完了" },
 ];
 
-export function mailingProgressLabel(p?: string): string {
-  return MAILING_PROGRESS_OPTIONS.find((o) => o.value === p)?.label ?? "準備中";
+// 郵送待ちの呼び名は請求先で変える（納税証明書その3は税務署、ほかは市区町村などの請求先）。
+// 請求書類が分からないとき（いろいろな記録をまとめて絞り込むときなど）は「郵送待ち」のまま
+export function mailingWaitingLabel(requestKind?: string): string {
+  if (requestKind === "nozei3") return "税務署からの郵送待ち";
+  if (!requestKind) return "郵送待ち";
+  return "請求先からの郵送待ち";
 }
 
-// 投函日と追跡番号が入っていて進捗が準備中のままなら、郵送待ちに進める（保存時の自動補正）
+// その請求書類での進捗の選択肢（郵送待ちの呼び名だけが変わる）
+export function mailingProgressOptionsFor(
+  requestKind?: string,
+): { value: MailingProgress; label: string }[] {
+  return MAILING_PROGRESS_OPTIONS.map((o) =>
+    o.value === "waiting" ? { ...o, label: mailingWaitingLabel(requestKind) } : o,
+  );
+}
+
+export function mailingProgressLabel(p?: string, requestKind?: string): string {
+  const o = MAILING_PROGRESS_OPTIONS.find((x) => x.value === p);
+  if (!o) return "準備中";
+  return o.value === "waiting" ? mailingWaitingLabel(requestKind) : o.label;
+}
+
+// 投函日（納税証明書その3は追跡番号も）が入っていて進捗が準備中のままなら、
+// 郵送待ちに進める（保存時の自動補正）。
+// 市区町村への請求は追跡番号が無いことが多いので、投函日だけで進める
 export function autoMailingProgress(
   progress: MailingProgress | undefined,
   postDate: string,
   trackingNumber: string,
+  requireTracking = true,
 ): MailingProgress {
   if (progress === "done" || progress === "waiting") return progress;
-  return postDate && trackingNumber.trim() ? "waiting" : "preparing";
+  if (!postDate) return "preparing";
+  return requireTracking ? (trackingNumber.trim() ? "waiting" : "preparing") : "waiting";
 }
 
 // 納税証明書その3の書類名（判定記録の docs に入れる）

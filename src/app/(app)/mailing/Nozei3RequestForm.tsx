@@ -16,7 +16,7 @@ import {
   autoMailingProgress,
   findTaxOfficeForAddress,
   isMyNumberFillable,
-  MAILING_PROGRESS_OPTIONS,
+  mailingProgressOptionsFor,
   NOZEI3_DOC_META,
   NOZEI3_DOC_TITLE,
   taxOfficeMailingLines,
@@ -462,7 +462,7 @@ export function Nozei3Fields({
         <div className="flex flex-col gap-1">
           <span className={LABEL}>進捗</span>
           <div className="flex flex-col gap-2 sm:flex-row">
-            {MAILING_PROGRESS_OPTIONS.filter((o) => !atWindow || o.value !== "waiting").map((o) => (
+            {mailingProgressOptionsFor("nozei3").filter((o) => !atWindow || o.value !== "waiting").map((o) => (
               <Pill key={o.value} active={v.progress === o.value} onClick={() => set({ progress: o.value })}>
                 {o.label}
               </Pill>

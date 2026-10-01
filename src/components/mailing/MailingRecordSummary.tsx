@@ -2,7 +2,7 @@ import { applicantLabel, formatDateJP, requestKindLabel, type JudgmentRecord } f
 import { mailingProgressLabel, normalizeTrackingNumber, trackingUrl } from "@/lib/tax-office";
 
 // 郵送請求の記録を1件ずつ短く出す（申請準備の「郵送請求中」の欄と、郵送請求の記録一覧で共用）。
-// 納税証明書その3は 税務署・投函日・追跡番号・進捗、それ以外は 請求先・投函日（郵送請求日）を出す
+// 納税証明書その3は 税務署・投函日・追跡番号・進捗、それ以外は 請求先・投函日（郵送請求日）・進捗を出す
 
 export function mailingDestination(r: JudgmentRecord): string {
   if (r.requestKind === "nozei3") return r.taxOfficeName || "税務署未選択";
@@ -17,8 +17,15 @@ export function mailingPostDate(r: JudgmentRecord): string {
   return r.requestMethod === "mail" ? r.mailRequestDate : "";
 }
 
-// 進捗の色（準備中 → 郵送待ち → 完了）
-export function ProgressBadge({ progress }: { progress?: string }) {
+// 進捗の色（準備中 → 郵送待ち → 完了）。
+// 郵送待ちの呼び名は請求先で変わるので、請求書類も渡せるようにする
+export function ProgressBadge({
+  progress,
+  requestKind,
+}: {
+  progress?: string;
+  requestKind?: string;
+}) {
   const cls =
     progress === "done"
       ? "bg-status-approved-bg text-status-approved-fg"
@@ -27,7 +34,7 @@ export function ProgressBadge({ progress }: { progress?: string }) {
         : "bg-status-notice-bg text-status-notice-fg";
   return (
     <span className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-bold ${cls}`}>
-      {mailingProgressLabel(progress)}
+      {mailingProgressLabel(progress, requestKind)}
     </span>
   );
 }
@@ -55,7 +62,7 @@ export function MailingRecordSummary({ record: r }: { record: JudgmentRecord }) 
         /* 代理人窓口発行: 投函・追跡番号は無いので、誰が代理人で発行したかを出す */
         <>
           <span>窓口発行：{applicantLabel("agent", r.applicantAgentName)}</span>
-          <ProgressBadge progress={r.mailingProgress} />
+          <ProgressBadge progress={r.mailingProgress} requestKind={r.requestKind} />
           {r.agentHandedDate && (
             <span className="text-muted">交付請求書を渡した日 {formatDateJP(r.agentHandedDate)}</span>
           )}
@@ -64,9 +71,11 @@ export function MailingRecordSummary({ record: r }: { record: JudgmentRecord }) 
         <span className="text-muted">{post ? `投函 ${formatDateJP(post)}` : "投函日未記録"}</span>
       )}
       {r.requestKind === "nozei3" && r.nozei3Method !== "window" && (
+        <TrackingLink trackingNumber={r.trackingNumber} />
+      )}
+      {!(r.requestKind === "nozei3" && r.nozei3Method === "window") && (
         <>
-          <TrackingLink trackingNumber={r.trackingNumber} />
-          <ProgressBadge progress={r.mailingProgress} />
+          <ProgressBadge progress={r.mailingProgress} requestKind={r.requestKind} />
           {r.mailingProgress === "done" && r.receivedDate && (
             <span className="text-muted">届いた日 {formatDateJP(r.receivedDate)}</span>
           )}
