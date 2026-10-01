@@ -35,7 +35,7 @@ export function defaultExpireOn(receivedOn: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-// テプラのラベルでQRコードの下に印字する申請の種類。
+// テプラのラベルでQRコードの左端に印字する申請の種類。
 // 預かりの申請内容（例: 福岡出入局管理局への在留資格変更許可申請）から「変更許可」「更新許可」を取り出す。
 // どちらとも読めないときは ''（印字しない）
 export const TEPRA_PERMIT_LABELS = ["変更許可", "更新許可"] as const;

@@ -95,8 +95,8 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-// QRの下に印字する文字（「変更許可」「更新許可」）の高さ。あるときはQRを少し小さくして下に空ける
-const TEPRA_SUB_MM = 4;
+// QRの左端に印字する文字（「変更許可」「更新許可」。横書きを90度回す）の帯の幅。あるときはQRを少し小さくして右に寄せる
+const TEPRA_SUB_STRIP_MM = 5;
 
 export async function buildTepraLabel(
   text: string,
@@ -115,28 +115,33 @@ export async function buildTepraLabel(
   ctx.fillRect(0, 0, W, H);
 
   // QR（折り線1の5mm手前までの領域 0〜20mm の中央に 18mm 角）。
-  // 下に文字を印字するときは 15mm 角にして上に寄せ、空いた下の 4mm に文字を入れる
+  // 左端に文字を印字するときは、左の 5mm を文字の帯にして、残り（5〜20mm）の中央に 13.5mm 角で置く
   const qrAreaW = (TEPRA_FOLD1_MM - TEPRA_FOLD_GAP_MM) * TEPRA_MM;
   const sub = subLabel.trim();
-  const qrSize = (sub ? 18 - TEPRA_SUB_MM + 1 : 18) * TEPRA_MM;
-  const qrTop = sub ? 1.5 * TEPRA_MM : (H - qrSize) / 2;
+  const stripW = sub ? TEPRA_SUB_STRIP_MM * TEPRA_MM : 0;
+  const qrSize = (sub ? 13.5 : 18) * TEPRA_MM;
   const qrDataUrl = await QRCode.toDataURL(text, { margin: 0, width: qrSize });
   const qrImg = await loadImage(qrDataUrl);
-  ctx.drawImage(qrImg, (qrAreaW - qrSize) / 2, qrTop, qrSize, qrSize);
+  ctx.drawImage(qrImg, stripW + (qrAreaW - stripW - qrSize) / 2, (H - qrSize) / 2, qrSize, qrSize);
   if (sub) {
-    // QRの下・領域の中央に「変更許可」「更新許可」（領域の幅に収まるまで小さくする）
+    // 左端の帯に「変更許可」「更新許可」を横書きのまま 90 度回して置く（QRの隣の番号の面と同じ向き。
+    // 帯の幅・ラベルの高さに収まるまで小さくする）
     ctx.fillStyle = "#000000";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    let subSize = (TEPRA_SUB_MM - 0.6) * TEPRA_MM;
     const subFont = (px: number) =>
       `bold ${px}px "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", "Meiryo", sans-serif`;
+    let subSize = (TEPRA_SUB_STRIP_MM - 1.6) * TEPRA_MM;
     ctx.font = subFont(subSize);
-    while (subSize > 20 && ctx.measureText(sub).width > qrAreaW - 1 * TEPRA_MM) {
+    while (subSize > 20 && ctx.measureText(sub).width > H - 2 * TEPRA_MM) {
       subSize -= 2;
       ctx.font = subFont(subSize);
     }
-    ctx.fillText(sub, qrAreaW / 2, qrTop + qrSize + (H - qrTop - qrSize) / 2);
+    ctx.save();
+    ctx.translate(stripW / 2, H / 2);
+    ctx.rotate(Math.PI / 2);
+    ctx.fillText(sub, 0, 0);
+    ctx.restore();
   }
 
   // 折り線（目印用なので細く・短い破線で控えめに）
@@ -198,7 +203,7 @@ export function TepraSaveButton({
 }: {
   text: string;
   numberLabel: string;
-  subLabel?: string; // QRの下に印字する文字（「変更許可」「更新許可」。空なら印字しない）
+  subLabel?: string; // QRの左端に印字する文字（「変更許可」「更新許可」。空なら印字しない）
   filename: string;
   className?: string;
   children: React.ReactNode;

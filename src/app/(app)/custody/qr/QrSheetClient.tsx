@@ -15,7 +15,7 @@ export function QrSheetClient({ records }: { records: CustodyWithWorker[] }) {
   const [from, setFrom] = useState("1");
   const [to, setTo] = useState("30");
 
-  // 番号 → 現在預かり中の人（QRシートの参考表示用）と、テプラのQRの下に印字する文字（申請内容から）
+  // 番号 → 現在預かり中の人（QRシートの参考表示用）と、テプラのQRの左に印字する文字（申請内容から）
   const active = useMemo(() => {
     const map = new Map<number, { name: string; subLabel: string }>();
     for (const r of records) {
