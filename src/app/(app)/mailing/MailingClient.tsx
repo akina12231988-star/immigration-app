@@ -52,8 +52,15 @@ import { municipalityOptionLabel } from "@/lib/prefectures";
 import { dbErrorMessage } from "@/lib/errors";
 import { extraSaveBlockers, methodBlockers } from "@/lib/mailing-save-check";
 import { MAILING_PROGRESS_OPTIONS, type TaxOffice } from "@/lib/tax-office";
+import {
+  MailingProgressFields,
+  mailingProgressPatch,
+  mailingProgressValuesFromRecord,
+  type MailingProgressValues,
+} from "@/components/mailing/MailingProgressFields";
 import { MailingFileAttachments } from "./MailingFileAttachments";
 import { MailingRecordAttachments } from "@/components/mailing/MailingRecordAttachments";
+import { ProgressBadge } from "@/components/mailing/MailingRecordSummary";
 import { MoneyOrderFields } from "./MoneyOrderFields";
 import { TaxOfficeTab } from "./TaxOfficeTab";
 import { TaxRequestWizard } from "./TaxRequestWizard";
@@ -978,6 +985,11 @@ function ExtraEditModal({
   const kind: "tenshutsu" | "juminhyo" = record.requestKind === "juminhyo" ? "juminhyo" : "tenshutsu";
   const [v, setV] = useState<ExtraFormValues>(() => extraValuesFromRecord(record, municipalities));
   const set = (patch: Partial<ExtraFormValues>) => setV((x) => ({ ...x, ...patch }));
+  // 進捗（準備中 / 請求先からの郵送待ち / 完了）
+  const [prog, setProg] = useState<MailingProgressValues>(() => mailingProgressValuesFromRecord(record));
+  const setProgress = (patch: Partial<MailingProgressValues>) => setProg((x) => ({ ...x, ...patch }));
+  // 住民票を窓口で受け取るときは郵送待ちが無い
+  const mailed = !(kind === "juminhyo" && v.juminhyoMethod === "window");
   const label = requestKindLabel(record.requestKind);
   const muni = municipalities.find((m) => m.id === v.muniId) ?? null;
   const editReasons = extraSaveBlockers({ canEdit, personName: record.personName || "-", formError: extraFormError(kind, v, muni) });
@@ -986,7 +998,7 @@ function ExtraEditModal({
     setMunicipalities([...municipalities, m].sort((a, b) => a.name.localeCompare(b.name, "ja")));
 
   return (
-    <Modal open title={`${label}の請求を編集`} onClose={onClose}>
+    <Modal open title={`${label}の請求・進捗を編集`} onClose={onClose}>
       <div className="flex flex-col gap-3">
         {record.workerAddress && (
           <div className="rounded-xl bg-background p-3">
@@ -1002,6 +1014,14 @@ function ExtraEditModal({
           onCreated={addMunicipality}
           canEdit={canEdit}
           showToast={showToast}
+        />
+        <MailingProgressFields
+          requestKind={record.requestKind}
+          mailed={mailed}
+          postDate={v.postDate}
+          v={prog}
+          set={setProgress}
+          canEdit={canEdit}
         />
         <div className="border-t border-dashed border-border pt-3">
           <p className="mb-2 text-sm font-bold text-muted">{label}・申請書のデータ（複数可）</p>
@@ -1022,7 +1042,13 @@ function ExtraEditModal({
         <Button
           fullWidth
           disabled={!canSave || busy}
-          onClick={() => onSave({ ...record, ...extraRecordPatch(kind, v, muni) } as JudgmentRecord)}
+          onClick={() =>
+            onSave({
+              ...record,
+              ...extraRecordPatch(kind, v, muni),
+              ...mailingProgressPatch(prog, { postDate: mailed ? v.postDate : "" }),
+            } as JudgmentRecord)
+          }
         >
           {busy ? "保存中…" : "保存する"}
         </Button>
@@ -1168,7 +1194,7 @@ function RecordsTab({
   const [fKeyword, setFKeyword] = useState(initialKeyword);
   const [fAgent, setFAgent] = useState("");
   const [fMailOnly, setFMailOnly] = useState(false);
-  const [fProgress, setFProgress] = useState(""); // 納税証明書その3の進捗
+  const [fProgress, setFProgress] = useState(""); // 進捗（すべての請求書類）
 
   const muniOptions = useMemo(() => {
     const names = Array.from(new Set(records.map((r) => r.municipalityName).filter(Boolean)));
@@ -1180,7 +1206,7 @@ function RecordsTab({
     const ag = fAgent.trim().toLowerCase();
     return records.filter((r) => {
       if (fKind && (r.requestKind ?? "tax") !== fKind) return false;
-      if (fProgress && (r.requestKind !== "nozei3" || (r.mailingProgress ?? "preparing") !== fProgress)) return false;
+      if (fProgress && (r.mailingProgress ?? "preparing") !== fProgress) return false;
       if (fMuni && r.municipalityName !== fMuni) return false;
       if (fCollection && (r.requestKind ?? "tax") === "tax" && r.collectionType !== fCollection) return false;
       if (kw && !`${r.personName ?? ""} ${r.todoNumber ?? ""}`.toLowerCase().includes(kw)) return false;
@@ -1245,7 +1271,7 @@ function RecordsTab({
               </select>
             </label>
             <label className="flex flex-col gap-1">
-              <span className={LABEL}>進捗（納税証明書その3）</span>
+              <span className={LABEL}>進捗</span>
               <select value={fProgress} onChange={(e) => setFProgress(e.target.value)} className={INPUT}>
                 <option value="">すべて</option>
                 {MAILING_PROGRESS_OPTIONS.map((o) => (
@@ -1315,6 +1341,16 @@ function RecordsTab({
                     {r.todoNumber ? `TODO ${r.todoNumber} ・ ` : ""}
                     {new Date(r.createdAt).toLocaleString("ja-JP", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
                   </p>
+                  {/* 進捗（納税証明書その3は下の枠の中に出しているので、ここでは出さない） */}
+                  {r.requestKind !== "nozei3" && (
+                    <p className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <ProgressBadge progress={r.mailingProgress} requestKind={r.requestKind} />
+                      {r.mailingProgress === "done" && r.receivedDate && (
+                        <span className="text-[11px] text-muted">届いた日 {formatDateJP(r.receivedDate)}</span>
+                      )}
+                      {r.mailingNote && <span className="text-[11px] text-muted">{r.mailingNote}</span>}
+                    </p>
+                  )}
                 </div>
                 {canEdit && (
                   <div className="flex shrink-0 gap-1.5">
@@ -1532,6 +1568,9 @@ function RecipientEditModal({
   const [agent, setAgent] = useState(record.agentName || "");
   const [mainAlt, setMainAlt] = useState(record.mainAlternativeNote || "");
   const [moneyOrders, setMoneyOrders] = useState<MoneyOrder[]>(record.moneyOrders ?? []);
+  // 進捗（準備中 / 請求先からの郵送待ち / 完了）
+  const [prog, setProg] = useState<MailingProgressValues>(() => mailingProgressValuesFromRecord(record));
+  const setProgress = (patch: Partial<MailingProgressValues>) => setProg((x) => ({ ...x, ...patch }));
 
   const [nhiSameAsMain, setNhiSameAsMain] = useState(record.hasNhi ? record.nhiSameAsMain !== false : true);
   const [nhiMethod, setNhiMethod] = useState<RequestMethod>(record.nhiRequestMethod || "window");
@@ -1574,12 +1613,19 @@ function RecipientEditModal({
       : []),
   ];
 
+  // 郵送で請求したか（課税証明書か国保税のどちらかが郵送なら郵送待ちがある）
+  const nhiMailed = record.hasNhi && (nhiSameAsMain ? method === "mail" : nhiMethod === "mail");
+  const mailed = method === "mail" || nhiMailed;
+  // 郵送待ちへ自動で進めるときに見る投函日（郵送請求した日）
+  const progressPostDate = method === "mail" ? mailDate : nhiMailed ? nhiMailDate : "";
+
   const submit = () => {
     if (!canSave) return;
     const mainInfo = buildMethodInfo(method, mailDate, recipient, agent);
     const updated: JudgmentRecord = {
       ...record,
       ...mainInfo,
+      ...mailingProgressPatch(prog, { postDate: mailed ? progressPostDate : "" }),
       mainAlternativeNote: mainAlt.trim(),
       mainPhoneContact: mpc.trim(),
       mainPhoneContent: mpn.trim(),
@@ -1614,7 +1660,7 @@ function RecipientEditModal({
   };
 
   return (
-    <Modal open title="受領方法・メモを編集" onClose={onClose}>
+    <Modal open title="受領方法・進捗・メモを編集" onClose={onClose}>
       <div className="flex flex-col gap-2">
         <MethodToggleSection
           title={record.hasNhi ? "課税証明書・市県民税納税証明書" : undefined}
@@ -1643,6 +1689,15 @@ function RecipientEditModal({
               <MoneyOrderFields titles={g.titles} orders={moneyOrders} onChange={setMoneyOrders} group={g.group} />
             </div>
           ))}
+        <MailingProgressFields
+          requestKind={record.requestKind}
+          mailed={mailed}
+          postDate={progressPostDate}
+          v={prog}
+          set={setProgress}
+          canEdit={canEdit}
+        />
+
         <label className="mt-3 flex flex-col gap-1">
           <span className={LABEL}>代替対応の備考（課税証明書等）</span>
           <textarea value={mainAlt} onChange={(e) => setMainAlt(e.target.value)} className={`${INPUT} min-h-[48px] py-2`} />
