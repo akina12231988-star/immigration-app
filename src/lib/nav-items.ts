@@ -1,5 +1,6 @@
 import {
   Home,
+  Receipt,
   Building2,
   Users,
   FilePlus2,
@@ -90,6 +91,13 @@ export const NAV_ENTRIES: NavEntry[] = [
         label: "まだ揃っていない書類",
         short: "未完了書類",
         icon: FileSearch,
+      },
+      // 収入印紙代の負担が未設定: 申請準備で本人負担か会社負担かを選んでいない申請を所属機関別に見る
+      {
+        href: "/todos/stamp-fee",
+        label: "収入印紙代の負担が未設定",
+        short: "収入印紙",
+        icon: Receipt,
       },
       {
         href: "/todos/exams",

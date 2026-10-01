@@ -89,6 +89,7 @@ import { nenkinMissingFields, type NenkinFormData, type NenkinMissingField } fro
 import { isCertDocKeyOf } from "@/lib/cert-exam";
 import { listActiveCustodyNoByWorker } from "@/lib/supabase/queries/custody";
 import { formatStorageNo } from "@/lib/custody";
+import { STAMP_FEE_PAYERS, effectiveStampFeePayer, isKunisakiSeika } from "@/lib/stamp-fee";
 import { getHealthCheckDetail } from "@/lib/supabase/queries/health-check";
 import {
   EMPTY_HEALTH_DETAIL,
@@ -510,6 +511,7 @@ export function ApplicationPrepChecklist({
         | "post_apply_tasks"
         | "post_apply_mailings"
         | "post_apply_notes"
+        | "stamp_fee_payer"
       >
     >,
   ) {
@@ -522,7 +524,9 @@ export function ApplicationPrepChecklist({
     } catch (err) {
       // あとから足した項目（筆頭者=0111・申請予定日=0112）は、その分の案内を出す
       const migration =
-        "post_apply_notes" in patch
+        "stamp_fee_payer" in patch
+          ? "0175_prep_stamp_fee_payer.sql"
+          : "post_apply_notes" in patch
           ? "0172_prep_post_apply_notes.sql"
           : "post_apply_mailings" in patch
           ? "0168_prep_post_apply_mailings.sql"
@@ -1758,6 +1762,14 @@ export function ApplicationPrepChecklist({
       {/* 条件の選択（申請種別の下に所属機関の情報を表示する） */}
       {current != null && (
       <div className="mb-3 space-y-2.5 rounded-xl border border-border bg-background p-3">
+        {/* 収入印紙代の負担（申請種別の上）。有限会社國崎青果は自動で本人負担。
+            未設定のまま（國崎青果以外）だと「収入印紙代の負担が未設定」の一覧に出る */}
+        <StampFeePayerField
+          value={current.stamp_fee_payer ?? ""}
+          orgName={prepOrgName}
+          canEdit={canEdit}
+          onSave={(v) => saveExtras({ stamp_fee_payer: v })}
+        />
         <div className="flex flex-wrap items-center gap-3">
           {/* 候補の文字が長いので、横並びにすると欄が枠からはみ出す。
               縦に並べて幅いっぱいにし、文字が長くても収まるようにする */}
@@ -3373,6 +3385,64 @@ function IconButton({
     >
       {children}
     </button>
+  );
+}
+
+// 収入印紙代の負担（本人負担／会社負担）のボタン。申請準備の詳細の申請種別の上に置く。
+// 有限会社國崎青果は、未設定なら自動で本人負担として保存する（そのリストで一度だけ）
+function StampFeePayerField({
+  value,
+  orgName,
+  canEdit,
+  onSave,
+}: {
+  value: string;
+  orgName: string;
+  canEdit: boolean;
+  onSave: (v: string) => void;
+}) {
+  const effective = effectiveStampFeePayer(value, orgName);
+  const kunisaki = isKunisakiSeika(orgName);
+  // 國崎青果で未設定なら本人負担を保存する（画面に出すだけでなく、一覧の「未設定」からも外れるように）
+  const autoSavedRef = useRef(false);
+  useEffect(() => {
+    if (!canEdit || !kunisaki || value || autoSavedRef.current) return;
+    autoSavedRef.current = true;
+    onSave("本人負担");
+    // onSave は親の関数で毎回変わるため依存に入れない（保存は一度だけ）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canEdit, kunisaki, value]);
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-xs font-bold text-muted">収入印紙代</span>
+      <div className="inline-flex overflow-hidden rounded-lg border border-border">
+        {STAMP_FEE_PAYERS.map((p) => {
+          const on = effective === p;
+          return (
+            <button
+              key={p}
+              type="button"
+              disabled={!canEdit}
+              onClick={() => onSave(on ? "" : p)}
+              aria-pressed={on}
+              className={`min-h-[36px] px-3 text-xs font-bold disabled:opacity-60 ${
+                on ? "bg-brand text-brand-foreground" : "bg-background text-muted hover:bg-surface"
+              }`}
+            >
+              {p}
+            </button>
+          );
+        })}
+      </div>
+      {!effective ? (
+        <span className="inline-flex items-center gap-1 rounded-full bg-seal/10 px-2 py-0.5 text-[11px] font-bold text-seal">
+          <TriangleAlert size={12} />
+          未設定（どちらが負担するか確認してください）
+        </span>
+      ) : kunisaki ? (
+        <span className="text-[11px] text-muted">有限会社國崎青果は自動で本人負担です</span>
+      ) : null}
+    </div>
   );
 }
 
