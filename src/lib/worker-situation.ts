@@ -245,6 +245,16 @@ export const PREP_SITUATIONS: string[] = [
   "特定技能2号申請準備中",
 ];
 
+// 只今の状況の中の「準備中」の部分だけを、新しい準備の内容に入れ替える。
+// 「特定技能1号＜支援委託中＞」などの併記はそのまま残す。
+// 申請準備の詳細で申請種別を途中で変えたときに、外国人詳細の只今の状況が
+// 前の申請種別の名前のまま残らないようにするために使う。
+// next が空のときは、準備中の部分を外すだけ
+export function replacePrepSituation(current: string, next: string): string {
+  const rest = splitSituations(current ?? "").filter((s) => !PREP_SITUATIONS.includes(s));
+  return [...rest, ...(next ? [next] : [])].join(SITUATION_SEPARATOR);
+}
+
 // 申請登録の「申請内容」の候補（7つ）。
 // 選ぶと、保存する申請内容（従来どおりの3種類のどれか）と、
 // 外国人の只今の状況（どの内容で審査中か）が決まる

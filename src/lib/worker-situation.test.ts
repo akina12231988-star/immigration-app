@@ -1,6 +1,7 @@
 import { describe, expect, it, test } from "vitest";
 import {
   APPLICATION_CONTENT_CHOICES,
+  replacePrepSituation,
   ENTRUSTED_SITUATION,
   PREP_SITUATIONS,
   WORKER_SITUATIONS,
@@ -303,5 +304,34 @@ describe("申請準備の申請種別 → 申請登録の申請内容", () => {
     }
     expect(applicationChoiceLabelOfPrep("在留資格認定申請書の準備中")).toBe("在留認定許可申請（特定技能）");
     expect(applicationChoiceLabelOfPrep("")).toBe("");
+  });
+});
+
+describe("replacePrepSituation（申請種別を途中で変えたとき）", () => {
+  it("只今の状況の「準備中」の部分だけを入れ替える", () => {
+    expect(replacePrepSituation("特定技能更新の準備中", "特定技能2号申請準備中")).toBe(
+      "特定技能2号申請準備中",
+    );
+  });
+
+  it("「特定技能1号＜支援委託中＞」の併記はそのまま残す", () => {
+    expect(
+      replacePrepSituation(
+        "特定技能1号＜支援委託中＞・特定技能更新の準備中",
+        "特定技能2号申請準備中",
+      ),
+    ).toBe("特定技能1号＜支援委託中＞・特定技能2号申請準備中");
+  });
+
+  it("新しい内容が空なら、準備中の部分を外すだけ", () => {
+    expect(replacePrepSituation("特定技能1号＜支援委託中＞・特定技能更新の準備中", "")).toBe(
+      "特定技能1号＜支援委託中＞",
+    );
+  });
+
+  it("準備中の部分が無いとき（審査中など）は、そのうしろに足す", () => {
+    expect(replacePrepSituation("特定技能更新許可の審査中", "特定技能2号申請準備中")).toBe(
+      "特定技能更新許可の審査中・特定技能2号申請準備中",
+    );
   });
 });

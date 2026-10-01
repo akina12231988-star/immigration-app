@@ -420,6 +420,16 @@ export interface WorkerRelative {
   residence_card_no: string; // 在留カード番号
 }
 
+// 配偶者の情報（workers.spouse jsonb）。詳しくは lib/worker-spouse.ts
+export interface WorkerSpouse {
+  worker_id: string; // 日本に住んでいてシステムに登録がある配偶者（workers.id）。無ければ ''
+  name: string; // 氏名（リンクしていないとき）
+  birth: string; // 生年月日 YYYY-MM-DD（リンクしていないとき）
+  lives_together: string; // 同居の有無（'' / 同居 / 別居）
+  residence_card_no: string; // 在留カード番号（リンクしていないとき）
+  workplace: string; // 勤務先
+}
+
 export interface Worker {
   id: string;
   name: string;
@@ -466,6 +476,7 @@ export interface Worker {
   leaving_org_address: string; // 退職した所属機関の住所
   gender: string; // 性別
   has_spouse: string; // 配偶者の有無（'' / 有 / 無）
+  spouse?: WorkerSpouse | null; // 配偶者の情報（0175。未適用の環境では undefined）
   relatives_in_japan: string; // 在日親族の同居の有無（'' / 有 / 無）
   relatives: WorkerRelative[]; // 同居している在日親族
   dependents: WorkerDependent[]; // 扶養家族（扶養親族証明書の内容）
