@@ -60,6 +60,12 @@ import { WorkerContracts } from "@/components/workers/WorkerContracts";
 import { WorkerTodoLinks } from "@/components/workers/WorkerTodoLinks";
 import { WorkerAddressHistory } from "@/components/workers/WorkerAddressHistory";
 import { WorkerDependents } from "@/components/workers/WorkerDependents";
+import { SpouseEditor, SpouseView } from "@/components/workers/SpouseEditor";
+import {
+  cleanWorkerSpouse,
+  hasSpouseInfo,
+  normalizeWorkerSpouse,
+} from "@/lib/worker-spouse";
 import { WorkerEmploymentStarts } from "@/components/workers/WorkerEmploymentStarts";
 import { WorkerSalesResignation } from "@/components/workers/WorkerSalesResignation";
 import { WorkerPermitSalesNos } from "@/components/workers/WorkerPermitSalesNos";
@@ -145,6 +151,7 @@ import {
   type Reminder,
   type WorkHistoryRow,
   type WorkerRelative,
+  type WorkerSpouse,
   type WorkerWithHistories,
 } from "@/types/db";
 import type { ApplicationWithRefs } from "@/lib/supabase/queries/jobs";
@@ -186,6 +193,9 @@ export function WorkerDetail({
   const [draft, setDraft] = useState<Record<string, string>>({});
   // 在日親族は配列なので別で持つ（null = 触っていない）
   const [relativesDraft, setRelativesDraft] = useState<WorkerRelative[] | null>(null);
+  // 配偶者の情報（0175。保存するまでは下書きとして持つ）
+  const [spouseDraft, setSpouseDraft] = useState<WorkerSpouse | null>(null);
+  const savedSpouse = normalizeWorkerSpouse(worker.spouse);
   const [saveBusy, setSaveBusy] = useState(false);
   const [applied, setApplied] = useState<string | null>(null);
   // 前回の申請（1年以内）の申請日・申請番号（申請一覧から自動。無ければ手入力）
@@ -342,7 +352,8 @@ export function WorkerDetail({
 
   // 入力欄を出すか: 編集モードは全項目、閲覧モードは未記入の欄だけ（その場で埋められる）
   const showInput = (key: string) => canEdit && (editing || cur(key) === "");
-  const dirty = changedFieldCount(draft, workerRecord) > 0 || relativesDraft !== null;
+  const dirty =
+    changedFieldCount(draft, workerRecord) > 0 || relativesDraft !== null || spouseDraft !== null;
 
   // 閲覧モードの未記入欄は点線枠で「ここに入力できる」ことを示す。編集モードは実線
   const inputCls = (boxed = false) =>
@@ -407,6 +418,11 @@ export function WorkerDetail({
         return false;
       }
       if (relativesDraft !== null) payload.relatives = relativesDraft;
+      // 配偶者の有無を「無」にしたら、配偶者の情報は消す
+      if (spouseDraft !== null || ("has_spouse" in payload && payload.has_spouse !== "有")) {
+        const next = ("has_spouse" in payload ? payload.has_spouse : worker.has_spouse) === "有";
+        payload.spouse = next ? cleanWorkerSpouse(spouseDraft ?? savedSpouse) : null;
+      }
       // 所属機関と雇用開始日がそろったら、申請準備中の人は在籍中＋支援区分へ自動で進める
       // （状態・支援区分をこの保存で手で選んでいるときは、その選択を優先する）
       {
@@ -445,6 +461,7 @@ export function WorkerDetail({
       }
       setDraft({});
       setRelativesDraft(null);
+      setSpouseDraft(null);
       setEditing(false);
       setApplied(null);
       router.refresh();
@@ -454,7 +471,11 @@ export function WorkerDetail({
       setError(
         dbErrorMessage(
           err,
-          "file_link" in draft ? "0127_worker_file_link.sql" : "0095_worker_passport_mrz.sql",
+          spouseDraft !== null
+            ? "0175_worker_spouse.sql"
+            : "file_link" in draft
+              ? "0127_worker_file_link.sql"
+              : "0095_worker_passport_mrz.sql",
           "保存に失敗しました",
         ),
       );
@@ -467,6 +488,7 @@ export function WorkerDetail({
   const cancelEdit = () => {
     setDraft({});
     setRelativesDraft(null);
+    setSpouseDraft(null);
     setEditing(false);
     setApplied(null);
   };
@@ -1632,6 +1654,25 @@ export function WorkerDetail({
             edit={selectInput("relatives_in_japan", ["有", "無"])}
           />
         </dl>
+        {/* 配偶者の情報。配偶者の有無が「有」のときだけ出す。
+            日本に住んでいてシステムに登録がある配偶者はリンクし、無ければ直接入れる */}
+        {editing && canEdit && val("has_spouse") === "有" ? (
+          <div className="mb-3">
+            <SpouseEditor
+              workerId={worker.id}
+              spouse={spouseDraft ?? savedSpouse}
+              onChange={setSpouseDraft}
+            />
+          </div>
+        ) : (
+          worker.has_spouse === "有" &&
+          hasSpouseInfo(savedSpouse) && (
+            <div className="mb-3">
+              <p className="mb-1 text-[11px] font-bold text-muted">配偶者</p>
+              <SpouseView workerId={worker.id} spouse={savedSpouse} />
+            </div>
+          )
+        )}
         {editing && canEdit && val("relatives_in_japan") === "有" ? (
           <div className="mb-3">
             <RelativesEditor
