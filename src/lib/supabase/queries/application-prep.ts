@@ -34,6 +34,7 @@ export interface PrepChecklistRow extends PrepChecklistMeta {
   post_apply_tasks: PostApplyTask[]; // 申請後に対応するタスク（0167）
   post_apply_mailings: PostApplyMailing[]; // 申請後に入管へ郵送した記録（0168）
   post_apply_notes: PostApplyNotes; // 申請後の郵送・タスクの項目ごとのメモ（0172）
+  stamp_fee_payer: string; // 収入印紙代の負担（'' / 本人負担 / 会社負担。0175）
 }
 
 // 外国人の準備リストを全件取得（更新が新しい順）。
@@ -70,6 +71,7 @@ export async function listPrepChecklists(
     post_apply_tasks: normalizePostApplyTasks(r.post_apply_tasks),
     post_apply_mailings: normalizePostApplyMailings(r.post_apply_mailings),
     post_apply_notes: normalizePostApplyNotes(r.post_apply_notes),
+    stamp_fee_payer: r.stamp_fee_payer ?? "",
   }));
 }
 
@@ -129,6 +131,7 @@ export async function updatePrepChecklistExtras(
       | "post_apply_tasks"
       | "post_apply_mailings"
       | "post_apply_notes"
+      | "stamp_fee_payer"
     >
   >,
 ): Promise<void> {
