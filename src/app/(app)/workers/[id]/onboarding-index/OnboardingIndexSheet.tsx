@@ -96,8 +96,8 @@ export function OnboardingIndexSheet({
             </button>
           </div>
 
-          {/* 目次の項目の編集（印刷されない）。足す・消す・上下・書類名と備考の書き換え */}
-          <div className="rounded-xl border border-border bg-surface/60 p-3">
+          {/* 目次の項目の編集（印刷されない）。番号の右に上下・消すのボタン、その右に書類名と備考 */}
+          <div className="max-w-3xl rounded-xl border border-border bg-surface/60 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs font-bold text-muted">目次の項目（印刷の前にここで足し引きできます。保存はされません）</p>
               {edited && (
@@ -115,20 +115,6 @@ export function OnboardingIndexSheet({
               {rows.map((r, i) => (
                 <li key={r.key} className="flex flex-wrap items-center gap-1.5 sm:flex-nowrap">
                   <span className="w-7 shrink-0 text-center text-sm font-bold tabular-nums text-muted">{r.num}</span>
-                  <input
-                    value={r.label}
-                    onChange={(e) => setRows((cur) => updateIndexItem(cur, r.key, { label: e.target.value }))}
-                    aria-label={`${r.num}番の書類名`}
-                    placeholder="書類名"
-                    className={`${inputCls} min-w-0 flex-1 basis-[12rem]`}
-                  />
-                  <input
-                    value={r.note}
-                    onChange={(e) => setRows((cur) => updateIndexItem(cur, r.key, { note: e.target.value }))}
-                    aria-label={`${r.num}番の備考`}
-                    placeholder="備考"
-                    className={`${inputCls} min-w-0 flex-1 basis-[8rem] sm:max-w-[14rem]`}
-                  />
                   <span className="flex shrink-0 gap-1">
                     <button
                       type="button"
@@ -157,6 +143,20 @@ export function OnboardingIndexSheet({
                       <X size={16} />
                     </button>
                   </span>
+                  <input
+                    value={r.label}
+                    onChange={(e) => setRows((cur) => updateIndexItem(cur, r.key, { label: e.target.value }))}
+                    aria-label={`${r.num}番の書類名`}
+                    placeholder="書類名"
+                    className={`${inputCls} min-w-0 flex-1 basis-[12rem]`}
+                  />
+                  <input
+                    value={r.note}
+                    onChange={(e) => setRows((cur) => updateIndexItem(cur, r.key, { note: e.target.value }))}
+                    aria-label={`${r.num}番の備考`}
+                    placeholder="備考"
+                    className={`${inputCls} min-w-0 flex-1 basis-[8rem] sm:max-w-[14rem]`}
+                  />
                 </li>
               ))}
             </ul>
