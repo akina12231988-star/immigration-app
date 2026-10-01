@@ -75,3 +75,42 @@ export function onboardingIndexFileName(workerName: string): string {
   const name = (workerName ?? "").trim();
   return name ? `入社書類目次_${name}` : "入社書類目次";
 }
+
+// ---- 目次の行をその場で足し引きする（印刷前の編集。保存はしない） ----
+
+// 番号を 1 から振り直す
+export function renumberIndexItems(rows: OnboardingIndexItem[]): OnboardingIndexItem[] {
+  return rows.map((r, i) => ({ ...r, num: i + 1 }));
+}
+
+// 行を足す（末尾。書類名は空のまま画面で入れる）
+export function addIndexItem(rows: OnboardingIndexItem[], label = "", note = ""): OnboardingIndexItem[] {
+  const used = new Set(rows.map((r) => r.key));
+  let n = 1;
+  while (used.has(`custom-${n}`)) n += 1;
+  return renumberIndexItems([...rows, { key: `custom-${n}`, num: 0, label, note }]);
+}
+
+// 行を消す
+export function removeIndexItem(rows: OnboardingIndexItem[], key: string): OnboardingIndexItem[] {
+  return renumberIndexItems(rows.filter((r) => r.key !== key));
+}
+
+// 行の書類名・備考を書き換える
+export function updateIndexItem(
+  rows: OnboardingIndexItem[],
+  key: string,
+  patch: Partial<Pick<OnboardingIndexItem, "label" | "note">>,
+): OnboardingIndexItem[] {
+  return rows.map((r) => (r.key === key ? { ...r, ...patch } : r));
+}
+
+// 行を上下に動かす（端ではそのまま）
+export function moveIndexItem(rows: OnboardingIndexItem[], key: string, dir: -1 | 1): OnboardingIndexItem[] {
+  const i = rows.findIndex((r) => r.key === key);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= rows.length) return rows;
+  const next = [...rows];
+  [next[i], next[j]] = [next[j], next[i]];
+  return renumberIndexItems(next);
+}
