@@ -1,16 +1,22 @@
 "use client";
 
-import { Printer } from "lucide-react";
+import { useState } from "react";
+import { ChevronDown, ChevronUp, Plus, Printer, RotateCcw, X } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
 import { rosterJpDate } from "@/lib/roster";
 import {
+  addIndexItem,
   isPaperHandover,
+  moveIndexItem,
   onboardingIndexFileName,
+  removeIndexItem,
+  updateIndexItem,
   type OnboardingIndexItem,
 } from "@/lib/onboarding-index";
 
 // 入社書類の目次（A4縦・1枚）。
-// 会社へ紙で渡す資料の束の1枚目に付ける。番号と書類名を並べ、右に確認欄（□）を置く
+// 会社へ紙で渡す資料の束の1枚目に付ける。番号と書類名を並べ、右に確認欄（□）を置く。
+// 行は印刷の前にその場で足し引き・並べ替え・書き換えができる（この画面の中だけ。保存はしない）
 export function OnboardingIndexSheet({
   workerId,
   workerName,
@@ -40,6 +46,14 @@ export function OnboardingIndexSheet({
     window.addEventListener("afterprint", restore);
     window.print();
   };
+
+  // 目次の行（自動の内容から始めて、この画面で足し引きする）
+  const [rows, setRows] = useState<OnboardingIndexItem[]>(items);
+  const edited = rows !== items;
+  const inputCls =
+    "min-h-[36px] rounded-lg border border-border bg-background px-2 text-sm focus:border-brand focus:outline-none";
+  const iconBtn =
+    "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-muted hover:text-foreground disabled:opacity-30";
 
   const cell = "border border-black px-2 py-[7px] align-middle";
 
@@ -79,6 +93,80 @@ export function OnboardingIndexSheet({
             >
               <Printer size={18} />
               印刷・PDF保存（A4縦）
+            </button>
+          </div>
+
+          {/* 目次の項目の編集（印刷されない）。足す・消す・上下・書類名と備考の書き換え */}
+          <div className="rounded-xl border border-border bg-surface/60 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-bold text-muted">目次の項目（印刷の前にここで足し引きできます。保存はされません）</p>
+              {edited && (
+                <button
+                  type="button"
+                  onClick={() => setRows(items)}
+                  className="inline-flex items-center gap-1 text-xs font-bold text-brand underline"
+                >
+                  <RotateCcw size={13} />
+                  自動の内容に戻す
+                </button>
+              )}
+            </div>
+            <ul className="mt-2 space-y-1.5">
+              {rows.map((r, i) => (
+                <li key={r.key} className="flex flex-wrap items-center gap-1.5 sm:flex-nowrap">
+                  <span className="w-7 shrink-0 text-center text-sm font-bold tabular-nums text-muted">{r.num}</span>
+                  <input
+                    value={r.label}
+                    onChange={(e) => setRows((cur) => updateIndexItem(cur, r.key, { label: e.target.value }))}
+                    aria-label={`${r.num}番の書類名`}
+                    placeholder="書類名"
+                    className={`${inputCls} min-w-0 flex-1 basis-[12rem]`}
+                  />
+                  <input
+                    value={r.note}
+                    onChange={(e) => setRows((cur) => updateIndexItem(cur, r.key, { note: e.target.value }))}
+                    aria-label={`${r.num}番の備考`}
+                    placeholder="備考"
+                    className={`${inputCls} min-w-0 flex-1 basis-[8rem] sm:max-w-[14rem]`}
+                  />
+                  <span className="flex shrink-0 gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setRows((cur) => moveIndexItem(cur, r.key, -1))}
+                      disabled={i === 0}
+                      aria-label={`${r.num}番を上へ`}
+                      className={iconBtn}
+                    >
+                      <ChevronUp size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRows((cur) => moveIndexItem(cur, r.key, 1))}
+                      disabled={i === rows.length - 1}
+                      aria-label={`${r.num}番を下へ`}
+                      className={iconBtn}
+                    >
+                      <ChevronDown size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRows((cur) => removeIndexItem(cur, r.key))}
+                      aria-label={`${r.num}番を消す`}
+                      className={`${iconBtn} hover:text-seal`}
+                    >
+                      <X size={16} />
+                    </button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              onClick={() => setRows((cur) => addIndexItem(cur))}
+              className="mt-2 inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-brand px-3 text-xs font-bold text-brand"
+            >
+              <Plus size={14} />
+              項目を追加
             </button>
           </div>
         </div>
@@ -121,10 +209,10 @@ export function OnboardingIndexSheet({
               </tr>
             </thead>
             <tbody>
-              {items.map((it) => (
+              {rows.map((it) => (
                 <tr key={it.key}>
                   <td className={`${cell} text-center tabular-nums`}>{it.num}</td>
-                  <td className={cell}>{it.label}</td>
+                  <td className={cell}>{it.label || "　"}</td>
                   <td className={`${cell} text-[9.5pt]`}>{it.note}</td>
                   <td className={`${cell} text-center text-[14pt]`}>□</td>
                 </tr>

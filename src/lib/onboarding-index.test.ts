@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  addIndexItem,
   attachesFuyokojo,
   isPaperHandover,
+  moveIndexItem,
   onboardingIndexFileName,
   onboardingIndexItems,
+  removeIndexItem,
+  updateIndexItem,
 } from "./onboarding-index";
 
 const TODAY = "2026-09-07"; // 令和8年
@@ -88,5 +92,38 @@ describe("onboardingIndexFileName", () => {
   it("氏名を付ける", () => {
     expect(onboardingIndexFileName("VU THI NHAN")).toBe("入社書類目次_VU THI NHAN");
     expect(onboardingIndexFileName("")).toBe("入社書類目次");
+  });
+});
+
+describe("目次の行の足し引き", () => {
+  const base = onboardingIndexItems({ today: TODAY, orgName: "株式会社さくら", payMethod: "口座振込", koyoCovered: "はい" });
+
+  it("足すと末尾に空の行が付き、番号が続く。キーは重ならない", () => {
+    const once = addIndexItem(base);
+    expect(once).toHaveLength(base.length + 1);
+    expect(once[once.length - 1]).toEqual({ key: "custom-1", num: base.length + 1, label: "", note: "" });
+    const twice = addIndexItem(once, "健康診断書", "会社の指定");
+    expect(twice[twice.length - 1]).toEqual({ key: "custom-2", num: base.length + 2, label: "健康診断書", note: "会社の指定" });
+  });
+
+  it("消すと番号を振り直す", () => {
+    const rows = removeIndexItem(base, "mynumber");
+    expect(rows.map((r) => r.label)).not.toContain("マイナンバー");
+    expect(rows.map((r) => r.num)).toEqual(rows.map((_, i) => i + 1));
+  });
+
+  it("書類名・備考を書き換える", () => {
+    const rows = updateIndexItem(base, "furigana", { note: "前職の社保のコピー" });
+    expect(rows.find((r) => r.key === "furigana")!.note).toBe("前職の社保のコピー");
+    expect(rows.find((r) => r.key === "furigana")!.label).toBe(base.find((r) => r.key === "furigana")!.label);
+  });
+
+  it("上下に動かす（端ではそのまま）", () => {
+    const down = moveIndexItem(base, base[0].key, 1);
+    expect(down[1].key).toBe(base[0].key);
+    expect(down[0].num).toBe(1);
+    expect(down[1].num).toBe(2);
+    expect(moveIndexItem(base, base[0].key, -1)).toBe(base);
+    expect(moveIndexItem(base, "nothing", 1)).toBe(base);
   });
 });
