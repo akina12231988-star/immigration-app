@@ -59,6 +59,9 @@ export type BillingWorker = Pick<
   // 分かっている場合に立てる印（あとから下りた更新許可から割り出す）。
   // 在留許可日は実際の値のまま表示し、請求の判定だけこの印で行う
   resident_before_month?: boolean;
+  // 特定技能2号（移行準備の特定活動を含む）の許可日が対象月より後で、
+  // その月はまだ1号として支援していた人に立てる印（名簿・備考欄で分かるようにする）
+  before_ssw2?: boolean;
 };
 
 export type BillingOrg = Pick<Organization, "id" | "name" | "intake">;
@@ -144,7 +147,8 @@ export function isBillableResidence(residenceStatus: string | null | undefined):
 // 支援対象外の人は請求も掲載もしない
 export function isBilledInMonth(worker: BillingWorker, month: string): boolean {
   if (worker.support !== "支援対象") return false;
-  if (!isBillableResidence(worker.residence_status)) return false;
+  // 2号の許可日より前の月（before_ssw2）は、在留資格がすでに2号になっていても1号として支援していた月
+  if (!worker.before_ssw2 && !isBillableResidence(worker.residence_status)) return false;
   const { from, to } = monthRange(month);
   if (!residedInMonth(worker, to)) return false;
   const left = worker.leaving_on;
@@ -307,7 +311,7 @@ function isSsw2Residence(status: string | null | undefined): boolean {
 }
 
 // 前日（YYYY-MM-DD）
-function prevDay(dateStr: string): string {
+export function prevDay(dateStr: string): string {
   const t = Date.parse(`${dateStr}T00:00:00Z`);
   if (Number.isNaN(t)) return dateStr;
   return new Date(t - 86400000).toISOString().slice(0, 10);
@@ -325,6 +329,35 @@ export function isSsw2TransitionMonth(worker: BillingWorker, month: string): boo
   const permit = worker.residence_permit_date ?? "";
   if (!permit || permit < from || permit > to) return false;
   if (dayNumber(permit) <= 1) return false;
+  return Boolean(worker.employment_start_on && worker.employment_start_on < from);
+}
+
+// 特定技能2号（移行準備の特定活動を含む）になった人で、2号の許可日が対象月の末日より後の人。
+// その月はまだ特定技能1号（特定活動を含む）として支援していたので、支援区分が「支援対象外」に
+// 変わっていても、その月の名簿には支援対象として載せる（支援委託の終了は2号の許可日の前日）。
+// 対象月の末日までに雇用が始まっていて、その月より前に退職していない人だけ
+export function supportedBeforeSsw2(worker: BillingWorker, month: string): boolean {
+  const s = (worker.residence_status ?? "").normalize("NFKC").trim();
+  if (!isSsw2Residence(s)) return false;
+  const { from, to } = monthRange(month);
+  const permit = worker.residence_permit_date ?? "";
+  if (!permit || permit <= to) return false;
+  const start = worker.employment_start_on ?? "";
+  if (!start || start > to) return false;
+  if (worker.leaving_on && worker.leaving_on < from) return false;
+  return true;
+}
+
+// 2号の許可日が対象月の1日の人（支援委託は前月末で終わり、その月の請求は無い）。
+// 名簿の行は無いが、備考欄に「特定技能２号へ資格変更のため支援委託終了」と書くために拾う。
+// 2号の更新許可（すでに支援は終わっている）は対象にしない
+export function ssw2SupportEndOnFirstDay(worker: BillingWorker, month: string): boolean {
+  const s = (worker.residence_status ?? "").normalize("NFKC").trim();
+  if (!isSsw2Residence(s) || /更新$/.test(s)) return false;
+  const { from, to } = monthRange(month);
+  const permit = worker.residence_permit_date ?? "";
+  if (!permit || permit < from || permit > to) return false;
+  if (dayNumber(permit) !== 1) return false;
   return Boolean(worker.employment_start_on && worker.employment_start_on < from);
 }
 

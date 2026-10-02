@@ -128,7 +128,7 @@ import {
   changedFieldCount,
   workerFieldString,
 } from "@/lib/worker-inline-edit";
-import { employmentStartPatch, type EnrollPatch } from "@/lib/worker-support";
+import { employmentStartPatch, suggestSupportScope, type EnrollPatch } from "@/lib/worker-support";
 import {
   RESIDENCE_PERIODS,
   cardFaceDate,
@@ -429,6 +429,17 @@ export function WorkerDetail({
         );
       } else if ("residence_permit_date" in payload || "residence_expiry_date" in payload) {
         if (worker.residence_period_manual) payload.residence_period_manual = false;
+      }
+      // 特定技能1号（特定活動を含む）→特定技能2号（移行準備の特定活動を含む）に変えたら支援委託は終了。
+      // 支援区分を手で選んでいないときは自動で「支援対象外」にする
+      if ("residence_status" in payload && !("support" in payload)) {
+        const nextStatus = "status" in payload ? payload.status : worker.status;
+        if (
+          suggestSupportScope(payload.residence_status, nextStatus) === "支援対象外" &&
+          worker.support !== "支援対象外"
+        ) {
+          payload.support = "支援対象外";
+        }
       }
       // 氏名は必須（空にして保存すると各画面で誰か分からなくなる）
       if ("name" in payload && !payload.name) {

@@ -17,6 +17,8 @@ import {
   leftThisMonthRows,
   permittedThisMonthRows,
   summarizeMonthlyBilling,
+  supportedBeforeSsw2,
+  ssw2SupportEndOnFirstDay,
   type BillingOrg,
   employmentStartForOrg,
   rosterOrderRows,
@@ -632,5 +634,47 @@ describe("employmentStartForOrg / sortRowsByEmploymentStart", () => {
       "C",
       "X",
     ]);
+  });
+});
+
+describe("特定技能2号になった人の、2号の許可日より前の月", () => {
+  // 9月までは特定活動（1号側）で支援、10月1日に特定技能2号の許可
+  const w = worker({
+    name: "THUY",
+    residence_status: "特定技能2号",
+    residence_permit_date: "2026-10-01",
+    employment_start_on: "2025-04-01",
+    support: "支援対象外",
+  });
+
+  it("2号の許可日より前の月は、支援対象外に変わっていても支援していた月として拾う", () => {
+    expect(supportedBeforeSsw2(w, "2026-09")).toBe(true);
+    expect(supportedBeforeSsw2(w, "2026-08")).toBe(true);
+    // 許可月・それ以降は対象外（許可月は移行月の処理、以降は支援なし）
+    expect(supportedBeforeSsw2(w, "2026-10")).toBe(false);
+    expect(supportedBeforeSsw2(w, "2026-11")).toBe(false);
+    // 2号移行準備の特定活動も2号側として同じ
+    expect(supportedBeforeSsw2({ ...w, residence_status: "特定活動（特定技能2号移行準備）" }, "2026-09")).toBe(true);
+    // 1号のままの人・その月より後に雇用が始まる人・その月より前に退職した人は拾わない
+    expect(supportedBeforeSsw2({ ...w, residence_status: "特定技能1号" }, "2026-09")).toBe(false);
+    expect(supportedBeforeSsw2({ ...w, employment_start_on: "2026-10-01" }, "2026-09")).toBe(false);
+    expect(supportedBeforeSsw2({ ...w, leaving_on: "2026-08-20" }, "2026-09")).toBe(false);
+  });
+
+  it("支援対象に置き換えると、その月の名簿に満額で載る", () => {
+    const billed = { ...w, support: "支援対象" as const, resident_before_month: true, before_ssw2: true };
+    expect(isBilledInMonth(billed, "2026-09")).toBe(true);
+    const billing = summarizeMonthlyBilling([billed], [org("org-1", "BASE株式会社", "15000")], "2026-09");
+    expect(billing.orgs[0].rows[0].kind).toBe("満額");
+    expect(billing.orgs[0].rows[0].amount).toBe(15000);
+  });
+
+  it("2号の許可日が1日の人は、その月の行は無いが支援終了の備考の対象になる", () => {
+    expect(ssw2SupportEndOnFirstDay(w, "2026-10")).toBe(true);
+    expect(ssw2SupportEndOnFirstDay(w, "2026-09")).toBe(false);
+    expect(ssw2SupportEndOnFirstDay({ ...w, residence_permit_date: "2026-10-15" }, "2026-10")).toBe(false);
+    expect(ssw2SupportEndOnFirstDay({ ...w, residence_status: "特定技能2号 更新" }, "2026-10")).toBe(false);
+    const billing = summarizeMonthlyBilling([w], [org("org-1", "BASE株式会社", "15000")], "2026-10");
+    expect(billing.orgs).toHaveLength(0);
   });
 });
