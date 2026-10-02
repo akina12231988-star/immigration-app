@@ -92,6 +92,7 @@ import {
   leftThisMonthRows,
   monthLabel,
   monthRange,
+  markBeforeSsw2,
   permittedThisMonthRows,
   periodText,
   prevDay,
@@ -333,10 +334,10 @@ export function MonthlyBillingSection({
         const next =
           salesNos[w.id] === undefined ? w : { ...w, recurring_sales_no: salesNos[w.id] };
         // 特定技能2号（移行準備を含む）になった人で、2号の許可日が対象月より後なら、
-        // その月はまだ1号として支援していたので支援対象として載せる（支援委託の終了は許可日の前日）
+        // その月はまだ1号として支援していたので支援対象として載せる（支援委託の終了は許可日の前日）。
+        // 在留資格は履歴からその月の時点のものが分かればそれ、分からなければ空欄（2号とは書かない）
         const beforeSsw2 = supportedBeforeSsw2(w, month);
-        const withSsw2 = (v: BillingWorker): BillingWorker =>
-          beforeSsw2 ? { ...v, support: "支援対象", resident_before_month: true, before_ssw2: true } : v;
+        const withSsw2 = (v: BillingWorker): BillingWorker => (beforeSsw2 ? markBeforeSsw2(v) : v);
         // 現在の許可日が対象月より後なら、その月の時点で有効だった許可に置き換える。
         // 更新許可で日付が進んだ人が、過去の月の名簿から消えないようにする
         const permits = permitHistory[w.id];
@@ -1455,7 +1456,7 @@ export function MonthlyBillingSection({
                           <td className="py-1.5 pr-2 tabular-nums">
                             {row.worker.recurring_sales_no || "—"}
                           </td>
-                          <td className="py-1.5 pr-2">{visaCellText(row.worker)}</td>
+                          <td className="py-1.5 pr-2">{row.worker.residence_status}</td>
                           <td className="py-1.5 pr-2 tabular-nums">
                             {row.worker.residence_expiry_date ?? "—"}
                           </td>
@@ -1516,7 +1517,7 @@ export function MonthlyBillingSection({
                           <td className="py-1.5 pr-2 tabular-nums">
                             {recurringSalesNoForRow(row, org.organizationId) || "—"}
                           </td>
-                          <td className="py-1.5 pr-2">{visaCellText(row.worker)}</td>
+                          <td className="py-1.5 pr-2">{row.worker.residence_status}</td>
                           <td className="py-1.5 pr-2 tabular-nums">{periodText(row)}</td>
                           <td className="py-1.5 pr-2 tabular-nums">{daysText(row)}</td>
                           <td className="py-1.5 text-right tabular-nums">
@@ -2530,7 +2531,7 @@ export function MonthlyBillingSection({
                               </span>
                             )}
                           </td>
-                          <td className="py-1.5 pr-2 text-muted">{visaCellText(row.worker)}</td>
+                          <td className="py-1.5 pr-2 text-muted">{row.worker.residence_status}</td>
                           {/* その機関での雇用開始日（所属機関別の記録を優先）。許可日の前に置く */}
                           <td className="py-1.5 pr-2 tabular-nums text-muted">
                             {employmentStartForOrg(row.worker, org.organizationId) || "—"}
@@ -2811,12 +2812,6 @@ export function MonthlyBillingSection({
 // 特定技能2号の行か（2号は特定技能総合保険に加入できないため、保険No.は発生しない）
 function isSsw2Row(row: MonthlyBillingRow): boolean {
   return (row.worker.residence_status ?? "").normalize("NFKC").includes("特定技能2号");
-}
-
-// 名簿の在留資格の欄。特定技能2号の許可日より前の月は、まだ1号として支援していたことを添える
-function visaCellText(w: BillingWorker): string {
-  const status = w.residence_status ?? "";
-  return w.before_ssw2 ? `${status}（2号許可前・支援中）` : status;
 }
 
 // 許可売上No.・保険No.の1マス。売上明細の行があればその場で直せる。

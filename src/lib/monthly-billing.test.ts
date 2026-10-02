@@ -17,6 +17,7 @@ import {
   leftThisMonthRows,
   permittedThisMonthRows,
   summarizeMonthlyBilling,
+  markBeforeSsw2,
   supportedBeforeSsw2,
   ssw2SupportEndOnFirstDay,
   type BillingOrg,
@@ -664,8 +665,14 @@ describe("特定技能2号になった人の、2号の許可日より前の月",
     expect(supportedBeforeSsw2({ ...w, leaving_on: "2026-08-20" }, "2026-09")).toBe(false);
   });
 
-  it("支援対象に置き換えると、その月の名簿に満額で載る", () => {
-    const billed = { ...w, support: "支援対象" as const, resident_before_month: true, before_ssw2: true };
+  it("2号許可前の行にすると、その月の名簿に満額で載り、在留資格は空欄になる（2号と書かない）", () => {
+    const billed = markBeforeSsw2(w);
+    expect(billed.support).toBe("支援対象");
+    expect(billed.residence_status).toBe("");
+    // 履歴からその月の在留資格（特定活動など）が分かっているときはそのまま
+    expect(markBeforeSsw2({ ...w, residence_status: "特定活動（特定技能1号移行準備）" }).residence_status).toBe(
+      "特定活動（特定技能1号移行準備）",
+    );
     expect(isBilledInMonth(billed, "2026-09")).toBe(true);
     const billing = summarizeMonthlyBilling([billed], [org("org-1", "BASE株式会社", "15000")], "2026-09");
     expect(billing.orgs[0].rows[0].kind).toBe("満額");
