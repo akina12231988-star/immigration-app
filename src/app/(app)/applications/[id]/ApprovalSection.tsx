@@ -31,6 +31,7 @@ import {
   periodLengthText,
   residencePeriodCandidates,
   residencePeriodFromDates,
+  residencePeriodPatch,
 } from "@/lib/residence-card";
 import { RESIDENCE_STATUSES, type WorkerInput, type WorkerOrgEmploymentStart } from "@/types/db";
 import {
@@ -106,7 +107,7 @@ export function ApprovalSection({
       supabase.from("workers").select(columns).eq("id", app.workerId as string).maybeSingle();
     void (async () => {
       let res = await select(
-        "residence_status, residence_period, current_organization_id, employment_start_on, org_employment_starts, organizations!workers_current_organization_id_fkey(name)",
+        "residence_status, residence_period, residence_period_manual, current_organization_id, employment_start_on, org_employment_starts, organizations!workers_current_organization_id_fkey(name)",
       );
       if (res.error) {
         // residence_period が無い古いDB（0092未適用）でも表示できるように読み直す
@@ -120,6 +121,7 @@ export function ApprovalSection({
         const d = data as unknown as {
           residence_status: string | null;
           residence_period: string | null;
+          residence_period_manual?: boolean | null;
           current_organization_id: string | null;
           employment_start_on: string | null;
           org_employment_starts: unknown;
@@ -134,7 +136,9 @@ export function ApprovalSection({
         });
         // 許可情報の在留資格・在留期間に、いまの登録内容を初期表示する
         setGrantResidenceStatus((v) => v || (d.residence_status ?? ""));
-        setGrantResidencePeriod((v) => v || (d.residence_period ?? ""));
+        // 在留期間は、手入力で訂正してある（0176）ときだけ登録値を初期表示する。
+        // それ以外は空にして、許可日・期限日からの自動計算をそのまま出す（古い登録値を引きずらない）
+        setGrantResidencePeriod((v) => v || (d.residence_period_manual ? (d.residence_period ?? "") : ""));
       }
     })();
     return () => {
@@ -301,7 +305,8 @@ export function ApprovalSection({
           residence_expiry_date: form.grantedExpiryDate || null,
           // 在留資格・在留期間も外国人詳細の在留カードと同じ内容として反映する（未入力なら変えない）
           ...(grantResidenceStatus ? { residence_status: grantResidenceStatus } : {}),
-          ...(periodValue ? { residence_period: periodValue } : {}),
+          // 自動計算と違う値を入れたときは「手入力で訂正」として、以後は登録値を優先する（0176）
+          ...(periodValue ? residencePeriodPatch(periodValue, form.grantedPermitDate, form.grantedExpiryDate) : {}),
           // 新しい在留期限が決まったら、申請準備の対応状況をリセットして次の更新サイクルに備える
           ...(form.grantedExpiryDate
             ? {
@@ -596,7 +601,7 @@ export function ApprovalSection({
               {spanText && <span className="ml-1">（許可日から期限日まで {spanText}）</span>}
               {autoPeriod && grantResidencePeriod.trim() && grantResidencePeriod.trim() !== autoPeriod && (
                 <span className="ml-1 font-bold text-seal">
-                  入力してある「{grantResidencePeriod}」と違います。日付か在留期間を確かめてください
+                  入力してある「{grantResidencePeriod}」と違います。このまま保存すると手入力の訂正として「{grantResidencePeriod.trim()}」を出します
                 </span>
               )}
               {!autoPeriod && form.grantedPermitDate && form.grantedExpiryDate && (

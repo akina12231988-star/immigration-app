@@ -168,16 +168,30 @@ export function residencePeriodFromDates(permitDate: string, expiryDate: string)
 
 // 画面に出す在留期間。外国人詳細と同じく、許可年月日と満了日から計算できればその値、
 // できなければ登録してある在留期間（residence_period）を使う。
+// 手入力で訂正したとき（residence_period_manual）は、計算できても登録値を優先する。
 // 申請準備の詳細・印刷や求職者カードなど、どの画面でも同じ値になるようにここを通す
 export function effectiveResidencePeriod(w: {
   residence_period?: string | null;
+  residence_period_manual?: boolean | null;
   residence_permit_date?: string | null;
   residence_expiry_date?: string | null;
 }): string {
-  return (
-    residencePeriodFromDates(w.residence_permit_date ?? "", w.residence_expiry_date ?? "") ??
-    (w.residence_period ?? "").trim()
-  );
+  const registered = (w.residence_period ?? "").trim();
+  if (w.residence_period_manual && registered) return registered;
+  return residencePeriodFromDates(w.residence_permit_date ?? "", w.residence_expiry_date ?? "") ?? registered;
+}
+
+// 在留期間を保存するときの値。許可年月日と満了日から計算した在留期間と違う値を入れたときは
+// 「手入力で訂正した」として、以後は登録値を優先する。計算と同じ値（または計算できない）なら
+// 訂正ではないので false に戻す。日付だけを変えたときは呼び出し側で false に戻す
+export function residencePeriodPatch(
+  period: string,
+  permitDate: string | null | undefined,
+  expiryDate: string | null | undefined,
+): { residence_period: string; residence_period_manual: boolean } {
+  const p = (period ?? "").normalize("NFKC").trim();
+  const auto = residencePeriodFromDates(permitDate ?? "", expiryDate ?? "");
+  return { residence_period: p, residence_period_manual: !!p && auto !== null && p !== auto };
 }
 
 // 在留カード番号の形式（英字2 + 数字8 + 英字2。例: AB12345678CD）。

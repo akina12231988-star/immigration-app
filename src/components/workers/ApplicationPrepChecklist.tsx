@@ -380,7 +380,7 @@ export function ApplicationPrepChecklist({
     void createClient()
       .from("workers")
       .select(
-        "name, kana, birth, nationality, field, home_address, address, current_organization_id, application_prep_organization_id, specialty_grade, other_qualifications, residence_status, residence_period, residence_permit_date, residence_card_no, residence_expiry_date, passport_no, passport_expiry_date, current_situation",
+        "name, kana, birth, nationality, field, home_address, address, current_organization_id, application_prep_organization_id, specialty_grade, other_qualifications, residence_status, residence_period, residence_period_manual, residence_permit_date, residence_card_no, residence_expiry_date, passport_no, passport_expiry_date, current_situation",
       )
       .eq("id", workerId)
       .maybeSingle()
@@ -399,6 +399,7 @@ export function ApplicationPrepChecklist({
           other_qualifications: string | null;
           residence_status: string | null;
           residence_period: string | null;
+          residence_period_manual?: boolean | null;
           residence_permit_date: string | null;
           residence_card_no: string | null;
           residence_expiry_date: string | null;

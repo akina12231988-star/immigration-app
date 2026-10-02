@@ -10,6 +10,7 @@ import {
   residenceCardToWorkerFields,
   effectiveResidencePeriod,
   residencePeriodFromDates,
+  residencePeriodPatch,
   workRestrictionLabel,
 } from "./residence-card";
 
@@ -140,6 +141,26 @@ describe("effectiveResidencePeriod", () => {
     expect(effectiveResidencePeriod({ residence_period: "1年", residence_permit_date: "2026-05-28", residence_expiry_date: "2026-11-28" })).toBe("6月");
     expect(effectiveResidencePeriod({ residence_period: "1年", residence_permit_date: null, residence_expiry_date: "2026-11-28" })).toBe("1年");
     expect(effectiveResidencePeriod({ residence_period: null })).toBe("");
+  });
+
+  it("手入力で訂正したとき（residence_period_manual）は、計算できても登録値を優先する", () => {
+    const w = { residence_period: "1年", residence_permit_date: "2026-05-28", residence_expiry_date: "2026-11-28" };
+    expect(effectiveResidencePeriod({ ...w, residence_period_manual: true })).toBe("1年");
+    expect(effectiveResidencePeriod({ ...w, residence_period_manual: false })).toBe("6月");
+    // 訂正のフラグがあっても登録値が空なら計算値
+    expect(effectiveResidencePeriod({ ...w, residence_period: "", residence_period_manual: true })).toBe("6月");
+  });
+});
+
+describe("residencePeriodPatch", () => {
+  it("計算した在留期間と違う値を入れたときだけ「手入力で訂正」にする", () => {
+    expect(residencePeriodPatch("1年", "2026-05-28", "2026-11-28")).toEqual({ residence_period: "1年", residence_period_manual: true });
+    expect(residencePeriodPatch("6月", "2026-05-28", "2026-11-28")).toEqual({ residence_period: "6月", residence_period_manual: false });
+    // 全角・前後の空白はそろえて比べる
+    expect(residencePeriodPatch(" ６月 ", "2026-05-28", "2026-11-28")).toEqual({ residence_period: "6月", residence_period_manual: false });
+    // 計算できないとき・空のときは訂正ではない（登録値はそのまま使われる）
+    expect(residencePeriodPatch("1年", null, "2026-11-28")).toEqual({ residence_period: "1年", residence_period_manual: false });
+    expect(residencePeriodPatch("", "2026-05-28", "2026-11-28")).toEqual({ residence_period: "", residence_period_manual: false });
   });
 });
 

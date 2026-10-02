@@ -7,7 +7,7 @@ import { Modal } from "@/components/ui/Modal";
 import { ResidenceCardDialog } from "@/components/workers/ResidenceCardDialog";
 import { PassportMrzDialog } from "@/components/workers/PassportMrzDialog";
 import { filledFieldCount, overwrittenFields, type FieldChange } from "@/lib/field-overwrite";
-import { RESIDENCE_PERIODS } from "@/lib/residence-card";
+import { RESIDENCE_PERIODS, residencePeriodPatch } from "@/lib/residence-card";
 import { WORKER_SITUATIONS, situationDescription } from "@/lib/worker-situation";
 import { todayStr } from "@/lib/application-alerts";
 import { Combobox } from "@/components/ui/Combobox";
@@ -239,7 +239,12 @@ export function WorkerForm({
     setBusy(true);
     setError(null);
     try {
-      await onSubmit({ ...form, name: form.name.trim() });
+      await onSubmit({
+        ...form,
+        name: form.name.trim(),
+        // 在留期間: 許可年月日と満了日からの自動計算と違う値なら「手入力で訂正」として登録する（0176）
+        ...residencePeriodPatch(form.residence_period, form.residence_permit_date, form.residence_expiry_date),
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存に失敗しました");
       setBusy(false);
