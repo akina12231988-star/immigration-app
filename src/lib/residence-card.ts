@@ -247,7 +247,7 @@ export function residenceCardToWorkerFields(input: ResidenceCardInput): Record<s
   put("gender", input.gender);
   put("nationality", input.nationality);
   put("address", input.address);
-  put("residence_status", input.residenceStatus);
+  put("residence_status", input.residenceStatus.normalize("NFKC")); // 全角の数字は半角にそろえる
   put("residence_period", input.residencePeriod);
   put("residence_expiry_date", normalizeCardDate(input.expiryDate));
   put("residence_permit_date", normalizeCardDate(input.permitDate));

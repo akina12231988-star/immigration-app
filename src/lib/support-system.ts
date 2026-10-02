@@ -155,7 +155,8 @@ export function isContractedOrg(
 
 // 在留資格が特定技能1号か（特定活動（特定技能1号移行準備）は支援対象外なので除く）
 export function isSsw1Residence(residenceStatus: string | null | undefined): boolean {
-  const s = (residenceStatus ?? "").trim();
+  // 「特定技能１号」のように全角の数字で登録されていても同じ在留資格として扱う
+  const s = (residenceStatus ?? "").normalize("NFKC").trim();
   if (!s) return false;
   if (s.includes("特定活動")) return false;
   return s.includes("特定技能1号");

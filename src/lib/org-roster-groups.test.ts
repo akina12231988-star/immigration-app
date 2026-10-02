@@ -26,11 +26,9 @@ describe("notCountedReason", () => {
     expect(notCountedReason(ok)).toBeNull();
   });
 
-  it("全角の「１」で登録されていると数えられない（支援体制の判定と同じ）", () => {
-    // isSsw1Residence が半角の1しか見ないため。表にも理由が出るので気づける
-    expect(notCountedReason({ ...ok, residenceStatus: "特定技能１号" })).toBe(
-      "在留資格が特定技能1号ではない（特定技能１号）",
-    );
+  it("全角の「１」で登録されていても同じ在留資格として数える（請求の名簿と同じ）", () => {
+    // 以前は isSsw1Residence が半角の1しか見ず、名簿からも抜けていた
+    expect(notCountedReason({ ...ok, residenceStatus: "特定技能１号" })).toBeNull();
   });
 
   it("支援区分が支援開始前なら、その理由を返す", () => {

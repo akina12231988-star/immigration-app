@@ -136,7 +136,8 @@ export function invoiceDueOn(month: string): string {
 // 支援費の請求対象になる在留資格か。
 // 特定技能1号のほか、特定活動（特定技能1号移行準備）も支援を行うため対象にする
 export function isBillableResidence(residenceStatus: string | null | undefined): boolean {
-  const s = (residenceStatus ?? "").trim();
+  // 「特定技能１号」のように全角の数字で登録されていても同じ在留資格として扱う
+  const s = (residenceStatus ?? "").normalize("NFKC").trim();
   if (!s) return false;
   if (isSsw1Residence(s)) return true;
   return s.includes("特定活動") && s.includes("特定技能1号");

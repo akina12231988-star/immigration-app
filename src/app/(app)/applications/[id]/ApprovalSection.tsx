@@ -305,7 +305,7 @@ export function ApprovalSection({
           residence_permit_date: form.grantedPermitDate || null,
           residence_expiry_date: form.grantedExpiryDate || null,
           // 在留資格・在留期間も外国人詳細の在留カードと同じ内容として反映する（未入力なら変えない）
-          ...(grantResidenceStatus ? { residence_status: grantResidenceStatus } : {}),
+          ...(grantResidenceStatus ? { residence_status: grantResidenceStatus.normalize("NFKC").trim() } : {}),
           // 特定技能1号（特定活動を含む）→特定技能2号（移行準備の特定活動を含む）になったら支援委託は終了。
           // 支援区分を自動で「支援対象外」にする（2号の許可日の前日までの請求は名簿側で日割りする）
           ...(grantResidenceStatus && suggestSupportScope(grantResidenceStatus, "在籍中") === "支援対象外"

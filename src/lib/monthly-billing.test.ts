@@ -80,6 +80,9 @@ describe("年月の扱い", () => {
 describe("isBillableResidence", () => {
   it("特定技能1号と特定活動（特定技能1号移行準備）が対象", () => {
     expect(isBillableResidence("特定技能1号")).toBe(true);
+    // 全角の数字で登録されていても同じ（「在留資格が対象外」と出て名簿から抜けないように）
+    expect(isBillableResidence("特定技能１号")).toBe(true);
+    expect(isBillableResidence("特定活動（特定技能１号移行準備）")).toBe(true);
     expect(isBillableResidence("特定技能1号更新")).toBe(true);
     expect(isBillableResidence("特定活動（特定技能1号移行準備）")).toBe(true);
     expect(isBillableResidence("特定技能2号")).toBe(false);
