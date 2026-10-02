@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { FileGroup } from "@/components/applications/FileGroup";
 import { generateApprovalReport } from "@/lib/line-report";
 import { createClient } from "@/lib/supabase/client";
+import { suggestSupportScope } from "@/lib/worker-support";
 import { updateWorker } from "@/lib/supabase/queries/workers";
 import { advanceSituationOnApproval } from "@/lib/application-approval";
 import {
@@ -305,6 +306,11 @@ export function ApprovalSection({
           residence_expiry_date: form.grantedExpiryDate || null,
           // 在留資格・在留期間も外国人詳細の在留カードと同じ内容として反映する（未入力なら変えない）
           ...(grantResidenceStatus ? { residence_status: grantResidenceStatus } : {}),
+          // 特定技能1号（特定活動を含む）→特定技能2号（移行準備の特定活動を含む）になったら支援委託は終了。
+          // 支援区分を自動で「支援対象外」にする（2号の許可日の前日までの請求は名簿側で日割りする）
+          ...(grantResidenceStatus && suggestSupportScope(grantResidenceStatus, "在籍中") === "支援対象外"
+            ? { support: "支援対象外" as const }
+            : {}),
           // 自動計算と違う値を入れたときは「手入力で訂正」として、以後は登録値を優先する（0176）
           ...(periodValue ? residencePeriodPatch(periodValue, form.grantedPermitDate, form.grantedExpiryDate) : {}),
           // 新しい在留期限が決まったら、申請準備の対応状況をリセットして次の更新サイクルに備える
@@ -614,6 +620,7 @@ export function ApprovalSection({
           )}
           <p className="-mt-1 text-[11px] text-muted">
             在留カード番号・許可日・期限日・在留資格・在留期間は、「許可情報を保存」で外国人詳細の在留カードの内容にも反映されます。
+            在留資格が特定技能2号（移行準備の特定活動を含む）なら、支援区分は自動で「支援対象外」になります（支援委託は許可日の前日で終了。それまでの月は名簿に載ります）。
           </p>
 
           {/* 許可後の住所変更（在留カードの住所が今の登録と違うとき） */}

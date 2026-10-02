@@ -94,8 +94,11 @@ import {
   monthRange,
   permittedThisMonthRows,
   periodText,
+  prevDay,
   recurringSalesNoForRow,
+  ssw2SupportEndOnFirstDay,
   summarizeMonthlyBilling,
+  supportedBeforeSsw2,
   type BillingOrg,
   employmentStartForOrg,
   sortRowsByEmploymentStart,
@@ -329,22 +332,27 @@ export function MonthlyBillingSection({
       workers.map((w) => {
         const next =
           salesNos[w.id] === undefined ? w : { ...w, recurring_sales_no: salesNos[w.id] };
+        // 特定技能2号（移行準備を含む）になった人で、2号の許可日が対象月より後なら、
+        // その月はまだ1号として支援していたので支援対象として載せる（支援委託の終了は許可日の前日）
+        const beforeSsw2 = supportedBeforeSsw2(w, month);
+        const withSsw2 = (v: BillingWorker): BillingWorker =>
+          beforeSsw2 ? { ...v, support: "支援対象", resident_before_month: true, before_ssw2: true } : v;
         // 現在の許可日が対象月より後なら、その月の時点で有効だった許可に置き換える。
         // 更新許可で日付が進んだ人が、過去の月の名簿から消えないようにする
         const permits = permitHistory[w.id];
         if (!permits || (next.residence_permit_date ?? "") <= monthEnd(`${month}-01`)) {
-          return next;
+          return withSsw2(next);
         }
         const asOf = effectivePermitForMonth(permits, month);
-        if (!asOf) return next;
+        if (!asOf) return withSsw2(next);
         // あとの更新許可から在籍を割り出しただけのときは、在留許可日は実際の値のまま。
         // 名簿・エクセル・当月許可者リストに実際の許可日を出すため、在籍の印だけ立てる
-        if (asOf.estimated) return { ...next, resident_before_month: true };
-        return {
+        if (asOf.estimated) return withSsw2({ ...next, resident_before_month: true });
+        return withSsw2({
           ...next,
           residence_permit_date: asOf.permitDate,
           residence_status: asOf.visa || next.residence_status,
-        };
+        });
       }),
     [workers, salesNos, permitHistory, month],
   );
@@ -809,30 +817,37 @@ export function MonthlyBillingSection({
   // ＜許可おりた人＞（在留資格ごと）と＜退職者＞をその機関の名簿から組み立てる
   const orgRemarks = (org: MonthlyBillingOrg): string => {
     // 転職した人の前の機関側の行（退職精算）は、許可は新しい機関のことなので許可の欄に出さない
-    const permitted = org.rows.filter(
-      (r) => !r.transferredOut && permitInMonth(r.worker.residence_permit_date),
-    );
+    const permitted: { worker: BillingWorker; ssw2EndOn: string }[] = org.rows
+      .filter((r) => !r.transferredOut && permitInMonth(r.worker.residence_permit_date))
+      .map((r) => ({ worker: r.worker, ssw2EndOn: r.kind === "2号移行前日まで日割" ? r.periodTo : "" }));
+    // 2号の許可日が1日の人は名簿の行が無い（支援委託は前月末で終了）が、許可と支援終了は備考欄に書く
+    for (const w of merged) {
+      if ((w.current_organization_id ?? "") !== org.organizationId) continue;
+      if (!ssw2SupportEndOnFirstDay(w, month)) continue;
+      if (permitted.some((p) => p.worker.id === w.id)) continue;
+      permitted.push({ worker: w, ssw2EndOn: prevDay(w.residence_permit_date ?? "") });
+    }
     const left = org.rows.filter((r) => r.leftThisMonth);
     const lines: string[] = [];
     // 新規（在留資格の変更・認定）と更新（在留期間の更新）を分けて書く。
     // 判定は申請の「申請内容」を正とし、申請が見つからない人は新規側に置く
-    const isRenewal = (r: MonthlyBillingRow) =>
-      (permitContents[r.worker.id] ?? "").includes("更新");
-    const pushVisaGroups = (rows: MonthlyBillingRow[]) => {
-      const byVisa = new Map<string, MonthlyBillingRow[]>();
-      for (const r of rows) {
-        const visa = r.worker.residence_status || "在留資格未設定";
+    const isRenewal = (p: { worker: BillingWorker }) =>
+      (permitContents[p.worker.id] ?? "").includes("更新");
+    const pushVisaGroups = (items: { worker: BillingWorker; ssw2EndOn: string }[]) => {
+      const byVisa = new Map<string, { worker: BillingWorker; ssw2EndOn: string }[]>();
+      for (const p of items) {
+        const visa = p.worker.residence_status || "在留資格未設定";
         if (!byVisa.has(visa)) byVisa.set(visa, []);
-        byVisa.get(visa)!.push(r);
+        byVisa.get(visa)!.push(p);
       }
       for (const [visa, group] of byVisa) {
         lines.push(`${visa}ビザ`);
-        for (const r of group) {
-          const base = `${r.worker.name}さん　許可日：${mdText(r.worker.residence_permit_date ?? "")}`;
-          // 特定技能2号の許可は、許可日の前日で1号の支援委託が終わることも書き添える
+        for (const p of group) {
+          const base = `${p.worker.name}さん　許可日：${mdText(p.worker.residence_permit_date ?? "")}`;
+          // 特定技能2号の許可は、許可日の前日で支援委託が終わることも書き添える
           lines.push(
-            r.kind === "2号移行前日まで日割"
-              ? `${base}→${mdText(r.periodTo)}をもって特定技能１号の支援委託終了となります。`
+            p.ssw2EndOn
+              ? `${base}→特定技能２号へ資格変更のため、${mdText(p.ssw2EndOn)}をもって支援委託終了となります。`
               : base,
           );
         }
@@ -1440,7 +1455,7 @@ export function MonthlyBillingSection({
                           <td className="py-1.5 pr-2 tabular-nums">
                             {row.worker.recurring_sales_no || "—"}
                           </td>
-                          <td className="py-1.5 pr-2">{row.worker.residence_status}</td>
+                          <td className="py-1.5 pr-2">{visaCellText(row.worker)}</td>
                           <td className="py-1.5 pr-2 tabular-nums">
                             {row.worker.residence_expiry_date ?? "—"}
                           </td>
@@ -1501,7 +1516,7 @@ export function MonthlyBillingSection({
                           <td className="py-1.5 pr-2 tabular-nums">
                             {recurringSalesNoForRow(row, org.organizationId) || "—"}
                           </td>
-                          <td className="py-1.5 pr-2">{row.worker.residence_status}</td>
+                          <td className="py-1.5 pr-2">{visaCellText(row.worker)}</td>
                           <td className="py-1.5 pr-2 tabular-nums">{periodText(row)}</td>
                           <td className="py-1.5 pr-2 tabular-nums">{daysText(row)}</td>
                           <td className="py-1.5 text-right tabular-nums">
@@ -2515,7 +2530,7 @@ export function MonthlyBillingSection({
                               </span>
                             )}
                           </td>
-                          <td className="py-1.5 pr-2 text-muted">{row.worker.residence_status}</td>
+                          <td className="py-1.5 pr-2 text-muted">{visaCellText(row.worker)}</td>
                           {/* その機関での雇用開始日（所属機関別の記録を優先）。許可日の前に置く */}
                           <td className="py-1.5 pr-2 tabular-nums text-muted">
                             {employmentStartForOrg(row.worker, org.organizationId) || "—"}
@@ -2796,6 +2811,12 @@ export function MonthlyBillingSection({
 // 特定技能2号の行か（2号は特定技能総合保険に加入できないため、保険No.は発生しない）
 function isSsw2Row(row: MonthlyBillingRow): boolean {
   return (row.worker.residence_status ?? "").normalize("NFKC").includes("特定技能2号");
+}
+
+// 名簿の在留資格の欄。特定技能2号の許可日より前の月は、まだ1号として支援していたことを添える
+function visaCellText(w: BillingWorker): string {
+  const status = w.residence_status ?? "";
+  return w.before_ssw2 ? `${status}（2号許可前・支援中）` : status;
 }
 
 // 許可売上No.・保険No.の1マス。売上明細の行があればその場で直せる。
