@@ -191,7 +191,38 @@ export function openPostApplyCount(
   );
 }
 
-// 郵送する書類かタスクがある準備リストだけを、残りの多い順→氏名順に並べる
+// 入管へ郵送した記録の1行（申請一覧・申請詳細で「いつ・何を・追跡番号」を見返すため）
+export interface PostApplyMailingRecord {
+  checklistId: string;
+  workerId: string;
+  workerName: string;
+  todoNo: string;
+  mailing: PostApplyMailing;
+}
+
+// 全員ぶんの郵送の記録を、投函日の新しい順→氏名順に並べる
+export function postApplyMailingRecords(
+  entries: Pick<PostApplyEntry, "checklistId" | "workerId" | "workerName" | "todoNo" | "mailings">[],
+): PostApplyMailingRecord[] {
+  return entries
+    .flatMap((e) =>
+      e.mailings.map((mailing) => ({
+        checklistId: e.checklistId,
+        workerId: e.workerId,
+        workerName: e.workerName,
+        todoNo: e.todoNo,
+        mailing,
+      })),
+    )
+    .sort(
+      (a, b) =>
+        b.mailing.posted_on.localeCompare(a.mailing.posted_on) ||
+        a.workerName.localeCompare(b.workerName, "ja"),
+    );
+}
+
+// 郵送する書類かタスクがある準備リストと、入管へ郵送した記録がある準備リストを、
+// 残りの多い順→氏名順に並べる（全部郵送した人も記録を見返せるよう残す。画面側で出し分ける）
 export function buildPostApplyEntries(
   checklists: {
     id: string;
@@ -228,7 +259,7 @@ export function buildPostApplyEntries(
       tasks: normalizePostApplyTasks(c.post_apply_tasks),
       notes: normalizePostApplyNotes(c.post_apply_notes),
     }))
-    .filter((e) => openPostApplyCount(e) > 0);
+    .filter((e) => openPostApplyCount(e) > 0 || e.mailings.length > 0);
   return entries.sort(
     (a, b) => openPostApplyCount(b) - openPostApplyCount(a) || a.workerName.localeCompare(b.workerName, "ja"),
   );
