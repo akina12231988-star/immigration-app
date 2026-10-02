@@ -135,6 +135,7 @@ import {
   periodLengthText,
   residencePeriodCandidates,
   residencePeriodFromDates,
+  residencePeriodPatch,
   workRestrictionLabel,
 } from "@/lib/residence-card";
 import { WORKER_SITUATIONS, autoSituation, situationDescription } from "@/lib/worker-situation";
@@ -191,6 +192,10 @@ export function WorkerDetail({
   // 下書き（draft）は項目名→入力中の文字列。保存時は現在の値から変わった項目だけ送る
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Record<string, string>>({});
+  // 在留期間の「訂正する」: 自動計算できていても入力欄を出す（保存は通常の保存ボタン）。
+  // 「自動計算に戻す」の保存中フラグ
+  const [periodFixing, setPeriodFixing] = useState(false);
+  const [periodResetBusy, setPeriodResetBusy] = useState(false);
   // 在日親族は配列なので別で持つ（null = 触っていない）
   const [relativesDraft, setRelativesDraft] = useState<WorkerRelative[] | null>(null);
   // 配偶者の情報（0175。保存するまでは下書きとして持つ）
@@ -411,6 +416,20 @@ export function WorkerDetail({
     setError(null);
     try {
       const payload = buildUpdatePayload(draft, workerRecord);
+      // 在留期間: 自動計算と違う値を入れたときは「手入力で訂正」にする（0176）。
+      // 日付だけを変えたときは訂正を外し、新しい日付からの自動計算に戻す
+      if ("residence_period" in payload) {
+        Object.assign(
+          payload,
+          residencePeriodPatch(
+            payload.residence_period ?? "",
+            "residence_permit_date" in payload ? payload.residence_permit_date : worker.residence_permit_date,
+            "residence_expiry_date" in payload ? payload.residence_expiry_date : worker.residence_expiry_date,
+          ),
+        );
+      } else if ("residence_permit_date" in payload || "residence_expiry_date" in payload) {
+        if (worker.residence_period_manual) payload.residence_period_manual = false;
+      }
       // 氏名は必須（空にして保存すると各画面で誰か分からなくなる）
       if ("name" in payload && !payload.name) {
         setError("氏名は空にできません。");
@@ -463,6 +482,7 @@ export function WorkerDetail({
       setRelativesDraft(null);
       setSpouseDraft(null);
       setEditing(false);
+      setPeriodFixing(false);
       setApplied(null);
       router.refresh();
       return true;
@@ -598,10 +618,34 @@ export function WorkerDetail({
   const periodChoices = autoPeriod
     ? []
     : residencePeriodCandidates(worker.residence_permit_date ?? "", worker.residence_expiry_date ?? "");
+  // 手入力で訂正した在留期間（0176）。訂正中は自動計算より登録値を出す
+  const periodManual = !!worker.residence_period_manual && !!worker.residence_period.trim();
   const periodMismatch =
+    !periodManual &&
     !!autoPeriod &&
     !!worker.residence_period.trim() &&
     worker.residence_period.normalize("NFKC").trim() !== autoPeriod;
+  // 登録値があっても「訂正する」を押したら出す。それ以外は今までどおり（編集モード、または自動計算できず未登録のとき）
+  const showPeriodInput =
+    canEdit && (editing || periodFixing || (!autoPeriod && cur("residence_period") === ""));
+  // 訂正をやめて自動計算に戻す
+  const resetPeriodManual = async () => {
+    setPeriodResetBusy(true);
+    setError(null);
+    try {
+      // 自動計算の値を登録値にもそろえる（戻したあとに「登録済みの値と違う」と出ないように）
+      await updateWorker(createClient(), worker.id, {
+        residence_period_manual: false,
+        ...(autoPeriod ? { residence_period: autoPeriod } : {}),
+      });
+      setPeriodFixing(false);
+      router.refresh();
+    } catch (err) {
+      setError(dbErrorMessage(err, "0176_worker_residence_period_manual.sql", "在留期間の訂正を戻せませんでした"));
+    } finally {
+      setPeriodResetBusy(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -1130,12 +1174,45 @@ export function WorkerDetail({
             </p>
             <div className="mt-1 rounded-xl bg-background px-3 py-2.5">
               <p className="text-lg font-black">
-                {autoPeriod ?? (worker.residence_period || "—")}
+                {periodManual ? worker.residence_period : (autoPeriod ?? (worker.residence_period || "—"))}
               </p>
-              {autoPeriod ? (
+              {periodManual ? (
+                <p className="mt-0.5 text-[10px] text-muted">
+                  手入力で訂正した在留期間です
+                  {autoPeriod && autoPeriod !== worker.residence_period.normalize("NFKC").trim() && `（自動計算では ${autoPeriod}）`}
+                  {canEdit && !editing && !periodFixing && (
+                    <button
+                      type="button"
+                      onClick={() => setPeriodFixing(true)}
+                      className="ml-2 font-bold text-brand underline"
+                    >
+                      訂正する
+                    </button>
+                  )}
+                  {canEdit && !editing && (
+                    <button
+                      type="button"
+                      onClick={() => void resetPeriodManual()}
+                      disabled={periodResetBusy}
+                      className="ml-2 font-bold text-brand underline disabled:opacity-50"
+                    >
+                      自動計算に戻す
+                    </button>
+                  )}
+                </p>
+              ) : autoPeriod ? (
                 <p className="mt-0.5 text-[10px] text-muted">
                   許可年月日と在留期間満了日から自動計算しています
                   {periodSpan && `（許可日から期限日まで ${periodSpan}）`}
+                  {canEdit && !editing && !periodFixing && (
+                    <button
+                      type="button"
+                      onClick={() => setPeriodFixing(true)}
+                      className="ml-2 font-bold text-brand underline"
+                    >
+                      訂正する
+                    </button>
+                  )}
                 </p>
               ) : !worker.residence_permit_date || !worker.residence_expiry_date ? (
                 <p className="mt-0.5 text-[10px] text-muted">
@@ -1156,10 +1233,11 @@ export function WorkerDetail({
               {periodMismatch && (
                 <p className="mt-0.5 text-[10px] font-bold text-seal">
                   登録済みの「{worker.residence_period}」と違います。日付か登録値を確かめてください
+                  {canEdit && "（券面のとおり登録値が正しいなら「訂正する」で保存し直してください）"}
                 </p>
               )}
               {/* 自動で決められないときは、押すだけで入れられる候補を出す（近い順） */}
-              {showInput("residence_period") && (editing || !autoPeriod) && periodChoices.length > 0 && (
+              {showPeriodInput && periodChoices.length > 0 && (
                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                   <span className="text-[10px] text-muted">候補:</span>
                   {periodChoices.map((p) => (
@@ -1179,8 +1257,8 @@ export function WorkerDetail({
                   ))}
                 </div>
               )}
-              {/* 自動計算できないときの登録値。編集モードではいつでも直せる */}
-              {showInput("residence_period") && (editing || !autoPeriod) && (
+              {/* 自動計算できないときの登録値。編集モードと「訂正する」のときはいつでも直せる */}
+              {showPeriodInput && (
                 <div className="mt-1.5">
                   <input
                     list="detail-residence-periods"
@@ -1196,7 +1274,9 @@ export function WorkerDetail({
                     ))}
                   </datalist>
                   <p className="mt-0.5 text-[10px] text-muted">
-                    登録値（日付から計算できないときはこちらを表示します）
+                    {autoPeriod
+                      ? `自動計算（${autoPeriod}）と違う値を入れて保存すると、手入力の訂正として以後はこちらを出します`
+                      : "登録値（日付から計算できないときはこちらを表示します）"}
                   </p>
                 </div>
               )}

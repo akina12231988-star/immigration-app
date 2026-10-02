@@ -79,6 +79,7 @@ export type CopyWorker = Pick<
     Pick<
       Worker,
       | "specialty_grade"
+      | "residence_period_manual"
       | "jisshu2_shokushu"
       | "jisshu2_sagyo"
       | "jisshu2_proof"
