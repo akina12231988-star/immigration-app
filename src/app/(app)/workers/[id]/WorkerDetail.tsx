@@ -430,6 +430,10 @@ export function WorkerDetail({
       } else if ("residence_permit_date" in payload || "residence_expiry_date" in payload) {
         if (worker.residence_period_manual) payload.residence_period_manual = false;
       }
+      // 在留資格の全角の数字・空白は半角にそろえる（「特定技能１号」が請求の対象判定から漏れないように）
+      if (typeof payload.residence_status === "string") {
+        payload.residence_status = payload.residence_status.normalize("NFKC").trim();
+      }
       // 特定技能1号（特定活動を含む）→特定技能2号（移行準備の特定活動を含む）に変えたら支援委託は終了。
       // 支援区分を手で選んでいないときは自動で「支援対象外」にする
       if ("residence_status" in payload && !("support" in payload)) {
