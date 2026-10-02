@@ -665,15 +665,15 @@ describe("特定技能2号になった人の、2号の許可日より前の月",
     expect(supportedBeforeSsw2({ ...w, leaving_on: "2026-08-20" }, "2026-09")).toBe(false);
   });
 
-  it("2号許可前の行にすると、その月の名簿に満額で載り、在留資格は空欄になる（2号と書かない）", () => {
-    const billed = markBeforeSsw2(w);
+  it("その月の在留資格が履歴から分かる（2号以外）ときだけ、2号許可前の行として満額で載せる", () => {
+    // 在留資格がまだ2号のまま（その月の在留資格が分からない）なら載せない
+    expect(markBeforeSsw2(w)).toBeNull();
+    const billed = markBeforeSsw2({ ...w, residence_status: "特定活動（特定技能1号移行準備）" })!;
     expect(billed.support).toBe("支援対象");
-    expect(billed.residence_status).toBe("");
-    // 履歴からその月の在留資格（特定活動など）が分かっているときはそのまま
-    expect(markBeforeSsw2({ ...w, residence_status: "特定活動（特定技能1号移行準備）" }).residence_status).toBe(
-      "特定活動（特定技能1号移行準備）",
-    );
+    expect(billed.residence_status).toBe("特定活動（特定技能1号移行準備）");
     expect(isBilledInMonth(billed, "2026-09")).toBe(true);
+    // 載せなかった人には理由を出す
+    expect(billingExclusionReason({ ...w, before_ssw2_unknown: true }, "2026-09")).toContain("在留資格が履歴に無いため");
     const billing = summarizeMonthlyBilling([billed], [org("org-1", "BASE株式会社", "15000")], "2026-09");
     expect(billing.orgs[0].rows[0].kind).toBe("満額");
     expect(billing.orgs[0].rows[0].amount).toBe(15000);

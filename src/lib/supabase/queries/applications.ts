@@ -209,6 +209,40 @@ export interface GrantedPermit {
   content: string; // 申請内容（在留期間の更新許可 など）
 }
 
+// 申請一覧の許可欄のほかに、外国人詳細の「在留資格の履歴」で手で入れた分（worker_visa_history・0138）と
+// 在留カードを書き換える前の記録（worker_card_history・0137）も、対象月の時点の在留資格を割り出すのに使う。
+// どちらかのテーブルが無い環境でも落とさない（読めなかった分は無しとして扱う）
+export async function listPermitHistoryExtras(supabase: SupabaseClient): Promise<GrantedPermit[]> {
+  const [manual, cards] = await Promise.all([
+    supabase
+      .from("worker_visa_history")
+      .select("worker_id, permit_date, status, kind")
+      .then(
+        (r) => (r.error ? [] : ((r.data as { worker_id: string; permit_date: string; status: string | null; kind: string | null }[] | null) ?? [])),
+        () => [],
+      ),
+    supabase
+      .from("worker_card_history")
+      .select("worker_id, residence_permit_date, residence_status")
+      .not("residence_permit_date", "is", null)
+      .then(
+        (r) =>
+          r.error
+            ? []
+            : ((r.data as { worker_id: string; residence_permit_date: string; residence_status: string | null }[] | null) ?? []),
+        () => [],
+      ),
+  ]);
+  return [
+    ...manual
+      .filter((r) => r.worker_id && r.permit_date)
+      .map((r) => ({ workerId: r.worker_id, permitDate: r.permit_date, visa: r.status ?? "", content: r.kind ?? "" })),
+    ...cards
+      .filter((r) => r.worker_id && r.residence_permit_date)
+      .map((r) => ({ workerId: r.worker_id, permitDate: r.residence_permit_date, visa: r.residence_status ?? "", content: "" })),
+  ];
+}
+
 export async function listGrantedPermits(
   supabase: SupabaseClient,
 ): Promise<GrantedPermit[]> {

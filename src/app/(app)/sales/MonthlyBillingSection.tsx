@@ -27,6 +27,7 @@ import { setWorkerRecurringSalesNo } from "@/lib/supabase/queries/workers";
 import { updateOrganization } from "@/lib/supabase/queries/organizations";
 import {
   listGrantedPermits,
+  listPermitHistoryExtras,
   listInReviewWorkerIds,
   listPermitContentsByMonth,
   type GrantedPermit,
@@ -261,11 +262,11 @@ export function MonthlyBillingSection({
   useEffect(() => {
     let cancelled = false;
     void Promise.resolve().then(() =>
-      listGrantedPermits(createClient())
-        .then((rows) => {
+      Promise.all([listGrantedPermits(createClient()), listPermitHistoryExtras(createClient())])
+        .then(([rows, extras]) => {
           if (cancelled) return;
           const byWorker: Record<string, GrantedPermit[]> = {};
-          for (const r of rows) (byWorker[r.workerId] ??= []).push(r);
+          for (const r of [...rows, ...extras]) (byWorker[r.workerId] ??= []).push(r);
           setPermitHistory(byWorker);
         })
         .catch((err) => {
@@ -335,9 +336,13 @@ export function MonthlyBillingSection({
           salesNos[w.id] === undefined ? w : { ...w, recurring_sales_no: salesNos[w.id] };
         // 特定技能2号（移行準備を含む）になった人で、2号の許可日が対象月より後なら、
         // その月はまだ1号として支援していたので支援対象として載せる（支援委託の終了は許可日の前日）。
-        // 在留資格は履歴からその月の時点のものが分かればそれ、分からなければ空欄（2号とは書かない）
+        // ただし、その月の時点の在留資格が履歴（申請一覧の許可欄・在留資格の履歴・在留カードの記録）から
+        // 分かるときだけ。分からない（2号のまま）なら載せず、「名簿に載っていない人」に理由を出す
         const beforeSsw2 = supportedBeforeSsw2(w, month);
-        const withSsw2 = (v: BillingWorker): BillingWorker => (beforeSsw2 ? markBeforeSsw2(v) : v);
+        const withSsw2 = (v: BillingWorker): BillingWorker => {
+          if (!beforeSsw2) return v;
+          return markBeforeSsw2(v) ?? { ...v, before_ssw2_unknown: true };
+        };
         // 現在の許可日が対象月より後なら、その月の時点で有効だった許可に置き換える。
         // 更新許可で日付が進んだ人が、過去の月の名簿から消えないようにする
         const permits = permitHistory[w.id];
