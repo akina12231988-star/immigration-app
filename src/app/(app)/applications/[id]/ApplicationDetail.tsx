@@ -3,7 +3,8 @@
 import { messengerWebUrl } from "@/lib/messenger-link";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import type { PostApplyTask } from "@/lib/post-apply";
+import { prepDocLabel, type PostApplyMailing, type PostApplyTask } from "@/lib/post-apply";
+import { letterPackTrackingUrl } from "@/lib/application-prep";
 import { useRouter } from "next/navigation";
 import {
   Copy,
@@ -33,6 +34,7 @@ import { updateWorker } from "@/lib/supabase/queries/workers";
 import {
   listMailAfterApplyDocs,
   listOpenPostApplyTasks,
+  listPostApplyMailingsForWorker,
   type MailAfterApplyDoc,
 } from "@/lib/supabase/queries/application-prep";
 import { PREP_DOC_DEFS } from "@/lib/application-prep";
@@ -100,6 +102,8 @@ export function ApplicationDetail({ id }: { id: string }) {
   const [mailDocs, setMailDocs] = useState<MailAfterApplyDoc[]>([]);
   // 申請準備の「申請後に入管へ郵送するリスト」に入れたタスク（済みでないもの）
   const [postTasks, setPostTasks] = useState<{ todo_no: string; task: PostApplyTask }[]>([]);
+  // 入管へ郵送した追加資料の記録（投函日・追跡番号・書類）。郵送し終わったあとも見返せる
+  const [postMailings, setPostMailings] = useState<{ todo_no: string; mailing: PostApplyMailing }[]>([]);
   useEffect(() => {
     if (!workerId) return;
     let cancelled = false;
@@ -113,10 +117,16 @@ export function ApplicationDetail({ id }: { id: string }) {
         if (!cancelled) setPostTasks(tasks);
       })
       .catch(() => undefined);
+    listPostApplyMailingsForWorker(createClient(), workerId)
+      .then((rows) => {
+        if (!cancelled) setPostMailings(rows);
+      })
+      .catch(() => undefined);
     return () => {
       cancelled = true;
     };
   }, [workerId]);
+
   // 氏名・進行状況・紐づく外国人のカードは、下へスクロールしても画面上部に固定する。
   // 上のヘッダー（sticky・戻るボタン付き）に重ならないよう、高さを測ってその真下に付ける
   const [stickyTop, setStickyTop] = useState(0);
@@ -323,6 +333,41 @@ export function ApplicationDetail({ id }: { id: string }) {
               「申請後の郵送・タスク」
             </Link>
             か申請準備の「申請後に入管へ郵送するリスト」で消し込むと、このアラートは消えます。
+          </p>
+        </div>
+      )}
+      {/* 入管へ郵送した追加資料の記録（申請準備・申請一覧で「入管へ郵送した」と記録したもの） */}
+      {postMailings.length > 0 && (
+        <div className="rounded-xl border border-status-approved-fg/40 bg-status-approved-bg/40 px-3 py-2.5">
+          <p className="text-sm font-bold text-status-approved-fg">
+            入管へ郵送した追加資料（{postMailings.length}回の投函）
+          </p>
+          <ul className="mt-1 space-y-1 text-xs">
+            {postMailings.map(({ todo_no, mailing }) => (
+              <li key={mailing.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <span className="font-bold tabular-nums">{postedOnLabel(mailing.posted_on)} 投函</span>
+                <span className="text-muted">
+                  追跡番号{" "}
+                  {mailing.tracking ? (
+                    <a
+                      href={letterPackTrackingUrl(mailing.tracking)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-bold tabular-nums text-brand underline"
+                    >
+                      {mailing.tracking}
+                    </a>
+                  ) : (
+                    "未入力"
+                  )}
+                </span>
+                <span className="min-w-0 break-words">{mailing.doc_ids.map(prepDocLabel).join("・")}</span>
+                {todo_no && <span className="text-[11px] text-muted">（{todo_no}）</span>}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-[11px] text-muted">
+            記録の取り消し・追加は、申請一覧の「申請後の郵送・タスク」か申請準備の「申請後に入管へ郵送するリスト」で行います。
           </p>
         </div>
       )}
@@ -671,4 +716,10 @@ function InfoRow({ label, value }: { label: string; value: string }) {
       <dd className="font-bold">{value}</dd>
     </div>
   );
+}
+
+// "2026-09-25" → "2026/9/25"（投函日の表記）
+function postedOnLabel(d: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
+  return m ? `${m[1]}/${Number(m[2])}/${Number(m[3])}` : d || "日付未入力";
 }

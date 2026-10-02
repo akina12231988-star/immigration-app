@@ -323,6 +323,24 @@ export async function listOpenPostApplyTasks(
   );
 }
 
+// この外国人の、入管へ郵送した記録（投函日・追跡番号・書類）。申請詳細で見返す用。
+// 0168未適用でも読めるよう select("*")（記録は無しとして扱う）
+export async function listPostApplyMailingsForWorker(
+  supabase: SupabaseClient,
+  workerId: string,
+): Promise<{ todo_no: string; mailing: PostApplyMailing }[]> {
+  const { data, error } = await supabase
+    .from("application_prep_checklists")
+    .select("*")
+    .eq("worker_id", workerId);
+  if (error) throw error;
+  return ((data as { todo_no: string | null; post_apply_mailings?: unknown }[]) ?? [])
+    .flatMap((c) =>
+      normalizePostApplyMailings(c.post_apply_mailings).map((mailing) => ({ todo_no: c.todo_no ?? "", mailing })),
+    )
+    .sort((a, b) => b.mailing.posted_on.localeCompare(a.mailing.posted_on));
+}
+
 export async function listMailAfterApplyDocs(
   supabase: SupabaseClient,
   workerId: string,
@@ -533,6 +551,8 @@ export async function listPostApplyEntries(supabase: SupabaseClient): Promise<Po
       doc_id: d.doc_id,
       done: isPostApplyDocDone(d.doc_id, d.status ?? ""),
     }));
+  // 残りがある準備リストに加えて、入管へ郵送した記録がある準備リストも取る
+  // （全部郵送し終わった人の投函日・追跡番号を「入管へ郵送した記録」で見返せるように）
   const wanted = checklists.filter(
     (c) =>
       unmailedDocIds(
@@ -540,7 +560,8 @@ export async function listPostApplyEntries(supabase: SupabaseClient): Promise<Po
         normalizePostApplyMailings(c.post_apply_mailings),
       ).length > 0 ||
       issueOnlyDocs.some((d) => d.checklist_id === c.id && !d.done) ||
-      normalizePostApplyTasks(c.post_apply_tasks).some((t) => !t.done),
+      normalizePostApplyTasks(c.post_apply_tasks).some((t) => !t.done) ||
+      normalizePostApplyMailings(c.post_apply_mailings).length > 0,
   );
   const workerIds = [...new Set(wanted.map((c) => c.worker_id))];
   const nameById = new Map<string, string>();

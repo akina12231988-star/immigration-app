@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   addPostApplyNote,
   buildPostApplyEntries,
+  postApplyMailingRecords,
   isPostApplyDocDone,
   postApplyNoteAuthor,
   unissuedDocIds,
@@ -140,13 +141,33 @@ describe("入管へ郵送した記録", () => {
       normalizePostApplyMailings([{ id: "x", doc_ids: ["kazei", 1], posted_on: "2026-09-25", tracking: "9" }, { doc_ids: [] }]),
     ).toEqual([{ id: "x", doc_ids: ["kazei"], posted_on: "2026-09-25", tracking: "9" }]);
   });
-  it("一覧では全部郵送してタスクも済んだ準備リストは出さない", () => {
+  it("全部郵送してタスクも済んだ準備リストも、記録を見返せるよう残す（残りは0件）", () => {
     const entries = buildPostApplyEntries(
       [{ id: "c1", worker_id: "w1", post_apply_mailings: [{ id: "m", doc_ids: ["kazei"], posted_on: "2026-09-25", tracking: "" }] }],
       [{ checklist_id: "c1", doc_id: "kazei" }],
       new Map([["w1", "A"]]),
     );
-    expect(entries).toEqual([]);
+    expect(entries).toHaveLength(1);
+    expect(openPostApplyCount(entries[0])).toBe(0);
+    // 郵送する書類もタスクも記録も無い準備リストは出さない
+    expect(buildPostApplyEntries([{ id: "c2", worker_id: "w1" }], [], new Map([["w1", "A"]]))).toEqual([]);
+  });
+  it("投函の記録を全員ぶんまとめて、投函日の新しい順→氏名順に並べる", () => {
+    const records = postApplyMailingRecords([
+      {
+        checklistId: "c1",
+        workerId: "w1",
+        workerName: "TRAN B",
+        todoNo: "25-1",
+        mailings: [newPostApplyMailing(["kazei"], "2026-09-25", "111"), newPostApplyMailing(["nozei"], "2026-09-30", "222")],
+      },
+      { checklistId: "c2", workerId: "w2", workerName: "NGUYEN A", todoNo: "25-2", mailings: [newPostApplyMailing(["gensen"], "2026-09-30", "333")] },
+    ]);
+    expect(records.map((r) => [r.workerName, r.mailing.posted_on, r.mailing.tracking])).toEqual([
+      ["NGUYEN A", "2026-09-30", "333"],
+      ["TRAN B", "2026-09-30", "222"],
+      ["TRAN B", "2026-09-25", "111"],
+    ]);
   });
 });
 
