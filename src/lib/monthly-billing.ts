@@ -62,6 +62,8 @@ export type BillingWorker = Pick<
   // 特定技能2号（移行準備の特定活動を含む）の許可日が対象月より後で、
   // その月はまだ1号として支援していた人に立てる印（名簿・備考欄で分かるようにする）
   before_ssw2?: boolean;
+  // 2号の許可日より前の月だが、その月の時点の在留資格が履歴に無く（2号のまま）、名簿に載せなかった印
+  before_ssw2_unknown?: boolean;
 };
 
 export type BillingOrg = Pick<Organization, "id" | "name" | "intake">;
@@ -173,6 +175,10 @@ function residedInMonth(worker: BillingWorker, to: string): boolean {
 // 挙げると一覧がうるさくなるが、支援区分の変え忘れは拾いたいため
 export function billingExclusionReason(worker: BillingWorker, month: string): string | null {
   if (isBilledInMonth(worker, month)) return null;
+  // 2号の許可日より前の月だが、その月の在留資格が履歴に無い人（載せていない理由を出して、登録を促す）
+  if (worker.before_ssw2_unknown) {
+    return "特定技能2号の許可日より前の月ですが、その月の在留資格が履歴に無いため載せていません（申請一覧の許可欄か外国人詳細の在留資格の履歴に、そのときの許可（特定活動・1号）を登録すると載ります）";
+  }
   // 2号への移行月は「許可日の前日まで日割り」で名簿に載るので、除外理由には出さない
   if (isSsw2TransitionMonth(worker, month)) return null;
   const { from, to } = monthRange(month);
@@ -349,17 +355,14 @@ export function supportedBeforeSsw2(worker: BillingWorker, month: string): boole
   return true;
 }
 
-// 2号の許可日より前の月の行にする。支援対象として載せ、在留資格がまだ2号のまま
-// （その月の時点の在留資格が履歴から分からない）なら空欄にする（請求書・名簿に「特定技能2号」と書かないため）
-export function markBeforeSsw2(worker: BillingWorker): BillingWorker {
+// 2号の許可日より前の月の行にする（支援対象として載せる）。
+// その月の時点の在留資格が履歴から分かっている（特定活動・1号など、2号以外）ときだけ載せ、
+// 在留資格がまだ2号のまま（その月の在留資格が分からない）なら null（名簿には載せない。
+// 請求書に「特定技能2号」の人が出ないようにするため）
+export function markBeforeSsw2(worker: BillingWorker): BillingWorker | null {
   const status = (worker.residence_status ?? "").normalize("NFKC").trim();
-  return {
-    ...worker,
-    support: "支援対象",
-    resident_before_month: true,
-    before_ssw2: true,
-    residence_status: isSsw2Residence(status) ? "" : worker.residence_status,
-  };
+  if (isSsw2Residence(status)) return null;
+  return { ...worker, support: "支援対象", resident_before_month: true, before_ssw2: true };
 }
 
 // 2号の許可日が対象月の1日の人（支援委託は前月末で終わり、その月の請求は無い）。
