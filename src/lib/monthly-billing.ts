@@ -349,6 +349,19 @@ export function supportedBeforeSsw2(worker: BillingWorker, month: string): boole
   return true;
 }
 
+// 2号の許可日より前の月の行にする。支援対象として載せ、在留資格がまだ2号のまま
+// （その月の時点の在留資格が履歴から分からない）なら空欄にする（請求書・名簿に「特定技能2号」と書かないため）
+export function markBeforeSsw2(worker: BillingWorker): BillingWorker {
+  const status = (worker.residence_status ?? "").normalize("NFKC").trim();
+  return {
+    ...worker,
+    support: "支援対象",
+    resident_before_month: true,
+    before_ssw2: true,
+    residence_status: isSsw2Residence(status) ? "" : worker.residence_status,
+  };
+}
+
 // 2号の許可日が対象月の1日の人（支援委託は前月末で終わり、その月の請求は無い）。
 // 名簿の行は無いが、備考欄に「特定技能２号へ資格変更のため支援委託終了」と書くために拾う。
 // 2号の更新許可（すでに支援は終わっている）は対象にしない
