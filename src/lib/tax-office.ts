@@ -105,6 +105,19 @@ export function mailingWaitingLabel(requestKind?: string): string {
   return "請求先からの郵送待ち";
 }
 
+// 記録一覧のボタンで進捗を変えたときの保存内容。
+// 完了にしたら届いた日を今日にする（入っていればそのまま）。完了以外に戻したら届いた日は消す
+export function quickMailingProgressPatch(
+  record: { mailingProgress?: MailingProgress; receivedDate?: string },
+  next: MailingProgress,
+  today: string,
+): { mailingProgress: MailingProgress; receivedDate: string } {
+  return {
+    mailingProgress: next,
+    receivedDate: next === "done" ? record.receivedDate || today : "",
+  };
+}
+
 // その請求書類での進捗の選択肢（郵送待ちの呼び名だけが変わる）
 export function mailingProgressOptionsFor(
   requestKind?: string,
