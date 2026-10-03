@@ -10,6 +10,7 @@ import {
   taxOfficeMailingLines,
   taxOfficeShortName,
   type TaxOffice,
+  quickMailingProgressPatch,
 } from "./tax-office";
 
 const office = (name: string, jurisdiction: string): TaxOffice => ({
@@ -140,5 +141,23 @@ describe("郵送請求の進捗（請求書類ごとの呼び名）", () => {
     expect(autoMailingProgress("preparing", "", "", false)).toBe("preparing");
     // すでに決めてあるものは変えない
     expect(autoMailingProgress("done", "", "", false)).toBe("done");
+  });
+});
+
+describe("quickMailingProgressPatch（記録一覧のボタンで進捗を変える）", () => {
+  it("完了にしたら届いた日を今日にし、入っていればそのまま。完了以外に戻したら届いた日は消す", () => {
+    expect(quickMailingProgressPatch({ mailingProgress: "waiting" }, "done", "2026-10-03")).toEqual({
+      mailingProgress: "done",
+      receivedDate: "2026-10-03",
+    });
+    expect(quickMailingProgressPatch({ mailingProgress: "done", receivedDate: "2026-09-30" }, "done", "2026-10-03")).toEqual({
+      mailingProgress: "done",
+      receivedDate: "2026-09-30",
+    });
+    expect(quickMailingProgressPatch({ mailingProgress: "done", receivedDate: "2026-09-30" }, "waiting", "2026-10-03")).toEqual({
+      mailingProgress: "waiting",
+      receivedDate: "",
+    });
+    expect(quickMailingProgressPatch({}, "preparing", "2026-10-03")).toEqual({ mailingProgress: "preparing", receivedDate: "" });
   });
 });

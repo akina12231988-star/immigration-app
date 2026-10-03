@@ -52,6 +52,9 @@ import { municipalityOptionLabel } from "@/lib/prefectures";
 import { dbErrorMessage } from "@/lib/errors";
 import { extraSaveBlockers, methodBlockers } from "@/lib/mailing-save-check";
 import { MAILING_PROGRESS_OPTIONS, type TaxOffice } from "@/lib/tax-office";
+import { MailingProgressButtons } from "@/components/mailing/MailingProgressButtons";
+import { quickMailingProgressPatch } from "@/lib/tax-office";
+import { todayStr } from "@/lib/ssw/calc";
 import {
   MailingProgressFields,
   mailingProgressPatch,
@@ -1350,6 +1353,20 @@ function RecordsTab({
                       )}
                       {r.mailingNote && <span className="text-[11px] text-muted">{r.mailingNote}</span>}
                     </p>
+                  )}
+                  {/* 進捗のボタン: 編集を開かずにこの場で押して変える（完了にすると届いた日は今日になる） */}
+                  {canEdit && (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      <MailingProgressButtons
+                        progress={r.mailingProgress}
+                        requestKind={r.requestKind}
+                        disabled={busy}
+                        onChange={(next) =>
+                          void persistUpdate({ ...r, ...quickMailingProgressPatch(r, next, todayStr()) })
+                        }
+                      />
+                      <span className="text-[10px] text-muted">押すとその進捗で保存します</span>
+                    </div>
                   )}
                 </div>
                 {canEdit && (
