@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Users } from "lucide-react";
+import { Printer, Users } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
 import { insertWorkerWage } from "@/lib/supabase/queries/wages";
@@ -128,6 +128,17 @@ export function OrganizationRoster({
         </p>
       )}
 
+      {/* 在籍中の人を名簿にして、最低賃金の改定に伴う時給の確認をFAXで送る案内（A4横） */}
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <Link
+          href={`/organizations/${organizationId}/wage-notice`}
+          className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-brand px-3 text-xs font-bold text-brand hover:bg-brand/5"
+        >
+          <Printer size={14} />
+          最低賃金の案内を印刷（A4横・FAX用）
+        </Link>
+        <span className="text-[11px] text-muted">在籍中の人の名簿に、改定後の時給を書いてもらう欄を付けた案内文です。</span>
+      </div>
       <Section
         title="在籍中"
         countLabel={`${active.length}名`}
