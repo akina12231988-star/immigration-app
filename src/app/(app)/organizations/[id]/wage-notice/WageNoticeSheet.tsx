@@ -11,16 +11,19 @@ import {
   defaultWageNoticeValues,
   monthDayText,
   wageNoticeFileName,
+  wageNoticeTargetText,
   warekiDateWithDow,
   yenText,
   type WageNoticeValues,
+  type WageNoticeWorker,
 } from "@/lib/wage-notice";
 
 const FIELD =
   "min-h-[36px] rounded-lg border border-border bg-surface px-2 text-sm focus:border-brand focus:outline-none";
 
 // 最低賃金の改定に伴う「時給のご確認」のお願い（A4横1枚）。
-// 上がFAX送付状、真ん中が改定内容、下が在籍名簿（改定後の時給を書いてもらう欄つき）。
+// 上がFAX送付状、真ん中が改定内容、下が名簿（改定後の時給を書いてもらう欄つき）。
+// 名簿は在籍中の人の後ろに、審査中（在留カードの受け取りがまだ）の人を「審査中」の印つきで並べる
 // 金額・適用日・都道府県・返信期限・担当者・FAX番号は印刷の前にここで変えられる
 export function WageNoticeSheet({
   organizationId,
@@ -33,7 +36,7 @@ export function WageNoticeSheet({
 }: {
   organizationId: string;
   organizationName: string;
-  workers: OrgRosterWorker[];
+  workers: WageNoticeWorker<OrgRosterWorker>[];
   today: string;
   staffName: string;
   fax: string;
@@ -43,6 +46,7 @@ export function WageNoticeSheet({
   const set = (patch: Partial<WageNoticeValues>) => setV((cur) => ({ ...cur, ...patch }));
   const hourly = Number(v.hourly.replace(/[^0-9]/g, "")) || 0;
   const hourlyText = yenText(hourly);
+  const underReviewCount = workers.filter((w) => w.underReview).length;
 
   // 印刷（PDF保存）のファイル名を「最低賃金の案内_機関名」にする
   const printSheet = () => {
@@ -69,7 +73,8 @@ export function WageNoticeSheet({
         </div>
         <div className="flex flex-col gap-3 px-4 py-3 lg:px-8">
           <p className="text-xs leading-relaxed text-muted">
-            所属機関にFAXで送る「時給のご確認」のお願いです。在籍中の人を名簿にして、改定後の時給を書いてもらう欄を付けています。
+            所属機関にFAXで送る「時給のご確認」のお願いです。在籍中の人と、申請が審査中（在留カードの受け取りがまだ）の人を名簿にして、改定後の時給を書いてもらう欄を付けています。
+            審査中の人は名簿に「審査中」の印が付き、本文も「在籍中・審査中の特定技能外国人について」になります。
             金額・適用日・返信期限などは下で変えてから印刷してください。印刷の設定で用紙は「A4」、向きは「横」にしてください。
           </p>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -118,8 +123,11 @@ export function WageNoticeSheet({
           </div>
           {workers.length === 0 && (
             <p className="rounded-lg bg-seal/10 px-2.5 py-1.5 text-xs font-bold text-seal">
-              状態が「在籍中」の方がいないため、名簿は空です。
+              状態が「在籍中」の方も、申請が審査中の方もいないため、名簿は空です。
             </p>
+          )}
+          {underReviewCount > 0 && (
+            <p className="text-xs text-muted">審査中（在留カードの受け取りがまだ）の方 {underReviewCount}名を名簿の最後に載せています。</p>
           )}
         </div>
       </div>
@@ -154,7 +162,7 @@ export function WageNoticeSheet({
           </h2>
           <p className="mb-2">
             平素より大変お世話になっております。{v.prefecture}の最低賃金が下記のとおり改定されます。
-            貴社に在籍中の特定技能外国人について、<b>{warekiDateWithDow(v.effectiveOn)}以降の時給</b>を下の名簿にご記入のうえ、
+            {wageNoticeTargetText(workers)}、<b>{warekiDateWithDow(v.effectiveOn)}以降の時給</b>を下の名簿にご記入のうえ、
             <b>{warekiDateWithDow(v.replyBy)}まで</b>に、本紙をFAX（{v.fax}）またはLINEの写真でお送りくださいますようお願いいたします。
           </p>
           <div className="mb-2 flex items-center gap-8 border-[1.5px] border-black px-4 py-1.5">
@@ -190,7 +198,10 @@ export function WageNoticeSheet({
               {workers.map((w, i) => (
                 <tr key={w.id}>
                   <td className={`${cell} text-center`}>{i + 1}</td>
-                  <td className={cell}>{w.name}</td>
+                  <td className={cell}>
+                    {w.name}
+                    {w.underReview && <span className="ml-1 text-[8.5pt] text-neutral-600">（審査中）</span>}
+                  </td>
                   <td className={`${cell} ${w.residenceStatus.length > 8 ? "text-[9pt]" : ""}`}>{w.residenceStatus}</td>
                   <td className={`${cell} text-center`}>{rosterJpDate(w.startOn)}</td>
                   <td className={`${cell} text-right tabular-nums ${belowNewMinimum(w.wageKind, w.wageAmount, hourly) ? "font-bold" : ""}`}>
@@ -203,7 +214,7 @@ export function WageNoticeSheet({
               {workers.length === 0 && (
                 <tr>
                   <td className={`${cell} text-center text-muted`} colSpan={7}>
-                    在籍中の方はいません
+                    在籍中・審査中の方はいません
                   </td>
                 </tr>
               )}
