@@ -17,6 +17,7 @@ import {
 } from "@/app/(app)/todos/file-actions";
 import { deleteHistory, insertHistory, updateHistory } from "@/lib/supabase/queries/histories";
 import { updateWorker } from "@/lib/supabase/queries/workers";
+import { normalizeOrganizationIntake } from "@/lib/organization-intake";
 import { PassportMrzPanel, SavedMrzCopyList } from "@/components/workers/PassportMrzPanel";
 import { dbErrorMessage } from "@/lib/errors";
 import { todayStr } from "@/lib/ssw/calc";
@@ -322,8 +323,15 @@ export function ExamTodoSection({
         <TodoFileAttachments todoId={todo.id} kind="アプリケーションNo." canEdit={canEdit} />
       </div>
 
-      {/* ２号試験の申込に必要なデータ（外国人詳細から自動反映）＋パスポート＋職歴 */}
-      {todo.worker_id && <ExamWorkerInfo workerId={todo.worker_id} canEdit={canEdit} />}
+      {/* ２号試験の申込に必要なデータ（外国人詳細から自動反映）＋パスポート＋職歴。
+          アプリケーションNo.の申込では所属機関（会社名・住所・連絡先・代表者）も申込サイトに書くので一緒に出す */}
+      {todo.worker_id && (
+        <ExamWorkerInfo
+          workerId={todo.worker_id}
+          canEdit={canEdit}
+          showOrg={todo.title === "２号アプリケーションナンバーの申込"}
+        />
+      )}
     </div>
   );
 }
@@ -680,17 +688,34 @@ function TodoFileAttachments({
 
 // ２号試験の申込に必要なデータ。外国人詳細ページの登録内容をそのまま反映して表示し、
 // 職歴はこの場で見て編集もできる
-function ExamWorkerInfo({ workerId, canEdit }: { workerId: string; canEdit: boolean }) {
+// 申込サイトに書く所属機関の情報（外国人の現在の所属機関から）
+interface ExamOrgInfo {
+  name: string;
+  address: string;
+  contact: string;
+  intake: unknown; // 代表者の氏名は登録内容（intake）に入っている
+}
+
+function ExamWorkerInfo({
+  workerId,
+  canEdit,
+  showOrg = false,
+}: {
+  workerId: string;
+  canEdit: boolean;
+  showOrg?: boolean; // true: 所属機関の会社名・住所・連絡先・代表者も出す（アプリケーションNo.の申込）
+}) {
   const [data, setData] = useState<{
     worker: Worker;
     histories: WorkHistoryRow[];
+    org: ExamOrgInfo | null;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = () => {
     createClient()
       .from("workers")
-      .select("*, work_histories(*)")
+      .select("*, work_histories(*), organizations(name, address, contact, intake)")
       .eq("id", workerId)
       .order("start_date", { referencedTable: "work_histories", ascending: true })
       .maybeSingle()
@@ -700,10 +725,11 @@ function ExamWorkerInfo({ workerId, canEdit }: { workerId: string; canEdit: bool
           return;
         }
         if (row) {
-          const { work_histories, ...worker } = row as Worker & {
+          const { work_histories, organizations, ...worker } = row as Worker & {
             work_histories: WorkHistoryRow[];
+            organizations: ExamOrgInfo | null;
           };
-          setData({ worker, histories: work_histories ?? [] });
+          setData({ worker, histories: work_histories ?? [], org: organizations ?? null });
         }
       });
   };
@@ -761,6 +787,36 @@ function ExamWorkerInfo({ workerId, canEdit }: { workerId: string; canEdit: bool
         {item("パスポート番号", w.passport_no)}
         {item("パスポート有効期限", w.passport_expiry_date)}
       </div>
+
+      {/* 所属機関（アプリケーションNo.の申込で会社の情報も書くため）。外国人の現在の所属機関から */}
+      {showOrg && (
+        <div className="mt-2 border-t border-dashed border-border pt-1.5">
+          <p className="mb-1 flex flex-wrap items-center justify-between gap-1 text-[11px] font-bold text-muted">
+            所属機関（アプリケーションNo.の申込に書く会社の情報・押すとコピーできます）
+            {w.current_organization_id && (
+              <Link href={`/organizations/${w.current_organization_id}`} className="font-bold text-brand hover:underline">
+                所属機関で直す →
+              </Link>
+            )}
+          </p>
+          {data.org ? (
+            (() => {
+              const intake = normalizeOrganizationIntake(data.org.intake);
+              const rep = intake.rep_name ? `${intake.rep_name}${intake.rep_kana ? `（${intake.rep_kana}）` : ""}` : "";
+              return (
+                <div className="grid grid-cols-1 gap-x-3 sm:grid-cols-2">
+                  {item("会社名", data.org.name)}
+                  {item("代表者氏名", rep)}
+                  {item("住所", data.org.address)}
+                  {item("連絡先（電話番号）", data.org.contact)}
+                </div>
+              );
+            })()
+          ) : (
+            <p className="text-[11px] text-seal">現在の所属機関が未設定です。外国人詳細で所属機関を設定すると、ここに会社名・住所・連絡先・代表者が出ます。</p>
+          )}
+        </div>
+      )}
 
       {/* パスポートの券面（MRZ）から読み取った内容。申込サイトにはローマ字の氏名などが要るため、
           外国人詳細で読み取ったものをここでもそのままコピーできるようにする。
