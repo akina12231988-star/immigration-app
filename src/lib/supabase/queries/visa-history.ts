@@ -9,13 +9,35 @@ export async function listVisaHistory(
   supabase: SupabaseClient,
   workerId: string,
 ): Promise<VisaHistoryManual[]> {
+  // hidden（0153）が未適用でも読めるよう select("*") にして、無ければ false 扱い
   const { data, error } = await supabase
     .from("worker_visa_history")
-    .select("id, permit_date, status, kind, expiry_date, card_no, note")
+    .select("*")
     .eq("worker_id", workerId)
     .order("permit_date", { ascending: true });
   if (error) throw error;
-  return (data as VisaHistoryManual[]) ?? [];
+  return ((data as (VisaHistoryManual & { hidden?: boolean | null })[]) ?? []).map((r) => ({
+    id: r.id,
+    permit_date: r.permit_date,
+    status: r.status,
+    kind: r.kind,
+    expiry_date: r.expiry_date,
+    card_no: r.card_no,
+    note: r.note,
+    hidden: r.hidden === true,
+  }));
+}
+
+// 自動で出ている許可を履歴から外す（「削除」。元の申請・在留カードの記録は残る）
+export async function hideVisaHistory(
+  supabase: SupabaseClient,
+  workerId: string,
+  input: { permit_date: string; status: string },
+): Promise<void> {
+  const { error } = await supabase
+    .from("worker_visa_history")
+    .insert({ worker_id: workerId, permit_date: input.permit_date, status: input.status, hidden: true });
+  if (error) throw error;
 }
 
 export async function insertVisaHistory(
