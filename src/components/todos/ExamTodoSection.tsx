@@ -18,6 +18,7 @@ import {
 import { deleteHistory, insertHistory, updateHistory } from "@/lib/supabase/queries/histories";
 import { updateWorker } from "@/lib/supabase/queries/workers";
 import { normalizeOrganizationIntake } from "@/lib/organization-intake";
+import { formatYmdJa } from "@/lib/support-plan-dates";
 import { PassportMrzPanel, SavedMrzCopyList } from "@/components/workers/PassportMrzPanel";
 import { dbErrorMessage } from "@/lib/errors";
 import { todayStr } from "@/lib/ssw/calc";
@@ -780,7 +781,8 @@ function ExamWorkerInfo({
       <div className="grid grid-cols-1 gap-x-3 sm:grid-cols-2">
         {item("名前", w.name)}
         {item("フリガナ", w.kana)}
-        {item("生年月日", w.birth)}
+        {/* 申込サイトには「1985年10月10日」の形で書くので、その形で表示・コピーする */}
+        {item("生年月日", w.birth ? formatYmdJa(w.birth) : "")}
         {item("性別", w.gender)}
         {item("国籍", w.nationality)}
         {item("日本での住所", w.address)}
