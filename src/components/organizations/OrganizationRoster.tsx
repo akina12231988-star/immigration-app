@@ -19,22 +19,27 @@ import {
   wageStartedOnOf,
   type RosterFill,
 } from "@/lib/org-roster-fill";
-import type { OrgRosterWorker } from "@/lib/supabase/queries/organizations";
+import {
+  rosterApplicationLabel,
+  type OrgRosterWorker,
+} from "@/lib/supabase/queries/organizations";
 import { formatAmountInput } from "@/lib/amount-format";
 import { notCountedReason, splitCurrentRoster } from "@/lib/org-roster-groups";
 
-// 所属機関に今いる人と、過去にいた人の一覧。
-// 「誰がいつからいて、誰がいつ辞めて今どこにいるか」をこの機関の画面だけで追えるようにする。
+// 所属機関に今いる人と、申請が審査中・許可済（在留カード受け取り待ち）の人、過去にいた人の一覧。
+// 「誰がいつからいて、誰がこれから来て、誰がいつ辞めて今どこにいるか」をこの機関の画面だけで追えるようにする。
 // 雇用開始日・賃金が未登録の人は、外国人詳細を開かなくてもこの表から入力できる
 export function OrganizationRoster({
   organizationId,
   current,
+  applying = [],
   past,
   today,
   error = null,
 }: {
   organizationId: string;
   current: OrgRosterWorker[];
+  applying?: OrgRosterWorker[]; // この機関への申請が審査中・許可済（在留カード受け取り待ち）の人
   past: OrgRosterWorker[];
   today: string; // 賃金の適用開始日の既定値に使う（サーバ側で決めて食い違わないようにする）
   error?: string | null; // 取得に失敗したとき（0名と区別できるように出す）
@@ -101,7 +106,8 @@ export function OrganizationRoster({
         在籍者・過去の在籍者
       </h2>
       <p className="mb-3 text-[11px] leading-relaxed text-muted">
-        在籍中は状態が「在籍中」の方、在籍前・その他はこの機関に紐づいているけれど状態がまだ
+        在籍中は状態が「在籍中」の方、審査中・受け取り待ちはこの機関への申請（在留認定・転職など）が
+        審査中か、許可が下りて在留カードの受け取りがまだの方、在籍前・その他はこの機関に紐づいているけれど状態がまだ
         「在籍中」ではない方（申請準備中など）、過去に在籍は退職記録・機関別の雇用開始日が
         残っている方です。転職された方は、今どちらにいるかも出します。
         上の支援体制の「在籍（1号特定技能）」は、状態が「在籍中」・支援区分が「支援対象」・
@@ -137,7 +143,7 @@ export function OrganizationRoster({
           <Printer size={14} />
           最低賃金の案内を印刷（A4横・FAX用）
         </Link>
-        <span className="text-[11px] text-muted">在籍中の人の名簿に、改定後の時給を書いてもらう欄を付けた案内文です。</span>
+        <span className="text-[11px] text-muted">在籍中・審査中の人の名簿に、改定後の時給を書いてもらう欄を付けた案内文です。</span>
       </div>
       <Section
         title="在籍中"
@@ -153,6 +159,24 @@ export function OrganizationRoster({
         onSave={save}
         busyId={busyId}
       />
+      {/* この機関への申請が審査中・許可済（在留カード受け取り待ち）の方。
+          在留カードを受け取るまで「現在の所属機関」がこの機関にならないため、在籍名簿とは別に出す */}
+      {applying.length > 0 && (
+        <div className="mt-4">
+          <Section
+            title="審査中・受け取り待ち"
+            countLabel={`${applying.length}名`}
+            rows={applying}
+            emptyText=""
+            showLeaving={false}
+            today={today}
+            fillOf={fillOf}
+            setFill={setFill}
+            onSave={save}
+            busyId={busyId}
+          />
+        </div>
+      )}
       {/* この機関に紐づいているが、状態がまだ「在籍中」ではない方（許可前・申請準備中など） */}
       {notYet.length > 0 && (
         <div className="mt-4">
@@ -270,6 +294,14 @@ function Section({
                         {w.name}
                       </Link>
                       {w.kana && <span className="block text-[10px] text-muted">{w.kana}</span>}
+                      {w.application && (
+                        <Link
+                          href={`/applications/${w.application.id}`}
+                          className="mt-0.5 block text-[10px] leading-relaxed text-brand underline-offset-2 hover:underline"
+                        >
+                          {rosterApplicationLabel(w.application)}
+                        </Link>
+                      )}
                       {showWhyNotCounted && notCountedReason(w) && (
                         <span className="mt-0.5 block text-[10px] leading-relaxed text-seal">
                           支援体制の数に入りません（{notCountedReason(w)}）

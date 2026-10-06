@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { OrgSsw2Duties } from "@/lib/org-ssw2-duties";
 import { currentWage, wageStartedOn } from "@/lib/wage";
+import { UNDER_REVIEW_STATUSES } from "@/lib/renewal-filter";
 import type { Organization, OrganizationInput } from "@/types/db";
 
 export async function listOrganizations(
@@ -88,6 +89,21 @@ export interface OrgRosterWorker {
   wageKind: string | null; // 現在の賃金の区分（時給 など）
   wageAmount: number | null; // 現在の賃金の金額
   wageStartedOn: string | null; // その賃金の適用開始日
+  // この機関への申請が審査中・許可済（在留カード受け取り待ち）の人だけ入る（getOrgUnderReviewWorkers）
+  application?: OrgRosterApplication;
+}
+
+// 名簿に出す申請の要点（いちばん新しい審査中の申請）
+export interface OrgRosterApplication {
+  id: string;
+  status: string; // 申請済・LINE報告済・通知書到着・許可済
+  content: string; // 申請内容（在留認定許可申請 など）
+}
+
+// 申請の状態を名簿向けのひと言にする。許可済は「在留カードの受け取り待ち」、それ以外は「審査中」
+export function rosterApplicationLabel(app: OrgRosterApplication): string {
+  const stage = app.status === "許可済" ? "許可済（在留カード受け取り待ち）" : "審査中";
+  return app.content ? `${app.content}・${stage}` : stage;
 }
 
 export interface OrgRoster {
@@ -130,6 +146,104 @@ function startAtOrg(row: RosterRow, organizationId: string): string | null {
   }
   // 機関別の記録が無ければ、今この機関にいる人だけ雇用開始年月日を使う
   return row.current_organization_id === organizationId ? row.employment_start_on : null;
+}
+
+// この機関での賃金の記録（現在の賃金を一覧に出す）
+interface WageRow {
+  worker_id: string;
+  kind: string;
+  amount: number;
+  started_on: string | null;
+  created_at: string;
+}
+
+// 外国人の行を名簿の1人分にする（現在の賃金は、この機関での雇用開始日を踏まえて選ぶ。
+// 申請時に入れた賃金は適用開始日が空＝雇用開始日から）
+function rosterWorkerFromRow(
+  row: RosterRow,
+  organizationId: string,
+  wages: WageRow[],
+  extra: { leavingOn: string | null; currentOrgName: string | null },
+): OrgRosterWorker {
+  const startOn = startAtOrg(row, organizationId);
+  const wage = currentWage(wages, undefined, startOn);
+  return {
+    id: row.id,
+    name: row.name,
+    kana: row.kana,
+    nationality: row.nationality,
+    residenceStatus: row.residence_status,
+    address: row.address,
+    residencePermitDate: row.residence_permit_date,
+    residenceExpiryDate: row.residence_expiry_date,
+    support: row.support,
+    status: row.status,
+    startOn,
+    leavingOn: extra.leavingOn,
+    currentOrgName: extra.currentOrgName,
+    wageKind: wage?.kind ?? null,
+    wageAmount: wage?.amount ?? null,
+    wageStartedOn: wage ? wageStartedOn(wage, startOn) : null,
+  };
+}
+
+// この機関への申請が審査中（申請済〜許可済＝在留カードの受け取り待ち。取下げは除く）の外国人。
+// 在留認定（新規入国）や転職の人は、在留カードを受け取るまで「現在の所属機関」がこの機関に
+// ならないため在籍名簿には出てこない。最低賃金の案内などで、その人も名簿に載せるために使う。
+// excludeIds（すでに名簿に載っている人）は除く。名前順
+export async function getOrgUnderReviewWorkers(
+  supabase: SupabaseClient,
+  organizationId: string,
+  excludeIds: Set<string>,
+): Promise<OrgRosterWorker[]> {
+  const { data: apps, error: appsError } = await supabase
+    .from("immigration_applications")
+    .select("id, worker_id, status, content, application_date")
+    .eq("organization_id", organizationId)
+    .in("status", UNDER_REVIEW_STATUSES)
+    .is("withdrawn_on", null)
+    .order("application_date", { ascending: false });
+  if (appsError) throw appsError;
+  // 1人につき、いちばん新しい申請を採る
+  const appByWorker = new Map<string, OrgRosterApplication>();
+  for (const a of ((apps as {
+    id: string;
+    worker_id: string | null;
+    status: string;
+    content: string | null;
+  }[] | null) ?? [])) {
+    if (!a.worker_id || excludeIds.has(a.worker_id) || appByWorker.has(a.worker_id)) continue;
+    appByWorker.set(a.worker_id, { id: a.id, status: a.status, content: a.content ?? "" });
+  }
+  const ids = [...appByWorker.keys()];
+  if (ids.length === 0) return [];
+
+  const [workers, wages] = await Promise.all([
+    supabase.from("workers").select(ROSTER_COLUMNS).in("id", ids),
+    supabase
+      .from("worker_wages")
+      .select("worker_id, kind, amount, started_on, created_at")
+      .eq("organization_id", organizationId)
+      .in("worker_id", ids)
+      .order("started_on", { ascending: false })
+      .order("created_at", { ascending: false }),
+  ]);
+  if (workers.error) throw workers.error;
+  const wagesByWorker = new Map<string, WageRow[]>();
+  if (!wages.error) {
+    for (const w of ((wages.data as WageRow[] | null) ?? [])) {
+      (wagesByWorker.get(w.worker_id) ?? wagesByWorker.set(w.worker_id, []).get(w.worker_id)!).push(w);
+    }
+  }
+  const rows = ((workers.data as unknown as RosterRow[] | null) ?? []).map((row) => ({
+    ...rosterWorkerFromRow(row, organizationId, wagesByWorker.get(row.id) ?? [], {
+      leavingOn: null,
+      currentOrgName: null,
+    }),
+    application: appByWorker.get(row.id),
+  }));
+  rows.sort((a, b) => a.name.localeCompare(b.name, "ja"));
+  return rows;
 }
 
 export async function getOrgRoster(
@@ -187,16 +301,7 @@ export async function getOrgRoster(
     }[]).map((o) => [o.id, o.name]),
   );
 
-  // 1人ずつの賃金の記録（現在の賃金は、この機関での雇用開始日を踏まえて下で選ぶ。
-  // 申請時に入れた賃金は適用開始日が空＝雇用開始日から）。
-  // テーブル未作成（マイグレーション未実行）でも一覧は出す
-  type WageRow = {
-    worker_id: string;
-    kind: string;
-    amount: number;
-    started_on: string | null;
-    created_at: string;
-  };
+  // 1人ずつの賃金の記録。テーブル未作成（マイグレーション未実行）でも一覧は出す
   const wagesByWorker = new Map<string, WageRow[]>();
   if (!wages.error) {
     for (const w of ((wages.data as WageRow[] | null) ?? [])) {
@@ -231,29 +336,13 @@ export async function getOrgRoster(
     const isCurrent = here && !row.leaving_on;
     const leavingOn = resignedOn.get(row.id) ?? (here ? row.leaving_on : null);
 
-    const startOn = startAtOrg(row, organizationId);
-    const wage = currentWage(wagesByWorker.get(row.id) ?? [], undefined, startOn);
-    const item: OrgRosterWorker = {
-      id: row.id,
-      name: row.name,
-      kana: row.kana,
-      nationality: row.nationality,
-      residenceStatus: row.residence_status,
-      address: row.address,
-      residencePermitDate: row.residence_permit_date,
-      residenceExpiryDate: row.residence_expiry_date,
-      support: row.support,
-      status: row.status,
-      startOn,
+    const item = rosterWorkerFromRow(row, organizationId, wagesByWorker.get(row.id) ?? [], {
       leavingOn: isCurrent ? null : leavingOn,
       currentOrgName:
         here || !row.current_organization_id
           ? null
           : (orgNameById.get(row.current_organization_id) ?? null),
-      wageKind: wage?.kind ?? null,
-      wageAmount: wage?.amount ?? null,
-      wageStartedOn: wage ? wageStartedOn(wage, startOn) : null,
-    };
+    });
     (isCurrent ? current : past).push(item);
   }
 
