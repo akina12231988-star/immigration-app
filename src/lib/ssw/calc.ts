@@ -58,6 +58,19 @@ export function toYMD(days: number): YMD {
 export const ymdText = (o: YMD): string => `${o.y}年${o.m}か月`;
 export const ymdFullText = (o: YMD): string => `${o.y}年${o.m}か月${o.d}日`;
 
+// 選んだ職歴の日数の合計（試験の申込などで「職歴の合計 ○年○か月」を出す用）。
+// asOf（書類作成日）より後の分は数えず、終了日が空（在籍中）や asOf より後なら asOf までとして数える。
+// asOf より後に始まる職歴は 0 日
+export function sumHistoryDays(histories: Pick<WorkHistory, "start" | "end">[], asOf: string): number {
+  let total = 0;
+  for (const h of histories) {
+    if (!h.start || h.start > asOf) continue;
+    const end = !h.end || h.end > asOf ? asOf : h.end;
+    total += entryDays({ start: h.start, end }, asOf);
+  }
+  return total;
+}
+
 export interface SswCalcResult {
   hist: WorkHistory[]; // 全職歴（開始日昇順）
   counted: WorkHistory[]; // 通算カウント対象の行のみ
