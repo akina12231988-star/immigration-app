@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CreditCard, FileText, Plus, Stamp, Trash2 } from "lucide-react";
+import { CreditCard, FileText, Pencil, Plus, Stamp, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
 import { rosterJpDate } from "@/lib/roster";
 import { dbErrorMessage } from "@/lib/errors";
 import {
   deleteVisaHistory,
+  hideVisaHistory,
   insertVisaHistory,
   listVisaHistory,
   updateVisaHistory,
@@ -19,6 +20,7 @@ import {
   attachVisaHistoryDocs,
   buildVisaHistory,
   groupVisaHistoryByOrg,
+  hiddenVisaHistory,
   VISA_GRANT_KINDS,
   type VisaHistoryApplication,
   type VisaHistoryCard,
@@ -268,7 +270,7 @@ export function WorkerVisaHistory({
       </h2>
       <p className="mb-3 text-[11px] leading-relaxed text-muted">
         いつ何のビザが許可されたかを古い順に並べています。申請一覧の許可欄・在留カードの記録・今の在留カードから自動で作られ、
-        足りない昔の分はここで足せます。行の「直す」で内容を書き換えられます（手で入れた内容が優先されます）。
+        足りない昔の分はここで足せます。行の「編集」で内容を書き換えられ、間違って入ったものは「削除」で履歴から外せます（自動で出ている分は元の申請・在留カードの記録は残り、下の「削除した履歴」から戻せます）。
         在留カード・指定書の画像は、その許可の日から次の許可の日までに登録したものを結び付けて出しています。
       </p>
 
@@ -381,29 +383,32 @@ export function WorkerVisaHistory({
                         <button
                           type="button"
                           onClick={() => startEdit(r)}
-                          className="font-bold text-brand"
+                          className="flex items-center gap-0.5 font-bold text-brand"
                         >
-                          直す
+                          <Pencil size={12} />
+                          編集
                         </button>
-                        {/* 手で入れた分だけ消せる（自動で出ている分は元のデータを直す） */}
-                        {r.manualId && (
-                          <button
-                            type="button"
-                            aria-label="この履歴を削除"
-                            onClick={() => {
-                              if (
-                                window.confirm(
-                                  `${rosterJpDate(r.permitDate)}の「${r.label}」を削除します。よろしいですか？`,
-                                )
-                              ) {
-                                void run(() => deleteVisaHistory(createClient(), r.manualId!));
-                              }
-                            }}
-                            className="text-seal"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        )}
+                        {/* 手で入れた分はその記録を消す。自動で出ている分は非表示の記録を残して履歴から外す（戻せる） */}
+                        <button
+                          type="button"
+                          aria-label="この履歴を削除"
+                          disabled={busy}
+                          onClick={() => {
+                            const msg = r.manualId
+                              ? `${rosterJpDate(r.permitDate)}の「${r.label}」を削除します。よろしいですか？`
+                              : `${rosterJpDate(r.permitDate)}の「${r.label}」を履歴から外します。元の申請・在留カードの記録は残り、下の「削除した履歴」から戻せます。よろしいですか？`;
+                            if (!window.confirm(msg)) return;
+                            void run(() =>
+                              r.manualId
+                                ? deleteVisaHistory(createClient(), r.manualId)
+                                : hideVisaHistory(createClient(), workerId, { permit_date: r.permitDate, status: r.status }),
+                            );
+                          }}
+                          className="flex items-center gap-0.5 font-bold text-seal disabled:opacity-50"
+                        >
+                          <Trash2 size={13} />
+                          削除
+                        </button>
                       </span>
                     )}
                   </div>
@@ -431,6 +436,33 @@ export function WorkerVisaHistory({
             );
           })}
         </div>
+      )}
+
+      {/* 「削除」で履歴から外した自動の行。戻すと元どおり出る */}
+      {hiddenVisaHistory(manual).length > 0 && (
+        <details className="mt-3 rounded-xl border border-dashed border-border px-3 py-2">
+          <summary className="cursor-pointer select-none text-[11px] font-bold text-muted">
+            削除した履歴（{hiddenVisaHistory(manual).length}件・押すと戻せます）
+          </summary>
+          <ul className="mt-1.5 space-y-1 text-xs">
+            {hiddenVisaHistory(manual).map((m) => (
+              <li key={m.id} className="flex flex-wrap items-center gap-2">
+                <span className="tabular-nums">{rosterJpDate(m.permit_date)}</span>
+                <span>{m.status || "在留資格"}</span>
+                {canEdit && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void run(() => deleteVisaHistory(createClient(), m.id))}
+                    className="font-bold text-brand disabled:opacity-50"
+                  >
+                    履歴に戻す
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
     </Card>
   );

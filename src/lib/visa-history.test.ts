@@ -9,6 +9,7 @@ import {
   grantLabel,
   statusFromContent,
   type VisaHistoryApplication,
+  hiddenVisaHistory,
 } from "./visa-history";
 
 const app = (over: Partial<VisaHistoryApplication>): VisaHistoryApplication => ({
@@ -263,5 +264,18 @@ describe("visaHistoryInPeriod", () => {
       { permitDate: "2024-04-23" },
       { permitDate: "2025-04-23" },
     ]);
+  });
+});
+
+describe("削除（非表示）した自動の行", () => {
+  it("hidden の手入力があれば、同じ許可日＋在留資格の自動の行を履歴から外す", () => {
+    const rows = buildVisaHistory({
+      apps: [],
+      cards: [{ residence_permit_date: "2024-05-01", residence_status: "特定技能1号", residence_expiry_date: "2025-05-01", residence_card_no: "AB1" }],
+      current: null,
+      manual: [{ id: "h1", permit_date: "2024-05-01", status: "特定技能1号", kind: "", expiry_date: null, card_no: "", note: "", hidden: true }],
+    });
+    expect(rows).toEqual([]);
+    expect(hiddenVisaHistory([{ id: "h1", permit_date: "2024-05-01", status: "特定技能1号", kind: "", expiry_date: null, card_no: "", note: "", hidden: true }, { id: "m1", permit_date: "2023-01-01", status: "特定活動", kind: "ビザ許可", expiry_date: null, card_no: "", note: "" }]).map((m) => m.id)).toEqual(["h1"]);
   });
 });

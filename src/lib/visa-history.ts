@@ -46,6 +46,7 @@ export interface VisaHistoryManual {
   expiry_date: string | null;
   card_no: string;
   note: string;
+  hidden?: boolean; // true: 自動で出る同じ許可（許可日＋在留資格）を履歴から外す（0153。削除の代わり）
 }
 
 export interface VisaHistoryRow {
@@ -150,10 +151,15 @@ export function buildVisaHistory(input: {
     });
   }
 
-  // 手で入れた分は、同じ許可（許可日＋在留資格）があっても入れ替える（直した内容を出す）
+  // 手で入れた分は、同じ許可（許可日＋在留資格）があっても入れ替える（直した内容を出す）。
+  // 「削除」した自動の行（hidden）は履歴から外す
   for (const m of input.manual ?? []) {
     if (!m.permit_date) continue;
     const key = `${m.permit_date}_${m.status ?? ""}`;
+    if (m.hidden) {
+      merged.delete(key);
+      continue;
+    }
     merged.set(key, {
       permitDate: m.permit_date,
       status: m.status ?? "",
@@ -167,6 +173,11 @@ export function buildVisaHistory(input: {
   }
 
   return [...merged.values()].sort((a, b) => a.permitDate.localeCompare(b.permitDate));
+}
+
+// 「削除」して履歴から外している自動の行（戻せるように一覧に出す）
+export function hiddenVisaHistory(manual: VisaHistoryManual[]): VisaHistoryManual[] {
+  return manual.filter((m) => m.hidden).sort((a, b) => a.permit_date.localeCompare(b.permit_date));
 }
 
 // ---- 在留カード・指定書の画像を、どの許可のものかで結び付ける ----
