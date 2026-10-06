@@ -2,7 +2,8 @@
 //
 // 所属機関のページの在籍名簿から印刷する。改定後の最低賃金・適用日・都道府県・返信期限は
 // 印刷画面で変えられる（熊本県以外の機関にも使えるように）。
-// 名簿には在籍中の人を並べ、当方に登録のある現在の賃金を出し、改定後の時給を書いてもらう欄を付ける。
+// 名簿には在籍中の人に加えて、申請が審査中（在留カードの受け取りがまだ）の人も並べ、
+// 当方に登録のある現在の賃金を出し、改定後の時給を書いてもらう欄を付ける。
 
 import { warekiDate } from "@/lib/dependents";
 import { MINIMUM_WAGES } from "@/lib/minimum-wage";
@@ -83,6 +84,27 @@ export function currentWageCell(kind: string | null | undefined, amount: number 
 // 現在の時給が改定後の最低賃金を下回る人か（時給の人だけ判定。月給などは判定しない）
 export function belowNewMinimum(kind: string | null | undefined, amount: number | null | undefined, hourly: number): boolean {
   return kind === "時給" && amount != null && amount > 0 && hourly > 0 && amount < hourly;
+}
+
+// 名簿に並べる人。在籍中の人の後ろに、審査中（申請を出していて在留カードの受け取りがまだ）の人を足す。
+// 状態が「在籍中」ではない人（申請準備中など）は、申請が審査中の人だけを「審査中」として載せる
+export type WageNoticeWorker<T> = T & { underReview: boolean };
+
+export function pickWageNoticeWorkers<T extends { id: string }>(
+  active: T[],
+  notYet: T[],
+  underReviewIds: Set<string>,
+): WageNoticeWorker<T>[] {
+  return [
+    ...active.map((w) => ({ ...w, underReview: false })),
+    ...notYet.filter((w) => underReviewIds.has(w.id)).map((w) => ({ ...w, underReview: true })),
+  ];
+}
+
+// 本文の「貴社に在籍中の特定技能外国人について」。審査中の人が名簿に入っていれば「在籍中・審査中」にする
+export function wageNoticeTargetText(workers: { underReview: boolean }[]): string {
+  const hasUnderReview = workers.some((w) => w.underReview);
+  return hasUnderReview ? "貴社に在籍中・審査中の特定技能外国人について" : "貴社に在籍中の特定技能外国人について";
 }
 
 // 印刷（PDF保存）のファイル名

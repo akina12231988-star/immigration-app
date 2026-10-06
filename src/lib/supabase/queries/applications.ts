@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { monthEnd } from "@/lib/sales";
+import { UNDER_REVIEW_STATUSES } from "@/lib/renewal-filter";
 import type {
   Application,
   ApplicationContent,
@@ -188,6 +189,27 @@ export async function listInReviewWorkerIds(
     .select("worker_id")
     .in("status", ["申請済", "LINE報告済", "通知書到着"])
     .is("granted_permit_date", null)
+    .is("withdrawn_on", null);
+  if (error) throw error;
+  const out = new Set<string>();
+  for (const r of ((data as { worker_id: string | null }[] | null) ?? [])) {
+    if (r.worker_id) out.add(r.worker_id);
+  }
+  return out;
+}
+
+// 指定した外国人のうち、申請の途中（申請済〜許可済＝審査中・在留カード受け取り待ち）の申請がある人のID。
+// 取下げた申請は数えない。最低賃金の案内の名簿で、まだ在籍中になっていない審査中の人を拾うのに使う
+export async function listUnderReviewWorkerIdSet(
+  supabase: SupabaseClient,
+  workerIds: string[],
+): Promise<Set<string>> {
+  if (workerIds.length === 0) return new Set();
+  const { data, error } = await supabase
+    .from("immigration_applications")
+    .select("worker_id")
+    .in("worker_id", workerIds)
+    .in("status", UNDER_REVIEW_STATUSES)
     .is("withdrawn_on", null);
   if (error) throw error;
   const out = new Set<string>();

@@ -5,7 +5,9 @@ import {
   currentWageCell,
   defaultWageNoticeValues,
   monthDayText,
+  pickWageNoticeWorkers,
   wageNoticeFileName,
+  wageNoticeTargetText,
   warekiDateWithDow,
   yenText,
 } from "./wage-notice";
@@ -50,5 +52,27 @@ describe("最低賃金の案内文", () => {
   it("ファイル名", () => {
     expect(wageNoticeFileName("サンプル農園株式会社")).toBe("最低賃金の案内_サンプル農園株式会社");
     expect(wageNoticeFileName("")).toBe("最低賃金の案内");
+  });
+
+  it("名簿: 在籍中の後ろに、申請が審査中の人だけを「審査中」として足す", () => {
+    const active = [{ id: "a", name: "在籍" }];
+    const notYet = [
+      { id: "b", name: "審査中" },
+      { id: "c", name: "申請前" },
+    ];
+    const rows = pickWageNoticeWorkers(active, notYet, new Set(["b"]));
+    expect(rows.map((r) => [r.id, r.underReview])).toEqual([
+      ["a", false],
+      ["b", true],
+    ]);
+    expect(pickWageNoticeWorkers(active, notYet, new Set())).toHaveLength(1);
+  });
+
+  it("本文: 審査中の人が入っていれば「在籍中・審査中」になる", () => {
+    expect(wageNoticeTargetText([{ underReview: false }])).toBe("貴社に在籍中の特定技能外国人について");
+    expect(wageNoticeTargetText([])).toBe("貴社に在籍中の特定技能外国人について");
+    expect(wageNoticeTargetText([{ underReview: false }, { underReview: true }])).toBe(
+      "貴社に在籍中・審査中の特定技能外国人について",
+    );
   });
 });
