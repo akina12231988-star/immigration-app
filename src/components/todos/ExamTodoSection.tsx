@@ -716,7 +716,7 @@ function ExamWorkerInfo({
   const load = () => {
     createClient()
       .from("workers")
-      .select("*, work_histories(*), organizations(name, address, contact, intake)")
+      .select("*, work_histories(*), organizations!workers_current_organization_id_fkey(name, address, contact, intake)")
       .eq("id", workerId)
       .order("start_date", { referencedTable: "work_histories", ascending: true })
       .maybeSingle()
