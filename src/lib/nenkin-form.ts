@@ -6,7 +6,7 @@ import { isMyNumberFillable } from "@/lib/tax-office";
 // テンプレート（public/forms/nenkin-kiroku.pdf）は日本年金機構の様式をスキャンしたもの。
 // 「1. 交付申請者」の ①基礎年金番号・②住所・③氏名・⑤生年月日 を書き込む。
 // ④性別は丸を付ける様式なので何も書かない（手書き）。⑥電話番号・申請事由・期間・委任欄・申請日は様式に印字済み。
-// 基礎年金番号が分からないときは ① を空欄のまま、「1. 交付申請者」の見出しの上に「個人番号：〇〇」と書く。
+// 基礎年金番号が分からないときは ① を空欄のまま、「1. 交付申請者」の見出しの上に「個人番号：〇〇」と赤字で書く。
 // 座標は様式を解析して特定した（A4縦 593×838pt。pdf-lib は左下が原点）。
 
 export interface NenkinFormData {
@@ -23,6 +23,7 @@ export interface DrawItem {
   x: number; // 左端（pt）
   y: number; // ベースライン（pt・左下原点）
   size: number;
+  color?: "black" | "red"; // 個人番号は目立つように赤で書く（省略は黒）
 }
 
 const PAGE_H = 838;
@@ -110,7 +111,8 @@ export function buildNenkinDrawItems(data: NenkinFormData, measure: MeasureText)
   } else {
     const my = (data.myNumber ?? "").replace(/[^0-9]/g, "");
     const text = `個人番号：${isMyNumberFillable(my) ? my : "（未登録）"}`;
-    items.push({ text, x: NENKIN_PENSION_CELLS[0], y: fromTop(198), size: 10 });
+    // 基礎年金番号の代わりに書く番号だと年金事務所にも分かるよう、赤字で書く
+    items.push({ text, x: NENKIN_PENSION_CELLS[0], y: fromTop(198), size: 10, color: "red" });
   }
 
   // ②住所: 1行で収まるよう縮小し、それでも収まらなければ2行
@@ -163,7 +165,13 @@ export async function fillNenkinForm(
   const page = doc.getPages()[0];
   const items = buildNenkinDrawItems(data, (text, size) => jpFont.widthOfTextAtSize(text, size));
   for (const it of items) {
-    page.drawText(it.text, { x: it.x, y: it.y, size: it.size, font: jpFont, color: rgb(0, 0, 0) });
+    page.drawText(it.text, {
+      x: it.x,
+      y: it.y,
+      size: it.size,
+      font: jpFont,
+      color: it.color === "red" ? rgb(0.85, 0, 0) : rgb(0, 0, 0),
+    });
   }
   return doc.save();
 }
