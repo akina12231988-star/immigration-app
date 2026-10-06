@@ -21,7 +21,7 @@ import { normalizeOrganizationIntake } from "@/lib/organization-intake";
 import { formatYmdJa } from "@/lib/support-plan-dates";
 import { PassportMrzPanel, SavedMrzCopyList } from "@/components/workers/PassportMrzPanel";
 import { dbErrorMessage } from "@/lib/errors";
-import { todayStr } from "@/lib/ssw/calc";
+import { sumHistoryDays, todayStr, toYMD, ymdFullText, ymdText } from "@/lib/ssw/calc";
 import {
   canAddExamAttempt,
   emptyExamAttempt,
@@ -716,7 +716,7 @@ function ExamWorkerInfo({
   const load = () => {
     createClient()
       .from("workers")
-      .select("*, work_histories(*), organizations(name, address, contact, intake)")
+      .select("*, work_histories(*), organizations!workers_current_organization_id_fkey(name, address, contact, intake)")
       .eq("id", workerId)
       .order("start_date", { referencedTable: "work_histories", ascending: true })
       .maybeSingle()
@@ -882,6 +882,16 @@ function ExamHistoryEditor({
   onChanged: () => void;
 }) {
   const [error, setError] = useState<string | null>(null);
+  // 職歴の合計に入れる行（既定は全部。外した行の id を持つ）と、合計を出す基準日（書類作成日）
+  const [excluded, setExcluded] = useState<Set<string>>(() => new Set());
+  const [asOf, setAsOf] = useState(todayStr());
+  const selected = histories.filter((h) => !excluded.has(h.id));
+  const totalDays = sumHistoryDays(
+    selected.map((h) => ({ start: h.start_date, end: h.end_date })),
+    asOf,
+  );
+  const totalText = ymdText(toYMD(totalDays));
+  const hasOngoing = selected.some((h) => !h.end_date);
 
   const run = (fn: () => Promise<unknown>) => {
     setError(null);
@@ -901,6 +911,15 @@ function ExamHistoryEditor({
           key={h.id}
           history={h}
           canEdit={canEdit}
+          counted={!excluded.has(h.id)}
+          onToggleCounted={(v) =>
+            setExcluded((prev) => {
+              const next = new Set(prev);
+              if (v) next.delete(h.id);
+              else next.add(h.id);
+              return next;
+            })
+          }
           onSave={(patch) => run(() => updateHistory(createClient(), h.id, patch))}
           onDelete={() => {
             if (window.confirm(`職歴「${h.org_name || h.role}」を削除します。よろしいですか？`)) {
@@ -909,6 +928,33 @@ function ExamHistoryEditor({
           }}
         />
       ))}
+
+      {/* チェックした職歴の合計（在籍中の分は書類作成日まで）。申込サイトの「職歴 ○年○か月」にそのまま写せる */}
+      {histories.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border bg-background px-2.5 py-2 text-[11px]">
+          <span className="font-bold text-muted">チェックした職歴の合計</span>
+          <label className="flex items-center gap-1 text-muted">
+            書類作成日
+            <input
+              type="date"
+              value={asOf}
+              onChange={(e) => e.target.value && setAsOf(e.target.value)}
+              aria-label="書類作成日（在籍中の職歴はこの日まで数える）"
+              className={INPUT}
+            />
+          </label>
+          <span className="flex items-center gap-1">
+            <span className="text-sm font-black tabular-nums">{totalText}</span>
+            <span className="text-muted">（{selected.length}件・{totalDays.toLocaleString("ja-JP")}日・{ymdFullText(toYMD(totalDays))}）</span>
+            <CopyButton value={totalText} label="職歴の合計をコピー" size={12} />
+          </span>
+          <span className="w-full text-[10px] text-muted">
+            行の左のチェックを外すとその職歴は合計に入りません。
+            {hasOngoing ? "終了日が空（在籍中）の職歴は書類作成日まで数えています。" : ""}
+            開始日と終了日の両方を含めた日数を 1か月＝30.4375日 で年月に直しています。
+          </span>
+        </div>
+      )}
       {canEdit && (
         <button
           type="button"
@@ -940,11 +986,15 @@ function ExamHistoryEditor({
 function ExamHistoryRow({
   history,
   canEdit,
+  counted,
+  onToggleCounted,
   onSave,
   onDelete,
 }: {
   history: WorkHistoryRow;
   canEdit: boolean;
+  counted: boolean; // 職歴の合計に入れるか
+  onToggleCounted: (v: boolean) => void;
   onSave: (patch: Partial<WorkHistoryRow>) => void;
   onDelete: () => void;
 }) {
@@ -952,7 +1002,15 @@ function ExamHistoryRow({
   const [role, setRole] = useState(history.role);
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-surface p-1.5">
+    <div className={`flex flex-wrap items-center gap-1.5 rounded-lg border border-border p-1.5 ${counted ? "bg-surface" : "bg-background opacity-70"}`}>
+      <input
+        type="checkbox"
+        checked={counted}
+        onChange={(e) => onToggleCounted(e.target.checked)}
+        aria-label="この職歴を合計に入れる"
+        title="合計に入れる"
+        className="h-4 w-4"
+      />
       <select
         value={history.visa}
         disabled={!canEdit}

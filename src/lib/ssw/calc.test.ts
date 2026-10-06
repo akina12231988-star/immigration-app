@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isSsw2Residence, type WorkHistory } from "@/types/ssw";
-import { calcDocumentTotal, calcSsw, entryDays, sswGaps, ymdFullText } from "./calc";
+import { calcDocumentTotal, calcSsw, entryDays, sswGaps, sumHistoryDays, toYMD, ymdFullText, ymdText } from "./calc";
 
 let seq = 0;
 const h = (
@@ -331,5 +331,23 @@ describe("isSsw2Residence（在留資格が特定技能2号か）", () => {
 
   it("2号への移行準備中は、まだ2号ではないので false", () => {
     expect(isSsw2Residence("特定活動（特定技能2号移行準備）")).toBe(false);
+  });
+});
+
+describe("sumHistoryDays（選んだ職歴の合計。書類作成日まで）", () => {
+  it("終了日が空の職歴は書類作成日まで、作成日より後の分は数えない", () => {
+    const rows = [
+      { start: "2022-09-15", end: "2023-01-01" }, // 109日（両端を含む）
+      { start: "2023-01-02", end: "2026-07-05" }, // 作成日 2026-07-06 より前に終わる
+      { start: "2026-07-06", end: null }, // 在籍中 → 作成日まで
+    ];
+    const asOf = "2026-10-06";
+    const days = sumHistoryDays(rows, asOf);
+    expect(days).toBe(entryDays(rows[0], asOf) + entryDays(rows[1], asOf) + entryDays({ start: "2026-07-06", end: asOf }, asOf));
+    expect(ymdText(toYMD(days))).toBe("4年0か月");
+    // 作成日を過去にすると、その日までで切る。作成日より後に始まる職歴は数えない
+    expect(sumHistoryDays(rows, "2023-01-01")).toBe(109);
+    expect(sumHistoryDays(rows, "2022-01-01")).toBe(0);
+    expect(sumHistoryDays([], asOf)).toBe(0);
   });
 });
