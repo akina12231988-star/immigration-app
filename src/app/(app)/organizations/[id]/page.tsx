@@ -1,7 +1,11 @@
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
-import { getOrgRoster, getOrganization } from "@/lib/supabase/queries/organizations";
+import {
+  getOrgRoster,
+  getOrgUnderReviewWorkers,
+  getOrganization,
+} from "@/lib/supabase/queries/organizations";
 import { listEmployees } from "@/lib/supabase/queries/employees";
 import { listWorkersForSupport } from "@/lib/supabase/queries/workers";
 import {
@@ -47,6 +51,13 @@ export default async function OrganizationDetailPage({
       }),
     ),
   ]);
+  // この機関への申請が審査中・許可済（在留カード受け取り待ち）の人。
+  // 在留カードを受け取るまでは「現在の所属機関」がこの機関にならないため、在籍名簿とは別に拾う
+  const applying = await getOrgUnderReviewWorkers(
+    supabase,
+    id,
+    new Set([...roster.current, ...roster.past].map((w) => w.id)),
+  ).catch(() => []);
   const workerCount = workers.filter(
     (w) => w.current_organization_id === id && isSupportedSsw1(w),
   ).length;
@@ -64,6 +75,7 @@ export default async function OrganizationDetailPage({
           <OrganizationRoster
             organizationId={id}
             current={roster.current}
+            applying={applying}
             past={roster.past}
             today={todayStr()}
             error={roster.error}

@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
-import { getOrganization, getOrgRoster } from "@/lib/supabase/queries/organizations";
+import { getOrganization, getOrgRoster, getOrgUnderReviewWorkers } from "@/lib/supabase/queries/organizations";
 import { listUnderReviewWorkerIdSet } from "@/lib/supabase/queries/applications";
 import { splitCurrentRoster } from "@/lib/org-roster-groups";
 import { pickWageNoticeWorkers } from "@/lib/wage-notice";
@@ -24,12 +24,23 @@ export default async function OrganizationWageNoticePage({ params }: { params: P
 
   const roster = await getOrgRoster(supabase, id).catch(() => ({ current: [], past: [] }));
   const { active, notYet } = splitCurrentRoster(roster.current);
-  // まだ「在籍中」になっていない人（申請準備中など）のうち、申請を出していて審査中の人も名簿に載せる
-  const underReviewIds = await listUnderReviewWorkerIdSet(
-    supabase,
-    notYet.map((w) => w.id),
-  ).catch(() => new Set<string>());
-  const workers = pickWageNoticeWorkers(active, notYet, underReviewIds);
+  // 審査中（申請を出していて在留カードの受け取りがまだ）の人も名簿に載せる。
+  //  1. この機関に紐づいているがまだ「在籍中」ではない人（申請準備中など）のうち、申請が審査中の人
+  //  2. この機関への申請が審査中の人（在留認定・転職の人は在留カードを受け取るまで
+  //     「現在の所属機関」がこの機関にならないため、在籍名簿には出てこない）
+  const [linkedUnderReviewIds, applying] = await Promise.all([
+    listUnderReviewWorkerIdSet(
+      supabase,
+      notYet.map((w) => w.id),
+    ).catch(() => new Set<string>()),
+    getOrgUnderReviewWorkers(
+      supabase,
+      id,
+      new Set(roster.current.map((w) => w.id)),
+    ).catch(() => []),
+  ]);
+  const underReviewIds = new Set([...linkedUnderReviewIds, ...applying.map((w) => w.id)]);
+  const workers = pickWageNoticeWorkers(active, [...notYet, ...applying], underReviewIds);
 
   return (
     <WageNoticeSheet
