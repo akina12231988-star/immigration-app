@@ -24,7 +24,8 @@ const FIELD =
 // 最低賃金の改定に伴う「時給のご確認」のお願い（A4横1枚）。
 // 上がFAX送付状、真ん中が改定内容、下が名簿（改定後の時給を書いてもらう欄つき）。
 // 名簿は在籍中の人の後ろに、審査中（在留カードの受け取りがまだ）の人を「審査中」の印つきで並べる
-// 金額・適用日・都道府県・返信期限・担当者・FAX番号は印刷の前にここで変えられる
+// 金額・適用日・都道府県・返信期限・担当者・FAX番号は印刷の前にここで変えられる。
+// 名簿の「雇用開始日」「現在の時給」の列は、載せない形（氏名・在留資格・改定後の時給・備考だけ）でも印刷できる
 export function WageNoticeSheet({
   organizationId,
   organizationName,
@@ -47,6 +48,10 @@ export function WageNoticeSheet({
   const hourly = Number(v.hourly.replace(/[^0-9]/g, "")) || 0;
   const hourlyText = yenText(hourly);
   const underReviewCount = workers.filter((w) => w.underReview).length;
+  // 名簿に「雇用開始日」「現在の時給」の列を載せるか（外さないパターンが既定）
+  const [showStart, setShowStart] = useState(true);
+  const [showWage, setShowWage] = useState(true);
+  const columnCount = 5 + (showStart ? 1 : 0) + (showWage ? 1 : 0);
 
   // 印刷（PDF保存）のファイル名を「最低賃金の案内_機関名」にする
   const printSheet = () => {
@@ -110,6 +115,18 @@ export function WageNoticeSheet({
               返信先のFAX番号
               <input value={v.fax} onChange={(e) => set({ fax: e.target.value })} className={`${FIELD} tabular-nums`} />
             </label>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-bold text-muted">
+            <span>名簿に載せる列：</span>
+            <label className="inline-flex min-h-[32px] items-center gap-1.5">
+              <input type="checkbox" checked={showStart} onChange={(e) => setShowStart(e.target.checked)} className="size-4" />
+              雇用開始日
+            </label>
+            <label className="inline-flex min-h-[32px] items-center gap-1.5">
+              <input type="checkbox" checked={showWage} onChange={(e) => setShowWage(e.target.checked)} className="size-4" />
+              現在の時給（当方の登録内容）
+            </label>
+            <span className="font-normal">チェックを外すと、その列と注記を載せずに印刷します。</span>
           </div>
           <div>
             <button
@@ -180,12 +197,14 @@ export function WageNoticeSheet({
                 <th className={`${cell} w-[8mm] bg-neutral-100 text-center text-[10pt]`}>No.</th>
                 <th className={`${cell} bg-neutral-100 text-center text-[10pt]`}>氏名</th>
                 <th className={`${cell} w-[34mm] bg-neutral-100 text-center text-[10pt]`}>在留資格</th>
-                <th className={`${cell} w-[24mm] bg-neutral-100 text-center text-[10pt]`}>雇用開始日</th>
-                <th className={`${cell} w-[30mm] bg-neutral-100 text-center text-[10pt]`}>
-                  現在の時給
-                  <br />
-                  <span className="text-[8.5pt] font-normal">（当方の登録内容）</span>
-                </th>
+                {showStart && <th className={`${cell} w-[24mm] bg-neutral-100 text-center text-[10pt]`}>雇用開始日</th>}
+                {showWage && (
+                  <th className={`${cell} w-[30mm] bg-neutral-100 text-center text-[10pt]`}>
+                    現在の時給
+                    <br />
+                    <span className="text-[8.5pt] font-normal">（当方の登録内容）</span>
+                  </th>
+                )}
                 <th className={`${cell} w-[44mm] bg-neutral-100 text-center text-[10pt]`}>
                   {monthDayText(v.effectiveOn)}からの時給
                   <br />
@@ -203,26 +222,30 @@ export function WageNoticeSheet({
                     {w.underReview && <span className="ml-1 text-[8.5pt] text-neutral-600">（審査中）</span>}
                   </td>
                   <td className={`${cell} ${w.residenceStatus.length > 8 ? "text-[9pt]" : ""}`}>{w.residenceStatus}</td>
-                  <td className={`${cell} text-center`}>{rosterJpDate(w.startOn)}</td>
-                  <td className={`${cell} text-right tabular-nums ${belowNewMinimum(w.wageKind, w.wageAmount, hourly) ? "font-bold" : ""}`}>
-                    {currentWageCell(w.wageKind, w.wageAmount)}
-                  </td>
+                  {showStart && <td className={`${cell} text-center`}>{rosterJpDate(w.startOn)}</td>}
+                  {showWage && (
+                    <td className={`${cell} text-right tabular-nums ${belowNewMinimum(w.wageKind, w.wageAmount, hourly) ? "font-bold" : ""}`}>
+                      {currentWageCell(w.wageKind, w.wageAmount)}
+                    </td>
+                  )}
                   <td className={`${cell} h-[7.5mm] text-right text-[12pt]`}>　　　　　　円</td>
                   <td className={cell}></td>
                 </tr>
               ))}
               {workers.length === 0 && (
                 <tr>
-                  <td className={`${cell} text-center text-muted`} colSpan={7}>
+                  <td className={`${cell} text-center text-muted`} colSpan={columnCount}>
                     在籍中・審査中の方はいません
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
-          <p className="mt-1 text-center text-[9pt] text-neutral-600">
-            ※ 現在の時給は当方に登録のある最新の賃金です。違っている場合は、正しい時給を備考にご記入ください。
-          </p>
+          {showWage && (
+            <p className="mt-1 text-center text-[9pt] text-neutral-600">
+              ※ 現在の時給は当方に登録のある最新の賃金です。違っている場合は、正しい時給を備考にご記入ください。
+            </p>
+          )}
         </section>
       </div>
     </>
