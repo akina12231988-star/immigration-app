@@ -29,7 +29,7 @@ const digitsOf = (items: { text: string }[]) =>
     .join("");
 
 describe("buildNenkinDrawItems", () => {
-  it("基礎年金番号10桁をマスに1桁ずつ入れ、個人番号は書かない", () => {
+  it("基礎年金番号10桁をマスに1桁ずつ入れ、個人番号は書かない（数字は黒）", () => {
     const items = buildNenkinDrawItems(base, measure);
     expect(items.some((i) => i.text.startsWith("個人番号"))).toBe(false);
     // 基礎年金番号10桁 → 生年月日8桁の順
@@ -48,6 +48,7 @@ describe("buildNenkinDrawItems", () => {
     const items = buildNenkinDrawItems({ ...base, pensionNo: "" }, measure);
     const my = items.find((i) => i.text.startsWith("個人番号"))!;
     expect(my.text).toBe("個人番号：123456789012");
+    expect(my.color).toBe("red"); // 赤字で書く
     expect(my.x).toBeCloseTo(NENKIN_PENSION_CELLS[0]);
     // 「1. 交付申請者」（上端 203〜213）より上、「年 月 日申請」（上端 178〜188）より下
     expect(838 - my.y).toBeGreaterThan(188);
@@ -58,7 +59,7 @@ describe("buildNenkinDrawItems", () => {
 
   it("基礎年金番号も個人番号も無いときは「個人番号：（未登録）」", () => {
     const items = buildNenkinDrawItems({ ...base, pensionNo: "", myNumber: "" }, measure);
-    expect(items.find((i) => i.text.startsWith("個人番号"))!.text).toBe("個人番号：（未登録）");
+    expect(items.find((i) => i.text.startsWith("個人番号"))!).toMatchObject({ text: "個人番号：（未登録）", color: "red" });
   });
 
   it("住所・氏名を枠の中に書く（氏名は④性別の仕切り 401 より左）", () => {
