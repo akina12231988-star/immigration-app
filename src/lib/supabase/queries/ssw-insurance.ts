@@ -179,13 +179,19 @@ export async function ensureSswTodo(
   return { row, created: true };
 }
 
-// 退職の記録を保存したときに、解約手続きのTODOを作る。
+// 退職の記録を保存したとき・退職の随時届出（様式）を作ったときに、解約手続きのTODOを作る。
 // 保険に加入していない人・解約できない人（証明書番号か有効期限が無い、有効期限から4か月以上）には作らない。マイグレーション未適用など失敗しても
-// 退職の保存自体は止めない（呼び出し側で握りつぶす）
+// 退職の保存自体は止めない（呼び出し側で握りつぶす）。
+// 画面で「作った／すでにある／加入していない」を伝えられるように結果を返す
+export interface SswCancelTodoResult {
+  outcome: "created" | "exists" | "notInsured";
+  todoNo: string; // 作った（またはすでにあった）TODOの番号。notInsured のときは空
+}
+
 export async function ensureSswCancelTodoOnLeaving(
   supabase: SupabaseClient,
   workerId: string,
-): Promise<void> {
+): Promise<SswCancelTodoResult> {
   const { data, error } = await supabase
     .from("workers")
     .select("ssw_insurance_no, ssw_insurance_expiry_date")
@@ -194,8 +200,11 @@ export async function ensureSswCancelTodoOnLeaving(
   if (error) throw error;
   const w = data as { ssw_insurance_no: string | null; ssw_insurance_expiry_date: string | null } | null;
   // 証明書番号と有効期限が入っていて、有効期限から4か月たっていない人だけ（それ以外は解約できない）
-  if (!w || !isSswCancelable({ ssw_insurance_no: w.ssw_insurance_no ?? "", ssw_insurance_expiry_date: w.ssw_insurance_expiry_date }, todayStr())) return;
-  await ensureSswTodo(supabase, workerId, SSW_CANCEL_TODO_TITLE);
+  if (!w || !isSswCancelable({ ssw_insurance_no: w.ssw_insurance_no ?? "", ssw_insurance_expiry_date: w.ssw_insurance_expiry_date }, todayStr())) {
+    return { outcome: "notInsured", todoNo: "" };
+  }
+  const { row, created } = await ensureSswTodo(supabase, workerId, SSW_CANCEL_TODO_TITLE);
+  return { outcome: created ? "created" : "exists", todoNo: row?.todo_no ?? "" };
 }
 
 // 特定技能総合保険の売上（保険No.）。請求を立てた人の番号を一覧に出し、

@@ -2,6 +2,8 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { getResignationForForms } from "@/lib/supabase/queries/resignations";
+import { isSswCancelable } from "@/lib/ssw-insurance";
+import { todayStr } from "@/lib/ssw/calc";
 import { normalizeOrganizationIntake } from "@/lib/organization-intake";
 import { adhocReportStatus } from "@/lib/adhoc-report-progress";
 import { ResignationForms } from "./ResignationForms";
@@ -54,6 +56,11 @@ export default async function ResignationFormsPage({
         address: w.address,
         residenceCardNo: w.residence_card_no,
         field: w.field,
+        // 特定技能総合保険に加入中（解約できる状態）なら、様式を作ったときに解約手続きのTODOも一緒に作る
+        sswInsured: isSswCancelable(
+          { ssw_insurance_no: w.ssw_insurance_no ?? "", ssw_insurance_expiry_date: w.ssw_insurance_expiry_date },
+          todayStr(),
+        ),
       }}
       canEdit={me.role !== "viewer"}
     />

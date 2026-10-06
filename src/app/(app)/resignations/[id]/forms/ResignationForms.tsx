@@ -8,6 +8,11 @@ import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
 import { updateOrganization } from "@/lib/supabase/queries/organizations";
 import { updateResignation } from "@/lib/supabase/queries/resignations";
+import {
+  ensureSswCancelTodoOnLeaving,
+  type SswCancelTodoResult,
+} from "@/lib/supabase/queries/ssw-insurance";
+import { displayTodoNo } from "@/lib/todo";
 import type { ResignationStatus } from "@/types/db";
 import { normalizeOrganizationIntake } from "@/lib/organization-intake";
 import {
@@ -67,6 +72,7 @@ interface FormsWorker {
   address: string;
   residenceCardNo: string;
   field: string;
+  sswInsured: boolean; // 特定技能総合保険に加入中（解約手続きが必要）
 }
 
 const INPUT =
@@ -226,6 +232,22 @@ export function ResignationForms({
     lastSyncedRef.current = snapshot;
   };
 
+  // 退職の随時届出を作ったら、特定技能総合保険の解約手続きのTODOも一緒に作る（加入している人だけ）。
+  // 同じ人に未完了の解約TODOがすでにあれば増やさない。結果は画面に出す。
+  // 「すべて作成」で様式を続けて作っても、問い合わせは1回だけにする
+  const [cancelTodo, setCancelTodo] = useState<SswCancelTodoResult | null>(null);
+  const cancelTodoCheckedRef = useRef(false);
+  const ensureCancelTodo = async () => {
+    if (!worker.sswInsured || cancelTodoCheckedRef.current) return;
+    cancelTodoCheckedRef.current = true;
+    try {
+      setCancelTodo(await ensureSswCancelTodoOnLeaving(createClient(), worker.id));
+    } catch {
+      // 0139 が未適用などで作れなくても様式の作成は続ける（次の作成でもう一度試す）
+      cancelTodoCheckedRef.current = false;
+    }
+  };
+
   // 様式を作った＝会社・本人へ署名をお願いする段階。退職一覧のタブを進める。
   // 一度進めたら（署名依頼中・投函完了）そのままにする
   const [signatureMarked, setSignatureMarked] = useState(resignation.status !== "準備中");
@@ -280,6 +302,8 @@ export function ResignationForms({
 
       // 様式を作った＝会社・本人へ署名をお願いする段階。退職一覧のタブを進める
       await markSignatureRequested();
+      // 保険に加入している人は、解約手続きのTODOも一緒に作る
+      await ensureCancelTodo();
     } catch (err) {
       setError(err instanceof Error ? err.message : "作成に失敗しました");
     } finally {
@@ -325,6 +349,22 @@ export function ResignationForms({
       {error && (
         <p role="alert" className="rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
           {error}
+        </p>
+      )}
+
+      {worker.sswInsured && !cancelTodo && (
+        <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted">
+          {worker.name} さんは特定技能総合保険に加入中です。様式を作ると、「特定技能総合保険の解約手続き」のTODOも一緒に作ります（すでにあれば増やしません）。
+        </p>
+      )}
+      {cancelTodo && cancelTodo.outcome !== "notInsured" && (
+        <p className="rounded-lg bg-brand/10 px-3 py-2 text-sm text-brand">
+          {cancelTodo.outcome === "created"
+            ? `特定技能総合保険の解約手続きのTODO（${displayTodoNo(cancelTodo.todoNo)}）を作りました。`
+            : `特定技能総合保険の解約手続きのTODO（${displayTodoNo(cancelTodo.todoNo)}）はすでにあります。`}
+          <a href="/todos/ssw-insurance" className="ml-2 font-bold underline">
+            特定技能総合保険の「解約手続き」を開く
+          </a>
         </p>
       )}
 
