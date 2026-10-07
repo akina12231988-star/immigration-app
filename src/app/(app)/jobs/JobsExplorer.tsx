@@ -39,8 +39,8 @@ import {
   countMissingFromReferralLedger,
   referralLedgerStatus,
 } from "@/lib/referral-ledger-status";
-import { formatSalesYen, REFERRAL_SALES_KEY } from "@/lib/sales";
-import { normalizeSalesItems, parseAmount } from "@/lib/organization-intake";
+import { formatSalesYen, referralFeeDefault } from "@/lib/sales";
+import { parseAmount } from "@/lib/organization-intake";
 import { buildXlsx, downloadBlob } from "@/lib/xlsx-export";
 import { buildSeekerLedgerSheet } from "@/lib/recruit-ledgers";
 import {
@@ -167,16 +167,12 @@ export function JobsExplorer({
     referralLedgerStatus(a, referralFees, unlinkedReferralKeys);
   // 台帳に追加する前に入力する「紹介手数料」と「紹介売上No.」（応募ごと）
   const [feeDrafts, setFeeDrafts] = useState<ReferralFeeDrafts>({});
-  // 所属機関マスタのあっせん明細の金額を初期値にする
-  const defaultFee = (a: ApplicationWithRefs) => {
-    const org = orgList.find((o) => o.id === a.organization_id);
-    const items = normalizeSalesItems(org?.intake?.sales_items)[REFERRAL_SALES_KEY] ?? [];
-    return String(parseAmount(items[0]?.amount ?? "") ?? "");
-  };
-  const feeDraft = (a: ApplicationWithRefs) => feeDraftOf(feeDrafts, a.id, defaultFee(a));
+  // 手数料の初期値は全所属機関共通の固定額（求人応募からの追加は国内）
+  const defaultFee = () => String(referralFeeDefault("国内"));
+  const feeDraft = (a: ApplicationWithRefs) => feeDraftOf(feeDrafts, a.id, defaultFee());
   // 片方だけ入れたときにもう片方が消えないよう、初期値を含む今の下書きを土台にする
   const setFeeDraft = (a: ApplicationWithRefs, patch: { fee?: string; salesNo?: string }) =>
-    setFeeDrafts((prev) => patchFeeDraft(prev, a.id, defaultFee(a), patch));
+    setFeeDrafts((prev) => patchFeeDraft(prev, a.id, defaultFee(), patch));
 
   // 期間（応募日）で絞った母集団
   const inPeriod = useMemo(

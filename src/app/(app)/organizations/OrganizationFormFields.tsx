@@ -17,7 +17,7 @@ import {
   registerOrgFile,
 } from "@/app/(app)/organizations/actions";
 import { SSW_INDUSTRIES, categoriesFor } from "@/lib/industries";
-import { REFERRAL_SALES_KEY, SALES_APP_KINDS } from "@/lib/sales";
+import { isFixedSalesKind, REFERRAL_SALES_KEY, SALES_APP_KINDS, salesItemsForKind } from "@/lib/sales";
 import { todayStr } from "@/lib/ssw/calc";
 import { EMPTY_SSW2_DUTIES, ssw2DutiesOf } from "@/lib/org-ssw2-duties";
 import {
@@ -1728,15 +1728,33 @@ function IntakeSection({
         <OrgTabPanel tab="money">
         <p className={GROUP_CLASS}>申請種別ごとの売上明細（freee販売）</p>
         <p className={HINT_CLASS}>
-          在留カード受領後の売上登録で、申請種別を選ぶとここに登録した明細が自動で入ります。
-          明細項目と金額を必要な行数だけ登録してください（例: 申請取次費用 150000 / 書類作成費 30000）。
-          金額は数字だけ・税抜で入力してください（消費税はfreee販売で計算します）。
-          あっせん（人材紹介手数料）の明細は、紹介手数料台帳で手数料の初期値になります。
+          見積書と在留カード受領後の売上登録に入る明細です。全所属機関で固定（アプリに設定）のため、ここでは変えられません。
+          特定技能申請の申請取次支援業務費だけ所属機関で金額が違います（有限会社國崎青果・BASE・西田祐一は28,500円、ほかは78,500円。税抜）。
+          あっせん（人材紹介手数料）は紹介手数料台帳の手数料の初期値（国内30,000円・国外50,000円）になります。
         </p>
         {[...SALES_APP_KINDS, REFERRAL_SALES_KEY].map((kind) => {
           const rows = intake.sales_items[kind] ?? [];
           const setRows = (next: OrgSalesItem[]) =>
             setIntake({ sales_items: { ...intake.sales_items, [kind]: next } });
+          // 固定の明細（lib/sales.ts）。ここでは変えられないので内容だけ出す。
+          // 特定技能申請は所属機関名で金額が決まるので、入力中の名称で計算して出す
+          const fixed = isFixedSalesKind(kind) ? salesItemsForKind(intake.sales_items, kind, companyName) : null;
+          if (fixed) {
+            return (
+              <div key={kind} className="rounded-xl border border-border bg-surface p-2.5">
+                <p className="mb-1.5 text-xs font-bold">
+                  {kind === REFERRAL_SALES_KEY ? "あっせん（人材紹介手数料）" : kind}
+                </p>
+                <p className={HINT_CLASS}>固定の明細です（ここでは変えられません）。</p>
+                {fixed.map((row, i) => (
+                  <p key={i} className="mt-1 text-sm">
+                    {row.name}　<span className="tabular-nums">{Number(row.amount).toLocaleString("ja-JP")}円</span>
+                    <span className="text-xs text-muted">（税抜）</span>
+                  </p>
+                ))}
+              </div>
+            );
+          }
           return (
             <div key={kind} className="rounded-xl border border-border p-2.5">
               <p className="mb-1.5 text-xs font-bold">
