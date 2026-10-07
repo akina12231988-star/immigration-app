@@ -1,5 +1,6 @@
 "use client";
 
+import { dbErrorMessage } from "@/lib/errors";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -469,7 +470,7 @@ function NewPrepForm({
       onOrgCreated({ id: org.id, name: org.name });
       setOrgId(org.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "所属機関の登録に失敗しました");
+      setError(dbErrorMessage(err, "0043_organization_intake.sql", "所属機関の登録に失敗しました"));
     }
   };
 
@@ -488,7 +489,10 @@ function NewPrepForm({
         `外国人「${name}」を登録しました。国籍・在留カード番号などの詳細は、あとで外国人管理から入力できます。`,
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "外国人の登録に失敗しました");
+      // Supabase のエラーは Error 型ではなく { message, details, code } のオブジェクトで返るため、
+      // instanceof Error だけだと理由が隠れて「失敗しました」としか出ない。列が無いときは適用する
+      // マイグレーション（外国人の列でいちばん新しい 0175 の spouse）も案内する
+      setError(dbErrorMessage(err, "0175_worker_spouse.sql", "外国人の登録に失敗しました"));
     } finally {
       setCreating(false);
     }

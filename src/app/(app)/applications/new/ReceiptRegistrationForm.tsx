@@ -1,5 +1,6 @@
 "use client";
 
+import { dbErrorMessage } from "@/lib/errors";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -296,7 +297,8 @@ export function ReceiptRegistrationForm({
         `外国人「${name}」を登録しました。国籍・在留カード番号などの詳細は、あとで外国人管理から入力できます。`,
       );
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : "外国人の登録に失敗しました");
+      // Supabase のエラーは Error 型ではないので dbErrorMessage で理由と未適用のマイグレーションを出す
+      setSubmitError(dbErrorMessage(err, "0175_worker_spouse.sql", "外国人の登録に失敗しました"));
     } finally {
       setCreatingWorker(false);
     }
