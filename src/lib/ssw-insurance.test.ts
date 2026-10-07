@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   excelDateSerial,
+  sswInsuranceExpiryState,
   sswStartOnFromPaidOn,
   sswUploadCells,
   sswUploadRow,
@@ -609,5 +610,19 @@ describe("sswUploadRow・sswUploadCells（申込用のファイル）", () => {
     expect(cells.I2).toBe("なし");
     expect(cells.K2).toBe("株式会社ベース");
     expect(cells.J2).toBeUndefined();
+  });
+});
+
+describe("sswInsuranceExpiryState（請求書作成の保険No.の下に出す有効期限の状態）", () => {
+  it("未登録は none、期限切れは expired（日数は負）", () => {
+    expect(sswInsuranceExpiryState(null, "2026-10-07")).toEqual({ kind: "none" });
+    expect(sswInsuranceExpiryState("", "2026-10-07")).toEqual({ kind: "none" });
+    expect(sswInsuranceExpiryState("2026-06-25", "2026-10-07")).toEqual({ kind: "expired", expiry: "2026-06-25", days: -104 });
+    expect(sswInsuranceExpiryState("2026-10-06", "2026-10-07")).toEqual({ kind: "expired", expiry: "2026-10-06", days: -1 });
+  });
+  it("当日〜31日以内は soon、それより先は ok", () => {
+    expect(sswInsuranceExpiryState("2026-10-07", "2026-10-07")).toEqual({ kind: "soon", expiry: "2026-10-07", days: 0 });
+    expect(sswInsuranceExpiryState("2026-11-07", "2026-10-07")).toEqual({ kind: "soon", expiry: "2026-11-07", days: 31 });
+    expect(sswInsuranceExpiryState("2026-11-08", "2026-10-07")).toEqual({ kind: "ok", expiry: "2026-11-08", days: 32 });
   });
 });

@@ -78,6 +78,23 @@ export function isSswJoined(w: Pick<SswInsuranceWorker, "ssw_insurance_expiry_da
   return !!w.ssw_insurance_expiry_date;
 }
 
+// 特定技能総合保険の有効期限の状態（請求書作成の名簿の保険No.の下に出す）。
+//  ・none: 有効期限が登録されていない（未加入）
+//  ・expired: 有効期限が今日より前（期限切れ。アラートを出す）
+//  ・soon: 有効期限まで SSW_SOON_DAYS 日以内（まもなく期限）
+//  ・ok: それ以外（加入中）
+export type SswExpiryState =
+  | { kind: "none" }
+  | { kind: "expired" | "soon" | "ok"; expiry: string; days: number }; // days = 今日から有効期限までの日数（期限切れは負）
+export function sswInsuranceExpiryState(expiry: string | null | undefined, today: string): SswExpiryState {
+  const e = (expiry ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(e)) return { kind: "none" };
+  const days = Math.round((Date.parse(`${e}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000);
+  if (days < 0) return { kind: "expired", expiry: e, days };
+  if (days <= SSW_SOON_DAYS) return { kind: "soon", expiry: e, days };
+  return { kind: "ok", expiry: e, days };
+}
+
 // 解約手続きができる期間（有効期限からこの月数を過ぎると解約できない）
 export const SSW_CANCEL_LIMIT_MONTHS = 4;
 

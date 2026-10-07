@@ -64,6 +64,8 @@ export type BillingWorker = Pick<
   before_ssw2?: boolean;
   // 2号の許可日より前の月だが、その月の時点の在留資格が履歴に無く（2号のまま）、名簿に載せなかった印
   before_ssw2_unknown?: boolean;
+  // 特定技能総合保険の有効期限（保険No.の下に出し、期限切れはアラート）。古い読み込みでは undefined
+  ssw_insurance_expiry_date?: string | null;
 };
 
 export type BillingOrg = Pick<Organization, "id" | "name" | "intake">;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -18,8 +18,10 @@ import {
   Printer,
   Search,
   Square,
+  TriangleAlert,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { slashDate, sswInsuranceExpiryState } from "@/lib/ssw-insurance";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
@@ -2694,6 +2696,13 @@ export function MonthlyBillingSection({
                                 org.organizationId,
                               )
                             }
+                            // 保険No.の下に、いま加入している特定技能総合保険の有効期限（期限切れはアラート）
+                            footer={
+                              <InsuranceExpiryNote
+                                expiry={row.worker.ssw_insurance_expiry_date}
+                                today={today}
+                              />
+                            }
                           />
                           {/* 紹介手数料No.（紹介手数料台帳の行とつながっていて、入金も記録できる）。
                               手数料・あっせんの有無は「この機関の分」だけを見る */}
@@ -2834,6 +2843,7 @@ function SalesNoCell({
   disabledText = null,
   disabledTitle,
   onSave,
+  footer = null,
 }: {
   entry: { entryId: string; freeeNo: string; itemName: string } | null;
   canEdit: boolean;
@@ -2844,6 +2854,7 @@ function SalesNoCell({
   disabledText?: string | null; // そもそも番号が発生しないときの表示（❌ など）
   disabledTitle?: string;
   onSave: (value: string, entryId: string) => Promise<void>;
+  footer?: ReactNode; // 番号の下に出す補足（保険の有効期限など）。番号が発生しない（❌）ときは出さない
 }) {
   const saved = entry?.freeeNo ?? "";
   const [value, setValue] = useState(saved);
@@ -2892,18 +2903,24 @@ function SalesNoCell({
         title="対象月に許可が下りた人だけ入力できます"
       >
         {entry?.freeeNo || "—"}
+        {footer}
       </td>
     );
   }
   if (!entry && !canEdit) {
     return (
       <td className="py-1.5 pr-2 text-muted" title="売上明細がまだありません（申請詳細の売上登録で作られます）">
-        —
+        —{footer}
       </td>
     );
   }
   if (!canEdit) {
-    return <td className="py-1.5 pr-2 tabular-nums">{entry?.freeeNo || "—"}</td>;
+    return (
+      <td className="py-1.5 pr-2 tabular-nums">
+        {entry?.freeeNo || "—"}
+        {footer}
+      </td>
+    );
   }
   return (
     <td className="py-1.5 pr-2">
@@ -2946,7 +2963,51 @@ function SalesNoCell({
       {!busy && !failed && dirty && (
         <span className="ml-1 text-[10px] text-muted">未確定</span>
       )}
+      {footer}
     </td>
+  );
+}
+
+// 保険No.の下に出す、特定技能総合保険の有効期限。
+// 期限切れは赤のアラート、1か月以内は注意色、加入中は薄い文字、未登録は「期限 —」
+function InsuranceExpiryNote({ expiry, today }: { expiry: string | null | undefined; today: string }) {
+  const state = sswInsuranceExpiryState(expiry, today);
+  if (state.kind === "none") {
+    return (
+      <p className="mt-0.5 text-[10px] text-muted" title="特定技能総合保険の有効期限が登録されていません（未加入）">
+        期限 —
+      </p>
+    );
+  }
+  if (state.kind === "expired") {
+    return (
+      <p className="mt-0.5">
+        <span
+          className="inline-flex items-center gap-0.5 rounded-full bg-seal/10 px-1.5 py-0.5 text-[10px] font-bold text-seal"
+          title={`特定技能総合保険の有効期限（${slashDate(state.expiry)}）が切れています。更新の手続きを確認してください`}
+        >
+          <TriangleAlert size={11} />
+          期限切れ {slashDate(state.expiry)}
+        </span>
+      </p>
+    );
+  }
+  if (state.kind === "soon") {
+    return (
+      <p className="mt-0.5">
+        <span
+          className="rounded-full bg-status-notice-bg px-1.5 py-0.5 text-[10px] font-bold text-status-notice-fg"
+          title="特定技能総合保険の有効期限が1か月以内です"
+        >
+          期限 {slashDate(state.expiry)}（あと{state.days}日）
+        </span>
+      </p>
+    );
+  }
+  return (
+    <p className="mt-0.5 text-[10px] tabular-nums text-muted" title="特定技能総合保険の有効期限（加入中）">
+      期限 {slashDate(state.expiry)}
+    </p>
   );
 }
 
