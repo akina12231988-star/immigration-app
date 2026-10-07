@@ -1,21 +1,27 @@
 "use client";
 
 import { useState } from "react";
-import { Printer } from "lucide-react";
+import { Plus, Printer, Trash2 } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
 import {
   buildEstimate,
   estimateDateText,
+  estimateItemAmount,
+  estimateTotals,
   estimateYen,
   STAMP_FEE_BANDS,
   STAMP_FEE_METHODS,
+  withStampRow,
   type EstimateInput,
+  type EstimateItem,
   type StampFeeMethod,
 } from "@/lib/estimate";
 
 // 申請準備の見積書のA4縦1枚の印刷用シート。
 // 画面上部のツールバー（印刷時は非表示）で、申請方法（窓口/オンライン）と
-// 許可の見込みの在留期間を選び直せる。選び直すと明細の収入印紙代と備考の表の強調が変わる
+// 許可の見込みの在留期間を選び直せる。選び直すと明細の収入印紙代と備考の表の強調が変わる。
+// 明細（摘要・数量・単価・課税）はツールバーの「明細の編集」で追加・削除・変更できる
+// （印刷するこの1回分だけ。保存はしない。「既定に戻す」で所属機関の情報からの明細に戻る）
 export function EstimateSheet({
   base,
   backHref,
@@ -30,9 +36,44 @@ export function EstimateSheet({
   const [method, setMethod] = useState<StampFeeMethod>(defaultMethod);
   const [bandKey, setBandKey] = useState(defaultBandKey);
   const est = buildEstimate({ ...base, method, bandKey });
+  // 印刷する明細（編集できる）。申請方法・在留期間を変えたら印紙代の行だけ差し替える
+  const [items, setItems] = useState<EstimateItem[]>(() => est.items);
+  const [edited, setEdited] = useState(false);
+  const totals = estimateTotals(items);
+
+  const changeMethod = (m: StampFeeMethod) => {
+    setMethod(m);
+    setItems((prev) => withStampRow(prev, buildEstimate({ ...base, method: m, bandKey })));
+  };
+  const changeBand = (key: string) => {
+    setBandKey(key);
+    setItems((prev) => withStampRow(prev, buildEstimate({ ...base, method, bandKey: key })));
+  };
+  const patchItem = (i: number, patch: Partial<EstimateItem>) => {
+    setEdited(true);
+    setItems((prev) =>
+      prev.map((it, idx) => {
+        if (idx !== i) return it;
+        const next = { ...it, ...patch, kind: "custom" as const };
+        return { ...next, amount: estimateItemAmount(next) };
+      }),
+    );
+  };
+  const removeItem = (i: number) => {
+    setEdited(true);
+    setItems((prev) => prev.filter((_, idx) => idx !== i));
+  };
+  const addItem = () => {
+    setEdited(true);
+    setItems((prev) => [...prev, { name: "", qty: "1式", unitPrice: 0, amount: 0, taxable: true, kind: "custom" }]);
+  };
+  const resetItems = () => {
+    setEdited(false);
+    setItems(est.items);
+  };
 
   // 明細の行数は最低8行にして、空行も罫線を出す（手書きの追記ができる）
-  const blankRows = Math.max(0, 8 - est.items.length);
+  const blankRows = Math.max(0, 8 - items.length);
   const showStampTable = est.stampFee.applies && est.stampFee.revised && est.stampFee.payer !== "";
 
   return (
@@ -61,7 +102,7 @@ export function EstimateSheet({
                     <button
                       key={m}
                       type="button"
-                      onClick={() => setMethod(m)}
+                      onClick={() => changeMethod(m)}
                       aria-pressed={method === m}
                       className={`min-h-[36px] px-3 text-xs font-bold ${
                         method === m ? "bg-brand text-brand-foreground" : "bg-background text-muted hover:bg-surface"
@@ -76,7 +117,7 @@ export function EstimateSheet({
                 許可の見込みの在留期間
                 <select
                   value={bandKey}
-                  onChange={(e) => setBandKey(e.target.value)}
+                  onChange={(e) => changeBand(e.target.value)}
                   className="min-h-[36px] rounded-lg border border-border bg-background px-2 text-xs font-bold text-foreground"
                 >
                   {STAMP_FEE_BANDS.map((b) => (
@@ -103,6 +144,73 @@ export function EstimateSheet({
               金額が読めない明細があります（{est.invalidAmounts.join("、")}）。所属機関の情報 ＞ 決算・売上 で数字だけの金額に直してください。
             </p>
           )}
+          {/* 明細の編集（印刷するこの1回分。保存はしない） */}
+          <div className="w-full rounded-xl border border-border bg-surface p-3">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <p className="text-xs font-bold">明細の編集</p>
+              <span className="text-[11px] text-muted">
+                摘要・数量・単価・課税を直せます。行の追加・削除もできます（この印刷分だけ。所属機関の情報は変わりません）。
+              </span>
+              {edited && (
+                <button type="button" onClick={resetItems} className="ml-auto text-[11px] font-bold text-brand">
+                  既定に戻す
+                </button>
+              )}
+            </div>
+            <div className="flex flex-col gap-1.5">
+              {items.map((it, i) => (
+                <div key={i} className="flex flex-wrap items-center gap-1.5">
+                  <input
+                    value={it.name}
+                    onChange={(e) => patchItem(i, { name: e.target.value })}
+                    placeholder="摘要"
+                    aria-label={`明細${i + 1}の摘要`}
+                    className="min-h-[36px] min-w-[200px] flex-1 rounded-lg border border-border bg-background px-2 text-xs"
+                  />
+                  <input
+                    value={it.qty}
+                    onChange={(e) => patchItem(i, { qty: e.target.value })}
+                    placeholder="数量"
+                    aria-label={`明細${i + 1}の数量`}
+                    className="min-h-[36px] w-16 rounded-lg border border-border bg-background px-2 text-center text-xs"
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    inputMode="numeric"
+                    value={it.unitPrice}
+                    onChange={(e) => patchItem(i, { unitPrice: Number(e.target.value) || 0 })}
+                    placeholder="単価"
+                    aria-label={`明細${i + 1}の単価`}
+                    className="min-h-[36px] w-28 rounded-lg border border-border bg-background px-2 text-right text-xs tabular-nums"
+                  />
+                  <span className="w-24 text-right text-xs tabular-nums text-muted">{estimateYen(it.amount)}</span>
+                  <label className="flex items-center gap-1 text-[11px] text-muted">
+                    <input type="checkbox" checked={it.taxable} onChange={(e) => patchItem(i, { taxable: e.target.checked })} />
+                    課税
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => removeItem(i)}
+                    aria-label={`明細${i + 1}を削除`}
+                    title="この行を削除"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-seal hover:bg-seal/10"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={addItem}
+              className="mt-2 inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-brand bg-background px-3 text-xs font-bold text-brand hover:bg-brand/5"
+            >
+              <Plus size={14} />
+              行を追加
+            </button>
+          </div>
           <p className="w-full text-[11px] text-muted">
             印刷設定は<b>用紙: A4</b>・<b>余白: なし</b>・<b>倍率: 100%</b>にしてください。
           </p>
@@ -145,7 +253,7 @@ export function EstimateSheet({
               </div>
               <div className="mt-2 flex items-baseline gap-3 border-b-2 border-black pb-1">
                 <span className="shrink-0 text-[11px] text-neutral-600">見積金額</span>
-                <span className="text-2xl font-bold">{estimateYen(est.total)}</span>
+                <span className="text-2xl font-bold">{estimateYen(totals.total)}</span>
                 <span className="text-[11px] text-neutral-600">（税込）</span>
               </div>
             </div>
@@ -176,7 +284,7 @@ export function EstimateSheet({
               </tr>
             </thead>
             <tbody>
-              {est.items.map((it, i) => (
+              {items.map((it, i) => (
                 <tr key={i}>
                   <td className="border border-black px-2 py-1.5">
                     {it.name}
@@ -204,28 +312,28 @@ export function EstimateSheet({
               <tbody>
                 <tr>
                   <td className="border border-black px-2 py-1">小計</td>
-                  <td className="border border-black px-2 py-1 text-right">{estimateYen(est.subtotalTaxable + est.taxFree)}</td>
+                  <td className="border border-black px-2 py-1 text-right">{estimateYen(totals.subtotalTaxable + totals.taxFree)}</td>
                 </tr>
                 <tr>
                   <td className="border border-black px-2 py-1">消費税</td>
-                  <td className="border border-black px-2 py-1 text-right">{estimateYen(est.tax)}</td>
+                  <td className="border border-black px-2 py-1 text-right">{estimateYen(totals.tax)}</td>
                 </tr>
                 <tr className="font-bold">
                   <td className="border border-black px-2 py-1">合計</td>
-                  <td className="border border-black px-2 py-1 text-right">{estimateYen(est.total)}</td>
+                  <td className="border border-black px-2 py-1 text-right">{estimateYen(totals.total)}</td>
                 </tr>
                 <tr>
                   <td className="border border-black px-2 py-1">内訳　10%対象（税抜）</td>
-                  <td className="border border-black px-2 py-1 text-right">{estimateYen(est.subtotalTaxable)}</td>
+                  <td className="border border-black px-2 py-1 text-right">{estimateYen(totals.subtotalTaxable)}</td>
                 </tr>
                 <tr>
                   <td className="border border-black px-2 py-1 pl-8 text-[10px]">10%消費税</td>
-                  <td className="border border-black px-2 py-1 text-right text-[10px]">{estimateYen(est.tax)}</td>
+                  <td className="border border-black px-2 py-1 text-right text-[10px]">{estimateYen(totals.tax)}</td>
                 </tr>
-                {est.taxFree > 0 && (
+                {totals.taxFree > 0 && (
                   <tr>
-                    <td className="border border-black px-2 py-1 pl-8 text-[10px]">非課税（{est.taxFreeLabel}）</td>
-                    <td className="border border-black px-2 py-1 text-right text-[10px]">{estimateYen(est.taxFree)}</td>
+                    <td className="border border-black px-2 py-1 pl-8 text-[10px]">非課税（{totals.taxFreeLabel}）</td>
+                    <td className="border border-black px-2 py-1 text-right text-[10px]">{estimateYen(totals.taxFree)}</td>
                   </tr>
                 )}
               </tbody>
@@ -235,7 +343,11 @@ export function EstimateSheet({
           {/* 備考（印紙代の説明・在留期間ごとの金額の表・毎月の費用） */}
           <div className="mt-5 border border-black px-3 py-2 text-[10.5px] leading-relaxed">
             <p className="font-bold">備考</p>
-            {est.notes.length === 0 && <p className="text-neutral-600">&nbsp;</p>}
+            {/* 許可される在留期間は審査の結果しだいで未定（赤線で強調して、見積の金額が確定額でないことを伝える） */}
+            {est.emphasizedNote && (
+              <p className="estimate-emphasis mt-1 font-bold">{est.emphasizedNote}</p>
+            )}
+            {est.notes.length === 0 && !est.emphasizedNote && <p className="text-neutral-600">&nbsp;</p>}
             <ul className="mt-1 list-disc space-y-1 pl-4">
               {est.notes.map((n, i) => (
                 <li key={i}>{n}</li>
@@ -306,6 +418,16 @@ export function EstimateSheet({
         .estimate-totals td:last-child {
           white-space: nowrap;
           width: 30mm;
+        }
+        /* 赤線（印刷でも色を落とさない） */
+        .estimate-emphasis {
+          color: #b7282e;
+          text-decoration: underline;
+          text-decoration-color: #b7282e;
+          text-decoration-thickness: 2px;
+          text-underline-offset: 3px;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
         }
         .estimate-stamp img {
           width: 20mm;

@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import { CUSTODIAN_INFO } from "@/lib/custody";
 import {
   buildEstimate,
+  defaultStampFeeBandKey,
+  estimateItemAmount,
+  estimateQty,
+  estimateTotals,
+  withStampRow,
+  PERIOD_UNDETERMINED_NOTE,
   residencePeriodMonths,
   salesKindOfPrep,
   stampFeeAmount,
@@ -73,6 +79,61 @@ describe("在留期間 → 手数料の区分", () => {
     expect(stampFeeApplies("変更")).toBe(true);
     expect(stampFeeApplies("更新")).toBe(true);
     expect(stampFeeApplies("特定活動")).toBe(true);
+  });
+});
+
+describe("許可の見込みの在留期間の初期値", () => {
+  it("特定活動は3月超6月以下、特定技能への変更は1年、特定技能の更新は在留カードの期間", () => {
+    expect(defaultStampFeeBandKey("特定活動で申請準備中", "特定活動", "1年")).toBe("3月超6月以下");
+    expect(defaultStampFeeBandKey("特定活動（特定技能２号移行準備のため）準備中", "特定活動", "")).toBe("3月超6月以下");
+    expect(defaultStampFeeBandKey("特定活動ビザ更新の申請準備", "更新", "1年")).toBe("3月超6月以下");
+    expect(defaultStampFeeBandKey("特定技能申請準備中", "変更", "6月")).toBe("1年");
+    expect(defaultStampFeeBandKey("特定技能2号申請準備中", "変更", "4月")).toBe("1年");
+    expect(defaultStampFeeBandKey("特定技能更新の準備中", "更新", "1年")).toBe("1年");
+    expect(defaultStampFeeBandKey("特定技能更新の準備中", "更新", "3年")).toBe("3年以上5年未満");
+    expect(defaultStampFeeBandKey("特定技能更新の準備中", "更新", "")).toBe("1年");
+    expect(defaultStampFeeBandKey("在留資格認定申請書の準備中", "認定", "")).toBe("1年");
+  });
+
+  it("印紙代を明細に入れたときは、在留期間が未定である注意を赤線付きで出す", () => {
+    expect(buildEstimate(base).emphasizedNote).toBe(PERIOD_UNDETERMINED_NOTE);
+    expect(buildEstimate({ ...base, stampFeePayer: "本人負担" }).emphasizedNote).toBeNull();
+    expect(buildEstimate({ ...base, appContent: "在留資格認定申請書の準備中", appType: "認定" }).emphasizedNote).toBeNull();
+    expect(buildEstimate({ ...base, plannedAppOn: "2026-09-25" }).emphasizedNote).toBeNull();
+  });
+});
+
+describe("明細の編集（数量・金額・小計・印紙代の行の差し替え）", () => {
+  it("数量の文字から数を読み、単価×数量で金額を出す", () => {
+    expect(estimateQty("1式")).toBe(1);
+    expect(estimateQty("2人")).toBe(2);
+    expect(estimateQty("３件")).toBe(3);
+    expect(estimateQty("式")).toBe(1);
+    expect(estimateQty("0")).toBe(1);
+    expect(estimateItemAmount({ unitPrice: 5000, qty: "2人" })).toBe(10000);
+    expect(estimateItemAmount({ unitPrice: -1, qty: "1式" })).toBe(0);
+  });
+
+  it("小計・消費税・非課税・合計と、非課税の行の名前", () => {
+    const t = estimateTotals([
+      { name: "a", qty: "1式", unitPrice: 10000, amount: 10000, taxable: true, kind: "sales" },
+      { name: "b", qty: "1件", unitPrice: 27000, amount: 27000, taxable: false, kind: "stamp" },
+      { name: "c", qty: "1人", unitPrice: 8820, amount: 8820, taxable: false, kind: "insurance" },
+      { name: "d", qty: "1式", unitPrice: 100, amount: 100, taxable: false, kind: "custom" },
+    ]);
+    expect(t).toEqual({ subtotalTaxable: 10000, tax: 1000, taxFree: 35920, taxFreeLabel: "収入印紙代・特定技能総合保険・その他", total: 46920 });
+    expect(estimateTotals([]).taxFreeLabel).toBe("");
+  });
+
+  it("申請方法や在留期間を変えたら印紙代の行だけ差し替える（消していれば足さない）", () => {
+    const first = buildEstimate(base);
+    const edited = [{ ...first.items[0], name: "直した", kind: "custom" as const }, ...first.items.slice(1)];
+    const rebuilt = buildEstimate({ ...base, method: "オンライン" });
+    const next = withStampRow(edited, rebuilt);
+    expect(next[0].name).toBe("直した");
+    expect(next.find((i) => i.kind === "stamp")?.amount).toBe(27000);
+    const without = edited.filter((i) => i.kind !== "stamp");
+    expect(withStampRow(without, rebuilt).some((i) => i.kind === "stamp")).toBe(false);
   });
 });
 

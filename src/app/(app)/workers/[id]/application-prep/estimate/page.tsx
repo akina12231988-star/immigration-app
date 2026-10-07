@@ -8,7 +8,7 @@ import { CUSTODIAN_SETTING_KEY, mergeCustodianInfo } from "@/lib/custody";
 import { normalizeOrganizationIntake } from "@/lib/organization-intake";
 import { prepDetailHref } from "@/lib/application-prep";
 import { effectiveStampFeePayer } from "@/lib/stamp-fee";
-import { DEFAULT_STAMP_FEE_BAND, salesKindOfPrep, stampFeeBandKeyOfPeriod } from "@/lib/estimate";
+import { defaultStampFeeBandKey, salesKindOfPrep } from "@/lib/estimate";
 import { salesItemsForKind } from "@/lib/sales";
 import { effectiveResidencePeriod } from "@/lib/residence-card";
 import { normalizeTodoKey } from "@/lib/todo";
@@ -125,8 +125,8 @@ export default async function ApplicationPrepEstimatePage({
     );
   }
 
-  // 許可の見込みの在留期間: 更新なら今の在留期間と同じ期間になることが多いので、在留カードの在留期間から区分を決める
-  const defaultBandKey = stampFeeBandKeyOfPeriod(effectiveResidencePeriod(worker)) ?? DEFAULT_STAMP_FEE_BAND;
+  // 許可の見込みの在留期間: 特定活動は3月超6月以下、特定技能への変更は1年、特定技能の更新は在留カードの在留期間
+  const defaultBandKey = defaultStampFeeBandKey(current.app_content, current.app_type, effectiveResidencePeriod(worker));
   // 申請はオンラインで行うので、収入印紙代はオンライン申請の金額を初期値にする（窓口は印刷ページで切り替え可）
 
   return (

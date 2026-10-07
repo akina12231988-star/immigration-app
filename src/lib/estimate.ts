@@ -71,6 +71,27 @@ export function stampFeeBandKeyOfPeriod(period: string | null | undefined): stri
   return months == null ? null : stampFeeBandOfMonths(months).key;
 }
 
+// 見積に使う「許可の見込みの在留期間」の初期値。
+//  ・特定活動（新規・更新）: 3月超6月以下（特定活動は4か月・6か月の許可が多い）
+//  ・特定技能への変更（2号への変更を含む）: 1年
+//  ・特定技能の更新: いまの在留カードの在留期間（同じ期間になることが多い）。読めなければ1年
+// 実際に許可される在留期間は審査の結果しだいなので、見積書には未定である旨を赤線付きで出す
+export function defaultStampFeeBandKey(
+  appContent: string,
+  appType: "" | PrepAppType,
+  residencePeriod: string | null | undefined,
+): string {
+  const label = prepAppLabel(appContent, appType);
+  if (appType === "特定活動" || /特定活動/.test(label)) return "3月超6月以下";
+  if (appType === "変更") return DEFAULT_STAMP_FEE_BAND;
+  if (appType === "更新") return stampFeeBandKeyOfPeriod(residencePeriod) ?? DEFAULT_STAMP_FEE_BAND;
+  return DEFAULT_STAMP_FEE_BAND;
+}
+
+// 備考の先頭に赤線付きで出す注意（許可される在留期間は審査の結果しだいで未定）
+export const PERIOD_UNDETERMINED_NOTE =
+  "許可される在留期間（年月）は審査の結果しだいで、どれになるかは未定です。収入印紙代は許可後に確定した金額でご請求します。";
+
 export function stampFeeBand(key: string): StampFeeBand {
   return STAMP_FEE_BANDS.find((b) => b.key === key) ?? stampFeeBand(DEFAULT_STAMP_FEE_BAND);
 }
@@ -119,12 +140,59 @@ export function prepAppLabel(appContent: string, appType: "" | PrepAppType): str
   return appType ? PREP_APP_TYPE_LABELS[appType] : "";
 }
 
+// 明細の行の種類（印刷ページで編集するとき、申請方法や在留期間を変えたら印紙代の行だけ差し替えるために使う）
+export type EstimateItemKind = "sales" | "stamp" | "insurance" | "custom";
+
 export interface EstimateItem {
   name: string;
   qty: string; // 数量（例: 1式 / 1件）
   unitPrice: number;
-  amount: number;
+  amount: number; // 単価 × 数量の数字（数量が読めなければ ×1）
   taxable: boolean; // 10%の課税対象か（収入印紙代は非課税）
+  kind: EstimateItemKind;
+}
+
+// 数量の文字（1式 / 2人 / ３件）から数を読む。読めなければ 1
+export function estimateQty(qty: string): number {
+  const half = qty.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
+  const m = /(\d+)/.exec(half);
+  const n = m ? Number(m[1]) : 1;
+  return n > 0 ? n : 1;
+}
+
+// 明細1行の金額（単価 × 数量）
+export function estimateItemAmount(item: Pick<EstimateItem, "unitPrice" | "qty">): number {
+  return Math.max(0, Math.round(item.unitPrice)) * estimateQty(item.qty);
+}
+
+export interface EstimateTotals {
+  subtotalTaxable: number; // 10%対象（税抜）
+  tax: number; // 10%消費税
+  taxFree: number; // 非課税
+  taxFreeLabel: string; // 内訳の非課税の行の名前（入れた行に合わせて「収入印紙代・特定技能総合保険」など）
+  total: number; // 合計（税込）
+}
+
+// 明細から小計・消費税・合計を出す（印刷ページで明細を編集したあとも同じ計算を使う）
+export function estimateTotals(items: EstimateItem[]): EstimateTotals {
+  const subtotalTaxable = items.filter((i) => i.taxable).reduce((s, i) => s + i.amount, 0);
+  const taxFreeItems = items.filter((i) => !i.taxable);
+  const taxFree = taxFreeItems.reduce((s, i) => s + i.amount, 0);
+  const tax = taxFromExcl(subtotalTaxable);
+  const labels: string[] = [];
+  for (const i of taxFreeItems) {
+    const l = i.kind === "stamp" ? "収入印紙代" : i.kind === "insurance" ? "特定技能総合保険" : "その他";
+    if (!labels.includes(l)) labels.push(l);
+  }
+  return { subtotalTaxable, tax, taxFree, taxFreeLabel: labels.join("・"), total: subtotalTaxable + tax + taxFree };
+}
+
+// 印刷ページで明細を編集したあとに申請方法や在留期間を変えたとき、収入印紙代の行だけを新しい内容に差し替える。
+// 印紙代の行を消していれば足さない（消した判断を尊重する）
+export function withStampRow(items: EstimateItem[], rebuilt: Estimate): EstimateItem[] {
+  const next = rebuilt.items.find((i) => i.kind === "stamp");
+  if (!next) return items;
+  return items.map((i) => (i.kind === "stamp" ? { ...next } : i));
 }
 
 export interface EstimateInput {
@@ -169,6 +237,7 @@ export interface Estimate {
   };
   insurance: { included: boolean; amount: number }; // 特定技能総合保険の行を入れたか
   notes: string[]; // 備考
+  emphasizedNote: string | null; // 備考の先頭に赤線付きで出す注意（印紙代を明細に入れたときだけ）
   salesKind: SalesAppKind;
   invalidAmounts: string[]; // 金額が読めなかった売上明細の項目名（所属機関の情報で直してもらう）
 }
@@ -181,7 +250,7 @@ export function buildEstimate(input: EstimateInput): Estimate {
     if (!name && !row.amount.trim()) continue;
     const price = parseAmount(row.amount) ?? 0;
     if (!price) invalidAmounts.push(name || "（項目名なし）");
-    items.push({ name: name || "（項目名なし）", qty: "1式", unitPrice: price, amount: price, taxable: true });
+    items.push({ name: name || "（項目名なし）", qty: "1式", unitPrice: price, amount: price, taxable: true, kind: "sales" });
   }
 
   const applies = stampFeeApplies(input.appType);
@@ -198,6 +267,7 @@ export function buildEstimate(input: EstimateInput): Estimate {
       unitPrice: stampAmount,
       amount: stampAmount,
       taxable: false,
+      kind: "stamp",
     });
   }
 
@@ -209,13 +279,11 @@ export function buildEstimate(input: EstimateInput): Estimate {
       unitPrice: SSW_INSURANCE_AMOUNT,
       amount: SSW_INSURANCE_AMOUNT,
       taxable: false,
+      kind: "insurance",
     });
   }
 
-  const subtotalTaxable = items.filter((i) => i.taxable).reduce((s, i) => s + i.amount, 0);
-  const taxFree = items.filter((i) => !i.taxable).reduce((s, i) => s + i.amount, 0);
-  const tax = taxFromExcl(subtotalTaxable);
-  const total = subtotalTaxable + tax + taxFree;
+  const { subtotalTaxable, tax, taxFree, taxFreeLabel, total } = estimateTotals(items);
 
   const notes: string[] = [];
   if (applies && input.stampFeePayer === "会社負担") {
@@ -277,7 +345,7 @@ export function buildEstimate(input: EstimateInput): Estimate {
     subtotalTaxable,
     tax,
     taxFree,
-    taxFreeLabel: [included ? "収入印紙代" : "", insuranceIncluded ? "特定技能総合保険" : ""].filter(Boolean).join("・"),
+    taxFreeLabel,
     total,
     insurance: { included: insuranceIncluded, amount: insuranceIncluded ? SSW_INSURANCE_AMOUNT : 0 },
     stampFee: {
@@ -290,6 +358,7 @@ export function buildEstimate(input: EstimateInput): Estimate {
       included,
     },
     notes,
+    emphasizedNote: included && revised ? PERIOD_UNDETERMINED_NOTE : null,
     salesKind: salesKindOfPrep(input.appContent, input.appType),
     invalidAmounts,
   };
