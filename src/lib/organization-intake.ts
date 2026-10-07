@@ -246,6 +246,7 @@ export function emptyOrganizationIntake(): OrganizationIntake {
     pay_method: "",
     ssw_insurance_burden: "",
     sales_items: {},
+    sales_items_custom: [],
     work_address: "",
     work_contact: "",
     rep_kana: "",
@@ -363,6 +364,9 @@ export function normalizeOrganizationIntake(raw: unknown): OrganizationIntake {
     officers,
     lodgings,
     sales_items: normalizeSalesItems(src.sales_items),
+    sales_items_custom: Array.isArray(src.sales_items_custom)
+      ? src.sales_items_custom.filter((k): k is string => typeof k === "string")
+      : [],
     job_workplaces: workplacesWithWorkSite(normalizeWorkplaces(src.job_workplaces, true), src),
     job_workplace_changes: normalizeWorkplaces(src.job_workplace_changes, false),
     job_shifts: normalizeShifts(src.job_shifts),

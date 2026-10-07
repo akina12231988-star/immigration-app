@@ -1,9 +1,9 @@
 // freee販売への売上登録（第1段階: 登録待ちの明細を作って登録漏れを防ぐ）のロジック。
 // 在留カード受領後に、申請種別・特定技能総合保険・支援代の日割り・定期売上の明細を組み立てる。
 
-import { parseAmount } from "@/lib/organization-intake";
+import { normalizeSalesItems, parseAmount } from "@/lib/organization-intake";
 import { orgSearchKeys } from "@/lib/org-search";
-import type { OrgSalesItem, OrgSalesItems } from "@/types/db";
+import type { OrgSalesItem } from "@/types/db";
 
 // 申請種別（この4種で売上の品目が決まる）
 export const SALES_APP_KINDS = [
@@ -18,39 +18,27 @@ export type SalesAppKind = (typeof SALES_APP_KINDS)[number];
 // 申請種別とは別枠で、紹介手数料台帳の手数料の初期値に使う
 export const REFERRAL_SALES_KEY = "あっせん";
 
-// 全所属機関で共通の固定明細。
-// 特定技能更新申請・特定活動申請・特定活動更新申請は、所属機関の情報に何が登録されていても
-// この1行（税抜18,000円）にする。見積書・在留カード受領後の売上登録の雛形で使う。
-// 所属機関の情報の入力欄は固定として出す（特定技能申請＝新規だけ機関ごとに登録する）
+// 申請種別ごとの売上明細の既定値（全所属機関共通）。
+// 所属機関の情報で変更・追加していない機関は、この既定の明細を見積書・売上登録に使う。
+// 変更した機関は sales_items_custom にその申請種別を入れ、sales_items の内容を使う
 export const SSW_RENEWAL_SALES_ITEM: OrgSalesItem = {
   name: "在留資格更新許可申請に係る申請取次支援業務費",
   amount: "18000",
 };
-// あっせん（人材紹介手数料）も全所属機関共通。国内は30,000円・国外は50,000円（税抜）。
-// 紹介手数料台帳の手数料の初期値は国内・国外で選ぶ（referralSalesItem）
+// あっせん（人材紹介手数料）の既定。国内は30,000円・国外は50,000円（税抜）。
+// 紹介手数料台帳の手数料の初期値は国内・国外で選ぶ（referralSalesItemFor）
 export const REFERRAL_SALES_ITEMS: OrgSalesItem[] = [
   { name: "人材紹介手数料代（国内）", amount: "30000" },
   { name: "人材紹介手数料（国外）", amount: "50000" },
 ];
-export const FIXED_SALES_ITEMS: Partial<Record<string, OrgSalesItem[]>> = {
+export const DEFAULT_SALES_ITEMS: Partial<Record<string, OrgSalesItem[]>> = {
   特定技能更新申請: [SSW_RENEWAL_SALES_ITEM],
   特定活動申請: [SSW_RENEWAL_SALES_ITEM],
   特定活動更新申請: [SSW_RENEWAL_SALES_ITEM],
   [REFERRAL_SALES_KEY]: REFERRAL_SALES_ITEMS,
 };
 
-// 国内・国外（referral_fees.domestic）に応じたあっせんの明細。国外以外は国内あつかい
-export function referralSalesItem(domestic: string | null | undefined): OrgSalesItem {
-  const overseas = (domestic ?? "").includes("国外");
-  return REFERRAL_SALES_ITEMS[overseas ? 1 : 0];
-}
-
-// 紹介手数料台帳の手数料の初期値（円・税抜）
-export function referralFeeDefault(domestic: string | null | undefined): number {
-  return Number(referralSalesItem(domestic).amount);
-}
-
-// 特定技能申請（新規）の固定明細。申請取次支援業務費は所属機関で金額が違う
+// 特定技能申請（新規）の既定の明細。申請取次支援業務費は所属機関で金額が違う
 // （有限会社國崎青果・BASE・西田祐一は28,500円、ほかは78,500円。税抜）。
 // 事前ガイダンス・生活オリエンテーションは全所属機関共通で足す
 export const SSW_NEW_SALES_ITEM_NAME = "在留資格変更許可申請に係る申請取次支援業務費";
@@ -74,7 +62,7 @@ export function isSswNewDiscountOrg(orgName: string | null | undefined): boolean
   return !!key && SSW_NEW_DISCOUNT_ORGS.some((o) => orgNameKey(o) === key);
 }
 
-// 特定技能申請（新規）の売上明細（所属機関名で金額を決める）
+// 特定技能申請（新規）の既定の売上明細（所属機関名で金額を決める）
 export function sswNewSalesItems(orgName: string | null | undefined): OrgSalesItem[] {
   return [
     { name: SSW_NEW_SALES_ITEM_NAME, amount: isSswNewDiscountOrg(orgName) ? SSW_NEW_FEE_DISCOUNT : SSW_NEW_FEE_STANDARD },
@@ -82,22 +70,53 @@ export function sswNewSalesItems(orgName: string | null | undefined): OrgSalesIt
   ];
 }
 
-// この申請種別の明細が固定（所属機関の情報では変えられない）か。いまは全種別が固定
-export function isFixedSalesKind(kind: string): boolean {
-  return kind === "特定技能申請" || (FIXED_SALES_ITEMS[kind]?.length ?? 0) > 0;
+// 申請種別の既定の明細（コピーを返す。既定が無い種別は空）
+export function defaultSalesItems(kind: string, orgName: string | null | undefined = ""): OrgSalesItem[] {
+  if (kind === "特定技能申請") return sswNewSalesItems(orgName);
+  return (DEFAULT_SALES_ITEMS[kind] ?? []).map((r) => ({ ...r }));
 }
 
-// 申請種別の売上明細。固定の種別はその明細（特定技能申請は所属機関名で金額が決まる）、
-// それ以外は所属機関の情報の登録内容（コピーを返す）
+// 所属機関の登録内容のうち売上明細に関わる部分（organizations.intake のまま渡せる）
+export type SalesItemsSource = {
+  sales_items?: unknown;
+  sales_items_custom?: unknown;
+} | null | undefined;
+
+function customKinds(src: SalesItemsSource): string[] {
+  const list = src?.sales_items_custom;
+  return Array.isArray(list) ? list.filter((k): k is string => typeof k === "string") : [];
+}
+
+// この申請種別を、既定ではなくこの機関だけの明細にしているか
+export function hasCustomSalesItems(src: SalesItemsSource, kind: string): boolean {
+  return customKinds(src).includes(kind);
+}
+
+// 申請種別の売上明細。この機関だけの明細にしていればその内容、そうでなければ既定の明細
+// （特定技能申請は所属機関名で金額が決まる）。コピーを返す
 export function salesItemsForKind(
-  salesItems: OrgSalesItems | null | undefined,
+  src: SalesItemsSource,
   kind: string,
   orgName: string | null | undefined = "",
 ): OrgSalesItem[] {
-  if (kind === "特定技能申請") return sswNewSalesItems(orgName);
-  const fixed = FIXED_SALES_ITEMS[kind];
-  const rows = fixed ?? salesItems?.[kind] ?? [];
-  return rows.map((r) => ({ ...r }));
+  if (hasCustomSalesItems(src, kind)) {
+    return (normalizeSalesItems(src?.sales_items)[kind] ?? []).map((r) => ({ ...r }));
+  }
+  return defaultSalesItems(kind, orgName);
+}
+
+// 国内・国外（referral_fees.domestic）に応じたあっせんの明細。
+// この機関だけの明細なら名前に「国外」「国内」を含む行を選び、無ければ順番（1行目=国内、2行目=国外）
+export function referralSalesItemFor(src: SalesItemsSource, domestic: string | null | undefined): OrgSalesItem {
+  const overseas = (domestic ?? "").includes("国外");
+  const rows = salesItemsForKind(src, REFERRAL_SALES_KEY);
+  const byName = rows.find((r) => r.name.includes(overseas ? "国外" : "国内"));
+  return byName ?? rows[overseas ? 1 : 0] ?? rows[0] ?? REFERRAL_SALES_ITEMS[overseas ? 1 : 0];
+}
+
+// 紹介手数料台帳の手数料の初期値（円・税抜）
+export function referralFeeFor(src: SalesItemsSource, domestic: string | null | undefined): number {
+  return parseAmount(referralSalesItemFor(src, domestic).amount) ?? 0;
 }
 
 // 特定技能総合保険（会社負担のときに1人あたり計上・非課税）

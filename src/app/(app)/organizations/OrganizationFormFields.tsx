@@ -17,7 +17,7 @@ import {
   registerOrgFile,
 } from "@/app/(app)/organizations/actions";
 import { SSW_INDUSTRIES, categoriesFor } from "@/lib/industries";
-import { isFixedSalesKind, REFERRAL_SALES_KEY, SALES_APP_KINDS, salesItemsForKind } from "@/lib/sales";
+import { defaultSalesItems, hasCustomSalesItems, REFERRAL_SALES_KEY, SALES_APP_KINDS } from "@/lib/sales";
 import { todayStr } from "@/lib/ssw/calc";
 import { EMPTY_SSW2_DUTIES, ssw2DutiesOf } from "@/lib/org-ssw2-duties";
 import {
@@ -1728,40 +1728,44 @@ function IntakeSection({
         <OrgTabPanel tab="money">
         <p className={GROUP_CLASS}>申請種別ごとの売上明細（freee販売）</p>
         <p className={HINT_CLASS}>
-          見積書と在留カード受領後の売上登録に入る明細です。全所属機関で固定（アプリに設定）のため、ここでは変えられません。
-          特定技能申請の申請取次支援業務費だけ所属機関で金額が違います（有限会社國崎青果・BASE・西田祐一は28,500円、ほかは78,500円。税抜）。
-          あっせん（人材紹介手数料）は紹介手数料台帳の手数料の初期値（国内30,000円・国外50,000円）になります。
+          見積書と在留カード受領後の売上登録に入る明細です。はじめは全所属機関共通の既定の明細が入っています
+          （特定技能申請の申請取次支援業務費は有限会社國崎青果・BASE・西田祐一が28,500円、ほかは78,500円。税抜）。
+          変更・追加するとこの機関だけその内容になり、「既定に戻す」で共通の明細に戻ります。
+          金額は数字だけ・税抜で入力してください。あっせん（人材紹介手数料）は紹介手数料台帳の手数料の初期値になります
+          （名前に「国内」「国外」を入れておくと、国内・国外で選び分けます）。
         </p>
         {[...SALES_APP_KINDS, REFERRAL_SALES_KEY].map((kind) => {
-          const rows = intake.sales_items[kind] ?? [];
+          // 既定の明細（lib/sales.ts。特定技能申請は入力中の名称で金額が決まる）を出し、
+          // 変更・追加したらこの機関だけの明細（sales_items_custom にその種別を入れる）に切り替える
+          const custom = hasCustomSalesItems(intake, kind);
+          const rows = custom ? (intake.sales_items[kind] ?? []) : defaultSalesItems(kind, companyName);
           const setRows = (next: OrgSalesItem[]) =>
-            setIntake({ sales_items: { ...intake.sales_items, [kind]: next } });
-          // 固定の明細（lib/sales.ts）。ここでは変えられないので内容だけ出す。
-          // 特定技能申請は所属機関名で金額が決まるので、入力中の名称で計算して出す
-          const fixed = isFixedSalesKind(kind) ? salesItemsForKind(intake.sales_items, kind, companyName) : null;
-          if (fixed) {
-            return (
-              <div key={kind} className="rounded-xl border border-border bg-surface p-2.5">
-                <p className="mb-1.5 text-xs font-bold">
-                  {kind === REFERRAL_SALES_KEY ? "あっせん（人材紹介手数料）" : kind}
-                </p>
-                <p className={HINT_CLASS}>固定の明細です（ここでは変えられません）。</p>
-                {fixed.map((row, i) => (
-                  <p key={i} className="mt-1 text-sm">
-                    {row.name}　<span className="tabular-nums">{Number(row.amount).toLocaleString("ja-JP")}円</span>
-                    <span className="text-xs text-muted">（税抜）</span>
-                  </p>
-                ))}
-              </div>
-            );
-          }
+            setIntake({
+              sales_items: { ...intake.sales_items, [kind]: next },
+              sales_items_custom: custom ? intake.sales_items_custom : [...intake.sales_items_custom, kind],
+            });
+          const resetToDefault = () =>
+            setIntake({
+              sales_items: { ...intake.sales_items, [kind]: [] },
+              sales_items_custom: intake.sales_items_custom.filter((k) => k !== kind),
+            });
           return (
             <div key={kind} className="rounded-xl border border-border p-2.5">
-              <p className="mb-1.5 text-xs font-bold">
-                {kind === REFERRAL_SALES_KEY ? "あっせん（人材紹介手数料）" : kind}
+              <p className="mb-1.5 flex flex-wrap items-center gap-2 text-xs font-bold">
+                <span>{kind === REFERRAL_SALES_KEY ? "あっせん（人材紹介手数料）" : kind}</span>
+                {custom ? (
+                  <>
+                    <span className="rounded-full bg-status-notice-bg px-2 py-0.5 text-[10px] text-status-notice-fg">この機関だけの明細</span>
+                    <button type="button" onClick={resetToDefault} className="text-[11px] font-bold text-brand">
+                      既定に戻す
+                    </button>
+                  </>
+                ) : (
+                  <span className="rounded-full bg-surface px-2 py-0.5 text-[10px] font-medium text-muted">既定の明細（全所属機関共通）</span>
+                )}
               </p>
               {rows.length === 0 && (
-                <p className={HINT_CLASS}>まだ明細がありません。「＋ 明細を追加」から登録してください。</p>
+                <p className={HINT_CLASS}>明細がありません。「＋ 明細を追加」で登録するか、「既定に戻す」を押してください。</p>
               )}
               <div className="flex flex-col gap-2">
                 {rows.map((row, i) => (
