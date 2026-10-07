@@ -54,6 +54,7 @@ export interface WorkerReferralFee {
   feeId: string; // 書き換え先の referral_fees の行
   salesNo: string; // 紹介売上No.（freee販売）
   paidOn: string | null; // 入金年月日（未入金なら null）
+  billedOn: string | null; // 請求年月日（名簿で番号を入れたときに自動で入る）
   fee: number; // 手数料（円・税抜）
 }
 
@@ -66,7 +67,7 @@ export async function listWorkerReferralFees(
 ): Promise<Record<string, WorkerReferralFee>> {
   const { data, error } = await supabase
     .from("referral_fees")
-    .select("id, worker_id, organization_id, sales_no, paid_on, fee, created_at")
+    .select("id, worker_id, organization_id, sales_no, paid_on, billed_on, fee, created_at")
     .not("worker_id", "is", null)
     .order("created_at", { ascending: false });
   if (error) throw error;
@@ -78,6 +79,7 @@ export async function listWorkerReferralFees(
           organization_id: string | null;
           sales_no: string;
           paid_on: string | null;
+          billed_on: string | null;
           fee: number;
         }[]
       | null) ?? [];
@@ -91,6 +93,7 @@ export async function listWorkerReferralFees(
       feeId: r.id,
       salesNo: r.sales_no,
       paidOn: r.paid_on,
+      billedOn: r.billed_on ?? null,
       fee: r.fee,
     };
   }
@@ -98,7 +101,7 @@ export async function listWorkerReferralFees(
 }
 
 // 名簿で紹介手数料No.を入れたときに、台帳の行がまだ無ければ作る。
-// 台帳ページで手数料や紹介年月日をあとから足せるよう、ここでは番号だけ持たせる
+// 台帳ページで手数料や紹介年月日をあとから足せるよう、ここでは番号（と請求年月日）だけ持たせる
 export async function createReferralFeeForSalesNo(
   supabase: SupabaseClient,
   params: {
@@ -106,6 +109,7 @@ export async function createReferralFeeForSalesNo(
     organizationId: string | null;
     workerName: string;
     salesNo: string;
+    billedOn?: string | null; // 請求年月日（名簿の対象月の請求日を自動で入れる）
   },
 ): Promise<WorkerReferralFee> {
   const { data, error } = await supabase
@@ -115,12 +119,13 @@ export async function createReferralFeeForSalesNo(
       organization_id: params.organizationId,
       worker_name: params.workerName,
       sales_no: params.salesNo,
+      billed_on: params.billedOn ?? null,
     })
-    .select("id, sales_no, paid_on, fee")
+    .select("id, sales_no, paid_on, billed_on, fee")
     .single();
   if (error) throw error;
-  const row = data as { id: string; sales_no: string; paid_on: string | null; fee: number };
-  return { feeId: row.id, salesNo: row.sales_no, paidOn: row.paid_on, fee: row.fee };
+  const row = data as { id: string; sales_no: string; paid_on: string | null; billed_on: string | null; fee: number };
+  return { feeId: row.id, salesNo: row.sales_no, paidOn: row.paid_on, billedOn: row.billed_on ?? null, fee: row.fee };
 }
 
 // ---- 求職一覧（応募）から台帳を見るための取り出し ----
