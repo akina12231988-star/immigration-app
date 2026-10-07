@@ -145,6 +145,24 @@ export function isBillableResidence(residenceStatus: string | null | undefined):
   return s.includes("特定活動") && s.includes("特定技能1号");
 }
 
+// 今の所属機関での退職日。
+// workers.leaving_on は「その人の最新の1件」なので、転職すると前の機関の退職日が残ったままになる
+// （例: 8/9 に前の会社を退職 → 8/10 から今の会社で在籍中でも、退職日 8/9 が残る）。
+// 今の所属機関での雇用開始日（所属機関別の記録 → 雇用開始年月日）が退職日より後なら、
+// その退職日は前の機関のもの（転職済み）なので、今の機関では退職していないとみなして null を返す。
+// 当月中の転職の前の機関側の行（退職日までの日割り）は、生の退職日を使う（transferResignationRowFor）
+export function currentOrgLeavingOn(
+  worker: Pick<BillingWorker, "leaving_on" | "employment_start_on" | "org_employment_starts" | "current_organization_id">,
+): string | null {
+  const left = worker.leaving_on ?? "";
+  if (!left) return null;
+  const start = worker.current_organization_id
+    ? employmentStartForOrg(worker, worker.current_organization_id)
+    : (worker.employment_start_on ?? "");
+  if (start && start > left) return null;
+  return left;
+}
+
 // その月に1日でも在籍していた支援対象者か（＝在籍名簿に載り、支援費を請求する人）。
 // 在留許可日がその月の末日までに来ていて、退職日がその月の初日以降（未退職を含む）。
 // 支援対象外の人は請求も掲載もしない
@@ -154,7 +172,7 @@ export function isBilledInMonth(worker: BillingWorker, month: string): boolean {
   if (!worker.before_ssw2 && !isBillableResidence(worker.residence_status)) return false;
   const { from, to } = monthRange(month);
   if (!residedInMonth(worker, to)) return false;
-  const left = worker.leaving_on;
+  const left = currentOrgLeavingOn(worker);
   if (left && left < from) return false;
   return true;
 }
@@ -184,10 +202,11 @@ export function billingExclusionReason(worker: BillingWorker, month: string): st
   const { from, to } = monthRange(month);
 
   if (worker.support !== "支援対象") {
+    const leftCurrent = currentOrgLeavingOn(worker);
     const otherConditionsOk =
       isBillableResidence(worker.residence_status) &&
       residedInMonth(worker, to) &&
-      !(worker.leaving_on && worker.leaving_on < from);
+      !(leftCurrent && leftCurrent < from);
     return otherConditionsOk
       ? `支援区分が「${worker.support}」のまま（請求するなら「支援対象」に変えてください）`
       : null;
@@ -200,7 +219,7 @@ export function billingExclusionReason(worker: BillingWorker, month: string): st
   const permit = worker.residence_permit_date;
   if (!permit) return "在留許可日が未登録";
   if (!residedInMonth(worker, to)) return `在留許可日が対象月より後（${permit}）`;
-  const left = worker.leaving_on;
+  const left = currentOrgLeavingOn(worker);
   if (left && left < from) return `対象月より前に退職済み（退職日 ${left}）`;
   return "掲載条件を満たしていません"; // 想定外（条件を増やしたときの取りこぼし防止）
 }
@@ -351,7 +370,8 @@ export function supportedBeforeSsw2(worker: BillingWorker, month: string): boole
   if (!permit || permit <= to) return false;
   const start = worker.employment_start_on ?? "";
   if (!start || start > to) return false;
-  if (worker.leaving_on && worker.leaving_on < from) return false;
+  const left = currentOrgLeavingOn(worker);
+  if (left && left < from) return false;
   return true;
 }
 
@@ -411,7 +431,8 @@ export function billingRowFor(
   const { from, to } = monthRange(month);
   const monthDays = daysInMonth(from);
   const permit = worker.residence_permit_date ?? "";
-  const left = worker.leaving_on ?? "";
+  // 今の所属機関での退職日（前の機関の退職日が残っているだけなら空）
+  const left = currentOrgLeavingOn(worker) ?? "";
   // 当月中の転職は、退職日を前の機関の行（transferResignationRowFor）で使い、
   // 現在の機関のこの行では退職あつかいにしない
   const leftThisMonth =

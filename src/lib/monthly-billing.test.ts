@@ -3,6 +3,7 @@ import {
   billingExclusionReason,
   billingRowFor,
   currentMonth,
+  currentOrgLeavingOn,
   daysText,
   invoiceBilledOn,
   invoiceDueOn,
@@ -461,6 +462,46 @@ describe("当月中の転職（前の機関を退職 → 新しい機関で開�
     const left = leftThisMonthRows(billing);
     expect(left).toHaveLength(1);
     expect(left[0].org.organizationId).toBe("org-old");
+  });
+
+  // 転職の翌月以降: 退職日（前の機関のもの）が残っていても、今の機関では在籍中として満額で載る
+  it("翌月以降は、前の機関の退職日が残っていても今の機関の名簿に満額で載る", () => {
+    const w = transferWorker();
+    expect(currentOrgLeavingOn(w)).toBeNull();
+    expect(isBilledInMonth(w, "2026-09")).toBe(true);
+    expect(billingExclusionReason(w, "2026-09")).toBeNull();
+    const billing = summarizeMonthlyBilling([w], orgs, "2026-09");
+    expect(billing.orgs).toHaveLength(1);
+    expect(billing.orgs[0].organizationId).toBe("org-new");
+    const row = billing.orgs[0].rows[0];
+    expect(row.kind).toBe("満額");
+    expect(row.amount).toBe(10000);
+    expect(row.leftThisMonth).toBe(false);
+    // 前の機関には行が出ない（転職月だけ退職精算の行が出る）
+    expect(leftThisMonthRows(billing)).toHaveLength(0);
+  });
+
+  it("所属機関別の記録が無くても、雇用開始年月日が退職日より後なら今の機関では在籍中", () => {
+    const w = { ...transferWorker(), org_employment_starts: [] };
+    expect(currentOrgLeavingOn(w)).toBeNull();
+    expect(isBilledInMonth(w, "2026-09")).toBe(true);
+  });
+
+  it("今の機関で雇用が始まったあとに退職した人は、これまでどおり退職日で判定する", () => {
+    const w = worker({
+      name: "退職した人",
+      employment_start_on: "2025-01-01",
+      leaving_on: "2026-08-09",
+      current_organization_id: "org-old",
+      org_employment_starts: [{ organization_id: "org-old", start_on: "2025-01-01", contract_on: "", conditions_on: "" }],
+    });
+    expect(currentOrgLeavingOn(w)).toBe("2026-08-09");
+    expect(isBilledInMonth(w, "2026-09")).toBe(false);
+    expect(billingExclusionReason(w, "2026-09")).toBe("対象月より前に退職済み（退職日 2026-08-09）");
+    // 退職月は退職日まで日割り
+    const billing = summarizeMonthlyBilling([w], [org("org-old", "前の会社", "10,000円")], "2026-08");
+    expect(billing.orgs[0].rows[0].kind).toBe("退職日まで日割");
+    expect(billing.orgs[0].rows[0].periodTo).toBe("2026-08-09");
   });
 
   it("前の機関が分からないときは、新しい機関の行だけ（退職あつかいにしない）", () => {
