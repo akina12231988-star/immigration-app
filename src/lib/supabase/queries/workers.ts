@@ -89,7 +89,9 @@ export async function listWorkersForBilling(
         "residence_renewal_status, " +
         // 当月中の転職（前の機関の退職精算と新しい機関の日割りに分ける）の判定用と、
         // 前の機関の行に出す過去の定期売上No.
-        "org_employment_starts, leaving_org_name, past_recurring_sales",
+        "org_employment_starts, leaving_org_name, past_recurring_sales, " +
+        // 保険No.の下に出す特定技能総合保険の有効期限（期限切れはアラート）
+        "ssw_insurance_expiry_date",
     )
     .order("name", { ascending: true });
   if (error) throw error;
