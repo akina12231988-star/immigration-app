@@ -9,6 +9,7 @@ import { normalizeOrganizationIntake } from "@/lib/organization-intake";
 import { prepDetailHref } from "@/lib/application-prep";
 import { effectiveStampFeePayer } from "@/lib/stamp-fee";
 import { DEFAULT_STAMP_FEE_BAND, salesKindOfPrep, stampFeeBandKeyOfPeriod } from "@/lib/estimate";
+import { salesItemsForKind } from "@/lib/sales";
 import { effectiveResidencePeriod } from "@/lib/residence-card";
 import { normalizeTodoKey } from "@/lib/todo";
 import { todayStr } from "@/lib/ssw/calc";
@@ -113,7 +114,8 @@ export default async function ApplicationPrepEstimatePage({
   }
   const intake = normalizeOrganizationIntake(org.intake);
   const salesKind = salesKindOfPrep(current.app_content, current.app_type);
-  const salesItems = intake.sales_items[salesKind] ?? [];
+  // 明細は固定（lib/sales.ts）。特定技能申請は所属機関名で金額が決まる
+  const salesItems = salesItemsForKind(intake.sales_items, salesKind, org.name);
   if (salesItems.length === 0) {
     return guide(
       `所属機関の情報に「${salesKind}」の売上明細が登録されていません`,

@@ -147,6 +147,31 @@ export function isBillableResidence(residenceStatus: string | null | undefined):
   return s.includes("特定活動") && s.includes("特定技能1号");
 }
 
+// 日付として妥当か（YYYY-MM-DD で、年が 1900〜2100）。
+// 「0206-09-04」のような年の打ち間違いは文字の比較では「対象月より前」になってしまい、
+// 新規の人を「更新（満額）」と誤って判定するので、判定では未登録あつかいにする
+export const PLAUSIBLE_YEAR_MIN = 1900;
+export const PLAUSIBLE_YEAR_MAX = 2100;
+export function isPlausibleYmd(ymd: string | null | undefined): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((ymd ?? "").trim());
+  if (!m) return false;
+  const y = Number(m[1]);
+  return y >= PLAUSIBLE_YEAR_MIN && y <= PLAUSIBLE_YEAR_MAX;
+}
+
+// 日付が不正なときの注意文（妥当なら null）。名簿の雇用開始日の横などに出す
+export function implausibleDateNote(ymd: string | null | undefined): string | null {
+  const v = (ymd ?? "").trim();
+  if (!v || isPlausibleYmd(v)) return null;
+  return `日付が不正です（${v}）。${PLAUSIBLE_YEAR_MIN}〜${PLAUSIBLE_YEAR_MAX}年の日付に直してください`;
+}
+
+// 判定に使う雇用開始年月日（不正な日付は未登録あつかい）
+function plausibleEmploymentStart(worker: Pick<BillingWorker, "employment_start_on">): string {
+  const v = worker.employment_start_on ?? "";
+  return isPlausibleYmd(v) ? v : "";
+}
+
 // 今の所属機関での退職日。
 // workers.leaving_on は「その人の最新の1件」なので、転職すると前の機関の退職日が残ったままになる
 // （例: 8/9 に前の会社を退職 → 8/10 から今の会社で在籍中でも、退職日 8/9 が残る）。
@@ -370,7 +395,7 @@ export function supportedBeforeSsw2(worker: BillingWorker, month: string): boole
   const { from, to } = monthRange(month);
   const permit = worker.residence_permit_date ?? "";
   if (!permit || permit <= to) return false;
-  const start = worker.employment_start_on ?? "";
+  const start = plausibleEmploymentStart(worker);
   if (!start || start > to) return false;
   const left = currentOrgLeavingOn(worker);
   if (left && left < from) return false;
@@ -442,9 +467,9 @@ export function billingRowFor(
 
   // その月に支援が始まったか（更新で許可が下りただけの人は日割りしない）
   const permitThisMonth = Boolean(permit && permit >= from && permit <= to);
-  const startedBefore = Boolean(
-    worker.employment_start_on && worker.employment_start_on < from,
-  );
+  // 雇用開始日が不正（年の打ち間違いなど）なら未登録あつかいにして、新規として日割りする
+  const employmentStart = plausibleEmploymentStart(worker);
+  const startedBefore = Boolean(employmentStart && employmentStart < from);
   const newlyStarted = permitThisMonth && !startedBefore;
 
   const periodFrom = newlyStarted ? permit : from;

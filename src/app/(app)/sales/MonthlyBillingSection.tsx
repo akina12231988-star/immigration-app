@@ -105,6 +105,7 @@ import {
   supportedBeforeSsw2,
   type BillingOrg,
   employmentStartForOrg,
+  implausibleDateNote,
   sortRowsByEmploymentStart,
   type BillingWorker,
   type MonthlyBillingOrg,
@@ -2542,6 +2543,16 @@ export function MonthlyBillingSection({
                           {/* その機関での雇用開始日（所属機関別の記録を優先）。許可日の前に置く */}
                           <td className="py-1.5 pr-2 tabular-nums text-muted">
                             {employmentStartForOrg(row.worker, org.organizationId) || "—"}
+                            {/* 年の打ち間違い（0206-09-04 など）は判定で未登録あつかいにし、直してもらう */}
+                            {implausibleDateNote(employmentStartForOrg(row.worker, org.organizationId)) && (
+                              <span
+                                className="ml-1 inline-flex items-center gap-0.5 rounded-full bg-seal/10 px-1.5 py-0.5 text-[10px] font-bold text-seal"
+                                title={implausibleDateNote(employmentStartForOrg(row.worker, org.organizationId)) ?? ""}
+                              >
+                                <TriangleAlert size={11} />
+                                日付が不正
+                              </span>
+                            )}
                           </td>
                           {/* 在留許可日・在留期限（機関からの問い合わせにこの画面だけで答えられるように） */}
                           <td className="py-1.5 pr-2 tabular-nums text-muted">

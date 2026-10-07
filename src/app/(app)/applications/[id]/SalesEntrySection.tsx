@@ -19,6 +19,8 @@ import {
   prorateFromDate,
   SALES_APP_KINDS,
   SSW_INSURANCE_AMOUNT,
+  isFixedSalesKind,
+  salesItemsForKind,
   supportFeeName,
   type SalesAppKind,
   type SalesEntryDraft,
@@ -48,6 +50,7 @@ export function SalesEntrySection({ app }: { app: Application }) {
   );
   // 所属機関マスタから読み込む設定
   const [salesItems, setSalesItems] = useState<OrgSalesItems>({});
+  const [orgName, setOrgName] = useState(""); // 特定技能申請の固定明細の金額は所属機関名で決まる
   const [orgSupportFee, setOrgSupportFee] = useState("");
   const [insuranceBurden, setInsuranceBurden] = useState("");
   const [selfJoin, setSelfJoin] = useState(false);
@@ -71,6 +74,7 @@ export function SalesEntrySection({ app }: { app: Application }) {
         if (app.organizationId) {
           const org = await getOrganization(supabase, app.organizationId);
           if (!cancelled && org) {
+            setOrgName(org.name);
             setOrgSupportFee(org.intake?.support_fee ?? "");
             setSupportFee(org.intake?.support_fee ?? "");
             setInsuranceBurden(org.intake?.ssw_insurance_burden ?? "");
@@ -105,13 +109,14 @@ export function SalesEntrySection({ app }: { app: Application }) {
   // 申請種別を変えたら、その種別の売上明細（所属機関マスタ）を読み直し、
   // 支援代の登録方法の初期値も合わせる（更新申請なら満額）。
   // レンダー中に同期して切り替える（申請種別 or 読み込み結果が変わったときだけ）
-  const templateKey = `${appKind}|${JSON.stringify(salesItems[appKind] ?? [])}`;
+  // 明細は固定（lib/sales.ts。特定技能申請は所属機関名で金額が決まる）
+  const templateKey = `${appKind}|${JSON.stringify(salesItemsForKind(salesItems, appKind, orgName))}`;
   const [prevKey, setPrevKey] = useState("");
   if (templateKey !== prevKey) {
     const kindChanged = prevKey !== "" && prevKey.split("|")[0] !== appKind;
     setPrevKey(templateKey);
-    const template = salesItems[appKind] ?? [];
-    setItems(template.length > 0 ? template.map((t) => ({ ...t })) : [{ name: appKind, amount: "" }]);
+    const template = salesItemsForKind(salesItems, appKind, orgName);
+    setItems(template.length > 0 ? template : [{ name: appKind, amount: "" }]);
     if (kindChanged) setFeeMode(appKind.includes("更新") ? "満額" : "日割り");
   }
 
@@ -292,7 +297,10 @@ export function SalesEntrySection({ app }: { app: Application }) {
           <div className="mt-3">
             <p className="mb-1 text-[11px] font-bold text-muted">
               {appKind}の売上明細
-              {(salesItems[appKind]?.length ?? 0) === 0 && (
+              {isFixedSalesKind(appKind) && (
+                <span className="ml-1.5 font-medium text-muted">（固定の明細です。ここで調整もできます）</span>
+              )}
+              {!isFixedSalesKind(appKind) && (salesItems[appKind]?.length ?? 0) === 0 && (
                 <span className="ml-1.5 font-medium text-seal">
                   （所属機関の情報に未登録です。
                   <Link href={orgLink} className="font-bold text-brand hover:underline">

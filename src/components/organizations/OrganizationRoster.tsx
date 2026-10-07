@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/client";
 import { insertWorkerWage } from "@/lib/supabase/queries/wages";
 import { setOrgEmploymentStart } from "@/lib/supabase/queries/workers";
 import { wageText } from "@/lib/wage";
+import { implausibleDateNote } from "@/lib/monthly-billing";
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
 import { WORKER_WAGE_KINDS, type WorkerWageKind } from "@/types/db";
 import {
@@ -66,6 +67,9 @@ export function OrganizationRoster({
     setSaveError(null);
     setSaved(null);
     try {
+      // 年の打ち間違い（0206-09-04 など）は保存しない（請求書作成の日割りの判定が狂うため）
+      const badDate = implausibleDateNote(fill.startOn);
+      if (badDate) throw new Error(`雇用開始日: ${badDate}`);
       const supabase = createClient();
       if (fill.startOn) {
         await setOrgEmploymentStart(supabase, w.id, organizationId, fill.startOn);
@@ -334,6 +338,8 @@ function Section({
                       {w.startOn ?? (
                         <input
                           type="date"
+                          min="1900-01-01"
+                          max="2100-12-31"
                           aria-label={`${w.name} の雇用開始日`}
                           value={fill.startOn}
                           onChange={(e) => setFill(w.id, { startOn: e.target.value })}

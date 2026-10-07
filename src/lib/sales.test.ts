@@ -9,6 +9,16 @@ import {
   prorateFromDate,
   prorateToDate,
   SSW_INSURANCE_AMOUNT,
+  SSW_RENEWAL_SALES_ITEM,
+  REFERRAL_SALES_ITEMS,
+  REFERRAL_SALES_KEY,
+  SSW_NEW_COMMON_ITEMS,
+  isFixedSalesKind,
+  isSswNewDiscountOrg,
+  sswNewSalesItems,
+  referralFeeDefault,
+  referralSalesItem,
+  salesItemsForKind,
   supportFeeName,
   supportItemName,
   taxBreakdownMatches,
@@ -250,5 +260,63 @@ describe("消費税（請求・入金の記録）", () => {
     // 特定技能総合保険（非課税 8,820円）が混ざる月
     expect(taxBreakdownMatches(50000, 5000, 8820, 63820)).toBe(true);
     expect(taxBreakdownMatches(50000, 5000, 8820, 55000)).toBe(false);
+  });
+});
+
+describe("全所属機関共通の固定明細（特定技能更新申請・特定活動申請・特定活動更新申請）", () => {
+  it("所属機関の登録内容にかかわらず固定の1行（税抜18,000円）。特定技能申請（新規）だけ機関ごと", () => {
+    expect(SSW_RENEWAL_SALES_ITEM).toEqual({ name: "在留資格更新許可申請に係る申請取次支援業務費", amount: "18000" });
+    expect(isFixedSalesKind("特定技能更新申請")).toBe(true);
+    expect(isFixedSalesKind("特定活動申請")).toBe(true);
+    expect(isFixedSalesKind("特定活動更新申請")).toBe(true);
+    expect(isFixedSalesKind("特定技能申請")).toBe(true);
+    expect(salesItemsForKind({ 特定活動申請: [{ name: "サポート申請費", amount: "20000" }] }, "特定活動申請")).toEqual([SSW_RENEWAL_SALES_ITEM]);
+    expect(salesItemsForKind({}, "特定活動更新申請")).toEqual([SSW_RENEWAL_SALES_ITEM]);
+    const registered = { 特定技能更新申請: [{ name: "更新費用", amount: "30000" }], 特定技能申請: [{ name: "申請取次費用", amount: "50000" }] };
+    expect(salesItemsForKind(registered, "特定技能更新申請")).toEqual([SSW_RENEWAL_SALES_ITEM]);
+    expect(salesItemsForKind({}, "特定技能更新申請")).toEqual([SSW_RENEWAL_SALES_ITEM]);
+    // 固定でない種別は登録内容のまま（コピーなので元を変えない）
+    const other = { その他: [{ name: "申請取次費用", amount: "50000" }] };
+    const items = salesItemsForKind(other, "その他");
+    expect(items).toEqual([{ name: "申請取次費用", amount: "50000" }]);
+    items[0].amount = "0";
+    expect(other.その他[0].amount).toBe("50000");
+    expect(salesItemsForKind(undefined, "その他")).toEqual([]);
+  });
+
+  it("特定技能申請（新規）は所属機関名で申請取次支援業務費が決まり、共通の2行を足す", () => {
+    expect(SSW_NEW_COMMON_ITEMS).toEqual([
+      { name: "事前ガイダンス", amount: "5000" },
+      { name: "生活オリエンテーション", amount: "12500" },
+    ]);
+    // 28,500円の3社（法人格の有無・異体字・空白の違いは同じ扱い）
+    for (const name of ["有限会社國崎青果", "國崎青果", "（有）国崎青果", "BASE", "BASE株式会社", "株式会社 base", "西田祐一", "西田 祐一"]) {
+      expect(isSswNewDiscountOrg(name), name).toBe(true);
+    }
+    for (const name of ["株式会社サンプル農園", "西田博幸", "BASEBALL株式会社", ""]) {
+      expect(isSswNewDiscountOrg(name), name).toBe(false);
+    }
+    expect(sswNewSalesItems("有限会社國崎青果")).toEqual([
+      { name: "在留資格変更許可申請に係る申請取次支援業務費", amount: "28500" },
+      ...SSW_NEW_COMMON_ITEMS,
+    ]);
+    expect(sswNewSalesItems("株式会社サンプル農園")[0]).toEqual({ name: "在留資格変更許可申請に係る申請取次支援業務費", amount: "78500" });
+    // 所属機関の登録内容は使わない
+    expect(salesItemsForKind({ 特定技能申請: [{ name: "申請取次費用", amount: "50000" }] }, "特定技能申請", "BASE")).toEqual(sswNewSalesItems("BASE"));
+    expect(salesItemsForKind({}, "特定技能申請")).toEqual(sswNewSalesItems(""));
+  });
+
+  it("あっせんは国内30,000円・国外50,000円の固定（台帳の初期値は国内・国外で選ぶ）", () => {
+    expect(REFERRAL_SALES_ITEMS).toEqual([
+      { name: "人材紹介手数料代（国内）", amount: "30000" },
+      { name: "人材紹介手数料（国外）", amount: "50000" },
+    ]);
+    expect(isFixedSalesKind(REFERRAL_SALES_KEY)).toBe(true);
+    expect(salesItemsForKind({ あっせん: [{ name: "紹介料", amount: "99999" }] }, REFERRAL_SALES_KEY)).toEqual(REFERRAL_SALES_ITEMS);
+    expect(referralSalesItem("国内").name).toBe("人材紹介手数料代（国内）");
+    expect(referralSalesItem("国外").name).toBe("人材紹介手数料（国外）");
+    expect(referralFeeDefault("国内")).toBe(30000);
+    expect(referralFeeDefault("国外")).toBe(50000);
+    expect(referralFeeDefault("")).toBe(30000);
   });
 });

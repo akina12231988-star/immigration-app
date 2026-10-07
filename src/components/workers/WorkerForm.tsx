@@ -10,6 +10,7 @@ import { filledFieldCount, overwrittenFields, type FieldChange } from "@/lib/fie
 import { RESIDENCE_PERIODS, residencePeriodPatch } from "@/lib/residence-card";
 import { WORKER_SITUATIONS, situationDescription } from "@/lib/worker-situation";
 import { todayStr } from "@/lib/application-alerts";
+import { implausibleDateNote } from "@/lib/monthly-billing";
 import { Combobox } from "@/components/ui/Combobox";
 import { createClient } from "@/lib/supabase/client";
 import { insertOrganization } from "@/lib/supabase/queries/organizations";
@@ -239,6 +240,9 @@ export function WorkerForm({
     setBusy(true);
     setError(null);
     try {
+      // 年の打ち間違い（0206-09-04 など）は保存しない（請求書作成の日割りの判定が狂うため）
+      const badDate = implausibleDateNote(form.employment_start_on);
+      if (badDate) throw new Error(`雇用開始年月日: ${badDate}`);
       await onSubmit({
         ...form,
         name: form.name.trim(),
@@ -481,6 +485,8 @@ export function WorkerForm({
           <Field label="雇用開始年月日">
             <input
               type="date"
+              min="1900-01-01"
+              max="2100-12-31"
               value={form.employment_start_on ?? ""}
               onChange={(e) =>
                 setWithEmployment({ employment_start_on: e.target.value || null })

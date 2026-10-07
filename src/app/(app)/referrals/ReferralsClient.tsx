@@ -13,10 +13,9 @@ import {
   updateReferralFee,
   type ReferralFeeWithRefs,
 } from "@/lib/supabase/queries/referrals";
-import { formatSalesYen, FREEE_SALES_LOGIN_URL, REFERRAL_SALES_KEY } from "@/lib/sales";
+import { formatSalesYen, FREEE_SALES_LOGIN_URL, referralFeeDefault } from "@/lib/sales";
 import { buildXlsx, downloadBlob } from "@/lib/xlsx-export";
 import { buildFeeLedgerSheet } from "@/lib/recruit-ledgers";
-import { normalizeSalesItems, parseAmount } from "@/lib/organization-intake";
 import { isMonthStr, monthLabel } from "@/lib/monthly-billing";
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
 import type { Organization } from "@/types/db";
@@ -98,10 +97,9 @@ export function ReferralsClient({
     const org = organizations.find((o) => o.id === w.current_organization_id);
     if (org) {
       setEmployerName((prev) => prev || org.name);
-      const items = normalizeSalesItems(org.intake?.sales_items)[REFERRAL_SALES_KEY] ?? [];
-      const amount = parseAmount(items[0]?.amount ?? "");
-      if (amount && !fee) setFee(String(amount));
     }
+    // 手数料は全所属機関共通の固定額（国内30,000円・国外50,000円）
+    if (!fee) setFee(String(referralFeeDefault(domestic)));
   };
 
   const add = async () => {
@@ -364,7 +362,16 @@ export function ReferralsClient({
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-[11px] font-bold text-muted">国内・国外</span>
-              <select value={domestic} onChange={(e) => setDomestic(e.target.value)} className={INPUT}>
+              <select
+                value={domestic}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setDomestic(next);
+                  // 手数料が空か前の区分の固定額のままなら、新しい区分の固定額に合わせる
+                  setFee((prev) => (!prev || prev === String(referralFeeDefault(domestic)) ? String(referralFeeDefault(next)) : prev));
+                }}
+                className={INPUT}
+              >
                 <option value="国内">国内</option>
                 <option value="国外">国外</option>
               </select>

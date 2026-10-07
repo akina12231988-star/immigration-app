@@ -4,6 +4,8 @@ import {
   billingRowFor,
   currentMonth,
   currentOrgLeavingOn,
+  implausibleDateNote,
+  isPlausibleYmd,
   daysText,
   invoiceBilledOn,
   invoiceDueOn,
@@ -401,6 +403,35 @@ describe("支援区分が理由で名簿に載らない人", () => {
         MONTH,
       ),
     ).toBeNull();
+  });
+});
+
+describe("雇用開始日の年の打ち間違い（0206-09-04 など）", () => {
+  it("1900〜2100年の日付だけ妥当", () => {
+    expect(isPlausibleYmd("2026-09-04")).toBe(true);
+    expect(isPlausibleYmd("0206-09-04")).toBe(false);
+    expect(isPlausibleYmd("2206-09-04")).toBe(false);
+    expect(isPlausibleYmd("")).toBe(false);
+    expect(isPlausibleYmd(null)).toBe(false);
+    expect(implausibleDateNote("0206-09-04")).toContain("日付が不正です（0206-09-04）");
+    expect(implausibleDateNote("2026-09-04")).toBeNull();
+    expect(implausibleDateNote("")).toBeNull();
+  });
+
+  it("不正な雇用開始日は未登録あつかいにして、許可月は新規として許可日から日割りする", () => {
+    // ZIKRIYUL FAHMI の例: 9/3 許可、雇用開始日が 0206-09-04 と入っていた
+    const w = worker({
+      name: "ZIKRIYUL FAHMI",
+      residence_permit_date: "2026-09-03",
+      employment_start_on: "0206-09-04",
+    });
+    const row = billingRowFor(w, "2026-09", 15000);
+    expect(row.kind).toBe("許可日から日割");
+    expect(row.periodFrom).toBe("2026-09-03");
+    expect(row.days).toBe(28);
+    // 正しい日付なら同じ結果、対象月より前の雇用開始日なら更新月の満額
+    expect(billingRowFor({ ...w, employment_start_on: "2026-09-04" }, "2026-09", 15000).kind).toBe("許可日から日割");
+    expect(billingRowFor({ ...w, employment_start_on: "2024-09-04" }, "2026-09", 15000).kind).toBe("満額（更新月）");
   });
 });
 
