@@ -2,6 +2,7 @@
 // 1シート目がサマリー、2シート目以降が所属機関ごとの在籍名簿。
 
 import {
+  currentOrgLeavingOn,
   daysText,
   leftThisMonthRows,
   monthLabel,
@@ -78,7 +79,8 @@ function rosterRow(
     row.kind,
     row.amount,
     row.leftThisMonth ? "退職" : "在籍中",
-    w.leaving_on ?? "",
+    // 転職した人は前の機関の退職日が残っているので、今の機関の在籍中の行には出さない
+    (row.leftThisMonth ? w.leaving_on : currentOrgLeavingOn(w)) ?? "",
   ];
 }
 

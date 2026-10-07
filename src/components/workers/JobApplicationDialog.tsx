@@ -196,7 +196,7 @@ export function JobApplicationDialog({
       setWorkerId(w.id);
       onWorkerCreated?.(w);
     } catch (err) {
-      setError(dbErrorMessage(err, "0003_core.sql", "外国人の新規登録に失敗しました"));
+      setError(dbErrorMessage(err, "0175_worker_spouse.sql", "外国人の新規登録に失敗しました"));
     } finally {
       setCreating(false);
     }
