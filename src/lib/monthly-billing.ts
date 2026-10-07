@@ -131,6 +131,20 @@ export function invoiceBilledOn(month: string): string {
   return isMonthStr(month) ? nextMonthStart(`${month}-01`) : "";
 }
 
+// 紹介手数料台帳の請求年月日を自動で入れる値。
+// 名簿（請求書作成）で紹介手数料No.を入れた＝freee販売に登録したので、その対象月の請求日（翌月1日）を
+// 請求年月日にする。入金を記録したとき（paidOn あり）に請求年月日が空なら入金日を入れる。
+// すでに入っている請求年月日はそのまま（null = 入れる値が無い）
+export function referralBilledOnPatch(
+  existing: string | null | undefined,
+  month: string,
+  paidOn?: string | null,
+): string | null {
+  if (existing) return existing;
+  if (paidOn) return paidOn;
+  return invoiceBilledOn(month) || null;
+}
+
 // 支払期限は請求日と同じ月の末日。例: 対象月 2026-06 → 支払期限 2026-07-31
 export function invoiceDueOn(month: string): string {
   const billed = invoiceBilledOn(month);

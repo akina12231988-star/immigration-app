@@ -90,6 +90,7 @@ import {
   currentMonth,
   daysText,
   invoiceBilledOn,
+  referralBilledOnPatch,
   invoiceDueOn,
   isMonthStr,
   leftThisMonthRows,
@@ -734,6 +735,7 @@ export function MonthlyBillingSection({
   };
 
   // 紹介手数料No.を入れたとき。台帳に行が無ければ作り、あれば番号を書き換える
+  // 番号を入れた＝freee販売に登録したので、台帳の請求年月日が空ならこの対象月の請求日を自動で入れる
   const saveReferralNo = async (row: MonthlyBillingRow, organizationId: string, value: string) => {
     const workerId = row.worker.id;
     const cur = feeFor(workerId, organizationId);
@@ -746,6 +748,7 @@ export function MonthlyBillingSection({
           organizationId: organizationId || null,
           workerName: row.worker.name,
           salesNo: value,
+          billedOn: referralBilledOnPatch(null, month),
         });
         setReferralFees((prev) => ({ ...prev, [key]: created }));
       } catch (err) {
@@ -753,9 +756,13 @@ export function MonthlyBillingSection({
       }
       return;
     }
-    setReferralFees((prev) => ({ ...prev, [key]: { ...cur, salesNo: value } }));
+    const billedOn = value ? referralBilledOnPatch(cur.billedOn, month) : cur.billedOn;
+    setReferralFees((prev) => ({ ...prev, [key]: { ...cur, salesNo: value, billedOn } }));
     try {
-      await updateReferralFee(createClient(), cur.feeId, { sales_no: value });
+      await updateReferralFee(createClient(), cur.feeId, {
+        sales_no: value,
+        ...(billedOn !== cur.billedOn ? { billed_on: billedOn } : {}),
+      });
     } catch (err) {
       setError(errorMessage(err, "紹介手数料No.の保存に失敗しました"));
     }
@@ -772,9 +779,14 @@ export function MonthlyBillingSection({
     if (!cur) return;
     const key = feeKeyFor(workerId, organizationId);
     setReferralBusyKey(key);
-    setReferralFees((prev) => ({ ...prev, [key]: { ...cur, paidOn } }));
+    // 請求年月日が空のまま入金を記録したときは、入金日を請求年月日にも入れる（未請求のままにしない）
+    const billedOn = paidOn ? referralBilledOnPatch(cur.billedOn, month, paidOn) : cur.billedOn;
+    setReferralFees((prev) => ({ ...prev, [key]: { ...cur, paidOn, billedOn } }));
     try {
-      await updateReferralFee(createClient(), cur.feeId, { paid_on: paidOn });
+      await updateReferralFee(createClient(), cur.feeId, {
+        paid_on: paidOn,
+        ...(billedOn !== cur.billedOn ? { billed_on: billedOn } : {}),
+      });
     } catch (err) {
       setReferralFees((prev) => ({ ...prev, [key]: cur })); // 失敗したら戻す
       setError(errorMessage(err, "紹介手数料の入金の記録に失敗しました"));
@@ -3142,9 +3154,16 @@ function ReferralNoCell({
               求職一覧の「台帳に追加」からも登録できます
             </Link>
           ) : null)}
+        {/* 請求年月日（番号を入れたときに対象月の請求日が自動で入る。手数料管理簿の請求年月日と同じ） */}
+        {fee?.billedOn && (
+          <span className="text-[10px] text-muted" title={`紹介手数料台帳の請求年月日: ${fee.billedOn}`}>
+            請求 {mdText(fee.billedOn)}
+          </span>
+        )}
         {/* 入金があったら入金日を選んで記録する（手数料管理簿の入金年月日にそのまま入る） */}
         {fee &&
           (fee.paidOn ? (
+
             <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-status-approved-bg px-2 py-0.5 text-[10px] font-bold text-status-approved-fg">
               <Check size={11} />
               入金 {mdText(fee.paidOn)}

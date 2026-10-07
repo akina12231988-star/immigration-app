@@ -9,6 +9,7 @@ import {
   daysText,
   invoiceBilledOn,
   invoiceDueOn,
+  referralBilledOnPatch,
   isBilledInMonth,
   isBillableResidence,
   isMonthStr,
@@ -403,6 +404,19 @@ describe("支援区分が理由で名簿に載らない人", () => {
         MONTH,
       ),
     ).toBeNull();
+  });
+});
+
+describe("referralBilledOnPatch（紹介手数料台帳の請求年月日の自動入力）", () => {
+  it("番号を入れたときは対象月の請求日（翌月1日）。すでに入っていればそのまま", () => {
+    expect(referralBilledOnPatch(null, "2026-09")).toBe("2026-10-01");
+    expect(referralBilledOnPatch("", "2026-09")).toBe("2026-10-01");
+    expect(referralBilledOnPatch("2026-08-01", "2026-09")).toBe("2026-08-01");
+    expect(referralBilledOnPatch(null, "bad")).toBeNull();
+  });
+  it("入金を記録したときに請求年月日が空なら入金日", () => {
+    expect(referralBilledOnPatch(null, "2026-09", "2026-07-30")).toBe("2026-07-30");
+    expect(referralBilledOnPatch("2026-08-01", "2026-09", "2026-07-30")).toBe("2026-08-01");
   });
 });
 
