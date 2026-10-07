@@ -1770,6 +1770,7 @@ export function ApplicationPrepChecklist({
           orgName={prepOrgName}
           canEdit={canEdit}
           onSave={(v) => saveExtras({ stamp_fee_payer: v })}
+          estimateHref={`${prepDetailHref(workerId)}/estimate?todo=${encodeURIComponent(current.todo_no)}`}
         />
         <div className="flex flex-wrap items-center gap-3">
           {/* 候補の文字が長いので、横並びにすると欄が枠からはみ出す。
@@ -3396,11 +3397,13 @@ function StampFeePayerField({
   orgName,
   canEdit,
   onSave,
+  estimateHref,
 }: {
   value: string;
   orgName: string;
   canEdit: boolean;
   onSave: (v: string) => void;
+  estimateHref: string; // 見積書の印刷ページ（負担を選ぶと開ける）
 }) {
   const effective = effectiveStampFeePayer(value, orgName);
   const kunisaki = isKunisakiSeika(orgName);
@@ -3443,6 +3446,16 @@ function StampFeePayerField({
       ) : kunisaki ? (
         <span className="text-[11px] text-muted">有限会社國崎青果は自動で本人負担です</span>
       ) : null}
+      {/* 見積書（所属機関あて）。負担の選択と所属機関の売上明細から作る。
+          未設定でも開けるが、印刷ページ側で負担を選ぶよう案内する */}
+      <Link
+        href={estimateHref}
+        className={`inline-flex min-h-[32px] items-center gap-1 rounded-lg border px-2.5 text-[11px] font-bold ${
+          effective ? "border-brand bg-background text-brand hover:bg-brand/5" : "border-border text-muted"
+        }`}
+      >
+        🧾 見積書{effective ? `（${effective}）` : ""}
+      </Link>
     </div>
   );
 }
