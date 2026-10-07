@@ -1,16 +1,27 @@
 "use client";
 
 import { useState } from "react";
-import { UserPlus } from "lucide-react";
+import { ShieldCheck, ShieldOff, UserPlus } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
 import { STAFF_ROLE_LABELS, type Profile, type StaffRole } from "@/types/db";
-import { inviteUser } from "./actions";
+import { inviteUser, resetUserMfa } from "./actions";
 
 const ROLE_OPTIONS: StaffRole[] = ["admin", "staff", "viewer"];
 
-export function UsersAdmin({ profiles, myId }: { profiles: Profile[]; myId: string }) {
+export function UsersAdmin({
+  profiles,
+  myId,
+  mfaEnrolled,
+}: {
+  profiles: Profile[];
+  myId: string;
+  // 職員ごとの認証アプリ（二段階認証）の登録状況。true=登録済み、false=未登録、無ければ不明
+  mfaEnrolled: Record<string, boolean | null>;
+}) {
   const [rows, setRows] = useState(profiles);
+  const [mfa, setMfa] = useState(mfaEnrolled);
+  const [resettingId, setResettingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ ok: boolean; message: string } | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<StaffRole>("staff");
@@ -26,6 +37,20 @@ export function UsersAdmin({ profiles, myId }: { profiles: Profile[]; myId: stri
     } else {
       setNotice({ ok: true, message: "更新しました" });
     }
+  };
+
+  const onResetMfa = async (p: Profile) => {
+    if (
+      !confirm(
+        `${p.display_name || p.email} さんの認証アプリの登録を解除しますか？\n解除すると、次のログインで認証アプリを登録し直す画面になります。`,
+      )
+    )
+      return;
+    setResettingId(p.id);
+    const result = await resetUserMfa(p.id);
+    setResettingId(null);
+    setNotice(result);
+    if (result.ok) setMfa((prev) => ({ ...prev, [p.id]: false }));
   };
 
   const onInvite = async (e: React.FormEvent) => {
@@ -131,9 +156,35 @@ export function UsersAdmin({ profiles, myId }: { profiles: Profile[]; myId: stri
                   {p.is_active ? "無効化" : "有効化"}
                 </button>
               </div>
+              {/* 二段階認証（認証アプリ）の登録状況と解除 */}
+              <div className="mt-2 flex items-center justify-between gap-2 text-xs">
+                {mfa[p.id] === true ? (
+                  <span className="flex items-center gap-1 text-brand">
+                    <ShieldCheck size={14} />
+                    二段階認証：登録済み
+                  </span>
+                ) : mfa[p.id] === false ? (
+                  <span className="flex items-center gap-1 text-seal">
+                    <ShieldOff size={14} />
+                    二段階認証：未登録（次のログインで登録）
+                  </span>
+                ) : (
+                  <span className="text-muted">二段階認証：登録状況を取得できません</span>
+                )}
+                {mfa[p.id] === true && !isMe && (
+                  <button
+                    type="button"
+                    disabled={resettingId === p.id}
+                    onClick={() => onResetMfa(p)}
+                    className="shrink-0 rounded-lg border border-border px-2.5 py-1 font-bold disabled:opacity-60"
+                  >
+                    {resettingId === p.id ? "解除中…" : "認証アプリを解除"}
+                  </button>
+                )}
+              </div>
               {isMe && (
                 <p className="mt-2 text-xs text-muted">
-                  自分自身のロール変更・無効化はできません（誤操作防止）。
+                  自分自身のロール変更・無効化・認証アプリの解除はできません（誤操作防止）。
                 </p>
               )}
             </Card>
