@@ -39,7 +39,7 @@ import {
   countMissingFromReferralLedger,
   referralLedgerStatus,
 } from "@/lib/referral-ledger-status";
-import { formatSalesYen, referralFeeDefault } from "@/lib/sales";
+import { formatSalesYen, referralFeeFor } from "@/lib/sales";
 import { parseAmount } from "@/lib/organization-intake";
 import { buildXlsx, downloadBlob } from "@/lib/xlsx-export";
 import { buildSeekerLedgerSheet } from "@/lib/recruit-ledgers";
@@ -167,12 +167,15 @@ export function JobsExplorer({
     referralLedgerStatus(a, referralFees, unlinkedReferralKeys);
   // 台帳に追加する前に入力する「紹介手数料」と「紹介売上No.」（応募ごと）
   const [feeDrafts, setFeeDrafts] = useState<ReferralFeeDrafts>({});
-  // 手数料の初期値は全所属機関共通の固定額（求人応募からの追加は国内）
-  const defaultFee = () => String(referralFeeDefault("国内"));
-  const feeDraft = (a: ApplicationWithRefs) => feeDraftOf(feeDrafts, a.id, defaultFee());
+  // 手数料の初期値は所属機関のあっせんの明細（既定は全所属機関共通。求人応募からの追加は国内）
+  const defaultFee = (a: ApplicationWithRefs) => {
+    const org = orgList.find((o) => o.id === a.organization_id);
+    return String(referralFeeFor(org?.intake, "国内") || "");
+  };
+  const feeDraft = (a: ApplicationWithRefs) => feeDraftOf(feeDrafts, a.id, defaultFee(a));
   // 片方だけ入れたときにもう片方が消えないよう、初期値を含む今の下書きを土台にする
   const setFeeDraft = (a: ApplicationWithRefs, patch: { fee?: string; salesNo?: string }) =>
-    setFeeDrafts((prev) => patchFeeDraft(prev, a.id, defaultFee(), patch));
+    setFeeDrafts((prev) => patchFeeDraft(prev, a.id, defaultFee(a), patch));
 
   // 期間（応募日）で絞った母集団
   const inPeriod = useMemo(

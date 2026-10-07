@@ -239,6 +239,7 @@ export interface OrganizationIntake {
   pay_method: string; // 給与支払い方法（'' / 通貨払い / 口座振込。1-6号別紙に反映）
   ssw_insurance_burden: string; // 特定技能総合保険の負担（'' / 会社負担 / 外国人負担）
   sales_items: OrgSalesItems; // 申請種別ごとの売上明細（freee販売への登録内容）
+  sales_items_custom: string[]; // 既定の明細ではなく、この機関だけの明細（sales_items）を使う申請種別
   work_address: string; // 作業する住所（会社の住所と別の場合）
   work_contact: string; // 作業する住所の TEL・FAX
   rep_kana: string; // 代表者フリガナ

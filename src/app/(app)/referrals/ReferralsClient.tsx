@@ -13,7 +13,7 @@ import {
   updateReferralFee,
   type ReferralFeeWithRefs,
 } from "@/lib/supabase/queries/referrals";
-import { formatSalesYen, FREEE_SALES_LOGIN_URL, referralFeeDefault } from "@/lib/sales";
+import { formatSalesYen, FREEE_SALES_LOGIN_URL, referralFeeFor, type SalesItemsSource } from "@/lib/sales";
 import { buildXlsx, downloadBlob } from "@/lib/xlsx-export";
 import { buildFeeLedgerSheet } from "@/lib/recruit-ledgers";
 import { isMonthStr, monthLabel } from "@/lib/monthly-billing";
@@ -66,6 +66,7 @@ export function ReferralsClient({
   const [referredOn, setReferredOn] = useState("");
   const [hiredOn, setHiredOn] = useState("");
   const [fee, setFee] = useState("");
+  const [orgSales, setOrgSales] = useState<SalesItemsSource>(null); // 選んだ人の所属機関の売上明細（手数料の初期値）
   const [note, setNote] = useState("");
 
   useEffect(() => {
@@ -98,8 +99,10 @@ export function ReferralsClient({
     if (org) {
       setEmployerName((prev) => prev || org.name);
     }
-    // 手数料は全所属機関共通の固定額（国内30,000円・国外50,000円）
-    if (!fee) setFee(String(referralFeeDefault(domestic)));
+    // 手数料は所属機関のあっせんの明細（既定は全所属機関共通: 国内30,000円・国外50,000円）
+    const src: SalesItemsSource = org?.intake ?? null;
+    setOrgSales(src);
+    if (!fee) setFee(String(referralFeeFor(src, domestic) || ""));
   };
 
   const add = async () => {
@@ -367,8 +370,10 @@ export function ReferralsClient({
                 onChange={(e) => {
                   const next = e.target.value;
                   setDomestic(next);
-                  // 手数料が空か前の区分の固定額のままなら、新しい区分の固定額に合わせる
-                  setFee((prev) => (!prev || prev === String(referralFeeDefault(domestic)) ? String(referralFeeDefault(next)) : prev));
+                  // 手数料が空か前の区分の初期値のままなら、新しい区分の初期値に合わせる
+                  setFee((prev) =>
+                    !prev || prev === String(referralFeeFor(orgSales, domestic)) ? String(referralFeeFor(orgSales, next) || "") : prev,
+                  );
                 }}
                 className={INPUT}
               >
