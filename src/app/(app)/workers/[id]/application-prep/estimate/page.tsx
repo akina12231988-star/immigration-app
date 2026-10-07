@@ -125,6 +125,7 @@ export default async function ApplicationPrepEstimatePage({
 
   // 許可の見込みの在留期間: 更新なら今の在留期間と同じ期間になることが多いので、在留カードの在留期間から区分を決める
   const defaultBandKey = stampFeeBandKeyOfPeriod(effectiveResidencePeriod(worker)) ?? DEFAULT_STAMP_FEE_BAND;
+  // 申請はオンラインで行うので、収入印紙代はオンライン申請の金額を初期値にする（窓口は印刷ページで切り替え可）
 
   return (
     <EstimateSheet
@@ -145,7 +146,7 @@ export default async function ApplicationPrepEstimatePage({
         custodian,
       }}
       backHref={detailHref}
-      defaultMethod="窓口"
+      defaultMethod="オンライン"
       defaultBandKey={defaultBandKey}
     />
   );
