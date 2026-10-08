@@ -86,19 +86,56 @@ export function belowNewMinimum(kind: string | null | undefined, amount: number 
   return kind === "時給" && amount != null && amount > 0 && hourly > 0 && amount < hourly;
 }
 
-// 名簿に並べる人。在籍中の人の後ろに、審査中（申請を出していて在留カードの受け取りがまだ）の人を足す。
-// 状態が「在籍中」ではない人（申請準備中など）は、申請が審査中の人だけを「審査中」として載せる
-export type WageNoticeWorker<T> = T & { underReview: boolean };
+// 名簿に並べる人。
+//   1. 状態が「在籍中」の人
+//   2. 状態が「在籍中」ではないが、今月の請求書作成の名簿に載っている人（billedIds）。
+//      状態の変え忘れで名簿から漏れないように在籍中として載せ、画面には状態を直す案内を出す
+//   3. 審査中（申請を出していて在留カードの受け取りがまだ）の人を「審査中」の印つきで最後に
+// それ以外の、状態が「在籍中」ではない人（申請前の申請準備中など）は載せない
+export type WageNoticeWorker<T> = T & {
+  underReview: boolean;
+  // 画面だけに出す注意（状態が「在籍中」ではないのに載せている理由）。印刷には出さない
+  statusNote?: string;
+};
 
-export function pickWageNoticeWorkers<T extends { id: string }>(
+export interface WageNoticeExcluded<T> {
+  worker: T;
+  reason: string;
+}
+
+export function pickWageNoticeWorkers<T extends { id: string; status?: string }>(
   active: T[],
   notYet: T[],
   underReviewIds: Set<string>,
+  billedIds: Set<string> = new Set(),
 ): WageNoticeWorker<T>[] {
+  const billedNotActive = notYet.filter((w) => billedIds.has(w.id));
+  const billedSet = new Set(billedNotActive.map((w) => w.id));
   return [
     ...active.map((w) => ({ ...w, underReview: false })),
-    ...notYet.filter((w) => underReviewIds.has(w.id)).map((w) => ({ ...w, underReview: true })),
+    ...billedNotActive.map((w) => ({
+      ...w,
+      underReview: false,
+      statusNote: `状態が「${w.status || "未設定"}」のままですが、今月の請求書作成の名簿に載っているため在籍中として載せています。外国人詳細で状態を「在籍中」に直してください`,
+    })),
+    ...notYet
+      .filter((w) => underReviewIds.has(w.id) && !billedSet.has(w.id))
+      .map((w) => ({ ...w, underReview: true })),
   ];
+}
+
+// この機関に紐づいているのに名簿に載らない人と、その理由（画面で確認できるようにする）
+export function wageNoticeExcluded<T extends { id: string; status?: string }>(
+  notYet: T[],
+  underReviewIds: Set<string>,
+  billedIds: Set<string> = new Set(),
+): WageNoticeExcluded<T>[] {
+  return notYet
+    .filter((w) => !underReviewIds.has(w.id) && !billedIds.has(w.id))
+    .map((w) => ({
+      worker: w,
+      reason: `状態が「${w.status || "未設定"}」で、申請が審査中でもなく、今月の請求書作成の名簿にも載っていません。在籍しているなら外国人詳細で状態を「在籍中」にしてください`,
+    }));
 }
 
 // 本文の「貴社に在籍中の特定技能外国人について」。審査中の人が名簿に入っていれば「在籍中・審査中」にする
