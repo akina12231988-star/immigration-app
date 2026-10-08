@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Printer, Users } from "lucide-react";
+import { BadgeJapaneseYen, Printer, Users } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
 import { insertWorkerWage } from "@/lib/supabase/queries/wages";
@@ -147,7 +147,15 @@ export function OrganizationRoster({
           <Printer size={14} />
           最低賃金の案内を印刷（A4横・FAX用）
         </Link>
-        <span className="text-[11px] text-muted">在籍中・審査中の人の名簿に、改定後の時給を書いてもらう欄を付けた案内文です。</span>
+        {/* 改定後の時給を、在籍中・審査中・準備中の人へまとめて登録する */}
+        <Link
+          href={`/organizations/${organizationId}/wage-raise`}
+          className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-brand px-3 text-xs font-bold text-brand hover:bg-brand/5"
+        >
+          <BadgeJapaneseYen size={14} />
+          時給の一括登録（◯月◯日から1号◯円・2号◯円）
+        </Link>
+        <span className="text-[11px] text-muted">案内文は在籍中・審査中の人の名簿に改定後の時給を書いてもらう欄付き。一括登録は返事をもとに全員の新しい時給を1回で入れられます。</span>
       </div>
       <Section
         title="在籍中"
