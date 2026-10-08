@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Printer } from "lucide-react";
+import { Printer, TriangleAlert } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
 import { rosterJpDate } from "@/lib/roster";
 import type { OrgRosterWorker } from "@/lib/supabase/queries/organizations";
@@ -14,6 +14,7 @@ import {
   wageNoticeTargetText,
   warekiDateWithDow,
   yenText,
+  type WageNoticeExcluded,
   type WageNoticeValues,
   type WageNoticeWorker,
 } from "@/lib/wage-notice";
@@ -30,6 +31,7 @@ export function WageNoticeSheet({
   organizationId,
   organizationName,
   workers,
+  excluded = [],
   today,
   staffName,
   fax,
@@ -38,6 +40,8 @@ export function WageNoticeSheet({
   organizationId: string;
   organizationName: string;
   workers: WageNoticeWorker<OrgRosterWorker>[];
+  // この機関に紐づいているのに名簿に載らない人（画面だけに出す。印刷には出ない）
+  excluded?: WageNoticeExcluded<OrgRosterWorker>[];
   today: string;
   staffName: string;
   fax: string;
@@ -48,6 +52,8 @@ export function WageNoticeSheet({
   const hourly = Number(v.hourly.replace(/[^0-9]/g, "")) || 0;
   const hourlyText = yenText(hourly);
   const underReviewCount = workers.filter((w) => w.underReview).length;
+  // 状態が「在籍中」でないのに載せている人（請求書作成の名簿に載っている）。状態を直す案内を出す
+  const statusNotes = workers.filter((w) => w.statusNote);
   // 名簿に「雇用開始日」「現在の時給」の列を載せるか（外さないパターンが既定）
   const [showStart, setShowStart] = useState(true);
   const [showWage, setShowWage] = useState(true);
@@ -78,7 +84,7 @@ export function WageNoticeSheet({
         </div>
         <div className="flex flex-col gap-3 px-4 py-3 lg:px-8">
           <p className="text-xs leading-relaxed text-muted">
-            所属機関にFAXで送る「時給のご確認」のお願いです。在籍中の人と、申請が審査中（在留カードの受け取りがまだ）の人を名簿にして、改定後の時給を書いてもらう欄を付けています。
+            所属機関にFAXで送る「時給のご確認」のお願いです。在籍中の人（今月の請求書作成の名簿に載っている人を含む）と、申請が審査中（在留カードの受け取りがまだ）の人を名簿にして、改定後の時給を書いてもらう欄を付けています。
             審査中の人は名簿に「審査中」の印が付き、本文も「在籍中・審査中の特定技能外国人について」になります。
             金額・適用日・返信期限などは下で変えてから印刷してください。印刷の設定で用紙は「A4」、向きは「横」にしてください。
           </p>
@@ -145,6 +151,38 @@ export function WageNoticeSheet({
           )}
           {underReviewCount > 0 && (
             <p className="text-xs text-muted">審査中（在留カードの受け取りがまだ）の方 {underReviewCount}名を名簿の最後に載せています。</p>
+          )}
+          <p className="text-xs text-muted">
+            名簿 {workers.length}名（在籍中 {workers.length - underReviewCount}名・審査中 {underReviewCount}名）。
+            請求書作成の名簿と人数が合わないときは、下の注意を確認してください。
+          </p>
+          {/* 名簿に載っている人・載っていない人の確認（画面だけ。印刷には出ない） */}
+          {statusNotes.length > 0 && (
+            <div className="rounded-lg border border-seal/40 bg-seal/10 px-3 py-2 text-xs text-seal">
+              <p className="flex items-center gap-1 font-bold">
+                <TriangleAlert size={14} className="shrink-0" />
+                状態が「在籍中」になっていないのに名簿に載せている方（{statusNotes.length}名）
+              </p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                {statusNotes.map((w) => (
+                  <li key={w.id}>
+                    <span className="font-bold">{w.name}</span>：{w.statusNote}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {excluded.length > 0 && (
+            <div className="rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted">
+              <p className="font-bold">この所属機関に紐づいているのに名簿に載せていない方（{excluded.length}名）</p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                {excluded.map((e) => (
+                  <li key={e.worker.id}>
+                    <span className="font-bold text-foreground">{e.worker.name}</span>：{e.reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </div>
       </div>

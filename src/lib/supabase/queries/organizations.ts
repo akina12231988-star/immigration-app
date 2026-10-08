@@ -1,8 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { OrgSsw2Duties } from "@/lib/org-ssw2-duties";
+import { currentOrgLeavingOn } from "@/lib/monthly-billing";
 import { currentWage, wageStartedOn } from "@/lib/wage";
 import { UNDER_REVIEW_STATUSES } from "@/lib/renewal-filter";
-import type { Organization, OrganizationInput } from "@/types/db";
+import type { Organization, OrganizationInput, WorkerOrgEmploymentStart } from "@/types/db";
 
 export async function listOrganizations(
   supabase: SupabaseClient,
@@ -132,6 +133,28 @@ const ROSTER_COLUMNS =
   "id, name, kana, nationality, residence_status, address, residence_permit_date, residence_expiry_date, support, status, employment_start_on, leaving_on, current_organization_id, org_employment_starts";
 
 // org_employment_starts から、その機関での雇用開始日を取り出す
+// この機関に「在籍中」として並べるか。
+// この機関に紐づいていて、この機関での退職日が入っていない人。
+// workers.leaving_on は「その人の最新の1件」なので、転職した人には前の機関の退職日が残る
+// （例: 8/9 に前の会社を退職 → 8/10 から今の会社で在籍中でも、退職日 8/9 が残る）。
+// 請求書作成と同じ currentOrgLeavingOn で、今の機関の雇用開始日より前の退職日は無視する
+export function rosterIsCurrent(
+  row: Pick<RosterRow, "current_organization_id" | "leaving_on" | "employment_start_on" | "org_employment_starts">,
+  organizationId: string,
+): boolean {
+  if (row.current_organization_id !== organizationId) return false;
+  return (
+    currentOrgLeavingOn({
+      leaving_on: row.leaving_on,
+      employment_start_on: row.employment_start_on,
+      current_organization_id: row.current_organization_id,
+      org_employment_starts: Array.isArray(row.org_employment_starts)
+        ? (row.org_employment_starts as WorkerOrgEmploymentStart[])
+        : [],
+    }) === null
+  );
+}
+
 function startAtOrg(row: RosterRow, organizationId: string): string | null {
   const list = Array.isArray(row.org_employment_starts) ? row.org_employment_starts : [];
   for (const e of list) {
@@ -332,8 +355,8 @@ export async function getOrgRoster(
 
   for (const row of byId.values()) {
     const here = row.current_organization_id === organizationId;
-    // 在籍中＝この機関に紐づいていて、退職日が入っていない
-    const isCurrent = here && !row.leaving_on;
+    // 在籍中＝この機関に紐づいていて、この機関での退職日が入っていない（前の機関の退職日は無視）
+    const isCurrent = rosterIsCurrent(row, organizationId);
     const leavingOn = resignedOn.get(row.id) ?? (here ? row.leaving_on : null);
 
     const item = rosterWorkerFromRow(row, organizationId, wagesByWorker.get(row.id) ?? [], {
