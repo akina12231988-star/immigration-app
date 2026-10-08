@@ -145,6 +145,8 @@ export function TodosClient({
     APPLICATION_CONTENT_CHOICES.find((c) => situation.includes(c.prepSituation))?.label ??
     "";
   const [kind, setKind] = useState<TodoKind>(fixedKind ?? "申請準備");
+  // 試験の申込は1列で見せる（カードの中身が多いので幅を広く使う）。どの区分を出すかをボタンで切り替える
+  const [examStage, setExamStage] = useState<TodoStage>("進行中");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // 申請取次士の名簿（申請準備のTODOで誰が取次するかを選ぶ）
@@ -1325,7 +1327,31 @@ export function TodosClient({
           幅の狭い画面では、今までどおり縦に並ぶ */}
       {loading ? (
         <Card className="p-6 text-center text-sm text-muted">読み込み中…</Card>
-      ) : boardTantou ? null : (
+      ) : boardTantou ? null : kind === "試験の申込" ? (
+        /* 試験の申込: カードの中身（アカウント・申込・本人の情報・職歴）が多いので、
+           2列に分けず1列の幅いっぱいに出す。区分（進行中・未着手・完了）はボタンで切り替える */
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            {TODO_STAGES.map((stage) => {
+              const active = examStage === stage;
+              return (
+                <button
+                  key={stage}
+                  type="button"
+                  onClick={() => setExamStage(stage)}
+                  aria-pressed={active}
+                  className={`min-h-[36px] rounded-full border px-4 text-sm font-bold ${
+                    active ? "border-brand bg-brand text-brand-foreground" : "border-border bg-surface text-muted"
+                  }`}
+                >
+                  {stage} {stageRows(stage).length}
+                </button>
+              );
+            })}
+          </div>
+          {stageCard(examStage)}
+        </>
+      ) : (
         <>
           <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
             {(["未着手", "進行中"] as const).map((stage) => stageCard(stage))}

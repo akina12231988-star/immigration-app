@@ -3,6 +3,12 @@ import {
   canAddExamAttempt,
   displayTodoNo,
   emptyExamAttempt,
+  emptyTodoExam,
+  examAccountMissing,
+  examChoiceShort,
+  examCurrentStep,
+  examOpenSection,
+  examProgress,
   examResultChecks,
   findExistingPrepTodo,
   isCheckingStatus,
@@ -267,5 +273,107 @@ describe("examResultChecks（試験結果の確認）", () => {
       todo({ id: "b", exam: { attempts: [{ exam_date: "2026-05-01" }] } }),
     ];
     expect(examResultChecks(rows, "2026-09-30").map((c) => c.todoId)).toEqual(["b", "a"]);
+  });
+});
+
+describe("試験の申込の進み具合（examProgress）", () => {
+  const T = "２号農業試験申込";
+  const today = "2026-10-08";
+
+  test("何も入れていなければ、受験内容が「いまここ」で、あとは未着手", () => {
+    const steps = examProgress(emptyTodoExam(), T, today);
+    expect(steps.map((s) => s.key)).toEqual(["choice", "account", "apply", "exam", "result"]);
+    expect(steps.map((s) => s.state)).toEqual(["current", "todo", "todo", "todo", "todo"]);
+    expect(steps[1].detail).toBe("4項目が未入力");
+    expect(steps[2].detail).toBe("1回目 未申込");
+    expect(steps[3].detail).toBe("未定");
+    expect(steps[4].detail).toBe("未確認");
+    expect(examCurrentStep(steps)?.key).toBe("choice");
+    expect(examOpenSection(steps)).toBe("account");
+  });
+
+  test("受験内容の段階は２号農業試験申込のときだけ", () => {
+    const steps = examProgress(emptyTodoExam(), "１号農業試験申込", today);
+    expect(steps.map((s) => s.key)).toEqual(["account", "apply", "exam", "result"]);
+    expect(steps[0].state).toBe("current");
+  });
+
+  test("アカウントが全部入ると済みになり、申込が「いまここ」。試験日が先なら残り日数を出す", () => {
+    const exam = {
+      ...emptyTodoExam(),
+      exam_choice: "General crop farming Level 2（耕種農業全般）",
+      application_no: "A1",
+      prometric_id: "P1",
+      password: "x",
+      login_email: "a@b.c",
+      attempts: [{ ...emptyExamAttempt(), exam_date: "2026-10-25" }],
+    };
+    const steps = examProgress(exam, T, today);
+    expect(steps[0]).toMatchObject({ state: "done", detail: "耕種農業全般" });
+    expect(steps[1]).toMatchObject({ state: "done", detail: "入力済" });
+    expect(steps[2].state).toBe("current");
+    expect(steps[3]).toMatchObject({ state: "done", detail: "2026-10-25（あと17日）" });
+    expect(examOpenSection(steps)).toBe("attempts");
+  });
+
+  test("申込済みでも代金を受け取っていなければ申込・代金は済みにしない", () => {
+    const exam = {
+      ...emptyTodoExam(),
+      attempts: [{ ...emptyExamAttempt(), applied_on: "2026-10-01", fee: "8,000円" }],
+    };
+    const steps = examProgress(exam, "１号農業試験申込", today);
+    const apply = steps.find((s) => s.key === "apply")!;
+    expect(apply.state).toBe("todo"); // アカウントが先に「いまここ」
+    expect(apply.detail).toBe("1回目 2026-10-01・代金未受取");
+  });
+
+  test("試験日を過ぎて合否が未確認なら合否を赤にする", () => {
+    const exam = {
+      ...emptyTodoExam(),
+      attempts: [{ ...emptyExamAttempt(), applied_on: "2026-09-01", exam_date: "2026-09-20" }],
+    };
+    const steps = examProgress(exam, "１号農業試験申込", today);
+    expect(steps.at(-1)).toMatchObject({ state: "alert", detail: "試験日を過ぎています・未確認" });
+    expect(examCurrentStep(steps)?.key).toBe("account"); // 最初の未済（アカウント）
+  });
+
+  test("合格すれば全部済み。不合格なら次の回を促す", () => {
+    const full = {
+      ...emptyTodoExam(),
+      application_no: "A",
+      prometric_id: "P",
+      password: "x",
+      login_email: "a@b.c",
+    };
+    const passed = examProgress(
+      { ...full, attempts: [{ ...emptyExamAttempt(), applied_on: "2026-09-01", exam_date: "2026-09-20", result: "合格" }] },
+      "１号農業試験申込",
+      today,
+    );
+    expect(passed.every((s) => s.state === "done")).toBe(true);
+    expect(passed.at(-1)?.detail).toBe("1回目で合格");
+    expect(examCurrentStep(passed)).toBeNull();
+    const failed = examProgress(
+      { ...full, attempts: [{ ...emptyExamAttempt(), applied_on: "2026-09-01", exam_date: "2026-09-20", result: "不合格" }] },
+      "１号農業試験申込",
+      today,
+    );
+    expect(failed.at(-1)?.detail).toBe("不合格（次の回を足す）");
+  });
+
+  test("examAccountMissing / examChoiceShort", () => {
+    expect(examAccountMissing(emptyTodoExam())).toEqual([
+      "アプリケーションNo.",
+      "プロメトリックID",
+      "パスワード",
+      "ログイン先のメールアドレス",
+    ]);
+    expect(examAccountMissing({ ...emptyTodoExam(), application_no: "A", password: " " })).toEqual([
+      "プロメトリックID",
+      "パスワード",
+      "ログイン先のメールアドレス",
+    ]);
+    expect(examChoiceShort("General livestock farming Level 2（畜産農業全般）")).toBe("畜産農業全般");
+    expect(examChoiceShort("そのまま")).toBe("そのまま");
   });
 });

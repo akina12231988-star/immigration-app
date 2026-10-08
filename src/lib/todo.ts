@@ -190,6 +190,128 @@ export function canAddExamAttempt(exam: TodoExam): boolean {
   return (exam.attempts.at(-1)?.result ?? "") === "不合格";
 }
 
+// ---- 試験の申込の進み具合（カードの上の帯・折りたたみの要約に使う） ----
+
+// 申込に使うアカウントの項目（未入力の確認に使う）
+export const EXAM_ACCOUNT_LABELS = {
+  application_no: "アプリケーションNo.",
+  prometric_id: "プロメトリックID",
+  password: "パスワード",
+  login_email: "ログイン先のメールアドレス",
+} as const;
+
+// アカウントの項目のうち未入力のもの（表示名）
+export function examAccountMissing(exam: TodoExam): string[] {
+  return (Object.keys(EXAM_ACCOUNT_LABELS) as (keyof typeof EXAM_ACCOUNT_LABELS)[])
+    .filter((k) => exam[k].trim() === "")
+    .map((k) => EXAM_ACCOUNT_LABELS[k]);
+}
+
+// 希望する受験内容の短い言い方。「General crop farming Level 2（耕種農業全般）」→「耕種農業全般」
+export function examChoiceShort(choice: string): string {
+  const m = choice.match(/[（(]([^）)]+)[）)]/);
+  return m ? m[1] : choice;
+}
+
+export type ExamStepKey = "choice" | "account" | "apply" | "exam" | "result";
+export type ExamStepState = "done" | "current" | "todo" | "alert";
+export interface ExamStep {
+  key: ExamStepKey;
+  label: string;
+  state: ExamStepState;
+  detail: string; // 帯の下に出す短い状況（「4項目が未入力」「2026-10-25（あと17日）」など）
+}
+
+function daysBetween(from: string, to: string): number {
+  return Math.round((Date.UTC(+to.slice(0, 4), +to.slice(5, 7) - 1, +to.slice(8, 10)) -
+    Date.UTC(+from.slice(0, 4), +from.slice(5, 7) - 1, +from.slice(8, 10))) / 86400000);
+}
+
+// 「受験内容 → アカウント → 申込・代金 → 試験日 → 合否」の進み具合。
+// 受験内容の段階は２号農業試験申込のときだけ。最初の済んでいない段階が「いまここ」。
+// 試験日を過ぎて合否が未確認なら、合否の段階を赤（alert）にする
+export function examProgress(exam: TodoExam, title: string, today: string): ExamStep[] {
+  const last = exam.attempts.at(-1) ?? emptyExamAttempt();
+  const no = exam.attempts.length;
+  const missing = examAccountMissing(exam);
+  const passed = passedExamAttempt(exam);
+  const overdue = overdueExamAttempts(exam, today).length > 0;
+  const applied = last.applied || last.applied_on !== "";
+
+  const base: { key: ExamStepKey; label: string; done: boolean; detail: string }[] = [];
+  if (title === "２号農業試験申込") {
+    base.push({
+      key: "choice",
+      label: "受験内容",
+      done: exam.exam_choice !== "",
+      detail: exam.exam_choice ? examChoiceShort(exam.exam_choice) : "未選択",
+    });
+  }
+  base.push({
+    key: "account",
+    label: "アカウント",
+    done: missing.length === 0,
+    detail: missing.length === 0 ? "入力済" : `${missing.length}項目が未入力`,
+  });
+  base.push({
+    key: "apply",
+    label: "申込・代金",
+    done: applied && (last.fee.trim() === "" || last.fee_received),
+    detail: !applied
+      ? `${no}回目 未申込`
+      : `${no}回目 ${last.applied_on || "申込済"}${last.fee.trim() !== "" && !last.fee_received ? "・代金未受取" : ""}`,
+  });
+  base.push({
+    key: "exam",
+    label: "試験日",
+    done: last.exam_date !== "",
+    detail: !last.exam_date
+      ? "未定"
+      : last.exam_date > today
+        ? `${last.exam_date}（あと${daysBetween(today, last.exam_date)}日）`
+        : last.exam_date,
+  });
+  base.push({
+    key: "result",
+    label: "合否",
+    done: last.result !== "",
+    detail: passed
+      ? `${passed.no}回目で合格`
+      : last.result === "不合格"
+        ? "不合格（次の回を足す）"
+        : overdue
+          ? "試験日を過ぎています・未確認"
+          : "未確認",
+  });
+
+  const firstOpen = base.findIndex((b) => !b.done);
+  return base.map((b, i) => ({
+    key: b.key,
+    label: b.label,
+    detail: b.detail,
+    state:
+      b.key === "result" && overdue
+        ? "alert"
+        : b.done
+          ? "done"
+          : i === firstOpen
+            ? "current"
+            : "todo",
+  }));
+}
+
+// 「いまここ」の段階（全部済んでいれば null）
+export function examCurrentStep(steps: ExamStep[]): ExamStep | null {
+  return steps.find((s) => s.state === "current" || s.state === "alert") ?? null;
+}
+
+// いまの段階に合わせて、最初から開いておく折りたたみ（アカウント か 申込）
+export function examOpenSection(steps: ExamStep[]): "account" | "attempts" {
+  const cur = examCurrentStep(steps);
+  if (!cur) return "attempts";
+  return cur.key === "choice" || cur.key === "account" ? "account" : "attempts";
+}
+
 // 特定技能2号の試験か（合格したら本人の情報に「2号合格」として残す）
 export function isSsw2ExamTitle(title: string): boolean {
   return title.includes("２号") || title.includes("2号");

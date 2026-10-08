@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Check, Loader2, Pencil, Plus, Trash2, Upload, X } from "lucide-react";
+import { Check, ChevronDown, Loader2, Pencil, Plus, Trash2, Upload, X } from "lucide-react";
 import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { FileDropArea } from "@/components/ui/FileDropArea";
@@ -27,6 +27,9 @@ import {
   emptyExamAttempt,
   EXAM_CONTENT_CHOICES,
   EXAM_RESULTS,
+  examAccountMissing,
+  examOpenSection,
+  examProgress,
   isSsw2ExamTitle,
   normalizeTodoExam,
   overdueExamAttempts,
@@ -34,6 +37,7 @@ import {
   ssw2ExamName,
   withExamSummary,
   type ExamResult,
+  type ExamStep,
   type TodoExam,
   type TodoExamAttempt,
 } from "@/lib/todo";
@@ -51,6 +55,10 @@ const INPUT =
 // アカウントの情報（アプリケーションNo.・プロメトリックIDなど）は何回申し込んでも同じなので1つ、
 // 申込日・試験日・代金・合否は「何回目」ごとに残す（不合格ならまた申し込むため）。
 //
+// 見やすさのため、上に「受験内容 → アカウント → 申込・代金 → 試験日 → 合否」の進み具合の帯を出し、
+// 下は「アカウント」「申込（回ごと）」「本人の情報」「職歴」「添付」の折りたたみにする。
+// 閉じていても見出しに要約（未入力の項目・回数・職歴の合計）を出し、開くのは今やる段階だけにする。
+//
 // うっかり書き換わらないよう、ふだんは見るだけで、「編集」を押したときだけ直せる。
 export function ExamTodoSection({
   todo,
@@ -67,6 +75,8 @@ export function ExamTodoSection({
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const today = todayStr();
+  // 本人の情報・職歴（外国人詳細と同じデータ）。要約を見出しに出すためここで読み込む
+  const workerData = useExamWorkerData(todo.worker_id);
 
   // 見るだけのときは、保存されている内容をそのまま出す
   const exam = editing ? draft : saved;
@@ -125,6 +135,43 @@ export function ExamTodoSection({
 
   const overdue = overdueExamAttempts(exam, today);
   const passed = passedExamAttempt(exam);
+  const steps = examProgress(exam, todo.title, today);
+  const openSection = examOpenSection(steps);
+  const missing = examAccountMissing(exam);
+  const last = exam.attempts.at(-1) ?? emptyExamAttempt();
+
+  // 折りたたみの見出しに出す要約
+  const accountSummary =
+    missing.length === 0
+      ? "入力済（押すとコピーできます）"
+      : `${missing.join("・")}が未入力`;
+  const attemptsSummary = `${exam.attempts.length}回目：${
+    last.applied_on || last.applied
+      ? `申込 ${last.applied_on || "済"}・試験日 ${last.exam_date || "未定"}・${last.result || "合否未確認"}`
+      : "まだ申し込んでいません"
+  }`;
+  const w = workerData.data?.worker ?? null;
+  const histories = workerData.data?.histories ?? [];
+  const infoSummary = !todo.worker_id
+    ? "外国人のひも付けがありません"
+    : workerData.error
+      ? "読み込みに失敗しました"
+      : !w
+        ? "読み込み中…"
+        : "名前・フリガナ・生年月日・国籍・住所・パスポート";
+  const infoWarn = w && (!w.passport_no || !w.passport_mrz) ? (
+    !w.passport_no ? "パスポート未登録" : "MRZ未読み取り"
+  ) : "";
+  const historyTotal = ymdText(
+    toYMD(sumHistoryDays(histories.map((h) => ({ start: h.start_date, end: h.end_date })), today)),
+  );
+  const historySummary = !todo.worker_id
+    ? "外国人のひも付けがありません"
+    : !w
+      ? workerData.error ? "読み込みに失敗しました" : "読み込み中…"
+      : histories.length === 0
+        ? "まだ登録されていません"
+        : `${histories.length}件・合計 ${historyTotal}`;
 
   return (
     <div className="mt-2 space-y-2 border-t border-dashed border-border pt-2">
@@ -151,6 +198,9 @@ export function ExamTodoSection({
         </p>
       ))}
 
+      {/* 進み具合の帯（いまどこか・何が足りないか） */}
+      <ExamProgressBand steps={steps} />
+
       {/* 見るだけ ⇔ 編集 */}
       {canEdit && (
         <div className="flex flex-wrap items-center gap-2">
@@ -159,7 +209,7 @@ export function ExamTodoSection({
               <button
                 type="button"
                 onClick={() => void save()}
-                className="flex items-center gap-1 rounded-lg bg-brand px-3 py-1.5 text-xs font-bold text-brand-foreground"
+                className="flex min-h-[36px] items-center gap-1 rounded-lg bg-brand px-3 py-1.5 text-xs font-bold text-brand-foreground"
               >
                 <Check size={13} />
                 保存する
@@ -167,7 +217,7 @@ export function ExamTodoSection({
               <button
                 type="button"
                 onClick={() => setEditing(false)}
-                className="flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-bold text-muted"
+                className="flex min-h-[36px] items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-bold text-muted"
               >
                 <X size={13} />
                 やめる
@@ -181,7 +231,7 @@ export function ExamTodoSection({
               <button
                 type="button"
                 onClick={startEdit}
-                className="flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-bold"
+                className="flex min-h-[36px] items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-bold"
               >
                 <Pencil size={13} />
                 編集
@@ -194,146 +244,248 @@ export function ExamTodoSection({
         </div>
       )}
 
-      {/* 希望する受験内容（２号農業試験申込のとき） */}
-      {todo.title === "２号農業試験申込" &&
-        (editing ? (
-          <label className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-muted">
-            希望する受験内容
-            <select
-              value={exam.exam_choice}
-              onChange={(e) => set({ exam_choice: e.target.value })}
-              className={INPUT}
-            >
-              <option value="">選択してください</option>
-              {exam.exam_choice && !EXAM_CONTENT_CHOICES.some((c) => c === exam.exam_choice) && (
-                <option value={exam.exam_choice}>{exam.exam_choice}</option>
-              )}
-              {EXAM_CONTENT_CHOICES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
+      <div className="divide-y divide-border rounded-xl border border-border bg-surface">
+        {/* ① 申込に使うアカウント（何回申し込んでも同じ。押すとコピーできる）＋ 希望する受験内容 */}
+        <ExamSection
+          title="申込に使うアカウント"
+          summary={accountSummary}
+          warn={missing.length > 0}
+          open={openSection === "account" || editing}
+        >
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {/* 希望する受験内容（２号農業試験申込のとき） */}
+            {todo.title === "２号農業試験申込" &&
+              (editing ? (
+                <label className="flex flex-col gap-0.5 text-[11px] font-bold text-muted">
+                  希望する受験内容
+                  <select
+                    value={exam.exam_choice}
+                    onChange={(e) => set({ exam_choice: e.target.value })}
+                    className={INPUT}
+                  >
+                    <option value="">選択してください</option>
+                    {exam.exam_choice && !EXAM_CONTENT_CHOICES.some((c) => c === exam.exam_choice) && (
+                      <option value={exam.exam_choice}>{exam.exam_choice}</option>
+                    )}
+                    {EXAM_CONTENT_CHOICES.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <ReadItem label="希望する受験内容" value={exam.exam_choice} />
               ))}
-            </select>
-          </label>
-        ) : (
-          <ReadItem label="希望する受験内容" value={exam.exam_choice} />
-        ))}
-
-      {/* 申込に使うアカウントの情報（何回申し込んでも同じ。押すとコピーできる） */}
-      <div className="rounded-lg border border-border bg-background p-2">
-        <p className="mb-1 text-[11px] font-bold text-muted">
-          申込に使うアカウント（押すとコピーできます）
-        </p>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <ExamField
-            label="アプリケーションNo."
-            value={exam.application_no}
-            editing={editing}
-            placeholder="発行されたら入力"
-            onChange={(v) => set({ application_no: v })}
-          />
-          <ExamField
-            label="プロメトリックID"
-            value={exam.prometric_id}
-            editing={editing}
-            onChange={(v) => set({ prometric_id: v })}
-          />
-          <ExamField
-            label="パスワード"
-            value={exam.password}
-            editing={editing}
-            onChange={(v) => set({ password: v })}
-          />
-          <ExamField
-            label="ログイン先のメールアドレス"
-            value={exam.login_email}
-            editing={editing}
-            placeholder="example@mail.com"
-            onChange={(v) => set({ login_email: v })}
-          />
-          {editing ? (
-            <label className="flex flex-col gap-0.5 text-[11px] font-bold text-muted">
-              メールアドレスを作ったのは
-              <select
-                value={exam.login_email_owner}
-                onChange={(e) => set({ login_email_owner: e.target.value })}
-                className={INPUT}
-              >
-                <option value="">—</option>
-                <option value="本人が作成">本人が作成</option>
-                <option value="弊社が作成">弊社が作成</option>
-              </select>
-            </label>
-          ) : (
-            <ReadItem label="メールアドレスを作ったのは" value={exam.login_email_owner} />
-          )}
-          {exam.login_email_owner === "弊社が作成" && (
             <ExamField
-              label="メールアドレスのパスワード（弊社作成のため記録）"
-              value={exam.login_email_password}
+              label="アプリケーションNo."
+              value={exam.application_no}
               editing={editing}
-              onChange={(v) => set({ login_email_password: v })}
+              placeholder="発行されたら入力"
+              onChange={(v) => set({ application_no: v })}
+            />
+            <ExamField
+              label="プロメトリックID"
+              value={exam.prometric_id}
+              editing={editing}
+              onChange={(v) => set({ prometric_id: v })}
+            />
+            <ExamField
+              label="パスワード"
+              value={exam.password}
+              editing={editing}
+              onChange={(v) => set({ password: v })}
+            />
+            <ExamField
+              label="ログイン先のメールアドレス"
+              value={exam.login_email}
+              editing={editing}
+              placeholder="example@mail.com"
+              onChange={(v) => set({ login_email: v })}
+            />
+            {editing ? (
+              <label className="flex flex-col gap-0.5 text-[11px] font-bold text-muted">
+                メールアドレスを作ったのは
+                <select
+                  value={exam.login_email_owner}
+                  onChange={(e) => set({ login_email_owner: e.target.value })}
+                  className={INPUT}
+                >
+                  <option value="">—</option>
+                  <option value="本人が作成">本人が作成</option>
+                  <option value="弊社が作成">弊社が作成</option>
+                </select>
+              </label>
+            ) : (
+              <ReadItem label="メールアドレスを作ったのは" value={exam.login_email_owner} />
+            )}
+            {exam.login_email_owner === "弊社が作成" && (
+              <ExamField
+                label="メールアドレスのパスワード（弊社作成のため記録）"
+                value={exam.login_email_password}
+                editing={editing}
+                onChange={(v) => set({ login_email_password: v })}
+              />
+            )}
+          </div>
+        </ExamSection>
+
+        {/* ② 何回目の申込か（不合格ならまた申し込むので、回ごとに残す） */}
+        <ExamSection
+          title="申込（回ごと）"
+          summary={attemptsSummary}
+          warn={overdue.length > 0}
+          open={openSection === "attempts" || editing}
+        >
+          <div className="flex flex-col gap-2">
+            {exam.attempts.map((a, i) => (
+              <ExamAttemptRow
+                key={i}
+                no={i + 1}
+                attempt={a}
+                editing={editing}
+                canEdit={canEdit}
+                today={today}
+                onChange={(patch) => setAttempt(i, patch)}
+                onToggleFeeReceived={() => toggleFeeReceived(i)}
+              />
+            ))}
+          </div>
+          {editing && canAddExamAttempt(exam) && (
+            <button
+              type="button"
+              onClick={() => set({ attempts: [...exam.attempts, emptyExamAttempt()] })}
+              className="mt-2 flex min-h-[36px] items-center gap-1 rounded-lg border border-dashed border-brand px-2.5 py-1.5 text-[11px] font-bold text-brand"
+            >
+              <Plus size={12} />
+              次（{exam.attempts.length + 1}回目）の申込を足す
+            </button>
+          )}
+          {editing && !canAddExamAttempt(exam) && (
+            <p className="mt-2 text-[11px] text-muted">
+              {passed
+                ? "合格しているので、次の申込は要りません。"
+                : "最後の回を「不合格」にすると、次の申込を足せます。"}
+            </p>
+          )}
+        </ExamSection>
+
+        {/* ③ 申込サイトに写す本人の情報（外国人詳細から自動反映）＋パスポート。
+            アプリケーションNo.の申込では所属機関（会社名・住所・連絡先・代表者）も申込サイトに書くので一緒に出す */}
+        <ExamSection
+          title="申込サイトに写す本人の情報"
+          summary={infoSummary}
+          warnText={infoWarn}
+          open={false}
+          actions={
+            todo.worker_id ? (
+              <Link
+                href={`/workers/${todo.worker_id}`}
+                onClick={(e) => e.stopPropagation()}
+                className="shrink-0 text-[11px] font-bold text-brand hover:underline"
+              >
+                外国人詳細で直す →
+              </Link>
+            ) : null
+          }
+        >
+          {todo.worker_id && (
+            <ExamWorkerInfo
+              workerId={todo.worker_id}
+              canEdit={canEdit}
+              showOrg={todo.title === "２号アプリケーションナンバーの申込"}
+              data={workerData.data}
+              error={workerData.error}
+              reload={workerData.reload}
             />
           )}
-        </div>
-      </div>
+        </ExamSection>
 
-      {/* 何回目の申込か（不合格ならまた申し込むので、回ごとに残す） */}
-      <div className="rounded-lg border border-border bg-background p-2">
-        <p className="mb-1 text-[11px] font-bold text-muted">
-          申込（{exam.attempts.length}回目まで）
-        </p>
-        <div className="flex flex-col gap-2">
-          {exam.attempts.map((a, i) => (
-            <ExamAttemptRow
-              key={i}
-              no={i + 1}
-              attempt={a}
-              editing={editing}
+        {/* ④ 職歴（外国人詳細と同じデータ。この場で編集できる） */}
+        <ExamSection title="職歴" summary={historySummary} open={false}>
+          {todo.worker_id && workerData.data && (
+            <ExamHistoryEditor
+              workerId={todo.worker_id}
+              histories={histories}
               canEdit={canEdit}
-              today={today}
-              onChange={(patch) => setAttempt(i, patch)}
-              onToggleFeeReceived={() => toggleFeeReceived(i)}
+              onChanged={workerData.reload}
             />
-          ))}
-        </div>
-        {editing && canAddExamAttempt(exam) && (
-          <button
-            type="button"
-            onClick={() => set({ attempts: [...exam.attempts, emptyExamAttempt()] })}
-            className="mt-2 flex items-center gap-1 rounded-lg border border-dashed border-brand px-2.5 py-1.5 text-[11px] font-bold text-brand"
-          >
-            <Plus size={12} />
-            次（{exam.attempts.length + 1}回目）の申込を足す
-          </button>
-        )}
-        {editing && !canAddExamAttempt(exam) && (
-          <p className="mt-2 text-[11px] text-muted">
-            {passed
-              ? "合格しているので、次の申込は要りません。"
-              : "最後の回を「不合格」にすると、次の申込を足せます。"}
-          </p>
-        )}
-      </div>
+          )}
+        </ExamSection>
 
-      {/* 発行されたアプリケーションNo.（PDF・画像）の添付 */}
-      <div className="rounded-lg bg-background p-2">
-        <p className="mb-1 text-[11px] font-bold text-muted">
-          発行されたアプリケーションNo.（PDF・画像）
-        </p>
-        <TodoFileAttachments todoId={todo.id} kind="アプリケーションNo." canEdit={canEdit} />
+        {/* ⑤ 発行されたアプリケーションNo.（PDF・画像）の添付 */}
+        <ExamSection title="添付（発行されたアプリケーションNo.）" summary="PDF・画像" open={false}>
+          <TodoFileAttachments todoId={todo.id} kind="アプリケーションNo." canEdit={canEdit} />
+        </ExamSection>
       </div>
-
-      {/* ２号試験の申込に必要なデータ（外国人詳細から自動反映）＋パスポート＋職歴。
-          アプリケーションNo.の申込では所属機関（会社名・住所・連絡先・代表者）も申込サイトに書くので一緒に出す */}
-      {todo.worker_id && (
-        <ExamWorkerInfo
-          workerId={todo.worker_id}
-          canEdit={canEdit}
-          showOrg={todo.title === "２号アプリケーションナンバーの申込"}
-        />
-      )}
     </div>
+  );
+}
+
+// 進み具合の帯。段階ごとに色の棒と「いまここ」「済」を出す
+function ExamProgressBand({ steps }: { steps: ExamStep[] }) {
+  return (
+    <ol className="grid gap-1.5 rounded-xl bg-background p-2.5" style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }}>
+      {steps.map((s, i) => {
+        const bar =
+          s.state === "done"
+            ? "bg-brand"
+            : s.state === "current"
+              ? "bg-brand/60"
+              : s.state === "alert"
+                ? "bg-seal"
+                : "bg-border";
+        const text =
+          s.state === "alert"
+            ? "text-seal"
+            : s.state === "todo"
+              ? "text-muted"
+              : "text-foreground";
+        return (
+          <li key={s.key} className="min-w-0">
+            <div className={`h-2 rounded-full ${bar}`} />
+            <p className={`mt-1 truncate text-[11px] font-bold ${text}`}>
+              {i + 1} {s.label}
+              {s.state === "done" && " ✓"}
+              {s.state === "current" && "（いまここ）"}
+            </p>
+            <p className={`truncate text-[11px] ${s.state === "alert" ? "font-bold text-seal" : "text-muted"}`}>{s.detail}</p>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+// 折りたたみ1つぶん。閉じていても見出しに要約を出す
+function ExamSection({
+  title,
+  summary,
+  warn = false,
+  warnText = "",
+  open,
+  actions,
+  children,
+}: {
+  title: string;
+  summary: string;
+  warn?: boolean; // 要約そのものを赤で出す（未入力・試験日過ぎなど）
+  warnText?: string; // 要約の横に赤で出す短い注意（パスポート未登録 など）
+  open: boolean; // 最初から開いておくか（今やる段階だけ true）
+  actions?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <details open={open} className="group">
+      <summary className="flex min-h-[44px] cursor-pointer select-none flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-2 text-xs">
+        <ChevronDown size={14} className="shrink-0 text-muted transition-transform group-open:rotate-0 -rotate-90" />
+        <span className="font-bold">{title}</span>
+        <span className={`min-w-0 flex-1 truncate ${warn ? "font-bold text-seal" : "text-muted"}`}>{summary}</span>
+        {warnText && <span className="shrink-0 font-bold text-seal">{warnText}</span>}
+        {actions}
+      </summary>
+      <div className="px-3 pb-3">{children}</div>
+    </details>
   );
 }
 
@@ -697,23 +849,25 @@ interface ExamOrgInfo {
   intake: unknown; // 代表者の氏名は登録内容（intake）に入っている
 }
 
-function ExamWorkerInfo({
-  workerId,
-  canEdit,
-  showOrg = false,
-}: {
-  workerId: string;
-  canEdit: boolean;
-  showOrg?: boolean; // true: 所属機関の会社名・住所・連絡先・代表者も出す（アプリケーションNo.の申込）
-}) {
-  const [data, setData] = useState<{
-    worker: Worker;
-    histories: WorkHistoryRow[];
-    org: ExamOrgInfo | null;
-  } | null>(null);
-  const [error, setError] = useState<string | null>(null);
+// 外国人詳細と同じデータ（本人の情報・職歴・所属機関）の読み込み。
+// 折りたたみの見出しに要約を出すため、試験の申込の詳細の上で1回だけ読む
+interface ExamWorkerData {
+  worker: Worker;
+  histories: WorkHistoryRow[];
+  org: ExamOrgInfo | null;
+}
 
-  const load = () => {
+function useExamWorkerData(workerId: string | null): {
+  data: ExamWorkerData | null;
+  error: string | null;
+  reload: () => void;
+} {
+  const [data, setData] = useState<ExamWorkerData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    if (!workerId) return;
     createClient()
       .from("workers")
       .select("*, work_histories(*), organizations!workers_current_organization_id_fkey(name, address, contact, intake)")
@@ -733,13 +887,31 @@ function ExamWorkerInfo({
           setData({ worker, histories: work_histories ?? [], org: organizations ?? null });
         }
       });
-  };
+  }, [workerId, reloadKey]);
 
-  // 開いたときに外国人詳細の登録内容を読み込む
-  useEffect(load, [workerId]);
+  return { data, error, reload: () => setReloadKey((k) => k + 1) };
+}
 
-  if (error) {
-    return <p className="rounded-lg bg-seal/10 px-2.5 py-1.5 text-xs text-seal">{error}</p>;
+function ExamWorkerInfo({
+  workerId,
+  canEdit,
+  showOrg,
+  data,
+  error: loadError,
+  reload,
+}: {
+  workerId: string;
+  canEdit: boolean;
+  showOrg: boolean;
+  data: ExamWorkerData | null;
+  error: string | null;
+  reload: () => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const load = reload;
+
+  if (error || loadError) {
+    return <p className="rounded-lg bg-seal/10 px-2.5 py-1.5 text-xs text-seal">{error ?? loadError}</p>;
   }
   if (!data) {
     return <p className="text-[11px] text-muted">外国人の情報を読み込み中…</p>;
@@ -771,14 +943,9 @@ function ExamWorkerInfo({
   };
 
   return (
-    <div className="rounded-lg bg-background p-2">
-      <p className="mb-1 flex flex-wrap items-center justify-between gap-1 text-[11px] font-bold text-muted">
-        試験の申込に必要なデータ（外国人詳細から自動反映・押すとコピーできます）
-        <Link href={`/workers/${workerId}`} className="font-bold text-brand hover:underline">
-          外国人詳細で直す →
-        </Link>
-      </p>
-      <div className="grid grid-cols-1 gap-x-3 sm:grid-cols-2">
+    <div>
+      <p className="mb-1 text-[11px] text-muted">外国人詳細の登録内容をそのまま出しています。値を押すとコピーできます。</p>
+      <div className="grid grid-cols-1 gap-x-3 sm:grid-cols-2 lg:grid-cols-3">
         {item("名前", w.name)}
         {item("フリガナ", w.kana)}
         {/* 申込サイトには「1985年10月10日」の形で書くので、その形で表示・コピーする */}
@@ -855,16 +1022,6 @@ function ExamWorkerInfo({
         )}
       </div>
 
-      {/* 職歴（外国人詳細と同じデータ。この場で編集できる） */}
-      <div className="mt-2 border-t border-dashed border-border pt-1.5">
-        <p className="mb-1 text-[11px] font-bold text-muted">職歴（この場で編集できます）</p>
-        <ExamHistoryEditor
-          workerId={workerId}
-          histories={data.histories}
-          canEdit={canEdit}
-          onChanged={load}
-        />
-      </div>
     </div>
   );
 }
