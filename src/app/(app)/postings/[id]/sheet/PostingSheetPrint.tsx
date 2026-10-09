@@ -14,10 +14,15 @@ import {
   emptyPostingAllowance,
   isContractRenewalYes,
   renewalCriteriaText,
+  CONTRACT_RENEWAL_AUTO,
+  CONTRACT_RENEWAL_CRITERIA,
   CONTRACT_RENEWAL_MAYBE,
   CONTRACT_RENEWAL_NONE,
   CONTRACT_TERMS,
 } from "@/lib/posting-sheet";
+
+// 契約の更新「有」のときに選べる種類（「無」は別のチェック欄）
+const CONTRACT_RENEWAL_YES_KINDS = [CONTRACT_RENEWAL_AUTO, CONTRACT_RENEWAL_MAYBE] as const;
 import type { PostingSheet, WageKind } from "@/types/recruiting";
 import type { PostingWithStats } from "@/lib/supabase/queries/postings";
 
@@ -549,14 +554,69 @@ export function PostingSheetPrint({
                       }}
                     />
                     <span className="inline-block flex-1">
-                      {/* 更新の有無を選んでいれば、その内容を出す（中身は求人票の入力画面で選ぶ）。
+                      {/* 更新の有無を選んでいれば、その内容を出す。
+                          画面では「自動的に更新する／更新する場合があり得る」と、更新する場合の
+                          判断基準（複数）・その他をこの場で選べる。印刷には選んだ内容を文字で出す。
                           選んでいない古い求人は、これまでどおり自由に書ける */}
                       {sheet.contract_renewal_kind ? (
-                        <span>
-                          {canPickRenewalCriteria(sheet.contract_renewal_kind)
-                            ? renewalCriteriaText(sheet) || sheet.contract_renewal_kind
-                            : sheet.contract_renewal_kind}
-                        </span>
+                        <>
+                          <span className={canEdit ? "hidden print:inline" : ""}>
+                            {canPickRenewalCriteria(sheet.contract_renewal_kind)
+                              ? renewalCriteriaText(sheet) || sheet.contract_renewal_kind
+                              : sheet.contract_renewal_kind}
+                          </span>
+                          {canEdit && (
+                            <span className="inline-flex flex-wrap items-center gap-x-1 gap-y-[2px] print:hidden">
+                              <span className="inline-block w-[42mm]">
+                                <S
+                                  value={sheet.contract_renewal_kind}
+                                  onChange={(v) => {
+                                    set("contract_renewal_kind", v);
+                                    // 自動更新にしたら判断基準は要らない
+                                    if (!canPickRenewalCriteria(v)) {
+                                      set("contract_renewal_criteria", []);
+                                      set("contract_renewal_other", "");
+                                    }
+                                  }}
+                                  options={CONTRACT_RENEWAL_YES_KINDS}
+                                />
+                              </span>
+                              {canPickRenewalCriteria(sheet.contract_renewal_kind) && (
+                                <>
+                                  {/* 判断基準は次の行にまとめる（折り返して読みにくくならないように） */}
+                                  <span className="basis-full" />
+                                  <span className="text-gray-600">判断基準：</span>
+                                  {CONTRACT_RENEWAL_CRITERIA.map((c) => (
+                                    <Check
+                                      key={c}
+                                      label={c}
+                                      on={sheet.contract_renewal_criteria.includes(c)}
+                                      onClick={() =>
+                                        set(
+                                          "contract_renewal_criteria",
+                                          sheet.contract_renewal_criteria.includes(c)
+                                            ? sheet.contract_renewal_criteria.filter((v) => v !== c)
+                                            : [...sheet.contract_renewal_criteria, c],
+                                        )
+                                      }
+                                    />
+                                  ))}
+                                  <span className="inline-flex items-center whitespace-nowrap">
+                                    その他（
+                                    <span className="inline-block w-[34mm]">
+                                      <F
+                                        value={sheet.contract_renewal_other}
+                                        onChange={(v) => set("contract_renewal_other", v)}
+                                        placeholder="ほかの基準"
+                                      />
+                                    </span>
+                                    ）
+                                  </span>
+                                </>
+                              )}
+                            </span>
+                          )}
+                        </>
                       ) : (
                         <F
                           value={sheet.contract_renewal.replace(/^[有無][:：]?/, "")}
