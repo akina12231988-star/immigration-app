@@ -7,6 +7,7 @@ import { downloadFileAs } from "@/lib/download-file";
 import { messengerWebUrl } from "@/lib/messenger-link";
 import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
+import { contractOrgOptions, resolveContractOrgId } from "@/lib/contract-org";
 import {
   contractDatesForOrg,
   normalizeOrgEmploymentStarts,
@@ -97,11 +98,10 @@ export function WorkerContracts({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [organizations, currentOrganizationId, orgEmploymentStarts, docs]);
 
-  // 表示中の会社（未選択なら先頭＝現在の所属機関）
+  // 表示中の会社（未選択なら先頭＝現在の所属機関）。
+  // 関係する会社だけでなく、下に並ぶ「その他の会社」を選んでもそのまま使う
   const [pickedOrgId, setPickedOrgId] = useState<string>("");
-  const selectedOrgId = orgChoices.some((o) => o.id === pickedOrgId)
-    ? pickedOrgId
-    : (orgChoices[0]?.id ?? "");
+  const selectedOrgId = resolveContractOrgId(pickedOrgId, orgChoices, organizations);
 
   // 会社の紐づけが無い古い書類（0081より前に登録した分）
   const unassigned = docs.filter(
@@ -191,12 +191,7 @@ export function WorkerContracts({
   };
 
   // 付け替え先の候補（この外国人に関係する会社を先に、その他の会社も選べる）
-  const allOrgOptions = [
-    ...orgChoices.map((o) => ({ id: o.id, name: o.name + (o.current ? "（現在）" : "") })),
-    ...organizations
-      .filter((o) => !orgChoices.some((c) => c.id === o.id))
-      .map((o) => ({ id: o.id, name: o.name })),
-  ];
+  const allOrgOptions = contractOrgOptions(orgChoices, organizations);
 
   return (
     <section id="contracts">
