@@ -492,7 +492,8 @@ export interface PrepDocStatus {
 export function isDocComplete(docId: string, fileSatisfied: boolean, status: string): boolean {
   const options = PREP_DOC_STATUS_OPTIONS[docId];
   if (!options) return fileSatisfied;
-  return !!options.find((o) => o.value === status)?.done;
+  const current = normalizePrepStatus(status);
+  return !!options.find((o) => o.value === current)?.done;
 }
 
 // 必要書類それぞれの状態と、不足件数を返す。
@@ -559,6 +560,14 @@ export interface PrepDocStatusOption {
   extras?: PrepStatusExtra[];
 }
 
+// 前回の申請（1年以内）の申請番号を転用して、今回は提出を省く選択肢。
+// 以前は「転用番号で対応する」という言い方で保存していたので、読むときに今の言い方にそろえる
+export const PREP_STATUS_REUSE_NO = "転用番号で申請する";
+const PREP_STATUS_REUSE_NO_OLD = "転用番号で対応する";
+export function normalizePrepStatus(status: string): string {
+  return status === PREP_STATUS_REUSE_NO_OLD ? PREP_STATUS_REUSE_NO : status;
+}
+
 // 書類ID → 準備状況の選択肢。定義がない書類はステータス欄を表示しない
 export const PREP_DOC_STATUS_OPTIONS: Record<string, PrepDocStatusOption[]> = {
   zairyu: [
@@ -596,7 +605,7 @@ export const PREP_DOC_STATUS_OPTIONS: Record<string, PrepDocStatusOption[]> = {
     { value: "納税証明書その3を税務署に郵送請求中", done: false, extras: [{ kind: "mailing" }] },
     { value: "本人にまだ届いていないから納税証明書その３で対応", done: true, noFile: true, extras: [{ kind: "mailing" }] },
     // 前回の申請（1年以内）で提出済みなので、今回はその申請番号を転用して再提出を省く
-    { value: "転用番号で対応する", done: true, noFile: true, extras: [{ kind: "text", label: "転用する申請番号（前回の申請番号）" }] },
+    { value: PREP_STATUS_REUSE_NO, done: true, noFile: true, extras: [{ kind: "text", label: "転用する申請番号（前回の申請番号）" }] },
   ],
   kazei: [
     { value: "発行依頼中", done: false, extras: [{ kind: "issuer", label: "発行依頼先（誰に依頼したか）" }, { kind: "date", label: "依頼日" }] },
@@ -609,7 +618,7 @@ export const PREP_DOC_STATUS_OPTIONS: Record<string, PrepDocStatusOption[]> = {
       extras: [{ kind: "textarea", label: "理由書（申請に添付する理由を記入して保存）" }],
     },
     // 前回の申請（1年以内）で提出済みなので、今回はその申請番号を転用して再提出を省く
-    { value: "転用番号で対応する", done: true, noFile: true, extras: [{ kind: "text", label: "転用する申請番号（前回の申請番号）" }] },
+    { value: PREP_STATUS_REUSE_NO, done: true, noFile: true, extras: [{ kind: "text", label: "転用する申請番号（前回の申請番号）" }] },
   ],
   nozei_shiken: [
     { value: "発行依頼中", done: false, extras: [{ kind: "issuer", label: "発行依頼先（誰に依頼したか）" }, { kind: "date", label: "依頼日" }] },
@@ -628,7 +637,7 @@ export const PREP_DOC_STATUS_OPTIONS: Record<string, PrepDocStatusOption[]> = {
     },
     { value: "非課税のため発行できなかった", done: true, noFile: true },
     // 前回の申請（1年以内）で提出済みなので、今回はその申請番号を転用して再提出を省く
-    { value: "転用番号で対応する", done: true, noFile: true, extras: [{ kind: "text", label: "転用する申請番号（前回の申請番号）" }] },
+    { value: PREP_STATUS_REUSE_NO, done: true, noFile: true, extras: [{ kind: "text", label: "転用する申請番号（前回の申請番号）" }] },
   ],
   nozei_kokuho: [
     { value: "発行依頼中", done: false, extras: [{ kind: "issuer", label: "発行依頼先（誰に依頼したか）" }, { kind: "date", label: "依頼日" }] },
@@ -652,7 +661,7 @@ export const PREP_DOC_STATUS_OPTIONS: Record<string, PrepDocStatusOption[]> = {
       extras: [{ kind: "textarea", label: "理由書（申請に添付する理由を記入して保存）" }],
     },
     // 前回の申請（1年以内）で提出済みなので、今回はその申請番号を転用して再提出を省く
-    { value: "転用番号で対応する", done: true, noFile: true, extras: [{ kind: "text", label: "転用する申請番号（前回の申請番号）" }] },
+    { value: PREP_STATUS_REUSE_NO, done: true, noFile: true, extras: [{ kind: "text", label: "転用する申請番号（前回の申請番号）" }] },
   ],
   hokensho: [
     { value: "本人に依頼中", done: false },
@@ -664,7 +673,7 @@ export const PREP_DOC_STATUS_OPTIONS: Record<string, PrepDocStatusOption[]> = {
       extras: [{ kind: "textarea", label: "理由書（申請に添付する理由を記入して保存）" }],
     },
     // 前回の申請（1年以内）で提出済みなので、今回はその申請番号を転用して再提出を省く
-    { value: "転用番号で対応する", done: true, noFile: true, extras: [{ kind: "text", label: "転用する申請番号（前回の申請番号）" }] },
+    { value: PREP_STATUS_REUSE_NO, done: true, noFile: true, extras: [{ kind: "text", label: "転用する申請番号（前回の申請番号）" }] },
   ],
   nenkin: [
     { value: "秋吉伽恋に発行依頼中", done: false, extras: [{ kind: "date", label: "依頼日" }] },
@@ -676,7 +685,7 @@ export const PREP_DOC_STATUS_OPTIONS: Record<string, PrepDocStatusOption[]> = {
     { value: "年金免除手続きの発行依頼中", done: false, extras: [{ kind: "date", label: "依頼日" }] },
     { value: "発行済み", done: true },
     // 前回の申請（1年以内）で提出済みなので、今回はその申請番号を転用して再提出を省く
-    { value: "転用番号で対応する", done: true, noFile: true, extras: [{ kind: "text", label: "転用する申請番号（前回の申請番号）" }] },
+    { value: PREP_STATUS_REUSE_NO, done: true, noFile: true, extras: [{ kind: "text", label: "転用する申請番号（前回の申請番号）" }] },
   ],
   kenshin: [
     { value: "本人に依頼中", done: false },
@@ -793,7 +802,8 @@ export function compareGensenKazei(kazeiAmount: string, gensenAmount: string): G
 
 // 選択中のステータスの選択肢定義を返す
 export function prepStatusOption(docId: string, status: string): PrepDocStatusOption | null {
-  return PREP_DOC_STATUS_OPTIONS[docId]?.find((o) => o.value === status) ?? null;
+  const current = normalizePrepStatus(status);
+  return PREP_DOC_STATUS_OPTIONS[docId]?.find((o) => o.value === current) ?? null;
 }
 
 // レターパックの追跡ページ（日本郵便の追跡サービスに番号を渡して開く）
