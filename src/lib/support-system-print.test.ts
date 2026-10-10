@@ -17,6 +17,8 @@ const emp = (name: string, patch: Partial<Employee> = {}): Employee => ({
   office: "",
   training_completed_on: null,
   note: "",
+  online_user_id: "",
+  online_password: "",
   created_at: "",
   updated_at: "",
   ...patch,

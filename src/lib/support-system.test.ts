@@ -39,6 +39,8 @@ function employee(over: Partial<Employee> & { name: string }): Employee {
     office: "本社",
     training_completed_on: null,
     note: "",
+    online_user_id: "",
+    online_password: "",
     created_at: "",
     updated_at: "",
     ...over,
