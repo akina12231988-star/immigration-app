@@ -145,6 +145,7 @@ import {
   sumPrepAmounts,
   PREP_DOC_ATTACH_ITEMS,
   PREP_DOC_STATUS_OPTIONS,
+  normalizePrepStatus,
   PREP_MAIL_AFTER_HIDDEN,
   PREP_ISSUE_REQUEST_OPTIONS,
   PREP_TANTOU_OPTIONS,
@@ -2654,8 +2655,10 @@ function DocRow({
   // 申請種別の指定がある選択肢（例: 認定のみの「画像を送ってもらった」）はその種別のときだけ出す。
   // 申請の内容（特定技能2号など）で出し分ける選択肢もある。
   // すでに選んである値は、条件から外れても選択肢に残す（保存済みの内容が消えないように）
+  // 古い言い方で保存されている準備状況は今の言い方にそろえて扱う（「転用番号で対応する」など）
+  const currentStatus = normalizePrepStatus(ds.status);
   const statusOptions = PREP_DOC_STATUS_OPTIONS[def.id]?.filter((o) => {
-    if (o.value === ds.status) return true;
+    if (o.value === currentStatus) return true;
     if (o.appTypes && !(meta.app_type !== "" && o.appTypes.includes(meta.app_type))) return false;
     if (o.appContents && !o.appContents.includes(meta.app_content)) return false;
     if (o.hideAppContents?.includes(meta.app_content)) return false;
@@ -2993,7 +2996,7 @@ function DocRow({
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-[11px] font-bold text-muted">準備状況</span>
             <select
-              value={ds.status}
+              value={currentStatus}
               disabled={!canEdit}
               onChange={(e) => onPatchStatus({ status: e.target.value })}
               className="min-h-[32px] max-w-full rounded-lg border border-border bg-background px-1.5 text-xs focus:border-brand focus:outline-none disabled:opacity-60"

@@ -1,6 +1,8 @@
 import { ShieldCheck, TriangleAlert } from "lucide-react";
+import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { safeNextPath } from "@/lib/mfa";
+import { FORGOT_PASSWORD_PATH } from "@/lib/password";
 import { LoginForm } from "./LoginForm";
 
 export default async function LoginPage({
@@ -49,6 +51,11 @@ export default async function LoginPage({
 
         <Card className="w-full max-w-sm bg-surface p-6 text-foreground">
           <LoginForm next={safeNext} />
+          <p className="mt-3 text-center text-xs">
+            <Link href={FORGOT_PASSWORD_PATH} className="font-bold text-brand underline">
+              パスワードを忘れた方
+            </Link>
+          </p>
           <p className="mt-4 flex items-center justify-center gap-1.5 text-xs text-muted">
             <ShieldCheck size={14} />
             招待された職員アカウントのみアクセスできます

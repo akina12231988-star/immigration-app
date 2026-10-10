@@ -3,6 +3,8 @@ import {
   EMPTY_PREP_META,
   evaluatePrepChecklist,
   isDocComplete,
+  normalizePrepStatus,
+  PREP_STATUS_REUSE_NO,
   isPrepPageKeyOf,
   isRequired,
   isSatisfied,
@@ -533,5 +535,21 @@ describe("別の年度の課税・納税証明書で対応する（use_reiwa）"
     expect(
       isSatisfied(kazei, meta, { filledDocKeys: filled, photoPath: null, healthComplete: false, yearOverrides: { kazei: 6 } }),
     ).toBe(true);
+  });
+});
+
+describe("転用番号で申請する（旧「転用番号で対応する」）", () => {
+  it("今の言い方は課税証明書・納税証明書・源泉徴収票で完了（添付なし）", () => {
+    for (const docId of ["kazei", "nozei_shiken", "nozei_kokuho", "gensen"]) {
+      expect(isDocComplete(docId, false, PREP_STATUS_REUSE_NO)).toBe(true);
+      expect(prepStatusOption(docId, PREP_STATUS_REUSE_NO)?.noFile).toBe(true);
+    }
+  });
+
+  it("古い言い方で保存されていても同じ扱い", () => {
+    expect(normalizePrepStatus("転用番号で対応する")).toBe("転用番号で申請する");
+    expect(normalizePrepStatus("発行完了")).toBe("発行完了");
+    expect(isDocComplete("kazei", false, "転用番号で対応する")).toBe(true);
+    expect(prepStatusOption("kazei", "転用番号で対応する")?.value).toBe("転用番号で申請する");
   });
 });
