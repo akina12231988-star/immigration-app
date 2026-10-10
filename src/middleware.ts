@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { AUTH_DOWN_PARAM, withAuthTimeout } from "@/lib/auth-timeout";
 import { isMfaPath, mfaStep, mfaStepPath, safeNextPath } from "@/lib/mfa";
+import { RESET_PASSWORD_PATH } from "@/lib/password";
 
 // 未ログインユーザーを /login へ誘導し、Supabase セッションを更新する。
 // ログイン済みでも二段階認証（認証アプリのコード）が済んでいなければ、
@@ -11,6 +12,16 @@ export async function middleware(request: NextRequest) {
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   // Supabase 未設定の環境（セットアップ前）ではそのまま通す
   if (!url || !anonKey) return NextResponse.next();
+
+  // パスワードの再設定・招待のリンクから開く画面は、ログインの有無にかかわらず開ける
+  // （リンクの確認はブラウザ側で行う）。Supabase の Redirect URL の設定漏れでトップに
+  // 着いたときも、?code= があれば再設定の画面へ回す
+  if (request.nextUrl.pathname === RESET_PASSWORD_PATH) return NextResponse.next({ request });
+  if (request.nextUrl.pathname === "/" && request.nextUrl.searchParams.has("code")) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = RESET_PASSWORD_PATH;
+    return NextResponse.redirect(redirectUrl);
+  }
 
   let response = NextResponse.next({ request });
   const supabase = createServerClient(url, anonKey, {

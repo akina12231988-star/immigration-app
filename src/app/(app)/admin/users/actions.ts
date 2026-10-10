@@ -1,9 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { inviteErrorMessage } from "@/lib/invite-error";
+import { resetPasswordRedirectUrl } from "@/lib/password";
 import type { StaffRole } from "@/types/db";
 
 export interface InviteResult {
@@ -31,7 +33,13 @@ export async function inviteUser(email: string, role: StaffRole): Promise<Invite
     };
   }
 
-  const { data, error } = await admin.auth.admin.inviteUserByEmail(trimmed);
+  // 招待メールのリンクはパスワード設定の画面（/reset-password）に着くようにする
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "";
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  const { data, error } = await admin.auth.admin.inviteUserByEmail(trimmed, {
+    redirectTo: host ? resetPasswordRedirectUrl(`${proto}://${host}`) : undefined,
+  });
   if (error) {
     return { ok: false, message: inviteErrorMessage(error.message) };
   }
