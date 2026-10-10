@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
+import { inviteErrorMessage } from "@/lib/invite-error";
 import type { StaffRole } from "@/types/db";
 
 export interface InviteResult {
@@ -32,7 +33,7 @@ export async function inviteUser(email: string, role: StaffRole): Promise<Invite
 
   const { data, error } = await admin.auth.admin.inviteUserByEmail(trimmed);
   if (error) {
-    return { ok: false, message: `招待に失敗しました: ${error.message}` };
+    return { ok: false, message: inviteErrorMessage(error.message) };
   }
   // profiles 行はトリガーで自動作成される。初期ロールを反映する
   if (data.user && role !== "viewer") {
