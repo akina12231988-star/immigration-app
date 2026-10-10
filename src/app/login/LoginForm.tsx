@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogIn } from "lucide-react";
+import { mfaStep, mfaStepPath } from "@/lib/mfa";
 import { createClient } from "@/lib/supabase/client";
 
 export function LoginForm({ next = "/" }: { next?: string }) {
@@ -17,7 +18,7 @@ export function LoginForm({ next = "/" }: { next?: string }) {
     setError(null);
     setPending(true);
     const supabase = createClient();
-    const { error: signInError } = await supabase.auth.signInWithPassword({
+    const { data, error: signInError } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,
     });
@@ -30,7 +31,10 @@ export function LoginForm({ next = "/" }: { next?: string }) {
       );
       return;
     }
-    router.replace(next);
+    // パスワードが通ったら二段階認証へ。認証アプリが未登録なら登録、登録済みならコード入力
+    const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    const step = mfaStep(aal?.currentLevel, data.user?.factors);
+    router.replace(step === "done" ? next : mfaStepPath(step, next));
     router.refresh();
   };
 

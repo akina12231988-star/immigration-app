@@ -1,5 +1,6 @@
 import { ShieldCheck, TriangleAlert } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { safeNextPath } from "@/lib/mfa";
 import { LoginForm } from "./LoginForm";
 
 export default async function LoginPage({
@@ -9,7 +10,7 @@ export default async function LoginPage({
 }) {
   // ログイン後の戻り先（QRコードのリンク先など）。アプリ内パスのみ許可
   const { next, down } = await searchParams;
-  const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+  const safeNext = safeNextPath(next);
   // ミドルウェアがログイン確認の返事を待てなかった（Supabase が不調）
   const serverDown = down === "1";
   return (

@@ -1,8 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { AUTH_DOWN_PARAM, withAuthTimeout } from "@/lib/auth-timeout";
+import { isMfaPath, mfaStep, mfaStepPath, safeNextPath } from "@/lib/mfa";
 
-// 未ログインユーザーを /login へ誘導し、Supabase セッションを更新する
+// 未ログインユーザーを /login へ誘導し、Supabase セッションを更新する。
+// ログイン済みでも二段階認証（認証アプリのコード）が済んでいなければ、
+// 登録画面またはコード入力画面へ流し、業務画面には入れない
 export async function middleware(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -45,12 +48,33 @@ export async function middleware(request: NextRequest) {
     redirectUrl.search = params.toString() ? `?${params.toString()}` : "";
     return NextResponse.redirect(redirectUrl);
   }
-  if (user && isLoginPage) {
-    // オープンリダイレクト防止のためアプリ内パスのみ許可
-    const next = request.nextUrl.searchParams.get("next");
-    const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
-    const redirectUrl = new URL(safeNext, request.nextUrl.origin);
-    return NextResponse.redirect(redirectUrl);
+  if (user) {
+    // 二段階認証の進み具合。保証レベルはセッションのトークンから、登録済みの要素は
+    // いま確認した user から見る（古い cookie の内容に左右されないように）
+    const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    const step = mfaStep(aal?.currentLevel, user.factors);
+    const isMfaPage = isMfaPath(request.nextUrl.pathname);
+
+    if (isLoginPage || isMfaPage) {
+      // オープンリダイレクト防止のためアプリ内パスのみ許可
+      const safeNext = safeNextPath(request.nextUrl.searchParams.get("next"));
+      if (step === "done") {
+        // 済んでいる人はログイン画面・二段階認証の画面に用はない
+        return NextResponse.redirect(new URL(safeNext, request.nextUrl.origin));
+      }
+      // ログイン画面からは次の段階へ。登録済みの人が登録画面に来たらコード入力へ、
+      // 未登録の人がコード入力に来たら登録へ
+      const expected = mfaStepPath(step, safeNext);
+      if (request.nextUrl.pathname !== expected.split("?")[0]) {
+        return NextResponse.redirect(new URL(expected, request.nextUrl.origin));
+      }
+    } else if (step !== "done") {
+      // 業務画面に入る前に、認証アプリの登録またはコード入力へ
+      const dest = request.nextUrl.pathname + request.nextUrl.search;
+      return NextResponse.redirect(
+        new URL(mfaStepPath(step, dest === "/" ? null : dest), request.nextUrl.origin),
+      );
+    }
   }
   return response;
 }
