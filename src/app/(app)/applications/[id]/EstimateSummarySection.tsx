@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { FileText } from "lucide-react";
-import { Card } from "@/components/ui/Card";
+import { DetailSection } from "@/components/applications/DetailSection";
 import { createClient } from "@/lib/supabase/client";
 import { getOrganization } from "@/lib/supabase/queries/organizations";
 import { listPrepChecklists } from "@/lib/supabase/queries/application-prep";
@@ -28,7 +27,8 @@ interface Summary {
 // 申請準備の詳細で作る見積書（所属機関あて）の内容を、申請詳細でも見られるようにする。
 // 申請にはTODO番号が無いので、この外国人の準備リストのうち収入印紙代の負担（本人負担／会社負担）が
 // 決まっているいちばん新しいものから作る。負担が決まっていなければ何も出さない
-export function EstimateSummarySection({ app }: { app: Application }) {
+// 申請詳細では折りたたみの1段として出し、閉じていても見出しに負担と合計が出る
+export function EstimateSummarySection({ app, open }: { app: Application; open: boolean }) {
   const [summary, setSummary] = useState<Summary | null | undefined>(undefined);
 
   useEffect(() => {
@@ -95,17 +95,17 @@ export function EstimateSummarySection({ app }: { app: Application }) {
   const href = estimateHref(app.workerId, todoNo);
 
   return (
-    <Card className="p-4">
-      <div className="mb-1 flex flex-wrap items-center gap-2">
-        <h3 className="flex items-center gap-1.5 text-sm font-bold text-muted">
-          <FileText size={14} />
-          見積書の内容（申請準備の詳細）
-        </h3>
-        <span className="rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-bold text-brand">
-          収入印紙代 {estimate.stampFee.payer}
-        </span>
-        {todoNo && <span className="text-[11px] text-muted">{todoNo}</span>}
-      </div>
+    <DetailSection
+      id="section-estimate"
+      title="見積書の内容"
+      summary={`収入印紙代 ${estimate.stampFee.payer}・合計 ${estimateYen(estimate.total)}円（税込）${todoNo ? `・${todoNo}` : ""}`}
+      open={open}
+      actions={
+        <Link href={href} className="text-xs font-bold text-brand underline">
+          見積書を開く
+        </Link>
+      }
+    >
       <p className="mb-2 text-[11px] leading-relaxed text-muted">
         {orgName} あての見積書（{estimate.subject}）。申請準備の詳細で選んだ収入印紙代の負担と、所属機関の売上明細から作っています。
       </p>
@@ -156,6 +156,6 @@ export function EstimateSummarySection({ app }: { app: Application }) {
       >
         🧾 見積書を開く（印刷・明細の編集）
       </Link>
-    </Card>
+    </DetailSection>
   );
 }

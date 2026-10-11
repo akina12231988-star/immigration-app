@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import { Check, Copy, ExternalLink, MapPin, MessageCircle, Plus, Printer, ShieldCheck, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { workerSheetPrintHref } from "@/lib/estimate-summary";
-import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { FileGroup } from "@/components/applications/FileGroup";
 import { generateApprovalReport } from "@/lib/line-report";
@@ -455,12 +454,7 @@ export function ApprovalSection({
   }
 
   return (
-    <Card className="p-4">
-      <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-muted">
-        <ShieldCheck size={15} />
-        許可処理
-      </h3>
-
+    <div>
       <Button
         variant={app.approved ? "secondary" : "seal"}
         icon={<ShieldCheck size={18} />}
@@ -839,7 +833,7 @@ export function ApprovalSection({
           </div>
         </div>
       )}
-    </Card>
+    </div>
   );
 }
 
