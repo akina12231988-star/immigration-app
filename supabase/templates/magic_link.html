@@ -1,0 +1,15 @@
+<h2>ログイン用のリンク</h2>
+
+<p>在留資格申請管理システムにログインするためのリンクです。</p>
+
+<p><a href="{{ .SiteURL }}/reset-password?token_hash={{ .TokenHash }}&type=magiclink"
+      style="display:inline-block;padding:12px 24px;background:#16325c;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:bold;">
+  ログインする
+</a></p>
+
+<p style="color:#5b6b82;font-size:13px;">
+  ボタンが押せないときは、次のリンクをブラウザに貼り付けてください。<br>
+  {{ .SiteURL }}/reset-password?token_hash={{ .TokenHash }}&type=magiclink
+</p>
+
+<p style="color:#5b6b82;font-size:13px;">心当たりが無い場合は、このメールを無視してください。</p>

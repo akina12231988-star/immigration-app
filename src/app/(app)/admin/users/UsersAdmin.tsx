@@ -128,7 +128,7 @@ export function UsersAdmin({
             </button>
           </div>
           <p className="text-xs text-muted">
-            招待メールのリンクからパスワードを設定するとログインできるようになります。
+            招待メールのリンクを開くと、その場でパスワードを決められます（続けて認証アプリの登録に進みます）。メールの文面を日本語にする方法は supabase/templates/README.md を参照。
           </p>
         </form>
       </Card>

@@ -1,0 +1,17 @@
+<h2>メールアドレスの変更の確認</h2>
+
+<p>在留資格申請管理システムのログイン用メールアドレスを <b>{{ .Email }}</b> から <b>{{ .NewEmail }}</b> に変える手続きです。</p>
+
+<p>下のボタンを押すと変更が確定します。</p>
+
+<p><a href="{{ .SiteURL }}/reset-password?token_hash={{ .TokenHash }}&type=email_change"
+      style="display:inline-block;padding:12px 24px;background:#16325c;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:bold;">
+  メールアドレスの変更を確定する
+</a></p>
+
+<p style="color:#5b6b82;font-size:13px;">
+  ボタンが押せないときは、次のリンクをブラウザに貼り付けてください。<br>
+  {{ .SiteURL }}/reset-password?token_hash={{ .TokenHash }}&type=email_change
+</p>
+
+<p style="color:#5b6b82;font-size:13px;">変更を頼んだ覚えが無い場合は、このメールを無視して管理者に知らせてください。</p>

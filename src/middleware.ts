@@ -17,7 +17,10 @@ export async function middleware(request: NextRequest) {
   // （リンクの確認はブラウザ側で行う）。Supabase の Redirect URL の設定漏れでトップに
   // 着いたときも、?code= があれば再設定の画面へ回す
   if (request.nextUrl.pathname === RESET_PASSWORD_PATH) return NextResponse.next({ request });
-  if (request.nextUrl.pathname === "/" && request.nextUrl.searchParams.has("code")) {
+  if (
+    request.nextUrl.pathname === "/" &&
+    (request.nextUrl.searchParams.has("code") || request.nextUrl.searchParams.has("token_hash"))
+  ) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = RESET_PASSWORD_PATH;
     return NextResponse.redirect(redirectUrl);

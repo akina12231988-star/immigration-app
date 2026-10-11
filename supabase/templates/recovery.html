@@ -1,0 +1,20 @@
+<h2>パスワードの再設定</h2>
+
+<p>在留資格申請管理システムのパスワードを再設定するためのメールです。</p>
+
+<p>下のボタンを押すと、新しいパスワードを決める画面が開きます。</p>
+
+<p><a href="{{ .SiteURL }}/reset-password?token_hash={{ .TokenHash }}&type=recovery"
+      style="display:inline-block;padding:12px 24px;background:#16325c;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:bold;">
+  新しいパスワードを決める
+</a></p>
+
+<p style="color:#5b6b82;font-size:13px;">
+  ボタンが押せないときは、次のリンクをブラウザに貼り付けてください。<br>
+  {{ .SiteURL }}/reset-password?token_hash={{ .TokenHash }}&type=recovery
+</p>
+
+<p style="color:#5b6b82;font-size:13px;">
+  このリンクの有効期限は送信から1時間です。<br>
+  再設定を頼んだ覚えが無い場合は、このメールを無視してください（パスワードは変わりません）。
+</p>
