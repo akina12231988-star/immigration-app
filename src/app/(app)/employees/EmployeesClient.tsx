@@ -3,7 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Building2, CheckCircle2, Pencil, Plus, Trash2, UserCheck } from "lucide-react";
+import { AlertTriangle, Building2, CheckCircle2, Eye, EyeOff, KeyRound, Pencil, Plus, Trash2, UserCheck } from "lucide-react";
+import { CopyButton } from "@/components/ui/CopyButton";
+import { normalizeEmployeeOnlineLogin, PASSWORD_MASK } from "@/lib/employee-online-login";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -38,7 +40,7 @@ import {
 
 type OrgBrief = Pick<Organization, "id" | "name" | "intake">;
 
-const MIGRATION = "0062_employees.sql・0063_employee_roles.sql";
+const MIGRATION = "0062_employees.sql・0063_employee_roles.sql・0178_employee_online_login.sql";
 
 function emptyInput(): EmployeeInput {
   return {
@@ -54,6 +56,8 @@ function emptyInput(): EmployeeInput {
     office: "",
     training_completed_on: null,
     note: "",
+    online_user_id: "",
+    online_password: "",
   };
 }
 
@@ -71,6 +75,8 @@ function toInput(e: Employee): EmployeeInput {
     office: e.office,
     training_completed_on: e.training_completed_on,
     note: e.note,
+    online_user_id: e.online_user_id ?? "",
+    online_password: e.online_password ?? "",
   };
 }
 
@@ -115,6 +121,9 @@ export function EmployeesClient({
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Employee | null>(null);
   const [form, setForm] = useState<EmployeeInput>(emptyInput);
+  // 編集フォームと一覧カードでパスワードを見せるか（既定は隠す）
+  const [showFormPassword, setShowFormPassword] = useState(false);
+  const [shownPasswordIds, setShownPasswordIds] = useState<Set<string>>(() => new Set());
   const [deleting, setDeleting] = useState<Employee | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ ok: boolean; message: string } | null>(null);
@@ -128,12 +137,14 @@ export function EmployeesClient({
     setForm((prev) => ({ ...prev, [key]: value }));
 
   const openNew = () => {
+    setShowFormPassword(false);
     setEditing(null);
     setForm(emptyInput());
     setFormOpen(true);
   };
 
   const openEdit = (employee: Employee) => {
+    setShowFormPassword(false);
     setEditing(employee);
     setForm(toInput(employee));
     setFormOpen(true);
@@ -145,7 +156,8 @@ export function EmployeesClient({
     setNotice(null);
     try {
       const supabase = createClient();
-      const input: EmployeeInput = { ...form, name: form.name.trim() };
+      // 利用者ID・パスワードは前後の空白（全角も）を取り除いて保存する
+      const input: EmployeeInput = normalizeEmployeeOnlineLogin({ ...form, name: form.name.trim() });
       if (editing) {
         await updateEmployee(supabase, editing.id, input);
       } else {
@@ -462,6 +474,51 @@ export function EmployeesClient({
                       {e.training_completed_on ? `修了（${e.training_completed_on}）` : "未修了"}
                     </dd>
                   </div>
+                  {/* 在留申請オンラインシステムのログイン情報（押すとコピー。パスワードは目のボタンで表示） */}
+                  <div className="col-span-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <dt className="inline text-muted">在留申請オンライン </dt>
+                    {e.online_user_id || e.online_password ? (
+                      <>
+                        <dd className="inline-flex items-center gap-1">
+                          <span className="text-muted">ID</span>
+                          <span className="font-mono font-bold">{e.online_user_id || "未登録"}</span>
+                          {e.online_user_id && <CopyButton value={e.online_user_id} label="利用者IDをコピー" size={13} />}
+                        </dd>
+                        <dd className="inline-flex items-center gap-1">
+                          <span className="text-muted">パスワード</span>
+                          <span className="font-mono font-bold">
+                            {e.online_password
+                              ? shownPasswordIds.has(e.id)
+                                ? e.online_password
+                                : PASSWORD_MASK
+                              : "未登録"}
+                          </span>
+                          {e.online_password && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setShownPasswordIds((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(e.id)) next.delete(e.id);
+                                    else next.add(e.id);
+                                    return next;
+                                  })
+                                }
+                                aria-label={shownPasswordIds.has(e.id) ? "パスワードを隠す" : "パスワードを表示"}
+                                className="text-muted hover:text-brand"
+                              >
+                                {shownPasswordIds.has(e.id) ? <EyeOff size={13} /> : <Eye size={13} />}
+                              </button>
+                              <CopyButton value={e.online_password} label="パスワードをコピー" size={13} />
+                            </>
+                          )}
+                        </dd>
+                      </>
+                    ) : (
+                      <dd className="inline text-muted">未登録（編集で利用者IDとパスワードを入れられます）</dd>
+                    )}
+                  </div>
                   {e.left_on && (
                     <div className="col-span-2">
                       <dt className="inline text-muted">退職日 </dt>
@@ -691,6 +748,48 @@ export function EmployeesClient({
                 ⚠ この人は支援担当者の要件を満たしていません（{staffBlockReason}）。
               </p>
             )}
+          </div>
+          {/* 在留申請オンラインシステムのログイン情報（職員ごと）。前後の空白は保存時に取り除く */}
+          <div className="rounded-xl border border-border bg-background/60 p-3">
+            <p className="mb-2 flex items-center gap-1.5 text-xs font-bold text-muted">
+              <KeyRound size={13} />
+              在留申請オンラインシステムのログイン情報
+            </p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-bold text-muted">利用者ID</span>
+                <input
+                  value={form.online_user_id}
+                  onChange={(ev) => set("online_user_id", ev.target.value)}
+                  autoComplete="off"
+                  placeholder="利用者情報登録で払い出されたID"
+                  className={inputCls}
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-bold text-muted">パスワード</span>
+                <span className="relative block">
+                  <input
+                    type={showFormPassword ? "text" : "password"}
+                    value={form.online_password}
+                    onChange={(ev) => set("online_password", ev.target.value)}
+                    autoComplete="off"
+                    className={`${inputCls} pr-10`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowFormPassword((v) => !v)}
+                    aria-label={showFormPassword ? "パスワードを隠す" : "パスワードを表示"}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted"
+                  >
+                    {showFormPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </span>
+              </label>
+            </div>
+            <p className="mt-1.5 text-[11px] text-muted">
+              貼り付けで前後に空白が入っても、保存のときに自動で取り除きます。
+            </p>
           </div>
           <label className="flex flex-col gap-1">
             <span className="text-xs font-bold text-muted">

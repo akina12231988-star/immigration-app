@@ -44,6 +44,8 @@ export interface Employee {
   office: string; // 支援業務を行う事務所
   training_completed_on: string | null; // 支援責任者の養成講習 修了日
   note: string;
+  online_user_id: string; // 在留申請オンラインシステムの利用者ID（0178）
+  online_password: string; // 同パスワード（前後の空白は保存時に取り除く）
   created_at: string;
   updated_at: string;
 }
