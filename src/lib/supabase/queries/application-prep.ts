@@ -13,6 +13,7 @@ import {
   type PostApplyNotes,
 } from "@/lib/post-apply";
 import {
+  type PrepAppType,
   evaluatePrepChecklist,
   prepProgressOf,
   type PrepChecklistMeta,
@@ -73,6 +74,40 @@ export async function listPrepChecklists(
     post_apply_notes: normalizePostApplyNotes(r.post_apply_notes),
     stamp_fee_payer: r.stamp_fee_payer ?? "",
   }));
+}
+
+// 見積書のリンクを出すための、全員分の準備リストの要点（外国人ID → 新しい順）。
+// 請求書作成の名簿で1人ずつ読まずに済むよう、まとめて取る
+export interface PrepChecklistBrief {
+  worker_id: string;
+  todo_no: string;
+  app_content: string;
+  app_type: "" | PrepAppType;
+  stamp_fee_payer: string;
+  updated_at: string;
+}
+
+export async function listPrepChecklistBriefs(
+  supabase: SupabaseClient,
+): Promise<Record<string, PrepChecklistBrief[]>> {
+  const { data, error } = await supabase
+    .from("application_prep_checklists")
+    .select("worker_id, todo_no, app_content, app_type, stamp_fee_payer, updated_at")
+    .order("updated_at", { ascending: false });
+  if (error) throw error;
+  const map: Record<string, PrepChecklistBrief[]> = {};
+  for (const r of ((data as Partial<PrepChecklistBrief>[] | null) ?? [])) {
+    if (!r.worker_id) continue;
+    (map[r.worker_id] ??= []).push({
+      worker_id: r.worker_id,
+      todo_no: r.todo_no ?? "",
+      app_content: r.app_content ?? "",
+      app_type: (r.app_type ?? "") as "" | PrepAppType,
+      stamp_fee_payer: r.stamp_fee_payer ?? "",
+      updated_at: r.updated_at ?? "",
+    });
+  }
+  return map;
 }
 
 // この外国人を連名相手として設定している準備リスト（相手側からのリンク）。

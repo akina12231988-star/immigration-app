@@ -26,7 +26,6 @@ import { StatusStepper } from "@/components/StatusStepper";
 import { FileGroup } from "@/components/applications/FileGroup";
 import { generateLineReport } from "@/lib/line-report";
 import { isExpiryAlert, todayStr, transitionEndDate, formatMonthDay } from "@/lib/application-alerts";
-import { notionAppUrl } from "@/lib/notion-link";
 import { useApplications } from "@/lib/application-store";
 import { uploadApplicationFile } from "@/lib/application-files";
 import { createClient } from "@/lib/supabase/client";
@@ -47,7 +46,7 @@ import { ApplicationEditDialog } from "./ApplicationEditDialog";
 import { ApprovalSection } from "./ApprovalSection";
 import { ExtraRequestSection } from "./ExtraRequestSection";
 import { ContractOrgFormSection } from "./ContractOrgFormSection";
-import { SalesEntrySection } from "./SalesEntrySection";
+import { EstimateSummarySection } from "./EstimateSummarySection";
 import { ORG_HONORIFICS } from "@/types/application";
 import type { ApplicationFile, ApplicationFileKind } from "@/types/application";
 
@@ -588,45 +587,22 @@ export function ApplicationDetail({ id }: { id: string }) {
         />
       )}
 
-      {/* 許可情報を保存したら在留カード受領を記録して完了にできる */}
-      {app.approved && !withdrawn && (
+      {/* 許可情報を保存したら在留カード受領を記録して完了にできる。
+          受領済みになったら上の状態バッジで分かるので、この枠は出さない（Notion の在籍履歴への案内も廃止） */}
+      {app.approved && !withdrawn && !cardReceived && (
         <Card className="p-4">
           <Button
-            variant={cardReceived ? "secondary" : "primary"}
+            variant="primary"
             icon={<Check size={18} />}
             fullWidth
             onClick={() => void markCardReceived()}
-            disabled={cardReceived}
           >
-            {cardReceived
-              ? `在留カード受領済（${app.cardReceivedOn}）`
-              : "在留カードを受け取った（完了）"}
+            在留カードを受け取った（完了）
           </Button>
-
-          {orgLinkNotice && (
-            <p className="mt-2 rounded-lg bg-brand/10 px-3 py-2 text-xs font-bold text-brand">
-              {orgLinkNotice}
-            </p>
-          )}
-
-          {/* 受領後は Notion の在籍履歴にも登録するよう案内 */}
-          {cardReceived && (
-            <div className="mt-3 rounded-xl border border-border bg-background p-3">
-              <p className="mb-2 text-xs leading-relaxed text-muted">
-                在留カードを受け取りました。Notion の在籍履歴にも登録してください。
-              </p>
-              <a
-                href={notionAppUrl(
-                  "https://app.notion.com/p/24c29d7ae649802692f5f920c897f9f9?v=24c29d7ae649802f8fb6000c304654d9&source=copy_link",
-                )}
-                className="flex items-center justify-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-brand-foreground"
-              >
-                <ExternalLink size={16} />
-                Notion 在籍履歴を開いて登録する
-              </a>
-            </div>
-          )}
         </Card>
+      )}
+      {orgLinkNotice && (
+        <p className="rounded-lg bg-brand/10 px-3 py-2 text-xs font-bold text-brand">{orgLinkNotice}</p>
       )}
 
       {/* 在留カード受領後: 契約機関に関する届出（参考様式1の5）の作成 */}
@@ -634,8 +610,8 @@ export function ApplicationDetail({ id }: { id: string }) {
         <ContractOrgFormSection app={app} />
       )}
 
-      {/* 在留カード受領後: freee販売への売上登録の明細を作る */}
-      {app.approved && !withdrawn && cardReceived && <SalesEntrySection app={app} />}
+      {/* 申請準備の詳細で作った見積書の内容（収入印紙代の負担を選んでいるときだけ出る） */}
+      {!withdrawn && app.workerId && <EstimateSummarySection app={app} />}
 
       {/* 取下げ・削除 */}
       <Card className="p-4">

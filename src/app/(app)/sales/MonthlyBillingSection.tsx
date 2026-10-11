@@ -22,6 +22,8 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { slashDate, sswInsuranceExpiryState } from "@/lib/ssw-insurance";
+import { estimateHref, pickEstimateChecklist } from "@/lib/estimate-summary";
+import { listPrepChecklistBriefs, type PrepChecklistBrief } from "@/lib/supabase/queries/application-prep";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
@@ -691,6 +693,24 @@ export function MonthlyBillingSection({
   // 名簿から番号を入れ、入金があったら入金年月日を記録する
   const [referralFees, setReferralFees] = useState<Record<string, WorkerReferralFee>>({});
   const [referralBusyKey, setReferralBusyKey] = useState<string | null>(null);
+  // 申請準備のリストの要点（外国人ID → 新しい順）。収入印紙代の負担が決まっている人に見積書のリンクを出す
+  const [prepBriefs, setPrepBriefs] = useState<Record<string, PrepChecklistBrief[]>>({});
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve().then(() =>
+      listPrepChecklistBriefs(createClient())
+        .then((map) => {
+          if (!cancelled) setPrepBriefs(map);
+        })
+        .catch(() => {
+          // 読めなくても名簿は使えるようにする（リンクが出ないだけ）
+          if (!cancelled) setPrepBriefs({});
+        }),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   // あっせん（応募）の記録がある「外国人|応募先の機関」の鍵。
   // null = 読み込み前・読めなかった（案内を出さない）
   const [appOrgKeys, setAppOrgKeys] = useState<Set<string> | null>(null);
@@ -2550,6 +2570,19 @@ export function MonthlyBillingSection({
                                 退職 {row.worker.leaving_on}
                               </span>
                             )}
+                            {/* 申請準備の見積書（収入印紙代の負担を選んでいる人だけ）。申請詳細と同じ見積書を開く */}
+                            {(() => {
+                              const picked = pickEstimateChecklist(prepBriefs[row.worker.id] ?? [], org.organizationName);
+                              return picked ? (
+                                <Link
+                                  href={estimateHref(row.worker.id, picked.checklist.todo_no)}
+                                  className="ml-1 inline-flex items-center rounded-full border border-brand/40 px-1.5 py-0.5 text-[10px] font-bold text-brand hover:bg-brand/10"
+                                  title={`申請準備の見積書（収入印紙代 ${picked.payer}）を開く`}
+                                >
+                                  🧾 見積書（{picked.payer}）
+                                </Link>
+                              ) : null;
+                            })()}
                           </td>
                           <td className="py-1.5 pr-2 text-muted">{row.worker.residence_status}</td>
                           {/* その機関での雇用開始日（所属機関別の記録を優先）。許可日の前に置く */}
