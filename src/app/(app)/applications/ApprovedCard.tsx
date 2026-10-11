@@ -14,6 +14,7 @@ import {
   listApplicationMemos,
 } from "@/lib/supabase/queries/memos";
 import { isExpiryAlert } from "@/lib/application-alerts";
+import { useStaffNames } from "@/lib/use-staff-names";
 import type { Application, ApplicationMemo } from "@/types/application";
 
 // 「在留カード受け取り待ち」「在留カード新規発行済み」タブのカード。
@@ -48,6 +49,8 @@ export function ApprovedCard({
   const [memos, setMemos] = useState<ApplicationMemo[]>([]);
   const [memoBody, setMemoBody] = useState("");
   const [memoBusy, setMemoBusy] = useState(false);
+  // 以前にメールアドレスで保存したメモの記入者も、職員の名前で出す
+  const staffName = useStaffNames();
 
   useEffect(() => {
     let cancelled = false;
@@ -221,7 +224,7 @@ export function ApprovedCard({
                 <span className="flex items-center justify-between text-[10px] text-muted">
                   <span>
                     {new Date(m.createdAt).toLocaleString("ja-JP")}
-                    {m.author && ` ・ ${m.author}`}
+                    {m.author && ` ・ ${staffName(m.author)}`}
                   </span>
                   {editable && (
                     <button

@@ -4,6 +4,8 @@ import { useState } from "react";
 import { MessageSquarePlus, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { postApplyNoteAuthor, type PostApplyNote } from "@/lib/post-apply";
+import { normalizeStaffName } from "@/lib/staff-name";
+import { useStaffNames } from "@/lib/use-staff-names";
 
 // "2026-09-25" → "9/25"
 function shortDate(d: string): string {
@@ -22,7 +24,7 @@ async function currentAuthorName(): Promise<string> {
     .select("display_name")
     .eq("id", data.user.id)
     .maybeSingle();
-  return ((p as { display_name?: string } | null)?.display_name ?? "").trim();
+  return normalizeStaffName((p as { display_name?: string } | null)?.display_name);
 }
 
 // 申請後の郵送・タスクの1項目に付けるメモ（例：現在発行手続き中との連絡あり）。
@@ -41,6 +43,8 @@ export function PostApplyItemNotes({
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  // メールアドレスで保存されている記入者を職員の名前にする（名前が付いていなければ出さない）
+  const staffName = useStaffNames();
 
   const save = async () => {
     if (!draft.trim()) return;
@@ -59,8 +63,8 @@ export function PostApplyItemNotes({
   return (
     <div className="mt-1 w-full space-y-1">
       {notes.map((n) => {
-        // すでに保存されているメモの記入者がメールアドレスのときも出さない
-        const author = postApplyNoteAuthor(n.by);
+        // 記入者がメールアドレスのまま残っているものは、名前が付いていれば名前に、無ければ出さない
+        const author = postApplyNoteAuthor(staffName(n.by));
         return (
         <p
           key={n.id}
