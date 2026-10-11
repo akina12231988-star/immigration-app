@@ -18,7 +18,8 @@ export const dynamic = "force-dynamic";
 export default async function AdminOrganizationsPage() {
   const me = await getMyProfile();
   if (!me) redirect("/login");
-  if (me.role !== "admin") redirect("/");
+  // 会社・機関マスタは一般職員も編集できる（閲覧のみのユーザーはホームへ）
+  if (me.role === "viewer") redirect("/");
 
   const supabase = await createClient();
   const [organizations, employees, workers] = await Promise.all([

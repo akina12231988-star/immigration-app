@@ -39,7 +39,7 @@ export default async function ResignationsPage() {
         workers={workers}
         organizations={organizations}
         canEdit={canEdit}
-        canDelete={me.role === "admin"}
+        canDelete={me.role !== "viewer"}
       />
     </>
   );
