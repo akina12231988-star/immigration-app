@@ -2,8 +2,9 @@
 
 import { messengerWebUrl } from "@/lib/messenger-link";
 import { useEffect, useState } from "react";
-import { Check, Copy, ExternalLink, MapPin, MessageCircle, Plus, ShieldCheck, Trash2 } from "lucide-react";
-import { Card } from "@/components/ui/Card";
+import { Check, Copy, ExternalLink, MapPin, MessageCircle, Plus, Printer, ShieldCheck, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { workerSheetPrintHref } from "@/lib/estimate-summary";
 import { Button } from "@/components/ui/Button";
 import { FileGroup } from "@/components/applications/FileGroup";
 import { generateApprovalReport } from "@/lib/line-report";
@@ -453,12 +454,7 @@ export function ApprovalSection({
   }
 
   return (
-    <Card className="p-4">
-      <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-muted">
-        <ShieldCheck size={15} />
-        許可処理
-      </h3>
-
+    <div>
       <Button
         variant={app.approved ? "secondary" : "seal"}
         icon={<ShieldCheck size={18} />}
@@ -693,6 +689,25 @@ export function ApprovalSection({
           <Button fullWidth onClick={saveGrantInfo} disabled={saving} icon={saved ? <Check size={17} /> : undefined}>
             {saving ? "保存中…" : saved ? "保存しました（外国人情報も更新）" : "許可情報を保存"}
           </Button>
+          {/* 保存した内容（在留カード番号・許可日・期限・在留資格）で、現在の所属機関での個人票を印刷する。
+              社内用（Messenger の QR あり）。別タブで開く */}
+          {app.workerId && (
+            <div className="rounded-xl border border-border bg-background p-3">
+              <Link
+                href={workerSheetPrintHref(app.workerId)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-brand px-4 text-sm font-bold text-brand hover:bg-brand/5"
+              >
+                <Printer size={16} />
+                外国人の個人票（社内用QRあり）を印刷
+              </Link>
+              <p className="mt-1.5 text-[11px] leading-relaxed text-muted">
+                {workerNow?.orgName ? `現在の所属機関「${workerNow.orgName}」で、` : "現在の所属機関で、"}
+                保存した在留カードの内容を使って A4 の個人票を出します。まだ保存していない内容は反映されないので、先に「許可情報を保存」を押してください。
+              </p>
+            </div>
+          )}
 
           {/* 許可のLINE報告文（所属機関名＋御中/様） */}
           <div className="border-t border-border pt-4">
@@ -818,7 +833,7 @@ export function ApprovalSection({
           </div>
         </div>
       )}
-    </Card>
+    </div>
   );
 }
 

@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { FileSpreadsheet } from "lucide-react";
-import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { downloadContractOrgForm } from "@/lib/contract-org-form";
 import type { Application } from "@/types/application";
@@ -33,8 +32,8 @@ export function ContractOrgFormSection({ app }: { app: Application }) {
   };
 
   return (
-    <Card className="p-4">
-      <h3 className="mb-1 text-sm font-bold">契約機関に関する届出（参考様式1の5・新たな契約の締結）</h3>
+    <div className="rounded-xl border border-border p-3">
+      <h4 className="mb-1 text-sm font-bold">契約機関に関する届出（参考様式1の5・新たな契約の締結）</h4>
       <p className="mb-3 text-[11px] leading-relaxed text-muted">
         新しい所属機関との契約について、本人が入管へ提出する届出です。
         外国人情報と所属機関の情報を転記したExcelを作成します（新たな契約を締結した年月日＝雇用開始日）。
@@ -49,6 +48,6 @@ export function ContractOrgFormSection({ app }: { app: Application }) {
       <Button fullWidth icon={<FileSpreadsheet size={18} />} onClick={download} disabled={busy}>
         {busy ? "作成中…" : "届出のExcelを作成"}
       </Button>
-    </Card>
+    </div>
   );
 }

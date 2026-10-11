@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { Check, ExternalLink, MailPlus, Phone, Plus, Trash2, Truck } from "lucide-react";
-import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { FileGroup } from "@/components/applications/FileGroup";
 import { createClient } from "@/lib/supabase/client";
@@ -36,6 +35,7 @@ export function ExtraRequestSection({
   uploading,
   onUpload,
   onDeleteFile,
+  onRowsChange,
 }: {
   applicationId: string;
   canEdit: boolean;
@@ -43,6 +43,7 @@ export function ExtraRequestSection({
   uploading: boolean;
   onUpload: (list: FileList | null) => void;
   onDeleteFile: (file: ApplicationFile) => void;
+  onRowsChange?: (rows: ApplicationExtraRequest[]) => void; // 折りたたみの見出しの要約（未郵送の件数）用
 }) {
   const [rows, setRows] = useState<ApplicationExtraRequest[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +66,11 @@ export function ExtraRequestSection({
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [applicationId]);
+
+  // 依頼の一覧が変わるたびに親へ知らせる（見出しの要約・「今やること」の判定に使う）
+  useEffect(() => {
+    onRowsChange?.(rows);
+  }, [rows, onRowsChange]);
 
   const add = async () => {
     setBusy(true);
@@ -125,11 +131,7 @@ export function ExtraRequestSection({
     "w-full rounded-lg border border-border bg-background px-2 py-1 text-xs focus:border-brand focus:outline-none";
 
   return (
-    <Card className="p-4">
-      <h2 className="mb-1 flex items-center gap-1.5 text-sm font-bold">
-        <MailPlus size={15} />
-        追加資料の提出依頼（審査中）
-      </h2>
+    <div>
       <p className="mb-3 text-[11px] leading-relaxed text-muted">
         入管から追加資料を求められたときに記録します。書類（追加資料提出通知書）でも電話でも、
         来た日・審査担当者・求められた資料を残してください。
@@ -397,6 +399,6 @@ export function ExtraRequestSection({
           })}
         </div>
       )}
-    </Card>
+    </div>
   );
 }

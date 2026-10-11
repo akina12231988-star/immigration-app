@@ -7,9 +7,9 @@ import { prepDocLabel, type PostApplyMailing, type PostApplyTask } from "@/lib/p
 import { letterPackTrackingUrl } from "@/lib/application-prep";
 import { useRouter } from "next/navigation";
 import {
+  ArrowDownCircle,
   Copy,
   Check,
-  ChevronRight,
   ExternalLink,
   FileX,
   MessageCircle,
@@ -24,9 +24,18 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { StatusStepper } from "@/components/StatusStepper";
 import { FileGroup } from "@/components/applications/FileGroup";
+import { DetailSection, scrollToDetailSection } from "@/components/applications/DetailSection";
+import {
+  applicationNextAction,
+  approvalSummary,
+  basicSummary,
+  extraSummary,
+  extraWarn,
+  lineSummary,
+  receiveSummary,
+} from "@/lib/application-next-action";
 import { generateLineReport } from "@/lib/line-report";
 import { isExpiryAlert, todayStr, transitionEndDate, formatMonthDay } from "@/lib/application-alerts";
-import { notionAppUrl } from "@/lib/notion-link";
 import { useApplications } from "@/lib/application-store";
 import { uploadApplicationFile } from "@/lib/application-files";
 import { createClient } from "@/lib/supabase/client";
@@ -47,9 +56,13 @@ import { ApplicationEditDialog } from "./ApplicationEditDialog";
 import { ApprovalSection } from "./ApprovalSection";
 import { ExtraRequestSection } from "./ExtraRequestSection";
 import { ContractOrgFormSection } from "./ContractOrgFormSection";
-import { SalesEntrySection } from "./SalesEntrySection";
+import { EstimateSummarySection } from "./EstimateSummarySection";
 import { ORG_HONORIFICS } from "@/types/application";
-import type { ApplicationFile, ApplicationFileKind } from "@/types/application";
+import type {
+  ApplicationExtraRequest,
+  ApplicationFile,
+  ApplicationFileKind,
+} from "@/types/application";
 
 export function ApplicationDetail({ id }: { id: string }) {
   const router = useRouter();
@@ -67,6 +80,8 @@ export function ApplicationDetail({ id }: { id: string }) {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   // 在留カード受領で外国人の現在の所属機関を更新したときの知らせ
   const [orgLinkNotice, setOrgLinkNotice] = useState<string | null>(null);
+  // 追加資料の提出依頼（ExtraRequestSection が読み込んだもの）。見出しの要約と「今やること」に使う
+  const [extraRows, setExtraRows] = useState<ApplicationExtraRequest[]>([]);
 
   const app = applications.find((a) => a.id === id);
   const workerId = app?.workerId ?? null;
@@ -172,6 +187,17 @@ export function ApplicationDetail({ id }: { id: string }) {
   const lineReportText = generateLineReport(app);
   const cardReceived = app.status === "在留カード受領";
   const withdrawn = app.status === "取下げ";
+
+  // 折りたたみの見出しの要約と、上のヘッダーに出す「今やること」。
+  // 今やる段階の折りたたみだけを最初から開く（段階が進むと開く枠も変わる）
+  const extraOpen = extraRows.filter((r) => r.status !== "郵送済み").length;
+  const extraDone = extraRows.length - extraOpen;
+  const mailPending = mailDocs.length + postTasks.length;
+  const next = applicationNextAction(app, { extraOpen, mailPending });
+  const approval = approvalSummary(app);
+  const subtitle = [app.applicationContent, `${app.method}申請`, app.organizationName]
+    .filter((v): v is string => Boolean(v))
+    .join("・");
 
   async function handleCopy(text: string, key: "apply") {
     await navigator.clipboard.writeText(text);
@@ -301,7 +327,7 @@ export function ApplicationDetail({ id }: { id: string }) {
   const alert = isExpiryAlert(app, todayStr());
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {alert && app.residenceExpiryAtApply && (
         <div className="flex items-center gap-2 rounded-xl border-2 border-seal bg-seal/10 px-3 py-2.5 text-sm font-bold text-seal">
           <FileX size={16} />
@@ -310,374 +336,413 @@ export function ApplicationDetail({ id }: { id: string }) {
         </div>
       )}
 
-      {/* 申請準備で「申請後に入管へ郵送する」とした書類のアラート */}
-      {(mailDocs.length > 0 || postTasks.length > 0) && (
-        <div className="rounded-xl border-2 border-status-notice-fg bg-status-notice-bg/50 px-3 py-2.5">
-          <p className="text-sm font-bold text-status-notice-fg">
-            申請後に入管へ郵送する書類・タスクが{mailDocs.length + postTasks.length}件あります
-          </p>
-          <ul className="mt-1 list-disc pl-5 text-xs text-status-notice-fg/90">
-            {mailDocs.map((d) => (
-              <li key={`${d.todo_no}-${d.doc_id}`}>入管へ郵送：{mailDocLabel(d)}</li>
-            ))}
-            {postTasks.map(({ todo_no, task }) => (
-              <li key={`${todo_no}-${task.id}`}>
-                タスク：{task.text}
-                {todo_no ? `（${todo_no}）` : ""}
-              </li>
-            ))}
-          </ul>
-          <p className="mt-1 text-[11px] text-status-notice-fg/80">
-            発行され次第、入管へ郵送してください。郵送した・済んだものは、申請一覧の
-            <Link href="/applications?view=post-apply" className="mx-0.5 font-bold underline">
-              「申請後の郵送・タスク」
-            </Link>
-            か申請準備の「申請後に入管へ郵送するリスト」で消し込むと、このアラートは消えます。
-          </p>
-        </div>
-      )}
-      {/* 入管へ郵送した追加資料の記録（申請準備・申請一覧で「入管へ郵送した」と記録したもの） */}
-      {postMailings.length > 0 && (
-        <div className="rounded-xl border border-status-approved-fg/40 bg-status-approved-bg/40 px-3 py-2.5">
-          <p className="text-sm font-bold text-status-approved-fg">
-            入管へ郵送した追加資料（{postMailings.length}回の投函）
-          </p>
-          <ul className="mt-1 space-y-1 text-xs">
-            {postMailings.map(({ todo_no, mailing }) => (
-              <li key={mailing.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                <span className="font-bold tabular-nums">{postedOnLabel(mailing.posted_on)} 投函</span>
-                <span className="text-muted">
-                  追跡番号{" "}
-                  {mailing.tracking ? (
-                    <a
-                      href={letterPackTrackingUrl(mailing.tracking)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="font-bold tabular-nums text-brand underline"
-                    >
-                      {mailing.tracking}
-                    </a>
-                  ) : (
-                    "未入力"
-                  )}
-                </span>
-                <span className="min-w-0 break-words">{mailing.doc_ids.map(prepDocLabel).join("・")}</span>
-                {todo_no && <span className="text-[11px] text-muted">（{todo_no}）</span>}
-              </li>
-            ))}
-          </ul>
-          <p className="mt-1 text-[11px] text-muted">
-            記録の取り消し・追加は、申請一覧の「申請後の郵送・タスク」か申請準備の「申請後に入管へ郵送するリスト」で行います。
-          </p>
-        </div>
-      )}
-      {/* 下へスクロールしても誰の申請か・進行状況・外国人へのリンクが見えるよう、
+      {/* 下へスクロールしても誰の申請か・進行状況・今やることが見えるよう、
           ヘッダー（戻るボタン）の真下に固定する。ヘッダーは z-20 なのでそれより下に置く */}
-      <div className="sticky z-10 -mx-4 space-y-5 bg-background px-4 pb-2" style={{ top: stickyTop }}>
-      <Card className="p-4 shadow-md">
-        <div className="mb-1 flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <h2 className="flex items-center gap-1.5 text-xl font-bold">
-              <span className="min-w-0 select-text truncate">{app.name}</span>
+      <div className="sticky z-10 -mx-4 bg-background px-4 pb-2" style={{ top: stickyTop }}>
+        <Card className="p-4 shadow-md">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <h2 className="flex items-center gap-1.5 text-xl font-bold">
+                <span className="min-w-0 select-text break-words">{app.name}</span>
+                <button
+                  type="button"
+                  onClick={() => void copyName(app.name)}
+                  aria-label="氏名をコピー"
+                  className="shrink-0 text-muted hover:text-brand"
+                >
+                  {nameCopied ? (
+                    <Check size={16} className="text-status-reported-fg" />
+                  ) : (
+                    <Copy size={16} />
+                  )}
+                </button>
+              </h2>
+              <p className="text-xs text-muted sm:text-sm">{subtitle}</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <StatusBadge status={app.status} />
               <button
                 type="button"
-                onClick={() => void copyName(app.name)}
-                aria-label="氏名をコピー"
-                className="shrink-0 text-muted hover:text-brand"
+                onClick={() => setEditOpen(true)}
+                aria-label="申請情報を修正"
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted"
               >
-                {nameCopied ? (
-                  <Check size={16} className="text-status-reported-fg" />
-                ) : (
-                  <Copy size={16} />
-                )}
+                <Pencil size={15} />
               </button>
-            </h2>
-            <p className="text-sm text-muted">
-              {app.applicationContent}
-              <span className="ml-2 rounded-full border border-border px-2 py-0.5 text-[11px] font-bold text-muted">
-                {app.method}申請
-              </span>
-            </p>
+            </div>
           </div>
-          <div className="flex shrink-0 items-center gap-1.5">
-            <StatusBadge status={app.status} />
-            <button
-              type="button"
-              onClick={() => setEditOpen(true)}
-              aria-label="申請情報を修正"
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted"
-            >
-              <Pencil size={15} />
-            </button>
-          </div>
-        </div>
-        <div className="mt-4">
-          {withdrawn ? (
-            <p className="flex items-center gap-2 rounded-xl bg-seal/10 px-3 py-2.5 text-sm font-bold text-seal">
-              <FileX size={16} />
-              この申請は取下げ済みです（取下げ日: {app.withdrawnOn ?? "不明"}）
-            </p>
-          ) : (
-            <StatusStepper current={app.status} />
-          )}
-        </div>
-      </Card>
-
-      {app.workerId && (
-        <Card className="p-3.5">
-          <Link href={`/workers/${app.workerId}`} className="flex items-center gap-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
-              <UserRound size={18} />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-[11px] font-bold text-muted">紐づく外国人</span>
-              <span className="block truncate font-bold">{app.workerName ?? app.name}</span>
-            </span>
-            <ChevronRight size={18} className="shrink-0 text-muted" />
-          </Link>
-          {/* 氏名の下にメッセンジャーグループのリンクを表示 */}
-          {messengerLink && (
-            <a
-              href={messengerWebUrl(messengerLink)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-2 flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-bold text-brand"
-            >
-              <MessageCircle size={14} />
-              Messengerグループを開く
-              <ExternalLink size={12} />
-            </a>
-          )}
-        </Card>
-      )}
-      </div>
-
-      <Card className="p-4">
-        <h3 className="mb-3 text-sm font-bold text-muted">基本情報</h3>
-        <dl className="space-y-2.5 text-sm">
-          <InfoRow label="所属機関" value={app.organizationName ?? "未設定"} />
-          <InfoRow label="申請方法" value={`${app.method}申請`} />
-          <InfoRow label="申請番号" value={app.applicationNumber || "未登録"} />
-          <InfoRow label="申請日" value={app.applicationDate} />
-          <InfoRow label="申請時点の在留期限" value={app.residenceExpiryAtApply ?? "未登録"} />
-          <InfoRow label="許可日" value={app.approvalDate ?? "未許可"} />
-          <InfoRow
-            label="在留カード受領日"
-            value={app.cardReceivedOn ?? "未受領"}
-          />
-          {app.withdrawnOn && <InfoRow label="取下げ日" value={app.withdrawnOn} />}
-          <InfoRow label="申請取次士" value={app.isSelfApply ? "本人申請" : app.assignee} />
-          <InfoRow
-            label="登録日時"
-            value={new Date(app.createdAt).toLocaleString("ja-JP")}
-          />
-          <InfoRow
-            label="更新日時"
-            value={new Date(app.updatedAt).toLocaleString("ja-JP")}
-          />
-        </dl>
-        {app.method === "オンライン" && app.emailLink && (
-          <a
-            href={app.emailLink}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-3 flex items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-bold text-brand"
-          >
-            <ExternalLink size={16} />
-            申請受付メールのリンクを開く
-          </a>
-        )}
-      </Card>
-
-      <Card className="p-4">
-        <h3 className="mb-3 text-sm font-bold text-muted">画像</h3>
-        {uploadError && (
-          <p role="alert" className="mb-3 rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
-            {uploadError}
-          </p>
-        )}
-        <div className="space-y-4">
-          <FileGroup
-            label="受付票"
-            files={files.filter((f) => f.kind === "受付票")}
-            uploading={uploading === "受付票"}
-            onSelect={(list) => handleUpload("受付票", list)}
-            onDelete={handleDeleteFile}
-          />
-          <FileGroup
-            label="通知書"
-            hint="登録すると状態が「通知書到着」に進みます"
-            files={files.filter((f) => f.kind === "通知書")}
-            uploading={uploading === "通知書"}
-            onSelect={(list) => handleUpload("通知書", list)}
-            onDelete={handleDeleteFile}
-          />
-        </div>
-      </Card>
-
-      {!withdrawn && (
-      <Card className="p-4">
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <h3 className="text-sm font-bold text-muted">LINE報告文（申請）</h3>
-          <div className="flex items-center gap-2">
-            {app.organizationName && (
-              <div className="flex rounded-lg border border-border p-0.5">
-                {ORG_HONORIFICS.map((h) => (
-                  <button
-                    key={h}
-                    type="button"
-                    onClick={() => void updateApplication(app.id, { reportOrgHonorific: h })}
-                    className={`rounded-md px-2.5 py-1 text-xs font-bold ${
-                      (app.reportOrgHonorific ?? "御中") === h
-                        ? "bg-brand text-brand-foreground"
-                        : "text-muted"
-                    }`}
-                  >
-                    {h}
-                  </button>
-                ))}
-              </div>
-            )}
-            {app.lineReported && (
-              <span className="text-xs font-bold text-status-reported-fg">報告済み</span>
-            )}
-          </div>
-        </div>
-        <pre className="whitespace-pre-wrap rounded-xl bg-background p-3.5 text-sm leading-relaxed">
-          {lineReportText}
-        </pre>
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <Button
-            variant="secondary"
-            icon={copied === "apply" ? <Check size={17} /> : <Copy size={17} />}
-            onClick={() => handleCopy(lineReportText, "apply")}
-          >
-            {copied === "apply" ? "コピーしました" : "コピーする"}
-          </Button>
-          <Button
-            variant={app.lineReported ? "secondary" : "primary"}
-            icon={<MessageCircle size={17} />}
-            onClick={markReported}
-            disabled={app.lineReported}
-          >
-            {app.lineReported ? "報告済み" : "報告済にする"}
-          </Button>
-        </div>
-      </Card>
-      )}
-
-      {/* 審査中に入管から来た追加資料の提出依頼（書類/電話）。レターパックで送ったら完了 */}
-      <ExtraRequestSection
-        applicationId={app.id}
-        canEdit={!withdrawn}
-        noticeFiles={files.filter((f) => f.kind === "追加資料通知")}
-        uploading={uploading === "追加資料通知"}
-        onUpload={(list) => handleUpload("追加資料通知", list)}
-        onDeleteFile={handleDeleteFile}
-      />
-
-      {!withdrawn && (
-        <ApprovalSection
-          app={app}
-          files={files}
-          uploading={uploading}
-          onUpload={handleUpload}
-          onDeleteFile={handleDeleteFile}
-          messengerLink={messengerLink}
-          updateApplication={updateApplication}
-        />
-      )}
-
-      {/* 許可情報を保存したら在留カード受領を記録して完了にできる */}
-      {app.approved && !withdrawn && (
-        <Card className="p-4">
-          <Button
-            variant={cardReceived ? "secondary" : "primary"}
-            icon={<Check size={18} />}
-            fullWidth
-            onClick={() => void markCardReceived()}
-            disabled={cardReceived}
-          >
-            {cardReceived
-              ? `在留カード受領済（${app.cardReceivedOn}）`
-              : "在留カードを受け取った（完了）"}
-          </Button>
-
-          {orgLinkNotice && (
-            <p className="mt-2 rounded-lg bg-brand/10 px-3 py-2 text-xs font-bold text-brand">
-              {orgLinkNotice}
-            </p>
-          )}
-
-          {/* 受領後は Notion の在籍履歴にも登録するよう案内 */}
-          {cardReceived && (
-            <div className="mt-3 rounded-xl border border-border bg-background p-3">
-              <p className="mb-2 text-xs leading-relaxed text-muted">
-                在留カードを受け取りました。Notion の在籍履歴にも登録してください。
-              </p>
-              <a
-                href={notionAppUrl(
-                  "https://app.notion.com/p/24c29d7ae649802692f5f920c897f9f9?v=24c29d7ae649802f8fb6000c304654d9&source=copy_link",
-                )}
-                className="flex items-center justify-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-brand-foreground"
-              >
-                <ExternalLink size={16} />
-                Notion 在籍履歴を開いて登録する
-              </a>
+          {(app.workerId || messengerLink) && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {app.workerId && (
+                <Link
+                  href={`/workers/${app.workerId}`}
+                  className="inline-flex min-h-[32px] items-center gap-1 rounded-full border border-border px-3 text-xs font-bold text-brand"
+                >
+                  <UserRound size={13} />
+                  外国人詳細{app.workerName && app.workerName !== app.name ? `（${app.workerName}）` : ""}
+                </Link>
+              )}
+              {messengerLink && (
+                <a
+                  href={messengerWebUrl(messengerLink)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex min-h-[32px] items-center gap-1 rounded-full border border-border px-3 text-xs font-bold text-brand"
+                >
+                  <MessageCircle size={13} />
+                  Messengerグループ
+                  <ExternalLink size={11} />
+                </a>
+              )}
             </div>
           )}
-        </Card>
-      )}
-
-      {/* 在留カード受領後: 契約機関に関する届出（参考様式1の5）の作成 */}
-      {app.approved && !withdrawn && cardReceived && app.workerId && (
-        <ContractOrgFormSection app={app} />
-      )}
-
-      {/* 在留カード受領後: freee販売への売上登録の明細を作る */}
-      {app.approved && !withdrawn && cardReceived && <SalesEntrySection app={app} />}
-
-      {/* 取下げ・削除 */}
-      <Card className="p-4">
-        <h3 className="mb-3 text-sm font-bold text-muted">取下げ・削除</h3>
-        {deleteError && (
-          <p role="alert" className="mb-3 rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
-            {deleteError}
-          </p>
-        )}
-        <div className="flex flex-col gap-2.5">
-          {withdrawn ? (
-            <Button
-              variant="secondary"
-              icon={<Undo2 size={18} />}
-              fullWidth
-              onClick={restoreWithdrawn}
-            >
-              取下げを元に戻す（申請済に戻る）
-            </Button>
-          ) : (
-            <Button
-              variant="secondary"
-              icon={<FileX size={18} />}
-              fullWidth
-              onClick={() => setWithdrawOpen(true)}
-            >
-              申請を取り下げる
-            </Button>
-          )}
-          <Button
-            variant="seal"
-            icon={<Trash2 size={18} />}
-            fullWidth
-            onClick={() => setDeleteOpen(true)}
+          <div className="mt-3">
+            {withdrawn ? (
+              <p className="flex items-center gap-2 rounded-xl bg-seal/10 px-3 py-2.5 text-sm font-bold text-seal">
+                <FileX size={16} />
+                この申請は取下げ済みです（取下げ日: {app.withdrawnOn ?? "不明"}）
+              </p>
+            ) : (
+              <StatusStepper current={app.status} />
+            )}
+          </div>
+          {/* 今やること（今やる段階の折りたたみへ飛べる） */}
+          <div
+            className={`mt-3 rounded-xl border px-3 py-2 ${
+              next.done ? "border-brand/30 bg-brand/5" : "border-seal/30 bg-seal/5"
+            }`}
           >
-            この申請を削除する（誤登録の取り消し）
-          </Button>
-        </div>
-        <p className="mt-2 text-[11px] leading-relaxed text-muted">
-          取下げ: 申請をキャンセルした記録として残します（元に戻せます）／
-          削除: 画像も含めて完全に消します（元に戻せません）
-        </p>
+            <div className="flex items-center justify-between gap-2">
+              <span className={`text-xs font-bold ${next.done ? "text-brand" : "text-seal"}`}>
+                {next.done ? "状態" : "今やること"}
+              </span>
+              <button
+                type="button"
+                onClick={() => scrollToDetailSection(`section-${next.section}`)}
+                className="inline-flex min-h-[30px] shrink-0 items-center gap-1 rounded-full border border-border bg-surface px-3 text-xs font-bold text-brand"
+              >
+                <ArrowDownCircle size={13} />
+                開く
+              </button>
+            </div>
+            <p className="mt-0.5 text-xs leading-relaxed sm:text-sm">{next.text}</p>
+          </div>
+        </Card>
+      </div>
+
+      {/* 段階ごとの折りたたみ。閉じていても見出しに要約が出る */}
+      <Card className="overflow-hidden">
+        <DetailSection
+          id="section-basic"
+          title="申請の基本情報・画像"
+          summary={basicSummary(app, files.length)}
+          open={next.section === "basic"}
+        >
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+            <InfoRow label="所属機関" value={app.organizationName ?? "未設定"} />
+            <InfoRow label="申請方法" value={`${app.method}申請`} />
+            <InfoRow label="申請番号" value={app.applicationNumber || "未登録"} />
+            <InfoRow label="申請日" value={app.applicationDate} />
+            <InfoRow label="申請時点の在留期限" value={app.residenceExpiryAtApply ?? "未登録"} />
+            <InfoRow label="許可日" value={app.approvalDate ?? "未許可"} />
+            <InfoRow label="在留カード受領日" value={app.cardReceivedOn ?? "未受領"} />
+            {app.withdrawnOn && <InfoRow label="取下げ日" value={app.withdrawnOn} />}
+            <InfoRow label="申請取次士" value={app.isSelfApply ? "本人申請" : app.assignee} />
+            <InfoRow label="登録日時" value={new Date(app.createdAt).toLocaleString("ja-JP")} />
+            <InfoRow label="更新日時" value={new Date(app.updatedAt).toLocaleString("ja-JP")} />
+          </dl>
+          {app.method === "オンライン" && app.emailLink && (
+            <a
+              href={app.emailLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-3 flex items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-bold text-brand"
+            >
+              <ExternalLink size={16} />
+              申請受付メールのリンクを開く
+            </a>
+          )}
+          <h4 className="mb-2 mt-4 text-xs font-bold text-muted">画像</h4>
+          {uploadError && (
+            <p role="alert" className="mb-3 rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
+              {uploadError}
+            </p>
+          )}
+          <div className="space-y-4">
+            <FileGroup
+              label="受付票"
+              files={files.filter((f) => f.kind === "受付票")}
+              uploading={uploading === "受付票"}
+              onSelect={(list) => handleUpload("受付票", list)}
+              onDelete={handleDeleteFile}
+            />
+            <FileGroup
+              label="通知書"
+              hint="登録すると状態が「通知書到着」に進みます"
+              files={files.filter((f) => f.kind === "通知書")}
+              uploading={uploading === "通知書"}
+              onSelect={(list) => handleUpload("通知書", list)}
+              onDelete={handleDeleteFile}
+            />
+          </div>
+        </DetailSection>
+
+        {!withdrawn && (
+          <DetailSection
+            id="section-line"
+            title="LINE報告文（申請）"
+            summary={lineSummary(app)}
+            warn={!app.lineReported}
+            open={next.section === "line"}
+            actions={
+              <button
+                type="button"
+                onClick={() => void handleCopy(lineReportText, "apply")}
+                className="inline-flex min-h-[30px] items-center gap-1 rounded-lg border border-border bg-surface px-2.5 text-xs font-bold text-brand"
+              >
+                {copied === "apply" ? <Check size={13} /> : <Copy size={13} />}
+                {copied === "apply" ? "コピーしました" : "コピー"}
+              </button>
+            }
+          >
+            {app.organizationName && (
+              <div className="mb-2 flex items-center gap-2 text-xs text-muted">
+                所属機関の敬称
+                <div className="flex rounded-lg border border-border p-0.5">
+                  {ORG_HONORIFICS.map((h) => (
+                    <button
+                      key={h}
+                      type="button"
+                      onClick={() => void updateApplication(app.id, { reportOrgHonorific: h })}
+                      className={`rounded-md px-2.5 py-1 text-xs font-bold ${
+                        (app.reportOrgHonorific ?? "御中") === h
+                          ? "bg-brand text-brand-foreground"
+                          : "text-muted"
+                      }`}
+                    >
+                      {h}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <pre className="whitespace-pre-wrap rounded-xl bg-background p-3.5 text-sm leading-relaxed">
+              {lineReportText}
+            </pre>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <Button
+                variant="secondary"
+                icon={copied === "apply" ? <Check size={17} /> : <Copy size={17} />}
+                onClick={() => handleCopy(lineReportText, "apply")}
+              >
+                {copied === "apply" ? "コピーしました" : "コピーする"}
+              </Button>
+              <Button
+                variant={app.lineReported ? "secondary" : "primary"}
+                icon={<MessageCircle size={17} />}
+                onClick={markReported}
+                disabled={app.lineReported}
+              >
+                {app.lineReported ? "報告済み" : "報告済にする"}
+              </Button>
+            </div>
+          </DetailSection>
+        )}
+
+        {/* 審査中に入管から来た追加資料の提出依頼（書類/電話）と、申請後に入管へ郵送する書類・タスク */}
+        <DetailSection
+          id="section-extra"
+          title="追加資料の提出依頼・入管へ郵送"
+          summary={extraSummary({ extraOpen, extraDone, mailPending, mailings: postMailings.length })}
+          warn={extraWarn({ extraOpen, mailPending })}
+          open={next.section === "extra"}
+        >
+          {/* 申請準備で「申請後に入管へ郵送する」とした書類のアラート */}
+          {mailPending > 0 && (
+            <div className="mb-3 rounded-xl border-2 border-status-notice-fg bg-status-notice-bg/50 px-3 py-2.5">
+              <p className="text-sm font-bold text-status-notice-fg">
+                申請後に入管へ郵送する書類・タスクが{mailPending}件あります
+              </p>
+              <ul className="mt-1 list-disc pl-5 text-xs text-status-notice-fg/90">
+                {mailDocs.map((d) => (
+                  <li key={`${d.todo_no}-${d.doc_id}`}>入管へ郵送：{mailDocLabel(d)}</li>
+                ))}
+                {postTasks.map(({ todo_no, task }) => (
+                  <li key={`${todo_no}-${task.id}`}>
+                    タスク：{task.text}
+                    {todo_no ? `（${todo_no}）` : ""}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1 text-[11px] text-status-notice-fg/80">
+                発行され次第、入管へ郵送してください。郵送した・済んだものは、申請一覧の
+                <Link href="/applications?view=post-apply" className="mx-0.5 font-bold underline">
+                  「申請後の郵送・タスク」
+                </Link>
+                か申請準備の「申請後に入管へ郵送するリスト」で消し込むと、このアラートは消えます。
+              </p>
+            </div>
+          )}
+          <ExtraRequestSection
+            applicationId={app.id}
+            canEdit={!withdrawn}
+            noticeFiles={files.filter((f) => f.kind === "追加資料通知")}
+            uploading={uploading === "追加資料通知"}
+            onUpload={(list) => handleUpload("追加資料通知", list)}
+            onDeleteFile={handleDeleteFile}
+            onRowsChange={setExtraRows}
+          />
+          {/* 入管へ郵送した追加資料の記録（申請準備・申請一覧で「入管へ郵送した」と記録したもの） */}
+          {postMailings.length > 0 && (
+            <div className="mt-3 rounded-xl border border-status-approved-fg/40 bg-status-approved-bg/40 px-3 py-2.5">
+              <p className="text-sm font-bold text-status-approved-fg">
+                入管へ郵送した追加資料（{postMailings.length}回の投函）
+              </p>
+              <ul className="mt-1 space-y-1 text-xs">
+                {postMailings.map(({ todo_no, mailing }) => (
+                  <li key={mailing.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <span className="font-bold tabular-nums">{postedOnLabel(mailing.posted_on)} 投函</span>
+                    <span className="text-muted">
+                      追跡番号{" "}
+                      {mailing.tracking ? (
+                        <a
+                          href={letterPackTrackingUrl(mailing.tracking)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-bold tabular-nums text-brand underline"
+                        >
+                          {mailing.tracking}
+                        </a>
+                      ) : (
+                        "未入力"
+                      )}
+                    </span>
+                    <span className="min-w-0 break-words">{mailing.doc_ids.map(prepDocLabel).join("・")}</span>
+                    {todo_no && <span className="text-[11px] text-muted">（{todo_no}）</span>}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1 text-[11px] text-muted">
+                記録の取り消し・追加は、申請一覧の「申請後の郵送・タスク」か申請準備の「申請後に入管へ郵送するリスト」で行います。
+              </p>
+            </div>
+          )}
+        </DetailSection>
+
+        {!withdrawn && (
+          <DetailSection
+            id="section-approval"
+            title="許可情報"
+            summary={approval.text}
+            warn={approval.warn}
+            open={next.section === "approval"}
+          >
+            <ApprovalSection
+              app={app}
+              files={files}
+              uploading={uploading}
+              onUpload={handleUpload}
+              onDeleteFile={handleDeleteFile}
+              messengerLink={messengerLink}
+              updateApplication={updateApplication}
+            />
+          </DetailSection>
+        )}
+
+        {/* 許可情報を保存したら在留カード受領を記録して完了にできる。
+            受領後は契約機関に関する届出（参考様式1の5）の Excel を作れる */}
+        {!withdrawn && (
+          <DetailSection
+            id="section-receive"
+            title="在留カードの受領・届出（1の5）"
+            summary={receiveSummary(app)}
+            open={next.section === "receive"}
+          >
+            {!app.approved && !cardReceived && (
+              <p className="rounded-xl bg-background p-3 text-xs leading-relaxed text-muted">
+                上の「許可情報」で許可の通知を記録して保存すると、ここで在留カードの受け取りを記録できます。
+              </p>
+            )}
+            {app.approved && !cardReceived && (
+              <Button
+                variant="primary"
+                icon={<Check size={18} />}
+                fullWidth
+                onClick={() => void markCardReceived()}
+              >
+                在留カードを受け取った（完了）
+              </Button>
+            )}
+            {orgLinkNotice && (
+              <p className="mt-2 rounded-lg bg-brand/10 px-3 py-2 text-xs font-bold text-brand">{orgLinkNotice}</p>
+            )}
+            {cardReceived && (
+              <div className="space-y-3">
+                <p className="text-xs text-muted">
+                  在留カード受領日: <span className="font-bold text-foreground">{app.cardReceivedOn ?? "未入力"}</span>
+                </p>
+                {app.workerId ? (
+                  <ContractOrgFormSection app={app} />
+                ) : (
+                  <p className="text-xs text-muted">外国人の登録とひも付いていないため、届出の Excel は作れません。</p>
+                )}
+              </div>
+            )}
+          </DetailSection>
+        )}
+
+        {/* 申請準備の詳細で作った見積書の内容（収入印紙代の負担を選んでいるときだけ出る） */}
+        {!withdrawn && app.workerId && (
+          <EstimateSummarySection app={app} open={next.section === "estimate"} />
+        )}
+
+        {/* 取下げ・削除 */}
+        <DetailSection
+          id="section-danger"
+          title="取下げ・削除"
+          summary="誤登録の取り消しはここから"
+          danger
+          open={next.section === "danger"}
+        >
+          {deleteError && (
+            <p role="alert" className="mb-3 rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
+              {deleteError}
+            </p>
+          )}
+          <div className="flex flex-col gap-2.5">
+            {withdrawn ? (
+              <Button
+                variant="secondary"
+                icon={<Undo2 size={18} />}
+                fullWidth
+                onClick={restoreWithdrawn}
+              >
+                取下げを元に戻す（申請済に戻る）
+              </Button>
+            ) : (
+              <Button
+                variant="secondary"
+                icon={<FileX size={18} />}
+                fullWidth
+                onClick={() => setWithdrawOpen(true)}
+              >
+                申請を取り下げる
+              </Button>
+            )}
+            <Button
+              variant="seal"
+              icon={<Trash2 size={18} />}
+              fullWidth
+              onClick={() => setDeleteOpen(true)}
+            >
+              この申請を削除する（誤登録の取り消し）
+            </Button>
+          </div>
+          <p className="mt-2 text-[11px] leading-relaxed text-muted">
+            取下げ: 申請をキャンセルした記録として残します（元に戻せます）／
+            削除: 画像も含めて完全に消します（元に戻せません）
+          </p>
+        </DetailSection>
       </Card>
 
       {editOpen && (
@@ -711,9 +776,9 @@ export function ApplicationDetail({ id }: { id: string }) {
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between gap-3">
-      <dt className="text-muted">{label}</dt>
-      <dd className="font-bold">{value}</dd>
+    <div className="flex items-center justify-between gap-3 border-b border-border/60 py-1">
+      <dt className="shrink-0 text-xs text-muted">{label}</dt>
+      <dd className="min-w-0 truncate text-right font-bold">{value}</dd>
     </div>
   );
 }
