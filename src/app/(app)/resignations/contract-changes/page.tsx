@@ -34,7 +34,7 @@ export default async function ContractChangesPage() {
         workers={workers}
         organizations={organizations}
         canEdit={canEdit}
-        canDelete={me.role === "admin"}
+        canDelete={me.role !== "viewer"}
       />
     </>
   );
