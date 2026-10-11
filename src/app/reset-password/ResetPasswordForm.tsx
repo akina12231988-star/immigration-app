@@ -4,7 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Loader2 } from "lucide-react";
 import { mfaErrorMessage, normalizeTotpCode, verifiedTotpFactors } from "@/lib/mfa";
-import { passwordErrorMessage, PASSWORD_MIN_LENGTH, validateNewPassword } from "@/lib/password";
+import {
+  authCallbackType,
+  parseAuthCallbackHash,
+  passwordErrorMessage,
+  PASSWORD_MIN_LENGTH,
+  validateNewPassword,
+} from "@/lib/password";
 import { createClient } from "@/lib/supabase/client";
 import { ForgotForm } from "@/app/login/forgot/ForgotForm";
 
@@ -15,12 +21,17 @@ type Phase =
   | "form"; // 新しいパスワードの入力
 
 // メールのリンクで開いたときの流れ。
-// Supabase のブラウザ用クライアントが URL の code からセッションを作る（同じ端末・ブラウザで開く必要がある）。
+// リンクは3通りの形で戻ってくるので、どれでもセッションを作れるようにする。
+//   ・?code=…（再設定メール。PKCE 方式。メールを送った端末・ブラウザで開く必要がある）
+//   ・#access_token=…（管理者が送る招待メール。implicit 方式。どの端末でも開ける）
+//   ・?token_hash=…&type=…（日本語のメールテンプレートにしたとき。どの端末でも開ける）
 // セッションが作れたら、認証アプリを登録済みの人はコードを確認してから、新しいパスワードを保存する
 export function ResetPasswordForm() {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("loading");
   const [email, setEmail] = useState("");
+  // 招待メールから来たか（はじめてのパスワードを決める人向けの案内にする）
+  const [invited, setInvited] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
@@ -34,11 +45,27 @@ export function ResetPasswordForm() {
     if (started.current) return;
     started.current = true;
     (async () => {
+      // 招待・再設定のどちらのリンクか（クライアントの初期化でハッシュが消される前に読む）
+      const hashInfo = parseAuthCallbackHash(window.location.hash);
+      setInvited(authCallbackType(window.location.search, window.location.hash) === "invite");
       const supabase = createClient();
       // クライアントの初期化で ?code= の交換が済んでいれば、ここでセッションが取れる
       let {
         data: { session },
       } = await supabase.auth.getSession();
+      if (!session && hashInfo?.kind === "error") {
+        // リンクの期限切れなどは Supabase が #error_description=… で知らせてくる
+        setLinkError(passwordErrorMessage(hashInfo.message, "リンクを確認できませんでした"));
+      } else if (!session && hashInfo?.kind === "session") {
+        // 招待メールのリンク（implicit 方式）。トークンからそのままセッションを作る
+        const { data, error: setErr } = await supabase.auth.setSession({
+          access_token: hashInfo.accessToken,
+          refresh_token: hashInfo.refreshToken,
+        });
+        if (setErr) setLinkError(passwordErrorMessage(setErr.message, "リンクを確認できませんでした"));
+        session = data?.session ?? null;
+        if (session) window.history.replaceState(window.history.state, "", window.location.pathname);
+      }
       if (!session) {
         const params = new URLSearchParams(window.location.search);
         const codeParam = params.get("code");
@@ -49,7 +76,10 @@ export function ResetPasswordForm() {
           const { data, error: exErr } = await supabase.auth.exchangeCodeForSession(codeParam);
           if (exErr) setLinkError(passwordErrorMessage(exErr.message, "リンクを確認できませんでした"));
           session = data?.session ?? null;
-        } else if (tokenHash && (type === "recovery" || type === "invite" || type === "magiclink" || type === "email")) {
+        } else if (
+          tokenHash &&
+          (type === "recovery" || type === "invite" || type === "magiclink" || type === "email" || type === "signup" || type === "email_change")
+        ) {
           // メールのテンプレートが token_hash を使う設定のとき
           const { data, error: otpErr } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type });
           if (otpErr) setLinkError(passwordErrorMessage(otpErr.message, "リンクを確認できませんでした"));
@@ -139,9 +169,11 @@ export function ResetPasswordForm() {
       <div className="flex flex-col gap-3">
         <p role="alert" className="rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
           {linkError ??
-            "このリンクは無効か、期限が切れています。メールを送った端末・ブラウザと違う端末で開いたときもこの表示になります。"}
+            "このリンクは無効か、期限が切れています。再設定メールの場合は、メールを送った端末・ブラウザと違う端末で開いたときもこの表示になります。"}
         </p>
-        <p className="text-xs text-muted">下からもう一度メールを送れます。届いたメールは、この端末・ブラウザで開いてください。</p>
+        <p className="text-xs text-muted">
+          下からもう一度メールを送れます（招待された方も、登録されたメールアドレスを入れれば同じ手順でパスワードを決められます）。届いたメールは、この端末・ブラウザで開いてください。
+        </p>
         <ForgotForm />
       </div>
     );
@@ -189,8 +221,9 @@ export function ResetPasswordForm() {
   return (
     <form onSubmit={save} className="flex flex-col gap-3">
       {email && (
-        <p className="text-xs text-muted">
+        <p className="text-xs leading-relaxed text-muted">
           <b className="text-foreground">{email}</b> のパスワードを設定します。
+          {invited && "（招待された方は、ここで最初のパスワードを決めてください。保存すると続けて認証アプリの登録に進みます）"}
         </p>
       )}
       <label className="text-sm">

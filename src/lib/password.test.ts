@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  authCallbackType,
+  parseAuthCallbackHash,
   passwordErrorMessage,
   resetPasswordRedirectUrl,
   validateNewPassword,
@@ -40,5 +42,43 @@ describe("再設定メールのリンク先", () => {
   it("末尾のスラッシュがあっても1つにする", () => {
     expect(resetPasswordRedirectUrl("https://example.com")).toBe("https://example.com/reset-password");
     expect(resetPasswordRedirectUrl("https://example.com/")).toBe("https://example.com/reset-password");
+  });
+});
+
+describe("parseAuthCallbackHash（招待メールのリンクで戻る #access_token=…）", () => {
+  it("access_token と refresh_token があればセッションとして読む", () => {
+    expect(parseAuthCallbackHash("#access_token=aaa&expires_in=3600&refresh_token=bbb&token_type=bearer&type=invite")).toEqual({
+      kind: "session",
+      accessToken: "aaa",
+      refreshToken: "bbb",
+    });
+  });
+
+  it("エラーがあればその説明を返す（+ は空白に戻す）", () => {
+    expect(
+      parseAuthCallbackHash("#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired"),
+    ).toEqual({ kind: "error", message: "Email link is invalid or has expired" });
+  });
+
+  it("空・関係ないハッシュは null", () => {
+    expect(parseAuthCallbackHash("")).toBeNull();
+    expect(parseAuthCallbackHash(null)).toBeNull();
+    expect(parseAuthCallbackHash("#section-approval")).toBeNull();
+    expect(parseAuthCallbackHash("#access_token=aaa")).toBeNull();
+  });
+});
+
+describe("authCallbackType", () => {
+  it("?type= を優先し、無ければ #type= を読む", () => {
+    expect(authCallbackType("?token_hash=x&type=invite", "")).toBe("invite");
+    expect(authCallbackType("?code=x", "#access_token=a&type=recovery")).toBe("recovery");
+    expect(authCallbackType("", "")).toBe("");
+  });
+});
+
+describe("passwordErrorMessage（期限切れの英文）", () => {
+  it("Supabase の期限切れメッセージを日本語にする", () => {
+    expect(passwordErrorMessage("Email link is invalid or has expired", "x")).toContain("期限が切れている");
+    expect(passwordErrorMessage("otp_expired", "x")).toContain("期限が切れている");
   });
 });

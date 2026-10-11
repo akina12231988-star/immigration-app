@@ -1,0 +1,21 @@
+<h2>在留資格申請管理システムへの招待</h2>
+
+<p>管理者から、在留資格申請管理システムの職員として招待されました。</p>
+
+<p>下のボタンを押すと、最初のパスワードを決める画面が開きます。<br>
+パスワードを保存したあと、続けてスマホの認証アプリ（Google Authenticator など）の登録に進みます。</p>
+
+<p><a href="{{ .SiteURL }}/reset-password?token_hash={{ .TokenHash }}&type=invite"
+      style="display:inline-block;padding:12px 24px;background:#16325c;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:bold;">
+  パスワードを決めてログインする
+</a></p>
+
+<p style="color:#5b6b82;font-size:13px;">
+  ボタンが押せないときは、次のリンクをブラウザに貼り付けてください。<br>
+  {{ .SiteURL }}/reset-password?token_hash={{ .TokenHash }}&type=invite
+</p>
+
+<p style="color:#5b6b82;font-size:13px;">
+  このリンクの有効期限は送信から24時間です。期限が切れたときは、ログイン画面の「パスワードを忘れた方」からメールアドレスを入れると、同じ手順のメールが届きます。<br>
+  心当たりが無い場合は、このメールを無視してください。
+</p>

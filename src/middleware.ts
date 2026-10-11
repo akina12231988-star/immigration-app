@@ -3,6 +3,13 @@ import { NextResponse, type NextRequest } from "next/server";
 import { AUTH_DOWN_PARAM, withAuthTimeout } from "@/lib/auth-timeout";
 import { isMfaPath, mfaStep, mfaStepPath, safeNextPath } from "@/lib/mfa";
 import { RESET_PASSWORD_PATH } from "@/lib/password";
+import {
+  decodeJwtPayload,
+  lastAuthAt,
+  mustReLogin,
+  WEEK_EXPIRED_PARAM,
+  WEEK_EXPIRED_VALUE,
+} from "@/lib/session-week";
 
 // 未ログインユーザーを /login へ誘導し、Supabase セッションを更新する。
 // ログイン済みでも二段階認証（認証アプリのコード）が済んでいなければ、
@@ -17,7 +24,10 @@ export async function middleware(request: NextRequest) {
   // （リンクの確認はブラウザ側で行う）。Supabase の Redirect URL の設定漏れでトップに
   // 着いたときも、?code= があれば再設定の画面へ回す
   if (request.nextUrl.pathname === RESET_PASSWORD_PATH) return NextResponse.next({ request });
-  if (request.nextUrl.pathname === "/" && request.nextUrl.searchParams.has("code")) {
+  if (
+    request.nextUrl.pathname === "/" &&
+    (request.nextUrl.searchParams.has("code") || request.nextUrl.searchParams.has("token_hash"))
+  ) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = RESET_PASSWORD_PATH;
     return NextResponse.redirect(redirectUrl);
@@ -58,6 +68,29 @@ export async function middleware(request: NextRequest) {
     if (authUnknown) params.set(AUTH_DOWN_PARAM, "1");
     redirectUrl.search = params.toString() ? `?${params.toString()}` : "";
     return NextResponse.redirect(redirectUrl);
+  }
+  if (user && !isLoginPage) {
+    // 毎週月曜日の 0時（日本時間）を過ぎたら、ログインし直してもらう。
+    // 最後にパスワード／認証アプリを通した時刻をセッションのトークンから読む
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const lastAuth = lastAuthAt(decodeJwtPayload(session?.access_token), user.last_sign_in_at);
+    if (mustReLogin(lastAuth, new Date())) {
+      // この端末のセッション（cookie）を消してログイン画面へ。戻り先は保持する
+      await supabase.auth.signOut({ scope: "local" });
+      const dest = request.nextUrl.pathname + request.nextUrl.search;
+      const redirectUrl = request.nextUrl.clone();
+      redirectUrl.pathname = "/login";
+      const params = new URLSearchParams();
+      params.set(WEEK_EXPIRED_PARAM, WEEK_EXPIRED_VALUE);
+      if (dest && dest !== "/") params.set("next", dest);
+      redirectUrl.search = `?${params.toString()}`;
+      const redirect = NextResponse.redirect(redirectUrl);
+      // signOut で消した cookie をリダイレクトの返事に載せる
+      response.cookies.getAll().forEach((c) => redirect.cookies.set(c));
+      return redirect;
+    }
   }
   if (user) {
     // 二段階認証の進み具合。保証レベルはセッションのトークンから、登録済みの要素は

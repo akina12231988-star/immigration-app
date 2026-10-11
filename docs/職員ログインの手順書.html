@@ -1,0 +1,360 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>職員ログインの手順書</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+/* 配置: 1本の縦の流れ。各ステップは「説明」＋「その画面のイラスト」。アプリと同じ紺・白・赤を使う */
+:root{
+  --bg:#f5f7fa; --surface:#ffffff; --fg:#14213d; --muted:#5b6b82; --border:#dbe2ea;
+  --brand:#16325c; --brand-fg:#ffffff; --seal:#b7282e; --seal-bg:#fdf1f1; --ok:#1f7a4d; --ok-bg:#e9f6ee;
+  --phone:#0b1220; --mail:#fbfcfe;
+  --font:"Noto Sans JP",system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0b1220; --surface:#121b2e; --fg:#e7ecf5; --muted:#93a1b8; --border:#24304a;
+  --brand:#4d7cbf; --brand-fg:#0b1220; --seal:#e07178; --seal-bg:#2a1618; --ok:#5fc48f; --ok-bg:#12291c;
+  --phone:#1a2440; --mail:#0f172a; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#0b1220; --surface:#121b2e; --fg:#e7ecf5; --muted:#93a1b8; --border:#24304a;
+  --brand:#4d7cbf; --brand-fg:#0b1220; --seal:#e07178; --seal-bg:#2a1618; --ok:#5fc48f; --ok-bg:#12291c;
+  --phone:#1a2440; --mail:#0f172a; color-scheme:dark }
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:15px;line-height:1.75;padding-inline:16px;padding-block:0 48px}
+.wrap{max-width:860px;margin:0 auto}
+h1{font-size:clamp(22px,4vw,30px);font-weight:900;line-height:1.3;margin:28px 0 6px;text-wrap:balance}
+h2{font-size:18px;font-weight:900;margin:0;line-height:1.4}
+h3{font-size:14px;font-weight:700;margin:14px 0 4px}
+p{margin:0}
+.lead{color:var(--muted);font-size:14px;margin-bottom:20px}
+.flow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0 0 28px;padding:0;list-style:none}
+.flow li{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px;font-size:13px;font-weight:700;display:flex;gap:8px;align-items:flex-start}
+.flow .n{flex:0 0 auto;width:24px;height:24px;border-radius:50%;background:var(--brand);color:var(--brand-fg);font-size:12px;display:flex;align-items:center;justify-content:center}
+.flow small{display:block;font-weight:400;color:var(--muted);font-size:11px;line-height:1.5}
+.step{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:18px 20px;margin-bottom:18px;display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px 24px;align-items:start}
+.step.wide{grid-template-columns:minmax(0,1fr)}
+.step>header{grid-column:1/-1;display:flex;gap:10px;align-items:center}
+.step>header .n{flex:0 0 auto;width:34px;height:34px;border-radius:50%;background:var(--brand);color:var(--brand-fg);font-weight:900;font-size:16px;display:flex;align-items:center;justify-content:center}
+.text ol{padding-left:22px;margin:6px 0 0}
+.text li{margin:4px 0}
+.text b{font-weight:700}
+.tip{margin-top:12px;background:var(--seal-bg);border-left:4px solid var(--seal);border-radius:8px;padding:8px 12px;font-size:13px}
+.tip.ok{background:var(--ok-bg);border-left-color:var(--ok)}
+.tip strong{display:block;font-size:12px;letter-spacing:.04em;text-transform:uppercase}
+.fig{min-width:0}
+.fig figcaption{font-size:11px;color:var(--muted);margin-top:6px;text-align:center}
+/* スマホの枠 */
+.phone{background:var(--phone);border-radius:28px;padding:10px;box-shadow:0 10px 30px rgba(20,33,61,.18);max-width:300px;margin:0 auto;position:relative}
+.phone .screen{background:var(--brand);color:#fff;border-radius:20px;padding:22px 14px 16px;min-height:380px;display:flex;flex-direction:column;align-items:center;gap:10px}
+.phone .screen.light{background:#f5f7fa;color:#14213d}
+.badge{width:46px;height:46px;border-radius:50%;border:2px solid rgba(255,255,255,.7);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:16px}
+.title{font-weight:700;font-size:14px;text-align:center;line-height:1.4;text-wrap:balance}
+.sub{font-size:10px;opacity:.85;text-align:center;line-height:1.5}
+.card{background:#fff;color:#14213d;border-radius:14px;padding:12px;width:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:8px;font-size:11px}
+.card label{font-weight:700;display:block}
+.in{border:1px solid #dbe2ea;border-radius:9px;min-height:32px;background:#f5f7fa;display:flex;align-items:center;padding:0 10px;color:#9aa6b8;font-size:11px}
+.in.code{justify-content:center;font-family:var(--mono);font-size:16px;letter-spacing:.3em;color:#14213d}
+.btn{background:#16325c;color:#fff;border-radius:10px;min-height:36px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px}
+.btn.ghost{background:#fff;color:#16325c;border:1px solid #dbe2ea;min-height:28px;font-size:10px;border-radius:999px;padding:0 10px}
+.row{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
+.qr{display:flex;justify-content:center}
+.qr svg{border-radius:10px;background:#fff;padding:6px;width:120px;height:120px}
+.key{font-family:var(--mono);font-size:10px;background:#f5f7fa;border-radius:8px;padding:6px 8px;word-break:break-all;color:#14213d}
+.note{font-size:9px;color:#5b6b82;line-height:1.5}
+/* 吹き出し */
+.callout{position:absolute;background:var(--seal);color:#fff;font-size:11px;font-weight:700;border-radius:999px;padding:3px 9px;box-shadow:0 2px 8px rgba(0,0,0,.25);white-space:nowrap}
+.callout::after{content:"";position:absolute;left:14px;bottom:-6px;border:6px solid transparent;border-top-color:var(--seal);border-bottom:0}
+/* メール */
+.mail{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;font-size:12px;max-width:300px;margin:0 auto;position:relative}
+.mail .hd{background:var(--mail);border-bottom:1px solid var(--border);padding:10px 12px;display:grid;gap:2px}
+.mail .hd b{font-size:13px}
+.mail .hd span{color:var(--muted);font-size:11px}
+.mail .bd{padding:12px;display:grid;gap:8px;line-height:1.6}
+.mail .bd .btn{align-self:start;min-height:34px;padding:0 14px}
+.mail .en{font-family:var(--font);background:var(--bg);border:1px dashed var(--border);border-radius:8px;padding:8px 10px;font-size:11px;color:var(--muted)}
+/* 認証アプリの画面 */
+.ga{background:#fff;color:#14213d;border-radius:20px;width:100%;box-sizing:border-box;padding:14px 12px;display:flex;flex-direction:column;gap:10px;min-height:380px;font-size:11px}
+.ga .bar{display:flex;align-items:center;justify-content:space-between;font-weight:700;font-size:12px}
+.ga .plus{width:40px;height:40px;border-radius:50%;background:#1a73e8;color:#fff;font-size:26px;display:flex;align-items:center;justify-content:center;align-self:flex-end;box-shadow:0 4px 10px rgba(26,115,232,.4)}
+.ga .menu{border:1px solid #e3e7ee;border-radius:12px;overflow:hidden}
+.ga .menu div{padding:10px 12px;border-top:1px solid #e3e7ee;display:flex;gap:8px;align-items:center}
+.ga .menu div:first-child{border-top:0}
+.ga .acct{border:1px solid #e3e7ee;border-radius:12px;padding:10px 12px;display:grid;gap:2px}
+.ga .acct .name{color:#5b6b82;font-size:10px}
+.ga .acct .code{font-size:24px;font-weight:500;letter-spacing:.08em;color:#1a73e8;font-family:var(--mono);white-space:nowrap}
+.ga .acct .timer{width:16px;height:16px;border-radius:50%;background:conic-gradient(#1a73e8 70%,#e3e7ee 0);justify-self:end;margin-top:-26px}
+.ga .fld{border:1px solid #e3e7ee;border-radius:8px;padding:6px 10px;display:grid;gap:1px}
+.ga .fld span{font-size:9px;color:#5b6b82}
+.two{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.two .fig{max-width:300px;margin:0 auto;width:100%}
+.arrow{grid-column:1/-1;text-align:center;color:var(--muted);font-size:22px;line-height:1;margin:-6px 0}
+.faq{display:grid;gap:10px}
+.faq div{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;font-size:13px}
+.faq b{display:block;font-size:14px;margin-bottom:2px}
+.store{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.store span{border:1px solid var(--border);border-radius:999px;padding:4px 12px;font-size:12px;font-weight:700;background:var(--bg)}
+.weekly{background:var(--surface);border:2px solid var(--brand);border-radius:16px;padding:16px 20px;margin:24px 0 18px;display:grid;gap:4px}
+.weekly h2{font-size:16px}
+footer{color:var(--muted);font-size:11px;margin-top:28px}
+@media (max-width:720px){
+  .flow{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .step{grid-template-columns:minmax(0,1fr)}
+  .two{grid-template-columns:minmax(0,1fr)}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media print{body{background:#fff;padding-inline:0}.step,.weekly,.faq div,.mail{break-inside:avoid}.phone{box-shadow:none}}
+</style>
+</head><body><div class="wrap">
+<h1>在留資格申請管理システム　職員ログインの手順書</h1>
+<p class="lead">はじめてログインするときの流れです。所要時間は5〜10分。<b>スマホ</b>と、管理者からの<b>招待メール</b>が届くメールアドレスを用意してください。</p>
+
+<ol class="flow">
+  <li><span class="n">1</span><span>招待メールを開く<small>「パスワードを決める」ボタンを押す</small></span></li>
+  <li><span class="n">2</span><span>パスワードを決める<small>8文字以上・英字と数字</small></span></li>
+  <li><span class="n">3</span><span>認証アプリを登録<small>Google Authenticator に追加</small></span></li>
+  <li><span class="n">4</span><span>6桁のコードを入れる<small>これで完了</small></span></li>
+</ol>
+
+<!-- STEP 1 -->
+<section class="step">
+  <header><span class="n">1</span><h2>招待メールを開き、ボタンを押す</h2></header>
+  <div class="text">
+    <p>管理者が招待すると、登録したメールアドレスに <b>Supabase Auth</b> という差出人からメールが届きます。</p>
+    <ol>
+      <li>メールの中の <b>「パスワードを決めてログインする」</b> ボタンを押します。</li>
+      <li>ボタンが押せないときは、下に書いてあるリンク（https://… で始まる文字）を長押ししてコピーし、ブラウザに貼り付けます。</li>
+    </ol>
+    <div class="tip"><strong>英語のメールが届いたとき</strong>件名が「You've been invited」のときは、本文の <b>「Accept invitation」</b> を押してください（押すと同じ画面が開きます）。「Opt out of these emails」は押さないでください。</div>
+    <div class="tip ok"><strong>届かないとき</strong>迷惑メールのフォルダを確認してください。それでも無ければ管理者にもう一度招待してもらいます。リンクの有効期限は24時間です。</div>
+  </div>
+  <figure class="fig">
+    <div class="mail">
+      <div class="hd"><b>【在留資格申請管理システム】職員としての招待</b><span>差出人: Supabase Auth</span><span>宛先: あなたのメールアドレス</span></div>
+      <div class="bd">
+        <p>管理者から、在留資格申請管理システムの職員として招待されました。</p>
+        <p>下のボタンを押すと、最初のパスワードを決める画面が開きます。</p>
+        <span class="btn">パスワードを決めてログインする</span>
+        <p class="en">英語版の場合<br><b>You've been invited</b><br>You've been invited to create an account. Follow the link below to accept.<br><u>Accept invitation</u> ← これを押す</p>
+      </div>
+      <span class="callout" style="left:18px;top:146px">① ここを押す</span>
+    </div>
+    <figcaption>届くメールの例</figcaption>
+  </figure>
+</section>
+
+<!-- STEP 2 -->
+<section class="step">
+  <header><span class="n">2</span><h2>最初のパスワードを決める</h2></header>
+  <div class="text">
+    <p>ボタンを押すと、紺色の「パスワードを設定してください」の画面が開きます。</p>
+    <ol>
+      <li><b>新しいパスワード</b>と<b>新しいパスワード（確認）</b>に、同じパスワードを入れます。</li>
+      <li><b>「保存する」</b>を押します。</li>
+    </ol>
+    <h3>パスワードの決まり</h3>
+    <ol>
+      <li><b>8文字以上</b></li>
+      <li><b>英字と数字を両方</b>入れる（数字だけ・英字だけは不可）</li>
+      <li>空白は入れない。ほかのサービスと同じパスワードは使わない</li>
+    </ol>
+    <div class="tip"><strong>「このリンクは無効か、期限が切れています」と出たとき</strong>同じ画面の下にある欄に自分のメールアドレスを入れて「メールを送る」を押すと、新しいメールが届きます。そのメールのリンクを、<b>いま使っている端末・ブラウザ</b>で開いてください。</div>
+  </div>
+  <figure class="fig">
+    <div class="phone">
+      <div class="screen">
+        <span class="badge">🔑</span>
+        <p class="title">パスワードを設定してください</p>
+        <p class="sub">新しいパスワードを2回入れて「保存する」を押すと、次回からそのパスワードでログインできます。</p>
+        <div class="card">
+          <p class="note"><b style="color:#14213d">you@example.com</b> のパスワードを設定します。</p>
+          <label>新しいパスワード</label><div class="in">●●●●●●●●</div>
+          <label>新しいパスワード（確認）</label><div class="in">●●●●●●●●</div>
+          <p class="note">8文字以上で、英字と数字を混ぜてください。</p>
+          <div class="btn">✓ 保存する</div>
+        </div>
+      </div>
+      <span class="callout" style="left:22px;bottom:72px">② 2回入れて保存</span>
+    </div>
+    <figcaption>パスワード設定の画面</figcaption>
+  </figure>
+</section>
+
+<!-- STEP 3 -->
+<section class="step">
+  <header><span class="n">3</span><h2>スマホに認証アプリ「Google Authenticator」を入れる</h2></header>
+  <div class="text">
+    <p>パスワードを保存すると、続けて<b>「認証アプリを登録してください」</b>の画面になります。先にスマホに認証アプリを入れます（すでに入っている人はそのまま次へ）。</p>
+    <ol>
+      <li>スマホのアプリストアで <b>Google Authenticator</b> を検索してインストールします（無料）。</li>
+      <li>開いて、Google アカウントでの「ログイン」を求められたら <b>「Google Authenticator を利用」</b>などの<b>ログインしないで使う</b>選択で構いません（会社のメールアドレスとは関係ありません）。</li>
+    </ol>
+    <div class="store"><span>iPhone: App Store</span><span>Android: Google Play</span></div>
+    <div class="tip ok"><strong>ほかの認証アプリでも可</strong>Microsoft Authenticator など、QRコードを読み取って6桁の数字を出すアプリなら何でも使えます。</div>
+  </div>
+  <figure class="fig">
+    <div class="phone">
+      <div class="screen light">
+        <div class="ga" style="min-height:360px">
+          <div class="bar"><span>App Store</span><span>🔍</span></div>
+          <div class="in" style="background:#f1f3f6;color:#14213d">Google Authenticator</div>
+          <div class="acct" style="display:flex;gap:10px;align-items:center">
+            <span style="width:44px;height:44px;border-radius:12px;background:#e8eaed;display:flex;align-items:center;justify-content:center;font-size:20px">🛡️</span>
+            <span style="display:grid;gap:0"><b style="font-size:12px">Google Authenticator</b><span class="name">Google LLC</span></span>
+            <span class="btn ghost" style="margin-left:auto">入手</span>
+          </div>
+          <p class="note">インストールしたら開いて「＋」を押せる状態にしておきます。</p>
+        </div>
+      </div>
+      <span class="callout" style="right:22px;top:90px">③ 入手</span>
+    </div>
+    <figcaption>アプリストアで検索してインストール</figcaption>
+  </figure>
+</section>
+
+<!-- STEP 4 -->
+<section class="step">
+  <header><span class="n">4</span><h2>QRコードを読み取る（スマホで開いているときはキーをコピー）</h2></header>
+  <div class="text">
+    <p>アプリの登録画面にはQRコードと、「キーを表示」「キーをコピー」のボタンがあります。<b>どの端末でこの画面を開いているか</b>で、やり方が2つに分かれます。</p>
+    <h3>A. パソコンで画面を開いているとき（いちばん簡単）</h3>
+    <ol>
+      <li>スマホの Google Authenticator で右下の <b>「＋」</b> を押す</li>
+      <li><b>「QRコードをスキャン」</b>を選び、パソコンの画面のQRコードにカメラを向ける</li>
+      <li>「入管申請管理 …」という名前で追加され、6桁の数字が出ます → <b>手順5へ</b></li>
+    </ol>
+    <h3>B. スマホで画面を開いているとき（同じスマホでQRは読めません）</h3>
+    <ol>
+      <li>画面の <b>「キーをコピー」</b> を押す（「コピーしました」と出ます）</li>
+      <li>Google Authenticator を開き、<b>「＋」→「設定キーを入力」</b>を選ぶ</li>
+      <li><b>アカウント名</b>に「入管申請管理」など分かる名前を入れ、<b>キー</b>の欄を長押しして<b>貼り付け</b>。「時間ベース」のまま<b>追加</b></li>
+      <li>6桁の数字が出ます → <b>手順5へ</b></li>
+    </ol>
+    <div class="tip"><strong>「キーをコピー」が効かないとき</strong>「キーを表示」を押すと英数字の文字列が出ます。それを見ながら Google Authenticator の「キー」欄に手で入力してください（大文字小文字は区別しません）。</div>
+  </div>
+  <figure class="fig">
+    <div class="phone">
+      <div class="screen">
+        <span class="badge">🛡</span>
+        <p class="title">認証アプリを登録してください</p>
+        <div class="card">
+          <p class="note">1. スマホで認証アプリを開き「＋」を押す<br>2. 下のQRコードを読み取る（読み取れないときは「キーを表示」の文字列を手で入れる）<br>3. 表示された6桁を下に入れて「登録する」</p>
+          <div class="qr"><svg viewBox="-1 -1 27 27" width="150" height="150" role="img" aria-label="QRコードの例" shape-rendering="crispEdges"><rect x="-1" y="-1" width="27" height="27" fill="#fff"/><g fill="#14213d"><rect x="0" y="0" width="1" height="1"/><rect x="1" y="0" width="1" height="1"/><rect x="2" y="0" width="1" height="1"/><rect x="3" y="0" width="1" height="1"/><rect x="4" y="0" width="1" height="1"/><rect x="5" y="0" width="1" height="1"/><rect x="6" y="0" width="1" height="1"/><rect x="0" y="1" width="1" height="1"/><rect x="6" y="1" width="1" height="1"/><rect x="0" y="2" width="1" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="3" y="2" width="1" height="1"/><rect x="4" y="2" width="1" height="1"/><rect x="6" y="2" width="1" height="1"/><rect x="0" y="3" width="1" height="1"/><rect x="2" y="3" width="1" height="1"/><rect x="3" y="3" width="1" height="1"/><rect x="4" y="3" width="1" height="1"/><rect x="6" y="3" width="1" height="1"/><rect x="0" y="4" width="1" height="1"/><rect x="2" y="4" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="6" y="4" width="1" height="1"/><rect x="0" y="5" width="1" height="1"/><rect x="6" y="5" width="1" height="1"/><rect x="0" y="6" width="1" height="1"/><rect x="1" y="6" width="1" height="1"/><rect x="2" y="6" width="1" height="1"/><rect x="3" y="6" width="1" height="1"/><rect x="4" y="6" width="1" height="1"/><rect x="5" y="6" width="1" height="1"/><rect x="6" y="6" width="1" height="1"/><rect x="18" y="0" width="1" height="1"/><rect x="19" y="0" width="1" height="1"/><rect x="20" y="0" width="1" height="1"/><rect x="21" y="0" width="1" height="1"/><rect x="22" y="0" width="1" height="1"/><rect x="23" y="0" width="1" height="1"/><rect x="24" y="0" width="1" height="1"/><rect x="18" y="1" width="1" height="1"/><rect x="24" y="1" width="1" height="1"/><rect x="18" y="2" width="1" height="1"/><rect x="20" y="2" width="1" height="1"/><rect x="21" y="2" width="1" height="1"/><rect x="22" y="2" width="1" height="1"/><rect x="24" y="2" width="1" height="1"/><rect x="18" y="3" width="1" height="1"/><rect x="20" y="3" width="1" height="1"/><rect x="21" y="3" width="1" height="1"/><rect x="22" y="3" width="1" height="1"/><rect x="24" y="3" width="1" height="1"/><rect x="18" y="4" width="1" height="1"/><rect x="20" y="4" width="1" height="1"/><rect x="21" y="4" width="1" height="1"/><rect x="22" y="4" width="1" height="1"/><rect x="24" y="4" width="1" height="1"/><rect x="18" y="5" width="1" height="1"/><rect x="24" y="5" width="1" height="1"/><rect x="18" y="6" width="1" height="1"/><rect x="19" y="6" width="1" height="1"/><rect x="20" y="6" width="1" height="1"/><rect x="21" y="6" width="1" height="1"/><rect x="22" y="6" width="1" height="1"/><rect x="23" y="6" width="1" height="1"/><rect x="24" y="6" width="1" height="1"/><rect x="0" y="18" width="1" height="1"/><rect x="1" y="18" width="1" height="1"/><rect x="2" y="18" width="1" height="1"/><rect x="3" y="18" width="1" height="1"/><rect x="4" y="18" width="1" height="1"/><rect x="5" y="18" width="1" height="1"/><rect x="6" y="18" width="1" height="1"/><rect x="0" y="19" width="1" height="1"/><rect x="6" y="19" width="1" height="1"/><rect x="0" y="20" width="1" height="1"/><rect x="2" y="20" width="1" height="1"/><rect x="3" y="20" width="1" height="1"/><rect x="4" y="20" width="1" height="1"/><rect x="6" y="20" width="1" height="1"/><rect x="0" y="21" width="1" height="1"/><rect x="2" y="21" width="1" height="1"/><rect x="3" y="21" width="1" height="1"/><rect x="4" y="21" width="1" height="1"/><rect x="6" y="21" width="1" height="1"/><rect x="0" y="22" width="1" height="1"/><rect x="2" y="22" width="1" height="1"/><rect x="3" y="22" width="1" height="1"/><rect x="4" y="22" width="1" height="1"/><rect x="6" y="22" width="1" height="1"/><rect x="0" y="23" width="1" height="1"/><rect x="6" y="23" width="1" height="1"/><rect x="0" y="24" width="1" height="1"/><rect x="1" y="24" width="1" height="1"/><rect x="2" y="24" width="1" height="1"/><rect x="3" y="24" width="1" height="1"/><rect x="4" y="24" width="1" height="1"/><rect x="5" y="24" width="1" height="1"/><rect x="6" y="24" width="1" height="1"/><rect x="8" y="0" width="1" height="1"/><rect x="9" y="0" width="1" height="1"/><rect x="11" y="0" width="1" height="1"/><rect x="13" y="0" width="1" height="1"/><rect x="14" y="0" width="1" height="1"/><rect x="16" y="0" width="1" height="1"/><rect x="8" y="1" width="1" height="1"/><rect x="9" y="1" width="1" height="1"/><rect x="10" y="1" width="1" height="1"/><rect x="11" y="1" width="1" height="1"/><rect x="13" y="1" width="1" height="1"/><rect x="14" y="1" width="1" height="1"/><rect x="9" y="2" width="1" height="1"/><rect x="11" y="2" width="1" height="1"/><rect x="13" y="2" width="1" height="1"/><rect x="14" y="2" width="1" height="1"/><rect x="15" y="2" width="1" height="1"/><rect x="16" y="2" width="1" height="1"/><rect x="9" y="3" width="1" height="1"/><rect x="12" y="3" width="1" height="1"/><rect x="14" y="3" width="1" height="1"/><rect x="15" y="3" width="1" height="1"/><rect x="16" y="3" width="1" height="1"/><rect x="9" y="4" width="1" height="1"/><rect x="10" y="4" width="1" height="1"/><rect x="13" y="4" width="1" height="1"/><rect x="16" y="4" width="1" height="1"/><rect x="12" y="5" width="1" height="1"/><rect x="14" y="5" width="1" height="1"/><rect x="15" y="5" width="1" height="1"/><rect x="8" y="6" width="1" height="1"/><rect x="10" y="6" width="1" height="1"/><rect x="15" y="6" width="1" height="1"/><rect x="15" y="7" width="1" height="1"/><rect x="3" y="8" width="1" height="1"/><rect x="4" y="8" width="1" height="1"/><rect x="6" y="8" width="1" height="1"/><rect x="8" y="8" width="1" height="1"/><rect x="9" y="8" width="1" height="1"/><rect x="10" y="8" width="1" height="1"/><rect x="12" y="8" width="1" height="1"/><rect x="13" y="8" width="1" height="1"/><rect x="14" y="8" width="1" height="1"/><rect x="16" y="8" width="1" height="1"/><rect x="17" y="8" width="1" height="1"/><rect x="22" y="8" width="1" height="1"/><rect x="23" y="8" width="1" height="1"/><rect x="24" y="8" width="1" height="1"/><rect x="2" y="9" width="1" height="1"/><rect x="3" y="9" width="1" height="1"/><rect x="4" y="9" width="1" height="1"/><rect x="5" y="9" width="1" height="1"/><rect x="8" y="9" width="1" height="1"/><rect x="9" y="9" width="1" height="1"/><rect x="10" y="9" width="1" height="1"/><rect x="11" y="9" width="1" height="1"/><rect x="18" y="9" width="1" height="1"/><rect x="23" y="9" width="1" height="1"/><rect x="24" y="9" width="1" height="1"/><rect x="0" y="10" width="1" height="1"/><rect x="2" y="10" width="1" height="1"/><rect x="3" y="10" width="1" height="1"/><rect x="4" y="10" width="1" height="1"/><rect x="5" y="10" width="1" height="1"/><rect x="6" y="10" width="1" height="1"/><rect x="7" y="10" width="1" height="1"/><rect x="8" y="10" width="1" height="1"/><rect x="9" y="10" width="1" height="1"/><rect x="10" y="10" width="1" height="1"/><rect x="11" y="10" width="1" height="1"/><rect x="12" y="10" width="1" height="1"/><rect x="15" y="10" width="1" height="1"/><rect x="16" y="10" width="1" height="1"/><rect x="17" y="10" width="1" height="1"/><rect x="18" y="10" width="1" height="1"/><rect x="19" y="10" width="1" height="1"/><rect x="24" y="10" width="1" height="1"/><rect x="0" y="11" width="1" height="1"/><rect x="1" y="11" width="1" height="1"/><rect x="2" y="11" width="1" height="1"/><rect x="4" y="11" width="1" height="1"/><rect x="5" y="11" width="1" height="1"/><rect x="8" y="11" width="1" height="1"/><rect x="10" y="11" width="1" height="1"/><rect x="15" y="11" width="1" height="1"/><rect x="16" y="11" width="1" height="1"/><rect x="17" y="11" width="1" height="1"/><rect x="21" y="11" width="1" height="1"/><rect x="22" y="11" width="1" height="1"/><rect x="4" y="12" width="1" height="1"/><rect x="6" y="12" width="1" height="1"/><rect x="7" y="12" width="1" height="1"/><rect x="8" y="12" width="1" height="1"/><rect x="9" y="12" width="1" height="1"/><rect x="10" y="12" width="1" height="1"/><rect x="13" y="12" width="1" height="1"/><rect x="17" y="12" width="1" height="1"/><rect x="18" y="12" width="1" height="1"/><rect x="19" y="12" width="1" height="1"/><rect x="20" y="12" width="1" height="1"/><rect x="21" y="12" width="1" height="1"/><rect x="3" y="13" width="1" height="1"/><rect x="9" y="13" width="1" height="1"/><rect x="11" y="13" width="1" height="1"/><rect x="14" y="13" width="1" height="1"/><rect x="15" y="13" width="1" height="1"/><rect x="18" y="13" width="1" height="1"/><rect x="19" y="13" width="1" height="1"/><rect x="20" y="13" width="1" height="1"/><rect x="23" y="13" width="1" height="1"/><rect x="2" y="14" width="1" height="1"/><rect x="4" y="14" width="1" height="1"/><rect x="5" y="14" width="1" height="1"/><rect x="10" y="14" width="1" height="1"/><rect x="13" y="14" width="1" height="1"/><rect x="14" y="14" width="1" height="1"/><rect x="15" y="14" width="1" height="1"/><rect x="16" y="14" width="1" height="1"/><rect x="18" y="14" width="1" height="1"/><rect x="19" y="14" width="1" height="1"/><rect x="20" y="14" width="1" height="1"/><rect x="22" y="14" width="1" height="1"/><rect x="1" y="15" width="1" height="1"/><rect x="6" y="15" width="1" height="1"/><rect x="7" y="15" width="1" height="1"/><rect x="8" y="15" width="1" height="1"/><rect x="9" y="15" width="1" height="1"/><rect x="11" y="15" width="1" height="1"/><rect x="15" y="15" width="1" height="1"/><rect x="19" y="15" width="1" height="1"/><rect x="21" y="15" width="1" height="1"/><rect x="22" y="15" width="1" height="1"/><rect x="3" y="16" width="1" height="1"/><rect x="15" y="16" width="1" height="1"/><rect x="19" y="16" width="1" height="1"/><rect x="20" y="16" width="1" height="1"/><rect x="21" y="16" width="1" height="1"/><rect x="22" y="16" width="1" height="1"/><rect x="23" y="16" width="1" height="1"/><rect x="24" y="16" width="1" height="1"/><rect x="11" y="17" width="1" height="1"/><rect x="14" y="17" width="1" height="1"/><rect x="17" y="17" width="1" height="1"/><rect x="19" y="17" width="1" height="1"/><rect x="23" y="17" width="1" height="1"/><rect x="24" y="17" width="1" height="1"/><rect x="9" y="18" width="1" height="1"/><rect x="10" y="18" width="1" height="1"/><rect x="11" y="18" width="1" height="1"/><rect x="13" y="18" width="1" height="1"/><rect x="15" y="18" width="1" height="1"/><rect x="16" y="18" width="1" height="1"/><rect x="17" y="18" width="1" height="1"/><rect x="20" y="18" width="1" height="1"/><rect x="24" y="18" width="1" height="1"/><rect x="8" y="19" width="1" height="1"/><rect x="9" y="19" width="1" height="1"/><rect x="11" y="19" width="1" height="1"/><rect x="12" y="19" width="1" height="1"/><rect x="13" y="19" width="1" height="1"/><rect x="16" y="19" width="1" height="1"/><rect x="17" y="19" width="1" height="1"/><rect x="21" y="19" width="1" height="1"/><rect x="22" y="19" width="1" height="1"/><rect x="24" y="19" width="1" height="1"/><rect x="8" y="20" width="1" height="1"/><rect x="12" y="20" width="1" height="1"/><rect x="14" y="20" width="1" height="1"/><rect x="17" y="20" width="1" height="1"/><rect x="20" y="20" width="1" height="1"/><rect x="21" y="20" width="1" height="1"/><rect x="23" y="20" width="1" height="1"/><rect x="24" y="20" width="1" height="1"/><rect x="8" y="21" width="1" height="1"/><rect x="9" y="21" width="1" height="1"/><rect x="10" y="21" width="1" height="1"/><rect x="11" y="21" width="1" height="1"/><rect x="12" y="21" width="1" height="1"/><rect x="14" y="21" width="1" height="1"/><rect x="16" y="21" width="1" height="1"/><rect x="17" y="21" width="1" height="1"/><rect x="18" y="21" width="1" height="1"/><rect x="19" y="21" width="1" height="1"/><rect x="20" y="21" width="1" height="1"/><rect x="23" y="21" width="1" height="1"/><rect x="9" y="22" width="1" height="1"/><rect x="11" y="22" width="1" height="1"/><rect x="14" y="22" width="1" height="1"/><rect x="18" y="22" width="1" height="1"/><rect x="22" y="22" width="1" height="1"/><rect x="23" y="22" width="1" height="1"/><rect x="24" y="22" width="1" height="1"/><rect x="8" y="23" width="1" height="1"/><rect x="9" y="23" width="1" height="1"/><rect x="11" y="23" width="1" height="1"/><rect x="12" y="23" width="1" height="1"/><rect x="13" y="23" width="1" height="1"/><rect x="17" y="23" width="1" height="1"/><rect x="18" y="23" width="1" height="1"/><rect x="19" y="23" width="1" height="1"/><rect x="21" y="23" width="1" height="1"/><rect x="22" y="23" width="1" height="1"/><rect x="23" y="23" width="1" height="1"/><rect x="10" y="24" width="1" height="1"/><rect x="12" y="24" width="1" height="1"/><rect x="13" y="24" width="1" height="1"/><rect x="14" y="24" width="1" height="1"/><rect x="15" y="24" width="1" height="1"/><rect x="18" y="24" width="1" height="1"/><rect x="20" y="24" width="1" height="1"/><rect x="21" y="24" width="1" height="1"/><rect x="22" y="24" width="1" height="1"/><rect x="23" y="24" width="1" height="1"/><rect x="24" y="24" width="1" height="1"/></g></svg></div>
+          <div class="row"><span class="btn ghost">🔑 キーを表示</span><span class="btn ghost">⧉ キーをコピー</span></div>
+          <div class="key">JBSW Y3DP EHPK 3PXP K5XW 6ZLN M5XW O3DF</div>
+          <label>認証アプリの6桁のコード</label><div class="in code">123456</div>
+          <div class="btn">✓ 登録する</div>
+        </div>
+      </div>
+      <span class="callout" style="left:20px;top:166px">④A パソコンならQRを読む</span>
+      <span class="callout" style="right:14px;top:304px">④B スマホならキーをコピー</span>
+    </div>
+    <figcaption>アプリの登録画面（QRコードは人ごとに違います）</figcaption>
+  </figure>
+  <div class="two">
+    <figure class="fig">
+      <div class="phone"><div class="screen light"><div class="ga">
+        <div class="bar"><span>Google Authenticator</span><span>⋮</span></div>
+        <p class="note">右下の「＋」を押すと2つの選び方が出ます。</p>
+        <div class="menu"><div>📷 QRコードをスキャン <span class="note">← パソコンで開いているとき</span></div><div>⌨️ 設定キーを入力 <span class="note">← スマホで開いているとき</span></div></div>
+        <div class="plus">＋</div>
+      </div></div>
+      <span class="callout" style="right:22px;bottom:36px">「＋」を押す</span></div>
+      <figcaption>Google Authenticator の「＋」</figcaption>
+    </figure>
+    <figure class="fig">
+      <div class="phone"><div class="screen light"><div class="ga">
+        <div class="bar"><span>← アカウントの詳細を入力</span></div>
+        <div class="fld"><span>アカウント名</span>入管申請管理</div>
+        <div class="fld"><span>キー</span><span style="font-family:var(--mono);color:#14213d;font-size:11px">JBSWY3DPEHPK3PXPK5XW6ZLNM5XWO3DF</span></div>
+        <div class="fld"><span>キーの種類</span>時間ベース ▾</div>
+        <div class="btn" style="background:#1a73e8;align-self:flex-end;min-height:32px;padding:0 16px;border-radius:999px">追加</div>
+        <p class="note">キーの欄を長押しして「ペースト（貼り付け）」を選びます。</p>
+      </div></div>
+      <span class="callout" style="left:22px;top:120px">コピーしたキーを貼り付け</span></div>
+      <figcaption>「設定キーを入力」を選んだとき</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- STEP 5 -->
+<section class="step">
+  <header><span class="n">5</span><h2>6桁の数字を入れて「登録する」</h2></header>
+  <div class="text">
+    <ol>
+      <li>Google Authenticator に <b>「入管申請管理 …」</b> の行が増え、<b>6桁の数字</b>が出ています。</li>
+      <li>その数字を、アプリの登録画面の<b>「認証アプリの6桁のコード」</b>の欄に入れます（空白は入れなくて大丈夫です）。</li>
+      <li><b>「登録する」</b>を押すと完了。そのまま業務の画面に入ります。</li>
+    </ol>
+    <div class="tip"><strong>数字は30秒ごとに変わります</strong>入れている途中で変わってしまったら、新しく出た数字を入れ直してください。「確認できませんでした」と出るのは、古い数字を入れたか、スマホの時刻がずれているときです（スマホの「日付と時刻」を自動にしてください）。</div>
+    <div class="tip ok"><strong>Google Authenticator の行は消さないでください</strong>次回以降のログインで毎回使います。消してしまった・スマホを替えたときは、管理者に「認証アプリの解除」を頼むと、もう一度この手順で登録できます。</div>
+  </div>
+  <figure class="fig">
+    <div class="phone"><div class="screen light"><div class="ga">
+      <div class="bar"><span>Google Authenticator</span><span>⋮</span></div>
+      <div class="acct"><span class="name">入管申請管理 2026-10-11 09:12:30</span><span class="code">483 921</span><span class="timer"></span></div>
+      <p class="note">この6桁を、アプリの「認証アプリの6桁のコード」の欄に入れます。</p>
+      <div class="card" style="border:1px solid #dbe2ea">
+        <label>認証アプリの6桁のコード</label><div class="in code">483921</div>
+        <div class="btn">✓ 登録する</div>
+      </div>
+    </div></div>
+    <span class="callout" style="left:26px;top:64px">⑤ この数字を入れる</span></div>
+    <figcaption>認証アプリに出た数字を入れて登録</figcaption>
+  </figure>
+</section>
+
+<!-- STEP 6 -->
+<section class="step wide">
+  <header><span class="n">6</span><h2>2回目からのログイン</h2></header>
+  <div class="text">
+    <p>次からは<b>2段階</b>です。</p>
+    <ol>
+      <li>ログイン画面で<b>メールアドレス</b>と<b>決めたパスワード</b>を入れて「ログイン」</li>
+      <li>「認証アプリのコードを入れてください」の画面で、Google Authenticator の<b>「入管申請管理」の6桁</b>を入れて「次へ」</li>
+    </ol>
+    <p style="margin-top:8px">アプリのアドレスはスマホのホーム画面やブックマークに登録しておくと便利です（管理者に聞いてください）。</p>
+  </div>
+  <div class="two">
+    <figure class="fig">
+      <div class="phone"><div class="screen">
+        <span class="badge">入管</span>
+        <p class="title">外国人材・入管申請管理システム</p>
+        <div class="card">
+          <label>メールアドレス</label><div class="in">you@example.com</div>
+          <label>パスワード</label><div class="in">●●●●●●●●</div>
+          <div class="btn">→ ログイン</div>
+          <p class="note" style="text-align:center;text-decoration:underline">パスワードを忘れた方</p>
+        </div>
+      </div></div>
+      <figcaption>① メールとパスワード</figcaption>
+    </figure>
+    <figure class="fig">
+      <div class="phone"><div class="screen">
+        <span class="badge">🛡</span>
+        <p class="title">認証アプリのコードを入れてください</p>
+        <div class="card">
+          <label>6桁のコード</label><div class="in code">483921</div>
+          <div class="btn">✓ 次へ</div>
+          <p class="note">コードは30秒ごとに変わります。</p>
+        </div>
+      </div></div>
+      <figcaption>② 認証アプリの6桁</figcaption>
+    </figure>
+  </div>
+</section>
+
+<div class="weekly">
+  <h2>🗓 毎週月曜日の 0時に、自動でログアウトします</h2>
+  <p>安全のため、週の初め（月曜日 0:00）を過ぎると、全員がいったんログアウトになります。月曜に最初に開いたとき「週の初めのため、ログインし直してください」と出たら、上の<b>手順6</b>（メール・パスワード → 6桁のコード）でログインし直してください。途中で開いていた画面には、ログイン後に自動で戻ります。</p>
+</div>
+
+<h2 style="margin:0 0 10px">困ったとき</h2>
+<div class="faq">
+  <div><b>パスワードを忘れた</b>ログイン画面の「パスワードを忘れた方」からメールアドレスを入れると、再設定のメールが届きます。届いたメールのリンクを開き、手順2と同じように新しいパスワードを決めます（認証アプリの登録はそのまま使えます）。</div>
+  <div><b>6桁のコードが通らない</b>古い数字を入れていないか確認し、新しく出た数字で試してください。何度も通らないときは、スマホの「日付と時刻」を「自動設定」にします。</div>
+  <div><b>スマホを替えた・なくした・Google Authenticator を消してしまった</b>管理者に「認証アプリの解除」を頼んでください。解除後に次にログインすると、手順4〜5の登録画面がもう一度出ます。</div>
+  <div><b>招待メールのリンクが「無効・期限切れ」と出る</b>その画面の下の欄に自分のメールアドレスを入れて「メールを送る」を押し、届いたメールを同じ端末・ブラウザで開いてください。</div>
+  <div><b>Google Authenticator の「アカウント」は何に紐づく？</b>会社のメールアドレスにも Google アカウントにも紐づきません。アプリの中に「入管申請管理」という行が1つ増えるだけです。Google アカウントでログインすれば機種変更のときにクラウドで引き継げますが、しなくても使えます。</div>
+</div>
+
+<footer>この手順書は在留資格申請管理システムの職員向けです。画面の見た目はイラストで、実際のQRコードや数字は人ごとに違います。</footer>
+</div>
+</body></html>
