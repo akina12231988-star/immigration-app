@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { Check, Copy, ExternalLink, MapPin, MessageCircle, Plus, Printer, ShieldCheck, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { workerSheetPrintHref } from "@/lib/estimate-summary";
+import { staffLabel, type StaffNameSource } from "@/lib/staff-name";
+import { useStaffNames } from "@/lib/use-staff-names";
 import { Button } from "@/components/ui/Button";
 import { FileGroup } from "@/components/applications/FileGroup";
 import { generateApprovalReport } from "@/lib/line-report";
@@ -189,6 +191,8 @@ export function ApprovalSection({
   const [memoBody, setMemoBody] = useState("");
   const [memoBusy, setMemoBusy] = useState(false);
   const [authorName, setAuthorName] = useState("");
+  // 以前にメールアドレスで保存したメモの記入者も、職員の名前で出す
+  const staffName = useStaffNames();
 
   useEffect(() => {
     let cancelled = false;
@@ -204,10 +208,7 @@ export function ApprovalSection({
         .select("display_name, email")
         .eq("id", data.user.id)
         .maybeSingle();
-      if (!cancelled && p) {
-        const prof = p as { display_name: string; email: string };
-        setAuthorName(prof.display_name || prof.email);
-      }
+      if (!cancelled && p) setAuthorName(staffLabel(p as StaffNameSource));
     });
     return () => {
       cancelled = true;
@@ -501,7 +502,7 @@ export function ApprovalSection({
                     <div className="mb-0.5 flex items-center justify-between text-[11px] text-muted">
                       <span>
                         {new Date(m.createdAt).toLocaleString("ja-JP")}
-                        {m.author && ` ・ ${m.author}`}
+                        {m.author && ` ・ ${staffName(m.author)}`}
                       </span>
                       <button type="button" aria-label="削除" onClick={() => removeMemo(m.id)} className="text-seal">
                         <Trash2 size={13} />

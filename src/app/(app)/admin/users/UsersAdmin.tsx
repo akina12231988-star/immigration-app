@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { ShieldCheck, ShieldOff, UserPlus } from "lucide-react";
+import { Check, ShieldCheck, ShieldOff, UserPlus } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
+import { normalizeStaffName, staffLabel } from "@/lib/staff-name";
 import { STAFF_ROLE_LABELS, type Profile, type StaffRole } from "@/types/db";
 import { inviteUser, resetUserMfa } from "./actions";
 
@@ -27,7 +28,11 @@ export function UsersAdmin({
   const [inviteRole, setInviteRole] = useState<StaffRole>("staff");
   const [inviting, setInviting] = useState(false);
 
-  const patchRow = async (id: string, patch: Partial<Pick<Profile, "role" | "is_active">>) => {
+  // 名前の入力欄（職員ごとの下書き）。保存すると profiles.display_name に入る
+  const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({});
+  const [savingNameId, setSavingNameId] = useState<string | null>(null);
+
+  const patchRow = async (id: string, patch: Partial<Pick<Profile, "role" | "is_active" | "display_name">>) => {
     const prev = rows;
     setRows(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
     const { error } = await createClient().from("profiles").update(patch).eq("id", id);
@@ -39,10 +44,23 @@ export function UsersAdmin({
     }
   };
 
+  // 名前を保存する（前後の空白は取り除く）。メモ・記録の記入者はこの名前で出るようになる
+  const saveName = async (p: Profile) => {
+    const name = normalizeStaffName(nameDrafts[p.id] ?? p.display_name);
+    if (name === normalizeStaffName(p.display_name)) {
+      setNameDrafts((d) => ({ ...d, [p.id]: name }));
+      return;
+    }
+    setSavingNameId(p.id);
+    await patchRow(p.id, { display_name: name });
+    setSavingNameId(null);
+    setNameDrafts((d) => ({ ...d, [p.id]: name }));
+  };
+
   const onResetMfa = async (p: Profile) => {
     if (
       !confirm(
-        `${p.display_name || p.email} さんの認証アプリの登録を解除しますか？\n解除すると、次のログインで認証アプリを登録し直す画面になります。`,
+        `${staffLabel(p)} さんの認証アプリの登録を解除しますか？\n解除すると、次のログインで認証アプリを登録し直す画面になります。`,
       )
     )
       return;
@@ -118,11 +136,18 @@ export function UsersAdmin({
       <div className="flex flex-col gap-2.5">
         {rows.map((p) => {
           const isMe = p.id === myId;
+          const nameDraft = nameDrafts[p.id] ?? p.display_name;
+          const nameDirty = normalizeStaffName(nameDraft) !== normalizeStaffName(p.display_name);
           return (
             <Card key={p.id} className={`p-4 ${p.is_active ? "" : "opacity-60"}`}>
               <div className="mb-2 flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="truncate font-bold">{p.display_name || p.email}</p>
+                  <p className="truncate font-bold">
+                    {staffLabel(p)}
+                    {!normalizeStaffName(p.display_name) && (
+                      <span className="ml-2 rounded-full bg-seal/10 px-2 py-0.5 text-[11px] font-bold text-seal">名前未設定</span>
+                    )}
+                  </p>
                   <p className="truncate text-xs text-muted">
                     {p.email}
                     {isMe && "（自分）"}
@@ -134,6 +159,31 @@ export function UsersAdmin({
                   </span>
                 )}
               </div>
+              {/* 職員の名前。だれのアカウントか分かるようにし、メモ・記録の記入者にもこの名前が出る */}
+              <form
+                className="mb-2 flex items-center gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void saveName(p);
+                }}
+              >
+                <input
+                  type="text"
+                  value={nameDraft}
+                  onChange={(e) => setNameDrafts((d) => ({ ...d, [p.id]: e.target.value }))}
+                  placeholder="職員の名前（例: 村田 敬一）"
+                  aria-label={`${p.email} の名前`}
+                  className="min-h-[40px] flex-1 rounded-xl border border-border bg-background px-3 text-sm"
+                />
+                <button
+                  type="submit"
+                  disabled={!nameDirty || savingNameId === p.id}
+                  className="inline-flex min-h-[40px] items-center gap-1 rounded-xl bg-brand px-4 text-sm font-bold text-brand-foreground disabled:opacity-40"
+                >
+                  <Check size={15} />
+                  {savingNameId === p.id ? "保存中…" : "名前を保存"}
+                </button>
+              </form>
               <div className="flex items-center gap-2">
                 <select
                   value={p.role}

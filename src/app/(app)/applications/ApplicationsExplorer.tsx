@@ -76,6 +76,7 @@ import { openPostApplyCount, type PostApplyEntry } from "@/lib/post-apply";
 import { listAllExtraRequests } from "@/lib/supabase/queries/extra-requests";
 import { countOpenExtraRequests } from "@/lib/extra-request-alerts";
 import type { ApplicationExtraRequest } from "@/types/application";
+import { staffLabel, type StaffNameSource } from "@/lib/staff-name";
 
 const TODAY = todayStr();
 
@@ -243,8 +244,8 @@ export function ApplicationsExplorer({
         .eq("id", data.user.id)
         .maybeSingle();
       if (cancelled || !p) return;
-      const prof = p as { display_name: string; email: string; role: string };
-      setAuthorName(prof.display_name || prof.email);
+      const prof = p as StaffNameSource & { role: string };
+      setAuthorName(staffLabel(prof));
       setCanEdit(prof.role !== "viewer");
     });
     return () => {
