@@ -19,6 +19,7 @@ import {
   Link2,
   IdCard,
   Printer,
+  StickyNote,
 } from "lucide-react";
 import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { PostApplyList } from "@/components/workers/PostApplyList";
@@ -583,6 +584,8 @@ export function ApplicationPrepChecklist({
             // 申請後に発行はするが郵送しない（0174）。列が無い環境では false
             issue_no_mail: r.issue_no_mail ?? false,
             attach_items: r.attach_items ?? "",
+            // 備考（0161）。列が無い環境では空
+            memo: r.memo ?? "",
             // 使う年度（0164）。列が無い環境では付けない（付けると保存で列エラーになる）
             ...(r.use_reiwa !== undefined ? { use_reiwa: r.use_reiwa } : {}),
           };
@@ -614,6 +617,7 @@ export function ApplicationPrepChecklist({
             // 申請後に発行はするが郵送しない（0174）。列が無い環境では false
             issue_no_mail: r.issue_no_mail ?? false,
             attach_items: r.attach_items ?? "",
+            memo: r.memo ?? "",
           };
         }
         setDocStatusesByList((prev) => ({ ...prev, [prevListId]: next }));
@@ -3097,7 +3101,41 @@ function DocRow({
           )}
         </div>
       )}
+      {/* 備考: 書類ごとの自由なメモ（催促した日・本人からの返事・注意点など）。
+          TODO ＞ 依頼中 の一覧の「詳細」と同じメモで、どちらで書いても両方に出る */}
+      <DocMemoField memo={ds.memo} canEdit={canEdit} onPatch={onPatchStatus} />
     </FileDropArea>
+  );
+}
+
+// 書類ごとの備考欄。入力中は保存せず、欄から離れたときに保存する（他の入力欄と同じ）。
+// 何も書いていなくて編集もできないときは出さない
+function DocMemoField({
+  memo,
+  canEdit,
+  onPatch,
+}: {
+  memo: string;
+  canEdit: boolean;
+  onPatch: (patch: Partial<PrepDocStatusInput>, save?: boolean) => void;
+}) {
+  if (!canEdit && !memo) return null;
+  return (
+    <label className="ml-[18px] mt-1.5 block">
+      <span className="mb-0.5 flex items-center gap-1 text-[11px] font-bold text-muted">
+        <StickyNote size={11} />
+        備考
+      </span>
+      <textarea
+        value={memo}
+        readOnly={!canEdit}
+        rows={memo.includes("\n") || memo.length > 60 ? 3 : 1}
+        placeholder="メモ（催促した日・本人からの返事・注意点など）"
+        onChange={(e) => onPatch({ memo: e.target.value }, false)}
+        onBlur={() => onPatch({}, true)}
+        className="w-full resize-y rounded-lg border border-border bg-background px-2 py-1.5 text-xs leading-relaxed focus:border-brand focus:outline-none disabled:opacity-60"
+      />
+    </label>
   );
 }
 

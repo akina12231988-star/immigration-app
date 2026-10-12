@@ -274,6 +274,7 @@ export interface PrepDocStatusRow {
   mail_after_apply: boolean; // 申請後に発行され次第、入管へ郵送する
   issue_no_mail: boolean; // 申請後に発行はするが、入管へは郵送しない（0174）
   attach_items: string; // 添付する資料項目（カンマ区切り。年金記録: 年金記録/免除申請書）
+  memo: string; // 備考（0161）。書類ごとの自由なメモ。TODO ＞ 依頼中 の一覧の「詳細」と同じもの
   use_reiwa?: number | null; // 課税・納税証明書で対応する年度（令和年。0164。null は対象年度）
 }
 
@@ -289,6 +290,7 @@ export const EMPTY_PREP_DOC_STATUS: PrepDocStatusInput = {
   mail_after_apply: false,
   issue_no_mail: false,
   attach_items: "",
+  memo: "",
 };
 
 // チェックリスト1件分の書類ステータスを全件取得
@@ -305,7 +307,7 @@ export async function listPrepDocStatuses(
 }
 
 // 書類1件分のステータスを保存（無ければ作成）。
-// 0174（issue_no_mail）が未適用の環境では、その項目を外して保存し直す
+// 0174（issue_no_mail）・0161（memo）が未適用の環境では、その項目を外して保存し直す
 export async function upsertPrepDocStatus(
   supabase: SupabaseClient,
   checklistId: string,
@@ -316,16 +318,15 @@ export async function upsertPrepDocStatus(
     supabase
       .from("prep_doc_statuses")
       .upsert({ checklist_id: checklistId, doc_id: docId, ...row }, { onConflict: "checklist_id,doc_id" });
-  const { error } = await save(input);
-  if (!error) return;
-  if (isMissingColumnError(error, "issue_no_mail")) {
-    const rest: Record<string, unknown> = { ...input };
-    delete rest.issue_no_mail;
-    const retry = await save(rest);
-    if (retry.error) throw retry.error;
-    return;
+  let row: Record<string, unknown> = { ...input };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { error } = await save(row);
+    if (!error) return;
+    const missing = ["issue_no_mail", "memo"].find((col) => col in row && isMissingColumnError(error, col));
+    if (!missing) throw error;
+    row = { ...row };
+    delete row[missing];
   }
-  throw error;
 }
 
 // その列がまだ無い（マイグレーション未適用）ことによるエラーか

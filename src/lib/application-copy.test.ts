@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildApplicationCopyGroups, copyGroupText, desiredResidenceStatus, totalStaff, wageForApplication, ymdParts } from "./application-copy";
+import { buildApplicationCopyGroups, copyGroupText, desiredResidenceStatus, totalStaff, wageForApplication, ymdCompact, ymdParts } from "./application-copy";
 import { emptyOrganizationIntake, rosaiMeasureText } from "./organization-intake";
 import { CUSTODIAN_INFO } from "./custody";
 import { contractPeriodEnd, formatYmdJa } from "./support-plan-dates";
@@ -115,7 +115,8 @@ describe("申請書に貼る項目", () => {
       worker, org, intake, wages: [wage({})], histories, planDates: { es: "2024-05-15" }, desiredStatus: "特定技能1号", today: "2025-05-01",
     });
     const find = (label: string) => groups.flatMap((g) => g.items).find((i) => i.label === label);
-    expect(find("2 生年月日")).toMatchObject({ value: "1995年4月2日", parts: ["1995", "4", "2"] });
+    // 生年月日は 年・月・日 と、区切り無しの8桁（19950402）の両方をコピーできる
+    expect(find("2 生年月日")).toMatchObject({ value: "1995年4月2日", parts: ["1995", "4", "2", "19950402"] });
     expect(find("11 在留期間")?.value).toBe("1年");
     expect(find("13 希望する在留資格")?.value).toBe("特定技能1号");
     // 登録支援機関の欄は既定値で出て、その場で編集できる（app_settings に保存）
@@ -226,5 +227,17 @@ describe("desiredResidenceStatus", () => {
     expect(desiredResidenceStatus("特定技能更新の準備中", "更新", "特定技能1号")).toBe("特定技能1号");
     expect(desiredResidenceStatus("在留資格認定申請書の準備中", "認定", "")).toBe("特定技能1号");
     expect(desiredResidenceStatus("", "", "")).toBe("");
+  });
+});
+
+describe("ymdCompact", () => {
+  it("YYYY-MM-DD を区切り無しの8桁にする", () => {
+    expect(ymdCompact("1994-07-10")).toBe("19940710");
+    expect(ymdCompact(" 2026-01-05 ")).toBe("20260105");
+  });
+  it("日付でなければ undefined", () => {
+    expect(ymdCompact("")).toBeUndefined();
+    expect(ymdCompact(null)).toBeUndefined();
+    expect(ymdCompact("1994/07/10")).toBeUndefined();
   });
 });
