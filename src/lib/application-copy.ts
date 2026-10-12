@@ -112,6 +112,12 @@ export function ymdParts(ymd: string | null | undefined): string[] | undefined {
   return [m[1], String(Number(m[2])), String(Number(m[3]))];
 }
 
+// 区切り無しの8桁: "1994-07-10" → "19940710"（生年月日を数字だけで入れる欄用）
+export function ymdCompact(ymd: string | null | undefined): string | undefined {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((ymd ?? "").trim());
+  return m ? `${m[1]}${m[2]}${m[3]}` : undefined;
+}
+
 // 年月だけ（職歴の入社・退社）: "2017-11-01" → ["2017", "11"]
 function ymParts(ymd: string | null | undefined): string[] {
   const p = ymdParts(ymd);
@@ -222,7 +228,11 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
 
   const applicant1: CopyItem[] = [
     { label: "1 国籍・地域", value: w.nationality, edit: wk("nationality") },
-    dateItem("2 生年月日", w.birth, undefined, wkDate("birth")),
+    // 生年月日は 年・月・日 の部品に加えて、区切り無しの8桁（19940710）もコピーできるようにする
+    {
+      ...dateItem("2 生年月日", w.birth, undefined, wkDate("birth")),
+      parts: w.birth ? [...(ymdParts(w.birth) ?? []), ymdCompact(w.birth) ?? ""] : undefined,
+    },
     { label: "3 氏名", value: w.name, note: w.kana ? `フリガナ: ${w.kana}` : undefined, edit: wk("name") },
     { label: "4 性別", value: w.gender, edit: wk("gender", ["男", "女"]) },
     { label: "6 配偶者の有無", value: w.has_spouse, edit: wk("has_spouse", ["有", "無"]) },
