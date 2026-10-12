@@ -20,7 +20,9 @@ import {
   type CopyGroup,
 } from "@/lib/application-copy";
 import { dbErrorMessage } from "@/lib/errors";
+import { buildOnlineApplication, type OnlineSection } from "@/lib/online-application";
 import { CopyButton } from "@/components/ui/CopyButton";
+import { OnlineApplicationList } from "@/components/workers/OnlineApplicationList";
 
 // 申請準備 ＞ 申請書に貼る情報。
 // 外国人詳細・所属機関・賃金・職歴・支援計画書の日付から、申請書（申請人等作成用・所属機関等作成用）の
@@ -89,9 +91,9 @@ export function ApplicationCopyPanel({
     onSaved?.();
   };
 
-  const groups = useMemo(() => {
+  const built = useMemo(() => {
     if (!loaded?.worker) return null;
-    return buildApplicationCopyGroups({
+    const input = {
       worker: loaded.worker,
       org: loaded.org,
       intake: loaded.org ? normalizeOrganizationIntake(loaded.org.intake) : null,
@@ -101,26 +103,35 @@ export function ApplicationCopyPanel({
       desiredStatus,
       custodian: mergeCustodianInfo(loaded.custodian),
       interpreters: mergeSupportOrgLists(loaded.custodian).interpreters,
-    });
+    };
+    const groups = buildApplicationCopyGroups(input);
+    // オンライン申請の画面順・入力形式にそろえたもの（紙の申請書向けの項目から組み立てる）
+    return { groups, online: buildOnlineApplication(input, groups) };
   }, [loaded, desiredStatus]);
 
-  if (!groups) return null;
-  return <ApplicationCopyList groups={groups} orgMissing={!orgId} canEdit={canEdit} onSave={saveEdit} />;
+  if (!built) return null;
+  return (
+    <ApplicationCopyList groups={built.groups} online={built.online} orgMissing={!orgId} canEdit={canEdit} onSave={saveEdit} />
+  );
 }
 
 // 一覧の表示（データの読み込みと分けて、単体でも描ける）
 export function ApplicationCopyList({
   groups,
+  online,
   orgMissing = false,
   canEdit = false,
   onSave,
 }: {
   groups: CopyGroup[];
+  online?: OnlineSection[]; // オンライン申請の画面順・入力形式（あれば切り替えて出せる）
   orgMissing?: boolean;
   canEdit?: boolean;
   onSave?: (edit: CopyEdit, value: string) => Promise<void>; // 項目をその場で保存する
 }) {
   const [open, setOpen] = useState(false);
+  // 紙の申請書の順（編集できる）か、オンライン申請の順（画面の入力形式）か
+  const [mode, setMode] = useState<"paper" | "online">("paper");
   const [openGroup, setOpenGroup] = useState<number>(0);
   const [copiedGroup, setCopiedGroup] = useState<number | null>(null);
   // 登録済みの値を編集中の項目（欄の番号-項目の番号）
@@ -157,7 +168,31 @@ export function ApplicationCopyList({
           {filled} / {total}項目 {open ? "▲ 閉じる" : "▼ 開く"}
         </span>
       </button>
-      {open && (
+      {open && online && (
+        <div className="mt-2 flex rounded-lg border border-border bg-surface p-0.5 text-[11px] font-bold">
+          {(
+            [
+              ["paper", "紙の申請書の順（編集できる）"],
+              ["online", "オンライン申請の順（画面の入力形式）"],
+            ] as const
+          ).map(([m, label]) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMode(m)}
+              className={`flex-1 rounded-md px-2 py-1.5 ${mode === m ? "bg-brand text-brand-foreground" : "text-muted"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      {open && online && mode === "online" && (
+        <div className="mt-2">
+          <OnlineApplicationList sections={online} />
+        </div>
+      )}
+      {open && (!online || mode === "paper") && (
         <div className="mt-2 space-y-2">
           <p className="text-[11px] leading-relaxed text-muted">
             申請書（申請人等作成用 1〜3・所属機関等作成用 1〜4）の項目順に並んでいます。右のコピーで1項目ずつ、
