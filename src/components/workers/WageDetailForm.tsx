@@ -42,6 +42,12 @@ function numValue(v: string): number {
   return Number(v.replace(/[^0-9]/g, "")) || 0;
 }
 
+// 小数1桁までの数（年間所定労働時間 2347.5 など）
+function decimalValue(v: string): number {
+  const n = Number(v.normalize("NFKC").replace(/[^0-9.]/g, "")) || 0;
+  return Math.round(n * 10) / 10;
+}
+
 // 所属機関に登録している、1-6号別紙の記入に使う情報（フォームの上に参考表示する）
 export interface WageOrgInfo {
   payMethod: string; // 給与支払い方法（通貨払い / 口座振込）
@@ -195,8 +201,8 @@ export function WageDetailForm({
           <span className={labelClass}>年間所定労働時間（未入力なら{orgName || "所属機関"}の登録値）</span>
           <input
             value={detail.annual_hours || ""}
-            onChange={(e) => set({ annual_hours: numValue(e.target.value) })}
-            inputMode="numeric"
+            onChange={(e) => set({ annual_hours: decimalValue(e.target.value) })}
+            inputMode="decimal"
             disabled={readOnly}
             placeholder={fallbackAnnualHours ? String(fallbackAnnualHours) : "例: 2080"}
             className={NUM}
