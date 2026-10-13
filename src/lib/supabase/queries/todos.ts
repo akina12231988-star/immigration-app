@@ -57,8 +57,8 @@ export async function listTodos(supabase: SupabaseClient): Promise<TodoRow[]> {
 }
 
 // 次のTODO番号。todos に加え、Notion由来の番号が入っている
-// 申請準備（application_prep_checklists.todo_no）と随時報告（resignations.todo_no）も見て、
-// 通し番号の続きから振る
+// 申請準備（application_prep_checklists.todo_no）と随時報告（退職 resignations・支援委託終了 support_end_records・
+// 契約変更 contract_changes の todo_no）も見て、通し番号の続きから振る
 export async function fetchNextTodoNo(supabase: SupabaseClient): Promise<string> {
   const nos: string[] = [];
   const { data: t } = await supabase.from("todos").select("todo_no");
@@ -74,6 +74,13 @@ export async function fetchNextTodoNo(supabase: SupabaseClient): Promise<string>
     .select("todo_no")
     .then((res) => (res.error ? { data: null } : res));
   for (const r of (g as { todo_no: string | null }[] | null) ?? []) nos.push(r.todo_no ?? "");
+  for (const table of ["support_end_records", "contract_changes"] as const) {
+    const { data: x } = await supabase
+      .from(table)
+      .select("todo_no")
+      .then((res) => (res.error ? { data: null } : res));
+    for (const r of (x as { todo_no: string | null }[] | null) ?? []) nos.push(r.todo_no ?? "");
+  }
   // 外国人に直接書かれている番号（申請TODO番号・退職の随時報告TODO番号）も数える。
   // TODO一覧に行が無い番号でも、同じ番号を二重に振らないようにするため
   const { data: w } = await supabase
