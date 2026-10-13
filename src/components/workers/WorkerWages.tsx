@@ -199,7 +199,8 @@ export function WorkerWages({
   // 年間所定労働時間を所属機関に保存する（この会社の全員の換算に使われる）
   const saveHours = async () => {
     if (!conversionOrgId) return;
-    const hours = Number(hoursInput.replace(/[^0-9]/g, "")) || 0;
+    // 小数1桁まで（2347.5 など）。雇用条件書の年間所定労働時間をそのまま入れられるようにする
+    const hours = Math.round((Number(hoursInput.replace(/[^0-9.]/g, "")) || 0) * 10) / 10;
     setHoursSaving(true);
     setError(null);
     try {
@@ -212,7 +213,7 @@ export function WorkerWages({
       setError(
         dbErrorMessage(
           err,
-          "0082_organization_annual_work_hours.sql",
+          "0180_organization_annual_work_hours_decimal.sql",
           errorMessage(err, "年間所定労働時間の保存に失敗しました"),
         ),
       );
@@ -493,8 +494,8 @@ export function WorkerWages({
             <>
               <input
                 value={hoursInput}
-                onChange={(e) => setHoursInput(e.target.value.replace(/[^0-9]/g, ""))}
-                inputMode="numeric"
+                onChange={(e) => setHoursInput(decimalInput(e.target.value))}
+                inputMode="decimal"
                 placeholder={
                   annualHours(conversionOrgId) > 0
                     ? String(annualHours(conversionOrgId))
@@ -859,4 +860,12 @@ export function WorkerWages({
       )}
     </Card>
   );
+}
+
+// 数字と小数点だけを残す（小数点は1つ・小数は1桁まで）。全角の数字・ピリオドも直す
+function decimalInput(v: string): string {
+  const half = v.normalize("NFKC").replace(/[^0-9.]/g, "");
+  const [int, ...rest] = half.split(".");
+  if (rest.length === 0) return int;
+  return `${int}.${rest.join("").slice(0, 1)}`;
 }

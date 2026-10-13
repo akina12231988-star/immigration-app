@@ -1436,14 +1436,14 @@ function IntakeSection({
               setIntake({
                 posting_monthly_hours: v,
                 posting_annual_hours:
-                  n != null ? String(Math.round(n * 12)) : intake.posting_annual_hours,
+                  n != null ? String(Math.round(n * 12 * 10) / 10) : intake.posting_annual_hours,
               });
             }}
             placeholder="例: 173時間20分／173.3"
             hint={(() => {
               const n = parseHoursMinutes(intake.posting_monthly_hours);
               if (n == null) return "「173時間20分」「173:20」「173.3」のどの形でも入力できます。";
-              return `＝ ${formatHoursDecimal(n)}時間（年間 ${Math.round(n * 12)}時間）として自動で計算します。`;
+              return `＝ ${formatHoursDecimal(n)}時間（年間 ${Math.round(n * 12 * 10) / 10}時間）として自動で計算します。`;
             })()}
             locked={locks.intake("posting_monthly_hours")}
           />
@@ -1458,8 +1458,8 @@ function IntakeSection({
                   n != null ? String(Math.round((n / 12) * 10) / 10) : intake.posting_monthly_hours,
               });
             }}
-            placeholder="例: 2080"
-            hint="どちらかを入れるともう片方も自動で入ります。求人票の時給⇔月給換算・手取りプレビューに使います。"
+            placeholder="例: 2080 / 2347.5"
+            hint="小数も入れられます（例: 2347.5）。どちらかを入れるともう片方も自動で入ります。求人票の時給⇔月給換算・手取りプレビューに使います。"
             locked={locks.intake("posting_annual_hours")}
           />
         </div>
