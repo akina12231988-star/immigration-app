@@ -2,7 +2,7 @@
 
 import { useDeferredValue, useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, FileSearch, Printer, Upload, UserPlus } from "lucide-react";
+import { CheckSquare, ChevronLeft, ChevronRight, FileSearch, FileSpreadsheet, Printer, Square, Upload, UserPlus, X } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { LinkButton } from "@/components/ui/Button";
 import { SummaryCards } from "@/components/workers/SummaryCards";
@@ -20,6 +20,7 @@ import { isResidenceRenewalTarget } from "@/lib/worker-alerts";
 import { followupLabels, hasFollowup } from "@/lib/worker-followups";
 import { isSupportedSsw1 } from "@/lib/support-system";
 import { WorkerRenewalCard } from "@/components/workers/WorkerRenewalCard";
+import { WorkerExportDialog } from "@/components/workers/WorkerExportDialog";
 import type { Organization, WorkerWithHistories } from "@/types/db";
 
 interface Row {
@@ -58,6 +59,22 @@ export function WorkersExplorer({
   const [filter, setFilter] = useState<WorkerFilterState>(INITIAL_FILTER);
   const [pageSize, setPageSize] = useState<number>(PAGE_SIZES[0]);
   const [page, setPage] = useState(1);
+  // Excel 出力: 「選んで出力」モードでカードにチェックを付け、選んだ人だけを書き出す
+  const [selecting, setSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [exportOpen, setExportOpen] = useState(false);
+  const toggleSelected = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const selectMany = (ids: string[]) => setSelectedIds((prev) => new Set([...prev, ...ids]));
+  const stopSelecting = () => {
+    setSelecting(false);
+    setSelectedIds(new Set());
+  };
 
   // 絞り込みが変わったら1ページ目に戻す
   const applyFilter: React.Dispatch<React.SetStateAction<WorkerFilterState>> = (next) => {
@@ -105,6 +122,13 @@ export function WorkersExplorer({
       calc: calcSsw(worker.work_histories.map(toCalcHistory), today),
     }));
   }, [workers]);
+
+  // 出力用: 外国人ID → 通算の計算結果
+  const calcById = useMemo(() => new Map(rows.map((r) => [r.worker.id, r.calc])), [rows]);
+  const selectedWorkers = useMemo(
+    () => rows.filter((r) => selectedIds.has(r.worker.id)).map((r) => r.worker),
+    [rows, selectedIds],
+  );
 
   const summary = useMemo(() => {
     const isWithin1Year = (r: Row) =>
@@ -269,6 +293,76 @@ export function WorkersExplorer({
         onChange={applyFilter}
       />
 
+      {/* Excel 出力: 選んだ外国人 × 選んだ項目 */}
+      {selecting ? (
+        <div className="sticky top-14 z-10 flex flex-wrap items-center gap-2 rounded-xl border-2 border-brand bg-surface px-3 py-2 text-xs shadow-md">
+          <span className="font-bold">
+            <CheckSquare size={14} className="mr-1 inline" />
+            {selectedIds.size}名を選択中
+          </span>
+          <button
+            type="button"
+            onClick={() => selectMany(paged.map((r) => r.worker.id))}
+            className="rounded-full border border-border px-2.5 py-1 font-bold text-brand"
+          >
+            表示中の{paged.length}名を選ぶ
+          </button>
+          <button
+            type="button"
+            onClick={() => selectMany(filtered.map((r) => r.worker.id))}
+            className="rounded-full border border-border px-2.5 py-1 font-bold text-brand"
+          >
+            絞り込み結果の{filtered.length}名を選ぶ
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedIds(new Set())}
+            disabled={selectedIds.size === 0}
+            className="rounded-full border border-border px-2.5 py-1 font-bold text-muted disabled:opacity-40"
+          >
+            選択を解除
+          </button>
+          <span className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setExportOpen(true)}
+              disabled={selectedIds.size === 0}
+              className="inline-flex min-h-[36px] items-center gap-1 rounded-xl bg-brand px-3 font-bold text-brand-foreground disabled:opacity-40"
+            >
+              <FileSpreadsheet size={15} />
+              Excel 出力（{selectedIds.size}名）
+            </button>
+            <button
+              type="button"
+              onClick={stopSelecting}
+              className="inline-flex min-h-[36px] items-center gap-1 rounded-xl border border-border px-3 font-bold text-muted"
+            >
+              <X size={14} />
+              やめる
+            </button>
+          </span>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setSelecting(true)}
+          className="inline-flex min-h-[40px] items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-sm font-bold text-brand"
+        >
+          <FileSpreadsheet size={16} />
+          選んで Excel 出力
+        </button>
+      )}
+      {exportOpen && (
+        <WorkerExportDialog
+          workers={selectedWorkers}
+          ctx={{
+            orgName: (id) => (id ? (orgNames.get(id) ?? "") : ""),
+            calc: (w) => calcById.get(w.id) ?? null,
+          }}
+          onClose={() => setExportOpen(false)}
+        />
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-bold text-muted">
           {filtered.length}名
@@ -313,23 +407,37 @@ export function WorkersExplorer({
         /* 「在留期限4ヶ月以内」は在留更新対象ページと同じカード表示にする */
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {paged.map(({ worker }) => (
-            <WorkerRenewalCard
+            <SelectableCard
               key={worker.id}
-              worker={worker}
-              orgName={
-                worker.current_organization_id
-                  ? (orgNames.get(worker.current_organization_id) ?? null)
-                  : null
-              }
-              today={todayStr()}
-              canEdit={canEdit}
-            />
+              selecting={selecting}
+              selected={selectedIds.has(worker.id)}
+              name={displayName(worker)}
+              onToggle={() => toggleSelected(worker.id)}
+            >
+              <WorkerRenewalCard
+                worker={worker}
+                orgName={
+                  worker.current_organization_id
+                    ? (orgNames.get(worker.current_organization_id) ?? null)
+                    : null
+                }
+                today={todayStr()}
+                canEdit={canEdit}
+              />
+            </SelectableCard>
           ))}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {paged.map(({ worker, calc }) => (
-            <Link key={worker.id} href={`/workers/${worker.id}`}>
+            <SelectableCard
+              key={worker.id}
+              selecting={selecting}
+              selected={selectedIds.has(worker.id)}
+              name={displayName(worker)}
+              onToggle={() => toggleSelected(worker.id)}
+            >
+            <Link href={`/workers/${worker.id}`}>
               <Card className="p-4">
                 <div className="mb-1 flex items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -371,6 +479,7 @@ export function WorkersExplorer({
                 </div>
               </Card>
             </Link>
+            </SelectableCard>
           ))}
         </div>
       )}
@@ -422,6 +531,42 @@ export function WorkersExplorer({
       <p className="pb-2 text-center text-[11px] leading-relaxed text-muted">
         通算期間は日数合算による目安です。正式な判断は出入国在留管理庁にご確認ください。
       </p>
+    </div>
+  );
+}
+
+// 「選んで Excel 出力」モードのカード。選択中はカード全体を押すとチェックが付き、詳細へは移らない
+function SelectableCard({
+  selecting,
+  selected,
+  name,
+  onToggle,
+  children,
+}: {
+  selecting: boolean;
+  selected: boolean;
+  name: string;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  if (!selecting) return <>{children}</>;
+  return (
+    <div className={`relative rounded-2xl ${selected ? "ring-2 ring-brand" : ""}`}>
+      {children}
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-pressed={selected}
+        aria-label={`${name}を${selected ? "選択から外す" : "選ぶ"}`}
+        className="absolute inset-0 z-10 rounded-2xl bg-transparent"
+      />
+      <span
+        className={`pointer-events-none absolute right-3 top-3 z-20 flex h-7 w-7 items-center justify-center rounded-lg ${
+          selected ? "bg-brand text-brand-foreground" : "border border-border bg-surface text-muted"
+        }`}
+      >
+        {selected ? <CheckSquare size={16} /> : <Square size={16} />}
+      </span>
     </div>
   );
 }
