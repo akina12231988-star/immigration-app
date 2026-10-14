@@ -27,6 +27,7 @@ import {
 } from "@/lib/supabase/queries/contract-changes";
 import type { WorkerForResignation } from "@/lib/supabase/queries/workers";
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
+import { fetchNextTodoNo } from "@/lib/supabase/queries/todos";
 import { messengerWebUrl } from "@/lib/messenger-link";
 import { notionAppUrl } from "@/lib/notion-link";
 import { normalizeOrganizationIntake } from "@/lib/organization-intake";
@@ -386,6 +387,15 @@ function ContractChangeDialog({
   const [items, setItems] = useState<string[]>(editing?.items ?? []);
   const [detail, setDetail] = useState(editing?.detail ?? "");
   const [todoNo, setTodoNo] = useState(editing?.todo_no ?? "");
+  // 随時報告TODO番号を通し番号で自動発行（退職の随時報告と同じ採番）
+  const autoAssignTodo = async () => {
+    setError(null);
+    try {
+      setTodoNo(await fetchNextTodoNo(createClient()));
+    } catch (err) {
+      setError(dbErrorMessage(err, "0102_todos.sql", "TODO番号の自動発行に失敗しました"));
+    }
+  };
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -577,13 +587,24 @@ function ContractChangeDialog({
 
         <label className="flex flex-col gap-1">
           <span className="text-xs font-bold text-muted">随時報告TODO番号（任意）</span>
-          <input
-            type="text"
-            value={todoNo}
-            onChange={(e) => setTodoNo(e.target.value)}
-            placeholder="例: TODO-2005"
-            className={INPUT}
-          />
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={todoNo}
+              onChange={(e) => setTodoNo(e.target.value)}
+              placeholder="例: TODO-2005"
+              className={`${INPUT} min-w-0 flex-1`}
+            />
+            <button
+              type="button"
+              onClick={() => void autoAssignTodo()}
+              disabled={busy}
+              className="shrink-0 rounded-xl border border-border px-3 text-xs font-bold text-brand disabled:opacity-50"
+            >
+              自動発行
+            </button>
+          </div>
+          <span className="text-[11px] text-muted">「自動発行」で、TODO・申請準備・随時報告の既存番号の続きの番号が入ります。</span>
         </label>
 
         <p className="rounded-xl bg-background px-3 py-2.5 text-[11px] leading-relaxed text-muted">
