@@ -100,7 +100,7 @@ function KeywordInput({ value, onChange }: { value: string; onChange: (v: string
       autoCapitalize="off"
       spellCheck={false}
       enterKeyHint="search"
-      placeholder="氏名・フリガナ・国籍・在留カード番号で検索"
+      placeholder="氏名・フリガナ・国籍・在留カード番号・住所で検索"
       aria-label="外国人を検索"
       className="w-full rounded-xl border border-border bg-surface py-3 pl-10 pr-3 text-sm focus:border-brand focus:outline-none"
     />
