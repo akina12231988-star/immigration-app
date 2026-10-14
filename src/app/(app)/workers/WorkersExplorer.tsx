@@ -200,6 +200,7 @@ export function WorkersExplorer({
         if (worker.current_organization_id !== filter.orgId) return false;
       }
       if (!kw) return true;
+      // 住所は「八代市」「郡築」のように一部でも探せるよう、全角の数字・英字は半角にそろえて比べる
       return [
         worker.name,
         worker.kana,
@@ -207,10 +208,13 @@ export function WorkersExplorer({
         worker.residence_card_no,
         worker.field,
         worker.jobseeker_no ?? "", // 求職受付番号（R8KS-2 など）でも探せる
+        worker.address, // 日本の住所（市町村名・町名・アパート名など）
+        worker.residence_note, // 居住先（社宅・自分のアパート など）
       ]
         .join("\n")
+        .normalize("NFKC")
         .toLowerCase()
-        .includes(kw);
+        .includes(kw.normalize("NFKC"));
     });
 
     const collator = new Intl.Collator("ja");

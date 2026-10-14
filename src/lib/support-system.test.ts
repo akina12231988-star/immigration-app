@@ -172,10 +172,14 @@ describe("orgSupportManagers / orgSupportStaff", () => {
 });
 
 describe("1号特定技能外国人の判定", () => {
-  it("特定技能1号だけを対象にする（特定活動は除く）", () => {
+  it("特定技能1号と、特定活動（特定技能1号移行準備）を対象にする（2号側の特定活動は除く）", () => {
     expect(isSsw1Residence("特定技能1号")).toBe(true);
     expect(isSsw1Residence("特定技能1号更新")).toBe(true);
-    expect(isSsw1Residence("特定活動（特定技能1号移行準備）")).toBe(false);
+    expect(isSsw1Residence("特定活動（特定技能1号移行準備）")).toBe(true);
+    expect(isSsw1Residence("特定活動（特定技能１号移行準備）")).toBe(true);
+    expect(isSsw1Residence("特定活動（特定技能1号以降準備）")).toBe(true);
+    expect(isSsw1Residence("特定活動（特定技能2号移行準備）")).toBe(false);
+    expect(isSsw1Residence("特定活動")).toBe(false);
     expect(isSsw1Residence("特定技能2号")).toBe(false);
     expect(isSsw1Residence("")).toBe(false);
   });

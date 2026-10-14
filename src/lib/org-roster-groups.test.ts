@@ -39,9 +39,10 @@ describe("notCountedReason", () => {
     expect(notCountedReason({ ...ok, status: "申請準備中" })).toBe("状態が「申請準備中」");
   });
 
-  it("特定活動は在留資格の理由を返す", () => {
-    expect(notCountedReason({ ...ok, residenceStatus: "特定活動（特定技能1号移行準備）" })).toBe(
-      "在留資格が特定活動",
+  it("特定活動（特定技能1号移行準備）は数に入る。2号移行準備などの特定活動は在留資格の理由を返す", () => {
+    expect(notCountedReason({ ...ok, residenceStatus: "特定活動（特定技能1号移行準備）" })).toBeNull();
+    expect(notCountedReason({ ...ok, residenceStatus: "特定活動（特定技能2号移行準備）" })).toBe(
+      "在留資格が特定活動（特定活動（特定技能2号移行準備））。1号移行準備の特定活動だけ数に入ります",
     );
   });
 

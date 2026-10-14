@@ -36,6 +36,6 @@ export function notCountedReason(worker: {
   if (worker.status !== "在籍中") return `状態が「${worker.status || "未設定"}」`;
   if (isSsw1Residence(worker.residenceStatus)) return null;
   return (worker.residenceStatus ?? "").includes("特定活動")
-    ? "在留資格が特定活動"
+    ? `在留資格が特定活動（${worker.residenceStatus}）。1号移行準備の特定活動だけ数に入ります`
     : `在留資格が特定技能1号ではない（${worker.residenceStatus || "未設定"}）`;
 }
