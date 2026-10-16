@@ -4,6 +4,7 @@ import {
   displayTodoNo,
   emptyExamAttempt,
   emptyTodoExam,
+  examApplyBlocked,
   examAccountMissing,
   examChoiceShort,
   examCurrentStep,
@@ -15,6 +16,7 @@ import {
   isImmigrationAppliedStatus,
   isWaitingDocsStatus,
   nextTodoNo,
+  normalizeExamAttempt,
   isSsw2ExamTitle,
   normalizeTodoExam,
   normalizeTodoKey,
@@ -285,7 +287,7 @@ describe("試験の申込の進み具合（examProgress）", () => {
     expect(steps.map((s) => s.key)).toEqual(["choice", "account", "apply", "exam", "result"]);
     expect(steps.map((s) => s.state)).toEqual(["current", "todo", "todo", "todo", "todo"]);
     expect(steps[1].detail).toBe("4項目が未入力");
-    expect(steps[2].detail).toBe("1回目 未申込");
+    expect(steps[2].detail).toBe("1回目 未申込（代金待ち）");
     expect(steps[3].detail).toBe("未定");
     expect(steps[4].detail).toBe("未確認");
     expect(examCurrentStep(steps)?.key).toBe("choice");
@@ -325,6 +327,41 @@ describe("試験の申込の進み具合（examProgress）", () => {
     const apply = steps.find((s) => s.key === "apply")!;
     expect(apply.state).toBe("todo"); // アカウントが先に「いまここ」
     expect(apply.detail).toBe("1回目 2026-10-01・代金未受取");
+  });
+
+  test("代金を受け取る前は申込できない。受け取るか、後払いの指示があれば申込できる", () => {
+    expect(examApplyBlocked(emptyExamAttempt())).toBe(true);
+    expect(examApplyBlocked({ ...emptyExamAttempt(), fee_received: true })).toBe(false);
+    expect(examApplyBlocked({ ...emptyExamAttempt(), deferred: true })).toBe(false);
+    // すでに申込済みなら止めない（過去の記録。申込日だけ入っている古い記録も同じ）
+    expect(examApplyBlocked({ ...emptyExamAttempt(), applied: true })).toBe(false);
+    expect(examApplyBlocked({ ...emptyExamAttempt(), applied_on: "2026-10-01" })).toBe(false);
+  });
+
+  test("申込・代金の説明に、代金待ち・後払いを出す", () => {
+    const waiting = examProgress(
+      { ...emptyTodoExam(), attempts: [emptyExamAttempt()] },
+      "１号農業試験申込",
+      today,
+    );
+    expect(waiting.find((s) => s.key === "apply")?.detail).toBe("1回目 未申込（代金待ち）");
+    const deferred = examProgress(
+      { ...emptyTodoExam(), attempts: [{ ...emptyExamAttempt(), deferred: true }] },
+      "１号農業試験申込",
+      today,
+    );
+    expect(deferred.find((s) => s.key === "apply")?.detail).toBe("1回目 未申込（後払い）");
+    const appliedDeferred = examProgress(
+      {
+        ...emptyTodoExam(),
+        attempts: [{ ...emptyExamAttempt(), deferred: true, applied_on: "2026-10-01", fee: "8,000円" }],
+      },
+      "１号農業試験申込",
+      today,
+    );
+    expect(appliedDeferred.find((s) => s.key === "apply")?.detail).toBe("1回目 2026-10-01・後払い（代金未受取）");
+    // 古いデータに後払いの項目が無くても読める
+    expect(normalizeExamAttempt({ applied: true })).toMatchObject({ deferred: false, deferred_on: "" });
   });
 
   test("試験日を過ぎて合否が未確認なら合否を赤にする", () => {

@@ -728,13 +728,13 @@ export function WorkerDetail({
               <SswStatusBadge status={calc.status} residenceStatus={worker.residence_status} />
               <SupportBadge support={worker.support} />
               {/* 特定技能2号の試験に合格している人は、どのタブにいても分かるように出す
-                  （試験の申込のTODOで「合格」にすると入る） */}
+                  （試験の申込のTODOで「合格」にすると入る。基本情報の「特定技能2号 合格試験」でも直せる） */}
               {worker.ssw2_exam && (
                 <span
                   title={`特定技能2号の合格試験名: ${worker.ssw2_exam}`}
-                  className="rounded-full bg-status-approved-bg px-2 py-0.5 text-[11px] font-bold text-status-approved-fg"
+                  className="inline-flex shrink-0 items-center rounded-full border border-status-approved-fg/40 bg-status-approved-bg px-2.5 py-1 text-[11px] font-bold text-status-approved-fg"
                 >
-                  特定技能2号合格
+                  🎉 ２号試験合格者
                 </span>
               )}
             </div>

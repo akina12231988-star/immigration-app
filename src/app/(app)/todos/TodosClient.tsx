@@ -50,8 +50,10 @@ import {
   TODO_KINDS,
   TODO_STAGES,
   displayTodoNo,
+  examUnpaidAttempt,
   isCheckingStatus,
   isWaitingDocsStatus,
+  normalizeTodoExam,
   normalizeTodoKey,
   stageOfStatus,
   type TodoKind,
@@ -59,6 +61,7 @@ import {
   type TodoStatusOption,
 } from "@/lib/todo";
 import { ExamTodoSection } from "@/components/todos/ExamTodoSection";
+import { ExamFeeAccountCard } from "@/components/todos/ExamFeeAccount";
 import {
   TODO_TRASH_DAYS,
   deleteTodo,
@@ -532,6 +535,20 @@ export function TodosClient({
   const kindTodos = useMemo(
     () => todos.filter((t) => !t.deleted_at && t.kind === kind),
     [todos, kind],
+  );
+  // 試験の申込で、代金をまだ本人から受け取っていない人（完了したものは除く）。
+  // 一覧の上にまとめて出し、だれに振込をお願いすればよいかひと目で分かるようにする
+  const examUnpaid = useMemo(
+    () =>
+      kind !== "試験の申込"
+        ? []
+        : kindTodos
+            .filter((t) => stageOfStatus(t.status, kindOptions) !== "完了")
+            .flatMap((t) => {
+              const u = examUnpaidAttempt(normalizeTodoExam(t.exam));
+              return u ? [{ todo: t, ...u }] : [];
+            }),
+    [kind, kindTodos, kindOptions],
   );
   // 削除フォルダ（この構成の分）。30日たつと完全に削除される
   const trashedTodos = useMemo(
@@ -1319,6 +1336,32 @@ export function TodosClient({
               </Card>
             );
           })}
+          </div>
+        </div>
+      )}
+
+      {/* 試験の代金をまだ受け取っていない人のまとめ（振込のお願い・確認をする相手がひと目で分かるようにする） */}
+      {kind === "試験の申込" && !loading && examUnpaid.length > 0 && (
+        <div className="rounded-2xl border border-seal/40 bg-seal/5 px-3 py-2.5">
+          <p className="flex items-center gap-1.5 text-sm font-bold text-seal">
+            <TriangleAlert size={15} />
+            試験の代金をまだ受け取っていない人（{examUnpaid.length}人）— 振込をお願いして、受け取ったら各TODOで「本人から代金を受け取った」を押してください
+          </p>
+          <ul className="mt-1.5 space-y-0.5 pl-6 text-xs text-seal">
+            {examUnpaid.map(({ todo: t, no, attempt }) => (
+              <li key={t.id}>
+                {displayTodoNo(t.todo_no)}　<span className="font-bold">{t.worker_name ?? "（外国人ひも付けなし）"}</span>　{t.title}　{no}回目
+                {attempt.fee.trim() && `・代金 ${attempt.fee}`}
+                {attempt.applied || attempt.applied_on
+                  ? `・申込済（${attempt.applied_on || "日付未登録"}）`
+                  : "・未申込（代金待ち）"}
+                {attempt.deferred && !attempt.fee_received && "・後払いの指示あり"}
+                {attempt.exam_date && `・試験日 ${attempt.exam_date}`}
+              </li>
+            ))}
+          </ul>
+          <div className="mt-2">
+            <ExamFeeAccountCard compact />
           </div>
         </div>
       )}
