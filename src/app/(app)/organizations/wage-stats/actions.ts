@@ -15,7 +15,7 @@ interface Err {
   message: string;
 }
 
-const MIGRATION = "0181_organization_wage_replies.sql";
+const MIGRATION = "0182_organization_wage_replies_monthly.sql";
 
 function cleanInput(input: OrganizationWageReplyInput): OrganizationWageReplyInput | string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.effective_on)) return "改定の適用日が正しくありません";
@@ -30,6 +30,8 @@ function cleanInput(input: OrganizationWageReplyInput): OrganizationWageReplyInp
     replied_on: date(input.replied_on),
     hourly_ssw1: yen(input.hourly_ssw1),
     hourly_ssw2: yen(input.hourly_ssw2),
+    monthly_ssw1: yen(input.monthly_ssw1),
+    monthly_ssw2: yen(input.monthly_ssw2),
     note: (input.note ?? "").trim(),
   };
 }
