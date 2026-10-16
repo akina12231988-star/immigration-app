@@ -316,9 +316,12 @@ export async function listWorkerDocs(workerId: string): Promise<WorkerDocView[]>
     });
   }
 
-  // worker_documents に無い種別は申請登録時の画像を現データとして補う
+  // 「現在」の画像（過去の在籍期間タブから登録したものを除く）が無い種別は、
+  // 申請登録時の画像を現データとして補う。
+  // 過去タブから「この期間に登録」した画像（effective_on あり）は当時の画像なので、
+  // それだけがあっても現在の分は補い続ける（過去を登録したら現在が消えてしまうのを防ぐ）
   const kinds: WorkerDocKind[] = ["在留カード", "指定書"];
-  const missing = kinds.filter((k) => !result.some((d) => d.kind === k));
+  const missing = kinds.filter((k) => !result.some((d) => d.kind === k && !d.effectiveOn));
   if (missing.length > 0) {
     const { data: apps } = await admin
       .from("immigration_applications")
@@ -378,11 +381,13 @@ export async function getWorkerLatestDocUrls(
 
   async function latest(kind: string): Promise<string> {
     // 外国人管理で差し替えた worker_documents を優先
+    // （過去の在籍期間タブから登録した当時の画像（effective_on あり）は最新とみなさない）
     const { data: doc } = await admin!
       .from("worker_documents")
       .select("storage_path")
       .eq("worker_id", workerId)
       .eq("kind", kind)
+      .is("effective_on", null)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -425,11 +430,13 @@ export async function getCurrentResidenceCard(workerId: string): Promise<Current
   const isPdfPath = (path: string, mime?: string | null) =>
     mime === "application/pdf" || /\.pdf$/i.test(path);
 
+  // 過去の在籍期間タブから登録した当時の画像（effective_on あり）は現在の在留カードとして使わない
   const { data: doc } = await admin
     .from("worker_documents")
     .select("storage_path, mime_type, external_url, created_at")
     .eq("worker_id", workerId)
     .eq("kind", "在留カード")
+    .is("effective_on", null)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
