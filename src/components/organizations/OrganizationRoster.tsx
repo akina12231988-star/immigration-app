@@ -155,6 +155,13 @@ export function OrganizationRoster({
           <BadgeJapaneseYen size={14} />
           時給の一括登録（◯月◯日から1号◯円・2号◯円）
         </Link>
+        {/* 全機関の送付・回答の状況と、地域ごとの時給の集計 */}
+        <Link
+          href="/organizations/wage-stats"
+          className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-bold text-brand hover:bg-brand/5"
+        >
+          回答状況・地域別の時給（全機関）
+        </Link>
         <span className="text-[11px] text-muted">案内文は在籍中・審査中の人の名簿に改定後の時給を書いてもらう欄付き。一括登録は返事をもとに全員の新しい時給を1回で入れられます。</span>
       </div>
       <Section

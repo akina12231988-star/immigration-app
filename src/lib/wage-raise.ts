@@ -5,6 +5,7 @@
 // 確認のうえ1回の操作で worker_wages に1行ずつ入れる。1人ずつの金額は表で直せる。
 
 import { isSsw1Residence } from "@/lib/support-system";
+import { monthlyFromHourly } from "@/lib/wage";
 
 export const WAGE_RAISE_GROUPS = ["在籍中", "審査中・受け取り待ち", "準備中"] as const;
 export type WageRaiseGroup = (typeof WAGE_RAISE_GROUPS)[number];
@@ -12,7 +13,14 @@ export type WageRaiseGroup = (typeof WAGE_RAISE_GROUPS)[number];
 export interface WageRaiseAmounts {
   ssw1: number; // 特定技能1号（と、それ以外の在留資格）の時給
   ssw2: number; // 特定技能2号（移行準備の特定活動を含む）の時給
+  // 現在の賃金が月給の人に入れる新しい月給（任意）。0 なら時給 × 年間所定労働時間 ÷ 12 で仮置き
+  monthly1?: number; // 1号の月給
+  monthly2?: number; // 2号の月給
+  annualHours?: number; // 所属機関の年間所定労働時間（0 = 未登録。換算できない）
 }
+
+// 登録する賃金の区分。現在の賃金が月給の人は月給のまま新しい額を入れる
+export type WageRaiseKind = "時給" | "月給";
 
 // 一括登録の対象になる人の必要な項目（所属機関の在籍名簿の行から）
 export interface WageRaiseWorkerLike {
@@ -28,7 +36,8 @@ export interface WageRaiseWorkerLike {
 export interface WageRaiseRow<T extends WageRaiseWorkerLike> {
   worker: T;
   group: WageRaiseGroup;
-  proposed: number | null; // 在留資格から仮に決めた時給（金額未入力なら null）
+  kind: WageRaiseKind; // 登録する区分（現在が月給の人は月給）
+  proposed: number | null; // 在留資格から仮に決めた時給または月給（金額未入力・換算できないときは null）
   checked: boolean; // 登録の対象にするか（既定）
   note: string; // 確認してほしいこと（特定活動・時給以外・登録済み など）
 }
@@ -48,6 +57,37 @@ export function proposedWage(
   return amount > 0 ? amount : null;
 }
 
+// 現在の賃金が月給の人に仮に入れる月給。
+// 上で月給が入っていればその額、無ければ時給 × 年間所定労働時間 ÷ 12（換算できなければ null）
+export function proposedMonthly(
+  residenceStatus: string | null | undefined,
+  amounts: WageRaiseAmounts,
+): number | null {
+  const ssw2 = isSsw2Residence(residenceStatus);
+  const explicit = (ssw2 ? amounts.monthly2 : amounts.monthly1) ?? 0;
+  if (explicit > 0) return explicit;
+  const hourly = proposedWage(residenceStatus, amounts);
+  if (hourly === null) return null;
+  return monthlyFromHourly(hourly, amounts.annualHours ?? 0);
+}
+
+// 月給の人の仮置きの説明（換算の根拠が分かるように）
+export function monthlyProposalNote(
+  residenceStatus: string | null | undefined,
+  amounts: WageRaiseAmounts,
+): string {
+  const ssw2 = isSsw2Residence(residenceStatus);
+  const explicit = (ssw2 ? amounts.monthly2 : amounts.monthly1) ?? 0;
+  if (explicit > 0) return `現在の賃金が月給です。上で入れた${ssw2 ? "2号" : "1号"}の月給で登録します`;
+  const hourly = proposedWage(residenceStatus, amounts);
+  const hours = amounts.annualHours ?? 0;
+  if (hourly !== null && hours > 0) {
+    return `現在の賃金が月給です。時給${hourly.toLocaleString("ja-JP")}円 × 年間所定労働時間${hours.toLocaleString("ja-JP")}時間 ÷ 12 で月給を仮置きしています。金額を確認してください`;
+  }
+  if (hours > 0) return "現在の賃金が月給です。上で時給か月給を入れると月給を仮置きします";
+  return "現在の賃金が月給です。所属機関に年間所定労働時間が未登録のため換算できません。上の「月給」欄か、この行に新しい月給を入れてください";
+}
+
 // 「1,100」「１１００円」などを数値にする（数字以外は捨てる）。空は 0
 export function parseYen(input: string): number {
   const digits = (input ?? "").normalize("NFKC").replace(/[^0-9]/g, "");
@@ -64,7 +104,8 @@ export function wageRaiseNote(startedOn: string): string {
 //   notYet        … この機関に紐づいているが「在籍中」ではない人（申請準備中など）
 //   applying      … この機関への申請が審査中・許可済（在留カード受け取り待ち）の人
 //   underReviewIds… notYet のうち申請が審査中の人
-// 既定でチェックを外すのは、金額が決まらない人・現在の賃金が時給でない人・同じ時給が登録済みの人
+// 現在の賃金が月給の人は月給のまま新しい額を仮置きする（上の月給欄、無ければ時給からの換算）。
+// 既定でチェックを外すのは、金額が決まらない人・現在の賃金が時給・月給以外の人・同じ額が登録済みの人
 export function buildWageRaiseRows<T extends WageRaiseWorkerLike>(
   active: T[],
   notYet: T[],
@@ -91,7 +132,11 @@ export function buildWageRaiseRows<T extends WageRaiseWorkerLike>(
     .forEach((w) => push(w, "準備中"));
 
   return list.map(({ worker, group }) => {
-    const proposed = proposedWage(worker.residenceStatus, amounts);
+    const kind: WageRaiseKind = worker.wageKind === "月給" ? "月給" : "時給";
+    const proposed =
+      kind === "月給"
+        ? proposedMonthly(worker.residenceStatus, amounts)
+        : proposedWage(worker.residenceStatus, amounts);
     const notes: string[] = [];
     let checked = proposed !== null;
     const s = (worker.residenceStatus ?? "").normalize("NFKC");
@@ -102,20 +147,22 @@ export function buildWageRaiseRows<T extends WageRaiseWorkerLike>(
     } else if (!isSsw1Residence(s) && !isSsw2Residence(s)) {
       notes.push(`在留資格が特定技能ではありません（${s}）。金額を確認してください`);
     }
-    if (worker.wageKind && worker.wageKind !== "時給") {
-      notes.push(`現在の賃金が時給ではありません（${worker.wageKind}）。対象から外しています`);
+    if (kind === "月給") {
+      notes.push(monthlyProposalNote(worker.residenceStatus, amounts));
+    } else if (worker.wageKind && worker.wageKind !== "時給") {
+      notes.push(`現在の賃金が時給・月給ではありません（${worker.wageKind}）。対象から外しています`);
       checked = false;
     }
     if (
       proposed !== null &&
-      worker.wageKind === "時給" &&
+      worker.wageKind === kind &&
       worker.wageAmount === proposed &&
       (worker.wageStartedOn ?? "") >= startedOn
     ) {
-      notes.push("同じ時給がこの日以降で登録済みです。対象から外しています");
+      notes.push(`同じ${kind}がこの日以降で登録済みです。対象から外しています`);
       checked = false;
     }
-    return { worker, group, proposed, checked, note: notes.join("。") };
+    return { worker, group, kind, proposed, checked, note: notes.join("。") };
   });
 }
 
