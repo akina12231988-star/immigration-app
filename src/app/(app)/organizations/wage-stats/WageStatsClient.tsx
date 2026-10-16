@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Check, Download, Loader2, Send } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { formatAmountInput } from "@/lib/amount-format";
+import { hourlyFromMonthly } from "@/lib/wage";
 import { buildXlsx, downloadBlob } from "@/lib/xlsx-export";
 import {
   buildRegionStatsSheet,
@@ -131,6 +132,8 @@ export function WageStatsClient({
         replied_on: v.reply?.replied_on ?? null,
         hourly_ssw1: v.reply?.hourly_ssw1 ?? null,
         hourly_ssw2: v.reply?.hourly_ssw2 ?? null,
+        monthly_ssw1: v.reply?.monthly_ssw1 ?? null,
+        monthly_ssw2: v.reply?.monthly_ssw2 ?? null,
         note: v.reply?.note ?? "",
       })),
     );
@@ -163,7 +166,7 @@ export function WageStatsClient({
       <p className="text-xs leading-relaxed text-muted">
         最低賃金の改定ごとに、所属機関へ送った「時給のご確認」の案内の送付・返事の状況を管理し、返事のあった時給を地域ごとに集計します。
         「時給の一括登録」で改定日以降の時給を登録した機関は、自動で「回答あり」になり、その時給（いちばん多い額）が回答の額として入ります。
-        返事をもらったが登録はまだ、という機関は、この画面で回答の時給を記録しておけます。
+        返事をもらったが登録はまだ、という機関は、この画面で回答の時給（月給で返事が来た機関は月給）を記録しておけます。月給の回答は、所属機関の年間所定労働時間で時給に換算して集計に入れます。
       </p>
 
       {repliesError && (
@@ -267,7 +270,7 @@ export function WageStatsClient({
           <p className="px-4 pb-4 text-center text-xs text-muted">該当する所属機関はありません。</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1000px] border-collapse text-xs">
+            <table className="w-full min-w-[1200px] border-collapse text-xs">
               <thead>
                 <tr className="bg-background text-left text-[11px] text-muted">
                   <th className="px-3 py-2 font-bold">所属機関</th>
@@ -276,8 +279,8 @@ export function WageStatsClient({
                   <th className="px-3 py-2 font-bold">状況</th>
                   <th className="w-32 px-3 py-2 font-bold">送付日</th>
                   <th className="w-32 px-3 py-2 font-bold">回答日</th>
-                  <th className="w-28 px-3 py-2 font-bold">1号の時給</th>
-                  <th className="w-28 px-3 py-2 font-bold">2号の時給</th>
+                  <th className="w-44 px-3 py-2 font-bold">1号の回答（時給／月給）</th>
+                  <th className="w-44 px-3 py-2 font-bold">2号の回答（時給／月給）</th>
                   <th className="px-3 py-2 font-bold">備考</th>
                   <th className="w-20 px-3 py-2 font-bold"></th>
                 </tr>
@@ -333,7 +336,7 @@ export function WageStatsClient({
         </div>
         <p className="px-4 pt-2 text-[11px] text-muted">
           {source === "replies"
-            ? "「回答あり」の機関の回答の時給（機関ごとに1号・2号それぞれ1件）を地域ごとにまとめています。件数は機関数です。"
+            ? "「回答あり」の機関の回答の時給（機関ごとに1号・2号それぞれ1件。月給の回答は年間所定労働時間で時給に換算）を地域ごとにまとめています。件数は機関数です。"
             : "在籍中の人の登録済みの現在の時給（月給の人は年間所定労働時間で時給に換算）を地域ごとにまとめています。件数は人数です。"}
         </p>
         {samples.length === 0 ? (
@@ -440,6 +443,8 @@ function ReplyRow({
   const [repliedOn, setRepliedOn] = useState(r?.replied_on ?? "");
   const [h1, setH1] = useState(r?.hourly_ssw1 != null ? String(r.hourly_ssw1) : "");
   const [h2, setH2] = useState(r?.hourly_ssw2 != null ? String(r.hourly_ssw2) : "");
+  const [m1, setM1] = useState(r?.monthly_ssw1 != null ? String(r.monthly_ssw1) : "");
+  const [m2, setM2] = useState(r?.monthly_ssw2 != null ? String(r.monthly_ssw2) : "");
   const [note, setNote] = useState(r?.note ?? "");
   const [busy, setBusy] = useState(false);
 
@@ -449,6 +454,8 @@ function ReplyRow({
     repliedOn !== (r?.replied_on ?? "") ||
     (parseHourlyInput(h1) ?? null) !== (r?.hourly_ssw1 ?? null) ||
     (parseHourlyInput(h2) ?? null) !== (r?.hourly_ssw2 ?? null) ||
+    (parseHourlyInput(m1) ?? null) !== (r?.monthly_ssw1 ?? null) ||
+    (parseHourlyInput(m2) ?? null) !== (r?.monthly_ssw2 ?? null) ||
     note !== (r?.note ?? "");
 
   const save = async (over: Partial<{ status: WageReplyStatus; sentOn: string; repliedOn: string }> = {}) => {
@@ -461,6 +468,8 @@ function ReplyRow({
       replied_on: (over.repliedOn ?? repliedOn) || null,
       hourly_ssw1: parseHourlyInput(h1),
       hourly_ssw2: parseHourlyInput(h2),
+      monthly_ssw1: parseHourlyInput(m1),
+      monthly_ssw2: parseHourlyInput(m2),
       note,
     });
     setBusy(false);
@@ -482,21 +491,54 @@ function ReplyRow({
     void save(over);
   };
 
-  const hourlyCell = (group: "1号" | "2号", text: string, setText: (v: string) => void) => {
-    const fromWages = view.hourlyFromWages[group] ? view.hourly[group] : null;
-    const value = parseHourlyInput(text) ?? fromWages;
-    const diff = diffText(value, minimum);
+  // 1号・2号の回答の欄。時給と月給の両方を入れられる（月給で返事が来る機関もあるため）。
+  // 月給は年間所定労働時間で時給に換算して最低賃金と比べる
+  const amountCell = (
+    group: "1号" | "2号",
+    hourlyText: string,
+    setHourlyText: (v: string) => void,
+    monthlyText: string,
+    setMonthlyText: (v: string) => void,
+  ) => {
+    const hourlyFromWages = view.hourlyFromWages[group] ? view.hourly[group] : null;
+    const monthlyFromWages = view.monthlyFromWages[group] ? view.monthly[group] : null;
+    const hourly = parseHourlyInput(hourlyText) ?? hourlyFromWages;
+    const monthly = parseHourlyInput(monthlyText) ?? monthlyFromWages;
+    const hours = view.data.org.annualWorkHours;
+    const converted = hourly == null && monthly != null ? hourlyFromMonthly(monthly, hours) : null;
+    const diff = diffText(hourly ?? converted, minimum);
     return (
       <td className="px-3 py-1.5">
-        <input
-          value={formatAmountInput(text)}
-          onChange={(e) => setText(e.target.value)}
-          inputMode="numeric"
-          disabled={!canEdit || busy}
-          placeholder={fromWages != null ? `${fromWages.toLocaleString("ja-JP")}（登録済み）` : "未回答"}
-          aria-label={`${view.data.org.name} の${group}の時給`}
-          className={`${FIELD} w-full text-right tabular-nums`}
-        />
+        <div className="flex items-center gap-1">
+          <span className="w-7 shrink-0 text-[10px] text-muted">時給</span>
+          <input
+            value={formatAmountInput(hourlyText)}
+            onChange={(e) => setHourlyText(e.target.value)}
+            inputMode="numeric"
+            disabled={!canEdit || busy}
+            placeholder={hourlyFromWages != null ? `${hourlyFromWages.toLocaleString("ja-JP")} 登録済` : "未回答"}
+            aria-label={`${view.data.org.name} の${group}の時給`}
+            className={`${FIELD} w-full text-right tabular-nums`}
+          />
+        </div>
+        <div className="mt-1 flex items-center gap-1">
+          <span className="w-7 shrink-0 text-[10px] text-muted">月給</span>
+          <input
+            value={formatAmountInput(monthlyText)}
+            onChange={(e) => setMonthlyText(e.target.value)}
+            inputMode="numeric"
+            disabled={!canEdit || busy}
+            placeholder={monthlyFromWages != null ? `${monthlyFromWages.toLocaleString("ja-JP")} 登録済` : "未回答"}
+            aria-label={`${view.data.org.name} の${group}の月給`}
+            className={`${FIELD} w-full text-right tabular-nums`}
+          />
+        </div>
+        {converted != null && (
+          <span className="block text-right text-[10px] text-muted">時給換算 約{converted.toLocaleString("ja-JP")}円</span>
+        )}
+        {hourly == null && monthly != null && hours <= 0 && (
+          <span className="block text-right text-[10px] text-seal">年間所定労働時間が未登録のため換算できません</span>
+        )}
         {diff && <span className={`block text-right text-[10px] ${diff.startsWith("−") ? "text-seal" : "text-muted"}`}>最低賃金{diff}</span>}
       </td>
     );
@@ -540,10 +582,10 @@ function ReplyRow({
           })}
         </div>
         {view.autoReplied && !r && (
-          <span className="mt-0.5 block text-[10px] text-muted">登録済みの時給から自動判定</span>
+          <span className="mt-0.5 block text-[10px] text-muted">登録済みの賃金から自動判定</span>
         )}
         {view.autoReplied && r && r.status !== "回答あり" && (
-          <span className="mt-0.5 block text-[10px] text-muted">時給が登録済みのため回答ありとして集計</span>
+          <span className="mt-0.5 block text-[10px] text-muted">改定日以降の賃金が登録済みのため回答ありとして集計</span>
         )}
       </td>
       <td className="px-3 py-1.5">
@@ -552,8 +594,8 @@ function ReplyRow({
       <td className="px-3 py-1.5">
         <input type="date" value={repliedOn} onChange={(e) => setRepliedOn(e.target.value)} disabled={!canEdit || busy} className={`${FIELD} w-full`} />
       </td>
-      {hourlyCell("1号", h1, setH1)}
-      {hourlyCell("2号", h2, setH2)}
+      {amountCell("1号", h1, setH1, m1, setM1)}
+      {amountCell("2号", h2, setH2, m2, setM2)}
       <td className="px-3 py-1.5">
         <input
           value={note}

@@ -28,6 +28,8 @@ export interface OrganizationWageReply {
   replied_on: string | null; // 返事をもらった日
   hourly_ssw1: number | null; // 回答の時給（1号）
   hourly_ssw2: number | null; // 回答の時給（2号）
+  monthly_ssw1: number | null; // 回答の月給（1号・0182）。月給で返事が来る機関用
+  monthly_ssw2: number | null; // 回答の月給（2号・0182）
   note: string;
   created_at: string;
   updated_at: string;
@@ -133,10 +135,11 @@ export interface OrgWageWorker {
   currentKind: string | null;
   currentStartedOn: string | null;
   hourlyWages: { amount: number; startedOn: string }[]; // この機関での時給の記録（改定日以降の登録を探す）
+  monthlyWages: { amount: number; startedOn: string }[]; // この機関での月給の記録
 }
 
 export interface OrgWageData {
-  org: { id: string; name: string; address: string };
+  org: { id: string; name: string; address: string; annualWorkHours: number }; // 年間所定労働時間（0 = 未登録）
   region: OrgRegion;
   workers: OrgWageWorker[]; // 在籍中の人
 }
@@ -175,6 +178,11 @@ export function buildOrgWageData(
           if (cur.kind === "時給") hourly = cur.amount > 0 ? cur.amount : null;
           else if (cur.kind === "月給") hourly = hourlyFromMonthly(cur.amount, org.annual_work_hours ?? 0);
         }
+        const ofKind = (kind: string) =>
+          list
+            .filter((x) => x.kind === kind && x.amount > 0)
+            .map((x) => ({ amount: x.amount, startedOn: x.started_on || startOn || "" }))
+            .filter((x) => x.startedOn);
         return {
           id: w.id,
           name: w.name,
@@ -182,14 +190,12 @@ export function buildOrgWageData(
           currentHourly: hourly,
           currentKind: cur?.kind ?? null,
           currentStartedOn: cur ? cur.started_on || startOn : null,
-          hourlyWages: list
-            .filter((x) => x.kind === "時給" && x.amount > 0)
-            .map((x) => ({ amount: x.amount, startedOn: x.started_on || startOn || "" }))
-            .filter((x) => x.startedOn),
+          hourlyWages: ofKind("時給"),
+          monthlyWages: ofKind("月給"),
         };
       });
     return {
-      org: { id: org.id, name: org.name, address: org.address ?? "" },
+      org: { id: org.id, name: org.name, address: org.address ?? "", annualWorkHours: org.annual_work_hours ?? 0 },
       region: regionOfAddress(org.address),
       workers: members,
     };
@@ -212,19 +218,28 @@ export function modeAmount(amounts: number[]): number | null {
   return best;
 }
 
-// 改定日以降に適用が始まる時給が登録されていれば、その額（1号・2号それぞれ、いちばん多い額）。
+export interface DerivedReplyAmounts {
+  hourly: Record<WageGroup, number | null>;
+  monthly: Record<WageGroup, number | null>;
+}
+
+// 改定日以降に適用が始まる時給・月給が登録されていれば、その額（1号・2号それぞれ、いちばん多い額）。
 // 時給の一括登録で返事の内容を入れた機関は、ここから自動で「回答あり」とみなす
-export function derivedReplyAmounts(
-  data: OrgWageData,
-  effectiveOn: string,
-): Record<WageGroup, number | null> {
-  const pick = (group: WageGroup) =>
+export function derivedReplyAmounts(data: OrgWageData, effectiveOn: string): DerivedReplyAmounts {
+  const pick = (group: WageGroup, key: "hourlyWages" | "monthlyWages") =>
     modeAmount(
       data.workers
         .filter((w) => w.group === group)
-        .flatMap((w) => w.hourlyWages.filter((x) => x.startedOn >= effectiveOn).map((x) => x.amount)),
+        .flatMap((w) => w[key].filter((x) => x.startedOn >= effectiveOn).map((x) => x.amount)),
     );
-  return { "1号": pick("1号"), "2号": pick("2号") };
+  return {
+    hourly: { "1号": pick("1号", "hourlyWages"), "2号": pick("2号", "hourlyWages") },
+    monthly: { "1号": pick("1号", "monthlyWages"), "2号": pick("2号", "monthlyWages") },
+  };
+}
+
+export function hasAnyAmount(d: DerivedReplyAmounts): boolean {
+  return WAGE_GROUPS.some((g) => d.hourly[g] !== null || d.monthly[g] !== null);
 }
 
 // ---- 回答状況の一覧 ----
@@ -236,6 +251,8 @@ export interface WageReplyView {
   autoReplied: boolean; // 登録済みの時給から自動で「回答あり」にしたか
   hourly: Record<WageGroup, number | null>; // 回答の時給（記録を優先し、無ければ登録済みの時給から）
   hourlyFromWages: Record<WageGroup, boolean>; // その額が登録済みの時給からのものか
+  monthly: Record<WageGroup, number | null>; // 回答の月給（記録を優先し、無ければ登録済みの月給から）
+  monthlyFromWages: Record<WageGroup, boolean>;
   counts: Record<WageGroup, number>; // 在籍者数
 }
 
@@ -248,14 +265,18 @@ export function buildWageReplyViews(
   return list.map((data) => {
     const reply = byOrg.get(data.org.id) ?? null;
     const derived = derivedReplyAmounts(data, effectiveOn);
-    const hasDerived = derived["1号"] !== null || derived["2号"] !== null;
+    const hasDerived = hasAnyAmount(derived);
     const recorded = reply?.status ?? "未送付";
-    // 記録が「対象外」「回答あり」ならそのまま。未送付・送付済でも時給が登録済みなら回答あり
+    // 記録が「対象外」「回答あり」ならそのまま。未送付・送付済でも時給・月給が登録済みなら回答あり
     const autoReplied = hasDerived && recorded !== "対象外" && recorded !== "回答あり";
     const status: WageReplyStatus = autoReplied ? "回答あり" : recorded;
     const hourly: Record<WageGroup, number | null> = {
-      "1号": reply?.hourly_ssw1 ?? derived["1号"],
-      "2号": reply?.hourly_ssw2 ?? derived["2号"],
+      "1号": reply?.hourly_ssw1 ?? derived.hourly["1号"],
+      "2号": reply?.hourly_ssw2 ?? derived.hourly["2号"],
+    };
+    const monthly: Record<WageGroup, number | null> = {
+      "1号": reply?.monthly_ssw1 ?? derived.monthly["1号"],
+      "2号": reply?.monthly_ssw2 ?? derived.monthly["2号"],
     };
     return {
       data,
@@ -264,8 +285,13 @@ export function buildWageReplyViews(
       autoReplied,
       hourly,
       hourlyFromWages: {
-        "1号": reply?.hourly_ssw1 == null && derived["1号"] !== null,
-        "2号": reply?.hourly_ssw2 == null && derived["2号"] !== null,
+        "1号": reply?.hourly_ssw1 == null && derived.hourly["1号"] !== null,
+        "2号": reply?.hourly_ssw2 == null && derived.hourly["2号"] !== null,
+      },
+      monthly,
+      monthlyFromWages: {
+        "1号": reply?.monthly_ssw1 == null && derived.monthly["1号"] !== null,
+        "2号": reply?.monthly_ssw2 == null && derived.monthly["2号"] !== null,
       },
       counts: {
         "1号": data.workers.filter((w) => w.group === "1号").length,
@@ -292,13 +318,22 @@ export interface WageSample {
 
 export type WageStatsSource = "replies" | "current";
 
-// 回答のあった時給（機関ごとに1号・2号それぞれ1件）
+// 回答の時給。時給の回答が無く月給の回答があれば、年間所定労働時間で時給に換算（できなければ null）
+export function replyHourly(view: WageReplyView, group: WageGroup): number | null {
+  const h = view.hourly[group];
+  if (h != null && h > 0) return h;
+  const m = view.monthly[group];
+  if (m != null && m > 0) return hourlyFromMonthly(m, view.data.org.annualWorkHours);
+  return null;
+}
+
+// 回答のあった時給（機関ごとに1号・2号それぞれ1件。月給の回答は時給に換算）
 export function samplesFromReplies(views: WageReplyView[]): WageSample[] {
   const out: WageSample[] = [];
   for (const v of views) {
     if (v.status !== "回答あり") continue;
     for (const g of WAGE_GROUPS) {
-      const h = v.hourly[g];
+      const h = replyHourly(v, g);
       if (h != null && h > 0) out.push({ orgId: v.data.org.id, region: v.data.region, group: g, hourly: h });
     }
   }
@@ -469,15 +504,17 @@ export function buildWageRepliesSheet(views: WageReplyView[], effectiveOn: strin
     v.reply?.sent_on ?? "",
     v.reply?.replied_on ?? "",
     v.hourly["1号"],
+    v.monthly["1号"],
     v.hourly["2号"],
+    v.monthly["2号"],
     v.reply?.note ?? "",
   ]);
   return {
     name: `回答状況 ${effectiveOn}`,
     headerRows: 1,
-    columnWidths: [28, 22, 8, 8, 8, 18, 12, 12, 12, 12, 30],
+    columnWidths: [28, 22, 8, 8, 8, 18, 12, 12, 12, 12, 12, 12, 30],
     rows: [
-      ["所属機関", "地域", "在籍者", "うち1号", "うち2号", "状況", "送付日", "回答日", "1号の時給", "2号の時給", "備考"],
+      ["所属機関", "地域", "在籍者", "うち1号", "うち2号", "状況", "送付日", "回答日", "1号の時給", "1号の月給", "2号の時給", "2号の月給", "備考"],
       ...rows,
     ],
   };

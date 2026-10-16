@@ -11,6 +11,7 @@ import {
   overallStat,
   parseHourlyInput,
   regionOfAddress,
+  replyHourly,
   regionStats,
   samplesFromCurrentWages,
   samplesFromReplies,
@@ -104,18 +105,26 @@ describe("buildOrgWageData", () => {
 
 describe("derivedReplyAmounts / modeAmount", () => {
   it("改定日以降の時給から 1号・2号 それぞれいちばん多い額を出す", () => {
+    const hw = (amount: number, startedOn: string) => ({ amount, startedOn });
+    const worker = (id: string, group: "1号" | "2号", hourly: ReturnType<typeof hw>[], monthly: ReturnType<typeof hw>[] = []) => ({
+      id, name: "", group, currentHourly: null, currentKind: null, currentStartedOn: null, hourlyWages: hourly, monthlyWages: monthly,
+    });
     const data: OrgWageData = {
-      org: { id: "o1", name: "A", address: "" },
+      org: { id: "o1", name: "A", address: "", annualWorkHours: 2080 },
       region: { prefecture: "熊本県", city: "八代市" },
       workers: [
-        { id: "1", name: "", group: "1号", currentHourly: 1100, currentKind: "時給", currentStartedOn: null, hourlyWages: [{ amount: 1100, startedOn: "2026-12-01" }] },
-        { id: "2", name: "", group: "1号", currentHourly: 1100, currentKind: "時給", currentStartedOn: null, hourlyWages: [{ amount: 1100, startedOn: "2026-12-01" }] },
-        { id: "3", name: "", group: "1号", currentHourly: 1150, currentKind: "時給", currentStartedOn: null, hourlyWages: [{ amount: 1150, startedOn: "2026-12-01" }] },
-        { id: "4", name: "", group: "2号", currentHourly: 1300, currentKind: "時給", currentStartedOn: null, hourlyWages: [{ amount: 1300, startedOn: "2026-11-30" }] },
+        worker("1", "1号", [hw(1100, "2026-12-01")]),
+        worker("2", "1号", [hw(1100, "2026-12-01")]),
+        worker("3", "1号", [hw(1150, "2026-12-01")]),
+        worker("4", "2号", [hw(1300, "2026-11-30")]),
+        worker("5", "2号", [], [hw(220000, "2026-12-01")]),
       ],
     };
-    expect(derivedReplyAmounts(data, "2026-12-01")).toEqual({ "1号": 1100, "2号": null });
-    expect(derivedReplyAmounts(data, "2026-11-01")).toEqual({ "1号": 1100, "2号": 1300 });
+    expect(derivedReplyAmounts(data, "2026-12-01")).toEqual({
+      hourly: { "1号": 1100, "2号": null },
+      monthly: { "1号": null, "2号": 220000 },
+    });
+    expect(derivedReplyAmounts(data, "2026-11-01").hourly).toEqual({ "1号": 1100, "2号": 1300 });
   });
   it("同数なら低いほう・空なら null", () => {
     expect(modeAmount([1200, 1100])).toBe(1100);
@@ -132,6 +141,8 @@ const reply = (over: Partial<OrganizationWageReply>): OrganizationWageReply => (
   replied_on: null,
   hourly_ssw1: null,
   hourly_ssw2: null,
+  monthly_ssw1: null,
+  monthly_ssw2: null,
   note: "",
   created_at: "",
   updated_at: "",
@@ -238,6 +249,41 @@ describe("regionStats", () => {
     const stats = regionStats(samples, "prefecture", minimumFor);
     expect(stats[0].groups["1号"]?.count).toBe(1);
     expect(stats[0].groups["2号"]?.average).toBe(1250);
+  });
+
+  it("月給の回答は年間所定労働時間で時給に換算して集計する（未登録なら集計に入らない）", () => {
+    const views = buildWageReplyViews(
+      data,
+      [
+        // o1 は年間所定労働時間 2080 → 208,000円 ÷ (2080/12) = 1,200円
+        reply({ organization_id: "o1", status: "回答あり", monthly_ssw1: 208000 }),
+        // o2 は年間所定労働時間が未登録 → 換算できない
+        reply({ id: "r2", organization_id: "o2", status: "回答あり", monthly_ssw1: 200000 }),
+      ],
+      "2026-12-01",
+    );
+    expect(replyHourly(views[0], "1号")).toBe(1200);
+    expect(replyHourly(views[1], "1号")).toBeNull();
+    const samples = samplesFromReplies(views);
+    expect(samples).toHaveLength(1);
+    expect(samples[0].hourly).toBe(1200);
+  });
+
+  it("改定日以降の月給が登録済みなら自動で「回答あり」になり、月給が回答の額になる", () => {
+    const views = buildWageReplyViews(
+      buildOrgWageData(
+        orgs,
+        [worker({ id: "w1" })],
+        [wage({ worker_id: "w1", kind: "月給", amount: 210000, started_on: "2026-12-01" })],
+        TODAY,
+      ),
+      [],
+      "2026-12-01",
+    );
+    expect(views[0]).toMatchObject({ status: "回答あり", autoReplied: true });
+    expect(views[0].monthly["1号"]).toBe(210000);
+    expect(views[0].monthlyFromWages["1号"]).toBe(true);
+    expect(views[0].hourly["1号"]).toBeNull();
   });
 });
 
