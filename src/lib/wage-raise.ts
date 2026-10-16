@@ -105,6 +105,7 @@ export function wageRaiseNote(startedOn: string): string {
 //   applying      … この機関への申請が審査中・許可済（在留カード受け取り待ち）の人
 //   underReviewIds… notYet のうち申請が審査中の人
 // 現在の賃金が月給の人は月給のまま新しい額を仮置きする（上の月給欄、無ければ時給からの換算）。
+// kindOverrides で1人ずつ登録する区分を変えられる（月給 → 時給に変わるとき、またはその逆）。
 // 既定でチェックを外すのは、金額が決まらない人・現在の賃金が時給・月給以外の人・同じ額が登録済みの人
 export function buildWageRaiseRows<T extends WageRaiseWorkerLike>(
   active: T[],
@@ -113,6 +114,7 @@ export function buildWageRaiseRows<T extends WageRaiseWorkerLike>(
   underReviewIds: Set<string>,
   amounts: WageRaiseAmounts,
   startedOn: string,
+  kindOverrides: Record<string, WageRaiseKind> = {},
 ): WageRaiseRow<T>[] {
   const byName = (a: T, b: T) => a.name.localeCompare(b.name, "ja");
   const seen = new Set<string>();
@@ -132,7 +134,10 @@ export function buildWageRaiseRows<T extends WageRaiseWorkerLike>(
     .forEach((w) => push(w, "準備中"));
 
   return list.map(({ worker, group }) => {
-    const kind: WageRaiseKind = worker.wageKind === "月給" ? "月給" : "時給";
+    const defaultKind: WageRaiseKind = worker.wageKind === "月給" ? "月給" : "時給";
+    const kind = kindOverrides[worker.id] ?? defaultKind;
+    // 現在の賃金の区分と違う区分で登録する（月給 → 時給 など）
+    const switched = !!worker.wageKind && worker.wageKind !== kind;
     const proposed =
       kind === "月給"
         ? proposedMonthly(worker.residenceStatus, amounts)
@@ -148,9 +153,12 @@ export function buildWageRaiseRows<T extends WageRaiseWorkerLike>(
       notes.push(`在留資格が特定技能ではありません（${s}）。金額を確認してください`);
     }
     if (kind === "月給") {
+      if (switched) notes.push(`現在の賃金は${worker.wageKind}ですが、月給に変えて登録します`);
       notes.push(monthlyProposalNote(worker.residenceStatus, amounts));
+    } else if (switched && (worker.wageKind === "月給" || kindOverrides[worker.id])) {
+      notes.push(`現在の賃金は${worker.wageKind}ですが、時給に変えて登録します`);
     } else if (worker.wageKind && worker.wageKind !== "時給") {
-      notes.push(`現在の賃金が時給・月給ではありません（${worker.wageKind}）。対象から外しています`);
+      notes.push(`現在の賃金が時給・月給ではありません（${worker.wageKind}）。区分の印を押すと時給で登録できます`);
       checked = false;
     }
     if (
