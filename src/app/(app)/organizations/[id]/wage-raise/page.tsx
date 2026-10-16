@@ -49,6 +49,7 @@ export default async function OrganizationWageRaisePage({ params }: { params: Pr
         applying={applying}
         underReviewIds={[...underReviewIds]}
         defaultStartedOn={nextMonthStart(today)}
+        annualWorkHours={organization.annual_work_hours ?? 0}
         canEdit={me.role !== "viewer"}
       />
     </>

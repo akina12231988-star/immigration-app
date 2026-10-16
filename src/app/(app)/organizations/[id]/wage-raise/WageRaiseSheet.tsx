@@ -34,6 +34,7 @@ export function WageRaiseSheet({
   applying,
   underReviewIds,
   defaultStartedOn,
+  annualWorkHours,
   canEdit,
 }: {
   organizationId: string;
@@ -43,12 +44,16 @@ export function WageRaiseSheet({
   applying: OrgRosterWorker[];
   underReviewIds: string[];
   defaultStartedOn: string; // 既定の適用開始日（翌月1日）
+  annualWorkHours: number; // 所属機関の年間所定労働時間（月給の人の仮置きに使う。0 = 未登録）
   canEdit: boolean;
 }) {
   const router = useRouter();
   const [startedOn, setStartedOn] = useState(defaultStartedOn);
   const [ssw1Text, setSsw1Text] = useState("");
   const [ssw2Text, setSsw2Text] = useState("");
+  // 現在の賃金が月給の人に入れる新しい月給（任意。空なら時給 × 年間所定労働時間 ÷ 12 で仮置き）
+  const [monthly1Text, setMonthly1Text] = useState("");
+  const [monthly2Text, setMonthly2Text] = useState("");
   // 1人ずつの手直し（外国人ID → 金額の文字・対象にするか）。表を作り直しても残す
   const [amountOverride, setAmountOverride] = useState<Record<string, string>>({});
   const [checkedOverride, setCheckedOverride] = useState<Record<string, boolean>>({});
@@ -60,12 +65,22 @@ export function WageRaiseSheet({
   // 金額は数値にしてから使う（「1,100」と「1100」で表を作り直さない）
   const ssw1 = parseYen(ssw1Text);
   const ssw2 = parseYen(ssw2Text);
-  const amounts = { ssw1, ssw2 };
+  const monthly1 = parseYen(monthly1Text);
+  const monthly2 = parseYen(monthly2Text);
+  const amounts = { ssw1, ssw2, monthly1, monthly2, annualHours: annualWorkHours };
   const rows = useMemo(
     () =>
-      buildWageRaiseRows(active, notYet, applying, new Set(underReviewIds), { ssw1, ssw2 }, startedOn),
-    [active, notYet, applying, underReviewIds, ssw1, ssw2, startedOn],
+      buildWageRaiseRows(
+        active,
+        notYet,
+        applying,
+        new Set(underReviewIds),
+        { ssw1, ssw2, monthly1, monthly2, annualHours: annualWorkHours },
+        startedOn,
+      ),
+    [active, notYet, applying, underReviewIds, ssw1, ssw2, monthly1, monthly2, annualWorkHours, startedOn],
   );
+  const hasMonthly = rows.some((r) => r.kind === "月給");
 
   const amountOf = (r: WageRaiseRow<OrgRosterWorker>): number => {
     const t = amountOverride[r.worker.id];
@@ -86,11 +101,14 @@ export function WageRaiseSheet({
   const save = async () => {
     const targets = rows.filter((r) => isChecked(r) && amountOf(r) > 0);
     if (targets.length === 0 || !dateOk) return;
+    const monthlyTargets = targets.filter((r) => r.kind === "月給").length;
     if (
       !window.confirm(
-        `${organizationName} の ${targets.length}名に、${startedOn} からの時給を登録します。\n` +
-          `（在籍中 ${summary.byGroup["在籍中"]}名・審査中 ${summary.byGroup["審査中・受け取り待ち"]}名・準備中 ${summary.byGroup["準備中"]}名）\n` +
-          "登録した時給は外国人詳細の「賃金」に1行ずつ入ります。よろしいですか？",
+        `${organizationName} の ${targets.length}名に、${startedOn} からの賃金を登録します。\n` +
+          `（在籍中 ${summary.byGroup["在籍中"]}名・審査中 ${summary.byGroup["審査中・受け取り待ち"]}名・準備中 ${summary.byGroup["準備中"]}名${
+            monthlyTargets > 0 ? `、うち月給 ${monthlyTargets}名` : ""
+          }）\n` +
+          "登録した賃金は外国人詳細の「賃金」に1行ずつ入ります。よろしいですか？",
       )
     )
       return;
@@ -106,7 +124,7 @@ export function WageRaiseSheet({
         await insertWorkerWage(supabase, {
           worker_id: r.worker.id,
           organization_id: organizationId,
-          kind: "時給",
+          kind: r.kind,
           amount: amountOf(r),
           started_on: startedOn,
           reason: WAGE_REASON_RAISE,
@@ -138,6 +156,7 @@ export function WageRaiseSheet({
         在留資格が2号（2号移行準備の特定活動を含む）の人は2号の金額、それ以外は1号の金額です。
         1人ずつ金額を直したり、チェックを外して対象から外したりできます。「登録する」を押すと、
         外国人詳細の「賃金（時給・月給）」に「昇給」として1人1行ずつ入り、所属機関の在籍名簿・請求書作成・最低賃金の案内の「現在の時給」に反映されます。
+        現在の賃金が月給の人は月給のまま新しい額を登録します（下の「月給の人」の欄に入れた額、空なら時給 × 年間所定労働時間 ÷ 12 で仮置き）。
       </p>
 
       <Card className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-3">
@@ -166,6 +185,47 @@ export function WageRaiseSheet({
           />
         </label>
       </Card>
+
+      {/* 現在の賃金が月給の人がいるときだけ、新しい月給の欄を出す */}
+      {hasMonthly && (
+        <Card className="p-4">
+          <p className="mb-2 text-[11px] font-bold text-muted">
+            月給の人（任意）: 空なら上の時給 × 年間所定労働時間
+            {annualWorkHours > 0 ? `（${annualWorkHours.toLocaleString("ja-JP")}時間）` : "（未登録）"} ÷ 12 で月給を仮置きします
+          </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="flex flex-col gap-1 text-[11px] font-bold text-muted">
+              特定技能1号の月給（円）
+              <input
+                value={formatAmountInput(monthly1Text)}
+                onChange={(e) => setMonthly1Text(e.target.value)}
+                inputMode="numeric"
+                placeholder="例: 190,000"
+                className={`${FIELD} tabular-nums`}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-[11px] font-bold text-muted">
+              特定技能2号の月給（円）
+              <input
+                value={formatAmountInput(monthly2Text)}
+                onChange={(e) => setMonthly2Text(e.target.value)}
+                inputMode="numeric"
+                placeholder="例: 200,000"
+                className={`${FIELD} tabular-nums`}
+              />
+            </label>
+          </div>
+          {annualWorkHours <= 0 && (
+            <p className="mt-2 text-[11px] text-seal">
+              所属機関に年間所定労働時間が未登録のため、時給からの換算はできません。
+              <Link href={`/organizations/${organizationId}`} className="font-bold underline">
+                所属機関の情報
+              </Link>
+              で登録するか、ここに月給を入れてください。
+            </p>
+          )}
+        </Card>
+      )}
 
       {error && (
         <p role="alert" className="rounded-lg bg-seal/10 px-3 py-2 text-xs text-seal">
@@ -228,7 +288,7 @@ export function WageRaiseSheet({
                       <th className="px-3 py-2 font-bold">氏名</th>
                       <th className="px-3 py-2 font-bold">在留資格</th>
                       <th className="px-3 py-2 font-bold">現在の賃金</th>
-                      <th className="w-36 px-3 py-2 font-bold">新しい時給（円）</th>
+                      <th className="w-40 px-3 py-2 font-bold">新しい賃金（円）</th>
                       <th className="px-3 py-2 font-bold">確認</th>
                     </tr>
                   </thead>
@@ -268,19 +328,24 @@ export function WageRaiseSheet({
                               : <span className="text-muted">未登録</span>}
                           </td>
                           <td className="px-3 py-1.5">
-                            <input
-                              value={formatAmountInput(amountOverride[r.worker.id] ?? (r.proposed ? String(r.proposed) : ""))}
-                              onChange={(e) =>
-                                setAmountOverride((prev) => ({ ...prev, [r.worker.id]: e.target.value }))
-                              }
-                              inputMode="numeric"
-                              aria-label={`${r.worker.name} の新しい時給`}
-                              disabled={!canEdit || busy}
-                              placeholder="上で金額を入力"
-                              className={`${FIELD} w-full text-right tabular-nums ${checked && amount <= 0 ? "border-seal" : ""}`}
-                            />
+                            <div className="flex items-center gap-1">
+                              <span className={`shrink-0 rounded px-1 text-[10px] font-bold ${r.kind === "月給" ? "bg-brand/10 text-brand" : "text-muted"}`}>
+                                {r.kind}
+                              </span>
+                              <input
+                                value={formatAmountInput(amountOverride[r.worker.id] ?? (r.proposed ? String(r.proposed) : ""))}
+                                onChange={(e) =>
+                                  setAmountOverride((prev) => ({ ...prev, [r.worker.id]: e.target.value }))
+                                }
+                                inputMode="numeric"
+                                aria-label={`${r.worker.name} の新しい${r.kind}`}
+                                disabled={!canEdit || busy}
+                                placeholder={r.kind === "月給" ? "月給を入力" : "上で金額を入力"}
+                                className={`${FIELD} w-full text-right tabular-nums ${checked && amount <= 0 ? "border-seal" : ""}`}
+                              />
+                            </div>
                           </td>
-                          <td className="px-3 py-1.5 text-[11px] text-seal">{r.note}</td>
+                          <td className={`px-3 py-1.5 text-[11px] ${r.kind === "月給" && checked ? "text-muted" : "text-seal"}`}>{r.note}</td>
                         </tr>
                       );
                     })}
@@ -302,7 +367,7 @@ export function WageRaiseSheet({
             {busy ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
             {busy && progress
               ? `登録中… ${progress.done}/${progress.total}`
-              : `${summary.total}名に ${startedOn || "（日付未入力）"} からの時給を登録する`}
+              : `${summary.total}名に ${startedOn || "（日付未入力）"} からの賃金を登録する`}
           </button>
           <span className="text-[11px] text-muted">
             在籍中 {summary.byGroup["在籍中"]}名・審査中 {summary.byGroup["審査中・受け取り待ち"]}名・準備中 {summary.byGroup["準備中"]}名

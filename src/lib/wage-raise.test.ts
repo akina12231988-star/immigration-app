@@ -73,14 +73,56 @@ describe("時給の一括登録", () => {
     const by = Object.fromEntries(rows.map((r) => [r.worker.id, r]));
     expect(by["特定活動"]).toMatchObject({ checked: true, proposed: 1100 });
     expect(by["特定活動"].note).toMatch(/特定活動/);
-    expect(by["月給"]).toMatchObject({ checked: false, proposed: 1100 });
-    expect(by["月給"].note).toMatch(/時給ではありません/);
+    // 月給の人は年間所定労働時間が無いと換算できず、対象にならない
+    expect(by["月給"]).toMatchObject({ checked: false, proposed: null, kind: "月給" });
+    expect(by["月給"].note).toMatch(/年間所定労働時間が未登録/);
     expect(by["登録済み"]).toMatchObject({ checked: false });
     expect(by["登録済み"].note).toMatch(/登録済み/);
     expect(by["古い同額"]).toMatchObject({ checked: true, note: "" });
     expect(by["未登録"]).toMatchObject({ checked: true });
     expect(by["未登録"].note).toMatch(/未登録/);
     expect(by["2号"]).toMatchObject({ checked: true, proposed: 1150, note: "" });
+  });
+
+  it("月給の人は時給 × 年間所定労働時間 ÷ 12 で月給を仮置きし、月給のまま登録する", () => {
+    const rows = buildWageRaiseRows(
+      [
+        w("月給1号", { wageKind: "月給", wageAmount: 180000 }),
+        w("月給2号", { wageKind: "月給", wageAmount: 200000, residenceStatus: "特定技能2号" }),
+        w("時給", {}),
+        w("日給", { wageKind: "日給", wageAmount: 9000 }),
+      ],
+      [],
+      [],
+      new Set(),
+      { ...amounts, annualHours: 2080 },
+      "2026-11-01",
+    );
+    const by = Object.fromEntries(rows.map((r) => [r.worker.id, r]));
+    expect(by["月給1号"]).toMatchObject({ kind: "月給", proposed: 190667, checked: true });
+    expect(by["月給1号"].note).toMatch(/1,100円 × 年間所定労働時間2,080時間/);
+    expect(by["月給2号"]).toMatchObject({ kind: "月給", proposed: 199333, checked: true });
+    expect(by["時給"]).toMatchObject({ kind: "時給", proposed: 1100, checked: true, note: "" });
+    expect(by["日給"]).toMatchObject({ kind: "時給", checked: false });
+    expect(by["日給"].note).toMatch(/時給・月給ではありません/);
+  });
+
+  it("月給を上で入れればその額を優先し、同じ月給が登録済みなら外す", () => {
+    const rows = buildWageRaiseRows(
+      [
+        w("月給", { wageKind: "月給", wageAmount: 180000 }),
+        w("登録済み", { wageKind: "月給", wageAmount: 195000, wageStartedOn: "2026-11-01" }),
+      ],
+      [],
+      [],
+      new Set(),
+      { ...amounts, monthly1: 195000, annualHours: 2080 },
+      "2026-11-01",
+    );
+    expect(rows[0]).toMatchObject({ kind: "月給", proposed: 195000, checked: true });
+    expect(rows[0].note).toMatch(/上で入れた1号の月給/);
+    expect(rows[1]).toMatchObject({ checked: false });
+    expect(rows[1].note).toMatch(/同じ月給/);
   });
 
   it("金額が未入力なら対象にしない", () => {
