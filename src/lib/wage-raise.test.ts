@@ -125,6 +125,32 @@ describe("時給の一括登録", () => {
     expect(rows[1].note).toMatch(/同じ月給/);
   });
 
+  it("区分を切り替えると、月給の人を時給で・時給の人を月給で登録できる", () => {
+    const rows = buildWageRaiseRows(
+      [
+        w("月給→時給", { wageKind: "月給", wageAmount: 180000 }),
+        w("時給→月給", { wageKind: "時給", wageAmount: 1034 }),
+        w("日給→時給", { wageKind: "日給", wageAmount: 9000 }),
+        w("そのまま", { wageKind: "月給", wageAmount: 180000 }),
+      ],
+      [],
+      [],
+      new Set(),
+      { ...amounts, annualHours: 2080 },
+      "2026-11-01",
+      { "月給→時給": "時給", "時給→月給": "月給", "日給→時給": "時給" },
+    );
+    const by = Object.fromEntries(rows.map((r) => [r.worker.id, r]));
+    expect(by["月給→時給"]).toMatchObject({ kind: "時給", proposed: 1100, checked: true });
+    expect(by["月給→時給"].note).toMatch(/月給ですが、時給に変えて/);
+    expect(by["時給→月給"]).toMatchObject({ kind: "月給", proposed: 190667, checked: true });
+    expect(by["時給→月給"].note).toMatch(/時給ですが、月給に変えて/);
+    expect(by["日給→時給"]).toMatchObject({ kind: "時給", proposed: 1100, checked: true });
+    expect(by["日給→時給"].note).toMatch(/日給ですが、時給に変えて/);
+    expect(by["そのまま"]).toMatchObject({ kind: "月給", proposed: 190667 });
+    expect(by["そのまま"].note).not.toMatch(/変えて/);
+  });
+
   it("金額が未入力なら対象にしない", () => {
     const rows = buildWageRaiseRows([w("a")], [], [], new Set(), { ssw1: 0, ssw2: 0 }, "2026-11-01");
     expect(rows[0]).toMatchObject({ proposed: null, checked: false });

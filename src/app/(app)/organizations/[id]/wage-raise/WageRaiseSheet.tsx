@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, Loader2, TriangleAlert } from "lucide-react";
+import { ArrowLeftRight, Check, Loader2, TriangleAlert } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
 import { insertWorkerWage } from "@/lib/supabase/queries/wages";
@@ -16,6 +16,7 @@ import {
   WAGE_RAISE_GROUPS,
   wageRaiseNote,
   wageRaiseSummary,
+  type WageRaiseKind,
   type WageRaiseRow,
 } from "@/lib/wage-raise";
 import { rosterApplicationLabel, type OrgRosterWorker } from "@/lib/supabase/queries/organizations";
@@ -54,6 +55,10 @@ export function WageRaiseSheet({
   // 現在の賃金が月給の人に入れる新しい月給（任意。空なら時給 × 年間所定労働時間 ÷ 12 で仮置き）
   const [monthly1Text, setMonthly1Text] = useState("");
   const [monthly2Text, setMonthly2Text] = useState("");
+  // 月給の人を全員「時給」で登録する（会社が月給から時給に変わるとき）
+  const [monthlyToHourly, setMonthlyToHourly] = useState(false);
+  // 1人ずつの登録区分の切り替え（外国人ID → 時給/月給）。全体の切り替えより優先
+  const [kindOverride, setKindOverride] = useState<Record<string, WageRaiseKind>>({});
   // 1人ずつの手直し（外国人ID → 金額の文字・対象にするか）。表を作り直しても残す
   const [amountOverride, setAmountOverride] = useState<Record<string, string>>({});
   const [checkedOverride, setCheckedOverride] = useState<Record<string, boolean>>({});
@@ -68,19 +73,37 @@ export function WageRaiseSheet({
   const monthly1 = parseYen(monthly1Text);
   const monthly2 = parseYen(monthly2Text);
   const amounts = { ssw1, ssw2, monthly1, monthly2, annualHours: annualWorkHours };
-  const rows = useMemo(
-    () =>
-      buildWageRaiseRows(
-        active,
-        notYet,
-        applying,
-        new Set(underReviewIds),
-        { ssw1, ssw2, monthly1, monthly2, annualHours: annualWorkHours },
-        startedOn,
-      ),
-    [active, notYet, applying, underReviewIds, ssw1, ssw2, monthly1, monthly2, annualWorkHours, startedOn],
-  );
+  const rows = useMemo(() => {
+    // 全体の「月給の人を時給で登録」と、1人ずつの切り替えをまとめた区分
+    const kinds: Record<string, WageRaiseKind> = {};
+    if (monthlyToHourly) {
+      for (const w of [...active, ...notYet, ...applying]) if (w.wageKind === "月給") kinds[w.id] = "時給";
+    }
+    Object.assign(kinds, kindOverride);
+    return buildWageRaiseRows(
+      active,
+      notYet,
+      applying,
+      new Set(underReviewIds),
+      { ssw1, ssw2, monthly1, monthly2, annualHours: annualWorkHours },
+      startedOn,
+      kinds,
+    );
+  }, [active, notYet, applying, underReviewIds, ssw1, ssw2, monthly1, monthly2, annualWorkHours, startedOn, monthlyToHourly, kindOverride]);
+  // 現在の賃金が月給の人がいるか（月給の欄・時給への切り替えを出す）
+  const hasMonthlyWorkers = [...active, ...notYet, ...applying].some((w) => w.wageKind === "月給");
   const hasMonthly = rows.some((r) => r.kind === "月給");
+
+  // 1人の登録区分を切り替える（手直しした金額は区分が変わるので消す）
+  const toggleKind = (r: WageRaiseRow<OrgRosterWorker>) => {
+    const next: WageRaiseKind = r.kind === "月給" ? "時給" : "月給";
+    setKindOverride((prev) => ({ ...prev, [r.worker.id]: next }));
+    setAmountOverride((prev) => {
+      const copy = { ...prev };
+      delete copy[r.worker.id];
+      return copy;
+    });
+  };
 
   const amountOf = (r: WageRaiseRow<OrgRosterWorker>): number => {
     const t = amountOverride[r.worker.id];
@@ -144,6 +167,7 @@ export function WageRaiseSheet({
     // 登録した人は「登録済み」になって対象から外れる（二重登録を防ぐ）
     setCheckedOverride({});
     setAmountOverride({});
+    setKindOverride({});
     router.refresh();
   };
 
@@ -157,6 +181,7 @@ export function WageRaiseSheet({
         1人ずつ金額を直したり、チェックを外して対象から外したりできます。「登録する」を押すと、
         外国人詳細の「賃金（時給・月給）」に「昇給」として1人1行ずつ入り、所属機関の在籍名簿・請求書作成・最低賃金の案内の「現在の時給」に反映されます。
         現在の賃金が月給の人は月給のまま新しい額を登録します（下の「月給の人」の欄に入れた額、空なら時給 × 年間所定労働時間 ÷ 12 で仮置き）。
+        月給から時給に変わる人は、表の「月給」の印を押すと時給で登録できます（逆も同じ）。
       </p>
 
       <Card className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-3">
@@ -186,9 +211,25 @@ export function WageRaiseSheet({
         </label>
       </Card>
 
-      {/* 現在の賃金が月給の人がいるときだけ、新しい月給の欄を出す */}
-      {hasMonthly && (
+      {/* 現在の賃金が月給の人がいるときだけ、新しい月給の欄と時給への切り替えを出す */}
+      {hasMonthlyWorkers && (
         <Card className="p-4">
+          <label className="mb-3 flex items-center gap-2 text-xs font-bold">
+            <input
+              type="checkbox"
+              checked={monthlyToHourly}
+              onChange={(e) => {
+                setMonthlyToHourly(e.target.checked);
+                setKindOverride({});
+                setAmountOverride({});
+              }}
+              disabled={!canEdit || busy}
+              className="size-4"
+            />
+            月給の人を全員「時給」で登録する（月給から時給に変わるとき。上の1号・2号の時給が入ります）
+          </label>
+          {hasMonthly && (
+            <>
           <p className="mb-2 text-[11px] font-bold text-muted">
             月給の人（任意）: 空なら上の時給 × 年間所定労働時間
             {annualWorkHours > 0 ? `（${annualWorkHours.toLocaleString("ja-JP")}時間）` : "（未登録）"} ÷ 12 で月給を仮置きします
@@ -223,6 +264,8 @@ export function WageRaiseSheet({
               </Link>
               で登録するか、ここに月給を入れてください。
             </p>
+          )}
+            </>
           )}
         </Card>
       )}
@@ -329,9 +372,20 @@ export function WageRaiseSheet({
                           </td>
                           <td className="px-3 py-1.5">
                             <div className="flex items-center gap-1">
-                              <span className={`shrink-0 rounded px-1 text-[10px] font-bold ${r.kind === "月給" ? "bg-brand/10 text-brand" : "text-muted"}`}>
+                              {/* 登録する区分。押すと時給／月給を切り替える（月給 → 時給に変わるときなど） */}
+                              <button
+                                type="button"
+                                onClick={() => toggleKind(r)}
+                                disabled={!canEdit || busy}
+                                title="押すと時給／月給を切り替えます"
+                                aria-label={`${r.worker.name} の登録区分（${r.kind}）を切り替える`}
+                                className={`inline-flex shrink-0 items-center gap-0.5 rounded border px-1 text-[10px] font-bold ${
+                                  r.kind === "月給" ? "border-brand/30 bg-brand/10 text-brand" : "border-border text-muted"
+                                } ${r.worker.wageKind && r.worker.wageKind !== r.kind ? "ring-1 ring-brand" : ""}`}
+                              >
                                 {r.kind}
-                              </span>
+                                <ArrowLeftRight size={9} />
+                              </button>
                               <input
                                 value={formatAmountInput(amountOverride[r.worker.id] ?? (r.proposed ? String(r.proposed) : ""))}
                                 onChange={(e) =>
