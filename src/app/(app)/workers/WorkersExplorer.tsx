@@ -2,7 +2,8 @@
 
 import { useDeferredValue, useMemo, useState } from "react";
 import Link from "next/link";
-import { CheckSquare, ChevronLeft, ChevronRight, FileSearch, FileSpreadsheet, Printer, Square, Upload, UserPlus, X } from "lucide-react";
+import { CheckSquare, ChevronLeft, ChevronRight, FileSearch, FileSpreadsheet, Printer, Upload, UserPlus, X } from "lucide-react";
+import { SelectableCard } from "@/components/ui/SelectableCard";
 import { Card } from "@/components/ui/Card";
 import { LinkButton } from "@/components/ui/Button";
 import { SummaryCards } from "@/components/workers/SummaryCards";
@@ -535,42 +536,6 @@ export function WorkersExplorer({
       <p className="pb-2 text-center text-[11px] leading-relaxed text-muted">
         通算期間は日数合算による目安です。正式な判断は出入国在留管理庁にご確認ください。
       </p>
-    </div>
-  );
-}
-
-// 「選んで Excel 出力」モードのカード。選択中はカード全体を押すとチェックが付き、詳細へは移らない
-function SelectableCard({
-  selecting,
-  selected,
-  name,
-  onToggle,
-  children,
-}: {
-  selecting: boolean;
-  selected: boolean;
-  name: string;
-  onToggle: () => void;
-  children: React.ReactNode;
-}) {
-  if (!selecting) return <>{children}</>;
-  return (
-    <div className={`relative rounded-2xl ${selected ? "ring-2 ring-brand" : ""}`}>
-      {children}
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-pressed={selected}
-        aria-label={`${name}を${selected ? "選択から外す" : "選ぶ"}`}
-        className="absolute inset-0 z-10 rounded-2xl bg-transparent"
-      />
-      <span
-        className={`pointer-events-none absolute right-3 top-3 z-20 flex h-7 w-7 items-center justify-center rounded-lg ${
-          selected ? "bg-brand text-brand-foreground" : "border border-border bg-surface text-muted"
-        }`}
-      >
-        {selected ? <CheckSquare size={16} /> : <Square size={16} />}
-      </span>
     </div>
   );
 }

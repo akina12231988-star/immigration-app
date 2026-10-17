@@ -8,12 +8,14 @@ import {
   BadgeCheck,
   Check,
   CheckCircle2,
+  CheckSquare,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
   FilePlus2,
   Copy,
   ExternalLink,
+  Image as ImageIcon,
   MessageCircle,
   Search,
   SlidersHorizontal,
@@ -21,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { SelectableCard } from "@/components/ui/SelectableCard";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { AlertBadge } from "@/components/applications/AlertBadge";
@@ -69,6 +72,7 @@ import { isImmigrationAppliedStatus, normalizeTodoKey } from "@/lib/todo";
 import { listTodos, type TodoRow } from "@/lib/supabase/queries/todos";
 import type { Application } from "@/types/application";
 import { ApprovedCard } from "./ApprovedCard";
+import { ApprovalNoticeImageDialog } from "./ApprovalNoticeImageDialog";
 import { ExtraRequestBoard } from "./ExtraRequestBoard";
 import { PostApplyBoard } from "./PostApplyBoard";
 import { listPostApplyEntries } from "@/lib/supabase/queries/application-prep";
@@ -320,6 +324,30 @@ export function ApplicationsExplorer({
     return no != null ? formatStorageNo(no) : "—";
   };
 
+  // 「許可のお知らせ画像」: 受け取り待ち／新規発行済みタブで複数の申請を選び、
+  // 1人1枠の画像にして Messenger に貼る
+  const [noticeSelecting, setNoticeSelecting] = useState(false);
+  const [noticeIds, setNoticeIds] = useState<Set<string>>(() => new Set());
+  const [noticeOpen, setNoticeOpen] = useState(false);
+  const toggleNotice = (id: string) =>
+    setNoticeIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const selectNoticeMany = (ids: string[]) => setNoticeIds((prev) => new Set([...prev, ...ids]));
+  const stopNoticeSelecting = () => {
+    setNoticeSelecting(false);
+    setNoticeIds(new Set());
+    setNoticeOpen(false);
+  };
+  // タブを切り替えたら選択はやめる（別のタブの申請が混ざらないように）
+  const changeView = (v: ViewKey) => {
+    stopNoticeSelecting();
+    setView(v);
+  };
+
   // 準備中のインライン編集（所属機関・TODO番号）の保存エラー
   const [workerError, setWorkerError] = useState<string | null>(null);
 
@@ -556,7 +584,7 @@ export function ApplicationsExplorer({
           </p>
           <button
             type="button"
-            onClick={() => setView("all")}
+            onClick={() => changeView("all")}
             aria-label="絞り込みを解除"
             className="flex h-7 w-7 items-center justify-center rounded-full text-brand hover:bg-brand/10"
           >
@@ -588,7 +616,7 @@ export function ApplicationsExplorer({
             count={viewCounts[c.key]}
             alert={!!c.alert && viewCounts[c.key] > 0}
             active={view === c.key}
-            onClick={() => setView(c.key)}
+            onClick={() => changeView(c.key)}
           />
         ))}
       </div>
@@ -742,23 +770,100 @@ export function ApplicationsExplorer({
         </div>
       </div>
 
+      {/* 許可のお知らせ画像: 受け取り待ち／新規発行済みの申請を選んで、1人1枠の画像にする */}
+      {(showApprovedDetail || showIssued) && filtered.length > 0 && (
+        noticeSelecting ? (
+          <div className="sticky top-14 z-10 flex flex-wrap items-center gap-2 rounded-xl border-2 border-brand bg-surface px-3 py-2 text-xs shadow-md">
+            <span className="font-bold">
+              <CheckSquare size={14} className="mr-1 inline" />
+              {noticeIds.size}名を選択中
+            </span>
+            <button
+              type="button"
+              onClick={() => selectNoticeMany(paged.map((a) => a.id))}
+              className="rounded-full border border-border px-2.5 py-1 font-bold text-brand"
+            >
+              表示中の{paged.length}名を選ぶ
+            </button>
+            <button
+              type="button"
+              onClick={() => selectNoticeMany(filtered.map((a) => a.id))}
+              className="rounded-full border border-border px-2.5 py-1 font-bold text-brand"
+            >
+              絞り込み結果の{filtered.length}名を選ぶ
+            </button>
+            <button
+              type="button"
+              onClick={() => setNoticeIds(new Set())}
+              disabled={noticeIds.size === 0}
+              className="rounded-full border border-border px-2.5 py-1 font-bold text-muted disabled:opacity-40"
+            >
+              選択を解除
+            </button>
+            <span className="ml-auto flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setNoticeOpen(true)}
+                disabled={noticeIds.size === 0}
+                className="inline-flex min-h-[36px] items-center gap-1 rounded-xl bg-brand px-3 font-bold text-brand-foreground disabled:opacity-40"
+              >
+                <ImageIcon size={15} />
+                画像にする（{noticeIds.size}名）
+              </button>
+              <button
+                type="button"
+                onClick={stopNoticeSelecting}
+                className="inline-flex min-h-[36px] items-center gap-1 rounded-xl border border-border px-3 font-bold text-muted"
+              >
+                <X size={14} />
+                やめる
+              </button>
+            </span>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setNoticeSelecting(true)}
+            className="inline-flex min-h-[40px] items-center gap-1.5 self-start rounded-xl border border-border bg-surface px-3 text-sm font-bold text-brand"
+          >
+            <ImageIcon size={16} />
+            選んで許可のお知らせ画像（Messenger 用）
+          </button>
+        )
+      )}
+      {noticeOpen && (
+        <ApprovalNoticeImageDialog
+          apps={filtered.filter((a) => noticeIds.has(a.id))}
+          today={TODAY}
+          custodyNoLabel={custodyNoLabel}
+          onClose={() => setNoticeOpen(false)}
+        />
+      )}
+
       {filtered.length === 0 ? (
         <p className="py-12 text-center text-sm text-muted">該当する申請が見つかりません</p>
       ) : showApprovedDetail || showIssued ? (
         /* 受け取り待ち / 新規発行済み: メモ・受取予定日をこの場で編集できるカード */
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {paged.map((a) => (
-            <ApprovedCard
+            <SelectableCard
               key={a.id}
-              app={a}
-              today={TODAY}
-              variant={showIssued ? "issued" : "waiting"}
-              canEdit={canEdit}
-              authorName={authorName}
-              custodyNoLabel={custodyNoLabel(a)}
-              nationality={nationalityOf(a)}
-              updateApplication={updateApplication}
-            />
+              selecting={noticeSelecting}
+              selected={noticeIds.has(a.id)}
+              name={a.name}
+              onToggle={() => toggleNotice(a.id)}
+            >
+              <ApprovedCard
+                app={a}
+                today={TODAY}
+                variant={showIssued ? "issued" : "waiting"}
+                canEdit={canEdit}
+                authorName={authorName}
+                custodyNoLabel={custodyNoLabel(a)}
+                nationality={nationalityOf(a)}
+                updateApplication={updateApplication}
+              />
+            </SelectableCard>
           ))}
         </div>
       ) : (
