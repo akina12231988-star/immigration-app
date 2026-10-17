@@ -45,6 +45,11 @@ export const EXAM_CONTENT_CHOICES = [
 export const EXAM_RESULTS = ["", "合格", "不合格"] as const;
 export type ExamResult = (typeof EXAM_RESULTS)[number];
 
+// 代金の後払いを指示できる人（登録支援機関の代表）。
+// 試験の代金は本人から先に受け取ってから申込するのが原則で、
+// この人の指示があったときだけ、代金を受け取る前に申込できる
+export const EXAM_DEFERRED_BY = "VUONG VAN THANH";
+
 // 1回ぶんの試験の申込。
 // 不合格ならまた申し込むので、申込日・試験日・代金・合否は回ごとに残す
 export interface TodoExamAttempt {
@@ -54,6 +59,8 @@ export interface TodoExamAttempt {
   fee: string; // 代金
   fee_received: boolean; // 代金を本人から受け取ったか
   fee_received_on: string; // 受け取りを確認した日
+  deferred: boolean; // 後払い（EXAM_DEFERRED_BY の指示で、代金を受け取る前に申込してよい）
+  deferred_on: string; // 後払いの指示を受けた日
   result: ExamResult; // 合否（空は未確認）
   result_on: string; // 合否を確認した日
   note: string; // メモ（会場・不合格の理由など）
@@ -67,10 +74,20 @@ export function emptyExamAttempt(): TodoExamAttempt {
     fee: "",
     fee_received: false,
     fee_received_on: "",
+    deferred: false,
+    deferred_on: "",
     result: "",
     result_on: "",
     note: "",
   };
+}
+
+// 代金を受け取る前で、後払いの指示も無い → まだ申込してはいけない。
+// すでに申込済み（申込日だけ入っている古い記録を含む）なら止めない
+export function examApplyBlocked(
+  attempt: Pick<TodoExamAttempt, "applied" | "applied_on" | "fee_received" | "deferred">,
+): boolean {
+  return !attempt.applied && !attempt.applied_on && !attempt.fee_received && !attempt.deferred;
 }
 
 export function normalizeExamAttempt(raw: unknown): TodoExamAttempt {
@@ -85,6 +102,8 @@ export function normalizeExamAttempt(raw: unknown): TodoExamAttempt {
     fee: str(r.fee, base.fee),
     fee_received: Boolean(r.fee_received ?? base.fee_received),
     fee_received_on: str(r.fee_received_on, base.fee_received_on),
+    deferred: Boolean(r.deferred ?? base.deferred),
+    deferred_on: str(r.deferred_on, base.deferred_on),
     result: EXAM_RESULTS.includes(r.result as ExamResult) ? (r.result as ExamResult) : base.result,
     result_on: str(r.result_on, base.result_on),
     note: str(r.note, base.note),
@@ -184,6 +203,14 @@ export function passedExamAttempt(exam: TodoExam): { no: number; attempt: TodoEx
   return i < 0 ? null : { no: i + 1, attempt: exam.attempts[i] };
 }
 
+// 代金をまだ本人から受け取っていない回（最後の回）。受け取り済みなら null。
+// 試験の申込の一覧で「まだ代金を払っていない人」を出すのに使う
+export function examUnpaidAttempt(exam: TodoExam): { no: number; attempt: TodoExamAttempt } | null {
+  const last = exam.attempts.at(-1);
+  if (!last || last.fee_received) return null;
+  return { no: exam.attempts.length, attempt: last };
+}
+
 // 次の回を足せるか。合格していればもう要らず、最後の回が不合格のときだけ足せる
 export function canAddExamAttempt(exam: TodoExam): boolean {
   if (passedExamAttempt(exam)) return false;
@@ -258,8 +285,10 @@ export function examProgress(exam: TodoExam, title: string, today: string): Exam
     label: "申込・代金",
     done: applied && (last.fee.trim() === "" || last.fee_received),
     detail: !applied
-      ? `${no}回目 未申込`
-      : `${no}回目 ${last.applied_on || "申込済"}${last.fee.trim() !== "" && !last.fee_received ? "・代金未受取" : ""}`,
+      ? `${no}回目 未申込${last.fee_received ? "（代金受取済）" : last.deferred ? "（後払い）" : "（代金待ち）"}`
+      : `${no}回目 ${last.applied_on || "申込済"}${
+          last.fee.trim() !== "" && !last.fee_received ? (last.deferred ? "・後払い（代金未受取）" : "・代金未受取") : ""
+        }`,
   });
   base.push({
     key: "exam",

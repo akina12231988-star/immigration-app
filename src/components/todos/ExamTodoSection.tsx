@@ -20,13 +20,16 @@ import { updateWorker } from "@/lib/supabase/queries/workers";
 import { normalizeOrganizationIntake } from "@/lib/organization-intake";
 import { formatYmdJa } from "@/lib/support-plan-dates";
 import { PassportMrzPanel, SavedMrzCopyList } from "@/components/workers/PassportMrzPanel";
+import { ExamFeeAccountCard } from "@/components/todos/ExamFeeAccount";
 import { dbErrorMessage } from "@/lib/errors";
 import { sumHistoryDays, todayStr, toYMD, ymdFullText, ymdText } from "@/lib/ssw/calc";
 import {
   canAddExamAttempt,
   emptyExamAttempt,
   EXAM_CONTENT_CHOICES,
+  EXAM_DEFERRED_BY,
   EXAM_RESULTS,
+  examApplyBlocked,
   examAccountMissing,
   examOpenSection,
   examProgress,
@@ -101,6 +104,31 @@ export function ExamTodoSection({
               fee_received_on: a.fee_received ? "" : today,
             }
           : a,
+      ),
+    };
+    if (editing) setDraft(next);
+    else onChangeExam(withExamSummary(next));
+  };
+
+  // 代金の後払い（EXAM_DEFERRED_BY の指示で、代金を受け取る前に申込してよい）の切り替え。
+  // 受け取りの確認と同じく「編集」を開かなくても押せる（押すとすぐ保存する）
+  const toggleDeferred = (index: number) => {
+    const base = editing ? draft : saved;
+    const current = base.attempts[index];
+    if (!current) return;
+    if (
+      !current.deferred &&
+      !window.confirm(
+        `${EXAM_DEFERRED_BY} から「代金は後払いでよいので先に申込する」と指示がありましたか？\n` +
+          "指示があったときだけ押してください（代金を受け取る前に申込できるようになります）。",
+      )
+    ) {
+      return;
+    }
+    const next = {
+      ...base,
+      attempts: base.attempts.map((a, i) =>
+        i === index ? { ...a, deferred: !a.deferred, deferred_on: a.deferred ? "" : today } : a,
       ),
     };
     if (editing) setDraft(next);
@@ -277,25 +305,7 @@ export function ExamTodoSection({
               ) : (
                 <ReadItem label="希望する受験内容" value={exam.exam_choice} />
               ))}
-            <ExamField
-              label="アプリケーションNo."
-              value={exam.application_no}
-              editing={editing}
-              placeholder="発行されたら入力"
-              onChange={(v) => set({ application_no: v })}
-            />
-            <ExamField
-              label="プロメトリックID"
-              value={exam.prometric_id}
-              editing={editing}
-              onChange={(v) => set({ prometric_id: v })}
-            />
-            <ExamField
-              label="パスワード"
-              value={exam.password}
-              editing={editing}
-              onChange={(v) => set({ password: v })}
-            />
+            {/* 並び順は申込サイトで使う順（ログイン先 → 作成者 → プロメトリックID → パスワード → アプリケーションNo.） */}
             <ExamField
               label="ログイン先のメールアドレス"
               value={exam.login_email}
@@ -319,6 +329,25 @@ export function ExamTodoSection({
             ) : (
               <ReadItem label="メールアドレスを作ったのは" value={exam.login_email_owner} />
             )}
+            <ExamField
+              label="プロメトリックID"
+              value={exam.prometric_id}
+              editing={editing}
+              onChange={(v) => set({ prometric_id: v })}
+            />
+            <ExamField
+              label="パスワード"
+              value={exam.password}
+              editing={editing}
+              onChange={(v) => set({ password: v })}
+            />
+            <ExamField
+              label="アプリケーションNo."
+              value={exam.application_no}
+              editing={editing}
+              placeholder="発行されたら入力"
+              onChange={(v) => set({ application_no: v })}
+            />
             {exam.login_email_owner === "弊社が作成" && (
               <ExamField
                 label="メールアドレスのパスワード（弊社作成のため記録）"
@@ -348,6 +377,8 @@ export function ExamTodoSection({
                 today={today}
                 onChange={(patch) => setAttempt(i, patch)}
                 onToggleFeeReceived={() => toggleFeeReceived(i)}
+                onToggleDeferred={() => toggleDeferred(i)}
+                examLabel={todo.title.replace(/申込$/, "")}
               />
             ))}
           </div>
@@ -545,16 +576,22 @@ function ExamAttemptRow({
   today,
   onChange,
   onToggleFeeReceived,
+  onToggleDeferred,
+  examLabel,
 }: {
   no: number;
   attempt: TodoExamAttempt;
   editing: boolean;
   canEdit: boolean;
   today: string;
+  examLabel: string; // 口座案内の文章に入れる試験名（TODOの内容）
   onChange: (patch: Partial<TodoExamAttempt>) => void;
-  // 代金の受け取りは「編集」を開かなくても押せる
+  // 代金の受け取り・後払いの指示は「編集」を開かなくても押せる
   onToggleFeeReceived: () => void;
+  onToggleDeferred: () => void;
 }) {
+  // 代金を受け取る前で後払いの指示も無い → まだ申込してはいけない（申込済みにできない）
+  const blocked = examApplyBlocked(attempt);
   const resultClass =
     attempt.result === "合格"
       ? "border-status-approved-fg/40 bg-status-approved-bg"
@@ -570,10 +607,12 @@ function ExamAttemptRow({
         </span>
         {/* 申込済みかどうか */}
         {editing ? (
-          <label className="flex items-center gap-1 text-[11px] font-bold">
+          <label className={`flex items-center gap-1 text-[11px] font-bold ${blocked ? "text-muted" : ""}`}>
             <input
               type="checkbox"
               checked={attempt.applied}
+              disabled={blocked}
+              title={blocked ? "代金を受け取るか、後払いの指示を記録すると押せます" : undefined}
               onChange={(e) =>
                 onChange({
                   applied: e.target.checked,
@@ -588,7 +627,7 @@ function ExamAttemptRow({
           <span
             className={`text-[11px] font-bold ${attempt.applied ? "text-status-approved-fg" : "text-muted"}`}
           >
-            {attempt.applied ? `申込済み（${attempt.applied_on || "日付未登録"}）` : "まだ申し込んでいません"}
+            {attempt.applied || attempt.applied_on ? `申込済み（${attempt.applied_on || "日付未登録"}）` : "まだ申し込んでいません"}
           </span>
         )}
         {attempt.result && (
@@ -613,8 +652,9 @@ function ExamAttemptRow({
               <input
                 type="date"
                 value={attempt.applied_on}
+                disabled={blocked}
                 onChange={(e) => onChange({ applied_on: e.target.value })}
-                className={INPUT}
+                className={`${INPUT} disabled:opacity-50`}
               />
             </label>
             <label className="flex flex-col gap-0.5 text-[11px] font-bold text-muted">
@@ -673,6 +713,29 @@ function ExamAttemptRow({
         )}
       </div>
 
+      {/* 代金を受け取る前は申込しない（原則）。EXAM_DEFERRED_BY の指示があるときだけ先に申込できる */}
+      {blocked && (
+        <div className="mt-1.5 rounded-lg border border-seal/50 bg-seal/10 px-2.5 py-2 text-xs text-seal">
+          <p className="font-bold">
+            ⚠ 試験の代金を先に本人から振込（受け取り）してもらってから申込してください。代金を受け取る前は申込しないでください。
+          </p>
+          <p className="mt-0.5 text-[11px]">
+            {EXAM_DEFERRED_BY} から「後払いでよいので先に申込して」と指示があった場合だけ、下の「後払いの指示あり」を押すと先に申込できます。
+          </p>
+        </div>
+      )}
+      {attempt.deferred && !attempt.fee_received && (
+        <p className="mt-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] font-bold text-amber-800">
+          {EXAM_DEFERRED_BY} の指示で後払い{attempt.deferred_on && `（${attempt.deferred_on}）`}。代金を受け取る前に申込できます。代金はあとで必ず受け取ってください。
+        </p>
+      )}
+      {/* 代金をまだ受け取っていないときは、本人に送る振込先の口座案内をここに出す（画像・文章をコピーできる） */}
+      {!attempt.fee_received && (
+        <div className="mt-1.5">
+          <ExamFeeAccountCard fee={attempt.fee} examLabel={examLabel} />
+        </div>
+      )}
+
       {/* 代金を本人から受け取ったかの確認。
           確認するだけなので「編集」を開かなくても押せる（押すとすぐ保存する） */}
       <div className="mt-1.5 flex flex-wrap items-center gap-2">
@@ -703,6 +766,20 @@ function ExamAttemptRow({
                 本人から代金を受け取った
               </>
             )}
+          </button>
+        )}
+        {/* 後払いの指示（代金を受け取る前に申込してよい）。受け取り済みなら要らない */}
+        {canEdit && !attempt.fee_received && (
+          <button
+            type="button"
+            onClick={onToggleDeferred}
+            className={
+              attempt.deferred
+                ? "min-h-[32px] rounded-lg border border-border bg-surface px-2.5 text-[11px] font-bold text-muted"
+                : "min-h-[32px] rounded-lg border border-amber-400 bg-surface px-2.5 text-[11px] font-bold text-amber-800"
+            }
+          >
+            {attempt.deferred ? "後払いの指示を取り消す" : `${EXAM_DEFERRED_BY} の後払いの指示あり（先に申込）`}
           </button>
         )}
       </div>
