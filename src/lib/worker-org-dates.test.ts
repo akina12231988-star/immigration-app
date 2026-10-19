@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   historyToCloseOnLeaving,
+  mergedOrgPeriod,
   orgEmploymentDates,
   type OrgHistoryRow,
 } from "./worker-org-dates";
@@ -208,6 +209,14 @@ describe("orgEmploymentDates（同じ会社の職歴が分かれているとき�
         hasCurrentOrg: true,
       }),
     ).toEqual({ employmentStartOn: "2025-07-22", leavingOn: null });
+  });
+
+  it("前の行の退職日の翌日から次の行が始まる職歴（更新で分かれた行）もひと続きにする", () => {
+    const adjacent = [
+      history({ org_name: "白石 智和", start_date: "2025-07-04", end_date: "2026-05-21" }),
+      history({ org_name: "白石 智和", start_date: "2026-05-22", end_date: null }),
+    ];
+    expect(mergedOrgPeriod(adjacent, "白石智和")).toEqual({ start: "2025-07-04", end: null });
   });
 
   it("いったん辞めて入り直した（期間が離れている）ときは、新しいほうの在籍を使う", () => {

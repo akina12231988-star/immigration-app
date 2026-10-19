@@ -150,7 +150,12 @@ export function WorkerVisaHistory({
       await fn();
       loadManual();
     } catch (err) {
-      setError(dbErrorMessage(err, "0138_worker_visa_history.sql", "保存に失敗しました"));
+      // 「削除」（hidden 列）だけが使えないときは、0138 ではなく 0153 の未適用
+      const migration =
+        err instanceof Error && err.message.includes("hidden")
+          ? "0153_worker_visa_history_hidden.sql"
+          : "0138_worker_visa_history.sql";
+      setError(dbErrorMessage(err, migration, "保存に失敗しました"));
     } finally {
       setBusy(false);
     }

@@ -12,7 +12,7 @@ import { BackButton } from "@/components/BackButton";
 import { Combobox } from "@/components/ui/Combobox";
 import QRCode from "qrcode";
 import { messengerWebUrl } from "@/lib/messenger-link";
-import { FileDown, Loader2, Pencil, Printer, UserRound } from "lucide-react";
+import { AlertTriangle, FileDown, Loader2, Pencil, Printer, UserRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
 import { FileDropArea } from "@/components/ui/FileDropArea";
@@ -30,6 +30,7 @@ import {
 import { upsertWorkerPeriodCard } from "@/lib/supabase/queries/worker-period-cards";
 import { rosterJpDate } from "@/lib/roster";
 import type { VisaHistoryRow } from "@/lib/visa-history";
+import type { PrintHistoryNote } from "@/lib/print-history-note";
 import type { Organization, WorkerInput } from "@/types/db";
 
 // 過去に在籍していた期間（この期間の個人票も発行できる）
@@ -88,6 +89,7 @@ export function PrintClient({
   workers,
   periods,
   currentHistory,
+  currentHistoryNote = null,
   canEdit,
 }: {
   organizations: Organization[];
@@ -104,6 +106,7 @@ export function PrintClient({
   workers: PrintWorker[];
   periods: PrintPeriod[]; // 過去に在籍していた期間（個人単位のときだけ）
   currentHistory: VisaHistoryRow[]; // 今の所属機関にいる間に受けた許可
+  currentHistoryNote?: PrintHistoryNote | null; // 履歴から許可が抜けているときの注意（画面だけ）
   canEdit: boolean; // この画面から情報を訂正できるか（admin / staff）
 }) {
   const router = useRouter();
@@ -227,6 +230,31 @@ export function PrintClient({
               >
                 会社提出用（QRなし）
               </button>
+            </div>
+          )}
+
+          {/* 在留資格の履歴から許可が抜けているときの注意。どこを直せば表に出るかを案内する（印刷には出ない） */}
+          {individual && !selectedPeriod && currentHistoryNote && baseWorker && (
+            <div
+              role="alert"
+              className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs text-amber-900"
+            >
+              <p className="flex items-start gap-1.5 font-bold">
+                <AlertTriangle size={15} className="mt-px shrink-0" />
+                {currentHistoryNote.title}
+              </p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-6 leading-relaxed">
+                {currentHistoryNote.lines.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+              <Link
+                href={`/workers/${baseWorker.id}`}
+                className="mt-1.5 inline-flex min-h-[32px] items-center gap-1 rounded-lg border border-amber-400 bg-white px-2.5 font-bold text-amber-900"
+              >
+                <UserRound size={13} />
+                外国人詳細を開いて直す
+              </Link>
             </div>
           )}
 
