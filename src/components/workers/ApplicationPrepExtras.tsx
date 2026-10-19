@@ -68,6 +68,7 @@ import { downloadPlanDatesCard } from "@/lib/plan-dates-card-image";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { listOrganizations, updateOrganization } from "@/lib/supabase/queries/organizations";
 import { WorkerWages } from "@/components/workers/WorkerWages";
+import { normalizeOrgEmploymentStarts } from "@/lib/org-employment";
 import { WorkerContracts } from "@/components/workers/WorkerContracts";
 import { todayStr } from "@/lib/ssw/calc";
 import { dbErrorMessage } from "@/lib/errors";
@@ -1738,6 +1739,12 @@ export function PrepEmploymentSection({
   // 賃金・雇用契約書の会社は、申請準備の所属機関（転職先）を自動で使う。
   // 未設定なら現在の所属機関
   const prepOrgId = info.application_prep_organization_id ?? info.current_organization_id;
+  // 転職先を指定しているときは、外国人の雇用開始日（今の会社のもの）は転職先には当てはまらない。
+  // 所属機関別の雇用開始日に転職先の日があればそれを使い、無ければ未定（「雇用開始日から」で入れられる）
+  const prepIsNewOrg = !!prepOrgId && prepOrgId !== info.current_organization_id;
+  const prepOrgStart = prepIsNewOrg
+    ? (normalizeOrgEmploymentStarts(info.org_employment_starts).find((e) => e.organization_id === prepOrgId)?.start_on ?? null)
+    : info.employment_start_on;
 
   return (
     <>
@@ -1745,8 +1752,8 @@ export function PrepEmploymentSection({
         <WorkerWages
           workerId={workerId}
           currentOrganizationId={prepOrgId}
-          employmentStartOn={info.employment_start_on}
-          employmentStarted={info.status === "在籍中"}
+          employmentStartOn={prepOrgStart}
+          employmentStarted={!prepIsNewOrg && info.status === "在籍中"}
           organizations={orgs}
           today={todayStr()}
           canEdit={canEdit}
