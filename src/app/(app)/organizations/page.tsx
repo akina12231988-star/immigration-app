@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { BadgeJapaneseYen } from "lucide-react";
+import { BadgeJapaneseYen, ClipboardList } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
 import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
@@ -40,14 +40,24 @@ export default async function OrganizationsPage() {
         title="所属機関の情報"
         backHref="/"
         right={
-          // 最低賃金の改定ごとの回答状況と、地域ごとの時給の集計
-          <Link
-            href="/organizations/wage-stats"
-            className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-brand-foreground/60 px-3 text-xs font-bold text-brand-foreground hover:bg-brand-foreground/10"
-          >
-            <BadgeJapaneseYen size={14} />
-            最低賃金の回答・地域別の時給
-          </Link>
+          <span className="flex flex-wrap gap-1.5">
+            {/* 会社からの書類の依頼（年末調整の書類など）のチェック表 */}
+            <Link
+              href="/organizations/requests"
+              className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-brand-foreground/60 px-3 text-xs font-bold text-brand-foreground hover:bg-brand-foreground/10"
+            >
+              <ClipboardList size={14} />
+              会社からの書類の依頼
+            </Link>
+            {/* 最低賃金の改定ごとの回答状況と、地域ごとの時給の集計 */}
+            <Link
+              href="/organizations/wage-stats"
+              className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-brand-foreground/60 px-3 text-xs font-bold text-brand-foreground hover:bg-brand-foreground/10"
+            >
+              <BadgeJapaneseYen size={14} />
+              最低賃金の回答・地域別の時給
+            </Link>
+          </span>
         }
       />
       <OrganizationsAdmin
