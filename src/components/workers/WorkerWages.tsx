@@ -91,6 +91,8 @@ export function WorkerWages({
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<WorkerWageKind>("時給");
   const [amount, setAmount] = useState("");
+  // この賃金がどの所属機関のものか（転職の場合は転職先を選ぶ。既定は表示している所属機関）
+  const [formOrgId, setFormOrgId] = useState<string>("");
   const [startedOn, setStartedOn] = useState("");
   // 適用開始日を「雇用開始日から」にする（申請時の賃金。日付が未定でも入れられる）
   const [fromEmploymentStart, setFromEmploymentStart] = useState(false);
@@ -147,7 +149,12 @@ export function WorkerWages({
   const orgName = (id: string | null) =>
     id ? (organizations.find((o) => o.id === id)?.name ?? "") : "";
 
-  const now = currentWage(wages, today, employmentStartOn);
+  // 現在の賃金。表示している所属機関（申請準備なら転職先）の賃金があればその中から選ぶ
+  // （転職前の会社の賃金が「現在」として出ないように）
+  const orgWages = currentOrganizationId
+    ? wages.filter((w) => w.organization_id === currentOrganizationId)
+    : [];
+  const now = currentWage(orgWages.length > 0 ? orgWages : wages, today, employmentStartOn);
   // 適用開始日（申請時の賃金は雇用開始日）。未定なら null
   const startedOnOf = (w: WorkerWage): string | null => wageStartedOn(w, employmentStartOn);
 
@@ -222,18 +229,31 @@ export function WorkerWages({
     }
   };
 
-  // 最初の1件は、雇用開始前なら「申請時の賃金」（雇用開始日から）、雇用開始後なら「採用時の賃金」
-  const openForm = (asFirst: boolean) => {
-    setKind(now?.kind ?? "時給");
-    setAmount("");
-    const applyTime = asFirst && !employmentStarted;
+  // その所属機関の賃金がまだ無いか（最初の1件なら「申請時／採用時の賃金」になる）
+  const isFirstForOrg = (orgId: string) => !wages.some((w) => (w.organization_id ?? "") === orgId);
+
+  // 追加フォームの初期値を所属機関に合わせる。
+  // 最初の1件は、雇用開始前なら「申請時の賃金」（雇用開始日から）、雇用開始後なら「採用時の賃金」。
+  // 転職先（表示している所属機関と違う会社）の最初の1件は、雇用開始日がまだ無いので「雇用開始日から」
+  const presetForOrg = (orgId: string) => {
+    const asFirst = isFirstForOrg(orgId);
+    const sameOrg = orgId === (currentOrganizationId ?? "");
+    const applyTime = asFirst && (!employmentStarted || !sameOrg);
     setFromEmploymentStart(applyTime);
     // 採用時なら雇用開始日、昇給なら今日を初期値にする
-    setStartedOn(asFirst ? (employmentStartOn ?? "") : today);
+    setStartedOn(asFirst ? (sameOrg ? (employmentStartOn ?? "") : "") : today);
     setReason(applyTime ? WAGE_REASON_APPLY : asFirst ? WAGE_REASON_HIRE : WAGE_REASON_RAISE);
     // 1-6号別紙の水道光熱費・通信費は、所属機関の登録（求人票に記載するその他の内容）から入れておく
-    const org = organizations.find((o) => o.id === currentOrganizationId);
+    const org = organizations.find((o) => o.id === orgId);
     setNewDetail(applyOrgCosts(emptyWageDetail(), orgCosts(org?.intake)));
+  };
+
+  const openForm = () => {
+    setKind(now?.kind ?? "時給");
+    setAmount("");
+    const orgId = currentOrganizationId ?? "";
+    setFormOrgId(orgId);
+    presetForOrg(orgId);
     setNewDetailOpen(false);
     setOpen(true);
   };
@@ -248,7 +268,7 @@ export function WorkerWages({
     try {
       const row = await insertWorkerWage(createClient(), {
         worker_id: workerId,
-        organization_id: currentOrganizationId,
+        organization_id: formOrgId || null,
         kind,
         amount: Number(amount) || 0,
         // 「雇用開始日から」は日付を持たない（雇用開始日が決まったらその日から適用）
@@ -525,14 +545,16 @@ export function WorkerWages({
         <div className="mt-2 flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => openForm(wages.length === 0)}
+            onClick={openForm}
             className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-bold"
           >
             <Plus size={13} />
-            {wages.length === 0
-              ? employmentStarted
-                ? "採用時の賃金を入れる"
-                : "申請時の賃金を入れる"
+            {isFirstForOrg(currentOrganizationId ?? "")
+              ? employmentStarted && orgWages.length === 0 && wages.length > 0
+                ? `${orgName(currentOrganizationId) || "この会社"}の賃金を入れる`
+                : employmentStarted
+                  ? "採用時の賃金を入れる"
+                  : "申請時の賃金を入れる"
               : "昇給を記録する"}
           </button>
         </div>
@@ -540,6 +562,25 @@ export function WorkerWages({
 
       {open && canEdit && (
         <div className="mt-2 flex flex-wrap items-end gap-2 rounded-xl border border-dashed border-border p-3">
+          {/* どの会社の賃金か。転職の場合は転職先を選ぶ（所属機関を変えると初期値も合わせ直す） */}
+          <label className="flex flex-col gap-0.5">
+            <span className="text-[10px] font-bold text-muted">所属機関（転職の場合は転職先）</span>
+            <select
+              value={formOrgId}
+              onChange={(e) => {
+                setFormOrgId(e.target.value);
+                presetForOrg(e.target.value);
+              }}
+              className="min-h-[36px] max-w-[16rem] rounded-lg border border-border bg-surface px-2 text-xs"
+            >
+              <option value="">（未設定）</option>
+              {organizations.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="flex flex-col gap-0.5">
             <span className="text-[10px] font-bold text-muted">区分</span>
             <select
@@ -634,10 +675,10 @@ export function WorkerWages({
                   wage={{ kind, amount: Number(amount) || 0 }}
                   detail={newDetail}
                   onChange={setNewDetail}
-                  lodgings={lodgingsOf(currentOrganizationId)}
-                  orgName={orgName(currentOrganizationId)}
-                  fallbackAnnualHours={annualHours(currentOrganizationId)}
-                  orgInfo={orgInfoFor(currentOrganizationId)}
+                  lodgings={lodgingsOf(formOrgId || null)}
+                  orgName={orgName(formOrgId || null)}
+                  fallbackAnnualHours={annualHours(formOrgId || null)}
+                  orgInfo={orgInfoFor(formOrgId || null)}
                 />
               </div>
             )}
@@ -776,7 +817,26 @@ export function WorkerWages({
                       )}
                     </td>
                     <td className="py-1.5 pr-2 text-muted">{w.reason || "—"}</td>
-                    <td className="py-1.5 pr-2 text-muted">{orgName(w.organization_id) || "—"}</td>
+                    <td className="py-1.5 pr-2 text-muted">
+                      {canEdit ? (
+                        // 間違った会社で入れた行は、ここで会社を直せる（転職先に付け替えるなど）
+                        <select
+                          value={w.organization_id ?? ""}
+                          onChange={(e) => void patch(w.id, { organization_id: e.target.value || null })}
+                          aria-label="この賃金の所属機関"
+                          className="max-w-[12rem] rounded-lg border border-border bg-surface px-1.5 py-1 text-xs"
+                        >
+                          <option value="">—</option>
+                          {organizations.map((o) => (
+                            <option key={o.id} value={o.id}>
+                              {o.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        orgName(w.organization_id) || "—"
+                      )}
+                    </td>
                     <td className="py-1.5 pr-2">
                       <button
                         type="button"
