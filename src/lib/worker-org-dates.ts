@@ -36,8 +36,8 @@ export function mergedOrgPeriod(
 
   let current = { start: rows[0].start_date, end: rows[0].end_date };
   for (const row of rows.slice(1)) {
-    // 前の在籍が続いている、または期間が重なる・つながるなら同じ在籍とみなす
-    const continues = current.end === null || row.start_date <= current.end;
+    // 前の在籍が続いている、または期間が重なる・つながる（翌日から始まる）なら同じ在籍とみなす
+    const continues = current.end === null || row.start_date <= nextDay(current.end);
     if (continues) {
       current = {
         start: current.start,
@@ -48,6 +48,14 @@ export function mergedOrgPeriod(
     }
   }
   return current;
+}
+
+// 翌日（YYYY-MM-DD）。更新で行が分かれた職歴は「前の行の退職日の翌日」から始まる
+function nextDay(ymd: string): string {
+  const d = new Date(`${ymd}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return ymd;
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
 }
 
 function maxDate(a: string, b: string): string {

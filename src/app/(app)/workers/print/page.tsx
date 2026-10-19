@@ -7,6 +7,7 @@ import { PrintClient, type PrintPeriod, type PrintWorker } from "./PrintClient";
 import { buildPastPeriods, docPeriodDate, periodKeyFor } from "@/lib/worker-doc-periods";
 import { mergedOrgPeriod, orgEmploymentDates, type OrgHistoryRow } from "@/lib/worker-org-dates";
 import { normalizeOrgSearchText } from "@/lib/org-search";
+import { printHistoryNote, printHistoryStartSource, type PrintHistoryNote } from "@/lib/print-history-note";
 import { listVisaHistory } from "@/lib/supabase/queries/visa-history";
 import {
   buildVisaHistory,
@@ -194,6 +195,8 @@ export default async function WorkersPrintPage({
   let periods: PrintPeriod[] = [];
   // 今の所属機関にいる間に受けた許可（在留資格の履歴のうち現在の分）
   let currentHistory: VisaHistoryRow[] = [];
+  // 履歴から許可が抜けているときの注意（画面だけに出す）
+  let currentHistoryNote: PrintHistoryNote | null = null;
   if (workerParam && workers.length === 1) {
     const [docs, cards, { data: apps }, { data: cardHistory }, manualVisa] = await Promise.all([
       listWorkerDocs(workerParam),
@@ -270,10 +273,23 @@ export default async function WorkersPrintPage({
       normalizeOrgEmploymentStarts(workers[0].org_employment_starts).find(
         (e) => e.organization_id === workers[0].current_organization_id && e.start_on,
       )?.start_on ?? "";
-    const currentStart = earliestDate(currentOrgStart, ongoing?.start ?? "");
-    currentHistory = currentStart
-      ? visaHistoryInPeriod(visaRows, currentStart, "")
-      : visaRows.slice(-1);
+    // 職歴も所属機関別の雇用開始日も無い人は、外国人の雇用開始日から数える。
+    // それも無ければ在籍期間が分からないので、履歴を全部出す（最後の1件だけにしない）
+    const { start: currentStart, source: startSource } = printHistoryStartSource({
+      orgStart: currentOrgStart,
+      historyStart: ongoing?.start ?? "",
+      workerStart: workers[0].employment_start_on ?? "",
+    });
+    currentHistory = currentStart ? visaHistoryInPeriod(visaRows, currentStart, "") : visaRows;
+    // 許可が表から抜けているときは、どこを直せばよいかを画面に出す
+    currentHistoryNote = printHistoryNote({
+      orgName: currentOrgName,
+      allRows: visaRows,
+      shownRows: currentHistory,
+      histories,
+      start: currentStart,
+      source: startSource,
+    });
 
     periods = past.map((p) => {
       const forPeriod = docs.filter(
@@ -356,6 +372,7 @@ export default async function WorkersPrintPage({
       workers={printWorkers}
       periods={periods}
       currentHistory={currentHistory}
+      currentHistoryNote={currentHistoryNote}
       canEdit={me.role !== "viewer"}
     />
   );
