@@ -10,6 +10,7 @@ import {
   statusFromContent,
   type VisaHistoryApplication,
   hiddenVisaHistory,
+  visaStatusKey,
 } from "./visa-history";
 
 const app = (over: Partial<VisaHistoryApplication>): VisaHistoryApplication => ({
@@ -112,6 +113,26 @@ describe("buildVisaHistory", () => {
       expiryDate: "2027-04-23",
       cardNo: "LJ8268506RD",
     });
+  });
+
+  it("在留資格に「更新」まで書かれた申請も、同じ日の今の在留カードとまとめる", () => {
+    const rows = buildVisaHistory({
+      apps: [
+        app({ content: "在留期間の更新許可", granted_permit_date: "2026-08-05", granted_expiry_date: "2028-08-29", visa_at_grant: "特定技能1号更新" }),
+      ],
+      cards: [],
+      current: {
+        residence_card_no: "LJ33737229RG",
+        residence_status: "特定技能1号",
+        residence_permit_date: "2026-08-05",
+        residence_expiry_date: "2028-08-29",
+        residence_period: "2年",
+      },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ status: "特定技能1号", label: "特定技能1号 更新許可", cardNo: "LJ33737229RG", isCurrent: true });
+    expect(visaStatusKey("特定技能１号 更新許可")).toBe("特定技能1号");
+    expect(visaStatusKey("特定技能1号")).toBe("特定技能1号");
   });
 
   it("許可日が無い申請・許可されていない申請は出さない", () => {

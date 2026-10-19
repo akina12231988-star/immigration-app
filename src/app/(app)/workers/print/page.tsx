@@ -270,10 +270,11 @@ export default async function WorkersPrintPage({
       normalizeOrgEmploymentStarts(workers[0].org_employment_starts).find(
         (e) => e.organization_id === workers[0].current_organization_id && e.start_on,
       )?.start_on ?? "";
-    const currentStart = earliestDate(currentOrgStart, ongoing?.start ?? "");
-    currentHistory = currentStart
-      ? visaHistoryInPeriod(visaRows, currentStart, "")
-      : visaRows.slice(-1);
+    // 職歴も所属機関別の雇用開始日も無い人は、外国人の雇用開始日から数える。
+    // それも無ければ在籍期間が分からないので、履歴を全部出す（最後の1件だけにしない）
+    const currentStart =
+      earliestDate(currentOrgStart, ongoing?.start ?? "") || (workers[0].employment_start_on ?? "");
+    currentHistory = currentStart ? visaHistoryInPeriod(visaRows, currentStart, "") : visaRows;
 
     periods = past.map((p) => {
       const forPeriod = docs.filter(

@@ -80,6 +80,16 @@ export function statusFromContent(content: string): string {
   return "";
 }
 
+// 同じ許可かどうかを見るときの在留資格のキー。
+// 「特定技能1号更新」「特定技能１号 更新許可」のように、申請の種類まで一緒に書かれた
+// 在留資格は「特定技能1号」と同じ許可として扱う（全角・空白の違いもそろえる）
+export function visaStatusKey(status: string | null | undefined): string {
+  return (status ?? "")
+    .normalize("NFKC")
+    .replace(/\s+/g, "")
+    .replace(/(更新|変更|認定)(許可)?$/, "");
+}
+
 // 日付の新しさで比べるためのキー（未入力は空文字）
 function dateOf(a: VisaHistoryApplication): string {
   return a.granted_permit_date || a.approval_date || "";
@@ -135,16 +145,20 @@ export function buildVisaHistory(input: {
   // 同じ許可（許可日＋在留資格）はまとめる。内容が多いほう（言い方・在留期限・番号）を残す
   const merged = new Map<string, VisaHistoryRow>();
   for (const row of rows) {
-    const key = `${row.permitDate}_${row.status}`;
+    const key = `${row.permitDate}_${visaStatusKey(row.status)}`;
     const prev = merged.get(key);
     if (!prev) {
       merged.set(key, row);
       continue;
     }
+    // 在留資格は「特定技能1号更新」のような書き方より、在留資格だけのほう（短いほう）を残す
+    const status = row.status && row.status.length < prev.status.length ? row.status : prev.status;
+    const pick = (s: string): string => s.replace(prev.status, status).replace(row.status, status);
     merged.set(key, {
       ...prev,
+      status,
       // 「更新許可」など、申請の内容から分かる言い方を優先する
-      label: prev.label.includes("更新") || prev.label.includes("認定") ? prev.label : row.label,
+      label: pick(prev.label.includes("更新") || prev.label.includes("認定") ? prev.label : row.label),
       expiryDate: prev.expiryDate || row.expiryDate,
       cardNo: prev.cardNo || row.cardNo,
       isCurrent: prev.isCurrent || row.isCurrent,
@@ -155,7 +169,7 @@ export function buildVisaHistory(input: {
   // 「削除」した自動の行（hidden）は履歴から外す
   for (const m of input.manual ?? []) {
     if (!m.permit_date) continue;
-    const key = `${m.permit_date}_${m.status ?? ""}`;
+    const key = `${m.permit_date}_${visaStatusKey(m.status)}`;
     if (m.hidden) {
       merged.delete(key);
       continue;

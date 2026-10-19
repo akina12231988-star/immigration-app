@@ -792,8 +792,8 @@ function WorkerSheet({
               </tr>
             </thead>
             <tbody>
-              {history.map((h) => (
-                <tr key={`${h.permitDate}_${h.status}`}>
+              {history.map((h, i) => (
+                <tr key={`${h.permitDate}_${h.status}_${h.cardNo}_${i}`}>
                   <td className="border border-gray-400 px-1 py-0.5 tabular-nums">
                     {rosterJpDate(h.permitDate)}
                   </td>
