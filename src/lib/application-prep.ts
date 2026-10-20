@@ -589,6 +589,8 @@ export const PREP_DOC_STATUS_OPTIONS: Record<string, PrepDocStatusOption[]> = {
       done: true,
       appContents: [SSW2_APP_CONTENT],
     },
+    // オンライン申請は原本を預からず、画像を添付して申請する
+    { value: "画像を送ってもらった：オンライン申請のため", done: true },
   ],
   passport: [
     { value: "写真だけ先に本人に依頼中", done: false },
@@ -601,6 +603,8 @@ export const PREP_DOC_STATUS_OPTIONS: Record<string, PrepDocStatusOption[]> = {
       done: true,
       appContents: [SSW2_APP_CONTENT],
     },
+    // オンライン申請は原本を預からず、画像を添付して申請する
+    { value: "画像を送ってもらった：オンライン申請のため", done: true },
   ],
   photo: [
     { value: "本人に依頼中", done: false },
