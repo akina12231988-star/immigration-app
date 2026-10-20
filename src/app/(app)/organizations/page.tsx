@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { BadgeJapaneseYen, ClipboardList } from "lucide-react";
+import { BadgeJapaneseYen, ClipboardList, Tag } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
 import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
@@ -41,6 +41,14 @@ export default async function OrganizationsPage() {
         backHref="/"
         right={
           <span className="flex flex-wrap gap-1.5">
+            {/* 会社名・住所をテープに印刷するためのコピー・CSV */}
+            <Link
+              href="/organizations/address-labels"
+              className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-brand-foreground/60 px-3 text-xs font-bold text-brand-foreground hover:bg-brand-foreground/10"
+            >
+              <Tag size={14} />
+              住所印刷
+            </Link>
             {/* 会社からの書類の依頼（年末調整の書類など）のチェック表 */}
             <Link
               href="/organizations/requests"

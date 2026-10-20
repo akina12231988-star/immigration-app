@@ -98,6 +98,7 @@ export interface Organization {
   industry: string;
   business_category: string; // 業務区分（特定技能）
   address: string;
+  postal_code?: string; // 郵便番号（数字7桁・ハイフンなし。住所のテープ印刷に使う。0184 未適用なら undefined）
   contact: string;
   corporate_no: string; // 法人番号（13桁・法人でない場合は空）
   note: string;

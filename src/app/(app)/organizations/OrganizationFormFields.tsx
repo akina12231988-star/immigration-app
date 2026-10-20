@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/client";
 import { OrgTabPanel } from "@/components/organizations/OrgTabs";
 import { compressImage } from "@/lib/image-compress";
 import { formatAmountInput } from "@/lib/amount-format";
+import { formatPostal } from "@/lib/org-address-label";
 import { listOrganizationFiles } from "@/lib/supabase/queries/organization-files";
 import {
   createOrgFileTicket,
@@ -94,6 +95,7 @@ export function emptyOrganizationInput(): OrganizationInput {
     industry: "",
     business_category: "",
     address: "",
+    postal_code: "",
     contact: "",
     corporate_no: "",
     note: "",
@@ -111,6 +113,7 @@ export function organizationToInput(org: Organization): OrganizationInput {
     industry: org.industry,
     business_category: org.business_category,
     address: org.address,
+    postal_code: org.postal_code ?? "",
     contact: org.contact || intake.phone,
     corporate_no: org.corporate_no,
     note: org.note,
@@ -126,6 +129,7 @@ type TopTextField =
   | "industry"
   | "business_category"
   | "address"
+  | "postal_code"
   | "contact"
   | "corporate_no"
   | "note";
@@ -629,6 +633,22 @@ export function OrganizationFormBody({
             </p>
           )}
         </div>
+      )}
+      {/* 郵便番号は住所のテープ印刷（〒の行）に使う。空なら住所印刷の画面で住所から自動で探せる */}
+      {locks.top("postal_code") ? (
+        <StaticValue label="郵便番号" value={formatPostal(form.postal_code)} />
+      ) : (
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-muted">郵便番号</span>
+          <input
+            value={form.postal_code ?? ""}
+            onChange={(e) => set("postal_code", e.target.value.replace(/[^0-9０-９-－−]/g, ""))}
+            inputMode="numeric"
+            placeholder="861-8041"
+            className={INPUT_CLASS}
+          />
+          <span className={HINT_CLASS}>空のままでも、住所印刷の画面で住所から自動で探せます。</span>
+        </label>
       )}
       <div className="sm:col-span-2">
         {locks.top("address") ? (
