@@ -12,6 +12,7 @@ import {
   type RequestMethod,
 } from "@/lib/tax-cert";
 import { MoneyOrderFields } from "./MoneyOrderFields";
+import { AgentIdDocuments } from "./AgentIdDocuments";
 import { CheckRow, INPUT, LABEL, Pill } from "./ui";
 
 // 郵送請求の画面で共用する部品（受領方法・判定結果の表示・自治体マスタの登録モーダル）
@@ -25,6 +26,7 @@ interface MethodState {
   setRecipient: (v: RecipientType) => void;
   agent: string;
   setAgent: (v: string) => void;
+  canEdit?: boolean; // 代理人の身分証明書を登録・削除できるか（省略時は可）
   title?: string;
   // 郵送請求のときに出す定額小為替の入力（証明書1枚につき1枚）
   orderTitles?: string[];
@@ -42,10 +44,14 @@ export function MethodToggleSection(p: MethodState) {
         <Pill active={p.method === "mail"} onClick={() => p.setMethod("mail")}>郵送請求した</Pill>
       </div>
       {p.method === "agent_window" && (
-        <label className="flex flex-col gap-1">
-          <span className={LABEL}>代理人の氏名・宛先</span>
-          <input value={p.agent} onChange={(e) => p.setAgent(e.target.value)} placeholder="例：山田太郎（行政書士事務所）" className={INPUT} />
-        </label>
+        <div className="flex flex-col gap-2">
+          <label className="flex flex-col gap-1">
+            <span className={LABEL}>代理人の氏名・宛先</span>
+            <input value={p.agent} onChange={(e) => p.setAgent(e.target.value)} placeholder="例：山田太郎（行政書士事務所）" className={INPUT} />
+          </label>
+          {/* 代理人の本人確認書類の写し（窓口でも提示するので、ここから印刷できる） */}
+          <AgentIdDocuments agentName={p.agent} canEdit={p.canEdit ?? true} />
+        </div>
       )}
       {p.method === "mail" && (
         <div className="flex flex-col gap-2.5">
@@ -58,10 +64,14 @@ export function MethodToggleSection(p: MethodState) {
             <Pill active={p.recipient === "agent"} onClick={() => p.setRecipient("agent")}>代理人宛に届く</Pill>
           </div>
           {p.recipient === "agent" && (
-            <label className="flex flex-col gap-1">
-              <span className={LABEL}>代理人の氏名・宛先</span>
-              <input value={p.agent} onChange={(e) => p.setAgent(e.target.value)} placeholder="例：山田太郎（行政書士事務所）" className={INPUT} />
-            </label>
+            <div className="flex flex-col gap-2">
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>代理人の氏名・宛先</span>
+                <input value={p.agent} onChange={(e) => p.setAgent(e.target.value)} placeholder="例：山田太郎（行政書士事務所）" className={INPUT} />
+              </label>
+              {/* 郵送請求に同封する代理人の本人確認書類の写し。登録してあればその場で開いて印刷できる */}
+              <AgentIdDocuments agentName={p.agent} canEdit={p.canEdit ?? true} />
+            </div>
           )}
           {p.orders && p.setOrders && (
             <div className="mt-1">

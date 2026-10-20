@@ -101,3 +101,85 @@ export async function deleteMailingFile(fileId: string): Promise<{ ok: true } | 
   if (error) return { ok: false, message: error.message };
   return { ok: true };
 }
+
+// ---- 代理人（職員）の身分証明書（mailing_agent_documents・0186） ----
+// 代理人として郵送請求するときに同封する本人確認書類の写し。代理人の名前ごとに登録し、
+// 郵送請求の画面で代理人を入力したらすぐ開いて印刷できるようにする
+
+export async function createAgentDocTicket(
+  fileName: string,
+  mimeType: string,
+): Promise<{ ok: true; path: string; token: string } | Err> {
+  if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
+  if (!ALLOWED_MIME.test(mimeType)) return { ok: false, message: "画像またはPDFのみ登録できます" };
+  const admin = createAdminClient();
+  if (!admin) return { ok: false, message: "サーバー設定エラー（SERVICE_ROLE_KEY 未設定）" };
+  await admin.storage.createBucket(BUCKET, { public: false }).catch(() => undefined);
+  const rawExt = fileName.includes(".") ? (fileName.split(".").pop() ?? "") : "";
+  const ext = /^[a-zA-Z0-9]{1,8}$/.test(rawExt) ? rawExt.toLowerCase() : "bin";
+  const path = `agent-docs/${crypto.randomUUID()}.${ext}`;
+  const { data, error } = await admin.storage.from(BUCKET).createSignedUploadUrl(path);
+  if (error || !data) return { ok: false, message: `準備に失敗: ${error?.message}` };
+  return { ok: true, path, token: data.token };
+}
+
+export async function registerAgentDoc(
+  agentName: string,
+  label: string,
+  path: string,
+  fileName: string,
+  mimeType: string,
+): Promise<{ ok: true; id: string } | Err> {
+  if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
+  if (!path.startsWith("agent-docs/")) return { ok: false, message: "不正なパス" };
+  if (!agentName.trim()) return { ok: false, message: "代理人の名前を入れてください" };
+  const me = await getMyProfile();
+  const admin = createAdminClient();
+  if (!admin) return { ok: false, message: "サーバー設定エラー" };
+  const { data, error } = await admin
+    .from("mailing_agent_documents")
+    .insert({
+      agent_name: agentName.trim(),
+      label: label.trim(),
+      storage_path: path,
+      file_name: fileName,
+      mime_type: mimeType,
+      uploaded_by: me?.id ?? null,
+    })
+    .select("id")
+    .single();
+  if (error) {
+    const missing = /mailing_agent_documents/.test(error.message) && /not find|does not exist/i.test(error.message);
+    return {
+      ok: false,
+      message: missing
+        ? `${error.message}／マイグレーション 0186_mailing_agent_documents.sql が未適用の可能性があります。Supabase の SQL Editor で適用してください。`
+        : error.message,
+    };
+  }
+  return { ok: true, id: (data as { id: string }).id };
+}
+
+export async function getAgentDocPreviewUrl(docId: string): Promise<{ ok: true; url: string } | Err> {
+  const me = await getMyProfile();
+  const admin = createAdminClient();
+  if (!me || !admin) return { ok: false, message: "権限がありません" };
+  const { data } = await admin.from("mailing_agent_documents").select("storage_path").eq("id", docId).maybeSingle();
+  const path = (data as { storage_path: string } | null)?.storage_path;
+  if (!path) return { ok: false, message: "ファイルが見つかりません" };
+  const { data: signed, error } = await admin.storage.from(BUCKET).createSignedUrl(path, TTL);
+  if (error || !signed) return { ok: false, message: `URL発行に失敗: ${error?.message}` };
+  return { ok: true, url: signed.signedUrl };
+}
+
+export async function deleteAgentDoc(docId: string): Promise<{ ok: true } | Err> {
+  if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
+  const admin = createAdminClient();
+  if (!admin) return { ok: false, message: "サーバー設定エラー" };
+  const { data } = await admin.from("mailing_agent_documents").select("storage_path").eq("id", docId).maybeSingle();
+  const path = (data as { storage_path: string } | null)?.storage_path;
+  if (path) await admin.storage.from(BUCKET).remove([path]).catch(() => undefined);
+  const { error } = await admin.from("mailing_agent_documents").delete().eq("id", docId);
+  if (error) return { ok: false, message: error.message };
+  return { ok: true };
+}
