@@ -493,6 +493,8 @@ export function isDocComplete(docId: string, fileSatisfied: boolean, status: str
   const options = PREP_DOC_STATUS_OPTIONS[docId];
   if (!options) return fileSatisfied;
   const current = normalizePrepStatus(status);
+  // 「対象外」はどの書類でも選べる完了扱い（この人には要らない書類。添付も要らない）
+  if (current === PREP_STATUS_NOT_APPLICABLE) return true;
   return !!options.find((o) => o.value === current)?.done;
 }
 
@@ -563,6 +565,14 @@ export interface PrepDocStatusOption {
 // 前回の申請（1年以内）の申請番号を転用して、今回は提出を省く選択肢。
 // 以前は「転用番号で対応する」という言い方で保存していたので、読むときに今の言い方にそろえる
 export const PREP_STATUS_REUSE_NO = "転用番号で申請する";
+
+// どの書類でも選べる「対象外」（この人には要らない書類。完了扱いで添付も要らない）
+export const PREP_STATUS_NOT_APPLICABLE = "対象外";
+export const PREP_STATUS_NOT_APPLICABLE_OPTION: PrepDocStatusOption = {
+  value: PREP_STATUS_NOT_APPLICABLE,
+  done: true,
+  noFile: true,
+};
 const PREP_STATUS_REUSE_NO_OLD = "転用番号で対応する";
 export function normalizePrepStatus(status: string): string {
   return status === PREP_STATUS_REUSE_NO_OLD ? PREP_STATUS_REUSE_NO : status;
@@ -803,6 +813,7 @@ export function compareGensenKazei(kazeiAmount: string, gensenAmount: string): G
 // 選択中のステータスの選択肢定義を返す
 export function prepStatusOption(docId: string, status: string): PrepDocStatusOption | null {
   const current = normalizePrepStatus(status);
+  if (PREP_DOC_STATUS_OPTIONS[docId] && current === PREP_STATUS_NOT_APPLICABLE) return PREP_STATUS_NOT_APPLICABLE_OPTION;
   return PREP_DOC_STATUS_OPTIONS[docId]?.find((o) => o.value === current) ?? null;
 }
 

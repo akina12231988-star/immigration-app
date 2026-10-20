@@ -146,6 +146,7 @@ import {
   sumPrepAmounts,
   PREP_DOC_ATTACH_ITEMS,
   PREP_DOC_STATUS_OPTIONS,
+  PREP_STATUS_NOT_APPLICABLE_OPTION,
   normalizePrepStatus,
   PREP_MAIL_AFTER_HIDDEN,
   PREP_ISSUE_REQUEST_OPTIONS,
@@ -2661,13 +2662,16 @@ function DocRow({
   // すでに選んである値は、条件から外れても選択肢に残す（保存済みの内容が消えないように）
   // 古い言い方で保存されている準備状況は今の言い方にそろえて扱う（「転用番号で対応する」など）
   const currentStatus = normalizePrepStatus(ds.status);
-  const statusOptions = PREP_DOC_STATUS_OPTIONS[def.id]?.filter((o) => {
-    if (o.value === currentStatus) return true;
-    if (o.appTypes && !(meta.app_type !== "" && o.appTypes.includes(meta.app_type))) return false;
-    if (o.appContents && !o.appContents.includes(meta.app_content)) return false;
-    if (o.hideAppContents?.includes(meta.app_content)) return false;
-    return true;
-  });
+  const statusOptions = PREP_DOC_STATUS_OPTIONS[def.id]
+    ?.filter((o) => {
+      if (o.value === currentStatus) return true;
+      if (o.appTypes && !(meta.app_type !== "" && o.appTypes.includes(meta.app_type))) return false;
+      if (o.appContents && !o.appContents.includes(meta.app_content)) return false;
+      if (o.hideAppContents?.includes(meta.app_content)) return false;
+      return true;
+    })
+    // 「対象外」（この人には要らない書類）はどの書類でも最後に選べる。完了扱い
+    .concat(PREP_STATUS_NOT_APPLICABLE_OPTION);
   const selectedOption = prepStatusOption(def.id, ds.status);
   const extras: PrepStatusExtra[] = [
     ...(selectedOption?.extras ?? []),

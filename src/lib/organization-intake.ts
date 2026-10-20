@@ -178,6 +178,7 @@ export function emptyLodging(id: string): OrgLodging {
     useful_years: "",
     rent: "",
     max_residents: "",
+    rent_cap: "",
   };
 }
 
@@ -631,6 +632,30 @@ export function ownedRentPerPerson(
   return whole != null && n != null && n > 0 ? Math.round(whole / n) : null;
 }
 
+// 本人から徴収する上限（1人あたり・月額）。空・0 なら null（上限なし）
+export function lodgingRentCap(lodging: Pick<OrgLodging, "rent_cap">): number | null {
+  const cap = parseAmount(lodging.rent_cap ?? "");
+  return cap != null && cap > 0 ? cap : null;
+}
+
+// 1人あたりの家賃に上限をかけた「本人から徴収する額」と「会社負担」。
+// 上限が無い・家賃が上限以下なら、徴収＝家賃、会社負担 0
+export function lodgingCharge(
+  lodging: Pick<OrgLodging, "rent_cap">,
+  perPerson: number,
+): { charge: number; employer: number; capped: boolean } {
+  const cap = lodgingRentCap(lodging);
+  if (cap == null || perPerson <= cap) return { charge: perPerson, employer: 0, capped: false };
+  return { charge: cap, employer: perPerson - cap, capped: true };
+}
+
+// 徴収上限の説明（上限がかかるときだけ。「。本人からの徴収は上限 月額 15,000円とし、差額 5,000円は会社負担」）
+function capText(lodging: Pick<OrgLodging, "rent_cap">, perPerson: number | null): string {
+  if (perPerson == null) return "";
+  const c = lodgingCharge(lodging, perPerson);
+  return c.capped ? `。本人からの徴収は上限 月額 ${formatYen(c.charge)}とし、差額 ${formatYen(c.employer)}は会社負担` : "";
+}
+
 // 計算内容の説明として出す文。手で直した文があればそれを、無ければ自動で作った文を使う
 export function lodgingCalcNote(lodging: OrgLodging): string {
   return (lodging.calc_note ?? "").trim() || lodgingCalcText(lodging);
@@ -653,7 +678,7 @@ export function lodgingCalcText(lodging: OrgLodging): string {
       `${name}自己所有物件${state}。かかった総費用 ${formatYen(total)} ＋ 備品代 ${formatYen(equipment)} ＝ ${formatYen(total + equipment)} を` +
       `耐用年数 ${years}年（${years * 12}ヶ月）で月割り ＝ 物件全体の家賃 月額 ${formatYen(whole)}`;
     return n != null && per != null
-      ? `${head}。最大入居人数 ${n}名で按分 ＝ 1人あたり 月額 ${formatYen(per)}`
+      ? `${head}。最大入居人数 ${n}名で按分 ＝ 1人あたり 月額 ${formatYen(per)}${capText(lodging, per)}`
       : `${head}（最大入居人数を入れると1人あたりの金額が出ます）`;
   }
   const r = parseAmount(lodging.rent);
@@ -661,6 +686,6 @@ export function lodgingCalcText(lodging: OrgLodging): string {
   if (r == null) return "";
   const kind = lodging.kind ? `${lodging.kind}。` : "";
   return n != null
-    ? `${name}${kind}家賃 1人あたり 月額 ${formatYen(r)} × 最大入居人数 ${n}名 ＝ 物件全体の家賃 月額 ${formatYen(r * n)}`
-    : `${name}${kind}家賃 1人あたり 月額 ${formatYen(r)}`;
+    ? `${name}${kind}家賃 1人あたり 月額 ${formatYen(r)} × 最大入居人数 ${n}名 ＝ 物件全体の家賃 月額 ${formatYen(r * n)}${capText(lodging, r)}`
+    : `${name}${kind}家賃 1人あたり 月額 ${formatYen(r)}${capText(lodging, r)}`;
 }

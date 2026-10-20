@@ -146,9 +146,19 @@ describe("lodgingPerPerson", () => {
   it("家賃が未入力なら0", () => {
     expect(lodgingPerPerson({ rent: "", max_residents: "3" })).toBe(0);
   });
+
+  it("本人から徴収する上限があれば上限まで（家賃が上限以下ならそのまま）", () => {
+    expect(lodgingPerPerson({ rent: "20,000", max_residents: "3", rent_cap: "15,000" })).toBe(15_000);
+    expect(lodgingPerPerson({ rent: "12,000", max_residents: "3", rent_cap: "15,000" })).toBe(12_000);
+    expect(lodgingPerPerson({ rent: "20,000", max_residents: "3", rent_cap: "" })).toBe(20_000);
+  });
 });
 
 describe("lodgingNoteTemplate", () => {
+  it("上限で徴収額を抑えているときは、按分した額・上限・会社負担を書く", () => {
+    const text = lodgingNoteTemplate({ name: "女子寮", rent: "20000", max_residents: "3", rent_cap: "15000" }, 15_000);
+    expect(text).toContain("1人当たり月額20,000円のところ、本人からの徴収は上限15,000円とし、差額5,000円は会社が負担する。");
+  });
   it("人数が分かれば按分の根拠を書いた文になる", () => {
     const text = lodgingNoteTemplate(
       { name: "女子寮", rent: "20000", max_residents: "3" },

@@ -388,6 +388,18 @@ describe("ownedRentPerPerson / lodgingCalcText", () => {
     expect(ownedRentPerPerson({ ...base, max_residents: "" })).toBeNull();
     expect(lodgingCalcText({ ...base, total_cost: "" })).toBe("");
   });
+  it("本人から徴収する上限があれば、上限と会社負担を説明に足す", async () => {
+    const { lodgingCalcText, lodgingCharge } = await import("./organization-intake");
+    expect(lodgingCharge({ rent_cap: "15,000" }, 20000)).toEqual({ charge: 15000, employer: 5000, capped: true });
+    expect(lodgingCharge({ rent_cap: "15,000" }, 12000)).toEqual({ charge: 12000, employer: 0, capped: false });
+    expect(lodgingCharge({ rent_cap: "" }, 20000)).toEqual({ charge: 20000, employer: 0, capped: false });
+    expect(lodgingCalcText({ ...base, max_residents: "4", rent_cap: "15,000" })).toBe(
+      "大家方面: 自己所有物件・新品。かかった総費用 10,000,000円 ＋ 備品代 0円 ＝ 10,000,000円 を耐用年数 10年（120ヶ月）で月割り ＝ 物件全体の家賃 月額 83,333円。最大入居人数 4名で按分 ＝ 1人あたり 月額 20,833円。本人からの徴収は上限 月額 15,000円とし、差額 5,833円は会社負担",
+    );
+    expect(lodgingCalcText({ ...base, kind: "賃貸物件", rent: "20,000", max_residents: "3", rent_cap: "15,000" })).toBe(
+      "大家方面: 賃貸物件。家賃 1人あたり 月額 20,000円 × 最大入居人数 3名 ＝ 物件全体の家賃 月額 60,000円。本人からの徴収は上限 月額 15,000円とし、差額 5,000円は会社負担",
+    );
+  });
   it("賃貸物件は1人あたり家賃 × 人数 ＝ 物件全体", async () => {
     const { lodgingCalcText } = await import("./organization-intake");
     expect(lodgingCalcText({ ...base, kind: "賃貸物件", rent: "13,000", max_residents: "3" })).toBe(

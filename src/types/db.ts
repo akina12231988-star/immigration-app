@@ -153,6 +153,7 @@ export interface OrgLodging {
   useful_years: string; // 自己所有: 耐用年数（年）
   rent: string; // 家賃（1人あたり・月額・円）
   max_residents: string; // 最大入居人数
+  rent_cap?: string; // 本人から徴収する上限（1人あたり・月額・円）。家賃がこれを超える分は会社負担。空なら上限なし
   calc_note?: string; // 計算内容の説明を手で直した文（空なら自動で作った文を使う）
 }
 

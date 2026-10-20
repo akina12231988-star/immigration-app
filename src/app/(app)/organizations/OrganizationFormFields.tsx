@@ -40,6 +40,7 @@ import {
   normalizeOrganizationIntake,
   lodgingCalcNote,
   lodgingCalcText,
+  lodgingCharge,
   ownedMonthlyRent,
   ownedRentPerPerson,
   parseAmount,
@@ -488,10 +489,12 @@ function CalcResult({
   label,
   value,
   emptyHint,
+  suffix = "",
 }: {
   label: string;
   value: number | null;
   emptyHint: string;
+  suffix?: string; // 金額の後に添える文（会社負担の額など）
 }) {
   if (value == null) {
     return (
@@ -506,6 +509,7 @@ function CalcResult({
       <span className="ml-1 align-middle text-lg font-bold tabular-nums text-brand">
         {formatYen(value)}
       </span>
+      {suffix && <span className="ml-1 align-middle text-xs">{suffix}</span>}
     </p>
   );
 }
@@ -2156,13 +2160,41 @@ function IntakeSection({
                   })()}
                   emptyHint="1人あたりの家賃と最大入居人数を入力すると自動計算されます"
                 />
+                {/* 本人から徴収する上限。按分した家賃がこれを超える分は会社負担（賃金の別紙・求人票の居住費は上限までの額になる） */}
+                <div className="grid grid-cols-2 gap-2.5">
+                  <IntakeField
+                    label="本人から徴収する上限（1人あたり・月額・円）"
+                    value={formatAmountInput(lodging.rent_cap ?? "")}
+                    onChange={(v) => setLodging(i, { rent_cap: formatAmountInput(v) })}
+                    placeholder="例: 15,000（上限なしなら空）"
+                    hint="按分した家賃がこの額を超えるときは、ここまでを本人から徴収し、残りは会社負担として説明文に書きます。"
+                    locked={locks.lodging(i, "rent_cap")}
+                  />
+                  <CalcResult
+                    label="本人から徴収する額 ／ 会社負担（1人あたり・月額）"
+                    value={(() => {
+                      const r = parseAmount(lodging.rent);
+                      if (r == null) return null;
+                      const c = lodgingCharge(lodging, r);
+                      return c.capped ? c.charge : null;
+                    })()}
+                    suffix={(() => {
+                      const r = parseAmount(lodging.rent);
+                      if (r == null) return "";
+                      const c = lodgingCharge(lodging, r);
+                      return c.capped ? `（会社負担 ${formatYen(c.employer)}）` : "";
+                    })()}
+                    emptyHint="上限を入れると、徴収する額と会社負担が出ます（家賃が上限以下なら全額を徴収）"
+                  />
+                </div>
                 {/* 計算の内容を文章にしたもの。申請書の別紙や入管への説明にそのまま貼れる。
-                    自動で作った文を手で直せる（直した文は所属機関に保存され、以後はその文を使う） */}
+                    自動で作った文を手で直せる（直した文は所属機関に保存され、以後はその文を使う）。
+                    詳細表示のときも直して保存できる（現在の入居人数で書いている機関などに合わせる） */}
                 {lodgingCalcNote(lodging) && (
                   <LodgingCalcNoteBox
                     auto={lodgingCalcText(lodging)}
                     note={lodging.calc_note ?? ""}
-                    canEdit={!locks.detail}
+                    canEdit
                     onChange={(calc_note) => setLodging(i, { calc_note })}
                   />
                 )}
