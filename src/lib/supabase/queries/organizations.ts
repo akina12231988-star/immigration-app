@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isMissingColumnError } from "@/lib/errors";
 import type { OrgSsw2Duties } from "@/lib/org-ssw2-duties";
 import { currentOrgLeavingOn } from "@/lib/monthly-billing";
 import { currentWage, wageStartedOn } from "@/lib/wage";
@@ -29,15 +30,25 @@ export async function getOrganization(
   return (data as Organization) ?? null;
 }
 
+// 0184（郵便番号）が未適用でも登録・更新できるよう、郵便番号の列が無いエラーなら外して保存し直す
+function withoutPostal<T extends { postal_code?: string }>(input: T): Omit<T, "postal_code"> {
+  const { postal_code: _postal, ...rest } = input;
+  void _postal;
+  return rest;
+}
+
 export async function insertOrganization(
   supabase: SupabaseClient,
   input: OrganizationInput,
 ): Promise<Organization> {
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("organizations")
     .insert(input)
     .select()
     .single();
+  if (error && isMissingColumnError(error) && "postal_code" in input) {
+    ({ data, error } = await supabase.from("organizations").insert(withoutPostal(input)).select().single());
+  }
   if (error) throw error;
   return data as Organization;
 }
@@ -47,12 +58,15 @@ export async function updateOrganization(
   id: string,
   input: Partial<OrganizationInput>,
 ): Promise<Organization> {
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("organizations")
     .update(input)
     .eq("id", id)
     .select()
     .single();
+  if (error && isMissingColumnError(error) && "postal_code" in input) {
+    ({ data, error } = await supabase.from("organizations").update(withoutPostal(input)).eq("id", id).select().single());
+  }
   if (error) throw error;
   return data as Organization;
 }
