@@ -36,38 +36,40 @@ export default async function OrganizationsPage() {
 
   return (
     <>
-      <AppHeader
-        title="所属機関の情報"
-        backHref="/"
-        right={
-          <span className="flex flex-wrap gap-1.5">
-            {/* 会社名・住所をテープに印刷するためのコピー・CSV */}
-            <Link
-              href="/organizations/address-labels"
-              className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-brand-foreground/60 px-3 text-xs font-bold text-brand-foreground hover:bg-brand-foreground/10"
-            >
-              <Tag size={14} />
-              住所印刷
-            </Link>
-            {/* 会社からの書類の依頼（年末調整の書類など）のチェック表 */}
-            <Link
-              href="/organizations/requests"
-              className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-brand-foreground/60 px-3 text-xs font-bold text-brand-foreground hover:bg-brand-foreground/10"
-            >
-              <ClipboardList size={14} />
-              会社からの書類の依頼
-            </Link>
-            {/* 最低賃金の改定ごとの回答状況と、地域ごとの時給の集計 */}
-            <Link
-              href="/organizations/wage-stats"
-              className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-brand-foreground/60 px-3 text-xs font-bold text-brand-foreground hover:bg-brand-foreground/10"
-            >
-              <BadgeJapaneseYen size={14} />
-              最低賃金の回答・地域別の時給
-            </Link>
+      <AppHeader title="所属機関の情報" backHref="/" />
+      {/* 所属機関に関わる作業の入口。見出しの中だと小さくて見えにくいので、大きなボタンで並べる */}
+      <div className="grid grid-cols-1 gap-2 px-4 pt-3 sm:grid-cols-3 lg:px-8">
+        <Link
+          href="/organizations/requests"
+          className="flex min-h-[56px] items-center gap-3 rounded-xl border-2 border-brand bg-surface px-4 text-sm font-bold text-brand hover:bg-brand/5"
+        >
+          <ClipboardList size={22} className="shrink-0" />
+          <span>
+            会社からの書類の依頼
+            <span className="block text-[11px] font-normal text-muted">年末調整の書類などを在籍者ごとにチェック</span>
           </span>
-        }
-      />
+        </Link>
+        <Link
+          href="/organizations/address-labels"
+          className="flex min-h-[56px] items-center gap-3 rounded-xl border-2 border-brand bg-surface px-4 text-sm font-bold text-brand hover:bg-brand/5"
+        >
+          <Tag size={22} className="shrink-0" />
+          <span>
+            住所印刷
+            <span className="block text-[11px] font-normal text-muted">会社名・住所をテープ用にコピー／CSV</span>
+          </span>
+        </Link>
+        <Link
+          href="/organizations/wage-stats"
+          className="flex min-h-[56px] items-center gap-3 rounded-xl border-2 border-brand bg-surface px-4 text-sm font-bold text-brand hover:bg-brand/5"
+        >
+          <BadgeJapaneseYen size={22} className="shrink-0" />
+          <span>
+            最低賃金の回答・地域別の時給
+            <span className="block text-[11px] font-normal text-muted">改定ごとの送付・回答の状況と集計</span>
+          </span>
+        </Link>
+      </div>
       <OrganizationsAdmin
         organizations={organizations}
         managerNames={supportManagerOptions(employees, todayStr())}

@@ -80,6 +80,28 @@ export interface DocumentRequestCheck {
 
 export type DocumentRequestCheckInput = Omit<DocumentRequestCheck, "id" | "created_at" | "updated_at">;
 
+// マスに添付したファイル（0185）。実体は app-files バケット
+export interface DocumentRequestFile {
+  id: string;
+  request_id: string;
+  worker_id: string;
+  item_id: string;
+  storage_path: string;
+  file_name: string;
+  mime_type: string;
+  created_at: string;
+}
+
+// 添付ファイルを 外国人_項目 でまとめる
+export function groupFilesByCell(files: DocumentRequestFile[]): Map<string, DocumentRequestFile[]> {
+  const m = new Map<string, DocumentRequestFile[]>();
+  for (const f of files) {
+    const k = checkKey(f.worker_id, f.item_id);
+    m.set(k, [...(m.get(k) ?? []), f]);
+  }
+  return m;
+}
+
 // 3つの段階（順に進める）
 export const DOCUMENT_REQUEST_STEPS = [
   { key: "informed_on", label: "案内", long: "本人に案内した" },
