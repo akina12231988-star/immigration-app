@@ -217,6 +217,12 @@ describe("orgEmploymentDates（同じ会社の職歴が分かれているとき�
       history({ org_name: "白石 智和", start_date: "2026-05-22", end_date: null }),
     ];
     expect(mergedOrgPeriod(adjacent, "白石智和")).toEqual({ start: "2025-07-04", end: null });
+    // 在留資格の切り替えで数日空いても同じ在籍（2週間以内）
+    const gap = [
+      history({ org_name: "井上 洋介", start_date: "2025-11-21", end_date: "2026-05-21", visa: "特定活動（特定技能1号移行準備）" }),
+      history({ org_name: "井上 洋介", start_date: "2026-05-28", end_date: null }),
+    ];
+    expect(mergedOrgPeriod(gap, "井上　洋介")).toEqual({ start: "2025-11-21", end: null });
   });
 
   it("いったん辞めて入り直した（期間が離れている）ときは、新しいほうの在籍を使う", () => {

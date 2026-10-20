@@ -269,6 +269,30 @@ export function groupVisaHistoryByOrg<T extends { permitDate: string }>(
     });
 }
 
+// 今の所属機関にいる間の許可。
+// 在籍の始まり（start）から今までに使っていた許可に加えて、職歴（在籍期間）の上で
+// その機関にいた日に受けた許可も必ず含める（職歴の行が分かれていて在籍の始まりが
+// 遅く取れてしまっても、特定活動→特定技能のような前の許可が抜けないように）。
+// 機関名は全角・半角・空白の違いを無視して比べる
+export function visaHistoryForCurrentOrg<T extends { permitDate: string }>(
+  rows: T[],
+  histories: VisaHistoryEmployment[],
+  orgName: string,
+  start: string,
+  sameOrg: (a: string, b: string) => boolean = (a, b) => a === b,
+): T[] {
+  const inPeriod = new Set(visaHistoryInPeriod(rows, start, ""));
+  const atOrg = orgName
+    ? rows.filter((r) => {
+        const at = orgAtDate(histories, r.permitDate);
+        return !!at && sameOrg(at, orgName);
+      })
+    : [];
+  return [...rows]
+    .sort((a, b) => a.permitDate.localeCompare(b.permitDate))
+    .filter((r) => inPeriod.has(r) || atOrg.includes(r));
+}
+
 // ---- 在籍期間のあいだ使っていた在留カード（許可）を選ぶ ----
 
 // 在籍期間（start〜end。end が空なら今も在籍中）のあいだに使っていた許可を返す。

@@ -6,6 +6,7 @@ import {
   NO_ORG_GROUP,
   orgAtDate,
   visaHistoryInPeriod,
+  visaHistoryForCurrentOrg,
   grantLabel,
   statusFromContent,
   type VisaHistoryApplication,
@@ -285,6 +286,25 @@ describe("visaHistoryInPeriod", () => {
       { permitDate: "2024-04-23" },
       { permitDate: "2025-04-23" },
     ]);
+  });
+});
+
+describe("visaHistoryForCurrentOrg", () => {
+  const rows = [{ permitDate: "2025-11-21" }, { permitDate: "2026-05-28" }];
+  const histories = [
+    { org_name: "井上 洋介", start_date: "2025-11-21", end_date: "2026-05-27", visa: "特定活動（特定技能1号移行準備）" },
+    { org_name: "井上 洋介", start_date: "2026-05-28", end_date: null, visa: "特定技能1号" },
+  ];
+  const same = (a: string, b: string) => a.replace(/[\s　]/g, "") === b.replace(/[\s　]/g, "");
+  it("在籍の始まりが遅く取れても、職歴の上でその機関にいた日の許可は載せる", () => {
+    expect(visaHistoryForCurrentOrg(rows, histories, "井上　洋介", "2026-05-28", same).map((r) => r.permitDate)).toEqual([
+      "2025-11-21",
+      "2026-05-28",
+    ]);
+  });
+  it("別の会社にいた日の許可は、在籍の始まりより前なら載せない", () => {
+    const other = [{ org_name: "前の農園", start_date: "2025-01-01", end_date: "2026-05-27", visa: "特定技能1号" }, histories[1]];
+    expect(visaHistoryForCurrentOrg(rows, other, "井上　洋介", "2026-05-28", same).map((r) => r.permitDate)).toEqual(["2026-05-28"]);
   });
 });
 
