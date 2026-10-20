@@ -65,6 +65,7 @@ import { MailingFileAttachments } from "./MailingFileAttachments";
 import { MailingRecordAttachments } from "@/components/mailing/MailingRecordAttachments";
 import { ProgressBadge } from "@/components/mailing/MailingRecordSummary";
 import { MoneyOrderFields } from "./MoneyOrderFields";
+import { AgentIdDocuments } from "./AgentIdDocuments";
 import { TaxOfficeTab } from "./TaxOfficeTab";
 import { TaxRequestWizard } from "./TaxRequestWizard";
 import { hasYearRequests, recordMoneyOrderGroups } from "@/lib/tax-request-plan";
@@ -759,7 +760,11 @@ function ExtraRequestFields({
               <Pill active={v.applicantType === "agent"} onClick={() => set({ applicantType: "agent" })}>代理人</Pill>
             </div>
             {v.applicantType === "agent" && (
-              <input value={v.agentName} onChange={(e) => set({ agentName: e.target.value })} placeholder="代理人の名前" className={INPUT} />
+              <>
+                <input value={v.agentName} onChange={(e) => set({ agentName: e.target.value })} placeholder="代理人の名前" className={INPUT} />
+                {/* 代理人の本人確認書類の写し（同封・提示用）。登録してあればその場で開いて印刷できる */}
+                <AgentIdDocuments agentName={v.agentName} canEdit={canEdit} />
+              </>
             )}
           </>
         )}
