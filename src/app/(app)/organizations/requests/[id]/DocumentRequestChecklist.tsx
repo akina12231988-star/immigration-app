@@ -1,13 +1,35 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, CheckCircle2, ChevronDown, ChevronUp, MessageCircle, Pencil, RotateCcw, Trash2, UserRound } from "lucide-react";
+import {
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  FileText,
+  Loader2,
+  MessageCircle,
+  Paperclip,
+  Pencil,
+  RotateCcw,
+  Trash2,
+  UserRound,
+  X,
+} from "lucide-react";
 import { messengerWebUrl } from "@/lib/messenger-link";
 import { Card } from "@/components/ui/Card";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { FileDropArea } from "@/components/ui/FileDropArea";
 import { createClient } from "@/lib/supabase/client";
+import { compressImage } from "@/lib/image-compress";
+import {
+  createDocRequestFileTicket,
+  deleteDocRequestFile,
+  getDocRequestFilePreviewUrl,
+  registerDocRequestFile,
+} from "../actions";
 import {
   deleteDocumentRequest,
   updateDocumentRequest,
@@ -22,6 +44,7 @@ import {
   dueLabel,
   daysToDue,
   emptyCheck,
+  groupFilesByCell,
   indexChecks,
   joinedYearExcludedReason,
   joinedYearOf,
@@ -30,6 +53,7 @@ import {
   workerPending,
   type DocumentRequestCheck,
   type DocumentRequestCheckInput,
+  type DocumentRequestFile,
   type DocumentRequestStepKey,
   type OrganizationDocumentRequest,
   type OrganizationDocumentRequestInput,
@@ -54,6 +78,7 @@ export function DocumentRequestChecklist({
   workers,
   notYetCount,
   initialChecks,
+  initialFiles = [],
   today,
   canEdit,
 }: {
@@ -62,6 +87,7 @@ export function DocumentRequestChecklist({
   workers: ChecklistWorker[];
   notYetCount: number; // この機関に紐づいているがまだ在籍中ではない人（表には出さない）
   initialChecks: DocumentRequestCheck[];
+  initialFiles?: DocumentRequestFile[]; // マスに添付したファイル（0185）
   today: string;
   canEdit: boolean;
 }) {
@@ -76,6 +102,13 @@ export function DocumentRequestChecklist({
   const [error, setError] = useState<string | null>(null);
 
   const idx = useMemo(() => indexChecks(checks), [checks]);
+  // マスに添付したファイル
+  const [files, setFiles] = useState<DocumentRequestFile[]>(initialFiles);
+  const filesByCell = useMemo(() => groupFilesByCell(files), [files]);
+  const [uploadingCell, setUploadingCell] = useState<string | null>(null);
+  // 「添付」ボタン用の hidden な input（どのマスに入れるかを覚えておく）
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const pickTarget = useRef<{ workerId: string; itemId: string } | null>(null);
   const progress = requestProgress(request.items, workers, checks);
   const days = daysToDue(request.due_on, today);
   const dueTone = request.closed_on || days === null ? "text-muted" : days < 0 ? "text-seal" : days <= 7 ? "text-amber-700" : "text-foreground";
@@ -101,6 +134,65 @@ export function DocumentRequestChecklist({
   const toggleNotNeeded = (workerId: string, itemId: string) => {
     const c = current(workerId, itemId);
     void saveCheck({ ...c, not_needed: !c.not_needed });
+  };
+
+  // マスにファイルを添付する（画像は縮小してから、署名付きURLでアップロード）。
+  // 書類を受け取って添付したということなので、まだなら「発行」まで自動で付ける
+  const attach = async (workerId: string, itemId: string, list: FileList | null) => {
+    if (!list || list.length === 0 || !canEdit) return;
+    const key = checkKey(workerId, itemId);
+    setUploadingCell(key);
+    setError(null);
+    try {
+      for (const file of Array.from(list)) {
+        const { blob, mimeType, fileName } = await compressImage(file);
+        const ticket = await createDocRequestFileTicket(request.id, workerId, fileName, mimeType);
+        if (!ticket.ok) throw new Error(ticket.message);
+        const { error: upErr } = await createClient()
+          .storage.from("app-files")
+          .uploadToSignedUrl(ticket.path, ticket.token, blob, { contentType: mimeType });
+        if (upErr) throw new Error(`アップロードに失敗しました: ${upErr.message}`);
+        const res = await registerDocRequestFile(request.id, workerId, itemId, ticket.path, fileName, mimeType);
+        if (!res.ok) throw new Error(res.message);
+        setFiles((prev) => [
+          ...prev,
+          {
+            id: res.id,
+            request_id: request.id,
+            worker_id: workerId,
+            item_id: itemId,
+            storage_path: ticket.path,
+            file_name: fileName,
+            mime_type: mimeType,
+            created_at: new Date().toISOString(),
+          },
+        ]);
+      }
+      const c = current(workerId, itemId);
+      if (!c.issued_on && !c.not_needed) await saveCheck(toggleStep(c, "issued_on", today));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "添付に失敗しました");
+    } finally {
+      setUploadingCell(null);
+    }
+  };
+  const openFile = async (f: DocumentRequestFile) => {
+    const res = await getDocRequestFilePreviewUrl(f.id);
+    if (res.ok) window.open(res.url, "_blank", "noopener");
+    else setError(res.message);
+  };
+  const removeFile = async (f: DocumentRequestFile) => {
+    if (!window.confirm(`「${f.file_name}」を削除しますか？`)) return;
+    const res = await deleteDocRequestFile(f.id);
+    if (!res.ok) {
+      setError(res.message);
+      return;
+    }
+    setFiles((prev) => prev.filter((x) => x.id !== f.id));
+  };
+  const pickFile = (workerId: string, itemId: string) => {
+    pickTarget.current = { workerId, itemId };
+    fileInputRef.current?.click();
   };
 
   // 列（書類）ごとに、まだの人全員に「案内済」を付ける（本人たちにまとめて伝えたとき）
@@ -270,6 +362,7 @@ export function DocumentRequestChecklist({
       <p className="text-[11px] leading-relaxed text-muted">
         マスのボタンを押すと今日の日付で記録します（案内 → 発行 → 会社へ の順。先の段階を押すと前の段階も同じ日で入ります）。
         もう一度押すと取り消せます。その人には要らない書類は「対象外」にすると数に入りません。
+        受け取った書類の写真・PDF はマスにドラッグ＆ドロップ（または「添付」）で保管でき、添付すると「発行」まで自動で付きます。
         {yearItems.length > 0 && (
           <>
             {" "}
@@ -359,8 +452,17 @@ export function DocumentRequestChecklist({
                       const c = idx.get(checkKey(w.id, item.id));
                       const state = checkState(c);
                       const yearReason = joinedYearExcludedReason(item, w.startOn);
+                      const cellKey = checkKey(w.id, item.id);
+                      const cellFiles = filesByCell.get(cellKey) ?? [];
+                      const uploading = uploadingCell === cellKey;
                       return (
-                        <td key={item.id} className="px-2 py-2 align-top">
+                        <td key={item.id} className="px-1 py-1 align-top">
+                          <FileDropArea
+                            onFiles={(list) => void attach(w.id, item.id, list)}
+                            disabled={!canEdit || !!yearReason}
+                            className="rounded-xl border border-transparent px-1 py-1"
+                            title="受け取った書類の写真・PDF をここに落とすと添付できます"
+                          >
                           {yearReason ? (
                             <span className="inline-block rounded-lg bg-background px-2 py-1 text-[11px] text-muted">{yearReason}</span>
                           ) : state === "対象外" ? (
@@ -416,6 +518,40 @@ export function DocumentRequestChecklist({
                               ) : null}
                             </div>
                           )}
+                          {/* 添付した書類（押すと別タブで開く）と「添付」ボタン */}
+                          {!yearReason && (
+                            <div className="mt-1 flex flex-wrap items-center gap-1">
+                              {cellFiles.map((f) => (
+                                <span
+                                  key={f.id}
+                                  className="inline-flex max-w-[11rem] items-center gap-0.5 rounded-lg border border-brand/40 bg-brand/5 px-1.5 py-0.5 text-[10px] text-brand"
+                                >
+                                  <button type="button" onClick={() => void openFile(f)} className="inline-flex min-w-0 items-center gap-0.5 font-bold" title={f.file_name}>
+                                    <FileText size={11} className="shrink-0" />
+                                    <span className="truncate">{f.file_name}</span>
+                                  </button>
+                                  {canEdit && (
+                                    <button type="button" onClick={() => void removeFile(f)} aria-label={`${f.file_name}を削除`} className="shrink-0 text-muted">
+                                      <X size={11} />
+                                    </button>
+                                  )}
+                                </span>
+                              ))}
+                              {canEdit && (
+                                <button
+                                  type="button"
+                                  onClick={() => pickFile(w.id, item.id)}
+                                  disabled={uploading}
+                                  className="inline-flex min-h-[24px] items-center gap-0.5 rounded-lg border border-dashed border-border px-1.5 text-[10px] text-muted disabled:opacity-50"
+                                  title="写真・PDF を添付（ここにドロップしても添付できます）"
+                                >
+                                  {uploading ? <Loader2 size={11} className="animate-spin" /> : <Paperclip size={11} />}
+                                  {uploading ? "添付中…" : "添付"}
+                                </button>
+                              )}
+                            </div>
+                          )}
+                          </FileDropArea>
                         </td>
                       );
                     })}
@@ -426,6 +562,20 @@ export function DocumentRequestChecklist({
           </table>
         </div>
       )}
+
+      {/* 「添付」ボタン用のファイル選択（どのマスかは pickTarget で覚えている） */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*,application/pdf"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          const t = pickTarget.current;
+          if (t) void attach(t.workerId, t.itemId, e.target.files);
+          e.target.value = "";
+        }}
+      />
 
       {editOpen && (
         <DocumentRequestForm

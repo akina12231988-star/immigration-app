@@ -3,7 +3,11 @@ import { AppHeader } from "@/components/AppHeader";
 import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { getOrganization, getOrgRoster } from "@/lib/supabase/queries/organizations";
-import { getDocumentRequest, listDocumentRequestChecks } from "@/lib/supabase/queries/org-document-requests";
+import {
+  getDocumentRequest,
+  listDocumentRequestChecks,
+  listDocumentRequestFiles,
+} from "@/lib/supabase/queries/org-document-requests";
 import { splitCurrentRoster } from "@/lib/org-roster-groups";
 import { todayStr } from "@/lib/application-alerts";
 import { DocumentRequestChecklist } from "./DocumentRequestChecklist";
@@ -20,10 +24,12 @@ export default async function OrganizationDocumentRequestPage({ params }: { para
   const request = await getDocumentRequest(supabase, id);
   if (!request) notFound();
 
-  const [organization, roster, checks] = await Promise.all([
+  const [organization, roster, checks, files] = await Promise.all([
     getOrganization(supabase, request.organization_id),
     getOrgRoster(supabase, request.organization_id).catch(() => ({ current: [], past: [] })),
     listDocumentRequestChecks(supabase, id).catch(() => []),
+    // 0185 未適用でも表は開けるようにする（添付は空）
+    listDocumentRequestFiles(supabase, id).catch(() => []),
   ]);
   const { active, notYet } = splitCurrentRoster(roster.current);
   // 本人に案内するときにすぐ開けるよう、Messenger のリンクも渡す（名簿には入っていないので別に読む）
@@ -54,6 +60,7 @@ export default async function OrganizationDocumentRequestPage({ params }: { para
         }))}
         notYetCount={notYet.length}
         initialChecks={checks}
+        initialFiles={files}
         today={todayStr()}
         canEdit={me.role !== "viewer"}
       />

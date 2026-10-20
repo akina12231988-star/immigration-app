@@ -3,6 +3,7 @@ import {
   normalizeItems,
   type DocumentRequestCheck,
   type DocumentRequestCheckInput,
+  type DocumentRequestFile,
   type OrganizationDocumentRequest,
   type OrganizationDocumentRequestInput,
 } from "@/lib/org-document-requests";
@@ -81,6 +82,20 @@ export async function listAllDocumentRequestChecks(supabase: SupabaseClient): Pr
   const { data, error } = await supabase.from("organization_document_request_checks").select("*");
   if (error) throw error;
   return (data as DocumentRequestCheck[]) ?? [];
+}
+
+// マスに添付したファイル（0185）。テーブル未作成なら空
+export async function listDocumentRequestFiles(
+  supabase: SupabaseClient,
+  requestId: string,
+): Promise<DocumentRequestFile[]> {
+  const { data, error } = await supabase
+    .from("organization_document_request_files")
+    .select("*")
+    .eq("request_id", requestId)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data as DocumentRequestFile[]) ?? [];
 }
 
 // 外国人 × 項目で1行。あれば更新、無ければ追加
