@@ -221,9 +221,12 @@ export function employmentInsuranceAmount(
 }
 
 // ---- 4-(e) 居住費（社宅） ----
-// 所属機関に登録した寮の家賃（1人あたり・月額）をそのまま1人当たりの目安にする
-export function lodgingPerPerson(lodging: Pick<OrgLodging, "rent" | "max_residents">): number {
-  return Number(String(lodging.rent).replace(/[^0-9]/g, "")) || 0;
+// 所属機関に登録した寮の家賃（1人あたり・月額）を1人当たりの目安にする。
+// 本人から徴収する上限が登録されていれば、上限までにする（超える分は会社負担）
+export function lodgingPerPerson(lodging: Pick<OrgLodging, "rent" | "max_residents"> & Partial<Pick<OrgLodging, "rent_cap">>): number {
+  const rent = Number(String(lodging.rent).replace(/[^0-9]/g, "")) || 0;
+  const cap = Number(String(lodging.rent_cap ?? "").replace(/[^0-9]/g, "")) || 0;
+  return cap > 0 && rent > cap ? cap : rent;
 }
 
 // 居住費の算定方法の文例（入管に説明できる形。人数が分かるときだけ具体的に書く）。
@@ -231,12 +234,18 @@ export function lodgingPerPerson(lodging: Pick<OrgLodging, "rent" | "max_residen
 // 賃貸物件（区分が未設定の古い登録も）は会社が借り上げた社宅の家賃の按分
 export function lodgingNoteTemplate(
   lodging: Pick<OrgLodging, "name" | "rent" | "max_residents"> &
-    Partial<Pick<OrgLodging, "kind" | "total_cost" | "equipment_cost" | "useful_years">>,
+    Partial<Pick<OrgLodging, "kind" | "total_cost" | "equipment_cost" | "useful_years" | "rent_cap">>,
   perPerson: number,
 ): string {
   const num = (v: string | undefined) => Number(String(v ?? "").replace(/[^0-9]/g, "")) || 0;
   const people = num(lodging.max_residents);
-  const per = `1人当たり月額${formatYen(perPerson)}円を徴収する。`;
+  // 上限で徴収額を抑えているときは、按分した額と徴収額の両方と会社負担を書く
+  const rent = num(lodging.rent);
+  const cap = num(lodging.rent_cap);
+  const per =
+    cap > 0 && rent > cap
+      ? `1人当たり月額${formatYen(rent)}円のところ、本人からの徴収は上限${formatYen(cap)}円とし、差額${formatYen(rent - cap)}円は会社が負担する。`
+      : `1人当たり月額${formatYen(perPerson)}円を徴収する。`;
   if (lodging.kind === "自己所有物件") {
     const where = lodging.name ? `${lodging.name}（会社所有の社宅）` : "会社所有の社宅";
     const total = num(lodging.total_cost);

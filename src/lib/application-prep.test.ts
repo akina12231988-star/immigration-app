@@ -161,6 +161,9 @@ describe("isDocComplete", () => {
     expect(isDocComplete("zairyu", true, "預かった")).toBe(true);
     expect(isDocComplete("zairyu", false, "預かった")).toBe(true);
     expect(isDocComplete("zairyu", true, "写真だけ先に本人に依頼中")).toBe(false);
+    // 「対象外」はどの書類でも完了扱い（添付が無くてもよい）
+    expect(isDocComplete("zairyu", false, "対象外")).toBe(true);
+    expect(isDocComplete("kenshin", false, "対象外")).toBe(true);
     // 健康診断書・推薦状も、準備状況が完了なら完了になる
     expect(isDocComplete("kenshin", false, "完了")).toBe(true);
     expect(isDocComplete("kenshin", false, "受診済み・発行待ち")).toBe(false);
