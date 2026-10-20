@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, CheckCircle2, ChevronDown, ChevronUp, Pencil, RotateCcw, Trash2, UserRound } from "lucide-react";
+import { Check, CheckCircle2, ChevronDown, ChevronUp, MessageCircle, Pencil, RotateCcw, Trash2, UserRound } from "lucide-react";
+import { messengerWebUrl } from "@/lib/messenger-link";
 import { Card } from "@/components/ui/Card";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { createClient } from "@/lib/supabase/client";
@@ -43,6 +44,7 @@ export interface ChecklistWorker {
   kana: string;
   nationality: string;
   startOn: string | null; // この機関での雇用開始日
+  messengerLink: string; // 本人の Messenger（無ければ ""）
 }
 
 // 1件の依頼のチェック表。行＝在籍者、列＝書類。各マスで 案内 → 発行 → 会社へ を押していく
@@ -322,6 +324,20 @@ export function DocumentRequestChecklist({
                         {w.kana}
                         {w.nationality && ` ・ ${w.nationality}`}
                       </span>
+                      {/* 本人に案内するときにその場で Messenger を開ける */}
+                      {w.messengerLink ? (
+                        <a
+                          href={messengerWebUrl(w.messengerLink)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-1 inline-flex min-h-[28px] items-center gap-1 rounded-lg border border-border px-2 text-[11px] font-bold text-brand"
+                        >
+                          <MessageCircle size={12} />
+                          Messenger
+                        </a>
+                      ) : (
+                        <span className="mt-1 block text-[10px] text-muted">Messenger未登録</span>
+                      )}
                       {pending === 0 && <span className="mt-0.5 block text-[10px] font-bold text-status-approved-fg">全部送付済</span>}
                     </td>
                     {/* この機関での入社日。入社年で対象が決まる書類があるとき、その年の人は目立たせる */}

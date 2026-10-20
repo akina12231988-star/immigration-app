@@ -26,6 +26,17 @@ export default async function OrganizationDocumentRequestPage({ params }: { para
     listDocumentRequestChecks(supabase, id).catch(() => []),
   ]);
   const { active, notYet } = splitCurrentRoster(roster.current);
+  // 本人に案内するときにすぐ開けるよう、Messenger のリンクも渡す（名簿には入っていないので別に読む）
+  const messengerById = new Map<string, string>();
+  if (active.length > 0) {
+    const { data } = await supabase
+      .from("workers")
+      .select("id, messenger_link")
+      .in("id", active.map((w) => w.id));
+    for (const w of ((data as { id: string; messenger_link: string | null }[] | null) ?? [])) {
+      if (w.messenger_link) messengerById.set(w.id, w.messenger_link);
+    }
+  }
 
   return (
     <>
@@ -39,6 +50,7 @@ export default async function OrganizationDocumentRequestPage({ params }: { para
           kana: w.kana,
           nationality: w.nationality,
           startOn: w.startOn,
+          messengerLink: messengerById.get(w.id) ?? "",
         }))}
         notYetCount={notYet.length}
         initialChecks={checks}
