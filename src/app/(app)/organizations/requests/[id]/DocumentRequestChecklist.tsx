@@ -22,6 +22,8 @@ import {
   daysToDue,
   emptyCheck,
   indexChecks,
+  joinedYearExcludedReason,
+  joinedYearOf,
   requestProgress,
   toggleStep,
   workerPending,
@@ -72,11 +74,13 @@ export function DocumentRequestChecklist({
   const [error, setError] = useState<string | null>(null);
 
   const idx = useMemo(() => indexChecks(checks), [checks]);
-  const progress = requestProgress(request.items, workers.map((w) => w.id), checks);
+  const progress = requestProgress(request.items, workers, checks);
   const days = daysToDue(request.due_on, today);
   const dueTone = request.closed_on || days === null ? "text-muted" : days < 0 ? "text-seal" : days <= 7 ? "text-amber-700" : "text-foreground";
+  // 入社年で対象が限られる書類（源泉徴収票は今年入社の人だけ など）
+  const yearItems = request.items.filter((i) => i.joined_year);
 
-  const rows = onlyPending ? workers.filter((w) => workerPending(request.items, w.id, idx).length > 0) : workers;
+  const rows = onlyPending ? workers.filter((w) => workerPending(request.items, w, idx).length > 0) : workers;
 
   // 1マスの保存（押した段階まで日付を入れる／外す）
   const saveCheck = async (input: DocumentRequestCheckInput) => {
@@ -152,12 +156,10 @@ export function DocumentRequestChecklist({
             <p className="mt-1 text-xs text-muted">
               依頼日 {request.requested_on}
               {request.source && `（${request.source}）`}
-              {request.due_on && (
-                <>
-                  {" ・ "}期限 <span className={`font-bold ${dueTone}`}>{request.due_on}（{dueLabel(request.due_on, today)}）</span>
-                </>
-              )}
               {request.closed_on && ` ・ ${request.closed_on} に完了`}
+            </p>
+            <p className={`mt-0.5 text-sm font-bold ${dueTone}`}>
+              {request.due_on ? `提出期限 ${request.due_on}まで（${dueLabel(request.due_on, today)}）` : "提出期限なし"}
             </p>
           </div>
           {canEdit && (
@@ -210,6 +212,11 @@ export function DocumentRequestChecklist({
               <p className="font-bold">
                 {p.item.name}
                 {p.item.note && <span className="ml-1 font-normal text-muted">（{p.item.note}）</span>}
+                {p.item.joined_year && (
+                  <span className="ml-1 rounded bg-brand/10 px-1.5 py-0.5 text-[10px] font-bold text-brand">
+                    {p.item.joined_year}年入社の人だけ
+                  </span>
+                )}
               </p>
               <p className="mt-0.5 flex flex-wrap gap-x-3 tabular-nums text-muted">
                 <span>案内 {p.informed}/{p.total}</span>
@@ -261,6 +268,13 @@ export function DocumentRequestChecklist({
       <p className="text-[11px] leading-relaxed text-muted">
         マスのボタンを押すと今日の日付で記録します（案内 → 発行 → 会社へ の順。先の段階を押すと前の段階も同じ日で入ります）。
         もう一度押すと取り消せます。その人には要らない書類は「対象外」にすると数に入りません。
+        {yearItems.length > 0 && (
+          <>
+            {" "}
+            {yearItems.map((i) => `「${i.name}」は${i.joined_year}年入社の人だけ`).join("、")}
+            が対象で、入社日（この機関での雇用開始日）がその年でない人は自動で対象外になります。入社日が未登録の人は対象のままなので、外国人詳細で雇用開始日を登録してください。
+          </>
+        )}
       </p>
 
       {workers.length === 0 ? (
@@ -273,6 +287,7 @@ export function DocumentRequestChecklist({
             <thead>
               <tr className="border-b border-border bg-background text-left">
                 <th className="sticky left-0 z-10 bg-background px-3 py-2 font-bold">氏名</th>
+                <th className="px-2 py-2 font-bold">入社日</th>
                 {request.items.map((item) => (
                   <th key={item.id} className="min-w-[11rem] px-2 py-2 font-bold">
                     <span className="block">{item.name}</span>
@@ -294,7 +309,8 @@ export function DocumentRequestChecklist({
             </thead>
             <tbody>
               {rows.map((w) => {
-                const pending = workerPending(request.items, w.id, idx).length;
+                const pending = workerPending(request.items, w, idx).length;
+                const joinedYear = joinedYearOf(w.startOn);
                 return (
                   <tr key={w.id} className={`border-b border-border/60 ${pending === 0 ? "bg-status-approved-bg/40" : ""}`}>
                     <td className="sticky left-0 z-10 bg-surface px-3 py-2 align-top">
@@ -305,16 +321,33 @@ export function DocumentRequestChecklist({
                       <span className="block text-[10px] text-muted">
                         {w.kana}
                         {w.nationality && ` ・ ${w.nationality}`}
-                        {w.startOn && ` ・ ${w.startOn}〜`}
                       </span>
                       {pending === 0 && <span className="mt-0.5 block text-[10px] font-bold text-status-approved-fg">全部送付済</span>}
+                    </td>
+                    {/* この機関での入社日。入社年で対象が決まる書類があるとき、その年の人は目立たせる */}
+                    <td className="whitespace-nowrap px-2 py-2 align-top tabular-nums">
+                      {w.startOn ? (
+                        <>
+                          <span className="block">{w.startOn}</span>
+                          {yearItems.some((i) => i.joined_year === joinedYear) && (
+                            <span className="mt-0.5 inline-block rounded bg-brand/10 px-1.5 py-0.5 text-[10px] font-bold text-brand">
+                              {joinedYear}年入社
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-seal">未登録</span>
+                      )}
                     </td>
                     {request.items.map((item) => {
                       const c = idx.get(checkKey(w.id, item.id));
                       const state = checkState(c);
+                      const yearReason = joinedYearExcludedReason(item, w.startOn);
                       return (
                         <td key={item.id} className="px-2 py-2 align-top">
-                          {state === "対象外" ? (
+                          {yearReason ? (
+                            <span className="inline-block rounded-lg bg-background px-2 py-1 text-[11px] text-muted">{yearReason}</span>
+                          ) : state === "対象外" ? (
                             <button
                               type="button"
                               onClick={() => canEdit && toggleNotNeeded(w.id, item.id)}

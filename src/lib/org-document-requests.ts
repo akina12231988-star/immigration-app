@@ -10,6 +10,38 @@ export interface DocumentRequestItem {
   id: string;
   name: string; // 書類の名前（扶養控除申告書 など）
   note: string; // 補足（コピーでよい・2026年入社の方のみ など）
+  joined_year?: number | null; // この年に入社した人だけが対象（源泉徴収票は今年入社の人だけ など）。空なら全員
+}
+
+// 「2026年入社の方のみ」「2026年に入社した人」のような補足から入社年を読む（無ければ null）
+export function joinedYearFromNote(note: string): number | null {
+  const m = note.normalize("NFKC").match(/(20\d{2})\s*年(?:度)?\s*(?:に|の)?\s*(?:入社|採用|雇用開始|入職)/);
+  return m ? Number(m[1]) : null;
+}
+
+// 雇用開始日の年（無ければ null）
+export function joinedYearOf(startOn: string | null | undefined): number | null {
+  const m = (startOn ?? "").match(/^(\d{4})-/);
+  return m ? Number(m[1]) : null;
+}
+
+export interface RequestWorker {
+  id: string;
+  startOn: string | null; // この機関での雇用開始日（入社日）
+}
+
+// その書類がその人の対象か。入社年の指定がある書類は、入社日がその年の人だけ。
+// 入社日が分からない人は対象にしておく（表で入社日の登録を促す）
+export function itemAppliesTo(item: Pick<DocumentRequestItem, "joined_year">, startOn: string | null | undefined): boolean {
+  if (!item.joined_year) return true;
+  const y = joinedYearOf(startOn);
+  return y === null || y === item.joined_year;
+}
+
+// 入社年で対象外になる理由（対象なら null）
+export function joinedYearExcludedReason(item: Pick<DocumentRequestItem, "joined_year">, startOn: string | null | undefined): string | null {
+  if (itemAppliesTo(item, startOn)) return null;
+  return `${joinedYearOf(startOn)}年入社のため対象外`;
 }
 
 export interface OrganizationDocumentRequest {
@@ -72,10 +104,10 @@ export function parseItemsText(text: string, makeId: () => string = newItemId): 
     .filter(Boolean)
     .map((line) => {
       const sep = line.match(/^(.*?)\s*[|｜/／]\s*(.*)$/);
-      if (sep) return { id: makeId(), name: sep[1].trim(), note: sep[2].trim() };
-      const paren = line.match(/^(.*?)\s*[（(](.*)[)）]\s*$/);
-      if (paren && paren[1].trim()) return { id: makeId(), name: paren[1].trim(), note: paren[2].trim() };
-      return { id: makeId(), name: line, note: "" };
+      const paren = sep ? null : line.match(/^(.*?)\s*[（(](.*)[)）]\s*$/);
+      const name = sep ? sep[1].trim() : paren && paren[1].trim() ? paren[1].trim() : line;
+      const note = sep ? sep[2].trim() : paren && paren[1].trim() ? paren[2].trim() : "";
+      return { id: makeId(), name, note, joined_year: joinedYearFromNote(note) };
     });
 }
 
@@ -88,15 +120,17 @@ export function itemsToText(items: DocumentRequestItem[]): string {
 export function normalizeItems(raw: unknown): DocumentRequestItem[] {
   if (!Array.isArray(raw)) return [];
   return raw
-    .map((r, i) => {
+    .map((r, i): DocumentRequestItem | null => {
       if (!r || typeof r !== "object") return null;
       const o = r as Record<string, unknown>;
       const name = typeof o.name === "string" ? o.name.trim() : "";
       if (!name) return null;
+      const note = typeof o.note === "string" ? o.note : "";
       return {
         id: typeof o.id === "string" && o.id ? o.id : `item${i}`,
         name,
-        note: typeof o.note === "string" ? o.note : "",
+        note,
+        joined_year: typeof o.joined_year === "number" ? o.joined_year : joinedYearFromNote(note),
       };
     })
     .filter((x): x is DocumentRequestItem => x !== null);
@@ -161,7 +195,7 @@ export interface ItemProgress {
   informed: number;
   issued: number;
   sent: number;
-  notNeeded: number;
+  notNeeded: number; // 対象外にした人数（入社年で外れた人も含む）
 }
 
 export interface RequestProgress {
@@ -174,15 +208,15 @@ export interface RequestProgress {
 // 依頼の進み具合（項目ごと・全体）
 export function requestProgress(
   items: DocumentRequestItem[],
-  workerIds: string[],
+  workers: RequestWorker[],
   checks: DocumentRequestCheck[],
 ): RequestProgress {
   const idx = indexChecks(checks);
   const perItem = items.map((item) => {
     const p: ItemProgress = { item, total: 0, informed: 0, issued: 0, sent: 0, notNeeded: 0 };
-    for (const w of workerIds) {
+    for (const { id: w, startOn } of workers) {
       const c = idx.get(checkKey(w, item.id));
-      if (c?.not_needed) {
+      if (c?.not_needed || !itemAppliesTo(item, startOn)) {
         p.notNeeded += 1;
         continue;
       }
@@ -201,11 +235,12 @@ export function requestProgress(
 // 1人の進み具合（その人の項目のうち、まだ会社に送っていないもの）
 export function workerPending(
   items: DocumentRequestItem[],
-  workerId: string,
+  worker: RequestWorker,
   idx: Map<string, DocumentRequestCheck>,
 ): DocumentRequestItem[] {
   return items.filter((item) => {
-    const s = checkState(idx.get(checkKey(workerId, item.id)));
+    if (!itemAppliesTo(item, worker.startOn)) return false;
+    const s = checkState(idx.get(checkKey(worker.id, item.id)));
     return s !== "送付済" && s !== "対象外";
   });
 }

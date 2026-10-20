@@ -5,7 +5,10 @@ import {
   dueLabel,
   emptyCheck,
   indexChecks,
+  itemAppliesTo,
   itemsToText,
+  joinedYearExcludedReason,
+  joinedYearFromNote,
   normalizeItems,
   parseItemsText,
   requestProgress,
@@ -26,24 +29,36 @@ describe("書類の依頼の項目", () => {
         ids,
       ),
     ).toEqual([
-      { id: "i1", name: "扶養控除申告書", note: "" },
-      { id: "i2", name: "扶養証明書(日本語訳)", note: "コピーでいいです" },
-      { id: "i3", name: "送金証明書", note: "" },
-      { id: "i4", name: "令和8年度源泉徴収票", note: "2026年入社の方" },
+      { id: "i1", name: "扶養控除申告書", note: "", joined_year: null },
+      { id: "i2", name: "扶養証明書(日本語訳)", note: "コピーでいいです", joined_year: null },
+      { id: "i3", name: "送金証明書", note: "", joined_year: null },
+      { id: "i4", name: "令和8年度源泉徴収票", note: "2026年入社の方", joined_year: 2026 },
     ]);
   });
 
+  it("補足の「○○年入社」から入社年を読み、その年に入社した人だけが対象になる", () => {
+    expect(joinedYearFromNote("２０２６年に入社した方のみ")).toBe(2026);
+    expect(joinedYearFromNote("2026年度入社")).toBe(2026);
+    expect(joinedYearFromNote("コピーでよい")).toBeNull();
+    const item = { joined_year: 2026 };
+    expect(itemAppliesTo(item, "2026-03-01")).toBe(true);
+    expect(itemAppliesTo(item, "2025-09-03")).toBe(false);
+    expect(itemAppliesTo(item, null)).toBe(true); // 入社日が分からない人は対象にしておく
+    expect(itemAppliesTo({ joined_year: null }, "2020-01-01")).toBe(true);
+    expect(joinedYearExcludedReason(item, "2025-09-03")).toBe("2025年入社のため対象外");
+  });
+
   it("項目をテキストに戻せる", () => {
-    expect(itemsToText([{ id: "a", name: "送金証明書", note: "" }, { id: "b", name: "源泉徴収票", note: "2026年入社の方" }])).toBe(
+    expect(itemsToText([{ id: "a", name: "送金証明書", note: "", joined_year: null }, { id: "b", name: "源泉徴収票", note: "2026年入社の方", joined_year: 2026 }])).toBe(
       "送金証明書\n源泉徴収票｜2026年入社の方",
     );
   });
 
   it("DB の jsonb が壊れていても落ちない", () => {
     expect(normalizeItems(null)).toEqual([]);
-    expect(normalizeItems([{ name: " 送金証明書 " }, { id: "x", name: "", note: "" }, "bad", { id: "y", name: "源泉", note: 1 }])).toEqual([
-      { id: "item0", name: "送金証明書", note: "" },
-      { id: "y", name: "源泉", note: "" },
+    expect(normalizeItems([{ name: " 送金証明書 " }, { id: "x", name: "", note: "" }, "bad", { id: "y", name: "源泉", note: "2026年入社の方" }])).toEqual([
+      { id: "item0", name: "送金証明書", note: "", joined_year: null },
+      { id: "y", name: "源泉", note: "2026年入社の方", joined_year: 2026 },
     ]);
   });
 });
@@ -72,9 +87,11 @@ describe("チェックの段階", () => {
 
 describe("進み具合", () => {
   const items = [
-    { id: "a", name: "扶養控除申告書", note: "" },
-    { id: "b", name: "源泉徴収票", note: "2026年入社の方" },
+    { id: "a", name: "扶養控除申告書", note: "", joined_year: null },
+    { id: "b", name: "源泉徴収票", note: "2026年入社の方", joined_year: 2026 },
   ];
+  const w1 = { id: "w1", startOn: "2026-03-01" };
+  const w2 = { id: "w2", startOn: "2025-09-03" };
   const check = (worker_id: string, item_id: string, over: Partial<DocumentRequestCheck>): DocumentRequestCheck => ({
     id: `${worker_id}${item_id}`,
     request_id: "r",
@@ -95,24 +112,26 @@ describe("進み具合", () => {
     check("w1", "b", { not_needed: true }),
   ];
 
-  it("項目ごと・全体の数を出す（対象外は数に入れない）", () => {
-    const p = requestProgress(items, ["w1", "w2"], checks);
+  it("項目ごと・全体の数を出す（対象外・入社年で外れた人は数に入れない）", () => {
+    const p = requestProgress(items, [w1, w2], checks);
     expect(p.items[0]).toMatchObject({ total: 2, informed: 2, issued: 1, sent: 1, notNeeded: 0 });
-    expect(p.items[1]).toMatchObject({ total: 1, informed: 0, issued: 0, sent: 0, notNeeded: 1 });
-    expect(p.total).toBe(3);
+    // 源泉徴収票: w1 は対象外にした、w2 は 2025 年入社なので自動で外れる
+    expect(p.items[1]).toMatchObject({ total: 0, informed: 0, issued: 0, sent: 0, notNeeded: 2 });
+    expect(p.total).toBe(2);
     expect(p.sent).toBe(1);
     expect(p.done).toBe(false);
   });
 
   it("全部送ったら完了。対象が無ければ完了にしない", () => {
-    expect(requestProgress(items, ["w1"], [checks[0], checks[2]]).done).toBe(true);
+    expect(requestProgress(items, [w1], [checks[0], checks[2]]).done).toBe(true);
     expect(requestProgress(items, [], []).done).toBe(false);
   });
 
-  it("その人のまだの項目", () => {
+  it("その人のまだの項目（入社年で外れる書類は含めない）", () => {
     const idx = indexChecks(checks);
-    expect(workerPending(items, "w1", idx)).toEqual([]);
-    expect(workerPending(items, "w2", idx).map((i) => i.id)).toEqual(["a", "b"]);
+    expect(workerPending(items, w1, idx)).toEqual([]);
+    expect(workerPending(items, w2, idx).map((i) => i.id)).toEqual(["a"]);
+    expect(workerPending(items, { id: "w3", startOn: "2026-05-01" }, idx).map((i) => i.id)).toEqual(["a", "b"]);
   });
 
   it("期限の表示", () => {

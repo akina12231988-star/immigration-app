@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, ClipboardList, Plus } from "lucide-react";
+import { CalendarClock, CheckCircle2, ClipboardList, Plus } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
 import { insertDocumentRequest } from "@/lib/supabase/queries/org-document-requests";
@@ -15,6 +15,7 @@ import {
   type DocumentRequestCheck,
   type OrganizationDocumentRequest,
   type OrganizationDocumentRequestInput,
+  type RequestWorker,
 } from "@/lib/org-document-requests";
 import { DocumentRequestForm } from "./DocumentRequestForm";
 
@@ -27,7 +28,7 @@ export function DocumentRequestsClient({
   organizations,
   requests: initialRequests,
   checks,
-  workerIdsByOrg,
+  workersByOrg,
   loadError,
   initialOrgId,
   today,
@@ -36,7 +37,7 @@ export function DocumentRequestsClient({
   organizations: { id: string; name: string }[];
   requests: OrganizationDocumentRequest[];
   checks: DocumentRequestCheck[];
-  workerIdsByOrg: Record<string, string[]>; // 機関ごとの在籍者の ID
+  workersByOrg: Record<string, RequestWorker[]>; // 機関ごとの在籍者（入社日つき）
   loadError: string | null;
   initialOrgId: string;
   today: string;
@@ -64,6 +65,17 @@ export function DocumentRequestsClient({
   const orgsWithRequests = organizations.filter((o) => requests.some((r) => r.organization_id === o.id));
   const openCount = requests.filter((r) => !r.closed_on).length;
   const closedCount = requests.length - openCount;
+  // 所属機関ごとの提出期限（対応中の依頼を期限の近い順に。期限の無いものは最後）
+  const deadlines = requests
+    .filter((r) => !r.closed_on)
+    .map((r) => ({
+      r,
+      days: daysToDue(r.due_on, today),
+      p: requestProgress(r.items, workersByOrg[r.organization_id] ?? [], checksByRequest.get(r.id) ?? []),
+    }))
+    .sort((a, b) => (a.days ?? 9999) - (b.days ?? 9999));
+  const dueToneOf = (days: number | null, closed: boolean) =>
+    closed || days === null ? "text-muted" : days < 0 ? "text-seal" : days <= 7 ? "text-amber-700" : "text-foreground";
 
   const create = async (input: OrganizationDocumentRequestInput) => {
     setBusy(true);
@@ -113,6 +125,32 @@ export function DocumentRequestsClient({
         </span>
       </div>
 
+      {/* 所属機関ごとの提出期限（対応中の依頼） */}
+      {!showClosed && deadlines.length > 0 && (
+        <Card className="p-3">
+          <p className="mb-1.5 flex items-center gap-1 text-xs font-bold">
+            <CalendarClock size={14} />
+            所属機関ごとの提出期限
+          </p>
+          <ul className="divide-y divide-border text-xs">
+            {deadlines.map(({ r, days, p }) => (
+              <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 py-1.5">
+                <Link href={`/organizations/requests/${r.id}`} className="min-w-0 font-bold text-brand">
+                  {orgName(r.organization_id)}
+                </Link>
+                <span className="text-muted">{r.title}</span>
+                <span className={`ml-auto font-bold tabular-nums ${dueToneOf(days, false)}`}>
+                  {r.due_on ? `${r.due_on}まで（${dueLabel(r.due_on, today)}）` : "期限なし"}
+                </span>
+                <span className="tabular-nums text-muted">
+                  送付 {p.sent}/{p.total}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
       {orgsWithRequests.length > 1 && (
         <div className="flex flex-wrap gap-1">
           <button type="button" onClick={() => setOrgFilter("")} className={`${CHIP} ${!orgFilter ? CHIP_ON : CHIP_OFF}`}>
@@ -138,10 +176,9 @@ export function DocumentRequestsClient({
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {visible.map((r) => {
-            const p = requestProgress(r.items, workerIdsByOrg[r.organization_id] ?? [], checksByRequest.get(r.id) ?? []);
+            const p = requestProgress(r.items, workersByOrg[r.organization_id] ?? [], checksByRequest.get(r.id) ?? []);
             const days = daysToDue(r.due_on, today);
-            const dueTone =
-              r.closed_on || days === null ? "text-muted" : days < 0 ? "text-seal" : days <= 7 ? "text-amber-700" : "text-muted";
+            const dueTone = dueToneOf(days, !!r.closed_on);
             const pct = p.total > 0 ? Math.round((p.sent / p.total) * 100) : 0;
             return (
               <Link key={r.id} href={`/organizations/requests/${r.id}`} className="block">
@@ -160,13 +197,15 @@ export function DocumentRequestsClient({
                       <span className="shrink-0 rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-bold text-brand">全員送付済</span>
                     ) : null}
                   </div>
-                  <p className="mt-1 text-xs text-muted">
-                    依頼日 {r.requested_on}
-                    {r.due_on && (
+                  <p className="mt-1 text-xs text-muted">依頼日 {r.requested_on}</p>
+                  <p className={`text-sm font-bold ${dueTone}`}>
+                    {r.due_on ? (
                       <>
-                        {" ・ "}期限 {r.due_on}
-                        {!r.closed_on && <span className={`ml-1 font-bold ${dueTone}`}>（{dueLabel(r.due_on, today)}）</span>}
+                        提出期限 {r.due_on}
+                        {!r.closed_on && <span className="ml-1">（{dueLabel(r.due_on, today)}）</span>}
                       </>
+                    ) : (
+                      "提出期限なし"
                     )}
                   </p>
                   <p className="mt-1 flex flex-wrap gap-1 text-[11px] text-muted">
@@ -186,7 +225,7 @@ export function DocumentRequestsClient({
                       <div className="h-full rounded-full bg-brand" style={{ width: `${pct}%` }} />
                     </div>
                     <p className="mt-1 text-[11px] text-muted">
-                      在籍者 {(workerIdsByOrg[r.organization_id] ?? []).length}名 × 書類 {r.items.length}件
+                      在籍者 {(workersByOrg[r.organization_id] ?? []).length}名 × 書類 {r.items.length}件
                     </p>
                   </div>
                 </Card>

@@ -6,7 +6,8 @@ import { rosterIsCurrent } from "@/lib/supabase/queries/organizations";
 import { listAllDocumentRequestChecks, listDocumentRequests } from "@/lib/supabase/queries/org-document-requests";
 import { dbErrorMessage } from "@/lib/errors";
 import { todayStr } from "@/lib/application-alerts";
-import type { DocumentRequestCheck, OrganizationDocumentRequest } from "@/lib/org-document-requests";
+import type { DocumentRequestCheck, OrganizationDocumentRequest, RequestWorker } from "@/lib/org-document-requests";
+import { normalizeOrgEmploymentStarts } from "@/lib/org-employment";
 import type { WorkerOrgEmploymentStart } from "@/types/db";
 import { DocumentRequestsClient } from "./DocumentRequestsClient";
 
@@ -50,12 +51,15 @@ export default async function OrganizationDocumentRequestsPage({
   ]);
   if (orgs.error) throw orgs.error;
 
-  // 機関ごとの在籍者の ID（請求書作成・名簿と同じ判定で、辞めた人は除く）
-  const workerIdsByOrg: Record<string, string[]> = {};
+  // 機関ごとの在籍者（請求書作成・名簿と同じ判定で、辞めた人は除く）と、その機関での入社日
+  const workersByOrg: Record<string, RequestWorker[]> = {};
   for (const w of ((workers.data as unknown as WorkerRow[] | null) ?? [])) {
     const orgId = w.current_organization_id;
     if (!orgId || !rosterIsCurrent(w, orgId)) continue;
-    (workerIdsByOrg[orgId] ??= []).push(w.id);
+    const startOn =
+      normalizeOrgEmploymentStarts(w.org_employment_starts).find((e) => e.organization_id === orgId && e.start_on)?.start_on ??
+      w.employment_start_on;
+    (workersByOrg[orgId] ??= []).push({ id: w.id, startOn });
   }
 
   return (
@@ -65,7 +69,7 @@ export default async function OrganizationDocumentRequestsPage({
         organizations={(orgs.data as { id: string; name: string }[] | null) ?? []}
         requests={requestsResult.list}
         checks={checksResult}
-        workerIdsByOrg={workerIdsByOrg}
+        workersByOrg={workersByOrg}
         loadError={requestsResult.error}
         initialOrgId={org ?? ""}
         today={todayStr()}

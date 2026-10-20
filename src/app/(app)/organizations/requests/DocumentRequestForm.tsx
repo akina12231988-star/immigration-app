@@ -108,6 +108,9 @@ export function DocumentRequestForm({
         </div>
         <label className="flex flex-col gap-1">
           <span className="text-xs font-bold text-muted">集める書類（1行に1つ。「書類名｜補足」で補足も書けます）</span>
+          <span className="text-[11px] text-muted">
+            補足に「2026年入社の方のみ」のように書くと、その年に入社した人だけが対象になります（源泉徴収票など）。
+          </span>
           <textarea
             value={itemsText}
             onChange={(e) => setItemsText(e.target.value)}
