@@ -161,6 +161,9 @@ describe("isDocComplete", () => {
     expect(isDocComplete("zairyu", true, "預かった")).toBe(true);
     expect(isDocComplete("zairyu", false, "預かった")).toBe(true);
     expect(isDocComplete("zairyu", true, "写真だけ先に本人に依頼中")).toBe(false);
+    // オンライン申請は画像で受け取って完了（在留カード・パスポート）
+    expect(isDocComplete("zairyu", false, "画像を送ってもらった：オンライン申請のため")).toBe(true);
+    expect(isDocComplete("passport", false, "画像を送ってもらった：オンライン申請のため")).toBe(true);
     // 「対象外」はどの書類でも完了扱い（添付が無くてもよい）
     expect(isDocComplete("zairyu", false, "対象外")).toBe(true);
     expect(isDocComplete("kenshin", false, "対象外")).toBe(true);
