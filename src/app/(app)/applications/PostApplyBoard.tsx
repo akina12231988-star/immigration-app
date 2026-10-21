@@ -366,10 +366,10 @@ export function PostApplyBoard({
                             setEditingMailing({ id: r.mailing.id, postedOn: r.mailing.posted_on, tracking: r.mailing.tracking })
                           }
                           className="inline-flex min-h-[28px] items-center gap-0.5 rounded-lg border border-border px-1.5 text-[11px] font-bold text-brand"
-                          title="投函日・追跡番号を直す"
+                          title="投函日・追跡番号を編集する"
                         >
                           <Pencil size={11} />
-                          {r.mailing.tracking ? "直す" : "追跡番号を入れる"}
+                          {r.mailing.tracking ? "編集" : "追跡番号を入れる"}
                         </button>
                       )}
                     </span>
