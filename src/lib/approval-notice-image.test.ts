@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  approvalNoticeCountLabel,
   approvalNoticeFileName,
   approvalNoticeHeadline,
+  fieldRowsOf,
   buildApprovalNoticeItems,
   chunkApprovalNoticeItems,
   defaultNoticeDate,
@@ -25,12 +27,13 @@ describe("許可のお知らせ画像のデータ", () => {
   it("申請から1枠ぶんの項目を作る（空は — や未登録にする）", () => {
     const items = buildApprovalNoticeItems(
       [app, { ...app, id: "a2", organizationName: null, assignee: "", applicationNumber: "", applicationContent: "", approvalDate: undefined }],
-      { today: "2026-10-18", via: "はがき", custodyNoLabel: (a) => (a.id === "a1" ? "012" : "—") },
+      { today: "2026-10-18", via: "はがき", custodyNoLabel: (a) => (a.id === "a1" ? "012" : "—"), tantouLabel: (a) => (a.id === "a1" ? "野口" : "") },
     );
     expect(items[0]).toEqual({
       id: "a1",
       name: "NGUYEN THI HONG",
       org: "有限会社國崎青果",
+      tantou: "野口",
       assignee: "木村",
       custodyNo: "012",
       applicationDate: "2026-09-02",
@@ -39,7 +42,20 @@ describe("許可のお知らせ画像のデータ", () => {
       noticeDate: "2026-10-17",
       via: "はがき",
     });
-    expect(items[1]).toMatchObject({ org: "所属機関未設定", assignee: "—", custodyNo: "—", applicationNo: "未登録", content: "未登録", noticeDate: "2026-10-18" });
+    expect(items[1]).toMatchObject({ org: "所属機関未設定", tantou: "—", assignee: "—", custodyNo: "—", applicationNo: "未登録", content: "未登録", noticeDate: "2026-10-18" });
+    // 枠の項目: 1行目に連絡が来た日・担当者・取次士、3行目に申請内容
+    expect(fieldRowsOf(items[0]).map((r) => r.map((f) => f.label))).toEqual([
+      ["許可の連絡が来た日", "担当者", "取次士"],
+      ["預り番号", "申請日", "申請番号"],
+      ["申請内容"],
+    ]);
+    expect(fieldRowsOf(items[0])[0][1].value).toBe("野口");
+  });
+
+  it("右上の人数は許可人数（全体）と何枚目か", () => {
+    expect(approvalNoticeCountLabel(5)).toEqual({ count: "許可人数 5名", page: "" });
+    expect(approvalNoticeCountLabel(10, 1, 2, 1, 5)).toEqual({ count: "許可人数 10名", page: "1枚目／2枚（1〜5番）" });
+    expect(approvalNoticeCountLabel(10, 2, 2, 6, 10)).toEqual({ count: "許可人数 10名", page: "2枚目／2枚（6〜10番）" });
   });
 
   it("人ごとに連絡が来た日・手段を直せる", () => {
