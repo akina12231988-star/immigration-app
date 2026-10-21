@@ -23,6 +23,15 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-10-21",
+    title: "「入管へ郵送した記録」で、追跡番号・投函日をあとから入れたり直したりできるようにしました",
+    where: "申請一覧 ＞ 「申請後の郵送・タスク」タブ ＞ 入管へ郵送した記録",
+    href: "/applications?view=post-apply",
+    items: [
+      "各行の「追跡番号を入れる」（未入力のとき）または「直す」を押すと、その場で投函日と追跡番号を入力して保存できます。入れ損ねた追跡番号を後から足せます。未入力の行は赤く出ます。",
+    ],
+  },
+  {
+    date: "2026-10-21",
     title: "申請後の郵送・タスクに申請日・申請番号を出し、申請から1か月以上たっている人に注意を出すようにしました",
     where: "申請一覧 ＞ 「申請後の郵送・タスク」タブ／下の「入管へ郵送した記録」",
     href: "/applications?view=post-apply",
