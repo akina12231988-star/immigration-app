@@ -75,7 +75,10 @@ export function ym6(y: string | null | undefined, m?: string | null): string {
 
 // 所定労働時間（半角数字4文字以内）。"40.0" → "40"、"173.33" → "173.3"、"173.33" が入らないときは整数に
 export function hours4(s: string | null | undefined): string {
-  const t = (s ?? "").normalize("NFKC").replace(/[^\d.]/g, "");
+  const raw = (s ?? "").normalize("NFKC").trim();
+  // 「45時間08分」「45:08」は時間の小数にしてから（数字だけ抜くと 4508 になってしまう）
+  const hm = raw.match(/^(\d+)\s*(?:時間|:)\s*(\d{1,2})\s*分?$/);
+  const t = hm ? String(Number(hm[1]) + Number(hm[2]) / 60) : raw.replace(/[^\d.]/g, "");
   if (!t) return "";
   const n = Number.parseFloat(t);
   if (!Number.isFinite(n)) return "";

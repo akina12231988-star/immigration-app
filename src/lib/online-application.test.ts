@@ -53,6 +53,10 @@ describe("入力形式の変換", () => {
     expect(hours4("173.3")).toBe("173"); // 5文字になるので整数にする
     expect(hours4("173.33")).toBe("173");
     expect(hours4("1733.33")).toBe("1733");
+    // 「45時間08分」「45:08」は 4508 ではなく時間の小数にする
+    expect(hours4("45時間08分")).toBe("45.1");
+    expect(hours4("45:08")).toBe("45.1");
+    expect(hours4("40時間00分")).toBe("40");
     expect(hours4("")).toBe("");
   });
 

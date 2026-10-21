@@ -454,7 +454,11 @@ export function weeklyHoursText(
   intake: Pick<OrganizationIntake, "posting_weekly_hours" | "posting_monthly_hours" | "posting_annual_hours"> | null,
 ): { value: string; auto: boolean } {
   if (!intake) return { value: "", auto: false };
-  if (intake.posting_weekly_hours.trim()) return { value: intake.posting_weekly_hours.trim(), auto: false };
+  if (intake.posting_weekly_hours.trim()) {
+    // 「45時間08分」「45:08」のような登録も、申請書には小数の時間（45.1）で出す
+    const n = parseHoursMinutes(intake.posting_weekly_hours);
+    return { value: n != null ? formatHoursDecimal(n) : intake.posting_weekly_hours.trim(), auto: false };
+  }
   const annualRaw = Number.parseFloat(intake.posting_annual_hours.replace(/[^\d.]/g, ""));
   const monthly = parseHoursMinutes(intake.posting_monthly_hours);
   const annual = Number.isFinite(annualRaw) && annualRaw > 0 ? annualRaw : monthly != null ? monthly * 12 : 0;
