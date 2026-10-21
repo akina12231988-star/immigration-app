@@ -3,7 +3,7 @@ import type { Application } from "@/types/application";
 // 「許可のお知らせ」画像。
 //
 // 入管から許可の連絡（はがき・通知書・メール）が来た申請を複数選び、
-// 1人1枠で「連絡が来た日・名前・所属機関・担当者・取次士・預り番号・申請日・申請番号・申請内容」を
+// 1人1枠で「連絡が来た日・名前・所属機関・TODO番号・担当者・申請日・申請番号・申請内容・取次士・預り番号」を
 // 並べた1枚の画像（PNG）にする。人数が多いときは数枚に分け、右上に「許可人数10名（1枚目／2枚）」と出す。Messenger のグループに貼って、まとめて知らせるためのもの。
 // 画像はブラウザの Canvas だけで描く（サーバーは使わない）。
 //
@@ -21,6 +21,7 @@ export interface ApprovalNoticeItem {
   id: string;
   name: string;
   org: string; // 所属機関（未設定なら「所属機関未設定」）
+  todoNo: string; // 申請準備のTODO番号（空なら「—」）
   tantou: string; // 担当者（申請準備のTODOの担当者。空なら「—」）
   assignee: string; // 取次士（空なら「—」）
   custodyNo: string; // 預り番号（預かっていなければ「—」）
@@ -63,6 +64,7 @@ export function buildApprovalNoticeItems(
     today: string;
     via: string; // まとめて決めた手段
     custodyNoLabel: (app: ApprovalNoticeSource) => string;
+    todoNoLabel?: (app: ApprovalNoticeSource) => string; // 申請準備のTODO番号
     tantouLabel?: (app: ApprovalNoticeSource) => string; // 担当者（申請準備のTODOの担当者）
     overrides?: Record<string, ApprovalNoticeOverride>;
   },
@@ -73,6 +75,7 @@ export function buildApprovalNoticeItems(
       id: a.id,
       name: dash(a.name, "氏名未登録"),
       org: dash(a.organizationName, "所属機関未設定"),
+      todoNo: dash(opts.todoNoLabel?.(a)),
       tantou: dash(opts.tantouLabel?.(a)),
       assignee: dash(a.assignee),
       custodyNo: dash(opts.custodyNoLabel(a)),
@@ -131,6 +134,8 @@ const PAD = 44;
 const BLUE = "#1f4e9c";
 const GREEN_BG = "#e8f3ea";
 const GREEN_FG = "#1f6b35";
+const RED_BG = "#fdecec"; // 取次士の枠（薄い赤）
+const RED_FG = "#b3261e";
 const FIELD_BG = "#f3f5f9";
 const BORDER = "#d5d9e0";
 
@@ -168,24 +173,30 @@ function roundRect(ctx: Ctx, x: number, y: number, w: number, h: number, r: numb
 interface Field {
   label: string;
   value: string;
-  ok?: boolean; // 緑の枠（連絡が来た日）
+  tone?: "ok" | "alert"; // ok: 緑の枠（連絡が来た日）、alert: 薄い赤の枠（取次士）
 }
 
-// 項目の並び（行ごと）。1行目: 連絡が来た日・担当者・取次士、2行目: 預り番号・申請日・申請番号、3行目: 申請内容（幅いっぱい）
+// 項目の並び（行ごと）。
+//   1行目: 連絡が来た日・TODO番号・担当者（申請準備のTODO）
+//   2行目: 申請日・申請番号・申請内容
+//   3行目: 取次士（薄い赤）・預り番号
 export function fieldRowsOf(item: ApprovalNoticeItem): Field[][] {
   const notice = item.via ? `${item.noticeDate}（${item.via}）` : item.noticeDate;
   return [
     [
-      { label: "許可の連絡が来た日", value: notice, ok: true },
+      { label: "許可の連絡が来た日", value: notice, tone: "ok" },
+      { label: "TODO番号", value: item.todoNo },
       { label: "担当者", value: item.tantou },
-      { label: "取次士", value: item.assignee },
     ],
     [
-      { label: "預り番号", value: item.custodyNo },
       { label: "申請日", value: item.applicationDate },
       { label: "申請番号", value: item.applicationNo },
+      { label: "申請内容", value: item.content },
     ],
-    [{ label: "申請内容", value: item.content }],
+    [
+      { label: "取次士", value: item.assignee, tone: "alert" },
+      { label: "預り番号", value: item.custodyNo },
+    ],
   ];
 }
 
@@ -333,18 +344,18 @@ export function drawApprovalNoticeImage(
     }
     yy = y + 20 + l.headH + 14;
 
-    // 項目（3列 × 2行 ＋ 申請内容の1行）
+    // 項目（3列 × 2行 ＋ 取次士・預り番号の1行）
     l.rows.forEach((row, ri) => {
       const rh = l.rowHeights[ri];
       row.forEach((f, ci) => {
         const fx = innerX + ci * (f.fieldW + l.gap);
-        ctx.fillStyle = f.ok ? GREEN_BG : FIELD_BG;
+        ctx.fillStyle = f.tone === "ok" ? GREEN_BG : f.tone === "alert" ? RED_BG : FIELD_BG;
         roundRect(ctx, fx, yy, f.fieldW, rh, 10);
         ctx.fill();
         ctx.fillStyle = "#666666";
         ctx.font = `15px ${FONT}`;
         ctx.fillText(f.label, fx + 14, yy + 8);
-        ctx.fillStyle = f.ok ? GREEN_FG : "#111111";
+        ctx.fillStyle = f.tone === "ok" ? GREEN_FG : f.tone === "alert" ? RED_FG : "#111111";
         ctx.font = `bold 22px ${FONT}`;
         f.lines.forEach((line, li) => ctx.fillText(line, fx + 14, yy + 8 + 17 + 4 + li * 27));
       });
