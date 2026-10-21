@@ -209,6 +209,11 @@ describe("buildOnlineApplication", () => {
     expect(fieldSpecificChoice("造船・舶用工業／溶接")).toBe("有");
     expect(fieldSpecificChoice("農業分野")).toBe(NEITHER);
     expect(get("(2)従事すべき業務の内容 特定産業分野01")?.value).toBe("農業分野");
+    // 2.5 主たる職種: 未登録なら画面で選ぶ（農業は農林漁業従事者が目安）。登録していればその値
+    expect(get("(2)従事すべき業務の内容 職種 主たる職種")?.manual).toBe(true);
+    expect(get("(2)従事すべき業務の内容 職種 主たる職種")?.note).toContain("農林漁業従事者");
+    const s4 = buildOnlineApplication({ ...input, worker: { ...worker, main_occupation: "農林漁業従事者" } }, buildApplicationCopyGroups(input));
+    expect(s4.flatMap((s) => s.items).find((i) => i.no === "2.5")?.value).toBe("農林漁業従事者");
     expect(industryFieldChoice("農業／畜産農業全般")).toBe("農業分野");
     expect(industryFieldChoice("")).toBe("");
     // 取次者: 申請準備の申請取次士を優先。無ければ登録支援機関の申請取次者

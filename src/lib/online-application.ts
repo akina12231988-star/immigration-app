@@ -1,5 +1,6 @@
 import type { ApplicationCopyInput, CopyGroup, CopyItem } from "@/lib/application-copy";
 import { industryFieldName, ONLINE_INDUSTRY_FIELDS, ymdCompact } from "@/lib/application-copy";
+import { suggestedMainOccupation } from "@/lib/online-main-occupations";
 import { CUSTODIAN_INFO, type CustodianInfo } from "@/lib/custody";
 import { effectiveResidencePeriod } from "@/lib/residence-card";
 import { contractPeriodEnd, formatYmdJa } from "@/lib/support-plan-dates";
@@ -362,7 +363,15 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
     item("2.2", "特定技能雇用契約 (1)雇用契約期間(終期)", ymdCompact(ee) ?? "", "date8", "始期から2年間（2年後の前日）"),
     item("2.3", "(2)従事すべき業務の内容 特定産業分野01", industryFieldChoice(val(groups, "2 (2)特定産業分野")), "choice", "プルダウンから選ぶ（「紙の申請書の順」の「2 (2)特定産業分野」で所属機関の業種を選べる）"),
     item("2.4", "(2)従事すべき業務の内容 業務区分01", val(groups, "2 (2)業務区分"), "choice", "プルダウンから選ぶ"),
-    manual("2.5", "(2)従事すべき業務の内容 職種 主たる職種", "職種一覧のプルダウンから選ぶ（例: 耕種農業 → 農耕作業者）", "choice"),
+    // 2.5 主たる職種: 登録した職種。無ければ分野からの目安を案内して画面で選ぶ
+    w.main_occupation
+      ? item("2.5", "(2)従事すべき業務の内容 職種 主たる職種", w.main_occupation, "choice", "「紙の申請書の順」の「2 (2)主たる職種」で登録した職種")
+      : manual(
+          "2.5",
+          "(2)従事すべき業務の内容 職種 主たる職種",
+          `職種一覧のプルダウンから選ぶ${suggestedMainOccupation(val(groups, "2 (2)特定産業分野")) ? `（この分野は通常「${suggestedMainOccupation(val(groups, "2 (2)特定産業分野"))}」）` : ""}。「紙の申請書の順」の「2 (2)主たる職種」で選んで保存できる`,
+          "choice",
+        ),
     item("2.7", "(3)所定労働時間(週平均)", hours4(val(groups, "2 (3)所定労働時間（週平均）")), "digits", "半角数字4文字以内"),
     item("2.8", "(3)所定労働時間(月平均)", hours4(val(groups, "2 (3)所定労働時間（月平均）")), "digits", "半角数字4文字以内"),
     choose("2.9", "(3)所定労働時間が通常の労働者と同等であることの有無", "有"),

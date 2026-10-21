@@ -16,6 +16,7 @@ import { contractPeriodEnd, formatYmdJa } from "@/lib/support-plan-dates";
 import { JLPT_LEVELS, normalizeCertExams, type WorkerCertExam } from "@/lib/cert-exam";
 import { JISSHU_SHOKUSHU_LIST } from "@/lib/jisshu-shokushu";
 import { businessCategoryOptions } from "@/lib/online-business-categories";
+import { ONLINE_MAIN_OCCUPATIONS, suggestedMainOccupation } from "@/lib/online-main-occupations";
 
 // 項目をその場で入力・編集するときの保存先（外国人・所属機関・所属機関の登録内容（intake）・登録支援機関）
 export type CopyEdit =
@@ -98,6 +99,7 @@ export type CopyWorker = Pick<
       | "criminal_record_note"
       | "skill_eval_kind"
       | "japanese_eval_kind"
+      | "main_occupation"
     >
   >;
 
@@ -466,6 +468,16 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
       value: org?.business_category ?? "",
       note: "所属機関の業務区分。オンライン申請 2.4 の分野ごとの選択肢から選べます",
       edit: org ? og("business_category", businessCategoryOptions(org.industry || industryFieldName(w.field))) : undefined,
+    },
+    // 主たる職種（オンライン申請 2.5 の職種一覧から選んで保存。未登録なら分野からの目安を案内）
+    {
+      label: "2 (2)主たる職種",
+      value: w.main_occupation ?? "",
+      note: (() => {
+        const hint = suggestedMainOccupation(org?.industry || industryFieldName(w.field));
+        return `オンライン申請 2.5 の職種一覧から選ぶ${hint && !w.main_occupation ? `（この分野は通常「${hint}」）` : ""}`;
+      })(),
+      edit: wk("main_occupation", ONLINE_MAIN_OCCUPATIONS),
     },
     {
       label: "2 (3)所定労働時間（週平均）",

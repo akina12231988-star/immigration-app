@@ -490,6 +490,7 @@ export interface Worker {
   criminal_record_note?: string; // 有のときの処分の内容
   skill_eval_kind?: string; // 技能水準 評価区分（SKILL_EVAL_KINDS のどれか）
   japanese_eval_kind?: string; // 日本語能力 評価区分（SKILL_EVAL_KINDS のどれか）
+  main_occupation?: string; // 主たる職種（オンライン申請 2.5。0188）
   dependents: WorkerDependent[]; // 扶養家族（扶養親族証明書の内容）
   address: string; // 日本での住所（履歴書・労働者名簿に表示）
   home_address: string; // 母国の住所（本国の住所。0091）
