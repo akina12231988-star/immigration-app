@@ -5,7 +5,9 @@ import {
   councilFreeText,
   digitsOnly,
   hours4,
+  occupationOf,
   onlineSectionText,
+  renewalReasonText,
   payMethodChoice,
   prefectureOf,
   residencePeriodChoice,
@@ -146,6 +148,23 @@ describe("buildOnlineApplication", () => {
     expect(get("日本における連絡先 郵便番号")).toMatchObject({ no: "9.1", value: "", postalFor: "熊本県八代市郡築三番町175番地2", manual: false });
     expect(get("(5)住所（所在地） 郵便番号")?.postalFor).toBe("熊本県八代市郡築三番町175番地2");
     expect(get("(4)郵便番号")?.postalFor).toContain("熊本市東区小山3-8-87");
+  });
+
+  it("出生地・職業・携帯電話・メールアドレス・希望する在留資格と期間・理由", () => {
+    expect(get("出生地")).toMatchObject({ no: "5", value: "ＴＨＡＩ　ＢＩＮＨ　－　ＶＩＥＴ　ＮＡＭ" });
+    // 職業は職歴のいちばん新しい行の職種（この職歴は role が無いので分野・職種）
+    expect(get("職業")?.value).toBe("農業");
+    expect(get("日本における連絡先 携帯電話番号")?.value).toBe("記載なし");
+    expect(get("メールアドレス（オンラインシステム利用者）")?.value).toBe("thanhktc2017.visa@gmail.com");
+    expect(get("希望する在留資格")).toMatchObject({ no: "13.1", value: "特定技能1号" });
+    expect(get("希望する在留期間")).toMatchObject({ no: "13.2", value: "1年" });
+    expect(get("更新（変更）の理由")).toMatchObject({ no: "14", value: "1号特定技能外国人として就労するため" });
+    expect(get("更新（変更）の理由")?.manual).toBeFalsy();
+    expect(renewalReasonText("特定技能2号")).toBe("2号特定技能外国人として就労するため");
+    expect(renewalReasonText("特定技能１号")).toBe("1号特定技能外国人として就労するため");
+    expect(renewalReasonText("")).toBe("");
+    expect(occupationOf([{ role: "惣菜製造" }, { role: " 農作業 " }], "農業")).toBe("農作業");
+    expect(occupationOf([{ role: "" }], "農業")).toBe("農業");
   });
 
   it("登録支援機関・受領方法・フリー欄", () => {

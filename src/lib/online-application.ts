@@ -159,6 +159,22 @@ const manual = (no: string, label: string, note: string, format: OnlineFormat = 
   note,
 });
 
+// オンラインシステムにログインしている利用者（取次者）のメールアドレス
+export const ONLINE_SYSTEM_EMAIL = "thanhktc2017.visa@gmail.com";
+
+// 7 職業: 職歴のいちばん新しい行の「職種・仕事内容」。無ければ外国人の分野・職種
+export function occupationOf(careers: { role?: string }[], field: string): string {
+  const last = careers[careers.length - 1];
+  return (last?.role ?? "").trim() || field;
+}
+
+// 14 更新（変更）の理由: 希望する在留資格から決まる定型文（決まらなければ ""）
+export function renewalReasonText(desiredStatus: string | undefined): string {
+  const s = (desiredStatus ?? "").normalize("NFKC");
+  if (!s.includes("特定技能")) return "";
+  return s.includes("2号") ? "2号特定技能外国人として就労するため" : "1号特定技能外国人として就労するため";
+}
+
 export function buildOnlineApplication(input: ApplicationCopyInput, groups: CopyGroup[]): OnlineSection[] {
   const { worker: w, org, intake, histories, planDates } = input;
   const c: CustodianInfo = input.custodian ?? { ...CUSTODIAN_INFO };
@@ -174,14 +190,21 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
     item("2", "生年月日", ymdCompact(w.birth) ?? "", "date8", "「生年月日に不明な点は無い」を選んでから8桁を入れる"),
     item("3", "氏名", upperName(w.name), "upper", "旅券のとおり。半角大文字・スペース区切り"),
     item("4", "性別", w.gender, "choice"),
+    item("5", "出生地", toZenkaku(w.home_address), "zenkaku", "本国における居住地と同じ"),
     item("6", "配偶者の有無", w.has_spouse, "choice"),
-    item("7", "職業", w.field, "text", "40文字以内"),
+    item(
+      "7",
+      "職業",
+      occupationOf(careers, w.field),
+      "text",
+      "職歴のいちばん新しい行の「職種・仕事内容」（無ければ分野・職種）。違うときは外国人詳細の職歴で直す。40文字以内",
+    ),
     item("8", "本国における居住地", toZenkaku(w.home_address), "zenkaku", "全角80文字以内"),
     postal("9.1", "日本における連絡先 郵便番号", w.address, "住居地の郵便番号"),
     item("9.2", "日本における連絡先 住居地", toZenkaku(w.address), "zenkaku", "全角85文字以内"),
     item("9.3", "日本における連絡先 電話番号", digitsOnly(c.tel), "digits", "登録支援機関の電話番号（ハイフン無し）"),
-    manual("9.4", "日本における連絡先 携帯電話番号", "本人の携帯電話番号があれば（ハイフン無し）。9.3 を入れていれば空欄でよい", "digits"),
-    manual("", "メールアドレス（オンラインシステム利用者）", "ログインしている利用者（取次者）のメールアドレス。再入力欄にも同じものを入れる"),
+    item("9.4", "日本における連絡先 携帯電話番号", "記載なし", "text", "本人の携帯番号は書かず「記載なし」"),
+    item("", "メールアドレス（オンラインシステム利用者）", ONLINE_SYSTEM_EMAIL, "text", "ログインしている利用者（取次者）のメールアドレス。再入力欄にも同じものを入れる"),
     item("10.1", "旅券 (1)番号", (w.passport_no ?? "").normalize("NFKC").toUpperCase(), "upper", "半角英数字"),
     item("10.2", "旅券 (2)有効期限", ymdCompact(w.passport_expiry_date) ?? "", "date8"),
     item("11.1", "現に有する在留資格", w.residence_status, "choice", "プルダウンから選ぶ"),
@@ -189,9 +212,11 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
     item("11.3", "在留期間の満了日", ymdCompact(w.residence_expiry_date) ?? "", "date8"),
     item("", "在留カードの有無", w.residence_card_no ? "有" : "", "choice"),
     item("12", "在留カード番号", (w.residence_card_no ?? "").normalize("NFKC").toUpperCase().replace(/\s+/g, ""), "upper", "半角英数字12文字"),
-    item("13", "希望する在留期間（更新のとき）", residencePeriodChoice(period), "choice", "更新は通常いまと同じ期間。審査で変わることがある"),
-    item("13", "希望する在留資格（変更・認定のとき）", input.desiredStatus ?? "", "choice"),
-    manual("14", "更新（変更）の理由", "600文字以内。例: 引き続き○○（所属機関名）で特定技能の業務に従事するため"),
+    item("13.1", "希望する在留資格", input.desiredStatus ?? "", "choice", "申請準備の申請種別から"),
+    item("13.2", "希望する在留期間", residencePeriodChoice(period), "choice", "更新は通常いまと同じ期間。審査で変わることがある"),
+    renewalReasonText(input.desiredStatus)
+      ? item("14", "更新（変更）の理由", renewalReasonText(input.desiredStatus), "text", "希望する在留資格から決まる定型文。600文字以内")
+      : manual("14", "更新（変更）の理由", "600文字以内。例: 1号特定技能外国人として就労するため"),
     choose("15", "犯罪を理由とする処分を受けたことの有無", "無"),
     choose("16.1", "在日親族及び同居者 有無", undefined, "「有」なら 16.2〜16.8 に続柄・氏名・生年月日（8桁）・国籍・同居の有無・勤務先・在留カード番号を人数分入れる（＋追加する）"),
   ];

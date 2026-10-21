@@ -236,7 +236,14 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
     { label: "3 氏名", value: w.name, note: w.kana ? `フリガナ: ${w.kana}` : undefined, edit: wk("name") },
     { label: "4 性別", value: w.gender, edit: wk("gender", ["男", "女"]) },
     { label: "6 配偶者の有無", value: w.has_spouse, edit: wk("has_spouse", ["有", "無"]) },
-    { label: "7 職業", value: w.field, edit: wk("field") },
+    // 職歴のいちばん新しい行の「職種・仕事内容」。無ければ分野・職種（その場で直せる）
+    ...(() => {
+      const last = [...histories].sort((a, b) => (a.start < b.start ? -1 : 1)).at(-1);
+      const role = (last?.role ?? "").trim();
+      return role
+        ? [{ label: "7 職業", value: role, note: "職歴のいちばん新しい行の「職種・仕事内容」。違うときは外国人詳細の職歴で直す" }]
+        : [{ label: "7 職業", value: w.field, edit: wk("field") }];
+    })(),
     { label: "8 本国における居住地", value: w.home_address, edit: wk("home_address") },
     { label: "9 住居地", value: w.address, edit: wk("address") },
     { label: "10 旅券 (1)番号", value: w.passport_no, edit: wk("passport_no") },
