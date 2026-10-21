@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchesApplicationTantou, tantouFilterOptions } from "./application-tantou";
+import { groupByTantou, matchesApplicationTantou, tantouFilterOptions } from "./application-tantou";
 
 const BASE = ["市原　彩奈", "田上　夏季", "大元　麗奈", "秋吉　伽恋", "野口　明菜"];
 
@@ -52,5 +52,21 @@ describe("tantouFilterOptions", () => {
 
   it("空欄は選択肢にしない", () => {
     expect(tantouFilterOptions(BASE, ["", "  ", null, undefined])).toEqual(BASE);
+  });
+
+  it("担当者ごとにまとめる（名前順・未定は最後・空白の違いは同じ人）", () => {
+    const rows = [
+      { id: 1, t: "野口 明菜" },
+      { id: 2, t: "" },
+      { id: 3, t: "大元 麗奈" },
+      { id: 4, t: "野口　明菜" },
+      { id: 5, t: "  " },
+    ];
+    expect(groupByTantou(rows, (r) => r.t).map((g) => ({ tantou: g.tantou, ids: g.rows.map((r) => r.id) }))).toEqual([
+      { tantou: "大元 麗奈", ids: [3] },
+      { tantou: "野口 明菜", ids: [1, 4] },
+      { tantou: "未定", ids: [2, 5] },
+    ]);
+    expect(groupByTantou([], () => "")).toEqual([]);
   });
 });

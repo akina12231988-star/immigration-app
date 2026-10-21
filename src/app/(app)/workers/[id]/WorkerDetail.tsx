@@ -46,6 +46,7 @@ import { WorkerFollowups } from "@/components/workers/WorkerFollowups";
 import { WorkerMailingRecords } from "@/components/workers/WorkerMailingRecords";
 import { WorkerInsuranceCards } from "@/components/workers/WorkerInsuranceCards";
 import { OnboardingDocuments } from "@/components/workers/OnboardingDocuments";
+import { isChangeApplication } from "@/lib/onboarding-request-text";
 import { HealthCheckSection } from "@/components/workers/HealthCheckSection";
 import { GensenDocuments } from "@/components/workers/GensenDocuments";
 import { WorkerCertDocRows } from "@/components/workers/WorkerCertDocRows";
@@ -1992,6 +1993,10 @@ export function WorkerDetail({
         org={currentOrg ?? null}
         // 特定技能1号の更新許可なら、契約機関に関する届出（参考様式1の5）は要らないと知らせる
         contractOrgNotNeeded={isSsw1Renewal(applications, worker.residence_status)}
+        // 在留資格変更の申請をした人には、本人から送ってもらう書類の依頼文（日本語＋母国語）を出す
+        nationality={worker.nationality}
+        workerName={worker.name}
+        askMissingDocs={isChangeApplication(applications)}
       />
       </div>
 
