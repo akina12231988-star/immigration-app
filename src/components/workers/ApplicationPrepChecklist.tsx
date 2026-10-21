@@ -2290,6 +2290,9 @@ export function ApplicationPrepChecklist({
           orgId={prepOrgId}
           todoNo={current.todo_no}
           desiredStatus={desiredResidenceStatus(meta.app_content, meta.app_type, workerRow?.residence_status ?? "")}
+          agentName={meta.tantou}
+          assen={(currentTodo ?? fallbackTodo)?.assen ?? ""}
+          appType={meta.app_type}
           canEdit={canEdit}
           refreshKey={prepInfoKey}
           onSaved={() => setPrepInfoKey((k) => k + 1)}

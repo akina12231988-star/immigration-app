@@ -10,7 +10,7 @@ import {
   loadApplicationCopyData,
   type ApplicationCopyData,
 } from "@/lib/supabase/queries/application-copy";
-import { normalizeOrganizationIntake } from "@/lib/organization-intake";
+import { emptyJapaneseStaff, normalizeOrganizationIntake } from "@/lib/organization-intake";
 import { setAppSetting } from "@/lib/supabase/queries/app-settings";
 import { CUSTODIAN_SETTING_KEY, mergeCustodianInfo, mergeSupportOrgLists } from "@/lib/custody";
 import {
@@ -19,10 +19,10 @@ import {
   type CopyEdit,
   type CopyGroup,
 } from "@/lib/application-copy";
-import { dbErrorMessage } from "@/lib/errors";
 import { buildOnlineApplication, type OnlineSection } from "@/lib/online-application";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { OnlineApplicationList } from "@/components/workers/OnlineApplicationList";
+import { InlineEditField } from "@/components/workers/InlineEditField";
 
 // 申請準備 ＞ 申請書に貼る情報。
 // 外国人詳細・所属機関・賃金・職歴・支援計画書の日付から、申請書（申請人等作成用・所属機関等作成用）の
@@ -32,6 +32,9 @@ export function ApplicationCopyPanel({
   orgId,
   todoNo,
   desiredStatus,
+  agentName,
+  assen,
+  appType,
   canEdit = false,
   onSaved,
   refreshKey = 0,
@@ -40,6 +43,9 @@ export function ApplicationCopyPanel({
   orgId: string | null;
   todoNo: string;
   desiredStatus?: string; // 希望する在留資格（申請種別から）
+  agentName?: string; // 申請準備の申請取次士（オンライン申請の取次者の氏名に使う）
+  assen?: string; // あっせんの有無（'' / あり / なし。オンライン申請の職業紹介事業者 2.30〜2.37 を出すか）
+  appType?: string; // 申請種別（認定 / 変更 / 更新。認定のとき取次機関 2.38〜2.42 を入れる）
   canEdit?: boolean; // true: 項目をこの場で入力・編集して保存できる
   onSaved?: () => void; // 保存したあと（親の表示を更新したいとき）
   refreshKey?: number; // 値が変わると読み直す（同じページで支援計画書の日付などを保存したとき）
@@ -82,6 +88,14 @@ export function ApplicationCopyPanel({
     } else if (edit.target === "org") {
       if (!orgId) throw new Error("所属機関が未設定です");
       await updateOrganization(supabase, orgId, { [edit.column]: v });
+    } else if (edit.target === "staff") {
+      // 一緒に働く日本人常勤職員（専従者）の index 行目の氏名・報酬などを書き換える
+      if (!orgId || !loaded?.org) throw new Error("所属機関が未設定です");
+      const intake = normalizeOrganizationIntake(loaded.org.intake);
+      const rows = intake.japanese_staff.map((r) => ({ ...r }));
+      while (rows.length <= edit.index) rows.push(emptyJapaneseStaff());
+      rows[edit.index] = { ...rows[edit.index], [edit.field]: v };
+      await updateOrganization(supabase, orgId, { intake: { ...intake, japanese_staff: rows } });
     } else {
       if (!orgId || !loaded?.org) throw new Error("所属機関が未設定です");
       const intake = normalizeOrganizationIntake(loaded.org.intake);
@@ -96,18 +110,22 @@ export function ApplicationCopyPanel({
     const input = {
       worker: loaded.worker,
       org: loaded.org,
+      orgId,
       intake: loaded.org ? normalizeOrganizationIntake(loaded.org.intake) : null,
       wages: loaded.wages,
       histories: loaded.histories.map(toCalcHistory),
       planDates: loaded.planDates,
       desiredStatus,
+      agentName,
+      assen,
+      appType,
       custodian: mergeCustodianInfo(loaded.custodian),
       interpreters: mergeSupportOrgLists(loaded.custodian).interpreters,
     };
     const groups = buildApplicationCopyGroups(input);
     // オンライン申請の画面順・入力形式にそろえたもの（紙の申請書向けの項目から組み立てる）
     return { groups, online: buildOnlineApplication(input, groups) };
-  }, [loaded, desiredStatus]);
+  }, [loaded, orgId, desiredStatus, agentName, assen, appType]);
 
   if (!built) return null;
   return (
@@ -189,7 +207,7 @@ export function ApplicationCopyList({
       )}
       {open && online && mode === "online" && (
         <div className="mt-2">
-          <OnlineApplicationList sections={online} />
+          <OnlineApplicationList sections={online} canEdit={canEdit} onSave={onSave} />
         </div>
       )}
       {open && (!online || mode === "paper") && (
@@ -327,111 +345,5 @@ function PartChip({ value }: { value: string }) {
       {copied ? <Check size={10} /> : <Copy size={10} />}
       {value}
     </button>
-  );
-}
-
-// 項目をその場で入力・編集して保存する欄（文字・日付・選択肢）。
-// 未登録なら「未登録」と入力欄、登録済みなら今の値を入れた入力欄と「やめる」を出す
-function InlineEditField({
-  label,
-  edit,
-  initial = "",
-  registered = false,
-  onSave,
-  onCancel,
-}: {
-  label: string;
-  edit: CopyEdit;
-  initial?: string; // 最初に入れておく値（登録済みの値）
-  registered?: boolean; // true: 登録済みの値を編集している（空で保存すると消す）
-  onSave: (edit: CopyEdit, value: string) => Promise<void>;
-  onCancel?: () => void;
-}) {
-  const [value, setValue] = useState(initial);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const options = "options" in edit ? edit.options : undefined;
-  const isDate = "kind" in edit && edit.kind === "date";
-  // エラー文に出すマイグレーション名（登録支援機関の情報は app_settings に保存する）
-  const migration = edit.target === "custodian" ? "0149_app_settings.sql" : "0001_init.sql";
-  const cls =
-    "min-h-[28px] rounded border border-seal/40 bg-surface px-1.5 text-[11px] focus:border-brand focus:outline-none disabled:opacity-60";
-  // 未登録のときは空では保存しない。登録済みのときは変わっていなければ保存しない（空にして消すのは可）
-  const canSave = registered ? value.trim() !== initial.trim() : value.trim().length > 0;
-  // 選択肢に無い値（古い登録値）も選べるように残す
-  const optionList = options && value && !options.includes(value) ? [value, ...options] : options;
-
-  const save = async () => {
-    if (!canSave || busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await onSave(edit, value);
-    } catch (err) {
-      setError(dbErrorMessage(err, migration, `${label}の保存に失敗しました`));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-      <span className="flex flex-wrap items-center gap-1">
-        {!registered && <span className="text-seal">未登録</span>}
-        {optionList ? (
-          <select value={value} onChange={(e) => setValue(e.target.value)} disabled={busy} className={cls} aria-label={label}>
-            <option value="">{registered ? "（空にする）" : "選択してください"}</option>
-            {optionList.map((o) => (
-              <option key={o} value={o}>
-                {o}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <input
-            type={isDate ? "date" : "text"}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void save();
-              if (e.key === "Escape") onCancel?.();
-            }}
-            disabled={busy}
-            placeholder="ここに入力"
-            aria-label={label}
-            autoFocus={registered}
-            className={`${cls} ${isDate ? "" : "min-w-[10rem] flex-1"}`}
-          />
-        )}
-        <button
-          type="button"
-          onClick={() => void save()}
-          disabled={busy || !canSave}
-          className="rounded bg-brand px-2 py-1 text-[10px] font-bold text-brand-foreground disabled:opacity-50"
-        >
-          {busy ? "保存中…" : "保存"}
-        </button>
-        {onCancel && (
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={busy}
-            className="rounded border border-border px-2 py-1 text-[10px] font-bold text-muted disabled:opacity-50"
-          >
-            やめる
-          </button>
-        )}
-      </span>
-      {registered && !error && (
-        <span className="text-[10px] text-muted">
-          空にして保存すると登録を消します。{optionList ? "" : "Enterで保存、Escでやめる"}
-        </span>
-      )}
-      {error && (
-        <span role="alert" className="text-[10px] font-bold text-seal">
-          {error}
-        </span>
-      )}
-    </span>
   );
 }

@@ -408,6 +408,15 @@ describe("ownedRentPerPerson / lodgingCalcText", () => {
   });
 });
 
+describe("weeklyHoursText", () => {
+  it("登録が「45時間08分」でも小数の時間で出す", async () => {
+    const { weeklyHoursText } = await import("./organization-intake");
+    expect(weeklyHoursText({ posting_weekly_hours: "45時間08分", posting_monthly_hours: "", posting_annual_hours: "" })).toEqual({ value: "45.1", auto: false });
+    expect(weeklyHoursText({ posting_weekly_hours: "40", posting_monthly_hours: "", posting_annual_hours: "" })).toEqual({ value: "40", auto: false });
+    expect(weeklyHoursText({ posting_weekly_hours: "", posting_monthly_hours: "", posting_annual_hours: "2080" })).toEqual({ value: "40", auto: true });
+  });
+});
+
 describe("councilSubmissionsLine", () => {
   it("提出先・提出日・確認方法を1行にする（確認方法が無ければ省く）", () => {
     expect(

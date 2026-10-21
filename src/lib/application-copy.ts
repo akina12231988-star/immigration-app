@@ -3,10 +3,10 @@
 // 画面ではこの一覧を項目ごとにコピーできる。
 // 項目の並びと名前は、実際に使っている申請書のエクセル（別記第三十号様式）に合わせている。
 
-import type { Organization, OrganizationIntake, Worker, WorkerWage } from "@/types/db";
+import type { Organization, OrganizationIntake, OrgJapaneseStaff, Worker, WorkerWage } from "@/types/db";
 import type { WorkHistory } from "@/types/ssw";
 import { calcDocumentTotal, todayStr } from "@/lib/ssw/calc";
-import { currentWage, hourlyFromMonthly, monthlyFromHourly } from "@/lib/wage";
+import { currentWage, hourlyFromMonthly, monthlyFromHourly, wageText } from "@/lib/wage";
 import { formatHoursDecimal, parseHoursMinutes, rosaiMeasureText, weeklyHoursText } from "@/lib/organization-intake";
 import { effectiveResidencePeriod } from "@/lib/residence-card";
 import { CUSTODIAN_INFO, type CustodianInfo, type SupportOrgInterpreter } from "@/lib/custody";
@@ -14,6 +14,10 @@ import { RESUME_LANG_JA } from "@/lib/resume-tool/i18n";
 import { resumeLangForNationality } from "@/lib/resume-tool/share";
 import { contractPeriodEnd, formatYmdJa } from "@/lib/support-plan-dates";
 import { JLPT_LEVELS, normalizeCertExams, type WorkerCertExam } from "@/lib/cert-exam";
+import { JISSHU_SHOKUSHU_LIST } from "@/lib/jisshu-shokushu";
+import { businessCategoryOptions } from "@/lib/online-business-categories";
+import { ONLINE_MAIN_OCCUPATIONS, suggestedMainOccupation } from "@/lib/online-main-occupations";
+import { ONLINE_MAIN_INDUSTRIES, suggestedMainIndustry } from "@/lib/online-main-industries";
 
 // 項目をその場で入力・編集するときの保存先（外国人・所属機関・所属機関の登録内容（intake）・登録支援機関）
 export type CopyEdit =
@@ -21,7 +25,13 @@ export type CopyEdit =
   | { target: "custodian"; column: keyof CustodianInfo; kind?: "text" | "date" } // 登録支援機関（app_settings）
   // 協力確認書の提出（所属機関の登録内容の council_office_submissions / council_residence_submissions の index 行目）
   | { target: "council"; list: "office" | "residence"; index: number; field: "to" | "on"; kind?: "text" | "date" }
-  | { target: "org"; column: "name" | "industry" | "business_category" | "address" | "contact" | "corporate_no" }
+  | {
+      target: "org";
+      column: "name" | "industry" | "business_category" | "main_industry" | "address" | "contact" | "corporate_no";
+      options?: readonly string[];
+    }
+  // 一緒に働く日本人常勤職員（所属機関の登録内容の japanese_staff の index 行目）
+  | { target: "staff"; index: number; field: keyof OrgJapaneseStaff }
   | {
       target: "intake";
       column:
@@ -89,17 +99,81 @@ export type CopyWorker = Pick<
       | "cert_senmongai_name"
       | "cert_senmongai_location"
       | "cert_exams"
+      // 在日親族（16）・犯罪歴（15）・技能水準の評価区分（18.1）。古いデータ・0187 未適用では無いことがある
+      | "relatives_in_japan"
+      | "relatives"
+      | "criminal_record"
+      | "criminal_record_note"
+      | "skill_eval_kind"
+      | "japanese_eval_kind"
+      | "main_occupation"
+      // 取次機関（オンライン申請 2.38〜2.42・0190）
+      | "agency_name"
+      | "agency_corporate_no"
+      | "agency_postal"
+      | "agency_address"
+      | "agency_tel"
     >
   >;
 
+// オンライン申請 18.1 技能水準 評価区分・19.1 日本語能力 評価区分の選択肢（画面のプルダウンと同じ並び）
+export const SKILL_EVAL_KINDS = [
+  "技能実習２号を良好に修了",
+  "特定技能評価試験",
+  "技能検定",
+  "介護福祉士養成施設修了",
+  "ＥＰＡ介護福祉士候補者",
+  "その他分野固有の証明",
+] as const;
+
+// 有無の選択肢
+export const YES_NO = ["無", "有"] as const;
+
+// オンライン申請 2.3「従事すべき業務の内容 特定産業分野01」のプルダウン（「○○分野」の「○○」。画面と同じ並び）
+export const ONLINE_INDUSTRY_FIELDS = [
+  "介護",
+  "ビルクリーニング",
+  "リネンサプライ",
+  "工業製品製造業",
+  "建設",
+  "造船・舶用工業",
+  "自動車整備",
+  "航空",
+  "宿泊",
+  "自動車運送業",
+  "鉄道",
+  "物流倉庫",
+  "農業",
+  "漁業",
+  "飲食料品製造業",
+  "外食業",
+  "林業",
+  "木材産業",
+  "資源循環",
+] as const;
+
+// 「農業／畜産農業全般」「農業分野」のような書き方から分野名（農業）だけを取り出す
+export function industryFieldName(s: string | null | undefined): string {
+  return (s ?? "")
+    .normalize("NFKC")
+    .split(/[／/]/)[0]
+    .replace(/分野$/, "")
+    .trim();
+}
+
 export interface ApplicationCopyInput {
   worker: CopyWorker;
-  org: Pick<Organization, "name" | "industry" | "business_category" | "address" | "contact" | "corporate_no"> | null;
+  org: Pick<Organization, "name" | "industry" | "business_category" | "address" | "contact" | "corporate_no"> &
+    Partial<Pick<Organization, "main_industry">> | null;
+  orgId?: string | null; // 申請準備中の所属機関のID（賃金をこの機関のものに絞る）
   intake: OrganizationIntake | null;
   wages: WorkerWage[];
   histories: WorkHistory[]; // 職歴（calc の形）
   planDates: Record<string, string>; // 支援計画書の日付（es = 雇用開始日 など）
   desiredStatus?: string; // 希望する在留資格（申請種別から）
+  agentName?: string; // 申請準備の申請取次士（取次者の氏名に使う。無ければ登録支援機関の申請取次者）
+  assen?: string; // あっせんの有無（'' / あり / なし。申請準備のTODOから。職業紹介事業者 2.30〜2.37 を出すか決める）
+  appType?: string; // 申請種別（認定 / 変更 / 更新。認定のとき取次機関 2.38〜2.42 を入れる）
   custodian?: CustodianInfo; // 登録支援機関の情報（無ければ既定値 CUSTODIAN_INFO）
   interpreters?: SupportOrgInterpreter[]; // 対応可能言語ごとの通訳者（登録支援機関の情報）
   today?: string;
@@ -134,14 +208,19 @@ const dateItem = (label: string, ymd: string | null | undefined, note?: string, 
 });
 
 // 編集先の短い書き方
-const wk = (column: keyof CopyWorker, options?: readonly string[]): CopyEdit => ({ target: "worker", column, options });
-const wkDate = (column: keyof CopyWorker): CopyEdit => ({ target: "worker", column, kind: "date" });
-const og = (column: Extract<CopyEdit, { target: "org" }>["column"]): CopyEdit => ({ target: "org", column });
-const it = (
+export const wk = (column: keyof CopyWorker, options?: readonly string[]): CopyEdit => ({ target: "worker", column, options });
+export const wkDate = (column: keyof CopyWorker): CopyEdit => ({ target: "worker", column, kind: "date" });
+export const og = (column: Extract<CopyEdit, { target: "org" }>["column"], options?: readonly string[]): CopyEdit => ({
+  target: "org",
+  column,
+  options,
+});
+export const it = (
   column: Extract<CopyEdit, { target: "intake" }>["column"],
   options?: readonly string[],
 ): CopyEdit => ({ target: "intake", column, options });
-const cu = (column: keyof CustodianInfo, kind?: "text" | "date"): CopyEdit => ({ target: "custodian", column, kind });
+export const cu = (column: keyof CustodianInfo, kind?: "text" | "date"): CopyEdit => ({ target: "custodian", column, kind });
+const staff = (index: number, field: keyof OrgJapaneseStaff): CopyEdit => ({ target: "staff", index, field });
 const council = (list: "office" | "residence", index: number, field: "to" | "on"): CopyEdit => ({
   target: "council",
   list,
@@ -181,20 +260,30 @@ export function totalStaff(intake: OrganizationIntake | null): string {
 }
 
 // 月額報酬と基本給の時間換算額（登録している賃金と所定労働時間から）
+// 申請準備中の所属機関（orgId）の賃金があればそれに絞る（転職先の賃金を入れているとき）。無ければ全部から
 export function wageForApplication(
   wages: WorkerWage[],
   intake: OrganizationIntake | null,
   employmentStartOn: string | null,
+  orgId?: string | null,
+  orgName?: string,
 ): { monthly: string; hourly: string; note: string } {
-  const w = currentWage(wages, undefined, employmentStartOn);
-  if (!w) return { monthly: "", hourly: "", note: "賃金が未登録です（外国人詳細の賃金）" };
+  const scoped = orgId ? wages.filter((x) => x.organization_id === orgId) : [];
+  const w = currentWage(scoped.length > 0 ? scoped : wages, undefined, employmentStartOn);
+  if (!w) return { monthly: "", hourly: "", note: "賃金が未登録です（外国人詳細の賃金、または申請準備の賃金）" };
+  const from =
+    scoped.length > 0
+      ? `所属機関「${orgName || "申請準備中の機関"}」の賃金（${wageText(w.kind, w.amount)}）から。`
+      : orgId
+        ? `申請準備中の所属機関の賃金が未登録のため、いちばん新しい賃金（${wageText(w.kind, w.amount)}）から。`
+        : "";
   const annual = Number.parseFloat(intake?.posting_annual_hours ?? "") || 0;
   if (w.kind === "月給") {
     const h = hourlyFromMonthly(w.amount, annual);
     return {
       monthly: String(w.amount),
       hourly: yen(h),
-      note: h == null ? "所属機関の年間所定労働時間が未登録のため時間換算できません" : `月給 ÷（年間所定労働時間 ${annual}時間 ÷ 12）`,
+      note: `${from}${h == null ? "所属機関の年間所定労働時間が未登録のため時間換算できません" : `時間換算額は 月給 ÷（年間所定労働時間 ${annual}時間 ÷ 12）`}`,
     };
   }
   if (w.kind === "時給") {
@@ -202,10 +291,40 @@ export function wageForApplication(
     return {
       monthly: yen(m),
       hourly: String(w.amount),
-      note: m == null ? "所属機関の年間所定労働時間が未登録のため月額に換算できません" : `時給 ×（年間所定労働時間 ${annual}時間 ÷ 12）`,
+      note: `${from}${m == null ? "所属機関の年間所定労働時間が未登録のため月額に換算できません" : `月額報酬は 時給 ×（年間所定労働時間 ${annual}時間 ÷ 12）`}`,
     };
   }
-  return { monthly: "", hourly: "", note: `賃金の区分が${w.kind}のため換算していません` };
+  return { monthly: "", hourly: "", note: `${from}賃金の区分が${w.kind}のため換算していません` };
+}
+
+// 2 (4)同等の業務に従事する日本人の月額報酬: 所属機関に登録している「一緒に働く日本人常勤職員（専従者）」の報酬から。
+// 「月給250,000円」はそのまま、「時給1,100円」は年間所定労働時間で月額に換算する
+export function japaneseStaffMonthly(
+  intake: OrganizationIntake | null,
+  orgName: string,
+): { monthly: string; note: string; index: number; staff: OrgJapaneseStaff | null } {
+  const rows = intake?.japanese_staff ?? [];
+  const index = Math.max(
+    0,
+    rows.findIndex((r) => (r.pay ?? "").trim()),
+  );
+  const st = rows[index] ?? null;
+  const pay = (st?.pay ?? "").normalize("NFKC").trim();
+  const who = `所属機関「${orgName || "未設定"}」の日本人常勤職員${st?.name ? ` ${st.name}` : ""}`;
+  if (!pay) return { monthly: "", note: `${who}の報酬が未登録です（所属機関 ＞ 一緒に働く日本人常勤職員（専従者）＞ 報酬）`, index, staff: st };
+  const amount = Number.parseInt(pay.replace(/[^\d]/g, ""), 10);
+  if (!Number.isFinite(amount) || amount <= 0) return { monthly: "", note: `${who}の報酬「${pay}」から金額が読み取れません`, index, staff: st };
+  if (/時給/.test(pay)) {
+    const annual = Number.parseFloat(intake?.posting_annual_hours ?? "") || 0;
+    const m = monthlyFromHourly(amount, annual);
+    return {
+      monthly: yen(m),
+      note: m == null ? `${who}の報酬（${pay}）。所属機関の年間所定労働時間が未登録のため月額に換算できません` : `${who}の報酬（${pay}）× 年間所定労働時間 ${annual}時間 ÷ 12`,
+      index,
+      staff: st,
+    };
+  }
+  return { monthly: String(amount), note: `${who}の報酬（${pay}）から`, index, staff: st };
 }
 
 export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGroup[] {
@@ -220,7 +339,8 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
   const docM = docMonths ? String(docMonths % 12) : "";
   const es = planDates.es || w.employment_start_on || "";
   const ee = es ? contractPeriodEnd(es) : "";
-  const wage = wageForApplication(wages, intake, w.employment_start_on);
+  const wage = wageForApplication(wages, intake, w.employment_start_on, input.orgId, org?.name);
+  const jpStaff = japaneseStaffMonthly(intake, org?.name ?? "");
   const weekly = weeklyHoursText(intake);
   const monthlyHours = parseHoursMinutes(intake?.posting_monthly_hours ?? "");
   const lang = resumeLangForNationality(w.nationality);
@@ -236,7 +356,14 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
     { label: "3 氏名", value: w.name, note: w.kana ? `フリガナ: ${w.kana}` : undefined, edit: wk("name") },
     { label: "4 性別", value: w.gender, edit: wk("gender", ["男", "女"]) },
     { label: "6 配偶者の有無", value: w.has_spouse, edit: wk("has_spouse", ["有", "無"]) },
-    { label: "7 職業", value: w.field, edit: wk("field") },
+    // 職歴のいちばん新しい行の「職種・仕事内容」。無ければ分野・職種（その場で直せる）
+    ...(() => {
+      const last = [...histories].sort((a, b) => (a.start < b.start ? -1 : 1)).at(-1);
+      const role = (last?.role ?? "").trim();
+      return role
+        ? [{ label: "7 職業", value: role, note: "職歴のいちばん新しい行の「職種・仕事内容」。違うときは外国人詳細の職歴で直す" }]
+        : [{ label: "7 職業", value: w.field, edit: wk("field") }];
+    })(),
     { label: "8 本国における居住地", value: w.home_address, edit: wk("home_address") },
     { label: "9 住居地", value: w.address, edit: wk("address") },
     { label: "10 旅券 (1)番号", value: w.passport_no, edit: wk("passport_no") },
@@ -256,6 +383,25 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
       value: input.desiredStatus ?? "",
       note: input.desiredStatus ? undefined : "申請準備の「準備の内容」と申請種別を選ぶと出ます",
     },
+    // 15 犯罪歴（有無を選び、有なら内容を書く）
+    {
+      label: "15 犯罪を理由とする処分を受けたことの有無",
+      value: w.criminal_record ?? "",
+      note: "通常は「無」。有なら下に内容を書く",
+      edit: wk("criminal_record", YES_NO),
+    },
+    {
+      label: "15 処分の内容（有のとき）",
+      value: w.criminal_record_note ?? "",
+      note: "処分を受けた年月・内容。無のときは空欄",
+      edit: wk("criminal_record_note"),
+    },
+    // 16 在日親族（外国人詳細の「在日親族の同居」から）
+    {
+      label: "16 在日親族及び同居者 有無",
+      value: w.relatives_in_japan ?? "",
+      note: "外国人詳細 ＞ 在日親族の同居。有なら同居している在日親族の氏名・生年月日・勤務先・在留カード番号も外国人詳細で登録",
+    },
   ];
 
   // 合格証の受験情報（1件目は workers の列、2件目以降は cert_exams）
@@ -274,6 +420,12 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
     { label: "17 (2)住所（所在地）", value: org?.address ?? "", edit: org ? og("address") : undefined },
     { label: "17 電話番号", value: org?.contact ?? "", edit: org ? og("contact") : undefined },
     // 18 技能水準（専門外の合格証 ＝ 技能試験）
+    {
+      label: "18 技能水準 評価区分",
+      value: w.skill_eval_kind ?? "",
+      note: "オンライン申請 18.1 のプルダウンと同じ選択肢。選ぶと 18.2〜18.8 の入力項目が変わる",
+      edit: wk("skill_eval_kind", SKILL_EVAL_KINDS),
+    },
     {
       label: "18 技能水準 (1)試験名",
       value: w.cert_senmongai_name ?? "",
@@ -295,6 +447,12 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
     },
     // 19 日本語能力（日本語の合格証）
     {
+      label: "19 日本語能力 評価区分",
+      value: w.japanese_eval_kind ?? "",
+      note: "オンライン申請 19.1 のプルダウンと同じ選択肢（特定技能1号の申請のとき）。選ぶと 19.2〜 の入力項目が変わる",
+      edit: wk("japanese_eval_kind", SKILL_EVAL_KINDS),
+    },
+    {
       label: "19 日本語能力 (1)試験名",
       value: w.cert_nihongo_name ?? "",
       note: "外国人詳細 ＞ 日本語の合格証の受験情報",
@@ -313,7 +471,7 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
       label: "20 技能実習2号良好修了 (1)職種名",
       value: w.jisshu2_shokushu ?? "",
       note: "技能実習2号を良好に修了した人だけ（外国人詳細 ＞ 良好に修了した技能実習2号）",
-      edit: wk("jisshu2_shokushu"),
+      edit: wk("jisshu2_shokushu", JISSHU_SHOKUSHU_LIST), // オンライン申請 20.1 と同じ職種のプルダウンから選ぶ
     },
     { label: "20 (2)作業名", value: w.jisshu2_sagyo ?? "", edit: wk("jisshu2_sagyo") },
     {
@@ -355,8 +513,31 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
       edit: wkDate("employment_start_on"),
       editValue: w.employment_start_on ?? "",
     },
-    { label: "2 (2)特定産業分野", value: w.field || org?.industry || "", edit: wk("field"), editValue: w.field },
-    { label: "2 (2)業務区分", value: org?.business_category ?? "", edit: org ? og("business_category") : undefined },
+    // 所属機関の業種（オンライン申請 2.3 と同じ分野のプルダウンから選んで保存）。無ければ外国人の分野・職種から
+    {
+      label: "2 (2)特定産業分野",
+      value: org?.industry || industryFieldName(w.field),
+      note: "所属機関の業種。オンライン申請 2.3 のプルダウンと同じ分野から選べます",
+      edit: org ? og("industry", ONLINE_INDUSTRY_FIELDS) : undefined,
+      editValue: org?.industry ?? "",
+    },
+    // 業務区分はオンライン申請 2.4 の分野ごとのプルダウンから選んで保存（所属機関の業務区分）
+    {
+      label: "2 (2)業務区分",
+      value: org?.business_category ?? "",
+      note: "所属機関の業務区分。オンライン申請 2.4 の分野ごとの選択肢から選べます",
+      edit: org ? og("business_category", businessCategoryOptions(org.industry || industryFieldName(w.field))) : undefined,
+    },
+    // 主たる職種（オンライン申請 2.5 の職種一覧から選んで保存。未登録なら分野からの目安を案内）
+    {
+      label: "2 (2)主たる職種",
+      value: w.main_occupation ?? "",
+      note: (() => {
+        const hint = suggestedMainOccupation(org?.industry || industryFieldName(w.field));
+        return `オンライン申請 2.5 の職種一覧から選ぶ${hint && !w.main_occupation ? `（この分野は通常「${hint}」）` : ""}`;
+      })(),
+      edit: wk("main_occupation", ONLINE_MAIN_OCCUPATIONS),
+    },
     {
       label: "2 (3)所定労働時間（週平均）",
       value: weekly.value,
@@ -375,6 +556,20 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
     },
     { label: "2 (4)月額報酬", value: wage.monthly, note: wage.note },
     { label: "2 (4)基本給の時間換算額", value: wage.hourly },
+    // 同等の業務に従事する日本人（所属機関の専従者）。未登録ならここで名前・報酬を入れて所属機関に保存する
+    {
+      label: "2 (4)同等の業務に従事する日本人（氏名）",
+      value: jpStaff.staff?.name ?? "",
+      note: `所属機関「${org?.name || "未設定"}」＞ 一緒に働く日本人常勤職員（専従者）の${jpStaff.index + 1}人目`,
+      edit: org ? staff(jpStaff.index, "name") : undefined,
+    },
+    {
+      label: "2 (4)同等の業務に従事する日本人の月額報酬",
+      value: jpStaff.monthly,
+      note: `${jpStaff.note}。報酬は「月給250,000円」「時給1,100円」の形で入れる`,
+      edit: org ? staff(jpStaff.index, "pay") : undefined,
+      editValue: jpStaff.staff?.pay ?? "",
+    },
     {
       label: "2 (5)報酬の支払方法",
       value: intake?.pay_method ?? "",
@@ -385,8 +580,23 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
   const organization2: CopyItem[] = [
     { label: "3 (1)氏名又は名称", value: org?.name ?? "", edit: org ? og("name") : undefined },
     { label: "3 (2)法人番号（13桁）", value: org?.corporate_no ?? "", edit: org ? og("corporate_no") : undefined },
-    { label: "3 (3)雇用保険適用事業所番号（11桁）", value: intake?.koyo_no ?? "", edit: org ? it("koyo_no") : undefined },
+    {
+      label: "3 (3)雇用保険適用事業所番号（11桁）",
+      value: intake?.koyo_no ?? "",
+      note: "ハイフンありで入れてよい（オンライン申請の順ではハイフン無しでコピーできる）",
+      edit: org ? it("koyo_no") : undefined,
+    },
     { label: "3 (4)業種", value: org?.industry ?? "", edit: org ? og("industry") : undefined },
+    // 主たる業種（オンライン申請 3.4 のプルダウンと同じ一覧から選んで所属機関に保存）
+    {
+      label: "3 (4)業種 主たる業種",
+      value: org?.main_industry ?? "",
+      note: (() => {
+        const hint = suggestedMainIndustry(org?.industry || industryFieldName(w.field));
+        return `日本標準産業分類の業種（所属機関の情報にも出ます）${hint && !org?.main_industry ? `。この分野は通常「${hint}」` : ""}`;
+      })(),
+      edit: org ? og("main_industry", ONLINE_MAIN_INDUSTRIES) : undefined,
+    },
     { label: "3 (5)住所（所在地）", value: org?.address ?? "", edit: org ? og("address") : undefined },
     { label: "3 (5)電話番号", value: org?.contact ?? "", edit: org ? og("contact") : undefined },
     { label: "3 (6)資本金", value: intake?.capital ?? "", edit: org ? it("capital") : undefined },
@@ -421,7 +631,12 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
       value: intake?.rosai_covered === "はい" && intake?.koyo_covered === "はい" ? "有" : intake?.rosai_covered || intake?.koyo_covered ? "無" : "",
       note: "所属機関の労災・雇用保険の登録から",
     },
-    { label: "3 (10)労働保険番号", value: intake?.rosai_no ?? "", edit: org ? it("rosai_no") : undefined },
+    {
+      label: "3 (10)労働保険番号",
+      value: intake?.rosai_no ?? "",
+      note: "ハイフンありで入れてよい（オンライン申請の順ではハイフン無しでコピーできる）",
+      edit: org ? it("rosai_no") : undefined,
+    },
   ];
 
   // 登録支援機関（当社）。編集すると app_settings に保存され、全員の申請準備に反映される
@@ -488,6 +703,15 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
     { label: "5 電話番号", value: c.placementTel, edit: cu("placementTel") },
   ];
 
+  // 取次機関（国外。在留資格認定証明書交付申請のとき。外国人ごとに保存・0190）
+  const agency: CopyItem[] = [
+    { label: "(14)取次機関 氏名又は名称", value: w.agency_name ?? "", note: "認定申請のときに入れる国外の取次機関（送出機関など）。外国人ごとに保存", edit: wk("agency_name") },
+    { label: "(14)取次機関 法人番号", value: w.agency_corporate_no ?? "", note: "無ければ空欄", edit: wk("agency_corporate_no") },
+    { label: "(14)取次機関 郵便番号", value: w.agency_postal ?? "", edit: wk("agency_postal") },
+    { label: "(14)取次機関 住所", value: w.agency_address ?? "", edit: wk("agency_address") },
+    { label: "(14)取次機関 電話番号", value: w.agency_tel ?? "", edit: wk("agency_tel") },
+  ];
+
   return [
     { title: "申請人等作成用 1（在留資格変更許可申請書）", items: applicant1 },
     { title: "申請人等作成用 2（特定技能所属機関・通算在留期間）", items: applicant2 },
@@ -497,6 +721,7 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
     { title: "所属機関等作成用 3（労災保険・協力確認書）", items: organization3 },
     { title: "所属機関等作成用 4（登録支援機関）", items: support },
     { title: "職業紹介事業者（国内）", items: placement },
+    { title: "取次機関（認定申請のとき）", items: agency },
   ];
 }
 

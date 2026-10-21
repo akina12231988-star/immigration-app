@@ -30,11 +30,16 @@ export async function getOrganization(
   return (data as Organization) ?? null;
 }
 
-// 0184（郵便番号）が未適用でも登録・更新できるよう、郵便番号の列が無いエラーなら外して保存し直す
-function withoutPostal<T extends { postal_code?: string }>(input: T): Omit<T, "postal_code"> {
-  const { postal_code: _postal, ...rest } = input;
-  void _postal;
-  return rest;
+// あとから足した列（0184 郵便番号・0189 主たる業種）。マイグレーションが未適用でも登録・更新できるよう、
+// 列が無いエラーならこれらを外して保存し直す
+const OPTIONAL_COLUMNS = ["postal_code", "main_industry"] as const;
+function hasOptionalColumn(input: object): boolean {
+  return OPTIONAL_COLUMNS.some((c) => c in input);
+}
+function withoutOptional<T extends object>(input: T): Omit<T, (typeof OPTIONAL_COLUMNS)[number]> {
+  const rest = { ...input } as Record<string, unknown>;
+  for (const c of OPTIONAL_COLUMNS) delete rest[c];
+  return rest as Omit<T, (typeof OPTIONAL_COLUMNS)[number]>;
 }
 
 export async function insertOrganization(
@@ -46,8 +51,8 @@ export async function insertOrganization(
     .insert(input)
     .select()
     .single();
-  if (error && isMissingColumnError(error) && "postal_code" in input) {
-    ({ data, error } = await supabase.from("organizations").insert(withoutPostal(input)).select().single());
+  if (error && isMissingColumnError(error) && hasOptionalColumn(input)) {
+    ({ data, error } = await supabase.from("organizations").insert(withoutOptional(input)).select().single());
   }
   if (error) throw error;
   return data as Organization;
@@ -64,8 +69,8 @@ export async function updateOrganization(
     .eq("id", id)
     .select()
     .single();
-  if (error && isMissingColumnError(error) && "postal_code" in input) {
-    ({ data, error } = await supabase.from("organizations").update(withoutPostal(input)).eq("id", id).select().single());
+  if (error && isMissingColumnError(error) && hasOptionalColumn(input)) {
+    ({ data, error } = await supabase.from("organizations").update(withoutOptional(input)).eq("id", id).select().single());
   }
   if (error) throw error;
   return data as Organization;

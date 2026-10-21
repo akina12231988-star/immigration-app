@@ -99,6 +99,7 @@ export interface Organization {
   business_category: string; // 業務区分（特定技能）
   address: string;
   postal_code?: string; // 郵便番号（数字7桁・ハイフンなし。住所のテープ印刷に使う。0184 未適用なら undefined）
+  main_industry?: string; // 業種 主たる業種（オンライン申請 3.4 のプルダウンの表記。0189 未適用なら undefined）
   contact: string;
   corporate_no: string; // 法人番号（13桁・法人でない場合は空）
   note: string;
@@ -485,6 +486,18 @@ export interface Worker {
   spouse?: WorkerSpouse | null; // 配偶者の情報（0175。未適用の環境では undefined）
   relatives_in_japan: string; // 在日親族の同居の有無（'' / 有 / 無）
   relatives: WorkerRelative[]; // 同居している在日親族
+  // オンライン申請の身分事項・区分V（0187。未適用のDBでは undefined）
+  criminal_record?: string; // 犯罪を理由とする処分を受けたことの有無（'' / 有 / 無）
+  criminal_record_note?: string; // 有のときの処分の内容
+  skill_eval_kind?: string; // 技能水準 評価区分（SKILL_EVAL_KINDS のどれか）
+  japanese_eval_kind?: string; // 日本語能力 評価区分（SKILL_EVAL_KINDS のどれか）
+  main_occupation?: string; // 主たる職種（オンライン申請 2.5。0188）
+  // 取次機関（オンライン申請 2.38〜2.42。認定申請のときの国外の取次機関。0190 未適用のDBでは undefined）
+  agency_name?: string; // 氏名又は名称
+  agency_corporate_no?: string; // 法人番号（無ければ空）
+  agency_postal?: string; // 郵便番号
+  agency_address?: string; // 住所
+  agency_tel?: string; // 電話番号
   dependents: WorkerDependent[]; // 扶養家族（扶養親族証明書の内容）
   address: string; // 日本での住所（履歴書・労働者名簿に表示）
   home_address: string; // 母国の住所（本国の住所。0091）

@@ -1,15 +1,27 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Copy, Loader2 } from "lucide-react";
+import { Check, Copy, Loader2, Pencil } from "lucide-react";
 import { CopyButton } from "@/components/ui/CopyButton";
+import { InlineEditField } from "@/components/workers/InlineEditField";
+import type { CopyEdit } from "@/lib/application-copy";
 import { ONLINE_FORMAT_LABELS, onlineSectionText, type OnlineSection } from "@/lib/online-application";
 
 // 在留申請オンラインシステムの「手続き申込」画面に貼るためのデータ。
 // 画面の項目順に並べ、画面の入力形式（8桁の日付・数字のみ・全角）にした値を1項目ずつコピーできる。
 // 郵便番号は住所から自動で検索して入れる（/api/postal）。
-export function OnlineApplicationList({ sections }: { sections: OnlineSection[] }) {
+// 未登録の項目はその場で入力、登録済みの項目は鉛筆マークから編集して保存できる（保存先は項目ごとの edit）。
+export function OnlineApplicationList({
+  sections,
+  canEdit = false,
+  onSave,
+}: {
+  sections: OnlineSection[];
+  canEdit?: boolean;
+  onSave?: (edit: CopyEdit, value: string) => Promise<void>;
+}) {
   const [openSection, setOpenSection] = useState(0);
+  const [editing, setEditing] = useState<string | null>(null);
   const [copiedSection, setCopiedSection] = useState<number | null>(null);
   // 住所 → 郵便番号の検索結果（住所ごと）。まだ無ければ検索中、""=見つからない
   const [postals, setPostals] = useState<Record<string, string>>({});
@@ -41,7 +53,7 @@ export function OnlineApplicationList({ sections }: { sections: OnlineSection[] 
     items: s.items.map((i) => (i.postalFor ? { ...i, value: postals[i.postalFor] ?? "" } : i)),
   }));
   const filled = withPostal.reduce((n, s) => n + s.items.filter((i) => i.value).length, 0);
-  const total = withPostal.reduce((n, s) => n + s.items.filter((i) => !i.manual || i.postalFor).length, 0);
+  const total = withPostal.reduce((n, s) => n + s.items.filter((i) => (!i.manual || i.postalFor) && !i.skip).length, 0);
 
   const copyAll = async (i: number) => {
     try {
@@ -61,7 +73,9 @@ export function OnlineApplicationList({ sections }: { sections: OnlineSection[] 
         在留申請オンラインシステムの「手続き申込」画面の項目順です。日付は8桁（19940710）、職歴の年月は6桁、金額・電話番号・郵便番号は数字のみ、
         住所など「全角」の欄は全角にそろえてあります。「画面で選ぶ」の項目はアプリに元の値が無いので、案内を見て画面で選んでください。
         郵便番号は住所から自動で検索します（見つからないときは画面の「住所検索」で確認）。
-        値を直すときは「紙の申請書の順」に切り替えて編集してください。
+        {canEdit && onSave
+          ? "「未登録」の項目はその場で入力、登録済みの項目は鉛筆マークから編集して保存できます（外国人詳細・所属機関・登録支援機関の情報に保存されます。雇用保険・労働保険の番号はハイフンありで入れてよく、コピーはハイフン無しになります）。"
+          : "「未登録」は外国人詳細・所属機関で入れると出ます。"}
         <span className="ml-1 font-bold text-foreground">
           {filled} / {total}項目
         </span>
@@ -97,6 +111,8 @@ export function OnlineApplicationList({ sections }: { sections: OnlineSection[] 
             {current.items.map((item, i) => {
               const searching = !!item.postalFor && !(item.postalFor in postals);
               const fmt = ONLINE_FORMAT_LABELS[item.format];
+              const key = `${openSection}-${i}`;
+              const editable = canEdit && !!onSave && !!item.edit;
               return (
                 <div key={`${item.no}-${item.label}-${i}`} className="flex flex-wrap items-start gap-x-2 gap-y-0.5 py-1 text-[11px]">
                   <span className="w-full text-muted sm:w-[17rem] sm:shrink-0">
@@ -107,11 +123,36 @@ export function OnlineApplicationList({ sections }: { sections: OnlineSection[] 
                     )}
                   </span>
                   <span className="flex min-w-0 flex-1 items-start gap-1">
-                    {item.value ? (
+                    {editable && item.edit && (editing === key || !item.value) ? (
+                      <InlineEditField
+                        label={item.label}
+                        edit={item.edit}
+                        initial={item.editValue ?? item.value}
+                        registered={!!item.value}
+                        onSave={async (e, v) => {
+                          await onSave!(e, v);
+                          setEditing(null);
+                        }}
+                        onCancel={item.value ? () => setEditing(null) : undefined}
+                      />
+                    ) : item.value ? (
                       <>
                         <span className="min-w-0 break-all font-bold">{item.value}</span>
                         <CopyButton value={item.value} label={`${item.label}をコピー`} size={13} className="mt-0.5" />
+                        {editable && (
+                          <button
+                            type="button"
+                            onClick={() => setEditing(key)}
+                            title={`${item.label}を編集`}
+                            aria-label={`${item.label}を編集`}
+                            className="mt-0.5 rounded p-0.5 text-muted hover:bg-background hover:text-foreground"
+                          >
+                            <Pencil size={12} />
+                          </button>
+                        )}
                       </>
+                    ) : item.skip ? (
+                      <span className="rounded bg-background px-1.5 py-0.5 text-muted">記載しない（空欄のまま）</span>
                     ) : searching ? (
                       <span className="flex items-center gap-1 text-muted">
                         <Loader2 size={12} className="animate-spin" />

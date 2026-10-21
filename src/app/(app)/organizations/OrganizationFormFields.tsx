@@ -18,6 +18,7 @@ import {
   registerOrgFile,
 } from "@/app/(app)/organizations/actions";
 import { SSW_INDUSTRIES, categoriesFor } from "@/lib/industries";
+import { ONLINE_MAIN_INDUSTRIES, suggestedMainIndustry } from "@/lib/online-main-industries";
 import { defaultSalesItems, hasCustomSalesItems, REFERRAL_SALES_KEY, SALES_APP_KINDS } from "@/lib/sales";
 import { todayStr } from "@/lib/ssw/calc";
 import { EMPTY_SSW2_DUTIES, ssw2DutiesOf } from "@/lib/org-ssw2-duties";
@@ -97,6 +98,7 @@ export function emptyOrganizationInput(): OrganizationInput {
     business_category: "",
     address: "",
     postal_code: "",
+    main_industry: "",
     contact: "",
     corporate_no: "",
     note: "",
@@ -115,6 +117,7 @@ export function organizationToInput(org: Organization): OrganizationInput {
     business_category: org.business_category,
     address: org.address,
     postal_code: org.postal_code ?? "",
+    main_industry: org.main_industry ?? "",
     contact: org.contact || intake.phone,
     corporate_no: org.corporate_no,
     note: org.note,
@@ -131,6 +134,7 @@ type TopTextField =
   | "business_category"
   | "address"
   | "postal_code"
+  | "main_industry"
   | "contact"
   | "corporate_no"
   | "note";
@@ -608,6 +612,35 @@ export function OrganizationFormBody({
               </option>
             ))}
           </select>
+        </label>
+      )}
+      {/* 主たる業種（オンライン申請 3.4 のプルダウンと同じ一覧。特定技能の産業分野とは別） */}
+      {locks.top("main_industry") ? (
+        <StaticValue label="業種 主たる業種（オンライン申請 3.4）" value={form.main_industry ?? ""} />
+      ) : (
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-muted">業種 主たる業種（オンライン申請 3.4）</span>
+          <select
+            value={form.main_industry ?? ""}
+            onChange={(e) => setForm((f) => ({ ...f, main_industry: e.target.value }))}
+            className={INPUT_CLASS}
+          >
+            <option value="">選択してください</option>
+            {form.main_industry && !(ONLINE_MAIN_INDUSTRIES as readonly string[]).includes(form.main_industry) && (
+              <option value={form.main_industry}>{form.main_industry}</option>
+            )}
+            {ONLINE_MAIN_INDUSTRIES.map((ind) => (
+              <option key={ind} value={ind}>
+                {ind}
+              </option>
+            ))}
+          </select>
+          <span className={HINT_CLASS}>
+            日本標準産業分類の業種。オンライン申請の「特定技能所属機関 (4)業種 主たる業種」にそのまま出ます。
+            {!form.main_industry && suggestedMainIndustry(form.industry)
+              ? `この分野は通常「${suggestedMainIndustry(form.industry)}」です。`
+              : ""}
+          </span>
         </label>
       )}
       {/* 業務区分。分野が決まっていれば必ず出す（分野の表記が一覧に無くて区分が引けないときは自由入力） */}
