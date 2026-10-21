@@ -117,9 +117,9 @@ describe("buildOnlineApplication", () => {
   const all = sections.flatMap((s) => s.items);
   const get = (label: string) => all.find((i) => i.label === label);
 
-  it("画面の順に7つの欄に分かれる", () => {
+  it("画面の順に8つの欄に分かれる", () => {
     expect(sections.map((s) => s.title)).toEqual([
-      "身分事項（1〜16）", "区分V（18〜28・職歴）", "取次者", "特定技能雇用契約（2.1〜2.42）", "特定技能所属機関（3.1〜3.43）", "登録支援機関（5.1〜5.16）", "受領方法等・フリー欄",
+      "身分事項（1〜16）", "区分V（18〜28・職歴）", "取次者", "特定技能雇用契約（2.1〜2.42）", "特定技能所属機関（3.1〜3.43）", "1号特定技能外国人支援計画（4.1〜4.16）", "登録支援機関（5.1〜5.16）", "受領方法等・フリー欄",
     ]);
   });
 
@@ -289,6 +289,31 @@ describe("buildOnlineApplication", () => {
     expect(get("氏名")?.edit).toMatchObject({ target: "worker", column: "name" });
     expect(get("登録支援機関 (1)氏名又は名称")?.edit).toMatchObject({ target: "custodian", column: "officeName" });
     expect(onlineSectionText({ title: "t", items: [get("(12)派遣先")!] })).toBe("2.21〜2.29 (12)派遣先: （記載しない）");
+  });
+
+  it("3.21〜3.43・支援計画の委託・4.1〜4.16 は運用どおりの値（特定技能1号のときだけ有になるものがある）", () => {
+    const by = (no: string) => all.find((i) => i.no === no);
+    for (const no of ["3.21", "3.22", "3.23", "3.24", "3.25", "3.26", "3.27", "3.28", "3.29", "3.30", "3.32", "3.34", "3.35"]) {
+      expect(by(no)?.value, no).toBe("無");
+    }
+    for (const no of ["3.33", "3.41", "3.42", "3.43"]) expect(by(no)?.value, no).toBe("有");
+    for (const no of ["3.31", "3.37", "3.39"]) expect(by(no)?.value, no).toBe(NEITHER);
+    expect(by("3.38")).toMatchObject({ skip: true });
+    expect(get("(29)労災保険加入等の措置の有無")?.value).toBe("有");
+    expect(get("(29)労災保険加入等の措置の内容")).toMatchObject({ no: "3.40", edit: { target: "intake", column: "rosai_measure" } });
+    const rosai = buildOnlineApplication({ ...input, intake: { ...intake, rosai_covered: "はい" } }, buildApplicationCopyGroups({ ...input, intake: { ...intake, rosai_covered: "はい" } })).flatMap((s) => s.items);
+    expect(rosai.find((i) => i.label === "(29)労災保険加入等の措置の内容")?.value).toBe("労災保険加入");
+    // 特定技能1号: 3.36・委託・4.1〜4.15（4.14 以外）は「有」、4.14・4.16 はどちらも選ばない
+    expect(by("3.36")?.value).toBe("有");
+    expect(get("特定技能1号での在留を希望し登録支援機関に支援計画の全部の実施を委託することの有無")?.value).toBe("委託する");
+    for (const n of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15]) expect(by(`4.${n}`)?.value, `4.${n}`).toBe("有");
+    expect(by("4.14")?.value).toBe(NEITHER);
+    expect(by("4.16")?.value).toBe(NEITHER);
+    // 特定技能2号: 3.36・4.1〜 はどちらも選ばない、委託もしない
+    const s2 = buildOnlineApplication({ ...input, desiredStatus: "特定技能2号" }, buildApplicationCopyGroups(input)).flatMap((s) => s.items);
+    expect(s2.find((i) => i.no === "3.36")?.value).toBe(NEITHER);
+    expect(s2.find((i) => i.no === "4.1")?.value).toBe(NEITHER);
+    expect(s2.find((i) => i.label.startsWith("特定技能1号での在留を希望し"))?.value).toBe(NEITHER);
   });
 
   it("登録支援機関・受領方法・フリー欄", () => {
