@@ -14,8 +14,15 @@ describe("businessCategoryOptions", () => {
     expect(businessCategoryOptions("ビルクリーニング")).toEqual(["ビルクリーニング"]);
     expect(businessCategoryOptions("リネンサプライ")).toEqual(["リネンサプライ"]);
   });
-  it("画面の並びを登録していない分野は会社・機関マスタの業務区分", () => {
-    expect(businessCategoryOptions("農業")).toEqual(["耕種農業全般", "畜産農業全般"]);
+  it("ほかの分野も画面の選択肢のとおり", () => {
+    expect(businessCategoryOptions("農業")).toEqual(["耕種農業", "畜産農業"]);
+    expect(businessCategoryOptions("漁業")).toEqual(["漁業", "養殖業"]);
+    expect(businessCategoryOptions("航空")).toEqual(["空港グランドハンドリング", "航空機整備"]);
+    expect(businessCategoryOptions("自動車運送業")).toEqual(["トラック運転者", "タクシー運転者", "バス運転者"]);
+    expect(businessCategoryOptions("鉄道")).toHaveLength(6);
+    expect(businessCategoryOptions("自動車整備")).toEqual(["自動車の整備等"]);
+    expect(businessCategoryOptions("資源循環")).toEqual(["廃棄物処分業"]);
+    expect(businessCategoryOptions("飲食料品製造業")).toEqual(["飲食料品製造業全般"]);
   });
   it("分野が分からなければ全部の区分", () => {
     expect(businessCategoryOptions("").length).toBeGreaterThan(20);
