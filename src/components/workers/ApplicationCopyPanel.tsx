@@ -32,6 +32,7 @@ export function ApplicationCopyPanel({
   orgId,
   todoNo,
   desiredStatus,
+  agentName,
   canEdit = false,
   onSaved,
   refreshKey = 0,
@@ -40,6 +41,7 @@ export function ApplicationCopyPanel({
   orgId: string | null;
   todoNo: string;
   desiredStatus?: string; // 希望する在留資格（申請種別から）
+  agentName?: string; // 申請準備の申請取次士（オンライン申請の取次者の氏名に使う）
   canEdit?: boolean; // true: 項目をこの場で入力・編集して保存できる
   onSaved?: () => void; // 保存したあと（親の表示を更新したいとき）
   refreshKey?: number; // 値が変わると読み直す（同じページで支援計画書の日付などを保存したとき）
@@ -101,13 +103,14 @@ export function ApplicationCopyPanel({
       histories: loaded.histories.map(toCalcHistory),
       planDates: loaded.planDates,
       desiredStatus,
+      agentName,
       custodian: mergeCustodianInfo(loaded.custodian),
       interpreters: mergeSupportOrgLists(loaded.custodian).interpreters,
     };
     const groups = buildApplicationCopyGroups(input);
     // オンライン申請の画面順・入力形式にそろえたもの（紙の申請書向けの項目から組み立てる）
     return { groups, online: buildOnlineApplication(input, groups) };
-  }, [loaded, desiredStatus]);
+  }, [loaded, desiredStatus, agentName]);
 
   if (!built) return null;
   return (

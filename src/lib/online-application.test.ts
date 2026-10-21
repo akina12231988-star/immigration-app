@@ -4,7 +4,11 @@ import {
   buildOnlineApplication,
   councilFreeText,
   digitsOnly,
+  fieldSpecificChoice,
   hours4,
+  industryFieldChoice,
+  NEITHER,
+  transferChoice,
   occupationOf,
   onlineSectionText,
   renewalReasonText,
@@ -191,6 +195,26 @@ describe("buildOnlineApplication", () => {
     expect(all2.filter((i) => i.no === "16.8")[0]?.value).toBe("AB12345678CD");
     expect(g2("技能水準 評価区分")?.value).toBe("技能検定");
     expect(g2("日本語能力 評価区分")?.value).toBe("技能実習２号を良好に修了");
+  });
+
+  it("22〜27 は運用どおりの選び方、2.3 は分野のプルダウン表記、取次者は申請準備の申請取次士", () => {
+    expect(get("保証金の徴収・財産管理・違約金等の支払契約の有無")?.value).toBe("無");
+    expect(get("外国の機関への費用支払について合意していることの有無")?.value).toBe(NEITHER);
+    expect(get("国籍国等で定められる手続を経ていることの有無")?.value).toBe(NEITHER);
+    expect(get("本邦で定期的に負担する費用について合意していることの有無")?.value).toBe("有");
+    expect(get("技能実習で修得した技能等の本国への移転に努めることの有無")?.value).toBe(NEITHER); // 1号
+    expect(transferChoice("特定技能2号")).toBe("有");
+    expect(get("特定産業分野に特有の基準に適合していることの有無")?.value).toBe(NEITHER); // 農業
+    expect(fieldSpecificChoice("介護")).toBe("有");
+    expect(fieldSpecificChoice("造船・舶用工業／溶接")).toBe("有");
+    expect(fieldSpecificChoice("農業分野")).toBe(NEITHER);
+    expect(get("(2)従事すべき業務の内容 特定産業分野01")?.value).toBe("農業分野");
+    expect(industryFieldChoice("農業／畜産農業全般")).toBe("農業分野");
+    expect(industryFieldChoice("")).toBe("");
+    // 取次者: 申請準備の申請取次士を優先。無ければ登録支援機関の申請取次者
+    expect(get("取次者(オンラインシステム利用者) (1)氏名")?.value).toBe("秋吉　伽恋");
+    const s3 = buildOnlineApplication({ ...input, agentName: "野口 明菜" }, buildApplicationCopyGroups(input));
+    expect(s3.flatMap((s) => s.items).find((i) => i.label === "取次者(オンラインシステム利用者) (1)氏名")?.value).toBe("野口　明菜");
   });
 
   it("登録支援機関・受領方法・フリー欄", () => {

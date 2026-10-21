@@ -1,5 +1,5 @@
 import type { ApplicationCopyInput, CopyGroup, CopyItem } from "@/lib/application-copy";
-import { ymdCompact } from "@/lib/application-copy";
+import { industryFieldName, ONLINE_INDUSTRY_FIELDS, ymdCompact } from "@/lib/application-copy";
 import { CUSTODIAN_INFO, type CustodianInfo } from "@/lib/custody";
 import { effectiveResidencePeriod } from "@/lib/residence-card";
 import { contractPeriodEnd, formatYmdJa } from "@/lib/support-plan-dates";
@@ -162,6 +162,44 @@ const manual = (no: string, label: string, note: string, format: OnlineFormat = 
 // オンラインシステムにログインしている利用者（取次者）のメールアドレス
 export const ONLINE_SYSTEM_EMAIL = "thanhktc2017.visa@gmail.com";
 
+// 画面で「有」「無」のどちらも選ばない項目に出す言い方
+export const NEITHER = "有無どちらも選択しない";
+
+// 27 分野に特有の基準（告示基準）が定められている分野
+export const FIELD_SPECIFIC_INDUSTRIES = [
+  "介護",
+  "ビルクリーニング",
+  "工業製品製造業",
+  "建設",
+  "造船・舶用工業",
+  "自動車整備",
+  "航空",
+  "宿泊",
+  "自動車運送業",
+  "飲食料品製造業",
+  "外食業",
+  "林業",
+  "木材産業",
+] as const;
+
+// 2.3 特定産業分野01: 「農業」→「農業分野」（プルダウンの表記）。分野が分からなければ ""
+export function industryFieldChoice(industry: string | null | undefined): string {
+  const name = industryFieldName(industry);
+  if (!name) return "";
+  // プルダウンに無い書き方でも「○○分野」にして出す（画面で近いものを選ぶ）
+  return `${name}分野${(ONLINE_INDUSTRY_FIELDS as readonly string[]).includes(name) ? "" : "（プルダウンに無い分野。近いものを選ぶ）"}`;
+}
+
+// 27 特定産業分野に特有の基準に適合していることの有無
+export function fieldSpecificChoice(industry: string | null | undefined): string {
+  return (FIELD_SPECIFIC_INDUSTRIES as readonly string[]).includes(industryFieldName(industry)) ? "有" : NEITHER;
+}
+
+// 26 技能実習で修得した技能等の本国への移転: 特定技能2号を希望するときだけ「有」
+export function transferChoice(desiredStatus: string | undefined): string {
+  return (desiredStatus ?? "").normalize("NFKC").includes("2号") ? "有" : NEITHER;
+}
+
 // 7 職業: 職歴のいちばん新しい行の「職種・仕事内容」。無ければ外国人の分野・職種
 export function occupationOf(careers: { role?: string }[], field: string): string {
   const last = careers[careers.length - 1];
@@ -279,12 +317,19 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
     item("20", "技能実習2号良好修了 証明方法", val(groups, "20 (3)良好修了の証明方法"), "choice"),
     item("21.1", "申請時における特定技能1号での通算在留期間（年数）", totalY, "choice", total?.asOf),
     item("21.2", "申請時における特定技能1号での通算在留期間（月数）", totalM, "choice", total?.asOf),
-    choose("22.1", "保証金の徴収・財産管理・違約金等の支払契約の有無", "無"),
-    choose("23.1", "外国の機関への費用支払について合意していることの有無", "無", "支払がある場合だけ「有」にして 23.2〜23.3 を入れる"),
-    choose("24", "国籍国等で定められる手続を経ていることの有無", undefined, "手続が定められている国（ベトナム・フィリピン等）は「有」"),
-    choose("25", "本邦で定期的に負担する費用について合意していることの有無", "有", "支援委託費等を本人が負担しない場合は空欄"),
-    choose("26", "技能実習で修得した技能等の本国への移転に努めることの有無", undefined, "技能実習の在留歴があり特定技能2号を希望する場合だけ"),
-    choose("27", "特定産業分野に特有の基準に適合していることの有無", undefined, "基準が定められている分野だけ"),
+    // 22〜27 は運用で決めている選び方のとおりに出す
+    item("22.1", "保証金の徴収・財産管理・違約金等の支払契約の有無", "無", "choice", "必ず「無」"),
+    item("23.1", "外国の機関への費用支払について合意していることの有無", NEITHER, "choice", "有・無のどちらも選ばない"),
+    item("24", "国籍国等で定められる手続を経ていることの有無", NEITHER, "choice", "有・無のどちらも選ばない"),
+    item("25", "本邦で定期的に負担する費用について合意していることの有無", "有", "choice", "必ず「有」"),
+    item("26", "技能実習で修得した技能等の本国への移転に努めることの有無", transferChoice(input.desiredStatus), "choice", "特定技能2号を希望するときだけ「有」。それ以外はどちらも選ばない"),
+    item(
+      "27",
+      "特定産業分野に特有の基準に適合していることの有無",
+      fieldSpecificChoice(val(groups, "2 (2)特定産業分野")),
+      "choice",
+      "介護・ビルクリーニング・工業製品製造業・建設・造船・舶用工業・自動車整備・航空・宿泊・自動車運送業・飲食料品製造業・外食業・林業・木材産業は「有」。それ以外はどちらも選ばない",
+    ),
     item("", "職歴の有無", careers.length > 0 ? "有" : "無", "choice"),
     ...careers.flatMap((h, i) => {
       const n = String(i + 1).padStart(2, "0");
@@ -297,7 +342,15 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
   ];
 
   const agent: OnlineItem[] = [
-    item("", "取次者(オンラインシステム利用者) (1)氏名", c.agentName, "zenkaku", "登録支援機関の情報の申請取次者（全角26文字以内）。ログインしている人の氏名にする"),
+    item(
+      "",
+      "取次者(オンラインシステム利用者) (1)氏名",
+      toZenkaku(input.agentName?.trim() || c.agentName),
+      "zenkaku",
+      input.agentName?.trim()
+        ? "申請準備の申請取次士（全角26文字以内）"
+        : "申請準備の申請取次士が未定なので登録支援機関の申請取次者（全角26文字以内）。申請準備で申請取次士を選ぶとその人になる",
+    ),
     postal("", "取次者 (2)郵便番号", c.address, "登録支援機関の住所から"),
     item("", "取次者 (2)住所", toZenkaku(c.address), "zenkaku", "全角85文字以内"),
     item("", "取次者 (3)所属機関等", c.officeName, "text", "256文字以内"),
@@ -307,7 +360,7 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
   const contract: OnlineItem[] = [
     item("2.1", "特定技能雇用契約 (1)雇用契約期間(始期)", ymdCompact(es) ?? "", "date8", "雇用開始日（支援計画書の日付か外国人の雇用開始日）"),
     item("2.2", "特定技能雇用契約 (1)雇用契約期間(終期)", ymdCompact(ee) ?? "", "date8", "始期から2年間（2年後の前日）"),
-    item("2.3", "(2)従事すべき業務の内容 特定産業分野01", val(groups, "2 (2)特定産業分野"), "choice", "プルダウンから選ぶ"),
+    item("2.3", "(2)従事すべき業務の内容 特定産業分野01", industryFieldChoice(val(groups, "2 (2)特定産業分野")), "choice", "プルダウンから選ぶ（「紙の申請書の順」の「2 (2)特定産業分野」で所属機関の業種を選べる）"),
     item("2.4", "(2)従事すべき業務の内容 業務区分01", val(groups, "2 (2)業務区分"), "choice", "プルダウンから選ぶ"),
     manual("2.5", "(2)従事すべき業務の内容 職種 主たる職種", "職種一覧のプルダウンから選ぶ（例: 耕種農業 → 農耕作業者）", "choice"),
     item("2.7", "(3)所定労働時間(週平均)", hours4(val(groups, "2 (3)所定労働時間（週平均）")), "digits", "半角数字4文字以内"),

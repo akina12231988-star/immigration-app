@@ -15,6 +15,7 @@ import { resumeLangForNationality } from "@/lib/resume-tool/share";
 import { contractPeriodEnd, formatYmdJa } from "@/lib/support-plan-dates";
 import { JLPT_LEVELS, normalizeCertExams, type WorkerCertExam } from "@/lib/cert-exam";
 import { JISSHU_SHOKUSHU_LIST } from "@/lib/jisshu-shokushu";
+import { businessCategoryOptions } from "@/lib/online-business-categories";
 
 // 項目をその場で入力・編集するときの保存先（外国人・所属機関・所属機関の登録内容（intake）・登録支援機関）
 export type CopyEdit =
@@ -22,7 +23,7 @@ export type CopyEdit =
   | { target: "custodian"; column: keyof CustodianInfo; kind?: "text" | "date" } // 登録支援機関（app_settings）
   // 協力確認書の提出（所属機関の登録内容の council_office_submissions / council_residence_submissions の index 行目）
   | { target: "council"; list: "office" | "residence"; index: number; field: "to" | "on"; kind?: "text" | "date" }
-  | { target: "org"; column: "name" | "industry" | "business_category" | "address" | "contact" | "corporate_no" }
+  | { target: "org"; column: "name" | "industry" | "business_category" | "address" | "contact" | "corporate_no"; options?: readonly string[] }
   | {
       target: "intake";
       column:
@@ -113,6 +114,38 @@ export const SKILL_EVAL_KINDS = [
 // 有無の選択肢
 export const YES_NO = ["無", "有"] as const;
 
+// オンライン申請 2.3「従事すべき業務の内容 特定産業分野01」のプルダウン（「○○分野」の「○○」。画面と同じ並び）
+export const ONLINE_INDUSTRY_FIELDS = [
+  "介護",
+  "ビルクリーニング",
+  "リネンサプライ",
+  "工業製品製造業",
+  "建設",
+  "造船・舶用工業",
+  "自動車整備",
+  "航空",
+  "宿泊",
+  "自動車運送業",
+  "鉄道",
+  "物流倉庫",
+  "農業",
+  "漁業",
+  "飲食料品製造業",
+  "外食業",
+  "林業",
+  "木材産業",
+  "資源循環",
+] as const;
+
+// 「農業／畜産農業全般」「農業分野」のような書き方から分野名（農業）だけを取り出す
+export function industryFieldName(s: string | null | undefined): string {
+  return (s ?? "")
+    .normalize("NFKC")
+    .split(/[／/]/)[0]
+    .replace(/分野$/, "")
+    .trim();
+}
+
 export interface ApplicationCopyInput {
   worker: CopyWorker;
   org: Pick<Organization, "name" | "industry" | "business_category" | "address" | "contact" | "corporate_no"> | null;
@@ -121,6 +154,7 @@ export interface ApplicationCopyInput {
   histories: WorkHistory[]; // 職歴（calc の形）
   planDates: Record<string, string>; // 支援計画書の日付（es = 雇用開始日 など）
   desiredStatus?: string; // 希望する在留資格（申請種別から）
+  agentName?: string; // 申請準備の申請取次士（取次者の氏名に使う。無ければ登録支援機関の申請取次者）
   custodian?: CustodianInfo; // 登録支援機関の情報（無ければ既定値 CUSTODIAN_INFO）
   interpreters?: SupportOrgInterpreter[]; // 対応可能言語ごとの通訳者（登録支援機関の情報）
   today?: string;
@@ -157,7 +191,11 @@ const dateItem = (label: string, ymd: string | null | undefined, note?: string, 
 // 編集先の短い書き方
 const wk = (column: keyof CopyWorker, options?: readonly string[]): CopyEdit => ({ target: "worker", column, options });
 const wkDate = (column: keyof CopyWorker): CopyEdit => ({ target: "worker", column, kind: "date" });
-const og = (column: Extract<CopyEdit, { target: "org" }>["column"]): CopyEdit => ({ target: "org", column });
+const og = (column: Extract<CopyEdit, { target: "org" }>["column"], options?: readonly string[]): CopyEdit => ({
+  target: "org",
+  column,
+  options,
+});
 const it = (
   column: Extract<CopyEdit, { target: "intake" }>["column"],
   options?: readonly string[],
@@ -414,8 +452,21 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
       edit: wkDate("employment_start_on"),
       editValue: w.employment_start_on ?? "",
     },
-    { label: "2 (2)特定産業分野", value: w.field || org?.industry || "", edit: wk("field"), editValue: w.field },
-    { label: "2 (2)業務区分", value: org?.business_category ?? "", edit: org ? og("business_category") : undefined },
+    // 所属機関の業種（オンライン申請 2.3 と同じ分野のプルダウンから選んで保存）。無ければ外国人の分野・職種から
+    {
+      label: "2 (2)特定産業分野",
+      value: org?.industry || industryFieldName(w.field),
+      note: "所属機関の業種。オンライン申請 2.3 のプルダウンと同じ分野から選べます",
+      edit: org ? og("industry", ONLINE_INDUSTRY_FIELDS) : undefined,
+      editValue: org?.industry ?? "",
+    },
+    // 業務区分はオンライン申請 2.4 の分野ごとのプルダウンから選んで保存（所属機関の業務区分）
+    {
+      label: "2 (2)業務区分",
+      value: org?.business_category ?? "",
+      note: "所属機関の業務区分。オンライン申請 2.4 の分野ごとの選択肢から選べます",
+      edit: org ? og("business_category", businessCategoryOptions(org.industry || industryFieldName(w.field))) : undefined,
+    },
     {
       label: "2 (3)所定労働時間（週平均）",
       value: weekly.value,
