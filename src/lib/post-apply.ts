@@ -55,6 +55,23 @@ export function newPostApplyMailing(docIds: string[], postedOn: string, tracking
   };
 }
 
+// 郵送の記録の投函日・追跡番号をあとから直す（入れ損ねた追跡番号を足すなど）
+export function updatePostApplyMailing(
+  mailings: PostApplyMailing[],
+  id: string,
+  patch: Partial<Pick<PostApplyMailing, "posted_on" | "tracking">>,
+): PostApplyMailing[] {
+  return mailings.map((m) =>
+    m.id === id
+      ? {
+          ...m,
+          posted_on: patch.posted_on !== undefined ? patch.posted_on : m.posted_on,
+          tracking: patch.tracking !== undefined ? patch.tracking.trim() : m.tracking,
+        }
+      : m,
+  );
+}
+
 // その書類を郵送した記録（無ければ null）
 export function mailingOf(docId: string, mailings: PostApplyMailing[]): PostApplyMailing | null {
   return mailings.find((m) => m.doc_ids.includes(docId)) ?? null;

@@ -230,3 +230,19 @@ describe("申請日・申請番号の表示と、1か月以上たっている注
     expect(applicationAgeAlert(null, "2026-10-20")).toBeNull();
   });
 });
+
+describe("updatePostApplyMailing", () => {
+  it("投函日・追跡番号をあとから直せる（ほかの記録は変わらない）", async () => {
+    const { updatePostApplyMailing } = await import("./post-apply");
+    const mailings = [
+      { id: "m1", doc_ids: ["kenshin"], posted_on: "2026-10-19", tracking: "" },
+      { id: "m2", doc_ids: ["suisenjo"], posted_on: "2026-10-21", tracking: "628828364102" },
+    ];
+    expect(updatePostApplyMailing(mailings, "m1", { tracking: " 3381-0955-8533 " })).toEqual([
+      { id: "m1", doc_ids: ["kenshin"], posted_on: "2026-10-19", tracking: "3381-0955-8533" },
+      mailings[1],
+    ]);
+    expect(updatePostApplyMailing(mailings, "m2", { posted_on: "2026-10-20" })[1]).toMatchObject({ posted_on: "2026-10-20", tracking: "628828364102" });
+    expect(updatePostApplyMailing(mailings, "zzz", { tracking: "x" })).toEqual(mailings);
+  });
+});

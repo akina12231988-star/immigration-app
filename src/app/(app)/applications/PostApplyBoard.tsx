@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Check, ClipboardList, ExternalLink, PackageCheck } from "lucide-react";
+import { AlertTriangle, Check, ClipboardList, ExternalLink, PackageCheck, Pencil } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -22,6 +22,7 @@ import {
   postApplyTaskKey,
   prepDocLabel,
   removePostApplyNote,
+  updatePostApplyMailing,
   type PostApplyEntry,
   type PostApplyMailing,
   type PostApplyNotes,
@@ -57,6 +58,9 @@ export function PostApplyBoard({
 }) {
   const [error, setError] = useState<string | null>(null);
   const today = todayStr();
+  // 「入管へ郵送した記録」で直している行（記録の id）と、その入力中の値
+  const [editingMailing, setEditingMailing] = useState<{ id: string; postedOn: string; tracking: string } | null>(null);
+  const [savingMailing, setSavingMailing] = useState(false);
 
   // 外国人ごとのいちばん新しい申請（申請詳細へのリンク）
   const appByWorker = useMemo(() => {
@@ -83,6 +87,25 @@ export function PostApplyBoard({
       onChanged({ ...e, mailings });
     } catch (err) {
       setError(dbErrorMessage(err, "0168_prep_post_apply_mailings.sql", "保存に失敗しました"));
+    }
+  };
+  // 郵送した記録の投函日・追跡番号をあとから直す（入れ損ねた追跡番号を足すなど）
+  const saveMailingEdit = async (checklistId: string) => {
+    if (!editingMailing) return;
+    const e = entries.find((x) => x.checklistId === checklistId);
+    if (!e) return;
+    setSavingMailing(true);
+    try {
+      await saveMailings(
+        e,
+        updatePostApplyMailing(e.mailings, editingMailing.id, {
+          posted_on: editingMailing.postedOn,
+          tracking: editingMailing.tracking,
+        }),
+      );
+      setEditingMailing(null);
+    } finally {
+      setSavingMailing(false);
     }
   };
   // 項目ごとのメモ（例：現在発行手続き中との連絡あり）
@@ -286,21 +309,71 @@ export function PostApplyBoard({
                     )}
                   </span>
                   <span className="min-w-0 flex-1 break-words">{r.mailing.doc_ids.map(prepDocLabel).join("・")}</span>
-                  <span className="shrink-0 text-muted">
-                    追跡番号{" "}
-                    {r.mailing.tracking ? (
-                      <a
-                        href={letterPackTrackingUrl(r.mailing.tracking)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-bold tabular-nums text-brand underline"
+                  {editingMailing?.id === r.mailing.id ? (
+                    /* 投函日・追跡番号をその場で直す */
+                    <span className="flex w-full flex-wrap items-center gap-1.5 sm:w-auto">
+                      <input
+                        type="date"
+                        value={editingMailing.postedOn}
+                        onChange={(ev) => setEditingMailing({ ...editingMailing, postedOn: ev.target.value })}
+                        aria-label="投函日"
+                        className="min-h-[32px] rounded-lg border border-border bg-surface px-2 text-xs"
+                      />
+                      <input
+                        value={editingMailing.tracking}
+                        onChange={(ev) => setEditingMailing({ ...editingMailing, tracking: ev.target.value })}
+                        placeholder="追跡番号（例: 3381-0955-8533）"
+                        inputMode="numeric"
+                        aria-label="追跡番号"
+                        className="min-h-[32px] w-44 rounded-lg border border-border bg-surface px-2 text-xs tabular-nums"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void saveMailingEdit(r.checklistId)}
+                        disabled={savingMailing}
+                        className="min-h-[32px] rounded-lg bg-brand px-2.5 text-xs font-bold text-brand-foreground disabled:opacity-50"
                       >
-                        {r.mailing.tracking}
-                      </a>
-                    ) : (
-                      "未入力"
-                    )}
-                  </span>
+                        {savingMailing ? "保存中…" : "保存"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingMailing(null)}
+                        disabled={savingMailing}
+                        className="min-h-[32px] px-1.5 text-xs font-bold text-muted"
+                      >
+                        やめる
+                      </button>
+                    </span>
+                  ) : (
+                    <span className="inline-flex shrink-0 items-center gap-1.5 text-muted">
+                      追跡番号{" "}
+                      {r.mailing.tracking ? (
+                        <a
+                          href={letterPackTrackingUrl(r.mailing.tracking)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-bold tabular-nums text-brand underline"
+                        >
+                          {r.mailing.tracking}
+                        </a>
+                      ) : (
+                        <span className="font-bold text-seal">未入力</span>
+                      )}
+                      {canEdit && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEditingMailing({ id: r.mailing.id, postedOn: r.mailing.posted_on, tracking: r.mailing.tracking })
+                          }
+                          className="inline-flex min-h-[28px] items-center gap-0.5 rounded-lg border border-border px-1.5 text-[11px] font-bold text-brand"
+                          title="投函日・追跡番号を編集する"
+                        >
+                          <Pencil size={11} />
+                          {r.mailing.tracking ? "編集" : "追跡番号を入れる"}
+                        </button>
+                      )}
+                    </span>
+                  )}
                 </li>
               );
             })}
