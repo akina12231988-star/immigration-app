@@ -14,6 +14,7 @@ import { RESUME_LANG_JA } from "@/lib/resume-tool/i18n";
 import { resumeLangForNationality } from "@/lib/resume-tool/share";
 import { contractPeriodEnd, formatYmdJa } from "@/lib/support-plan-dates";
 import { JLPT_LEVELS, normalizeCertExams, type WorkerCertExam } from "@/lib/cert-exam";
+import { JISSHU_SHOKUSHU_LIST } from "@/lib/jisshu-shokushu";
 
 // 項目をその場で入力・編集するときの保存先（外国人・所属機関・所属機関の登録内容（intake）・登録支援機関）
 export type CopyEdit =
@@ -89,8 +90,28 @@ export type CopyWorker = Pick<
       | "cert_senmongai_name"
       | "cert_senmongai_location"
       | "cert_exams"
+      // 在日親族（16）・犯罪歴（15）・技能水準の評価区分（18.1）。古いデータ・0187 未適用では無いことがある
+      | "relatives_in_japan"
+      | "relatives"
+      | "criminal_record"
+      | "criminal_record_note"
+      | "skill_eval_kind"
+      | "japanese_eval_kind"
     >
   >;
+
+// オンライン申請 18.1 技能水準 評価区分・19.1 日本語能力 評価区分の選択肢（画面のプルダウンと同じ並び）
+export const SKILL_EVAL_KINDS = [
+  "技能実習２号を良好に修了",
+  "特定技能評価試験",
+  "技能検定",
+  "介護福祉士養成施設修了",
+  "ＥＰＡ介護福祉士候補者",
+  "その他分野固有の証明",
+] as const;
+
+// 有無の選択肢
+export const YES_NO = ["無", "有"] as const;
 
 export interface ApplicationCopyInput {
   worker: CopyWorker;
@@ -263,6 +284,25 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
       value: input.desiredStatus ?? "",
       note: input.desiredStatus ? undefined : "申請準備の「準備の内容」と申請種別を選ぶと出ます",
     },
+    // 15 犯罪歴（有無を選び、有なら内容を書く）
+    {
+      label: "15 犯罪を理由とする処分を受けたことの有無",
+      value: w.criminal_record ?? "",
+      note: "通常は「無」。有なら下に内容を書く",
+      edit: wk("criminal_record", YES_NO),
+    },
+    {
+      label: "15 処分の内容（有のとき）",
+      value: w.criminal_record_note ?? "",
+      note: "処分を受けた年月・内容。無のときは空欄",
+      edit: wk("criminal_record_note"),
+    },
+    // 16 在日親族（外国人詳細の「在日親族の同居」から）
+    {
+      label: "16 在日親族及び同居者 有無",
+      value: w.relatives_in_japan ?? "",
+      note: "外国人詳細 ＞ 在日親族の同居。有なら同居している在日親族の氏名・生年月日・勤務先・在留カード番号も外国人詳細で登録",
+    },
   ];
 
   // 合格証の受験情報（1件目は workers の列、2件目以降は cert_exams）
@@ -281,6 +321,12 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
     { label: "17 (2)住所（所在地）", value: org?.address ?? "", edit: org ? og("address") : undefined },
     { label: "17 電話番号", value: org?.contact ?? "", edit: org ? og("contact") : undefined },
     // 18 技能水準（専門外の合格証 ＝ 技能試験）
+    {
+      label: "18 技能水準 評価区分",
+      value: w.skill_eval_kind ?? "",
+      note: "オンライン申請 18.1 のプルダウンと同じ選択肢。選ぶと 18.2〜18.8 の入力項目が変わる",
+      edit: wk("skill_eval_kind", SKILL_EVAL_KINDS),
+    },
     {
       label: "18 技能水準 (1)試験名",
       value: w.cert_senmongai_name ?? "",
@@ -302,6 +348,12 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
     },
     // 19 日本語能力（日本語の合格証）
     {
+      label: "19 日本語能力 評価区分",
+      value: w.japanese_eval_kind ?? "",
+      note: "オンライン申請 19.1 のプルダウンと同じ選択肢（特定技能1号の申請のとき）。選ぶと 19.2〜 の入力項目が変わる",
+      edit: wk("japanese_eval_kind", SKILL_EVAL_KINDS),
+    },
+    {
       label: "19 日本語能力 (1)試験名",
       value: w.cert_nihongo_name ?? "",
       note: "外国人詳細 ＞ 日本語の合格証の受験情報",
@@ -320,7 +372,7 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
       label: "20 技能実習2号良好修了 (1)職種名",
       value: w.jisshu2_shokushu ?? "",
       note: "技能実習2号を良好に修了した人だけ（外国人詳細 ＞ 良好に修了した技能実習2号）",
-      edit: wk("jisshu2_shokushu"),
+      edit: wk("jisshu2_shokushu", JISSHU_SHOKUSHU_LIST), // オンライン申請 20.1 と同じ職種のプルダウンから選ぶ
     },
     { label: "20 (2)作業名", value: w.jisshu2_sagyo ?? "", edit: wk("jisshu2_sagyo") },
     {

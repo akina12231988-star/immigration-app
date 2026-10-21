@@ -175,6 +175,22 @@ export function renewalReasonText(desiredStatus: string | undefined): string {
   return s.includes("2号") ? "2号特定技能外国人として就労するため" : "1号特定技能外国人として就労するため";
 }
 
+// 16.2〜16.8 同居している在日親族（人数分）。続柄・国籍はアプリに無いので画面で入れる
+export function relativeItems(relatives: { name: string; birth: string; workplace: string; residence_card_no: string }[]): OnlineItem[] {
+  return relatives.flatMap((r, i) => {
+    const nth = relatives.length > 1 ? `（${i + 1}人目）` : "";
+    return [
+      manual(`16.2`, `続柄${nth}`, "プルダウンから選ぶ（夫・妻・子 など）"),
+      item(`16.3`, `氏名${nth}`, upperName(r.name), "upper", "旅券のとおり。半角大文字"),
+      item(`16.4`, `生年月日${nth}`, ymdCompact(r.birth) ?? "", "date8"),
+      manual(`16.5`, `国籍・地域${nth}`, "プルダウンから選ぶ"),
+      item(`16.6`, `同居の有無${nth}`, "有", "choice", "外国人詳細に登録しているのは同居している親族"),
+      item(`16.7`, `勤務先・通学先${nth}`, toZenkaku(r.workplace), "zenkaku"),
+      item(`16.8`, `在留カード番号${nth}`, (r.residence_card_no ?? "").normalize("NFKC").toUpperCase().replace(/\s+/g, ""), "upper"),
+    ];
+  });
+}
+
 export function buildOnlineApplication(input: ApplicationCopyInput, groups: CopyGroup[]): OnlineSection[] {
   const { worker: w, org, intake, histories, planDates } = input;
   const c: CustodianInfo = input.custodian ?? { ...CUSTODIAN_INFO };
@@ -217,15 +233,44 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
     renewalReasonText(input.desiredStatus)
       ? item("14", "更新（変更）の理由", renewalReasonText(input.desiredStatus), "text", "希望する在留資格から決まる定型文。600文字以内")
       : manual("14", "更新（変更）の理由", "600文字以内。例: 1号特定技能外国人として就労するため"),
-    choose("15", "犯罪を理由とする処分を受けたことの有無", "無"),
-    choose("16.1", "在日親族及び同居者 有無", undefined, "「有」なら 16.2〜16.8 に続柄・氏名・生年月日（8桁）・国籍・同居の有無・勤務先・在留カード番号を人数分入れる（＋追加する）"),
+    // 15 犯罪歴: 紙の順で有無と内容を登録する。未登録なら「無」として出す
+    item("15", "犯罪を理由とする処分を受けたことの有無", w.criminal_record || "無", "choice", w.criminal_record ? undefined : "未登録なので「無」としています。有なら「紙の申請書の順」で登録"),
+    ...(w.criminal_record === "有"
+      ? [item("15", "処分の内容", w.criminal_record_note ?? "", "text", "「紙の申請書の順」で登録した内容")]
+      : []),
+    // 16 在日親族: 外国人詳細の「在日親族の同居」と同居している在日親族から
+    item(
+      "16.1",
+      "在日親族及び同居者 有無",
+      w.relatives_in_japan ?? "",
+      "choice",
+      "外国人詳細 ＞ 在日親族の同居。「有」なら 16.2〜16.8 を人数分入れる（＋追加する）",
+    ),
+    ...relativeItems(w.relatives_in_japan === "有" ? (w.relatives ?? []) : []),
   ];
 
   const kubunV: OnlineItem[] = [
-    item("18.1", "技能水準 評価区分", val(groups, "18 技能水準 (1)試験名") ? "試験" : val(groups, "18 専門級の合格名（技能実習）") ? "技能実習2号良好修了" : "", "choice", "試験なら 18.2〜 に試験名・受験地を入れる"),
+    // 18.1 評価区分: 登録した区分。無ければ合格証・専門級から推定
+    item(
+      "18.1",
+      "技能水準 評価区分",
+      w.skill_eval_kind ||
+        (val(groups, "18 技能水準 (1)試験名") ? "特定技能評価試験" : val(groups, "18 専門級の合格名（技能実習）") ? "技能実習２号を良好に修了" : ""),
+      "choice",
+      w.skill_eval_kind ? "「紙の申請書の順」で登録した区分。これにより 18.2〜18.8 の項目が変わる" : "未登録なので合格証・専門級から推定。「紙の申請書の順」の「18 技能水準 評価区分」で選んで保存できる",
+    ),
     item("18", "技能水準 試験名", val(groups, "18 技能水準 (1)試験名"), "text"),
     item("18", "技能水準 受験地", val(groups, "18 (2)受験地"), "text"),
-    item("19.1", "日本語能力 評価区分", val(groups, "19 日本語能力 (1)試験名") ? "試験" : "", "choice", "特定技能1号のとき。試験なら 19.2〜 に試験名・受験地・レベルを入れる"),
+    // 19.1 評価区分: 登録した区分。無ければ日本語の合格証から推定
+    item(
+      "19.1",
+      "日本語能力 評価区分",
+      w.japanese_eval_kind || (val(groups, "19 日本語能力 (1)試験名") ? "特定技能評価試験" : ""),
+      "choice",
+      w.japanese_eval_kind
+        ? "「紙の申請書の順」で登録した区分（特定技能1号のとき）。これにより 19.2〜 の項目が変わる"
+        : "特定技能1号のとき。未登録なので日本語の合格証から推定。「紙の申請書の順」の「19 日本語能力 評価区分」で選んで保存できる",
+    ),
     item("19", "日本語能力 試験名", val(groups, "19 日本語能力 (1)試験名"), "text"),
     item("19", "日本語能力 受験地", val(groups, "19 (2)受験地"), "text"),
     item("19", "日本語能力 レベル", val(groups, "19 レベル"), "choice"),

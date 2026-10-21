@@ -119,6 +119,13 @@ describe("申請書に貼る項目", () => {
     expect(find("2 生年月日")).toMatchObject({ value: "1995年4月2日", parts: ["1995", "4", "2", "19950402"] });
     expect(find("11 在留期間")?.value).toBe("1年");
     expect(find("13 希望する在留資格")?.value).toBe("特定技能1号");
+    // 犯罪歴・評価区分はその場で選んで保存できる
+    expect(find("15 犯罪を理由とする処分を受けたことの有無")?.edit).toMatchObject({ target: "worker", column: "criminal_record", options: ["無", "有"] });
+    expect(find("18 技能水準 評価区分")?.edit).toMatchObject({ target: "worker", column: "skill_eval_kind" });
+    expect(find("19 日本語能力 評価区分")?.edit).toMatchObject({ target: "worker", column: "japanese_eval_kind" });
+    // 技能実習2号の職種はオンライン申請 20.1 と同じプルダウンから選ぶ
+    const shokushu = find("20 技能実習2号良好修了 (1)職種名")?.edit;
+    expect(shokushu && "options" in shokushu ? shokushu.options?.length : 0).toBeGreaterThan(80);
     // 登録支援機関の欄は既定値で出て、その場で編集できる（app_settings に保存）
     expect(find("5 (11)支援担当者名")).toMatchObject({ value: "VUONG VAN THANH", edit: { target: "custodian", column: "supportStaffName" } });
     expect(find("5 (7)登録年月日")).toMatchObject({ value: "2021年3月24日", editValue: "2021-03-24", edit: { target: "custodian", column: "registeredOn", kind: "date" } });

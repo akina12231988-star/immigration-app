@@ -167,6 +167,32 @@ describe("buildOnlineApplication", () => {
     expect(occupationOf([{ role: "" }], "農業")).toBe("農業");
   });
 
+  it("犯罪歴・在日親族・評価区分は外国人の登録値から出す", () => {
+    expect(get("犯罪を理由とする処分を受けたことの有無")).toMatchObject({ no: "15", value: "無" });
+    expect(get("在日親族及び同居者 有無")).toMatchObject({ no: "16.1", value: "" });
+    const w2 = {
+      ...worker,
+      criminal_record: "有",
+      criminal_record_note: "2020年 交通違反の罰金",
+      relatives_in_japan: "有",
+      relatives: [{ name: "Nguyen Van A", birth: "1990-01-02", workplace: "株式会社テスト", residence_card_no: "ab12 345678cd" }],
+      skill_eval_kind: "技能検定",
+      japanese_eval_kind: "技能実習２号を良好に修了",
+    };
+    const s2 = buildOnlineApplication({ ...input, worker: w2 }, buildApplicationCopyGroups({ ...input, worker: w2 }));
+    const all2 = s2.flatMap((s) => s.items);
+    const g2 = (label: string) => all2.find((i) => i.label === label);
+    expect(g2("犯罪を理由とする処分を受けたことの有無")?.value).toBe("有");
+    expect(g2("処分の内容")?.value).toBe("2020年 交通違反の罰金");
+    expect(g2("在日親族及び同居者 有無")?.value).toBe("有");
+    expect(g2("氏名")?.value).toBe("NGUYEN THI HONG");
+    expect(all2.filter((i) => i.no === "16.3")[0]?.value).toBe("NGUYEN VAN A");
+    expect(all2.filter((i) => i.no === "16.4")[0]?.value).toBe("19900102");
+    expect(all2.filter((i) => i.no === "16.8")[0]?.value).toBe("AB12345678CD");
+    expect(g2("技能水準 評価区分")?.value).toBe("技能検定");
+    expect(g2("日本語能力 評価区分")?.value).toBe("技能実習２号を良好に修了");
+  });
+
   it("登録支援機関・受領方法・フリー欄", () => {
     expect(get("(6)登録番号")?.value).toBe("２０登－００５７４６");
     expect(get("(7)登録年月日")?.value).toBe("20210324");
@@ -176,10 +202,9 @@ describe("buildOnlineApplication", () => {
   });
 
   it("画面で選ぶ項目は値が空で案内が出る", () => {
-    const i = get("犯罪を理由とする処分を受けたことの有無");
-    expect(i).toMatchObject({ no: "15", value: "", manual: true });
-    expect(i?.note).toContain("通常は「無」");
-    expect(onlineSectionText(sections[0])).toContain("15 犯罪を理由とする処分を受けたことの有無: （画面で入力）");
+    const i = get("在日親族及び同居者 有無");
+    expect(i).toMatchObject({ no: "16.1", value: "" });
+    expect(onlineSectionText(sections[0])).toContain("16.1 在日親族及び同居者 有無: 未登録");
     expect(onlineSectionText(sections[0])).toContain("2 生年月日: 19940710");
   });
 });
