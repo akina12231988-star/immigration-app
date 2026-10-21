@@ -11,6 +11,7 @@ import { printHistoryNote, printHistoryStartSource, type PrintHistoryNote } from
 import { listVisaHistory } from "@/lib/supabase/queries/visa-history";
 import {
   buildVisaHistory,
+  visaHistoryForCurrentOrg,
   visaHistoryInPeriod,
   type VisaHistoryApplication,
   type VisaHistoryCard,
@@ -280,7 +281,16 @@ export default async function WorkersPrintPage({
       historyStart: ongoing?.start ?? "",
       workerStart: workers[0].employment_start_on ?? "",
     });
-    currentHistory = currentStart ? visaHistoryInPeriod(visaRows, currentStart, "") : visaRows;
+    // 在籍の始まりから今までの許可に加え、職歴の上でこの機関にいた日の許可も必ず載せる
+    currentHistory = currentStart
+      ? visaHistoryForCurrentOrg(
+          visaRows,
+          histories,
+          currentOrgName,
+          currentStart,
+          (a, b) => normalizeOrgSearchText(a) === normalizeOrgSearchText(b),
+        )
+      : visaRows;
     // 許可が表から抜けているときは、どこを直せばよいかを画面に出す
     currentHistoryNote = printHistoryNote({
       orgName: currentOrgName,

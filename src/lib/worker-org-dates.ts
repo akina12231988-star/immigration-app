@@ -36,8 +36,9 @@ export function mergedOrgPeriod(
 
   let current = { start: rows[0].start_date, end: rows[0].end_date };
   for (const row of rows.slice(1)) {
-    // 前の在籍が続いている、または期間が重なる・つながる（翌日から始まる）なら同じ在籍とみなす
-    const continues = current.end === null || row.start_date <= nextDay(current.end);
+    // 前の在籍が続いている、または期間が重なる・つながるなら同じ在籍とみなす。
+    // 在留資格の切り替え（特定活動→特定技能など）で数日空くことがあるので、2週間以内の空きはつながっている扱い
+    const continues = current.end === null || row.start_date <= addDays(current.end, CONTINUOUS_GAP_DAYS);
     if (continues) {
       current = {
         start: current.start,
@@ -50,11 +51,14 @@ export function mergedOrgPeriod(
   return current;
 }
 
-// 翌日（YYYY-MM-DD）。更新で行が分かれた職歴は「前の行の退職日の翌日」から始まる
-function nextDay(ymd: string): string {
+// この日数以内の空きなら、同じ会社のひと続きの在籍とみなす
+const CONTINUOUS_GAP_DAYS = 14;
+
+// n 日後（YYYY-MM-DD）。更新で行が分かれた職歴は「前の行の退職日の翌日」から始まる
+function addDays(ymd: string, n: number): string {
   const d = new Date(`${ymd}T00:00:00Z`);
   if (Number.isNaN(d.getTime())) return ymd;
-  d.setUTCDate(d.getUTCDate() + 1);
+  d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 }
 
