@@ -5,6 +5,7 @@ import {
   councilFreeText,
   digitsOnly,
   employmentStandardChoice,
+  HOURS_NOTE,
   fieldSpecificChoice,
   hours4,
   industryFieldChoice,
@@ -48,15 +49,15 @@ describe("入力形式の変換", () => {
     expect(ym6("", "5")).toBe("");
   });
 
-  it("hours4 は4文字以内の数字にする", () => {
+  it("hours4 は4文字以内の整数にする（画面は小数点を受け付けない）", () => {
     expect(hours4("40.0")).toBe("40");
-    expect(hours4("37.5")).toBe("37.5");
-    expect(hours4("173.3")).toBe("173"); // 5文字になるので整数にする
+    expect(hours4("37.5")).toBe("37"); // 小数点以下は切り捨て
+    expect(hours4("173.3")).toBe("173");
     expect(hours4("173.33")).toBe("173");
     expect(hours4("1733.33")).toBe("1733");
-    // 「45時間08分」「45:08」は 4508 ではなく時間の小数にする
-    expect(hours4("45時間08分")).toBe("45.1");
-    expect(hours4("45:08")).toBe("45.1");
+    // 「45時間08分」「45:08」は 4508 ではなく時間に直してから
+    expect(hours4("45時間08分")).toBe("45");
+    expect(hours4("45:08")).toBe("45");
     expect(hours4("40時間00分")).toBe("40");
     expect(hours4("")).toBe("");
   });
@@ -227,6 +228,14 @@ describe("buildOnlineApplication", () => {
     expect(s3.flatMap((s) => s.items).find((i) => i.label === "取次者(オンラインシステム利用者) (1)氏名")?.value).toBe("野口　明菜");
   });
 
+  it("2.7・2.8 所定労働時間は小数点以下を切り捨て、注意書きを出す", () => {
+    const hrs = { ...input, intake: { ...intake, posting_weekly_hours: "45時間08分", posting_monthly_hours: "173.33" } };
+    const items = buildOnlineApplication(hrs, buildApplicationCopyGroups(hrs)).flatMap((s) => s.items);
+    expect(items.find((i) => i.no === "2.7")).toMatchObject({ value: "45", note: HOURS_NOTE });
+    expect(items.find((i) => i.no === "2.8")).toMatchObject({ value: "173", note: HOURS_NOTE });
+    expect(HOURS_NOTE).toContain("小数点以下は入力できない");
+  });
+
   it("2.9〜2.20 は運用どおりの値、2.21〜2.29 は記載しない、2.17 は分野で決まる", () => {
     expect(get("(3)所定労働時間が通常の労働者と同等であることの有無")?.value).toBe("有");
     expect(get("(4)報酬の額が日本人と同等以上であることの有無")?.value).toBe("有");
@@ -317,7 +326,7 @@ describe("buildOnlineApplication", () => {
   });
 
   it("登録支援機関・受領方法・フリー欄", () => {
-    expect(get("(6)登録番号")?.value).toBe("２０登－００５７４６");
+    expect(get("(6)登録番号")?.value).toBe("２０登００５７４６"); // 記号「－」は入力できないので除く
     expect(get("(7)登録年月日")?.value).toBe("20210324");
     expect(get("(4)電話番号")?.value).toBe("05088904000");
     expect(get("申請対象者の住居地（都道府県）")?.value).toBe("熊本県");

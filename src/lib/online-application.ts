@@ -80,18 +80,16 @@ export function ym6(y: string | null | undefined, m?: string | null): string {
   return `${yy}${mm.padStart(2, "0")}`;
 }
 
-// 所定労働時間（半角数字4文字以内）。"40.0" → "40"、"173.33" → "173.3"、"173.33" が入らないときは整数に
+// 所定労働時間（半角数字4文字以内・小数点は入力できない）。"40.0" → "40"、"37.5" → "37"、"173.33" → "173"。
+// 「45時間08分」「45:08」は時間に直してから（数字だけ抜くと 4508 になってしまう）。小数点以下は切り捨てる
 export function hours4(s: string | null | undefined): string {
   const raw = (s ?? "").normalize("NFKC").trim();
-  // 「45時間08分」「45:08」は時間の小数にしてから（数字だけ抜くと 4508 になってしまう）
   const hm = raw.match(/^(\d+)\s*(?:時間|:)\s*(\d{1,2})\s*分?$/);
   const t = hm ? String(Number(hm[1]) + Number(hm[2]) / 60) : raw.replace(/[^\d.]/g, "");
   if (!t) return "";
   const n = Number.parseFloat(t);
   if (!Number.isFinite(n)) return "";
-  if (Number.isInteger(n)) return String(n);
-  const one = String(Math.round(n * 10) / 10);
-  return one.length <= 4 ? one : String(Math.round(n));
+  return String(Math.floor(n)).slice(0, 4);
 }
 
 // 住所から都道府県名（「申請対象者の住居地」のプルダウン用）
@@ -197,6 +195,9 @@ const manual = (no: string, label: string, note: string, format: OnlineFormat = 
 
 // オンラインシステムにログインしている利用者（取次者）のメールアドレス
 export const ONLINE_SYSTEM_EMAIL = "thanhktc2017.visa@gmail.com";
+
+// 2.7・2.8 所定労働時間の注意書き（画面は小数点を受け付けない）
+export const HOURS_NOTE = "半角数字4文字以内。小数点以下は入力できないので切り捨てています（40.5 → 40）";
 
 // 画面で「有」「無」のどちらも選ばない項目に出す言い方
 export const NEITHER = "有無どちらも選択しない";
@@ -445,8 +446,8 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
           `職種一覧から選んで保存${suggestedMainOccupation(org?.industry || industryFieldName(w.field)) ? `（この分野は通常「${suggestedMainOccupation(org?.industry || industryFieldName(w.field))}」）` : ""}`,
           wk("main_occupation", ONLINE_MAIN_OCCUPATIONS),
         ),
-    linked(groups, "2.7", "(3)所定労働時間(週平均)", "2 (3)所定労働時間（週平均）", "digits", "半角数字4文字以内", hours4),
-    linked(groups, "2.8", "(3)所定労働時間(月平均)", "2 (3)所定労働時間（月平均）", "digits", "半角数字4文字以内", hours4),
+    linked(groups, "2.7", "(3)所定労働時間(週平均)", "2 (3)所定労働時間（週平均）", "digits", HOURS_NOTE, hours4),
+    linked(groups, "2.8", "(3)所定労働時間(月平均)", "2 (3)所定労働時間（月平均）", "digits", HOURS_NOTE, hours4),
     item("2.9", "(3)所定労働時間が通常の労働者と同等であることの有無", "有", "choice", "必ず「有」"),
     item("2.10", "(4)月額報酬", digitsOnly(val(groups, "2 (4)月額報酬")), "digits", `申請準備中の所属機関の賃金（時給なら月給換算額、月給ならその月給）。${find(groups, "2 (4)月額報酬")?.note ?? ""}`),
     item("2.11", "(4)基本給の時間換算額", digitsOnly(val(groups, "2 (4)基本給の時間換算額")), "digits", "申請準備中の所属機関の賃金（時給ならその時給、月給なら時給換算額）"),
@@ -562,7 +563,7 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
     item("5.5", "(4)所在地", toZenkaku(c.headOfficeAddress), "zenkaku", "全角85文字以内", cu("headOfficeAddress"), c.headOfficeAddress),
     item("5.6", "(4)電話番号", digitsOnly(c.tel), "digits", undefined, cu("tel"), c.tel),
     item("5.7", "(5)代表者の氏名", toZenkaku(c.representativeName), "zenkaku", "全角26文字以内", cu("representativeName"), c.representativeName),
-    item("5.8", "(6)登録番号", toZenkaku(c.registrationNo), "zenkaku", "全角9文字（例 ２０登－００５７４６）", cu("registrationNo"), c.registrationNo),
+    item("5.8", "(6)登録番号", toZenkaku(c.registrationNo).replace(/－/g, ""), "zenkaku", "全角。記号「－」は入力できないので除いてあります（２０登－００５７４６ → ２０登００５７４６）", cu("registrationNo"), c.registrationNo),
     item("5.9", "(7)登録年月日", ymdCompact(c.registeredOn) ?? "", "date8", undefined, cu("registeredOn", "date"), c.registeredOn),
     item("5.10", "(8)支援を行う事業所の名称", toZenkaku(c.supportOfficeName), "zenkaku", "全角60文字以内", cu("supportOfficeName"), c.supportOfficeName),
     postal("5.11", "(9)郵便番号", c.address, "支援を行う事業所の住所から"),
