@@ -1,3 +1,4 @@
+import { addMonthsYmd } from "@/lib/posting-validity";
 // 申請後に入管へ郵送する書類（申請準備の「申請後に発行され次第、入管へ郵送する」）と、
 // そのほかのタスク（テキスト）をまとめる。
 // 申請準備の「申請後に入管へ郵送するリスト」、申請一覧の「申請後の郵送・タスク」、申請詳細のアラートで使う。
@@ -263,4 +264,37 @@ export function buildPostApplyEntries(
   return entries.sort(
     (a, b) => openPostApplyCount(b) - openPostApplyCount(a) || a.workerName.localeCompare(b.workerName, "ja"),
   );
+}
+
+// ---- 申請日・申請番号の表示と、申請から1か月以上たっているときの注意 ----
+
+// "2026-09-25" → "2026/9/25"
+export function ymdSlash(d: string | null | undefined): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d ?? "");
+  return m ? `${m[1]}/${Number(m[2])}/${Number(m[3])}` : (d ?? "");
+}
+
+// 名前の横に出す「申請日 2026/9/25 ・ 申請番号 EC2109130」（無い項目は未入力と出す）
+export function applicationMetaText(app: { applicationDate?: string | null; applicationNumber?: string | null } | null | undefined): string {
+  if (!app) return "";
+  const date = app.applicationDate ? ymdSlash(app.applicationDate) : "未入力";
+  const no = app.applicationNumber?.trim() || "未入力";
+  return `申請日 ${date} ・ 申請番号 ${no}`;
+}
+
+export const APPLICATION_AGE_ALERT = "申請して１ヶ月以上経ってる！急いで状況確認して";
+
+// 申請日から1か月以上たっていて、まだ結果が出ていない（許可・取下げ・在留カード受領のどれでもない）なら注意を出す
+export function applicationAgeAlert(
+  app: {
+    applicationDate?: string | null;
+    approved?: boolean;
+    withdrawnOn?: string | null;
+    cardReceivedOn?: string | null;
+  } | null | undefined,
+  today: string,
+): string | null {
+  if (!app?.applicationDate) return null;
+  if (app.approved || app.withdrawnOn || app.cardReceivedOn) return null;
+  return addMonthsYmd(app.applicationDate, 1) <= today ? APPLICATION_AGE_ALERT : null;
 }

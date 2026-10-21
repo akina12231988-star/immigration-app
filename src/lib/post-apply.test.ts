@@ -212,3 +212,21 @@ describe("申請後の郵送・タスクの項目ごとのメモ", () => {
     expect(e.notes["doc:kazei"][0].text).toBe("連絡あり");
   });
 });
+
+describe("申請日・申請番号の表示と、1か月以上たっている注意", () => {
+  it("名前の横に出す文", async () => {
+    const { applicationMetaText } = await import("./post-apply");
+    expect(applicationMetaText({ applicationDate: "2026-09-25", applicationNumber: "EC2109130" })).toBe("申請日 2026/9/25 ・ 申請番号 EC2109130");
+    expect(applicationMetaText({ applicationDate: "", applicationNumber: "" })).toBe("申請日 未入力 ・ 申請番号 未入力");
+    expect(applicationMetaText(null)).toBe("");
+  });
+  it("申請日から1か月以上で、まだ結果が出ていないときだけ注意", async () => {
+    const { applicationAgeAlert, APPLICATION_AGE_ALERT } = await import("./post-apply");
+    expect(applicationAgeAlert({ applicationDate: "2026-09-20" }, "2026-10-20")).toBe(APPLICATION_AGE_ALERT);
+    expect(applicationAgeAlert({ applicationDate: "2026-09-21" }, "2026-10-20")).toBeNull();
+    expect(applicationAgeAlert({ applicationDate: "2026-09-01", approved: true }, "2026-10-20")).toBeNull();
+    expect(applicationAgeAlert({ applicationDate: "2026-09-01", cardReceivedOn: "2026-10-01" }, "2026-10-20")).toBeNull();
+    expect(applicationAgeAlert({ applicationDate: "" }, "2026-10-20")).toBeNull();
+    expect(applicationAgeAlert(null, "2026-10-20")).toBeNull();
+  });
+});
