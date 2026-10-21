@@ -25,16 +25,21 @@ export function ApprovalNoticeImageDialog({
   apps,
   today,
   custodyNoLabel,
+  tantouLabel,
   onClose,
 }: {
   apps: Application[];
   today: string;
   custodyNoLabel: (app: Application) => string; // 預り番号（預かっていなければ「—」）
+  tantouLabel?: (app: Application) => string; // 担当者（申請準備のTODOの担当者）
   onClose: () => void;
 }) {
   // 預り番号は開いた時点のものを使う（毎回計算し直さない）
   const [custodyNos] = useState<Record<string, string>>(() =>
     Object.fromEntries(apps.map((a) => [a.id, custodyNoLabel(a)])),
+  );
+  const [tantous] = useState<Record<string, string>>(() =>
+    Object.fromEntries(apps.map((a) => [a.id, tantouLabel?.(a) ?? ""])),
   );
   // まとめて決める「連絡が来た日」「手段」。人ごとに直したものは overrides に入る
   const [dateAll, setDateAll] = useState(today);
@@ -46,8 +51,15 @@ export function ApprovalNoticeImageDialog({
   const [error, setError] = useState<string | null>(null);
 
   const items = useMemo(
-    () => buildApprovalNoticeItems(apps, { today, via, custodyNoLabel: (a) => custodyNos[a.id] ?? "—", overrides }),
-    [apps, today, via, custodyNos, overrides],
+    () =>
+      buildApprovalNoticeItems(apps, {
+        today,
+        via,
+        custodyNoLabel: (a) => custodyNos[a.id] ?? "—",
+        tantouLabel: (a) => tantous[a.id] ?? "",
+        overrides,
+      }),
+    [apps, today, via, custodyNos, tantous, overrides],
   );
   const chunks = useMemo(() => chunkApprovalNoticeItems(items, perImage), [items, perImage]);
 
@@ -55,9 +67,12 @@ export function ApprovalNoticeImageDialog({
   const canvases = useRef<(HTMLCanvasElement | null)[]>([]);
   useEffect(() => {
     const at = nowLabel();
+    const total = chunks.reduce((n, c) => n + c.length, 0);
+    let start = 1;
     chunks.forEach((chunk, i) => {
       const cv = canvases.current[i];
-      if (cv) drawApprovalNoticeImage(cv, chunk, { generatedAt: at });
+      if (cv) drawApprovalNoticeImage(cv, chunk, { generatedAt: at, total, page: i + 1, pages: chunks.length, startIndex: start });
+      start += chunk.length;
     });
   }, [chunks]);
 
@@ -95,7 +110,8 @@ export function ApprovalNoticeImageDialog({
     <Modal open title={`許可のお知らせ画像（${apps.length}名）`} onClose={onClose} wide>
       <div className="flex flex-col gap-3">
         <p className="text-[11px] leading-relaxed text-muted">
-          選んだ人を1人1枠で並べた画像を作ります。「画像をコピー」のあと Messenger の入力欄で貼り付け（長押し→ペースト／Ctrl+V）すると、
+          選んだ人を1人1枠で並べた画像を作ります。右上に許可人数（全体）が出て、何枚かに分けたときは「1枚目／2枚（1〜5番）」のように枚数と通し番号も出ます。
+          担当者は申請準備のTODOの担当者です。「画像をコピー」のあと Messenger の入力欄で貼り付け（長押し→ペースト／Ctrl+V）すると、
           そのまま送れます。連絡が来た日は、申請に許可日があればその日、無ければ今日が入っています。
         </p>
 

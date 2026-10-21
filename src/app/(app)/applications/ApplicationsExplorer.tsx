@@ -836,6 +836,7 @@ export function ApplicationsExplorer({
           apps={filtered.filter((a) => noticeIds.has(a.id))}
           today={TODAY}
           custodyNoLabel={custodyNoLabel}
+          tantouLabel={tantouOf}
           onClose={() => setNoticeOpen(false)}
         />
       )}

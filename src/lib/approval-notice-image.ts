@@ -3,8 +3,8 @@ import type { Application } from "@/types/application";
 // 「許可のお知らせ」画像。
 //
 // 入管から許可の連絡（はがき・通知書・メール）が来た申請を複数選び、
-// 1人1枠で「連絡が来た日・名前・所属機関・取次士・預り番号・申請日・申請番号・申請内容」を
-// 並べた1枚の画像（PNG）にする。Messenger のグループに貼って、まとめて知らせるためのもの。
+// 1人1枠で「連絡が来た日・名前・所属機関・担当者・取次士・預り番号・申請日・申請番号・申請内容」を
+// 並べた1枚の画像（PNG）にする。人数が多いときは数枚に分け、右上に「許可人数10名（1枚目／2枚）」と出す。Messenger のグループに貼って、まとめて知らせるためのもの。
 // 画像はブラウザの Canvas だけで描く（サーバーは使わない）。
 //
 // このファイルの前半はデータの組み立て（テストできる純粋関数）、後半が Canvas への描画。
@@ -21,6 +21,7 @@ export interface ApprovalNoticeItem {
   id: string;
   name: string;
   org: string; // 所属機関（未設定なら「所属機関未設定」）
+  tantou: string; // 担当者（申請準備のTODOの担当者。空なら「—」）
   assignee: string; // 取次士（空なら「—」）
   custodyNo: string; // 預り番号（預かっていなければ「—」）
   applicationDate: string; // 申請日
@@ -62,6 +63,7 @@ export function buildApprovalNoticeItems(
     today: string;
     via: string; // まとめて決めた手段
     custodyNoLabel: (app: ApprovalNoticeSource) => string;
+    tantouLabel?: (app: ApprovalNoticeSource) => string; // 担当者（申請準備のTODOの担当者）
     overrides?: Record<string, ApprovalNoticeOverride>;
   },
 ): ApprovalNoticeItem[] {
@@ -71,6 +73,7 @@ export function buildApprovalNoticeItems(
       id: a.id,
       name: dash(a.name, "氏名未登録"),
       org: dash(a.organizationName, "所属機関未設定"),
+      tantou: dash(opts.tantouLabel?.(a)),
       assignee: dash(a.assignee),
       custodyNo: dash(opts.custodyNoLabel(a)),
       applicationDate: dash(a.applicationDate),
@@ -104,6 +107,14 @@ export function approvalNoticeHeadline(items: Pick<ApprovalNoticeItem, "noticeDa
   if (dates.length === 0) return "許可のお知らせ";
   if (dates.length === 1) return `許可のお知らせ　${formatJpDate(dates[0])}`;
   return `許可のお知らせ　${formatJpDate(dates[0])}〜${formatJpDate(dates[dates.length - 1])}`;
+}
+
+// 右上の人数の表示: 「許可人数10名」と、複数枚なら「1枚目／2枚（1〜5番）」
+export function approvalNoticeCountLabel(total: number, page = 1, pages = 1, from = 1, to = total): { count: string; page: string } {
+  return {
+    count: `許可人数 ${total}名`,
+    page: pages > 1 ? `${page}枚目／${pages}枚（${from}〜${to}番）` : "",
+  };
 }
 
 // 保存するときのファイル名（例: 許可のお知らせ_2026-10-17_3名.png、複数枚なら _1of2 を付ける）
@@ -160,42 +171,55 @@ interface Field {
   ok?: boolean; // 緑の枠（連絡が来た日）
 }
 
-function fieldsOf(item: ApprovalNoticeItem): Field[] {
+// 項目の並び（行ごと）。1行目: 連絡が来た日・担当者・取次士、2行目: 預り番号・申請日・申請番号、3行目: 申請内容（幅いっぱい）
+export function fieldRowsOf(item: ApprovalNoticeItem): Field[][] {
   const notice = item.via ? `${item.noticeDate}（${item.via}）` : item.noticeDate;
   return [
-    { label: "許可の連絡が来た日", value: notice, ok: true },
-    { label: "取次士", value: item.assignee },
-    { label: "預り番号", value: item.custodyNo },
-    { label: "申請日", value: item.applicationDate },
-    { label: "申請番号", value: item.applicationNo },
-    { label: "申請内容", value: item.content },
+    [
+      { label: "許可の連絡が来た日", value: notice, ok: true },
+      { label: "担当者", value: item.tantou },
+      { label: "取次士", value: item.assignee },
+    ],
+    [
+      { label: "預り番号", value: item.custodyNo },
+      { label: "申請日", value: item.applicationDate },
+      { label: "申請番号", value: item.applicationNo },
+    ],
+    [{ label: "申請内容", value: item.content }],
   ];
 }
 
 // 1枠の高さを先に計算する（申請内容が長いと行が増える）
 function cardLayout(ctx: Ctx, item: ApprovalNoticeItem, innerX: number, innerW: number) {
   const gap = 18;
-  const fieldW = (innerW - gap * 2) / 3;
   const valueFont = `bold 22px ${FONT}`;
   ctx.font = valueFont;
-  const fields = fieldsOf(item).map((f) => ({
-    ...f,
-    lines: wrapByWidth((s) => ctx.measureText(s).width, f.value, fieldW - 28),
-  }));
-  const rows = [fields.slice(0, 3), fields.slice(3, 6)];
+  // 行ごとに項目の幅を決める（3つなら3等分、1つなら幅いっぱい）
+  const rows = fieldRowsOf(item).map((row) => {
+    const fieldW = (innerW - gap * (row.length - 1)) / row.length;
+    return row.map((f) => ({
+      ...f,
+      fieldW,
+      lines: wrapByWidth((s) => ctx.measureText(s).width, f.value, fieldW - 28),
+    }));
+  });
   const rowHeights = rows.map((r) => 8 + 17 + 4 + Math.max(...r.map((f) => f.lines.length)) * 27 + 8);
   ctx.font = `bold 34px ${FONT}`;
   const nameLines = wrapByWidth((s) => ctx.measureText(s).width, item.name, innerW);
   ctx.font = `22px ${FONT}`;
   const orgLines = wrapByWidth((s) => ctx.measureText(s).width, item.org, innerW);
   const headH = nameLines.length * 40 + orgLines.length * 28 + 4;
-  const height = 20 + headH + 14 + rowHeights[0] + 10 + rowHeights[1] + 18;
-  return { fields, rows, rowHeights, nameLines, orgLines, headH, height, fieldW, gap };
+  const height = 20 + headH + 14 + rowHeights.reduce((n, h) => n + h, 0) + 10 * (rowHeights.length - 1) + 18;
+  return { rows, rowHeights, nameLines, orgLines, headH, height, gap };
 }
 
 export interface ApprovalNoticeDrawOptions {
   generatedAt?: string; // 右下に出す作成日時（例: 2026-10-17 15:07）
   footer?: string; // 左下に出す文（既定: アプリ名）
+  total?: number; // 許可人数（全体。複数枚に分けたときも全体の人数を出す）
+  page?: number; // 何枚目か（1〜）
+  pages?: number; // 全部で何枚か
+  startIndex?: number; // この枚の1人目の通し番号（1〜。2枚目なら 6 など）
 }
 
 // 画像を描く。canvas の大きさはこの関数が決める
@@ -215,7 +239,14 @@ export function drawApprovalNoticeImage(
   canvas.width = W;
   canvas.height = 10; // 計測用（measureText に幅は関係ない）
   const layouts = items.map((it) => cardLayout(ctx, it, innerX, innerW));
-  const headerH = 40 + 26 + 44 + 14 + 4 + 22;
+  const total = opts.total ?? items.length;
+  const page = opts.page ?? 1;
+  const pages = opts.pages ?? 1;
+  const startIndex = opts.startIndex ?? 1;
+  const countLabel = approvalNoticeCountLabel(total, page, pages, startIndex, startIndex + items.length - 1);
+  // 右上に枚数の行が増えるぶん見出しを高くする
+  const headerExtra = countLabel.page ? 22 : 0;
+  const headerH = 40 + 26 + 44 + headerExtra + 14 + 4 + 22;
   const bodyH = layouts.reduce((n, l) => n + l.height + 18, 0);
   const footerH = 6 + 20 + 36;
   canvas.height = headerH + bodyH + footerH;
@@ -242,16 +273,23 @@ export function drawApprovalNoticeImage(
   }
   ctx.fillStyle = "#111111";
   ctx.fillText(headline, PAD, y + (38 - headlineSize) / 2);
-  // 右上: 人数
+  // 右上: 許可人数（全体）と、複数枚なら何枚目か
   ctx.textAlign = "right";
   ctx.fillStyle = BLUE;
-  ctx.font = `bold 22px ${FONT}`;
-  ctx.fillText(`${items.length}名`, W - PAD, y - 2);
+  ctx.font = `bold 24px ${FONT}`;
+  ctx.fillText(countLabel.count, W - PAD, y - 4);
+  let ry = y + 26;
+  if (countLabel.page) {
+    ctx.fillStyle = "#111111";
+    ctx.font = `bold 18px ${FONT}`;
+    ctx.fillText(countLabel.page, W - PAD, ry);
+    ry += 22;
+  }
   ctx.fillStyle = "#555555";
   ctx.font = `16px ${FONT}`;
-  ctx.fillText("在留カード受け取りの準備をお願いします", W - PAD, y + 26);
+  ctx.fillText("在留カード受け取りの準備をお願いします", W - PAD, ry);
   ctx.textAlign = "left";
-  y += 44 + 14;
+  y += 44 + headerExtra + 14;
   ctx.fillStyle = BLUE;
   ctx.fillRect(PAD, y, W - PAD * 2, 4);
   y += 4 + 22;
@@ -275,7 +313,7 @@ export function drawApprovalNoticeImage(
     ctx.font = `bold 26px ${FONT}`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(String(idx + 1), cx, cy + 1);
+    ctx.fillText(String(startIndex + idx), cx, cy + 1);
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
 
@@ -295,13 +333,13 @@ export function drawApprovalNoticeImage(
     }
     yy = y + 20 + l.headH + 14;
 
-    // 項目（3列 × 2行）
+    // 項目（3列 × 2行 ＋ 申請内容の1行）
     l.rows.forEach((row, ri) => {
       const rh = l.rowHeights[ri];
       row.forEach((f, ci) => {
-        const fx = innerX + ci * (l.fieldW + l.gap);
+        const fx = innerX + ci * (f.fieldW + l.gap);
         ctx.fillStyle = f.ok ? GREEN_BG : FIELD_BG;
-        roundRect(ctx, fx, yy, l.fieldW, rh, 10);
+        roundRect(ctx, fx, yy, f.fieldW, rh, 10);
         ctx.fill();
         ctx.fillStyle = "#666666";
         ctx.font = `15px ${FONT}`;
