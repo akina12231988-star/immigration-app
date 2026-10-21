@@ -1,5 +1,8 @@
-import type { ApplicationCopyInput, CopyGroup, CopyItem } from "@/lib/application-copy";
-import { industryFieldName, ONLINE_INDUSTRY_FIELDS, ymdCompact } from "@/lib/application-copy";
+import type { ApplicationCopyInput, CopyEdit, CopyGroup, CopyItem } from "@/lib/application-copy";
+import { cu, industryFieldName, it, og, ONLINE_INDUSTRY_FIELDS, SKILL_EVAL_KINDS, wk, wkDate, YES_NO, ymdCompact } from "@/lib/application-copy";
+import { JLPT_LEVELS } from "@/lib/cert-exam";
+import { ONLINE_MAIN_OCCUPATIONS } from "@/lib/online-main-occupations";
+import { ONLINE_MAIN_INDUSTRIES, suggestedMainIndustry } from "@/lib/online-main-industries";
 import { suggestedMainOccupation } from "@/lib/online-main-occupations";
 import { CUSTODIAN_INFO, type CustodianInfo } from "@/lib/custody";
 import { effectiveResidencePeriod } from "@/lib/residence-card";
@@ -13,8 +16,9 @@ import { contractPeriodEnd, formatYmdJa } from "@/lib/support-plan-dates";
 //   ・金額・電話番号・郵便番号は数字のみ（ハイフン・カンマ無し）
 //   ・住所など「全角」の欄は英数字とハイフンを全角にする
 //   ・氏名は半角大文字
-// 紙の申請書向けの項目（application-copy.ts）から組み立てるので、元の値の登録・編集はそちらで行う。
-// 「有／無」で毎回同じになる項目は、値を空にして「通常は 無」のように案内だけ出す（画面で確認して選ぶ）。
+// 紙の申請書向けの項目（application-copy.ts）から組み立てる。未登録の項目は edit（保存先）を付けてあるので、
+// この一覧の上でもその場で入力・保存できる（外国人・所属機関・登録支援機関に保存される）。
+// 「有／無」で運用が決まっている項目は、その値をそのまま出す（2.9 は必ず「有」など）。
 
 export type OnlineFormat =
   | "text" // そのまま
@@ -32,7 +36,10 @@ export interface OnlineItem {
   format: OnlineFormat;
   note?: string; // 入力の注意・どこから取ったか
   manual?: boolean; // アプリに元の値が無く、画面で手入力・選択する項目
+  skip?: boolean; // 画面で何も記載しない項目（空欄のまま）
   postalFor?: string; // この住所から郵便番号を自動で引く（画面側で /api/postal を呼んで値を入れる）
+  edit?: CopyEdit; // この場で入力・編集して保存できる（保存先）
+  editValue?: string; // 編集欄に最初に入れる値（登録されている元の値。表示値はハイフン無し・全角などに変えてあるため）
 }
 
 export interface OnlineSection {
@@ -126,13 +133,38 @@ const find = (groups: CopyGroup[], label: string): CopyItem | undefined =>
   groups.flatMap((g) => g.items).find((i) => i.label === label);
 const val = (groups: CopyGroup[], label: string): string => find(groups, label)?.value ?? "";
 
-const item = (no: string, label: string, value: string, format: OnlineFormat, note?: string): OnlineItem => ({
+const item = (
+  no: string,
+  label: string,
+  value: string,
+  format: OnlineFormat,
+  note?: string,
+  edit?: CopyEdit,
+  editValue?: string,
+): OnlineItem => ({
   no,
   label,
   value,
   format,
   note,
+  edit,
+  editValue: edit ? (editValue ?? value) : undefined,
 });
+// 紙の申請書の順の項目から値と保存先を引き継ぐ（値は画面の入力形式に変える）
+const linked = (
+  groups: CopyGroup[],
+  no: string,
+  label: string,
+  paperLabel: string,
+  format: OnlineFormat,
+  note?: string,
+  transform: (v: string) => string = (v) => v,
+): OnlineItem => {
+  const p = find(groups, paperLabel);
+  return item(no, label, transform(p?.value ?? ""), format, note, p?.edit, p?.editValue ?? p?.value ?? "");
+};
+// 画面で何も記載しない項目
+const skip = (no: string, label: string, note: string): OnlineItem => ({ no, label, value: "", format: "text", skip: true, note });
 // 画面で確認して選ぶ項目（アプリに元の値が無い）。usual は「通常は〜」の案内
 const choose = (no: string, label: string, usual?: string, note?: string): OnlineItem => ({
   no,
@@ -194,6 +226,12 @@ export function industryFieldChoice(industry: string | null | undefined): string
   return `${name}分野${(ONLINE_INDUSTRY_FIELDS as readonly string[]).includes(name) ? "" : "（プルダウンに無い分野。近いものを選ぶ）"}`;
 }
 
+// 2.17 雇用関係につき告示で定められる基準が定められている分野（有にする分野。それ以外はどちらも選ばない）
+export const EMPLOYMENT_STANDARD_INDUSTRIES = ["工業製品製造業", "自動車運送業", "飲食料品製造業", "木材産業"] as const;
+export function employmentStandardChoice(industry: string | null | undefined): string {
+  return (EMPLOYMENT_STANDARD_INDUSTRIES as readonly string[]).includes(industryFieldName(industry)) ? "有" : NEITHER;
+}
+
 // 27 特定産業分野に特有の基準に適合していることの有無
 export function fieldSpecificChoice(industry: string | null | undefined): string {
   return (FIELD_SPECIFIC_INDUSTRIES as readonly string[]).includes(industryFieldName(industry)) ? "有" : NEITHER;
@@ -244,41 +282,43 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
   const careers = [...histories].sort((a, b) => (a.start < b.start ? -1 : 1));
 
   const identity: OnlineItem[] = [
-    item("1", "国籍・地域", w.nationality, "choice", "プルダウンから選ぶ"),
-    item("2", "生年月日", ymdCompact(w.birth) ?? "", "date8", "「生年月日に不明な点は無い」を選んでから8桁を入れる"),
-    item("3", "氏名", upperName(w.name), "upper", "旅券のとおり。半角大文字・スペース区切り"),
-    item("4", "性別", w.gender, "choice"),
-    item("5", "出生地", toZenkaku(w.home_address), "zenkaku", "本国における居住地と同じ"),
-    item("6", "配偶者の有無", w.has_spouse, "choice"),
+    item("1", "国籍・地域", w.nationality, "choice", "プルダウンから選ぶ", wk("nationality")),
+    item("2", "生年月日", ymdCompact(w.birth) ?? "", "date8", "「生年月日に不明な点は無い」を選んでから8桁を入れる", wkDate("birth"), w.birth ?? ""),
+    item("3", "氏名", upperName(w.name), "upper", "旅券のとおり。半角大文字・スペース区切り", wk("name"), w.name),
+    item("4", "性別", w.gender, "choice", undefined, wk("gender", ["男", "女"])),
+    item("5", "出生地", toZenkaku(w.home_address), "zenkaku", "本国における居住地と同じ", wk("home_address"), w.home_address),
+    item("6", "配偶者の有無", w.has_spouse, "choice", undefined, wk("has_spouse", ["有", "無"])),
     item(
       "7",
       "職業",
       occupationOf(careers, w.field),
       "text",
       "職歴のいちばん新しい行の「職種・仕事内容」（無ければ分野・職種）。違うときは外国人詳細の職歴で直す。40文字以内",
+      careers.length > 0 ? undefined : wk("field"),
+      w.field,
     ),
-    item("8", "本国における居住地", toZenkaku(w.home_address), "zenkaku", "全角80文字以内"),
+    item("8", "本国における居住地", toZenkaku(w.home_address), "zenkaku", "全角80文字以内", wk("home_address"), w.home_address),
     postal("9.1", "日本における連絡先 郵便番号", w.address, "住居地の郵便番号"),
-    item("9.2", "日本における連絡先 住居地", toZenkaku(w.address), "zenkaku", "全角85文字以内"),
+    item("9.2", "日本における連絡先 住居地", toZenkaku(w.address), "zenkaku", "全角85文字以内", wk("address"), w.address),
     item("9.3", "日本における連絡先 電話番号", digitsOnly(c.tel), "digits", "登録支援機関の電話番号（ハイフン無し）"),
     item("9.4", "日本における連絡先 携帯電話番号", "記載なし", "text", "本人の携帯番号は書かず「記載なし」"),
     item("", "メールアドレス（オンラインシステム利用者）", ONLINE_SYSTEM_EMAIL, "text", "ログインしている利用者（取次者）のメールアドレス。再入力欄にも同じものを入れる"),
-    item("10.1", "旅券 (1)番号", (w.passport_no ?? "").normalize("NFKC").toUpperCase(), "upper", "半角英数字"),
-    item("10.2", "旅券 (2)有効期限", ymdCompact(w.passport_expiry_date) ?? "", "date8"),
-    item("11.1", "現に有する在留資格", w.residence_status, "choice", "プルダウンから選ぶ"),
-    item("11.2", "在留期間", residencePeriodChoice(period), "choice", "プルダウンから選ぶ"),
-    item("11.3", "在留期間の満了日", ymdCompact(w.residence_expiry_date) ?? "", "date8"),
+    item("10.1", "旅券 (1)番号", (w.passport_no ?? "").normalize("NFKC").toUpperCase(), "upper", "半角英数字", wk("passport_no"), w.passport_no ?? ""),
+    item("10.2", "旅券 (2)有効期限", ymdCompact(w.passport_expiry_date) ?? "", "date8", undefined, wkDate("passport_expiry_date"), w.passport_expiry_date ?? ""),
+    item("11.1", "現に有する在留資格", w.residence_status, "choice", "プルダウンから選ぶ", wk("residence_status")),
+    item("11.2", "在留期間", residencePeriodChoice(period), "choice", "プルダウンから選ぶ", wk("residence_period"), w.residence_period ?? ""),
+    item("11.3", "在留期間の満了日", ymdCompact(w.residence_expiry_date) ?? "", "date8", undefined, wkDate("residence_expiry_date"), w.residence_expiry_date ?? ""),
     item("", "在留カードの有無", w.residence_card_no ? "有" : "", "choice"),
-    item("12", "在留カード番号", (w.residence_card_no ?? "").normalize("NFKC").toUpperCase().replace(/\s+/g, ""), "upper", "半角英数字12文字"),
+    item("12", "在留カード番号", (w.residence_card_no ?? "").normalize("NFKC").toUpperCase().replace(/\s+/g, ""), "upper", "半角英数字12文字", wk("residence_card_no"), w.residence_card_no ?? ""),
     item("13.1", "希望する在留資格", input.desiredStatus ?? "", "choice", "申請準備の申請種別から"),
     item("13.2", "希望する在留期間", residencePeriodChoice(period), "choice", "更新は通常いまと同じ期間。審査で変わることがある"),
     renewalReasonText(input.desiredStatus)
       ? item("14", "更新（変更）の理由", renewalReasonText(input.desiredStatus), "text", "希望する在留資格から決まる定型文。600文字以内")
       : manual("14", "更新（変更）の理由", "600文字以内。例: 1号特定技能外国人として就労するため"),
     // 15 犯罪歴: 紙の順で有無と内容を登録する。未登録なら「無」として出す
-    item("15", "犯罪を理由とする処分を受けたことの有無", w.criminal_record || "無", "choice", w.criminal_record ? undefined : "未登録なので「無」としています。有なら「紙の申請書の順」で登録"),
+    item("15", "犯罪を理由とする処分を受けたことの有無", w.criminal_record || "無", "choice", w.criminal_record ? undefined : "未登録なので「無」としています。有なら鉛筆マークから選んで保存", wk("criminal_record", YES_NO), w.criminal_record ?? ""),
     ...(w.criminal_record === "有"
-      ? [item("15", "処分の内容", w.criminal_record_note ?? "", "text", "「紙の申請書の順」で登録した内容")]
+      ? [item("15", "処分の内容", w.criminal_record_note ?? "", "text", "処分を受けた年月・内容", wk("criminal_record_note"))]
       : []),
     // 16 在日親族: 外国人詳細の「在日親族の同居」と同居している在日親族から
     item(
@@ -286,7 +326,8 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
       "在日親族及び同居者 有無",
       w.relatives_in_japan ?? "",
       "choice",
-      "外国人詳細 ＞ 在日親族の同居。「有」なら 16.2〜16.8 を人数分入れる（＋追加する）",
+      "外国人詳細 ＞ 在日親族の同居。「有」なら 16.2〜16.8 を人数分入れる（＋追加する。親族の氏名などは外国人詳細で登録）",
+      wk("relatives_in_japan", YES_NO),
     ),
     ...relativeItems(w.relatives_in_japan === "有" ? (w.relatives ?? []) : []),
   ];
@@ -299,10 +340,12 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
       w.skill_eval_kind ||
         (val(groups, "18 技能水準 (1)試験名") ? "特定技能評価試験" : val(groups, "18 専門級の合格名（技能実習）") ? "技能実習２号を良好に修了" : ""),
       "choice",
-      w.skill_eval_kind ? "「紙の申請書の順」で登録した区分。これにより 18.2〜18.8 の項目が変わる" : "未登録なので合格証・専門級から推定。「紙の申請書の順」の「18 技能水準 評価区分」で選んで保存できる",
+      w.skill_eval_kind ? "登録した区分。これにより 18.2〜18.8 の項目が変わる" : "未登録なので合格証・専門級から推定。鉛筆マークから選んで保存できる",
+      wk("skill_eval_kind", SKILL_EVAL_KINDS),
+      w.skill_eval_kind ?? "",
     ),
-    item("18", "技能水準 試験名", val(groups, "18 技能水準 (1)試験名"), "text"),
-    item("18", "技能水準 受験地", val(groups, "18 (2)受験地"), "text"),
+    linked(groups, "18", "技能水準 試験名", "18 技能水準 (1)試験名", "text"),
+    linked(groups, "18", "技能水準 受験地", "18 (2)受験地", "text"),
     // 19.1 評価区分: 登録した区分。無ければ日本語の合格証から推定
     item(
       "19.1",
@@ -310,15 +353,17 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
       w.japanese_eval_kind || (val(groups, "19 日本語能力 (1)試験名") ? "特定技能評価試験" : ""),
       "choice",
       w.japanese_eval_kind
-        ? "「紙の申請書の順」で登録した区分（特定技能1号のとき）。これにより 19.2〜 の項目が変わる"
-        : "特定技能1号のとき。未登録なので日本語の合格証から推定。「紙の申請書の順」の「19 日本語能力 評価区分」で選んで保存できる",
+        ? "登録した区分（特定技能1号のとき）。これにより 19.2〜 の項目が変わる"
+        : "特定技能1号のとき。未登録なので日本語の合格証から推定。鉛筆マークから選んで保存できる",
+      wk("japanese_eval_kind", SKILL_EVAL_KINDS),
+      w.japanese_eval_kind ?? "",
     ),
-    item("19", "日本語能力 試験名", val(groups, "19 日本語能力 (1)試験名"), "text"),
-    item("19", "日本語能力 受験地", val(groups, "19 (2)受験地"), "text"),
-    item("19", "日本語能力 レベル", val(groups, "19 レベル"), "choice"),
-    item("20", "技能実習2号良好修了 職種名", val(groups, "20 技能実習2号良好修了 (1)職種名"), "text", "技能実習2号を良好に修了した人だけ"),
-    item("20", "技能実習2号良好修了 作業名", val(groups, "20 (2)作業名"), "text"),
-    item("20", "技能実習2号良好修了 証明方法", val(groups, "20 (3)良好修了の証明方法"), "choice"),
+    linked(groups, "19", "日本語能力 試験名", "19 日本語能力 (1)試験名", "text"),
+    linked(groups, "19", "日本語能力 受験地", "19 (2)受験地", "text"),
+    item("19", "日本語能力 レベル", val(groups, "19 レベル"), "choice", undefined, wk("cert_nihongo_level", JLPT_LEVELS)),
+    linked(groups, "20", "技能実習2号良好修了 職種名", "20 技能実習2号良好修了 (1)職種名", "text", "技能実習2号を良好に修了した人だけ"),
+    linked(groups, "20", "技能実習2号良好修了 作業名", "20 (2)作業名", "text"),
+    linked(groups, "20", "技能実習2号良好修了 証明方法", "20 (3)良好修了の証明方法", "choice"),
     item("21.1", "申請時における特定技能1号での通算在留期間（年数）", totalY, "choice", total?.asOf),
     item("21.2", "申請時における特定技能1号での通算在留期間（月数）", totalM, "choice", total?.asOf),
     // 22〜27 は運用で決めている選び方のとおりに出す
@@ -356,71 +401,100 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
         : "申請準備の申請取次士が未定なので登録支援機関の申請取次者（全角26文字以内）。申請準備で申請取次士を選ぶとその人になる",
     ),
     postal("", "取次者 (2)郵便番号", c.address, "登録支援機関の住所から"),
-    item("", "取次者 (2)住所", toZenkaku(c.address), "zenkaku", "全角85文字以内"),
-    item("", "取次者 (3)所属機関等", c.officeName, "text", "256文字以内"),
-    item("", "取次者 (3)電話番号", digitsOnly(c.tel), "digits"),
+    item("", "取次者 (2)住所", toZenkaku(c.address), "zenkaku", "全角85文字以内", cu("address"), c.address),
+    item("", "取次者 (3)所属機関等", c.officeName, "text", "256文字以内", cu("officeName")),
+    item("", "取次者 (3)電話番号", digitsOnly(c.tel), "digits", undefined, cu("tel"), c.tel),
+  ];
+
+  const industryField = val(groups, "2 (2)特定産業分野");
+  // あっせん「あり」のときだけ職業紹介事業者（2.30〜2.37）を入れる。未定なら値を出して案内する
+  const placementOn = input.assen === "あり" ? true : input.assen === "なし" ? false : null;
+  const placementNote = placementOn === null ? "あっせんが「あり」のときだけ入れる（申請準備の「あっせんについて」が未定）" : undefined;
+  const placementItems: OnlineItem[] = [
+    item("2.30", "(13)職業紹介事業者 氏名又は名称", toZenkaku(c.placementName), "zenkaku", placementNote ?? "全角60文字以内", cu("placementName"), c.placementName),
+    choose("2.31", "(13)職業紹介事業者 法人番号の有無", "無", "法人なら「有」にして法人番号（13桁）を入れる"),
+    item("2.32", "(13)職業紹介事業者 雇用保険適用事業所番号", digitsOnly(c.koyoNo), "digits", "登録支援機関の雇用保険適用事業所番号（11桁・ハイフン無し）", cu("koyoNo"), c.koyoNo),
+    item("2.33", "(13)職業紹介事業者 郵便番号", digitsOnly(c.placementPostal), "digits", "7桁", cu("placementPostal"), c.placementPostal),
+    item("2.34", "(13)職業紹介事業者 住所", toZenkaku(c.placementAddress), "zenkaku", "全角85文字以内", cu("placementAddress"), c.placementAddress),
+    item("2.35", "(13)職業紹介事業者 電話番号", digitsOnly(c.placementTel), "digits", undefined, cu("placementTel"), c.placementTel),
+    item("2.36", "(13)職業紹介事業者 許可・届出番号", toZenkaku(c.placementLicenseNo), "zenkaku", "全角16文字以内", cu("placementLicenseNo"), c.placementLicenseNo),
+    item("2.37", "(13)職業紹介事業者 受理年月日", ymdCompact(c.placementLicensedOn) ?? "", "date8", undefined, cu("placementLicensedOn", "date"), c.placementLicensedOn),
+  ];
+  // 取次機関（2.38〜2.42）は認定申請のときだけ。外国人ごとに入力・保存する
+  const isNintei = (input.appType ?? "").includes("認定");
+  const agencyItems: OnlineItem[] = [
+    item("2.38", "(14)取次機関 氏名又は名称", toZenkaku(w.agency_name), "zenkaku", isNintei ? "国外の取次機関（送出機関など）。全角60文字以内" : "認定申請のときだけ入れる", wk("agency_name"), w.agency_name ?? ""),
+    item("2.39", "(14)取次機関 法人番号", digitsOnly(w.agency_corporate_no), "digits", "無ければ「無」を選んで空欄", wk("agency_corporate_no"), w.agency_corporate_no ?? ""),
+    item("2.40", "(14)取次機関 郵便番号", digitsOnly(w.agency_postal), "digits", "ハイフン無し", wk("agency_postal"), w.agency_postal ?? ""),
+    item("2.41", "(14)取次機関 住所", toZenkaku(w.agency_address), "zenkaku", "全角85文字以内", wk("agency_address"), w.agency_address ?? ""),
+    item("2.42", "(14)取次機関 電話番号", digitsOnly(w.agency_tel), "digits", "ハイフン無し", wk("agency_tel"), w.agency_tel ?? ""),
   ];
 
   const contract: OnlineItem[] = [
-    item("2.1", "特定技能雇用契約 (1)雇用契約期間(始期)", ymdCompact(es) ?? "", "date8", "雇用開始日（支援計画書の日付か外国人の雇用開始日）"),
+    item("2.1", "特定技能雇用契約 (1)雇用契約期間(始期)", ymdCompact(es) ?? "", "date8", "雇用開始日（支援計画書の日付か外国人の雇用開始日）", wkDate("employment_start_on"), w.employment_start_on ?? ""),
     item("2.2", "特定技能雇用契約 (1)雇用契約期間(終期)", ymdCompact(ee) ?? "", "date8", "始期から2年間（2年後の前日）"),
-    item("2.3", "(2)従事すべき業務の内容 特定産業分野01", industryFieldChoice(val(groups, "2 (2)特定産業分野")), "choice", "プルダウンから選ぶ（「紙の申請書の順」の「2 (2)特定産業分野」で所属機関の業種を選べる）"),
-    item("2.4", "(2)従事すべき業務の内容 業務区分01", val(groups, "2 (2)業務区分"), "choice", "プルダウンから選ぶ"),
-    // 2.5 主たる職種: 登録した職種。無ければ分野からの目安を案内して画面で選ぶ
+    item("2.3", "(2)従事すべき業務の内容 特定産業分野01", industryFieldChoice(industryField), "choice", "プルダウンから選ぶ（所属機関の業種）", find(groups, "2 (2)特定産業分野")?.edit, org?.industry ?? ""),
+    linked(groups, "2.4", "(2)従事すべき業務の内容 業務区分01", "2 (2)業務区分", "choice", "プルダウンから選ぶ"),
     w.main_occupation
-      ? item("2.5", "(2)従事すべき業務の内容 職種 主たる職種", w.main_occupation, "choice", "「紙の申請書の順」の「2 (2)主たる職種」で登録した職種")
-      : manual(
+      ? item("2.5", "(2)従事すべき業務の内容 職種 主たる職種", w.main_occupation, "choice", "登録した職種", wk("main_occupation", ONLINE_MAIN_OCCUPATIONS))
+      : item(
           "2.5",
           "(2)従事すべき業務の内容 職種 主たる職種",
-          `職種一覧のプルダウンから選ぶ${suggestedMainOccupation(val(groups, "2 (2)特定産業分野")) ? `（この分野は通常「${suggestedMainOccupation(val(groups, "2 (2)特定産業分野"))}」）` : ""}。「紙の申請書の順」の「2 (2)主たる職種」で選んで保存できる`,
+          "",
           "choice",
+          `職種一覧から選んで保存${suggestedMainOccupation(org?.industry || industryFieldName(w.field)) ? `（この分野は通常「${suggestedMainOccupation(org?.industry || industryFieldName(w.field))}」）` : ""}`,
+          wk("main_occupation", ONLINE_MAIN_OCCUPATIONS),
         ),
-    item("2.7", "(3)所定労働時間(週平均)", hours4(val(groups, "2 (3)所定労働時間（週平均）")), "digits", "半角数字4文字以内"),
-    item("2.8", "(3)所定労働時間(月平均)", hours4(val(groups, "2 (3)所定労働時間（月平均）")), "digits", "半角数字4文字以内"),
-    choose("2.9", "(3)所定労働時間が通常の労働者と同等であることの有無", "有"),
-    item("2.10", "(4)月額報酬", digitsOnly(val(groups, "2 (4)月額報酬")), "digits", find(groups, "2 (4)月額報酬")?.note),
-    item("2.11", "(4)基本給の時間換算額", digitsOnly(val(groups, "2 (4)基本給の時間換算額")), "digits"),
-    manual("2.12", "(4)同等の業務に従事する日本人の月額報酬", "該当が無ければ空欄", "digits"),
-    choose("2.13", "(4)報酬の額が日本人と同等以上であることの有無", "有"),
-    item("2.14", "(5)報酬の支払方法", payMethodChoice(intake?.pay_method), "choice"),
-    choose("2.15", "(6)外国人であることを理由に異なった待遇としている事項の有無", "無"),
-    choose("2.16", "(7)一時帰国を希望した場合に有給休暇を取得させることの有無", "有"),
-    choose("2.17", "(8)雇用関係につき告示で定められる基準に適合していることの有無", undefined, "基準が定められている分野だけ"),
-    choose("2.18", "(9)帰国旅費を負担し必要な措置をすることの有無", "有"),
-    choose("2.19", "(10)健康・生活の状況を把握するための措置を講ずることの有無", "有"),
-    choose("2.20", "(11)特定産業分野に特有の基準に適合していることの有無", undefined, "基準が定められている分野だけ"),
-    manual("2.21〜2.29", "(12)派遣先", "労働者派遣の対象とする場合だけ入力。通常は空欄"),
-    item("2.30", "(13)職業紹介事業者 氏名又は名称", toZenkaku(c.placementName), "zenkaku", "全角60文字以内"),
-    choose("2.31", "(13)職業紹介事業者 法人番号の有無", "無", "法人なら「有」にして法人番号（13桁）を入れる"),
-    manual("2.32", "(13)職業紹介事業者 雇用保険適用事業所番号", "11桁・ハイフン無し。非該当なら空欄", "digits"),
-    item("2.33", "(13)職業紹介事業者 郵便番号", digitsOnly(c.placementPostal), "digits", "7桁"),
-    item("2.34", "(13)職業紹介事業者 住所", toZenkaku(c.placementAddress), "zenkaku", "全角85文字以内"),
-    item("2.35", "(13)職業紹介事業者 電話番号", digitsOnly(c.placementTel), "digits"),
-    item("2.36", "(13)職業紹介事業者 許可・届出番号", toZenkaku(c.placementLicenseNo), "zenkaku", "全角16文字以内"),
-    item("2.37", "(13)職業紹介事業者 受理年月日", ymdCompact(c.placementLicensedOn) ?? "", "date8"),
-    manual("2.38〜2.42", "(14)取次機関", "海外の取次機関がある場合だけ入力。通常は空欄"),
+    linked(groups, "2.7", "(3)所定労働時間(週平均)", "2 (3)所定労働時間（週平均）", "digits", "半角数字4文字以内", hours4),
+    linked(groups, "2.8", "(3)所定労働時間(月平均)", "2 (3)所定労働時間（月平均）", "digits", "半角数字4文字以内", hours4),
+    item("2.9", "(3)所定労働時間が通常の労働者と同等であることの有無", "有", "choice", "必ず「有」"),
+    item("2.10", "(4)月額報酬", digitsOnly(val(groups, "2 (4)月額報酬")), "digits", `申請準備中の所属機関の賃金（時給なら月給換算額、月給ならその月給）。${find(groups, "2 (4)月額報酬")?.note ?? ""}`),
+    item("2.11", "(4)基本給の時間換算額", digitsOnly(val(groups, "2 (4)基本給の時間換算額")), "digits", "申請準備中の所属機関の賃金（時給ならその時給、月給なら時給換算額）"),
+    linked(groups, "2.12", "(4)同等の業務に従事する日本人の月額報酬", "2 (4)同等の業務に従事する日本人の月額報酬", "digits", find(groups, "2 (4)同等の業務に従事する日本人の月額報酬")?.note, digitsOnly),
+    item("2.13", "(4)報酬の額が日本人と同等以上であることの有無", "有", "choice", "必ず「有」"),
+    linked(groups, "2.14", "(5)報酬の支払方法", "2 (5)報酬の支払方法", "choice", undefined, payMethodChoice),
+    item("2.15", "(6)外国人であることを理由に異なった待遇としている事項の有無", "無", "choice", "必ず「無」"),
+    item("2.16", "(7)一時帰国を希望した場合に有給休暇を取得させることの有無", "有", "choice", "必ず「有」"),
+    item("2.17", "(8)雇用関係につき告示で定められる基準に適合していることの有無", employmentStandardChoice(industryField), "choice", "工業製品製造業・自動車運送業・飲食料品製造業・木材産業は「有」。それ以外はどちらも選ばない"),
+    item("2.18", "(9)帰国旅費を負担し必要な措置をすることの有無", "有", "choice", "必ず「有」"),
+    item("2.19", "(10)健康・生活の状況を把握するための措置を講ずることの有無", "有", "choice", "必ず「有」"),
+    item("2.20", "(11)特定産業分野に特有の基準に適合していることの有無", NEITHER, "choice", "有・無のどちらも選ばない"),
+    skip("2.21〜2.29", "(12)派遣先", "何も記載しない（空欄のまま）"),
+    ...(placementOn === false
+      ? [skip("2.30〜2.37", "(13)職業紹介事業者", "あっせん「なし」のため何も記載しない")]
+      : placementItems),
+    ...(isNintei
+      ? agencyItems
+      : [skip("2.38〜2.42", "(14)取次機関", `認定申請のときだけ入れる（今回は${input.appType ? `${input.appType}申請` : "申請種別が未定"}のため記載しない）`)]),
   ];
 
   const organization: OnlineItem[] = [
-    item("3.1", "特定技能所属機関 (1)氏名又は名称", toZenkaku(org?.name), "zenkaku", "全角60文字以内"),
+    item("3.1", "特定技能所属機関 (1)氏名又は名称", toZenkaku(org?.name), "zenkaku", "全角60文字以内", org ? og("name") : undefined, org?.name ?? ""),
     item("3.2", "(2)法人番号の有無", org ? (org.corporate_no ? "有" : "無") : "", "choice"),
-    item("3.2", "(2)法人番号", digitsOnly(org?.corporate_no), "digits", "13桁"),
-    item("3.3", "(3)雇用保険適用事業所番号", digitsOnly(intake?.koyo_no), "digits", "11桁・ハイフン無し。非該当なら空欄"),
-    item("3.4", "(4)業種 主たる業種", org?.industry ?? "", "choice", "プルダウンから選ぶ"),
+    item("3.2", "(2)法人番号", digitsOnly(org?.corporate_no), "digits", "13桁（法人でなければ空欄）", org ? og("corporate_no") : undefined, org?.corporate_no ?? ""),
+    item("3.3", "(3)雇用保険適用事業所番号", digitsOnly(intake?.koyo_no), "digits", "11桁・ハイフン無しでコピー（登録はハイフンありでよい）。非該当なら空欄", org ? it("koyo_no") : undefined, intake?.koyo_no ?? ""),
+    item(
+      "3.4",
+      "(4)業種 主たる業種",
+      org?.main_industry ?? "",
+      "choice",
+      `プルダウンから選ぶ（所属機関の情報にも出ます）${!org?.main_industry && suggestedMainIndustry(org?.industry) ? `。この分野は通常「${suggestedMainIndustry(org?.industry)}」` : ""}`,
+      org ? og("main_industry", ONLINE_MAIN_INDUSTRIES) : undefined,
+    ),
     manual("3.6", "(4)業種 他業種01", "他に業種があればプルダウンから選ぶ", "choice"),
     postal("3.8", "(5)住所（所在地） 郵便番号", org?.address, "本店の住所から"),
-    item("3.9", "(5)住所（所在地）", toZenkaku(org?.address), "zenkaku", "全角85文字以内"),
-    item("3.10", "(5)電話番号", digitsOnly(org?.contact), "digits"),
-    item("3.11", "(6)資本金", digitsOnly(intake?.capital), "digits", "円。13文字以内"),
-    item("3.12", "(7)年間売上金額", digitsOnly(val(groups, "3 (7)年間売上金額（直近年度）")), "digits", "円。直近年度"),
-    item("3.13", "(8)常勤職員数", digitsOnly(val(groups, "3 (8)常勤職員数")), "digits", "名"),
-    item("3.14", "(9)代表者の氏名", toZenkaku(intake?.rep_name), "zenkaku", "全角26文字以内"),
-    item("3.15", "(10)勤務させる事業所名", toZenkaku(org?.name), "zenkaku", "60文字以内"),
+    item("3.9", "(5)住所（所在地）", toZenkaku(org?.address), "zenkaku", "全角85文字以内", org ? og("address") : undefined, org?.address ?? ""),
+    item("3.10", "(5)電話番号", digitsOnly(org?.contact), "digits", undefined, org ? og("contact") : undefined, org?.contact ?? ""),
+    item("3.11", "(6)資本金", digitsOnly(intake?.capital), "digits", "円。13文字以内", org ? it("capital") : undefined, intake?.capital ?? ""),
+    item("3.12", "(7)年間売上金額", digitsOnly(val(groups, "3 (7)年間売上金額（直近年度）")), "digits", "円。直近年度（所属機関 ＞ 決算情報で登録）"),
+    item("3.13", "(8)常勤職員数", digitsOnly(val(groups, "3 (8)常勤職員数")), "digits", "名（所属機関 ＞ 常勤職員数で登録）"),
+    item("3.14", "(9)代表者の氏名", toZenkaku(intake?.rep_name), "zenkaku", "全角26文字以内", org ? it("rep_name") : undefined, intake?.rep_name ?? ""),
+    item("3.15", "(10)勤務させる事業所名", toZenkaku(org?.name), "zenkaku", "60文字以内", org ? og("name") : undefined, org?.name ?? ""),
     postal("3.16", "(10)勤務させる事業所 所在地 郵便番号", val(groups, "3 (10)所在地"), "事業所の所在地から"),
-    item("3.17", "(10)勤務させる事業所 所在地", toZenkaku(val(groups, "3 (10)所在地")), "zenkaku", "全角85文字以内"),
-    item("3.18", "(10)健康保険・厚生年金保険の適用事業所であることの有無", val(groups, "健康保険及び厚生年金保険の適用事業所"), "choice", "所属機関の保険（社会保険なら有）"),
+    item("3.17", "(10)勤務させる事業所 所在地", toZenkaku(val(groups, "3 (10)所在地")), "zenkaku", "全角85文字以内（会社の住所と別なら所属機関の「作業する住所」）", org ? it("work_address") : undefined, intake?.work_address ?? ""),
+    linked(groups, "3.18", "(10)健康保険・厚生年金保険の適用事業所であることの有無", "健康保険及び厚生年金保険の適用事業所", "choice", "所属機関の保険（社会保険なら有）"),
     item("3.19", "(10)労災保険・雇用保険の適用事業所であることの有無", val(groups, "労災保険及び雇用保険の適用事業所"), "choice", "所属機関の労災・雇用保険の登録から"),
-    item("3.20", "(10)労働保険番号", (intake?.rosai_no ?? "").normalize("NFKC").replace(/[^0-9A-Za-z]/g, ""), "digits", "半角英数字18文字以内（ハイフン無し）。「有」のときだけ"),
+    item("3.20", "(10)労働保険番号", (intake?.rosai_no ?? "").normalize("NFKC").replace(/[^0-9A-Za-z]/g, ""), "digits", "半角英数字18文字以内・ハイフン無しでコピー（登録はハイフンありでよい）。「有」のときだけ", org ? it("rosai_no") : undefined, intake?.rosai_no ?? ""),
     choose("3.21", "(11)労働・社会保険・租税の法令に違反したことの有無", "無"),
     choose("3.22", "(12)同種の業務の労働者を非自発的に離職させたことの有無", "無"),
     choose("3.23", "(13)責めに帰すべき事由により行方不明者を発生させたことの有無", "無"),
@@ -430,7 +504,7 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
     choose("3.35", "(25)違約金等の支払契約を締結していることの有無", "無"),
     choose("3.36", "(26)支援に要する費用を外国人に負担させないことの有無", "有", "特定技能1号のとき"),
     choose("3.37", "(27)次のいずれかに該当することの有無（派遣）", undefined, "労働者派遣の対象とする場合だけ。通常は空欄"),
-    choose("3.40", "(29)労災保険加入等の措置の有無", "有", `「有」の内容: ${val(groups, "(29)労災保険加入等の措置の内容") || "労災保険加入"}`),
+    item("3.40", "(29)労災保険加入等の措置の有無", "有", "choice", `「有」の内容: ${val(groups, "(29)労災保険加入等の措置の内容") || "労災保険加入"}`, org ? it("rosai_measure") : undefined, intake?.rosai_measure ?? ""),
     choose("3.41", "(30)雇用契約を継続して履行する体制が整備されていることの有無", "有"),
     choose("3.42", "(31)報酬を振込等で支払うことの有無", "有"),
     choose("3.43", "(32)適正な履行の確保につき告示で定める基準に適合することの有無", undefined, "基準が定められている分野だけ"),
@@ -438,22 +512,22 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
   ];
 
   const support: OnlineItem[] = [
-    item("5.1", "登録支援機関 (1)氏名又は名称", toZenkaku(c.officeName), "zenkaku", "全角60文字以内"),
+    item("5.1", "登録支援機関 (1)氏名又は名称", toZenkaku(c.officeName), "zenkaku", "全角60文字以内", cu("officeName"), c.officeName),
     choose("5.2", "(2)法人番号の有無", "無", "法人なら「有」にして法人番号（13桁）を入れる"),
-    item("5.3", "(3)雇用保険適用事業所番号", digitsOnly(c.koyoNo), "digits", "11桁・ハイフン無し"),
+    item("5.3", "(3)雇用保険適用事業所番号", digitsOnly(c.koyoNo), "digits", "11桁・ハイフン無し", cu("koyoNo"), c.koyoNo),
     postal("5.4", "(4)郵便番号", c.headOfficeAddress, "登録支援機関（本店）の住所から"),
-    item("5.5", "(4)所在地", toZenkaku(c.headOfficeAddress), "zenkaku", "全角85文字以内"),
-    item("5.6", "(4)電話番号", digitsOnly(c.tel), "digits"),
-    item("5.7", "(5)代表者の氏名", toZenkaku(c.representativeName), "zenkaku", "全角26文字以内"),
-    item("5.8", "(6)登録番号", toZenkaku(c.registrationNo), "zenkaku", "全角9文字（例 ２０登－００５７４６）"),
-    item("5.9", "(7)登録年月日", ymdCompact(c.registeredOn) ?? "", "date8"),
-    item("5.10", "(8)支援を行う事業所の名称", toZenkaku(c.supportOfficeName), "zenkaku", "全角60文字以内"),
+    item("5.5", "(4)所在地", toZenkaku(c.headOfficeAddress), "zenkaku", "全角85文字以内", cu("headOfficeAddress"), c.headOfficeAddress),
+    item("5.6", "(4)電話番号", digitsOnly(c.tel), "digits", undefined, cu("tel"), c.tel),
+    item("5.7", "(5)代表者の氏名", toZenkaku(c.representativeName), "zenkaku", "全角26文字以内", cu("representativeName"), c.representativeName),
+    item("5.8", "(6)登録番号", toZenkaku(c.registrationNo), "zenkaku", "全角9文字（例 ２０登－００５７４６）", cu("registrationNo"), c.registrationNo),
+    item("5.9", "(7)登録年月日", ymdCompact(c.registeredOn) ?? "", "date8", undefined, cu("registeredOn", "date"), c.registeredOn),
+    item("5.10", "(8)支援を行う事業所の名称", toZenkaku(c.supportOfficeName), "zenkaku", "全角60文字以内", cu("supportOfficeName"), c.supportOfficeName),
     postal("5.11", "(9)郵便番号", c.address, "支援を行う事業所の住所から"),
-    item("5.12", "(9)所在地", toZenkaku(c.address), "zenkaku", "全角85文字以内"),
-    item("5.13", "(10)支援責任者名", toZenkaku(c.supportManagerName), "zenkaku", "全角26文字以内"),
-    item("5.14", "(11)支援担当者名", toZenkaku(c.supportStaffName), "zenkaku", "全角26文字以内"),
-    item("5.15", "(12)対応可能言語", val(groups, "5 (12)対応可能言語"), "text", "60文字以内"),
-    item("5.16", "(13)支援委託手数料(月額/人)", digitsOnly(intake?.support_fee), "digits", "円"),
+    item("5.12", "(9)所在地", toZenkaku(c.address), "zenkaku", "全角85文字以内", cu("address"), c.address),
+    item("5.13", "(10)支援責任者名", toZenkaku(c.supportManagerName), "zenkaku", "全角26文字以内", cu("supportManagerName"), c.supportManagerName),
+    item("5.14", "(11)支援担当者名", toZenkaku(c.supportStaffName), "zenkaku", "全角26文字以内", cu("supportStaffName"), c.supportStaffName),
+    linked(groups, "5.15", "(12)対応可能言語", "5 (12)対応可能言語", "text", "60文字以内"),
+    item("5.16", "(13)支援委託手数料(月額/人)", digitsOnly(intake?.support_fee), "digits", "円", org ? it("support_fee") : undefined, intake?.support_fee ?? ""),
   ];
 
   const receipt: OnlineItem[] = [
@@ -480,7 +554,7 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
 // 1つの欄をまとめてコピーする文（手入力の項目は案内だけ）
 export function onlineSectionText(section: OnlineSection): string {
   return section.items
-    .map((i) => `${i.no ? `${i.no} ` : ""}${i.label}: ${i.value || (i.manual ? "（画面で入力）" : "未登録")}`)
+    .map((i) => `${i.no ? `${i.no} ` : ""}${i.label}: ${i.value || (i.skip ? "（記載しない）" : i.manual ? "（画面で入力）" : "未登録")}`)
     .join("\n");
 }
 

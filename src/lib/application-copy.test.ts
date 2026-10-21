@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildApplicationCopyGroups, copyGroupText, desiredResidenceStatus, totalStaff, wageForApplication, ymdCompact, ymdParts } from "./application-copy";
+import { buildApplicationCopyGroups, copyGroupText, desiredResidenceStatus, japaneseStaffMonthly, totalStaff, wageForApplication, ymdCompact, ymdParts } from "./application-copy";
 import { emptyOrganizationIntake, rosaiMeasureText } from "./organization-intake";
 import { CUSTODIAN_INFO } from "./custody";
 import { contractPeriodEnd, formatYmdJa } from "./support-plan-dates";
@@ -52,7 +52,7 @@ describe("所属機関等作成用 3（労災保険・協力確認書）", () =>
     const groups = buildApplicationCopyGroups({ worker, org, intake, wages: [], histories: [], planDates: {} });
     const g = groups.find((x) => x.title.startsWith("所属機関等作成用 3"))!;
     expect(groups.map((x) => x.title.replace(/（.*$/, ""))).toEqual([
-      "申請人等作成用 1", "申請人等作成用 2", "申請人等作成用 3", "所属機関等作成用 1", "所属機関等作成用 2", "所属機関等作成用 3", "所属機関等作成用 4", "職業紹介事業者",
+      "申請人等作成用 1", "申請人等作成用 2", "申請人等作成用 3", "所属機関等作成用 1", "所属機関等作成用 2", "所属機関等作成用 3", "所属機関等作成用 4", "職業紹介事業者", "取次機関",
     ]);
     expect(g.items[0]).toMatchObject({ label: "(29)労災保険加入等の措置の内容", value: "労災保険加入", editValue: "", edit: { target: "intake", column: "rosai_measure" } });
     expect(g.items[1]).toMatchObject({ label: "協力確認書（外国人に活動させる事業所） 提出年月日", value: "2026年4月1日", parts: ["2026", "4", "1"], editValue: "2026-04-01", edit: { target: "council", list: "office", index: 0, field: "on", kind: "date" } });
@@ -249,5 +249,58 @@ describe("ymdCompact", () => {
     expect(ymdCompact("")).toBeUndefined();
     expect(ymdCompact(null)).toBeUndefined();
     expect(ymdCompact("1994/07/10")).toBeUndefined();
+  });
+});
+
+describe("申請準備中の所属機関の賃金・日本人職員の報酬・主たる業種・取次機関", () => {
+  const worker = {
+    name: "A", kana: "", nationality: "ベトナム", birth: "1994-07-10", gender: "女", has_spouse: "無", field: "農業",
+    home_address: "", address: "", passport_no: "", passport_expiry_date: null, residence_status: "特定技能1号", residence_period: "1年",
+    residence_permit_date: null, residence_expiry_date: null, residence_card_no: "", employment_start_on: "2024-05-15",
+  };
+  const org = { name: "有限会社國崎青果", industry: "農業", business_category: "耕種農業", address: "", contact: "", corporate_no: "" };
+  const wage = (patch: Partial<WorkerWage>): WorkerWage => ({
+    id: "w1", worker_id: "x", organization_id: null, kind: "月給", amount: 182070, started_on: "2024-05-15", reason: "採用時", note: "", detail: null, created_at: "2024-05-01", updated_at: "2024-05-01", ...patch,
+  });
+  const intake = { ...emptyOrganizationIntake(), posting_annual_hours: "2080", koyo_no: "4301-629022-2", rosai_no: "43-1-01-123456-000" };
+
+  it("申請準備中の所属機関の賃金があればそれを使う（転職先の時給 → 月給換算）", () => {
+    const wages = [wage({ id: "old", amount: 182070 }), wage({ id: "new", organization_id: "org-2", kind: "時給", amount: 1200, started_on: null, created_at: "2024-06-01" })];
+    const w = wageForApplication(wages, intake, "2024-05-15", "org-2", "転職先");
+    expect(w.hourly).toBe("1200");
+    expect(w.monthly).toBe(String(Math.round((1200 * 2080) / 12)));
+    expect(w.note).toContain("所属機関「転職先」の賃金（時給1,200円）");
+    // その機関の賃金が無ければ全部からいちばん新しいもの（案内付き）
+    const f = wageForApplication([wage({})], intake, "2024-05-15", "org-9", "別の機関");
+    expect(f.monthly).toBe("182070");
+    expect(f.note).toContain("申請準備中の所属機関の賃金が未登録");
+  });
+
+  it("同等の業務に従事する日本人の月額報酬は所属機関の専従者の報酬から（時給は月額換算）", () => {
+    const withStaff = { ...intake, japanese_staff: [{ name: "山田 太郎", role: "", profile: "", pay: "月給250,000円" }] };
+    const j = japaneseStaffMonthly(withStaff, "有限会社國崎青果");
+    expect(j.monthly).toBe("250000");
+    expect(j.note).toContain("所属機関「有限会社國崎青果」の日本人常勤職員 山田 太郎");
+    const hourly = japaneseStaffMonthly({ ...intake, japanese_staff: [{ name: "", role: "", profile: "", pay: "時給1,100円" }] }, "X");
+    expect(hourly.monthly).toBe(String(Math.round((1100 * 2080) / 12)));
+    const none = japaneseStaffMonthly(intake, "X");
+    expect(none.monthly).toBe("");
+    expect(none.note).toContain("未登録");
+    // 紙の順の項目: 未登録なら所属機関の専従者（1人目）にその場で保存できる
+    const groups = buildApplicationCopyGroups({ worker, org, orgId: "org-1", intake, wages: [], histories: [], planDates: {} });
+    const items = groups.flatMap((g) => g.items);
+    expect(items.find((i) => i.label === "2 (4)同等の業務に従事する日本人の月額報酬")).toMatchObject({ value: "", edit: { target: "staff", index: 0, field: "pay" } });
+    expect(items.find((i) => i.label === "2 (4)同等の業務に従事する日本人（氏名）")).toMatchObject({ edit: { target: "staff", index: 0, field: "name" } });
+  });
+
+  it("主たる業種は所属機関に保存（未登録なら分野からの目安）、取次機関は外国人ごとに入力できる", () => {
+    const groups = buildApplicationCopyGroups({ worker, org, intake, wages: [], histories: [], planDates: {} });
+    const items = groups.flatMap((g) => g.items);
+    const main = items.find((i) => i.label === "3 (4)業種 主たる業種");
+    expect(main).toMatchObject({ value: "", edit: { target: "org", column: "main_industry" } });
+    expect(main?.note).toContain("農林業");
+    expect(items.find((i) => i.label === "(14)取次機関 氏名又は名称")).toMatchObject({ value: "", edit: { target: "worker", column: "agency_name" } });
+    const g2 = buildApplicationCopyGroups({ worker, org: { ...org, main_industry: "農林業" }, intake, wages: [], histories: [], planDates: {} });
+    expect(g2.flatMap((g) => g.items).find((i) => i.label === "3 (4)業種 主たる業種")?.value).toBe("農林業");
   });
 });

@@ -4,6 +4,7 @@ import {
   buildOnlineApplication,
   councilFreeText,
   digitsOnly,
+  employmentStandardChoice,
   fieldSpecificChoice,
   hours4,
   industryFieldChoice,
@@ -213,8 +214,8 @@ describe("buildOnlineApplication", () => {
     expect(fieldSpecificChoice("造船・舶用工業／溶接")).toBe("有");
     expect(fieldSpecificChoice("農業分野")).toBe(NEITHER);
     expect(get("(2)従事すべき業務の内容 特定産業分野01")?.value).toBe("農業分野");
-    // 2.5 主たる職種: 未登録なら画面で選ぶ（農業は農林漁業従事者が目安）。登録していればその値
-    expect(get("(2)従事すべき業務の内容 職種 主たる職種")?.manual).toBe(true);
+    // 2.5 主たる職種: 未登録ならその場で職種一覧から選んで保存（農業は農林漁業従事者が目安）。登録していればその値
+    expect(get("(2)従事すべき業務の内容 職種 主たる職種")?.edit).toMatchObject({ target: "worker", column: "main_occupation" });
     expect(get("(2)従事すべき業務の内容 職種 主たる職種")?.note).toContain("農林漁業従事者");
     const s4 = buildOnlineApplication({ ...input, worker: { ...worker, main_occupation: "農林漁業従事者" } }, buildApplicationCopyGroups(input));
     expect(s4.flatMap((s) => s.items).find((i) => i.no === "2.5")?.value).toBe("農林漁業従事者");
@@ -224,6 +225,70 @@ describe("buildOnlineApplication", () => {
     expect(get("取次者(オンラインシステム利用者) (1)氏名")?.value).toBe("秋吉　伽恋");
     const s3 = buildOnlineApplication({ ...input, agentName: "野口 明菜" }, buildApplicationCopyGroups(input));
     expect(s3.flatMap((s) => s.items).find((i) => i.label === "取次者(オンラインシステム利用者) (1)氏名")?.value).toBe("野口　明菜");
+  });
+
+  it("2.9〜2.20 は運用どおりの値、2.21〜2.29 は記載しない、2.17 は分野で決まる", () => {
+    expect(get("(3)所定労働時間が通常の労働者と同等であることの有無")?.value).toBe("有");
+    expect(get("(4)報酬の額が日本人と同等以上であることの有無")?.value).toBe("有");
+    expect(get("(6)外国人であることを理由に異なった待遇としている事項の有無")?.value).toBe("無");
+    expect(get("(7)一時帰国を希望した場合に有給休暇を取得させることの有無")?.value).toBe("有");
+    expect(get("(8)雇用関係につき告示で定められる基準に適合していることの有無")?.value).toBe(NEITHER); // 農業
+    expect(employmentStandardChoice("飲食料品製造業")).toBe("有");
+    expect(employmentStandardChoice("木材産業分野")).toBe("有");
+    expect(employmentStandardChoice("介護")).toBe(NEITHER);
+    expect(get("(9)帰国旅費を負担し必要な措置をすることの有無")?.value).toBe("有");
+    expect(get("(10)健康・生活の状況を把握するための措置を講ずることの有無")?.value).toBe("有");
+    expect(get("(11)特定産業分野に特有の基準に適合していることの有無")?.value).toBe(NEITHER);
+    expect(get("(12)派遣先")).toMatchObject({ no: "2.21〜2.29", skip: true, value: "" });
+    // 2.10/2.11 は申請準備中の所属機関の賃金（月給 → 時給換算）
+    expect(get("(4)月額報酬")?.value).toBe("182070");
+    const hoursIn = { ...input, intake: { ...intake, posting_annual_hours: "2080" } };
+    const s6 = buildOnlineApplication(hoursIn, buildApplicationCopyGroups(hoursIn)).flatMap((s) => s.items);
+    expect(s6.find((i) => i.no === "2.11")?.value).toBe(String(Math.round((182070 * 12) / 2080)));
+    // 2.12 は所属機関の専従者の報酬（未登録ならその場で入力して所属機関に保存できる）
+    expect(get("(4)同等の業務に従事する日本人の月額報酬")).toMatchObject({ no: "2.12", value: "", edit: { target: "staff", index: 0, field: "pay" } });
+    const s5 = buildOnlineApplication(
+      { ...input, intake: { ...intake, japanese_staff: [{ name: "山田", role: "", profile: "", pay: "月給250,000円" }] } },
+      buildApplicationCopyGroups({ ...input, intake: { ...intake, japanese_staff: [{ name: "山田", role: "", profile: "", pay: "月給250,000円" }] } }),
+    );
+    expect(s5.flatMap((s) => s.items).find((i) => i.no === "2.12")?.value).toBe("250000");
+  });
+
+  it("職業紹介事業者はあっせんありのとき、取次機関は認定申請のときだけ入れる", () => {
+    // あっせん未定: 値は出して案内する
+    expect(get("(13)職業紹介事業者 氏名又は名称")?.value).toBe("ＶＵＯＮＧ　ＶＡＮ　ＴＨＡＮＨ");
+    expect(get("(13)職業紹介事業者 雇用保険適用事業所番号")?.value).toBe("43016290222");
+    expect(get("(14)取次機関")).toMatchObject({ no: "2.38〜2.42", skip: true });
+    // あっせんなし: 記載しない
+    const none = buildOnlineApplication({ ...input, assen: "なし" }, buildApplicationCopyGroups(input)).flatMap((s) => s.items);
+    expect(none.find((i) => i.no === "2.30〜2.37")).toMatchObject({ skip: true });
+    expect(none.find((i) => i.no === "2.32")).toBeUndefined();
+    // あっせんあり: 2.30〜2.37 を出す（2.32 は登録支援機関の雇用保険適用事業所番号）
+    const yes = buildOnlineApplication({ ...input, assen: "あり" }, buildApplicationCopyGroups(input)).flatMap((s) => s.items);
+    expect(yes.find((i) => i.no === "2.32")?.value).toBe("43016290222");
+    expect(yes.find((i) => i.no === "2.30〜2.37")).toBeUndefined();
+    // 認定申請: 取次機関 2.38〜2.42 を外国人ごとに入力・保存できる（登録値はハイフン無しで出す）
+    const nintei = buildOnlineApplication(
+      { ...input, appType: "認定", worker: { ...worker, agency_name: "ABC Co., Ltd", agency_tel: "+84-24-1234-5678" } },
+      buildApplicationCopyGroups(input),
+    ).flatMap((s) => s.items);
+    expect(nintei.find((i) => i.no === "2.38")).toMatchObject({ value: "ＡＢＣ　Ｃｏ.,　Ｌｔｄ", edit: { target: "worker", column: "agency_name" }, editValue: "ABC Co., Ltd" });
+    expect(nintei.find((i) => i.no === "2.42")).toMatchObject({ value: "842412345678", edit: { target: "worker", column: "agency_tel" } });
+    expect(nintei.find((i) => i.no === "2.38〜2.42")).toBeUndefined();
+  });
+
+  it("3.1〜3.43 は所属機関の情報から出て、その場で編集できる（番号はハイフン無しでコピー）", () => {
+    expect(get("(3)雇用保険適用事業所番号")).toMatchObject({ no: "3.3", value: "43016290222", edit: { target: "intake", column: "koyo_no" }, editValue: "4301-629022-2" });
+    expect(get("(4)業種 主たる業種")).toMatchObject({ no: "3.4", value: "", edit: { target: "org", column: "main_industry" } });
+    expect(get("(4)業種 主たる業種")?.note).toContain("農林業");
+    expect(get("(9)代表者の氏名")).toMatchObject({ value: "國崎　太郎", edit: { target: "intake", column: "rep_name" } });
+    expect(get("特定技能所属機関 (1)氏名又は名称")?.edit).toMatchObject({ target: "org", column: "name" });
+    const withRosai = buildOnlineApplication({ ...input, intake: { ...intake, rosai_no: "43-1-01-123456-000" } }, buildApplicationCopyGroups(input)).flatMap((s) => s.items);
+    expect(withRosai.find((i) => i.no === "3.20")).toMatchObject({ value: "43101123456000", editValue: "43-1-01-123456-000" });
+    // 身分事項・登録支援機関もその場で保存できる
+    expect(get("氏名")?.edit).toMatchObject({ target: "worker", column: "name" });
+    expect(get("登録支援機関 (1)氏名又は名称")?.edit).toMatchObject({ target: "custodian", column: "officeName" });
+    expect(onlineSectionText({ title: "t", items: [get("(12)派遣先")!] })).toBe("2.21〜2.29 (12)派遣先: （記載しない）");
   });
 
   it("登録支援機関・受領方法・フリー欄", () => {
