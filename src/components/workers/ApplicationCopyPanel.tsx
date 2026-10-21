@@ -43,7 +43,7 @@ export function ApplicationCopyPanel({
   orgId: string | null;
   todoNo: string;
   desiredStatus?: string; // 希望する在留資格（申請種別から）
-  agentName?: string; // 申請準備の申請取次士（オンライン申請の取次者の氏名に使う）
+  agentName?: string; // 申請準備の申請取次士（TODO の agent_name。オンライン申請の取次者の氏名に使う。担当者ではない）
   assen?: string; // あっせんの有無（'' / あり / なし。オンライン申請の職業紹介事業者 2.30〜2.37 を出すか）
   appType?: string; // 申請種別（認定 / 変更 / 更新。認定のとき取次機関 2.38〜2.42 を入れる）
   canEdit?: boolean; // true: 項目をこの場で入力・編集して保存できる

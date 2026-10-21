@@ -27,12 +27,13 @@ describe("許可のお知らせ画像のデータ", () => {
   it("申請から1枠ぶんの項目を作る（空は — や未登録にする）", () => {
     const items = buildApprovalNoticeItems(
       [app, { ...app, id: "a2", organizationName: null, assignee: "", applicationNumber: "", applicationContent: "", approvalDate: undefined }],
-      { today: "2026-10-18", via: "はがき", custodyNoLabel: (a) => (a.id === "a1" ? "012" : "—"), tantouLabel: (a) => (a.id === "a1" ? "野口" : "") },
+      { today: "2026-10-18", via: "はがき", custodyNoLabel: (a) => (a.id === "a1" ? "012" : "—"), tantouLabel: (a) => (a.id === "a1" ? "野口" : ""), todoNoLabel: (a) => (a.id === "a1" ? "T-245" : "") },
     );
     expect(items[0]).toEqual({
       id: "a1",
       name: "NGUYEN THI HONG",
       org: "有限会社國崎青果",
+      todoNo: "T-245",
       tantou: "野口",
       assignee: "木村",
       custodyNo: "012",
@@ -42,14 +43,18 @@ describe("許可のお知らせ画像のデータ", () => {
       noticeDate: "2026-10-17",
       via: "はがき",
     });
-    expect(items[1]).toMatchObject({ org: "所属機関未設定", tantou: "—", assignee: "—", custodyNo: "—", applicationNo: "未登録", content: "未登録", noticeDate: "2026-10-18" });
-    // 枠の項目: 1行目に連絡が来た日・担当者・取次士、3行目に申請内容
-    expect(fieldRowsOf(items[0]).map((r) => r.map((f) => f.label))).toEqual([
-      ["許可の連絡が来た日", "担当者", "取次士"],
-      ["預り番号", "申請日", "申請番号"],
-      ["申請内容"],
+    expect(items[1]).toMatchObject({ org: "所属機関未設定", todoNo: "—", tantou: "—", assignee: "—", custodyNo: "—", applicationNo: "未登録", content: "未登録", noticeDate: "2026-10-18" });
+    // 枠の項目: 1行目に連絡が来た日・TODO番号・担当者、2行目に申請日・申請番号・申請内容、3行目に取次士（薄い赤）・預り番号
+    const rows = fieldRowsOf(items[0]);
+    expect(rows.map((r) => r.map((f) => f.label))).toEqual([
+      ["許可の連絡が来た日", "TODO番号", "担当者"],
+      ["申請日", "申請番号", "申請内容"],
+      ["取次士", "預り番号"],
     ]);
-    expect(fieldRowsOf(items[0])[0][1].value).toBe("野口");
+    expect(rows[0][1].value).toBe("T-245");
+    expect(rows[0][2].value).toBe("野口");
+    expect(rows[2][0]).toMatchObject({ value: "木村", tone: "alert" });
+    expect(rows[0][0].tone).toBe("ok");
   });
 
   it("右上の人数は許可人数（全体）と何枚目か", () => {

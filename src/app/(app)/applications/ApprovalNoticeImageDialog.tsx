@@ -26,12 +26,14 @@ export function ApprovalNoticeImageDialog({
   today,
   custodyNoLabel,
   tantouLabel,
+  todoNoLabel,
   onClose,
 }: {
   apps: Application[];
   today: string;
   custodyNoLabel: (app: Application) => string; // 預り番号（預かっていなければ「—」）
   tantouLabel?: (app: Application) => string; // 担当者（申請準備のTODOの担当者）
+  todoNoLabel?: (app: Application) => string; // 申請準備のTODO番号
   onClose: () => void;
 }) {
   // 預り番号は開いた時点のものを使う（毎回計算し直さない）
@@ -40,6 +42,9 @@ export function ApprovalNoticeImageDialog({
   );
   const [tantous] = useState<Record<string, string>>(() =>
     Object.fromEntries(apps.map((a) => [a.id, tantouLabel?.(a) ?? ""])),
+  );
+  const [todoNos] = useState<Record<string, string>>(() =>
+    Object.fromEntries(apps.map((a) => [a.id, todoNoLabel?.(a) ?? ""])),
   );
   // まとめて決める「連絡が来た日」「手段」。人ごとに直したものは overrides に入る
   const [dateAll, setDateAll] = useState(today);
@@ -57,9 +62,10 @@ export function ApprovalNoticeImageDialog({
         via,
         custodyNoLabel: (a) => custodyNos[a.id] ?? "—",
         tantouLabel: (a) => tantous[a.id] ?? "",
+        todoNoLabel: (a) => todoNos[a.id] ?? "",
         overrides,
       }),
-    [apps, today, via, custodyNos, tantous, overrides],
+    [apps, today, via, custodyNos, tantous, todoNos, overrides],
   );
   const chunks = useMemo(() => chunkApprovalNoticeItems(items, perImage), [items, perImage]);
 
@@ -111,7 +117,7 @@ export function ApprovalNoticeImageDialog({
       <div className="flex flex-col gap-3">
         <p className="text-[11px] leading-relaxed text-muted">
           選んだ人を1人1枠で並べた画像を作ります。右上に許可人数（全体）が出て、何枚かに分けたときは「1枚目／2枚（1〜5番）」のように枚数と通し番号も出ます。
-          担当者は申請準備のTODOの担当者です。「画像をコピー」のあと Messenger の入力欄で貼り付け（長押し→ペースト／Ctrl+V）すると、
+          TODO番号・担当者は申請準備のTODOのものです。取次士は薄い赤の枠で出ます。「画像をコピー」のあと Messenger の入力欄で貼り付け（長押し→ペースト／Ctrl+V）すると、
           そのまま送れます。連絡が来た日は、申請に許可日があればその日、無ければ今日が入っています。
         </p>
 

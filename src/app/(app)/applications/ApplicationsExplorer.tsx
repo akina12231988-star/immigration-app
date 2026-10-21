@@ -837,6 +837,7 @@ export function ApplicationsExplorer({
           today={TODAY}
           custodyNoLabel={custodyNoLabel}
           tantouLabel={tantouOf}
+          todoNoLabel={(a) => workerFor(a)?.residence_renewal_todo ?? ""}
           onClose={() => setNoticeOpen(false)}
         />
       )}
