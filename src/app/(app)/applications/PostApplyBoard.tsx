@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, ClipboardList, ExternalLink, PackageCheck } from "lucide-react";
+import { AlertTriangle, Check, ClipboardList, ExternalLink, PackageCheck } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -14,6 +14,8 @@ import { PostApplyMailingPanel } from "@/components/workers/PostApplyMailingPane
 import { PostApplyItemNotes } from "@/components/workers/PostApplyItemNotes";
 import {
   addPostApplyNote,
+  applicationAgeAlert,
+  applicationMetaText,
   openPostApplyCount,
   postApplyDocKey,
   postApplyMailingRecords,
@@ -54,6 +56,7 @@ export function PostApplyBoard({
   onChanged: (entry: PostApplyEntry) => void;
 }) {
   const [error, setError] = useState<string | null>(null);
+  const today = todayStr();
 
   // 外国人ごとのいちばん新しい申請（申請詳細へのリンク）
   const appByWorker = useMemo(() => {
@@ -125,11 +128,22 @@ export function PostApplyBoard({
             <Card key={e.checklistId} className="p-3.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="text-sm font-bold">{e.workerName || "氏名不明"}</p>
+                  <p className="flex flex-wrap items-baseline gap-x-2 text-sm font-bold">
+                    {e.workerName || "氏名不明"}
+                    {/* 申請日・申請番号を名前の横に出す（入管へ問い合わせるときにすぐ分かるように） */}
+                    {app && <span className="text-[11px] font-normal tabular-nums text-muted">{applicationMetaText(app)}</span>}
+                  </p>
                   <p className="text-[11px] text-muted">
                     {e.todoNo || "TODO番号未設定"}
                     {app ? `　${app.applicationContent || "申請内容未入力"}（${app.status}）` : ""}
                   </p>
+                  {/* 申請から1か月以上たってまだ結果が出ていない */}
+                  {applicationAgeAlert(app, today) && (
+                    <p className="mt-1 inline-flex items-center gap-1 rounded-lg bg-seal/10 px-2 py-1 text-xs font-bold text-seal">
+                      <AlertTriangle size={13} />
+                      {applicationAgeAlert(app, today)}
+                    </p>
+                  )}
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-1.5">
                   <Link
@@ -266,6 +280,10 @@ export function PostApplyBoard({
                       r.workerName || "氏名不明"
                     )}
                     {r.todoNo && <span className="ml-1 font-normal text-muted">（{r.todoNo}）</span>}
+                    {app && <span className="block text-[10px] font-normal tabular-nums text-muted">{applicationMetaText(app)}</span>}
+                    {applicationAgeAlert(app, today) && (
+                      <span className="block text-[10px] font-bold text-seal">{applicationAgeAlert(app, today)}</span>
+                    )}
                   </span>
                   <span className="min-w-0 flex-1 break-words">{r.mailing.doc_ids.map(prepDocLabel).join("・")}</span>
                   <span className="shrink-0 text-muted">
