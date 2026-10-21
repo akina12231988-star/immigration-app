@@ -3,6 +3,9 @@ import { SSW_INDUSTRY_CATEGORIES } from "@/lib/industries";
 // オンライン申請 2.4「従事すべき業務の内容 業務区分01」のプルダウン（分野ごと）。
 // 画面の選択肢と同じ並びにそろえた分野はここに書く。無い分野は会社・機関マスタの業務区分（SSW_INDUSTRY_CATEGORIES）を使う
 export const ONLINE_BUSINESS_CATEGORIES: Record<string, readonly string[]> = {
+  介護: ["介護"],
+  ビルクリーニング: ["ビルクリーニング"],
+  リネンサプライ: ["リネンサプライ"],
   工業製品製造業: [
     "機械金属加工",
     "電気電子機器組立て",

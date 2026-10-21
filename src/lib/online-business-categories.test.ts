@@ -9,6 +9,11 @@ describe("businessCategoryOptions", () => {
     expect(businessCategoryOptions("造船・舶用工業")).toEqual(["造船", "舶用機械", "舶用電気電子機器"]);
     expect(businessCategoryOptions("造船・船用工業分野")).toEqual(["造船", "舶用機械", "舶用電気電子機器"]); // 「船用」と書かれても同じ
   });
+  it("介護・ビルクリーニング・リネンサプライは区分が1つ（分野名と同じ）", () => {
+    expect(businessCategoryOptions("介護分野")).toEqual(["介護"]);
+    expect(businessCategoryOptions("ビルクリーニング")).toEqual(["ビルクリーニング"]);
+    expect(businessCategoryOptions("リネンサプライ")).toEqual(["リネンサプライ"]);
+  });
   it("画面の並びを登録していない分野は会社・機関マスタの業務区分", () => {
     expect(businessCategoryOptions("農業")).toEqual(["耕種農業全般", "畜産農業全般"]);
   });
