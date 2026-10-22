@@ -63,6 +63,9 @@ import {
   isAwaitingRepayment,
   NO_BOX_MIGRATION,
   NO_BOX_NO,
+  SLIPS_MAILED_MIGRATION,
+  hasNoSlips,
+  noSlipsReason,
   shouldReleaseBox,
   usesBox,
   isAwaitingReply,
@@ -179,9 +182,10 @@ export function RemindersClient({
 
   const patchReminder = async (r: ReminderWithWorker, patch: Partial<ReminderWithWorker>) => {
     setError(null);
-    // 当社が代わりに全部払った（納付書が無くなった）ら、番号の箱から出して番号を返す
+    // 納付書が手元に無くなった（全部納付済み・当社が代わりに全部払った・残りを本人へ郵送した）ら、
+    // 番号の箱から出して番号を返す。番号を指定して直している（もらい直す）ときはそのまま
     const merged = { ...r, ...patch };
-    if (shouldReleaseBox(merged)) patch = { ...patch, reminder_no: NO_BOX_NO };
+    if (!("reminder_no" in patch) && shouldReleaseBox(merged)) patch = { ...patch, reminder_no: NO_BOX_NO };
     try {
       const { workers: _w, id: _i, ...rest } = patch;
       void _w;
@@ -195,6 +199,8 @@ export function RemindersClient({
         ? AMOUNT_MIGRATION
         : keys.some((k) => k.startsWith("advance_"))
           ? ADVANCE_MIGRATION
+          : keys.some((k) => k.startsWith("slips_mailed"))
+            ? SLIPS_MAILED_MIGRATION
           : keys.includes("reminder_no")
             ? NO_BOX_MIGRATION
             : MIGRATION;
@@ -240,6 +246,7 @@ export function RemindersClient({
         外国人に届いた市役所からの通知・領収書などを本人に知らせ、連絡した → 返事があった → 完了 を追いかける画面です。
         番号は保管ボックスと同じように1〜{REMINDER_BOX_SIZE}番を使い、完了すると空き番号になって次の人に割り当てられます
         （{REMINDER_BOX_SIZE}番まで埋まったときだけ{REMINDER_BOX_SIZE + 1}番以降を使います）。
+        納付書が手元に無くなったとき（全部納付済み・当社が代わりに全部払った・残りを本人へ郵送した）も番号を空けます。
         Messengerでの会話はスクショをドラッグ＆ドロップで貼り付けて残せます。
       </p>
 
@@ -279,7 +286,8 @@ export function RemindersClient({
       <Card className="p-3">
         <p className="mb-2 text-[11px] font-bold text-muted">
           番号の箱（1〜{REMINDER_BOX_SIZE}）＝納付書が入っている人。空きは灰色、使っている番号は名前が出ます。
-          当社が代わりに全部払って納付書が無くなった人は箱から出て、下の「立替・本人からの支払い待ち」に載ります
+          納付書が手元に無くなった人（全部納付済み・当社が代わりに全部払った・残りを本人へ郵送した）は箱から出て番号が空きます。
+          当社が代わりに払って本人からまだ受け取っていない人は、下の「立替・本人からの支払い待ち」に載ります
         </p>
         <div className="grid grid-cols-5 gap-1.5 sm:grid-cols-6 md:grid-cols-10">
           {boxes.map((b) => (
@@ -970,6 +978,7 @@ function ReminderModal({
 }) {
   const [note, setNote] = useState(reminder.note);
   const [content, setContent] = useState(reminder.content);
+  const [slipsMailedNote, setSlipsMailedNote] = useState(reminder.slips_mailed_note ?? "");
   const [images, setImages] = useState<ReminderImage[] | null>(null);
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
@@ -1132,14 +1141,22 @@ function ReminderModal({
                 完了したので {formatReminderNo(reminder.reminder_no)} は空き番号になりました。
               </p>
             )}
-            {/* 箱なし（当社が全部払って納付書が無い）。番号を返した旨と、間違いなら番号をもらい直せる */}
+            {/* 箱なし（納付書が手元に無い）。番号を返した旨と、間違いなら番号をもらい直せる */}
             {reminder.status !== "完了" && reminder.reminder_no === NO_BOX_NO && (
               <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
-                当社が代わりに全部払ったので納付書は無く、番号の箱からは出ています（立替・本人からの支払い待ち）。
+                {noSlipsReason(reminder) || "納付書が手元に無いので"}
+                {noSlipsReason(reminder) ? "。納付書は手元に無く、" : "、"}番号の箱からは出ています
+                {isAwaitingRepayment(reminder) && "（立替・本人からの支払い待ち）"}。
                 {canWrite && (
                   <button
                     type="button"
-                    onClick={() => void onPatch({ reminder_no: nextReminderNo(activeNos) })}
+                    onClick={() =>
+                      void onPatch({
+                        reminder_no: nextReminderNo(activeNos),
+                        // 郵送の記録で箱から出ていたときは、その記録も外す（そのままだと次の保存でまた箱から出る）
+                        ...(reminder.slips_mailed_on ? { slips_mailed_on: null } : {}),
+                      })
+                    }
                     className="rounded-lg border border-border px-2 py-0.5 text-[11px] font-bold text-brand"
                   >
                     番号をもらい直す（納付書がまだある）
@@ -1147,9 +1164,9 @@ function ReminderModal({
                 )}
               </p>
             )}
-            {reminder.status !== "完了" && reminder.reminder_no > NO_BOX_NO && isAwaitingRepayment(reminder) && canWrite && (
+            {reminder.status !== "完了" && reminder.reminder_no > NO_BOX_NO && hasNoSlips(reminder) && canWrite && (
               <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
-                当社が全部払ったので納付書は無いはずです。
+                {noSlipsReason(reminder)}。納付書は手元に無いはずです。
                 <button
                   type="button"
                   onClick={() => void onPatch({ reminder_no: NO_BOX_NO })}
@@ -1158,6 +1175,49 @@ function ReminderModal({
                   番号を返して箱から出す
                 </button>
               </p>
+            )}
+            {/* 残りの納付書を本人へ郵送した（手元に無くなった）記録。入れると番号の箱から出る */}
+            {reminder.status !== "完了" && (
+              <div className="mt-2 rounded-xl border border-border bg-background p-2.5">
+                <p className="text-[11px] font-bold text-muted">
+                  残りの納付書を本人へ郵送した（納付書が手元に無くなった）
+                </p>
+                <p className="mt-0.5 text-[10px] text-muted">
+                  未払いの納付書を本人に送って手元に無くなったら、郵送した日を入れてください。番号の箱から出て番号が空きます（督促自体は続きます）。
+                </p>
+                <div className="mt-1.5 flex flex-wrap items-end gap-2">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] font-bold text-muted">郵送した日</span>
+                    <input
+                      type="date"
+                      value={reminder.slips_mailed_on ?? ""}
+                      disabled={!canWrite}
+                      onChange={(e) => onPatch({ slips_mailed_on: e.target.value || null })}
+                      className="min-h-[36px] rounded-lg border border-border bg-background px-2 text-xs"
+                    />
+                  </label>
+                  <label className="flex min-w-[12rem] flex-1 flex-col gap-1">
+                    <span className="text-[11px] font-bold text-muted">メモ（追跡番号・何を送ったか）</span>
+                    <input
+                      value={slipsMailedNote}
+                      onChange={(e) => setSlipsMailedNote(e.target.value)}
+                      onBlur={() => slipsMailedNote !== (reminder.slips_mailed_note ?? "") && onPatch({ slips_mailed_note: slipsMailedNote })}
+                      disabled={!canWrite}
+                      placeholder="例: 第3期・第4期の納付書。追跡番号 1234-5678-9012"
+                      className="min-h-[36px] rounded-lg border border-border bg-background px-2 text-xs focus:border-brand focus:outline-none"
+                    />
+                  </label>
+                  {canWrite && !reminder.slips_mailed_on && (
+                    <button
+                      type="button"
+                      onClick={() => void onPatch({ slips_mailed_on: today })}
+                      className="min-h-[36px] rounded-lg border border-border px-3 text-xs font-bold text-brand"
+                    >
+                      今日郵送した
+                    </button>
+                  )}
+                </div>
+              </div>
             )}
             {completionBlockedReason(reminder) && (
               <p className="mt-1 text-xs font-bold text-seal">{completionBlockedReason(reminder)}</p>

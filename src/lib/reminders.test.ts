@@ -355,11 +355,34 @@ describe("箱なし（当社が全部立て替えて納付書が無い督促）"
     expect(isFullyAdvanced(half)).toBe(false);
     expect(shouldReleaseBox(half)).toBe(false);
   });
-  it("本人が払う督促や、まだ払っていない立替は対象外", async () => {
-    const { shouldReleaseBox } = await import("./reminders");
-    expect(shouldReleaseBox({ ...base, payer: "本人" })).toBe(false);
+  it("本人が払う督促でも内訳が全部納付済みなら箱から出す。まだ払っていない立替は対象外", async () => {
+    const { shouldReleaseBox, isAllPaid, noSlipsReason } = await import("./reminders");
+    // 本人が全部払った（領収書の確認待ちなど、まだ完了にしていない）→ 納付書は無いので番号を空ける
+    expect(shouldReleaseBox({ ...base, payer: "本人" })).toBe(true);
+    expect(noSlipsReason({ ...base, payer: "本人" })).toBe("全部納付済みです");
+    expect(noSlipsReason(base)).toBe("当社が代わりに全部払いました");
+    // 本人が払う督促で1つでも未払いがあれば箱のまま
+    const half = { ...base, payer: "本人" as const, amount_items: [base.amount_items[0], { ...base.amount_items[1], paid_on: null }] };
+    expect(isAllPaid(half)).toBe(false);
+    expect(shouldReleaseBox(half)).toBe(false);
+    // 内訳が無いときは立替の支払日があるときだけ
     expect(shouldReleaseBox({ ...base, amount_items: [], advance_paid_on: null })).toBe(false);
+    expect(shouldReleaseBox({ ...base, payer: "本人", amount_items: [], advance_paid_on: "2026-09-01" })).toBe(false);
     expect(shouldReleaseBox({ ...base, amount_items: [], advance_paid_on: "2026-09-01" })).toBe(true);
+  });
+  it("残りの納付書を本人へ郵送したら、未払いが残っていても箱から出す", async () => {
+    const { shouldReleaseBox, hasNoSlips, noSlipsReason, isAwaitingRepayment } = await import("./reminders");
+    const half = { ...base, payer: "本人" as const, amount_items: [base.amount_items[0], { ...base.amount_items[1], paid_on: null }] };
+    expect(shouldReleaseBox(half)).toBe(false);
+    const mailed = { ...half, slips_mailed_on: "2026-10-20" };
+    expect(hasNoSlips(mailed)).toBe(true);
+    expect(shouldReleaseBox(mailed)).toBe(true);
+    expect(noSlipsReason(mailed)).toBe("残りの納付書を本人へ郵送しました（2026-10-20）");
+    // 郵送しただけでは立替・支払い待ちの一覧には載らない
+    expect(isAwaitingRepayment(mailed)).toBe(false);
+    // 完了や箱なし（0）の督促は対象外
+    expect(shouldReleaseBox({ ...mailed, status: "完了" as const })).toBe(false);
+    expect(shouldReleaseBox({ ...mailed, reminder_no: 0 })).toBe(false);
   });
   it("本人から全額受け取ったら支払い待ちから外れる。完了も外れる", async () => {
     const { isAwaitingRepayment } = await import("./reminders");

@@ -1087,7 +1087,9 @@ export interface Reminder extends Partial<ReminderAdvance> {
   payer?: ReminderPayer | ""; // 誰が払うか（0151。空は未設定）
   amount_items?: ReminderAmountItem[]; // 金額の内訳（0151）
   due_on?: string | null; // 支払期限（内訳の一番早い期限。0151）
-  reminder_no: number; // 番号（1〜30を保管ボックスのように使い、完了で空きになる）
+  slips_mailed_on?: string | null; // 残りの納付書を本人へ郵送した日（0191。入れると箱から出る）
+  slips_mailed_note?: string; // 郵送のメモ（追跡番号など。0191）
+  reminder_no: number; // 番号（1〜30を保管ボックスのように使い、完了で空きになる。0 は箱なし）
   worker_id: string;
   kind: string; // 種類
   content: string; // 内容（何を知らせるか・何をしてもらうか）
