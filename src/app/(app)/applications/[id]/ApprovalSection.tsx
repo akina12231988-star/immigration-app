@@ -88,6 +88,8 @@ export function ApprovalSection({
   // いまの登録内容を初期表示し、変えて保存すると外国人情報にも反映される
   const [grantResidenceStatus, setGrantResidenceStatus] = useState("");
   const [grantResidencePeriod, setGrantResidencePeriod] = useState("");
+  // 在留期間の注意事項（0192）。申請に残し、保存で外国人詳細（在留期間の下・書類タブ・申請準備）にも出す
+  const [grantPeriodNote, setGrantPeriodNote] = useState(app.grantedPeriodNote ?? "");
 
   // 雇用開始日・在留資格（許可報告の下）
   const [employmentStartOn, setEmploymentStartOn] = useState(app.employmentStartOn ?? "");
@@ -299,6 +301,7 @@ export function ApprovalSection({
         grantedCardNo: form.grantedCardNo,
         grantedPermitDate: form.grantedPermitDate || undefined,
         grantedExpiryDate: form.grantedExpiryDate || undefined,
+        grantedPeriodNote: grantPeriodNote.trim(),
         reportOrgHonorific: honorific,
       });
       if (app.workerId) {
@@ -306,6 +309,8 @@ export function ApprovalSection({
           residence_card_no: form.grantedCardNo,
           residence_permit_date: form.grantedPermitDate || null,
           residence_expiry_date: form.grantedExpiryDate || null,
+          // 在留期間の注意事項も外国人詳細に反映する（この申請の内容が最新になる）
+          residence_period_note: grantPeriodNote.trim(),
           // 在留資格・在留期間も外国人詳細の在留カードと同じ内容として反映する（未入力なら変えない）
           ...(grantResidenceStatus ? { residence_status: grantResidenceStatus.normalize("NFKC").trim() } : {}),
           // 特定技能1号（特定活動を含む）→特定技能2号（移行準備の特定活動を含む）になったら支援委託は終了。
@@ -595,6 +600,18 @@ export function ApprovalSection({
                 </div>
               )}
             </Labeled>
+            <Labeled label="在留期間の注意事項">
+              <textarea
+                value={grantPeriodNote}
+                onChange={(e) => setGrantPeriodNote(e.target.value)}
+                rows={2}
+                placeholder="例: 在留期間が6月のため、次の更新は満了日の3か月前（◯月）から準備"
+                className={`${INPUT_CLASS} min-h-[44px] py-2`}
+              />
+              <p className="mt-1 text-[11px] text-muted">
+                「許可情報を保存」で外国人詳細の在留期間の下・書類タブ・申請準備の在留カードの欄に薄い赤で出ます
+              </p>
+            </Labeled>
           </div>
           {/* 許可日と期限日から出した在留期間。空欄なら自動で入り、違う値を入れたときは知らせる */}
           {(autoPeriod || spanText) && (
@@ -616,7 +633,7 @@ export function ApprovalSection({
             </p>
           )}
           <p className="-mt-1 text-[11px] text-muted">
-            在留カード番号・許可日・期限日・在留資格・在留期間は、「許可情報を保存」で外国人詳細の在留カードの内容にも反映されます。
+            在留カード番号・許可日・期限日・在留資格・在留期間・在留期間の注意事項は、「許可情報を保存」で外国人詳細の在留カードの内容にも反映されます。
             在留資格が特定技能2号（移行準備の特定活動を含む）なら、支援区分は自動で「支援対象外」になります（支援委託は許可日の前日で終了。それまでの月は名簿に載ります）。
           </p>
 
@@ -674,6 +691,14 @@ export function ApprovalSection({
               uploading={uploading === "在留カード"}
               multiple
               onSelect={(list) => onUpload("在留カード", list)}
+              onDelete={onDeleteFile}
+            />
+            <FileGroup
+              label="在留カード等読取アプリケーションで照合結果（複数枚可）"
+              files={files.filter((f) => f.kind === "照合結果")}
+              uploading={uploading === "照合結果"}
+              multiple
+              onSelect={(list) => onUpload("照合結果", list)}
               onDelete={onDeleteFile}
             />
             <FileGroup

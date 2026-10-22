@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CreditCard, FileText, ImagePlus, Trash2 } from "lucide-react";
+import { CreditCard, FileText, ImagePlus, ScanSearch, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { uploadWorkerDoc } from "@/lib/worker-docs";
@@ -14,7 +14,14 @@ import {
 import { buildPastPeriods, docPeriodDate, periodKeyFor } from "@/lib/worker-doc-periods";
 import type { WorkHistoryRow } from "@/types/db";
 
-type Kind = "在留カード" | "指定書";
+type Kind = "在留カード" | "照合結果" | "指定書";
+
+// 書類タブでの見出し（照合結果は正式な名前で出す）
+const KIND_LABELS: Record<Kind, string> = {
+  在留カード: "在留カード",
+  照合結果: "在留カード等読取アプリケーションで照合結果",
+  指定書: "指定書",
+};
 
 // PDFかどうか（imgタグでは表示できないため、埋め込み表示に切り替える）
 function isPdfDoc(d: WorkerDocView): boolean {
@@ -25,16 +32,18 @@ function isPdfDoc(d: WorkerDocView): boolean {
   );
 }
 
-// 在留カード・指定書の差し替え（最新を大きく表示・履歴も保持）。
+// 在留カード・照合結果・指定書の差し替え（最新を大きく表示・履歴も保持）。
 // 在籍期間（現在／過去の所属機関ごと）のタブで、当時の画像へ表示を切り替えられる
 export function WorkerDocuments({
   workerId,
   canEdit,
   histories = [],
+  periodNote = "",
 }: {
   workerId: string;
   canEdit: boolean;
   histories?: WorkHistoryRow[];
+  periodNote?: string; // 在留期間の注意事項（申請の許可情報の最新。画像の下に薄い赤で出す）
 }) {
   const [docs, setDocs] = useState<WorkerDocView[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -97,6 +106,9 @@ export function WorkerDocuments({
   return (
     <Card className="p-4">
       <h2 className="mb-3 text-sm font-bold text-muted">在留カード・指定書</h2>
+      <p className="-mt-2 mb-3 text-[11px] text-muted">
+        在留カード・在留カード等読取アプリケーションで照合結果・指定書の順に出します。申請詳細の許可情報で登録した画像が自動で入り、無ければここにドロップして保存できます。
+      </p>
       {error && (
         <p role="alert" className="mb-3 rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
           {error}
@@ -121,12 +133,26 @@ export function WorkerDocuments({
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <DocColumn
           kind="在留カード"
           icon={<CreditCard size={14} />}
           docs={visibleDocs.filter((d) => d.kind === "在留カード")}
           fallback={isCurrent ? newestFor("在留カード") : null}
+          workerId={workerId}
+          canEdit={canEdit}
+          onDelete={removeDoc}
+          effectiveOn={selectedPast?.end ?? null}
+          uploadLabel={isCurrent ? "差し替え" : "この期間に登録"}
+          emptyLabel={isCurrent ? "未登録" : "この期間の登録はありません"}
+          onUploaded={load}
+          onError={setError}
+        />
+        <DocColumn
+          kind="照合結果"
+          icon={<ScanSearch size={14} />}
+          docs={visibleDocs.filter((d) => d.kind === "照合結果")}
+          fallback={isCurrent ? newestFor("照合結果") : null}
           workerId={workerId}
           canEdit={canEdit}
           onDelete={removeDoc}
@@ -151,6 +177,13 @@ export function WorkerDocuments({
           onError={setError}
         />
       </div>
+      {/* 在留期間の注意事項（申請詳細の許可情報で入れた最新の文） */}
+      {periodNote.trim() && (
+        <div className="mt-3 rounded-xl bg-seal/10 px-3 py-2">
+          <p className="text-[10px] font-bold text-seal">在留期間の注意事項（申請の許可情報の最新）</p>
+          <p className="whitespace-pre-wrap text-xs font-bold text-seal">{periodNote}</p>
+        </div>
+      )}
       <p className="mt-2 text-[11px] text-muted">
         新しい画像を登録すると「現在」の最新として表示され、以前の画像も履歴として残ります。「現在」では、いま登録されている最新の画像を表示します（在籍期間が今日を含む場合もここに出ます）。過去の在籍期間タブでは、その期間の当時の画像を表示します。過去タブで「この期間に登録」すると、当時の画像としてその期間に保存されます。
       </p>
@@ -235,7 +268,7 @@ function DocColumn({
       <div className="mb-1.5 flex items-center justify-between">
         <span className="flex items-center gap-1 text-xs font-bold text-muted">
           {icon}
-          {kind}
+          {KIND_LABELS[kind]}
         </span>
         {canEdit && (
           <button
