@@ -9,6 +9,9 @@ import {
   rosterWorkKind,
   sortRosterHistory,
   withResidencePermitHistory,
+  visaPermitHistory,
+  withVisaPermitHistory,
+  rosterPermitsForOrg,
 } from "./roster";
 
 describe("rosterWorkKind", () => {
@@ -205,5 +208,63 @@ describe("rosterFileName", () => {
 
   it("会社名が空でも氏名だけで作る", () => {
     expect(rosterFileName("TEGUH RIZKI", "")).toBe("労働者名簿_TEGUH RIZKI");
+  });
+});
+
+describe("visaPermitHistory / withVisaPermitHistory / rosterPermitsForOrg（在籍中の許可を全部）", () => {
+  const permits = [
+    { permitDate: "2025-12-04", status: "特定技能1号", label: "特定技能1号 ビザ許可" },
+    { permitDate: "2026-10-22", status: "特定技能1号", label: "特定技能1号 更新許可" },
+    { permitDate: "2024-04-01", status: "特定活動", label: "特定活動 認定" },
+  ];
+
+  it("許可の種類（更新・認定）が分かる言い方にする", () => {
+    expect(visaPermitHistory(permits[0])).toEqual({ on: "2025年12月4日", content: "特定技能1号ビザの許可" });
+    expect(visaPermitHistory(permits[1])).toEqual({ on: "2026年10月22日", content: "特定技能1号ビザの更新許可" });
+    expect(visaPermitHistory(permits[2])).toEqual({ on: "2024年4月1日", content: "特定活動ビザの認定" });
+    expect(visaPermitHistory({ permitDate: "2024-04-01", status: "", label: "" }).content).toBe("在留資格ビザの許可");
+  });
+
+  it("履歴に許可を全部足して古い順に並べる。同じ年月日の行があれば足さない", () => {
+    const rows = withVisaPermitHistory(
+      [
+        { on: "2026年2月19日", content: "入社" },
+        { on: "2026年10月22日", content: "特定技能1号更新ビザの許可" },
+      ],
+      permits,
+    );
+    expect(rows).toEqual([
+      { on: "2024年4月1日", content: "特定活動ビザの認定" },
+      { on: "2025年12月4日", content: "特定技能1号ビザの許可" },
+      { on: "2026年2月19日", content: "入社" },
+      { on: "2026年10月22日", content: "特定技能1号更新ビザの許可" },
+    ]);
+    expect(withVisaPermitHistory([{ on: "2026年2月19日", content: "入社" }], [])).toEqual([
+      { on: "2026年2月19日", content: "入社" },
+    ]);
+  });
+
+  it("在籍の始まりが分かれば、その会社にいる間の許可だけ（始まる前の許可は次の許可までの分）", () => {
+    const histories = [
+      { org_name: "西田　博幸", start_date: "2026-02-19", end_date: null, visa: "特定技能" },
+      { org_name: "前の会社", start_date: "2024-04-01", end_date: "2026-02-18", visa: "特定活動" },
+    ];
+    // 2026-02-19 から在籍: 2025-12-04 の許可は在籍中も使っていたので載る。2024-04-01 は次の許可に切り替わっているので載らない
+    expect(rosterPermitsForOrg(permits, histories, "西田　博幸", "2026-02-19").map((p) => p.permitDate)).toEqual([
+      "2025-12-04",
+      "2026-10-22",
+    ]);
+    // 機関名は全角・空白の違いを無視して比べる
+    expect(rosterPermitsForOrg(permits, histories, "西田 博幸", "2026-02-19").length).toBe(2);
+  });
+
+  it("在籍の始まりが分からなければ職歴でその会社にいた日の許可。職歴も無ければ全部", () => {
+    const histories = [{ org_name: "前の会社", start_date: "2024-04-01", end_date: "2026-02-18", visa: "特定活動" }];
+    expect(rosterPermitsForOrg(permits, histories, "前の会社", null).map((p) => p.permitDate)).toEqual(["2024-04-01", "2025-12-04"]);
+    expect(rosterPermitsForOrg(permits, [], "西田　博幸", null).map((p) => p.permitDate)).toEqual([
+      "2024-04-01",
+      "2025-12-04",
+      "2026-10-22",
+    ]);
   });
 });

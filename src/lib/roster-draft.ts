@@ -1,4 +1,10 @@
-import { rosterJpDate, rosterWorkKind, withResidencePermitHistory } from "@/lib/roster";
+import {
+  rosterJpDate,
+  rosterWorkKind,
+  withResidencePermitHistory,
+  withVisaPermitHistory,
+  type RosterPermit,
+} from "@/lib/roster";
 import type { RosterHistoryEntry, RosterPreviousJob, WorkerRoster } from "@/types/db";
 
 // 労働者名簿の中身を「外国人の登録データ」から組み立てる。
@@ -43,6 +49,8 @@ export interface RosterDraftSource {
     org_name: string;
     prefecture?: string;
   }[];
+  // その会社にいる間に受けた許可（在留資格の履歴から。あれば全部を履歴に載せる）
+  permits?: RosterPermit[];
 }
 
 export function buildRosterDraft(
@@ -54,12 +62,18 @@ export function buildRosterDraft(
   return {
     company_name: saved?.company_name || src.orgName,
     work_kind: saved?.work_kind || rosterWorkKind(src.field),
-    // 入社の行に加えて、在留資格の許可も履歴として残す（画面の労働者名簿と同じ）
-    history: withResidencePermitHistory(
-      saved?.history ?? (start ? [{ on: rosterJpDate(start), content: "入社" }] : []),
-      src.residenceStatus,
-      src.residencePermitDate,
-    ),
+    // 入社の行に加えて、在留資格の許可も履歴として残す（画面の労働者名簿と同じ）。
+    // その会社にいる間の許可が分かっていれば全部（更新のたびの許可も）載せ、無ければ今の許可だけ
+    history: src.permits && src.permits.length > 0
+      ? withVisaPermitHistory(
+          saved?.history ?? (start ? [{ on: rosterJpDate(start), content: "入社" }] : []),
+          src.permits,
+        )
+      : withResidencePermitHistory(
+          saved?.history ?? (start ? [{ on: rosterJpDate(start), content: "入社" }] : []),
+          src.residenceStatus,
+          src.residencePermitDate,
+        ),
     previous_jobs: saved?.previous_jobs ?? rosterPreviousJobs(src.workHistories),
     leaving_on: saved?.leaving_on ?? (src.status === "退職" ? rosterJpDate(src.leavingOn) : ""),
     leaving_reason:
