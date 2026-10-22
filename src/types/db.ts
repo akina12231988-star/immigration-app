@@ -459,6 +459,7 @@ export interface Worker {
   passport_mrz: string; // パスポートMRZの2行（読み取り反映時に保存。コピー用。0095）
   residence_period: string; // 在留カードの在留期間（例: 1年・3年・6月。0092）
   residence_period_manual?: boolean; // 在留期間を手入力で訂正した（true なら自動計算より residence_period を優先。0176）
+  residence_period_note?: string; // 在留期間の注意事項（申請の許可情報で入れた最新の文。0192）
   current_situation: string; // 只今の状況（経過メモ。Notionの只今の状況と同期。0093）
   notion_link: string; // Notion 個人ページのリンク
   residence_renewal_status: ResidenceRenewalStatus; // 在留更新の対応状況
@@ -835,6 +836,7 @@ export interface ImmigrationApplicationRow {
   granted_card_no: string; // 許可時 在留カード番号
   granted_permit_date: string | null; // 在留許可日
   granted_expiry_date: string | null; // 在留期限日
+  granted_period_note?: string; // 在留期間の注意事項（0192）
   employment_start_on: string | null; // 雇用開始日
   visa_at_grant: string; // 許可時の在留資格
   report_org_honorific: string; // 御中 / 様
@@ -1010,7 +1012,7 @@ export type SupportEndInput = Omit<
 export interface WorkerDocumentRow {
   id: string;
   worker_id: string;
-  kind: "在留カード" | "指定書";
+  kind: "在留カード" | "照合結果" | "指定書";
   storage_path: string;
   file_name: string;
   mime_type: string;

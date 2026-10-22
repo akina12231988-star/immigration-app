@@ -329,6 +329,10 @@ export function ApplicationPrepChecklist({
     passport_expiry_date: string;
   } | null>(null);
 
+  // 在留期間の注意事項（申請詳細の許可情報で入れた最新の文。在留カードの欄の備考の上に薄い赤で出す）。
+  // 0192 未適用の環境でも他の表示が止まらないよう、別に読んで失敗したら空のまま
+  const [periodNote, setPeriodNote] = useState("");
+
   // 申請準備のTODO（この外国人分）とステータスの選択肢。名前の下に常時表示して編集できる
   const [workerTodos, setWorkerTodos] = useState<TodoRow[]>([]);
   const [todoOptions, setTodoOptions] = useState<TodoStatusOption[]>([]);
@@ -380,6 +384,14 @@ export function ApplicationPrepChecklist({
     void loadDocs();
     loadMovedDocs();
     loadWorkerTodos();
+    void createClient()
+      .from("workers")
+      .select("residence_period_note")
+      .eq("id", workerId)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (!error) setPeriodNote((data as { residence_period_note: string | null } | null)?.residence_period_note ?? "");
+      });
     void createClient()
       .from("workers")
       .select(
@@ -1431,6 +1443,7 @@ export function ApplicationPrepChecklist({
                   isPhoto={isPhoto}
                   canEdit={canEdit}
                   busy={busyForRow}
+                  periodNote={isCard ? periodNote : ""}
                   ds={{ ...EMPTY_PREP_DOC_STATUS, ...(docStatuses[item.def.id] ?? {}) }}
                   // 源泉徴収票と課税証明書は金額を突き合わせるので、相手の金額も渡す
                   gensenKazei={
@@ -2615,8 +2628,10 @@ function DocRow({
   onUseYear,
   requestee = null,
   mailMode = "none",
+  periodNote = "",
 }: {
   item: PrepDocStatus;
+  periodNote?: string; // 在留期間の注意事項（在留カードの行だけ。備考の上に薄い赤で出す）
   // 誰に・いつ（依頼先と依頼日からの日数）。読み取れないときは null
   requestee?: { who: string; kind: PrepRequesteeKind; days: number | null } | null;
   // 申請後に郵送: toggle=チェックで郵送リストへ / undo=郵送リストから取り消すだけ / none=出さない
@@ -3106,6 +3121,13 @@ function DocRow({
               })}
             </div>
           )}
+        </div>
+      )}
+      {/* 在留期間の注意事項（外国人詳細と同じ内容。申請詳細の許可情報で入れた最新の文） */}
+      {periodNote.trim() && (
+        <div className="ml-[18px] mt-1.5 rounded-lg bg-seal/10 px-2.5 py-1.5">
+          <p className="text-[10px] font-bold text-seal">在留期間の注意事項</p>
+          <p className="whitespace-pre-wrap text-xs font-bold text-seal">{periodNote}</p>
         </div>
       )}
       {/* 備考: 書類ごとの自由なメモ（催促した日・本人からの返事・注意点など）。

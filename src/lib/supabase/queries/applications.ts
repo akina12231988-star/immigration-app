@@ -44,6 +44,7 @@ function toApplication(row: RowWithRefs): Application {
     grantedCardNo: row.granted_card_no ?? undefined,
     grantedPermitDate: row.granted_permit_date ?? undefined,
     grantedExpiryDate: row.granted_expiry_date ?? undefined,
+    grantedPeriodNote: row.granted_period_note ?? undefined,
     employmentStartOn: row.employment_start_on ?? undefined,
     visaAtGrant: row.visa_at_grant ?? undefined,
     reportOrgHonorific: (row.report_org_honorific as OrgHonorific) ?? "御中",
@@ -85,6 +86,7 @@ function toRowPatch(patch: Partial<Application>): Record<string, unknown> {
   if (patch.grantedCardNo !== undefined) row.granted_card_no = patch.grantedCardNo;
   if ("grantedPermitDate" in patch) row.granted_permit_date = patch.grantedPermitDate ?? null;
   if ("grantedExpiryDate" in patch) row.granted_expiry_date = patch.grantedExpiryDate ?? null;
+  if (patch.grantedPeriodNote !== undefined) row.granted_period_note = patch.grantedPeriodNote;
   if ("employmentStartOn" in patch) row.employment_start_on = patch.employmentStartOn ?? null;
   if (patch.visaAtGrant !== undefined) row.visa_at_grant = patch.visaAtGrant;
   if (patch.reportOrgHonorific !== undefined) row.report_org_honorific = patch.reportOrgHonorific;

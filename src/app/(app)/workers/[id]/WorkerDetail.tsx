@@ -1297,6 +1297,14 @@ export function WorkerDetail({
                 </div>
               )}
             </div>
+            {/* 在留期間の注意事項（申請詳細の許可情報で入れた最新の文。薄い赤で目立たせる） */}
+            {(worker.residence_period_note ?? "").trim() && (
+              <div className="mt-1.5 rounded-xl bg-seal/10 px-3 py-2">
+                <p className="text-[10px] font-bold text-seal">在留期間の注意事項</p>
+                <p className="whitespace-pre-wrap text-xs font-bold text-seal">{worker.residence_period_note}</p>
+                <p className="mt-0.5 text-[10px] text-muted">申請詳細の許可情報で入力した内容です（直すときは申請詳細から）</p>
+              </div>
+            )}
           </div>
           <div>
             <p className="text-sm font-black">
@@ -1922,6 +1930,7 @@ export function WorkerDetail({
         workerId={worker.id}
         canEdit={canEdit}
         histories={worker.work_histories}
+        periodNote={worker.residence_period_note ?? ""}
       />
       </div>
 

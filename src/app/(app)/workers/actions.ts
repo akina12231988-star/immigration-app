@@ -72,6 +72,7 @@ export async function getWorkerPhotoUrl(path: string | null): Promise<string> {
 
 type WorkerDocKind =
   | "在留カード"
+  | "照合結果"
   | "指定書"
   | "雇用契約書"
   | "雇用条件書"
@@ -81,6 +82,7 @@ type WorkerDocKind =
   | "雇用保険 被保険者証";
 const DOC_SLUGS: Record<WorkerDocKind, string> = {
   在留カード: "residence-card",
+  照合結果: "card-check-result", // 在留カード等読取アプリケーションで照合した結果（0192）
   指定書: "designation",
   雇用契約書: "employment-contract",
   雇用条件書: "employment-conditions",
@@ -320,7 +322,7 @@ export async function listWorkerDocs(workerId: string): Promise<WorkerDocView[]>
   // 申請登録時の画像を現データとして補う。
   // 過去タブから「この期間に登録」した画像（effective_on あり）は当時の画像なので、
   // それだけがあっても現在の分は補い続ける（過去を登録したら現在が消えてしまうのを防ぐ）
-  const kinds: WorkerDocKind[] = ["在留カード", "指定書"];
+  const kinds: WorkerDocKind[] = ["在留カード", "照合結果", "指定書"];
   const missing = kinds.filter((k) => !result.some((d) => d.kind === k && !d.effectiveOn));
   if (missing.length > 0) {
     const { data: apps } = await admin

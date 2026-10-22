@@ -43,6 +43,7 @@ export const APPLICATION_FILE_KINDS = [
   "受付票",
   "通知書",
   "在留カード",
+  "照合結果", // 在留カード等読取アプリケーションで照合した結果の画像（0192）
   "指定書",
   "追加資料通知", // 入管から来た追加資料提出通知書（0083）
   "その他",
@@ -104,6 +105,7 @@ export interface Application {
   grantedCardNo?: string; // 許可時 在留カード番号
   grantedPermitDate?: string; // 在留許可日
   grantedExpiryDate?: string; // 在留期限日
+  grantedPeriodNote?: string; // 在留期間の注意事項（0192。保存時に外国人にも反映）
   employmentStartOn?: string; // 雇用開始日
   visaAtGrant?: string; // 許可時の在留資格
   reportOrgHonorific: OrgHonorific; // 御中 / 様

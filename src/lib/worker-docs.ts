@@ -7,6 +7,7 @@ import { createWorkerDocTicket, registerWorkerDoc } from "@/app/(app)/workers/ac
 
 type WorkerDocKind =
   | "在留カード"
+  | "照合結果"
   | "指定書"
   | "雇用契約書"
   | "雇用条件書"
