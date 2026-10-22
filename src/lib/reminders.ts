@@ -352,11 +352,44 @@ export function isFullyAdvanced(
   return !!r.advance_paid_on;
 }
 
-// 箱から出して番号を返す対象か（進行中・当社が全部払った・まだ箱を使っている）
-export function shouldReleaseBox(
-  r: Pick<Reminder, "reminder_no" | "status" | "payer" | "advance_paid" | "amount_items" | "advance_paid_on">,
+// 全部納付済みか（誰が払ったかは問わない。本人が払った分・当社が立て替えた分を合わせて全部に支払日が入っている）。
+// 内訳が無いときは、当社が代わりに払った記録（立替の支払日）があるときだけ
+export function isAllPaid(
+  r: Pick<Reminder, "payer" | "advance_paid" | "amount_items" | "advance_paid_on">,
 ): boolean {
-  return usesBox(r) && isFullyAdvanced(r);
+  const p = amountItemsProgress(normalizeAmountItems(r.amount_items));
+  if (p.count > 0) return p.paidCount === p.count;
+  return isFullyAdvanced(r);
+}
+
+// 残りの納付書を本人へ郵送して、手元に無いか（0191）
+export const SLIPS_MAILED_MIGRATION = "0191_reminder_slips_mailed.sql";
+export function isSlipsMailed(r: Pick<Reminder, "slips_mailed_on">): boolean {
+  return !!r.slips_mailed_on;
+}
+
+// 納付書が手元に無い状態か（全部納付済み、または残りを本人へ郵送した）。この人は箱を使わない
+export type NoSlipsFields = Pick<
+  Reminder,
+  "payer" | "advance_paid" | "amount_items" | "advance_paid_on" | "slips_mailed_on"
+>;
+export function hasNoSlips(r: NoSlipsFields): boolean {
+  return isAllPaid(r) || isSlipsMailed(r);
+}
+
+// 納付書が手元に無い理由（箱なしの説明に出す）。手元にあれば空
+export function noSlipsReason(r: NoSlipsFields): string {
+  if (isSlipsMailed(r)) return `残りの納付書を本人へ郵送しました（${r.slips_mailed_on}）`;
+  if (isFullyAdvanced(r)) return "当社が代わりに全部払いました";
+  if (isAllPaid(r)) return "全部納付済みです";
+  return "";
+}
+
+// 箱から出して番号を返す対象か（進行中・納付書が手元に無い・まだ箱を使っている）
+export function shouldReleaseBox(
+  r: Pick<Reminder, "reminder_no" | "status"> & NoSlipsFields,
+): boolean {
+  return usesBox(r) && hasNoSlips(r);
 }
 
 // 立替・本人からの支払い待ちの一覧に載せる督促（進行中で、当社が全部払い、本人からまだ全額もらっていない）
