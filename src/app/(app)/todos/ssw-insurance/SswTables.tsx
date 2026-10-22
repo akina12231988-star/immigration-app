@@ -2,17 +2,21 @@
 
 import { Fragment, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronRight, Download, Loader2, MessageCircle, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, Loader2, MessageCircle, Plus, Receipt } from "lucide-react";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { createClient } from "@/lib/supabase/client";
 import { dbErrorMessage } from "@/lib/errors";
 import { messengerWebUrl } from "@/lib/messenger-link";
 import { displayTodoNo, type TodoStatusOption } from "@/lib/todo";
 import { fillXlsxTemplate } from "@/lib/xlsx-form-fill";
+import type { SswSalesRow } from "@/lib/supabase/queries/ssw-insurance";
 import {
+  SSW_CANCEL_FORM_MAX_ROWS,
   SSW_STATE_LABELS,
   SSW_UPLOAD_MAX_ROWS,
   slashDate,
+  sswCancelFormCells,
+  sswCancelFormRow,
   sswColumnOf,
   sswRowTodo,
   sswStartOnFromPaidOn,
@@ -33,6 +37,23 @@ import { registerSswCert } from "./actions";
 
 const MIGRATION = "0171_ssw_insurance_apply.sql";
 const TEMPLATE_URL = "/forms/ssw-insurance-upload.xlsx";
+// 解約の届出書（変更（解約）届出書）のひな形。被保険者の枠は10人分
+const CANCEL_TEMPLATE_URL = "/forms/ssw-insurance-cancel.xlsx";
+
+// 作ったファイルに名前を付けて保存する（すぐにURLを消すとファイル名が付かないことがあるので少し待つ）
+function downloadXlsx(bytes: Uint8Array, fileName: string) {
+  const blob = new Blob([bytes as BlobPart], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 const TH = "border border-[#9fd3e0] bg-[#d7eef4] px-2 py-2 text-[11px] font-bold text-foreground";
 const TD = "border border-border px-2 py-1.5 align-middle";
@@ -178,6 +199,86 @@ function StateBadge({ row, today }: { row: SswInsuranceRow; today: string }) {
   );
 }
 
+// 保険売上No.（請求書作成の名簿の「保険No.」と同じ売上明細・kind='保険'）。
+// いちばん新しい売上の番号を出し、無ければここから入力して売上明細を作る（請求書作成にもそのまま出る）
+function SswSalesNoCell({
+  worker,
+  sale,
+  canEdit,
+  onSave,
+}: {
+  worker: Pick<SswInsuranceWorker, "id" | "name">;
+  sale: SswSalesRow | undefined; // いちばん新しい保険の売上
+  canEdit: boolean;
+  onSave: (value: string, entryId: string) => Promise<void>;
+}) {
+  const saved = sale?.freee_no ?? "";
+  const [value, setValue] = useState(saved);
+  const [shownSaved, setShownSaved] = useState(saved);
+  const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  // 保存済みの番号が外から変わったら、入力中でないときだけ追従する
+  if (saved !== shownSaved) {
+    setShownSaved(saved);
+    if (!dirty) setValue(saved);
+  }
+  const commit = async () => {
+    const v = value.trim();
+    if (v !== value) setValue(v);
+    if (v === saved) {
+      setDirty(false);
+      setFailed(false);
+      return;
+    }
+    if (!v && !sale) {
+      setDirty(false);
+      return; // 空欄のまま離れただけなら何も作らない
+    }
+    setBusy(true);
+    setFailed(false);
+    try {
+      await onSave(v, sale?.id ?? "");
+      setDirty(false);
+    } catch {
+      setFailed(true); // 画面の上にもエラーが出る。入力した番号は消さずに「未保存」と出す
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (!canEdit) {
+    return <span className="tabular-nums">{saved || <span className="text-muted">―</span>}</span>;
+  }
+  return (
+    <span className="flex flex-col gap-0.5">
+      <input
+        value={value}
+        onChange={(e) => {
+          setValue(e.target.value);
+          setDirty(true);
+        }}
+        onBlur={() => void commit()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+        }}
+        disabled={busy}
+        placeholder="保険No."
+        aria-label={`${worker.name}の保険売上No.`}
+        title={sale ? "請求書作成の名簿の保険No.と同じ番号です" : "番号を入れると保険の売上明細ができ、請求書作成の名簿にも出ます"}
+        className={`${CELL_INPUT} tabular-nums`}
+      />
+      {busy && <span className="text-[10px] text-muted">保存中…</span>}
+      {failed && <span className="text-[10px] font-bold text-seal">未保存</span>}
+      {!busy && !failed && sale && (
+        <span className="flex items-center gap-0.5 text-[10px] text-muted">
+          <Receipt size={10} />
+          {sale.insurance_joined_on ? `加入済み ${slashDate(sale.insurance_joined_on)}` : "売上あり"}
+        </span>
+      )}
+    </span>
+  );
+}
+
 // ① 加入の申込に入れる内容（申込サイトの「被保険者情報」と同じ並び）
 export function SswJoinTable({
   rows,
@@ -191,6 +292,8 @@ export function SswJoinTable({
   onTodoStatus,
   onSaved,
   onError,
+  salesByWorker,
+  onSaveSalesNo,
 }: {
   rows: SswInsuranceRow[];
   today: string;
@@ -203,6 +306,8 @@ export function SswJoinTable({
   onTodoStatus: (todoId: string, status: string) => void;
   onSaved: () => void;
   onError: (message: string | null) => void;
+  salesByWorker: Map<string, SswSalesRow[]>; // 外国人ID → 保険の売上（新しい順）
+  onSaveSalesNo: (row: SswInsuranceRow, value: string, entryId: string) => Promise<void>;
 }) {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [exporting, setExporting] = useState(false);
@@ -252,18 +357,7 @@ export function SswJoinTable({
       const res = await fetch(TEMPLATE_URL);
       if (!res.ok) throw new Error("申込用のファイルのひな形を読み込めませんでした");
       const bytes = await fillXlsxTemplate(await res.arrayBuffer(), sswUploadCells(targets));
-      const blob = new Blob([bytes as BlobPart], {
-        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      });
-      // ファイル名を付けて保存する（すぐにURLを消すとファイル名が付かないことがあるので少し待つ）
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `特定技能総合保険_申込_${today.replaceAll("-", "")}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      downloadXlsx(bytes, `特定技能総合保険_申込_${today.replaceAll("-", "")}.xlsx`);
     } catch (err) {
       onError(err instanceof Error ? err.message : "出力に失敗しました");
     } finally {
@@ -310,6 +404,7 @@ export function SswJoinTable({
               <th className={TH}>保険期間</th>
               <th className={`${TH} text-left`}>特定技能所属機関名</th>
               <th className={TH}>いまの状態</th>
+              <th className={TH}>保険売上No.</th>
               <th className={TH}>経過</th>
               <th className={TH}></th>
             </tr>
@@ -359,6 +454,14 @@ export function SswJoinTable({
                     <td className={TD}>
                       <StateBadge row={row} today={today} />
                     </td>
+                    <td className={`${TD} min-w-[9rem]`}>
+                      <SswSalesNoCell
+                        worker={w}
+                        sale={salesByWorker.get(w.id)?.[0]}
+                        canEdit={canEdit}
+                        onSave={(value, entryId) => onSaveSalesNo(row, value, entryId)}
+                      />
+                    </td>
                     <td className={TD}>
                       <TodoCell
                         row={row}
@@ -378,7 +481,7 @@ export function SswJoinTable({
                   </tr>
                   {open && (
                     <tr>
-                      <td colSpan={12} className="border border-border bg-background p-2">
+                      <td colSpan={13} className="border border-border bg-background p-2">
                         {renderDetail(row)}
                       </td>
                     </tr>
@@ -556,6 +659,8 @@ export function SswCancelTable({
   onMakeTodo,
   onTodoStatus,
   onCancelled,
+  today,
+  onError,
 }: {
   rows: SswInsuranceRow[];
   canEdit: boolean;
@@ -566,20 +671,90 @@ export function SswCancelTable({
   onMakeTodo: (workerId: string, title: string) => void;
   onTodoStatus: (todoId: string, status: string) => void;
   onCancelled: (row: SswInsuranceRow) => void;
+  today: string;
+  onError: (message: string | null) => void;
 }) {
+  // 解約の届出書を作る人（チェック）
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [exporting, setExporting] = useState(false);
+  const allPicked = rows.length > 0 && rows.every((r) => picked.has(r.worker.id));
+  const toggle = (id: string) =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const pickedCount = rows.filter((r) => picked.has(r.worker.id)).length;
+
+  // チェックした人を解約の届出書（変更（解約）届出書・Excel）に書き込んでダウンロードする。
+  // 合計人数はチェックした人数が入る
+  const exportCancelForm = async () => {
+    const targets = rows.filter((r) => picked.has(r.worker.id)).map(sswCancelFormRow);
+    if (targets.length === 0) return;
+    if (targets.length > SSW_CANCEL_FORM_MAX_ROWS) {
+      onError(`届出書に入れられるのは一度に${SSW_CANCEL_FORM_MAX_ROWS}人までです（チェックを減らしてください）`);
+      return;
+    }
+    const ng = targets.filter((t) => t.problems.length > 0);
+    if (
+      ng.length > 0 &&
+      !window.confirm(
+        `次の人は足りない項目があるため、その欄は空のまま出力します。よろしいですか？\n\n${ng
+          .map((t) => `・${t.name || "（氏名なし）"}: ${t.problems.join("・")}`)
+          .join("\n")}`,
+      )
+    ) {
+      return;
+    }
+    setExporting(true);
+    onError(null);
+    try {
+      const res = await fetch(CANCEL_TEMPLATE_URL);
+      if (!res.ok) throw new Error("解約の届出書のひな形を読み込めませんでした");
+      const bytes = await fillXlsxTemplate(await res.arrayBuffer(), sswCancelFormCells(targets, today));
+      downloadXlsx(bytes, `特定技能総合保険_解約届_${today.replaceAll("-", "")}.xlsx`);
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "出力に失敗しました");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-sm font-black">退職した人の解約手続き</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="flex-1 text-sm font-black">退職した人の解約手続き</p>
+        <button
+          type="button"
+          disabled={pickedCount === 0 || exporting}
+          onClick={() => void exportCancelForm()}
+          className="flex min-h-[40px] items-center gap-1.5 rounded-lg bg-brand px-3 text-xs font-bold text-brand-foreground disabled:opacity-50"
+        >
+          {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+          チェックした人（{pickedCount}人）を解約の届出書に出力
+        </button>
+      </div>
       <p className="text-[11px] leading-relaxed text-muted">
         被保険者証明書番号と有効期限が入っていて、有効期限から4か月たっていない人だけを出しています（それより後は解約できません）。解約の手続きが済んだら「解約済み」を押してください。
+        届出書に入れる人にチェックを付けて出力すると、変更（解約）届出書（エクセル）に被保険者番号・氏名・変更日（退職日）・変更理由「③自己都合」の○が入り、合計はチェックした人数になります（一度に{SSW_CANCEL_FORM_MAX_ROWS}人まで）。
       </p>
       {rows.length === 0 ? (
         <p className="rounded-xl border border-border bg-background p-4 text-center text-[11px] text-muted">解約手続きが必要な人はいません。</p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-[#9fd3e0] bg-surface">
-          <table className="w-full min-w-[56rem] border-collapse text-xs">
+          <table className="w-full min-w-[58rem] border-collapse text-xs">
             <thead>
               <tr>
+                <th className={`${TH} w-8`}>
+                  <input
+                    type="checkbox"
+                    checked={allPicked}
+                    onChange={() => setPicked(allPicked ? new Set() : new Set(rows.map((r) => r.worker.id)))}
+                    aria-label="全員を選ぶ"
+                    className="h-4 w-4"
+                  />
+                </th>
                 <th className={`${TH} text-left`}>被保険者名</th>
                 <th className={`${TH} text-left`}>所属機関名</th>
                 <th className={TH}>退職日</th>
@@ -595,7 +770,16 @@ export function SswCancelTable({
                 const open = openId === w.id;
                 return (
                   <Fragment key={w.id}>
-                    <tr>
+                    <tr className={picked.has(w.id) ? "bg-brand/5" : ""}>
+                      <td className={`${TD} text-center`}>
+                        <input
+                          type="checkbox"
+                          checked={picked.has(w.id)}
+                          onChange={() => toggle(w.id)}
+                          aria-label={`${w.name}を届出書に入れる`}
+                          className="h-4 w-4"
+                        />
+                      </td>
                       <td className={TD}>
                         <SswNameCell worker={w} />
                       </td>
@@ -631,7 +815,7 @@ export function SswCancelTable({
                     </tr>
                     {open && (
                       <tr>
-                        <td colSpan={7} className="border border-border bg-background p-2">
+                        <td colSpan={8} className="border border-border bg-background p-2">
                           {renderDetail(row)}
                         </td>
                       </tr>

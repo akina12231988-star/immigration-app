@@ -51,6 +51,7 @@ import {
   TODO_STAGES,
   displayTodoNo,
   examUnpaidAttempt,
+  overdueExamAttempts,
   isCheckingStatus,
   isWaitingDocsStatus,
   normalizeTodoExam,
@@ -125,6 +126,8 @@ export interface JobFlowRow {
 // 「書類担当者で絞り込み」で、まだ担当者が決まっていないTODOだけを出すときの値。
 // 担当者の名簿に出てこない文字にして、実在の名前とぶつからないようにしている
 const NO_TANTOU = "（担当者未定）";
+// 試験の申込の区分ボタンに足す「試験結果の確認」（試験日を過ぎたのに合否が未確認の申込）
+const EXAM_RESULT_STAGE = "試験結果の確認";
 
 export function TodosClient({
   canEdit,
@@ -149,7 +152,8 @@ export function TodosClient({
     "";
   const [kind, setKind] = useState<TodoKind>(fixedKind ?? "申請準備");
   // 試験の申込は1列で見せる（カードの中身が多いので幅を広く使う）。どの区分を出すかをボタンで切り替える
-  const [examStage, setExamStage] = useState<TodoStage>("進行中");
+  // 試験の申込の区分ボタン（未着手／進行中／完了）。「結果確認」は試験日を過ぎて合否が未確認のTODO
+  const [examStage, setExamStage] = useState<TodoStage | typeof EXAM_RESULT_STAGE>("進行中");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // 申請取次士の名簿（申請準備のTODOで誰が取次するかを選ぶ）
@@ -550,6 +554,17 @@ export function TodosClient({
             }),
     [kind, kindTodos, kindOptions],
   );
+  // 試験日を過ぎたのに合否が未確認の申込があるTODO（「試験結果の確認」ボタン）。
+  // 確認が遅れているもの（いちばん古い未確認の試験日）から並べる。完了のTODOでも合否が入っていなければ出す
+  const examResultRows = useMemo(() => {
+    if (kind !== "試験の申込") return [];
+    const today = todayStr();
+    return kindTodos
+      .map((t) => ({ todo: t, overdue: overdueExamAttempts(normalizeTodoExam(t.exam), today) }))
+      .filter((r) => r.overdue.length > 0)
+      .sort((a, b) => a.overdue[0].exam_date.localeCompare(b.overdue[0].exam_date))
+      .map((r) => r.todo);
+  }, [kind, kindTodos]);
   // 削除フォルダ（この構成の分）。30日たつと完全に削除される
   const trashedTodos = useMemo(
     () => todos.filter((t) => t.deleted_at && t.kind === kind),
@@ -1391,8 +1406,41 @@ export function TodosClient({
                 </button>
               );
             })}
+            {/* 試験日を過ぎたのに合否が未確認の申込（件数があるときは赤で目立たせる） */}
+            <button
+              type="button"
+              onClick={() => setExamStage(EXAM_RESULT_STAGE)}
+              aria-pressed={examStage === EXAM_RESULT_STAGE}
+              title="試験日を過ぎたのに合格か不合格かがまだ入っていない申込です。合否を入れると消えます"
+              className={`min-h-[36px] rounded-full border px-4 text-sm font-bold ${
+                examStage === EXAM_RESULT_STAGE
+                  ? "border-seal bg-seal text-seal-foreground"
+                  : examResultRows.length > 0
+                    ? "border-seal/60 bg-seal/10 text-seal"
+                    : "border-border bg-surface text-muted"
+              }`}
+            >
+              {EXAM_RESULT_STAGE} {examResultRows.length}
+            </button>
           </div>
-          {stageCard(examStage)}
+          {examStage === EXAM_RESULT_STAGE ? (
+            <Card className="p-4">
+              <p className="text-sm font-bold text-muted">
+                {EXAM_RESULT_STAGE}（{examResultRows.length}件）— 試験日を過ぎたのに合否が未確認の申込です。確認が遅れているもの（試験日が古いもの）から並べています。各TODOの「申込（回ごと）」で合否を入れると消えます。
+              </p>
+              <div className="mt-2">
+                {examResultRows.length === 0 ? (
+                  <p className="rounded-xl bg-background p-3 text-center text-xs text-muted">
+                    試験結果の確認が必要な申込はありません。
+                  </p>
+                ) : (
+                  <div className="space-y-2">{examResultRows.map((t) => renderTodoItem(t))}</div>
+                )}
+              </div>
+            </Card>
+          ) : (
+            stageCard(examStage)
+          )}
         </>
       ) : (
         <>

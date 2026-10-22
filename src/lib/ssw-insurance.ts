@@ -127,6 +127,7 @@ export type SswGroupKey =
   | "notJoined"
   | "willCheck"
   | "declined"
+  | "renew"
   | "active"
   | "none";
 
@@ -145,6 +146,7 @@ export function sswInsuranceState(
   burden: string, // 所属機関の負担区分（'' / 会社負担 / 外国人負担）
   today: string,
   cancelDone = false, // 解約手続きのTODOが完了しているか
+  joinOpen = false, // 加入手続きのTODOが未完了であるか（加入中・加入しないの人でも加入手続きに出す）
 ): SswGroupKey {
   // まだ入社前（申請準備中・支援開始前）の人は一覧に出さない
   if (!isSswInsuranceCandidate(w)) return "none";
@@ -152,12 +154,13 @@ export function sswInsuranceState(
   // 退職した人は、加入したままなら解約手続きが必要（解約が済んだら一覧から外す）。
   // 証明書番号と有効期限が入っている人だけで、有効期限から4か月以上たった人は解約できないので出さない
   if (w.status === "退職") return isSswCancelable(w, today) && !cancelDone ? "cancel" : "none";
-  // まだ期限に余裕があるうちは、加入しないと決めていても加入中のまま
+  // まだ期限に余裕があるうちは、加入しないと決めていても加入中のまま。
+  // ただし加入手続きのTODOを作ってある人（更新許可で新しい期間の加入が要る人など）は加入手続きに出す
   if (joined && daysUntil(w.ssw_insurance_expiry_date as string, today) >= SSW_SOON_DAYS) {
-    return "active";
+    return joinOpen ? "renew" : "active";
   }
-  // 加入しないと決めた人は、その所属機関にいる間はTODO（未加入・期限切れ）に出さない
-  if (isSswDeclineActive(w)) return "declined";
+  // 加入しないと決めた人は、その所属機関にいる間はTODO（未加入・期限切れ）に出さない（TODOを作ってあれば出す）
+  if (isSswDeclineActive(w)) return joinOpen ? "renew" : "declined";
   if (joined) {
     return daysUntil(w.ssw_insurance_expiry_date as string, today) < 0 ? "expired" : "soon";
   }
@@ -252,7 +255,13 @@ export function buildSswInsuranceRows(
         worker: w,
         orgName: org?.name ?? w.organizations?.name ?? "",
         burden: org?.burden ?? "",
-        state: sswInsuranceState(w, org?.burden ?? "", today, todos.cancel?.done ?? false),
+        state: sswInsuranceState(
+          w,
+          org?.burden ?? "",
+          today,
+          todos.cancel?.done ?? false,
+          !!todos.join && !todos.join.done,
+        ),
         todos,
       };
     })
@@ -288,6 +297,11 @@ export const SSW_SECTIONS: {
     lead: "まだ加入していません。加入手続きのTODOを作って手続きしてください。",
   },
   {
+    key: "renew",
+    title: "加入手続き中（加入中・更新）",
+    lead: "加入中（または加入しない）の人で、加入手続きのTODOを作ってある人です（更新許可で新しい在留期間の分に加入する人など）。手続きが済んだらTODOを完了にしてください。",
+  },
+  {
     key: "willCheck",
     title: "未加入（外国人負担・意思確認）",
     lead:
@@ -318,6 +332,7 @@ export const SSW_ACTION_STATES: SswGroupKey[] = [
   "soon",
   "notJoined",
   "willCheck",
+  "renew",
 ];
 
 export function isSswActionRow(row: SswInsuranceRow): boolean {
@@ -417,6 +432,7 @@ export const SSW_STATE_LABELS: Record<SswGroupKey, string> = {
   soon: "まもなく期限",
   notJoined: "未加入",
   willCheck: "未加入（意思確認）",
+  renew: "加入手続き中",
   declined: "加入しない",
   active: "加入中",
   none: "",
@@ -425,7 +441,12 @@ export const SSW_STATE_LABELS: Record<SswGroupKey, string> = {
 // 一覧に出す件数（未加入・期限切れなど、対応が必要な行の合計）
 export function sswActionCount(rows: SswInsuranceRow[]): number {
   return rows.filter(
-    (r) => r.state === "expired" || r.state === "soon" || r.state === "notJoined" || r.state === "cancel",
+    (r) =>
+      r.state === "expired" ||
+      r.state === "soon" ||
+      r.state === "notJoined" ||
+      r.state === "cancel" ||
+      r.state === "renew",
   ).length;
 }
 
@@ -727,4 +748,59 @@ export function sswLeaverCancelState(
 // 当月退職者リストで「加入者」として数える人（解約できる人と、すでに解約TODOがある人）
 export function isSswLeaverInsured(state: SswLeaverCancelState): boolean {
   return state.kind === "cancelable" || state.kind === "todo" || state.kind === "tooLate";
+}
+
+// ---- 解約の届出書（変更（解約）届出書・JITCO 宛）に転記する内容 ----
+//
+// ひな形は public/forms/ssw-insurance-cancel.xlsx。被保険者の枠は10人分（No.1〜10）で、
+// 1人分は4行（22行目から）。被保険者番号 D列・氏名 N列は1行目、変更日 AE列は2行目、
+// 変更理由の○は X列（3行目＝「③自己都合」の行）。合計人数は AE62、ご記入日は E5。
+export const SSW_CANCEL_FORM_MAX_ROWS = 10;
+export const SSW_CANCEL_FORM_FIRST_ROW = 22;
+export const SSW_CANCEL_FORM_ROW_HEIGHT = 4;
+export const SSW_CANCEL_FORM_DATE_CELL = "E5"; // ご記入日
+export const SSW_CANCEL_FORM_TOTAL_CELL = "AE62"; // 合計人数
+export const SSW_CANCEL_FORM_REASON_MARK = "○"; // 変更理由「③自己都合」の印
+
+export interface SswCancelFormRow {
+  workerId: string;
+  name: string; // 被保険者氏名（アルファベット半角・大文字）
+  certNo: string; // 被保険者番号（被保険者証明書の番号）
+  leavingOn: string; // 変更日（退職日）YYYY-MM-DD
+  problems: string[]; // 足りない項目（出力前に知らせる）
+}
+
+// 1人分の届出の行を作る（足りない項目は problems に入れる）
+export function sswCancelFormRow(row: Pick<SswInsuranceRow, "worker">): SswCancelFormRow {
+  const w = row.worker;
+  const problems: string[] = [];
+  if (!w.name.trim()) problems.push("氏名");
+  if (!(w.ssw_insurance_no ?? "").trim()) problems.push("被保険者番号");
+  if (!w.leaving_on) problems.push("退職日");
+  return {
+    workerId: w.id,
+    name: w.name.trim().toUpperCase(),
+    certNo: (w.ssw_insurance_no ?? "").trim(),
+    leavingOn: w.leaving_on ?? "",
+    problems,
+  };
+}
+
+// ひな形のセルに入れる値（セル番地 → 値）。日付は Excel の日付（数値）で入れる。
+// 合計人数は書き込んだ人数（表でチェックした人数）
+export function sswCancelFormCells(rows: SswCancelFormRow[], today: string): Record<string, string | number> {
+  const cells: Record<string, string | number> = {};
+  const list = rows.slice(0, SSW_CANCEL_FORM_MAX_ROWS);
+  cells[SSW_CANCEL_FORM_DATE_CELL] = excelDateSerial(today) ?? "";
+  for (let i = 0; i < SSW_CANCEL_FORM_MAX_ROWS; i++) {
+    const r = SSW_CANCEL_FORM_FIRST_ROW + i * SSW_CANCEL_FORM_ROW_HEIGHT;
+    const row = list[i];
+    // 使わない枠は空にする（ひな形に値が残っていても消す）
+    cells[`D${r}`] = row?.certNo ?? "";
+    cells[`N${r}`] = row?.name ?? "";
+    cells[`AE${r + 1}`] = row ? (excelDateSerial(row.leavingOn) ?? "") : "";
+    cells[`X${r + 2}`] = row ? SSW_CANCEL_FORM_REASON_MARK : "";
+  }
+  cells[SSW_CANCEL_FORM_TOTAL_CELL] = list.length;
+  return cells;
 }
