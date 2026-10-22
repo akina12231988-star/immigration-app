@@ -65,6 +65,7 @@ function worker(over: Partial<Worker>): Worker {
     created_by: null,
     created_at: "",
     updated_at: "",
+    past_recurring_sales: [],
     ...over,
   };
 }
