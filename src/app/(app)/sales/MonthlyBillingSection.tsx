@@ -17,11 +17,25 @@ import {
   MailWarning,
   Printer,
   Search,
+  ShieldCheck,
   Square,
   TriangleAlert,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
-import { slashDate, sswInsuranceExpiryState } from "@/lib/ssw-insurance";
+import {
+  SSW_CANCEL_TODO_TITLE,
+  isSswLeaverInsured,
+  slashDate,
+  sswInsuranceExpiryState,
+  sswLeaverCancelState,
+  type SswLeaverCancelState,
+} from "@/lib/ssw-insurance";
+import {
+  ensureSswTodo,
+  listSswLeaverInfo,
+  type SswLeaverInfo,
+} from "@/lib/supabase/queries/ssw-insurance";
+import { displayTodoNo } from "@/lib/todo";
 import { estimateHref, pickEstimateChecklist } from "@/lib/estimate-summary";
 import { listPrepChecklistBriefs, type PrepChecklistBrief } from "@/lib/supabase/queries/application-prep";
 import { CopyButton } from "@/components/ui/CopyButton";
@@ -426,6 +440,69 @@ export function MonthlyBillingSection({
   const leftRows = useMemo(() => leftThisMonthRows(billing), [billing]);
   const [showPermitted, setShowPermitted] = useState(false);
   const [showLeft, setShowLeft] = useState(false);
+
+  // 当月退職者の特定技能総合保険（加入の記録と解約手続きのTODO）。
+  // 退職者リストを開いたときに、その人たちの分だけ読む。TODOを作ったら読み直す
+  const [leaverInfo, setLeaverInfo] = useState<Map<string, SswLeaverInfo>>(new Map());
+  const [leaverInfoKey, setLeaverInfoKey] = useState(0);
+  const [leaverTodoBusy, setLeaverTodoBusy] = useState<string | null>(null);
+  const leftWorkerIds = useMemo(
+    () => leftRows.map(({ row }) => row.worker.id).sort().join(","),
+    [leftRows],
+  );
+  useEffect(() => {
+    if (!showLeft || !leftWorkerIds) return;
+    let cancelled = false;
+    void Promise.resolve().then(() =>
+      listSswLeaverInfo(createClient(), leftWorkerIds.split(","))
+        .then((map) => {
+          if (!cancelled) setLeaverInfo(map);
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          setError(
+            dbErrorMessage(err, "0139_ssw_insurance.sql", "特定技能総合保険の加入状況を読み込めませんでした"),
+          );
+        }),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [showLeft, leftWorkerIds, leaverInfoKey]);
+  // 退職した人ごとの解約手続きの状態（未加入／解約できる／TODOあり など）
+  const leaverStates = useMemo(() => {
+    const map = new Map<string, SswLeaverCancelState>();
+    for (const { row } of leftRows) {
+      const info = leaverInfo.get(row.worker.id);
+      if (!info) continue;
+      map.set(row.worker.id, sswLeaverCancelState(info.worker, info.cancelTodo, today));
+    }
+    return map;
+  }, [leftRows, leaverInfo, today]);
+  const leaverInsuredCount = useMemo(
+    () => [...leaverStates.values()].filter(isSswLeaverInsured).length,
+    [leaverStates],
+  );
+  // 解約TODOをまだ作っていない加入者（「加入者全員の解約TODOを作る」の対象）
+  const leaverCancelableIds = useMemo(
+    () => [...leaverStates.entries()].filter(([, st]) => st.kind === "cancelable").map(([id]) => id),
+    [leaverStates],
+  );
+  // 解約手続きのTODOを作る（同じ内容の未完了のTODOがあれば増やさない）
+  const makeLeaverCancelTodos = async (workerIds: string[]) => {
+    if (workerIds.length === 0) return;
+    setError(null);
+    setLeaverTodoBusy(workerIds.length === 1 ? workerIds[0] : "all");
+    try {
+      const supabase = createClient();
+      for (const id of workerIds) await ensureSswTodo(supabase, id, SSW_CANCEL_TODO_TITLE);
+      setLeaverInfoKey((k) => k + 1);
+    } catch (err) {
+      setError(dbErrorMessage(err, "0139_ssw_insurance.sql", "解約手続きのTODOを作れませんでした"));
+    } finally {
+      setLeaverTodoBusy(null);
+    }
+  };
 
   // 月末の作業の進み具合（organization_id → 日付）。対象の年月ごとに読み込む。
   // 請求書は「この機関のみ」でエクセルを出したとき、督促状は印刷を開いたときに
@@ -1527,7 +1604,30 @@ export function MonthlyBillingSection({
                 {leftRows.length === 0 ? (
                   <p className="text-xs text-muted">当月に退職された方はいません。</p>
                 ) : (
-                  <table className="w-full min-w-[720px] border-collapse text-xs">
+                  <>
+                    {/* 特定技能総合保険の加入者には解約手続きのTODOを作る（TODO ＞ 特定技能総合保険 ＞ 解約手続き と同じTODO） */}
+                    <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] text-muted">
+                      <ShieldCheck size={13} className="text-brand" />
+                      <span>
+                        特定技能総合保険の加入者 {leaverInsuredCount}名
+                        {leaverCancelableIds.length > 0 && `（うち解約TODOがまだの人 ${leaverCancelableIds.length}名）`}
+                      </span>
+                      {canEdit && leaverCancelableIds.length > 0 && (
+                        <button
+                          type="button"
+                          disabled={leaverTodoBusy !== null}
+                          onClick={() => void makeLeaverCancelTodos(leaverCancelableIds)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-1 font-bold text-brand hover:border-brand disabled:opacity-50"
+                        >
+                          {leaverTodoBusy === "all" && <Loader2 size={12} className="animate-spin" />}
+                          加入者全員の解約TODOを作る
+                        </button>
+                      )}
+                      <Link href="/todos/ssw-insurance" className="font-bold text-brand hover:underline">
+                        特定技能総合保険の画面を開く
+                      </Link>
+                    </div>
+                  <table className="w-full min-w-[880px] border-collapse text-xs">
                     <thead>
                       <tr className="border-b border-border text-left text-muted">
                         <th className="py-1.5 pr-2 font-bold">退職日</th>
@@ -1537,7 +1637,8 @@ export function MonthlyBillingSection({
                         <th className="py-1.5 pr-2 font-bold">在留資格</th>
                         <th className="py-1.5 pr-2 font-bold">支援費算定期間</th>
                         <th className="py-1.5 pr-2 font-bold">日数</th>
-                        <th className="py-1.5 text-right font-bold">支援費請求額</th>
+                        <th className="py-1.5 pr-2 text-right font-bold">支援費請求額</th>
+                        <th className="py-1.5 font-bold">特定技能総合保険</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1560,13 +1661,23 @@ export function MonthlyBillingSection({
                           <td className="py-1.5 pr-2">{row.worker.residence_status}</td>
                           <td className="py-1.5 pr-2 tabular-nums">{periodText(row)}</td>
                           <td className="py-1.5 pr-2 tabular-nums">{daysText(row)}</td>
-                          <td className="py-1.5 text-right tabular-nums">
+                          <td className="py-1.5 pr-2 text-right tabular-nums">
                             {formatSalesYen(row.amount)}
+                          </td>
+                          <td className="py-1.5">
+                            <LeaverInsuranceCell
+                              workerId={row.worker.id}
+                              state={leaverStates.get(row.worker.id)}
+                              canEdit={canEdit}
+                              busy={leaverTodoBusy === row.worker.id || leaverTodoBusy === "all"}
+                              onMakeTodo={() => void makeLeaverCancelTodos([row.worker.id])}
+                            />
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
+                  </>
                 )}
               </div>
             )}
@@ -3021,6 +3132,84 @@ function SalesNoCell({
       )}
       {footer}
     </td>
+  );
+}
+
+// 当月退職者リストの「特定技能総合保険」の欄。
+// 加入者には「解約TODOを作る」ボタン、作ってあればTODO番号と経過、未加入なら「未加入」
+function LeaverInsuranceCell({
+  workerId,
+  state,
+  canEdit,
+  busy,
+  onMakeTodo,
+}: {
+  workerId: string;
+  state: SswLeaverCancelState | undefined;
+  canEdit: boolean;
+  busy: boolean;
+  onMakeTodo: () => void;
+}) {
+  if (!state) return <span className="text-muted">…</span>;
+  if (state.kind === "notInsured") {
+    return <span className="text-muted" title="被保険者証明書の番号と有効期限が登録されていません">未加入</span>;
+  }
+  if (state.kind === "incomplete") {
+    return (
+      <Link
+        href={`/workers/${workerId}`}
+        className="text-status-notice-fg underline-offset-2 hover:underline"
+        title="被保険者証明書の番号か有効期限のどちらかが未登録です。外国人詳細で補ってから解約TODOを作ってください"
+      >
+        加入の記録が不完全
+      </Link>
+    );
+  }
+  if (state.kind === "tooLate") {
+    return (
+      <span className="text-muted" title={`有効期限（${slashDate(state.expiry)}）から4か月以上たっているため解約できません`}>
+        加入者・解約期限切れ
+      </span>
+    );
+  }
+  if (state.kind === "todo") {
+    const { todo } = state;
+    return (
+      <span className="inline-flex flex-wrap items-center gap-1">
+        <span
+          className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+            todo.done ? "bg-background text-muted" : "bg-brand/10 text-brand"
+          }`}
+        >
+          {todo.done ? "解約済み" : `解約TODO ${todo.status}`}
+        </span>
+        <Link href="/todos/ssw-insurance" className="text-[10px] font-bold text-brand hover:underline">
+          {displayTodoNo(todo.todo_no)}
+        </Link>
+      </span>
+    );
+  }
+  // cancelable: 加入者で、解約手続きのTODOをまだ作っていない
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <span className="rounded-full bg-seal/10 px-1.5 py-0.5 text-[10px] font-bold text-seal" title={`被保険者証明書の有効期限 ${slashDate(state.expiry)}`}>
+        加入者
+      </span>
+      {canEdit ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onMakeTodo}
+          className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2 py-1 text-[11px] font-bold text-brand hover:border-brand disabled:opacity-50"
+          title="「特定技能総合保険の解約手続き」のTODOを作ります（すでにあれば増やしません）"
+        >
+          {busy && <Loader2 size={11} className="animate-spin" />}
+          解約TODOを作る
+        </button>
+      ) : (
+        <span className="text-[10px] text-muted">解約TODO未作成</span>
+      )}
+    </span>
   );
 }
 

@@ -693,3 +693,38 @@ export function sswUploadCells(rows: SswUploadRow[]): Record<string, string | nu
   });
   return cells;
 }
+
+// 請求書作成の「当月退職者リスト」に出す、特定技能総合保険の解約手続きの状態。
+//   notInsured … 加入していない（証明書番号も有効期限も無い）
+//   incomplete … 加入の記録が片方しか無い（番号だけ・期限だけ）。外国人詳細で補ってから解約TODOを作る
+//   tooLate    … 加入者だが、有効期限から4か月以上たっていて解約できない
+//   todo       … 解約手続きのTODOがすでにある（完了していれば解約済み）
+//   cancelable … 加入者で、解約手続きのTODOをまだ作っていない（ボタンで作る）
+export type SswLeaverCancelState =
+  | { kind: "notInsured" }
+  | { kind: "incomplete" }
+  | { kind: "tooLate"; expiry: string }
+  | { kind: "todo"; todo: SswTodoRef }
+  | { kind: "cancelable"; expiry: string };
+
+export function sswLeaverCancelState(
+  w: Pick<SswInsuranceWorker, "ssw_insurance_no" | "ssw_insurance_expiry_date">,
+  cancelTodo: SswTodoRef | undefined,
+  today: string,
+): SswLeaverCancelState {
+  const no = (w.ssw_insurance_no ?? "").trim();
+  const expiry = (w.ssw_insurance_expiry_date ?? "").trim();
+  // TODOがあればそれを優先して出す（作ったあとに記録を消しても、手続きの状況は残す）
+  if (cancelTodo) return { kind: "todo", todo: cancelTodo };
+  if (!no && !expiry) return { kind: "notInsured" };
+  if (!no || !expiry) return { kind: "incomplete" };
+  if (!isSswCancelable({ ssw_insurance_no: no, ssw_insurance_expiry_date: expiry }, today)) {
+    return { kind: "tooLate", expiry };
+  }
+  return { kind: "cancelable", expiry };
+}
+
+// 当月退職者リストで「加入者」として数える人（解約できる人と、すでに解約TODOがある人）
+export function isSswLeaverInsured(state: SswLeaverCancelState): boolean {
+  return state.kind === "cancelable" || state.kind === "todo" || state.kind === "tooLate";
+}

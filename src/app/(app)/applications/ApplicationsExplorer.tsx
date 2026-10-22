@@ -32,7 +32,7 @@ import { createClient } from "@/lib/supabase/client";
 import { listPrepStatuses, type PrepStatus } from "@/lib/supabase/queries/prep-status";
 import { upsertPrepTantou } from "@/lib/supabase/queries/application-prep";
 import { PREP_TANTOU_OPTIONS, prepDetailHref } from "@/lib/application-prep";
-import { matchesApplicationTantou, tantouFilterOptions } from "@/lib/application-tantou";
+import { groupByTantou, matchesApplicationTantou, tantouFilterOptions } from "@/lib/application-tantou";
 import {
   advanceSituationOnApproval,
   approvalPatch,
@@ -327,6 +327,8 @@ export function ApplicationsExplorer({
   // 「許可のお知らせ画像」: 受け取り待ち／新規発行済みタブで複数の申請を選び、
   // 1人1枠の画像にして Messenger に貼る
   const [noticeSelecting, setNoticeSelecting] = useState(false);
+  // 受け取り待ち／新規発行済み: 担当者（申請準備のTODOの担当者）ごとに見出しを付けて並べる
+  const [groupTantou, setGroupTantou] = useState(false);
   const [noticeIds, setNoticeIds] = useState<Set<string>>(() => new Set());
   const [noticeOpen, setNoticeOpen] = useState(false);
   const toggleNotice = (id: string) =>
@@ -845,27 +847,46 @@ export function ApplicationsExplorer({
       {filtered.length === 0 ? (
         <p className="py-12 text-center text-sm text-muted">該当する申請が見つかりません</p>
       ) : showApprovedDetail || showIssued ? (
-        /* 受け取り待ち / 新規発行済み: メモ・受取予定日をこの場で編集できるカード */
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {paged.map((a) => (
-            <SelectableCard
-              key={a.id}
-              selecting={noticeSelecting}
-              selected={noticeIds.has(a.id)}
-              name={a.name}
-              onToggle={() => toggleNotice(a.id)}
-            >
-              <ApprovedCard
-                app={a}
-                today={TODAY}
-                variant={showIssued ? "issued" : "waiting"}
-                canEdit={canEdit}
-                authorName={authorName}
-                custodyNoLabel={custodyNoLabel(a)}
-                nationality={nationalityOf(a)}
-                updateApplication={updateApplication}
-              />
-            </SelectableCard>
+        /* 受け取り待ち / 新規発行済み: メモ・受取予定日をこの場で編集できるカード。
+           「担当者別に表示」なら担当者ごとに見出しを付けて並べる */
+        <div className="flex flex-col gap-3">
+          <label className="flex w-fit items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs font-bold">
+            <input type="checkbox" checked={groupTantou} onChange={(e) => setGroupTantou(e.target.checked)} className="h-4 w-4" />
+            担当者別に表示
+          </label>
+          {(groupTantou ? groupByTantou(paged, tantouOf) : [{ tantou: "", rows: paged }]).map((g) => (
+            <div key={g.tantou || "all"} className="flex flex-col gap-2">
+              {groupTantou && (
+                <p className="flex items-center gap-2 border-b-2 border-brand pb-1 text-sm font-bold">
+                  <span className="rounded-md bg-brand px-2 py-0.5 text-xs text-brand-foreground">担当者</span>
+                  {g.tantou}
+                  <span className="text-xs text-muted">{g.rows.length}件</span>
+                </p>
+              )}
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                {g.rows.map((a) => (
+                  <SelectableCard
+                    key={a.id}
+                    selecting={noticeSelecting}
+                    selected={noticeIds.has(a.id)}
+                    name={a.name}
+                    onToggle={() => toggleNotice(a.id)}
+                  >
+                    <ApprovedCard
+                      app={a}
+                      today={TODAY}
+                      variant={showIssued ? "issued" : "waiting"}
+                      canEdit={canEdit}
+                      authorName={authorName}
+                      custodyNoLabel={custodyNoLabel(a)}
+                      nationality={nationalityOf(a)}
+                      tantou={tantouOf(a)}
+                      updateApplication={updateApplication}
+                    />
+                  </SelectableCard>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       ) : (

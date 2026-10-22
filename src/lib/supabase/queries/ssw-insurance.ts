@@ -4,10 +4,12 @@ import {
   SSW_INSURANCE_TODO_KIND,
   SSW_JOIN_TODO_TITLE,
   isSswCancelable,
+  sswTodosByWorker,
   type SswInsuranceWorker,
+  type SswTodoRef,
 } from "@/lib/ssw-insurance";
 import { todayStr } from "@/lib/ssw/calc";
-import { insertTodo, type TodoRow } from "@/lib/supabase/queries/todos";
+import { insertTodo, listTodoStatusOptions, type TodoRow } from "@/lib/supabase/queries/todos";
 
 // 特定技能総合保険の読み書き（0139_ssw_insurance.sql）
 
@@ -205,6 +207,48 @@ export async function ensureSswCancelTodoOnLeaving(
   }
   const { row, created } = await ensureSswTodo(supabase, workerId, SSW_CANCEL_TODO_TITLE);
   return { outcome: created ? "created" : "exists", todoNo: row?.todo_no ?? "" };
+}
+
+// 請求書作成の「当月退職者リスト」用: 退職した人の加入の記録（証明書番号・有効期限）と、
+// 解約手続きのTODO（最新の1件）を、その人たちの分だけ読む
+export interface SswLeaverInfo {
+  worker: Pick<SswInsuranceWorker, "ssw_insurance_no" | "ssw_insurance_expiry_date">;
+  cancelTodo?: SswTodoRef;
+}
+
+export async function listSswLeaverInfo(
+  supabase: SupabaseClient,
+  workerIds: string[],
+): Promise<Map<string, SswLeaverInfo>> {
+  const map = new Map<string, SswLeaverInfo>();
+  if (workerIds.length === 0) return map;
+  const [ws, ts, options] = await Promise.all([
+    supabase
+      .from("workers")
+      .select("id, ssw_insurance_no, ssw_insurance_expiry_date")
+      .in("id", workerIds),
+    supabase
+      .from("todos")
+      .select("id, todo_no, kind, worker_id, title, status, deleted_at, created_at")
+      .eq("kind", SSW_INSURANCE_TODO_KIND)
+      .eq("title", SSW_CANCEL_TODO_TITLE)
+      .in("worker_id", workerIds)
+      .order("created_at", { ascending: false }),
+    listTodoStatusOptions(supabase).catch(() => []),
+  ]);
+  if (ws.error) throw ws.error;
+  if (ts.error) throw ts.error;
+  const todos = sswTodosByWorker(
+    (ts.data as { id: string; todo_no: string; kind: string; worker_id: string | null; title: string; status: string; deleted_at?: string | null }[]) ?? [],
+    options,
+  );
+  for (const w of (ws.data as { id: string; ssw_insurance_no: string | null; ssw_insurance_expiry_date: string | null }[]) ?? []) {
+    map.set(w.id, {
+      worker: { ssw_insurance_no: w.ssw_insurance_no ?? "", ssw_insurance_expiry_date: w.ssw_insurance_expiry_date },
+      cancelTodo: todos.get(w.id)?.cancel,
+    });
+  }
+  return map;
 }
 
 // 特定技能総合保険の売上（保険No.）。請求を立てた人の番号を一覧に出し、

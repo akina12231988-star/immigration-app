@@ -22,6 +22,23 @@ export function matchesApplicationTantou(
   return normalizeTantouName(rowTantou) === target;
 }
 
+// 担当者（申請準備）ごとにまとめる（在留カード受け取り待ちの「担当者別に表示」）。
+// 担当者の名前順に並べ、担当者が未定の案件は「未定」として最後にまとめる
+export const TANTOU_UNSET = "未定";
+export function groupByTantou<T>(rows: T[], tantouOf: (row: T) => string): { tantou: string; rows: T[] }[] {
+  const map = new Map<string, { tantou: string; rows: T[] }>();
+  for (const row of rows) {
+    const name = (tantouOf(row) ?? "").trim();
+    const key = name ? normalizeTantouName(name) : "";
+    const g = map.get(key) ?? { tantou: name || TANTOU_UNSET, rows: [] };
+    g.rows.push(row);
+    map.set(key, g);
+  }
+  const groups = Array.from(map.entries());
+  groups.sort(([ka, a], [kb, b]) => (ka === "" ? 1 : kb === "" ? -1 : a.tantou.localeCompare(b.tantou, "ja")));
+  return groups.map(([, g]) => g);
+}
+
 // 絞り込みの選択肢。
 // 決まった顔ぶれ（PREP_TANTOU_OPTIONS）に、実際に登録されている担当者を足す
 // （一覧に出ているのに選べない、ということが無いように）。

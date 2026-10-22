@@ -27,6 +27,7 @@ export function ApprovedCard({
   authorName,
   custodyNoLabel,
   nationality,
+  tantou = "",
   updateApplication,
 }: {
   app: Application;
@@ -36,6 +37,7 @@ export function ApprovedCard({
   authorName: string;
   custodyNoLabel: string; // 預かり番号（未預かりは「—」）
   nationality?: string | null; // 外国人一覧から引き当てた国籍
+  tantou?: string; // 担当者（申請準備のTODOの担当者。カードにも出す）
   updateApplication: (id: string, patch: Partial<Application>) => Promise<void>;
 }) {
   const router = useRouter();
@@ -130,6 +132,13 @@ export function ApprovedCard({
           </p>
           <p className="text-xs tabular-nums text-muted">預かり番号 {custodyNoLabel}</p>
           <ApplicantMeta app={app} nationality={nationality} className="mt-1" />
+          {tantou && (
+            <p className="mt-1">
+              <span className="inline-flex items-center gap-1 rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-bold text-brand">
+                担当 {tantou}
+              </span>
+            </p>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {alert && <AlertBadge expiry={app.residenceExpiryAtApply} />}

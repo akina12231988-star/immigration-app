@@ -46,6 +46,8 @@ import { dbErrorMessage } from "@/lib/errors";
 import { koyoFileName, needsKoyoJokyoForm } from "@/lib/koyo-jokyo";
 import { downloadContractOrgForm } from "@/lib/contract-org-form";
 import { todayStr } from "@/lib/ssw/calc";
+import { missingRequestDocKeys } from "@/lib/onboarding-request-text";
+import { OnboardingRequestTextPanel } from "@/components/workers/OnboardingRequestTextPanel";
 import type {
   OnboardingDocumentRow,
   OnboardingFollowupRow,
@@ -65,6 +67,9 @@ export function OnboardingDocuments({
   koyoCovered: koyoCoveredProp = "",
   org = null,
   contractOrgNotNeeded = false,
+  nationality = null,
+  workerName = "",
+  askMissingDocs = false,
 }: {
   workerId: string;
   canEdit?: boolean;
@@ -78,6 +83,11 @@ export function OnboardingDocuments({
   org?: Organization | null;
   // 特定技能1号の更新許可なので、契約機関に関する届出（参考様式1の5）が要らない
   contractOrgNotNeeded?: boolean;
+  // 本人へ送ってもらう書類の依頼文（日本語＋母国語）用。国籍から母国語を決め、氏名を文面に入れる
+  nationality?: string | null;
+  workerName?: string;
+  // 在留資格変更の申請をした人（申請のあと、まだ無い書類を本人へ必ず尋ねる）
+  askMissingDocs?: boolean;
 }) {
   const [record, setRecord] = useState<OnboardingRecordRow | null>(null);
   const [docs, setDocs] = useState<OnboardingDocumentRow[]>([]);
@@ -554,6 +564,15 @@ export function OnboardingDocuments({
                 ))}
               </ul>
             </div>
+          )}
+
+          {/* 在留資格変更の申請をしたあと、本人から送ってもらう書類でまだ無いものを日本語＋母国語で頼む文面 */}
+          {canEdit && askMissingDocs && (
+            <OnboardingRequestTextPanel
+              missingKeys={missingRequestDocKeys((k) => !!docByKey.get(k)?.storage_path)}
+              nationality={nationality}
+              name={workerName}
+            />
           )}
 
           {/* 書類ごとの管理（保存・差し替え・削除・紐付け） */}
