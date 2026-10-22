@@ -23,6 +23,16 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-10-22",
+    title: "新規の申請準備で、前の申請の完了したTODOを使い回さず、別の申請種別なら新しいTODOを作れるようにしました",
+    where: "更新準備 ＞ 新規の申請準備を追加",
+    href: "/workers/renewals",
+    items: [
+      "これまでは、その人に過去の申請準備のTODO（完了済み）があると「すでに入っています」となって新しく登録できませんでした。完了したTODOは使い回さず、追加すると新しい番号のTODOを作るようにしました。",
+      "まだ終わっていない申請準備のTODOがある人を選ぶと、その番号・申請種別・経過を知らせます。そのまま追加するとそのTODOに保存し、申請種別が違う別の申請なら「別の申請として新しいTODOを作る」にチェックを入れて追加します。",
+    ],
+  },
+  {
+    date: "2026-10-22",
     title: "新規の申請準備の「Notion 申請TODO番号」を「申請準備TODO番号（空欄なら自動で採番）」にしました",
     where: "更新準備 ＞ 新規の申請準備を追加 ＞ 申請準備TODO番号",
     href: "/workers/renewals",
