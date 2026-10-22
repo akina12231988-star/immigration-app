@@ -1,5 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { VisaHistoryManual } from "@/lib/visa-history";
+import {
+  buildVisaHistory,
+  type VisaHistoryApplication,
+  type VisaHistoryCard,
+  type VisaHistoryManual,
+  type VisaHistoryRow,
+} from "@/lib/visa-history";
 
 // 在留資格の履歴のうち、手で入れた分（worker_visa_history・0138）
 
@@ -66,4 +72,60 @@ export async function deleteVisaHistory(
 ): Promise<void> {
   const { error } = await supabase.from("worker_visa_history").delete().eq("id", id);
   if (error) throw error;
+}
+
+// 在留資格の履歴（許可ごと）を全部組み立てて返す。
+// 元データは、申請一覧の許可欄・在留カードの記録（0137）・手で入れた分（0138）・今の在留カード。
+// 0137/0138 が未適用の環境でも、読めた分だけで組み立てる（労働者名簿の履歴などに使う）
+export async function listVisaHistoryRows(
+  supabase: SupabaseClient,
+  worker: {
+    id: string;
+    residence_card_no: string;
+    residence_status: string;
+    residence_permit_date: string | null;
+    residence_expiry_date: string | null;
+    residence_period?: string;
+  },
+): Promise<VisaHistoryRow[]> {
+  const [apps, cards, manual] = await Promise.all([
+    supabase
+      .from("immigration_applications")
+      .select("content, approved, approval_date, granted_permit_date, granted_expiry_date, granted_card_no, visa_at_grant")
+      .eq("worker_id", worker.id)
+      .then(({ data }) => (data as VisaHistoryApplication[] | null) ?? []),
+    supabase
+      .from("worker_card_history")
+      .select("residence_card_no, residence_status, residence_permit_date, residence_expiry_date")
+      .eq("worker_id", worker.id)
+      .then(({ data }) => (data as VisaHistoryCard[] | null) ?? []),
+    listVisaHistory(supabase, worker.id).catch(() => [] as VisaHistoryManual[]),
+  ]);
+  return buildVisaHistory({
+    apps: apps.map((a) => ({
+      content: a.content ?? "",
+      approved: !!a.approved,
+      approval_date: a.approval_date,
+      granted_permit_date: a.granted_permit_date,
+      granted_expiry_date: a.granted_expiry_date,
+      granted_card_no: a.granted_card_no ?? "",
+      visa_at_grant: a.visa_at_grant ?? "",
+    })),
+    cards: cards.map((c) => ({
+      residence_card_no: c.residence_card_no ?? "",
+      residence_status: c.residence_status ?? "",
+      residence_permit_date: c.residence_permit_date,
+      residence_expiry_date: c.residence_expiry_date,
+    })),
+    manual,
+    current: worker.residence_permit_date
+      ? {
+          residence_card_no: worker.residence_card_no ?? "",
+          residence_status: worker.residence_status ?? "",
+          residence_permit_date: worker.residence_permit_date,
+          residence_expiry_date: worker.residence_expiry_date,
+          residence_period: worker.residence_period ?? "",
+        }
+      : null,
+  });
 }

@@ -5,6 +5,7 @@ import { getWorkerWithHistories } from "@/lib/supabase/queries/workers";
 import { listWorkerRosters } from "@/lib/supabase/queries/rosters";
 import { normalizeOrgEmploymentStarts } from "@/lib/org-employment";
 import { rosterPreviousJobs } from "@/lib/roster-draft";
+import { listVisaHistoryRows } from "@/lib/supabase/queries/visa-history";
 import { RosterSheet } from "./RosterSheet";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +24,11 @@ export default async function WorkerRosterPage({
   if (!worker) notFound();
 
   // worker_rosters 未作成でもページ自体は表示できるように握りつぶす
-  const rosters = await listWorkerRosters(supabase, id).catch(() => []);
+  const [rosters, visaRows] = await Promise.all([
+    listWorkerRosters(supabase, id).catch(() => []),
+    // 在留資格の履歴（許可ごと）。会社ごとの在籍期間の許可を履歴に全部載せるのに使う
+    listVisaHistoryRows(supabase, worker).catch(() => []),
+  ]);
 
   // 機関名の解決と、所属機関別の雇用開始日（会社名→開始日）の組み立て
   const { data: orgRows } = await supabase.from("organizations").select("id, name");
@@ -67,6 +72,13 @@ export default async function WorkerRosterPage({
       defaultPreviousJobs={previousJobs}
       employmentStarts={employmentStarts}
       initialRosters={rosters}
+      permits={visaRows.map((r) => ({ permitDate: r.permitDate, status: r.status, label: r.label }))}
+      histories={worker.work_histories.map((h) => ({
+        org_name: h.org_name,
+        start_date: h.start_date,
+        end_date: h.end_date,
+        visa: h.visa,
+      }))}
     />
   );
 }

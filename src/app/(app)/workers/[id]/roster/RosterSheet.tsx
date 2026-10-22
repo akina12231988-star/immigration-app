@@ -14,11 +14,15 @@ import {
   isWithinRosterRetention,
   rosterFileName,
   rosterJpDate,
+  rosterPermitsForOrg,
   rosterRetentionEnd,
   rosterWorkKind,
   sortRosterHistory,
   withResidencePermitHistory,
+  withVisaPermitHistory,
+  type RosterPermit,
 } from "@/lib/roster";
+import type { VisaHistoryEmployment } from "@/lib/visa-history";
 import { todayStr } from "@/lib/ssw/calc";
 import type {
   RosterHistoryEntry,
@@ -66,6 +70,8 @@ export function RosterSheet({
   defaultPreviousJobs,
   employmentStarts,
   initialRosters,
+  permits = [],
+  histories = [],
 }: {
   workerId: string;
   canEdit: boolean;
@@ -74,20 +80,29 @@ export function RosterSheet({
   defaultPreviousJobs: RosterPreviousJob[]; // 職歴から作った前職（会社名・都道府県）
   employmentStarts: { orgName: string; startOn: string }[]; // 所属機関別の雇用開始日
   initialRosters: WorkerRoster[];
+  permits?: RosterPermit[]; // 在留資格の履歴（許可ごと・全部）。会社ごとに在籍中の分を履歴に載せる
+  histories?: VisaHistoryEmployment[]; // 職歴（どの会社にいたときの許可かを見るのに使う）
 }) {
   // 会社名に対応する雇用開始日（機関別の登録があればそれを、無ければ既存の雇用開始年月日）
   const startFor = (company: string): string | null =>
     employmentStarts.find((e) => e.orgName === company.trim())?.startOn ??
     worker.employmentStartOn;
+  // 履歴に在留資格の許可を足す。その会社にいる間の許可が分かれば全部（更新のたびの許可も）、
+  // 無ければ今の在留カードの許可だけ
+  const withPermits = (history: RosterHistoryEntry[], company: string): RosterHistoryEntry[] => {
+    const list = rosterPermitsForOrg(permits, histories, company.trim(), startFor(company));
+    return list.length > 0
+      ? withVisaPermitHistory(history, list)
+      : withResidencePermitHistory(history, worker.residenceStatus, worker.residencePermitDate);
+  };
   // 新規作成時の初期値: 外国人の登録データから自動で埋める
   const buildDefault = (): RosterForm => ({
     company_name: orgName,
     work_kind: rosterWorkKind(worker.field),
-    // 入社の行に加えて、在留資格の許可も履歴として残す
-    history: withResidencePermitHistory(
+    // 入社の行に加えて、在留資格の許可（この会社にいる間の分を全部）も履歴として残す
+    history: withPermits(
       startFor(orgName) ? [{ on: rosterJpDate(startFor(orgName)), content: "入社" }] : [],
-      worker.residenceStatus,
-      worker.residencePermitDate,
+      orgName,
     ),
     // 前職は職歴からそのまま持ってくる（職歴に都道府県を入れておくとここにも入る）
     previous_jobs: defaultPreviousJobs.map((j) => ({ ...j })),
@@ -106,12 +121,8 @@ export function RosterSheet({
     // 業務の種類が空のまま保存された名簿は、分野・職種から作り直して補う
     // （あとから分野・職種を入れたときに空欄のままにならないように）
     work_kind: r.work_kind || rosterWorkKind(worker.field),
-    // 保存済みの名簿にも在留資格の許可を出す（同じ年月日の行があるときはそのまま）
-    history: withResidencePermitHistory(
-      r.history ?? [],
-      worker.residenceStatus,
-      worker.residencePermitDate,
-    ),
+    // 保存済みの名簿にも在留資格の許可（この会社にいる間の分を全部）を出す（同じ年月日の行があるときはそのまま）
+    history: withPermits(r.history ?? [], r.company_name),
     previous_jobs: r.previous_jobs ?? [],
     leaving_on: r.leaving_on,
     leaving_reason: r.leaving_reason,

@@ -10,6 +10,8 @@ import {
 } from "@/lib/supabase/queries/rosters";
 import { normalizeOrgEmploymentStarts } from "@/lib/org-employment";
 import { buildRosterDraft, type RosterDraft } from "@/lib/roster-draft";
+import { rosterPermitsForOrg } from "@/lib/roster";
+import { listVisaHistoryRows } from "@/lib/supabase/queries/visa-history";
 import { dbErrorMessage } from "@/lib/errors";
 import { todayStr } from "@/lib/ssw/calc";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
@@ -356,9 +358,10 @@ export async function getOnboardingRosterDraft(
   const worker = await getWorkerWithHistories(supabase, workerId).catch(() => null);
   if (!worker) return { ok: false, message: "外国人が見つかりません" };
 
-  const [rosters, orgRows] = await Promise.all([
+  const [rosters, orgRows, visaRows] = await Promise.all([
     listWorkerRosters(supabase, workerId).catch(() => []),
     supabase.from("organizations").select("id, name"),
+    listVisaHistoryRows(supabase, worker).catch(() => []),
   ]);
   const orgNameById = new Map(
     ((orgRows.data as { id: string; name: string }[] | null) ?? []).map((o) => [o.id, o.name]),
@@ -375,6 +378,8 @@ export async function getOnboardingRosterDraft(
       orgName,
       field: worker.field,
       employmentStartOn: startAtOrg ?? worker.employment_start_on,
+      // この会社にいる間に受けた許可を全部（更新のたびの許可も）履歴に載せる
+      permits: rosterPermitsForOrg(visaRows, worker.work_histories, orgName, startAtOrg ?? worker.employment_start_on),
       residenceStatus: worker.residence_status,
       residencePermitDate: worker.residence_permit_date,
       status: worker.status,

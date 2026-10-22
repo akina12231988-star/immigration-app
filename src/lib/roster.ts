@@ -1,4 +1,6 @@
 import { categoriesFor } from "@/lib/industries";
+import { normalizeOrgSearchText } from "@/lib/org-search";
+import { visaHistoryForCurrentOrg, type VisaHistoryEmployment } from "@/lib/visa-history";
 import type { RosterHistoryEntry } from "@/types/db";
 
 // ---- 労働者名簿（worker_rosters）のロジック ----
@@ -125,6 +127,59 @@ export function withResidencePermitHistory(
   const key = rosterDateKey(row.on);
   const already = history.some((h) => rosterDateKey(h.on) === key);
   return sortRosterHistory(already ? history : [...history, row]);
+}
+
+// ---- 在留資格の履歴（許可ごと）を労働者名簿の履歴にする ----
+
+// 名簿に載せる許可1件（在留資格の履歴の行から、名簿に要る項目だけ）
+export interface RosterPermit {
+  permitDate: string; // 許可日（YYYY-MM-DD）
+  status: string; // 在留資格（特定技能1号 など）
+  label: string; // 「特定技能1号 更新許可」などの言い方（更新／認定を見分ける）
+}
+
+// 許可1件を履歴の1行にする（例: 2026年10月22日「特定技能1号ビザの更新許可」）
+export function visaPermitHistory(p: RosterPermit): RosterHistoryEntry {
+  const status = (p.status ?? "").trim() || "在留資格";
+  const kind = p.label.includes("更新") ? "更新許可" : p.label.includes("認定") ? "認定" : "許可";
+  return { on: rosterJpDate(p.permitDate), content: `${status}ビザの${kind}` };
+}
+
+// 履歴に、その会社にいる間の許可を全部足す（同じ年月日の行が既にあるときは足さない）。
+// 並び順は年月日の古い順にそろえる。許可が1件も無ければ履歴はそのまま
+export function withVisaPermitHistory(
+  history: RosterHistoryEntry[],
+  permits: RosterPermit[],
+): RosterHistoryEntry[] {
+  const out = [...history];
+  for (const p of permits) {
+    if (!p.permitDate) continue;
+    const row = visaPermitHistory(p);
+    const key = rosterDateKey(row.on);
+    if (out.some((h) => rosterDateKey(h.on) === key)) continue;
+    out.push(row);
+  }
+  return sortRosterHistory(out);
+}
+
+// その会社の名簿に載せる許可。在籍の始まり（start）から今までに使っていた許可と、
+// 職歴の上でその会社にいた日に受けた許可（機関名は全角・半角・空白の違いを無視して比べる）。
+// 在籍の始まりが分からなければ、職歴でその会社にいた日の許可だけ（職歴も無ければ全部）
+export function rosterPermitsForOrg<T extends RosterPermit>(
+  rows: T[],
+  histories: VisaHistoryEmployment[],
+  orgName: string,
+  start: string | null | undefined,
+): T[] {
+  const sameOrg = (a: string, b: string) => normalizeOrgSearchText(a) === normalizeOrgSearchText(b);
+  if (start) return visaHistoryForCurrentOrg(rows, histories, orgName, start, sameOrg);
+  const atOrg = orgName
+    ? histories.filter((h) => h.visa !== "本国での職歴" && sameOrg(h.org_name, orgName))
+    : [];
+  if (atOrg.length === 0) return [...rows].sort((a, b) => a.permitDate.localeCompare(b.permitDate));
+  return [...rows]
+    .filter((r) => atOrg.some((h) => h.start_date <= r.permitDate && (h.end_date === null || r.permitDate <= h.end_date)))
+    .sort((a, b) => a.permitDate.localeCompare(b.permitDate));
 }
 
 // ---- 印刷（PDF保存）のファイル名 ----

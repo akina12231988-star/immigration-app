@@ -10,6 +10,8 @@ import { normalizeOrgEmploymentStarts } from "@/lib/org-employment";
 import { fillFuyoForm } from "@/lib/fuyo-form";
 import { buildRosterPdf } from "@/lib/roster-pdf";
 import { buildRosterDraft, type RosterDraft } from "@/lib/roster-draft";
+import { rosterPermitsForOrg } from "@/lib/roster";
+import { listVisaHistoryRows } from "@/lib/supabase/queries/visa-history";
 import { todayStr } from "@/lib/ssw/calc";
 
 // 入社書類の「作成して添付」用。外国人の登録内容から書類のPDFを作って返す。
@@ -88,10 +90,11 @@ export async function POST(req: NextRequest) {
     }
 
     // 労働者名簿。保存済みの名簿があればその内容、無ければ登録データから組み立てる
-    const [rosters, font, orgRows] = await Promise.all([
+    const [rosters, font, orgRows, visaRows] = await Promise.all([
       listWorkerRosters(supabase, workerId).catch(() => []),
       FONT(),
       supabase.from("organizations").select("id, name"),
+      listVisaHistoryRows(supabase, worker).catch(() => []),
     ]);
     const orgNameById = new Map(
       ((orgRows.data as { id: string; name: string }[] | null) ?? []).map((o) => [o.id, o.name]),
@@ -113,6 +116,8 @@ export async function POST(req: NextRequest) {
           orgName,
           field: worker.field,
           employmentStartOn: startOn,
+          // この会社にいる間に受けた許可を全部（更新のたびの許可も）履歴に載せる
+          permits: rosterPermitsForOrg(visaRows, worker.work_histories, orgName, startOn),
           residenceStatus: worker.residence_status,
           residencePermitDate: worker.residence_permit_date,
           status: worker.status,

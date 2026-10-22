@@ -92,6 +92,25 @@ describe("buildRosterDraft", () => {
     expect(draft.issued_on).toBe("2026-09-01");
   });
 
+  it("その会社にいる間の許可が分かっていれば、更新のたびの許可も全部履歴に載せる", () => {
+    const draft = buildRosterDraft(
+      {
+        ...SRC,
+        permits: [
+          { permitDate: "2026-08-24", status: "特定技能1号", label: "特定技能1号 ビザ許可" },
+          { permitDate: "2027-08-20", status: "特定技能1号", label: "特定技能1号 更新許可" },
+        ],
+      },
+      null,
+      "2026-08-25",
+    );
+    expect(draft.history).toEqual([
+      { on: "2026年8月24日", content: "特定技能1号ビザの許可" },
+      { on: "2026年8月25日", content: "入社" },
+      { on: "2027年8月20日", content: "特定技能1号ビザの更新許可" },
+    ]);
+  });
+
   it("雇用開始日が分からないときの発行年月日は今日にする", () => {
     const draft = buildRosterDraft({ ...SRC, employmentStartOn: null }, null, "2026-08-25");
     expect(draft.issued_on).toBe("2026-08-25");
