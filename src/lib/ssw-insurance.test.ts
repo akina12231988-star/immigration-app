@@ -28,6 +28,8 @@ import {
   sswTaskOf,
   sortSswRows,
   isSswActionRow,
+  isSswLeaverInsured,
+  sswLeaverCancelState,
   tomorrowOf,
   type SswInsuranceWorker,
   formatYenInput,
@@ -624,5 +626,42 @@ describe("sswInsuranceExpiryState（請求書作成の保険No.の下に出す�
     expect(sswInsuranceExpiryState("2026-10-07", "2026-10-07")).toEqual({ kind: "soon", expiry: "2026-10-07", days: 0 });
     expect(sswInsuranceExpiryState("2026-11-07", "2026-10-07")).toEqual({ kind: "soon", expiry: "2026-11-07", days: 31 });
     expect(sswInsuranceExpiryState("2026-11-08", "2026-10-07")).toEqual({ kind: "ok", expiry: "2026-11-08", days: 32 });
+  });
+});
+
+describe("sswLeaverCancelState（当月退職者リストの解約TODO）", () => {
+  const today = "2026-09-30";
+  const todo = { id: "t1", todo_no: "12", title: SSW_CANCEL_TODO_TITLE, status: "未着手", stage: "未着手" as const, done: false };
+
+  it("番号も期限も無い人は未加入", () => {
+    expect(sswLeaverCancelState({ ssw_insurance_no: "", ssw_insurance_expiry_date: null }, undefined, today)).toEqual({ kind: "notInsured" });
+  });
+
+  it("番号か期限のどちらかしか無い人は記録が不完全", () => {
+    expect(sswLeaverCancelState({ ssw_insurance_no: "A-1", ssw_insurance_expiry_date: null }, undefined, today).kind).toBe("incomplete");
+    expect(sswLeaverCancelState({ ssw_insurance_no: "", ssw_insurance_expiry_date: "2027-01-01" }, undefined, today).kind).toBe("incomplete");
+  });
+
+  it("加入者で解約できる期間なら cancelable", () => {
+    expect(sswLeaverCancelState({ ssw_insurance_no: "A-1", ssw_insurance_expiry_date: "2027-01-01" }, undefined, today)).toEqual({ kind: "cancelable", expiry: "2027-01-01" });
+  });
+
+  it("有効期限から4か月以上たっていると解約できない", () => {
+    expect(sswLeaverCancelState({ ssw_insurance_no: "A-1", ssw_insurance_expiry_date: "2026-05-30" }, undefined, today)).toEqual({ kind: "tooLate", expiry: "2026-05-30" });
+    // 有効期限＋4か月が今日より後ならまだできる（5/31 + 4か月 = 9/30 は今日なので不可、6/1 なら可）
+    expect(sswLeaverCancelState({ ssw_insurance_no: "A-1", ssw_insurance_expiry_date: "2026-05-31" }, undefined, today).kind).toBe("tooLate");
+    expect(sswLeaverCancelState({ ssw_insurance_no: "A-1", ssw_insurance_expiry_date: "2026-06-01" }, undefined, today).kind).toBe("cancelable");
+  });
+
+  it("解約TODOがあれば（記録が無くても）そのTODOを出す", () => {
+    expect(sswLeaverCancelState({ ssw_insurance_no: "", ssw_insurance_expiry_date: null }, todo, today)).toEqual({ kind: "todo", todo });
+  });
+
+  it("加入者として数えるのは解約できる人・TODOがある人・期限超過の人", () => {
+    expect(isSswLeaverInsured({ kind: "cancelable", expiry: "2027-01-01" })).toBe(true);
+    expect(isSswLeaverInsured({ kind: "todo", todo })).toBe(true);
+    expect(isSswLeaverInsured({ kind: "tooLate", expiry: "2026-01-01" })).toBe(true);
+    expect(isSswLeaverInsured({ kind: "notInsured" })).toBe(false);
+    expect(isSswLeaverInsured({ kind: "incomplete" })).toBe(false);
   });
 });
