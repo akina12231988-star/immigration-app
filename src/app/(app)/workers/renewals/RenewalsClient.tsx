@@ -262,7 +262,7 @@ export function RenewalsClient({
 
       <p className="flex items-start gap-1.5 text-xs leading-relaxed text-muted">
         <CalendarClock size={14} className="mt-0.5 shrink-0" />
-        在留期限の4か月前になった対象者です。Notionで申請TODOを作成し、そのTODO番号を入力すると「準備中」になります。「準備中」の人は申請準備のTODOに自動で入り、TODOのステータスが「入管へ申請！！」になると申請一覧に「申請前＜入管提出！！＞」として表示され、そこから申請登録できます。弊社で準備しない場合は「転職先にて対応中」「他登録支援機関にて対応中」「帰国」を選べます。
+        在留期限の4か月前になった対象者です。申請準備TODO番号を入力（空欄なら自動で採番）して「準備中」にします。「準備中」の人は申請準備のTODOに自動で入り、TODOのステータスが「入管へ申請！！」になると申請一覧に「申請前＜入管提出！！＞」として表示され、そこから申請登録できます。弊社で準備しない場合は「転職先にて対応中」「他登録支援機関にて対応中」「帰国」を選べます。
       </p>
 
       {pendingCount > 0 && (
@@ -645,14 +645,19 @@ function NewPrepForm({
         </p>
       </div>
 
+      {/* 申請準備のTODO番号。空欄のまま追加すると、TODO一覧と同じ通し番号が自動で付く
+          （番号を指定したいとき・Notion から引き継いだ番号を使いたいときだけ入れる） */}
       <label className="flex flex-col gap-1">
-        <span className="text-[11px] font-bold text-muted">Notion 申請TODO番号</span>
+        <span className="text-[11px] font-bold text-muted">申請準備TODO番号（空欄なら自動で採番）</span>
         <input
           value={todo}
           onChange={(e) => setTodo(e.target.value)}
-          placeholder="例: TODO-1234"
+          placeholder="自動（空欄のまま追加すると TODO-◯◯◯◯ が付きます）"
           className={INPUT_CLASS}
         />
+        <span className="text-[11px] text-muted">
+          空欄のまま「申請準備に追加する」を押すと、TODO一覧と同じ通し番号が自動で付きます。番号を決めて使いたいときだけ入れてください（他のTODOと同じ番号は使えません）。
+        </span>
       </label>
 
       <label className="flex flex-col gap-1">
