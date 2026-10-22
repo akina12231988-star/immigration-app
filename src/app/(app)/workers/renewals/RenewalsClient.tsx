@@ -1,7 +1,7 @@
 "use client";
 
 import { dbErrorMessage } from "@/lib/errors";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -29,7 +29,8 @@ import {
   upsertPrepAppContent,
   upsertPrepTantou,
 } from "@/lib/supabase/queries/application-prep";
-import { ensurePrepTodo } from "@/lib/supabase/queries/todos";
+import { ensurePrepTodo, insertTodo, listTodoStatusOptions } from "@/lib/supabase/queries/todos";
+import { displayTodoNo, stageOfStatus } from "@/lib/todo";
 import { PREP_TANTOU_OPTIONS } from "@/lib/application-prep";
 import { blankWorkerInput } from "@/lib/worker-defaults";
 import { nameCounts } from "@/lib/worker-label";
@@ -262,7 +263,7 @@ export function RenewalsClient({
 
       <p className="flex items-start gap-1.5 text-xs leading-relaxed text-muted">
         <CalendarClock size={14} className="mt-0.5 shrink-0" />
-        在留期限の4か月前になった対象者です。Notionで申請TODOを作成し、そのTODO番号を入力すると「準備中」になります。「準備中」の人は申請準備のTODOに自動で入り、TODOのステータスが「入管へ申請！！」になると申請一覧に「申請前＜入管提出！！＞」として表示され、そこから申請登録できます。弊社で準備しない場合は「転職先にて対応中」「他登録支援機関にて対応中」「帰国」を選べます。
+        在留期限の4か月前になった対象者です。申請準備TODO番号を入力（空欄なら自動で採番）して「準備中」にします。「準備中」の人は申請準備のTODOに自動で入り、TODOのステータスが「入管へ申請！！」になると申請一覧に「申請前＜入管提出！！＞」として表示され、そこから申請登録できます。弊社で準備しない場合は「転職先にて対応中」「他登録支援機関にて対応中」「帰国」を選べます。
       </p>
 
       {pendingCount > 0 && (
@@ -447,9 +448,44 @@ function NewPrepForm({
   // 外国人を選んだら、その人の所属機関を初期値にする（転職ならここで転職先に選び直す）
   const selectWorker = (id: string) => {
     setWorkerId(id);
+    setForceNew(false);
     const w = workers.find((x) => x.id === id);
     setOrgId(w?.application_prep_organization_id ?? w?.current_organization_id ?? "");
   };
+
+  // 選んだ人の、まだ終わっていない申請準備のTODO（あれば知らせて、別の申請なら新しく作れるようにする）。
+  // 完了したTODO（前の申請の分）は使い回さず、追加すると新しい番号が付く
+  const [openTodos, setOpenTodos] = useState<{ id: string; todo_no: string; title: string; status: string }[]>([]);
+  const [forceNew, setForceNew] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    // レンダー中の同期setStateを避けるため、反映はマイクロタスクで行う
+    void Promise.resolve().then(async () => {
+      if (!workerId) {
+        if (!cancelled) setOpenTodos([]);
+        return;
+      }
+      try {
+        const supabase = createClient();
+        const [{ data }, opts] = await Promise.all([
+          supabase
+            .from("todos")
+            .select("id, todo_no, title, status, deleted_at")
+            .eq("kind", "申請準備")
+            .eq("worker_id", workerId),
+          listTodoStatusOptions(supabase).catch(() => []),
+        ]);
+        if (cancelled) return;
+        const rows = (data as { id: string; todo_no: string; title: string; status: string; deleted_at?: string | null }[] | null) ?? [];
+        setOpenTodos(rows.filter((r) => !r.deleted_at && stageOfStatus(r.status, opts) !== "完了"));
+      } catch {
+        if (!cancelled) setOpenTodos([]);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [workerId]);
 
   // 一覧に無い会社は、名前だけでその場で登録して選択する
   const createOrg = async (name: string) => {
@@ -516,11 +552,36 @@ function NewPrepForm({
       const title =
         APPLICATION_CONTENT_CHOICES.find((c) => prepSituation.includes(c.prepSituation))?.label ||
         "申請準備";
-      const { row, created } = await ensurePrepTodo(createClient(), {
-        worker_id: workerId,
-        title,
-        todo_no: todo.trim() || undefined,
-      });
+      // 「新しいTODOとして追加」にチェックがあれば、終わっていないTODOがあっても別に作る（申請種別が違うとき）。
+      // それ以外は、終わっていないTODOがあればそれを使い、完了した前の申請のTODOは使い回さず新しく作る
+      let row: { todo_no: string };
+      let created: boolean;
+      if (forceNew && openTodos.length > 0) {
+        try {
+          row = await insertTodo(createClient(), {
+            kind: "申請準備",
+            worker_id: workerId,
+            title,
+            todo_no: todo.trim() || undefined,
+          });
+          created = true;
+        } catch (err) {
+          const code = (err as { code?: string } | null)?.code;
+          if (code === "23505" && todo.trim()) {
+            throw new Error(
+              `TODO番号「${todo.trim()}」はすでに他のTODOで使われています。別の番号にするか、番号を空欄にして自動採番にしてください。`,
+            );
+          }
+          throw err;
+        }
+      } else {
+        ({ row, created } = await ensurePrepTodo(
+          createClient(),
+          { worker_id: workerId, title, todo_no: todo.trim() || undefined },
+          // 前の申請の終わったTODOは使い回さず、新しい番号をつける
+          { skipDone: true },
+        ));
+      }
       const todoNo = row.todo_no;
       await updateWorker(createClient(), workerId, {
         residence_renewal_todo: todoNo,
@@ -550,7 +611,7 @@ function NewPrepForm({
       setNotice(
         created
           ? `${who}を新規の申請準備に追加しました（TODO番号 ${row.todo_no}）。下の申請準備のTODOに入っています。`
-          : `${who}はすでに申請準備のTODOに入っています（TODO番号 ${row.todo_no}）。対応状況などの内容は保存しました。`,
+          : `${who}はすでに申請準備のTODOに入っています（TODO番号 ${row.todo_no}）。対応状況などの内容は保存しました。別の申請として新しいTODOを作りたいときは、外国人を選び直して「新しいTODOとして追加」にチェックを入れてください。`,
       );
       setAddedNewWorker(newWorker);
       onSaved?.();
@@ -627,6 +688,24 @@ function NewPrepForm({
         )}
       </div>
 
+      {/* まだ終わっていない申請準備のTODOがある人: そのまま追加するとそのTODOを使う。
+          申請種別が違う別の申請なら、チェックして新しいTODOを作る */}
+      {openTodos.length > 0 && (
+        <div className="rounded-xl border border-status-notice-fg/40 bg-status-notice-bg px-3 py-2.5 text-xs">
+          <p className="font-bold text-status-notice-fg">
+            この人には、まだ終わっていない申請準備のTODOがあります:
+            {openTodos.map((t) => ` ${displayTodoNo(t.todo_no)}（${t.title || "申請準備"}・${t.status}）`).join("、")}
+          </p>
+          <p className="mt-0.5 text-[11px] text-muted">
+            そのまま追加すると、このTODOに対応状況などを保存します（新しいTODOは作りません）。申請種別が違う別の申請なら、下にチェックを入れてください。完了したTODOは使い回さず、いつでも新しい番号で作れます。
+          </p>
+          <label className="mt-1.5 flex items-center gap-2 text-xs font-bold">
+            <input type="checkbox" checked={forceNew} onChange={(e) => setForceNew(e.target.checked)} className="h-4 w-4" />
+            別の申請として新しいTODOを作る（番号は空欄なら自動で採番）
+          </label>
+        </div>
+      )}
+
       <div>
         <span className="mb-1.5 block text-[11px] font-bold text-muted">
           所属機関（転職の場合は転職先）
@@ -645,14 +724,19 @@ function NewPrepForm({
         </p>
       </div>
 
+      {/* 申請準備のTODO番号。空欄のまま追加すると、TODO一覧と同じ通し番号が自動で付く
+          （番号を指定したいとき・Notion から引き継いだ番号を使いたいときだけ入れる） */}
       <label className="flex flex-col gap-1">
-        <span className="text-[11px] font-bold text-muted">Notion 申請TODO番号</span>
+        <span className="text-[11px] font-bold text-muted">申請準備TODO番号（空欄なら自動で採番）</span>
         <input
           value={todo}
           onChange={(e) => setTodo(e.target.value)}
-          placeholder="例: TODO-1234"
+          placeholder="自動（空欄のまま追加すると TODO-◯◯◯◯ が付きます）"
           className={INPUT_CLASS}
         />
+        <span className="text-[11px] text-muted">
+          空欄のまま「申請準備に追加する」を押すと、TODO一覧と同じ通し番号が自動で付きます。番号を決めて使いたいときだけ入れてください（他のTODOと同じ番号は使えません）。
+        </span>
       </label>
 
       <label className="flex flex-col gap-1">
