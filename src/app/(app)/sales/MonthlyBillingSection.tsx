@@ -24,6 +24,7 @@ import {
 import { Card } from "@/components/ui/Card";
 import {
   SSW_CANCEL_TODO_TITLE,
+  SSW_JOIN_TODO_TITLE,
   isSswLeaverInsured,
   slashDate,
   sswInsuranceExpiryState,
@@ -32,8 +33,8 @@ import {
 } from "@/lib/ssw-insurance";
 import {
   ensureSswTodo,
-  listSswLeaverInfo,
-  type SswLeaverInfo,
+  listSswBillingInfo,
+  type SswBillingInfo,
 } from "@/lib/supabase/queries/ssw-insurance";
 import { displayTodoNo } from "@/lib/todo";
 import { estimateHref, pickEstimateChecklist } from "@/lib/estimate-summary";
@@ -441,22 +442,24 @@ export function MonthlyBillingSection({
   const [showPermitted, setShowPermitted] = useState(false);
   const [showLeft, setShowLeft] = useState(false);
 
-  // 当月退職者の特定技能総合保険（加入の記録と解約手続きのTODO）。
-  // 退職者リストを開いたときに、その人たちの分だけ読む。TODOを作ったら読み直す
-  const [leaverInfo, setLeaverInfo] = useState<Map<string, SswLeaverInfo>>(new Map());
-  const [leaverInfoKey, setLeaverInfoKey] = useState(0);
-  const [leaverTodoBusy, setLeaverTodoBusy] = useState<string | null>(null);
-  const leftWorkerIds = useMemo(
-    () => leftRows.map(({ row }) => row.worker.id).sort().join(","),
-    [leftRows],
-  );
+  // 当月退職者・当月許可者の特定技能総合保険（加入の記録と、加入手続き・解約手続きのTODO）。
+  // それぞれのリストを開いたときに、その人たちの分だけ読む。TODOを作ったら読み直す
+  const [sswInfo, setSswInfo] = useState<Map<string, SswBillingInfo>>(new Map());
+  const [sswInfoKey, setSswInfoKey] = useState(0);
+  const [sswTodoBusy, setSswTodoBusy] = useState<string | null>(null);
+  const sswWorkerIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (showLeft) for (const { row } of leftRows) ids.add(row.worker.id);
+    if (showPermitted) for (const { row } of permittedRows) ids.add(row.worker.id);
+    return [...ids].sort().join(",");
+  }, [showLeft, leftRows, showPermitted, permittedRows]);
   useEffect(() => {
-    if (!showLeft || !leftWorkerIds) return;
+    if (!sswWorkerIds) return;
     let cancelled = false;
     void Promise.resolve().then(() =>
-      listSswLeaverInfo(createClient(), leftWorkerIds.split(","))
+      listSswBillingInfo(createClient(), sswWorkerIds.split(","))
         .then((map) => {
-          if (!cancelled) setLeaverInfo(map);
+          if (!cancelled) setSswInfo(map);
         })
         .catch((err) => {
           if (cancelled) return;
@@ -468,17 +471,17 @@ export function MonthlyBillingSection({
     return () => {
       cancelled = true;
     };
-  }, [showLeft, leftWorkerIds, leaverInfoKey]);
+  }, [sswWorkerIds, sswInfoKey]);
   // 退職した人ごとの解約手続きの状態（未加入／解約できる／TODOあり など）
   const leaverStates = useMemo(() => {
     const map = new Map<string, SswLeaverCancelState>();
     for (const { row } of leftRows) {
-      const info = leaverInfo.get(row.worker.id);
+      const info = sswInfo.get(row.worker.id);
       if (!info) continue;
       map.set(row.worker.id, sswLeaverCancelState(info.worker, info.cancelTodo, today));
     }
     return map;
-  }, [leftRows, leaverInfo, today]);
+  }, [leftRows, sswInfo, today]);
   const leaverInsuredCount = useMemo(
     () => [...leaverStates.values()].filter(isSswLeaverInsured).length,
     [leaverStates],
@@ -488,21 +491,49 @@ export function MonthlyBillingSection({
     () => [...leaverStates.entries()].filter(([, st]) => st.kind === "cancelable").map(([id]) => id),
     [leaverStates],
   );
-  // 解約手続きのTODOを作る（同じ内容の未完了のTODOがあれば増やさない）
-  const makeLeaverCancelTodos = async (workerIds: string[]) => {
+  // 当月許可者のうち、所属機関が会社負担で加入手続きのTODOがまだ無い（または完了済みの）人。
+  // 特定技能2号は加入できないので対象にしない
+  const burdenByOrg = useMemo(
+    () => new Map(mergedOrgs.map((o) => [o.id, o.intake?.ssw_insurance_burden ?? ""])),
+    [mergedOrgs],
+  );
+  const permittedJoinableIds = useMemo(
+    () =>
+      permittedRows
+        .filter(({ org, row }) => {
+          if (isSsw2Row(row) || burdenByOrg.get(org.organizationId) !== "会社負担") return false;
+          const info = sswInfo.get(row.worker.id);
+          return !!info && (!info.joinTodo || info.joinTodo.done);
+        })
+        .map(({ row }) => row.worker.id),
+    [permittedRows, sswInfo, burdenByOrg],
+  );
+  // 特定技能総合保険のTODO（加入手続き・解約手続き）を作る（同じ内容の未完了のTODOがあれば増やさない）
+  const makeSswTodos = async (
+    workerIds: string[],
+    title: typeof SSW_JOIN_TODO_TITLE | typeof SSW_CANCEL_TODO_TITLE,
+  ) => {
     if (workerIds.length === 0) return;
     setError(null);
-    setLeaverTodoBusy(workerIds.length === 1 ? workerIds[0] : "all");
+    setSswTodoBusy(workerIds.length === 1 ? workerIds[0] : "all");
     try {
       const supabase = createClient();
-      for (const id of workerIds) await ensureSswTodo(supabase, id, SSW_CANCEL_TODO_TITLE);
-      setLeaverInfoKey((k) => k + 1);
+      for (const id of workerIds) await ensureSswTodo(supabase, id, title);
+      setSswInfoKey((k) => k + 1);
     } catch (err) {
-      setError(dbErrorMessage(err, "0139_ssw_insurance.sql", "解約手続きのTODOを作れませんでした"));
+      setError(
+        dbErrorMessage(
+          err,
+          "0139_ssw_insurance.sql",
+          title === SSW_CANCEL_TODO_TITLE ? "解約手続きのTODOを作れませんでした" : "加入手続きのTODOを作れませんでした",
+        ),
+      );
     } finally {
-      setLeaverTodoBusy(null);
+      setSswTodoBusy(null);
     }
   };
+  const makeLeaverCancelTodos = (workerIds: string[]) => makeSswTodos(workerIds, SSW_CANCEL_TODO_TITLE);
+  const makePermittedJoinTodos = (workerIds: string[]) => makeSswTodos(workerIds, SSW_JOIN_TODO_TITLE);
 
   // 月末の作業の進み具合（organization_id → 日付）。対象の年月ごとに読み込む。
   // 請求書は「この機関のみ」でエクセルを出したとき、督促状は印刷を開いたときに
@@ -1542,7 +1573,29 @@ export function MonthlyBillingSection({
                 {permittedRows.length === 0 ? (
                   <p className="text-xs text-muted">当月に在留許可が下りた方はいません。</p>
                 ) : (
-                  <table className="w-full min-w-[720px] border-collapse text-xs">
+                  <>
+                    {/* 会社負担の機関の人には加入手続きのTODOを作る（TODO ＞ 特定技能総合保険 ＞ 加入手続き に出る） */}
+                    <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] text-muted">
+                      <ShieldCheck size={13} className="text-brand" />
+                      <span>
+                        特定技能総合保険が会社負担で、加入TODOがまだの人 {permittedJoinableIds.length}名
+                      </span>
+                      {canEdit && permittedJoinableIds.length > 0 && (
+                        <button
+                          type="button"
+                          disabled={sswTodoBusy !== null}
+                          onClick={() => void makePermittedJoinTodos(permittedJoinableIds)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-1 font-bold text-brand hover:border-brand disabled:opacity-50"
+                        >
+                          {sswTodoBusy === "all" && <Loader2 size={12} className="animate-spin" />}
+                          会社負担の人全員の加入TODOを作る
+                        </button>
+                      )}
+                      <Link href="/todos/ssw-insurance" className="font-bold text-brand hover:underline">
+                        特定技能総合保険の画面を開く
+                      </Link>
+                    </div>
+                  <table className="w-full min-w-[880px] border-collapse text-xs">
                     <thead>
                       <tr className="border-b border-border text-left text-muted">
                         <th className="py-1.5 pr-2 font-bold">許可日</th>
@@ -1552,7 +1605,8 @@ export function MonthlyBillingSection({
                         <th className="py-1.5 pr-2 font-bold">在留資格</th>
                         <th className="py-1.5 pr-2 font-bold">在留期限</th>
                         <th className="py-1.5 pr-2 font-bold">区分</th>
-                        <th className="py-1.5 text-right font-bold">支援費請求額</th>
+                        <th className="py-1.5 pr-2 text-right font-bold">支援費請求額</th>
+                        <th className="py-1.5 font-bold">特定技能総合保険</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1578,13 +1632,25 @@ export function MonthlyBillingSection({
                             {row.worker.residence_expiry_date ?? "—"}
                           </td>
                           <td className="py-1.5 pr-2">{row.kind}</td>
-                          <td className="py-1.5 text-right tabular-nums">
+                          <td className="py-1.5 pr-2 text-right tabular-nums">
                             {formatSalesYen(row.amount)}
+                          </td>
+                          <td className="py-1.5">
+                            <PermittedInsuranceCell
+                              info={sswInfo.get(row.worker.id)}
+                              burden={insuranceBurdenOf(org.organizationId)}
+                              ssw2={isSsw2Row(row)}
+                              today={today}
+                              canEdit={canEdit}
+                              busy={sswTodoBusy === row.worker.id || sswTodoBusy === "all"}
+                              onMakeTodo={() => void makePermittedJoinTodos([row.worker.id])}
+                            />
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
+                  </>
                 )}
               </div>
             )}
@@ -1615,11 +1681,11 @@ export function MonthlyBillingSection({
                       {canEdit && leaverCancelableIds.length > 0 && (
                         <button
                           type="button"
-                          disabled={leaverTodoBusy !== null}
+                          disabled={sswTodoBusy !== null}
                           onClick={() => void makeLeaverCancelTodos(leaverCancelableIds)}
                           className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-1 font-bold text-brand hover:border-brand disabled:opacity-50"
                         >
-                          {leaverTodoBusy === "all" && <Loader2 size={12} className="animate-spin" />}
+                          {sswTodoBusy === "all" && <Loader2 size={12} className="animate-spin" />}
                           加入者全員の解約TODOを作る
                         </button>
                       )}
@@ -1669,7 +1735,7 @@ export function MonthlyBillingSection({
                               workerId={row.worker.id}
                               state={leaverStates.get(row.worker.id)}
                               canEdit={canEdit}
-                              busy={leaverTodoBusy === row.worker.id || leaverTodoBusy === "all"}
+                              busy={sswTodoBusy === row.worker.id || sswTodoBusy === "all"}
                               onMakeTodo={() => void makeLeaverCancelTodos([row.worker.id])}
                             />
                           </td>
@@ -3132,6 +3198,98 @@ function SalesNoCell({
       )}
       {footer}
     </td>
+  );
+}
+
+// 当月許可者リストの「特定技能総合保険」の欄。
+// 所属機関が会社負担の人には「加入TODOを作る」ボタン、作ってあればTODO番号と経過。
+// 外国人負担・負担区分が未設定・特定技能2号の人はその旨を出す
+function PermittedInsuranceCell({
+  info,
+  burden,
+  ssw2,
+  today,
+  canEdit,
+  busy,
+  onMakeTodo,
+}: {
+  info: SswBillingInfo | undefined;
+  burden: string; // '' / 会社負担 / 外国人負担
+  ssw2: boolean;
+  today: string;
+  canEdit: boolean;
+  busy: boolean;
+  onMakeTodo: () => void;
+}) {
+  if (ssw2) {
+    return <span className="text-muted" title="特定技能2号は特定技能総合保険に加入できません">2号（対象外）</span>;
+  }
+  if (!burden) {
+    return (
+      <Link
+        href="/todos/ssw-insurance"
+        className="text-status-notice-fg underline-offset-2 hover:underline"
+        title="所属機関の負担区分（会社負担／外国人負担）が未設定です。特定技能総合保険の画面の「所属機関の負担区分の設定」で設定してください"
+      >
+        負担区分 未設定
+      </Link>
+    );
+  }
+  if (burden === "外国人負担") {
+    return (
+      <span className="text-muted" title="外国人負担のため、本人の意思確認（特定技能総合保険の画面）をしてから加入手続きをします">
+        外国人負担
+      </span>
+    );
+  }
+  if (!info) return <span className="text-muted">…</span>;
+  const todo = info.joinTodo;
+  const expiry = sswInsuranceExpiryState(info.worker.ssw_insurance_expiry_date, today);
+  const expiryNote =
+    expiry.kind === "none" ? null : (
+      <span className="text-[10px] text-muted">
+        {expiry.kind === "expired" ? "期限切れ " : "〜"}
+        {slashDate(expiry.expiry)}
+      </span>
+    );
+  if (todo && !todo.done) {
+    return (
+      <span className="inline-flex flex-wrap items-center gap-1">
+        <span className="rounded-full bg-brand/10 px-1.5 py-0.5 text-[10px] font-bold text-brand">
+          加入TODO {todo.status}
+        </span>
+        <Link href="/todos/ssw-insurance" className="text-[10px] font-bold text-brand hover:underline">
+          {displayTodoNo(todo.todo_no)}
+        </Link>
+        {expiryNote}
+      </span>
+    );
+  }
+  // 会社負担で、加入手続きのTODOをまだ作っていない（または前のTODOが完了している）
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <span className="rounded-full bg-seal/10 px-1.5 py-0.5 text-[10px] font-bold text-seal">会社負担</span>
+      {todo?.done && (
+        <Link href="/todos/ssw-insurance" className="text-[10px] text-muted hover:underline" title="前の加入手続きのTODOは完了しています">
+          {displayTodoNo(todo.todo_no)} 完了
+        </Link>
+      )}
+      {expiryNote}
+      {canEdit ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onMakeTodo}
+          className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2 py-1 text-[11px] font-bold text-brand hover:border-brand disabled:opacity-50"
+          title="「特定技能総合保険の加入手続き」のTODOを作ります（未完了の同じTODOがあれば増やしません）。特定技能総合保険の画面の加入手続きに出ます"
+        >
+          {busy && <Loader2 size={11} className="animate-spin" />}
+          加入TODOを作る
+        </button>
+      ) : (
+        <span className="text-[10px] text-muted">加入TODO未作成</span>
+      )}
+    </span>
   );
 }
 

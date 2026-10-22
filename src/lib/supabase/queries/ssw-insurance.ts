@@ -209,18 +209,19 @@ export async function ensureSswCancelTodoOnLeaving(
   return { outcome: created ? "created" : "exists", todoNo: row?.todo_no ?? "" };
 }
 
-// 請求書作成の「当月退職者リスト」用: 退職した人の加入の記録（証明書番号・有効期限）と、
-// 解約手続きのTODO（最新の1件）を、その人たちの分だけ読む
-export interface SswLeaverInfo {
+// 請求書作成の「当月退職者リスト」「当月許可者リスト」用: その人たちの加入の記録（証明書番号・有効期限）と、
+// 加入手続き・解約手続きのTODO（最新の1件ずつ）を、その人たちの分だけ読む
+export interface SswBillingInfo {
   worker: Pick<SswInsuranceWorker, "ssw_insurance_no" | "ssw_insurance_expiry_date">;
+  joinTodo?: SswTodoRef;
   cancelTodo?: SswTodoRef;
 }
 
-export async function listSswLeaverInfo(
+export async function listSswBillingInfo(
   supabase: SupabaseClient,
   workerIds: string[],
-): Promise<Map<string, SswLeaverInfo>> {
-  const map = new Map<string, SswLeaverInfo>();
+): Promise<Map<string, SswBillingInfo>> {
+  const map = new Map<string, SswBillingInfo>();
   if (workerIds.length === 0) return map;
   const [ws, ts, options] = await Promise.all([
     supabase
@@ -231,7 +232,6 @@ export async function listSswLeaverInfo(
       .from("todos")
       .select("id, todo_no, kind, worker_id, title, status, deleted_at, created_at")
       .eq("kind", SSW_INSURANCE_TODO_KIND)
-      .eq("title", SSW_CANCEL_TODO_TITLE)
       .in("worker_id", workerIds)
       .order("created_at", { ascending: false }),
     listTodoStatusOptions(supabase).catch(() => []),
@@ -245,6 +245,7 @@ export async function listSswLeaverInfo(
   for (const w of (ws.data as { id: string; ssw_insurance_no: string | null; ssw_insurance_expiry_date: string | null }[]) ?? []) {
     map.set(w.id, {
       worker: { ssw_insurance_no: w.ssw_insurance_no ?? "", ssw_insurance_expiry_date: w.ssw_insurance_expiry_date },
+      joinTodo: todos.get(w.id)?.join,
       cancelTodo: todos.get(w.id)?.cancel,
     });
   }

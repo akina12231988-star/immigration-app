@@ -30,6 +30,8 @@ import {
   isSswActionRow,
   isSswLeaverInsured,
   sswLeaverCancelState,
+  sswCancelFormRow,
+  sswCancelFormCells,
   tomorrowOf,
   type SswInsuranceWorker,
   formatYenInput,
@@ -111,6 +113,17 @@ describe("sswInsuranceState", () => {
     expect(
       sswInsuranceState(worker({ ssw_insurance_declined: true }), "外国人負担", TODAY),
     ).toBe("declined");
+  });
+
+  it("加入中・加入しないの人でも、加入手続きのTODOが未完了なら加入手続き中", () => {
+    const active = worker({ ssw_insurance_expiry_date: "2027-04-07" });
+    expect(sswInsuranceState(active, "会社負担", TODAY, false, true)).toBe("renew");
+    expect(sswInsuranceState(active, "会社負担", TODAY, false, false)).toBe("active");
+    const declined = worker({ ssw_insurance_declined: true });
+    expect(sswInsuranceState(declined, "外国人負担", TODAY, false, true)).toBe("renew");
+    // 退職した人は解約が先
+    const left = worker({ status: "退職", ssw_insurance_expiry_date: "2027-04-07", ssw_insurance_no: "B1" });
+    expect(sswInsuranceState(left, "会社負担", TODAY, false, true)).toBe("cancel");
   });
 
   it("有効期限が過ぎていれば期限切れ", () => {
@@ -663,5 +676,75 @@ describe("sswLeaverCancelState（当月退職者リストの解約TODO）", () =
     expect(isSswLeaverInsured({ kind: "tooLate", expiry: "2026-01-01" })).toBe(true);
     expect(isSswLeaverInsured({ kind: "notInsured" })).toBe(false);
     expect(isSswLeaverInsured({ kind: "incomplete" })).toBe(false);
+  });
+});
+
+describe("sswCancelFormRow・sswCancelFormCells（解約の届出書）", () => {
+  const worker = (over: Partial<SswInsuranceWorker> = {}): SswInsuranceWorker =>
+    ({
+      id: "w1",
+      name: "lam thi hue",
+      kana: "",
+      nationality: "ベトナム",
+      gender: "女",
+      birth: "1995-01-01",
+      status: "退職",
+      support: "支援中",
+      residence_status: "特定技能1号",
+      residence_expiry_date: "2027-09-07",
+      residence_permit_date: null,
+      leaving_on: "2026-09-30",
+      current_organization_id: null,
+      messenger_link: "",
+      ssw_insurance_link: "",
+      ssw_insurance_expiry_date: "2027-09-07",
+      ssw_insurance_self_join: false,
+      ssw_insurance_no: "B000258964",
+      ssw_insurance_declined: false,
+      ssw_insurance_declined_on: null,
+      ssw_insurance_declined_org_id: null,
+      ssw_insurance_note: "",
+      ...over,
+    }) as SswInsuranceWorker;
+
+  it("氏名は大文字にし、番号・退職日をそのまま持つ", () => {
+    const row = sswCancelFormRow({ worker: worker() });
+    expect(row).toEqual({ workerId: "w1", name: "LAM THI HUE", certNo: "B000258964", leavingOn: "2026-09-30", problems: [] });
+  });
+
+  it("足りない項目を problems に入れる", () => {
+    const row = sswCancelFormRow({ worker: worker({ ssw_insurance_no: "", leaving_on: null }) });
+    expect(row.problems).toEqual(["被保険者番号", "退職日"]);
+  });
+
+  it("1人目は22行目、2人目は26行目に入り、変更日は2行目・○は3行目。合計は人数", () => {
+    const rows = [
+      sswCancelFormRow({ worker: worker() }),
+      sswCancelFormRow({ worker: worker({ id: "w2", name: "VU THI HIEN", ssw_insurance_no: "B000258957", leaving_on: "2026-09-27" }) }),
+    ];
+    const cells = sswCancelFormCells(rows, "2026-10-22");
+    expect(cells.E5).toBe(excelDateSerial("2026-10-22"));
+    expect(cells.D22).toBe("B000258964");
+    expect(cells.N22).toBe("LAM THI HUE");
+    expect(cells.AE23).toBe(excelDateSerial("2026-09-30"));
+    expect(cells.X24).toBe("○");
+    expect(cells.D26).toBe("B000258957");
+    expect(cells.N26).toBe("VU THI HIEN");
+    expect(cells.AE27).toBe(excelDateSerial("2026-09-27"));
+    expect(cells.X28).toBe("○");
+    // 使わない3人目以降の枠は空
+    expect(cells.D30).toBe("");
+    expect(cells.N58).toBe("");
+    expect(cells.AE59).toBe("");
+    expect(cells.X60).toBe("");
+    expect(cells.AE62).toBe(2);
+  });
+
+  it("10人を超えた分は入れず、合計も10", () => {
+    const rows = Array.from({ length: 12 }, (_, i) => sswCancelFormRow({ worker: worker({ id: `w${i}`, name: `W${i}` }) }));
+    const cells = sswCancelFormCells(rows, "2026-10-22");
+    expect(cells.N58).toBe("W9");
+    expect(cells.AE62).toBe(10);
+    expect(Object.keys(cells).some((k) => k === "N62")).toBe(false);
   });
 });

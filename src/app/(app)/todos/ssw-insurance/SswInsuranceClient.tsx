@@ -16,6 +16,7 @@ import { remainingLabel } from "@/lib/worker-alerts";
 import { organizationSuggestions, matchesOrganizationName } from "@/lib/org-search";
 import { matchesWorkerName } from "@/lib/worker-search";
 import { listOrganizations } from "@/lib/supabase/queries/organizations";
+import { createSalesNoEntry, setSalesEntryFreeeNo } from "@/lib/supabase/queries/sales";
 import {
   listTodoStatusOptions,
   listTodos,
@@ -238,6 +239,32 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
     }
   };
 
+  // 保険売上No.を保存する（請求書作成の名簿の保険No.と同じ売上明細）。
+  // 売上がまだ無い人は、番号だけの明細をここで作る（請求書作成の名簿にもそのまま出る）
+  const saveSalesNo = async (row: SswInsuranceRow, value: string, entryId: string) => {
+    setError(null);
+    try {
+      const supabase = createClient();
+      if (entryId) {
+        await setSalesEntryFreeeNo(supabase, entryId, value);
+      } else {
+        await createSalesNoEntry(supabase, {
+          workerId: row.worker.id,
+          organizationId: row.worker.current_organization_id || null,
+          kind: "保険",
+          itemName: "特定技能総合保険",
+          description: `${row.worker.name}さん　特定技能総合保険`,
+          freeeNo: value,
+          registeredOn: today,
+        });
+      }
+      await reload();
+    } catch (err) {
+      setError(dbErrorMessage(err, "0142_sales_entry_insurance_joined.sql", "保険売上No.の保存に失敗しました"));
+      throw err; // セル側で「未保存」と出し、入力した番号を消さないため
+    }
+  };
+
   // TODOの経過（未着手／申込手続中／完了）を変える
   const setTodoStatus = async (todoId: string, status: string) => {
     setError(null);
@@ -414,6 +441,8 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
                 onTodoStatus={(todoId, status) => void setTodoStatus(todoId, status)}
                 onSaved={() => void reload()}
                 onError={setError}
+                salesByWorker={salesByWorker}
+                onSaveSalesNo={saveSalesNo}
               />
               <SswResultTable
                 rows={joinRows.filter(isSswApplying)}
@@ -435,6 +464,8 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
               onMakeTodo={(workerId, title) => void makeTodo(workerId, title)}
               onTodoStatus={(todoId, status) => void setTodoStatus(todoId, status)}
               onCancelled={(row) => void markCancelled(row)}
+              today={today}
+              onError={setError}
             />
           )}
 
