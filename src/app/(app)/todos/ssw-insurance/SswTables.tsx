@@ -2,10 +2,11 @@
 
 import { Fragment, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronRight, Download, Loader2, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, Loader2, MessageCircle, Plus } from "lucide-react";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { createClient } from "@/lib/supabase/client";
 import { dbErrorMessage } from "@/lib/errors";
+import { messengerWebUrl } from "@/lib/messenger-link";
 import { displayTodoNo, type TodoStatusOption } from "@/lib/todo";
 import { fillXlsxTemplate } from "@/lib/xlsx-form-fill";
 import {
@@ -19,6 +20,7 @@ import {
   sswUploadCells,
   sswUploadRow,
   type SswInsuranceRow,
+  type SswInsuranceWorker,
 } from "@/lib/ssw-insurance";
 import { updateSswInsurance } from "@/lib/supabase/queries/ssw-insurance";
 import { registerSswCert } from "./actions";
@@ -40,6 +42,33 @@ const SMALL_BTN =
   "rounded-lg border border-border bg-background px-2 py-1 text-[11px] font-bold text-brand hover:border-brand disabled:opacity-50";
 
 export type SswTabKey = "join" | "cancel" | "active" | "declined";
+
+// 氏名の欄（加入手続き・解約手続きの表で共通）。
+// 氏名のリンク・コピーの下に、本人への連絡用に Messenger のリンクを出す（外国人情報に登録があるときだけ）
+function SswNameCell({ worker: w }: { worker: Pick<SswInsuranceWorker, "id" | "name" | "messenger_link"> }) {
+  return (
+    <div>
+      <span className="flex items-center gap-1">
+        <Link href={`/workers/${w.id}`} className="font-bold text-brand hover:underline">
+          {w.name}
+        </Link>
+        <CopyButton value={w.name} label={`${w.name}の氏名をコピー`} size={12} className="inline-flex" />
+      </span>
+      {w.messenger_link && (
+        <a
+          href={messengerWebUrl(w.messenger_link)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-0.5 inline-flex items-center gap-0.5 text-[10px] font-bold text-brand hover:underline"
+          title={`${w.name}さんの Messenger を開く`}
+        >
+          <MessageCircle size={11} />
+          Messenger
+        </a>
+      )}
+    </div>
+  );
+}
 
 export function SswTabBar({
   tab,
@@ -304,12 +333,7 @@ export function SswJoinTable({
                       />
                     </td>
                     <td className={TD}>
-                      <span className="flex items-center gap-1">
-                        <Link href={`/workers/${w.id}`} className="font-bold text-brand hover:underline">
-                          {w.name}
-                        </Link>
-                        <CopyButton value={w.name} label={`${w.name}の氏名をコピー`} size={12} className="inline-flex" />
-                      </span>
+                      <SswNameCell worker={w} />
                     </td>
                     <td className={`${TD} text-center`}>{w.nationality || <span className="text-seal">未登録</span>}</td>
                     <td className={`${TD} text-center`}>{w.gender || <span className="text-seal">未登録</span>}</td>
@@ -486,12 +510,7 @@ function SswResultRow({
   return (
     <tr>
       <td className={TD}>
-        <span className="flex items-center gap-1">
-          <Link href={`/workers/${w.id}`} className="font-bold text-brand hover:underline">
-            {w.name}
-          </Link>
-          <CopyButton value={w.name} label={`${w.name}の氏名をコピー`} size={12} className="inline-flex" />
-        </span>
+        <SswNameCell worker={w} />
       </td>
       <td className={TD}>{row.orgName}</td>
       <td className={TD}>
@@ -578,12 +597,7 @@ export function SswCancelTable({
                   <Fragment key={w.id}>
                     <tr>
                       <td className={TD}>
-                        <span className="flex items-center gap-1">
-                          <Link href={`/workers/${w.id}`} className="font-bold text-brand hover:underline">
-                            {w.name}
-                          </Link>
-                          <CopyButton value={w.name} label={`${w.name}の氏名をコピー`} size={12} className="inline-flex" />
-                        </span>
+                        <SswNameCell worker={w} />
                       </td>
                       <td className={TD}>{row.orgName}</td>
                       <td className={`${TD} text-center`}>{w.leaving_on ? slashDate(w.leaving_on) : "―"}</td>
