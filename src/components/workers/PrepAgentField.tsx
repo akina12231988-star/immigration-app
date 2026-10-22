@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { listFilingAgents } from "@/lib/supabase/queries/agents";
+import { insertFilingAgent, listFilingAgents } from "@/lib/supabase/queries/agents";
 import { updateTodo, type TodoRow } from "@/lib/supabase/queries/todos";
 import { dbErrorMessage } from "@/lib/errors";
 
@@ -33,6 +33,32 @@ export function PrepAgentField({
       cancelled = true;
     };
   }, []);
+
+  // 名簿に無い取次士をここから足す（申請登録の画面の「名簿に追加」と同じ filing_agents に入る）
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [addBusy, setAddBusy] = useState(false);
+  const addAgent = async () => {
+    const name = newName.trim();
+    if (!name || !todo) return;
+    setAddBusy(true);
+    onError(null);
+    try {
+      // すでに同じ名前（空白の違いは無視）があれば足さずにそれを選ぶ
+      const key = name.replace(/[\s　]/g, "");
+      const exists = agents.find((a) => a.replace(/[\s　]/g, "") === key);
+      const agentName = exists ?? (await insertFilingAgent(createClient(), name)).name;
+      if (!exists) setAgents((prev) => [...prev, agentName].sort((a, b) => a.localeCompare(b, "ja")));
+      await updateTodo(createClient(), todo.id, { agent_name: agentName });
+      setNewName("");
+      setAdding(false);
+      onChanged();
+    } catch (err) {
+      onError(dbErrorMessage(err, "0018_filing_agents.sql", "申請取次士の名簿への追加に失敗しました"));
+    } finally {
+      setAddBusy(false);
+    }
+  };
 
   const save = async (patch: { agent_name?: string; self_apply?: boolean }) => {
     if (!todo) return;
@@ -76,6 +102,48 @@ export function PrepAgentField({
         />
         本人申請でする
       </label>
+      {canEdit && todo && !todo.self_apply && !adding && (
+        <button
+          type="button"
+          onClick={() => setAdding(true)}
+          className="rounded-lg border border-border px-2 py-1 text-[11px] font-bold text-brand hover:border-brand"
+          title="名簿に無い申請取次士を足して、この申請準備に設定します"
+        >
+          ＋ 名簿に追加
+        </button>
+      )}
+      {adding && (
+        <span className="flex items-center gap-1.5">
+          <input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void addAgent();
+            }}
+            placeholder="例: 大元　麗奈"
+            aria-label="名簿に追加する申請取次士の氏名"
+            className="min-h-[36px] w-40 rounded-lg border border-border bg-background px-2 text-sm font-bold text-foreground focus:border-brand focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={() => void addAgent()}
+            disabled={!newName.trim() || addBusy}
+            className="rounded-lg bg-brand px-2.5 py-1.5 text-[11px] font-bold text-brand-foreground disabled:opacity-50"
+          >
+            {addBusy ? "追加中…" : "追加して選ぶ"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setAdding(false);
+              setNewName("");
+            }}
+            className="text-[11px] font-bold text-muted underline"
+          >
+            やめる
+          </button>
+        </span>
+      )}
       {!todo && (
         <span className="text-[11px] font-normal">申請準備のTODOが無いため選べません（TODOを作ると選べます）。</span>
       )}
