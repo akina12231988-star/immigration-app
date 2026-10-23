@@ -66,3 +66,15 @@ export function SupportBadge({ support }: { support: SupportScope }) {
     </span>
   );
 }
+
+// 入管で審査中の申請がある人に出す青いバッジ（外国人管理の一覧。在籍中などの状態の横に出す）
+export function InReviewBadge() {
+  return (
+    <span
+      title="入管へ申請済みで、審査中です（許可・取下げになると消えます）"
+      className="inline-flex shrink-0 items-center rounded-full bg-brand/10 px-2.5 py-1 text-[11px] font-bold text-brand"
+    >
+      審査中
+    </span>
+  );
+}

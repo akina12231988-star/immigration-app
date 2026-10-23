@@ -72,6 +72,16 @@ describe("prepDocRequestee", () => {
     expect(prepDocRequestee("郵送請求中", "", open)).toEqual({ kind: "mail", who: "郵送請求" });
     expect(prepDocRequestee("納税証明書その3を税務署に郵送請求中", "", open)?.kind).toBe("mail");
     expect(prepDocRequestee("未納のため領収書発行待ち", "", open)?.who).toBe("本人");
+    expect(
+      prepDocRequestee("未納の為、本人の支払い待ち！支払いされたら領収書を送ってもらうように案内済み", "", open),
+    ).toEqual({ kind: "self", who: "本人" });
+    expect(prepDocRequestee("立替支払指示あり→明菜さんの支払い待ち", "", open)).toEqual({
+      kind: "person",
+      who: "明菜さん",
+    });
+    expect(prepDocRequestee("立替支払い済み→市役所に支払った報告をして納税証明書発行まち", "", open)?.who).toBe(
+      "市役所",
+    );
   });
   it("完了・未選択・読み取れないものは null", () => {
     expect(prepDocRequestee("発行完了", "", { hasIssuerField: false, done: true })).toBeNull();

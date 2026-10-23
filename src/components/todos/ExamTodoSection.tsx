@@ -379,6 +379,7 @@ export function ExamTodoSection({
                 onToggleFeeReceived={() => toggleFeeReceived(i)}
                 onToggleDeferred={() => toggleDeferred(i)}
                 examLabel={todo.title.replace(/申込$/, "")}
+                nationality={w?.nationality ?? null}
               />
             ))}
           </div>
@@ -578,6 +579,7 @@ function ExamAttemptRow({
   onToggleFeeReceived,
   onToggleDeferred,
   examLabel,
+  nationality,
 }: {
   no: number;
   attempt: TodoExamAttempt;
@@ -585,6 +587,7 @@ function ExamAttemptRow({
   canEdit: boolean;
   today: string;
   examLabel: string; // 口座案内の文章に入れる試験名（TODOの内容）
+  nationality?: string | null; // 本人の国籍（口座案内の画像を国籍別に出す）
   onChange: (patch: Partial<TodoExamAttempt>) => void;
   // 代金の受け取り・後払いの指示は「編集」を開かなくても押せる
   onToggleFeeReceived: () => void;
@@ -732,7 +735,7 @@ function ExamAttemptRow({
       {/* 代金をまだ受け取っていないときは、本人に送る振込先の口座案内をここに出す（画像・文章をコピーできる） */}
       {!attempt.fee_received && (
         <div className="mt-1.5">
-          <ExamFeeAccountCard fee={attempt.fee} examLabel={examLabel} />
+          <ExamFeeAccountCard fee={attempt.fee} examLabel={examLabel} nationality={nationality} />
         </div>
       )}
 

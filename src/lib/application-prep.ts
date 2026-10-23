@@ -549,7 +549,9 @@ export type PrepStatusExtra =
   | { kind: "date"; label: string } // 日付（date_on に保存）
   | { kind: "custody" } // 預かり番号の表示（保管ボックスと連動）
   | { kind: "mailing" } // 郵送請求ツールへの導線
-  | { kind: "tracking" }; // レターパック追跡番号2件（送付・返信用）
+  | { kind: "tracking" } // レターパック追跡番号2件（送付・返信用）
+  | { kind: "bank_guide" } // 本人に送る振込先の口座案内（国籍別の画像をコピー）
+  | { kind: "reminder" }; // 督促への登録・登録済みの督促へのリンク（立替払いの受け取り）
 
 export interface PrepDocStatusOption {
   value: string; // 保存値＝表示ラベル
@@ -574,8 +576,50 @@ export const PREP_STATUS_NOT_APPLICABLE_OPTION: PrepDocStatusOption = {
   noFile: true,
 };
 const PREP_STATUS_REUSE_NO_OLD = "転用番号で対応する";
+
+// 納税証明書が未納で出せないとき（本人が払うのを待つ。払ったら領収書を送ってもらう）。
+// 以前は「未納のため領収書発行待ち」という言い方で保存していたので、読むときに今の言い方にそろえる
+export const PREP_STATUS_UNPAID_WAIT = "未納の為、本人の支払い待ち！支払いされたら領収書を送ってもらうように案内済み";
+const PREP_STATUS_UNPAID_WAIT_OLD = "未納のため領収書発行待ち";
+
+// 未納分を当社が立て替えて払うとき（納税証明書・年金記録）。
+//   指示あり … 立替払いの指示が出て、明菜さんが払うのを待っている
+//   支払い済み … 明菜さんが払った。市役所に支払った報告をして、納税証明書が出るのを待つ
+// どちらも、本人から立替分を受け取るための振込先の口座案内（国籍別の画像）と、
+// 督促（立替払い・本人から受け取る）への登録・リンクを出す
+export const PREP_STATUS_ADVANCE_INSTRUCTED = "立替支払指示あり→明菜さんの支払い待ち";
+export const PREP_STATUS_ADVANCE_PAID = "立替支払い済み→市役所に支払った報告をして納税証明書発行まち";
+const ADVANCE_STATUS_OPTIONS: PrepDocStatusOption[] = [
+  {
+    value: PREP_STATUS_ADVANCE_INSTRUCTED,
+    done: false,
+    extras: [
+      { kind: "amount", label: "立て替える金額（未納の金額）" },
+      { kind: "reminder" },
+      { kind: "bank_guide" },
+    ],
+  },
+  {
+    value: PREP_STATUS_ADVANCE_PAID,
+    done: false,
+    extras: [
+      { kind: "amount", label: "立て替えた金額" },
+      { kind: "date", label: "支払日" },
+      { kind: "reminder" },
+      { kind: "bank_guide" },
+    ],
+  },
+];
+// 立替払いの選択肢か（督促の登録・口座案内を出す状態）
+export function isAdvancePrepStatus(status: string): boolean {
+  const s = normalizePrepStatus(status);
+  return s === PREP_STATUS_ADVANCE_INSTRUCTED || s === PREP_STATUS_ADVANCE_PAID;
+}
+
 export function normalizePrepStatus(status: string): string {
-  return status === PREP_STATUS_REUSE_NO_OLD ? PREP_STATUS_REUSE_NO : status;
+  if (status === PREP_STATUS_REUSE_NO_OLD) return PREP_STATUS_REUSE_NO;
+  if (status === PREP_STATUS_UNPAID_WAIT_OLD) return PREP_STATUS_UNPAID_WAIT;
+  return status;
 }
 
 // 書類ID → 準備状況の選択肢。定義がない書類はステータス欄を表示しない
@@ -638,10 +682,11 @@ export const PREP_DOC_STATUS_OPTIONS: Record<string, PrepDocStatusOption[]> = {
     { value: "発行依頼中", done: false, extras: [{ kind: "issuer", label: "発行依頼先（誰に依頼したか）" }, { kind: "date", label: "依頼日" }] },
     { value: "郵送請求中", done: false, extras: [{ kind: "mailing" }] },
     {
-      value: "未納のため領収書発行待ち",
+      value: PREP_STATUS_UNPAID_WAIT,
       done: false,
       extras: [{ kind: "amount", label: "未納の金額" }],
     },
+    ...ADVANCE_STATUS_OPTIONS,
     { value: "発行完了", done: true },
     {
       value: "1月1日時点で日本に在住していなかった為発行できなかった",
@@ -657,10 +702,11 @@ export const PREP_DOC_STATUS_OPTIONS: Record<string, PrepDocStatusOption[]> = {
     { value: "発行依頼中", done: false, extras: [{ kind: "issuer", label: "発行依頼先（誰に依頼したか）" }, { kind: "date", label: "依頼日" }] },
     { value: "郵送請求中", done: false, extras: [{ kind: "mailing" }] },
     {
-      value: "未納のため領収書発行待ち",
+      value: PREP_STATUS_UNPAID_WAIT,
       done: false,
       extras: [{ kind: "amount", label: "未納の金額" }],
     },
+    ...ADVANCE_STATUS_OPTIONS,
     { value: "発行完了", done: true },
     {
       value: "1月1日時点で日本に在住していなかった為発行できなかった",
@@ -697,6 +743,7 @@ export const PREP_DOC_STATUS_OPTIONS: Record<string, PrepDocStatusOption[]> = {
       extras: [{ kind: "amount", label: "未払いの金額" }, { kind: "date", label: "依頼日" }],
     },
     { value: "年金免除手続きの発行依頼中", done: false, extras: [{ kind: "date", label: "依頼日" }] },
+    ...ADVANCE_STATUS_OPTIONS,
     { value: "発行済み", done: true },
     // 前回の申請（1年以内）で提出済みなので、今回はその申請番号を転用して再提出を省く
     { value: PREP_STATUS_REUSE_NO, done: true, noFile: true, extras: [{ kind: "text", label: "転用する申請番号（前回の申請番号）" }] },

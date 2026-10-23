@@ -7,7 +7,7 @@ import { listOrganizations } from "@/lib/supabase/queries/organizations";
 import { listApplications } from "@/lib/supabase/queries/applications";
 import { retireWorkersPastLeavingDate } from "@/lib/supabase/queries/resignations";
 import { todayStr } from "@/lib/application-alerts";
-import { underReviewWorkerIds } from "@/lib/renewal-filter";
+import { inReviewWorkerIds, underReviewWorkerIds } from "@/lib/renewal-filter";
 import { WorkersExplorer } from "./WorkersExplorer";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +33,7 @@ export default async function WorkersPage() {
         workers={workers}
         organizations={organizations}
         underReviewWorkerIds={underReviewWorkerIds(applications)}
+        inReviewWorkerIds={inReviewWorkerIds(applications)}
         canEdit={me.role !== "viewer"}
       />
     </>

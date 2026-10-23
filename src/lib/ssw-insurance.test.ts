@@ -82,6 +82,8 @@ describe("isSswInsuranceTarget", () => {
     expect(isSswInsuranceTarget("特定技能1号")).toBe(true);
     expect(isSswInsuranceTarget("特定技能１号")).toBe(true);
     expect(isSswInsuranceTarget("特定技能1号（農業）")).toBe(true);
+    expect(isSswInsuranceTarget("特定技能1号更新")).toBe(true);
+    expect(isSswInsuranceTarget("特定活動(特定技能1号移行準備)")).toBe(false);
   });
 
   it("移行準備の特定活動・特定技能2号・技能実習は対象にしない", () => {
