@@ -165,6 +165,17 @@ export function PostingsExplorer({
           {exportError}
         </p>
       )}
+      {/* 白紙の求人票（会社に手書きしてもらう用。何も入っていない様式をそのまま印刷できる） */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Link
+          href="/postings/sheet-blank"
+          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-bold text-brand"
+        >
+          <Printer size={14} />
+          白紙の求人票を印刷
+        </Link>
+        <span className="text-[11px] text-muted">何も入っていない特定技能1号 求人票（会社に手書きしてもらう用・A4縦）</span>
+      </div>
       {/* 労働局の訪問指導（監査）で提出する帳簿。ボタン1つで様式の項目どおりに出力する */}
       <div className="flex flex-wrap items-center gap-2">
         <button
