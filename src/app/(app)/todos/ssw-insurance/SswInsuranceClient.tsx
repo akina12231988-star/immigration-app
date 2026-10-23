@@ -26,6 +26,8 @@ import {
 import { displayTodoNo, type TodoStatusOption } from "@/lib/todo";
 import {
   hasUnjoinedSales,
+  SSW_CANCEL_MAILED_MIGRATION,
+  SSW_CANCEL_MAILED_STATUS,
   SSW_CANCEL_TODO_TITLE,
   SSW_DECLINE_REASONS,
   SSW_INSURANCE_TODO_KIND,
@@ -38,6 +40,7 @@ import {
   isSswInsuranceTarget,
   sortSswRows,
   sswSalesByWorker,
+  sswStatusOptionsFor,
   slashDate,
   sswApplyCopyText,
   sswApplyFields,
@@ -280,6 +283,45 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
     () => options.filter((o) => o.kind === SSW_INSURANCE_TODO_KIND),
     [options],
   );
+  // 進行中の言い方は加入（申込手続中）と解約（解約書類郵送済み）で違うので、表ごとに選択肢を分ける
+  const joinStatusOptions = useMemo(() => sswStatusOptionsFor("join", options), [options]);
+  const cancelStatusOptions = useMemo(() => sswStatusOptionsFor("cancel", options), [options]);
+
+  // 解約の届出書を出力した人の解約手続きのTODOを「解約書類郵送済み」にする（TODOが無ければ作る）
+  const markCancelMailed = async (workerIds: string[]) => {
+    setError(null);
+    try {
+      const supabase = createClient();
+      for (const workerId of workerIds) {
+        const row = rows.find((r) => r.worker.id === workerId);
+        const todoId = row?.todos.cancel?.id ?? (await ensureSswTodo(supabase, workerId, SSW_CANCEL_TODO_TITLE)).row?.id;
+        if (!todoId) continue;
+        if (row?.todos.cancel?.done) continue; // すでに完了（解約済み）の人は戻さない
+        await updateTodo(supabase, todoId, { status: SSW_CANCEL_MAILED_STATUS });
+      }
+      await reload();
+    } catch (err) {
+      setError(dbErrorMessage(err, SSW_CANCEL_MAILED_MIGRATION, "経過を「解約書類郵送済み」にできませんでした"));
+    }
+  };
+
+  // 届出書を出した人の投函日・追跡番号をまとめて保存する
+  const saveCancelMailing = async (workerIds: string[], mailedOn: string | null, trackingNo: string) => {
+    setError(null);
+    try {
+      const supabase = createClient();
+      for (const workerId of workerIds) {
+        await updateSswInsurance(supabase, workerId, {
+          ssw_insurance_cancel_mailed_on: mailedOn,
+          ssw_insurance_cancel_tracking_no: trackingNo,
+        });
+      }
+      await reload();
+    } catch (err) {
+      setError(dbErrorMessage(err, "0147_ssw_insurance_cancel.sql", "投函日・追跡番号の保存に失敗しました"));
+      throw err;
+    }
+  };
 
   // すでに解約の手続きが済んでいる人: 解約手続きのTODOを（無ければ作って）完了にし、一覧から外す
   const markCancelled = async (row: SswInsuranceRow) => {
@@ -329,7 +371,7 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
       row={row}
       canEdit={canEdit}
       today={today}
-      statusOptions={statusOptions}
+      statusOptions={sswTaskOf(row) === "cancel" ? cancelStatusOptions : joinStatusOptions}
       open={openId === row.worker.id}
       onToggle={() => setOpenId(openId === row.worker.id ? null : row.worker.id)}
       onWill={(join, note) => void setWill(row, join, note)}
@@ -433,7 +475,7 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
                 rows={joinRows}
                 today={today}
                 canEdit={canEdit}
-                statusOptions={statusOptions}
+                statusOptions={joinStatusOptions}
                 openId={openId}
                 onToggle={toggleOpen}
                 renderDetail={renderRow}
@@ -457,13 +499,15 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
             <SswCancelTable
               rows={cancelRows}
               canEdit={canEdit}
-              statusOptions={statusOptions}
+              statusOptions={cancelStatusOptions}
               openId={openId}
               onToggle={toggleOpen}
               renderDetail={renderRow}
               onMakeTodo={(workerId, title) => void makeTodo(workerId, title)}
               onTodoStatus={(todoId, status) => void setTodoStatus(todoId, status)}
               onCancelled={(row) => void markCancelled(row)}
+              onExported={markCancelMailed}
+              onSaveMailing={saveCancelMailing}
               today={today}
               onError={setError}
             />
