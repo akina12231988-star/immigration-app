@@ -21,6 +21,7 @@ export interface RosterDraft {
   leaving_on: string; // 表示用の文字列（例: 2026年8月20日）
   leaving_reason: string;
   issued_on: string; // 発行年月日（YYYY-MM-DD）
+  employment_start: string; // 雇用開始年月日の表示文字（例: 2026年7月31日。空欄のままでもよい）
 }
 
 // 職歴のうち、名簿の「前職」に出すもの（終了済み・会社名あり）を開始日の古い順に
@@ -82,5 +83,7 @@ export function buildRosterDraft(
         ? [src.leavingKind, src.leavingReason].filter(Boolean).join("・")
         : ""),
     issued_on: saved?.issued_on ?? start ?? today,
+    // 名簿で直した雇用開始年月日があればそれ（空欄もそのまま）。無ければ登録データの日付
+    employment_start: saved?.employment_start ?? rosterJpDate(start),
   };
 }

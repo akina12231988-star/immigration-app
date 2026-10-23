@@ -56,6 +56,7 @@ interface RosterForm {
   leaving_on: string;
   leaving_reason: string;
   issued_on: string; // 発行年月日（'' = 未設定。保存時は null にする）
+  employment_start: string; // 雇用開始年月日（入社年月日）の表示文字。空欄のままでも印刷できる
 }
 
 const NEW_ID = "new";
@@ -114,6 +115,8 @@ export function RosterSheet({
     // 発行年月日はその会社の雇用開始年月日を初期値にする（画面で直せる）。
     // 雇用開始日が分からない会社は今日にする
     issued_on: startFor(orgName) ?? todayStr(),
+    // 雇用開始年月日は登録データの日付を初期値にする（画面で直せる・空欄にもできる）
+    employment_start: rosterJpDate(startFor(orgName)),
   });
 
   const toForm = (r: WorkerRoster): RosterForm => ({
@@ -128,6 +131,8 @@ export function RosterSheet({
     leaving_reason: r.leaving_reason,
     // 発行年月日が未設定の古い名簿も、その会社の雇用開始年月日で補う（保存するまでDBは変えない）
     issued_on: r.issued_on ?? startFor(r.company_name) ?? "",
+    // 名簿で直した雇用開始年月日があればそれ（空欄もそのまま）。古い名簿は登録データの日付
+    employment_start: r.employment_start ?? rosterJpDate(startFor(r.company_name)),
   });
 
   const [rosters, setRosters] = useState<WorkerRoster[]>(initialRosters);
@@ -368,8 +373,32 @@ export function RosterSheet({
               </BasicRow>
               <BasicRow label="個人番号">{worker.myNumber || "　"}</BasicRow>
               {/* この名簿の会社に対応する雇用開始日を表示（機関別の登録があればそれを使う） */}
+              {/* 雇用開始年月日（入社年月日）。画面で直せて、空欄のままでも印刷できる */}
               <BasicRow label="雇用開始年月日">
-                {rosterJpDate(startFor(form.company_name)) || "　"}
+                {canEdit ? (
+                  <>
+                    <input
+                      value={form.employment_start}
+                      onChange={(e) => set("employment_start", e.target.value)}
+                      placeholder="例: 2026年7月31日（空欄のままでも印刷できます）"
+                      aria-label="雇用開始年月日"
+                      className={CELL_INPUT}
+                    />
+                    {/* 登録データの日付と違うときは、戻せるように出しておく */}
+                    {startFor(form.company_name) &&
+                      form.employment_start !== rosterJpDate(startFor(form.company_name)) && (
+                        <button
+                          type="button"
+                          onClick={() => set("employment_start", rosterJpDate(startFor(form.company_name)))}
+                          className="mt-0.5 block text-[10px] font-bold text-brand underline print:hidden"
+                        >
+                          外国人詳細の雇用開始日（{rosterJpDate(startFor(form.company_name))}）を入れる
+                        </button>
+                      )}
+                  </>
+                ) : (
+                  form.employment_start || "　"
+                )}
               </BasicRow>
             </tbody>
           </table>
