@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { formatWage, type WageKind } from "@/types/recruiting";
+import { formatWage, type PostingSheet, type WageKind } from "@/types/recruiting";
 import type { PostingLedgerEntry, SeekerLedgerEntry } from "@/lib/recruit-ledgers";
 
 // ---- 法定帳簿（求人管理簿・求職管理簿・様式30）の元データ取得 ----
@@ -19,6 +19,7 @@ interface PostingRow {
   wage_amount: number | null;
   note: string;
   contact_person: string | null; // 連絡担当者氏名（0195）
+  sheet: Partial<PostingSheet> | null; // 求人票（雇用契約期間の年数を使う）
   organizations: { name: string; address: string; contact: string } | null;
   job_applications: {
     id: string;
@@ -40,7 +41,7 @@ export async function fetchPostingLedger(
   const { data, error } = await supabase
     .from("job_postings")
     .select(
-      "id, organization_id, acceptance_no, received_on, valid_until, openings, job_type, work_location, employment_period, wage_kind, wage_amount, note, contact_person, " +
+      "id, organization_id, acceptance_no, received_on, valid_until, openings, job_type, work_location, employment_period, wage_kind, wage_amount, note, contact_person, sheet, " +
         "organizations(name, address, contact), " +
         "job_applications(id, applied_on, result, result_on, employment_term, separation_status, separation_checked_on, separation_check_method, workers(name))",
     )
@@ -55,6 +56,7 @@ export async function fetchPostingLedger(
     org_address: p.organizations?.address ?? "",
     contact: p.organizations?.contact ?? "",
     contact_person: p.contact_person ?? "",
+    contract_term: contractTermOf(p.sheet),
     received_on: p.received_on,
     valid_until: p.valid_until ?? "",
     openings: p.openings,
@@ -100,7 +102,12 @@ interface SeekerAppRow {
   separation_checked_on: string | null;
   separation_check_method: string | null;
   organizations: { name: string } | null;
-  job_postings: { acceptance_no: string } | null;
+  job_postings: { acceptance_no: string; contact_person: string | null; sheet: Partial<PostingSheet> | null } | null;
+}
+
+// 求人票の雇用契約期間（期間の定めありのときの年数。例: 1年）。無ければ空
+function contractTermOf(sheet: Partial<PostingSheet> | null | undefined): string {
+  return typeof sheet?.contract_term === "string" ? sheet.contract_term.trim() : "";
 }
 
 // 求職管理簿の1人分（求職受付＋応募の取扱状況）。
@@ -120,7 +127,7 @@ export async function fetchSeekerLedger(
       .from("job_applications")
       .select(
         "worker_id, applied_on, result, result_on, employment_term, separation_status, separation_checked_on, separation_check_method, " +
-          "organizations(name), job_postings(acceptance_no)",
+          "organizations(name), job_postings(acceptance_no, contact_person, sheet)",
       )
       .order("applied_on", { ascending: true }),
   ]);
@@ -151,6 +158,8 @@ export async function fetchSeekerLedger(
         applied_on: a.applied_on,
         acceptance_no: a.job_postings?.acceptance_no ?? "",
         employer_name: a.organizations?.name ?? "",
+        contact_person: a.job_postings?.contact_person ?? "",
+        contract_term: contractTermOf(a.job_postings?.sheet),
         result: a.result,
         result_on: a.result_on,
         employment_term: a.employment_term ?? "",

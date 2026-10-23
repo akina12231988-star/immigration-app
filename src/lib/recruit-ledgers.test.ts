@@ -5,6 +5,7 @@ import {
   buildForm30Sheet,
   buildPostingLedgerSheet,
   buildSeekerLedgerSheet,
+  employmentTermCell,
   noPoachingUntil,
   separationSummary,
   type Form30Posting,
@@ -139,6 +140,7 @@ describe("buildSeekerLedgerSheet", () => {
           applied_on: "2026-01-20",
           acceptance_no: "8-1",
           employer_name: "株式会社テスト",
+          contact_person: "総務 山田",
           result: "採用",
           result_on: "2026-02-01",
           employment_term: "無期",
@@ -157,6 +159,7 @@ describe("buildSeekerLedgerSheet", () => {
       "2026-01-20",
       "8-1",
       "株式会社テスト",
+      "総務 山田",
       "採用",
       "2026-02-01",
       "無期",
@@ -164,6 +167,44 @@ describe("buildSeekerLedgerSheet", () => {
       "",
       "",
     ]);
+    // 連絡担当者氏名は求人者の氏名又は名称の隣
+    expect(sheet.rows[1].slice(9, 12)).toEqual(["求人者の氏名又は名称", "連絡担当者氏名", "採否結果"]);
+  });
+
+  it("有期のときは「有期」の下に雇用契約期間の年数を書く", () => {
+    const entry: SeekerLedgerEntry = {
+      jobseeker_no: "R8KS-3",
+      name: "B",
+      address: "",
+      birth: "",
+      desired_job_type: "",
+      accepted_on: "",
+      valid_until: "",
+      note: "",
+      applications: [
+        {
+          applied_on: "2026-01-20",
+          acceptance_no: "8-2",
+          employer_name: "株式会社テスト",
+          contract_term: "1年",
+          result: "採用",
+          result_on: "2026-02-01",
+          employment_term: "有期",
+        },
+      ],
+    };
+    const row = buildSeekerLedgerSheet([entry]).rows[2];
+    expect(row[13]).toBe("有期\n1年");
+    expect(row[14]).toBe(""); // 有期は禁止期間を書かない
+  });
+});
+
+describe("employmentTermCell", () => {
+  it("有期で年数があれば2行、無ければそのまま", () => {
+    expect(employmentTermCell("有期", "1年")).toBe("有期\n1年");
+    expect(employmentTermCell("有期", "")).toBe("有期");
+    expect(employmentTermCell("無期", "1年")).toBe("無期");
+    expect(employmentTermCell("", "1年")).toBe("");
   });
 });
 
