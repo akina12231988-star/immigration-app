@@ -30,6 +30,8 @@ import { Ssw2Instructees } from "@/components/workers/Ssw2Instructees";
 import { SSW2_PLEDGE_GUIDE_HREF } from "@/lib/ssw2-pledge-guide";
 import { WorkerCertDocRows } from "@/components/workers/WorkerCertDocRows";
 import { Jisshu2Section } from "@/components/workers/Jisshu2Section";
+import { BankAccountGuideCard } from "@/components/BankAccountGuide";
+import { PrepReminderField } from "@/components/workers/PrepReminderField";
 import {
   WorkerRenewalFields,
   type RenewalFieldsWorker,
@@ -1444,6 +1446,7 @@ export function ApplicationPrepChecklist({
                   canEdit={canEdit}
                   busy={busyForRow}
                   periodNote={isCard ? periodNote : ""}
+                  nationality={worker?.nationality ?? ""}
                   ds={{ ...EMPTY_PREP_DOC_STATUS, ...(docStatuses[item.def.id] ?? {}) }}
                   // 源泉徴収票と課税証明書は金額を突き合わせるので、相手の金額も渡す
                   gensenKazei={
@@ -2629,9 +2632,11 @@ function DocRow({
   requestee = null,
   mailMode = "none",
   periodNote = "",
+  nationality = "",
 }: {
   item: PrepDocStatus;
   periodNote?: string; // 在留期間の注意事項（在留カードの行だけ。備考の上に薄い赤で出す）
+  nationality?: string; // 本人の国籍（立替払いのとき、国籍別の口座案内の画像を出す）
   // 誰に・いつ（依頼先と依頼日からの日数）。読み取れないときは null
   requestee?: { who: string; kind: PrepRequesteeKind; days: number | null } | null;
   // 申請後に郵送: toggle=チェックで郵送リストへ / undo=郵送リストから取り消すだけ / none=出さない
@@ -3068,6 +3073,9 @@ function DocRow({
               mailingRecords={mailingRecords}
               todoNo={todoNo}
               docId={def.id}
+              docLabel={def.label}
+              workerId={workerId}
+              nationality={nationality}
               canEdit={canEdit}
               onPatch={onPatchStatus}
             />
@@ -3176,6 +3184,9 @@ function StatusExtraField({
   mailingRecords = [],
   todoNo = "",
   docId = "",
+  docLabel = "",
+  workerId = "",
+  nationality = "",
   canEdit,
   onPatch,
 }: {
@@ -3185,6 +3196,9 @@ function StatusExtraField({
   mailingRecords?: JudgmentRecord[];
   todoNo?: string;
   docId?: string; // 書類ID（源泉徴収票の行では納税証明書その3の記録を優先して出す）
+  docLabel?: string; // 書類名（督促の内容に入れて、この書類の督促を見分ける）
+  workerId?: string;
+  nationality?: string; // 本人の国籍（口座案内の画像を国籍別に出す）
   canEdit: boolean;
   onPatch: (patch: Partial<PrepDocStatusInput>, save?: boolean) => void;
 }) {
@@ -3351,6 +3365,26 @@ function StatusExtraField({
       return (
         <MailingStatusField records={mailingRecords} todoNo={todoNo} docId={docId} />
       );
+    // 立替払いのとき: 本人から立替分を受け取る口座案内（国籍別の画像をコピーして Messenger に貼る）
+    case "bank_guide":
+      return (
+        <BankAccountGuideCard
+          nationality={nationality}
+          title="本人に送る振込先の口座案内（立替分を受け取る口座）"
+        />
+      );
+    // 立替払いのとき: 督促への登録・登録済みの督促へのリンク
+    case "reminder":
+      return workerId ? (
+        <PrepReminderField
+          workerId={workerId}
+          docId={docId}
+          docLabel={docLabel}
+          todoNo={todoNo}
+          amount={ds.amount}
+          canEdit={canEdit}
+        />
+      ) : null;
     case "tracking":
       return (
         <div className="space-y-1.5">

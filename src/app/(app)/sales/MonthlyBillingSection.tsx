@@ -25,6 +25,7 @@ import { Card } from "@/components/ui/Card";
 import {
   SSW_CANCEL_TODO_TITLE,
   SSW_JOIN_TODO_TITLE,
+  isSswInsuranceTarget,
   isSswLeaverInsured,
   slashDate,
   sswInsuranceExpiryState,
@@ -501,7 +502,10 @@ export function MonthlyBillingSection({
     () =>
       permittedRows
         .filter(({ org, row }) => {
-          if (isSsw2Row(row) || burdenByOrg.get(org.organizationId) !== "会社負担") return false;
+          // 加入TODOを作るのは在留資格が「特定技能1号」「特定技能1号更新」の人だけ
+          // （特定活動（特定技能1号移行準備）・特定技能2号は対象外）
+          if (!isSswInsuranceTarget(row.worker.residence_status ?? "")) return false;
+          if (burdenByOrg.get(org.organizationId) !== "会社負担") return false;
           const info = sswInfo.get(row.worker.id);
           return !!info && (!info.joinTodo || info.joinTodo.done);
         })
@@ -1625,7 +1629,12 @@ export function MonthlyBillingSection({
                           </td>
                           <td className="py-1.5 pr-2">{org.organizationName}</td>
                           <td className="py-1.5 pr-2 tabular-nums">
-                            {row.worker.recurring_sales_no || "—"}
+                            {/* 定期売上No.: コピーできる。未記入・直したいときはその場で記入して保存 */}
+                            <RecurringSalesNoCell
+                              value={row.worker.recurring_sales_no}
+                              canEdit={canEdit}
+                              onSave={(v) => saveSalesNo(row.worker.id, v)}
+                            />
                           </td>
                           <td className="py-1.5 pr-2">{row.worker.residence_status}</td>
                           <td className="py-1.5 pr-2 tabular-nums">
@@ -1640,6 +1649,8 @@ export function MonthlyBillingSection({
                               info={sswInfo.get(row.worker.id)}
                               burden={insuranceBurdenOf(org.organizationId)}
                               ssw2={isSsw2Row(row)}
+                              target={isSswInsuranceTarget(row.worker.residence_status ?? "")}
+                              residenceStatus={row.worker.residence_status ?? ""}
                               today={today}
                               canEdit={canEdit}
                               busy={sswTodoBusy === row.worker.id || sswTodoBusy === "all"}
@@ -1723,6 +1734,14 @@ export function MonthlyBillingSection({
                           {/* 転職者は当時の機関の番号（過去の定期売上No.）を出す。freeeの定期売上の停止の突き合わせ用 */}
                           <td className="py-1.5 pr-2 tabular-nums">
                             {recurringSalesNoForRow(row, org.organizationId) || "—"}
+                            {recurringSalesNoForRow(row, org.organizationId) && (
+                              <CopyButton
+                                value={recurringSalesNoForRow(row, org.organizationId)}
+                                label="定期売上No.をコピー"
+                                size={12}
+                                className="ml-1 align-middle"
+                              />
+                            )}
                           </td>
                           <td className="py-1.5 pr-2">{row.worker.residence_status}</td>
                           <td className="py-1.5 pr-2 tabular-nums">{periodText(row)}</td>
@@ -3056,6 +3075,91 @@ export function MonthlyBillingSection({
   );
 }
 
+// 当月許可者リストの定期売上No.の1マス。
+// 番号があればコピーボタン付きで出し、「記入」「編集」を押すとその場で入力して保存できる
+// （保存先は名簿と同じ workers.recurring_sales_no）
+function RecurringSalesNoCell({
+  value,
+  canEdit,
+  onSave,
+}: {
+  value: string;
+  canEdit: boolean;
+  onSave: (value: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const [busy, setBusy] = useState(false);
+
+  const start = () => {
+    setDraft(value);
+    setEditing(true);
+  };
+  const save = async () => {
+    const v = draft.trim();
+    setBusy(true);
+    try {
+      if (v !== value) await onSave(v);
+      setEditing(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <span className="inline-flex items-center gap-1">
+        <input
+          value={draft}
+          autoFocus
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void save();
+            if (e.key === "Escape") setEditing(false);
+          }}
+          placeholder="SP-…"
+          className="w-36 rounded-lg border border-border bg-background px-1.5 py-1 text-xs"
+        />
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void save()}
+          className="inline-flex items-center gap-1 rounded-lg bg-brand px-2 py-1 text-[11px] font-bold text-brand-foreground disabled:opacity-50"
+        >
+          {busy && <Loader2 size={11} className="animate-spin" />}
+          保存
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => setEditing(false)}
+          className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] font-bold text-muted"
+        >
+          取消
+        </button>
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span className={value ? "" : "text-muted"}>{value || "—"}</span>
+      {value && <CopyButton value={value} label="定期売上No.をコピー" size={12} />}
+      {canEdit && (
+        <button
+          type="button"
+          onClick={start}
+          className={`rounded-lg border px-1.5 py-0.5 text-[10px] font-bold ${
+            value ? "border-border bg-surface text-muted hover:text-brand" : "border-seal/40 bg-seal/5 text-seal"
+          }`}
+          title={value ? "定期売上No.を直す" : "定期売上No.を記入して保存する"}
+        >
+          {value ? "編集" : "記入"}
+        </button>
+      )}
+    </span>
+  );
+}
+
 // 特定技能2号の行か（2号は特定技能総合保険に加入できないため、保険No.は発生しない）
 function isSsw2Row(row: MonthlyBillingRow): boolean {
   return (row.worker.residence_status ?? "").normalize("NFKC").includes("特定技能2号");
@@ -3203,11 +3307,15 @@ function SalesNoCell({
 
 // 当月許可者リストの「特定技能総合保険」の欄。
 // 所属機関が会社負担の人には「加入TODOを作る」ボタン、作ってあればTODO番号と経過。
-// 外国人負担・負担区分が未設定・特定技能2号の人はその旨を出す
+// 外国人負担・負担区分が未設定・特定技能2号の人はその旨を出す。
+// 加入TODOを作るのは在留資格が「特定技能1号」「特定技能1号更新」の人だけ
+// （特定活動（特定技能1号移行準備）など、それ以外の在留資格は対象外と出す）
 function PermittedInsuranceCell({
   info,
   burden,
   ssw2,
+  target,
+  residenceStatus,
   today,
   canEdit,
   busy,
@@ -3216,6 +3324,8 @@ function PermittedInsuranceCell({
   info: SswBillingInfo | undefined;
   burden: string; // '' / 会社負担 / 外国人負担
   ssw2: boolean;
+  target: boolean; // 在留資格が特定技能1号（更新を含む）で、保険の対象か
+  residenceStatus: string;
   today: string;
   canEdit: boolean;
   busy: boolean;
@@ -3223,6 +3333,16 @@ function PermittedInsuranceCell({
 }) {
   if (ssw2) {
     return <span className="text-muted" title="特定技能2号は特定技能総合保険に加入できません">2号（対象外）</span>;
+  }
+  if (!target) {
+    return (
+      <span
+        className="text-muted"
+        title={`在留資格が「${residenceStatus || "未設定"}」のため、加入TODOは作りません（特定技能1号・特定技能1号更新の方だけ作ります）`}
+      >
+        対象外（{residenceStatus || "在留資格未設定"}）
+      </span>
+    );
   }
   if (!burden) {
     return (

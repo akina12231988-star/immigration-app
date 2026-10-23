@@ -63,6 +63,7 @@ import {
 } from "@/lib/todo";
 import { ExamTodoSection } from "@/components/todos/ExamTodoSection";
 import { ExamFeeAccountCard } from "@/components/todos/ExamFeeAccount";
+import { BankAccountGuideCopyButton } from "@/components/BankAccountGuide";
 import {
   TODO_TRASH_DAYS,
   deleteTodo,
@@ -1372,10 +1373,16 @@ export function TodosClient({
                   : "・未申込（代金待ち）"}
                 {attempt.deferred && !attempt.fee_received && "・後払いの指示あり"}
                 {attempt.exam_date && `・試験日 ${attempt.exam_date}`}
+                {/* 本人の国籍に合わせた口座案内の画像をその場でコピーして送れる */}
+                <BankAccountGuideCopyButton
+                  nationality={t.worker_id ? (nationalityByWorker[t.worker_id] ?? "") : ""}
+                  className="ml-1.5 align-middle"
+                />
               </li>
             ))}
           </ul>
           <div className="mt-2">
+            {/* 上の行のボタンで本人の国籍の画像をコピーできる。ここは言語を選んでコピーする用 */}
             <ExamFeeAccountCard compact />
           </div>
         </div>

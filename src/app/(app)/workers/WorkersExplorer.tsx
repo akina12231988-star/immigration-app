@@ -14,7 +14,7 @@ import {
   type WorkerFilterState,
 } from "@/components/workers/WorkerFilters";
 import { SswGauge } from "@/components/workers/SswGauge";
-import { SswStatusBadge, SupportBadge, WorkerStatusBadge } from "@/components/workers/badges";
+import { InReviewBadge, SswStatusBadge, SupportBadge, WorkerStatusBadge } from "@/components/workers/badges";
 import { calcSsw, todayStr, type SswCalcResult } from "@/lib/ssw/calc";
 import { toCalcHistory } from "@/lib/supabase/queries/histories";
 import { isResidenceRenewalTarget } from "@/lib/worker-alerts";
@@ -50,11 +50,13 @@ export function WorkersExplorer({
   workers,
   organizations,
   underReviewWorkerIds = [],
+  inReviewWorkerIds = [],
   canEdit,
 }: {
   workers: WorkerWithHistories[];
   organizations: Organization[];
   underReviewWorkerIds?: string[];
+  inReviewWorkerIds?: string[]; // 入管で審査中の申請がある人（一覧に青い「審査中」を出す）
   canEdit: boolean;
 }) {
   const [filter, setFilter] = useState<WorkerFilterState>(INITIAL_FILTER);
@@ -85,6 +87,7 @@ export function WorkersExplorer({
 
   // 在留更新対象と同じ条件にするため、現在申請審査中の外国人IDを持っておく
   const underReview = useMemo(() => new Set(underReviewWorkerIds), [underReviewWorkerIds]);
+  const inReview = useMemo(() => new Set(inReviewWorkerIds), [inReviewWorkerIds]);
   // 「在留期限4ヶ月以内」= 退職者・審査中を除外（在留更新対象ページと一致）
   const isExpiry3m = (w: WorkerWithHistories) =>
     isResidenceRenewalTarget(w, todayStr()) && !underReview.has(w.id);
@@ -457,6 +460,8 @@ export function WorkersExplorer({
                 </div>
                 <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
                   <WorkerStatusBadge status={worker.status} />
+                  {/* 入管で審査中（入管申請の記録、または在留更新の対応状況が審査中）なら青いバッジを足す */}
+                  {(inReview.has(worker.id) || worker.residence_renewal_status === "審査中") && <InReviewBadge />}
                   <SswStatusBadge status={calc.status} residenceStatus={worker.residence_status} />
                   <SupportBadge support={worker.support} />
                 </div>

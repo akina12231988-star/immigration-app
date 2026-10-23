@@ -69,6 +69,9 @@ export function prepDocRequestee(
     return { kind: "person", who: who || "依頼先未入力" };
   }
   if (s.includes("郵送請求")) return { kind: "mail", who: "郵送請求" };
+  // 立替払い: 明菜さんが払うのを待つ／払ったあとは市役所の発行を待つ
+  if (s.includes("明菜さんの支払い待ち")) return { kind: "person", who: "明菜さん" };
+  if (s.includes("立替支払い済み")) return { kind: "person", who: "市役所" };
   if (s.includes("本人")) return { kind: "self", who: "本人" };
   const m = s.match(/^(.+?)に(?:発行)?依頼中/);
   if (m) return { kind: "person", who: m[1].trim() };

@@ -4,6 +4,10 @@ import {
   evaluatePrepChecklist,
   isDocComplete,
   normalizePrepStatus,
+  PREP_STATUS_UNPAID_WAIT,
+  PREP_STATUS_ADVANCE_INSTRUCTED,
+  PREP_STATUS_ADVANCE_PAID,
+  isAdvancePrepStatus,
   PREP_STATUS_REUSE_NO,
   isPrepPageKeyOf,
   isRequired,
@@ -555,7 +559,32 @@ describe("転用番号で申請する（旧「転用番号で対応する」）"
   it("古い言い方で保存されていても同じ扱い", () => {
     expect(normalizePrepStatus("転用番号で対応する")).toBe("転用番号で申請する");
     expect(normalizePrepStatus("発行完了")).toBe("発行完了");
+    // 納税証明書の未納の言い方も旧→新にそろえる
+    expect(normalizePrepStatus("未納のため領収書発行待ち")).toBe(PREP_STATUS_UNPAID_WAIT);
+    expect(prepStatusOption("nozei_shiken", "未納のため領収書発行待ち")?.value).toBe(PREP_STATUS_UNPAID_WAIT);
+    expect(prepStatusOption("nozei_kokuho", "未納のため領収書発行待ち")?.done).toBe(false);
     expect(isDocComplete("kazei", false, "転用番号で対応する")).toBe(true);
     expect(prepStatusOption("kazei", "転用番号で対応する")?.value).toBe("転用番号で申請する");
+  });
+});
+
+describe("立替払いの準備状況（納税証明書・年金記録）", () => {
+  it("納税証明書（市県民税・国保税）と年金記録に、立替払いの2つの選択肢がある（準備中扱い）", () => {
+    for (const docId of ["nozei_shiken", "nozei_kokuho", "nenkin"]) {
+      const a = prepStatusOption(docId, PREP_STATUS_ADVANCE_INSTRUCTED);
+      const b = prepStatusOption(docId, PREP_STATUS_ADVANCE_PAID);
+      expect(a?.done).toBe(false);
+      expect(b?.done).toBe(false);
+      // どちらも口座案内（国籍別の画像）と督促への導線を出す
+      expect(a?.extras?.some((e) => e.kind === "bank_guide")).toBe(true);
+      expect(a?.extras?.some((e) => e.kind === "reminder")).toBe(true);
+      expect(b?.extras?.some((e) => e.kind === "bank_guide")).toBe(true);
+    }
+    expect(isAdvancePrepStatus(PREP_STATUS_ADVANCE_INSTRUCTED)).toBe(true);
+    expect(isAdvancePrepStatus(PREP_STATUS_ADVANCE_PAID)).toBe(true);
+    expect(isAdvancePrepStatus("発行完了")).toBe(false);
+  });
+  it("課税証明書には立替払いの選択肢を出さない", () => {
+    expect(prepStatusOption("kazei", PREP_STATUS_ADVANCE_INSTRUCTED)).toBeNull();
   });
 });
