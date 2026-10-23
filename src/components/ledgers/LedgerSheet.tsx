@@ -55,7 +55,7 @@ export function LedgerSheet({
                 {table.header.map((_, j) => (
                   <td
                     key={j}
-                    className="break-words border border-gray-400 px-[2px] py-[3px] align-top"
+                    className="whitespace-pre-line break-words border border-gray-400 px-[2px] py-[3px] align-top"
                   >
                     {row[j] ?? ""}
                   </td>

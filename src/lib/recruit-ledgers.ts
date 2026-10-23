@@ -37,6 +37,13 @@ function indefiniteOnly(employmentTerm: string, value: string): string {
   return employmentTerm === "無期" ? value : "";
 }
 
+// 「雇用期間（無期・有期）」の欄。有期のときは「有期」の下に雇用契約期間の年数（求人票の雇用契約期間。例: 1年）を書く
+export function employmentTermCell(employmentTerm: string, contractTerm: string | null | undefined): string {
+  const term = (employmentTerm ?? "").trim();
+  const years = (contractTerm ?? "").trim();
+  return term === "有期" && years ? `有期\n${years}` : term;
+}
+
 // ---- 求人管理簿 ----
 
 export interface PostingLedgerApp {
@@ -58,6 +65,7 @@ export interface PostingLedgerEntry {
   org_name: string; // 求人者の氏名又は名称
   org_address: string; // 所在地
   contact_person?: string; // 連絡担当者氏名（求人ごと。0195。無ければ空欄）
+  contract_term?: string; // 雇用契約期間の年数（求人票の sheet.contract_term。有期の下に書く）
   contact: string; // 連絡担当者・連絡先電話番号
   received_on: string; // 受付年月日
   valid_until: string; // 有効期間
@@ -137,7 +145,7 @@ export function postingLedgerTable(
           a.worker_name,
           a.result,
           hiredOn,
-          term,
+          employmentTermCell(term, p.contract_term),
           indefiniteOnly(term, hiredOn ? noPoachingUntil(hiredOn) : ""),
           indefiniteOnly(term, separationSummary(a)),
           p.note,
@@ -175,6 +183,8 @@ export interface SeekerLedgerApp {
   applied_on: string; // 紹介年月日
   acceptance_no: string; // 求人受理番号
   employer_name: string; // 求人者の氏名又は名称
+  contact_person?: string; // 連絡担当者氏名（求人の登録内容。0195）
+  contract_term?: string; // 雇用契約期間の年数（求人票の雇用契約期間。有期の下に書く）
   result: string;
   result_on: string | null;
   employment_term?: string;
@@ -206,6 +216,7 @@ const SEEKER_HEADER = [
   "紹介年月日",
   "求人受理番号",
   "求人者の氏名又は名称",
+  "連絡担当者氏名",
   "採否結果",
   "採用年月日",
   "雇用期間（無期・有期）",
@@ -214,7 +225,7 @@ const SEEKER_HEADER = [
   "備考",
 ];
 
-const SEEKER_WIDTHS = [12, 20, 30, 12, 14, 12, 12, 12, 12, 24, 9, 12, 10, 14, 30, 20];
+const SEEKER_WIDTHS = [12, 20, 30, 12, 14, 12, 12, 12, 12, 24, 14, 9, 12, 10, 14, 30, 20];
 
 // 求職管理簿の表（見出しと明細）。Excelにも印刷用の画面にも同じものを使う
 export function seekerLedgerTable(
@@ -234,7 +245,7 @@ export function seekerLedgerTable(
       s.valid_until,
     ];
     if (s.applications.length === 0) {
-      rows.push(cut([...base, "", "", "", "", "", "", "", "", s.note]));
+      rows.push(cut([...base, "", "", "", "", "", "", "", "", "", s.note]));
       continue;
     }
     for (const a of s.applications) {
@@ -246,9 +257,10 @@ export function seekerLedgerTable(
           a.applied_on,
           a.acceptance_no,
           a.employer_name,
+          a.contact_person ?? "",
           a.result,
           hiredOn,
-          term,
+          employmentTermCell(term, a.contract_term),
           indefiniteOnly(term, hiredOn ? noPoachingUntil(hiredOn) : ""),
           indefiniteOnly(term, separationSummary(a)),
           s.note,
