@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  FEE_CALC_BASIS,
   buildFeeLedgerSheet,
   buildForm30Sheet,
   buildPostingLedgerSheet,
@@ -45,6 +46,7 @@ const postingBase: Omit<PostingLedgerEntry, "applications"> = {
   acceptance_no: "8-1",
   org_name: "株式会社テスト",
   org_address: "熊本県熊本市",
+  contact_person: "総務 山田",
   contact: "総務 096-000-0000",
   received_on: "2026-01-10",
   valid_until: "2026-04-30",
@@ -61,6 +63,9 @@ describe("buildPostingLedgerSheet", () => {
     const sheet = buildPostingLedgerSheet([{ ...postingBase, applications: [] }]);
     expect(sheet.rows).toHaveLength(3); // タイトル＋見出し＋1行
     expect(sheet.rows[2][0]).toBe("8-1");
+    // 連絡担当者氏名は求人者の氏名又は名称の横
+    expect(sheet.rows[1].slice(1, 4)).toEqual(["求人者の氏名又は名称", "連絡担当者氏名", "所在地"]);
+    expect(sheet.rows[2].slice(1, 4)).toEqual(["株式会社テスト", "総務 山田", "熊本県熊本市"]);
   });
   it("応募ごとに行を作り、無期採用のときだけ禁止期間・離職状況を書く", () => {
     const sheet = buildPostingLedgerSheet([
@@ -90,7 +95,7 @@ describe("buildPostingLedgerSheet", () => {
       },
     ]);
     const [a, b, c] = sheet.rows.slice(2);
-    expect(a.slice(11)).toEqual([
+    expect(a.slice(12)).toEqual([
       "2026-02-01",
       "A",
       "採用",
@@ -100,11 +105,11 @@ describe("buildPostingLedgerSheet", () => {
       "離職せず（調査日 2026-09-01・電話確認）",
       "",
     ]);
-    expect(b[15]).toBe("有期");
-    expect(b[16]).toBe(""); // 有期は禁止期間を書かない
-    expect(b[17]).toBe("");
-    expect(c[13]).toBe("不採用");
-    expect(c[14]).toBe(""); // 不採用に採用年月日は無い
+    expect(b[16]).toBe("有期");
+    expect(b[17]).toBe(""); // 有期は禁止期間を書かない
+    expect(b[18]).toBe("");
+    expect(c[14]).toBe("不採用");
+    expect(c[15]).toBe(""); // 不採用に採用年月日は無い
   });
   it("omitNote を付けると「備考」の列を出さない（労働局に出す分）", () => {
     const entries = [{ ...postingBase, applications: [] }];
@@ -163,7 +168,7 @@ describe("buildSeekerLedgerSheet", () => {
 });
 
 describe("buildFeeLedgerSheet", () => {
-  it("算出根拠も備考も、入力された分だけを出す（未徴収だけ備考に書く）", () => {
+  it("算出根拠は全員「求人者との個別協議により」。備考は入力された分だけ（未徴収だけ備考に書く）", () => {
     const sheet = buildFeeLedgerSheet([
       {
         payer_name: "株式会社テスト",
@@ -181,14 +186,14 @@ describe("buildFeeLedgerSheet", () => {
       "紹介手数料",
       30000,
       "",
-      "",
+      FEE_CALC_BASIS,
       "未徴収",
       "",
       "",
     ]);
   });
 
-  it("入力された算出根拠はそのまま出し、請求年月日・入金年月日を後ろに足す", () => {
+  it("以前に入力した算出根拠があっても固定の文言を出し、請求年月日・入金年月日を後ろに足す", () => {
     const sheet = buildFeeLedgerSheet([
       {
         payer_name: "株式会社テスト",
@@ -207,7 +212,7 @@ describe("buildFeeLedgerSheet", () => {
       "紹介手数料",
       30000,
       "",
-      "賃金総額150万円×11％",
+      FEE_CALC_BASIS,
       "初回",
       "2026-08-01",
       "2026-08-20",

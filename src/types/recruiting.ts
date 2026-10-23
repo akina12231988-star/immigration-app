@@ -138,6 +138,7 @@ export interface JobPosting {
   rent: string; // 家賃（掲載用）
   utilities: string; // 光熱費（掲載用）
   contact: string;
+  contact_person: string; // 連絡担当者氏名（求人管理簿。0195）
   display_company: string;
   display_address: string;
   target_nationality: string;

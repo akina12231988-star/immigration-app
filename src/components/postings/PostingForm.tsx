@@ -84,6 +84,7 @@ function toInput(p: JobPosting | null, orgId: string): JobPostingInput {
     rent: p?.rent ?? "",
     utilities: p?.utilities ?? "",
     contact: p?.contact ?? "",
+    contact_person: p?.contact_person ?? "",
     display_company: p?.display_company ?? "",
     display_address: p?.display_address ?? "",
     target_nationality: p?.target_nationality ?? "",
@@ -268,6 +269,7 @@ export function PostingForm({
           rent: prev.rent ?? "",
           utilities: prev.utilities ?? "",
           contact: prev.contact ?? "",
+          contact_person: prev.contact_person ?? "",
           display_company: prev.display_company ?? "",
           display_address: prev.display_address ?? "",
           target_nationality: prev.target_nationality ?? "",
@@ -557,6 +559,15 @@ export function PostingForm({
             <input
               value={form.contact}
               onChange={(e) => set("contact", e.target.value)}
+              className={INPUT_CLASS}
+            />
+          </Field>
+          {/* 求人管理簿の「連絡担当者氏名」（求人者の氏名又は名称の横に出る） */}
+          <Field label="連絡担当者氏名（求人管理簿）">
+            <input
+              value={form.contact_person}
+              onChange={(e) => set("contact_person", e.target.value)}
+              placeholder="例: 総務 山田 太郎"
               className={INPUT_CLASS}
             />
           </Field>

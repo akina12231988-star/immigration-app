@@ -57,6 +57,7 @@ export interface PostingLedgerEntry {
   acceptance_no: string;
   org_name: string; // 求人者の氏名又は名称
   org_address: string; // 所在地
+  contact_person?: string; // 連絡担当者氏名（求人ごと。0195。無ければ空欄）
   contact: string; // 連絡担当者・連絡先電話番号
   received_on: string; // 受付年月日
   valid_until: string; // 有効期間
@@ -72,6 +73,7 @@ export interface PostingLedgerEntry {
 const POSTING_HEADER = [
   "求人受理番号",
   "求人者の氏名又は名称",
+  "連絡担当者氏名",
   "所在地",
   "連絡担当者・電話番号",
   "受付年月日",
@@ -91,7 +93,7 @@ const POSTING_HEADER = [
   "備考",
 ];
 
-const POSTING_WIDTHS = [12, 24, 28, 22, 12, 12, 7, 14, 22, 14, 14, 12, 18, 9, 12, 10, 14, 30, 20];
+const POSTING_WIDTHS = [12, 24, 16, 28, 22, 12, 12, 7, 14, 22, 14, 14, 12, 18, 9, 12, 10, 14, 30, 20];
 
 // 帳簿の出し方。備考は社内の覚え書きが入るため、労働局に出す分では外せるようにする
 export interface LedgerTableOptions {
@@ -109,6 +111,7 @@ export function postingLedgerTable(
     const base: CellValue[] = [
       p.acceptance_no,
       p.org_name,
+      p.contact_person ?? "",
       p.org_address,
       p.contact,
       p.received_on,
@@ -284,10 +287,13 @@ export interface FeeLedgerEntry {
   paid_on: string | null; // 徴収年月日（未徴収は空欄）
   fee_kind: string; // 手数料の種類
   fee: number; // 手数料の額（円）
-  calc_basis: string; // 算出根拠（賃金、割合等）。入力されたものだけを出す
+  calc_basis?: string; // 算出根拠（以前の入力。帳簿には使わず、全員 FEE_CALC_BASIS を出す）
   note: string;
   billed_on?: string | null; // 請求年月日
 }
+
+// 手数料の算出根拠（賃金、割合等）。手数料は求人者と個別に決めているので、全員この文言を出す
+export const FEE_CALC_BASIS = "求人者との個別協議により";
 
 // 前の7つは様式どおりの欄。請求年月日・入金年月日は社内で追う分として後ろに足している
 const FEE_HEADER = [
@@ -308,7 +314,7 @@ export function buildFeeLedgerSheet(entries: FeeLedgerEntry[]): SheetSpec {
     FEE_HEADER,
   ];
   for (const f of entries) {
-    // 算出根拠（賃金、割合等）も備考も、入力されたものだけを出す
+    // 備考は入力されたものだけを出す。算出根拠は全員同じ文言
     const note = [f.note, f.paid_on ? "" : "未徴収"].filter(Boolean).join("・");
     rows.push([
       f.payer_name,
@@ -316,7 +322,7 @@ export function buildFeeLedgerSheet(entries: FeeLedgerEntry[]): SheetSpec {
       f.fee_kind,
       f.fee,
       "",
-      f.calc_basis,
+      FEE_CALC_BASIS,
       note,
       f.billed_on ?? "",
       f.paid_on ?? "",

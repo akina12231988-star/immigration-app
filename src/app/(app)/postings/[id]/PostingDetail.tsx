@@ -300,6 +300,22 @@ export function PostingDetail({
           >
             {(d, set) => <TextIn value={d.contact} onChange={(v) => set({ contact: v })} />}
           </Field>
+          {/* 求人管理簿の「連絡担当者氏名」 */}
+          <Field
+            label="連絡担当者氏名"
+            value={posting.contact_person ?? ""}
+            canEdit={canEdit}
+            draft={() => ({ contact_person: posting.contact_person ?? "" })}
+            onSave={savePosting}
+          >
+            {(d, set) => (
+              <TextIn
+                value={d.contact_person}
+                onChange={(v) => set({ contact_person: v })}
+                placeholder="例: 総務 山田 太郎"
+              />
+            )}
+          </Field>
           <Field
             label="受付日"
             value={posting.received_on}
