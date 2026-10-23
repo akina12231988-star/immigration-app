@@ -90,6 +90,26 @@ describe("buildRosterDraft", () => {
     expect(draft.work_kind).toBe("手で直した業務の種類");
     expect(draft.previous_jobs).toEqual([{ company: "◯◯株式会社", prefecture: "愛知県" }]);
     expect(draft.issued_on).toBe("2026-09-01");
+    // 雇用開始年月日を直していない古い名簿は、登録データの日付
+    expect(draft.employment_start).toBe("2026年8月25日");
+  });
+
+  it("雇用開始年月日は名簿で直した表示文字を優先し、空欄にしてあれば空のまま", () => {
+    const base = {
+      company_name: "株式会社ハレノヒファーム",
+      work_kind: "",
+      history: [],
+      previous_jobs: [],
+      leaving_on: "",
+      leaving_reason: "",
+      issued_on: null,
+    } as unknown as WorkerRoster;
+    expect(buildRosterDraft(SRC, null, "2026-08-25").employment_start).toBe("2026年8月25日");
+    expect(buildRosterDraft(SRC, { ...base, employment_start: "2026年9月1日" }, "2026-08-25").employment_start).toBe(
+      "2026年9月1日",
+    );
+    expect(buildRosterDraft(SRC, { ...base, employment_start: "" }, "2026-08-25").employment_start).toBe("");
+    expect(buildRosterDraft({ ...SRC, employmentStartOn: null }, null, "2026-08-25").employment_start).toBe("");
   });
 
   it("その会社にいる間の許可が分かっていれば、更新のたびの許可も全部履歴に載せる", () => {

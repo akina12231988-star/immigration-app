@@ -83,8 +83,8 @@ export function RosterDraftEditor({
     <div className="flex flex-col gap-2.5 rounded-xl border border-border bg-surface p-3">
       <p className="text-[11px] leading-relaxed text-muted">
         直すところがあればここで直して「この内容で作り直す」を押してください。
-        名前・フリガナ・生年月日・住所・個人番号・雇用開始年月日は外国人詳細の登録内容がそのまま入るため、
-        直すときは外国人詳細から修正してください。
+        名前・フリガナ・生年月日・住所・個人番号は外国人詳細の登録内容がそのまま入るため、
+        直すときは外国人詳細から修正してください。雇用開始年月日はここで直せます（空欄のままでも作れます）。
       </p>
 
       <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
@@ -107,6 +107,16 @@ export function RosterDraftEditor({
           />
         </label>
       </div>
+
+      <label className="flex flex-col gap-1">
+        <span className="text-[11px] font-bold text-muted">雇用開始年月日（空欄のままでもOK）</span>
+        <input
+          value={draft.employment_start}
+          onChange={(e) => set("employment_start", e.target.value)}
+          placeholder="例: 2026年7月31日"
+          className={INPUT}
+        />
+      </label>
 
       <label className="flex flex-col gap-1">
         <span className="text-[11px] font-bold text-muted">業務の種類</span>

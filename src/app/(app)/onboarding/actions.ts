@@ -415,6 +415,7 @@ export async function saveOnboardingRosterDraft(
       leaving_on: draft.leaving_on,
       leaving_reason: draft.leaving_reason,
       issued_on: draft.issued_on || null,
+      employment_start: draft.employment_start ?? "",
     };
     if (saved) await updateWorkerRoster(supabase, saved.id, input);
     else await insertWorkerRoster(supabase, { worker_id: workerId, ...input });

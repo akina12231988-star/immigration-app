@@ -140,6 +140,7 @@ export async function POST(req: NextRequest) {
       companyName: draft.company_name,
       workKind: draft.work_kind,
       employmentStartOn: startOn,
+      employmentStart: draft.employment_start,
       history: draft.history,
       previousJobs: draft.previous_jobs,
       leavingOn: draft.leaving_on,

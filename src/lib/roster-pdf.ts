@@ -17,6 +17,7 @@ export interface RosterPdfData {
   companyName: string;
   workKind: string;
   employmentStartOn: string | null; // YYYY-MM-DD
+  employmentStart?: string | null; // 雇用開始年月日の表示文字（名簿で直した分。あればこちらを出す。空文字なら空欄）
   history: RosterHistoryEntry[];
   previousJobs: RosterPreviousJob[];
   leavingOn: string; // 表示用の文字列（例: 2026年8月20日）
@@ -123,7 +124,7 @@ export async function buildRosterPdf(
   labeledRow(c, jp, "住所", data.address);
   labeledRow(c, jp, "業務の種類", data.workKind);
   labeledRow(c, jp, "個人番号", data.myNumber);
-  labeledRow(c, jp, "雇用開始年月日", rosterJpDate(data.employmentStartOn));
+  labeledRow(c, jp, "雇用開始年月日", data.employmentStart ?? rosterJpDate(data.employmentStartOn));
 
   twoColTable(
     c,
