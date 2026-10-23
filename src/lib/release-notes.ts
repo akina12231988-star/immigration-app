@@ -23,6 +23,16 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-10-23",
+    title: "白紙の特定技能1号 求人票を印刷できるようにしました",
+    where: "求人管理簿 ＞ 白紙の求人票を印刷",
+    href: "/postings/sheet-blank",
+    items: [
+      "何も入っていない求人票（今の様式。試用期間の行も入っています）をA4縦1枚で印刷できます。会社に手書きしてもらうときに使ってください。点線の欄は印刷にも出ます。",
+      "画面で一部を書き込んでから印刷することもできます（保存はされません）。",
+    ],
+  },
+  {
+    date: "2026-10-23",
     title: "求職管理簿にも「連絡担当者氏名」の列を足し、雇用期間が有期のときはその下に年数を出すようにしました",
     where: "求人管理簿 ＞ 求職管理簿を見る・印刷／Excel／当日点検の印刷",
     href: "/postings/ledgers?kind=seeker",

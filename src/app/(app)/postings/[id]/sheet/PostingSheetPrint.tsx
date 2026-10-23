@@ -213,6 +213,12 @@ function Check({
 const HOLIDAYS = ["月", "火", "水", "木", "金", "土", "日", "祝祭日"];
 const INSURANCES = ["健康保険", "厚生年金保険", "労災保険", "雇用保険"];
 
+// 求人票が使う求人の項目（白紙の求人票では空の値を渡す）
+export type PostingSheetSource = Pick<
+  PostingWithStats,
+  "id" | "received_on" | "acceptance_no" | "job_type" | "work_location" | "wage_kind" | "wage_amount"
+> & { openings: number | null };
+
 export function PostingSheetPrint({
   posting,
   sheet: initialSheet,
@@ -220,13 +226,17 @@ export function PostingSheetPrint({
   orgAddress,
   orgContact,
   canEdit,
+  blank = false,
 }: {
-  posting: PostingWithStats;
+  posting: PostingSheetSource;
   sheet: PostingSheet;
   orgName: string;
   orgAddress: string;
   orgContact: string;
   canEdit: boolean;
+  // 白紙の求人票（会社に手書きしてもらう用）。画面で書き込めるが保存はしない。
+  // 印刷でも点線の欄を残し、日付の欄の「年/月/日」は出さない
+  blank?: boolean;
 }) {
   const router = useRouter();
   const [sheet, setSheet] = useState<PostingSheet>(initialSheet);
@@ -235,9 +245,9 @@ export function PostingSheetPrint({
     received_on: posting.received_on ?? "",
     acceptance_no: posting.acceptance_no ?? "",
     job_type: posting.job_type ?? "",
-    openings: String(posting.openings ?? ""),
+    openings: posting.openings != null ? String(posting.openings) : "",
     work_location: posting.work_location ?? "",
-    wage_kind: (posting.wage_kind ?? "時給") as WageKind,
+    wage_kind: (posting.wage_kind ?? (blank ? "" : "時給")) as WageKind,
     wage_amount: posting.wage_amount != null ? String(posting.wage_amount) : "",
     contact: orgContact,
   });
@@ -317,16 +327,19 @@ export function PostingSheetPrint({
         "input[type=date]::-webkit-calendar-picker-indicator{display:none}" +
         // 行の途中で改ページさせない（1枚に収める）
         "tr{break-inside:avoid;page-break-inside:avoid}" +
-        ".sheet-paper{max-width:none!important;width:100%!important}}"
+        ".sheet-paper{max-width:none!important;width:100%!important}" +
+        // 白紙の求人票: 手書き用に点線の欄を残し、日付の欄の「年/月/日」の文字は出さない
+        ".sheet-blank input,.sheet-blank select{border-bottom:1px dashed #999!important}" +
+        ".sheet-blank input[type=date]{color:transparent!important}}"
       }</style>
 
       <div className="print:hidden">
         <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-brand px-4 py-3 text-brand-foreground lg:px-8">
-          <BackButton fallbackHref={`/postings/${posting.id}`} />
-          <h1 className="flex-1 text-lg font-bold">特定技能1号 求人票</h1>
+          <BackButton fallbackHref={blank ? "/postings" : `/postings/${posting.id}`} />
+          <h1 className="flex-1 text-lg font-bold">{blank ? "特定技能1号 求人票（白紙）" : "特定技能1号 求人票"}</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2 px-4 py-3 lg:px-8">
-          {canEdit && (
+          {canEdit && !blank && (
             <button
               type="button"
               onClick={() => void save()}
@@ -345,17 +358,25 @@ export function PostingSheetPrint({
             <Printer size={18} />
             印刷・PDF保存（A4縦）
           </button>
-          {dirty && (
+          {dirty && !blank && (
             <span className="text-[11px] font-bold text-seal">
               保存されていない変更があります（先に保存してから印刷してください）
             </span>
           )}
+          {blank ? (
+            <span className="text-[11px] leading-relaxed text-muted">
+              まっさらな求人票です。このまま印刷して会社に手書きしてもらえます（点線の欄は印刷にも出ます）。
+              画面で一部を書き込んでから印刷することもできますが、ここで書いた内容は保存されません。
+              A4縦1枚に収まるので、印刷の設定は用紙「A4」・向き「縦」・余白「既定」・拡大縮小「100%（または用紙に合わせる）」にしてください。
+            </span>
+          ) : (
           <span className="text-[11px] leading-relaxed text-muted">
             この様式の上でそのまま書けます。点線の欄は入力、「月給・時給」「有・無」などは押すと丸が付き、□は押すと☑になります。
             選んだ丸と☑は印刷にもそのまま出ます。A4縦1枚に収まるので、印刷の設定は用紙「A4」・向き「縦」・
             余白「既定」・拡大縮小「100%（または用紙に合わせる）」にしてください。
             会社名・所在地は所属機関の登録内容です（直すときは会社・機関マスタから）。
           </span>
+          )}
         </div>
         {message && (
           <p
@@ -370,7 +391,7 @@ export function PostingSheetPrint({
       </div>
 
       <div className="px-4 pb-6 lg:px-8 print:p-0">
-        <div className="sheet-paper mx-auto max-w-[180mm] bg-white text-black">
+        <div className={`sheet-paper mx-auto max-w-[180mm] bg-white text-black ${blank ? "sheet-blank" : ""}`}>
           <table className="w-full table-fixed border-collapse text-[7pt] leading-tight">
             <colgroup>
               {COL_WIDTHS.map((w, i) => (
