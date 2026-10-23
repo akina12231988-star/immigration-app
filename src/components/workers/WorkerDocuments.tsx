@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CreditCard, FileText, ImagePlus, ScanSearch, Trash2 } from "lucide-react";
+import { CreditCard, FileText, ImagePlus, ScanSearch, Trash2, X } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { uploadWorkerDoc } from "@/lib/worker-docs";
@@ -334,19 +334,41 @@ function DocColumn({
       )}
       {history.length > 0 && (
         <div className="mt-2">
-          <p className="mb-1 text-[10px] text-muted">履歴（{history.length}件）</p>
-          <div className="flex gap-1.5 overflow-x-auto">
+          <p className="mb-1 text-[10px] text-muted">
+            履歴（{history.length}件）
+            {canEdit && <span className="ml-1">— 間違えて登録した分は × で1枚ずつ消せます</span>}
+          </p>
+          <div className="flex gap-1.5 overflow-x-auto pt-1.5 pr-1.5">
             {history.map((d) => (
-              <a key={d.id} href={d.url} target="_blank" rel="noopener noreferrer" className="shrink-0">
-                {isPdfDoc(d) ? (
-                  <span className="flex h-12 w-12 items-center justify-center rounded border border-border text-[10px] font-bold text-muted">
-                    PDF
-                  </span>
-                ) : (
-                  /* eslint-disable-next-line @next/next/no-img-element */
-                  <img src={d.url} alt="履歴" className="h-12 w-12 rounded border border-border object-cover" />
+              <span key={d.id} className="relative shrink-0">
+                <a
+                  href={d.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={`${docPeriodDate(d)} の${KIND_LABELS[kind]}（${d.downloadName || d.fileName || ""}）`}
+                >
+                  {isPdfDoc(d) ? (
+                    <span className="flex h-12 w-12 items-center justify-center rounded border border-border text-[10px] font-bold text-muted">
+                      PDF
+                    </span>
+                  ) : (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={d.url} alt="履歴" className="h-12 w-12 rounded border border-border object-cover" />
+                  )}
+                </a>
+                {/* 履歴の1枚だけを消す（申請登録時の画像はここでは消せない） */}
+                {canEdit && !d.fromApplication && (
+                  <button
+                    type="button"
+                    onClick={() => void onDelete(d)}
+                    aria-label={`${docPeriodDate(d)} の${KIND_LABELS[kind]}を削除`}
+                    title="この履歴の画像だけを削除する"
+                    className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full border border-seal/50 bg-surface text-seal shadow-sm hover:bg-seal hover:text-white"
+                  >
+                    <X size={10} />
+                  </button>
                 )}
-              </a>
+              </span>
             ))}
           </div>
         </div>
