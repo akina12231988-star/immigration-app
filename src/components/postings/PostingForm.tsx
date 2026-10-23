@@ -32,6 +32,7 @@ import {
   CONTRACT_RENEWAL_KINDS,
   CONTRACT_RENEWAL_NONE,
   CONTRACT_TERMS,
+  PROBATION_KINDS,
 } from "@/lib/posting-sheet";
 import {
   calcIncomeTaxMonthly,
@@ -83,6 +84,7 @@ function toInput(p: JobPosting | null, orgId: string): JobPostingInput {
     rent: p?.rent ?? "",
     utilities: p?.utilities ?? "",
     contact: p?.contact ?? "",
+    contact_person: p?.contact_person ?? "",
     display_company: p?.display_company ?? "",
     display_address: p?.display_address ?? "",
     target_nationality: p?.target_nationality ?? "",
@@ -267,6 +269,7 @@ export function PostingForm({
           rent: prev.rent ?? "",
           utilities: prev.utilities ?? "",
           contact: prev.contact ?? "",
+          contact_person: prev.contact_person ?? "",
           display_company: prev.display_company ?? "",
           display_address: prev.display_address ?? "",
           target_nationality: prev.target_nationality ?? "",
@@ -559,6 +562,15 @@ export function PostingForm({
               className={INPUT_CLASS}
             />
           </Field>
+          {/* 求人管理簿の「連絡担当者氏名」（求人者の氏名又は名称の横に出る） */}
+          <Field label="連絡担当者氏名（求人管理簿）">
+            <input
+              value={form.contact_person}
+              onChange={(e) => set("contact_person", e.target.value)}
+              placeholder="例: 総務 山田 太郎"
+              className={INPUT_CLASS}
+            />
+          </Field>
         </div>
         {/* 時給を入れたら月給換算、月給を入れたら時給換算を所定労働時間から自動で出す */}
         {(() => {
@@ -837,6 +849,39 @@ export function PostingForm({
             </Field>
           </>
         )}
+
+        {/* 試用期間（有・無。「有」のときだけ期間を入れる） */}
+        <div className="grid grid-cols-2 gap-2.5">
+          <Field label="試用期間">
+            <select
+              value={sheet.probation}
+              onChange={(e) =>
+                setSheet({
+                  probation: e.target.value,
+                  ...(e.target.value === "有" ? {} : { probation_term: "" }),
+                })
+              }
+              className={INPUT_CLASS}
+            >
+              <option value="">—</option>
+              {PROBATION_KINDS.map((k) => (
+                <option key={k} value={k}>
+                  {k}
+                </option>
+              ))}
+            </select>
+          </Field>
+          {sheet.probation === "有" && (
+            <Field label="試用期間の長さ">
+              <input
+                value={sheet.probation_term}
+                onChange={(e) => setSheet({ probation_term: e.target.value })}
+                placeholder="例: 3か月"
+                className={INPUT_CLASS}
+              />
+            </Field>
+          )}
+        </div>
 
         {/* 求人票に出る文字。選んだ内容がそのまま「契約の更新」の欄に入る */}
         {sheet.contract_renewal_kind && (

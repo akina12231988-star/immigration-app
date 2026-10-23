@@ -18,6 +18,7 @@ interface PostingRow {
   wage_kind: WageKind;
   wage_amount: number | null;
   note: string;
+  contact_person: string | null; // 連絡担当者氏名（0195）
   organizations: { name: string; address: string; contact: string } | null;
   job_applications: {
     id: string;
@@ -39,7 +40,7 @@ export async function fetchPostingLedger(
   const { data, error } = await supabase
     .from("job_postings")
     .select(
-      "id, organization_id, acceptance_no, received_on, valid_until, openings, job_type, work_location, employment_period, wage_kind, wage_amount, note, " +
+      "id, organization_id, acceptance_no, received_on, valid_until, openings, job_type, work_location, employment_period, wage_kind, wage_amount, note, contact_person, " +
         "organizations(name, address, contact), " +
         "job_applications(id, applied_on, result, result_on, employment_term, separation_status, separation_checked_on, separation_check_method, workers(name))",
     )
@@ -53,6 +54,7 @@ export async function fetchPostingLedger(
     org_name: p.organizations?.name ?? "",
     org_address: p.organizations?.address ?? "",
     contact: p.organizations?.contact ?? "",
+    contact_person: p.contact_person ?? "",
     received_on: p.received_on,
     valid_until: p.valid_until ?? "",
     openings: p.openings,

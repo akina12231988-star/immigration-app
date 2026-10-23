@@ -26,7 +26,8 @@ const CONTRACT_RENEWAL_YES_KINDS = [CONTRACT_RENEWAL_AUTO, CONTRACT_RENEWAL_MAYB
 import type { PostingSheet, WageKind } from "@/types/recruiting";
 import type { PostingWithStats } from "@/lib/supabase/queries/postings";
 
-// 特定技能１号 求人票。もらったエクセルの様式（A〜H列・41行）をそのまま組んでいる。
+// 特定技能１号 求人票。もらったエクセルの様式（A〜H列・41行）をそのまま組んでいる
+// （契約期間の下に「試用期間」の行を1行足している）。
 // 列幅・行の高さ・セルの結合はエクセルに合わせ、A4縦1枚に収まるように全体を縮めている。
 //
 // 画面の上でそのまま書き込める（欄をクリックして入力・選ぶところは押すと丸が付く）。
@@ -36,7 +37,7 @@ const COL_WIDTHS = [10.71, 11.86, 11, 8.29, 12.29, 11.86, 8.43, 10];
 const TOTAL_W = COL_WIDTHS.reduce((a, b) => a + b, 0);
 
 // エクセルの行の高さ（pt）をA4縦1枚に収まるように縮める倍率。
-// 全41行の高さの合計は 1225pt なので、0.60 倍で約259mm。
+// 全41行の高さの合計は 1225pt なので、0.60 倍で約259mm（試用期間の行 24pt を足しても約264mm）。
 // A4縦（297mm）から上下の余白6mmずつを引いた285mmに収まる
 const H = 0.6;
 const pt = (h: number) => `${(h * H).toFixed(1)}pt`;
@@ -625,6 +626,43 @@ export function PostingSheetPrint({
                         />
                       )}
                     </span>
+                  </p>
+                </C>
+              </tr>
+              {/* 試用期間（有・無。「有」のときだけ期間を入れる） */}
+              <tr style={{ height: pt(24) }}>
+                <L>試用期間</L>
+                <C colSpan={7}>
+                  <p className="flex items-center">
+                    <Check
+                      label="　有："
+                      on={sheet.probation === "有"}
+                      onClick={() => set("probation", sheet.probation === "有" ? "" : "有")}
+                    />
+                    {sheet.probation === "有" ? (
+                      <span className="inline-flex items-center whitespace-nowrap">
+                        期間（
+                        <span className="inline-block w-[40mm]">
+                          <F
+                            value={sheet.probation_term}
+                            onChange={(v) => set("probation_term", v)}
+                            placeholder="例: 3か月"
+                          />
+                        </span>
+                        ）
+                      </span>
+                    ) : (
+                      <span className="text-gray-500 print:text-black">期間（　　　　　　　　）</span>
+                    )}
+                    <span className="inline-block w-[8mm]" />
+                    <Check
+                      label="　無"
+                      on={sheet.probation === "無"}
+                      onClick={() => {
+                        set("probation", sheet.probation === "無" ? "" : "無");
+                        set("probation_term", "");
+                      }}
+                    />
                   </p>
                 </C>
               </tr>

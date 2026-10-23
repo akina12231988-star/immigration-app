@@ -15,7 +15,7 @@ import {
 } from "@/lib/supabase/queries/referrals";
 import { formatSalesYen, FREEE_SALES_LOGIN_URL, referralFeeFor, type SalesItemsSource } from "@/lib/sales";
 import { buildXlsx, downloadBlob } from "@/lib/xlsx-export";
-import { buildFeeLedgerSheet } from "@/lib/recruit-ledgers";
+import { FEE_CALC_BASIS, buildFeeLedgerSheet } from "@/lib/recruit-ledgers";
 import { isMonthStr, monthLabel } from "@/lib/monthly-billing";
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
 import type { Organization } from "@/types/db";
@@ -496,7 +496,7 @@ export function ReferralsClient({
                   <th className="py-1.5 pr-2 font-bold">在留資格</th>
                   <th className="py-1.5 pr-2 font-bold">種類</th>
                   <th className="py-1.5 pr-2 text-right font-bold">手数料（税抜）</th>
-                  <th className="py-1.5 pr-2 font-bold">算出根拠</th>
+                  <th className="py-1.5 pr-2 font-bold">算出根拠（全員同じ）</th>
                   <th className="py-1.5 pr-2 font-bold">紹介売上No.</th>
                   <th className="py-1.5 pr-2 font-bold">売上登録確認</th>
                   <th className="py-1.5 pr-2 font-bold">請求年月日</th>
@@ -571,20 +571,9 @@ export function ReferralsClient({
                         <span className="font-bold tabular-nums">{formatSalesYen(r.fee)}</span>
                       )}
                     </td>
-                    <td className="py-1.5 pr-2">
-                      {canEdit ? (
-                        <input
-                          defaultValue={r.calc_basis ?? ""}
-                          onBlur={(e) => {
-                            if (e.target.value !== (r.calc_basis ?? ""))
-                              void patchRow(r.id, { calc_basis: e.target.value.trim() });
-                          }}
-                          placeholder="例: 賃金総額×11％"
-                          className={`${CELL_INPUT} w-32`}
-                        />
-                      ) : (
-                        <span className="text-muted">{r.calc_basis || "—"}</span>
-                      )}
+                    {/* 手数料管理簿の算出根拠は全員同じ文言（求人者と個別に決めているため） */}
+                    <td className="py-1.5 pr-2 text-muted" title="手数料管理簿にはこの文言が全員に入ります">
+                      {FEE_CALC_BASIS}
                     </td>
                     <td className="py-1.5 pr-2">
                       <span className="flex items-center gap-1">

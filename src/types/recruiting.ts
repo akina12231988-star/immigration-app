@@ -83,6 +83,8 @@ export interface PostingSheet {
   contract_renewal_kind: string; // 契約の更新の有無（自動的に更新する / 更新する場合があり得る / 契約の更新はしない）
   contract_renewal_criteria: string[]; // 更新の判断基準（「更新する場合があり得る」のときだけ・複数選べる）
   contract_renewal_other: string; // 更新の判断基準の「その他」の中身
+  probation: string; // 試用期間の有無（有 / 無。空は未選択）
+  probation_term: string; // 試用期間（「有」のとき。例: 3か月）
   work_start: string; // 始業
   work_end: string; // 終業
   daily_hours: string; // 1日の所定労働時間
@@ -136,6 +138,7 @@ export interface JobPosting {
   rent: string; // 家賃（掲載用）
   utilities: string; // 光熱費（掲載用）
   contact: string;
+  contact_person: string; // 連絡担当者氏名（求人管理簿。0195）
   display_company: string;
   display_address: string;
   target_nationality: string;

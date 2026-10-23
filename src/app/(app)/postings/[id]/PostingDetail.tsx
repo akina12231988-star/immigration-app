@@ -33,6 +33,8 @@ import {
   canPickRenewalCriteria,
   contractRenewalText,
   contractText,
+  probationText,
+  PROBATION_KINDS,
   holidayText,
   insurancesText,
   normalizePostingSheet,
@@ -298,6 +300,22 @@ export function PostingDetail({
           >
             {(d, set) => <TextIn value={d.contact} onChange={(v) => set({ contact: v })} />}
           </Field>
+          {/* 求人管理簿の「連絡担当者氏名」 */}
+          <Field
+            label="連絡担当者氏名"
+            value={posting.contact_person ?? ""}
+            canEdit={canEdit}
+            draft={() => ({ contact_person: posting.contact_person ?? "" })}
+            onSave={savePosting}
+          >
+            {(d, set) => (
+              <TextIn
+                value={d.contact_person}
+                onChange={(v) => set({ contact_person: v })}
+                placeholder="例: 総務 山田 太郎"
+              />
+            )}
+          </Field>
           <Field
             label="受付日"
             value={posting.received_on}
@@ -501,6 +519,33 @@ export function PostingDetail({
                     <br />
                     上で更新の有無を選ぶと、こちらは置き換わります。
                   </p>
+                )}
+              </>
+            )}
+          </Field>
+          {/* 試用期間（有・無。「有」のときだけ期間を入れる） */}
+          <Field
+            label="試用期間"
+            value={probationText(sheet)}
+            canEdit={canEdit}
+            draft={() => ({ probation: sheet.probation, probation_term: sheet.probation_term })}
+            onSave={saveSheet}
+          >
+            {(d, set) => (
+              <>
+                <SelectIn
+                  label="試用期間の有無"
+                  value={d.probation}
+                  options={PROBATION_KINDS}
+                  allowEmpty
+                  onChange={(v) => set({ probation: v, ...(v === "有" ? {} : { probation_term: "" }) })}
+                />
+                {d.probation === "有" && (
+                  <TextIn
+                    value={d.probation_term}
+                    onChange={(v) => set({ probation_term: v })}
+                    placeholder="例: 3か月"
+                  />
                 )}
               </>
             )}
