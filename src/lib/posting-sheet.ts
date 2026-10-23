@@ -22,6 +22,8 @@ export function emptyPostingSheet(): PostingSheet {
     contract_renewal_kind: "",
     contract_renewal_criteria: [],
     contract_renewal_other: "",
+    probation: "",
+    probation_term: "",
     work_start: "",
     work_end: "",
     daily_hours: "",
@@ -240,6 +242,14 @@ export function contractText(sheet: PostingSheet): string {
   return `${kind}${term}${renewal}`;
 }
 
+// 試用期間の表示（例: 「有：3か月」「無」。未選択なら空）
+export const PROBATION_KINDS = ["有", "無"] as const;
+export function probationText(sheet: PostingSheet): string {
+  if (sheet.probation === "有") return sheet.probation_term ? `有：${sheet.probation_term}` : "有";
+  if (sheet.probation === "無") return "無";
+  return "";
+}
+
 // 控除項目の表示（例: 「水道光熱費・社宅（居住費）・雇用保険料」）
 export function deductionItemsText(sheet: PostingSheet): string {
   return sheet.deduction_items.join("・");
@@ -285,6 +295,7 @@ export function postingSheetText(
     line("勤務地の変更の可能性", sheet.work_location_change),
     line("仕事内容", sheet.job_description),
     line("契約期間", contractText(sheet)),
+    line("試用期間", probationText(sheet)),
     line("勤務時間", workHoursText(sheet)),
     line("変形労働制", sheet.flexible_hours),
     line("休憩", sheet.break_minutes ? `${sheet.break_minutes}分` : ""),

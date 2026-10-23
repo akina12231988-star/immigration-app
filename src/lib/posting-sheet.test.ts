@@ -3,6 +3,7 @@ import {
   canPickRenewalCriteria,
   contractRenewalText,
   contractText,
+  probationText,
   dailyWorkHours,
   deductionItemsText,
   emptyPostingSheet,
@@ -135,6 +136,19 @@ describe("表示の組み立て", () => {
       contract_renewal: "有：勤務成績により判断",
     };
     expect(contractText(s)).toBe("期間の定めあり：1年 ／ 契約の更新：有：勤務成績により判断");
+  });
+
+  it("試用期間は有無と期間をまとめる（未選択なら空）", () => {
+    expect(probationText({ ...emptyPostingSheet(), probation: "有", probation_term: "3か月" })).toBe("有：3か月");
+    expect(probationText({ ...emptyPostingSheet(), probation: "有" })).toBe("有");
+    expect(probationText({ ...emptyPostingSheet(), probation: "無", probation_term: "3か月" })).toBe("無");
+    expect(probationText(emptyPostingSheet())).toBe("");
+    // 保存済みの値は読み込みでそのまま残る（古いデータには無いので空）
+    expect(normalizePostingSheet({ probation: "有", probation_term: "2か月" })).toMatchObject({
+      probation: "有",
+      probation_term: "2か月",
+    });
+    expect(normalizePostingSheet({}).probation).toBe("");
   });
 
   it("控除項目を並べる", () => {

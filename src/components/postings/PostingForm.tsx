@@ -32,6 +32,7 @@ import {
   CONTRACT_RENEWAL_KINDS,
   CONTRACT_RENEWAL_NONE,
   CONTRACT_TERMS,
+  PROBATION_KINDS,
 } from "@/lib/posting-sheet";
 import {
   calcIncomeTaxMonthly,
@@ -837,6 +838,39 @@ export function PostingForm({
             </Field>
           </>
         )}
+
+        {/* 試用期間（有・無。「有」のときだけ期間を入れる） */}
+        <div className="grid grid-cols-2 gap-2.5">
+          <Field label="試用期間">
+            <select
+              value={sheet.probation}
+              onChange={(e) =>
+                setSheet({
+                  probation: e.target.value,
+                  ...(e.target.value === "有" ? {} : { probation_term: "" }),
+                })
+              }
+              className={INPUT_CLASS}
+            >
+              <option value="">—</option>
+              {PROBATION_KINDS.map((k) => (
+                <option key={k} value={k}>
+                  {k}
+                </option>
+              ))}
+            </select>
+          </Field>
+          {sheet.probation === "有" && (
+            <Field label="試用期間の長さ">
+              <input
+                value={sheet.probation_term}
+                onChange={(e) => setSheet({ probation_term: e.target.value })}
+                placeholder="例: 3か月"
+                className={INPUT_CLASS}
+              />
+            </Field>
+          )}
+        </div>
 
         {/* 求人票に出る文字。選んだ内容がそのまま「契約の更新」の欄に入る */}
         {sheet.contract_renewal_kind && (

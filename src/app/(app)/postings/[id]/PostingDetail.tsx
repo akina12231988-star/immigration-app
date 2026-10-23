@@ -33,6 +33,8 @@ import {
   canPickRenewalCriteria,
   contractRenewalText,
   contractText,
+  probationText,
+  PROBATION_KINDS,
   holidayText,
   insurancesText,
   normalizePostingSheet,
@@ -501,6 +503,33 @@ export function PostingDetail({
                     <br />
                     上で更新の有無を選ぶと、こちらは置き換わります。
                   </p>
+                )}
+              </>
+            )}
+          </Field>
+          {/* 試用期間（有・無。「有」のときだけ期間を入れる） */}
+          <Field
+            label="試用期間"
+            value={probationText(sheet)}
+            canEdit={canEdit}
+            draft={() => ({ probation: sheet.probation, probation_term: sheet.probation_term })}
+            onSave={saveSheet}
+          >
+            {(d, set) => (
+              <>
+                <SelectIn
+                  label="試用期間の有無"
+                  value={d.probation}
+                  options={PROBATION_KINDS}
+                  allowEmpty
+                  onChange={(v) => set({ probation: v, ...(v === "有" ? {} : { probation_term: "" }) })}
+                />
+                {d.probation === "有" && (
+                  <TextIn
+                    value={d.probation_term}
+                    onChange={(v) => set({ probation_term: v })}
+                    placeholder="例: 3か月"
+                  />
                 )}
               </>
             )}
