@@ -2,7 +2,7 @@
 
 import { Fragment, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronRight, Download, Loader2, MessageCircle, Plus, Receipt } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, Loader2, Mail, MessageCircle, Plus, Receipt } from "lucide-react";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { createClient } from "@/lib/supabase/client";
 import { dbErrorMessage } from "@/lib/errors";
@@ -12,7 +12,10 @@ import { fillXlsxTemplate } from "@/lib/xlsx-form-fill";
 import type { SswSalesRow } from "@/lib/supabase/queries/ssw-insurance";
 import {
   SSW_CANCEL_FORM_MAX_ROWS,
+  SSW_CANCEL_MAILED_STATUS,
+  SSW_CANCEL_MAIL_TO,
   SSW_STATE_LABELS,
+  sswCancelMailToText,
   SSW_UPLOAD_MAX_ROWS,
   slashDate,
   sswCancelFormCells,
@@ -659,6 +662,8 @@ export function SswCancelTable({
   onMakeTodo,
   onTodoStatus,
   onCancelled,
+  onExported,
+  onSaveMailing,
   today,
   onError,
 }: {
@@ -671,12 +676,43 @@ export function SswCancelTable({
   onMakeTodo: (workerId: string, title: string) => void;
   onTodoStatus: (todoId: string, status: string) => void;
   onCancelled: (row: SswInsuranceRow) => void;
+  // 届出書を出力した人の解約手続きのTODOを「解約書類郵送済み」にする（TODOが無ければ作る）
+  onExported: (workerIds: string[]) => Promise<void>;
+  // 投函日・追跡番号をまとめて保存する（workers.ssw_insurance_cancel_mailed_on / _tracking_no）
+  onSaveMailing: (workerIds: string[], mailedOn: string | null, trackingNo: string) => Promise<void>;
   today: string;
   onError: (message: string | null) => void;
 }) {
   // 解約の届出書を作る人（チェック）
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [exporting, setExporting] = useState(false);
+  // 届出書を出力した（または「投函日・追跡番号を入力」を押した）人。投函日と追跡番号をまとめて入れる
+  const [mailingIds, setMailingIds] = useState<string[]>([]);
+  const [mailedOn, setMailedOn] = useState(today);
+  const [trackingNo, setTrackingNo] = useState("");
+  const [savingMailing, setSavingMailing] = useState(false);
+  const mailingRows = rows.filter((r) => mailingIds.includes(r.worker.id));
+
+  const openMailing = (ids: string[]) => {
+    setMailingIds(ids);
+    setMailedOn(today);
+    setTrackingNo("");
+  };
+  const saveMailing = async () => {
+    if (mailingRows.length === 0) return;
+    setSavingMailing(true);
+    try {
+      await onSaveMailing(
+        mailingRows.map((r) => r.worker.id),
+        mailedOn || null,
+        trackingNo.trim(),
+      );
+      setMailingIds([]);
+      setPicked(new Set());
+    } finally {
+      setSavingMailing(false);
+    }
+  };
   const allPicked = rows.length > 0 && rows.every((r) => picked.has(r.worker.id));
   const toggle = (id: string) =>
     setPicked((prev) => {
@@ -714,6 +750,10 @@ export function SswCancelTable({
       if (!res.ok) throw new Error("解約の届出書のひな形を読み込めませんでした");
       const bytes = await fillXlsxTemplate(await res.arrayBuffer(), sswCancelFormCells(targets, today));
       downloadXlsx(bytes, `特定技能総合保険_解約届_${today.replaceAll("-", "")}.xlsx`);
+      // 出力した人の解約手続きのTODOを「解約書類郵送済み」にして、投函日・追跡番号の入力欄を出す
+      const ids = targets.map((t) => t.workerId);
+      if (canEdit) await onExported(ids);
+      openMailing(ids);
     } catch (err) {
       onError(err instanceof Error ? err.message : "出力に失敗しました");
     } finally {
@@ -734,11 +774,79 @@ export function SswCancelTable({
           {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
           チェックした人（{pickedCount}人）を解約の届出書に出力
         </button>
+        {canEdit && (
+          <button
+            type="button"
+            disabled={pickedCount === 0 || exporting}
+            onClick={() => openMailing(rows.filter((r) => picked.has(r.worker.id)).map((r) => r.worker.id))}
+            className="flex min-h-[40px] items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-xs font-bold text-brand disabled:opacity-50"
+            title="出力はせずに、チェックした人の投函日・追跡番号だけを入れ直します"
+          >
+            <Mail size={14} />
+            チェックした人の投函日・追跡番号を入力
+          </button>
+        )}
       </div>
       <p className="text-[11px] leading-relaxed text-muted">
         被保険者証明書番号と有効期限が入っていて、有効期限から4か月たっていない人だけを出しています（それより後は解約できません）。解約の手続きが済んだら「解約済み」を押してください。
         届出書に入れる人にチェックを付けて出力すると、変更（解約）届出書（エクセル）に被保険者番号・氏名・変更日（退職日）・変更理由「③自己都合」の○が入り、合計はチェックした人数になります（一度に{SSW_CANCEL_FORM_MAX_ROWS}人まで）。
+        出力した人の経過は自動で「{SSW_CANCEL_MAILED_STATUS}」になり、続けて投函日と追跡番号をまとめて入れられます。
       </p>
+      {/* 解約書類の送付先（宛名書き用にコピーできる） */}
+      <SswCancelMailTo />
+      {/* 届出書を出力した人の投函日・追跡番号（1通にまとめて送るので、同じ日付・番号を全員に保存する） */}
+      {mailingRows.length > 0 && (
+        <div className="rounded-xl border border-brand/40 bg-brand/5 p-3">
+          <p className="flex items-center gap-1.5 text-xs font-black">
+            <Mail size={14} className="text-brand" />
+            出力した{mailingRows.length}人の投函日・追跡番号を入力
+          </p>
+          <p className="mt-0.5 text-[11px] text-muted">
+            {mailingRows.map((r) => r.worker.name).join("・")}
+          </p>
+          {/* 出力した書類の送り先をここにも出す（宛名を書くときにすぐコピーできる） */}
+          <div className="mt-2">
+            <SswCancelMailTo />
+          </div>
+          <div className="mt-2 flex flex-wrap items-end gap-2">
+            <label className="block">
+              <span className="mb-0.5 block text-[11px] text-muted">投函日</span>
+              <input
+                type="date"
+                value={mailedOn}
+                onChange={(e) => setMailedOn(e.target.value)}
+                className={`${CELL_INPUT} min-w-[9rem]`}
+              />
+            </label>
+            <label className="block min-w-[14rem] flex-1">
+              <span className="mb-0.5 block text-[11px] text-muted">追跡番号（レターパックなど）</span>
+              <input
+                value={trackingNo}
+                onChange={(e) => setTrackingNo(e.target.value)}
+                placeholder="例: 1234-5678-9012"
+                className={`${CELL_INPUT} w-full tabular-nums`}
+              />
+            </label>
+            <button
+              type="button"
+              disabled={savingMailing || !canEdit}
+              onClick={() => void saveMailing()}
+              className="flex min-h-[36px] items-center gap-1.5 rounded-lg bg-brand px-3 text-xs font-bold text-brand-foreground disabled:opacity-50"
+            >
+              {savingMailing && <Loader2 size={14} className="animate-spin" />}
+              {mailingRows.length}人に保存
+            </button>
+            <button
+              type="button"
+              disabled={savingMailing}
+              onClick={() => setMailingIds([])}
+              className={SMALL_BTN}
+            >
+              閉じる
+            </button>
+          </div>
+        </div>
+      )}
       {rows.length === 0 ? (
         <p className="rounded-xl border border-border bg-background p-4 text-center text-[11px] text-muted">解約手続きが必要な人はいません。</p>
       ) : (
@@ -761,6 +869,7 @@ export function SswCancelTable({
                 <th className={TH}>保険終期</th>
                 <th className={TH}>被保険者証</th>
                 <th className={TH}>経過</th>
+                <th className={TH}>郵送（投函日・追跡番号）</th>
                 <th className={TH}></th>
               </tr>
             </thead>
@@ -797,6 +906,23 @@ export function SswCancelTable({
                           onTodoStatus={onTodoStatus}
                         />
                       </td>
+                      <td className={`${TD} whitespace-nowrap text-center text-[11px]`}>
+                        {w.ssw_insurance_cancel_mailed_on || (w.ssw_insurance_cancel_tracking_no ?? "").trim() ? (
+                          <span className="inline-flex flex-col items-center gap-0.5">
+                            <span className="tabular-nums">{w.ssw_insurance_cancel_mailed_on ? slashDate(w.ssw_insurance_cancel_mailed_on) : "投函日なし"}</span>
+                            {(w.ssw_insurance_cancel_tracking_no ?? "").trim() ? (
+                              <span className="inline-flex items-center gap-0.5 tabular-nums text-muted">
+                                {w.ssw_insurance_cancel_tracking_no}
+                                <CopyButton value={w.ssw_insurance_cancel_tracking_no ?? ""} label="追跡番号をコピー" size={11} />
+                              </span>
+                            ) : (
+                              <span className="text-muted">追跡番号なし</span>
+                            )}
+                          </span>
+                        ) : (
+                          <span className="text-muted">―</span>
+                        )}
+                      </td>
                       <td className={`${TD} whitespace-nowrap text-center`}>
                         {canEdit && (
                           <button
@@ -815,7 +941,7 @@ export function SswCancelTable({
                     </tr>
                     {open && (
                       <tr>
-                        <td colSpan={8} className="border border-border bg-background p-2">
+                        <td colSpan={9} className="border border-border bg-background p-2">
                           {renderDetail(row)}
                         </td>
                       </tr>
@@ -827,6 +953,32 @@ export function SswCancelTable({
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+// 解約書類の送付先・問合せ先。会社名・住所・電話番号をそれぞれコピーでき、宛名はまとめてコピーできる
+function SswCancelMailTo() {
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-border bg-background px-3 py-2 text-[11px]">
+      <span className="font-bold text-muted">書類送付・問合せ先</span>
+      <span className="inline-flex items-center gap-1 font-bold">
+        {SSW_CANCEL_MAIL_TO.company}
+        <CopyButton value={SSW_CANCEL_MAIL_TO.company} label="会社名をコピー" size={12} />
+      </span>
+      <span className="inline-flex items-center gap-1">
+        {SSW_CANCEL_MAIL_TO.postal}　{SSW_CANCEL_MAIL_TO.address}
+        <CopyButton value={`${SSW_CANCEL_MAIL_TO.postal} ${SSW_CANCEL_MAIL_TO.address}`} label="住所をコピー" size={12} />
+      </span>
+      <span className="inline-flex items-center gap-1 tabular-nums">
+        TEL {SSW_CANCEL_MAIL_TO.tel}
+        <CopyButton value={SSW_CANCEL_MAIL_TO.tel} label="電話番号をコピー" size={12} />
+      </span>
+      <span className="tabular-nums text-muted">FAX {SSW_CANCEL_MAIL_TO.fax}</span>
+      <span className="inline-flex items-center gap-1 font-bold text-brand">
+        <CopyButton value={sswCancelMailToText()} label="宛名（郵便番号・住所・会社名・電話）をまとめてコピー" size={12} />
+        宛名をまとめてコピー
+      </span>
     </div>
   );
 }

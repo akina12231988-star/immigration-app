@@ -18,6 +18,51 @@ export const SSW_CANCEL_TODO_TITLE = "特定技能総合保険の解約手続き
 // 特定技能総合保険のTODOの経過（0139 の初期選択肢と同じ3つ）
 export const SSW_INSURANCE_STATUSES = ["未着手", "申込手続中", "完了"] as const;
 
+// 進行中の経過は、加入手続きと解約手続きで言い方が違う。
+//   加入手続き … 申込手続中（申込サイトで手続き中）
+//   解約手続き … 解約書類郵送済み（変更（解約）届出書を郵送した。0194 で選択肢を追加）
+// 解約の届出書を出力したら、その人の解約手続きのTODOは自動で「解約書類郵送済み」になる
+export const SSW_JOIN_APPLYING_STATUS = "申込手続中";
+export const SSW_CANCEL_MAILED_STATUS = "解約書類郵送済み";
+export const SSW_CANCEL_MAILED_MIGRATION = "0194_ssw_cancel_mailed_status.sql";
+
+// 解約書類（変更（解約）届出書）の送付先・問合せ先（保険会社の書類に書いてあるもの）。
+// 解約手続きの表に出し、宛名書き用にコピーできるようにする
+export const SSW_CANCEL_MAIL_TO = {
+  company: "（株）国際研修サービス",
+  postal: "〒108-0014",
+  address: "東京都港区芝四丁目13番2号 田町フロントビル5階",
+  tel: "(03) 3453-3700",
+  fax: "(03) 3453-3703",
+} as const;
+
+// 宛名に貼る形（郵便番号・住所・会社名・電話を改行で並べる）
+export function sswCancelMailToText(): string {
+  const m = SSW_CANCEL_MAIL_TO;
+  return [`${m.postal}`, m.address, `${m.company} 御中`, `TEL ${m.tel}`].join("\n");
+}
+
+// 加入手続き／解約手続きの表の経過の選択肢。
+// 進行中の選択肢は、その手続きの言い方のものだけ出す（解約の表に「申込手続中」は出さない）。
+// 0194 未適用で「解約書類郵送済み」がまだ無ければ、画面で選べるように足しておく（保存は名前で入るので動く）
+export function sswStatusOptionsFor(task: SswTaskKey, options: TodoStatusOption[]): TodoStatusOption[] {
+  const hide = task === "cancel" ? SSW_JOIN_APPLYING_STATUS : SSW_CANCEL_MAILED_STATUS;
+  const list = options.filter((o) => o.kind === SSW_INSURANCE_TODO_KIND && o.name !== hide);
+  if (task === "cancel" && !list.some((o) => o.name === SSW_CANCEL_MAILED_STATUS)) {
+    const insertAt = list.findIndex((o) => o.stage === "完了");
+    const fallback: TodoStatusOption = {
+      id: "ssw-cancel-mailed",
+      kind: SSW_INSURANCE_TODO_KIND,
+      stage: "進行中",
+      name: SSW_CANCEL_MAILED_STATUS,
+      sort_no: 1,
+    };
+    if (insertAt < 0) list.push(fallback);
+    else list.splice(insertAt, 0, fallback);
+  }
+  return list;
+}
+
 // 期限アラートを出し始める日数（有効期限の1か月前＝ダッシュボードのアラートと同じ）
 export const SSW_SOON_DAYS = 31;
 
@@ -47,6 +92,9 @@ export interface SswInsuranceWorker {
   // どの所属機関にいたときに「加入しない」と決めたか（転職したら決め直す・0140）
   ssw_insurance_declined_org_id: string | null;
   ssw_insurance_note: string; // 加入しない理由などの備考
+  // 解約手続きの郵送（0147）: 変更（解約）届出書を投函した日と追跡番号
+  ssw_insurance_cancel_mailed_on?: string | null;
+  ssw_insurance_cancel_tracking_no?: string;
   // 申込（0171）。未適用の環境では undefined
   ssw_insurance_paid_on?: string | null; // 振込日（保険始期希望日は翌日。土日なら翌週の月曜日）
   ssw_insurance_request_no?: string; // 加入依頼 受付番号

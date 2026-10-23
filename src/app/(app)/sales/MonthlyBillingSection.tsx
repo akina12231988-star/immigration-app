@@ -1626,6 +1626,13 @@ export function MonthlyBillingSection({
                             >
                               {row.worker.name}
                             </Link>
+                            {/* 氏名を freee の検索やメールに貼りやすいようにコピーできる */}
+                            <CopyButton
+                              value={row.worker.name}
+                              label="氏名をコピー"
+                              size={12}
+                              className="ml-0.5 align-middle"
+                            />
                           </td>
                           <td className="py-1.5 pr-2">{org.organizationName}</td>
                           <td className="py-1.5 pr-2 tabular-nums">
@@ -1729,6 +1736,13 @@ export function MonthlyBillingSection({
                             >
                               {row.worker.name}
                             </Link>
+                            {/* 氏名を freee の検索やメールに貼りやすいようにコピーできる */}
+                            <CopyButton
+                              value={row.worker.name}
+                              label="氏名をコピー"
+                              size={12}
+                              className="ml-0.5 align-middle"
+                            />
                           </td>
                           <td className="py-1.5 pr-2">{org.organizationName}</td>
                           {/* 転職者は当時の機関の番号（過去の定期売上No.）を出す。freeeの定期売上の停止の突き合わせ用 */}

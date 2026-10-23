@@ -5,9 +5,13 @@ import {
   sswStartOnFromPaidOn,
   sswUploadCells,
   sswUploadRow,
+  SSW_CANCEL_MAILED_STATUS,
   SSW_CANCEL_TODO_TITLE,
   SSW_JOIN_TODO_TITLE,
   addMonthsDate,
+  sswStatusOptionsFor,
+  sswCancelMailToText,
+  SSW_CANCEL_MAIL_TO,
   buildSswInsuranceRows,
   isSswInsuranceCandidate,
   isSswInsuranceTarget,
@@ -748,5 +752,42 @@ describe("sswCancelFormRow・sswCancelFormCells（解約の届出書）", () => 
     expect(cells.N58).toBe("W9");
     expect(cells.AE62).toBe(10);
     expect(Object.keys(cells).some((k) => k === "N62")).toBe(false);
+  });
+});
+
+describe("sswStatusOptionsFor（加入と解約で進行中の言い方を分ける）", () => {
+  const opt = (name: string, stage: "未着手" | "進行中" | "完了", id = name) => ({
+    id,
+    kind: "特定技能総合保険" as const,
+    stage,
+    name,
+    sort_no: 1,
+  });
+  const all = [opt("未着手", "未着手"), opt("申込手続中", "進行中"), opt(SSW_CANCEL_MAILED_STATUS, "進行中"), opt("完了", "完了")];
+  it("加入手続きの表には「解約書類郵送済み」を出さない", () => {
+    expect(sswStatusOptionsFor("join", all).map((o) => o.name)).toEqual(["未着手", "申込手続中", "完了"]);
+  });
+  it("解約手続きの表には「申込手続中」を出さない", () => {
+    expect(sswStatusOptionsFor("cancel", all).map((o) => o.name)).toEqual(["未着手", SSW_CANCEL_MAILED_STATUS, "完了"]);
+  });
+  it("0194 未適用で「解約書類郵送済み」が無くても、完了の前に足して選べるようにする", () => {
+    const old = [opt("未着手", "未着手"), opt("申込手続中", "進行中"), opt("完了", "完了")];
+    const list = sswStatusOptionsFor("cancel", old);
+    expect(list.map((o) => o.name)).toEqual(["未着手", SSW_CANCEL_MAILED_STATUS, "完了"]);
+    expect(list[1].stage).toBe("進行中");
+  });
+  it("ほかの構成の選択肢は混ぜない", () => {
+    const other = { id: "x", kind: "申請準備" as const, stage: "進行中" as const, name: "書類集め中", sort_no: 1 };
+    expect(sswStatusOptionsFor("join", [...all, other]).some((o) => o.name === "書類集め中")).toBe(false);
+  });
+});
+
+describe("sswCancelMailToText（解約書類の送付先の宛名）", () => {
+  it("郵便番号・住所・会社名（御中）・電話を改行で並べる", () => {
+    const lines = sswCancelMailToText().split("\n");
+    expect(lines[0]).toBe(SSW_CANCEL_MAIL_TO.postal);
+    expect(lines[1]).toBe(SSW_CANCEL_MAIL_TO.address);
+    expect(lines[2]).toBe(`${SSW_CANCEL_MAIL_TO.company} 御中`);
+    expect(lines[3]).toContain(SSW_CANCEL_MAIL_TO.tel);
   });
 });

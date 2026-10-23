@@ -36,6 +36,9 @@ const COLUMNS = [
   "ssw_insurance_declined_on",
   "ssw_insurance_declined_org_id",
   "ssw_insurance_note",
+  // 解約手続きの郵送（0147）: 解約手続きの表に投函日・追跡番号を出す
+  "ssw_insurance_cancel_mailed_on",
+  "ssw_insurance_cancel_tracking_no",
 ].join(", ");
 
 // 申込サイトに合わせた申込の項目（0171）: 振込日・加入依頼 受付番号・加入依頼日・保険始期
