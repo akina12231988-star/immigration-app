@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronRight, FileSpreadsheet, FileText, ImageIcon, Plus, Users } from "lucide-react";
+import { ChevronRight, FileSpreadsheet, FileText, ImageIcon, Plus, Printer, Users } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { LinkButton } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
@@ -201,6 +201,26 @@ export function PostingsExplorer({
           訪問指導の確認書類（規程・手数料表）
         </Link>
         <span className="text-[11px] text-muted">労働局の訪問指導（監査）用</span>
+      </div>
+      {/* 3つの帳簿を画面で一覧し、そのまま印刷できる（全件。A4横） */}
+      <div className="flex flex-wrap items-center gap-2">
+        {(
+          [
+            ["posting", "求人管理簿を見る・印刷"],
+            ["seeker", "求職管理簿を見る・印刷"],
+            ["fee", "手数料管理簿を見る・印刷"],
+          ] as const
+        ).map(([kind, label]) => (
+          <Link
+            key={kind}
+            href={`/postings/ledgers?kind=${kind}`}
+            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-bold text-brand"
+          >
+            <Printer size={14} />
+            {label}
+          </Link>
+        ))}
+        <span className="text-[11px] text-muted">全件を一覧で表示して、そのまま印刷（A4横）できます</span>
       </div>
       <p className="-mt-1 mb-3 text-[11px] leading-relaxed text-muted">
         「求人管理簿（Excel）」は全件を出します。訪問指導の当日点検で労働局から指定された
