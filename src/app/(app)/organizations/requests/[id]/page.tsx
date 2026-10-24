@@ -9,6 +9,7 @@ import {
   listDocumentRequestFiles,
 } from "@/lib/supabase/queries/org-document-requests";
 import { splitCurrentRoster } from "@/lib/org-roster-groups";
+import { listAttachedOnboardingDocsForWorkers } from "@/lib/supabase/queries/onboarding";
 import { todayStr } from "@/lib/application-alerts";
 import { DocumentRequestChecklist } from "./DocumentRequestChecklist";
 
@@ -34,14 +35,18 @@ export default async function OrganizationDocumentRequestPage({ params }: { para
   const { active, notYet } = splitCurrentRoster(roster.current);
   // 本人に案内するときにすぐ開けるよう、Messenger のリンクも渡す（名簿には入っていないので別に読む）
   const messengerById = new Map<string, string>();
+  // 外国人詳細の「入社時に送る資料」に添付済みの書類（同じ書類ならマスから開けるようにする）
+  let onboardingDocs: Awaited<ReturnType<typeof listAttachedOnboardingDocsForWorkers>> = [];
   if (active.length > 0) {
-    const { data } = await supabase
-      .from("workers")
-      .select("id, messenger_link")
-      .in("id", active.map((w) => w.id));
+    const ids = active.map((w) => w.id);
+    const [{ data }, docs] = await Promise.all([
+      supabase.from("workers").select("id, messenger_link").in("id", ids),
+      listAttachedOnboardingDocsForWorkers(supabase, ids).catch(() => []),
+    ]);
     for (const w of ((data as { id: string; messenger_link: string | null }[] | null) ?? [])) {
       if (w.messenger_link) messengerById.set(w.id, w.messenger_link);
     }
+    onboardingDocs = docs;
   }
 
   return (
@@ -61,6 +66,7 @@ export default async function OrganizationDocumentRequestPage({ params }: { para
         notYetCount={notYet.length}
         initialChecks={checks}
         initialFiles={files}
+        onboardingDocs={onboardingDocs}
         today={todayStr()}
         canEdit={me.role !== "viewer"}
       />

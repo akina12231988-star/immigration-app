@@ -9,6 +9,7 @@ import {
   ChevronDown,
   ChevronUp,
   FileText,
+  Link2,
   Loader2,
   MessageCircle,
   Paperclip,
@@ -44,8 +45,12 @@ import {
   dueLabel,
   daysToDue,
   emptyCheck,
+  filterRequestWorkers,
+  findOnboardingDocFor,
   groupFilesByCell,
   indexChecks,
+  joinedYearOptions,
+  nationalityOptions,
   joinedYearExcludedReason,
   joinedYearOf,
   requestProgress,
@@ -59,6 +64,8 @@ import {
   type OrganizationDocumentRequestInput,
 } from "@/lib/org-document-requests";
 import { DocumentRequestForm } from "../DocumentRequestForm";
+import { getOnboardingDocPreviewUrl } from "@/app/(app)/onboarding/actions";
+import type { OnboardingDocumentRow } from "@/types/db";
 
 const MIGRATION = "0183_organization_document_requests.sql";
 
@@ -79,6 +86,7 @@ export function DocumentRequestChecklist({
   notYetCount,
   initialChecks,
   initialFiles = [],
+  onboardingDocs = [],
   today,
   canEdit,
 }: {
@@ -88,6 +96,8 @@ export function DocumentRequestChecklist({
   notYetCount: number; // この機関に紐づいているがまだ在籍中ではない人（表には出さない）
   initialChecks: DocumentRequestCheck[];
   initialFiles?: DocumentRequestFile[]; // マスに添付したファイル（0185）
+  // 外国人詳細の「入社時に送る資料」に添付済みの書類（同じ書類ならマスから開けるようにする）
+  onboardingDocs?: OnboardingDocumentRow[];
   today: string;
   canEdit: boolean;
 }) {
@@ -95,6 +105,26 @@ export function DocumentRequestChecklist({
   const [request, setRequest] = useState(initialRequest);
   const [checks, setChecks] = useState<DocumentRequestCheck[]>(initialChecks);
   const [onlyPending, setOnlyPending] = useState(false);
+  // 国籍・入社年の絞り込み（"" = すべて）
+  const [nationalityFilter, setNationalityFilter] = useState("");
+  const [yearFilter, setYearFilter] = useState("");
+  const nationalities = useMemo(() => nationalityOptions(workers), [workers]);
+  const joinedYears = useMemo(() => joinedYearOptions(workers), [workers]);
+  // 外国人ごとの入社書類（添付済み）
+  const onboardingByWorker = useMemo(() => {
+    const m = new Map<string, OnboardingDocumentRow[]>();
+    for (const d of onboardingDocs) m.set(d.worker_id, [...(m.get(d.worker_id) ?? []), d]);
+    return m;
+  }, [onboardingDocs]);
+  const openOnboardingDoc = async (d: OnboardingDocumentRow) => {
+    if (d.external_url) {
+      window.open(d.external_url, "_blank", "noopener");
+      return;
+    }
+    const res = await getOnboardingDocPreviewUrl(d.id);
+    if (res.ok) window.open(res.url, "_blank", "noopener");
+    else setError(res.message);
+  };
   const [memoOpen, setMemoOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -115,7 +145,9 @@ export function DocumentRequestChecklist({
   // 入社年で対象が限られる書類（源泉徴収票は今年入社の人だけ など）
   const yearItems = request.items.filter((i) => i.joined_year);
 
-  const rows = onlyPending ? workers.filter((w) => workerPending(request.items, w, idx).length > 0) : workers;
+  const filtered = filterRequestWorkers(workers, { nationality: nationalityFilter, joinedYear: yearFilter });
+  const rows = onlyPending ? filtered.filter((w) => workerPending(request.items, w, idx).length > 0) : filtered;
+  const filtering = !!nationalityFilter || !!yearFilter || onlyPending;
 
   // 1マスの保存（押した段階まで日付を入れる／外す）
   const saveCheck = async (input: DocumentRequestCheckInput) => {
@@ -352,17 +384,64 @@ export function DocumentRequestChecklist({
 
       {/* チェック表 */}
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="font-bold text-muted">在籍者 {workers.length}名</span>
+        <span className="font-bold text-muted">
+          在籍者 {workers.length}名{filtering && `（表示 ${rows.length}名）`}
+        </span>
         {notYetCount > 0 && <span className="text-muted">（在籍中ではない{notYetCount}名は表に出していません）</span>}
+        {/* 国籍・入社年で絞り込む（表の行だけが絞られる。「全員に案内済を付ける」は表示に関係なく全員） */}
         <label className="ml-auto flex min-h-[32px] items-center gap-1.5">
+          <span className="text-muted">国籍</span>
+          <select
+            value={nationalityFilter}
+            onChange={(e) => setNationalityFilter(e.target.value)}
+            className="min-h-[32px] rounded-lg border border-border bg-surface px-2 text-xs"
+          >
+            <option value="">すべて</option>
+            {nationalities.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex min-h-[32px] items-center gap-1.5">
+          <span className="text-muted">入社年</span>
+          <select
+            value={yearFilter}
+            onChange={(e) => setYearFilter(e.target.value)}
+            className="min-h-[32px] rounded-lg border border-border bg-surface px-2 text-xs"
+          >
+            <option value="">すべて</option>
+            {joinedYears.map((y) => (
+              <option key={y} value={y}>
+                {y === "未登録" ? "未登録" : `${y}年入社`}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex min-h-[32px] items-center gap-1.5">
           <input type="checkbox" checked={onlyPending} onChange={(e) => setOnlyPending(e.target.checked)} className="h-4 w-4" />
           まだの人だけ
         </label>
+        {filtering && (
+          <button
+            type="button"
+            onClick={() => {
+              setNationalityFilter("");
+              setYearFilter("");
+              setOnlyPending(false);
+            }}
+            className="text-[11px] font-bold text-brand underline"
+          >
+            絞り込みを解除
+          </button>
+        )}
       </div>
       <p className="text-[11px] leading-relaxed text-muted">
         マスのボタンを押すと今日の日付で記録します（案内 → 発行 → 会社へ の順。先の段階を押すと前の段階も同じ日で入ります）。
         もう一度押すと取り消せます。その人には要らない書類は「対象外」にすると数に入りません。
         受け取った書類の写真・PDF はマスにドラッグ＆ドロップ（または「添付」）で保管でき、添付すると「発行」まで自動で付きます。
+        外国人詳細の「入社時に送る資料」に同じ書類が添付済みなら、マスに「外国人詳細に添付済み」と出て、押すとそのデータを開けます。
         {yearItems.length > 0 && (
           <>
             {" "}
@@ -375,7 +454,9 @@ export function DocumentRequestChecklist({
       {workers.length === 0 ? (
         <p className="py-12 text-center text-sm text-muted">この機関に在籍中の人がいません</p>
       ) : rows.length === 0 ? (
-        <p className="py-12 text-center text-sm text-muted">全員ぶん会社に送りました</p>
+        <p className="py-12 text-center text-sm text-muted">
+          {nationalityFilter || yearFilter ? "絞り込みに当てはまる人がいません" : "全員ぶん会社に送りました"}
+        </p>
       ) : (
         <div className="max-h-[calc(100vh-9rem)] overflow-auto rounded-2xl border border-border bg-surface">
           {/* 表の中だけを縦横にスクロールさせ、見出し（書類名・全員に案内済を付ける）は上に、氏名は左に固定して
@@ -464,6 +545,8 @@ export function DocumentRequestChecklist({
                       const cellKey = checkKey(w.id, item.id);
                       const cellFiles = filesByCell.get(cellKey) ?? [];
                       const uploading = uploadingCell === cellKey;
+                      // 外国人詳細の入社書類に同じ書類が添付済みなら、そのデータをここから開ける
+                      const linkedDoc = findOnboardingDocFor(item.name, onboardingByWorker.get(w.id) ?? []);
                       return (
                         <td key={item.id} className="px-1 py-1 align-top">
                           <FileDropArea
@@ -530,6 +613,17 @@ export function DocumentRequestChecklist({
                           {/* 添付した書類（押すと別タブで開く）と「添付」ボタン */}
                           {!yearReason && (
                             <div className="mt-1 flex flex-wrap items-center gap-1">
+                              {linkedDoc && (
+                                <button
+                                  type="button"
+                                  onClick={() => void openOnboardingDoc(linkedDoc)}
+                                  className="inline-flex max-w-[12rem] items-center gap-0.5 rounded-lg border border-status-approved-fg/40 bg-status-approved-bg px-1.5 py-0.5 text-[10px] font-bold text-status-approved-fg"
+                                  title={`外国人詳細の「入社時に送る資料」の「${linkedDoc.label}」に添付済み（${linkedDoc.file_name || "リンク"}）。押すと開きます`}
+                                >
+                                  <Link2 size={11} className="shrink-0" />
+                                  <span className="truncate">外国人詳細に添付済み{linkedDoc.file_name ? `：${linkedDoc.file_name}` : ""}</span>
+                                </button>
+                              )}
                               {cellFiles.map((f) => (
                                 <span
                                   key={f.id}

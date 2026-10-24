@@ -144,3 +144,18 @@ export async function listPendingOnboardingDocs(
   if (error) throw error;
   return (data as PendingOnboardingDoc[]) ?? [];
 }
+
+// 会社からの書類の依頼のチェック表用: 在籍者の入社書類のうち、ファイルかリンクが付いているもの
+export async function listAttachedOnboardingDocsForWorkers(
+  supabase: SupabaseClient,
+  workerIds: string[],
+): Promise<OnboardingDocumentRow[]> {
+  if (workerIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from("onboarding_documents")
+    .select("*")
+    .in("worker_id", workerIds)
+    .order("sort_no", { ascending: true });
+  if (error) throw error;
+  return ((data as OnboardingDocumentRow[]) ?? []).filter((d) => !!d.storage_path || !!d.external_url);
+}

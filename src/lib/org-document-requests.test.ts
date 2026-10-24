@@ -14,6 +14,13 @@ import {
   requestProgress,
   toggleStep,
   workerPending,
+  nationalityOptions,
+  joinedYearOptions,
+  filterRequestWorkers,
+  normalizeDocName,
+  docNameReiwaYear,
+  matchesOnboardingDoc,
+  findOnboardingDocFor,
   type DocumentRequestCheck,
 } from "./org-document-requests";
 
@@ -140,5 +147,54 @@ describe("進み具合", () => {
     expect(dueLabel("2026-10-19", "2026-10-19")).toBe("今日まで");
     expect(dueLabel("2026-10-17", "2026-10-19")).toBe("2日過ぎ");
     expect(dueLabel(null, "2026-10-19")).toBe("");
+  });
+});
+
+describe("チェック表の絞り込み（国籍・入社年）", () => {
+  const ws = [
+    { id: "a", nationality: "インドネシア", startOn: "2026-08-20" },
+    { id: "b", nationality: "ベトナム", startOn: "2025-04-01" },
+    { id: "c", nationality: "", startOn: null },
+    { id: "d", nationality: "インドネシア", startOn: "2026-01-10" },
+  ];
+  it("選択肢は国籍（未登録は最後）・入社年（新しい順。未登録あり）", () => {
+    expect(nationalityOptions(ws)).toEqual(["インドネシア", "ベトナム", "未登録"]);
+    expect(joinedYearOptions(ws)).toEqual(["2026", "2025", "未登録"]);
+  });
+  it("国籍・入社年で絞り込める（組み合わせも）", () => {
+    expect(filterRequestWorkers(ws, { nationality: "インドネシア", joinedYear: "" }).map((w) => w.id)).toEqual(["a", "d"]);
+    expect(filterRequestWorkers(ws, { nationality: "", joinedYear: "2025" }).map((w) => w.id)).toEqual(["b"]);
+    expect(filterRequestWorkers(ws, { nationality: "", joinedYear: "未登録" }).map((w) => w.id)).toEqual(["c"]);
+    expect(filterRequestWorkers(ws, { nationality: "未登録", joinedYear: "" }).map((w) => w.id)).toEqual(["c"]);
+    expect(filterRequestWorkers(ws, { nationality: "インドネシア", joinedYear: "2026" }).map((w) => w.id)).toEqual(["a", "d"]);
+    expect(filterRequestWorkers(ws, { nationality: "", joinedYear: "" })).toHaveLength(4);
+  });
+});
+
+describe("外国人詳細の入社書類との突き合わせ", () => {
+  it("年・括弧書き・等を除いて比べる", () => {
+    expect(normalizeDocName("扶養控除等申告書")).toBe("扶養控除申告書");
+    expect(normalizeDocName("扶養証明書（日本語翻訳）")).toBe("扶養証明書");
+    expect(normalizeDocName("令和8年度源泉徴収票")).toBe("源泉徴収票");
+    expect(normalizeDocName("２０２６年送金証明書 の写し")).toBe("送金証明書");
+    expect(docNameReiwaYear("令和8年度源泉徴収票")).toBe(8);
+    expect(docNameReiwaYear("2026年源泉徴収票")).toBe(8);
+    expect(docNameReiwaYear("扶養控除申告書")).toBeNull();
+  });
+  it("扶養控除申告書 ↔ 扶養控除等申告書、扶養証明書(日本語訳) ↔ 扶養証明書（日本語翻訳）が同じ書類になる", () => {
+    expect(matchesOnboardingDoc("扶養控除申告書", { doc_key: "fuyokojo", label: "扶養控除等申告書" })).toBe(true);
+    expect(matchesOnboardingDoc("扶養証明書(日本語訳)", { doc_key: "fuyo", label: "扶養証明書（日本語翻訳）" })).toBe(true);
+    expect(matchesOnboardingDoc("扶養控除申告書", { doc_key: "fuyo", label: "扶養証明書（日本語翻訳）" })).toBe(false);
+    expect(matchesOnboardingDoc("送金証明書", { doc_key: "tsuchou", label: "通帳の見開き" })).toBe(false);
+  });
+  it("源泉徴収票は年が合うものだけ（年の指定が無ければどの年でも）", () => {
+    const r8 = { doc_key: "gensen_r8", label: "令和8年分源泉徴収票" };
+    const r7 = { doc_key: "gensen_r7", label: "令和7年分源泉徴収票" };
+    expect(matchesOnboardingDoc("令和8年度源泉徴収票", r8)).toBe(true);
+    expect(matchesOnboardingDoc("令和8年度源泉徴収票", r7)).toBe(false);
+    expect(matchesOnboardingDoc("2025年源泉徴収票", r7)).toBe(true);
+    expect(matchesOnboardingDoc("源泉徴収票", r7)).toBe(true);
+    expect(findOnboardingDocFor("令和8年度源泉徴収票", [r7, r8])).toBe(r8);
+    expect(findOnboardingDocFor("住民票", [r7, r8])).toBeNull();
   });
 });
