@@ -17,6 +17,12 @@ export interface ManualPeriod {
   label: string;
   startOn: string;
   endOn: string | null;
+  isCurrent?: boolean; // 「現在」のタブにする期間（0199。1人につき1つ）
+}
+
+// 「現在」にした期間（無ければ null）
+export function currentManualPeriod(manual: ManualPeriod[]): ManualPeriod | null {
+  return manual.find((m) => m.isCurrent) ?? null;
 }
 
 // 追加した期間のタブのキー（画像は period_id で結び付くので、日付ではなくこのキーで振り分ける）
@@ -110,14 +116,15 @@ export function sortDocsByPeriodDate<T extends { effectiveOn?: string | null; cr
   });
 }
 
-// 画像がどのタブのものかを判定する。追加した期間に結び付いた画像（period_id）はその期間、
-// それ以外は日付（effective_on または登録日）で在籍期間に振り分ける
+// 画像がどのタブのものかを判定する。追加した期間に結び付いた画像（period_id）はその期間
+// （その期間が「現在」なら「現在」）、それ以外は日付（effective_on または登録日）で在籍期間に振り分ける
 export function periodKeyForDoc(
   doc: { effectiveOn?: string | null; periodId?: string | null; createdAt: string },
   past: OrgPeriod[],
   hasOngoing: boolean,
+  currentPeriodId: string | null = null,
 ): string {
-  if (doc.periodId) return manualPeriodKey(doc.periodId);
+  if (doc.periodId) return doc.periodId === currentPeriodId ? "current" : manualPeriodKey(doc.periodId);
   return periodKeyFor(docPeriodDate(doc), past, hasOngoing);
 }
 
@@ -134,7 +141,7 @@ export function periodLabelFor(
 }
 
 // タブの並び（「現在」の右に出す期間）。過去の在籍期間と追加した期間を混ぜて、
-// 開始日の新しい順（左が新しく、右が古い）に自動で並べる
+// 開始日の新しい順（左が新しく、右が古い）に自動で並べる。「現在」にした期間は「現在」のタブにまとまるので出さない
 export interface PeriodTab {
   key: string;
   label: string;
@@ -150,12 +157,14 @@ export function orderPeriodTabs(past: OrgPeriod[], manual: ManualPeriod[]): Peri
       start: p.start,
       manual: null,
     })),
-    ...manual.map((m) => ({
-      key: manualPeriodKey(m.id),
-      label: manualPeriodLabel(m),
-      start: m.startOn,
-      manual: m,
-    })),
+    ...manual
+      .filter((m) => !m.isCurrent)
+      .map((m) => ({
+        key: manualPeriodKey(m.id),
+        label: manualPeriodLabel(m),
+        start: m.startOn,
+        manual: m,
+      })),
   ];
   return tabs.sort((a, b) => (a.start === b.start ? 0 : a.start > b.start ? -1 : 1));
 }
@@ -171,7 +180,8 @@ export function visaRowsForDocTab<T extends { permitDate: string }>(
 ): T[] {
   const keyFor = (d: string): string => {
     for (const m of manual) {
-      if (m.startOn <= d && d <= (m.endOn ?? "9999-12-31")) return manualPeriodKey(m.id);
+      // 「現在」にした期間の範囲に入る許可は「現在」のタブに出す
+      if (m.startOn <= d && d <= (m.endOn ?? "9999-12-31")) return m.isCurrent ? "current" : manualPeriodKey(m.id);
     }
     for (const p of past) {
       if (p.start <= d && d <= p.end) return p.key;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildPastPeriods,
+  currentManualPeriod,
   docPeriodDate,
   manualPeriodKey,
   manualPeriodLabel,
@@ -194,6 +195,28 @@ describe("orderPeriodTabs", () => {
     ]);
     expect(tabs[0].manual?.id).toBe("p1");
     expect(tabs[1].manual).toBeNull();
+  });
+});
+
+describe("「現在」にした期間（isCurrent）", () => {
+  const past = buildPastPeriods(
+    [history({ org_name: "前の会社", start_date: "2025-05-08", end_date: "2025-11-11" })],
+    TODAY,
+  );
+  const manual = [
+    { id: "p1", label: "", startOn: "2026-10-22", endOn: "2027-10-22", isCurrent: true },
+    { id: "p2", label: "", startOn: "2026-03-09", endOn: "2026-09-09" },
+  ];
+
+  it("現在にした期間はタブに出さず、その期間に結び付いた画像と許可は「現在」に出る", () => {
+    expect(currentManualPeriod(manual)?.id).toBe("p1");
+    expect(orderPeriodTabs(past, manual).map((t) => t.key)).toEqual([manualPeriodKey("p2"), past[0].key]);
+    const doc = { periodId: "p1", createdAt: "2026-10-24T00:00:00Z" };
+    expect(periodKeyForDoc(doc, past, true, "p1")).toBe("current");
+    expect(periodKeyForDoc({ ...doc, periodId: "p2" }, past, true, "p1")).toBe(manualPeriodKey("p2"));
+    const rows = [{ permitDate: "2026-10-22", no: 1 }, { permitDate: "2026-03-09", no: 2 }];
+    expect(visaRowsForDocTab(rows, "current", past, manual).map((r) => r.no)).toEqual([1]);
+    expect(visaRowsForDocTab(rows, manualPeriodKey("p2"), past, manual).map((r) => r.no)).toEqual([2]);
   });
 });
 

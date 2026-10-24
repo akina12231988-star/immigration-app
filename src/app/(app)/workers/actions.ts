@@ -164,20 +164,58 @@ export interface WorkerDocPeriodView {
   label: string; // 期間の名前（空でもよい）
   startOn: string; // 開始日
   endOn: string | null; // 終了日（未定なら null）
+  isCurrent: boolean; // 「現在」のタブにする期間か（0199。1人につき1つ）
 }
 
 export async function listWorkerDocPeriods(workerId: string): Promise<WorkerDocPeriodView[]> {
   const me = await getMyProfile();
   const admin = createAdminClient();
   if (!me || !admin) return [];
+  // is_current（0199）が未適用でも読めるよう select("*") にして、無ければ false 扱い
   const { data } = await admin
     .from("worker_document_periods")
-    .select("id, label, start_on, end_on")
+    .select("*")
     .eq("worker_id", workerId)
     .order("start_on", { ascending: false });
   return (
-    (data as { id: string; label: string; start_on: string; end_on: string | null }[] | null) ?? []
-  ).map((r) => ({ id: r.id, label: r.label ?? "", startOn: r.start_on, endOn: r.end_on ?? null }));
+    (data as
+      | { id: string; label: string; start_on: string; end_on: string | null; is_current?: boolean | null }[]
+      | null) ?? []
+  ).map((r) => ({
+    id: r.id,
+    label: r.label ?? "",
+    startOn: r.start_on,
+    endOn: r.end_on ?? null,
+    isCurrent: r.is_current === true,
+  }));
+}
+
+// 「現在」の期間を選ぶ（periodId が null なら現在の指定を外す）。1人につき1つなので、他の期間は外す
+export async function setWorkerDocPeriodCurrent(
+  workerId: string,
+  periodId: string | null,
+): Promise<{ ok: true } | Err> {
+  if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
+  const admin = createAdminClient();
+  if (!admin) return { ok: false, message: "サーバー設定エラー" };
+  const { error: clearErr } = await admin
+    .from("worker_document_periods")
+    .update({ is_current: false })
+    .eq("worker_id", workerId);
+  if (clearErr) {
+    return { ok: false, message: dbErrorMessage(clearErr, "0199_worker_document_period_current.sql", "保存に失敗しました") };
+  }
+  if (periodId) {
+    const { error } = await admin
+      .from("worker_document_periods")
+      .update({ is_current: true })
+      .eq("id", periodId)
+      .eq("worker_id", workerId);
+    if (error) {
+      return { ok: false, message: dbErrorMessage(error, "0199_worker_document_period_current.sql", "保存に失敗しました") };
+    }
+  }
+  return { ok: true };
 }
 
 // 期間の追加・編集（id があれば編集）
