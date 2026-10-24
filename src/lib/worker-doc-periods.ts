@@ -132,3 +132,30 @@ export function periodLabelFor(
   const p = past.find((x) => x.key === key);
   return p ? `過去（${p.org}）${p.start}〜${p.end}` : "現在";
 }
+
+// タブの並び（「現在」の右に出す期間）。過去の在籍期間と追加した期間を混ぜて、
+// 開始日の新しい順（左が新しく、右が古い）に自動で並べる
+export interface PeriodTab {
+  key: string;
+  label: string;
+  start: string;
+  manual: ManualPeriod | null; // 追加した期間ならその内容（編集・削除に使う）
+}
+
+export function orderPeriodTabs(past: OrgPeriod[], manual: ManualPeriod[]): PeriodTab[] {
+  const tabs: PeriodTab[] = [
+    ...past.map((p) => ({
+      key: p.key,
+      label: `過去（${p.org}）${p.start}〜${p.end}`,
+      start: p.start,
+      manual: null,
+    })),
+    ...manual.map((m) => ({
+      key: manualPeriodKey(m.id),
+      label: manualPeriodLabel(m),
+      start: m.startOn,
+      manual: m,
+    })),
+  ];
+  return tabs.sort((a, b) => (a.start === b.start ? 0 : a.start > b.start ? -1 : 1));
+}

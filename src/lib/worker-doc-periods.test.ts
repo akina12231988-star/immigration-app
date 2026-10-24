@@ -4,6 +4,7 @@ import {
   docPeriodDate,
   manualPeriodKey,
   manualPeriodLabel,
+  orderPeriodTabs,
   periodKeyFor,
   periodKeyForDoc,
   periodLabelFor,
@@ -168,5 +169,29 @@ describe("追加した期間（periodKeyForDoc・manualPeriodLabel）", () => {
     );
     expect(manualPeriodLabel({ ...manual, endOn: null })).toBe("2025-11-11〜");
     expect(periodLabelFor(manualPeriodKey("p1"), past, [manual])).toBe("2025-11-11〜2026-11-11");
+  });
+});
+
+describe("orderPeriodTabs", () => {
+  it("過去の在籍期間と追加した期間を混ぜて、開始日の新しい順（左が新しい）に並べる", () => {
+    const past = buildPastPeriods(
+      [
+        history({ org_name: "所属不明", start_date: "2023-10-07", end_date: "2025-05-07" }),
+        history({ id: "h2", org_name: "前の会社", start_date: "2025-05-08", end_date: "2025-11-11" }),
+      ],
+      TODAY,
+    );
+    const tabs = orderPeriodTabs(past, [
+      { id: "p1", label: "前の会社", startOn: "2025-11-11", endOn: "2026-11-11" },
+      { id: "p2", label: "", startOn: "2022-01-01", endOn: "2023-10-06" },
+    ]);
+    expect(tabs.map((t) => t.label)).toEqual([
+      "前の会社 2025-11-11〜2026-11-11",
+      "過去（前の会社）2025-05-08〜2025-11-11",
+      "過去（所属不明）2023-10-07〜2025-05-07",
+      "2022-01-01〜2023-10-06",
+    ]);
+    expect(tabs[0].manual?.id).toBe("p1");
+    expect(tabs[1].manual).toBeNull();
   });
 });
