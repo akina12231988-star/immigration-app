@@ -62,7 +62,7 @@ export function DocRequestTextDialog({
 
   return (
     <Modal open={open} title="本人への案内文（日本語＋母国語）" onClose={onClose}>
-      <div className="space-y-3 px-4 py-3">
+      <div className="space-y-3">
         <p className="text-xs text-muted">
           <span className="font-bold text-foreground">{worker.name}</span>
           {worker.nationality && `（${worker.nationality}）`}さんに、「案内」を押した書類（{informedItems.length}件）をまとめて案内する文面です。コピーして Messenger などに貼ってください。

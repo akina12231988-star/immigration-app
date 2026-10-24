@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -23,6 +23,7 @@ import {
 import { messengerWebUrl } from "@/lib/messenger-link";
 import { Card } from "@/components/ui/Card";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Modal } from "@/components/ui/Modal";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { createClient } from "@/lib/supabase/client";
 import { compressImage } from "@/lib/image-compress";
@@ -187,12 +188,52 @@ export function DocumentRequestChecklist({
     const c = unsetNoneReplied(current(workerId, itemId));
     void saveCheck({ ...c, not_needed: !c.not_needed });
   };
-  // 対象外にした理由（チェックのメモ欄に保存。変わったときだけ保存する）
-  const saveNote = (workerId: string, itemId: string, note: string) => {
-    const c = current(workerId, itemId);
-    if (note.trim() === (c.note ?? "").trim()) return;
-    void saveCheck({ ...c, note: note.trim() });
+  // 対象外にした理由（チェックのメモ欄に保存）。「編集」で入力欄を開き、「保存」で保存する。
+  // 入力中にページを移動しようとしたら、保存するか聞く
+  const [noteDraft, setNoteDraft] = useState<{ workerId: string; itemId: string; value: string; original: string } | null>(null);
+  const noteDirty = !!noteDraft && noteDraft.value.trim() !== noteDraft.original.trim();
+  // 未保存のまま移動・別のマスの編集をしようとしたときの確認（proceed＝保存の有無を決めたあとにする動き）
+  const [leaveDialog, setLeaveDialog] = useState<{ proceed: () => void } | null>(null);
+  const startNote = (workerId: string, itemId: string) => {
+    const open = () => {
+      const note = current(workerId, itemId).note ?? "";
+      setNoteDraft({ workerId, itemId, value: note, original: note });
+    };
+    if (noteDirty) setLeaveDialog({ proceed: open });
+    else open();
   };
+  const saveNoteDraft = async () => {
+    if (!noteDraft) return;
+    const c = current(noteDraft.workerId, noteDraft.itemId);
+    if (noteDraft.value.trim() !== (c.note ?? "").trim()) await saveCheck({ ...c, note: noteDraft.value.trim() });
+    setNoteDraft(null);
+  };
+  useEffect(() => {
+    if (!noteDirty) return;
+    // 再読み込み・タブを閉じるとき（ブラウザの標準の確認が出る）
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    // 画面の中のリンクで別のページへ移るとき（先にこちらの確認を出す）
+    const onClick = (e: MouseEvent) => {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const a = (e.target as HTMLElement | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
+      if (!a || a.target === "_blank" || a.hasAttribute("download")) return;
+      const url = new URL(a.href, window.location.href);
+      if (url.origin !== window.location.origin) return;
+      if (url.pathname === window.location.pathname && url.search === window.location.search) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const href = `${url.pathname}${url.search}${url.hash}`;
+      setLeaveDialog({ proceed: () => router.push(href) });
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    document.addEventListener("click", onClick, true);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      document.removeEventListener("click", onClick, true);
+    };
+  }, [noteDirty, router]);
   // 案内のあと、本人から「無い」と回答があった／その取り消し
   const markNoneReplied = (workerId: string, itemId: string) =>
     void saveCheck(setNoneReplied(current(workerId, itemId), today));
@@ -472,7 +513,7 @@ export function DocumentRequestChecklist({
       <p className="text-[11px] leading-relaxed text-muted">
         マスのボタンを押すと今日の日付で記録します（案内 → 発行 → 会社へ の順。先の段階を押すと前の段階も同じ日で入ります）。
         もう一度押すと取り消せます。その人には要らない書類は「対象外」にすると数に入りません。
-        「対象外」にしたマスには理由を入れておけます（入力して別の場所をタップすると保存されます）。
+        「対象外」にしたマスには「理由を入れる」で理由を入れておけます（「保存」を押すと保存。保存せずにページを移ろうとすると確認が出ます）。
         案内したあと本人から「持っていない」と返事があったら「本人から無いと回答」を押すと、その日付で記録され、会社に送る数からは外れます（あとで手に入って「発行」を押すと自動で外れます）。
         案内する書類の「案内」を押してから、行の右端の「案内文を表示」を押すと、押した書類をまとめた本人への案内文（日本語＋母国語）が出てコピーできます。
         受け取った書類の写真・PDF はマスにドラッグ＆ドロップ（または「添付」）で保管でき、添付すると「発行」まで自動で付きます。
@@ -607,21 +648,52 @@ export function DocumentRequestChecklist({
                               >
                                 対象外
                               </button>
-                              {/* 対象外にした理由（別の場所をタップするか Enter で保存。メモ欄に残る） */}
-                              {canEdit ? (
-                                <input
-                                  key={c?.note ?? ""}
-                                  defaultValue={c?.note ?? ""}
-                                  placeholder="理由（例: 扶養家族なし）"
-                                  onBlur={(e) => saveNote(w.id, item.id, e.target.value)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                                  }}
-                                  className="min-h-[26px] w-full min-w-[9rem] rounded-lg border border-dashed border-border bg-surface px-1.5 text-[11px] focus:border-brand focus:outline-none"
-                                  aria-label={`${w.name}さんの「${item.name}」を対象外にした理由`}
-                                />
+                              {/* 対象外にした理由（「編集」で入力欄を開き「保存」で保存。メモ欄に残る） */}
+                              {canEdit && noteDraft && noteDraft.workerId === w.id && noteDraft.itemId === item.id ? (
+                                <div className="flex w-full min-w-[10rem] flex-col gap-1">
+                                  <input
+                                    autoFocus
+                                    value={noteDraft.value}
+                                    onChange={(e) => setNoteDraft({ ...noteDraft, value: e.target.value })}
+                                    placeholder="理由（例: 扶養家族なし）"
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter" && !e.nativeEvent.isComposing) void saveNoteDraft();
+                                      if (e.key === "Escape") setNoteDraft(null);
+                                    }}
+                                    className="min-h-[28px] w-full rounded-lg border border-brand bg-surface px-1.5 text-[11px] focus:outline-none"
+                                    aria-label={`${w.name}さんの「${item.name}」を対象外にした理由`}
+                                  />
+                                  <div className="flex gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => void saveNoteDraft()}
+                                      className="rounded-lg bg-brand px-2 py-0.5 text-[10px] font-bold text-brand-foreground"
+                                    >
+                                      保存
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setNoteDraft(null)}
+                                      className="rounded-lg border border-border px-2 py-0.5 text-[10px] font-bold text-muted"
+                                    >
+                                      やめる
+                                    </button>
+                                  </div>
+                                </div>
                               ) : (
-                                c?.note && <span className="text-[10px] text-muted">理由: {c.note}</span>
+                                <div className="flex flex-wrap items-center gap-1">
+                                  {c?.note && <span className="text-[10px] text-muted">理由: {c.note}</span>}
+                                  {canEdit && (
+                                    <button
+                                      type="button"
+                                      onClick={() => startNote(w.id, item.id)}
+                                      className="inline-flex items-center gap-0.5 text-[10px] font-bold text-brand underline"
+                                    >
+                                      <Pencil size={10} />
+                                      {c?.note ? "編集" : "理由を入れる"}
+                                    </button>
+                                  )}
+                                </div>
                               )}
                             </div>
                           ) : (
@@ -809,6 +881,46 @@ export function DocumentRequestChecklist({
           dueOn={request.due_on}
         />
       )}
+      {/* 対象外の理由を保存せずに移動・別のマスの編集をしようとしたとき */}
+      <Modal open={!!leaveDialog} title="理由を保存していません" onClose={() => setLeaveDialog(null)}>
+        <div>
+          <p className="mb-4 text-sm leading-relaxed">
+            入力した「対象外」の理由がまだ保存されていません。保存しますか？
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const d = leaveDialog;
+                setLeaveDialog(null);
+                void saveNoteDraft().then(() => d?.proceed());
+              }}
+              className="min-h-[40px] rounded-xl bg-brand px-4 text-sm font-bold text-brand-foreground"
+            >
+              保存する
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const d = leaveDialog;
+                setLeaveDialog(null);
+                setNoteDraft(null);
+                d?.proceed();
+              }}
+              className="min-h-[40px] rounded-xl border border-border px-4 text-sm font-bold text-seal"
+            >
+              保存しない
+            </button>
+            <button
+              type="button"
+              onClick={() => setLeaveDialog(null)}
+              className="min-h-[40px] rounded-xl border border-border px-4 text-sm font-bold text-muted"
+            >
+              戻る
+            </button>
+          </div>
+        </div>
+      </Modal>
       <ConfirmDialog
         open={confirmDelete}
         title="この依頼を削除しますか？"
