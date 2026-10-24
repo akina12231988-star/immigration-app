@@ -1,3 +1,12 @@
+import {
+  HEALTH_CHECK_DOC_KEY,
+  HEALTH_CHECK_LABEL,
+  gensenDocKey,
+  gensenLabel,
+  isGensenYearKey,
+  onboardingDocDefs,
+  reiwaYear,
+} from "@/lib/onboarding";
 // 所属機関からの書類の依頼（年末調整の書類など）の管理（0183）。
 //
 // 会社から「扶養控除申告書・送金証明書を集めてほしい」のようなメールが来たら、依頼を1件登録し、
@@ -11,6 +20,9 @@ export interface DocumentRequestItem {
   name: string; // 書類の名前（扶養控除申告書 など）
   note: string; // 補足（コピーでよい・2026年入社の方のみ など）
   joined_year?: number | null; // この年に入社した人だけが対象（源泉徴収票は今年入社の人だけ など）。空なら全員
+  // 外国人詳細の「入社時に送る資料」のどの書類に紐づけるか（書類キー）。
+  // 空・未設定なら書類名から自動で判定、LINK_DOC_NONE なら紐づけない
+  link_doc_key?: string;
 }
 
 // 「2026年入社の方のみ」「2026年に入社した人」のような補足から入社年を読む（無ければ null）
@@ -153,6 +165,7 @@ export function normalizeItems(raw: unknown): DocumentRequestItem[] {
         name,
         note,
         joined_year: typeof o.joined_year === "number" ? o.joined_year : joinedYearFromNote(note),
+        link_doc_key: typeof o.link_doc_key === "string" ? o.link_doc_key : "",
       };
     })
     .filter((x): x is DocumentRequestItem => x !== null);
@@ -374,7 +387,32 @@ export function matchesOnboardingDoc(itemName: string, doc: OnboardingDocLike): 
   return true;
 }
 
-// その人の入社書類のうち、依頼の書類に当たる添付済みのもの（無ければ null）
-export function findOnboardingDocFor<T extends OnboardingDocLike>(itemName: string, docs: T[]): T | null {
-  return docs.find((d) => matchesOnboardingDoc(itemName, d)) ?? null;
+// 「紐づけない」の印（依頼の登録で選ぶ）
+export const LINK_DOC_NONE = "none";
+
+// 依頼の登録で選べる紐づけ先（外国人詳細の入社書類。源泉徴収票は前後の年も選べる）
+export function linkDocOptions(today: string): { key: string; label: string }[] {
+  const reiwa = reiwaYear(today);
+  const out: { key: string; label: string }[] = [];
+  for (const d of onboardingDocDefs(today)) {
+    if (isGensenYearKey(d.key)) {
+      for (const r of [reiwa + 1, reiwa, reiwa - 1]) out.push({ key: gensenDocKey(r), label: gensenLabel(r) });
+    } else {
+      out.push({ key: d.key, label: d.label });
+    }
+  }
+  out.push({ key: HEALTH_CHECK_DOC_KEY, label: HEALTH_CHECK_LABEL });
+  return out;
+}
+
+// その人の入社書類のうち、依頼の書類に当たる添付済みのもの（無ければ null）。
+// 依頼の登録で紐づけ先を選んであればその書類だけ、「紐づけない」なら null、未設定なら書類名から自動で判定
+export function findOnboardingDocFor<T extends OnboardingDocLike>(
+  item: Pick<DocumentRequestItem, "name" | "link_doc_key">,
+  docs: T[],
+): T | null {
+  const key = item.link_doc_key ?? "";
+  if (key === LINK_DOC_NONE) return null;
+  if (key) return docs.find((d) => d.doc_key === key) ?? null;
+  return docs.find((d) => matchesOnboardingDoc(item.name, d)) ?? null;
 }

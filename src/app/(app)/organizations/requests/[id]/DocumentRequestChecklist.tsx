@@ -546,7 +546,7 @@ export function DocumentRequestChecklist({
                       const cellFiles = filesByCell.get(cellKey) ?? [];
                       const uploading = uploadingCell === cellKey;
                       // 外国人詳細の入社書類に同じ書類が添付済みなら、そのデータをここから開ける
-                      const linkedDoc = findOnboardingDocFor(item.name, onboardingByWorker.get(w.id) ?? []);
+                      const linkedDoc = findOnboardingDocFor(item, onboardingByWorker.get(w.id) ?? []);
                       return (
                         <td key={item.id} className="px-1 py-1 align-top">
                           <FileDropArea

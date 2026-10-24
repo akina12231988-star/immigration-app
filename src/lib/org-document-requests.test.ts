@@ -21,6 +21,8 @@ import {
   docNameReiwaYear,
   matchesOnboardingDoc,
   findOnboardingDocFor,
+  linkDocOptions,
+  LINK_DOC_NONE,
   type DocumentRequestCheck,
 } from "./org-document-requests";
 
@@ -64,9 +66,11 @@ describe("書類の依頼の項目", () => {
   it("DB の jsonb が壊れていても落ちない", () => {
     expect(normalizeItems(null)).toEqual([]);
     expect(normalizeItems([{ name: " 送金証明書 " }, { id: "x", name: "", note: "" }, "bad", { id: "y", name: "源泉", note: "2026年入社の方" }])).toEqual([
-      { id: "item0", name: "送金証明書", note: "", joined_year: null },
-      { id: "y", name: "源泉", note: "2026年入社の方", joined_year: 2026 },
+      { id: "item0", name: "送金証明書", note: "", joined_year: null, link_doc_key: "" },
+      { id: "y", name: "源泉", note: "2026年入社の方", joined_year: 2026, link_doc_key: "" },
     ]);
+    // 紐づけ先はそのまま残る
+    expect(normalizeItems([{ name: "扶養控除申告書", link_doc_key: "fuyokojo" }])[0].link_doc_key).toBe("fuyokojo");
   });
 });
 
@@ -194,7 +198,29 @@ describe("外国人詳細の入社書類との突き合わせ", () => {
     expect(matchesOnboardingDoc("令和8年度源泉徴収票", r7)).toBe(false);
     expect(matchesOnboardingDoc("2025年源泉徴収票", r7)).toBe(true);
     expect(matchesOnboardingDoc("源泉徴収票", r7)).toBe(true);
-    expect(findOnboardingDocFor("令和8年度源泉徴収票", [r7, r8])).toBe(r8);
-    expect(findOnboardingDocFor("住民票", [r7, r8])).toBeNull();
+    expect(findOnboardingDocFor({ name: "令和8年度源泉徴収票" }, [r7, r8])).toBe(r8);
+    expect(findOnboardingDocFor({ name: "住民票" }, [r7, r8])).toBeNull();
+  });
+  it("依頼の登録で紐づけ先を選んであればその書類だけ、「紐づけない」なら紐づけない", () => {
+    const docs = [
+      { doc_key: "fuyokojo", label: "扶養控除等申告書" },
+      { doc_key: "tsuchou", label: "通帳の見開き" },
+    ];
+    // 名前では判定できない書類でも、選んだ書類に紐づく
+    expect(findOnboardingDocFor({ name: "年末調整の書類", link_doc_key: "fuyokojo" }, docs)?.doc_key).toBe("fuyokojo");
+    // 選んだ書類が添付されていなければ null（名前での判定には戻らない）
+    expect(findOnboardingDocFor({ name: "扶養控除申告書", link_doc_key: "mynumber" }, docs)).toBeNull();
+    expect(findOnboardingDocFor({ name: "扶養控除申告書", link_doc_key: LINK_DOC_NONE }, docs)).toBeNull();
+    expect(findOnboardingDocFor({ name: "扶養控除申告書", link_doc_key: "" }, docs)?.doc_key).toBe("fuyokojo");
+  });
+  it("紐づけ先の選択肢は入社書類の並びで、源泉徴収票は前後の年も選べる", () => {
+    const opts = linkDocOptions("2026-10-24"); // 令和8年
+    const keys = opts.map((o) => o.key);
+    expect(keys).toContain("fuyokojo");
+    expect(keys).toContain("gensen_r9");
+    expect(keys).toContain("gensen_r8");
+    expect(keys).toContain("gensen_r7");
+    expect(keys).toContain("kenshin");
+    expect(opts.find((o) => o.key === "gensen_r8")?.label).toBe("令和8年分源泉徴収票");
   });
 });

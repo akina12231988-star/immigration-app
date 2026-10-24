@@ -6,7 +6,9 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import {
   DOCUMENT_REQUEST_SOURCES,
+  LINK_DOC_NONE,
   joinedYearFromNote,
+  linkDocOptions,
   newItemId,
   parseItemsText,
   type DocumentRequestItem,
@@ -53,6 +55,8 @@ export function DocumentRequestForm({
   const [pasteText, setPasteText] = useState("");
   const [memo, setMemo] = useState(initial?.memo ?? "");
   const [localError, setLocalError] = useState<string | null>(null);
+  // 外国人詳細の「入社時に送る資料」のどの書類に紐づけるか（選択肢）
+  const linkOptions = linkDocOptions(today);
 
   const updateRow = (id: string, patch: Partial<DocumentRequestItem>) =>
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
@@ -146,6 +150,7 @@ export function DocumentRequestForm({
           </div>
           <span className="text-[11px] text-muted">
             補足に「2026年入社の方のみ」のように書くと、その年に入社した人だけが対象になります（源泉徴収票など）。
+            「紐付」は外国人詳細の「入社時に送る資料」のどの書類に当たるかで、添付済みならチェック表のマスからそのデータを開けます（自動のままなら書類名で判定します）。
           </span>
           {pasteOpen && (
             <div className="rounded-lg border border-border bg-background p-2">
@@ -210,6 +215,34 @@ export function DocumentRequestForm({
                     aria-label={`${i + 1}件目の補足`}
                     className={`${FIELD} min-h-[36px] text-xs`}
                   />
+                  <span className="w-9 shrink-0" />
+                </div>
+                {/* 外国人詳細の「入社時に送る資料」のどの書類に紐づけるか。
+                    未設定なら書類名から自動で判定し、添付済みならチェック表のマスから開ける */}
+                <div className="mt-1.5 flex items-center gap-2">
+                  <span className="w-6 shrink-0 text-center text-[10px] font-bold text-muted" title="外国人詳細の紐づけ先">
+                    紐付
+                  </span>
+                  <select
+                    value={row.link_doc_key ?? ""}
+                    onChange={(e) => updateRow(row.id, { link_doc_key: e.target.value })}
+                    aria-label={`${i + 1}件目の外国人詳細の紐づけ先`}
+                    className={`${FIELD} min-h-[36px] text-xs`}
+                  >
+                    <option value="">外国人詳細の紐づけ先: 自動（書類名で判定）</option>
+                    {linkOptions.map((o) => (
+                      <option key={o.key} value={o.key}>
+                        外国人詳細の「{o.label}」に紐づける
+                      </option>
+                    ))}
+                    {/* 選択肢に無い書類キーが保存されていても消えないようにしておく */}
+                    {row.link_doc_key &&
+                      row.link_doc_key !== LINK_DOC_NONE &&
+                      !linkOptions.some((o) => o.key === row.link_doc_key) && (
+                        <option value={row.link_doc_key}>外国人詳細の「{row.link_doc_key}」に紐づける</option>
+                      )}
+                    <option value={LINK_DOC_NONE}>紐づけない</option>
+                  </select>
                   <span className="w-9 shrink-0" />
                 </div>
               </div>
