@@ -70,6 +70,7 @@ import {
   type DocumentRequestCheck,
   type DocumentRequestCheckInput,
   type DocumentRequestFile,
+  type DocumentRequestItem,
   type DocumentRequestStepKey,
   type OrganizationDocumentRequest,
   type OrganizationDocumentRequestInput,
@@ -405,6 +406,63 @@ export function DocumentRequestChecklist({
       document.removeEventListener("click", onClick, true);
     };
   }, [noteDirty, router]);
+  // マスの補足（対象外の理由・無し回答の説明）の表示と「編集 → 保存」の入力欄。チェックのメモ欄に保存する
+  const noteEditor = (
+    w: ChecklistWorker,
+    item: DocumentRequestItem,
+    c: DocumentRequestCheck | undefined,
+    text: { label: string; placeholder: string; empty: string },
+  ) =>
+    canEdit && noteDraft && noteDraft.workerId === w.id && noteDraft.itemId === item.id ? (
+      <div className="flex w-full min-w-[10rem] flex-col gap-1">
+        <input
+          autoFocus
+          value={noteDraft.value}
+          onChange={(e) => setNoteDraft({ ...noteDraft, value: e.target.value })}
+          placeholder={text.placeholder}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.nativeEvent.isComposing) void saveNoteDraft();
+            if (e.key === "Escape") setNoteDraft(null);
+          }}
+          className="min-h-[28px] w-full rounded-lg border border-brand bg-surface px-1.5 text-[11px] focus:outline-none"
+          aria-label={`${w.name}さんの「${item.name}」の${text.label}`}
+        />
+        <div className="flex gap-1">
+          <button
+            type="button"
+            onClick={() => void saveNoteDraft()}
+            className="rounded-lg bg-brand px-2 py-0.5 text-[10px] font-bold text-brand-foreground"
+          >
+            保存
+          </button>
+          <button
+            type="button"
+            onClick={() => setNoteDraft(null)}
+            className="rounded-lg border border-border px-2 py-0.5 text-[10px] font-bold text-muted"
+          >
+            やめる
+          </button>
+        </div>
+      </div>
+    ) : (
+      <div className="flex w-full flex-wrap items-center gap-1">
+        {c?.note && (
+          <span className="text-[10px] text-muted">
+            {text.label}: {c.note}
+          </span>
+        )}
+        {canEdit && (
+          <button
+            type="button"
+            onClick={() => startNote(w.id, item.id)}
+            className="inline-flex items-center gap-0.5 text-[10px] font-bold text-brand underline"
+          >
+            <Pencil size={10} />
+            {c?.note ? "編集" : text.empty}
+          </button>
+        )}
+      </div>
+    );
   // 案内のあと、本人から「無い」と回答があった／その取り消し
   const markNoneReplied = (workerId: string, itemId: string) =>
     void saveCheck(setNoneReplied(current(workerId, itemId), today));
@@ -732,7 +790,7 @@ export function DocumentRequestChecklist({
       <p className="text-[11px] leading-relaxed text-muted">
         マスのボタンを押すと今日の日付で記録します（案内 → 添付済み → 会社へ の順。先の段階を押すと前の段階も同じ日で入ります）。
         もう一度押すと取り消せます。その人には要らない書類は「対象外」にすると数に入りません。
-        「対象外」にしたマスには「理由を入れる」で理由を入れておけます（「保存」を押すと保存。保存せずにページを移ろうとすると確認が出ます）。
+        「対象外」にしたマスには「理由を入れる」で理由を、「本人から無いと回答あり」のマスには「補足を入れる」で説明を入れておけます（「保存」を押すと保存。保存せずにページを移ろうとすると確認が出ます。エクセルの一覧にも出ます）。
         案内したあと本人から「持っていない」と返事があったら「本人から無いと回答」を押すと、その日付で記録され、会社に送る数からは外れます（あとで手に入って「添付済み」を押すと自動で外れます）。
         案内する書類の「案内」を押してから、行の右端の「案内文を表示」を押すと、押した書類をまとめた本人への案内文（日本語＋母国語）が出てコピーできます。
         全部の書類が「添付済み」か「無し回答」になった人は会社へ報告できる状態です（右端に表示。見出しのチェックでその人たちを全部選べます）。氏名の横のチェックで人を選ぶと、上に「PDF を出力」「一覧をエクセルで出力」が出ます。
@@ -893,52 +951,7 @@ export function DocumentRequestChecklist({
                                 対象外
                               </button>
                               {/* 対象外にした理由（「編集」で入力欄を開き「保存」で保存。メモ欄に残る） */}
-                              {canEdit && noteDraft && noteDraft.workerId === w.id && noteDraft.itemId === item.id ? (
-                                <div className="flex w-full min-w-[10rem] flex-col gap-1">
-                                  <input
-                                    autoFocus
-                                    value={noteDraft.value}
-                                    onChange={(e) => setNoteDraft({ ...noteDraft, value: e.target.value })}
-                                    placeholder="理由（例: 扶養家族なし）"
-                                    onKeyDown={(e) => {
-                                      if (e.key === "Enter" && !e.nativeEvent.isComposing) void saveNoteDraft();
-                                      if (e.key === "Escape") setNoteDraft(null);
-                                    }}
-                                    className="min-h-[28px] w-full rounded-lg border border-brand bg-surface px-1.5 text-[11px] focus:outline-none"
-                                    aria-label={`${w.name}さんの「${item.name}」を対象外にした理由`}
-                                  />
-                                  <div className="flex gap-1">
-                                    <button
-                                      type="button"
-                                      onClick={() => void saveNoteDraft()}
-                                      className="rounded-lg bg-brand px-2 py-0.5 text-[10px] font-bold text-brand-foreground"
-                                    >
-                                      保存
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => setNoteDraft(null)}
-                                      className="rounded-lg border border-border px-2 py-0.5 text-[10px] font-bold text-muted"
-                                    >
-                                      やめる
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="flex flex-wrap items-center gap-1">
-                                  {c?.note && <span className="text-[10px] text-muted">理由: {c.note}</span>}
-                                  {canEdit && (
-                                    <button
-                                      type="button"
-                                      onClick={() => startNote(w.id, item.id)}
-                                      className="inline-flex items-center gap-0.5 text-[10px] font-bold text-brand underline"
-                                    >
-                                      <Pencil size={10} />
-                                      {c?.note ? "編集" : "理由を入れる"}
-                                    </button>
-                                  )}
-                                </div>
-                              )}
+                              {noteEditor(w, item, c, { label: "理由", placeholder: "理由（例: 扶養家族なし）", empty: "理由を入れる" })}
                             </div>
                           ) : (
                             <div className="flex flex-wrap items-center gap-1">
@@ -1000,6 +1013,8 @@ export function DocumentRequestChecklist({
                                       取り消す
                                     </button>
                                   )}
+                                  {/* 無いと回答があったときの補足（本国に家族なし など。エクセルの一覧にも出る） */}
+                                  {noteEditor(w, item, c, { label: "補足", placeholder: "補足（例: 本国に家族がいない）", empty: "補足を入れる" })}
                                 </span>
                               )}
                               {c?.sent_on ? (
@@ -1153,7 +1168,7 @@ export function DocumentRequestChecklist({
       <Modal open={!!leaveDialog} title="理由を保存していません" onClose={() => setLeaveDialog(null)}>
         <div>
           <p className="mb-4 text-sm leading-relaxed">
-            入力した「対象外」の理由がまだ保存されていません。保存しますか？
+            入力した補足（対象外の理由・無し回答の説明）がまだ保存されていません。保存しますか？
           </p>
           <div className="flex flex-wrap gap-2">
             <button

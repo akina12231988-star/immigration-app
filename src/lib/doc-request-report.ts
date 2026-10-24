@@ -69,7 +69,7 @@ export function reportStatusLabel(
     case "発行済":
       return "添付済"; // 日付は書かない（会社へ送る一覧なので状況だけ）
     case "無し回答":
-      return `本人から無いと回答 ${c?.none_replied_on ?? ""}`.trim();
+      return `本人から無いと回答 ${c?.none_replied_on ?? ""}`.trim() + note;
     case "案内済":
       return `案内済（未添付） ${c?.informed_on ?? ""}`.trim();
     default:

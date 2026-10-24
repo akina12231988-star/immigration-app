@@ -57,7 +57,7 @@ describe("エクセルの一覧", () => {
   };
   const idx = indexChecks([
     check("w1", "a", { informed_on: "2026-10-20", issued_on: "2026-10-24" }),
-    check("w1", "b", { informed_on: "2026-10-20", none_replied_on: "2026-10-24" }),
+    check("w1", "b", { informed_on: "2026-10-20", none_replied_on: "2026-10-24", note: "本国に家族なし" }),
     check("w1", "c", { informed_on: "2026-10-20", issued_on: "2026-10-21", sent_on: "2026-10-24" }),
     check("w2", "a", { not_needed: true, note: "扶養家族なし" }),
     check("w2", "b", { informed_on: "2026-10-20" }),
@@ -65,7 +65,7 @@ describe("エクセルの一覧", () => {
 
   it("各マスの状況を言葉にする（添付済は日付なし。ほかは日付・理由つき。入社年で外れる書類はその理由）", () => {
     expect(reportStatusLabel(items[0], w1.startOn, idx.get("w1_a"))).toBe("添付済");
-    expect(reportStatusLabel(items[1], w1.startOn, idx.get("w1_b"))).toBe("本人から無いと回答 2026-10-24");
+    expect(reportStatusLabel(items[1], w1.startOn, idx.get("w1_b"))).toBe("本人から無いと回答 2026-10-24（本国に家族なし）");
     expect(reportStatusLabel(items[2], w1.startOn, idx.get("w1_c"))).toBe("会社へ送付済 2026-10-24");
     expect(reportStatusLabel(items[0], w2.startOn, idx.get("w2_a"))).toBe("対象外（扶養家族なし）");
     expect(reportStatusLabel(items[1], w2.startOn, idx.get("w2_b"))).toBe("案内済（未添付） 2026-10-20");
@@ -87,7 +87,7 @@ describe("エクセルの一覧", () => {
     ]);
     expect(rows[3]).toEqual([
       1, "HA SI HIEU", "ハ シ ヒエウ", "ベトナム", "2000-01-02", "男", "2026-05-11", "本社", "熊本県熊本市1-2-3",
-      "添付済", "本人から無いと回答 2026-10-24", "会社へ送付済 2026-10-24",
+      "添付済", "本人から無いと回答 2026-10-24（本国に家族なし）", "会社へ送付済 2026-10-24",
       "No.1_HA SI HIEU_令和8年度年末調整資料.pdf",
     ]);
     expect(rows[4][0]).toBe(2);
