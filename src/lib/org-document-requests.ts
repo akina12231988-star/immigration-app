@@ -1,3 +1,12 @@
+import {
+  HEALTH_CHECK_DOC_KEY,
+  HEALTH_CHECK_LABEL,
+  gensenDocKey,
+  gensenLabel,
+  isGensenYearKey,
+  onboardingDocDefs,
+  reiwaYear,
+} from "@/lib/onboarding";
 // 所属機関からの書類の依頼（年末調整の書類など）の管理（0183）。
 //
 // 会社から「扶養控除申告書・送金証明書を集めてほしい」のようなメールが来たら、依頼を1件登録し、
@@ -11,6 +20,9 @@ export interface DocumentRequestItem {
   name: string; // 書類の名前（扶養控除申告書 など）
   note: string; // 補足（コピーでよい・2026年入社の方のみ など）
   joined_year?: number | null; // この年に入社した人だけが対象（源泉徴収票は今年入社の人だけ など）。空なら全員
+  // 外国人詳細の「入社時に送る資料」のどの書類に紐づけるか（書類キー）。
+  // 空・未設定なら書類名から自動で判定、LINK_DOC_NONE なら紐づけない
+  link_doc_key?: string;
 }
 
 // 「2026年入社の方のみ」「2026年に入社した人」のような補足から入社年を読む（無ければ null）
@@ -153,6 +165,7 @@ export function normalizeItems(raw: unknown): DocumentRequestItem[] {
         name,
         note,
         joined_year: typeof o.joined_year === "number" ? o.joined_year : joinedYearFromNote(note),
+        link_doc_key: typeof o.link_doc_key === "string" ? o.link_doc_key : "",
       };
     })
     .filter((x): x is DocumentRequestItem => x !== null);
@@ -283,4 +296,123 @@ export function dueLabel(dueOn: string | null, today: string): string {
   if (d > 0) return `あと${d}日`;
   if (d === 0) return "今日まで";
   return `${-d}日過ぎ`;
+}
+
+// ---- チェック表の絞り込み（国籍・入社年） ----
+
+export interface FilterableWorker {
+  nationality: string;
+  startOn: string | null;
+}
+
+// 国籍の選択肢（表に出ている人の国籍。空は「未登録」としてまとめる）
+export function nationalityOptions(workers: FilterableWorker[]): string[] {
+  const set = new Set(workers.map((w) => (w.nationality ?? "").trim() || "未登録"));
+  return [...set].sort((a, b) => (a === "未登録" ? 1 : b === "未登録" ? -1 : a.localeCompare(b, "ja")));
+}
+
+// 入社年の選択肢（新しい年から。入社日が無い人がいれば「未登録」も）
+export function joinedYearOptions(workers: FilterableWorker[]): string[] {
+  const years = new Set<string>();
+  let unknown = false;
+  for (const w of workers) {
+    const y = joinedYearOf(w.startOn);
+    if (y === null) unknown = true;
+    else years.add(String(y));
+  }
+  const list = [...years].sort((a, b) => Number(b) - Number(a));
+  return unknown ? [...list, "未登録"] : list;
+}
+
+export interface WorkerFilter {
+  nationality: string; // "" = すべて
+  joinedYear: string; // "" = すべて / "2026" / "未登録"
+}
+
+export function filterRequestWorkers<T extends FilterableWorker>(workers: T[], f: WorkerFilter): T[] {
+  return workers.filter((w) => {
+    if (f.nationality && ((w.nationality ?? "").trim() || "未登録") !== f.nationality) return false;
+    if (f.joinedYear) {
+      const y = joinedYearOf(w.startOn);
+      if (f.joinedYear === "未登録" ? y !== null : String(y) !== f.joinedYear) return false;
+    }
+    return true;
+  });
+}
+
+// ---- 外国人詳細の「入社時に送る資料」に添付済みの書類との突き合わせ ----
+//
+// 会社から頼まれた書類（扶養控除申告書 など）が、すでに外国人詳細の入社書類として
+// 添付してあれば、このチェック表のマスにその添付データを出して開けるようにする。
+// 書類名は書き方が揺れる（「扶養控除申告書」と「扶養控除等申告書」、「2026年送金証明書」など）ので、
+// 年・括弧書き・「等」などを取り除いてから突き合わせる
+
+// 比べやすい形にする（全角半角をそろえ、空白・括弧書き・年の前置き・「等」「の写し」「コピー」を除く）
+export function normalizeDocName(name: string): string {
+  return (name ?? "")
+    .normalize("NFKC")
+    .replace(/\s+/g, "")
+    .replace(/[（(][^）)]*[）)]/g, "")
+    .replace(/^(20\d{2}年度?分?|令和\d+年度?分?)+/g, "")
+    .replace(/等|の写し|コピー/g, "")
+    .trim();
+}
+
+// 書類名に入っている年（令和年に直す。無ければ null）。源泉徴収票の年の突き合わせに使う
+export function docNameReiwaYear(name: string): number | null {
+  const n = (name ?? "").normalize("NFKC");
+  const r = n.match(/令和\s*(\d+)\s*年/);
+  if (r) return Number(r[1]);
+  const y = n.match(/(20\d{2})\s*年/);
+  return y ? Number(y[1]) - 2018 : null;
+}
+
+export interface OnboardingDocLike {
+  doc_key: string;
+  label: string;
+}
+
+// 依頼の書類名と、入社書類の1件が同じ書類か
+export function matchesOnboardingDoc(itemName: string, doc: OnboardingDocLike): boolean {
+  const a = normalizeDocName(itemName);
+  const b = normalizeDocName(doc.label);
+  if (a.length < 3 || b.length < 3) return false;
+  if (!(a === b || a.includes(b) || b.includes(a))) return false;
+  // 源泉徴収票は令和年ごとに別の書類。依頼に年が書いてあれば同じ年のものだけ
+  const m = /^gensen_r(\d+)$/.exec(doc.doc_key);
+  if (m) {
+    const y = docNameReiwaYear(itemName);
+    if (y !== null && y !== Number(m[1])) return false;
+  }
+  return true;
+}
+
+// 「紐づけない」の印（依頼の登録で選ぶ）
+export const LINK_DOC_NONE = "none";
+
+// 依頼の登録で選べる紐づけ先（外国人詳細の入社書類。源泉徴収票は前後の年も選べる）
+export function linkDocOptions(today: string): { key: string; label: string }[] {
+  const reiwa = reiwaYear(today);
+  const out: { key: string; label: string }[] = [];
+  for (const d of onboardingDocDefs(today)) {
+    if (isGensenYearKey(d.key)) {
+      for (const r of [reiwa + 1, reiwa, reiwa - 1]) out.push({ key: gensenDocKey(r), label: gensenLabel(r) });
+    } else {
+      out.push({ key: d.key, label: d.label });
+    }
+  }
+  out.push({ key: HEALTH_CHECK_DOC_KEY, label: HEALTH_CHECK_LABEL });
+  return out;
+}
+
+// その人の入社書類のうち、依頼の書類に当たる添付済みのもの（無ければ null）。
+// 依頼の登録で紐づけ先を選んであればその書類だけ、「紐づけない」なら null、未設定なら書類名から自動で判定
+export function findOnboardingDocFor<T extends OnboardingDocLike>(
+  item: Pick<DocumentRequestItem, "name" | "link_doc_key">,
+  docs: T[],
+): T | null {
+  const key = item.link_doc_key ?? "";
+  if (key === LINK_DOC_NONE) return null;
+  if (key) return docs.find((d) => d.doc_key === key) ?? null;
+  return docs.find((d) => matchesOnboardingDoc(item.name, d)) ?? null;
 }
