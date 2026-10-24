@@ -132,8 +132,8 @@ export function DocumentRequestChecklist({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // 「案内」を押したときに開く、本人への案内文（日本語＋母国語）のダイアログ（どの人のどの書類か）
-  const [textDialog, setTextDialog] = useState<{ workerId: string; itemId: string } | null>(null);
+  // 行の右端の「案内文を表示」で開く、本人への案内文（日本語＋母国語）のダイアログ（どの人か）
+  const [textDialog, setTextDialog] = useState<{ workerId: string } | null>(null);
 
   const idx = useMemo(() => indexChecks(checks), [checks]);
   // マスに添付したファイル
@@ -165,40 +165,16 @@ export function DocumentRequestChecklist({
   };
   const current = (workerId: string, itemId: string): DocumentRequestCheckInput =>
     idx.get(checkKey(workerId, itemId)) ?? emptyCheck(request.id, workerId, itemId);
-  const press = (workerId: string, itemId: string, step: DocumentRequestStepKey) => {
-    const c = current(workerId, itemId);
-    void saveCheck(toggleStep(c, step, today));
-    // まだ案内していない書類の「案内」を押したら、本人へ送る案内文を作って出す（取り消しのときは出さない）
-    if (step === "informed_on" && !c.informed_on) setTextDialog({ workerId, itemId });
-  };
-  // 案内文のダイアログで「含めた書類も案内済にする」を押したとき（その人の他の書類にまとめて「案内」を付ける）
-  const markInformed = async (workerId: string, itemIds: string[]) => {
-    const inputs = itemIds
-      .map((id) => current(workerId, id))
-      .filter((c) => !c.not_needed && !c.informed_on)
-      .map((c) => toggleStep(c, "informed_on", today));
-    if (inputs.length === 0) return;
-    setError(null);
-    try {
-      const rows = await upsertDocumentRequestChecks(createClient(), inputs);
-      const keys = new Set(rows.map((r) => checkKey(r.worker_id, r.item_id)));
-      setChecks((prev) => [...prev.filter((c) => !keys.has(checkKey(c.worker_id, c.item_id))), ...rows]);
-    } catch (err) {
-      setError(dbErrorMessage(err, MIGRATION, "まとめて保存できませんでした"));
-    }
-  };
-  // 案内文のダイアログの中身（押した人・書類と、その人のまだ案内していない他の書類）
+  const press = (workerId: string, itemId: string, step: DocumentRequestStepKey) =>
+    void saveCheck(toggleStep(current(workerId, itemId), step, today));
+  // その人の「案内」を押した書類（対象外・入社年で対象外の書類を除く）。案内文にまとめて入れる
+  const informedItemsOf = (w: ChecklistWorker) =>
+    request.items.filter((i) => {
+      if (joinedYearExcludedReason(i, w.startOn)) return false;
+      const c = idx.get(checkKey(w.id, i.id));
+      return !c?.not_needed && !!c?.informed_on;
+    });
   const dialogWorker = textDialog ? workers.find((w) => w.id === textDialog.workerId) : undefined;
-  const dialogItem = textDialog ? request.items.find((i) => i.id === textDialog.itemId) : undefined;
-  const dialogOthers =
-    textDialog && dialogWorker
-      ? request.items.filter((i) => {
-          if (i.id === textDialog.itemId) return false;
-          if (joinedYearExcludedReason(i, dialogWorker.startOn)) return false;
-          const c = idx.get(checkKey(dialogWorker.id, i.id));
-          return !c?.not_needed && !c?.informed_on;
-        })
-      : [];
   const toggleNotNeeded = (workerId: string, itemId: string) => {
     const c = current(workerId, itemId);
     void saveCheck({ ...c, not_needed: !c.not_needed });
@@ -476,6 +452,7 @@ export function DocumentRequestChecklist({
       <p className="text-[11px] leading-relaxed text-muted">
         マスのボタンを押すと今日の日付で記録します（案内 → 発行 → 会社へ の順。先の段階を押すと前の段階も同じ日で入ります）。
         もう一度押すと取り消せます。その人には要らない書類は「対象外」にすると数に入りません。
+        案内する書類の「案内」を押してから、行の右端の「案内文を表示」を押すと、押した書類をまとめた本人への案内文（日本語＋母国語）が出てコピーできます。
         受け取った書類の写真・PDF はマスにドラッグ＆ドロップ（または「添付」）で保管でき、添付すると「発行」まで自動で付きます。
         外国人詳細の「入社時に送る資料」に同じ書類が添付済みなら、マスに「外国人詳細に添付済み」と出て、押すとそのデータを開けます。
         {yearItems.length > 0 && (
@@ -526,6 +503,10 @@ export function DocumentRequestChecklist({
                     )}
                   </th>
                 ))}
+                {/* 行の右端: その人の「案内」を押した書類をまとめた案内文（日本語＋母国語） */}
+                <th className="sticky right-0 top-0 z-30 bg-background px-2 py-2 font-bold shadow-[inset_0_-1px_0_0_var(--color-border),inset_1px_0_0_0_var(--color-border)]">
+                  案内文
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -637,16 +618,6 @@ export function DocumentRequestChecklist({
                                   対象外
                                 </button>
                               )}
-                              {/* 本人への案内文（日本語＋母国語）をもう一度出す（「案内」を押したときにも自動で出る） */}
-                              <button
-                                type="button"
-                                onClick={() => setTextDialog({ workerId: w.id, itemId: item.id })}
-                                className="inline-flex min-h-[30px] items-center rounded-lg border border-border bg-background px-1.5 text-muted hover:text-brand"
-                                title="本人への案内文（日本語＋母国語）を作ってコピー"
-                                aria-label={`${w.name}さんへの「${item.name}」の案内文`}
-                              >
-                                <MessageSquareText size={12} />
-                              </button>
                               {c?.sent_on ? (
                                 <span className="w-full text-[10px] tabular-nums text-muted">送付 {c.sent_on}</span>
                               ) : c?.issued_on ? (
@@ -704,6 +675,28 @@ export function DocumentRequestChecklist({
                         </td>
                       );
                     })}
+                    {/* その人の「案内」を押した書類をまとめた案内文を出す（押した書類が無ければ押せない） */}
+                    <td className="sticky right-0 z-10 bg-surface px-2 py-2 align-top shadow-[inset_1px_0_0_0_var(--color-border)]">
+                      {(() => {
+                        const n = informedItemsOf(w).length;
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => setTextDialog({ workerId: w.id })}
+                            disabled={n === 0}
+                            title={
+                              n === 0
+                                ? "「案内」を押した書類がまだありません。先にマスの「案内」を押してください"
+                                : `「案内」を押した${n}件をまとめた案内文（日本語＋母国語）を表示してコピー`
+                            }
+                            className="inline-flex min-h-[30px] items-center gap-1 whitespace-nowrap rounded-lg border border-brand bg-brand/5 px-2 text-[11px] font-bold text-brand disabled:border-border disabled:bg-background disabled:text-muted"
+                          >
+                            <MessageSquareText size={12} />
+                            案内文を表示{n > 0 && `（${n}）`}
+                          </button>
+                        );
+                      })()}
+                    </td>
                   </tr>
                 );
               })}
@@ -737,18 +730,15 @@ export function DocumentRequestChecklist({
           onClose={() => setEditOpen(false)}
         />
       )}
-      {textDialog && dialogWorker && dialogItem && (
+      {textDialog && dialogWorker && (
         <DocRequestTextDialog
-          key={`${textDialog.workerId}:${textDialog.itemId}`}
+          key={textDialog.workerId}
           open
           onClose={() => setTextDialog(null)}
           worker={dialogWorker}
           organizationName={organizationName}
-          item={dialogItem}
-          otherItems={dialogOthers}
+          items={informedItemsOf(dialogWorker)}
           dueOn={request.due_on}
-          canEdit={canEdit}
-          onMarkInformed={(ids) => markInformed(dialogWorker.id, ids)}
         />
       )}
       <ConfirmDialog
