@@ -1,22 +1,37 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CalendarPlus, CreditCard, FileText, ImagePlus, ScanSearch, Trash2, X } from "lucide-react";
+import {
+  CalendarPlus,
+  CreditCard,
+  FileText,
+  ImagePlus,
+  Pencil,
+  Plus,
+  ScanSearch,
+  Trash2,
+  X,
+} from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { uploadWorkerDoc } from "@/lib/worker-docs";
 import { todayStr } from "@/lib/application-alerts";
 import {
   deleteWorkerDoc,
+  deleteWorkerDocPeriod,
+  listWorkerDocPeriods,
   listWorkerDocs,
+  saveWorkerDocPeriod,
   type WorkerDocView,
 } from "@/app/(app)/workers/actions";
 import {
   buildPastPeriods,
   docPeriodDate,
-  periodKeyFor,
-  periodLabelFor,
+  manualPeriodKey,
+  manualPeriodLabel,
+  periodKeyForDoc,
   sortDocsByPeriodDate,
+  type ManualPeriod,
 } from "@/lib/worker-doc-periods";
 import type { WorkHistoryRow } from "@/types/db";
 
@@ -39,7 +54,8 @@ function isPdfDoc(d: WorkerDocView): boolean {
 }
 
 // 在留カード・照合結果・指定書の差し替え（最新を大きく表示・履歴も保持）。
-// 在籍期間（現在／過去の所属機関ごと）のタブで、当時の画像へ表示を切り替えられる
+// 在籍期間（現在／過去の所属機関ごと）のタブで、当時の画像へ表示を切り替えられる。
+// 在籍期間のタブにない期間（前の会社を辞めたあとの在留カードなど）は「期間を追加」で自分で足せる
 export function WorkerDocuments({
   workerId,
   canEdit,
@@ -52,12 +68,18 @@ export function WorkerDocuments({
   periodNote?: string; // 在留期間の注意事項（申請の許可情報の最新。画像の下に薄い赤で出す）
 }) {
   const [docs, setDocs] = useState<WorkerDocView[]>([]);
+  const [manual, setManual] = useState<ManualPeriod[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [period, setPeriod] = useState("current");
-  // 「日付を指定して登録」（タブにない期間や、今の在籍中の古い在留カードを当時の日付で登録する）
-  const [dateMode, setDateMode] = useState(false);
-  const [customDate, setCustomDate] = useState("");
   const [info, setInfo] = useState<string | null>(null);
+  const [period, setPeriod] = useState("current");
+  // 期間の追加・編集フォーム（null＝閉じている。id があれば編集）
+  const [periodForm, setPeriodForm] = useState<{
+    id: string | null;
+    label: string;
+    startOn: string;
+    endOn: string;
+  } | null>(null);
+  const [savingPeriod, setSavingPeriod] = useState(false);
 
   const today = todayStr();
   const past = useMemo(() => buildPastPeriods(histories, today), [histories, today]);
@@ -73,6 +95,10 @@ export function WorkerDocuments({
   const load = () => {
     listWorkerDocs(workerId).then(setDocs).catch(() => undefined);
   };
+  const loadPeriods = () =>
+    listWorkerDocPeriods(workerId)
+      .then((rows) => setManual(rows))
+      .catch(() => undefined);
 
   // 間違えて登録した画像の削除（保存したファイルの実体も消える）
   const removeDoc = async (doc: WorkerDocView) => {
@@ -93,50 +119,100 @@ export function WorkerDocuments({
   };
   useEffect(() => {
     load();
+    void loadPeriods();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workerId]);
 
-  // 表示中の在籍期間の画像だけに絞る（過去タブから登録した画像は effective_on で当時の期間に入る）。
-  // 「いつ時点の書類か」の新しい順に並べ、日付を指定して登録した古い画像が最新より前に出ないようにする
+  // 表示中の期間の画像だけに絞る（追加した期間は period_id、過去タブから登録した画像は effective_on で振り分ける）。
+  // 「いつ時点の書類か」の新しい順に並べる
   const visibleDocs = useMemo(
-    () =>
-      sortDocsByPeriodDate(
-        docs.filter((d) => periodKeyFor(docPeriodDate(d), past, hasOngoing) === period),
-      ),
+    () => sortDocsByPeriodDate(docs.filter((d) => periodKeyForDoc(d, past, hasOngoing) === period)),
     [docs, past, hasOngoing, period],
   );
 
   const isCurrent = period === "current";
   // 過去タブを開いているとき、アップロードした画像をその期間に振り分けるための日付（退職日）
   const selectedPast = past.find((p) => p.key === period) ?? null;
-  // 日付を指定しているときはその日付を優先する（どのタブを開いていても、入れた日付の期間に振り分けられる）
-  const usingCustomDate = dateMode && !!customDate;
-  const effectiveOn = usingCustomDate ? customDate : (selectedPast?.end ?? null);
-  const uploadLabel = usingCustomDate
-    ? `${customDate} 時点として登録`
-    : isCurrent
-      ? "差し替え"
-      : "この期間に登録";
-  // 日付を指定して登録したあと、その画像が入ったタブへ切り替えて、どこに入ったかを知らせる
-  const handleUploaded = () => {
-    load();
-    if (!usingCustomDate) return;
-    const key = periodKeyFor(customDate, past, hasOngoing);
-    setPeriod(key);
-    const label = periodLabelFor(key, past);
-    setInfo(
-      key === "current"
-        ? `${customDate} 時点の画像として「現在」に登録しました。日付順に並ぶので、いまの最新より古い日付なら履歴（小さい画像）に入ります。`
-        : `${customDate} 時点の画像として「${label}」に登録しました。`,
-    );
-  };
+  // 追加した期間のタブを開いているとき（画像は期間IDで結び付ける。日付は期間の開始日）
+  const selectedManual = manual.find((m) => manualPeriodKey(m.id) === period) ?? null;
+  const effectiveOn = selectedManual ? selectedManual.startOn : (selectedPast?.end ?? null);
+  const periodId = selectedManual?.id ?? null;
+  const uploadLabel = isCurrent ? "差し替え" : "この期間に登録";
+  const emptyLabel = isCurrent ? "未登録" : "この期間の登録はありません";
 
   // 「現在」に該当する画像が無くても、登録済みの画像があれば一番新しいものを代わりに表示する。
   // （何も登録していないように見えてしまうのを防ぐ。差し替えれば最新になる）
-  // ただし過去タブから「この期間に登録」した画像（effective_on あり）は当時の画像なので、
+  // ただし過去タブ・追加した期間から登録した画像（effective_on・period_id あり）は当時の画像なので、
   // 「現在」には出さない（現在と過去に同じものが表示されてしまうため）
   const newestFor = (kind: Kind) =>
-    docs.find((d) => d.kind === kind && !d.effectiveOn) ?? null;
+    docs.find((d) => d.kind === kind && !d.effectiveOn && !d.periodId) ?? null;
+
+  // 期間の追加・編集の保存
+  const savePeriod = async () => {
+    if (!periodForm) return;
+    if (!periodForm.startOn) {
+      setError("期間の開始日を入れてください");
+      return;
+    }
+    setSavingPeriod(true);
+    setError(null);
+    try {
+      const res = await saveWorkerDocPeriod(workerId, {
+        id: periodForm.id,
+        label: periodForm.label,
+        startOn: periodForm.startOn,
+        endOn: periodForm.endOn || null,
+      });
+      if (!res.ok) {
+        setError(res.message);
+        return;
+      }
+      await loadPeriods();
+      setPeriodForm(null);
+      setPeriod(manualPeriodKey(res.id));
+      const label = manualPeriodLabel({
+        id: res.id,
+        label: periodForm.label,
+        startOn: periodForm.startOn,
+        endOn: periodForm.endOn || null,
+      });
+      setInfo(
+        periodForm.id
+          ? `期間「${label}」を保存しました。`
+          : `期間「${label}」を追加しました。このタブで在留カード・照合結果・指定書を「この期間に登録」で登録してください。`,
+      );
+    } finally {
+      setSavingPeriod(false);
+    }
+  };
+
+  // 追加した期間の削除（画像は消えず、日付で元の在籍期間または「現在」に振り分けられる）
+  const removePeriod = async (m: ManualPeriod) => {
+    const count = docs.filter((d) => d.periodId === m.id).length;
+    if (
+      !window.confirm(
+        `期間「${manualPeriodLabel(m)}」を削除します。` +
+          (count > 0
+            ? `この期間に登録した画像（${count}件）は削除されず、日付で元の在籍期間または「現在」に振り分けられます。`
+            : "") +
+          "よろしいですか？",
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    const res = await deleteWorkerDocPeriod(m.id);
+    if (!res.ok) {
+      setError(res.message);
+      return;
+    }
+    setPeriod("current");
+    setInfo(`期間「${manualPeriodLabel(m)}」を削除しました。`);
+    await loadPeriods();
+    load();
+  };
+
+  const showTabs = past.length > 0 || manual.length > 0 || canEdit;
 
   return (
     <Card className="p-4">
@@ -155,9 +231,9 @@ export function WorkerDocuments({
         </p>
       )}
 
-      {/* 在籍期間の切り替えタブ（過去の在籍がある場合のみ表示） */}
-      {past.length > 0 && (
-        <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1">
+      {/* 期間の切り替えタブ（現在／過去の在籍期間／自分で追加した期間）と「期間を追加」 */}
+      {showTabs && (
+        <div className="mb-3 flex items-center gap-1.5 overflow-x-auto pb-1">
           <PeriodChip active={isCurrent} onClick={() => setPeriod("current")}>
             現在
           </PeriodChip>
@@ -170,50 +246,113 @@ export function WorkerDocuments({
               過去（{p.org}）{p.start}〜{p.end}
             </PeriodChip>
           ))}
+          {manual.map((m) => (
+            <PeriodChip
+              key={manualPeriodKey(m.id)}
+              active={period === manualPeriodKey(m.id)}
+              onClick={() => setPeriod(manualPeriodKey(m.id))}
+            >
+              <CalendarPlus size={12} className="mr-1 inline" />
+              {manualPeriodLabel(m)}
+            </PeriodChip>
+          ))}
+          {canEdit && !periodForm && (
+            <button
+              type="button"
+              onClick={() => setPeriodForm({ id: null, label: "", startOn: "", endOn: "" })}
+              className="flex shrink-0 items-center gap-1 rounded-full border border-dashed border-brand/60 px-3 py-1.5 text-xs font-bold text-brand"
+              title="在籍期間のタブにない期間（前の会社を辞めたあとの在留カードなど）を足す"
+            >
+              <Plus size={12} /> 期間を追加
+            </button>
+          )}
         </div>
       )}
 
-      {/* 日付を指定して登録（タブにない期間の在留カードや、今の在籍中の更新前のカードを当時の日付で入れる） */}
-      {canEdit && (
-        <div className="mb-3">
-          {dateMode ? (
-            <div className="rounded-xl border border-brand/40 bg-brand/5 px-3 py-2">
-              <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-muted">
-                <label className="flex items-center gap-1.5">
-                  いつ時点の画像か（在留カードの交付日・有効期間の開始日）
-                  <input
-                    type="date"
-                    value={customDate}
-                    onChange={(e) => setCustomDate(e.target.value)}
-                    className="min-h-[32px] rounded-lg border border-border bg-surface px-1.5 text-xs text-foreground focus:border-brand focus:outline-none"
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDateMode(false);
-                    setCustomDate("");
-                  }}
-                  className="rounded-lg border border-border px-2.5 py-1 text-[11px] font-bold text-muted"
-                >
-                  日付の指定をやめる
-                </button>
-              </div>
-              <p className="mt-1 text-[11px] text-muted">
-                {customDate
-                  ? `日付を入れたので、下の「${customDate} 時点として登録」（枠へのドロップも同じ）で登録すると、その日付の在籍期間のタブ（${periodLabelFor(periodKeyFor(customDate, past, hasOngoing), past)}）に入ります。いまの最新より古い日付なら履歴に入り、最新の画像はそのままです。`
-                  : "日付を入れてから、下の在留カード・照合結果・指定書の登録ボタン（または枠へのドロップ）で登録してください。"}
-              </p>
-            </div>
-          ) : (
+      {/* 期間の追加・編集フォーム */}
+      {canEdit && periodForm && (
+        <div className="mb-3 rounded-xl border border-brand/40 bg-brand/5 px-3 py-2">
+          <p className="mb-1.5 text-xs font-bold text-brand">
+            {periodForm.id ? "期間を編集" : "新しい期間を追加"}
+          </p>
+          <div className="flex flex-wrap items-end gap-2 text-[11px] font-bold text-muted">
+            <label className="flex flex-col gap-0.5">
+              名前（任意。所属機関名や「在留カード更新前」など）
+              <input
+                type="text"
+                value={periodForm.label}
+                onChange={(e) => setPeriodForm({ ...periodForm, label: e.target.value })}
+                placeholder="例: 有限会社○○"
+                className="min-h-[32px] w-56 rounded-lg border border-border bg-surface px-2 text-xs text-foreground focus:border-brand focus:outline-none"
+              />
+            </label>
+            <label className="flex flex-col gap-0.5">
+              開始日（在留カードの交付日など）
+              <input
+                type="date"
+                value={periodForm.startOn}
+                onChange={(e) => setPeriodForm({ ...periodForm, startOn: e.target.value })}
+                className="min-h-[32px] rounded-lg border border-border bg-surface px-1.5 text-xs text-foreground focus:border-brand focus:outline-none"
+              />
+            </label>
+            <label className="flex flex-col gap-0.5">
+              終了日（未定なら空のまま）
+              <input
+                type="date"
+                value={periodForm.endOn}
+                onChange={(e) => setPeriodForm({ ...periodForm, endOn: e.target.value })}
+                className="min-h-[32px] rounded-lg border border-border bg-surface px-1.5 text-xs text-foreground focus:border-brand focus:outline-none"
+              />
+            </label>
             <button
               type="button"
-              onClick={() => setDateMode(true)}
-              className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11px] font-bold text-brand"
+              onClick={() => void savePeriod()}
+              disabled={savingPeriod}
+              className="min-h-[32px] rounded-lg bg-brand px-3 text-xs font-bold text-brand-foreground disabled:opacity-50"
             >
-              <CalendarPlus size={12} /> 日付を指定して登録（タブにない期間・更新前の在留カード）
+              {savingPeriod ? "保存中…" : periodForm.id ? "保存" : "追加"}
             </button>
-          )}
+            <button
+              type="button"
+              onClick={() => setPeriodForm(null)}
+              className="min-h-[32px] rounded-lg border border-border px-3 text-xs font-bold text-muted"
+            >
+              やめる
+            </button>
+          </div>
+          <p className="mt-1 text-[11px] text-muted">
+            追加するとタブが増えます。そのタブを開いて「この期間に登録」で在留カード・照合結果・指定書を登録すると、その期間の画像として保存されます（「現在」の画像は変わりません）。
+          </p>
+        </div>
+      )}
+
+      {/* 追加した期間のタブを開いているとき: 期間の編集・削除 */}
+      {selectedManual && canEdit && !periodForm && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px] text-muted">
+          <span>
+            追加した期間「{manualPeriodLabel(selectedManual)}」を表示中。ここで登録した画像はこの期間に入ります。
+          </span>
+          <button
+            type="button"
+            onClick={() =>
+              setPeriodForm({
+                id: selectedManual.id,
+                label: selectedManual.label,
+                startOn: selectedManual.startOn,
+                endOn: selectedManual.endOn ?? "",
+              })
+            }
+            className="flex items-center gap-1 rounded-lg border border-border px-2 py-0.5 font-bold text-brand"
+          >
+            <Pencil size={11} /> 期間を編集
+          </button>
+          <button
+            type="button"
+            onClick={() => void removePeriod(selectedManual)}
+            className="flex items-center gap-1 rounded-lg border border-border px-2 py-0.5 font-bold text-seal"
+          >
+            <Trash2 size={11} /> 期間を削除
+          </button>
         </div>
       )}
 
@@ -227,9 +366,10 @@ export function WorkerDocuments({
           canEdit={canEdit}
           onDelete={removeDoc}
           effectiveOn={effectiveOn}
+          periodId={periodId}
           uploadLabel={uploadLabel}
-          emptyLabel={isCurrent ? "未登録" : "この期間の登録はありません"}
-          onUploaded={handleUploaded}
+          emptyLabel={emptyLabel}
+          onUploaded={load}
           onError={setError}
         />
         <DocColumn
@@ -241,9 +381,10 @@ export function WorkerDocuments({
           canEdit={canEdit}
           onDelete={removeDoc}
           effectiveOn={effectiveOn}
+          periodId={periodId}
           uploadLabel={uploadLabel}
-          emptyLabel={isCurrent ? "未登録" : "この期間の登録はありません"}
-          onUploaded={handleUploaded}
+          emptyLabel={emptyLabel}
+          onUploaded={load}
           onError={setError}
         />
         <DocColumn
@@ -255,9 +396,10 @@ export function WorkerDocuments({
           canEdit={canEdit}
           onDelete={removeDoc}
           effectiveOn={effectiveOn}
+          periodId={periodId}
           uploadLabel={uploadLabel}
-          emptyLabel={isCurrent ? "未登録" : "この期間の登録はありません"}
-          onUploaded={handleUploaded}
+          emptyLabel={emptyLabel}
+          onUploaded={load}
           onError={setError}
         />
       </div>
@@ -273,13 +415,11 @@ export function WorkerDocuments({
           新しい画像を登録すると「現在」の最新として表示され、以前の画像も履歴として残ります。「現在」では、いま登録されている最新の画像を表示します（在籍期間が今日を含む場合もここに出ます）。過去の在籍期間タブでは、その期間の当時の画像を表示します。過去タブで「この期間に登録」すると、当時の画像としてその期間に保存されます。
         </p>
         <p>
-          <span className="font-bold">タブにない期間の在留カードを足すとき</span>
+          <span className="font-bold">タブにない期間の在留カード・指定書を新しく登録するとき</span>
           （例: 過去の在籍が 2025-11-11 で終わり、そのあとの在留カード 2025-11-11〜2026-11-11 があって、次が「現在」の場合）:
-          「日付を指定して登録」を押し、その在留カードの交付日（有効期間の開始日。例では 2025-11-11 の翌日以降の日付）を入れてから、「○○ 時点として登録」で画像を登録します。
-          入れた日付で自動的にタブに振り分けられ、どの在籍期間にも当たらない日付（前の退職日より後）は「現在」に入ります。
-          「現在」の中は日付の新しい順に並ぶので、いまの最新より古い日付の画像は最新を変えずに履歴（小さい画像）として残ります。
-          今の会社に入ってから更新する前のカード（更新前の在留カード）も同じ方法で、当時の日付を入れて登録してください。
-          退職日ちょうどの日付（例では 2025-11-11）を入れると、その退職日の過去の在籍期間に入ります。
+          タブの右の「期間を追加」を押し、名前（任意）・開始日（例: 2025-11-11）・終了日（例: 2026-11-11）を入れて「追加」すると、その期間のタブが増えます。
+          増えたタブを開き、在留カード・照合結果・指定書それぞれの「この期間に登録」（枠へのドロップも同じ）で画像を登録してください。登録した画像はその期間のタブにだけ出て、「現在」や過去の在籍期間の画像は変わりません。
+          期間の名前や日付は、そのタブを開いて「期間を編集」で直せます。「期間を削除」しても登録した画像は消えず、日付で元の在籍期間または「現在」に振り分けられます。
         </p>
       </div>
     </Card>
@@ -319,6 +459,7 @@ function DocColumn({
   canEdit,
   onDelete,
   effectiveOn = null,
+  periodId = null,
   uploadLabel = "差し替え",
   emptyLabel,
   onUploaded,
@@ -334,6 +475,8 @@ function DocColumn({
   onDelete: (doc: WorkerDocView) => void | Promise<void>;
   // 過去の在籍期間タブでは、その期間の日付を付けて登録する（当時の画像として振り分けるため）
   effectiveOn?: string | null;
+  // 自分で追加した期間のタブでは、その期間のIDを付けて登録する（期間IDで振り分けるため）
+  periodId?: string | null;
   uploadLabel?: string;
   emptyLabel: string;
   onUploaded: () => void;
@@ -341,21 +484,15 @@ function DocColumn({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
-  // この期間の画像が「日付を指定して登録」した分（effective_on あり）だけのときは、
-  // 代わりの画像（申請登録時の画像など）も日付順に混ぜて、古い日付の画像が最新に見えないようにする
-  const pool =
-    docs.length > 0 && fallback && docs.every((d) => !!d.effectiveOn)
-      ? sortDocsByPeriodDate([...docs, fallback])
-      : docs;
-  const latest = pool[0] ?? fallback ?? undefined;
-  const history = pool.slice(1);
-  const usingFallback = !!fallback && latest === fallback;
+  const usingFallback = docs.length === 0 && !!fallback;
+  const latest = docs[0] ?? fallback ?? undefined;
+  const history = docs.slice(1);
 
   async function handleFile(file: File | undefined) {
     if (!file) return;
     setBusy(true);
     try {
-      await uploadWorkerDoc(workerId, kind, file, null, effectiveOn);
+      await uploadWorkerDoc(workerId, kind, file, null, effectiveOn, periodId);
       onUploaded();
     } catch (err) {
       onError(err instanceof Error ? err.message : "アップロードに失敗しました");

@@ -125,6 +125,8 @@ export async function registerWorkerDoc(
   organizationId?: string | null,
   // 過去の在籍期間タブから登録するとき、その期間の日付（いつ時点の書類か）
   effectiveOn?: string | null,
+  // 自分で追加した期間（worker_document_periods）のタブから登録するとき、その期間のID（0197）
+  periodId?: string | null,
 ): Promise<{ ok: true } | Err> {
   if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
   if (!path.startsWith(`worker-docs/${workerId}/${DOC_SLUGS[kind]}/`)) {
@@ -141,13 +143,86 @@ export async function registerWorkerDoc(
     // 雇用契約書・雇用条件書は会社ごとに保管する（転職で混ざらないように）
     ...(organizationId ? { organization_id: organizationId } : {}),
     ...(effectiveOn ? { effective_on: effectiveOn } : {}),
+    ...(periodId ? { period_id: periodId } : {}),
   });
   if (error) {
     return {
       ok: false,
-      message: dbErrorMessage(error, "0100_worker_document_effective_on.sql", "登録に失敗しました"),
+      message: dbErrorMessage(
+        error,
+        periodId ? "0197_worker_document_periods.sql" : "0100_worker_document_effective_on.sql",
+        "登録に失敗しました",
+      ),
     };
   }
+  return { ok: true };
+}
+
+// 在留カード・指定書の「追加した期間」（在籍期間のタブにない期間。0197）
+export interface WorkerDocPeriodView {
+  id: string;
+  label: string; // 期間の名前（空でもよい）
+  startOn: string; // 開始日
+  endOn: string | null; // 終了日（未定なら null）
+}
+
+export async function listWorkerDocPeriods(workerId: string): Promise<WorkerDocPeriodView[]> {
+  const me = await getMyProfile();
+  const admin = createAdminClient();
+  if (!me || !admin) return [];
+  const { data } = await admin
+    .from("worker_document_periods")
+    .select("id, label, start_on, end_on")
+    .eq("worker_id", workerId)
+    .order("start_on", { ascending: false });
+  return (
+    (data as { id: string; label: string; start_on: string; end_on: string | null }[] | null) ?? []
+  ).map((r) => ({ id: r.id, label: r.label ?? "", startOn: r.start_on, endOn: r.end_on ?? null }));
+}
+
+// 期間の追加・編集（id があれば編集）
+export async function saveWorkerDocPeriod(
+  workerId: string,
+  input: { id?: string | null; label: string; startOn: string; endOn: string | null },
+): Promise<{ ok: true; id: string } | Err> {
+  if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
+  const startOn = input.startOn.trim();
+  const endOn = (input.endOn ?? "").trim() || null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startOn)) return { ok: false, message: "開始日を入れてください" };
+  if (endOn && !/^\d{4}-\d{2}-\d{2}$/.test(endOn)) return { ok: false, message: "終了日の形式が正しくありません" };
+  if (endOn && endOn < startOn) return { ok: false, message: "終了日は開始日より後にしてください" };
+  const admin = createAdminClient();
+  if (!admin) return { ok: false, message: "サーバー設定エラー" };
+  const row = { label: input.label.trim(), start_on: startOn, end_on: endOn };
+  if (input.id) {
+    const { error } = await admin
+      .from("worker_document_periods")
+      .update(row)
+      .eq("id", input.id)
+      .eq("worker_id", workerId);
+    if (error) {
+      return { ok: false, message: dbErrorMessage(error, "0197_worker_document_periods.sql", "保存に失敗しました") };
+    }
+    return { ok: true, id: input.id };
+  }
+  const { data, error } = await admin
+    .from("worker_document_periods")
+    .insert({ worker_id: workerId, ...row })
+    .select("id")
+    .single();
+  if (error || !data) {
+    return { ok: false, message: dbErrorMessage(error, "0197_worker_document_periods.sql", "保存に失敗しました") };
+  }
+  return { ok: true, id: (data as { id: string }).id };
+}
+
+// 期間の削除。登録した画像は消えず（period_id が null になる）、日付で元の在籍期間または「現在」に振り分けられる
+export async function deleteWorkerDocPeriod(periodId: string): Promise<{ ok: true } | Err> {
+  if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
+  const admin = createAdminClient();
+  if (!admin) return { ok: false, message: "サーバー設定エラー" };
+  const { error } = await admin.from("worker_document_periods").delete().eq("id", periodId);
+  if (error) return { ok: false, message: error.message };
   return { ok: true };
 }
 
@@ -200,6 +275,7 @@ export interface WorkerDocView {
   mimeType?: string;
   organizationId?: string | null; // 雇用契約書・雇用条件書の所属機関（0081）
   effectiveOn?: string | null; // いつ時点の書類か（過去の在籍期間への登録用・0100）
+  periodId?: string | null; // 自分で追加した期間のID（0197）。あればその期間のタブに出す
   createdAt: string;
   fromApplication?: boolean; // 申請登録時の画像（差し替え前の現データ）
   externalUrl?: string; // Google ドライブなどのリンクで登録した書類（0155）。ファイルの実体は無い
@@ -264,6 +340,7 @@ export async function listWorkerDocs(workerId: string): Promise<WorkerDocView[]>
       mime_type: string;
       organization_id?: string | null;
       effective_on?: string | null;
+      period_id?: string | null;
       external_url?: string | null;
       created_at: string;
     }[]) ?? [];
@@ -312,6 +389,7 @@ export async function listWorkerDocs(workerId: string): Promise<WorkerDocView[]>
         mimeType: r.mime_type,
         organizationId: r.organization_id ?? null,
         effectiveOn: r.effective_on ?? null,
+        periodId: r.period_id ?? null,
         createdAt: r.created_at,
         ...(external ? { externalUrl: external } : {}),
       });

@@ -11,6 +11,25 @@ export interface OrgPeriod {
   end: string; // 退職日
 }
 
+// 自分で追加した期間（在籍期間のタブにない期間。worker_document_periods・0197）
+export interface ManualPeriod {
+  id: string;
+  label: string;
+  startOn: string;
+  endOn: string | null;
+}
+
+// 追加した期間のタブのキー（画像は period_id で結び付くので、日付ではなくこのキーで振り分ける）
+export function manualPeriodKey(id: string): string {
+  return `manual-${id}`;
+}
+
+// 追加した期間のタブの表示名（名前があれば「名前 開始〜終了」、無ければ「開始〜終了」）
+export function manualPeriodLabel(p: ManualPeriod): string {
+  const range = `${p.startOn}〜${p.endOn ?? ""}`;
+  return p.label.trim() ? `${p.label.trim()} ${range}` : range;
+}
+
 // 職歴から「過去の」在籍期間を組み立てる。
 // 本国での職歴は除外し、同じ機関が連続する職歴はひとつの在籍期間にまとめる。
 // 退職日が今日以降の在籍（＝今も対象の期間）は過去ではなく「現在」として扱う。
@@ -91,8 +110,25 @@ export function sortDocsByPeriodDate<T extends { effectiveOn?: string | null; cr
   });
 }
 
-// タブの表示名（「現在」または「過去（所属機関）開始〜終了」）
-export function periodLabelFor(key: string, past: OrgPeriod[]): string {
+// 画像がどのタブのものかを判定する。追加した期間に結び付いた画像（period_id）はその期間、
+// それ以外は日付（effective_on または登録日）で在籍期間に振り分ける
+export function periodKeyForDoc(
+  doc: { effectiveOn?: string | null; periodId?: string | null; createdAt: string },
+  past: OrgPeriod[],
+  hasOngoing: boolean,
+): string {
+  if (doc.periodId) return manualPeriodKey(doc.periodId);
+  return periodKeyFor(docPeriodDate(doc), past, hasOngoing);
+}
+
+// タブの表示名（「現在」「過去（所属機関）開始〜終了」または追加した期間の名前）
+export function periodLabelFor(
+  key: string,
+  past: OrgPeriod[],
+  manual: ManualPeriod[] = [],
+): string {
+  const m = manual.find((x) => manualPeriodKey(x.id) === key);
+  if (m) return manualPeriodLabel(m);
   const p = past.find((x) => x.key === key);
   return p ? `過去（${p.org}）${p.start}〜${p.end}` : "現在";
 }
