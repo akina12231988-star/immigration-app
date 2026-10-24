@@ -1,3 +1,4 @@
+import { todayJst } from "@/lib/jst-date";
 import type { Application } from "@/types/application";
 
 function addMonths(dateStr: string, months: number): string {
@@ -37,6 +38,7 @@ export function countExpiryAlerts(apps: Application[], today: string): number {
   return apps.filter((a) => isExpiryAlert(a, today)).length;
 }
 
+// 今日の日付（日本時間。朝のうちに前日の日付にならないよう JST で見る）
 export function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayJst();
 }
