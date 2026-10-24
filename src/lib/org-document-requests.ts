@@ -315,6 +315,24 @@ export function workerPending(
   });
 }
 
+// その人の書類が全部「発行」か「無し回答」（または送付済）になり、会社へ報告できる状態か。
+// 対象外・入社年で外れる書類は数えない。対象の書類が1つも無ければ false
+export function workerReadyToReport(
+  items: DocumentRequestItem[],
+  worker: RequestWorker,
+  idx: Map<string, DocumentRequestCheck>,
+): boolean {
+  let count = 0;
+  for (const item of items) {
+    if (!itemAppliesTo(item, worker.startOn)) continue;
+    const s = checkState(idx.get(checkKey(worker.id, item.id)));
+    if (s === "対象外") continue;
+    if (s !== "発行済" && s !== "送付済" && s !== "無し回答") return false;
+    count += 1;
+  }
+  return count > 0;
+}
+
 // 期限までの日数（期限が無ければ null）。負なら過ぎている
 export function daysToDue(dueOn: string | null, today: string): number | null {
   if (!dueOn) return null;

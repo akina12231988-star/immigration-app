@@ -26,6 +26,7 @@ import {
   type DocumentRequestCheck,
   setNoneReplied,
   unsetNoneReplied,
+  workerReadyToReport,
 } from "./org-document-requests";
 
 let n = 0;
@@ -160,6 +161,20 @@ describe("進み具合", () => {
     expect(p.items[0]).toMatchObject({ total: 1, sent: 1, noneReplied: 1 });
     expect(p.done).toBe(true);
     expect(workerPending(items, w2, indexChecks([none]))).toEqual([]);
+  });
+
+  it("全部が発行・無し回答（・送付済）なら会社へ報告できる状態。案内済が残っていればまだ", () => {
+    const ready = indexChecks([
+      check("w2", "a", { informed_on: "2026-10-15", issued_on: "2026-10-16" }),
+    ]);
+    expect(workerReadyToReport(items, w2, ready)).toBe(true); // b は 2025 年入社なので外れる
+    const none = indexChecks([check("w2", "a", { informed_on: "2026-10-15", none_replied_on: "2026-10-20" })]);
+    expect(workerReadyToReport(items, w2, none)).toBe(true);
+    expect(workerReadyToReport(items, w2, indexChecks([check("w2", "a", { informed_on: "2026-10-15" })]))).toBe(false);
+    // w1 は b（源泉徴収票）も対象なので、a だけ発行でもまだ
+    expect(workerReadyToReport(items, w1, ready)).toBe(false);
+    // 全部対象外なら報告する資料が無いので false
+    expect(workerReadyToReport(items, w1, indexChecks([check("w1", "a", { not_needed: true }), check("w1", "b", { not_needed: true })]))).toBe(false);
   });
 
   it("全部送ったら完了。対象が無ければ完了にしない", () => {
