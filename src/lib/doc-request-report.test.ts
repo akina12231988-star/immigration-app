@@ -47,8 +47,14 @@ describe("エクセルの一覧", () => {
     { id: "b", name: "扶養証明書", note: "", joined_year: null },
     { id: "c", name: "源泉徴収票", note: "", joined_year: 2026 },
   ];
-  const w1 = { id: "w1", name: "HA SI HIEU", kana: "ハ シ ヒエウ", nationality: "ベトナム", startOn: "2026-05-11" };
-  const w2 = { id: "w2", name: "H BOAN MLO", kana: "フー ボアン ムロ", nationality: "ベトナム", startOn: "2023-05-24" };
+  const w1 = {
+    id: "w1", name: "HA SI HIEU", kana: "ハ シ ヒエウ", nationality: "ベトナム", startOn: "2026-05-11",
+    birth: "2000-01-02", gender: "男", address: "熊本県熊本市1-2-3", assignedOffice: "本社",
+  };
+  const w2 = {
+    id: "w2", name: "H BOAN MLO", kana: "フー ボアン ムロ", nationality: "ベトナム", startOn: "2023-05-24",
+    birth: "1998-06-14", gender: "女", address: "", assignedOffice: "",
+  };
   const idx = indexChecks([
     check("w1", "a", { informed_on: "2026-10-20", issued_on: "2026-10-24" }),
     check("w1", "b", { informed_on: "2026-10-20", none_replied_on: "2026-10-24" }),
@@ -57,12 +63,12 @@ describe("エクセルの一覧", () => {
     check("w2", "b", { informed_on: "2026-10-20" }),
   ]);
 
-  it("各マスの状況を言葉にする（日付・理由つき。入社年で外れる書類はその理由）", () => {
-    expect(reportStatusLabel(items[0], w1.startOn, idx.get("w1_a"))).toBe("発行済 2026-10-24");
+  it("各マスの状況を言葉にする（添付済は日付なし。ほかは日付・理由つき。入社年で外れる書類はその理由）", () => {
+    expect(reportStatusLabel(items[0], w1.startOn, idx.get("w1_a"))).toBe("添付済");
     expect(reportStatusLabel(items[1], w1.startOn, idx.get("w1_b"))).toBe("本人から無いと回答 2026-10-24");
     expect(reportStatusLabel(items[2], w1.startOn, idx.get("w1_c"))).toBe("会社へ送付済 2026-10-24");
     expect(reportStatusLabel(items[0], w2.startOn, idx.get("w2_a"))).toBe("対象外（扶養家族なし）");
-    expect(reportStatusLabel(items[1], w2.startOn, idx.get("w2_b"))).toBe("案内済（未発行） 2026-10-20");
+    expect(reportStatusLabel(items[1], w2.startOn, idx.get("w2_b"))).toBe("案内済（未添付） 2026-10-20");
     expect(reportStatusLabel(items[2], w2.startOn, undefined)).toBe("対象外（2023年入社のため対象外）");
     expect(reportStatusLabel(items[0], w2.startOn, undefined)).toBe("未着手");
   });
@@ -75,13 +81,16 @@ describe("エクセルの一覧", () => {
       today: "2026-10-24",
     });
     expect(rows[0][0]).toBe("有限会社國崎青果 令和8年度年末調整資料");
-    expect(rows[2]).toEqual(["No.", "氏名", "フリガナ", "国籍", "入社年月日", "扶養控除申告書", "扶養証明書", "源泉徴収票", "PDF のファイル名"]);
+    expect(rows[2]).toEqual([
+      "No.", "氏名", "フリガナ", "国籍", "生年月日", "性別", "入社年月日", "営業所", "住所",
+      "扶養控除申告書", "扶養証明書", "源泉徴収票", "PDF のファイル名",
+    ]);
     expect(rows[3]).toEqual([
-      1, "HA SI HIEU", "ハ シ ヒエウ", "ベトナム", "2026-05-11",
-      "発行済 2026-10-24", "本人から無いと回答 2026-10-24", "会社へ送付済 2026-10-24",
+      1, "HA SI HIEU", "ハ シ ヒエウ", "ベトナム", "2000-01-02", "男", "2026-05-11", "本社", "熊本県熊本市1-2-3",
+      "添付済", "本人から無いと回答 2026-10-24", "会社へ送付済 2026-10-24",
       "No.1_HA SI HIEU_令和8年度年末調整資料.pdf",
     ]);
     expect(rows[4][0]).toBe(2);
-    expect(rows[4][5]).toBe("対象外（扶養家族なし）");
+    expect(rows[4][9]).toBe("対象外（扶養家族なし）");
   });
 });

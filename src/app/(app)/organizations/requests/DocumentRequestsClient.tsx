@@ -96,7 +96,7 @@ export function DocumentRequestsClient({
     <div className="space-y-3 px-4 py-4 lg:px-8">
       <p className="text-[11px] leading-relaxed text-muted">
         会社から「年末調整の書類を集めてほしい」のような依頼が来たら、ここに登録します。
-        依頼を開くと、その機関の在籍者ひとりひとり × 書類ごとに「案内した・発行した・会社に送った」をチェックできます。
+        依頼を開くと、その機関の在籍者ひとりひとり × 書類ごとに「案内した・添付した・会社に送った」をチェックできます。
       </p>
       {loadError && (
         <p role="alert" className="rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
