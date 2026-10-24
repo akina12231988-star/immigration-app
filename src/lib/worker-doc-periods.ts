@@ -78,3 +78,21 @@ export function periodKeyFor(createdAt: string, past: OrgPeriod[], hasOngoing: b
   return bestKey;
 }
 
+// 画像を「いつ時点の書類か」の新しい順に並べる（同じ日付なら登録が新しい順）。
+// 日付を指定して登録した古い在留カードが、いまの最新の画像より前に出てしまわないようにするため
+export function sortDocsByPeriodDate<T extends { effectiveOn?: string | null; createdAt: string }>(
+  docs: T[],
+): T[] {
+  return [...docs].sort((a, b) => {
+    const da = docPeriodDate(a);
+    const db = docPeriodDate(b);
+    if (da !== db) return da < db ? 1 : -1;
+    return a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0;
+  });
+}
+
+// タブの表示名（「現在」または「過去（所属機関）開始〜終了」）
+export function periodLabelFor(key: string, past: OrgPeriod[]): string {
+  const p = past.find((x) => x.key === key);
+  return p ? `過去（${p.org}）${p.start}〜${p.end}` : "現在";
+}
