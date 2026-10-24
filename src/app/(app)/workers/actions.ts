@@ -289,6 +289,22 @@ export async function deleteWorkerDoc(docId: string): Promise<{ ok: true } | Err
   const admin = createAdminClient();
   if (!admin) return { ok: false, message: "サーバー設定エラー" };
 
+  // 申請登録時の画像（listWorkerDocs が app-<application_files.id> で返す分）は、申請の添付ファイルを消す
+  // （申請詳細の許可情報からも消える。履歴から外したいだけのときも、実体はここにしか無いので削除になる）
+  if (docId.startsWith("app-")) {
+    const fileId = docId.slice(4);
+    const { data: f } = await admin
+      .from("application_files")
+      .select("storage_path")
+      .eq("id", fileId)
+      .maybeSingle();
+    const filePath = (f as { storage_path: string } | null)?.storage_path;
+    if (filePath) await admin.storage.from(BUCKET).remove([filePath]).catch(() => undefined);
+    const { error } = await admin.from("application_files").delete().eq("id", fileId);
+    if (error) return { ok: false, message: error.message };
+    return { ok: true };
+  }
+
   const { data } = await admin
     .from("worker_documents")
     .select("storage_path")
@@ -437,9 +453,23 @@ export async function listWorkerDocs(workerId: string): Promise<WorkerDocView[]>
   // 「現在」の画像（過去の在籍期間タブから登録したものを除く）が無い種別は、
   // 申請登録時の画像を現データとして補う。
   // 過去タブから「この期間に登録」した画像（effective_on あり）は当時の画像なので、
-  // それだけがあっても現在の分は補い続ける（過去を登録したら現在が消えてしまうのを防ぐ）
+  // それだけがあっても現在の分は補い続ける（過去を登録したら現在が消えてしまうのを防ぐ）。
+  // ただし「現在」にした期間（0199）に結び付いた画像は現在の画像なので、あれば補わない
+  const { data: currentPeriod } = await admin
+    .from("worker_document_periods")
+    .select("id")
+    .eq("worker_id", workerId)
+    .eq("is_current", true)
+    .limit(1)
+    .maybeSingle();
+  const currentPeriodId = (currentPeriod as { id: string } | null)?.id ?? null;
   const kinds: WorkerDocKind[] = ["在留カード", "照合結果", "指定書"];
-  const missing = kinds.filter((k) => !result.some((d) => d.kind === k && !d.effectiveOn));
+  const missing = kinds.filter(
+    (k) =>
+      !result.some(
+        (d) => d.kind === k && (!d.effectiveOn || (!!currentPeriodId && d.periodId === currentPeriodId)),
+      ),
+  );
   if (missing.length > 0) {
     const { data: apps } = await admin
       .from("immigration_applications")
@@ -497,7 +527,34 @@ export async function getWorkerLatestDocUrls(
     return data?.signedUrl ?? "";
   }
 
+  // 在留カード・指定書で「現在」にした期間（0199）。その期間に結び付いた画像が今の在留カード
+  // （0197/0199 未適用の環境では無いものとして進む）
+  const { data: currentPeriod } = await admin
+    .from("worker_document_periods")
+    .select("id")
+    .eq("worker_id", workerId)
+    .eq("is_current", true)
+    .limit(1)
+    .maybeSingle();
+  const currentPeriodId = (currentPeriod as { id: string } | null)?.id ?? null;
+
   async function latest(kind: string): Promise<string> {
+    // 「現在」にした期間に結び付いた画像を最優先（「この期間に登録」した画像は effective_on に
+    // 期間の開始日が入るので、下の「effective_on が空」の条件では拾えない）
+    if (currentPeriodId) {
+      const { data: cur } = await admin!
+        .from("worker_documents")
+        .select("storage_path")
+        .eq("worker_id", workerId)
+        .eq("kind", kind)
+        .eq("period_id", currentPeriodId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const curPath = (cur as { storage_path: string } | null)?.storage_path;
+      if (curPath) return signedFor(curPath);
+    }
+
     // 外国人管理で差し替えた worker_documents を優先
     // （過去の在籍期間タブから登録した当時の画像（effective_on あり）は最新とみなさない）
     const { data: doc } = await admin!
