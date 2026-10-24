@@ -85,6 +85,9 @@ export interface DocumentRequestCheck {
   issued_on: string | null;
   sent_on: string | null;
   not_needed: boolean;
+  // 本人から「無い」と回答があった日（案内のあと。0198）。
+  // 0198 未適用の環境でも他の保存が止まらないよう、値を入れるときだけ送る（省略可）
+  none_replied_on?: string | null;
   note: string;
   created_at: string;
   updated_at: string;
@@ -194,16 +197,41 @@ export function indexChecks(checks: DocumentRequestCheck[]): Map<string, Documen
   return new Map(checks.map((c) => [checkKey(c.worker_id, c.item_id), c]));
 }
 
-export type CheckState = "対象外" | "未着手" | "案内済" | "発行済" | "送付済";
+export type CheckState = "対象外" | "未着手" | "案内済" | "無し回答" | "発行済" | "送付済";
 
-// 1つのチェックがどこまで進んだか（送付済なら完了）
-export function checkState(c: Pick<DocumentRequestCheck, "informed_on" | "issued_on" | "sent_on" | "not_needed"> | undefined): CheckState {
+// 1つのチェックがどこまで進んだか（送付済なら完了。無し回答＝案内のあと本人から「無い」と返事があった）
+export function checkState(
+  c: Pick<DocumentRequestCheck, "informed_on" | "issued_on" | "sent_on" | "not_needed" | "none_replied_on"> | undefined,
+): CheckState {
   if (!c) return "未着手";
   if (c.not_needed) return "対象外";
   if (c.sent_on) return "送付済";
   if (c.issued_on) return "発行済";
+  if (c.none_replied_on) return "無し回答";
   if (c.informed_on) return "案内済";
   return "未着手";
+}
+
+// 「無し回答」を外すための差分。付いているときだけ null を送る（0198 未適用でも他の保存が止まらないように）
+function clearNoneReplied(c: Pick<DocumentRequestCheckInput, "none_replied_on">): Pick<DocumentRequestCheckInput, "none_replied_on"> {
+  return c.none_replied_on ? { none_replied_on: null } : {};
+}
+
+// 本人から「無い」と回答があった（案内のあと）。案内がまだなら同じ日で案内済にし、発行・送付は外す
+export function setNoneReplied(c: DocumentRequestCheckInput, today: string): DocumentRequestCheckInput {
+  return {
+    ...c,
+    not_needed: false,
+    informed_on: c.informed_on ?? today,
+    issued_on: null,
+    sent_on: null,
+    none_replied_on: today,
+  };
+}
+
+// 「無し回答」を取り消す（案内済に戻る）
+export function unsetNoneReplied(c: DocumentRequestCheckInput): DocumentRequestCheckInput {
+  return { ...c, ...clearNoneReplied(c) };
 }
 
 // 段階に日付を入れる／外す。前の段階が空なら同じ日で埋める（案内せずに発行はできないため）。
@@ -215,7 +243,8 @@ export function toggleStep(
 ): DocumentRequestCheckInput {
   const order = DOCUMENT_REQUEST_STEPS.map((s) => s.key);
   const i = order.indexOf(step);
-  const next = { ...c, not_needed: false };
+  // 段階を動かしたら「無し回答」は外す（あとで手に入って発行した、案内を取り消した など）
+  const next = { ...c, not_needed: false, ...clearNoneReplied(c) };
   if (c[step]) {
     for (const k of order.slice(i)) next[k] = null;
   } else {
@@ -231,6 +260,7 @@ export interface ItemProgress {
   issued: number;
   sent: number;
   notNeeded: number; // 対象外にした人数（入社年で外れた人も含む）
+  noneReplied: number; // 本人から「無い」と回答があった人数（対象の数には入れない）
 }
 
 export interface RequestProgress {
@@ -248,11 +278,16 @@ export function requestProgress(
 ): RequestProgress {
   const idx = indexChecks(checks);
   const perItem = items.map((item) => {
-    const p: ItemProgress = { item, total: 0, informed: 0, issued: 0, sent: 0, notNeeded: 0 };
+    const p: ItemProgress = { item, total: 0, informed: 0, issued: 0, sent: 0, notNeeded: 0, noneReplied: 0 };
     for (const { id: w, startOn } of workers) {
       const c = idx.get(checkKey(w, item.id));
       if (c?.not_needed || !itemAppliesTo(item, startOn)) {
         p.notNeeded += 1;
+        continue;
+      }
+      // 本人が持っていない書類は、会社に送る数には入れない（別に数える）
+      if (checkState(c) === "無し回答") {
+        p.noneReplied += 1;
         continue;
       }
       p.total += 1;
@@ -276,7 +311,7 @@ export function workerPending(
   return items.filter((item) => {
     if (!itemAppliesTo(item, worker.startOn)) return false;
     const s = checkState(idx.get(checkKey(worker.id, item.id)));
-    return s !== "送付済" && s !== "対象外";
+    return s !== "送付済" && s !== "対象外" && s !== "無し回答";
   });
 }
 
