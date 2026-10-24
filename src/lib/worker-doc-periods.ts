@@ -159,3 +159,24 @@ export function orderPeriodTabs(past: OrgPeriod[], manual: ManualPeriod[]): Peri
   ];
   return tabs.sort((a, b) => (a.start === b.start ? 0 : a.start > b.start ? -1 : 1));
 }
+
+// 在留カード・指定書のタブ（現在／過去の在籍期間／追加した期間）に、在留資格の履歴のどの許可を出すか。
+// 許可日で振り分ける: 追加した期間の範囲に入ればその期間、過去の在籍期間の範囲に入ればその期間、
+// どこにも入らなければ「現在」。タブの横で在留カードを見ながら番号などを入れるのに使う
+export function visaRowsForDocTab<T extends { permitDate: string }>(
+  rows: T[],
+  tabKey: string,
+  past: OrgPeriod[],
+  manual: ManualPeriod[],
+): T[] {
+  const keyFor = (d: string): string => {
+    for (const m of manual) {
+      if (m.startOn <= d && d <= (m.endOn ?? "9999-12-31")) return manualPeriodKey(m.id);
+    }
+    for (const p of past) {
+      if (p.start <= d && d <= p.end) return p.key;
+    }
+    return "current";
+  };
+  return rows.filter((r) => keyFor(r.permitDate) === tabKey);
+}
