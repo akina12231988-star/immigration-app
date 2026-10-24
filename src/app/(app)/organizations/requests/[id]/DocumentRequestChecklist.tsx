@@ -377,14 +377,23 @@ export function DocumentRequestChecklist({
       ) : rows.length === 0 ? (
         <p className="py-12 text-center text-sm text-muted">全員ぶん会社に送りました</p>
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-border bg-surface">
+        <div className="max-h-[calc(100vh-9rem)] overflow-auto rounded-2xl border border-border bg-surface">
+          {/* 表の中だけを縦横にスクロールさせ、見出し（書類名・全員に案内済を付ける）は上に、氏名は左に固定して
+              下にスクロールしても見えるようにする */}
           <table className="w-full min-w-[640px] border-collapse text-xs">
             <thead>
-              <tr className="border-b border-border bg-background text-left">
-                <th className="sticky left-0 z-10 bg-background px-3 py-2 font-bold">氏名</th>
-                <th className="px-2 py-2 font-bold">入社日</th>
+              <tr className="text-left">
+                <th className="sticky left-0 top-0 z-30 bg-background px-3 py-2 font-bold shadow-[inset_0_-1px_0_0_var(--color-border)]">
+                  氏名
+                </th>
+                <th className="sticky top-0 z-20 bg-background px-2 py-2 font-bold shadow-[inset_0_-1px_0_0_var(--color-border)]">
+                  入社日
+                </th>
                 {request.items.map((item) => (
-                  <th key={item.id} className="min-w-[11rem] px-2 py-2 font-bold">
+                  <th
+                    key={item.id}
+                    className="sticky top-0 z-20 min-w-[11rem] bg-background px-2 py-2 font-bold shadow-[inset_0_-1px_0_0_var(--color-border)]"
+                  >
                     <span className="block">{item.name}</span>
                     {item.note && <span className="block font-normal text-muted">{item.note}</span>}
                     {canEdit && !request.closed_on && (
