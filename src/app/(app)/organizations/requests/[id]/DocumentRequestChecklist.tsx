@@ -187,6 +187,12 @@ export function DocumentRequestChecklist({
     const c = unsetNoneReplied(current(workerId, itemId));
     void saveCheck({ ...c, not_needed: !c.not_needed });
   };
+  // 対象外にした理由（チェックのメモ欄に保存。変わったときだけ保存する）
+  const saveNote = (workerId: string, itemId: string, note: string) => {
+    const c = current(workerId, itemId);
+    if (note.trim() === (c.note ?? "").trim()) return;
+    void saveCheck({ ...c, note: note.trim() });
+  };
   // 案内のあと、本人から「無い」と回答があった／その取り消し
   const markNoneReplied = (workerId: string, itemId: string) =>
     void saveCheck(setNoneReplied(current(workerId, itemId), today));
@@ -466,6 +472,7 @@ export function DocumentRequestChecklist({
       <p className="text-[11px] leading-relaxed text-muted">
         マスのボタンを押すと今日の日付で記録します（案内 → 発行 → 会社へ の順。先の段階を押すと前の段階も同じ日で入ります）。
         もう一度押すと取り消せます。その人には要らない書類は「対象外」にすると数に入りません。
+        「対象外」にしたマスには理由を入れておけます（入力して別の場所をタップすると保存されます）。
         案内したあと本人から「持っていない」と返事があったら「本人から無いと回答」を押すと、その日付で記録され、会社に送る数からは外れます（あとで手に入って「発行」を押すと自動で外れます）。
         案内する書類の「案内」を押してから、行の右端の「案内文を表示」を押すと、押した書類をまとめた本人への案内文（日本語＋母国語）が出てコピーできます。
         受け取った書類の写真・PDF はマスにドラッグ＆ドロップ（または「添付」）で保管でき、添付すると「発行」まで自動で付きます。
@@ -590,15 +597,33 @@ export function DocumentRequestChecklist({
                           {yearReason ? (
                             <span className="inline-block rounded-lg bg-background px-2 py-1 text-[11px] text-muted">{yearReason}</span>
                           ) : state === "対象外" ? (
-                            <button
-                              type="button"
-                              onClick={() => canEdit && toggleNotNeeded(w.id, item.id)}
-                              disabled={!canEdit}
-                              className="rounded-lg bg-background px-2 py-1 text-[11px] text-muted"
-                              title="押すと対象に戻します"
-                            >
-                              対象外
-                            </button>
+                            <div className="flex flex-col items-start gap-1">
+                              <button
+                                type="button"
+                                onClick={() => canEdit && toggleNotNeeded(w.id, item.id)}
+                                disabled={!canEdit}
+                                className="rounded-lg bg-background px-2 py-1 text-[11px] text-muted"
+                                title="押すと対象に戻します"
+                              >
+                                対象外
+                              </button>
+                              {/* 対象外にした理由（別の場所をタップするか Enter で保存。メモ欄に残る） */}
+                              {canEdit ? (
+                                <input
+                                  key={c?.note ?? ""}
+                                  defaultValue={c?.note ?? ""}
+                                  placeholder="理由（例: 扶養家族なし）"
+                                  onBlur={(e) => saveNote(w.id, item.id, e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                                  }}
+                                  className="min-h-[26px] w-full min-w-[9rem] rounded-lg border border-dashed border-border bg-surface px-1.5 text-[11px] focus:border-brand focus:outline-none"
+                                  aria-label={`${w.name}さんの「${item.name}」を対象外にした理由`}
+                                />
+                              ) : (
+                                c?.note && <span className="text-[10px] text-muted">理由: {c.note}</span>
+                              )}
+                            </div>
                           ) : (
                             <div className="flex flex-wrap items-center gap-1">
                               {DOCUMENT_REQUEST_STEPS.map((s) => {
