@@ -1931,6 +1931,12 @@ export function WorkerDetail({
         canEdit={canEdit}
         histories={worker.work_histories}
         periodNote={worker.residence_period_note ?? ""}
+        card={{
+          cardNo: worker.residence_card_no,
+          status: worker.residence_status,
+          permitDate: worker.residence_permit_date,
+          expiryDate: worker.residence_expiry_date,
+        }}
       />
       </div>
 

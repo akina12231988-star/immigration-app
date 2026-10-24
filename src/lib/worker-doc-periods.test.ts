@@ -9,6 +9,7 @@ import {
   periodKeyForDoc,
   periodLabelFor,
   sortDocsByPeriodDate,
+  visaRowsForDocTab,
 } from "./worker-doc-periods";
 import type { WorkHistoryRow } from "@/types/db";
 
@@ -193,5 +194,30 @@ describe("orderPeriodTabs", () => {
     ]);
     expect(tabs[0].manual?.id).toBe("p1");
     expect(tabs[1].manual).toBeNull();
+  });
+});
+
+describe("visaRowsForDocTab", () => {
+  const past = buildPastPeriods(
+    [history({ org_name: "前の会社", start_date: "2025-05-08", end_date: "2025-11-11" })],
+    TODAY,
+  );
+  const manual = [{ id: "p1", label: "", startOn: "2025-11-11", endOn: "2026-11-11" }];
+  const rows = [
+    { permitDate: "2025-05-10", cardNo: "A" }, // 前の会社の在籍中
+    { permitDate: "2025-11-11", cardNo: "B" }, // 退職日と同じ日 → 追加した期間が優先
+    { permitDate: "2026-07-01", cardNo: "C" }, // 追加した期間の中
+    { permitDate: "2027-01-01", cardNo: "D" }, // どこにも入らない → 現在
+  ];
+
+  it("許可日で、追加した期間 → 過去の在籍期間 → 現在 の順に振り分ける", () => {
+    expect(visaRowsForDocTab(rows, manualPeriodKey("p1"), past, manual).map((r) => r.cardNo)).toEqual(["B", "C"]);
+    expect(visaRowsForDocTab(rows, past[0].key, past, manual).map((r) => r.cardNo)).toEqual(["A"]);
+    expect(visaRowsForDocTab(rows, "current", past, manual).map((r) => r.cardNo)).toEqual(["D"]);
+  });
+
+  it("追加した期間に終了日が無ければ、開始日以降はすべてその期間", () => {
+    const open = [{ id: "p2", label: "", startOn: "2026-01-01", endOn: null }];
+    expect(visaRowsForDocTab(rows, manualPeriodKey("p2"), past, open).map((r) => r.cardNo)).toEqual(["C", "D"]);
   });
 });

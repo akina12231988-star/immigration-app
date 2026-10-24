@@ -35,6 +35,7 @@ import {
   type ManualPeriod,
 } from "@/lib/worker-doc-periods";
 import type { WorkHistoryRow } from "@/types/db";
+import { WorkerDocCardInfo, type WorkerCardInfo } from "./WorkerDocCardInfo";
 
 type Kind = "在留カード" | "照合結果" | "指定書";
 
@@ -62,11 +63,14 @@ export function WorkerDocuments({
   canEdit,
   histories = [],
   periodNote = "",
+  card = null,
 }: {
   workerId: string;
   canEdit: boolean;
   histories?: WorkHistoryRow[];
   periodNote?: string; // 在留期間の注意事項（申請の許可情報の最新。画像の下に薄い赤で出す）
+  // 今の在留カードの情報（あれば、画像の下に在留カードの情報の入力欄を出す。在留資格の履歴に保存）
+  card?: WorkerCardInfo | null;
 }) {
   const [docs, setDocs] = useState<WorkerDocView[]>([]);
   const [manual, setManual] = useState<ManualPeriod[]>([]);
@@ -393,6 +397,19 @@ export function WorkerDocuments({
           onError={setError}
         />
       </div>
+      {/* この在留カードの情報（許可日・在留資格・在留期限・在留カード番号）。画像を見ながら入れて、在留資格の履歴に保存する */}
+      {card && (
+        <WorkerDocCardInfo
+          workerId={workerId}
+          card={card}
+          tabKey={period}
+          tabLabel={isCurrent ? "現在" : (tabs.find((t) => t.key === period)?.label ?? "")}
+          past={past}
+          manual={manual}
+          selectedManual={selectedManual}
+          canEdit={canEdit}
+        />
+      )}
       {/* 在留期間の注意事項（申請詳細の許可情報で入れた最新の文） */}
       {periodNote.trim() && (
         <div className="mt-3 rounded-xl bg-seal/10 px-3 py-2">
@@ -410,6 +427,11 @@ export function WorkerDocuments({
           タブの右の「期間を追加」を押し、名前（任意）・開始日（例: 2025-11-11）・終了日（例: 2026-11-11）を入れて「追加」すると、その期間のタブが増えます。
           増えたタブを開き、在留カード・照合結果・指定書それぞれの「この期間に登録」（枠へのドロップも同じ）で画像を登録してください。登録した画像はその期間のタブにだけ出て、「現在」や過去の在籍期間の画像は変わりません。
           期間の名前や日付は、そのタブを開いて「期間を編集」で直せます。「期間を削除」しても登録した画像は消えず、日付で元の在籍期間または「現在」に振り分けられます。
+        </p>
+        <p>
+          <span className="font-bold">在留カードの番号などの入力</span>:
+          各タブの画像の下の「この在留カードの情報」で、画像を見ながら許可日・在留資格・在留期限・在留カード番号を入れられます。
+          保存すると在留資格の履歴に入り、A4印刷（個人）の「在留資格の履歴」の表に古い順で自動で並びます。
         </p>
       </div>
     </Card>
