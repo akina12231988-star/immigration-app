@@ -108,15 +108,13 @@ export function WorkerDocuments({
       .then((rows) => setManual(rows))
       .catch(() => undefined);
 
-  // 間違えて登録した画像の削除（保存したファイルの実体も消える）
+  // 間違えて登録した画像の削除（保存したファイルの実体も消える）。
+  // 申請登録時の画像は申請の添付ファイルそのものなので、消すと申請詳細の許可情報からも消える
   const removeDoc = async (doc: WorkerDocView) => {
-    if (
-      !window.confirm(
-        `「${doc.kind}」の登録データ（${doc.downloadName || doc.fileName || ""}）を削除します。元に戻せません。よろしいですか？`,
-      )
-    ) {
-      return;
-    }
+    const message = doc.fromApplication
+      ? `「${doc.kind}」の申請登録時の画像（申請詳細の許可情報で登録した画像）を削除します。申請詳細からも消えます。元に戻せません。よろしいですか？`
+      : `「${doc.kind}」の登録データ（${doc.downloadName || doc.fileName || ""}）を削除します。元に戻せません。よろしいですか？`;
+    if (!window.confirm(message)) return;
     setError(null);
     const res = await deleteWorkerDoc(doc.id);
     if (!res.ok) {
@@ -620,8 +618,8 @@ function DocColumn({
           PDFを別タブで大きく開く
         </a>
       )}
-      {/* 間違えて登録したときの削除（申請登録時の画像はここでは消せない） */}
-      {latest && canEdit && !latest.fromApplication && (
+      {/* 間違えて登録したときの削除（申請登録時の画像は申請詳細からも消える旨を確認してから） */}
+      {latest && canEdit && (
         <button
           type="button"
           onClick={() => void onDelete(latest)}
@@ -663,8 +661,8 @@ function DocColumn({
                     <img src={d.url} alt="履歴" className="h-12 w-12 rounded border border-border object-cover" />
                   )}
                 </a>
-                {/* 履歴の1枚だけを消す（申請登録時の画像はここでは消せない） */}
-                {canEdit && !d.fromApplication && (
+                {/* 履歴の1枚だけを消す（申請登録時の画像も消せる。申請詳細からも消える） */}
+                {canEdit && (
                   <button
                     type="button"
                     onClick={() => void onDelete(d)}
