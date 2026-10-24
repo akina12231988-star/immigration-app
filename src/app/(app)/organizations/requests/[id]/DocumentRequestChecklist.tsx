@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -8,6 +8,8 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  FileDown,
+  FileSpreadsheet,
   FileText,
   Link2,
   Loader2,
@@ -23,6 +25,11 @@ import {
 import { messengerWebUrl } from "@/lib/messenger-link";
 import { Card } from "@/components/ui/Card";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Modal } from "@/components/ui/Modal";
+import JSZip from "jszip";
+import { defaultReportSuffix, reportBundleName, reportPdfName, reportSheetRows } from "@/lib/doc-request-report";
+import { blobToPdfPart, mergePdfParts, type PdfPart } from "@/lib/pdf-merge";
+import { buildXlsx, downloadBlob } from "@/lib/xlsx-export";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { createClient } from "@/lib/supabase/client";
 import { compressImage } from "@/lib/image-compress";
@@ -59,6 +66,7 @@ import {
   toggleStep,
   unsetNoneReplied,
   workerPending,
+  workerReadyToReport,
   type DocumentRequestCheck,
   type DocumentRequestCheckInput,
   type DocumentRequestFile,
@@ -183,16 +191,215 @@ export function DocumentRequestChecklist({
       return !c?.not_needed && !!c?.informed_on && checkState(c) !== "無し回答";
     });
   const dialogWorker = textDialog ? workers.find((w) => w.id === textDialog.workerId) : undefined;
+
+  // 会社へ報告する出力（氏名の横のチェックで人を選ぶ）。
+  //   PDF: 1人分の資料（マスに添付したもの。無ければ外国人詳細に紐づいているもの）をひとつの PDF にまとめ、
+  //        No.{番号}_{氏名}_{末尾}.pdf の名前にする（複数人なら ZIP にまとめる。一覧のエクセルも同梱）
+  //   エクセル: 選んだ人の一覧（No.・氏名・入社年月日・各書類の状況）
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [suffix, setSuffix] = useState(() => defaultReportSuffix(initialRequest.title, today));
+  const [exporting, setExporting] = useState<"pdf" | "xlsx" | null>(null);
+  const [exportInfo, setExportInfo] = useState<string | null>(null);
+  const toggleSelected = (workerId: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(workerId)) next.delete(workerId);
+      else next.add(workerId);
+      return next;
+    });
+  // 表に出ている人のうち、会社へ報告できる状態（全部が発行・無し回答）の人を全部選ぶ／外す
+  const readyRows = rows.filter((w) => workerReadyToReport(request.items, w, idx));
+  const allReadySelected = readyRows.length > 0 && readyRows.every((w) => selected.has(w.id));
+  const toggleAllReady = () =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allReadySelected) readyRows.forEach((w) => next.delete(w.id));
+      else readyRows.forEach((w) => next.add(w.id));
+      return next;
+    });
+  // 選んだ人（表の並び順。この順が No. になる）
+  const selectedWorkers = rows.filter((w) => selected.has(w.id));
+  const sheetRows = () =>
+    reportSheetRows(request.items, selectedWorkers, idx, {
+      organizationName,
+      requestTitle: suffix,
+      dueOn: request.due_on,
+      today,
+    });
+  const xlsxBlob = () =>
+    buildXlsx([
+      {
+        name: "添付一覧",
+        rows: sheetRows(),
+        headerRows: 3,
+        columnWidths: [6, 24, 22, 12, 14, ...request.items.map(() => 28), 48],
+      },
+    ]);
+  // 1人分の資料を集める（マスに添付した資料。無い書類は外国人詳細に紐づいている資料）。
+  // リンクで登録されている資料は PDF に入れられないので URL を別に返す
+  const collectParts = async (w: ChecklistWorker): Promise<{ parts: PdfPart[]; links: string[]; skipped: string[] }> => {
+    const parts: PdfPart[] = [];
+    const links: string[] = [];
+    const skipped: string[] = [];
+    for (const item of request.items) {
+      if (joinedYearExcludedReason(item, w.startOn)) continue;
+      const c = idx.get(checkKey(w.id, item.id));
+      if (c?.not_needed) continue;
+      const cellFiles = filesByCell.get(checkKey(w.id, item.id)) ?? [];
+      for (const f of cellFiles) {
+        const res = await getDocRequestFilePreviewUrl(f.id);
+        if (!res.ok) throw new Error(res.message);
+        const part = await blobToPdfPart(await (await fetch(res.url)).blob(), f.file_name);
+        if (part) parts.push(part);
+        else skipped.push(`${item.name}（${f.file_name}）`);
+      }
+      if (cellFiles.length === 0) {
+        const linked = findOnboardingDocFor(item, onboardingByWorker.get(w.id) ?? []);
+        if (linked?.external_url) {
+          links.push(`${w.name} ${item.name}: ${linked.external_url}`);
+        } else if (linked) {
+          const res = await getOnboardingDocPreviewUrl(linked.id);
+          if (!res.ok) throw new Error(res.message);
+          const part = await blobToPdfPart(await (await fetch(res.url)).blob(), linked.file_name || "");
+          if (part) parts.push(part);
+          else skipped.push(`${item.name}（${linked.file_name || "ファイル"}）`);
+        }
+      }
+    }
+    return { parts, links, skipped };
+  };
+  const exportPdf = async () => {
+    if (selectedWorkers.length === 0) return;
+    setExporting("pdf");
+    setError(null);
+    setExportInfo(null);
+    try {
+      const pdfs: { name: string; bytes: Uint8Array }[] = [];
+      const links: string[] = [];
+      const noFiles: string[] = [];
+      const skipped: string[] = [];
+      for (let i = 0; i < selectedWorkers.length; i++) {
+        const w = selectedWorkers[i];
+        const got = await collectParts(w);
+        links.push(...got.links);
+        skipped.push(...got.skipped.map((x) => `${w.name} ${x}`));
+        if (got.parts.length === 0) {
+          noFiles.push(w.name);
+          continue;
+        }
+        pdfs.push({ name: reportPdfName(i + 1, w.name, suffix), bytes: await mergePdfParts(got.parts) });
+      }
+      if (pdfs.length === 0) {
+        setExportInfo("選んだ人に PDF にできる資料がありません（添付・紐づけが無いか、全部「本人から無いと回答あり」です）。");
+        return;
+      }
+      if (pdfs.length === 1 && selectedWorkers.length === 1 && links.length === 0) {
+        downloadBlob(new Blob([pdfs[0].bytes as BlobPart], { type: "application/pdf" }), pdfs[0].name);
+      } else {
+        const zip = new JSZip();
+        for (const f of pdfs) zip.file(f.name, f.bytes);
+        zip.file(reportBundleName(suffix, "xlsx"), await xlsxBlob());
+        if (links.length > 0) zip.file("リンクの資料.txt", links.join("\n"));
+        downloadBlob(await zip.generateAsync({ type: "blob" }), reportBundleName(suffix, "zip"));
+      }
+      setExportInfo(
+        `${pdfs.length}名分の PDF を出力しました（${pdfs.map((f) => f.name).join("、")}）。` +
+          (pdfs.length > 1 || links.length > 0 ? "ZIP の中に一覧のエクセルも入っています。" : "") +
+          (noFiles.length > 0 ? `資料が無いため出していない人: ${noFiles.join("、")}。` : "") +
+          (links.length > 0 ? `リンクで登録されている資料 ${links.length}件は PDF に入らないので「リンクの資料.txt」から開いてください。` : "") +
+          (skipped.length > 0 ? `PDF にできなかったファイル: ${skipped.join("、")}。` : "") +
+          "会社へ送ったら、行の右端の「会社へ をまとめて付ける」で記録できます。",
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "PDF を作れませんでした");
+    } finally {
+      setExporting(null);
+    }
+  };
+  const exportXlsx = async () => {
+    if (selectedWorkers.length === 0) return;
+    setExporting("xlsx");
+    setError(null);
+    setExportInfo(null);
+    try {
+      downloadBlob(await xlsxBlob(), reportBundleName(suffix, "xlsx"));
+      setExportInfo(`${selectedWorkers.length}名の一覧をエクセルで出力しました（${reportBundleName(suffix, "xlsx")}）。`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "エクセルを作れませんでした");
+    } finally {
+      setExporting(null);
+    }
+  };
+  // 会社へ送ったあと、その人の 発行済 の書類を全部「会社へ」にする（無し回答・対象外はそのまま）
+  const sendAllForWorker = async (w: ChecklistWorker) => {
+    const inputs = request.items
+      .filter((i) => !joinedYearExcludedReason(i, w.startOn))
+      .map((i) => current(w.id, i.id))
+      .filter((c) => checkState(c) === "発行済")
+      .map((c) => toggleStep(c, "sent_on", today));
+    if (inputs.length === 0) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const rows = await upsertDocumentRequestChecks(createClient(), inputs);
+      const keys = new Set(rows.map((r) => checkKey(r.worker_id, r.item_id)));
+      setChecks((prev) => [...prev.filter((c) => !keys.has(checkKey(c.worker_id, c.item_id))), ...rows]);
+    } catch (err) {
+      setError(dbErrorMessage(err, MIGRATION, "まとめて保存できませんでした"));
+    } finally {
+      setBusy(false);
+    }
+  };
   const toggleNotNeeded = (workerId: string, itemId: string) => {
     const c = unsetNoneReplied(current(workerId, itemId));
     void saveCheck({ ...c, not_needed: !c.not_needed });
   };
-  // 対象外にした理由（チェックのメモ欄に保存。変わったときだけ保存する）
-  const saveNote = (workerId: string, itemId: string, note: string) => {
-    const c = current(workerId, itemId);
-    if (note.trim() === (c.note ?? "").trim()) return;
-    void saveCheck({ ...c, note: note.trim() });
+  // 対象外にした理由（チェックのメモ欄に保存）。「編集」で入力欄を開き、「保存」で保存する。
+  // 入力中にページを移動しようとしたら、保存するか聞く
+  const [noteDraft, setNoteDraft] = useState<{ workerId: string; itemId: string; value: string; original: string } | null>(null);
+  const noteDirty = !!noteDraft && noteDraft.value.trim() !== noteDraft.original.trim();
+  // 未保存のまま移動・別のマスの編集をしようとしたときの確認（proceed＝保存の有無を決めたあとにする動き）
+  const [leaveDialog, setLeaveDialog] = useState<{ proceed: () => void } | null>(null);
+  const startNote = (workerId: string, itemId: string) => {
+    const open = () => {
+      const note = current(workerId, itemId).note ?? "";
+      setNoteDraft({ workerId, itemId, value: note, original: note });
+    };
+    if (noteDirty) setLeaveDialog({ proceed: open });
+    else open();
   };
+  const saveNoteDraft = async () => {
+    if (!noteDraft) return;
+    const c = current(noteDraft.workerId, noteDraft.itemId);
+    if (noteDraft.value.trim() !== (c.note ?? "").trim()) await saveCheck({ ...c, note: noteDraft.value.trim() });
+    setNoteDraft(null);
+  };
+  useEffect(() => {
+    if (!noteDirty) return;
+    // 再読み込み・タブを閉じるとき（ブラウザの標準の確認が出る）
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    // 画面の中のリンクで別のページへ移るとき（先にこちらの確認を出す）
+    const onClick = (e: MouseEvent) => {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const a = (e.target as HTMLElement | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
+      if (!a || a.target === "_blank" || a.hasAttribute("download")) return;
+      const url = new URL(a.href, window.location.href);
+      if (url.origin !== window.location.origin) return;
+      if (url.pathname === window.location.pathname && url.search === window.location.search) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const href = `${url.pathname}${url.search}${url.hash}`;
+      setLeaveDialog({ proceed: () => router.push(href) });
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    document.addEventListener("click", onClick, true);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      document.removeEventListener("click", onClick, true);
+    };
+  }, [noteDirty, router]);
   // 案内のあと、本人から「無い」と回答があった／その取り消し
   const markNoneReplied = (workerId: string, itemId: string) =>
     void saveCheck(setNoneReplied(current(workerId, itemId), today));
@@ -413,6 +620,54 @@ export function DocumentRequestChecklist({
           {error}
         </p>
       )}
+      {exportInfo && (
+        <p role="status" className="rounded-lg bg-brand/10 px-3 py-2 text-xs font-bold text-brand">
+          {exportInfo}
+        </p>
+      )}
+
+      {/* 会社へ報告する出力（氏名の横のチェックで選んだ人） */}
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-brand/40 bg-brand/5 px-3 py-2 text-xs">
+          <span className="font-bold text-brand">選択 {selectedWorkers.length}名</span>
+          <label className="flex items-center gap-1 text-[11px] font-bold text-muted">
+            ファイル名の末尾
+            <input
+              value={suffix}
+              onChange={(e) => setSuffix(e.target.value)}
+              className="min-h-[32px] w-56 rounded-lg border border-border bg-surface px-2 text-xs text-foreground focus:border-brand focus:outline-none"
+              aria-label="PDF のファイル名の末尾"
+            />
+          </label>
+          <span className="text-[11px] text-muted">
+            → {selectedWorkers[0] ? reportPdfName(1, selectedWorkers[0].name, suffix) : ""}
+            {selectedWorkers.length > 1 && " …（表の並び順に No. が付きます）"}
+          </span>
+          <button
+            type="button"
+            onClick={() => void exportPdf()}
+            disabled={!!exporting}
+            title="1人分の資料（マスに添付したもの。無ければ外国人詳細に紐づいているもの）をひとつの PDF にまとめます。複数人なら ZIP（一覧のエクセル同梱）"
+            className="inline-flex min-h-[32px] items-center gap-1 rounded-lg bg-brand px-3 font-bold text-brand-foreground disabled:opacity-50"
+          >
+            {exporting === "pdf" ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />}
+            {exporting === "pdf" ? "PDF を作成中…" : `PDF を出力（${selectedWorkers.length}名）`}
+          </button>
+          <button
+            type="button"
+            onClick={() => void exportXlsx()}
+            disabled={!!exporting}
+            title="選んだ人の一覧（No.・氏名・入社年月日・各書類の状況）をエクセルで出します"
+            className="inline-flex min-h-[32px] items-center gap-1 rounded-lg border border-brand px-3 font-bold text-brand disabled:opacity-50"
+          >
+            <FileSpreadsheet size={13} />
+            一覧をエクセルで出力
+          </button>
+          <button type="button" onClick={() => setSelected(new Set())} className="text-[11px] font-bold text-muted underline">
+            選択を解除
+          </button>
+        </div>
+      )}
 
       {/* チェック表 */}
       <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -472,9 +727,12 @@ export function DocumentRequestChecklist({
       <p className="text-[11px] leading-relaxed text-muted">
         マスのボタンを押すと今日の日付で記録します（案内 → 発行 → 会社へ の順。先の段階を押すと前の段階も同じ日で入ります）。
         もう一度押すと取り消せます。その人には要らない書類は「対象外」にすると数に入りません。
-        「対象外」にしたマスには理由を入れておけます（入力して別の場所をタップすると保存されます）。
+        「対象外」にしたマスには「理由を入れる」で理由を入れておけます（「保存」を押すと保存。保存せずにページを移ろうとすると確認が出ます）。
         案内したあと本人から「持っていない」と返事があったら「本人から無いと回答」を押すと、その日付で記録され、会社に送る数からは外れます（あとで手に入って「発行」を押すと自動で外れます）。
         案内する書類の「案内」を押してから、行の右端の「案内文を表示」を押すと、押した書類をまとめた本人への案内文（日本語＋母国語）が出てコピーできます。
+        全部の書類が「発行」か「無し回答」になった人は会社へ報告できる状態です（右端に表示。見出しのチェックでその人たちを全部選べます）。氏名の横のチェックで人を選ぶと、上に「PDF を出力」「一覧をエクセルで出力」が出ます。
+        PDF は 1人分の資料（マスに添付したもの。無ければ外国人詳細に紐づいているもの）をひとつにまとめ、「No.番号_氏名_末尾」（末尾は変えられます。例: 令和8年度年末調整資料）の名前で出ます。複数人なら ZIP にまとまり、一覧のエクセルも入ります。
+        送ったら右端の「会社へ をまとめて付ける」で発行済の書類を全部「会社へ」にできます。
         受け取った書類の写真・PDF はマスにドラッグ＆ドロップ（または「添付」）で保管でき、添付すると「発行」まで自動で付きます。
         外国人詳細の「入社時に送る資料」に同じ書類が添付済みなら、マスに「外国人詳細に添付済み」と出て、押すとそのデータを開けます。
         {yearItems.length > 0 && (
@@ -500,7 +758,19 @@ export function DocumentRequestChecklist({
             <thead>
               <tr className="text-left">
                 <th className="sticky left-0 top-0 z-30 bg-background px-3 py-2 font-bold shadow-[inset_0_-1px_0_0_var(--color-border)]">
-                  氏名
+                  <span className="flex items-center gap-1.5">
+                    {/* 会社へ報告できる状態の人を全部選ぶ／外す */}
+                    <input
+                      type="checkbox"
+                      checked={allReadySelected}
+                      disabled={readyRows.length === 0}
+                      onChange={toggleAllReady}
+                      className="h-4 w-4"
+                      title={readyRows.length === 0 ? "会社へ報告できる状態の人がまだいません" : `会社へ報告できる状態の${readyRows.length}名を全部選ぶ／外す`}
+                      aria-label="会社へ報告できる状態の人を全部選ぶ"
+                    />
+                    氏名
+                  </span>
                 </th>
                 <th className="sticky top-0 z-20 bg-background px-2 py-2 font-bold shadow-[inset_0_-1px_0_0_var(--color-border)]">
                   入社日
@@ -525,9 +795,9 @@ export function DocumentRequestChecklist({
                     )}
                   </th>
                 ))}
-                {/* 行の右端: その人の「案内」を押した書類をまとめた案内文（日本語＋母国語） */}
+                {/* 行の右端: 本人への案内文と、会社へ送る資料のまとめ保存 */}
                 <th className="sticky right-0 top-0 z-30 bg-background px-2 py-2 font-bold shadow-[inset_0_-1px_0_0_var(--color-border),inset_1px_0_0_0_var(--color-border)]">
-                  案内文
+                  案内文・会社へ
                 </th>
               </tr>
             </thead>
@@ -538,10 +808,20 @@ export function DocumentRequestChecklist({
                 return (
                   <tr key={w.id} className={`border-b border-border/60 ${pending === 0 ? "bg-status-approved-bg/40" : ""}`}>
                     <td className="sticky left-0 z-10 bg-surface px-3 py-2 align-top">
-                      <Link href={`/workers/${w.id}`} className="inline-flex items-center gap-1 font-bold text-brand">
-                        <UserRound size={12} />
-                        {w.name}
-                      </Link>
+                      <span className="flex items-start gap-1.5">
+                        {/* 会社へ報告する出力（PDF・エクセル）に入れる人を選ぶ */}
+                        <input
+                          type="checkbox"
+                          checked={selected.has(w.id)}
+                          onChange={() => toggleSelected(w.id)}
+                          className="mt-0.5 h-4 w-4"
+                          aria-label={`${w.name}さんを出力に入れる`}
+                        />
+                        <Link href={`/workers/${w.id}`} className="inline-flex items-center gap-1 font-bold text-brand">
+                          <UserRound size={12} />
+                          {w.name}
+                        </Link>
+                      </span>
                       <span className="block text-[10px] text-muted">
                         {w.kana}
                         {w.nationality && ` ・ ${w.nationality}`}
@@ -607,21 +887,52 @@ export function DocumentRequestChecklist({
                               >
                                 対象外
                               </button>
-                              {/* 対象外にした理由（別の場所をタップするか Enter で保存。メモ欄に残る） */}
-                              {canEdit ? (
-                                <input
-                                  key={c?.note ?? ""}
-                                  defaultValue={c?.note ?? ""}
-                                  placeholder="理由（例: 扶養家族なし）"
-                                  onBlur={(e) => saveNote(w.id, item.id, e.target.value)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                                  }}
-                                  className="min-h-[26px] w-full min-w-[9rem] rounded-lg border border-dashed border-border bg-surface px-1.5 text-[11px] focus:border-brand focus:outline-none"
-                                  aria-label={`${w.name}さんの「${item.name}」を対象外にした理由`}
-                                />
+                              {/* 対象外にした理由（「編集」で入力欄を開き「保存」で保存。メモ欄に残る） */}
+                              {canEdit && noteDraft && noteDraft.workerId === w.id && noteDraft.itemId === item.id ? (
+                                <div className="flex w-full min-w-[10rem] flex-col gap-1">
+                                  <input
+                                    autoFocus
+                                    value={noteDraft.value}
+                                    onChange={(e) => setNoteDraft({ ...noteDraft, value: e.target.value })}
+                                    placeholder="理由（例: 扶養家族なし）"
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter" && !e.nativeEvent.isComposing) void saveNoteDraft();
+                                      if (e.key === "Escape") setNoteDraft(null);
+                                    }}
+                                    className="min-h-[28px] w-full rounded-lg border border-brand bg-surface px-1.5 text-[11px] focus:outline-none"
+                                    aria-label={`${w.name}さんの「${item.name}」を対象外にした理由`}
+                                  />
+                                  <div className="flex gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => void saveNoteDraft()}
+                                      className="rounded-lg bg-brand px-2 py-0.5 text-[10px] font-bold text-brand-foreground"
+                                    >
+                                      保存
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setNoteDraft(null)}
+                                      className="rounded-lg border border-border px-2 py-0.5 text-[10px] font-bold text-muted"
+                                    >
+                                      やめる
+                                    </button>
+                                  </div>
+                                </div>
                               ) : (
-                                c?.note && <span className="text-[10px] text-muted">理由: {c.note}</span>
+                                <div className="flex flex-wrap items-center gap-1">
+                                  {c?.note && <span className="text-[10px] text-muted">理由: {c.note}</span>}
+                                  {canEdit && (
+                                    <button
+                                      type="button"
+                                      onClick={() => startNote(w.id, item.id)}
+                                      className="inline-flex items-center gap-0.5 text-[10px] font-bold text-brand underline"
+                                    >
+                                      <Pencil size={10} />
+                                      {c?.note ? "編集" : "理由を入れる"}
+                                    </button>
+                                  )}
+                                </div>
                               )}
                             </div>
                           ) : (
@@ -743,11 +1054,17 @@ export function DocumentRequestChecklist({
                         </td>
                       );
                     })}
-                    {/* その人の「案内」を押した書類をまとめた案内文を出す（押した書類が無ければ押せない） */}
+                    {/* その人の「案内」を押した書類をまとめた案内文を出す（押した書類が無ければ押せない）。
+                        全部が発行・無し回答になった人は、会社へ送る資料のまとめ保存と「会社へ」のまとめ付け */}
                     <td className="sticky right-0 z-10 bg-surface px-2 py-2 align-top shadow-[inset_1px_0_0_0_var(--color-border)]">
                       {(() => {
                         const n = informedItemsOf(w).length;
+                        const ready = workerReadyToReport(request.items, w, idx);
+                        const issuedLeft = request.items.filter(
+                          (i) => !joinedYearExcludedReason(i, w.startOn) && checkState(idx.get(checkKey(w.id, i.id))) === "発行済",
+                        ).length;
                         return (
+                          <div className="flex flex-col items-start gap-1">
                           <button
                             type="button"
                             onClick={() => setTextDialog({ workerId: w.id })}
@@ -762,6 +1079,24 @@ export function DocumentRequestChecklist({
                             <MessageSquareText size={12} />
                             案内文を表示{n > 0 && `（${n}）`}
                           </button>
+                          {ready && (
+                            <>
+                              <span className="text-[10px] font-bold text-status-approved-fg">会社へ報告できる状態</span>
+                              {canEdit && issuedLeft > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => void sendAllForWorker(w)}
+                                  disabled={busy}
+                                  title="発行済の書類を全部、今日の日付で「会社へ」にします（無し回答・対象外はそのまま）"
+                                  className="inline-flex min-h-[26px] items-center gap-1 whitespace-nowrap rounded-lg border border-border px-2 text-[10px] font-bold text-brand disabled:opacity-50"
+                                >
+                                  <Check size={11} />
+                                  会社へ をまとめて付ける（{issuedLeft}）
+                                </button>
+                              )}
+                            </>
+                          )}
+                          </div>
                         );
                       })()}
                     </td>
@@ -809,6 +1144,46 @@ export function DocumentRequestChecklist({
           dueOn={request.due_on}
         />
       )}
+      {/* 対象外の理由を保存せずに移動・別のマスの編集をしようとしたとき */}
+      <Modal open={!!leaveDialog} title="理由を保存していません" onClose={() => setLeaveDialog(null)}>
+        <div>
+          <p className="mb-4 text-sm leading-relaxed">
+            入力した「対象外」の理由がまだ保存されていません。保存しますか？
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const d = leaveDialog;
+                setLeaveDialog(null);
+                void saveNoteDraft().then(() => d?.proceed());
+              }}
+              className="min-h-[40px] rounded-xl bg-brand px-4 text-sm font-bold text-brand-foreground"
+            >
+              保存する
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const d = leaveDialog;
+                setLeaveDialog(null);
+                setNoteDraft(null);
+                d?.proceed();
+              }}
+              className="min-h-[40px] rounded-xl border border-border px-4 text-sm font-bold text-seal"
+            >
+              保存しない
+            </button>
+            <button
+              type="button"
+              onClick={() => setLeaveDialog(null)}
+              className="min-h-[40px] rounded-xl border border-border px-4 text-sm font-bold text-muted"
+            >
+              戻る
+            </button>
+          </div>
+        </div>
+      </Modal>
       <ConfirmDialog
         open={confirmDelete}
         title="この依頼を削除しますか？"
