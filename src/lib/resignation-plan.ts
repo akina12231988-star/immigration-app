@@ -90,3 +90,44 @@ export function isPlannedLeaving(
 export function leavingDateLabel(d: string | null): string {
   return d ? d.replaceAll("-", "/") : "未定";
 }
+
+// 外国人詳細の TODO 欄に出す、退職の記録のひとこと（区分・届出の要否・退職日・退職予定・メモ）。
+// 随時報告書を作らない特定活動の記録（TODO が無い）でも、退職予定があることが外国人詳細で分かるようにする
+export interface ResignationTodoSummary {
+  title: string; // 例:「退職予定（許可が降りてから退職）」「退職日 2026/10/15」
+  badge: string; // 例:「届出不要」「随時報告書 準備中」
+  detail: string; // 例:「自己都合 ・ 在留資格 特定活動 ・ 退職予定のメモ: …」
+  planned: boolean; // 退職予定（まだ退職していない）か
+}
+
+export function resignationTodoSummary(
+  r: {
+    kind: string;
+    leaving_on: string | null;
+    leaving_timing?: string | null;
+    leaving_plan_note?: string;
+    residence_status?: string;
+    report_needed?: boolean;
+    todo_no?: string;
+  },
+  reportStatus: string, // 随時報告書の進み具合（adhocReportStatus）
+  today: string,
+): ResignationTodoSummary {
+  const planned = isPlannedLeaving(r, today);
+  const waitingPermit = leavingTimingOf(r.leaving_timing) === "許可が降りてから退職" && !r.leaving_on;
+  const title = planned
+    ? waitingPermit
+      ? "退職予定（許可が降りてから退職・退職日 未定）"
+      : `退職予定（${leavingDateLabel(r.leaving_on)}に退職）`
+    : `退職 ${leavingDateLabel(r.leaving_on)}`;
+  const badge = r.report_needed === false ? "届出不要" : `随時報告書 ${reportStatus}`;
+  const detail = [
+    r.kind,
+    r.residence_status ? `在留資格 ${r.residence_status}` : "",
+    r.todo_no ? `随時報告TODO ${r.todo_no}` : "",
+    r.leaving_plan_note?.trim() ? `退職予定のメモ: ${r.leaving_plan_note.trim()}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ・ ");
+  return { title, badge, detail, planned };
+}
