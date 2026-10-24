@@ -142,11 +142,33 @@ export function ExamTodoSection({
     setEditing(true);
   };
 
+  // 合否の入力。入金の確認と同じく「編集」を開かなくても押せる（押すとすぐ保存する）。
+  // 合格なら本人の情報にも「特定技能2号合格」として残す
+  const setResult = (index: number, result: ExamResult) => {
+    const base = editing ? draft : saved;
+    const next = withExamSummary({
+      ...base,
+      attempts: base.attempts.map((a, i) =>
+        i === index ? { ...a, result, result_on: result ? a.result_on || today : "" } : a,
+      ),
+    });
+    if (editing) {
+      setDraft(next);
+      return;
+    }
+    onChangeExam(next);
+    void registerPassed(next);
+  };
+
   const save = async () => {
     const next = withExamSummary(draft);
     onChangeExam(next);
     setEditing(false);
-    // 合格していたら、本人の情報に「特定技能2号合格」として残す（外国人詳細でバッジが出る）
+    await registerPassed(next);
+  };
+
+  // 合格していたら、本人の情報に「特定技能2号合格」として残す（外国人詳細でバッジが出る）
+  const registerPassed = async (next: TodoExam) => {
     const passed = passedExamAttempt(next);
     if (passed && isSsw2ExamTitle(todo.title) && todo.worker_id) {
       const name = ssw2ExamName(todo.title, next.exam_choice);
@@ -378,6 +400,7 @@ export function ExamTodoSection({
                 onChange={(patch) => setAttempt(i, patch)}
                 onToggleFeeReceived={() => toggleFeeReceived(i)}
                 onToggleDeferred={() => toggleDeferred(i)}
+                onSetResult={(result) => setResult(i, result)}
                 examLabel={todo.title.replace(/申込$/, "")}
                 nationality={w?.nationality ?? null}
               />
@@ -578,6 +601,7 @@ function ExamAttemptRow({
   onChange,
   onToggleFeeReceived,
   onToggleDeferred,
+  onSetResult,
   examLabel,
   nationality,
 }: {
@@ -589,9 +613,10 @@ function ExamAttemptRow({
   examLabel: string; // 口座案内の文章に入れる試験名（TODOの内容）
   nationality?: string | null; // 本人の国籍（口座案内の画像を国籍別に出す）
   onChange: (patch: Partial<TodoExamAttempt>) => void;
-  // 代金の受け取り・後払いの指示は「編集」を開かなくても押せる
+  // 代金の受け取り・後払いの指示・合否は「編集」を開かなくても押せる
   onToggleFeeReceived: () => void;
   onToggleDeferred: () => void;
+  onSetResult: (result: ExamResult) => void;
 }) {
   // 代金を受け取る前で後払いの指示も無い → まだ申込してはいけない（申込済みにできない）
   const blocked = examApplyBlocked(attempt);
@@ -786,6 +811,64 @@ function ExamAttemptRow({
           </button>
         )}
       </div>
+
+      {/* 試験結果（合否）。入金の確認とは別に、「編集」を開かなくてもその場で入れられる（押すとすぐ保存する）。
+          申込済み・試験日が入っている回に出す */}
+      {(attempt.applied || attempt.applied_on || attempt.exam_date) && (
+        <div
+          className={`mt-1.5 flex flex-wrap items-center gap-2 rounded-lg border px-2.5 py-1.5 ${
+            !attempt.result && attempt.exam_date && attempt.exam_date < today
+              ? "border-seal/50 bg-seal/10"
+              : "border-border bg-background"
+          }`}
+        >
+          <span className="text-[11px] font-bold">
+            試験結果:{" "}
+            {attempt.result ? (
+              <span className={attempt.result === "合格" ? "text-status-approved-fg" : "text-seal"}>
+                {attempt.result}
+                {attempt.result_on && `（${attempt.result_on} 確認）`}
+              </span>
+            ) : (
+              <span className={attempt.exam_date && attempt.exam_date < today ? "text-seal" : "text-muted"}>
+                未確認
+                {attempt.exam_date && attempt.exam_date < today && "（試験日を過ぎています。確認して入れてください）"}
+              </span>
+            )}
+          </span>
+          {canEdit && !editing && (
+            <>
+              {EXAM_RESULTS.filter(Boolean).map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => onSetResult(r)}
+                  aria-pressed={attempt.result === r}
+                  className={`min-h-[32px] rounded-lg border px-3 text-[11px] font-bold ${
+                    attempt.result === r
+                      ? r === "合格"
+                        ? "border-status-approved-fg bg-status-approved-fg text-white"
+                        : "border-seal bg-seal text-seal-foreground"
+                      : "border-border bg-surface text-brand"
+                  }`}
+                >
+                  {r}
+                </button>
+              ))}
+              {attempt.result && (
+                <button
+                  type="button"
+                  onClick={() => onSetResult("")}
+                  className="min-h-[32px] rounded-lg border border-border bg-surface px-2.5 text-[11px] font-bold text-muted"
+                >
+                  未確認に戻す
+                </button>
+              )}
+            </>
+          )}
+          {editing && <span className="text-[10px] text-muted">（編集中は上の「合否」の欄で選べます）</span>}
+        </div>
+      )}
     </div>
   );
 }

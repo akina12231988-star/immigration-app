@@ -7,6 +7,7 @@
 // 通算は日数合算による目安であり、正式な判断は出入国在留管理庁による。
 // "今日" に依存する計算のため、結果は保存せず表示のたびに呼び出す。
 
+import { todayJst } from "@/lib/jst-date";
 import { isCountedHistory, type SswStatus, type WorkHistory } from "@/types/ssw";
 
 const DAY = 86_400_000;
@@ -15,8 +16,9 @@ const AVG_MONTH = 30.4375;
 // 60か月ゲージの上限
 export const CAP_MONTHS = 60;
 
+// 今日の日付（日本時間。朝のうちに前日の日付にならないよう JST で見る）
 export function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayJst();
 }
 
 function d(dateStr: string): Date {
