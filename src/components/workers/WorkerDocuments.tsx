@@ -29,6 +29,7 @@ import {
   docPeriodDate,
   manualPeriodKey,
   manualPeriodLabel,
+  orderPeriodTabs,
   periodKeyForDoc,
   sortDocsByPeriodDate,
   type ManualPeriod,
@@ -212,7 +213,9 @@ export function WorkerDocuments({
     load();
   };
 
-  const showTabs = past.length > 0 || manual.length > 0 || canEdit;
+  // タブの並び: 「現在」の右に、過去の在籍期間と追加した期間を開始日の新しい順（左が新しい）で自動で並べる
+  const tabs = useMemo(() => orderPeriodTabs(past, manual), [past, manual]);
+  const showTabs = tabs.length > 0 || canEdit;
 
   return (
     <Card className="p-4">
@@ -237,23 +240,10 @@ export function WorkerDocuments({
           <PeriodChip active={isCurrent} onClick={() => setPeriod("current")}>
             現在
           </PeriodChip>
-          {past.map((p) => (
-            <PeriodChip
-              key={p.key}
-              active={period === p.key}
-              onClick={() => setPeriod(p.key)}
-            >
-              過去（{p.org}）{p.start}〜{p.end}
-            </PeriodChip>
-          ))}
-          {manual.map((m) => (
-            <PeriodChip
-              key={manualPeriodKey(m.id)}
-              active={period === manualPeriodKey(m.id)}
-              onClick={() => setPeriod(manualPeriodKey(m.id))}
-            >
-              <CalendarPlus size={12} className="mr-1 inline" />
-              {manualPeriodLabel(m)}
+          {tabs.map((t) => (
+            <PeriodChip key={t.key} active={period === t.key} onClick={() => setPeriod(t.key)}>
+              {t.manual && <CalendarPlus size={12} className="mr-1 inline" />}
+              {t.label}
             </PeriodChip>
           ))}
           {canEdit && !periodForm && (
