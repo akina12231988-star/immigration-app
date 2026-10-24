@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   buildPastPeriods,
   docPeriodDate,
+  manualPeriodKey,
+  manualPeriodLabel,
   periodKeyFor,
+  periodKeyForDoc,
   periodLabelFor,
   sortDocsByPeriodDate,
 } from "./worker-doc-periods";
@@ -136,5 +139,34 @@ describe("periodLabelFor", () => {
     );
     expect(periodLabelFor(past[0].key, past)).toBe("過去（前の会社）2023-01-01〜2026-07-31");
     expect(periodLabelFor("current", past)).toBe("現在");
+  });
+});
+
+describe("追加した期間（periodKeyForDoc・manualPeriodLabel）", () => {
+  const past = buildPastPeriods(
+    [history({ org_name: "前の会社", start_date: "2025-05-08", end_date: "2025-11-11" })],
+    TODAY,
+  );
+  const manual = { id: "p1", label: "", startOn: "2025-11-11", endOn: "2026-11-11" };
+
+  it("期間IDが付いた画像は、日付が過去の在籍期間と重なっていても追加した期間のタブに出す", () => {
+    const doc = { periodId: "p1", effectiveOn: "2025-11-11", createdAt: "2026-10-24T00:00:00Z" };
+    expect(periodKeyForDoc(doc, past, true)).toBe(manualPeriodKey("p1"));
+  });
+
+  it("期間IDが無い画像はこれまでどおり日付で振り分ける", () => {
+    expect(
+      periodKeyForDoc({ effectiveOn: "2025-11-11", createdAt: "2026-10-24T00:00:00Z" }, past, true),
+    ).toBe(past[0].key);
+    expect(periodKeyForDoc({ createdAt: "2026-10-24T00:00:00Z" }, past, true)).toBe("current");
+  });
+
+  it("表示名は名前があれば「名前 開始〜終了」、無ければ「開始〜終了」（終了日が無ければ開始〜）", () => {
+    expect(manualPeriodLabel(manual)).toBe("2025-11-11〜2026-11-11");
+    expect(manualPeriodLabel({ ...manual, label: "在留カード更新前" })).toBe(
+      "在留カード更新前 2025-11-11〜2026-11-11",
+    );
+    expect(manualPeriodLabel({ ...manual, endOn: null })).toBe("2025-11-11〜");
+    expect(periodLabelFor(manualPeriodKey("p1"), past, [manual])).toBe("2025-11-11〜2026-11-11");
   });
 });
