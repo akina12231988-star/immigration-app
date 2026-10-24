@@ -6,6 +6,7 @@ import {
   CreditCard,
   FileText,
   ImagePlus,
+  Check,
   Pencil,
   Plus,
   ScanSearch,
@@ -22,10 +23,12 @@ import {
   listWorkerDocPeriods,
   listWorkerDocs,
   saveWorkerDocPeriod,
+  setWorkerDocPeriodCurrent,
   type WorkerDocView,
 } from "@/app/(app)/workers/actions";
 import {
   buildPastPeriods,
+  currentManualPeriod,
   docPeriodDate,
   manualPeriodKey,
   manualPeriodLabel,
@@ -130,17 +133,24 @@ export function WorkerDocuments({
 
   // 表示中の期間の画像だけに絞る（追加した期間は period_id、過去タブから登録した画像は effective_on で振り分ける）。
   // 「いつ時点の書類か」の新しい順に並べる
+  // 「現在」にした期間（あれば「現在」のタブはその期間を表し、登録した画像もその期間に結び付く）
+  const currentManual = useMemo(() => currentManualPeriod(manual), [manual]);
   const visibleDocs = useMemo(
-    () => sortDocsByPeriodDate(docs.filter((d) => periodKeyForDoc(d, past, hasOngoing) === period)),
-    [docs, past, hasOngoing, period],
+    () =>
+      sortDocsByPeriodDate(
+        docs.filter((d) => periodKeyForDoc(d, past, hasOngoing, currentManual?.id ?? null) === period),
+      ),
+    [docs, past, hasOngoing, period, currentManual],
   );
 
   const isCurrent = period === "current";
   // 過去タブを開いているとき、アップロードした画像をその期間に振り分けるための日付（退職日）
   const selectedPast = past.find((p) => p.key === period) ?? null;
-  // 追加した期間のタブを開いているとき（画像は期間IDで結び付ける。日付は期間の開始日）
-  const selectedManual = manual.find((m) => manualPeriodKey(m.id) === period) ?? null;
-  const effectiveOn = selectedManual ? selectedManual.startOn : (selectedPast?.end ?? null);
+  // 追加した期間のタブを開いているとき（画像は期間IDで結び付ける。日付は期間の開始日）。
+  // 「現在」のタブで「現在」にした期間があれば、その期間
+  const selectedManual =
+    manual.find((m) => manualPeriodKey(m.id) === period) ?? (isCurrent ? currentManual : null);
+  const effectiveOn = isCurrent ? null : selectedManual ? selectedManual.startOn : (selectedPast?.end ?? null);
   const periodId = selectedManual?.id ?? null;
   const uploadLabel = isCurrent ? "差し替え" : "この期間に登録";
   const emptyLabel = isCurrent ? "未登録" : "この期間の登録はありません";
@@ -150,7 +160,26 @@ export function WorkerDocuments({
   // ただし過去タブ・追加した期間から登録した画像（effective_on・period_id あり）は当時の画像なので、
   // 「現在」には出さない（現在と過去に同じものが表示されてしまうため）
   const newestFor = (kind: Kind) =>
-    docs.find((d) => d.kind === kind && !d.effectiveOn && !d.periodId) ?? null;
+    docs.find(
+      (d) => d.kind === kind && !d.effectiveOn && (!d.periodId || d.periodId === currentManual?.id),
+    ) ?? null;
+
+  // 追加した期間を「現在」にする／外す
+  const setCurrent = async (m: ManualPeriod | null) => {
+    setError(null);
+    const res = await setWorkerDocPeriodCurrent(workerId, m?.id ?? null);
+    if (!res.ok) {
+      setError(res.message);
+      return;
+    }
+    await loadPeriods();
+    setPeriod("current");
+    setInfo(
+      m
+        ? `期間「${manualPeriodLabel(m)}」を「現在」にしました。この期間の画像は「現在」のタブに出て、「現在」で登録した画像もこの期間に入ります。`
+        : "「現在」の期間の指定を外しました。",
+    );
+  };
 
   // 期間の追加・編集の保存
   const savePeriod = async () => {
@@ -174,7 +203,9 @@ export function WorkerDocuments({
       }
       await loadPeriods();
       setPeriodForm(null);
-      setPeriod(manualPeriodKey(res.id));
+      // 「現在」にしている期間を直したときは「現在」のタブのまま
+      const wasCurrent = !!periodForm.id && manual.find((m) => m.id === periodForm.id)?.isCurrent;
+      setPeriod(wasCurrent ? "current" : manualPeriodKey(res.id));
       const label = manualPeriodLabel({
         id: res.id,
         label: periodForm.label,
@@ -242,7 +273,7 @@ export function WorkerDocuments({
       {showTabs && (
         <div className="mb-3 flex items-center gap-1.5 overflow-x-auto pb-1">
           <PeriodChip active={isCurrent} onClick={() => setPeriod("current")}>
-            現在
+            現在{currentManual && `（${manualPeriodLabel(currentManual)}）`}
           </PeriodChip>
           {tabs.map((t) => (
             <PeriodChip key={t.key} active={period === t.key} onClick={() => setPeriod(t.key)}>
@@ -320,12 +351,33 @@ export function WorkerDocuments({
         </div>
       )}
 
-      {/* 追加した期間のタブを開いているとき: 期間の編集・削除 */}
+      {/* 追加した期間のタブ（または「現在」にした期間）を開いているとき: 現在にする／外す・編集・削除 */}
       {selectedManual && canEdit && !periodForm && (
         <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px] text-muted">
           <span>
-            追加した期間「{manualPeriodLabel(selectedManual)}」を表示中。ここで登録した画像はこの期間に入ります。
+            {isCurrent
+              ? `「現在」の期間は「${manualPeriodLabel(selectedManual)}」です。ここで登録した画像はこの期間に入ります。`
+              : `追加した期間「${manualPeriodLabel(selectedManual)}」を表示中。ここで登録した画像はこの期間に入ります。`}
           </span>
+          {isCurrent ? (
+            <button
+              type="button"
+              onClick={() => void setCurrent(null)}
+              className="flex items-center gap-1 rounded-lg border border-border px-2 py-0.5 font-bold text-muted"
+              title="「現在」の指定を外す（この期間は元のタブに戻ります）"
+            >
+              現在の指定を外す
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void setCurrent(selectedManual)}
+              className="flex items-center gap-1 rounded-lg border border-brand px-2 py-0.5 font-bold text-brand"
+              title="この期間を「現在」のタブにする（今の在留カードの期間として扱う）"
+            >
+              <Check size={11} /> この期間を「現在」にする
+            </button>
+          )}
           <button
             type="button"
             onClick={() =>
@@ -427,6 +479,11 @@ export function WorkerDocuments({
           タブの右の「期間を追加」を押し、名前（任意）・開始日（例: 2025-11-11）・終了日（例: 2026-11-11）を入れて「追加」すると、その期間のタブが増えます。
           増えたタブを開き、在留カード・照合結果・指定書それぞれの「この期間に登録」（枠へのドロップも同じ）で画像を登録してください。登録した画像はその期間のタブにだけ出て、「現在」や過去の在籍期間の画像は変わりません。
           期間の名前や日付は、そのタブを開いて「期間を編集」で直せます。「期間を削除」しても登録した画像は消えず、日付で元の在籍期間または「現在」に振り分けられます。
+        </p>
+        <p>
+          <span className="font-bold">「現在」がどの期間かを選ぶ</span>:
+          追加した期間のタブを開いて「この期間を「現在」にする」を押すと、その期間が「現在」のタブになります（タブ名が「現在（期間）」になり、その期間のタブは別には出ません）。
+          「現在」で登録した画像もその期間に入るので、新しい在留カードが来たら新しい期間を追加して「現在」にすれば、前の期間は画像ごと過去のタブになります。「現在の指定を外す」で戻せます。
         </p>
         <p>
           <span className="font-bold">在留カードの番号などの入力</span>:

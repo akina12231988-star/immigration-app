@@ -90,6 +90,7 @@ export function WorkerDocCardInfo({
     });
   }, [tabKey]);
 
+  // 「現在」のタブは、「現在」にした期間の範囲の許可も含めて出す（visaRowsForDocTab が current に振り分ける）
   const shown = visaRowsForDocTab(rows, tabKey, past, manual);
   const rowKey = (r: VisaHistoryRow) => r.manualId ?? `auto:${r.permitDate}_${r.status}`;
 
