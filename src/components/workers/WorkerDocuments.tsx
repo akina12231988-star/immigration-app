@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CreditCard, FileText, ImagePlus, ScanSearch, Trash2, X } from "lucide-react";
+import { CalendarPlus, CreditCard, FileText, ImagePlus, ScanSearch, Trash2, X } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { uploadWorkerDoc } from "@/lib/worker-docs";
@@ -11,7 +11,13 @@ import {
   listWorkerDocs,
   type WorkerDocView,
 } from "@/app/(app)/workers/actions";
-import { buildPastPeriods, docPeriodDate, periodKeyFor } from "@/lib/worker-doc-periods";
+import {
+  buildPastPeriods,
+  docPeriodDate,
+  periodKeyFor,
+  periodLabelFor,
+  sortDocsByPeriodDate,
+} from "@/lib/worker-doc-periods";
 import type { WorkHistoryRow } from "@/types/db";
 
 type Kind = "在留カード" | "照合結果" | "指定書";
@@ -48,6 +54,10 @@ export function WorkerDocuments({
   const [docs, setDocs] = useState<WorkerDocView[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [period, setPeriod] = useState("current");
+  // 「日付を指定して登録」（タブにない期間や、今の在籍中の古い在留カードを当時の日付で登録する）
+  const [dateMode, setDateMode] = useState(false);
+  const [customDate, setCustomDate] = useState("");
+  const [info, setInfo] = useState<string | null>(null);
 
   const today = todayStr();
   const past = useMemo(() => buildPastPeriods(histories, today), [histories, today]);
@@ -86,15 +96,40 @@ export function WorkerDocuments({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workerId]);
 
-  // 表示中の在籍期間の画像だけに絞る（過去タブから登録した画像は effective_on で当時の期間に入る）
+  // 表示中の在籍期間の画像だけに絞る（過去タブから登録した画像は effective_on で当時の期間に入る）。
+  // 「いつ時点の書類か」の新しい順に並べ、日付を指定して登録した古い画像が最新より前に出ないようにする
   const visibleDocs = useMemo(
-    () => docs.filter((d) => periodKeyFor(docPeriodDate(d), past, hasOngoing) === period),
+    () =>
+      sortDocsByPeriodDate(
+        docs.filter((d) => periodKeyFor(docPeriodDate(d), past, hasOngoing) === period),
+      ),
     [docs, past, hasOngoing, period],
   );
 
   const isCurrent = period === "current";
   // 過去タブを開いているとき、アップロードした画像をその期間に振り分けるための日付（退職日）
   const selectedPast = past.find((p) => p.key === period) ?? null;
+  // 日付を指定しているときはその日付を優先する（どのタブを開いていても、入れた日付の期間に振り分けられる）
+  const usingCustomDate = dateMode && !!customDate;
+  const effectiveOn = usingCustomDate ? customDate : (selectedPast?.end ?? null);
+  const uploadLabel = usingCustomDate
+    ? `${customDate} 時点として登録`
+    : isCurrent
+      ? "差し替え"
+      : "この期間に登録";
+  // 日付を指定して登録したあと、その画像が入ったタブへ切り替えて、どこに入ったかを知らせる
+  const handleUploaded = () => {
+    load();
+    if (!usingCustomDate) return;
+    const key = periodKeyFor(customDate, past, hasOngoing);
+    setPeriod(key);
+    const label = periodLabelFor(key, past);
+    setInfo(
+      key === "current"
+        ? `${customDate} 時点の画像として「現在」に登録しました。日付順に並ぶので、いまの最新より古い日付なら履歴（小さい画像）に入ります。`
+        : `${customDate} 時点の画像として「${label}」に登録しました。`,
+    );
+  };
 
   // 「現在」に該当する画像が無くても、登録済みの画像があれば一番新しいものを代わりに表示する。
   // （何も登録していないように見えてしまうのを防ぐ。差し替えれば最新になる）
@@ -112,6 +147,11 @@ export function WorkerDocuments({
       {error && (
         <p role="alert" className="mb-3 rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
           {error}
+        </p>
+      )}
+      {info && (
+        <p role="status" className="mb-3 rounded-lg bg-brand/10 px-3 py-2 text-xs font-bold text-brand">
+          {info}
         </p>
       )}
 
@@ -133,6 +173,50 @@ export function WorkerDocuments({
         </div>
       )}
 
+      {/* 日付を指定して登録（タブにない期間の在留カードや、今の在籍中の更新前のカードを当時の日付で入れる） */}
+      {canEdit && (
+        <div className="mb-3">
+          {dateMode ? (
+            <div className="rounded-xl border border-brand/40 bg-brand/5 px-3 py-2">
+              <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-muted">
+                <label className="flex items-center gap-1.5">
+                  いつ時点の画像か（在留カードの交付日・有効期間の開始日）
+                  <input
+                    type="date"
+                    value={customDate}
+                    onChange={(e) => setCustomDate(e.target.value)}
+                    className="min-h-[32px] rounded-lg border border-border bg-surface px-1.5 text-xs text-foreground focus:border-brand focus:outline-none"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDateMode(false);
+                    setCustomDate("");
+                  }}
+                  className="rounded-lg border border-border px-2.5 py-1 text-[11px] font-bold text-muted"
+                >
+                  日付の指定をやめる
+                </button>
+              </div>
+              <p className="mt-1 text-[11px] text-muted">
+                {customDate
+                  ? `日付を入れたので、下の「${customDate} 時点として登録」（枠へのドロップも同じ）で登録すると、その日付の在籍期間のタブ（${periodLabelFor(periodKeyFor(customDate, past, hasOngoing), past)}）に入ります。いまの最新より古い日付なら履歴に入り、最新の画像はそのままです。`
+                  : "日付を入れてから、下の在留カード・照合結果・指定書の登録ボタン（または枠へのドロップ）で登録してください。"}
+              </p>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setDateMode(true)}
+              className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11px] font-bold text-brand"
+            >
+              <CalendarPlus size={12} /> 日付を指定して登録（タブにない期間・更新前の在留カード）
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <DocColumn
           kind="在留カード"
@@ -142,10 +226,10 @@ export function WorkerDocuments({
           workerId={workerId}
           canEdit={canEdit}
           onDelete={removeDoc}
-          effectiveOn={selectedPast?.end ?? null}
-          uploadLabel={isCurrent ? "差し替え" : "この期間に登録"}
+          effectiveOn={effectiveOn}
+          uploadLabel={uploadLabel}
           emptyLabel={isCurrent ? "未登録" : "この期間の登録はありません"}
-          onUploaded={load}
+          onUploaded={handleUploaded}
           onError={setError}
         />
         <DocColumn
@@ -156,10 +240,10 @@ export function WorkerDocuments({
           workerId={workerId}
           canEdit={canEdit}
           onDelete={removeDoc}
-          effectiveOn={selectedPast?.end ?? null}
-          uploadLabel={isCurrent ? "差し替え" : "この期間に登録"}
+          effectiveOn={effectiveOn}
+          uploadLabel={uploadLabel}
           emptyLabel={isCurrent ? "未登録" : "この期間の登録はありません"}
-          onUploaded={load}
+          onUploaded={handleUploaded}
           onError={setError}
         />
         <DocColumn
@@ -170,10 +254,10 @@ export function WorkerDocuments({
           workerId={workerId}
           canEdit={canEdit}
           onDelete={removeDoc}
-          effectiveOn={selectedPast?.end ?? null}
-          uploadLabel={isCurrent ? "差し替え" : "この期間に登録"}
+          effectiveOn={effectiveOn}
+          uploadLabel={uploadLabel}
           emptyLabel={isCurrent ? "未登録" : "この期間の登録はありません"}
-          onUploaded={load}
+          onUploaded={handleUploaded}
           onError={setError}
         />
       </div>
@@ -184,9 +268,20 @@ export function WorkerDocuments({
           <p className="whitespace-pre-wrap text-xs font-bold text-seal">{periodNote}</p>
         </div>
       )}
-      <p className="mt-2 text-[11px] text-muted">
-        新しい画像を登録すると「現在」の最新として表示され、以前の画像も履歴として残ります。「現在」では、いま登録されている最新の画像を表示します（在籍期間が今日を含む場合もここに出ます）。過去の在籍期間タブでは、その期間の当時の画像を表示します。過去タブで「この期間に登録」すると、当時の画像としてその期間に保存されます。
-      </p>
+      <div className="mt-2 space-y-1 text-[11px] text-muted">
+        <p>
+          新しい画像を登録すると「現在」の最新として表示され、以前の画像も履歴として残ります。「現在」では、いま登録されている最新の画像を表示します（在籍期間が今日を含む場合もここに出ます）。過去の在籍期間タブでは、その期間の当時の画像を表示します。過去タブで「この期間に登録」すると、当時の画像としてその期間に保存されます。
+        </p>
+        <p>
+          <span className="font-bold">タブにない期間の在留カードを足すとき</span>
+          （例: 過去の在籍が 2025-11-11 で終わり、そのあとの在留カード 2025-11-11〜2026-11-11 があって、次が「現在」の場合）:
+          「日付を指定して登録」を押し、その在留カードの交付日（有効期間の開始日。例では 2025-11-11 の翌日以降の日付）を入れてから、「○○ 時点として登録」で画像を登録します。
+          入れた日付で自動的にタブに振り分けられ、どの在籍期間にも当たらない日付（前の退職日より後）は「現在」に入ります。
+          「現在」の中は日付の新しい順に並ぶので、いまの最新より古い日付の画像は最新を変えずに履歴（小さい画像）として残ります。
+          今の会社に入ってから更新する前のカード（更新前の在留カード）も同じ方法で、当時の日付を入れて登録してください。
+          退職日ちょうどの日付（例では 2025-11-11）を入れると、その退職日の過去の在籍期間に入ります。
+        </p>
+      </div>
     </Card>
   );
 }
@@ -246,9 +341,15 @@ function DocColumn({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
-  const usingFallback = docs.length === 0 && !!fallback;
-  const latest = docs[0] ?? fallback ?? undefined;
-  const history = docs.slice(1);
+  // この期間の画像が「日付を指定して登録」した分（effective_on あり）だけのときは、
+  // 代わりの画像（申請登録時の画像など）も日付順に混ぜて、古い日付の画像が最新に見えないようにする
+  const pool =
+    docs.length > 0 && fallback && docs.every((d) => !!d.effectiveOn)
+      ? sortDocsByPeriodDate([...docs, fallback])
+      : docs;
+  const latest = pool[0] ?? fallback ?? undefined;
+  const history = pool.slice(1);
+  const usingFallback = !!fallback && latest === fallback;
 
   async function handleFile(file: File | undefined) {
     if (!file) return;

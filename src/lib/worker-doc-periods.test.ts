@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildPastPeriods, docPeriodDate, periodKeyFor } from "./worker-doc-periods";
+import {
+  buildPastPeriods,
+  docPeriodDate,
+  periodKeyFor,
+  periodLabelFor,
+  sortDocsByPeriodDate,
+} from "./worker-doc-periods";
 import type { WorkHistoryRow } from "@/types/db";
 
 const TODAY = "2026-08-18";
@@ -68,6 +74,21 @@ describe("periodKeyFor", () => {
     expect(periodKeyFor("2026-08-12T00:00:00Z", past, true)).toBe("current");
   });
 
+  it("タブにない期間（前の退職日より後・次の入社より前）の日付で登録した画像は「現在」に出す", () => {
+    // 前の会社 2025-05-08〜2025-11-11 → 在留カード 2025-11-11〜（次の在籍との間）→ 現在
+    const past = buildPastPeriods(
+      [
+        history({ org_name: "所属不明", start_date: "2023-10-07", end_date: "2025-05-07" }),
+        history({ id: "h2", org_name: "前の会社", start_date: "2025-05-08", end_date: "2025-11-11" }),
+        history({ id: "h3", org_name: "今の会社", start_date: "2026-01-15", end_date: null }),
+      ],
+      TODAY,
+    );
+    expect(periodKeyFor("2025-11-12", past, true)).toBe("current");
+    // 前の会社の退職日ちょうどはその期間に入る
+    expect(periodKeyFor("2025-11-11", past, true)).toBe(past[0].key);
+  });
+
   it("過去タブから登録した画像（effective_on＝退職日）はその期間に出る", () => {
     const past = buildPastPeriods(
       [history({ org_name: "前の会社", start_date: "2023-01-01", end_date: "2026-07-31" })],
@@ -90,5 +111,30 @@ describe("docPeriodDate", () => {
       "2026-08-18",
     );
     expect(docPeriodDate({ createdAt: "2026-08-18T10:00:00Z" })).toBe("2026-08-18");
+  });
+});
+
+describe("sortDocsByPeriodDate", () => {
+  it("日付を指定して登録した古い在留カードは、登録が新しくても最新より後ろ（履歴）に並ぶ", () => {
+    const current = { id: "a", effectiveOn: null, createdAt: "2026-03-01T00:00:00Z" };
+    const older = { id: "b", effectiveOn: "2025-11-11", createdAt: "2026-10-24T00:00:00Z" };
+    expect(sortDocsByPeriodDate([older, current]).map((d) => d.id)).toEqual(["a", "b"]);
+  });
+
+  it("同じ日付なら登録が新しいほうを先にする", () => {
+    const a = { id: "a", createdAt: "2026-03-01T09:00:00Z" };
+    const b = { id: "b", createdAt: "2026-03-01T10:00:00Z" };
+    expect(sortDocsByPeriodDate([a, b]).map((d) => d.id)).toEqual(["b", "a"]);
+  });
+});
+
+describe("periodLabelFor", () => {
+  it("過去の期間ならタブと同じ表示名、見つからなければ「現在」", () => {
+    const past = buildPastPeriods(
+      [history({ org_name: "前の会社", start_date: "2023-01-01", end_date: "2026-07-31" })],
+      TODAY,
+    );
+    expect(periodLabelFor(past[0].key, past)).toBe("過去（前の会社）2023-01-01〜2026-07-31");
+    expect(periodLabelFor("current", past)).toBe("現在");
   });
 });
