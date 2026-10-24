@@ -88,9 +88,14 @@ export interface ChecklistWorker {
   nationality: string;
   startOn: string | null; // この機関での雇用開始日
   messengerLink: string; // 本人の Messenger（無ければ ""）
+  // 会社へ報告する一覧（エクセル）に載せる項目
+  birth: string; // 生年月日
+  gender: string; // 性別
+  address: string; // 日本での住所
+  assignedOffice: string; // 配属先営業所
 }
 
-// 1件の依頼のチェック表。行＝在籍者、列＝書類。各マスで 案内 → 発行 → 会社へ を押していく
+// 1件の依頼のチェック表。行＝在籍者、列＝書類。各マスで 案内 → 添付済み → 会社へ を押していく
 export function DocumentRequestChecklist({
   request: initialRequest,
   organizationName,
@@ -232,7 +237,7 @@ export function DocumentRequestChecklist({
         name: "添付一覧",
         rows: sheetRows(),
         headerRows: 3,
-        columnWidths: [6, 24, 22, 12, 14, ...request.items.map(() => 28), 48],
+        columnWidths: [6, 24, 22, 12, 12, 6, 14, 16, 40, ...request.items.map(() => 26), 48],
       },
     ]);
   // 1人分の資料を集める（マスに添付した資料。無い書類は外国人詳細に紐づいている資料）。
@@ -584,7 +589,7 @@ export function DocumentRequestChecklist({
               </p>
               <p className="mt-0.5 flex flex-wrap gap-x-3 tabular-nums text-muted">
                 <span>案内 {p.informed}/{p.total}</span>
-                <span>発行 {p.issued}/{p.total}</span>
+                <span>添付済 {p.issued}/{p.total}</span>
                 <span className={p.total > 0 && p.sent === p.total ? "font-bold text-status-approved-fg" : ""}>
                   会社へ {p.sent}/{p.total}
                 </span>
@@ -725,15 +730,15 @@ export function DocumentRequestChecklist({
         )}
       </div>
       <p className="text-[11px] leading-relaxed text-muted">
-        マスのボタンを押すと今日の日付で記録します（案内 → 発行 → 会社へ の順。先の段階を押すと前の段階も同じ日で入ります）。
+        マスのボタンを押すと今日の日付で記録します（案内 → 添付済み → 会社へ の順。先の段階を押すと前の段階も同じ日で入ります）。
         もう一度押すと取り消せます。その人には要らない書類は「対象外」にすると数に入りません。
         「対象外」にしたマスには「理由を入れる」で理由を入れておけます（「保存」を押すと保存。保存せずにページを移ろうとすると確認が出ます）。
-        案内したあと本人から「持っていない」と返事があったら「本人から無いと回答」を押すと、その日付で記録され、会社に送る数からは外れます（あとで手に入って「発行」を押すと自動で外れます）。
+        案内したあと本人から「持っていない」と返事があったら「本人から無いと回答」を押すと、その日付で記録され、会社に送る数からは外れます（あとで手に入って「添付済み」を押すと自動で外れます）。
         案内する書類の「案内」を押してから、行の右端の「案内文を表示」を押すと、押した書類をまとめた本人への案内文（日本語＋母国語）が出てコピーできます。
-        全部の書類が「発行」か「無し回答」になった人は会社へ報告できる状態です（右端に表示。見出しのチェックでその人たちを全部選べます）。氏名の横のチェックで人を選ぶと、上に「PDF を出力」「一覧をエクセルで出力」が出ます。
+        全部の書類が「添付済み」か「無し回答」になった人は会社へ報告できる状態です（右端に表示。見出しのチェックでその人たちを全部選べます）。氏名の横のチェックで人を選ぶと、上に「PDF を出力」「一覧をエクセルで出力」が出ます。
         PDF は 1人分の資料（マスに添付したもの。無ければ外国人詳細に紐づいているもの）をひとつにまとめ、「No.番号_氏名_末尾」（末尾は変えられます。例: 令和8年度年末調整資料）の名前で出ます。複数人なら ZIP にまとまり、一覧のエクセルも入ります。
-        送ったら右端の「会社へ をまとめて付ける」で発行済の書類を全部「会社へ」にできます。
-        受け取った書類の写真・PDF はマスにドラッグ＆ドロップ（または「添付」）で保管でき、添付すると「発行」まで自動で付きます。
+        送ったら右端の「会社へ をまとめて付ける」で添付済みの書類を全部「会社へ」にできます。
+        受け取った書類の写真・PDF はマスにドラッグ＆ドロップ（または「添付」）で保管でき、添付すると「添付済み」まで自動で付きます。
         外国人詳細の「入社時に送る資料」に同じ書類が添付済みなら、マスに「外国人詳細に添付済み」と出て、押すとそのデータを開けます。
         {yearItems.length > 0 && (
           <>
@@ -1000,7 +1005,7 @@ export function DocumentRequestChecklist({
                               {c?.sent_on ? (
                                 <span className="w-full text-[10px] tabular-nums text-muted">送付 {c.sent_on}</span>
                               ) : c?.issued_on ? (
-                                <span className="w-full text-[10px] tabular-nums text-muted">発行 {c.issued_on}</span>
+                                <span className="w-full text-[10px] tabular-nums text-muted">添付 {c.issued_on}</span>
                               ) : c?.informed_on ? (
                                 <span className="w-full text-[10px] tabular-nums text-muted">案内 {c.informed_on}</span>
                               ) : null}
@@ -1055,7 +1060,7 @@ export function DocumentRequestChecklist({
                       );
                     })}
                     {/* その人の「案内」を押した書類をまとめた案内文を出す（押した書類が無ければ押せない）。
-                        全部が発行・無し回答になった人は、会社へ送る資料のまとめ保存と「会社へ」のまとめ付け */}
+                        全部が添付済み・無し回答になった人は「会社へ」のまとめ付け */}
                     <td className="sticky right-0 z-10 bg-surface px-2 py-2 align-top shadow-[inset_1px_0_0_0_var(--color-border)]">
                       {(() => {
                         const n = informedItemsOf(w).length;
@@ -1087,7 +1092,7 @@ export function DocumentRequestChecklist({
                                   type="button"
                                   onClick={() => void sendAllForWorker(w)}
                                   disabled={busy}
-                                  title="発行済の書類を全部、今日の日付で「会社へ」にします（無し回答・対象外はそのまま）"
+                                  title="添付済みの書類を全部、今日の日付で「会社へ」にします（無し回答・対象外はそのまま）"
                                   className="inline-flex min-h-[26px] items-center gap-1 whitespace-nowrap rounded-lg border border-border px-2 text-[10px] font-bold text-brand disabled:opacity-50"
                                 >
                                   <Check size={11} />

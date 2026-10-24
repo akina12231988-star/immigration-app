@@ -120,7 +120,7 @@ export function groupFilesByCell(files: DocumentRequestFile[]): Map<string, Docu
 // 3つの段階（順に進める）
 export const DOCUMENT_REQUEST_STEPS = [
   { key: "informed_on", label: "案内", long: "本人に案内した" },
-  { key: "issued_on", label: "発行", long: "書類を発行した" },
+  { key: "issued_on", label: "添付済み", long: "書類を添付した（受け取った）" },
   { key: "sent_on", label: "会社へ", long: "会社に送った" },
 ] as const;
 export type DocumentRequestStepKey = (typeof DOCUMENT_REQUEST_STEPS)[number]["key"];

@@ -46,6 +46,10 @@ export interface ReportWorker {
   kana: string;
   nationality: string;
   startOn: string | null; // この機関での雇用開始日（入社年月日）
+  birth: string; // 生年月日
+  gender: string; // 性別
+  address: string; // 日本での住所
+  assignedOffice: string; // 配属先営業所
 }
 
 // エクセルに書く、1マスの状況の言い方
@@ -63,11 +67,11 @@ export function reportStatusLabel(
     case "送付済":
       return `会社へ送付済 ${c?.sent_on ?? ""}`.trim();
     case "発行済":
-      return `発行済 ${c?.issued_on ?? ""}`.trim();
+      return "添付済"; // 日付は書かない（会社へ送る一覧なので状況だけ）
     case "無し回答":
       return `本人から無いと回答 ${c?.none_replied_on ?? ""}`.trim();
     case "案内済":
-      return `案内済（未発行） ${c?.informed_on ?? ""}`.trim();
+      return `案内済（未添付） ${c?.informed_on ?? ""}`.trim();
     default:
       return "未着手";
   }
@@ -80,18 +84,34 @@ export function reportSheetRows(
   idx: Map<string, DocumentRequestCheck>,
   meta: { organizationName: string; requestTitle: string; dueOn: string | null; today: string },
 ): (string | number | null)[][] {
-  const header = ["No.", "氏名", "フリガナ", "国籍", "入社年月日", ...items.map((i) => i.name), "PDF のファイル名"];
+  const header = [
+    "No.",
+    "氏名",
+    "フリガナ",
+    "国籍",
+    "生年月日",
+    "性別",
+    "入社年月日",
+    "営業所",
+    "住所",
+    ...items.map((i) => i.name),
+    "PDF のファイル名",
+  ];
   const rows = workers.map((w, i) => [
     i + 1,
     w.name,
     w.kana,
     w.nationality,
+    w.birth,
+    w.gender,
     w.startOn ?? "",
+    w.assignedOffice,
+    w.address,
     ...items.map((item) => reportStatusLabel(item, w.startOn, idx.get(checkKey(w.id, item.id)))),
     reportPdfName(i + 1, w.name, meta.requestTitle),
   ]);
   return [
-    [`${meta.organizationName} ${meta.requestTitle}`, null, null, null, `出力日 ${meta.today}`, meta.dueOn ? `提出期限 ${meta.dueOn}` : null],
+    [`${meta.organizationName} ${meta.requestTitle}`, null, null, null, null, null, `出力日 ${meta.today}`, meta.dueOn ? `提出期限 ${meta.dueOn}` : null],
     [],
     header,
     ...rows,

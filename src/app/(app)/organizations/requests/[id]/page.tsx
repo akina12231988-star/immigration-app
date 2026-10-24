@@ -15,7 +15,7 @@ import { DocumentRequestChecklist } from "./DocumentRequestChecklist";
 
 export const dynamic = "force-dynamic";
 
-// 1件の依頼のチェック表。その機関の在籍者 × 書類の項目で、案内・発行・会社への送付を記録する
+// 1件の依頼のチェック表。その機関の在籍者 × 書類の項目で、案内・添付済み・会社への送付を記録する
 export default async function OrganizationDocumentRequestPage({ params }: { params: Promise<{ id: string }> }) {
   const me = await getMyProfile();
   if (!me) redirect("/login");
@@ -35,16 +35,27 @@ export default async function OrganizationDocumentRequestPage({ params }: { para
   const { active, notYet } = splitCurrentRoster(roster.current);
   // 本人に案内するときにすぐ開けるよう、Messenger のリンクも渡す（名簿には入っていないので別に読む）
   const messengerById = new Map<string, string>();
+  // 会社へ報告する一覧（エクセル）に載せる項目（生年月日・性別・住所・営業所）も名簿には無いので別に読む
+  type WorkerExtra = {
+    id: string;
+    messenger_link: string | null;
+    birth: string | null;
+    gender: string | null;
+    address: string | null;
+    assigned_office: string | null;
+  };
+  const extraById = new Map<string, WorkerExtra>();
   // 外国人詳細の「入社時に送る資料」に添付済みの書類（同じ書類ならマスから開けるようにする）
   let onboardingDocs: Awaited<ReturnType<typeof listAttachedOnboardingDocsForWorkers>> = [];
   if (active.length > 0) {
     const ids = active.map((w) => w.id);
     const [{ data }, docs] = await Promise.all([
-      supabase.from("workers").select("id, messenger_link").in("id", ids),
+      supabase.from("workers").select("id, messenger_link, birth, gender, address, assigned_office").in("id", ids),
       listAttachedOnboardingDocsForWorkers(supabase, ids).catch(() => []),
     ]);
-    for (const w of ((data as { id: string; messenger_link: string | null }[] | null) ?? [])) {
+    for (const w of ((data as WorkerExtra[] | null) ?? [])) {
       if (w.messenger_link) messengerById.set(w.id, w.messenger_link);
+      extraById.set(w.id, w);
     }
     onboardingDocs = docs;
   }
@@ -62,6 +73,10 @@ export default async function OrganizationDocumentRequestPage({ params }: { para
           nationality: w.nationality,
           startOn: w.startOn,
           messengerLink: messengerById.get(w.id) ?? "",
+          birth: extraById.get(w.id)?.birth ?? "",
+          gender: extraById.get(w.id)?.gender ?? "",
+          address: extraById.get(w.id)?.address ?? "",
+          assignedOffice: extraById.get(w.id)?.assigned_office ?? "",
         }))}
         notYetCount={notYet.length}
         initialChecks={checks}
