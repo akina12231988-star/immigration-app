@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ClipboardList } from "lucide-react";
+import { ClipboardList, LogOut } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
 import { TODO_STAGES, stageOfStatus, type TodoKind } from "@/lib/todo";
@@ -12,10 +12,15 @@ import {
   type TodoRow,
 } from "@/lib/supabase/queries/todos";
 import type { TodoStatusOption } from "@/lib/todo";
+import { adhocReportStatus } from "@/lib/adhoc-report-progress";
+import { resignationTodoSummary } from "@/lib/resignation-plan";
+import { todayStr } from "@/lib/application-alerts";
+import type { ResignationRow } from "@/types/db";
 
 // 外国人詳細に出す、この人のTODOへのリンク一覧。
 // 申請準備 書類チェックリストの本体は申請準備のTODOに移動したため、
 // ここではタイトル・番号・作成年月日を表示して各TODOのページへ飛べるようにする。
+// 退職の記録（退職予定・随時報告書を作らない特定活動の分も）も、TODO が無くてもここに出す。
 
 // TODOの構成 → 開くページ
 const KIND_HREF: Record<TodoKind, string> = {
@@ -27,6 +32,8 @@ const KIND_HREF: Record<TodoKind, string> = {
 
 export function WorkerTodoLinks({ workerId }: { workerId: string }) {
   const [todos, setTodos] = useState<TodoRow[]>([]);
+  // この人の退職の記録（退職の一覧と同じデータ。退職予定があることを外国人詳細でも分かるようにする）
+  const [resignations, setResignations] = useState<ResignationRow[]>([]);
   const [options, setOptions] = useState<TodoStatusOption[]>([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -49,6 +56,14 @@ export function WorkerTodoLinks({ workerId }: { workerId: string }) {
         if (!cancelled) setOptions(o);
       })
       .catch(() => undefined);
+    void supabase
+      .from("resignations")
+      .select("*")
+      .eq("worker_id", workerId)
+      .order("created_at", { ascending: false })
+      .then(({ data }) => {
+        if (!cancelled) setResignations((data as ResignationRow[] | null) ?? []);
+      });
     return () => {
       cancelled = true;
     };
@@ -82,7 +97,34 @@ export function WorkerTodoLinks({ workerId }: { workerId: string }) {
         申請準備の内容（必要な書類・賃金（1-6号別紙）・雇用契約書・日付など）は、申請準備のTODOの「📋
         必要な書類・準備の詳細」で管理します。行を押すとそのTODOのページに移動します。
       </p>
-      {!loaded ? null : todos.length === 0 ? (
+      {/* 退職の記録（退職予定・届出不要の分も含めて。押すと退職の一覧へ） */}
+      {resignations.length > 0 && (
+        <div className="mb-1.5 space-y-1.5">
+          {resignations.map((r) => {
+            const s = resignationTodoSummary(r, adhocReportStatus(r), todayStr());
+            return (
+              <Link
+                key={r.id}
+                href="/resignations"
+                className={`flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2 text-xs hover:border-brand ${
+                  s.planned ? "border-status-notice-fg/40 bg-status-notice-bg" : "border-border bg-background"
+                }`}
+              >
+                <span className="flex shrink-0 items-center gap-0.5 rounded-full bg-seal/10 px-2 py-0.5 text-[10px] font-bold text-seal">
+                  <LogOut size={10} />
+                  退職の記録
+                </span>
+                <span className={`min-w-0 font-bold ${s.planned ? "text-status-notice-fg" : ""}`}>{s.title}</span>
+                <span className="shrink-0 rounded-full bg-background px-1.5 py-0.5 text-[10px] font-bold text-muted ring-1 ring-border">
+                  {s.badge}
+                </span>
+                {s.detail && <span className="w-full text-[11px] text-muted">{s.detail}</span>}
+              </Link>
+            );
+          })}
+        </div>
+      )}
+      {!loaded ? null : todos.length === 0 && resignations.length > 0 ? null : todos.length === 0 ? (
         <div className="rounded-xl bg-background p-3 text-center text-xs text-muted">
           <p>この人のTODOはまだありません。</p>
           {/* 外国人がひも付いていないTODOはここに出ないので、直し方を書いておく */}
