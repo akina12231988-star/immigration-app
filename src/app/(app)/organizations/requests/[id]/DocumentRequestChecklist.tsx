@@ -55,7 +55,9 @@ import {
   joinedYearExcludedReason,
   joinedYearOf,
   requestProgress,
+  setNoneReplied,
   toggleStep,
+  unsetNoneReplied,
   workerPending,
   type DocumentRequestCheck,
   type DocumentRequestCheckInput,
@@ -160,7 +162,12 @@ export function DocumentRequestChecklist({
       const row = await upsertDocumentRequestCheck(createClient(), input);
       setChecks((prev) => [...prev.filter((c) => checkKey(c.worker_id, c.item_id) !== checkKey(row.worker_id, row.item_id)), row]);
     } catch (err) {
-      setError(dbErrorMessage(err, MIGRATION, "チェックを保存できませんでした"));
+      // 「本人から無いと回答あり」の列だけが無いときは 0198 の未適用
+      const migration =
+        err instanceof Error && err.message.includes("none_replied_on")
+          ? "0198_document_request_none_replied.sql"
+          : MIGRATION;
+      setError(dbErrorMessage(err, migration, "チェックを保存できませんでした"));
     }
   };
   const current = (workerId: string, itemId: string): DocumentRequestCheckInput =>
@@ -172,13 +179,19 @@ export function DocumentRequestChecklist({
     request.items.filter((i) => {
       if (joinedYearExcludedReason(i, w.startOn)) return false;
       const c = idx.get(checkKey(w.id, i.id));
-      return !c?.not_needed && !!c?.informed_on;
+      // 本人から「無い」と回答があった書類は、もう案内しないので文面に入れない
+      return !c?.not_needed && !!c?.informed_on && checkState(c) !== "無し回答";
     });
   const dialogWorker = textDialog ? workers.find((w) => w.id === textDialog.workerId) : undefined;
   const toggleNotNeeded = (workerId: string, itemId: string) => {
-    const c = current(workerId, itemId);
+    const c = unsetNoneReplied(current(workerId, itemId));
     void saveCheck({ ...c, not_needed: !c.not_needed });
   };
+  // 案内のあと、本人から「無い」と回答があった／その取り消し
+  const markNoneReplied = (workerId: string, itemId: string) =>
+    void saveCheck(setNoneReplied(current(workerId, itemId), today));
+  const undoNoneReplied = (workerId: string, itemId: string) =>
+    void saveCheck(unsetNoneReplied(current(workerId, itemId)));
 
   // マスにファイルを添付する（画像は縮小してから、署名付きURLでアップロード）。
   // 書類を受け取って添付したということなので、まだなら「発行」まで自動で付ける
@@ -362,6 +375,7 @@ export function DocumentRequestChecklist({
                 <span className={p.total > 0 && p.sent === p.total ? "font-bold text-status-approved-fg" : ""}>
                   会社へ {p.sent}/{p.total}
                 </span>
+                {p.noneReplied > 0 && <span className="text-amber-700">無し回答 {p.noneReplied}名</span>}
                 {p.notNeeded > 0 && <span>対象外 {p.notNeeded}名</span>}
               </p>
             </div>
@@ -452,6 +466,7 @@ export function DocumentRequestChecklist({
       <p className="text-[11px] leading-relaxed text-muted">
         マスのボタンを押すと今日の日付で記録します（案内 → 発行 → 会社へ の順。先の段階を押すと前の段階も同じ日で入ります）。
         もう一度押すと取り消せます。その人には要らない書類は「対象外」にすると数に入りません。
+        案内したあと本人から「持っていない」と返事があったら「本人から無いと回答」を押すと、その日付で記録され、会社に送る数からは外れます（あとで手に入って「発行」を押すと自動で外れます）。
         案内する書類の「案内」を押してから、行の右端の「案内文を表示」を押すと、押した書類をまとめた本人への案内文（日本語＋母国語）が出てコピーできます。
         受け取った書類の写真・PDF はマスにドラッグ＆ドロップ（または「添付」）で保管でき、添付すると「発行」まで自動で付きます。
         外国人詳細の「入社時に送る資料」に同じ書類が添付済みなら、マスに「外国人詳細に添付済み」と出て、押すとそのデータを開けます。
@@ -617,6 +632,34 @@ export function DocumentRequestChecklist({
                                 >
                                   対象外
                                 </button>
+                              )}
+                              {/* 案内したあと、本人から「持っていない」と返事があったとき */}
+                              {canEdit && state === "案内済" && (
+                                <button
+                                  type="button"
+                                  onClick={() => markNoneReplied(w.id, item.id)}
+                                  className="text-[10px] text-amber-700 underline"
+                                  title="本人から「その書類は持っていない」と返事があった（今日の日付で記録。会社に送る数から外れます）"
+                                >
+                                  本人から無いと回答
+                                </button>
+                              )}
+                              {state === "無し回答" && (
+                                <span className="flex w-full flex-wrap items-center gap-1.5">
+                                  <span className="rounded-lg border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
+                                    本人から無いと回答あり（{c?.none_replied_on}）
+                                  </span>
+                                  {canEdit && (
+                                    <button
+                                      type="button"
+                                      onClick={() => undoNoneReplied(w.id, item.id)}
+                                      className="text-[10px] text-muted underline"
+                                      title="取り消して案内済に戻す"
+                                    >
+                                      取り消す
+                                    </button>
+                                  )}
+                                </span>
                               )}
                               {c?.sent_on ? (
                                 <span className="w-full text-[10px] tabular-nums text-muted">送付 {c.sent_on}</span>

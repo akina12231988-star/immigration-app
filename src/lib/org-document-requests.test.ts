@@ -24,6 +24,8 @@ import {
   linkDocOptions,
   LINK_DOC_NONE,
   type DocumentRequestCheck,
+  setNoneReplied,
+  unsetNoneReplied,
 } from "./org-document-requests";
 
 let n = 0;
@@ -94,6 +96,25 @@ describe("チェックの段階", () => {
     expect(checkState({ ...all })).toBe("対象外");
     expect(checkState(undefined)).toBe("未着手");
   });
+
+  it("案内のあと本人から「無い」と回答 → 無し回答。発行を押すと外れ、取り消すと案内済に戻る", () => {
+    const informed = toggleStep(base, "informed_on", "2026-10-15");
+    // 0198 未適用でも他の保存が止まらないよう、付いていないときは none_replied_on を送らない
+    expect("none_replied_on" in informed).toBe(false);
+    const none = setNoneReplied(informed, "2026-10-20");
+    expect(none).toMatchObject({ informed_on: "2026-10-15", issued_on: null, sent_on: null, none_replied_on: "2026-10-20" });
+    expect(checkState(none)).toBe("無し回答");
+    // 案内せずに押したら、同じ日で案内済にもなる
+    expect(setNoneReplied(base, "2026-10-20").informed_on).toBe("2026-10-20");
+    // あとで手に入って発行したら外れる
+    const issued = toggleStep(none, "issued_on", "2026-10-21");
+    expect(issued.none_replied_on).toBeNull();
+    expect(checkState(issued)).toBe("発行済");
+    // 取り消し
+    const back = unsetNoneReplied(none);
+    expect(back.none_replied_on).toBeNull();
+    expect(checkState(back)).toBe("案内済");
+  });
 });
 
 describe("進み具合", () => {
@@ -131,6 +152,14 @@ describe("進み具合", () => {
     expect(p.total).toBe(2);
     expect(p.sent).toBe(1);
     expect(p.done).toBe(false);
+  });
+
+  it("無し回答の人は会社に送る数に入れず、別に数える。まだの項目にも入れない", () => {
+    const none = check("w2", "a", { informed_on: "2026-10-15", none_replied_on: "2026-10-20" });
+    const p = requestProgress(items, [w1, w2], [checks[0], none, checks[2]]);
+    expect(p.items[0]).toMatchObject({ total: 1, sent: 1, noneReplied: 1 });
+    expect(p.done).toBe(true);
+    expect(workerPending(items, w2, indexChecks([none]))).toEqual([]);
   });
 
   it("全部送ったら完了。対象が無ければ完了にしない", () => {
