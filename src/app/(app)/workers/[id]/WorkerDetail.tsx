@@ -288,6 +288,12 @@ export function WorkerDetail({
     "";
   // 只今の状況が未入力のときに自動で表示する内容（現在のビザ＋いちばん新しい申請の審査中/許可）
   const autoSituationValue = autoSituation(worker.residence_status, applications[0] ?? null);
+  // 入管で審査中か（見出しの青い「審査中」。審査中なら「申請準備中」の状態バッジは出さない）
+  const inReview = workerShowsInReview(
+    worker,
+    worker.current_situation?.trim() ? worker.current_situation : autoSituationValue,
+    applications,
+  );
 
   // 特定技能総合保険の負担区分（現在の所属機関の設定）。
   // 外国人負担の場合は、本人が自己負担加入を希望したときだけリンク先・有効期限を表示する
@@ -725,14 +731,11 @@ export function WorkerDetail({
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <div className="flex flex-wrap items-center gap-1.5">
-              {/* 状態・支援区分の変更は「基本情報」の欄から（編集モードでその場で直せる） */}
-              <WorkerStatusBadge status={worker.status} />
-              {/* 入管で審査中（審査中の申請がある・在留更新の状況が審査中・只今の状況に「審査中」）。一覧と同じ青いバッジ */}
-              {workerShowsInReview(
-                worker,
-                worker.current_situation?.trim() ? worker.current_situation : autoSituationValue,
-                applications,
-              ) && <InReviewBadge />}
+              {/* 状態・支援区分の変更は「基本情報」の欄から（編集モードでその場で直せる）。
+                  入管で審査中（審査中の申請がある・在留更新の状況が審査中・只今の状況に「審査中」）なら
+                  一覧と同じ青い「審査中」を出し、「申請準備中」はもう申請が済んでいるので出さない */}
+              {inReview && worker.status === "申請準備中" ? null : <WorkerStatusBadge status={worker.status} />}
+              {inReview && <InReviewBadge />}
               <SswStatusBadge status={calc.status} residenceStatus={worker.residence_status} />
               <SupportBadge support={worker.support} />
               {/* 特定技能2号の試験に合格している人は、どのタブにいても分かるように出す

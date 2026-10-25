@@ -459,9 +459,17 @@ export function WorkersExplorer({
                   <ChevronRight size={18} className="mt-1 shrink-0 text-muted" />
                 </div>
                 <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
-                  <WorkerStatusBadge status={worker.status} />
-                  {/* 入管で審査中（入管申請の記録、または在留更新の対応状況が審査中）なら青いバッジを足す */}
-                  {(inReview.has(worker.id) || worker.residence_renewal_status === "審査中") && <InReviewBadge />}
+                  {/* 入管で審査中（入管申請の記録、または在留更新の対応状況が審査中）なら青いバッジを足す。
+                      審査中ならもう申請は済んでいるので「申請準備中」の状態バッジは出さない */}
+                  {(() => {
+                    const reviewing = inReview.has(worker.id) || worker.residence_renewal_status === "審査中";
+                    return (
+                      <>
+                        {reviewing && worker.status === "申請準備中" ? null : <WorkerStatusBadge status={worker.status} />}
+                        {reviewing && <InReviewBadge />}
+                      </>
+                    );
+                  })()}
                   <SswStatusBadge status={calc.status} residenceStatus={worker.residence_status} />
                   <SupportBadge support={worker.support} />
                 </div>
