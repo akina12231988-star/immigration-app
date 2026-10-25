@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { inReviewWorkerIds, underReviewWorkerIds } from "@/lib/renewal-filter";
+import { inReviewWorkerIds, underReviewWorkerIds, workerShowsInReview } from "@/lib/renewal-filter";
 import type { Application, ApplicationStatus } from "@/types/application";
 
 const app = (workerId: string | null, status: ApplicationStatus): Application =>
@@ -51,5 +51,20 @@ describe("inReviewWorkerIds（外国人管理の「審査中」バッジ）", ()
       app(null, "申請済"),
     ]);
     expect(ids.sort()).toEqual(["w1", "w2", "w3"]);
+  });
+});
+
+describe("workerShowsInReview（外国人詳細の見出しの「審査中」）", () => {
+  test("審査中の申請がある／在留更新の状況が審査中／只今の状況に「審査中」と書いてある のどれかなら出す", () => {
+    expect(workerShowsInReview({}, "", [app("w", "申請済")])).toBe(true);
+    expect(workerShowsInReview({ residence_renewal_status: "審査中" }, "", [])).toBe(true);
+    expect(workerShowsInReview({}, "特定技能更新許可の審査中", [])).toBe(true);
+    expect(workerShowsInReview({ current_situation: "変更申請 審査中" }, "", [])).toBe(true);
+  });
+
+  test("どれにも当たらなければ出さない（許可済・取下げの申請は審査中ではない）", () => {
+    expect(workerShowsInReview({}, "特定技能1号で在留中", [])).toBe(false);
+    expect(workerShowsInReview({}, "", [{ ...app("w", "申請済"), approved: true }])).toBe(false);
+    expect(workerShowsInReview({}, "", [{ ...app("w", "申請済"), withdrawnOn: "2026-10-01" }])).toBe(false);
   });
 });

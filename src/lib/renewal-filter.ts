@@ -36,3 +36,16 @@ export function underReviewWorkerIds(applications: Application[]): string[] {
     ),
   ];
 }
+
+// 外国人詳細の見出しに青い「審査中」を出すか。
+// 一覧と同じ判定（審査中の申請がある／在留更新の状況が「審査中」）に加えて、
+// 只今の状況（経過メモ。未入力なら自動表示の文）に「審査中」と書いてあるときも出す
+export function workerShowsInReview(
+  worker: { residence_renewal_status?: string | null; current_situation?: string | null },
+  situationShown: string, // 画面に出ている只今の状況（入力があればそれ、無ければ自動表示の文）
+  applications: Pick<Application, "status" | "approved" | "withdrawnOn">[],
+): boolean {
+  if (applications.some(isInReviewApplication)) return true;
+  if (worker.residence_renewal_status === "審査中") return true;
+  return /審査中/.test(situationShown || worker.current_situation || "");
+}
