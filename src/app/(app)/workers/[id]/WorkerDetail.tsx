@@ -92,7 +92,8 @@ import {
   type HistoryFormValues,
 } from "@/components/workers/HistoryFormDialog";
 import { SswGauge } from "@/components/workers/SswGauge";
-import { SswStatusBadge, SupportBadge, WorkerStatusBadge } from "@/components/workers/badges";
+import { InReviewBadge, SswStatusBadge, SupportBadge, WorkerStatusBadge } from "@/components/workers/badges";
+import { workerShowsInReview } from "@/lib/renewal-filter";
 import {
   calcDocumentTotal,
   calcSsw,
@@ -726,6 +727,12 @@ export function WorkerDetail({
             <div className="flex flex-wrap items-center gap-1.5">
               {/* 状態・支援区分の変更は「基本情報」の欄から（編集モードでその場で直せる） */}
               <WorkerStatusBadge status={worker.status} />
+              {/* 入管で審査中（審査中の申請がある・在留更新の状況が審査中・只今の状況に「審査中」）。一覧と同じ青いバッジ */}
+              {workerShowsInReview(
+                worker,
+                worker.current_situation?.trim() ? worker.current_situation : autoSituationValue,
+                applications,
+              ) && <InReviewBadge />}
               <SswStatusBadge status={calc.status} residenceStatus={worker.residence_status} />
               <SupportBadge support={worker.support} />
               {/* 特定技能2号の試験に合格している人は、どのタブにいても分かるように出す
