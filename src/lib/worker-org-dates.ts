@@ -6,6 +6,7 @@
 // 表示している所属機関の在籍期間の日付だけを出す。
 
 import { normalizeOrgSearchText } from "@/lib/org-search";
+import { isEmploymentHistory } from "@/types/ssw";
 
 export interface OrgHistoryRow {
   org_name: string;
@@ -30,7 +31,7 @@ export function mergedOrgPeriod(
   const key = normalizeOrgSearchText(orgName);
   if (!key) return null;
   const rows = histories
-    .filter((h) => h.visa !== "本国での職歴" && normalizeOrgSearchText(h.org_name) === key)
+    .filter((h) => isEmploymentHistory(h.visa) && normalizeOrgSearchText(h.org_name) === key)
     .sort((a, b) => a.start_date.localeCompare(b.start_date));
   if (rows.length === 0) return null;
 
@@ -112,7 +113,7 @@ export function historyToCloseOnLeaving<T extends OrgHistoryRow & { id: string; 
   leaving: { orgName: string; leavingOn: string },
 ): T | null {
   if (!leaving.leavingOn) return null;
-  const rows = histories.filter((h) => h.visa !== "本国での職歴");
+  const rows = histories.filter((h) => isEmploymentHistory(h.visa));
   const key = normalizeOrgSearchText(leaving.orgName);
   const candidates = key
     ? rows.filter((h) => normalizeOrgSearchText(h.org_name) === key)

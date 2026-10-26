@@ -244,3 +244,16 @@ describe("visaRowsForDocTab", () => {
     expect(visaRowsForDocTab(rows, manualPeriodKey("p2"), past, open).map((r) => r.cardNo)).toEqual(["C", "D"]);
   });
 });
+
+describe("buildPastPeriods: 無職の期間", () => {
+  it("無職の職歴は在籍期間のタブにしない", () => {
+    const rows = buildPastPeriods(
+      [
+        history({ id: "a", org_name: "前の会社", start_date: "2023-01-01", end_date: "2026-05-31" }),
+        history({ id: "b", org_name: "", visa: "無職", start_date: "2026-06-01", end_date: "2026-07-31" }),
+      ],
+      TODAY,
+    );
+    expect(rows.map((r) => r.org)).toEqual(["前の会社"]);
+  });
+});

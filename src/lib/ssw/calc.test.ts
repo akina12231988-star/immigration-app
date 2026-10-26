@@ -351,3 +351,21 @@ describe("sumHistoryDays（選んだ職歴の合計。書類作成日まで）",
     expect(sumHistoryDays([], asOf)).toBe(0);
   });
 });
+
+describe("無職の期間（特定技能1号を保持したままなら通算に含める）", () => {
+  it("「通算5年に含める」にした無職の期間はカウントし、外した期間はカウントしない", () => {
+    const counted = calcSsw(
+      [h("特定技能1号", "2024-01-01", "2024-06-30"), h("無職", "2024-07-01", "2024-07-31", true)],
+      "2024-08-01",
+    );
+    expect(counted.counted).toHaveLength(2);
+    expect(counted.usedDays).toBe(entryDays({ start: "2024-01-01", end: "2024-07-31" }, "2024-08-01"));
+
+    const notCounted = calcSsw(
+      [h("特定技能1号", "2024-01-01", "2024-06-30"), h("無職", "2024-07-01", "2024-07-31", false)],
+      "2024-08-01",
+    );
+    expect(notCounted.counted).toHaveLength(1);
+    expect(notCounted.usedDays).toBe(entryDays({ start: "2024-01-01", end: "2024-06-30" }, "2024-08-01"));
+  });
+});
