@@ -34,7 +34,8 @@ export function blankWorkerInput(name: string, organizationId: string | null = n
     leaving_org_address: "",
     gender: "",
     has_spouse: "",
-    spouse: null,
+    // 配偶者の情報（spouse）は送らない。列は null 不可（既定 {}）なので null を送ると登録に失敗する。
+    // 0175 が未適用の環境でも登録できるよう、値を入れるときだけ送る
     relatives_in_japan: "",
     relatives: [],
     dependents: [],

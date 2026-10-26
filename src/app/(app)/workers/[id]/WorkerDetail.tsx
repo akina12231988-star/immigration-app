@@ -64,6 +64,7 @@ import { WorkerDependents } from "@/components/workers/WorkerDependents";
 import { SpouseEditor, SpouseView } from "@/components/workers/SpouseEditor";
 import {
   cleanWorkerSpouse,
+  emptyWorkerSpouse,
   hasSpouseInfo,
   normalizeWorkerSpouse,
 } from "@/lib/worker-spouse";
@@ -460,10 +461,10 @@ export function WorkerDetail({
         return false;
       }
       if (relativesDraft !== null) payload.relatives = relativesDraft;
-      // 配偶者の有無を「無」にしたら、配偶者の情報は消す
+      // 配偶者の有無を「無」にしたら、配偶者の情報は消す（列は null 不可なので空の内容にする）
       if (spouseDraft !== null || ("has_spouse" in payload && payload.has_spouse !== "有")) {
         const next = ("has_spouse" in payload ? payload.has_spouse : worker.has_spouse) === "有";
-        payload.spouse = next ? cleanWorkerSpouse(spouseDraft ?? savedSpouse) : null;
+        payload.spouse = next ? cleanWorkerSpouse(spouseDraft ?? savedSpouse) : emptyWorkerSpouse();
       }
       // 所属機関と雇用開始日がそろったら、申請準備中の人は在籍中＋支援区分へ自動で進める
       // （状態・支援区分をこの保存で手で選んでいるときは、その選択を優先する）
