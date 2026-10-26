@@ -242,3 +242,15 @@ describe("orgEmploymentDates（同じ会社の職歴が分かれているとき�
     ).toEqual({ employmentStartOn: "2025-07-22", leavingOn: "2026-07-22" });
   });
 });
+
+describe("無職の職歴（会社の在籍ではない）", () => {
+  it("無職の行は在籍期間にも退職日の書き込み先にもしない", () => {
+    const rows = [
+      history({ org_name: "", visa: "無職", start_date: "2026-08-10", end_date: null }),
+      history({ org_name: "有限会社國崎青果", start_date: "2024-04-01", end_date: "2026-08-09" }),
+    ].map((h, i) => ({ ...h, id: `h${i}` }));
+    expect(mergedOrgPeriod(rows, "有限会社國崎青果")).toEqual({ start: "2024-04-01", end: "2026-08-09" });
+    // 退職した所属機関が空のときは「継続中の職歴」を探すが、無職の行は選ばない
+    expect(historyToCloseOnLeaving(rows, { orgName: "", leavingOn: "2026-09-30" })).toBeNull();
+  });
+});

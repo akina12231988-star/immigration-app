@@ -44,7 +44,7 @@ import {
   type TodoExam,
   type TodoExamAttempt,
 } from "@/lib/todo";
-import { VISA_TYPES } from "@/types/ssw";
+import { UNEMPLOYED_VISA, VISA_TYPES } from "@/types/ssw";
 import type { TodoRow } from "@/lib/supabase/queries/todos";
 import type { TodoFileRow, Worker, WorkHistoryRow } from "@/types/db";
 
@@ -1361,14 +1361,15 @@ function ExamHistoryRow({
         aria-label="終了日（空で継続中）"
         className={INPUT}
       />
+      {/* 無職の期間は会社名を持たない（外国人詳細の職歴と同じ） */}
       <input
-        value={org}
-        disabled={!canEdit}
+        value={history.visa === UNEMPLOYED_VISA ? "" : org}
+        disabled={!canEdit || history.visa === UNEMPLOYED_VISA}
         onChange={(e) => setOrg(e.target.value)}
         onBlur={() => {
           if (org !== history.org_name) onSave({ org_name: org });
         }}
-        placeholder="会社・機関名"
+        placeholder={history.visa === UNEMPLOYED_VISA ? "無職" : "会社・機関名"}
         className={`${INPUT} min-w-[8rem] flex-1`}
       />
       <input

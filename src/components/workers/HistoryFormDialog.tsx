@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { COUNTED_VISAS, KEEPABLE_VISAS, VISA_TYPES, type VisaType } from "@/types/ssw";
+import { COUNTED_VISAS, KEEPABLE_VISAS, UNEMPLOYED_VISA, VISA_TYPES, type VisaType } from "@/types/ssw";
+import { errorMessage } from "@/lib/errors";
 import { PREFECTURES } from "@/lib/minimum-wage";
 import { COVID_VISA, covidPeriodAlert } from "@/lib/covid-period";
 import { todayStr } from "@/lib/application-alerts";
@@ -75,6 +76,14 @@ function HistoryFormDialogInner({
 
   const set = <K extends keyof HistoryFormValues>(key: K, value: HistoryFormValues[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
+  // 無職の期間は勤務先・都道府県を持たない（区分を無職にしたら空にして入力できなくする）
+  const unemployed = form.visa === UNEMPLOYED_VISA;
+  const setVisa = (visa: VisaType) =>
+    setForm((f) =>
+      visa === UNEMPLOYED_VISA
+        ? { ...f, visa, org_name: "", prefecture: "" }
+        : { ...f, visa },
+    );
   // コロナ帰国困難の特定活動なのに、期間がコロナの期間から外れているときの案内
   const covidAlert = form.visa === COVID_VISA ? covidPeriodAlert(form.start_date, form.end_date, todayStr()) : "";
 
@@ -87,14 +96,22 @@ function HistoryFormDialogInner({
     setBusy(true);
     setError(null);
     try {
-      // 帰国期間以外の区分では在留資格保持フラグを持たせない
+      // 帰国期間・無職以外の区分では在留資格保持フラグを持たせない。無職は勤務先・都道府県を持たない
       await onSubmit({
         ...form,
+        org_name: unemployed ? "" : form.org_name,
+        prefecture: unemployed ? "" : form.prefecture,
         kept_residence_status: KEEPABLE_VISAS.has(form.visa) && form.kept_residence_status,
       });
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存に失敗しました");
+      const msg = errorMessage(err, "保存に失敗しました");
+      // 「無職」は 0200 で足した区分。未適用の DB では enum の値として受け付けられない
+      setError(
+        unemployed && /invalid input value for enum/i.test(msg)
+          ? `${msg}／マイグレーション 0200_visa_type_unemployed.sql が未適用の可能性があります。Supabase の SQL Editor で適用してください。`
+          : msg,
+      );
     } finally {
       setBusy(false);
     }
@@ -113,7 +130,7 @@ function HistoryFormDialogInner({
           <span className="text-xs font-bold text-muted">在留資格区分</span>
           <select
             value={form.visa}
-            onChange={(e) => set("visa", e.target.value as VisaType)}
+            onChange={(e) => setVisa(e.target.value as VisaType)}
             className={INPUT_CLASS}
           >
             {VISA_TYPES.map((v) => (
@@ -136,7 +153,25 @@ function HistoryFormDialogInner({
           </p>
         )}
 
-        {KEEPABLE_VISAS.has(form.visa) && (
+        {unemployed && (
+          <label className="flex flex-col gap-1 rounded-xl border border-border bg-background px-3 py-2">
+            <span className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.kept_residence_status}
+                onChange={(e) => set("kept_residence_status", e.target.checked)}
+                className="h-4 w-4"
+              />
+              <span className="font-bold">通算5年に含める</span>
+            </span>
+            <span className="px-1 text-[11px] leading-relaxed text-muted">
+              特定技能1号の在留資格を保持したまま無職だった期間（転職活動中など）は、通算5年のカウントが続きます。
+              在留資格が無かった・別の在留資格だった期間ならチェックを外してください（通算にカウントしません）。
+            </span>
+          </label>
+        )}
+
+        {!unemployed && KEEPABLE_VISAS.has(form.visa) && (
           <label className="flex flex-col gap-1">
             <span className="text-xs font-bold text-muted">帰国中の在留資格</span>
             <select
@@ -178,38 +213,42 @@ function HistoryFormDialogInner({
         <label className="flex flex-col gap-1">
           <span className="text-xs font-bold text-muted">勤務先・受入機関</span>
           <input
-            value={form.org_name}
+            value={unemployed ? "" : form.org_name}
             onChange={(e) => set("org_name", e.target.value)}
-            placeholder="株式会社◯◯食品"
-            className={INPUT_CLASS}
+            disabled={unemployed}
+            placeholder={unemployed ? "無職（勤務先は入れられません）" : "株式会社◯◯食品"}
+            className={`${INPUT_CLASS} disabled:bg-border/40 disabled:text-muted`}
           />
         </label>
 
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-bold text-muted">都道府県（勤務先の所在地）</span>
-          <select
-            value={form.prefecture}
-            onChange={(e) => set("prefecture", e.target.value)}
-            className={INPUT_CLASS}
-          >
-            <option value="">—（未選択）</option>
-            {PREFECTURES.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-          <span className="px-1 text-[11px] leading-relaxed text-muted">
-            ここに都道府県を入れておくと、労働者名簿の「前職」欄の都道府県にも自動で転記されます（名簿を作るときに入れ直さなくて済みます）。
-          </span>
-        </label>
+        {/* 無職の期間に勤務先の所在地は無いので、都道府県は出さない */}
+        {!unemployed && (
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-bold text-muted">都道府県（勤務先の所在地）</span>
+            <select
+              value={form.prefecture}
+              onChange={(e) => set("prefecture", e.target.value)}
+              className={INPUT_CLASS}
+            >
+              <option value="">—（未選択）</option>
+              {PREFECTURES.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+            <span className="px-1 text-[11px] leading-relaxed text-muted">
+              ここに都道府県を入れておくと、労働者名簿の「前職」欄の都道府県にも自動で転記されます（名簿を作るときに入れ直さなくて済みます）。
+            </span>
+          </label>
+        )}
 
         <label className="flex flex-col gap-1">
           <span className="text-xs font-bold text-muted">職種・仕事内容</span>
           <input
             value={form.role}
             onChange={(e) => set("role", e.target.value)}
-            placeholder="惣菜製造"
+            placeholder={unemployed ? "転職活動中 など" : "惣菜製造"}
             className={INPUT_CLASS}
           />
         </label>

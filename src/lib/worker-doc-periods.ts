@@ -1,4 +1,5 @@
 import type { WorkHistoryRow } from "@/types/db";
+import { isEmploymentHistory } from "@/types/ssw";
 
 // 在留カード・指定書の画像を「どの在籍期間のものか」で振り分けるための計算。
 // 画面（WorkerDocuments）から切り出して、単体テストできるようにしている。
@@ -37,11 +38,11 @@ export function manualPeriodLabel(p: ManualPeriod): string {
 }
 
 // 職歴から「過去の」在籍期間を組み立てる。
-// 本国での職歴は除外し、同じ機関が連続する職歴はひとつの在籍期間にまとめる。
+// 本国での職歴・無職は除外し、同じ機関が連続する職歴はひとつの在籍期間にまとめる。
 // 退職日が今日以降の在籍（＝今も対象の期間）は過去ではなく「現在」として扱う。
 export function buildPastPeriods(histories: WorkHistoryRow[], today: string): OrgPeriod[] {
   const rows = [...histories]
-    .filter((h) => h.visa !== "本国での職歴")
+    .filter((h) => isEmploymentHistory(h.visa))
     .sort((a, b) => (a.start_date < b.start_date ? -1 : 1));
 
   const merged: { org: string; start: string; end: string | null }[] = [];
