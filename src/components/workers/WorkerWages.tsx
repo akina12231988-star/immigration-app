@@ -15,8 +15,10 @@ import {
 import {
   WAGE_REASON_APPLY,
   WAGE_REASON_HIRE,
+  WAGE_PENDING_LABEL,
   WAGE_REASON_RAISE,
   currentWage,
+  employmentBegun,
   hourlyFromMonthly,
   isWageFromEmploymentStart,
   sortWages,
@@ -63,8 +65,9 @@ import {
 // 申請時（または採用時）の賃金を1行目に入れ、昇給のたびに行を足す。
 // 適用開始日がいちばん新しい行が「現在の賃金」になり、過去の分もそのまま残る。
 // 申請準備の段階では雇用開始日が決まっていないことが多いので、申請時の賃金は
-// 適用開始日を「雇用開始日から」（日付なし）で入れられる。雇用開始（在籍中）になったら
-// 雇用開始日を適用開始日に書き込み、採用時の賃金として扱う。
+// 適用開始日を「在留許可が降りて雇用開始後」（日付なし）で入れられる。
+// 日付を入れると「その日に雇用が始まった（採用時）」の意味になるので、許可が降りる前は日付を入れない。
+// 雇用開始（在籍中）になって雇用開始日を過ぎたら、雇用開始日を適用開始日に書き込み、採用時の賃金として扱う。
 export function WorkerWages({
   workerId,
   currentOrganizationId,
@@ -94,7 +97,7 @@ export function WorkerWages({
   // この賃金がどの所属機関のものか（転職の場合は転職先を選ぶ。既定は表示している所属機関）
   const [formOrgId, setFormOrgId] = useState<string>("");
   const [startedOn, setStartedOn] = useState("");
-  // 適用開始日を「雇用開始日から」にする（申請時の賃金。日付が未定でも入れられる）
+  // 適用開始日を「在留許可が降りて雇用開始後」にする（申請時の賃金。日付が未定でも入れられる）
   const [fromEmploymentStart, setFromEmploymentStart] = useState(false);
   const [reason, setReason] = useState("");
   // 1-6号別紙（賃金の支払）の内容。追加フォームの分と、記録の行を開いて直す分
@@ -125,13 +128,17 @@ export function WorkerWages({
     };
   }, [workerId]);
 
-  // 雇用開始（在籍中）になっていたら、申請時に入れた賃金（適用開始日が空）に
+  // 雇用が実際に始まっているか（在籍中で雇用開始日が今日以前）。
+  // 在籍中にしてあっても雇用開始日がまだ先なら、許可待ちの賃金はそのままにする
+  const begun = employmentBegun(employmentStarted, employmentStartOn, today);
+
+  // 雇用開始（在籍中で雇用開始日を過ぎた）になっていたら、申請時に入れた賃金（適用開始日が空）に
   // 雇用開始日を書き込み、理由を「採用時」にする。開いたときに自動で行う
   useEffect(() => {
-    if (!loaded || !canEdit || !employmentStarted || !employmentStartOn) return;
+    if (!loaded || !canEdit || !begun || !employmentStartOn) return;
     if (!wages.some((w) => isWageFromEmploymentStart(w))) return;
     let cancelled = false;
-    applyEmploymentStartToWages(createClient(), wages, employmentStartOn)
+    applyEmploymentStartToWages(createClient(), wages, employmentStartOn, today)
       .then((updated) => {
         if (cancelled || updated.length === 0) return;
         setWages((prev) => prev.map((w) => updated.find((u) => u.id === w.id) ?? w));
@@ -144,7 +151,7 @@ export function WorkerWages({
     };
     // wages が変わるたびに走らせると更新のあと二重に動くので、読み込み完了と雇用開始の変化だけで動かす
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded, canEdit, employmentStarted, employmentStartOn]);
+  }, [loaded, canEdit, begun, employmentStartOn]);
 
   const orgName = (id: string | null) =>
     id ? (organizations.find((o) => o.id === id)?.name ?? "") : "";
@@ -233,12 +240,12 @@ export function WorkerWages({
   const isFirstForOrg = (orgId: string) => !wages.some((w) => (w.organization_id ?? "") === orgId);
 
   // 追加フォームの初期値を所属機関に合わせる。
-  // 最初の1件は、雇用開始前なら「申請時の賃金」（雇用開始日から）、雇用開始後なら「採用時の賃金」。
-  // 転職先（表示している所属機関と違う会社）の最初の1件は、雇用開始日がまだ無いので「雇用開始日から」
+  // 最初の1件は、雇用開始前なら「申請時の賃金」（在留許可が降りて雇用開始後）、雇用開始後なら「採用時の賃金」。
+  // 転職先（表示している所属機関と違う会社）の最初の1件は、雇用開始日がまだ無いので「在留許可が降りて雇用開始後」
   const presetForOrg = (orgId: string) => {
     const asFirst = isFirstForOrg(orgId);
     const sameOrg = orgId === (currentOrganizationId ?? "");
-    const applyTime = asFirst && (!employmentStarted || !sameOrg);
+    const applyTime = asFirst && (!begun || !sameOrg);
     setFromEmploymentStart(applyTime);
     // 採用時なら雇用開始日、昇給なら今日を初期値にする
     setStartedOn(asFirst ? (sameOrg ? (employmentStartOn ?? "") : "") : today);
@@ -260,7 +267,7 @@ export function WorkerWages({
 
   const add = async () => {
     if (!fromEmploymentStart && !startedOn) {
-      setError("適用開始日を入れてください（雇用開始日が未定なら「雇用開始日から」を選んでください）");
+      setError(`適用開始日を入れてください（許可前・雇用開始日が未定なら「${WAGE_PENDING_LABEL}」を選んでください）`);
       return;
     }
     setBusy(true);
@@ -271,7 +278,7 @@ export function WorkerWages({
         organization_id: formOrgId || null,
         kind,
         amount: Number(amount) || 0,
-        // 「雇用開始日から」は日付を持たない（雇用開始日が決まったらその日から適用）
+        // 「在留許可が降りて雇用開始後」は日付を持たない（雇用開始日が決まったらその日から適用）
         started_on: fromEmploymentStart ? null : startedOn,
         reason: reason.trim(),
         note: "",
@@ -299,6 +306,24 @@ export function WorkerWages({
       await updateWorkerWage(createClient(), id, p);
     } catch (err) {
       setError(errorMessage(err, "賃金の保存に失敗しました"));
+    }
+  };
+
+  // 記録の行の適用開始日を「日付」と「在留許可が降りて雇用開始後」で切り替える。
+  // 日付にするときは雇用開始日（無ければ今日）を入れ、理由「申請時」は「採用時」に。
+  // 許可後にするときは日付を消し、理由「採用時」は「申請時」に戻す
+  const setRowPending = (w: WorkerWage, pending: boolean) => {
+    if (pending === isWageFromEmploymentStart(w)) return;
+    if (pending) {
+      void patch(w.id, {
+        started_on: null,
+        ...(w.reason === WAGE_REASON_HIRE ? { reason: WAGE_REASON_APPLY } : {}),
+      });
+    } else {
+      void patch(w.id, {
+        started_on: employmentStartOn ?? today,
+        ...(w.reason === WAGE_REASON_APPLY ? { reason: WAGE_REASON_HIRE } : {}),
+      });
     }
   };
 
@@ -376,8 +401,9 @@ export function WorkerWages({
       </h2>
       <p className="mb-3 text-[11px] leading-relaxed text-muted">
         申請時（採用時）の賃金を入れ、昇給のたびに行を足してください。
-        申請準備の段階では適用開始日を「雇用開始日から」にしておけば、雇用開始日が決まっていなくても入れられ、
-        雇用開始（在籍中）になったら自動で採用時の賃金になります。
+        適用開始日に日付を入れると「その日に雇用が始まった（採用時）」の意味になるので、
+        許可が降りる前は適用開始日を「{WAGE_PENDING_LABEL}」にしておいてください。雇用開始日が決まっていなくても入れられ、
+        雇用開始（在籍中で雇用開始日を過ぎたとき）になったら自動で採用時の賃金になります。
         適用開始日がいちばん新しいものが現在の賃金になり、過去の賃金もそのまま残ります。
         所属機関の在籍者一覧にも現在の賃金が出ます。
         賃金を入れるときに「どういう内容で1-6号別紙（賃金の支払）を作ったか」も一緒に残せます
@@ -444,9 +470,9 @@ export function WorkerWages({
         )}
         {!now && loaded && (
           <p className="text-[11px] text-muted">
-            {employmentStarted
+            {begun
               ? "採用時の賃金がまだ入っていません。下の「採用時の賃金を入れる」から入れてください。"
-              : "申請時の賃金がまだ入っていません。下の「申請時の賃金を入れる」から入れてください（雇用開始日が未定でも入れられます）。"}
+              : "申請時の賃金がまだ入っていません。下の「申請時の賃金を入れる」から入れてください（許可前・雇用開始日が未定でも入れられます）。"}
           </p>
         )}
       </div>
@@ -550,9 +576,9 @@ export function WorkerWages({
           >
             <Plus size={13} />
             {isFirstForOrg(currentOrganizationId ?? "")
-              ? employmentStarted && orgWages.length === 0 && wages.length > 0
+              ? begun && orgWages.length === 0 && wages.length > 0
                 ? `${orgName(currentOrganizationId) || "この会社"}の賃金を入れる`
-                : employmentStarted
+                : begun
                   ? "採用時の賃金を入れる"
                   : "申請時の賃金を入れる"
               : "昇給を記録する"}
@@ -615,7 +641,8 @@ export function WorkerWages({
               className="min-h-[36px] rounded-lg border border-border bg-surface px-2 text-xs disabled:opacity-50"
             />
           </label>
-          {/* 申請時の賃金は、雇用開始日が決まっていなくても入れられるようにする */}
+          {/* 申請時の賃金は、許可が降りる前・雇用開始日が決まっていなくても入れられるようにする
+              （日付を入れると「その日に雇用が始まった」の意味になるため） */}
           <label className="flex min-h-[36px] items-center gap-1.5 text-xs">
             <input
               type="checkbox"
@@ -627,9 +654,9 @@ export function WorkerWages({
               }}
               className="h-4 w-4"
             />
-            雇用開始日から
+            {WAGE_PENDING_LABEL}
             <span className="text-[10px] text-muted">
-              {employmentStartOn ? `（${employmentStartOn}）` : "（未定でも可）"}
+              {employmentStartOn ? `（雇用開始日 ${employmentStartOn} の予定）` : "（日付が未定でも可）"}
             </span>
           </label>
           <label className="flex flex-col gap-0.5">
@@ -714,25 +741,23 @@ export function WorkerWages({
                 return (
                   <tr key={w.id} className="border-b border-border/60">
                     <td className="py-1.5 pr-2 tabular-nums">
+                      {/* 編集できるときは「日付で指定」と「在留許可が降りて雇用開始後」を選べる。
+                          日付を入れると「その日に雇用が始まった」の意味になるので、許可前は後者にしておく */}
+                      {canEdit && (
+                        <select
+                          value={isWageFromEmploymentStart(w) ? "pending" : "date"}
+                          onChange={(e) => setRowPending(w, e.target.value === "pending")}
+                          aria-label="適用開始日の決め方"
+                          className="mb-1 block max-w-[13rem] rounded-lg border border-border bg-background px-1.5 py-1 text-[11px]"
+                        >
+                          <option value="date">日付で指定</option>
+                          <option value="pending">{WAGE_PENDING_LABEL}</option>
+                        </select>
+                      )}
                       {isWageFromEmploymentStart(w) ? (
-                        // 申請時の賃金（雇用開始日から）。雇用開始日が決まるまで日付は持たない
-                        <span className={w.id === now?.id ? "font-bold" : ""}>
+                        // 申請時の賃金（在留許可が降りて雇用開始後）。雇用開始日が決まるまで日付は持たない
+                        <span className={`text-[11px] ${w.id === now?.id ? "font-bold" : ""}`}>
                           {wageStartedOnLabel(w, employmentStartOn)}
-                          {canEdit && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                void patch(w.id, {
-                                  started_on: employmentStartOn ?? today,
-                                  ...(w.reason === WAGE_REASON_APPLY ? { reason: WAGE_REASON_HIRE } : {}),
-                                })
-                              }
-                              className="ml-1 rounded-lg border border-border px-1.5 py-0.5 text-[10px] font-bold text-brand"
-                              title="適用開始日を日付で持たせる（雇用開始日が無ければ今日）"
-                            >
-                              日付を決める
-                            </button>
-                          )}
                         </span>
                       ) : canEdit ? (
                         <input
