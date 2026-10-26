@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   currentWage,
+  employmentBegun,
   pendingWagePatch,
   sortWages,
   wageRaise,
@@ -86,7 +87,7 @@ describe("前回比（昇給額）", () => {
   });
 });
 
-describe("申請時の賃金（適用開始日が空＝雇用開始日から）", () => {
+describe("申請時の賃金（適用開始日が空＝在留許可が降りて雇用開始後から）", () => {
   const pending = wage({ started_on: null, amount: 1200, reason: "申請時" });
 
   it("適用開始日は雇用開始日になり、雇用開始日が無ければ未定", () => {
@@ -95,9 +96,9 @@ describe("申請時の賃金（適用開始日が空＝雇用開始日から）"
     expect(wageStartedOn(wage({ started_on: "2025-04-01" }), "2026-10-01")).toBe("2025-04-01");
   });
 
-  it("表示は「雇用開始日（日付）から」、未定なら「雇用開始日から（未定）」", () => {
-    expect(wageStartedOnLabel(pending, "2026-10-01")).toBe("雇用開始日（2026-10-01）から");
-    expect(wageStartedOnLabel(pending)).toBe("雇用開始日から（未定）");
+  it("表示は「在留許可後の雇用開始日（日付）から」、未定なら「在留許可後の雇用開始日から（未定）」", () => {
+    expect(wageStartedOnLabel(pending, "2026-10-01")).toBe("在留許可後の雇用開始日（2026-10-01）から");
+    expect(wageStartedOnLabel(pending)).toBe("在留許可後の雇用開始日から（未定）");
     expect(wageStartedOnLabel(wage({ started_on: "2025-04-01" }))).toBe("2025-04-01");
   });
 
@@ -126,5 +127,21 @@ describe("申請時の賃金（適用開始日が空＝雇用開始日から）"
     // 雇用開始日が無い・すでに日付がある記録には何もしない
     expect(pendingWagePatch(pending, null)).toBeNull();
     expect(pendingWagePatch(wage({ started_on: "2025-04-01", reason: "申請時" }), "2026-10-01")).toBeNull();
+  });
+
+  it("今日を渡したときは、雇用開始日がまだ先なら書き込まない（雇用開始後に書き込む）", () => {
+    expect(pendingWagePatch(pending, "2026-11-20", "2026-10-26")).toBeNull();
+    expect(pendingWagePatch(pending, "2026-11-20", "2026-11-20")).toEqual({
+      started_on: "2026-11-20",
+      reason: "採用時",
+    });
+    expect(pendingWagePatch(pending, "2026-11-20", "2026-12-01")?.started_on).toBe("2026-11-20");
+  });
+
+  it("雇用が実際に始まっているか（在籍中で雇用開始日が今日以前）", () => {
+    expect(employmentBegun(true, "2026-11-20", "2026-10-26")).toBe(false);
+    expect(employmentBegun(true, "2026-11-20", "2026-11-20")).toBe(true);
+    expect(employmentBegun(true, null, "2026-10-26")).toBe(true);
+    expect(employmentBegun(false, "2025-04-01", "2026-10-26")).toBe(false);
   });
 });

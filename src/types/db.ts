@@ -734,7 +734,7 @@ export interface WorkerWage {
   kind: WorkerWageKind;
   amount: number; // 金額（円）
   // 適用開始日（採用日・昇給日）YYYY-MM-DD。
-  // 空（null）は「雇用開始日から」＝申請時に入れた賃金で、雇用開始日が決まったら
+  // 空（null）は「在留許可が降りて雇用開始後から」＝申請時に入れた賃金で、雇用開始日が決まったら
   // その日から適用される（0143_worker_wage_apply_time.sql）
   started_on: string | null;
   reason: string; // 申請時 / 採用時 / 昇給 など

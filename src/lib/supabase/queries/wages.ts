@@ -62,10 +62,11 @@ export async function applyEmploymentStartToWages(
   supabase: SupabaseClient,
   wages: WorkerWage[],
   employmentStartOn: string | null | undefined,
+  today?: string, // 渡したときは雇用開始日が今日以前のものだけ書き込む
 ): Promise<WorkerWage[]> {
   const updated: WorkerWage[] = [];
   for (const w of wages) {
-    const patch = pendingWagePatch(w, employmentStartOn);
+    const patch = pendingWagePatch(w, employmentStartOn, today);
     if (!patch) continue;
     await updateWorkerWage(supabase, w.id, patch);
     updated.push({ ...w, ...patch });

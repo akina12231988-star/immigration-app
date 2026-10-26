@@ -2,9 +2,11 @@
 // 昇給のたびに記録を増やし、適用開始日がいちばん新しいものを現在の賃金として扱う。
 //
 // 申請時の賃金: 申請準備の段階では雇用開始日がまだ決まっていないことが多いので、
-// 適用開始日を空（started_on = null）で入れられる。空は「雇用開始日から」の意味で、
-// 雇用開始日が決まればその日を適用開始日として扱い、在籍中になったら
+// 適用開始日を空（started_on = null）で入れられる。空は「在留許可が降りて雇用開始後から」の意味で、
+// 雇用開始日が決まればその日を適用開始日として扱い、在籍中になって雇用開始日を過ぎたら
 // 「採用時」の賃金として日付を書き込む（pendingWagePatch）。
+// 日付を入れた行は「その日に雇用が始まった（採用時）」の意味になるので、許可が降りる前に
+// 日付を入れないで済むようにしている。
 
 import type { WorkerWage, WorkerWageKind } from "@/types/db";
 
@@ -19,10 +21,13 @@ export function wageText(kind: WorkerWageKind | string, amount: number): string 
   return `${kind}${amount.toLocaleString("ja-JP")}円`;
 }
 
-// 適用開始日が空（雇用開始日から）の記録か
+// 適用開始日が空（在留許可が降りて雇用開始後から）の記録か
 export function isWageFromEmploymentStart(w: Pick<WorkerWage, "started_on">): boolean {
   return !w.started_on;
 }
+
+// 適用開始日が空の記録の意味（画面の選択肢・説明に使う）
+export const WAGE_PENDING_LABEL = "在留許可が降りて雇用開始後";
 
 // その賃金の適用開始日。空なら雇用開始日、それも無ければ null（未定）
 export function wageStartedOn(
@@ -40,14 +45,24 @@ function sortKey(w: Pick<WorkerWage, "started_on">, employmentStartOn?: string |
   return wageStartedOn(w, employmentStartOn) ?? UNDECIDED_SORT_KEY;
 }
 
-// 適用開始日の表示。空なら「雇用開始日から（日付）」「雇用開始日から（未定）」
+// 適用開始日の表示。空なら「在留許可後の雇用開始日（日付）から」「在留許可後の雇用開始日から（未定）」
 export function wageStartedOnLabel(
   w: Pick<WorkerWage, "started_on">,
   employmentStartOn?: string | null,
 ): string {
   if (w.started_on) return w.started_on;
   const on = wageStartedOn(w, employmentStartOn);
-  return on ? `雇用開始日（${on}）から` : "雇用開始日から（未定）";
+  return on ? `在留許可後の雇用開始日（${on}）から` : "在留許可後の雇用開始日から（未定）";
+}
+
+// 雇用が実際に始まっているか（在籍中で、雇用開始日が今日以前。雇用開始日が無ければ在籍中かどうかで判断）。
+// 在籍中にしてあっても雇用開始日がまだ先なら、許可待ちの賃金に日付は入れない
+export function employmentBegun(
+  employmentStarted: boolean,
+  employmentStartOn: string | null | undefined,
+  today: string,
+): boolean {
+  return employmentStarted && (!employmentStartOn || employmentStartOn <= today);
 }
 
 // 適用開始日の新しい順（同じ日なら登録の新しい順）
@@ -105,12 +120,15 @@ export function wageRaiseRate<
 
 // 雇用開始になったとき、申請時に入れた賃金（適用開始日が空）に書き込む内容。
 // 適用開始日に雇用開始日を入れ、理由が「申請時」なら「採用時」に変える。
+// today を渡したときは、雇用開始日がまだ先（今日より後）なら書き込まない（雇用開始後に書き込む）。
 // 書き込むものが無ければ null
 export function pendingWagePatch(
   w: Pick<WorkerWage, "started_on" | "reason">,
   employmentStartOn: string | null | undefined,
+  today?: string,
 ): { started_on: string; reason?: string } | null {
   if (w.started_on || !employmentStartOn) return null;
+  if (today && employmentStartOn > today) return null;
   return {
     started_on: employmentStartOn,
     ...(w.reason === WAGE_REASON_APPLY ? { reason: WAGE_REASON_HIRE } : {}),
