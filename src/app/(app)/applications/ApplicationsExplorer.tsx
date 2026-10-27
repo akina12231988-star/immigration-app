@@ -79,6 +79,8 @@ import { listPostApplyEntries } from "@/lib/supabase/queries/application-prep";
 import { openPostApplyCount, type PostApplyEntry } from "@/lib/post-apply";
 import { listAllExtraRequests } from "@/lib/supabase/queries/extra-requests";
 import { countOpenExtraRequests } from "@/lib/extra-request-alerts";
+import { listAllPlanDates, type PlanDatesSummary } from "@/lib/supabase/queries/plan-dates";
+import { employmentStartForApplication, planDatesByWorker } from "@/lib/application-employment-start";
 import type { ApplicationExtraRequest } from "@/types/application";
 import { staffLabel, type StaffNameSource } from "@/lib/staff-name";
 
@@ -260,6 +262,8 @@ export function ApplicationsExplorer({
   const showApprovedDetail = view === "approved";
   const showIssued = view === "card-issued";
   const showPrep = view === "pre-prep";
+  // 審査中タブでは、申請準備の画面で使っている雇用開始日（支援計画書の日付など）を出す
+  const showEmployStart = view === "waiting-notice";
 
   // 申請前＜入管提出！！＞タブで TODO番号・Notion・Messenger を表示するための外国人引き当て
   const workersById = useMemo(
@@ -271,6 +275,28 @@ export function ApplicationsExplorer({
 
   // 全タブで表示する国籍（外国人一覧から引き当てる）
   const nationalityOf = (a: Application) => workerFor(a)?.nationality;
+
+  // 支援計画書の日付の保存分（審査中タブの「雇用開始日」用・全員ぶん。0107 未適用なら空）
+  const [planDates, setPlanDates] = useState<PlanDatesSummary[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    listAllPlanDates(createClient())
+      .then((rows) => {
+        if (!cancelled) setPlanDates(rows);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const planDatesOfWorker = useMemo(() => planDatesByWorker(planDates), [planDates]);
+  // 審査中の申請に出す雇用開始日（申請の記録 → 支援計画書の日付 → 外国人の基本情報 の順）
+  const employStartFor = (a: Application) =>
+    employmentStartForApplication({
+      app: a,
+      worker: workerFor(a) ?? null,
+      planDates: a.workerId ? (planDatesOfWorker.get(a.workerId) ?? []) : [],
+    });
 
   // 全タブで表示する「預かり番号」（返却済み以外の保管番号）。外国人で引き当て、
   // 申請に外国人が紐づいていないときは申請者の氏名でも照合する。
@@ -701,6 +727,7 @@ export function ApplicationsExplorer({
           onChanged={(row) =>
             setExtraRequests((prev) => prev.map((r) => (r.id === row.id ? row : r)))
           }
+          tantouLabel={tantouOf}
         />
       ) : (
         <>
@@ -918,6 +945,23 @@ export function ApplicationsExplorer({
                   <p className="mt-1 text-xs tabular-nums text-muted">
                     預かり番号 {custodyNoLabel(a)}
                   </p>
+                  {/* 審査中: 申請準備の画面で使っている雇用開始日を、一覧を開いたまま確認できるようにする */}
+                  {showEmployStart && (
+                    <p className="mt-1 text-xs tabular-nums">
+                      <span className="text-muted">雇用開始日 </span>
+                      {(() => {
+                        const es = employStartFor(a);
+                        return es ? (
+                          <>
+                            <span className="font-bold">{es.date}</span>
+                            <span className="ml-1 text-[10px] text-muted">（{es.source}）</span>
+                          </>
+                        ) : (
+                          <span className="text-muted">未定</span>
+                        );
+                      })()}
+                    </p>
+                  )}
                   <ApplicantMeta
                     app={a}
                     nationality={nationalityOf(a)}
@@ -1095,6 +1139,8 @@ export function ApplicationsExplorer({
                       <Th>申請内容</Th>
                       <Th>申請日</Th>
                       <Th>申請番号</Th>
+                      {/* 審査中: 申請準備の画面で使っている雇用開始日 */}
+                      {showEmployStart && <Th>雇用開始日</Th>}
                     </>
                   )}
                   {showPrep && (
@@ -1220,6 +1266,21 @@ export function ApplicationsExplorer({
                           <Td>{a.applicationContent || "—"}</Td>
                           <Td className="tabular-nums">{a.applicationDate || "—"}</Td>
                           <Td className="tabular-nums">{a.applicationNumber || "—"}</Td>
+                          {showEmployStart && (
+                            <Td className="tabular-nums">
+                              {(() => {
+                                const es = employStartFor(a);
+                                return es ? (
+                                  <span className="flex flex-col">
+                                    <span className="font-bold">{es.date}</span>
+                                    <span className="text-[10px] text-muted">{es.source}</span>
+                                  </span>
+                                ) : (
+                                  <span className="text-muted">未定</span>
+                                );
+                              })()}
+                            </Td>
+                          )}
                         </>
                       )}
                       {showPrep && (

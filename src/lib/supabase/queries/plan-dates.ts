@@ -63,3 +63,16 @@ export async function updatePlanDates(
   const { error } = await supabase.from("support_plan_dates").update({ dates }).eq("id", id);
   if (error) throw error;
 }
+
+// 申請一覧用: 全員ぶんの保存結果（外国人ID・TODO番号・日付一覧だけ。新しい順）。
+// 審査中の申請に「雇用開始日（支援計画書の日付）」を出すのに使う
+export type PlanDatesSummary = Pick<SavedPlanDates, "worker_id" | "todo_no" | "dates" | "updated_at">;
+
+export async function listAllPlanDates(supabase: SupabaseClient): Promise<PlanDatesSummary[]> {
+  const { data, error } = await supabase
+    .from("support_plan_dates")
+    .select("worker_id, todo_no, dates, updated_at")
+    .order("updated_at", { ascending: false });
+  if (error) throw error;
+  return (data as PlanDatesSummary[]) ?? [];
+}

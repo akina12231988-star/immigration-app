@@ -46,6 +46,7 @@ export function ExtraRequestBoard({
   keyword,
   canEdit,
   onChanged,
+  tantouLabel,
 }: {
   rows: ApplicationExtraRequest[];
   applications: Application[];
@@ -53,6 +54,7 @@ export function ExtraRequestBoard({
   keyword: string;
   canEdit: boolean;
   onChanged: (row: ApplicationExtraRequest) => void;
+  tantouLabel?: (a: Application) => string; // 申請準備の担当者（申請一覧の担当者と同じ出どころ）
 }) {
   const [showDone, setShowDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,13 +69,14 @@ export function ExtraRequestBoard({
     const matches = (r: ApplicationExtraRequest) => {
       if (!kw) return true;
       const a = appById.get(r.application_id);
-      return [a?.name, a?.applicationNumber, a?.organizationName, r.officer, r.items]
+      // 申請準備の担当者でも探せるようにする
+      return [a?.name, a?.applicationNumber, a?.organizationName, r.officer, r.items, a ? tantouLabel?.(a) : ""]
         .some((v) => (v ?? "").toLowerCase().includes(kw));
     };
     return sortExtraRequests(
       rows.filter((r) => (showDone || isExtraRequestOpen(r)) && matches(r)),
     );
-  }, [rows, appById, keyword, showDone]);
+  }, [rows, appById, keyword, showDone, tantouLabel]);
 
   const openCount = rows.filter(isExtraRequestOpen).length;
   const doneCount = rows.length - openCount;
@@ -126,6 +129,8 @@ export function ExtraRequestBoard({
             const alert = extraRequestAlert(r, today);
             const done = !isExtraRequestOpen(r);
             const urgent = alert === "overdue" || alert === "today";
+            // 追加資料の対応を誰が進めるか分かるように、申請準備の担当者を出す
+            const tantou = app ? (tantouLabel?.(app) ?? "") : "";
             return (
               <Card
                 key={r.id}
@@ -152,6 +157,9 @@ export function ExtraRequestBoard({
                   </span>
                   <span className="tabular-nums">{r.requested_on}</span>
                   {r.officer && <span>審査担当者 {r.officer}</span>}
+                  <span className={tantou ? "rounded-full bg-brand/10 px-2 py-0.5 font-bold text-brand" : ""}>
+                    申請準備の担当者 {tantou || "未設定"}
+                  </span>
                 </p>
 
                 {r.items && (
