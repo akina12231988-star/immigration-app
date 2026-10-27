@@ -536,6 +536,7 @@ export interface Worker {
   note: string;
   jobseeker_card?: JobseekerCardExtras; // 求職票だけで使う項目（0118）
   followups?: WorkerFollowups; // あとでやる手続きの宿題（転居手続き・国保/国民年金の加入。0119）
+  prep_opened_at?: string | null; // 申請準備の詳細画面を最後に開いた日時（0202。未適用の環境では undefined）
   jobseeker_no?: string; // 求職受付番号（求職管理簿。例: R8KS-2。0079）
   jobseeker_accepted_on?: string | null; // 求職受付年月日（0079）
   jobseeker_valid_until?: string | null; // 求職の有効期間（終了日。0079）

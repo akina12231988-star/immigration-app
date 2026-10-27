@@ -30,6 +30,7 @@ import {
   type PrepProgress,
 } from "@/lib/application-prep";
 import { isExpiryWithinTwoMonths, remainingLabel } from "@/lib/worker-alerts";
+import { prepOpenedInfo, showsPrepOpened, PREP_STALE_DAYS } from "@/lib/prep-opened";
 import { NameSearchBox } from "@/components/ui/NameSearchBox";
 import { matchesOrganizationName, organizationSuggestions } from "@/lib/org-search";
 import { listActiveCustodyNoIndex } from "@/lib/supabase/queries/custody";
@@ -183,6 +184,8 @@ export function TodosClient({
   const [kanaByWorker, setKanaByWorker] = useState<Record<string, string>>({});
   // Messengerのリンク（外国人ID → リンク）。登録があれば一覧から連絡できるようにする
   const [messengerByWorker, setMessengerByWorker] = useState<Record<string, string>>({});
+  // 申請準備の詳細画面を最後に開いた日時（外国人ID → timestamptz。0202 未適用なら空のまま）
+  const [prepOpenedByWorker, setPrepOpenedByWorker] = useState<Record<string, string>>({});
   // 必要書類がどれだけ揃ったか（キーは `${worker_id} ${todo_no}`。書類 ○% の表示に使う）
   const [prepProgress, setPrepProgress] = useState<Record<string, PrepProgress>>({});
   // 並び順（申請準備のTODOのみ。既定は登録順、在留期限が近い順に並べ替えられる）
@@ -325,6 +328,20 @@ export function TodosClient({
                 })),
               );
             });
+        }
+        // 申請準備の詳細画面を最後に開いた日時（0202 未適用なら読めないので空のまま）
+        if (workerIds.length > 0) {
+          void supabase
+            .from("workers")
+            .select("id, prep_opened_at")
+            .in("id", workerIds)
+            .then(({ data }) => {
+              const out: Record<string, string> = {};
+              for (const r of ((data as { id: string; prep_opened_at: string | null }[] | null) ?? [])) {
+                if (r.prep_opened_at) out[r.id] = r.prep_opened_at;
+              }
+              setPrepOpenedByWorker(out);
+            }, () => undefined);
         }
         // TODOの行に出す所属機関名（申請準備の所属機関→現在の所属機関の順）と在留期限
         if (workerIds.length > 0) {
@@ -645,6 +662,7 @@ export function TodosClient({
                       tantou={tantouOf(t)}
                       messenger={t.worker_id ? (messengerByWorker[t.worker_id] ?? "") : ""}
                       residenceExpiry={t.worker_id ? (expiryByWorker[t.worker_id] ?? "") : ""}
+                      prepOpenedAt={t.worker_id ? (prepOpenedByWorker[t.worker_id] ?? "") : ""}
                       progress={progressOf(t)}
                       onChangeTantou={
                         t.kind === "申請準備" && t.worker_id
@@ -1587,6 +1605,24 @@ function ResidenceExpiryBadge({ expiry }: { expiry: string }) {
   );
 }
 
+// 申請準備の詳細画面を最後に開いてから何日か。
+// 入管へ申請まで進んでいないのに2週間以上開いていなければ赤いアラートにして、放置に気づけるようにする
+function PrepOpenedBadge({ openedAt }: { openedAt: string }) {
+  const info = prepOpenedInfo(openedAt, todayStr());
+  if (info.stale) {
+    return (
+      <span
+        title={`申請準備の詳細を${PREP_STALE_DAYS}日以上開いていません。進捗を確認してください`}
+        className="flex shrink-0 items-center gap-1 rounded-full bg-seal/10 px-2 py-0.5 text-[11px] font-bold text-seal"
+      >
+        <TriangleAlert size={12} />
+        {info.label}・{PREP_STALE_DAYS}日以上未確認
+      </span>
+    );
+  }
+  return <span className="shrink-0 text-[11px] text-muted">{info.label}</span>;
+}
+
 // 必要書類がどれだけ揃ったか（0%〜100%）。100%になったら緑にして、揃った人がひと目で分かるようにする
 function PrepProgressBadge({ progress }: { progress: PrepProgress | null }) {
   if (!progress || progress.total === 0) {
@@ -1623,6 +1659,7 @@ function TodoItem({
   tantou = "",
   messenger = "",
   residenceExpiry = "",
+  prepOpenedAt = "",
   progress = null,
   onChangeTantou,
   prepHref,
@@ -1642,6 +1679,7 @@ function TodoItem({
   tantou?: string; // 書類担当者（申請準備の担当者）
   messenger?: string; // 外国人の Messenger のリンク（'' = 未登録）
   residenceExpiry?: string; // 在留期限（'' = 未登録）
+  prepOpenedAt?: string; // 申請準備の詳細画面を最後に開いた日時（'' = 記録なし）
   progress?: PrepProgress | null; // 必要書類がどれだけ揃ったか
   onChangeTantou?: (v: string) => void;
   prepHref?: string; // 申請準備の詳細（書類チェックリスト）のページ
@@ -1765,6 +1803,11 @@ function TodoItem({
               {todo.kind === "申請準備" && (
                 <ResidenceExpiryBadge expiry={residenceExpiry} />
               )}
+              {/* 申請準備の詳細を最後に開いてから何日か（入管へ申請済み・完了には出さない） */}
+              {todo.kind === "申請準備" &&
+                showsPrepOpened(todo.status, stageOfStatus(todo.status, statusOptions)) && (
+                  <PrepOpenedBadge openedAt={prepOpenedAt} />
+                )}
               {/* 書類待ちの内容を名前のそばに出し、一目で何を待っているか分かるようにする */}
               {todo.kind === "申請準備" && isWaitingDocsStatus(todo.status) && (todo.waiting_note ?? "").trim() && (
                 <span className="rounded-full bg-status-notice-bg px-2 py-0.5 text-[11px] font-bold text-status-notice-fg">

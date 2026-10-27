@@ -7,6 +7,8 @@ import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { ApplicationPrepChecklist } from "@/components/workers/ApplicationPrepChecklist";
 import { messengerWebUrl } from "@/lib/messenger-link";
 import { notionAppUrl } from "@/lib/notion-link";
+import { prepOpenedInfo } from "@/lib/prep-opened";
+import { todayJst } from "@/lib/jst-date";
 
 // 見出しの右側に出す小さなリンク（白い枠。押しやすいよう高さ36px）
 const HEADER_LINK =
@@ -45,6 +47,24 @@ export default async function ApplicationPrepPage({
     application_prep_organization_id: string | null;
     current_organization_id: string | null;
   };
+
+  // 前回この画面を開いた日時を読み、今回開いた日時を書き込む（0202）。
+  // 列が未適用・閲覧のみのロールでも画面は出す（読めなければ記録なし、書けなければそのまま）
+  let prevOpenedAt: string | null = null;
+  try {
+    const { data: opened } = await supabase.from("workers").select("prep_opened_at").eq("id", id).maybeSingle();
+    prevOpenedAt = (opened as { prep_opened_at: string | null } | null)?.prep_opened_at ?? null;
+  } catch {
+    prevOpenedAt = null;
+  }
+  if (me.role !== "viewer") {
+    await supabase
+      .from("workers")
+      .update({ prep_opened_at: new Date().toISOString() })
+      .eq("id", id)
+      .then(() => undefined, () => undefined);
+  }
+  const opened = prepOpenedInfo(prevOpenedAt, todayJst());
 
   // 準備中の所属機関（転職先。無ければ現在の所属機関）。見出しの右側からすぐ開けるようにする
   const prepOrgId = worker.application_prep_organization_id ?? worker.current_organization_id ?? null;
@@ -87,6 +107,16 @@ export default async function ApplicationPrepPage({
           右側に Messenger・Notion・外国人詳細・準備中の所属機関へのリンクを置く */}
       <AppHeader title={`${worker.name}｜申請準備`} backHref="/workers/renewals" right={headerLinks} />
       <div className="px-4 pb-10 pt-4 md:px-8">
+        {/* 前回この画面を開いた日。2週間以上空いていたら赤くして、放置に気づけるようにする */}
+        <p
+          className={`mb-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${
+            opened.stale ? "bg-seal/10 text-seal" : "bg-background text-muted"
+          }`}
+        >
+          {opened.stale ? "⚠ " : ""}
+          前回この画面を開いたのは{opened.openedOn ? ` ${opened.openedOn}（${opened.days === 0 ? "今日" : `${opened.days}日前`}）` : "、記録がありません"}
+          {opened.stale && "・2週間以上開いていませんでした"}
+        </p>
         <ApplicationPrepChecklist
           workerId={worker.id}
           canEdit={me.role !== "viewer"}
