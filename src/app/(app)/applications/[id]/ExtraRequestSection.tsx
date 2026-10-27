@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Check, ExternalLink, MailPlus, Phone, Plus, Trash2, Truck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { FileGroup } from "@/components/applications/FileGroup";
+import { ExtraShipments } from "@/components/applications/ExtraShipments";
 import { createClient } from "@/lib/supabase/client";
 import {
   deleteExtraRequest,
@@ -136,6 +137,7 @@ export function ExtraRequestSection({
         入管から追加資料を求められたときに記録します。書類（追加資料提出通知書）でも電話でも、
         来た日・審査担当者・求められた資料を残してください。
         本人からの返事を書き、レターパックで送って追跡番号を入れると完了になります。
+        資料を何回かに分けて送ったときは「郵送を追加」で、いつ・何を・どの追跡番号で送ったかを1回ずつ残せます。
       </p>
 
       {error && (
@@ -394,6 +396,15 @@ export function ExtraRequestSection({
                     </button>
                   )}
                 </div>
+                {/* 資料を分けて送ったとき（2回目以降）の郵送の記録 */}
+                <ExtraShipments
+                  requestId={r.id}
+                  value={r.shipments}
+                  canEdit={canEdit}
+                  onSaved={(next) =>
+                    setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, shipments: next } : x)))
+                  }
+                />
               </div>
             );
           })}

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Check, ExternalLink, MailPlus, Phone, Truck } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { ExtraShipments } from "@/components/applications/ExtraShipments";
 import { createClient } from "@/lib/supabase/client";
 import { updateExtraRequest } from "@/lib/supabase/queries/extra-requests";
 import { letterPackTrackingUrl } from "@/lib/application-prep";
@@ -240,6 +241,13 @@ export function ExtraRequestBoard({
                     </span>
                   )}
                 </div>
+                {/* 資料を分けて送ったとき（2回目以降）の郵送の記録。申請詳細と同じ */}
+                <ExtraShipments
+                  requestId={r.id}
+                  value={r.shipments}
+                  canEdit={canEdit}
+                  onSaved={(next) => onChanged({ ...r, shipments: next })}
+                />
 
                 {app && (
                   <Link
