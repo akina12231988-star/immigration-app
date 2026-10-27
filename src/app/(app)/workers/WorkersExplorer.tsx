@@ -19,6 +19,8 @@ import { calcSsw, todayStr, type SswCalcResult } from "@/lib/ssw/calc";
 import { toCalcHistory } from "@/lib/supabase/queries/histories";
 import { isResidenceRenewalTarget } from "@/lib/worker-alerts";
 import { followupLabels, hasFollowup } from "@/lib/worker-followups";
+import { isWorkerInReview } from "@/lib/renewal-filter";
+import { shownSituation } from "@/lib/worker-situation";
 import { isSupportedSsw1 } from "@/lib/support-system";
 import { WorkerRenewalCard } from "@/components/workers/WorkerRenewalCard";
 import { WorkerExportDialog } from "@/components/workers/WorkerExportDialog";
@@ -51,12 +53,15 @@ export function WorkersExplorer({
   organizations,
   underReviewWorkerIds = [],
   inReviewWorkerIds = [],
+  latestApplications = {},
   canEdit,
 }: {
   workers: WorkerWithHistories[];
   organizations: Organization[];
   underReviewWorkerIds?: string[];
   inReviewWorkerIds?: string[]; // 入管で審査中の申請がある人（一覧に青い「審査中」を出す）
+  // 外国人ごとのいちばん新しい申請（只今の状況の自動表示＝詳細の見出しと同じ判定に使う）
+  latestApplications?: Record<string, { status: string; applicationContent?: string | null }>;
   canEdit: boolean;
 }) {
   const [filter, setFilter] = useState<WorkerFilterState>(INITIAL_FILTER);
@@ -459,10 +464,15 @@ export function WorkersExplorer({
                   <ChevronRight size={18} className="mt-1 shrink-0 text-muted" />
                 </div>
                 <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
-                  {/* 入管で審査中（入管申請の記録、または在留更新の対応状況が審査中）なら青いバッジを足す。
+                  {/* 入管で審査中（入管申請の記録・在留更新の対応状況が審査中・只今の状況に「審査中」）なら
+                      青いバッジを足す。外国人詳細の見出しと同じ判定（isWorkerInReview）にそろえている。
                       審査中ならもう申請は済んでいるので「申請準備中」の状態バッジは出さない */}
                   {(() => {
-                    const reviewing = inReview.has(worker.id) || worker.residence_renewal_status === "審査中";
+                    const reviewing = isWorkerInReview(
+                      worker,
+                      shownSituation(worker, latestApplications[worker.id] ?? null),
+                      inReview.has(worker.id),
+                    );
                     return (
                       <>
                         {reviewing && worker.status === "申請準備中" ? null : <WorkerStatusBadge status={worker.status} />}

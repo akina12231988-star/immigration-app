@@ -141,7 +141,7 @@ import {
   residencePeriodPatch,
   workRestrictionLabel,
 } from "@/lib/residence-card";
-import { WORKER_SITUATIONS, autoSituation, situationDescription } from "@/lib/worker-situation";
+import { WORKER_SITUATIONS, autoSituation, shownSituation, situationDescription } from "@/lib/worker-situation";
 import { isCountedHistory, type WorkHistory } from "@/types/ssw";
 import type { Application } from "@/types/application";
 import { PriorApplicationCard, usePriorApplication } from "@/components/workers/PriorApplicationCard";
@@ -289,12 +289,9 @@ export function WorkerDetail({
     "";
   // 只今の状況が未入力のときに自動で表示する内容（現在のビザ＋いちばん新しい申請の審査中/許可）
   const autoSituationValue = autoSituation(worker.residence_status, applications[0] ?? null);
-  // 入管で審査中か（見出しの青い「審査中」。審査中なら「申請準備中」の状態バッジは出さない）
-  const inReview = workerShowsInReview(
-    worker,
-    worker.current_situation?.trim() ? worker.current_situation : autoSituationValue,
-    applications,
-  );
+  // 入管で審査中か（見出しの青い「審査中」。審査中なら「申請準備中」の状態バッジは出さない）。
+  // 一覧のカードと同じ判定・同じ只今の状況の文を使う
+  const inReview = workerShowsInReview(worker, shownSituation(worker, applications[0] ?? null), applications);
 
   // 特定技能総合保険の負担区分（現在の所属機関の設定）。
   // 外国人負担の場合は、本人が自己負担加入を希望したときだけリンク先・有効期限を表示する
@@ -1189,7 +1186,8 @@ export function WorkerDetail({
         )}
         {/* 住所歴（転入日ごと）。最新はそのまま住居地へ反映される */}
         <div className="mt-2">
-          <WorkerAddressHistory workerId={worker.id} canEdit={canEdit} embedded />
+          {/* 転入手続きを依頼したあとに依頼日以降の転入日で登録したら、あとでやる手続きの転入手続きを完了にする */}
+          <WorkerAddressHistory workerId={worker.id} canEdit={canEdit} embedded followups={worker.followups} />
         </div>
 
         {/* 読取アプリの表示と同じく、券面の下に在留期間と許可。

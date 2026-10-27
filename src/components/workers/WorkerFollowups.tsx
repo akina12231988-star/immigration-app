@@ -273,7 +273,7 @@ export function WorkerFollowups({
                     {value.moving.movein_status === "完了" && value.moving.status !== "完了" && (
                       <p className="rounded-lg bg-status-notice-bg px-2.5 py-1.5 text-[11px] font-bold text-status-notice-fg">
                         転入手続きが完了したら、上の「依頼の状況」を「完了」にすると宿題から外れます。
-                        住所歴（転入日ごと）への登録も忘れずに。
+                        住所歴（転入日ごと）への登録も忘れずに（依頼日以降の転入日で登録すると、転居手続きは自動で完了になります）。
                       </p>
                     )}
                   </div>

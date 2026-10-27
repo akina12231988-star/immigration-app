@@ -240,6 +240,19 @@ export function followupLabels(source: { followups?: unknown } | null | undefine
   return labels;
 }
 
+// 住所歴（転入日ごと）に住所を登録したとき、転入手続きの依頼日以降の転入日なら
+// 転入手続きは済んだとみなして、転居手続きを「完了」にする（宿題から外れる）。
+// 完了にする内容を返す。当てはまらなければ null
+//  ・転居手続きが必要で、まだ完了していない
+//  ・転入手続きを依頼してある（依頼日が入っている）
+//  ・登録した転入日が依頼日以降
+export function moveinDoneByAddress(f: WorkerFollowups, movedOn: string): WorkerFollowups | null {
+  const m = f.moving;
+  if (!movedOn || !m.needed || m.status === "完了") return null;
+  if (!m.movein_requested_on || movedOn < m.movein_requested_on) return null;
+  return patchFollowups(f, { moving: { movein_status: "完了", status: "完了" } });
+}
+
 // 手続きの宿題が残っている人だけ（メニューのアラート件数・外国人一覧の絞り込み）
 export function withFollowups<T extends { followups?: unknown }>(workers: T[]): T[] {
   return workers.filter(hasFollowup);

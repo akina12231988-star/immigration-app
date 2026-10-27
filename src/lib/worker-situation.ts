@@ -233,6 +233,16 @@ export function autoSituation(
   return [visa, appInfo].filter(Boolean).join(SITUATION_SEPARATOR);
 }
 
+// 画面に出ている只今の状況（入力があればそれ、無ければ自動表示の文）。
+// 一覧のカードと外国人詳細の見出しで同じ文を使い、「審査中」のバッジの判定をそろえる
+export function shownSituation(
+  worker: { current_situation?: string | null; residence_status?: string | null },
+  latestApplication?: { status: string; applicationContent?: string | null } | null,
+): string {
+  const typed = worker.current_situation?.trim() ?? "";
+  return typed || autoSituation(worker.residence_status, latestApplication ?? null);
+}
+
 // 申請準備の対応状況を「準備中」にしたときに選ぶ、準備の内容（7つ）。
 // 選んで保存すると、外国人詳細の「只今の状況」にそのまま入る
 export const PREP_SITUATIONS: string[] = [
