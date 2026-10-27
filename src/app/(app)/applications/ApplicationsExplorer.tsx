@@ -727,6 +727,7 @@ export function ApplicationsExplorer({
           onChanged={(row) =>
             setExtraRequests((prev) => prev.map((r) => (r.id === row.id ? row : r)))
           }
+          tantouLabel={tantouOf}
         />
       ) : (
         <>
