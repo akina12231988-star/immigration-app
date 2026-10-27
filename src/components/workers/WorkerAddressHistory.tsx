@@ -24,6 +24,7 @@ import {
 } from "@/app/(app)/workers/address-file-actions";
 import { updateWorker } from "@/lib/supabase/queries/workers";
 import { dbErrorMessage } from "@/lib/errors";
+import { followupsOf, moveinDoneByAddress } from "@/lib/worker-followups";
 import type { WorkerAddress } from "@/lib/worker-address";
 
 const INPUT =
@@ -35,10 +36,12 @@ export function WorkerAddressHistory({
   workerId,
   canEdit = false,
   embedded = false,
+  followups,
 }: {
   workerId: string;
   canEdit?: boolean;
   embedded?: boolean;
+  followups?: unknown; // あとでやる手続き（workers.followups）。転入日を登録したら転入手続きを完了にするのに使う
 }) {
   const router = useRouter();
   const [rows, setRows] = useState<WorkerAddress[]>([]);
@@ -47,6 +50,23 @@ export function WorkerAddressHistory({
   const [kind, setKind] = useState("転入");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  // あとでやる手続きの転入手続きを依頼したあとに、その依頼日以降の転入日で住所を登録したら、
+  // 転入手続きは済んだとみなして転居手続きを「完了」にする（宿題から外れる）
+  const completeMoveinIfRegistered = async (registeredMovedOn: string) => {
+    const done = moveinDoneByAddress(followupsOf({ followups }), registeredMovedOn);
+    if (!done) return;
+    try {
+      await updateWorker(createClient(), workerId, { followups: done });
+      setNotice(
+        `転入日（${registeredMovedOn}）が転入手続きの依頼日（${done.moving.movein_requested_on}）以降なので、あとでやる手続きの転居手続き（転入手続き）を「完了」にしました。`,
+      );
+      router.refresh();
+    } catch (err) {
+      setError(dbErrorMessage(err, "0119_worker_followups.sql", "あとでやる手続きの更新に失敗しました"));
+    }
+  };
 
   // 基本情報の住所（労働者名簿・履歴書・扶養控除等申告書はこの値を使う）。
   // 住所歴の最新と食い違っていたら、下の注意書きで直せるようにする
@@ -176,10 +196,13 @@ export function WorkerAddressHistory({
         kind: kind.trim(),
         note: "",
       });
+      const registeredMovedOn = movedOn;
       setMovedOn("");
       setAddress("");
       setKind("転入");
+      setNotice(null);
       await syncCurrentAddress(await load());
+      await completeMoveinIfRegistered(registeredMovedOn);
     } catch (err) {
       setError(err instanceof Error ? err.message : "住所歴の登録に失敗しました");
     } finally {
@@ -218,9 +241,12 @@ export function WorkerAddressHistory({
         );
         return;
       }
+      const editedMovedOn = editing.movedOn;
       setEditing(null);
+      setNotice(null);
       // 転入日を変えると最新の行が入れ替わることがあるため、読み直してから基本情報へ反映する
       await syncCurrentAddress(await load());
+      await completeMoveinIfRegistered(editedMovedOn);
     } catch (err) {
       setError(err instanceof Error ? err.message : "住所歴の修正に失敗しました");
     } finally {
@@ -287,6 +313,11 @@ export function WorkerAddressHistory({
       {error && (
         <p role="alert" className="mb-3 rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
           {error}
+        </p>
+      )}
+      {notice && (
+        <p role="status" className="mb-3 rounded-lg bg-status-approved-bg px-3 py-2 text-xs font-bold text-status-approved-fg">
+          {notice}
         </p>
       )}
 

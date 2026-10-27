@@ -37,15 +37,38 @@ export function underReviewWorkerIds(applications: Application[]): string[] {
   ];
 }
 
-// 外国人詳細の見出しに青い「審査中」を出すか。
-// 一覧と同じ判定（審査中の申請がある／在留更新の状況が「審査中」）に加えて、
-// 只今の状況（経過メモ。未入力なら自動表示の文）に「審査中」と書いてあるときも出す
-export function workerShowsInReview(
+// 青い「審査中」のバッジを出すか（外国人管理の一覧のカードと、外国人詳細の見出しで同じ判定）。
+//  ・入管で審査中の申請がある
+//  ・在留更新の状況が「審査中」
+//  ・只今の状況（経過メモ。未入力なら自動表示の文）に「審査中」と書いてある
+export function isWorkerInReview(
   worker: { residence_renewal_status?: string | null; current_situation?: string | null },
   situationShown: string, // 画面に出ている只今の状況（入力があればそれ、無ければ自動表示の文）
-  applications: Pick<Application, "status" | "approved" | "withdrawnOn">[],
+  hasInReviewApplication: boolean, // 入管で審査中の申請があるか
 ): boolean {
-  if (applications.some(isInReviewApplication)) return true;
+  if (hasInReviewApplication) return true;
   if (worker.residence_renewal_status === "審査中") return true;
   return /審査中/.test(situationShown || worker.current_situation || "");
+}
+
+// 外国人詳細の見出しに青い「審査中」を出すか（その人の申請の一覧から判定する）
+export function workerShowsInReview(
+  worker: { residence_renewal_status?: string | null; current_situation?: string | null },
+  situationShown: string,
+  applications: Pick<Application, "status" | "approved" | "withdrawnOn">[],
+): boolean {
+  return isWorkerInReview(worker, situationShown, applications.some(isInReviewApplication));
+}
+
+// 外国人ごとのいちばん新しい申請（只今の状況の自動表示に使う）。
+// 申請の一覧は申請日の新しい順なので、最初に出てきたものがその人の最新
+export function latestApplicationByWorker(
+  applications: Pick<Application, "workerId" | "status" | "applicationContent">[],
+): Record<string, { status: string; applicationContent: string }> {
+  const out: Record<string, { status: string; applicationContent: string }> = {};
+  for (const a of applications) {
+    if (!a.workerId || out[a.workerId]) continue;
+    out[a.workerId] = { status: a.status, applicationContent: a.applicationContent ?? "" };
+  }
+  return out;
 }

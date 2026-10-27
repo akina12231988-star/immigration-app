@@ -6,6 +6,7 @@ import {
   followupLabels,
   followupsOf,
   hasFollowup,
+  moveinDoneByAddress,
   needsKokuho,
   needsMoving,
   patchFollowups,
@@ -196,5 +197,38 @@ describe("転居の保険の切り替え", () => {
   it("変更なし・完了・不要なら案内は出ない", () => {
     expect(movingInsuranceGuide(moving({ insurance_before: "社保", insurance_after: "変更なし" }))).toBeNull();
     expect(movingInsuranceGuide(moving({ insurance_before: "社保", insurance_after: "国民健康保険", status: "完了" }))).toBeNull();
+  });
+});
+
+describe("moveinDoneByAddress（住所歴の登録で転入手続きを完了にする）", () => {
+  const requested = patchFollowups(EMPTY_FOLLOWUPS, {
+    moving: {
+      needed: true,
+      status: "依頼中",
+      certificate_received_on: "2026-10-10",
+      movein_status: "依頼中",
+      movein_requested_to: "田中",
+      movein_requested_on: "2026-10-15",
+    },
+  });
+
+  it("転入手続きの依頼日以降の転入日で登録したら、転入手続きと転居手続きを完了にする", () => {
+    const done = moveinDoneByAddress(requested, "2026-10-22");
+    expect(done?.moving.movein_status).toBe("完了");
+    expect(done?.moving.status).toBe("完了");
+    expect(done?.moving.movein_requested_on).toBe("2026-10-15"); // 依頼の記録はそのまま残す
+    expect(hasFollowup({ followups: done })).toBe(false);
+    // 依頼日と同じ日でも完了にする
+    expect(moveinDoneByAddress(requested, "2026-10-15")?.moving.status).toBe("完了");
+  });
+
+  it("依頼日より前の転入日・依頼していない・不要・完了済みなら何もしない", () => {
+    expect(moveinDoneByAddress(requested, "2026-10-01")).toBeNull();
+    expect(moveinDoneByAddress(requested, "")).toBeNull();
+    expect(
+      moveinDoneByAddress(patchFollowups(requested, { moving: { movein_requested_on: null } }), "2026-10-22"),
+    ).toBeNull();
+    expect(moveinDoneByAddress(patchFollowups(requested, { moving: { needed: false } }), "2026-10-22")).toBeNull();
+    expect(moveinDoneByAddress(patchFollowups(requested, { moving: { status: "完了" } }), "2026-10-22")).toBeNull();
   });
 });
