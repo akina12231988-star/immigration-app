@@ -1,5 +1,7 @@
 // docs/00_system_design.md の列構成に対応する型定義（保存先は Supabase immigration_applications）
 
+import type { ExtraShipment } from "@/lib/extra-shipments";
+
 export type ApplicationStatus =
   | "申請前"
   | "申請済"
@@ -150,8 +152,11 @@ export interface ApplicationExtraRequest {
   items: string; // 求められた資料
   status: ExtraRequestStatus;
   worker_reply: string; // 本人からどう返事が来たか
-  sent_on: string | null; // レターパックで送った日
-  tracking_no: string; // レターパックの追跡番号
+  sent_on: string | null; // レターパックで送った日（1回目）
+  tracking_no: string; // レターパックの追跡番号（1回目）
+  // 2回目以降の郵送（郵送した日・送った資料・追跡番号。0201。未適用の環境では undefined）。
+  // 読むときは lib/extra-shipments.ts の shipmentsOf を通す
+  shipments?: ExtraShipment[] | null;
   note: string;
   created_at: string;
   updated_at: string;
