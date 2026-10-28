@@ -480,6 +480,8 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
   const ssw1Choice = isSsw1 ? "有" : NEITHER;
   const SSW1_NOTE = isSsw1 ? "特定技能1号なので「有」" : "特定技能1号のときだけ「有」。それ以外はどちらも選ばない";
 
+  // 3.20 労働保険番号（半角英数字・ハイフン無し）。入っていれば 3.19 は「有」にする
+  const rosaiNo = (intake?.rosai_no ?? "").normalize("NFKC").replace(/[^0-9A-Za-z]/g, "");
   const organization: OnlineItem[] = [
     item("3.1", "特定技能所属機関 (1)氏名又は名称", toZenkaku(org?.name), "zenkaku", "全角60文字以内", org ? og("name") : undefined, org?.name ?? ""),
     item("3.2", "(2)法人番号の有無", org ? (org.corporate_no ? "有" : "無") : "", "choice"),
@@ -505,8 +507,14 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
     postal("3.16", "(10)勤務させる事業所 所在地 郵便番号", val(groups, "3 (10)所在地"), "事業所の所在地から"),
     item("3.17", "(10)勤務させる事業所 所在地", toZenkaku(val(groups, "3 (10)所在地")), "zenkaku", "全角85文字以内（会社の住所と別なら所属機関の「作業する住所」）", org ? it("work_address") : undefined, intake?.work_address ?? ""),
     linked(groups, "3.18", "(10)健康保険・厚生年金保険の適用事業所であることの有無", "健康保険及び厚生年金保険の適用事業所", "choice", "所属機関の保険（社会保険なら有）"),
-    item("3.19", "(10)労災保険・雇用保険の適用事業所であることの有無", val(groups, "労災保険及び雇用保険の適用事業所"), "choice", "所属機関の労災・雇用保険の登録から"),
-    item("3.20", "(10)労働保険番号", (intake?.rosai_no ?? "").normalize("NFKC").replace(/[^0-9A-Za-z]/g, ""), "digits", "半角英数字18文字以内・ハイフン無しでコピー（登録はハイフンありでよい）。「有」のときだけ", org ? it("rosai_no") : undefined, intake?.rosai_no ?? ""),
+    item(
+      "3.19",
+      "(10)労災保険・雇用保険の適用事業所であることの有無",
+      rosaiNo ? "有" : val(groups, "労災保険及び雇用保険の適用事業所"),
+      "choice",
+      rosaiNo ? "3.20 の労働保険番号が入っているので「有」" : "3.20 の労働保険番号を入れると「有」になります（無ければ所属機関の労災・雇用保険の登録から）",
+    ),
+    item("3.20", "(10)労働保険番号", rosaiNo, "digits", "半角英数字18文字以内・ハイフン無しでコピー（登録はハイフンありでよい）。入れると 3.19 が「有」になります", org ? it("rosai_no") : undefined, intake?.rosai_no ?? ""),
     // 3.21〜3.43 は運用で決めている選び方のとおりに出す（欠格事由などは「無」、支援の体制は「有」）
     item("3.21", "(11)労働・社会保険・租税の法令に違反したことの有無", "無", "choice", "必ず「無」"),
     item("3.22", "(12)契約締結日前1年以内又は以後に同種の業務の労働者を非自発的に離職させたことの有無", "無", "choice", "必ず「無」"),

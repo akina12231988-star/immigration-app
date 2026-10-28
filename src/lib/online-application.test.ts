@@ -294,6 +294,8 @@ describe("buildOnlineApplication", () => {
     expect(get("特定技能所属機関 (1)氏名又は名称")?.edit).toMatchObject({ target: "org", column: "name" });
     const withRosai = buildOnlineApplication({ ...input, intake: { ...intake, rosai_no: "43-1-01-123456-000" } }, buildApplicationCopyGroups(input)).flatMap((s) => s.items);
     expect(withRosai.find((i) => i.no === "3.20")).toMatchObject({ value: "43101123456000", editValue: "43-1-01-123456-000" });
+    // 労働保険番号が入っていれば 3.19 は「有」
+    expect(withRosai.find((i) => i.no === "3.19")?.value).toBe("有");
     // 身分事項・登録支援機関もその場で保存できる
     expect(get("氏名")?.edit).toMatchObject({ target: "worker", column: "name" });
     expect(get("登録支援機関 (1)氏名又は名称")?.edit).toMatchObject({ target: "custodian", column: "officeName" });
