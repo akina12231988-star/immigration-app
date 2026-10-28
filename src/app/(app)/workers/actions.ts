@@ -450,59 +450,42 @@ export async function listWorkerDocs(workerId: string): Promise<WorkerDocView[]>
     });
   }
 
-  // 「現在」の画像（過去の在籍期間タブから登録したものを除く）が無い種別は、
-  // 申請登録時の画像を現データとして補う。
-  // 過去タブから「この期間に登録」した画像（effective_on あり）は当時の画像なので、
-  // それだけがあっても現在の分は補い続ける（過去を登録したら現在が消えてしまうのを防ぐ）。
-  // ただし「現在」にした期間（0199）に結び付いた画像は現在の画像なので、あれば補わない
-  const { data: currentPeriod } = await admin
-    .from("worker_document_periods")
+  // 申請詳細の許可情報で登録した在留カード・照合結果・指定書（application_files）も、
+  // この人の全申請ぶんを履歴に含める（申請詳細と外国人詳細のどちらで登録しても同じものが見えるようにする）。
+  // 登録日で在籍期間のタブに振り分けられ、いちばん新しいものが「現在」の画像になる
+  const { data: apps } = await admin
+    .from("immigration_applications")
     .select("id")
-    .eq("worker_id", workerId)
-    .eq("is_current", true)
-    .limit(1)
-    .maybeSingle();
-  const currentPeriodId = (currentPeriod as { id: string } | null)?.id ?? null;
-  const kinds: WorkerDocKind[] = ["在留カード", "照合結果", "指定書"];
-  const missing = kinds.filter(
-    (k) =>
-      !result.some(
-        (d) => d.kind === k && (!d.effectiveOn || (!!currentPeriodId && d.periodId === currentPeriodId)),
-      ),
-  );
-  if (missing.length > 0) {
-    const { data: apps } = await admin
-      .from("immigration_applications")
-      .select("id")
-      .eq("worker_id", workerId);
-    const appIds = ((apps as { id: string }[]) ?? []).map((a) => a.id);
-    if (appIds.length > 0) {
-      for (const kind of missing) {
-        const { data: f } = await admin
-          .from("application_files")
-          .select("id, storage_path, created_at")
-          .in("application_id", appIds)
-          .eq("kind", kind)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        const row = f as { id: string; storage_path: string; created_at: string } | null;
-        if (row) {
-          const { data: signed } = await admin.storage
-            .from(BUCKET)
-            .createSignedUrl(row.storage_path, TTL);
-          result.push({
-            id: `app-${row.id}`,
-            kind,
-            url: signed?.signedUrl ?? "",
-            createdAt: row.created_at,
-            fromApplication: true,
-          });
-        }
-      }
+    .eq("worker_id", workerId);
+  const appIds = ((apps as { id: string }[]) ?? []).map((a) => a.id);
+  if (appIds.length > 0) {
+    const { data: files } = await admin
+      .from("application_files")
+      .select("id, kind, storage_path, file_name, created_at")
+      .in("application_id", appIds)
+      .in("kind", ["在留カード", "照合結果", "指定書"])
+      .order("created_at", { ascending: false });
+    const appFiles =
+      (files as { id: string; kind: WorkerDocKind; storage_path: string; file_name: string; created_at: string }[] | null) ?? [];
+    if (appFiles.length > 0) {
+      const { data: signed } = await admin.storage
+        .from(BUCKET)
+        .createSignedUrls(appFiles.map((f) => f.storage_path), TTL);
+      appFiles.forEach((f, i) => {
+        result.push({
+          id: `app-${f.id}`,
+          kind: f.kind,
+          url: signed?.[i]?.signedUrl ?? "",
+          fileName: f.file_name,
+          createdAt: f.created_at,
+          fromApplication: true,
+        });
+      });
     }
   }
 
+  // 登録の新しい順（外国人詳細で登録した画像と申請の画像を一緒に並べる）
+  result.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return result;
 }
 

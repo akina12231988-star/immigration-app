@@ -78,6 +78,12 @@ export function FileGroup({
                   </span>
                 )}
               </a>
+              {/* 外国人詳細の在留カード・指定書で登録した画像（この許可の期間の分）。どちらで消しても両方から消える */}
+              {f.fromWorker && (
+                <span className="pointer-events-none absolute bottom-1 left-1 rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-bold text-brand-foreground">
+                  外国人詳細で登録
+                </span>
+              )}
               {onDelete && (
                 <button
                   type="button"

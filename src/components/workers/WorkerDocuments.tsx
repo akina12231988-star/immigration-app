@@ -254,7 +254,7 @@ export function WorkerDocuments({
     <Card className="p-4">
       <h2 className="mb-3 text-sm font-bold text-muted">在留カード・指定書</h2>
       <p className="-mt-2 mb-3 text-[11px] text-muted">
-        在留カード・在留カード等読取アプリケーションで照合結果・指定書の順に出します。申請詳細の許可情報で登録した画像が自動で入り、無ければここにドロップして保存できます。
+        在留カード・在留カード等読取アプリケーションで照合結果・指定書の順に出します。申請詳細の許可情報で登録した画像も自動で入り、ここで登録した画像は申請詳細の許可情報にも出ます（どちらで削除しても両方から消えます）。ここにドロップして保存もできます。
       </p>
       {error && (
         <p role="alert" className="mb-3 rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">

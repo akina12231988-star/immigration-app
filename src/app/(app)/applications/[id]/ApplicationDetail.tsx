@@ -230,7 +230,10 @@ export function ApplicationDetail({ id }: { id: string }) {
 
   // 誤ってアップロードした画像の削除（在留カード・指定書）
   async function handleDeleteFile(file: ApplicationFile) {
-    if (!confirm(`「${file.fileName}」を削除しますか？`)) return;
+    const message = file.fromWorker
+      ? `「${file.fileName}」は外国人詳細の在留カード・指定書で登録した画像です。削除すると外国人詳細からも消えます。削除しますか？`
+      : `「${file.fileName}」を削除しますか？（外国人詳細の在留カード・指定書の履歴からも消えます）`;
+    if (!confirm(message)) return;
     setUploadError(null);
     const res = await deleteApplicationFile(file.id);
     if (res.ok) {
