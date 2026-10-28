@@ -5,6 +5,8 @@ import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import type { ApplicationFile, ApplicationFileKind } from "@/types/application";
 import type { ApplicationFileRow } from "@/types/db";
 import { APPLICATION_FILE_KINDS } from "@/types/application";
+import { applicationDocWindow, isDocInWindow, LINKED_DOC_KINDS } from "@/lib/application-doc-link";
+import { jstDateStr } from "@/lib/jst-date";
 
 // 申請画像は非公開バケット app-files に保存し、閲覧は署名付きURL経由。
 // アップロードは「サーバーで署名付きアップロードURLを発行 → クライアントが直接PUT」方式
@@ -133,7 +135,10 @@ export async function registerApplicationFile(
   };
 }
 
-// 申請に紐づく画像一覧（署名付きURL付き）
+// 申請に紐づく画像一覧（署名付きURL付き）。
+// 在留カード・照合結果・指定書は、外国人詳細の在留カード・指定書で登録した画像のうち
+// この申請の許可の期間（許可日から次の許可日の前日まで）に登録した分も一緒に出す
+// （どちらの画面で登録しても同じものが見えるようにする。id は "wd-<worker_documents.id>"）
 export async function listApplicationFiles(
   applicationId: string,
 ): Promise<ApplicationFile[]> {
@@ -142,24 +147,113 @@ export async function listApplicationFiles(
   const admin = createAdminClient();
   if (!admin) return [];
 
-  const { data } = await admin
-    .from("application_files")
-    .select("*")
-    .eq("application_id", applicationId)
-    .order("created_at", { ascending: true });
+  const [{ data }, linked] = await Promise.all([
+    admin
+      .from("application_files")
+      .select("*")
+      .eq("application_id", applicationId)
+      .order("created_at", { ascending: true }),
+    listLinkedWorkerDocs(admin, applicationId).catch(() => [] as LinkedWorkerDoc[]),
+  ]);
   const rows = (data as ApplicationFileRow[]) ?? [];
-  if (rows.length === 0) return [];
+  const paths = [...rows.map((r) => r.storage_path), ...linked.map((d) => d.storage_path)];
+  if (paths.length === 0) return [];
 
-  const { data: signed } = await admin.storage
-    .from(BUCKET)
-    .createSignedUrls(rows.map((r) => r.storage_path), SIGNED_URL_TTL);
+  const { data: signed } = await admin.storage.from(BUCKET).createSignedUrls(paths, SIGNED_URL_TTL);
 
-  return rows.map((r, i) => ({
+  const own = rows.map((r, i) => ({
     id: r.id,
     kind: r.kind as ApplicationFileKind,
     fileName: r.file_name,
     url: signed?.[i]?.signedUrl ?? "",
+    createdAt: r.created_at,
   }));
+  const fromWorker = linked.map((d, i) => ({
+    id: `wd-${d.id}`,
+    kind: d.kind,
+    fileName: d.file_name,
+    url: signed?.[rows.length + i]?.signedUrl ?? "",
+    createdAt: d.created_at,
+    fromWorker: true as const,
+  }));
+  return [...own, ...fromWorker]
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .map((f) => ({
+      id: f.id,
+      kind: f.kind,
+      fileName: f.fileName,
+      url: f.url,
+      ...("fromWorker" in f ? { fromWorker: true } : {}),
+    }));
+}
+
+interface LinkedWorkerDoc {
+  id: string;
+  kind: ApplicationFileKind;
+  storage_path: string;
+  file_name: string;
+  created_at: string;
+}
+
+// 外国人詳細の在留カード・指定書で登録した画像のうち、この申請の許可の期間に登録した分
+// （「現在」のタブで登録した画像だけ。過去の期間に登録した画像・リンク登録は含めない）
+async function listLinkedWorkerDocs(admin: Admin, applicationId: string): Promise<LinkedWorkerDoc[]> {
+  const { data: appRow } = await admin
+    .from("immigration_applications")
+    .select("id, worker_id, application_date, granted_permit_date, approval_date, withdrawn_on")
+    .eq("id", applicationId)
+    .maybeSingle();
+  type AppRow = {
+    id: string;
+    worker_id: string | null;
+    application_date: string;
+    granted_permit_date: string | null;
+    approval_date: string | null;
+    withdrawn_on: string | null;
+  };
+  const app = appRow as AppRow | null;
+  if (!app?.worker_id) return [];
+
+  const [{ data: others }, { data: docs }] = await Promise.all([
+    admin
+      .from("immigration_applications")
+      .select("id, worker_id, application_date, granted_permit_date, approval_date, withdrawn_on")
+      .eq("worker_id", app.worker_id),
+    admin
+      .from("worker_documents")
+      .select("id, kind, storage_path, file_name, effective_on, external_url, created_at")
+      .eq("worker_id", app.worker_id)
+      .in("kind", [...LINKED_DOC_KINDS])
+      .order("created_at", { ascending: true }),
+  ]);
+  const toLink = (r: AppRow) => ({
+    id: r.id,
+    applicationDate: r.application_date,
+    grantedPermitDate: r.granted_permit_date,
+    approvalDate: r.approval_date,
+    withdrawnOn: r.withdrawn_on,
+  });
+  const window = applicationDocWindow(toLink(app), ((others as AppRow[] | null) ?? []).map(toLink));
+  return (
+    (docs as {
+      id: string;
+      kind: ApplicationFileKind;
+      storage_path: string;
+      file_name: string;
+      effective_on: string | null;
+      external_url: string | null;
+      created_at: string;
+    }[] | null) ?? []
+  )
+    .filter((d) => d.storage_path && !d.effective_on && !(d.external_url ?? "").trim())
+    .filter((d) => isDocInWindow(jstDateStr(new Date(d.created_at)), window))
+    .map((d) => ({
+      id: d.id,
+      kind: d.kind,
+      storage_path: d.storage_path,
+      file_name: d.file_name,
+      created_at: d.created_at,
+    }));
 }
 
 // 申請そのものを削除する（誤登録の取り消し用）。
@@ -200,6 +294,22 @@ export async function deleteApplicationFile(
   }
   const admin = createAdminClient();
   if (!admin) return { ok: false, message: "サーバー設定エラー" };
+
+  // 外国人詳細の在留カード・指定書で登録した画像（wd-<id>）は worker_documents を消す
+  // （外国人詳細からも消える。実体はそこにしか無い）
+  if (fileId.startsWith("wd-")) {
+    const docId = fileId.slice(3);
+    const { data: doc } = await admin
+      .from("worker_documents")
+      .select("storage_path")
+      .eq("id", docId)
+      .maybeSingle();
+    const docPath = (doc as { storage_path: string } | null)?.storage_path;
+    if (docPath) await admin.storage.from(BUCKET).remove([docPath]).catch(() => undefined);
+    const { error } = await admin.from("worker_documents").delete().eq("id", docId);
+    if (error) return { ok: false, message: error.message };
+    return { ok: true };
+  }
 
   const { data } = await admin
     .from("application_files")

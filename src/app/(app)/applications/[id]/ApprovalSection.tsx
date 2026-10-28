@@ -683,8 +683,12 @@ export function ApprovalSection({
             </div>
           )}
 
-          {/* 在留カード画像・指定書画像 */}
+          {/* 在留カード画像・指定書画像。外国人詳細の在留カード・指定書と紐づいている */}
           <div className="space-y-4">
+            <p className="text-[11px] leading-relaxed text-muted">
+              ここで登録した画像は、外国人詳細の「在留カード・指定書」にも出ます。
+              外国人詳細で登録した画像（この許可のあとに登録した分）もここに出て、どちらで削除しても両方から消えます。
+            </p>
             <FileGroup
               label="在留カード画像（複数枚可）"
               files={files.filter((f) => f.kind === "在留カード")}

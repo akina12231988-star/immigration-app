@@ -53,10 +53,11 @@ export const APPLICATION_FILE_KINDS = [
 export type ApplicationFileKind = (typeof APPLICATION_FILE_KINDS)[number];
 
 export interface ApplicationFile {
-  id: string;
+  id: string; // application_files.id。外国人詳細で登録した画像は "wd-<worker_documents.id>"
   kind: ApplicationFileKind;
   fileName: string;
   url: string; // 署名付きURL（期限付き）
+  fromWorker?: boolean; // 外国人詳細の在留カード・指定書で登録した画像（この許可の期間に登録した分）
 }
 
 // LINE報告時の敬称（所属機関名の後ろに付ける）
