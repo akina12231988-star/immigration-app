@@ -40,6 +40,7 @@ import {
   type FilingAgent,
 } from "@/lib/supabase/queries/agents";
 import { uploadApplicationFile } from "@/lib/application-files";
+import { ONLINE_APP_TYPE_EXAMPLE } from "@/lib/online-receipt";
 import {
   type ApplicationContent,
   type ApplicationMethod,
@@ -52,7 +53,9 @@ interface FormFields {
   residenceExpiryAtApply: string;
   applicationContent: ApplicationContent | "";
   isSelfApply: boolean;
-  emailLink: string;
+  emailLink: string; // オンライン申請 1通目のメールのリンク
+  onlineAppType: string; // オンライン申請 1通目の申請種別
+  onlineRefNo: string; // オンライン申請 1通目の整理番号
 }
 
 const EMPTY_FIELDS: FormFields = {
@@ -62,6 +65,8 @@ const EMPTY_FIELDS: FormFields = {
   applicationContent: "",
   isSelfApply: false,
   emailLink: "",
+  onlineAppType: "",
+  onlineRefNo: "",
 };
 
 interface WorkerOption {
@@ -96,6 +101,15 @@ export function ReceiptRegistrationForm({
 
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
+  // オンライン申請 1通目のメールのスクリーンショット（登録後に「受付完了メール」として保存する）
+  const [mailFile, setMailFile] = useState<File | null>(null);
+  const [mailPreview, setMailPreview] = useState<string | null>(null);
+  const mailInputRef = useRef<HTMLInputElement>(null);
+  const pickMailFile = (file: File | undefined) => {
+    if (!file) return;
+    setMailFile(file);
+    setMailPreview(file.type.startsWith("image/") ? URL.createObjectURL(file) : null);
+  };
   const [entryState, setEntryState] = useState<"idle" | "loading" | "editing">(
     isOnline ? "editing" : "idle"
   );
@@ -328,7 +342,10 @@ export function ReceiptRegistrationForm({
         applicationNumber: trimmedNumber,
         applicationContent: fields.applicationContent,
         method,
-        emailLink: isOnline ? fields.emailLink : "",
+        emailLink: isOnline ? fields.emailLink.trim() : "",
+        // 1通目のメールの内容（0205）。入れたときだけ送る（未適用の環境でも登録が止まらないように）
+        ...(isOnline && fields.onlineAppType.trim() ? { onlineAppType: fields.onlineAppType.trim() } : {}),
+        ...(isOnline && fields.onlineRefNo.trim() ? { onlineRefNo: fields.onlineRefNo.trim() } : {}),
         residenceExpiryAtApply: fields.residenceExpiryAtApply || undefined,
         isSelfApply: fields.isSelfApply,
         reportOrgHonorific: "御中",
@@ -358,6 +375,9 @@ export function ReceiptRegistrationForm({
       if (imageFile) {
         await uploadApplicationFile(created.id, "受付票", imageFile).catch(() => undefined);
       }
+      if (isOnline && mailFile) {
+        await uploadApplicationFile(created.id, "受付完了メール", mailFile).catch(() => undefined);
+      }
       router.push(`/applications/${created.id}`);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "登録に失敗しました");
@@ -371,10 +391,12 @@ export function ReceiptRegistrationForm({
     hasSubject &&
     orgId &&
     fields.applicationDate &&
-    fields.applicationNumber &&
+    // 窓口は受付票の申請番号が必須。オンラインは申請受付番号が2通目のメールで届くので登録時は無くてよい
+    (isOnline || fields.applicationNumber) &&
     fields.applicationContent &&
     (fields.isSelfApply || agentId) &&
-    (!isOnline || fields.emailLink);
+    // オンラインは1通目のメールの整理番号を入れる
+    (!isOnline || fields.onlineRefNo.trim());
 
   return (
     <div className="space-y-5 pb-28">
@@ -491,20 +513,76 @@ export function ReceiptRegistrationForm({
               </label>
 
               {isOnline && (
-                <label className="block">
-                  <span className="mb-1.5 flex items-center gap-1 text-xs font-bold text-muted">
-                    <Link2 size={13} />
-                    申請受付メールのリンク
-                  </span>
-                  <input type="url" value={fields.emailLink} onChange={(e) => set("emailLink", e.target.value)} placeholder="https://..." className={INPUT_CLASS} />
-                </label>
+                <div className="rounded-xl border border-border bg-background p-3">
+                  <p className="mb-1 text-xs font-bold">1通目のメール「申請受付完了のお知らせ」</p>
+                  <p className="mb-3 text-[11px] leading-relaxed text-muted">
+                    申請直後に届くメールの申請種別と整理番号を入れ、メールのリンクとスクリーンショットを残します。
+                    2通目のメール（申請受付日・申請受付仮番号・申請人在留カード等番号・申請受付番号）は、届いたら申請詳細の「オンライン申請の受付」で入力できます。
+                  </p>
+                  <div className="space-y-3">
+                    <Field label="申請種別" value={fields.onlineAppType} onChange={(v) => set("onlineAppType", v)} placeholder={`例: ${ONLINE_APP_TYPE_EXAMPLE}`} />
+                    <Field label="整理番号（必須）" value={fields.onlineRefNo} onChange={(v) => set("onlineRefNo", v)} placeholder="例: 650468319129" />
+                    <label className="block">
+                      <span className="mb-1.5 flex items-center gap-1 text-xs font-bold text-muted">
+                        <Link2 size={13} />
+                        メールのリンク
+                      </span>
+                      <input type="url" value={fields.emailLink} onChange={(e) => set("emailLink", e.target.value)} placeholder="https://..." className={INPUT_CLASS} />
+                    </label>
+                    <div>
+                      <span className="mb-1.5 block text-xs font-bold text-muted">メールのスクリーンショット</span>
+                      <FileDropArea
+                        onFiles={(files) => pickMailFile(files[0])}
+                        className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border p-4 text-center"
+                      >
+                        {mailFile ? (
+                          <>
+                            {mailPreview ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={mailPreview} alt="1通目のメールのスクリーンショット" className="max-h-48 rounded-lg" />
+                            ) : (
+                              <span className="text-xs font-bold">{mailFile.name}</span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMailFile(null);
+                                setMailPreview(null);
+                              }}
+                              className="text-xs font-bold text-seal"
+                            >
+                              取り消す
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-[11px] text-muted">ここにドラッグ＆ドロップするか、ボタンで選んでください（登録時に保存します）</p>
+                            <Button variant="secondary" icon={<ImagePlus size={17} />} onClick={() => mailInputRef.current?.click()}>
+                              画像を選ぶ
+                            </Button>
+                          </>
+                        )}
+                      </FileDropArea>
+                      <input
+                        ref={mailInputRef}
+                        type="file"
+                        accept="image/*,application/pdf"
+                        className="hidden"
+                        onChange={(e) => {
+                          pickMailFile(e.target.files?.[0]);
+                          e.target.value = "";
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
               )}
 
               {/* 3. 申請日 4. 申請番号 */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field label="申請日（必須）" type="date" value={fields.applicationDate} onChange={(v) => set("applicationDate", v)} />
                 <Field
-                  label="申請番号（必須）"
+                  label={isOnline ? "申請受付番号（2通目のメールが届いてから。申請詳細でも入力できます）" : "申請番号（必須）"}
                   value={fields.applicationNumber}
                   onChange={(v) => set("applicationNumber", v)}
                   warning={duplicateLabel}
@@ -636,12 +714,14 @@ function Field({
   onChange,
   type = "text",
   warning,
+  placeholder,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   type?: string;
   warning?: string;
+  placeholder?: string;
 }) {
   return (
     <label className="block">
@@ -649,6 +729,7 @@ function Field({
       <input
         type={type}
         value={value}
+        placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
         className={`w-full rounded-xl border bg-surface px-3.5 py-3 text-base focus:outline-none ${
           warning ? "border-seal focus:border-seal" : "border-border focus:border-brand"

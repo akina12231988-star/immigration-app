@@ -19,6 +19,8 @@ const ALLOWED_MIME = /^(image\/(jpeg|png|webp|heic|heif)|application\/pdf)$/;
 // Storage のオブジェクトキーは日本語不可のため、種別を英数字のフォルダ名に変換する
 const KIND_SLUGS: Record<ApplicationFileKind, string> = {
   受付票: "receipt",
+  受付完了メール: "receipt-mail-1",
+  受付番号メール: "receipt-mail-2",
   通知書: "notice",
   在留カード: "residence-card",
   照合結果: "card-check-result",
