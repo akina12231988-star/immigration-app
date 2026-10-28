@@ -193,8 +193,14 @@ const manual = (no: string, label: string, note: string, format: OnlineFormat = 
   note,
 });
 
-// オンラインシステムにログインしている利用者（取次者）のメールアドレス
+// オンラインシステムにログインしている利用者（取次者）のメールアドレス。
+// 「通知送信用メールアドレス」にもこれを入れる（外国人本人ではなく、こちらで通知を受け取る）
 export const ONLINE_SYSTEM_EMAIL = "thanhktc2017.visa@gmail.com";
+
+// 在留カードの受領方法（受領方法等。この場で選んで保存できる）
+export const CARD_RECEIPT_METHODS = ["郵送", "窓口"] as const;
+// 窓口で受け取るときの受領官署
+export const CARD_RECEIPT_OFFICE = "福岡出入国在留管理局 熊本出張所";
 
 // 2.7・2.8 所定労働時間の注意書き（画面は小数点を受け付けない）
 export const HOURS_NOTE = "半角数字4文字以内。小数点以下は入力できないので切り捨てています（40.5 → 40）";
@@ -574,11 +580,33 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
     item("5.16", "(13)支援委託手数料(月額/人)", digitsOnly(intake?.support_fee), "digits", "円", org ? it("support_fee") : undefined, intake?.support_fee ?? ""),
   ];
 
+  // 在留カードの受領方法（郵送／窓口）はこの場で選んで保存する。窓口なら受領官署に熊本出張所を出す
+  const receiptMethod = (w.card_receipt_method ?? "").trim();
+  const receiptOffice: OnlineItem =
+    receiptMethod === "窓口"
+      ? item("", "受領官署", CARD_RECEIPT_OFFICE, "choice", "プルダウンから選ぶ（窓口で受け取るとき）")
+      : receiptMethod === "郵送"
+        ? {
+            no: "",
+            label: "受領官署",
+            value: "",
+            format: "choice",
+            skip: true,
+            note: `郵送のときは選ばない（在留カードの受領方法を「窓口」にすると「${CARD_RECEIPT_OFFICE}」が出ます）`,
+          }
+        : manual("", "受領官署", `在留カードの受領方法を「窓口」にすると「${CARD_RECEIPT_OFFICE}」が出ます（郵送なら選ばない）`, "choice");
   const receipt: OnlineItem[] = [
-    choose("", "在留カードの受領方法", "郵送", "再入国許可申請を同時に申請するときは「窓口」"),
+    item(
+      "",
+      "在留カードの受領方法",
+      receiptMethod,
+      "choice",
+      "ここで郵送か窓口を選んで保存できます（通常は「郵送」。再入国許可申請を同時に申請するときは「窓口」）",
+      wk("card_receipt_method", CARD_RECEIPT_METHODS),
+    ),
     item("", "申請対象者の住居地（都道府県）", prefectureOf(w.address), "choice", "プルダウンから選ぶ"),
-    manual("", "受領官署", "プルダウンから選ぶ（例: 福岡出入国在留管理局 熊本出張所）", "choice"),
-    item("", "通知送信用メールアドレス", (w as { email?: string }).email ?? "", "text", "外国人本人のメールアドレス。再入力欄にも同じものを入れる"),
+    receiptOffice,
+    item("", "通知送信用メールアドレス", ONLINE_SYSTEM_EMAIL, "text", "オンラインシステムの利用者（取次者）のメールアドレス。再入力欄にも同じものを入れる"),
     choose("", "申請の意思の確認・申請内容の確認", "チェック", "2つのチェックを入れる"),
     item("", "フリー欄（協力確認書）", councilFreeText(intake?.council_office_submissions, intake?.council_residence_submissions), "text", "現在「特定技能」の人は協力確認書の有無を書く。300文字以内"),
     manual("", "顔写真", "JPEG を添付（3か月以内に撮影）"),

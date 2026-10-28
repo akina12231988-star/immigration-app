@@ -331,6 +331,23 @@ describe("buildOnlineApplication", () => {
     expect(get("(4)電話番号")?.value).toBe("05088904000");
     expect(get("申請対象者の住居地（都道府県）")?.value).toBe("熊本県");
     expect(get("フリー欄（協力確認書）")?.value).toContain("八代市長");
+    // 通知送信用メールアドレスはオンラインシステムの利用者（取次者）のメール
+    expect(get("通知送信用メールアドレス")?.value).toBe("thanhktc2017.visa@gmail.com");
+  });
+
+  it("在留カードの受領方法はこの場で選んで保存でき、窓口なら受領官署に熊本出張所が出る", () => {
+    const method = get("在留カードの受領方法");
+    expect(method?.value).toBe("");
+    expect(method?.edit).toEqual({ target: "worker", column: "card_receipt_method", options: ["郵送", "窓口"] });
+    // 未選択: 受領官署は画面で選ぶ（案内付き）
+    expect(get("受領官署")).toMatchObject({ value: "", manual: true });
+    const items = (w: Partial<typeof input.worker>) =>
+      buildOnlineApplication({ ...input, worker: { ...input.worker, ...w } }, buildApplicationCopyGroups(input)).flatMap((s) => s.items);
+    const counter = items({ card_receipt_method: "窓口" });
+    expect(counter.find((i) => i.label === "在留カードの受領方法")?.value).toBe("窓口");
+    expect(counter.find((i) => i.label === "受領官署")?.value).toBe("福岡出入国在留管理局 熊本出張所");
+    const mail = items({ card_receipt_method: "郵送" });
+    expect(mail.find((i) => i.label === "受領官署")).toMatchObject({ value: "", skip: true });
   });
 
   it("画面で選ぶ項目は値が空で案内が出る", () => {

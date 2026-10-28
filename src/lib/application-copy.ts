@@ -113,6 +113,8 @@ export type CopyWorker = Pick<
       | "agency_postal"
       | "agency_address"
       | "agency_tel"
+      // 在留カードの受領方法（オンライン申請の受領方法等・0204）
+      | "card_receipt_method"
     >
   >;
 
