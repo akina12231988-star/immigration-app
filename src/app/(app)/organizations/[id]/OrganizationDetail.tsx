@@ -32,6 +32,7 @@ export function OrganizationDetail({
   workerCount = 0,
   roster,
   ssw2,
+  contacts,
 }: {
   organization: Organization;
   managerNames?: string[]; // 支援責任者にしている従業員（/employees で設定）
@@ -39,6 +40,7 @@ export function OrganizationDetail({
   workerCount?: number; // この機関に在籍している1号特定技能外国人数
   roster?: ReactNode; // 在籍者・過去の在籍者（「支援体制・在籍者」のタブに出す）
   ssw2?: ReactNode; // 特定技能２号の指導体制（「２号の指導体制」のタブに出す）
+  contacts?: ReactNode; // 会社との連絡の記録（「連絡の記録」のタブに出す）
 }) {
   // 案B: 中身はそのままで、タブに分けて見せる
   const [tab, setTab] = useState<OrgTabId>("company");
@@ -212,7 +214,8 @@ export function OrganizationDetail({
       )}
       {/* 入力欄はどのタブでも描いたままにして（入力中の内容が消えないように）、タブで見せる所だけ切り替える */}
       <OrgTabProvider tab={tab}>
-      <Card className={`p-4 ${tab === "ssw2" ? "hidden" : ""}`}>
+      {/* ２号の指導体制・連絡の記録のタブは入力欄を持たないので、フォームのカードごと隠す */}
+      <Card className={`p-4 ${tab === "ssw2" || tab === "contacts" ? "hidden" : ""}`}>
         <div className="flex flex-col gap-2.5">
           <OrganizationFormBody
             form={form}
@@ -230,6 +233,7 @@ export function OrganizationDetail({
       </OrgTabProvider>
       {tab === "support" && roster}
       {tab === "ssw2" && ssw2}
+      {tab === "contacts" && contacts}
     </div>
   );
 }

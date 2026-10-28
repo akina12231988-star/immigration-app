@@ -16,6 +16,7 @@ import {
 import { todayStr } from "@/lib/application-alerts";
 import { OrganizationRoster } from "@/components/organizations/OrganizationRoster";
 import { OrgSsw2Instruction } from "@/components/organizations/OrgSsw2Instruction";
+import { OrganizationContacts } from "@/components/organizations/OrganizationContacts";
 import { ssw2DutiesOf } from "@/lib/org-ssw2-duties";
 import { OrganizationDetail } from "./OrganizationDetail";
 
@@ -83,6 +84,8 @@ export default async function OrganizationDetailPage({
         }
         // 特定技能２号の指導体制（誰が誰を指導するか・あと何人受け入れられるか）
         ssw2={<OrgSsw2Instruction organizationId={id} duties={ssw2DutiesOf(organization)} canEdit />}
+        // 会社との連絡の記録（連絡があった日・方法・内容・対応した人）
+        contacts={<OrganizationContacts organizationId={id} canEdit />}
       />
     </>
   );

@@ -15,6 +15,7 @@ export const ORG_TABS = [
   { id: "docs", label: "提出書類" },
   { id: "money", label: "決算・売上" },
   { id: "ssw2", label: "２号の指導体制" },
+  { id: "contacts", label: "連絡の記録" },
 ] as const;
 export type OrgTabId = (typeof ORG_TABS)[number]["id"];
 
