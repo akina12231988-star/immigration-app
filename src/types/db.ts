@@ -823,6 +823,13 @@ export interface ImmigrationApplicationRow {
   assignee: string; // 申請取次士
   method: string; // 窓口 / オンライン
   email_link: string;
+  // オンライン申請の受付メールの内容（0205。未適用の環境では無い）
+  online_app_type?: string | null;
+  online_ref_no?: string | null;
+  online_received_on?: string | null;
+  online_temp_no?: string | null;
+  online_card_no?: string | null;
+  online_mail2_link?: string | null;
   line_reported: boolean;
   notion_synced: boolean;
   approved: boolean;

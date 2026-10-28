@@ -43,6 +43,8 @@ export type ApplicationMethod = (typeof APPLICATION_METHODS)[number];
 // 申請に添付する画像の種別
 export const APPLICATION_FILE_KINDS = [
   "受付票",
+  "受付完了メール", // オンライン申請 1通目（申請受付完了のお知らせ）のスクリーンショット
+  "受付番号メール", // オンライン申請 2通目（申請受付番号のお知らせ）のスクリーンショット
   "通知書",
   "在留カード",
   "照合結果", // 在留カード等読取アプリケーションで照合した結果の画像（0192）
@@ -96,7 +98,14 @@ export interface Application {
   applicationNumber: string; // 申請番号
   applicationContent: ApplicationContent | ""; // 申請内容
   method: ApplicationMethod; // 窓口 / オンライン
-  emailLink: string; // オンライン申請の受付メールのリンク
+  emailLink: string; // オンライン申請の受付メール（1通目）のリンク
+  // オンライン申請の受付メールの内容（0205。未適用の環境では undefined）
+  onlineAppType?: string; // 申請種別（例: 在留資格変更許可申請（区分V））
+  onlineRefNo?: string; // 整理番号（1通目）
+  onlineReceivedOn?: string; // 申請受付日（2通目）
+  onlineTempNo?: string; // 申請受付仮番号（2通目）
+  onlineCardNo?: string; // 申請人在留カード等番号（2通目）
+  onlineMail2Link?: string; // 2通目のメールのリンク
   residenceExpiryAtApply?: string; // 申請時点の在留期限
   isSelfApply: boolean; // 本人申請
   receiptImageUrl?: string; // （旧）受付票画像URL。現在は application_files を使用

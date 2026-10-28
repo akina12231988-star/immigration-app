@@ -55,6 +55,7 @@ import {
 import { ApplicationEditDialog } from "./ApplicationEditDialog";
 import { ApprovalSection } from "./ApprovalSection";
 import { ExtraRequestSection } from "./ExtraRequestSection";
+import { OnlineReceiptSection } from "./OnlineReceiptSection";
 import { ContractOrgFormSection } from "./ContractOrgFormSection";
 import { EstimateSummarySection } from "./EstimateSummarySection";
 import { ORG_HONORIFICS } from "@/types/application";
@@ -454,16 +455,17 @@ export function ApplicationDetail({ id }: { id: string }) {
             <InfoRow label="登録日時" value={new Date(app.createdAt).toLocaleString("ja-JP")} />
             <InfoRow label="更新日時" value={new Date(app.updatedAt).toLocaleString("ja-JP")} />
           </dl>
-          {app.method === "オンライン" && app.emailLink && (
-            <a
-              href={app.emailLink}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-3 flex items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-bold text-brand"
-            >
-              <ExternalLink size={16} />
-              申請受付メールのリンクを開く
-            </a>
+          {/* オンライン申請の受付メール（1通目: 申請種別・整理番号、2通目: 申請受付番号など）。届いた順に入れる */}
+          {app.method === "オンライン" && (
+            <OnlineReceiptSection
+              app={app}
+              files={files}
+              uploading={uploading}
+              canEdit={!withdrawn}
+              onUpload={(kind, list) => void handleUpload(kind, list)}
+              onDeleteFile={(f) => void handleDeleteFile(f)}
+              onSave={(patch) => updateApplication(app.id, patch)}
+            />
           )}
           <h4 className="mb-2 mt-4 text-xs font-bold text-muted">画像</h4>
           {uploadError && (
