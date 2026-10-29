@@ -22,6 +22,8 @@ import { dbErrorMessage, errorMessage } from "@/lib/errors";
 import { todayStr } from "@/lib/application-alerts";
 
 const MIGRATION = "0203_organization_contacts.sql";
+// 「こちらの回答・対応」の列（0207）。値を入れたときだけ送る
+const MIGRATION_REPLY = "0207_organization_contacts_reply.sql";
 
 const INPUT =
   "min-h-[40px] w-full rounded-xl border border-border bg-surface px-3 text-sm focus:border-brand focus:outline-none";
@@ -33,9 +35,10 @@ interface Draft {
   method: string;
   content: string;
   staff: string;
+  reply: string; // こちらの回答・対応
 }
 
-const emptyDraft = (): Draft => ({ contacted_on: todayStr(), method: "", content: "", staff: "" });
+const emptyDraft = (): Draft => ({ contacted_on: todayStr(), method: "", content: "", staff: "", reply: "" });
 
 // 所属機関（会社）との連絡の記録。連絡があった日・方法・内容・対応した人を1件ずつ残し、新しい順に出す。
 // 記録は「編集 → 直す → 保存」で修正できる（入力のたびに保存はしない）
@@ -90,12 +93,14 @@ export function OrganizationContacts({
         method: draft.method,
         content: draft.content.trim(),
         staff: draft.staff.trim(),
+        // 回答は入れたときだけ送る（0207 未適用の環境でも記録が止まらないように）
+        ...(draft.reply.trim() ? { reply: draft.reply.trim() } : {}),
       });
       setRows((prev) => sortContactsNewestFirst([row, ...(prev ?? [])]));
       setDraft(emptyDraft());
       setOpen(false);
     } catch (err) {
-      setError(dbErrorMessage(err, MIGRATION, errorMessage(err, "連絡の記録の保存に失敗しました")));
+      setError(dbErrorMessage(err, draft.reply.trim() ? MIGRATION_REPLY : MIGRATION, errorMessage(err, "連絡の記録の保存に失敗しました")));
     } finally {
       setBusy(false);
     }
@@ -103,7 +108,7 @@ export function OrganizationContacts({
 
   const startEdit = (r: OrganizationContact) => {
     setEditingId(r.id);
-    setEdit({ contacted_on: r.contacted_on, method: r.method, content: r.content, staff: r.staff });
+    setEdit({ contacted_on: r.contacted_on, method: r.method, content: r.content, staff: r.staff, reply: r.reply ?? "" });
     setError(null);
   };
 
@@ -114,6 +119,8 @@ export function OrganizationContacts({
       setError(problem);
       return;
     }
+    const current = (rows ?? []).find((r) => r.id === editingId);
+    const replyChanged = edit.reply.trim() !== (current?.reply ?? "").trim();
     setBusy(true);
     setError(null);
     try {
@@ -122,6 +129,8 @@ export function OrganizationContacts({
         method: edit.method,
         content: edit.content.trim(),
         staff: edit.staff.trim(),
+        // 回答は変えたときだけ送る（0207 未適用の環境でも他の項目は直せるように）
+        ...(replyChanged ? { reply: edit.reply.trim() } : {}),
       };
       await updateOrganizationContact(createClient(), editingId, patch);
       setRows((prev) =>
@@ -129,7 +138,7 @@ export function OrganizationContacts({
       );
       setEditingId(null);
     } catch (err) {
-      setError(dbErrorMessage(err, MIGRATION, errorMessage(err, "連絡の記録の保存に失敗しました")));
+      setError(dbErrorMessage(err, replyChanged ? MIGRATION_REPLY : MIGRATION, errorMessage(err, "連絡の記録の保存に失敗しました")));
     } finally {
       setBusy(false);
     }
@@ -180,12 +189,22 @@ export function OrganizationContacts({
         />
       </label>
       <label className="flex flex-col gap-1 sm:col-span-3">
-        <span className="text-[11px] font-bold text-muted">連絡の内容</span>
+        <span className="text-[11px] font-bold text-muted">連絡の内容（会社からの相談・連絡）</span>
         <textarea
           rows={3}
           value={v.content}
           onChange={(e) => set({ content: e.target.value })}
-          placeholder="例: 更新申請の書類（賃金台帳）を依頼。来週中に郵送してもらえるとのこと"
+          placeholder="例: 雇用条件書の年間休日が今後変わるかもしれないが大丈夫か、との相談"
+          className={TEXTAREA}
+        />
+      </label>
+      <label className="flex flex-col gap-1 sm:col-span-3">
+        <span className="text-[11px] font-bold text-muted">こちらの回答・対応（対応した人がどう答えたか）</span>
+        <textarea
+          rows={3}
+          value={v.reply}
+          onChange={(e) => set({ reply: e.target.value })}
+          placeholder="例: 年間休日が変わる場合は雇用条件書を作り直して入管へ届出が必要と回答。変更が決まったら連絡してもらうことにした"
           className={TEXTAREA}
         />
       </label>
@@ -293,6 +312,13 @@ export function OrganizationContacts({
                   )}
                 </div>
                 <p className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed">{r.content}</p>
+                {/* こちらの回答・対応（入っているときだけ出す） */}
+                {(r.reply ?? "").trim() && (
+                  <div className="mt-2 rounded-lg border-l-4 border-brand/60 bg-brand/5 px-3 py-2">
+                    <p className="text-[11px] font-bold text-brand">こちらの回答・対応{r.staff ? `（${r.staff}）` : ""}</p>
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed">{r.reply}</p>
+                  </div>
+                )}
               </div>
             ),
           )}

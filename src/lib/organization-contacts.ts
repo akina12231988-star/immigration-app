@@ -9,8 +9,9 @@ export interface OrganizationContact {
   organization_id: string;
   contacted_on: string; // YYYY-MM-DD
   method: string;
-  content: string;
+  content: string; // 連絡の内容（会社からの相談・連絡）
   staff: string; // 対応した人（こちら側）
+  reply?: string; // こちらの回答・対応（対応した人がどう答えたか。0207。未適用の環境では undefined）
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -19,7 +20,7 @@ export interface OrganizationContact {
 export type OrganizationContactInput = Pick<
   OrganizationContact,
   "organization_id" | "contacted_on" | "method" | "content" | "staff"
->;
+> & { reply?: string };
 
 // 連絡があった日の新しい順（同じ日なら登録の新しい順）
 export function sortContactsNewestFirst<T extends Pick<OrganizationContact, "contacted_on" | "created_at">>(
