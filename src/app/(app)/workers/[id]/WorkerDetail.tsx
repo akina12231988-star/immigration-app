@@ -1576,7 +1576,16 @@ export function WorkerDetail({
               editing && canEdit ? (
                 <select
                   value={val("status")}
-                  onChange={(e) => setField("status", e.target.value)}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    // 「キャンセル」を選んだら、支援区分の欄もその場で「支援対象外」に切り替える
+                    // （保存前に見えるようにする。支援区分は手で選び直せる）
+                    setDraft((d) =>
+                      next === "キャンセル"
+                        ? { ...d, status: next, support: "支援対象外" }
+                        : { ...d, status: next },
+                    );
+                  }}
                   className={inputCls()}
                 >
                   {statusOptions.map((s) => (
