@@ -30,6 +30,46 @@ export function pickPrepWage(wages: WorkerWage[], orgId: string | null): WorkerW
   return pool.find(hasDetail) ?? pool[0] ?? null;
 }
 
+// 申請準備の詳細画面で選んで保存する住居の選択（workers.housing_plan。0209）。
+//   main     … どの住居にするか（A・B・C）。未選択は null（1-6号別紙の居住費からの候補を出す）
+//   fallback … main ができなかったときに対応予定の候補（main 以外の A・B・C）。未選択は null
+export interface HousingPlan {
+  main: HousingPatternKey | null;
+  fallback: HousingPatternKey | null;
+}
+
+function housingKeyOf(v: unknown): HousingPatternKey | null {
+  return v === "A" || v === "B" || v === "C" ? v : null;
+}
+
+// 保存済みの値（jsonb）を読む。壊れた値・古い形は未選択として扱う
+export function normalizeHousingPlan(raw: unknown): HousingPlan {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const main = housingKeyOf(r.main);
+  const fallback = housingKeyOf(r.fallback);
+  // できなかったときの候補は main と別のものだけ（同じなら無効）
+  return { main, fallback: main && fallback && fallback !== main ? fallback : null };
+}
+
+// 保存する形（未選択は空文字）
+export function housingPlanToJson(plan: HousingPlan): { main: string; fallback: string } {
+  return { main: plan.main ?? "", fallback: plan.fallback && plan.fallback !== plan.main ? plan.fallback : "" };
+}
+
+// 画面に出す住居（保存した選択があればそれ、無ければ 1-6号別紙の居住費からの候補）
+export function effectiveHousingMain(plan: HousingPlan, auto: HousingPatternKey | null): HousingPatternKey | null {
+  return plan.main ?? auto;
+}
+
+// 「できなかったら」の候補に書く文章。
+//   A（本人契約）ができなかった → 「Aの外国人本人による住居の契約ができなかった場合、実施予定」
+//   B・C（社宅）ができなかった → 「Bの社宅入居に合意しなかった場合、実施予定」
+export function housingFallbackText(main: HousingPatternKey): string {
+  return main === "A"
+    ? "Aの外国人本人による住居の契約ができなかった場合、実施予定"
+    : `${main}の社宅入居に合意しなかった場合、実施予定`;
+}
+
 // 1-6号別紙の居住費から A・B・C を決める
 export function housingPatternOf(
   detail: WorkerWage["detail"],

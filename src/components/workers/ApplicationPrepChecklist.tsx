@@ -2400,6 +2400,7 @@ export function ApplicationPrepChecklist({
           workerIds={[workerId, ...(current.joint_worker_id ? [current.joint_worker_id] : [])]}
           todoNo={current.todo_no}
           refreshKey={prepInfoKey}
+          canEdit={canEdit}
         />
       </PrepSection>
 
