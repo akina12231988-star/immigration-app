@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizeTodoKey } from "@/lib/todo";
 import {
   buildPostApplyEntries,
-  isPostApplyDocDone,
+  isIssueOnlyDocDone,
   normalizePostApplyMailings,
   normalizePostApplyNotes,
   normalizePostApplyTasks,
@@ -18,6 +18,7 @@ import {
   prepProgressOf,
   type PrepChecklistMeta,
   type PrepProgress,
+  type PrepDocStatus,
 } from "@/lib/application-prep";
 
 // TODO番号ごとの準備リスト1件分（メタ情報＋識別子＋追加項目）
@@ -431,6 +432,27 @@ export async function listPrepProgress(
     (listData as (PrepChecklistRow & { worker_id: string })[] | null) ?? [];
   if (lists.length === 0) return {};
 
+  const itemsByList = await evaluatePrepItemsByList(supabase, lists);
+  const out: Record<string, PrepProgress> = {};
+  for (const l of lists) {
+    const key = `${l.worker_id} ${l.todo_no ?? ""}`;
+    // 同じ組み合わせが複数あるときは更新の新しい方を優先（並びが updated_at の降順のため先勝ち）
+    if (out[key] === undefined) out[key] = prepProgressOf(itemsByList.get(l.id) ?? []);
+  }
+  return out;
+}
+
+// 準備リストごとに必要書類の状態（揃った／揃っていない）を計算する。
+// 画面の「必要な書類の準備」と同じ判定（evaluatePrepChecklist）を、申請準備のTODOの進捗と
+// 申請一覧の「申請後の郵送・タスク」（発行はするが郵送しない書類の発行済み判定）で共有する
+export async function evaluatePrepItemsByList(
+  supabase: SupabaseClient,
+  lists: (PrepChecklistRow & { worker_id: string })[],
+): Promise<Map<string, PrepDocStatus[]>> {
+  const result = new Map<string, PrepDocStatus[]>();
+  if (lists.length === 0) return result;
+  const workerIds = [...new Set(lists.map((l) => l.worker_id))];
+
   const [docsRes, workersRes, cardsRes, passportsRes, statusRes] = await Promise.all([
     supabase
       .from("onboarding_documents")
@@ -486,7 +508,6 @@ export async function listPrepProgress(
     yearByList.set(r.checklist_id, years);
   }
 
-  const out: Record<string, PrepProgress> = {};
   for (const l of lists) {
     const filledDocKeys = filledByWorker.get(l.worker_id) ?? new Set<string>();
     const meta: PrepChecklistMeta = {
@@ -511,11 +532,9 @@ export async function listPrepProgress(
       },
       statusByList.get(l.id) ?? {},
     );
-    const key = `${l.worker_id} ${l.todo_no ?? ""}`;
-    // 同じ組み合わせが複数あるときは更新の新しい方を優先（並びが updated_at の降順のため先勝ち）
-    if (out[key] === undefined) out[key] = prepProgressOf(items);
+    result.set(l.id, items);
   }
-  return out;
+  return result;
 }
 
 // 申請準備に追加したときに、選んだ準備の内容（只今の状況）を
@@ -579,14 +598,23 @@ export async function listPostApplyEntries(supabase: SupabaseClient): Promise<Po
   };
   const docRows = (docs as DocRow[]) ?? [];
   const mailDocs = docRows.filter((d) => d.mail_after_apply);
-  // 発行はするが郵送しない書類。準備状況が完了扱いなら「発行できた」とみなす
-  const issueOnlyDocs = docRows
-    .filter((d) => d.issue_no_mail && !d.mail_after_apply)
-    .map((d) => ({
-      checklist_id: d.checklist_id,
-      doc_id: d.doc_id,
-      done: isPostApplyDocDone(d.doc_id, d.status ?? ""),
-    }));
+  // 発行はするが郵送しない書類。必要な書類の準備で「揃った」（添付あり・完了の選択肢・対象外）なら
+  // 「発行できた」とみなす（画面の判定と同じにするため、該当する準備リストだけ書類の状態を計算する）
+  const issueRows = docRows.filter((d) => d.issue_no_mail && !d.mail_after_apply);
+  const issueListIds = new Set(issueRows.map((d) => d.checklist_id));
+  const itemsByList = await evaluatePrepItemsByList(
+    supabase,
+    (checklists as (PrepChecklistRow & { worker_id: string })[]).filter((c) => issueListIds.has(c.id)),
+  ).catch(() => new Map<string, PrepDocStatus[]>());
+  const satisfiedByList = new Map<string, Set<string>>();
+  for (const [id, items] of itemsByList) {
+    satisfiedByList.set(id, new Set(items.filter((i) => i.satisfied).map((i) => i.def.id)));
+  }
+  const issueOnlyDocs = issueRows.map((d) => ({
+    checklist_id: d.checklist_id,
+    doc_id: d.doc_id,
+    done: isIssueOnlyDocDone(d.doc_id, d.status ?? "", satisfiedByList.get(d.checklist_id) ?? null),
+  }));
   // 残りがある準備リストに加えて、入管へ郵送した記録がある準備リストも取る
   // （全部郵送し終わった人の投函日・追跡番号を「入管へ郵送した記録」で見返せるように）
   const wanted = checklists.filter(

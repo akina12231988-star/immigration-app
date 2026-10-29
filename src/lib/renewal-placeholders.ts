@@ -25,7 +25,7 @@ export function isPrepListTarget(
 ): boolean {
   if (w.residence_renewal_status !== "準備中") return false;
   return w.application_prep_kind === "新規"
-    ? w.status !== "退職"
+    ? w.status !== "退職" && w.status !== "キャンセル"
     : isResidenceRenewalTarget(w, today);
 }
 

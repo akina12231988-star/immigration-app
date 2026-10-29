@@ -26,7 +26,7 @@ export function countPassportAlerts(workers: NavAlertWorker[], today: string): n
 }
 
 // あとでやる手続き（転居手続き・国保/国民年金の加入）が残っている人数。
-// 退職した人は数えない（外国人一覧の絞り込みと同じ扱い）。
+// 退職・キャンセルの人は数えない（外国人一覧の絞り込みと同じ扱い）。
 export function countFollowupAlerts(workers: NavAlertWorker[]): number {
-  return workers.filter((w) => w.status !== "退職" && hasFollowup(w)).length;
+  return workers.filter((w) => w.status !== "退職" && w.status !== "キャンセル" && hasFollowup(w)).length;
 }

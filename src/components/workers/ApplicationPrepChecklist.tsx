@@ -24,7 +24,7 @@ import {
 import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { PostApplyList } from "@/components/workers/PostApplyList";
 import { PrepPdfCheck } from "@/components/workers/PrepPdfCheck";
-import { isPostApplyDocDone } from "@/lib/post-apply";
+import { isIssueOnlyDocDone } from "@/lib/post-apply";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { Ssw2Instructees } from "@/components/workers/Ssw2Instructees";
 import { SSW2_PLEDGE_GUIDE_HREF } from "@/lib/ssw2-pledge-guide";
@@ -1586,7 +1586,11 @@ export function ApplicationPrepChecklist({
               .map(([id]) => id)}
             issueOnlyDocs={Object.entries(docStatuses)
               .filter(([, v]) => v.issue_no_mail && !v.mail_after_apply)
-              .map(([id, v]) => ({ docId: id, done: isPostApplyDocDone(id, v.status) }))}
+              // 必要な書類の準備で「揃った」になっている書類（添付あり・対象外など）は発行済み
+              .map(([id, v]) => ({
+                docId: id,
+                done: isIssueOnlyDocDone(id, v.status, new Set(items.filter((i) => i.satisfied).map((i) => i.def.id))),
+              }))}
             tasks={current.post_apply_tasks ?? []}
             canEdit={canEdit}
             mailings={current.post_apply_mailings ?? []}

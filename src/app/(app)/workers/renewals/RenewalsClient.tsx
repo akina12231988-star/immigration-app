@@ -103,6 +103,7 @@ export function RenewalsClient({
           (w) =>
             w.application_prep_kind === "新規" &&
             w.status !== "退職" &&
+            w.status !== "キャンセル" &&
             !underReview.has(w.id),
         )
         .sort((a, b) => a.name.localeCompare(b.name, "ja"));
@@ -113,7 +114,7 @@ export function RenewalsClient({
     const inScope = (w: WorkerWithOrg) => {
       if (!hasExpiryRange) return isResidenceRenewalTarget(w, today);
       const d = w.residence_expiry_date;
-      if (w.status === "退職" || !d) return false;
+      if (w.status === "退職" || w.status === "キャンセル" || !d) return false;
       if (expiryFrom && d < expiryFrom) return false;
       if (expiryTo && d > expiryTo) return false;
       return true;
@@ -431,7 +432,7 @@ function NewPrepForm({
     const counts = nameCounts([...workers.map((w) => w.name), ...extraWorkers.map((w) => w.name)]);
     return [
       ...workers
-        .filter((w) => w.status !== "退職")
+        .filter((w) => w.status !== "退職" && w.status !== "キャンセル")
         .map((w) => ({
           id: w.id,
           label:

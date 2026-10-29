@@ -177,6 +177,18 @@ export function isPostApplyDocDone(docId: string, status: string): boolean {
   return prepStatusOption(docId, status)?.done === true;
 }
 
+// 「発行はするが郵送しない書類」を発行済みとみなすか。
+// 必要な書類の準備で「揃った」になっている書類（添付あり・完了の選択肢・対象外）は発行済み。
+// 揃った判定が分からないとき（satisfiedDocIds が無い）は準備状況の選択肢だけで見る
+export function isIssueOnlyDocDone(
+  docId: string,
+  status: string,
+  satisfiedDocIds?: ReadonlySet<string> | null,
+): boolean {
+  if (satisfiedDocIds?.has(docId)) return true;
+  return isPostApplyDocDone(docId, status);
+}
+
 // まだ発行できていないもの
 export function unissuedDocIds(docs: PostApplyIssueOnlyDoc[]): string[] {
   return docs.filter((d) => !d.done).map((d) => d.docId);

@@ -4,6 +4,7 @@ import {
   buildPostApplyEntries,
   postApplyMailingRecords,
   isPostApplyDocDone,
+  isIssueOnlyDocDone,
   postApplyNoteAuthor,
   unissuedDocIds,
   normalizePostApplyNotes,
@@ -244,5 +245,18 @@ describe("updatePostApplyMailing", () => {
     ]);
     expect(updatePostApplyMailing(mailings, "m2", { posted_on: "2026-10-20" })[1]).toMatchObject({ posted_on: "2026-10-20", tracking: "628828364102" });
     expect(updatePostApplyMailing(mailings, "zzz", { tracking: "x" })).toEqual(mailings);
+  });
+});
+
+describe("isIssueOnlyDocDone（発行はするが郵送しない書類の発行済み判定）", () => {
+  it("必要な書類の準備で揃っている書類（添付あり・対象外など）は、準備状況の選択肢が無くても発行済み", () => {
+    expect(isIssueOnlyDocDone("cert_nihongo", "", new Set(["cert_nihongo"]))).toBe(true);
+    expect(isIssueOnlyDocDone("cert_nihongo", "", new Set())).toBe(false);
+    expect(isIssueOnlyDocDone("cert_nihongo", "", null)).toBe(false);
+  });
+  it("揃った判定が無くても、準備状況が完了の選択肢なら発行済み", () => {
+    expect(isIssueOnlyDocDone("nenkin", "発行済み", new Set())).toBe(true);
+    expect(isIssueOnlyDocDone("kazei", "発行完了", null)).toBe(true);
+    expect(isIssueOnlyDocDone("nenkin", "秋吉伽恋に発行依頼中", null)).toBe(false);
   });
 });

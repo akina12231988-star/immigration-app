@@ -18,6 +18,7 @@ export function offListReason(
 ): string | null {
   const { today, underReview, mode } = opts;
   if (worker.status === "退職") return "退職された方のため、申請準備の対象外です。";
+  if (worker.status === "キャンセル") return "キャンセルになった方のため、申請準備の対象外です。";
   if (underReview) {
     return "いま申請の途中（審査中または在留カード受け取り待ち）のため、申請準備の一覧には出ません。在留カード受領まで進むと次の更新の対象に戻ります。";
   }
