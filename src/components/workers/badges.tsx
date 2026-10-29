@@ -43,9 +43,27 @@ const WORKER_STATUS_CLASSES: Record<WorkerStatus, string> = {
   求職活動中: "bg-status-applied-bg text-status-applied-fg",
   帰国: "bg-status-before-bg text-status-before-fg",
   退職: "bg-status-notice-bg text-status-notice-fg",
+  キャンセル: "bg-seal text-seal-foreground",
 };
 
+// 登録後にキャンセルになった人か。この人は状態のバッジ（キャンセルの印）だけを出し、
+// 審査中・1号在留中・支援区分のバッジは出さない（もう手続きをしない人なので）
+export function isCanceledWorker(w: { status?: string | null }): boolean {
+  return w.status === "キャンセル";
+}
+
 export function WorkerStatusBadge({ status }: { status: WorkerStatus }) {
+  if (status === "キャンセル") {
+    return (
+      <span
+        title="登録後にキャンセルになった人です（支援区分は支援対象外）"
+        className="inline-flex shrink-0 items-center gap-1 rounded-full bg-seal px-2.5 py-1 text-[11px] font-bold text-seal-foreground"
+      >
+        <span aria-hidden>✕</span>
+        キャンセル
+      </span>
+    );
+  }
   return (
     <span
       className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-bold ${

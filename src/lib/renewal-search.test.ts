@@ -26,6 +26,10 @@ describe("offListReason", () => {
     expect(offListReason(makeOffListWorker({ status: "退職" }), base)).toContain("退職");
   });
 
+  it("キャンセルになった人はその旨を返す", () => {
+    expect(offListReason(makeOffListWorker({ status: "キャンセル" }), base)).toContain("キャンセル");
+  });
+
   it("申請審査中の人はその旨を返す", () => {
     expect(offListReason(makeOffListWorker(), { ...base, underReview: true })).toContain("審査中");
   });

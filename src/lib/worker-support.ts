@@ -6,6 +6,7 @@
 //
 // 退職・帰国・求職活動中では支援区分を変えない。退職と同時に支援対象外にすると、
 // 退職月の日割り請求が名簿から消えてしまうため（請求は退職日まで行う）。
+// キャンセル（登録後に採用がキャンセルになった人）は支援しないので支援対象外にする。
 
 import type { SupportScope, WorkerStatus } from "@/types/db";
 import { situationOnEnrolled } from "@/lib/worker-situation";
@@ -26,6 +27,8 @@ export function suggestSupportScope(
   residenceStatus: string | null | undefined,
   status: WorkerStatus | string | null | undefined,
 ): SupportScope | null {
+  // キャンセルになった人は支援しない（在留資格が何であっても支援対象外）
+  if (status === "キャンセル") return "支援対象外";
   // 退職・帰国・求職活動中は支援区分を触らない（退職月の請求を残すため）
   if (status === "退職" || status === "帰国" || status === "求職活動中") return null;
 

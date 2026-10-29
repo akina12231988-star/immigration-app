@@ -14,7 +14,13 @@ import {
   type WorkerFilterState,
 } from "@/components/workers/WorkerFilters";
 import { SswGauge } from "@/components/workers/SswGauge";
-import { InReviewBadge, SswStatusBadge, SupportBadge, WorkerStatusBadge } from "@/components/workers/badges";
+import {
+  InReviewBadge,
+  SswStatusBadge,
+  SupportBadge,
+  WorkerStatusBadge,
+  isCanceledWorker,
+} from "@/components/workers/badges";
 import { calcSsw, todayStr, type SswCalcResult } from "@/lib/ssw/calc";
 import { toCalcHistory } from "@/lib/supabase/queries/histories";
 import { isResidenceRenewalTarget } from "@/lib/worker-alerts";
@@ -150,8 +156,10 @@ export function WorkersExplorer({
       withinOneYear: rows.filter(isWithin1Year).length,
       reachedCap: rows.filter((r) => r.calc.status === "5年到達").length,
       expiry3m: rows.filter((r) => isExpiry3m(r.worker)).length,
-      // 退職した人は数えない（手続きはもう発生しない）
-      followups: rows.filter((r) => r.worker.status !== "退職" && hasFollowup(r.worker)).length,
+      // 退職・キャンセルの人は数えない（手続きはもう発生しない）
+      followups: rows.filter(
+        (r) => r.worker.status !== "退職" && !isCanceledWorker(r.worker) && hasFollowup(r.worker),
+      ).length,
       retired: rows.filter((r) => r.worker.status === "退職").length,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -182,7 +190,7 @@ export function WorkersExplorer({
           if (!isExpiry3m(worker)) return false;
           break;
         case "followups":
-          if (worker.status === "退職" || !hasFollowup(worker)) return false;
+          if (worker.status === "退職" || isCanceledWorker(worker) || !hasFollowup(worker)) return false;
           break;
         case "retired":
           if (worker.status !== "退職") return false;
@@ -467,21 +475,28 @@ export function WorkersExplorer({
                   {/* 入管で審査中（入管申請の記録・在留更新の対応状況が審査中・只今の状況に「審査中」）なら
                       青いバッジを足す。外国人詳細の見出しと同じ判定（isWorkerInReview）にそろえている。
                       審査中ならもう申請は済んでいるので「申請準備中」の状態バッジは出さない */}
-                  {(() => {
-                    const reviewing = isWorkerInReview(
-                      worker,
-                      shownSituation(worker, latestApplications[worker.id] ?? null),
-                      inReview.has(worker.id),
-                    );
-                    return (
-                      <>
-                        {reviewing && worker.status === "申請準備中" ? null : <WorkerStatusBadge status={worker.status} />}
-                        {reviewing && <InReviewBadge />}
-                      </>
-                    );
-                  })()}
-                  <SswStatusBadge status={calc.status} residenceStatus={worker.residence_status} />
-                  <SupportBadge support={worker.support} />
+                  {isCanceledWorker(worker) ? (
+                    // キャンセルになった人はキャンセルの印だけ（詳細画面と同じ）
+                    <WorkerStatusBadge status={worker.status} />
+                  ) : (
+                    <>
+                      {(() => {
+                        const reviewing = isWorkerInReview(
+                          worker,
+                          shownSituation(worker, latestApplications[worker.id] ?? null),
+                          inReview.has(worker.id),
+                        );
+                        return (
+                          <>
+                            {reviewing && worker.status === "申請準備中" ? null : <WorkerStatusBadge status={worker.status} />}
+                            {reviewing && <InReviewBadge />}
+                          </>
+                        );
+                      })()}
+                      <SswStatusBadge status={calc.status} residenceStatus={worker.residence_status} />
+                      <SupportBadge support={worker.support} />
+                    </>
+                  )}
                 </div>
                 <SswGauge calc={calc} compact />
                 {/* 誰の何が残っているかが一覧で分かるようにする */}

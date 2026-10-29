@@ -65,13 +65,13 @@ export function residenceRenewalDefaultUntil(today: string): string {
 }
 
 // 在留更新対象: 在留期限まで4か月以内（または既に超過）。期限未登録は対象外。
-// 退職者は在留更新の対象から外す。
+// 退職者・キャンセルになった人は在留更新の対象から外す。
 export function isResidenceRenewalTarget(
   // 使うのは在籍状況と在留期限だけ（在留カードの有無に関わらず判定できるようにする）
   w: Pick<AlertWorker, "status" | "residence_expiry_date">,
   today: string,
 ): boolean {
-  if (w.status === "退職") return false;
+  if (w.status === "退職" || w.status === "キャンセル") return false;
   if (!w.residence_expiry_date) return false;
   return today >= addMonths(w.residence_expiry_date, -RESIDENCE_RENEWAL_MONTHS);
 }
@@ -101,9 +101,9 @@ export function isPassportRenewalListTarget(
 }
 
 // 特定技能総合保険の更新必要: 有効期限まで1か月以内（または既に超過）。期限未登録は対象外。
-// 退職者は対象から外す。
+// 退職者・キャンセルになった人は対象から外す。
 export function isSswInsuranceRenewalTarget(w: AlertWorker, today: string): boolean {
-  if (w.status === "退職") return false;
+  if (w.status === "退職" || w.status === "キャンセル") return false;
   if (!w.ssw_insurance_expiry_date) return false;
   return today >= addMonths(w.ssw_insurance_expiry_date, -1);
 }

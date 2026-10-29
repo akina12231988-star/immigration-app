@@ -120,7 +120,7 @@ export function isSsw2Applicant(
   w: Pick<InstructeeCandidateWorker, "id" | "status" | "residence_status" | "current_situation">,
   opts: { ssw2PrepIds: Set<string>; linkApplicantIds?: Set<string> },
 ): boolean {
-  if (w.status === "退職") return false;
+  if (w.status === "退職" || w.status === "キャンセル") return false;
   if (isSsw2Holder(w.residence_status)) return false;
   return (
     opts.ssw2PrepIds.has(w.id) ||
@@ -161,7 +161,7 @@ export function instructeeCandidates(
   const ssw2PrepIds = opts.ssw2PrepIds ?? new Set<string>();
   return workers
     .filter((w) => w.id !== selfWorkerId)
-    .filter((w) => w.status !== "退職")
+    .filter((w) => w.status !== "退職" && w.status !== "キャンセル")
     .filter((w) => !isSsw2Holder(w.residence_status))
     .filter((w) => !isSsw2Applicant(w, { ssw2PrepIds, linkApplicantIds: opts.linkApplicantIds }))
     // 所属機関が分かっているときは、その機関に在籍している人だけ
@@ -231,7 +231,7 @@ export function orgSsw2Field(workers: { field?: string; status: string }[]): str
   const count = new Map<string, number>();
   for (const w of workers) {
     const f = (w.field ?? "").trim();
-    if (!f || w.status === "退職") continue;
+    if (!f || w.status === "退職" || w.status === "キャンセル") continue;
     count.set(f, (count.get(f) ?? 0) + 1);
   }
   let best = "";

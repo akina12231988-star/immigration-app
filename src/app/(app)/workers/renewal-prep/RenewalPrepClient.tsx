@@ -63,6 +63,7 @@ export function RenewalPrepClient({
       .filter(
         (w) =>
           w.status !== "退職" &&
+          w.status !== "キャンセル" &&
           w.application_prep_kind !== "新規" &&
           w.residence_expiry_date &&
           w.residence_expiry_date <= limit &&

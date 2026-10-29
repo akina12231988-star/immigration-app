@@ -65,6 +65,9 @@ export const WORKER_STATUSES = [
   "求職活動中",
   "帰国",
   "退職",
+  // 登録後（採用後）にキャンセルになった人（0208_worker_status_cancel.sql）。
+  // 支援区分は支援対象外になり、画面ではキャンセルの印だけを出す
+  "キャンセル",
 ] as const;
 export type WorkerStatus = (typeof WORKER_STATUSES)[number];
 

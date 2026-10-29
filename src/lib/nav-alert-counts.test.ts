@@ -62,6 +62,11 @@ describe("countFollowupAlerts", () => {
     expect(countFollowupAlerts(rows)).toBe(0);
   });
 
+  it("キャンセルになった人は数えない", () => {
+    const rows = [w({ status: "キャンセル", followups: { moving: { needed: true } } })];
+    expect(countFollowupAlerts(rows)).toBe(0);
+  });
+
   it("退職した人は数えない", () => {
     const rows = [w({ status: "退職", followups: { moving: { needed: true } } })];
     expect(countFollowupAlerts(rows)).toBe(0);

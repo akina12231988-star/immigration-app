@@ -93,7 +93,13 @@ import {
   type HistoryFormValues,
 } from "@/components/workers/HistoryFormDialog";
 import { SswGauge } from "@/components/workers/SswGauge";
-import { InReviewBadge, SswStatusBadge, SupportBadge, WorkerStatusBadge } from "@/components/workers/badges";
+import {
+  InReviewBadge,
+  SswStatusBadge,
+  SupportBadge,
+  WorkerStatusBadge,
+  isCanceledWorker,
+} from "@/components/workers/badges";
 import { workerShowsInReview } from "@/lib/renewal-filter";
 import {
   calcDocumentTotal,
@@ -451,6 +457,15 @@ export function WorkerDetail({
           payload.support = "支援対象外";
         }
       }
+      // 状態を「キャンセル」にしたら、支援区分を手で選んでいないときは支援対象外にする
+      if (
+        "status" in payload &&
+        payload.status === "キャンセル" &&
+        !("support" in payload) &&
+        worker.support !== "支援対象外"
+      ) {
+        payload.support = "支援対象外";
+      }
       // 氏名は必須（空にして保存すると各画面で誰か分からなくなる）
       if ("name" in payload && !payload.name) {
         setError("氏名は空にできません。");
@@ -732,10 +747,17 @@ export function WorkerDetail({
               {/* 状態・支援区分の変更は「基本情報」の欄から（編集モードでその場で直せる）。
                   入管で審査中（審査中の申請がある・在留更新の状況が審査中・只今の状況に「審査中」）なら
                   一覧と同じ青い「審査中」を出し、「申請準備中」はもう申請が済んでいるので出さない */}
-              {inReview && worker.status === "申請準備中" ? null : <WorkerStatusBadge status={worker.status} />}
-              {inReview && <InReviewBadge />}
-              <SswStatusBadge status={calc.status} residenceStatus={worker.residence_status} />
-              <SupportBadge support={worker.support} />
+              {isCanceledWorker(worker) ? (
+                // キャンセルになった人はキャンセルの印だけ（審査中・1号在留中・支援区分は出さない）
+                <WorkerStatusBadge status={worker.status} />
+              ) : (
+                <>
+                  {inReview && worker.status === "申請準備中" ? null : <WorkerStatusBadge status={worker.status} />}
+                  {inReview && <InReviewBadge />}
+                  <SswStatusBadge status={calc.status} residenceStatus={worker.residence_status} />
+                  <SupportBadge support={worker.support} />
+                </>
+              )}
               {/* 特定技能2号の試験に合格している人は、どのタブにいても分かるように出す
                   （試験の申込のTODOで「合格」にすると入る。基本情報の「特定技能2号 合格試験」でも直せる） */}
               {worker.ssw2_exam && (

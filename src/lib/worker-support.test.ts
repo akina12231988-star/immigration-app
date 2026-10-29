@@ -33,6 +33,12 @@ describe("支援区分の自動判別", () => {
     expect(suggestSupportScope("特定技能1号", "求職活動中")).toBeNull();
   });
 
+  it("キャンセルになった人は在留資格に関わらず支援対象外", () => {
+    expect(suggestSupportScope("特定技能1号", "キャンセル")).toBe("支援対象外");
+    expect(suggestSupportScope("技能実習2号", "キャンセル")).toBe("支援対象外");
+    expect(suggestSupportScope("", "キャンセル")).toBe("支援対象外");
+  });
+
   it("在留資格が未設定なら判断しない", () => {
     expect(suggestSupportScope("", "在籍中")).toBeNull();
     expect(suggestSupportScope(null, "在籍中")).toBeNull();
