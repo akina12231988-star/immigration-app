@@ -455,7 +455,7 @@ export function ApplicationDetail({ id }: { id: string }) {
             <InfoRow label="登録日時" value={new Date(app.createdAt).toLocaleString("ja-JP")} />
             <InfoRow label="更新日時" value={new Date(app.updatedAt).toLocaleString("ja-JP")} />
           </dl>
-          {/* オンライン申請の受付メール（1通目: 申請種別・整理番号、2通目: 申請受付番号など）。届いた順に入れる */}
+          {/* オンライン申請の受付メール（1通目: 申請種別・整理番号、2通目: 申請受付仮番号など、3通目: 申請受付番号）。届いた順に入れる */}
           {app.method === "オンライン" && (
             <OnlineReceiptSection
               app={app}

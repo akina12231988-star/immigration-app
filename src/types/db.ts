@@ -830,6 +830,7 @@ export interface ImmigrationApplicationRow {
   online_temp_no?: string | null;
   online_card_no?: string | null;
   online_mail2_link?: string | null;
+  online_mail3_link?: string | null;
   line_reported: boolean;
   notion_synced: boolean;
   approved: boolean;
