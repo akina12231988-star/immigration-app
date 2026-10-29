@@ -19,8 +19,7 @@ import {
   residencePeriodChoice,
   toZenkaku,
   upperName,
-  ym6,
-} from "./online-application";
+  ym6, cardReceiptLabel } from "./online-application";
 import { emptyOrganizationIntake } from "./organization-intake";
 import type { WorkerWage } from "@/types/db";
 
@@ -335,6 +334,13 @@ describe("buildOnlineApplication", () => {
     expect(get("フリー欄（協力確認書）")?.value).toContain("八代市長");
     // 通知送信用メールアドレスはオンラインシステムの利用者（取次者）のメール
     expect(get("通知送信用メールアドレス")?.value).toBe("thanhktc2017.visa@gmail.com");
+  });
+
+  it("申請一覧のバッジの文字（受領方法）", () => {
+    expect(cardReceiptLabel("郵送")).toBe("受領 郵送");
+    expect(cardReceiptLabel("窓口")).toBe("受領 窓口（熊本出張所）");
+    expect(cardReceiptLabel("")).toBe("");
+    expect(cardReceiptLabel(undefined)).toBe("");
   });
 
   it("在留カードの受領方法はこの場で選んで保存でき、窓口なら受領官署に熊本出張所が出る", () => {

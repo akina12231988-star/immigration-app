@@ -28,6 +28,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { AlertBadge } from "@/components/applications/AlertBadge";
 import { ApplicantMeta } from "@/components/applications/ApplicantMeta";
+import { ReceiptMethodBadge } from "@/components/applications/ReceiptMethodBadge";
 import { createClient } from "@/lib/supabase/client";
 import { listPrepStatuses, type PrepStatus } from "@/lib/supabase/queries/prep-status";
 import { upsertPrepTantou } from "@/lib/supabase/queries/application-prep";
@@ -275,6 +276,28 @@ export function ApplicationsExplorer({
 
   // 全タブで表示する国籍（外国人一覧から引き当てる）
   const nationalityOf = (a: Application) => workerFor(a)?.nationality;
+
+  // 在留カードの受領方法（外国人ID → 郵送／窓口）。申請準備の詳細で選んだものを行・カードに出す。
+  // 列は 0204 で足したので、未適用でも一覧が壊れないよう別に読んで失敗は無視する
+  const [receiptByWorker, setReceiptByWorker] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let cancelled = false;
+    void createClient()
+      .from("workers")
+      .select("id, card_receipt_method")
+      .then(({ data }) => {
+        if (cancelled) return;
+        const out: Record<string, string> = {};
+        for (const r of ((data as { id: string; card_receipt_method: string | null }[] | null) ?? [])) {
+          if (r.card_receipt_method) out[r.id] = r.card_receipt_method;
+        }
+        setReceiptByWorker(out);
+      }, () => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const receiptMethodOf = (a: Application) => (a.workerId ? (receiptByWorker[a.workerId] ?? "") : "");
 
   // 支援計画書の日付の保存分（審査中タブの「雇用開始日」用・全員ぶん。0107 未適用なら空）
   const [planDates, setPlanDates] = useState<PlanDatesSummary[]>([]);
@@ -908,6 +931,7 @@ export function ApplicationsExplorer({
                       custodyNoLabel={custodyNoLabel(a)}
                       nationality={nationalityOf(a)}
                       tantou={tantouOf(a)}
+                      receiptMethod={receiptMethodOf(a)}
                       updateApplication={updateApplication}
                     />
                   </SelectableCard>
@@ -968,6 +992,8 @@ export function ApplicationsExplorer({
                     showApplicant={!isRenewalPlaceholder(a)}
                     className="mt-1"
                   />
+                  {/* 在留カードの受領方法（申請準備の詳細で選んだもの） */}
+                  <ReceiptMethodBadge method={receiptMethodOf(a)} className="mt-1" />
                   {a.residenceExpiryAtApply && (
                     <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted">
                       申請時在留期限 {a.residenceExpiryAtApply}
@@ -1177,6 +1203,7 @@ export function ApplicationsExplorer({
                           showApplicant={!isRenewalPlaceholder(a)}
                           className="mt-1 font-normal"
                         />
+                        <ReceiptMethodBadge method={receiptMethodOf(a)} className="mt-1" />
                         {a.workerId && (
                           <span
                             className="mt-1 block"
