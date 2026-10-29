@@ -202,6 +202,14 @@ export const CARD_RECEIPT_METHODS = ["郵送", "窓口"] as const;
 // 窓口で受け取るときの受領官署
 export const CARD_RECEIPT_OFFICE = "福岡出入国在留管理局 熊本出張所";
 
+// 申請一覧のバッジに出す受領方法の文字（「受領 郵送」「受領 窓口（熊本出張所）」。未選択は空）
+export function cardReceiptLabel(method: string | null | undefined): string {
+  const m = (method ?? "").trim();
+  if (m === "窓口") return "受領 窓口（熊本出張所）";
+  if (m === "郵送") return "受領 郵送";
+  return "";
+}
+
 // 2.7・2.8 所定労働時間の注意書き（画面は小数点を受け付けない）
 export const HOURS_NOTE = "半角数字4文字以内。小数点以下は入力できないので切り捨てています（40.5 → 40）";
 

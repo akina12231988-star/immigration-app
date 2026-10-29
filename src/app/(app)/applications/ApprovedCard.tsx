@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { AlertBadge } from "@/components/applications/AlertBadge";
 import { ApplicantMeta } from "@/components/applications/ApplicantMeta";
+import { ReceiptMethodBadge } from "@/components/applications/ReceiptMethodBadge";
 import { createClient } from "@/lib/supabase/client";
 import {
   deleteApplicationMemo,
@@ -28,6 +29,7 @@ export function ApprovedCard({
   custodyNoLabel,
   nationality,
   tantou = "",
+  receiptMethod = "",
   updateApplication,
 }: {
   app: Application;
@@ -38,6 +40,7 @@ export function ApprovedCard({
   custodyNoLabel: string; // 預かり番号（未預かりは「—」）
   nationality?: string | null; // 外国人一覧から引き当てた国籍
   tantou?: string; // 担当者（申請準備のTODOの担当者。カードにも出す）
+  receiptMethod?: string; // 在留カードの受領方法（郵送／窓口。申請準備の詳細で選んだもの）
   updateApplication: (id: string, patch: Partial<Application>) => Promise<void>;
 }) {
   const router = useRouter();
@@ -132,11 +135,15 @@ export function ApprovedCard({
           </p>
           <p className="text-xs tabular-nums text-muted">預かり番号 {custodyNoLabel}</p>
           <ApplicantMeta app={app} nationality={nationality} className="mt-1" />
-          {tantou && (
-            <p className="mt-1">
-              <span className="inline-flex items-center gap-1 rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-bold text-brand">
-                担当 {tantou}
-              </span>
+          {(tantou || receiptMethod) && (
+            <p className="mt-1 flex flex-wrap items-center gap-1">
+              {tantou && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-bold text-brand">
+                  担当 {tantou}
+                </span>
+              )}
+              {/* 在留カードを郵送で受け取るか窓口で受け取るか（受け取り待ちで特に見たい） */}
+              <ReceiptMethodBadge method={receiptMethod} />
             </p>
           )}
         </div>
