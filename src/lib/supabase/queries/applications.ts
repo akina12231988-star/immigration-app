@@ -39,6 +39,7 @@ function toApplication(row: RowWithRefs): Application {
     onlineTempNo: row.online_temp_no ?? undefined,
     onlineCardNo: row.online_card_no ?? undefined,
     onlineMail2Link: row.online_mail2_link ?? undefined,
+    onlineMail3Link: row.online_mail3_link ?? undefined,
     residenceExpiryAtApply: row.residence_expiry_at_apply ?? undefined,
     isSelfApply: row.is_self_apply ?? false,
     receiptImageUrl: row.receipt_image_url ?? undefined,
@@ -91,6 +92,7 @@ function toRowPatch(patch: Partial<Application>): Record<string, unknown> {
   if (patch.onlineTempNo !== undefined) row.online_temp_no = patch.onlineTempNo;
   if (patch.onlineCardNo !== undefined) row.online_card_no = patch.onlineCardNo;
   if (patch.onlineMail2Link !== undefined) row.online_mail2_link = patch.onlineMail2Link;
+  if (patch.onlineMail3Link !== undefined) row.online_mail3_link = patch.onlineMail3Link;
   if ("residenceExpiryAtApply" in patch)
     row.residence_expiry_at_apply = patch.residenceExpiryAtApply ?? null;
   if (patch.isSelfApply !== undefined) row.is_self_apply = patch.isSelfApply;

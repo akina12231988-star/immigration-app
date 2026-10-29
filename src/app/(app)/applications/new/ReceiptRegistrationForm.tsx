@@ -517,7 +517,7 @@ export function ReceiptRegistrationForm({
                   <p className="mb-1 text-xs font-bold">1通目のメール「申請受付完了のお知らせ」</p>
                   <p className="mb-3 text-[11px] leading-relaxed text-muted">
                     申請直後に届くメールの申請種別と整理番号を入れ、メールのリンクとスクリーンショットを残します。
-                    2通目のメール（申請受付日・申請受付仮番号・申請人在留カード等番号・申請受付番号）は、届いたら申請詳細の「オンライン申請の受付」で入力できます。
+                    2通目のメール（申請受付日・申請受付仮番号・申請人在留カード等番号）と3通目のメール（申請受付番号）は、届いたら申請詳細の「オンライン申請の受付」で入力できます。
                   </p>
                   <div className="space-y-3">
                     <Field label="申請種別" value={fields.onlineAppType} onChange={(v) => set("onlineAppType", v)} placeholder={`例: ${ONLINE_APP_TYPE_EXAMPLE}`} />
@@ -582,7 +582,7 @@ export function ReceiptRegistrationForm({
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field label="申請日（必須）" type="date" value={fields.applicationDate} onChange={(v) => set("applicationDate", v)} />
                 <Field
-                  label={isOnline ? "申請受付番号（2通目のメールが届いてから。申請詳細でも入力できます）" : "申請番号（必須）"}
+                  label={isOnline ? "申請受付番号（3通目のメールが届いてから。申請詳細でも入力できます）" : "申請番号（必須）"}
                   value={fields.applicationNumber}
                   onChange={(v) => set("applicationNumber", v)}
                   warning={duplicateLabel}

@@ -20,7 +20,8 @@ const ALLOWED_MIME = /^(image\/(jpeg|png|webp|heic|heif)|application\/pdf)$/;
 const KIND_SLUGS: Record<ApplicationFileKind, string> = {
   受付票: "receipt",
   受付完了メール: "receipt-mail-1",
-  受付番号メール: "receipt-mail-2",
+  受付仮番号メール: "receipt-mail-2",
+  受付番号メール: "receipt-mail-3",
   通知書: "notice",
   在留カード: "residence-card",
   照合結果: "card-check-result",
