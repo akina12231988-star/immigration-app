@@ -16,6 +16,7 @@ alter table immigration_applications
 comment on column immigration_applications.online_ref_no is 'オンライン申請 1通目のメール（申請受付完了のお知らせ）の整理番号';
 comment on column immigration_applications.online_temp_no is 'オンライン申請 2通目のメールの申請受付仮番号';
 
+-- 0206 の「受付仮番号メール」も含めておく（0206 のあとに流し直しても、登録済みの画像で制約違反にならないように）
 alter table application_files drop constraint if exists application_files_kind_check;
 alter table application_files add constraint application_files_kind_check
-  check (kind in ('受付票', '通知書', '在留カード', '照合結果', '指定書', '追加資料通知', '受付完了メール', '受付番号メール', 'その他'));
+  check (kind in ('受付票', '通知書', '在留カード', '照合結果', '指定書', '追加資料通知', '受付完了メール', '受付仮番号メール', '受付番号メール', 'その他'));
