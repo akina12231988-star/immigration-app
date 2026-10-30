@@ -541,6 +541,7 @@ export interface Worker {
   followups?: WorkerFollowups; // あとでやる手続きの宿題（転居手続き・国保/国民年金の加入。0119）
   prep_opened_at?: string | null; // 申請準備の詳細画面を最後に開いた日時（0202。未適用の環境では undefined）
   card_receipt_method?: string; // 在留カードの受領方法（オンライン申請の受領方法等。'' / 郵送 / 窓口。0204）
+  housing_plan?: Record<string, unknown>; // １－１７号の「6. 住居」の選択（main: A/B/C、fallback: できなかったときの候補。0209）
   jobseeker_no?: string; // 求職受付番号（求職管理簿。例: R8KS-2。0079）
   jobseeker_accepted_on?: string | null; // 求職受付年月日（0079）
   jobseeker_valid_until?: string | null; // 求職の有効期間（終了日。0079）

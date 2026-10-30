@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { housingPatternOf, pickPrepWage } from "./prep-117-housing";
+import {
+  effectiveHousingMain,
+  housingFallbackText,
+  housingPatternOf,
+  housingPlanToJson,
+  normalizeHousingPlan,
+  pickPrepWage,
+} from "./prep-117-housing";
 import { emptyLodging } from "./organization-intake";
 import type { WorkerWage } from "@/types/db";
 
@@ -37,5 +44,34 @@ describe("申請準備で見る賃金の記録", () => {
   it("この所属機関の記録が無ければ全体から選ぶ", () => {
     expect(pickPrepWage([w("1", "o2", { housing_amount: 1 })], "o1")?.id).toBe("1");
     expect(pickPrepWage([], "o1")).toBeNull();
+  });
+});
+
+describe("住居の選択（housing_plan）", () => {
+  it("保存した値を読む。壊れた値・main と同じ候補は未選択にする", () => {
+    expect(normalizeHousingPlan({ main: "B", fallback: "C" })).toEqual({ main: "B", fallback: "C" });
+    expect(normalizeHousingPlan({ main: "B", fallback: "B" })).toEqual({ main: "B", fallback: null });
+    expect(normalizeHousingPlan({ main: "", fallback: "C" })).toEqual({ main: null, fallback: null });
+    expect(normalizeHousingPlan({ main: "X" })).toEqual({ main: null, fallback: null });
+    expect(normalizeHousingPlan(null)).toEqual({ main: null, fallback: null });
+    expect(normalizeHousingPlan("B")).toEqual({ main: null, fallback: null });
+  });
+
+  it("保存する形は未選択を空文字にする", () => {
+    expect(housingPlanToJson({ main: "A", fallback: "C" })).toEqual({ main: "A", fallback: "C" });
+    expect(housingPlanToJson({ main: null, fallback: null })).toEqual({ main: "", fallback: "" });
+    expect(housingPlanToJson({ main: "A", fallback: "A" })).toEqual({ main: "A", fallback: "" });
+  });
+
+  it("選択が無ければ 1-6号別紙の居住費からの候補を出す", () => {
+    expect(effectiveHousingMain({ main: null, fallback: null }, "C")).toBe("C");
+    expect(effectiveHousingMain({ main: "A", fallback: null }, "C")).toBe("A");
+    expect(effectiveHousingMain({ main: null, fallback: null }, null)).toBeNull();
+  });
+
+  it("できなかったときの候補に書く文章", () => {
+    expect(housingFallbackText("A")).toBe("Aの外国人本人による住居の契約ができなかった場合、実施予定");
+    expect(housingFallbackText("B")).toBe("Bの社宅入居に合意しなかった場合、実施予定");
+    expect(housingFallbackText("C")).toBe("Cの社宅入居に合意しなかった場合、実施予定");
   });
 });

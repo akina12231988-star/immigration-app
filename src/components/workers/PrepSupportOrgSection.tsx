@@ -7,7 +7,8 @@ import { CopyButton } from "@/components/ui/CopyButton";
 import { createClient } from "@/lib/supabase/client";
 import { getAppSetting } from "@/lib/supabase/queries/app-settings";
 import { listEmployees } from "@/lib/supabase/queries/employees";
-import { listWorkersForSupport } from "@/lib/supabase/queries/workers";
+import { listWorkersForSupport, updateWorker } from "@/lib/supabase/queries/workers";
+import { dbErrorMessage } from "@/lib/errors";
 import { listOrganizationFiles } from "@/lib/supabase/queries/organization-files";
 import { getOrgFilePreviewUrl } from "@/app/(app)/organizations/actions";
 import { getSupportOrgFilePreviewUrl, listSupportOrgFiles, type SupportOrgFileView } from "@/app/(app)/support-org/actions";
@@ -30,7 +31,17 @@ import { rosterJpDate } from "@/lib/roster";
 import { todayStr } from "@/lib/ssw/calc";
 import { findPlanDatesForTodo, listPlanDates } from "@/lib/supabase/queries/plan-dates";
 import { listWorkerWages } from "@/lib/supabase/queries/wages";
-import { HOUSING_PATTERNS, housingPatternOf, pickPrepWage } from "@/lib/prep-117-housing";
+import {
+  HOUSING_PATTERNS,
+  effectiveHousingMain,
+  housingFallbackText,
+  housingPatternOf,
+  housingPlanToJson,
+  normalizeHousingPlan,
+  pickPrepWage,
+  type HousingPatternKey,
+  type HousingPlan,
+} from "@/lib/prep-117-housing";
 import { formatYen } from "@/lib/wage-calc";
 import { OrgAttachmentPreview } from "@/components/workers/ApplicationPrepExtras";
 import type { Employee, Organization, OrganizationFileRow, WorkerWage } from "@/types/db";
@@ -110,7 +121,8 @@ interface PlanWorker {
 //  3. 支援している特定技能外国人の人数
 //  4. 支援責任者・支援担当者の名簿（A4で印刷）
 //  5. 事前ガイダンスの実施日（支援計画書の日付から）
-//  6. 住居（1-6号別紙の居住費から A 自分で契約／B 社宅・自己所有物件／C 社宅・賃貸物件。該当欄に雇用開始日）
+//  6. 住居（A 自分で契約／B 社宅・自己所有物件／C 社宅・賃貸物件 のどれにするかを選ぶ。未選択なら 1-6号別紙の居住費から。
+//     選んだ欄に雇用開始日、できなかったときに対応予定の候補の欄に「○の社宅入居に合意しなかった場合、実施予定」）
 //  7. 生活オリエンテーションの実施日（支援計画書の日付から）
 //  8. 所属機関の協力確認書: 提出先・提出日
 export function Prep117Section({
@@ -118,11 +130,13 @@ export function Prep117Section({
   workerIds,
   todoNo = "",
   refreshKey = 0,
+  canEdit = false,
 }: {
   orgId: string | null;
   workerIds: string[];
   todoNo?: string; // 支援計画書の日付（事前ガイダンス・雇用開始日・生活オリエンテーション）を引くTODO番号
   refreshKey?: number; // 値が変わると読み直す（同じページで支援計画書の日付などを保存したとき）
+  canEdit?: boolean; // 住居の選択（6. 住居）をこの場で保存できるか
 }) {
   const workerKey = workerIds.join(",");
   const [data, setData] = useState<{
@@ -133,7 +147,11 @@ export function Prep117Section({
     org: Organization | null;
     planDates: Record<string, string>; // 保存済みの支援計画書の日付（es / guid / orient など）
     wage: WorkerWage | null; // 1-6号別紙（居住費）を見る賃金の記録
+    housingPlan: HousingPlan; // 6. 住居の選択（workers.housing_plan。0209）
   } | null>(null);
+  // 6. 住居の選択の保存中・エラー
+  const [housingBusy, setHousingBusy] = useState(false);
+  const [housingError, setHousingError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -158,7 +176,18 @@ export function Prep117Section({
             .catch(() => ({}) as Record<string, string>)
         : Promise.resolve({} as Record<string, string>),
       ids[0] ? listWorkerWages(supabase, ids[0]).catch(() => [] as WorkerWage[]) : Promise.resolve([] as WorkerWage[]),
-    ]).then(([workers, employees, supportWorkers, org, planDates, wages]) => {
+      // 6. 住居の選択（0209 が未適用の環境では列が無いので未選択として扱う）
+      ids[0]
+        ? supabase
+            .from("workers")
+            .select("housing_plan")
+            .eq("id", ids[0])
+            .maybeSingle()
+            .then(({ data: row, error }) =>
+              normalizeHousingPlan(error ? null : (row as { housing_plan?: unknown } | null)?.housing_plan),
+            )
+        : Promise.resolve(normalizeHousingPlan(null)),
+    ]).then(([workers, employees, supportWorkers, org, planDates, wages, housingPlan]) => {
       if (cancelled) return;
       // 本人を先に、連名の方をあとに並べる
       const order = new Map(ids.map((id, i) => [id, i]));
@@ -171,6 +200,7 @@ export function Prep117Section({
         org,
         planDates,
         wage: pickPrepWage(wages, orgId),
+        housingPlan,
       });
     });
     return () => {
@@ -179,10 +209,28 @@ export function Prep117Section({
   }, [orgId, workerKey, todoNo, refreshKey]);
 
   if (!data || data.key !== `${orgId ?? ""}|${workerKey}|${todoNo}`) return null;
-  const { workers, employees, supportWorkers, org, planDates, wage } = data;
+  const { workers, employees, supportWorkers, org, planDates, wage, housingPlan } = data;
   const employStart = planDates.es ?? "";
   const housing = housingPatternOf(wage?.detail ?? null, normalizeOrganizationIntake(org?.intake).lodgings);
   const mainWorkerId = workerIds[0] ?? "";
+  // 6. 住居: 選んで保存した住居（無ければ 1-6号別紙の居住費からの候補）と、できなかったときの候補
+  const housingMain = effectiveHousingMain(housingPlan, housing.key);
+  const housingFallback = housingMain && housingPlan.fallback !== housingMain ? housingPlan.fallback : null;
+  const saveHousingPlan = async (next: HousingPlan) => {
+    if (!mainWorkerId) return;
+    setHousingBusy(true);
+    setHousingError(null);
+    try {
+      await updateWorker(createClient(), mainWorkerId, { housing_plan: housingPlanToJson(next) });
+      setData((d) => (d ? { ...d, housingPlan: normalizeHousingPlan(housingPlanToJson(next)) } : d));
+    } catch (err) {
+      setHousingError(dbErrorMessage(err, "0209_worker_housing_plan.sql", "住居の選択を保存できませんでした"));
+    } finally {
+      setHousingBusy(false);
+    }
+  };
+  const housingSelectCls =
+    "min-h-[36px] rounded-lg border border-border bg-background px-2 text-xs focus:border-brand focus:outline-none disabled:opacity-60";
   const today = todayStr();
   const intake = normalizeOrganizationIntake(org?.intake);
 
@@ -341,7 +389,8 @@ export function Prep117Section({
         </div>
       </div>
 
-      {/* 6. 住居（1-6号別紙の居住費から A・B・C を決め、該当する欄に雇用開始日を書く） */}
+      {/* 6. 住居（A・B・C のどれにするかを選び、選んだ欄に雇用開始日、
+          できなかったときに対応予定の候補の欄に「○の社宅入居に合意しなかった場合、実施予定」を出す） */}
       <div>
         {heading(
           "6. 住居（社宅か、自分で契約する住居か）",
@@ -352,21 +401,85 @@ export function Prep117Section({
             賃金（1-6号別紙）を開く
           </Link>,
         )}
+        {/* どれか一つを選ぶ。選ぶとその場で保存する（1-6号別紙の居住費からの候補が初期値） */}
+        {canEdit && (
+          <div className="mb-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px]">
+            <label className="flex items-center gap-1.5">
+              <span className="text-muted">住居</span>
+              <select
+                value={housingPlan.main ?? ""}
+                disabled={housingBusy}
+                onChange={(e) => {
+                  const main = (e.target.value || null) as HousingPatternKey | null;
+                  void saveHousingPlan({
+                    main,
+                    fallback: housingPlan.fallback && housingPlan.fallback !== main ? housingPlan.fallback : null,
+                  });
+                }}
+                className={housingSelectCls}
+              >
+                <option value="">
+                  {housing.key ? `未選択（1-6号別紙の居住費から ${housing.key}）` : "未選択（1-6号別紙の居住費が未入力）"}
+                </option>
+                {HOUSING_PATTERNS.map((p) => (
+                  <option key={p.key} value={p.key}>
+                    {p.key}：{p.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-1.5">
+              <span className="text-muted">もし、できなかったら</span>
+              <select
+                value={housingFallback ?? ""}
+                disabled={housingBusy || !housingMain}
+                onChange={(e) => {
+                  const fallback = (e.target.value || null) as HousingPatternKey | null;
+                  // 1-6号別紙からの候補のまま「できなかったら」だけ選んだときは、その候補を住居として保存する
+                  void saveHousingPlan({ main: housingMain, fallback });
+                }}
+                className={housingSelectCls}
+                title={housingMain ? "" : "先に住居を選んでください"}
+              >
+                <option value="">{housingMain ? "対応予定の候補を選ぶ" : "先に住居を選ぶ"}</option>
+                {HOUSING_PATTERNS.filter((p) => p.key !== housingMain).map((p) => (
+                  <option key={p.key} value={p.key}>
+                    {p.key}：{p.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {housingBusy && <span className="text-muted">保存中…</span>}
+            {!housingPlan.main && housing.key && (
+              <span className="text-muted">1-6号別紙の居住費からの候補を出しています（選び直せます）</span>
+            )}
+          </div>
+        )}
+        {housingError && (
+          <p role="alert" className="mb-1.5 rounded-lg bg-seal/10 px-3 py-1.5 text-[11px] text-seal">
+            {housingError}
+          </p>
+        )}
         <div className="overflow-hidden rounded-xl border border-border">
           {HOUSING_PATTERNS.map((p) => {
-            const hit = housing.key === p.key;
+            const hit = housingMain === p.key;
+            const alt = housingFallback === p.key;
+            const altText = alt && housingMain ? housingFallbackText(housingMain) : "";
             return (
               <div
                 key={p.key}
-                className={`flex min-h-[40px] items-center gap-2 border-t border-border px-3 py-1.5 text-xs first:border-t-0 ${hit ? "bg-brand/5" : ""}`}
+                className={`flex min-h-[40px] items-center gap-2 border-t border-border px-3 py-1.5 text-xs first:border-t-0 ${hit ? "bg-brand/5" : alt ? "bg-status-notice-bg/40" : ""}`}
               >
-                <span className={`w-6 shrink-0 text-center text-sm font-black ${hit ? "text-brand" : "text-muted"}`}>{p.key}</span>
-                <span className={`w-44 shrink-0 text-[11px] ${hit ? "font-bold" : "text-muted"}`}>{p.label}</span>
-                <span className={`min-w-0 flex-1 ${hit ? "font-bold" : "text-muted"}`}>
-                  {hit ? (employStart ? `雇用開始日 ${rosterJpDate(employStart)}` : "雇用開始日が未登録") : "—"}
+                <span className={`w-6 shrink-0 text-center text-sm font-black ${hit || alt ? "text-brand" : "text-muted"}`}>{p.key}</span>
+                <span className={`w-44 shrink-0 text-[11px] ${hit || alt ? "font-bold" : "text-muted"}`}>{p.label}</span>
+                <span className={`min-w-0 flex-1 ${hit || alt ? "font-bold" : "text-muted"}`}>
+                  {hit ? (employStart ? `雇用開始日 ${rosterJpDate(employStart)}` : "雇用開始日が未登録") : alt ? altText : "—"}
                 </span>
                 {hit && employStart && (
                   <CopyButton value={rosterJpDate(employStart)} label={`${p.key}の雇用開始日をコピー`} size={13} className="inline-flex shrink-0" />
+                )}
+                {alt && altText && (
+                  <CopyButton value={altText} label={`${p.key}の文章をコピー`} size={13} className="inline-flex shrink-0" />
                 )}
               </div>
             );
