@@ -261,8 +261,37 @@ export function totalStaff(intake: OrganizationIntake | null): string {
   return nums.length === 0 ? "" : String(nums.reduce((a, b) => a + b, 0));
 }
 
+// 雇用開始日の時点で適用される賃金。
+// 雇用開始日より後に始まる賃金（昇給）は入れず、雇用開始日以前に始まるもののうちいちばん新しいもの。
+// 適用開始日が空（申請時の賃金）は「登録した日に決めた賃金」として登録日で比べる
+// （それより後に始まる改定後の賃金を時給の一括登録で入れていれば、そちらが新しい）。同じ日なら日付を入れた記録を優先する。
+// 例: 申請時の時給1,050円（日付なし）と 12/1 からの時給を登録していれば、雇用開始日が 12/1 以降なら 12/1 からの時給、
+// 12/1 より前なら 1,050円。雇用開始日が未定なら、いちばん新しい記録
+function wageAtEmploymentStart(wages: WorkerWage[], es: string | null): WorkerWage | null {
+  if (!es) return currentWage(wages, undefined, es);
+  const key = (x: WorkerWage) => {
+    if (x.started_on) return x.started_on;
+    const created = (x.created_at ?? "").slice(0, 10);
+    return created && created < es ? created : es;
+  };
+  const applied = wages.filter((x) => key(x) <= es);
+  if (applied.length === 0) {
+    // どれも雇用開始日より後に始まる → いちばん早く始まるもの
+    return [...wages].sort((a, b) => key(a).localeCompare(key(b)))[0] ?? null;
+  }
+  return (
+    [...applied].sort(
+      (a, b) =>
+        key(b).localeCompare(key(a)) ||
+        Number(Boolean(b.started_on)) - Number(Boolean(a.started_on)) ||
+        (b.created_at ?? "").localeCompare(a.created_at ?? ""),
+    )[0] ?? null
+  );
+}
+
 // 月額報酬と基本給の時間換算額（登録している賃金と所定労働時間から）
-// 申請準備中の所属機関（orgId）の賃金があればそれに絞る（転職先の賃金を入れているとき）。無ければ全部から
+// 申請準備中の所属機関（orgId）の賃金があればそれに絞る（転職先の賃金を入れているとき）。無ければ全部から。
+// employmentStartOn は 2.1 の雇用契約期間（始期）と同じ雇用開始日（支援計画書の日付、無ければ外国人の雇用開始日）
 export function wageForApplication(
   wages: WorkerWage[],
   intake: OrganizationIntake | null,
@@ -271,14 +300,16 @@ export function wageForApplication(
   orgName?: string,
 ): { monthly: string; hourly: string; note: string } {
   const scoped = orgId ? wages.filter((x) => x.organization_id === orgId) : [];
-  const w = currentWage(scoped.length > 0 ? scoped : wages, undefined, employmentStartOn);
+  const w = wageAtEmploymentStart(scoped.length > 0 ? scoped : wages, employmentStartOn || null);
   if (!w) return { monthly: "", hourly: "", note: "賃金が未登録です（外国人詳細の賃金、または申請準備の賃金）" };
+  // 雇用開始日の時点の賃金を選んだことが分かるように、日付の入った賃金なら適用開始日を書く
+  const at = employmentStartOn && w.started_on ? `雇用開始日 ${employmentStartOn} 時点の賃金（${w.started_on} から適用）。` : "";
   const from =
     scoped.length > 0
-      ? `所属機関「${orgName || "申請準備中の機関"}」の賃金（${wageText(w.kind, w.amount)}）から。`
+      ? `所属機関「${orgName || "申請準備中の機関"}」の賃金（${wageText(w.kind, w.amount)}）から。${at}`
       : orgId
-        ? `申請準備中の所属機関の賃金が未登録のため、いちばん新しい賃金（${wageText(w.kind, w.amount)}）から。`
-        : "";
+        ? `申請準備中の所属機関の賃金が未登録のため、いちばん新しい賃金（${wageText(w.kind, w.amount)}）から。${at}`
+        : at;
   const annual = Number.parseFloat(intake?.posting_annual_hours ?? "") || 0;
   if (w.kind === "月給") {
     const h = hourlyFromMonthly(w.amount, annual);
@@ -341,7 +372,7 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
   const docM = docMonths ? String(docMonths % 12) : "";
   const es = planDates.es || w.employment_start_on || "";
   const ee = es ? contractPeriodEnd(es) : "";
-  const wage = wageForApplication(wages, intake, w.employment_start_on, input.orgId, org?.name);
+  const wage = wageForApplication(wages, intake, es || null, input.orgId, org?.name);
   const jpStaff = japaneseStaffMonthly(intake, org?.name ?? "");
   const weekly = weeklyHoursText(intake);
   const monthlyHours = parseHoursMinutes(intake?.posting_monthly_hours ?? "");

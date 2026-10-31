@@ -276,6 +276,41 @@ describe("申請準備中の所属機関の賃金・日本人職員の報酬・�
     expect(f.note).toContain("申請準備中の所属機関の賃金が未登録");
   });
 
+  it("雇用開始日が改定日（12/1）以降なら、12/1 からの時給・月給を使う", () => {
+    const wages = [
+      wage({ id: "apply", organization_id: "org-2", kind: "時給", amount: 1050, started_on: null, reason: "申請時", created_at: "2026-10-01" }),
+      wage({ id: "raise", organization_id: "org-2", kind: "時給", amount: 1100, started_on: "2026-12-01", reason: "昇給", created_at: "2026-10-20" }),
+    ];
+    const after = wageForApplication(wages, intake, "2026-12-01", "org-2", "村田敬一");
+    expect(after.hourly).toBe("1100");
+    expect(after.monthly).toBe(String(Math.round((1100 * 2080) / 12)));
+    expect(after.note).toContain("雇用開始日 2026-12-01 時点の賃金（2026-12-01 から適用）");
+    expect(wageForApplication(wages, intake, "2027-01-10", "org-2", "村田敬一").hourly).toBe("1100");
+    // 12/1 より前に雇用開始なら申請時の時給のまま
+    const before = wageForApplication(wages, intake, "2026-11-15", "org-2", "村田敬一");
+    expect(before.hourly).toBe("1050");
+    // 申請時の賃金をあとから登録していても、同じ日なら日付を入れた改定後の賃金を優先
+    const later = [wages[1], { ...wages[0], created_at: "2026-10-30" }];
+    expect(wageForApplication(later, intake, "2026-12-01", "org-2", "村田敬一").hourly).toBe("1100");
+  });
+
+  it("2.10・2.11 は 2.1 と同じ雇用開始日（支援計画書の日付）で賃金を選ぶ", () => {
+    const wages = [
+      wage({ id: "apply", kind: "時給", amount: 1050, started_on: null, created_at: "2026-10-01" }),
+      wage({ id: "raise", kind: "時給", amount: 1100, started_on: "2026-12-01", created_at: "2026-10-20" }),
+    ];
+    const groups = buildApplicationCopyGroups({
+      worker: { ...worker, employment_start_on: null },
+      org,
+      intake,
+      wages,
+      histories: [],
+      planDates: { es: "2026-12-01" },
+    });
+    const find = (label: string) => groups.flatMap((g) => g.items).find((i) => i.label === label);
+    expect(find("2 (4)基本給の時間換算額")?.value).toBe("1100");
+  });
+
   it("同等の業務に従事する日本人の月額報酬は所属機関の専従者の報酬から（時給は月額換算）", () => {
     const withStaff = { ...intake, japanese_staff: [{ name: "山田 太郎", role: "", profile: "", pay: "月給250,000円" }] };
     const j = japaneseStaffMonthly(withStaff, "有限会社國崎青果");
