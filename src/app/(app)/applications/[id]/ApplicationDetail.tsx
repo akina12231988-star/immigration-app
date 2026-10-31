@@ -366,13 +366,14 @@ export function ApplicationDetail({ id }: { id: string }) {
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
               <StatusBadge status={app.status} />
+              {/* 編集はここ1か所（申請の基本情報とオンライン申請の受付メールの内容をまとめて直す） */}
               <button
                 type="button"
                 onClick={() => setEditOpen(true)}
-                aria-label="申請情報を修正"
-                className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted"
+                className="inline-flex min-h-[40px] items-center gap-1.5 whitespace-nowrap rounded-xl bg-brand px-4 text-sm font-bold text-brand-foreground"
               >
-                <Pencil size={15} />
+                <Pencil size={16} />
+                編集
               </button>
             </div>
           </div>
@@ -466,7 +467,6 @@ export function ApplicationDetail({ id }: { id: string }) {
               messengerLink={messengerLink}
               onUpload={(kind, list) => void handleUpload(kind, list)}
               onDeleteFile={(f) => void handleDeleteFile(f)}
-              onSave={(patch) => updateApplication(app.id, patch)}
             />
           )}
           <h4 className="mb-2 mt-4 text-xs font-bold text-muted">画像</h4>

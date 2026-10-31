@@ -82,6 +82,7 @@ function syncImmigrationMails() {
         snippet: plain.slice(0, 300).replace(/\s+/g, ' ').trim(),
         body: plain.slice(0, 4000),
         receivedAt: m.getDate().toISOString(),
+        // u/0 のままでよい（アプリの入管メール通知で受信アカウントを設定すると、そのアカウントで開くリンクに置き換える）
         link: 'https://mail.google.com/mail/u/0/#all/' + m.getId()
       });
     });

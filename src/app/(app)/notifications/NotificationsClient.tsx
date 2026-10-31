@@ -1,13 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Bell,
   CheckCheck,
+  ChevronRight,
   ExternalLink,
   Link2,
+  Mail,
   MailOpen,
+  Pencil,
   Trash2,
   User,
 } from "lucide-react";
@@ -16,9 +19,16 @@ import { Combobox, type ComboOption } from "@/components/ui/Combobox";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useNotifications } from "@/lib/notification-store";
 import { useApplications } from "@/lib/application-store";
-import { categoryChipClass, formatRelativeTime } from "@/lib/mail-format";
+import { categoryChipClass, formatRelativeTime, gmailLinkForAccount } from "@/lib/mail-format";
+import { createClient } from "@/lib/supabase/client";
+import { getAppSetting, setAppSetting } from "@/lib/supabase/queries/app-settings";
+import { errorMessage } from "@/lib/errors";
 import type { MailCategory } from "@/types/db";
-import type { MailNotification } from "@/lib/supabase/queries/mail-notifications";
+import {
+  IMMIGRATION_MAIL_SETTING_KEY,
+  type ImmigrationMailSetting,
+  type MailNotification,
+} from "@/lib/supabase/queries/mail-notifications";
 
 type Filter = "all" | "unread" | "許可" | "申請受付";
 
@@ -44,6 +54,35 @@ export function NotificationsClient() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // 入管メールを受け取っている Gmail のアカウント（全員で共通。「Gmailで開く」をこのアカウントで開く）
+  const [gmailAccount, setGmailAccount] = useState("");
+  const [accountDraft, setAccountDraft] = useState<string | null>(null); // 編集中の値（null は編集していない）
+  const [accountError, setAccountError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getAppSetting<ImmigrationMailSetting>(createClient(), IMMIGRATION_MAIL_SETTING_KEY)
+      .then((v) => {
+        if (!cancelled) setGmailAccount(String(v?.gmailAccount ?? ""));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function saveAccount() {
+    if (accountDraft === null) return;
+    const value = accountDraft.trim();
+    setAccountError(null);
+    try {
+      await setAppSetting(createClient(), IMMIGRATION_MAIL_SETTING_KEY, { gmailAccount: value });
+      setGmailAccount(value);
+      setAccountDraft(null);
+    } catch (err) {
+      setAccountError(errorMessage(err, "アカウントの保存に失敗しました"));
+    }
+  }
 
   // 紐づけ修正用: 申請の選択肢（氏名 — 申請内容 申請日）
   const appOptions: ComboOption[] = useMemo(
@@ -127,6 +166,56 @@ export function NotificationsClient() {
         )}
       </div>
 
+      {/* 「Gmailで開く」を開くアカウント */}
+      <Card className="p-3 text-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <Mail size={15} className="text-muted" />
+          <span className="text-xs font-bold text-muted">入管メールを受け取っている Gmail</span>
+          {accountDraft === null ? (
+            <>
+              <span className={gmailAccount ? "font-bold" : "text-xs text-seal"}>
+                {gmailAccount || "未設定（ブラウザでいちばん最初にログインしたアカウントの Gmail が開きます）"}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setAccountDraft(gmailAccount);
+                  setAccountError(null);
+                }}
+                className="ml-auto inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11px] font-bold"
+              >
+                <Pencil size={12} />
+                編集
+              </button>
+            </>
+          ) : (
+            <>
+              <input
+                type="email"
+                value={accountDraft}
+                onChange={(e) => setAccountDraft(e.target.value)}
+                placeholder="例: immigration@example.com"
+                className="min-h-[36px] min-w-0 flex-1 rounded-lg border border-border bg-surface px-2.5 text-sm focus:border-brand focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => void saveAccount()}
+                className="rounded-lg bg-brand px-3 py-1.5 text-xs font-bold text-brand-foreground"
+              >
+                保存
+              </button>
+              <button type="button" onClick={() => setAccountDraft(null)} className="px-2 text-xs font-bold text-muted">
+                やめる
+              </button>
+            </>
+          )}
+        </div>
+        <p className="mt-1 text-[11px] leading-relaxed text-muted">
+          入れておくと「Gmailで開く」がこのアカウントの Gmail で開きます（そのアカウントにブラウザでログインしている必要があります）。全員で共通の設定です。
+        </p>
+        {accountError && <p className="mt-1 text-xs text-seal">{accountError}</p>}
+      </Card>
+
       {error && (
         <Card className="border-seal bg-seal/10 p-4 text-sm text-seal">{error}</Card>
       )}
@@ -178,6 +267,10 @@ export function NotificationsClient() {
                     <User size={14} />
                     {n.matchedWorkerName ?? n.matchedName ?? "申請"}
                     {n.matchedApplicationStatus ? `（${n.matchedApplicationStatus}）` : ""}
+                    <span className="ml-1 inline-flex items-center text-xs underline underline-offset-2">
+                      申請詳細を開く
+                      <ChevronRight size={13} />
+                    </span>
                   </Link>
                 ) : n.matchedWorkerId ? (
                   <Link
@@ -253,7 +346,7 @@ export function NotificationsClient() {
                 )}
                 {n.gmailLink && (
                   <a
-                    href={n.gmailLink}
+                    href={gmailLinkForAccount(n.gmailLink, gmailAccount)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 text-muted hover:text-brand"

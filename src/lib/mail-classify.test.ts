@@ -20,6 +20,15 @@ describe("classifyMailCategory", () => {
     expect(classifyMailCategory("オンライン申請 受付完了", "申請番号 123")).toBe("申請受付");
   });
 
+  it("オンライン申請の受付メールは本文に「許可」があっても申請受付", () => {
+    const body = "申請受付日 2026/10/30 申請種別 在留資格変更許可申請（区分V） 申請受付番号 福オンＣＶ26010055";
+    expect(classifyMailCategory("【入管庁】申請受付番号のお知らせ", body)).toBe("申請受付");
+    expect(classifyMailCategory("【入管庁】申請受付仮番号のお知らせ", body)).toBe("申請受付");
+    expect(classifyMailCategory("【入管庁】申請受付完了のお知らせ", body)).toBe("申請受付");
+    // 件名が許可の知らせなら許可のまま
+    expect(classifyMailCategory("【入管庁】在留資格変更許可のお知らせ（申請受付番号 1）", "")).toBe("許可");
+  });
+
   it("不許可は許可に含めずその他にする", () => {
     expect(classifyMailCategory("在留期間更新 不許可のお知らせ", "")).toBe("その他");
   });

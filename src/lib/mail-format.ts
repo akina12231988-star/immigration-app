@@ -27,3 +27,14 @@ export function formatRelativeTime(iso: string, now: number = Date.now()): strin
   const d = new Date(iso);
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
+
+// 入管メールを受け取っている Gmail のアカウントで開くリンクにする。
+// Apps Script が作るリンクは https://mail.google.com/mail/u/0/#all/<id> で、u/0 は
+// 「ブラウザでいちばん最初にログインしたアカウント」なので、別のアカウントの Gmail が開いてしまう。
+// u/<メールアドレス> にすると、そのアカウントの Gmail で開く（ログインしていなければログイン画面になる）。
+// アカウントが未設定、または Gmail のリンクでなければそのまま返す
+export function gmailLinkForAccount(link: string, account: string | null | undefined): string {
+  const acc = (account ?? "").trim();
+  if (!link || !acc) return link;
+  return link.replace(/^https:\/\/mail\.google\.com\/mail\/u\/[^/]+\//, `https://mail.google.com/mail/u/${acc}/`);
+}

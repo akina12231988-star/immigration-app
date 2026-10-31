@@ -4,6 +4,9 @@ import type { MailCategory } from "@/types/db";
 // 判定順が重要: 「不許可」は結果通知だが許可ではないので先に除外する。
 export function classifyMailCategory(subject: string, body: string): MailCategory {
   const text = `${subject}\n${body}`;
+  // オンライン申請の受付メール（申請受付完了・申請受付仮番号・申請受付番号のお知らせ）は、
+  // 本文の「資格変更許可申請」などの「許可」に引っぱられないよう件名で先に申請受付にする
+  if (/受付/.test(subject) && !/許可(?!申請)|交付/.test(subject)) return "申請受付";
   if (/不許可|不交付/.test(text)) return "その他";
   if (/許可|交付|認定証明書/.test(text)) return "許可";
   if (/受付|受け付け|受理|申請番号/.test(text)) return "申請受付";
