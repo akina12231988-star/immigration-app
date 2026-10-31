@@ -76,3 +76,21 @@ export function needsOnlineReceiptNumber(
 export function receiptSlipFiles(method: Application["method"], files: ApplicationFile[]): ApplicationFile[] {
   return files.filter((f) => f.kind === "受付票" || (method === "オンライン" && f.kind === "受付番号メール"));
 }
+
+// 申請受付番号が届いたら報告する Messenger グループ「入管-申請受付票・許可」
+export const IMMIGRATION_RECEIPT_GROUP_URL = "https://www.facebook.com/messages/t/9604193213024817";
+export const IMMIGRATION_RECEIPT_GROUP_NAME = "入管-申請受付票・許可";
+
+// 申請受付番号が届いたときの報告文（入管-申請受付票・許可のグループと本人のグループに貼る）。
+// 受付票（3通目のメールのスクリーンショット）を添えて送る
+export function onlineReceiptReportText(
+  a: Pick<Application, "name" | "applicationNumber" | "onlineAppType" | "onlineReceivedOn" | "applicationDate">,
+): string {
+  const date = a.onlineReceivedOn || a.applicationDate;
+  const [y, m, d] = (date ?? "").split("-");
+  const dateText = y && m && d ? `${Number(y)}年${Number(m)}月${Number(d)}日` : date || "未入力";
+  const lines = [`${a.name}さん`, "オンライン申請の申請受付番号が届きました。", ""];
+  if (a.onlineAppType?.trim()) lines.push(`申請種別: ${a.onlineAppType.trim()}`);
+  lines.push(`申請受付日: ${dateText}`, `申請受付番号: ${(a.applicationNumber ?? "").trim() || "未登録"}`);
+  return lines.join("\n");
+}

@@ -463,6 +463,7 @@ export function ApplicationDetail({ id }: { id: string }) {
               files={files}
               uploading={uploading}
               canEdit={!withdrawn}
+              messengerLink={messengerLink}
               onUpload={(kind, list) => void handleUpload(kind, list)}
               onDeleteFile={(f) => void handleDeleteFile(f)}
               onSave={(patch) => updateApplication(app.id, patch)}

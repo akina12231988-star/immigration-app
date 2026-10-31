@@ -1,11 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { ExternalLink, Mail, Pencil } from "lucide-react";
+import Link from "next/link";
+import { ExternalLink, Mail, MessageCircle, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { CopyButton } from "@/components/ui/CopyButton";
 import { FileGroup } from "@/components/applications/FileGroup";
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
-import { ONLINE_APP_TYPE_EXAMPLE, onlineReceiptStage, onlineReceiptSummary, waitingReceiptNumber } from "@/lib/online-receipt";
+import { messengerWebUrl } from "@/lib/messenger-link";
+import {
+  IMMIGRATION_RECEIPT_GROUP_NAME,
+  IMMIGRATION_RECEIPT_GROUP_URL,
+  ONLINE_APP_TYPE_EXAMPLE,
+  onlineReceiptReportText,
+  onlineReceiptStage,
+  onlineReceiptSummary,
+  waitingReceiptNumber,
+} from "@/lib/online-receipt";
 import type { Application, ApplicationFile, ApplicationFileKind } from "@/types/application";
 
 const MIGRATION = "0206_online_application_receipt_mail3.sql";
@@ -48,11 +59,13 @@ export function OnlineReceiptSection({
   files,
   uploading,
   canEdit,
+  messengerLink,
   onUpload,
   onDeleteFile,
   onSave,
 }: {
   app: Application;
+  messengerLink: string; // 本人の Messenger グループ（外国人詳細の基本情報）
   files: ApplicationFile[];
   uploading: ApplicationFileKind | null;
   canEdit: boolean;
@@ -239,6 +252,53 @@ export function OnlineReceiptSection({
           {files.some((f) => f.kind === "受付仮番号メール") && shots("2通目のスクリーンショット", "受付仮番号メール")}
         </div>
       </div>
+
+      {/* 申請受付番号が入ったら、入管-申請受付票・許可のグループと本人のグループへ報告する */}
+      {!editing && !waiting && (
+        <div className="mt-3 rounded-xl border border-brand/30 bg-brand/5 p-3">
+          <p className="mb-1 text-xs font-bold text-brand">申請受付番号が入りました。Messenger で報告してください</p>
+          <p className="mb-2 text-[11px] leading-relaxed text-muted">
+            報告文をコピーし、受付票（3通目のメールのスクリーンショット）を添えて、下の2つのグループに送ります。
+          </p>
+          <div className="mb-2 flex items-start gap-2 rounded-lg bg-surface p-2.5">
+            <pre className="min-w-0 flex-1 whitespace-pre-wrap text-xs leading-relaxed">{onlineReceiptReportText(app)}</pre>
+            <CopyButton value={onlineReceiptReportText(app)} label="報告文をコピー" size={16} />
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <a
+              href={messengerWebUrl(IMMIGRATION_RECEIPT_GROUP_URL)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex min-h-[40px] items-center justify-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-sm font-bold text-brand"
+            >
+              <MessageCircle size={15} />
+              {IMMIGRATION_RECEIPT_GROUP_NAME} に報告
+              <ExternalLink size={12} />
+            </a>
+            {messengerLink ? (
+              <a
+                href={messengerWebUrl(messengerLink)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex min-h-[40px] items-center justify-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-sm font-bold text-brand"
+              >
+                <MessageCircle size={15} />
+                本人の Messenger グループに報告
+                <ExternalLink size={12} />
+              </a>
+            ) : (
+              <p className="flex min-h-[40px] items-center justify-center rounded-xl border border-dashed border-border px-3 text-center text-[11px] text-muted">
+                本人の Messenger グループが未登録です。
+                {app.workerId && (
+                  <Link href={`/workers/${app.workerId}`} className="ml-1 font-bold text-brand hover:underline">
+                    外国人詳細で登録
+                  </Link>
+                )}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {editing && (
         <div className="mt-3 flex gap-2">

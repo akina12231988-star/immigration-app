@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ApplicationFile } from "@/types/application";
 import {
   needsOnlineReceiptNumber,
+  onlineReceiptReportText,
   onlineReceiptStage,
   onlineReceiptSummary,
   receiptSlipFiles,
@@ -66,5 +67,26 @@ describe("receiptSlipFiles（受付票として出す画像）", () => {
   });
   it("窓口申請は受付票だけ", () => {
     expect(receiptSlipFiles("窓口", files).map((x) => x.id)).toEqual(["1"]);
+  });
+});
+
+describe("onlineReceiptReportText（申請受付番号の報告文）", () => {
+  it("氏名・申請種別・申請受付日・申請受付番号を並べる", () => {
+    expect(
+      onlineReceiptReportText({
+        name: "LE VAN KHOA",
+        applicationNumber: "福オンＣＶ26010055",
+        onlineAppType: "資格変更（特定技能）",
+        onlineReceivedOn: "2026-10-30",
+        applicationDate: "2026-10-29",
+      }),
+    ).toBe(
+      "LE VAN KHOAさん\nオンライン申請の申請受付番号が届きました。\n\n申請種別: 資格変更（特定技能）\n申請受付日: 2026年10月30日\n申請受付番号: 福オンＣＶ26010055",
+    );
+  });
+  it("申請種別が無ければ省き、申請受付日が無ければ申請日を使う", () => {
+    expect(
+      onlineReceiptReportText({ name: "A", applicationNumber: "X1", onlineAppType: "", applicationDate: "2026-10-29" }),
+    ).toBe("Aさん\nオンライン申請の申請受付番号が届きました。\n\n申請受付日: 2026年10月29日\n申請受付番号: X1");
   });
 });
