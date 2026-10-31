@@ -370,7 +370,7 @@ export function ApplicationDetail({ id }: { id: string }) {
               <button
                 type="button"
                 onClick={() => setEditOpen(true)}
-                className="inline-flex min-h-[40px] items-center gap-1.5 rounded-xl bg-brand px-4 text-sm font-bold text-brand-foreground"
+                className="inline-flex min-h-[40px] items-center gap-1.5 whitespace-nowrap rounded-xl bg-brand px-4 text-sm font-bold text-brand-foreground"
               >
                 <Pencil size={16} />
                 編集
