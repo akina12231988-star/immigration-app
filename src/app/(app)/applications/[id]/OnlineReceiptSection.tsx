@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ExternalLink, Mail, MessageCircle } from "lucide-react";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { FileGroup } from "@/components/applications/FileGroup";
+import { ReceiptSlipCopy } from "@/components/applications/ReceiptSlipCopy";
 import { messengerWebUrl } from "@/lib/messenger-link";
 import {
   IMMIGRATION_RECEIPT_GROUP_NAME,
@@ -11,6 +12,7 @@ import {
   onlineReceiptReportText,
   onlineReceiptStage,
   onlineReceiptSummary,
+  receiptSlipFiles,
   waitingReceiptNumber,
 } from "@/lib/online-receipt";
 import type { Application, ApplicationFile, ApplicationFileKind } from "@/types/application";
@@ -133,11 +135,15 @@ export function OnlineReceiptSection({
         <div className="mt-3 rounded-xl border border-brand/30 bg-brand/5 p-3">
           <p className="mb-1 text-xs font-bold text-brand">申請受付番号が入りました。Messenger で報告してください</p>
           <p className="mb-2 text-[11px] leading-relaxed text-muted">
-            報告文をコピーし、受付票（3通目のメールのスクリーンショット）を添えて、下の2つのグループに送ります。
+            報告文（3通目のメールの内容）と受付票の画像をコピーして、下の2つのグループに送ります。
           </p>
-          <div className="mb-2 flex items-start gap-2 rounded-lg bg-surface p-2.5">
-            <pre className="min-w-0 flex-1 whitespace-pre-wrap text-xs leading-relaxed">{onlineReceiptReportText(app)}</pre>
-            <CopyButton value={onlineReceiptReportText(app)} label="報告文をコピー" size={16} />
+          {/* 報告文（3通目のメールの内容すべて）の横に受付票の画像（コピーして一緒に送れる） */}
+          <div className="mb-2 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_220px]">
+            <div className="flex items-start gap-2 rounded-lg bg-surface p-2.5">
+              <pre className="min-w-0 flex-1 whitespace-pre-wrap text-xs leading-relaxed">{onlineReceiptReportText(app)}</pre>
+              <CopyButton value={onlineReceiptReportText(app)} label="報告文をコピー" size={16} />
+            </div>
+            <ReceiptSlipCopy files={receiptSlipFiles("オンライン", files)} />
           </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <a

@@ -57,6 +57,7 @@ import { ApprovalSection } from "./ApprovalSection";
 import { ExtraRequestSection } from "./ExtraRequestSection";
 import { OnlineReceiptSection } from "./OnlineReceiptSection";
 import { receiptSlipFiles } from "@/lib/online-receipt";
+import { ReceiptSlipCopy } from "@/components/applications/ReceiptSlipCopy";
 import { ContractOrgFormSection } from "./ContractOrgFormSection";
 import { EstimateSummarySection } from "./EstimateSummarySection";
 import { ORG_HONORIFICS } from "@/types/application";
@@ -537,9 +538,13 @@ export function ApplicationDetail({ id }: { id: string }) {
                 </div>
               </div>
             )}
-            <pre className="whitespace-pre-wrap rounded-xl bg-background p-3.5 text-sm leading-relaxed">
-              {lineReportText}
-            </pre>
+            {/* 報告文の横に受付票の画像（コピーして一緒に送れる） */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_220px]">
+              <pre className="whitespace-pre-wrap rounded-xl bg-background p-3.5 text-sm leading-relaxed">
+                {lineReportText}
+              </pre>
+              <ReceiptSlipCopy files={receiptSlipFiles(app.method, files)} />
+            </div>
             <div className="mt-3 grid grid-cols-2 gap-3">
               <Button
                 variant="secondary"

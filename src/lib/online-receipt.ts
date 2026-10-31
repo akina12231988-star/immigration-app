@@ -82,15 +82,31 @@ export const IMMIGRATION_RECEIPT_GROUP_URL = "https://www.facebook.com/messages/
 export const IMMIGRATION_RECEIPT_GROUP_NAME = "入管-申請受付票・許可";
 
 // 申請受付番号が届いたときの報告文（入管-申請受付票・許可のグループと本人のグループに貼る）。
-// 受付票（3通目のメールのスクリーンショット）を添えて送る
+// 3通目のメール「申請受付番号のお知らせ」の内容（申請受付日・申請受付仮番号・申請種別・申請人在留カード等番号・
+// 申請受付番号）を、メールと同じ並び・見出しで文面にする。受付票（3通目のスクリーンショット）を添えて送る
 export function onlineReceiptReportText(
-  a: Pick<Application, "name" | "applicationNumber" | "onlineAppType" | "onlineReceivedOn" | "applicationDate">,
+  a: Pick<
+    Application,
+    "name" | "applicationNumber" | "onlineAppType" | "onlineReceivedOn" | "onlineTempNo" | "onlineCardNo" | "applicationDate"
+  >,
 ): string {
   const date = a.onlineReceivedOn || a.applicationDate;
-  const [y, m, d] = (date ?? "").split("-");
-  const dateText = y && m && d ? `${Number(y)}年${Number(m)}月${Number(d)}日` : date || "未入力";
-  const lines = [`${a.name}さん`, "オンライン申請の申請受付番号が届きました。", ""];
-  if (a.onlineAppType?.trim()) lines.push(`申請種別: ${a.onlineAppType.trim()}`);
-  lines.push(`申請受付日: ${dateText}`, `申請受付番号: ${(a.applicationNumber ?? "").trim() || "未登録"}`);
-  return lines.join("\n");
+  const v = (s: string | null | undefined) => (s ?? "").trim() || "未入力";
+  return [
+    `${a.name}さん`,
+    "オンライン申請の申請受付番号が届きました。",
+    "",
+    "申請受付日（Application acceptance date）",
+    date ? date.replace(/-/g, "/") : "未入力",
+    "申請受付仮番号（Provisional application acceptance no.）",
+    v(a.onlineTempNo),
+    "申請種別（Type of application）",
+    v(a.onlineAppType),
+    "申請人在留カード等番号（Number of the applicant's residence card, etc.）",
+    v(a.onlineCardNo),
+    "",
+    "上記申請について、申請受付番号をお知らせいたします。",
+    "申請受付番号（Application acceptance no.）",
+    v(a.applicationNumber),
+  ].join("\n");
 }
