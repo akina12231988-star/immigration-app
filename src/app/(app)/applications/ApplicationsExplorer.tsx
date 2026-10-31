@@ -107,6 +107,7 @@ type ViewKey = StatViewKey | "all" | "pre-prep" | "extra-request" | "post-apply"
 // alert の段階は、件数があるとき赤枠にして目立たせる
 const VIEW_CHIPS: { key: ViewKey; label: string; alert?: boolean }[] = [
   { key: "pre-prep", label: "申請前＜入管提出！！＞" },
+  { key: "online-number", label: "オンライン申請・申請受付番号入力へ", alert: true },
   { key: "unreported", label: "LINE未報告", alert: true },
   { key: "waiting-notice", label: "審査中" },
   { key: "extra-request", label: "＜入管＞追加資料", alert: true },
@@ -659,7 +660,7 @@ export function ApplicationsExplorer({
       </div>
 
       {/* 段階の帯: 申請の流れの順に並べ、件数を大きく出す（スマホでは横にスクロール） */}
-      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 lg:mx-0 lg:grid lg:grid-cols-8 lg:px-0">
+      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 lg:mx-0 lg:grid lg:grid-cols-9 lg:px-0">
         {VIEW_CHIPS.map((c) => (
           <StageButton
             key={c.key}

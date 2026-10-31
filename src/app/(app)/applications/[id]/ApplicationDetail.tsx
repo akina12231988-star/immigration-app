@@ -56,6 +56,7 @@ import { ApplicationEditDialog } from "./ApplicationEditDialog";
 import { ApprovalSection } from "./ApprovalSection";
 import { ExtraRequestSection } from "./ExtraRequestSection";
 import { OnlineReceiptSection } from "./OnlineReceiptSection";
+import { receiptSlipFiles } from "@/lib/online-receipt";
 import { ContractOrgFormSection } from "./ContractOrgFormSection";
 import { EstimateSummarySection } from "./EstimateSummarySection";
 import { ORG_HONORIFICS } from "@/types/application";
@@ -462,6 +463,7 @@ export function ApplicationDetail({ id }: { id: string }) {
               files={files}
               uploading={uploading}
               canEdit={!withdrawn}
+              messengerLink={messengerLink}
               onUpload={(kind, list) => void handleUpload(kind, list)}
               onDeleteFile={(f) => void handleDeleteFile(f)}
               onSave={(patch) => updateApplication(app.id, patch)}
@@ -474,11 +476,15 @@ export function ApplicationDetail({ id }: { id: string }) {
             </p>
           )}
           <div className="space-y-4">
+            {/* オンライン申請は3通目（申請受付番号のお知らせ）のスクリーンショットが受付票になる。
+                ここで追加した画像も3通目のスクリーンショットとして残し、受付メールの欄と同じものを出す */}
             <FileGroup
-              label="受付票"
-              files={files.filter((f) => f.kind === "受付票")}
-              uploading={uploading === "受付票"}
-              onSelect={(list) => handleUpload("受付票", list)}
+              label={app.method === "オンライン" ? "受付票（3通目のメールのスクリーンショット）" : "受付票"}
+              hint={app.method === "オンライン" ? "上の「2通目・3通目 申請受付番号のお知らせ」のスクリーンショットと同じものです" : undefined}
+              files={receiptSlipFiles(app.method, files)}
+              uploading={uploading === (app.method === "オンライン" ? "受付番号メール" : "受付票")}
+              multiple={app.method === "オンライン"}
+              onSelect={(list) => handleUpload(app.method === "オンライン" ? "受付番号メール" : "受付票", list)}
               onDelete={handleDeleteFile}
             />
             <FileGroup

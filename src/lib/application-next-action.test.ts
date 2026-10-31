@@ -31,6 +31,16 @@ describe("applicationNextAction（今やること）", () => {
     expect(applicationNextAction(base, none).section).toBe("line");
   });
 
+  it("オンライン申請で申請受付番号が無ければ、LINE報告の前に申請受付番号の入力", () => {
+    const a = applicationNextAction({ ...base, method: "オンライン", applicationNumber: "" }, none);
+    expect(a.section).toBe("basic");
+    expect(a.text).toContain("申請受付番号を入れて保存");
+    // 申請受付番号が入ればLINE報告へ
+    expect(applicationNextAction({ ...base, method: "オンライン" }, none).section).toBe("line");
+    // 窓口申請は番号が無くてもLINE報告
+    expect(applicationNextAction({ ...base, method: "窓口", applicationNumber: "" }, none).section).toBe("line");
+  });
+
   it("報告済みで依頼も郵送待ちも無ければ審査中（通知書の登録を待つ）", () => {
     const a = applicationNextAction({ ...base, status: "LINE報告済", lineReported: true }, none);
     expect(a.section).toBe("basic");

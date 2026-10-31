@@ -1,4 +1,5 @@
 import type { Application } from "@/types/application";
+import { needsOnlineReceiptNumber } from "@/lib/online-receipt";
 
 // 申請詳細の見やすさ改善（案C）。
 //
@@ -37,7 +38,8 @@ export type NextActionApp = Pick<
   | "assignee"
   | "isSelfApply"
   | "withdrawnOn"
->;
+> &
+  Partial<Pick<Application, "method">>;
 
 export interface NextActionCounts {
   extraOpen: number; // 追加資料の依頼のうち、まだ郵送していないもの
@@ -86,6 +88,14 @@ export function applicationNextAction(app: NextActionApp, counts: NextActionCoun
     return {
       section: "receive",
       text: "在留カードを受け取ったら「在留カードを受け取った（完了）」を押します（外国人の現在の所属機関がこの申請の所属機関になります）。",
+      done: false,
+    };
+  }
+  // オンライン申請は受付メールが時間差で届くので、申請受付番号まで入れてから LINE報告をする
+  if (app.method && needsOnlineReceiptNumber({ ...app, method: app.method })) {
+    return {
+      section: "basic",
+      text: "オンライン申請の受付メール（2通目・3通目）が届いたら、申請受付番号を入れて保存します。入れたら LINE報告文（申請）を送ります。",
       done: false,
     };
   }
