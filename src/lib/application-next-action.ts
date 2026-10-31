@@ -95,7 +95,7 @@ export function applicationNextAction(app: NextActionApp, counts: NextActionCoun
   if (app.method && needsOnlineReceiptNumber({ ...app, method: app.method })) {
     return {
       section: "basic",
-      text: "オンライン申請の受付メール（2通目・3通目）が届いたら、申請受付番号を入れて保存します。入れたら LINE報告文（申請）を送ります。",
+      text: "オンライン申請の受付メール（2通目・3通目）が届いたら、上の「編集」から申請受付番号を入れて保存します。入れたら LINE報告文（申請）を送ります。",
       done: false,
     };
   }
