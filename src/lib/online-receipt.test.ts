@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { onlineReceiptStage, onlineReceiptSummary, waitingReceiptNumber } from "./online-receipt";
+import type { ApplicationFile } from "@/types/application";
+import {
+  needsOnlineReceiptNumber,
+  onlineReceiptStage,
+  onlineReceiptSummary,
+  receiptSlipFiles,
+  waitingReceiptNumber,
+} from "./online-receipt";
 
 describe("onlineReceiptStage / onlineReceiptSummary（オンライン申請の受付メール3通）", () => {
   it("何も入っていなければ none", () => {
@@ -12,8 +19,8 @@ describe("onlineReceiptStage / onlineReceiptSummary（オンライン申請の�
     expect(onlineReceiptStage({ onlineRefNo: "650468319129" })).toBe("mail1");
     expect(onlineReceiptStage({ onlineAppType: "在留資格変更許可申請（区分V）" })).toBe("mail1");
     expect(onlineReceiptStage({ emailLink: "https://mail.example/1" })).toBe("mail1");
-    expect(onlineReceiptSummary({ onlineRefNo: "650468319129" })).toBe("整理番号 650468319129・2通目のメール（申請受付仮番号）待ち");
-    expect(onlineReceiptSummary({ emailLink: "https://mail.example/1" })).toBe("2通目のメール（申請受付仮番号）待ち");
+    expect(onlineReceiptSummary({ onlineRefNo: "650468319129" })).toBe("整理番号 650468319129・2通目・3通目のメール（申請受付番号）待ち");
+    expect(onlineReceiptSummary({ emailLink: "https://mail.example/1" })).toBe("2通目・3通目のメール（申請受付番号）待ち");
   });
 
   it("2通目（仮番号・受付日・在留カード等番号・リンク）が入れば mail2 で、3通目（受付番号）待ち", () => {
@@ -32,5 +39,32 @@ describe("onlineReceiptStage / onlineReceiptSummary（オンライン申請の�
     // 3通目のリンクだけ入って受付番号が空なら、受付番号の未入力を出す
     expect(onlineReceiptStage({ onlineMail3Link: "https://mail.example/3" })).toBe("mail3");
     expect(onlineReceiptSummary({ onlineMail3Link: "https://mail.example/3", applicationNumber: "" })).toBe("3通目は届いていますが申請受付番号が未入力です");
+  });
+});
+
+describe("needsOnlineReceiptNumber（申請受付番号の入力待ち）", () => {
+  const base = { method: "オンライン" as const, applicationNumber: "", lineReported: false, status: "申請済" as const, approved: false };
+  it("オンライン申請で申請受付番号が無く、LINE報告前なら入力待ち", () => {
+    expect(needsOnlineReceiptNumber(base)).toBe(true);
+  });
+  it("申請受付番号が入った・窓口申請・LINE報告済み・取下げ・許可済みなら入力待ちにしない", () => {
+    expect(needsOnlineReceiptNumber({ ...base, applicationNumber: "福オンＣＶ26010055" })).toBe(false);
+    expect(needsOnlineReceiptNumber({ ...base, applicationNumber: "  " })).toBe(true);
+    expect(needsOnlineReceiptNumber({ ...base, method: "窓口" })).toBe(false);
+    expect(needsOnlineReceiptNumber({ ...base, lineReported: true })).toBe(false);
+    expect(needsOnlineReceiptNumber({ ...base, status: "取下げ" })).toBe(false);
+    expect(needsOnlineReceiptNumber({ ...base, status: "申請前" })).toBe(false);
+    expect(needsOnlineReceiptNumber({ ...base, approved: true })).toBe(false);
+  });
+});
+
+describe("receiptSlipFiles（受付票として出す画像）", () => {
+  const f = (id: string, kind: ApplicationFile["kind"]) => ({ id, kind }) as ApplicationFile;
+  const files = [f("1", "受付票"), f("2", "受付番号メール"), f("3", "受付完了メール"), f("4", "通知書")];
+  it("オンライン申請は3通目のスクリーンショットも受付票に出す", () => {
+    expect(receiptSlipFiles("オンライン", files).map((x) => x.id)).toEqual(["1", "2"]);
+  });
+  it("窓口申請は受付票だけ", () => {
+    expect(receiptSlipFiles("窓口", files).map((x) => x.id)).toEqual(["1"]);
   });
 });

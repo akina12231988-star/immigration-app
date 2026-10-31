@@ -4,8 +4,10 @@
 //   2通目「申請受付仮番号のお知らせ」: 申請受付日・申請受付仮番号・申請種別・申請人在留カード等番号
 //   3通目「申請受付番号のお知らせ」: 申請受付番号（申請一覧の申請番号になる）
 // 3通目が届くまでは申請受付番号（applicationNumber）が空なので、申請詳細でどこまで届いたか分かるようにする。
+// 3通目には2通目の内容（申請受付日・仮番号・在留カード等番号）も載っているので、申請詳細では2通目と3通目を1枚にまとめ、
+// 3通目のスクリーンショット（受付番号メール）を受付票として扱う。
 
-import type { Application } from "@/types/application";
+import type { Application, ApplicationFile } from "@/types/application";
 
 export type OnlineReceiptFields = Pick<
   Application,
@@ -45,7 +47,7 @@ export function onlineReceiptSummary(a: Partial<OnlineReceiptFields>): string {
   }
   if (stage === "mail1") {
     const ref = (a.onlineRefNo ?? "").trim();
-    return `${ref ? `整理番号 ${ref}・` : ""}2通目のメール（申請受付仮番号）待ち`;
+    return `${ref ? `整理番号 ${ref}・` : ""}2通目・3通目のメール（申請受付番号）待ち`;
   }
   return "受付メールの内容が未入力です";
 }
@@ -53,4 +55,24 @@ export function onlineReceiptSummary(a: Partial<OnlineReceiptFields>): string {
 // 申請受付番号がまだ無いか。見出しを赤くするのに使う
 export function waitingReceiptNumber(a: Partial<OnlineReceiptFields>): boolean {
   return !(a.applicationNumber ?? "").trim();
+}
+
+// 申請受付番号の入力待ちか（オンライン申請で、申請登録したのに申請受付番号がまだ無く、LINE報告もしていない）。
+// オンライン申請はメールが時間差で届くので、翌日に申請受付番号まで入れてから LINE報告をする流れにする。
+// 申請一覧・ダッシュボードの「オンライン申請・申請受付番号入力へ」と、申請詳細の「今やること」で使う
+export function needsOnlineReceiptNumber(
+  a: Pick<Application, "method" | "applicationNumber" | "lineReported" | "status" | "approved">,
+): boolean {
+  return (
+    a.method === "オンライン" &&
+    !(a.applicationNumber ?? "").trim() &&
+    !a.lineReported &&
+    !a.approved &&
+    a.status === "申請済" // 申請前は「申請前＜入管提出！！＞」で扱う
+  );
+}
+
+// 受付票として出す画像。オンライン申請は3通目（申請受付番号のお知らせ）のスクリーンショットが受付票になる
+export function receiptSlipFiles(method: Application["method"], files: ApplicationFile[]): ApplicationFile[] {
+  return files.filter((f) => f.kind === "受付票" || (method === "オンライン" && f.kind === "受付番号メール"));
 }

@@ -1,4 +1,5 @@
 import type { Application } from "@/types/application";
+import { needsOnlineReceiptNumber } from "@/lib/online-receipt";
 
 // ダッシュボードの集計と、一覧の「カードから開く絞り込み」で同じ条件を共有する
 export const STAT_VIEWS = {
@@ -12,10 +13,17 @@ export const STAT_VIEWS = {
       );
     },
   },
+  // オンライン申請で申請登録したあと、申請受付番号（3通目のメール）をまだ入れていない案件。
+  // 受付メールは時間差で届くので、翌日に申請受付番号まで入れてから LINE報告をする
+  "online-number": {
+    label: "オンライン申請・申請受付番号入力へ",
+    test: (a: Application) => needsOnlineReceiptNumber(a),
+  },
+  // 申請受付番号の入力待ち（上）はそちらに出し、番号が入ってから LINE未報告に移る
   unreported: {
     label: "LINE未報告",
     test: (a: Application) =>
-      !a.lineReported && a.status !== "申請前" && a.status !== "取下げ",
+      !a.lineReported && a.status !== "申請前" && a.status !== "取下げ" && !needsOnlineReceiptNumber(a),
   },
   "waiting-notice": {
     label: "現在審査中",
@@ -54,6 +62,7 @@ export function countPrePrepApplications(applications: Application[]): number {
 
 export function getDashboardStats(applications: Application[]) {
   return {
+    onlineNumberCount: applications.filter(STAT_VIEWS["online-number"].test).length,
     unreportedCount: applications.filter(STAT_VIEWS.unreported.test).length,
     waitingNoticeCount: applications.filter(STAT_VIEWS["waiting-notice"].test)
       .length,

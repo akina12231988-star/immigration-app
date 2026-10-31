@@ -63,6 +63,13 @@ const STAT_CARDS = [
     accent: "text-status-before-fg bg-status-before-bg",
   },
   {
+    key: "onlineNumberCount",
+    view: "online-number",
+    label: "オンライン申請・申請受付番号入力へ",
+    icon: MailWarning,
+    accent: "text-seal bg-seal/10",
+  },
+  {
     key: "unreportedCount",
     view: "unreported",
     label: "LINE未報告件数",
@@ -464,7 +471,7 @@ export default function DashboardPage() {
         {/* 入社書類の後送待ちアラート */}
         <OnboardingPendingAlert />
 
-        <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           {STAT_CARDS.map(({ key, view, label, icon: Icon, accent }) => (
             <Link key={key} href={`/applications?view=${view}`}>
               <Card className="h-full p-4 transition hover:border-brand active:scale-[0.98]">
