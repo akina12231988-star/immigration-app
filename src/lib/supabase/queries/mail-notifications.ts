@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MailCategory, MailNotificationRow } from "@/types/db";
+import { classifyMailCategory } from "@/lib/mail-classify";
 
 // workers / immigration_applications を埋め込んだときの行型
 type RowWithRefs = Omit<MailNotificationRow, "body" | "updated_at"> & {
@@ -52,7 +53,9 @@ function toNotification(row: RowWithRefs): MailNotification {
   return {
     id: row.id,
     gmailMessageId: row.gmail_message_id,
-    category: (row.category as MailCategory) ?? "その他",
+    // 前に「許可」と分類して取り込んだオンライン申請の受付メールも、件名から申請受付に直して出す
+    category:
+      classifyMailCategory(row.subject ?? "", "") === "申請受付" ? "申請受付" : ((row.category as MailCategory) ?? "その他"),
     subject: row.subject,
     fromAddress: row.from_address,
     snippet: row.snippet,
@@ -124,4 +127,10 @@ export async function deleteMailNotification(
 ): Promise<void> {
   const { error } = await supabase.from("mail_notifications").delete().eq("id", id);
   if (error) throw error;
+}
+
+// 入管メールを受け取っている Gmail のアカウント（「Gmailで開く」をそのアカウントで開くため。app_settings の immigration_mail）
+export const IMMIGRATION_MAIL_SETTING_KEY = "immigration_mail";
+export interface ImmigrationMailSetting extends Record<string, unknown> {
+  gmailAccount: string;
 }
