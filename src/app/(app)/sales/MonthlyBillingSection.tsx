@@ -1599,7 +1599,7 @@ export function MonthlyBillingSection({
                         特定技能総合保険の画面を開く
                       </Link>
                     </div>
-                  <table className="w-full min-w-[880px] border-collapse text-xs">
+                  <table className="w-full min-w-[1080px] border-collapse text-xs">
                     <thead>
                       <tr className="border-b border-border text-left text-muted">
                         <th className="py-1.5 pr-2 font-bold">許可日</th>
@@ -1610,6 +1610,8 @@ export function MonthlyBillingSection({
                         <th className="py-1.5 pr-2 font-bold">在留期限</th>
                         <th className="py-1.5 pr-2 font-bold">区分</th>
                         <th className="py-1.5 pr-2 text-right font-bold">支援費請求額</th>
+                        <th className="py-1.5 pr-2 font-bold">許可売上No.</th>
+                        <th className="py-1.5 pr-2 font-bold">保険No.</th>
                         <th className="py-1.5 font-bold">特定技能総合保険</th>
                       </tr>
                     </thead>
@@ -1651,6 +1653,34 @@ export function MonthlyBillingSection({
                           <td className="py-1.5 pr-2 text-right tabular-nums">
                             {formatSalesYen(row.amount)}
                           </td>
+                          {/* 許可売上No.・保険No.。下の所属機関ごとの名簿と同じ売上明細の番号なので、
+                              ここで入れると名簿・外国人詳細にも同じ番号が出る */}
+                          <SalesNoCell
+                            entry={salesNos2[row.worker.id]?.permit ?? null}
+                            canEdit={canEdit}
+                            active
+                            placeholder="許可売上No."
+                            onSave={(v, entryId) =>
+                              saveEntryNo(row.worker.id, "permit", entryId, v, row, org.organizationId)
+                            }
+                          />
+                          <SalesNoCell
+                            entry={salesNos2[row.worker.id]?.insurance ?? null}
+                            canEdit={canEdit}
+                            active
+                            placeholder="保険No."
+                            disabledText={
+                              isSsw2Row(row) || insuranceBurdenOf(org.organizationId) === "外国人負担" ? "❌" : null
+                            }
+                            disabledTitle={
+                              isSsw2Row(row)
+                                ? "特定技能2号は特定技能総合保険に加入できないため、保険No.はありません"
+                                : "特定技能総合保険が外国人負担のため、保険No.はありません"
+                            }
+                            onSave={(v, entryId) =>
+                              saveEntryNo(row.worker.id, "insurance", entryId, v, row, org.organizationId)
+                            }
+                          />
                           <td className="py-1.5">
                             <PermittedInsuranceCell
                               info={sswInfo.get(row.worker.id)}
