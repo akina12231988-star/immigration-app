@@ -774,3 +774,68 @@ describe("特定技能2号になった人の、2号の許可日より前の月",
     expect(billing.orgs).toHaveLength(0);
   });
 });
+
+describe("支援委託終了の記録（終了年月日までの支援代）", () => {
+  const orgs = [org("org-1", "有限会社 丸尾工務店", "31000")];
+  // 7月は31日。1日あたり 31000 ÷ 31 = 1000円
+  it("終了年月日がその月なら、支援区分が支援対象外でも月初〜終了年月日の日割りで載る", () => {
+    const w = worker({ name: "BUI THANH HA", support: "支援対象外", support_ended_on: "2026-07-12" });
+    expect(isBilledInMonth(w, MONTH)).toBe(true);
+    expect(billingExclusionReason(w, MONTH)).toBeNull();
+    const row = summarizeMonthlyBilling([w], orgs, MONTH).orgs[0].rows[0];
+    expect(row).toMatchObject({
+      kind: "支援委託終了日まで日割",
+      periodFrom: "2026-07-01",
+      periodTo: "2026-07-12",
+      days: 12,
+      amount: 12000,
+    });
+  });
+  it("終了年月日が月末・その月より後なら満額、その月より前なら載らない", () => {
+    const end = worker({ name: "A", support: "支援対象外", support_ended_on: "2026-07-31" });
+    expect(summarizeMonthlyBilling([end], orgs, MONTH).orgs[0].rows[0]).toMatchObject({ kind: "満額", amount: 31000 });
+    const later = worker({ name: "B", support: "支援対象外", support_ended_on: "2026-08-12" });
+    expect(summarizeMonthlyBilling([later], orgs, MONTH).orgs[0].rows[0]).toMatchObject({ kind: "満額", amount: 31000 });
+    const before = worker({ name: "C", support: "支援対象外", support_ended_on: "2026-06-30" });
+    expect(isBilledInMonth(before, MONTH)).toBe(false);
+  });
+  it("支援対象のままでも終了年月日で日割りにする。その月に許可が下りた人は許可日〜終了年月日", () => {
+    const w = worker({ name: "D", support_ended_on: "2026-07-20" });
+    expect(summarizeMonthlyBilling([w], orgs, MONTH).orgs[0].rows[0]).toMatchObject({ periodTo: "2026-07-20", days: 20, amount: 20000 });
+    const fresh = worker({
+      name: "E",
+      residence_permit_date: "2026-07-10",
+      employment_start_on: "2026-07-10",
+      support_ended_on: "2026-07-20",
+    });
+    expect(summarizeMonthlyBilling([fresh], orgs, MONTH).orgs[0].rows[0]).toMatchObject({
+      periodFrom: "2026-07-10",
+      periodTo: "2026-07-20",
+      days: 11,
+      amount: 11000,
+      kind: "支援委託終了日まで日割",
+    });
+  });
+  it("退職日のほうが先なら退職日まで日割りのまま", () => {
+    const w = worker({ name: "F", leaving_on: "2026-07-05", support_ended_on: "2026-07-20" });
+    expect(summarizeMonthlyBilling([w], orgs, MONTH).orgs[0].rows[0]).toMatchObject({ kind: "退職日まで日割", periodTo: "2026-07-05" });
+  });
+  it("特定技能2号に変わった人も、支援委託終了の記録があれば月初〜終了年月日（2号の許可日の前日）で載る", () => {
+    const w = worker({
+      name: "NGUYEN NGOC THANG",
+      residence_status: "特定技能2号",
+      residence_permit_date: "2026-07-13",
+      support: "支援対象外",
+      support_ended_on: "2026-07-12",
+    });
+    expect(billingExclusionReason(w, MONTH)).toBeNull();
+    const rows = summarizeMonthlyBilling([w], orgs, MONTH).orgs[0].rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ periodFrom: "2026-07-01", periodTo: "2026-07-12", days: 12, amount: 12000 });
+    // 雇用開始日が無くても月初から数える
+    const noStart = { ...w, employment_start_on: null };
+    expect(summarizeMonthlyBilling([noStart], orgs, MONTH).orgs[0].rows[0]).toMatchObject({ periodFrom: "2026-07-01", amount: 12000 });
+    // 2号の更新は対象外
+    expect(isBilledInMonth({ ...w, residence_status: "特定技能2号更新" }, MONTH)).toBe(false);
+  });
+});

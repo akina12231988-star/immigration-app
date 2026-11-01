@@ -1,5 +1,6 @@
 "use client";
 
+import { listSupportEnds } from "@/lib/supabase/queries/support-end";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import {
@@ -350,12 +351,38 @@ export function MonthlyBillingSection({
     };
   }, [month, unpaidReloadKey]);
 
+  // 随時報告書の「支援委託終了の記録」の終了年月日（外国人ごとにいちばん新しいもの）。
+  // 終了年月日までの支援代を請求するため、集計に渡す
+  const [supportEndedOn, setSupportEndedOn] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve().then(() =>
+      listSupportEnds(createClient())
+        .then((rows) => {
+          const map: Record<string, string> = {};
+          for (const r of rows) {
+            if (!r.worker_id || !r.ended_on) continue;
+            if (!map[r.worker_id] || r.ended_on > map[r.worker_id]) map[r.worker_id] = r.ended_on;
+          }
+          if (!cancelled) setSupportEndedOn(map);
+        })
+        .catch(() => {
+          // 記録が読めなくても名簿は使えるようにする
+          if (!cancelled) setSupportEndedOn({});
+        }),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // 定期売上No. は画面で編集した内容を優先して集計に反映する
   const merged = useMemo(
     () =>
       workers.map((w) => {
-        const next =
+        const withNo =
           salesNos[w.id] === undefined ? w : { ...w, recurring_sales_no: salesNos[w.id] };
+        const next = supportEndedOn[w.id] ? { ...withNo, support_ended_on: supportEndedOn[w.id] } : withNo;
         // 特定技能2号（移行準備を含む）になった人で、2号の許可日が対象月より後なら、
         // その月はまだ1号として支援していたので支援対象として載せる（支援委託の終了は許可日の前日）。
         // ただし、その月の時点の在留資格が履歴（申請一覧の許可欄・在留資格の履歴・在留カードの記録）から
@@ -382,7 +409,7 @@ export function MonthlyBillingSection({
           residence_status: asOf.visa || next.residence_status,
         });
       }),
-    [workers, salesNos, permitHistory, month],
+    [workers, salesNos, permitHistory, month, supportEndedOn],
   );
   // 支援代（月額）もこのページで登録した内容を優先して集計に反映する
   const mergedOrgs = useMemo(
@@ -972,7 +999,15 @@ export function MonthlyBillingSection({
     // 転職した人の前の機関側の行（退職精算）は、許可は新しい機関のことなので許可の欄に出さない
     const permitted: { worker: BillingWorker; ssw2EndOn: string }[] = org.rows
       .filter((r) => !r.transferredOut && permitInMonth(r.worker.residence_permit_date))
-      .map((r) => ({ worker: r.worker, ssw2EndOn: r.kind === "2号移行前日まで日割" ? r.periodTo : "" }));
+      .map((r) => ({
+        worker: r.worker,
+        // 2号への移行で支援が終わった人（2号移行の日割り、または支援委託終了の記録での日割り）
+        ssw2EndOn:
+          r.kind === "2号移行前日まで日割" ||
+          (r.kind === "支援委託終了日まで日割" && (r.worker.residence_status ?? "").normalize("NFKC").includes("特定技能2号"))
+            ? r.periodTo
+            : "",
+      }));
     // 2号の許可日が1日の人は名簿の行が無い（支援委託は前月末で終了）が、許可と支援終了は備考欄に書く
     for (const w of merged) {
       if ((w.current_organization_id ?? "") !== org.organizationId) continue;
@@ -1016,6 +1051,17 @@ export function MonthlyBillingSection({
       if (newly.length > 0) lines.push("");
       lines.push("＜更新許可＞");
       pushVisaGroups(renewed);
+    }
+    // 支援委託終了の記録の終了年月日がこの月の人（2号への移行の人は許可の欄に書いているので除く）
+    const ended = org.rows.filter(
+      (r) => r.kind === "支援委託終了日まで日割" && !permitted.some((p) => p.worker.id === r.worker.id && p.ssw2EndOn),
+    );
+    if (ended.length > 0) {
+      if (lines.length > 0) lines.push("");
+      lines.push("＜支援委託終了＞");
+      for (const r of ended) {
+        lines.push(`${r.worker.name}さん　${mdText(r.periodTo)}をもって支援委託終了となります。`);
+      }
     }
     if (left.length > 0) {
       if (lines.length > 0) lines.push("");
