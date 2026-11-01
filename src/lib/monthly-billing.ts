@@ -27,6 +27,7 @@ export type BillingKind =
   | "許可日から日割"
   | "退職日まで日割"
   | "2号移行前日まで日割" // 特定技能2号の許可月（許可日の前日で支援終了）
+  | "支援委託終了日まで日割" // 随時報告書の「支援委託終了の記録」の終了年月日がその月（月初〜終了年月日）
   | "請求しない"; // 病欠・帰国などでその月の支援代をあえて請求しない（金額0円）
 
 // 集計に必要な外国人の項目だけ（一覧の取得を軽くするため）
@@ -66,6 +67,9 @@ export type BillingWorker = Pick<
   before_ssw2_unknown?: boolean;
   // 特定技能総合保険の有効期限（保険No.の下に出し、期限切れはアラート）。古い読み込みでは undefined
   ssw_insurance_expiry_date?: string | null;
+  // 随時報告書の「支援委託終了の記録」の終了年月日（いちばん新しい記録）。
+  // この日までは支援していたので、支援区分が「支援対象外」に変わっていてもこの日までの支援代を請求する
+  support_ended_on?: string | null;
 };
 
 export type BillingOrg = Pick<Organization, "id" | "name" | "intake">;
@@ -208,14 +212,49 @@ export function currentOrgLeavingOn(
 // 在留許可日がその月の末日までに来ていて、退職日がその月の初日以降（未退職を含む）。
 // 支援対象外の人は請求も掲載もしない
 export function isBilledInMonth(worker: BillingWorker, month: string): boolean {
-  if (worker.support !== "支援対象") return false;
+  if (worker.support !== "支援対象" && !supportEndCoversMonth(worker, month)) return false;
   // 2号の許可日より前の月（before_ssw2）は、在留資格がすでに2号になっていても1号として支援していた月
-  if (!worker.before_ssw2 && !isBillableResidence(worker.residence_status)) return false;
+  if (
+    !worker.before_ssw2 &&
+    !isBillableResidence(worker.residence_status) &&
+    !ssw2CoveredBySupportEnd(worker, month)
+  ) {
+    return false;
+  }
   const { from, to } = monthRange(month);
   if (!residedInMonth(worker, to)) return false;
   const left = currentOrgLeavingOn(worker);
   if (left && left < from) return false;
   return true;
+}
+
+// 支援委託終了の記録があり、その終了年月日が対象月の初日以降か（＝その月はまだ支援していた日がある）。
+// 支援区分を「支援対象外」に変えたあとでも、終了年月日までの支援代を請求するために使う
+export function supportEndCoversMonth(worker: Pick<BillingWorker, "support_ended_on">, month: string): boolean {
+  const ended = worker.support_ended_on ?? "";
+  if (!isPlausibleYmd(ended)) return false;
+  return ended >= monthRange(month).from;
+}
+
+// 特定技能2号に変わった人（2号の更新は除く）で、支援委託終了の記録がその月をカバーしているか。
+// 在留資格はもう2号でも、終了年月日（2号の許可日の前日）までは1号として支援していたので請求する
+function ssw2CoveredBySupportEnd(worker: BillingWorker, month: string): boolean {
+  const s = (worker.residence_status ?? "").normalize("NFKC").trim();
+  return isSsw2Residence(s) && !/更新$/.test(s) && supportEndCoversMonth(worker, month);
+}
+
+// 支援委託終了の終了年月日が対象月の中（末日より前）なら、支援費算定期間を終了年月日までにして日割りする。
+// 末日に終わる・その月より後に終わるときはそのまま。退職日などで先に終わっている行もそのまま
+export function capAtSupportEnd(row: MonthlyBillingRow, month: string): MonthlyBillingRow {
+  const ended = row.worker.support_ended_on ?? "";
+  const { from, to } = monthRange(month);
+  if (!isPlausibleYmd(ended) || ended < from || ended >= to) return row;
+  if (row.periodTo <= ended) return row;
+  // 許可日（2号の許可日など）が終了年月日より後なら、支援はそれより前から続いていたので月初から数える
+  const periodFrom = row.periodFrom > ended ? from : row.periodFrom;
+  const days = Math.max(0, dayNumber(ended) - dayNumber(periodFrom) + 1);
+  const amount = row.monthlyFee <= 0 ? 0 : dailyFee(row.monthlyFee, row.monthDays) * days;
+  return { ...row, periodFrom, periodTo: ended, days, amount, kind: "支援委託終了日まで日割" };
 }
 
 // その月に在留していたか。在留許可日がその月の末日までに来ているか、
@@ -568,7 +607,8 @@ export function summarizeMonthlyBilling(
     }
     const orgId = worker.current_organization_id ?? "";
     const org = orgById.get(orgId);
-    let row = billingRowFor(worker, month, orgMonthlyFee(org));
+    // 支援委託終了の記録の終了年月日がその月なら、終了年月日までの日割りにする
+    let row = capAtSupportEnd(billingRowFor(worker, month, orgMonthlyFee(org)), month);
     if (noCharge.has(worker.id)) row = { ...row, amount: 0, kind: "請求しない" };
     if (row.monthlyFee <= 0) unpriced.push(row);
     pushRow(orgId, row);
