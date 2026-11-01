@@ -468,6 +468,7 @@ export function ApplicationDetail({ id }: { id: string }) {
               messengerLink={messengerLink}
               onUpload={(kind, list) => void handleUpload(kind, list)}
               onDeleteFile={(f) => void handleDeleteFile(f)}
+              onMarkReported={markReported}
             />
           )}
           <h4 className="mb-2 mt-4 text-xs font-bold text-muted">画像</h4>

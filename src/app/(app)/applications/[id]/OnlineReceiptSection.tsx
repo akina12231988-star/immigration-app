@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ExternalLink, Mail, MessageCircle } from "lucide-react";
+import { CheckCircle2, ExternalLink, Mail, MessageCircle } from "lucide-react";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { FileGroup } from "@/components/applications/FileGroup";
 import { ReceiptSlipCopy } from "@/components/applications/ReceiptSlipCopy";
@@ -31,8 +31,10 @@ export function OnlineReceiptSection({
   messengerLink,
   onUpload,
   onDeleteFile,
+  onMarkReported,
 }: {
   app: Application;
+  onMarkReported: () => void; // 報告済にする（LINE報告文（申請）の「報告済にする」と同じ）
   messengerLink: string; // 本人の Messenger グループ（外国人詳細の基本情報）
   files: ApplicationFile[];
   uploading: ApplicationFileKind | null;
@@ -135,7 +137,7 @@ export function OnlineReceiptSection({
         <div className="mt-3 rounded-xl border border-brand/30 bg-brand/5 p-3">
           <p className="mb-1 text-xs font-bold text-brand">申請受付番号が入りました。Messenger で報告してください</p>
           <p className="mb-2 text-[11px] leading-relaxed text-muted">
-            報告文（3通目のメールの内容）と受付票の画像をコピーして、下の2つのグループに送ります。
+            報告文（3通目のメールの内容）と受付票の画像をコピーして、下の2つのグループに送ります。所属機関（企業）にも同じ文面を「LINE報告文（申請）」から送ります。
           </p>
           {/* 報告文（3通目のメールの内容すべて）の横に受付票の画像（コピーして一緒に送れる） */}
           <div className="mb-2 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_220px]">
@@ -178,6 +180,18 @@ export function OnlineReceiptSection({
               </p>
             )}
           </div>
+          {/* 報告が終わったら（所属機関への LINE 報告も含めて）報告済みにする */}
+          <button
+            type="button"
+            onClick={onMarkReported}
+            disabled={app.lineReported || !canEdit}
+            className={`mt-2 flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-xl text-sm font-bold disabled:cursor-default ${
+              app.lineReported ? "border border-border bg-surface text-status-approved-fg" : "bg-brand text-brand-foreground"
+            }`}
+          >
+            <CheckCircle2 size={17} />
+            {app.lineReported ? "報告済み" : "報告済にする（入管・本人・所属機関に送ったら押す）"}
+          </button>
         </div>
       )}
     </div>
