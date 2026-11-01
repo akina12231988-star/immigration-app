@@ -1,4 +1,5 @@
 import type { Application } from "@/types/application";
+import { onlineReceiptReportText } from "@/lib/online-receipt";
 
 function formatJapaneseDate(dateStr: string): string {
   const d = new Date(dateStr);
@@ -6,11 +7,16 @@ function formatJapaneseDate(dateStr: string): string {
   return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
 }
 
-// LINE報告文（申請）: 宛名は「所属機関名＋様/御中」。所属機関が未設定なら宛名を省く
+// LINE報告文（申請）: 宛名は「所属機関名＋様/御中」。所属機関が未設定なら宛名を省く。
+// オンライン申請で申請受付番号が入っていれば、入管-申請受付票・許可／本人の Messenger と同じ文面
+// （3通目のメールの内容すべて）を所属機関にも送る
 export function generateLineReport(app: Application): string {
   const orgLine = app.organizationName
     ? `${app.organizationName} ${app.reportOrgHonorific ?? "御中"}\n\n`
     : "";
+  if (app.method === "オンライン" && app.applicationNumber.trim()) {
+    return `${orgLine}${onlineReceiptReportText(app)}`;
+  }
   return `${orgLine}本日、${app.name}さんの下記の内容で申請を行いました。
 
 【申請内容】
