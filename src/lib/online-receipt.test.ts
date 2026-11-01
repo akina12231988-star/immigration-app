@@ -71,22 +71,41 @@ describe("receiptSlipFiles（受付票として出す画像）", () => {
 });
 
 describe("onlineReceiptReportText（申請受付番号の報告文）", () => {
-  it("氏名・申請種別・申請受付日・申請受付番号を並べる", () => {
+  it("3通目のメールの内容をメールと同じ並び・見出しで文面にする", () => {
     expect(
       onlineReceiptReportText({
-        name: "LE VAN KHOA",
-        applicationNumber: "福オンＣＶ26010055",
-        onlineAppType: "資格変更（特定技能）",
+        name: "CHUN SODALIS",
+        applicationNumber: "福オンＣＶ26010044",
+        onlineAppType: "在留資格変更申請",
         onlineReceivedOn: "2026-10-30",
+        onlineTempNo: "96720260000443452-00",
+        onlineCardNo: "UH92913332RD",
         applicationDate: "2026-10-29",
       }),
     ).toBe(
-      "LE VAN KHOAさん\nオンライン申請の申請受付番号が届きました。\n\n申請種別: 資格変更（特定技能）\n申請受付日: 2026年10月30日\n申請受付番号: 福オンＣＶ26010055",
+      [
+        "CHUN SODALISさん",
+        "オンライン申請の申請受付番号が届きました。",
+        "",
+        "申請受付日（Application acceptance date）",
+        "2026/10/30",
+        "申請受付仮番号（Provisional application acceptance no.）",
+        "96720260000443452-00",
+        "申請種別（Type of application）",
+        "在留資格変更申請",
+        "申請人在留カード等番号（Number of the applicant's residence card, etc.）",
+        "UH92913332RD",
+        "",
+        "上記申請について、申請受付番号をお知らせいたします。",
+        "申請受付番号（Application acceptance no.）",
+        "福オンＣＶ26010044",
+      ].join("\n"),
     );
   });
-  it("申請種別が無ければ省き、申請受付日が無ければ申請日を使う", () => {
-    expect(
-      onlineReceiptReportText({ name: "A", applicationNumber: "X1", onlineAppType: "", applicationDate: "2026-10-29" }),
-    ).toBe("Aさん\nオンライン申請の申請受付番号が届きました。\n\n申請受付日: 2026年10月29日\n申請受付番号: X1");
+  it("未入力の項目は「未入力」、申請受付日が無ければ申請日", () => {
+    const t = onlineReceiptReportText({ name: "A", applicationNumber: "X1", onlineAppType: "", applicationDate: "2026-10-29" });
+    expect(t).toContain("申請受付日（Application acceptance date）\n2026/10/29");
+    expect(t).toContain("申請受付仮番号（Provisional application acceptance no.）\n未入力");
+    expect(t).toContain("申請受付番号（Application acceptance no.）\nX1");
   });
 });
