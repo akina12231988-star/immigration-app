@@ -44,6 +44,7 @@ import {
   type TodoExam,
   type TodoExamAttempt,
 } from "@/lib/todo";
+import { daysUntilRetake, examDateTooEarly, examRetake, EXAM_RETAKE_WAIT_DAYS } from "@/lib/exam-retake";
 import { UNEMPLOYED_VISA, VISA_TYPES } from "@/types/ssw";
 import type { TodoRow } from "@/lib/supabase/queries/todos";
 import type { TodoFileRow, Worker, WorkHistoryRow } from "@/types/db";
@@ -199,7 +200,7 @@ export function ExamTodoSection({
     last.applied_on || last.applied
       ? `申込 ${last.applied_on || "済"}・試験日 ${last.exam_date || "未定"}・${last.result || "合否未確認"}`
       : "まだ申し込んでいません"
-  }`;
+  }${last.result === "不合格" && examRetake(last.exam_date) ? `・再受験は ${examRetake(last.exam_date)?.availableOn} 以降の試験日` : ""}`;
   const w = workerData.data?.worker ?? null;
   const histories = workerData.data?.histories ?? [];
   const infoSummary = !todo.worker_id
@@ -401,6 +402,11 @@ export function ExamTodoSection({
                 onToggleFeeReceived={() => toggleFeeReceived(i)}
                 onToggleDeferred={() => toggleDeferred(i)}
                 onSetResult={(result) => setResult(i, result)}
+                retakeFrom={
+                  i > 0 && exam.attempts[i - 1].result === "不合格"
+                    ? (examRetake(exam.attempts[i - 1].exam_date)?.availableOn ?? "")
+                    : ""
+                }
                 examLabel={todo.title.replace(/申込$/, "")}
                 nationality={w?.nationality ?? null}
               />
@@ -414,6 +420,9 @@ export function ExamTodoSection({
             >
               <Plus size={12} />
               次（{exam.attempts.length + 1}回目）の申込を足す
+              {last.result === "不合格" && examRetake(last.exam_date) && (
+                <span className="font-normal text-muted">（{examRetake(last.exam_date)?.availableOn} 以降の試験日）</span>
+              )}
             </button>
           )}
           {editing && !canAddExamAttempt(exam) && (
@@ -595,6 +604,7 @@ function ExamField({
 function ExamAttemptRow({
   no,
   attempt,
+  retakeFrom = "",
   editing,
   canEdit,
   today,
@@ -617,7 +627,13 @@ function ExamAttemptRow({
   onToggleFeeReceived: () => void;
   onToggleDeferred: () => void;
   onSetResult: (result: ExamResult) => void;
+  retakeFrom?: string; // 前の回が不合格のとき、申し込める試験日（前の回の受験日の46日後）
 }) {
+  // 不合格の回: 受験日の翌日から45日間は受けられないので、次に申し込める日を出す
+  const retake = attempt.result === "不合格" ? examRetake(attempt.exam_date) : null;
+  const retakeDays = retake ? daysUntilRetake(retake.availableOn, today) : 0;
+  // 前の回の不合格から45日間の中の試験日を入れてしまったとき
+  const tooEarly = examDateTooEarly(attempt.exam_date, retakeFrom);
   // 代金を受け取る前で後払いの指示も無い → まだ申込してはいけない（申込済みにできない）
   const blocked = examApplyBlocked(attempt);
   const resultClass =
@@ -690,9 +706,15 @@ function ExamAttemptRow({
               <input
                 type="date"
                 value={attempt.exam_date}
+                min={retakeFrom || undefined}
                 onChange={(e) => onChange({ exam_date: e.target.value })}
                 className={INPUT}
               />
+              {retakeFrom && (
+                <span className={`font-normal ${tooEarly ? "text-seal" : "text-muted"}`}>
+                  前の回が不合格のため、{retakeFrom} 以降の試験日を選んでください
+                </span>
+              )}
             </label>
             <label className="flex flex-col gap-0.5 text-[11px] font-bold text-muted">
               代金
@@ -811,6 +833,27 @@ function ExamAttemptRow({
           </button>
         )}
       </div>
+
+      {/* 前の回の不合格から45日間の中の試験日になっている */}
+      {tooEarly && (
+        <p className="mt-1.5 rounded-lg border border-seal/50 bg-seal/10 px-2.5 py-1.5 text-[11px] font-bold text-seal">
+          ⚠ この試験日（{attempt.exam_date}）は受験できません。前の回の受験日の翌日から{EXAM_RETAKE_WAIT_DAYS}日間は再受験できないため、
+          {retakeFrom} 以降の試験日で申し込んでください。
+        </p>
+      )}
+
+      {/* 不合格: 次に申し込める日（受験日の翌日から45日間が経過した日） */}
+      {retake && (
+        <div className="mt-1.5 rounded-lg border border-brand/30 bg-brand/5 px-2.5 py-1.5 text-[11px] leading-relaxed">
+          <p className="font-bold text-brand">
+            再受験は {retake.availableOn} 以降の試験日で申し込めます
+            {retakeDays > 0 ? `（あと${retakeDays}日）` : "（今から申し込めます）"}
+          </p>
+          <p className="text-muted">
+            受験日（{attempt.exam_date}）の翌日から起算して{EXAM_RETAKE_WAIT_DAYS}日間（{retake.waitFrom}〜{retake.waitUntil}）は再受験できません。
+          </p>
+        </div>
+      )}
 
       {/* 試験結果（合否）。入金の確認とは別に、「編集」を開かなくてもその場で入れられる（押すとすぐ保存する）。
           申込済み・試験日が入っている回に出す */}
