@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errors";
 import { useRef, useState } from "react";
 import Link from "next/link";
 import {
@@ -55,6 +56,12 @@ export function NoticeSearch() {
     if (!file) return;
     setNoticeFile(file);
     setNoticePreview(URL.createObjectURL(file));
+    // スマホのカメラで撮った写真は、検索している間に一時ファイルが読めなくなり、
+    // 登録のときに「Failed to fetch」になることがある。選んだ時点でアプリの中に読み込んでおく
+    void file
+      .arrayBuffer()
+      .then((buf) => setNoticeFile(new File([buf], file.name, { type: file.type, lastModified: file.lastModified })))
+      .catch(() => undefined);
   }
 
   function runSearch() {
@@ -103,7 +110,7 @@ export function NoticeSearch() {
       }
       setAttachState("done");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "登録に失敗しました");
+      setError(errorMessage(err, "登録に失敗しました"));
       setAttachState("idle");
     }
   }

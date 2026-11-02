@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dbErrorMessage, errorMessage, isCheckConstraintError, isNotNullConstraintError, isMissingColumnError, isMissingTableError, isStalePageError, STALE_PAGE_MESSAGE } from "./errors";
+import { dbErrorMessage, errorMessage, isCheckConstraintError, isNotNullConstraintError, isMissingColumnError, isMissingTableError, isStalePageError, STALE_PAGE_MESSAGE, isNetworkError, NETWORK_ERROR_MESSAGE } from "./errors";
 
 describe("errorMessage", () => {
   it("Error はそのメッセージを使う", () => {
@@ -124,5 +124,15 @@ describe("古い画面から保存したときのエラー（新しい版の公�
     expect(isStalePageError(err)).toBe(true);
     expect(errorMessage(err)).toBe(STALE_PAGE_MESSAGE);
     expect(isStalePageError(new Error("登録に失敗しました"))).toBe(false);
+  });
+});
+
+describe("通信が途切れたときのエラー", () => {
+  it("Failed to fetch・Load failed などは日本語の案内にする", () => {
+    expect(isNetworkError("Failed to fetch")).toBe(true);
+    expect(isNetworkError("Load failed")).toBe(true);
+    expect(isNetworkError("NetworkError when attempting to fetch resource.")).toBe(true);
+    expect(isNetworkError("登録に失敗しました")).toBe(false);
+    expect(errorMessage(new Error("アップロードに失敗しました: Failed to fetch"))).toBe(NETWORK_ERROR_MESSAGE);
   });
 });

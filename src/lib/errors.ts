@@ -61,9 +61,18 @@ export function isStalePageError(err: unknown): boolean {
   return /Server Action .* was not found on the server|failed-to-find-server-action/i.test(text);
 }
 
+// 通信が途切れて送れなかったときのエラー（ブラウザごとに文面が違う: Chrome「Failed to fetch」、
+// Safari「Load failed」、Firefox「NetworkError when attempting to fetch resource」）
+export function isNetworkError(message: string): boolean {
+  return /Failed to fetch|Load failed|NetworkError|Network request failed/i.test(message);
+}
+export const NETWORK_ERROR_MESSAGE =
+  "通信が途切れたため送れませんでした（スマホの電波が弱い・画面を切り替えた など）。電波のよい所で、もう一度押してください。続くときは画像を撮り直す・選び直してから押してください。";
+
 // 表示用のメッセージ（原因がわかるよう details・hint・code も添える）
 export function errorMessage(err: unknown, fallback = "エラーが発生しました"): string {
   if (isStalePageError(err)) return STALE_PAGE_MESSAGE;
+  if (err instanceof Error && isNetworkError(err.message)) return NETWORK_ERROR_MESSAGE;
   if (err instanceof Error && err.message) return err.message;
   const e = asPostgrestError(err);
   if (e) {

@@ -1,5 +1,6 @@
 "use client";
 
+import { isNetworkError } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/client";
 import { compressImage } from "@/lib/image-compress";
 import {
@@ -19,9 +20,15 @@ export async function uploadApplicationFile(
   const ticket = await createUploadTicket(applicationId, kind, fileName, mimeType);
   if (!ticket.ok) throw new Error(ticket.message);
 
-  const { error } = await createClient()
-    .storage.from("app-files")
-    .uploadToSignedUrl(ticket.path, ticket.token, blob, { contentType: mimeType });
+  // スマホは電波が一瞬切れて送れないことがあるので、通信の失敗は2回までやり直す
+  let error: { message: string } | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 1500 * attempt));
+    ({ error } = await createClient()
+      .storage.from("app-files")
+      .uploadToSignedUrl(ticket.path, ticket.token, blob, { contentType: mimeType }));
+    if (!error || !isNetworkError(error.message)) break;
+  }
   if (error) throw new Error(`アップロードに失敗しました: ${error.message}`);
 
   const result = await registerApplicationFile(
