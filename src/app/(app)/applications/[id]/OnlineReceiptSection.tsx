@@ -4,6 +4,7 @@ import Link from "next/link";
 import { CheckCircle2, ExternalLink, Mail, MessageCircle } from "lucide-react";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { FileGroup } from "@/components/applications/FileGroup";
+import { ReceiptInput, type ApplicationEdit } from "./ApplicationEditor";
 import { ReceiptSlipCopy } from "@/components/applications/ReceiptSlipCopy";
 import { messengerWebUrl } from "@/lib/messenger-link";
 import {
@@ -22,7 +23,8 @@ import type { Application, ApplicationFile, ApplicationFileKind } from "@/types/
 //   2通目「申請受付仮番号のお知らせ」: 申請受付日・申請受付仮番号・申請種別・申請人在留カード等番号
 //   3通目「申請受付番号のお知らせ」: 2通目の内容＋申請受付番号
 // 3通目に2通目の内容も載っているので、2通目と3通目は1枚のカードにまとめ、3通目のスクショを受付票として扱う。
-// 内容は申請詳細のいちばん上の「編集」から直す（編集する場所を1か所にまとめている）。ここはスクリーンショットの追加だけ
+// 内容は申請詳細のいちばん上の「編集」から直す（編集する場所を1か所にまとめている）。
+// 編集中はこのカードの中がそのまま入力欄になる（ポップアップは使わない）
 export function OnlineReceiptSection({
   app,
   files,
@@ -32,8 +34,10 @@ export function OnlineReceiptSection({
   onUpload,
   onDeleteFile,
   onMarkReported,
+  edit,
 }: {
   app: Application;
+  edit?: ApplicationEdit; // いちばん上の「編集」を押しているとき、カードの中を入力欄にする
   onMarkReported: () => void; // 報告済にする（LINE報告文（申請）の「報告済にする」と同じ）
   messengerLink: string; // 本人の Messenger グループ（外国人詳細の基本情報）
   files: ApplicationFile[];
@@ -42,6 +46,7 @@ export function OnlineReceiptSection({
   onUpload: (kind: ApplicationFileKind, list: FileList | null) => void;
   onDeleteFile: (file: ApplicationFile) => void;
 }) {
+  const editing = Boolean(edit?.editing);
   const stage = onlineReceiptStage(app);
   const waiting = waitingReceiptNumber(app);
   const row = (label: string, value: string) => (
@@ -82,6 +87,7 @@ export function OnlineReceiptSection({
   };
   const nextNote = (n: 1 | 2) => {
     const next = nextCard;
+    if (editing) return null;
     return n === next ? <span className="ml-2 font-bold text-seal">届いたら上の「編集」から入力してください</span> : null;
   };
 
@@ -102,11 +108,19 @@ export function OnlineReceiptSection({
         {/* 1通目 */}
         <div className={cardCls(1)}>
           <p className="mb-2 text-xs font-bold">1通目 申請受付完了のお知らせ{nextNote(1)}</p>
-          <dl>
-            {row("申請種別", app.onlineAppType ?? "")}
-            {row("整理番号", app.onlineRefNo ?? "")}
-            {mailLink(app.emailLink, "1通目のメールを開く")}
-          </dl>
+          {editing && edit ? (
+            <div className="space-y-2">
+              <ReceiptInput edit={edit} label="申請種別" field="onlineAppType" placeholder="例: 在留資格変更許可申請（区分V）" />
+              <ReceiptInput edit={edit} label="整理番号" field="onlineRefNo" placeholder="例: 650468319129" />
+              <ReceiptInput edit={edit} label="1通目のメールのリンク" field="emailLink" placeholder="https://..." type="url" />
+            </div>
+          ) : (
+            <dl>
+              {row("申請種別", app.onlineAppType ?? "")}
+              {row("整理番号", app.onlineRefNo ?? "")}
+              {mailLink(app.emailLink, "1通目のメールを開く")}
+            </dl>
+          )}
           {shots("1通目のスクリーンショット", "受付完了メール")}
         </div>
 
@@ -117,15 +131,29 @@ export function OnlineReceiptSection({
             3通目のメールには2通目の内容（申請受付日・申請受付仮番号・申請人在留カード等番号）に加えて申請受付番号が載っています。
             3通目が届いたら、申請詳細のいちばん上の「編集」からまとめて入れてください。3通目のスクリーンショットは「画像」の受付票にも表示されます。
           </p>
-          <dl>
-            {row("申請受付日", app.onlineReceivedOn ?? "")}
-            {row("申請受付仮番号", app.onlineTempNo ?? "")}
-            {row("申請種別", app.onlineAppType ?? "")}
-            {row("申請人在留カード等番号", app.onlineCardNo ?? "")}
-            {row("申請受付番号", app.applicationNumber)}
-            {mailLink(app.onlineMail3Link ?? "", "3通目のメールを開く")}
-            {mailLink(app.onlineMail2Link ?? "", "2通目のメールを開く")}
-          </dl>
+          {editing && edit ? (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <ReceiptInput edit={edit} label="申請受付日" field="onlineReceivedOn" type="date" />
+              <ReceiptInput edit={edit} label="申請受付仮番号" field="onlineTempNo" placeholder="例: 95820260000440638-00" />
+              <ReceiptInput edit={edit} label="申請人在留カード等番号" field="onlineCardNo" placeholder="例: LJ41245695EA" />
+              <ReceiptInput edit={edit} label="申請受付番号（申請一覧の申請番号になります）" field="applicationNumber" placeholder="例: 福オンＣＶ26010044" />
+              <ReceiptInput edit={edit} label="3通目のメールのリンク" field="onlineMail3Link" placeholder="https://..." type="url" className="sm:col-span-2" />
+              {/* 前に2通目のリンクを入れていたときだけ出す */}
+              {edit.initial.onlineMail2Link && (
+                <ReceiptInput edit={edit} label="2通目のメールのリンク" field="onlineMail2Link" placeholder="https://..." type="url" className="sm:col-span-2" />
+              )}
+            </div>
+          ) : (
+            <dl>
+              {row("申請受付日", app.onlineReceivedOn ?? "")}
+              {row("申請受付仮番号", app.onlineTempNo ?? "")}
+              {row("申請種別", app.onlineAppType ?? "")}
+              {row("申請人在留カード等番号", app.onlineCardNo ?? "")}
+              {row("申請受付番号", app.applicationNumber)}
+              {mailLink(app.onlineMail3Link ?? "", "3通目のメールを開く")}
+              {mailLink(app.onlineMail2Link ?? "", "2通目のメールを開く")}
+            </dl>
+          )}
           {shots("3通目のスクリーンショット（受付票）", "受付番号メール")}
           {/* 前に2通目のスクリーンショットを残していたときだけ出す */}
           {files.some((f) => f.kind === "受付仮番号メール") && shots("2通目のスクリーンショット", "受付仮番号メール")}
@@ -133,7 +161,7 @@ export function OnlineReceiptSection({
       </div>
 
       {/* 申請受付番号が入ったら、入管-申請受付票・許可のグループと本人のグループへ報告する */}
-      {!waiting && (
+      {!waiting && !editing && (
         <div className="mt-3 rounded-xl border border-brand/30 bg-brand/5 p-3">
           <p className="mb-1 text-xs font-bold text-brand">申請受付番号が入りました。Messenger で報告してください</p>
           <p className="mb-2 text-[11px] leading-relaxed text-muted">
