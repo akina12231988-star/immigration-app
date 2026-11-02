@@ -50,6 +50,16 @@ export default async function OrganizationsPage() {
           </span>
         </Link>
         <Link
+          href="/workers/dependents-forms"
+          className="flex min-h-[56px] items-center gap-3 rounded-xl border-2 border-brand bg-surface px-4 text-sm font-bold text-brand hover:bg-brand/5"
+        >
+          <ClipboardList size={22} className="shrink-0" />
+          <span>
+            扶養控除等申告書（年末調整）
+            <span className="block text-[11px] font-normal text-muted">送金が目標額に達した人を抽出して申告書を作成</span>
+          </span>
+        </Link>
+        <Link
           href="/organizations/address-labels"
           className="flex min-h-[56px] items-center gap-3 rounded-xl border-2 border-brand bg-surface px-4 text-sm font-bold text-brand hover:bg-brand/5"
         >
