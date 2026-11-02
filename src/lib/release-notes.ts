@@ -23,6 +23,16 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-11-02",
+    title: "申請一覧の「在留カード受け取り待ち」「在留カード新規発行済み」のカードに、本人の Messenger のリンクを出しました",
+    where: "申請一覧 ＞ 在留カード受け取り待ち／在留カード新規発行済み",
+    href: "/applications?view=approved",
+    items: [
+      "カードの担当者・受領方法の下に「Messenger」ボタンを出します。押すと本人の Messenger（外国人詳細で登録したリンク）が別のタブで開きます。在留カードの受け取りの連絡に使ってください。",
+      "外国人詳細に Messenger のリンクが無い人には出ません。",
+    ],
+  },
+  {
+    date: "2026-11-02",
     title: "スマホの通知書受付で、画像の登録が「Failed to fetch」で失敗しにくくしました",
     where: "通知書受付（通知書 ＞ 受付番号で検索 ＞ この人に通知書画像を登録する）／申請詳細の画像の登録",
     items: [

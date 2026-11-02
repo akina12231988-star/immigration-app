@@ -933,6 +933,7 @@ export function ApplicationsExplorer({
                       nationality={nationalityOf(a)}
                       tantou={tantouOf(a)}
                       receiptMethod={receiptMethodOf(a)}
+                      messengerLink={workerFor(a)?.messenger_link ?? ""}
                       updateApplication={updateApplication}
                     />
                   </SelectableCard>
