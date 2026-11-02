@@ -1,12 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  dbErrorMessage,
-  errorMessage,
-  isCheckConstraintError,
-  isNotNullConstraintError,
-  isMissingColumnError,
-  isMissingTableError,
-} from "./errors";
+import { dbErrorMessage, errorMessage, isCheckConstraintError, isNotNullConstraintError, isMissingColumnError, isMissingTableError, isStalePageError, STALE_PAGE_MESSAGE } from "./errors";
 
 describe("errorMessage", () => {
   it("Error はそのメッセージを使う", () => {
@@ -120,5 +113,16 @@ describe("isNotNullConstraintError", () => {
     expect(dbErrorMessage(err, "0143_worker_wage_apply_time.sql")).toContain(
       "マイグレーション 0143_worker_wage_apply_time.sql が未適用の可能性があります",
     );
+  });
+});
+
+describe("古い画面から保存したときのエラー（新しい版の公開後）", () => {
+  it("Server Action が見つからないエラーは再読み込みの案内にする", () => {
+    const err = new Error(
+      'Server Action "78baa0c7dba8e69d97a808cdb6af4665a056b1de64" was not found on the server. Read more: https://nextjs.org/docs/messages/failed-to-find-server-action',
+    );
+    expect(isStalePageError(err)).toBe(true);
+    expect(errorMessage(err)).toBe(STALE_PAGE_MESSAGE);
+    expect(isStalePageError(new Error("登録に失敗しました"))).toBe(false);
   });
 });

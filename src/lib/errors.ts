@@ -52,8 +52,18 @@ export function isNotNullConstraintError(err: unknown): boolean {
   return /violates not-null constraint/i.test(text);
 }
 
+// アプリの新しい版が公開されたあと、古いまま開いていた画面から保存しようとしたときのエラー
+// （Next.js の「Server Action "…" was not found on the server」）。再読み込みすれば直る
+export const STALE_PAGE_MESSAGE =
+  "アプリが新しくなったため、この画面のままでは保存できませんでした。ページを再読み込み（Mac は ⌘+R、Windows は F5）してから、もう一度やり直してください。";
+export function isStalePageError(err: unknown): boolean {
+  const text = err instanceof Error ? err.message : typeof err === "string" ? err : "";
+  return /Server Action .* was not found on the server|failed-to-find-server-action/i.test(text);
+}
+
 // 表示用のメッセージ（原因がわかるよう details・hint・code も添える）
 export function errorMessage(err: unknown, fallback = "エラーが発生しました"): string {
+  if (isStalePageError(err)) return STALE_PAGE_MESSAGE;
   if (err instanceof Error && err.message) return err.message;
   const e = asPostgrestError(err);
   if (e) {
