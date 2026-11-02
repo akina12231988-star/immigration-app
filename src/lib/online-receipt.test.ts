@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { ApplicationFile } from "@/types/application";
 import {
   needsOnlineReceiptNumber,
+  onlineReceiptNextStep,
+  onlineReceiptStepHref,
+  parseOnlineReceiptStep,
   onlineReceiptReportText,
   onlineReceiptStage,
   onlineReceiptSummary,
@@ -107,5 +110,27 @@ describe("onlineReceiptReportText（申請受付番号の報告文）", () => {
     expect(t).toContain("申請受付日（Application acceptance date）\n2026/10/29");
     expect(t).toContain("申請受付仮番号（Provisional application acceptance no.）\n未入力");
     expect(t).toContain("申請受付番号（Application acceptance no.）\nX1");
+  });
+});
+
+describe("onlineReceiptNextStep（次にやること：受付メールの次の1通）", () => {
+  const base = { method: "オンライン" as const, status: "申請済" as const, approved: false, applicationNumber: "" };
+  it("何も無ければ1通目、1通目が入れば2通目、2通目が入れば3通目", () => {
+    expect(onlineReceiptNextStep(base)).toBe(1);
+    expect(onlineReceiptNextStep({ ...base, onlineRefNo: "050950800764" })).toBe(2);
+    expect(onlineReceiptNextStep({ ...base, onlineRefNo: "1", onlineTempNo: "96720260000443452-00" })).toBe(3);
+    expect(onlineReceiptNextStep({ ...base, onlineMail3Link: "https://mail/3" })).toBe(3);
+  });
+  it("申請受付番号が入った・窓口・取下げ・許可済みは出さない", () => {
+    expect(onlineReceiptNextStep({ ...base, applicationNumber: "福オンＣＶ26010044" })).toBeNull();
+    expect(onlineReceiptNextStep({ ...base, method: "窓口" })).toBeNull();
+    expect(onlineReceiptNextStep({ ...base, status: "取下げ" })).toBeNull();
+    expect(onlineReceiptNextStep({ ...base, approved: true })).toBeNull();
+  });
+  it("リンクと読み取り", () => {
+    expect(onlineReceiptStepHref("app-1", 2)).toBe("/applications/app-1?edit=mail2");
+    expect(parseOnlineReceiptStep("mail3")).toBe(3);
+    expect(parseOnlineReceiptStep("mail4")).toBeNull();
+    expect(parseOnlineReceiptStep(null)).toBeNull();
   });
 });

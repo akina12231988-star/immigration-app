@@ -1,7 +1,7 @@
 "use client";
 
 import { messengerWebUrl } from "@/lib/messenger-link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { prepDocLabel, type PostApplyMailing, type PostApplyTask } from "@/lib/post-apply";
 import { letterPackTrackingUrl } from "@/lib/application-prep";
@@ -56,7 +56,7 @@ import { ApplicationBasicFields, ApplicationEditBar, useApplicationEdit } from "
 import { ApprovalSection } from "./ApprovalSection";
 import { ExtraRequestSection } from "./ExtraRequestSection";
 import { OnlineReceiptSection } from "./OnlineReceiptSection";
-import { receiptSlipFiles } from "@/lib/online-receipt";
+import { ONLINE_RECEIPT_STEP_FOCUS, parseOnlineReceiptStep, receiptSlipFiles } from "@/lib/online-receipt";
 import { ReceiptSlipCopy } from "@/components/applications/ReceiptSlipCopy";
 import { ContractOrgFormSection } from "./ContractOrgFormSection";
 import { EstimateSummarySection } from "./EstimateSummarySection";
@@ -176,6 +176,25 @@ export function ApplicationDetail({ id }: { id: string }) {
 
   // いちばん上の「編集」で、画面の上で基本情報と受付メールの内容を直す（ポップアップは使わない）
   const edit = useApplicationEdit(app ?? null, (patch) => (app ? updateApplication(app.id, patch) : Promise.resolve()));
+
+  // 申請一覧の「2通目を入力」などから開いたとき（?edit=mail2）は、編集を始めてその欄にカーソルを入れる
+  const autoEditDone = useRef(false);
+  useEffect(() => {
+    if (!loaded || !app || autoEditDone.current) return;
+    const step = parseOnlineReceiptStep(new URLSearchParams(window.location.search).get("edit"));
+    if (!step || app.method !== "オンライン") return;
+    autoEditDone.current = true;
+    setTimeout(() => {
+      edit.start();
+      // 再読み込みで何度も編集が始まらないよう、?edit を外す
+      window.history.replaceState(null, "", window.location.pathname);
+      setTimeout(() => {
+        const el = document.getElementById(`receipt-${ONLINE_RECEIPT_STEP_FOCUS[step]}`);
+        el?.scrollIntoView({ block: "center", behavior: "smooth" });
+        if (el instanceof HTMLInputElement) el.focus({ preventScroll: true });
+      }, 200);
+    }, 0);
+  }, [loaded, app, edit]);
 
   if (!loaded) {
     return <p className="py-12 text-center text-sm text-muted">読み込み中…</p>;

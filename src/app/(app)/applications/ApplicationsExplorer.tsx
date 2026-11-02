@@ -1,5 +1,6 @@
 "use client";
 
+import { onlineReceiptNextStep, onlineReceiptStepHref } from "@/lib/online-receipt";
 import { messengerWebUrl } from "@/lib/messenger-link";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -20,8 +21,7 @@ import {
   Search,
   SlidersHorizontal,
   UserRound,
-  X,
-} from "lucide-react";
+  X, MailPlus } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { SelectableCard } from "@/components/ui/SelectableCard";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -1011,8 +1011,20 @@ export function ApplicationsExplorer({
                       <WorkerInfoLink workerId={a.workerId} />
                     </span>
                   )}
+                  {/* オンライン申請: 受付メールの次の1通を入れる */}
+                  {canEdit && !isRenewalPlaceholder(a) && onlineReceiptNextStep(a) && (
+                    <span className="mt-2 block" onClick={(e) => e.stopPropagation()}>
+                      <Link
+                        href={onlineReceiptStepHref(a.id, onlineReceiptNextStep(a)!)}
+                        className="flex min-h-[48px] w-full items-center justify-center gap-1.5 rounded-xl bg-seal text-sm font-bold text-seal-foreground"
+                      >
+                        <MailPlus size={16} />
+                        {onlineReceiptNextStep(a)}通目を入力
+                      </Link>
+                    </span>
+                  )}
                   {/* 審査中の申請は、詳細を開かなくてもここで許可済みにできる */}
-                  {canEdit && !isRenewalPlaceholder(a) && canMarkApproved(a) && (
+                  {canEdit && !isRenewalPlaceholder(a) && !onlineReceiptNextStep(a) && canMarkApproved(a) && (
                     <span className="mt-2 block" onClick={(e) => e.stopPropagation()}>
                       <button
                         type="button"
@@ -1224,6 +1236,15 @@ export function ApplicationsExplorer({
                             >
                               <FilePlus2 size={14} />
                               申請登録へ進む
+                            </Link>
+                          ) : canEdit && onlineReceiptNextStep(a) ? (
+                            // オンライン申請: 受付メールを1通目→2通目→3通目の順に入れる（押すと申請詳細のその欄が入力できる）
+                            <Link
+                              href={onlineReceiptStepHref(a.id, onlineReceiptNextStep(a)!)}
+                              className="inline-flex min-h-[36px] items-center gap-1.5 whitespace-nowrap rounded-lg bg-seal px-3 text-xs font-bold text-seal-foreground"
+                            >
+                              <MailPlus size={14} />
+                              {onlineReceiptNextStep(a)}通目を入力
                             </Link>
                           ) : canEdit && canMarkApproved(a) ? (
                             <button

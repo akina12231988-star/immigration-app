@@ -110,3 +110,36 @@ export function onlineReceiptReportText(
     v(a.applicationNumber),
   ].join("\n");
 }
+
+// 申請一覧の「次にやること」に出す、受付メールの次の1通（1通目→2通目→3通目）。
+// オンライン申請で申請受付番号がまだ無い（取下げ・許可済みを除く）ときだけ。それ以外は null
+export type OnlineReceiptStep = 1 | 2 | 3;
+export function onlineReceiptNextStep(
+  a: Partial<OnlineReceiptFields> & Pick<Application, "method" | "status" | "approved">,
+): OnlineReceiptStep | null {
+  if (a.method !== "オンライン" || a.approved) return null;
+  if (a.status === "取下げ" || a.status === "申請前" || a.status === "許可済" || a.status === "在留カード受領") return null;
+  if ((a.applicationNumber ?? "").trim()) return null;
+  const stage = onlineReceiptStage(a);
+  if (stage === "none") return 1;
+  if (stage === "mail1") return 2;
+  return 3;
+}
+
+// 申請詳細を開いて、その1通の入力欄から入れるためのリンク（?edit=mail1 など）
+export function onlineReceiptStepHref(applicationId: string, step: OnlineReceiptStep): string {
+  return `/applications/${applicationId}?edit=mail${step}`;
+}
+
+// ?edit=mail1〜3 の読み取り（それ以外は null）
+export function parseOnlineReceiptStep(value: string | null | undefined): OnlineReceiptStep | null {
+  const m = /^mail([123])$/.exec(value ?? "");
+  return m ? (Number(m[1]) as OnlineReceiptStep) : null;
+}
+
+// その1通でまずカーソルを入れる項目（1通目＝申請種別、2通目＝申請受付日、3通目＝申請受付番号）
+export const ONLINE_RECEIPT_STEP_FOCUS: Record<OnlineReceiptStep, string> = {
+  1: "onlineAppType",
+  2: "onlineReceivedOn",
+  3: "applicationNumber",
+};
