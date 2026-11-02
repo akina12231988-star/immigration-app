@@ -52,7 +52,7 @@ import {
   deleteApplicationFile,
   listApplicationFiles,
 } from "../actions";
-import { ApplicationEditDialog } from "./ApplicationEditDialog";
+import { ApplicationBasicFields, ApplicationEditBar, useApplicationEdit } from "./ApplicationEditor";
 import { ApprovalSection } from "./ApprovalSection";
 import { ExtraRequestSection } from "./ExtraRequestSection";
 import { OnlineReceiptSection } from "./OnlineReceiptSection";
@@ -76,7 +76,6 @@ export function ApplicationDetail({ id }: { id: string }) {
   const [uploading, setUploading] = useState<ApplicationFileKind | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [messengerLink, setMessengerLink] = useState("");
-  const [editOpen, setEditOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -174,6 +173,9 @@ export function ApplicationDetail({ id }: { id: string }) {
     const label = PREP_DOC_DEFS.find((def) => def.id === d.doc_id)?.label ?? d.doc_id;
     return d.todo_no ? `${label}（${d.todo_no}）` : label;
   };
+
+  // いちばん上の「編集」で、画面の上で基本情報と受付メールの内容を直す（ポップアップは使わない）
+  const edit = useApplicationEdit(app ?? null, (patch) => (app ? updateApplication(app.id, patch) : Promise.resolve()));
 
   if (!loaded) {
     return <p className="py-12 text-center text-sm text-muted">読み込み中…</p>;
@@ -368,14 +370,25 @@ export function ApplicationDetail({ id }: { id: string }) {
             <div className="flex shrink-0 items-center gap-1.5">
               <StatusBadge status={app.status} />
               {/* 編集はここ1か所（申請の基本情報とオンライン申請の受付メールの内容をまとめて直す） */}
-              <button
-                type="button"
-                onClick={() => setEditOpen(true)}
-                className="inline-flex min-h-[40px] items-center gap-1.5 whitespace-nowrap rounded-xl bg-brand px-4 text-sm font-bold text-brand-foreground"
-              >
-                <Pencil size={16} />
-                編集
-              </button>
+              {edit.editing ? (
+                <span className="inline-flex min-h-[40px] items-center gap-1.5 whitespace-nowrap rounded-xl border border-brand px-4 text-sm font-bold text-brand">
+                  <Pencil size={16} />
+                  編集中
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    edit.start();
+                    // 入力欄のある「申請の基本情報・画像」へ
+                    setTimeout(() => scrollToDetailSection("section-basic"), 50);
+                  }}
+                  className="inline-flex min-h-[40px] items-center gap-1.5 whitespace-nowrap rounded-xl bg-brand px-4 text-sm font-bold text-brand-foreground"
+                >
+                  <Pencil size={16} />
+                  編集
+                </button>
+              )}
             </div>
           </div>
           {(app.workerId || messengerLink) && (
@@ -443,8 +456,11 @@ export function ApplicationDetail({ id }: { id: string }) {
           id="section-basic"
           title="申請の基本情報・画像"
           summary={basicSummary(app, files.length)}
-          open={next.section === "basic"}
+          open={next.section === "basic" || edit.editing}
         >
+          {edit.editing ? (
+            <ApplicationBasicFields edit={edit} />
+          ) : (
           <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
             <InfoRow label="所属機関" value={app.organizationName ?? "未設定"} />
             <InfoRow label="申請方法" value={`${app.method}申請`} />
@@ -458,6 +474,7 @@ export function ApplicationDetail({ id }: { id: string }) {
             <InfoRow label="登録日時" value={new Date(app.createdAt).toLocaleString("ja-JP")} />
             <InfoRow label="更新日時" value={new Date(app.updatedAt).toLocaleString("ja-JP")} />
           </dl>
+          )}
           {/* オンライン申請の受付メール（1通目: 申請種別・整理番号、2通目: 申請受付仮番号など、3通目: 申請受付番号）。届いた順に入れる */}
           {app.method === "オンライン" && (
             <OnlineReceiptSection
@@ -469,6 +486,7 @@ export function ApplicationDetail({ id }: { id: string }) {
               onUpload={(kind, list) => void handleUpload(kind, list)}
               onDeleteFile={(f) => void handleDeleteFile(f)}
               onMarkReported={markReported}
+              edit={edit}
             />
           )}
           <h4 className="mb-2 mt-4 text-xs font-bold text-muted">画像</h4>
@@ -762,13 +780,8 @@ export function ApplicationDetail({ id }: { id: string }) {
         </DetailSection>
       </Card>
 
-      {editOpen && (
-        <ApplicationEditDialog
-          app={app}
-          onClose={() => setEditOpen(false)}
-          onSave={(patch) => updateApplication(app.id, patch)}
-        />
-      )}
+      {/* 編集中だけ画面の下に「保存」「やめる」を出す */}
+      <ApplicationEditBar edit={edit} />
 
       <ConfirmDialog
         open={withdrawOpen}
