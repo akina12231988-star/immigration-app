@@ -225,6 +225,8 @@ describe("見積書の組み立て", () => {
     expect(e2.items.map((i) => i.name)).toEqual(["申請取次費用", "書類作成費", "特定技能総合保険（会社負担）"]);
     // 2号への変更も特定技能の変更
     expect(sswInsuranceIncluded("特定技能2号申請準備中", "変更", "会社負担")).toBe(true);
+    // 2号の更新は特定技能総合保険に加入できないので入れない
+    expect(sswInsuranceIncluded("特定技能2号更新の準備中", "更新", "会社負担")).toBe(false);
   });
 
   it("総合保険: 外国人負担・未設定・認定・特定活動のときは入れない", () => {

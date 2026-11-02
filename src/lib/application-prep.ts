@@ -25,12 +25,20 @@ export function prepDetailHref(workerId: string): string {
 // この内容のときだけ出す／出さない選択肢の判定に使う
 export const SSW2_APP_CONTENT = "特定技能2号申請準備中";
 
+// 特定技能2号の在留期間の更新（本人申請）。2号は特定技能総合保険に加入しないので、見積に保険の行を入れない
+export const SSW2_RENEWAL_APP_CONTENT = "特定技能2号更新の準備中";
+
 // 在留期間の更新許可（特定活動）。短い期間の延長なので、税に関する書類は要らない
 export const TOKUTEI_KATSUDO_RENEWAL_CONTENT = "特定活動ビザ更新の申請準備";
 
-// 国民年金の加入にかかわらず年金記録を必ず求める準備の内容（特定技能の更新・変更・2号への変更）。
+// 国民年金の加入にかかわらず年金記録を必ず求める準備の内容（特定技能の更新・変更・2号への変更・2号の更新）。
 // 値は準備の内容（只今の状況）の保存値（worker-situation.ts の prepSituation）
-export const NENKIN_ALWAYS_APP_CONTENTS = ["特定技能更新の準備中", "特定技能申請準備中", SSW2_APP_CONTENT] as const;
+export const NENKIN_ALWAYS_APP_CONTENTS = [
+  "特定技能更新の準備中",
+  "特定技能申請準備中",
+  SSW2_APP_CONTENT,
+  SSW2_RENEWAL_APP_CONTENT,
+] as const;
 export function isNenkinAlwaysRequired(appContent: string): boolean {
   return (NENKIN_ALWAYS_APP_CONTENTS as readonly string[]).includes(appContent);
 }

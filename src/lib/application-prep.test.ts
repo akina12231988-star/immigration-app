@@ -88,7 +88,7 @@ describe("isRequired", () => {
   });
 
   it("特定技能の更新・変更・2号への変更では、加入のチェックが無くても年金記録を必ず求める", () => {
-    expect(NENKIN_ALWAYS_APP_CONTENTS).toEqual(["特定技能更新の準備中", "特定技能申請準備中", "特定技能2号申請準備中"]);
+    expect(NENKIN_ALWAYS_APP_CONTENTS).toEqual(["特定技能更新の準備中", "特定技能申請準備中", "特定技能2号申請準備中", "特定技能2号更新の準備中"]);
     expect(isRequired(def("nenkin"), meta({ app_type: "更新", app_content: "特定技能更新の準備中" }))).toBe(true);
     expect(isRequired(def("nenkin"), meta({ app_type: "変更", app_content: "特定技能申請準備中" }))).toBe(true);
     expect(isRequired(def("nenkin"), meta({ app_type: "変更", app_content: "特定技能2号申請準備中" }))).toBe(true);
