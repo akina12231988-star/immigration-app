@@ -135,18 +135,34 @@ export function WorkerDependents({
           <Users size={16} />
           扶養家族（{rows.length}人）
         </h2>
-        <Link
-          href={`/workers/${workerId}/dependents-form`}
-          className="flex shrink-0 items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold text-brand"
-        >
-          <FileText size={14} />
-          扶養控除等申告書を作成
-        </Link>
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
+          {/* 入社時（扶養親族を全員記載） */}
+          <Link
+            href={`/workers/${workerId}/dependents-form`}
+            className="flex shrink-0 items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold text-brand"
+          >
+            <FileText size={14} />
+            扶養控除等申告書を作成
+          </Link>
+          {/* 年末調整用（その年の送金が目標額に達した扶養親族だけを記載） */}
+          <Link
+            href={`/workers/${workerId}/dependents-form?kind=year-end`}
+            className="flex shrink-0 items-center gap-1 rounded-lg bg-brand px-3 py-2 text-xs font-bold text-brand-foreground"
+          >
+            <FileText size={14} />
+            年末調整用の扶養控除等申告書を作成
+          </Link>
+        </div>
       </div>
       <p className="mb-2 text-[11px] leading-relaxed text-muted">
         扶養親族証明書の内容を記録します。生年月日（西暦）を入力すると和暦と現時点の年齢、
         該当する控除区分（配偶者控除・老人扶養親族・特定扶養親族など）を自動で表示します。
         年末の国際送金は明細書の各行の金額を入力すると、合計が目標額に達したかを自動で判定します。
+        全員分の達成状況を見て年末調整用をまとめて作るときは
+        <Link href="/workers/dependents-forms" className="mx-1 font-bold text-brand hover:underline">
+          扶養控除等申告書（年末調整）の一覧
+        </Link>
+        から。
       </p>
       {rows.length > 0 && (
         <>

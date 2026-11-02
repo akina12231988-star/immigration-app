@@ -33,18 +33,22 @@ interface FormWorker {
 export function DependentsFormSheet({
   worker,
   dependents: allDependents,
+  initialKind = "入社時",
+  initialYear,
 }: {
   worker: FormWorker;
   dependents: WorkerDependent[];
+  initialKind?: "入社時" | "年末調整時";
+  initialYear?: string;
 }) {
   const today = todayStr();
   const [householdHead, setHouseholdHead] = useState(worker.name);
   const [headRelation, setHeadRelation] = useState("本人");
   // 発行パターン: 入社時は扶養親族を全員記載、年末調整時は年末の国際送金が
   // 目標に達した人だけを記載する
-  const [formKind, setFormKind] = useState<"入社時" | "年末調整時">("入社時");
+  const [formKind, setFormKind] = useState<"入社時" | "年末調整時">(initialKind);
   // 年末調整の対象年（西暦）。この年の送金で達成判定し、「生計を一にする事実」欄に合計額を記載する
-  const [targetYear, setTargetYear] = useState(today.slice(0, 4));
+  const [targetYear, setTargetYear] = useState(initialYear ?? today.slice(0, 4));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
