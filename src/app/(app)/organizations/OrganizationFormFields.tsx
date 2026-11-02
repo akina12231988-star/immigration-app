@@ -226,6 +226,12 @@ function StaticValue({ label, value }: { label: string; value: string }) {
 }
 
 // 申込書の1入力欄（テキスト）
+// 月平均所定労働時間数から自動で出す年間（月平均 × 12、小数1桁）。月平均が読めなければ空
+function annualFromMonthly(monthly: string): string {
+  const n = parseHoursMinutes(monthly);
+  return n == null ? "" : String(Math.round(n * 12 * 10) / 10);
+}
+
 function IntakeField({
   label,
   value,
@@ -1468,7 +1474,8 @@ function IntakeSection({
         )}
 
         <p className={SUB_CLASS}>3. 所定労働時間数（週・月・年間）</p>
-        {/* 月平均と年間はどちらかを入れると片方が自動で入る（月平均×12＝年間） */}
+        {/* 月平均を入れると年間が自動で入る（月平均×12＝年間）。年間は手で直せて、直した値はそのまま保存する
+            （月平均を入れ直しても、手で直した年間は上書きしない） */}
         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
           {/* 申請書（所属機関等作成用）の「所定労働時間（週平均）」にそのまま使う */}
           <IntakeField
@@ -1490,17 +1497,21 @@ function IntakeSection({
             value={intake.posting_monthly_hours}
             onChange={(v) => {
               const n = parseHoursMinutes(v);
+              // 年間が空か、いまの月平均から自動で入れた値のままなら、新しい月平均から入れ直す。
+              // 手で直した年間（月平均×12 と違う値）はそのまま残す
+              const annual = intake.posting_annual_hours.trim();
+              const annualIsAuto = !annual || annual === annualFromMonthly(intake.posting_monthly_hours);
               setIntake({
                 posting_monthly_hours: v,
                 posting_annual_hours:
-                  n != null ? String(Math.round(n * 12 * 10) / 10) : intake.posting_annual_hours,
+                  n != null && annualIsAuto ? String(Math.round(n * 12 * 10) / 10) : intake.posting_annual_hours,
               });
             }}
             placeholder="例: 173時間20分／173.3"
             hint={(() => {
               const n = parseHoursMinutes(intake.posting_monthly_hours);
               if (n == null) return "「173時間20分」「173:20」「173.3」のどの形でも入力できます。";
-              return `＝ ${formatHoursDecimal(n)}時間（年間 ${Math.round(n * 12 * 10) / 10}時間）として自動で計算します。`;
+              return `＝ ${formatHoursDecimal(n)}時間（年間が空なら ${Math.round(n * 12 * 10) / 10}時間 を自動で入れます）。`;
             })()}
             locked={locks.intake("posting_monthly_hours")}
           />
@@ -1509,15 +1520,26 @@ function IntakeSection({
             value={intake.posting_annual_hours}
             onChange={(v) => {
               const n = parseAmount(v);
+              // 年間を手で直しても月平均はそのまま（月平均が空のときだけ年間 ÷ 12 を入れる）
               setIntake({
                 posting_annual_hours: v,
                 posting_monthly_hours:
-                  n != null ? String(Math.round((n / 12) * 10) / 10) : intake.posting_monthly_hours,
+                  n != null && !intake.posting_monthly_hours.trim()
+                    ? String(Math.round((n / 12) * 10) / 10)
+                    : intake.posting_monthly_hours,
               });
             }}
             placeholder="例: 2080 / 2347.5"
-            hint="小数も入れられます（例: 2347.5）。どちらかを入れるともう片方も自動で入ります。求人票の時給⇔月給換算・手取りプレビューに使います。"
-            locked={locks.intake("posting_annual_hours")}
+            hint={(() => {
+              const auto = annualFromMonthly(intake.posting_monthly_hours);
+              const annual = intake.posting_annual_hours.trim();
+              if (auto && annual && annual !== auto) {
+                return `月平均 × 12（${auto}時間）と違う値です。手で直した ${annual}時間 を保存して、求人票の時給⇔月給換算・手取りプレビューに使います。`;
+              }
+              return "月平均を入れると自動で入りますが、手で直せます（直した値をそのまま保存します）。小数も入れられます（例: 2347.5）。求人票の時給⇔月給換算・手取りプレビューに使います。";
+            })()}
+            // 月平均から自動で入る欄なので、詳細表示でも手で直せるようにする
+            locked={false}
           />
         </div>
 
