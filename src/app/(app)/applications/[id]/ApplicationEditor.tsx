@@ -230,6 +230,7 @@ export function ReceiptInput({
   return (
     <EditField label={label} className={className}>
       <input
+        id={`receipt-${field}`}
         type={type}
         value={edit.form[field]}
         onChange={(e) => edit.set(field, e.target.value)}
