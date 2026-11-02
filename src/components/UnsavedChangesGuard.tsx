@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Loader2 } from "lucide-react";
-import { isInternalNavigation, setNavGuard } from "@/lib/nav-guard";
+import { addNavGuard, isInternalNavigation } from "@/lib/nav-guard";
 
 // 編集して保存していない内容があるまま別の画面へ行こうとしたときに、
 // 「保存しなくても大丈夫ですか？」と確認を出す。
@@ -46,7 +46,8 @@ export function UnsavedChangesGuard({
       if (!anchor) return;
       if (!isInternalNavigation(anchor, window.location, e)) return;
       e.preventDefault();
-      e.stopPropagation();
+      // 同じ画面のほかの確認（外国人詳細の本体と扶養家族の枠など）と重ねて出さない
+      e.stopImmediatePropagation();
       const href = anchor.href;
       const sameOrigin = new URL(href).origin === window.location.origin;
       setPending(() => () => {
@@ -60,12 +61,11 @@ export function UnsavedChangesGuard({
 
   // 「←」ボタン（BackButton）からの移動
   useEffect(() => {
-    setNavGuard((proceed) => {
+    return addNavGuard((proceed) => {
       if (!dirtyRef.current) return false;
       setPending(() => proceed);
       return true;
     });
-    return () => setNavGuard(null);
   }, []);
 
   if (!pending) return null;

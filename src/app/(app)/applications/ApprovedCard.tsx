@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, CreditCard, Plus, StickyNote, Trash2 } from "lucide-react";
+import { Check, CreditCard, ExternalLink, MessageCircle, Plus, StickyNote, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { AlertBadge } from "@/components/applications/AlertBadge";
 import { ApplicantMeta } from "@/components/applications/ApplicantMeta";
 import { ReceiptMethodBadge } from "@/components/applications/ReceiptMethodBadge";
 import { createClient } from "@/lib/supabase/client";
+import { messengerWebUrl } from "@/lib/messenger-link";
 import {
   deleteApplicationMemo,
   insertApplicationMemo,
@@ -30,6 +31,7 @@ export function ApprovedCard({
   nationality,
   tantou = "",
   receiptMethod = "",
+  messengerLink = "",
   updateApplication,
 }: {
   app: Application;
@@ -41,6 +43,7 @@ export function ApprovedCard({
   nationality?: string | null; // 外国人一覧から引き当てた国籍
   tantou?: string; // 担当者（申請準備のTODOの担当者。カードにも出す）
   receiptMethod?: string; // 在留カードの受領方法（郵送／窓口。申請準備の詳細で選んだもの）
+  messengerLink?: string; // 本人の Messenger（外国人詳細の基本情報）。受け取りの連絡に使う
   updateApplication: (id: string, patch: Partial<Application>) => Promise<void>;
 }) {
   const router = useRouter();
@@ -145,6 +148,20 @@ export function ApprovedCard({
               {/* 在留カードを郵送で受け取るか窓口で受け取るか（受け取り待ちで特に見たい） */}
               <ReceiptMethodBadge method={receiptMethod} />
             </p>
+          )}
+          {/* 本人の Messenger（在留カードの受け取りの連絡などに使う）。押してもカードの詳細は開かない */}
+          {messengerLink && (
+            <a
+              href={messengerWebUrl(messengerLink)}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="mt-1.5 inline-flex min-h-[32px] items-center gap-1 rounded-full border border-border bg-surface px-3 text-xs font-bold text-brand"
+            >
+              <MessageCircle size={13} />
+              Messenger
+              <ExternalLink size={11} />
+            </a>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1">

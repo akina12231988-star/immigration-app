@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { checkNavGuard, isInternalNavigation, setNavGuard } from "./nav-guard";
+import { addNavGuard, checkNavGuard, isInternalNavigation, setNavGuard } from "./nav-guard";
 
 const here = { origin: "https://app.example.com", pathname: "/organizations/1", search: "" };
 const click = { button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false };
@@ -40,5 +40,17 @@ describe("checkNavGuard", () => {
     setNavGuard(() => false);
     expect(checkNavGuard(proceed)).toBe(true);
     setNavGuard(null);
+  });
+});
+
+describe("addNavGuard（確認が複数ある画面）", () => {
+  it("どれか1つでも確認を出したら移動を止める。外すと止めなくなる", () => {
+    setNavGuard(null);
+    const removeA = addNavGuard(() => false);
+    const removeB = addNavGuard(() => true);
+    expect(checkNavGuard(() => {})).toBe(false);
+    removeB();
+    expect(checkNavGuard(() => {})).toBe(true);
+    removeA();
   });
 });

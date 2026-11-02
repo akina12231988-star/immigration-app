@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Check, FileText, Plus, TriangleAlert, Users } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
 import {
@@ -108,7 +109,8 @@ export function WorkerDependents({
     setSaved(false);
   };
 
-  const save = async () => {
+  // 保存できたら true（別の画面へ移る前の確認の「保存して移動」でも使う）
+  const save = async (): Promise<boolean> => {
     setBusy(true);
     setError(null);
     try {
@@ -121,8 +123,10 @@ export function WorkerDependents({
       setRows(cleaned);
       setSaved(true);
       router.refresh();
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存に失敗しました");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -130,6 +134,8 @@ export function WorkerDependents({
 
   return (
     <Card className="p-4">
+      {/* 扶養家族・送金を保存しないまま別の画面へ移ろうとしたときの確認 */}
+      <UnsavedChangesGuard dirty={canEdit && !saved} onSave={save} saveLabel="扶養家族を保存" />
       <div className="mb-1 flex items-center justify-between gap-2">
         <h2 className="flex items-center gap-2 text-sm font-bold">
           <Users size={16} />
