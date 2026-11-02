@@ -61,6 +61,10 @@ export const WORKER_SITUATIONS: WorkerSituation[] = [
     description: "本人申請。特定技能２号ビザへの在留資格変更許可申請で審査中の人",
   },
   {
+    value: "２号特定技能更新許可の審査中",
+    description: "本人申請。特定技能２号ビザの在留期間更新許可申請で審査中の人",
+  },
+  {
     value: "在留資格認定申請書の準備中",
     description: "申請準備で、在留資格認定申請の準備中の人",
   },
@@ -88,6 +92,10 @@ export const WORKER_SITUATIONS: WorkerSituation[] = [
   {
     value: "特定技能2号申請準備中",
     description: "申請準備で、特定技能２号の準備中の人",
+  },
+  {
+    value: "特定技能2号更新の準備中",
+    description: "申請準備で、特定技能２号の更新申請の準備中の人",
   },
   {
     value: "特定技能1号＜支援委託中＞",
@@ -243,7 +251,7 @@ export function shownSituation(
   return typed || autoSituation(worker.residence_status, latestApplication ?? null);
 }
 
-// 申請準備の対応状況を「準備中」にしたときに選ぶ、準備の内容（7つ）。
+// 申請準備の対応状況を「準備中」にしたときに選ぶ、準備の内容（8つ）。
 // 選んで保存すると、外国人詳細の「只今の状況」にそのまま入る
 export const PREP_SITUATIONS: string[] = [
   "在留資格認定申請書の準備中",
@@ -253,6 +261,7 @@ export const PREP_SITUATIONS: string[] = [
   "特定活動（特定技能２号移行準備のため）準備中",
   "特定活動ビザ更新の申請準備",
   "特定技能2号申請準備中",
+  "特定技能2号更新の準備中",
 ];
 
 // 只今の状況の中の「準備中」の部分だけを、新しい準備の内容に入れ替える。
@@ -265,7 +274,7 @@ export function replacePrepSituation(current: string, next: string): string {
   return [...rest, ...(next ? [next] : [])].join(SITUATION_SEPARATOR);
 }
 
-// 申請登録の「申請内容」の候補（7つ）。
+// 申請登録の「申請内容」の候補（8つ）。
 // 選ぶと、保存する申請内容（従来どおりの3種類のどれか）と、
 // 外国人の只今の状況（どの内容で審査中か）が決まる
 export interface ApplicationContentChoice {
@@ -331,10 +340,18 @@ export const APPLICATION_CONTENT_CHOICES: ApplicationContentChoice[] = [
     selfApply: true,
     prepSituation: "特定技能2号申請準備中",
   },
+  {
+    label: "在留期間の更新許可（特定技能２号）※本人申請",
+    appType: "更新",
+    content: "在留期間の更新許可",
+    situation: "２号特定技能更新許可の審査中",
+    selfApply: true,
+    prepSituation: "特定技能2号更新の準備中",
+  },
 ];
 
 // 「準備の内容（只今の状況）」の選択肢。
-// 申請内容の候補（7つ）と同じ表記で選び、保存する値は従来どおり PREP_SITUATIONS の文言
+// 申請内容の候補（8つ）と同じ表記で選び、保存する値は従来どおり PREP_SITUATIONS の文言
 // （既存データと互換）。TODOの内容の選択肢と表記が統一される
 export const PREP_SITUATION_CHOICES: { label: string; situation: string }[] =
   APPLICATION_CONTENT_CHOICES.map((c) => ({ label: c.label, situation: c.prepSituation }));

@@ -339,3 +339,9 @@ describe("申請準備中の所属機関の賃金・日本人職員の報酬・�
     expect(g2.flatMap((g) => g.items).find((i) => i.label === "3 (4)業種 主たる業種")?.value).toBe("農林業");
   });
 });
+
+describe("desiredResidenceStatus（特定技能２号の更新）", () => {
+  it("特定技能２号の更新は、希望する在留資格が特定技能2号", () => {
+    expect(desiredResidenceStatus("特定技能2号更新の準備中", "更新", "特定技能2号")).toBe("特定技能2号");
+  });
+});

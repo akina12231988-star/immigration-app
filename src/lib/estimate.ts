@@ -10,7 +10,7 @@
 import { parseAmount } from "@/lib/organization-intake";
 import { guessAppKind, SSW_INSURANCE_AMOUNT, taxFromExcl, type SalesAppKind } from "@/lib/sales";
 import { prepSituationLabel } from "@/lib/worker-situation";
-import { PREP_APP_TYPE_LABELS, type PrepAppType } from "@/lib/application-prep";
+import { PREP_APP_TYPE_LABELS, SSW2_RENEWAL_APP_CONTENT, type PrepAppType } from "@/lib/application-prep";
 import { honorificFor } from "@/lib/reminder-letter";
 import type { OrgSalesItem } from "@/types/db";
 import type { CustodianInfo } from "@/lib/custody";
@@ -103,9 +103,11 @@ export function usesRevisedStampFee(plannedAppOn: string | null | undefined, tod
 }
 
 // 特定技能総合保険の行を入れるか: 特定技能の変更申請・更新申請（2号への変更を含む）で、
-// 所属機関の登録内容の保険の負担が会社負担のとき。認定（海外から）や特定活動は入れない
+// 所属機関の登録内容の保険の負担が会社負担のとき。認定（海外から）や特定活動は入れない。
+// 2号の更新は、2号が特定技能総合保険に加入できないので入れない
 export function sswInsuranceIncluded(appContent: string, appType: "" | PrepAppType, burden: string): boolean {
   if (burden.trim() !== "会社負担") return false;
+  if (appContent === SSW2_RENEWAL_APP_CONTENT) return false;
   if (appType !== "変更" && appType !== "更新") return false;
   return salesKindOfPrep(appContent, appType).startsWith("特定技能");
 }

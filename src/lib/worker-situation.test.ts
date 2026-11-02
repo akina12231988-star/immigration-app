@@ -42,14 +42,14 @@ describe("situationDescription", () => {
 
 describe("PREP_SITUATIONS", () => {
   test("準備中の内容は7つで、すべて只今の状況の選択肢にある", () => {
-    expect(PREP_SITUATIONS).toHaveLength(7);
+    expect(PREP_SITUATIONS).toHaveLength(8);
     for (const s of PREP_SITUATIONS) expect(values.has(s)).toBe(true);
   });
 });
 
 describe("APPLICATION_CONTENT_CHOICES", () => {
   test("申請内容の候補は7つで、申請内容は従来の3種類のどれかになる", () => {
-    expect(APPLICATION_CONTENT_CHOICES).toHaveLength(7);
+    expect(APPLICATION_CONTENT_CHOICES).toHaveLength(8);
     for (const c of APPLICATION_CONTENT_CHOICES) {
       expect(APPLICATION_CONTENT_OPTIONS).toContain(c.content);
       expect(c.label.startsWith(c.content)).toBe(true); // 候補名は保存される申請内容から始まる
@@ -63,11 +63,17 @@ describe("APPLICATION_CONTENT_CHOICES", () => {
     }
   });
 
-  test("本人申請の候補は2つ（特定活動２号以降準備・特定技能２号）", () => {
+  test("本人申請の候補は3つ（特定活動２号以降準備・特定技能２号・特定技能２号の更新）", () => {
     const self = APPLICATION_CONTENT_CHOICES.filter((c) => c.selfApply);
     expect(self.map((c) => c.situation).sort()).toEqual(
-      ["２号特定技能の審査中", "特定活動（２号以降準備）の審査中"].sort(),
+      ["２号特定技能の審査中", "２号特定技能更新許可の審査中", "特定活動（２号以降準備）の審査中"].sort(),
     );
+  });
+
+  test("特定技能２号の更新は、申請種別「更新」・申請内容「在留期間の更新許可」", () => {
+    const c = APPLICATION_CONTENT_CHOICES.find((x) => x.label === "在留期間の更新許可（特定技能２号）※本人申請");
+    expect(c).toMatchObject({ appType: "更新", content: "在留期間の更新許可", prepSituation: "特定技能2号更新の準備中" });
+    expect(appTypeOfPrepSituation("特定技能2号更新の準備中")).toBe("更新");
   });
 });
 
