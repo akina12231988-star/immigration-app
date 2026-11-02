@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errors";
 import { messengerWebUrl } from "@/lib/messenger-link";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -246,7 +247,7 @@ export function ApplicationDetail({ id }: { id: string }) {
         void updateApplication(app.id, { status: "通知書到着" });
       }
     } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "アップロードに失敗しました");
+      setUploadError(errorMessage(err, "アップロードに失敗しました"));
     } finally {
       setUploading(null);
     }
