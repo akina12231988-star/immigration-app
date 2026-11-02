@@ -5,16 +5,29 @@
 
 type Guard = (proceed: () => void) => boolean; // true を返したら移動を止めて確認を出した
 
-let current: Guard | null = null;
+// 1つの画面に確認が複数あることがある（外国人詳細の本体と「扶養家族」の枠など）ので、全部を持つ
+const guards = new Set<Guard>();
 
-export function setNavGuard(guard: Guard | null): void {
-  current = guard;
+// 確認を登録する。戻り値を呼ぶと外す
+export function addNavGuard(guard: Guard): () => void {
+  guards.add(guard);
+  return () => {
+    guards.delete(guard);
+  };
 }
 
-// 移動してよいか確かめる。確認が必要なら proceed を預けて false を返す
+// 以前の1つだけ登録する形（null で全部外す）。テストなどで使う
+export function setNavGuard(guard: Guard | null): void {
+  guards.clear();
+  if (guard) guards.add(guard);
+}
+
+// 移動してよいか確かめる。どれかが確認を出したら proceed を預けて false を返す
 export function checkNavGuard(proceed: () => void): boolean {
-  if (!current) return true;
-  return !current(proceed);
+  for (const g of guards) {
+    if (g(proceed)) return false;
+  }
+  return true;
 }
 
 // クリックされたリンクを、この画面から離れるサイト内の移動として扱うか
