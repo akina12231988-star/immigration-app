@@ -171,9 +171,21 @@ describe("buildFuyoFieldValues", () => {
       },
       TODAY,
     );
-    expect(v2.texts["Text120"]).toBe("380,000円"); // B欄1行目
-    expect(v2.texts["Text121"]).toBe("10,000円"); // B欄2行目
+    expect(v2.texts["Text120"]).toBe("送金額 380,000円"); // B欄1行目
+    expect(v2.texts["Text121"]).toBe("送金額 10,000円"); // B欄2行目
     expect(v2.texts["Text122"]).toBeUndefined(); // 3行目は空
+  });
+
+  it("配偶者（A欄）の「生計を一にする事実」は斜線で記載不要なので、年末調整時でも送金額を書かない", () => {
+    const spouse = {
+      ...DATA.dependents[0],
+      name: "SPOUSE",
+      relation: "妻",
+      birth: "1996-01-01",
+      remittances: [{ year: "2026", amount: "120,000" }],
+    };
+    const v = buildFuyoFieldValues({ ...DATA, kind: "年末調整時", year: "2026", dependents: [spouse] }, TODAY);
+    expect(Object.values(v.texts)).not.toContain("送金額 120,000円");
   });
 
   it("対象年に送金の記録がなければ「生計を一にする事実」欄は空のまま", () => {

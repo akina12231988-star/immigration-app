@@ -86,6 +86,15 @@ export interface FuyoFieldValues {
   checks: string[]; // チェックするチェックボックス名
 }
 
+// 「生計を一にする事実」欄の入力欄（B欄の各行）。欄が低いので文字の大きさを決めて書く
+const FACT_FIELDS: readonly string[] = ["Text120", "Text121", "Text122", "Text123"];
+const FACT_FONT_SIZE = 7.5;
+
+// 「生計を一にする事実」欄に書く文（例: 送金額 380,000円）
+export function fuyoFactText(total: number): string {
+  return `送金額 ${formatYenAmount(total)}`;
+}
+
 // 申告書の各フィールドに入れる値を組み立てる（純粋関数・テスト対象）。
 // 扶養親族は非居住者（国外居住）前提で、控除区分は today 時点の年齢から自動判定する
 export function buildFuyoFieldValues(data: FuyoFormData, today: string): FuyoFieldValues {
@@ -143,7 +152,9 @@ export function buildFuyoFieldValues(data: FuyoFormData, today: string): FuyoFie
     texts["Text22"] = yen(spouse.income);
     dropdowns["Dropdown50"] = "○"; // 非居住者である親族
     texts["Text23"] = spouse.address;
+    // A欄の「生計を一にする事実」は様式で斜線が引かれていて記載不要なので、送金額は書かない
   }
+
 
   // B欄: 控除対象扶養親族（16歳以上）。様式は4行まで
   over16.slice(0, B_ROWS.length).forEach((dep, i) => {
@@ -159,7 +170,7 @@ export function buildFuyoFieldValues(data: FuyoFormData, today: string): FuyoFie
     // 年末調整時は「生計を一にする事実」欄に対象年（1/1〜12/31）の送金合計額を記載する
     if (data.kind === "年末調整時") {
       const total = remittanceTotal(dep.remittances, data.year);
-      if (total > 0) texts[row.fact] = formatYenAmount(total);
+      if (total > 0) texts[row.fact] = fuyoFactText(total);
     }
     if (c.elderly) checks.push(row.cbElderly); // 老人扶養親族（その他）
     if (c.specific) checks.push(row.cbSpecific); // 特定扶養親族
@@ -236,7 +247,8 @@ export async function fillFuyoForm(
     if (!value) continue;
     const field = form.getTextField(name);
     const max = field.acroField.getMaxLength();
-    field.setFontSize(0); // 枠に合わせて自動縮小
+    // 「生計を一にする事実」は欄が低く、自動縮小だと読めないほど小さくなるので大きさを決める
+    field.setFontSize(FACT_FIELDS.includes(name) ? FACT_FONT_SIZE : 0); // それ以外は枠に合わせて自動縮小
     field.setText(max != null ? value.slice(0, max) : value);
   }
   for (const [name, value] of Object.entries(values.dropdowns)) {
