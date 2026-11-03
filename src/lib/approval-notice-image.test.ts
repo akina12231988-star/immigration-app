@@ -4,6 +4,8 @@ import {
   approvalNoticeFileName,
   approvalNoticeHeadline,
   fieldRowsOf,
+  addMonthsYmd,
+  receiveByText,
   buildApprovalNoticeItems,
   chunkApprovalNoticeItems,
   defaultNoticeDate,
@@ -21,12 +23,13 @@ const app = {
   applicationNumber: "EC2109130",
   applicationContent: "在留期間の更新許可" as const,
   approvalDate: "2026-10-17",
+  residenceExpiryAtApply: "2026-11-15",
 };
 
 describe("許可のお知らせ画像のデータ", () => {
   it("申請から1枠ぶんの項目を作る（空は — や未登録にする）", () => {
     const items = buildApprovalNoticeItems(
-      [app, { ...app, id: "a2", organizationName: null, assignee: "", applicationNumber: "", applicationContent: "", approvalDate: undefined }],
+      [app, { ...app, id: "a2", organizationName: null, assignee: "", applicationNumber: "", applicationContent: "", approvalDate: undefined, residenceExpiryAtApply: undefined }],
       { today: "2026-10-18", via: "はがき", custodyNoLabel: (a) => (a.id === "a1" ? "012" : "—"), tantouLabel: (a) => (a.id === "a1" ? "野口" : ""), todoNoLabel: (a) => (a.id === "a1" ? "T-245" : "") },
     );
     expect(items[0]).toEqual({
@@ -42,15 +45,21 @@ describe("許可のお知らせ画像のデータ", () => {
       content: "在留期間の更新許可",
       noticeDate: "2026-10-17",
       via: "はがき",
+      visaExpiry: "2026-11-15",
+      receiveBy: "2027-01-15",
     });
-    expect(items[1]).toMatchObject({ org: "所属機関未設定", todoNo: "—", tantou: "—", assignee: "—", custodyNo: "—", applicationNo: "未登録", content: "未登録", noticeDate: "2026-10-18" });
+    expect(items[1]).toMatchObject({ org: "所属機関未設定", todoNo: "—", tantou: "—", assignee: "—", custodyNo: "—", applicationNo: "未登録", content: "未登録", noticeDate: "2026-10-18", visaExpiry: "未登録", receiveBy: "" });
     // 枠の項目: 1行目に連絡が来た日・TODO番号・担当者、2行目に申請日・申請番号・申請内容、3行目に取次士（薄い赤）・預り番号
     const rows = fieldRowsOf(items[0]);
     expect(rows.map((r) => r.map((f) => f.label))).toEqual([
       ["許可の連絡が来た日", "TODO番号", "担当者"],
       ["申請日", "申請番号", "申請内容"],
-      ["取次士", "預り番号"],
+      ["取次士", "預り番号", "現在のビザ期限日"],
     ]);
+    expect(rows[2][2].value).toBe("2026-11-15");
+    // 受け取り期限（ビザ期限日の2か月後）を赤字で出す。期限日が無ければ出さない
+    expect(receiveByText(items[0])).toBe("※ ビザ期限日から2か月後の 2027-01-15 までに在留カードを受け取ってください");
+    expect(receiveByText(items[1])).toBe("");
     expect(rows[0][1].value).toBe("T-245");
     expect(rows[0][2].value).toBe("野口");
     expect(rows[2][0]).toMatchObject({ value: "木村", tone: "alert" });
@@ -106,5 +115,15 @@ describe("許可のお知らせ画像のデータ", () => {
     expect(wrapByWidth(measure, "あいうえおかきくけこ", 45)).toEqual(["あいうえ", "おかきく", "けこ"]);
     expect(wrapByWidth(measure, "", 45)).toEqual([""]);
     expect(wrapByWidth(measure, "あ\nい", 45)).toEqual(["あ", "い"]);
+  });
+});
+
+describe("addMonthsYmd（ビザ期限日の2か月後）", () => {
+  it("同じ日。その日が無い月は月末", () => {
+    expect(addMonthsYmd("2026-11-15", 2)).toBe("2027-01-15");
+    expect(addMonthsYmd("2026-12-31", 2)).toBe("2027-02-28");
+    expect(addMonthsYmd("2027-12-31", 2)).toBe("2028-02-29");
+    expect(addMonthsYmd("2026-08-31", 2)).toBe("2026-10-31");
+    expect(addMonthsYmd("", 2)).toBe("");
   });
 });
