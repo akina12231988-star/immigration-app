@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Copy,
   Download,
+  ExternalLink,
   FileCheck2,
   Loader2,
   MailWarning,
@@ -276,6 +277,8 @@ export function MonthlyBillingSection({
   // このページで登録した支援代（月額）。organization_id → 数字だけの文字列
   const [orgFees, setOrgFees] = useState<Record<string, string>>({});
   const [feeDraft, setFeeDraft] = useState("");
+  // 案件のリンク（freee販売の機関の案件ページ）。このページで登録した内容を優先して出す
+  const [orgCaseUrls, setOrgCaseUrls] = useState<Record<string, string>>({});
   const [feeSaving, setFeeSaving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -444,6 +447,14 @@ export function MonthlyBillingSection({
   // 特定技能総合保険の負担（会社負担 / 外国人負担）。保険No.の出し分けに使う
   const insuranceBurdenOf = (organizationId: string): string =>
     mergedOrgs.find((o) => o.id === organizationId)?.intake?.ssw_insurance_burden ?? "";
+
+  // 案件のリンク（freee販売のその機関の案件ページ。所属機関の決算・売上タブと同じ内容）
+  const caseUrlOf = (organizationId: string): string =>
+    (
+      orgCaseUrls[organizationId] ??
+      organizations.find((o) => o.id === organizationId)?.intake?.freee_case_url ??
+      ""
+    ).trim();
 
   const orgNameById = useMemo(
     () => new Map(mergedOrgs.map((o) => [o.id, o.name])),
@@ -1483,6 +1494,23 @@ export function MonthlyBillingSection({
     }
   };
 
+  // 案件のリンクを請求書作成の画面から所属機関に登録する（当月許可者リストの「案件」用。
+  // 保存先は所属機関の決算・売上タブの「案件のリンク」と同じ欄）
+  const saveOrgCaseUrl = async (orgId: string, url: string): Promise<boolean> => {
+    setError(null);
+    try {
+      const org = organizations.find((o) => o.id === orgId);
+      await updateOrganization(createClient(), orgId, {
+        intake: { ...(org?.intake ?? {}), freee_case_url: url },
+      });
+      setOrgCaseUrls((prev) => ({ ...prev, [orgId]: url }));
+      return true;
+    } catch (err) {
+      setError(errorMessage(err, "案件のリンクの保存に失敗しました"));
+      return false;
+    }
+  };
+
   const download = async (org?: MonthlyBillingOrg) => {
     setBusy(true);
     setError(null);
@@ -1645,17 +1673,19 @@ export function MonthlyBillingSection({
                         特定技能総合保険の画面を開く
                       </Link>
                     </div>
-                  <table className="w-full min-w-[1080px] border-collapse text-xs">
+                  <table className="w-full min-w-[1240px] border-collapse text-xs">
                     <thead>
                       <tr className="border-b border-border text-left text-muted">
                         <th className="py-1.5 pr-2 font-bold">許可日</th>
                         <th className="py-1.5 pr-2 font-bold">氏名</th>
+                        <th className="py-1.5 pr-2 font-bold">個人票</th>
                         <th className="py-1.5 pr-2 font-bold">所属機関</th>
                         <th className="py-1.5 pr-2 font-bold">定期売上No.</th>
                         <th className="py-1.5 pr-2 font-bold">在留資格</th>
                         <th className="py-1.5 pr-2 font-bold">在留期限</th>
                         <th className="py-1.5 pr-2 font-bold">区分</th>
                         <th className="py-1.5 pr-2 text-right font-bold">支援費請求額</th>
+                        <th className="py-1.5 pr-2 font-bold">案件</th>
                         <th className="py-1.5 pr-2 font-bold">許可売上No.</th>
                         <th className="py-1.5 pr-2 font-bold">保険No.</th>
                         <th className="py-1.5 font-bold">特定技能総合保険</th>
@@ -1682,6 +1712,18 @@ export function MonthlyBillingSection({
                               className="ml-0.5 align-middle"
                             />
                           </td>
+                          {/* 個人票（A4印刷）。許可の確認や会社のファイルに挟む印刷をここから開ける */}
+                          <td className="py-1.5 pr-2">
+                            <Link
+                              href={`/workers/print?worker=${row.worker.id}`}
+                              target="_blank"
+                              className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg border border-border bg-surface px-2 py-1 text-[11px] font-bold text-brand hover:border-brand"
+                              title="この人の個人票（A4印刷）を別のタブで開く"
+                            >
+                              <Printer size={12} />
+                              個人票
+                            </Link>
+                          </td>
                           <td className="py-1.5 pr-2">{org.organizationName}</td>
                           <td className="py-1.5 pr-2 tabular-nums">
                             {/* 定期売上No.: コピーできる。未記入・直したいときはその場で記入して保存 */}
@@ -1699,6 +1741,13 @@ export function MonthlyBillingSection({
                           <td className="py-1.5 pr-2 text-right tabular-nums">
                             {formatSalesYen(row.amount)}
                           </td>
+                          {/* 案件（freee販売のこの機関の案件ページ）。許可売上No.を登録しに行くときにここから開ける。
+                              リンクがまだ無い機関は、ここで貼り付けて保存できる（所属機関にも保存される） */}
+                          <CaseLinkCell
+                            url={caseUrlOf(org.organizationId)}
+                            canEdit={canEdit}
+                            onSave={(v) => saveOrgCaseUrl(org.organizationId, v)}
+                          />
                           {/* 許可売上No.・保険No.。下の所属機関ごとの名簿と同じ売上明細の番号なので、
                               ここで入れると名簿・外国人詳細にも同じ番号が出る */}
                           <SalesNoCell
@@ -3168,6 +3217,117 @@ export function MonthlyBillingSection({
 // 当月許可者リストの定期売上No.の1マス。
 // 番号があればコピーボタン付きで出し、「記入」「編集」を押すとその場で入力して保存できる
 // （保存先は名簿と同じ workers.recurring_sales_no）
+// 案件の1マス（当月許可者リスト）。freee販売のその機関の案件ページを別のタブで開く。
+// リンクがまだ無い機関は「＋案件を登録」でその場で貼り付けて保存できる
+// （保存先は所属機関の決算・売上タブの「案件のリンク」と同じ欄）
+function CaseLinkCell({
+  url,
+  canEdit,
+  onSave,
+}: {
+  url: string;
+  canEdit: boolean;
+  onSave: (url: string) => Promise<boolean>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(url);
+  const [busy, setBusy] = useState(false);
+
+  const start = () => {
+    setDraft(url);
+    setEditing(true);
+  };
+  const save = async () => {
+    const v = draft.trim();
+    // 貼り付けたリンクだけを保存する（http か https で始まるもの）
+    if (!/^https?:\/\//.test(v)) return;
+    setBusy(true);
+    try {
+      if (v === url || (await onSave(v))) setEditing(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <td className="py-1.5 pr-2">
+        <span className="inline-flex items-center gap-1">
+          <input
+            value={draft}
+            autoFocus
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void save();
+              if (e.key === "Escape") setEditing(false);
+            }}
+            placeholder="https://…（案件ページのリンクを貼り付け）"
+            className="w-56 rounded-lg border border-border bg-background px-1.5 py-1 text-xs"
+          />
+          <button
+            type="button"
+            disabled={busy || !/^https?:\/\//.test(draft.trim())}
+            onClick={() => void save()}
+            className="inline-flex items-center gap-1 rounded-lg bg-brand px-2 py-1 text-[11px] font-bold text-brand-foreground disabled:opacity-50"
+          >
+            {busy && <Loader2 size={11} className="animate-spin" />}
+            保存
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => setEditing(false)}
+            className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] font-bold text-muted"
+          >
+            取消
+          </button>
+        </span>
+      </td>
+    );
+  }
+  return (
+    <td className="py-1.5 pr-2">
+      <span className="inline-flex items-center gap-1 whitespace-nowrap">
+        {url ? (
+          <>
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2 py-1 text-[11px] font-bold text-brand hover:border-brand"
+              title="freee販売のこの機関の案件ページを別のタブで開く"
+            >
+              <ExternalLink size={12} />
+              案件
+            </a>
+            {canEdit && (
+              <button
+                type="button"
+                onClick={start}
+                className="rounded-lg border border-border bg-surface px-1.5 py-0.5 text-[10px] font-bold text-muted hover:text-brand"
+                title="案件のリンクを直す"
+              >
+                編集
+              </button>
+            )}
+          </>
+        ) : canEdit ? (
+          <button
+            type="button"
+            onClick={start}
+            className="whitespace-nowrap rounded-lg border border-seal/40 bg-seal/5 px-1.5 py-0.5 text-[10px] font-bold text-seal"
+            title="この機関の案件ページのリンクを貼り付けて保存する（所属機関にも保存されます）"
+          >
+            ＋案件を登録
+          </button>
+        ) : (
+          <span className="text-muted">—</span>
+        )}
+      </span>
+    </td>
+  );
+}
+
 function RecurringSalesNoCell({
   value,
   canEdit,

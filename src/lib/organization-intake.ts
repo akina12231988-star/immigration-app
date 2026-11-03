@@ -248,6 +248,7 @@ export function emptyOrganizationIntake(): OrganizationIntake {
     ssw_insurance_burden: "",
     sales_items: {},
     sales_items_custom: [],
+    freee_case_url: "",
     work_address: "",
     work_contact: "",
     rep_kana: "",

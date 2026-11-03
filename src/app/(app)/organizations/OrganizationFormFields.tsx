@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Printer, Trash2, Upload } from "lucide-react";
+import { ExternalLink, Loader2, Printer, Trash2, Upload } from "lucide-react";
 import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { FileDropArea } from "@/components/ui/FileDropArea";
@@ -1805,6 +1805,27 @@ function IntakeSection({
         </OrgTabPanel>
 
         <OrgTabPanel tab="money">
+        {/* freee販売のこの機関の案件ページ。請求書作成の当月許可者リストの「案件」ボタンで開く。
+            未登録なら請求書作成の画面からも貼り付けて保存できる（保存先はどちらも同じこの欄） */}
+        <IntakeField
+          label="案件のリンク（freee販売のこの機関の案件ページ）"
+          value={intake.freee_case_url}
+          onChange={(v) => setIntake({ freee_case_url: v })}
+          placeholder="例: https://…（案件ページのリンクを貼り付け）"
+          hint="請求書作成 ＞ 当月許可者リストの「案件」ボタンでこのリンクを開きます。"
+          locked={locks.intake("freee_case_url")}
+        />
+        {intake.freee_case_url.trim().startsWith("http") && (
+          <a
+            href={intake.freee_case_url.trim()}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 self-start text-xs font-bold text-brand"
+          >
+            <ExternalLink size={13} />
+            案件を開く
+          </a>
+        )}
         <p className={GROUP_CLASS}>申請種別ごとの売上明細（freee販売）</p>
         <p className={HINT_CLASS}>
           見積書と在留カード受領後の売上登録に入る明細です。はじめは全所属機関共通の既定の明細が入っています
