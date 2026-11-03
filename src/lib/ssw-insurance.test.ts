@@ -132,6 +132,17 @@ describe("sswInsuranceState", () => {
     expect(sswInsuranceState(left, "会社負担", TODAY, false, true)).toBe("cancel");
   });
 
+  it("解約手続きのTODOが未完了なら、退職していなくても解約手続きに出す（特定技能2号へ移行した人など）", () => {
+    // 在籍中で期限に余裕があっても、解約手続きのTODOがあれば解約手続きに出す
+    const moved = worker({ ssw_insurance_expiry_date: "2027-04-07", ssw_insurance_no: "B000000001" });
+    expect(sswInsuranceState(moved, "会社負担", TODAY, false, false, true)).toBe("cancel");
+    // TODOが無ければ今までどおり加入中
+    expect(sswInsuranceState(moved, "会社負担", TODAY, false, false, false)).toBe("active");
+    // 解約できない人（証明書番号が無い）はTODOがあっても解約手続きには出さない
+    const noCert = worker({ ssw_insurance_expiry_date: "2027-04-07", ssw_insurance_no: "" });
+    expect(sswInsuranceState(noCert, "会社負担", TODAY, false, false, true)).toBe("active");
+  });
+
   it("有効期限が過ぎていれば期限切れ", () => {
     expect(
       sswInsuranceState(worker({ ssw_insurance_expiry_date: "2026-09-06" }), "会社負担", TODAY),

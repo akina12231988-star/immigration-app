@@ -167,15 +167,17 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
   );
 
   const rows = useMemo(() => {
+    const todosByWorker = sswTodosByWorker(todos, options);
+    // 未完了の解約手続きのTODOがある人は、在留資格が特定技能2号に変わっていても
+    // （2号へ移行して支援委託が終わった人など）解約が済むまで一覧に残す
+    const hasOpenCancel = (workerId: string) => {
+      const cancel = todosByWorker.get(workerId)?.cancel;
+      return !!cancel && !cancel.done;
+    };
     const targets = onlySsw
-      ? workers.filter((w) => isSswInsuranceTarget(w.residence_status))
+      ? workers.filter((w) => isSswInsuranceTarget(w.residence_status) || hasOpenCancel(w.id))
       : workers;
-    return buildSswInsuranceRows(
-      targets,
-      orgBurden,
-      sswTodosByWorker(todos, options),
-      today,
-    );
+    return buildSswInsuranceRows(targets, orgBurden, todosByWorker, today);
   }, [workers, orgBurden, todos, options, onlySsw, today]);
 
   const shown = useMemo(() => {
