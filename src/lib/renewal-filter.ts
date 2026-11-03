@@ -37,23 +37,43 @@ export function underReviewWorkerIds(applications: Application[]): string[] {
   ];
 }
 
+// つなぎのビザ（特定技能への移行・更新を待つあいだの特定活動。移行準備・以降準備など）か。
+// このビザの許可がおりた人は、前の「審査中」の文字が残っていてもバッジを出さないのに使う
+export function isBridgeVisa(residenceStatus: string | null | undefined): boolean {
+  const s = (residenceStatus ?? "").normalize("NFKC");
+  return s.includes("特定活動") && s.includes("準備");
+}
+
 // 青い「審査中」のバッジを出すか（外国人管理の一覧のカードと、外国人詳細の見出しで同じ判定）。
 //  ・入管で審査中の申請がある
 //  ・在留更新の状況が「審査中」
 //  ・只今の状況（経過メモ。未入力なら自動表示の文）に「審査中」と書いてある
+// ただし、特定活動（移行準備など）の許可がおりている人には、文字の「審査中」ではバッジを出さない。
+// つなぎのビザの許可を記録したあとも、前に入れた「在留更新の状況」や「只今の状況」の
+// 「審査中」が残ってバッジが点きつづけることがあるため。
+// 入管で審査中の申請が登録されているときは、これまでどおり出す
 export function isWorkerInReview(
-  worker: { residence_renewal_status?: string | null; current_situation?: string | null },
+  worker: {
+    residence_status?: string | null;
+    residence_renewal_status?: string | null;
+    current_situation?: string | null;
+  },
   situationShown: string, // 画面に出ている只今の状況（入力があればそれ、無ければ自動表示の文）
   hasInReviewApplication: boolean, // 入管で審査中の申請があるか
 ): boolean {
   if (hasInReviewApplication) return true;
+  if (isBridgeVisa(worker.residence_status)) return false;
   if (worker.residence_renewal_status === "審査中") return true;
   return /審査中/.test(situationShown || worker.current_situation || "");
 }
 
 // 外国人詳細の見出しに青い「審査中」を出すか（その人の申請の一覧から判定する）
 export function workerShowsInReview(
-  worker: { residence_renewal_status?: string | null; current_situation?: string | null },
+  worker: {
+    residence_status?: string | null;
+    residence_renewal_status?: string | null;
+    current_situation?: string | null;
+  },
   situationShown: string,
   applications: Pick<Application, "status" | "approved" | "withdrawnOn">[],
 ): boolean {
