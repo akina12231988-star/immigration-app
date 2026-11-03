@@ -3,7 +3,8 @@ import type { Application } from "@/types/application";
 // 「許可のお知らせ」画像。
 //
 // 入管から許可の連絡（はがき・通知書・メール）が来た申請を複数選び、
-// 1人1枠で「連絡が来た日・名前・所属機関・TODO番号・担当者・申請日・申請番号・申請内容・取次士・預り番号」を
+// 1人1枠で「連絡が来た日・名前・所属機関・TODO番号・担当者・申請日・申請番号・申請内容・取次士・預り番号・
+// 現在のビザ期限日」と、赤字の「ビザ期限日から2か月後の○○までに在留カードを受け取ってください」を
 // 並べた1枚の画像（PNG）にする。人数が多いときは数枚に分け、右上に「許可人数10名（1枚目／2枚）」と出す。Messenger のグループに貼って、まとめて知らせるためのもの。
 // 画像はブラウザの Canvas だけで描く（サーバーは使わない）。
 //
@@ -30,6 +31,29 @@ export interface ApprovalNoticeItem {
   content: string; // 申請内容（空なら「未登録」）
   noticeDate: string; // 許可の連絡が来た日
   via: string; // はがき / メール など（空なら出さない）
+  visaExpiry: string; // 現在のビザ期限日（申請時点の在留期限。空なら「未登録」）
+  receiveBy: string; // 在留カードを受け取る期限（ビザ期限日の2か月後。期限日が無ければ空）
+}
+
+// 在留カードの受け取り期限は、現在のビザ期限日から何か月後か
+// （審査中に期限が来ても、期限日から2か月までは在留できる特例期間の終わり）
+export const RECEIVE_BY_MONTHS = 2;
+
+// YYYY-MM-DD の n か月後の同じ日。その日が無い月は月末にする（12-31 の2か月後 → 2-28／2-29）
+export function addMonthsYmd(ymd: string, n: number): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+  if (!m) return "";
+  const total = Number(m[1]) * 12 + (Number(m[2]) - 1) + n;
+  const y = Math.floor(total / 12);
+  const mo = (total % 12) + 1;
+  const last = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+  const d = Math.min(Number(m[3]), last);
+  return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+// 赤字で出す受け取り期限の文（期限日が無ければ空）
+export function receiveByText(item: Pick<ApprovalNoticeItem, "receiveBy">): string {
+  return item.receiveBy ? `※ ビザ期限日から${RECEIVE_BY_MONTHS}か月後の ${item.receiveBy} までに在留カードを受け取ってください` : "";
 }
 
 // 人ごとの「連絡が来た日・手段」（まとめて決めた値を人ごとに直せる）
@@ -48,6 +72,7 @@ export type ApprovalNoticeSource = Pick<
   | "applicationNumber"
   | "applicationContent"
   | "approvalDate"
+  | "residenceExpiryAtApply"
 >;
 
 const dash = (v: string | null | undefined, empty = "—"): string => (v && v.trim() ? v.trim() : empty);
@@ -84,6 +109,8 @@ export function buildApprovalNoticeItems(
       content: dash(a.applicationContent, "未登録"),
       noticeDate: o.noticeDate || defaultNoticeDate(a, opts.today),
       via: o.via ?? opts.via,
+      visaExpiry: dash(a.residenceExpiryAtApply, "未登録"),
+      receiveBy: a.residenceExpiryAtApply ? addMonthsYmd(a.residenceExpiryAtApply, RECEIVE_BY_MONTHS) : "",
     };
   });
 }
@@ -179,7 +206,7 @@ interface Field {
 // 項目の並び（行ごと）。
 //   1行目: 連絡が来た日・TODO番号・担当者（申請準備のTODO）
 //   2行目: 申請日・申請番号・申請内容
-//   3行目: 取次士（薄い赤）・預り番号
+//   3行目: 取次士（薄い赤）・預り番号・現在のビザ期限日
 export function fieldRowsOf(item: ApprovalNoticeItem): Field[][] {
   const notice = item.via ? `${item.noticeDate}（${item.via}）` : item.noticeDate;
   return [
@@ -196,6 +223,7 @@ export function fieldRowsOf(item: ApprovalNoticeItem): Field[][] {
     [
       { label: "取次士", value: item.assignee, tone: "alert" },
       { label: "預り番号", value: item.custodyNo },
+      { label: "現在のビザ期限日", value: item.visaExpiry },
     ],
   ];
 }
@@ -220,8 +248,13 @@ function cardLayout(ctx: Ctx, item: ApprovalNoticeItem, innerX: number, innerW: 
   ctx.font = `22px ${FONT}`;
   const orgLines = wrapByWidth((s) => ctx.measureText(s).width, item.org, innerW);
   const headH = nameLines.length * 40 + orgLines.length * 28 + 4;
-  const height = 20 + headH + 14 + rowHeights.reduce((n, h) => n + h, 0) + 10 * (rowHeights.length - 1) + 18;
-  return { rows, rowHeights, nameLines, orgLines, headH, height, gap };
+  // いちばん下の赤字（受け取り期限）
+  ctx.font = `bold 22px ${FONT}`;
+  const receiveLines = wrapByWidth((s) => ctx.measureText(s).width, receiveByText(item), innerW);
+  const receiveH = receiveByText(item) ? 12 + receiveLines.length * 30 : 0;
+  const height =
+    20 + headH + 14 + rowHeights.reduce((n, h) => n + h, 0) + 10 * (rowHeights.length - 1) + receiveH + 18;
+  return { rows, rowHeights, nameLines, orgLines, headH, height, gap, receiveLines };
 }
 
 export interface ApprovalNoticeDrawOptions {
@@ -344,7 +377,7 @@ export function drawApprovalNoticeImage(
     }
     yy = y + 20 + l.headH + 14;
 
-    // 項目（3列 × 2行 ＋ 取次士・預り番号の1行）
+    // 項目（3列 × 3行。3行目は取次士・預り番号・現在のビザ期限日）
     l.rows.forEach((row, ri) => {
       const rh = l.rowHeights[ri];
       row.forEach((f, ci) => {
@@ -361,6 +394,17 @@ export function drawApprovalNoticeImage(
       });
       yy += rh + 10;
     });
+
+    // いちばん下に赤字で受け取り期限（ビザ期限日の2か月後）
+    if (receiveByText(item)) {
+      yy += 2;
+      ctx.fillStyle = RED_FG;
+      ctx.font = `bold 22px ${FONT}`;
+      for (const line of l.receiveLines) {
+        ctx.fillText(line, innerX, yy);
+        yy += 30;
+      }
+    }
 
     y += l.height + 18;
   });
