@@ -907,6 +907,37 @@ export function MonthlyBillingSection({
     };
   }, []);
 
+  // 申請準備の「あっせんについて」で「無し」と理由を登録した人（todos.assen / assen_note）。
+  // この人たちは求職一覧であっせんを記録する流れではないので、
+  // 紹介手数料のマスには求職一覧への案内の代わりにその理由を出す
+  const [assenNoneNotes, setAssenNoneNotes] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve().then(() =>
+      createClient()
+        .from("todos")
+        .select("worker_id, assen_note, updated_at")
+        .eq("assen", "なし")
+        .is("deleted_at", null)
+        .order("updated_at", { ascending: false })
+        .then(({ data, error }) => {
+          // 読めなくても名簿は使えるようにする（その場合は従来どおり求職一覧への案内を出す）
+          if (cancelled || error) return;
+          const map: Record<string, string> = {};
+          for (const r of (data ?? []) as { worker_id: string | null; assen_note: string | null }[]) {
+            const id = r.worker_id ?? "";
+            const note = (r.assen_note ?? "").trim();
+            if (!id || !note || map[id]) continue;
+            map[id] = note; // いちばん新しい申請準備の理由を使う
+          }
+          setAssenNoneNotes(map);
+        }),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // その機関の行に出す紹介手数料（機関が合う行 → 無ければ機関未設定の古い行）
   const feeFor = (workerId: string, orgId: string): WorkerReferralFee | null =>
     referralFees[referralWorkerOrgKey(workerId, orgId)] ??
@@ -1818,6 +1849,7 @@ export function MonthlyBillingSection({
                             fee={feeFor(row.worker.id, org.organizationId)}
                             canEdit={canEdit}
                             active
+                            assenNoneReason={assenNoneNotes[row.worker.id]}
                             renewal={
                               (permitContents[row.worker.id] ?? "").includes("更新") ||
                               /更新$/.test((row.worker.residence_status ?? "").trim())
@@ -3186,6 +3218,7 @@ export function MonthlyBillingSection({
                               permitInMonth(row.worker.residence_permit_date) ||
                               row.transferredOut === true
                             }
+                            assenNoneReason={assenNoneNotes[row.worker.id]}
                             renewal={/更新$/.test((row.worker.residence_status ?? "").trim())}
                             busy={
                               referralBusyKey ===
@@ -3884,6 +3917,7 @@ function ReferralNoCell({
   busy,
   applicationState,
   renewal = false,
+  assenNoneReason,
   today,
   onSave,
   onRecordPaid,
@@ -3897,6 +3931,9 @@ function ReferralNoCell({
   applicationState: "has" | "none" | "unknown";
   // 在留資格が「〇〇更新」（更新許可）の月。更新はあっせんではないので紹介手数料は無い
   renewal?: boolean;
+  // 申請準備の「あっせんについて」で「無し」と登録した理由。
+  // あるときは求職一覧への案内の代わりにこの理由を出す（あっせんを記録する流れの人ではないため）
+  assenNoneReason?: string;
   today: string; // 入金日の初期値
   onSave: (value: string) => void;
   // 入金日を記録する（null で取り消し）。手数料管理簿の入金年月日にそのまま入る
@@ -3974,18 +4011,28 @@ function ReferralNoCell({
             className="w-32 rounded-lg border border-border bg-background px-1.5 py-1 text-xs"
           />
         )}
-        {/* 台帳に記録がまだ無い人への案内。あっせんの記録（求職一覧）→台帳に追加、の順が正しい流れ */}
+        {/* 台帳に記録がまだ無い人への案内。あっせんの記録（求職一覧）→台帳に追加、の順が正しい流れ。
+            申請準備で「あっせん無し」と理由を登録している人は、求職一覧への案内の代わりに理由を出す */}
         {!fee &&
           (applicationState === "none" ? (
-            <Link
-              href="/jobs"
-              className="text-[10px] font-bold leading-tight text-seal underline underline-offset-2"
-              title="番号の前に、求職一覧であっせん（応募・採用）の記録をしてください"
-            >
-              あっせんの記録がありません。
-              <br />
-              まずは求職一覧で記録から →
-            </Link>
+            assenNoneReason ? (
+              <span
+                className="text-[10px] leading-tight text-muted"
+                title="申請準備の「あっせんについて」で登録した理由です"
+              >
+                {assenNoneReason}
+              </span>
+            ) : (
+              <Link
+                href="/jobs"
+                className="text-[10px] font-bold leading-tight text-seal underline underline-offset-2"
+                title="番号の前に、求職一覧であっせん（応募・採用）の記録をしてください"
+              >
+                あっせんの記録がありません。
+                <br />
+                まずは求職一覧で記録から →
+              </Link>
+            )
           ) : applicationState === "has" ? (
             <Link
               href="/jobs"
