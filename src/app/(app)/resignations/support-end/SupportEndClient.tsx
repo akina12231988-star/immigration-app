@@ -28,6 +28,10 @@ import {
 import type { WorkerForSupportEnd } from "@/lib/supabase/queries/workers";
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
 import { fetchNextTodoNo } from "@/lib/supabase/queries/todos";
+import {
+  ensureSswCancelTodoOnLeaving,
+  type SswCancelTodoResult,
+} from "@/lib/supabase/queries/ssw-insurance";
 import { messengerWebUrl } from "@/lib/messenger-link";
 import { notionAppUrl } from "@/lib/notion-link";
 import { normalizeOrganizationIntake } from "@/lib/organization-intake";
@@ -42,6 +46,7 @@ import {
   SUPPORT_END_OTHER_CODE,
   SUPPORT_END_OTHER_MAX,
   endDateFromPermitDate,
+  isSupportEnd2goMigration,
   otherReasonTooLong,
   supportEndMajor,
   supportEndMinor,
@@ -90,6 +95,8 @@ export function SupportEndClient({
   const [busyDelete, setBusyDelete] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // 特定技能総合保険の解約手続きのTODOを作ったときの知らせ（2号移行の人）
+  const [sswNotice, setSswNotice] = useState<string | null>(null);
   // 進み具合は3つのどれかを必ず選ぶ（既定は準備中＝これからやる分）
   const [statusFilter, setStatusFilter] = useState<ResignationStatus>("準備中");
   // 所属機関の名称での絞り込み
@@ -104,6 +111,18 @@ export function SupportEndClient({
   }
   const patchRow = (id: string, patch: SupportEndPatch) =>
     setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+
+  // 特定技能2号へ移行した人は、特定技能総合保険（1号のあいだの保険）の解約手続きが必要。
+  // 作った（またはすでにあった）解約手続きのTODOを画面で知らせる
+  const showSswNotice = (workerName: string, result: SswCancelTodoResult | undefined) => {
+    if (!result || result.outcome === "notInsured") return;
+    const name = workerName || "この外国人";
+    setSswNotice(
+      result.outcome === "created"
+        ? `特定技能2号へ移行のため、${name}さんの特定技能総合保険の解約手続きのTODO（${result.todoNo}）を作りました。TODO ＞ 特定技能総合保険の「解約手続き」から進めてください。`
+        : `${name}さんの特定技能総合保険の解約手続きのTODO（${result.todoNo}）はすでにあります。TODO ＞ 特定技能総合保険の「解約手続き」から進めてください。`,
+    );
+  };
 
   const statusCounts = useMemo(() => countByAdhocStatus(rows), [rows]);
   const filtered = useMemo(
@@ -145,6 +164,14 @@ export function SupportEndClient({
         throw new Error(body?.error ?? "様式の生成に失敗しました");
       }
       downloadBlob(await res.blob(), `参考様式第3-3-2号_${row.workers?.name ?? "届出"}.xlsx`);
+      // 2号移行の届出書を作ったら、特定技能総合保険の解約手続きのTODOも（無ければ）作る。
+      // 保険に加入していない人には作らない。失敗しても届出書の作成は止めない
+      if (isSupportEnd2goMigration(row)) {
+        const result = await ensureSswCancelTodoOnLeaving(createClient(), row.worker_id).catch(
+          () => undefined,
+        );
+        showSswNotice(row.workers?.name ?? "", result);
+      }
       router.refresh();
     } catch (err) {
       setError(errorMessage(err, "様式の生成に失敗しました"));
@@ -170,6 +197,20 @@ export function SupportEndClient({
       {error && (
         <p role="alert" className="rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
           {error}
+        </p>
+      )}
+
+      {/* 特定技能総合保険の解約手続きのTODOを作った知らせ（2号移行の人） */}
+      {sswNotice && (
+        <p className="flex items-start justify-between gap-2 rounded-lg bg-brand/10 px-3 py-2 text-sm text-brand">
+          <span>{sswNotice}</span>
+          <button
+            type="button"
+            onClick={() => setSswNotice(null)}
+            className="shrink-0 text-xs font-bold underline"
+          >
+            閉じる
+          </button>
         </p>
       )}
 
@@ -334,9 +375,10 @@ export function SupportEndClient({
             setCreating(false);
             setEditing(null);
           }}
-          onSaved={() => {
+          onSaved={(ssw) => {
             setCreating(false);
             setEditing(null);
+            if (ssw) showSswNotice(ssw.workerName, ssw.result);
             router.refresh();
           }}
         />
@@ -368,7 +410,8 @@ function SupportEndDialog({
   organizations: Organization[];
   editing: SupportEndWithRefs | null;
   onClose: () => void;
-  onSaved: () => void;
+  // 2号移行の人は特定技能総合保険の解約手続きのTODOを一緒に作り、結果を親に渡して知らせる
+  onSaved: (ssw?: { workerName: string; result: SswCancelTodoResult }) => void;
 }) {
   const [workerId, setWorkerId] = useState(editing?.worker_id ?? "");
   const [useRegisteredOrg, setUseRegisteredOrg] = useState(!editing);
@@ -486,7 +529,16 @@ function SupportEndDialog({
       } else {
         await insertSupportEnd(supabase, input);
       }
-      onSaved();
+      // 特定技能2号へ移行した人は、特定技能総合保険（1号のあいだの保険）の解約手続きのTODOも作る。
+      // 保険に加入していない人には作らない。未適用の環境でも記録の保存は止めない
+      let ssw: { workerName: string; result: SswCancelTodoResult } | undefined;
+      if (isSupportEnd2goMigration(input)) {
+        const result = await ensureSswCancelTodoOnLeaving(supabase, workerId).catch(
+          () => undefined,
+        );
+        if (result) ssw = { workerName: worker?.name ?? "", result };
+      }
+      onSaved(ssw);
     } catch (err) {
       setError(dbErrorMessage(err, MIGRATION, "保存に失敗しました"));
       setBusy(false);

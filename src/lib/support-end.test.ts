@@ -6,6 +6,7 @@ import {
   SUPPORT_END_MAJOR_REASONS,
   SUPPORT_END_MINOR_REASONS,
   endDateFromPermitDate,
+  isSupportEnd2goMigration,
   otherReasonTooLong,
   supportEndMajor,
   supportEndMinor,
@@ -49,6 +50,36 @@ describe("終了の事由", () => {
     expect(supportEndMinor("登録取消し")?.majors).toEqual(["支援機関都合"]);
     // その他はどの大分類でも選べる
     expect(supportEndMinor("その他")?.majors).toEqual([]);
+  });
+});
+
+describe("isSupportEnd2goMigration", () => {
+  it("2号の許可日が入っていれば移行とみなす", () => {
+    expect(
+      isSupportEnd2goMigration({ permit_date_2go: "2026-10-26", minor_reason: "期間満了", other_reason: "" }),
+    ).toBe(true);
+  });
+
+  it("許可日が無くても「その他」の理由に2号・移行があれば移行とみなす（全角半角の揺れもそろえる）", () => {
+    expect(
+      isSupportEnd2goMigration({
+        permit_date_2go: null,
+        minor_reason: SUPPORT_END_DEFAULT_MINOR,
+        other_reason: SUPPORT_END_DEFAULT_OTHER_REASON,
+      }),
+    ).toBe(true);
+    expect(
+      isSupportEnd2goMigration({ permit_date_2go: "", minor_reason: "その他", other_reason: "特定技能2号に移行" }),
+    ).toBe(true);
+  });
+
+  it("移行でない終わり方（経営上の都合など）は移行とみなさない", () => {
+    expect(
+      isSupportEnd2goMigration({ permit_date_2go: null, minor_reason: "経営上の都合", other_reason: "" }),
+    ).toBe(false);
+    expect(
+      isSupportEnd2goMigration({ permit_date_2go: "", minor_reason: "その他", other_reason: "帰国する為" }),
+    ).toBe(false);
   });
 });
 

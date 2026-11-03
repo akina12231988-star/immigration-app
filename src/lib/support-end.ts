@@ -73,3 +73,18 @@ export const SUPPORT_END_OTHER_MAX = 20;
 export function otherReasonTooLong(reason: string): boolean {
   return reason.trim().length > SUPPORT_END_OTHER_MAX;
 }
+
+// 特定技能2号へ移行したための支援委託終了か。
+// 2号の許可日が入っているか、「その他」の理由に「2号」と「移行」の両方が入っていれば移行とみなす
+// （既定の理由「特定技能２号へ移行した為」のほか、書き方の揺れにも合うように文字で見る）。
+// 移行の人は特定技能総合保険（1号のあいだの保険）の解約手続きが必要になる
+export function isSupportEnd2goMigration(r: {
+  permit_date_2go?: string | null;
+  minor_reason: string;
+  other_reason: string;
+}): boolean {
+  if ((r.permit_date_2go ?? "").trim()) return true;
+  if (r.minor_reason !== SUPPORT_END_OTHER_CODE) return false;
+  const s = (r.other_reason ?? "").normalize("NFKC");
+  return s.includes("2号") && s.includes("移行");
+}

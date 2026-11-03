@@ -764,7 +764,7 @@ export function SswCancelTable({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
-        <p className="flex-1 text-sm font-black">退職した人の解約手続き</p>
+        <p className="flex-1 text-sm font-black">退職した人・特定技能2号へ移行した人の解約手続き</p>
         <button
           type="button"
           disabled={pickedCount === 0 || exporting}
@@ -788,7 +788,7 @@ export function SswCancelTable({
         )}
       </div>
       <p className="text-[11px] leading-relaxed text-muted">
-        被保険者証明書番号と有効期限が入っていて、有効期限から4か月たっていない人だけを出しています（それより後は解約できません）。解約の手続きが済んだら「解約済み」を押してください。
+        被保険者証明書番号と有効期限が入っていて、有効期限から4か月たっていない人だけを出しています（それより後は解約できません）。特定技能2号へ移行した人は、随時報告書の支援委託終了を記録すると解約手続きのTODOが自動で入ってここに出ます（退職日の欄は空のまま）。解約の手続きが済んだら「解約済み」を押してください。
         届出書に入れる人にチェックを付けて出力すると、変更（解約）届出書（エクセル）に被保険者番号・氏名・変更日（退職日）・変更理由「③自己都合」の○が入り、合計はチェックした人数になります（一度に{SSW_CANCEL_FORM_MAX_ROWS}人まで）。
         出力した人の経過は自動で「{SSW_CANCEL_MAILED_STATUS}」になり、続けて投函日と追跡番号をまとめて入れられます。
       </p>
