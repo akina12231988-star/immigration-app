@@ -418,6 +418,8 @@ export function PrintClient({
               forCompany={forCompany}
               /* その所属機関にいた間に受けた許可（在留資格の履歴） */
               history={individual ? (selectedPeriod?.history ?? currentHistory) : []}
+              /* 過去の在籍期間の個人票では、画像の見出しを「当時の〜」にする */
+              pastPeriod={Boolean(selectedPeriod)}
               /* 過去の在籍期間はその期間の欄（下の入力欄）で直す。
                  ここで直すと今の情報が書き換わってしまうため編集は出さない */
               canEdit={canEdit && !selectedPeriod}
@@ -552,6 +554,7 @@ function WorkerSheet({
   printDate,
   forCompany,
   history = [],
+  pastPeriod = false,
   canEdit,
   onSaved,
 }: {
@@ -560,6 +563,7 @@ function WorkerSheet({
   printDate: string;
   forCompany: boolean;
   history?: VisaHistoryRow[]; // その所属機関にいた間に受けた許可（在留資格の履歴）
+  pastPeriod?: boolean; // 過去の在籍期間の個人票か（画像の見出しを「当時の〜」にする）
   canEdit: boolean;
   onSaved: () => void; // 保存後にページのデータを読み直す
 }) {
@@ -837,18 +841,19 @@ function WorkerSheet({
         </div>
       )}
 
-      {/* 最新在留カード画像・指定書画像（下半分を目いっぱい使う）。
+      {/* 現在の在留カード画像・指定書画像（下半分を目いっぱい使う）。
+          外国人詳細の書類タブで手で選んだ「現在の画像」があればそれ、無ければいちばん新しい画像。
           編集モードではクリック / ドロップで差し替えできる（履歴に追記される） */}
       <div className="mt-6 grid grid-cols-2 gap-4">
         <DocBox
-          label="最新 在留カード"
+          label={pastPeriod ? "当時の在留カード" : "現在の在留カード"}
           url={worker.residenceCardUrl}
           busy={uploading === "在留カード"}
           inputRef={cardInputRef}
           edit={editing ? { onFile: (f) => void uploadImage("在留カード", f) } : undefined}
         />
         <DocBox
-          label="最新 指定書"
+          label={pastPeriod ? "当時の指定書" : "現在の指定書"}
           url={worker.designationUrl}
           busy={uploading === "指定書"}
           inputRef={designationInputRef}

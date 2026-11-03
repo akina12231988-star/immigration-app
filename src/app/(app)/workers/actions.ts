@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { workerDocFileName } from "@/lib/worker-doc-name";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { dbErrorMessage } from "@/lib/errors";
+import { sortDocsByPeriodDate } from "@/lib/worker-doc-periods";
 
 // 外国人の顔写真・最新書類画像は非公開バケット app-files に保存し、署名付きURLで表示する。
 const BUCKET = "app-files";
@@ -154,6 +155,11 @@ export async function registerWorkerDoc(
         "登録に失敗しました",
       ),
     };
+  }
+  // 「現在」の画像として登録（差し替え）したときは、手で選んだ「現在の画像」（0210）の指定を外す
+  // （古い選択が残って、差し替えた新しい画像が個人票に出ないのを防ぐ。0210 未適用の環境ではエラーを無視）
+  if (!effectiveOn) {
+    await admin.from("worker_current_docs").delete().eq("worker_id", workerId).eq("kind", kind);
   }
   return { ok: true };
 }
@@ -333,6 +339,7 @@ export interface WorkerDocView {
   createdAt: string;
   fromApplication?: boolean; // 申請登録時の画像（差し替え前の現データ）
   externalUrl?: string; // Google ドライブなどのリンクで登録した書類（0155）。ファイルの実体は無い
+  currentSelected?: boolean; // 手で選んだ「現在の画像」（0210）。個人票などにこの画像が出る
 }
 
 // 雇用契約書・雇用条件書を Google ドライブなどのリンクで登録する（ストレージは使わない・0155）
@@ -486,32 +493,139 @@ export async function listWorkerDocs(workerId: string): Promise<WorkerDocView[]>
 
   // 登録の新しい順（外国人詳細で登録した画像と申請の画像を一緒に並べる）
   result.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+  // 手で選んだ「現在の画像」（0210）に印を付ける（未適用の環境では無いものとして進む）
+  const { data: selections } = await admin
+    .from("worker_current_docs")
+    .select("kind, worker_document_id, application_file_id")
+    .eq("worker_id", workerId);
+  for (const s of (selections as
+    | { kind: string; worker_document_id: string | null; application_file_id: string | null }[]
+    | null) ?? []) {
+    const id = s.worker_document_id ?? (s.application_file_id ? `app-${s.application_file_id}` : null);
+    const hit = id ? result.find((r) => r.id === id && r.kind === s.kind) : undefined;
+    if (hit) hit.currentSelected = true;
+  }
   return result;
 }
 
-// 外国人の最新の在留カード画像・指定書画像の署名付きURL。
-// worker_documents（外国人管理で差し替えたもの）を優先し、無ければ申請の application_files を使う。
-export async function getWorkerLatestDocUrls(
+// 個人票などに出す「現在」の画像を手で選ぶ（0210）。viewId は listWorkerDocs の id
+// （worker_documents のID、申請登録時の画像は app-<application_files.id>）。
+// viewId が null なら選択を外して自動（いちばん新しい画像）に戻す
+export async function setWorkerCurrentDoc(
   workerId: string,
-): Promise<{ residenceCardUrl: string; designationUrl: string }> {
-  const me = await getMyProfile();
+  kind: "在留カード" | "照合結果" | "指定書",
+  viewId: string | null,
+): Promise<{ ok: true } | Err> {
+  if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
   const admin = createAdminClient();
-  if (!me || !admin) return { residenceCardUrl: "", designationUrl: "" };
+  if (!admin) return { ok: false, message: "サーバー設定エラー" };
 
-  const { data: apps } = await admin
-    .from("immigration_applications")
-    .select("id")
-    .eq("worker_id", workerId);
-  const appIds = ((apps as { id: string }[]) ?? []).map((a) => a.id);
-
-  async function signedFor(path: string | undefined): Promise<string> {
-    if (!path) return "";
-    const { data } = await admin!.storage.from(BUCKET).createSignedUrl(path, TTL);
-    return data?.signedUrl ?? "";
+  if (!viewId) {
+    const { error } = await admin
+      .from("worker_current_docs")
+      .delete()
+      .eq("worker_id", workerId)
+      .eq("kind", kind);
+    if (error) {
+      return { ok: false, message: dbErrorMessage(error, "0210_worker_current_docs.sql", "解除に失敗しました") };
+    }
+    return { ok: true };
   }
 
-  // 在留カード・指定書で「現在」にした期間（0199）。その期間に結び付いた画像が今の在留カード
-  // （0197/0199 未適用の環境では無いものとして進む）
+  let row: {
+    worker_id: string;
+    kind: string;
+    worker_document_id: string | null;
+    application_file_id: string | null;
+  };
+  if (viewId.startsWith("app-")) {
+    // 申請登録時の画像。本人の申請のファイルかを確かめてから保存する
+    const fileId = viewId.slice(4);
+    const { data: f } = await admin
+      .from("application_files")
+      .select("id, kind, application_id")
+      .eq("id", fileId)
+      .maybeSingle();
+    const file = f as { id: string; kind: string; application_id: string } | null;
+    if (!file || file.kind !== kind) return { ok: false, message: "画像が見つかりません" };
+    const { data: app } = await admin
+      .from("immigration_applications")
+      .select("worker_id")
+      .eq("id", file.application_id)
+      .maybeSingle();
+    if ((app as { worker_id: string } | null)?.worker_id !== workerId) {
+      return { ok: false, message: "画像が見つかりません" };
+    }
+    row = { worker_id: workerId, kind, worker_document_id: null, application_file_id: fileId };
+  } else {
+    const { data: d } = await admin
+      .from("worker_documents")
+      .select("id")
+      .eq("id", viewId)
+      .eq("worker_id", workerId)
+      .eq("kind", kind)
+      .maybeSingle();
+    if (!d) return { ok: false, message: "画像が見つかりません" };
+    row = { worker_id: workerId, kind, worker_document_id: viewId, application_file_id: null };
+  }
+  const { error } = await admin
+    .from("worker_current_docs")
+    .upsert({ ...row, updated_at: new Date().toISOString() }, { onConflict: "worker_id,kind" });
+  if (error) {
+    return { ok: false, message: dbErrorMessage(error, "0210_worker_current_docs.sql", "保存に失敗しました") };
+  }
+  return { ok: true };
+}
+
+// 「現在」の画像（個人票などに出す1枚）の中身。外国人詳細の「現在」タブの表示と合わせる
+interface CurrentDocRow {
+  storage_path: string;
+  mime_type: string | null;
+  external_url: string | null;
+  created_at: string;
+  fromApplication: boolean;
+}
+
+// 「現在」の在留カード・照合結果・指定書を1件決める。
+// 手で選んだ画像（worker_current_docs・0210）があればそれを最優先。
+// 無ければ、外国人詳細の「現在」タブと同じ考え方で、
+// 「現在」に出る画像（worker_documents のうち過去の期間に振り分けていないもの＋申請登録時の
+// application_files）を「いつ時点の書類か」の新しい順に並べて、いちばん新しいものを返す。
+// （以前は worker_documents を一律で優先していたため、申請の許可情報で新しい在留カードを
+// 登録しても、昔に外国人詳細で登録した画像が個人票に出続けることがあった）
+async function currentDocRowFor(
+  admin: Admin,
+  workerId: string,
+  kind: string,
+): Promise<CurrentDocRow | null> {
+  // 手で選んだ「現在の画像」（0210 未適用の環境では無いものとして自動選択に進む）
+  const { data: sel } = await admin
+    .from("worker_current_docs")
+    .select("worker_document_id, application_file_id")
+    .eq("worker_id", workerId)
+    .eq("kind", kind)
+    .maybeSingle();
+  const s = sel as { worker_document_id: string | null; application_file_id: string | null } | null;
+  if (s?.worker_document_id) {
+    const { data } = await admin
+      .from("worker_documents")
+      .select("storage_path, mime_type, external_url, created_at")
+      .eq("id", s.worker_document_id)
+      .maybeSingle();
+    const d = data as Omit<CurrentDocRow, "fromApplication"> | null;
+    if (d) return { ...d, fromApplication: false };
+  } else if (s?.application_file_id) {
+    const { data } = await admin
+      .from("application_files")
+      .select("storage_path, created_at")
+      .eq("id", s.application_file_id)
+      .maybeSingle();
+    const d = data as { storage_path: string; created_at: string } | null;
+    if (d) return { ...d, mime_type: null, external_url: null, fromApplication: true };
+  }
+
+  // 「現在」にした期間（0199）。その期間に結び付いた画像は「現在」の候補に入れる
   const { data: currentPeriod } = await admin
     .from("worker_document_periods")
     .select("id")
@@ -521,53 +635,95 @@ export async function getWorkerLatestDocUrls(
     .maybeSingle();
   const currentPeriodId = (currentPeriod as { id: string } | null)?.id ?? null;
 
-  async function latest(kind: string): Promise<string> {
-    // 「現在」にした期間に結び付いた画像を最優先（「この期間に登録」した画像は effective_on に
-    // 期間の開始日が入るので、下の「effective_on が空」の条件では拾えない）
-    if (currentPeriodId) {
-      const { data: cur } = await admin!
-        .from("worker_documents")
-        .select("storage_path")
-        .eq("worker_id", workerId)
-        .eq("kind", kind)
-        .eq("period_id", currentPeriodId)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      const curPath = (cur as { storage_path: string } | null)?.storage_path;
-      if (curPath) return signedFor(curPath);
-    }
+  const { data: docsData } = await admin
+    .from("worker_documents")
+    .select("storage_path, mime_type, external_url, effective_on, period_id, created_at")
+    .eq("worker_id", workerId)
+    .eq("kind", kind)
+    .order("created_at", { ascending: false });
+  const docRows = (
+    (docsData as
+      | {
+          storage_path: string;
+          mime_type: string | null;
+          external_url: string | null;
+          effective_on: string | null;
+          period_id?: string | null;
+          created_at: string;
+        }[]
+      | null) ?? []
+  ).filter(
+    (r) =>
+      // リンク登録（実体の無い行）は個人票に出せないので候補にしない
+      !(r.external_url ?? "").trim() &&
+      // 追加した期間に結び付いた画像はその期間が「現在」のときだけ。
+      // それ以外は過去の期間に振り分けていないもの（effective_on が空）だけ
+      (r.period_id ? r.period_id === currentPeriodId : !r.effective_on),
+  );
 
-    // 外国人管理で差し替えた worker_documents を優先
-    // （過去の在籍期間タブから登録した当時の画像（effective_on あり）は最新とみなさない）
-    const { data: doc } = await admin!
-      .from("worker_documents")
-      .select("storage_path")
-      .eq("worker_id", workerId)
-      .eq("kind", kind)
-      .is("effective_on", null)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const docPath = (doc as { storage_path: string } | null)?.storage_path;
-    if (docPath) return signedFor(docPath);
-
-    // 無ければ申請時に登録された画像
-    if (appIds.length === 0) return "";
-    const { data } = await admin!
+  const { data: apps } = await admin
+    .from("immigration_applications")
+    .select("id")
+    .eq("worker_id", workerId);
+  const appIds = ((apps as { id: string }[]) ?? []).map((a) => a.id);
+  let appRows: { storage_path: string; created_at: string }[] = [];
+  if (appIds.length > 0) {
+    const { data: files } = await admin
       .from("application_files")
-      .select("storage_path")
+      .select("storage_path, created_at")
       .in("application_id", appIds)
       .eq("kind", kind)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    return signedFor((data as { storage_path: string } | null)?.storage_path);
+      .order("created_at", { ascending: false });
+    appRows = (files as { storage_path: string; created_at: string }[] | null) ?? [];
+  }
+
+  // 「いつ時点の書類か」（effective_on または登録日）の新しい順で、いちばん新しい1件
+  const candidates = [
+    ...docRows.map((r) => ({
+      effectiveOn: r.effective_on,
+      createdAt: r.created_at,
+      row: {
+        storage_path: r.storage_path,
+        mime_type: r.mime_type,
+        external_url: null,
+        created_at: r.created_at,
+        fromApplication: false,
+      } satisfies CurrentDocRow,
+    })),
+    ...appRows.map((r) => ({
+      effectiveOn: null,
+      createdAt: r.created_at,
+      row: {
+        storage_path: r.storage_path,
+        mime_type: null,
+        external_url: null,
+        created_at: r.created_at,
+        fromApplication: true,
+      } satisfies CurrentDocRow,
+    })),
+  ];
+  return sortDocsByPeriodDate(candidates)[0]?.row ?? null;
+}
+
+// 外国人の「現在」の在留カード画像・指定書画像の署名付きURL（個人票などに出す画像）。
+// 手で選んだ画像（0210）があればそれ、無ければいちばん新しい画像
+export async function getWorkerLatestDocUrls(
+  workerId: string,
+): Promise<{ residenceCardUrl: string; designationUrl: string }> {
+  const me = await getMyProfile();
+  const admin = createAdminClient();
+  if (!me || !admin) return { residenceCardUrl: "", designationUrl: "" };
+
+  async function urlFor(kind: string): Promise<string> {
+    const row = await currentDocRowFor(admin!, workerId, kind);
+    if (!row?.storage_path) return "";
+    const { data } = await admin!.storage.from(BUCKET).createSignedUrl(row.storage_path, TTL);
+    return data?.signedUrl ?? "";
   }
 
   return {
-    residenceCardUrl: await latest("在留カード"),
-    designationUrl: await latest("指定書"),
+    residenceCardUrl: await urlFor("在留カード"),
+    designationUrl: await urlFor("指定書"),
   };
 }
 
@@ -588,47 +744,18 @@ export async function getCurrentResidenceCard(workerId: string): Promise<Current
   const isPdfPath = (path: string, mime?: string | null) =>
     mime === "application/pdf" || /\.pdf$/i.test(path);
 
-  // 過去の在籍期間タブから登録した当時の画像（effective_on あり）は現在の在留カードとして使わない
-  const { data: doc } = await admin
-    .from("worker_documents")
-    .select("storage_path, mime_type, external_url, created_at")
-    .eq("worker_id", workerId)
-    .eq("kind", "在留カード")
-    .is("effective_on", null)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const d = doc as { storage_path: string; mime_type: string | null; external_url?: string | null; created_at: string } | null;
-  if (d) {
-    const external = (d.external_url ?? "").trim();
-    if (external) return { url: external, isPdf: true, createdAt: d.created_at, fromApplication: false };
-    if (d.storage_path) {
-      const { data } = await admin.storage.from(BUCKET).createSignedUrl(d.storage_path, TTL);
-      if (data?.signedUrl) {
-        return {
-          url: data.signedUrl,
-          isPdf: isPdfPath(d.storage_path, d.mime_type),
-          createdAt: d.created_at,
-          fromApplication: false,
-        };
-      }
-    }
-  }
-
-  const { data: apps } = await admin.from("immigration_applications").select("id").eq("worker_id", workerId);
-  const appIds = ((apps as { id: string }[]) ?? []).map((a) => a.id);
-  if (appIds.length === 0) return null;
-  const { data: f } = await admin
-    .from("application_files")
-    .select("storage_path, created_at")
-    .in("application_id", appIds)
-    .eq("kind", "在留カード")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const row = f as { storage_path: string; created_at: string } | null;
-  if (!row?.storage_path) return null;
+  // 手で選んだ画像（0210）があればそれ、無ければいちばん新しい画像（個人票と同じ決め方）
+  const row = await currentDocRowFor(admin, workerId, "在留カード");
+  if (!row) return null;
+  const external = (row.external_url ?? "").trim();
+  if (external) return { url: external, isPdf: true, createdAt: row.created_at, fromApplication: row.fromApplication };
+  if (!row.storage_path) return null;
   const { data } = await admin.storage.from(BUCKET).createSignedUrl(row.storage_path, TTL);
   if (!data?.signedUrl) return null;
-  return { url: data.signedUrl, isPdf: isPdfPath(row.storage_path), createdAt: row.created_at, fromApplication: true };
+  return {
+    url: data.signedUrl,
+    isPdf: isPdfPath(row.storage_path, row.mime_type),
+    createdAt: row.created_at,
+    fromApplication: row.fromApplication,
+  };
 }
