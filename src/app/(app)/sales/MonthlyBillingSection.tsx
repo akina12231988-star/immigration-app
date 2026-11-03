@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Copy,
   Download,
+  ExternalLink,
   FileCheck2,
   Loader2,
   MailWarning,
@@ -140,6 +141,7 @@ import { buildXlsx, downloadBlob } from "@/lib/xlsx-export";
 import { InvoicePdfCheck } from "./InvoicePdfCheck";
 import { employmentStartInRange, employmentStartPrintUrl } from "@/lib/worker-print-filter";
 import { formatAmountInput, formatAmountWhileTyping } from "@/lib/amount-format";
+import { openCaseWindow } from "@/lib/case-window";
 
 // 月末の請求書作成。年月を選ぶと、その月に1日でも在籍していた支援対象者を
 // 所属機関ごとに並べ、支援費の請求額（満額・日割り）を出す。
@@ -276,6 +278,8 @@ export function MonthlyBillingSection({
   // このページで登録した支援代（月額）。organization_id → 数字だけの文字列
   const [orgFees, setOrgFees] = useState<Record<string, string>>({});
   const [feeDraft, setFeeDraft] = useState("");
+  // 案件のリンク（freee販売の機関の案件ページ）。このページで登録した内容を優先して出す
+  const [orgCaseUrls, setOrgCaseUrls] = useState<Record<string, string>>({});
   const [feeSaving, setFeeSaving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -445,6 +449,14 @@ export function MonthlyBillingSection({
   const insuranceBurdenOf = (organizationId: string): string =>
     mergedOrgs.find((o) => o.id === organizationId)?.intake?.ssw_insurance_burden ?? "";
 
+  // 案件のリンク（freee販売のその機関の案件ページ。所属機関の決算・売上タブと同じ内容）
+  const caseUrlOf = (organizationId: string): string =>
+    (
+      orgCaseUrls[organizationId] ??
+      organizations.find((o) => o.id === organizationId)?.intake?.freee_case_url ??
+      ""
+    ).trim();
+
   const orgNameById = useMemo(
     () => new Map(mergedOrgs.map((o) => [o.id, o.name])),
     [mergedOrgs],
@@ -469,6 +481,24 @@ export function MonthlyBillingSection({
   const leftRows = useMemo(() => leftThisMonthRows(billing), [billing]);
   const [showPermitted, setShowPermitted] = useState(false);
   const [showLeft, setShowLeft] = useState(false);
+
+  // 当月許可者リストの所属機関の並び替え（押すたびに 機関順 → 機関の逆順 → 許可日順）。
+  // 機関順のときも、同じ機関の中は許可日の古い順のまま
+  const [permittedOrgSort, setPermittedOrgSort] = useState<SortDir>(null);
+  const cyclePermittedOrgSort = () =>
+    setPermittedOrgSort((v) => (v === null ? "asc" : v === "asc" ? "desc" : null));
+  const sortedPermittedRows = useMemo(() => {
+    if (!permittedOrgSort) return permittedRows;
+    const dir = permittedOrgSort === "asc" ? 1 : -1;
+    return [...permittedRows].sort(
+      (a, b) =>
+        dir * a.org.organizationName.localeCompare(b.org.organizationName, "ja") ||
+        (a.row.worker.residence_permit_date ?? "").localeCompare(
+          b.row.worker.residence_permit_date ?? "",
+        ) ||
+        a.row.worker.name.localeCompare(b.row.worker.name, "ja"),
+    );
+  }, [permittedRows, permittedOrgSort]);
 
   // 当月退職者・当月許可者の特定技能総合保険（加入の記録と、加入手続き・解約手続きのTODO）。
   // それぞれのリストを開いたときに、その人たちの分だけ読む。TODOを作ったら読み直す
@@ -871,6 +901,37 @@ export function MonthlyBillingSection({
           if (!cancelled) setAppOrgKeys(keys);
         })
         .catch(() => undefined),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 申請準備の「あっせんについて」で「無し」と理由を登録した人（todos.assen / assen_note）。
+  // この人たちは求職一覧であっせんを記録する流れではないので、
+  // 紹介手数料のマスには求職一覧への案内の代わりにその理由を出す
+  const [assenNoneNotes, setAssenNoneNotes] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve().then(() =>
+      createClient()
+        .from("todos")
+        .select("worker_id, assen_note, updated_at")
+        .eq("assen", "なし")
+        .is("deleted_at", null)
+        .order("updated_at", { ascending: false })
+        .then(({ data, error }) => {
+          // 読めなくても名簿は使えるようにする（その場合は従来どおり求職一覧への案内を出す）
+          if (cancelled || error) return;
+          const map: Record<string, string> = {};
+          for (const r of (data ?? []) as { worker_id: string | null; assen_note: string | null }[]) {
+            const id = r.worker_id ?? "";
+            const note = (r.assen_note ?? "").trim();
+            if (!id || !note || map[id]) continue;
+            map[id] = note; // いちばん新しい申請準備の理由を使う
+          }
+          setAssenNoneNotes(map);
+        }),
     );
     return () => {
       cancelled = true;
@@ -1483,6 +1544,23 @@ export function MonthlyBillingSection({
     }
   };
 
+  // 案件のリンクを請求書作成の画面から所属機関に登録する（当月許可者リストの「案件」用。
+  // 保存先は所属機関の決算・売上タブの「案件のリンク」と同じ欄）
+  const saveOrgCaseUrl = async (orgId: string, url: string): Promise<boolean> => {
+    setError(null);
+    try {
+      const org = organizations.find((o) => o.id === orgId);
+      await updateOrganization(createClient(), orgId, {
+        intake: { ...(org?.intake ?? {}), freee_case_url: url },
+      });
+      setOrgCaseUrls((prev) => ({ ...prev, [orgId]: url }));
+      return true;
+    } catch (err) {
+      setError(errorMessage(err, "案件のリンクの保存に失敗しました"));
+      return false;
+    }
+  };
+
   const download = async (org?: MonthlyBillingOrg) => {
     setBusy(true);
     setError(null);
@@ -1645,24 +1723,44 @@ export function MonthlyBillingSection({
                         特定技能総合保険の画面を開く
                       </Link>
                     </div>
-                  <table className="w-full min-w-[1080px] border-collapse text-xs">
+                  <table className="w-full min-w-[1420px] border-collapse text-xs">
                     <thead>
                       <tr className="border-b border-border text-left text-muted">
                         <th className="py-1.5 pr-2 font-bold">許可日</th>
                         <th className="py-1.5 pr-2 font-bold">氏名</th>
-                        <th className="py-1.5 pr-2 font-bold">所属機関</th>
+                        <th className="py-1.5 pr-2 font-bold">個人票</th>
+                        <th className="py-1.5 pr-2 font-bold">
+                          {/* 既定は許可日の古い順。押すと所属機関ごとにまとめて並べられる */}
+                          <button
+                            type="button"
+                            onClick={cyclePermittedOrgSort}
+                            title="クリックで 所属機関順 → 所属機関の逆順 → 許可日順 に切り替え"
+                            className="inline-flex items-center gap-1 font-bold hover:text-brand"
+                          >
+                            所属機関
+                            {permittedOrgSort === "asc" ? (
+                              <ArrowUp size={12} />
+                            ) : permittedOrgSort === "desc" ? (
+                              <ArrowDown size={12} />
+                            ) : (
+                              <ArrowUpDown size={12} className="opacity-50" />
+                            )}
+                          </button>
+                        </th>
                         <th className="py-1.5 pr-2 font-bold">定期売上No.</th>
                         <th className="py-1.5 pr-2 font-bold">在留資格</th>
                         <th className="py-1.5 pr-2 font-bold">在留期限</th>
                         <th className="py-1.5 pr-2 font-bold">区分</th>
                         <th className="py-1.5 pr-2 text-right font-bold">支援費請求額</th>
+                        <th className="py-1.5 pr-2 font-bold">案件</th>
                         <th className="py-1.5 pr-2 font-bold">許可売上No.</th>
+                        <th className="py-1.5 pr-2 font-bold">紹介手数料No.</th>
                         <th className="py-1.5 pr-2 font-bold">保険No.</th>
                         <th className="py-1.5 font-bold">特定技能総合保険</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {permittedRows.map(({ org, row }) => (
+                      {sortedPermittedRows.map(({ org, row }) => (
                         <tr key={row.worker.id} className="border-b border-border/60">
                           <td className="py-1.5 pr-2 tabular-nums">
                             {row.worker.residence_permit_date ?? "—"}
@@ -1682,6 +1780,18 @@ export function MonthlyBillingSection({
                               className="ml-0.5 align-middle"
                             />
                           </td>
+                          {/* 個人票（A4印刷）。許可の確認や会社のファイルに挟む印刷をここから開ける */}
+                          <td className="py-1.5 pr-2">
+                            <Link
+                              href={`/workers/print?worker=${row.worker.id}`}
+                              target="_blank"
+                              className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg border border-border bg-surface px-2 py-1 text-[11px] font-bold text-brand hover:border-brand"
+                              title="この人の個人票（A4印刷）を別のタブで開く"
+                            >
+                              <Printer size={12} />
+                              個人票
+                            </Link>
+                          </td>
                           <td className="py-1.5 pr-2">{org.organizationName}</td>
                           <td className="py-1.5 pr-2 tabular-nums">
                             {/* 定期売上No.: コピーできる。未記入・直したいときはその場で記入して保存 */}
@@ -1691,7 +1801,22 @@ export function MonthlyBillingSection({
                               onSave={(v) => saveSalesNo(row.worker.id, v)}
                             />
                           </td>
-                          <td className="py-1.5 pr-2">{row.worker.residence_status}</td>
+                          {/* 在留資格は「特定技能1号」ときれいに出し、更新許可の人には「更新」のバッジを付ける。
+                              判定は在留資格の文字ではなく、その月に許可が下りた申請の「申請内容」を正とする
+                              （備考の＜更新許可＞の仕分けと同じ判定。申請の登録が無い人には付かない） */}
+                          <td className="py-1.5 pr-2">
+                            <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                              {visaLabelOf(row.worker.residence_status)}
+                              {(permitContents[row.worker.id] ?? "").includes("更新") && (
+                                <span
+                                  className="rounded-full bg-brand/10 px-1.5 py-0.5 text-[10px] font-bold text-brand"
+                                  title="在留期間の更新許可です（申請の「申請内容」で判定）"
+                                >
+                                  更新
+                                </span>
+                              )}
+                            </span>
+                          </td>
                           <td className="py-1.5 pr-2 tabular-nums">
                             {row.worker.residence_expiry_date ?? "—"}
                           </td>
@@ -1699,6 +1824,13 @@ export function MonthlyBillingSection({
                           <td className="py-1.5 pr-2 text-right tabular-nums">
                             {formatSalesYen(row.amount)}
                           </td>
+                          {/* 案件（freee販売のこの機関の案件ページ）。許可売上No.を登録しに行くときにここから開ける。
+                              リンクがまだ無い機関は、ここで貼り付けて保存できる（所属機関にも保存される） */}
+                          <CaseLinkCell
+                            url={caseUrlOf(org.organizationId)}
+                            canEdit={canEdit}
+                            onSave={(v) => saveOrgCaseUrl(org.organizationId, v)}
+                          />
                           {/* 許可売上No.・保険No.。下の所属機関ごとの名簿と同じ売上明細の番号なので、
                               ここで入れると名簿・外国人詳細にも同じ番号が出る */}
                           <SalesNoCell
@@ -1708,6 +1840,37 @@ export function MonthlyBillingSection({
                             placeholder="許可売上No."
                             onSave={(v, entryId) =>
                               saveEntryNo(row.worker.id, "permit", entryId, v, row, org.organizationId)
+                            }
+                          />
+                          {/* 紹介手数料No.（あっせんが「あり」の人）。下の所属機関ごとの名簿と同じ
+                              紹介手数料台帳の行なので、どちらで入れても同じ番号が出る。
+                              更新許可の月はあっせんではないので対象外（判定は申請の「申請内容」を正とする） */}
+                          <ReferralNoCell
+                            fee={feeFor(row.worker.id, org.organizationId)}
+                            canEdit={canEdit}
+                            active
+                            assenNoneReason={assenNoneNotes[row.worker.id]}
+                            renewal={
+                              (permitContents[row.worker.id] ?? "").includes("更新") ||
+                              /更新$/.test((row.worker.residence_status ?? "").trim())
+                            }
+                            busy={
+                              referralBusyKey ===
+                              referralWorkerOrgKey(row.worker.id, org.organizationId)
+                            }
+                            applicationState={
+                              appOrgKeys === null
+                                ? "unknown"
+                                : appOrgKeys.has(
+                                      referralWorkerOrgKey(row.worker.id, org.organizationId),
+                                    )
+                                  ? "has"
+                                  : "none"
+                            }
+                            today={today}
+                            onSave={(v) => void saveReferralNo(row, org.organizationId, v)}
+                            onRecordPaid={(paidOn) =>
+                              void recordReferralPaid(row.worker.id, org.organizationId, paidOn)
                             }
                           />
                           <SalesNoCell
@@ -3055,6 +3218,7 @@ export function MonthlyBillingSection({
                               permitInMonth(row.worker.residence_permit_date) ||
                               row.transferredOut === true
                             }
+                            assenNoneReason={assenNoneNotes[row.worker.id]}
                             renewal={/更新$/.test((row.worker.residence_status ?? "").trim())}
                             busy={
                               referralBusyKey ===
@@ -3168,6 +3332,116 @@ export function MonthlyBillingSection({
 // 当月許可者リストの定期売上No.の1マス。
 // 番号があればコピーボタン付きで出し、「記入」「編集」を押すとその場で入力して保存できる
 // （保存先は名簿と同じ workers.recurring_sales_no）
+// 案件の1マス（当月許可者リスト）。freee販売のその機関の案件ページを別のタブで開く。
+// リンクがまだ無い機関は「＋案件を登録」でその場で貼り付けて保存できる
+// （保存先は所属機関の決算・売上タブの「案件のリンク」と同じ欄）
+function CaseLinkCell({
+  url,
+  canEdit,
+  onSave,
+}: {
+  url: string;
+  canEdit: boolean;
+  onSave: (url: string) => Promise<boolean>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(url);
+  const [busy, setBusy] = useState(false);
+
+  const start = () => {
+    setDraft(url);
+    setEditing(true);
+  };
+  const save = async () => {
+    const v = draft.trim();
+    // 貼り付けたリンクだけを保存する（http か https で始まるもの）
+    if (!/^https?:\/\//.test(v)) return;
+    setBusy(true);
+    try {
+      if (v === url || (await onSave(v))) setEditing(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <td className="py-1.5 pr-2">
+        <span className="inline-flex items-center gap-1">
+          <input
+            value={draft}
+            autoFocus
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void save();
+              if (e.key === "Escape") setEditing(false);
+            }}
+            placeholder="https://…（案件ページのリンクを貼り付け）"
+            className="w-56 rounded-lg border border-border bg-background px-1.5 py-1 text-xs"
+          />
+          <button
+            type="button"
+            disabled={busy || !/^https?:\/\//.test(draft.trim())}
+            onClick={() => void save()}
+            className="inline-flex items-center gap-1 rounded-lg bg-brand px-2 py-1 text-[11px] font-bold text-brand-foreground disabled:opacity-50"
+          >
+            {busy && <Loader2 size={11} className="animate-spin" />}
+            保存
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => setEditing(false)}
+            className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] font-bold text-muted"
+          >
+            取消
+          </button>
+        </span>
+      </td>
+    );
+  }
+  return (
+    <td className="py-1.5 pr-2">
+      <span className="inline-flex items-center gap-1 whitespace-nowrap">
+        {url ? (
+          <>
+            <button
+              type="button"
+              onClick={() => openCaseWindow(url)}
+              className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2 py-1 text-[11px] font-bold text-brand hover:border-brand"
+              title="freee販売のこの機関の案件ページを、横に並べやすい別ウィンドウで開く（どの機関の案件も同じウィンドウで切り替わります）"
+            >
+              <ExternalLink size={12} />
+              案件
+            </button>
+            {canEdit && (
+              <button
+                type="button"
+                onClick={start}
+                className="rounded-lg border border-border bg-surface px-1.5 py-0.5 text-[10px] font-bold text-muted hover:text-brand"
+                title="案件のリンクを直す"
+              >
+                編集
+              </button>
+            )}
+          </>
+        ) : canEdit ? (
+          <button
+            type="button"
+            onClick={start}
+            className="whitespace-nowrap rounded-lg border border-seal/40 bg-seal/5 px-1.5 py-0.5 text-[10px] font-bold text-seal"
+            title="この機関の案件ページのリンクを貼り付けて保存する（所属機関にも保存されます）"
+          >
+            ＋案件を登録
+          </button>
+        ) : (
+          <span className="text-muted">—</span>
+        )}
+      </span>
+    </td>
+  );
+}
+
 function RecurringSalesNoCell({
   value,
   canEdit,
@@ -3253,6 +3527,16 @@ function RecurringSalesNoCell({
 // 特定技能2号の行か（2号は特定技能総合保険に加入できないため、保険No.は発生しない）
 function isSsw2Row(row: MonthlyBillingRow): boolean {
   return (row.worker.residence_status ?? "").normalize("NFKC").includes("特定技能2号");
+}
+
+// 在留資格の表示。「特定技能1号更新」のように申請の種類まで一緒に書かれていても
+// 「特定技能1号」ときれいに出す（更新かどうかは文字ではなく、申請の「申請内容」で判定して
+// 「更新」のバッジを別に付ける）
+function visaLabelOf(status: string | null | undefined): string {
+  return (status ?? "")
+    .normalize("NFKC")
+    .trim()
+    .replace(/\s*(更新|変更|認定)(許可)?$/, "");
 }
 
 // 許可売上No.・保険No.の1マス。売上明細の行があればその場で直せる。
@@ -3633,6 +3917,7 @@ function ReferralNoCell({
   busy,
   applicationState,
   renewal = false,
+  assenNoneReason,
   today,
   onSave,
   onRecordPaid,
@@ -3646,6 +3931,9 @@ function ReferralNoCell({
   applicationState: "has" | "none" | "unknown";
   // 在留資格が「〇〇更新」（更新許可）の月。更新はあっせんではないので紹介手数料は無い
   renewal?: boolean;
+  // 申請準備の「あっせんについて」で「無し」と登録した理由。
+  // あるときは求職一覧への案内の代わりにこの理由を出す（あっせんを記録する流れの人ではないため）
+  assenNoneReason?: string;
   today: string; // 入金日の初期値
   onSave: (value: string) => void;
   // 入金日を記録する（null で取り消し）。手数料管理簿の入金年月日にそのまま入る
@@ -3723,18 +4011,28 @@ function ReferralNoCell({
             className="w-32 rounded-lg border border-border bg-background px-1.5 py-1 text-xs"
           />
         )}
-        {/* 台帳に記録がまだ無い人への案内。あっせんの記録（求職一覧）→台帳に追加、の順が正しい流れ */}
+        {/* 台帳に記録がまだ無い人への案内。あっせんの記録（求職一覧）→台帳に追加、の順が正しい流れ。
+            申請準備で「あっせん無し」と理由を登録している人は、求職一覧への案内の代わりに理由を出す */}
         {!fee &&
           (applicationState === "none" ? (
-            <Link
-              href="/jobs"
-              className="text-[10px] font-bold leading-tight text-seal underline underline-offset-2"
-              title="番号の前に、求職一覧であっせん（応募・採用）の記録をしてください"
-            >
-              あっせんの記録がありません。
-              <br />
-              まずは求職一覧で記録から →
-            </Link>
+            assenNoneReason ? (
+              <span
+                className="text-[10px] leading-tight text-muted"
+                title="申請準備の「あっせんについて」で登録した理由です"
+              >
+                {assenNoneReason}
+              </span>
+            ) : (
+              <Link
+                href="/jobs"
+                className="text-[10px] font-bold leading-tight text-seal underline underline-offset-2"
+                title="番号の前に、求職一覧であっせん（応募・採用）の記録をしてください"
+              >
+                あっせんの記録がありません。
+                <br />
+                まずは求職一覧で記録から →
+              </Link>
+            )
           ) : applicationState === "has" ? (
             <Link
               href="/jobs"

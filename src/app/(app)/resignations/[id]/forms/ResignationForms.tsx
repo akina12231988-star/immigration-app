@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { BackButton } from "@/components/BackButton";
-import { Download, ExternalLink, FileSpreadsheet, FileText } from "lucide-react";
+import { Download, ExternalLink, FileSpreadsheet, FileText, Printer } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
@@ -59,6 +59,7 @@ interface FormsResignation {
   orgCorporateNo: string;
   businessCategory: string;
   orgReportStaff: string; // 所属機関に登録した定期報告書・随時報告書の担当者名
+  note: string; // この退職記録の備考（resignations.note。署名のお願いの段取りなどを残す）
   status: ResignationStatus; // 今の進み具合（0086）
 }
 
@@ -114,6 +115,61 @@ export function ResignationForms({
   const [measure, setMeasure] = useState<string>("転職支援実施予定");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // 署名のお願いの案内文。所属機関名・担当者（定期報告書・随時報告書の担当者名）を入れた文を
+  // 初期値にして、その都度書き換えて使える（印刷にもこの文がそのまま出る）
+  const [guideText, setGuideText] = useState(
+    () =>
+      `所属機関${resignation.orgName}の${(resignation.orgReportStaff || resignation.orgName).trim()}に署名をもらってください。参考様式1の4（契約機関に関する届出）は ${worker.name} さん本人の署名です。`,
+  );
+
+  // 案内文と備考をA4で印刷する（様式と一緒に渡す紙。様式のファイル自体には手を入れない）
+  const printGuide = () => {
+    const esc = (s: string) =>
+      s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const note = formsNote.trim();
+    const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>署名のお願い</title>
+<style>
+  body { font-family: "Hiragino Sans", "Noto Sans JP", sans-serif; padding: 24mm 20mm; font-size: 13pt; line-height: 2; color: #000; }
+  h1 { font-size: 15pt; margin: 0 0 10mm; }
+  p { margin: 0; white-space: pre-wrap; }
+  .note { margin-top: 10mm; border: 1px solid #999; border-radius: 4mm; padding: 5mm 6mm; }
+  .label { font-size: 10pt; color: #555; margin-bottom: 2mm; }
+</style></head><body>
+<h1>署名のお願い</h1>
+<p>${esc(guideText)}</p>
+${note ? `<div class="note"><p class="label">備考</p><p>${esc(note)}</p></div>` : ""}
+</body></html>`;
+    const w = window.open("", "_blank", "width=800,height=600");
+    if (!w) {
+      setError("印刷用の画面を開けませんでした。ブラウザのポップアップの許可をご確認ください。");
+      return;
+    }
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    w.print();
+  };
+
+  // 備考（退職記録の備考 resignations.note）。署名のお願いの段取り（どこに署名してもらうか・
+  // 印刷して渡すときの注意など）をダウンロードの前に書いて残せる。
+  // 欄を離れたときとダウンロードのときに保存する
+  const [formsNote, setFormsNote] = useState(resignation.note);
+  const savedNoteRef = useRef(resignation.note);
+  const [noteState, setNoteState] = useState<"idle" | "saving" | "saved">("idle");
+  const saveFormsNote = async () => {
+    const v = formsNote.trim();
+    if (!canEdit || v === savedNoteRef.current.trim()) return;
+    setNoteState("saving");
+    try {
+      await updateResignation(createClient(), resignation.id, { note: v });
+      savedNoteRef.current = v;
+      setNoteState("saved");
+    } catch (err) {
+      setNoteState("idle");
+      setError(`備考の保存に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
 
   // その他（05/11）を選んだときだけ「その他の理由」を記入する
   const needsOtherReason = endReason === "05" || endReason === "11";
@@ -269,6 +325,8 @@ export function ResignationForms({
     setBusy(key);
     setError(null);
     try {
+      // 書きかけの備考を先に保存する（ダウンロードの前に備考が残るように）
+      await saveFormsNote();
       // 訂正した外国人情報・所属機関情報を先にマスタへ反映する（失敗しても作成は続ける）
       await syncMasters().catch((err) => {
         setError(
@@ -623,6 +681,49 @@ export function ResignationForms({
       {/* ダウンロード */}
       <Card className="flex flex-col gap-2 p-4">
         <p className="text-sm font-bold">様式のダウンロード</p>
+        {/* 署名のお願いの案内文。所属機関名・担当者を入れた文が初期値で、その都度書き換えて使える */}
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-muted">案内文（その都度書き換えられます）</span>
+          <textarea
+            value={guideText}
+            onChange={(e) => setGuideText(e.target.value)}
+            disabled={!canEdit}
+            rows={2}
+            className="min-h-[60px] w-full rounded-xl border border-border bg-background px-3 py-2 text-sm leading-relaxed focus:border-brand focus:outline-none"
+          />
+        </label>
+        {/* 備考: 署名のお願いの段取りをダウンロードの前に書いて残す（退職記録の備考に保存） */}
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-muted">
+            備考（どこに署名してもらうか・印刷して渡すときの段取りなど。この退職記録に保存されます）
+          </span>
+          <textarea
+            value={formsNote}
+            onChange={(e) => {
+              setFormsNote(e.target.value);
+              setNoteState("idle");
+            }}
+            onBlur={() => void saveFormsNote()}
+            disabled={!canEdit}
+            rows={2}
+            placeholder="例: 2様式とも届出人の欄に署名。返送はレターパックで"
+            className="min-h-[60px] w-full rounded-xl border border-border bg-background px-3 py-2 text-sm leading-relaxed focus:border-brand focus:outline-none"
+          />
+          {noteState !== "idle" && (
+            <span className="text-[10px] font-bold text-muted">
+              {noteState === "saving" ? "保存中…" : "✓ 保存しました"}
+            </span>
+          )}
+        </label>
+        {/* 案内文＋備考をA4で印刷して、様式と一緒に渡せる */}
+        <button
+          type="button"
+          onClick={printGuide}
+          className="inline-flex min-h-[44px] items-center justify-center gap-2 self-start rounded-xl border border-brand px-4 py-2.5 text-sm font-bold text-brand transition hover:bg-brand/5 active:scale-[0.98]"
+        >
+          <Printer size={16} />
+          案内文と備考を印刷
+        </button>
         <FormButton
           icon={<FileSpreadsheet size={18} />}
           label={`${FORM_312}（Excel）特定技能雇用契約の終了に係る届出書`}

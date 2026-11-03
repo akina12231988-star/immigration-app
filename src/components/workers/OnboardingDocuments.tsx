@@ -434,6 +434,14 @@ export function OnboardingDocuments({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
+          {/* 許可後は個人票を必ず印刷して会社のファイルに挟む運用のため、ここからも開ける */}
+          <Link
+            href={`/workers/print?worker=${workerId}`}
+            className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-[11px] font-bold text-brand"
+          >
+            <Printer size={13} />
+            個人票を印刷
+          </Link>
           {/* 紙で渡す会社は、資料の束に付ける目次をA4縦で印刷できる */}
           {org && isPaperHandover(handoverMethod) && (
             <Link

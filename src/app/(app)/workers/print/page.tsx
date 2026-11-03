@@ -177,6 +177,8 @@ export default async function WorkersPrintPage({
         residenceExpiryDate: w.residence_expiry_date,
         employmentStartOn: dates.employmentStartOn,
         leavingOn: dates.leavingOn,
+        // 個人票の備考（0211。未適用の環境では空欄）
+        printNote: w.print_note ?? "",
         assignedOffice: w.assigned_office,
         residenceNote: w.residence_note,
         messengerLink: w.messenger_link,

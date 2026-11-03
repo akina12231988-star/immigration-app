@@ -195,10 +195,14 @@ export function sswInsuranceState(
   today: string,
   cancelDone = false, // 解約手続きのTODOが完了しているか
   joinOpen = false, // 加入手続きのTODOが未完了であるか（加入中・加入しないの人でも加入手続きに出す）
+  cancelOpen = false, // 解約手続きのTODOが未完了であるか（退職していない人でも解約手続きに出す）
 ): SswGroupKey {
   // まだ入社前（申請準備中・支援開始前）の人は一覧に出さない
   if (!isSswInsuranceCandidate(w)) return "none";
   const joined = isSswJoined(w);
+  // 解約手続きのTODOを作ってある人は、退職していなくても解約手続きに出す
+  // （特定技能2号へ移行して支援委託が終わった人など。解約できる人だけ）
+  if (cancelOpen && isSswCancelable(w, today)) return "cancel";
   // 退職した人は、加入したままなら解約手続きが必要（解約が済んだら一覧から外す）。
   // 証明書番号と有効期限が入っている人だけで、有効期限から4か月以上たった人は解約できないので出さない
   if (w.status === "退職") return isSswCancelable(w, today) && !cancelDone ? "cancel" : "none";
@@ -309,6 +313,7 @@ export function buildSswInsuranceRows(
           today,
           todos.cancel?.done ?? false,
           !!todos.join && !todos.join.done,
+          !!todos.cancel && !todos.cancel.done,
         ),
         todos,
       };
@@ -332,7 +337,7 @@ export const SSW_SECTIONS: {
   {
     key: "cancel",
     title: "退職（解約手続き）",
-    lead: "退職した人で保険に加入したままです（被保険者証明書番号と有効期限が入っていて、有効期限から4か月たっていない人だけ）。解約手続きのTODOを作って手続きしてください。",
+    lead: "退職した人（または特定技能2号へ移行して解約手続きのTODOを作った人）で保険に加入したままです（被保険者証明書番号と有効期限が入っていて、有効期限から4か月たっていない人だけ）。解約手続きのTODOを作って手続きしてください。",
   },
   {
     key: "soon",
@@ -431,7 +436,7 @@ export const SSW_TASK_GROUPS: { key: SswTaskKey; title: string; lead: string }[]
   {
     key: "cancel",
     title: "解約手続き",
-    lead: "退職して保険に加入したままの人です。解約の手続きをします（被保険者証明書番号と有効期限が入っている人だけ。有効期限から4か月以上たった人は解約できないので出しません）。",
+    lead: "退職した人・特定技能2号へ移行した人で、保険に加入したままの人です。解約の手続きをします（被保険者証明書番号と有効期限が入っている人だけ。有効期限から4か月以上たった人は解約できないので出しません）。",
   },
 ];
 
@@ -476,7 +481,8 @@ export function sortSswRows(rows: SswInsuranceRow[], sort: SswSortKey): SswInsur
 // 行に付ける区分の短いラベル（2列にすると欄の見出しが無くなるため）
 export const SSW_STATE_LABELS: Record<SswGroupKey, string> = {
   expired: "期限切れ",
-  cancel: "退職",
+  // 退職のほか、特定技能2号へ移行した人（在籍中）も解約手続きに出るため「解約」とする
+  cancel: "解約",
   soon: "まもなく期限",
   notJoined: "未加入",
   willCheck: "未加入（意思確認）",

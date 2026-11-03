@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -93,6 +93,18 @@ export function PostingDetail({
     await updatePosting(createClient(), posting.id, patch);
     router.refresh();
   };
+
+  // 連絡担当者氏名が空の求人は、この画面を開いたときに所属機関の代表者（役職・氏名）を
+  // 自動で入れて保存する（求人管理簿にもそのまま出る）。前に登録した求人にも効く
+  const autoContactPersonRan = useRef(false);
+  const orgRepName = (postingOrg?.intake?.rep_name ?? "").trim();
+  useEffect(() => {
+    if (!canEdit || autoContactPersonRan.current) return;
+    if ((posting.contact_person ?? "").trim() || !orgRepName) return;
+    autoContactPersonRan.current = true;
+    void savePosting({ contact_person: orgRepName });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canEdit, posting.contact_person, orgRepName]);
   const saveSheet = (patch: Partial<PostingSheet>) => savePosting({ sheet: { ...sheet, ...patch } });
 
   const handleUpdate = async (input: JobPostingInput) => {

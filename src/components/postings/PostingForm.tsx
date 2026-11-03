@@ -235,6 +235,9 @@ export function PostingForm({
   const orgSheetOverlay = (orgId: string): Partial<PostingSheet> =>
     sheetFromOrgIntake(orgIntakeOf(orgId));
 
+  // 連絡担当者氏名（求人管理簿）に自動で入れる、所属機関の代表者（役職・氏名）
+  const orgRepName = (orgId: string): string => (orgIntakeOf(orgId)?.rep_name ?? "").trim();
+
   // 新規登録のとき: 所属機関を選ぶと、その会社の直近の求人から毎回同じような項目
   // （職種・就業場所・給与・求人票の内容など）を自動で反映する。
   // 受理番号・受付日・有効期限・採用人数・記入日・状態は引き継がない
@@ -251,8 +254,10 @@ export function PostingForm({
         const prev = ((data as JobPosting[] | null) ?? [])[0];
         if (!prev) {
           // 前回の求人が無くても、所属機関の情報の登録内容は反映する
+          // （連絡担当者氏名には所属機関の代表者を自動で入れる）
           setForm((f) => ({
             ...f,
+            contact_person: orgRepName(orgId) || f.contact_person,
             sheet: { ...normalizePostingSheet(f.sheet), ...orgSheetOverlay(orgId) },
           }));
           setPrefillNotice(null);
@@ -269,7 +274,8 @@ export function PostingForm({
           rent: prev.rent ?? "",
           utilities: prev.utilities ?? "",
           contact: prev.contact ?? "",
-          contact_person: prev.contact_person ?? "",
+          // 連絡担当者氏名は所属機関の代表者を自動で入れる（未登録の機関は前回の求人の値）
+          contact_person: orgRepName(orgId) || prev.contact_person || "",
           display_company: prev.display_company ?? "",
           display_address: prev.display_address ?? "",
           target_nationality: prev.target_nationality ?? "",

@@ -23,6 +23,7 @@ import {
   listWorkerDocPeriods,
   listWorkerDocs,
   saveWorkerDocPeriod,
+  setWorkerCurrentDoc,
   setWorkerDocPeriodCurrent,
   type WorkerDocView,
 } from "@/app/(app)/workers/actions";
@@ -161,6 +162,26 @@ export function WorkerDocuments({
     docs.find(
       (d) => d.kind === kind && !d.effectiveOn && (!d.periodId || d.periodId === currentManual?.id),
     ) ?? null;
+
+  // 手で選んだ「現在の画像」（個人票・A4印刷にもこの画像が出る）。種別ごとに1枚
+  const selectedCurrentFor = (kind: Kind) =>
+    docs.find((d) => d.kind === kind && d.currentSelected) ?? null;
+
+  // 「現在の画像」を手で選ぶ／選択を外して自動（いちばん新しい画像）に戻す
+  const selectCurrentDoc = async (kind: Kind, doc: WorkerDocView | null) => {
+    setError(null);
+    const res = await setWorkerCurrentDoc(workerId, kind, doc?.id ?? null);
+    if (!res.ok) {
+      setError(res.message);
+      return;
+    }
+    setInfo(
+      doc
+        ? `この画像を現在の「${KIND_LABELS[kind]}」にしました。「現在」のタブと個人票（A4印刷）にこの画像が出ます。`
+        : `現在の「${KIND_LABELS[kind]}」の選択を外しました。いちばん新しい画像を自動で表示します。`,
+    );
+    load();
+  };
 
   // 追加した期間を「現在」にする／外す
   const setCurrent = async (m: ManualPeriod | null) => {
@@ -406,6 +427,9 @@ export function WorkerDocuments({
           icon={<CreditCard size={14} />}
           docs={visibleDocs.filter((d) => d.kind === "在留カード")}
           fallback={isCurrent ? newestFor("在留カード") : null}
+          selected={selectedCurrentFor("在留カード")}
+          isCurrentTab={isCurrent}
+          onSelectCurrent={(d) => void selectCurrentDoc("在留カード", d)}
           workerId={workerId}
           canEdit={canEdit}
           onDelete={removeDoc}
@@ -421,6 +445,9 @@ export function WorkerDocuments({
           icon={<ScanSearch size={14} />}
           docs={visibleDocs.filter((d) => d.kind === "照合結果")}
           fallback={isCurrent ? newestFor("照合結果") : null}
+          selected={selectedCurrentFor("照合結果")}
+          isCurrentTab={isCurrent}
+          onSelectCurrent={(d) => void selectCurrentDoc("照合結果", d)}
           workerId={workerId}
           canEdit={canEdit}
           onDelete={removeDoc}
@@ -436,6 +463,9 @@ export function WorkerDocuments({
           icon={<FileText size={14} />}
           docs={visibleDocs.filter((d) => d.kind === "指定書")}
           fallback={isCurrent ? newestFor("指定書") : null}
+          selected={selectedCurrentFor("指定書")}
+          isCurrentTab={isCurrent}
+          onSelectCurrent={(d) => void selectCurrentDoc("指定書", d)}
           workerId={workerId}
           canEdit={canEdit}
           onDelete={removeDoc}
@@ -484,6 +514,13 @@ export function WorkerDocuments({
           「現在」で登録した画像もその期間に入るので、新しい在留カードが来たら新しい期間を追加して「現在」にすれば、前の期間は画像ごと過去のタブになります。「現在の指定を外す」で戻せます。
         </p>
         <p>
+          <span className="font-bold">個人票（A4印刷）に出す「現在の画像」を選ぶ</span>:
+          ふだんは、いちばん新しい画像を「現在の画像」として自動で表示し、個人票・A4印刷にも同じ画像が出ます。
+          違う画像を出したいときは、履歴の画像の右下の ✓ を押すか、別のタブの画像の「この画像を「現在の画像」にする」を押すと、その画像が「現在」のタブと個人票に出ます。
+          手で選んだ画像には「選択中」の印が付き、「選択を外して自動（最新）に戻す」でいつでも戻せます。
+          新しい画像を「差し替え」で登録すると、手で選んだ指定は自動で外れて、新しい画像が出ます。
+        </p>
+        <p>
           <span className="font-bold">在留カードの番号などの入力</span>:
           各タブの画像の下の「この在留カードの情報」で、画像を見ながら許可日・在留資格・在留期限・在留カード番号を入れられます。
           保存すると在留資格の履歴に入り、A4印刷（個人）の「在留資格の履歴」の表に古い順で自動で並びます。
@@ -522,6 +559,9 @@ function DocColumn({
   icon,
   docs,
   fallback = null,
+  selected = null,
+  isCurrentTab = false,
+  onSelectCurrent,
   workerId,
   canEdit,
   onDelete,
@@ -537,6 +577,12 @@ function DocColumn({
   docs: WorkerDocView[];
   // この期間の画像が無いときに代わりに表示する、登録済みで一番新しい画像
   fallback?: WorkerDocView | null;
+  // 手で選んだ「現在の画像」（どのタブの画像でもよい。個人票にもこの画像が出る）
+  selected?: WorkerDocView | null;
+  // 「現在」のタブを表示中か（選んだ画像を大きく表示するのは「現在」のタブ）
+  isCurrentTab?: boolean;
+  // 「現在の画像」を選ぶ／選択を外す（null で自動に戻す）
+  onSelectCurrent: (doc: WorkerDocView | null) => void;
   workerId: string;
   canEdit: boolean;
   onDelete: (doc: WorkerDocView) => void | Promise<void>;
@@ -551,9 +597,12 @@ function DocColumn({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
-  const usingFallback = docs.length === 0 && !!fallback;
-  const latest = docs[0] ?? fallback ?? undefined;
-  const history = docs.slice(1);
+  // 「現在」のタブでは、手で選んだ画像があればそれを大きく表示する
+  // （別の期間のタブに振り分けられている画像を選んでいても「現在」の1枚として出す）
+  const manualSelected = isCurrentTab ? selected : null;
+  const usingFallback = !manualSelected && docs.length === 0 && !!fallback;
+  const latest = manualSelected ?? docs[0] ?? fallback ?? undefined;
+  const history = docs.filter((d) => d.id !== latest?.id);
 
   async function handleFile(file: File | undefined) {
     if (!file) return;
@@ -637,28 +686,93 @@ function DocColumn({
           {latest ? docPeriodDate(latest) : ""} 時点の画像を表示中（差し替えると最新になります）
         </p>
       )}
+      {/* どの画像が「現在の画像」（個人票・A4印刷に出る1枚）かの表示と、選び直し */}
+      {isCurrentTab && latest && (
+        latest.currentSelected ? (
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            <span className="flex items-center gap-1 rounded-full bg-brand/10 px-2 py-0.5 text-[10px] font-bold text-brand">
+              <Check size={10} /> 手で選んだ「現在の画像」です（個人票にもこの画像が出ます）
+            </span>
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => onSelectCurrent(null)}
+                className="rounded-lg border border-border px-2 py-0.5 text-[10px] font-bold text-muted"
+                title="手で選んだ指定を外して、いちばん新しい画像の自動表示に戻す"
+              >
+                選択を外して自動（最新）に戻す
+              </button>
+            )}
+          </div>
+        ) : (
+          <p className="mt-1 text-[10px] text-muted">
+            いちばん新しい画像を「現在の画像」として表示中（個人票にもこの画像が出ます。違う画像を出すときは、履歴の画像の ✓ で選べます）
+          </p>
+        )
+      )}
+      {!isCurrentTab && latest && canEdit && !latest.externalUrl && (
+        latest.currentSelected ? (
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            <span className="flex items-center gap-1 rounded-full bg-brand/10 px-2 py-0.5 text-[10px] font-bold text-brand">
+              <Check size={10} /> 「現在の画像」として選択中（個人票にもこの画像が出ます）
+            </span>
+            <button
+              type="button"
+              onClick={() => onSelectCurrent(null)}
+              className="rounded-lg border border-border px-2 py-0.5 text-[10px] font-bold text-muted"
+              title="手で選んだ指定を外して、いちばん新しい画像の自動表示に戻す"
+            >
+              選択を外して自動（最新）に戻す
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onSelectCurrent(latest)}
+            className="mt-1 flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11px] font-bold text-brand"
+            title="この画像を「現在」のタブと個人票（A4印刷）に出す画像にする"
+          >
+            <Check size={12} />
+            この画像を「現在の画像」にする
+          </button>
+        )
+      )}
       {history.length > 0 && (
         <div className="mt-2">
           <p className="mb-1 text-[10px] text-muted">
             履歴（{history.length}件）
-            {canEdit && <span className="ml-1">— 間違えて登録した分は × で1枚ずつ消せます</span>}
+            {canEdit && (
+              <span className="ml-1">
+                — 間違えて登録した分は × で1枚ずつ消せます。✓ でその画像を「現在の画像」（個人票に出す画像）にできます
+              </span>
+            )}
           </p>
-          <div className="flex gap-1.5 overflow-x-auto pt-1.5 pr-1.5">
+          <div className="flex gap-1.5 overflow-x-auto pt-1.5 pr-1.5 pb-1.5">
             {history.map((d) => (
               <span key={d.id} className="relative shrink-0">
                 <a
                   href={d.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  title={`${docPeriodDate(d)} の${KIND_LABELS[kind]}（${d.downloadName || d.fileName || ""}）`}
+                  title={`${docPeriodDate(d)} の${KIND_LABELS[kind]}（${d.downloadName || d.fileName || ""}）${d.currentSelected ? "（「現在の画像」として選択中）" : ""}`}
                 >
                   {isPdfDoc(d) ? (
-                    <span className="flex h-12 w-12 items-center justify-center rounded border border-border text-[10px] font-bold text-muted">
+                    <span
+                      className={`flex h-12 w-12 items-center justify-center rounded border text-[10px] font-bold ${
+                        d.currentSelected ? "border-brand ring-1 ring-brand text-brand" : "border-border text-muted"
+                      }`}
+                    >
                       PDF
                     </span>
                   ) : (
                     /* eslint-disable-next-line @next/next/no-img-element */
-                    <img src={d.url} alt="履歴" className="h-12 w-12 rounded border border-border object-cover" />
+                    <img
+                      src={d.url}
+                      alt="履歴"
+                      className={`h-12 w-12 rounded border object-cover ${
+                        d.currentSelected ? "border-brand ring-1 ring-brand" : "border-border"
+                      }`}
+                    />
                   )}
                 </a>
                 {/* 履歴の1枚だけを消す（申請登録時の画像も消せる。申請詳細からも消える） */}
@@ -671,6 +785,30 @@ function DocColumn({
                     className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full border border-seal/50 bg-surface text-seal shadow-sm hover:bg-seal hover:text-white"
                   >
                     <X size={10} />
+                  </button>
+                )}
+                {/* この画像を「現在の画像」にする／選択中なら押すと解除して自動に戻す */}
+                {canEdit && !d.externalUrl && (
+                  <button
+                    type="button"
+                    onClick={() => onSelectCurrent(d.currentSelected ? null : d)}
+                    aria-label={
+                      d.currentSelected
+                        ? `${docPeriodDate(d)} の${KIND_LABELS[kind]}の「現在の画像」の選択を外す`
+                        : `${docPeriodDate(d)} の${KIND_LABELS[kind]}を「現在の画像」にする`
+                    }
+                    title={
+                      d.currentSelected
+                        ? "「現在の画像」として選択中（押すと選択を外して自動（最新）に戻す）"
+                        : "この画像を「現在の画像」（「現在」のタブ・個人票に出す画像）にする"
+                    }
+                    className={`absolute -right-1.5 -bottom-1.5 flex h-4 w-4 items-center justify-center rounded-full border shadow-sm ${
+                      d.currentSelected
+                        ? "border-brand bg-brand text-brand-foreground"
+                        : "border-brand/50 bg-surface text-brand hover:bg-brand hover:text-brand-foreground"
+                    }`}
+                  >
+                    <Check size={10} />
                   </button>
                 )}
               </span>

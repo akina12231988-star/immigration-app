@@ -89,6 +89,39 @@ describe("isWorkerInReview（一覧のカードと詳細の見出しで同じ判
       isWorkerInReview({}, "", true),
     );
   });
+
+  test("特定活動（移行準備など）の許可がおりている人には、文字の「審査中」ではバッジを出さない", () => {
+    // つなぎのビザの許可を記録したあとに、前の「在留更新の状況」「只今の状況」の審査中が残っていても出さない
+    expect(
+      isWorkerInReview(
+        { residence_status: "特定活動（特定技能1号以降準備）", residence_renewal_status: "審査中" },
+        "",
+        false,
+      ),
+    ).toBe(false);
+    expect(
+      isWorkerInReview(
+        { residence_status: "特定活動（特定技能１号移行準備）", current_situation: "特定技能1号審査中" },
+        "特定技能1号審査中",
+        false,
+      ),
+    ).toBe(false);
+    // 入管で審査中の申請が登録されているときは、これまでどおり出す
+    expect(
+      isWorkerInReview({ residence_status: "特定活動（特定技能2号移行準備）" }, "", true),
+    ).toBe(true);
+    // 準備のつなぎではない特定活動や、ほかの在留資格はこれまでどおり文字でも出す
+    expect(
+      isWorkerInReview(
+        { residence_status: "特定活動", residence_renewal_status: "審査中" },
+        "",
+        false,
+      ),
+    ).toBe(true);
+    expect(
+      isWorkerInReview({ residence_status: "特定技能1号" }, "更新の審査中", false),
+    ).toBe(true);
+  });
 });
 
 describe("latestApplicationByWorker", () => {

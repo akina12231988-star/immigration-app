@@ -248,6 +248,7 @@ export interface OrganizationIntake {
   ssw_insurance_burden: string; // 特定技能総合保険の負担（'' / 会社負担 / 外国人負担）
   sales_items: OrgSalesItems; // 申請種別ごとの売上明細（freee販売への登録内容）
   sales_items_custom: string[]; // 既定の明細ではなく、この機関だけの明細（sales_items）を使う申請種別
+  freee_case_url: string; // 案件のリンク（freee販売のこの機関の案件ページ。請求書作成の当月許可者リストの「案件」で開く）
   work_address: string; // 作業する住所（会社の住所と別の場合）
   work_contact: string; // 作業する住所の TEL・FAX
   rep_kana: string; // 代表者フリガナ
@@ -485,6 +486,8 @@ export interface Worker {
   leaving_reason: string; // 退職理由
   leaving_org_name: string; // 退職した所属機関の名称
   leaving_org_address: string; // 退職した所属機関の住所
+  // 個人票の備考（退職日の横に出す自由記入の欄。0211。未適用の環境では undefined）
+  print_note?: string;
   gender: string; // 性別
   has_spouse: string; // 配偶者の有無（'' / 有 / 無）
   spouse?: WorkerSpouse | null; // 配偶者の情報（0175。未適用の環境では undefined）

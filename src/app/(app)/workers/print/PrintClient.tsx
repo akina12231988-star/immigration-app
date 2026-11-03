@@ -65,6 +65,7 @@ export interface PrintWorker {
   residenceExpiryDate: string | null;
   employmentStartOn: string | null;
   leavingOn: string | null;
+  printNote: string; // 備考（退職日の横に出す自由記入の欄）
   assignedOffice: string;
   residenceNote: string;
   messengerLink: string;
@@ -132,6 +133,8 @@ export function PrintClient({
             ),
             residenceCardUrl: selectedPeriod.residenceCardUrl,
             designationUrl: selectedPeriod.designationUrl,
+            // 過去の在籍分の備考は、その期間の入力欄（worker_period_cards.note）で入れたもの
+            printNote: selectedPeriod.card?.note ?? "",
           },
         ]
       : workers;
@@ -418,6 +421,8 @@ export function PrintClient({
               forCompany={forCompany}
               /* その所属機関にいた間に受けた許可（在留資格の履歴） */
               history={individual ? (selectedPeriod?.history ?? currentHistory) : []}
+              /* 過去の在籍期間の個人票では、画像の見出しを「当時の〜」にする */
+              pastPeriod={Boolean(selectedPeriod)}
               /* 過去の在籍期間はその期間の欄（下の入力欄）で直す。
                  ここで直すと今の情報が書き換わってしまうため編集は出さない */
               canEdit={canEdit && !selectedPeriod}
@@ -552,6 +557,7 @@ function WorkerSheet({
   printDate,
   forCompany,
   history = [],
+  pastPeriod = false,
   canEdit,
   onSaved,
 }: {
@@ -560,6 +566,7 @@ function WorkerSheet({
   printDate: string;
   forCompany: boolean;
   history?: VisaHistoryRow[]; // その所属機関にいた間に受けた許可（在留資格の履歴）
+  pastPeriod?: boolean; // 過去の在籍期間の個人票か（画像の見出しを「当時の〜」にする）
   canEdit: boolean;
   onSaved: () => void; // 保存後にページのデータを読み直す
 }) {
@@ -776,6 +783,8 @@ function WorkerSheet({
           )}
           <Row label="雇用開始日" value={worker.employmentStartOn} edit={edit("employment_start_on", true)} />
           <Row label="退職日" value={worker.leavingOn} edit={edit("leaving_on", true)} />
+          {/* 備考（自由記入。「情報を訂正」からその場で書き込める） */}
+          <Row label="備考" value={worker.printNote} edit={edit("print_note")} />
         </dl>
 
         {/* MessengerリンクQRコード（社内用のみ） */}
@@ -837,18 +846,19 @@ function WorkerSheet({
         </div>
       )}
 
-      {/* 最新在留カード画像・指定書画像（下半分を目いっぱい使う）。
+      {/* 現在の在留カード画像・指定書画像（下半分を目いっぱい使う）。
+          外国人詳細の書類タブで手で選んだ「現在の画像」があればそれ、無ければいちばん新しい画像。
           編集モードではクリック / ドロップで差し替えできる（履歴に追記される） */}
       <div className="mt-6 grid grid-cols-2 gap-4">
         <DocBox
-          label="最新 在留カード"
+          label={pastPeriod ? "当時の在留カード" : "現在の在留カード"}
           url={worker.residenceCardUrl}
           busy={uploading === "在留カード"}
           inputRef={cardInputRef}
           edit={editing ? { onFile: (f) => void uploadImage("在留カード", f) } : undefined}
         />
         <DocBox
-          label="最新 指定書"
+          label={pastPeriod ? "当時の指定書" : "現在の指定書"}
           url={worker.designationUrl}
           busy={uploading === "指定書"}
           inputRef={designationInputRef}
@@ -1081,6 +1091,21 @@ function PeriodCardEditor({
             />
           </label>
         ))}
+        {/* 備考（個人票の退職日の横に出す自由記入の欄）。この期間の分は worker_period_cards.note に残る */}
+        <label className="flex flex-col gap-0.5 text-[11px] font-bold text-muted sm:col-span-3">
+          備考（個人票の退職日の横に出ます）
+          <input
+            type="text"
+            value={card.note}
+            disabled={!canEdit}
+            onChange={(e) => {
+              const v = e.target.value;
+              setSaved(false);
+              setCard((prev) => ({ ...prev, note: v }));
+            }}
+            className="min-h-[34px] rounded-lg border border-border bg-surface px-2 text-xs font-normal text-foreground disabled:opacity-60"
+          />
+        </label>
       </div>
       {canEdit && (
         <button
