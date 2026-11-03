@@ -65,6 +65,7 @@ export interface PrintWorker {
   residenceExpiryDate: string | null;
   employmentStartOn: string | null;
   leavingOn: string | null;
+  printNote: string; // 備考（退職日の横に出す自由記入の欄）
   assignedOffice: string;
   residenceNote: string;
   messengerLink: string;
@@ -132,6 +133,8 @@ export function PrintClient({
             ),
             residenceCardUrl: selectedPeriod.residenceCardUrl,
             designationUrl: selectedPeriod.designationUrl,
+            // 過去の在籍分の備考は、その期間の入力欄（worker_period_cards.note）で入れたもの
+            printNote: selectedPeriod.card?.note ?? "",
           },
         ]
       : workers;
@@ -780,6 +783,8 @@ function WorkerSheet({
           )}
           <Row label="雇用開始日" value={worker.employmentStartOn} edit={edit("employment_start_on", true)} />
           <Row label="退職日" value={worker.leavingOn} edit={edit("leaving_on", true)} />
+          {/* 備考（自由記入。「情報を訂正」からその場で書き込める） */}
+          <Row label="備考" value={worker.printNote} edit={edit("print_note")} />
         </dl>
 
         {/* MessengerリンクQRコード（社内用のみ） */}
@@ -1086,6 +1091,21 @@ function PeriodCardEditor({
             />
           </label>
         ))}
+        {/* 備考（個人票の退職日の横に出す自由記入の欄）。この期間の分は worker_period_cards.note に残る */}
+        <label className="flex flex-col gap-0.5 text-[11px] font-bold text-muted sm:col-span-3">
+          備考（個人票の退職日の横に出ます）
+          <input
+            type="text"
+            value={card.note}
+            disabled={!canEdit}
+            onChange={(e) => {
+              const v = e.target.value;
+              setSaved(false);
+              setCard((prev) => ({ ...prev, note: v }));
+            }}
+            className="min-h-[34px] rounded-lg border border-border bg-surface px-2 text-xs font-normal text-foreground disabled:opacity-60"
+          />
+        </label>
       </div>
       {canEdit && (
         <button

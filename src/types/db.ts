@@ -486,6 +486,8 @@ export interface Worker {
   leaving_reason: string; // 退職理由
   leaving_org_name: string; // 退職した所属機関の名称
   leaving_org_address: string; // 退職した所属機関の住所
+  // 個人票の備考（退職日の横に出す自由記入の欄。0211。未適用の環境では undefined）
+  print_note?: string;
   gender: string; // 性別
   has_spouse: string; // 配偶者の有無（'' / 有 / 無）
   spouse?: WorkerSpouse | null; // 配偶者の情報（0175。未適用の環境では undefined）
