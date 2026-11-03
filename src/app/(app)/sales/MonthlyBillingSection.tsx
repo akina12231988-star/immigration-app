@@ -1692,7 +1692,7 @@ export function MonthlyBillingSection({
                         特定技能総合保険の画面を開く
                       </Link>
                     </div>
-                  <table className="w-full min-w-[1240px] border-collapse text-xs">
+                  <table className="w-full min-w-[1420px] border-collapse text-xs">
                     <thead>
                       <tr className="border-b border-border text-left text-muted">
                         <th className="py-1.5 pr-2 font-bold">許可日</th>
@@ -1723,6 +1723,7 @@ export function MonthlyBillingSection({
                         <th className="py-1.5 pr-2 text-right font-bold">支援費請求額</th>
                         <th className="py-1.5 pr-2 font-bold">案件</th>
                         <th className="py-1.5 pr-2 font-bold">許可売上No.</th>
+                        <th className="py-1.5 pr-2 font-bold">紹介手数料No.</th>
                         <th className="py-1.5 pr-2 font-bold">保険No.</th>
                         <th className="py-1.5 font-bold">特定技能総合保険</th>
                       </tr>
@@ -1808,6 +1809,36 @@ export function MonthlyBillingSection({
                             placeholder="許可売上No."
                             onSave={(v, entryId) =>
                               saveEntryNo(row.worker.id, "permit", entryId, v, row, org.organizationId)
+                            }
+                          />
+                          {/* 紹介手数料No.（あっせんが「あり」の人）。下の所属機関ごとの名簿と同じ
+                              紹介手数料台帳の行なので、どちらで入れても同じ番号が出る。
+                              更新許可の月はあっせんではないので対象外（判定は申請の「申請内容」を正とする） */}
+                          <ReferralNoCell
+                            fee={feeFor(row.worker.id, org.organizationId)}
+                            canEdit={canEdit}
+                            active
+                            renewal={
+                              (permitContents[row.worker.id] ?? "").includes("更新") ||
+                              /更新$/.test((row.worker.residence_status ?? "").trim())
+                            }
+                            busy={
+                              referralBusyKey ===
+                              referralWorkerOrgKey(row.worker.id, org.organizationId)
+                            }
+                            applicationState={
+                              appOrgKeys === null
+                                ? "unknown"
+                                : appOrgKeys.has(
+                                      referralWorkerOrgKey(row.worker.id, org.organizationId),
+                                    )
+                                  ? "has"
+                                  : "none"
+                            }
+                            today={today}
+                            onSave={(v) => void saveReferralNo(row, org.organizationId, v)}
+                            onRecordPaid={(paidOn) =>
+                              void recordReferralPaid(row.worker.id, org.organizationId, paidOn)
                             }
                           />
                           <SalesNoCell
