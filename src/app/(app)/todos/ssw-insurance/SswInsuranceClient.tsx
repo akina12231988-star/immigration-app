@@ -471,8 +471,9 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
 
           {tab === "join" && (
             <>
+              {/* ①はこれから申込が必要な人だけ。すでに申込手続中の人は②（結果の登録）にだけ出す */}
               <SswJoinTable
-                rows={joinRows}
+                rows={joinRows.filter((r) => !isSswApplying(r))}
                 today={today}
                 canEdit={canEdit}
                 statusOptions={joinStatusOptions}
