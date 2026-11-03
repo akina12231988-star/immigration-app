@@ -141,6 +141,7 @@ import { buildXlsx, downloadBlob } from "@/lib/xlsx-export";
 import { InvoicePdfCheck } from "./InvoicePdfCheck";
 import { employmentStartInRange, employmentStartPrintUrl } from "@/lib/worker-print-filter";
 import { formatAmountInput, formatAmountWhileTyping } from "@/lib/amount-format";
+import { openCaseWindow } from "@/lib/case-window";
 
 // 月末の請求書作成。年月を選ぶと、その月に1日でも在籍していた支援対象者を
 // 所属機関ごとに並べ、支援費の請求額（満額・日割り）を出す。
@@ -3290,16 +3291,15 @@ function CaseLinkCell({
       <span className="inline-flex items-center gap-1 whitespace-nowrap">
         {url ? (
           <>
-            <a
-              href={url}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
+              onClick={() => openCaseWindow(url)}
               className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2 py-1 text-[11px] font-bold text-brand hover:border-brand"
-              title="freee販売のこの機関の案件ページを別のタブで開く"
+              title="freee販売のこの機関の案件ページを、横に並べやすい別ウィンドウで開く（どの機関の案件も同じウィンドウで切り替わります）"
             >
               <ExternalLink size={12} />
               案件
-            </a>
+            </button>
             {canEdit && (
               <button
                 type="button"

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ExternalLink, Loader2, Printer, Trash2, Upload } from "lucide-react";
+import { openCaseWindow } from "@/lib/case-window";
 import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { FileDropArea } from "@/components/ui/FileDropArea";
@@ -1816,15 +1817,15 @@ function IntakeSection({
           locked={locks.intake("freee_case_url")}
         />
         {intake.freee_case_url.trim().startsWith("http") && (
-          <a
-            href={intake.freee_case_url.trim()}
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            type="button"
+            onClick={() => openCaseWindow(intake.freee_case_url.trim())}
             className="inline-flex items-center gap-1 self-start text-xs font-bold text-brand"
+            title="横に並べやすい別ウィンドウで開きます（請求書作成の「案件」と同じウィンドウ）"
           >
             <ExternalLink size={13} />
             案件を開く
-          </a>
+          </button>
         )}
         <p className={GROUP_CLASS}>申請種別ごとの売上明細（freee販売）</p>
         <p className={HINT_CLASS}>
