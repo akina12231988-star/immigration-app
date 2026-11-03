@@ -482,6 +482,24 @@ export function MonthlyBillingSection({
   const [showPermitted, setShowPermitted] = useState(false);
   const [showLeft, setShowLeft] = useState(false);
 
+  // 当月許可者リストの所属機関の並び替え（押すたびに 機関順 → 機関の逆順 → 許可日順）。
+  // 機関順のときも、同じ機関の中は許可日の古い順のまま
+  const [permittedOrgSort, setPermittedOrgSort] = useState<SortDir>(null);
+  const cyclePermittedOrgSort = () =>
+    setPermittedOrgSort((v) => (v === null ? "asc" : v === "asc" ? "desc" : null));
+  const sortedPermittedRows = useMemo(() => {
+    if (!permittedOrgSort) return permittedRows;
+    const dir = permittedOrgSort === "asc" ? 1 : -1;
+    return [...permittedRows].sort(
+      (a, b) =>
+        dir * a.org.organizationName.localeCompare(b.org.organizationName, "ja") ||
+        (a.row.worker.residence_permit_date ?? "").localeCompare(
+          b.row.worker.residence_permit_date ?? "",
+        ) ||
+        a.row.worker.name.localeCompare(b.row.worker.name, "ja"),
+    );
+  }, [permittedRows, permittedOrgSort]);
+
   // 当月退職者・当月許可者の特定技能総合保険（加入の記録と、加入手続き・解約手続きのTODO）。
   // それぞれのリストを開いたときに、その人たちの分だけ読む。TODOを作ったら読み直す
   const [sswInfo, setSswInfo] = useState<Map<string, SswBillingInfo>>(new Map());
@@ -1680,7 +1698,24 @@ export function MonthlyBillingSection({
                         <th className="py-1.5 pr-2 font-bold">許可日</th>
                         <th className="py-1.5 pr-2 font-bold">氏名</th>
                         <th className="py-1.5 pr-2 font-bold">個人票</th>
-                        <th className="py-1.5 pr-2 font-bold">所属機関</th>
+                        <th className="py-1.5 pr-2 font-bold">
+                          {/* 既定は許可日の古い順。押すと所属機関ごとにまとめて並べられる */}
+                          <button
+                            type="button"
+                            onClick={cyclePermittedOrgSort}
+                            title="クリックで 所属機関順 → 所属機関の逆順 → 許可日順 に切り替え"
+                            className="inline-flex items-center gap-1 font-bold hover:text-brand"
+                          >
+                            所属機関
+                            {permittedOrgSort === "asc" ? (
+                              <ArrowUp size={12} />
+                            ) : permittedOrgSort === "desc" ? (
+                              <ArrowDown size={12} />
+                            ) : (
+                              <ArrowUpDown size={12} className="opacity-50" />
+                            )}
+                          </button>
+                        </th>
                         <th className="py-1.5 pr-2 font-bold">定期売上No.</th>
                         <th className="py-1.5 pr-2 font-bold">在留資格</th>
                         <th className="py-1.5 pr-2 font-bold">在留期限</th>
@@ -1693,7 +1728,7 @@ export function MonthlyBillingSection({
                       </tr>
                     </thead>
                     <tbody>
-                      {permittedRows.map(({ org, row }) => (
+                      {sortedPermittedRows.map(({ org, row }) => (
                         <tr key={row.worker.id} className="border-b border-border/60">
                           <td className="py-1.5 pr-2 tabular-nums">
                             {row.worker.residence_permit_date ?? "—"}
@@ -1734,7 +1769,22 @@ export function MonthlyBillingSection({
                               onSave={(v) => saveSalesNo(row.worker.id, v)}
                             />
                           </td>
-                          <td className="py-1.5 pr-2">{row.worker.residence_status}</td>
+                          {/* 在留資格は「特定技能1号」ときれいに出し、更新許可の人には「更新」のバッジを付ける。
+                              判定は在留資格の文字ではなく、その月に許可が下りた申請の「申請内容」を正とする
+                              （備考の＜更新許可＞の仕分けと同じ判定。申請の登録が無い人には付かない） */}
+                          <td className="py-1.5 pr-2">
+                            <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                              {visaLabelOf(row.worker.residence_status)}
+                              {(permitContents[row.worker.id] ?? "").includes("更新") && (
+                                <span
+                                  className="rounded-full bg-brand/10 px-1.5 py-0.5 text-[10px] font-bold text-brand"
+                                  title="在留期間の更新許可です（申請の「申請内容」で判定）"
+                                >
+                                  更新
+                                </span>
+                              )}
+                            </span>
+                          </td>
                           <td className="py-1.5 pr-2 tabular-nums">
                             {row.worker.residence_expiry_date ?? "—"}
                           </td>
@@ -3413,6 +3463,16 @@ function RecurringSalesNoCell({
 // 特定技能2号の行か（2号は特定技能総合保険に加入できないため、保険No.は発生しない）
 function isSsw2Row(row: MonthlyBillingRow): boolean {
   return (row.worker.residence_status ?? "").normalize("NFKC").includes("特定技能2号");
+}
+
+// 在留資格の表示。「特定技能1号更新」のように申請の種類まで一緒に書かれていても
+// 「特定技能1号」ときれいに出す（更新かどうかは文字ではなく、申請の「申請内容」で判定して
+// 「更新」のバッジを別に付ける）
+function visaLabelOf(status: string | null | undefined): string {
+  return (status ?? "")
+    .normalize("NFKC")
+    .trim()
+    .replace(/\s*(更新|変更|認定)(許可)?$/, "");
 }
 
 // 許可売上No.・保険No.の1マス。売上明細の行があればその場で直せる。
