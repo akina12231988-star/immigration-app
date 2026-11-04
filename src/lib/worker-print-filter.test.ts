@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   employmentStartInRange,
   employmentStartPrintUrl,
+  leavingPrintUrl,
   printDateLabel,
   printDateMode,
   printDateParam,
@@ -54,6 +55,17 @@ describe("employmentStartPrintUrl", () => {
     );
     expect(employmentStartPrintUrl("org-1", "2026-02", "sheets")).toBe(
       "/workers/print?org=org-1&from=2026-02-01&to=2026-02-28&date=employment&mode=internal",
+    );
+  });
+});
+
+describe("leavingPrintUrl（対象の年月に退職した人の印刷）", () => {
+  it("退職日（date=leaving）でその月の初日〜末日を絞り込む", () => {
+    expect(leavingPrintUrl("org-1", "2026-10", "list")).toBe(
+      "/workers/print?org=org-1&from=2026-10-01&to=2026-10-31&date=leaving&mode=list",
+    );
+    expect(leavingPrintUrl("org-1", "2026-10", "sheets")).toBe(
+      "/workers/print?org=org-1&from=2026-10-01&to=2026-10-31&date=leaving&mode=internal",
     );
   });
 });

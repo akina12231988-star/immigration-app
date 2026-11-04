@@ -139,7 +139,7 @@ import {
 } from "@/lib/monthly-billing-sheets";
 import { buildXlsx, downloadBlob } from "@/lib/xlsx-export";
 import { InvoicePdfCheck } from "./InvoicePdfCheck";
-import { employmentStartInRange, employmentStartPrintUrl } from "@/lib/worker-print-filter";
+import { employmentStartInRange, employmentStartPrintUrl, leavingPrintUrl } from "@/lib/worker-print-filter";
 import { formatAmountInput, formatAmountWhileTyping } from "@/lib/amount-format";
 import { openCaseWindow } from "@/lib/case-window";
 
@@ -2900,6 +2900,15 @@ export function MonthlyBillingSection({
                   }
                 />
               )}
+              {/* 対象の年月にこの機関を退職した人の印刷（一覧表・A4個人票）。退職日が対象の年月の初日〜末日の人 */}
+              {open && org.organizationId && (
+                <PeriodPrintLinks
+                  label={`${monthLabel(month)}に退職した人`}
+                  count={org.rows.filter((r) => r.leftThisMonth || r.transferredOut).length}
+                  listHref={leavingPrintUrl(org.organizationId, month, "list")}
+                  sheetsHref={leavingPrintUrl(org.organizationId, month, "sheets")}
+                />
+              )}
 
               {open && (
                 <div className="mt-2 overflow-x-auto">
@@ -4127,15 +4136,37 @@ function EmploymentStartPrintLinks({
   month: string;
   count: number;
 }) {
+  return (
+    <PeriodPrintLinks
+      label={`${monthLabel(month)}に雇用開始した人`}
+      count={count}
+      listHref={employmentStartPrintUrl(organizationId, month, "list")}
+      sheetsHref={employmentStartPrintUrl(organizationId, month, "sheets")}
+    />
+  );
+}
+
+// 「○月に雇用開始した人」「○月に退職した人」の印刷リンクの行（一覧表・A4個人票）
+function PeriodPrintLinks({
+  label,
+  count,
+  listHref,
+  sheetsHref,
+}: {
+  label: string;
+  count: number;
+  listHref: string;
+  sheetsHref: string;
+}) {
   const LINK =
     "inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-border px-2.5 text-xs font-bold text-brand";
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl bg-background px-3 py-2">
       <span className="text-xs font-bold text-muted">
-        {monthLabel(month)}に雇用開始した人{count > 0 ? `（名簿に${count}名）` : ""}:
+        {label}{count > 0 ? `（名簿に${count}名）` : ""}:
       </span>
       <Link
-        href={employmentStartPrintUrl(organizationId, month, "list")}
+        href={listHref}
         target="_blank"
         rel="noopener noreferrer"
         className={LINK}
@@ -4144,7 +4175,7 @@ function EmploymentStartPrintLinks({
         名簿を印刷（一覧表）
       </Link>
       <Link
-        href={employmentStartPrintUrl(organizationId, month, "sheets")}
+        href={sheetsHref}
         target="_blank"
         rel="noopener noreferrer"
         className={LINK}

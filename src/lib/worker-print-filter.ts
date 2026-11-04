@@ -66,3 +66,16 @@ export function employmentStartPrintUrl(
   p.set("mode", kind === "list" ? "list" : "internal");
   return `/workers/print?${p.toString()}`;
 }
+
+// 請求書作成から開く「対象の年月に退職した人」の印刷URL（退職日で絞り込む）。
+// kind = "list" は一覧表（A4横・1表）、"sheets" は個人票（1人1ページ）
+export function leavingPrintUrl(organizationId: string, month: string, kind: "list" | "sheets"): string {
+  const { from, to } = monthRange(month);
+  const p = new URLSearchParams();
+  p.set("org", organizationId);
+  p.set("from", from);
+  p.set("to", to);
+  p.set("date", "leaving");
+  p.set("mode", kind === "list" ? "list" : "internal");
+  return `/workers/print?${p.toString()}`;
+}
