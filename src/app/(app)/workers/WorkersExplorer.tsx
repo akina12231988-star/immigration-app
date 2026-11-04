@@ -295,6 +295,10 @@ export function WorkersExplorer({
           <LinkButton href="/workers/import" variant="secondary" icon={<Upload size={18} />}>
             取込
           </LinkButton>
+          {/* 在籍名簿のエクセルから配属先・居住について を反映する */}
+          <LinkButton href="/workers/roster-sync" variant="secondary" icon={<Upload size={18} />}>
+            名簿から配属先・居住
+          </LinkButton>
           {/* 履歴書ツールで本人が作った履歴書PDFから登録する */}
           <LinkButton href="/workers/resume-import" variant="secondary" icon={<FileSearch size={18} />}>
             履歴書PDF
