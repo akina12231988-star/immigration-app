@@ -9,6 +9,7 @@ import { staffLabel, type StaffNameSource } from "@/lib/staff-name";
 import { useStaffNames } from "@/lib/use-staff-names";
 import { Button } from "@/components/ui/Button";
 import { FileGroup } from "@/components/applications/FileGroup";
+import { ResidenceCardConfirmDialog } from "@/components/applications/ResidenceCardConfirmDialog";
 import { generateApprovalReport } from "@/lib/line-report";
 import { createClient } from "@/lib/supabase/client";
 import { suggestSupportScope } from "@/lib/worker-support";
@@ -104,7 +105,15 @@ export function ApprovalSection({
     employment_start_on: string | null;
     org_employment_starts: WorkerOrgEmploymentStart[];
     orgName: string;
+    // 最終確認の見本のカードに出す（外国人詳細の登録内容）
+    name: string;
+    birth: string | null;
+    gender: string;
+    nationality: string;
+    address: string;
   } | null>(null);
+  // 「許可情報を保存」を押したあとの最終確認（在留カード情報）
+  const [confirmOpen, setConfirmOpen] = useState(false);
   useEffect(() => {
     if (!app.workerId) return;
     let cancelled = false;
@@ -113,12 +122,12 @@ export function ApprovalSection({
       supabase.from("workers").select(columns).eq("id", app.workerId as string).maybeSingle();
     void (async () => {
       let res = await select(
-        "residence_status, residence_period, residence_period_manual, current_organization_id, employment_start_on, org_employment_starts, organizations!workers_current_organization_id_fkey(name)",
+        "name, birth, gender, nationality, address, residence_status, residence_period, residence_period_manual, current_organization_id, employment_start_on, org_employment_starts, organizations!workers_current_organization_id_fkey(name)",
       );
       if (res.error) {
         // residence_period が無い古いDB（0092未適用）でも表示できるように読み直す
         res = await select(
-          "residence_status, current_organization_id, employment_start_on, org_employment_starts, organizations!workers_current_organization_id_fkey(name)",
+          "name, birth, gender, nationality, address, residence_status, current_organization_id, employment_start_on, org_employment_starts, organizations!workers_current_organization_id_fkey(name)",
         );
       }
       const data = res.data;
@@ -132,6 +141,11 @@ export function ApprovalSection({
           employment_start_on: string | null;
           org_employment_starts: unknown;
           organizations: { name: string } | null;
+          name?: string | null;
+          birth?: string | null;
+          gender?: string | null;
+          nationality?: string | null;
+          address?: string | null;
         };
         setWorkerNow({
           residence_status: d.residence_status ?? "",
@@ -139,6 +153,11 @@ export function ApprovalSection({
           employment_start_on: d.employment_start_on,
           org_employment_starts: normalizeOrgEmploymentStarts(d.org_employment_starts),
           orgName: d.organizations?.name ?? "",
+          name: d.name ?? "",
+          birth: d.birth ?? null,
+          gender: d.gender ?? "",
+          nationality: d.nationality ?? "",
+          address: d.address ?? "",
         });
         // 許可情報の在留資格・在留期間に、いまの登録内容を初期表示する
         setGrantResidenceStatus((v) => v || (d.residence_status ?? ""));
@@ -331,9 +350,11 @@ export function ApprovalSection({
         });
       }
       setSaved(true);
+      setConfirmOpen(false);
       setTimeout(() => setSaved(false), 2500);
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存に失敗しました");
+      setConfirmOpen(false); // エラーを画面で見てもらう
     } finally {
       setSaving(false);
     }
@@ -716,9 +737,31 @@ export function ApprovalSection({
           </div>
 
           {/* 許可情報の保存（画像の下に配置） */}
-          <Button fullWidth onClick={saveGrantInfo} disabled={saving} icon={saved ? <Check size={17} /> : undefined}>
+          {/* 押すとすぐには保存せず、在留カード情報の最終確認を出す（「この内容で登録する」で保存） */}
+          <Button fullWidth onClick={() => setConfirmOpen(true)} disabled={saving} icon={saved ? <Check size={17} /> : undefined}>
             {saving ? "保存中…" : saved ? "保存しました（外国人情報も更新）" : "許可情報を保存"}
           </Button>
+          {confirmOpen && (
+            <ResidenceCardConfirmDialog
+              data={{
+                name: workerNow?.name || app.workerName || app.name,
+                birth: workerNow?.birth ?? null,
+                gender: workerNow?.gender ?? "",
+                nationality: workerNow?.nationality ?? "",
+                address: workerNow?.address ?? "",
+                residenceStatus: grantResidenceStatus,
+                expiryDate: form.grantedExpiryDate,
+                cardNo: form.grantedCardNo,
+                period: periodValue,
+                permitDate: form.grantedPermitDate,
+                applicationContent: app.applicationContent,
+                periodNote: grantPeriodNote.trim(),
+              }}
+              busy={saving}
+              onBack={() => setConfirmOpen(false)}
+              onConfirm={() => void saveGrantInfo()}
+            />
+          )}
           {/* 保存した内容（在留カード番号・許可日・期限・在留資格）で、現在の所属機関での個人票を印刷する。
               社内用（Messenger の QR あり）。別タブで開く */}
           {app.workerId && (
