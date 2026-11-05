@@ -1405,7 +1405,7 @@ export function ApplicationsExplorer({
         title="許可済みにします"
         message={
           approveTarget
-            ? `${approveTarget.name} さんの申請（${approveTarget.applicationNumber || "申請番号未登録"}）を許可済みにします。在留カード受け取り待ちに移り、在留許可日は今日（${TODAY}）で入ります。詳細画面であとから直せます。`
+            ? `${approveTarget.name} さんの申請（${approveTarget.applicationNumber || "申請番号未登録"}）を許可済みにします。在留カード受け取り待ちに移ります。在留許可日は、在留カードを受け取ったら申請詳細の「許可情報」で入れてください。`
             : ""
         }
         confirmLabel="許可済みにする"

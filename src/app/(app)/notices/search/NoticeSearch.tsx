@@ -296,7 +296,7 @@ export function NoticeSearch() {
             {approved ? (
               <p className="mb-2 flex items-center gap-2 rounded-lg bg-status-reported-bg px-3 py-2.5 text-sm font-bold text-status-reported-fg">
                 <Check size={16} />
-                許可済みにしました（在留カード受け取り待ちに移ります）
+                許可済みにしました（在留カード受け取り待ちに移ります。在留許可日は在留カードを受け取ったら申請詳細の「許可情報」で入れてください）
               </p>
             ) : (
               canMarkApproved(result) && (

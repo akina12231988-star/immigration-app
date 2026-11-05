@@ -1,7 +1,9 @@
 // 「許可が降りた」ときに申請へ入れる内容。
 //
 // 申請詳細の許可の欄と、一覧・通知書受付からのワンタップ操作で同じ内容にするため、
-// ここにまとめる。許可日は、通知書に書かれた日が分かればその日、無ければ今日。
+// ここにまとめる。在留許可日（許可日）は在留カードを受け取った日なので、ここでは入れない
+// （ボタンを押した日が許可日として残らないように）。日付が分かって渡されたときだけ入れる。
+// 許可日は在留カード受け取り後に、申請詳細の「許可情報」で登録する。
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchWorkerSituationInfo, updateWorker } from "@/lib/supabase/queries/workers";
@@ -13,7 +15,7 @@ export function approvalPatch(today: string, permitDate?: string | null): Partia
     approved: true,
     approvalDate: today,
     status: "許可済",
-    grantedPermitDate: (permitDate ?? "").trim() || today,
+    ...((permitDate ?? "").trim() ? { grantedPermitDate: (permitDate ?? "").trim() } : {}),
   };
 }
 

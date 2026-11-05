@@ -245,7 +245,7 @@ export function ApprovalSection({
       approved: true,
       approvalDate: today,
       status: "許可済",
-      grantedPermitDate: form.grantedPermitDate || today,
+      // 在留許可日は在留カードを受け取った日。ボタンを押した日では埋めず、「許可情報」で保存したときに入れる
     });
     // 特定技能の更新の許可なら、外国人の只今の状況を「更新」に進める（＜支援委託中＞は残す）
     void advanceSituationOnApproval(createClient(), app.workerId);
