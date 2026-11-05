@@ -1039,6 +1039,9 @@ export function DocumentRequestChecklist({
                                   {noteEditor(w, item, c, { label: "補足", placeholder: "補足（例: 本国に家族がいない）", empty: "補足を入れる" })}
                                 </span>
                               )}
+                              {/* どの段階でも備考をメモできる（無し回答のときは上の「補足」と同じ欄） */}
+                              {state !== "無し回答" &&
+                                noteEditor(w, item, c, { label: "備考", placeholder: "備考（例: 源泉徴収票は2枚）", empty: "備考" })}
                               {c?.sent_on ? (
                                 <span className="w-full text-[10px] tabular-nums text-muted">送付 {c.sent_on}</span>
                               ) : c?.issued_on ? (
@@ -1061,6 +1064,9 @@ export function DocumentRequestChecklist({
                                   <Link2 size={11} className="shrink-0" />
                                   <span className="truncate">外国人詳細に添付済み{linkedDoc.file_name ? `：${linkedDoc.file_name}` : ""}</span>
                                 </button>
+                              )}
+                              {cellFiles.length > 1 && (
+                                <span className="text-[10px] font-bold text-brand">{cellFiles.length}枚</span>
                               )}
                               {cellFiles.map((f) => (
                                 <span
@@ -1087,7 +1093,8 @@ export function DocumentRequestChecklist({
                                   title="写真・PDF を添付（ここにドロップしても添付できます）"
                                 >
                                   {uploading ? <Loader2 size={11} className="animate-spin" /> : <Paperclip size={11} />}
-                                  {uploading ? "添付中…" : "添付"}
+                                  {/* 源泉徴収票が2枚ある人など、1つの書類に何枚でも添付できる */}
+                                  {uploading ? "添付中…" : cellFiles.length > 0 ? "もう1枚添付" : "添付"}
                                 </button>
                               )}
                             </div>
