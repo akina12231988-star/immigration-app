@@ -51,6 +51,10 @@ describe("外国人雇用状況届出書（離職）", () => {
     expect(xml).toContain(")　村田 敬一");
     expect(xml).toContain("TEL</w:t>");
     expect(xml).not.toMatch(/\{\{[A-Z0-9_]+\}\}/);
+    // ⑦資格外活動許可の有無は「無」とだけ書く（「1有・2無」の選択肢は消す）
+    const seven = xml.slice(xml.indexOf("⑦"), xml.indexOf("⑧"));
+    expect(seven).toContain("<w:t>無</w:t>");
+    expect(seven).not.toContain("<w:t>有・</w:t>");
   });
 
   it("雇入れ用の様式はこれまでどおり「離職」を抹消し、置き換え残りが無い", async () => {
