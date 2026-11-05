@@ -9,6 +9,7 @@
 
 import { escapeXml } from "@/lib/xlsx-form-fill";
 import { parseMrz } from "@/lib/mrz";
+import { sumHistoryDays, toYMD } from "@/lib/ssw/calc";
 
 export const ASAT_SHOMEISHO_TEMPLATE = "/forms/asat2-shomeisho.docx";
 export const ASAT_SEIYAKUSHO_TEMPLATE = "/forms/asat2-seiyakusho.docx";
@@ -25,18 +26,66 @@ export interface AsatPerson {
   nationality: string; // 国籍・地域
 }
 
+// 就業期間の1行（勤務先ごと）。転職していたときは勤務先ごとに行を分けて書く。
+// その勤務先で管理者・監督者等として働いた期間があれば、行の2段目（括弧）に書く
+export interface AsatPeriod {
+  start: string | null; // YYYY-MM-DD
+  end: string | null; // YYYY-MM-DD。null は「現在に至る」
+  org: string; // 勤務先の名称（3段目に書く）
+  mgr: boolean; // この勤務先で管理者・監督者等としての就業期間があるか
+  mgrStart: string | null;
+  mgrEnd: string | null; // null は「現在に至る」
+}
+
 export interface AsatShomeishoData extends AsatPerson {
   certDate: string; // 証明日（YYYY-MM-DD）
   orgName: string; // 実務経験を証明する者（所属機関）の名称
   orgAddress: string;
   orgTel: string;
   orgRep: string; // 代表者（役職・氏名。例: 代表 井上洋介）
-  periodStart: string | null; // 就業期間の始まり（YYYY-MM-DD）
-  periodEnd: string | null; // 就業期間の終わり。null は「現在に至る」
+  periods: AsatPeriod[]; // 就業期間（勤務先ごと・古い順）
   totalYears: number;
   totalMonths: number;
+  // うち管理者・監督者等としての就業期間（無ければ null で空欄）
+  mgrYears: number | null;
+  mgrMonths: number | null;
+  mgrText: string; // 管理者・監督者等としての業務内容（例: 管理者として栽培管理を担当）
   employment: AsatEmploymentType;
   category: AsatCategory;
+}
+
+// 職歴から就業期間の行を作る。勤務先（名称）が続けて同じなら1行にまとめる
+// （同じ会社で技能実習 → 特定技能1号 のときは「2019年7月14日～現在に至る」の1行になる）。
+// 終了日が空（在籍中）か証明日以降なら「現在に至る」
+export function asatPeriodsFromHistories(
+  histories: { start_date: string; end_date: string | null; org_name: string }[],
+  certDate: string,
+): AsatPeriod[] {
+  const key = (s: string) => s.normalize("NFKC").replace(/\s+/g, "");
+  const sorted = [...histories].filter((h) => h.start_date).sort((a, b) => a.start_date.localeCompare(b.start_date));
+  const out: AsatPeriod[] = [];
+  for (const h of sorted) {
+    const end = !h.end_date || h.end_date >= certDate ? null : h.end_date;
+    const last = out.at(-1);
+    if (last && key(last.org) === key(h.org_name) && key(h.org_name)) {
+      // 同じ勤務先が続く: 終わりを延ばす（どちらかが在籍中なら現在に至る）
+      last.end = last.end === null || end === null ? null : last.end > end ? last.end : end;
+      continue;
+    }
+    out.push({ start: h.start_date, end, org: h.org_name.trim(), mgr: false, mgrStart: null, mgrEnd: null });
+  }
+  return out;
+}
+
+// 就業期間の合計と、うち管理者・監督者等としての合計（年・か月）。在籍中の分は証明日まで数える
+export function asatTotals(
+  periods: AsatPeriod[],
+  certDate: string,
+): { years: number; months: number; mgrYears: number | null; mgrMonths: number | null } {
+  const total = toYMD(sumHistoryDays(periods.filter((p) => p.start).map((p) => ({ start: p.start ?? "", end: p.end })), certDate));
+  const mgrs = periods.filter((p) => p.mgr && p.mgrStart);
+  const mgr = mgrs.length > 0 ? toYMD(sumHistoryDays(mgrs.map((p) => ({ start: p.mgrStart ?? "", end: p.mgrEnd })), certDate)) : null;
+  return { years: total.y, months: total.m, mgrYears: mgr ? mgr.y : null, mgrMonths: mgr ? mgr.m : null };
 }
 
 // YYYY-MM-DD → [年, 月, 日]（先頭の0は付けない）。読めなければ空
@@ -71,10 +120,27 @@ function ellipsePos(kind: keyof typeof ELLIPSES, right: boolean): { x: string; v
   return { x: String(e.x + Math.round(shiftPt * PT_EMU)), vx: (e.vx + shiftPt).toFixed(2) };
 }
 
+// 管理者・監督者等としての就業期間が無い行の2段目（様式のままの空欄）
+// （1行に収まるように様式より少し詰めてある。行が折り返すと転職が多い人で2ページになるため）
+const BLANK_MGR_PERIOD = "\u3000\u3000年\u3000\u3000月\u3000\u3000日～\u3000\u3000年\u3000\u3000月\u3000\u3000日";
+
+// 就業期間の1行ぶんの置き換え（この行はテンプレートで勤務先の数だけ複製する）
+export function asatPeriodTokens(p: AsatPeriod): Record<string, string> {
+  const [sy, sm, sd] = asatDateParts(p.start);
+  return {
+    "{{SY}}": sy,
+    "{{SM}}": sm,
+    "{{SD}}": sd,
+    "{{END}}": p.end ? jpDate(p.end) : "現在に至る",
+    "{{MGR_PERIOD}}":
+      p.mgr && p.mgrStart ? `${jpDate(p.mgrStart)}～${p.mgrEnd ? jpDate(p.mgrEnd) : "現在に至る"}` : BLANK_MGR_PERIOD,
+    "{{P_ORG}}": p.org,
+  };
+}
+
 export function asatShomeishoTokens(data: AsatShomeishoData): Record<string, string> {
   const [cy, cm, cd] = asatDateParts(data.certDate);
   const [by, bm, bd] = asatDateParts(data.birth);
-  const [sy, sm, sd] = asatDateParts(data.periodStart);
   const emp = ellipsePos("employment", data.employment === "派遣形態");
   const cat = ellipsePos("category", data.category === "畜産農業全般");
   return {
@@ -92,10 +158,9 @@ export function asatShomeishoTokens(data: AsatShomeishoData): Record<string, str
     "{{NATIONALITY}}": data.nationality,
     "{{TY}}": String(data.totalYears),
     "{{TM}}": String(data.totalMonths),
-    "{{SY}}": sy,
-    "{{SM}}": sm,
-    "{{SD}}": sd,
-    "{{END}}": data.periodEnd ? jpDate(data.periodEnd) : "現在に至る",
+    "{{UY}}": data.mgrYears === null ? "" : String(data.mgrYears),
+    "{{UM}}": data.mgrMonths === null ? "" : String(data.mgrMonths),
+    "{{MGR_TEXT}}": data.mgrText.trim(),
     "{{EMP_X}}": emp.x,
     "{{EMP_VX}}": emp.vx,
     "{{CAT_X}}": cat.x,
@@ -114,17 +179,40 @@ export function asatSeiyakushoTokens(data: AsatPerson): Record<string, string> {
   };
 }
 
-// テンプレート（docx）の {{TOKEN}} を置き換える。置き換え残りがあれば作らない（空欄のまま出さない）
-export async function fillAsatDocx(template: ArrayBuffer, tokens: Record<string, string>): Promise<Uint8Array> {
+// テンプレート（docx）の {{TOKEN}} を置き換える。置き換え残りがあれば作らない（空欄のまま出さない）。
+// rows を渡すと、{{SY}} を含む表の行（就業期間の行）を rows の数だけ複製し、行ごとに置き換える
+export async function fillAsatDocx(
+  template: ArrayBuffer,
+  tokens: Record<string, string>,
+  rows?: Record<string, string>[],
+): Promise<Uint8Array> {
   const { default: JSZip } = await import("jszip");
   const zip = await JSZip.loadAsync(template);
   const path = "word/document.xml";
   const file = zip.file(path);
   if (!file) throw new Error("テンプレートの形式が不正です（document.xml がありません）");
   let xml = await file.async("string");
-  for (const [token, value] of Object.entries(tokens)) {
-    xml = xml.split(token).join(escapeXml(value));
+  const fill = (src: string, map: Record<string, string>) => {
+    let out = src;
+    for (const [token, value] of Object.entries(map)) out = out.split(token).join(escapeXml(value));
+    return out;
+  };
+  if (rows) {
+    const at = xml.indexOf("{{SY}}");
+    const rowStart = Math.max(xml.lastIndexOf("<w:tr ", at), xml.lastIndexOf("<w:tr>", at));
+    const rowEnd = xml.indexOf("</w:tr>", at) + "</w:tr>".length;
+    if (at < 0 || rowStart < 0 || rowEnd < "</w:tr>".length) throw new Error("テンプレートに就業期間の行がありません");
+    const row = xml.slice(rowStart, rowEnd);
+    const filled = (rows.length > 0 ? rows : [{}]).map((r) => fill(row, r)).join("");
+    xml = xml.slice(0, rowStart) + filled + xml.slice(rowEnd);
+    // 勤務先が2つ以上あると行が増えて2ページ目にはみ出すので、上下の余白（35mm・30mm）を20mmに詰める
+    if (rows.length >= 2) {
+      xml = xml.replace(/<w:pgMar ([^>]*)\/>/, (_m, attrs: string) =>
+        `<w:pgMar ${attrs.replace(/w:top="\d+"/, 'w:top="1134"').replace(/w:bottom="\d+"/, 'w:bottom="1134"')}/>`,
+      );
+    }
   }
+  xml = fill(xml, tokens);
   const left = xml.match(/\{\{[A-Z_]+\}\}/g);
   if (left) throw new Error(`テンプレートに入れていない欄があります（${[...new Set(left)].join("・")}）`);
   zip.file(path, xml, { createFolders: false });

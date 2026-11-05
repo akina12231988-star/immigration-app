@@ -6,7 +6,7 @@ import { Modal } from "@/components/ui/Modal";
 import { saveOrShareFile } from "@/lib/file-save";
 import { normalizeOrganizationIntake } from "@/lib/organization-intake";
 import { formatYmdJa } from "@/lib/support-plan-dates";
-import { sumHistoryDays, todayStr, toYMD } from "@/lib/ssw/calc";
+import { todayStr } from "@/lib/ssw/calc";
 import {
   ASAT_CATEGORIES,
   ASAT_EMPLOYMENT_TYPES,
@@ -15,11 +15,15 @@ import {
   asatCategoryOf,
   asatFileName,
   asatIdentityIssues,
+  asatPeriodsFromHistories,
+  asatPeriodTokens,
+  asatTotals,
   asatSeiyakushoTokens,
   asatShomeishoTokens,
   fillAsatDocx,
   type AsatCategory,
   type AsatEmploymentType,
+  type AsatPeriod,
   type AsatShomeishoData,
 } from "@/lib/asat-forms";
 import type { Worker, WorkHistoryRow } from "@/types/db";
@@ -58,13 +62,10 @@ export function AsatFormsPanel({
   const warns = issues.filter((i) => i.level === "warn");
   const mrzMatched = errors.length === 0 && warns.length === 0;
 
-  // 就業期間: チェックした職歴のいちばん古い開始日から。終了日が空（在籍中）か証明日以降なら「現在に至る」
-  const starts = histories.map((h) => h.start_date).filter(Boolean).sort();
-  const periodStart = starts[0] ?? null;
-  const ongoing = histories.some((h) => !h.end_date || h.end_date >= certDate);
-  const lastEnd = histories.map((h) => h.end_date ?? "").filter(Boolean).sort().at(-1) ?? null;
-  const periodEnd = ongoing ? null : lastEnd;
-  const total = toYMD(sumHistoryDays(histories.map((h) => ({ start: h.start_date, end: h.end_date })), certDate));
+  // 就業期間: チェックした職歴を勤務先ごとの行にする（同じ勤務先が続けば1行）。
+  // 終了日が空（在籍中）か証明日以降なら「現在に至る」
+  const periods = asatPeriodsFromHistories(histories, certDate);
+  const total = asatTotals(periods, certDate);
 
   const intake = normalizeOrganizationIntake(org?.intake);
   const orgMissing = !org ? ["所属機関"] : [!org.name && "名称", !org.address && "住所", !org.contact && "電話番号", !intake.rep_name && "代表者"].filter(Boolean);
@@ -79,10 +80,12 @@ export function AsatFormsPanel({
     orgAddress: org?.address ?? "",
     orgTel: org?.contact ?? "",
     orgRep: intake.rep_name,
-    periodStart,
-    periodEnd,
-    totalYears: total.y,
-    totalMonths: total.m,
+    periods,
+    totalYears: total.years,
+    totalMonths: total.months,
+    mgrYears: total.mgrYears,
+    mgrMonths: total.mgrMonths,
+    mgrText: "",
     employment,
     category,
   });
@@ -99,12 +102,18 @@ export function AsatFormsPanel({
     setBusy(kind);
     setError(null);
     try {
-      if (kind === "証明書" && !draft?.periodStart) throw new Error("就業期間の始まりを入れてください。");
+      if (kind === "証明書" && (!draft || draft.periods.length === 0 || draft.periods.some((p) => !p.start)))
+        throw new Error("就業期間の始まりの日を入れてください（空の行は削除してください）。");
+      if (kind === "証明書" && draft?.periods.some((p) => p.mgr && !p.mgrStart))
+        throw new Error("管理者・監督者等としての就業期間の始まりの日を入れてください。");
       const res = await fetch(kind === "証明書" ? ASAT_SHOMEISHO_TEMPLATE : ASAT_SEIYAKUSHO_TEMPLATE);
       if (!res.ok) throw new Error(`様式のテンプレートを読み込めませんでした（${res.status}）`);
       const template = await res.arrayBuffer();
       const tokens = kind === "証明書" && draft ? asatShomeishoTokens({ ...draft, ...person }) : asatSeiyakushoTokens(person);
-      const bytes = await fillAsatDocx(template, tokens);
+      const bytes =
+        kind === "証明書" && draft
+          ? await fillAsatDocx(template, tokens, draft.periods.map(asatPeriodTokens))
+          : await fillAsatDocx(template, tokens);
       await saveOrShareFile(new Blob([bytes as BlobPart], { type: DOCX_MIME }), asatFileName(kind, person.name), DOCX_MIME);
       setPreview(null);
     } catch (err) {
@@ -192,14 +201,20 @@ export function AsatFormsPanel({
         </div>
         <p className="mt-1.5">
           <span className="text-muted">就業期間: </span>
-          {periodStart ? (
+          {periods.length > 0 ? (
             <b>
-              計 {total.y}年{total.m}か月（{formatYmdJa(periodStart)}～{periodEnd ? formatYmdJa(periodEnd) : "現在に至る"}）
+              計 {total.years}年{total.months}か月（
+              {periods
+                .map((p) => `${p.start ? formatYmdJa(p.start) : ""}～${p.end ? formatYmdJa(p.end) : "現在に至る"}${p.org ? ` ${p.org}` : ""}`)
+                .join("／")}
+              ）
             </b>
           ) : (
             <span className="font-bold text-seal">職歴がありません（「職歴」で登録・チェックしてください）</span>
           )}
-          <span className="ml-1 text-muted">… 「職歴」でチェックした{histories.length}件から。証明日は職歴の「書類作成日」と同じです</span>
+          <span className="ml-1 text-muted">
+            … 「職歴」でチェックした{histories.length}件から（同じ勤務先が続くときは1行にまとめ、転職していれば勤務先ごとの行にします）。証明日は職歴の「書類作成日」と同じです
+          </span>
         </p>
         <p className="mt-0.5">
           <span className="text-muted">実務経験を証明する者: </span>
@@ -207,7 +222,7 @@ export function AsatFormsPanel({
           {orgMissing.length > 0 && <span className="ml-1 font-bold text-seal">（{orgMissing.join("・")}が未登録）</span>}
         </p>
         <p className="mt-0.5 text-muted">
-          管理者・監督者としての就業期間・業務内容は空欄のまま出します（該当するときはWordで書き足してください）。作成責任者の署名は自筆です。
+          管理者・監督者等としての就業期間・業務内容は、発行のプレビューで入れられます。作成責任者の署名は自筆です。
         </p>
       </div>
 
@@ -302,7 +317,11 @@ function ShomeishoPreview({
   onChange: (patch: Partial<AsatShomeishoData>) => void;
   onReset: () => void;
 }) {
-  const ongoing = draft.periodEnd === null;
+  // 行を変えたら合計（年・か月、うち管理者）も計算し直す
+  const setPeriods = (periods: AsatPeriod[]) => {
+    const t = asatTotals(periods, draft.certDate);
+    onChange({ periods, totalYears: t.years, totalMonths: t.months, mgrYears: t.mgrYears, mgrMonths: t.mgrMonths });
+  };
   const radio = <T extends string>(options: readonly T[], value: T, set: (v: T) => void, name: string) => (
     <div className="flex flex-wrap items-center justify-center gap-6">
       {options.map((o) => (
@@ -356,7 +375,10 @@ function ShomeishoPreview({
               <td className="border border-black p-1.5 text-center font-bold">{draft.nationality}</td>
             </tr>
             <tr>
-              <td className="border border-black p-1.5 text-center">就業期間</td>
+              <td className="border border-black p-1.5 text-center align-top">
+                就業期間
+                <span className="block text-[10px] text-muted">（うち管理者・監督者等としての就業期間）</span>
+              </td>
               <td colSpan={2} className="border border-black p-1.5">
                 <div className="flex flex-wrap items-center justify-center gap-1">
                   計
@@ -366,25 +388,46 @@ function ShomeishoPreview({
                   か月
                 </div>
                 <div className="mt-1 flex flex-wrap items-center justify-center gap-1">
-                  西暦
-                  <input type="date" value={draft.periodStart ?? ""} onChange={(e) => onChange({ periodStart: e.target.value || null })} className={DATE} aria-label="就業期間の始まり" />
-                  ～
-                  {ongoing ? (
-                    <span className="font-bold">現在に至る</span>
-                  ) : (
-                    <input type="date" value={draft.periodEnd ?? ""} onChange={(e) => e.target.value && onChange({ periodEnd: e.target.value })} className={DATE} aria-label="就業期間の終わり" />
-                  )}
-                  <label className="ml-2 inline-flex items-center gap-1 text-[11px] text-muted">
-                    <input
-                      type="checkbox"
-                      checked={ongoing}
-                      onChange={(e) => onChange({ periodEnd: e.target.checked ? null : draft.certDate })}
-                      className="h-4 w-4"
-                    />
-                    現在に至る
-                  </label>
+                  （うち
+                  <input type="number" min={0} value={draft.mgrYears ?? ""} onChange={(e) => onChange({ mgrYears: e.target.value === "" ? null : Math.max(0, Number(e.target.value) || 0) })} className={NUM} aria-label="うち 年" />
+                  年
+                  <input type="number" min={0} max={11} value={draft.mgrMonths ?? ""} onChange={(e) => onChange({ mgrMonths: e.target.value === "" ? null : Math.min(11, Math.max(0, Number(e.target.value) || 0)) })} className={NUM} aria-label="うち か月" />
+                  か月）
                 </div>
-                <p className="mt-1 text-center text-[10px] text-muted">（管理者・監督者等としての就業期間・業務内容は空欄。該当するときはWordで書き足す）</p>
+                <p className="mt-0.5 text-center text-[10px] text-muted">合計は下の行を変えると自動で計算し直します（数字は直接直すこともできます）</p>
+              </td>
+            </tr>
+            {draft.periods.map((p, i) => (
+              <tr key={i}>
+                <td className="border border-black p-1.5 text-center text-[11px] text-muted">{draft.periods.length > 1 ? `勤務先 ${i + 1}` : ""}</td>
+                <td colSpan={2} className="border border-black p-1.5">
+                  <PeriodEditor
+                    period={p}
+                    certDate={draft.certDate}
+                    onChange={(patch) => setPeriods(draft.periods.map((x, k) => (k === i ? { ...x, ...patch } : x)))}
+                    onRemove={draft.periods.length > 1 ? () => setPeriods(draft.periods.filter((_, k) => k !== i)) : undefined}
+                  />
+                </td>
+              </tr>
+            ))}
+            <tr>
+              <td className="border border-black p-1.5" />
+              <td colSpan={2} className="border border-black p-1.5">
+                <button
+                  type="button"
+                  onClick={() => setPeriods([...draft.periods, { start: null, end: null, org: "", mgr: false, mgrStart: null, mgrEnd: null }])}
+                  className="rounded border border-dashed border-brand px-2 py-1 text-[11px] font-bold text-brand"
+                >
+                  ＋ 勤務先（就業期間の行）を追加
+                </button>
+                <p className="mt-1.5 text-[10px] text-muted">（管理者・監督者等としての業務内容）※３</p>
+                <input
+                  value={draft.mgrText}
+                  onChange={(e) => onChange({ mgrText: e.target.value })}
+                  placeholder="例: 管理者として栽培管理を担当（該当なければ空欄）"
+                  className={FIELD}
+                  aria-label="管理者・監督者等としての業務内容"
+                />
               </td>
             </tr>
             <tr>
@@ -402,6 +445,77 @@ function ShomeishoPreview({
           </tbody>
         </table>
         <p className="mt-6 text-right">作成責任者（署名）＿＿＿＿＿＿＿＿＿</p>
+      </div>
+    </div>
+  );
+}
+
+// 就業期間の1行（勤務先ごと）。1段目: 西暦 始まり～終わり（現在に至る）、
+// 2段目: （管理者・監督者等としての就業期間）、3段目: 勤務先の名称
+function PeriodEditor({
+  period: p,
+  certDate,
+  onChange,
+  onRemove,
+}: {
+  period: AsatPeriod;
+  certDate: string;
+  onChange: (patch: Partial<AsatPeriod>) => void;
+  onRemove?: () => void;
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="flex flex-wrap items-center justify-center gap-1">
+        西暦
+        <input type="date" value={p.start ?? ""} onChange={(e) => onChange({ start: e.target.value || null })} className={DATE} aria-label="就業期間の始まり" />
+        ～
+        {p.end === null ? (
+          <span className="font-bold">現在に至る</span>
+        ) : (
+          <input type="date" value={p.end} onChange={(e) => e.target.value && onChange({ end: e.target.value })} className={DATE} aria-label="就業期間の終わり" />
+        )}
+        <label className="ml-1 inline-flex items-center gap-1 text-[11px] text-muted">
+          <input type="checkbox" checked={p.end === null} onChange={(e) => onChange({ end: e.target.checked ? null : certDate })} className="h-4 w-4" />
+          現在に至る
+        </label>
+      </div>
+      <div className="flex flex-wrap items-center justify-center gap-1 text-[12px]">
+        <label className="inline-flex items-center gap-1 text-[11px] text-muted">
+          <input
+            type="checkbox"
+            checked={p.mgr}
+            onChange={(e) => onChange({ mgr: e.target.checked, mgrStart: e.target.checked ? (p.mgrStart ?? p.start) : p.mgrStart, mgrEnd: e.target.checked ? p.end : p.mgrEnd })}
+            className="h-4 w-4"
+          />
+          管理者・監督者等の期間あり
+        </label>
+        {p.mgr ? (
+          <>
+            （
+            <input type="date" value={p.mgrStart ?? ""} onChange={(e) => onChange({ mgrStart: e.target.value || null })} className={DATE} aria-label="管理者・監督者等としての就業期間の始まり" />
+            ～
+            {p.mgrEnd === null ? (
+              <span className="font-bold">現在に至る</span>
+            ) : (
+              <input type="date" value={p.mgrEnd} onChange={(e) => e.target.value && onChange({ mgrEnd: e.target.value })} className={DATE} aria-label="管理者・監督者等としての就業期間の終わり" />
+            )}
+            ）
+            <label className="ml-1 inline-flex items-center gap-1 text-[11px] text-muted">
+              <input type="checkbox" checked={p.mgrEnd === null} onChange={(e) => onChange({ mgrEnd: e.target.checked ? null : certDate })} className="h-4 w-4" />
+              現在に至る
+            </label>
+          </>
+        ) : (
+          <span className="text-muted">（　　年　　月　　日～　　年　　月　　日）</span>
+        )}
+      </div>
+      <div className="flex items-center justify-center gap-1">
+        <input value={p.org} onChange={(e) => onChange({ org: e.target.value })} placeholder="勤務先の名称（例: 有限会社 國崎青果）" className={`${FIELD} max-w-[320px] text-center`} aria-label="勤務先の名称" />
+        {onRemove && (
+          <button type="button" onClick={onRemove} className="shrink-0 rounded border border-border px-2 py-1 text-[11px] text-seal">
+            行を削除
+          </button>
+        )}
       </div>
     </div>
   );
