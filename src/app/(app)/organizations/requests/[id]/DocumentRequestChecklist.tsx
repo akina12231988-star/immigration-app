@@ -48,8 +48,11 @@ import {
 import { dbErrorMessage } from "@/lib/errors";
 import {
   ALL_DONE_ITEM_ID,
+  YEAR_END_ITEM_ID,
   allDoneCheck,
   isAllDone,
+  isYearEndDone,
+  workerFlagCheck,
   checkKey,
   checkState,
   DOCUMENT_REQUEST_STEPS,
@@ -842,6 +845,13 @@ export function DocumentRequestChecklist({
                 <th className="sticky top-0 z-20 whitespace-nowrap bg-background px-2 py-2 text-center font-bold shadow-[inset_0_-1px_0_0_var(--color-border)]">
                   全て作成
                 </th>
+                {/* 年末調整ができた人に付ける（だれができたか・何人できたかが分かる） */}
+                <th className="sticky top-0 z-20 whitespace-nowrap bg-background px-2 py-2 text-center font-bold shadow-[inset_0_-1px_0_0_var(--color-border)]">
+                  年末調整
+                  <span className="block text-[10px] font-normal text-muted">
+                    済 {rows.filter((w) => isYearEndDone(idx, w.id)).length}/{rows.length}名
+                  </span>
+                </th>
                 <th className="sticky top-0 z-20 bg-background px-2 py-2 font-bold shadow-[inset_0_-1px_0_0_var(--color-border)]">
                   入社日
                 </th>
@@ -926,6 +936,29 @@ export function DocumentRequestChecklist({
                         title={allDone ? `全て作成（${idx.get(checkKey(w.id, ALL_DONE_ITEM_ID))?.issued_on ?? ""}）` : "全て作成したらチェック"}
                         aria-label={`${w.name}さんの書類を全て作成した`}
                       />
+                    </td>
+                    <td className="px-2 py-2 text-center align-top">
+                      {(() => {
+                        const yearEnd = idx.get(checkKey(w.id, YEAR_END_ITEM_ID))?.issued_on ?? null;
+                        return (
+                          <label className="inline-flex flex-col items-center gap-0.5">
+                            <input
+                              type="checkbox"
+                              checked={!!yearEnd}
+                              disabled={!canEdit}
+                              onChange={(e) =>
+                                void saveCheck(workerFlagCheck(request.id, w.id, YEAR_END_ITEM_ID, e.target.checked, today))
+                              }
+                              className="h-5 w-5 accent-[var(--color-status-approved-fg)]"
+                              title={yearEnd ? `年末調整済（${yearEnd}）` : "年末調整ができたらチェック"}
+                              aria-label={`${w.name}さんの年末調整ができた`}
+                            />
+                            {yearEnd && (
+                              <span className="whitespace-nowrap text-[10px] font-bold text-status-approved-fg">済 {yearEnd.slice(5).replace("-", "/")}</span>
+                            )}
+                          </label>
+                        );
+                      })()}
                     </td>
                     {/* この機関での入社日。入社年で対象が決まる書類があるとき、その年の人は目立たせる */}
                     <td className="whitespace-nowrap px-2 py-2 align-top tabular-nums">

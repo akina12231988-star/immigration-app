@@ -291,3 +291,19 @@ describe("全て作成のチェック", () => {
   });
 });
 
+describe("年末調整のチェック", () => {
+  it("人ごとに付け外しでき、全て作成のチェックとは別に持つ", async () => {
+    const { ALL_DONE_ITEM_ID, YEAR_END_ITEM_ID, indexChecks, isAllDone, isYearEndDone, workerFlagCheck } = await import(
+      "./org-document-requests"
+    );
+    const on = workerFlagCheck("req1", "w1", YEAR_END_ITEM_ID, true, "2026-11-05");
+    expect(on.item_id).toBe(YEAR_END_ITEM_ID);
+    expect(on.issued_on).toBe("2026-11-05");
+    expect(workerFlagCheck("req1", "w1", YEAR_END_ITEM_ID, false, "2026-11-05").issued_on).toBeNull();
+    expect(YEAR_END_ITEM_ID).not.toBe(ALL_DONE_ITEM_ID);
+    const idx = indexChecks([{ ...on, id: "c1", created_at: "", updated_at: "" }]);
+    expect(isYearEndDone(idx, "w1")).toBe(true);
+    expect(isAllDone(idx, "w1")).toBe(false);
+  });
+});
+
