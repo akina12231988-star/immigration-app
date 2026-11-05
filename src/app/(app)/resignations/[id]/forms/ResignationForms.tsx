@@ -717,23 +717,22 @@ ${note ? `<div class="note"><p class="label">備考</p><p>${esc(note)}</p></div>
         </Card>
       )}
 
-      {/* 雇用保険の適用事業所でない所属機関: 外国人雇用状況届出書（離職）に添える事業主の確認書類 */}
-      {resignation.koyoUncovered && (
-        <Card className="flex flex-col gap-2 p-4">
-          <p className="text-sm font-bold">外国人雇用状況届出書（ハローワーク）に添える事業主の確認書類</p>
-          <p className="text-xs leading-relaxed text-muted">
-            {resignation.orgName || "この所属機関"}は雇用保険の適用事業所ではないため、外国人雇用状況届出書（様式第3号・離職）も作ります。
-            事業主の名刺・住民票・運転免許証のどれかの画像を一緒に出してください。
+      {/* どの所属機関でも添付できる（所属機関の情報に保存）。適用事業所でない会社は届出書に添える */}
+      <Card className="flex flex-col gap-2 p-4">
+        <p className="text-sm font-bold">事業主の確認書類（名刺・住民票・免許証）</p>
+        <p className="text-xs leading-relaxed text-muted">
+          {resignation.koyoUncovered
+            ? `${resignation.orgName || "この所属機関"}は雇用保険の適用事業所ではないため、外国人雇用状況届出書（様式第3号・離職）も作ります。事業主の名刺・住民票・運転免許証のどれかの画像を一緒に出してください。`
+            : "事業主の名刺・住民票・運転免許証の画像を所属機関の情報に保存しておけます（外国人雇用状況届出書は雇用保険の適用事業所でない会社だけ作ります）。"}
+        </p>
+        {resignation.organizationId ? (
+          <OrgOwnerIdDocs orgId={resignation.organizationId} canEdit={canEdit} />
+        ) : (
+          <p className="text-xs font-bold text-seal">
+            この退職記録に所属機関が紐づいていないため、確認書類を保存できません。「記録を編集」で所属機関を選んでください。
           </p>
-          {resignation.organizationId ? (
-            <OrgOwnerIdDocs orgId={resignation.organizationId} canEdit={canEdit} />
-          ) : (
-            <p className="text-xs font-bold text-seal">
-              この退職記録に所属機関が紐づいていないため、確認書類を保存できません。「記録を編集」で所属機関を選んでください。
-            </p>
-          )}
-        </Card>
-      )}
+        )}
+      </Card>
 
       {/* ダウンロード */}
       <Card className="flex flex-col gap-2 p-4">
