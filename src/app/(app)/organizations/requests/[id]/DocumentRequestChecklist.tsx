@@ -51,8 +51,10 @@ import {
   YEAR_END_ITEM_ID,
   allDoneCheck,
   isAllDone,
-  isYearEndDone,
   workerFlagCheck,
+  countWorkerFlag,
+  filterByWorkerFlag,
+  type WorkerFlagFilter,
   checkKey,
   checkState,
   DOCUMENT_REQUEST_STEPS,
@@ -132,6 +134,9 @@ export function DocumentRequestChecklist({
   // 国籍・入社年の絞り込み（"" = すべて）
   const [nationalityFilter, setNationalityFilter] = useState("");
   const [yearFilter, setYearFilter] = useState("");
+  // 「全て作成」「年末調整」のチェックで絞り込む（"" = すべて / 済 / まだ）
+  const [allDoneFilter, setAllDoneFilter] = useState<WorkerFlagFilter>("");
+  const [yearEndFilter, setYearEndFilter] = useState<WorkerFlagFilter>("");
   const nationalities = useMemo(() => nationalityOptions(workers), [workers]);
   const joinedYears = useMemo(() => joinedYearOptions(workers), [workers]);
   // 外国人ごとの入社書類（添付済み）
@@ -172,8 +177,17 @@ export function DocumentRequestChecklist({
   const yearItems = request.items.filter((i) => i.joined_year);
 
   const filtered = filterRequestWorkers(workers, { nationality: nationalityFilter, joinedYear: yearFilter });
-  const rows = onlyPending ? filtered.filter((w) => workerPending(request.items, w, idx).length > 0) : filtered;
-  const filtering = !!nationalityFilter || !!yearFilter || onlyPending;
+  const pendingRows = onlyPending ? filtered.filter((w) => workerPending(request.items, w, idx).length > 0) : filtered;
+  // 済・まだ の人数は、国籍・入社年・まだの人だけ で絞った人の中で数える（チェックの絞り込みを掛ける前）
+  const allDoneCount = countWorkerFlag(pendingRows, idx, ALL_DONE_ITEM_ID);
+  const yearEndCount = countWorkerFlag(pendingRows, idx, YEAR_END_ITEM_ID);
+  const rows = filterByWorkerFlag(
+    filterByWorkerFlag(pendingRows, idx, ALL_DONE_ITEM_ID, allDoneFilter),
+    idx,
+    YEAR_END_ITEM_ID,
+    yearEndFilter,
+  );
+  const filtering = !!nationalityFilter || !!yearFilter || onlyPending || !!allDoneFilter || !!yearEndFilter;
 
   // 1マスの保存（押した段階まで日付を入れる／外す）
   const saveCheck = async (input: DocumentRequestCheckInput) => {
@@ -786,12 +800,19 @@ export function DocumentRequestChecklist({
               setNationalityFilter("");
               setYearFilter("");
               setOnlyPending(false);
+              setAllDoneFilter("");
+              setYearEndFilter("");
             }}
             className="text-[11px] font-bold text-brand underline"
           >
             絞り込みを解除
           </button>
         )}
+      </div>
+      {/* 「全て作成」「年末調整」のチェックで絞り込む。済・まだ の人数（あと何人か）も出す */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+        <FlagFilterChips label="全て作成" value={allDoneFilter} onChange={setAllDoneFilter} count={allDoneCount} />
+        <FlagFilterChips label="年末調整" value={yearEndFilter} onChange={setYearEndFilter} count={yearEndCount} />
       </div>
       <p className="text-[11px] leading-relaxed text-muted">
         マスのボタンを押すと今日の日付で記録します（案内 → 添付済み → 会社へ の順。先の段階を押すと前の段階も同じ日で入ります）。
@@ -817,7 +838,7 @@ export function DocumentRequestChecklist({
         <p className="py-12 text-center text-sm text-muted">この機関に在籍中の人がいません</p>
       ) : rows.length === 0 ? (
         <p className="py-12 text-center text-sm text-muted">
-          {nationalityFilter || yearFilter ? "絞り込みに当てはまる人がいません" : "全員ぶん会社に送りました"}
+          {nationalityFilter || yearFilter || allDoneFilter || yearEndFilter ? "絞り込みに当てはまる人がいません" : "全員ぶん会社に送りました"}
         </p>
       ) : (
         <div className="max-h-[calc(100vh-9rem)] overflow-auto rounded-2xl border border-border bg-surface">
@@ -849,7 +870,7 @@ export function DocumentRequestChecklist({
                 <th className="sticky top-0 z-20 whitespace-nowrap bg-background px-2 py-2 text-center font-bold shadow-[inset_0_-1px_0_0_var(--color-border)]">
                   年末調整
                   <span className="block text-[10px] font-normal text-muted">
-                    済 {rows.filter((w) => isYearEndDone(idx, w.id)).length}/{rows.length}名
+                    済 {yearEndCount.done}/{yearEndCount.done + yearEndCount.left}名
                   </span>
                 </th>
                 <th className="sticky top-0 z-20 bg-background px-2 py-2 font-bold shadow-[inset_0_-1px_0_0_var(--color-border)]">
@@ -1280,3 +1301,45 @@ export function DocumentRequestChecklist({
     </div>
   );
 }
+
+// 人ごとのチェック（全て作成・年末調整）の絞り込み。すべて / 済○名 / まだ○名（あと何人か）
+function FlagFilterChips({
+  label,
+  value,
+  onChange,
+  count,
+}: {
+  label: string;
+  value: WorkerFlagFilter;
+  onChange: (v: WorkerFlagFilter) => void;
+  count: { done: number; left: number };
+}) {
+  const options: { v: WorkerFlagFilter; text: string }[] = [
+    { v: "", text: "すべて" },
+    { v: "済", text: `済 ${count.done}名` },
+    { v: "まだ", text: `まだ ${count.left}名` },
+  ];
+  return (
+    <div className="flex flex-wrap items-center gap-1" role="group" aria-label={`${label}で絞り込む`}>
+      <span className="mr-0.5 font-bold text-muted">{label}</span>
+      {options.map((o) => (
+        <button
+          key={o.v || "all"}
+          type="button"
+          onClick={() => onChange(o.v)}
+          aria-pressed={value === o.v}
+          className={`min-h-[30px] rounded-full border px-2.5 text-[11px] font-bold ${
+            value === o.v
+              ? "border-brand bg-brand text-brand-foreground"
+              : o.v === "まだ" && count.left > 0
+                ? "border-seal/40 bg-surface text-seal"
+                : "border-border bg-surface text-muted"
+          }`}
+        >
+          {o.text}
+        </button>
+      ))}
+    </div>
+  );
+}
+

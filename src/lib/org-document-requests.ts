@@ -206,6 +206,33 @@ export function isYearEndDone(idx: Map<string, DocumentRequestCheck>, workerId: 
   return !!idx.get(checkKey(workerId, YEAR_END_ITEM_ID))?.issued_on;
 }
 
+// 人ごとのチェック（全て作成・年末調整）での絞り込み。"" = すべて / 済 / まだ
+export type WorkerFlagFilter = "" | "済" | "まだ";
+
+export function hasWorkerFlag(idx: Map<string, DocumentRequestCheck>, workerId: string, flagItemId: string): boolean {
+  return !!idx.get(checkKey(workerId, flagItemId))?.issued_on;
+}
+
+export function filterByWorkerFlag<T extends { id: string }>(
+  rows: T[],
+  idx: Map<string, DocumentRequestCheck>,
+  flagItemId: string,
+  mode: WorkerFlagFilter,
+): T[] {
+  if (!mode) return rows;
+  return rows.filter((w) => hasWorkerFlag(idx, w.id, flagItemId) === (mode === "済"));
+}
+
+// 済・まだ の人数（チェックが入っていない人があと何人か）
+export function countWorkerFlag(
+  rows: { id: string }[],
+  idx: Map<string, DocumentRequestCheck>,
+  flagItemId: string,
+): { done: number; left: number } {
+  const done = rows.filter((w) => hasWorkerFlag(idx, w.id, flagItemId)).length;
+  return { done, left: rows.length - done };
+}
+
 // 人ごとのチェック（全て作成・年末調整）を付ける／外すときに保存する内容
 export function workerFlagCheck(
   requestId: string,

@@ -307,3 +307,21 @@ describe("年末調整のチェック", () => {
   });
 });
 
+describe("全て作成・年末調整での絞り込み", () => {
+  it("済・まだ で絞り込み、あと何人かを数える", async () => {
+    const { YEAR_END_ITEM_ID, countWorkerFlag, filterByWorkerFlag, indexChecks, workerFlagCheck } = await import(
+      "./org-document-requests"
+    );
+    const rows = [{ id: "w1" }, { id: "w2" }, { id: "w3" }];
+    const idx = indexChecks([
+      { ...workerFlagCheck("r", "w1", YEAR_END_ITEM_ID, true, "2026-11-05"), id: "c1", created_at: "", updated_at: "" },
+      // 外したチェック（日付が空）は「まだ」
+      { ...workerFlagCheck("r", "w2", YEAR_END_ITEM_ID, false, "2026-11-05"), id: "c2", created_at: "", updated_at: "" },
+    ]);
+    expect(filterByWorkerFlag(rows, idx, YEAR_END_ITEM_ID, "").map((w) => w.id)).toEqual(["w1", "w2", "w3"]);
+    expect(filterByWorkerFlag(rows, idx, YEAR_END_ITEM_ID, "済").map((w) => w.id)).toEqual(["w1"]);
+    expect(filterByWorkerFlag(rows, idx, YEAR_END_ITEM_ID, "まだ").map((w) => w.id)).toEqual(["w2", "w3"]);
+    expect(countWorkerFlag(rows, idx, YEAR_END_ITEM_ID)).toEqual({ done: 1, left: 2 });
+  });
+});
+
