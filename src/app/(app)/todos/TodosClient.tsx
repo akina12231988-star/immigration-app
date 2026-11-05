@@ -460,7 +460,10 @@ export function TodosClient({
                 todoKey: key,
                 createdAt: row.created_at,
                 kindLabel: requestKindLabel(r.requestKind),
-                to: (isCity ? (r.cityOffice ?? "") : r.municipalityName) || r.municipalityName || "",
+                to:
+                  r.requestKind === "nenkin"
+                    ? r.pensionOffice ?? ""
+                    : (isCity ? (r.cityOffice ?? "") : r.municipalityName) || r.municipalityName || "",
                 progress,
                 payment: paymentStatusLabel(r.mainPaymentStatus),
                 person: r.personName ?? "",

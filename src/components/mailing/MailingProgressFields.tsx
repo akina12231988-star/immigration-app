@@ -88,7 +88,8 @@ export function MailingProgressFields({
 }) {
   if (!canEdit) return null;
   const all = mailingProgressOptionsFor(requestKind);
-  const options = all.filter((o) => mailed || o.value !== "waiting");
+  // 郵送なら 郵送待ち、窓口なら 代理人の発行待ち を出す（いまの進捗は外れていても残す）
+  const options = all.filter((o) => o.value === v.progress || (mailed ? o.value !== "agent" : o.value !== "waiting"));
   const waitingLabel = all.find((o) => o.value === "waiting")?.label ?? "郵送待ち";
   return (
     <div className="space-y-3 border-t border-dashed border-border pt-3">

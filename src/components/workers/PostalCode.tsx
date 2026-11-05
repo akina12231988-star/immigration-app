@@ -23,12 +23,10 @@ function lookupPostal(address: string): Promise<string> {
   return p;
 }
 
-// 住所の前に出す郵便番号（例: 〒866-0021）。住所から自動で探し、見つからなければ何も出さない。
-// 外国人詳細の住居地・住所歴で使う（郵便番号は保存せず、表示のたびに住所から探す）
-export function PostalCode({ address, className = "" }: { address: string | null | undefined; className?: string }) {
+// 住所から探した郵便番号（例: 866-0021。見つからない・探している間は ""）
+export function usePostalCode(address: string | null | undefined): string {
   const key = (address ?? "").trim();
   const [found, setFound] = useState<{ key: string; postal: string } | null>(null);
-
   useEffect(() => {
     if (!key) return;
     let cancelled = false;
@@ -39,12 +37,17 @@ export function PostalCode({ address, className = "" }: { address: string | null
       cancelled = true;
     };
   }, [key]);
+  return found && found.key === key && found.postal ? formatPostal(found.postal) : "";
+}
 
-  const postal = found && found.key === key ? found.postal : "";
+// 住所の前に出す郵便番号（例: 〒866-0021）。住所から自動で探し、見つからなければ何も出さない。
+// 外国人詳細の住居地・住所歴で使う（郵便番号は保存せず、表示のたびに住所から探す）
+export function PostalCode({ address, className = "" }: { address: string | null | undefined; className?: string }) {
+  const postal = usePostalCode(address);
   if (!postal) return null;
   return (
     <span className={`mr-1.5 tabular-nums ${className}`} title="住所から自動で探した郵便番号">
-      〒{formatPostal(postal)}
+      〒{postal}
     </span>
   );
 }

@@ -49,7 +49,7 @@ export function WorkerMailingRecords({
         <div className="mb-1 flex items-center justify-between gap-2">
           <h2 className="flex items-center gap-1.5 text-sm font-bold text-muted">
             <Mail size={14} />
-            郵送請求（課税・納税証明書／転出届／住民票／納税証明書その3）
+            証明書類の請求（課税・納税証明書／転出届／住民票／納税証明書その3／年金記録）
           </h2>
           <Link
             href={`/mailing?q=${encodeURIComponent(workerName)}`}

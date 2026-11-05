@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  isMailedRecord,
+  mailingProgressChoices,
+  normalizeMailingProgress,
   autoMailingProgress,
   mailingProgressOptionsFor,
   findTaxOfficeForAddress,
@@ -102,6 +105,9 @@ describe("進捗", () => {
     expect(autoMailingProgress(undefined, "", "")).toBe("preparing");
     expect(autoMailingProgress("done", "", "")).toBe("done");
     expect(autoMailingProgress("waiting", "", "")).toBe("waiting");
+    // 代理人の発行待ちは投函しないので、投函日が無くても戻さない
+    expect(autoMailingProgress("agent", "", "")).toBe("agent");
+    expect(mailingProgressLabel("agent")).toBe("代理人の発行待ち");
   });
 });
 
@@ -122,11 +128,13 @@ describe("郵送請求の進捗（請求書類ごとの呼び名）", () => {
   it("選択肢も請求先に合わせた呼び名で返す", () => {
     expect(mailingProgressOptionsFor("nozei3").map((o) => o.label)).toEqual([
       "準備中",
+      "代理人の発行待ち",
       "税務署からの郵送待ち",
       "完了",
     ]);
     expect(mailingProgressOptionsFor("tax").map((o) => o.label)).toEqual([
       "準備中",
+      "代理人の発行待ち",
       "請求先からの郵送待ち",
       "完了",
     ]);
@@ -161,3 +169,25 @@ describe("quickMailingProgressPatch（記録一覧のボタンで進捗を変え
     expect(quickMailingProgressPatch({}, "preparing", "2026-10-03")).toEqual({ mailingProgress: "preparing", receivedDate: "" });
   });
 });
+
+describe("受け取り方で選べる進捗（4段階）", () => {
+  it("郵送なら 準備中→郵送待ち→完了、代理人の窓口なら 準備中→代理人の発行待ち→完了", () => {
+    expect(mailingProgressChoices({ requestKind: "tax", requestMethod: "mail" }).map((o) => o.value)).toEqual(["preparing", "waiting", "done"]);
+    expect(mailingProgressChoices({ requestKind: "tax", requestMethod: "agent_window" }).map((o) => o.value)).toEqual(["preparing", "agent", "done"]);
+    expect(mailingProgressChoices({ requestKind: "nenkin", nenkinMethod: "window" }).map((o) => o.value)).toEqual(["preparing", "agent", "done"]);
+    // いまの進捗が外れていても消さない
+    expect(mailingProgressChoices({ requestKind: "tax", requestMethod: "mail" }, "agent").map((o) => o.value)).toEqual(["preparing", "agent", "waiting", "done"]);
+  });
+  it("郵送かどうか（請求書類ごと）", () => {
+    expect(isMailedRecord({ requestKind: "nozei3", nozei3Method: "window" })).toBe(false);
+    expect(isMailedRecord({ requestKind: "juminhyo", juminhyoMethod: "mail" })).toBe(true);
+    expect(isMailedRecord({ requestKind: "nenkin" })).toBe(true);
+    expect(isMailedRecord({ requestKind: "tax", requestMethod: "window" })).toBe(false);
+  });
+  it("記録の進捗は4つのどれかにそろえる（未設定は準備中）", () => {
+    expect(normalizeMailingProgress(undefined)).toBe("preparing");
+    expect(normalizeMailingProgress("agent")).toBe("agent");
+    expect(normalizeMailingProgress("xxx")).toBe("preparing");
+  });
+});
+

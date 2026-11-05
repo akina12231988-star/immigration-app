@@ -48,6 +48,12 @@ export function mailingAttachmentSlots(r: Partial<SlotSource>): MailingAttachmen
       { role: "received", kind: NOZEI3_RECEIVED_KIND, title: "届いた納税証明書（届いたら添付）", addLabel: "届いた納税証明書を添付（画像・PDF）" },
     ];
   }
+  if (r.requestKind === "nenkin") {
+    return [
+      { role: "sent", kind: MAIL_REQUEST_KIND, title: "請求した書類（交付申請書・委任状など）", addLabel: "請求した書類を添付（画像・PDF）" },
+      { role: "received", kind: RECEIVED_CERT_KIND, title: "届いた年金記録（届いたら添付）", addLabel: "届いた年金記録を添付（画像・PDF）" },
+    ];
+  }
   if (r.requestKind === "tenshutsu" || r.requestKind === "juminhyo") {
     // 転出届・住民票は、以前から種別名（「転出届」「住民票」）で申請書のデータを添付している
     const label = requestKindLabel(r.requestKind);
@@ -85,6 +91,9 @@ export interface MailingTarget {
 export function mailingTargets(r: JudgmentRecord): MailingTarget[] {
   if (r.requestKind === "nozei3") {
     return [{ what: "納税証明書その3", where: r.taxOfficeName || "税務署未選択" }];
+  }
+  if (r.requestKind === "nenkin") {
+    return [{ what: "年金記録", where: r.pensionOffice || "年金事務所未入力" }];
   }
   if (r.requestKind === "tenshutsu" || r.requestKind === "juminhyo") {
     return [{ what: requestKindLabel(r.requestKind), where: r.cityOffice || r.municipalityName || "請求先未入力" }];

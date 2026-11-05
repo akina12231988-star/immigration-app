@@ -12,11 +12,31 @@ export async function listMunicipalities(supabase: SupabaseClient): Promise<Muni
   return (data as Municipality[]) ?? [];
 }
 
+// 申請書のページのURL（0212）は、undefined なら送らない（0212 未適用の環境でも、URLに触れない保存は通るように）。
+// 編集画面では、入れた・消した（もともと入っていた）ときだけ値を渡す
+function municipalityPayload(input: Partial<MunicipalityInput>): Partial<MunicipalityInput> {
+  const out: Partial<MunicipalityInput> = { ...input };
+  if (out.cert_form_url === undefined) delete out.cert_form_url;
+  if (out.juminhyo_form_url === undefined) delete out.juminhyo_form_url;
+  return out;
+}
+
+// 申請書のページのURLだけを保存する（住所の確認の画面から、その場で登録する）
+export async function updateMunicipalityFormUrl(
+  supabase: SupabaseClient,
+  id: string,
+  column: "cert_form_url" | "juminhyo_form_url",
+  url: string,
+): Promise<void> {
+  const { error } = await supabase.from("municipalities").update({ [column]: url.trim() }).eq("id", id);
+  if (error) throw error;
+}
+
 export async function insertMunicipality(
   supabase: SupabaseClient,
   input: MunicipalityInput,
 ): Promise<Municipality> {
-  const { data, error } = await supabase.from("municipalities").insert(input).select().single();
+  const { data, error } = await supabase.from("municipalities").insert(municipalityPayload(input)).select().single();
   if (error) throw error;
   return data as Municipality;
 }
@@ -28,7 +48,7 @@ export async function updateMunicipality(
 ): Promise<Municipality> {
   const { data, error } = await supabase
     .from("municipalities")
-    .update(input)
+    .update(municipalityPayload(input))
     .eq("id", id)
     .select()
     .single();
@@ -55,6 +75,17 @@ export async function listJudgmentRecords(supabase: SupabaseClient): Promise<Jud
     .order("created_at", { ascending: false });
   if (error) throw error;
   return ((data as RecordRow[]) ?? []).map(toRecord);
+}
+
+// 1件だけ（証明書類の請求の記録の詳細ページ）。無ければ null
+export async function getJudgmentRecord(supabase: SupabaseClient, id: string): Promise<JudgmentRecord | null> {
+  const { data, error } = await supabase
+    .from("judgment_records")
+    .select("id, data, created_at")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? toRecord(data as RecordRow) : null;
 }
 
 // id・createdAt を除いた本体を data に保存する

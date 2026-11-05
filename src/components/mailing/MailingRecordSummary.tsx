@@ -7,17 +7,18 @@ import { mailingProgressLabel, normalizeTrackingNumber, trackingUrl } from "@/li
 export function mailingDestination(r: JudgmentRecord): string {
   if (r.requestKind === "nozei3") return r.taxOfficeName || "税務署未選択";
   if (r.requestKind === "tenshutsu" || r.requestKind === "juminhyo") return r.cityOffice || "請求先未入力";
+  if (r.requestKind === "nenkin") return r.pensionOffice || "年金事務所未入力";
   return r.municipalityName || "自治体未選択";
 }
 
 export function mailingPostDate(r: JudgmentRecord): string {
-  if (r.requestKind === "nozei3" || r.requestKind === "tenshutsu" || r.requestKind === "juminhyo") {
+  if (r.requestKind === "nozei3" || r.requestKind === "tenshutsu" || r.requestKind === "juminhyo" || r.requestKind === "nenkin") {
     return r.postDate ?? "";
   }
   return r.requestMethod === "mail" ? r.mailRequestDate : "";
 }
 
-// 進捗の色（準備中 → 郵送待ち → 完了）。
+// 進捗の色（準備中 → 代理人の発行待ち → 郵送待ち → 完了）。
 // 郵送待ちの呼び名は請求先で変わるので、請求書類も渡せるようにする
 export function ProgressBadge({
   progress,
@@ -31,7 +32,9 @@ export function ProgressBadge({
       ? "bg-status-approved-bg text-status-approved-fg"
       : progress === "waiting"
         ? "bg-status-applied-bg text-status-applied-fg"
-        : "bg-status-notice-bg text-status-notice-fg";
+        : progress === "agent"
+          ? "bg-brand/10 text-brand"
+          : "bg-status-notice-bg text-status-notice-fg";
   return (
     <span className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-bold ${cls}`}>
       {mailingProgressLabel(progress, requestKind)}

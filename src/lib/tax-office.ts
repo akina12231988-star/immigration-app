@@ -88,14 +88,50 @@ export function matchesTaxOffice(office: TaxOffice, query: string): boolean {
   return words.every((w) => hay.includes(w.toLowerCase()));
 }
 
-// ---- 納税証明書その3の郵送請求の進捗（準備中 → 税務署からの郵送待ち → 完了） ----
-export type MailingProgress = "preparing" | "waiting" | "done";
+// ---- 郵送請求の進捗（準備中 → 代理人の発行待ち → 郵送待ち → 完了） ----
+// 代理人の発行待ち（agent）は、代理人が窓口で証明書を取ってくる人だけが通る段階。
+// 郵送で請求する人は 準備中 → 郵送待ち → 完了 と進む
+export type MailingProgress = "preparing" | "agent" | "waiting" | "done";
 
 export const MAILING_PROGRESS_OPTIONS: { value: MailingProgress; label: string }[] = [
   { value: "preparing", label: "準備中" },
+  { value: "agent", label: "代理人の発行待ち" },
   { value: "waiting", label: "郵送待ち" },
   { value: "done", label: "完了" },
 ];
+
+// 記録の受け取り方。郵送で請求したか（郵送待ちを通る）、窓口で受け取るか（代理人の発行待ちを通る）
+export interface MailingRouteSource {
+  requestKind?: string;
+  requestMethod?: string;
+  juminhyoMethod?: string;
+  nozei3Method?: string;
+  nenkinMethod?: string;
+}
+export function isMailedRecord(r: MailingRouteSource): boolean {
+  if (r.requestKind === "nozei3") return r.nozei3Method !== "window";
+  if (r.requestKind === "nenkin") return r.nenkinMethod !== "window";
+  if (r.requestKind === "juminhyo") return r.juminhyoMethod !== "window";
+  if (r.requestKind === "tenshutsu") return r.requestMethod !== "window";
+  return r.requestMethod === "mail";
+}
+
+// その記録で選べる進捗。郵送なら 準備中→郵送待ち→完了、窓口なら 準備中→代理人の発行待ち→完了。
+// いまの進捗が外れていても、その進捗は残して出す（前に選んだものを消さない）
+export function mailingProgressChoices(
+  r: MailingRouteSource,
+  current?: MailingProgress,
+): { value: MailingProgress; label: string }[] {
+  const mailed = isMailedRecord(r);
+  return mailingProgressOptionsFor(r.requestKind).filter(
+    (o) => o.value === current || (mailed ? o.value !== "agent" : o.value !== "waiting"),
+  );
+}
+
+// 記録一覧のタブの並び（すべて ＋ 4段階）
+export function normalizeMailingProgress(p: string | undefined): MailingProgress {
+  return p === "agent" || p === "waiting" || p === "done" ? p : "preparing";
+}
 
 // 郵送待ちの呼び名は請求先で変える（納税証明書その3は税務署、ほかは市区町村などの請求先）。
 // 請求書類が分からないとき（いろいろな記録をまとめて絞り込むときなど）は「郵送待ち」のまま
@@ -142,7 +178,8 @@ export function autoMailingProgress(
   trackingNumber: string,
   requireTracking = true,
 ): MailingProgress {
-  if (progress === "done" || progress === "waiting") return progress;
+  // 代理人の発行待ちは投函日が無くてもそのまま（代理人が窓口で取るので投函しない）
+  if (progress === "done" || progress === "waiting" || progress === "agent") return progress;
   if (!postDate) return "preparing";
   return requireTracking ? (trackingNumber.trim() ? "waiting" : "preparing") : "waiting";
 }
