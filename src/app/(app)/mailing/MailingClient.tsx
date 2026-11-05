@@ -431,7 +431,7 @@ function JudgeTab({
             納税証明書その3を税務署に請求（郵送・窓口）
           </Pill>
           <Pill active={requestKind === "nenkin"} onClick={() => setRequestKind("nenkin")}>
-            年金記録を年金事務所に請求（郵送・窓口）
+            年金記録を年金事務所に請求（書類の印刷）
           </Pill>
         </div>
       </Card>
@@ -452,17 +452,7 @@ function JudgeTab({
           showToast={showToast}
         />
       ) : requestKind === "nenkin" ? (
-        <NenkinRequestForm
-          key={`nenkin-${workerId}`}
-          personName={personName}
-          workerId={workerId}
-          todoNumber={todoNumber}
-          workerAddress={selectedWorker?.address ?? ""}
-          records={records}
-          setRecords={setRecords}
-          canEdit={canEdit}
-          showToast={showToast}
-        />
+        <NenkinRequestForm key={`nenkin-${workerId}`} workerId={workerId} canEdit={canEdit} />
       ) : requestKind !== "tax" ? (
         <ExtraRequestForm
           key={requestKind}

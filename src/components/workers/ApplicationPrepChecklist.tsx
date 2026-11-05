@@ -2939,9 +2939,9 @@ function DocRow({
         </div>
       )}
 
-      {/* 証明書類の請求への導線（その人の記録の詳細を開く。無ければ請求の登録へ）。届いた証明書もここに出す */}
-      {(def.viaMail || def.id === "nenkin") && (
-        <PrepMailingLink kind={def.viaMail ? "tax" : "nenkin"} docId={def.id} records={mailingRecords} workerId={workerId} todoNo={todoNo} />
+      {/* 証明書類の請求への導線（課税・納税証明書。その人の記録の詳細を開く。無ければ請求の登録へ）。届いた証明書もここに出す */}
+      {def.viaMail && (
+        <PrepMailingLink kind="tax" docId={def.id} records={mailingRecords} workerId={workerId} todoNo={todoNo} />
       )}
 
       {/* 健康診断書: 様式・受診項目・就労可の後日結果は別ページで管理 */}
