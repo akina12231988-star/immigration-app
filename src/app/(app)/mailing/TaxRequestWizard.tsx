@@ -156,6 +156,14 @@ function WizardBody({
   const [recipient, setRecipient] = useState<RecipientType>("self");
   const [agent, setAgent] = useState("");
   const [moneyOrders, setMoneyOrders] = useState<MoneyOrder[]>([]);
+  // 国保税の納税証明書の受け取り方。課税証明書・市県民税の納税証明書と違う方法
+  // （例: 課税・市県民税は郵送請求、国保税は代理人が窓口で取得）にするときは、記録を2つに分けて保存する
+  // （進捗・添付が受け取り方ごとに別になるように）
+  const [nhiSame, setNhiSame] = useState(true);
+  const [nhiMethod, setNhiMethod] = useState<RequestMethod>("agent_window");
+  const [nhiMailDate, setNhiMailDate] = useState(todayISO());
+  const [nhiRecipient, setNhiRecipient] = useState<RecipientType>("self");
+  const [nhiAgent, setNhiAgent] = useState("");
   const [mainAlt, setMainAlt] = useState("");
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState<JudgmentRecord | null>(null);
@@ -242,12 +250,12 @@ function WizardBody({
       mailDate,
       recipient,
       agent,
-      hasNhi: false,
-      nhiSameAsMain: true,
-      nhiMethod: method,
-      nhiMailDate: mailDate,
-      nhiRecipient: recipient,
-      nhiAgent: agent,
+      hasNhi: !!plan && plan.nhiYears.length > 0,
+      nhiSameAsMain: nhiSame,
+      nhiMethod,
+      nhiMailDate,
+      nhiRecipient,
+      nhiAgent,
     }),
     ...(plan && plan.docs.length === 0 ? ["請求する書類（課税証明書・市県民税納税証明書・国保税の納税証明書）を1つ以上選んでください"] : []),
   ];
@@ -300,14 +308,58 @@ function WizardBody({
       // 今の判定結果に無い年度の分は残さない
       moneyOrders: method === "mail" ? moneyOrders.filter((o) => groups.has(o.group ?? "")) : [],
     };
+    // 国保税だけ別の受け取り方にしたときは、国保税の分を別の記録に分ける
+    const splitNhi = !nhiSame && plan.nhiYears.length > 0;
+    const mainDocs = plan.docs.filter((d) => !d.isNhi);
+    const nhiDocs = plan.docs.filter((d) => d.isNhi);
+    const nhiInfo = buildMethodInfo(nhiMethod, nhiMailDate, nhiRecipient, nhiAgent);
+    const mainRecord: JudgmentRecord | null = !splitNhi
+      ? record
+      : mainDocs.length > 0
+        ? {
+            ...record,
+            hasNhi: false,
+            nhiYears: [],
+            nhiMunicipalityId: "",
+            nhiMunicipalityName: "",
+            nhiFiscalStartYear: null,
+            docs: mainDocs,
+          }
+        : null;
+    const nhiRecord: JudgmentRecord | null = splitNhi
+      ? {
+          ...record,
+          // 課税証明書・市県民税の納税証明書は無し（国保税の納税証明書のみの記録）
+          municipalityId: nhiFirst?.municipalityId ?? "",
+          municipalityName: nhiFirst?.municipalityName ?? "",
+          yearRequests: [],
+          requestBothYears: false,
+          prevMunicipalityId: undefined,
+          prevMunicipalityName: undefined,
+          prevFiscalStartYear: undefined,
+          docs: nhiDocs,
+          ...nhiInfo,
+          nhiRequestMethod: nhiInfo.requestMethod,
+          nhiMailRequestDate: nhiInfo.mailRequestDate,
+          nhiRecipientType: nhiInfo.recipientType,
+          nhiAgentName: nhiInfo.agentName,
+          nhiSameAsMain: true,
+          // 定額小為替は国保税の分だけ（郵送のときだけ。番号は記録の編集で入れられる）
+          moneyOrders: [],
+        }
+      : null;
     setBusy(true);
     try {
-      const created = await insertJudgmentRecord(createClient(), record);
-      setRecords([created, ...records]);
+      const createdMain = mainRecord ? await insertJudgmentRecord(createClient(), mainRecord) : null;
+      const createdNhi = nhiRecord ? await insertJudgmentRecord(createClient(), nhiRecord) : null;
+      const created = (createdMain ?? createdNhi) as JudgmentRecord;
+      setRecords([...(createdNhi ? [createdNhi] : []), ...(createdMain ? [createdMain] : []), ...records]);
       setSaved(created);
-      // 記録したら、その記録の詳細ページを開く（届いた証明書の添付・進捗はそこで）
-      router.push(`/mailing/records/${created.id}?saved=1`);
-      showToast("請求を記録しました");
+      showToast(createdMain && createdNhi ? "請求を記録しました（国保税の納税証明書は別の記録にしました）" : "請求を記録しました");
+      // 記録したら、その記録の詳細ページを開く（国保税を分けたときは、もう一方の記録へのリンクも出す）
+      router.push(
+        `/mailing/records/${created.id}?saved=1${createdMain && createdNhi ? `&other=${createdNhi.id}` : ""}`,
+      );
     } catch (e) {
       showToast("保存に失敗しました: " + (e instanceof Error ? e.message : String(e)));
     } finally {
@@ -574,6 +626,40 @@ function WizardBody({
               setAgent={setAgent}
             />
 
+            {/* 国保税の納税証明書だけ受け取り方を変える（例: 課税・市県民税は郵送、国保税は代理人が窓口） */}
+            {plan.nhiYears.length > 0 && (
+              <div className="rounded-xl border border-border p-3">
+                <p className="text-sm font-bold">国民健康保険税の納税証明書の受領方法</p>
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                  <Pill active={nhiSame} onClick={() => setNhiSame(true)}>
+                    上の受領方法と同じ
+                  </Pill>
+                  <Pill active={!nhiSame} onClick={() => setNhiSame(false)}>
+                    別の方法にする（例: 代理人が窓口で取得）
+                  </Pill>
+                </div>
+                {!nhiSame && (
+                  <>
+                    <MethodToggleSection
+                      title="国保税の納税証明書の受領方法"
+                      method={nhiMethod}
+                      setMethod={setNhiMethod}
+                      mailDate={nhiMailDate}
+                      setMailDate={setNhiMailDate}
+                      recipient={nhiRecipient}
+                      setRecipient={setNhiRecipient}
+                      agent={nhiAgent}
+                      setAgent={setNhiAgent}
+                    />
+                    <p className="mt-2 text-[11px] text-muted">
+                      保存すると「課税証明書・市県民税の納税証明書」と「国保税の納税証明書」を別の記録にします。
+                      進捗（郵送待ち／代理人の発行待ち）・添付・申請準備への表示が、それぞれの受け取り方で分かれます。
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
+
             {YEARS.map((y) => {
               const g = plan.groups.find((x) => x.yearType === y);
               const req = plan.years.find((x) => x.yearType === y);
@@ -614,7 +700,7 @@ function WizardBody({
                           <div>
                             <p className="mb-1.5 text-sm font-bold text-muted">{yearLabelOf(y)}の分として同封した定額小為替</p>
                             <MoneyOrderFields
-                              titles={g.docs.map((d) => d.title)}
+                              titles={g.docs.filter((d) => nhiSame || !d.isNhi).map((d) => d.title)}
                               orders={moneyOrders}
                               onChange={setMoneyOrders}
                               group={yearMoneyOrderGroup(y)}

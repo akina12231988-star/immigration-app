@@ -20,6 +20,7 @@ export function MailingRecordDetail({
   workers,
   canEdit,
   justSaved,
+  otherId = "",
 }: {
   record: JudgmentRecord;
   municipalities: Municipality[];
@@ -27,6 +28,7 @@ export function MailingRecordDetail({
   workers: MailingWorker[];
   canEdit: boolean;
   justSaved: boolean;
+  otherId?: string; // 国保税の納税証明書を別の記録にしたとき、その記録のID
 }) {
   const router = useRouter();
   const [records, setRecords] = useState<JudgmentRecord[]>([record]);
@@ -45,6 +47,14 @@ export function MailingRecordDetail({
       {justSaved && (
         <p className="rounded-xl bg-status-reported-bg px-3 py-2 text-sm font-bold text-status-reported-fg">
           {requestKindLabel(current.requestKind)}の請求を記録しました。届いた証明書はこのページで添付してください。
+        </p>
+      )}
+      {otherId && (
+        <p className="rounded-xl border border-brand/40 bg-brand/5 px-3 py-2 text-sm">
+          国民健康保険税の納税証明書は受け取り方が違うので、別の記録にしました。
+          <Link href={`/mailing/records/${otherId}`} className="ml-1 font-bold text-brand underline">
+            国保税の納税証明書の記録を開く
+          </Link>
         </p>
       )}
       <div className="flex flex-wrap items-center gap-2">

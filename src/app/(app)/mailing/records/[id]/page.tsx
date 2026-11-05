@@ -17,12 +17,13 @@ export default async function MailingRecordPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ saved?: string }>;
+  // other: 国保税の納税証明書を別の記録に分けて保存したとき、もう一方の記録
+  searchParams: Promise<{ saved?: string; other?: string }>;
 }) {
   const me = await getMyProfile();
   if (!me) redirect("/login");
   const { id } = await params;
-  const { saved } = await searchParams;
+  const { saved, other } = await searchParams;
 
   const supabase = await createClient();
   const record = await getJudgmentRecord(supabase, id).catch(() => null);
@@ -43,6 +44,7 @@ export default async function MailingRecordPage({
         workers={workers.map((w) => ({ id: w.id, name: w.name, address: w.address ?? "", kana: w.kana ?? "", my_number: w.my_number ?? "" }))}
         canEdit={me.role !== "viewer"}
         justSaved={saved === "1"}
+        otherId={other ?? ""}
       />
     </>
   );

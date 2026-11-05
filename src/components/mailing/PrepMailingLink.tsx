@@ -15,14 +15,21 @@ export function PrepMailingLink({
   records,
   workerId,
   todoNo,
+  docId = "",
 }: {
   kind: "tax" | "nenkin";
+  docId?: string; // 申請準備の行（nozei_kokuho は国保税の納税証明書の記録を優先する）
   records: JudgmentRecord[];
   workerId: string;
   todoNo: string;
 }) {
   const key = normalizeTodoKey(todoNo);
-  const mine = records.filter((r) => (kind === "nenkin" ? r.requestKind === "nenkin" : (r.requestKind ?? "tax") === "tax"));
+  const ofKind = records.filter((r) => (kind === "nenkin" ? r.requestKind === "nenkin" : (r.requestKind ?? "tax") === "tax"));
+  // 国保税だけ別の受け取り方で請求したときは記録が分かれているので、行に合う記録を先に出す
+  // （国保税の行 → 国保税を含む記録、課税証明書・市県民税の行 → 課税証明書などを含む記録）
+  const fits = (r: JudgmentRecord) =>
+    docId === "nozei_kokuho" ? r.hasNhi : !Array.isArray(r.yearRequests) || r.yearRequests.length > 0;
+  const mine = [...ofKind.filter(fits), ...ofKind.filter((r) => !fits(r))];
   const sameTodo = key ? mine.filter((r) => normalizeTodoKey(r.todoNumber ?? "") === key) : [];
   const record = (sameTodo.length > 0 ? sameTodo : mine)[0] ?? null;
   const newHref = `/mailing?worker=${encodeURIComponent(workerId)}&todo=${encodeURIComponent(todoNo)}&kind=${kind}`;
