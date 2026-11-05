@@ -6,6 +6,7 @@ import { Check, Eye, Loader2, MapPin, Paperclip, Pencil, Plus, Trash2, X } from 
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { FileDropArea } from "@/components/ui/FileDropArea";
+import { PostalCode } from "@/components/workers/PostalCode";
 import { createClient } from "@/lib/supabase/client";
 import { compressImage } from "@/lib/image-compress";
 import {
@@ -426,7 +427,10 @@ export function WorkerAddressHistory({
                   <div className="flex items-center gap-2.5">
                     <span className="shrink-0 tabular-nums text-muted">{r.moved_on}</span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate font-bold">{r.address}</span>
+                      <span className="block truncate font-bold">
+                        <PostalCode address={r.address} className="font-normal text-muted" />
+                        {r.address}
+                      </span>
                       {r.kind && <span className="block text-[11px] text-muted">{r.kind}</span>}
                     </span>
                     {canEdit && (
