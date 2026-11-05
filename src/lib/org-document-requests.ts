@@ -188,6 +188,26 @@ export function emptyCheck(requestId: string, workerId: string, itemId: string):
   };
 }
 
+// 「全て作成」のチェック（その人の書類を全部作り終えた）。
+// 書類の項目とは別に、チェック表の同じテーブルへ特別な item_id の行として持つ（日付は issued_on）。
+// 書類の項目は request.items から引くので、進み具合の集計にはこの行は入らない
+export const ALL_DONE_ITEM_ID = "__all_done__";
+
+// その人に「全て作成」のチェックが付いているか
+export function isAllDone(idx: Map<string, DocumentRequestCheck>, workerId: string): boolean {
+  return !!idx.get(checkKey(workerId, ALL_DONE_ITEM_ID))?.issued_on;
+}
+
+// 「全て作成」を付ける／外すときに保存する内容
+export function allDoneCheck(
+  requestId: string,
+  workerId: string,
+  done: boolean,
+  today: string,
+): DocumentRequestCheckInput {
+  return { ...emptyCheck(requestId, workerId, ALL_DONE_ITEM_ID), issued_on: done ? today : null };
+}
+
 export function checkKey(workerId: string, itemId: string): string {
   return `${workerId}_${itemId}`;
 }

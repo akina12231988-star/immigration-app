@@ -268,3 +268,26 @@ describe("外国人詳細の入社書類との突き合わせ", () => {
     expect(opts.find((o) => o.key === "gensen_r8")?.label).toBe("令和8年分源泉徴収票");
   });
 });
+
+describe("全て作成のチェック", () => {
+  it("付けると issued_on に日付が入り、外すと空になる", async () => {
+    const { ALL_DONE_ITEM_ID, allDoneCheck, indexChecks, isAllDone } = await import("./org-document-requests");
+    const on = allDoneCheck("req1", "w1", true, "2026-11-05");
+    expect(on.item_id).toBe(ALL_DONE_ITEM_ID);
+    expect(on.issued_on).toBe("2026-11-05");
+    expect(allDoneCheck("req1", "w1", false, "2026-11-05").issued_on).toBeNull();
+    const row = { ...on, id: "c1", created_at: "", updated_at: "" };
+    expect(isAllDone(indexChecks([row]), "w1")).toBe(true);
+    expect(isAllDone(indexChecks([row]), "w2")).toBe(false);
+  });
+
+  it("書類の進み具合の集計には入らない", async () => {
+    const { allDoneCheck, requestProgress } = await import("./org-document-requests");
+    const items = [{ id: "i1", name: "扶養控除申告書", note: "", joined_year: null, link_doc_key: "" }];
+    const workers = [{ id: "w1", startOn: "" }];
+    const done = { ...allDoneCheck("req1", "w1", true, "2026-11-05"), id: "c1", created_at: "", updated_at: "" };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(requestProgress(items as any, workers as any, [done])).toEqual(requestProgress(items as any, workers as any, []));
+  });
+});
+

@@ -47,6 +47,9 @@ import {
 } from "@/lib/supabase/queries/org-document-requests";
 import { dbErrorMessage } from "@/lib/errors";
 import {
+  ALL_DONE_ITEM_ID,
+  allDoneCheck,
+  isAllDone,
   checkKey,
   checkState,
   DOCUMENT_REQUEST_STEPS,
@@ -835,6 +838,10 @@ export function DocumentRequestChecklist({
                     氏名
                   </span>
                 </th>
+                {/* その人の書類を全部作り終えたら付ける（付けた行は薄い青になる） */}
+                <th className="sticky top-0 z-20 whitespace-nowrap bg-background px-2 py-2 text-center font-bold shadow-[inset_0_-1px_0_0_var(--color-border)]">
+                  全て作成
+                </th>
                 <th className="sticky top-0 z-20 bg-background px-2 py-2 font-bold shadow-[inset_0_-1px_0_0_var(--color-border)]">
                   入社日
                 </th>
@@ -868,9 +875,13 @@ export function DocumentRequestChecklist({
               {rows.map((w) => {
                 const pending = workerPending(request.items, w, idx).length;
                 const joinedYear = joinedYearOf(w.startOn);
+                const allDone = isAllDone(idx, w.id);
+                // 「全て作成」にチェックした人の行は薄い青で塗る（左右に固定した列も同じ色にする）
+                const rowBg = allDone ? "bg-status-applied-bg" : pending === 0 ? "bg-status-approved-bg/40" : "";
+                const stickyBg = allDone ? "bg-status-applied-bg" : "bg-surface";
                 return (
-                  <tr key={w.id} className={`border-b border-border/60 ${pending === 0 ? "bg-status-approved-bg/40" : ""}`}>
-                    <td className="sticky left-0 z-10 bg-surface px-3 py-2 align-top">
+                  <tr key={w.id} className={`border-b border-border/60 ${rowBg}`}>
+                    <td className={`sticky left-0 z-10 ${stickyBg} px-3 py-2 align-top`}>
                       <span className="flex items-start gap-1.5">
                         {/* 会社へ報告する出力（PDF・エクセル）に入れる人を選ぶ */}
                         <input
@@ -904,6 +915,17 @@ export function DocumentRequestChecklist({
                         <span className="mt-1 block text-[10px] text-muted">Messenger未登録</span>
                       )}
                       {pending === 0 && <span className="mt-0.5 block text-[10px] font-bold text-status-approved-fg">全部送付済</span>}
+                    </td>
+                    <td className="px-2 py-2 text-center align-top">
+                      <input
+                        type="checkbox"
+                        checked={allDone}
+                        disabled={!canEdit}
+                        onChange={(e) => void saveCheck(allDoneCheck(request.id, w.id, e.target.checked, today))}
+                        className="h-5 w-5 accent-[var(--color-brand)]"
+                        title={allDone ? `全て作成（${idx.get(checkKey(w.id, ALL_DONE_ITEM_ID))?.issued_on ?? ""}）` : "全て作成したらチェック"}
+                        aria-label={`${w.name}さんの書類を全て作成した`}
+                      />
                     </td>
                     {/* この機関での入社日。入社年で対象が決まる書類があるとき、その年の人は目立たせる */}
                     <td className="whitespace-nowrap px-2 py-2 align-top tabular-nums">
@@ -1076,7 +1098,7 @@ export function DocumentRequestChecklist({
                     })}
                     {/* その人の「案内」を押した書類をまとめた案内文を出す（押した書類が無ければ押せない）。
                         全部が添付済み・無し回答になった人は「会社へ」のまとめ付け */}
-                    <td className="sticky right-0 z-10 bg-surface px-2 py-2 align-top shadow-[inset_1px_0_0_0_var(--color-border)]">
+                    <td className={`sticky right-0 z-10 ${stickyBg} px-2 py-2 align-top shadow-[inset_1px_0_0_0_var(--color-border)]`}>
                       {(() => {
                         const n = informedItemsOf(w).length;
                         const ready = workerReadyToReport(request.items, w, idx);
