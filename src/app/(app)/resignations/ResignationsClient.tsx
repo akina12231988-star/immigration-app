@@ -35,6 +35,7 @@ import { historyToCloseOnLeaving, type OrgHistoryRow } from "@/lib/worker-org-da
 import { fetchNextTodoNo, insertTodo } from "@/lib/supabase/queries/todos";
 import { notionAppUrl } from "@/lib/notion-link";
 import { formsForKind } from "@/lib/resignation";
+import { needsKoyoJokyoForm } from "@/lib/koyo-jokyo";
 import {
   countByAdhocStatus,
   adhocReportStatus,
@@ -371,7 +372,11 @@ export function ResignationsClient({
                   )}
                   {needsReport(r) && (
                     <p className="text-center text-[11px] text-muted">
-                      作成する様式: {formsForKind(r.kind).join("・")}
+                      作成する様式:{" "}
+                      {formsForKind(
+                        r.kind,
+                        needsKoyoJokyoForm(r.organizations?.intake?.koyo_covered),
+                      ).join("・")}
                       {adhocReportStatus(r) === "準備中" &&
                         "（ダウンロードすると「署名依頼中」になります）"}
                     </p>

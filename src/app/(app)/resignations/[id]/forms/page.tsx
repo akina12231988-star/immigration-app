@@ -6,6 +6,7 @@ import { isSswCancelable } from "@/lib/ssw-insurance";
 import { todayStr } from "@/lib/ssw/calc";
 import { normalizeOrganizationIntake } from "@/lib/organization-intake";
 import { adhocReportStatus } from "@/lib/adhoc-report-progress";
+import { needsKoyoJokyoForm } from "@/lib/koyo-jokyo";
 import { ResignationForms } from "./ResignationForms";
 
 export const dynamic = "force-dynamic";
@@ -44,6 +45,10 @@ export default async function ResignationFormsPage({
         businessCategory: resignation.organizations?.business_category ?? "",
         // 所属機関に登録した「定期報告書・随時報告書の担当者名」を様式の担当者欄の初期値にする
         orgReportStaff: normalizeOrganizationIntake(resignation.organizations?.intake).report_staff,
+        // 雇用保険の適用事業所でない所属機関は、外国人雇用状況届出書（離職）と事業主の確認書類も用意する
+        koyoUncovered: needsKoyoJokyoForm(
+          normalizeOrganizationIntake(resignation.organizations?.intake).koyo_covered,
+        ),
         // 様式をダウンロードしたら「署名依頼中」へ進めるための今の進み具合（0086）
         status: adhocReportStatus(resignation),
       }}

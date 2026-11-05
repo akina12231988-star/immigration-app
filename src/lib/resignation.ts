@@ -8,17 +8,22 @@ export const FORM_312 = "参考様式第3-1-2号";
 export const FORM_34 = "参考様式第3-4号";
 export const FORM_511 = "参考様式第5-11号";
 export const FORM_14 = "参考様式1の4";
+// 雇用保険の適用事業所でない所属機関は、ハローワークへの外国人雇用状況届出書（離職）も作る
+export const FORM_KOYO_3 = "様式第3号（外国人雇用状況届出書）";
 
 export const FORM_TITLES: Record<string, string> = {
   [FORM_312]: "特定技能雇用契約に係る届出書（契約を終了した又は新たに締結した場合）",
   [FORM_34]: "受入れ困難に係る届出書",
   [FORM_511]: "受入れ困難となるに至った経緯に係る説明書",
   [FORM_14]: "契約機関に関する届出（契約の終了）",
+  [FORM_KOYO_3]: "外国人雇用状況届出書（離職）",
 };
 
 // 退職区分から作成する様式の一覧を返す
-export function formsForKind(kind: ResignationKind): string[] {
-  return kind === "会社都合" ? [FORM_312, FORM_34, FORM_511, FORM_14] : [FORM_312, FORM_14];
+// （雇用保険の適用事業所でない所属機関は、外国人雇用状況届出書も足す）
+export function formsForKind(kind: ResignationKind, koyoUncovered = false): string[] {
+  const forms = kind === "会社都合" ? [FORM_312, FORM_34, FORM_511, FORM_14] : [FORM_312, FORM_14];
+  return koyoUncovered ? [...forms, FORM_KOYO_3] : forms;
 }
 
 // 委託契約をしていた登録支援機関の情報（毎回同じ内容を転記する）。

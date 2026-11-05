@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  ORG_FILE_KIND_OWNER_ID,
+  defaultCenteredPrintSize,
   flexHoursLabel,
+  isCenteredPrintKind,
   isAgricultureIndustry,
   isImageFile,
   latestOrgFiles,
@@ -75,5 +78,18 @@ describe("印刷ページのURL", () => {
     expect(parsePrintKinds(undefined)).toEqual([]);
     // 寮の賃貸契約書（1件目は「賃貸契約書」、2件目以降は「賃貸契約書:<寮のID>」）も印刷できる
     expect(parsePrintKinds("賃貸契約書,賃貸契約書:lodging-2")).toEqual(["賃貸契約書", "賃貸契約書:lodging-2"]);
+  });
+});
+
+describe("事業主の確認書類（名刺・住民票・免許証）の印刷", () => {
+  it("印刷ページで受け付け、A4縦の中央に置く", () => {
+    expect(parsePrintKinds(ORG_FILE_KIND_OWNER_ID)).toEqual([ORG_FILE_KIND_OWNER_ID]);
+    expect(isCenteredPrintKind(ORG_FILE_KIND_OWNER_ID)).toBe(true);
+    expect(isCenteredPrintKind("年間カレンダー")).toBe(false);
+  });
+  it("横長（名刺・免許証）は実物大、縦長（住民票）は用紙いっぱいから始める", () => {
+    expect(defaultCenteredPrintSize(1200, 700)).toBe("card");
+    expect(defaultCenteredPrintSize(1240, 1754)).toBe("fit");
+    expect(defaultCenteredPrintSize(0, 0)).toBe("card");
   });
 });

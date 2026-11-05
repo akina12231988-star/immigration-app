@@ -1,7 +1,7 @@
 // 外国人雇用状況届出書（様式第3号）。
 //
-// 雇用保険の適用事業所でない会社は、外国人を雇い入れたときに
-// ハローワークへ「外国人雇用状況届出書」を出す（雇い入れた日の翌月末日まで）。
+// 雇用保険の適用事業所でない会社は、外国人を雇い入れたとき・離職したときに
+// ハローワークへ「外国人雇用状況届出書」を出す（雇い入れた日・離職した日の翌月末日まで）。
 // 雇用保険の被保険者になる会社は資格取得届で兼ねるため、この様式は使わない。
 
 export const KOYO_COVERED_NO = "いいえ";
@@ -38,8 +38,9 @@ export function koyoJpDate(dateStr: string | null | undefined): string {
   return `${Number(m[1])}年${Number(m[2])}月${Number(m[3])}日`;
 }
 
-// 印刷（ダウンロード）のときのファイル名
-export function koyoFileName(workerName: string): string {
+// 印刷（ダウンロード）のときのファイル名。離職の届出は「（離職）」を付けて雇入れの分と区別する
+export function koyoFileName(workerName: string, kind: "雇入れ" | "離職" = "雇入れ"): string {
   const safe = (workerName ?? "").replace(/[\\/:*?"<>|]/g, "-").trim();
-  return ["外国人雇用状況届出書", safe].filter(Boolean).join("_");
+  const title = kind === "離職" ? "外国人雇用状況届出書（離職）" : "外国人雇用状況届出書";
+  return [title, safe].filter(Boolean).join("_");
 }

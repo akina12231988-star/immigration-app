@@ -20,6 +20,7 @@ import {
   FORM_312,
   FORM_34,
   FORM_511,
+  FORM_KOYO_3,
   type SupportOrgInfo,
   getSupportOrgServerSnapshot,
   getSupportOrgSnapshot,
@@ -42,6 +43,8 @@ import {
 } from "@/lib/resignation-forms";
 import type { ResignationKind } from "@/types/db";
 import { saveOrShareFile } from "@/lib/file-save";
+import { koyoFileName } from "@/lib/koyo-jokyo";
+import { OrgOwnerIdDocs } from "@/components/organizations/OrgOwnerIdDocs";
 
 // 法務省「特定技能所属機関による届出」ページ（参考様式の最新版はここで確認する）
 const MOJ_URL = "https://www.moj.go.jp/isa/applications/ssw/nyuukokukanri10_00002.html";
@@ -59,6 +62,7 @@ interface FormsResignation {
   orgCorporateNo: string;
   businessCategory: string;
   orgReportStaff: string; // 所属機関に登録した定期報告書・随時報告書の担当者名
+  koyoUncovered: boolean; // 雇用保険の適用事業所でない（外国人雇用状況届出書もハローワークへ出す）
   note: string; // この退職記録の備考（resignations.note。署名のお願いの段取りなどを残す）
   status: ResignationStatus; // 今の進み具合（0086）
 }
@@ -369,6 +373,39 @@ ${note ? `<div class="note"><p class="label">備考</p><p>${esc(note)}</p></div>
     }
   };
 
+  // 外国人雇用状況届出書（様式第3号・離職）。雇用保険の適用事業所でない所属機関だけ。
+  // 退職記録から外国人・退職元の所属機関・退職日を転記した Word をサーバーで作る
+  const downloadKoyo = async () => {
+    setBusy("koyo");
+    setError(null);
+    try {
+      await saveFormsNote();
+      const res = await fetch("/api/koyo-jokyo-form", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ resignationId: resignation.id }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? `様式の生成に失敗しました（${res.status}）`);
+      }
+      const blob = await res.blob();
+      const header = res.headers.get("x-file-name");
+      const fileName = header ? decodeURIComponent(header) : `${koyoFileName(worker.name, "離職")}.docx`;
+      await saveOrShareFile(
+        blob,
+        fileName,
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      );
+      await markSignatureRequested();
+      await ensureCancelTodo();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "作成に失敗しました");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const downloadAll = async () => {
     await download("form312");
     if (isCompany) {
@@ -376,7 +413,9 @@ ${note ? `<div class="note"><p class="label">備考</p><p>${esc(note)}</p></div>
       await download("form511");
     }
     await download("form14");
+    if (resignation.koyoUncovered) await downloadKoyo();
   };
+  const formCount = (isCompany ? 4 : 2) + (resignation.koyoUncovered ? 1 : 0);
 
   const reasonOptions = endReasonOptions312(resignation.kind);
 
@@ -678,6 +717,24 @@ ${note ? `<div class="note"><p class="label">備考</p><p>${esc(note)}</p></div>
         </Card>
       )}
 
+      {/* 雇用保険の適用事業所でない所属機関: 外国人雇用状況届出書（離職）に添える事業主の確認書類 */}
+      {resignation.koyoUncovered && (
+        <Card className="flex flex-col gap-2 p-4">
+          <p className="text-sm font-bold">外国人雇用状況届出書（ハローワーク）に添える事業主の確認書類</p>
+          <p className="text-xs leading-relaxed text-muted">
+            {resignation.orgName || "この所属機関"}は雇用保険の適用事業所ではないため、外国人雇用状況届出書（様式第3号・離職）も作ります。
+            事業主の名刺・住民票・運転免許証のどれかの画像を一緒に出してください。
+          </p>
+          {resignation.organizationId ? (
+            <OrgOwnerIdDocs orgId={resignation.organizationId} canEdit={canEdit} />
+          ) : (
+            <p className="text-xs font-bold text-seal">
+              この退職記録に所属機関が紐づいていないため、確認書類を保存できません。「記録を編集」で所属機関を選んでください。
+            </p>
+          )}
+        </Card>
+      )}
+
       {/* ダウンロード */}
       <Card className="flex flex-col gap-2 p-4">
         <p className="text-sm font-bold">様式のダウンロード</p>
@@ -752,6 +809,14 @@ ${note ? `<div class="note"><p class="label">備考</p><p>${esc(note)}</p></div>
           busy={busy === "form14"}
           onClick={() => download("form14")}
         />
+        {resignation.koyoUncovered && (
+          <FormButton
+            icon={<FileText size={18} />}
+            label={`${FORM_KOYO_3}（Word）離職 ※雇用保険の適用事業所でないため、ハローワークへ提出`}
+            busy={busy === "koyo"}
+            onClick={() => void downloadKoyo()}
+          />
+        )}
         <button
           type="button"
           disabled={busy !== null}
@@ -759,7 +824,7 @@ ${note ? `<div class="note"><p class="label">備考</p><p>${esc(note)}</p></div>
           className="mt-1 inline-flex min-h-[52px] items-center justify-center gap-2 rounded-xl bg-brand px-5 py-3.5 text-base font-bold text-brand-foreground transition hover:bg-brand-strong active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
         >
           <Download size={18} />
-          {isCompany ? "4様式をまとめてダウンロード" : "2様式をまとめてダウンロード"}
+          {`${formCount}様式をまとめてダウンロード`}
         </button>
       </Card>
     </div>

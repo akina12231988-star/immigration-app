@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { Printer } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
+import { defaultCenteredPrintSize, type CenteredPrintSize } from "@/lib/org-attachments";
 
 export interface OrgPrintFile {
   id: string;
@@ -14,10 +16,20 @@ export interface OrgPrintSection {
   kind: string; // 見出し（農業特定技能加入通知書 / 年間カレンダー / 労使協定書 / 賃貸契約書（寮の名前））
   uploadedOn: string; // 最新版のアップロード日（無ければ空）
   files: OrgPrintFile[];
+  // A4縦の真ん中に置く（名刺・免許証のような小さい画像。事業主の確認書類）
+  centered?: boolean;
 }
 
+// 中央に置く画像の大きさの選択肢（印刷したときの幅）
+const CENTER_SIZES: { value: CenteredPrintSize; label: string; className: string }[] = [
+  { value: "card", label: "実物大（名刺・免許証 幅9cm）", className: "w-[91mm] max-h-[200mm]" },
+  { value: "half", label: "大きめ（幅14cm）", className: "w-[140mm] max-h-[240mm]" },
+  { value: "fit", label: "用紙いっぱい（住民票など）", className: "max-h-[265mm] max-w-full" },
+];
+
 // 所属機関の添付ファイルの印刷用（A4縦）。画像は1枚ずつ別のページに、
-// 用紙いっぱいに収まる大きさで出す。PDF はここには埋め込めないので開くリンクを出す
+// 用紙いっぱいに収まる大きさで出す。PDF はここには埋め込めないので開くリンクを出す。
+// 事業主の確認書類（名刺・免許証など）は用紙の真ん中に、選んだ大きさ（既定は実物大）で出す
 export function OrgFilesPrintView({
   orgId,
   orgName,
@@ -29,8 +41,12 @@ export function OrgFilesPrintView({
 }) {
   const title = sections.map((s) => s.kind).join("・");
   const images = sections.flatMap((s) =>
-    s.files.filter((f) => f.isImage && f.url).map((f) => ({ ...f, kind: s.kind, uploadedOn: s.uploadedOn })),
+    s.files
+      .filter((f) => f.isImage && f.url)
+      .map((f) => ({ ...f, kind: s.kind, uploadedOn: s.uploadedOn, centered: s.centered === true })),
   );
+  // 中央に置く画像の大きさ（画像ごと）。選ぶまでは読み込んだ画像の縦横から決める
+  const [sizes, setSizes] = useState<Record<string, CenteredPrintSize>>({});
   const pdfs = sections.flatMap((s) => s.files.filter((f) => !f.isImage).map((f) => ({ ...f, kind: s.kind })));
   const missing = sections.filter((s) => s.files.length === 0);
 
@@ -69,7 +85,10 @@ export function OrgFilesPrintView({
               印刷・PDF保存（A4縦）
             </button>
             <span className="text-[11px] leading-relaxed text-muted">
-              画像 {images.length}枚を1枚ずつA4縦に印刷します。印刷の設定で用紙は「A4」、向きは「縦」、拡大縮小は「用紙に合わせる」にしてください。
+              画像 {images.length}枚を1枚ずつA4縦に印刷します。印刷の設定で用紙は「A4」、向きは「縦」、
+              {images.some((f) => f.centered)
+                ? "拡大縮小は「100%（実際のサイズ）」にしてください。名刺・免許証などは用紙の真ん中に、選んだ大きさで出ます。"
+                : "拡大縮小は「用紙に合わせる」にしてください。"}
             </span>
           </div>
           {missing.map((s) => (
@@ -101,24 +120,65 @@ export function OrgFilesPrintView({
 
       {/* ここから下が印刷される部分。1画像 = 1ページ（A4縦） */}
       <div className="mx-auto max-w-[190mm] px-4 pb-10 lg:px-0 print:max-w-none print:p-0">
-        {images.map((f, i) => (
-          <section
-            key={f.id}
-            className={`flex flex-col items-center ${i < images.length - 1 ? "break-after-page" : ""} mb-6 print:mb-0`}
-          >
-            <p className="mb-1 w-full text-[8pt] text-black">
-              {orgName} ／ {f.kind}
-              {f.uploadedOn && `（${f.uploadedOn} にアップロード）`} ／ {f.fileName}
-            </p>
-            {/* 余白（上下10mm）と見出しの分を引いた高さに収める */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={f.url}
-              alt={`${f.kind} ${f.fileName}`}
-              className="max-h-[260mm] w-auto max-w-full border border-border object-contain print:border-0"
-            />
-          </section>
-        ))}
+        {images.map((f, i) => {
+          const pageBreak = i < images.length - 1 ? "break-after-page" : "";
+          if (f.centered) {
+            const size = sizes[f.id] ?? "card";
+            const sizeClass = CENTER_SIZES.find((o) => o.value === size)?.className ?? "";
+            return (
+              <section key={f.id} className={`${pageBreak} mb-6 print:mb-0`}>
+                {/* 画面だけ: どの画像か・大きさの選択（紙には出さない） */}
+                <div className="mb-1 flex flex-wrap items-center gap-2 text-xs print:hidden">
+                  <span className="text-muted">
+                    {f.kind}
+                    {f.uploadedOn && `（${f.uploadedOn} にアップロード）`} ／ {f.fileName}
+                  </span>
+                  <select
+                    value={size}
+                    onChange={(e) => setSizes((prev) => ({ ...prev, [f.id]: e.target.value as CenteredPrintSize }))}
+                    aria-label="印刷する大きさ"
+                    className="min-h-[36px] rounded-lg border border-border bg-background px-2 text-xs font-bold"
+                  >
+                    {CENTER_SIZES.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {/* A4縦（余白10mm）の印刷できる範囲いっぱいの枠の真ん中に画像を置く */}
+                <div className="flex aspect-[190/277] w-full items-center justify-center border border-dashed border-border bg-white print:aspect-auto print:h-[275mm] print:border-0">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={f.url}
+                    alt={`${f.kind} ${f.fileName}`}
+                    onLoad={(e) => {
+                      const img = e.currentTarget;
+                      const initial = defaultCenteredPrintSize(img.naturalWidth, img.naturalHeight);
+                      setSizes((prev) => (prev[f.id] ? prev : { ...prev, [f.id]: initial }));
+                    }}
+                    className={`${sizeClass} h-auto object-contain`}
+                  />
+                </div>
+              </section>
+            );
+          }
+          return (
+            <section key={f.id} className={`flex flex-col items-center ${pageBreak} mb-6 print:mb-0`}>
+              <p className="mb-1 w-full text-[8pt] text-black">
+                {orgName} ／ {f.kind}
+                {f.uploadedOn && `（${f.uploadedOn} にアップロード）`} ／ {f.fileName}
+              </p>
+              {/* 余白（上下10mm）と見出しの分を引いた高さに収める */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={f.url}
+                alt={`${f.kind} ${f.fileName}`}
+                className="max-h-[260mm] w-auto max-w-full border border-border object-contain print:border-0"
+              />
+            </section>
+          );
+        })}
       </div>
     </>
   );

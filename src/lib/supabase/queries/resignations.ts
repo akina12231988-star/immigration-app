@@ -11,11 +11,12 @@ export interface ResignationWithRefs extends ResignationRow {
     messenger_link: string;
     notion_link: string;
   } | null;
-  organizations: { id: string; name: string } | null;
+  // intake は「雇用保険の適用事業所か」を見るため（適用外なら外国人雇用状況届出書も作る）
+  organizations: { id: string; name: string; intake?: Organization["intake"] | null } | null;
 }
 
 const SELECT =
-  "*, workers(id, name, kana, messenger_link, notion_link), organizations(id, name)";
+  "*, workers(id, name, kana, messenger_link, notion_link), organizations(id, name, intake)";
 
 export async function listResignations(
   supabase: SupabaseClient,

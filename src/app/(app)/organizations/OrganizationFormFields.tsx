@@ -66,9 +66,12 @@ import { orgYearlyFileGroups, orgYearlyKind } from "@/lib/org-yearly-files";
 import {
   ORG_FILE_KIND_AGRI_NOTICE,
   ORG_FILE_KIND_LABOR_AGREEMENT,
+  ORG_FILE_KIND_OWNER_ID,
   ORG_FILE_KIND_YEAR_CALENDAR,
   isAgricultureIndustry,
+  orgFilesPrintHref,
 } from "@/lib/org-attachments";
+import { needsKoyoJokyoForm } from "@/lib/koyo-jokyo";
 import { SUPPORT_CONTRACT_STATUSES } from "@/types/db";
 import type {
   OrgCouncilSubmission,
@@ -2024,6 +2027,38 @@ function IntakeSection({
             hint="末尾4桁は割り振られている場合のみ記入。"
             locked={locks.intake("koyo_no")}
           />
+          {/* 雇用保険の適用事業所でない会社は、外国人雇用状況届出書（雇入れ・離職）をハローワークへ出す。
+              そのとき添える事業主の確認書類（名刺・住民票・免許証の画像）をここに保存する */}
+          {needsKoyoJokyoForm(intake.koyo_covered) && (
+            <div className="flex flex-col gap-1 sm:col-span-2">
+              <span className="text-xs font-bold text-muted">
+                {ORG_FILE_KIND_OWNER_ID}（名刺・住民票・免許証のどれかの画像）
+              </span>
+              <p className={HINT_CLASS}>
+                外国人雇用状況届出書（ハローワーク）に添えます。随時報告書（退職）の届出書作成画面から入れた画像もここに出ます。
+              </p>
+              {orgId ? (
+                <>
+                  <OrgFileAttachments
+                    orgId={orgId}
+                    kind={ORG_FILE_KIND_OWNER_ID}
+                    addLabel="名刺・住民票・免許証の画像を追加"
+                  />
+                  <a
+                    href={orgFilesPrintHref(orgId, [ORG_FILE_KIND_OWNER_ID])}
+                    target="_blank"
+                    rel="noopener"
+                    className="inline-flex min-h-[40px] items-center gap-1.5 self-start rounded-lg border border-brand px-3 text-xs font-bold text-brand hover:bg-brand/5"
+                  >
+                    <Printer size={14} />
+                    確認書類を印刷（A4縦・中央に配置）
+                  </a>
+                </>
+              ) : (
+                <p className={HINT_CLASS}>確認書類は、会社・機関を登録したあとに編集画面から添付できます。</p>
+              )}
+            </div>
+          )}
         </div>
         </OrgTabPanel>
 

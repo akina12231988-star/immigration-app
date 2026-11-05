@@ -4,7 +4,13 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { getOrganization } from "@/lib/supabase/queries/organizations";
 import { listOrganizationFiles } from "@/lib/supabase/queries/organization-files";
-import { isImageFile, isLodgingContractKind, latestOrgFiles, parsePrintKinds } from "@/lib/org-attachments";
+import {
+  isCenteredPrintKind,
+  isImageFile,
+  isLodgingContractKind,
+  latestOrgFiles,
+  parsePrintKinds,
+} from "@/lib/org-attachments";
 import { lodgingContractKind, normalizeOrganizationIntake } from "@/lib/organization-intake";
 import { OrgFilesPrintView, type OrgPrintFile, type OrgPrintSection } from "./OrgFilesPrintView";
 
@@ -14,8 +20,9 @@ export const dynamic = "force-dynamic";
 const BUCKET = "app-files";
 const TTL = 60 * 60;
 
-// 所属機関の添付ファイル（農業特定技能加入通知書・年間カレンダー・労使協定書・寮の賃貸契約書）を
-// A4縦で1枚に1画像ずつ印刷するページ。申請準備の「印刷（A4縦）」から別タブで開く。
+// 所属機関の添付ファイル（農業特定技能加入通知書・年間カレンダー・労使協定書・寮の賃貸契約書・
+// 事業主の確認書類）を A4縦で1枚に1画像ずつ印刷するページ。
+// 事業主の確認書類（名刺・免許証など小さい画像）は用紙の真ん中に置く。申請準備の「印刷（A4縦）」から別タブで開く。
 //   ?kind=年間カレンダー,労使協定書（種類はカンマ区切りで複数まとめられる）
 // それぞれ最新版（いちばん新しいアップロード日の分）だけを出す。
 export default async function OrgFilesPrintPage({
@@ -66,7 +73,7 @@ export default async function OrgFilesPrintPage({
         }),
       );
       const label = contract ? `賃貸契約書${lodgingName ? `（${lodgingName}）` : ""}` : k;
-      return { kind: label, uploadedOn: latest?.uploadedOn ?? "", files: rows };
+      return { kind: label, uploadedOn: latest?.uploadedOn ?? "", files: rows, centered: isCenteredPrintKind(k) };
     }),
   );
 

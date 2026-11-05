@@ -6,13 +6,34 @@ import type { OrganizationFileRow } from "@/types/db";
 export const ORG_FILE_KIND_AGRI_NOTICE = "農業特定技能加入通知書";
 export const ORG_FILE_KIND_YEAR_CALENDAR = "年間カレンダー";
 export const ORG_FILE_KIND_LABOR_AGREEMENT = "労使協定書";
+// 雇用保険の適用事業所でない会社が外国人雇用状況届出書をハローワークへ出すときに添える、
+// 事業主の確認書類（名刺・住民票・運転免許証のどれかの画像）
+export const ORG_FILE_KIND_OWNER_ID = "事業主の確認書類";
 
 // 添付ファイルの印刷ページで受け付ける種類
 export const ORG_PRINTABLE_FILE_KINDS = [
   ORG_FILE_KIND_AGRI_NOTICE,
   ORG_FILE_KIND_YEAR_CALENDAR,
   ORG_FILE_KIND_LABOR_AGREEMENT,
+  ORG_FILE_KIND_OWNER_ID,
 ] as const;
+
+// 印刷でA4縦の真ん中に置く種類（名刺・免許証のような小さい画像を、用紙の中央に出す）
+export function isCenteredPrintKind(kind: string): boolean {
+  return kind === ORG_FILE_KIND_OWNER_ID;
+}
+
+// 中央に置く画像の大きさ。
+//  card … 名刺・免許証の実物に近い大きさ（幅9cm）
+//  half … 用紙の半分くらい（幅14cm）
+//  fit  … 用紙に収まるいっぱいの大きさ（住民票など）
+export type CenteredPrintSize = "card" | "half" | "fit";
+
+// 画像の縦横から最初の大きさを決める。縦長（住民票など書類）は用紙いっぱい、横長（名刺・免許証）は実物大
+export function defaultCenteredPrintSize(width: number, height: number): CenteredPrintSize {
+  if (width <= 0 || height <= 0) return "card";
+  return height > width * 1.1 ? "fit" : "card";
+}
 
 // 寮・宿泊物件の賃貸契約書の種類か（1件目は「賃貸契約書」、2件目以降は「賃貸契約書:<寮のID>」）
 export function isLodgingContractKind(kind: string): boolean {
