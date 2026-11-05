@@ -2,23 +2,23 @@ import { describe, expect, it } from "vitest";
 import { approvalPatch, canMarkApproved } from "./application-approval";
 
 describe("approvalPatch", () => {
-  it("許可済みにして、許可日と在留許可日を入れる", () => {
+  it("許可済みにするが、在留許可日はボタンを押した日で埋めない（在留カードを受け取った日を後で入れる）", () => {
     expect(approvalPatch("2026-08-21")).toEqual({
       approved: true,
       approvalDate: "2026-08-21",
       status: "許可済",
-      grantedPermitDate: "2026-08-21",
     });
+    expect(approvalPatch("2026-08-21")).not.toHaveProperty("grantedPermitDate");
   });
 
-  it("通知書の日付が分かればその日を在留許可日にする", () => {
+  it("日付が分かって渡されたときだけ在留許可日にする", () => {
     expect(approvalPatch("2026-08-21", "2026-08-17").grantedPermitDate).toBe("2026-08-17");
   });
 
-  it("空欄の日付は今日で埋める", () => {
-    expect(approvalPatch("2026-08-21", "").grantedPermitDate).toBe("2026-08-21");
-    expect(approvalPatch("2026-08-21", null).grantedPermitDate).toBe("2026-08-21");
-    expect(approvalPatch("2026-08-21", "   ").grantedPermitDate).toBe("2026-08-21");
+  it("空欄の日付では在留許可日を入れない（登録済みの許可日も消さない）", () => {
+    expect(approvalPatch("2026-08-21", "")).not.toHaveProperty("grantedPermitDate");
+    expect(approvalPatch("2026-08-21", null)).not.toHaveProperty("grantedPermitDate");
+    expect(approvalPatch("2026-08-21", "   ")).not.toHaveProperty("grantedPermitDate");
   });
 });
 
