@@ -286,7 +286,9 @@ function PreviewActions({ busy, onCancel, onMake }: { busy: boolean; onCancel: (
 }
 
 // プレビューの入力欄（紙の記入欄に重ねたような見た目）
-const FIELD = "min-h-[32px] w-full rounded border border-brand/40 bg-brand/5 px-1.5 text-[13px] focus:border-brand focus:outline-none";
+const FIELD_BASE = "min-h-[32px] rounded border border-brand/50 bg-brand/5 px-1.5 text-[13px] focus:border-brand focus:outline-none";
+const FIELD = `${FIELD_BASE} w-full`;
+const DATE = `${FIELD_BASE} w-40 shrink-0`;
 const NUM = "min-h-[32px] w-14 rounded border border-brand/40 bg-brand/5 px-1 text-center text-[13px] tabular-nums focus:border-brand focus:outline-none";
 
 // 様式第1号のプレビュー。様式と同じ並びで出し、青い枠の欄はその場で直せる。
@@ -324,9 +326,9 @@ function ShomeishoPreview({
         <p className="text-[11px]">（様式第１号）</p>
         <p className="my-3 text-center font-bold">２号特定技能外国人に求められる実務経験に係る証明書</p>
         <p>一般社団法人全国農業会議所　会長　　　殿</p>
-        <div className="mt-2 flex items-center justify-end gap-1">
+        <div className="mt-2 flex items-center justify-end gap-1 whitespace-nowrap">
           証明日
-          <input type="date" value={draft.certDate} onChange={(e) => e.target.value && onChange({ certDate: e.target.value })} className={`${FIELD} w-40`} />
+          <input type="date" value={draft.certDate} onChange={(e) => e.target.value && onChange({ certDate: e.target.value })} className={DATE} />
         </div>
         <div className="ml-auto mt-2 w-full max-w-[340px] space-y-1">
           <p>実務経験を証明する者（特定技能所属機関等）</p>
@@ -365,12 +367,12 @@ function ShomeishoPreview({
                 </div>
                 <div className="mt-1 flex flex-wrap items-center justify-center gap-1">
                   西暦
-                  <input type="date" value={draft.periodStart ?? ""} onChange={(e) => onChange({ periodStart: e.target.value || null })} className={`${FIELD} w-40`} aria-label="就業期間の始まり" />
+                  <input type="date" value={draft.periodStart ?? ""} onChange={(e) => onChange({ periodStart: e.target.value || null })} className={DATE} aria-label="就業期間の始まり" />
                   ～
                   {ongoing ? (
                     <span className="font-bold">現在に至る</span>
                   ) : (
-                    <input type="date" value={draft.periodEnd ?? ""} onChange={(e) => e.target.value && onChange({ periodEnd: e.target.value })} className={`${FIELD} w-40`} aria-label="就業期間の終わり" />
+                    <input type="date" value={draft.periodEnd ?? ""} onChange={(e) => e.target.value && onChange({ periodEnd: e.target.value })} className={DATE} aria-label="就業期間の終わり" />
                   )}
                   <label className="ml-2 inline-flex items-center gap-1 text-[11px] text-muted">
                     <input
