@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Check, MapPin, Plus } from "lucide-react";
 import { Card } from "@/components/ui/Card";
@@ -15,7 +16,6 @@ import { taxSaveBlockers } from "@/lib/mailing-save-check";
 import { dbErrorMessage } from "@/lib/errors";
 import {
   collectionLabel,
-  formatDateJP,
   fiscalYearLabel,
   todayISO,
   yearWithReiwa,
@@ -37,6 +37,8 @@ import {
   yearMoneyOrderGroup,
 } from "@/lib/tax-request-plan";
 import { MailingRecordAttachments } from "@/components/mailing/MailingRecordAttachments";
+import { MunicipalityFormLink } from "@/components/mailing/MunicipalityFormLink";
+import { PersonCopyPanel } from "@/components/mailing/PersonCopyPanel";
 import { MoneyOrderFields } from "./MoneyOrderFields";
 import {
   buildMethodInfo,
@@ -93,6 +95,7 @@ function WizardBody({
   showToast,
   onReset,
 }: Props & { onReset: () => void }) {
+  const router = useRouter();
   const [step, setStep] = useState(1);
   const [appDate, setAppDate] = useState(todayISO());
   const appDateObj = new Date((appDate || todayISO()) + "T00:00:00");
@@ -302,6 +305,8 @@ function WizardBody({
       const created = await insertJudgmentRecord(createClient(), record);
       setRecords([created, ...records]);
       setSaved(created);
+      // 記録したら、その記録の詳細ページを開く（届いた証明書の添付・進捗はそこで）
+      router.push(`/mailing/records/${created.id}?saved=1`);
       showToast("請求を記録しました");
     } catch (e) {
       showToast("保存に失敗しました: " + (e instanceof Error ? e.message : String(e)));
@@ -364,27 +369,11 @@ function WizardBody({
           <div className="rounded-xl border border-border bg-background p-3 text-xs leading-relaxed">
             <p className="mb-1 flex items-center gap-1 text-sm font-bold">
               <MapPin size={14} />
-              住所の記録
+              年度ごとの住所と申請書
             </p>
-            <p>
-              <span className="font-bold">現在の住所：</span>
-              {currentAddress || <span className="text-muted">未登録</span>}
+            <p className="text-muted">
+              年度ごとの請求先の自治体の申請書をダウンロードし、下の「申請書に書く本人の情報」をコピーして書いてください。
             </p>
-            {addresses === null ? (
-              <p className="mt-1 text-muted">住所歴を読み込み中…</p>
-            ) : addresses.length === 0 ? (
-              <p className="mt-1 text-muted">住所歴が未登録です（外国人詳細の住所歴で転入日ごとに登録できます）。</p>
-            ) : (
-              <ul className="mt-1 flex flex-col gap-0.5">
-                {[...addresses]
-                  .sort((a, b) => b.moved_on.localeCompare(a.moved_on))
-                  .map((a) => (
-                    <li key={a.id}>
-                      <span className="tabular-nums text-muted">{formatDateJP(a.moved_on)} 転入</span>　{a.address}
-                    </li>
-                  ))}
-              </ul>
-            )}
             {addresses !== null && (
               <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {YEARS.map((y) => {
@@ -406,11 +395,23 @@ function WizardBody({
                           <span className="text-muted">自治体マスタに当てはまるものがありません（次の手順で選ぶか登録）</span>
                         )}
                       </p>
+                      {/* その自治体の申請書のページ（自治体マスタ。未登録ならその場で登録できる） */}
+                      <MunicipalityFormLink
+                        municipality={ya.suggested}
+                        canEdit={canEdit}
+                        onSaved={(m) => setMunicipalities(municipalities.map((x) => (x.id === m.id ? m : x)))}
+                      />
                     </div>
                   );
                 })}
               </div>
             )}
+          </div>
+        )}
+        {/* 申請書に書く本人の情報（氏名・生年月日・住所・住所歴）。押すとコピー */}
+        {workerId && (
+          <div className="mt-3 rounded-xl border border-border bg-surface p-3">
+            <PersonCopyPanel workerId={workerId} years={[fy.new, fy.prev]} />
           </div>
         )}
         {step === 1 && (

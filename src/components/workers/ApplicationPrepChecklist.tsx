@@ -1,5 +1,6 @@
 "use client";
 
+import { PrepMailingLink } from "@/components/mailing/PrepMailingLink";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
@@ -2938,15 +2939,9 @@ function DocRow({
         </div>
       )}
 
-      {/* 郵送請求への導線 */}
-      {def.viaMail && (
-        <Link
-          href="/mailing"
-          className="ml-[18px] mt-1 inline-flex items-center gap-1 text-[11px] font-bold text-brand hover:underline"
-        >
-          <ExternalLink size={11} />
-          郵送請求ツールを開く
-        </Link>
+      {/* 証明書類の請求への導線（その人の記録の詳細を開く。無ければ請求の登録へ）。届いた証明書もここに出す */}
+      {(def.viaMail || def.id === "nenkin") && (
+        <PrepMailingLink kind={def.viaMail ? "tax" : "nenkin"} records={mailingRecords} workerId={workerId} todoNo={todoNo} />
       )}
 
       {/* 健康診断書: 様式・受診項目・就労可の後日結果は別ページで管理 */}
@@ -3595,7 +3590,7 @@ const NENKIN_FILL_LABELS: Record<string, string> = { pensionNo: "基礎年金番
 // 交付申請書は外国人の登録内容を書き込んで作る（/api/nenkin-form）。委任状は様式のまま。
 // 在留カードは納税証明書その3と同じ印刷画面（現在の在留カードの両面）を使う。
 // 交付申請書に入れる登録内容が足りないときはアラートを出し、その場で入力して保存できる（外国人詳細にも反映）
-function NenkinOfficeDocs({ workerId, canEdit }: { workerId: string; canEdit: boolean }) {
+export function NenkinOfficeDocs({ workerId, canEdit }: { workerId: string; canEdit: boolean }) {
   const open = (url: string) => window.open(url, "_blank", "noopener");
   const [info, setInfo] = useState<NenkinWorkerInfo | null>(null);
   useEffect(() => {
@@ -3705,8 +3700,8 @@ function MailingStatusField({
       {shown.length === 0 ? (
         <p className="text-[11px] text-muted">
           {wantNozei3
-            ? "納税証明書その3の郵送請求はまだ記録されていません。郵送請求ツールで税務署への投函を記録すると、ここに投函日・追跡番号・進捗が出ます。"
-            : "郵送請求はまだ記録されていません。郵送請求ツールで記録すると、ここに請求先・投函日が出ます。"}
+            ? "納税証明書その3の郵送請求はまだ記録されていません。証明書類の請求で税務署への投函を記録すると、ここに投函日・追跡番号・進捗が出ます。"
+            : "郵送請求はまだ記録されていません。証明書類の請求で記録すると、ここに請求先・投函日が出ます。"}
         </p>
       ) : (
         shown.map((r) => (
@@ -3720,7 +3715,7 @@ function MailingStatusField({
         className="inline-flex items-center gap-1 text-[11px] font-bold text-brand hover:underline"
       >
         <ExternalLink size={11} />
-        郵送請求ツールで請求状況を確認する
+        証明書類の請求で請求状況を確認する
       </Link>
     </div>
   );

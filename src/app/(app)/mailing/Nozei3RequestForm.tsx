@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ExternalLink, FileText, IdCard, Printer, StickyNote } from "lucide-react";
 import { Card } from "@/components/ui/Card";
@@ -462,7 +463,9 @@ export function Nozei3Fields({
         <div className="flex flex-col gap-1">
           <span className={LABEL}>進捗</span>
           <div className="flex flex-col gap-2 sm:flex-row">
-            {mailingProgressOptionsFor("nozei3").filter((o) => !atWindow || o.value !== "waiting").map((o) => (
+            {mailingProgressOptionsFor("nozei3")
+              .filter((o) => o.value === v.progress || (atWindow ? o.value !== "waiting" : o.value !== "agent"))
+              .map((o) => (
               <Pill key={o.value} active={v.progress === o.value} onClick={() => set({ progress: o.value })}>
                 {o.label}
               </Pill>
@@ -573,6 +576,7 @@ export function Nozei3RequestForm({
   canEdit: boolean;
   showToast: (m: string) => void;
 }) {
+  const router = useRouter();
   const [v, setV] = useState<Nozei3Values>(emptyNozei3Values);
   const set = (patch: Partial<Nozei3Values>) => setV((x) => ({ ...x, ...patch }));
   const [busy, setBusy] = useState(false);
@@ -649,6 +653,8 @@ export function Nozei3RequestForm({
       const saved = await insertJudgmentRecord(createClient(), record);
       setRecords([saved, ...records]);
       setSavedRecord(saved);
+      // 記録したら、その記録の詳細ページを開く（届いた証明書の添付・進捗はそこで）
+      router.push(`/mailing/records/${saved.id}?saved=1`);
       showToast(v.method === "window" ? "納税証明書その3の代理人窓口発行を記録しました" : "納税証明書その3の郵送請求を記録しました");
     } catch (e) {
       showToast("保存に失敗しました: " + (e instanceof Error ? e.message : String(e)));

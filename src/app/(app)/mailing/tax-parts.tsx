@@ -183,6 +183,14 @@ export function MunicipalityModal({
       : { name: initialName, prefecture: guessPrefecture(initialName), website_url: "", cert_name: "課税証明書", has_income: true, has_tax: true, needs_tax_payment_cert: false, show_asterisk: false, note: "", tenshutsu_self_only: false, juminhyo_self_only: false },
   );
   const set = <K extends keyof MunicipalityInput>(k: K, v: MunicipalityInput[K]) => setForm((f) => ({ ...f, [k]: v }));
+  // 申請書のページのURL（0212）。入れた・消したときだけ保存に含める（未適用の環境でもほかの保存は通るように）
+  const [certFormUrl, setCertFormUrl] = useState(initial?.cert_form_url ?? "");
+  const [juminhyoFormUrl, setJuminhyoFormUrl] = useState(initial?.juminhyo_form_url ?? "");
+  const formUrlPatch = (key: "cert_form_url" | "juminhyo_form_url", value: string): Partial<MunicipalityInput> => {
+    const v = value.trim();
+    const before = (initial?.[key] ?? "").trim();
+    return v || before ? { [key]: v } : {};
+  };
   // 自治体名を打つと都道府県を推定して入れる（手で選び直せる）
   const setName = (name: string) =>
     setForm((f) => ({ ...f, name, prefecture: f.prefecture && f.prefecture !== guessPrefecture(f.name) ? f.prefecture : guessPrefecture(name) }));
@@ -209,6 +217,14 @@ export function MunicipalityModal({
           <input type="url" inputMode="url" value={form.website_url} onChange={(e) => set("website_url", e.target.value)} placeholder="https://www.city.example.lg.jp/..." className={INPUT} />
         </label>
         <label className="flex flex-col gap-1">
+          <span className={LABEL}>課税・納税証明書の申請書のページ（ダウンロードするページのURL）</span>
+          <input type="url" inputMode="url" value={certFormUrl} onChange={(e) => setCertFormUrl(e.target.value)} placeholder="https://www.city.example.lg.jp/.../shinseisho.html" className={INPUT} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className={LABEL}>住民票・転出届の申請書のページ（URL）</span>
+          <input type="url" inputMode="url" value={juminhyoFormUrl} onChange={(e) => setJuminhyoFormUrl(e.target.value)} placeholder="https://www.city.example.lg.jp/..." className={INPUT} />
+        </label>
+        <label className="flex flex-col gap-1">
           <span className={LABEL}>証明書名称</span>
           <input value={form.cert_name} onChange={(e) => set("cert_name", e.target.value)} placeholder="例：市民税・県民税 課税証明書" className={INPUT} />
         </label>
@@ -224,7 +240,16 @@ export function MunicipalityModal({
           <span className={LABEL}>備考</span>
           <textarea value={form.note} onChange={(e) => set("note", e.target.value)} placeholder="窓口情報、注意事項など" className={`${INPUT} min-h-[56px] py-2`} />
         </label>
-        <Button fullWidth disabled={!canSave || busy} onClick={() => onSave({ ...form, name: form.name.trim(), website_url: form.website_url.trim(), cert_name: form.cert_name.trim() })}>
+        <Button fullWidth disabled={!canSave || busy} onClick={() =>
+            onSave({
+              ...form,
+              name: form.name.trim(),
+              website_url: form.website_url.trim(),
+              cert_name: form.cert_name.trim(),
+              ...formUrlPatch("cert_form_url", certFormUrl),
+              ...formUrlPatch("juminhyo_form_url", juminhyoFormUrl),
+            })
+          }>
           {busy ? "保存中…" : "保存する"}
         </Button>
       </div>

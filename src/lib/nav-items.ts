@@ -117,7 +117,7 @@ export const NAV_ENTRIES: NavEntry[] = [
   { href: "/applications", label: "申請一覧", short: "申請一覧", icon: List },
   { href: "/applications/new", label: "申請登録", short: "申請登録", icon: FilePlus2, emphasize: true },
   // ★指定の並びに無かった項目（仮置き）: 申請準備で使う証明書の請求のためここに置いている
-  { href: "/mailing", label: "郵送請求", short: "郵送請求", icon: Mailbox },
+  { href: "/mailing", label: "証明書類の請求", short: "証明書請求", icon: Mailbox },
   { href: "/notices/search", label: "通知書", short: "通知書", icon: ScanLine },
   {
     href: "/workers/passports",

@@ -1,24 +1,27 @@
 "use client";
 
-import { mailingProgressOptionsFor, type MailingProgress } from "@/lib/tax-office";
+import { mailingProgressChoices, mailingProgressOptionsFor, type MailingProgress, type MailingRouteSource } from "@/lib/tax-office";
 
-// 記録一覧のカードで、編集を開かずに進捗（準備中／郵送待ち／完了）を押して変えるボタン。
+// 記録一覧・詳細で、編集を開かずに進捗（準備中／代理人の発行待ち／郵送待ち／完了）を押して変えるボタン。
 // いまの進捗を濃く出し、押すとその進捗で保存する（同じものを押しても何もしない）
 export function MailingProgressButtons({
   progress,
   requestKind,
+  record,
   disabled = false,
   onChange,
 }: {
   progress: MailingProgress | undefined;
   requestKind?: string;
+  // 渡すと、その記録の受け取り方（郵送／窓口）に合う進捗だけを出す
+  record?: MailingRouteSource;
   disabled?: boolean;
   onChange: (next: MailingProgress) => void;
 }) {
   const current = progress ?? "preparing";
   return (
     <div className="inline-flex overflow-hidden rounded-lg border border-border" role="group" aria-label="進捗">
-      {mailingProgressOptionsFor(requestKind).map((o) => {
+      {(record ? mailingProgressChoices(record, current) : mailingProgressOptionsFor(requestKind)).map((o) => {
         const on = o.value === current;
         return (
           <button
@@ -33,7 +36,9 @@ export function MailingProgressButtons({
                   ? "bg-status-approved-fg text-white"
                   : o.value === "waiting"
                     ? "bg-status-notice-fg text-white"
-                    : "bg-brand text-brand-foreground"
+                    : o.value === "agent"
+                      ? "bg-brand/80 text-brand-foreground"
+                      : "bg-brand text-brand-foreground"
                 : "bg-background text-muted hover:bg-surface disabled:opacity-60"
             }`}
           >

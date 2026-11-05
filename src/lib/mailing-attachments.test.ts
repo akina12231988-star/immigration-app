@@ -106,3 +106,15 @@ describe("mailingTargets", () => {
     expect(mailingTargets(rec({ requestKind: "tenshutsu", cityOffice: "八代市" }))[0]).toEqual({ what: "転出届", where: "八代市" });
   });
 });
+
+describe("年金記録（年金事務所）", () => {
+  it("添付は 請求した書類・届いた年金記録、請求先は年金事務所", () => {
+    const slots = mailingAttachmentSlots({ requestKind: "nenkin" });
+    expect(slots.map((x) => x.role)).toEqual(["sent", "received"]);
+    expect(slots[1].title).toContain("届いた年金記録");
+    expect(mailingTargets({ requestKind: "nenkin", pensionOffice: "八代年金事務所" } as JudgmentRecord)).toEqual([
+      { what: "年金記録", where: "八代年金事務所" },
+    ]);
+  });
+});
+

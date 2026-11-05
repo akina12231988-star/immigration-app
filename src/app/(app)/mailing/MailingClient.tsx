@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Copy, Plus } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -53,7 +54,7 @@ import { dbErrorMessage } from "@/lib/errors";
 import { extraSaveBlockers, methodBlockers } from "@/lib/mailing-save-check";
 import { MAILING_PROGRESS_OPTIONS, type TaxOffice } from "@/lib/tax-office";
 import { MailingProgressButtons } from "@/components/mailing/MailingProgressButtons";
-import { quickMailingProgressPatch } from "@/lib/tax-office";
+import { normalizeMailingProgress, quickMailingProgressPatch, isMailedRecord } from "@/lib/tax-office";
 import { todayStr } from "@/lib/ssw/calc";
 import {
   MailingProgressFields,
@@ -63,13 +64,16 @@ import {
 } from "@/components/mailing/MailingProgressFields";
 import { MailingFileAttachments } from "./MailingFileAttachments";
 import { MailingRecordAttachments } from "@/components/mailing/MailingRecordAttachments";
-import { ProgressBadge } from "@/components/mailing/MailingRecordSummary";
+import { MunicipalityFormLink } from "@/components/mailing/MunicipalityFormLink";
+import { PersonCopyPanel } from "@/components/mailing/PersonCopyPanel";
+import { NenkinEditModal, NenkinRecordView, NenkinRequestForm } from "./NenkinRequestForm";
+import { ProgressBadge, mailingDestination, mailingPostDate } from "@/components/mailing/MailingRecordSummary";
 import { MoneyOrderFields } from "./MoneyOrderFields";
 import { AgentIdDocuments } from "./AgentIdDocuments";
 import { TaxOfficeTab } from "./TaxOfficeTab";
 import { TaxRequestWizard } from "./TaxRequestWizard";
 import { hasYearRequests, recordMoneyOrderGroups } from "@/lib/tax-request-plan";
-import { taxDocsLabel } from "@/lib/mailing-attachments";
+import { mailingTargets, taxDocsLabel } from "@/lib/mailing-attachments";
 import { Nozei3EditModal, Nozei3RecordView, Nozei3RequestForm } from "./Nozei3RequestForm";
 import { INPUT, LABEL, Pill, type MailingWorker } from "./ui";
 import {
@@ -101,6 +105,9 @@ export function MailingClient({
   workers = [],
   canEdit,
   initialKeyword = "",
+  focusId = "",
+  openRecords = false,
+  prefill,
 }: {
   initialMunicipalities: Municipality[];
   initialRecords: JudgmentRecord[];
@@ -110,10 +117,21 @@ export function MailingClient({
   // 指定すると記録一覧タブを開き、氏名・TODO番号で絞り込んだ状態で表示する
   // （申請準備のTODOの「郵送請求を開く」から、その人の記録一覧に直接来られるように）
   initialKeyword?: string;
+  // 記録の詳細から戻ったとき、記録一覧を開いてその記録の行を目立たせる
+  focusId?: string;
+  openRecords?: boolean; // 記録一覧タブで開く（?tab=records）
+  // 申請準備から来たとき、請求フォームに最初から入れておく外国人・TODO番号・書類
+  prefill?: { workerId: string; todoNumber: string; kind: string };
 }) {
   const [tab, setTab] = useState<"judge" | "muni" | "taxoffice" | "records">(
-    initialKeyword ? "records" : "judge",
+    initialKeyword || focusId || openRecords ? "records" : "judge",
   );
+  // 戻ってきた記録の行までスクロールする
+  useEffect(() => {
+    if (!focusId) return;
+    const t = setTimeout(() => document.getElementById(`record-${focusId}`)?.scrollIntoView({ block: "center" }), 100);
+    return () => clearTimeout(t);
+  }, [focusId]);
   const [municipalities, setMunicipalities] = useState(initialMunicipalities);
   const [taxOffices, setTaxOffices] = useState(initialTaxOffices);
   const [records, setRecords] = useState(initialRecords);
@@ -160,6 +178,7 @@ export function MailingClient({
 
       {tab === "judge" && (
         <JudgeTab
+          prefill={prefill}
           municipalities={municipalities}
           setMunicipalities={setMunicipalities}
           records={records}
@@ -200,6 +219,7 @@ export function MailingClient({
           canEdit={canEdit}
           showToast={showToast}
           initialKeyword={initialKeyword}
+          focusId={focusId}
         />
       )}
 
@@ -324,6 +344,7 @@ function PhoneLogFields({
 
 /* ============================ 判定フォーム ============================ */
 function JudgeTab({
+  prefill,
   municipalities,
   setMunicipalities,
   records,
@@ -345,12 +366,17 @@ function JudgeTab({
   setTaxOffices: (o: TaxOffice[]) => void;
   canEdit: boolean;
   showToast: (m: string) => void;
+  prefill?: { workerId: string; todoNumber: string; kind: string };
 }) {
-  // 請求する書類の種別（課税・納税証明書 / 転出届 / 住民票 / 納税証明書その3（税務署））
-  const [requestKind, setRequestKind] = useState<RequestKind>("tax");
-  const [personName, setPersonName] = useState("");
-  const [workerId, setWorkerId] = useState("");
-  const [todoNumber, setTodoNumber] = useState("");
+  // 請求する書類の種別（課税・納税証明書 / 転出届 / 住民票 / 納税証明書その3（税務署） / 年金記録）
+  const prefillKinds: RequestKind[] = ["tax", "tenshutsu", "juminhyo", "nozei3", "nenkin"];
+  const [requestKind, setRequestKind] = useState<RequestKind>(
+    prefillKinds.includes(prefill?.kind as RequestKind) ? (prefill?.kind as RequestKind) : "tax",
+  );
+  const prefillWorker = prefill ? workers.find((w) => w.id === prefill.workerId) : undefined;
+  const [personName, setPersonName] = useState(prefillWorker?.name ?? "");
+  const [workerId, setWorkerId] = useState(prefillWorker?.id ?? "");
+  const [todoNumber, setTodoNumber] = useState(prefillWorker ? (prefill?.todoNumber ?? "") : "");
 
   const workerOptions = useMemo(() => workers.map((w) => ({ id: w.id, label: w.name })), [workers]);
   const selectedWorker = workers.find((w) => w.id === workerId) ?? null;
@@ -390,8 +416,8 @@ function JudgeTab({
       {/* 請求する書類の選択（課税・納税証明書 / 転出届 / 住民票） */}
       <Card className="p-4">
         <p className="mb-1 text-sm font-bold">請求する書類</p>
-        <p className="mb-3 text-xs text-muted">どの書類を郵送請求するか選んでください</p>
-        <div className="flex flex-col gap-2 sm:flex-row">
+        <p className="mb-3 text-xs text-muted">どの書類を請求するか選んでください</p>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           <Pill active={requestKind === "tax"} onClick={() => setRequestKind("tax")}>
             課税証明書と納税証明書を郵送請求
           </Pill>
@@ -403,6 +429,9 @@ function JudgeTab({
           </Pill>
           <Pill active={requestKind === "nozei3"} onClick={() => setRequestKind("nozei3")}>
             納税証明書その3を税務署に請求（郵送・窓口）
+          </Pill>
+          <Pill active={requestKind === "nenkin"} onClick={() => setRequestKind("nenkin")}>
+            年金記録を年金事務所に請求（郵送・窓口）
           </Pill>
         </div>
       </Card>
@@ -417,6 +446,18 @@ function JudgeTab({
           onWorkerAddressSaved={onWorkerAddressSaved}
           taxOffices={taxOffices}
           setTaxOffices={setTaxOffices}
+          records={records}
+          setRecords={setRecords}
+          canEdit={canEdit}
+          showToast={showToast}
+        />
+      ) : requestKind === "nenkin" ? (
+        <NenkinRequestForm
+          key={`nenkin-${workerId}`}
+          personName={personName}
+          workerId={workerId}
+          todoNumber={todoNumber}
+          workerAddress={selectedWorker?.address ?? ""}
           records={records}
           setRecords={setRecords}
           canEdit={canEdit}
@@ -801,6 +842,7 @@ function ExtraRequestForm({
   canEdit: boolean;
   showToast: (m: string) => void;
 }) {
+  const router = useRouter();
   const [v, setV] = useState<ExtraFormValues>(emptyExtraValues);
   const set = (patch: Partial<ExtraFormValues>) => setV((x) => ({ ...x, ...patch }));
   const [busy, setBusy] = useState(false);
@@ -878,6 +920,8 @@ function ExtraRequestForm({
       const saved = await insertJudgmentRecord(createClient(), record);
       setRecords([saved, ...records]);
       setSavedRecord(saved);
+      // 記録したら、その記録の詳細ページを開く（届いた証明書の添付・進捗はそこで）
+      router.push(`/mailing/records/${saved.id}?saved=1`);
       showToast(`${label}の請求を記録しました`);
     } catch (e) {
       showToast("保存に失敗しました: " + (e instanceof Error ? e.message : String(e)));
@@ -958,6 +1002,18 @@ function ExtraRequestForm({
             canEdit={canEdit}
             showToast={showToast}
           />
+          {/* 請求先の自治体の申請書のページ（自治体マスタ。未登録ならその場で登録できる） */}
+          <MunicipalityFormLink
+            municipality={muni}
+            column="juminhyo_form_url"
+            canEdit={canEdit}
+            onSaved={(m) => setMunicipalities(municipalities.map((x) => (x.id === m.id ? m : x)))}
+          />
+          {workerId && (
+            <div className="mt-3 rounded-xl border border-border bg-surface p-3">
+              <PersonCopyPanel workerId={workerId} />
+            </div>
+          )}
           {canEdit && (
             <Button fullWidth className="mt-4" disabled={busy || saveReasons.length > 0} onClick={save}>
               {busy ? "保存中…" : "この請求を記録として保存"}
@@ -1169,7 +1225,7 @@ function methodText(method?: string, mailDate?: string, recipient?: string, agen
   return `郵送請求（${dateLabel}・本人宛）`;
 }
 
-function RecordsTab({
+export function RecordsTab({
   records,
   setRecords,
   municipalities,
@@ -1180,6 +1236,9 @@ function RecordsTab({
   canEdit,
   showToast,
   initialKeyword = "",
+  single = false,
+  focusId = "",
+  onDeleted,
 }: {
   records: JudgmentRecord[];
   setRecords: (r: JudgmentRecord[]) => void;
@@ -1191,6 +1250,9 @@ function RecordsTab({
   canEdit: boolean;
   showToast: (m: string) => void;
   initialKeyword?: string; // その人の記録だけを最初から表示する（氏名・TODO番号）
+  single?: boolean; // 記録の詳細ページ（1件だけ。絞り込み・タブを出さずにカードで出す）
+  focusId?: string; // 詳細から一覧に戻ったとき、その記録の行を目立たせる
+  onDeleted?: () => void; // 詳細ページで削除したあと（一覧へ戻る）
 }) {
   const [deleteTarget, setDeleteTarget] = useState<JudgmentRecord | null>(null);
   const [editTarget, setEditTarget] = useState<JudgmentRecord | null>(null);
@@ -1202,7 +1264,7 @@ function RecordsTab({
   const [fKeyword, setFKeyword] = useState(initialKeyword);
   const [fAgent, setFAgent] = useState("");
   const [fMailOnly, setFMailOnly] = useState(false);
-  const [fProgress, setFProgress] = useState(""); // 進捗（すべての請求書類）
+  const [fProgress, setFProgress] = useState(""); // 進捗のタブ（"" = すべて）
 
   const muniOptions = useMemo(() => {
     const names = Array.from(new Set(records.map((r) => r.municipalityName).filter(Boolean)));
@@ -1214,7 +1276,6 @@ function RecordsTab({
     const ag = fAgent.trim().toLowerCase();
     return records.filter((r) => {
       if (fKind && (r.requestKind ?? "tax") !== fKind) return false;
-      if (fProgress && (r.mailingProgress ?? "preparing") !== fProgress) return false;
       if (fMuni && r.municipalityName !== fMuni) return false;
       if (fCollection && (r.requestKind ?? "tax") === "tax" && r.collectionType !== fCollection) return false;
       if (kw && !`${r.personName ?? ""} ${r.todoNumber ?? ""}`.toLowerCase().includes(kw)) return false;
@@ -1230,7 +1291,18 @@ function RecordsTab({
       }
       return true;
     });
-  }, [records, fKind, fMuni, fCollection, fKeyword, fAgent, fMailOnly, fProgress]);
+  }, [records, fKind, fMuni, fCollection, fKeyword, fAgent, fMailOnly]);
+
+  // 進捗のタブ（すべて・準備中・代理人の発行待ち・郵送待ち・完了）。件数はほかの絞り込みのあとで数える
+  const progressCounts = useMemo(() => {
+    const c: Record<string, number> = { "": filtered.length };
+    for (const r of filtered) {
+      const k = normalizeMailingProgress(r.mailingProgress);
+      c[k] = (c[k] ?? 0) + 1;
+    }
+    return c;
+  }, [filtered]);
+  const statusRows = fProgress ? filtered.filter((r) => normalizeMailingProgress(r.mailingProgress) === fProgress) : filtered;
 
   const hasFilter = !!(fKind || fMuni || fCollection || fKeyword || fAgent || fMailOnly || fProgress);
 
@@ -1256,6 +1328,7 @@ function RecordsTab({
       setRecords(records.filter((r) => r.id !== deleteTarget.id));
       showToast("記録を削除しました");
       setDeleteTarget(null);
+      onDeleted?.();
     } catch (e) {
       showToast("削除に失敗しました: " + (e instanceof Error ? e.message : String(e)));
     } finally {
@@ -1265,7 +1338,7 @@ function RecordsTab({
 
   return (
     <div className="space-y-3">
-      {records.length > 0 && (
+      {records.length > 0 && !single && (
         <Card className="space-y-3 p-4">
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
             <label className="flex flex-col gap-1">
@@ -1276,15 +1349,7 @@ function RecordsTab({
                 <option value="tenshutsu">転出届</option>
                 <option value="juminhyo">住民票</option>
                 <option value="nozei3">納税証明書その3（税務署）</option>
-              </select>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className={LABEL}>進捗</span>
-              <select value={fProgress} onChange={(e) => setFProgress(e.target.value)} className={INPUT}>
-                <option value="">すべて</option>
-                {MAILING_PROGRESS_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
+                <option value="nenkin">年金記録（年金事務所）</option>
               </select>
             </label>
             <label className="flex flex-col gap-1">
@@ -1326,155 +1391,52 @@ function RecordsTab({
         </Card>
       )}
 
+      {/* 進捗のタブ（件数つき）。押すとその進捗の記録だけを出す */}
+      {records.length > 0 && !single && (
+        <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="進捗で絞り込む">
+          {[{ value: "", label: "すべて" }, ...MAILING_PROGRESS_OPTIONS].map((o) => (
+            <button
+              key={o.value || "all"}
+              type="button"
+              role="tab"
+              aria-selected={fProgress === o.value}
+              onClick={() => setFProgress(o.value)}
+              className={`min-h-[36px] rounded-full border px-3 text-xs font-bold ${
+                fProgress === o.value ? "border-brand bg-brand text-brand-foreground" : "border-border bg-surface text-muted"
+              }`}
+            >
+              {o.label} {progressCounts[o.value] ?? 0}
+            </button>
+          ))}
+        </div>
+      )}
+
       {records.length === 0 ? (
         <Card className="p-8 text-center text-sm text-muted">
           まだ記録がありません。「判定フォーム」タブで判定後、結果を保存してください。
         </Card>
-      ) : filtered.length === 0 ? (
+      ) : statusRows.length === 0 ? (
         <Card className="p-8 text-center text-sm text-muted">条件に一致する記録がありません。</Card>
       ) : (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {filtered.map((r) => (
-            <Card key={r.id} className="p-4">
-              <div className="mb-2 flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  {r.workerId ? (
-                    <Link href={`/workers/${r.workerId}`} className="truncate font-bold text-brand hover:underline">
-                      {r.personName || "（氏名未入力）"}
-                    </Link>
-                  ) : (
-                    <p className="truncate font-bold">{r.personName || "（氏名未入力）"}</p>
-                  )}
-                  <p className="truncate text-xs text-muted">
-                    {r.todoNumber ? `TODO ${r.todoNumber} ・ ` : ""}
-                    {new Date(r.createdAt).toLocaleString("ja-JP", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                  </p>
-                  {/* 進捗（納税証明書その3は下の枠の中に出しているので、ここでは出さない） */}
-                  {r.requestKind !== "nozei3" && (
-                    <p className="mt-1 flex flex-wrap items-center gap-1.5">
-                      <ProgressBadge progress={r.mailingProgress} requestKind={r.requestKind} />
-                      {r.mailingProgress === "done" && r.receivedDate && (
-                        <span className="text-[11px] text-muted">届いた日 {formatDateJP(r.receivedDate)}</span>
-                      )}
-                      {r.mailingNote && <span className="text-[11px] text-muted">{r.mailingNote}</span>}
-                    </p>
-                  )}
-                  {/* 進捗のボタン: 編集を開かずにこの場で押して変える（完了にすると届いた日は今日になる） */}
-                  {canEdit && (
-                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                      <MailingProgressButtons
-                        progress={r.mailingProgress}
-                        requestKind={r.requestKind}
-                        disabled={busy}
-                        onChange={(next) =>
-                          void persistUpdate({ ...r, ...quickMailingProgressPatch(r, next, todayStr()) })
-                        }
-                      />
-                      <span className="text-[10px] text-muted">押すとその進捗で保存します</span>
-                    </div>
-                  )}
-                </div>
-                {canEdit && (
-                  <div className="flex shrink-0 gap-1.5">
-                    <button type="button" onClick={() => setEditTarget(r)} className="rounded-lg border border-border px-2.5 py-1 text-xs font-bold text-muted">編集</button>
-                    <button type="button" onClick={() => setDeleteTarget(r)} className="rounded-lg border border-seal/40 px-2.5 py-1 text-xs font-bold text-seal">削除</button>
-                  </div>
-                )}
-              </div>
-
-              {r.requestKind === "nozei3" ? (
-                /* 納税証明書その3（税務署）の請求記録 */
-                <Nozei3RecordView record={r} canEdit={canEdit} />
-              ) : r.requestKind === "tenshutsu" || r.requestKind === "juminhyo" ? (
-                /* 転出届・住民票の請求記録 */
-                <div className="rounded-xl bg-background p-3 text-xs leading-relaxed">
-                  <p className="font-bold">
-                    {requestKindLabel(r.requestKind)}
-                    <span className="font-medium text-muted">（請求先: {r.cityOffice || "未入力"}）</span>
-                  </p>
-                  {r.requestKind === "tenshutsu" && (
-                    <>
-                      {r.movingDate && <p className="text-muted">転出日：{formatDateJP(r.movingDate)}</p>}
-                      {r.newAddress && <p className="text-muted">転入先：{r.newAddress}</p>}
-                    </>
-                  )}
-                  {r.requestKind === "juminhyo" && (
-                    <>
-                      <p className="text-muted">
-                        {juminhyoTitle(!!r.juminhyoMyNumber)}
-                        {(r.juminhyoCopies ?? 1) > 1 ? `　${r.juminhyoCopies}通` : ""}
-                      </p>
-                      {r.juminhyoPurpose && <p className="text-muted">目的：{r.juminhyoPurpose}</p>}
-                    </>
-                  )}
-                  {r.requestKind === "juminhyo" && r.juminhyoMethod === "window" ? (
-                    <p className="mt-1">窓口発行：{applicantLabel(r.applicantType, r.applicantAgentName)}</p>
-                  ) : (
-                    <p className="mt-1">
-                      郵送請求：{applicantLabel(r.applicantType, r.applicantAgentName)}
-                      {r.postDate ? `（投函日 ${formatDateJP(r.postDate)}）` : "（投函日未記録）"}
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <div className="rounded-xl bg-background p-3 text-xs leading-relaxed">
-                  {!hasYearRequests(r) && (
-                    <p className="font-bold">
-                      {r.municipalityName}
-                      <span className="font-medium text-muted">（{collectionLabel(r.collectionType)}）</span>
-                    </p>
-                  )}
-                  {hasYearRequests(r) && (r.yearRequests ?? []).length === 0 && (
-                    <p className="text-muted">課税・納税証明書の請求なし（国保税の納税証明書のみ）</p>
-                  )}
-                  {hasYearRequests(r) ? (
-                    /* 手順式の請求フォームの記録: 年度ごとの自治体・徴収区分 */
-                    (r.yearRequests ?? []).map((y) => (
-                      <p key={y.yearType} className="text-muted">
-                        {y.yearType === "new" ? "最新年度" : "前年度"} {yearWithReiwa(y.fiscalStartYear)}：{y.municipalityName}（{collectionLabel(y.collectionType)}）{taxDocsLabel(y.taxCert, y.taxPayment)}
-                      </p>
-                    ))
-                  ) : r.requestBothYears ? (
-                    <p className="text-muted">
-                      両年度：新年度 {yearWithReiwa(r.fiscalStartYear)}（{r.municipalityName}）／ 前年度 {yearWithReiwa(r.prevFiscalStartYear ?? r.fiscalStartYear - 1)}（{r.prevMunicipalityName ?? ""}）
-                    </p>
-                  ) : (
-                    <p className="text-muted">{r.yearType === "prev" ? "前年度" : "新年度"}：{yearWithReiwa(r.fiscalStartYear)}</p>
-                  )}
-                  <p className="mt-1">受領：{methodText(r.requestMethod, r.mailRequestDate, r.recipientType, r.agentName)}</p>
-                  {r.mainAlternativeNote && <p className="mt-1 text-status-notice-fg">代替：{r.mainAlternativeNote}</p>}
-                  <PhoneLogView prefix="main" r={r} />
-                </div>
-              )}
-
-              {/* 郵送請求に同封した定額小為替と、後日届く領収書 */}
-              <MoneyOrderReceiptView record={r} canEdit={canEdit} />
-
-              {r.hasNhi && (
-                <div className="mt-2 rounded-xl border-l-2 border-status-notice-fg bg-background p-3 text-xs leading-relaxed">
-                  {r.nhiYears ? (
-                    r.nhiYears.map((y) => (
-                      <p key={y.yearType} className="font-bold">
-                        国保：{y.municipalityName}
-                        <span className="font-medium text-muted">（{y.yearType === "new" ? "最新年度" : "前年度"} {yearWithReiwa(y.fiscalStartYear)}）</span>
-                      </p>
-                    ))
-                  ) : (
-                    <>
-                      <p className="font-bold">国保：{r.nhiMunicipalityName || "未選択"}</p>
-                      <p className="text-muted">新年度：{yearWithReiwa(r.nhiFiscalStartYear ?? 0)}</p>
-                    </>
-                  )}
-                  <p className="mt-1">
-                    受領：{r.nhiSameAsMain ? "課税証明書と同じ" : methodText(r.nhiRequestMethod, r.nhiMailRequestDate, r.nhiRecipientType, r.nhiAgentName)}
-                  </p>
-                  {r.nhiAlternativeNote && <p className="mt-1 text-status-notice-fg">代替：{r.nhiAlternativeNote}</p>}
-                  <PhoneLogView prefix="nhi" r={r} />
-                </div>
-              )}
-            </Card>
-          ))}
-        </div>
+        single ? (
+          <RecordCard
+            r={filtered[0]}
+            canEdit={canEdit}
+            busy={busy}
+            single
+            onPatch={(u) => void persistUpdate(u)}
+            onEdit={() => setEditTarget(filtered[0])}
+            onDelete={() => setDeleteTarget(filtered[0])}
+          />
+        ) : (
+          <RecordTable
+            rows={statusRows}
+            canEdit={canEdit}
+            busy={busy}
+            focusId={focusId}
+            onPatch={(u) => void persistUpdate(u)}
+          />
+        )
       )}
 
       {editTarget &&
@@ -1490,6 +1452,8 @@ function RecordsTab({
             canEdit={canEdit}
             showToast={showToast}
           />
+        ) : editTarget.requestKind === "nenkin" ? (
+          <NenkinEditModal record={editTarget} busy={busy} onClose={() => setEditTarget(null)} onSave={persistUpdate} canEdit={canEdit} />
         ) : editTarget.requestKind === "tenshutsu" || editTarget.requestKind === "juminhyo" ? (
           <ExtraEditModal
             record={editTarget}
@@ -1518,6 +1482,17 @@ function RecordsTab({
 
 // 記録一覧のカードに出す「定額小為替」と「領収書」。
 // 郵送請求した記録だけに出す（窓口で受け取るものは小為替も領収書も無い）
+// 定額小為替・領収書（と添付）の欄を出す記録か。郵送で請求した課税・納税証明書・転出届・住民票だけ。
+// 納税証明書その3は収入印紙で、添付欄はカードの中に別に出している。年金記録は手数料が無い
+function moneyOrderShown(record: JudgmentRecord): boolean {
+  if (record.requestKind === "nozei3" || record.requestKind === "nenkin") return false;
+  return (
+    record.requestMethod === "mail" ||
+    (record.requestKind === "tenshutsu" && record.requestMethod !== "window") ||
+    (record.requestKind === "juminhyo" && record.juminhyoMethod !== "window")
+  );
+}
+
 function MoneyOrderReceiptView({
   record,
   canEdit,
@@ -1526,13 +1501,7 @@ function MoneyOrderReceiptView({
   canEdit: boolean;
 }) {
   const orders = record.moneyOrders ?? [];
-  // 納税証明書その3は収入印紙で、添付欄はカードの中に別に出している
-  if (record.requestKind === "nozei3") return null;
-  const mailed =
-    record.requestMethod === "mail" ||
-    (record.requestKind === "tenshutsu" && record.requestMethod !== "window") ||
-    (record.requestKind === "juminhyo" && record.juminhyoMethod !== "window");
-  if (!mailed) return null;
+  if (!moneyOrderShown(record)) return null;
   return (
     <div className="mt-2 rounded-xl bg-background p-3 text-xs leading-relaxed">
       <p className="font-bold">{moneyOrderSummary(orders) || "定額小為替 未登録"}</p>
@@ -1780,3 +1749,294 @@ function RecipientEditModal({
     </Modal>
   );
 }
+
+// 記録1件のカード（記録の詳細ページで使う）。進捗のボタン・編集・削除・添付・請求の中身を出す
+function RecordCard({
+  r,
+  canEdit,
+  busy,
+  single = false,
+  onPatch,
+  onEdit,
+  onDelete,
+}: {
+  r: JudgmentRecord;
+  canEdit: boolean;
+  busy: boolean;
+  single?: boolean;
+  onPatch: (updated: JudgmentRecord) => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+            <Card className="p-4">
+              <div className="mb-2 flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  {r.workerId ? (
+                    <Link href={`/workers/${r.workerId}`} className="truncate font-bold text-brand hover:underline">
+                      {r.personName || "（氏名未入力）"}
+                    </Link>
+                  ) : (
+                    <p className="truncate font-bold">{r.personName || "（氏名未入力）"}</p>
+                  )}
+                  <p className="truncate text-xs text-muted">
+                    {r.todoNumber ? `TODO ${r.todoNumber} ・ ` : ""}
+                    {new Date(r.createdAt).toLocaleString("ja-JP", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                  </p>
+                  {/* 進捗（納税証明書その3は下の枠の中に出しているので、ここでは出さない） */}
+                  {r.requestKind !== "nozei3" && (
+                    <p className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <ProgressBadge progress={r.mailingProgress} requestKind={r.requestKind} />
+                      {r.mailingProgress === "done" && r.receivedDate && (
+                        <span className="text-[11px] text-muted">届いた日 {formatDateJP(r.receivedDate)}</span>
+                      )}
+                      {r.mailingNote && <span className="text-[11px] text-muted">{r.mailingNote}</span>}
+                    </p>
+                  )}
+                  {/* 進捗のボタン: 編集を開かずにこの場で押して変える（完了にすると届いた日は今日になる） */}
+                  {canEdit && (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      <MailingProgressButtons
+                        progress={r.mailingProgress}
+                        requestKind={r.requestKind}
+                        record={r}
+                        disabled={busy}
+                        onChange={(next) =>
+                          onPatch({ ...r, ...quickMailingProgressPatch(r, next, todayStr()) })
+                        }
+                      />
+                      <span className="text-[10px] text-muted">押すとその進捗で保存します</span>
+                    </div>
+                  )}
+                </div>
+                {canEdit && (
+                  <div className="flex shrink-0 gap-1.5">
+                    <button type="button" onClick={onEdit} className="rounded-lg border border-border px-2.5 py-1 text-xs font-bold text-muted">編集</button>
+                    <button type="button" onClick={onDelete} className="rounded-lg border border-seal/40 px-2.5 py-1 text-xs font-bold text-seal">削除</button>
+                  </div>
+                )}
+              </div>
+
+              {r.requestKind === "nozei3" ? (
+                /* 納税証明書その3（税務署）の請求記録 */
+                <Nozei3RecordView record={r} canEdit={canEdit} />
+              ) : r.requestKind === "nenkin" ? (
+                /* 年金記録（年金事務所）の請求記録 */
+                <NenkinRecordView record={r} />
+              ) : r.requestKind === "tenshutsu" || r.requestKind === "juminhyo" ? (
+                /* 転出届・住民票の請求記録 */
+                <div className="rounded-xl bg-background p-3 text-xs leading-relaxed">
+                  <p className="font-bold">
+                    {requestKindLabel(r.requestKind)}
+                    <span className="font-medium text-muted">（請求先: {r.cityOffice || "未入力"}）</span>
+                  </p>
+                  {r.requestKind === "tenshutsu" && (
+                    <>
+                      {r.movingDate && <p className="text-muted">転出日：{formatDateJP(r.movingDate)}</p>}
+                      {r.newAddress && <p className="text-muted">転入先：{r.newAddress}</p>}
+                    </>
+                  )}
+                  {r.requestKind === "juminhyo" && (
+                    <>
+                      <p className="text-muted">
+                        {juminhyoTitle(!!r.juminhyoMyNumber)}
+                        {(r.juminhyoCopies ?? 1) > 1 ? `　${r.juminhyoCopies}通` : ""}
+                      </p>
+                      {r.juminhyoPurpose && <p className="text-muted">目的：{r.juminhyoPurpose}</p>}
+                    </>
+                  )}
+                  {r.requestKind === "juminhyo" && r.juminhyoMethod === "window" ? (
+                    <p className="mt-1">窓口発行：{applicantLabel(r.applicantType, r.applicantAgentName)}</p>
+                  ) : (
+                    <p className="mt-1">
+                      郵送請求：{applicantLabel(r.applicantType, r.applicantAgentName)}
+                      {r.postDate ? `（投函日 ${formatDateJP(r.postDate)}）` : "（投函日未記録）"}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="rounded-xl bg-background p-3 text-xs leading-relaxed">
+                  {!hasYearRequests(r) && (
+                    <p className="font-bold">
+                      {r.municipalityName}
+                      <span className="font-medium text-muted">（{collectionLabel(r.collectionType)}）</span>
+                    </p>
+                  )}
+                  {hasYearRequests(r) && (r.yearRequests ?? []).length === 0 && (
+                    <p className="text-muted">課税・納税証明書の請求なし（国保税の納税証明書のみ）</p>
+                  )}
+                  {hasYearRequests(r) ? (
+                    /* 手順式の請求フォームの記録: 年度ごとの自治体・徴収区分 */
+                    (r.yearRequests ?? []).map((y) => (
+                      <p key={y.yearType} className="text-muted">
+                        {y.yearType === "new" ? "最新年度" : "前年度"} {yearWithReiwa(y.fiscalStartYear)}：{y.municipalityName}（{collectionLabel(y.collectionType)}）{taxDocsLabel(y.taxCert, y.taxPayment)}
+                      </p>
+                    ))
+                  ) : r.requestBothYears ? (
+                    <p className="text-muted">
+                      両年度：新年度 {yearWithReiwa(r.fiscalStartYear)}（{r.municipalityName}）／ 前年度 {yearWithReiwa(r.prevFiscalStartYear ?? r.fiscalStartYear - 1)}（{r.prevMunicipalityName ?? ""}）
+                    </p>
+                  ) : (
+                    <p className="text-muted">{r.yearType === "prev" ? "前年度" : "新年度"}：{yearWithReiwa(r.fiscalStartYear)}</p>
+                  )}
+                  <p className="mt-1">受領：{methodText(r.requestMethod, r.mailRequestDate, r.recipientType, r.agentName)}</p>
+                  {r.mainAlternativeNote && <p className="mt-1 text-status-notice-fg">代替：{r.mainAlternativeNote}</p>}
+                  <PhoneLogView prefix="main" r={r} />
+                </div>
+              )}
+
+              {/* 郵送請求に同封した定額小為替と、後日届く領収書 */}
+              <MoneyOrderReceiptView record={r} canEdit={canEdit} />
+              {/* 詳細ページでは、窓口で受け取るもの・年金記録も添付欄（届いた証明書など）を出す */}
+              {single && !moneyOrderShown(r) && r.requestKind !== "nozei3" && (
+                <div className="mt-2 rounded-xl bg-background p-3 text-xs leading-relaxed">
+                  <MailingRecordAttachments record={r} canEdit={canEdit} />
+                </div>
+              )}
+
+              {r.hasNhi && (
+                <div className="mt-2 rounded-xl border-l-2 border-status-notice-fg bg-background p-3 text-xs leading-relaxed">
+                  {r.nhiYears ? (
+                    r.nhiYears.map((y) => (
+                      <p key={y.yearType} className="font-bold">
+                        国保：{y.municipalityName}
+                        <span className="font-medium text-muted">（{y.yearType === "new" ? "最新年度" : "前年度"} {yearWithReiwa(y.fiscalStartYear)}）</span>
+                      </p>
+                    ))
+                  ) : (
+                    <>
+                      <p className="font-bold">国保：{r.nhiMunicipalityName || "未選択"}</p>
+                      <p className="text-muted">新年度：{yearWithReiwa(r.nhiFiscalStartYear ?? 0)}</p>
+                    </>
+                  )}
+                  <p className="mt-1">
+                    受領：{r.nhiSameAsMain ? "課税証明書と同じ" : methodText(r.nhiRequestMethod, r.nhiMailRequestDate, r.nhiRecipientType, r.nhiAgentName)}
+                  </p>
+                  {r.nhiAlternativeNote && <p className="mt-1 text-status-notice-fg">代替：{r.nhiAlternativeNote}</p>}
+                  <PhoneLogView prefix="nhi" r={r} />
+                </div>
+              )}
+            </Card>
+  );
+}
+
+// 記録の年度（年度の開始年）。本人の情報のコピーで、その年度の1月1日の住所に印を付けるのに使う
+function recordYears(r: JudgmentRecord): number[] {
+  const ys = (r.yearRequests ?? []).map((y) => y.fiscalStartYear).filter((y) => y > 0);
+  if (ys.length > 0) return ys;
+  return r.fiscalStartYear ? [r.fiscalStartYear] : [];
+}
+
+// 受け取り方の短い説明（一覧の「受け取り」の欄）
+function receiveLabel(r: JudgmentRecord): { main: string; sub: string } {
+  const mailed = isMailedRecord(r);
+  const post = mailingPostDate(r);
+  if (mailed) return { main: "郵送", sub: post ? `投函 ${formatDateJP(post)}` : "投函日未記録" };
+  const agent =
+    r.requestKind === "nozei3" || r.requestKind === "juminhyo" || r.requestKind === "nenkin"
+      ? r.applicantAgentName ?? ""
+      : r.agentName ?? "";
+  if (r.requestMethod === "window" && r.requestKind !== "nenkin" && r.requestKind !== "nozei3") return { main: "本人が窓口", sub: "" };
+  return { main: "代理人の窓口", sub: agent };
+}
+
+// 記録一覧の表（行を押すと記録の詳細ページを開く）。
+// 進捗はその場のボタンで変えられ、「本人の情報」で氏名・生年月日・住所歴をその場でコピーできる
+function RecordTable({
+  rows,
+  canEdit,
+  busy,
+  focusId,
+  onPatch,
+}: {
+  rows: JudgmentRecord[];
+  canEdit: boolean;
+  busy: boolean;
+  focusId: string;
+  onPatch: (updated: JudgmentRecord) => void;
+}) {
+  const [copyOpen, setCopyOpen] = useState<string | null>(null);
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border bg-surface">
+      <div className="hidden grid-cols-[1.3fr_1.6fr_1fr_1.7fr_auto] gap-3 border-b border-border bg-background px-3 py-2 text-[11px] font-bold text-muted md:grid">
+        <span>氏名・TODO</span>
+        <span>請求書類・請求先</span>
+        <span>受け取り</span>
+        <span>進捗</span>
+        <span />
+      </div>
+      {rows.map((r) => {
+        const recv = receiveLabel(r);
+        const targets = mailingTargets(r);
+        const focused = r.id === focusId;
+        return (
+          <div
+            key={r.id}
+            id={`record-${r.id}`}
+            className={`border-b border-border/70 last:border-b-0 ${focused ? "bg-amber-50 dark:bg-amber-950/30" : ""}`}
+          >
+            <div className="grid grid-cols-1 gap-2 px-3 py-2.5 text-xs md:grid-cols-[1.3fr_1.6fr_1fr_1.7fr_auto] md:items-center md:gap-3">
+              <div className="min-w-0">
+                <Link href={`/mailing/records/${r.id}`} className="block truncate text-sm font-bold text-brand hover:underline">
+                  {r.personName || "（氏名未入力）"}
+                </Link>
+                <span className="text-[11px] text-muted">
+                  {r.todoNumber ? `TODO ${r.todoNumber}・` : ""}
+                  {formatDateJP(r.createdAt.slice(0, 10))}
+                </span>
+              </div>
+              <div className="min-w-0">
+                <span className="font-bold">{requestKindLabel(r.requestKind)}</span>
+                <span className="block truncate text-[11px] text-muted">
+                  {targets.length > 0 ? targets.map((t) => `${t.where}（${t.what}）`).join("／") : mailingDestination(r)}
+                </span>
+              </div>
+              <div>
+                <span className="font-bold">{recv.main}</span>
+                {recv.sub && <span className="block text-[11px] text-muted">{recv.sub}</span>}
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {canEdit ? (
+                  <MailingProgressButtons
+                    progress={r.mailingProgress}
+                    requestKind={r.requestKind}
+                    record={r}
+                    disabled={busy}
+                    onChange={(next) => onPatch({ ...r, ...quickMailingProgressPatch(r, next, todayStr()) })}
+                  />
+                ) : (
+                  <ProgressBadge progress={r.mailingProgress} requestKind={r.requestKind} />
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5 md:justify-end">
+                {r.workerId && (
+                  <button
+                    type="button"
+                    onClick={() => setCopyOpen(copyOpen === r.id ? null : r.id)}
+                    aria-expanded={copyOpen === r.id}
+                    className="inline-flex min-h-[34px] items-center gap-1 rounded-lg border border-border px-2.5 text-[11px] font-bold text-brand"
+                  >
+                    <Copy size={12} />
+                    本人の情報
+                  </button>
+                )}
+                <Link
+                  href={`/mailing/records/${r.id}`}
+                  className="inline-flex min-h-[34px] items-center rounded-lg bg-brand px-3 text-[11px] font-bold text-brand-foreground"
+                >
+                  詳細
+                </Link>
+              </div>
+            </div>
+            {copyOpen === r.id && r.workerId && (
+              <div className="border-t border-dashed border-border bg-background px-3 py-2.5">
+                <PersonCopyPanel workerId={r.workerId} years={recordYears(r)} compact />
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
