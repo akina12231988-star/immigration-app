@@ -1,5 +1,6 @@
 "use client";
 
+import { PostalCode } from "@/components/workers/PostalCode";
 import { messengerWebUrl } from "@/lib/messenger-link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -1115,7 +1116,17 @@ export function WorkerDetail({
             <CardItem
               onCard
               label="住居地 ADDRESS"
-              value={worker.address}
+              value={
+                worker.address ? (
+                  <>
+                    {/* 郵便番号は住所から自動で探して前に出す（見つからなければ出さない） */}
+                    <PostalCode address={worker.address} />
+                    {worker.address}
+                  </>
+                ) : (
+                  ""
+                )
+              }
               edit={textInput("address", "例: 熊本県熊本市中央区◯◯1-2-3", true)}
             />
             {/* 就労制限の有無は在留資格から自動表示（実物と同じ水色の帯） */}
