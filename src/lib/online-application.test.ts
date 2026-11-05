@@ -358,6 +358,20 @@ describe("buildOnlineApplication", () => {
     expect(mail.find((i) => i.label === "受領官署")).toMatchObject({ value: "", skip: true });
   });
 
+  it("認定申請は認定証明書の受領方法をメールか郵送から選び、受領官署は選ばない", () => {
+    const items = (w: Partial<typeof input.worker>) =>
+      buildOnlineApplication({ ...input, appType: "認定", worker: { ...input.worker, ...w } }, buildApplicationCopyGroups(input)).flatMap(
+        (s) => s.items,
+      );
+    const blank = items({});
+    expect(blank.find((i) => i.label === "在留カードの受領方法")).toBeUndefined();
+    const method = blank.find((i) => i.label === "在留資格認定証明書の受領方法");
+    expect(method?.edit).toEqual({ target: "worker", column: "card_receipt_method", options: ["メール", "郵送"] });
+    expect(items({ card_receipt_method: "メール" }).find((i) => i.label === "在留資格認定証明書の受領方法")?.value).toBe("メール");
+    expect(blank.find((i) => i.label === "受領官署")).toMatchObject({ value: "", skip: true });
+    expect(cardReceiptLabel("メール")).toBe("受領 メール");
+  });
+
   it("画面で選ぶ項目は値が空で案内が出る", () => {
     const i = get("在日親族及び同居者 有無");
     expect(i).toMatchObject({ no: "16.1", value: "" });

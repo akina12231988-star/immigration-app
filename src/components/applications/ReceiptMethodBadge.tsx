@@ -1,7 +1,7 @@
-import { Building2, Truck } from "lucide-react";
+import { Building2, Mail, Truck } from "lucide-react";
 import { cardReceiptLabel } from "@/lib/online-application";
 
-// 在留カードの受領方法（郵送／窓口）のバッジ。
+// 在留カードの受領方法（郵送／窓口。認定申請は認定証明書のメール／郵送）のバッジ。
 // 申請準備の詳細（オンライン申請の順 ＞ 受領方法等）で選んだものを、申請一覧の行・カードにも出す。
 // 未選択なら何も出さない
 export function ReceiptMethodBadge({ method, className = "" }: { method: string | null | undefined; className?: string }) {
@@ -15,7 +15,7 @@ export function ReceiptMethodBadge({ method, className = "" }: { method: string 
         counter ? "bg-status-notice-bg text-status-notice-fg" : "bg-status-applied-bg text-status-applied-fg"
       } ${className}`}
     >
-      {counter ? <Building2 size={11} /> : <Truck size={11} />}
+      {counter ? <Building2 size={11} /> : (method ?? "").trim() === "メール" ? <Mail size={11} /> : <Truck size={11} />}
       {label}
     </span>
   );
