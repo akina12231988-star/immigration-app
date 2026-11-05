@@ -199,6 +199,8 @@ export const ONLINE_SYSTEM_EMAIL = "thanhktc2017.visa@gmail.com";
 
 // 在留カードの受領方法（受領方法等。この場で選んで保存できる）
 export const CARD_RECEIPT_METHODS = ["郵送", "窓口"] as const;
+// 認定申請（在留資格認定証明書交付申請）は、認定証明書を「メール」（電子）か「郵送」で受け取る
+export const NINTEI_RECEIPT_METHODS = ["メール", "郵送"] as const;
 // 窓口で受け取るときの受領官署
 export const CARD_RECEIPT_OFFICE = "福岡出入国在留管理局 熊本出張所";
 
@@ -207,6 +209,7 @@ export function cardReceiptLabel(method: string | null | undefined): string {
   const m = (method ?? "").trim();
   if (m === "窓口") return "受領 窓口（熊本出張所）";
   if (m === "郵送") return "受領 郵送";
+  if (m === "メール") return "受領 メール";
   return "";
 }
 
@@ -596,10 +599,19 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
     item("5.16", "(13)支援委託手数料(月額/人)", digitsOnly(intake?.support_fee), "digits", "円", org ? it("support_fee") : undefined, intake?.support_fee ?? ""),
   ];
 
-  // 在留カードの受領方法（郵送／窓口）はこの場で選んで保存する。窓口なら受領官署に熊本出張所を出す
+  // 在留カードの受領方法（郵送／窓口）はこの場で選んで保存する。窓口なら受領官署に熊本出張所を出す。
+  // 認定申請は在留カードではなく在留資格認定証明書の受け取りなので、「メール」か「郵送」から選ぶ（受領官署は選ばない）
   const receiptMethod = (w.card_receipt_method ?? "").trim();
-  const receiptOffice: OnlineItem =
-    receiptMethod === "窓口"
+  const receiptOffice: OnlineItem = isNintei
+    ? {
+        no: "",
+        label: "受領官署",
+        value: "",
+        format: "choice",
+        skip: true,
+        note: "認定申請（認定証明書をメール・郵送で受け取る）のときは選ばない",
+      }
+    : receiptMethod === "窓口"
       ? item("", "受領官署", CARD_RECEIPT_OFFICE, "choice", "プルダウンから選ぶ（窓口で受け取るとき）")
       : receiptMethod === "郵送"
         ? {
@@ -612,14 +624,23 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
           }
         : manual("", "受領官署", `在留カードの受領方法を「窓口」にすると「${CARD_RECEIPT_OFFICE}」が出ます（郵送なら選ばない）`, "choice");
   const receipt: OnlineItem[] = [
-    item(
-      "",
-      "在留カードの受領方法",
-      receiptMethod,
-      "choice",
-      "ここで郵送か窓口を選んで保存できます（通常は「郵送」。再入国許可申請を同時に申請するときは「窓口」）",
-      wk("card_receipt_method", CARD_RECEIPT_METHODS),
-    ),
+    isNintei
+      ? item(
+          "",
+          "在留資格認定証明書の受領方法",
+          receiptMethod,
+          "choice",
+          "ここでメールか郵送を選んで保存できます（認定申請のとき）",
+          wk("card_receipt_method", NINTEI_RECEIPT_METHODS),
+        )
+      : item(
+          "",
+          "在留カードの受領方法",
+          receiptMethod,
+          "choice",
+          "ここで郵送か窓口を選んで保存できます（通常は「郵送」。再入国許可申請を同時に申請するときは「窓口」）",
+          wk("card_receipt_method", CARD_RECEIPT_METHODS),
+        ),
     item("", "申請対象者の住居地（都道府県）", prefectureOf(w.address), "choice", "プルダウンから選ぶ"),
     receiptOffice,
     item("", "通知送信用メールアドレス", ONLINE_SYSTEM_EMAIL, "text", "オンラインシステムの利用者（取次者）のメールアドレス。再入力欄にも同じものを入れる"),
