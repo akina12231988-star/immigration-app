@@ -21,6 +21,7 @@ import { normalizeOrganizationIntake } from "@/lib/organization-intake";
 import { formatYmdJa } from "@/lib/support-plan-dates";
 import { PassportMrzPanel, SavedMrzCopyList } from "@/components/workers/PassportMrzPanel";
 import { ExamFeeAccountCard } from "@/components/todos/ExamFeeAccount";
+import { AsatFormsPanel } from "@/components/todos/AsatFormsPanel";
 import { dbErrorMessage } from "@/lib/errors";
 import { sumHistoryDays, todayStr, toYMD, ymdFullText, ymdText } from "@/lib/ssw/calc";
 import {
@@ -81,6 +82,9 @@ export function ExamTodoSection({
   const today = todayStr();
   // 本人の情報・職歴（外国人詳細と同じデータ）。要約を見出しに出すためここで読み込む
   const workerData = useExamWorkerData(todo.worker_id);
+  // 職歴の合計に入れる行（外した行の id）と書類作成日。職歴の欄と、証明書（様式第1号）の就業期間で同じものを使う
+  const [historyExcluded, setHistoryExcluded] = useState<Set<string>>(() => new Set());
+  const [historyAsOf, setHistoryAsOf] = useState(todayStr());
 
   // 見るだけのときは、保存されている内容をそのまま出す
   const exam = editing ? draft : saved;
@@ -473,9 +477,30 @@ export function ExamTodoSection({
               histories={histories}
               canEdit={canEdit}
               onChanged={workerData.reload}
+              excluded={historyExcluded}
+              setExcluded={setHistoryExcluded}
+              asOf={historyAsOf}
+              setAsOf={setHistoryAsOf}
             />
           )}
         </ExamSection>
+
+        {/* アプリケーションNo.の申込で出す書類（様式第1号 証明書・様式第2号 誓約書）を Word で作る */}
+        {todo.title === "２号アプリケーションナンバーの申込" && (
+          <ExamSection title="書類の作成（様式第1号 証明書・様式第2号 誓約書）" summary="Word" open={false}>
+            {todo.worker_id && workerData.data ? (
+              <AsatFormsPanel
+                worker={workerData.data.worker}
+                org={workerData.data.org}
+                histories={histories.filter((h) => !historyExcluded.has(h.id))}
+                certDate={historyAsOf}
+                setCertDate={setHistoryAsOf}
+              />
+            ) : (
+              <p className="text-[11px] text-muted">{todo.worker_id ? "外国人の情報を読み込み中…" : "外国人のひも付けがありません"}</p>
+            )}
+          </ExamSection>
+        )}
 
         {/* ⑤ 発行されたアプリケーションNo.（PDF・画像）の添付 */}
         <ExamSection title="添付（発行されたアプリケーションNo.）" summary="PDF・画像" open={false}>
@@ -1238,16 +1263,23 @@ function ExamHistoryEditor({
   histories,
   canEdit,
   onChanged,
+  excluded,
+  setExcluded,
+  asOf,
+  setAsOf,
 }: {
   workerId: string;
   histories: WorkHistoryRow[];
   canEdit: boolean;
   onChanged: () => void;
+  // 職歴の合計に入れる行（既定は全部。外した行の id を持つ）と、合計を出す基準日（書類作成日）。
+  // 証明書（様式第1号）の就業期間にも使うので、親で持つ
+  excluded: Set<string>;
+  setExcluded: React.Dispatch<React.SetStateAction<Set<string>>>;
+  asOf: string;
+  setAsOf: (v: string) => void;
 }) {
   const [error, setError] = useState<string | null>(null);
-  // 職歴の合計に入れる行（既定は全部。外した行の id を持つ）と、合計を出す基準日（書類作成日）
-  const [excluded, setExcluded] = useState<Set<string>>(() => new Set());
-  const [asOf, setAsOf] = useState(todayStr());
   const selected = histories.filter((h) => !excluded.has(h.id));
   const totalDays = sumHistoryDays(
     selected.map((h) => ({ start: h.start_date, end: h.end_date })),
