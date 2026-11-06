@@ -1,15 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
-import { createClient } from "@/lib/supabase/client";
-import { insertJudgmentRecord } from "@/lib/supabase/queries/tax-cert";
 import { NenkinOfficeDocs } from "@/components/workers/ApplicationPrepChecklist";
 import { PersonCopyPanel } from "@/components/mailing/PersonCopyPanel";
-import { SaveBlockers } from "@/components/mailing/SaveBlockers";
 import { MailingRecordAttachments } from "@/components/mailing/MailingRecordAttachments";
 import {
   MailingProgressFields,
@@ -17,12 +13,13 @@ import {
   mailingProgressValuesFromRecord,
   type MailingProgressValues,
 } from "@/components/mailing/MailingProgressFields";
-import { formatDateJP, todayISO, type JudgmentRecord, type NenkinMethod } from "@/lib/tax-cert";
+import { formatDateJP, type JudgmentRecord, type NenkinMethod } from "@/lib/tax-cert";
 import { INPUT, LABEL, Pill } from "./ui";
 
-// 年金記録（年金加入記録・国民年金保険料納付記録）を年金事務所に請求する。
-// 申請準備の「年金記録」と同じく、交付申請書（自動入力）・委任状・在留カードを印刷して出す。
-// 郵送で請求するか、代理人が窓口で取ってくるかを選び、記録として残す（記録の詳細で届いた年金記録を添付）
+// 年金記録（年金加入記録・国民年金保険料納付記録）を年金事務所に請求するときの画面。
+// 申請準備の「年金記録」と同じく、交付申請書（自動入力）・委任状・在留カードを印刷し、本人の情報をコピーできる。
+// 請求の記録（年金事務所・投函日など）はここでは残さない。
+// NenkinRecordView・NenkinEditModal は、記録として残した年金記録の請求があったときの表示・編集用に残している
 
 interface NenkinValues {
   method: NenkinMethod;
@@ -31,7 +28,6 @@ interface NenkinValues {
   agentName: string; // 代理人（窓口）
 }
 
-const emptyValues = (): NenkinValues => ({ method: "mail", office: "", postDate: "", agentName: "" });
 
 function nenkinPatch(v: NenkinValues): Partial<JudgmentRecord> {
   const mailed = v.method === "mail";
@@ -79,96 +75,14 @@ function NenkinFields({ v, set }: { v: NenkinValues; set: (p: Partial<NenkinValu
   );
 }
 
-export function NenkinRequestForm({
-  personName,
-  workerId,
-  todoNumber,
-  workerAddress,
-  records,
-  setRecords,
-  canEdit,
-  showToast,
-}: {
-  personName: string;
-  workerId: string;
-  todoNumber: string;
-  workerAddress: string;
-  records: JudgmentRecord[];
-  setRecords: (r: JudgmentRecord[]) => void;
-  canEdit: boolean;
-  showToast: (m: string) => void;
-}) {
-  const router = useRouter();
-  const [v, setV] = useState<NenkinValues>(emptyValues);
-  const set = (p: Partial<NenkinValues>) => setV((x) => ({ ...x, ...p }));
-  const [busy, setBusy] = useState(false);
-
-  const reasons = [
-    !canEdit && "閲覧のみの権限では保存できません",
-    !personName.trim() && "上の「対象者情報」で外国人を選んでください",
-    !v.office.trim() && "請求先の年金事務所を入れてください",
-    v.method === "window" && !v.agentName.trim() && "代理人の名前を入れてください",
-  ].filter((x): x is string => !!x);
-
-  const save = async () => {
-    if (reasons.length > 0) return;
-    const record = {
-      id: "",
-      createdAt: "",
-      municipalityId: "",
-      municipalityName: "",
-      collectionType: "normal",
-      appDate: todayISO(),
-      hasNhi: false,
-      nhiMunicipalityId: "",
-      nhiMunicipalityName: "",
-      nhiFiscalStartYear: null,
-      yearType: "new",
-      fiscalStartYear: 0,
-      yearReason: "",
-      timingStatus: "ok",
-      timingLabel: "",
-      timingDetail: "",
-      docs: [],
-      personName: personName.trim(),
-      workerId: workerId || undefined,
-      todoNumber: todoNumber.trim(),
-      mainAlternativeNote: "",
-      nhiAlternativeNote: "",
-      requestMethod: v.method === "mail" ? "mail" : "agent_window",
-      mailRequestDate: "",
-      recipientType: "self",
-      agentName: "",
-      nhiRequestMethod: "window",
-      nhiMailRequestDate: "",
-      nhiRecipientType: "self",
-      nhiAgentName: "",
-      nhiSameAsMain: true,
-      workerAddress,
-      // 投函日があれば郵送待ちから始める
-      mailingProgress: v.method === "mail" && v.postDate ? "waiting" : "preparing",
-      ...nenkinPatch(v),
-    } as JudgmentRecord;
-    setBusy(true);
-    try {
-      const saved = await insertJudgmentRecord(createClient(), record);
-      setRecords([saved, ...records]);
-      showToast("年金記録の請求を記録しました");
-      // 記録したら、その記録の詳細ページを開く（届いた年金記録の添付・進捗はそこで）
-      router.push(`/mailing/records/${saved.id}?saved=1`);
-    } catch (e) {
-      showToast("保存に失敗しました: " + (e instanceof Error ? e.message : String(e)));
-    } finally {
-      setBusy(false);
-    }
-  };
-
+export function NenkinRequestForm({ workerId, canEdit }: { workerId: string; canEdit: boolean }) {
   return (
     <Card className="space-y-4 p-4">
       <div>
         <p className="mb-1 text-sm font-bold">年金記録の請求（年金事務所）</p>
         <p className="text-xs text-muted">
-          年金加入記録・国民年金保険料納付記録を年金事務所に請求します。申請準備の「年金記録」と同じ書類（交付申請書・委任状・在留カード）を印刷して出してください。
+          年金加入記録・国民年金保険料納付記録を年金事務所に請求します。申請準備の「年金記録」と同じ書類（交付申請書・委任状・在留カード）を印刷し、
+          下の本人の情報をコピーして使ってください。
         </p>
       </div>
       {workerId ? (
@@ -183,13 +97,6 @@ export function NenkinRequestForm({
           上の「対象者情報」で外国人を選ぶと、交付申請書（自動入力）・委任状・在留カードの印刷と、本人の情報のコピーが出ます。
         </p>
       )}
-      <NenkinFields v={v} set={set} />
-      {canEdit && (
-        <Button fullWidth disabled={busy || reasons.length > 0} onClick={() => void save()}>
-          {busy ? "保存中…" : "この請求を記録として保存"}
-        </Button>
-      )}
-      <SaveBlockers reasons={reasons} />
     </Card>
   );
 }
