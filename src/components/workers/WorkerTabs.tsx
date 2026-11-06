@@ -71,9 +71,9 @@ export const WORKER_TABS = [
     hint: "あとでやる手続き・郵送請求・入管申請",
     sections: [
       { id: "wd-followup", label: "あとでやる手続き" },
-      { id: "wd-mailing", label: "証明書類の請求" },
       { id: "wd-job", label: "求職・応募" },
       { id: "wd-todo", label: "TODO" },
+      { id: "wd-mailing", label: "証明書類の請求" },
       { id: "wd-apply", label: "入管申請" },
     ],
   },
