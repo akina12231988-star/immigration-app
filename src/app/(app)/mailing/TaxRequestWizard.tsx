@@ -38,6 +38,7 @@ import {
 } from "@/lib/tax-request-plan";
 import { MailingRecordAttachments } from "@/components/mailing/MailingRecordAttachments";
 import { MunicipalityFormLink } from "@/components/mailing/MunicipalityFormLink";
+import { nhiInOtherMunicipality, splitNhiRecord } from "@/lib/mailing-split";
 import { PersonCopyPanel } from "@/components/mailing/PersonCopyPanel";
 import { MoneyOrderFields } from "./MoneyOrderFields";
 import {
@@ -159,8 +160,9 @@ function WizardBody({
   // 国保税の納税証明書の受け取り方。課税証明書・市県民税の納税証明書と違う方法
   // （例: 課税・市県民税は郵送請求、国保税は代理人が窓口で取得）にするときは、記録を2つに分けて保存する
   // （進捗・添付が受け取り方ごとに別になるように）
-  const [nhiSame, setNhiSame] = useState(true);
-  const [nhiMethod, setNhiMethod] = useState<RequestMethod>("agent_window");
+  const [nhiSameChoice, setNhiSame] = useState(true);
+  // 受け取り方の初期値: 国保の自治体が課税証明書と違うなら郵送請求、同じなら代理人が窓口
+  const [nhiMethodChoice, setNhiMethod] = useState<RequestMethod | null>(null);
   const [nhiMailDate, setNhiMailDate] = useState(todayISO());
   const [nhiRecipient, setNhiRecipient] = useState<RecipientType>("self");
   const [nhiAgent, setNhiAgent] = useState("");
@@ -241,6 +243,11 @@ function WizardBody({
     ...(sameMuni === false && !prevMuni ? ["前年度の自治体を選んでください"] : []),
   ];
 
+  // 国保に加入していた自治体が課税証明書の自治体と違うときは、別の市役所への請求なので必ず別の記録にする
+  const nhiOtherMuni = !!plan && nhiInOtherMunicipality({ yearRequests: plan.years, nhiYears: plan.nhiYears });
+  const nhiSame = nhiSameChoice && !nhiOtherMuni;
+  const nhiMethod: RequestMethod = nhiMethodChoice ?? (nhiOtherMuni ? "mail" : "agent_window");
+
   const saveReasons = [
     ...taxSaveBlockers({
       canEdit,
@@ -308,46 +315,11 @@ function WizardBody({
       // 今の判定結果に無い年度の分は残さない
       moneyOrders: method === "mail" ? moneyOrders.filter((o) => groups.has(o.group ?? "")) : [],
     };
-    // 国保税だけ別の受け取り方にしたときは、国保税の分を別の記録に分ける
+    // 国保税だけ別の受け取り方にしたとき・国保の自治体が違うときは、国保税の分を別の記録に分ける
     const splitNhi = !nhiSame && plan.nhiYears.length > 0;
-    const mainDocs = plan.docs.filter((d) => !d.isNhi);
-    const nhiDocs = plan.docs.filter((d) => d.isNhi);
-    const nhiInfo = buildMethodInfo(nhiMethod, nhiMailDate, nhiRecipient, nhiAgent);
-    const mainRecord: JudgmentRecord | null = !splitNhi
-      ? record
-      : mainDocs.length > 0
-        ? {
-            ...record,
-            hasNhi: false,
-            nhiYears: [],
-            nhiMunicipalityId: "",
-            nhiMunicipalityName: "",
-            nhiFiscalStartYear: null,
-            docs: mainDocs,
-          }
-        : null;
-    const nhiRecord: JudgmentRecord | null = splitNhi
-      ? {
-          ...record,
-          // 課税証明書・市県民税の納税証明書は無し（国保税の納税証明書のみの記録）
-          municipalityId: nhiFirst?.municipalityId ?? "",
-          municipalityName: nhiFirst?.municipalityName ?? "",
-          yearRequests: [],
-          requestBothYears: false,
-          prevMunicipalityId: undefined,
-          prevMunicipalityName: undefined,
-          prevFiscalStartYear: undefined,
-          docs: nhiDocs,
-          ...nhiInfo,
-          nhiRequestMethod: nhiInfo.requestMethod,
-          nhiMailRequestDate: nhiInfo.mailRequestDate,
-          nhiRecipientType: nhiInfo.recipientType,
-          nhiAgentName: nhiInfo.agentName,
-          nhiSameAsMain: true,
-          // 定額小為替は国保税の分だけ（郵送のときだけ。番号は記録の編集で入れられる）
-          moneyOrders: [],
-        }
-      : null;
+    const parts = splitNhi ? splitNhiRecord(record, buildMethodInfo(nhiMethod, nhiMailDate, nhiRecipient, nhiAgent)) : null;
+    const mainRecord: JudgmentRecord | null = parts ? parts.main : record;
+    const nhiRecord: JudgmentRecord | null = parts ? parts.nhi : null;
     setBusy(true);
     try {
       const createdMain = mainRecord ? await insertJudgmentRecord(createClient(), mainRecord) : null;
@@ -630,14 +602,21 @@ function WizardBody({
             {plan.nhiYears.length > 0 && (
               <div className="rounded-xl border border-border p-3">
                 <p className="text-sm font-bold">国民健康保険税の納税証明書の受領方法</p>
-                <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                  <Pill active={nhiSame} onClick={() => setNhiSame(true)}>
-                    上の受領方法と同じ
-                  </Pill>
-                  <Pill active={!nhiSame} onClick={() => setNhiSame(false)}>
-                    別の方法にする（例: 代理人が窓口で取得）
-                  </Pill>
-                </div>
+                {nhiOtherMuni ? (
+                  <p className="mt-1 rounded-lg bg-status-notice-bg px-2.5 py-1.5 text-xs font-bold text-status-notice-fg">
+                    国保に加入していた自治体（{plan.nhiYears.map((n) => n.municipalityName).join("・")}）は課税証明書の自治体と違うので、
+                    別の市役所への請求として別の記録にします。受け取り方を選んでください。
+                  </p>
+                ) : (
+                  <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                    <Pill active={nhiSame} onClick={() => setNhiSame(true)}>
+                      上の受領方法と同じ
+                    </Pill>
+                    <Pill active={!nhiSame} onClick={() => setNhiSame(false)}>
+                      別の方法にする（例: 代理人が窓口で取得）
+                    </Pill>
+                  </div>
+                )}
                 {!nhiSame && (
                   <>
                     <MethodToggleSection

@@ -19,7 +19,9 @@ export function MailingRecordAttachments({
   divided?: boolean; // 欄の間に点線を引く
   year?: YearType; // 年度ごとの欄のうち、この年度の分だけ出す
 }) {
-  const slots = mailingAttachmentSlots(record).filter((s) => (!only || only.includes(s.role)) && (!year || s.year === year));
+  const slots = mailingAttachmentSlots(record).filter(
+    (s) => (!only || only.includes(s.role)) && (!year || (s.years ?? [s.year]).includes(year)),
+  );
   return (
     <>
       {slots.map((s, i) => (
@@ -29,6 +31,7 @@ export function MailingRecordAttachments({
             recordId={record.id}
             kind={s.kind}
             filterKind={s.kind}
+            filterKinds={s.kinds}
             addLabel={s.addLabel}
             canEdit={canEdit}
           />

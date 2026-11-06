@@ -10,6 +10,8 @@ import { requestKindLabel, type JudgmentRecord, type Municipality } from "@/lib/
 import type { TaxOffice } from "@/lib/tax-office";
 import type { MailingWorker } from "../../ui";
 import { RecordsTab } from "../../MailingClient";
+import { NhiSplitPanel } from "./NhiSplitPanel";
+import { canSplitNhi } from "@/lib/mailing-split";
 
 // 記録の詳細。中身（進捗のボタン・編集・削除・添付）は記録一覧と同じ部品を1件だけで出し、
 // その下に申請書に書く本人の情報（氏名・生年月日・住所・住所歴）を出す
@@ -98,6 +100,19 @@ export function MailingRecordDetail({
           showToast={showToast}
           single
           onDeleted={() => router.push("/mailing?tab=records")}
+        />
+      )}
+
+      {/* 国保税の納税証明書を別の記録に分ける（国保の自治体が違う・受け取り方を変えたいとき） */}
+      {canEdit && canSplitNhi(current) && (
+        <NhiSplitPanel
+          record={current}
+          onSplit={(main, nhi) => {
+            if (main) setRecords([main]);
+            showToast("国保税の納税証明書を別の記録にしました");
+            router.push(main ? `/mailing/records/${current.id}?other=${nhi.id}` : `/mailing/records/${nhi.id}`);
+            router.refresh();
+          }}
         />
       )}
 

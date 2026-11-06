@@ -21,6 +21,7 @@ export function MailingFileAttachments({
   addLabel,
   canEdit,
   filterKind,
+  filterKinds,
 }: {
   recordId: string;
   kind: string;
@@ -28,9 +29,15 @@ export function MailingFileAttachments({
   canEdit: boolean;
   // 指定するとその種別の添付だけを表示する（領収書だけを分けて出すときに使う）
   filterKind?: string;
+  // 指定するとこれらの種別の添付をまとめて表示する（同じ自治体の2年度を1つの欄にまとめたとき）
+  filterKinds?: string[];
 }) {
   const [files, setFiles] = useState<MailingFileRow[]>([]);
-  const shown = filterKind ? files.filter((f) => f.kind === filterKind) : files;
+  const shown = filterKinds?.length
+    ? files.filter((f) => filterKinds.includes(f.kind))
+    : filterKind
+      ? files.filter((f) => f.kind === filterKind)
+      : files;
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);

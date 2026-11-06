@@ -12,7 +12,10 @@ export type MailingAttachmentRole = "sent" | "received" | "receipt"; // 郵送�
 export interface MailingAttachmentSlot {
   role: MailingAttachmentRole;
   year?: YearType; // 年度ごとの欄のときの年度
-  kind: string; // mailing_files.kind
+  kind: string; // mailing_files.kind（追加するときの種別）
+  // 同じ自治体の2年度を1つの欄にまとめたとき、出す添付の種別（年度ごとに添付していた分も出す）と年度
+  kinds?: string[];
+  years?: YearType[];
   title: string; // 欄の見出し
   addLabel: string; // 追加ボタンの文言
 }
@@ -66,12 +69,46 @@ export function mailingAttachmentSlots(r: Partial<SlotSource>): MailingAttachmen
   }
   const years = yearsOfRecord(r);
   if (years.length > 0) {
-    return years.flatMap(({ yearType, fiscalStartYear }) => {
-      const y = `${yearType === "new" ? "最新年度" : "前年度"} ${yearWithReiwa(fiscalStartYear)}`;
+    // 同じ自治体（市役所）に請求した年度は、送った書類・届いた証明書・領収書の欄を1つにまとめる
+    // （最新年度と前年度を同じ市役所に1通の申請書で請求するため）。自治体が違う年度は年度ごとに分ける
+    const muniOf = (yt: YearType) => {
+      const y = r.yearRequests?.find((x) => x.yearType === yt);
+      if (y) return { key: y.municipalityId || y.municipalityName, name: y.municipalityName };
+      const n = r.nhiYears?.find((x) => x.yearType === yt);
+      return { key: n?.municipalityId || n?.municipalityName || yt, name: n?.municipalityName ?? "" };
+    };
+    const groups: { key: string; name: string; years: typeof years }[] = [];
+    for (const y of years) {
+      const m = muniOf(y.yearType);
+      const g = groups.find((x) => x.key === m.key);
+      if (g) g.years.push(y);
+      else groups.push({ key: m.key, name: m.name, years: [y] });
+    }
+    return groups.flatMap((g) => {
+      const label = (y: (typeof years)[number]) => `${y.yearType === "new" ? "最新年度" : "前年度"} ${yearWithReiwa(y.fiscalStartYear)}`;
+      if (g.years.length === 1) {
+        const yr = g.years[0];
+        const y = label(yr);
+        return [
+          { role: "sent" as const, year: yr.yearType, kind: yearAttachmentKind(MAIL_REQUEST_KIND, yr.fiscalStartYear), title: `【${y}】郵送請求した書類（申請書などのデータ）`, addLabel: `${y}の郵送請求した書類を添付（画像・PDF）` },
+          { role: "received" as const, year: yr.yearType, kind: yearAttachmentKind(RECEIVED_CERT_KIND, yr.fiscalStartYear), title: `【${y}】届いた証明書（届いたら添付）`, addLabel: `${y}の届いた証明書を添付（画像・PDF）` },
+          { role: "receipt" as const, year: yr.yearType, kind: yearAttachmentKind(RECEIPT_KIND, yr.fiscalStartYear), title: `【${y}】領収書（後日届いたら添付）`, addLabel: `${y}の領収書を添付（画像・PDF）` },
+        ];
+      }
+      const head = `${g.name ? `${g.name}・` : ""}${g.years.map((y) => yearWithReiwa(y.fiscalStartYear)).join("と")}`;
+      const slot = (role: MailingAttachmentRole, base: string, title: string, add: string): MailingAttachmentSlot => ({
+        role,
+        year: g.years[0].yearType,
+        years: g.years.map((y) => y.yearType),
+        kind: yearAttachmentKind(base, g.years[0].fiscalStartYear),
+        kinds: g.years.map((y) => yearAttachmentKind(base, y.fiscalStartYear)),
+        title: `【${head}】${title}`,
+        addLabel: add,
+      });
       return [
-        { role: "sent" as const, year: yearType, kind: yearAttachmentKind(MAIL_REQUEST_KIND, fiscalStartYear), title: `【${y}】郵送請求した書類（申請書などのデータ）`, addLabel: `${y}の郵送請求した書類を添付（画像・PDF）` },
-        { role: "received" as const, year: yearType, kind: yearAttachmentKind(RECEIVED_CERT_KIND, fiscalStartYear), title: `【${y}】届いた証明書（届いたら添付）`, addLabel: `${y}の届いた証明書を添付（画像・PDF）` },
-        { role: "receipt" as const, year: yearType, kind: yearAttachmentKind(RECEIPT_KIND, fiscalStartYear), title: `【${y}】領収書（後日届いたら添付）`, addLabel: `${y}の領収書を添付（画像・PDF）` },
+        slot("sent", MAIL_REQUEST_KIND, "郵送請求した書類（申請書などのデータ）", "郵送請求した書類を添付（画像・PDF）"),
+        slot("received", RECEIVED_CERT_KIND, "届いた証明書（届いたら添付）", "届いた証明書を添付（画像・PDF）"),
+        slot("receipt", RECEIPT_KIND, "領収書（後日届いたら添付）", "領収書を添付（画像・PDF）"),
       ];
     });
   }
