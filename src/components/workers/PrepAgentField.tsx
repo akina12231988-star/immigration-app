@@ -147,6 +147,12 @@ export function PrepAgentField({
       {!todo && (
         <span className="text-[11px] font-normal">申請準備のTODOが無いため選べません（TODOを作ると選べます）。</span>
       )}
+      {/* 未定のままだと、オンライン申請の取次者の氏名が入らない */}
+      {todo && !todo.self_apply && !agentName && (
+        <span className="w-full rounded-lg bg-seal/10 px-2 py-1 text-[11px] font-bold text-seal">
+          申請取次士が未定です。取次士を選んでください（本人申請なら「本人申請でする」にチェック）。
+        </span>
+      )}
     </div>
   );
 }

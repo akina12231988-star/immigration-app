@@ -221,10 +221,18 @@ describe("buildOnlineApplication", () => {
     expect(s4.flatMap((s) => s.items).find((i) => i.no === "2.5")?.value).toBe("農林漁業従事者");
     expect(industryFieldChoice("農業／畜産農業全般")).toBe("農業分野");
     expect(industryFieldChoice("")).toBe("");
-    // 取次者: 申請準備の申請取次士を優先。無ければ登録支援機関の申請取次者
-    expect(get("取次者(オンラインシステム利用者) (1)氏名")?.value).toBe("秋吉　伽恋");
-    const s3 = buildOnlineApplication({ ...input, agentName: "野口 明菜" }, buildApplicationCopyGroups(input));
-    expect(s3.flatMap((s) => s.items).find((i) => i.label === "取次者(オンラインシステム利用者) (1)氏名")?.value).toBe("野口　明菜");
+    // 取次者: 申請準備の申請取次士。未定なら空欄にしてエラーを出す（登録支援機関の取次者で埋めない）
+    const agentItem = (extra: Record<string, unknown>) =>
+      buildOnlineApplication({ ...input, ...extra }, buildApplicationCopyGroups(input))
+        .flatMap((s) => s.items)
+        .find((i) => i.label === "取次者(オンラインシステム利用者) (1)氏名");
+    expect(get("取次者(オンラインシステム利用者) (1)氏名")).toMatchObject({ value: "" });
+    expect(get("取次者(オンラインシステム利用者) (1)氏名")?.error).toContain("申請取次士が未定");
+    expect(agentItem({ agentName: "野口 明菜" })?.value).toBe("野口　明菜");
+    expect(agentItem({ agentName: "野口 明菜" })?.error).toBeUndefined();
+    // 本人申請のときは登録支援機関の申請取次者
+    expect(agentItem({ selfApply: true })?.value).toBe("秋吉　伽恋");
+    expect(agentItem({ selfApply: true })?.error).toBeUndefined();
   });
 
   it("2.7・2.8 所定労働時間は小数点以下を切り捨て、注意書きを出す", () => {

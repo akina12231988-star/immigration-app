@@ -166,6 +166,9 @@ export function OnlineApplicationList({
                       <span className="text-seal">未登録</span>
                     )}
                   </span>
+                  {item.error && (
+                    <span className="w-full text-[11px] font-bold text-seal sm:pl-[17.5rem]">⚠ {item.error}</span>
+                  )}
                   {item.note && <span className="w-full text-[10px] text-muted sm:pl-[17.5rem]">{item.note}</span>}
                 </div>
               );
