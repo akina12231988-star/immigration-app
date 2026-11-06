@@ -1249,27 +1249,52 @@ export function JointApplicationField({
     ? (workers?.find((w) => w.id === row.joint_worker_id)?.label ?? null)
     : null;
 
+  // 単独申請か連名申請かは必須（あっせんの有無と同じく、大きなボタンで選ぶ）
+  const kindBtn = (active: boolean) =>
+    `min-h-[48px] flex-1 rounded-xl border-2 px-4 text-base font-bold disabled:opacity-60 ${
+      active ? "border-brand bg-brand text-brand-foreground" : "border-border bg-surface text-foreground"
+    }`;
+  const kindMissing = !row.joint_kind;
+
   return (
-    <div className="mt-2 rounded-lg bg-surface/60 p-2.5">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[11px] font-bold text-muted">この番号の申請</span>
-        <select
-          value={row.joint_kind}
-          disabled={!canEdit}
-          onChange={(e) => onChange({ joint_kind: e.target.value })}
-          className={INPUT}
-        >
-          <option value="">未選択</option>
-          <option value="単独">単独申請</option>
-          <option value="連名">連名申請</option>
-        </select>
+    <div
+      className={`mt-3 rounded-xl border-2 p-3 ${kindMissing ? "border-seal/50 bg-seal/5" : "border-border bg-surface/60"}`}
+    >
+      <div className="flex flex-col gap-1.5">
+        <p className="flex items-center gap-2 text-sm font-bold">
+          この申請は単独申請ですか？連名申請ですか？
+          {kindMissing && (
+            <span className="rounded-md bg-seal px-2 py-0.5 text-[11px] font-bold text-seal-foreground">必須</span>
+          )}
+        </p>
+        <div className="flex max-w-md gap-2">
+          <button
+            type="button"
+            disabled={!canEdit}
+            aria-pressed={row.joint_kind === "単独"}
+            onClick={() => onChange({ joint_kind: "単独" })}
+            className={kindBtn(row.joint_kind === "単独")}
+          >
+            単独申請
+          </button>
+          <button
+            type="button"
+            disabled={!canEdit}
+            aria-pressed={row.joint_kind === "連名"}
+            onClick={() => onChange({ joint_kind: "連名" })}
+            className={kindBtn(row.joint_kind === "連名")}
+          >
+            連名申請
+          </button>
+        </div>
+        {kindMissing && <p className="text-xs font-bold text-seal">どちらかを選んでください（必須）。</p>}
         {row.joint_kind === "単独" && (
-          <span className="text-[11px] text-muted">単独申請のため、リストの追加はしません。</span>
+          <span className="text-xs text-muted">単独申請のため、連名相手の設定はありません。</span>
         )}
       </div>
       {row.joint_kind === "連名" && (
-        <div className="mt-2 space-y-1.5">
-          <p className="text-[11px] text-muted">
+        <div className="mt-3 space-y-2 border-t border-dashed border-border pt-3">
+          <p className="text-xs text-muted">
             どの人と連名申請をするか名前で検索して選ぶと、その人のTODO番号と紐づきます。
           </p>
           {canEdit && (
@@ -1280,7 +1305,7 @@ export function JointApplicationField({
               placeholder="連名相手を氏名で検索して選択"
             />
           )}
-          <div className="flex flex-wrap items-center gap-2 text-[11px]">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className="font-bold text-muted">連名相手:</span>
             {row.joint_worker_id ? (
               <Link
@@ -1305,7 +1330,7 @@ export function JointApplicationField({
             />
           </div>
           {/* 筆頭者の選択。相手側の申請準備TODOにも自動で表示される */}
-          <div className="flex flex-wrap items-center gap-2 text-[11px]">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className="font-bold text-muted">筆頭者:</span>
             <select
               value={row.joint_lead}
