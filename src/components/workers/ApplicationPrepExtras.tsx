@@ -1,5 +1,6 @@
 "use client";
 
+import { buildWorkerOptions, type WorkerLite } from "@/lib/worker-label";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Building2, ExternalLink, Printer, Upload } from "lucide-react";
@@ -1211,18 +1212,17 @@ export function JointApplicationField({
   useEffect(() => {
     if (row.joint_kind !== "連名" || workers !== null) return;
     let cancelled = false;
-    void createClient()
-      .from("workers")
-      .select("id, name")
-      .order("name")
-      .then(({ data }) => {
-        if (cancelled) return;
-        setWorkers(
-          (((data as { id: string; name: string }[] | null) ?? []) as { id: string; name: string }[])
-            .filter((w) => w.id !== workerId)
-            .map((w) => ({ id: w.id, label: w.name })),
-        );
-      });
+    const supabase = createClient();
+    // 同姓同名は「氏名（所属機関名）」で区別する（ほかの外国人の選択欄と同じ）
+    void Promise.all([
+      supabase.from("workers").select("id, name, current_organization_id").order("name"),
+      supabase.from("organizations").select("id, name"),
+    ]).then(([w, o]) => {
+      if (cancelled) return;
+      const all = (w.data as WorkerLite[] | null) ?? [];
+      const orgs = (o.data as { id: string; name: string }[] | null) ?? [];
+      setWorkers(buildWorkerOptions(all, orgs).filter((x) => x.id !== workerId));
+    });
     return () => {
       cancelled = true;
     };
