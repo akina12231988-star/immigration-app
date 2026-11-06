@@ -2030,10 +2030,6 @@ export function WorkerDetail({
       />
       </div>
 
-      {/* 郵送請求（何年度をどこに請求したか・郵送請求した書類／届いた証明書／領収書の添付） */}
-      <div id="wd-mailing">
-      <WorkerMailingRecords workerId={worker.id} workerName={worker.name} canEdit={canEdit} />
-      </div>
 
       {/* 旧「外国人書類（PDF・画像で保存）」カードは解体した:
           合格証4種→基本情報の各合格名の下 / パスポート→出入国の記録のパスポートの記録 /
@@ -2247,6 +2243,11 @@ export function WorkerDetail({
           申請準備の中身は申請準備のTODOで管理する） */}
       <div id="wd-todo">
       <WorkerTodoLinks workerId={worker.id} />
+      </div>
+
+      {/* 証明書類の請求（入管申請の上。何年度をどこに請求したか・進捗・届いた証明書） */}
+      <div id="wd-mailing">
+      <WorkerMailingRecords workerId={worker.id} workerName={worker.name} canEdit={canEdit} />
       </div>
 
       {/* 入管申請（申請受付日・申請番号） */}
