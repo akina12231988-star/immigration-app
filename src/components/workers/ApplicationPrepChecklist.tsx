@@ -2312,6 +2312,7 @@ export function ApplicationPrepChecklist({
           todoNo={current.todo_no}
           desiredStatus={desiredResidenceStatus(meta.app_content, meta.app_type, workerRow?.residence_status ?? "")}
           agentName={(currentTodo ?? fallbackTodo)?.self_apply ? "" : ((currentTodo ?? fallbackTodo)?.agent_name ?? "")}
+          selfApply={(currentTodo ?? fallbackTodo)?.self_apply ?? false}
           assen={(currentTodo ?? fallbackTodo)?.assen ?? ""}
           appType={meta.app_type}
           canEdit={canEdit}

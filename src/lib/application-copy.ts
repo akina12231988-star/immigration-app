@@ -173,7 +173,8 @@ export interface ApplicationCopyInput {
   histories: WorkHistory[]; // 職歴（calc の形）
   planDates: Record<string, string>; // 支援計画書の日付（es = 雇用開始日 など）
   desiredStatus?: string; // 希望する在留資格（申請種別から）
-  agentName?: string; // 申請準備の申請取次士（取次者の氏名に使う。無ければ登録支援機関の申請取次者）
+  agentName?: string; // 申請準備の申請取次士（取次者の氏名に使う。未定ならオンライン申請の順でエラーを出す）
+  selfApply?: boolean; // 本人申請（取次者の氏名は登録支援機関の申請取次者）
   assen?: string; // あっせんの有無（'' / あり / なし。申請準備のTODOから。職業紹介事業者 2.30〜2.37 を出すか決める）
   appType?: string; // 申請種別（認定 / 変更 / 更新。認定のとき取次機関 2.38〜2.42 を入れる）
   custodian?: CustodianInfo; // 登録支援機関の情報（無ければ既定値 CUSTODIAN_INFO）

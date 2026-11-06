@@ -40,6 +40,7 @@ export interface OnlineItem {
   postalFor?: string; // この住所から郵便番号を自動で引く（画面側で /api/postal を呼んで値を入れる）
   edit?: CopyEdit; // この場で入力・編集して保存できる（保存先）
   editValue?: string; // 編集欄に最初に入れる値（登録されている元の値。表示値はハイフン無し・全角などに変えてあるため）
+  error?: string; // 直さないといけないこと（赤字で出す。例: 申請取次士が未定）
 }
 
 export interface OnlineSection {
@@ -408,16 +409,25 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
     }),
   ];
 
+  // 取次者の氏名は申請準備の申請取次士。未定のままなら空欄にしてエラーを出す（登録支援機関の取次者で埋めない）。
+  // 本人申請のときはこれまでどおり登録支援機関の申請取次者
+  const agentName = input.agentName?.trim() ?? "";
+  const agentNameItem: OnlineItem = agentName
+    ? item("", "取次者(オンラインシステム利用者) (1)氏名", toZenkaku(agentName), "zenkaku", "申請準備の申請取次士（全角26文字以内）")
+    : input.selfApply
+      ? item(
+          "",
+          "取次者(オンラインシステム利用者) (1)氏名",
+          toZenkaku(c.agentName),
+          "zenkaku",
+          "本人申請なので登録支援機関の申請取次者（全角26文字以内）",
+        )
+      : {
+          ...item("", "取次者(オンラインシステム利用者) (1)氏名", "", "zenkaku", "全角26文字以内"),
+          error: "申請取次士が未定です。申請準備の「申請取次士」で取次士を選んでください。",
+        };
   const agent: OnlineItem[] = [
-    item(
-      "",
-      "取次者(オンラインシステム利用者) (1)氏名",
-      toZenkaku(input.agentName?.trim() || c.agentName),
-      "zenkaku",
-      input.agentName?.trim()
-        ? "申請準備の申請取次士（全角26文字以内）"
-        : "申請準備の申請取次士が未定なので登録支援機関の申請取次者（全角26文字以内）。申請準備で申請取次士を選ぶとその人になる",
-    ),
+    agentNameItem,
     postal("", "取次者 (2)郵便番号", c.address, "登録支援機関の住所から"),
     item("", "取次者 (2)住所", toZenkaku(c.address), "zenkaku", "全角85文字以内", cu("address"), c.address),
     item("", "取次者 (3)所属機関等", c.officeName, "text", "256文字以内", cu("officeName")),

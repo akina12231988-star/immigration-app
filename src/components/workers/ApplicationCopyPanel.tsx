@@ -33,6 +33,7 @@ export function ApplicationCopyPanel({
   todoNo,
   desiredStatus,
   agentName,
+  selfApply = false,
   assen,
   appType,
   canEdit = false,
@@ -44,6 +45,7 @@ export function ApplicationCopyPanel({
   todoNo: string;
   desiredStatus?: string; // 希望する在留資格（申請種別から）
   agentName?: string; // 申請準備の申請取次士（TODO の agent_name。オンライン申請の取次者の氏名に使う。担当者ではない）
+  selfApply?: boolean; // 本人申請でする（申請取次士なし）
   assen?: string; // あっせんの有無（'' / あり / なし。オンライン申請の職業紹介事業者 2.30〜2.37 を出すか）
   appType?: string; // 申請種別（認定 / 変更 / 更新。認定のとき取次機関 2.38〜2.42 を入れる）
   canEdit?: boolean; // true: 項目をこの場で入力・編集して保存できる
@@ -117,6 +119,7 @@ export function ApplicationCopyPanel({
       planDates: loaded.planDates,
       desiredStatus,
       agentName,
+      selfApply,
       assen,
       appType,
       custodian: mergeCustodianInfo(loaded.custodian),
@@ -125,7 +128,7 @@ export function ApplicationCopyPanel({
     const groups = buildApplicationCopyGroups(input);
     // オンライン申請の画面順・入力形式にそろえたもの（紙の申請書向けの項目から組み立てる）
     return { groups, online: buildOnlineApplication(input, groups) };
-  }, [loaded, orgId, desiredStatus, agentName, assen, appType]);
+  }, [loaded, orgId, desiredStatus, agentName, selfApply, assen, appType]);
 
   if (!built) return null;
   return (
