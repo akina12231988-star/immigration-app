@@ -18,7 +18,24 @@ function municipalityPayload(input: Partial<MunicipalityInput>): Partial<Municip
   const out: Partial<MunicipalityInput> = { ...input };
   if (out.cert_form_url === undefined) delete out.cert_form_url;
   if (out.juminhyo_form_url === undefined) delete out.juminhyo_form_url;
+  // 申請書PDF・記入位置（0215）は専用の保存（updateMunicipalityCertForm）でだけ書き換える
+  delete out.cert_form_pdf_path;
+  delete out.cert_form_pdf_name;
+  delete out.cert_form_layout;
+  delete out.proxy_form_pdf_path;
+  delete out.proxy_form_pdf_name;
+  delete out.proxy_form_layout;
   return out;
+}
+
+// 申請書PDF（保存先・ファイル名）と記入位置を保存する（0215）
+export async function updateMunicipalityCertForm(
+  supabase: SupabaseClient,
+  id: string,
+  patch: Record<string, unknown>, // cert_form_* / proxy_form_* の列だけ
+): Promise<void> {
+  const { error } = await supabase.from("municipalities").update(patch).eq("id", id);
+  if (error) throw error;
 }
 
 // 申請書のページのURLだけを保存する（住所の確認の画面から、その場で登録する）
