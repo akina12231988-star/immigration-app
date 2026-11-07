@@ -46,6 +46,7 @@ import {
   type RecipientType,
   type RequestKind,
   type RequestMethod,
+  municipalityMigrationFor,
 } from "@/lib/tax-cert";
 import { MunicipalityBrowser } from "@/components/mailing/MunicipalityBrowser";
 import { SaveBlockers } from "@/components/mailing/SaveBlockers";
@@ -1164,7 +1165,7 @@ function MunicipalityTab({
         if (up.errors.length) showToast(`PDFのアップロードに失敗: ${up.errors.join("／")}`);
       }
     } catch (e) {
-      showToast(dbErrorMessage(e, "0145_municipality_prefecture.sql", "保存に失敗しました"));
+      showToast(dbErrorMessage(e, municipalityMigrationFor(e), "保存に失敗しました"));
     } finally {
       setBusy(false);
     }

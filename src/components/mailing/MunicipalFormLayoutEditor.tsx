@@ -29,6 +29,19 @@ const DEFAULT_SIZE: Partial<Record<MunicipalFormFieldKind, number>> = {
   birth_era_circle_showa: 14,
   birth_era_circle_heisei: 14,
 };
+// 画面に出す見本の文字の幅のおおよそ（全角は1文字＝1em、半角は0.55em）。
+// PDFと同じく「最大の幅」を超えるときは文字を小さくして見せる（切って隠さない）
+function approxWidthEm(text: string): number {
+  let w = 0;
+  for (const ch of text) w += /[\u0020-\u007e\uff61-\uff9f]/.test(ch) ? 0.55 : 1;
+  return w;
+}
+function fittedSize(text: string, size: number, maxWidth?: number): number {
+  if (!maxWidth) return size;
+  const em = approxWidthEm(text);
+  return em > 0 ? Math.max(5, Math.min(size, maxWidth / em)) : size;
+}
+
 const isCircle = (k: MunicipalFormFieldKind) => k === "circle" || k === "birth_era_circle_showa" || k === "birth_era_circle_heisei";
 
 // 自治体の申請書PDFに「どこに何を書くか」を置く画面。
@@ -400,14 +413,15 @@ export function MunicipalFormLayoutEditor({
                     <div
                       key={it.id}
                       title={MUNICIPAL_FORM_FIELD_LABEL[it.kind]}
-                      className={`${common} ${isCircle(it.kind) ? "rounded-full" : ""} bg-seal/10 leading-none text-seal`}
+                      className={`${common} ${isCircle(it.kind) ? "rounded-full" : ""} bg-seal/10 text-seal`}
                       style={{
                         left: it.x * scale,
                         top: it.y * scale,
-                        fontSize: it.size * scale,
+                        fontSize: (isCircle(it.kind) ? it.size : fittedSize(label, it.size, it.maxWidth)) * scale,
+                        lineHeight: 1.15,
                         ...(isCircle(it.kind) ? { width: it.size * scale, height: it.size * scale } : {}),
-                        // 選んでいるときは上の操作が隠れないよう、はみ出しを切らない
-                        ...(it.maxWidth ? { maxWidth: it.maxWidth * scale, ...(isSel ? {} : { overflow: "hidden" }) } : {}),
+                        // 「最大の幅」は点線の幅で見せる（文字は上で小さくしているので切らない）
+                        ...(it.maxWidth && !isCircle(it.kind) ? { minWidth: it.maxWidth * scale, outlineStyle: "dashed" as const } : {}),
                       }}
                       onClick={(e) => {
                         e.stopPropagation();

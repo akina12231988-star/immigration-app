@@ -621,3 +621,12 @@ export function yearWithReiwa(fiscalStartYear: number): string {
 export function fiscalYearLabel(fiscalStartYear: number): string {
   return `${fiscalStartYear}年度【${toReiwaLabel(fiscalStartYear)}年度】（${fiscalStartYear}年6月〜${fiscalStartYear + 1}年5月）`;
 }
+
+// 自治体マスタの保存で列が無いエラーになったとき、どのマイグレーションが未適用かをエラーの文から選ぶ
+export function municipalityMigrationFor(err: unknown): string {
+  const msg = err instanceof Error ? err.message : typeof err === "object" && err && "message" in err ? String((err as { message: unknown }).message) : String(err ?? "");
+  if (/cert_form_pdf|cert_form_layout|proxy_form/.test(msg)) return "0215_municipality_cert_form_pdf.sql";
+  if (/cert_form_url|juminhyo_form_url/.test(msg)) return "0212_municipality_form_urls.sql";
+  if (/website_url/.test(msg)) return "0146_municipality_website.sql";
+  return "0145_municipality_prefecture.sql";
+}

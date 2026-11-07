@@ -27,6 +27,7 @@ import {
   type RecipientType,
   type RequestMethod,
   type YearType,
+  municipalityMigrationFor,
 } from "@/lib/tax-cert";
 import {
   buildTaxRequestPlan,
@@ -195,7 +196,7 @@ function WizardBody({
       setAddFor(null);
       showToast(`自治体マスタに「${created.name}」を登録し、選択しました`);
     } catch (e) {
-      showToast(dbErrorMessage(e, "0145_municipality_prefecture.sql", "自治体の登録に失敗しました"));
+      showToast(dbErrorMessage(e, municipalityMigrationFor(e), "自治体の登録に失敗しました"));
     } finally {
       setAddBusy(false);
     }
