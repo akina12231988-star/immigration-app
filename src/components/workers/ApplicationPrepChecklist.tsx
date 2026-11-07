@@ -93,7 +93,15 @@ import { nenkinMissingFields, type NenkinFormData, type NenkinMissingField } fro
 import { isCertDocKeyOf } from "@/lib/cert-exam";
 import { listActiveCustodyNoByWorker } from "@/lib/supabase/queries/custody";
 import { formatStorageNo } from "@/lib/custody";
-import { STAMP_FEE_PAYERS, effectiveStampFeePayer, isKunisakiSeika, isStampFeePayer, stampFeePayerLabel } from "@/lib/stamp-fee";
+import {
+  STAMP_FEE_PAYERS,
+  autoStampFeePayer,
+  effectiveStampFeePayer,
+  isKunisakiSeika,
+  isSsw2StampAppContent,
+  isStampFeePayer,
+  stampFeePayerLabel,
+} from "@/lib/stamp-fee";
 import { PrepEstimateItemsPanel } from "@/components/workers/PrepEstimateItemsPanel";
 import { normalizeOrganizationIntake } from "@/lib/organization-intake";
 import { hasCustomSalesItems, salesItemsForKind } from "@/lib/sales";
@@ -1827,6 +1835,7 @@ export function ApplicationPrepChecklist({
           value={current.stamp_fee_payer ?? ""}
           orgName={prepOrgName}
           orgDefault={orgIntake?.stamp_fee_payer ?? ""}
+          appContent={meta.app_content}
           canEdit={canEdit}
           onSave={(v) => saveExtras({ stamp_fee_payer: v })}
           estimateHref={`${prepDetailHref(workerId)}/estimate?todo=${encodeURIComponent(current.todo_no)}`}
@@ -1861,8 +1870,8 @@ export function ApplicationPrepChecklist({
             <select
               value={meta.app_content}
               disabled={!canEdit}
-              onChange={(e) =>
-                patchMeta({
+              onChange={(e) => {
+                void patchMeta({
                   app_content: e.target.value,
                   app_type: appTypeOfPrepSituation(e.target.value),
                   // 特定技能２号は２号の合格証だけ。ほかへ切り替えたときは未選択に戻す
@@ -1872,8 +1881,14 @@ export function ApplicationPrepChecklist({
                       : meta.cert_pattern === "特定技能2号"
                         ? ""
                         : meta.cert_pattern,
-                })
-              }
+                });
+                // 申請種別で収入印紙代の負担が決まるもの（2号に関わる申請は本人負担、
+                // 國崎青果の1号に関わる申請は会社立替）は、選んだときに負担も合わせる
+                const autoPayer = autoStampFeePayer(e.target.value, prepOrgName);
+                if (autoPayer && autoPayer !== (current?.stamp_fee_payer ?? "")) {
+                  void saveExtras({ stamp_fee_payer: autoPayer });
+                }
+              }}
               className={`${inputCls} w-full min-w-0`}
             >
               <option value="">
@@ -3547,12 +3562,15 @@ function IconButton({
   );
 }
 
-// 収入印紙代の負担（本人負担／会社負担）のボタン。申請準備の詳細の申請種別の上に置く。
-// 有限会社國崎青果は、未設定なら自動で本人負担として保存する（そのリストで一度だけ）
+// 収入印紙代の負担（本人負担／会社負担／会社立替）のボタン。申請準備の詳細の申請種別の上に置く。
+// 申請種別と所属機関で自動で決まる負担（特定技能2号に関わる申請は本人負担、
+// 有限会社國崎青果の特定技能1号に関わる申請は会社立替。國崎青果のそれ以外は本人負担）は、
+// 未設定なら自動で保存する（申請種別ごとに一度だけ）
 function StampFeePayerField({
   value,
   orgName,
   orgDefault,
+  appContent,
   canEdit,
   onSave,
   estimateHref,
@@ -3560,22 +3578,33 @@ function StampFeePayerField({
   value: string;
   orgName: string;
   orgDefault: string; // 所属機関の情報で選んだ負担の既定（6,000円を超える場合）
+  appContent: string; // 申請種別（準備の内容の保存値）
   canEdit: boolean;
   onSave: (v: string) => void;
   estimateHref: string; // 見積書の印刷ページ（負担を選ぶと開ける）
 }) {
-  const effective = effectiveStampFeePayer(value, orgName, orgDefault);
-  const fromOrg = !value.trim() && !!effective && isStampFeePayer(orgDefault);
+  const effective = effectiveStampFeePayer(value, orgName, orgDefault, appContent);
+  const auto = autoStampFeePayer(appContent, orgName);
   const kunisaki = isKunisakiSeika(orgName);
-  // 國崎青果で未設定なら本人負担を保存する（画面に出すだけでなく、一覧の「未設定」からも外れるように）
-  const autoSavedRef = useRef(false);
+  // 自動で保存する負担（申請種別で決まる負担。無ければ國崎青果は本人負担）
+  const autoSave = auto || (kunisaki ? "本人負担" : "");
+  const fromOrg = !value.trim() && !!effective && !autoSave && isStampFeePayer(orgDefault);
+  // 未設定なら自動の負担を保存する（画面に出すだけでなく、一覧の「未設定」からも外れるように）
+  const autoSavedRef = useRef("");
   useEffect(() => {
-    if (!canEdit || !kunisaki || value || autoSavedRef.current) return;
-    autoSavedRef.current = true;
-    onSave("本人負担");
-    // onSave は親の関数で毎回変わるため依存に入れない（保存は一度だけ）
+    if (!canEdit || !autoSave || value || autoSavedRef.current === appContent) return;
+    autoSavedRef.current = appContent;
+    onSave(autoSave);
+    // onSave は親の関数で毎回変わるため依存に入れない（申請種別ごとに一度だけ保存する）
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canEdit, kunisaki, value]);
+  }, [canEdit, autoSave, value, appContent]);
+  const autoNote = isSsw2StampAppContent(appContent)
+    ? "特定技能2号に関わる申請は自動で本人負担です"
+    : auto === "会社立替"
+      ? "有限会社國崎青果の特定技能1号に関わる申請は自動で会社立替です"
+      : kunisaki
+        ? "有限会社國崎青果は自動で本人負担です"
+        : "";
   return (
     <div className="flex flex-wrap items-center gap-2">
       <span className="text-xs font-bold text-muted">収入印紙代</span>
@@ -3605,9 +3634,19 @@ function StampFeePayerField({
           <TriangleAlert size={12} />
           未設定（どちらが負担するか確認してください）
         </span>
-      ) : kunisaki ? (
-        <span className="text-[11px] text-muted">有限会社國崎青果は自動で本人負担です</span>
+      ) : autoNote ? (
+        <span className="text-[11px] text-muted">{autoNote}</span>
       ) : null}
+      {/* 以前に保存した負担が、いまの申請種別で自動で決まる負担と違うとき（申請種別を変えた・以前の自動保存など） */}
+      {canEdit && auto && value.trim() && value.trim() !== auto && (
+        <button
+          type="button"
+          onClick={() => onSave(auto)}
+          className="rounded-full border border-seal/50 bg-seal/10 px-2 py-0.5 text-[11px] font-bold text-seal"
+        >
+          この申請種別は{stampFeePayerLabel(auto)}です。{stampFeePayerLabel(auto)}にする
+        </button>
+      )}
       {/* 見積書（所属機関あて）。負担の選択と所属機関の売上明細から作る。
           未設定でも開けるが、印刷ページ側で負担を選ぶよう案内する */}
       <Link

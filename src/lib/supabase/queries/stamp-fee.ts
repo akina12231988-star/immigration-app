@@ -117,7 +117,7 @@ export async function listStampFeeUnknownRows(
     const orgId = w.application_prep_organization_id || w.current_organization_id || "";
     const orgName = orgId ? (orgNameById.get(orgId) ?? "") : "";
     // 有限会社國崎青果は自動で本人負担。所属機関の情報で負担を選んでいればそれを使う（未設定扱いにしない）
-    if (defaultStampFeePayer(orgName, orgDefaultById.get(orgId))) continue;
+    if (defaultStampFeePayer(orgName, orgDefaultById.get(orgId), c.app_content)) continue;
     rows.push({
       workerId: w.id,
       workerName: w.name,

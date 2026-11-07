@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  autoStampFeePayer,
   defaultStampFeePayer,
   effectiveStampFeePayer,
   filterStampFeeByOrg,
@@ -101,5 +102,25 @@ describe("invoiceStampFee（許可後の請求での印紙代）", () => {
   it("金額が未入力・0円", () => {
     expect(invoiceStampFee(null, "会社負担").state).toBe("unknown_amount");
     expect(invoiceStampFee(0, "会社負担").state).toBe("none");
+  });
+});
+
+describe("autoStampFeePayer（申請種別で自動で決まる負担）", () => {
+  it("特定技能2号に関わる申請は本人負担", () => {
+    expect(autoStampFeePayer("特定技能2号申請準備中", "株式会社さくら")).toBe("本人負担");
+    expect(autoStampFeePayer("特定技能2号更新の準備中", "有限会社國崎青果")).toBe("本人負担");
+    expect(autoStampFeePayer("特定活動（特定技能２号移行準備のため）準備中", "株式会社さくら")).toBe("本人負担");
+  });
+  it("特定技能1号に関わる申請で國崎青果なら会社立替、ほかの機関は自動では決めない", () => {
+    expect(autoStampFeePayer("特定技能申請準備中", "有限会社國崎青果")).toBe("会社立替");
+    expect(autoStampFeePayer("特定技能更新の準備中", "国崎青果")).toBe("会社立替");
+    expect(autoStampFeePayer("特定活動ビザ更新の申請準備", "有限会社國崎青果")).toBe("会社立替");
+    expect(autoStampFeePayer("特定技能更新の準備中", "株式会社さくら")).toBe("");
+    expect(autoStampFeePayer("在留資格認定申請書の準備中", "有限会社國崎青果")).toBe("");
+  });
+  it("未保存なら自動の負担が所属機関の情報の負担より優先、保存した値はそのまま", () => {
+    expect(effectiveStampFeePayer("", "株式会社さくら", "会社負担", "特定技能2号申請準備中")).toBe("本人負担");
+    expect(effectiveStampFeePayer("", "有限会社國崎青果", "", "特定技能申請準備中")).toBe("会社立替");
+    expect(effectiveStampFeePayer("会社負担", "株式会社さくら", "", "特定技能2号申請準備中")).toBe("会社負担");
   });
 });
