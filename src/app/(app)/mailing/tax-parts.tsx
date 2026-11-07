@@ -1,6 +1,6 @@
 "use client";
 
-import { MunicipalCertFormPanel } from "@/components/mailing/MunicipalCertFormPanel";
+import { MunicipalCertFormPanel, type MunicipalFormFiles } from "@/components/mailing/MunicipalCertFormPanel";
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -178,7 +178,8 @@ export function MunicipalityModal({
   initialName?: string; // 新規登録のときに最初から入れておく自治体名（請求フォームで入力した名前）
   busy: boolean;
   onClose: () => void;
-  onSave: (form: MunicipalityInput) => void;
+  // files: 追加のときに選んだ申請書・委任状のPDF（自治体を登録したあとにアップロードする）
+  onSave: (form: MunicipalityInput, files: MunicipalFormFiles) => void;
 }) {
   const [form, setForm] = useState<MunicipalityInput>(
     initial
@@ -198,6 +199,7 @@ export function MunicipalityModal({
   const setName = (name: string) =>
     setForm((f) => ({ ...f, name, prefecture: f.prefecture && f.prefecture !== guessPrefecture(f.name) ? f.prefecture : guessPrefecture(name) }));
   const canSave = form.name.trim() !== "" && form.cert_name.trim() !== "";
+  const [files, setFiles] = useState<MunicipalFormFiles>({});
 
   return (
     <Modal open title={initial ? "自治体情報を編集" : "自治体を追加"} onClose={onClose}>
@@ -227,14 +229,37 @@ export function MunicipalityModal({
           <span className={LABEL}>住民票・転出届の申請書のページ（URL）</span>
           <input type="url" inputMode="url" value={juminhyoFormUrl} onChange={(e) => setJuminhyoFormUrl(e.target.value)} placeholder="https://www.city.example.lg.jp/..." className={INPUT} />
         </label>
-        {/* 課税・納税証明書の申請書PDF（自動入力用）。登録済みの自治体だけ（その場で保存） */}
-        {initial && (
-          <div className="rounded-xl border border-border p-2.5">
-            <span className={LABEL}>課税・納税証明書の申請書・委任状のPDF（氏名・住所などの自動入力用）</span>
-            <MunicipalCertFormPanel municipality={initial} doc="cert" canEdit onChanged={onCertFormChanged} />
-            <MunicipalCertFormPanel municipality={initial} doc="proxy" canEdit onChanged={onCertFormChanged} />
-          </div>
-        )}
+        {/* 課税・納税証明書の申請書・委任状のPDF（自動入力用）。
+            編集のときはその場で保存、追加のときは選んでおいて自治体の保存のあとにアップロードする */}
+        <div className="rounded-xl border border-border p-2.5">
+          <span className={LABEL}>課税・納税証明書の申請書・委任状のPDF（氏名・住所などの自動入力用）</span>
+          {initial ? (
+            <>
+              <MunicipalCertFormPanel municipality={initial} doc="cert" canEdit onChanged={onCertFormChanged} />
+              <MunicipalCertFormPanel municipality={initial} doc="proxy" canEdit onChanged={onCertFormChanged} />
+            </>
+          ) : (
+            <div className="mt-1.5 flex flex-col gap-2">
+              {(["cert", "proxy"] as const).map((doc) => (
+                <label key={doc} className="flex flex-col gap-1 text-xs">
+                  <span className="font-bold">{doc === "cert" ? "申請書" : "委任状"}のPDF</span>
+                  <input
+                    type="file"
+                    accept="application/pdf"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] ?? null;
+                      setFiles((x) => ({ ...x, [doc]: f }));
+                    }}
+                    className="text-xs"
+                  />
+                </label>
+              ))}
+              <span className="text-[11px] text-muted">
+                「保存する」で自治体を登録したあとにアップロードします。記入位置（どこに何を書くか）は、登録後に自治体の編集か請求フォームの「記入位置を置く」で置きます。
+              </span>
+            </div>
+          )}
+        </div>
         <label className="flex flex-col gap-1">
           <span className={LABEL}>証明書名称</span>
           <input value={form.cert_name} onChange={(e) => set("cert_name", e.target.value)} placeholder="例：市民税・県民税 課税証明書" className={INPUT} />
@@ -259,7 +284,7 @@ export function MunicipalityModal({
               cert_name: form.cert_name.trim(),
               ...formUrlPatch("cert_form_url", certFormUrl),
               ...formUrlPatch("juminhyo_form_url", juminhyoFormUrl),
-            })
+            }, files)
           }>
           {busy ? "保存中…" : "保存する"}
         </Button>
