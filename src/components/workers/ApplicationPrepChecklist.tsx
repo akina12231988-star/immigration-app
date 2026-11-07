@@ -93,7 +93,11 @@ import { nenkinMissingFields, type NenkinFormData, type NenkinMissingField } fro
 import { isCertDocKeyOf } from "@/lib/cert-exam";
 import { listActiveCustodyNoByWorker } from "@/lib/supabase/queries/custody";
 import { formatStorageNo } from "@/lib/custody";
-import { STAMP_FEE_PAYERS, effectiveStampFeePayer, isKunisakiSeika } from "@/lib/stamp-fee";
+import { STAMP_FEE_PAYERS, effectiveStampFeePayer, isKunisakiSeika, isStampFeePayer, stampFeePayerLabel } from "@/lib/stamp-fee";
+import { PrepEstimateItemsPanel } from "@/components/workers/PrepEstimateItemsPanel";
+import { normalizeOrganizationIntake } from "@/lib/organization-intake";
+import { salesItemsForKind } from "@/lib/sales";
+import { salesKindOfPrep } from "@/lib/estimate";
 import { getHealthCheckDetail } from "@/lib/supabase/queries/health-check";
 import {
   EMPTY_HEALTH_DETAIL,
@@ -184,7 +188,7 @@ import {
   prepTodoFileName,
   replacePrepSituation,
 } from "@/lib/worker-situation";
-import type { OnboardingDocumentRow } from "@/types/db";
+import type { OnboardingDocumentRow, OrganizationIntake } from "@/types/db";
 import { effectiveResidencePeriod } from "@/lib/residence-card";
 import { ApplicationCopyPanel } from "@/components/workers/ApplicationCopyPanel";
 import { Prep117Section, PrepAgriNoticeSection } from "@/components/workers/PrepSupportOrgSection";
@@ -515,6 +519,30 @@ export function ApplicationPrepChecklist({
   const prepOrgName =
     orgNameFromProp || (orgNameCache?.orgId === prepOrgId ? orgNameCache.name : "");
 
+  // 申請準備の所属機関の登録内容（収入印紙代の負担の既定と、申請種別ごとの売上明細）
+  const [prepOrgIntake, setPrepOrgIntake] = useState<{ orgId: string; intake: OrganizationIntake } | null>(null);
+  useEffect(() => {
+    if (!prepOrgId) return;
+    let cancelled = false;
+    void createClient()
+      .from("organizations")
+      .select("intake")
+      .eq("id", prepOrgId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) {
+          setPrepOrgIntake({
+            orgId: prepOrgId,
+            intake: normalizeOrganizationIntake((data as { intake: unknown } | null)?.intake),
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [prepOrgId]);
+  const orgIntake = prepOrgIntake?.orgId === prepOrgId ? prepOrgIntake.intake : null;
+
   // 追加項目（単独/連名・連名相手・署名ステータス）の保存（0105）
   async function saveExtras(
     patch: Partial<
@@ -531,6 +559,7 @@ export function ApplicationPrepChecklist({
         | "post_apply_mailings"
         | "post_apply_notes"
         | "stamp_fee_payer"
+        | "estimate_items"
       >
     >,
   ) {
@@ -543,7 +572,9 @@ export function ApplicationPrepChecklist({
     } catch (err) {
       // あとから足した項目（筆頭者=0111・申請予定日=0112）は、その分の案内を出す
       const migration =
-        "stamp_fee_payer" in patch
+        "estimate_items" in patch
+          ? "0214_prep_estimate_items.sql"
+          : "stamp_fee_payer" in patch
           ? "0175_prep_stamp_fee_payer.sql"
           : "post_apply_notes" in patch
           ? "0172_prep_post_apply_notes.sql"
@@ -1795,9 +1826,26 @@ export function ApplicationPrepChecklist({
         <StampFeePayerField
           value={current.stamp_fee_payer ?? ""}
           orgName={prepOrgName}
+          orgDefault={orgIntake?.stamp_fee_payer ?? ""}
           canEdit={canEdit}
           onSave={(v) => saveExtras({ stamp_fee_payer: v })}
           estimateHref={`${prepDetailHref(workerId)}/estimate?todo=${encodeURIComponent(current.todo_no)}`}
+        />
+        {/* 見積・請求の明細（所属機関の売上明細から読み込んで、この申請の明細として登録する） */}
+        <PrepEstimateItemsPanel
+          key={current.id}
+          saved={current.estimate_items ?? null}
+          orgItems={
+            meta.app_content || meta.app_type
+              ? salesItemsForKind(orgIntake, salesKindOfPrep(meta.app_content, meta.app_type), prepOrgName)
+              : []
+          }
+          orgId={prepOrgId}
+          orgName={prepOrgName}
+          salesKind={meta.app_content || meta.app_type ? salesKindOfPrep(meta.app_content, meta.app_type) : ""}
+          canEdit={canEdit}
+          estimateHref={`${prepDetailHref(workerId)}/estimate?todo=${encodeURIComponent(current.todo_no)}`}
+          onSave={(items) => saveExtras({ estimate_items: items })}
         />
         <div className="flex flex-wrap items-center gap-3">
           {/* 候補の文字が長いので、横並びにすると欄が枠からはみ出す。
@@ -3500,17 +3548,20 @@ function IconButton({
 function StampFeePayerField({
   value,
   orgName,
+  orgDefault,
   canEdit,
   onSave,
   estimateHref,
 }: {
   value: string;
   orgName: string;
+  orgDefault: string; // 所属機関の情報で選んだ負担の既定（6,000円を超える場合）
   canEdit: boolean;
   onSave: (v: string) => void;
   estimateHref: string; // 見積書の印刷ページ（負担を選ぶと開ける）
 }) {
-  const effective = effectiveStampFeePayer(value, orgName);
+  const effective = effectiveStampFeePayer(value, orgName, orgDefault);
+  const fromOrg = !value.trim() && !!effective && isStampFeePayer(orgDefault);
   const kunisaki = isKunisakiSeika(orgName);
   // 國崎青果で未設定なら本人負担を保存する（画面に出すだけでなく、一覧の「未設定」からも外れるように）
   const autoSavedRef = useRef(false);
@@ -3538,12 +3589,14 @@ function StampFeePayerField({
                 on ? "bg-brand text-brand-foreground" : "bg-background text-muted hover:bg-surface"
               }`}
             >
-              {p}
+              {stampFeePayerLabel(p)}
             </button>
           );
         })}
       </div>
-      {!effective ? (
+      {fromOrg ? (
+        <span className="text-[11px] text-muted">所属機関の情報で選んだ負担です（6,000円以下は会社負担）</span>
+      ) : !effective ? (
         <span className="inline-flex items-center gap-1 rounded-full bg-seal/10 px-2 py-0.5 text-[11px] font-bold text-seal">
           <TriangleAlert size={12} />
           未設定（どちらが負担するか確認してください）
@@ -3559,7 +3612,7 @@ function StampFeePayerField({
           effective ? "border-brand bg-background text-brand hover:bg-brand/5" : "border-border text-muted"
         }`}
       >
-        🧾 見積書{effective ? `（${effective}）` : ""}
+        🧾 見積書{effective ? `（${stampFeePayerLabel(effective)}）` : ""}
       </Link>
     </div>
   );

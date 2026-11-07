@@ -4,6 +4,7 @@ import {
   effectiveStampFeePayer,
   filterStampFeeByOrg,
   groupStampFeeByOrg,
+  invoiceStampFee,
   isKunisakiSeika,
   stampFeeUnknownText,
   type StampFeeUnknownRow,
@@ -65,5 +66,40 @@ describe("stampFeeUnknownText", () => {
     expect(text).toContain("・25-101　NGUYEN VAN A　特定技能申請準備中　担当: 野口");
     expect(text).toContain("■ 所属機関が未登録（1件）");
     expect(text.endsWith("\n")).toBe(false);
+  });
+});
+
+describe("会社立替・所属機関の既定の負担", () => {
+  it("会社立替も保存した値として使える", () => {
+    expect(effectiveStampFeePayer("会社立替", "株式会社さくら")).toBe("会社立替");
+  });
+  it("未設定なら所属機関の情報で選んだ負担を使い、無ければ國崎青果の既定", () => {
+    expect(effectiveStampFeePayer("", "株式会社さくら", "会社負担")).toBe("会社負担");
+    expect(effectiveStampFeePayer("", "有限会社國崎青果", "会社立替")).toBe("会社立替");
+    expect(effectiveStampFeePayer("", "有限会社國崎青果", "")).toBe("本人負担");
+    expect(effectiveStampFeePayer("本人負担", "株式会社さくら", "会社負担")).toBe("本人負担");
+  });
+});
+
+describe("invoiceStampFee（許可後の請求での印紙代）", () => {
+  it("6,000円以下は負担の設定にかかわらず会社負担で請求", () => {
+    const r = invoiceStampFee(6000, "本人負担");
+    expect(r.billed).toBe(true);
+    expect(r.payer).toBe("会社負担");
+    expect(invoiceStampFee(5500, "").billed).toBe(true);
+  });
+  it("6,000円を超えると負担の設定で分ける", () => {
+    expect(invoiceStampFee(27000, "会社負担")).toMatchObject({ billed: true, state: "billed" });
+    const tatekae = invoiceStampFee(27000, "会社立替");
+    expect(tatekae.billed).toBe(true);
+    expect(tatekae.note).toContain("会社立替");
+    const self = invoiceStampFee(27000, "本人負担");
+    expect(self.billed).toBe(false);
+    expect(self.note).toBe("印紙代は本人負担です。");
+    expect(invoiceStampFee(27000, "").state).toBe("unknown_payer");
+  });
+  it("金額が未入力・0円", () => {
+    expect(invoiceStampFee(null, "会社負担").state).toBe("unknown_amount");
+    expect(invoiceStampFee(0, "会社負担").state).toBe("none");
   });
 });

@@ -43,6 +43,10 @@ import { displayTodoNo } from "@/lib/todo";
 import { estimateHref, pickEstimateChecklist } from "@/lib/estimate-summary";
 import { listPrepChecklistBriefs, type PrepChecklistBrief } from "@/lib/supabase/queries/application-prep";
 import { CopyButton } from "@/components/ui/CopyButton";
+import { PermitInvoiceCell } from "@/components/sales/PermitInvoiceCell";
+import { buildPermitInvoice } from "@/lib/permit-invoice";
+import { stampFeePayerLabel } from "@/lib/stamp-fee";
+import { normalizeOrganizationIntake } from "@/lib/organization-intake";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
 import { setWorkerRecurringSalesNo } from "@/lib/supabase/queries/workers";
@@ -52,6 +56,7 @@ import {
   listPermitHistoryExtras,
   listInReviewWorkerIds,
   listPermitContentsByMonth,
+  listPermitStampFeesByMonth,
   type GrantedPermit,
 } from "@/lib/supabase/queries/applications";
 import { effectivePermitForMonth } from "@/lib/billing-permits";
@@ -782,6 +787,25 @@ export function MonthlyBillingSection({
         .catch(() => {
           // 取れなくても備考は作れる（その場合はすべて新規側に並ぶ）
           if (!cancelled) setPermitContents({});
+        }),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [month]);
+
+  // 対象月に許可が下りた申請の、許可のときに入れた収入印紙代（worker_id → 円）。
+  // null は印紙代の列（0213）が読めなかったとき
+  const [permitStampFees, setPermitStampFees] = useState<Record<string, number | null> | null>({});
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve().then(() =>
+      listPermitStampFeesByMonth(createClient(), month)
+        .then((map) => {
+          if (!cancelled) setPermitStampFees(map);
+        })
+        .catch(() => {
+          if (!cancelled) setPermitStampFees(null);
         }),
     );
     return () => {
@@ -1723,7 +1747,7 @@ export function MonthlyBillingSection({
                         特定技能総合保険の画面を開く
                       </Link>
                     </div>
-                  <table className="w-full min-w-[1420px] border-collapse text-xs">
+                  <table className="w-full min-w-[1700px] border-collapse text-xs">
                     <thead>
                       <tr className="border-b border-border text-left text-muted">
                         <th className="py-1.5 pr-2 font-bold">許可日</th>
@@ -1753,6 +1777,9 @@ export function MonthlyBillingSection({
                         <th className="py-1.5 pr-2 font-bold">区分</th>
                         <th className="py-1.5 pr-2 text-right font-bold">支援費請求額</th>
                         <th className="py-1.5 pr-2 font-bold">案件</th>
+                        <th className="py-1.5 pr-2 font-bold" title="申請準備で登録した明細と、許可のときに入れた収入印紙代">
+                          許可の明細（freee登録用）
+                        </th>
                         <th className="py-1.5 pr-2 font-bold">許可売上No.</th>
                         <th className="py-1.5 pr-2 font-bold">紹介手数料No.</th>
                         <th className="py-1.5 pr-2 font-bold">保険No.</th>
@@ -1830,6 +1857,21 @@ export function MonthlyBillingSection({
                             url={caseUrlOf(org.organizationId)}
                             canEdit={canEdit}
                             onSave={(v) => saveOrgCaseUrl(org.organizationId, v)}
+                          />
+                          {/* 許可の明細（申請準備で登録した明細＋許可のときの収入印紙代）。
+                              本人負担なら印紙代は入れず「印紙代は本人負担です。」を備考に出す */}
+                          <PermitInvoiceCell
+                            workerId={row.worker.id}
+                            workerName={row.worker.name}
+                            stampColumnReady={permitStampFees !== null}
+                            invoice={buildPermitInvoice({
+                              briefs: prepBriefs[row.worker.id] ?? [],
+                              orgName: org.organizationName,
+                              intake: normalizeOrganizationIntake(
+                                mergedOrgs.find((o) => o.id === org.organizationId)?.intake,
+                              ),
+                              stampFeeAmount: permitStampFees?.[row.worker.id] ?? null,
+                            })}
                           />
                           {/* 許可売上No.・保険No.。下の所属機関ごとの名簿と同じ売上明細の番号なので、
                               ここで入れると名簿・外国人詳細にも同じ番号が出る */}
@@ -3030,14 +3072,18 @@ export function MonthlyBillingSection({
                             )}
                             {/* 申請準備の見積書（収入印紙代の負担を選んでいる人だけ）。申請詳細と同じ見積書を開く */}
                             {(() => {
-                              const picked = pickEstimateChecklist(prepBriefs[row.worker.id] ?? [], org.organizationName);
+                              const picked = pickEstimateChecklist(
+                                prepBriefs[row.worker.id] ?? [],
+                                org.organizationName,
+                                normalizeOrganizationIntake(mergedOrgs.find((o) => o.id === org.organizationId)?.intake).stamp_fee_payer,
+                              );
                               return picked ? (
                                 <Link
                                   href={estimateHref(row.worker.id, picked.checklist.todo_no)}
                                   className="ml-1 inline-flex items-center rounded-full border border-brand/40 px-1.5 py-0.5 text-[10px] font-bold text-brand hover:bg-brand/10"
-                                  title={`申請準備の見積書（収入印紙代 ${picked.payer}）を開く`}
+                                  title={`申請準備の見積書（収入印紙代 ${stampFeePayerLabel(picked.payer)}）を開く`}
                                 >
-                                  🧾 見積書（{picked.payer}）
+                                  🧾 見積書（{stampFeePayerLabel(picked.payer)}）
                                 </Link>
                               ) : null;
                             })()}

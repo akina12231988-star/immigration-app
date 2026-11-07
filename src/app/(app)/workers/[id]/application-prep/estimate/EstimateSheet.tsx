@@ -1,5 +1,6 @@
 "use client";
 
+import { stampFeePayerLabel } from "@/lib/stamp-fee";
 import { useState } from "react";
 import { Plus, Printer, Trash2 } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
@@ -130,13 +131,13 @@ export function EstimateSheet({
             </>
           )}
           <p className="w-full text-xs text-muted">
-            収入印紙代は<b>{est.stampFee.payer || "未設定"}</b>
+            収入印紙代は<b>{stampFeePayerLabel(est.stampFee.payer)}</b>
             {est.stampFee.included
               ? "。明細に収入印紙代の行を入れ、在留期間ごとの金額の表を備考に印字します。"
               : est.stampFee.payer === "本人負担"
                 ? "。収入印紙代は明細に入れず、備考に本人負担である旨と在留期間ごとの金額（参考）を印字します。"
                 : "。"}
-            明細は所属機関の情報の「申請種別ごとの売上明細」（{est.salesKind}）から作っています。
+            明細は申請準備の詳細で登録した明細（未登録なら所属機関の情報の「申請種別ごとの売上明細」（{est.salesKind}））から作っています。
             {est.insurance.included && "特定技能総合保険が会社負担なので、保険料の行（非課税）も入れています。"}
           </p>
           {est.invalidAmounts.length > 0 && (

@@ -14,7 +14,7 @@ import { PREP_APP_TYPE_LABELS, SSW2_RENEWAL_APP_CONTENT, type PrepAppType } from
 import { honorificFor } from "@/lib/reminder-letter";
 import type { OrgSalesItem } from "@/types/db";
 import type { CustodianInfo } from "@/lib/custody";
-import type { StampFeePayer } from "@/lib/stamp-fee";
+import { STAMP_FEE_COMPANY_ONLY_MAX, stampFeeBilledToCompany, type StampFeePayer } from "@/lib/stamp-fee";
 
 // ---- 収入印紙代（在留許可手数料。改正入管法施行令第25条第1項） ----
 
@@ -258,12 +258,16 @@ export function buildEstimate(input: EstimateInput): Estimate {
   const applies = stampFeeApplies(input.appType);
   const revised = usesRevisedStampFee(input.plannedAppOn, input.today);
   const stampAmount = stampFeeAmount(input.bandKey, input.method, revised);
-  const included = input.stampFeePayer === "会社負担" && applies;
+  // 6,000円以下（改定前の手数料など）は負担の設定にかかわらず会社負担。
+  // それを超えるときは会社負担・会社立替（実質本人負担）なら明細に入れる
+  const companyOnly = stampAmount > 0 && stampAmount <= STAMP_FEE_COMPANY_ONLY_MAX;
+  const included = applies && (companyOnly || stampFeeBilledToCompany(input.stampFeePayer));
+  const tatekae = included && !companyOnly && input.stampFeePayer === "会社立替";
   if (included) {
     const band = stampFeeBand(input.bandKey);
     items.push({
       name: revised
-        ? `収入印紙代（申請手数料・${input.method}申請。在留期間「${band.key}」で許可された場合）`
+        ? `収入印紙代（申請手数料・${input.method}申請${tatekae ? "・会社立替" : ""}。在留期間「${band.key}」で許可された場合）`
         : `収入印紙代（申請手数料・${input.method}申請・改定前）`,
       qty: "1件",
       unitPrice: stampAmount,
@@ -288,7 +292,8 @@ export function buildEstimate(input: EstimateInput): Estimate {
   const { subtotalTaxable, tax, taxFree, taxFreeLabel, total } = estimateTotals(items);
 
   const notes: string[] = [];
-  if (applies && input.stampFeePayer === "会社負担") {
+  if (included) {
+    if (tatekae) notes.push("収入印紙代は会社立替です（実質本人負担）。");
     if (revised) {
       notes.push(
         `収入印紙代（申請手数料）は、許可される在留期間によって金額が変わります（${estimateDateText(STAMP_FEE_REVISION_DATE)}改定）。` +
@@ -304,7 +309,7 @@ export function buildEstimate(input: EstimateInput): Estimate {
     }
   } else if (applies && input.stampFeePayer === "本人負担") {
     notes.push(
-      "収入印紙代（申請手数料）はご本人の負担のため、この見積には含めていません。" +
+      "印紙代は本人負担です。収入印紙代（申請手数料）はご本人の負担のため、この見積には含めていません。" +
         "（参考）申請手数料は許可される在留期間によって金額が変わります。下の表をご確認ください。",
     );
   } else if (!applies && input.appType === "認定") {

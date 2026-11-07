@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizeTodoKey } from "@/lib/todo";
+import type { OrgSalesItem } from "@/types/db";
 import {
   buildPostApplyEntries,
   isIssueOnlyDocDone,
@@ -36,7 +37,19 @@ export interface PrepChecklistRow extends PrepChecklistMeta {
   post_apply_tasks: PostApplyTask[]; // 申請後に対応するタスク（0167）
   post_apply_mailings: PostApplyMailing[]; // 申請後に入管へ郵送した記録（0168）
   post_apply_notes: PostApplyNotes; // 申請後の郵送・タスクの項目ごとのメモ（0172）
-  stamp_fee_payer: string; // 収入印紙代の負担（'' / 本人負担 / 会社負担。0175）
+  stamp_fee_payer: string; // 収入印紙代の負担（'' / 本人負担 / 会社負担 / 会社立替。0175）
+  estimate_items: OrgSalesItem[] | null; // 見積書・許可後の請求の明細（null = 未登録で所属機関の売上明細を使う。0214）
+}
+
+// 保存されている明細（jsonb）を読む。配列でなければ未登録（null）
+export function normalizeEstimateItems(v: unknown): OrgSalesItem[] | null {
+  if (!Array.isArray(v)) return null;
+  return v
+    .filter((r): r is Record<string, unknown> => !!r && typeof r === "object")
+    .map((r) => ({
+      name: typeof r.name === "string" ? r.name : "",
+      amount: typeof r.amount === "string" ? r.amount : typeof r.amount === "number" ? String(r.amount) : "",
+    }));
 }
 
 // 外国人の準備リストを全件取得（更新が新しい順）。
@@ -74,6 +87,7 @@ export async function listPrepChecklists(
     post_apply_mailings: normalizePostApplyMailings(r.post_apply_mailings),
     post_apply_notes: normalizePostApplyNotes(r.post_apply_notes),
     stamp_fee_payer: r.stamp_fee_payer ?? "",
+    estimate_items: normalizeEstimateItems((r as { estimate_items?: unknown }).estimate_items),
   }));
 }
 
@@ -86,15 +100,22 @@ export interface PrepChecklistBrief {
   app_type: "" | PrepAppType;
   stamp_fee_payer: string;
   updated_at: string;
+  planned_app_on: string | null;
+  estimate_items: OrgSalesItem[] | null; // 0214 未適用なら null
 }
 
 export async function listPrepChecklistBriefs(
   supabase: SupabaseClient,
 ): Promise<Record<string, PrepChecklistBrief[]>> {
-  const { data, error } = await supabase
+  const base = "worker_id, todo_no, app_content, app_type, stamp_fee_payer, updated_at, planned_app_on";
+  // 0214（明細の登録）が未適用でも、ほかの項目は読めるようにする
+  const first = await supabase
     .from("application_prep_checklists")
-    .select("worker_id, todo_no, app_content, app_type, stamp_fee_payer, updated_at")
+    .select(`${base}, estimate_items`)
     .order("updated_at", { ascending: false });
+  const { data, error } = first.error
+    ? await supabase.from("application_prep_checklists").select(base).order("updated_at", { ascending: false })
+    : first;
   if (error) throw error;
   const map: Record<string, PrepChecklistBrief[]> = {};
   for (const r of ((data as Partial<PrepChecklistBrief>[] | null) ?? [])) {
@@ -106,6 +127,8 @@ export async function listPrepChecklistBriefs(
       app_type: (r.app_type ?? "") as "" | PrepAppType,
       stamp_fee_payer: r.stamp_fee_payer ?? "",
       updated_at: r.updated_at ?? "",
+      planned_app_on: r.planned_app_on ?? null,
+      estimate_items: normalizeEstimateItems((r as { estimate_items?: unknown }).estimate_items),
     });
   }
   return map;
@@ -168,6 +191,7 @@ export async function updatePrepChecklistExtras(
       | "post_apply_mailings"
       | "post_apply_notes"
       | "stamp_fee_payer"
+      | "estimate_items"
     >
   >,
 ): Promise<void> {

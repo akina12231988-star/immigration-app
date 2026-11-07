@@ -1,5 +1,6 @@
 "use client";
 
+import { STAMP_FEE_PAYERS, isStampFeePayer, stampFeePayerLabel } from "@/lib/stamp-fee";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ExternalLink, Loader2, Printer, Trash2, Upload } from "lucide-react";
 import { openCaseWindow } from "@/lib/case-window";
@@ -1912,6 +1913,36 @@ function IntakeSection({
             </div>
           );
         })}
+        {/* 収入印紙代（申請手数料）の負担。6,000円以下は会社負担で決まり、6,000円を超えるときの負担の既定をここで選ぶ。
+            申請準備の詳細の「収入印紙代」で未選択のときにこの負担を使う（申請ごとに選び直せる） */}
+        <div className="rounded-xl border border-border p-2.5">
+          <p className="mb-1 text-xs font-bold">収入印紙代（申請手数料）</p>
+          <p className={HINT_CLASS}>
+            6,000円以下（改定前の手数料など）は会社負担として請求します。6,000円を超える場合の負担を選んでください。
+            申請準備の詳細の「収入印紙代」で選んでいない申請は、この負担を使います。本人負担のときは請求書に印紙代を入れず、「印紙代は本人負担です。」と備考に書きます。
+          </p>
+          {locks.intake("stamp_fee_payer") ? (
+            <StaticValue label="6,000円を超える場合の負担" value={stampFeePayerLabel(isStampFeePayer(intake.stamp_fee_payer) ? intake.stamp_fee_payer : "")} />
+          ) : (
+            <div className="mt-1.5 flex flex-wrap gap-2">
+              {STAMP_FEE_PAYERS.map((p) => {
+                const active = intake.stamp_fee_payer === p;
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setIntake({ stamp_fee_payer: active ? "" : p })}
+                    className={`min-h-[40px] rounded-xl border px-3 text-xs font-bold ${
+                      active ? "border-brand bg-brand text-brand-foreground" : "border-border bg-background text-foreground"
+                    }`}
+                  >
+                    {stampFeePayerLabel(p)}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
         </OrgTabPanel>
 
         <OrgTabPanel tab="support">

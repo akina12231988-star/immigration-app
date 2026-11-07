@@ -1,5 +1,6 @@
 "use client";
 
+import { stampFeePayerLabel } from "@/lib/stamp-fee";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { DetailSection } from "@/components/applications/DetailSection";
@@ -53,14 +54,14 @@ export function EstimateSummarySection({ app, open }: { app: Application; open: 
           setSummary(null);
           return;
         }
-        const picked = pickEstimateChecklist(lists, org.name);
+        const intake = normalizeOrganizationIntake(org.intake);
+        const picked = pickEstimateChecklist(lists, org.name, intake.stamp_fee_payer);
         if (!picked) {
           setSummary(null);
           return;
         }
         const { checklist, payer } = picked;
-        const intake = normalizeOrganizationIntake(org.intake);
-        const salesItems = salesItemsForKind(intake, salesKindOfPrep(checklist.app_content, checklist.app_type), org.name);
+        const salesItems = checklist.estimate_items ?? salesItemsForKind(intake, salesKindOfPrep(checklist.app_content, checklist.app_type), org.name);
         const estimate = buildEstimate({
           workerName: worker.name,
           orgName: org.name,
@@ -98,7 +99,7 @@ export function EstimateSummarySection({ app, open }: { app: Application; open: 
     <DetailSection
       id="section-estimate"
       title="見積書の内容"
-      summary={`収入印紙代 ${estimate.stampFee.payer}・合計 ${estimateYen(estimate.total)}円（税込）${todoNo ? `・${todoNo}` : ""}`}
+      summary={`収入印紙代 ${stampFeePayerLabel(estimate.stampFee.payer)}・合計 ${estimateYen(estimate.total)}円（税込）${todoNo ? `・${todoNo}` : ""}`}
       open={open}
       actions={
         <Link href={href} className="text-xs font-bold text-brand underline">
@@ -142,7 +143,7 @@ export function EstimateSummarySection({ app, open }: { app: Application; open: 
       </table>
       {estimate.stampFee.applies && !estimate.stampFee.included && (
         <p className="mt-1 text-[11px] text-muted">
-          収入印紙代（{estimateYen(estimate.stampFee.amount)}円・{estimate.stampFee.bandKey}）は本人負担のため明細に入れていません。
+          収入印紙代（{estimateYen(estimate.stampFee.amount)}円・{estimate.stampFee.bandKey}）は本人負担のため明細に入れていません（印紙代は本人負担です。）。
         </p>
       )}
       {estimate.invalidAmounts.length > 0 && (

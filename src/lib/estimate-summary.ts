@@ -19,10 +19,11 @@ export interface EstimateChecklistLike {
 export function pickEstimateChecklist<T extends EstimateChecklistLike>(
   lists: readonly T[],
   orgName: string | null | undefined,
+  orgDefaultPayer?: string | null, // 所属機関の情報で選んだ収入印紙代の負担の既定
 ): { checklist: T; payer: StampFeePayer } | null {
   const sorted = [...lists].sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""));
   for (const l of sorted) {
-    const payer = effectiveStampFeePayer(l.stamp_fee_payer, orgName);
+    const payer = effectiveStampFeePayer(l.stamp_fee_payer, orgName, orgDefaultPayer);
     if (payer) return { checklist: l, payer };
   }
   return null;

@@ -197,6 +197,27 @@ export async function listPermitContentsByMonth(
   return out;
 }
 
+// 対象月に許可が下りた申請の、許可のときに入れた収入印紙代（worker_id → 円。未入力は null）。
+// 請求書作成の当月許可者リストの「許可の明細」に使う。0213 未適用なら null を返す（列が無い）
+export async function listPermitStampFeesByMonth(
+  supabase: SupabaseClient,
+  month: string,
+): Promise<Record<string, number | null> | null> {
+  const { data, error } = await supabase
+    .from("immigration_applications")
+    .select("worker_id, stamp_fee_amount, granted_permit_date")
+    .gte("granted_permit_date", `${month}-01`)
+    .lte("granted_permit_date", monthEnd(`${month}-01`))
+    .order("granted_permit_date", { ascending: false });
+  if (error) return null;
+  const out: Record<string, number | null> = {};
+  for (const r of ((data as { worker_id: string | null; stamp_fee_amount: number | null }[] | null) ?? [])) {
+    if (!r.worker_id || r.worker_id in out) continue;
+    out[r.worker_id] = r.stamp_fee_amount ?? null;
+  }
+  return out;
+}
+
 // 審査中（申請済みでまだ許可も取下げもされていない）の申請がある外国人のID一覧。
 // 外国人詳細の「在留更新の対応状況」が審査中になっていなくても、
 // 入管申請の記録から審査中と分かるようにする（請求書作成の期限切れ表示で使う）
