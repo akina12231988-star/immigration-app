@@ -24,9 +24,8 @@ describe("見積書に使う準備リストの選び方", () => {
     expect(pickEstimateChecklist([], "サンプル農園")).toBeNull();
   });
 
-  it("有限会社國崎青果は負担が未設定でも本人負担として選ぶ", () => {
-    const picked = pickEstimateChecklist([list("TODO-1", "", "2026-09-01")], "有限会社國崎青果");
-    expect(picked?.payer).toBe("本人負担");
+  it("有限会社國崎青果でも、1号に関わる申請以外で負担が未設定なら選ばない", () => {
+    expect(pickEstimateChecklist([list("TODO-1", "", "2026-09-01")], "有限会社國崎青果")).toBeNull();
   });
 
   it("リンク先", () => {

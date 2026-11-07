@@ -23,7 +23,7 @@ export function pickEstimateChecklist<T extends EstimateChecklistLike>(
 ): { checklist: T; payer: StampFeePayer } | null {
   const sorted = [...lists].sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""));
   for (const l of sorted) {
-    const payer = effectiveStampFeePayer(l.stamp_fee_payer, orgName, orgDefaultPayer);
+    const payer = effectiveStampFeePayer(l.stamp_fee_payer, orgName, orgDefaultPayer, l.app_content);
     if (payer) return { checklist: l, payer };
   }
   return null;

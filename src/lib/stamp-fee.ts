@@ -42,27 +42,65 @@ export function isKunisakiSeika(orgName: string | null | undefined): boolean {
   return !!key && key === orgKey(STAMP_FEE_SELF_PAY_ORG);
 }
 
-// 所属機関から決まる既定の負担。
-// 所属機関の情報（決算・売上 ＞ 申請種別ごとの売上明細 ＞ 収入印紙代）で選んだ負担があればそれ。
-// 無ければ有限会社國崎青果は本人負担、ほかは未設定
+// 申請準備の申請種別（準備の内容の保存値。worker-situation.ts）の区分。
+// 特定技能2号に関わる申請（2号への変更・2号の更新・2号移行準備の特定活動）と、
+// 特定技能1号に関わる申請（1号への変更・1号の更新・1号移行準備の特定活動とその更新）
+export const SSW2_STAMP_APP_CONTENTS = [
+  "特定技能2号申請準備中",
+  "特定技能2号更新の準備中",
+  "特定活動（特定技能２号移行準備のため）準備中",
+] as const;
+export const SSW1_STAMP_APP_CONTENTS = [
+  "特定技能申請準備中",
+  "特定技能更新の準備中",
+  "特定活動で申請準備中",
+  "特定活動ビザ更新の申請準備",
+] as const;
+export function isSsw2StampAppContent(appContent: string | null | undefined): boolean {
+  return (SSW2_STAMP_APP_CONTENTS as readonly string[]).includes((appContent ?? "").trim());
+}
+export function isSsw1StampAppContent(appContent: string | null | undefined): boolean {
+  return (SSW1_STAMP_APP_CONTENTS as readonly string[]).includes((appContent ?? "").trim());
+}
+
+// 申請種別と所属機関から自動で決まる負担（申請準備の詳細で未選択なら自動で保存する）。
+//  ・特定技能2号に関わる申請は本人負担
+//  ・特定技能1号に関わる申請で、所属機関が有限会社國崎青果なら会社立替（実質本人負担）
+// どちらでもなければ ''（所属機関の情報で選んだ負担 → 未設定）
+export function autoStampFeePayer(
+  appContent: string | null | undefined,
+  orgName: string | null | undefined,
+): StampFeePayer | "" {
+  if (isSsw2StampAppContent(appContent)) return "本人負担";
+  if (isSsw1StampAppContent(appContent) && isKunisakiSeika(orgName)) return "会社立替";
+  return "";
+}
+
+// 所属機関（と申請種別）から決まる既定の負担。
+// 申請種別で自動で決まる負担（autoStampFeePayer）→ 所属機関の情報（決算・売上 ＞ 収入印紙代）で選んだ負担 → 未設定。
+// 有限会社國崎青果でも、特定技能1号に関わる申請以外は自動では決めず、申請ごとに選ぶ
 export function defaultStampFeePayer(
   orgName: string | null | undefined,
   orgDefault?: string | null,
+  appContent?: string | null,
 ): StampFeePayer | "" {
+  const auto = autoStampFeePayer(appContent, orgName);
+  if (auto) return auto;
   const d = (orgDefault ?? "").trim();
   if (isStampFeePayer(d)) return d;
-  return isKunisakiSeika(orgName) ? "本人負担" : "";
+  return "";
 }
 
-// 保存されている値と所属機関から、画面に出す負担（未設定なら所属機関の既定）
+// 保存されている値と所属機関から、画面に出す負担（未設定なら申請種別・所属機関の既定）
 export function effectiveStampFeePayer(
   saved: string | null | undefined,
   orgName: string | null | undefined,
   orgDefault?: string | null,
+  appContent?: string | null,
 ): StampFeePayer | "" {
   const v = (saved ?? "").trim();
   if (isStampFeePayer(v)) return v;
-  return defaultStampFeePayer(orgName, orgDefault);
+  return defaultStampFeePayer(orgName, orgDefault, appContent);
 }
 
 // ---- 許可後の請求（請求書作成の当月許可者リスト）での収入印紙代の扱い ----

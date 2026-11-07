@@ -104,7 +104,7 @@ export default async function ApplicationPrepEstimatePage({
     );
   }
   const intake = normalizeOrganizationIntake(org.intake);
-  const payer = effectiveStampFeePayer(current.stamp_fee_payer, org.name, intake.stamp_fee_payer);
+  const payer = effectiveStampFeePayer(current.stamp_fee_payer, org.name, intake.stamp_fee_payer, current.app_content);
   if (!payer) {
     return guide(
       "収入印紙代の負担が未設定です",
