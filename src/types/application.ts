@@ -114,6 +114,7 @@ export interface Application {
   noticeImageUrl?: string; // （旧）通知書画像URL
   residenceCardImageUrl?: string; // （旧）在留カード画像URL
   approvalDate?: string; // 許可日（フロー用）
+  stampFeeAmount?: number | null; // 許可のときにかかった収入印紙代（円。0213。未入力は null）
   receiptScheduledOn?: string; // 受取予定日
   receiptReason?: string; // 受取理由
   grantedCardNo?: string; // 許可時 在留カード番号

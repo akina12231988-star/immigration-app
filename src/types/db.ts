@@ -842,6 +842,7 @@ export interface ImmigrationApplicationRow {
   notion_synced: boolean;
   approved: boolean;
   approval_date: string | null;
+  stamp_fee_amount?: number | null; // 許可のときにかかった収入印紙代（円。0213 未適用なら undefined）
   card_received_on: string | null;
   withdrawn_on: string | null;
   approval_reported: boolean;

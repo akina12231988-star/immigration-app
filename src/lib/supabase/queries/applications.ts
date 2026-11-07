@@ -46,6 +46,7 @@ function toApplication(row: RowWithRefs): Application {
     noticeImageUrl: row.notice_image_url ?? undefined,
     residenceCardImageUrl: row.residence_card_image_url ?? undefined,
     approvalDate: row.approval_date ?? undefined,
+    stampFeeAmount: row.stamp_fee_amount ?? null,
     receiptScheduledOn: row.receipt_scheduled_on ?? undefined,
     receiptReason: row.receipt_reason ?? undefined,
     grantedCardNo: row.granted_card_no ?? undefined,
@@ -83,6 +84,7 @@ function toRowPatch(patch: Partial<Application>): Record<string, unknown> {
   if (patch.notionSynced !== undefined) row.notion_synced = patch.notionSynced;
   if (patch.approved !== undefined) row.approved = patch.approved;
   if (patch.approvalDate !== undefined) row.approval_date = patch.approvalDate ?? null;
+  if ("stampFeeAmount" in patch) row.stamp_fee_amount = patch.stampFeeAmount ?? null;
   if (patch.method !== undefined) row.method = patch.method;
   if (patch.emailLink !== undefined) row.email_link = patch.emailLink;
   // オンライン申請の受付メールの内容（0205）。値を入れたときだけ送る

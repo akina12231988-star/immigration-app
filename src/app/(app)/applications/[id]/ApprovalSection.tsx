@@ -27,6 +27,9 @@ import {
 } from "@/lib/supabase/queries/memos";
 import { orientationBaseDate, orientationDate } from "@/lib/orientation";
 import { todayStr } from "@/lib/application-alerts";
+import { approvalStampFeeSuggestion } from "@/lib/estimate";
+import { dbErrorMessage } from "@/lib/errors";
+import { updateApplicationRow } from "@/lib/supabase/queries/applications";
 import {
   normalizeOrgEmploymentStarts,
   upsertOrgEmploymentStart,
@@ -177,6 +180,40 @@ export function ApprovalSection({
   // 許可日から期限日までの長さ（更新許可で在留期間と一致しないことがあるので別に出す）
   const spanText = periodLengthText(form.grantedPermitDate, form.grantedExpiryDate);
   const periodValue = grantResidencePeriod || autoPeriod || "";
+
+  // ---- 印紙代（許可のときにかかった収入印紙代の金額） ----
+  const [stampFee, setStampFee] = useState(app.stampFeeAmount != null ? String(app.stampFeeAmount) : "");
+  const [stampSaving, setStampSaving] = useState(false);
+  const [stampSaved, setStampSaved] = useState(false);
+  const [stampError, setStampError] = useState<string | null>(null);
+  const stampSuggestion = approvalStampFeeSuggestion({
+    content: app.applicationContent,
+    method: app.method,
+    receivedOn: app.onlineReceivedOn || app.applicationDate,
+    period: periodValue || null,
+  });
+  const stampFeeTrimmed = stampFee.replace(/[,，円\s]/g, "");
+  const stampFeeValid = stampFeeTrimmed === "" || /^\d+$/.test(stampFeeTrimmed);
+  const stampFeeDirty = (stampFeeTrimmed === "" ? null : Number(stampFeeTrimmed)) !== (app.stampFeeAmount ?? null);
+  async function saveStampFee(value: string) {
+    const v = value.replace(/[,，円\s]/g, "");
+    if (v !== "" && !/^\d+$/.test(v)) return;
+    setStampSaving(true);
+    setStampError(null);
+    try {
+      const patch = { stampFeeAmount: v === "" ? null : Number(v) };
+      // 申請ストアの更新はエラーを外に出さないので、先にDBへ直接書いて失敗（0213 未適用など）を拾う
+      await updateApplicationRow(createClient(), app.id, patch);
+      await updateApplication(app.id, patch);
+      setStampFee(v);
+      setStampSaved(true);
+      setTimeout(() => setStampSaved(false), 2000);
+    } catch (err) {
+      setStampError(dbErrorMessage(err, "0213_application_stamp_fee_amount.sql", "印紙代の保存に失敗しました"));
+    } finally {
+      setStampSaving(false);
+    }
+  }
   // 自動で決められないときに、押すだけで入れられる候補（近い順）
   const periodChoices = autoPeriod
     ? []
@@ -501,6 +538,65 @@ export function ApprovalSection({
               {error}
             </p>
           )}
+
+          {/* 印紙代（許可通知ありのすぐ下。未入力なら目立たせる） */}
+          <div
+            className={`rounded-xl border p-3 ${
+              app.stampFeeAmount == null ? "border-seal/50 bg-seal/5" : "border-border"
+            }`}
+          >
+            <p className="mb-1 text-sm font-bold">
+              印紙代（収入印紙・手数料）
+              {app.stampFeeAmount == null ? (
+                <span className="ml-2 text-xs font-medium text-seal">未入力</span>
+              ) : (
+                <span className="ml-2 text-xs font-medium text-muted">
+                  保存済み: {app.stampFeeAmount.toLocaleString()}円
+                </span>
+              )}
+            </p>
+            <p className="mb-2 text-xs text-muted">許可のときに実際にかかった印紙代の金額を入れてください。</p>
+            <div className="flex items-center gap-2">
+              <input
+                inputMode="numeric"
+                value={stampFee}
+                onChange={(e) => setStampFee(e.target.value)}
+                placeholder="例: 6000"
+                className={`${INPUT_CLASS} max-w-[200px]`}
+                aria-label="印紙代（円）"
+              />
+              <span className="text-sm">円</span>
+              <Button
+                variant="secondary"
+                onClick={() => void saveStampFee(stampFee)}
+                disabled={stampSaving || !stampFeeValid || !stampFeeDirty}
+              >
+                {stampSaving ? "保存中…" : stampSaved ? "保存しました" : "保存"}
+              </Button>
+            </div>
+            {!stampFeeValid && <p className="mt-1 text-xs text-seal">数字だけで入れてください（例: 6000）</p>}
+            {stampSuggestion && (
+              <p className="mt-2 text-xs text-muted">
+                目安: <span className="font-bold text-foreground">{stampSuggestion.amount.toLocaleString()}円</span>
+                （{stampSuggestion.label}）
+                {String(stampSuggestion.amount) !== stampFeeTrimmed && (
+                  <button
+                    type="button"
+                    className="ml-2 font-bold text-brand underline"
+                    onClick={() => void saveStampFee(String(stampSuggestion.amount))}
+                    disabled={stampSaving}
+                  >
+                    この金額で保存
+                  </button>
+                )}
+              </p>
+            )}
+            {stampError && (
+              <p role="alert" className="mt-1 text-xs text-seal">
+                {stampError}
+              </p>
+            )}
+          </div>
 
           {/* 受取予定日（メモの前に配置） */}
           <Labeled label="受取予定日">
