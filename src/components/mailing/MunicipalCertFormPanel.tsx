@@ -13,6 +13,50 @@ import { MUNICIPAL_FORM_DOCS, normalizeMunicipalFormLayout, type MunicipalFormDo
 import type { Municipality } from "@/lib/tax-cert";
 import { MunicipalFormLayoutEditor } from "./MunicipalFormLayoutEditor";
 
+// 自治体の追加のときに選んでおく申請書・委任状のPDF
+export type MunicipalFormFiles = Partial<Record<MunicipalFormDoc, File | null>>;
+
+// 追加した自治体に、選んでおいたPDFをアップロードする。失敗したものはメッセージにまとめて返す
+export async function uploadMunicipalFormFiles(
+  municipality: Municipality,
+  files: MunicipalFormFiles,
+): Promise<{ municipality: Municipality; uploaded: number; errors: string[] }> {
+  let m = municipality;
+  let uploaded = 0;
+  const errors: string[] = [];
+  for (const doc of ["cert", "proxy"] as const) {
+    const f = files[doc];
+    if (!f) continue;
+    try {
+      m = await uploadMunicipalFormPdf(m, doc, f);
+      uploaded += 1;
+    } catch (err) {
+      errors.push(`${MUNICIPAL_FORM_DOCS[doc].label}: ${err instanceof Error ? err.message : "アップロードに失敗しました"}`);
+    }
+  }
+  return { municipality: m, uploaded, errors };
+}
+
+// 申請書・委任状のPDFを自治体マスタにアップロードする（自治体の追加のあとにも使う）。
+// 保存した列（保存先・ファイル名）を返す
+export async function uploadMunicipalFormPdf(
+  municipality: Municipality,
+  doc: MunicipalFormDoc,
+  file: File,
+): Promise<Municipality> {
+  if (file.type !== "application/pdf") throw new Error("PDFを選んでください");
+  const cols = MUNICIPAL_FORM_DOCS[doc];
+  const ticket = await createMunicipalFormTicket(municipality.id, file.type, doc);
+  if (!ticket.ok) throw new Error(ticket.message);
+  const { error: upErr } = await createClient()
+    .storage.from("app-files")
+    .uploadToSignedUrl(ticket.path, ticket.token, file, { contentType: file.type });
+  if (upErr) throw new Error(`アップロードに失敗しました: ${upErr.message}`);
+  const res = await registerMunicipalFormPdf(municipality.id, ticket.path, file.name, doc);
+  if (!res.ok) throw new Error(res.message);
+  return { ...municipality, [cols.pathCol]: ticket.path, [cols.nameCol]: file.name };
+}
+
 // 自治体の課税・納税証明書の申請書PDF（自治体マスタ）。
 // PDFをアップロードして「記入位置」を一度置いておくと、外国人を選んだときに
 // 氏名・フリガナ・生年月日・住所などを書き込んだ申請書をダウンロードできる。
@@ -50,22 +94,10 @@ export function MunicipalCertFormPanel({
     : "";
 
   async function upload(file: File) {
-    if (file.type !== "application/pdf") {
-      setError("PDFを選んでください");
-      return;
-    }
     setBusy(true);
     setError(null);
     try {
-      const ticket = await createMunicipalFormTicket(m.id, file.type, doc);
-      if (!ticket.ok) throw new Error(ticket.message);
-      const { error: upErr } = await createClient()
-        .storage.from("app-files")
-        .uploadToSignedUrl(ticket.path, ticket.token, file, { contentType: file.type });
-      if (upErr) throw new Error(`アップロードに失敗しました: ${upErr.message}`);
-      const res = await registerMunicipalFormPdf(m.id, ticket.path, file.name, doc);
-      if (!res.ok) throw new Error(res.message);
-      onChanged?.({ ...m, [cols.pathCol]: ticket.path, [cols.nameCol]: file.name });
+      onChanged?.(await uploadMunicipalFormPdf(m, doc, file));
       // はじめてのPDFなら、そのまま記入位置の画面を開く
       if (layoutCount === 0) setEditing(true);
     } catch (err) {

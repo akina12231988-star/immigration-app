@@ -65,6 +65,7 @@ import {
 import { MailingFileAttachments } from "./MailingFileAttachments";
 import { MailingRecordAttachments } from "@/components/mailing/MailingRecordAttachments";
 import { MunicipalityFormLink } from "@/components/mailing/MunicipalityFormLink";
+import { uploadMunicipalFormFiles, type MunicipalFormFiles } from "@/components/mailing/MunicipalCertFormPanel";
 import { PersonCopyPanel } from "@/components/mailing/PersonCopyPanel";
 import { NenkinEditModal, NenkinRecordView, NenkinRequestForm } from "./NenkinRequestForm";
 import { ProgressBadge, mailingDestination, mailingPostDate } from "@/components/mailing/MailingRecordSummary";
@@ -623,14 +624,20 @@ function CityOfficeSelect({
   const [addOpen, setAddOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const create = async (form: MunicipalityInput) => {
+  const create = async (form: MunicipalityInput, files: MunicipalFormFiles = {}) => {
     setBusy(true);
     try {
-      const created = await insertMunicipality(createClient(), form);
+      const inserted = await insertMunicipality(createClient(), form);
+      const up = await uploadMunicipalFormFiles(inserted, files);
+      const created = up.municipality;
       onCreated(created);
       onChange(created.id);
       setAddOpen(false);
-      showToast(`自治体マスタに「${created.name}」を追加しました`);
+      showToast(
+        up.errors.length
+          ? `自治体マスタに「${created.name}」を追加しました（PDFのアップロードに失敗: ${up.errors.join("／")}）`
+          : `自治体マスタに「${created.name}」を追加しました${up.uploaded ? `（PDF ${up.uploaded}件を登録）` : ""}`,
+      );
     } catch (e) {
       showToast("自治体の追加に失敗しました: " + (e instanceof Error ? e.message : String(e)));
     } finally {
@@ -666,7 +673,7 @@ function CityOfficeSelect({
           initial={null}
           busy={busy}
           onClose={() => setAddOpen(false)}
-          onSave={(form) => void create(form)}
+          onSave={(form, files) => void create(form, files)}
         />
       )}
     </div>
@@ -1129,20 +1136,33 @@ function MunicipalityTab({
   const [deleteTarget, setDeleteTarget] = useState<Municipality | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const save = async (form: MunicipalityInput) => {
+  const save = async (form: MunicipalityInput, files: MunicipalFormFiles = {}) => {
     setBusy(true);
     try {
       if (editing) {
         const updated = await updateMunicipality(createClient(), editing.id, form);
-        setMunicipalities(municipalities.map((m) => (m.id === editing.id ? updated : m)));
+        // 申請書・委任状のPDF・記入位置はこの画面で別に保存しているので、そのまま残す
+        const merged = { ...editing, ...updated };
+        setMunicipalities(municipalities.map((m) => (m.id === editing.id ? merged : m)));
         showToast("自治体情報を更新しました");
+        setModalOpen(false);
+        setEditing(null);
       } else {
-        const created = await insertMunicipality(createClient(), form);
+        const inserted = await insertMunicipality(createClient(), form);
+        const up = await uploadMunicipalFormFiles(inserted, files);
+        const created = up.municipality;
         setMunicipalities([...municipalities, created].sort((a, b) => a.name.localeCompare(b.name, "ja")));
-        showToast("自治体を追加しました");
+        if (up.uploaded > 0) {
+          // PDFを登録したら、そのまま編集の画面にして記入位置を置けるようにする
+          setEditing(created);
+          showToast(`自治体を追加し、PDF ${up.uploaded}件を登録しました。続けて「記入位置を置く」で位置を置いてください`);
+        } else {
+          setModalOpen(false);
+          setEditing(null);
+          showToast("自治体を追加しました");
+        }
+        if (up.errors.length) showToast(`PDFのアップロードに失敗: ${up.errors.join("／")}`);
       }
-      setModalOpen(false);
-      setEditing(null);
     } catch (e) {
       showToast(dbErrorMessage(e, "0145_municipality_prefecture.sql", "保存に失敗しました"));
     } finally {

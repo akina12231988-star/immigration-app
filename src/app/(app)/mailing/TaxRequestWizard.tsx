@@ -38,7 +38,11 @@ import {
 } from "@/lib/tax-request-plan";
 import { MailingRecordAttachments } from "@/components/mailing/MailingRecordAttachments";
 import { MunicipalityFormLink } from "@/components/mailing/MunicipalityFormLink";
-import { MunicipalCertFormPanel } from "@/components/mailing/MunicipalCertFormPanel";
+import {
+  MunicipalCertFormPanel,
+  uploadMunicipalFormFiles,
+  type MunicipalFormFiles,
+} from "@/components/mailing/MunicipalCertFormPanel";
 import { nhiInOtherMunicipality, splitNhiRecord } from "@/lib/mailing-split";
 import { PersonCopyPanel } from "@/components/mailing/PersonCopyPanel";
 import { MoneyOrderFields } from "./MoneyOrderFields";
@@ -178,11 +182,14 @@ function WizardBody({
     if (slot === "new" || slot === "prev") setMuniIds((m) => ({ ...m, [slot]: id }));
     else setNhiMuniIds((m) => ({ ...m, [slot === "nhi-new" ? "new" : "prev"]: id }));
   };
-  const createMunicipality = async (form: MunicipalityInput) => {
+  const createMunicipality = async (form: MunicipalityInput, files: MunicipalFormFiles = {}) => {
     if (!addFor) return;
     setAddBusy(true);
     try {
-      const created = await insertMunicipality(createClient(), form);
+      const inserted = await insertMunicipality(createClient(), form);
+      const up = await uploadMunicipalFormFiles(inserted, files);
+      if (up.errors.length) showToast(`PDFのアップロードに失敗: ${up.errors.join("／")}`);
+      const created = up.municipality;
       setMunicipalities([...municipalities, created].sort((a, b) => a.name.localeCompare(b.name, "ja")));
       pickSlot(addFor.slot, created.id);
       setAddFor(null);
@@ -759,7 +766,7 @@ function WizardBody({
           initialName={addFor.name}
           busy={addBusy}
           onClose={() => setAddFor(null)}
-          onSave={(form) => void createMunicipality(form)}
+          onSave={(form, files) => void createMunicipality(form, files)}
         />
       )}
     </div>
