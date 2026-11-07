@@ -96,8 +96,57 @@ export function MunicipalFormLayoutEditor({
   }, [municipalityId, doc]);
 
   const selected = items.find((i) => i.id === selectedId) ?? null;
+  // 元に戻す（置く・消す・項目を変える・動かす前の状態を積む）
+  const [history, setHistory] = useState<MunicipalFormItem[][]>([]);
+  const remember = () => setHistory((h) => [...h.slice(-49), items]);
+  const undo = () => {
+    if (history.length === 0) return;
+    setItems(history[history.length - 1]);
+    setHistory(history.slice(0, -1));
+    setSelectedId(null);
+  };
   const update = (id: string, patch: Partial<MunicipalFormItem>) =>
     setItems((list) => list.map((i) => (i.id === id ? { ...i, ...patch } : i)));
+  const remove = (id: string) => {
+    remember();
+    setItems((list) => list.filter((i) => i.id !== id));
+    setSelectedId((cur) => (cur === id ? null : cur));
+  };
+  const changeKind = (id: string, k: MunicipalFormFieldKind) => {
+    remember();
+    update(id, { kind: k, ...(k === "text" ? { text: "在留資格の手続きのため" } : {}), ...(DEFAULT_SIZE[k] ? { size: DEFAULT_SIZE[k] } : {}) });
+  };
+
+  // Delete・Backspace で選んだ項目を消す、矢印で1ptずつ動かす、Esc で選ぶのをやめる（文字の入力中は除く）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        undo();
+        return;
+      }
+      if (!selectedId) return;
+      const cur = items.find((i) => i.id === selectedId);
+      if (!cur) return;
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        remove(selectedId);
+      } else if (e.key === "Escape") {
+        setSelectedId(null);
+      } else if (e.key.startsWith("Arrow")) {
+        e.preventDefault();
+        const d = e.shiftKey ? 5 : 1;
+        if (e.key === "ArrowLeft") update(cur.id, { x: cur.x - d });
+        if (e.key === "ArrowRight") update(cur.id, { x: cur.x + d });
+        if (e.key === "ArrowUp") update(cur.id, { y: Math.max(0, cur.y - d) });
+        if (e.key === "ArrowDown") update(cur.id, { y: cur.y + d });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   function addAt(page: number, e: React.MouseEvent<HTMLDivElement>) {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -116,6 +165,7 @@ export function MunicipalFormLayoutEditor({
       size,
       text: kind === "text" ? "在留資格の手続きのため" : undefined,
     };
+    remember();
     setItems((list) => [...list, item]);
     setSelectedId(id);
   }
@@ -153,6 +203,15 @@ export function MunicipalFormLayoutEditor({
         </p>
         <button
           type="button"
+          disabled={history.length === 0}
+          onClick={undo}
+          className="min-h-[36px] rounded-lg border border-white/60 px-3 text-xs font-bold disabled:opacity-40"
+          title="ひとつ前に戻す（Ctrl+Z / ⌘+Z）"
+        >
+          ↶ 元に戻す
+        </button>
+        <button
+          type="button"
           disabled={busy}
           onClick={() => void save()}
           className="min-h-[36px] rounded-lg bg-white px-3 text-xs font-bold text-brand disabled:opacity-60"
@@ -178,29 +237,32 @@ export function MunicipalFormLayoutEditor({
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* 項目を選ぶ・選んだ項目を直す */}
         <div className="max-h-[40vh] shrink-0 overflow-y-auto border-b border-border bg-surface p-3 text-xs lg:max-h-none lg:w-72 lg:border-b-0 lg:border-r">
-          <p className="mb-1 font-bold">① 置く項目を選ぶ → ② PDFの書く場所をクリック</p>
-          <div className="grid grid-cols-2 gap-1 lg:grid-cols-1">
-            {MUNICIPAL_FORM_FIELDS.map((f) => (
-              <button
-                key={f.kind}
-                type="button"
-                onClick={() => setKind(f.kind)}
-                className={`min-h-[34px] rounded-lg border px-2 text-left text-xs font-bold ${
-                  kind === f.kind ? "border-brand bg-brand text-brand-foreground" : "border-border bg-background"
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-          <p className="mt-2 text-[11px] text-muted">
-            置いた文字はドラッグで動かせます。押すと下で大きさを変えたり消したりできます。
-            {savedAt && <span className="ml-1 font-bold text-status-approved-fg">{savedAt} に保存しました</span>}
-          </p>
-          {error && <p className="mt-1 rounded bg-seal/10 p-1.5 text-seal">{error}</p>}
           {selected && (
-            <div className="mt-3 space-y-1.5 rounded-lg border border-brand/40 bg-background p-2">
-              <p className="font-bold">選んでいる項目: {MUNICIPAL_FORM_FIELD_LABEL[selected.kind]}</p>
+            <div className="sticky top-0 z-10 mb-3 space-y-1.5 rounded-lg border-2 border-brand bg-background p-2 shadow">
+              <div className="flex items-center gap-1">
+                <p className="flex-1 font-bold">選んでいる項目</p>
+                <button
+                  type="button"
+                  onClick={() => remove(selected.id)}
+                  className="rounded border border-seal bg-seal px-2 py-1 font-bold text-white"
+                >
+                  × 消す
+                </button>
+              </div>
+              <label className="flex flex-col gap-0.5">
+                項目（間違えたらここで変える）
+                <select
+                  value={selected.kind}
+                  onChange={(e) => changeKind(selected.id, e.target.value as MunicipalFormFieldKind)}
+                  className="min-h-[34px] rounded border border-border bg-background px-1"
+                >
+                  {MUNICIPAL_FORM_FIELDS.map((f) => (
+                    <option key={f.kind} value={f.kind}>
+                      {f.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
               {selected.kind === "text" && (
                 <label className="flex flex-col gap-0.5">
                   書く文字
@@ -237,25 +299,40 @@ export function MunicipalFormLayoutEditor({
                   <span className="text-muted">pt</span>
                 </label>
               )}
-              <p className="text-[10px] text-muted">「最大の幅」を入れると、長い住所などは枠に収まるよう小さくします（A4の横幅は約595pt）。</p>
               <div className="flex gap-1">
                 <button type="button" className="rounded border border-border px-2 py-1" onClick={() => update(selected.id, { x: selected.x - 1 })}>←</button>
                 <button type="button" className="rounded border border-border px-2 py-1" onClick={() => update(selected.id, { x: selected.x + 1 })}>→</button>
-                <button type="button" className="rounded border border-border px-2 py-1" onClick={() => update(selected.id, { y: selected.y - 1 })}>↑</button>
+                <button type="button" className="rounded border border-border px-2 py-1" onClick={() => update(selected.id, { y: Math.max(0, selected.y - 1) })}>↑</button>
                 <button type="button" className="rounded border border-border px-2 py-1" onClick={() => update(selected.id, { y: selected.y + 1 })}>↓</button>
-                <button
-                  type="button"
-                  className="ml-auto rounded border border-seal px-2 py-1 font-bold text-seal"
-                  onClick={() => {
-                    setItems((list) => list.filter((i) => i.id !== selected.id));
-                    setSelectedId(null);
-                  }}
-                >
-                  消す
+                <button type="button" className="ml-auto px-1 text-muted" onClick={() => setSelectedId(null)}>
+                  選ぶのをやめる
                 </button>
               </div>
+              <p className="text-[10px] text-muted">
+                Delete キーでも消せます。矢印キーで1pt（Shift で5pt）ずつ動きます。「最大の幅」を入れると、長い住所などは枠に収まるよう小さくします。
+              </p>
             </div>
           )}
+          <p className="mb-1 font-bold">① 置く項目を選ぶ → ② PDFの書く場所をクリック</p>
+          <div className="grid grid-cols-2 gap-1 lg:grid-cols-1">
+            {MUNICIPAL_FORM_FIELDS.map((f) => (
+              <button
+                key={f.kind}
+                type="button"
+                onClick={() => setKind(f.kind)}
+                className={`min-h-[34px] rounded-lg border px-2 text-left text-xs font-bold ${
+                  kind === f.kind ? "border-brand bg-brand text-brand-foreground" : "border-border bg-background"
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-muted">
+            置いた文字はドラッグで動かせます。押すと上に「選んでいる項目」が出て、項目を変えたり消したりできます。
+            {savedAt && <span className="ml-1 font-bold text-status-approved-fg">{savedAt} に保存しました</span>}
+          </p>
+          {error && <p className="mt-1 rounded bg-seal/10 p-1.5 text-seal">{error}</p>}
           <div className="mt-3 flex items-center gap-1">
             <span>表示の大きさ</span>
             <button type="button" className="rounded border border-border px-2" onClick={() => setScale((s) => Math.max(0.6, s - 0.1))}>
@@ -265,7 +342,34 @@ export function MunicipalFormLayoutEditor({
               ＋
             </button>
           </div>
-          <p className="mt-2 text-[11px] text-muted">置いた項目: {items.length}件</p>
+          {/* 置いた項目の一覧（押すと選ぶ・×で消す） */}
+          <p className="mt-3 font-bold">置いた項目（{items.length}件）</p>
+          {items.length === 0 ? (
+            <p className="text-[11px] text-muted">まだありません</p>
+          ) : (
+            <ul className="mt-1 space-y-0.5">
+              {items.map((it) => (
+                <li
+                  key={it.id}
+                  className={`flex items-center gap-1 rounded px-1 py-0.5 ${it.id === selectedId ? "bg-brand/10 font-bold" : ""}`}
+                >
+                  <button type="button" onClick={() => setSelectedId(it.id)} className="min-w-0 flex-1 truncate text-left">
+                    {MUNICIPAL_FORM_FIELD_LABEL[it.kind]}
+                    {it.kind === "text" && it.text ? `「${it.text}」` : ""}
+                    {(pages?.length ?? 0) > 1 && <span className="ml-1 text-muted">{it.page + 1}枚目</span>}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => remove(it.id)}
+                    className="shrink-0 rounded px-1.5 font-bold text-seal hover:bg-seal/10"
+                    aria-label={`${MUNICIPAL_FORM_FIELD_LABEL[it.kind]}を消す`}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         {/* PDF */}
@@ -302,7 +406,8 @@ export function MunicipalFormLayoutEditor({
                         top: it.y * scale,
                         fontSize: it.size * scale,
                         ...(isCircle(it.kind) ? { width: it.size * scale, height: it.size * scale } : {}),
-                        ...(it.maxWidth ? { maxWidth: it.maxWidth * scale, overflow: "hidden" } : {}),
+                        // 選んでいるときは上の操作が隠れないよう、はみ出しを切らない
+                        ...(it.maxWidth ? { maxWidth: it.maxWidth * scale, ...(isSel ? {} : { overflow: "hidden" }) } : {}),
                       }}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -310,6 +415,7 @@ export function MunicipalFormLayoutEditor({
                       }}
                       onPointerDown={(e) => {
                         e.stopPropagation();
+                        remember();
                         setSelectedId(it.id);
                         const rect = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
                         drag.current = {
@@ -321,6 +427,27 @@ export function MunicipalFormLayoutEditor({
                       }}
                     >
                       {isCircle(it.kind) ? "" : label}
+                      {/* 選んでいる項目の上に出す小さな操作（項目名・消す） */}
+                      {isSel && (
+                        <span
+                          className="absolute bottom-full left-0 mb-1 flex items-center gap-1 whitespace-nowrap rounded-md bg-brand px-1.5 py-0.5 text-[11px] font-bold leading-normal text-brand-foreground shadow"
+                          style={{ fontSize: 11 }}
+                          onPointerDown={(e) => e.stopPropagation()}
+                        >
+                          {MUNICIPAL_FORM_FIELD_LABEL[it.kind]}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              remove(it.id);
+                            }}
+                            className="rounded bg-seal px-1.5 text-white"
+                            aria-label="この項目を消す"
+                          >
+                            × 消す
+                          </button>
+                        </span>
+                      )}
                     </div>
                   );
                 })}
