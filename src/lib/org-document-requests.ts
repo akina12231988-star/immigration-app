@@ -198,10 +198,10 @@ export function isAllDone(idx: Map<string, DocumentRequestCheck>, workerId: stri
   return !!idx.get(checkKey(workerId, ALL_DONE_ITEM_ID))?.issued_on;
 }
 
-// 「年末調整」のチェック（その人の年末調整ができた）。「全て作成」と同じく特別な item_id の行で持つ
+// 「翌年確定申告が必要な人」のチェック（画面の呼び名。もとは「年末調整」）。「全て作成」と同じく特別な item_id の行で持つ
 export const YEAR_END_ITEM_ID = "__year_end_done__";
 
-// その人に「年末調整」のチェックが付いているか
+// その人に「翌年確定申告が必要な人」のチェックが付いているか
 export function isYearEndDone(idx: Map<string, DocumentRequestCheck>, workerId: string): boolean {
   return !!idx.get(checkKey(workerId, YEAR_END_ITEM_ID))?.issued_on;
 }
