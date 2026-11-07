@@ -60,6 +60,16 @@ export default async function OrganizationsPage() {
           </span>
         </Link>
         <Link
+          href="/organizations/sales-items"
+          className="flex min-h-[56px] items-center gap-3 rounded-xl border-2 border-brand bg-surface px-4 text-sm font-bold text-brand hover:bg-brand/5"
+        >
+          <BadgeJapaneseYen size={22} className="shrink-0" />
+          <span>
+            売上明細の登録状況
+            <span className="block text-[11px] font-normal text-muted">申請種別ごとの売上明細・印紙代の負担が未登録の機関</span>
+          </span>
+        </Link>
+        <Link
           href="/organizations/address-labels"
           className="flex min-h-[56px] items-center gap-3 rounded-xl border-2 border-brand bg-surface px-4 text-sm font-bold text-brand hover:bg-brand/5"
         >
