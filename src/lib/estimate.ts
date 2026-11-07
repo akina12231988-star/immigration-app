@@ -376,3 +376,24 @@ export function estimateDateText(ymd: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
   return m ? `${Number(m[1])}年${Number(m[2])}月${Number(m[3])}日` : ymd;
 }
+
+// 許可のときの収入印紙代の目安（申請詳細で実際の金額を入れるときの初期値に使う）。
+//  ・在留資格認定証明書の交付申請は手数料なし（0円）
+//  ・許可された在留期間（在留許可日〜在留期限日、または注意事項の期間）と申請方法（窓口／オンライン）で改定後の表から引く
+//  ・改定日（2026年10月1日）より前の受付は改定前の一律の金額
+// 期間が分からないときは null（手で入れてもらう）
+export function approvalStampFeeSuggestion(p: {
+  content: string; // 申請内容（認定は手数料なし）
+  method: string; // 窓口 / オンライン
+  receivedOn: string; // 申請日（受付日）
+  period: string | null; // 許可された在留期間（例: 1年 / 6月）
+}): { amount: number; label: string } | null {
+  if (/認定/.test(p.content)) return { amount: 0, label: "在留資格認定証明書の交付申請は手数料なし" };
+  const method: StampFeeMethod = p.method === "オンライン" ? "オンライン" : "窓口";
+  const revised = !p.receivedOn || p.receivedOn >= STAMP_FEE_REVISION_DATE;
+  if (!revised) return { amount: stampFeeAmount("", method, false), label: `${method}・改定前（${STAMP_FEE_REVISION_DATE}より前の受付）` };
+  const key = stampFeeBandKeyOfPeriod(p.period);
+  if (!key) return null;
+  return { amount: stampFeeAmount(key, method, true), label: `${method}・許可期間 ${p.period}（${key}）` };
+}
+

@@ -243,3 +243,14 @@ describe("見積書の組み立て", () => {
     expect(e.invalidAmounts).toEqual(["申請取次費用"]);
   });
 });
+
+describe("許可のときの収入印紙代の目安", () => {
+  it("在留期間と申請方法から改定後の金額。認定は0円、改定前の受付は一律", async () => {
+    const { approvalStampFeeSuggestion } = await import("./estimate");
+    expect(approvalStampFeeSuggestion({ content: "在留資格の変更許可（特定技能）", method: "オンライン", receivedOn: "2026-10-05", period: "1年" })?.amount).toBe(27000);
+    expect(approvalStampFeeSuggestion({ content: "在留期間の更新許可", method: "窓口", receivedOn: "2026-10-05", period: "6月" })?.amount).toBe(18000);
+    expect(approvalStampFeeSuggestion({ content: "在留認定許可申請", method: "オンライン", receivedOn: "2026-10-05", period: null })?.amount).toBe(0);
+    expect(approvalStampFeeSuggestion({ content: "在留期間の更新許可", method: "オンライン", receivedOn: "2026-09-20", period: null })?.amount).toBe(5500);
+    expect(approvalStampFeeSuggestion({ content: "在留期間の更新許可", method: "オンライン", receivedOn: "2026-10-05", period: null })).toBeNull();
+  });
+});
