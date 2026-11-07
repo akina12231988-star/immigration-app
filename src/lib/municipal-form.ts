@@ -20,6 +20,8 @@ export type MunicipalFormFieldKind =
   | "year_address"
   | "fiscal_year"
   | "income_year"
+  | "fiscal_year_num"
+  | "income_year_num"
   | "today"
   | "text"
   | "check"
@@ -36,6 +38,8 @@ export const MUNICIPAL_FORM_FIELDS: { kind: MunicipalFormFieldKind; label: strin
   { kind: "year_address", label: "その年度の1月1日の住所", sample: "熊本県八代市本町1-1-1" },
   { kind: "fiscal_year", label: "年度（令和○年度）", sample: "令和8年度" },
   { kind: "income_year", label: "所得の年（令和○年中）", sample: "令和7年中" },
+  { kind: "fiscal_year_num", label: "年度の数字だけ（「令和　年度」の空欄用）", sample: "8" },
+  { kind: "income_year_num", label: "所得の年の数字だけ（「令和　年中」の空欄用）", sample: "7" },
   { kind: "today", label: "請求日（今日）", sample: "令和8年11月7日" },
   { kind: "text", label: "自由な文字（毎回同じ）", sample: "在留資格の手続きのため" },
   { kind: "check", label: "✓ チェック", sample: "✓" },
@@ -122,6 +126,10 @@ export function municipalFormValue(item: Pick<MunicipalFormItem, "kind" | "text"
       return p.fiscalYear ? `${reiwa(p.fiscalYear)}年度` : "";
     case "income_year":
       return p.fiscalYear ? `${reiwa(p.fiscalYear - 1)}年中` : "";
+    case "fiscal_year_num":
+      return p.fiscalYear ? String(p.fiscalYear - 2018) : "";
+    case "income_year_num":
+      return p.fiscalYear ? String(p.fiscalYear - 2019) : "";
     case "today":
       return warekiDate(p.today);
     case "text":

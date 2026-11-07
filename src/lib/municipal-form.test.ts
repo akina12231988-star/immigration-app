@@ -29,6 +29,8 @@ describe("municipalFormValue", () => {
     expect(municipalFormValue({ kind: "postal" }, person)).toBe("〒866-0021");
     expect(municipalFormValue({ kind: "fiscal_year" }, person)).toBe("令和8年度");
     expect(municipalFormValue({ kind: "income_year" }, person)).toBe("令和7年中");
+    expect(municipalFormValue({ kind: "fiscal_year_num" }, person)).toBe("8");
+    expect(municipalFormValue({ kind: "income_year_num" }, person)).toBe("7");
     expect(municipalFormValue({ kind: "year_address" }, person)).toBe("熊本県八代市本町1-1-1");
     expect(municipalFormValue({ kind: "year_address" }, { ...person, yearAddress: "" })).toBe(person.address);
     expect(municipalFormValue({ kind: "text", text: "入管手続き" }, person)).toBe("入管手続き");
