@@ -3,6 +3,7 @@ import path from "node:path";
 import { PDFDocument } from "pdf-lib";
 import { describe, expect, it } from "vitest";
 import {
+  addressAfterCity,
   fillMunicipalForm,
   guessAcroFieldKind,
   municipalFormValue,
@@ -35,6 +36,21 @@ describe("municipalFormValue", () => {
     expect(municipalFormValue({ kind: "year_address" }, { ...person, yearAddress: "" })).toBe(person.address);
     expect(municipalFormValue({ kind: "text", text: "入管手続き" }, person)).toBe("入管手続き");
     expect(municipalFormValue({ kind: "check" }, person)).toBe("");
+    expect(municipalFormValue({ kind: "birth_era" }, person)).toBe("平成");
+    expect(municipalFormValue({ kind: "birth_y" }, person)).toBe("7");
+    expect(municipalFormValue({ kind: "birth_m" }, person)).toBe("3");
+    expect(municipalFormValue({ kind: "today_y" }, person)).toBe("8");
+    expect(municipalFormValue({ kind: "today_m" }, person)).toBe("11");
+    expect(municipalFormValue({ kind: "today_d" }, person)).toBe("7");
+  });
+});
+
+describe("addressAfterCity", () => {
+  it("都道府県と市区町村を取り除く", () => {
+    expect(addressAfterCity("熊本県八代市郡築四番町102-7")).toBe("郡築四番町102-7");
+    expect(addressAfterCity("熊本県八代郡氷川町島地1-2")).toBe("島地1-2");
+    expect(addressAfterCity("八代市本町1-1-1")).toBe("本町1-1-1");
+    expect(addressAfterCity("東京都新宿区西新宿2-8-1")).toBe("西新宿2-8-1");
   });
 });
 

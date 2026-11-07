@@ -22,6 +22,9 @@ function municipalityPayload(input: Partial<MunicipalityInput>): Partial<Municip
   delete out.cert_form_pdf_path;
   delete out.cert_form_pdf_name;
   delete out.cert_form_layout;
+  delete out.proxy_form_pdf_path;
+  delete out.proxy_form_pdf_name;
+  delete out.proxy_form_layout;
   return out;
 }
 
@@ -29,7 +32,7 @@ function municipalityPayload(input: Partial<MunicipalityInput>): Partial<Municip
 export async function updateMunicipalityCertForm(
   supabase: SupabaseClient,
   id: string,
-  patch: { cert_form_pdf_path?: string; cert_form_pdf_name?: string; cert_form_layout?: unknown },
+  patch: Record<string, unknown>, // cert_form_* / proxy_form_* の列だけ
 ): Promise<void> {
   const { error } = await supabase.from("municipalities").update(patch).eq("id", id);
   if (error) throw error;

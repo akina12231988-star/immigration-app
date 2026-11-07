@@ -427,13 +427,17 @@ function WizardBody({
                         onSaved={(m) => setMunicipalities(municipalities.map((x) => (x.id === m.id ? m : x)))}
                       />
                       {/* 申請書PDF（自治体マスタ）に本人の情報を書き込んでダウンロード。未登録ならその場で登録できる */}
-                      <MunicipalCertFormPanel
-                        municipality={ya.suggested}
-                        canEdit={canEdit}
-                        workerId={workerId}
-                        fiscalYear={fy[y]}
-                        onChanged={(m) => setMunicipalities(municipalities.map((x) => (x.id === m.id ? m : x)))}
-                      />
+                      {(["cert", "proxy"] as const).map((doc) => (
+                        <MunicipalCertFormPanel
+                          key={doc}
+                          municipality={ya.suggested}
+                          doc={doc}
+                          canEdit={canEdit}
+                          workerId={workerId}
+                          fiscalYear={fy[y]}
+                          onChanged={(m) => setMunicipalities(municipalities.map((x) => (x.id === m.id ? m : x)))}
+                        />
+                      ))}
                     </div>
                   );
                 })}

@@ -7,7 +7,9 @@ import { updateMunicipalityCertForm } from "@/lib/supabase/queries/tax-cert";
 import { getMunicipalFormPdfUrl } from "@/app/(app)/mailing/municipal-form-actions";
 import { dbErrorMessage } from "@/lib/errors";
 import {
+  MUNICIPAL_FORM_DOCS,
   MUNICIPAL_FORM_FIELDS,
+  type MunicipalFormDoc,
   MUNICIPAL_FORM_FIELD_LABEL,
   normalizeMunicipalFormLayout,
   type MunicipalFormFieldKind,
@@ -21,7 +23,13 @@ interface PageView {
 }
 
 const SAMPLE = Object.fromEntries(MUNICIPAL_FORM_FIELDS.map((f) => [f.kind, f.sample])) as Record<MunicipalFormFieldKind, string>;
-const DEFAULT_SIZE: Partial<Record<MunicipalFormFieldKind, number>> = { check: 10, circle: 16 };
+const DEFAULT_SIZE: Partial<Record<MunicipalFormFieldKind, number>> = {
+  check: 10,
+  circle: 16,
+  birth_era_circle_showa: 14,
+  birth_era_circle_heisei: 14,
+};
+const isCircle = (k: MunicipalFormFieldKind) => k === "circle" || k === "birth_era_circle_showa" || k === "birth_era_circle_heisei";
 
 // 自治体の申請書PDFに「どこに何を書くか」を置く画面。
 // 左の項目を選んでPDFの上をクリックするとその位置に置かれ、ドラッグで動かせる。
@@ -29,12 +37,14 @@ const DEFAULT_SIZE: Partial<Record<MunicipalFormFieldKind, number>> = { check: 1
 export function MunicipalFormLayoutEditor({
   municipalityId,
   municipalityName,
+  doc = "cert",
   initialLayout,
   onClose,
   onSaved,
 }: {
   municipalityId: string;
   municipalityName: string;
+  doc?: MunicipalFormDoc;
   initialLayout: unknown;
   onClose: () => void;
   onSaved: (layout: MunicipalFormItem[]) => void;
@@ -56,15 +66,15 @@ export function MunicipalFormLayoutEditor({
     let cancelled = false;
     (async () => {
       try {
-        const res = await getMunicipalFormPdfUrl(municipalityId);
+        const res = await getMunicipalFormPdfUrl(municipalityId, doc);
         if (!res.ok) throw new Error(res.message);
         const buf = await (await fetch(res.url)).arrayBuffer();
         const pdfjs = await import("pdfjs-dist");
         pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
-        const doc = await pdfjs.getDocument({ data: buf }).promise;
+        const pdf = await pdfjs.getDocument({ data: buf }).promise;
         const out: PageView[] = [];
-        for (let i = 1; i <= Math.min(doc.numPages, 4); i++) {
-          const page = await doc.getPage(i);
+        for (let i = 1; i <= Math.min(pdf.numPages, 4); i++) {
+          const page = await pdf.getPage(i);
           const base = page.getViewport({ scale: 1 });
           const vp = page.getViewport({ scale: 2 });
           const canvas = document.createElement("canvas");
@@ -83,7 +93,7 @@ export function MunicipalFormLayoutEditor({
     return () => {
       cancelled = true;
     };
-  }, [municipalityId]);
+  }, [municipalityId, doc]);
 
   const selected = items.find((i) => i.id === selectedId) ?? null;
   const update = (id: string, patch: Partial<MunicipalFormItem>) =>
@@ -123,7 +133,7 @@ export function MunicipalFormLayoutEditor({
     setBusy(true);
     setError(null);
     try {
-      await updateMunicipalityCertForm(createClient(), municipalityId, { cert_form_layout: items });
+      await updateMunicipalityCertForm(createClient(), municipalityId, { [MUNICIPAL_FORM_DOCS[doc].layoutCol]: items });
       onSaved(items);
       setSavedAt(new Date().toLocaleTimeString("ja-JP"));
       return true;
@@ -138,7 +148,9 @@ export function MunicipalFormLayoutEditor({
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black/50" role="dialog" aria-modal="true">
       <div className="flex items-center gap-2 bg-brand px-4 py-2 text-brand-foreground">
-        <p className="flex-1 text-sm font-bold">申請書の記入位置（{municipalityName}）</p>
+        <p className="flex-1 text-sm font-bold">
+          {MUNICIPAL_FORM_DOCS[doc].label}の記入位置（{municipalityName}）
+        </p>
         <button
           type="button"
           disabled={busy}
@@ -152,7 +164,7 @@ export function MunicipalFormLayoutEditor({
           disabled={busy}
           onClick={async () => {
             if (await save()) {
-              window.open(`/api/municipal-cert-form?municipalityId=${encodeURIComponent(municipalityId)}&sample=1`, "_blank");
+              window.open(`/api/municipal-cert-form?municipalityId=${encodeURIComponent(municipalityId)}&doc=${doc}&sample=1`, "_blank");
             }
           }}
           className="min-h-[36px] rounded-lg border border-white/60 px-3 text-xs font-bold"
@@ -209,7 +221,7 @@ export function MunicipalFormLayoutEditor({
                   ＋
                 </button>
               </div>
-              {selected.kind !== "check" && selected.kind !== "circle" && (
+              {selected.kind !== "check" && !isCircle(selected.kind) && (
                 <label className="flex items-center gap-1">
                   <span className="w-16">最大の幅</span>
                   <input
@@ -284,12 +296,12 @@ export function MunicipalFormLayoutEditor({
                     <div
                       key={it.id}
                       title={MUNICIPAL_FORM_FIELD_LABEL[it.kind]}
-                      className={`${common} ${it.kind === "circle" ? "rounded-full" : ""} bg-seal/10 leading-none text-seal`}
+                      className={`${common} ${isCircle(it.kind) ? "rounded-full" : ""} bg-seal/10 leading-none text-seal`}
                       style={{
                         left: it.x * scale,
                         top: it.y * scale,
                         fontSize: it.size * scale,
-                        ...(it.kind === "circle" ? { width: it.size * scale, height: it.size * scale } : {}),
+                        ...(isCircle(it.kind) ? { width: it.size * scale, height: it.size * scale } : {}),
                         ...(it.maxWidth ? { maxWidth: it.maxWidth * scale, overflow: "hidden" } : {}),
                       }}
                       onClick={(e) => {
@@ -308,7 +320,7 @@ export function MunicipalFormLayoutEditor({
                         };
                       }}
                     >
-                      {it.kind === "circle" ? "" : label}
+                      {isCircle(it.kind) ? "" : label}
                     </div>
                   );
                 })}

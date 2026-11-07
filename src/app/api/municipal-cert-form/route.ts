@@ -6,10 +6,16 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { listWorkerAddresses } from "@/lib/supabase/queries/worker-addresses";
 import { addressOnDate, type WorkerAddress } from "@/lib/worker-address";
-import { fillMunicipalForm, normalizeMunicipalFormLayout, type MunicipalFormPerson } from "@/lib/municipal-form";
+import {
+  MUNICIPAL_FORM_DOCS,
+  fillMunicipalForm,
+  normalizeMunicipalFormLayout,
+  parseMunicipalFormDoc,
+  type MunicipalFormPerson,
+} from "@/lib/municipal-form";
 import { todayStr } from "@/lib/application-alerts";
 
-// 自治体の申請書（課税・納税証明書の交付請求書）PDFに、外国人の情報を記入位置どおりに書き込んで返す。
+// 自治体の申請書（課税・納税証明書の交付請求書）・委任状（doc=proxy）のPDFに、外国人の情報を記入位置どおりに書き込んで返す。
 // /api/municipal-cert-form?municipalityId=...&workerId=...&fiscalYear=2026[&download=1]
 // workerId が無い（sample=1）ときは見本の人で書き込む（記入位置の確認用）
 export const runtime = "nodejs";
@@ -35,22 +41,26 @@ export async function GET(req: NextRequest) {
   const workerId = sp.get("workerId") ?? "";
   const fiscalYear = Number(sp.get("fiscalYear") ?? "") || null;
   const sample = sp.get("sample") === "1";
+  const doc = parseMunicipalFormDoc(sp.get("doc"));
+  const cols = MUNICIPAL_FORM_DOCS[doc];
   if (!municipalityId || (!workerId && !sample)) return NextResponse.json({ error: "不正なリクエストです" }, { status: 400 });
 
   try {
     const supabase = await createClient();
     const { data: m, error: mErr } = await supabase
       .from("municipalities")
-      .select("name, cert_form_pdf_path, cert_form_layout")
+      .select(`name, ${cols.pathCol}, ${cols.layoutCol}`)
       .eq("id", municipalityId)
       .maybeSingle();
     if (mErr) throw mErr;
-    const muni = m as { name: string; cert_form_pdf_path: string; cert_form_layout: unknown } | null;
-    if (!muni?.cert_form_pdf_path) return NextResponse.json({ error: "申請書のPDFが登録されていません" }, { status: 404 });
+    const row = m as Record<string, unknown> | null;
+    const pdfPath = typeof row?.[cols.pathCol] === "string" ? (row[cols.pathCol] as string) : "";
+    if (!row || !pdfPath) return NextResponse.json({ error: `${cols.label}のPDFが登録されていません` }, { status: 404 });
+    const muni = { name: String(row.name ?? ""), layout: row[cols.layoutCol] };
 
     const admin = createAdminClient();
     if (!admin) return NextResponse.json({ error: "サーバー設定エラー" }, { status: 500 });
-    const { data: blob, error: dlErr } = await admin.storage.from("app-files").download(muni.cert_form_pdf_path);
+    const { data: blob, error: dlErr } = await admin.storage.from("app-files").download(pdfPath);
     if (dlErr || !blob) throw dlErr ?? new Error("PDFを読めませんでした");
 
     const today = todayStr();
@@ -90,10 +100,10 @@ export async function GET(req: NextRequest) {
     const bytes = await fillMunicipalForm(
       new Uint8Array(await blob.arrayBuffer()),
       font,
-      normalizeMunicipalFormLayout(muni.cert_form_layout),
+      normalizeMunicipalFormLayout(muni.layout),
       person,
     );
-    const fileName = `課税証明書申請書_${muni.name}_${fileLabel}.pdf`;
+    const fileName = `課税証明書${cols.label}_${muni.name}_${fileLabel}.pdf`;
     const disposition = sp.get("download") === "1" ? "attachment" : "inline";
     return new NextResponse(new Blob([bytes as BlobPart]), {
       headers: {

@@ -230,8 +230,9 @@ export function MunicipalityModal({
         {/* 課税・納税証明書の申請書PDF（自動入力用）。登録済みの自治体だけ（その場で保存） */}
         {initial && (
           <div className="rounded-xl border border-border p-2.5">
-            <span className={LABEL}>課税・納税証明書の申請書PDF（氏名・住所などの自動入力用）</span>
-            <MunicipalCertFormPanel municipality={initial} canEdit onChanged={onCertFormChanged} />
+            <span className={LABEL}>課税・納税証明書の申請書・委任状のPDF（氏名・住所などの自動入力用）</span>
+            <MunicipalCertFormPanel municipality={initial} doc="cert" canEdit onChanged={onCertFormChanged} />
+            <MunicipalCertFormPanel municipality={initial} doc="proxy" canEdit onChanged={onCertFormChanged} />
           </div>
         )}
         <label className="flex flex-col gap-1">

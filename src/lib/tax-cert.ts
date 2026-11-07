@@ -13,6 +13,9 @@ export interface Municipality {
   cert_form_pdf_path?: string;
   cert_form_pdf_name?: string;
   cert_form_layout?: unknown;
+  proxy_form_pdf_path?: string; // 委任状PDF（0215）
+  proxy_form_pdf_name?: string;
+  proxy_form_layout?: unknown;
   cert_name: string;
   has_income: boolean;
   has_tax: boolean;

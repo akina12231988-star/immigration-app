@@ -9,7 +9,7 @@ import {
   registerMunicipalFormPdf,
   removeMunicipalFormPdf,
 } from "@/app/(app)/mailing/municipal-form-actions";
-import { normalizeMunicipalFormLayout } from "@/lib/municipal-form";
+import { MUNICIPAL_FORM_DOCS, normalizeMunicipalFormLayout, type MunicipalFormDoc } from "@/lib/municipal-form";
 import type { Municipality } from "@/lib/tax-cert";
 import { MunicipalFormLayoutEditor } from "./MunicipalFormLayoutEditor";
 
@@ -19,12 +19,14 @@ import { MunicipalFormLayoutEditor } from "./MunicipalFormLayoutEditor";
 // workerId・fiscalYear を渡すとその人・その年度の申請書のダウンロードボタンを出す
 export function MunicipalCertFormPanel({
   municipality,
+  doc = "cert",
   canEdit,
   workerId,
   fiscalYear,
   onChanged,
 }: {
   municipality: Municipality | null;
+  doc?: MunicipalFormDoc; // 申請書（cert）か委任状（proxy）か
   canEdit: boolean;
   workerId?: string;
   fiscalYear?: number;
@@ -36,9 +38,13 @@ export function MunicipalCertFormPanel({
   const fileRef = useRef<HTMLInputElement>(null);
   if (!municipality) return null;
   const m = municipality;
-  const hasPdf = !!(m.cert_form_pdf_path ?? "").trim();
-  const layoutCount = normalizeMunicipalFormLayout(m.cert_form_layout).length;
-  const base = `/api/municipal-cert-form?municipalityId=${encodeURIComponent(m.id)}`;
+  const cols = MUNICIPAL_FORM_DOCS[doc];
+  const label = cols.label;
+  const pdfPath = (m[cols.pathCol] ?? "").trim();
+  const pdfName = m[cols.nameCol] ?? "";
+  const hasPdf = !!pdfPath;
+  const layoutCount = normalizeMunicipalFormLayout(m[cols.layoutCol]).length;
+  const base = `/api/municipal-cert-form?municipalityId=${encodeURIComponent(m.id)}&doc=${doc}`;
   const personHref = workerId
     ? `${base}&workerId=${encodeURIComponent(workerId)}${fiscalYear ? `&fiscalYear=${fiscalYear}` : ""}`
     : "";
@@ -51,15 +57,15 @@ export function MunicipalCertFormPanel({
     setBusy(true);
     setError(null);
     try {
-      const ticket = await createMunicipalFormTicket(m.id, file.type);
+      const ticket = await createMunicipalFormTicket(m.id, file.type, doc);
       if (!ticket.ok) throw new Error(ticket.message);
       const { error: upErr } = await createClient()
         .storage.from("app-files")
         .uploadToSignedUrl(ticket.path, ticket.token, file, { contentType: file.type });
       if (upErr) throw new Error(`アップロードに失敗しました: ${upErr.message}`);
-      const res = await registerMunicipalFormPdf(m.id, ticket.path, file.name);
+      const res = await registerMunicipalFormPdf(m.id, ticket.path, file.name, doc);
       if (!res.ok) throw new Error(res.message);
-      onChanged?.({ ...m, cert_form_pdf_path: ticket.path, cert_form_pdf_name: file.name });
+      onChanged?.({ ...m, [cols.pathCol]: ticket.path, [cols.nameCol]: file.name });
       // はじめてのPDFなら、そのまま記入位置の画面を開く
       if (layoutCount === 0) setEditing(true);
     } catch (err) {
@@ -71,16 +77,16 @@ export function MunicipalCertFormPanel({
   }
 
   async function remove() {
-    if (!window.confirm(`${m.name} の申請書PDFと記入位置を外します。よろしいですか？`)) return;
+    if (!window.confirm(`${m.name} の${label}PDFと記入位置を外します。よろしいですか？`)) return;
     setBusy(true);
     setError(null);
-    const res = await removeMunicipalFormPdf(m.id);
+    const res = await removeMunicipalFormPdf(m.id, doc);
     setBusy(false);
     if (!res.ok) {
       setError(res.message);
       return;
     }
-    onChanged?.({ ...m, cert_form_pdf_path: "", cert_form_pdf_name: "", cert_form_layout: [] });
+    onChanged?.({ ...m, [cols.pathCol]: "", [cols.nameCol]: "", [cols.layoutCol]: [] });
   }
 
   const btn = "inline-flex min-h-[36px] items-center gap-1.5 rounded-lg px-3 text-xs font-bold";
@@ -104,7 +110,7 @@ export function MunicipalCertFormPanel({
               <>
                 <a href={`${personHref}&download=1`} className={`${btn} bg-brand text-brand-foreground`}>
                   <Download size={14} />
-                  申請書（自動入力）をダウンロード
+                  {label}（自動入力）をダウンロード
                 </a>
                 <a href={personHref} target="_blank" rel="noopener noreferrer" className={`${btn} border border-brand text-brand`}>
                   <FileText size={14} />
@@ -120,7 +126,7 @@ export function MunicipalCertFormPanel({
             )}
           </div>
           <p className="text-[11px] text-muted">
-            申請書PDF: {m.cert_form_pdf_name || "登録済み"}
+            {label}PDF: {pdfName || "登録済み"}
             {layoutCount === 0 && (
               <span className="ml-1 font-bold text-seal">記入位置がまだ無いため自動入力できません（「記入位置を置く」で置いてください）</span>
             )}
@@ -141,9 +147,9 @@ export function MunicipalCertFormPanel({
           <div className="flex flex-wrap items-center gap-1.5">
             <button type="button" onClick={() => fileRef.current?.click()} disabled={busy} className={`${btn} border border-dashed border-brand text-brand`}>
               <Upload size={14} />
-              {busy ? "アップロード中…" : "申請書PDFを登録（自動入力用）"}
+              {busy ? "アップロード中…" : `${label}PDFを登録（自動入力用）`}
             </button>
-            <span className="text-[11px] text-muted">登録して記入位置を置くと、氏名・住所などを入れた申請書を作れます</span>
+            <span className="text-[11px] text-muted">登録して記入位置を置くと、氏名・住所などを入れた{label}を作れます</span>
           </div>
         )
       )}
@@ -154,9 +160,10 @@ export function MunicipalCertFormPanel({
         <MunicipalFormLayoutEditor
           municipalityId={m.id}
           municipalityName={m.name}
-          initialLayout={m.cert_form_layout}
+          doc={doc}
+          initialLayout={m[cols.layoutCol]}
           onClose={() => setEditing(false)}
-          onSaved={(layout) => onChanged?.({ ...m, cert_form_layout: layout })}
+          onSaved={(layout) => onChanged?.({ ...m, [cols.layoutCol]: layout })}
         />,
           document.body,
         )}
