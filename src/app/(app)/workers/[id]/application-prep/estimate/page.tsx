@@ -103,19 +103,20 @@ export default async function ApplicationPrepEstimatePage({
       "外国人の詳細へ",
     );
   }
-  const payer = effectiveStampFeePayer(current.stamp_fee_payer, org.name);
+  const intake = normalizeOrganizationIntake(org.intake);
+  const payer = effectiveStampFeePayer(current.stamp_fee_payer, org.name, intake.stamp_fee_payer);
   if (!payer) {
     return guide(
       "収入印紙代の負担が未設定です",
-      "収入印紙代（申請手数料）を会社が負担するか本人が負担するかで見積書の内容が変わります。申請準備の詳細の「収入印紙代」で「本人負担」か「会社負担」を選んでから、もう一度開いてください。",
+      "収入印紙代（申請手数料）を会社が負担するか本人が負担するかで見積書の内容が変わります。申請準備の詳細の「収入印紙代」で「本人負担」「会社負担」「会社立替（実質本人負担）」のどれかを選んでから、もう一度開いてください。",
       detailHref,
       "申請準備の詳細で負担を選ぶ",
     );
   }
-  const intake = normalizeOrganizationIntake(org.intake);
   const salesKind = salesKindOfPrep(current.app_content, current.app_type);
-  // 既定の明細（lib/sales.ts。特定技能申請は所属機関名で金額が決まる）か、この機関だけの明細
-  const salesItems = salesItemsForKind(intake, salesKind, org.name);
+  // 申請準備の詳細で登録した明細があればそれ。無ければ所属機関の売上明細
+  // （既定の明細（lib/sales.ts。特定技能申請は所属機関名で金額が決まる）か、この機関だけの明細）
+  const salesItems = current.estimate_items ?? salesItemsForKind(intake, salesKind, org.name);
   if (salesItems.length === 0) {
     return guide(
       `所属機関の情報に「${salesKind}」の売上明細が登録されていません`,

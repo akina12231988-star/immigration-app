@@ -6,8 +6,28 @@
 
 import { orgSearchKeys } from "@/lib/org-search";
 
-export const STAMP_FEE_PAYERS = ["本人負担", "会社負担"] as const;
+// 会社立替 = 会社がいったん払い、給与などから本人が負担する（実質本人負担）。
+// 請求書・見積書では会社負担と同じく明細に入れ、立替である旨を書く
+export const STAMP_FEE_PAYERS = ["本人負担", "会社負担", "会社立替"] as const;
 export type StampFeePayer = (typeof STAMP_FEE_PAYERS)[number];
+
+// 画面に出す名前
+export function stampFeePayerLabel(p: StampFeePayer | ""): string {
+  if (p === "会社立替") return "会社立替（実質本人負担）";
+  return p || "未設定";
+}
+
+export function isStampFeePayer(v: unknown): v is StampFeePayer {
+  return typeof v === "string" && (STAMP_FEE_PAYERS as readonly string[]).includes(v.trim());
+}
+
+// 明細に印紙代の行を入れる負担か（会社負担・会社立替）
+export function stampFeeBilledToCompany(p: StampFeePayer | ""): boolean {
+  return p === "会社負担" || p === "会社立替";
+}
+
+// 印紙代がこの金額以下なら、負担の設定にかかわらず会社負担（改定前の手数料 6,000円 など）
+export const STAMP_FEE_COMPANY_ONLY_MAX = 6000;
 
 // 自動的に本人負担にする会社（法人格の有無・前後、異体字（國崎／国崎）、全角半角の違いは同じ扱い）
 export const STAMP_FEE_SELF_PAY_ORG = "有限会社國崎青果";
@@ -22,16 +42,62 @@ export function isKunisakiSeika(orgName: string | null | undefined): boolean {
   return !!key && key === orgKey(STAMP_FEE_SELF_PAY_ORG);
 }
 
-// 所属機関から決まる既定の負担（有限会社國崎青果は本人負担。ほかは未設定）
-export function defaultStampFeePayer(orgName: string | null | undefined): StampFeePayer | "" {
+// 所属機関から決まる既定の負担。
+// 所属機関の情報（決算・売上 ＞ 申請種別ごとの売上明細 ＞ 収入印紙代）で選んだ負担があればそれ。
+// 無ければ有限会社國崎青果は本人負担、ほかは未設定
+export function defaultStampFeePayer(
+  orgName: string | null | undefined,
+  orgDefault?: string | null,
+): StampFeePayer | "" {
+  const d = (orgDefault ?? "").trim();
+  if (isStampFeePayer(d)) return d;
   return isKunisakiSeika(orgName) ? "本人負担" : "";
 }
 
 // 保存されている値と所属機関から、画面に出す負担（未設定なら所属機関の既定）
-export function effectiveStampFeePayer(saved: string | null | undefined, orgName: string | null | undefined): StampFeePayer | "" {
+export function effectiveStampFeePayer(
+  saved: string | null | undefined,
+  orgName: string | null | undefined,
+  orgDefault?: string | null,
+): StampFeePayer | "" {
   const v = (saved ?? "").trim();
-  if (v === "本人負担" || v === "会社負担") return v;
-  return defaultStampFeePayer(orgName);
+  if (isStampFeePayer(v)) return v;
+  return defaultStampFeePayer(orgName, orgDefault);
+}
+
+// ---- 許可後の請求（請求書作成の当月許可者リスト）での収入印紙代の扱い ----
+// 許可のときに入れた実際の印紙代（申請詳細）と、申請準備で選んだ負担から決める。
+//  ・6,000円以下（改定前の手数料など）… 負担の設定にかかわらず会社負担で請求する
+//  ・6,000円を超える … 会社負担は請求、会社立替（実質本人負担）は請求して立替と書く、
+//    本人負担は請求せず「印紙代は本人負担です。」と備考に書く
+export type InvoiceStampFeeState = "unknown_amount" | "none" | "billed" | "self" | "unknown_payer";
+export interface InvoiceStampFee {
+  state: InvoiceStampFeeState;
+  amount: number | null; // 実際の印紙代（未入力は null）
+  billed: boolean; // 請求書の明細に入れるか
+  payer: StampFeePayer | ""; // 実際に使った負担（6,000円以下は会社負担）
+  itemName: string; // 明細に入れるときの項目名
+  note: string; // 備考に書く文（無ければ ''）
+}
+
+export function invoiceStampFee(amount: number | null | undefined, payer: StampFeePayer | ""): InvoiceStampFee {
+  const base = { amount: amount ?? null, itemName: "収入印紙代（申請手数料）", note: "" };
+  if (amount == null) return { ...base, state: "unknown_amount", billed: false, payer };
+  if (amount <= 0) return { ...base, state: "none", billed: false, payer };
+  if (amount <= STAMP_FEE_COMPANY_ONLY_MAX) return { ...base, state: "billed", billed: true, payer: "会社負担" };
+  if (payer === "会社負担") return { ...base, state: "billed", billed: true, payer };
+  if (payer === "会社立替") {
+    return {
+      ...base,
+      state: "billed",
+      billed: true,
+      payer,
+      itemName: "収入印紙代（申請手数料・会社立替）",
+      note: "印紙代は会社立替です（実質本人負担）。",
+    };
+  }
+  if (payer === "本人負担") return { ...base, state: "self", billed: false, payer, note: "印紙代は本人負担です。" };
+  return { ...base, state: "unknown_payer", billed: false, payer };
 }
 
 // 負担が分かっていない申請の1行

@@ -102,9 +102,12 @@ export async function listStampFeeUnknownRows(
     ),
   ];
   let orgNameById = new Map<string, string>();
+  let orgDefaultById = new Map<string, string>();
   if (orgIds.length > 0) {
-    const { data: orgs } = await supabase.from("organizations").select("id, name").in("id", orgIds);
-    orgNameById = new Map(((orgs as { id: string; name: string }[] | null) ?? []).map((o) => [o.id, o.name]));
+    const { data: orgs } = await supabase.from("organizations").select("id, name, intake").in("id", orgIds);
+    const list = (orgs as { id: string; name: string; intake: { stamp_fee_payer?: unknown } | null }[] | null) ?? [];
+    orgNameById = new Map(list.map((o) => [o.id, o.name]));
+    orgDefaultById = new Map(list.map((o) => [o.id, typeof o.intake?.stamp_fee_payer === "string" ? o.intake.stamp_fee_payer : ""]));
   }
 
   const rows: StampFeeUnknownRow[] = [];
@@ -113,8 +116,8 @@ export async function listStampFeeUnknownRows(
     if (!c) continue;
     const orgId = w.application_prep_organization_id || w.current_organization_id || "";
     const orgName = orgId ? (orgNameById.get(orgId) ?? "") : "";
-    // 有限会社國崎青果は自動で本人負担（未設定扱いにしない）
-    if (defaultStampFeePayer(orgName)) continue;
+    // 有限会社國崎青果は自動で本人負担。所属機関の情報で負担を選んでいればそれを使う（未設定扱いにしない）
+    if (defaultStampFeePayer(orgName, orgDefaultById.get(orgId))) continue;
     rows.push({
       workerId: w.id,
       workerName: w.name,
