@@ -97,7 +97,6 @@ import {
   STAMP_FEE_PAYERS,
   autoStampFeePayer,
   effectiveStampFeePayer,
-  isKunisakiSeika,
   isSsw2StampAppContent,
   isStampFeePayer,
   stampFeePayerLabel,
@@ -1829,7 +1828,7 @@ export function ApplicationPrepChecklist({
       {/* 条件の選択（申請種別の下に所属機関の情報を表示する） */}
       {current != null && (
       <div className="mb-3 space-y-2.5 rounded-xl border border-border bg-background p-3">
-        {/* 収入印紙代の負担（申請種別の上）。有限会社國崎青果は自動で本人負担。
+        {/* 収入印紙代の負担（申請種別の上）。特定技能2号に関わる申請は自動で本人負担、國崎青果の1号に関わる申請は自動で会社立替。
             未設定のまま（國崎青果以外）だと「収入印紙代の負担が未設定」の一覧に出る */}
         <StampFeePayerField
           value={current.stamp_fee_payer ?? ""}
@@ -3564,8 +3563,8 @@ function IconButton({
 
 // 収入印紙代の負担（本人負担／会社負担／会社立替）のボタン。申請準備の詳細の申請種別の上に置く。
 // 申請種別と所属機関で自動で決まる負担（特定技能2号に関わる申請は本人負担、
-// 有限会社國崎青果の特定技能1号に関わる申請は会社立替。國崎青果のそれ以外は本人負担）は、
-// 未設定なら自動で保存する（申請種別ごとに一度だけ）
+// 有限会社國崎青果の特定技能1号に関わる申請は会社立替）は、未設定なら自動で保存する（申請種別ごとに一度だけ）。
+// 國崎青果でもそれ以外の申請は自動では決めず、申請ごとに選ぶ
 function StampFeePayerField({
   value,
   orgName,
@@ -3585,9 +3584,8 @@ function StampFeePayerField({
 }) {
   const effective = effectiveStampFeePayer(value, orgName, orgDefault, appContent);
   const auto = autoStampFeePayer(appContent, orgName);
-  const kunisaki = isKunisakiSeika(orgName);
-  // 自動で保存する負担（申請種別で決まる負担。無ければ國崎青果は本人負担）
-  const autoSave = auto || (kunisaki ? "本人負担" : "");
+  // 自動で保存する負担（申請種別で決まる負担）
+  const autoSave = auto;
   const fromOrg = !value.trim() && !!effective && !autoSave && isStampFeePayer(orgDefault);
   // 未設定なら自動の負担を保存する（画面に出すだけでなく、一覧の「未設定」からも外れるように）
   const autoSavedRef = useRef("");
@@ -3602,9 +3600,7 @@ function StampFeePayerField({
     ? "特定技能2号に関わる申請は自動で本人負担です"
     : auto === "会社立替"
       ? "有限会社國崎青果の特定技能1号に関わる申請は自動で会社立替です"
-      : kunisaki
-        ? "有限会社國崎青果は自動で本人負担です"
-        : "";
+      : "";
   return (
     <div className="flex flex-wrap items-center gap-2">
       <span className="text-xs font-bold text-muted">収入印紙代</span>

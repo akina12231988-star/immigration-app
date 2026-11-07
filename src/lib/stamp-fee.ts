@@ -77,8 +77,8 @@ export function autoStampFeePayer(
 }
 
 // 所属機関（と申請種別）から決まる既定の負担。
-// 申請種別で自動で決まる負担（autoStampFeePayer）→ 所属機関の情報（決算・売上 ＞ 収入印紙代）で選んだ負担 →
-// 有限会社國崎青果は本人負担（1号以外の申請）、ほかは未設定
+// 申請種別で自動で決まる負担（autoStampFeePayer）→ 所属機関の情報（決算・売上 ＞ 収入印紙代）で選んだ負担 → 未設定。
+// 有限会社國崎青果でも、特定技能1号に関わる申請以外は自動では決めず、申請ごとに選ぶ
 export function defaultStampFeePayer(
   orgName: string | null | undefined,
   orgDefault?: string | null,
@@ -88,7 +88,7 @@ export function defaultStampFeePayer(
   if (auto) return auto;
   const d = (orgDefault ?? "").trim();
   if (isStampFeePayer(d)) return d;
-  return isKunisakiSeika(orgName) ? "本人負担" : "";
+  return "";
 }
 
 // 保存されている値と所属機関から、画面に出す負担（未設定なら申請種別・所属機関の既定）

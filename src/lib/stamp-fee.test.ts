@@ -11,7 +11,7 @@ import {
   type StampFeeUnknownRow,
 } from "./stamp-fee";
 
-describe("isKunisakiSeika（自動で本人負担にする会社）", () => {
+describe("isKunisakiSeika（1号に関わる申請を自動で会社立替にする会社）", () => {
   it("有限会社國崎青果だけ。法人格の書き方・異体字・全角半角の違いは同じ扱い", () => {
     expect(isKunisakiSeika("有限会社國崎青果")).toBe(true);
     expect(isKunisakiSeika("國崎青果有限会社")).toBe(true);
@@ -23,14 +23,14 @@ describe("isKunisakiSeika（自動で本人負担にする会社）", () => {
 });
 
 describe("defaultStampFeePayer / effectiveStampFeePayer", () => {
-  it("國崎青果は本人負担、ほかは未設定", () => {
-    expect(defaultStampFeePayer("有限会社國崎青果")).toBe("本人負担");
+  it("申請種別を渡さなければ國崎青果も未設定（申請ごとに選ぶ）", () => {
+    expect(defaultStampFeePayer("有限会社國崎青果")).toBe("");
     expect(defaultStampFeePayer("株式会社さくら")).toBe("");
   });
 
   it("保存した値があればそれを使い、無ければ所属機関の既定", () => {
     expect(effectiveStampFeePayer("会社負担", "有限会社國崎青果")).toBe("会社負担");
-    expect(effectiveStampFeePayer("", "有限会社國崎青果")).toBe("本人負担");
+    expect(effectiveStampFeePayer("", "有限会社國崎青果")).toBe("");
     expect(effectiveStampFeePayer("", "株式会社さくら")).toBe("");
     expect(effectiveStampFeePayer("おかしな値", "株式会社さくら")).toBe("");
   });
@@ -77,7 +77,8 @@ describe("会社立替・所属機関の既定の負担", () => {
   it("未設定なら所属機関の情報で選んだ負担を使い、無ければ國崎青果の既定", () => {
     expect(effectiveStampFeePayer("", "株式会社さくら", "会社負担")).toBe("会社負担");
     expect(effectiveStampFeePayer("", "有限会社國崎青果", "会社立替")).toBe("会社立替");
-    expect(effectiveStampFeePayer("", "有限会社國崎青果", "")).toBe("本人負担");
+    expect(effectiveStampFeePayer("", "有限会社國崎青果", "")).toBe("");
+    expect(effectiveStampFeePayer("", "有限会社國崎青果", "", "在留資格認定申請書の準備中")).toBe("");
     expect(effectiveStampFeePayer("本人負担", "株式会社さくら", "会社負担")).toBe("本人負担");
   });
 });
