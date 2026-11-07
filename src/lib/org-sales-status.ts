@@ -44,3 +44,27 @@ export function orgSalesStatus(org: { id: string; name: string; intake: unknown 
     unregisteredCount: kinds.filter((k) => k.state !== "custom").length + (payer ? 0 : 1),
   };
 }
+
+// ---- 他の機関の登録内容のコピー ----
+// コピー元の機関の明細（この機関だけの明細、無ければその機関で使っている既定の明細）を、
+// コピー先の機関の「この機関だけの明細」として登録した intake を返す（ほかの項目はそのまま）。
+// copyStamp なら収入印紙代の負担の既定もコピーする
+export function copySalesSettings(
+  source: { name: string; intake: unknown },
+  targetIntake: unknown,
+  kinds: string[],
+  copyStamp: boolean,
+): Record<string, unknown> {
+  const src = normalizeOrganizationIntake(source.intake as never);
+  const raw = { ...((targetIntake ?? {}) as Record<string, unknown>) };
+  const tgt = normalizeOrganizationIntake(raw as never);
+  const salesItems = { ...tgt.sales_items };
+  const custom = new Set(tgt.sales_items_custom);
+  for (const kind of kinds) {
+    salesItems[kind] = salesItemsForKind(src, kind, source.name).map((r) => ({ name: r.name, amount: r.amount }));
+    custom.add(kind);
+  }
+  const out: Record<string, unknown> = { ...raw, sales_items: salesItems, sales_items_custom: [...custom] };
+  if (copyStamp) out.stamp_fee_payer = src.stamp_fee_payer;
+  return out;
+}

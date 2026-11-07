@@ -3,7 +3,6 @@ import { AppHeader } from "@/components/AppHeader";
 import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { listOrganizations } from "@/lib/supabase/queries/organizations";
-import { orgSalesStatus } from "@/lib/org-sales-status";
 import { SalesItemsStatusClient } from "./SalesItemsStatusClient";
 
 export const dynamic = "force-dynamic";
@@ -17,12 +16,11 @@ export default async function OrgSalesItemsStatusPage() {
 
   const supabase = await createClient();
   const orgs = await listOrganizations(supabase).catch(() => []);
-  const rows = orgs.map((o) => orgSalesStatus(o));
 
   return (
     <>
       <AppHeader title="売上明細の登録状況（所属機関別）" backHref="/organizations" />
-      <SalesItemsStatusClient rows={rows} />
+      <SalesItemsStatusClient orgs={orgs.map((o) => ({ id: o.id, name: o.name, intake: o.intake ?? {} }))} />
     </>
   );
 }
