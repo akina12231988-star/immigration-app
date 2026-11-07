@@ -15,6 +15,7 @@ export function PrepEstimateItemsPanel({
   orgId,
   orgName,
   salesKind,
+  orgUsesDefault,
   canEdit,
   estimateHref,
   onSave,
@@ -24,6 +25,7 @@ export function PrepEstimateItemsPanel({
   orgId: string | null;
   orgName: string;
   salesKind: string; // 売上明細の申請種別（特定技能申請 など。'' = 申請種別が未選択）
+  orgUsesDefault: boolean; // 所属機関でこの申請種別の明細を登録しておらず、既定の明細を出しているか
   canEdit: boolean;
   estimateHref: string;
   onSave: (items: OrgSalesItem[] | null) => Promise<void>;
@@ -69,7 +71,23 @@ export function PrepEstimateItemsPanel({
           ? "この申請の明細として登録済みです。見積書と、許可が下りたあとの請求書作成（当月許可者リスト）にこの明細を使います。"
           : `${orgName || "所属機関"} の「申請種別ごとの売上明細」を出しています。内容を確かめて「この明細で登録」を押してください（この申請だけ金額を直すこともできます）。`}
         収入印紙代は上の負担の選び方と、許可のときに入れた金額で自動で足します。
+        <span className="mt-1 block font-bold text-foreground">
+          ここで直して登録した明細はこの人（このTODO）だけのものです。所属機関の売上明細は変わりません。
+        </span>
       </p>
+      {orgUsesDefault && !registered && (
+        <p className="mb-2 rounded-lg bg-status-notice-bg px-2 py-1.5 text-[11px] text-status-notice-fg">
+          {orgName || "この所属機関"} は「{salesKind}」の売上明細が未登録のため、全所属機関共通の既定の明細を出しています。
+          {orgId && (
+            <Link href={`/organizations/${orgId}`} className="ml-1 font-bold underline">
+              所属機関の情報で登録
+            </Link>
+          )}
+          <Link href="/organizations/sales-items" className="ml-2 font-bold underline">
+            未登録の機関の一覧
+          </Link>
+        </p>
+      )}
       {rows.length === 0 ? (
         <p className="text-xs text-seal">
           所属機関の情報に「{salesKind}」の売上明細がありません。
@@ -149,7 +167,7 @@ export function PrepEstimateItemsPanel({
                 onClick={() => void save(rows)}
                 className="min-h-[36px] rounded-lg bg-brand px-3 text-xs font-bold text-brand-foreground disabled:opacity-60"
               >
-                {busy ? "保存中…" : "この内容で登録"}
+                {busy ? "保存中…" : "この人だけの明細として登録"}
               </button>
               <button type="button" onClick={() => setDraft(null)} className="min-h-[36px] px-2 text-xs font-bold text-muted">
                 やめる

@@ -96,7 +96,7 @@ import { formatStorageNo } from "@/lib/custody";
 import { STAMP_FEE_PAYERS, effectiveStampFeePayer, isKunisakiSeika, isStampFeePayer, stampFeePayerLabel } from "@/lib/stamp-fee";
 import { PrepEstimateItemsPanel } from "@/components/workers/PrepEstimateItemsPanel";
 import { normalizeOrganizationIntake } from "@/lib/organization-intake";
-import { salesItemsForKind } from "@/lib/sales";
+import { hasCustomSalesItems, salesItemsForKind } from "@/lib/sales";
 import { salesKindOfPrep } from "@/lib/estimate";
 import { getHealthCheckDetail } from "@/lib/supabase/queries/health-check";
 import {
@@ -1843,6 +1843,10 @@ export function ApplicationPrepChecklist({
           orgId={prepOrgId}
           orgName={prepOrgName}
           salesKind={meta.app_content || meta.app_type ? salesKindOfPrep(meta.app_content, meta.app_type) : ""}
+          orgUsesDefault={
+            !!(meta.app_content || meta.app_type) &&
+            !hasCustomSalesItems(orgIntake, salesKindOfPrep(meta.app_content, meta.app_type))
+          }
           canEdit={canEdit}
           estimateHref={`${prepDetailHref(workerId)}/estimate?todo=${encodeURIComponent(current.todo_no)}`}
           onSave={(items) => saveExtras({ estimate_items: items })}
