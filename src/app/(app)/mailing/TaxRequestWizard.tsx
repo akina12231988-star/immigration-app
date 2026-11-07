@@ -38,6 +38,7 @@ import {
 } from "@/lib/tax-request-plan";
 import { MailingRecordAttachments } from "@/components/mailing/MailingRecordAttachments";
 import { MunicipalityFormLink } from "@/components/mailing/MunicipalityFormLink";
+import { MunicipalCertFormPanel } from "@/components/mailing/MunicipalCertFormPanel";
 import { nhiInOtherMunicipality, splitNhiRecord } from "@/lib/mailing-split";
 import { PersonCopyPanel } from "@/components/mailing/PersonCopyPanel";
 import { MoneyOrderFields } from "./MoneyOrderFields";
@@ -424,6 +425,14 @@ function WizardBody({
                         municipality={ya.suggested}
                         canEdit={canEdit}
                         onSaved={(m) => setMunicipalities(municipalities.map((x) => (x.id === m.id ? m : x)))}
+                      />
+                      {/* 申請書PDF（自治体マスタ）に本人の情報を書き込んでダウンロード。未登録ならその場で登録できる */}
+                      <MunicipalCertFormPanel
+                        municipality={ya.suggested}
+                        canEdit={canEdit}
+                        workerId={workerId}
+                        fiscalYear={fy[y]}
+                        onChanged={(m) => setMunicipalities(municipalities.map((x) => (x.id === m.id ? m : x)))}
                       />
                     </div>
                   );

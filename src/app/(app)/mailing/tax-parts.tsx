@@ -1,5 +1,6 @@
 "use client";
 
+import { MunicipalCertFormPanel } from "@/components/mailing/MunicipalCertFormPanel";
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -170,7 +171,9 @@ export function MunicipalityModal({
   busy,
   onClose,
   onSave,
+  onCertFormChanged,
 }: {
+  onCertFormChanged?: (m: Municipality) => void; // 申請書PDF・記入位置を変えたとき（その場で保存済み）
   initial: Municipality | null;
   initialName?: string; // 新規登録のときに最初から入れておく自治体名（請求フォームで入力した名前）
   busy: boolean;
@@ -224,6 +227,13 @@ export function MunicipalityModal({
           <span className={LABEL}>住民票・転出届の申請書のページ（URL）</span>
           <input type="url" inputMode="url" value={juminhyoFormUrl} onChange={(e) => setJuminhyoFormUrl(e.target.value)} placeholder="https://www.city.example.lg.jp/..." className={INPUT} />
         </label>
+        {/* 課税・納税証明書の申請書PDF（自動入力用）。登録済みの自治体だけ（その場で保存） */}
+        {initial && (
+          <div className="rounded-xl border border-border p-2.5">
+            <span className={LABEL}>課税・納税証明書の申請書PDF（氏名・住所などの自動入力用）</span>
+            <MunicipalCertFormPanel municipality={initial} canEdit onChanged={onCertFormChanged} />
+          </div>
+        )}
         <label className="flex flex-col gap-1">
           <span className={LABEL}>証明書名称</span>
           <input value={form.cert_name} onChange={(e) => set("cert_name", e.target.value)} placeholder="例：市民税・県民税 課税証明書" className={INPUT} />

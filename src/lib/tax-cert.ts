@@ -9,6 +9,10 @@ export interface Municipality {
   // 申請書（交付請求書）をダウンロードするページのURL（0212。未適用・未登録は空）
   cert_form_url?: string; // 課税・納税証明書
   juminhyo_form_url?: string; // 住民票・転出届
+  // 課税・納税証明書の申請書PDFと自動入力の記入位置（0215。未適用・未登録は空）
+  cert_form_pdf_path?: string;
+  cert_form_pdf_name?: string;
+  cert_form_layout?: unknown;
   cert_name: string;
   has_income: boolean;
   has_tax: boolean;

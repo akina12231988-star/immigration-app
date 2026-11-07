@@ -1192,6 +1192,10 @@ function MunicipalityTab({
           busy={busy}
           onClose={() => { setModalOpen(false); setEditing(null); }}
           onSave={save}
+          onCertFormChanged={(m) => {
+            setMunicipalities(municipalities.map((x) => (x.id === m.id ? m : x)));
+            setEditing(m);
+          }}
         />
       )}
       <ConfirmDialog
