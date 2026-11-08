@@ -108,6 +108,9 @@ export function FuyoAttachChooser({
                 </p>
                 <p className="mt-1 text-[11px] text-muted">{c.desc}</p>
                 <p className="mt-2 text-[11px] font-bold">記載 {names.length}人</p>
+                {c.kind === "年末調整時" && names.length === 0 && (
+                  <p className="text-[11px] text-amber-700">扶養親族0人（記載なし）の申告書として添付できます</p>
+                )}
                 <p className="text-[11px]">
                   {names.length === 0
                     ? "なし"
@@ -123,8 +126,12 @@ export function FuyoAttachChooser({
                 <button
                   type="button"
                   onClick={() => onAttach(c.kind)}
-                  disabled={busy || (c.kind === "年末調整時" && notEntered)}
-                  title={c.kind === "年末調整時" && notEntered ? "送金額を入れてから選べます" : undefined}
+                  disabled={busy}
+                  title={
+                    c.kind === "年末調整時" && names.length === 0
+                      ? "扶養親族を記載しない（0人の）申告書を添付します"
+                      : undefined
+                  }
                   className={`mt-3 inline-flex min-h-[44px] w-fit items-center gap-2 rounded-xl px-4 text-sm font-bold disabled:opacity-50 ${
                     rec ? "bg-brand text-brand-foreground" : "border border-brand text-brand"
                   }`}
