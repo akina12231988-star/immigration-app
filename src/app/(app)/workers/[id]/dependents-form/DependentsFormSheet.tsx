@@ -123,7 +123,7 @@ export function DependentsFormSheet({
     const names = fuyoFormNames(judgement, kind);
     if (
       !window.confirm(
-        `${kind}の扶養控除等申告書（記載 ${names.length}人）を作って、「${attachTarget.requestTitle}」の「${attachTarget.itemName}」に添付します。よろしいですか？`,
+        `${kind}の扶養控除等申告書（記載 ${names.length}人${names.length === 0 ? "・扶養親族なし" : ""}）を作って、「${attachTarget.requestTitle}」の「${attachTarget.itemName}」に添付します。よろしいですか？`,
       )
     )
       return;
