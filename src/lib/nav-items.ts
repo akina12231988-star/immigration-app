@@ -112,6 +112,13 @@ export const NAV_ENTRIES: NavEntry[] = [
         short: "総合保険",
         icon: ShieldCheck,
       },
+      // 住所・保険の手続き: 転出・転入・国保の加入・国民年金の加入のTODO（0217）
+      {
+        href: "/todos/procedures",
+        label: "住所・保険の手続き",
+        short: "住所・保険",
+        icon: Home,
+      },
     ],
   },
   { href: "/applications", label: "申請一覧", short: "申請一覧", icon: List },
