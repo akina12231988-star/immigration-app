@@ -959,6 +959,14 @@ function IntakeSection({
             hint="賃金（1-6号別紙）の入力画面に表示されます。"
             locked={locks.intake("pay_method")}
           />
+          <IntakeSelect
+            label="給与の形態（月給制／時給制）"
+            value={intake.pay_system ?? ""}
+            onChange={(v) => setIntake({ pay_system: v })}
+            options={["月給制", "時給制"]}
+            hint="申請準備の「所属機関への採用条件の確認」で、時給と月給のどちらを聞くかに使います。"
+            locked={locks.intake("pay_system")}
+          />
         </div>
         {/* 会社の所在地・連絡先と同じことが多いので、「同上」を押せば入力しなくてよい */}
         <SameAsAboveField

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizeTodoKey } from "@/lib/todo";
 import type { OrgSalesItem } from "@/types/db";
+import { normalizeHireCheck, type HireCheck } from "@/lib/hire-check";
 import {
   buildPostApplyEntries,
   isIssueOnlyDocDone,
@@ -39,6 +40,7 @@ export interface PrepChecklistRow extends PrepChecklistMeta {
   post_apply_notes: PostApplyNotes; // 申請後の郵送・タスクの項目ごとのメモ（0172）
   stamp_fee_payer: string; // 収入印紙代の負担（'' / 本人負担 / 会社負担 / 会社立替。0175）
   estimate_items: OrgSalesItem[] | null; // 見積書・許可後の請求の明細（null = 未登録で所属機関の売上明細を使う。0214）
+  hire_check: HireCheck; // 所属機関への採用条件の確認（0218）
 }
 
 // 保存されている明細（jsonb）を読む。配列でなければ未登録（null）
@@ -88,6 +90,7 @@ export async function listPrepChecklists(
     post_apply_notes: normalizePostApplyNotes(r.post_apply_notes),
     stamp_fee_payer: r.stamp_fee_payer ?? "",
     estimate_items: normalizeEstimateItems((r as { estimate_items?: unknown }).estimate_items),
+    hire_check: normalizeHireCheck((r as { hire_check?: unknown }).hire_check),
   }));
 }
 
@@ -192,6 +195,7 @@ export async function updatePrepChecklistExtras(
       | "post_apply_notes"
       | "stamp_fee_payer"
       | "estimate_items"
+      | "hire_check"
     >
   >,
 ): Promise<void> {
