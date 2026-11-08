@@ -325,3 +325,29 @@ describe("全て作成・年末調整での絞り込み", () => {
   });
 });
 
+
+describe("cellDocChoice（会社へ送る書類をどちらで紐づけるか）", () => {
+  it("決めていなければ、片方しか無いときはそれ・両方あるときは未決定", async () => {
+    const { cellDocChoice } = await import("./org-document-requests");
+    expect(cellDocChoice(null, true, 0)).toBe("onboarding");
+    expect(cellDocChoice(null, false, 1)).toBe("cell");
+    expect(cellDocChoice(null, true, 1)).toBe("undecided");
+    expect(cellDocChoice(null, false, 0)).toBe("none");
+  });
+  it("選んだ方を使う。マスを選んで添付が無ければ添付待ち", async () => {
+    const { cellDocChoice, cellDocSource } = await import("./org-document-requests");
+    expect(cellDocChoice("onboarding", true, 2)).toBe("onboarding");
+    expect(cellDocChoice("cell", true, 1)).toBe("cell");
+    expect(cellDocChoice("cell", true, 0)).toBe("cell-missing");
+    // 外国人詳細の書類が外されていたら、決めていないのと同じ
+    expect(cellDocChoice("onboarding", false, 1)).toBe("cell");
+    expect(cellDocSource("undecided")).toBe("cell");
+    expect(cellDocSource("cell-missing")).toBeNull();
+  });
+  it("扶養控除等申告書の項目を見分ける", async () => {
+    const { isFuyokojoItem } = await import("./org-document-requests");
+    expect(isFuyokojoItem({ name: "扶養控除申告書", link_doc_key: "" })).toBe(true);
+    expect(isFuyokojoItem({ name: "令和8年分 扶養控除等申告書", link_doc_key: "" })).toBe(true);
+    expect(isFuyokojoItem({ name: "扶養証明書(日本語訳)", link_doc_key: "" })).toBe(false);
+  });
+});

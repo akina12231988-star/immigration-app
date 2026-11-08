@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { BackButton } from "@/components/BackButton";
 import { Download } from "lucide-react";
 import { Card } from "@/components/ui/Card";
@@ -17,6 +18,15 @@ import {
 } from "@/lib/dependents";
 import { fuyoOverflow, type FuyoFormData } from "@/lib/fuyo-form";
 import { todayStr } from "@/lib/ssw/calc";
+import { fuyoFileName } from "@/lib/fuyo-roster";
+import { fuyoFormNames, fuyoYearEndJudgement, recommendedFuyoKind } from "@/lib/fuyo-judgement";
+import { FuyoAttachChooser } from "./FuyoAttachChooser";
+import { createClient } from "@/lib/supabase/client";
+import {
+  createDocRequestFileTicket,
+  markDocRequestCellAttached,
+  registerDocRequestFile,
+} from "@/app/(app)/organizations/requests/actions";
 import type { WorkerDependent } from "@/types/db";
 
 interface FormWorker {
@@ -35,12 +45,21 @@ export function DependentsFormSheet({
   dependents: allDependents,
   initialKind = "入社時",
   initialYear,
+  workerId,
+  attachTarget,
+  remittanceFiles = [],
 }: {
   worker: FormWorker;
   dependents: WorkerDependent[];
   initialKind?: "入社時" | "年末調整時";
   initialYear?: string;
+  workerId?: string;
+  // 会社からの書類の依頼のマスから開いたとき（作った申告書をそのマスに添付する）
+  attachTarget?: { requestId: string; itemId: string; requestTitle: string; itemName: string };
+  // 同じ依頼の送金証明書のマスに添付した送金明細書（見ながら選べるように）
+  remittanceFiles?: { id: string; file_name: string; mime_type: string }[];
 }) {
+  const router = useRouter();
   const today = todayStr();
   const [householdHead, setHouseholdHead] = useState(worker.name);
   const [headRelation, setHeadRelation] = useState("本人");
@@ -70,30 +89,76 @@ export function DependentsFormSheet({
   );
   const noBirth = dependents.filter((d) => !isSpouseRelation(d.relation) && d.birth === "");
 
-  const formData: FuyoFormData = {
-    kind: formKind,
+  const buildData = (k: "入社時" | "年末調整時"): FuyoFormData => ({
+    kind: k,
     year: targetYear,
     worker,
     householdHead,
     headRelation,
-    dependents,
-  };
+    dependents: k === "年末調整時" ? allDependents.filter((d) => isRemittanceAchieved(d, today, targetYear)) : allDependents,
+  });
+  const formData: FuyoFormData = buildData(formKind);
+  // 依頼のマスから開いたときの、送金額からの判定（入社時・年末調整時を見比べる）
+  const judgement = fuyoYearEndJudgement(allDependents, today, targetYear);
+  const recommended = recommendedFuyoKind(judgement);
   const overflow = fuyoOverflow(formData, today);
+
+  const makePdf = async (data: FuyoFormData = formData): Promise<Blob> => {
+    const res = await fetch("/api/dependents-form", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ data }),
+    });
+    if (!res.ok) {
+      const j = (await res.json().catch(() => null)) as { error?: string } | null;
+      throw new Error(j?.error ?? "申告書の生成に失敗しました");
+    }
+    return res.blob();
+  };
+
+  // 選んだ発行パターン（入社時・年末調整時）の申告書を作って、依頼のマスに添付する。
+  // 会社へ送る書類は「このマスに添付したもの」に決めて、依頼のチェック表に戻る
+  const attachToRequest = async (kind: "入社時" | "年末調整時") => {
+    if (!attachTarget || !workerId) return;
+    const names = fuyoFormNames(judgement, kind);
+    if (
+      !window.confirm(
+        `${kind}の扶養控除等申告書（記載 ${names.length}人）を作って、「${attachTarget.requestTitle}」の「${attachTarget.itemName}」に添付します。よろしいですか？`,
+      )
+    )
+      return;
+    setBusy(true);
+    setError(null);
+    try {
+      const blob = await makePdf(buildData(kind));
+      const fileName = fuyoFileName(kind, targetYear, worker.name);
+      const mimeType = "application/pdf";
+      const ticket = await createDocRequestFileTicket(attachTarget.requestId, workerId, fileName, mimeType);
+      if (!ticket.ok) throw new Error(ticket.message);
+      const { error: upErr } = await createClient()
+        .storage.from("app-files")
+        .uploadToSignedUrl(ticket.path, ticket.token, blob, { contentType: mimeType });
+      if (upErr) throw new Error(`アップロードに失敗しました: ${upErr.message}`);
+      const reg = await registerDocRequestFile(attachTarget.requestId, workerId, attachTarget.itemId, ticket.path, fileName, mimeType);
+      if (!reg.ok) throw new Error(reg.message);
+      const mark = await markDocRequestCellAttached(attachTarget.requestId, workerId, attachTarget.itemId, today, {
+        kind,
+        year: targetYear,
+        names,
+      });
+      if (!mark.ok) throw new Error(`添付はできましたが、チェックを保存できませんでした: ${mark.message}`);
+      router.push(`/organizations/requests/${attachTarget.requestId}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "添付に失敗しました");
+      setBusy(false);
+    }
+  };
 
   const download = async () => {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/dependents-form", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ data: formData }),
-      });
-      if (!res.ok) {
-        const j = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(j?.error ?? "申告書の生成に失敗しました");
-      }
-      const blob = await res.blob();
+      const blob = await makePdf();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -202,6 +267,20 @@ export function DependentsFormSheet({
                 }の国際送金が目標額に達した扶養親族だけを記載し、B欄の「生計を一にする事実」欄にその年（1月1日〜12月31日）の送金合計額を記載します。`}
           </p>
         </div>
+
+        {/* 会社からの書類の依頼のマスから開いたとき: 送金明細書と送金額を見ながら、入社時・年末調整時を選んで添付する */}
+        {attachTarget && (
+          <FuyoAttachChooser
+            target={attachTarget}
+            workerId={workerId ?? ""}
+            year={targetYear}
+            judgement={judgement}
+            recommended={recommended}
+            remittanceFiles={remittanceFiles}
+            busy={busy}
+            onAttach={(k) => void attachToRequest(k)}
+          />
+        )}
 
         {/* 送金の目標未達成者 */}
         {unachieved.length > 0 && (
