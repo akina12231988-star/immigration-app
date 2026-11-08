@@ -241,18 +241,12 @@ export function MunicipalityModal({
           ) : (
             <div className="mt-1.5 flex flex-col gap-2">
               {(["cert", "proxy"] as const).map((doc) => (
-                <label key={doc} className="flex flex-col gap-1 text-xs">
-                  <span className="font-bold">{doc === "cert" ? "申請書" : "委任状"}のPDF</span>
-                  <input
-                    type="file"
-                    accept="application/pdf"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0] ?? null;
-                      setFiles((x) => ({ ...x, [doc]: f }));
-                    }}
-                    className="text-xs"
-                  />
-                </label>
+                <PdfDropField
+                  key={doc}
+                  label={`${doc === "cert" ? "申請書" : "委任状"}のPDF`}
+                  file={files[doc] ?? null}
+                  onChange={(f) => setFiles((x) => ({ ...x, [doc]: f }))}
+                />
               ))}
               <span className="text-[11px] text-muted">
                 「保存する」で自治体を登録したあとにアップロードします。記入位置（どこに何を書くか）は、登録後に自治体の編集か請求フォームの「記入位置を置く」で置きます。
@@ -290,5 +284,57 @@ export function MunicipalityModal({
         </Button>
       </div>
     </Modal>
+  );
+}
+
+// 自治体の追加で選んでおくPDF。押して選ぶか、ドラッグ＆ドロップで選ぶ
+function PdfDropField({ label, file, onChange }: { label: string; file: File | null; onChange: (f: File | null) => void }) {
+  const [dragging, setDragging] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const pick = (f: File | undefined | null) => {
+    if (!f) return;
+    if (f.type !== "application/pdf") {
+      setError("PDFを選んでください");
+      return;
+    }
+    setError(null);
+    onChange(f);
+  };
+  return (
+    <div className="flex flex-col gap-1 text-xs">
+      <span className="font-bold">{label}</span>
+      <label
+        className={`flex min-h-[56px] cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-2 border-dashed px-3 py-2 text-center transition-colors ${
+          dragging ? "border-brand bg-brand/5" : file ? "border-status-approved-fg/40 bg-status-approved-bg/40" : "border-border bg-background hover:border-brand"
+        }`}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+          if (!dragging) setDragging(true);
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragging(false);
+          pick(Array.from(e.dataTransfer.files)[0]);
+        }}
+      >
+        <input type="file" accept="application/pdf" className="hidden" onChange={(e) => pick(e.target.files?.[0])} />
+        {file ? (
+          <span className="font-bold text-status-approved-fg">✓ {file.name}</span>
+        ) : (
+          <span className="font-bold text-brand">{dragging ? "ここに離して選ぶ" : "PDFをドラッグ＆ドロップ、または押して選ぶ"}</span>
+        )}
+        {file && <span className="text-[10px] text-muted">別のPDFをドロップすると選び直せます</span>}
+      </label>
+      {file && (
+        <button type="button" onClick={() => onChange(null)} className="self-start text-[11px] font-bold text-muted underline">
+          選んだPDFを外す
+        </button>
+      )}
+      {error && <span className="text-[11px] text-seal">{error}</span>}
+    </div>
   );
 }
