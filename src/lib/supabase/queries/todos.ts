@@ -28,6 +28,8 @@ export interface TodoRow {
   deleted_at: string | null; // 削除フォルダに入れた日時（null = 通常。30日で完全削除・0108）
   exam: Partial<TodoExam> | null; // 試験の申込の詳細（jsonb・0109。未適用の環境では null）
   note: string;
+  requested_to?: string; // 誰に依頼したか（0217。未適用なら undefined）
+  requested_on?: string | null; // 依頼日（0217）
   created_at: string;
   updated_at: string;
 }
@@ -208,6 +210,8 @@ export async function updateTodo(
       | "self_apply"
       | "exam"
       | "note"
+      | "requested_to"
+      | "requested_on"
     >
   >,
 ): Promise<void> {

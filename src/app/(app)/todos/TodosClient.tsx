@@ -1,5 +1,6 @@
 "use client";
 
+import { PROCEDURE_TITLE_LIST, PROCEDURE_TODO_KIND } from "@/lib/procedure-todo";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -937,6 +938,13 @@ export function TodosClient({
         </p>
       )}
 
+      {kind === PROCEDURE_TODO_KIND && (
+        <p className="rounded-xl border border-border bg-background px-3 py-2.5 text-xs leading-relaxed text-muted">
+          転出・転入・国民健康保険の加入・国民年金の加入の手続きです。ふつうは外国人詳細の「住所・保険の手続き（TODO）」から始めます
+          （転出を完了にすると転入手続きのTODOが自動でできます）。依頼先・依頼日・転居先などの詳しい記録は外国人詳細で入れます。
+        </p>
+      )}
+
       {/* 追加 */}
       {canEdit && kind !== "申請準備" && (
         <Card className="flex flex-wrap items-end gap-2 p-4">
@@ -951,10 +959,20 @@ export function TodosClient({
           </label>
           <label className="flex min-w-[12rem] flex-[2] flex-col gap-1">
             <span className="text-[11px] font-bold text-muted">
-              {kind === "試験の申込" ? "内容" : "内容（任意）"}
+              {kind === "試験の申込" || kind === PROCEDURE_TODO_KIND ? "内容" : "内容（任意）"}
             </span>
-            {/* 試験の申込は自由入力ではなく3つの内容から選ぶ */}
-            {kind === "試験の申込" ? (
+            {/* 住所・保険の手続きは4つの手続きから選ぶ */}
+            {kind === PROCEDURE_TODO_KIND ? (
+              <select value={newTitle} onChange={(e) => setNewTitle(e.target.value)} className={INPUT}>
+                <option value="">手続きを選択</option>
+                {PROCEDURE_TITLE_LIST.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            ) : /* 試験の申込は自由入力ではなく3つの内容から選ぶ */
+            kind === "試験の申込" ? (
               <select
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
@@ -1819,6 +1837,16 @@ function TodoItem({
               )}
               {/* 必要書類が何%揃ったか */}
               {todo.kind === "申請準備" && <PrepProgressBadge progress={progress} />}
+              {/* 住所・保険の手続き: 何の手続きか・誰にいつ依頼したか */}
+              {todo.kind === PROCEDURE_TODO_KIND && (
+                <span className="shrink-0 rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-bold text-brand">{todo.title}</span>
+              )}
+              {todo.kind === PROCEDURE_TODO_KIND && (todo.requested_to || todo.requested_on) && (
+                <span className="shrink-0 text-[11px] text-muted">
+                  依頼先: {todo.requested_to || "—"}
+                  {todo.requested_on ? `（${todo.requested_on.replace(/-/g, "/")}）` : ""}
+                </span>
+              )}
             </>
           ) : canEdit ? (
             /* ひも付けが無いTODOは外国人詳細のTODO欄に出てこないので、ここで結び付ける */

@@ -392,7 +392,7 @@ export function WorkerFollowups({
 }
 
 // 依頼先（名簿から選ぶか自由に打つ）と依頼日。転居手続き・国保加入の両方で同じ形
-function RequestFields({
+export function RequestFields({
   to,
   on,
   disabled,
@@ -449,7 +449,7 @@ function RequestFields({
 // 現在の保険証（国保／社保／その他）と転居後の保険証（変更なし／国保／社保）を選ぶと、
 // 社保→国保なら退職に関わる書類（資格喪失確認書・離職票）の発行の確認欄、
 // 国保→社保なら「社保に入ったら国保を脱退」の案内とチェック欄を出す
-function MovingInsuranceFields({
+export function MovingInsuranceFields({
   moving,
   disabled,
   currentCardKind,

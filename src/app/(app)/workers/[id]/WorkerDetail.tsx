@@ -43,7 +43,7 @@ import {
 import { WorkerDocuments } from "@/components/workers/WorkerDocuments";
 import { WorkerVisaHistory } from "@/components/workers/WorkerVisaHistory";
 import { WorkerEmploymentInsurance } from "@/components/workers/WorkerEmploymentInsurance";
-import { WorkerFollowups } from "@/components/workers/WorkerFollowups";
+import { WorkerProcedureTodos } from "@/components/workers/WorkerProcedureTodos";
 import { WorkerMailingRecords } from "@/components/workers/WorkerMailingRecords";
 import { WorkerInsuranceCards } from "@/components/workers/WorkerInsuranceCards";
 import { OnboardingDocuments } from "@/components/workers/OnboardingDocuments";
@@ -2022,7 +2022,8 @@ export function WorkerDetail({
       {/* あとでやる手続き（転居手続き・退職書類が出てからの国保/国民年金の加入）。
           国保の欄には現在の保険証（上の保険証の欄の最新）からの目安も出す */}
       <div id="wd-followup">
-      <WorkerFollowups
+      {/* 住所・保険の手続き（転出・転入・国保・国民年金）は手続きごとのTODOにした（0217） */}
+      <WorkerProcedureTodos
         workerId={worker.id}
         followups={worker.followups}
         canEdit={canEdit}

@@ -26,6 +26,7 @@ import {
 import { updateWorker } from "@/lib/supabase/queries/workers";
 import { dbErrorMessage } from "@/lib/errors";
 import { followupsOf, moveinDoneByAddress } from "@/lib/worker-followups";
+import { completeOpenMovingTodos } from "@/lib/supabase/queries/procedure-todos";
 import type { WorkerAddress } from "@/lib/worker-address";
 
 const INPUT =
@@ -60,6 +61,8 @@ export function WorkerAddressHistory({
     if (!done) return;
     try {
       await updateWorker(createClient(), workerId, { followups: done });
+      // 住所・保険の手続きのTODO（転出・転入）も完了にする（0217 未適用なら何もしない）
+      await completeOpenMovingTodos(createClient(), workerId).catch(() => 0);
       setNotice(
         `転入日（${registeredMovedOn}）が転入手続きの依頼日（${done.moving.movein_requested_on}）以降なので、あとでやる手続きの転居手続き（転入手続き）を「完了」にしました。`,
       );
