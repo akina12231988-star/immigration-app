@@ -102,6 +102,8 @@ import {
   stampFeePayerLabel,
 } from "@/lib/stamp-fee";
 import { PrepEstimateItemsPanel } from "@/components/workers/PrepEstimateItemsPanel";
+import { HireCheckPanel } from "@/components/workers/HireCheckPanel";
+import { EMPTY_HIRE_CHECK } from "@/lib/hire-check";
 import { normalizeOrganizationIntake } from "@/lib/organization-intake";
 import { hasCustomSalesItems, salesItemsForKind } from "@/lib/sales";
 import { salesKindOfPrep } from "@/lib/estimate";
@@ -567,6 +569,7 @@ export function ApplicationPrepChecklist({
         | "post_apply_notes"
         | "stamp_fee_payer"
         | "estimate_items"
+        | "hire_check"
       >
     >,
   ) {
@@ -579,7 +582,9 @@ export function ApplicationPrepChecklist({
     } catch (err) {
       // あとから足した項目（筆頭者=0111・申請予定日=0112）は、その分の案内を出す
       const migration =
-        "estimate_items" in patch
+        "hire_check" in patch
+          ? "0218_prep_hire_check.sql"
+          : "estimate_items" in patch
           ? "0214_prep_estimate_items.sql"
           : "stamp_fee_payer" in patch
           ? "0175_prep_stamp_fee_payer.sql"
@@ -1800,6 +1805,28 @@ export function ApplicationPrepChecklist({
             canEdit={canEdit}
             onChange={(patch) => void saveExtras(patch)}
           />
+        )}
+
+        {/* 所属機関への採用条件の確認（LINEグループで時給・居住費用を聞く）。
+            ①所属機関の月給制／時給制 ②THANHに居住場所を聞く ③文章をコピー ＋ 履歴書の画像 */}
+        {current != null && (
+          <div className="mt-3">
+            <HireCheckPanel
+              key={current.id}
+              checklistId={current.id}
+              workerName={workerRow?.name ?? ""}
+              orgId={prepOrgId}
+              orgName={prepOrgName}
+              orgPaySystem={orgIntake?.pay_system ?? ""}
+              stampFeeDecided={!!effectiveStampFeePayer(current.stamp_fee_payer, prepOrgName, orgIntake?.stamp_fee_payer ?? "", current.app_content)}
+              value={current.hire_check ?? EMPTY_HIRE_CHECK}
+              canEdit={canEdit}
+              onSave={(next) => saveExtras({ hire_check: next })}
+              onOrgPaySaved={(pay) =>
+                setPrepOrgIntake((x) => (x && orgIntake ? { ...x, intake: { ...orgIntake, pay_system: pay } } : x))
+              }
+            />
+          </div>
         )}
 
         {/* 申請準備（在留更新対象）と同じ入力欄。ここで「準備中」にすると

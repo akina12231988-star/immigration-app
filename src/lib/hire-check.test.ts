@@ -1,0 +1,33 @@
+import { describe, expect, it } from "vitest";
+import { hireConditionMessage, housingQuestionText, normalizeHireCheck } from "./hire-check";
+
+describe("hireConditionMessage（所属機関への文章）", () => {
+  it("給与の形態と住居がそろわないと作らない", () => {
+    expect(hireConditionMessage("NGUYEN VAN A", "", "社宅")).toBeNull();
+    expect(hireConditionMessage("NGUYEN VAN A", "時給制", "")).toBeNull();
+  });
+  it("時給制・社宅", () => {
+    const t = hireConditionMessage("NGUYEN VAN A", "時給制", "社宅")!;
+    expect(t).toContain("お世話になっております。");
+    expect(t).toContain("NGUYEN VAN Aさんの採用を聞きました。");
+    expect(t).toContain("この方の時給と、社宅の家賃・光熱費などの居住費用を教えていただけますか？");
+  });
+  it("月給制・自分で契約", () => {
+    const t = hireConditionMessage("NGUYEN VAN A", "月給制", "自分で契約")!;
+    expect(t).toContain("月給");
+    expect(t).toContain("自分で住宅を契約");
+  });
+});
+
+describe("normalizeHireCheck・housingQuestionText", () => {
+  it("知らない値は捨てる", () => {
+    expect(normalizeHireCheck({ housing: "x", resume_path: "p" })).toMatchObject({ housing: "", resume_path: "p" });
+    expect(normalizeHireCheck(null).housing).toBe("");
+  });
+  it("THANHへの質問（印紙代が未設定なら一緒に聞く）", () => {
+    expect(housingQuestionText({ askStampFee: true })).toBe(
+      "@Vương Văn Thanh\n印紙代は\n本人負担？会社負担？\n\n居住場所は\n本人契約のアパート？社宅に住む？",
+    );
+    expect(housingQuestionText({ askStampFee: false })).toBe("@Vương Văn Thanh\n居住場所は\n本人契約のアパート？社宅に住む？");
+  });
+});

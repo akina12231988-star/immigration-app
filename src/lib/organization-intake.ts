@@ -249,6 +249,7 @@ export function emptyOrganizationIntake(): OrganizationIntake {
     sales_items: {},
     sales_items_custom: [],
     stamp_fee_payer: "",
+    pay_system: "",
     freee_case_url: "",
     work_address: "",
     work_contact: "",
@@ -371,6 +372,7 @@ export function normalizeOrganizationIntake(raw: unknown): OrganizationIntake {
       ? src.sales_items_custom.filter((k): k is string => typeof k === "string")
       : [],
     stamp_fee_payer: typeof src.stamp_fee_payer === "string" ? src.stamp_fee_payer : "",
+    pay_system: typeof src.pay_system === "string" ? src.pay_system : "",
     job_workplaces: workplacesWithWorkSite(normalizeWorkplaces(src.job_workplaces, true), src),
     job_workplace_changes: normalizeWorkplaces(src.job_workplace_changes, false),
     job_shifts: normalizeShifts(src.job_shifts),

@@ -1,0 +1,332 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { Check, Copy, ImageUp, MessageSquareText } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import { getOrganization, updateOrganization } from "@/lib/supabase/queries/organizations";
+import { createPrepResumeTicket, getPrepResumeUrl, removePrepResume } from "@/app/(app)/workers/prep-resume-actions";
+import { dbErrorMessage } from "@/lib/errors";
+import { todayStr } from "@/lib/ssw/calc";
+import {
+  HOUSING_ASK_STAFF,
+  HOUSING_LABEL,
+  HOUSING_OPTIONS,
+  PAY_SYSTEMS,
+  hireConditionMessage,
+  housingQuestionText,
+  isPaySystem,
+  type HireCheck,
+  type PaySystem,
+} from "@/lib/hire-check";
+import type { OrganizationInput } from "@/types/db";
+
+// 申請準備の「所属機関への採用条件の確認」。
+//  ① 所属機関の給与の形態（月給制／時給制）を登録する（所属機関の情報に保存）
+//  ② VUONG VAN THANH に住居（社宅／自分で契約）を聞いて押す
+//  ③ ①②がそろったら、所属機関のLINEグループに送る文章をコピーする
+//  あわせて履歴書の画像をアップロードし、LINEに貼れるよう画像としてコピーする
+export function HireCheckPanel({
+  checklistId,
+  workerName,
+  orgId,
+  orgName,
+  orgPaySystem,
+  stampFeeDecided,
+  value,
+  canEdit,
+  onSave,
+  onOrgPaySaved,
+}: {
+  checklistId: string;
+  workerName: string;
+  orgId: string | null;
+  orgName: string;
+  orgPaySystem: string;
+  stampFeeDecided: boolean; // 収入印紙代の負担が決まっているか（決まっていなければTHANHへの質問に入れる）
+  value: HireCheck;
+  canEdit: boolean;
+  onSave: (next: HireCheck) => Promise<void> | void;
+  onOrgPaySaved?: (pay: PaySystem | "") => void;
+}) {
+  // 給与の形態（画面で押した値。押していなければ所属機関の登録内容）
+  const [payPicked, setPay] = useState<PaySystem | "" | null>(null);
+  const pay: PaySystem | "" = payPicked ?? (isPaySystem(orgPaySystem) ? orgPaySystem : "");
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+  const [resumeUrlState, setResumeUrl] = useState<{ path: string; url: string | null } | null>(null);
+  const resumeUrl = resumeUrlState?.path === value.resume_path ? resumeUrlState.url : null;
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const message = hireConditionMessage(workerName, pay, value.housing);
+
+  // 履歴書の画像の表示用URL
+  useEffect(() => {
+    const path = value.resume_path;
+    if (!path) return;
+    let cancelled = false;
+    void getPrepResumeUrl(checklistId, path).then((r) => {
+      if (!cancelled) setResumeUrl({ path, url: r.ok ? r.url : null });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [checklistId, value.resume_path]);
+
+  const flash = (key: string) => {
+    setCopied(key);
+    setTimeout(() => setCopied((c) => (c === key ? null : c)), 2000);
+  };
+
+  // ① 給与の形態を所属機関の情報に保存する（ほかの項目を消さないよう、保存の直前に読み直す）
+  const savePay = async (p: PaySystem) => {
+    if (!orgId) return;
+    const next = pay === p ? "" : p;
+    setPay(next);
+    setError(null);
+    try {
+      const supabase = createClient();
+      const org = await getOrganization(supabase, orgId);
+      if (!org) throw new Error("所属機関が見つかりません");
+      await updateOrganization(supabase, orgId, { intake: { ...(org.intake ?? {}), pay_system: next } } as Partial<OrganizationInput>);
+      onOrgPaySaved?.(next);
+    } catch (err) {
+      setError(dbErrorMessage(err, "", "給与の形態の保存に失敗しました"));
+    }
+  };
+
+  const copyText = async (key: string, text: string) => {
+    await navigator.clipboard.writeText(text);
+    flash(key);
+  };
+
+  // 履歴書を画像としてクリップボードに入れる（LINEのトークにそのまま貼れる）。
+  // クリップボードは PNG だけを受け付けるので、JPEG などは描き直して PNG にする
+  const copyResumeImage = async () => {
+    if (!resumeUrl) return;
+    setError(null);
+    try {
+      const blob = await (await fetch(resumeUrl)).blob();
+      const png =
+        blob.type === "image/png"
+          ? blob
+          : await new Promise<Blob>((resolve, reject) => {
+              const img = new Image();
+              img.crossOrigin = "anonymous";
+              img.onload = () => {
+                const c = document.createElement("canvas");
+                c.width = img.naturalWidth;
+                c.height = img.naturalHeight;
+                c.getContext("2d")?.drawImage(img, 0, 0);
+                c.toBlob((b) => (b ? resolve(b) : reject(new Error("画像を変換できませんでした"))), "image/png");
+              };
+              img.onerror = () => reject(new Error("画像を読み込めませんでした"));
+              img.src = URL.createObjectURL(blob);
+            });
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
+      flash("resume");
+    } catch (err) {
+      setError(err instanceof Error ? `画像をコピーできませんでした: ${err.message}` : "画像をコピーできませんでした");
+    }
+  };
+
+  const uploadResume = async (file: File) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const ticket = await createPrepResumeTicket(checklistId, file.type);
+      if (!ticket.ok) throw new Error(ticket.message);
+      const { error: upErr } = await createClient()
+        .storage.from("app-files")
+        .uploadToSignedUrl(ticket.path, ticket.token, file, { contentType: file.type });
+      if (upErr) throw new Error(`アップロードに失敗しました: ${upErr.message}`);
+      const old = value.resume_path;
+      await onSave({ ...value, resume_path: ticket.path, resume_name: file.name });
+      if (old) await removePrepResume(checklistId, old);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "アップロードに失敗しました");
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const step = "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold";
+  const pill = (on: boolean) =>
+    `min-h-[38px] rounded-xl border px-3 text-xs font-bold disabled:opacity-60 ${
+      on ? "border-brand bg-brand text-brand-foreground" : "border-border bg-background text-foreground hover:border-brand"
+    }`;
+  const copyBtn =
+    "inline-flex min-h-[34px] items-center gap-1 rounded-lg border border-brand px-2.5 text-[11px] font-bold text-brand hover:bg-brand/5 disabled:opacity-50";
+
+  return (
+    <div className="rounded-xl border-2 border-brand/30 bg-background p-3">
+      <p className="mb-1 flex items-center gap-1.5 text-sm font-bold">
+        <MessageSquareText size={15} />
+        所属機関への採用条件の確認（LINEグループ）
+      </p>
+      <p className="mb-3 text-[11px] text-muted">
+        {orgName || "所属機関"} のLINEグループで、{workerName}さんの{pay === "月給制" ? "月給" : pay === "時給制" ? "時給" : "時給（月給）"}と居住費用を聞きます。①②がそろうと、送る文章ができます。
+      </p>
+      {error && <p className="mb-2 rounded-lg bg-seal/10 px-2 py-1.5 text-xs text-seal">{error}</p>}
+
+      <div className="space-y-3">
+        {/* ① 給与の形態 */}
+        <div>
+          <p className="mb-1 flex items-center gap-1.5 text-xs font-bold">
+            <span className={`${step} ${pay ? "bg-status-approved-bg text-status-approved-fg" : "bg-seal text-white"}`}>
+              {pay ? <Check size={12} /> : "1"}
+            </span>
+            {orgName || "所属機関"} は月給制ですか？時給制ですか？
+            <span className="font-normal text-muted">（所属機関の情報に保存します）</span>
+          </p>
+          <div className="flex flex-wrap gap-2 pl-6">
+            {PAY_SYSTEMS.map((p) => (
+              <button key={p} type="button" disabled={!canEdit || !orgId} onClick={() => void savePay(p)} className={pill(pay === p)}>
+                {p}
+              </button>
+            ))}
+            {!orgId && <span className="self-center text-[11px] text-seal">所属機関が未設定です</span>}
+          </div>
+        </div>
+
+        {/* ② 住居（THANHに聞く） */}
+        <div>
+          <p className="mb-1 flex items-center gap-1.5 text-xs font-bold">
+            <span className={`${step} ${value.housing ? "bg-status-approved-bg text-status-approved-fg" : "bg-seal text-white"}`}>
+              {value.housing ? <Check size={12} /> : "2"}
+            </span>
+            {HOUSING_ASK_STAFF} さんに居住場所{stampFeeDecided ? "" : "と印紙代の負担"}を聞く
+          </p>
+          <div className="space-y-1.5 pl-6">
+            {/* 先にTHANHへの質問をコピーしてMessengerのグループで聞き、答えを聞いてから下のボタンを押す */}
+            <pre className="whitespace-pre-wrap rounded-lg border border-border bg-surface p-2 font-sans text-xs leading-relaxed">
+              {housingQuestionText({ askStampFee: !stampFeeDecided })}
+            </pre>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  await copyText("thanh", housingQuestionText({ askStampFee: !stampFeeDecided }));
+                  if (canEdit && !value.thanh_asked_on) void onSave({ ...value, thanh_asked_on: todayStr() });
+                }}
+                className={copyBtn}
+              >
+                {copied === "thanh" ? <Check size={13} /> : <Copy size={13} />}
+                {copied === "thanh" ? "コピーしました" : "THANHさんへの質問をコピー"}
+              </button>
+              {value.thanh_asked_on && <span className="text-[10px] text-muted">{value.thanh_asked_on.replace(/-/g, "/")} に聞きました</span>}
+            </div>
+            {!stampFeeDecided && (
+              <p className="text-[11px] text-muted">印紙代の答えは、下の「収入印紙代」のボタンで選んでください。</p>
+            )}
+          </div>
+          <div className="mt-1.5 flex flex-wrap items-center gap-2 pl-6">
+            <span className="text-[11px] font-bold">THANHさんの答え（居住場所）:</span>
+            {HOUSING_OPTIONS.map((h) => (
+              <button
+                key={h}
+                type="button"
+                disabled={!canEdit || (!value.thanh_asked_on && !value.housing)}
+                title={!value.thanh_asked_on && !value.housing ? "先にTHANHさんへの質問をコピーして聞いてください" : undefined}
+                onClick={() =>
+                  void onSave({ ...value, housing: value.housing === h ? "" : h, housing_on: value.housing === h ? null : todayStr() })
+                }
+                className={pill(value.housing === h)}
+              >
+                {HOUSING_LABEL[h]}
+              </button>
+            ))}
+            {value.housing_on && <span className="text-[10px] text-muted">（{value.housing_on.replace(/-/g, "/")} に確認）</span>}
+            {!value.thanh_asked_on && !value.housing && (
+              <span className="text-[11px] text-seal">先に上の質問をコピーしてTHANHさんに聞いてから押してください</span>
+            )}
+          </div>
+        </div>
+
+        {/* ③ 所属機関への文章 */}
+        <div>
+          <p className="mb-1 flex items-center gap-1.5 text-xs font-bold">
+            <span className={`${step} ${value.message_copied_on ? "bg-status-approved-bg text-status-approved-fg" : message ? "bg-brand text-brand-foreground" : "bg-border text-muted"}`}>
+              {value.message_copied_on ? <Check size={12} /> : "3"}
+            </span>
+            所属機関のLINEグループに送る文章
+          </p>
+          <div className="pl-6">
+            {message ? (
+              <>
+                <pre className="whitespace-pre-wrap rounded-lg border border-border bg-surface p-2.5 font-sans text-xs leading-relaxed">{message}</pre>
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await copyText("message", message);
+                      if (canEdit) void onSave({ ...value, message_copied_on: todayStr() });
+                    }}
+                    className="inline-flex min-h-[38px] items-center gap-1 rounded-lg bg-brand px-3 text-xs font-bold text-brand-foreground"
+                  >
+                    {copied === "message" ? <Check size={14} /> : <Copy size={14} />}
+                    {copied === "message" ? "コピーしました" : "文章をコピー"}
+                  </button>
+                  {value.message_copied_on && (
+                    <span className="text-[11px] text-muted">{value.message_copied_on.replace(/-/g, "/")} にコピーしました</span>
+                  )}
+                </div>
+              </>
+            ) : (
+              <p className="rounded-lg bg-surface p-2.5 text-[11px] text-muted">
+                ①（月給制／時給制）と②（社宅に住む／本人契約のアパート）を選ぶと、ここに文章ができます。
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* 履歴書の画像 */}
+        <div>
+          <p className="mb-1 flex items-center gap-1.5 text-xs font-bold">
+            <ImageUp size={14} className="text-muted" />
+            履歴書（画像）
+            <span className="font-normal text-muted">— 文章と一緒にLINEに貼れるよう、画像としてコピーできます</span>
+          </p>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void uploadResume(f);
+            }}
+          />
+          <div className="flex flex-wrap items-start gap-3 pl-6">
+            {resumeUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={resumeUrl} alt={`${workerName}さんの履歴書`} className="h-32 w-auto rounded-lg border border-border object-contain" />
+            ) : value.resume_path ? (
+              <span className="text-[11px] text-muted">読み込み中…</span>
+            ) : null}
+            <div className="flex flex-col gap-1.5">
+              {value.resume_path && (
+                <button type="button" onClick={() => void copyResumeImage()} disabled={!resumeUrl} className={copyBtn}>
+                  {copied === "resume" ? <Check size={13} /> : <Copy size={13} />}
+                  {copied === "resume" ? "画像をコピーしました" : "履歴書の画像をコピー"}
+                </button>
+              )}
+              {canEdit && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => fileRef.current?.click()}
+                  className="inline-flex min-h-[34px] items-center gap-1 rounded-lg border border-dashed border-brand px-2.5 text-[11px] font-bold text-brand disabled:opacity-50"
+                >
+                  <ImageUp size={13} />
+                  {busy ? "アップロード中…" : value.resume_path ? "画像を差し替える" : "履歴書の画像をアップロード"}
+                </button>
+              )}
+              {value.resume_name && <span className="text-[10px] text-muted">{value.resume_name}</span>}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
