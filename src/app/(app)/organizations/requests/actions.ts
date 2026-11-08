@@ -114,3 +114,49 @@ export async function deleteDocRequestFile(fileId: string): Promise<{ ok: true }
   if (error) return { ok: false, message: error.message };
   return { ok: true };
 }
+
+// 外国人詳細の申告書の作成画面などから、書類をマスに添付したあとの印付け。
+// まだなら「添付済み」（issued_on）を付け、会社へ送る書類を「このマスに添付したもの」に決める（0220）。
+// 0220 未適用なら use_doc は付けずに保存し、そのことを返す
+export async function markDocRequestCellAttached(
+  requestId: string,
+  workerId: string,
+  itemId: string,
+  today: string,
+): Promise<{ ok: true; useDocSaved: boolean } | Err> {
+  if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
+  const admin = createAdminClient();
+  if (!admin) return { ok: false, message: "サーバー設定エラー" };
+  const table = "organization_document_request_checks";
+  const { data: existing, error: getErr } = await admin
+    .from(table)
+    .select("*")
+    .eq("request_id", requestId)
+    .eq("worker_id", workerId)
+    .eq("item_id", itemId)
+    .maybeSingle();
+  if (getErr) return { ok: false, message: getErr.message };
+  const cur = (existing as Record<string, unknown> | null) ?? null;
+  const base: Record<string, unknown> = {
+    request_id: requestId,
+    worker_id: workerId,
+    item_id: itemId,
+    informed_on: cur?.informed_on ?? null,
+    issued_on: cur?.issued_on ?? null,
+    sent_on: cur?.sent_on ?? null,
+    not_needed: cur?.not_needed ?? false,
+    note: cur?.note ?? "",
+  };
+  if (!base.issued_on && !base.not_needed) {
+    base.issued_on = today;
+    // 「無い」と回答していたなら、手に入ったので外す（0198 未適用でも止まらないよう、値があるときだけ）
+    if (cur?.none_replied_on) base.none_replied_on = null;
+  }
+  const opts = { onConflict: "request_id,worker_id,item_id" };
+  const { error } = await admin.from(table).upsert({ ...base, use_doc: "cell" }, opts);
+  if (!error) return { ok: true, useDocSaved: true };
+  if (!error.message.includes("use_doc")) return { ok: false, message: error.message };
+  const { error: e2 } = await admin.from(table).upsert(base, opts);
+  if (e2) return { ok: false, message: e2.message };
+  return { ok: true, useDocSaved: false };
+}

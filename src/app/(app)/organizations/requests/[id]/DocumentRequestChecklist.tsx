@@ -1160,7 +1160,7 @@ export function DocumentRequestChecklist({
                                     {(
                                       [
                                         { v: "onboarding", label: "入社時（外国人詳細）" },
-                                        { v: "cell", label: fuyoItem ? "年末調整用（ここに添付）" : "ここに添付したもの" },
+                                        { v: "cell", label: fuyoItem ? "作り直したもの（ここに添付）" : "ここに添付したもの" },
                                       ] as const
                                     ).map((o) => {
                                       const on = c?.use_doc === o.v;
@@ -1189,12 +1189,7 @@ export function DocumentRequestChecklist({
                                   )}
                                   {docChoice === "cell-missing" && (
                                     <span className="text-[10px] font-bold text-seal">
-                                      {fuyoItem ? "年末調整用の申告書をここに添付してください" : "ここに書類を添付してください"}
-                                      {fuyoItem && (
-                                        <Link href={`/workers/${w.id}/dependents-form?kind=year-end`} className="ml-1 text-brand underline" target="_blank">
-                                          年末調整用を作る
-                                        </Link>
-                                      )}
+                                      {fuyoItem ? "作り直した申告書をここに添付してください" : "ここに書類を添付してください"}
                                     </span>
                                   )}
                                 </div>
@@ -1213,6 +1208,16 @@ export function DocumentRequestChecklist({
                                   <Link2 size={11} className="shrink-0" />
                                   <span className="truncate">外国人詳細に添付済み{linkedDoc.file_name ? `：${linkedDoc.file_name}` : ""}</span>
                                 </button>
+                              )}
+                              {fuyoItem && canEdit && (
+                                <Link
+                                  href={`/workers/${w.id}/dependents-form?request=${request.id}&item=${item.id}`}
+                                  className="inline-flex min-h-[24px] items-center gap-0.5 rounded-lg border border-brand px-1.5 text-[10px] font-bold text-brand"
+                                  title="申告書の作成画面で「入社時」か「年末調整時」かを選んで作り、このマスに添付します"
+                                >
+                                  <FileText size={11} />
+                                  申告書を作り直して添付
+                                </Link>
                               )}
                               {cellFiles.length > 1 && (
                                 <span className="text-[10px] font-bold text-brand">{cellFiles.length}枚</span>

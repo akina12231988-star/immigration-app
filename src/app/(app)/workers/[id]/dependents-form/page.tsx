@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { getWorkerWithHistories } from "@/lib/supabase/queries/workers";
 import { normalizeDependents } from "@/lib/dependents";
+import { getDocumentRequest } from "@/lib/supabase/queries/org-document-requests";
 import { DependentsFormSheet } from "./DependentsFormSheet";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +13,7 @@ export default async function DependentsFormPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ kind?: string; year?: string }>;
+  searchParams: Promise<{ kind?: string; year?: string; request?: string; item?: string }>;
 }) {
   const me = await getMyProfile();
   if (!me) redirect("/login");
@@ -25,6 +26,13 @@ export default async function DependentsFormPage({
   const supabase = await createClient();
   const worker = await getWorkerWithHistories(supabase, id);
   if (!worker) notFound();
+  // ?request=…&item=… で開いたら、会社からの書類の依頼のマスに作った申告書を添付できる
+  let attachTarget: { requestId: string; itemId: string; requestTitle: string; itemName: string } | undefined;
+  if (sp.request && sp.item && me.role !== "viewer") {
+    const req = await getDocumentRequest(supabase, sp.request).catch(() => null);
+    const item = req?.items.find((i) => i.id === sp.item);
+    if (req && item) attachTarget = { requestId: req.id, itemId: item.id, requestTitle: req.title, itemName: item.name };
+  }
 
   return (
     <DependentsFormSheet
@@ -39,6 +47,8 @@ export default async function DependentsFormPage({
       dependents={normalizeDependents(worker.dependents)}
       initialKind={initialKind}
       initialYear={initialYear}
+      workerId={worker.id}
+      attachTarget={attachTarget}
     />
   );
 }
