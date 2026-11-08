@@ -10,7 +10,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Combobox } from "@/components/ui/Combobox";
 import { createClient } from "@/lib/supabase/client";
 import { insertJudgmentRecord } from "@/lib/supabase/queries/tax-cert";
-import { insertTaxOffice, updateTaxOffice } from "@/lib/supabase/queries/tax-office";
+import { DuplicateTaxOfficeError, insertTaxOffice, updateTaxOffice } from "@/lib/supabase/queries/tax-office";
 import { updateWorker } from "@/lib/supabase/queries/workers";
 import { applicantLabel, formatDateJP, todayISO, type JudgmentRecord, type Nozei3Method } from "@/lib/tax-cert";
 import {
@@ -238,7 +238,16 @@ export function Nozei3Fields({
       }
       setOfficeModal(null);
     } catch (e) {
-      showToast(dbErrorMessage(e, TAX_OFFICE_MIGRATION, "税務署の保存に失敗しました"));
+      // 同じ名前の税務署がすでにある: 追加のときはそれを選んで閉じる（二重に登録しない）
+      if (e instanceof DuplicateTaxOfficeError && e.existing && officeModal !== "edit") {
+        const existing = e.existing;
+        if (!taxOffices.some((o) => o.id === existing.id)) setTaxOffices([...taxOffices, existing]);
+        set({ taxOfficeId: existing.id });
+        setOfficeModal(null);
+        showToast(`「${existing.name}」はすでに税務署マスタに登録されていたので、それを選びました`);
+      } else {
+        showToast(e instanceof DuplicateTaxOfficeError ? e.message : dbErrorMessage(e, TAX_OFFICE_MIGRATION, "税務署の保存に失敗しました"));
+      }
     } finally {
       setOfficeBusy(false);
     }

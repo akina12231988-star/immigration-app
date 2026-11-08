@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { createClient } from "@/lib/supabase/client";
-import { deleteTaxOffice, insertTaxOffice, updateTaxOffice } from "@/lib/supabase/queries/tax-office";
+import { DuplicateTaxOfficeError, deleteTaxOffice, insertTaxOffice, updateTaxOffice } from "@/lib/supabase/queries/tax-office";
 import {
   emptyTaxOfficeInput,
   jurisdictionList,
@@ -82,7 +82,14 @@ export function TaxOfficeTab({
       setModalOpen(false);
       setEditing(null);
     } catch (e) {
-      showToast(dbErrorMessage(e, TAX_OFFICE_MIGRATION, "保存に失敗しました"));
+      if (e instanceof DuplicateTaxOfficeError) {
+        // 一覧に無ければ（ほかの人が追加した直後など）足して、見つけやすくする
+        const existing = e.existing;
+        if (existing && !taxOffices.some((o) => o.id === existing.id)) setTaxOffices([...taxOffices, existing]);
+        showToast(e.message);
+      } else {
+        showToast(dbErrorMessage(e, TAX_OFFICE_MIGRATION, "保存に失敗しました"));
+      }
     } finally {
       setBusy(false);
     }
