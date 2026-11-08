@@ -21,6 +21,7 @@ import {
   IdCard,
   Printer,
   StickyNote,
+  Check,
 } from "lucide-react";
 import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { PostApplyList } from "@/components/workers/PostApplyList";
@@ -96,6 +97,7 @@ import { formatStorageNo } from "@/lib/custody";
 import {
   STAMP_FEE_PAYERS,
   autoStampFeePayer,
+  defaultStampFeePayer,
   effectiveStampFeePayer,
   isSsw2StampAppContent,
   isStampFeePayer,
@@ -1818,7 +1820,9 @@ export function ApplicationPrepChecklist({
               orgId={prepOrgId}
               orgName={prepOrgName}
               orgPaySystem={orgIntake?.pay_system ?? ""}
-              stampFeeDecided={!!effectiveStampFeePayer(current.stamp_fee_payer, prepOrgName, orgIntake?.stamp_fee_payer ?? "", current.app_content)}
+              stampFeePayer={effectiveStampFeePayer(current.stamp_fee_payer, prepOrgName, orgIntake?.stamp_fee_payer ?? "", current.app_content)}
+              askStampFee={!defaultStampFeePayer(prepOrgName, orgIntake?.stamp_fee_payer ?? "", current.app_content)}
+              onStampFeeSave={(v) => void saveExtras({ stamp_fee_payer: v })}
               value={current.hire_check ?? EMPTY_HIRE_CHECK}
               canEdit={canEdit}
               onSave={(next) => saveExtras({ hire_check: next })}
@@ -3630,8 +3634,9 @@ function StampFeePayerField({
       : "";
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="text-xs font-bold text-muted">収入印紙代</span>
-      <div className="inline-flex overflow-hidden rounded-lg border border-border">
+      <span className="text-xs font-bold">収入印紙代</span>
+      {/* 押して選ぶボタンだと分かるよう、1つずつ枠のあるボタンにする（選んだものは塗りつぶし＋✓） */}
+      <div className="flex flex-wrap gap-1.5">
         {STAMP_FEE_PAYERS.map((p) => {
           const on = effective === p;
           return (
@@ -3641,10 +3646,13 @@ function StampFeePayerField({
               disabled={!canEdit}
               onClick={() => onSave(on ? "" : p)}
               aria-pressed={on}
-              className={`min-h-[36px] px-3 text-xs font-bold disabled:opacity-60 ${
-                on ? "bg-brand text-brand-foreground" : "bg-background text-muted hover:bg-surface"
+              className={`inline-flex min-h-[38px] items-center gap-1 rounded-xl border-2 px-3 text-xs font-bold shadow-sm transition-colors disabled:opacity-60 ${
+                on
+                  ? "border-brand bg-brand text-brand-foreground"
+                  : "border-brand/40 bg-surface text-brand hover:border-brand hover:bg-brand/5"
               }`}
             >
+              {on && <Check size={13} />}
               {stampFeePayerLabel(p)}
             </button>
           );
