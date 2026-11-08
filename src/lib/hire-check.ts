@@ -75,3 +75,21 @@ export function hireConditionMessage(workerName: string, pay: PaySystem | "", ho
       : `ご本人が自分で住宅を契約して住む予定です。この方の${wage}と、住宅手当など居住費用についての会社のご負担の有無を教えていただけますか？`;
   return ["お世話になっております。", `${workerName}さんの採用を聞きました。`, ask, "よろしくお願いいたします。"].join("\n");
 }
+
+// THANHに聞いたことの状況。
+//  notAsked … まだ聞いていない（質問をコピーしていない）
+//  waiting  … 聞いて返答待ち（居住場所か、聞いた印紙代の答えがまだ）
+//  answered … 返答あり（居住場所と、聞いた場合は印紙代の負担がそろった）
+export type ThanhAskState = "notAsked" | "waiting" | "answered";
+export function thanhAskState(v: Pick<HireCheck, "thanh_asked_on" | "housing">, stampFeeDecided: boolean): ThanhAskState {
+  if (v.housing && stampFeeDecided) return "answered";
+  if (v.thanh_asked_on) return "waiting";
+  return "notAsked";
+}
+
+// 聞いた日から今日までの日数
+export function daysSince(from: string | null, today: string): number | null {
+  if (!from) return null;
+  const d = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000);
+  return Number.isFinite(d) ? Math.max(0, d) : null;
+}

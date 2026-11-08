@@ -15,6 +15,8 @@ import {
   hireConditionMessage,
   housingQuestionText,
   isPaySystem,
+  daysSince,
+  thanhAskState,
   type HireCheck,
   type PaySystem,
 } from "@/lib/hire-check";
@@ -58,6 +60,8 @@ export function HireCheckPanel({
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const message = hireConditionMessage(workerName, pay, value.housing);
+  const askState = thanhAskState(value, stampFeeDecided);
+  const waitDays = daysSince(value.thanh_asked_on, todayStr());
 
   // 履歴書の画像の表示用URL
   useEffect(() => {
@@ -192,11 +196,37 @@ export function HireCheckPanel({
         {/* ② 住居（THANHに聞く） */}
         <div>
           <p className="mb-1 flex items-center gap-1.5 text-xs font-bold">
-            <span className={`${step} ${value.housing ? "bg-status-approved-bg text-status-approved-fg" : "bg-seal text-white"}`}>
-              {value.housing ? <Check size={12} /> : "2"}
+            <span
+              className={`${step} ${
+                askState === "answered" ? "bg-status-approved-bg text-status-approved-fg" : askState === "waiting" ? "bg-status-notice-fg text-white" : "bg-seal text-white"
+              }`}
+            >
+              {askState === "answered" ? <Check size={12} /> : "2"}
             </span>
             {HOUSING_ASK_STAFF} さんに居住場所{stampFeeDecided ? "" : "と印紙代の負担"}を聞く
+            {/* 聞いたかどうか・返答待ちかを一目で分かるようにする */}
+            {askState === "notAsked" && (
+              <span className="rounded-full bg-seal/10 px-2 py-0.5 text-[10px] font-bold text-seal">まだ聞いていません</span>
+            )}
+            {askState === "waiting" && (
+              <span className="rounded-full bg-status-notice-bg px-2 py-0.5 text-[10px] font-bold text-status-notice-fg">
+                返答待ち
+                {value.thanh_asked_on && `（${value.thanh_asked_on.replace(/-/g, "/")} に聞いた・${waitDays === 0 ? "今日" : `${waitDays}日たっています`}）`}
+              </span>
+            )}
+            {askState === "answered" && (
+              <span className="rounded-full bg-status-approved-bg px-2 py-0.5 text-[10px] font-bold text-status-approved-fg">返答あり</span>
+            )}
           </p>
+          {askState === "waiting" && (
+            <p className="mb-1 pl-6 text-[11px] font-bold text-status-notice-fg">
+              THANHさんの返答を待っています。返答が来たら、
+              {!value.housing && "下の「THANHさんの答え（居住場所）」"}
+              {!value.housing && !stampFeeDecided && "と"}
+              {!stampFeeDecided && "下の「収入印紙代」"}
+              を押してください。
+            </p>
+          )}
           <div className="space-y-1.5 pl-6">
             {/* 先にTHANHへの質問をコピーしてMessengerのグループで聞き、答えを聞いてから下のボタンを押す */}
             <pre className="whitespace-pre-wrap rounded-lg border border-border bg-surface p-2 font-sans text-xs leading-relaxed">
@@ -215,6 +245,16 @@ export function HireCheckPanel({
                 {copied === "thanh" ? "コピーしました" : "THANHさんへの質問をコピー"}
               </button>
               {value.thanh_asked_on && <span className="text-[10px] text-muted">{value.thanh_asked_on.replace(/-/g, "/")} に聞きました</span>}
+              {/* コピーしただけで送っていなかったときに、「まだ聞いていない」に戻せる */}
+              {canEdit && value.thanh_asked_on && !value.housing && (
+                <button
+                  type="button"
+                  onClick={() => void onSave({ ...value, thanh_asked_on: null })}
+                  className="text-[10px] font-bold text-muted underline"
+                >
+                  まだ聞いていないに戻す
+                </button>
+              )}
             </div>
             {!stampFeeDecided && (
               <p className="text-[11px] text-muted">印紙代の答えは、下の「収入印紙代」のボタンで選んでください。</p>
