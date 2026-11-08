@@ -194,7 +194,19 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
     if (!permitApps) return { rows: built, pending: [] as SswInsuranceRow[] };
     // 未加入・意思確認の人は、特定技能1号の許可（変更許可・更新許可）が下りた人だけを出す
     const byWorker = groupPermitApplications(permitApps);
-    const withPermit = built.map((r) => ({ ...r, permit: sswPermitInfo(r.worker, byWorker.get(r.worker.id) ?? []) }));
+    // 許可・審査中の所属機関名（申請の所属機関。申請の記録が無い許可は現在の所属機関）
+    const orgNameOf = (id: string | null | undefined) => (id ? (orgBurden.get(id)?.name ?? "") : "");
+    const withPermit = built.map((r) => {
+      const info = sswPermitInfo(r.worker, byWorker.get(r.worker.id) ?? []);
+      return {
+        ...r,
+        permit: {
+          ...info,
+          orgName: info.orgId ? orgNameOf(info.orgId) : r.orgName,
+          reviewOrgName: info.reviewing ? orgNameOf(info.reviewing.orgId) || r.orgName : "",
+        },
+      };
+    });
     const pending = withPermit.filter((r) => needsSswPermitCheck(r.state) && !r.permit.ok && !(r.todos.join && !r.todos.join.done));
     const pendingIds = new Set(pending.map((r) => r.worker.id));
     return { rows: withPermit.filter((r) => !pendingIds.has(r.worker.id)), pending };
@@ -518,8 +530,9 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
                             {r.worker.name}
                           </a>
                           <span className="ml-1 text-muted">
-                            {r.orgName && `${r.orgName}・`}
-                            {r.permit?.reason}
+                            {r.permit?.reviewing
+                              ? `審査中（${r.permit.reviewOrgName || "所属機関の登録なし"}${r.permit.reviewing.appliedOn ? `・申請 ${r.permit.reviewing.appliedOn.replace(/-/g, "/")}` : ""}）`
+                              : `${r.orgName ? `${r.orgName}・` : ""}${r.permit?.reason ?? ""}`}
                           </span>
                         </li>
                       ))}

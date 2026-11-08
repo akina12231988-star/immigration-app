@@ -850,3 +850,23 @@ describe("採用がキャンセルになった人・帰国した人", () => {
     ).toBe("cancel");
   });
 });
+
+describe("sswPermitInfo の所属機関・審査中", () => {
+  const w = { residence_status: "特定技能1号", residence_permit_date: "2025-04-01" };
+  const base: SswPermitApplication = { worker_id: "w1", content: "在留資格の変更許可", approved: false, approval_date: null, granted_permit_date: null, visa_at_grant: "", withdrawn_on: null };
+  it("許可した申請の所属機関を返す", () => {
+    expect(sswPermitInfo(w, [{ ...base, granted_permit_date: "2026-09-07", visa_at_grant: "特定技能1号", organization_id: "o1" }]).orgId).toBe("o1");
+  });
+  it("審査中の申請があれば、許可が下りていても審査中を返す（更新の審査中など）", () => {
+    const r = sswPermitInfo(w, [
+      { ...base, granted_permit_date: "2025-04-01", visa_at_grant: "特定技能1号", organization_id: "o1" },
+      { ...base, content: "在留期間の更新許可", status: "申請済", application_date: "2026-10-30", organization_id: "o2" },
+    ]);
+    expect(r.ok).toBe(true);
+    expect(r.reviewing).toEqual({ orgId: "o2", appliedOn: "2026-10-30", content: "在留期間の更新許可" });
+  });
+  it("申請前・取下げは審査中にしない", () => {
+    expect(sswPermitInfo(w, [{ ...base, status: "申請前" }]).reviewing).toBeNull();
+    expect(sswPermitInfo(w, [{ ...base, status: "申請済", withdrawn_on: "2026-10-01" }]).reviewing).toBeNull();
+  });
+});

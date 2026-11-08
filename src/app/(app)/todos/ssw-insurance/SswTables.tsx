@@ -101,11 +101,20 @@ function SswNameCell({
           Messenger
         </a>
       )}
-      {/* 特定技能1号の許可（変更許可・更新許可）と許可日 */}
+      {/* 特定技能1号の許可（変更許可・更新許可）・許可日・どの所属機関での許可か */}
       {permit?.ok && (
         <span className="mt-0.5 block text-[10px] font-bold text-status-approved-fg">
           1号{permit.kind}
           {permit.permitDate ? `（${permit.permitDate.replace(/-/g, "/")}）` : ""}
+          {permit.orgName && <span className="ml-1 font-medium text-foreground">{permit.orgName}</span>}
+        </span>
+      )}
+      {/* いま審査中の申請があれば、どの所属機関で審査中か */}
+      {permit?.reviewing && (
+        <span className="mt-0.5 inline-flex flex-wrap items-center gap-1 text-[10px] font-bold">
+          <span className="rounded-full bg-status-notice-bg px-1.5 py-0.5 text-status-notice-fg">審査中</span>
+          {permit.reviewOrgName && <span className="text-foreground">{permit.reviewOrgName}</span>}
+          {permit.reviewing.appliedOn && <span className="font-medium text-muted">（申請 {permit.reviewing.appliedOn.replace(/-/g, "/")}）</span>}
         </span>
       )}
     </div>
@@ -646,7 +655,7 @@ function SswResultRow({
   return (
     <tr>
       <td className={TD}>
-        <SswNameCell worker={w} />
+        <SswNameCell worker={w} permit={row.permit} />
       </td>
       <td className={TD}>{row.orgName}</td>
       <td className={TD}>
@@ -920,7 +929,7 @@ export function SswCancelTable({
                         />
                       </td>
                       <td className={TD}>
-                        <SswNameCell worker={w} />
+                        <SswNameCell worker={w} permit={row.permit} />
                       </td>
                       <td className={TD}>{row.orgName}</td>
                       <td className={`${TD} text-center`}>{w.leaving_on ? slashDate(w.leaving_on) : "―"}</td>

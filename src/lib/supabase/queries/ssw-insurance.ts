@@ -309,7 +309,9 @@ export async function setSalesInsuranceJoined(
 export async function listSswPermitApplications(supabase: SupabaseClient): Promise<SswPermitApplication[]> {
   const { data, error } = await supabase
     .from("immigration_applications")
-    .select("worker_id, content, approved, approval_date, granted_permit_date, visa_at_grant, withdrawn_on");
+    .select(
+      "worker_id, content, approved, approval_date, granted_permit_date, visa_at_grant, withdrawn_on, organization_id, status, application_date",
+    );
   if (error) throw error;
   return (data as SswPermitApplication[] | null) ?? [];
 }
