@@ -25,6 +25,8 @@ export const SSW_INSURANCE_STATUSES = ["未着手", "申込手続中", "完了"]
 export const SSW_JOIN_APPLYING_STATUS = "申込手続中";
 export const SSW_CANCEL_MAILED_STATUS = "解約書類郵送済み";
 export const SSW_CANCEL_MAILED_MIGRATION = "0194_ssw_cancel_mailed_status.sql";
+// TODOを作ったあとに加入しないことになったとき（完了の扱い。0216 で選択肢を追加）
+export const SSW_TODO_CANCELED_STATUS = "キャンセル";
 
 // 解約書類（変更（解約）届出書）の送付先・問合せ先（保険会社の書類に書いてあるもの）。
 // 解約手続きの表に出し、宛名書き用にコピーできるようにする
@@ -59,6 +61,10 @@ export function sswStatusOptionsFor(task: SswTaskKey, options: TodoStatusOption[
     };
     if (insertAt < 0) list.push(fallback);
     else list.splice(insertAt, 0, fallback);
+  }
+  // 0216 未適用で「キャンセル」がまだ無ければ、最後に足しておく（完了の扱い）
+  if (!list.some((o) => o.name === SSW_TODO_CANCELED_STATUS)) {
+    list.push({ id: "ssw-canceled", kind: SSW_INSURANCE_TODO_KIND, stage: "完了", name: SSW_TODO_CANCELED_STATUS, sort_no: 99 });
   }
   return list;
 }
@@ -253,7 +259,8 @@ export function sswTodosByWorker(
   const map = new Map<string, SswTodoPair>();
   for (const t of todos) {
     if (t.kind !== SSW_INSURANCE_TODO_KIND || !t.worker_id || t.deleted_at) continue;
-    const stage = stageOfStatus(t.status, opts);
+    // キャンセルは完了の扱い（0216 未適用で選択肢に無くても）
+    const stage: TodoStage = t.status === SSW_TODO_CANCELED_STATUS ? "完了" : stageOfStatus(t.status, opts);
     const ref: SswTodoRef = {
       id: t.id,
       todo_no: t.todo_no,
