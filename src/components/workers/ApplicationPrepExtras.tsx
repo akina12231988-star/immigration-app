@@ -1703,10 +1703,12 @@ export function PrepEmploymentSection({
   workerId,
   canEdit,
   showWages,
+  showContracts = true,
 }: {
   workerId: string;
   canEdit: boolean;
   showWages: boolean; // 外国人詳細では賃金の記録が別カードにあるため、モーダル表示のときだけ出す
+  showContracts?: boolean; // 雇用契約書・雇用条件書も出すか（所属機関からの返答の下では賃金だけを出す）
 }) {
   const [orgs, setOrgs] = useState<Organization[] | null>(null);
   const [info, setInfo] = useState<{
@@ -1786,6 +1788,7 @@ export function PrepEmploymentSection({
       )}
       {/* 雇用契約書・雇用条件書（日付なし版・正式版）は申請準備の中で保管する。
           登録先の会社は申請準備の所属機関を自動入力する */}
+      {showContracts && (
       <WorkerContracts
         workerId={workerId}
         canEdit={canEdit}
@@ -1794,6 +1797,7 @@ export function PrepEmploymentSection({
         currentOrganizationId={prepOrgId}
         orgEmploymentStarts={info.org_employment_starts}
       />
+      )}
     </>
   );
 }
