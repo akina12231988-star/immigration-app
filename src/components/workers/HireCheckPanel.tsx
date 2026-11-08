@@ -473,6 +473,16 @@ export function HireCheckPanel({
                   className="min-h-[32px] rounded-lg border border-border bg-background px-2 text-xs"
                 />
               </label>
+              {/* 間違えて「返答あり」にしたときに戻せる */}
+              {canEdit && value.reply_on && (
+                <button
+                  type="button"
+                  onClick={() => void onSave({ ...value, reply_on: null })}
+                  className="text-[11px] font-bold text-muted underline"
+                >
+                  {value.message_copied_on ? "返答待ちに戻す" : "返答ありを取り消す"}
+                </button>
+              )}
             </div>
             <label className="block">
               <span className="mb-0.5 block text-[11px] font-bold text-muted">備考（所属機関からの返答で気になること・決まったことなど）</span>
