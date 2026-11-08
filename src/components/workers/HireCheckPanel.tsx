@@ -21,6 +21,7 @@ import {
   type PaySystem,
 } from "@/lib/hire-check";
 import type { OrganizationInput } from "@/types/db";
+import { STAMP_FEE_PAYERS, stampFeePayerLabel, type StampFeePayer } from "@/lib/stamp-fee";
 
 // 申請準備の「所属機関への採用条件の確認」。
 //  ① 所属機関の給与の形態（月給制／時給制）を登録する（所属機関の情報に保存）
@@ -33,7 +34,9 @@ export function HireCheckPanel({
   orgId,
   orgName,
   orgPaySystem,
-  stampFeeDecided,
+  stampFeePayer,
+  askStampFee,
+  onStampFeeSave,
   value,
   canEdit,
   onSave,
@@ -44,7 +47,9 @@ export function HireCheckPanel({
   orgId: string | null;
   orgName: string;
   orgPaySystem: string;
-  stampFeeDecided: boolean; // 収入印紙代の負担が決まっているか（決まっていなければTHANHへの質問に入れる）
+  stampFeePayer: StampFeePayer | ""; // いまの収入印紙代の負担（未設定なら ''）
+  askStampFee: boolean; // THANHに印紙代も聞くか（申請種別・所属機関で自動で決まらないとき）
+  onStampFeeSave?: (payer: StampFeePayer | "") => void; // THANHの答えで印紙代の負担を選ぶ（申請準備の「収入印紙代」に保存）
   value: HireCheck;
   canEdit: boolean;
   onSave: (next: HireCheck) => Promise<void> | void;
@@ -58,8 +63,10 @@ export function HireCheckPanel({
   const [resumeUrlState, setResumeUrl] = useState<{ path: string; url: string | null } | null>(null);
   const resumeUrl = resumeUrlState?.path === value.resume_path ? resumeUrlState.url : null;
   const [busy, setBusy] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const message = hireConditionMessage(workerName, pay, value.housing);
+  const stampFeeDecided = !!stampFeePayer;
   const askState = thanhAskState(value, stampFeeDecided);
   const waitDays = daysSince(value.thanh_asked_on, todayStr());
 
@@ -203,7 +210,7 @@ export function HireCheckPanel({
             >
               {askState === "answered" ? <Check size={12} /> : "2"}
             </span>
-            {HOUSING_ASK_STAFF} さんに居住場所{stampFeeDecided ? "" : "と印紙代の負担"}を聞く
+            {HOUSING_ASK_STAFF} さんに居住場所{askStampFee ? "と印紙代の負担" : ""}を聞く
             {/* 聞いたかどうか・返答待ちかを一目で分かるようにする */}
             {askState === "notAsked" && (
               <span className="rounded-full bg-seal/10 px-2 py-0.5 text-[10px] font-bold text-seal">まだ聞いていません</span>
@@ -223,20 +230,20 @@ export function HireCheckPanel({
               THANHさんの返答を待っています。返答が来たら、
               {!value.housing && "下の「THANHさんの答え（居住場所）」"}
               {!value.housing && !stampFeeDecided && "と"}
-              {!stampFeeDecided && "下の「収入印紙代」"}
+              {!stampFeeDecided && "「THANHさんの答え（印紙代）」"}
               を押してください。
             </p>
           )}
           <div className="space-y-1.5 pl-6">
             {/* 先にTHANHへの質問をコピーしてMessengerのグループで聞き、答えを聞いてから下のボタンを押す */}
             <pre className="whitespace-pre-wrap rounded-lg border border-border bg-surface p-2 font-sans text-xs leading-relaxed">
-              {housingQuestionText({ askStampFee: !stampFeeDecided })}
+              {housingQuestionText({ askStampFee })}
             </pre>
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={async () => {
-                  await copyText("thanh", housingQuestionText({ askStampFee: !stampFeeDecided }));
+                  await copyText("thanh", housingQuestionText({ askStampFee }));
                   if (canEdit && !value.thanh_asked_on) void onSave({ ...value, thanh_asked_on: todayStr() });
                 }}
                 className={copyBtn}
@@ -256,9 +263,6 @@ export function HireCheckPanel({
                 </button>
               )}
             </div>
-            {!stampFeeDecided && (
-              <p className="text-[11px] text-muted">印紙代の答えは、下の「収入印紙代」のボタンで選んでください。</p>
-            )}
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-2 pl-6">
             <span className="text-[11px] font-bold">THANHさんの答え（居住場所）:</span>
@@ -281,6 +285,27 @@ export function HireCheckPanel({
               <span className="text-[11px] text-seal">先に上の質問をコピーしてTHANHさんに聞いてから押してください</span>
             )}
           </div>
+          {/* 印紙代も聞いたときは、THANHの答えをここで押す（申請準備の「収入印紙代」に保存される） */}
+          {(askStampFee || stampFeePayer) && onStampFeeSave && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-2 pl-6">
+              <span className="text-[11px] font-bold">THANHさんの答え（印紙代）:</span>
+              {STAMP_FEE_PAYERS.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  disabled={!canEdit || (askStampFee && !value.thanh_asked_on && !stampFeePayer)}
+                  title={askStampFee && !value.thanh_asked_on && !stampFeePayer ? "先にTHANHさんへの質問をコピーして聞いてください" : undefined}
+                  onClick={() => onStampFeeSave(stampFeePayer === p ? "" : p)}
+                  className={pill(stampFeePayer === p)}
+                >
+                  {stampFeePayerLabel(p)}
+                </button>
+              ))}
+              {!askStampFee && stampFeePayer && (
+                <span className="text-[10px] text-muted">（申請種別・所属機関で決まっている負担です）</span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ③ 所属機関への文章 */}
@@ -337,7 +362,39 @@ export function HireCheckPanel({
               if (f) void uploadResume(f);
             }}
           />
-          <div className="flex flex-wrap items-start gap-3 pl-6">
+          {/* 画像をここにドラッグ＆ドロップ（または押して選ぶ・コピーした画像を貼り付け）でもアップロードできる */}
+          <div
+            className={`ml-6 flex flex-wrap items-start gap-3 rounded-xl border-2 border-dashed p-2.5 transition-colors ${
+              dragging ? "border-brand bg-brand/5" : "border-transparent"
+            }`}
+            onDragOver={(e) => {
+              if (!canEdit || busy) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "copy";
+              if (!dragging) setDragging(true);
+            }}
+            onDragLeave={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+            }}
+            onDrop={(e) => {
+              if (!canEdit || busy) return;
+              e.preventDefault();
+              setDragging(false);
+              const f = Array.from(e.dataTransfer.files).find((x) => x.type.startsWith("image/"));
+              if (f) void uploadResume(f);
+              else setError("履歴書は画像（JPEG・PNG・WebP）をドロップしてください");
+            }}
+            onPaste={(e) => {
+              if (!canEdit || busy) return;
+              const f = Array.from(e.clipboardData.files).find((x) => x.type.startsWith("image/"));
+              if (f) {
+                e.preventDefault();
+                void uploadResume(f);
+              }
+            }}
+            tabIndex={canEdit ? 0 : -1}
+          >
+            {dragging && <p className="w-full text-center text-xs font-bold text-brand">ここに離すとアップロードします</p>}
             {resumeUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={resumeUrl} alt={`${workerName}さんの履歴書`} className="h-32 w-auto rounded-lg border border-border object-contain" />
@@ -363,6 +420,9 @@ export function HireCheckPanel({
                 </button>
               )}
               {value.resume_name && <span className="text-[10px] text-muted">{value.resume_name}</span>}
+              {canEdit && !busy && (
+                <span className="text-[10px] text-muted">画像をこの枠にドラッグ＆ドロップ、または枠を押して Ctrl+V（⌘+V）で貼り付けてもアップロードできます</span>
+              )}
             </div>
           </div>
         </div>
