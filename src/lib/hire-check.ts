@@ -25,6 +25,8 @@ export interface HireCheck {
   message_copied_on: string | null;
   resume_path: string;
   resume_name: string;
+  reply_on: string | null; // 所属機関から返答が来た日
+  reply_note: string; // 所属機関からの返答の備考（気になることなど）
 }
 
 export const EMPTY_HIRE_CHECK: HireCheck = {
@@ -34,6 +36,8 @@ export const EMPTY_HIRE_CHECK: HireCheck = {
   message_copied_on: null,
   resume_path: "",
   resume_name: "",
+  reply_on: null,
+  reply_note: "",
 };
 
 export function normalizeHireCheck(v: unknown): HireCheck {
@@ -48,6 +52,8 @@ export function normalizeHireCheck(v: unknown): HireCheck {
     message_copied_on: date(o.message_copied_on),
     resume_path: str(o.resume_path),
     resume_name: str(o.resume_name),
+    reply_on: date(o.reply_on),
+    reply_note: str(o.reply_note),
   };
 }
 

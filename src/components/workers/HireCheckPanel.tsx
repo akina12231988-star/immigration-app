@@ -41,6 +41,7 @@ export function HireCheckPanel({
   canEdit,
   onSave,
   onOrgPaySaved,
+  wages,
 }: {
   checklistId: string;
   workerName: string;
@@ -54,6 +55,7 @@ export function HireCheckPanel({
   canEdit: boolean;
   onSave: (next: HireCheck) => Promise<void> | void;
   onOrgPaySaved?: (pay: PaySystem | "") => void;
+  wages?: React.ReactNode; // ④ 所属機関からの返答の下に出す賃金（時給・月給）の入力欄
 }) {
   // 給与の形態（画面で押した値。押していなければ所属機関の登録内容）
   const [payPicked, setPay] = useState<PaySystem | "" | null>(null);
@@ -69,6 +71,8 @@ export function HireCheckPanel({
   const stampFeeDecided = !!stampFeePayer;
   const askState = thanhAskState(value, stampFeeDecided);
   const waitDays = daysSince(value.thanh_asked_on, todayStr());
+  const replyWaitDays = daysSince(value.message_copied_on, todayStr());
+  const [replyNote, setReplyNote] = useState(value.reply_note);
 
   // 履歴書の画像の表示用URL
   useEffect(() => {
@@ -301,8 +305,10 @@ export function HireCheckPanel({
                   {stampFeePayerLabel(p)}
                 </button>
               ))}
-              {!askStampFee && stampFeePayer && (
+              {!askStampFee && stampFeePayer ? (
                 <span className="text-[10px] text-muted">（申請種別・所属機関で決まっている負担です）</span>
+              ) : (
+                <span className="text-[10px] text-muted">下の「収入印紙代」と同じ設定です（どちらで押しても両方に入ります）</span>
               )}
             </div>
           )}
@@ -424,6 +430,69 @@ export function HireCheckPanel({
                 <span className="text-[10px] text-muted">画像をこの枠にドラッグ＆ドロップ、または枠を押して Ctrl+V（⌘+V）で貼り付けてもアップロードできます</span>
               )}
             </div>
+          </div>
+        </div>
+
+        {/* ④ 所属機関からの返答。返答が来たら日付を入れ、気になることは備考に書く。
+            その下で賃金（時給・月給）をそのまま入れられるようにする */}
+        <div className="border-t border-dashed border-border pt-3">
+          <p className="mb-1 flex flex-wrap items-center gap-1.5 text-xs font-bold">
+            <span className={`${step} ${value.reply_on ? "bg-status-approved-bg text-status-approved-fg" : value.message_copied_on ? "bg-status-notice-fg text-white" : "bg-border text-muted"}`}>
+              {value.reply_on ? <Check size={12} /> : "4"}
+            </span>
+            {orgName || "所属機関"} からの返答
+            {value.reply_on ? (
+              <span className="rounded-full bg-status-approved-bg px-2 py-0.5 text-[10px] font-bold text-status-approved-fg">
+                返答あり（{value.reply_on.replace(/-/g, "/")}）
+              </span>
+            ) : value.message_copied_on ? (
+              <span className="rounded-full bg-status-notice-bg px-2 py-0.5 text-[10px] font-bold text-status-notice-fg">
+                返答待ち（{value.message_copied_on.replace(/-/g, "/")} に送った・{replyWaitDays === 0 ? "今日" : `${replyWaitDays}日たっています`}）
+              </span>
+            ) : null}
+          </p>
+          <div className="space-y-2 pl-6">
+            <div className="flex flex-wrap items-center gap-2">
+              {canEdit && !value.reply_on && (
+                <button
+                  type="button"
+                  onClick={() => void onSave({ ...value, reply_on: todayStr() })}
+                  className="inline-flex min-h-[36px] items-center gap-1 rounded-lg bg-brand px-3 text-xs font-bold text-brand-foreground"
+                >
+                  <Check size={14} />
+                  返答が来た（今日）
+                </button>
+              )}
+              <label className="flex items-center gap-1 text-[11px] text-muted">
+                返答が来た日
+                <input
+                  type="date"
+                  value={value.reply_on ?? ""}
+                  disabled={!canEdit}
+                  onChange={(e) => void onSave({ ...value, reply_on: e.target.value || null })}
+                  className="min-h-[32px] rounded-lg border border-border bg-background px-2 text-xs"
+                />
+              </label>
+            </div>
+            <label className="block">
+              <span className="mb-0.5 block text-[11px] font-bold text-muted">備考（所属機関からの返答で気になること・決まったことなど）</span>
+              <textarea
+                value={replyNote}
+                disabled={!canEdit}
+                onChange={(e) => setReplyNote(e.target.value)}
+                onBlur={() => replyNote !== value.reply_note && void onSave({ ...value, reply_note: replyNote })}
+                rows={3}
+                placeholder="例: 社宅の家賃は月2万円、光熱費は実費。試用期間3か月は時給1,000円 など"
+                className="w-full rounded-lg border border-border bg-background px-2.5 py-2 text-xs leading-relaxed focus:border-brand focus:outline-none disabled:opacity-60"
+              />
+            </label>
+            {/* 返答の金額を、そのまま賃金（時給・月給）に入れる */}
+            {wages && (
+              <div>
+                <p className="mb-1 text-[11px] font-bold text-muted">返答の金額は、下の賃金（時給・月給）に入れてください</p>
+                {wages}
+              </div>
+            )}
           </div>
         </div>
       </div>

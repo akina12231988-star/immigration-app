@@ -1812,7 +1812,7 @@ export function ApplicationPrepChecklist({
         {/* 所属機関への採用条件の確認（LINEグループで時給・居住費用を聞く）。
             ①所属機関の月給制／時給制 ②THANHに居住場所を聞く ③文章をコピー ＋ 履歴書の画像 */}
         {current != null && (
-          <div className="mt-3">
+          <div className="mt-3" id="hire-check">
             <HireCheckPanel
               key={current.id}
               checklistId={current.id}
@@ -1826,6 +1826,13 @@ export function ApplicationPrepChecklist({
               value={current.hire_check ?? EMPTY_HIRE_CHECK}
               canEdit={canEdit}
               onSave={(next) => saveExtras({ hire_check: next })}
+              wages={
+                embedEmployment ? (
+                  <PrepEmploymentSection workerId={workerId} canEdit={canEdit} showWages showContracts={false} />
+                ) : (
+                  <PrepWageSummary workerId={workerId} />
+                )
+              }
               onOrgPaySaved={(pay) =>
                 setPrepOrgIntake((x) => (x && orgIntake ? { ...x, intake: { ...orgIntake, pay_system: pay } } : x))
               }
@@ -2430,15 +2437,14 @@ export function ApplicationPrepChecklist({
         {/* 賃金（1-6号別紙）: モーダル表示ではこの中で直接入力し、
             「申請の時点でこの内容」という記録を申請準備に残す。
             外国人詳細では賃金の記録カードが別にあるため、要約とリンクのみ */}
-        {embedEmployment ? (
-          <PrepEmploymentSection workerId={workerId} canEdit={canEdit} showWages />
-        ) : (
-          <>
-            <PrepWageSummary workerId={workerId} />
-            {/* 雇用契約書・雇用条件書（日付なし版・正式版）は申請準備の中で保管する */}
-            <PrepEmploymentSection workerId={workerId} canEdit={canEdit} showWages={false} />
-          </>
-        )}
+        {/* 賃金（時給・月給）は、上の「所属機関への採用条件の確認」④（所属機関からの返答）の下で入れる。
+            ここには雇用契約書・雇用条件書だけを出す */}
+        <p className="rounded-lg bg-background px-3 py-2 text-[11px] text-muted">
+          賃金（時給・月給）は、上の「所属機関への採用条件の確認」の ④ 所属機関からの返答 の下で入れます。
+          <a href="#hire-check" className="ml-1 font-bold text-brand underline">賃金の欄へ</a>
+        </p>
+        {/* 雇用契約書・雇用条件書（日付なし版・正式版）は申請準備の中で保管する */}
+        <PrepEmploymentSection workerId={workerId} canEdit={canEdit} showWages={false} />
         </div>
       </PrepSection>
 
@@ -3634,7 +3640,9 @@ function StampFeePayerField({
       : "";
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="text-xs font-bold">収入印紙代</span>
+      <span className="text-xs font-bold" title="上の「THANHさんの答え（印紙代）」と同じ設定です（どちらで押しても両方に入ります）">
+        収入印紙代
+      </span>
       {/* 押して選ぶボタンだと分かるよう、1つずつ枠のあるボタンにする（選んだものは塗りつぶし＋✓） */}
       <div className="flex flex-wrap gap-1.5">
         {STAMP_FEE_PAYERS.map((p) => {
