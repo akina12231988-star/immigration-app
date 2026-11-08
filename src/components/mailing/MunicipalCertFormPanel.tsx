@@ -79,6 +79,7 @@ export function MunicipalCertFormPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   if (!municipality) return null;
   const m = municipality;
@@ -123,8 +124,37 @@ export function MunicipalCertFormPanel({
 
   const btn = "inline-flex min-h-[36px] items-center gap-1.5 rounded-lg px-3 text-xs font-bold";
 
+  // PDFをこの欄にドラッグ＆ドロップしても登録・差し替えできる
+  const dropProps = canEdit
+    ? {
+        onDragOver: (e: React.DragEvent<HTMLDivElement>) => {
+          if (busy) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+          if (!dragging) setDragging(true);
+        },
+        onDragLeave: (e: React.DragEvent<HTMLDivElement>) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+        },
+        onDrop: (e: React.DragEvent<HTMLDivElement>) => {
+          if (busy) return;
+          e.preventDefault();
+          setDragging(false);
+          const f = Array.from(e.dataTransfer.files).find((x) => x.type === "application/pdf");
+          if (f) void upload(f);
+          else setError(`${label}はPDFをドロップしてください`);
+        },
+      }
+    : {};
+
   return (
-    <div className="mt-1.5 flex flex-col gap-1">
+    <div
+      className={`mt-1.5 flex flex-col gap-1 rounded-lg border-2 border-dashed p-1.5 transition-colors ${
+        dragging ? "border-brand bg-brand/5" : "border-transparent"
+      }`}
+      {...dropProps}
+    >
+      {dragging && <p className="text-center text-xs font-bold text-brand">ここに離すと{label}PDFを{hasPdf ? "差し替えます" : "登録します"}</p>}
       <input
         ref={fileRef}
         type="file"
@@ -181,7 +211,9 @@ export function MunicipalCertFormPanel({
               <Upload size={14} />
               {busy ? "アップロード中…" : `${label}PDFを登録（自動入力用）`}
             </button>
-            <span className="text-[11px] text-muted">登録して記入位置を置くと、氏名・住所などを入れた{label}を作れます</span>
+            <span className="text-[11px] text-muted">
+              PDFをここにドラッグ＆ドロップしても登録できます。登録して記入位置を置くと、氏名・住所などを入れた{label}を作れます
+            </span>
           </div>
         )
       )}
