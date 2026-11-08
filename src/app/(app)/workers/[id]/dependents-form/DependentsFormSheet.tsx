@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { BackButton } from "@/components/BackButton";
-import { Download, Paperclip } from "lucide-react";
+import { Download } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import {
   dependentAge,
@@ -19,6 +19,8 @@ import {
 import { fuyoOverflow, type FuyoFormData } from "@/lib/fuyo-form";
 import { todayStr } from "@/lib/ssw/calc";
 import { fuyoFileName } from "@/lib/fuyo-roster";
+import { fuyoFormNames, fuyoYearEndJudgement, recommendedFuyoKind } from "@/lib/fuyo-judgement";
+import { FuyoAttachChooser } from "./FuyoAttachChooser";
 import { createClient } from "@/lib/supabase/client";
 import {
   createDocRequestFileTicket,
@@ -45,6 +47,7 @@ export function DependentsFormSheet({
   initialYear,
   workerId,
   attachTarget,
+  remittanceFiles = [],
 }: {
   worker: FormWorker;
   dependents: WorkerDependent[];
@@ -53,6 +56,8 @@ export function DependentsFormSheet({
   workerId?: string;
   // 会社からの書類の依頼のマスから開いたとき（作った申告書をそのマスに添付する）
   attachTarget?: { requestId: string; itemId: string; requestTitle: string; itemName: string };
+  // 同じ依頼の送金証明書のマスに添付した送金明細書（見ながら選べるように）
+  remittanceFiles?: { id: string; file_name: string; mime_type: string }[];
 }) {
   const router = useRouter();
   const today = todayStr();
@@ -84,21 +89,25 @@ export function DependentsFormSheet({
   );
   const noBirth = dependents.filter((d) => !isSpouseRelation(d.relation) && d.birth === "");
 
-  const formData: FuyoFormData = {
-    kind: formKind,
+  const buildData = (k: "入社時" | "年末調整時"): FuyoFormData => ({
+    kind: k,
     year: targetYear,
     worker,
     householdHead,
     headRelation,
-    dependents,
-  };
+    dependents: k === "年末調整時" ? allDependents.filter((d) => isRemittanceAchieved(d, today, targetYear)) : allDependents,
+  });
+  const formData: FuyoFormData = buildData(formKind);
+  // 依頼のマスから開いたときの、送金額からの判定（入社時・年末調整時を見比べる）
+  const judgement = fuyoYearEndJudgement(allDependents, today, targetYear);
+  const recommended = recommendedFuyoKind(judgement);
   const overflow = fuyoOverflow(formData, today);
 
-  const makePdf = async (): Promise<Blob> => {
+  const makePdf = async (data: FuyoFormData = formData): Promise<Blob> => {
     const res = await fetch("/api/dependents-form", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ data: formData }),
+      body: JSON.stringify({ data }),
     });
     if (!res.ok) {
       const j = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -109,14 +118,20 @@ export function DependentsFormSheet({
 
   // 選んだ発行パターン（入社時・年末調整時）の申告書を作って、依頼のマスに添付する。
   // 会社へ送る書類は「このマスに添付したもの」に決めて、依頼のチェック表に戻る
-  const attachToRequest = async () => {
+  const attachToRequest = async (kind: "入社時" | "年末調整時") => {
     if (!attachTarget || !workerId) return;
-    if (!window.confirm(`${formKind}の扶養控除等申告書を作って、「${attachTarget.requestTitle}」の「${attachTarget.itemName}」に添付します。よろしいですか？`)) return;
+    const names = fuyoFormNames(judgement, kind);
+    if (
+      !window.confirm(
+        `${kind}の扶養控除等申告書（記載 ${names.length}人）を作って、「${attachTarget.requestTitle}」の「${attachTarget.itemName}」に添付します。よろしいですか？`,
+      )
+    )
+      return;
     setBusy(true);
     setError(null);
     try {
-      const blob = await makePdf();
-      const fileName = fuyoFileName(formKind, targetYear, worker.name);
+      const blob = await makePdf(buildData(kind));
+      const fileName = fuyoFileName(kind, targetYear, worker.name);
       const mimeType = "application/pdf";
       const ticket = await createDocRequestFileTicket(attachTarget.requestId, workerId, fileName, mimeType);
       if (!ticket.ok) throw new Error(ticket.message);
@@ -126,7 +141,11 @@ export function DependentsFormSheet({
       if (upErr) throw new Error(`アップロードに失敗しました: ${upErr.message}`);
       const reg = await registerDocRequestFile(attachTarget.requestId, workerId, attachTarget.itemId, ticket.path, fileName, mimeType);
       if (!reg.ok) throw new Error(reg.message);
-      const mark = await markDocRequestCellAttached(attachTarget.requestId, workerId, attachTarget.itemId, today);
+      const mark = await markDocRequestCellAttached(attachTarget.requestId, workerId, attachTarget.itemId, today, {
+        kind,
+        year: targetYear,
+        names,
+      });
       if (!mark.ok) throw new Error(`添付はできましたが、チェックを保存できませんでした: ${mark.message}`);
       router.push(`/organizations/requests/${attachTarget.requestId}`);
     } catch (err) {
@@ -249,26 +268,18 @@ export function DependentsFormSheet({
           </p>
         </div>
 
-        {/* 会社からの書類の依頼のマスから開いたとき: 選んだ発行パターンの申告書をそのマスに添付する */}
+        {/* 会社からの書類の依頼のマスから開いたとき: 送金明細書と送金額を見ながら、入社時・年末調整時を選んで添付する */}
         {attachTarget && (
-          <div className="rounded-xl border-2 border-brand bg-brand/5 px-3.5 py-3">
-            <p className="text-xs font-bold text-brand">
-              会社からの書類の依頼「{attachTarget.requestTitle}」の「{attachTarget.itemName}」に添付します
-            </p>
-            <p className="mt-1 text-[11px] leading-relaxed text-muted">
-              上の発行パターンで「入社時」か「年末調整時」かを選んでから押してください。作った申告書をマスに添付し、
-              会社へ送る書類を「作り直したもの（マスの添付）」に決めて、依頼のチェック表に戻ります。
-            </p>
-            <button
-              type="button"
-              onClick={() => void attachToRequest()}
-              disabled={busy}
-              className="mt-2 inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-brand px-4 text-sm font-bold text-brand-foreground disabled:opacity-50"
-            >
-              <Paperclip size={16} />
-              {busy ? "作成中…" : `${formKind}${formKind === "年末調整時" ? `（${targetYear}年）` : ""}の申告書を作って依頼に添付`}
-            </button>
-          </div>
+          <FuyoAttachChooser
+            target={attachTarget}
+            workerId={workerId ?? ""}
+            year={targetYear}
+            judgement={judgement}
+            recommended={recommended}
+            remittanceFiles={remittanceFiles}
+            busy={busy}
+            onAttach={(k) => void attachToRequest(k)}
+          />
         )}
 
         {/* 送金の目標未達成者 */}

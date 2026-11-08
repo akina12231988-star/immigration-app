@@ -90,6 +90,8 @@ export interface DocumentRequestCheck {
   none_replied_on?: string | null;
   // 会社へ送る書類をどちらで紐づけるか（0220）。値を入れるときだけ送る（省略可）
   use_doc?: DocumentRequestUseDoc | null;
+  // 作り直して添付した申告書の中身（0220。{kind, year, names}。lib/fuyo-judgement.ts で読む）
+  use_doc_detail?: unknown;
   note: string;
   created_at: string;
   updated_at: string;

@@ -11,6 +11,7 @@ import {
 import { splitCurrentRoster } from "@/lib/org-roster-groups";
 import { listAttachedOnboardingDocsForWorkers } from "@/lib/supabase/queries/onboarding";
 import { todayStr } from "@/lib/application-alerts";
+import { normalizeDependents } from "@/lib/dependents";
 import { DocumentRequestChecklist } from "./DocumentRequestChecklist";
 
 export const dynamic = "force-dynamic";
@@ -43,6 +44,7 @@ export default async function OrganizationDocumentRequestPage({ params }: { para
     gender: string | null;
     address: string | null;
     assigned_office: string | null;
+    dependents?: unknown;
   };
   const extraById = new Map<string, WorkerExtra>();
   // 外国人詳細の「入社時に送る資料」に添付済みの書類（同じ書類ならマスから開けるようにする）
@@ -50,7 +52,7 @@ export default async function OrganizationDocumentRequestPage({ params }: { para
   if (active.length > 0) {
     const ids = active.map((w) => w.id);
     const [{ data }, docs] = await Promise.all([
-      supabase.from("workers").select("id, messenger_link, birth, gender, address, assigned_office").in("id", ids),
+      supabase.from("workers").select("id, messenger_link, birth, gender, address, assigned_office, dependents").in("id", ids),
       listAttachedOnboardingDocsForWorkers(supabase, ids).catch(() => []),
     ]);
     for (const w of ((data as WorkerExtra[] | null) ?? [])) {
@@ -77,6 +79,8 @@ export default async function OrganizationDocumentRequestPage({ params }: { para
           gender: extraById.get(w.id)?.gender ?? "",
           address: extraById.get(w.id)?.address ?? "",
           assignedOffice: extraById.get(w.id)?.assigned_office ?? "",
+          // 扶養家族（送金額から扶養控除等申告書を作り直すかの判定に使う）
+          dependents: normalizeDependents(extraById.get(w.id)?.dependents),
         }))}
         notYetCount={notYet.length}
         initialChecks={checks}

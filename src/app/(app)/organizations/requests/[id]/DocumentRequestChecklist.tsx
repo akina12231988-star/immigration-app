@@ -91,7 +91,17 @@ import {
 import { DocumentRequestForm } from "../DocumentRequestForm";
 import { DocRequestTextDialog } from "./DocRequestTextDialog";
 import { getOnboardingDocPreviewUrl } from "@/app/(app)/onboarding/actions";
-import type { OnboardingDocumentRow } from "@/types/db";
+import type { OnboardingDocumentRow, WorkerDependent } from "@/types/db";
+import {
+  fuyoAmountText,
+  fuyoAttachedStale,
+  fuyoFormNames,
+  fuyoTargetYear,
+  fuyoYearEndJudgement,
+  isRemittanceItemName,
+  normalizeFuyoAttachedDetail,
+  type FuyoJudgement,
+} from "@/lib/fuyo-judgement";
 
 const MIGRATION = "0183_organization_document_requests.sql";
 
@@ -107,6 +117,7 @@ export interface ChecklistWorker {
   gender: string; // 性別
   address: string; // 日本での住所
   assignedOffice: string; // 配属先営業所
+  dependents?: WorkerDependent[]; // 扶養家族（送金額から扶養控除等申告書の判定に使う）
 }
 
 // 1件の依頼のチェック表。行＝在籍者、列＝書類。各マスで 案内 → 添付済み → 会社へ を押していく
@@ -221,6 +232,19 @@ export function DocumentRequestChecklist({
     idx.get(checkKey(workerId, itemId)) ?? emptyCheck(request.id, workerId, itemId);
   const press = (workerId: string, itemId: string, step: DocumentRequestStepKey) =>
     void saveCheck(toggleStep(current(workerId, itemId), step, today));
+  // 扶養控除等申告書のマス: 送金額からの判定と、会社へ送る書類（全員達成で未決定なら入社時に自動で決める）
+  const fuyoCell = (
+    w: ChecklistWorker,
+    item: DocumentRequestItem,
+    c: DocumentRequestCheck | undefined,
+    hasLinked: boolean,
+  ): { j: FuyoJudgement | null; useDoc: DocumentRequestUseDoc | null | undefined; auto: boolean; stale: boolean } => {
+    if (!isFuyokojoItem(item)) return { j: null, useDoc: c?.use_doc, auto: false, stale: false };
+    const j = fuyoYearEndJudgement(w.dependents ?? [], today, fuyoTargetYear(item.name, request.title, today));
+    const auto = !c?.use_doc && hasLinked && j.kind === "all-achieved";
+    const stale = c?.use_doc === "cell" && fuyoAttachedStale(normalizeFuyoAttachedDetail(c?.use_doc_detail), j);
+    return { j, useDoc: auto ? "onboarding" : c?.use_doc, auto, stale };
+  };
   // 会社へ送る書類をどちらで紐づけるかを決める（同じ方をもう一度押すと未決定に戻す）
   const chooseUseDoc = (workerId: string, itemId: string, v: DocumentRequestUseDoc) => {
     const c = current(workerId, itemId);
@@ -292,7 +316,7 @@ export function DocumentRequestChecklist({
       const cellFiles = filesByCell.get(checkKey(w.id, item.id)) ?? [];
       const linked = findOnboardingDocFor(item, onboardingByWorker.get(w.id) ?? []);
       // どちらで紐づけるかを決めてあればその方だけ（未決定で両方あればマスの添付）
-      const source = cellDocSource(cellDocChoice(c?.use_doc, !!linked, cellFiles.length));
+      const source = cellDocSource(cellDocChoice(fuyoCell(w, item, c, !!linked).useDoc, !!linked, cellFiles.length));
       if (source === "cell") for (const f of cellFiles) {
         const res = await getDocRequestFilePreviewUrl(f.id);
         if (!res.ok) throw new Error(res.message);
@@ -1048,8 +1072,10 @@ export function DocumentRequestChecklist({
                       // 外国人詳細の入社書類に同じ書類が添付済みなら、そのデータをここから開ける
                       const linkedDoc = findOnboardingDocFor(item, onboardingByWorker.get(w.id) ?? []);
                       // 会社へ送るのは、外国人詳細の書類か、このマスに添付した書類（年末調整用 など）か
-                      const docChoice = cellDocChoice(c?.use_doc, !!linkedDoc, cellFiles.length);
+                      const fuyo = fuyoCell(w, item, c, !!linkedDoc);
+                      const docChoice = cellDocChoice(fuyo.useDoc, !!linkedDoc, cellFiles.length);
                       const fuyoItem = isFuyokojoItem(item);
+                      const fuyoDetail = normalizeFuyoAttachedDetail(c?.use_doc_detail);
                       return (
                         <td key={item.id} className="px-1 py-1 align-top">
                           <FileDropArea
@@ -1153,6 +1179,25 @@ export function DocumentRequestChecklist({
                           {/* 添付した書類（押すと別タブで開く）と「添付」ボタン */}
                           {!yearReason && (
                             <div className="mt-1 flex flex-wrap items-center gap-1">
+                              {fuyo.j && fuyo.j.kind !== "no-dependents" && (
+                                <FuyoJudgementBox
+                                  j={fuyo.j}
+                                  stale={fuyo.stale}
+                                  attached={c?.use_doc === "cell" && cellFiles.length > 0 ? fuyoDetail : null}
+                                  inputHref={`/workers/${w.id}#wd-dependents`}
+                                />
+                              )}
+                              {/* 送金明細書が届いたら、外国人詳細の扶養家族に金額を入れる */}
+                              {isRemittanceItemName(item.name) && cellFiles.length > 0 && (w.dependents?.length ?? 0) > 0 && (
+                                <Link
+                                  href={`/workers/${w.id}#wd-dependents`}
+                                  target="_blank"
+                                  className="inline-flex min-h-[24px] items-center rounded-lg border border-brand px-1.5 text-[10px] font-bold text-brand"
+                                  title="外国人詳細の扶養家族で、送金明細書の金額を入れます（扶養控除申告書の判定に使います）"
+                                >
+                                  金額を入力 →
+                                </Link>
+                              )}
                               {linkedDoc && (
                                 <div className="flex w-full flex-col items-start gap-0.5">
                                   <span className="text-[10px] font-bold text-muted">会社へ送る書類</span>
@@ -1163,7 +1208,7 @@ export function DocumentRequestChecklist({
                                         { v: "cell", label: fuyoItem ? "作り直したもの（ここに添付）" : "ここに添付したもの" },
                                       ] as const
                                     ).map((o) => {
-                                      const on = c?.use_doc === o.v;
+                                      const on = fuyo.useDoc === o.v;
                                       return (
                                         <button
                                           key={o.v}
@@ -1171,7 +1216,13 @@ export function DocumentRequestChecklist({
                                           onClick={() => canEdit && chooseUseDoc(w.id, item.id, o.v)}
                                           disabled={!canEdit}
                                           aria-pressed={on}
-                                          title={on ? "選択中。もう一度押すと未決定に戻します" : "会社へ送る書類をこちらに決める"}
+                                                  title={
+                                            on && fuyo.auto
+                                              ? "送金額が全員達成のため、入社時に自動で決めています"
+                                              : on
+                                                ? "選択中。もう一度押すと未決定に戻します"
+                                                : "会社へ送る書類をこちらに決める"
+                                          }
                                           className={`inline-flex min-h-[24px] items-center gap-0.5 rounded-lg border px-1.5 text-[10px] font-bold ${
                                             on ? "border-brand bg-brand text-brand-foreground" : "border-border bg-background text-muted"
                                           } disabled:opacity-70`}
@@ -1182,6 +1233,9 @@ export function DocumentRequestChecklist({
                                       );
                                     })}
                                   </div>
+                                  {fuyo.auto && (
+                                    <span className="text-[10px] text-muted">送金額が全員達成のため、入社時に自動で決めています</span>
+                                  )}
                                   {docChoice === "undecided" && (
                                     <span className="text-[10px] font-bold text-amber-700">
                                       外国人詳細とここの両方に書類があります。どちらを会社へ送るか選んでください
@@ -1212,11 +1266,15 @@ export function DocumentRequestChecklist({
                               {fuyoItem && canEdit && (
                                 <Link
                                   href={`/workers/${w.id}/dependents-form?request=${request.id}&item=${item.id}`}
-                                  className="inline-flex min-h-[24px] items-center gap-0.5 rounded-lg border border-brand px-1.5 text-[10px] font-bold text-brand"
-                                  title="申告書の作成画面で「入社時」か「年末調整時」かを選んで作り、このマスに添付します"
+                                  className={`inline-flex min-h-[24px] items-center gap-0.5 rounded-lg border border-brand px-1.5 text-[10px] font-bold ${
+                                    fuyoNeedsRemake(fuyo.j, fuyo.stale, c?.use_doc === "cell" && cellFiles.length > 0)
+                                      ? "bg-brand text-brand-foreground"
+                                      : "text-brand"
+                                  }`}
+                                  title="送金額を見ながら「入社時」か「年末調整時」かを選んで作り、このマスに添付します"
                                 >
                                   <FileText size={11} />
-                                  申告書を作り直して添付
+                                  作り直して添付 →
                                 </Link>
                               )}
                               {cellFiles.length > 1 && (
@@ -1450,3 +1508,74 @@ function FlagFilterChips({
   );
 }
 
+
+// 作り直しが必要か（送金額で載る人が入社時と違い、まだ作り直して添付していない／添付後に送金額が変わった）
+function fuyoNeedsRemake(j: FuyoJudgement | null, stale: boolean, attached: boolean): boolean {
+  if (!j) return false;
+  if (stale) return true;
+  return (j.kind === "partial" || j.kind === "none-achieved") && !attached;
+}
+
+// 扶養控除等申告書のマスに出す、送金額からの判定
+function FuyoJudgementBox({
+  j,
+  stale,
+  attached,
+  inputHref,
+}: {
+  j: FuyoJudgement;
+  stale: boolean;
+  attached: { kind: string; names: string[] } | null;
+  inputHref: string;
+}) {
+  const tone = {
+    gray: "border-border bg-background text-muted",
+    ok: "border-status-approved-fg/40 bg-status-approved-bg text-status-approved-fg",
+    warn: "border-amber-300 bg-amber-50 text-amber-800",
+    red: "border-seal/40 bg-seal/10 text-seal",
+  };
+  const all = j.dependents.length;
+  const yearEnd = fuyoFormNames(j, "年末調整時").length;
+  let t: keyof typeof tone;
+  let title: string;
+  let sub: string;
+  if (j.kind === "not-entered") {
+    t = "gray";
+    title = `${j.year}年の送金額が未入力のため判定できません`;
+    sub = "送金明細書が届いたら、外国人詳細の扶養家族に金額を入れてください";
+  } else if (stale) {
+    t = "red";
+    title = "添付後に送金額が変わりました：作り直しが必要";
+    sub = `添付した申告書 ${attached?.names.length ?? 0}人 → いまの送金額では ${attached?.kind === "入社時" ? all : yearEnd}人`;
+  } else if (attached) {
+    t = "ok";
+    title = `作り直し済み：${attached.kind}（${attached.names.length}人）`;
+    sub = j.dependents.map(fuyoAmountText).join(" / ");
+  } else if (j.kind === "all-achieved") {
+    t = "ok";
+    title = `全員達成：入社時のままでOK（${all}人）`;
+    sub = j.dependents.map(fuyoAmountText).join(" / ");
+  } else if (j.kind === "partial") {
+    t = "warn";
+    title = `作り直しが必要：入社時${all}人 → 年末調整時${yearEnd}人`;
+    sub = `未達成：${j.unachieved.map(fuyoAmountText).join(" / ")}`;
+  } else {
+    t = "red";
+    title = "達成者なし：年末調整時は扶養の記載なし";
+    sub = j.dependents.map((d) => `${fuyoAmountText(d)}（目標 ${d.target.toLocaleString("ja-JP")}円）`).join(" / ");
+  }
+  return (
+    <div className={`w-full rounded-lg border px-2 py-1 text-[10px] font-bold ${tone[t]}`}>
+      {t === "ok" ? "✓ " : t === "gray" ? "" : "⚠ "}
+      {title}
+      <div className="font-medium">
+        {sub}
+        {j.kind === "not-entered" && (
+          <Link href={inputHref} target="_blank" className="ml-1 font-bold text-brand underline">
+            金額を入力 →
+          </Link>
+        )}
+      </div>
+    </div>
+  );
+}

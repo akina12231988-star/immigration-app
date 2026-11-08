@@ -123,6 +123,8 @@ export async function markDocRequestCellAttached(
   workerId: string,
   itemId: string,
   today: string,
+  // 作った申告書の中身（扶養控除等申告書のとき。あとで送金額が変わったかを見る）
+  detail?: { kind: string; year: string; names: string[] },
 ): Promise<{ ok: true; useDocSaved: boolean } | Err> {
   if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
   const admin = createAdminClient();
@@ -153,7 +155,7 @@ export async function markDocRequestCellAttached(
     if (cur?.none_replied_on) base.none_replied_on = null;
   }
   const opts = { onConflict: "request_id,worker_id,item_id" };
-  const { error } = await admin.from(table).upsert({ ...base, use_doc: "cell" }, opts);
+  const { error } = await admin.from(table).upsert({ ...base, use_doc: "cell", use_doc_detail: detail ?? null }, opts);
   if (!error) return { ok: true, useDocSaved: true };
   if (!error.message.includes("use_doc")) return { ok: false, message: error.message };
   const { error: e2 } = await admin.from(table).upsert(base, opts);

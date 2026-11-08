@@ -34,6 +34,7 @@ import { ResumeToolShare } from "@/components/workers/ResumeToolShare";
 import { FieldJumpSearch } from "@/components/workers/FieldJumpSearch";
 import {
   WORKER_TAB_SHOW_EVENT,
+  WORKER_TABS,
   WorkerTabBar,
   WorkerTabIndex,
   WorkerTabPanel,
@@ -248,6 +249,18 @@ export function WorkerDetail({
     };
     window.addEventListener(WORKER_TAB_SHOW_EVENT, onShow);
     return () => window.removeEventListener(WORKER_TAB_SHOW_EVENT, onShow);
+  }, []);
+  // 「#wd-dependents」のように見出しの id 付きで来たら（会社からの書類の依頼の「金額を入力」など）、
+  // そのタブに切り替えて見出しまで移動する
+  useEffect(() => {
+    const hash = typeof window !== "undefined" ? window.location.hash.slice(1) : "";
+    if (!hash.startsWith("wd-")) return;
+    const owner = WORKER_TABS.find((t) => t.sections.some((s) => s.id === hash));
+    if (!owner) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ブラウザ専用APIからの初期化
+    setTab(owner.id);
+    const timer = window.setTimeout(() => document.getElementById(hash)?.scrollIntoView({ block: "start" }), 300);
+    return () => window.clearTimeout(timer);
   }, []);
   useEffect(() => {
     const measure = () => {
