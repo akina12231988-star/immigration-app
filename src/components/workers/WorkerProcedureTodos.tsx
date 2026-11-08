@@ -7,9 +7,8 @@ import { CheckCircle2, ChevronDown, ChevronRight, Home, ListTodo, Plus, ShieldPl
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
 import { updateWorker } from "@/lib/supabase/queries/workers";
-import { updateTodo } from "@/lib/supabase/queries/todos";
 import { listWorkerInsuranceCards } from "@/lib/supabase/queries/insurance-cards";
-import { createProcedureTodo, listProcedureTodos } from "@/lib/supabase/queries/procedure-todos";
+import { getProcedureTodo, saveProcedureSteps } from "@/lib/supabase/queries/procedure-todos";
 import { dbErrorMessage } from "@/lib/errors";
 import { kokuhoInsuranceHint, type InsuranceHistoryRef, type WorkerInsuranceCardRow } from "@/lib/insurance-card";
 import {
@@ -20,13 +19,15 @@ import {
   type WorkerFollowups as Followups,
 } from "@/lib/worker-followups";
 import {
+  NEW_STEP,
   PROCEDURE_STATUSES,
   PROCEDURE_TITLES,
   isProcedureDone,
-  latestProcedureTodos,
-  procedureDraftsFromFollowups,
+  procedureStepsFromFollowups,
   syncFollowupsWithTodos,
   type ProcedureKey,
+  type ProcedureStep,
+  type ProcedureSteps,
   type ProcedureTodo,
 } from "@/lib/procedure-todo";
 import { PREP_ISSUE_REQUEST_OPTIONS } from "@/lib/application-prep";
@@ -36,7 +37,7 @@ import { MovingInsuranceFields } from "./WorkerFollowups";
 const REQUEST_TO_OPTIONS = ["本人", ...PREP_ISSUE_REQUEST_OPTIONS];
 const INPUT =
   "min-h-[34px] w-full rounded-lg border border-border bg-background px-2 text-xs focus:border-brand focus:outline-none disabled:opacity-60";
-const MIGRATION = "0217_procedure_todos.sql";
+const MIGRATION = "0219_procedure_todo_steps.sql";
 
 // 住所・保険の手続き（転出・転入・国保の加入・国民年金の加入）。
 // 手続きごとにTODOを作り、経過・依頼先・依頼日をここで直せる（TODO ＞ 住所・保険の手続き にも同じものが出る）。
@@ -54,13 +55,14 @@ export function WorkerProcedureTodos({
 }) {
   const router = useRouter();
   const [f, setF] = useState<Followups>(() => followupsOf({ followups: initial }));
-  const [todos, setTodos] = useState<ProcedureTodo[] | null>(null);
+  // この人の住所・保険の手続きのTODO（1人1件）。undefined は読み込み中、null はまだ無い
+  const [todo, setTodo] = useState<ProcedureTodo | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [openDetail, setOpenDetail] = useState<{ moving: boolean; kokuho: boolean }>({ moving: false, kokuho: false });
   const [currentCard, setCurrentCard] = useState<WorkerInsuranceCardRow | null>(null);
   const migrated = useRef(false);
-  const latest = latestProcedureTodos(todos ?? []);
+  const steps: ProcedureSteps = todo?.steps ?? {};
 
   useEffect(() => {
     listWorkerInsuranceCards(createClient(), workerId)
@@ -82,36 +84,40 @@ export function WorkerProcedureTodos({
     [workerId, router],
   );
 
-  // TODOの経過に合わせて followups の印を直す（外国人一覧の件数・依頼中の一覧のため）
-  const syncAndSet = useCallback(
-    async (list: ProcedureTodo[], base: Followups) => {
-      setTodos(list);
-      const next = syncFollowupsWithTodos(base, latestProcedureTodos(list));
+  // 手続きの経過に合わせて followups の印を直す（外国人一覧の件数・依頼中の一覧のため）
+  const syncFollowups = useCallback(
+    async (nextSteps: ProcedureSteps, base: Followups) => {
+      const next = syncFollowupsWithTodos(base, nextSteps);
       if (next && canEdit) await saveFollowups(next);
+      else if (base !== f) await saveFollowups(base);
     },
-    [canEdit, saveFollowups],
+    [canEdit, saveFollowups, f],
   );
 
-  // 読み込み。これまでのチェック（followups）だけでTODOが無い手続きは、ここで一度だけTODOにする
+  // 読み込み。これまでのチェック（followups）だけで手続きが無いときは、ここで一度だけTODOに入れる
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const supabase = createClient();
-        let list = await listProcedureTodos(supabase, workerId);
+        let current = await getProcedureTodo(supabase, workerId);
         const base = followupsOf({ followups: initial });
         if (canEdit && !migrated.current) {
           migrated.current = true;
-          const drafts = procedureDraftsFromFollowups(base, latestProcedureTodos(list));
-          for (const d of drafts) {
-            await createProcedureTodo(supabase, workerId, d.key, d);
+          const add = procedureStepsFromFollowups(base, current?.steps ?? {});
+          if (Object.keys(add).length > 0) {
+            current = await saveProcedureSteps(supabase, workerId, current, { ...(current?.steps ?? {}), ...add });
           }
-          if (drafts.length) list = await listProcedureTodos(supabase, workerId);
         }
-        if (!cancelled) await syncAndSet(list, base);
+        if (cancelled) return;
+        setTodo(current);
+        if (current) {
+          const next = syncFollowupsWithTodos(base, current.steps);
+          if (next && canEdit) await saveFollowups(next);
+        }
       } catch (err) {
         if (!cancelled) {
-          setTodos([]);
+          setTodo(null);
           setError(dbErrorMessage(err, MIGRATION, "住所・保険の手続きのTODOを読めませんでした"));
         }
       }
@@ -123,53 +129,46 @@ export function WorkerProcedureTodos({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workerId]);
 
-  const reload = async (base: Followups = f) => {
-    const list = await listProcedureTodos(createClient(), workerId);
-    await syncAndSet(list, base);
+  // 手続きを保存する（TODOが無ければ作る）。base は一緒に保存する詳しい記録
+  const saveSteps = async (nextSteps: ProcedureSteps, base: Followups = f) => {
+    setError(null);
+    setTodo((t) => (t ? { ...t, steps: nextSteps } : t));
+    try {
+      const saved = await saveProcedureSteps(createClient(), workerId, todo ?? null, nextSteps);
+      setTodo(saved);
+      await syncFollowups(nextSteps, base);
+    } catch (err) {
+      setError(dbErrorMessage(err, MIGRATION, "保存に失敗しました"));
+    }
   };
 
   const start = async (keys: ProcedureKey[], patch?: { moving?: Partial<MovingFollowup>; kokuho?: Partial<KokuhoFollowup> }) => {
     setBusy(true);
-    setError(null);
-    try {
-      const supabase = createClient();
-      for (const k of keys) {
-        if (latest[k] && !isProcedureDone(latest[k]!.status)) continue;
-        await createProcedureTodo(supabase, workerId, k);
-      }
-      const base = patch ? patchFollowups(f, patch) : f;
-      await reload(base);
-    } catch (err) {
-      setError(dbErrorMessage(err, MIGRATION, "TODOを作れませんでした"));
-    } finally {
-      setBusy(false);
+    const next: ProcedureSteps = { ...steps };
+    for (const k of keys) {
+      if (next[k] && !isProcedureDone(next[k]!.status)) continue;
+      next[k] = { ...NEW_STEP };
     }
+    await saveSteps(next, patch ? patchFollowups(f, patch) : f);
+    setBusy(false);
   };
 
-  const change = async (todo: ProcedureTodo, patch: Partial<Pick<ProcedureTodo, "status" | "requested_to" | "requested_on" | "note">>) => {
-    setError(null);
-    // 画面を先に変える
-    setTodos((list) => (list ?? []).map((t) => (t.id === todo.id ? { ...t, ...patch } : t)));
-    try {
-      const supabase = createClient();
-      // 依頼中にしたら依頼日を今日にしておく（依頼中の一覧で経過日数を出す）
-      const extra = patch.status === "依頼中" && !todo.requested_on && patch.requested_on === undefined ? { requested_on: todayStr() } : {};
-      await updateTodo(supabase, todo.id, { ...patch, ...extra });
-      let base = f;
-      // 転出手続きが完了したら、転入手続きのTODOを作る（転出証明書が届いた日も入れておく）
-      if (todo.title === PROCEDURE_TITLES.moveOut && patch.status === "完了") {
-        if (!latest.moveIn || isProcedureDone(latest.moveIn.status)) {
-          await createProcedureTodo(supabase, workerId, "moveIn");
-        }
-        if (!f.moving.certificate_received_on) base = patchFollowups(f, { moving: { certificate_received_on: todayStr() } });
-      }
-      await reload(base);
-    } catch (err) {
-      setError(dbErrorMessage(err, MIGRATION, "保存に失敗しました"));
-      await reload().catch(() => undefined);
+  const change = async (key: ProcedureKey, patch: Partial<ProcedureStep>) => {
+    const cur = steps[key] ?? NEW_STEP;
+    // 依頼中にしたら依頼日を今日にしておく（依頼中の一覧で経過日数を出す）
+    const extra = patch.status === "依頼中" && !cur.requested_on && patch.requested_on === undefined ? { requested_on: todayStr() } : {};
+    const next: ProcedureSteps = { ...steps, [key]: { ...cur, ...patch, ...extra } };
+    let base = f;
+    // 転出手続きが完了したら、転入手続きを足す（転出証明書が届いた日も入れておく）
+    if (key === "moveOut" && patch.status === "完了") {
+      if (!next.moveIn || isProcedureDone(next.moveIn.status)) next.moveIn = { ...NEW_STEP };
+      if (!f.moving.certificate_received_on) base = patchFollowups(f, { moving: { certificate_received_on: todayStr() } });
     }
+    await saveSteps(next, base);
   };
 
+  // 画面の表示用（手続きがあるものだけ）
+  const latest = steps;
   const hint = kokuhoInsuranceHint(currentCard, histories);
   const disabled = !canEdit || busy;
   const movingTodos = (["moveOut", "moveIn"] as const).filter((k) => latest[k]);
@@ -183,20 +182,25 @@ export function WorkerProcedureTodos({
         <h2 className="mb-1 flex items-center gap-1.5 text-sm font-bold text-muted">
           <ListTodo size={14} />
           住所・保険の手続き（TODO）
+          {todo && (
+            <span className="rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-bold text-brand">
+              {todo.todo_no}・{todo.status}
+            </span>
+          )}
           <Link href="/todos/procedures" className="ml-auto text-[11px] font-bold text-brand hover:underline">
             TODOの一覧へ
           </Link>
         </h2>
         <p className="mb-3 text-[11px] leading-relaxed text-muted">
-          転出・転入・国保の加入・国民年金の加入を、手続きごとのTODOにしています。経過を「完了」（やめたときは「キャンセル」）にすると、その手続きは終わりです。
-          転出を完了にすると、転入手続きのTODOが自動でできます。
+          転出・転入・国保の加入・国民年金の加入を、この人の1つのTODOの中で手続きごとに進めます。手続きの経過を「完了」（やめたときは「キャンセル」）にすると、その手続きは終わりです。全部終わるとTODOも完了になります。
+          転出を完了にすると、転入手続きが自動で足されます。
         </p>
         {error && (
           <p role="alert" className="mb-3 rounded-lg bg-seal/10 px-3 py-2 text-xs text-seal">
             {error}
           </p>
         )}
-        {todos === null ? (
+        {todo === undefined ? (
           <p className="text-xs text-muted">読み込み中…</p>
         ) : (
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -216,13 +220,13 @@ export function WorkerProcedureTodos({
                     className="mb-2 inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-dashed border-brand px-3 text-xs font-bold text-brand disabled:opacity-50"
                   >
                     <Plus size={14} />
-                    {movingTodos.length === 0 ? "転居の手続きを始める（転出手続きのTODOを作る）" : "もう一度転居の手続きを始める"}
+                    {movingTodos.length === 0 ? "転居の手続きを始める（転出手続きを足す）" : "もう一度転居の手続きを始める"}
                   </button>
                 )
               ) : null}
               <div className="space-y-2">
                 {movingTodos.map((k) => (
-                  <ProcedureRow key={k} todo={latest[k]!} disabled={disabled} onChange={(p) => void change(latest[k]!, p)} />
+                  <ProcedureRow key={k} stepKey={k} step={latest[k]!} disabled={disabled} onChange={(p) => void change(k, p)} />
                 ))}
                 {latest.moveOut && isProcedureDone(latest.moveOut.status) && latest.moveOut.status === "完了" && !latest.moveIn && canEdit && (
                   <button
@@ -232,7 +236,7 @@ export function WorkerProcedureTodos({
                     className="inline-flex min-h-[32px] items-center gap-1 rounded-lg border border-dashed border-brand px-3 text-[11px] font-bold text-brand"
                   >
                     <Plus size={13} />
-                    転入手続きのTODOを作る
+                    転入手続きを足す
                   </button>
                 )}
               </div>
@@ -302,7 +306,7 @@ export function WorkerProcedureTodos({
               )}
               <div className="space-y-2">
                 {kokuhoTodos.map((k) => (
-                  <ProcedureRow key={k} todo={latest[k]!} disabled={disabled} onChange={(p) => void change(latest[k]!, p)} />
+                  <ProcedureRow key={k} stepKey={k} step={latest[k]!} disabled={disabled} onChange={(p) => void change(k, p)} />
                 ))}
               </div>
               {kokuhoTodos.length > 0 && (
@@ -356,16 +360,19 @@ function DateField({ label, value, disabled, onChange }: { label: string; value:
   );
 }
 
-// 手続き1件（TODO）の行。経過・依頼先・依頼日・メモをその場で直す
+// TODOの中の手続き1つの行。経過・依頼先・依頼日・メモをその場で直す
 function ProcedureRow({
-  todo,
+  stepKey,
+  step: todo,
   disabled,
   onChange,
 }: {
-  todo: ProcedureTodo;
+  stepKey: ProcedureKey;
+  step: ProcedureStep;
   disabled: boolean;
-  onChange: (patch: Partial<Pick<ProcedureTodo, "status" | "requested_to" | "requested_on" | "note">>) => void;
+  onChange: (patch: Partial<ProcedureStep>) => void;
 }) {
+  const title = PROCEDURE_TITLES[stepKey];
   const [to, setTo] = useState(todo.requested_to);
   const [note, setNote] = useState(todo.note);
   const done = isProcedureDone(todo.status);
@@ -377,19 +384,16 @@ function ProcedureRow({
         : todo.status === "依頼中"
           ? "border-status-notice-fg/40 bg-status-notice-bg/50"
           : "border-seal/40 bg-seal/5";
-  const listId = `req-${todo.id}`;
+  const listId = `req-${stepKey}`;
   return (
     <div className={`rounded-lg border p-2 ${tone}`}>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-bold">{todo.title}</span>
-        <Link href="/todos/procedures" className="text-[10px] font-bold text-muted hover:text-brand">
-          {todo.todo_no}
-        </Link>
+        <span className="text-xs font-bold">{title}</span>
         <select
           value={todo.status}
           disabled={disabled}
           onChange={(e) => onChange({ status: e.target.value })}
-          aria-label={`${todo.title}の経過`}
+          aria-label={`${title}の経過`}
           className="ml-auto min-h-[32px] rounded-lg border border-border bg-background px-2 text-xs font-bold"
         >
           {PROCEDURE_STATUSES.map((s) => (
@@ -408,7 +412,7 @@ function ProcedureRow({
             onChange={(e) => setTo(e.target.value)}
             onBlur={() => to !== todo.requested_to && onChange({ requested_to: to.trim() })}
             placeholder="依頼先（例: 本人 / NGAさん）"
-            aria-label={`${todo.title}の依頼先`}
+            aria-label={`${title}の依頼先`}
             className={INPUT}
           />
           <datalist id={listId}>
@@ -421,7 +425,7 @@ function ProcedureRow({
             value={todo.requested_on ?? ""}
             disabled={disabled}
             onChange={(e) => onChange({ requested_on: e.target.value || null })}
-            aria-label={`${todo.title}の依頼日`}
+            aria-label={`${title}の依頼日`}
             className={INPUT}
           />
           <input
@@ -430,7 +434,7 @@ function ProcedureRow({
             onChange={(e) => setNote(e.target.value)}
             onBlur={() => note !== todo.note && onChange({ note })}
             placeholder="メモ"
-            aria-label={`${todo.title}のメモ`}
+            aria-label={`${title}のメモ`}
             className={`${INPUT} sm:col-span-2`}
           />
         </div>
