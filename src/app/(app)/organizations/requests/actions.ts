@@ -162,3 +162,33 @@ export async function markDocRequestCellAttached(
   if (e2) return { ok: false, message: e2.message };
   return { ok: true, useDocSaved: false };
 }
+
+// マスの添付をまとめて削除する（keepFileId だけは残す）。
+// 申告書を作り直して添付したとき・会社へ送る書類を外国人詳細の方に決めたときに、1つだけにするために使う
+export async function removeDocRequestCellFiles(
+  requestId: string,
+  workerId: string,
+  itemId: string,
+  keepFileId?: string,
+): Promise<{ ok: true; removed: string[] } | Err> {
+  if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
+  const admin = createAdminClient();
+  if (!admin) return { ok: false, message: "サーバー設定エラー" };
+  const table = "organization_document_request_files";
+  const { data, error } = await admin
+    .from(table)
+    .select("id, storage_path")
+    .eq("request_id", requestId)
+    .eq("worker_id", workerId)
+    .eq("item_id", itemId);
+  if (error) return { ok: false, message: error.message };
+  const targets = ((data as { id: string; storage_path: string }[] | null) ?? []).filter((f) => f.id !== keepFileId);
+  if (targets.length === 0) return { ok: true, removed: [] };
+  await admin.storage
+    .from(BUCKET)
+    .remove(targets.map((f) => f.storage_path))
+    .catch(() => undefined);
+  const { error: delErr } = await admin.from(table).delete().in("id", targets.map((f) => f.id));
+  if (delErr) return { ok: false, message: delErr.message };
+  return { ok: true, removed: targets.map((f) => f.id) };
+}
