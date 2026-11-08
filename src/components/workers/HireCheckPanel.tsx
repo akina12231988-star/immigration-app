@@ -58,6 +58,7 @@ export function HireCheckPanel({
   const [resumeUrlState, setResumeUrl] = useState<{ path: string; url: string | null } | null>(null);
   const resumeUrl = resumeUrlState?.path === value.resume_path ? resumeUrlState.url : null;
   const [busy, setBusy] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const message = hireConditionMessage(workerName, pay, value.housing);
   const askState = thanhAskState(value, stampFeeDecided);
@@ -337,7 +338,39 @@ export function HireCheckPanel({
               if (f) void uploadResume(f);
             }}
           />
-          <div className="flex flex-wrap items-start gap-3 pl-6">
+          {/* 画像をここにドラッグ＆ドロップ（または押して選ぶ・コピーした画像を貼り付け）でもアップロードできる */}
+          <div
+            className={`ml-6 flex flex-wrap items-start gap-3 rounded-xl border-2 border-dashed p-2.5 transition-colors ${
+              dragging ? "border-brand bg-brand/5" : "border-transparent"
+            }`}
+            onDragOver={(e) => {
+              if (!canEdit || busy) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "copy";
+              if (!dragging) setDragging(true);
+            }}
+            onDragLeave={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+            }}
+            onDrop={(e) => {
+              if (!canEdit || busy) return;
+              e.preventDefault();
+              setDragging(false);
+              const f = Array.from(e.dataTransfer.files).find((x) => x.type.startsWith("image/"));
+              if (f) void uploadResume(f);
+              else setError("履歴書は画像（JPEG・PNG・WebP）をドロップしてください");
+            }}
+            onPaste={(e) => {
+              if (!canEdit || busy) return;
+              const f = Array.from(e.clipboardData.files).find((x) => x.type.startsWith("image/"));
+              if (f) {
+                e.preventDefault();
+                void uploadResume(f);
+              }
+            }}
+            tabIndex={canEdit ? 0 : -1}
+          >
+            {dragging && <p className="w-full text-center text-xs font-bold text-brand">ここに離すとアップロードします</p>}
             {resumeUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={resumeUrl} alt={`${workerName}さんの履歴書`} className="h-32 w-auto rounded-lg border border-border object-contain" />
@@ -363,6 +396,9 @@ export function HireCheckPanel({
                 </button>
               )}
               {value.resume_name && <span className="text-[10px] text-muted">{value.resume_name}</span>}
+              {canEdit && !busy && (
+                <span className="text-[10px] text-muted">画像をこの枠にドラッグ＆ドロップ、または枠を押して Ctrl+V（⌘+V）で貼り付けてもアップロードできます</span>
+              )}
             </div>
           </div>
         </div>
