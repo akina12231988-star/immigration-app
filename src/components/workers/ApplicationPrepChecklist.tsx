@@ -3634,7 +3634,9 @@ function StampFeePayerField({
       : "";
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="text-xs font-bold">収入印紙代</span>
+      <span className="text-xs font-bold" title="上の「THANHさんの答え（印紙代）」と同じ設定です（どちらで押しても両方に入ります）">
+        収入印紙代
+      </span>
       {/* 押して選ぶボタンだと分かるよう、1つずつ枠のあるボタンにする（選んだものは塗りつぶし＋✓） */}
       <div className="flex flex-wrap gap-1.5">
         {STAMP_FEE_PAYERS.map((p) => {

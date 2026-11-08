@@ -301,8 +301,10 @@ export function HireCheckPanel({
                   {stampFeePayerLabel(p)}
                 </button>
               ))}
-              {!askStampFee && stampFeePayer && (
+              {!askStampFee && stampFeePayer ? (
                 <span className="text-[10px] text-muted">（申請種別・所属機関で決まっている負担です）</span>
+              ) : (
+                <span className="text-[10px] text-muted">下の「収入印紙代」と同じ設定です（どちらで押しても両方に入ります）</span>
               )}
             </div>
           )}
