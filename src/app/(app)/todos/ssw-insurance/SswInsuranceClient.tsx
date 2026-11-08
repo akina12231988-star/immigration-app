@@ -53,6 +53,10 @@ import {
   type SswInsuranceRow,
   type SswInsuranceWorker,
   type SswSortKey,
+  groupPermitApplications,
+  needsSswPermitCheck,
+  sswPermitInfo,
+  type SswPermitApplication,
 } from "@/lib/ssw-insurance";
 import {
   ensureSswTodo,
@@ -63,6 +67,7 @@ import {
   updateSswInsurance,
   type SswCertRow,
   type SswSalesRow,
+  listSswPermitApplications,
 } from "@/lib/supabase/queries/ssw-insurance";
 import { SswApplyCheck } from "./SswApplyCheck";
 import { SswBurdenSettings } from "./SswBurdenSettings";
@@ -99,6 +104,9 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
   const [options, setOptions] = useState<TodoStatusOption[]>([]);
   // 保険No.（特定技能総合保険の売上）。請求した番号と、加入したかの記録を出す
   const [sales, setSales] = useState<SswSalesRow[]>([]);
+  // 入管申請の記録（特定技能1号の許可が下りているかを見る）。null は読めなかった
+  const [permitApps, setPermitApps] = useState<SswPermitApplication[] | null>(null);
+  const [showPending, setShowPending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [orgFilter, setOrgFilter] = useState("");
@@ -120,28 +128,32 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
       listTodos(supabase),
       listTodoStatusOptions(supabase),
       listSswInsuranceSales(supabase),
+      // 特定技能1号の許可が下りているか（読めなくても一覧は出す。そのときは許可で絞らない）
+      listSswPermitApplications(supabase).catch(() => null),
     ]);
   };
 
   const reload = useCallback(async () => {
-    const [ws, os, ts, opts, sl] = await fetchAll();
+    const [ws, os, ts, opts, sl, pa] = await fetchAll();
     setWorkers(ws);
     setOrgs(os);
     setTodos(ts);
     setOptions(opts);
     setSales(sl);
+    setPermitApps(pa);
   }, []);
 
   useEffect(() => {
     let cancelled = false;
     fetchAll()
-      .then(([ws, os, ts, opts, sl]) => {
+      .then(([ws, os, ts, opts, sl, pa]) => {
         if (cancelled) return;
         setWorkers(ws);
         setOrgs(os);
         setTodos(ts);
         setOptions(opts);
         setSales(sl);
+        setPermitApps(pa);
         setLoading(false);
       })
       .catch((err) => {
@@ -166,7 +178,7 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
     [orgs],
   );
 
-  const rows = useMemo(() => {
+  const rowsAndPending = useMemo(() => {
     const todosByWorker = sswTodosByWorker(todos, options);
     // 未完了の解約手続きのTODOがある人は、在留資格が特定技能2号に変わっていても
     // （2号へ移行して支援委託が終わった人など）解約が済むまで一覧に残す
@@ -177,8 +189,17 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
     const targets = onlySsw
       ? workers.filter((w) => isSswInsuranceTarget(w.residence_status) || hasOpenCancel(w.id))
       : workers;
-    return buildSswInsuranceRows(targets, orgBurden, todosByWorker, today);
-  }, [workers, orgBurden, todos, options, onlySsw, today]);
+    const built = buildSswInsuranceRows(targets, orgBurden, todosByWorker, today);
+    if (!permitApps) return { rows: built, pending: [] as SswInsuranceRow[] };
+    // 未加入・意思確認の人は、特定技能1号の許可（変更許可・更新許可）が下りた人だけを出す
+    const byWorker = groupPermitApplications(permitApps);
+    const withPermit = built.map((r) => ({ ...r, permit: sswPermitInfo(r.worker, byWorker.get(r.worker.id) ?? []) }));
+    const pending = withPermit.filter((r) => needsSswPermitCheck(r.state) && !r.permit.ok && !(r.todos.join && !r.todos.join.done));
+    const pendingIds = new Set(pending.map((r) => r.worker.id));
+    return { rows: withPermit.filter((r) => !pendingIds.has(r.worker.id)), pending };
+  }, [workers, orgBurden, todos, options, onlySsw, today, permitApps]);
+  const rows = rowsAndPending.rows;
+  const permitPending = rowsAndPending.pending;
 
   const shown = useMemo(() => {
     let list = rows;
@@ -473,6 +494,32 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
 
           {tab === "join" && (
             <>
+              {/* 特定技能1号の許可（変更許可・更新許可）がまだの人は①に出さない。だれを外したかは開いて確認できる */}
+              {permitPending.length > 0 && (
+                <div className="mb-2 rounded-xl border border-border bg-background p-2.5 text-xs">
+                  <button type="button" onClick={() => setShowPending((v) => !v)} className="font-bold text-brand">
+                    {showPending ? "▼" : "▶"} 特定技能1号の許可がまだの人 {permitPending.length}名は①に出していません
+                  </button>
+                  <p className="mt-0.5 text-[11px] text-muted">
+                    ①には、特定技能1号への在留資格の変更許可か、特定技能1号の更新許可が下りた人だけを出します（入管申請の記録の許可で判定）。
+                  </p>
+                  {showPending && (
+                    <ul className="mt-1.5 space-y-0.5">
+                      {permitPending.map((r) => (
+                        <li key={r.worker.id}>
+                          <a href={`/workers/${r.worker.id}`} className="font-bold text-brand hover:underline">
+                            {r.worker.name}
+                          </a>
+                          <span className="ml-1 text-muted">
+                            {r.orgName && `${r.orgName}・`}
+                            {r.permit?.reason}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
               {/* ①はこれから申込が必要な人だけ。すでに申込手続中の人は②（結果の登録）にだけ出す */}
               <SswJoinTable
                 rows={joinRows.filter((r) => !isSswApplying(r))}

@@ -24,6 +24,8 @@ import {
   sswBurdenUnsetCount,
   isSswTodoInProgress,
   sswColumnOf,
+  sswPermitInfo,
+  type SswPermitApplication,
   sswDeclineNote,
   sswInsuranceMonths,
   sswInsuranceState,
@@ -800,5 +802,28 @@ describe("sswCancelMailToText（解約書類の送付先の宛名）", () => {
     expect(lines[1]).toBe(SSW_CANCEL_MAIL_TO.address);
     expect(lines[2]).toBe(`${SSW_CANCEL_MAIL_TO.company} 御中`);
     expect(lines[3]).toContain(SSW_CANCEL_MAIL_TO.tel);
+  });
+});
+
+describe("sswPermitInfo（特定技能1号の許可が下りているか）", () => {
+  const w = { residence_status: "特定技能1号", residence_permit_date: "2025-04-01" };
+  const app = (p: Partial<SswPermitApplication>): SswPermitApplication => ({
+    worker_id: "w1", content: "在留資格の変更許可", approved: false, approval_date: null, granted_permit_date: null, visa_at_grant: "", withdrawn_on: null, ...p,
+  });
+  it("特定技能1号への変更許可・1号の更新許可が下りていれば出す", () => {
+    expect(sswPermitInfo(w, [app({ approved: true, granted_permit_date: "2026-11-01", visa_at_grant: "特定技能1号" })])).toMatchObject({ ok: true, kind: "変更許可", permitDate: "2026-11-01" });
+    expect(sswPermitInfo(w, [app({ content: "在留期間の更新許可", granted_permit_date: "2026-10-01", visa_at_grant: "特定技能1号更新" })])).toMatchObject({ ok: true, kind: "更新許可" });
+  });
+  it("申請中で許可がまだなら出さない（在留資格の欄が先に特定技能1号になっていても）", () => {
+    const r = sswPermitInfo(w, [app({})]);
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain("申請中");
+  });
+  it("最後の許可が特定活動なら出さない", () => {
+    expect(sswPermitInfo(w, [app({ granted_permit_date: "2026-05-01", visa_at_grant: "特定活動（特定技能1号以降準備）" })]).ok).toBe(false);
+  });
+  it("取下げた申請は見ない。申請の記録が無い人は在留許可日と在留資格で判断", () => {
+    expect(sswPermitInfo(w, [app({ withdrawn_on: "2026-01-01" })])).toMatchObject({ ok: true, kind: "許可（申請の記録なし）" });
+    expect(sswPermitInfo({ residence_status: "特定技能1号", residence_permit_date: null }, []).ok).toBe(false);
   });
 });
