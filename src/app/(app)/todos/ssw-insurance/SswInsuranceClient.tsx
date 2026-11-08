@@ -53,6 +53,7 @@ import {
   type SswInsuranceRow,
   type SswInsuranceWorker,
   type SswSortKey,
+  SSW_TODO_CANCELED_STATUS,
   groupPermitApplications,
   needsSswPermitCheck,
   sswPermitInfo,
@@ -231,6 +232,12 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
         ssw_insurance_declined_org_id: join ? null : row.worker.current_organization_id,
         ...(note === undefined ? {} : { ssw_insurance_note: note }),
       });
+      // 加入しないと決めたら、残っている加入手続きのTODOを「キャンセル」にする
+      // （未完了のTODOがあると「加入手続き中」として加入手続きに出続けるため）
+      const joinTodo = row.todos.join;
+      if (!join && joinTodo && !joinTodo.done) {
+        await updateTodo(createClient(), joinTodo.id, { status: SSW_TODO_CANCELED_STATUS });
+      }
       await reload();
     } catch (err) {
       setError(dbErrorMessage(err, MIGRATION, "保存に失敗しました"));
@@ -640,13 +647,15 @@ function SswWorkerRow({
   const [declining, setDeclining] = useState(false);
   const [declineReason, setDeclineReason] = useState<string>(SSW_DECLINE_REASONS[0]);
   const [declineOther, setDeclineOther] = useState("");
-  // 加入しないを選べる行（未加入・意思確認・期限切れ・まもなく期限）。
-  // 退職の解約手続きと、加入中の人には出さない
+  // 加入しないを選べる行（未加入・意思確認・期限切れ・まもなく期限・加入手続き中）。
+  // 退職の解約手続きと、加入中の人には出さない。
+  // 加入手続き中（TODOが残っている）の人も、加入しないを押すとTODOを完了にして加入手続きから外す
   const canDecline =
     row.state === "notJoined" ||
     row.state === "willCheck" ||
     row.state === "expired" ||
-    row.state === "soon";
+    row.state === "soon" ||
+    row.state === "renew";
   const todo = cancelRow ? row.todos.cancel : row.todos.join;
   const todoTitle = cancelRow ? SSW_CANCEL_TODO_TITLE : SSW_JOIN_TODO_TITLE;
 

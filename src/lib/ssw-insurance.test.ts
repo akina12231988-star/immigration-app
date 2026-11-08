@@ -778,15 +778,15 @@ describe("sswStatusOptionsFor（加入と解約で進行中の言い方を分け
   });
   const all = [opt("未着手", "未着手"), opt("申込手続中", "進行中"), opt(SSW_CANCEL_MAILED_STATUS, "進行中"), opt("完了", "完了")];
   it("加入手続きの表には「解約書類郵送済み」を出さない", () => {
-    expect(sswStatusOptionsFor("join", all).map((o) => o.name)).toEqual(["未着手", "申込手続中", "完了"]);
+    expect(sswStatusOptionsFor("join", all).map((o) => o.name)).toEqual(["未着手", "申込手続中", "完了", "キャンセル"]);
   });
   it("解約手続きの表には「申込手続中」を出さない", () => {
-    expect(sswStatusOptionsFor("cancel", all).map((o) => o.name)).toEqual(["未着手", SSW_CANCEL_MAILED_STATUS, "完了"]);
+    expect(sswStatusOptionsFor("cancel", all).map((o) => o.name)).toEqual(["未着手", SSW_CANCEL_MAILED_STATUS, "完了", "キャンセル"]);
   });
   it("0194 未適用で「解約書類郵送済み」が無くても、完了の前に足して選べるようにする", () => {
     const old = [opt("未着手", "未着手"), opt("申込手続中", "進行中"), opt("完了", "完了")];
     const list = sswStatusOptionsFor("cancel", old);
-    expect(list.map((o) => o.name)).toEqual(["未着手", SSW_CANCEL_MAILED_STATUS, "完了"]);
+    expect(list.map((o) => o.name)).toEqual(["未着手", SSW_CANCEL_MAILED_STATUS, "完了", "キャンセル"]);
     expect(list[1].stage).toBe("進行中");
   });
   it("ほかの構成の選択肢は混ぜない", () => {
@@ -825,5 +825,28 @@ describe("sswPermitInfo（特定技能1号の許可が下りているか）", ()
   it("取下げた申請は見ない。申請の記録が無い人は在留許可日と在留資格で判断", () => {
     expect(sswPermitInfo(w, [app({ withdrawn_on: "2026-01-01" })])).toMatchObject({ ok: true, kind: "許可（申請の記録なし）" });
     expect(sswPermitInfo({ residence_status: "特定技能1号", residence_permit_date: null }, []).ok).toBe(false);
+  });
+});
+
+describe("キャンセル（TODOを作ったあとに加入しないことになった）", () => {
+  it("キャンセルのTODOは完了の扱い", () => {
+    const map = sswTodosByWorker(
+      [{ id: "t1", todo_no: "TODO-1", kind: "特定技能総合保険", worker_id: "w1", title: "特定技能総合保険の加入手続き", status: "キャンセル" }],
+      [],
+    );
+    expect(map.get("w1")?.join?.done).toBe(true);
+  });
+});
+
+describe("採用がキャンセルになった人・帰国した人", () => {
+  it("加入していなければ一覧に出さない（加入手続きの対象にしない）", () => {
+    const base = { residence_status: "特定技能1号", ssw_insurance_expiry_date: null, ssw_insurance_no: "" };
+    expect(sswInsuranceState(worker({ ...base, status: "キャンセル" }), "会社負担", "2026-11-08")).toBe("none");
+    expect(sswInsuranceState(worker({ ...base, status: "帰国" }), "会社負担", "2026-11-08")).toBe("none");
+  });
+  it("加入したままなら解約手続きに出す", () => {
+    expect(
+      sswInsuranceState(worker({ status: "キャンセル", ssw_insurance_expiry_date: "2027-04-07", ssw_insurance_no: "B1" }), "会社負担", "2026-11-08"),
+    ).toBe("cancel");
   });
 });
