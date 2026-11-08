@@ -26,6 +26,7 @@ import {
   createDocRequestFileTicket,
   markDocRequestCellAttached,
   registerDocRequestFile,
+  removeDocRequestCellFiles,
 } from "@/app/(app)/organizations/requests/actions";
 import type { WorkerDependent } from "@/types/db";
 
@@ -123,7 +124,7 @@ export function DependentsFormSheet({
     const names = fuyoFormNames(judgement, kind);
     if (
       !window.confirm(
-        `${kind}の扶養控除等申告書（記載 ${names.length}人${names.length === 0 ? "・扶養親族なし" : ""}）を作って、「${attachTarget.requestTitle}」の「${attachTarget.itemName}」に添付します。よろしいですか？`,
+        `${kind}の扶養控除等申告書（記載 ${names.length}人${names.length === 0 ? "・扶養親族なし" : ""}）を作って、「${attachTarget.requestTitle}」の「${attachTarget.itemName}」に添付します。マスに前から添付していた書類は消して、この1つだけにします。よろしいですか？`,
       )
     )
       return;
@@ -141,6 +142,9 @@ export function DependentsFormSheet({
       if (upErr) throw new Error(`アップロードに失敗しました: ${upErr.message}`);
       const reg = await registerDocRequestFile(attachTarget.requestId, workerId, attachTarget.itemId, ticket.path, fileName, mimeType);
       if (!reg.ok) throw new Error(reg.message);
+      // マスに前から添付していたもの（入社時・前に作り直したもの）は消して、いま作った1つだけにする
+      const cleaned = await removeDocRequestCellFiles(attachTarget.requestId, workerId, attachTarget.itemId, reg.id);
+      if (!cleaned.ok) throw new Error(`添付はできましたが、前の添付を消せませんでした: ${cleaned.message}`);
       const mark = await markDocRequestCellAttached(attachTarget.requestId, workerId, attachTarget.itemId, today, {
         kind,
         year: targetYear,

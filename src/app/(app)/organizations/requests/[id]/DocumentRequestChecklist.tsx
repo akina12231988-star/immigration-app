@@ -37,6 +37,7 @@ import { compressImage } from "@/lib/image-compress";
 import {
   createDocRequestFileTicket,
   deleteDocRequestFile,
+  removeDocRequestCellFiles,
   getDocRequestFilePreviewUrl,
   registerDocRequestFile,
 } from "../actions";
@@ -246,9 +247,37 @@ export function DocumentRequestChecklist({
     return { j, useDoc: auto ? "onboarding" : c?.use_doc, auto, stale };
   };
   // 会社へ送る書類をどちらで紐づけるかを決める（同じ方をもう一度押すと未決定に戻す）
-  const chooseUseDoc = (workerId: string, itemId: string, v: DocumentRequestUseDoc) => {
+  // 決めたら、会社へ送る書類が1つだけになるようにする:
+  //   入社時（外国人詳細）に決めたら、マスの添付は消す（確認してから）
+  //   マスの添付に決めたら、外国人詳細の書類はマスに出さない。添付が何枚もあれば、最後の1枚だけ残すか聞く
+  const chooseUseDoc = async (workerId: string, itemId: string, v: DocumentRequestUseDoc) => {
     const c = current(workerId, itemId);
-    void saveCheck({ ...c, use_doc: c.use_doc === v ? null : v });
+    if (c.use_doc === v) {
+      await saveCheck({ ...c, use_doc: null });
+      return;
+    }
+    const cellFiles = filesByCell.get(checkKey(workerId, itemId)) ?? [];
+    let keep: string | undefined;
+    let remove = false;
+    if (v === "onboarding" && cellFiles.length > 0) {
+      if (!window.confirm(`会社へ送る書類を入社時（外国人詳細）に決めます。このマスに添付した${cellFiles.length}件は削除して、外国人詳細の書類1つだけにします。よろしいですか？`)) return;
+      remove = true;
+    } else if (v === "cell" && cellFiles.length > 1) {
+      const last = [...cellFiles].sort((a, b) => a.created_at.localeCompare(b.created_at)).at(-1);
+      if (last && window.confirm(`このマスに${cellFiles.length}件添付されています。最後に添付した「${last.file_name}」だけを残して、ほかは削除しますか？（キャンセルならそのまま残します）`)) {
+        keep = last.id;
+        remove = true;
+      }
+    }
+    if (remove) {
+      const res = await removeDocRequestCellFiles(request.id, workerId, itemId, keep);
+      if (!res.ok) {
+        setError(res.message);
+        return;
+      }
+      setFiles((prev) => prev.filter((f) => !res.removed.includes(f.id)));
+    }
+    await saveCheck({ ...c, use_doc: v });
   };
   // その人の「案内」を押した書類（対象外・入社年で対象外の書類を除く）。案内文にまとめて入れる
   const informedItemsOf = (w: ChecklistWorker) =>
@@ -1213,7 +1242,7 @@ export function DocumentRequestChecklist({
                                         <button
                                           key={o.v}
                                           type="button"
-                                          onClick={() => canEdit && chooseUseDoc(w.id, item.id, o.v)}
+                                          onClick={() => canEdit && void chooseUseDoc(w.id, item.id, o.v)}
                                           disabled={!canEdit}
                                           aria-pressed={on}
                                                   title={
@@ -1248,12 +1277,13 @@ export function DocumentRequestChecklist({
                                   )}
                                 </div>
                               )}
-                              {linkedDoc && (
+                              {/* 会社へ送る書類をマスの添付に決めたら、外国人詳細の書類（入社時）はもう出さない */}
+                              {linkedDoc && docChoice !== "cell" && (
                                 <button
                                   type="button"
                                   onClick={() => void openOnboardingDoc(linkedDoc)}
                                   className={`inline-flex max-w-[12rem] items-center gap-0.5 rounded-lg border px-1.5 py-0.5 text-[10px] font-bold ${
-                                    docChoice === "cell" || docChoice === "cell-missing"
+                                    docChoice === "cell-missing"
                                       ? "border-border bg-background text-muted line-through"
                                       : "border-status-approved-fg/40 bg-status-approved-bg text-status-approved-fg"
                                   }`}
