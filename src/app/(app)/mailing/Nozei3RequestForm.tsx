@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ExternalLink, FileText, IdCard, Printer, StickyNote } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { CopyButton } from "@/components/ui/CopyButton";
@@ -27,7 +27,17 @@ import {
 } from "@/lib/tax-office";
 import { nozei3SaveBlockers } from "@/lib/mailing-save-check";
 import { dbErrorMessage } from "@/lib/errors";
-import { DEFAULT_NOZEI3_AGENT, NOZEI3_AGENT_ADDRESS_OPTIONS, NOZEI3_AGENT_NAME_OPTIONS } from "@/lib/nozei3-form";
+import {
+  DEFAULT_NOZEI3_AGENT,
+  NOZEI3_AGENTS_SETTING_KEY,
+  NOZEI3_AGENT_NAME_OPTIONS,
+  agentAddressOptions,
+  agentNameOptions,
+  normalizeSavedAgents,
+  upsertSavedAgent,
+  type SavedAgent,
+} from "@/lib/nozei3-form";
+import { getAppSetting, setAppSetting } from "@/lib/supabase/queries/app-settings";
 import { SaveBlockers } from "@/components/mailing/SaveBlockers";
 import { ProgressBadge, TrackingLink } from "@/components/mailing/MailingRecordSummary";
 import { MailingFileAttachments } from "./MailingFileAttachments";
@@ -220,6 +230,39 @@ export function Nozei3Fields({
   showToast: (m: string) => void;
 }) {
   const { office, suggested } = effectiveTaxOffice(v, taxOffices, workerAddress);
+
+  // 登録した代理人（氏名と住所の組）。選択肢に足し、氏名を選ぶと住所も入るようにする
+  const [savedAgents, setSavedAgents] = useState<SavedAgent[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    getAppSetting(createClient(), NOZEI3_AGENTS_SETTING_KEY)
+      .then((v) => {
+        if (!cancelled) setSavedAgents(normalizeSavedAgents(v));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const [agentBusy, setAgentBusy] = useState(false);
+  const saveAgents = async (next: SavedAgent[], message: string) => {
+    setAgentBusy(true);
+    try {
+      await setAppSetting(createClient(), NOZEI3_AGENTS_SETTING_KEY, { agents: next });
+      setSavedAgents(next);
+      showToast(message);
+    } catch (e) {
+      showToast(dbErrorMessage(e, "0149_app_settings.sql", "代理人の登録に失敗しました"));
+    } finally {
+      setAgentBusy(false);
+    }
+  };
+  const agentName = v.agentName.trim();
+  const agentAddress = v.agentAddress.trim();
+  const savedMatch = savedAgents.find((a) => a.name === agentName);
+  const builtIn = (NOZEI3_AGENT_NAME_OPTIONS as readonly string[]).includes(agentName);
+  // 登録できる: 氏名が入っていて、はじめからある代理人ではなく、まだ同じ内容で登録していない
+  const canRegisterAgent = !!agentName && !builtIn && (!savedMatch || savedMatch.address !== agentAddress);
   const [officeModal, setOfficeModal] = useState<"add" | "edit" | null>(null);
   const [officeBusy, setOfficeBusy] = useState(false);
 
@@ -291,18 +334,60 @@ export function Nozei3Fields({
             <AgentSelect
               label="代理人の氏名（必須）"
               value={v.agentName}
-              options={NOZEI3_AGENT_NAME_OPTIONS}
+              options={agentNameOptions(savedAgents)}
               placeholder="例：山田　花子"
-              onChange={(agentName) => set({ agentName })}
+              onChange={(name) => {
+                // 登録した代理人を選んだら、住所もその人のものにする
+                const hit = savedAgents.find((a) => a.name === name);
+                set(hit && hit.address ? { agentName: name, agentAddress: hit.address } : { agentName: name });
+              }}
             />
             <AgentSelect
               label="代理人の住所"
               value={v.agentAddress}
-              options={NOZEI3_AGENT_ADDRESS_OPTIONS}
+              options={agentAddressOptions(savedAgents)}
               placeholder="例：熊本県熊本市東区◯◯1-2-3"
               onChange={(agentAddress) => set({ agentAddress })}
             />
           </div>
+          {/* 手入力した代理人を登録すると、次から選択肢に出る（氏名を選ぶと住所も入る） */}
+          {canEdit && (canRegisterAgent || savedMatch) && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {canRegisterAgent && (
+                <button
+                  type="button"
+                  disabled={agentBusy}
+                  onClick={() =>
+                    void saveAgents(
+                      upsertSavedAgent(savedAgents, { name: agentName, address: agentAddress }),
+                      savedMatch ? `代理人「${agentName}」の住所を更新しました` : `代理人「${agentName}」を登録しました。次から選択肢に出ます`,
+                    )
+                  }
+                  className="inline-flex min-h-[36px] items-center rounded-lg border border-brand px-3 text-xs font-bold text-brand hover:bg-brand/5 disabled:opacity-50"
+                >
+                  {savedMatch ? "この住所で代理人を更新" : "この代理人（氏名・住所）を登録"}
+                </button>
+              )}
+              {savedMatch && !canRegisterAgent && (
+                <>
+                  <span className="text-[11px] text-status-approved-fg">登録済みの代理人です</span>
+                  <button
+                    type="button"
+                    disabled={agentBusy}
+                    onClick={() =>
+                      void saveAgents(
+                        savedAgents.filter((a) => a.name !== agentName),
+                        `代理人「${agentName}」を登録から外しました`,
+                      )
+                    }
+                    className="text-[11px] font-bold text-muted underline"
+                  >
+                    登録から外す
+                  </button>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
