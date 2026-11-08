@@ -30,6 +30,7 @@ export interface TodoRow {
   note: string;
   requested_to?: string; // 誰に依頼したか（0217。未適用なら undefined）
   requested_on?: string | null; // 依頼日（0217）
+  procedure_steps?: unknown; // 住所・保険の手続きの中の手続きごとの経過（0219）
   created_at: string;
   updated_at: string;
 }
