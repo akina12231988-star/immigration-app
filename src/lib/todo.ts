@@ -7,6 +7,7 @@ export const TODO_KINDS = [
   "退職の随時報告書",
   "試験の申込",
   "特定技能総合保険",
+  "住所・保険の手続き",
 ] as const;
 export type TodoKind = (typeof TODO_KINDS)[number];
 

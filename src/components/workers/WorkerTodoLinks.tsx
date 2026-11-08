@@ -28,6 +28,7 @@ const KIND_HREF: Record<TodoKind, string> = {
   退職の随時報告書: "/resignations",
   試験の申込: "/todos/exams",
   特定技能総合保険: "/todos/ssw-insurance",
+  "住所・保険の手続き": "/todos/procedures",
 };
 
 export function WorkerTodoLinks({ workerId }: { workerId: string }) {
