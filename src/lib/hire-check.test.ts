@@ -10,12 +10,13 @@ describe("hireConditionMessage（所属機関への文章）", () => {
     const t = hireConditionMessage("NGUYEN VAN A", "時給制", "社宅")!;
     expect(t).toContain("お世話になっております。");
     expect(t).toContain("NGUYEN VAN Aさんの採用を聞きました。");
-    expect(t).toContain("この方の時給と、社宅の家賃・光熱費などの居住費用を教えていただけますか？");
+    expect(t).toContain("この方の時給の金額と、社宅の家賃・光熱費などの費用を教えていただけますか？");
   });
   it("月給制・自分で契約", () => {
     const t = hireConditionMessage("NGUYEN VAN A", "月給制", "自分で契約")!;
-    expect(t).toContain("月給");
-    expect(t).toContain("自分で住宅を契約");
+    expect(t).toContain("この方の月給の金額を教えていただけますか？");
+    expect(t).toContain("もし住宅手当をご検討されている場合は、教えていただけると助かります。");
+    expect(t).not.toContain("ご負担の有無");
   });
 });
 
