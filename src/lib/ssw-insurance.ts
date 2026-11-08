@@ -280,6 +280,7 @@ export interface SswInsuranceRow {
   burden: string;
   state: SswGroupKey;
   todos: SswTodoPair;
+  permit?: SswPermitInfo; // 特定技能1号の許可（画面で入れる。加入手続きの表に区分と許可日を出す）
 }
 
 // 表示順: 有効期限の早い順（未加入は期限なしなので氏名順で後ろ）
@@ -857,4 +858,73 @@ export function sswCancelFormCells(rows: SswCancelFormRow[], today: string): Rec
   }
   cells[SSW_CANCEL_FORM_TOTAL_CELL] = list.length;
   return cells;
+}
+
+// ---- 特定技能1号の許可が下りているか ----
+// 加入手続き（未加入・意思確認）に出すのは、特定技能1号への在留資格の変更許可か、
+// 特定技能1号の在留期間の更新許可が下りた人だけ（申請中で許可がまだの人は出さない）。
+export interface SswPermitApplication {
+  worker_id: string | null;
+  content: string | null; // 在留資格の変更許可 / 在留期間の更新許可 / 在留認定許可申請
+  approved: boolean | null;
+  approval_date: string | null;
+  granted_permit_date: string | null;
+  visa_at_grant: string | null;
+  withdrawn_on: string | null;
+}
+
+export type SswPermitKind = "変更許可" | "更新許可" | "許可（申請の記録なし）";
+export interface SswPermitInfo {
+  ok: boolean; // 特定技能1号の許可が下りている
+  kind: SswPermitKind | null;
+  permitDate: string | null;
+  reason: string; // ok でないときの理由（画面の説明用）
+}
+
+const norm = (s: string | null | undefined) => (s ?? "").normalize("NFKC").replace(/[\s　]/g, "");
+
+// その外国人の申請の記録（取下げを除く）から、特定技能1号の許可が下りているかを決める。
+//  ・許可が下りた申請のうちいちばん新しいものが、特定技能1号（変更・更新）なら ok
+//    （許可時の在留資格が未入力の古い記録は、申請内容が変更・更新で在留資格が特定技能1号なら ok）
+//  ・許可が下りた申請が無く、許可待ちの申請があれば ng（申請中）
+//  ・申請の記録が無い人は、在留許可日が入っていて在留資格が特定技能1号なら ok（このアプリを使う前の許可）
+export function sswPermitInfo(
+  w: Pick<SswInsuranceWorker, "residence_status" | "residence_permit_date">,
+  apps: SswPermitApplication[],
+): SswPermitInfo {
+  const live = apps.filter((a) => !a.withdrawn_on);
+  const granted = live
+    .filter((a) => a.granted_permit_date || a.approved)
+    .map((a) => ({ a, date: a.granted_permit_date || a.approval_date || "" }))
+    .sort((x, y) => y.date.localeCompare(x.date));
+  const is1go = (s: string | null | undefined) => norm(s).startsWith("特定技能1号");
+  if (granted.length > 0) {
+    const { a, date } = granted[0];
+    const content = norm(a.content);
+    const kind: SswPermitKind | null = content.includes("更新") ? "更新許可" : content.includes("変更") ? "変更許可" : null;
+    const visa = norm(a.visa_at_grant);
+    const ok = visa ? is1go(visa) : !!kind && is1go(w.residence_status);
+    if (ok) return { ok: true, kind: kind ?? (norm(a.visa_at_grant).includes("更新") ? "更新許可" : "変更許可"), permitDate: date || null, reason: "" };
+    return { ok: false, kind: null, permitDate: date || null, reason: `最後の許可が特定技能1号ではありません（${a.visa_at_grant || a.content || "不明"}）` };
+  }
+  if (live.length > 0) return { ok: false, kind: null, permitDate: null, reason: "申請中（許可がまだ）" };
+  if (w.residence_permit_date && is1go(w.residence_status)) {
+    return { ok: true, kind: "許可（申請の記録なし）", permitDate: w.residence_permit_date, reason: "" };
+  }
+  return { ok: false, kind: null, permitDate: null, reason: "特定技能1号の許可の記録がありません" };
+}
+
+// 外国人ID → 申請の記録
+export function groupPermitApplications(apps: SswPermitApplication[]): Map<string, SswPermitApplication[]> {
+  const map = new Map<string, SswPermitApplication[]>();
+  for (const a of apps) {
+    if (!a.worker_id) continue;
+    (map.get(a.worker_id) ?? map.set(a.worker_id, []).get(a.worker_id)!).push(a);
+  }
+  return map;
+}
+
+// 加入手続きに出すか（未加入・意思確認の人だけ許可を見る。加入中・期限切れ・解約などはそのまま）
+export function needsSswPermitCheck(state: SswGroupKey): boolean {
+  return state === "notJoined" || state === "willCheck";
 }

@@ -6,6 +6,7 @@ import {
   isSswCancelable,
   sswTodosByWorker,
   type SswInsuranceWorker,
+  type SswPermitApplication,
   type SswTodoRef,
 } from "@/lib/ssw-insurance";
 import { todayStr } from "@/lib/ssw/calc";
@@ -302,4 +303,13 @@ export async function setSalesInsuranceJoined(
     .update({ insurance_joined_on: joinedOn })
     .eq("id", salesEntryId);
   if (error) throw error;
+}
+
+// 特定技能1号の許可が下りているかを見るための、入管申請の記録（全員分）
+export async function listSswPermitApplications(supabase: SupabaseClient): Promise<SswPermitApplication[]> {
+  const { data, error } = await supabase
+    .from("immigration_applications")
+    .select("worker_id, content, approved, approval_date, granted_permit_date, visa_at_grant, withdrawn_on");
+  if (error) throw error;
+  return (data as SswPermitApplication[] | null) ?? [];
 }

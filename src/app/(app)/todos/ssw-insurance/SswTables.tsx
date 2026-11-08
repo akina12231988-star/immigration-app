@@ -28,8 +28,13 @@ import {
   sswUploadRow,
   type SswInsuranceRow,
   type SswInsuranceWorker,
+  type SswPermitInfo,
 } from "@/lib/ssw-insurance";
 import { updateSswInsurance } from "@/lib/supabase/queries/ssw-insurance";
+import { updateTodo } from "@/lib/supabase/queries/todos";
+
+// 特定技能総合保険のTODOの完了の経過（0139）
+const SSW_JOIN_DONE_STATUS = "完了";
 import { registerSswCert } from "./actions";
 
 // 特定技能総合保険の画面（案A）の部品。申込サイトの2つの画面と同じ並びにする。
@@ -69,7 +74,13 @@ export type SswTabKey = "join" | "cancel" | "active" | "declined";
 
 // 氏名の欄（加入手続き・解約手続きの表で共通）。
 // 氏名のリンク・コピーの下に、本人への連絡用に Messenger のリンクを出す（外国人情報に登録があるときだけ）
-function SswNameCell({ worker: w }: { worker: Pick<SswInsuranceWorker, "id" | "name" | "messenger_link"> }) {
+function SswNameCell({
+  worker: w,
+  permit,
+}: {
+  worker: Pick<SswInsuranceWorker, "id" | "name" | "messenger_link">;
+  permit?: SswPermitInfo;
+}) {
   return (
     <div>
       <span className="flex items-center gap-1">
@@ -89,6 +100,13 @@ function SswNameCell({ worker: w }: { worker: Pick<SswInsuranceWorker, "id" | "n
           <MessageCircle size={11} />
           Messenger
         </a>
+      )}
+      {/* 特定技能1号の許可（変更許可・更新許可）と許可日 */}
+      {permit?.ok && (
+        <span className="mt-0.5 block text-[10px] font-bold text-status-approved-fg">
+          1号{permit.kind}
+          {permit.permitDate ? `（${permit.permitDate.replace(/-/g, "/")}）` : ""}
+        </span>
       )}
     </div>
   );
@@ -431,7 +449,7 @@ export function SswJoinTable({
                       />
                     </td>
                     <td className={TD}>
-                      <SswNameCell worker={w} />
+                      <SswNameCell worker={w} permit={row.permit} />
                     </td>
                     <td className={`${TD} text-center`}>{w.nationality || <span className="text-seal">未登録</span>}</td>
                     <td className={`${TD} text-center`}>{w.gender || <span className="text-seal">未登録</span>}</td>
@@ -563,8 +581,14 @@ function SswResultRow({
   const [requestedOn, setRequestedOn] = useState(w.ssw_insurance_requested_on ?? "");
   // 保険始期は、まだ入っていなければ振込日から出した保険始期希望日を入れておく
   const [startOn, setStartOn] = useState(w.ssw_insurance_start_on || sswStartOnFromPaidOn(w.ssw_insurance_paid_on));
-  const [endOn, setEndOn] = useState("");
-  const [certNo, setCertNo] = useState("");
+  // 加入依頼のあとに保険終期・被保険者証がもう記録されている人（以前に登録したのにTODOが残った人）は、
+  // その内容を入れておく（もう一度「登録」を押せばTODOが完了して②から外れる）
+  const registeredAfterRequest =
+    !!w.ssw_insurance_expiry_date &&
+    !!w.ssw_insurance_no &&
+    (!w.ssw_insurance_requested_on || w.ssw_insurance_expiry_date > w.ssw_insurance_requested_on);
+  const [endOn, setEndOn] = useState(registeredAfterRequest ? (w.ssw_insurance_expiry_date ?? "") : "");
+  const [certNo, setCertNo] = useState(registeredAfterRequest ? (w.ssw_insurance_no ?? "") : "");
   const [invoiceUrl, setInvoiceUrl] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -604,6 +628,12 @@ function SswResultRow({
           invoiceUrl: url,
         });
         if (!res.ok) throw new Error(res.message);
+        // 加入の結果（保険終期・被保険者証）が入ったら、加入手続きのTODOを「完了」にする。
+        // TODOが「申込手続中」のままだと、加入中になってもこの表（②）から消えないため
+        const joinTodo = row.todos.join;
+        if (joinTodo && !joinTodo.done) {
+          await updateTodo(createClient(), joinTodo.id, { status: SSW_JOIN_DONE_STATUS });
+        }
       }
       onSaved();
     } catch (err) {
