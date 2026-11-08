@@ -88,6 +88,8 @@ export interface DocumentRequestCheck {
   // 本人から「無い」と回答があった日（案内のあと。0198）。
   // 0198 未適用の環境でも他の保存が止まらないよう、値を入れるときだけ送る（省略可）
   none_replied_on?: string | null;
+  // 会社へ送る書類をどちらで紐づけるか（0220）。値を入れるときだけ送る（省略可）
+  use_doc?: DocumentRequestUseDoc | null;
   note: string;
   created_at: string;
   updated_at: string;
@@ -534,4 +536,44 @@ export function findOnboardingDocFor<T extends OnboardingDocLike>(
   if (key === LINK_DOC_NONE) return null;
   if (key) return docs.find((d) => d.doc_key === key) ?? null;
   return docs.find((d) => matchesOnboardingDoc(item.name, d)) ?? null;
+}
+
+// ---- 会社へ送る書類を「どちらで紐づけるか」（0220） ----
+//
+// 外国人詳細に添付済みの書類（入社時の扶養控除等申告書 など）と、このマスに添付した書類
+// （送金額しだいで年末調整用に作り直したもの など）の、どちらを会社へ送るかをマスごとに決める。
+export type DocumentRequestUseDoc = "onboarding" | "cell";
+
+export type CellDocChoice =
+  | "onboarding" // 外国人詳細の書類を使う
+  | "cell" // このマスに添付した書類を使う
+  | "cell-missing" // このマスの書類を使うと決めたが、まだ添付が無い
+  | "undecided" // 両方あるのにどちらか決めていない（決めるまではマスの添付を使う）
+  | "none"; // どちらも無い
+
+export function normalizeUseDoc(v: unknown): DocumentRequestUseDoc | null {
+  return v === "onboarding" || v === "cell" ? v : null;
+}
+
+export function cellDocChoice(useDoc: unknown, hasLinked: boolean, cellFileCount: number): CellDocChoice {
+  const u = normalizeUseDoc(useDoc);
+  if (u === "cell") return cellFileCount > 0 ? "cell" : "cell-missing";
+  if (u === "onboarding" && hasLinked) return "onboarding";
+  if (hasLinked && cellFileCount > 0) return "undecided";
+  if (cellFileCount > 0) return "cell";
+  if (hasLinked) return "onboarding";
+  return "none";
+}
+
+// 会社へ送る PDF に入れるもの（未決定で両方あるときは、これまでどおりマスの添付を使う）
+export function cellDocSource(choice: CellDocChoice): "onboarding" | "cell" | null {
+  if (choice === "onboarding") return "onboarding";
+  if (choice === "cell" || choice === "undecided") return "cell";
+  return null;
+}
+
+// 扶養控除等申告書の項目か（年末調整用を作る画面へのリンクを出す）
+export function isFuyokojoItem(item: Pick<DocumentRequestItem, "name" | "link_doc_key">): boolean {
+  if (item.link_doc_key === "fuyokojo") return true;
+  return normalizeDocName(item.name).includes("扶養控除申告書");
 }

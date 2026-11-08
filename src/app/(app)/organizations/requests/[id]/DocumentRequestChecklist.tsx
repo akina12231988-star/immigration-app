@@ -64,6 +64,10 @@ import {
   emptyCheck,
   filterRequestWorkers,
   findOnboardingDocFor,
+  cellDocChoice,
+  cellDocSource,
+  isFuyokojoItem,
+  type DocumentRequestUseDoc,
   groupFilesByCell,
   indexChecks,
   joinedYearOptions,
@@ -204,9 +208,11 @@ export function DocumentRequestChecklist({
       setChecks((prev) => [...prev.filter((c) => checkKey(c.worker_id, c.item_id) !== checkKey(row.worker_id, row.item_id)), row]);
     } catch (err) {
       // 「本人から無いと回答あり」の列だけが無いときは 0198 の未適用
-      const migration =
-        err instanceof Error && err.message.includes("none_replied_on")
-          ? "0198_document_request_none_replied.sql"
+      const msg = err instanceof Error ? err.message : "";
+      const migration = msg.includes("none_replied_on")
+        ? "0198_document_request_none_replied.sql"
+        : msg.includes("use_doc")
+          ? "0220_document_request_use_doc.sql"
           : MIGRATION;
       setError(dbErrorMessage(err, migration, "チェックを保存できませんでした"));
     }
@@ -215,6 +221,11 @@ export function DocumentRequestChecklist({
     idx.get(checkKey(workerId, itemId)) ?? emptyCheck(request.id, workerId, itemId);
   const press = (workerId: string, itemId: string, step: DocumentRequestStepKey) =>
     void saveCheck(toggleStep(current(workerId, itemId), step, today));
+  // 会社へ送る書類をどちらで紐づけるかを決める（同じ方をもう一度押すと未決定に戻す）
+  const chooseUseDoc = (workerId: string, itemId: string, v: DocumentRequestUseDoc) => {
+    const c = current(workerId, itemId);
+    void saveCheck({ ...c, use_doc: c.use_doc === v ? null : v });
+  };
   // その人の「案内」を押した書類（対象外・入社年で対象外の書類を除く）。案内文にまとめて入れる
   const informedItemsOf = (w: ChecklistWorker) =>
     request.items.filter((i) => {
@@ -279,15 +290,17 @@ export function DocumentRequestChecklist({
       const c = idx.get(checkKey(w.id, item.id));
       if (c?.not_needed) continue;
       const cellFiles = filesByCell.get(checkKey(w.id, item.id)) ?? [];
-      for (const f of cellFiles) {
+      const linked = findOnboardingDocFor(item, onboardingByWorker.get(w.id) ?? []);
+      // どちらで紐づけるかを決めてあればその方だけ（未決定で両方あればマスの添付）
+      const source = cellDocSource(cellDocChoice(c?.use_doc, !!linked, cellFiles.length));
+      if (source === "cell") for (const f of cellFiles) {
         const res = await getDocRequestFilePreviewUrl(f.id);
         if (!res.ok) throw new Error(res.message);
         const part = await blobToPdfPart(await (await fetch(res.url)).blob(), f.file_name);
         if (part) parts.push(part);
         else skipped.push(`${item.name}（${f.file_name}）`);
       }
-      if (cellFiles.length === 0) {
-        const linked = findOnboardingDocFor(item, onboardingByWorker.get(w.id) ?? []);
+      if (source === "onboarding") {
         if (linked?.external_url) {
           links.push(`${w.name} ${item.name}: ${linked.external_url}`);
         } else if (linked) {
@@ -852,6 +865,7 @@ export function DocumentRequestChecklist({
         送ったら右端の「会社へ をまとめて付ける」で添付済みの書類を全部「会社へ」にできます。
         受け取った書類の写真・PDF はマスにドラッグ＆ドロップ（または「添付」）で保管でき、添付すると「添付済み」まで自動で付きます。
         外国人詳細の「入社時に送る資料」に同じ書類が添付済みなら、マスに「外国人詳細に添付済み」と出て、押すとそのデータを開けます。
+        扶養控除等申告書を送金額しだいで年末調整用に作り直したときは、マスに添付して「会社へ送る書類」で「年末調整用（ここに添付）」を選ぶと、会社へ送るPDFにはそちらが入ります。
         {yearItems.length > 0 && (
           <>
             {" "}
@@ -1033,6 +1047,9 @@ export function DocumentRequestChecklist({
                       const uploading = uploadingCell === cellKey;
                       // 外国人詳細の入社書類に同じ書類が添付済みなら、そのデータをここから開ける
                       const linkedDoc = findOnboardingDocFor(item, onboardingByWorker.get(w.id) ?? []);
+                      // 会社へ送るのは、外国人詳細の書類か、このマスに添付した書類（年末調整用 など）か
+                      const docChoice = cellDocChoice(c?.use_doc, !!linkedDoc, cellFiles.length);
+                      const fuyoItem = isFuyokojoItem(item);
                       return (
                         <td key={item.id} className="px-1 py-1 align-top">
                           <FileDropArea
@@ -1137,10 +1154,60 @@ export function DocumentRequestChecklist({
                           {!yearReason && (
                             <div className="mt-1 flex flex-wrap items-center gap-1">
                               {linkedDoc && (
+                                <div className="flex w-full flex-col items-start gap-0.5">
+                                  <span className="text-[10px] font-bold text-muted">会社へ送る書類</span>
+                                  <div className="flex flex-wrap gap-1">
+                                    {(
+                                      [
+                                        { v: "onboarding", label: "入社時（外国人詳細）" },
+                                        { v: "cell", label: fuyoItem ? "年末調整用（ここに添付）" : "ここに添付したもの" },
+                                      ] as const
+                                    ).map((o) => {
+                                      const on = c?.use_doc === o.v;
+                                      return (
+                                        <button
+                                          key={o.v}
+                                          type="button"
+                                          onClick={() => canEdit && chooseUseDoc(w.id, item.id, o.v)}
+                                          disabled={!canEdit}
+                                          aria-pressed={on}
+                                          title={on ? "選択中。もう一度押すと未決定に戻します" : "会社へ送る書類をこちらに決める"}
+                                          className={`inline-flex min-h-[24px] items-center gap-0.5 rounded-lg border px-1.5 text-[10px] font-bold ${
+                                            on ? "border-brand bg-brand text-brand-foreground" : "border-border bg-background text-muted"
+                                          } disabled:opacity-70`}
+                                        >
+                                          {on && <Check size={10} />}
+                                          {o.label}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                  {docChoice === "undecided" && (
+                                    <span className="text-[10px] font-bold text-amber-700">
+                                      外国人詳細とここの両方に書類があります。どちらを会社へ送るか選んでください
+                                    </span>
+                                  )}
+                                  {docChoice === "cell-missing" && (
+                                    <span className="text-[10px] font-bold text-seal">
+                                      {fuyoItem ? "年末調整用の申告書をここに添付してください" : "ここに書類を添付してください"}
+                                      {fuyoItem && (
+                                        <Link href={`/workers/${w.id}/dependents-form?kind=year-end`} className="ml-1 text-brand underline" target="_blank">
+                                          年末調整用を作る
+                                        </Link>
+                                      )}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                              {linkedDoc && (
                                 <button
                                   type="button"
                                   onClick={() => void openOnboardingDoc(linkedDoc)}
-                                  className="inline-flex max-w-[12rem] items-center gap-0.5 rounded-lg border border-status-approved-fg/40 bg-status-approved-bg px-1.5 py-0.5 text-[10px] font-bold text-status-approved-fg"
+                                  className={`inline-flex max-w-[12rem] items-center gap-0.5 rounded-lg border px-1.5 py-0.5 text-[10px] font-bold ${
+                                    docChoice === "cell" || docChoice === "cell-missing"
+                                      ? "border-border bg-background text-muted line-through"
+                                      : "border-status-approved-fg/40 bg-status-approved-bg text-status-approved-fg"
+                                  }`}
                                   title={`外国人詳細の「入社時に送る資料」の「${linkedDoc.label}」に添付済み（${linkedDoc.file_name || "リンク"}）。押すと開きます`}
                                 >
                                   <Link2 size={11} className="shrink-0" />
@@ -1153,7 +1220,10 @@ export function DocumentRequestChecklist({
                               {cellFiles.map((f) => (
                                 <span
                                   key={f.id}
-                                  className="inline-flex max-w-[11rem] items-center gap-0.5 rounded-lg border border-brand/40 bg-brand/5 px-1.5 py-0.5 text-[10px] text-brand"
+                                  className={`inline-flex max-w-[11rem] items-center gap-0.5 rounded-lg border px-1.5 py-0.5 text-[10px] ${
+                                    docChoice === "onboarding" ? "border-border bg-background text-muted line-through" : "border-brand/40 bg-brand/5 text-brand"
+                                  }`}
+                                  title={docChoice === "onboarding" ? "会社へは外国人詳細の書類を送ります（この添付は使いません）" : undefined}
                                 >
                                   <button type="button" onClick={() => void openFile(f)} className="inline-flex min-w-0 items-center gap-0.5 font-bold" title={f.file_name}>
                                     <FileText size={11} className="shrink-0" />
