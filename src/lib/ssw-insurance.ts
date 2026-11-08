@@ -881,6 +881,17 @@ export interface SswPermitApplication {
   granted_permit_date: string | null;
   visa_at_grant: string | null;
   withdrawn_on: string | null;
+  organization_id?: string | null; // どの所属機関での申請か
+  status?: string | null; // 申請の進み具合（申請済・LINE報告済・通知書到着＝審査中）
+  application_date?: string | null; // 申請日
+}
+
+// 審査中の申請（申請済〜通知書到着で、許可も取下げもされていない）
+export const SSW_REVIEW_STATUSES = ["申請済", "LINE報告済", "通知書到着"];
+export interface SswReviewInfo {
+  orgId: string | null;
+  appliedOn: string | null;
+  content: string;
 }
 
 export type SswPermitKind = "変更許可" | "更新許可" | "許可（申請の記録なし）";
@@ -889,6 +900,10 @@ export interface SswPermitInfo {
   kind: SswPermitKind | null;
   permitDate: string | null;
   reason: string; // ok でないときの理由（画面の説明用）
+  orgId: string | null; // どの所属機関での許可か（申請の記録が無いときは null）
+  reviewing: SswReviewInfo | null; // いま審査中の申請（あれば）
+  orgName?: string; // 許可の所属機関名（画面で入れる。申請の記録が無いときは現在の所属機関）
+  reviewOrgName?: string; // 審査中の申請の所属機関名（画面で入れる）
 }
 
 const norm = (s: string | null | undefined) => (s ?? "").normalize("NFKC").replace(/[\s　]/g, "");
@@ -903,6 +918,13 @@ export function sswPermitInfo(
   apps: SswPermitApplication[],
 ): SswPermitInfo {
   const live = apps.filter((a) => !a.withdrawn_on);
+  // いま審査中の申請（いちばん新しいもの）
+  const review = live
+    .filter((a) => !a.granted_permit_date && !a.approved && SSW_REVIEW_STATUSES.includes(a.status ?? ""))
+    .sort((x, y) => (y.application_date ?? "").localeCompare(x.application_date ?? ""))[0];
+  const reviewing: SswReviewInfo | null = review
+    ? { orgId: review.organization_id ?? null, appliedOn: review.application_date ?? null, content: review.content ?? "" }
+    : null;
   const granted = live
     .filter((a) => a.granted_permit_date || a.approved)
     .map((a) => ({ a, date: a.granted_permit_date || a.approval_date || "" }))
@@ -914,14 +936,15 @@ export function sswPermitInfo(
     const kind: SswPermitKind | null = content.includes("更新") ? "更新許可" : content.includes("変更") ? "変更許可" : null;
     const visa = norm(a.visa_at_grant);
     const ok = visa ? is1go(visa) : !!kind && is1go(w.residence_status);
-    if (ok) return { ok: true, kind: kind ?? (norm(a.visa_at_grant).includes("更新") ? "更新許可" : "変更許可"), permitDate: date || null, reason: "" };
-    return { ok: false, kind: null, permitDate: date || null, reason: `最後の許可が特定技能1号ではありません（${a.visa_at_grant || a.content || "不明"}）` };
+    const orgId = a.organization_id ?? null;
+    if (ok) return { ok: true, kind: kind ?? (norm(a.visa_at_grant).includes("更新") ? "更新許可" : "変更許可"), permitDate: date || null, reason: "", orgId, reviewing };
+    return { ok: false, kind: null, permitDate: date || null, reason: `最後の許可が特定技能1号ではありません（${a.visa_at_grant || a.content || "不明"}）`, orgId, reviewing };
   }
-  if (live.length > 0) return { ok: false, kind: null, permitDate: null, reason: "申請中（許可がまだ）" };
+  if (live.length > 0) return { ok: false, kind: null, permitDate: null, reason: "申請中（許可がまだ）", orgId: null, reviewing };
   if (w.residence_permit_date && is1go(w.residence_status)) {
-    return { ok: true, kind: "許可（申請の記録なし）", permitDate: w.residence_permit_date, reason: "" };
+    return { ok: true, kind: "許可（申請の記録なし）", permitDate: w.residence_permit_date, reason: "", orgId: null, reviewing };
   }
-  return { ok: false, kind: null, permitDate: null, reason: "特定技能1号の許可の記録がありません" };
+  return { ok: false, kind: null, permitDate: null, reason: "特定技能1号の許可の記録がありません", orgId: null, reviewing };
 }
 
 // 外国人ID → 申請の記録
