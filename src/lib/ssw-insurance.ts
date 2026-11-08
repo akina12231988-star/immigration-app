@@ -211,7 +211,10 @@ export function sswInsuranceState(
   if (cancelOpen && isSswCancelable(w, today)) return "cancel";
   // 退職した人は、加入したままなら解約手続きが必要（解約が済んだら一覧から外す）。
   // 証明書番号と有効期限が入っている人だけで、有効期限から4か月以上たった人は解約できないので出さない
-  if (w.status === "退職") return isSswCancelable(w, today) && !cancelDone ? "cancel" : "none";
+  // 帰国した人・採用がキャンセルになった人も同じ（加入していなければ一覧に出さない）
+  if (w.status === "退職" || w.status === "帰国" || w.status === "キャンセル") {
+    return isSswCancelable(w, today) && !cancelDone ? "cancel" : "none";
+  }
   // まだ期限に余裕があるうちは、加入しないと決めていても加入中のまま。
   // ただし加入手続きのTODOを作ってある人（更新許可で新しい期間の加入が要る人など）は加入手続きに出す
   if (joined && daysUntil(w.ssw_insurance_expiry_date as string, today) >= SSW_SOON_DAYS) {

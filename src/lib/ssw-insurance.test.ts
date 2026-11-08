@@ -837,3 +837,16 @@ describe("キャンセル（TODOを作ったあとに加入しないことにな
     expect(map.get("w1")?.join?.done).toBe(true);
   });
 });
+
+describe("採用がキャンセルになった人・帰国した人", () => {
+  it("加入していなければ一覧に出さない（加入手続きの対象にしない）", () => {
+    const base = { residence_status: "特定技能1号", ssw_insurance_expiry_date: null, ssw_insurance_no: "" };
+    expect(sswInsuranceState(worker({ ...base, status: "キャンセル" }), "会社負担", "2026-11-08")).toBe("none");
+    expect(sswInsuranceState(worker({ ...base, status: "帰国" }), "会社負担", "2026-11-08")).toBe("none");
+  });
+  it("加入したままなら解約手続きに出す", () => {
+    expect(
+      sswInsuranceState(worker({ status: "キャンセル", ssw_insurance_expiry_date: "2027-04-07", ssw_insurance_no: "B1" }), "会社負担", "2026-11-08"),
+    ).toBe("cancel");
+  });
+});
