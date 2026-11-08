@@ -185,3 +185,41 @@ export async function fillNozei3Form(
   }
   return doc.save();
 }
+
+// ---- 登録した代理人（氏名と住所の組）。アプリ全体の設定（app_settings）に保存する ----
+export const NOZEI3_AGENTS_SETTING_KEY = "mailing_agents";
+export interface SavedAgent {
+  name: string;
+  address: string;
+}
+
+// 保存されている値を読む（壊れた行は捨てる）
+export function normalizeSavedAgents(v: unknown): SavedAgent[] {
+  const list = v && typeof v === "object" && Array.isArray((v as { agents?: unknown }).agents) ? (v as { agents: unknown[] }).agents : [];
+  const out: SavedAgent[] = [];
+  for (const a of list) {
+    if (!a || typeof a !== "object") continue;
+    const o = a as Record<string, unknown>;
+    const name = typeof o.name === "string" ? o.name.trim() : "";
+    if (!name) continue;
+    out.push({ name, address: typeof o.address === "string" ? o.address.trim() : "" });
+  }
+  return out;
+}
+
+// 代理人を登録する（同じ氏名がすでにあれば住所を新しいものにする）
+export function upsertSavedAgent(list: SavedAgent[], agent: SavedAgent): SavedAgent[] {
+  const name = agent.name.trim();
+  const address = agent.address.trim();
+  if (!name) return list;
+  const rest = list.filter((a) => a.name !== name);
+  return [...rest, { name, address }];
+}
+
+// 選択肢（はじめから入っている代理人＋登録した代理人。重複は1つに）
+export function agentNameOptions(saved: SavedAgent[]): string[] {
+  return [...new Set([...NOZEI3_AGENT_NAME_OPTIONS, ...saved.map((a) => a.name)])];
+}
+export function agentAddressOptions(saved: SavedAgent[]): string[] {
+  return [...new Set([...NOZEI3_AGENT_ADDRESS_OPTIONS, ...saved.map((a) => a.address).filter(Boolean)])];
+}
