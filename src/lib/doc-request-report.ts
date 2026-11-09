@@ -65,17 +65,17 @@ export function reportStatusLabel(
     case "対象外":
       return `対象外${note}`;
     case "送付済":
-      return `会社へ送付済 ${c?.sent_on ?? ""}`.trim();
+      return `会社へ送付済 ${c?.sent_on ?? ""}`.trim() + note;
     case "発行済":
       // 添付しないと決めた書類（送金が無いので扶養証明書は付けない など）
       if (c?.use_doc === "none") return `添付なし（送金なし）${note}`;
-      return "添付済"; // 日付は書かない（会社へ送る一覧なので状況だけ）
+      return `添付済${note}`; // 日付は書かない（会社へ送る一覧なので状況だけ）。備考はどの状況でも括弧で添える
     case "無し回答":
       return `本人から無いと回答 ${c?.none_replied_on ?? ""}`.trim() + note;
     case "案内済":
-      return `案内済（未添付） ${c?.informed_on ?? ""}`.trim();
+      return `案内済（未添付） ${c?.informed_on ?? ""}`.trim() + note;
     default:
-      return "未着手";
+      return `未着手${note}`;
   }
 }
 
