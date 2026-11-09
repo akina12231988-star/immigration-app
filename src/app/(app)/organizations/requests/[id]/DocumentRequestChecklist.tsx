@@ -213,11 +213,13 @@ export function DocumentRequestChecklist({
   const filtering = !!nationalityFilter || !!yearFilter || onlyPending || !!allDoneFilter || !!yearEndFilter || !!nameQ;
 
   // 1マスの保存（押した段階まで日付を入れる／外す）
-  const saveCheck = async (input: DocumentRequestCheckInput) => {
+  // 保存できなければエラーの文言を返す（会社へ送る書類の選び直しなどで、その場で知らせるため）
+  const saveCheck = async (input: DocumentRequestCheckInput): Promise<string | null> => {
     setError(null);
     try {
       const row = await upsertDocumentRequestCheck(createClient(), input);
       setChecks((prev) => [...prev.filter((c) => checkKey(c.worker_id, c.item_id) !== checkKey(row.worker_id, row.item_id)), row]);
+      return null;
     } catch (err) {
       // 「本人から無いと回答あり」の列だけが無いときは 0198 の未適用
       const msg = err instanceof Error ? err.message : "";
@@ -226,7 +228,9 @@ export function DocumentRequestChecklist({
         : msg.includes("use_doc")
           ? "0220_document_request_use_doc.sql"
           : MIGRATION;
-      setError(dbErrorMessage(err, migration, "チェックを保存できませんでした"));
+      const message = dbErrorMessage(err, migration, "チェックを保存できませんでした");
+      setError(message);
+      return message;
     }
   };
   const current = (workerId: string, itemId: string): DocumentRequestCheckInput =>
@@ -253,7 +257,8 @@ export function DocumentRequestChecklist({
   const chooseUseDoc = async (workerId: string, itemId: string, v: DocumentRequestUseDoc) => {
     const c = current(workerId, itemId);
     if (c.use_doc === v) {
-      await saveCheck({ ...c, use_doc: null });
+      const err = await saveCheck({ ...c, use_doc: null });
+      if (err) window.alert(err);
       return;
     }
     const cellFiles = filesByCell.get(checkKey(workerId, itemId)) ?? [];
@@ -269,15 +274,21 @@ export function DocumentRequestChecklist({
         remove = true;
       }
     }
+    // 先に選んだ方を保存する（保存できないのに添付だけ消えることがないように）
+    const err = await saveCheck({ ...c, use_doc: v });
+    if (err) {
+      window.alert(err);
+      return;
+    }
     if (remove) {
       const res = await removeDocRequestCellFiles(request.id, workerId, itemId, keep);
       if (!res.ok) {
         setError(res.message);
+        window.alert(res.message);
         return;
       }
       setFiles((prev) => prev.filter((f) => !res.removed.includes(f.id)));
     }
-    await saveCheck({ ...c, use_doc: v });
   };
   // 外国人詳細の書類（入社時）をこのマスから外す。会社へ送る書類は「ここに添付したもの」になる
   // （外国人詳細の書類そのものは消さない。マスの添付が何枚もあれば、最後の1枚だけ残すかも聞く）
