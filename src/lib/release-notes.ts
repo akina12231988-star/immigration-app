@@ -23,6 +23,15 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-11-10",
+    title: "会社へ報告する一覧（エクセル）に、どのマスの備考も出るようにしました",
+    where: "所属機関 ＞ 会社からの書類の依頼 ＞ 一覧をエクセルで出力／ZIP の一覧",
+    href: "/organizations/requests",
+    items: [
+      "これまでは「対象外」「本人から無いと回答」のマスの備考だけがエクセルに出ていました。「添付済」「会社へ送付済」「案内済」のマスの備考も「添付済（備考）」のように括弧で出すようにしました。",
+    ],
+  },
+  {
+    date: "2026-11-10",
     title: "会社へ報告するPDFを、1人ずつ・全員分一括でダウンロードできるようにしました",
     where: "所属機関 ＞ 会社からの書類の依頼 ＞ 会社へ報告する出力（PDF）",
     href: "/organizations/requests",

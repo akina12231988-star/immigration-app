@@ -94,3 +94,29 @@ describe("エクセルの一覧", () => {
     expect(rows[4][9]).toBe("対象外（扶養家族なし）");
   });
 });
+
+describe("reportStatusLabel（備考はどの状況でもエクセルに出す）", () => {
+  it("添付済・会社へ送付済・案内済でも備考を括弧で添える", async () => {
+    const { reportStatusLabel } = await import("./doc-request-report");
+    const base = {
+      id: "c",
+      request_id: "r",
+      worker_id: "w",
+      item_id: "i",
+      informed_on: "2026-10-27",
+      issued_on: null as string | null,
+      sent_on: null as string | null,
+      not_needed: false,
+      note: "送金はあるが、金額が足りない為添付しません。",
+      created_at: "",
+      updated_at: "",
+    };
+    const item = { joined_year: null };
+    expect(reportStatusLabel(item, "2026-09-09", { ...base, issued_on: "2026-11-05" })).toBe("添付済（送金はあるが、金額が足りない為添付しません。）");
+    expect(reportStatusLabel(item, "2026-09-09", { ...base, issued_on: "2026-11-05", sent_on: "2026-11-09" })).toBe(
+      "会社へ送付済 2026-11-09（送金はあるが、金額が足りない為添付しません。）",
+    );
+    expect(reportStatusLabel(item, "2026-09-09", base)).toBe("案内済（未添付） 2026-10-27（送金はあるが、金額が足りない為添付しません。）");
+    expect(reportStatusLabel(item, "2026-09-09", { ...base, note: "", issued_on: "2026-11-05" })).toBe("添付済");
+  });
+});
