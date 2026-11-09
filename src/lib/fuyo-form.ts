@@ -97,6 +97,13 @@ export function fuyoFactText(total: number): string {
 
 // 申告書の各フィールドに入れる値を組み立てる（純粋関数・テスト対象）。
 // 扶養親族は非居住者（国外居住）前提で、控除区分は today 時点の年齢から自動判定する
+// 個人番号を様式の欄（12桁）に入る形にする。
+// 外国人詳細に「1234 5678 9012」「1234-5678-9012」のように空白・ハイフン入り（全角も）で
+// 登録されていても詰めて入れる（そのままだと12文字で切れて番号が欠ける）
+export function compactMyNumber(v: string | null | undefined): string {
+  return (v ?? "").normalize("NFKC").replace(/[\s\-‐－―ー−]/g, "");
+}
+
 export function buildFuyoFieldValues(data: FuyoFormData, today: string): FuyoFieldValues {
   const texts: Record<string, string> = {};
   const dropdowns: Record<string, string> = {};
@@ -123,7 +130,7 @@ export function buildFuyoFieldValues(data: FuyoFormData, today: string): FuyoFie
   // 上部: 本人情報。給与の支払者の欄（名称・法人番号・所在地）は会社側が記載するため入力しない
   texts["Text6"] = data.worker.kana;
   texts["Text7"] = data.worker.name;
-  texts["Text8"] = data.worker.myNumber;
+  texts["Text8"] = compactMyNumber(data.worker.myNumber);
   texts["Text10"] = data.worker.address;
   setBirth(data.worker.birth, "Dropdown1", "Text11", "Text12", "Text13");
   texts["Text14"] = data.householdHead;
@@ -147,7 +154,7 @@ export function buildFuyoFieldValues(data: FuyoFormData, today: string): FuyoFie
   if (spouse) {
     texts["Text16"] = spouse.kana;
     texts["Text17"] = spouse.name;
-    texts["Text18"] = spouse.my_number;
+    texts["Text18"] = compactMyNumber(spouse.my_number);
     setBirth(spouse.birth, "Dropdown4", "Text19", "Text20", "Text21");
     texts["Text22"] = yen(spouse.income);
     dropdowns["Dropdown50"] = "○"; // 非居住者である親族
@@ -162,7 +169,7 @@ export function buildFuyoFieldValues(data: FuyoFormData, today: string): FuyoFie
     const c = dependentCategories(dep, today);
     texts[row.kana] = dep.kana;
     texts[row.name] = dep.name;
-    texts[row.num] = dep.my_number;
+    texts[row.num] = compactMyNumber(dep.my_number);
     texts[row.rel] = dep.relation;
     setBirth(dep.birth, row.era, row.y, row.m, row.d);
     texts[row.income] = yen(dep.income);
@@ -183,7 +190,7 @@ export function buildFuyoFieldValues(data: FuyoFormData, today: string): FuyoFie
     const row = U16_ROWS[i];
     texts[row.kana] = dep.kana;
     texts[row.name] = dep.name;
-    texts[row.num] = dep.my_number;
+    texts[row.num] = compactMyNumber(dep.my_number);
     texts[row.rel] = dep.relation;
     setBirth(dep.birth, row.era, row.y, row.m, row.d);
     texts[row.addr] = dep.address;

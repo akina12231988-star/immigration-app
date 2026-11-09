@@ -305,3 +305,27 @@ describe("日本語フォントの埋め込み形式", () => {
     expect(raw.includes(Buffer.from("NotoSansJP", "latin1"))).toBe(true);
   }, 60000);
 });
+
+describe("compactMyNumber（個人番号の空白・ハイフンを詰める）", () => {
+  it("半角・全角の空白やハイフンを詰め、全角数字は半角にする", async () => {
+    const { compactMyNumber } = await import("./fuyo-form");
+    expect(compactMyNumber("1234 5678 9012")).toBe("123456789012");
+    expect(compactMyNumber("１２３４　５６７８　９０１２")).toBe("123456789012");
+    expect(compactMyNumber(" 1234-5678-9012 ")).toBe("123456789012");
+    expect(compactMyNumber(null)).toBe("");
+  });
+  it("本人・扶養親族の個人番号欄に詰めて入る", async () => {
+    const { buildFuyoFieldValues } = await import("./fuyo-form");
+    const v = buildFuyoFieldValues(
+      {
+        kind: "入社時",
+        worker: { name: "A", kana: "", birth: null, address: "", myNumber: "1234 5678 9012", hasSpouse: "" },
+        householdHead: "A",
+        headRelation: "本人",
+        dependents: [],
+      },
+      "2026-11-09",
+    );
+    expect(v.texts["Text8"]).toBe("123456789012");
+  });
+});
