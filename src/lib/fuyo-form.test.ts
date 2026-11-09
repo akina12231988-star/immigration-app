@@ -265,6 +265,20 @@ describe("fillFuyoForm", () => {
     expect(form.getTextField("Text8").getText()).toBe("058796259394");
   }, 30000);
 
+  it("全角の空白入りの個人番号も詰めて12桁で書き込まれる", async () => {
+    const template = await readFile(path.join(process.cwd(), "public", "forms", "fuyo-r8.pdf"));
+    const font = await readFile(path.join(process.cwd(), "public", "fonts", "NotoSansJP-Regular.ttf"));
+    const bytes = await fillFuyoForm(
+      template,
+      font,
+      { ...DATA, worker: { ...DATA.worker, myNumber: "6975　0036　3372" } },
+      TODAY,
+      { flatten: false },
+    );
+    const form = (await PDFDocument.load(bytes)).getForm();
+    expect(form.getTextField("Text8").getText()).toBe("697500363372");
+  }, 30000);
+
   it("flattenすると編集不可の確定版になる", async () => {
     const template = await readFile(path.join(process.cwd(), "public", "forms", "fuyo-r8.pdf"));
     const font = await readFile(
