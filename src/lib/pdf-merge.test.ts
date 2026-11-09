@@ -31,3 +31,30 @@ describe("mergePdfParts", () => {
     expect(Math.round(height)).toBe(842);
   });
 });
+
+describe("mergePdfParts（写せない PDF は画像にしてまとめる）", () => {
+  // 1x1 の白い JPEG
+  const JPG = Uint8Array.from(
+    atob(
+      "/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=",
+    ),
+    (c) => c.charCodeAt(0),
+  );
+  it("壊れた PDF は rasterize で画像にして入れる", async () => {
+    const broken = new TextEncoder().encode("%PDF-1.4 broken");
+    let called = 0;
+    const bytes = await mergePdfParts([{ kind: "pdf", bytes: broken, name: "scan.pdf" }], {
+      rasterize: async () => {
+        called += 1;
+        return [{ jpg: JPG, width: 595, height: 842 }];
+      },
+    });
+    expect(called).toBe(1);
+    const { PDFDocument } = await import("pdf-lib");
+    expect((await PDFDocument.load(bytes)).getPageCount()).toBe(1);
+  });
+  it("rasterize が無ければ、どのファイルか分かるエラーにする", async () => {
+    const broken = new TextEncoder().encode("%PDF-1.4 broken");
+    await expect(mergePdfParts([{ kind: "pdf", bytes: broken, name: "scan.pdf" }])).rejects.toThrow("scan.pdf");
+  });
+});
