@@ -351,3 +351,18 @@ describe("cellDocChoice（会社へ送る書類をどちらで紐づけるか）
     expect(isFuyokojoItem({ name: "扶養証明書(日本語訳)", link_doc_key: "" })).toBe(false);
   });
 });
+
+describe("扶養証明書の「添付しない（送金なし）」", () => {
+  it("添付しないと決めたら、会社へ送る PDF には何も入れない", async () => {
+    const { cellDocChoice, cellDocSource, normalizeUseDoc } = await import("./org-document-requests");
+    expect(normalizeUseDoc("none")).toBe("none");
+    expect(cellDocChoice("none", true, 1)).toBe("skip");
+    expect(cellDocSource("skip")).toBeNull();
+  });
+  it("扶養証明書の項目を見分ける", async () => {
+    const { isFuyoCertItem } = await import("./org-document-requests");
+    expect(isFuyoCertItem({ name: "扶養証明書(日本語訳)", link_doc_key: "" })).toBe(true);
+    expect(isFuyoCertItem({ name: "書類", link_doc_key: "fuyo" })).toBe(true);
+    expect(isFuyoCertItem({ name: "扶養控除申告書", link_doc_key: "" })).toBe(false);
+  });
+});
