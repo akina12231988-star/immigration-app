@@ -162,6 +162,14 @@ export function withVisaPermitHistory(
   return sortRosterHistory(out);
 }
 
+// 保存した名簿に足す許可は、保存したあとに受けた許可だけにする。
+// 保存した名簿の履歴は人が直した内容なので、消した許可の行を足し直さないため（新しい更新許可などは足す）
+export function permitsAfterSaved<T extends RosterPermit>(permits: T[], savedAt: string | null | undefined): T[] {
+  const day = (savedAt ?? "").slice(0, 10);
+  if (!day) return permits;
+  return permits.filter((p) => p.permitDate > day);
+}
+
 // その会社の名簿に載せる許可。在籍の始まり（start）から今までに使っていた許可と、
 // 職歴の上でその会社にいた日に受けた許可（機関名は全角・半角・空白の違いを無視して比べる）。
 // 在籍の始まりが分からなければ、職歴でその会社にいた日の許可だけ（職歴も無ければ全部）

@@ -268,3 +268,16 @@ describe("visaPermitHistory / withVisaPermitHistory / rosterPermitsForOrg（在�
     ]);
   });
 });
+
+describe("permitsAfterSaved（保存した名簿には、保存したあとの許可だけ足す）", () => {
+  it("保存日より後の許可だけ残す", async () => {
+    const { permitsAfterSaved } = await import("./roster");
+    const permits = [
+      { permitDate: "2025-10-01", status: "技能実習2号", label: "許可" },
+      { permitDate: "2026-11-06", status: "特定活動", label: "許可" },
+      { permitDate: "2026-12-01", status: "特定技能1号", label: "変更許可" },
+    ];
+    expect(permitsAfterSaved(permits, "2026-11-09T10:00:00Z").map((p) => p.permitDate)).toEqual(["2026-12-01"]);
+    expect(permitsAfterSaved(permits, null)).toHaveLength(3);
+  });
+});

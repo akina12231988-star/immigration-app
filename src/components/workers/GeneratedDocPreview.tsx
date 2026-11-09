@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { ExternalLink, Upload } from "lucide-react";
+import { ExternalLink, Save, Upload } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { RosterDraftEditor } from "@/components/workers/RosterDraftEditor";
-import { getOnboardingRosterDraft } from "@/app/(app)/onboarding/actions";
+import { getOnboardingRosterDraft, saveOnboardingRosterDraft } from "@/app/(app)/onboarding/actions";
 import type { OnboardingDocDef } from "@/lib/onboarding";
 import type { RosterDraft } from "@/lib/roster-draft";
 
@@ -46,7 +46,15 @@ async function fetchDocPdf(
 export function useGeneratedDocPreview(workerId: string, onError: (message: string) => void) {
   const [preview, setPreview] = useState<GeneratedPreview | null>(null);
   // 労働者名簿のときだけ、直せる中身を持つ（他の書類は null）
-  const [rosterDraft, setRosterDraft] = useState<RosterDraft | null>(null);
+  const [rosterDraft, setRosterDraftState] = useState<RosterDraft | null>(null);
+  // 欄を直したあと、まだPDFを作り直していないか（添付する前に作り直すため）
+  const [dirty, setDirty] = useState(false);
+  const setRosterDraft = (d: RosterDraft) => {
+    setRosterDraftState(d);
+    setDirty(true);
+  };
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
   const [creatingKey, setCreatingKey] = useState<string | null>(null);
   const [rebuilding, setRebuilding] = useState(false);
 
@@ -61,7 +69,9 @@ export function useGeneratedDocPreview(workerId: string, onError: (message: stri
         draft = res.draft;
       }
       const file = await fetchDocPdf(workerId, def, label, draft ?? undefined);
-      setRosterDraft(draft);
+      setRosterDraftState(draft);
+      setDirty(false);
+      setDraftSavedAt(null);
       setPreview({ def, label, file, url: URL.createObjectURL(file) });
     } catch (err) {
       onError(err instanceof Error ? err.message : `${label}の作成に失敗しました`);
@@ -71,8 +81,8 @@ export function useGeneratedDocPreview(workerId: string, onError: (message: stri
   };
 
   // プレビューの中で直した内容でPDFを作り直す
-  const rebuild = async () => {
-    if (!preview || !rosterDraft) return;
+  const rebuild = async (): Promise<File | null> => {
+    if (!preview || !rosterDraft) return null;
     setRebuilding(true);
     try {
       const file = await fetchDocPdf(workerId, preview.def, preview.label, rosterDraft);
@@ -80,10 +90,36 @@ export function useGeneratedDocPreview(workerId: string, onError: (message: stri
         if (prev) URL.revokeObjectURL(prev.url);
         return { ...preview, file, url: URL.createObjectURL(file) };
       });
+      setDirty(false);
+      return file;
     } catch (err) {
       onError(err instanceof Error ? err.message : `${preview.label}の作り直しに失敗しました`);
+      return null;
     } finally {
       setRebuilding(false);
+    }
+  };
+
+  // 添付するファイル。欄を直したあと作り直していなければ、直した内容で作り直してから返す
+  // （作り直す前のPDFが添付されて「消したはずの履歴が残る」ことがないように）
+  const freshFile = async (): Promise<File | null> => {
+    if (!preview) return null;
+    if (rosterDraft && dirty) return rebuild();
+    return preview.file;
+  };
+
+  // 労働者名簿の中身だけを保存する（添付はしない）。次に作成するときもこの内容になる
+  const saveDraft = async () => {
+    if (!rosterDraft) return;
+    setSavingDraft(true);
+    try {
+      const res = await saveOnboardingRosterDraft(workerId, rosterDraft);
+      if (!res.ok) throw new Error(res.message);
+      setDraftSavedAt(new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }));
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "労働者名簿を保存できませんでした");
+    } finally {
+      setSavingDraft(false);
     }
   };
 
@@ -93,7 +129,9 @@ export function useGeneratedDocPreview(workerId: string, onError: (message: stri
       if (prev) URL.revokeObjectURL(prev.url);
       return null;
     });
-    setRosterDraft(null);
+    setRosterDraftState(null);
+    setDirty(false);
+    setDraftSavedAt(null);
   };
 
   return {
@@ -105,6 +143,11 @@ export function useGeneratedDocPreview(workerId: string, onError: (message: stri
     create,
     rebuild,
     close,
+    dirty,
+    freshFile,
+    saveDraft,
+    savingDraft,
+    draftSavedAt,
   };
 }
 
@@ -119,6 +162,10 @@ export function GeneratedDocPreviewModal({
   onClose,
   myNumberBlank,
   error,
+  dirty = false,
+  onSaveDraft,
+  savingDraft = false,
+  draftSavedAt = null,
 }: {
   preview: GeneratedPreview;
   rosterDraft: RosterDraft | null;
@@ -130,6 +177,10 @@ export function GeneratedDocPreviewModal({
   onClose: () => void;
   myNumberBlank: boolean;
   error?: string | null;
+  dirty?: boolean; // 欄を直したあと、まだ作り直していない
+  onSaveDraft?: () => void; // 労働者名簿の中身だけ保存する
+  savingDraft?: boolean;
+  draftSavedAt?: string | null;
 }) {
   return (
     <Modal open wide title={`${preview.label}のプレビュー`} onClose={onClose}>
@@ -158,6 +209,11 @@ export function GeneratedDocPreviewModal({
           title={`${preview.label}のプレビュー`}
           className="h-[60vh] w-full rounded-xl border border-border bg-background"
         />
+        {rosterDraft && dirty && (
+          <p className="rounded-lg bg-status-notice-bg px-3 py-2 text-xs font-bold text-status-notice-fg">
+            欄を直しました。上のPDFはまだ直す前の内容です。「この内容で作り直す」で確かめるか、そのまま「直した内容で作り直して添付する」を押してください。
+          </p>
+        )}
         {rosterDraft && (
           <RosterDraftEditor
             draft={rosterDraft}
@@ -174,8 +230,21 @@ export function GeneratedDocPreviewModal({
             className="flex items-center gap-1 rounded-lg bg-brand px-4 py-2 text-sm font-bold text-brand-foreground disabled:opacity-50"
           >
             <Upload size={14} />
-            {attaching ? "添付中…" : "添付する"}
+            {attaching ? (dirty ? "作り直して添付中…" : "添付中…") : rosterDraft && dirty ? "直した内容で作り直して添付する" : "添付する"}
           </button>
+          {rosterDraft && onSaveDraft && (
+            <button
+              type="button"
+              onClick={onSaveDraft}
+              disabled={savingDraft || attaching}
+              title="添付はせずに、直した内容を労働者名簿に保存します（次に作成するときもこの内容になります）"
+              className="flex items-center gap-1 rounded-lg border border-brand px-4 py-2 text-sm font-bold text-brand disabled:opacity-50"
+            >
+              <Save size={14} />
+              {savingDraft ? "保存中…" : "名簿の内容を保存"}
+            </button>
+          )}
+          {draftSavedAt && <span className="text-[11px] font-bold text-status-approved-fg">保存しました（{draftSavedAt}）</span>}
           <button
             type="button"
             onClick={onClose}

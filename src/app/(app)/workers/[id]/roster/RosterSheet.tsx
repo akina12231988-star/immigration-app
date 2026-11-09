@@ -14,6 +14,7 @@ import {
   isWithinRosterRetention,
   rosterFileName,
   rosterJpDate,
+  permitsAfterSaved,
   rosterPermitsForOrg,
   rosterRetentionEnd,
   rosterWorkKind,
@@ -90,11 +91,14 @@ export function RosterSheet({
     worker.employmentStartOn;
   // 履歴に在留資格の許可を足す。その会社にいる間の許可が分かれば全部（更新のたびの許可も）、
   // 無ければ今の在留カードの許可だけ
-  const withPermits = (history: RosterHistoryEntry[], company: string): RosterHistoryEntry[] => {
+  // 保存した名簿（savedAt あり）は人が直した履歴なので、保存したあとに受けた許可だけを足す
+  // （消した許可の行が開くたびに戻ってこないように）
+  const withPermits = (history: RosterHistoryEntry[], company: string, savedAt?: string): RosterHistoryEntry[] => {
     const list = rosterPermitsForOrg(permits, histories, company.trim(), startFor(company));
-    return list.length > 0
-      ? withVisaPermitHistory(history, list)
-      : withResidencePermitHistory(history, worker.residenceStatus, worker.residencePermitDate);
+    if (list.length > 0) return withVisaPermitHistory(history, savedAt ? permitsAfterSaved(list, savedAt) : list);
+    const savedDay = (savedAt ?? "").slice(0, 10);
+    if (savedDay && (!worker.residencePermitDate || worker.residencePermitDate <= savedDay)) return sortRosterHistory(history);
+    return withResidencePermitHistory(history, worker.residenceStatus, worker.residencePermitDate);
   };
   // 新規作成時の初期値: 外国人の登録データから自動で埋める
   const buildDefault = (): RosterForm => ({
@@ -125,7 +129,7 @@ export function RosterSheet({
     // （あとから分野・職種を入れたときに空欄のままにならないように）
     work_kind: r.work_kind || rosterWorkKind(worker.field),
     // 保存済みの名簿にも在留資格の許可（この会社にいる間の分を全部）を出す（同じ年月日の行があるときはそのまま）
-    history: withPermits(r.history ?? [], r.company_name),
+    history: withPermits(r.history ?? [], r.company_name, r.updated_at),
     previous_jobs: r.previous_jobs ?? [],
     leaving_on: r.leaving_on,
     leaving_reason: r.leaving_reason,
