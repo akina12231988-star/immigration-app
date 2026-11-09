@@ -264,7 +264,10 @@ export function OnboardingDocuments({
     setAttaching(true);
     setError(null);
     try {
-      await uploadOnboardingDoc(workerId, preview.def, preview.file);
+      // 欄を直したあと作り直していなければ、直した内容で作り直してから添付する
+      const file = await gen.freshFile();
+      if (!file) return;
+      await uploadOnboardingDoc(workerId, preview.def, file);
       if (gen.rosterDraft) {
         const saved = await saveOnboardingRosterDraft(workerId, gen.rosterDraft);
         // 添付そのものは終わっているため、名簿の保存だけ失敗したときは知らせるだけにする
@@ -790,6 +793,10 @@ export function OnboardingDocuments({
           onDraftChange={gen.setRosterDraft}
           onRebuild={() => void gen.rebuild()}
           rebuilding={gen.rebuilding}
+          dirty={gen.dirty}
+          onSaveDraft={() => void gen.saveDraft()}
+          savingDraft={gen.savingDraft}
+          draftSavedAt={gen.draftSavedAt}
           onAttach={() => void attachPreview()}
           attaching={attaching}
           onClose={gen.close}

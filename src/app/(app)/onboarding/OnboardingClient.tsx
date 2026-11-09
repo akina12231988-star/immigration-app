@@ -1131,7 +1131,10 @@ function DocRow({
     if (!preview) return;
     setAttaching(true);
     try {
-      if (!(await handleFile(preview.file))) return;
+      // 欄を直したあと作り直していなければ、直した内容で作り直してから添付する
+      const file = await gen.freshFile();
+      if (!file) return;
+      if (!(await handleFile(file))) return;
       if (gen.rosterDraft) {
         const saved = await saveOnboardingRosterDraft(workerId, gen.rosterDraft);
         // 添付そのものは終わっているため、名簿の保存だけ失敗したときは知らせるだけにする
@@ -1299,6 +1302,10 @@ function DocRow({
           onDraftChange={gen.setRosterDraft}
           onRebuild={() => void gen.rebuild()}
           rebuilding={gen.rebuilding}
+          dirty={gen.dirty}
+          onSaveDraft={() => void gen.saveDraft()}
+          savingDraft={gen.savingDraft}
+          draftSavedAt={gen.draftSavedAt}
           onAttach={() => void attachPreview()}
           attaching={attaching}
           onClose={gen.close}

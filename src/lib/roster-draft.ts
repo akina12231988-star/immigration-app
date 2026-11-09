@@ -2,6 +2,8 @@ import {
   rosterJpDate,
   rosterWorkKind,
   withResidencePermitHistory,
+  permitsAfterSaved,
+  sortRosterHistory,
   withVisaPermitHistory,
   type RosterPermit,
 } from "@/lib/roster";
@@ -54,6 +56,21 @@ export interface RosterDraftSource {
   permits?: RosterPermit[];
 }
 
+function savedHistoryWithNewPermits(
+  src: RosterDraftSource,
+  saved: WorkerRoster | null,
+  start: string | null,
+): RosterHistoryEntry[] {
+  const base = saved?.history ?? (start ? [{ on: rosterJpDate(start), content: "入社" }] : []);
+  const savedDay = saved?.updated_at?.slice(0, 10) ?? "";
+  if (src.permits && src.permits.length > 0) {
+    return withVisaPermitHistory(base, saved ? permitsAfterSaved(src.permits, saved.updated_at) : src.permits);
+  }
+  // 今の在留カードの許可だけ分かるとき。保存した名簿には、保存したあとの許可なら足す
+  if (saved && (!src.residencePermitDate || src.residencePermitDate <= savedDay)) return sortRosterHistory(base);
+  return withResidencePermitHistory(base, src.residenceStatus, src.residencePermitDate);
+}
+
 export function buildRosterDraft(
   src: RosterDraftSource,
   saved: WorkerRoster | null,
@@ -65,16 +82,8 @@ export function buildRosterDraft(
     work_kind: saved?.work_kind || rosterWorkKind(src.field),
     // 入社の行に加えて、在留資格の許可も履歴として残す（画面の労働者名簿と同じ）。
     // その会社にいる間の許可が分かっていれば全部（更新のたびの許可も）載せ、無ければ今の許可だけ
-    history: src.permits && src.permits.length > 0
-      ? withVisaPermitHistory(
-          saved?.history ?? (start ? [{ on: rosterJpDate(start), content: "入社" }] : []),
-          src.permits,
-        )
-      : withResidencePermitHistory(
-          saved?.history ?? (start ? [{ on: rosterJpDate(start), content: "入社" }] : []),
-          src.residenceStatus,
-          src.residencePermitDate,
-        ),
+    // 保存した名簿があれば、その履歴（人が直した内容）に、保存したあとに受けた許可だけを足す
+    history: savedHistoryWithNewPermits(src, saved, start),
     previous_jobs: saved?.previous_jobs ?? rosterPreviousJobs(src.workHistories),
     leaving_on: saved?.leaving_on ?? (src.status === "退職" ? rosterJpDate(src.leavingOn) : ""),
     leaving_reason:
