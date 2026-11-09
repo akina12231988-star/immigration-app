@@ -329,3 +329,14 @@ describe("compactMyNumber（個人番号の空白・ハイフンを詰める）"
     expect(v.texts["Text8"]).toBe("123456789012");
   });
 });
+
+describe("myNumberIssue（個人番号が空欄・12桁でないか）", () => {
+  it("空欄・桁違いを見分ける（空白入りでも12桁なら問題なし）", async () => {
+    const { myNumberIssue } = await import("./fuyo-form");
+    expect(myNumberIssue("")).toBe("空欄");
+    expect(myNumberIssue(null)).toBe("空欄");
+    expect(myNumberIssue("  ")).toBe("空欄");
+    expect(myNumberIssue("1234 5678 901")).toBe("12桁ではない");
+    expect(myNumberIssue("1234 5678 9012")).toBeNull();
+  });
+});
