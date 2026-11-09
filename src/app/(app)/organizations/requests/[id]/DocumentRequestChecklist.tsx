@@ -329,7 +329,7 @@ export function DocumentRequestChecklist({
 
   // 会社へ報告する出力（氏名の横のチェックで人を選ぶ）。
   //   PDF: 1人分の資料（マスに添付したもの。無ければ外国人詳細に紐づいているもの）をひとつの PDF にまとめ、
-  //        No.{番号}_{氏名}_{末尾}.pdf の名前にする（複数人なら ZIP にまとめる。一覧のエクセルも同梱）
+  //        No.{番号}_{氏名}_{末尾}.pdf の名前にする（作ったあと一覧から1人ずつ・一括・ZIP でダウンロード）
   //   エクセル: 選んだ人の一覧（No.・氏名・入社年月日・各書類の状況）
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [suffix, setSuffix] = useState(() => defaultReportSuffix(initialRequest.title, today));
@@ -405,11 +405,39 @@ export function DocumentRequestChecklist({
     }
     return { parts, links, skipped };
   };
+  // 作った PDF（1人1ファイル。No.番号_氏名_末尾.pdf）。一覧から1人ずつ・まとめてダウンロードする
+  const [madePdfs, setMadePdfs] = useState<{ name: string; bytes: Uint8Array }[] | null>(null);
+  const [madeLinks, setMadeLinks] = useState<string[]>([]);
+  const [downloadingAll, setDownloadingAll] = useState(false);
+  const downloadPdf = (f: { name: string; bytes: Uint8Array }) =>
+    downloadBlob(new Blob([f.bytes as BlobPart], { type: "application/pdf" }), f.name);
+  // 全員分を1ファイルずつ続けてダウンロードする（ブラウザが止めないよう少し間を空ける）
+  const downloadAllPdfs = async () => {
+    if (!madePdfs) return;
+    setDownloadingAll(true);
+    try {
+      for (const f of madePdfs) {
+        downloadPdf(f);
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    } finally {
+      setDownloadingAll(false);
+    }
+  };
+  const downloadZip = async () => {
+    if (!madePdfs) return;
+    const zip = new JSZip();
+    for (const f of madePdfs) zip.file(f.name, f.bytes);
+    zip.file(reportBundleName(suffix, "xlsx"), await xlsxBlob());
+    if (madeLinks.length > 0) zip.file("リンクの資料.txt", madeLinks.join("\n"));
+    downloadBlob(await zip.generateAsync({ type: "blob" }), reportBundleName(suffix, "zip"));
+  };
   const exportPdf = async () => {
     if (selectedWorkers.length === 0) return;
     setExporting("pdf");
     setError(null);
     setExportInfo(null);
+    setMadePdfs(null);
     try {
       const pdfs: { name: string; bytes: Uint8Array }[] = [];
       const links: string[] = [];
@@ -430,18 +458,11 @@ export function DocumentRequestChecklist({
         setExportInfo("選んだ人に PDF にできる資料がありません（添付・紐づけが無いか、全部「本人から無いと回答あり」です）。");
         return;
       }
-      if (pdfs.length === 1 && selectedWorkers.length === 1 && links.length === 0) {
-        downloadBlob(new Blob([pdfs[0].bytes as BlobPart], { type: "application/pdf" }), pdfs[0].name);
-      } else {
-        const zip = new JSZip();
-        for (const f of pdfs) zip.file(f.name, f.bytes);
-        zip.file(reportBundleName(suffix, "xlsx"), await xlsxBlob());
-        if (links.length > 0) zip.file("リンクの資料.txt", links.join("\n"));
-        downloadBlob(await zip.generateAsync({ type: "blob" }), reportBundleName(suffix, "zip"));
-      }
+      // すぐにはダウンロードせず、下の一覧から1人ずつ・まとめてダウンロードする
+      setMadePdfs(pdfs);
+      setMadeLinks(links);
       setExportInfo(
-        `${pdfs.length}名分の PDF を出力しました（${pdfs.map((f) => f.name).join("、")}）。` +
-          (pdfs.length > 1 || links.length > 0 ? "ZIP の中に一覧のエクセルも入っています。" : "") +
+        `${pdfs.length}名分の PDF を作りました。下の一覧から1人ずつ、またはまとめてダウンロードしてください。` +
           (noFiles.length > 0 ? `資料が無いため出していない人: ${noFiles.join("、")}。` : "") +
           (links.length > 0 ? `リンクで登録されている資料 ${links.length}件は PDF に入らないので「リンクの資料.txt」から開いてください。` : "") +
           (skipped.length > 0 ? `PDF にできなかったファイル: ${skipped.join("、")}。` : "") +
@@ -859,11 +880,11 @@ export function DocumentRequestChecklist({
             type="button"
             onClick={() => void exportPdf()}
             disabled={!!exporting}
-            title="1人分の資料（マスに添付したもの。無ければ外国人詳細に紐づいているもの）をひとつの PDF にまとめます。複数人なら ZIP（一覧のエクセル同梱）"
+            title="1人分の資料（マスに添付したもの。無ければ外国人詳細に紐づいているもの）を1人1つの PDF にまとめます。作ったあと、一覧から1人ずつ・まとめてダウンロードできます"
             className="inline-flex min-h-[32px] items-center gap-1 rounded-lg bg-brand px-3 font-bold text-brand-foreground disabled:opacity-50"
           >
             {exporting === "pdf" ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />}
-            {exporting === "pdf" ? "PDF を作成中…" : `PDF を出力（${selectedWorkers.length}名）`}
+            {exporting === "pdf" ? "PDF を作成中…" : `PDF を作る（${selectedWorkers.length}名）`}
           </button>
           <button
             type="button"
@@ -878,6 +899,56 @@ export function DocumentRequestChecklist({
           <button type="button" onClick={() => setSelected(new Set())} className="text-[11px] font-bold text-muted underline">
             選択を解除
           </button>
+        </div>
+      )}
+
+      {/* 作った PDF の一覧（このファイル名で1人ずつ・まとめてダウンロード） */}
+      {madePdfs && madePdfs.length > 0 && (
+        <div className="rounded-xl border border-brand/40 bg-surface px-3 py-2 text-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-bold text-brand">作った PDF（{madePdfs.length}件）</span>
+            <button
+              type="button"
+              onClick={() => void downloadAllPdfs()}
+              disabled={downloadingAll}
+              title="1人1ファイルのまま、全員分を続けてダウンロードします（ブラウザに「複数のファイルのダウンロード」を聞かれたら許可してください）"
+              className="inline-flex min-h-[32px] items-center gap-1 rounded-lg bg-brand px-3 font-bold text-brand-foreground disabled:opacity-50"
+            >
+              {downloadingAll ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />}
+              全員分を一括ダウンロード（1人1ファイル）
+            </button>
+            <button
+              type="button"
+              onClick={() => void downloadZip()}
+              className="inline-flex min-h-[32px] items-center gap-1 rounded-lg border border-brand px-3 font-bold text-brand"
+              title="全員分の PDF と一覧のエクセルを ZIP 1つにまとめてダウンロードします"
+            >
+              <FileDown size={13} />
+              ZIP でまとめてダウンロード（一覧エクセル付き）
+            </button>
+            <button type="button" onClick={() => setMadePdfs(null)} className="ml-auto text-[11px] font-bold text-muted underline">
+              閉じる
+            </button>
+          </div>
+          <ul className="mt-2 flex flex-col divide-y divide-border rounded-lg border border-border">
+            {madePdfs.map((f) => (
+              <li key={f.name} className="flex items-center gap-2 px-2 py-1.5">
+                <FileText size={13} className="shrink-0 text-muted" />
+                <span className="min-w-0 flex-1 truncate font-medium">{f.name}</span>
+                <button
+                  type="button"
+                  onClick={() => downloadPdf(f)}
+                  className="inline-flex min-h-[28px] shrink-0 items-center gap-1 rounded-lg border border-border px-2 font-bold text-brand"
+                >
+                  <FileDown size={12} />
+                  ダウンロード
+                </button>
+              </li>
+            ))}
+          </ul>
+          {madeLinks.length > 0 && (
+            <p className="mt-1 text-[11px] text-muted">リンクで登録されている資料 {madeLinks.length}件は PDF に入りません（ZIP の「リンクの資料.txt」に入ります）。</p>
+          )}
         </div>
       )}
 
@@ -970,7 +1041,7 @@ export function DocumentRequestChecklist({
         案内したあと本人から「持っていない」と返事があったら「本人から無いと回答」を押すと、その日付で記録され、会社に送る数からは外れます（あとで手に入って「添付済み」を押すと自動で外れます）。
         案内する書類の「案内」を押してから、行の右端の「案内文を表示」を押すと、押した書類をまとめた本人への案内文（日本語＋母国語）が出てコピーできます。
         全部の書類が「添付済み」か「無し回答」になった人は会社へ報告できる状態です（右端に表示。見出しのチェックでその人たちを全部選べます）。氏名の横のチェックで人を選ぶと、上に「PDF を出力」「一覧をエクセルで出力」が出ます。
-        PDF は 1人分の資料（マスに添付したもの。無ければ外国人詳細に紐づいているもの）をひとつにまとめ、「No.番号_氏名_末尾」（末尾は変えられます。例: 令和8年度年末調整資料）の名前で出ます。複数人なら ZIP にまとまり、一覧のエクセルも入ります。
+        PDF は 1人分の資料（マスに添付したもの。無ければ外国人詳細に紐づいているもの）をひとつにまとめ、「No.番号_氏名_末尾」（末尾は変えられます。例: 令和8年度年末調整資料）の名前で作ります。作ったあと、一覧から1人ずつ、全員分を一括（1人1ファイル）、または ZIP（一覧のエクセル付き）でダウンロードできます。
         送ったら右端の「会社へ をまとめて付ける」で添付済みの書類を全部「会社へ」にできます。
         受け取った書類の写真・PDF はマスにドラッグ＆ドロップ（または「添付」）で保管でき、添付すると「添付済み」まで自動で付きます。
         外国人詳細の「入社時に送る資料」に同じ書類が添付済みなら、マスに「外国人詳細に添付済み」と出て、押すとそのデータを開けます。
