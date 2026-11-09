@@ -29,7 +29,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Modal } from "@/components/ui/Modal";
 import JSZip from "jszip";
 import { defaultReportSuffix, reportBundleName, reportPdfName, reportSheetRows } from "@/lib/doc-request-report";
-import { blobToPdfPart, mergePdfParts, type PdfPart } from "@/lib/pdf-merge";
+import { blobToPdfPart, mergePdfParts, rasterizePdfInBrowser, type PdfPart } from "@/lib/pdf-merge";
 import { buildXlsx, downloadBlob } from "@/lib/xlsx-export";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { createClient } from "@/lib/supabase/client";
@@ -424,7 +424,7 @@ export function DocumentRequestChecklist({
           noFiles.push(w.name);
           continue;
         }
-        pdfs.push({ name: reportPdfName(i + 1, w.name, suffix), bytes: await mergePdfParts(got.parts) });
+        pdfs.push({ name: reportPdfName(i + 1, w.name, suffix), bytes: await mergePdfParts(got.parts, { rasterize: rasterizePdfInBrowser }) });
       }
       if (pdfs.length === 0) {
         setExportInfo("選んだ人に PDF にできる資料がありません（添付・紐づけが無いか、全部「本人から無いと回答あり」です）。");
