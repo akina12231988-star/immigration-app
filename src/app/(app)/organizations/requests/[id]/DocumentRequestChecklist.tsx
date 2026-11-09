@@ -279,6 +279,12 @@ export function DocumentRequestChecklist({
     }
     await saveCheck({ ...c, use_doc: v });
   };
+  // 外国人詳細の書類（入社時）をこのマスから外す。会社へ送る書類は「ここに添付したもの」になる
+  // （外国人詳細の書類そのものは消さない。マスの添付が何枚もあれば、最後の1枚だけ残すかも聞く）
+  const unlinkOnboardingDoc = async (workerId: string, itemId: string) => {
+    if (!window.confirm("外国人詳細の書類をこのマスから外し、会社へ送る書類を「ここに添付したもの」にします（外国人詳細の書類そのものは消えません）。よろしいですか？")) return;
+    await chooseUseDoc(workerId, itemId, "cell");
+  };
   // その人の「案内」を押した書類（対象外・入社年で対象外の書類を除く）。案内文にまとめて入れる
   const informedItemsOf = (w: ChecklistWorker) =>
     request.items.filter((i) => {
@@ -1279,19 +1285,35 @@ export function DocumentRequestChecklist({
                               )}
                               {/* 会社へ送る書類をマスの添付に決めたら、外国人詳細の書類（入社時）はもう出さない */}
                               {linkedDoc && docChoice !== "cell" && (
-                                <button
-                                  type="button"
-                                  onClick={() => void openOnboardingDoc(linkedDoc)}
-                                  className={`inline-flex max-w-[12rem] items-center gap-0.5 rounded-lg border px-1.5 py-0.5 text-[10px] font-bold ${
+                                <span
+                                  className={`inline-flex max-w-[13rem] items-center gap-0.5 rounded-lg border px-1.5 py-0.5 text-[10px] font-bold ${
                                     docChoice === "cell-missing"
                                       ? "border-border bg-background text-muted line-through"
                                       : "border-status-approved-fg/40 bg-status-approved-bg text-status-approved-fg"
                                   }`}
-                                  title={`外国人詳細の「入社時に送る資料」の「${linkedDoc.label}」に添付済み（${linkedDoc.file_name || "リンク"}）。押すと開きます`}
                                 >
-                                  <Link2 size={11} className="shrink-0" />
-                                  <span className="truncate">外国人詳細に添付済み{linkedDoc.file_name ? `：${linkedDoc.file_name}` : ""}</span>
-                                </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void openOnboardingDoc(linkedDoc)}
+                                    className="inline-flex min-w-0 items-center gap-0.5"
+                                    title={`外国人詳細の「入社時に送る資料」の「${linkedDoc.label}」に添付済み（${linkedDoc.file_name || "リンク"}）。押すと開きます`}
+                                  >
+                                    <Link2 size={11} className="shrink-0" />
+                                    <span className="truncate">外国人詳細に添付済み{linkedDoc.file_name ? `：${linkedDoc.file_name}` : ""}</span>
+                                  </button>
+                                  {/* このマスから外国人詳細の書類の紐づけを外す（外国人詳細の書類そのものは消さない） */}
+                                  {canEdit && (
+                                    <button
+                                      type="button"
+                                      onClick={() => void unlinkOnboardingDoc(w.id, item.id)}
+                                      aria-label="外国人詳細の書類をこのマスから外す"
+                                      title="このマスから外します（外国人詳細の書類そのものは消えません）"
+                                      className="shrink-0 text-muted"
+                                    >
+                                      <X size={11} />
+                                    </button>
+                                  )}
+                                </span>
                               )}
                               {fuyoItem && canEdit && (
                                 <Link
