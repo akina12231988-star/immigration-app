@@ -67,6 +67,8 @@ export function reportStatusLabel(
     case "送付済":
       return `会社へ送付済 ${c?.sent_on ?? ""}`.trim();
     case "発行済":
+      // 添付しないと決めた書類（送金が無いので扶養証明書は付けない など）
+      if (c?.use_doc === "none") return `添付なし（送金なし）${note}`;
       return "添付済"; // 日付は書かない（会社へ送る一覧なので状況だけ）
     case "無し回答":
       return `本人から無いと回答 ${c?.none_replied_on ?? ""}`.trim() + note;

@@ -68,6 +68,7 @@ import {
   cellDocChoice,
   cellDocSource,
   isFuyokojoItem,
+  isFuyoCertItem,
   type DocumentRequestUseDoc,
   groupFilesByCell,
   indexChecks,
@@ -240,12 +241,28 @@ export function DocumentRequestChecklist({
   const press = (workerId: string, itemId: string, step: DocumentRequestStepKey) =>
     void saveCheck(toggleStep(current(workerId, itemId), step, today));
   // 扶養控除等申告書のマス: 送金額からの判定と、会社へ送る書類（全員達成で未決定なら入社時に自動で決める）
+  // 送金が無い人か（年末調整の扶養控除等申告書に載る扶養親族が0人）。
+  // 送金額から誰も目標に届いていない、または扶養控除申告書を「0人」で作り直して添付した
+  const fuyokojoItem = request.items.find(isFuyokojoItem);
+  const workerHasNoRemittance = (w: ChecklistWorker): boolean => {
+    const year = fuyoTargetYear(fuyokojoItem?.name ?? "", request.title, today);
+    if (fuyoYearEndJudgement(w.dependents ?? [], today, year).kind === "none-achieved") return true;
+    if (!fuyokojoItem) return false;
+    const fc = idx.get(checkKey(w.id, fuyokojoItem.id));
+    const d = normalizeFuyoAttachedDetail(fc?.use_doc_detail);
+    return fc?.use_doc === "cell" && d?.kind === "年末調整時" && d.names.length === 0;
+  };
   const fuyoCell = (
     w: ChecklistWorker,
     item: DocumentRequestItem,
     c: DocumentRequestCheck | undefined,
     hasLinked: boolean,
   ): { j: FuyoJudgement | null; useDoc: DocumentRequestUseDoc | null | undefined; auto: boolean; stale: boolean } => {
+    if (isFuyoCertItem(item)) {
+      // 扶養証明書は、送金が無ければ添付せずに会社へ送る（未決定なら「添付しない」に自動で決める）
+      const auto = !c?.use_doc && workerHasNoRemittance(w);
+      return { j: null, useDoc: auto ? "none" : c?.use_doc, auto, stale: false };
+    }
     if (!isFuyokojoItem(item)) return { j: null, useDoc: c?.use_doc, auto: false, stale: false };
     const j = fuyoYearEndJudgement(w.dependents ?? [], today, fuyoTargetYear(item.name, request.title, today));
     const auto = !c?.use_doc && hasLinked && j.kind === "all-achieved";
@@ -276,8 +293,10 @@ export function DocumentRequestChecklist({
         remove = true;
       }
     }
-    // 先に選んだ方を保存する（保存できないのに添付だけ消えることがないように）
-    const err = await saveCheck({ ...c, use_doc: v });
+    // 先に選んだ方を保存する（保存できないのに添付だけ消えることがないように）。
+    // 「添付しない」は、それで会社へ送れる状態なので、まだなら「添付済み」も付ける
+    const next = v === "none" && !c.issued_on && !c.not_needed ? { ...toggleStep(c, "issued_on", today), use_doc: v } : { ...c, use_doc: v };
+    const err = await saveCheck(next);
     if (err) {
       window.alert(err);
       return;
@@ -1141,6 +1160,7 @@ export function DocumentRequestChecklist({
                       const fuyo = fuyoCell(w, item, c, !!linkedDoc);
                       const docChoice = cellDocChoice(fuyo.useDoc, !!linkedDoc, cellFiles.length);
                       const fuyoItem = isFuyokojoItem(item);
+                      const fuyoCertItem = isFuyoCertItem(item);
                       const fuyoDetail = normalizeFuyoAttachedDetail(c?.use_doc_detail);
                       return (
                         <td key={item.id} className="px-1 py-1 align-top">
@@ -1274,15 +1294,17 @@ export function DocumentRequestChecklist({
                                   金額を入力 →
                                 </Link>
                               )}
-                              {linkedDoc && (
+                              {(linkedDoc || fuyoCertItem) && (
                                 <div className="flex w-full flex-col items-start gap-0.5">
                                   <span className="text-[10px] font-bold text-muted">会社へ送る書類</span>
                                   <div className="flex flex-wrap gap-1">
                                     {(
                                       [
-                                        { v: "onboarding", label: "入社時（外国人詳細）" },
+                                        ...(linkedDoc ? [{ v: "onboarding", label: "入社時（外国人詳細）" }] : []),
                                         { v: "cell", label: fuyoItem ? "作り直したもの（ここに添付）" : "ここに添付したもの" },
-                                      ] as const
+                                        // 扶養証明書は、送金が無ければ添付せずに会社へ送る
+                                        ...(fuyoCertItem ? [{ v: "none", label: "添付しない（送金なし）" }] : []),
+                                      ] as { v: DocumentRequestUseDoc; label: string }[]
                                     ).map((o) => {
                                       const on = fuyo.useDoc === o.v;
                                       return (
@@ -1294,7 +1316,9 @@ export function DocumentRequestChecklist({
                                           aria-pressed={on}
                                                   title={
                                             on && fuyo.auto
-                                              ? "送金額が全員達成のため、入社時に自動で決めています"
+                                              ? o.v === "none"
+                                                ? "送金が無いため、添付しないに自動で決めています（押すと決定します）"
+                                                : "送金額が全員達成のため、入社時に自動で決めています"
                                               : on
                                                 ? "選択中。もう一度押すと未決定に戻します"
                                                 : "会社へ送る書類をこちらに決める"
@@ -1309,8 +1333,14 @@ export function DocumentRequestChecklist({
                                       );
                                     })}
                                   </div>
-                                  {fuyo.auto && (
+                                  {fuyo.auto && fuyo.useDoc === "onboarding" && (
                                     <span className="text-[10px] text-muted">送金額が全員達成のため、入社時に自動で決めています</span>
+                                  )}
+                                  {docChoice === "skip" && (
+                                    <span className="text-[10px] font-bold text-status-approved-fg">
+                                      ✓ 送金が無いため、扶養証明書は添付せずに会社へ送ります
+                                      {fuyo.auto && <span className="font-medium text-muted">（送金額から自動。押すと決定）</span>}
+                                    </span>
                                   )}
                                   {docChoice === "undecided" && (
                                     <span className="text-[10px] font-bold text-amber-700">
@@ -1325,7 +1355,7 @@ export function DocumentRequestChecklist({
                                 </div>
                               )}
                               {/* 会社へ送る書類をマスの添付に決めたら、外国人詳細の書類（入社時）はもう出さない */}
-                              {linkedDoc && docChoice !== "cell" && (
+                              {linkedDoc && docChoice !== "cell" && docChoice !== "skip" && (
                                 <span
                                   className={`inline-flex max-w-[13rem] items-center gap-0.5 rounded-lg border px-1.5 py-0.5 text-[10px] font-bold ${
                                     docChoice === "cell-missing"
@@ -1377,7 +1407,7 @@ export function DocumentRequestChecklist({
                                 <span
                                   key={f.id}
                                   className={`inline-flex max-w-[11rem] items-center gap-0.5 rounded-lg border px-1.5 py-0.5 text-[10px] ${
-                                    docChoice === "onboarding" ? "border-border bg-background text-muted line-through" : "border-brand/40 bg-brand/5 text-brand"
+                                    docChoice === "onboarding" || docChoice === "skip" ? "border-border bg-background text-muted line-through" : "border-brand/40 bg-brand/5 text-brand"
                                   }`}
                                   title={docChoice === "onboarding" ? "会社へは外国人詳細の書類を送ります（この添付は使いません）" : undefined}
                                 >

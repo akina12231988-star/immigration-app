@@ -544,21 +544,24 @@ export function findOnboardingDocFor<T extends OnboardingDocLike>(
 //
 // 外国人詳細に添付済みの書類（入社時の扶養控除等申告書 など）と、このマスに添付した書類
 // （送金額しだいで年末調整用に作り直したもの など）の、どちらを会社へ送るかをマスごとに決める。
-export type DocumentRequestUseDoc = "onboarding" | "cell";
+// none は「添付しない」（扶養証明書は、送金が無ければ添付せずに会社へ送る）
+export type DocumentRequestUseDoc = "onboarding" | "cell" | "none";
 
 export type CellDocChoice =
   | "onboarding" // 外国人詳細の書類を使う
   | "cell" // このマスに添付した書類を使う
   | "cell-missing" // このマスの書類を使うと決めたが、まだ添付が無い
   | "undecided" // 両方あるのにどちらか決めていない（決めるまではマスの添付を使う）
-  | "none"; // どちらも無い
+  | "none" // どちらも無い
+  | "skip"; // 添付しないと決めた（送金が無いので扶養証明書は付けない など）
 
 export function normalizeUseDoc(v: unknown): DocumentRequestUseDoc | null {
-  return v === "onboarding" || v === "cell" ? v : null;
+  return v === "onboarding" || v === "cell" || v === "none" ? v : null;
 }
 
 export function cellDocChoice(useDoc: unknown, hasLinked: boolean, cellFileCount: number): CellDocChoice {
   const u = normalizeUseDoc(useDoc);
+  if (u === "none") return "skip";
   if (u === "cell") return cellFileCount > 0 ? "cell" : "cell-missing";
   if (u === "onboarding" && hasLinked) return "onboarding";
   if (hasLinked && cellFileCount > 0) return "undecided";
@@ -578,4 +581,10 @@ export function cellDocSource(choice: CellDocChoice): "onboarding" | "cell" | nu
 export function isFuyokojoItem(item: Pick<DocumentRequestItem, "name" | "link_doc_key">): boolean {
   if (item.link_doc_key === "fuyokojo") return true;
   return normalizeDocName(item.name).includes("扶養控除申告書");
+}
+
+// 扶養証明書（日本語訳）の項目か（送金が無ければ添付せずに会社へ送る）
+export function isFuyoCertItem(item: Pick<DocumentRequestItem, "name" | "link_doc_key">): boolean {
+  if (item.link_doc_key === "fuyo") return true;
+  return normalizeDocName(item.name).includes("扶養証明書");
 }
