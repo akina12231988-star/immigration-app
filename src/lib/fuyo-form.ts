@@ -104,6 +104,14 @@ export function compactMyNumber(v: string | null | undefined): string {
   return (v ?? "").normalize("NFKC").replace(/[\s\-‐－―ー−]/g, "");
 }
 
+// 個人番号の状態（申告書に記載できるか）。空欄・12桁でないときは知らせる
+export type MyNumberIssue = "空欄" | "12桁ではない" | null;
+export function myNumberIssue(v: string | null | undefined): MyNumberIssue {
+  const n = compactMyNumber(v);
+  if (!n) return "空欄";
+  return /^\d{12}$/.test(n) ? null : "12桁ではない";
+}
+
 export function buildFuyoFieldValues(data: FuyoFormData, today: string): FuyoFieldValues {
   const texts: Record<string, string> = {};
   const dropdowns: Record<string, string> = {};

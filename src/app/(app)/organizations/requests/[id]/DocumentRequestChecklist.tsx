@@ -91,6 +91,7 @@ import {
 } from "@/lib/org-document-requests";
 import { DocumentRequestForm } from "../DocumentRequestForm";
 import { DocRequestTextDialog } from "./DocRequestTextDialog";
+import { myNumberIssue } from "@/lib/fuyo-form";
 import { getOnboardingDocPreviewUrl } from "@/app/(app)/onboarding/actions";
 import type { OnboardingDocumentRow, WorkerDependent } from "@/types/db";
 import {
@@ -119,6 +120,7 @@ export interface ChecklistWorker {
   address: string; // 日本での住所
   assignedOffice: string; // 配属先営業所
   dependents?: WorkerDependent[]; // 扶養家族（送金額から扶養控除等申告書の判定に使う）
+  myNumber?: string; // 個人番号（扶養控除等申告書に記載。空欄なら知らせる）
 }
 
 // 1件の依頼のチェック表。行＝在籍者、列＝書類。各マスで 案内 → 添付済み → 会社へ を押していく
@@ -788,6 +790,24 @@ export function DocumentRequestChecklist({
         )}
       </Card>
 
+      {/* 扶養控除等申告書を出す依頼で、個人番号が空欄・12桁でない人（申告書の個人番号欄が空いたままになる） */}
+      {request.items.some(isFuyokojoItem) &&
+        (() => {
+          const missing = workers.filter((w) => myNumberIssue(w.myNumber));
+          if (missing.length === 0) return null;
+          return (
+            <div role="alert" className="rounded-xl border border-seal/40 bg-seal/10 px-3 py-2 text-xs text-seal">
+              <p className="font-bold">⚠ 個人番号が空欄（または12桁ではない）の人が {missing.length}人います。扶養控除等申告書の「あなたの個人番号」が正しく記載されません</p>
+              <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                {missing.map((w) => (
+                  <Link key={w.id} href={`/workers/${w.id}#wd-basic`} target="_blank" className="font-bold text-brand underline">
+                    {w.name}（{myNumberIssue(w.myNumber)}）
+                  </Link>
+                ))}
+              </p>
+            </div>
+          );
+        })()}
       {error && (
         <p role="alert" className="rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
           {error}
@@ -1225,6 +1245,16 @@ export function DocumentRequestChecklist({
                           {/* 添付した書類（押すと別タブで開く）と「添付」ボタン */}
                           {!yearReason && (
                             <div className="mt-1 flex flex-wrap items-center gap-1">
+                              {fuyoItem && myNumberIssue(w.myNumber) && (
+                                <Link
+                                  href={`/workers/${w.id}#wd-basic`}
+                                  target="_blank"
+                                  className="w-full rounded-lg border border-seal/40 bg-seal/10 px-2 py-1 text-[10px] font-bold text-seal"
+                                  title="押すと外国人詳細の基本情報を開きます"
+                                >
+                                  ⚠ 本人の個人番号が{myNumberIssue(w.myNumber)}です（申告書に記載されません）→
+                                </Link>
+                              )}
                               {fuyo.j && fuyo.j.kind !== "no-dependents" && (
                                 <FuyoJudgementBox
                                   j={fuyo.j}

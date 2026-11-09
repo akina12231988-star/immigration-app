@@ -16,7 +16,7 @@ import {
   warekiDate,
   warekiYear,
 } from "@/lib/dependents";
-import { fuyoOverflow, type FuyoFormData } from "@/lib/fuyo-form";
+import { fuyoOverflow, myNumberIssue, type FuyoFormData } from "@/lib/fuyo-form";
 import { todayStr } from "@/lib/ssw/calc";
 import { fuyoFileName } from "@/lib/fuyo-roster";
 import { fuyoFormNames, fuyoYearEndJudgement, recommendedFuyoKind } from "@/lib/fuyo-judgement";
@@ -197,6 +197,18 @@ export function DependentsFormSheet({
         {error && (
           <p role="alert" className="rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">
             {error}
+          </p>
+        )}
+
+        {/* 本人の個人番号が空欄・12桁でないと、申告書の「あなたの個人番号」が空いたままになる */}
+        {myNumberIssue(worker.myNumber) && (
+          <p role="alert" className="rounded-lg border border-seal/40 bg-seal/10 px-3 py-2 text-sm font-bold text-seal">
+            ⚠ {worker.name} の個人番号が{myNumberIssue(worker.myNumber)}です。申告書の「あなたの個人番号」が正しく記載されません。
+            {workerId && (
+              <a href={`/workers/${workerId}#wd-basic`} target="_blank" rel="noopener noreferrer" className="ml-1 text-brand underline">
+                外国人詳細で入力する →
+              </a>
+            )}
           </p>
         )}
 
