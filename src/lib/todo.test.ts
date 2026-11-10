@@ -414,3 +414,19 @@ describe("試験の申込の進み具合（examProgress）", () => {
     expect(examChoiceShort("そのまま")).toBe("そのまま");
   });
 });
+
+describe("appNoProgress（アプリケーションNo.の申込の進み具合）", () => {
+  test("アカウント → 申込・代金 → アプリケーションNo.の発行。試験日・合否は出さない", async () => {
+    const { examProgress, emptyTodoExam } = await import("./todo");
+    const steps = examProgress(emptyTodoExam(), "２号アプリケーションナンバーの申込", "2026-11-10");
+    expect(steps.map((s) => s.label)).toEqual(["アカウント", "申込・代金", "アプリケーションNo.の発行"]);
+    expect(steps[0].state).toBe("current");
+    const done = examProgress(
+      { ...emptyTodoExam(), login_email: "a@x", password: "p", application_no: "A123", attempts: [{ ...emptyTodoExam().attempts[0], applied: true, applied_on: "2026-11-01" }] },
+      "２号アプリケーションナンバーの申込",
+      "2026-11-10",
+    );
+    expect(done.map((s) => s.state)).toEqual(["done", "done", "done"]);
+    expect(done[2].detail).toBe("No. A123");
+  });
+});

@@ -19,7 +19,7 @@ const SELECT =
 
 // 最初から決まっている自動設定（画面では変えられない。参考に出す）
 const BUILT_IN: { who: string; when: string; payer: string }[] = [
-  { who: "すべての所属機関", when: "特定技能2号に関わる申請（2号への変更・2号の更新・2号移行準備の特定活動）", payer: "本人負担" },
+  { who: "すべての所属機関", when: "特定技能2号に関わる申請（2号への変更・2号の更新・2号移行準備の特定活動）。所属機関ごとの設定より優先", payer: "本人負担" },
   { who: "有限会社國崎青果", when: "特定技能1号に関わる申請（1号への変更・1号の更新・特定活動）", payer: "会社立替（実質本人負担）" },
 ];
 
@@ -95,7 +95,7 @@ export function StampFeeRulesClient({
         <h2 className="mb-1 text-sm font-bold">所属機関ごとの自動設定</h2>
         <p className="mb-3 text-[11px] text-muted">
           「行を追加」で所属機関を選び、更新の申請・新規の申請の負担を選んで「保存」を押してください。
-          所属機関ごとの設定は、下の「最初から決まっている自動設定」より優先されます。
+          特定技能2号に関わる申請は、ここでの設定にかかわらず本人負担です（下の「最初から決まっている自動設定」）。
         </p>
         <div className="hidden grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_8.5rem_2.5rem] gap-2 px-1 pb-1 text-[11px] font-bold text-muted md:grid">
           <span>所属機関</span>

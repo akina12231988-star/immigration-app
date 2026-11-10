@@ -241,7 +241,7 @@ export function examChoiceShort(choice: string): string {
   return m ? m[1] : choice;
 }
 
-export type ExamStepKey = "choice" | "account" | "apply" | "exam" | "result";
+export type ExamStepKey = "choice" | "account" | "apply" | "exam" | "result" | "appno";
 export type ExamStepState = "done" | "current" | "todo" | "alert";
 export interface ExamStep {
   key: ExamStepKey;
@@ -259,6 +259,7 @@ function daysBetween(from: string, to: string): number {
 // 受験内容の段階は２号農業試験申込のときだけ。最初の済んでいない段階が「いまここ」。
 // 試験日を過ぎて合否が未確認なら、合否の段階を赤（alert）にする
 export function examProgress(exam: TodoExam, title: string, today: string): ExamStep[] {
+  if (isAppNoTodoTitle(title)) return appNoProgress(exam);
   const last = exam.attempts.at(-1) ?? emptyExamAttempt();
   const no = exam.attempts.length;
   const missing = examAccountMissing(exam);
@@ -327,6 +328,49 @@ export function examProgress(exam: TodoExam, title: string, today: string): Exam
           : i === firstOpen
             ? "current"
             : "todo",
+  }));
+}
+
+// ２号アプリケーションナンバーの申込のTODOか（試験の申込とは別の進み方をする）
+export const APP_NO_TODO_TITLE = "２号アプリケーションナンバーの申込";
+export function isAppNoTodoTitle(title: string | null | undefined): boolean {
+  return (title ?? "").trim() === APP_NO_TODO_TITLE;
+}
+
+// 「アカウント → 申込・代金 → アプリケーションNo.の発行」の進み具合（試験日・合否は無い）。
+// アカウントは、ログイン先のメールアドレスとパスワード（アプリケーションNo.・プロメトリックIDは発行後に入る）
+export function appNoProgress(exam: TodoExam): ExamStep[] {
+  const last = exam.attempts.at(-1) ?? emptyExamAttempt();
+  const accountMissing = (["login_email", "password"] as const).filter((k) => exam[k].trim() === "").map((k) => EXAM_ACCOUNT_LABELS[k]);
+  const applied = last.applied || last.applied_on !== "";
+  const base: { key: ExamStepKey; label: string; done: boolean; detail: string }[] = [
+    {
+      key: "account",
+      label: "アカウント",
+      done: accountMissing.length === 0,
+      detail: accountMissing.length === 0 ? "入力済" : `${accountMissing.join("・")}が未入力`,
+    },
+    {
+      key: "apply",
+      label: "申込・代金",
+      done: applied && (last.fee.trim() === "" || last.fee_received),
+      detail: !applied
+        ? `未申込${last.fee.trim() === "" ? "" : last.fee_received ? "（代金受取済）" : last.deferred ? "（後払い）" : "（代金待ち）"}`
+        : `${last.applied_on || "申込済"}${last.fee.trim() !== "" && !last.fee_received ? "・代金未受取" : ""}`,
+    },
+    {
+      key: "appno",
+      label: "アプリケーションNo.の発行",
+      done: exam.application_no.trim() !== "",
+      detail: exam.application_no.trim() ? `No. ${exam.application_no.trim()}` : "発行待ち",
+    },
+  ];
+  const firstOpen = base.findIndex((b) => !b.done);
+  return base.map((b, i) => ({
+    key: b.key,
+    label: b.label,
+    detail: b.detail,
+    state: b.done ? "done" : i === firstOpen ? "current" : "todo",
   }));
 }
 

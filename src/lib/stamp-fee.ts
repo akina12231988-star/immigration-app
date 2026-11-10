@@ -128,6 +128,8 @@ export function orgRuleStampFeePayer(
   const rule = findStampFeeOrgRule(rules, orgName);
   if (!rule) return "";
   if (rule.from && prepCreatedAt.slice(0, 10) < rule.from) return "";
+  // 特定技能2号に関わる申請は、所属機関ごとの設定にかかわらず本人負担（autoStampFeePayer で先に決める）
+  if (isSsw2StampAppContent(appContent)) return "";
   const kind = stampAppKind(appContent);
   return kind === "renewal" ? rule.renewal : kind === "new" ? rule.newApp : "";
 }
@@ -138,8 +140,8 @@ export interface StampFeeAutoContext {
 }
 
 // 申請種別と所属機関から自動で決まる負担（申請準備の詳細で未選択なら自動で保存する）。
+//  ・特定技能2号に関わる申請は本人負担（所属機関ごとの自動設定があっても2号は本人負担のまま）
 //  ・所属機関ごとの自動設定（印紙代の自動設定の画面）に当てはまれば、その負担
-//  ・特定技能2号に関わる申請は本人負担
 //  ・特定技能1号に関わる申請で、所属機関が有限会社國崎青果なら会社立替（実質本人負担）
 // どれでもなければ ''（所属機関の情報で選んだ負担 → 未設定）
 export function autoStampFeePayer(
@@ -147,9 +149,9 @@ export function autoStampFeePayer(
   orgName: string | null | undefined,
   ctx: StampFeeAutoContext = {},
 ): StampFeePayer | "" {
+  if (isSsw2StampAppContent(appContent)) return "本人負担";
   const byOrg = orgRuleStampFeePayer(ctx.rules, appContent, orgName, ctx.prepCreatedAt);
   if (byOrg) return byOrg;
-  if (isSsw2StampAppContent(appContent)) return "本人負担";
   if (isSsw1StampAppContent(appContent) && isKunisakiSeika(orgName)) return "会社立替";
   return "";
 }

@@ -142,6 +142,12 @@ describe("所属機関ごとの印紙代の自動設定", () => {
     expect(autoStampFeePayer("特定技能申請準備中", "白石智和", ctx)).toBe("本人負担");
     expect(autoStampFeePayer("在留資格認定申請書の準備中", "白石智和", ctx)).toBe("本人負担");
   });
+  it("特定技能2号に関わる申請は、所属機関ごとの設定があっても本人負担のまま", async () => {
+    const { autoStampFeePayer, DEFAULT_STAMP_FEE_ORG_RULES: rules } = await import("./stamp-fee");
+    const ctx = { rules, prepCreatedAt: "2026-11-11" };
+    expect(autoStampFeePayer("特定技能2号更新の準備中", "白石智和", ctx)).toBe("本人負担");
+    expect(autoStampFeePayer("特定技能2号申請準備中", "松本英男", ctx)).toBe("本人負担");
+  });
   it("保存した設定を読む（未保存なら最初から入れてある設定）", async () => {
     const { normalizeStampFeeOrgRules, DEFAULT_STAMP_FEE_ORG_RULES } = await import("./stamp-fee");
     expect(normalizeStampFeeOrgRules(null)).toEqual(DEFAULT_STAMP_FEE_ORG_RULES);

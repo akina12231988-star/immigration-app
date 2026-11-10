@@ -62,6 +62,7 @@ import {
   type TodoKind,
   type TodoStage,
   type TodoStatusOption,
+  isAppNoTodoTitle,
 } from "@/lib/todo";
 import { ExamTodoSection } from "@/components/todos/ExamTodoSection";
 import { ExamFeeAccountCard } from "@/components/todos/ExamFeeAccount";
@@ -157,6 +158,9 @@ export function TodosClient({
   // 試験の申込は1列で見せる（カードの中身が多いので幅を広く使う）。どの区分を出すかをボタンで切り替える
   // 試験の申込の区分ボタン（未着手／進行中／完了）。「結果確認」は試験日を過ぎて合否が未確認のTODO
   const [examStage, setExamStage] = useState<TodoStage | typeof EXAM_RESULT_STAGE>("進行中");
+  // 試験の申込の中を「アプリケーションNo.の申込」と「試験の申込（1号・2号の農業試験）」に分けて見る
+  const [examGroup, setExamGroup] = useState<"" | "appno" | "exam">("");
+  const examGroupOf = (t: TodoRow): "appno" | "exam" => (isAppNoTodoTitle(t.title) ? "appno" : "exam");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // 申請取次士の名簿（申請準備のTODOで誰が取次するかを選ぶ）
@@ -617,6 +621,8 @@ export function TodosClient({
           const q = nameFilter.trim().toLowerCase();
           const rows = kindTodos
             .filter((t) => stageOfStatus(t.status, kindOptions) === stage)
+            // 試験の申込: アプリケーションNo.の申込／試験の申込のどちらかだけ出す
+            .filter((t) => kind !== "試験の申込" || !examGroup || examGroupOf(t) === examGroup)
             .filter((t) => {
               if (kind !== "申請準備" || !tantouFilter) return true;
               // 「担当者未定」を選んだときは、担当者が決まっていないものだけ出す
@@ -1426,6 +1432,41 @@ export function TodosClient({
         /* 試験の申込: カードの中身（アカウント・申込・本人の情報・職歴）が多いので、
            2列に分けず1列の幅いっぱいに出す。区分（進行中・未着手・完了）はボタンで切り替える */
         <>
+          {/* アプリケーションNo.の申込と試験の申込は進み方が違うので、分けて見られるようにする */}
+          <div className="flex flex-wrap items-center gap-2">
+            {(
+              [
+                { key: "", label: "すべて" },
+                { key: "appno", label: "アプリケーションNo.の申込" },
+                { key: "exam", label: "試験の申込（1号・2号の農業試験）" },
+              ] as const
+            ).map((g) => {
+              const active = examGroup === g.key;
+              const n = kindTodos.filter(
+                (t) => stageOfStatus(t.status, kindOptions) !== "完了" && (!g.key || examGroupOf(t) === g.key),
+              ).length;
+              return (
+                <button
+                  key={g.key || "all"}
+                  type="button"
+                  onClick={() => setExamGroup(g.key)}
+                  aria-pressed={active}
+                  title="完了していないTODOの件数"
+                  className={`min-h-[36px] rounded-xl border-2 px-3 text-xs font-bold ${
+                    active
+                      ? g.key === "appno"
+                        ? "border-violet-600 bg-violet-600 text-white"
+                        : "border-brand bg-brand text-brand-foreground"
+                      : g.key === "appno"
+                        ? "border-violet-300 bg-violet-50 text-violet-700"
+                        : "border-border bg-surface text-muted"
+                  }`}
+                >
+                  {g.label}（{n}）
+                </button>
+              );
+            })}
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             {TODO_STAGES.map((stage) => {
               const active = examStage === stage;
