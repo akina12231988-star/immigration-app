@@ -12,12 +12,14 @@ export function MailingRecordAttachments({
   only,
   divided = true,
   year,
+  certFilter,
 }: {
   record: Pick<JudgmentRecord, "id" | "requestKind" | "docs" | "yearRequests" | "nhiYears">;
   canEdit: boolean;
   only?: MailingAttachmentRole[]; // 指定した欄（郵送請求した書類 / 届いた証明書 / 領収書）だけ出す
   divided?: boolean; // 欄の間に点線を引く
   year?: YearType; // 年度ごとの欄のうち、この年度の分だけ出す
+  certFilter?: string; // 届いた証明書のうち、この証明書（申請準備の行の id）の分だけ出す
 }) {
   const slots = mailingAttachmentSlots(record).filter(
     (s) => (!only || only.includes(s.role)) && (!year || (s.years ?? [s.year]).includes(year)),
@@ -34,6 +36,8 @@ export function MailingRecordAttachments({
             filterKinds={s.kinds}
             addLabel={s.addLabel}
             canEdit={canEdit}
+            certTypes={s.certTypes}
+            certFilter={certFilter}
           />
         </div>
       ))}
