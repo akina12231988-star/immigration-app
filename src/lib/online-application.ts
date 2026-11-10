@@ -1,4 +1,5 @@
 import type { ApplicationCopyInput, CopyEdit, CopyGroup, CopyItem } from "@/lib/application-copy";
+import { isKunisakiSeika } from "@/lib/stamp-fee";
 import { cu, industryFieldName, it, og, ONLINE_INDUSTRY_FIELDS, SKILL_EVAL_KINDS, wk, wkDate, YES_NO, ymdCompact } from "@/lib/application-copy";
 import { JLPT_LEVELS } from "@/lib/cert-exam";
 import { ONLINE_MAIN_OCCUPATIONS } from "@/lib/online-main-occupations";
@@ -41,6 +42,7 @@ export interface OnlineItem {
   edit?: CopyEdit; // この場で入力・編集して保存できる（保存先）
   editValue?: string; // 編集欄に最初に入れる値（登録されている元の値。表示値はハイフン無し・全角などに変えてあるため）
   error?: string; // 直さないといけないこと（赤字で出す。例: 申請取次士が未定）
+  link?: { href: string; label: string; download?: boolean }; // 案内するファイル・画面（例: 協力確認書の別紙のPDF）
 }
 
 export interface OnlineSection {
@@ -124,6 +126,55 @@ export function councilFreeText(
   };
   const any = [...(office ?? []), ...(residence ?? [])].some((r) => r.to || r.on);
   return [`１　${any ? "有" : "無"}`, `２（１）${line(office)}`, `（２）${line(residence)}`].join("\n");
+}
+
+// フリー欄は300文字以内
+export const FREE_TEXT_MAX = 300;
+
+// 協力確認書の提出先が多く、フリー欄（300文字）に入りきらない所属機関は、
+// 「所属機関等作成用3 V（別紙）協力確認書」をPDFで添付し、フリー欄には「添付ファイルのとおり」と書く
+export const COUNCIL_ATTACHMENT_NAME = "所属機関等作成用3 V(別紙）協力確認書";
+export const COUNCIL_ATTACHMENT_FREE_TEXT = [
+  "１　有",
+  `２（１）有、${COUNCIL_ATTACHMENT_NAME}の添付ファイルのとおり`,
+  `（２）有、${COUNCIL_ATTACHMENT_NAME}の添付ファイルのとおり`,
+].join("\n");
+// 別紙は、所属機関の「協力確認書の提出」の登録内容から印刷画面で作る（PDFで保存して添付する）
+export const councilAttachmentUrl = (orgId: string) => `/organizations/${orgId}/council/print?form=3v`;
+
+// フリー欄（協力確認書）の項目。有限会社國崎青果は別紙を添付して「添付ファイルのとおり」と書く。
+// ほかの所属機関で300文字を超えるときは、別紙を作って添付するよう知らせる
+export function councilFreeItem(
+  orgName: string | null | undefined,
+  orgId: string | null | undefined,
+  office: { to: string; on: string }[] | undefined,
+  residence: { to: string; on: string }[] | undefined,
+): OnlineItem {
+  if (isKunisakiSeika(orgName)) {
+    return {
+      no: "",
+      label: "フリー欄（協力確認書）",
+      value: COUNCIL_ATTACHMENT_FREE_TEXT,
+      format: "text",
+      note: `協力確認書の提出先が多く300文字に入りきらないため、「${COUNCIL_ATTACHMENT_NAME}」をPDFにして、オンライン申請の添付資料として貼り付けてください（フリー欄には「添付ファイルのとおり」と書きます）。下のボタンで別紙の印刷画面を開き、PDFで保存できます。`,
+      ...(orgId ? { link: { href: councilAttachmentUrl(orgId), label: `${COUNCIL_ATTACHMENT_NAME}を開く（PDFで保存して添付）` } } : {}),
+    };
+  }
+  const text = councilFreeText(office, residence);
+  const over = text.length > FREE_TEXT_MAX;
+  return {
+    no: "",
+    label: "フリー欄（協力確認書）",
+    value: text,
+    format: "text",
+    note: "現在「特定技能」の人は協力確認書の有無を書く。300文字以内",
+    ...(over
+      ? {
+          error: `${text.length}文字で300文字を超えています。協力確認書の別紙を作ってPDFで添付し、フリー欄には「${COUNCIL_ATTACHMENT_NAME}の添付ファイルのとおり」と書いてください。`,
+          ...(orgId ? { link: { href: councilAttachmentUrl(orgId), label: `${COUNCIL_ATTACHMENT_NAME}を開く（PDFで保存して添付）` } } : {}),
+        }
+      : {}),
+  };
 }
 
 // ---- 組み立て ----
@@ -655,7 +706,7 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
     receiptOffice,
     item("", "通知送信用メールアドレス", ONLINE_SYSTEM_EMAIL, "text", "オンラインシステムの利用者（取次者）のメールアドレス。再入力欄にも同じものを入れる"),
     choose("", "申請の意思の確認・申請内容の確認", "チェック", "2つのチェックを入れる"),
-    item("", "フリー欄（協力確認書）", councilFreeText(intake?.council_office_submissions, intake?.council_residence_submissions), "text", "現在「特定技能」の人は協力確認書の有無を書く。300文字以内"),
+    councilFreeItem(org?.name, (org as { id?: string } | null)?.id, intake?.council_office_submissions, intake?.council_residence_submissions),
     manual("", "顔写真", "JPEG を添付（3か月以内に撮影）"),
   ];
 

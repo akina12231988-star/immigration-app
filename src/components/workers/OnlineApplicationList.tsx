@@ -170,6 +170,18 @@ export function OnlineApplicationList({
                     <span className="w-full text-[11px] font-bold text-seal sm:pl-[17.5rem]">⚠ {item.error}</span>
                   )}
                   {item.note && <span className="w-full text-[10px] text-muted sm:pl-[17.5rem]">{item.note}</span>}
+                  {/* 案内するファイル・画面（協力確認書の別紙のPDF など） */}
+                  {item.link && (
+                    <span className="w-full sm:pl-[17.5rem]">
+                      <a
+                        href={item.link.href}
+                        {...(item.link.download ? { download: true } : { target: "_blank", rel: "noopener noreferrer" })}
+                        className="inline-flex min-h-[32px] items-center gap-1 rounded-lg border border-brand bg-brand/5 px-2.5 text-[11px] font-bold text-brand hover:bg-brand/10"
+                      >
+                        {item.link.download ? "⬇" : "↗"} {item.link.label}
+                      </a>
+                    </span>
+                  )}
                 </div>
               );
             })}

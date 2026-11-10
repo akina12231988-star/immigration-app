@@ -339,7 +339,8 @@ describe("buildOnlineApplication", () => {
     expect(get("(7)登録年月日")?.value).toBe("20210324");
     expect(get("(4)電話番号")?.value).toBe("05088904000");
     expect(get("申請対象者の住居地（都道府県）")?.value).toBe("熊本県");
-    expect(get("フリー欄（協力確認書）")?.value).toContain("八代市長");
+    // 國崎青果は提出先が多いので、別紙の添付ファイルのとおりと書く
+    expect(get("フリー欄（協力確認書）")?.value).toContain("添付ファイルのとおり");
     // 通知送信用メールアドレスはオンラインシステムの利用者（取次者）のメール
     expect(get("通知送信用メールアドレス")?.value).toBe("thanhktc2017.visa@gmail.com");
   });
@@ -385,5 +386,25 @@ describe("buildOnlineApplication", () => {
     expect(i).toMatchObject({ no: "16.1", value: "" });
     expect(onlineSectionText(sections[0])).toContain("16.1 在日親族及び同居者 有無: 未登録");
     expect(onlineSectionText(sections[0])).toContain("2 生年月日: 19940710");
+  });
+});
+
+describe("councilFreeItem（フリー欄・協力確認書）", () => {
+  it("有限会社國崎青果は別紙の添付ファイルのとおりと書き、PDFのダウンロードを案内する", async () => {
+    const { councilFreeItem } = await import("./online-application");
+    const it1 = councilFreeItem("有限会社國崎青果", "o1", [{ to: "八代市", on: "2026-04-01" }], []);
+    expect(it1.value).toBe(
+      "１　有\n２（１）有、所属機関等作成用3 V(別紙）協力確認書の添付ファイルのとおり\n（２）有、所属機関等作成用3 V(別紙）協力確認書の添付ファイルのとおり",
+    );
+    expect(it1.link?.href).toBe("/organizations/o1/council/print?form=3v");
+    expect(it1.value.length).toBeLessThanOrEqual(300);
+  });
+  it("ほかの所属機関はこれまでどおり。300文字を超えたら知らせる", async () => {
+    const { councilFreeItem } = await import("./online-application");
+    expect(councilFreeItem("株式会社さくら", "o2", [{ to: "八代市", on: "2026-04-01" }], []).error).toBeUndefined();
+    const many = Array.from({ length: 20 }, (_, i) => ({ to: `（第${i}営業所）熊本県八代市`, on: "2026-04-01" }));
+    const over = councilFreeItem("株式会社さくら", "o2", many, many);
+    expect(over.error).toContain("300文字を超えています");
+    expect(over.link?.href).toBe("/organizations/o2/council/print?form=3v");
   });
 });
