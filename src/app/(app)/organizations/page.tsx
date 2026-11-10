@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { BadgeJapaneseYen, ClipboardList, Tag } from "lucide-react";
+import { BadgeJapaneseYen, ClipboardList, Stamp, Tag } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
 import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
@@ -70,6 +70,16 @@ export default async function OrganizationsPage() {
           <span>
             売上明細の登録状況
             <span className="block text-[11px] font-normal text-muted">申請種別ごとの売上明細・印紙代の負担が未登録の機関</span>
+          </span>
+        </Link>
+        <Link
+          href="/organizations/stamp-fee-rules"
+          className="flex min-h-[56px] items-center gap-3 rounded-xl border-2 border-brand bg-surface px-4 text-sm font-bold text-brand hover:bg-brand/5"
+        >
+          <Stamp size={22} className="shrink-0" />
+          <span>
+            印紙代の自動設定
+            <span className="block text-[11px] font-normal text-muted">所属機関ごとに申請準備の印紙代の負担を自動で決める</span>
           </span>
         </Link>
         <Link

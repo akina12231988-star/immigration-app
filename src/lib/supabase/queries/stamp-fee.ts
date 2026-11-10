@@ -1,6 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { stageOfStatus, type TodoStatusOption } from "@/lib/todo";
-import { defaultStampFeePayer, type StampFeeUnknownRow } from "@/lib/stamp-fee";
+import {
+  defaultStampFeePayer,
+  normalizeStampFeeOrgRules,
+  STAMP_FEE_RULES_SETTING_KEY,
+  type StampFeeUnknownRow,
+} from "@/lib/stamp-fee";
+import { getAppSetting } from "@/lib/supabase/queries/app-settings";
 
 // 収入印紙代の負担（本人負担／会社負担）が未設定の申請を、外国人をまたいで全件取る。
 //
@@ -18,6 +24,7 @@ type ChecklistRow = {
   app_content: string | null;
   tantou: string | null;
   stamp_fee_payer?: string | null;
+  created_at?: string | null;
 };
 
 type WorkerRow = {
@@ -110,6 +117,8 @@ export async function listStampFeeUnknownRows(
     orgDefaultById = new Map(list.map((o) => [o.id, typeof o.intake?.stamp_fee_payer === "string" ? o.intake.stamp_fee_payer : ""]));
   }
 
+  // 所属機関ごとの印紙代の自動設定（読めなければ最初から入れてある設定）
+  const rules = normalizeStampFeeOrgRules(await getAppSetting(supabase, STAMP_FEE_RULES_SETTING_KEY).catch(() => null));
   const rows: StampFeeUnknownRow[] = [];
   for (const w of workers) {
     const c = listByWorker.get(w.id);
@@ -117,7 +126,7 @@ export async function listStampFeeUnknownRows(
     const orgId = w.application_prep_organization_id || w.current_organization_id || "";
     const orgName = orgId ? (orgNameById.get(orgId) ?? "") : "";
     // 申請種別で自動で決まる負担（2号は本人負担・國崎青果の1号は会社立替）か、所属機関の情報で負担を選んでいればそれを使う（未設定扱いにしない）
-    if (defaultStampFeePayer(orgName, orgDefaultById.get(orgId), c.app_content)) continue;
+    if (defaultStampFeePayer(orgName, orgDefaultById.get(orgId), c.app_content, { rules, prepCreatedAt: c.created_at })) continue;
     rows.push({
       workerId: w.id,
       workerName: w.name,
