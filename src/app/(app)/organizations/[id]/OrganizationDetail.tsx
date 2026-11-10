@@ -1,5 +1,6 @@
 "use client";
 
+import { OrgIcon } from "@/components/organizations/OrgIcon";
 import { useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, X } from "lucide-react";
@@ -33,8 +34,10 @@ export function OrganizationDetail({
   roster,
   ssw2,
   contacts,
+  iconUrls = {},
 }: {
   organization: Organization;
+  iconUrls?: Record<string, string>; // ロゴマーク・代表者の顔写真の保存先 → 表示用URL（0221）
   managerNames?: string[]; // 支援責任者にしている従業員（/employees で設定）
   staffNames?: string[]; // 支援担当者にしている従業員（/employees で設定）
   workerCount?: number; // この機関に在籍している1号特定技能外国人数
@@ -170,6 +173,30 @@ export function OrganizationDetail({
       <OrgTabBar tab={tab} onChange={setTab} />
       </div>
 
+      {/* ロゴマーク・代表者の顔写真。画像をドラッグ＆ドロップ（または押して選ぶ）で登録・差し替え */}
+      {tab === "company" && (
+        <Card className="p-4">
+          <h2 className="mb-1 text-sm font-bold">アイコン画像</h2>
+          <p className="mb-3 text-[11px] text-muted">
+            ロゴマークと代表者の顔写真を登録できます。画像を枠にドラッグ＆ドロップするか、枠を押して選んでください。
+            ロゴマーク（無ければ顔写真）は所属機関の一覧の名前の横にも出ます。
+          </p>
+          <div className="flex flex-wrap gap-6">
+            <OrgIcon
+              organizationId={organization.id}
+              kind="logo"
+              initialUrl={(organization.logo_path && iconUrls[organization.logo_path]) || null}
+              canEdit
+            />
+            <OrgIcon
+              organizationId={organization.id}
+              kind="rep_photo"
+              initialUrl={(organization.rep_photo_path && iconUrls[organization.rep_photo_path]) || null}
+              canEdit
+            />
+          </div>
+        </Card>
+      )}
       {tab === "support" && (
         <>
           {/* 支援体制（令和9年4月1日施行の要件）。在籍数と選任状況をひと目で確認できるようにする */}

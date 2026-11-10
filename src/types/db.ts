@@ -103,6 +103,8 @@ export interface Organization {
   address: string;
   postal_code?: string; // 郵便番号（数字7桁・ハイフンなし。住所のテープ印刷に使う。0184 未適用なら undefined）
   main_industry?: string; // 業種 主たる業種（オンライン申請 3.4 のプルダウンの表記。0189 未適用なら undefined）
+  logo_path?: string | null; // ロゴマーク画像の保存先（0221。app-files の org-icons/）
+  rep_photo_path?: string | null; // 代表者の顔写真の保存先（0221）
   contact: string;
   corporate_no: string; // 法人番号（13桁・法人でない場合は空）
   note: string;

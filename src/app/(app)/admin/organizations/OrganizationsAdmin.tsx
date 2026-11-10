@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Building2, Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
+import { OrgIcon } from "@/components/organizations/OrgIcon";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -154,8 +155,10 @@ export function OrganizationsAdmin({
   managerNames = [],
   staffNames = [],
   workerCounts = {},
+  iconUrls = {},
 }: {
   organizations: Organization[];
+  iconUrls?: Record<string, string>; // ロゴマーク・代表者の顔写真の保存先 → 表示用URL（0221）
   managerNames?: string[]; // 支援責任者にしている従業員
   staffNames?: string[]; // 支援担当者にしている従業員
   workerCounts?: OrgWorkerCounts;
@@ -313,7 +316,15 @@ export function OrganizationsAdmin({
                   href={`/organizations/${org.id}`}
                   className="flex min-w-0 items-center gap-2"
                 >
-                  <Building2 size={16} className="shrink-0 text-muted" />
+                  {/* ロゴマーク（無ければ代表者の顔写真）。画像をここにドロップするとロゴマークに登録できる */}
+                  <OrgIcon
+                    organizationId={org.id}
+                    kind="logo"
+                    size="sm"
+                    initialUrl={(org.logo_path && iconUrls[org.logo_path]) || null}
+                    fallbackUrl={(org.rep_photo_path && iconUrls[org.rep_photo_path]) || null}
+                    canEdit
+                  />
                   <p className="truncate font-bold underline-offset-2 hover:text-brand hover:underline">
                     {org.name}
                   </p>

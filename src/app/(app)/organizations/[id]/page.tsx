@@ -19,6 +19,7 @@ import { OrgSsw2Instruction } from "@/components/organizations/OrgSsw2Instructio
 import { OrganizationContacts } from "@/components/organizations/OrganizationContacts";
 import { ssw2DutiesOf } from "@/lib/org-ssw2-duties";
 import { OrganizationDetail } from "./OrganizationDetail";
+import { signOrgIconUrls } from "@/lib/supabase/queries/org-icons";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +60,10 @@ export default async function OrganizationDetailPage({
     id,
     new Set([...roster.current, ...roster.past].map((w) => w.id)),
   ).catch(() => []);
+  // ロゴマーク・代表者の顔写真（0221）の表示用URL
+  const iconUrls = await signOrgIconUrls([organization.logo_path, organization.rep_photo_path]).catch(
+    () => ({}) as Record<string, string>,
+  );
   const workerCount = workers.filter(
     (w) => w.current_organization_id === id && isSupportedSsw1(w),
   ).length;
@@ -69,6 +74,7 @@ export default async function OrganizationDetailPage({
           在籍者は「支援体制・在籍者」、２号の指導体制は「２号の指導体制」のタブに出す */}
       <OrganizationDetail
         organization={organization}
+        iconUrls={iconUrls}
         managerNames={supportManagerOptions(employees, todayStr())}
         staffNames={supportStaffOptions(employees, todayStr())}
         workerCount={workerCount}

@@ -14,6 +14,7 @@ import {
 } from "@/lib/support-system";
 import { todayStr } from "@/lib/application-alerts";
 import { OrganizationsAdmin } from "../admin/organizations/OrganizationsAdmin";
+import { signOrgIconUrls } from "@/lib/supabase/queries/org-icons";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,8 @@ export default async function OrganizationsPage() {
     listEmployees(supabase),
     listWorkersForSupport(supabase),
   ]);
+  // ロゴマーク・代表者の顔写真（0221）の表示用URL
+  const iconUrls = await signOrgIconUrls(organizations.flatMap((o) => [o.logo_path, o.rep_photo_path])).catch(() => ({}));
   const workerCounts = Object.fromEntries(
     summarizeOrganizations(organizations, workers).map((o) => [o.organizationId, o.workerCount]),
   );
@@ -95,6 +98,7 @@ export default async function OrganizationsPage() {
         managerNames={supportManagerOptions(employees, todayStr())}
         staffNames={supportStaffOptions(employees, todayStr())}
         workerCounts={workerCounts}
+        iconUrls={iconUrls}
       />
     </>
   );
