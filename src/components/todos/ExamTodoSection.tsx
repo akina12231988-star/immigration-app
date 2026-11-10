@@ -34,6 +34,7 @@ import {
   examAccountMissing,
   examOpenSection,
   examProgress,
+  isAppNoTodoTitle,
   isSsw2ExamTitle,
   normalizeTodoExam,
   overdueExamAttempts,
@@ -253,8 +254,9 @@ export function ExamTodoSection({
         </p>
       ))}
 
-      {/* 進み具合の帯（いまどこか・何が足りないか） */}
-      <ExamProgressBand steps={steps} />
+      {/* 進み具合の帯（いまどこか・何が足りないか）。
+          アプリケーションNo.の申込と試験の申込は進み方が違うので、見出しと色を分ける */}
+      <ExamProgressBand steps={steps} appNo={isAppNoTodoTitle(todo.title)} />
 
       {/* 見るだけ ⇔ 編集 */}
       {canEdit && (
@@ -512,15 +514,23 @@ export function ExamTodoSection({
 }
 
 // 進み具合の帯。段階ごとに色の棒と「いまここ」「済」を出す
-function ExamProgressBand({ steps }: { steps: ExamStep[] }) {
+function ExamProgressBand({ steps, appNo = false }: { steps: ExamStep[]; appNo?: boolean }) {
   return (
-    <ol className="grid gap-1.5 rounded-xl bg-background p-2.5" style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }}>
+    <div className={`rounded-xl border-l-4 bg-background p-2.5 ${appNo ? "border-violet-500" : "border-brand"}`}>
+    <p className={`mb-1.5 text-[11px] font-bold ${appNo ? "text-violet-700" : "text-brand"}`}>
+      {appNo ? "アプリケーションNo.の申込の進み具合（試験の申込は別のTODOで管理）" : "試験の申込の進み具合"}
+    </p>
+    <ol className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }}>
       {steps.map((s, i) => {
         const bar =
           s.state === "done"
-            ? "bg-brand"
+            ? appNo
+              ? "bg-violet-600"
+              : "bg-brand"
             : s.state === "current"
-              ? "bg-brand/60"
+              ? appNo
+                ? "bg-violet-400"
+                : "bg-brand/60"
               : s.state === "alert"
                 ? "bg-seal"
                 : "bg-border";
@@ -543,6 +553,7 @@ function ExamProgressBand({ steps }: { steps: ExamStep[] }) {
         );
       })}
     </ol>
+    </div>
   );
 }
 
