@@ -23,6 +23,15 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-11-10",
+    title: "印紙代の自動設定でも、特定技能2号に関わる申請は本人負担のままにしました",
+    where: "所属機関の情報 ＞ 印紙代の自動設定／申請準備の詳細 ＞ 収入印紙代",
+    href: "/organizations/stamp-fee-rules",
+    items: [
+      "所属機関ごとの自動設定（松本英男さん・白石智和さんなど）があっても、特定技能2号に関わる申請（2号への変更・2号の更新・2号移行準備の特定活動）は本人負担になります。",
+    ],
+  },
+  {
+    date: "2026-11-10",
     title: "申請準備の収入印紙代を、所属機関ごとに自動で決める「印紙代の自動設定」を作りました",
     where: "所属機関の情報 ＞ 印紙代の自動設定（申請準備の詳細の「収入印紙代」の横からも開けます）",
     href: "/organizations/stamp-fee-rules",
