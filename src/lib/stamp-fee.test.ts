@@ -125,3 +125,28 @@ describe("autoStampFeePayer（申請種別で自動で決まる負担）", () =>
     expect(effectiveStampFeePayer("会社負担", "株式会社さくら", "", "特定技能2号申請準備中")).toBe("会社負担");
   });
 });
+
+describe("所属機関ごとの印紙代の自動設定", () => {
+  it("松本英男は更新も新規も会社負担。適用開始日より前に登録した申請準備には効かない", async () => {
+    const { autoStampFeePayer, DEFAULT_STAMP_FEE_ORG_RULES: rules } = await import("./stamp-fee");
+    expect(autoStampFeePayer("特定技能更新の準備中", "松本英男", { rules, prepCreatedAt: "2026-11-10T09:00:00Z" })).toBe("会社負担");
+    expect(autoStampFeePayer("特定技能申請準備中", "松本 英男", { rules, prepCreatedAt: "2026-12-01" })).toBe("会社負担");
+    expect(autoStampFeePayer("特定技能更新の準備中", "松本英男", { rules, prepCreatedAt: "2026-11-01" })).toBe("");
+    expect(autoStampFeePayer("特定技能更新の準備中", "松本英男")).toBe("");
+  });
+  it("白石智和は更新が会社負担・新規が本人負担", async () => {
+    const { autoStampFeePayer, DEFAULT_STAMP_FEE_ORG_RULES: rules } = await import("./stamp-fee");
+    const ctx = { rules, prepCreatedAt: "2026-11-11" };
+    expect(autoStampFeePayer("特定技能更新の準備中", "白石智和", ctx)).toBe("会社負担");
+    expect(autoStampFeePayer("特定活動ビザ更新の申請準備", "白石智和", ctx)).toBe("会社負担");
+    expect(autoStampFeePayer("特定技能申請準備中", "白石智和", ctx)).toBe("本人負担");
+    expect(autoStampFeePayer("在留資格認定申請書の準備中", "白石智和", ctx)).toBe("本人負担");
+  });
+  it("保存した設定を読む（未保存なら最初から入れてある設定）", async () => {
+    const { normalizeStampFeeOrgRules, DEFAULT_STAMP_FEE_ORG_RULES } = await import("./stamp-fee");
+    expect(normalizeStampFeeOrgRules(null)).toEqual(DEFAULT_STAMP_FEE_ORG_RULES);
+    expect(normalizeStampFeeOrgRules({ rules: [{ id: "a", orgName: "A社", renewal: "会社負担", newApp: "x", from: "2026-01-01" }] })).toEqual([
+      { id: "a", orgName: "A社", renewal: "会社負担", newApp: "", from: "2026-01-01" },
+    ]);
+  });
+});

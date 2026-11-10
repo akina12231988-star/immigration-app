@@ -97,12 +97,17 @@ import { formatStorageNo } from "@/lib/custody";
 import {
   STAMP_FEE_PAYERS,
   autoStampFeePayer,
+  normalizeStampFeeOrgRules,
+  orgRuleStampFeePayer,
+  STAMP_FEE_RULES_SETTING_KEY,
+  type StampFeeOrgRule,
   defaultStampFeePayer,
   effectiveStampFeePayer,
   isSsw2StampAppContent,
   isStampFeePayer,
   stampFeePayerLabel,
 } from "@/lib/stamp-fee";
+import { getAppSetting } from "@/lib/supabase/queries/app-settings";
 import { PrepEstimateItemsPanel } from "@/components/workers/PrepEstimateItemsPanel";
 import { HireCheckPanel } from "@/components/workers/HireCheckPanel";
 import { EMPTY_HIRE_CHECK } from "@/lib/hire-check";
@@ -353,6 +358,13 @@ export function ApplicationPrepChecklist({
 
   // 申請準備のTODO（この外国人分）とステータスの選択肢。名前の下に常時表示して編集できる
   const [workerTodos, setWorkerTodos] = useState<TodoRow[]>([]);
+  // 所属機関ごとの印紙代の自動設定（/organizations/stamp-fee-rules。保存前は最初から入れてある設定）
+  const [stampRules, setStampRules] = useState<StampFeeOrgRule[] | undefined>(undefined);
+  useEffect(() => {
+    getAppSetting(createClient(), STAMP_FEE_RULES_SETTING_KEY)
+      .then((v) => setStampRules(normalizeStampFeeOrgRules(v)))
+      .catch(() => setStampRules(normalizeStampFeeOrgRules(null)));
+  }, []);
   const [todoOptions, setTodoOptions] = useState<TodoStatusOption[]>([]);
   // 外国人の只今の状況（申請種別が未選択のときの引き当てに使う）と、自動で入れたリストの番号
   const [currentSituation, setCurrentSituation] = useState("");
@@ -1820,8 +1832,8 @@ export function ApplicationPrepChecklist({
               orgId={prepOrgId}
               orgName={prepOrgName}
               orgPaySystem={orgIntake?.pay_system ?? ""}
-              stampFeePayer={effectiveStampFeePayer(current.stamp_fee_payer, prepOrgName, orgIntake?.stamp_fee_payer ?? "", current.app_content)}
-              askStampFee={!defaultStampFeePayer(prepOrgName, orgIntake?.stamp_fee_payer ?? "", current.app_content)}
+              stampFeePayer={effectiveStampFeePayer(current.stamp_fee_payer, prepOrgName, orgIntake?.stamp_fee_payer ?? "", current.app_content, { rules: stampRules, prepCreatedAt: current.created_at })}
+              askStampFee={!defaultStampFeePayer(prepOrgName, orgIntake?.stamp_fee_payer ?? "", current.app_content, { rules: stampRules, prepCreatedAt: current.created_at })}
               onStampFeeSave={(v) => void saveExtras({ stamp_fee_payer: v })}
               value={current.hire_check ?? EMPTY_HIRE_CHECK}
               canEdit={canEdit}
@@ -1876,6 +1888,8 @@ export function ApplicationPrepChecklist({
           canEdit={canEdit}
           onSave={(v) => saveExtras({ stamp_fee_payer: v })}
           estimateHref={`${prepDetailHref(workerId)}/estimate?todo=${encodeURIComponent(current.todo_no)}`}
+          rules={stampRules}
+          prepCreatedAt={current.created_at}
         />
         {/* 見積・請求の明細（所属機関の売上明細から読み込んで、この申請の明細として登録する） */}
         <PrepEstimateItemsPanel
@@ -1921,7 +1935,10 @@ export function ApplicationPrepChecklist({
                 });
                 // 申請種別で収入印紙代の負担が決まるもの（2号に関わる申請は本人負担、
                 // 國崎青果の1号に関わる申請は会社立替）は、選んだときに負担も合わせる
-                const autoPayer = autoStampFeePayer(e.target.value, prepOrgName);
+                const autoPayer = autoStampFeePayer(e.target.value, prepOrgName, {
+                  rules: stampRules,
+                  prepCreatedAt: current?.created_at,
+                });
                 if (autoPayer && autoPayer !== (current?.stamp_fee_payer ?? "")) {
                   void saveExtras({ stamp_fee_payer: autoPayer });
                 }
@@ -3610,7 +3627,11 @@ function StampFeePayerField({
   canEdit,
   onSave,
   estimateHref,
+  rules,
+  prepCreatedAt,
 }: {
+  rules?: StampFeeOrgRule[]; // 所属機関ごとの印紙代の自動設定
+  prepCreatedAt?: string; // この申請準備を登録した日時（自動設定の適用開始日と比べる）
   value: string;
   orgName: string;
   orgDefault: string; // 所属機関の情報で選んだ負担の既定（6,000円を超える場合）
@@ -3619,8 +3640,10 @@ function StampFeePayerField({
   onSave: (v: string) => void;
   estimateHref: string; // 見積書の印刷ページ（負担を選ぶと開ける）
 }) {
-  const effective = effectiveStampFeePayer(value, orgName, orgDefault, appContent);
-  const auto = autoStampFeePayer(appContent, orgName);
+  const ctx = { rules, prepCreatedAt };
+  const effective = effectiveStampFeePayer(value, orgName, orgDefault, appContent, ctx);
+  const auto = autoStampFeePayer(appContent, orgName, ctx);
+  const byOrgRule = orgRuleStampFeePayer(rules, appContent, orgName, prepCreatedAt);
   // 自動で保存する負担（申請種別で決まる負担）
   const autoSave = auto;
   const fromOrg = !value.trim() && !!effective && !autoSave && isStampFeePayer(orgDefault);
@@ -3633,7 +3656,9 @@ function StampFeePayerField({
     // onSave は親の関数で毎回変わるため依存に入れない（申請種別ごとに一度だけ保存する）
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canEdit, autoSave, value, appContent]);
-  const autoNote = isSsw2StampAppContent(appContent)
+  const autoNote = byOrgRule
+    ? `${orgName}の申請は印紙代の自動設定で${stampFeePayerLabel(byOrgRule)}です`
+    : isSsw2StampAppContent(appContent)
     ? "特定技能2号に関わる申請は自動で本人負担です"
     : auto === "会社立替"
       ? "有限会社國崎青果の特定技能1号に関わる申請は自動で会社立替です"
@@ -3695,6 +3720,10 @@ function StampFeePayerField({
         }`}
       >
         🧾 見積書{effective ? `（${stampFeePayerLabel(effective)}）` : ""}
+      </Link>
+      {/* 所属機関ごとの自動設定の一覧（ここから今後の会社を登録していく） */}
+      <Link href="/organizations/stamp-fee-rules" className="text-[11px] font-bold text-muted underline hover:text-brand">
+        印紙代の自動設定
       </Link>
     </div>
   );

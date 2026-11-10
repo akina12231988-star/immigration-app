@@ -34,6 +34,7 @@ export interface PrepChecklistRow extends PrepChecklistMeta {
   sign_status: string; // 本人から署名をもらったかのステータス
   planned_app_on: string | null; // 申請予定日（健康診断書の有効チェックに使う。0112）
   updated_at: string; // 最終更新日時（前回の準備リストの見当を付けるのに使う）
+  created_at: string; // 登録した日時（印紙代の所属機関ごとの自動設定の適用開始日と比べる）
   memo: string; // メモ（いま何を依頼していて何を待っているか。A4印刷のメモ欄にも出す。0160）
   post_apply_tasks: PostApplyTask[]; // 申請後に対応するタスク（0167）
   post_apply_mailings: PostApplyMailing[]; // 申請後に入管へ郵送した記録（0168）
@@ -84,6 +85,7 @@ export async function listPrepChecklists(
     sign_status: r.sign_status ?? "",
     planned_app_on: r.planned_app_on ?? null,
     updated_at: r.updated_at ?? "",
+    created_at: r.created_at ?? "",
     memo: r.memo ?? "",
     post_apply_tasks: normalizePostApplyTasks(r.post_apply_tasks),
     post_apply_mailings: normalizePostApplyMailings(r.post_apply_mailings),

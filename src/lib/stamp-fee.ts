@@ -5,6 +5,7 @@
 // どちらか分かっていない申請は、所属機関別の一覧（/todos/stamp-fee）に出して確認する。
 
 import { orgSearchKeys } from "@/lib/org-search";
+import { APPLICATION_CONTENT_CHOICES } from "@/lib/worker-situation";
 
 // 会社立替 = 会社がいったん払い、給与などから本人が負担する（実質本人負担）。
 // 請求書・見積書では会社負担と同じく明細に入れ、立替である旨を書く
@@ -63,14 +64,91 @@ export function isSsw1StampAppContent(appContent: string | null | undefined): bo
   return (SSW1_STAMP_APP_CONTENTS as readonly string[]).includes((appContent ?? "").trim());
 }
 
+// ---- 所属機関ごとの自動設定（印紙代の自動設定の画面で登録する。app_settings） ----
+//
+// 所属機関ごとに「更新の申請」「新規の申請（変更・認定・特定活動）」の負担を決めておくと、
+// 適用開始日より後に登録した申請準備は、その負担に自動で設定する
+// （それより前に登録していた申請準備は自動では決めず、これまでどおり選ぶ）
+export const STAMP_FEE_RULES_SETTING_KEY = "stamp_fee_org_rules";
+
+export interface StampFeeOrgRule {
+  id: string;
+  orgName: string; // 所属機関の名称（法人格・空白の違いは同じ扱い）
+  renewal: StampFeePayer | ""; // 更新の申請（在留期間の更新）の負担（'' は自動では決めない）
+  newApp: StampFeePayer | ""; // 新規の申請（在留資格の変更・認定・特定活動）の負担
+  from: string; // 適用開始日（YYYY-MM-DD）。この日以降に登録した申請準備に効く
+}
+
+// 最初から入れておく自動設定（画面で保存するまではこれを使う）
+export const DEFAULT_STAMP_FEE_ORG_RULES: StampFeeOrgRule[] = [
+  { id: "matsumoto", orgName: "松本英男", renewal: "会社負担", newApp: "会社負担", from: "2026-11-10" },
+  { id: "shiraishi", orgName: "白石智和", renewal: "会社負担", newApp: "本人負担", from: "2026-11-10" },
+];
+
+export function normalizeStampFeeOrgRules(v: unknown): StampFeeOrgRule[] {
+  const list = v && typeof v === "object" ? (v as { rules?: unknown }).rules : undefined;
+  if (!Array.isArray(list)) return DEFAULT_STAMP_FEE_ORG_RULES;
+  const payer = (x: unknown): StampFeePayer | "" => (isStampFeePayer(x) ? (x as StampFeePayer) : "");
+  return list
+    .filter((r): r is Record<string, unknown> => !!r && typeof r === "object")
+    .map((r, i) => ({
+      id: typeof r.id === "string" && r.id ? r.id : `rule-${i}`,
+      orgName: typeof r.orgName === "string" ? r.orgName : "",
+      renewal: payer(r.renewal),
+      newApp: payer(r.newApp),
+      from: typeof r.from === "string" ? r.from : "",
+    }))
+    .filter((r) => r.orgName.trim());
+}
+
+// 申請種別（準備の内容の保存値）が更新の申請か・新規の申請か
+export function stampAppKind(appContent: string | null | undefined): "renewal" | "new" | "" {
+  const c = APPLICATION_CONTENT_CHOICES.find((x) => x.prepSituation === (appContent ?? "").trim());
+  if (!c) return "";
+  return c.appType === "更新" ? "renewal" : "new";
+}
+
+const nameKey = (name: string) => orgKey(name).replace(/[\s　]/g, "");
+
+// その所属機関の自動設定（無ければ null）
+export function findStampFeeOrgRule(rules: StampFeeOrgRule[], orgName: string | null | undefined): StampFeeOrgRule | null {
+  const key = nameKey(orgName ?? "");
+  if (!key) return null;
+  return rules.find((r) => nameKey(r.orgName) === key) ?? null;
+}
+
+// 所属機関ごとの自動設定から決まる負担。申請準備を登録した日が適用開始日より前なら決めない
+export function orgRuleStampFeePayer(
+  rules: StampFeeOrgRule[] | undefined,
+  appContent: string | null | undefined,
+  orgName: string | null | undefined,
+  prepCreatedAt: string | null | undefined,
+): StampFeePayer | "" {
+  if (!rules || !prepCreatedAt) return "";
+  const rule = findStampFeeOrgRule(rules, orgName);
+  if (!rule) return "";
+  if (rule.from && prepCreatedAt.slice(0, 10) < rule.from) return "";
+  const kind = stampAppKind(appContent);
+  return kind === "renewal" ? rule.renewal : kind === "new" ? rule.newApp : "";
+}
+
+export interface StampFeeAutoContext {
+  rules?: StampFeeOrgRule[]; // 所属機関ごとの自動設定
+  prepCreatedAt?: string | null; // 申請準備を登録した日時
+}
+
 // 申請種別と所属機関から自動で決まる負担（申請準備の詳細で未選択なら自動で保存する）。
+//  ・所属機関ごとの自動設定（印紙代の自動設定の画面）に当てはまれば、その負担
 //  ・特定技能2号に関わる申請は本人負担
 //  ・特定技能1号に関わる申請で、所属機関が有限会社國崎青果なら会社立替（実質本人負担）
-// どちらでもなければ ''（所属機関の情報で選んだ負担 → 未設定）
+// どれでもなければ ''（所属機関の情報で選んだ負担 → 未設定）
 export function autoStampFeePayer(
   appContent: string | null | undefined,
   orgName: string | null | undefined,
+  ctx: StampFeeAutoContext = {},
 ): StampFeePayer | "" {
+  const byOrg = orgRuleStampFeePayer(ctx.rules, appContent, orgName, ctx.prepCreatedAt);
+  if (byOrg) return byOrg;
   if (isSsw2StampAppContent(appContent)) return "本人負担";
   if (isSsw1StampAppContent(appContent) && isKunisakiSeika(orgName)) return "会社立替";
   return "";
@@ -83,8 +161,9 @@ export function defaultStampFeePayer(
   orgName: string | null | undefined,
   orgDefault?: string | null,
   appContent?: string | null,
+  ctx: StampFeeAutoContext = {},
 ): StampFeePayer | "" {
-  const auto = autoStampFeePayer(appContent, orgName);
+  const auto = autoStampFeePayer(appContent, orgName, ctx);
   if (auto) return auto;
   const d = (orgDefault ?? "").trim();
   if (isStampFeePayer(d)) return d;
@@ -97,10 +176,11 @@ export function effectiveStampFeePayer(
   orgName: string | null | undefined,
   orgDefault?: string | null,
   appContent?: string | null,
+  ctx: StampFeeAutoContext = {},
 ): StampFeePayer | "" {
   const v = (saved ?? "").trim();
   if (isStampFeePayer(v)) return v;
-  return defaultStampFeePayer(orgName, orgDefault, appContent);
+  return defaultStampFeePayer(orgName, orgDefault, appContent, ctx);
 }
 
 // ---- 許可後の請求（請求書作成の当月許可者リスト）での収入印紙代の扱い ----
