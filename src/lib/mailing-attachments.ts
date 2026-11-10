@@ -18,6 +18,45 @@ export interface MailingAttachmentSlot {
   years?: YearType[];
   title: string; // 欄の見出し
   addLabel: string; // 追加ボタンの文言
+  // 届いた証明書が「どの証明書か」を選ぶ（課税・納税証明書の記録のときだけ）。
+  // 選んだ証明書は種別名の後ろに「｜課税証明書」のように付けて残し、申請準備ではその行にだけ出す
+  certTypes?: TaxCertType[];
+}
+
+// ---- 届いた証明書が「どの証明書か」（申請準備の行と同じ区分） ----
+export interface TaxCertType {
+  id: "kazei" | "nozei_shiken" | "nozei_kokuho"; // 申請準備の行の id と同じ
+  label: string;
+}
+export const TAX_CERT_TYPES: TaxCertType[] = [
+  { id: "kazei", label: "課税証明書" },
+  { id: "nozei_shiken", label: "納税証明書（市県民税）" },
+  { id: "nozei_kokuho", label: "納税証明書（国保税）" },
+];
+const CERT_TAG_SEP = "｜";
+
+// 種別名に「どの証明書か」を付ける（例: 届いた証明書：2025年度（令和7年度）｜課税証明書）
+export function certTaggedKind(base: string, certId: string | null): string {
+  const t = TAX_CERT_TYPES.find((c) => c.id === certId);
+  return t ? `${base}${CERT_TAG_SEP}${t.label}` : base;
+}
+// 種別名から「どの証明書か」を読む（付いていなければ null）
+export function certIdOfKind(kind: string): TaxCertType["id"] | null {
+  const i = kind.lastIndexOf(CERT_TAG_SEP);
+  if (i < 0) return null;
+  const label = kind.slice(i + CERT_TAG_SEP.length);
+  return TAX_CERT_TYPES.find((c) => c.label === label)?.id ?? null;
+}
+// 「どの証明書か」を除いた種別名（欄に出すかどうかの突き合わせに使う）
+export function baseKindOf(kind: string): string {
+  const i = kind.lastIndexOf(CERT_TAG_SEP);
+  return i < 0 || !certIdOfKind(kind) ? kind : kind.slice(0, i);
+}
+
+// 課税・納税証明書の記録で選べる証明書（国保税は、国保税も請求した記録のときだけ）
+function certTypesOf(r: Partial<SlotSource>): TaxCertType[] {
+  const nhi = (r.nhiYears?.length ?? 0) > 0 || (r.docs ?? []).some((d) => d.isNhi);
+  return TAX_CERT_TYPES.filter((c) => c.id !== "nozei_kokuho" || nhi);
 }
 
 // 添付欄を決めるのに使う記録の項目
@@ -91,7 +130,7 @@ export function mailingAttachmentSlots(r: Partial<SlotSource>): MailingAttachmen
         const y = label(yr);
         return [
           { role: "sent" as const, year: yr.yearType, kind: yearAttachmentKind(MAIL_REQUEST_KIND, yr.fiscalStartYear), title: `【${y}】郵送請求した書類（申請書などのデータ）`, addLabel: `${y}の郵送請求した書類を添付（画像・PDF）` },
-          { role: "received" as const, year: yr.yearType, kind: yearAttachmentKind(RECEIVED_CERT_KIND, yr.fiscalStartYear), title: `【${y}】届いた証明書（届いたら添付）`, addLabel: `${y}の届いた証明書を添付（画像・PDF）` },
+          { role: "received" as const, year: yr.yearType, kind: yearAttachmentKind(RECEIVED_CERT_KIND, yr.fiscalStartYear), title: `【${y}】届いた証明書（届いたら添付）`, addLabel: `${y}の届いた証明書を添付（画像・PDF）`, certTypes: certTypesOf(r) },
           { role: "receipt" as const, year: yr.yearType, kind: yearAttachmentKind(RECEIPT_KIND, yr.fiscalStartYear), title: `【${y}】領収書（後日届いたら添付）`, addLabel: `${y}の領収書を添付（画像・PDF）` },
         ];
       }
@@ -107,14 +146,20 @@ export function mailingAttachmentSlots(r: Partial<SlotSource>): MailingAttachmen
       });
       return [
         slot("sent", MAIL_REQUEST_KIND, "郵送請求した書類（申請書などのデータ）", "郵送請求した書類を添付（画像・PDF）"),
-        slot("received", RECEIVED_CERT_KIND, "届いた証明書（届いたら添付）", "届いた証明書を添付（画像・PDF）"),
+        { ...slot("received", RECEIVED_CERT_KIND, "届いた証明書（届いたら添付）", "届いた証明書を添付（画像・PDF）"), certTypes: certTypesOf(r) },
         slot("receipt", RECEIPT_KIND, "領収書（後日届いたら添付）", "領収書を添付（画像・PDF）"),
       ];
     });
   }
   return [
     { role: "sent", kind: MAIL_REQUEST_KIND, title: "郵送請求した書類（申請書などのデータ）", addLabel: "郵送請求した書類を添付（画像・PDF）" },
-    { role: "received", kind: RECEIVED_CERT_KIND, title: "届いた証明書（届いたら添付）", addLabel: "届いた証明書を添付（画像・PDF）" },
+    {
+      role: "received",
+      kind: RECEIVED_CERT_KIND,
+      title: "届いた証明書（届いたら添付）",
+      addLabel: "届いた証明書を添付（画像・PDF）",
+      ...(!r.requestKind || r.requestKind === "tax" ? { certTypes: certTypesOf(r) } : {}),
+    },
     { role: "receipt", kind: RECEIPT_KIND, title: "領収書（後日届いたら添付）", addLabel: "領収書を添付（画像・PDF）" },
   ];
 }

@@ -56,7 +56,14 @@ export function PrepMailingLink({
         </Link>
       </div>
       {/* 記録の詳細で添付した「届いた証明書」をここにも出す（見るだけ。添付は記録の詳細で） */}
-      <MailingRecordAttachments record={record} canEdit={false} only={["received"]} divided={false} />
+      {/* 課税・納税証明書は、添付で選んだ「どの証明書か」に合う分だけ（未選択の添付も出す） */}
+      <MailingRecordAttachments
+        record={record}
+        canEdit={false}
+        only={["received"]}
+        divided={false}
+        certFilter={kind === "tax" && docId ? docId : undefined}
+      />
       {sameTodo.length === 0 && key && (
         <Link href={newHref} className="inline-flex items-center gap-1 text-[10px] font-bold text-muted hover:underline">
           <Plus size={10} />

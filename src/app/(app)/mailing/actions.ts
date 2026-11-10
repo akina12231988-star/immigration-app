@@ -183,3 +183,13 @@ export async function deleteAgentDoc(docId: string): Promise<{ ok: true } | Err>
   if (error) return { ok: false, message: error.message };
   return { ok: true };
 }
+
+// 添付の種別を変える（届いた証明書が「どの証明書か」を後から選び直すときに使う）
+export async function setMailingFileKind(fileId: string, kind: string): Promise<{ ok: true } | Err> {
+  if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
+  const admin = createAdminClient();
+  if (!admin) return { ok: false, message: "サーバー設定エラー" };
+  const { error } = await admin.from("mailing_files").update({ kind }).eq("id", fileId);
+  if (error) return { ok: false, message: error.message };
+  return { ok: true };
+}

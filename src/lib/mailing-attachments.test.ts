@@ -118,3 +118,22 @@ describe("年金記録（年金事務所）", () => {
   });
 });
 
+
+describe("届いた証明書が「どの証明書か」", () => {
+  it("種別名に付けて読み戻せる。付けていない添付は null", async () => {
+    const { certTaggedKind, certIdOfKind, baseKindOf } = await import("./mailing-attachments");
+    const k = certTaggedKind("届いた証明書：2025年度（令和7年度）", "kazei");
+    expect(k).toBe("届いた証明書：2025年度（令和7年度）｜課税証明書");
+    expect(certIdOfKind(k)).toBe("kazei");
+    expect(baseKindOf(k)).toBe("届いた証明書：2025年度（令和7年度）");
+    expect(certIdOfKind("届いた証明書")).toBeNull();
+    expect(baseKindOf("届いた証明書")).toBe("届いた証明書");
+    expect(certTaggedKind("届いた証明書", null)).toBe("届いた証明書");
+  });
+  it("課税・納税証明書の届いた証明書の欄だけ選べる（国保税は国保税も請求したときだけ）", async () => {
+    const { mailingAttachmentSlots } = await import("./mailing-attachments");
+    const received = mailingAttachmentSlots({}).find((s) => s.role === "received");
+    expect(received?.certTypes?.map((c) => c.id)).toEqual(["kazei", "nozei_shiken"]);
+    expect(mailingAttachmentSlots({ requestKind: "juminhyo" }).find((s) => s.role === "received")?.certTypes).toBeUndefined();
+  });
+});

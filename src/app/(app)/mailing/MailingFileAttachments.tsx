@@ -11,7 +11,9 @@ import {
   deleteMailingFile,
   getMailingFilePreviewUrl,
   registerMailingFile,
+  setMailingFileKind,
 } from "./actions";
+import { baseKindOf, certIdOfKind, certTaggedKind, type TaxCertType } from "@/lib/mailing-attachments";
 
 // 郵送請求の記録へのファイル添付（郵送請求した申請書・転出届・住民票・領収書の画像やPDF・複数可）。
 // 追加はドラッグ＆ドロップと、ボタンを押してファイルを選ぶ方法のどちらでもできる。
@@ -22,6 +24,8 @@ export function MailingFileAttachments({
   canEdit,
   filterKind,
   filterKinds,
+  certTypes,
+  certFilter,
 }: {
   recordId: string;
   kind: string;
@@ -31,13 +35,27 @@ export function MailingFileAttachments({
   filterKind?: string;
   // 指定するとこれらの種別の添付をまとめて表示する（同じ自治体の2年度を1つの欄にまとめたとき）
   filterKinds?: string[];
+  // 届いた証明書が「どの証明書か」を選ばせる（課税・納税証明書の記録）。選んだ証明書を種別名に付けて残す
+  certTypes?: TaxCertType[];
+  // この証明書の分だけ出す（申請準備の行から。どの証明書か未設定の添付も出す）
+  certFilter?: string;
 }) {
   const [files, setFiles] = useState<MailingFileRow[]>([]);
-  const shown = filterKinds?.length
-    ? files.filter((f) => filterKinds.includes(f.kind))
+  // 「どの証明書か」は種別名の後ろに付けているので、欄の突き合わせは付ける前の種別名でする
+  const byKind = filterKinds?.length
+    ? files.filter((f) => filterKinds.includes(baseKindOf(f.kind)))
     : filterKind
-      ? files.filter((f) => f.kind === filterKind)
+      ? files.filter((f) => baseKindOf(f.kind) === filterKind)
       : files;
+  const shown = certFilter
+    ? byKind.filter((f) => {
+        const id = certIdOfKind(f.kind);
+        return !id || id === certFilter;
+      })
+    : byKind;
+  const choosing = !!certTypes && certTypes.length > 0;
+  // これから添付する証明書（1つしか無ければそれ）
+  const [certId, setCertId] = useState<string | null>(() => (certTypes?.length === 1 ? certTypes[0].id : null));
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,6 +75,10 @@ export function MailingFileAttachments({
 
   async function handleFiles(list: FileList | null) {
     if (!list || list.length === 0) return;
+    if (choosing && !certId) {
+      setError("先に、どの証明書の添付かを選んでください（課税証明書・納税証明書）");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -68,7 +90,7 @@ export function MailingFileAttachments({
           .storage.from("app-files")
           .uploadToSignedUrl(ticket.path, ticket.token, blob, { contentType: mimeType });
         if (upErr) throw new Error(`アップロードに失敗しました: ${upErr.message}`);
-        const res = await registerMailingFile(recordId, kind, ticket.path, fileName, mimeType);
+        const res = await registerMailingFile(recordId, choosing ? certTaggedKind(kind, certId) : kind, ticket.path, fileName, mimeType);
         if (!res.ok) throw new Error(res.message);
       }
       setFiles(await listMailingFiles(createClient(), recordId));
@@ -82,6 +104,15 @@ export function MailingFileAttachments({
   async function preview(id: string) {
     const res = await getMailingFilePreviewUrl(id);
     if (res.ok) window.open(res.url, "_blank", "noopener");
+    else setError(res.message);
+  }
+
+  // 添付した証明書が「どの証明書か」を選び直す（前からある、まだ選んでいない添付もここで選べる）
+  async function changeCert(f: MailingFileRow, id: string) {
+    setError(null);
+    const next = certTaggedKind(baseKindOf(f.kind), id || null);
+    const res = await setMailingFileKind(f.id, next);
+    if (res.ok) setFiles((prev) => prev.map((x) => (x.id === f.id ? { ...x, kind: next } : x)));
     else setError(res.message);
   }
 
@@ -112,8 +143,30 @@ export function MailingFileAttachments({
       {error && <p className="rounded-lg bg-seal/10 px-2.5 py-1.5 text-xs text-seal">{error}</p>}
       {shown.length === 0 && !canEdit && <p className="text-[11px] text-muted">添付はありません</p>}
       {shown.map((f) => (
-        <div key={f.id} className="flex items-center gap-1.5">
-          <AttachedFileButton fileName={f.file_name} onOpen={() => preview(f.id)} className="flex-1" />
+        <div key={f.id} className="flex flex-wrap items-center gap-1.5">
+          <AttachedFileButton fileName={f.file_name} onOpen={() => preview(f.id)} className="min-w-0 flex-1" />
+          {choosing &&
+            (canEdit ? (
+              <select
+                value={certIdOfKind(f.kind) ?? ""}
+                onChange={(e) => void changeCert(f, e.target.value)}
+                aria-label={`${f.file_name}はどの証明書か`}
+                className={`min-h-[28px] rounded-lg border px-1.5 text-[11px] font-bold ${
+                  certIdOfKind(f.kind) ? "border-brand text-brand" : "border-amber-400 text-amber-700"
+                }`}
+              >
+                <option value="">どの証明書か未選択</option>
+                {certTypes!.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className={`rounded-lg px-1.5 py-0.5 text-[10px] font-bold ${certIdOfKind(f.kind) ? "bg-brand/10 text-brand" : "bg-amber-50 text-amber-700"}`}>
+                {certTypes!.find((c) => c.id === certIdOfKind(f.kind))?.label ?? "どの証明書か未選択"}
+              </span>
+            ))}
           {canEdit && (
             <button
               type="button"
@@ -128,14 +181,46 @@ export function MailingFileAttachments({
       ))}
       {canEdit && (
         <>
+          {/* 課税・納税証明書は、どの証明書の添付かを先に選ぶ（申請準備でその行にだけ出すため） */}
+          {choosing && (
+            <div className="flex flex-wrap items-center gap-1">
+              <span className="text-[11px] font-bold text-muted">どの証明書？</span>
+              {certTypes!.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => {
+                    setCertId(c.id);
+                    setError(null);
+                  }}
+                  aria-pressed={certId === c.id}
+                  className={`min-h-[28px] rounded-lg border px-2 text-[11px] font-bold ${
+                    certId === c.id ? "border-brand bg-brand text-brand-foreground" : "border-border bg-background text-muted"
+                  }`}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          )}
           <button
             type="button"
-            onClick={() => inputRef.current?.click()}
+            onClick={() => {
+              if (choosing && !certId) {
+                setError("先に、どの証明書の添付かを選んでください（課税証明書・納税証明書）");
+                return;
+              }
+              inputRef.current?.click();
+            }}
             disabled={busy}
             className="flex items-center gap-1.5 self-start rounded-lg border border-dashed border-brand px-3 py-2 text-xs font-bold text-brand disabled:opacity-50"
           >
             {busy ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
-            {busy ? "アップロード中…" : addLabel}
+            {busy
+              ? "アップロード中…"
+              : choosing && certId
+                ? `${certTypes!.find((c) => c.id === certId)?.label ?? ""}として${addLabel}`
+                : addLabel}
           </button>
           <p className="text-[11px] text-muted">
             {dragOver
