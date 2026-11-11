@@ -18,6 +18,33 @@ import { orgSupportManagers, orgSupportStaff } from "@/lib/support-system";
 // 決算情報の初期行数（年月の経過に合わせて行は追加できる）
 export const FINANCIAL_DEFAULT_ROWS = 3;
 
+// 決算情報の期の並べ替え用の値（大きいほど新しい）。
+// 法人は「◯期分」の数字（無ければ期間の終了「8年3月」）、個人事業主は「令和◯年分」の数字。読めなければ null
+export function financialOrderKey(row: OrgFinancialYear, fiscalKind: string): number | null {
+  const num = (s: string) => {
+    const m = /\d+/.exec((s ?? "").normalize("NFKC"));
+    return m ? Number(m[0]) : null;
+  };
+  if (fiscalKind === "個人事業主") return num(row.year);
+  const term = num(row.term);
+  if (term !== null) return term;
+  const m = /(\d+)\s*年\s*(\d+)?/.exec((row.period_to ?? "").normalize("NFKC"));
+  return m ? Number(m[1]) * 12 + Number(m[2] ?? 0) : null;
+}
+
+// 画面に出す期の順番（元の並びの番号の配列）。desc=新しい期が上・asc=古い期が上。
+// 期が読めない行（まだ空の行など）は、入れた順のまま最後に出す
+export function sortedFinancialIndices(
+  rows: OrgFinancialYear[],
+  fiscalKind: string,
+  dir: "asc" | "desc",
+): number[] {
+  const keyed = rows.map((r, i) => ({ i, k: financialOrderKey(r, fiscalKind) }));
+  const known = keyed.filter((x): x is { i: number; k: number } => x.k !== null);
+  known.sort((a, b) => (dir === "desc" ? b.k - a.k : a.k - b.k) || a.i - b.i);
+  return [...known.map((x) => x.i), ...keyed.filter((x) => x.k === null).map((x) => x.i)];
+}
+
 export function emptyFinancialYear(): OrgFinancialYear {
   return {
     year: "",

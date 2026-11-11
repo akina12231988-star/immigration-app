@@ -1,4 +1,4 @@
-import { SUPPORT_CONTRACT_YEARS, contractPeriodEnd, planDateGroupsFor } from "@/lib/support-plan-dates";
+import { SUPPORT_CONTRACT_YEARS, contractPeriodEnd, contractYearsOf, planDateGroupsFor } from "@/lib/support-plan-dates";
 
 // 「支援計画書の日付」を名刺サイズ（91mm × 55mm）の画像にして保存するための組み立て。
 // 画面の一覧表と同じ参考様式ごとの枠を、左右2列に分けて1枚に収める
@@ -51,7 +51,7 @@ export function planDatesCardColumns(
       // 1-25号の支援委託契約日は雇用契約日と同じ日なので、名刺ではその旨を短く添える
       label: r.key === "con" && g.title.includes("1-25") ? "支援委託契約日" : (SHORT_LABELS[r.key] ?? r.label),
       value:
-        r.key === "period" ? period(dates.es) : r.key === "scPeriod" ? period(dates.con, SUPPORT_CONTRACT_YEARS) : cardDate(dates[r.key]),
+        r.key === "period" ? period(dates.es, contractYearsOf(dates)) : r.key === "scPeriod" ? period(dates.con, SUPPORT_CONTRACT_YEARS) : cardDate(dates[r.key]),
     })),
   ]);
   return [lines.slice(0, 2).flat(), lines.slice(2).flat()];

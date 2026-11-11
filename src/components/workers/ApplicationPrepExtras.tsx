@@ -58,7 +58,10 @@ import {
   type SavedPlanDates,
 } from "@/lib/supabase/queries/plan-dates";
 import {
+  CONTRACT_YEAR_CHOICES,
+  CONTRACT_YEARS_KEY,
   contractPeriodEnd,
+  contractYearsOf,
   formatYmdJa,
   isTokuteiKatsudoContent,
   planDateGroupsFor,
@@ -1541,6 +1544,17 @@ export function SavedPlanDatesSection({
     };
   }, [workerId, todoNo]);
 
+  // 雇用契約の年数（既定2年）。3年を選ぶと雇用終了日を雇用開始日の3年後の前日にする
+  const eeYears = contractYearsOf(dates);
+  const chooseContractYears = (years: number) => {
+    setDates((prev) => {
+      const next: Record<string, string> = { ...prev, [CONTRACT_YEARS_KEY]: years === 2 ? "" : String(years) };
+      if (prev.es) next.eeEnd = contractPeriodEnd(prev.es, years);
+      return next;
+    });
+    setDirty(true);
+  };
+
   const save = async () => {
     setBusy(true);
     setError(null);
@@ -1635,15 +1649,37 @@ export function SavedPlanDatesSection({
                   </tr>
                   {g.rows.map((r) => {
                     // 契約期間は保存した日付から自動で出す。
-                    // 雇用契約期間は雇用開始日から2年間、支援委託契約の契約期間は支援委託契約日から5年間（終了はその前日）
+                    // 雇用契約期間は雇用開始日から2年間（3年も選べる）、支援委託契約の契約期間は支援委託契約日から5年間（終了はその前日）
                     if (r.key === "period" || r.key === "scPeriod") {
                       const start = r.key === "period" ? dates.es : dates.con;
-                      const years = r.key === "period" ? undefined : SUPPORT_CONTRACT_YEARS;
+                      const years = r.key === "period" ? eeYears : SUPPORT_CONTRACT_YEARS;
                       const period = start ? `${formatYmdJa(start)} から ${formatYmdJa(contractPeriodEnd(start, years))} まで` : "";
                       const hint = r.key === "period" ? "雇用開始日を入れると自動で出ます" : "支援委託契約日を入れると自動で出ます";
                       return (
                         <tr key={r.key} className="border-t border-border">
-                          <th className="w-[45%] px-2 py-1 text-left font-normal">{r.label}</th>
+                          <th className="w-[45%] px-2 py-1 text-left font-normal">
+                            {r.key === "period" ? `雇用契約期間（${eeYears}年間契約）` : r.label}
+                            {/* 雇用契約の年数（既定2年）。選ぶと雇用終了日も自動で入る */}
+                            {r.key === "period" && (
+                              <span className="mt-0.5 flex flex-wrap gap-1">
+                                {CONTRACT_YEAR_CHOICES.map((y) => (
+                                  <button
+                                    key={y}
+                                    type="button"
+                                    disabled={!canEdit}
+                                    onClick={() => chooseContractYears(y)}
+                                    className={`rounded-full border px-2 py-0.5 text-[10px] font-bold disabled:opacity-50 ${
+                                      eeYears === y
+                                        ? "border-brand bg-brand text-brand-foreground"
+                                        : "border-border bg-surface text-brand"
+                                    }`}
+                                  >
+                                    {y}年
+                                  </button>
+                                ))}
+                              </span>
+                            )}
+                          </th>
                           <td className="px-2 py-1 font-bold">{period || <span className="font-normal text-muted">{hint}</span>}</td>
                           <td className="w-8 px-1 py-1">{period && <CopyButton value={period} label={`${r.label}をコピー`} size={13} />}</td>
                         </tr>

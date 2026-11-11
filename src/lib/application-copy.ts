@@ -12,7 +12,7 @@ import { effectiveResidencePeriod } from "@/lib/residence-card";
 import { CUSTODIAN_INFO, type CustodianInfo, type SupportOrgInterpreter } from "@/lib/custody";
 import { RESUME_LANG_JA } from "@/lib/resume-tool/i18n";
 import { resumeLangForNationality } from "@/lib/resume-tool/share";
-import { contractPeriodEnd, formatYmdJa } from "@/lib/support-plan-dates";
+import { contractPeriodEnd, contractYearsOf, formatYmdJa } from "@/lib/support-plan-dates";
 import { JLPT_LEVELS, normalizeCertExams, type WorkerCertExam } from "@/lib/cert-exam";
 import { JISSHU_SHOKUSHU_LIST } from "@/lib/jisshu-shokushu";
 import { businessCategoryOptions } from "@/lib/online-business-categories";
@@ -372,7 +372,8 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
   const docY = docMonths ? String(Math.floor(docMonths / 12)) : "";
   const docM = docMonths ? String(docMonths % 12) : "";
   const es = planDates.es || w.employment_start_on || "";
-  const ee = es ? contractPeriodEnd(es) : "";
+  const eeYears = contractYearsOf(planDates); // 雇用契約の年数（既定2年。申請準備で3年を選べる）
+  const ee = es ? contractPeriodEnd(es, eeYears) : "";
   const wage = wageForApplication(wages, intake, es || null, input.orgId, org?.name);
   const jpStaff = japaneseStaffMonthly(intake, org?.name ?? "");
   const weekly = weeklyHoursText(intake);
@@ -543,7 +544,7 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
       label: "2 (1)雇用契約期間",
       value: es ? `${formatYmdJa(es)} から ${formatYmdJa(ee)} まで` : "",
       parts: es ? [...(ymdParts(es) ?? []), ...(ymdParts(ee) ?? [])] : undefined,
-      note: "雇用開始日から2年間（終了日は2年後の前日）。支援計画書の日付の雇用開始日か、外国人の雇用開始日から",
+      note: `雇用開始日から${eeYears}年間（終了日は${eeYears}年後の前日）。支援計画書の日付の雇用開始日か、外国人の雇用開始日から`,
       edit: wkDate("employment_start_on"),
       editValue: w.employment_start_on ?? "",
     },
