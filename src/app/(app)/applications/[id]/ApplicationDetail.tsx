@@ -333,6 +333,19 @@ export function ApplicationDetail({ id }: { id: string }) {
     setWithdrawOpen(false);
   }
 
+  // 誤って「在留カードを受け取った（完了）」を押したときの取り消し。許可済に戻して受領日を消す。
+  // 受領のときに外国人の現在の所属機関・雇用開始日も更新しているが、そちらは戻さない（外国人詳細で直す）
+  function undoCardReceived() {
+    if (
+      !confirm(
+        "在留カードの受領を取り消して「許可済」に戻します。受領日も消えます。\n\n受領のときに更新した外国人の現在の所属機関・雇用開始日は戻りません。違っていれば外国人詳細で直してください。\n\n取り消しますか？",
+      )
+    )
+      return;
+    void updateApplication(id, { status: "許可済", cardReceivedOn: undefined });
+    setOrgLinkNotice(null);
+  }
+
   function restoreWithdrawn() {
     void updateApplication(id, { status: "申請済", withdrawnOn: undefined });
   }
@@ -733,9 +746,20 @@ export function ApplicationDetail({ id }: { id: string }) {
             )}
             {cardReceived && (
               <div className="space-y-3">
-                <p className="text-xs text-muted">
-                  在留カード受領日: <span className="font-bold text-foreground">{app.cardReceivedOn ?? "未入力"}</span>
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs text-muted">
+                    在留カード受領日: <span className="font-bold text-foreground">{app.cardReceivedOn ?? "未入力"}</span>
+                  </p>
+                  {/* 誤って受領済みにしたときに戻す */}
+                  <button
+                    type="button"
+                    onClick={undoCardReceived}
+                    className="inline-flex min-h-[32px] items-center gap-1 rounded-lg border border-border bg-surface px-2.5 text-[11px] font-bold text-seal hover:bg-seal/5"
+                  >
+                    <Undo2 size={12} />
+                    受領を取り消す（許可済に戻す）
+                  </button>
+                </div>
                 {app.workerId ? (
                   <ContractOrgFormSection app={app} />
                 ) : (
