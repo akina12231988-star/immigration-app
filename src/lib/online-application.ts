@@ -325,18 +325,25 @@ export function renewalReasonText(desiredStatus: string | undefined): string {
   return s.includes("2号") ? "2号特定技能外国人として就労するため" : "1号特定技能外国人として就労するため";
 }
 
-// 16.2〜16.8 同居している在日親族（人数分）。続柄・国籍はアプリに無いので画面で入れる
-export function relativeItems(relatives: { name: string; birth: string; workplace: string; residence_card_no: string }[]): OnlineItem[] {
+// 16.2〜16.8 同居している在日親族（人数分）。続柄・国籍はアプリに無いので画面で入れる。
+// 認定申請（在留資格認定証明書交付申請）の画面では 21.2〜21.8 で、21.6 は「同居予定の有無」
+export function relativeItems(
+  relatives: { name: string; birth: string; workplace: string; residence_card_no: string }[],
+  nintei = false,
+): OnlineItem[] {
+  const n = nintei ? "21" : "16";
   return relatives.flatMap((r, i) => {
     const nth = relatives.length > 1 ? `（${i + 1}人目）` : "";
     return [
-      manual(`16.2`, `続柄${nth}`, "プルダウンから選ぶ（夫・妻・子 など）"),
-      item(`16.3`, `氏名${nth}`, upperName(r.name), "upper", "旅券のとおり。半角大文字"),
-      item(`16.4`, `生年月日${nth}`, ymdCompact(r.birth) ?? "", "date8"),
-      manual(`16.5`, `国籍・地域${nth}`, "プルダウンから選ぶ"),
-      item(`16.6`, `同居の有無${nth}`, "有", "choice", "外国人詳細に登録しているのは同居している親族"),
-      item(`16.7`, `勤務先・通学先${nth}`, toZenkaku(r.workplace), "zenkaku"),
-      item(`16.8`, `在留カード番号${nth}`, (r.residence_card_no ?? "").normalize("NFKC").toUpperCase().replace(/\s+/g, ""), "upper"),
+      manual(`${n}.2`, `続柄${nth}`, "プルダウンから選ぶ（夫・妻・子 など）"),
+      item(`${n}.3`, `氏名${nth}`, upperName(r.name), "upper", "旅券のとおり。半角大文字"),
+      item(`${n}.4`, `生年月日${nth}`, ymdCompact(r.birth) ?? "", "date8"),
+      manual(`${n}.5`, `国籍・地域${nth}`, "プルダウンから選ぶ"),
+      nintei
+        ? item(`${n}.6`, `同居予定の有無${nth}`, "有", "choice", "外国人詳細に登録しているのは同居する親族")
+        : item(`${n}.6`, `同居の有無${nth}`, "有", "choice", "外国人詳細に登録しているのは同居している親族"),
+      item(`${n}.7`, `勤務先・通学先${nth}`, toZenkaku(r.workplace), "zenkaku"),
+      item(`${n}.8`, `在留カード番号${nth}`, (r.residence_card_no ?? "").normalize("NFKC").toUpperCase().replace(/\s+/g, ""), "upper"),
     ];
   });
 }
@@ -351,6 +358,8 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
   const total = find(groups, "21 申請時における特定技能1号での通算在留期間");
   const [totalY, totalM] = total?.parts ?? ["", ""];
   const careers = [...histories].sort((a, b) => (a.start < b.start ? -1 : 1));
+  // 認定申請（在留資格認定証明書交付申請）は画面の項目番号・項目が違う（身分事項 1〜21・区分V 23〜34。支援計画 4.x は無い）
+  const isNintei = (input.appType ?? "").includes("認定");
 
   const identity: OnlineItem[] = [
     item("1", "国籍・地域", w.nationality, "choice", "プルダウンから選ぶ", wk("nationality")),
@@ -505,14 +514,14 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
     item("2.36", "(13)職業紹介事業者 許可・届出番号", toZenkaku(c.placementLicenseNo), "zenkaku", "全角16文字以内", cu("placementLicenseNo"), c.placementLicenseNo),
     item("2.37", "(13)職業紹介事業者 受理年月日", ymdCompact(c.placementLicensedOn) ?? "", "date8", undefined, cu("placementLicensedOn", "date"), c.placementLicensedOn),
   ];
-  // 取次機関（2.38〜2.42）は認定申請のときだけ。外国人ごとに入力・保存する
-  const isNintei = (input.appType ?? "").includes("認定");
+  // 取次機関（2.38〜2.42）は認定申請のときだけ。外国人ごとに入力・保存する。
+  // 画面では 2.39 が「国・地域」で、日本を選んだときだけ 2.40・2.41（郵便番号・住所）が出る
   const agencyItems: OnlineItem[] = [
-    item("2.38", "(14)取次機関 氏名又は名称", toZenkaku(w.agency_name), "zenkaku", isNintei ? "国外の取次機関（送出機関など）。全角60文字以内" : "認定申請のときだけ入れる", wk("agency_name"), w.agency_name ?? ""),
-    item("2.39", "(14)取次機関 法人番号", digitsOnly(w.agency_corporate_no), "digits", "無ければ「無」を選んで空欄", wk("agency_corporate_no"), w.agency_corporate_no ?? ""),
-    item("2.40", "(14)取次機関 郵便番号", digitsOnly(w.agency_postal), "digits", "ハイフン無し", wk("agency_postal"), w.agency_postal ?? ""),
-    item("2.41", "(14)取次機関 住所", toZenkaku(w.agency_address), "zenkaku", "全角85文字以内", wk("agency_address"), w.agency_address ?? ""),
-    item("2.42", "(14)取次機関 電話番号", digitsOnly(w.agency_tel), "digits", "ハイフン無し", wk("agency_tel"), w.agency_tel ?? ""),
+    item("2.38", "(14)取次機関 氏名又は名称", toZenkaku(w.agency_name), "zenkaku", "職業紹介事業者のあっせんで情報の取次ぎをする機関（送出機関など）がある場合。全角60文字以内", wk("agency_name"), w.agency_name ?? ""),
+    item("2.39", "(14)取次機関 国・地域", w.agency_name ? w.nationality : "", "choice", "プルダウンから選ぶ（送出機関なら通常は本人の国籍と同じ国）"),
+    item("2.40", "(14)取次機関 郵便番号", digitsOnly(w.agency_postal), "digits", "2.39 で日本を選んだときだけ出る欄（国外の機関なら記載しない）。ハイフン無し", wk("agency_postal"), w.agency_postal ?? ""),
+    item("2.41", "(14)取次機関 住所", toZenkaku(w.agency_address), "zenkaku", "2.39 で日本を選んだときだけ出る欄（国外の機関なら記載しない）。全角85文字以内", wk("agency_address"), w.agency_address ?? ""),
+    item("2.42", "(14)取次機関 電話番号", digitsOnly(w.agency_tel), "digits", "半角数字12文字以内・ハイフン無し", wk("agency_tel"), w.agency_tel ?? ""),
   ];
 
   const contract: OnlineItem[] = [
@@ -620,11 +629,18 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
     item("3.43", "(32)適正な履行の確保につき告示で定められる基準に適合することの有無", "有", "choice", "必ず「有」"),
     item(
       "",
-      "特定技能1号での在留を希望し登録支援機関に支援計画の全部の実施を委託することの有無",
+      isNintei
+        ? "特定技能1号での入国を希望し登録支援機関に支援計画の全部の実施を委託することの有無"
+        : "特定技能1号での在留を希望し登録支援機関に支援計画の全部の実施を委託することの有無",
       isSsw1 ? "委託する" : NEITHER,
       "choice",
-      isSsw1 ? "特定技能1号なので「委託する」。3.44〜3.57（自社支援の体制）は入力不要で、4.1〜4.16 と 5.1〜5.16 を入れる" : "特定技能1号のときだけ「委託する」",
+      isSsw1
+        ? `特定技能1号なので「委託する」。3.44〜3.57（自社支援の体制）は入力不要で、${isNintei ? "" : "4.1〜4.16 と "}5.1〜5.16 を入れる`
+        : "特定技能1号のときだけ「委託する」",
     ),
+    ...(isNintei
+      ? [skip("3.44〜3.57", "(33)〜(41)支援責任者・支援担当者など（自社で支援するときの体制）", "登録支援機関に全部委託するときは何も記載しない")]
+      : []),
   ];
 
   // 1号特定技能外国人支援計画（4.1〜4.16）。特定技能1号を希望するときは 4.14・4.16 以外すべて「有」
@@ -708,13 +724,27 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
           "ここで郵送か窓口を選んで保存できます（通常は「郵送」。再入国許可申請を同時に申請するときは「窓口」）",
           wk("card_receipt_method", CARD_RECEIPT_METHODS),
         ),
-    item("", "申請対象者の住居地（都道府県）", prefectureOf(w.address), "choice", "プルダウンから選ぶ"),
-    receiptOffice,
+    // 認定申請の画面には「申請対象者の住居地」「受領官署」の欄は無い
+    ...(isNintei
+      ? []
+      : [item("", "申請対象者の住居地（都道府県）", prefectureOf(w.address), "choice", "プルダウンから選ぶ"), receiptOffice]),
     item("", "通知送信用メールアドレス", ONLINE_SYSTEM_EMAIL, "text", "オンラインシステムの利用者（取次者）のメールアドレス。再入力欄にも同じものを入れる"),
     choose("", "申請の意思の確認・申請内容の確認", "チェック", "2つのチェックを入れる"),
     councilFreeItem(org?.name, (org as { id?: string } | null)?.id, intake?.council_office_submissions, intake?.council_residence_submissions),
     manual("", "顔写真", "JPEG を添付（3か月以内に撮影）"),
   ];
+
+  if (isNintei) {
+    return [
+      { title: "身分事項（1〜21）", items: ninteiIdentity(input, careers, eeYears, es) },
+      { title: "区分V（23〜34・職歴）", items: ninteiKubunV(input, groups, careers, totalY, totalM, total?.asOf) },
+      { title: "取次者", items: agent },
+      { title: "特定技能雇用契約（2.1〜2.42）", items: contract },
+      { title: "特定技能所属機関（3.1〜3.57）", items: organization },
+      { title: "登録支援機関（5.1〜5.16）", items: support },
+      { title: "受領方法等・フリー欄", items: receipt },
+    ];
+  }
 
   return [
     { title: "身分事項（1〜16）", items: identity },
@@ -725,6 +755,143 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
     { title: "1号特定技能外国人支援計画（4.1〜4.16）", items: supportPlan },
     { title: "登録支援機関（5.1〜5.16）", items: support },
     { title: "受領方法等・フリー欄", items: receipt },
+  ];
+}
+
+// ---- 認定申請（在留資格認定証明書交付申請・区分V）の画面 ----
+// 画面の項目（2026-11 時点の空の申込画面のPDFから）:
+//   身分事項 1〜10（変更・更新と同じ）→ 11 入国目的 → 12 入国予定年月日 → 13 上陸予定港 → 14 滞在予定期間 →
+//   15 同伴者 → 16 査証申請予定地 → 17 過去の出入国歴 → 18 過去の認定申請歴 → 19 犯罪 → 20 退去強制 → 21 在日親族
+//   区分V 23 技能水準 → 24 日本語 → 26 通算在留期間 → 27〜32 → 33 職歴 → 34 申請人等（取次申請は入力しない）
+
+function ninteiIdentity(input: ApplicationCopyInput, careers: { role?: string }[], eeYears: number, es: string): OnlineItem[] {
+  const w = input.worker;
+  const c: CustodianInfo = input.custodian ?? { ...CUSTODIAN_INFO };
+  // 日本における連絡先: 本人はまだ日本に住んでいないので、住居地が登録されていなければ所属機関の住所を出す
+  const contactAddress = (w.address ?? "").trim() || (input.org?.address ?? "");
+  const contactNote = (w.address ?? "").trim()
+    ? "外国人詳細の住居地（入国後に住む予定の住所）"
+    : "本人の住居地が未登録のため所属機関の住所を出しています。入国後に住む予定の住所があればそれを入れる";
+  return [
+    item("1", "国籍・地域", w.nationality, "choice", "プルダウンから選ぶ", wk("nationality")),
+    item("2", "生年月日", ymdCompact(w.birth) ?? "", "date8", "「生年月日に不明な点は無い」を選んでから8桁を入れる", wkDate("birth"), w.birth ?? ""),
+    item("3", "氏名", upperName(w.name), "upper", "旅券のとおり。半角大文字・スペース区切り（104文字以内）", wk("name"), w.name),
+    item("4", "性別", w.gender, "choice", undefined, wk("gender", ["男", "女"])),
+    item("5", "出生地", w.home_address, "text", "40文字以内（本国における居住地と同じ）", wk("home_address"), w.home_address),
+    item("6", "配偶者の有無", w.has_spouse, "choice", undefined, wk("has_spouse", ["有", "無"])),
+    item(
+      "7",
+      "職業",
+      occupationOf(careers, w.field),
+      "text",
+      "職歴のいちばん新しい行の「職種・仕事内容」（無ければ分野・職種）。違うときは外国人詳細の職歴で直す。40文字以内",
+      careers.length > 0 ? undefined : wk("field"),
+      w.field,
+    ),
+    item("8", "本国における居住地", toZenkaku(w.home_address), "zenkaku", "全角80文字以内", wk("home_address"), w.home_address),
+    postal("9.1", "日本における連絡先 郵便番号", contactAddress, contactNote),
+    item("9.2", "日本における連絡先 居住地", toZenkaku(contactAddress), "zenkaku", `全角85文字以内。${contactNote}`, wk("address"), w.address),
+    item("9.3", "日本における連絡先 電話番号", digitsOnly(c.tel), "digits", "登録支援機関の電話番号（ハイフン無し）"),
+    item("9.4", "日本における連絡先 携帯電話番号", "記載なし", "text", "本人の携帯番号は書かず「記載なし」"),
+    item("9.5", "メールアドレス", ONLINE_SYSTEM_EMAIL, "text", "オンラインシステム利用者（取次者）のメールアドレス"),
+    item("9.6", "メールアドレス再入力", ONLINE_SYSTEM_EMAIL, "text", "9.5 と同じ"),
+    item("10.1", "旅券 (1)番号", (w.passport_no ?? "").normalize("NFKC").toUpperCase(), "upper", "半角英数字12文字以内", wk("passport_no"), w.passport_no ?? ""),
+    item("10.2", "旅券 (2)有効期限", ymdCompact(w.passport_expiry_date) ?? "", "date8", undefined, wkDate("passport_expiry_date"), w.passport_expiry_date ?? ""),
+    choose("11", "入国目的", "特定技能", "プルダウンから選ぶ"),
+    item(
+      "12",
+      "入国予定年月日",
+      es ? toZenkaku(formatYmdJa(es)) : "",
+      "text",
+      es ? "雇用開始日（支援計画書の日付）を入れています。入国の予定日が違えば直す。40文字以内" : "40文字以内（例 ２０２０年４月１日）。雇用開始日を入れると自動で出ます",
+    ),
+    manual("13.1", "上陸予定港", "プルダウンから選ぶ（入国する空港。例: 成田・羽田・関西・福岡）。一覧に無ければ「その他」を選んで 13.2 に入れる", "choice"),
+    item("14.1", "滞在予定期間(年数)", String(eeYears), "choice", `雇用契約期間（${eeYears}年）から`),
+    item("14.2", "滞在予定期間(月数)", "0", "choice", "雇用契約期間から"),
+    item("15", "同伴者の有無", "無", "choice", "家族を同伴しないので「無」。同伴するなら「有」"),
+    manual("16", "査証申請予定地", "ビザを申請する日本の大使館・総領事館がある都市（例: ハノイ、ホーチミン、マニラ、ジャカルタ）。40文字以内"),
+    choose("17.1", "過去の出入国歴 有無", undefined, "日本に来たことがあれば「有」にして 17.2 回数・17.3〜17.4 直近の出入国歴（始期・終期）を入れる"),
+    choose("18.1", "過去の在留資格認定証明書交付申請歴 有無", undefined, "「有」なら 18.2 回数・18.3 うち不交付となった回数を選ぶ"),
+    item("19", "犯罪を理由とする処分を受けたことの有無", w.criminal_record || "無", "choice", w.criminal_record ? "日本国外・交通違反等を含む" : "未登録なので「無」としています（日本国外・交通違反等を含む）。有なら鉛筆マークから選んで保存", wk("criminal_record", YES_NO), w.criminal_record ?? ""),
+    ...(w.criminal_record === "有"
+      ? [item("19", "処分の内容", w.criminal_record_note ?? "", "text", "具体的な内容。40文字以内", wk("criminal_record_note"))]
+      : []),
+    choose("20.1", "退去強制又は出国命令による出国の有無", "無", "「有」なら 20.2 回数・20.3 直近の送還歴（出国日）を入れる"),
+    item(
+      "21.1",
+      "在日親族及び同居者 有無",
+      w.relatives_in_japan ?? "",
+      "choice",
+      "外国人詳細 ＞ 在日親族の同居。「有」なら 21.2〜21.8 を人数分入れる（＋追加する。親族の氏名などは外国人詳細で登録）",
+      wk("relatives_in_japan", YES_NO),
+    ),
+    ...relativeItems(w.relatives_in_japan === "有" ? (w.relatives ?? []) : [], true),
+  ];
+}
+
+function ninteiKubunV(
+  input: ApplicationCopyInput,
+  groups: CopyGroup[],
+  careers: { start: string; end?: string | null; org: string }[],
+  totalY: string,
+  totalM: string,
+  totalAsOf: string | undefined,
+): OnlineItem[] {
+  const w = input.worker;
+  return [
+    item(
+      "23.1",
+      "技能水準 評価区分",
+      w.skill_eval_kind ||
+        (val(groups, "18 技能水準 (1)試験名") ? "特定技能評価試験" : val(groups, "18 専門級の合格名（技能実習）") ? "技能実習２号を良好に修了" : ""),
+      "choice",
+      w.skill_eval_kind ? "登録した区分。これにより 23.2〜23.8 の項目が変わる" : "未登録なので合格証・専門級から推定。鉛筆マークから選んで保存できる",
+      wk("skill_eval_kind", SKILL_EVAL_KINDS),
+      w.skill_eval_kind ?? "",
+    ),
+    linked(groups, "23", "技能水準 試験名", "18 技能水準 (1)試験名", "text"),
+    linked(groups, "23", "技能水準 受験地", "18 (2)受験地", "text"),
+    linked(groups, "23", "技能実習2号良好修了 職種名", "20 技能実習2号良好修了 (1)職種名", "text", "評価区分で技能実習2号の良好修了を選んだ人だけ"),
+    linked(groups, "23", "技能実習2号良好修了 作業名", "20 (2)作業名", "text"),
+    linked(groups, "23", "技能実習2号良好修了 証明方法", "20 (3)良好修了の証明方法", "choice"),
+    item(
+      "24.1",
+      "日本語能力 評価区分",
+      w.japanese_eval_kind || (val(groups, "19 日本語能力 (1)試験名") ? "特定技能評価試験" : ""),
+      "choice",
+      w.japanese_eval_kind
+        ? "登録した区分（特定技能1号で入国を希望するとき）。これにより 24.2〜24.8 の項目が変わる"
+        : "特定技能1号で入国を希望するとき。未登録なので日本語の合格証から推定。鉛筆マークから選んで保存できる",
+      wk("japanese_eval_kind", SKILL_EVAL_KINDS),
+      w.japanese_eval_kind ?? "",
+    ),
+    linked(groups, "24", "日本語能力 試験名", "19 日本語能力 (1)試験名", "text"),
+    linked(groups, "24", "日本語能力 受験地", "19 (2)受験地", "text"),
+    item("24", "日本語能力 レベル", val(groups, "19 レベル"), "choice", undefined, wk("cert_nihongo_level", JLPT_LEVELS)),
+    item("26.1", "申請時における特定技能1号での通算在留期間(年数)", totalY, "choice", ["過去の在留歴を含む。特定技能1号で入国を希望するとき", totalAsOf].filter(Boolean).join("。")),
+    item("26.2", "申請時における特定技能1号での通算在留期間(月数)", totalM, "choice", totalAsOf),
+    item("27.1", "保証金の徴収・財産管理・違約金等の支払契約の有無", "無", "choice", "必ず「無」"),
+    item("28.1", "取次ぎ又は活動準備に関する外国の機関への費用支払について合意していることの有無", NEITHER, "choice", "有・無のどちらも選ばない（費用の支払があるときは「有」にして 28.2 外国の機関名・28.3 支払額を入れる）"),
+    item("29", "国籍国等において定められる本邦で行う活動に関連して遵守すべき手続を経ていることの有無", NEITHER, "choice", "有・無のどちらも選ばない"),
+    item("30", "本邦において定期的に負担する費用について合意していることの有無", "有", "choice", "必ず「有」"),
+    item("31", "技能実習で修得した技能等の本国への移転に努めることの有無", transferChoice(input.desiredStatus), "choice", "特定技能2号を希望するときだけ「有」。それ以外はどちらも選ばない"),
+    item(
+      "32",
+      "特定産業分野に特有の基準に適合していることの有無",
+      fieldSpecificChoice(val(groups, "2 (2)特定産業分野")),
+      "choice",
+      "介護・ビルクリーニング・工業製品製造業・建設・造船・舶用工業・自動車整備・航空・宿泊・自動車運送業・飲食料品製造業・外食業・林業・木材産業は「有」。それ以外はどちらも選ばない",
+    ),
+    item("", "職歴の有無", careers.length > 0 ? "有" : "無", "choice", "外国のものを含む"),
+    ...careers.flatMap((h, i) => {
+      const n = String(i + 1).padStart(2, "0");
+      return [
+        item(`33.1`, `職歴 入社 年月${n}`, ym6(h.start), "ym6", "6桁（例 200101）"),
+        item(`33.2`, `職歴 退社 年月${n}`, h.end ? ym6(h.end) : "", "ym6", h.end ? undefined : "在職中は空欄"),
+        item(`33.3`, `職歴 勤務先 名称${n}`, h.org, "text", "60文字以内"),
+      ];
+    }),
+    skip("34.1〜34.6", "申請人、法定代理人、法第7条の2第2項に規定する代理人", "取次申請なので何も記載しない（本人・代理人が自分で申請するときだけ入れる）"),
   ];
 }
 

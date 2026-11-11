@@ -133,6 +133,37 @@ describe("buildOnlineApplication", () => {
     expect(items.find((i) => i.label === "希望する在留期間")?.value).toBe("6月");
   });
 
+  it("認定申請は認定の画面の番号・順で出す（身分事項1〜21・区分V 23〜34・支援計画4.xは無い）", () => {
+    const ni = { ...input, appType: "認定", worker: { ...input.worker, relatives_in_japan: "有", relatives: [{ name: "Tran Van A", birth: "1990-01-02", workplace: "ABC", residence_card_no: "ab12345678cd", lives_together: "同居" } as never] } };
+    const secs = buildOnlineApplication(ni, buildApplicationCopyGroups(ni));
+    expect(secs.map((s) => s.title)).toEqual([
+      "身分事項（1〜21）", "区分V（23〜34・職歴）", "取次者", "特定技能雇用契約（2.1〜2.42）", "特定技能所属機関（3.1〜3.57）", "登録支援機関（5.1〜5.16）", "受領方法等・フリー欄",
+    ]);
+    const items = secs.flatMap((s) => s.items);
+    const g = (label: string) => items.find((i) => i.label === label);
+    expect(secs[0].items.map((i) => i.no).filter(Boolean).slice(0, 22)).toEqual([
+      "1", "2", "3", "4", "5", "6", "7", "8", "9.1", "9.2", "9.3", "9.4", "9.5", "9.6", "10.1", "10.2", "11", "12", "13.1", "14.1", "14.2", "15",
+    ]);
+    expect(g("入国予定年月日")?.value).toBe("２０２４年５月１５日");
+    expect(g("滞在予定期間(年数)")?.value).toBe("2");
+    expect(g("犯罪を理由とする処分を受けたことの有無")?.no).toBe("19");
+    expect(g("在日親族及び同居者 有無")?.no).toBe("21.1");
+    expect(g("同居予定の有無")).toMatchObject({ no: "21.6", value: "有" });
+    expect(g("技能水準 評価区分")?.no).toBe("23.1");
+    expect(g("日本語能力 評価区分")?.no).toBe("24.1");
+    expect(g("申請時における特定技能1号での通算在留期間(年数)")?.no).toBe("26.1");
+    expect(g("保証金の徴収・財産管理・違約金等の支払契約の有無")).toMatchObject({ no: "27.1", value: "無" });
+    expect(g("本邦において定期的に負担する費用について合意していることの有無")).toMatchObject({ no: "30", value: "有" });
+    expect(g("職歴 入社 年月01")?.no).toBe("33.1");
+    expect(items.find((i) => i.no === "34.1〜34.6")?.skip).toBe(true);
+    expect(items.find((i) => i.no === "3.44〜3.57")?.skip).toBe(true);
+    expect(items.find((i) => i.no === "4.1")).toBeUndefined();
+    expect(items.find((i) => i.no === "2.39")?.label).toBe("(14)取次機関 国・地域");
+    // 変更・更新の画面の項目（現に有する在留資格・希望する在留期間など）は出さない
+    expect(g("現に有する在留資格")).toBeUndefined();
+    expect(g("希望する在留期間")).toBeUndefined();
+  });
+
   it("画面の順に8つの欄に分かれる", () => {
     expect(sections.map((s) => s.title)).toEqual([
       "身分事項（1〜16）", "区分V（18〜28・職歴）", "取次者", "特定技能雇用契約（2.1〜2.42）", "特定技能所属機関（3.1〜3.43）", "1号特定技能外国人支援計画（4.1〜4.16）", "登録支援機関（5.1〜5.16）", "受領方法等・フリー欄",
@@ -393,7 +424,9 @@ describe("buildOnlineApplication", () => {
     const method = blank.find((i) => i.label === "在留資格認定証明書の受領方法");
     expect(method?.edit).toEqual({ target: "worker", column: "card_receipt_method", options: ["メール", "郵送"] });
     expect(items({ card_receipt_method: "メール" }).find((i) => i.label === "在留資格認定証明書の受領方法")?.value).toBe("メール");
-    expect(blank.find((i) => i.label === "受領官署")).toMatchObject({ value: "", skip: true });
+    // 認定の画面には受領官署・申請対象者の住居地の欄は無い
+    expect(blank.find((i) => i.label === "受領官署")).toBeUndefined();
+    expect(blank.find((i) => i.label === "申請対象者の住居地（都道府県）")).toBeUndefined();
     expect(cardReceiptLabel("メール")).toBe("受領 メール");
   });
 
