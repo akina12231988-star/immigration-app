@@ -133,11 +133,13 @@ describe("buildOnlineApplication", () => {
     expect(items.find((i) => i.label === "希望する在留期間")?.value).toBe("6月");
   });
 
-  it("認定申請は認定の画面の番号・順で出す（身分事項1〜21・区分V 23〜34・支援計画4.xは無い）", () => {
+  it("認定申請は認定の申請書の番号・順で出す（身分事項1〜21・区分V 23〜34）", () => {
     const ni = { ...input, appType: "認定", worker: { ...input.worker, relatives_in_japan: "有", relatives: [{ name: "Tran Van A", birth: "1990-01-02", workplace: "ABC", residence_card_no: "ab12345678cd", lives_together: "同居" } as never] } };
     const secs = buildOnlineApplication(ni, buildApplicationCopyGroups(ni));
     expect(secs.map((s) => s.title)).toEqual([
-      "身分事項（1〜21）", "区分V（23〜34・職歴）", "取次者", "特定技能雇用契約（2.1〜2.42）", "特定技能所属機関（3.1〜3.57）", "登録支援機関（5.1〜5.16）", "受領方法等・フリー欄",
+      "申請人等作成用 1（1〜21 身分事項）", "申請人等作成用 2・3 V（23〜34 技能水準・日本語・職歴など）", "取次者",
+      "所属機関等作成用 1・2 V（2 特定技能雇用契約 2.1〜2.42）", "所属機関等作成用 2〜4 V（3 特定技能所属機関 3.1〜3.57）",
+      "所属機関等作成用 4 V（4 1号特定技能外国人支援計画 4.1〜4.16）", "所属機関等作成用 4 V（5 登録支援機関 5.1〜5.16）", "受領方法等・フリー欄",
     ]);
     const items = secs.flatMap((s) => s.items);
     const g = (label: string) => items.find((i) => i.label === label);
@@ -165,11 +167,34 @@ describe("buildOnlineApplication", () => {
     expect(g("職歴 入社 年月01")?.no).toBe("33.1");
     expect(items.find((i) => i.no === "34.1〜34.6")?.skip).toBe(true);
     expect(items.find((i) => i.no === "3.44〜3.57")?.skip).toBe(true);
-    expect(items.find((i) => i.no === "4.1")).toBeUndefined();
+    expect(items.find((i) => i.no === "4.1")?.label).toContain("在留資格認定証明書の交付申請前");
     expect(items.find((i) => i.no === "2.39")?.label).toBe("(14)取次機関 国・地域");
     // 変更・更新の画面の項目（現に有する在留資格・希望する在留期間など）は出さない
     expect(g("現に有する在留資格")).toBeUndefined();
     expect(g("希望する在留期間")).toBeUndefined();
+  });
+
+  it("更新申請は更新の申請書の番号で出す（出生地・希望する在留資格は無く、支援計画は14項目）", () => {
+    const ko = { ...input, appType: "更新" };
+    const secs = buildOnlineApplication(ko, buildApplicationCopyGroups(ko));
+    expect(secs[0].title).toBe("申請人等作成用 1（1〜16 身分事項）");
+    const items = secs.flatMap((s) => s.items);
+    const g = (label: string) => items.find((i) => i.label === label);
+    expect(g("出生地")).toBeUndefined();
+    expect(g("希望する在留資格")).toBeUndefined();
+    expect(g("配偶者の有無")?.no).toBe("5");
+    expect(g("職業")?.no).toBe("6");
+    expect(g("本国における居住地")?.no).toBe("7");
+    expect(g("住居地")?.no).toBe("8");
+    expect(g("電話番号")?.no).toBe("9");
+    expect(g("希望する在留期間")?.no).toBe("13");
+    expect(g("更新の理由")?.no).toBe("14");
+    expect(items.find((i) => i.no === "29")?.skip).toBe(true);
+    const plan = secs.find((s) => s.title.startsWith("所属機関等作成用 4 V（4"))!.items;
+    expect(plan).toHaveLength(14);
+    expect(plan[0]).toMatchObject({ no: "4.1" });
+    expect(plan[0].label).toMatch(/^\(1\)出入国時に港又は飛行場への送迎/);
+    expect(plan[13].no).toBe("4.14");
   });
 
   it("画面の順に8つの欄に分かれる", () => {

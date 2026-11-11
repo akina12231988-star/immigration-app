@@ -755,14 +755,31 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
     manual("", "顔写真", "JPEG を添付（3か月以内に撮影）"),
   ];
 
+  // 認定・更新は、エクセルの申請書（申請人等作成用1〜3・所属機関等作成用1〜4）の番号・シート分けに合わせて出す
   if (isNintei) {
     return [
-      { title: "身分事項（1〜21）", items: ninteiIdentity(input, careers, eeYears, es) },
-      { title: "区分V（23〜34・職歴）", items: ninteiKubunV(input, groups, careers, totalY, totalM, total?.asOf) },
+      { title: "申請人等作成用 1（1〜21 身分事項）", items: ninteiIdentity(input, careers, eeYears, es) },
+      { title: "申請人等作成用 2・3 V（23〜34 技能水準・日本語・職歴など）", items: ninteiKubunV(input, groups, careers, totalY, totalM, total?.asOf) },
       { title: "取次者", items: agent },
-      { title: "特定技能雇用契約（2.1〜2.42）", items: contract },
-      { title: "特定技能所属機関（3.1〜3.57）", items: organization },
-      { title: "登録支援機関（5.1〜5.16）", items: support },
+      { title: "所属機関等作成用 1・2 V（2 特定技能雇用契約 2.1〜2.42）", items: contract },
+      { title: "所属機関等作成用 2〜4 V（3 特定技能所属機関 3.1〜3.57）", items: organization },
+      { title: "所属機関等作成用 4 V（4 1号特定技能外国人支援計画 4.1〜4.16）", items: ninteiSupportPlan(supportPlan) },
+      { title: "所属機関等作成用 4 V（5 登録支援機関 5.1〜5.16）", items: support },
+      { title: "受領方法等・フリー欄", items: receipt },
+    ];
+  }
+  if ((input.appType ?? "").includes("更新")) {
+    return [
+      { title: "申請人等作成用 1（1〜16 身分事項）", items: koshinIdentity(identity) },
+      {
+        title: "申請人等作成用 2・3 V（18〜29 技能水準・日本語・職歴など）",
+        items: [...kubunV, skip("29", "代理人（法定代理人による申請の場合）", "取次申請なので何も記載しない")],
+      },
+      { title: "取次者", items: agent },
+      { title: "所属機関等作成用 1・2 V（2 特定技能雇用契約 2.1〜2.42）", items: contract },
+      { title: "所属機関等作成用 2〜4 V（3 特定技能所属機関 3.1〜3.43）", items: organization },
+      { title: "所属機関等作成用 4 V（4 1号特定技能外国人支援計画 4.1〜4.14）", items: koshinSupportPlan(supportPlan) },
+      { title: "所属機関等作成用 4 V（5 登録支援機関 5.1〜5.16）", items: support },
       { title: "受領方法等・フリー欄", items: receipt },
     ];
   }
@@ -777,6 +794,44 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
     { title: "登録支援機関（5.1〜5.16）", items: support },
     { title: "受領方法等・フリー欄", items: receipt },
   ];
+}
+
+// ---- 更新申請（在留期間更新許可申請書）の番号 ----
+// 申請人等作成用1は 1 国籍・地域 / 2 生年月日 / 3 氏名 / 4 性別 / 5 配偶者の有無 / 6 職業 / 7 本国における居住地 /
+// 8 住居地 / 9 電話番号・携帯電話番号 / 10 旅券 / 11 現に有する在留資格・在留期間・満了日 / 12 在留カード番号 /
+// 13 希望する在留期間 / 14 更新の理由 / 15 犯罪 / 16 在日親族。出生地・希望する在留資格の欄は無い
+const KOSHIN_NO: Record<string, string> = {
+  "6": "5", "7": "6", "8": "7", "9.1": "8", "9.2": "8", "9.3": "9", "9.4": "9",
+  "11.1": "11", "11.2": "11", "11.3": "11", "13.2": "13",
+};
+const KOSHIN_LABEL: Record<string, string> = {
+  "日本における連絡先 郵便番号": "住居地 郵便番号",
+  "日本における連絡先 住居地": "住居地",
+  "日本における連絡先 電話番号": "電話番号",
+  "日本における連絡先 携帯電話番号": "携帯電話番号",
+  "更新（変更）の理由": "更新の理由",
+};
+function koshinIdentity(identity: OnlineItem[]): OnlineItem[] {
+  return identity
+    .filter((i) => i.no !== "5" && i.no !== "13.1") // 出生地・希望する在留資格は更新の申請書に無い
+    .map((i) => ({ ...i, no: KOSHIN_NO[i.no] ?? i.no, label: KOSHIN_LABEL[i.label] ?? i.label }));
+}
+
+// 更新の支援計画は (1) 送迎 〜 (14) の14項目（変更・認定の (1) 事前の情報提供・(2) 対面 が無い）
+function koshinSupportPlan(plan: OnlineItem[]): OnlineItem[] {
+  return plan
+    .filter((i) => i.no !== "4.1" && i.no !== "4.2")
+    .map((i) => {
+      const n = Number(i.no.split(".")[1]) - 2;
+      return { ...i, no: `4.${n}`, label: i.label.replace(/^\((\d+)\)/, `(${n})`) };
+    });
+}
+
+// 認定の支援計画 (1) は「在留資格認定証明書の交付申請前の」情報提供
+function ninteiSupportPlan(plan: OnlineItem[]): OnlineItem[] {
+  return plan.map((i) =>
+    i.no === "4.1" ? { ...i, label: "(1)在留資格認定証明書の交付申請前に、雇用契約の内容等を十分に理解できる言語で情報提供を実施したことの有無" } : i,
+  );
 }
 
 // ---- 認定申請（在留資格認定証明書交付申請・区分V）の画面 ----
