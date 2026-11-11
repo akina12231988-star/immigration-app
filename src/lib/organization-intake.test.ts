@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  sortedFinancialIndices,
   councilSubmissionsLine,
   FINANCIAL_DEFAULT_ROWS,
   digitsOnly,
@@ -491,5 +492,20 @@ describe("lodgingCalcNote（寮の計算内容の説明）", () => {
     expect(lodgingCalcNote({ ...base, calc_note: "会社が借り上げた社宅の家賃を3名で按分" })).toBe(
       "会社が借り上げた社宅の家賃を3名で按分",
     );
+  });
+});
+
+describe("sortedFinancialIndices（決算情報の期の並び）", () => {
+  const row = (p: Partial<import("@/types/db").OrgFinancialYear>) => ({
+    year: "", term: "", period_from: "", period_to: "", sales: "", ordinary: "", net: "", assets: "", ...p,
+  });
+  it("法人は期の数字で並べ、空の行は最後のまま", () => {
+    const rows = [row({ term: "10" }), row({ term: "12" }), row({}), row({ term: "11" })];
+    expect(sortedFinancialIndices(rows, "法人", "desc")).toEqual([1, 3, 0, 2]);
+    expect(sortedFinancialIndices(rows, "法人", "asc")).toEqual([0, 3, 1, 2]);
+  });
+  it("期が無ければ期間の終了、個人事業主は令和の年で並べる", () => {
+    expect(sortedFinancialIndices([row({ period_to: "7年3月" }), row({ period_to: "８年３月" })], "法人", "desc")).toEqual([1, 0]);
+    expect(sortedFinancialIndices([row({ year: "5" }), row({ year: "7" }), row({ year: "6" })], "個人事業主", "desc")).toEqual([1, 2, 0]);
   });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  contractYearsOf,
   PLAN_DATE_FIELDS,
   PLAN_DATE_GROUPS,
   planDateGroupsFor,
@@ -113,5 +114,13 @@ describe("planDateGroupsFor（特定活動の枠）", () => {
     expect(groups.map((g) => g.title)).toEqual(["参考様式1-5号（雇用契約書）", "参考様式1-6号（雇用条件書）", "その他の申請書類"]);
     expect(groups[2].rows.map((r) => r.key)).toEqual(["apply", "sign", "doc"]);
     expect(planDateGroupsFor(false)).toBe(PLAN_DATE_GROUPS);
+  });
+});
+
+describe("contractYearsOf（雇用契約の年数）", () => {
+  test("保存が無ければ2年、eeYears があればその年数", () => {
+    expect(contractYearsOf({})).toBe(2);
+    expect(contractYearsOf({ eeYears: "3" })).toBe(3);
+    expect(contractYearsOf({ eeYears: "abc" })).toBe(2);
   });
 });

@@ -117,6 +117,16 @@ describe("buildOnlineApplication", () => {
   const all = sections.flatMap((s) => s.items);
   const get = (label: string) => all.find((i) => i.label === label);
 
+  it("雇用契約を3年で結んだら、終期は3年後の前日・希望する在留期間は3年", () => {
+    const in3 = { ...input, planDates: { es: "2024-05-15", eeYears: "3" } };
+    const items = buildOnlineApplication(in3, buildApplicationCopyGroups(in3)).flatMap((s) => s.items);
+    const g = (label: string) => items.find((i) => i.label === label);
+    expect(g("特定技能雇用契約 (1)雇用契約期間(終期)")?.value).toBe("20270514");
+    expect(g("希望する在留期間")?.value).toBe("3年");
+    // 2年（既定）のときは終期は2年後の前日
+    expect(get("特定技能雇用契約 (1)雇用契約期間(終期)")?.value).toBe("20260514");
+  });
+
   it("画面の順に8つの欄に分かれる", () => {
     expect(sections.map((s) => s.title)).toEqual([
       "身分事項（1〜16）", "区分V（18〜28・職歴）", "取次者", "特定技能雇用契約（2.1〜2.42）", "特定技能所属機関（3.1〜3.43）", "1号特定技能外国人支援計画（4.1〜4.16）", "登録支援機関（5.1〜5.16）", "受領方法等・フリー欄",

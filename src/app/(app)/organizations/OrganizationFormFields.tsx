@@ -27,6 +27,7 @@ import { EMPTY_SSW2_DUTIES, ssw2DutiesOf } from "@/lib/org-ssw2-duties";
 import {
   emptyCouncilSubmission,
   emptyFinancialYear,
+  sortedFinancialIndices,
   emptyJapaneseStaff,
   emptyLodging,
   emptyOfficer,
@@ -868,6 +869,10 @@ function IntakeSection({
   // 資本金・決算月は法人だけの欄。個人事業主のときは入力させない
   const isSoleProprietor = intake.fiscal_kind === "個人事業主";
 
+  // 決算情報の期の並び（画面の表示だけ。保存されている順番は変えない）。既定は新しい期が上
+  const [finOrder, setFinOrder] = useState<"desc" | "asc">("desc");
+  const finIndices = sortedFinancialIndices(intake.financials, intake.fiscal_kind, finOrder);
+
   const setFinancial = (i: number, patch: Partial<OrgFinancialYear>) =>
     setIntake({
       financials: intake.financials.map((row, idx) => (idx === i ? { ...row, ...patch } : row)),
@@ -1120,7 +1125,29 @@ function IntakeSection({
             ))}
           </div>
         )}
-        {intake.financials.map((row, i) => (
+        {intake.financials.length > 1 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-bold text-muted">期の並び:</span>
+            {(
+              [
+                ["desc", "新しい期が上（降順）"],
+                ["asc", "古い期が上（昇順）"],
+              ] as const
+            ).map(([v, label]) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setFinOrder(v)}
+                className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${
+                  finOrder === v ? "border-brand bg-brand text-brand-foreground" : "border-border bg-surface text-brand"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+        {finIndices.map((i) => ({ row: intake.financials[i], i })).map(({ row, i }) => (
           <div key={i} className="rounded-xl border border-border p-2.5">
             {/* 期の表記: 個人事業主は「令和◯年分売上情報」、法人は「◯期分（令和◯年◯月分〜令和◯年◯月分）」 */}
             {intake.fiscal_kind === "法人" ? (

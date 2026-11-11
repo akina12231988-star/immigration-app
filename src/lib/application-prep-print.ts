@@ -8,7 +8,7 @@
 // の形で並べる。値はすべて文字列にしてあるので、印刷前にその場で直せる。
 
 import { PREP_APP_TYPE_LABELS, prepDocLabel, type PrepChecklistMeta, type PrepDocStatus } from "@/lib/application-prep";
-import { SUPPORT_CONTRACT_YEARS, contractPeriodEnd, planDateGroupsFor } from "@/lib/support-plan-dates";
+import { SUPPORT_CONTRACT_YEARS, contractPeriodEnd, contractYearsOf, planDateGroupsFor } from "@/lib/support-plan-dates";
 import { flexHoursLabel } from "@/lib/org-attachments";
 import {
   COUNCIL_COUNT_MIN_ROWS,
@@ -231,9 +231,14 @@ export function prepPrintDateLines(dates: Record<string, string>, tokuteiKatsudo
     ...g.rows.map((r) => ({
       key: `${gi}-${r.key}`,
       // 1-25号の支援委託契約日は雇用契約日と同じ日（画面の項目名の補足は印刷では省く）
-      label: r.key === "con" && g.title.includes("1-25") ? "支援委託契約日" : (PRINT_DATE_LABELS[r.key] ?? r.label),
+      label:
+        r.key === "con" && g.title.includes("1-25")
+          ? "支援委託契約日"
+          : r.key === "period"
+            ? `雇用契約期間（${contractYearsOf(dates)}年）`
+            : (PRINT_DATE_LABELS[r.key] ?? r.label),
       value:
-        r.key === "period" ? period(dates.es) : r.key === "scPeriod" ? period(dates.con, SUPPORT_CONTRACT_YEARS) : ymd(dates[r.key]),
+        r.key === "period" ? period(dates.es, contractYearsOf(dates)) : r.key === "scPeriod" ? period(dates.con, SUPPORT_CONTRACT_YEARS) : ymd(dates[r.key]),
     })),
   ]);
 }

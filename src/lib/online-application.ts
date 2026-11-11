@@ -7,7 +7,7 @@ import { ONLINE_MAIN_INDUSTRIES, suggestedMainIndustry } from "@/lib/online-main
 import { suggestedMainOccupation } from "@/lib/online-main-occupations";
 import { CUSTODIAN_INFO, type CustodianInfo } from "@/lib/custody";
 import { effectiveResidencePeriod } from "@/lib/residence-card";
-import { contractPeriodEnd, formatYmdJa } from "@/lib/support-plan-dates";
+import { contractPeriodEnd, contractYearsOf, formatYmdJa } from "@/lib/support-plan-dates";
 
 // 在留申請オンラインシステムの「手続き申込」画面に貼るためのデータ。
 //
@@ -345,7 +345,8 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
   const { worker: w, org, intake, histories, planDates } = input;
   const c: CustodianInfo = input.custodian ?? { ...CUSTODIAN_INFO };
   const es = planDates.es || w.employment_start_on || "";
-  const ee = es ? contractPeriodEnd(es) : "";
+  const eeYears = contractYearsOf(planDates); // 雇用契約の年数（既定2年。申請準備で3年を選べる）
+  const ee = es ? contractPeriodEnd(es, eeYears) : "";
   const period = effectiveResidencePeriod(w);
   const total = find(groups, "21 申請時における特定技能1号での通算在留期間");
   const [totalY, totalM] = total?.parts ?? ["", ""];
@@ -381,7 +382,10 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
     item("", "在留カードの有無", w.residence_card_no ? "有" : "", "choice"),
     item("12", "在留カード番号", (w.residence_card_no ?? "").normalize("NFKC").toUpperCase().replace(/\s+/g, ""), "upper", "半角英数字12文字", wk("residence_card_no"), w.residence_card_no ?? ""),
     item("13.1", "希望する在留資格", input.desiredStatus ?? "", "choice", "申請準備の申請種別から"),
-    item("13.2", "希望する在留期間", residencePeriodChoice(period), "choice", "更新は通常いまと同じ期間。審査で変わることがある"),
+    // 雇用契約を3年で結んだときは、希望する在留期間も3年にする
+    eeYears === 3
+      ? item("13.2", "希望する在留期間", "3年", "choice", "雇用契約期間を3年で結んだので3年。審査で変わることがある")
+      : item("13.2", "希望する在留期間", residencePeriodChoice(period), "choice", "更新は通常いまと同じ期間。審査で変わることがある"),
     renewalReasonText(input.desiredStatus)
       ? item("14", "更新（変更）の理由", renewalReasonText(input.desiredStatus), "text", "希望する在留資格から決まる定型文。600文字以内")
       : manual("14", "更新（変更）の理由", "600文字以内。例: 1号特定技能外国人として就労するため"),
@@ -511,7 +515,7 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
 
   const contract: OnlineItem[] = [
     item("2.1", "特定技能雇用契約 (1)雇用契約期間(始期)", ymdCompact(es) ?? "", "date8", "雇用開始日（支援計画書の日付か外国人の雇用開始日）", wkDate("employment_start_on"), w.employment_start_on ?? ""),
-    item("2.2", "特定技能雇用契約 (1)雇用契約期間(終期)", ymdCompact(ee) ?? "", "date8", "始期から2年間（2年後の前日）"),
+    item("2.2", "特定技能雇用契約 (1)雇用契約期間(終期)", ymdCompact(ee) ?? "", "date8", `始期から${eeYears}年間（${eeYears}年後の前日）`),
     item("2.3", "(2)従事すべき業務の内容 特定産業分野01", industryFieldChoice(industryField), "choice", "プルダウンから選ぶ（所属機関の業種）", find(groups, "2 (2)特定産業分野")?.edit, org?.industry ?? ""),
     linked(groups, "2.4", "(2)従事すべき業務の内容 業務区分01", "2 (2)業務区分", "choice", "プルダウンから選ぶ"),
     w.main_occupation

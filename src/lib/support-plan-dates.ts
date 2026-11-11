@@ -195,6 +195,15 @@ export function contractPeriodEnd(employStart: string, years: number = CONTRACT_
   return addDaysYmd(addYearsYmd(employStart, years), -1);
 }
 
+// 雇用契約の年数（申請準備の「支援計画書の日付」で選ぶ。既定は2年、3年で結ぶ人もいる）。
+// 保存は日付一覧（support_plan_dates.dates）の "eeYears" に "3" のように入れる（マイグレーション不要）
+export const CONTRACT_YEARS_KEY = "eeYears";
+export const CONTRACT_YEAR_CHOICES = [2, 3] as const;
+export function contractYearsOf(dates: Record<string, string> | null | undefined): number {
+  const n = Number((dates?.[CONTRACT_YEARS_KEY] ?? "").trim());
+  return Number.isInteger(n) && n >= 1 && n <= 5 ? n : CONTRACT_YEARS;
+}
+
 // 「2026年11月29日」の形
 export function formatYmdJa(ymd: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((ymd ?? "").trim());
