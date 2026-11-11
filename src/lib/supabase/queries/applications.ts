@@ -107,7 +107,8 @@ function toRowPatch(patch: Partial<Application>): Record<string, unknown> {
   if ("employmentStartOn" in patch) row.employment_start_on = patch.employmentStartOn ?? null;
   if (patch.visaAtGrant !== undefined) row.visa_at_grant = patch.visaAtGrant;
   if (patch.reportOrgHonorific !== undefined) row.report_org_honorific = patch.reportOrgHonorific;
-  if (patch.cardReceivedOn !== undefined) row.card_received_on = patch.cardReceivedOn ?? null;
+  // 在留カード受領の取り消しで null に戻せるよう、キーの存在で判定する
+  if ("cardReceivedOn" in patch) row.card_received_on = patch.cardReceivedOn ?? null;
   // 取下げの取り消しで null に戻せるよう、キーの存在で判定する
   if ("withdrawnOn" in patch) row.withdrawn_on = patch.withdrawnOn ?? null;
   if (patch.approvalReported !== undefined) row.approval_reported = patch.approvalReported;
