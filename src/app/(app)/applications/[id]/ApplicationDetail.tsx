@@ -83,6 +83,13 @@ export function ApplicationDetail({ id }: { id: string }) {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   // 在留カード受領で外国人の現在の所属機関を更新したときの知らせ
   const [orgLinkNotice, setOrgLinkNotice] = useState<string | null>(null);
+  // 在留カード受領を取り消したあと、受領のときに書き換えた外国人の雇用開始日・所属機関を直すための表示
+  const [undoFix, setUndoFix] = useState<{
+    employmentStartOn: string | null;
+    orgName: string | null;
+    busy: boolean;
+    message: string | null;
+  } | null>(null);
   // 追加資料の提出依頼（ExtraRequestSection が読み込んだもの）。見出しの要約と「今やること」に使う
   const [extraRows, setExtraRows] = useState<ApplicationExtraRequest[]>([]);
 
@@ -344,6 +351,36 @@ export function ApplicationDetail({ id }: { id: string }) {
       return;
     void updateApplication(id, { status: "許可済", cardReceivedOn: undefined });
     setOrgLinkNotice(null);
+    // 受領のときに書き換えた外国人の雇用開始日・現在の所属機関を出して、ここで直せるようにする
+    if (!app?.workerId) return;
+    void createClient()
+      .from("workers")
+      .select("employment_start_on, organizations!workers_current_organization_id_fkey(name)")
+      .eq("id", app.workerId)
+      .maybeSingle()
+      .then(({ data }) => {
+        const row = data as { employment_start_on: string | null; organizations: { name: string } | null } | null;
+        setUndoFix({
+          employmentStartOn: row?.employment_start_on ?? null,
+          orgName: row?.organizations?.name ?? null,
+          busy: false,
+          message: null,
+        });
+      });
+  }
+
+  // 受領の取り消しのあと、外国人の雇用開始日を消す
+  async function clearEmploymentStart() {
+    if (!app?.workerId || !undoFix) return;
+    if (!confirm(`外国人の雇用開始日（${undoFix.employmentStartOn}）を消します。よろしいですか？`)) return;
+    setUndoFix({ ...undoFix, busy: true, message: null });
+    try {
+      await updateWorker(createClient(), app.workerId, { employment_start_on: null });
+      setUndoFix({ ...undoFix, employmentStartOn: null, busy: false, message: "外国人の雇用開始日を消しました。" });
+      router.refresh();
+    } catch (err) {
+      setUndoFix({ ...undoFix, busy: false, message: `雇用開始日を消せませんでした（${err instanceof Error ? err.message : "エラー"}）。外国人詳細で直してください。` });
+    }
   }
 
   function restoreWithdrawn() {
@@ -730,6 +767,35 @@ export function ApplicationDetail({ id }: { id: string }) {
               <p className="rounded-xl bg-background p-3 text-xs leading-relaxed text-muted">
                 上の「許可情報」で許可の通知を記録して保存すると、ここで在留カードの受け取りを記録できます。
               </p>
+            )}
+            {/* 受領を取り消したあと: 受領のときに書き換えた外国人の雇用開始日・所属機関をここで直す */}
+            {undoFix && !cardReceived && app.workerId && (
+              <div className="mb-2 space-y-1.5 rounded-xl border border-seal/40 bg-seal/5 p-3 text-xs">
+                <p className="font-bold text-seal">受領を取り消しました。受領のときに書き換えた外国人の情報を確認してください。</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-muted">外国人の雇用開始日:</span>
+                  <span className="font-bold">{undoFix.employmentStartOn ?? "（未設定）"}</span>
+                  {undoFix.employmentStartOn && (
+                    <button
+                      type="button"
+                      disabled={undoFix.busy}
+                      onClick={() => void clearEmploymentStart()}
+                      className="inline-flex min-h-[30px] items-center gap-1 rounded-lg border border-seal bg-surface px-2.5 text-[11px] font-bold text-seal hover:bg-seal/5 disabled:opacity-50"
+                    >
+                      <Trash2 size={12} />
+                      雇用開始日を消す
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-muted">外国人の現在の所属機関:</span>
+                  <span className="font-bold">{undoFix.orgName ?? "（未設定）"}</span>
+                  <Link href={`/workers/${app.workerId}`} className="font-bold text-brand hover:underline">
+                    違っていれば外国人詳細で直す →
+                  </Link>
+                </div>
+                {undoFix.message && <p className="font-bold text-brand">{undoFix.message}</p>}
+              </div>
             )}
             {app.approved && !cardReceived && (
               <Button
