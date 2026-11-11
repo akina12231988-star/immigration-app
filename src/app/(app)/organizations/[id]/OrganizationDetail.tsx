@@ -1,7 +1,7 @@
 "use client";
 
 import { OrgIcon } from "@/components/organizations/OrgIcon";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, X } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
@@ -48,6 +48,14 @@ export function OrganizationDetail({
   // 案B: 中身はそのままで、タブに分けて見せる
   const [tab, setTab] = useState<OrgTabId>("company");
   const router = useRouter();
+  // #council（申請書に貼る情報のフリー欄から）で開いたら「提出書類」タブに切り替えて、協力確認書の提出の欄へ移動する
+  useEffect(() => {
+    if (window.location.hash !== "#council") return;
+    void Promise.resolve().then(() => {
+      setTab("docs");
+      setTimeout(() => document.getElementById("council")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+    });
+  }, []);
   // snapshot = 表示のみにする基準（保存すると入力した欄も表示に切り替わる）
   const [snapshot, setSnapshot] = useState(() => organizationToInput(organization));
   const [form, setForm] = useState(() => organizationToInput(organization));

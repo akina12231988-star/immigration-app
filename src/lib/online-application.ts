@@ -142,6 +142,9 @@ export const COUNCIL_ATTACHMENT_FREE_TEXT = [
 ].join("\n");
 // 別紙は、所属機関の「協力確認書の提出」の登録内容から印刷画面で作る（PDFで保存して添付する）
 export const councilAttachmentUrl = (orgId: string) => `/organizations/${orgId}/council/print?form=3v`;
+// 所属機関の詳細の「提出書類」タブの協力確認書の提出の欄（#council で開くとそのタブに切り替えて移動する）
+export const COUNCIL_SECTION_ID = "council";
+export const councilRegisterUrl = (orgId: string) => `/organizations/${orgId}#${COUNCIL_SECTION_ID}`;
 
 // フリー欄（協力確認書）の項目。有限会社國崎青果は別紙を添付して「添付ファイルのとおり」と書く。
 // ほかの所属機関で300文字を超えるときは、別紙を作って添付するよう知らせる
@@ -159,6 +162,23 @@ export function councilFreeItem(
       format: "text",
       note: `協力確認書の提出先が多く300文字に入りきらないため、「${COUNCIL_ATTACHMENT_NAME}」をPDFにして、オンライン申請の添付資料として貼り付けてください（フリー欄には「添付ファイルのとおり」と書きます）。下のボタンで別紙の印刷画面を開き、PDFで保存できます。`,
       ...(orgId ? { link: { href: councilAttachmentUrl(orgId), label: `${COUNCIL_ATTACHMENT_NAME}を開く（PDFで保存して添付）` } } : {}),
+    };
+  }
+  // 所属機関の情報で協力確認書の提出が未入力なら「無」にせず、エラーにして登録画面へのボタンを出す
+  const hasRows = (rows: { to: string; on: string }[] | undefined) => (rows ?? []).some((r) => r.to || r.on);
+  const missing = [
+    hasRows(office) ? "" : "（１）活動する事業所の所在地",
+    hasRows(residence) ? "" : "（２）住居地",
+  ].filter(Boolean);
+  if (missing.length > 0) {
+    return {
+      no: "",
+      label: "フリー欄（協力確認書）",
+      value: "",
+      format: "text",
+      note: "現在「特定技能」の人は協力確認書の有無を書く。300文字以内",
+      error: `所属機関の情報で協力確認書の提出（${missing.join("・")}）が未入力です。所属機関の「提出書類」タブで提出先・提出日を登録してください（登録するとここに文章が出ます）。`,
+      ...(orgId ? { link: { href: councilRegisterUrl(orgId), label: "所属機関の協力確認書の提出を登録する" } } : {}),
     };
   }
   const text = councilFreeText(office, residence);
