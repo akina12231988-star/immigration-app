@@ -8,6 +8,8 @@
 export interface PostalTown {
   town: string; // 町域名（例: 郡築三番町、大字布田）
   postal: string; // 郵便番号（"866-0008" や "8660008"）
+  townKana?: string; // 町域の読み（英字の住所を作るときに使う）
+  cityKana?: string; // 市区町村の読み
 }
 
 export interface PostalMatch {
