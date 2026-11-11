@@ -9,6 +9,7 @@ import {
   normalizeMrz,
   padMrzLine1,
   parseMrz,
+  prometricMrzFields,
   type MrzResult,
 } from "@/lib/mrz";
 
@@ -269,6 +270,40 @@ function MrzCopyList({
         {note ??
           "「コピー」を押すとその項目をまるごと写します。2行はそのまま選べるので、必要なところだけなぞって部分的にコピーもできます。"}
       </p>
+      {/* プロメトリックの「パスポート情報(MRZ)の入力」は MRZ の何文字目かで欄が分かれているので、欄ごとに切り分けて出す */}
+      <div className="mb-2 rounded-lg border border-brand/40 bg-brand/5 p-2">
+        <p className="text-[11px] font-bold text-brand">
+          プロメトリックの申込画面（パスポート情報(MRZ)の入力）に貼る値 — MRZのとおりに入れないと受験できません
+        </p>
+        {([1, 2] as const).map((line) => (
+          <div key={line} className="mt-1.5">
+            <p className="text-[10px] font-bold text-muted">MRZ {line}行目</p>
+            <ul className="mt-0.5 flex flex-col gap-1">
+              {prometricMrzFields(result)
+                .filter((f) => f.line === line)
+                .map((f) => {
+                  const key = `prometric-${f.label}`;
+                  return (
+                    <li key={key} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg border border-border bg-background px-2.5 py-1.5">
+                      <span className="w-[200px] shrink-0 text-[11px] font-bold text-muted">{f.label}</span>
+                      <span className="min-w-0 flex-1 select-text overflow-x-auto whitespace-pre font-mono text-xs">{f.value}</span>
+                      <button
+                        type="button"
+                        onClick={() => void copy(key, f.value)}
+                        aria-label={`${f.label}をコピー`}
+                        className="flex min-h-[30px] shrink-0 items-center gap-1 rounded-lg border border-border px-2 text-[11px] font-bold text-brand"
+                      >
+                        {copied === key ? <Check size={12} /> : <Copy size={12} />}
+                        {copied === key ? "コピーしました" : "コピー"}
+                      </button>
+                      <span className="w-full text-[10px] text-muted">{f.hint}</span>
+                    </li>
+                  );
+                })}
+            </ul>
+          </div>
+        ))}
+      </div>
       <ul className="flex flex-col gap-1">
         {mrzCopyItems(result).map((item) => (
           <li

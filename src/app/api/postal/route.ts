@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { resolvePostal, type PostalTown } from "@/lib/postal-lookup";
+import { buildPrometricAddress } from "@/lib/address-romaji";
 
 export const dynamic = "force-dynamic";
 
@@ -36,10 +37,10 @@ async function townsOf(prefecture: string, city: string): Promise<PostalTown[]> 
   const hit = townCache.get(key);
   if (hit) return hit;
   const json = (await fetchJson({ method: "getTowns", prefecture, city })) as {
-    response?: { location?: { town?: string; postal?: string }[] };
+    response?: { location?: { town?: string; postal?: string; town_kana?: string; city_kana?: string }[] };
   };
   const towns = (json.response?.location ?? [])
-    .map((l) => ({ town: l.town ?? "", postal: l.postal ?? "" }))
+    .map((l) => ({ town: l.town ?? "", postal: l.postal ?? "", townKana: l.town_kana ?? "", cityKana: l.city_kana ?? "" }))
     .filter((t) => t.town);
   if (towns.length > 0) townCache.set(key, towns);
   return towns;
@@ -62,6 +63,25 @@ export async function GET(req: NextRequest) {
     const townLists = new Map<string, PostalTown[]>();
     for (const c of candidates) townLists.set(c, await townsOf(prefecture, c));
     const match = resolvePostal(address, cities, (_p, c) => townLists.get(c) ?? null);
+    // en=1: プロメトリックの住所欄に入れる英字の住所（市区町村・町域の読み仮名から）も返す
+    if (match && req.nextUrl.searchParams.get("en") === "1") {
+      const t = (townLists.get(match.city) ?? []).find((x) => x.town === match.town);
+      const a = address.normalize("NFKC").replace(/\s+/g, "");
+      const afterCity = a.slice(prefecture.length + match.city.length);
+      const townKey = match.town.replace(/^(大字|字)/, "");
+      const idx = afterCity.indexOf(townKey);
+      const rest = idx >= 0 ? afterCity.slice(idx + townKey.length) : "";
+      const en = buildPrometricAddress({
+        prefecture: match.prefecture,
+        city: match.city,
+        cityKana: t?.cityKana ?? "",
+        town: /以下に掲載がない場合/.test(match.town) ? "" : match.town,
+        townKana: /以下に掲載がない場合/.test(match.town) ? "" : (t?.townKana ?? ""),
+        rest,
+        postal: match.postal,
+      });
+      return NextResponse.json({ postal: match.postal, matched: `${match.prefecture}${match.city}${match.town}`, en });
+    }
     return NextResponse.json(
       match
         ? { postal: match.postal, matched: `${match.prefecture}${match.city}${match.town}` }

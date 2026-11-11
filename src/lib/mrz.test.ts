@@ -275,3 +275,22 @@ describe("padMrzLine1", () => {
     expect(padMrzLine1("  ")).toBe("");
   });
 });
+
+describe("prometricMrzFields（プロメトリックの MRZ 入力欄）", () => {
+  it("MRZ を申込画面の欄ごとに切り分ける", async () => {
+    const { parseMrz, prometricMrzFields } = await import("./mrz");
+    const r = parseMrz(
+      "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408122F1204159ZE184226B<<<<<10",
+      "2026-11-11",
+    );
+    const f = Object.fromEntries(prometricMrzFields(r).map((x) => [x.label, x.value]));
+    expect(f["ドキュメントタイプ"]).toBe("P<");
+    expect(f["発行国"]).toBe("UTO");
+    expect(f["氏名"]).toBe("ERIKSSON<<ANNA<MARIA");
+    expect(f["パスポート番号（チェックディジットを含む）"]).toBe("L898902C36");
+    expect(f["国籍（アルファベット3文字）"]).toBe("UTO");
+    expect(f["生年月日（YYMMDD、チェックディジットを含む）"]).toBe("7408122");
+    expect(f["性別"]).toBe("F");
+    expect(f["有効期限（YYMMDD、チェックディジットを含む）"]).toBe("1204159");
+  });
+});

@@ -21,6 +21,7 @@ import { normalizeOrganizationIntake } from "@/lib/organization-intake";
 import { formatYmdJa } from "@/lib/support-plan-dates";
 import { PassportMrzPanel, SavedMrzCopyList } from "@/components/workers/PassportMrzPanel";
 import { ExamFeeAccountCard } from "@/components/todos/ExamFeeAccount";
+import { PrometricAddressCopy } from "@/components/todos/PrometricAddressCopy";
 import { AsatFormsPanel } from "@/components/todos/AsatFormsPanel";
 import { dbErrorMessage } from "@/lib/errors";
 import { sumHistoryDays, todayStr, toYMD, ymdFullText, ymdText } from "@/lib/ssw/calc";
@@ -1198,6 +1199,9 @@ function ExamWorkerInfo({
         {item("パスポート番号", w.passport_no)}
         {item("パスポート有効期限", w.passport_expiry_date)}
       </div>
+
+      {/* プロメトリックID取得の電話番号・住所（英字）。日本での住所を英字に直して欄ごとにコピーする */}
+      <PrometricAddressCopy address={w.address} />
 
       {/* 所属機関（アプリケーションNo.の申込で会社の情報も書くため）。外国人の現在の所属機関から */}
       {showOrg && (
