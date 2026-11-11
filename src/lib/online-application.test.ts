@@ -127,6 +127,12 @@ describe("buildOnlineApplication", () => {
     expect(get("特定技能雇用契約 (1)雇用契約期間(終期)")?.value).toBe("20260514");
   });
 
+  it("特定活動への資格変更は、希望する在留期間を6月にする", () => {
+    const tk = { ...input, desiredStatus: "特定活動", appType: "変更", planDates: { es: "2024-05-15", eeYears: "3" } };
+    const items = buildOnlineApplication(tk, buildApplicationCopyGroups(tk)).flatMap((s) => s.items);
+    expect(items.find((i) => i.label === "希望する在留期間")?.value).toBe("6月");
+  });
+
   it("画面の順に8つの欄に分かれる", () => {
     expect(sections.map((s) => s.title)).toEqual([
       "身分事項（1〜16）", "区分V（18〜28・職歴）", "取次者", "特定技能雇用契約（2.1〜2.42）", "特定技能所属機関（3.1〜3.43）", "1号特定技能外国人支援計画（4.1〜4.16）", "登録支援機関（5.1〜5.16）", "受領方法等・フリー欄",

@@ -382,8 +382,10 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
     item("", "在留カードの有無", w.residence_card_no ? "有" : "", "choice"),
     item("12", "在留カード番号", (w.residence_card_no ?? "").normalize("NFKC").toUpperCase().replace(/\s+/g, ""), "upper", "半角英数字12文字", wk("residence_card_no"), w.residence_card_no ?? ""),
     item("13.1", "希望する在留資格", input.desiredStatus ?? "", "choice", "申請準備の申請種別から"),
-    // 雇用契約を3年で結んだときは、希望する在留期間も3年にする
-    eeYears === 3
+    // 特定活動への資格変更は6月。雇用契約を3年で結んだときは、希望する在留期間も3年にする
+    input.desiredStatus === "特定活動" && (input.appType ?? "").includes("変更")
+      ? item("13.2", "希望する在留期間", "6月", "choice", "特定活動への在留資格変更なので6月")
+      : eeYears === 3
       ? item("13.2", "希望する在留期間", "3年", "choice", "雇用契約期間を3年で結んだので3年。審査で変わることがある")
       : item("13.2", "希望する在留期間", residencePeriodChoice(period), "choice", "更新は通常いまと同じ期間。審査で変わることがある"),
     renewalReasonText(input.desiredStatus)
