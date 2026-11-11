@@ -6,6 +6,7 @@ import {
   bankAccountGuideFor,
   bankAccountGuideForNationality,
   examFeeAccountText,
+  reminderAccountText,
 } from "@/lib/exam-fee-account";
 
 describe("examFeeAccountText", () => {
@@ -19,6 +20,17 @@ describe("examFeeAccountText", () => {
   });
   it("代金が未入力なら金額を出さない", () => {
     expect(examFeeAccountText("")).toMatch(/^試験の代金は、下の口座へ/);
+  });
+});
+
+describe("reminderAccountText（督促で送る文章）", () => {
+  it("種類と金額を入れ、口座は試験と同じ", () => {
+    const text = reminderAccountText("住民税", 12000);
+    expect(text).toMatch(/^住民税（立て替えた分）（12,000円）は、下の口座へ/);
+    expect(text).toContain(`名義 ${EXAM_FEE_ACCOUNT.holder}`);
+  });
+  it("金額が無い・種類がその他なら省く", () => {
+    expect(reminderAccountText("その他", null)).toMatch(/^立て替えた分は、下の口座へ/);
   });
 });
 
