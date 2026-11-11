@@ -24,6 +24,8 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { FileDropArea } from "@/components/ui/FileDropArea";
+import { BankAccountGuideCard } from "@/components/BankAccountGuide";
+import { reminderAccountText } from "@/lib/exam-fee-account";
 import { createClient } from "@/lib/supabase/client";
 import {
   deleteReminder,
@@ -1057,6 +1059,10 @@ function ReminderModal({
   // 会話のスクショ（右）と、立替の領収書・返金の証拠（左の立替払いの欄）を分ける
   const shots = (images ?? []).filter((img) => reminderImageKind(img) === "screenshot");
   const slips = (images ?? []).filter((img) => reminderImageKind(img) === "slip");
+  // 口座案内の文章に入れる金額: 立替の内訳があれば未回収の分、無ければ立替額・督促の金額
+  const guideProg = amountItemsProgress(normalizeAmountItems(reminder.amount_items));
+  const guideAmount =
+    reminder.advance_paid && guideProg.count > 0 ? guideProg.unrepaidAmount : (reminder.advance_amount ?? reminder.amount ?? null);
   const advanceImages = (images ?? []).filter((img) => ["receipt", "repayment"].includes(reminderImageKind(img)));
 
   return (
@@ -1088,6 +1094,15 @@ function ReminderModal({
             <p className="text-[11px] font-bold text-muted">種類</p>
             <p className="text-sm font-bold">{reminder.kind || "—"}</p>
           </div>
+
+          {/* 本人に送る振込先の口座案内（試験の申込と同じもの）。国籍別の画像と文章をコピーして Messenger に貼る */}
+          <BankAccountGuideCard
+            nationality={w?.nationality}
+            title="本人に送る振込先の口座案内"
+            text={reminderAccountText(reminder.kind, guideAmount)}
+            textLabel="文章をコピー（口座と金額）"
+            compact
+          />
 
           {/* 金額（内訳・期限・合計）・納付書の画像・誰が払うか（一覧表に出る） */}
           <AmountPayerFields

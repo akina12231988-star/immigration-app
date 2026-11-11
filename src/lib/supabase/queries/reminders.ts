@@ -9,12 +9,13 @@ export interface ReminderWithWorker extends Reminder {
     id: string;
     name: string;
     kana: string;
+    nationality: string; // 口座案内の画像を国籍に合わせる
     messenger_link: string;
     organizations: { name: string } | null;
   } | null;
 }
 
-const SELECT = "*, workers(id, name, kana, messenger_link, organizations!workers_current_organization_id_fkey(name))";
+const SELECT = "*, workers(id, name, kana, nationality, messenger_link, organizations!workers_current_organization_id_fkey(name))";
 
 export async function listReminders(supabase: SupabaseClient): Promise<ReminderWithWorker[]> {
   const { data, error } = await supabase

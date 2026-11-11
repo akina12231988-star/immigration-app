@@ -19,9 +19,22 @@ export const EXAM_FEE_ACCOUNT = {
 
 // 本人に送る文章（Messenger などに貼る）。代金が分かっていれば金額も入れる
 export function examFeeAccountText(fee?: string, examLabel?: string): string {
+  const head = examLabel ? `${examLabel}の代金` : "試験の代金";
+  return bankTransferText(head, fee);
+}
+
+// 督促（立替払いした税金など）で本人に送る文章。種類（「住民税」など）と金額（円）を入れる
+export function reminderAccountText(kind?: string, amountYen?: number | null): string {
+  const k = (kind ?? "").trim();
+  const head = k && k !== "その他" ? `${k}（立て替えた分）` : "立て替えた分";
+  const amount = amountYen != null && amountYen > 0 ? `${amountYen.toLocaleString("ja-JP")}円` : "";
+  return bankTransferText(head, amount);
+}
+
+// 振込のお願いの文章（見出し＋口座）。金額があれば見出しのあとに入れる
+export function bankTransferText(head: string, fee?: string): string {
   const a = EXAM_FEE_ACCOUNT;
   const amount = (fee ?? "").trim();
-  const head = examLabel ? `${examLabel}の代金` : "試験の代金";
   return [
     `${head}${amount ? `（${amount}）` : ""}は、下の口座へ振込をお願いします。`,
     "",
