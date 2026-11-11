@@ -8,6 +8,7 @@ import { suggestedMainOccupation } from "@/lib/online-main-occupations";
 import { CUSTODIAN_INFO, type CustodianInfo } from "@/lib/custody";
 import { effectiveResidencePeriod } from "@/lib/residence-card";
 import { contractPeriodEnd, contractYearsOf, formatYmdJa } from "@/lib/support-plan-dates";
+import type { WorkHistory } from "@/types/ssw";
 
 // 在留申請オンラインシステムの「手続き申込」画面に貼るためのデータ。
 //
@@ -762,16 +763,38 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
 // 画面の項目（2026-11 時点の空の申込画面のPDFから）:
 //   身分事項 1〜10（変更・更新と同じ）→ 11 入国目的 → 12 入国予定年月日 → 13 上陸予定港 → 14 滞在予定期間 →
 //   15 同伴者 → 16 査証申請予定地 → 17 過去の出入国歴 → 18 過去の認定申請歴 → 19 犯罪 → 20 退去強制 → 21 在日親族
-//   区分V 23 技能水準 → 24 日本語 → 26 通算在留期間 → 27〜32 → 33 職歴 → 34 申請人等（取次申請は入力しない）
+//   区分V 23 技能水準 → 24 日本語 →（25 良好に修了した技能実習2号）→ 26 通算在留期間 → 27〜32 → 33 職歴 →
+//   34 申請人等（取次申請は入力しない）
+// 値の入れ方は、これまでエクセルの認定申請書（申請人等作成用1〜3・所属機関等作成用1〜4）に書いていたやり方に合わせる:
+//   ・9 日本における連絡先は所属機関（勤務先）の住所・電話番号、携帯電話は無し
+//   ・11 入国目的は「Ｖ 特定技能（1号）」、13 上陸予定港は福岡空港、14 滞在予定期間は雇用契約期間、15 同伴者は無
+//   ・16 査証申請予定地はベトナムならハノイ（「HA NOI - VIET NAM」）
+//   ・17 過去の出入国歴は技能実習などで日本にいたことがあれば有（回数・直近の出入国は画面で入れる）
+//   ・23・24 は技能実習2号を良好に修了なら 25 に職種・作業・証明方法（3級の技能検定など）を書く
+//   ・34 は取次申請なので書かない
 
-function ninteiIdentity(input: ApplicationCopyInput, careers: { role?: string }[], eeYears: number, es: string): OnlineItem[] {
+// 16 査証申請予定地: 国籍から決まるもの（無ければ空。画面で入れる）
+export const VISA_PLACE_BY_NATIONALITY: { match: RegExp; place: string }[] = [
+  { match: /ベトナム|viet\s*nam/i, place: "HA NOI - VIET NAM" },
+];
+export function visaApplyPlace(nationality: string | null | undefined): string {
+  const n = (nationality ?? "").normalize("NFKC");
+  return VISA_PLACE_BY_NATIONALITY.find((v) => v.match.test(n))?.place ?? "";
+}
+
+// 13.1 上陸予定港（いつも福岡空港から入国している）
+export const NINTEI_PORT_OF_ENTRY = "福岡空港";
+
+function ninteiIdentity(input: ApplicationCopyInput, careers: WorkHistory[], eeYears: number, es: string): OnlineItem[] {
   const w = input.worker;
-  const c: CustodianInfo = input.custodian ?? { ...CUSTODIAN_INFO };
-  // 日本における連絡先: 本人はまだ日本に住んでいないので、住居地が登録されていなければ所属機関の住所を出す
-  const contactAddress = (w.address ?? "").trim() || (input.org?.address ?? "");
-  const contactNote = (w.address ?? "").trim()
-    ? "外国人詳細の住居地（入国後に住む予定の住所）"
-    : "本人の住居地が未登録のため所属機関の住所を出しています。入国後に住む予定の住所があればそれを入れる";
+  const org = input.org;
+  // 日本における連絡先: 本人はまだ日本に住んでいないので、所属機関（勤務先）の住所・電話番号を書く
+  const contactAddress = org?.address ?? "";
+  const contactNote = "所属機関（勤務先）の住所";
+  // 17 過去の出入国歴: 職歴に日本での在留（技能実習・特定技能など。本国での職歴・無職以外）があれば「有」
+  const stayedInJapan = careers.some((h) => h.visa !== "本国での職歴" && h.visa !== "無職");
+  const visaPlace = visaApplyPlace(w.nationality);
+  const ssw2 = /2号/.test((input.desiredStatus ?? "").normalize("NFKC"));
   return [
     item("1", "国籍・地域", w.nationality, "choice", "プルダウンから選ぶ", wk("nationality")),
     item("2", "生年月日", ymdCompact(w.birth) ?? "", "date8", "「生年月日に不明な点は無い」を選んでから8桁を入れる", wkDate("birth"), w.birth ?? ""),
@@ -790,14 +813,14 @@ function ninteiIdentity(input: ApplicationCopyInput, careers: { role?: string }[
     ),
     item("8", "本国における居住地", toZenkaku(w.home_address), "zenkaku", "全角80文字以内", wk("home_address"), w.home_address),
     postal("9.1", "日本における連絡先 郵便番号", contactAddress, contactNote),
-    item("9.2", "日本における連絡先 居住地", toZenkaku(contactAddress), "zenkaku", `全角85文字以内。${contactNote}`, wk("address"), w.address),
-    item("9.3", "日本における連絡先 電話番号", digitsOnly(c.tel), "digits", "登録支援機関の電話番号（ハイフン無し）"),
-    item("9.4", "日本における連絡先 携帯電話番号", "記載なし", "text", "本人の携帯番号は書かず「記載なし」"),
+    item("9.2", "日本における連絡先 居住地", toZenkaku(contactAddress), "zenkaku", `全角85文字以内。${contactNote}`, org ? og("address") : undefined, org?.address ?? ""),
+    item("9.3", "日本における連絡先 電話番号", digitsOnly(org?.contact), "digits", "所属機関（勤務先）の電話番号（ハイフン無し）", org ? og("contact") : undefined, org?.contact ?? ""),
+    item("9.4", "日本における連絡先 携帯電話番号", "記載なし", "text", "本人はまだ日本の携帯電話が無いので「記載なし」"),
     item("9.5", "メールアドレス", ONLINE_SYSTEM_EMAIL, "text", "オンラインシステム利用者（取次者）のメールアドレス"),
     item("9.6", "メールアドレス再入力", ONLINE_SYSTEM_EMAIL, "text", "9.5 と同じ"),
     item("10.1", "旅券 (1)番号", (w.passport_no ?? "").normalize("NFKC").toUpperCase(), "upper", "半角英数字12文字以内", wk("passport_no"), w.passport_no ?? ""),
     item("10.2", "旅券 (2)有効期限", ymdCompact(w.passport_expiry_date) ?? "", "date8", undefined, wkDate("passport_expiry_date"), w.passport_expiry_date ?? ""),
-    choose("11", "入国目的", "特定技能", "プルダウンから選ぶ"),
+    item("11", "入国目的", ssw2 ? "Ｖ「特定技能（2号）」" : "Ｖ「特定技能（1号）」", "choice", "プルダウンから選ぶ（希望する在留資格から）"),
     item(
       "12",
       "入国予定年月日",
@@ -805,13 +828,17 @@ function ninteiIdentity(input: ApplicationCopyInput, careers: { role?: string }[
       "text",
       es ? "雇用開始日（支援計画書の日付）を入れています。入国の予定日が違えば直す。40文字以内" : "40文字以内（例 ２０２０年４月１日）。雇用開始日を入れると自動で出ます",
     ),
-    manual("13.1", "上陸予定港", "プルダウンから選ぶ（入国する空港。例: 成田・羽田・関西・福岡）。一覧に無ければ「その他」を選んで 13.2 に入れる", "choice"),
+    item("13.1", "上陸予定港", NINTEI_PORT_OF_ENTRY, "choice", "プルダウンから選ぶ（いつもは福岡空港。違う空港から入国するときは選び直す）"),
     item("14.1", "滞在予定期間(年数)", String(eeYears), "choice", `雇用契約期間（${eeYears}年）から`),
     item("14.2", "滞在予定期間(月数)", "0", "choice", "雇用契約期間から"),
-    item("15", "同伴者の有無", "無", "choice", "家族を同伴しないので「無」。同伴するなら「有」"),
-    manual("16", "査証申請予定地", "ビザを申請する日本の大使館・総領事館がある都市（例: ハノイ、ホーチミン、マニラ、ジャカルタ）。40文字以内"),
-    choose("17.1", "過去の出入国歴 有無", undefined, "日本に来たことがあれば「有」にして 17.2 回数・17.3〜17.4 直近の出入国歴（始期・終期）を入れる"),
-    choose("18.1", "過去の在留資格認定証明書交付申請歴 有無", undefined, "「有」なら 18.2 回数・18.3 うち不交付となった回数を選ぶ"),
+    item("15", "同伴者の有無", "無", "choice", "家族と一緒に入国しないので「無」。一緒に入国するなら「有」"),
+    visaPlace
+      ? item("16", "査証申請予定地", visaPlace, "text", "ビザを申請する日本の大使館がある都市（国籍から）。ホーチミンの総領事館で申請するときは直す。40文字以内")
+      : manual("16", "査証申請予定地", "ビザを申請する日本の大使館・総領事館がある都市（例: MANILA - PHILIPPINES）。40文字以内"),
+    stayedInJapan
+      ? item("17.1", "過去の出入国歴 有無", "有", "choice", "職歴に日本での在留（技能実習など）があるので「有」。17.2 回数・17.3〜17.4 直近の出入国歴（始期・終期）はパスポートの出入国印を見て画面で入れる")
+      : choose("17.1", "過去の出入国歴 有無", "無", "日本に来たことがあれば「有」にして 17.2 回数・17.3〜17.4 直近の出入国歴（始期・終期）を入れる"),
+    choose("18.1", "過去の在留資格認定証明書交付申請歴 有無", undefined, "前に認定証明書を申請したことがあれば（技能実習で来日したときなど）「有」にして 18.2 回数・18.3 うち不交付となった回数を選ぶ"),
     item("19", "犯罪を理由とする処分を受けたことの有無", w.criminal_record || "無", "choice", w.criminal_record ? "日本国外・交通違反等を含む" : "未登録なので「無」としています（日本国外・交通違反等を含む）。有なら鉛筆マークから選んで保存", wk("criminal_record", YES_NO), w.criminal_record ?? ""),
     ...(w.criminal_record === "有"
       ? [item("19", "処分の内容", w.criminal_record_note ?? "", "text", "具体的な内容。40文字以内", wk("criminal_record_note"))]
@@ -822,7 +849,7 @@ function ninteiIdentity(input: ApplicationCopyInput, careers: { role?: string }[
       "在日親族及び同居者 有無",
       w.relatives_in_japan ?? "",
       "choice",
-      "外国人詳細 ＞ 在日親族の同居。「有」なら 21.2〜21.8 を人数分入れる（＋追加する。親族の氏名などは外国人詳細で登録）",
+      "外国人詳細 ＞ 在日親族の同居。日本にいる家族（夫・妻など）がいれば「有」にして 21.2〜21.8 を人数分入れる（＋追加する。親族の氏名などは外国人詳細で登録）。勤務先には「○○で特定技能1号審査中」のようにも書ける",
       wk("relatives_in_japan", YES_NO),
     ),
     ...relativeItems(w.relatives_in_japan === "有" ? (w.relatives ?? []) : [], true),
@@ -832,7 +859,7 @@ function ninteiIdentity(input: ApplicationCopyInput, careers: { role?: string }[
 function ninteiKubunV(
   input: ApplicationCopyInput,
   groups: CopyGroup[],
-  careers: { start: string; end?: string | null; org: string }[],
+  careers: WorkHistory[],
   totalY: string,
   totalM: string,
   totalAsOf: string | undefined,
@@ -851,9 +878,6 @@ function ninteiKubunV(
     ),
     linked(groups, "23", "技能水準 試験名", "18 技能水準 (1)試験名", "text"),
     linked(groups, "23", "技能水準 受験地", "18 (2)受験地", "text"),
-    linked(groups, "23", "技能実習2号良好修了 職種名", "20 技能実習2号良好修了 (1)職種名", "text", "評価区分で技能実習2号の良好修了を選んだ人だけ"),
-    linked(groups, "23", "技能実習2号良好修了 作業名", "20 (2)作業名", "text"),
-    linked(groups, "23", "技能実習2号良好修了 証明方法", "20 (3)良好修了の証明方法", "choice"),
     item(
       "24.1",
       "日本語能力 評価区分",
@@ -868,6 +892,9 @@ function ninteiKubunV(
     linked(groups, "24", "日本語能力 試験名", "19 日本語能力 (1)試験名", "text"),
     linked(groups, "24", "日本語能力 受験地", "19 (2)受験地", "text"),
     item("24", "日本語能力 レベル", val(groups, "19 レベル"), "choice", undefined, wk("cert_nihongo_level", JLPT_LEVELS)),
+    linked(groups, "25", "良好に修了した技能実習2号 職種", "20 技能実習2号良好修了 (1)職種名", "text", "23・24 で「技能実習2号を良好に修了」を選んだ人だけ（例: 耕種農業）"),
+    linked(groups, "25", "良好に修了した技能実習2号 作業", "20 (2)作業名", "text", "例: 施設園芸"),
+    linked(groups, "25", "良好に修了したことの証明", "20 (3)良好修了の証明方法", "choice", "3級の技能検定（技能実習評価試験の実技試験）に合格していればそれを選ぶ"),
     item("26.1", "申請時における特定技能1号での通算在留期間(年数)", totalY, "choice", ["過去の在留歴を含む。特定技能1号で入国を希望するとき", totalAsOf].filter(Boolean).join("。")),
     item("26.2", "申請時における特定技能1号での通算在留期間(月数)", totalM, "choice", totalAsOf),
     item("27.1", "保証金の徴収・財産管理・違約金等の支払契約の有無", "無", "choice", "必ず「無」"),
