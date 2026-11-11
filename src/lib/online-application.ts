@@ -286,6 +286,12 @@ export function cardReceiptLabel(method: string | null | undefined): string {
   return "";
 }
 
+// 特定活動（「特定技能１号」への移行準備）の変更申請の定型文（区分U）
+export const TOKKATSU_ACTIVITY = "「特定技能１号」への移行準備";
+export const TOKKATSU_REASON = "「特定技能１号」への移行準備のため";
+export const TOKKATSU_PURPOSE =
+  "「特定技能1号」へ移行予定であるが、準備に時間を要することから、就労予定の受入機関において「特定技能1号」で従事する業務と同様の業務に従事するもの。";
+
 // 2.7・2.8 所定労働時間の注意書き（画面は小数点を受け付けない）
 export const HOURS_NOTE = "半角数字4文字以内。小数点以下は入力できないので切り捨てています（40.5 → 40）";
 
@@ -418,7 +424,9 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
       : eeYears === 3
       ? item("13.2", "希望する在留期間", "3年", "choice", "雇用契約期間を3年で結んだので3年。審査で変わることがある")
       : item("13.2", "希望する在留期間", residencePeriodChoice(period), "choice", "更新は通常いまと同じ期間。審査で変わることがある"),
-    renewalReasonText(input.desiredStatus)
+    input.desiredStatus === "特定活動"
+      ? item("14", "変更の理由", TOKKATSU_REASON, "text", "「特定技能１号」への移行準備の特定活動の定型文。600文字以内")
+      : renewalReasonText(input.desiredStatus)
       ? item("14", "更新（変更）の理由", renewalReasonText(input.desiredStatus), "text", "希望する在留資格から決まる定型文。600文字以内")
       : manual("14", "更新（変更）の理由", "600文字以内。例: 1号特定技能外国人として就労するため"),
     // 15 犯罪歴: 紙の順で有無と内容を登録する。未登録なら「無」として出す
@@ -754,6 +762,56 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
     councilFreeItem(org?.name, (org as { id?: string } | null)?.id, intake?.council_office_submissions, intake?.council_residence_submissions),
     manual("", "顔写真", "JPEG を添付（3か月以内に撮影）"),
   ];
+
+  // 特定活動（「特定技能１号」への移行準備）の変更申請は、区分U（特定活動）の画面で出す
+  if (input.desiredStatus === "特定活動" && !isNintei) {
+    const staffNum = (v: string | undefined) => Number(digitsOnly(v)) || 0;
+    const foreignStaff =
+      staffNum(intake?.staff_trainee) + staffNum(intake?.staff_ssw1) + staffNum(intake?.staff_ssw2) + staffNum(intake?.staff_katsudo);
+    const hasForeignStaff = [intake?.staff_trainee, intake?.staff_ssw1, intake?.staff_ssw2, intake?.staff_katsudo].some((v) => digitsOnly(v));
+    const kubunU: OnlineItem[] = [
+      item("17.1", "活動内容", TOKKATSU_ACTIVITY, "choice", "プルダウンから選ぶ（これにより 19.1 以降の項目が変わる）"),
+      item("22", "具体的な在留目的", TOKKATSU_PURPOSE, "text", "滞在費支弁方法を含む。600文字以内"),
+      skip("27.1〜27.6", "代理人（法定代理人による申請の場合）", "取次申請なので何も記載しない"),
+    ];
+    const orgU: OnlineItem[] = [
+      item("1", "契約の形態", "雇用", "choice", "必ず「雇用」"),
+      manual("3.1", "職種 主たる職種", "プルダウンから選ぶ（就労予定の受入機関で「特定技能１号」で従事する業務の職種）", "choice"),
+      manual("3.2", "職種 他職種01", "他の職種があれば一覧から選ぶ（無ければ空欄）", "choice"),
+      item("4", "活動内容詳細", TOKKATSU_PURPOSE, "text", "600文字以内"),
+      choose("", "活動内容変更の有無（前回許可時以降）", "無", "前回許可時以降に職務内容の変更があったか"),
+      item("5.1", "勤務先、所属機関又は通学先 (1)名称", org?.name ?? "", "text", "本店又は主たる事業所のもの。60文字以内", org ? og("name") : undefined),
+      skip("5.2", "(1)支店・事業所名", "支店・事業所で働くときだけ入れる（60文字以内）"),
+      item("", "(2)法人番号の有無", org ? (org.corporate_no ? "有" : "無") : "", "choice"),
+      item("5.3", "(2)法人番号", digitsOnly(org?.corporate_no), "digits", "13桁（法人でなければ空欄）", org ? og("corporate_no") : undefined, org?.corporate_no ?? ""),
+      item("5.4", "(3)雇用保険適用事業所番号", digitsOnly(intake?.koyo_no), "digits", "11桁・ハイフン無し。非該当事業所は空欄", org ? it("koyo_no") : undefined, intake?.koyo_no ?? ""),
+      item("5.5", "(4)業種 主たる業種", org?.main_industry ?? "", "choice", "プルダウンから選ぶ", org ? og("main_industry", ONLINE_MAIN_INDUSTRIES) : undefined),
+      manual("5.7", "(4)業種 他業種01", "他に業種があれば一覧から選ぶ", "choice"),
+      postal("5.9", "(5)郵便番号", org?.address, "所在地から"),
+      item("5.10", "(5)所在地", toZenkaku(org?.address), "zenkaku", "全角85文字以内", org ? og("address") : undefined, org?.address ?? ""),
+      item("5.11", "(5)電話番号", digitsOnly(org?.contact), "digits", "ハイフン無し", org ? og("contact") : undefined, org?.contact ?? ""),
+      item("5.12", "(6)資本金", digitsOnly(intake?.capital), "digits", "円。13文字以内（個人事業主は 0）", org ? it("capital") : undefined, intake?.capital ?? ""),
+      item("5.13", "(7)年間売上高", digitsOnly(val(groups, "3 (7)年間売上金額（直近年度）")), "digits", "円。直近年度（所属機関 ＞ 決算情報で登録）"),
+      item("5.14", "(8)従業員数", digitsOnly(val(groups, "3 (8)常勤職員数")), "digits", "名（所属機関 ＞ 常勤職員数で登録）"),
+      item("5.15", "(8)うち外国人職員数", hasForeignStaff ? String(foreignStaff) : "", "digits", "名（所属機関 ＞ 常勤職員数の技能実習生・特定技能1号・2号・特定活動の合計）"),
+      item("", "職務上の地位", "無", "choice", "役職が無ければ「無」"),
+      item("7", "就労又は就学予定期間", "6", "digits", "か月（特定活動は6か月）"),
+      item("8", "月額報酬", digitsOnly(val(groups, "2 (4)月額報酬")), "digits", `税引き前。各種手当・実費弁償を除く。${find(groups, "2 (4)月額報酬")?.note ?? ""}`),
+      skip("", "同時申請種別選択", "再入国許可・資格外活動許可などを同時に申請しなければ選ばない"),
+    ];
+    const receiptU = receipt.map((i) =>
+      i.label === "フリー欄（協力確認書）"
+        ? { ...i, value: "", error: undefined, link: undefined, skip: true, note: "特定活動の申請では書かない（空欄のまま）" }
+        : i,
+    );
+    return [
+      { title: "身分事項（1〜16）", items: identity },
+      { title: "区分U（特定活動）申請人に関する情報等（17〜27）", items: kubunU },
+      { title: "取次者", items: agent },
+      { title: "所属機関に関する情報等（1〜8）", items: orgU },
+      { title: "受領方法等・フリー欄", items: receiptU },
+    ];
+  }
 
   // 認定・更新は、エクセルの申請書（申請人等作成用1〜3・所属機関等作成用1〜4）の番号・シート分けに合わせて出す
   if (isNintei) {

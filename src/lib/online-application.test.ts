@@ -197,6 +197,25 @@ describe("buildOnlineApplication", () => {
     expect(plan[13].no).toBe("4.14");
   });
 
+  it("特定活動（移行準備）の変更申請は区分U（特定活動）の画面で出す", () => {
+    const tk = { ...input, desiredStatus: "特定活動", appType: "変更" };
+    const secs = buildOnlineApplication(tk, buildApplicationCopyGroups(tk));
+    expect(secs.map((s) => s.title)).toEqual([
+      "身分事項（1〜16）", "区分U（特定活動）申請人に関する情報等（17〜27）", "取次者", "所属機関に関する情報等（1〜8）", "受領方法等・フリー欄",
+    ]);
+    const items = secs.flatMap((s) => s.items);
+    const g = (label: string) => items.find((i) => i.label === label);
+    expect(g("変更の理由")?.value).toBe("「特定技能１号」への移行準備のため");
+    expect(g("活動内容")).toMatchObject({ no: "17.1", value: "「特定技能１号」への移行準備" });
+    expect(g("具体的な在留目的")?.value).toContain("就労予定の受入機関");
+    expect(g("契約の形態")?.value).toBe("雇用");
+    expect(g("就労又は就学予定期間")?.value).toBe("6");
+    expect(g("勤務先、所属機関又は通学先 (1)名称")?.value).toBe("有限会社國崎青果");
+    expect(g("(5)電話番号")?.value).toBe("0965370901");
+    expect(g("フリー欄（協力確認書）")?.skip).toBe(true);
+    expect(items.find((i) => i.no === "2.1")).toBeUndefined();
+  });
+
   it("画面の順に8つの欄に分かれる", () => {
     expect(sections.map((s) => s.title)).toEqual([
       "身分事項（1〜16）", "区分V（18〜28・職歴）", "取次者", "特定技能雇用契約（2.1〜2.42）", "特定技能所属機関（3.1〜3.43）", "1号特定技能外国人支援計画（4.1〜4.16）", "登録支援機関（5.1〜5.16）", "受領方法等・フリー欄",
