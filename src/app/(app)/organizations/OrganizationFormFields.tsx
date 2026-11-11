@@ -2422,7 +2422,8 @@ function IntakeSection({
         </div>
         </OrgTabPanel>
         <OrgTabPanel tab="docs">
-        <p className={GROUP_CLASS}>協力確認書の提出（提出先・提出日・確認方法）</p>
+        {/* 申請書に貼る情報のフリー欄から #council で開いたときの移動先 */}
+        <p id="council" className={`${GROUP_CLASS} scroll-mt-20`}>協力確認書の提出（提出先・提出日・確認方法）</p>
         <p className={HINT_CLASS}>
           提出先・提出日・確認方法（メール／提出した書面の控え／その他）を分けて記録します。複数ある場合は「＋提出を追加」で行を足してください。協議会の加入通知書などがある場合はコピーをもらってください。
         </p>

@@ -447,6 +447,16 @@ describe("buildOnlineApplication", () => {
 });
 
 describe("councilFreeItem（フリー欄・協力確認書）", () => {
+  it("所属機関で協力確認書の提出が未入力なら「無」にせずエラーにして、登録画面へのボタンを出す", async () => {
+    const { councilFreeItem } = await import("./online-application");
+    const none = councilFreeItem("株式会社さくら", "o2", [], undefined);
+    expect(none.value).toBe("");
+    expect(none.error).toContain("未入力");
+    expect(none.link?.href).toBe("/organizations/o2#council");
+    const half = councilFreeItem("株式会社さくら", "o2", [{ to: "八代市", on: "2026-04-01" }], []);
+    expect(half.error).toContain("（２）住居地");
+    expect(half.error).not.toContain("（１）");
+  });
   it("有限会社國崎青果は別紙の添付ファイルのとおりと書き、PDFのダウンロードを案内する", async () => {
     const { councilFreeItem } = await import("./online-application");
     const it1 = councilFreeItem("有限会社國崎青果", "o1", [{ to: "八代市", on: "2026-04-01" }], []);
@@ -458,7 +468,7 @@ describe("councilFreeItem（フリー欄・協力確認書）", () => {
   });
   it("ほかの所属機関はこれまでどおり。300文字を超えたら知らせる", async () => {
     const { councilFreeItem } = await import("./online-application");
-    expect(councilFreeItem("株式会社さくら", "o2", [{ to: "八代市", on: "2026-04-01" }], []).error).toBeUndefined();
+    expect(councilFreeItem("株式会社さくら", "o2", [{ to: "八代市", on: "2026-04-01" }], [{ to: "八代市", on: "2026-04-01" }]).error).toBeUndefined();
     const many = Array.from({ length: 20 }, (_, i) => ({ to: `（第${i}営業所）熊本県八代市`, on: "2026-04-01" }));
     const over = councilFreeItem("株式会社さくら", "o2", many, many);
     expect(over.error).toContain("300文字を超えています");
