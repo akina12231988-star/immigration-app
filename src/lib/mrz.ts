@@ -247,6 +247,41 @@ export function mrzCopyItems(result: MrzResult): MrzCopyItem[] {
   return items.filter((i) => i.value !== "");
 }
 
+// プロメトリック（Get Prometric ID）の「パスポート情報(MRZ)の入力」の欄ごとの値。
+// 申込画面は MRZ の何文字目かで欄が分かれていて、MRZ のとおりに入れないと受験できない。
+//   1行目: 1〜2文字目 ドキュメントタイプ / 3〜5文字目 発行国 / 6〜44文字目 氏名（最大39文字）
+//   2行目: 1〜10文字目 パスポート番号（チェックディジット含む） / 11〜13文字目 国籍 /
+//          14〜20文字目 生年月日（YYMMDD＋チェックディジット） / 21文字目 性別 /
+//          22〜28文字目 有効期限（YYMMDD＋チェックディジット）
+export interface PrometricMrzField {
+  line: 1 | 2;
+  label: string; // 申込画面の欄の名前
+  value: string; // MRZ から切り出した文字（そのまま貼る）
+  hint: string; // 何文字目か・入れ方
+}
+
+export function prometricMrzFields(result: MrzResult): PrometricMrzField[] {
+  if (!result.ok) return [];
+  const l1 = result.line1;
+  const l2 = result.line2;
+  return [
+    { line: 1, label: "ドキュメントタイプ", value: l1.slice(0, 2), hint: "1行目の1〜2文字目" },
+    { line: 1, label: "発行国", value: l1.slice(2, 5), hint: "1行目の3〜5文字目" },
+    {
+      line: 1,
+      label: "氏名",
+      // 後ろの埋め草の「<」は除く（姓と名の間の「<<」などはそのまま）
+      value: l1.slice(5).replace(/<+$/, ""),
+      hint: "1行目の6〜44文字目（最大39文字。後ろに続く「<」は除いています）",
+    },
+    { line: 2, label: "パスポート番号（チェックディジットを含む）", value: l2.slice(0, 10), hint: "2行目の1〜10文字目（10文字目はチェックディジット）" },
+    { line: 2, label: "国籍（アルファベット3文字）", value: l2.slice(10, 13), hint: "2行目の11〜13文字目" },
+    { line: 2, label: "生年月日（YYMMDD、チェックディジットを含む）", value: l2.slice(13, 20), hint: "2行目の14〜20文字目（20文字目はチェックディジット）" },
+    { line: 2, label: "性別", value: l2.slice(20, 21), hint: `2行目の21文字目（画面では選択。${l2[20] === "F" ? "F＝女性" : l2[20] === "M" ? "M＝男性" : "M＝男性・F＝女性"}）` },
+    { line: 2, label: "有効期限（YYMMDD、チェックディジットを含む）", value: l2.slice(21, 28), hint: "2行目の22〜28文字目（28文字目はチェックディジット）" },
+  ];
+}
+
 // 読み取り結果から、外国人フォームに入れる値を組み立てる（空の項目は入れない）。
 // 氏名は在留カード・申請書と同じ「姓 名」の並びにする。
 // MRZの2行も一緒に入れて保存する（0095）。保存しておくと、外国人詳細の
