@@ -56,8 +56,10 @@ import {
   listPermitHistoryExtras,
   listInReviewWorkerIds,
   listPermitContentsByMonth,
-  listPermitStampFeesByMonth,
+  listPermitStampAppsByMonth,
+  updateApplicationRow,
   type GrantedPermit,
+  type PermitStampApp,
 } from "@/lib/supabase/queries/applications";
 import { effectivePermitForMonth } from "@/lib/billing-permits";
 import {
@@ -141,6 +143,7 @@ import {
   billingFileName,
   monthlyBillingSheets,
   orgBillingSheets,
+  type StampFeeSheetRow,
 } from "@/lib/monthly-billing-sheets";
 import { buildXlsx, downloadBlob } from "@/lib/xlsx-export";
 import { InvoicePdfCheck } from "./InvoicePdfCheck";
@@ -796,22 +799,42 @@ export function MonthlyBillingSection({
 
   // 対象月に許可が下りた申請の、許可のときに入れた収入印紙代（worker_id → 円）。
   // null は印紙代の列（0213）が読めなかったとき
-  const [permitStampFees, setPermitStampFees] = useState<Record<string, number | null> | null>({});
+  // 申請ID も持っておき、当月許可者リストで印紙代をその場で入れて保存できるようにする
+  const [permitStampApps, setPermitStampApps] = useState<Record<string, PermitStampApp> | null>({});
   useEffect(() => {
     let cancelled = false;
     void Promise.resolve().then(() =>
-      listPermitStampFeesByMonth(createClient(), month)
+      listPermitStampAppsByMonth(createClient(), month)
         .then((map) => {
-          if (!cancelled) setPermitStampFees(map);
+          if (!cancelled) setPermitStampApps(map);
         })
         .catch(() => {
-          if (!cancelled) setPermitStampFees(null);
+          if (!cancelled) setPermitStampApps(null);
         }),
     );
     return () => {
       cancelled = true;
     };
   }, [month]);
+  const permitStampFees = useMemo<Record<string, number | null> | null>(
+    () =>
+      permitStampApps === null
+        ? null
+        : Object.fromEntries(Object.entries(permitStampApps).map(([k, v]) => [k, v.amount])),
+    [permitStampApps],
+  );
+  // 当月許可者リストで入れた収入印紙代を、許可の申請に保存する（申請詳細の「許可後の印紙代」と同じ欄）
+  const saveStampFee = async (workerId: string, amount: number | null) => {
+    const app = permitStampApps?.[workerId];
+    if (!app) return;
+    setPermitStampApps((prev) => (prev ? { ...prev, [workerId]: { ...app, amount } } : prev));
+    try {
+      await updateApplicationRow(createClient(), app.appId, { stampFeeAmount: amount ?? undefined });
+    } catch (err) {
+      setPermitStampApps((prev) => (prev ? { ...prev, [workerId]: app } : prev));
+      setError(dbErrorMessage(err, "0213_application_stamp_fee_amount.sql", "印紙代の保存に失敗しました"));
+    }
+  };
 
   // 許可売上No.・保険No.（売上明細の伝票番号を1人1つにまとめたもの）。
   // 番号の実体は sales_entries なので、ここでの編集はその行を書き換える
@@ -1585,11 +1608,35 @@ export function MonthlyBillingSection({
     }
   };
 
+  // 当月許可者のうち、この機関の人の収入印紙代（金額・負担・会社へ請求するか）。「この機関のみ」のエクセルの別シートに出す
+  const permitInvoiceOf = (row: MonthlyBillingRow, org: MonthlyBillingOrg) =>
+    buildPermitInvoice({
+      briefs: prepBriefs[row.worker.id] ?? [],
+      orgName: org.organizationName,
+      intake: normalizeOrganizationIntake(mergedOrgs.find((o) => o.id === org.organizationId)?.intake),
+      stampFeeAmount: permitStampFees?.[row.worker.id] ?? null,
+    });
+  const stampSheetRows = (org: MonthlyBillingOrg): StampFeeSheetRow[] =>
+    permittedRows
+      .filter((p) => p.org.organizationId === org.organizationId)
+      .map(({ org: o, row }) => {
+        const inv = permitInvoiceOf(row, o);
+        return {
+          permitDate: row.worker.residence_permit_date ?? "",
+          workerName: row.worker.name,
+          content: permitStampApps?.[row.worker.id]?.content ?? "",
+          amount: inv.stamp.amount,
+          payer: inv.stamp.payer || "",
+          billed: inv.stamp.billed,
+          note: inv.stamp.note,
+        };
+      });
+
   const download = async (org?: MonthlyBillingOrg) => {
     setBusy(true);
     setError(null);
     try {
-      const sheets = org ? orgBillingSheets(org, billing) : monthlyBillingSheets(billing);
+      const sheets = org ? orgBillingSheets(org, billing, stampSheetRows(org)) : monthlyBillingSheets(billing);
       const blob = await buildXlsx(sheets);
       downloadBlob(blob, billingFileName(billing, org?.organizationName));
       // 機関ごとに書き出したら、その機関の請求書は作成したものとして記録する
@@ -1777,6 +1824,9 @@ export function MonthlyBillingSection({
                         <th className="py-1.5 pr-2 font-bold">区分</th>
                         <th className="py-1.5 pr-2 text-right font-bold">支援費請求額</th>
                         <th className="py-1.5 pr-2 font-bold">案件</th>
+                        <th className="py-1.5 pr-2 font-bold" title="許可のときにかかった収入印紙代。ここで入れると申請の記録に保存されます">
+                          収入印紙代・負担
+                        </th>
                         <th className="py-1.5 pr-2 font-bold" title="申請準備で登録した明細と、許可のときに入れた収入印紙代">
                           許可の明細（freee登録用）
                         </th>
@@ -1857,6 +1907,15 @@ export function MonthlyBillingSection({
                             url={caseUrlOf(org.organizationId)}
                             canEdit={canEdit}
                             onSave={(v) => saveOrgCaseUrl(org.organizationId, v)}
+                          />
+                          {/* 収入印紙代（ここで入れて保存できる）と、誰の負担か（本人負担・会社負担・会社立替） */}
+                          <StampFeeCell
+                            app={permitStampApps?.[row.worker.id] ?? null}
+                            columnReady={permitStampApps !== null}
+                            payer={permitInvoiceOf(row, org).stamp.payer}
+                            billed={permitInvoiceOf(row, org).stamp.billed}
+                            canEdit={canEdit}
+                            onSave={(v) => void saveStampFee(row.worker.id, v)}
                           />
                           {/* 許可の明細（申請準備で登録した明細＋許可のときの収入印紙代）。
                               本人負担なら印紙代は入れず「印紙代は本人負担です。」を備考に出す */}
@@ -4230,5 +4289,65 @@ function PeriodPrintLinks({
         A4印刷（個人票・1人1ページ）
       </Link>
     </div>
+  );
+}
+
+// 当月許可者リストの「収入印紙代・負担」の1マス。金額はここで入れて保存できる（申請の「許可後の印紙代」と同じ欄）
+function StampFeeCell({
+  app,
+  columnReady,
+  payer,
+  billed,
+  canEdit,
+  onSave,
+}: {
+  app: PermitStampApp | null;
+  columnReady: boolean; // 印紙代の列（0213）が読めたか
+  payer: string; // 本人負担 / 会社負担 / 会社立替（未設定は ''）
+  billed: boolean; // 会社への請求に入れるか
+  canEdit: boolean;
+  onSave: (amount: number | null) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  if (!columnReady) return <td className="py-1.5 pr-2 align-top text-[11px] text-seal">印紙代の列が未作成（0213）</td>;
+  if (!app) return <td className="py-1.5 pr-2 align-top text-[11px] text-muted">許可の申請の記録なし</td>;
+  const value = draft ?? (app.amount != null ? String(app.amount) : "");
+  const commit = () => {
+    if (draft === null) return;
+    const digits = draft.normalize("NFKC").replace(/[^\d]/g, "");
+    const next = digits ? Number(digits) : null;
+    setDraft(null);
+    if (next !== app.amount) onSave(next);
+  };
+  const payerClass =
+    payer === "本人負担"
+      ? "bg-status-notice-bg text-status-notice-fg"
+      : payer
+        ? "bg-brand/10 text-brand"
+        : "bg-seal/10 text-seal";
+  return (
+    <td className="min-w-[150px] py-1.5 pr-2 align-top">
+      <label className="flex items-center gap-1">
+        <input
+          value={value}
+          inputMode="numeric"
+          disabled={!canEdit}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+          placeholder="例: 6000"
+          className={`w-20 rounded-lg border px-1.5 py-1 text-right text-xs tabular-nums ${app.amount == null ? "border-seal/50" : "border-border"} bg-background`}
+        />
+        <span className="text-[11px] text-muted">円</span>
+      </label>
+      <p className="mt-0.5 flex flex-wrap items-center gap-1">
+        <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${payerClass}`}>
+          {payer ? stampFeePayerLabel(payer as Parameters<typeof stampFeePayerLabel>[0]) : "負担が未設定"}
+        </span>
+        {app.amount != null && app.amount > 0 && (
+          <span className="text-[10px] text-muted">{billed ? "会社へ請求" : "請求しない"}</span>
+        )}
+      </p>
+    </td>
   );
 }

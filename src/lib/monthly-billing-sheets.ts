@@ -235,8 +235,53 @@ export function monthlyBillingSheets(billing: MonthlyBilling): SheetSpec[] {
 }
 
 // 所属機関1社分だけのブック（その機関へ送るとき用）
-export function orgBillingSheets(org: MonthlyBillingOrg, billing: MonthlyBilling): SheetSpec[] {
-  return [orgRosterSheet(org, billing)];
+// 当月許可者の収入印紙代の1行（請求書作成の画面で、印紙代の金額と負担を決めたもの）
+export interface StampFeeSheetRow {
+  permitDate: string; // 在留許可日
+  workerName: string;
+  content: string; // 申請内容（在留期間の更新許可 など）
+  amount: number | null; // 収入印紙代（未入力は null）
+  payer: string; // 本人負担 / 会社負担 / 会社立替（未設定は ''）
+  billed: boolean; // 会社への請求に入れるか（会社負担・会社立替）
+  note: string; // 備考（印紙代は本人負担です。など）
+}
+
+// 「収入印紙代」シート: 誰にいくら印紙代がかかり、誰の負担か（会社へ請求するか）の一覧
+export function stampFeeSheet(org: MonthlyBillingOrg, billing: MonthlyBilling, rows: StampFeeSheetRow[]): SheetSpec {
+  const billedTotal = rows.reduce((n, r) => n + (r.billed && r.amount ? r.amount : 0), 0);
+  const allTotal = rows.reduce((n, r) => n + (r.amount ?? 0), 0);
+  return {
+    name: "収入印紙代",
+    headerRows: 1,
+    columnWidths: [5, 12, 26, 26, 14, 12, 14, 30],
+    rows: [
+      [`収入印紙代（${org.organizationName}・${monthLabel(billing.month)}に許可が下りた人）`],
+      [],
+      ["No.", "在留許可日", "氏名", "申請内容", "収入印紙代（円）", "負担", "会社への請求", "備考"],
+      ...rows.map((r, i) => [
+        i + 1,
+        r.permitDate,
+        r.workerName,
+        r.content,
+        r.amount ?? "未入力",
+        r.payer || "未設定",
+        r.billed ? "請求する" : "請求しない",
+        r.note,
+      ]),
+      [],
+      ["", "", "", "合計", allTotal, "", "", ""],
+      ["", "", "", "うち会社へ請求する額", billedTotal, "", "", ""],
+    ],
+  };
+}
+
+export function orgBillingSheets(
+  org: MonthlyBillingOrg,
+  billing: MonthlyBilling,
+  stampRows: StampFeeSheetRow[] = [],
+): SheetSpec[] {
+  // 当月に許可が下りた人がいれば、印紙代の一覧を別シートで付ける
+  return stampRows.length > 0 ? [orgRosterSheet(org, billing), stampFeeSheet(org, billing, stampRows)] : [orgRosterSheet(org, billing)];
 }
 
 // ダウンロードするファイル名
