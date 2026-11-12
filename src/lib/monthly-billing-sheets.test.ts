@@ -74,6 +74,24 @@ describe("summarySheet", () => {
   });
 });
 
+describe("orgBillingSheets（収入印紙代シート）", () => {
+  it("当月許可者の印紙代があれば別シートで一覧と合計を付ける", () => {
+    const b = { month: "2026-11", monthEndOn: "2026-11-30", orgs: [], unpriced: [] } as never;
+    const org = { organizationId: "o1", organizationName: "テスト農園", rows: [] } as never;
+    expect(orgBillingSheets(org, b)).toHaveLength(1);
+    const sheets = orgBillingSheets(org, b, [
+      { permitDate: "2026-11-05", workerName: "A", content: "在留期間の更新許可", amount: 6000, payer: "本人負担", billed: false, note: "印紙代は本人負担です。" },
+      { permitDate: "2026-11-10", workerName: "B", content: "在留資格の変更許可", amount: 6000, payer: "会社負担", billed: true, note: "" },
+    ]);
+    expect(sheets).toHaveLength(2);
+    expect(sheets[1].name).toBe("収入印紙代");
+    const rows = sheets[1].rows;
+    expect(rows[3]).toEqual([1, "2026-11-05", "A", "在留期間の更新許可", 6000, "本人負担", "請求しない", "印紙代は本人負担です。"]);
+    expect(rows.at(-2)?.[4]).toBe(12000);
+    expect(rows.at(-1)?.[4]).toBe(6000);
+  });
+});
+
 describe("orgBillingSheets", () => {
   it("機関ごとの在籍名簿は見出しと1人1行", () => {
     const kunisaki = billing.orgs.find((o) => o.organizationId === "org-1")!;

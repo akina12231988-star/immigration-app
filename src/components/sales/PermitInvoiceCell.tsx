@@ -36,7 +36,7 @@ export function PermitInvoiceCell({
     !stampColumnReady
       ? "印紙代の列が未作成（0213）"
       : inv.stamp.state === "unknown_amount"
-        ? "印紙代が未入力（申請詳細で入れる）"
+        ? "印紙代が未入力（左の「収入印紙代・負担」か申請詳細で入れる）"
         : inv.stamp.state === "unknown_payer"
           ? `印紙代 ${inv.stamp.amount?.toLocaleString()}円の負担が未設定`
           : "";
