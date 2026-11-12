@@ -166,13 +166,14 @@ function GuideImage({
   return (
     <div className="space-y-1">
       {url ? (
-        <a href={url} target="_blank" rel="noopener noreferrer" title="押すと大きく開きます">
+        <a href={url} target="_blank" rel="noopener noreferrer" title="押すと大きく開きます" className="block">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={url} alt={kind === "mail" ? "郵送での受け取り方法" : "窓口での受け取りへの変更"} className="w-full rounded-lg border border-border" />
+          <img src={url} alt={kind === "mail" ? "郵送での受け取り方法" : "窓口での受け取りへの変更"} className="mx-auto max-h-[360px] w-auto max-w-full rounded-lg border border-border object-contain" />
         </a>
       ) : (
         !canEdit && <p className="text-xs text-muted">イラストはまだ登録されていません。</p>
       )}
+      {url && <p className="text-center text-[10px] text-muted">イラストを押すと大きく開きます</p>}
       {canEdit && (
         <FileDropArea
           onFiles={(files) => void upload(files[0])}
