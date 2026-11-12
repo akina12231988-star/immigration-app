@@ -11,6 +11,7 @@ export interface PlanDateInput {
   docDate?: string | null; // 書類作成日（任意。無ければ申請予定日の1日前／雇用開始日の3日前と推定）
   healthDate?: string | null; // 健康診断の受診日（任意。署名日の基準になる）
   isLegal: boolean; // 所属機関が法人か（雇用終了日: 法人=2年 / 個人=1年）
+  contractYears?: number; // 雇用契約の年数（2年・3年など。指定があれば isLegal より優先）
 }
 
 export interface PlanDates {
@@ -61,7 +62,7 @@ export function computePlanDates(input: PlanDateInput): PlanDates {
   const doc = di ?? (ap ? addDaysYmd(ap, -1) : addDaysYmd(es, -3));
   const cond = addDaysYmd(con, -1);
   const scEnd = addDaysYmd(addYearsYmd(con, 5), -1);
-  const eeYears = input.isLegal ? 2 : 1;
+  const eeYears = input.contractYears && input.contractYears > 0 ? input.contractYears : input.isLegal ? 2 : 1;
   const eeEnd = addDaysYmd(addYearsYmd(es, eeYears), -1);
   const guid = midYmd(con, doc);
   const orient = addDaysYmd(es, 14);
@@ -241,6 +242,7 @@ export function planDatesToMap(
   applyDate: string | null,
   hideSupport = false,
 ): Record<string, string> {
+  // 雇用契約の年数（2年以外のときだけ保存。申請準備・申請書の雇用契約期間に使う）
   const out: Record<string, string> = {
     cond: r.cond,
     con: r.con,
@@ -255,6 +257,7 @@ export function planDatesToMap(
     out.orient = r.orient;
   }
   if (applyDate) out.apply = applyDate;
+  if (r.eeYears !== CONTRACT_YEARS) out[CONTRACT_YEARS_KEY] = String(r.eeYears);
   return out;
 }
 

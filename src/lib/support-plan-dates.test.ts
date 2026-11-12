@@ -124,3 +124,16 @@ describe("contractYearsOf（雇用契約の年数）", () => {
     expect(contractYearsOf({ eeYears: "abc" })).toBe(2);
   });
 });
+
+describe("雇用契約の年数（3年）", () => {
+  test("contractYears=3 なら雇用終了日は3年後の前日で、保存の日付一覧に eeYears が入る", async () => {
+    const { computePlanDates, planDatesToMap } = await import("./support-plan-dates");
+    const r = computePlanDates({ employStart: "2026-12-14", isLegal: true, contractYears: 3 });
+    expect(r.eeYears).toBe(3);
+    expect(r.eeEnd).toBe("2029-12-13");
+    expect(planDatesToMap(r, null).eeYears).toBe("3");
+    const r2 = computePlanDates({ employStart: "2026-12-14", isLegal: true });
+    expect(r2.eeEnd).toBe("2028-12-13");
+    expect(planDatesToMap(r2, null).eeYears).toBeUndefined();
+  });
+});

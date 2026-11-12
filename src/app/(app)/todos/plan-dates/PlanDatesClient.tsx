@@ -6,7 +6,9 @@ import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
 import { dbErrorMessage } from "@/lib/errors";
 import {
+  CONTRACT_YEAR_CHOICES,
   computePlanDates,
+  contractYearsOf,
   isTokuteiKatsudoContent,
   planDatesText,
   planDatesToMap,
@@ -15,7 +17,7 @@ import {
   recommendedDocDate,
 } from "@/lib/support-plan-dates";
 import { normalizeTodoKey } from "@/lib/todo";
-import { upsertPlanDates } from "@/lib/supabase/queries/plan-dates";
+import { findPlanDatesForTodo, listPlanDates, upsertPlanDates } from "@/lib/supabase/queries/plan-dates";
 import { SavedPlanDatesSection } from "@/components/workers/ApplicationPrepExtras";
 
 // 特定技能 支援計画書 日付計算（HTML版ツールの移植）。
@@ -53,6 +55,22 @@ export function PlanDatesClient({
   const [todo, setTodo] = useState(initialTodo);
   // 雇用終了日は自動で2年間の有期雇用契約として計算する（法人/個人の選択は廃止）
   const isLegal = true;
+  // 雇用契約の年数（2年・3年）。保存済みの日付に3年が入っていればそれを使う（申請準備の「支援計画書の日付」と同じ値）
+  const [contractYears, setContractYears] = useState(2);
+  useEffect(() => {
+    if (!workerId) return;
+    let cancelled = false;
+    listPlanDates(createClient(), workerId)
+      .then((rows) => {
+        if (cancelled) return;
+        const hit = findPlanDatesForTodo(rows, initialTodo);
+        if (hit) setContractYears(contractYearsOf(hit.dates));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [workerId, initialTodo]);
   // 申請の内容（TODOの内容）。「特定活動」を含む申請では、
   // 支援委託契約・事前ガイダンス・生活オリエンテーションの行を表示しない
   const [todoTitle, setTodoTitle] = useState("");
@@ -182,8 +200,11 @@ export function PlanDatesClient({
   }, [step, es, ap]);
 
   const result = useMemo(
-    () => (es ? computePlanDates({ employStart: es, applyDate: ap, contractDate: ci, docDate: di, healthDate: hi, isLegal }) : null),
-    [es, ap, ci, di, hi, isLegal],
+    () =>
+      es
+        ? computePlanDates({ employStart: es, applyDate: ap, contractDate: ci, docDate: di, healthDate: hi, isLegal, contractYears })
+        : null,
+    [es, ap, ci, di, hi, isLegal, contractYears],
   );
 
   // そのステップの推奨日（選択状態を引数で受けて、移動直後の状態でも計算できるようにする）
@@ -503,6 +524,23 @@ export function PlanDatesClient({
               {todo && <span className="ml-auto rounded-full bg-brand-foreground/20 px-2.5 py-0.5 font-bold">TODO {todo}</span>}
             </div>
           )}
+          {/* 雇用契約の年数（雇用終了日は雇用開始日のこの年数後の前日）。保存すると申請準備・申請書の雇用契約期間にも入る */}
+          <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2 text-xs">
+            <span className="font-bold text-muted">雇用契約の年数:</span>
+            {CONTRACT_YEAR_CHOICES.map((y) => (
+              <button
+                key={y}
+                type="button"
+                onClick={() => setContractYears(y)}
+                className={`rounded-full border px-3 py-0.5 font-bold ${
+                  contractYears === y ? "border-brand bg-brand text-brand-foreground" : "border-border bg-surface text-brand"
+                }`}
+              >
+                {y}年
+              </button>
+            ))}
+            <span className="text-muted">（選ぶと雇用終了日が変わります。「この結果を保存」で申請準備にも入ります）</span>
+          </div>
           <table className="w-full text-[13px]">
             <tbody>
               <SectionRow title="▼ 書類作成・契約" />
