@@ -19,6 +19,7 @@ import { Combobox, type ComboOption } from "@/components/ui/Combobox";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useNotifications } from "@/lib/notification-store";
 import { MailApplicationTable } from "./MailApplicationTable";
+import { CardPickupGuide } from "./CardPickupGuide";
 import { useApplications } from "@/lib/application-store";
 import { categoryChipClass, formatRelativeTime, gmailLinkForAccount } from "@/lib/mail-format";
 import { createClient } from "@/lib/supabase/client";
@@ -156,7 +157,11 @@ export function NotificationsClient({ canEdit = true }: { canEdit?: boolean }) {
         ))}
       </div>
       {view === "table" ? (
-        <MailApplicationTable gmailAccount={gmailAccount} canEdit={canEdit} />
+        <>
+          {/* 在留カードの受け取りの手続き（郵送・窓口へ変更）と郵送の宛名 */}
+          <CardPickupGuide canEdit={canEdit} />
+          <MailApplicationTable gmailAccount={gmailAccount} canEdit={canEdit} />
+        </>
       ) : (
         <>
       {/* フィルタ＋一括既読 */}
