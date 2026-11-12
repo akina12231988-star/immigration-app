@@ -18,6 +18,7 @@ import { Card } from "@/components/ui/Card";
 import { Combobox, type ComboOption } from "@/components/ui/Combobox";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useNotifications } from "@/lib/notification-store";
+import { MailApplicationTable } from "./MailApplicationTable";
 import { useApplications } from "@/lib/application-store";
 import { categoryChipClass, formatRelativeTime, gmailLinkForAccount } from "@/lib/mail-format";
 import { createClient } from "@/lib/supabase/client";
@@ -46,7 +47,9 @@ function formatDateTime(iso: string): string {
   return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export function NotificationsClient() {
+export function NotificationsClient({ canEdit = true }: { canEdit?: boolean }) {
+  // 申請ごとの一覧表（スプレッドシート「申請一覧」と同じ）か、メール1通ずつか
+  const [view, setView] = useState<"table" | "mails">("table");
   const { notifications, unreadCount, loaded, error, markRead, markAllRead, relink, remove } =
     useNotifications();
   const { applications } = useApplications();
@@ -131,6 +134,31 @@ export function NotificationsClient() {
 
   return (
     <div className="space-y-4 px-4 pt-5">
+      {/* 見方の切り替え: 申請ごとの一覧表（既定）／メール1通ずつ */}
+      <div className="flex gap-1 rounded-lg bg-surface p-1 text-sm font-bold">
+        {(
+          [
+            ["table", "申請ごとの一覧表"],
+            ["mails", "メール1通ずつ"],
+          ] as const
+        ).map(([v, label]) => (
+          <button
+            key={v}
+            type="button"
+            onClick={() => setView(v)}
+            className={`flex-1 rounded-md px-3 py-1.5 ${view === v ? "bg-brand text-brand-foreground" : "text-muted"}`}
+          >
+            {label}
+            {v === "mails" && unreadCount > 0 && (
+              <span className="ml-1 rounded-full bg-seal px-1.5 text-[11px] text-white">{unreadCount}</span>
+            )}
+          </button>
+        ))}
+      </div>
+      {view === "table" ? (
+        <MailApplicationTable gmailAccount={gmailAccount} canEdit={canEdit} />
+      ) : (
+        <>
       {/* フィルタ＋一括既読 */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex flex-1 flex-wrap gap-1.5">
@@ -377,6 +405,8 @@ export function NotificationsClient() {
         onConfirm={() => void confirmDelete()}
         onCancel={() => setDeleteId(null)}
       />
+        </>
+      )}
     </div>
   );
 }
