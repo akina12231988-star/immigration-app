@@ -159,7 +159,7 @@ export function NotificationsClient({ canEdit = true }: { canEdit?: boolean }) {
       {view === "table" ? (
         <>
           {/* 在留カードの受け取りの手続き（郵送・窓口へ変更）と郵送の宛名 */}
-          <CardPickupGuide />
+          <CardPickupGuide canEdit={canEdit} />
           <MailApplicationTable gmailAccount={gmailAccount} canEdit={canEdit} />
         </>
       ) : (
