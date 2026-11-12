@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { MailTableOverride, TableMail } from "@/lib/immigration-mail-table";
 import type { MailCategory, MailNotificationRow } from "@/types/db";
 import { classifyMailCategory } from "@/lib/mail-classify";
 
@@ -133,4 +134,63 @@ export async function deleteMailNotification(
 export const IMMIGRATION_MAIL_SETTING_KEY = "immigration_mail";
 export interface ImmigrationMailSetting extends Record<string, unknown> {
   gmailAccount: string;
+}
+
+// ---- 申請ごとの一覧表（入管メール → 申請1件＝1行）----
+
+// 表を組み立てるためのメール（本文つき。新しいもの から limit 件）
+export async function listMailsForTable(supabase: SupabaseClient, limit = 1500): Promise<TableMail[]> {
+  const { data, error } = await supabase
+    .from("mail_notifications")
+    .select("id, subject, body, received_at, gmail_link, is_read, matched_application_id, matched_worker_id")
+    .order("received_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (
+    (data as {
+      id: string;
+      subject: string | null;
+      body: string | null;
+      received_at: string;
+      gmail_link: string | null;
+      is_read: boolean;
+      matched_application_id: string | null;
+      matched_worker_id: string | null;
+    }[] | null) ?? []
+  ).map((r) => ({
+    id: r.id,
+    subject: r.subject ?? "",
+    body: r.body ?? "",
+    receivedAt: r.received_at,
+    gmailLink: r.gmail_link ?? "",
+    isRead: r.is_read,
+    matchedApplicationId: r.matched_application_id,
+    matchedWorkerId: r.matched_worker_id,
+  }));
+}
+
+// 手で直した状態・メモ（0222）
+export async function listMailTableOverrides(supabase: SupabaseClient): Promise<MailTableOverride[]> {
+  const { data, error } = await supabase.from("mail_table_overrides").select("key, status, memo, updated_at");
+  if (error) throw error;
+  return ((data as { key: string; status: string; memo: string; updated_at: string }[] | null) ?? []).map((r) => ({
+    key: r.key,
+    status: r.status ?? "",
+    memo: r.memo ?? "",
+    updatedAt: r.updated_at,
+  }));
+}
+
+export async function saveMailTableOverride(
+  supabase: SupabaseClient,
+  input: { key: string; status: string; memo: string },
+): Promise<MailTableOverride> {
+  const { data, error } = await supabase
+    .from("mail_table_overrides")
+    .upsert({ ...input, updated_at: new Date().toISOString() }, { onConflict: "key" })
+    .select("key, status, memo, updated_at")
+    .single();
+  if (error) throw error;
+  const r = data as { key: string; status: string; memo: string; updated_at: string };
+  return { key: r.key, status: r.status, memo: r.memo, updatedAt: r.updated_at };
 }

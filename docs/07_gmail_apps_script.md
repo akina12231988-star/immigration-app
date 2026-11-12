@@ -60,7 +60,9 @@ const SECRET  = 'YOUR_MAIL_INBOUND_SECRET';
 
 // 入管メールを拾うGmail検索条件。入管（在留申請オンラインシステム）の差出人 moj.go.jp、
 // または件名の【入管庁】で拾う（差出人が多少違っても取りこぼさない）。初回は過去1年分。
-const QUERY = '(from:moj.go.jp OR subject:入管庁) newer_than:1y';
+// 手数料の決済メール（dgft の決済リンク・veritrans の決済申込完了／入金完了）も拾う
+// （入管メール通知の「申請ごとの一覧表」で手数料・支払期限・入金日を出すため。2026-11-12 追加）
+const QUERY = '(from:moj.go.jp OR subject:入管庁 OR from:no-reply@service-dgft.com OR from:no-reply@veritrans.jp) newer_than:1y';
 
 // 同期済みメールに付けるラベル（重複送信の防止用）
 const DONE_LABEL = '入管通知-同期済';
@@ -110,6 +112,11 @@ function syncImmigrationMails() {
 ```
 
 ### 検索条件（QUERY）について
+
+> **2026-11-12 追加**: 入管メール通知の「申請ごとの一覧表」で手数料・支払期限・入金日を出すため、
+> 手数料の決済メール（`no-reply@service-dgft.com` の「手数料納付用決済リンク」、`no-reply@veritrans.jp` の
+> 「決済申込完了のお知らせ」「入金完了のお知らせ」）も取り込む。設定済みの Apps Script は、`QUERY` を上のコードのように
+> 書き換えて保存する（入管と関係ない決済メールは一覧表には出ない。メール1通ずつの一覧には「その他」で出る）。
 
 このアカウントの入管メールは **`info@rasens-immi.moj.go.jp`**（件名の頭に【入管庁】）から届いているため、
 差出人ドメインで絞るのが最も確実です（キーワードのように取りこぼし・誤検出がない）。
