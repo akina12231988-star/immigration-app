@@ -23,9 +23,9 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-11-13",
-    title: "書類をまとめた PDF のファイル名を「〇〇証明書一式」にしました",
+    title: "書類をまとめた PDF のファイル名を「氏名_TODO番号_証明書一式」にしました",
     where: "申請準備の詳細 ＞ 必要な書類の準備 ＞「添付した書類をまとめて PDF でダウンロード」",
-    items: ["ダウンロードする PDF の名前を「（氏名）証明書一式.pdf」（例: NGUYEN VAN A証明書一式.pdf）にしました。"],
+    items: ["ダウンロードする PDF の名前を「氏名_TODO番号_証明書一式.pdf」（例: NGUYEN VAN A_TODO-12_証明書一式.pdf）にしました。"],
   },
   {
     date: "2026-11-13",
