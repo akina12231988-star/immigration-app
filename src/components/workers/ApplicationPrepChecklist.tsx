@@ -1,6 +1,9 @@
 "use client";
 
-import { PrepMailingLink } from "@/components/mailing/PrepMailingLink";
+import { PrepMailingLink, pickPrepMailingRecord } from "@/components/mailing/PrepMailingLink";
+import { listMailingFiles } from "@/lib/supabase/queries/mailing-files";
+import { getMailingFilePreviewUrl } from "@/app/(app)/mailing/actions";
+import { receivedCertFilesFor } from "@/lib/mailing-attachments";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
@@ -25,7 +28,16 @@ import {
 } from "lucide-react";
 import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { blobToPdfPart, mergePdfParts, rasterizePdfInBrowser, type PdfPart } from "@/lib/pdf-merge";
-import { prepBundleFileName, prepBundlePlan } from "@/lib/prep-docs-bundle";
+import { applyBundleChoices, PREP_BUNDLE_CHOOSE_IDS, prepBundleFileName, prepBundlePlan } from "@/lib/prep-docs-bundle";
+
+// まとめる PDF に入れるファイル（申請準備に添付したもの・証明書類の請求に届いた証明書）
+interface BundleFile {
+  key: string; // prep:<id> / mail:<id>
+  id: string;
+  name: string;
+  source: "prep" | "mailing";
+  link: boolean; // リンクで登録した書類（PDF にはまとめられない）
+}
 import { PostApplyList } from "@/components/workers/PostApplyList";
 import { PrepPdfCheck } from "@/components/workers/PrepPdfCheck";
 import { isIssueOnlyDocDone } from "@/lib/post-apply";
@@ -287,6 +299,10 @@ export function ApplicationPrepChecklist({
   // 添付した書類をまとめた PDF を作っている途中か・結果の知らせ
   const [bundleBusy, setBundleBusy] = useState(false);
   const [bundleNotice, setBundleNotice] = useState<string | null>(null);
+  // 証明書類の請求に届いた課税・納税証明書（申請準備の行の id → ファイル）
+  const [mailCertFiles, setMailCertFiles] = useState<Record<string, BundleFile[]>>({});
+  // 課税・納税証明書で候補が2つ以上あるとき、PDF に入れるものとして選んだもの（行の id → key）
+  const [bundleChoices, setBundleChoices] = useState<Record<string, string[]>>({});
   const [error, setError] = useState<string | null>(null);
   // 顔写真は workers.photo_path と連動（最新の1枚を共有）
   const [photoExists, setPhotoExists] = useState<boolean>(!!photoPath);
@@ -505,6 +521,36 @@ export function ApplicationPrepChecklist({
         null)
       : null;
   const meta: PrepChecklistMeta = current ?? EMPTY_PREP_META;
+
+  // 証明書類の請求に届いた課税・納税証明書を読む（添付した書類をまとめた PDF に入れられるように）
+  const currentTodoNo = current?.todo_no ?? "";
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const out: Record<string, BundleFile[]> = {};
+      const cache = new Map<string, Awaited<ReturnType<typeof listMailingFiles>>>();
+      for (const id of PREP_BUNDLE_CHOOSE_IDS) {
+        const { record } = pickPrepMailingRecord(mailingRecords, "tax", id, currentTodoNo);
+        if (!record) continue;
+        try {
+          if (!cache.has(record.id)) cache.set(record.id, await listMailingFiles(createClient(), record.id));
+        } catch {
+          continue;
+        }
+        out[id] = receivedCertFilesFor(record, cache.get(record.id) ?? [], id).map((f) => ({
+          key: `mail:${f.id}`,
+          id: f.id,
+          name: f.file_name || "届いた証明書",
+          source: "mailing" as const,
+          link: false,
+        }));
+      }
+      if (!cancelled) setMailCertFiles(out);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mailingRecords, currentTodoNo]);
 
   // 表示中のTODO番号に対応する申請準備のTODO（番号の書き方の揺れは正規化して突き合わせる）
   const currentTodo = selectedKey
@@ -1435,8 +1481,9 @@ export function ApplicationPrepChecklist({
     : missingItems;
   const docLabelOf = (item: (typeof items)[number]) => prepDocLabel(item.def, docYearOf(item.def), currentReiwa);
 
-  // 添付した書類（在留カード・顔写真・パスポート以外）をまとめる計画と、添付の無い書類
-  const bundlePlan = prepBundlePlan(
+  // 添付した書類（在留カード・顔写真・パスポート以外）をまとめる計画と、添付の無い書類。
+  // 課税・納税証明書は、証明書類の請求に届いた証明書も候補に入れ、2つ以上あれば選んでもらう
+  const bundleChosen = applyBundleChoices<BundleFile>(
     items.map((i) => ({
       id: i.def.id,
       label: docLabelOf(i),
@@ -1444,21 +1491,47 @@ export function ApplicationPrepChecklist({
       satisfied: i.satisfied,
       mailAfterApply: !!docStatuses[i.def.id]?.mail_after_apply,
       issueNoMail: !!docStatuses[i.def.id]?.issue_no_mail,
-      files: docFilesFor(i.def),
+      files: [
+        ...docFilesFor(i.def).map((d) => ({
+          key: `prep:${d.id}`,
+          id: d.id,
+          name: d.file_name || docLabelOf(i),
+          source: "prep" as const,
+          link: !d.storage_path,
+        })),
+        ...(PREP_BUNDLE_CHOOSE_IDS.has(i.def.id) ? (mailCertFiles[i.def.id] ?? []) : []),
+      ],
     })),
+    bundleChoices,
   );
+  const bundlePlan = prepBundlePlan(bundleChosen.items);
+  const toggleBundleChoice = (docId: string, key: string) =>
+    setBundleChoices((prev) => {
+      const cur = new Set(prev[docId] ?? []);
+      if (cur.has(key)) cur.delete(key);
+      else cur.add(key);
+      return { ...prev, [docId]: [...cur] };
+    });
+  const previewBundleFile = async (f: BundleFile) => {
+    if (f.source === "prep") return void previewDoc(f.id);
+    const res = await getMailingFilePreviewUrl(f.id);
+    if (res.ok) window.open(res.url, "_blank", "noopener,noreferrer");
+    else setError(res.message);
+  };
   // 添付した書類を1つの PDF にしてダウンロードする（画像は A4 に1枚ずつ。PDF はそのままページを足す）
   async function downloadBundle() {
     if (bundlePlan.targets.length === 0) {
       setBundleNotice("まとめられる添付がありません。");
       return;
     }
+    const warnLines = [
+      ...bundlePlan.missing.map((m) => `・${m.label}（${m.reason}）`),
+      ...bundleChosen.unchosen.map((c) => `・${c.label}（どの証明書を入れるか未選択）`),
+    ];
     if (
-      bundlePlan.missing.length > 0 &&
+      warnLines.length > 0 &&
       !window.confirm(
-        `まだ添付されていない書類があります（${bundlePlan.missing.length}件）:\n\n${bundlePlan.missing
-          .map((m) => `・${m.label}（${m.reason}）`)
-          .join("\n")}\n\n添付されている書類だけで PDF を作りますか？`,
+        `PDF に入らない書類があります（${warnLines.length}件）:\n\n${warnLines.join("\n")}\n\n添付されている書類だけで PDF を作りますか？`,
       )
     )
       return;
@@ -1469,17 +1542,20 @@ export function ApplicationPrepChecklist({
       const skipped: string[] = [];
       for (const t of bundlePlan.targets) {
         for (const f of t.files) {
-          if (!f.storage_path) {
+          if (f.link) {
             skipped.push(`${t.label}（リンクで登録）`);
             continue;
           }
-          const res = await getOnboardingDocDownloadUrl(f.id);
+          const res =
+            f.source === "prep"
+              ? await getOnboardingDocDownloadUrl(f.id)
+              : await getMailingFilePreviewUrl(f.id).then((r) => (r.ok ? { ...r, fileName: f.name } : r));
           if (!res.ok) {
             skipped.push(`${t.label}（${res.message}）`);
             continue;
           }
           const blob = await (await fetch(res.url)).blob();
-          const part = await blobToPdfPart(blob, f.file_name || res.fileName);
+          const part = await blobToPdfPart(blob, f.name || res.fileName);
           if (part) parts.push(part);
           else skipped.push(`${t.label}（画像・PDF以外のファイル）`);
         }
@@ -2415,6 +2491,37 @@ export function ApplicationPrepChecklist({
                 </ul>
               </div>
             )}
+            {/* 課税・納税証明書で候補が2つ以上あるとき、PDF に入れる証明書を選ぶ */}
+            {bundleChosen.choosable.map((c) => {
+              const picked = new Set(bundleChoices[c.id] ?? []);
+              return (
+                <div
+                  key={c.id}
+                  className={`rounded-lg border px-3 py-2 text-xs ${picked.size === 0 ? "border-seal/40 bg-seal/5" : "border-border bg-surface"}`}
+                >
+                  <p className="font-bold">
+                    {c.label}：PDF に入れる証明書を選んでください（{c.files.length}件あります）
+                    {picked.size === 0 && <span className="ml-1 text-seal">← 未選択のため、まだ入りません</span>}
+                  </p>
+                  <ul className="mt-1 space-y-0.5">
+                    {c.files.map((f) => (
+                      <li key={f.key} className="flex flex-wrap items-center gap-2">
+                        <label className="flex items-center gap-1.5">
+                          <input type="checkbox" checked={picked.has(f.key)} onChange={() => toggleBundleChoice(c.id, f.key)} className="h-4 w-4" />
+                          <span>{f.name}</span>
+                        </label>
+                        <span className="rounded-full bg-background px-1.5 py-0.5 text-[10px] text-muted">
+                          {f.source === "prep" ? "申請準備に添付" : "証明書類の請求で届いた証明書"}
+                        </span>
+                        <button type="button" onClick={() => void previewBundleFile(f)} className="text-[11px] font-bold text-brand underline">
+                          見る
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
             {bundleNotice && <p className="text-[11px] font-bold text-brand">{bundleNotice}</p>}
           </div>
           {/* 全部揃ったときだけ知らせる（足りない書類は下の「まだ揃っていない」に並ぶ） */}
