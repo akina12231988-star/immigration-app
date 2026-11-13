@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Search } from "lucide-react";
+import { Building2, Search } from "lucide-react";
 import {
   SUPPORT_SCOPES,
   WORKER_STATUSES,
@@ -40,6 +40,7 @@ export const PERIOD_FIELD_LABELS: Record<WorkerPeriodField, string> = {
 
 export interface WorkerFilterState {
   keyword: string;
+  historyOrg: string; // 職歴の会社名（勤務先）で探す
   status: WorkerStatus | "all";
   support: SupportScope | "all";
   orgId: string | "all" | "none"; // none = 未所属
@@ -53,6 +54,7 @@ export interface WorkerFilterState {
 
 export const INITIAL_FILTER: WorkerFilterState = {
   keyword: "",
+  historyOrg: "",
   status: "all",
   support: "all",
   orgId: "all",
@@ -70,7 +72,17 @@ const SELECT_CLASS =
 // 検索欄。スマホの日本語入力（IME）で変換中に親の絞り込み・一覧の描画が走ると、
 // 変換が途中で切れてローマ字（英字）だけが残ることがあるため、
 // 変換中（compositionstart〜compositionend）は親に値を渡さず、確定してから絞り込む
-function KeywordInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function KeywordInput({
+  value,
+  onChange,
+  placeholder = "氏名・フリガナ・国籍・在留カード番号・住所で検索",
+  label = "外国人を検索",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  label?: string;
+}) {
   const [draft, setDraft] = useState(value);
   const [prevValue, setPrevValue] = useState(value);
   const composing = useRef(false);
@@ -100,8 +112,8 @@ function KeywordInput({ value, onChange }: { value: string; onChange: (v: string
       autoCapitalize="off"
       spellCheck={false}
       enterKeyHint="search"
-      placeholder="氏名・フリガナ・国籍・在留カード番号・住所で検索"
-      aria-label="外国人を検索"
+      placeholder={placeholder}
+      aria-label={label}
       className="w-full rounded-xl border border-border bg-surface py-3 pl-10 pr-3 text-sm focus:border-brand focus:outline-none"
     />
   );
@@ -130,6 +142,19 @@ export function WorkerFilters({
           className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
         />
         <KeywordInput value={filter.keyword} onChange={(v) => set("keyword", v)} />
+      </div>
+      {/* 職歴の会社名（勤務先）で探す（例: 株式会社Life Lab の職歴がある人）。前職・技能実習先も含む */}
+      <div className="relative">
+        <Building2
+          size={18}
+          className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
+        />
+        <KeywordInput
+          value={filter.historyOrg ?? ""}
+          onChange={(v) => set("historyOrg", v)}
+          placeholder="職歴の会社名で検索（例: Life Lab）"
+          label="職歴の会社名で検索"
+        />
       </div>
 
       <div className="flex items-center gap-2 overflow-x-auto pb-1">

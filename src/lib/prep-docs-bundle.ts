@@ -36,10 +36,10 @@ export function prepBundlePlan<F>(items: PrepBundleItem<F>[]): {
   return { targets, missing };
 }
 
-// まとめた PDF のファイル名（氏名_TODO番号_申請書類一式.pdf）
+// まとめた PDF のファイル名（氏名_TODO番号_証明書一式.pdf）
 export function prepBundleFileName(workerName: string, todoNo: string): string {
-  const safe = (s: string) => s.replace(/[\\/:*?"<>|\s]+/g, "_").replace(/^_+|_+$/g, "");
-  return [safe(workerName) || "申請準備", safe(todoNo), "申請書類一式"].filter(Boolean).join("_") + ".pdf";
+  const clean = (s: string) => (s ?? "").replace(/[\\/:*?"<>|]+/g, "").replace(/\s+/g, " ").trim();
+  return [clean(workerName), clean(todoNo), "証明書一式"].filter(Boolean).join("_") + ".pdf";
 }
 
 // ---- 課税証明書・納税証明書は、まとめる証明書を選ぶ ----

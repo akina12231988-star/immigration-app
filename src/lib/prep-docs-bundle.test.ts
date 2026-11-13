@@ -23,7 +23,8 @@ describe("prepBundlePlan", () => {
     ]);
   });
   it("ファイル名", () => {
-    expect(prepBundleFileName("NGUYEN VAN A", "TODO-12")).toBe("NGUYEN_VAN_A_TODO-12_申請書類一式.pdf");
+    expect(prepBundleFileName("NGUYEN VAN A", "TODO-12")).toBe("NGUYEN VAN A_TODO-12_証明書一式.pdf");
+    expect(prepBundleFileName("", "")).toBe("証明書一式.pdf");
   });
 });
 
