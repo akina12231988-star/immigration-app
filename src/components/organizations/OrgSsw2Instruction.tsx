@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ClipboardList, GraduationCap } from "lucide-react";
+import { ClipboardList, GraduationCap, Pencil, Save, X } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
 import { dbErrorMessage } from "@/lib/errors";
@@ -50,19 +50,41 @@ export function OrgSsw2Instruction({
   const [dutiesBusy, setDutiesBusy] = useState(false);
   const [dutiesSaved, setDutiesSaved] = useState(false);
   const [dutiesError, setDutiesError] = useState<string | null>(null);
+  // 入力は「編集」を押してから。保存は右上の「保存」で（うっかり書き換えないように）
+  const [editing, setEditing] = useState(false);
+  const [savedDuties, setSavedDuties] = useState<OrgSsw2Duties>(initialDuties);
+  const dirty = JSON.stringify(duties) !== JSON.stringify(savedDuties);
 
   const saveDuties = async (next: OrgSsw2Duties) => {
     setDutiesBusy(true);
     setDutiesError(null);
     try {
       await updateOrganizationSsw2Duties(createClient(), organizationId, next);
+      setSavedDuties(next);
       setDutiesSaved(true);
+      setEditing(false);
     } catch (err) {
       setDutiesError(dbErrorMessage(err, "0123_org_ssw2_duties.sql", "保存に失敗しました"));
     } finally {
       setDutiesBusy(false);
     }
   };
+  const cancelEdit = () => {
+    if (dirty && !window.confirm("入力した内容を保存せずに戻します。よろしいですか？")) return;
+    setDuties(savedDuties);
+    setDutiesError(null);
+    setEditing(false);
+  };
+  // 保存していない入力があるまま画面を離れようとしたら知らせる
+  useEffect(() => {
+    if (!editing || !dirty) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [editing, dirty]);
 
   const [workers, setWorkers] = useState<InstructeeCandidateWorker[]>([]);
   const [links, setLinks] = useState<Ssw2InstructionLink[]>([]);
@@ -146,9 +168,49 @@ export function OrgSsw2Instruction({
 
   return (
     <Card className="p-4">
-      <h2 className="mb-1 flex items-center gap-2 text-sm font-bold">
+      <h2 className="mb-1 flex flex-wrap items-center gap-2 text-sm font-bold">
         <GraduationCap size={16} />
         特定技能２号の指導体制
+        {/* 右上の編集・保存。「編集」を押すまでは入力できない */}
+        {canEdit && (
+          <span className="ml-auto flex items-center gap-1.5">
+            {editing ? (
+              <>
+                {dirty && <span className="text-[11px] font-bold text-seal">保存していない変更があります</span>}
+                <button
+                  type="button"
+                  onClick={cancelEdit}
+                  disabled={dutiesBusy}
+                  className="inline-flex min-h-[32px] items-center gap-1 rounded-lg border border-border px-2.5 text-xs font-bold text-muted disabled:opacity-50"
+                >
+                  <X size={13} />
+                  やめる
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void saveDuties(duties)}
+                  disabled={dutiesBusy}
+                  className="inline-flex min-h-[32px] items-center gap-1 rounded-lg bg-brand px-3 text-xs font-bold text-brand-foreground disabled:opacity-50"
+                >
+                  <Save size={13} />
+                  {dutiesBusy ? "保存中…" : "保存"}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditing(true);
+                  setDutiesSaved(false);
+                }}
+                className="inline-flex min-h-[32px] items-center gap-1 rounded-lg border border-border px-2.5 text-xs font-bold text-brand"
+              >
+                <Pencil size={13} />
+                編集
+              </button>
+            )}
+          </span>
+        )}
       </h2>
       <p className="mb-3 text-[11px] leading-relaxed text-muted">
         ２号の申請には、誓約書（参考様式第１－３２号）に「指導を受ける対象者」を書きます。
@@ -199,23 +261,21 @@ export function OrgSsw2Instruction({
                 <textarea
                   rows={3}
                   value={duties[f.key]}
-                  disabled={!canEdit || dutiesBusy}
+                  disabled={!canEdit || !editing || dutiesBusy}
                   onChange={(e) => {
                     setDuties({ ...duties, [f.key]: e.target.value });
                     setDutiesSaved(false);
                   }}
-                  onBlur={() => void saveDuties(duties)}
                   className={`${DUTY_INPUT} min-h-[72px] py-1.5 leading-relaxed`}
                 />
               ) : (
                 <input
                   value={duties[f.key]}
-                  disabled={!canEdit || dutiesBusy}
+                  disabled={!canEdit || !editing || dutiesBusy}
                   onChange={(e) => {
                     setDuties({ ...duties, [f.key]: e.target.value });
                     setDutiesSaved(false);
                   }}
-                  onBlur={() => void saveDuties(duties)}
                   className={DUTY_INPUT}
                 />
               )}
@@ -226,9 +286,11 @@ export function OrgSsw2Instruction({
         <p className="mt-1.5 text-[11px] text-muted">
           {dutiesBusy
             ? "保存中…"
-            : dutiesSaved
-              ? "保存しました。"
-              : "欄から離れると保存されます。"}
+            : editing
+              ? "入力したら右上の「保存」を押してください。"
+              : dutiesSaved
+                ? "保存しました。"
+                : "直すときは右上の「編集」を押してください。"}
         </p>
       </div>
 
@@ -246,13 +308,12 @@ export function OrgSsw2Instruction({
               <span className="mb-0.5 block text-[11px] font-bold text-muted">{f.label}</span>
               <input
                 value={duties[f.key]}
-                disabled={!canEdit || dutiesBusy}
+                disabled={!canEdit || !editing || dutiesBusy}
                 placeholder={f.placeholder}
                 onChange={(e) => {
                   setDuties({ ...duties, [f.key]: e.target.value });
                   setDutiesSaved(false);
                 }}
-                onBlur={() => void saveDuties(duties)}
                 className={DUTY_INPUT}
               />
             </label>
@@ -261,9 +322,11 @@ export function OrgSsw2Instruction({
         <p className="mt-1.5 text-[11px] text-muted">
           {dutiesBusy
             ? "保存中…"
-            : dutiesSaved
-              ? "保存しました。"
-              : "欄から離れると保存されます。"}
+            : editing
+              ? "入力したら右上の「保存」を押してください。"
+              : dutiesSaved
+                ? "保存しました。"
+                : "直すときは右上の「編集」を押してください。"}
         </p>
       </div>
 
