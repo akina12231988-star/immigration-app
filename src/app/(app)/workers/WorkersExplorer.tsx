@@ -23,6 +23,7 @@ import {
 } from "@/components/workers/badges";
 import { calcSsw, todayStr, type SswCalcResult } from "@/lib/ssw/calc";
 import { toCalcHistory } from "@/lib/supabase/queries/histories";
+import { matchHistoryOrgs } from "@/lib/work-history-search";
 import { isResidenceRenewalTarget } from "@/lib/worker-alerts";
 import { followupLabels, hasFollowup } from "@/lib/worker-followups";
 import { isWorkerInReview } from "@/lib/renewal-filter";
@@ -168,6 +169,7 @@ export function WorkersExplorer({
   // 検索文字は useDeferredValue で受ける。一覧（数百件の絞り込みと描画）の更新を
   // 入力より後回しにして、スマホでも文字入力・日本語変換が引っかからないようにする
   const deferredKeyword = useDeferredValue(filter.keyword);
+  const deferredHistoryOrg = useDeferredValue(filter.historyOrg ?? "");
   const filtered = useMemo(() => {
     const kw = deferredKeyword.trim().toLowerCase();
     const result = rows.filter(({ worker, calc }) => {
@@ -216,6 +218,8 @@ export function WorkersExplorer({
       } else if (filter.orgId !== "all") {
         if (worker.current_organization_id !== filter.orgId) return false;
       }
+      // 職歴の会社名（勤務先）で探す
+      if (deferredHistoryOrg.trim() && matchHistoryOrgs(worker.work_histories, deferredHistoryOrg).length === 0) return false;
       if (!kw) return true;
       // 住所は「八代市」「郡築」のように一部でも探せるよう、全角の数字・英字は半角にそろえて比べる
       return [
@@ -261,7 +265,7 @@ export function WorkersExplorer({
     }
     return result;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, filter, deferredKeyword, underReview]);
+  }, [rows, filter, deferredKeyword, deferredHistoryOrg, underReview]);
 
   // ページ分割: 表示中のページ分だけ描画してデータが重くならないようにする
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -472,6 +476,12 @@ export function WorkersExplorer({
                         .filter(Boolean)
                         .join(" ・ ") || "詳細未登録"}
                     </p>
+                    {/* 職歴の会社名で探しているときは、合った勤務先を出す */}
+                    {deferredHistoryOrg.trim() && (
+                      <p className="truncate text-[11px] font-bold text-brand">
+                        職歴: {matchHistoryOrgs(worker.work_histories, deferredHistoryOrg).join("・")}
+                      </p>
+                    )}
                   </div>
                   <ChevronRight size={18} className="mt-1 shrink-0 text-muted" />
                 </div>
