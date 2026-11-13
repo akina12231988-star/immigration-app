@@ -218,3 +218,22 @@ export function taxDocsLabel(taxCert?: boolean, taxPayment?: boolean): string {
   if (!cert && pay) return "市県民税納税証明書";
   return "課税・納税証明書";
 }
+
+// 証明書類の請求の記録に添付したファイルのうち、「届いた証明書」で、申請準備のこの行（課税証明書・
+// 納税証明書（市県民税）・納税証明書（国保税））の分。どの証明書か未選択の添付も入れる（どちらとも言えないため）
+export function receivedCertFilesFor<F extends { kind: string }>(
+  record: Partial<SlotSource>,
+  files: F[],
+  certId: string,
+): F[] {
+  const kinds = new Set(
+    mailingAttachmentSlots(record)
+      .filter((s) => s.role === "received")
+      .flatMap((s) => (s.kinds?.length ? s.kinds : [s.kind])),
+  );
+  return files.filter((f) => {
+    if (!kinds.has(baseKindOf(f.kind))) return false;
+    const id = certIdOfKind(f.kind);
+    return !id || id === certId;
+  });
+}

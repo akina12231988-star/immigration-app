@@ -137,3 +137,17 @@ describe("届いた証明書が「どの証明書か」", () => {
     expect(mailingAttachmentSlots({ requestKind: "juminhyo" }).find((s) => s.role === "received")?.certTypes).toBeUndefined();
   });
 });
+
+describe("receivedCertFilesFor（申請準備の行に出す届いた証明書）", () => {
+  it("届いた証明書のうち、その証明書と、どの証明書か未選択のものを出す", async () => {
+    const { receivedCertFilesFor, certTaggedKind } = await import("./mailing-attachments");
+    const files = [
+      { id: "1", kind: certTaggedKind(RECEIVED_CERT_KIND, "kazei") },
+      { id: "2", kind: certTaggedKind(RECEIVED_CERT_KIND, "nozei_shiken") },
+      { id: "3", kind: RECEIVED_CERT_KIND },
+      { id: "4", kind: MAIL_REQUEST_KIND },
+    ];
+    expect(receivedCertFilesFor({}, files, "kazei").map((f) => f.id)).toEqual(["1", "3"]);
+    expect(receivedCertFilesFor({}, files, "nozei_shiken").map((f) => f.id)).toEqual(["2", "3"]);
+  });
+});

@@ -41,3 +41,32 @@ export function prepBundleFileName(workerName: string, todoNo: string): string {
   const safe = (s: string) => s.replace(/[\\/:*?"<>|\s]+/g, "_").replace(/^_+|_+$/g, "");
   return [safe(workerName) || "申請準備", safe(todoNo), "申請書類一式"].filter(Boolean).join("_") + ".pdf";
 }
+
+// ---- 課税証明書・納税証明書は、まとめる証明書を選ぶ ----
+// 申請準備の添付と、証明書類の請求に届いた証明書の両方があるなど、候補が2つ以上あるときは、
+// どれを PDF に入れるかを選んでもらう（選ぶまでは入れない）
+export const PREP_BUNDLE_CHOOSE_IDS = new Set(["kazei", "nozei_shiken", "nozei_kokuho"]);
+
+export interface PrepBundleChoiceNeeded<F> {
+  id: string;
+  label: string;
+  files: F[]; // 選べる候補
+}
+
+export function applyBundleChoices<F extends { key: string }>(
+  items: PrepBundleItem<F>[],
+  choices: Record<string, string[]>, // 書類の id → 選んだ候補の key
+): { items: PrepBundleItem<F>[]; choosable: PrepBundleChoiceNeeded<F>[]; unchosen: PrepBundleChoiceNeeded<F>[] } {
+  const choosable: PrepBundleChoiceNeeded<F>[] = [];
+  const unchosen: PrepBundleChoiceNeeded<F>[] = [];
+  const out = items.map((i) => {
+    if (!PREP_BUNDLE_CHOOSE_IDS.has(i.id) || i.files.length < 2) return i;
+    choosable.push({ id: i.id, label: i.label, files: i.files });
+    const picked = new Set(choices[i.id] ?? []);
+    const files = i.files.filter((f) => picked.has(f.key));
+    if (files.length === 0) unchosen.push({ id: i.id, label: i.label, files: i.files });
+    // 選ばれていないときは、添付が無いあつかいにはしない（アラートは「どれにするか選んでください」で出す）
+    return { ...i, files, satisfied: files.length === 0 ? true : i.satisfied };
+  });
+  return { items: out, choosable, unchosen };
+}
