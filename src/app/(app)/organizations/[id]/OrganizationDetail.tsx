@@ -1,7 +1,8 @@
 "use client";
 
 import { OrgIcon } from "@/components/organizations/OrgIcon";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { OrgEditContext, type OrgEditSection } from "@/components/organizations/OrgEditContext";
 import { useRouter } from "next/navigation";
 import { Pencil, X } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
@@ -64,10 +65,28 @@ export function OrganizationDetail({
   // 編集モード: 入力済みの項目のロックを外して、この画面のまま修正できる
   const [editing, setEditing] = useState(false);
 
-  const dirty = useMemo(
+  const formDirty = useMemo(
     () => JSON.stringify(form) !== JSON.stringify(snapshot),
     [form, snapshot],
   );
+  // 別に保存している欄（２号の指導体制など）。画面の「編集」「編集した内容を保存」で一緒に扱う
+  const sections = useRef(new Map<string, OrgEditSection>());
+  const [sectionDirty, setSectionDirty] = useState<Set<string>>(new Set());
+  const registerSection = useCallback((key: string, section: OrgEditSection | null) => {
+    if (section) sections.current.set(key, section);
+    else sections.current.delete(key);
+    setSectionDirty((prev) => {
+      const has = prev.has(key);
+      const want = !!section?.dirty;
+      if (has === want) return prev;
+      const next = new Set(prev);
+      if (want) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  }, []);
+  const editCtx = useMemo(() => ({ editing, register: registerSection }), [editing, registerSection]);
+  const dirty = formDirty || sectionDirty.size > 0;
 
   // 支援体制の表示は保存済みの内容（form ではなく organization）を使う
   const managers = orgSupportManagers(organization.intake);
@@ -84,11 +103,17 @@ export function OrganizationDetail({
     setBusy(true);
     setNotice(null);
     try {
-      await updateOrganization(createClient(), organization.id, {
-        ...form,
-        name: form.name.trim(),
-      });
-      setSnapshot(form);
+      if (formDirty) {
+        await updateOrganization(createClient(), organization.id, {
+          ...form,
+          name: form.name.trim(),
+        });
+        setSnapshot(form);
+      }
+      // 別に保存している欄（２号の指導体制など）も保存する
+      for (const s of sections.current.values()) {
+        if (s.dirty && !(await s.save())) throw new Error("２号の指導体制などの欄を保存できませんでした");
+      }
       setEditing(false);
       setNotice({ ok: true, message: "保存しました" });
       router.refresh();
@@ -105,6 +130,7 @@ export function OrganizationDetail({
   };
 
   return (
+    <OrgEditContext.Provider value={editCtx}>
     <div className="flex flex-col gap-4">
       {/* 保存していない変更があるまま別の画面へ行くときの確認 */}
       <UnsavedChangesGuard
@@ -137,8 +163,9 @@ export function OrganizationDetail({
             <button
               type="button"
               onClick={() => {
-                // 変更を破棄して表示モードに戻す
+                // 変更を破棄して表示モードに戻す（別に保存している欄も元に戻す）
                 setForm(snapshot);
+                for (const s of sections.current.values()) s.reset();
                 setEditing(false);
               }}
               className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted"
@@ -270,5 +297,6 @@ export function OrganizationDetail({
       {tab === "ssw2" && ssw2}
       {tab === "contacts" && contacts}
     </div>
+    </OrgEditContext.Provider>
   );
 }

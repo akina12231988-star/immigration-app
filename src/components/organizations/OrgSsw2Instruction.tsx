@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ClipboardList, GraduationCap, Pencil, Save, X } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { useOrgEditSection } from "@/components/organizations/OrgEditContext";
 import { createClient } from "@/lib/supabase/client";
 import { dbErrorMessage } from "@/lib/errors";
 import {
@@ -55,7 +56,7 @@ export function OrgSsw2Instruction({
   const [savedDuties, setSavedDuties] = useState<OrgSsw2Duties>(initialDuties);
   const dirty = JSON.stringify(duties) !== JSON.stringify(savedDuties);
 
-  const saveDuties = async (next: OrgSsw2Duties) => {
+  const saveDuties = async (next: OrgSsw2Duties): Promise<boolean> => {
     setDutiesBusy(true);
     setDutiesError(null);
     try {
@@ -63,12 +64,24 @@ export function OrgSsw2Instruction({
       setSavedDuties(next);
       setDutiesSaved(true);
       setEditing(false);
+      return true;
     } catch (err) {
       setDutiesError(dbErrorMessage(err, "0123_org_ssw2_duties.sql", "保存に失敗しました"));
+      return false;
     } finally {
       setDutiesBusy(false);
     }
   };
+  // 所属機関の画面の中では、画面の上の「編集」「編集した内容を保存」で入力・保存する（編集ボタンは1つだけ）
+  const pageEdit = useOrgEditSection("ssw2", {
+    dirty,
+    save: () => saveDuties(duties),
+    reset: () => {
+      setDuties(savedDuties);
+      setDutiesError(null);
+    },
+  });
+  const isEditing = pageEdit ? pageEdit.editing : editing;
   const cancelEdit = () => {
     if (dirty && !window.confirm("入力した内容を保存せずに戻します。よろしいですか？")) return;
     setDuties(savedDuties);
@@ -77,14 +90,14 @@ export function OrgSsw2Instruction({
   };
   // 保存していない入力があるまま画面を離れようとしたら知らせる
   useEffect(() => {
-    if (!editing || !dirty) return;
+    if (pageEdit || !editing || !dirty) return;
     const warn = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue = "";
     };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [editing, dirty]);
+  }, [pageEdit, editing, dirty]);
 
   const [workers, setWorkers] = useState<InstructeeCandidateWorker[]>([]);
   const [links, setLinks] = useState<Ssw2InstructionLink[]>([]);
@@ -172,7 +185,7 @@ export function OrgSsw2Instruction({
         <GraduationCap size={16} />
         特定技能２号の指導体制
         {/* 右上の編集・保存。「編集」を押すまでは入力できない */}
-        {canEdit && (
+        {canEdit && !pageEdit && (
           <span className="ml-auto flex items-center gap-1.5">
             {editing ? (
               <>
@@ -261,7 +274,7 @@ export function OrgSsw2Instruction({
                 <textarea
                   rows={3}
                   value={duties[f.key]}
-                  disabled={!canEdit || !editing || dutiesBusy}
+                  disabled={!canEdit || !isEditing || dutiesBusy}
                   onChange={(e) => {
                     setDuties({ ...duties, [f.key]: e.target.value });
                     setDutiesSaved(false);
@@ -271,7 +284,7 @@ export function OrgSsw2Instruction({
               ) : (
                 <input
                   value={duties[f.key]}
-                  disabled={!canEdit || !editing || dutiesBusy}
+                  disabled={!canEdit || !isEditing || dutiesBusy}
                   onChange={(e) => {
                     setDuties({ ...duties, [f.key]: e.target.value });
                     setDutiesSaved(false);
@@ -286,11 +299,15 @@ export function OrgSsw2Instruction({
         <p className="mt-1.5 text-[11px] text-muted">
           {dutiesBusy
             ? "保存中…"
-            : editing
-              ? "入力したら右上の「保存」を押してください。"
+            : isEditing
+              ? pageEdit
+                ? "入力したら画面の上の「編集した内容を保存」を押してください。"
+                : "入力したら右上の「保存」を押してください。"
               : dutiesSaved
                 ? "保存しました。"
-                : "直すときは右上の「編集」を押してください。"}
+                : pageEdit
+                  ? "直すときは画面の上の「編集」を押してください。"
+                  : "直すときは右上の「編集」を押してください。"}
         </p>
       </div>
 
@@ -308,7 +325,7 @@ export function OrgSsw2Instruction({
               <span className="mb-0.5 block text-[11px] font-bold text-muted">{f.label}</span>
               <input
                 value={duties[f.key]}
-                disabled={!canEdit || !editing || dutiesBusy}
+                disabled={!canEdit || !isEditing || dutiesBusy}
                 placeholder={f.placeholder}
                 onChange={(e) => {
                   setDuties({ ...duties, [f.key]: e.target.value });
@@ -322,11 +339,15 @@ export function OrgSsw2Instruction({
         <p className="mt-1.5 text-[11px] text-muted">
           {dutiesBusy
             ? "保存中…"
-            : editing
-              ? "入力したら右上の「保存」を押してください。"
+            : isEditing
+              ? pageEdit
+                ? "入力したら画面の上の「編集した内容を保存」を押してください。"
+                : "入力したら右上の「保存」を押してください。"
               : dutiesSaved
                 ? "保存しました。"
-                : "直すときは右上の「編集」を押してください。"}
+                : pageEdit
+                  ? "直すときは画面の上の「編集」を押してください。"
+                  : "直すときは右上の「編集」を押してください。"}
         </p>
       </div>
 
