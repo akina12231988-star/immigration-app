@@ -1565,7 +1565,7 @@ export function ApplicationPrepChecklist({
       const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/pdf" }));
       const a = document.createElement("a");
       a.href = url;
-      a.download = prepBundleFileName(workerRow?.name ?? "", current?.todo_no ?? "");
+      a.download = prepBundleFileName(workerRow?.name ?? "");
       document.body.appendChild(a);
       a.click();
       a.remove();

@@ -23,6 +23,12 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-11-13",
+    title: "書類をまとめた PDF のファイル名を「〇〇証明書一式」にしました",
+    where: "申請準備の詳細 ＞ 必要な書類の準備 ＞「添付した書類をまとめて PDF でダウンロード」",
+    items: ["ダウンロードする PDF の名前を「（氏名）証明書一式.pdf」（例: NGUYEN VAN A証明書一式.pdf）にしました。"],
+  },
+  {
+    date: "2026-11-13",
     title: "外国人一覧で、職歴の会社名からも探せるようにしました",
     where: "外国人 ＞ 一覧の上の検索欄（名前の検索の下）",
     href: "/workers",
