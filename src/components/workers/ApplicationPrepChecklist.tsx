@@ -24,6 +24,8 @@ import {
   Check,
 } from "lucide-react";
 import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
+import { blobToPdfPart, mergePdfParts, rasterizePdfInBrowser, type PdfPart } from "@/lib/pdf-merge";
+import { prepBundleFileName, prepBundlePlan } from "@/lib/prep-docs-bundle";
 import { PostApplyList } from "@/components/workers/PostApplyList";
 import { PrepPdfCheck } from "@/components/workers/PrepPdfCheck";
 import { isIssueOnlyDocDone } from "@/lib/post-apply";
@@ -282,6 +284,9 @@ export function ApplicationPrepChecklist({
   const [addresses, setAddresses] = useState<WorkerAddress[]>([]);
   const [docs, setDocs] = useState<OnboardingDocumentRow[]>([]);
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  // 添付した書類をまとめた PDF を作っている途中か・結果の知らせ
+  const [bundleBusy, setBundleBusy] = useState(false);
+  const [bundleNotice, setBundleNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // 顔写真は workers.photo_path と連動（最新の1枚を共有）
   const [photoExists, setPhotoExists] = useState<boolean>(!!photoPath);
@@ -1429,6 +1434,75 @@ export function ApplicationPrepChecklist({
     ? missingItems.filter((i) => docRequesteeOf(i)?.who === whoFilter)
     : missingItems;
   const docLabelOf = (item: (typeof items)[number]) => prepDocLabel(item.def, docYearOf(item.def), currentReiwa);
+
+  // 添付した書類（在留カード・顔写真・パスポート以外）をまとめる計画と、添付の無い書類
+  const bundlePlan = prepBundlePlan(
+    items.map((i) => ({
+      id: i.def.id,
+      label: docLabelOf(i),
+      kind: i.def.source.kind,
+      satisfied: i.satisfied,
+      mailAfterApply: !!docStatuses[i.def.id]?.mail_after_apply,
+      issueNoMail: !!docStatuses[i.def.id]?.issue_no_mail,
+      files: docFilesFor(i.def),
+    })),
+  );
+  // 添付した書類を1つの PDF にしてダウンロードする（画像は A4 に1枚ずつ。PDF はそのままページを足す）
+  async function downloadBundle() {
+    if (bundlePlan.targets.length === 0) {
+      setBundleNotice("まとめられる添付がありません。");
+      return;
+    }
+    if (
+      bundlePlan.missing.length > 0 &&
+      !window.confirm(
+        `まだ添付されていない書類があります（${bundlePlan.missing.length}件）:\n\n${bundlePlan.missing
+          .map((m) => `・${m.label}（${m.reason}）`)
+          .join("\n")}\n\n添付されている書類だけで PDF を作りますか？`,
+      )
+    )
+      return;
+    setBundleBusy(true);
+    setBundleNotice(null);
+    try {
+      const parts: PdfPart[] = [];
+      const skipped: string[] = [];
+      for (const t of bundlePlan.targets) {
+        for (const f of t.files) {
+          if (!f.storage_path) {
+            skipped.push(`${t.label}（リンクで登録）`);
+            continue;
+          }
+          const res = await getOnboardingDocDownloadUrl(f.id);
+          if (!res.ok) {
+            skipped.push(`${t.label}（${res.message}）`);
+            continue;
+          }
+          const blob = await (await fetch(res.url)).blob();
+          const part = await blobToPdfPart(blob, f.file_name || res.fileName);
+          if (part) parts.push(part);
+          else skipped.push(`${t.label}（画像・PDF以外のファイル）`);
+        }
+      }
+      if (parts.length === 0) throw new Error("まとめられるファイルがありませんでした。");
+      const bytes = await mergePdfParts(parts, { rasterize: rasterizePdfInBrowser });
+      const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = prepBundleFileName(workerRow?.name ?? "", current?.todo_no ?? "");
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      setBundleNotice(
+        `${parts.length}ファイルを1つの PDF にまとめました。${skipped.length > 0 ? `まとめられなかったもの: ${skipped.join("、")}` : ""}`,
+      );
+    } catch (err) {
+      setBundleNotice(err instanceof Error ? err.message : "PDF の作成に失敗しました");
+    } finally {
+      setBundleBusy(false);
+    }
+  }
   // 「何の書類を待っていますか？」に1回で入れる文（まだ揃っていない書類と依頼先）
   const waitingSuggestion = waitingNoteFromMissing(
     missingItems.map((i) => ({ label: docLabelOf(i), who: docRequesteeOf(i)?.who })),
@@ -2307,6 +2381,42 @@ export function ApplicationPrepChecklist({
           >
             ほかの人も含めて、まだ揃っていない書類を見る（書類別・所属機関別）→
           </Link>
+          {/* 添付した書類（在留カード・顔写真・パスポート以外）を1つの PDF にまとめてダウンロード。
+              添付の無い書類があれば赤字で知らせる */}
+          <div className="mb-3 space-y-1.5 rounded-xl border border-border bg-background p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={bundleBusy || bundlePlan.targets.length === 0}
+                onClick={() => void downloadBundle()}
+                className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg bg-brand px-3 text-xs font-bold text-brand-foreground disabled:opacity-50"
+              >
+                {bundleBusy ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                添付した書類をまとめて PDF でダウンロード
+              </button>
+              <span className="text-[11px] text-muted">
+                在留カード・顔写真・パスポートを除く {bundlePlan.targets.length}件の書類（
+                {bundlePlan.targets.reduce((n, t) => n + t.files.length, 0)}ファイル）を、下の並び順で1つの PDF にします
+              </span>
+            </div>
+            {bundlePlan.missing.length > 0 && (
+              <div className="rounded-lg bg-seal/10 px-3 py-2 text-xs text-seal">
+                <p className="flex items-center gap-1 font-bold">
+                  <TriangleAlert size={13} />
+                  まだ添付されていない書類があります（{bundlePlan.missing.length}件）
+                </p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                  {bundlePlan.missing.map((m) => (
+                    <li key={m.id}>
+                      {m.label}
+                      {m.reason !== "未添付" && <span className="ml-1 text-[11px]">（{m.reason}）</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {bundleNotice && <p className="text-[11px] font-bold text-brand">{bundleNotice}</p>}
+          </div>
           {/* 全部揃ったときだけ知らせる（足りない書類は下の「まだ揃っていない」に並ぶ） */}
           {missing.length === 0 && (
             <p className="mb-3 flex items-center gap-1.5 rounded-xl bg-status-approved-bg px-3 py-2.5 text-sm font-bold text-status-approved-fg">
