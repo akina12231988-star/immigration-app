@@ -305,3 +305,30 @@ export function interpreterRowsFromLanguages(languages: string): SupportOrgInter
     .filter(Boolean)
     .map((language) => ({ language, name: "" }));
 }
+
+// ---- 申請取次者の届出済証明書の有効期限 ----
+
+// 更新の手続きの案内（出入国在留管理庁）
+export const AGENT_CERT_RENEWAL_URL = "https://www.moj.go.jp/isa/applications/procedures/nyuukokukanri07_00249.html";
+// 有効期限の何か月前から知らせるか
+export const AGENT_CERT_ALERT_MONTHS = 2;
+
+// 有効期限（YYYY-MM-DD）の2か月前を過ぎていれば、残り日数（期限切れは負）を返す。まだなら null
+export function agentCertAlertDays(certExpiry: string | null | undefined, today: string): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((certExpiry ?? "").trim());
+  if (!m) return null;
+  const exp = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  const from = new Date(exp);
+  from.setUTCMonth(from.getUTCMonth() - AGENT_CERT_ALERT_MONTHS);
+  const t = new Date(`${today}T00:00:00Z`);
+  if (t < from) return null;
+  return Math.round((exp.getTime() - t.getTime()) / 86400000);
+}
+
+// 知らせる申請取次者（有効期限の2か月前を過ぎた人）
+export function agentCertAlerts(agents: SupportOrgAgent[], today: string): (SupportOrgAgent & { days: number })[] {
+  return agents
+    .map((a) => ({ ...a, days: agentCertAlertDays(a.certExpiry, today) }))
+    .filter((a): a is SupportOrgAgent & { days: number } => a.days !== null)
+    .sort((a, b) => a.days - b.days);
+}
