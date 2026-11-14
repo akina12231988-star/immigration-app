@@ -1,3 +1,4 @@
+import { safeBackPath } from "@/lib/support-print-link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -24,11 +25,11 @@ const TTL = 60 * 60;
 export default async function SupportSystemPrintPage({
   searchParams,
 }: {
-  searchParams: Promise<{ org?: string }>;
+  searchParams: Promise<{ org?: string; back?: string }>;
 }) {
   const me = await getMyProfile();
   if (!me) redirect("/login");
-  const { org: orgId } = await searchParams;
+  const { org: orgId, back } = await searchParams;
 
   const supabase = await createClient();
   const [setting, employees, org] = await Promise.all([
@@ -71,6 +72,7 @@ export default async function SupportSystemPrintPage({
       people={people}
       orgId={org?.id ?? ""}
       orgName={org?.name ?? ""}
+      backHref={safeBackPath(back)}
       listingImages={listingImages}
     />
   );

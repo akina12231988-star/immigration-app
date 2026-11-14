@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useCurrentPath } from "@/hooks/useCurrentPath";
+import { supportPrintHref } from "@/lib/support-print-link";
 import { Briefcase, Printer, Upload } from "lucide-react";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { createClient } from "@/lib/supabase/client";
@@ -150,6 +152,8 @@ export function Prep117Section({
   canEdit?: boolean; // 住居の選択（6. 住居）をこの場で保存できるか
 }) {
   const workerKey = workerIds.join(",");
+  // 名簿の印刷ページの「←」で、この申請準備の画面へ戻れるようにする
+  const currentPath = useCurrentPath();
   const [data, setData] = useState<{
     key: string;
     workers: PlanWorker[];
@@ -375,7 +379,7 @@ export function Prep117Section({
               <span className="rounded-full bg-seal px-2 py-0.5 text-[10px] font-bold text-seal-foreground">必ず印刷</span>
             )}
             <a
-              href={`/support-org/print${orgId ? `?org=${encodeURIComponent(orgId)}` : ""}`}
+              href={supportPrintHref(orgId, currentPath ? `${currentPath}#prep-plan` : null)}
               target="_blank"
               rel="noopener"
               onClick={() => onRosterPrinted?.()}

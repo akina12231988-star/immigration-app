@@ -22,12 +22,14 @@ export function SupportSystemPrintSheet({
   people,
   orgId,
   orgName,
+  backHref = null,
   listingImages,
 }: {
   info: CustodianInfo;
   people: SupportSystemPrintPeople;
   orgId: string;
   orgName: string;
+  backHref?: string | null; // 「←」で戻る画面（申請準備の詳細から開いたときはその画面）
   listingImages: ListingImage[];
 }) {
   const [note, setNote] = useState(info.supportSystemNote);
@@ -88,7 +90,7 @@ export function SupportSystemPrintSheet({
 
       <div className="print:hidden">
         <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-brand px-4 py-3 text-brand-foreground lg:px-8">
-          <BackButton fallbackHref={orgId ? `/organizations/${orgId}` : "/support-org"} />
+          <BackButton href={backHref} fallbackHref={orgId ? `/organizations/${orgId}` : "/support-org"} />
           <h1 className="flex-1 text-lg font-bold">支援業務を行う体制についての説明（A4縦で印刷）</h1>
         </div>
         <div className="flex flex-col gap-3 px-4 py-3 lg:px-8">
