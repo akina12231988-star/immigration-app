@@ -14,6 +14,7 @@ import { RESUME_LANG_JA } from "@/lib/resume-tool/i18n";
 import { resumeLangForNationality } from "@/lib/resume-tool/share";
 import { contractPeriodEnd, contractYearsOf, formatYmdJa } from "@/lib/support-plan-dates";
 import { JLPT_LEVELS, normalizeCertExams, type WorkerCertExam } from "@/lib/cert-exam";
+import { NIHONGO_EXAM_NAME_OPTIONS, nihongoExamNameOf } from "@/lib/cert-exam-options";
 import { JISSHU_SHOKUSHU_LIST } from "@/lib/jisshu-shokushu";
 import { businessCategoryOptions } from "@/lib/online-business-categories";
 import { ONLINE_MAIN_OCCUPATIONS, suggestedMainOccupation } from "@/lib/online-main-occupations";
@@ -476,7 +477,11 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
     exams
       .filter((e) => e.kind === kind && (e.name || e.location || e.level))
       .flatMap((e, i) => [
-        { label: `${numbering} (1)試験名（${i + 2}件目）`, value: e.name, note: "外国人詳細 ＞ 合格証の受験情報（2件目以降）" },
+        {
+          label: kind === "nihongo" ? `19.2 合格した試験名（${i + 2}件目）` : `${numbering} (1)試験名（${i + 2}件目）`,
+          value: kind === "nihongo" ? nihongoExamNameOf(e.name) : e.name,
+          note: "外国人詳細 ＞ 合格証の受験情報（2件目以降）",
+        },
         { label: `${numbering} (2)受験地（${i + 2}件目）`, value: e.location },
         ...(kind === "nihongo" ? [{ label: `${numbering} レベル（${i + 2}件目）`, value: e.level }] : []),
       ]);
@@ -519,10 +524,11 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
       edit: wk("japanese_eval_kind", SKILL_EVAL_KINDS),
     },
     {
-      label: "19 日本語能力 (1)試験名",
-      value: w.cert_nihongo_name ?? "",
-      note: "外国人詳細 ＞ 日本語の合格証の受験情報",
-      edit: wk("cert_nihongo_name"),
+      label: "19.2 日本語能力 合格した試験名",
+      value: nihongoExamNameOf(w.cert_nihongo_name),
+      note: "オンライン申請 19.2 のプルダウンと同じ4つから選ぶ。外国人詳細 ＞ 日本語の合格証の受験情報と同じ値",
+      edit: wk("cert_nihongo_name", NIHONGO_EXAM_NAME_OPTIONS),
+      editValue: nihongoExamNameOf(w.cert_nihongo_name),
     },
     {
       label: "19 (2)受験地",

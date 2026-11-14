@@ -7,7 +7,7 @@ import { updateWorker } from "@/lib/supabase/queries/workers";
 import { clearOnboardingDocFile } from "@/app/(app)/onboarding/actions";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { WorkerCertDocRows } from "@/components/workers/WorkerCertDocRows";
-import { EXAM_LOCATION_JAPAN } from "@/lib/cert-exam-options";
+import { EXAM_LOCATION_JAPAN, nihongoExamNameOf } from "@/lib/cert-exam-options";
 import {
   CERT_KIND_LABEL,
   JLPT_LEVELS,
@@ -34,6 +34,7 @@ function PickOrTypeRow({
   options,
   otherLabel = "その他（入力）",
   placeholder = "入力してください",
+  allowOther = true,
   canEdit,
   busy,
   onSave,
@@ -43,11 +44,12 @@ function PickOrTypeRow({
   options: readonly string[];
   otherLabel?: string;
   placeholder?: string;
+  allowOther?: boolean; // false なら候補から選ぶだけ（候補に無い今の値は、選び直すまでそのまま出す）
   canEdit: boolean;
   busy: boolean;
   onSave: (v: string) => void;
 }) {
-  const isKnown = value === "" || options.includes(value);
+  const isKnown = value === "" || options.includes(value) || !allowOther;
   // セレクトの表示（候補にある値ならその値、無ければ「その他」を選んだ状態にする）。
   // 呼び出し側で key={value} を付けてもらい、外部から値が変わったとき
   // （読み込み完了・保存反映）はこのコンポーネントごと作り直して表示を合わせる
@@ -91,7 +93,11 @@ function PickOrTypeRow({
               {o}
             </option>
           ))}
-          <option value={OTHER}>{otherLabel}</option>
+          {/* 候補に無い今の値（以前の書き方など）は、選び直すまでそのまま出す */}
+          {!allowOther && value && !options.includes(value) && (
+            <option value={value}>{value}（候補外・選び直してください）</option>
+          )}
+          {allowOther && <option value={OTHER}>{otherLabel}</option>}
         </select>
         {value && <CopyButton value={value} label={`${label}をコピー`} />}
       </div>
@@ -280,8 +286,9 @@ export function CertExamList({
           <PickOrTypeRow
             key={`name-${row.doc_key}-${row.name}`}
             label="受験した試験名"
-            value={row.name}
+            value={kind === "nihongo" ? nihongoExamNameOf(row.name) : row.name}
             options={nameOptions}
+            allowOther={kind !== "nihongo"}
             canEdit={canEdit}
             busy={busy}
             onSave={(v) => patchRow(row, "name", v)}

@@ -464,7 +464,7 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
     item(
       "19.1",
       "日本語能力 評価区分",
-      w.japanese_eval_kind || (val(groups, "19 日本語能力 (1)試験名") ? "特定技能評価試験" : ""),
+      w.japanese_eval_kind || (val(groups, "19.2 日本語能力 合格した試験名") ? "特定技能評価試験" : ""),
       "choice",
       w.japanese_eval_kind
         ? "登録した区分（特定技能1号のとき）。これにより 19.2〜 の項目が変わる"
@@ -472,7 +472,7 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
       wk("japanese_eval_kind", SKILL_EVAL_KINDS),
       w.japanese_eval_kind ?? "",
     ),
-    linked(groups, "19", "日本語能力 試験名", "19 日本語能力 (1)試験名", "text"),
+    linked(groups, "19.2", "日本語能力 合格した試験名", "19.2 日本語能力 合格した試験名", "choice", "プルダウンから選ぶ（外国人詳細 ＞ 日本語の合格証の受験情報と同じ）"),
     linked(groups, "19", "日本語能力 受験地", "19 (2)受験地", "text"),
     item("19", "日本語能力 レベル", val(groups, "19 レベル"), "choice", undefined, wk("cert_nihongo_level", JLPT_LEVELS)),
     linked(groups, "20", "技能実習2号良好修了 職種名", "20 技能実習2号良好修了 (1)職種名", "text", "技能実習2号を良好に修了した人だけ"),
@@ -1014,7 +1014,7 @@ function ninteiKubunV(
     item(
       "24.1",
       "日本語能力 評価区分",
-      w.japanese_eval_kind || (val(groups, "19 日本語能力 (1)試験名") ? "特定技能評価試験" : ""),
+      w.japanese_eval_kind || (val(groups, "19.2 日本語能力 合格した試験名") ? "特定技能評価試験" : ""),
       "choice",
       w.japanese_eval_kind
         ? "登録した区分（特定技能1号で入国を希望するとき）。これにより 24.2〜24.8 の項目が変わる"
@@ -1022,7 +1022,7 @@ function ninteiKubunV(
       wk("japanese_eval_kind", SKILL_EVAL_KINDS),
       w.japanese_eval_kind ?? "",
     ),
-    linked(groups, "24", "日本語能力 試験名", "19 日本語能力 (1)試験名", "text"),
+    linked(groups, "24", "日本語能力 試験名", "19.2 日本語能力 合格した試験名", "text"),
     linked(groups, "24", "日本語能力 受験地", "19 (2)受験地", "text"),
     item("24", "日本語能力 レベル", val(groups, "19 レベル"), "choice", undefined, wk("cert_nihongo_level", JLPT_LEVELS)),
     linked(groups, "25", "良好に修了した技能実習2号 職種", "20 技能実習2号良好修了 (1)職種名", "text", "23・24 で「技能実習2号を良好に修了」を選んだ人だけ（例: 耕種農業）"),

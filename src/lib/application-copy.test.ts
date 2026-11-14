@@ -203,11 +203,11 @@ describe("申請書に貼る項目", () => {
     expect(find("18 技能水準 (1)試験名")?.value).toBe("外国人食品産業技能評価機構");
     expect(find("18 (2)受験地")?.value).toBe("日本国内");
     expect(find("18 専門級の合格名（技能実習）")?.value).toBe("農業（耕種）専門級");
-    expect(find("19 日本語能力 (1)試験名")?.value).toBe("日本語能力試験　JLPT");
+    expect(find("19.2 日本語能力 合格した試験名")?.value).toBe("日本語能力試験 Japanese language proficiency test");
     expect(find("19 (2)受験地")?.value).toBe("ベトナム");
     expect(find("19 レベル")).toMatchObject({ value: "N4", edit: { target: "worker", column: "cert_nihongo_level" } });
     // 2件目以降は件数付きで出す。空の受験情報は出さない
-    expect(find("19 (1)試験名（2件目）")?.value).toBe("国際交流基金日本語基礎テスト");
+    expect(find("19.2 合格した試験名（2件目）")?.value).toBe("国際交流基金日本語基礎テスト The japan foundation japanese basic test");
     expect(find("18 (1)試験名（2件目）")).toBeUndefined();
     expect(find("20 技能実習2号良好修了 (1)職種名")?.value).toBe("耕種農業");
     expect(find("20 (2)作業名")?.value).toBe("施設園芸");
