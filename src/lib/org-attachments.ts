@@ -40,9 +40,10 @@ export function isLodgingContractKind(kind: string): boolean {
   return kind === "賃貸契約書" || kind.startsWith("賃貸契約書:");
 }
 
-// 業種（特定技能 産業分野）が農業か
-export function isAgricultureIndustry(industry: string): boolean {
-  return industry.trim() === "農業";
+// 業種（特定技能 産業分野）が農業か。「農業分野」「農業／耕種農業全般」のような書き方も農業とみなす
+export function isAgricultureIndustry(industry: string | null | undefined): boolean {
+  const name = (industry ?? "").normalize("NFKC").trim().split(/[／/・\s]/)[0].replace(/分野$/, "").trim();
+  return name === "農業";
 }
 
 // 変形労働時間制の表示（申請準備の所属機関の情報に出す）。
