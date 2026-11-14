@@ -261,3 +261,47 @@ export function parseAzkLedger(text: string): { entries: AzkLedgerEntry[]; skipp
   }
   return { entries, skipped };
 }
+
+// ---- 母国語の通訳者 ----
+
+// 国籍 → 母国語（通訳者を引くのに使う。国籍の欄に含まれていれば一致）
+const NATIVE_LANGUAGES: { match: RegExp; language: string }[] = [
+  { match: /ベトナム|viet/i, language: "ベトナム語" },
+  { match: /インドネシア|indonesia/i, language: "インドネシア語" },
+  { match: /カンボジア|cambodia|khmer/i, language: "クメール語" },
+  { match: /フィリピン|philippin|filipin/i, language: "タガログ語" },
+  { match: /ミャンマー|myanmar/i, language: "ミャンマー語" },
+  { match: /ネパール|nepal/i, language: "ネパール語" },
+  { match: /中国|china/i, language: "中国語" },
+  { match: /タイ|thai/i, language: "タイ語" },
+  { match: /モンゴル|mongol/i, language: "モンゴル語" },
+  { match: /スリランカ|sri\s*lanka/i, language: "シンハラ語" },
+];
+export function nativeLanguageOf(nationality: string | null | undefined): string {
+  const n = (nationality ?? "").normalize("NFKC");
+  return NATIVE_LANGUAGES.find((l) => l.match.test(n))?.language ?? "";
+}
+
+// 言語名を比べるための形（「語」と空白を除く。「クメール語（カンボジア語）」→「クメール」）
+const langKey = (s: string) => s.normalize("NFKC").replace(/[（(].*?[）)]/g, "").replace(/語|\s/g, "");
+
+// 本人の母国語の通訳者（登録支援機関の情報で言語ごとに登録した人）。見つからなければ null
+export function interpreterForNationality(
+  interpreters: SupportOrgInterpreter[],
+  nationality: string | null | undefined,
+): { language: string; interpreter: SupportOrgInterpreter | null } {
+  const language = nativeLanguageOf(nationality);
+  if (!language) return { language: "", interpreter: null };
+  const key = langKey(language);
+  const hit = interpreters.find((r) => r.name.trim() && langKey(r.language).includes(key)) ?? null;
+  return { language, interpreter: hit };
+}
+
+// 対応可能言語（「ベトナム語、クメール語、…」）から、通訳者を入れる行を作る（まだ1人も登録していないとき用）
+export function interpreterRowsFromLanguages(languages: string): SupportOrgInterpreter[] {
+  return (languages ?? "")
+    .split(/[、,，・／/\s]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((language) => ({ language, name: "" }));
+}

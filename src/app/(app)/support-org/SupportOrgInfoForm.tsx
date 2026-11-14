@@ -9,6 +9,7 @@ import { setAppSetting } from "@/lib/supabase/queries/app-settings";
 import { dbErrorMessage } from "@/lib/errors";
 import {
   CUSTODIAN_SETTING_KEY,
+  interpreterRowsFromLanguages,
   supportOrgSettingValue,
   type CustodianInfo,
   type SupportOrgAgent,
@@ -52,7 +53,12 @@ export function SupportOrgInfoForm({
   const [notice, setNotice] = useState<{ ok: boolean; message: string } | null>(null);
 
   const startEdit = () => {
-    setDraft(saved);
+    // 通訳者がまだ1人もいなければ、対応可能言語ごとに行を作っておく（氏名を入れるだけにする）
+    setDraft(
+      saved.lists.interpreters.length === 0 && saved.info.languages
+        ? { ...saved, lists: { ...saved.lists, interpreters: interpreterRowsFromLanguages(saved.info.languages) } }
+        : saved,
+    );
     setNotice(null);
     setEditing(true);
   };
@@ -141,7 +147,9 @@ export function SupportOrgInfoForm({
       <dt className="shrink-0 text-xs text-muted sm:w-64">通訳者（言語ごと）</dt>
       <dd className="min-w-0 flex-1">
         {saved.lists.interpreters.length === 0 ? (
-          <span className="text-muted">未登録</span>
+          <span className="text-muted">
+            未登録（右上の「編集」を押すと、対応可能言語ごとに通訳者の氏名を入れられます。申請準備の1-17号の項目に母国語の通訳者として出ます）
+          </span>
         ) : (
           <ul className="flex flex-col gap-0.5">
             {saved.lists.interpreters.map((r, i) => (
