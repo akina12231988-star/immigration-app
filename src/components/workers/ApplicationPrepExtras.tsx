@@ -80,6 +80,8 @@ import { uploadOrgFiles } from "@/lib/org-file-upload";
 import { ASSEN_NONE_REASONS, ASSEN_OTHER, assenReasonChoice } from "@/lib/prep-detail";
 // 循環 import になるが、使うのは描画のときだけなので問題ない（PrepSupportOrgSection も OrgAttachmentPreview をここから使う）
 import { PlacementAgencyCard } from "@/components/workers/PrepSupportOrgSection";
+import { useCurrentPath } from "@/hooks/useCurrentPath";
+import { supportPrintHref } from "@/lib/support-print-link";
 import type {
   Organization,
   OrganizationFileRow,
@@ -606,6 +608,8 @@ export function PrepOrgInfo({
   currentOrganizationId?: string | null; // 現在の所属機関（これを選ぶと「転職先の指定なし」に戻す）
   onOrgChanged?: (orgId: string | null) => void; // 保存後に呼ぶ（application_prep_organization_id の新しい値）
 }) {
+  // 支援体制の印刷ページの「←」で、この申請準備の画面へ戻れるようにする
+  const currentPath = useCurrentPath();
   const [error, setError] = useState<string | null>(null);
   // 所属機関の選び直し用の一覧（workerId を渡された画面だけ読む）
   const [orgChoices, setOrgChoices] = useState<{ id: string; name: string }[]>([]);
@@ -801,7 +805,7 @@ export function PrepOrgInfo({
         </Link>
         {/* この機関の支援責任者・支援担当者を「支援業務を行う体制についての説明」としてA4で印刷する */}
         <a
-          href={`/support-org/print?org=${encodeURIComponent(org.id)}`}
+          href={supportPrintHref(org.id, currentPath || null)}
           target="_blank"
           rel="noopener"
           className="inline-flex items-center gap-1 rounded-full bg-brand px-2 py-0.5 text-[10px] font-bold text-brand-foreground"

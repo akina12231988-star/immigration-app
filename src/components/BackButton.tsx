@@ -19,9 +19,11 @@ const BACK_TIMEOUT_MS = 400;
 // このときは履歴に足さず今の画面を置き換える（足すと「←」で元の画面と行ったり来たりになる）。
 export function BackButton({
   fallbackHref,
+  href,
   className = "flex h-9 w-9 items-center justify-center rounded-full hover:bg-brand-foreground/10",
 }: {
   fallbackHref: string;
+  href?: string | null; // 決まった戻り先（印刷ページを開いた元の画面など）。あれば履歴を見ずにそこへ戻る
   className?: string;
 }) {
   const router = useRouter();
@@ -36,6 +38,10 @@ export function BackButton({
   );
 
   const goBack = () => {
+    if (href) {
+      router.replace(href);
+      return;
+    }
     // サイト内で1つ前に表示していた画面が分かるときは、そこへ確実に移動する
     const current = `${window.location.pathname}${window.location.search}`;
     const prev = popNavHistory(current);
