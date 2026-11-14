@@ -1,5 +1,6 @@
 import type { ApplicationCopyInput, CopyEdit, CopyGroup, CopyItem } from "@/lib/application-copy";
 import { isKunisakiSeika } from "@/lib/stamp-fee";
+import { NEITHER, fieldSpecificChoice, transferChoice } from "@/lib/application-copy";
 import { cu, industryFieldName, it, og, ONLINE_INDUSTRY_FIELDS, SKILL_EVAL_KINDS, wk, wkDate, YES_NO, ymdCompact } from "@/lib/application-copy";
 import { JLPT_LEVELS } from "@/lib/cert-exam";
 import { ONLINE_MAIN_OCCUPATIONS } from "@/lib/online-main-occupations";
@@ -295,25 +296,7 @@ export const TOKKATSU_PURPOSE =
 // 2.7・2.8 所定労働時間の注意書き（画面は小数点を受け付けない）
 export const HOURS_NOTE = "半角数字4文字以内。小数点以下は入力できないので切り捨てています（40.5 → 40）";
 
-// 画面で「有」「無」のどちらも選ばない項目に出す言い方
-export const NEITHER = "有無どちらも選択しない";
-
-// 27 分野に特有の基準（告示基準）が定められている分野
-export const FIELD_SPECIFIC_INDUSTRIES = [
-  "介護",
-  "ビルクリーニング",
-  "工業製品製造業",
-  "建設",
-  "造船・舶用工業",
-  "自動車整備",
-  "航空",
-  "宿泊",
-  "自動車運送業",
-  "飲食料品製造業",
-  "外食業",
-  "林業",
-  "木材産業",
-] as const;
+export { NEITHER, FIELD_SPECIFIC_INDUSTRIES, fieldSpecificChoice, transferChoice } from "@/lib/application-copy";
 
 // 2.3 特定産業分野01: 「農業」→「農業分野」（プルダウンの表記）。分野が分からなければ ""
 export function industryFieldChoice(industry: string | null | undefined): string {
@@ -327,16 +310,6 @@ export function industryFieldChoice(industry: string | null | undefined): string
 export const EMPLOYMENT_STANDARD_INDUSTRIES = ["工業製品製造業", "自動車運送業", "飲食料品製造業", "木材産業"] as const;
 export function employmentStandardChoice(industry: string | null | undefined): string {
   return (EMPLOYMENT_STANDARD_INDUSTRIES as readonly string[]).includes(industryFieldName(industry)) ? "有" : NEITHER;
-}
-
-// 27 特定産業分野に特有の基準に適合していることの有無
-export function fieldSpecificChoice(industry: string | null | undefined): string {
-  return (FIELD_SPECIFIC_INDUSTRIES as readonly string[]).includes(industryFieldName(industry)) ? "有" : NEITHER;
-}
-
-// 26 技能実習で修得した技能等の本国への移転: 特定技能2号を希望するときだけ「有」
-export function transferChoice(desiredStatus: string | undefined): string {
-  return (desiredStatus ?? "").normalize("NFKC").includes("2号") ? "有" : NEITHER;
 }
 
 // 7 職業: 職歴のいちばん新しい行の「職種・仕事内容」。無ければ外国人の分野・職種

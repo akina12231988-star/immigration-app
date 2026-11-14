@@ -183,6 +183,36 @@ export interface ApplicationCopyInput {
   today?: string;
 }
 
+// 画面で「有」「無」のどちらも選ばない項目に出す言い方
+export const NEITHER = "有無どちらも選択しない";
+
+// 27 分野に特有の基準（告示基準）が定められている分野
+export const FIELD_SPECIFIC_INDUSTRIES = [
+  "介護",
+  "ビルクリーニング",
+  "工業製品製造業",
+  "建設",
+  "造船・舶用工業",
+  "自動車整備",
+  "航空",
+  "宿泊",
+  "自動車運送業",
+  "飲食料品製造業",
+  "外食業",
+  "林業",
+  "木材産業",
+] as const;
+
+// 27 特定産業分野に特有の基準に適合していることの有無
+export function fieldSpecificChoice(industry: string | null | undefined): string {
+  return (FIELD_SPECIFIC_INDUSTRIES as readonly string[]).includes(industryFieldName(industry)) ? "有" : NEITHER;
+}
+
+// 26 技能実習で修得した技能等の本国への移転: 特定技能2号を希望するときだけ「有」
+export function transferChoice(desiredStatus: string | undefined): string {
+  return (desiredStatus ?? "").normalize("NFKC").includes("2号") ? "有" : NEITHER;
+}
+
 // 14 変更の理由（特定技能1号への在留資格変更）
 export const CHANGE_REASON_SSW1 = "1号特定技能外国人として就労するため";
 
@@ -565,6 +595,35 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
       label: "22.1 特定技能雇用契約に係る保証金の徴収その他財産管理又は違約金等の支払契約の有無",
       value: "無",
       note: "必ず「無」を記載する",
+    },
+    // 23〜27 は運用で決めている選び方（オンライン申請の順と同じ）。
+    // 農業（所属機関の業種が農林業）は 23・24・26・27 はどちらも選ばず、25 だけ「有」
+    {
+      label: "23.1 取次ぎ又は活動準備に関する外国の機関への費用支払について、合意していることの有無",
+      value: NEITHER,
+      note: "有・無のどちらも選ばない（費用の支払があるときだけ「有」にして 23.2・23.3 を入れる）",
+    },
+    { label: "23.2 外国の機関名", value: "", note: "23.1 で「有」を選んだときだけ。60文字以内" },
+    { label: "23.3 支払額", value: "", note: "23.1 で「有」を選んだときだけ。日本円に換算（例: 約〇〇円）。40文字以内" },
+    {
+      label: "24 国籍国等において定められる本邦で行う活動に関連して遵守すべき手続を経ていることの有無",
+      value: NEITHER,
+      note: "有・無のどちらも選ばない",
+    },
+    {
+      label: "25 本邦において定期的に負担する費用について、対価の内容を十分に理解して合意していることの有無",
+      value: "有",
+      note: "必ず「有」",
+    },
+    {
+      label: "26 技能実習によって本邦において修得、習熟又は熟達した技能等の本国への移転に努めることの有無",
+      value: transferChoice(input.desiredStatus),
+      note: "特定技能2号を希望するときだけ「有」。それ以外はどちらも選ばない",
+    },
+    {
+      label: "27 申請人につき特定産業分野に特有の事情に鑑みて告示で定められる基準に適合していることの有無",
+      value: fieldSpecificChoice(org?.industry || industryFieldName(w.field)),
+      note: "農業はどちらも選ばない。介護・ビルクリーニング・工業製品製造業・建設・造船・舶用工業・自動車整備・航空・宿泊・自動車運送業・飲食料品製造業・外食業・林業・木材産業は「有」",
     },
   ];
 

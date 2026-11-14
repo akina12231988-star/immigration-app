@@ -206,7 +206,14 @@ describe("申請書に貼る項目", () => {
     expect(find("19.2 日本語能力 合格した試験名")?.value).toBe("日本語能力試験 Japanese language proficiency test");
     expect(find("19 (2)受験地")?.value).toBe("ベトナム");
     expect(find("22.1 特定技能雇用契約に係る保証金の徴収その他財産管理又は違約金等の支払契約の有無")?.value).toBe("無");
-    expect(find("19 レベル")).toBeUndefined(); // レベルの欄は申請書に貼る情報には出さない
+    expect(find("19 レベル")).toBeUndefined();
+    // 23〜27（農業の所属機関）: 25 だけ「有」、ほかはどちらも選ばない
+    const yn = (prefix: string) => g.items.find((i) => i.label.startsWith(prefix))?.value;
+    expect(yn("23.1 ")).toBe("有無どちらも選択しない");
+    expect(yn("24 ")).toBe("有無どちらも選択しない");
+    expect(yn("25 ")).toBe("有");
+    expect(yn("26 ")).toBe("有無どちらも選択しない");
+    expect(yn("27 ")).toBe("有無どちらも選択しない"); // レベルの欄は申請書に貼る情報には出さない
     // 2件目以降は件数付きで出す。空の受験情報は出さない
     expect(find("19.2 合格した試験名（2件目）")?.value).toBe("国際交流基金日本語基礎テスト The japan foundation japanese basic test");
     expect(find("18 (1)試験名（2件目）")).toBeUndefined();
