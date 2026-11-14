@@ -2481,10 +2481,47 @@ export function ApplicationPrepChecklist({
                 添付した書類をまとめて PDF でダウンロード
               </button>
               <span className="text-[11px] text-muted">
-                在留カード・顔写真・パスポートを除く {bundlePlan.targets.length}件の書類（
-                {bundlePlan.targets.reduce((n, t) => n + t.files.length, 0)}ファイル）を、下の並び順で1つの PDF にします
+                在留カード・顔写真・パスポートを除く、下の「PDF にまとめる書類」を、この並び順で1つの PDF にします
               </span>
             </div>
+            {/* PDF に入る書類（並び順のとおり）。書類ごとにファイル名と、どこに添付したものかを出す */}
+            {bundlePlan.targets.length > 0 ? (
+              <div className="rounded-lg border border-border bg-surface px-3 py-2 text-xs">
+                <p className="font-bold text-brand">
+                  PDF にまとめる書類（{bundlePlan.targets.length}件・{bundlePlan.targets.reduce((n, t) => n + t.files.length, 0)}ファイル）
+                </p>
+                <ol className="mt-1 list-decimal space-y-1 pl-5">
+                  {bundlePlan.targets.map((t) => (
+                    <li key={t.id}>
+                      <span className="font-bold">{t.label}</span>
+                      <span className="ml-1 text-[11px] text-muted">（{t.files.length}ファイル）</span>
+                      <ul className="mt-0.5 space-y-0.5">
+                        {t.files.map((f) => (
+                          <li key={f.key} className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                            <span className={f.link ? "text-muted line-through" : ""}>{f.name}</span>
+                            <span className="rounded-full bg-background px-1.5 py-0.5 text-[10px] text-muted">
+                              {f.source === "prep" ? "申請準備に添付" : "証明書類の請求で届いた証明書"}
+                            </span>
+                            {f.link && <span className="text-[10px] text-seal">リンクのため PDF に入りません</span>}
+                            <button
+                              type="button"
+                              onClick={() => void previewBundleFile(f)}
+                              className="text-[11px] font-bold text-brand underline"
+                            >
+                              見る
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            ) : (
+              <p className="rounded-lg border border-border bg-surface px-3 py-2 text-xs text-muted">
+                PDF にまとめられる添付はまだありません（在留カード・顔写真・パスポートは入りません）。
+              </p>
+            )}
             {bundlePlan.missing.length > 0 && (
               <div className="rounded-lg bg-seal/10 px-3 py-2 text-xs text-seal">
                 <p className="flex items-center gap-1 font-bold">
