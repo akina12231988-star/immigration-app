@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, Copy, ImageUp, MessageSquareText } from "lucide-react";
+import Link from "next/link";
+import { Check, Copy, ExternalLink, ImageUp, MessageSquareText } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { getOrganization, updateOrganization } from "@/lib/supabase/queries/organizations";
 import { createPrepResumeTicket, getPrepResumeUrl, removePrepResume } from "@/app/(app)/workers/prep-resume-actions";
@@ -192,16 +193,38 @@ export function HireCheckPanel({
               {pay ? <Check size={12} /> : "1"}
             </span>
             {orgName || "所属機関"} は月給制ですか？時給制ですか？
-            <span className="font-normal text-muted">（所属機関の情報に保存します）</span>
+            <span className="font-normal text-muted">
+              {pay ? "（所属機関の情報に登録済み）" : "（所属機関の情報に保存します）"}
+            </span>
           </p>
-          <div className="flex flex-wrap gap-2 pl-6">
-            {PAY_SYSTEMS.map((p) => (
-              <button key={p} type="button" disabled={!canEdit || !orgId} onClick={() => void savePay(p)} className={pill(pay === p)}>
-                {p}
-              </button>
-            ))}
-            {!orgId && <span className="self-center text-[11px] text-seal">所属機関が未設定です</span>}
-          </div>
+          {pay ? (
+            // 一度登録したら、ここでは変えられない（所属機関の情報で直す）
+            <div className="flex flex-wrap items-center gap-2 pl-6">
+              <span className={`${pill(true)} inline-flex items-center`}>
+                {pay}
+              </span>
+              {orgId && (
+                <Link
+                  href={`/organizations/${orgId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-brand hover:underline"
+                >
+                  <ExternalLink size={11} />
+                  変えるときは所属機関の情報（会社・代表者 ＞ 給与の形態）で直す
+                </Link>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2 pl-6">
+              {PAY_SYSTEMS.map((p) => (
+                <button key={p} type="button" disabled={!canEdit || !orgId} onClick={() => void savePay(p)} className={pill(false)}>
+                  {p}
+                </button>
+              ))}
+              {!orgId && <span className="self-center text-[11px] text-seal">所属機関が未設定です</span>}
+            </div>
+          )}
         </div>
 
         {/* ② 住居（THANHに聞く） */}

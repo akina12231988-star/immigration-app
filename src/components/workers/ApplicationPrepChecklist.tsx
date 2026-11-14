@@ -1981,6 +1981,29 @@ export function ApplicationPrepChecklist({
           />
         )}
 
+        {/* あっせんの有無（必須）。先にここで選び、有りなら下の「あっせんについて」に職業紹介事業者の情報が出る */}
+        {current != null && (
+          <div
+            className={`mt-3 rounded-xl border-2 p-3 ${assenOk ? "border-border bg-background" : "border-seal/50 bg-seal/5"}`}
+            id="prep-assen-choice"
+          >
+            <PrepAssenSection
+              part="choice"
+              workerId={workerId}
+              todo={currentTodo ?? fallbackTodo}
+              mismatch={!currentTodo && fallbackTodo != null}
+              todoNo={current.todo_no}
+              todoTitle={meta.app_content ? prepSituationLabel(meta.app_content) : "申請準備"}
+              prepOrgId={prepOrgId}
+              prepOrgName={prepOrgName}
+              isRenewal={meta.app_type === "更新"}
+              canEdit={canEdit}
+              onError={setError}
+              onChanged={loadWorkerTodos}
+            />
+          </div>
+        )}
+
         {/* 所属機関への採用条件の確認（LINEグループで時給・居住費用を聞く）。
             ①所属機関の月給制／時給制 ②THANHに居住場所を聞く ③文章をコピー ＋ 履歴書の画像 */}
         {current != null && (
@@ -2740,8 +2763,9 @@ export function ApplicationPrepChecklist({
           )
         }
       >
-        {/* あっせんの有無（申請準備のTODOと共有） */}
+        {/* あっせん有りのときの職業紹介事業者の情報・採用の流れ（有無は上の基本情報で選ぶ） */}
         <PrepAssenSection
+          part="detail"
           workerId={workerId}
           todo={currentTodo ?? fallbackTodo}
           mismatch={!currentTodo && fallbackTodo != null}
