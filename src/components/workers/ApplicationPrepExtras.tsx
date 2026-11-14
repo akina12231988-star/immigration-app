@@ -1867,8 +1867,12 @@ export function PrepAssenSection({
   canEdit,
   onError,
   onChanged,
+  part = "all",
 }: {
   workerId: string;
+  // choice: 有無のボタンと無しの理由だけ（基本情報の単独／連名申請の下に置く）
+  // detail: 有りのときの中身（職業紹介事業者の情報・採用の流れ）だけ。有りでなければ案内だけ出す
+  part?: "all" | "choice" | "detail";
   todo: TodoRow | null; // あっせんの有無はTODOに保存して /todos と共有する
   isRenewal?: boolean; // 更新申請（あっせんは自動で「なし」、理由は「特定技能の更新申請のため」）
   mismatch?: boolean; // true: 準備リストの番号と違う番号のTODO（この外国人の申請準備TODO）に保存している
@@ -1981,8 +1985,22 @@ export function PrepAssenSection({
       active ? "border-brand bg-brand text-brand-foreground" : "border-border bg-surface text-foreground"
     }`;
 
+  const showChoice = part !== "detail";
+  const showDetail = part !== "choice";
+  if (part === "detail" && todo?.assen !== "あり") {
+    return (
+      <p className="rounded-xl bg-background px-3 py-2.5 text-xs text-muted">
+        {todo?.assen === "なし"
+          ? "あっせん無しのため、職業紹介事業者の情報はいりません。"
+          : "上の「基本情報・所属機関」の「あっせんは有りましたか？」で「有り」を選ぶと、ここに職業紹介事業者の情報と採用の流れが出ます。"}
+      </p>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-3">
+      {showChoice && (
+      <>
       <div className="flex flex-col gap-1.5">
         <p className="text-sm font-bold">あっせんは有りましたか？</p>
         <div className="flex max-w-md gap-2">
@@ -2078,8 +2096,18 @@ export function PrepAssenSection({
           )}
         </fieldset>
       )}
-      {todo?.assen === "あり" && <PlacementAgencyCard />}
-      {todo?.assen === "あり" && (
+      {part === "choice" && todo?.assen === "あり" && (
+        <p className="text-[11px] font-bold text-brand">
+          あっせん有りのため、下の「あっせんについて」に職業紹介事業者の情報と採用の流れが出ます。
+          <a href="#prep-assen" className="ml-1 underline">
+            見る →
+          </a>
+        </p>
+      )}
+      </>
+      )}
+      {showDetail && todo?.assen === "あり" && <PlacementAgencyCard />}
+      {showDetail && todo?.assen === "あり" && (
         <div className="rounded-lg bg-surface/60 p-2">
           {/* あっせん有りの申請では、雇用の経緯に係る説明書（参考様式1-16号）が必要 */}
           <p className="mb-2 rounded-lg bg-status-notice-bg px-2.5 py-1.5 text-xs font-bold text-status-notice-fg">
