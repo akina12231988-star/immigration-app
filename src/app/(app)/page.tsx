@@ -20,8 +20,18 @@ import {
   TriangleAlert,
   DatabaseBackup,
   KeyRound,
+  IdCard,
 } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
+import { getAppSetting } from "@/lib/supabase/queries/app-settings";
+import {
+  AGENT_CERT_RENEWAL_URL,
+  agentCertAlerts,
+  CUSTODIAN_SETTING_KEY,
+  mergeSupportOrgLists,
+  type SupportOrgAgent,
+} from "@/lib/custody";
+import { formatYmdJa } from "@/lib/support-plan-dates";
 import { OnboardingPendingAlert } from "@/components/OnboardingPendingAlert";
 import { AlertSection } from "@/components/dashboard/AlertSection";
 import { UpdatesBanner } from "@/components/UpdatesBanner";
@@ -123,6 +133,20 @@ export default function DashboardPage() {
     };
   }, []);
 
+  // 申請取次者（登録支援機関の情報）。届出済証明書の有効期限の2か月前から更新手続きを知らせる
+  const [agents, setAgents] = useState<SupportOrgAgent[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    getAppSetting<Record<string, unknown>>(createClient(), CUSTODIAN_SETTING_KEY)
+      .then((v) => {
+        if (!cancelled) setAgents(mergeSupportOrgLists(v).agents);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // 所属機関ごとの支援責任者・支援担当者を表示するための機関マスタ
   const [orgs, setOrgs] = useState<Organization[]>([]);
   useEffect(() => {
@@ -162,6 +186,7 @@ export default function DashboardPage() {
   // ④在留期限アラート: 申請時点の在留期限から1か月経過・未受取
   const today = todayStr();
   const expiryAlerts = applications.filter((a) => isExpiryAlert(a, today));
+  const agentAlerts = agentCertAlerts(agents, today);
 
   // 入社書類メールの訂正アラート: 初回送信後に雇用開始日が変わった外国人
   const correctionAlerts = renewalWorkers
@@ -257,6 +282,38 @@ export default function DashboardPage() {
     <div className="-mx-4 -mt-4 lg:-mx-8 lg:-mt-6">
       <AppHeader title="ダッシュボード" />
       <div className="space-y-6 px-4 pt-5">
+        {/* 申請取次者の届出済証明書: 有効期限の2か月前から更新手続きを知らせる */}
+        {agentAlerts.length > 0 && (
+          <AlertSection
+            id="agent-cert"
+            icon={<IdCard size={18} />}
+            title="申請取次の届出済証明書の更新"
+            count={agentAlerts.length}
+            lead="申請取次者の届出済証明書の有効期限まで2か月を切りました。更新手続きをしてください。更新したら、登録支援機関の画面で新しい有効期限に直してください。"
+            defaultOpen
+          >
+            <div className="space-y-1.5">
+              {agentAlerts.map((a) => (
+                <div key={`${a.name}-${a.certNo}`} className="rounded-lg bg-surface px-3 py-2 text-sm">
+                  <span className="font-bold">{a.name || "氏名未記入"}</span>
+                  <span className="ml-2 text-xs text-muted">
+                    有効期限 {formatYmdJa(a.certExpiry)}（{a.days < 0 ? `${-a.days}日過ぎています` : a.days === 0 ? "今日まで" : `あと${a.days}日`}）
+                  </span>
+                  <span className="ml-2 text-xs font-bold text-seal">更新手続きをしてください。</span>
+                </div>
+              ))}
+              <div className="flex flex-wrap gap-3 pt-1 text-xs font-bold">
+                <a href={AGENT_CERT_RENEWAL_URL} target="_blank" rel="noopener noreferrer" className="text-brand underline">
+                  更新の手続き（出入国在留管理庁）を開く →
+                </a>
+                <Link href="/support-org" className="text-brand underline">
+                  登録支援機関の画面で有効期限を直す →
+                </Link>
+              </div>
+            </div>
+          </AlertSection>
+        )}
+
         {/* 試験結果の確認: 試験日を過ぎたら、合格か不合格かを入れてもらう */}
         {examChecks.length > 0 && (
           <AlertSection

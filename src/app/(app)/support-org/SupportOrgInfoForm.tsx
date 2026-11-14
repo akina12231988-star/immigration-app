@@ -7,7 +7,11 @@ import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
 import { setAppSetting } from "@/lib/supabase/queries/app-settings";
 import { dbErrorMessage } from "@/lib/errors";
+import { todayStr } from "@/lib/ssw/calc";
 import {
+  AGENT_CERT_RENEWAL_URL,
+  agentCertAlertDays,
+  agentCertAlerts,
   CUSTODIAN_SETTING_KEY,
   interpreterRowsFromLanguages,
   supportOrgSettingValue,
@@ -284,6 +288,23 @@ export function SupportOrgInfoForm({
           ) : saved.lists.agents.length === 0 ? (
             <p className="rounded-xl bg-background px-3 py-2 text-sm text-muted">未登録</p>
           ) : (
+            <>
+            {/* 届出済証明書の有効期限の2か月前を過ぎた申請取次者は、更新の手続きを知らせる */}
+            {agentCertAlerts(saved.lists.agents, todayStr()).length > 0 && (
+              <div className="mb-2 rounded-xl border-2 border-seal bg-seal/10 px-3 py-2 text-xs text-seal">
+                <p className="font-bold">申請取次者の届出済証明書の有効期限が近づいています。更新手続きをしてください。</p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                  {agentCertAlerts(saved.lists.agents, todayStr()).map((a) => (
+                    <li key={`${a.name}-${a.certNo}`}>
+                      {a.name || "氏名未記入"}：有効期限 {formatYmdJa(a.certExpiry)}（{a.days < 0 ? `${-a.days}日過ぎています` : a.days === 0 ? "今日まで" : `あと${a.days}日`}）
+                    </li>
+                  ))}
+                </ul>
+                <a href={AGENT_CERT_RENEWAL_URL} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block font-bold underline">
+                  更新の手続き（出入国在留管理庁）を開く →
+                </a>
+              </div>
+            )}
             <div className="overflow-hidden rounded-xl border border-border">
               {saved.lists.agents.map((a, i) => (
                 <div key={i} className="flex flex-col gap-0.5 border-b border-border bg-background px-3 py-2 text-sm last:border-b-0 sm:flex-row sm:items-center sm:gap-3">
@@ -292,10 +313,14 @@ export function SupportOrgInfoForm({
                     <span className="font-bold">{a.name || "氏名未記入"}</span>
                     {a.certNo && <span className="ml-2 text-xs text-muted">証明書番号 {a.certNo}</span>}
                     {a.certExpiry && <span className="ml-2 text-xs text-muted">有効期限 {formatYmdJa(a.certExpiry)}</span>}
+                    {agentCertAlertDays(a.certExpiry, todayStr()) !== null && (
+                      <span className="ml-2 rounded-full bg-seal px-2 py-0.5 text-[10px] font-bold text-white">更新手続きをしてください</span>
+                    )}
                   </dd>
                 </div>
               ))}
             </div>
+            </>
           )}
         </div>
       </div>

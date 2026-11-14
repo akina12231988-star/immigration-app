@@ -167,3 +167,22 @@ describe("母国語の通訳者", () => {
     expect(interpreterRowsFromLanguages("ベトナム語、クメール語、インドネシア語、タガログ語")).toHaveLength(4);
   });
 });
+
+describe("申請取次者の届出済証明書の有効期限（2か月前から知らせる）", () => {
+  it("2か月前を過ぎたら残り日数、期限切れは負、まだなら null", async () => {
+    const { agentCertAlertDays, agentCertAlerts } = await import("./custody");
+    expect(agentCertAlertDays("2027-03-13", "2027-01-12")).toBeNull();
+    expect(agentCertAlertDays("2027-03-13", "2027-01-13")).toBe(59);
+    expect(agentCertAlertDays("2027-03-13", "2027-03-20")).toBe(-7);
+    expect(agentCertAlertDays("", "2027-01-13")).toBeNull();
+    const list = agentCertAlerts(
+      [
+        { name: "A", certNo: "1", certExpiry: "2027-06-18" },
+        { name: "B", certNo: "2", certExpiry: "2027-03-13" },
+        { name: "C", certNo: "", certExpiry: "" },
+      ],
+      "2027-02-01",
+    );
+    expect(list.map((a) => a.name)).toEqual(["B"]);
+  });
+});
