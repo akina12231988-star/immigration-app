@@ -218,7 +218,7 @@ export function HireCheckPanel({
           ) : (
             <div className="flex flex-wrap gap-2 pl-6">
               {PAY_SYSTEMS.map((p) => (
-                <button key={p} type="button" disabled={!canEdit || !orgId} onClick={() => void savePay(p)} className={pill(pay === p)}>
+                <button key={p} type="button" disabled={!canEdit || !orgId} onClick={() => void savePay(p)} className={pill(false)}>
                   {p}
                 </button>
               ))}
