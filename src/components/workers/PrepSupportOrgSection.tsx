@@ -14,7 +14,14 @@ import { getOrgFilePreviewUrl } from "@/app/(app)/organizations/actions";
 import { getSupportOrgFilePreviewUrl, listSupportOrgFiles, type SupportOrgFileView } from "@/app/(app)/support-org/actions";
 import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { SUPPORT_ORG_LISTING_FILE_KIND } from "@/lib/support-org-info";
-import { CUSTODIAN_SETTING_KEY, mergeCustodianInfo, type CustodianInfo } from "@/lib/custody";
+import {
+  CUSTODIAN_SETTING_KEY,
+  interpreterForNationality,
+  mergeCustodianInfo,
+  mergeSupportOrgLists,
+  type CustodianInfo,
+  type SupportOrgInterpreter,
+} from "@/lib/custody";
 import {
   WORKERS_PER_SUPPORT_STAFF,
   isActiveEmployee,
@@ -148,6 +155,7 @@ export function Prep117Section({
     planDates: Record<string, string>; // 保存済みの支援計画書の日付（es / guid / orient など）
     wage: WorkerWage | null; // 1-6号別紙（居住費）を見る賃金の記録
     housingPlan: HousingPlan; // 6. 住居の選択（workers.housing_plan。0209）
+    interpreters: SupportOrgInterpreter[]; // 登録支援機関の情報で言語ごとに登録した通訳者
   } | null>(null);
   // 6. 住居の選択の保存中・エラー
   const [housingBusy, setHousingBusy] = useState(false);
@@ -187,7 +195,11 @@ export function Prep117Section({
               normalizeHousingPlan(error ? null : (row as { housing_plan?: unknown } | null)?.housing_plan),
             )
         : Promise.resolve(normalizeHousingPlan(null)),
-    ]).then(([workers, employees, supportWorkers, org, planDates, wages, housingPlan]) => {
+      // 言語ごとの通訳者（登録支援機関の情報）
+      getAppSetting<Record<string, unknown>>(supabase, CUSTODIAN_SETTING_KEY)
+        .then((v) => mergeSupportOrgLists(v).interpreters)
+        .catch(() => [] as SupportOrgInterpreter[]),
+    ]).then(([workers, employees, supportWorkers, org, planDates, wages, housingPlan, interpreters]) => {
       if (cancelled) return;
       // 本人を先に、連名の方をあとに並べる
       const order = new Map(ids.map((id, i) => [id, i]));
@@ -201,6 +213,7 @@ export function Prep117Section({
         planDates,
         wage: pickPrepWage(wages, orgId),
         housingPlan,
+        interpreters,
       });
     });
     return () => {
@@ -209,7 +222,7 @@ export function Prep117Section({
   }, [orgId, workerKey, todoNo, refreshKey]);
 
   if (!data || data.key !== `${orgId ?? ""}|${workerKey}|${todoNo}`) return null;
-  const { workers, employees, supportWorkers, org, planDates, wage, housingPlan } = data;
+  const { workers, employees, supportWorkers, org, planDates, wage, housingPlan, interpreters } = data;
   const employStart = planDates.es ?? "";
   const housing = housingPatternOf(wage?.detail ?? null, normalizeOrganizationIntake(org?.intake).lodgings);
   const mainWorkerId = workerIds[0] ?? "";
@@ -377,6 +390,32 @@ export function Prep117Section({
               所属機関の画面
             </Link>
             の「支援体制」で行います。
+          </p>
+        )}
+      </div>
+
+      {/* 4-2. 母国語の通訳者（登録支援機関の情報で言語ごとに登録した通訳者から、本人の国籍の言語の人を出す） */}
+      <div>
+        {heading("4-2. 母国語の通訳者")}
+        <div className="overflow-hidden rounded-xl border border-border">
+          {workers.map((w) => {
+            const { language, interpreter } = interpreterForNationality(interpreters, w.nationality);
+            return (
+              <CopyRow
+                key={`interp-${w.id}`}
+                label={`${workers.length > 1 ? `${w.name} ` : ""}${language || "母国語（国籍が未登録）"}`}
+                value={interpreter?.name ?? ""}
+              />
+            );
+          })}
+        </div>
+        {workers.some((w) => !interpreterForNationality(interpreters, w.nationality).interpreter) && (
+          <p className="mt-1 text-[11px] text-muted">
+            通訳者が見つからない言語があります。
+            <Link href="/support-org" className="mx-1 font-bold text-brand hover:underline">
+              登録支援機関の画面
+            </Link>
+            の「編集」で、言語ごとに通訳者の氏名を登録してください。
           </p>
         )}
       </div>

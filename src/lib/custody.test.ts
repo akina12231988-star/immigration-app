@@ -151,3 +151,19 @@ describe("tepraPermitLabel", () => {
     expect(tepraPermitLabel("一時帰国のため")).toBe("");
   });
 });
+
+describe("母国語の通訳者", () => {
+  it("国籍から母国語を出し、言語ごとの通訳者から引く", async () => {
+    const { interpreterForNationality, interpreterRowsFromLanguages } = await import("./custody");
+    const list = [
+      { language: "ベトナム語", name: "VUONG VAN THANH" },
+      { language: "インドネシア語", name: "通訳 花子" },
+      { language: "クメール語（カンボジア語）", name: "SOK DARA" },
+    ];
+    expect(interpreterForNationality(list, "インドネシア")).toEqual({ language: "インドネシア語", interpreter: list[1] });
+    expect(interpreterForNationality(list, "カンボジア").interpreter?.name).toBe("SOK DARA");
+    expect(interpreterForNationality(list, "フィリピン")).toEqual({ language: "タガログ語", interpreter: null });
+    expect(interpreterForNationality(list, "")).toEqual({ language: "", interpreter: null });
+    expect(interpreterRowsFromLanguages("ベトナム語、クメール語、インドネシア語、タガログ語")).toHaveLength(4);
+  });
+});
