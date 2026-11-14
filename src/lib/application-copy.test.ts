@@ -119,6 +119,9 @@ describe("申請書に貼る項目", () => {
     expect(find("2 生年月日")).toMatchObject({ value: "1995年4月2日", parts: ["1995", "4", "2", "19950402"] });
     expect(find("11 在留期間")?.value).toBe("1年");
     expect(find("13 希望する在留資格")?.value).toBe("特定技能1号");
+    expect(find("14 変更の理由")?.value).toBe("1号特定技能外国人として就労するため");
+    expect(find("9.3 日本における連絡先 電話番号")?.value).toBe("05088904000");
+    expect(find("13.2 希望する在留期間")?.value).toBe("2年"); // 雇用契約期間の既定は2年
     // 犯罪歴・評価区分はその場で選んで保存できる
     expect(find("15 犯罪を理由とする処分を受けたことの有無")?.edit).toMatchObject({ target: "worker", column: "criminal_record", options: ["無", "有"] });
     expect(find("18 技能水準 評価区分")?.edit).toMatchObject({ target: "worker", column: "skill_eval_kind" });
@@ -343,5 +346,22 @@ describe("申請準備中の所属機関の賃金・日本人職員の報酬・�
 describe("desiredResidenceStatus（特定技能２号の更新）", () => {
   it("特定技能２号の更新は、希望する在留資格が特定技能2号", () => {
     expect(desiredResidenceStatus("特定技能2号更新の準備中", "更新", "特定技能2号")).toBe("特定技能2号");
+  });
+});
+
+describe("14 変更の理由", () => {
+  const base = { worker, org, intake: null, wages: [], histories: [], planDates: {}, desiredStatus: "特定技能1号", today: "2025-05-01" };
+  const has = (appType: string) =>
+    buildApplicationCopyGroups({ ...base, appType }).flatMap((g) => g.items).some((i) => i.label === "14 変更の理由");
+  it("変更のときだけ出す（認定・更新の申請書には無い）", () => {
+    expect(has("変更")).toBe(true);
+    expect(has("認定")).toBe(false);
+    expect(has("更新")).toBe(false);
+  });
+  it("13.2 希望する在留期間は雇用契約期間の年数（3年を選んだら3年）、特定活動は6月", () => {
+    const get = (extra: object) =>
+      buildApplicationCopyGroups({ ...base, ...extra }).flatMap((g) => g.items).find((i) => i.label === "13.2 希望する在留期間")?.value;
+    expect(get({ planDates: { eeYears: "3" } })).toBe("3年");
+    expect(get({ desiredStatus: "特定活動", appType: "変更" })).toBe("6月");
   });
 });

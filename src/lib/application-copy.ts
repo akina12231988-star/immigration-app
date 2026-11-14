@@ -182,6 +182,9 @@ export interface ApplicationCopyInput {
   today?: string;
 }
 
+// 14 変更の理由（特定技能1号への在留資格変更）
+export const CHANGE_REASON_SSW1 = "1号特定技能外国人として就労するため";
+
 // YYYY-MM-DD → ["1995", "4", "2"]（欄が年・月・日に分かれている申請書用）
 export function ymdParts(ymd: string | null | undefined): string[] | undefined {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((ymd ?? "").trim());
@@ -401,6 +404,12 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
     })(),
     { label: "8 本国における居住地", value: w.home_address, edit: wk("home_address") },
     { label: "9 住居地", value: w.address, edit: wk("address") },
+    // 9.3 日本における連絡先 電話番号（オンライン申請と同じ。登録支援機関の電話番号をハイフン無しで）
+    {
+      label: "9.3 日本における連絡先 電話番号",
+      value: c.tel.replace(/\D/g, ""),
+      note: "登録支援機関の電話番号（ハイフン無し）",
+    },
     { label: "10 旅券 (1)番号", value: w.passport_no, edit: wk("passport_no") },
     dateItem("10 旅券 (2)有効期限", w.passport_expiry_date, undefined, wkDate("passport_expiry_date")),
     { label: "11 現に有する在留資格", value: w.residence_status, edit: wk("residence_status") },
@@ -418,6 +427,28 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
       value: input.desiredStatus ?? "",
       note: input.desiredStatus ? undefined : "申請準備の「準備の内容」と申請種別を選ぶと出ます",
     },
+    // 13.2 希望する在留期間: 雇用条件書の雇用契約期間（申請準備で選んだ年数。既定2年）を転記する。
+    // 特定活動への資格変更は6月（オンライン申請の順と同じ）
+    input.desiredStatus === "特定活動"
+      ? { label: "13.2 希望する在留期間", value: "6月", note: "特定活動への在留資格変更なので6月" }
+      : {
+          label: "13.2 希望する在留期間",
+          value: `${contractYearsOf(planDates)}年`,
+          note: "雇用条件書の雇用契約期間を転記（申請準備の「雇用契約期間」で選んだ年数）。審査で変わることがある",
+        },
+    // 14 変更の理由（在留資格変更許可申請書の欄。認定・更新の申請書には無いので出さない）
+    ...(input.appType === "認定" || input.appType === "更新"
+      ? []
+      : [
+          {
+            label: "14 変更の理由",
+            value: input.desiredStatus === "特定活動" ? "「特定技能１号」への移行準備のため" : CHANGE_REASON_SSW1,
+            note:
+              input.desiredStatus === "特定活動"
+                ? "特定活動（特定技能１号への移行準備）の定型文"
+                : "特定技能1号へ変更するときの文。ほかの在留資格へ変更するときは書き換えてください",
+          },
+        ]),
     // 15 犯罪歴（有無を選び、有なら内容を書く）
     {
       label: "15 犯罪を理由とする処分を受けたことの有無",
