@@ -2761,7 +2761,7 @@ function CouncilSubmissionRows({
               <input
                 value={row.to}
                 onChange={(e) => setRow(i, { to: e.target.value })}
-                placeholder="例: 農業特定技能協議会"
+                placeholder="例: 熊本県八代市"
                 className="min-h-[40px] w-full rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none"
               />
             </label>

@@ -912,7 +912,7 @@ export function PrepOrgInfo({
         label="協力確認書（事業所の所在地）"
         value={councilLine(intake.council_office_submissions)}
         canFill={fill}
-        inputs={[{ placeholder: "提出先（例: 農業特定技能協議会）" }, { type: "date" }]}
+        inputs={[{ placeholder: "提出先（例: 熊本県八代市）" }, { type: "date" }]}
         onSave={saveCouncil("council_office_submissions")}
       />
       )}
