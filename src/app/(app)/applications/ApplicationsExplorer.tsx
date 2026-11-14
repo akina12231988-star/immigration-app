@@ -443,12 +443,16 @@ export function ApplicationsExplorer({
 
   const filtered = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
+    // 所属機関名は「井上農園」「㈲井上」など空白・全角半角の違いがあっても見つかるよう、そろえて比べる
+    const norm = (s: string) => s.normalize("NFKC").toLowerCase().replace(/[\s　]/g, "");
+    const kwNorm = norm(kw);
     const matchesKeyword = (a: Application) =>
       !kw ||
       a.name.toLowerCase().includes(kw) ||
       a.applicationNumber.toLowerCase().includes(kw) ||
       a.applicationContent.toLowerCase().includes(kw) ||
-      a.assignee.toLowerCase().includes(kw);
+      a.assignee.toLowerCase().includes(kw) ||
+      (!!kwNorm && norm(a.organizationName ?? "").includes(kwNorm));
     // 担当者絞り込み: 一覧の担当者の欄（担当者（申請準備））に一致する案件のみ
     const matchesTantou = (a: Application) => matchesApplicationTantou(tantouFilter, tantouOf(a));
 
@@ -654,7 +658,7 @@ export function ApplicationsExplorer({
         <input
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
-          placeholder="氏名・申請番号・申請内容・申請取次士で検索"
+          placeholder="氏名・所属機関・申請番号・申請内容・申請取次士で検索"
           className="w-full rounded-xl border border-border bg-surface py-3 pl-10 pr-3 text-sm focus:border-brand focus:outline-none"
         />
       </div>
