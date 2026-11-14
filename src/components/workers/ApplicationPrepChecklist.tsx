@@ -2812,9 +2812,9 @@ export function ApplicationPrepChecklist({
         />
       </PrepSection>
 
-      {/* 9. 農業の会社だけ: 所属機関の農業特定技能加入通知書 */}
-      {prepOrgAgri && prepOrgId && (
-        <PrepSection id="prep-farm" title="所属機関の農業特定技能加入通知書">
+      {/* 9. 農業分野だけ（所属機関の業種か外国人の分野が農業）: 農業特定技能協議会の加入通知書 */}
+      {(prepOrgAgri || isAgricultureIndustry(workerRow?.field)) && prepOrgId && (
+        <PrepSection id="prep-farm" title="農業特定技能協議会の加入通知書">
           <PrepAgriNoticeSection orgId={prepOrgId} canEdit={canEdit} onChanged={() => setOrgInfoKey((k) => k + 1)} />
         </PrepSection>
       )}

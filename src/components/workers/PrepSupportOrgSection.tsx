@@ -662,6 +662,13 @@ export function PrepAgriNoticeSection({
       ) : (
         <p className="text-sm font-bold text-seal">所属機関にまだ登録されていません。ここで添付すると、所属機関にも保存されます。</p>
       )}
+      <Link
+        href={`/organizations/${orgId}`}
+        target="_blank"
+        className="self-start text-xs font-bold text-brand underline"
+      >
+        所属機関の画面で加入通知書を見る・添付する →
+      </Link>
       {canEdit && (
         <>
           <button

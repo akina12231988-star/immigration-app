@@ -40,6 +40,13 @@ describe("isAgricultureIndustry", () => {
     expect(isAgricultureIndustry("農業")).toBe(true);
     expect(isAgricultureIndustry("漁業")).toBe(false);
     expect(isAgricultureIndustry("")).toBe(false);
+    expect(isAgricultureIndustry(null)).toBe(false);
+  });
+  it("「農業分野」「農業／耕種農業全般」のような書き方も農業", () => {
+    expect(isAgricultureIndustry("農業分野")).toBe(true);
+    expect(isAgricultureIndustry("農業／耕種農業全般")).toBe(true);
+    expect(isAgricultureIndustry(" 農業 ")).toBe(true);
+    expect(isAgricultureIndustry("漁業分野")).toBe(false);
   });
 });
 
