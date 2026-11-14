@@ -13,8 +13,8 @@ import { CUSTODIAN_INFO, type CustodianInfo, type SupportOrgInterpreter } from "
 import { RESUME_LANG_JA } from "@/lib/resume-tool/i18n";
 import { resumeLangForNationality } from "@/lib/resume-tool/share";
 import { contractPeriodEnd, contractYearsOf, formatYmdJa } from "@/lib/support-plan-dates";
-import { JLPT_LEVELS, normalizeCertExams, type WorkerCertExam } from "@/lib/cert-exam";
-import { NIHONGO_EXAM_NAME_OPTIONS, nihongoExamNameOf } from "@/lib/cert-exam-options";
+import { normalizeCertExams, type WorkerCertExam } from "@/lib/cert-exam";
+import { NIHONGO_EXAM_NAME_OPTIONS, SENMONGAI_EXAM_NAME_OPTIONS, nihongoExamNameOf, skillExamNameOf } from "@/lib/cert-exam-options";
 import { JISSHU_SHOKUSHU_LIST } from "@/lib/jisshu-shokushu";
 import { businessCategoryOptions } from "@/lib/online-business-categories";
 import { ONLINE_MAIN_OCCUPATIONS, suggestedMainOccupation } from "@/lib/online-main-occupations";
@@ -478,12 +478,11 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
       .filter((e) => e.kind === kind && (e.name || e.location || e.level))
       .flatMap((e, i) => [
         {
-          label: kind === "nihongo" ? `19.2 合格した試験名（${i + 2}件目）` : `${numbering} (1)試験名（${i + 2}件目）`,
-          value: kind === "nihongo" ? nihongoExamNameOf(e.name) : e.name,
+          label: kind === "nihongo" ? `19.2 合格した試験名（${i + 2}件目）` : `18.2 合格した試験名（${i + 2}件目）`,
+          value: kind === "nihongo" ? nihongoExamNameOf(e.name) : skillExamNameOf(e.name),
           note: "外国人詳細 ＞ 合格証の受験情報（2件目以降）",
         },
         { label: `${numbering} (2)受験地（${i + 2}件目）`, value: e.location },
-        ...(kind === "nihongo" ? [{ label: `${numbering} レベル（${i + 2}件目）`, value: e.level }] : []),
       ]);
 
   const applicant2: CopyItem[] = [
@@ -498,10 +497,11 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
       edit: wk("skill_eval_kind", SKILL_EVAL_KINDS),
     },
     {
-      label: "18 技能水準 (1)試験名",
-      value: w.cert_senmongai_name ?? "",
-      note: "外国人詳細 ＞ 専門外の合格証の受験情報（技能試験）。技能実習の専門級で代える人は下の専門級を使う",
-      edit: wk("cert_senmongai_name"),
+      label: "18.2 技能水準 合格した試験名",
+      value: skillExamNameOf(w.cert_senmongai_name),
+      note: "外国人詳細 ＞ 専門外の合格証の受験情報（技能試験）と同じ値。農業はオンライン申請 18.2 のプルダウンと同じ4つから選ぶ。技能実習の専門級で代える人は下の専門級を使う",
+      edit: wk("cert_senmongai_name", SENMONGAI_EXAM_NAME_OPTIONS),
+      editValue: skillExamNameOf(w.cert_senmongai_name),
     },
     {
       label: "18 (2)受験地",
@@ -536,7 +536,6 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
       note: "日本国内、または海外の国名",
       edit: wk("cert_nihongo_location"),
     },
-    { label: "19 レベル", value: w.cert_nihongo_level ?? "", edit: wk("cert_nihongo_level", JLPT_LEVELS) },
     ...moreExams("nihongo", "19"),
     // 20 良好に修了した技能実習2号（該当者のみ）
     {

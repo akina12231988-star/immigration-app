@@ -4,6 +4,7 @@ import {
   NIHONGO_EXAM_NAME_OPTIONS,
   SENMONGAI_EXAM_NAME_OPTIONS,
   nihongoExamNameOf,
+  skillExamNameOf,
 } from "./cert-exam-options";
 
 describe("cert-exam-options", () => {
@@ -29,5 +30,19 @@ describe("cert-exam-options", () => {
     expect(nihongoExamNameOf("試験免除 Test exemption")).toBe("試験免除 Test exemption");
     expect(nihongoExamNameOf("General crop farming (Vietnamese)")).toBe("General crop farming (Vietnamese)");
     expect(nihongoExamNameOf("")).toBe("");
+  });
+
+  it("以前の書き方の農業の試験名を 18.2 のプルダウンの書き方に読み替える", () => {
+    expect(skillExamNameOf("General crop farming (Indonesian)")).toBe(
+      "1号農業技能測定試験（耕種農業全般）Agriculture specified skills(i) proficiency test (cultivation agriculture)",
+    );
+    expect(skillExamNameOf("General livestock farming (Khumer)")).toBe(
+      "1号農業技能測定試験（畜産農業全般）Agriculture specified skills(i) proficiency test (livestock agriculture)",
+    );
+    expect(skillExamNameOf("2号 耕種農業")).toBe(
+      "2号農業技能測定試験（耕種農業全般）Agriculture specified skills(ii) proficiency test (cultivation agriculture)",
+    );
+    expect(skillExamNameOf("外国人食品産業技能評価機構")).toBe("外国人食品産業技能評価機構");
+    expect(skillExamNameOf("")).toBe("");
   });
 });

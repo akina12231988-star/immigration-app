@@ -7,7 +7,7 @@ import { updateWorker } from "@/lib/supabase/queries/workers";
 import { clearOnboardingDocFile } from "@/app/(app)/onboarding/actions";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { WorkerCertDocRows } from "@/components/workers/WorkerCertDocRows";
-import { EXAM_LOCATION_JAPAN, nihongoExamNameOf } from "@/lib/cert-exam-options";
+import { EXAM_LOCATION_JAPAN, nihongoExamNameOf, skillExamNameOf } from "@/lib/cert-exam-options";
 import {
   CERT_KIND_LABEL,
   JLPT_LEVELS,
@@ -286,7 +286,7 @@ export function CertExamList({
           <PickOrTypeRow
             key={`name-${row.doc_key}-${row.name}`}
             label="受験した試験名"
-            value={kind === "nihongo" ? nihongoExamNameOf(row.name) : row.name}
+            value={kind === "nihongo" ? nihongoExamNameOf(row.name) : skillExamNameOf(row.name)}
             options={nameOptions}
             allowOther={kind !== "nihongo"}
             canEdit={canEdit}

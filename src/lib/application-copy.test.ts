@@ -200,12 +200,12 @@ describe("申請書に貼る項目", () => {
     });
     const g = groups.find((x) => x.title.startsWith("申請人等作成用 2"))!;
     const find = (label: string) => g.items.find((i) => i.label === label);
-    expect(find("18 技能水準 (1)試験名")?.value).toBe("外国人食品産業技能評価機構");
+    expect(find("18.2 技能水準 合格した試験名")?.value).toBe("外国人食品産業技能評価機構");
     expect(find("18 (2)受験地")?.value).toBe("日本国内");
     expect(find("18 専門級の合格名（技能実習）")?.value).toBe("農業（耕種）専門級");
     expect(find("19.2 日本語能力 合格した試験名")?.value).toBe("日本語能力試験 Japanese language proficiency test");
     expect(find("19 (2)受験地")?.value).toBe("ベトナム");
-    expect(find("19 レベル")).toMatchObject({ value: "N4", edit: { target: "worker", column: "cert_nihongo_level" } });
+    expect(find("19 レベル")).toBeUndefined(); // レベルの欄は申請書に貼る情報には出さない
     // 2件目以降は件数付きで出す。空の受験情報は出さない
     expect(find("19.2 合格した試験名（2件目）")?.value).toBe("国際交流基金日本語基礎テスト The japan foundation japanese basic test");
     expect(find("18 (1)試験名（2件目）")).toBeUndefined();
