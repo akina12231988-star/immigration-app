@@ -52,7 +52,7 @@ describe("所属機関等作成用 3（労災保険・協力確認書）", () =>
     const groups = buildApplicationCopyGroups({ worker, org, intake, wages: [], histories: [], planDates: {} });
     const g = groups.find((x) => x.title.startsWith("所属機関等作成用 3"))!;
     expect(groups.map((x) => x.title.replace(/（.*$/, ""))).toEqual([
-      "申請人等作成用 1", "申請人等作成用 2", "申請人等作成用 3", "所属機関等作成用 1", "所属機関等作成用 2", "所属機関等作成用 3", "所属機関等作成用 4", "職業紹介事業者", "取次機関",
+      "申請人等作成用 1", "申請人等作成用 2", "申請人等作成用 3", "取次者", "所属機関等作成用 1", "所属機関等作成用 2", "所属機関等作成用 3", "所属機関等作成用 4", "職業紹介事業者", "取次機関",
     ]);
     expect(g.items[0]).toMatchObject({ label: "(29)労災保険加入等の措置の内容", value: "労災保険加入", editValue: "", edit: { target: "intake", column: "rosai_measure" } });
     expect(g.items[1]).toMatchObject({ label: "協力確認書（外国人に活動させる事業所） 提出年月日", value: "2026年4月1日", parts: ["2026", "4", "1"], editValue: "2026-04-01", edit: { target: "council", list: "office", index: 0, field: "on", kind: "date" } });
@@ -371,5 +371,24 @@ describe("14 変更の理由", () => {
       buildApplicationCopyGroups({ ...base, ...extra }).flatMap((g) => g.items).find((i) => i.label === "13.2 希望する在留期間")?.value;
     expect(get({ planDates: { eeYears: "3" } })).toBe("3年");
     expect(get({ desiredStatus: "特定活動", appType: "変更" })).toBe("6月");
+  });
+});
+
+describe("取次者", () => {
+  const base = { worker, org, intake: null, wages: [], histories: [], planDates: {}, today: "2025-05-01" };
+  const agentGroup = (extra: object) => buildApplicationCopyGroups({ ...base, ...extra }).find((g) => g.title === "取次者");
+  it("申請人等作成用 3 の次に、申請取次士と登録支援機関の情報で出す", () => {
+    const groups = buildApplicationCopyGroups({ ...base, agentName: "秋吉 伽恋" });
+    const i = groups.findIndex((g) => g.title === "取次者");
+    expect(groups[i - 1].title).toMatch(/^申請人等作成用 3/);
+    const g = agentGroup({ agentName: "秋吉 伽恋" })!;
+    const find = (label: string) => g.items.find((x) => x.label === label)?.value;
+    expect(find("取次者(オンラインシステム利用者) (1)氏名")).toBe("秋吉 伽恋");
+    expect(find("取次者 (2)郵便番号")).toBe("8618045");
+    expect(find("取次者 (3)所属機関等")).toBe("VUONG VAN THANH");
+    expect(find("取次者 (3)電話番号")).toBe("05088904000");
+  });
+  it("申請取次士が未定なら氏名は空", () => {
+    expect(agentGroup({})!.items[0].value).toBe("");
   });
 });

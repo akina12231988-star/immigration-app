@@ -639,6 +639,30 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
       };
     });
 
+  // 取次者（オンライン申請の「取次者」と同じ内容）。氏名は申請準備の申請取次士、
+  // 本人申請なら登録支援機関の申請取次者。住所・所属機関等・電話番号は登録支援機関の情報から
+  const agentName = input.agentName?.trim() || (input.selfApply ? c.agentName : "");
+  const agentPostal = c.address.replace(/\s/g, "") === CUSTODIAN_INFO.address.replace(/\s/g, "") ? "8618045" : "";
+  const agentPerson: CopyItem[] = [
+    {
+      label: "取次者(オンラインシステム利用者) (1)氏名",
+      value: agentName,
+      note: agentName
+        ? input.agentName?.trim()
+          ? "申請準備の申請取次士（全角26文字以内）"
+          : "本人申請なので登録支援機関の申請取次者（全角26文字以内）"
+        : "申請取次士が未定です。申請準備の「申請取次士」で取次士を選んでください",
+    },
+    {
+      label: "取次者 (2)郵便番号",
+      value: agentPostal,
+      note: agentPostal ? "半角数字7文字（ハイフン無し）" : "登録支援機関の住所の郵便番号（7桁・ハイフン無し）。画面の「住所検索」で確認",
+    },
+    { label: "取次者 (2)住所", value: c.address, note: "全角85文字以内", edit: cu("address") },
+    { label: "取次者 (3)所属機関等", value: c.officeName, note: "256文字以内", edit: cu("officeName") },
+    { label: "取次者 (3)電話番号", value: c.tel.replace(/\D/g, ""), note: "半角数字（ハイフン無し）", edit: cu("tel"), editValue: c.tel },
+  ];
+
   const organization1: CopyItem[] = [
     { label: "1 雇用している外国人の氏名", value: w.name },
     {
@@ -852,6 +876,7 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
     { title: "申請人等作成用 1（在留資格変更許可申請書）", items: applicant1 },
     { title: "申請人等作成用 2（特定技能所属機関・通算在留期間）", items: applicant2 },
     { title: "申請人等作成用 3（職歴）", items: careers },
+    { title: "取次者", items: agentPerson },
     { title: "所属機関等作成用 1（特定技能雇用契約）", items: organization1 },
     { title: "所属機関等作成用 2（特定技能所属機関）", items: organization2 },
     { title: "所属機関等作成用 3（労災保険・協力確認書）", items: organization3 },
