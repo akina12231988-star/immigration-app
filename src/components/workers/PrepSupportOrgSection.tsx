@@ -138,9 +138,13 @@ export function Prep117Section({
   todoNo = "",
   refreshKey = 0,
   canEdit = false,
+  rosterPrintedOn = null,
+  onRosterPrinted,
 }: {
   orgId: string | null;
   workerIds: string[];
+  rosterPrintedOn?: string | null; // 名簿を印刷した日（申請準備ごと。未印刷なら null）
+  onRosterPrinted?: () => void; // 名簿の印刷ボタンを押したとき（印刷した日を記録する）
   todoNo?: string; // 支援計画書の日付（事前ガイダンス・雇用開始日・生活オリエンテーション）を引くTODO番号
   refreshKey?: number; // 値が変わると読み直す（同じページで支援計画書の日付などを保存したとき）
   canEdit?: boolean; // 住居の選択（6. 住居）をこの場で保存できるか
@@ -364,14 +368,30 @@ export function Prep117Section({
       <div>
         {heading(
           "4. 支援責任者・支援担当者の名簿",
-          <a
-            href={`/support-org/print${orgId ? `?org=${encodeURIComponent(orgId)}` : ""}`}
-            target="_blank"
-            rel="noopener"
-            className="rounded-full bg-brand px-2.5 py-1 text-[10px] font-bold text-brand-foreground"
-          >
-            名簿をA4で印刷
-          </a>,
+          <span className="flex flex-wrap items-center gap-1.5">
+            {rosterPrintedOn ? (
+              <span className="rounded-full bg-status-approved-bg px-2 py-0.5 text-[10px] font-bold text-status-approved-fg">✓ 印刷済み（{rosterPrintedOn}）</span>
+            ) : (
+              <span className="rounded-full bg-seal px-2 py-0.5 text-[10px] font-bold text-seal-foreground">必ず印刷</span>
+            )}
+            <a
+              href={`/support-org/print${orgId ? `?org=${encodeURIComponent(orgId)}` : ""}`}
+              target="_blank"
+              rel="noopener"
+              onClick={() => onRosterPrinted?.()}
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold text-brand-foreground ${
+                rosterPrintedOn ? "bg-brand" : "bg-seal ring-2 ring-seal/30 animate-pulse"
+              }`}
+            >
+              <Printer size={11} />
+              名簿をA4で印刷
+            </a>
+          </span>,
+        )}
+        {!rosterPrintedOn && (
+          <p className="mb-1.5 rounded-lg border border-seal/40 bg-seal/5 px-2.5 py-1.5 text-xs font-bold text-seal">
+            まだ名簿を印刷していません。申請書類と一緒に提出するので、必ず「名簿をA4で印刷」を押して印刷してください。
+          </p>
         )}
         <div className="overflow-hidden rounded-xl border border-border">
           {managers.length === 0 && <CopyRow label="支援責任者" value="" />}

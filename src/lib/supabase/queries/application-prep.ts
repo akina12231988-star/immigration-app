@@ -42,6 +42,18 @@ export interface PrepChecklistRow extends PrepChecklistMeta {
   stamp_fee_payer: string; // 収入印紙代の負担（'' / 本人負担 / 会社負担 / 会社立替。0175）
   estimate_items: OrgSalesItem[] | null; // 見積書・許可後の請求の明細（null = 未登録で所属機関の売上明細を使う。0214）
   hire_check: HireCheck; // 所属機関への採用条件の確認（0218）
+  print_marks: PrintMarks; // 必ず印刷する書類を印刷した日（0223）
+}
+
+// 必ず印刷する書類を印刷した日（YYYY-MM-DD）。roster = 支援責任者・支援担当者の名簿
+export interface PrintMarks {
+  roster?: string;
+}
+
+export function normalizePrintMarks(v: unknown): PrintMarks {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  const r = v as Record<string, unknown>;
+  return typeof r.roster === "string" && r.roster ? { roster: r.roster } : {};
 }
 
 // 保存されている明細（jsonb）を読む。配列でなければ未登録（null）
@@ -93,6 +105,7 @@ export async function listPrepChecklists(
     stamp_fee_payer: r.stamp_fee_payer ?? "",
     estimate_items: normalizeEstimateItems((r as { estimate_items?: unknown }).estimate_items),
     hire_check: normalizeHireCheck((r as { hire_check?: unknown }).hire_check),
+    print_marks: normalizePrintMarks((r as { print_marks?: unknown }).print_marks),
   }));
 }
 
@@ -198,6 +211,7 @@ export async function updatePrepChecklistExtras(
       | "stamp_fee_payer"
       | "estimate_items"
       | "hire_check"
+      | "print_marks"
     >
   >,
 ): Promise<void> {
