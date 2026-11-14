@@ -18,6 +18,8 @@ export interface MailingAttachmentSlot {
   years?: YearType[];
   title: string; // 欄の見出し
   addLabel: string; // 追加ボタンの文言
+  // 同じ自治体の2年度を1つの欄にまとめたとき、添付が「どの年度か」を選ぶ（kind はその年度の種別名）
+  yearChoices?: { kind: string; label: string }[];
   // 届いた証明書が「どの証明書か」を選ぶ（課税・納税証明書の記録のときだけ）。
   // 選んだ証明書は種別名の後ろに「｜課税証明書」のように付けて残し、申請準備ではその行にだけ出す
   certTypes?: TaxCertType[];
@@ -146,7 +148,15 @@ export function mailingAttachmentSlots(r: Partial<SlotSource>): MailingAttachmen
       });
       return [
         slot("sent", MAIL_REQUEST_KIND, "郵送請求した書類（申請書などのデータ）", "郵送請求した書類を添付（画像・PDF）"),
-        { ...slot("received", RECEIVED_CERT_KIND, "届いた証明書（届いたら添付）", "届いた証明書を添付（画像・PDF）"), certTypes: certTypesOf(r) },
+        {
+          ...slot("received", RECEIVED_CERT_KIND, "届いた証明書（届いたら添付）", "届いた証明書を添付（画像・PDF）"),
+          certTypes: certTypesOf(r),
+          // 2年度分が同じ欄に入るので、どの年度の証明書かも選ぶ
+          yearChoices: g.years.map((y) => ({
+            kind: yearAttachmentKind(RECEIVED_CERT_KIND, y.fiscalStartYear),
+            label: `令和${y.fiscalStartYear - 2018}年度`,
+          })),
+        },
         slot("receipt", RECEIPT_KIND, "領収書（後日届いたら添付）", "領収書を添付（画像・PDF）"),
       ];
     });
@@ -225,6 +235,7 @@ export function receivedCertFilesFor<F extends { kind: string }>(
   record: Partial<SlotSource>,
   files: F[],
   certId: string,
+  fiscalStartYear?: number | null, // 申請準備の行の年度（分かれば、別の年度の証明書は出さない）
 ): F[] {
   const kinds = new Set(
     mailingAttachmentSlots(record)
@@ -232,7 +243,10 @@ export function receivedCertFilesFor<F extends { kind: string }>(
       .flatMap((s) => (s.kinds?.length ? s.kinds : [s.kind])),
   );
   return files.filter((f) => {
-    if (!kinds.has(baseKindOf(f.kind))) return false;
+    const base = baseKindOf(f.kind);
+    if (!kinds.has(base)) return false;
+    // 年度ごとの欄の添付は、行の年度と違う年度なら出さない
+    if (fiscalStartYear && base.startsWith(`${RECEIVED_CERT_KIND}：`) && base !== yearAttachmentKind(RECEIVED_CERT_KIND, fiscalStartYear)) return false;
     const id = certIdOfKind(f.kind);
     return !id || id === certId;
   });

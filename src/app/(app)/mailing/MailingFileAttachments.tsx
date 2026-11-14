@@ -26,6 +26,7 @@ export function MailingFileAttachments({
   filterKinds,
   certTypes,
   certFilter,
+  yearChoices,
 }: {
   recordId: string;
   kind: string;
@@ -39,7 +40,13 @@ export function MailingFileAttachments({
   certTypes?: TaxCertType[];
   // この証明書の分だけ出す（申請準備の行から。どの証明書か未設定の添付も出す）
   certFilter?: string;
+  // 2年度を1つの欄にまとめたとき、添付が「どの年度か」を選ぶ（kind はその年度の種別名）
+  yearChoices?: { kind: string; label: string }[];
 }) {
+  const choosingYear = !!yearChoices && yearChoices.length > 1;
+  // これから添付する年度（1つしか無ければそれ）
+  const [yearKind, setYearKind] = useState<string | null>(() => (yearChoices?.length === 1 ? yearChoices[0].kind : null));
+  const yearLabelOf = (k: string) => yearChoices?.find((y) => y.kind === k)?.label ?? "";
   const [files, setFiles] = useState<MailingFileRow[]>([]);
   // 「どの証明書か」は種別名の後ろに付けているので、欄の突き合わせは付ける前の種別名でする
   const byKind = filterKinds?.length
@@ -75,6 +82,10 @@ export function MailingFileAttachments({
 
   async function handleFiles(list: FileList | null) {
     if (!list || list.length === 0) return;
+    if (choosingYear && !yearKind) {
+      setError("先に、どの年度の証明書かを選んでください");
+      return;
+    }
     if (choosing && !certId) {
       setError("先に、どの証明書の添付かを選んでください（課税証明書・納税証明書）");
       return;
@@ -90,7 +101,8 @@ export function MailingFileAttachments({
           .storage.from("app-files")
           .uploadToSignedUrl(ticket.path, ticket.token, blob, { contentType: mimeType });
         if (upErr) throw new Error(`アップロードに失敗しました: ${upErr.message}`);
-        const res = await registerMailingFile(recordId, choosing ? certTaggedKind(kind, certId) : kind, ticket.path, fileName, mimeType);
+        const base = choosingYear && yearKind ? yearKind : kind;
+        const res = await registerMailingFile(recordId, choosing ? certTaggedKind(base, certId) : base, ticket.path, fileName, mimeType);
         if (!res.ok) throw new Error(res.message);
       }
       setFiles(await listMailingFiles(createClient(), recordId));
@@ -111,6 +123,15 @@ export function MailingFileAttachments({
   async function changeCert(f: MailingFileRow, id: string) {
     setError(null);
     const next = certTaggedKind(baseKindOf(f.kind), id || null);
+    const res = await setMailingFileKind(f.id, next);
+    if (res.ok) setFiles((prev) => prev.map((x) => (x.id === f.id ? { ...x, kind: next } : x)));
+    else setError(res.message);
+  }
+
+  // 添付した証明書が「どの年度か」を選び直す（2年度をまとめた欄。どの証明書かはそのまま）
+  async function changeYear(f: MailingFileRow, nextYearKind: string) {
+    setError(null);
+    const next = certTaggedKind(nextYearKind, certIdOfKind(f.kind));
     const res = await setMailingFileKind(f.id, next);
     if (res.ok) setFiles((prev) => prev.map((x) => (x.id === f.id ? { ...x, kind: next } : x)));
     else setError(res.message);
@@ -145,6 +166,27 @@ export function MailingFileAttachments({
       {shown.map((f) => (
         <div key={f.id} className="flex flex-wrap items-center gap-1.5">
           <AttachedFileButton fileName={f.file_name} onOpen={() => preview(f.id)} className="min-w-0 flex-1" />
+          {/* 2年度をまとめた欄では、どの年度の証明書かも出す（選び直せる） */}
+          {choosingYear &&
+            (canEdit ? (
+              <select
+                value={yearChoices!.some((y) => y.kind === baseKindOf(f.kind)) ? baseKindOf(f.kind) : ""}
+                onChange={(e) => e.target.value && void changeYear(f, e.target.value)}
+                aria-label={`${f.file_name}はどの年度の証明書か`}
+                className="min-h-[28px] rounded-lg border border-brand px-1.5 text-[11px] font-bold text-brand"
+              >
+                {!yearChoices!.some((y) => y.kind === baseKindOf(f.kind)) && <option value="">どの年度か未選択</option>}
+                {yearChoices!.map((y) => (
+                  <option key={y.kind} value={y.kind}>
+                    {y.label}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="rounded-lg bg-brand/10 px-1.5 py-0.5 text-[10px] font-bold text-brand">
+                {yearLabelOf(baseKindOf(f.kind)) || "どの年度か未選択"}
+              </span>
+            ))}
           {choosing &&
             (canEdit ? (
               <select
@@ -181,6 +223,28 @@ export function MailingFileAttachments({
       ))}
       {canEdit && (
         <>
+          {/* 2年度をまとめた欄は、どの年度の証明書かを先に選ぶ */}
+          {choosingYear && (
+            <div className="flex flex-wrap items-center gap-1">
+              <span className="text-[11px] font-bold text-muted">どの年度？</span>
+              {yearChoices!.map((y) => (
+                <button
+                  key={y.kind}
+                  type="button"
+                  onClick={() => {
+                    setYearKind(y.kind);
+                    setError(null);
+                  }}
+                  aria-pressed={yearKind === y.kind}
+                  className={`min-h-[28px] rounded-lg border px-2 text-[11px] font-bold ${
+                    yearKind === y.kind ? "border-brand bg-brand text-brand-foreground" : "border-border bg-background text-muted"
+                  }`}
+                >
+                  {y.label}
+                </button>
+              ))}
+            </div>
+          )}
           {/* 課税・納税証明書は、どの証明書の添付かを先に選ぶ（申請準備でその行にだけ出すため） */}
           {choosing && (
             <div className="flex flex-wrap items-center gap-1">
@@ -206,6 +270,10 @@ export function MailingFileAttachments({
           <button
             type="button"
             onClick={() => {
+              if (choosingYear && !yearKind) {
+                setError("先に、どの年度の証明書かを選んでください");
+                return;
+              }
               if (choosing && !certId) {
                 setError("先に、どの証明書の添付かを選んでください（課税証明書・納税証明書）");
                 return;
@@ -219,7 +287,7 @@ export function MailingFileAttachments({
             {busy
               ? "アップロード中…"
               : choosing && certId
-                ? `${certTypes!.find((c) => c.id === certId)?.label ?? ""}として${addLabel}`
+                ? `${choosingYear && yearKind ? `${yearLabelOf(yearKind)}の` : ""}${certTypes!.find((c) => c.id === certId)?.label ?? ""}として${addLabel}`
                 : addLabel}
           </button>
           <p className="text-[11px] text-muted">

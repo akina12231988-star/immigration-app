@@ -37,6 +37,7 @@ export function MailingRecordAttachments({
             addLabel={s.addLabel}
             canEdit={canEdit}
             certTypes={s.certTypes}
+            yearChoices={s.yearChoices}
             certFilter={certFilter}
           />
         </div>
