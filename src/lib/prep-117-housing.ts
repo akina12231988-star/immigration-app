@@ -1,8 +1,9 @@
 // １－１７号（特定技能外国人支援計画書）の住居の欄。
 // 賃金（1-6号別紙）の居住費の内容から、どこに住むかを A・B・C に振り分け、該当する欄に雇用開始日を書く。
 //   A … 外国人が自分で契約する住居（1-6号別紙で「外国人本人が契約」）
-//   B … 社宅（会社の自己所有物件）
-//   C … 社宅（会社が借りている賃貸物件。区分が未設定の古い登録も賃貸として扱う）
+//   B … 社宅（会社が借りている賃貸物件。区分が未設定の古い登録も賃貸として扱う）
+//   C … 社宅（会社の自己所有物件）
+// （2026-11-14 に B と C を入れ替えた。それより前に保存した選択は読むときに入れ替える。normalizeHousingPlan）
 
 import type { OrgLodging, WorkerWage } from "@/types/db";
 
@@ -10,8 +11,8 @@ export type HousingPatternKey = "A" | "B" | "C";
 
 export const HOUSING_PATTERNS: { key: HousingPatternKey; label: string }[] = [
   { key: "A", label: "外国人が自分で契約する住居" },
-  { key: "B", label: "社宅（自己所有物件）" },
-  { key: "C", label: "社宅（賃貸物件）" },
+  { key: "B", label: "社宅（賃貸物件）" },
+  { key: "C", label: "社宅（自己所有物件）" },
 ];
 
 export interface HousingPattern {
@@ -42,18 +43,28 @@ function housingKeyOf(v: unknown): HousingPatternKey | null {
   return v === "A" || v === "B" || v === "C" ? v : null;
 }
 
-// 保存済みの値（jsonb）を読む。壊れた値・古い形は未選択として扱う
+// 保存の形の版。2 = B が賃貸物件・C が自己所有物件（それより前は B が自己所有物件・C が賃貸物件）
+export const HOUSING_PLAN_VERSION = 2;
+const swapBC = (k: HousingPatternKey | null): HousingPatternKey | null => (k === "B" ? "C" : k === "C" ? "B" : k);
+
+// 保存済みの値（jsonb）を読む。壊れた値・古い形は未選択として扱う。
+// 版の印が無い（入れ替え前に保存した）ものは、選んだ中身が変わらないよう B と C を入れ替えて読む
 export function normalizeHousingPlan(raw: unknown): HousingPlan {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  const main = housingKeyOf(r.main);
-  const fallback = housingKeyOf(r.fallback);
+  const old = r.v !== HOUSING_PLAN_VERSION;
+  const main = old ? swapBC(housingKeyOf(r.main)) : housingKeyOf(r.main);
+  const fallback = old ? swapBC(housingKeyOf(r.fallback)) : housingKeyOf(r.fallback);
   // できなかったときの候補は main と別のものだけ（同じなら無効）
   return { main, fallback: main && fallback && fallback !== main ? fallback : null };
 }
 
 // 保存する形（未選択は空文字）
-export function housingPlanToJson(plan: HousingPlan): { main: string; fallback: string } {
-  return { main: plan.main ?? "", fallback: plan.fallback && plan.fallback !== plan.main ? plan.fallback : "" };
+export function housingPlanToJson(plan: HousingPlan): { main: string; fallback: string; v: number } {
+  return {
+    main: plan.main ?? "",
+    fallback: plan.fallback && plan.fallback !== plan.main ? plan.fallback : "",
+    v: HOUSING_PLAN_VERSION,
+  };
 }
 
 // 画面に出す住居（保存した選択があればそれ、無ければ 1-6号別紙の居住費からの候補）
@@ -81,5 +92,5 @@ export function housingPatternOf(
   if (d.housing_self_contract) return { key: "A", lodging: null, amount, note };
   const lodging = d.housing_lodging_id ? lodgings.find((l) => l.id === d.housing_lodging_id) ?? null : null;
   if (!lodging) return { key: null, lodging: null, amount, note };
-  return { key: lodging.kind === "自己所有物件" ? "B" : "C", lodging, amount, note };
+  return { key: lodging.kind === "自己所有物件" ? "C" : "B", lodging, amount, note };
 }
