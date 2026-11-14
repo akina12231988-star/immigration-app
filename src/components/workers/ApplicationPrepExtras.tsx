@@ -1898,6 +1898,7 @@ export function PrepAssenSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRenewal, canEdit, todo?.id, todo?.assen, todo?.assen_note]);
   const [flows, setFlows] = useState<PrepJobFlow[]>([]);
+  const [flowsLoaded, setFlowsLoaded] = useState(false);
   const [note, setNote] = useState(todo?.assen_note ?? "");
   const [prevNote, setPrevNote] = useState(todo?.assen_note ?? "");
   if ((todo?.assen_note ?? "") !== prevNote) {
@@ -1940,6 +1941,7 @@ export function PrepAssenSection({
             postingJobType: r.job_postings?.job_type ?? "",
           })),
         );
+        setFlowsLoaded(true);
       });
     return () => {
       cancelled = true;
@@ -2097,12 +2099,47 @@ export function PrepAssenSection({
         </fieldset>
       )}
       {part === "choice" && todo?.assen === "あり" && (
-        <p className="text-[11px] font-bold text-brand">
-          あっせん有りのため、下の「あっせんについて」に職業紹介事業者の情報と採用の流れが出ます。
-          <a href="#prep-assen" className="ml-1 underline">
-            見る →
-          </a>
-        </p>
+        <>
+          {/* 求職の記録（求職管理簿）があるか。無ければ求職一覧で登録してもらう */}
+          {flowsLoaded &&
+            (flows.length === 0 ? (
+              <p className="rounded-lg bg-seal/10 px-2.5 py-1.5 text-xs font-bold text-seal">
+                求職の記録（求職管理簿）がありません。
+                <Link href="/jobs" className="ml-1 underline">
+                  求職一覧
+                </Link>
+                で応募・採用を登録してください。
+              </p>
+            ) : (
+              <div
+                className={`rounded-lg px-2.5 py-1.5 text-xs ${
+                  shownFlows.length > 0 && (hiredAtPrepOrg || !prepOrgId) ? "bg-status-approved-bg text-status-approved-fg" : "bg-seal/10 text-seal"
+                }`}
+              >
+                <p className="font-bold">
+                  求職の記録あり（{flows.length}件）
+                  {hiredAtPrepOrg
+                    ? `・${hiredAtPrepOrg.orgName || prepOrgName}で採用（${hiredAtPrepOrg.result_on ?? "採用年月日未登録"}）`
+                    : shownFlows.length === 0 && prepOrgId
+                      ? `・準備している所属機関（${prepOrgName || "選択中の機関"}）への応募はありません`
+                      : hired.length === 0
+                        ? "・「採用」の登録がまだありません"
+                        : ""}
+                </p>
+                {shownFlows.slice(0, 3).map((f) => (
+                  <p key={f.id} className="text-[11px]">
+                    {f.orgName}：紹介年月日 {f.applied_on} → {f.result || "結果未登録"} {f.result_on ?? ""}
+                  </p>
+                ))}
+              </div>
+            ))}
+          <p className="text-[11px] font-bold text-brand">
+            あっせん有りのため、下の「あっせんについて」に職業紹介事業者の情報と採用の流れが出ます。
+            <a href="#prep-assen" className="ml-1 underline">
+              見る →
+            </a>
+          </p>
+        </>
       )}
       </>
       )}
