@@ -151,3 +151,33 @@ describe("receivedCertFilesFor（申請準備の行に出す届いた証明書�
     expect(receivedCertFilesFor({}, files, "nozei_shiken").map((f) => f.id)).toEqual(["2", "3"]);
   });
 });
+
+describe("同じ自治体に2年度をまとめて請求した記録の届いた証明書", () => {
+  const record = {
+    docs: [
+      { title: "a", meta: "", starred: false, yearType: "new" as const },
+      { title: "b", meta: "", starred: false, yearType: "prev" as const },
+    ],
+    yearRequests: [
+      { yearType: "new" as const, fiscalStartYear: 2026, municipalityId: "m1", municipalityName: "八代市", collectionType: "special" as const, timingStatus: "ok" as const, timingLabel: "", timingDetail: "" },
+      { yearType: "prev" as const, fiscalStartYear: 2025, municipalityId: "m1", municipalityName: "八代市", collectionType: "special" as const, timingStatus: "ok" as const, timingLabel: "", timingDetail: "" },
+    ],
+  };
+  it("どの年度の証明書かを選べる", () => {
+    const received = mailingAttachmentSlots(record as never).find((s) => s.role === "received");
+    expect(received?.yearChoices).toEqual([
+      { kind: "届いた証明書：2026年度（令和8年度）", label: "令和8年度" },
+      { kind: "届いた証明書：2025年度（令和7年度）", label: "令和7年度" },
+    ]);
+  });
+  it("申請準備の行の年度に合う証明書だけを出す", async () => {
+    const { receivedCertFilesFor, certTaggedKind } = await import("./mailing-attachments");
+    const files = [
+      { id: "r8", kind: certTaggedKind("届いた証明書：2026年度（令和8年度）", "kazei") },
+      { id: "r7", kind: certTaggedKind("届いた証明書：2025年度（令和7年度）", "kazei") },
+    ];
+    expect(receivedCertFilesFor(record as never, files, "kazei", 2026).map((f) => f.id)).toEqual(["r8"]);
+    expect(receivedCertFilesFor(record as never, files, "kazei", 2025).map((f) => f.id)).toEqual(["r7"]);
+    expect(receivedCertFilesFor(record as never, files, "kazei").map((f) => f.id)).toEqual(["r8", "r7"]);
+  });
+});

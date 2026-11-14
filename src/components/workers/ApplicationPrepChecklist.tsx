@@ -522,35 +522,6 @@ export function ApplicationPrepChecklist({
       : null;
   const meta: PrepChecklistMeta = current ?? EMPTY_PREP_META;
 
-  // 証明書類の請求に届いた課税・納税証明書を読む（添付した書類をまとめた PDF に入れられるように）
-  const currentTodoNo = current?.todo_no ?? "";
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const out: Record<string, BundleFile[]> = {};
-      const cache = new Map<string, Awaited<ReturnType<typeof listMailingFiles>>>();
-      for (const id of PREP_BUNDLE_CHOOSE_IDS) {
-        const { record } = pickPrepMailingRecord(mailingRecords, "tax", id, currentTodoNo);
-        if (!record) continue;
-        try {
-          if (!cache.has(record.id)) cache.set(record.id, await listMailingFiles(createClient(), record.id));
-        } catch {
-          continue;
-        }
-        out[id] = receivedCertFilesFor(record, cache.get(record.id) ?? [], id).map((f) => ({
-          key: `mail:${f.id}`,
-          id: f.id,
-          name: f.file_name || "届いた証明書",
-          source: "mailing" as const,
-          link: false,
-        }));
-      }
-      if (!cancelled) setMailCertFiles(out);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [mailingRecords, currentTodoNo]);
 
   // 表示中のTODO番号に対応する申請準備のTODO（番号の書き方の揺れは正規化して突き合わせる）
   const currentTodo = selectedKey
@@ -805,6 +776,45 @@ export function ApplicationPrepChecklist({
   );
   // 年度付きの書類で実際に使う年度（使う年度が無ければ対象年度）
   const docYearOf = (def: PrepDocDef): number | null => docYearFor(def, meta, yearOverrides);
+
+  // 証明書類の請求に届いた課税・納税証明書を読む（添付した書類をまとめた PDF に入れられるように）
+  const currentTodoNo = current?.todo_no ?? "";
+  // 課税・納税証明書の行の年度（令和）。変わったときだけ読み直すよう文字列にしておく
+  const taxYearsKey = JSON.stringify(
+    Object.fromEntries(
+      [...PREP_BUNDLE_CHOOSE_IDS].map((id) => [id, docYearFor({ id, source: { kind: "docYear", baseKey: "" } } as PrepDocDef, meta, yearOverrides)]),
+    ),
+  );
+  useEffect(() => {
+    let cancelled = false;
+    const taxYears = JSON.parse(taxYearsKey) as Record<string, number | null>;
+    void (async () => {
+      const out: Record<string, BundleFile[]> = {};
+      const cache = new Map<string, Awaited<ReturnType<typeof listMailingFiles>>>();
+      for (const id of PREP_BUNDLE_CHOOSE_IDS) {
+        const { record } = pickPrepMailingRecord(mailingRecords, "tax", id, currentTodoNo);
+        if (!record) continue;
+        try {
+          if (!cache.has(record.id)) cache.set(record.id, await listMailingFiles(createClient(), record.id));
+        } catch {
+          continue;
+        }
+        // 行の年度（令和）と違う年度の証明書は出さない
+        const reiwa = taxYears[id] ?? null;
+        out[id] = receivedCertFilesFor(record, cache.get(record.id) ?? [], id, reiwa != null ? reiwa + 2018 : null).map((f) => ({
+          key: `mail:${f.id}`,
+          id: f.id,
+          name: f.file_name || "届いた証明書",
+          source: "mailing" as const,
+          link: false,
+        }));
+      }
+      if (!cancelled) setMailCertFiles(out);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mailingRecords, currentTodoNo, taxYearsKey]);
 
   const today = todayStr();
   const filledDocKeys = new Set(docs.filter((d) => d.storage_path).map((d) => d.doc_key));
