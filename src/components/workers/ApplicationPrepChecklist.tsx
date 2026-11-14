@@ -2729,8 +2729,8 @@ export function ApplicationPrepChecklist({
         />
       </PrepSection>
 
-      {/* 5. 署名・賃金（1-6号別紙）・雇用契約書 */}
-      <PrepSection id="prep-sign" title="署名・賃金・雇用契約書">
+      {/* 5. 署名・賃金（1-6号別紙）。雇用契約書・雇用条件書の欄は外した（外国人詳細で保管している） */}
+      <PrepSection id="prep-sign" title="署名・賃金">
         <div className="flex flex-col gap-3">
         {/* 本人から署名をもらったかどうかのステータス */}
         <PrepSignStatusField
@@ -2742,13 +2742,11 @@ export function ApplicationPrepChecklist({
             「申請の時点でこの内容」という記録を申請準備に残す。
             外国人詳細では賃金の記録カードが別にあるため、要約とリンクのみ */}
         {/* 賃金（時給・月給）は、上の「所属機関への採用条件の確認」④（所属機関からの返答）の下で入れる。
-            ここには雇用契約書・雇用条件書だけを出す */}
+            ここには案内だけを出す */}
         <p className="rounded-lg bg-background px-3 py-2 text-[11px] text-muted">
           賃金（時給・月給）は、上の「所属機関への採用条件の確認」の ④ 所属機関からの返答 の下で入れます。
           <a href="#hire-check" className="ml-1 font-bold text-brand underline">賃金の欄へ</a>
         </p>
-        {/* 雇用契約書・雇用条件書（日付なし版・正式版）は申請準備の中で保管する */}
-        <PrepEmploymentSection workerId={workerId} canEdit={canEdit} showWages={false} />
         </div>
       </PrepSection>
 
