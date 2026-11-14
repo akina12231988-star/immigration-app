@@ -714,6 +714,12 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
       edit: org ? it("posting_monthly_hours") : undefined,
       editValue: intake?.posting_monthly_hours ?? "",
     },
+    // 2.9 所定労働時間が通常の労働者と同等か（オンライン申請 2.9 と同じ。必ず「有」）
+    {
+      label: "2.9 特定技能雇用契約 (3)所定労働時間が通常の労働者の所定労働時間と同等であることの有無",
+      value: "有",
+      note: "必ず「有」",
+    },
     { label: "2 (4)月額報酬", value: wage.monthly, note: wage.note },
     { label: "2 (4)基本給の時間換算額", value: wage.hourly },
     // 同等の業務に従事する日本人（所属機関の専従者）。未登録ならここで名前・報酬を入れて所属機関に保存する

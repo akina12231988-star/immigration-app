@@ -392,3 +392,11 @@ describe("取次者", () => {
     expect(agentGroup({})!.items[0].value).toBe("");
   });
 });
+
+describe("2.9 所定労働時間が通常の労働者と同等であることの有無", () => {
+  it("必ず「有」", () => {
+    const groups = buildApplicationCopyGroups({ worker, org, intake: null, wages: [], histories: [], planDates: {} });
+    const item = groups.flatMap((g) => g.items).find((i) => i.label.startsWith("2.9 特定技能雇用契約"));
+    expect(item?.value).toBe("有");
+  });
+});
