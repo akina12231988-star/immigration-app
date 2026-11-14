@@ -606,6 +606,7 @@ export function ApplicationPrepChecklist({
         | "stamp_fee_payer"
         | "estimate_items"
         | "hire_check"
+        | "print_marks"
       >
     >,
   ) {
@@ -618,7 +619,9 @@ export function ApplicationPrepChecklist({
     } catch (err) {
       // あとから足した項目（筆頭者=0111・申請予定日=0112）は、その分の案内を出す
       const migration =
-        "hire_check" in patch
+        "print_marks" in patch
+          ? "0223_prep_print_marks.sql"
+          : "hire_check" in patch
           ? "0218_prep_hire_check.sql"
           : "estimate_items" in patch
           ? "0214_prep_estimate_items.sql"
@@ -2809,6 +2812,8 @@ export function ApplicationPrepChecklist({
           todoNo={current.todo_no}
           refreshKey={prepInfoKey}
           canEdit={canEdit}
+          rosterPrintedOn={current.print_marks?.roster ?? null}
+          onRosterPrinted={() => void saveExtras({ print_marks: { ...current.print_marks, roster: todayStr() } })}
         />
       </PrepSection>
 
@@ -2822,6 +2827,15 @@ export function ApplicationPrepChecklist({
       {/* 10. 入管へ出す完成した書類・申請後の郵送 */}
       <PrepSection id="prep-submit" title="入管へ出す完成した書類">
         <div className="flex flex-col gap-3">
+        {/* 支援責任者・支援担当者の名簿は必ず印刷する。未印刷ならここでも知らせる */}
+        {!current.print_marks?.roster && (
+          <a
+            href="#prep-plan"
+            className="rounded-lg border border-seal/40 bg-seal/5 px-3 py-2 text-xs font-bold text-seal"
+          >
+            ⚠ 支援責任者・支援担当者の名簿をまだ印刷していません。「１－１７号」の 4. の「名簿をA4で印刷」を押して、必ず印刷してください →
+          </a>
+        )}
         {/* 申請する書類（最後に添付する、入管へ提出する完成した書類一式） */}
         <FileDropArea
           onFiles={(list) => void dropApplyDocs(list)}
