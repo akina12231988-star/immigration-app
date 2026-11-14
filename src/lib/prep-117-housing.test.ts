@@ -20,13 +20,13 @@ describe("１－１７号の住居 A・B・C", () => {
   it("外国人本人が契約するなら A", () => {
     expect(housingPatternOf({ housing_self_contract: true, housing_lodging_id: "lodging-1" }, lodgings).key).toBe("A");
   });
-  it("社宅の自己所有物件は B、賃貸物件は C（区分が未設定も C）", () => {
-    expect(housingPatternOf({ housing_lodging_id: "lodging-1" }, lodgings).key).toBe("B");
+  it("社宅の賃貸物件は B（区分が未設定も B）、自己所有物件は C", () => {
+    expect(housingPatternOf({ housing_lodging_id: "lodging-1" }, lodgings).key).toBe("C");
     expect(housingPatternOf({ housing_lodging_id: "lodging-2", housing_amount: 20000 }, lodgings)).toMatchObject({
-      key: "C",
+      key: "B",
       amount: 20000,
     });
-    expect(housingPatternOf({ housing_lodging_id: "lodging-3" }, lodgings).key).toBe("C");
+    expect(housingPatternOf({ housing_lodging_id: "lodging-3" }, lodgings).key).toBe("B");
   });
   it("未入力・寮が見つからないときは決めない", () => {
     expect(housingPatternOf(null, lodgings).key).toBeNull();
@@ -49,18 +49,25 @@ describe("申請準備で見る賃金の記録", () => {
 
 describe("住居の選択（housing_plan）", () => {
   it("保存した値を読む。壊れた値・main と同じ候補は未選択にする", () => {
-    expect(normalizeHousingPlan({ main: "B", fallback: "C" })).toEqual({ main: "B", fallback: "C" });
-    expect(normalizeHousingPlan({ main: "B", fallback: "B" })).toEqual({ main: "B", fallback: null });
+    expect(normalizeHousingPlan({ main: "B", fallback: "C", v: 2 })).toEqual({ main: "B", fallback: "C" });
+    expect(normalizeHousingPlan({ main: "B", fallback: "B", v: 2 })).toEqual({ main: "B", fallback: null });
     expect(normalizeHousingPlan({ main: "", fallback: "C" })).toEqual({ main: null, fallback: null });
     expect(normalizeHousingPlan({ main: "X" })).toEqual({ main: null, fallback: null });
     expect(normalizeHousingPlan(null)).toEqual({ main: null, fallback: null });
     expect(normalizeHousingPlan("B")).toEqual({ main: null, fallback: null });
   });
 
+  it("B・C を入れ替える前に保存した選択（版の印なし）は、中身が変わらないよう入れ替えて読む", () => {
+    // 前の B（社宅・自己所有物件）は今の C、前の C（社宅・賃貸物件）は今の B
+    expect(normalizeHousingPlan({ main: "B", fallback: "A" })).toEqual({ main: "C", fallback: "A" });
+    expect(normalizeHousingPlan({ main: "C", fallback: "B" })).toEqual({ main: "B", fallback: "C" });
+    expect(normalizeHousingPlan({ main: "A", fallback: "" })).toEqual({ main: "A", fallback: null });
+  });
+
   it("保存する形は未選択を空文字にする", () => {
-    expect(housingPlanToJson({ main: "A", fallback: "C" })).toEqual({ main: "A", fallback: "C" });
-    expect(housingPlanToJson({ main: null, fallback: null })).toEqual({ main: "", fallback: "" });
-    expect(housingPlanToJson({ main: "A", fallback: "A" })).toEqual({ main: "A", fallback: "" });
+    expect(housingPlanToJson({ main: "A", fallback: "C" })).toEqual({ main: "A", fallback: "C", v: 2 });
+    expect(housingPlanToJson({ main: null, fallback: null })).toEqual({ main: "", fallback: "", v: 2 });
+    expect(housingPlanToJson({ main: "A", fallback: "A" })).toEqual({ main: "A", fallback: "", v: 2 });
   });
 
   it("選択が無ければ 1-6号別紙の居住費からの候補を出す", () => {

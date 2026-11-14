@@ -128,7 +128,7 @@ interface PlanWorker {
 //  3. 支援している特定技能外国人の人数
 //  4. 支援責任者・支援担当者の名簿（A4で印刷）
 //  5. 事前ガイダンスの実施日（支援計画書の日付から）
-//  6. 住居（A 自分で契約／B 社宅・自己所有物件／C 社宅・賃貸物件 のどれにするかを選ぶ。未選択なら 1-6号別紙の居住費から。
+//  6. 住居（A 自分で契約／B 社宅・賃貸物件／C 社宅・自己所有物件 のどれにするかを選ぶ。未選択なら 1-6号別紙の居住費から。
 //     選んだ欄に雇用開始日、できなかったときに対応予定の候補の欄に「○の社宅入居に合意しなかった場合、実施予定」）
 //  7. 生活オリエンテーションの実施日（支援計画書の日付から）
 //  8. 所属機関の協力確認書: 提出先・提出日
@@ -541,7 +541,7 @@ export function Prep117Section({
               </p>
               {housing.key !== "A" && <p>居住費 月額 {formatYen(housing.amount)}円</p>}
               {/* 賃貸物件は、所属機関に保存している賃貸契約書を印刷できる */}
-              {housing.key === "C" && housing.lodging && orgId && (
+              {housing.key === "B" && housing.lodging && orgId && (
                 <a
                   href={orgFilesPrintHref(orgId, [lodgingContractKind(housing.lodging)])}
                   target="_blank"
