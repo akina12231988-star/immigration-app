@@ -6,7 +6,10 @@ import { CopyButton } from "@/components/ui/CopyButton";
 import { formatAmountInput } from "@/lib/amount-format";
 import { applyOrgCosts, matchesOrgCosts, type OrgCosts } from "@/lib/wage-org-costs";
 import {
+  EMPLOYMENT_INSURANCE_FISCAL_LABEL,
   EMPLOYMENT_INSURANCE_KINDS,
+  employmentInsurancePerMille,
+  perMilleLabel,
   HEALTH_INSURANCE_RATES,
   HEALTH_PREFECTURE_CUSTOM,
   WAGE_ALLOWANCE_TYPES,
@@ -514,13 +517,25 @@ export function WageDetailForm({
             >
               {EMPLOYMENT_INSURANCE_KINDS.map((k) => (
                 <option key={k.kind} value={k.kind}>
-                  {k.kind}（本人負担 {(k.rate * 100).toFixed(1)}%）
+                  {k.kind}（本人負担 {perMilleLabel(k.worker)}）
                 </option>
               ))}
             </select>
           </label>
         )}
         <span className="ml-auto font-bold tabular-nums">約{formatYen(result.employment)}円</span>
+        {detail.employment_enabled && (
+          <p className="w-full text-[10px] text-muted">
+            {EMPLOYMENT_INSURANCE_FISCAL_LABEL}の雇用保険料率で計算します: 支払概算額 {formatYen(result.gross)}円 × 労働者負担{" "}
+            {perMilleLabel(employmentInsurancePerMille(detail.employment_kind))} ＝ {formatYen(result.employment)}円
+            （1円未満は50銭以下切り捨て・50銭超切り上げ）。
+            {(() => {
+              const k = EMPLOYMENT_INSURANCE_KINDS.find((x) => x.kind === detail.employment_kind);
+              return k ? `事業主負担は ${perMilleLabel(k.employer)}、雇用保険料率（合計）は ${perMilleLabel(k.total)} です。` : "";
+            })()}
+            園芸サービス・牛馬の育成・酪農・養鶏・養豚・内水面養殖の事業は「一般の事業」を選んでください。
+          </p>
+        )}
       </div>
 
       {/* (d) 食費 */}

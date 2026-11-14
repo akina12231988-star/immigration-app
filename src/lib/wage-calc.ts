@@ -47,15 +47,36 @@ const KAIGO_RATE = 1.62;
 const KOSODATE_RATE = 0.23;
 const KOSEI_NENKIN_RATE = 18.3;
 
-// ---- 雇用保険料率（労働者負担分・令和8年度） ----
-export const EMPLOYMENT_INSURANCE_KINDS: { kind: string; rate: number }[] = [
-  { kind: "一般の事業", rate: 0.005 },
-  { kind: "農林水産・清酒製造の事業", rate: 0.006 },
-  { kind: "建設の事業", rate: 0.006 },
+// ---- 雇用保険料率（令和8年度: 令和8年4月1日〜令和9年3月31日。厚生労働省「令和8(2026)年度 雇用保険料率のご案内」） ----
+//   worker   … ① 労働者負担（失業等給付・育児休業給付の保険料率のみ）。千分率（5 = 5/1,000）
+//   employer … ② 事業主負担（失業等給付・育児休業給付 ＋ 雇用保険二事業）
+//   total    … ①＋② 雇用保険料率
+// ※ 園芸サービス、牛馬の育成、酪農、養鶏、養豚、内水面養殖および特定の船員を雇用する事業は一般の事業の率
+export const EMPLOYMENT_INSURANCE_FISCAL_LABEL = "令和8年度";
+export const EMPLOYMENT_INSURANCE_KINDS: {
+  kind: string;
+  rate: number; // 労働者負担（小数。0.005 = 5/1,000）
+  worker: number;
+  employer: number;
+  total: number;
+}[] = [
+  { kind: "一般の事業", rate: 0.005, worker: 5, employer: 8.5, total: 13.5 },
+  { kind: "農林水産・清酒製造の事業", rate: 0.006, worker: 6, employer: 9.5, total: 15.5 },
+  { kind: "建設の事業", rate: 0.006, worker: 6, employer: 10.5, total: 16.5 },
 ];
 
 export function employmentInsuranceRate(kind: string): number {
   return EMPLOYMENT_INSURANCE_KINDS.find((k) => k.kind === kind)?.rate ?? 0.005;
+}
+
+// 労働者負担の率（千分率）。5 なら「5/1,000」
+export function employmentInsurancePerMille(kind: string): number {
+  return EMPLOYMENT_INSURANCE_KINDS.find((k) => k.kind === kind)?.worker ?? 5;
+}
+
+// 千分率の表示（5 → 「5/1,000」、8.5 → 「8.5/1,000」）
+export function perMilleLabel(n: number): string {
+  return `${n}/1,000`;
 }
 
 // ---- 建設分野（国交省）の賃金基準 ----
@@ -217,7 +238,13 @@ export function employmentInsuranceAmount(
   opts: { enabled: boolean; kind: string },
 ): number {
   if (!opts.enabled) return 0;
-  return Math.round((Number(gross) || 0) * employmentInsuranceRate(opts.kind));
+  // 賃金総額 × 労働者負担率。賃金から控除するときの1円未満は、50銭以下は切り捨て・50銭を超えたら切り上げ。
+  // 小数の誤差が出ないよう、千分率を10倍した整数（5/1,000 → 50/10,000）で計算する
+  const yen = Math.max(0, Math.round(Number(gross) || 0));
+  const numer = yen * Math.round(employmentInsurancePerMille(opts.kind) * 10); // 単位: 1/10,000 円
+  const whole = Math.floor(numer / 10_000);
+  const rem = numer % 10_000; // 1円未満（5,000 = 50銭）
+  return rem > 5_000 ? whole + 1 : whole;
 }
 
 // ---- 4-(e) 居住費（社宅） ----

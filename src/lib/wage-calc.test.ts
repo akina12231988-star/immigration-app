@@ -104,8 +104,19 @@ describe("socialInsuranceAmount", () => {
 });
 
 describe("employmentInsuranceAmount", () => {
-  it("一般の事業は0.5%", () => {
+  it("一般の事業は 5/1,000（令和8年度）", () => {
     expect(employmentInsuranceAmount(180_000, { enabled: true, kind: "一般の事業" })).toBe(900);
+    expect(employmentInsuranceAmount(192_400, { enabled: true, kind: "一般の事業" })).toBe(962);
+  });
+
+  it("農林水産・清酒製造の事業は 6/1,000", () => {
+    expect(employmentInsuranceAmount(200_000, { enabled: true, kind: "農林水産・清酒製造の事業" })).toBe(1_200);
+  });
+
+  it("1円未満は50銭以下切り捨て・50銭超切り上げ", () => {
+    expect(employmentInsuranceAmount(192_300, { enabled: true, kind: "一般の事業" })).toBe(961); // 961.5 → 961
+    expect(employmentInsuranceAmount(192_350, { enabled: true, kind: "一般の事業" })).toBe(962); // 961.75 → 962
+    expect(employmentInsuranceAmount(210_083, { enabled: true, kind: "建設の事業" })).toBe(1_260); // 1260.498 → 1260
   });
 
   it("建設の事業は0.6%", () => {
