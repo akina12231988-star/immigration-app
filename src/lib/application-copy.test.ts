@@ -205,6 +205,7 @@ describe("申請書に貼る項目", () => {
     expect(find("18 専門級の合格名（技能実習）")?.value).toBe("農業（耕種）専門級");
     expect(find("19.2 日本語能力 合格した試験名")?.value).toBe("日本語能力試験 Japanese language proficiency test");
     expect(find("19 (2)受験地")?.value).toBe("ベトナム");
+    expect(find("22.1 特定技能雇用契約に係る保証金の徴収その他財産管理又は違約金等の支払契約の有無")?.value).toBe("無");
     expect(find("19 レベル")).toBeUndefined(); // レベルの欄は申請書に貼る情報には出さない
     // 2件目以降は件数付きで出す。空の受験情報は出さない
     expect(find("19.2 合格した試験名（2件目）")?.value).toBe("国際交流基金日本語基礎テスト The japan foundation japanese basic test");
