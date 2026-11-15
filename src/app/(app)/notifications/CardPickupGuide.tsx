@@ -20,6 +20,9 @@ import { CARD_MAIL_TO, CARD_RETURN_TO, mailAddressText, type MailAddress } from 
 export function CardPickupGuide({ canEdit = true }: { canEdit?: boolean }) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"mail" | "counter">("mail");
+  // 郵送で受け取る場合のイラストは、在留資格変更と在留期間更新で別々に登録する
+  const [mailKind, setMailKind] = useState<"mail" | "mail_renewal">("mail");
+  const imageKind: GuideImageKind = tab === "mail" ? mailKind : "counter";
   // 手続きのイラスト（画面からドラッグ＆ドロップで登録・差し替え）
   const [images, setImages] = useState<Partial<Record<GuideImageKind, string>>>({});
   useEffect(() => {
@@ -65,11 +68,34 @@ export function CardPickupGuide({ canEdit = true }: { canEdit?: boolean }) {
             ))}
           </div>
 
+          {tab === "mail" && (
+            <div className="flex flex-wrap gap-1 text-[11px] font-bold">
+              {(
+                [
+                  ["mail", "在留資格変更申請の場合"],
+                  ["mail_renewal", "在留期間更新申請の場合"],
+                ] as const
+              ).map(([k, label]) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setMailKind(k)}
+                  className={`rounded-full border px-3 py-1 ${
+                    mailKind === k ? "border-brand bg-brand/10 text-brand" : "border-border text-muted"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+
           <GuideImage
-            kind={tab}
-            url={images[tab] ?? null}
+            key={imageKind}
+            kind={imageKind}
+            url={images[imageKind] ?? null}
             canEdit={canEdit}
-            onUploaded={(url) => setImages((prev) => ({ ...prev, [tab]: url }))}
+            onUploaded={(url) => setImages((prev) => ({ ...prev, [imageKind]: url }))}
           />
           {tab === "counter" && (
             <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted">
@@ -112,6 +138,12 @@ function AddressBox({ title, address: a }: { title: string; address: MailAddress
     </div>
   );
 }
+
+const GUIDE_IMAGE_ALT: Record<GuideImageKind, string> = {
+  mail: "在留資格変更申請の許可後の郵送での受け取り方法",
+  mail_renewal: "在留期間更新申請の許可後の郵送での受け取り方法",
+  counter: "窓口での受け取りへの変更",
+};
 
 // 手続きのイラスト。画像をドロップするか押して選ぶと登録・差し替えできる。押すと別タブで大きく開く
 function GuideImage({
@@ -168,7 +200,7 @@ function GuideImage({
       {url ? (
         <a href={url} target="_blank" rel="noopener noreferrer" title="押すと大きく開きます" className="block">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={url} alt={kind === "mail" ? "郵送での受け取り方法" : "窓口での受け取りへの変更"} className="mx-auto max-h-[360px] w-auto max-w-full rounded-lg border border-border object-contain" />
+          <img src={url} alt={GUIDE_IMAGE_ALT[kind]} className="mx-auto max-h-[360px] w-auto max-w-full rounded-lg border border-border object-contain" />
         </a>
       ) : (
         !canEdit && <p className="text-xs text-muted">イラストはまだ登録されていません。</p>
