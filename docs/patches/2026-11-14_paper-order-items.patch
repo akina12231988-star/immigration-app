@@ -1,0 +1,1172 @@
+From d6ab098ee7e8157df7a6d24a1707a5ee415383c3 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 14 Nov 2026 08:14:52 +0000
+Subject: [PATCH 1/7] =?UTF-8?q?=E7=94=B3=E8=AB=8B=E6=9B=B8=E3=81=AB?=
+ =?UTF-8?q?=E8=B2=BC=E3=82=8B=E9=A0=85=E7=9B=AE:=209.3=20=E6=97=A5?=
+ =?UTF-8?q?=E6=9C=AC=E3=81=AB=E3=81=8A=E3=81=91=E3=82=8B=E9=80=A3=E7=B5=A1?=
+ =?UTF-8?q?=E5=85=88=20=E9=9B=BB=E8=A9=B1=E7=95=AA=E5=8F=B7=E3=83=BB13.2?=
+ =?UTF-8?q?=20=E5=B8=8C=E6=9C=9B=E3=81=99=E3=82=8B=E5=9C=A8=E7=95=99?=
+ =?UTF-8?q?=E6=9C=9F=E9=96=93=E3=83=BB14=20=E5=A4=89=E6=9B=B4=E3=81=AE?=
+ =?UTF-8?q?=E7=90=86=E7=94=B1=E3=82=92=E8=BF=BD=E5=8A=A0?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01FFzQoUe9prfUmLNuqizp8r
+---
+ src/lib/application-copy.test.ts | 20 ++++++++++++++++++++
+ src/lib/application-copy.ts      | 31 +++++++++++++++++++++++++++++++
+ src/lib/release-notes.ts         | 11 +++++++++++
+ 3 files changed, 62 insertions(+)
+
+diff --git a/src/lib/application-copy.test.ts b/src/lib/application-copy.test.ts
+index a09fa7a..f493e2a 100644
+--- a/src/lib/application-copy.test.ts
++++ b/src/lib/application-copy.test.ts
+@@ -119,6 +119,9 @@ describe("申請書に貼る項目", () => {
+     expect(find("2 生年月日")).toMatchObject({ value: "1995年4月2日", parts: ["1995", "4", "2", "19950402"] });
+     expect(find("11 在留期間")?.value).toBe("1年");
+     expect(find("13 希望する在留資格")?.value).toBe("特定技能1号");
++    expect(find("14 変更の理由")?.value).toBe("1号特定技能外国人として就労するため");
++    expect(find("9.3 日本における連絡先 電話番号")?.value).toBe("05088904000");
++    expect(find("13.2 希望する在留期間")?.value).toBe("2年"); // 雇用契約期間の既定は2年
+     // 犯罪歴・評価区分はその場で選んで保存できる
+     expect(find("15 犯罪を理由とする処分を受けたことの有無")?.edit).toMatchObject({ target: "worker", column: "criminal_record", options: ["無", "有"] });
+     expect(find("18 技能水準 評価区分")?.edit).toMatchObject({ target: "worker", column: "skill_eval_kind" });
+@@ -345,3 +348,20 @@ describe("desiredResidenceStatus（特定技能２号の更新）", () => {
+     expect(desiredResidenceStatus("特定技能2号更新の準備中", "更新", "特定技能2号")).toBe("特定技能2号");
+   });
+ });
++
++describe("14 変更の理由", () => {
++  const base = { worker, org, intake: null, wages: [], histories: [], planDates: {}, desiredStatus: "特定技能1号", today: "2025-05-01" };
++  const has = (appType: string) =>
++    buildApplicationCopyGroups({ ...base, appType }).flatMap((g) => g.items).some((i) => i.label === "14 変更の理由");
++  it("変更のときだけ出す（認定・更新の申請書には無い）", () => {
++    expect(has("変更")).toBe(true);
++    expect(has("認定")).toBe(false);
++    expect(has("更新")).toBe(false);
++  });
++  it("13.2 希望する在留期間は雇用契約期間の年数（3年を選んだら3年）、特定活動は6月", () => {
++    const get = (extra: object) =>
++      buildApplicationCopyGroups({ ...base, ...extra }).flatMap((g) => g.items).find((i) => i.label === "13.2 希望する在留期間")?.value;
++    expect(get({ planDates: { eeYears: "3" } })).toBe("3年");
++    expect(get({ desiredStatus: "特定活動", appType: "変更" })).toBe("6月");
++  });
++});
+diff --git a/src/lib/application-copy.ts b/src/lib/application-copy.ts
+index 29d15ce..f458436 100644
+--- a/src/lib/application-copy.ts
++++ b/src/lib/application-copy.ts
+@@ -182,6 +182,9 @@ export interface ApplicationCopyInput {
+   today?: string;
+ }
+ 
++// 14 変更の理由（特定技能1号への在留資格変更）
++export const CHANGE_REASON_SSW1 = "1号特定技能外国人として就労するため";
++
+ // YYYY-MM-DD → ["1995", "4", "2"]（欄が年・月・日に分かれている申請書用）
+ export function ymdParts(ymd: string | null | undefined): string[] | undefined {
+   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((ymd ?? "").trim());
+@@ -401,6 +404,12 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
+     })(),
+     { label: "8 本国における居住地", value: w.home_address, edit: wk("home_address") },
+     { label: "9 住居地", value: w.address, edit: wk("address") },
++    // 9.3 日本における連絡先 電話番号（オンライン申請と同じ。登録支援機関の電話番号をハイフン無しで）
++    {
++      label: "9.3 日本における連絡先 電話番号",
++      value: c.tel.replace(/\D/g, ""),
++      note: "登録支援機関の電話番号（ハイフン無し）",
++    },
+     { label: "10 旅券 (1)番号", value: w.passport_no, edit: wk("passport_no") },
+     dateItem("10 旅券 (2)有効期限", w.passport_expiry_date, undefined, wkDate("passport_expiry_date")),
+     { label: "11 現に有する在留資格", value: w.residence_status, edit: wk("residence_status") },
+@@ -418,6 +427,28 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
+       value: input.desiredStatus ?? "",
+       note: input.desiredStatus ? undefined : "申請準備の「準備の内容」と申請種別を選ぶと出ます",
+     },
++    // 13.2 希望する在留期間: 雇用条件書の雇用契約期間（申請準備で選んだ年数。既定2年）を転記する。
++    // 特定活動への資格変更は6月（オンライン申請の順と同じ）
++    input.desiredStatus === "特定活動"
++      ? { label: "13.2 希望する在留期間", value: "6月", note: "特定活動への在留資格変更なので6月" }
++      : {
++          label: "13.2 希望する在留期間",
++          value: `${contractYearsOf(planDates)}年`,
++          note: "雇用条件書の雇用契約期間を転記（申請準備の「雇用契約期間」で選んだ年数）。審査で変わることがある",
++        },
++    // 14 変更の理由（在留資格変更許可申請書の欄。認定・更新の申請書には無いので出さない）
++    ...(input.appType === "認定" || input.appType === "更新"
++      ? []
++      : [
++          {
++            label: "14 変更の理由",
++            value: input.desiredStatus === "特定活動" ? "「特定技能１号」への移行準備のため" : CHANGE_REASON_SSW1,
++            note:
++              input.desiredStatus === "特定活動"
++                ? "特定活動（特定技能１号への移行準備）の定型文"
++                : "特定技能1号へ変更するときの文。ほかの在留資格へ変更するときは書き換えてください",
++          },
++        ]),
+     // 15 犯罪歴（有無を選び、有なら内容を書く）
+     {
+       label: "15 犯罪を理由とする処分を受けたことの有無",
+diff --git a/src/lib/release-notes.ts b/src/lib/release-notes.ts
+index 9127808..c8c88f5 100644
+--- a/src/lib/release-notes.ts
++++ b/src/lib/release-notes.ts
+@@ -21,6 +21,17 @@ export interface ReleaseNote {
+ 
+ // 新しい順（先頭が最新）
+ export const RELEASE_NOTES: ReleaseNote[] = [
++  {
++    date: "2026-11-14",
++    title: "申請書に貼る項目に「9.3 日本における連絡先 電話番号」「13.2 希望する在留期間」「14 変更の理由」を追加しました",
++    where: "申請準備の詳細 ＞ 申請書に貼る情報 ＞ 申請人等作成用1",
++    items: [
++      "「9 住居地」の下に「9.3 日本における連絡先 電話番号」を出し、登録支援機関の電話番号「05088904000」（ハイフン無し）をコピーできます。",
++      "「13.2 希望する在留期間」は雇用条件書の雇用契約期間を転記します（申請準備で3年を選んだら「3年」）。特定活動への変更は「6月」です。",
++      "「13 希望する在留資格」の下に「14 変更の理由」を出し、「1号特定技能外国人として就労するため」をコピーできます。",
++      "在留資格変更の申請書の欄なので、認定・更新の申請準備では出しません。",
++    ],
++  },
+   {
+     date: "2026-11-14",
+     title: "申請準備から名簿（支援体制）の印刷を開いたとき、「←」で申請準備の詳細画面へ戻るようにしました",
+-- 
+2.43.0
+
+
+From 84db91bcf1ead072a4cf83db0aedaf634ea49008 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 14 Nov 2026 08:19:44 +0000
+Subject: [PATCH 2/7] =?UTF-8?q?=E6=97=A5=E6=9C=AC=E8=AA=9E=E3=81=AE?=
+ =?UTF-8?q?=E8=A9=A6=E9=A8=93=E5=90=8D=E3=82=92=2019.2=20=E5=90=88?=
+ =?UTF-8?q?=E6=A0=BC=E3=81=97=E3=81=9F=E8=A9=A6=E9=A8=93=E5=90=8D=E3=81=AE?=
+ =?UTF-8?q?=E3=83=97=E3=83=AB=E3=83=80=E3=82=A6=E3=83=B34=E6=8A=9E?=
+ =?UTF-8?q?=E3=81=AB=E3=81=97=E3=80=81=E5=A4=96=E5=9B=BD=E4=BA=BA=E8=A9=B3?=
+ =?UTF-8?q?=E7=B4=B0=E3=81=A8=E5=90=8C=E3=81=98=E5=80=A4=E3=81=A7=E9=80=A3?=
+ =?UTF-8?q?=E5=8B=95?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01FFzQoUe9prfUmLNuqizp8r
+---
+ src/components/workers/CertExamList.tsx | 15 ++++++++----
+ src/lib/application-copy.test.ts        |  4 ++--
+ src/lib/application-copy.ts             | 16 +++++++++----
+ src/lib/cert-exam-options.test.ts       | 16 +++++++++++++
+ src/lib/cert-exam-options.ts            | 31 +++++++++++++++++--------
+ src/lib/online-application.ts           |  8 +++----
+ src/lib/release-notes.ts                | 10 ++++++++
+ 7 files changed, 75 insertions(+), 25 deletions(-)
+
+diff --git a/src/components/workers/CertExamList.tsx b/src/components/workers/CertExamList.tsx
+index 1797874..6a851b4 100644
+--- a/src/components/workers/CertExamList.tsx
++++ b/src/components/workers/CertExamList.tsx
+@@ -7,7 +7,7 @@ import { updateWorker } from "@/lib/supabase/queries/workers";
+ import { clearOnboardingDocFile } from "@/app/(app)/onboarding/actions";
+ import { CopyButton } from "@/components/ui/CopyButton";
+ import { WorkerCertDocRows } from "@/components/workers/WorkerCertDocRows";
+-import { EXAM_LOCATION_JAPAN } from "@/lib/cert-exam-options";
++import { EXAM_LOCATION_JAPAN, nihongoExamNameOf } from "@/lib/cert-exam-options";
+ import {
+   CERT_KIND_LABEL,
+   JLPT_LEVELS,
+@@ -34,6 +34,7 @@ function PickOrTypeRow({
+   options,
+   otherLabel = "その他（入力）",
+   placeholder = "入力してください",
++  allowOther = true,
+   canEdit,
+   busy,
+   onSave,
+@@ -43,11 +44,12 @@ function PickOrTypeRow({
+   options: readonly string[];
+   otherLabel?: string;
+   placeholder?: string;
++  allowOther?: boolean; // false なら候補から選ぶだけ（候補に無い今の値は、選び直すまでそのまま出す）
+   canEdit: boolean;
+   busy: boolean;
+   onSave: (v: string) => void;
+ }) {
+-  const isKnown = value === "" || options.includes(value);
++  const isKnown = value === "" || options.includes(value) || !allowOther;
+   // セレクトの表示（候補にある値ならその値、無ければ「その他」を選んだ状態にする）。
+   // 呼び出し側で key={value} を付けてもらい、外部から値が変わったとき
+   // （読み込み完了・保存反映）はこのコンポーネントごと作り直して表示を合わせる
+@@ -91,7 +93,11 @@ function PickOrTypeRow({
+               {o}
+             </option>
+           ))}
+-          <option value={OTHER}>{otherLabel}</option>
++          {/* 候補に無い今の値（以前の書き方など）は、選び直すまでそのまま出す */}
++          {!allowOther && value && !options.includes(value) && (
++            <option value={value}>{value}（候補外・選び直してください）</option>
++          )}
++          {allowOther && <option value={OTHER}>{otherLabel}</option>}
+         </select>
+         {value && <CopyButton value={value} label={`${label}をコピー`} />}
+       </div>
+@@ -280,8 +286,9 @@ export function CertExamList({
+           <PickOrTypeRow
+             key={`name-${row.doc_key}-${row.name}`}
+             label="受験した試験名"
+-            value={row.name}
++            value={kind === "nihongo" ? nihongoExamNameOf(row.name) : row.name}
+             options={nameOptions}
++            allowOther={kind !== "nihongo"}
+             canEdit={canEdit}
+             busy={busy}
+             onSave={(v) => patchRow(row, "name", v)}
+diff --git a/src/lib/application-copy.test.ts b/src/lib/application-copy.test.ts
+index f493e2a..3bb8ec0 100644
+--- a/src/lib/application-copy.test.ts
++++ b/src/lib/application-copy.test.ts
+@@ -203,11 +203,11 @@ describe("申請書に貼る項目", () => {
+     expect(find("18 技能水準 (1)試験名")?.value).toBe("外国人食品産業技能評価機構");
+     expect(find("18 (2)受験地")?.value).toBe("日本国内");
+     expect(find("18 専門級の合格名（技能実習）")?.value).toBe("農業（耕種）専門級");
+-    expect(find("19 日本語能力 (1)試験名")?.value).toBe("日本語能力試験　JLPT");
++    expect(find("19.2 日本語能力 合格した試験名")?.value).toBe("日本語能力試験 Japanese language proficiency test");
+     expect(find("19 (2)受験地")?.value).toBe("ベトナム");
+     expect(find("19 レベル")).toMatchObject({ value: "N4", edit: { target: "worker", column: "cert_nihongo_level" } });
+     // 2件目以降は件数付きで出す。空の受験情報は出さない
+-    expect(find("19 (1)試験名（2件目）")?.value).toBe("国際交流基金日本語基礎テスト");
++    expect(find("19.2 合格した試験名（2件目）")?.value).toBe("国際交流基金日本語基礎テスト The japan foundation japanese basic test");
+     expect(find("18 (1)試験名（2件目）")).toBeUndefined();
+     expect(find("20 技能実習2号良好修了 (1)職種名")?.value).toBe("耕種農業");
+     expect(find("20 (2)作業名")?.value).toBe("施設園芸");
+diff --git a/src/lib/application-copy.ts b/src/lib/application-copy.ts
+index f458436..0f2bc85 100644
+--- a/src/lib/application-copy.ts
++++ b/src/lib/application-copy.ts
+@@ -14,6 +14,7 @@ import { RESUME_LANG_JA } from "@/lib/resume-tool/i18n";
+ import { resumeLangForNationality } from "@/lib/resume-tool/share";
+ import { contractPeriodEnd, contractYearsOf, formatYmdJa } from "@/lib/support-plan-dates";
+ import { JLPT_LEVELS, normalizeCertExams, type WorkerCertExam } from "@/lib/cert-exam";
++import { NIHONGO_EXAM_NAME_OPTIONS, nihongoExamNameOf } from "@/lib/cert-exam-options";
+ import { JISSHU_SHOKUSHU_LIST } from "@/lib/jisshu-shokushu";
+ import { businessCategoryOptions } from "@/lib/online-business-categories";
+ import { ONLINE_MAIN_OCCUPATIONS, suggestedMainOccupation } from "@/lib/online-main-occupations";
+@@ -476,7 +477,11 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
+     exams
+       .filter((e) => e.kind === kind && (e.name || e.location || e.level))
+       .flatMap((e, i) => [
+-        { label: `${numbering} (1)試験名（${i + 2}件目）`, value: e.name, note: "外国人詳細 ＞ 合格証の受験情報（2件目以降）" },
++        {
++          label: kind === "nihongo" ? `19.2 合格した試験名（${i + 2}件目）` : `${numbering} (1)試験名（${i + 2}件目）`,
++          value: kind === "nihongo" ? nihongoExamNameOf(e.name) : e.name,
++          note: "外国人詳細 ＞ 合格証の受験情報（2件目以降）",
++        },
+         { label: `${numbering} (2)受験地（${i + 2}件目）`, value: e.location },
+         ...(kind === "nihongo" ? [{ label: `${numbering} レベル（${i + 2}件目）`, value: e.level }] : []),
+       ]);
+@@ -519,10 +524,11 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
+       edit: wk("japanese_eval_kind", SKILL_EVAL_KINDS),
+     },
+     {
+-      label: "19 日本語能力 (1)試験名",
+-      value: w.cert_nihongo_name ?? "",
+-      note: "外国人詳細 ＞ 日本語の合格証の受験情報",
+-      edit: wk("cert_nihongo_name"),
++      label: "19.2 日本語能力 合格した試験名",
++      value: nihongoExamNameOf(w.cert_nihongo_name),
++      note: "オンライン申請 19.2 のプルダウンと同じ4つから選ぶ。外国人詳細 ＞ 日本語の合格証の受験情報と同じ値",
++      edit: wk("cert_nihongo_name", NIHONGO_EXAM_NAME_OPTIONS),
++      editValue: nihongoExamNameOf(w.cert_nihongo_name),
+     },
+     {
+       label: "19 (2)受験地",
+diff --git a/src/lib/cert-exam-options.test.ts b/src/lib/cert-exam-options.test.ts
+index 192cb57..72cf94e 100644
+--- a/src/lib/cert-exam-options.test.ts
++++ b/src/lib/cert-exam-options.test.ts
+@@ -3,6 +3,7 @@ import {
+   EXAM_LOCATION_JAPAN,
+   NIHONGO_EXAM_NAME_OPTIONS,
+   SENMONGAI_EXAM_NAME_OPTIONS,
++  nihongoExamNameOf,
+ } from "./cert-exam-options";
+ 
+ describe("cert-exam-options", () => {
+@@ -14,4 +15,19 @@ describe("cert-exam-options", () => {
+   it("受験地の「日本国内」は空でない", () => {
+     expect(EXAM_LOCATION_JAPAN).toBe("日本国内");
+   });
++
++  it("以前の書き方の日本語の試験名を 19.2 のプルダウンの書き方に読み替える", () => {
++    expect(nihongoExamNameOf("日本語能力試験　JLPT")).toBe("日本語能力試験 Japanese language proficiency test");
++    expect(nihongoExamNameOf("日本語能力試験　JEES")).toBe("日本語能力試験 Japanese language proficiency test");
++    expect(nihongoExamNameOf("公益財団法人　日本国際教育支援協会")).toBe("日本語能力試験 Japanese language proficiency test");
++    expect(nihongoExamNameOf("国際交流基金日本語基礎テスト")).toBe("国際交流基金日本語基礎テスト The japan foundation japanese basic test");
++    expect(nihongoExamNameOf("Nursing care Japanese language evaluation test (Vietnamese)")).toBe(
++      "介護日本語評価試験 Nursing care japanese language evaluation test",
++    );
++    expect(nihongoExamNameOf("受験してない")).toBe("試験免除 Test exemption");
++    expect(nihongoExamNameOf("技能実習の専門級の合格なので省略")).toBe("試験免除 Test exemption");
++    expect(nihongoExamNameOf("試験免除 Test exemption")).toBe("試験免除 Test exemption");
++    expect(nihongoExamNameOf("General crop farming (Vietnamese)")).toBe("General crop farming (Vietnamese)");
++    expect(nihongoExamNameOf("")).toBe("");
++  });
+ });
+diff --git a/src/lib/cert-exam-options.ts b/src/lib/cert-exam-options.ts
+index 1a6d41e..4794a10 100644
+--- a/src/lib/cert-exam-options.ts
++++ b/src/lib/cert-exam-options.ts
+@@ -1,19 +1,30 @@
+ // 日本語の合格証・専門外の合格証の「受験した試験名」「受験地」の候補。
+ // Notionの選択肢（外国人詳細）を移行したもの。候補に無い試験名・国名は自由入力できる。
+ 
++// 日本語の合格証の「受験した試験名」は、オンライン申請「19.2 日本語能力 合格した試験名」の
++// プルダウンと同じ4つから選ぶ（外国人詳細と申請書に貼る情報で同じ値を使う）
+ export const NIHONGO_EXAM_NAME_OPTIONS = [
+-  "日本語能力試験　JLPT",
+-  "日本語能力試験　JEES",
+-  "受験してない",
+-  "Nursing care skills evaluation test(Vietnamese)",
+-  "Nursing care Japanese language evaluation test (Vietnamese)",
+-  "General crop farming (Vietnamese)",
+-  "General livestock farming (Vietnamese)",
+-  "国際交流基金日本語基礎テスト",
+-  "公益財団法人　日本国際教育支援協会",
+-  "技能実習の専門級の合格なので省略",
++  "試験免除 Test exemption",
++  "国際交流基金日本語基礎テスト The japan foundation japanese basic test",
++  "日本語能力試験 Japanese language proficiency test",
++  "介護日本語評価試験 Nursing care japanese language evaluation test",
+ ] as const;
+ 
++// 以前の候補（Notion から移した書き方）で保存した試験名を、19.2 のプルダウンの書き方に読み替える。
++// 読み替えられない値（日本語以外の試験名など）はそのまま返す
++export function nihongoExamNameOf(raw: string | null | undefined): string {
++  const v = (raw ?? "").normalize("NFKC").trim();
++  if (!v) return "";
++  const hit = NIHONGO_EXAM_NAME_OPTIONS.find((o) => o.normalize("NFKC") === v);
++  if (hit) return hit;
++  const [exempt, jft, jlpt, kaigo] = NIHONGO_EXAM_NAME_OPTIONS;
++  if (/免除|受験してない|受験していない|省略|exemption/i.test(v)) return exempt;
++  if (/介護日本語|nursing care japanese/i.test(v)) return kaigo;
++  if (/国際交流基金|基礎テスト|JFT|japan foundation/i.test(v)) return jft;
++  if (/日本語能力試験|JLPT|JEES|日本国際教育支援協会|proficiency/i.test(v)) return jlpt;
++  return raw ?? "";
++}
++
+ export const SENMONGAI_EXAM_NAME_OPTIONS = [
+   "外国人食品産業技能評価機構",
+   "General crop farming (Indonesian)",
+diff --git a/src/lib/online-application.ts b/src/lib/online-application.ts
+index cb403d7..d479a5b 100644
+--- a/src/lib/online-application.ts
++++ b/src/lib/online-application.ts
+@@ -464,7 +464,7 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
+     item(
+       "19.1",
+       "日本語能力 評価区分",
+-      w.japanese_eval_kind || (val(groups, "19 日本語能力 (1)試験名") ? "特定技能評価試験" : ""),
++      w.japanese_eval_kind || (val(groups, "19.2 日本語能力 合格した試験名") ? "特定技能評価試験" : ""),
+       "choice",
+       w.japanese_eval_kind
+         ? "登録した区分（特定技能1号のとき）。これにより 19.2〜 の項目が変わる"
+@@ -472,7 +472,7 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
+       wk("japanese_eval_kind", SKILL_EVAL_KINDS),
+       w.japanese_eval_kind ?? "",
+     ),
+-    linked(groups, "19", "日本語能力 試験名", "19 日本語能力 (1)試験名", "text"),
++    linked(groups, "19.2", "日本語能力 合格した試験名", "19.2 日本語能力 合格した試験名", "choice", "プルダウンから選ぶ（外国人詳細 ＞ 日本語の合格証の受験情報と同じ）"),
+     linked(groups, "19", "日本語能力 受験地", "19 (2)受験地", "text"),
+     item("19", "日本語能力 レベル", val(groups, "19 レベル"), "choice", undefined, wk("cert_nihongo_level", JLPT_LEVELS)),
+     linked(groups, "20", "技能実習2号良好修了 職種名", "20 技能実習2号良好修了 (1)職種名", "text", "技能実習2号を良好に修了した人だけ"),
+@@ -1014,7 +1014,7 @@ function ninteiKubunV(
+     item(
+       "24.1",
+       "日本語能力 評価区分",
+-      w.japanese_eval_kind || (val(groups, "19 日本語能力 (1)試験名") ? "特定技能評価試験" : ""),
++      w.japanese_eval_kind || (val(groups, "19.2 日本語能力 合格した試験名") ? "特定技能評価試験" : ""),
+       "choice",
+       w.japanese_eval_kind
+         ? "登録した区分（特定技能1号で入国を希望するとき）。これにより 24.2〜24.8 の項目が変わる"
+@@ -1022,7 +1022,7 @@ function ninteiKubunV(
+       wk("japanese_eval_kind", SKILL_EVAL_KINDS),
+       w.japanese_eval_kind ?? "",
+     ),
+-    linked(groups, "24", "日本語能力 試験名", "19 日本語能力 (1)試験名", "text"),
++    linked(groups, "24", "日本語能力 試験名", "19.2 日本語能力 合格した試験名", "text"),
+     linked(groups, "24", "日本語能力 受験地", "19 (2)受験地", "text"),
+     item("24", "日本語能力 レベル", val(groups, "19 レベル"), "choice", undefined, wk("cert_nihongo_level", JLPT_LEVELS)),
+     linked(groups, "25", "良好に修了した技能実習2号 職種", "20 技能実習2号良好修了 (1)職種名", "text", "23・24 で「技能実習2号を良好に修了」を選んだ人だけ（例: 耕種農業）"),
+diff --git a/src/lib/release-notes.ts b/src/lib/release-notes.ts
+index c8c88f5..b22ec72 100644
+--- a/src/lib/release-notes.ts
++++ b/src/lib/release-notes.ts
+@@ -21,6 +21,16 @@ export interface ReleaseNote {
+ 
+ // 新しい順（先頭が最新）
+ export const RELEASE_NOTES: ReleaseNote[] = [
++  {
++    date: "2026-11-14",
++    title: "日本語の試験名を「19.2 日本語能力 合格した試験名」のプルダウンと同じ4つから選ぶようにしました",
++    where: "申請準備の詳細 ＞ 申請書に貼る情報／外国人詳細 ＞ 日本語の合格証の受験情報",
++    items: [
++      "申請書に貼る情報の「19 日本語能力 (1)試験名」を「19.2 日本語能力 合格した試験名」に変え、オンライン申請と同じ4つ（試験免除 Test exemption／国際交流基金日本語基礎テスト／日本語能力試験／介護日本語評価試験）から選べます。",
++      "外国人詳細の「日本語の合格証の受験情報」の「受験した試験名」も同じ4つから選びます。どちらで選んでも同じ値として保存され、もう一方にも反映されます。",
++      "以前の書き方（例: 日本語能力試験　JLPT、受験してない）で登録した人は、自動で4つのどれかに読み替えて表示・コピーします。読み替えられない値は「候補外・選び直してください」と出ます。",
++    ],
++  },
+   {
+     date: "2026-11-14",
+     title: "申請書に貼る項目に「9.3 日本における連絡先 電話番号」「13.2 希望する在留期間」「14 変更の理由」を追加しました",
+-- 
+2.43.0
+
+
+From a00418c02415a4da701f1be608d54e14dd83e9ad Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 14 Nov 2026 08:22:21 +0000
+Subject: [PATCH 3/7] =?UTF-8?q?=E6=8A=80=E8=83=BD=E8=A9=A6=E9=A8=93?=
+ =?UTF-8?q?=E3=81=AE=E8=A9=A6=E9=A8=93=E5=90=8D=E3=82=92=2018.2=20?=
+ =?UTF-8?q?=E5=90=88=E6=A0=BC=E3=81=97=E3=81=9F=E8=A9=A6=E9=A8=93=E5=90=8D?=
+ =?UTF-8?q?=EF=BC=88=E8=BE=B2=E6=A5=AD=E3=81=AF=E3=83=97=E3=83=AB=E3=83=80?=
+ =?UTF-8?q?=E3=82=A6=E3=83=B34=E6=8A=9E=EF=BC=89=E3=81=AB=E3=81=97?=
+ =?UTF-8?q?=E5=A4=96=E5=9B=BD=E4=BA=BA=E8=A9=B3=E7=B4=B0=E3=81=A8=E9=80=A3?=
+ =?UTF-8?q?=E5=8B=95=E3=80=82=E7=94=B3=E8=AB=8B=E6=9B=B8=E3=81=AB=E8=B2=BC?=
+ =?UTF-8?q?=E3=82=8B=E6=83=85=E5=A0=B1=E3=81=AE=2019=20=E3=83=AC=E3=83=99?=
+ =?UTF-8?q?=E3=83=AB=E3=82=92=E5=89=8A=E9=99=A4?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01FFzQoUe9prfUmLNuqizp8r
+---
+ src/components/workers/CertExamList.tsx |  4 ++--
+ src/lib/application-copy.test.ts        |  4 ++--
+ src/lib/application-copy.ts             | 19 +++++++--------
+ src/lib/cert-exam-options.test.ts       | 15 ++++++++++++
+ src/lib/cert-exam-options.ts            | 31 +++++++++++++++++++++----
+ src/lib/online-application.ts           | 12 +++++-----
+ src/lib/release-notes.ts                | 12 ++++++++++
+ 7 files changed, 72 insertions(+), 25 deletions(-)
+
+diff --git a/src/components/workers/CertExamList.tsx b/src/components/workers/CertExamList.tsx
+index 6a851b4..c1a863b 100644
+--- a/src/components/workers/CertExamList.tsx
++++ b/src/components/workers/CertExamList.tsx
+@@ -7,7 +7,7 @@ import { updateWorker } from "@/lib/supabase/queries/workers";
+ import { clearOnboardingDocFile } from "@/app/(app)/onboarding/actions";
+ import { CopyButton } from "@/components/ui/CopyButton";
+ import { WorkerCertDocRows } from "@/components/workers/WorkerCertDocRows";
+-import { EXAM_LOCATION_JAPAN, nihongoExamNameOf } from "@/lib/cert-exam-options";
++import { EXAM_LOCATION_JAPAN, nihongoExamNameOf, skillExamNameOf } from "@/lib/cert-exam-options";
+ import {
+   CERT_KIND_LABEL,
+   JLPT_LEVELS,
+@@ -286,7 +286,7 @@ export function CertExamList({
+           <PickOrTypeRow
+             key={`name-${row.doc_key}-${row.name}`}
+             label="受験した試験名"
+-            value={kind === "nihongo" ? nihongoExamNameOf(row.name) : row.name}
++            value={kind === "nihongo" ? nihongoExamNameOf(row.name) : skillExamNameOf(row.name)}
+             options={nameOptions}
+             allowOther={kind !== "nihongo"}
+             canEdit={canEdit}
+diff --git a/src/lib/application-copy.test.ts b/src/lib/application-copy.test.ts
+index 3bb8ec0..36ca92b 100644
+--- a/src/lib/application-copy.test.ts
++++ b/src/lib/application-copy.test.ts
+@@ -200,12 +200,12 @@ describe("申請書に貼る項目", () => {
+     });
+     const g = groups.find((x) => x.title.startsWith("申請人等作成用 2"))!;
+     const find = (label: string) => g.items.find((i) => i.label === label);
+-    expect(find("18 技能水準 (1)試験名")?.value).toBe("外国人食品産業技能評価機構");
++    expect(find("18.2 技能水準 合格した試験名")?.value).toBe("外国人食品産業技能評価機構");
+     expect(find("18 (2)受験地")?.value).toBe("日本国内");
+     expect(find("18 専門級の合格名（技能実習）")?.value).toBe("農業（耕種）専門級");
+     expect(find("19.2 日本語能力 合格した試験名")?.value).toBe("日本語能力試験 Japanese language proficiency test");
+     expect(find("19 (2)受験地")?.value).toBe("ベトナム");
+-    expect(find("19 レベル")).toMatchObject({ value: "N4", edit: { target: "worker", column: "cert_nihongo_level" } });
++    expect(find("19 レベル")).toBeUndefined(); // レベルの欄は申請書に貼る情報には出さない
+     // 2件目以降は件数付きで出す。空の受験情報は出さない
+     expect(find("19.2 合格した試験名（2件目）")?.value).toBe("国際交流基金日本語基礎テスト The japan foundation japanese basic test");
+     expect(find("18 (1)試験名（2件目）")).toBeUndefined();
+diff --git a/src/lib/application-copy.ts b/src/lib/application-copy.ts
+index 0f2bc85..a1dff02 100644
+--- a/src/lib/application-copy.ts
++++ b/src/lib/application-copy.ts
+@@ -13,8 +13,8 @@ import { CUSTODIAN_INFO, type CustodianInfo, type SupportOrgInterpreter } from "
+ import { RESUME_LANG_JA } from "@/lib/resume-tool/i18n";
+ import { resumeLangForNationality } from "@/lib/resume-tool/share";
+ import { contractPeriodEnd, contractYearsOf, formatYmdJa } from "@/lib/support-plan-dates";
+-import { JLPT_LEVELS, normalizeCertExams, type WorkerCertExam } from "@/lib/cert-exam";
+-import { NIHONGO_EXAM_NAME_OPTIONS, nihongoExamNameOf } from "@/lib/cert-exam-options";
++import { normalizeCertExams, type WorkerCertExam } from "@/lib/cert-exam";
++import { NIHONGO_EXAM_NAME_OPTIONS, SENMONGAI_EXAM_NAME_OPTIONS, nihongoExamNameOf, skillExamNameOf } from "@/lib/cert-exam-options";
+ import { JISSHU_SHOKUSHU_LIST } from "@/lib/jisshu-shokushu";
+ import { businessCategoryOptions } from "@/lib/online-business-categories";
+ import { ONLINE_MAIN_OCCUPATIONS, suggestedMainOccupation } from "@/lib/online-main-occupations";
+@@ -478,12 +478,11 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
+       .filter((e) => e.kind === kind && (e.name || e.location || e.level))
+       .flatMap((e, i) => [
+         {
+-          label: kind === "nihongo" ? `19.2 合格した試験名（${i + 2}件目）` : `${numbering} (1)試験名（${i + 2}件目）`,
+-          value: kind === "nihongo" ? nihongoExamNameOf(e.name) : e.name,
++          label: kind === "nihongo" ? `19.2 合格した試験名（${i + 2}件目）` : `18.2 合格した試験名（${i + 2}件目）`,
++          value: kind === "nihongo" ? nihongoExamNameOf(e.name) : skillExamNameOf(e.name),
+           note: "外国人詳細 ＞ 合格証の受験情報（2件目以降）",
+         },
+         { label: `${numbering} (2)受験地（${i + 2}件目）`, value: e.location },
+-        ...(kind === "nihongo" ? [{ label: `${numbering} レベル（${i + 2}件目）`, value: e.level }] : []),
+       ]);
+ 
+   const applicant2: CopyItem[] = [
+@@ -498,10 +497,11 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
+       edit: wk("skill_eval_kind", SKILL_EVAL_KINDS),
+     },
+     {
+-      label: "18 技能水準 (1)試験名",
+-      value: w.cert_senmongai_name ?? "",
+-      note: "外国人詳細 ＞ 専門外の合格証の受験情報（技能試験）。技能実習の専門級で代える人は下の専門級を使う",
+-      edit: wk("cert_senmongai_name"),
++      label: "18.2 技能水準 合格した試験名",
++      value: skillExamNameOf(w.cert_senmongai_name),
++      note: "外国人詳細 ＞ 専門外の合格証の受験情報（技能試験）と同じ値。農業はオンライン申請 18.2 のプルダウンと同じ4つから選ぶ。技能実習の専門級で代える人は下の専門級を使う",
++      edit: wk("cert_senmongai_name", SENMONGAI_EXAM_NAME_OPTIONS),
++      editValue: skillExamNameOf(w.cert_senmongai_name),
+     },
+     {
+       label: "18 (2)受験地",
+@@ -536,7 +536,6 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
+       note: "日本国内、または海外の国名",
+       edit: wk("cert_nihongo_location"),
+     },
+-    { label: "19 レベル", value: w.cert_nihongo_level ?? "", edit: wk("cert_nihongo_level", JLPT_LEVELS) },
+     ...moreExams("nihongo", "19"),
+     // 20 良好に修了した技能実習2号（該当者のみ）
+     {
+diff --git a/src/lib/cert-exam-options.test.ts b/src/lib/cert-exam-options.test.ts
+index 72cf94e..249daa4 100644
+--- a/src/lib/cert-exam-options.test.ts
++++ b/src/lib/cert-exam-options.test.ts
+@@ -4,6 +4,7 @@ import {
+   NIHONGO_EXAM_NAME_OPTIONS,
+   SENMONGAI_EXAM_NAME_OPTIONS,
+   nihongoExamNameOf,
++  skillExamNameOf,
+ } from "./cert-exam-options";
+ 
+ describe("cert-exam-options", () => {
+@@ -30,4 +31,18 @@ describe("cert-exam-options", () => {
+     expect(nihongoExamNameOf("General crop farming (Vietnamese)")).toBe("General crop farming (Vietnamese)");
+     expect(nihongoExamNameOf("")).toBe("");
+   });
++
++  it("以前の書き方の農業の試験名を 18.2 のプルダウンの書き方に読み替える", () => {
++    expect(skillExamNameOf("General crop farming (Indonesian)")).toBe(
++      "1号農業技能測定試験（耕種農業全般）Agriculture specified skills(i) proficiency test (cultivation agriculture)",
++    );
++    expect(skillExamNameOf("General livestock farming (Khumer)")).toBe(
++      "1号農業技能測定試験（畜産農業全般）Agriculture specified skills(i) proficiency test (livestock agriculture)",
++    );
++    expect(skillExamNameOf("2号 耕種農業")).toBe(
++      "2号農業技能測定試験（耕種農業全般）Agriculture specified skills(ii) proficiency test (cultivation agriculture)",
++    );
++    expect(skillExamNameOf("外国人食品産業技能評価機構")).toBe("外国人食品産業技能評価機構");
++    expect(skillExamNameOf("")).toBe("");
++  });
+ });
+diff --git a/src/lib/cert-exam-options.ts b/src/lib/cert-exam-options.ts
+index 4794a10..e32e2f8 100644
+--- a/src/lib/cert-exam-options.ts
++++ b/src/lib/cert-exam-options.ts
+@@ -25,16 +25,37 @@ export function nihongoExamNameOf(raw: string | null | undefined): string {
+   return raw ?? "";
+ }
+ 
++// 専門外の合格証（技能試験）の「受験した試験名」。
++// 農業はオンライン申請「18.2 技能水準 合格した試験名」のプルダウンと同じ4つ。
++// そのほかの分野の試験名は従来どおり（候補に無ければ自由入力）
++export const AGRI_SKILL_EXAM_OPTIONS = [
++  "1号農業技能測定試験（耕種農業全般）Agriculture specified skills(i) proficiency test (cultivation agriculture)",
++  "2号農業技能測定試験（耕種農業全般）Agriculture specified skills(ii) proficiency test (cultivation agriculture)",
++  "1号農業技能測定試験（畜産農業全般）Agriculture specified skills(i) proficiency test (livestock agriculture)",
++  "2号農業技能測定試験（畜産農業全般）Agriculture specified skills(ii) proficiency test (livestock agriculture)",
++] as const;
++
+ export const SENMONGAI_EXAM_NAME_OPTIONS = [
++  ...AGRI_SKILL_EXAM_OPTIONS,
+   "外国人食品産業技能評価機構",
+-  "General crop farming (Indonesian)",
+-  "General livestock farming (Khumer)",
+-  "General crop farming (Khmer)",
+   "Nursing care skills evaluation test(Vietnamese)",
+   "Nursing care Japanese language evaluation test (Vietnamese)",
+-  "General livestock farming (Vietnamese)",
+-  "General crop farming (Vietnamese)",
+ ] as const;
+ 
++// 以前の書き方（General crop farming (Indonesian) など）で保存した農業の試験名を、
++// 18.2 のプルダウンの書き方に読み替える。2号と分かる書き方でなければ1号にする。読み替えられない値はそのまま
++export function skillExamNameOf(raw: string | null | undefined): string {
++  const v = (raw ?? "").normalize("NFKC").trim();
++  if (!v) return "";
++  const hit = AGRI_SKILL_EXAM_OPTIONS.find((o) => o.normalize("NFKC") === v);
++  if (hit) return hit;
++  const crop = /crop|cultivation|耕種/i.test(v);
++  const livestock = /livestock|畜産/i.test(v);
++  if (!crop && !livestock) return raw ?? "";
++  const second = /2号|\(ii\)|skills ?ii\b/i.test(v);
++  const [c1, c2, l1, l2] = AGRI_SKILL_EXAM_OPTIONS;
++  return crop ? (second ? c2 : c1) : second ? l2 : l1;
++}
++
+ // 受験地: 日本国内 / それ以外（海外の国名を自由入力）
+ export const EXAM_LOCATION_JAPAN = "日本国内";
+diff --git a/src/lib/online-application.ts b/src/lib/online-application.ts
+index d479a5b..0d0434d 100644
+--- a/src/lib/online-application.ts
++++ b/src/lib/online-application.ts
+@@ -452,13 +452,13 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
+       "18.1",
+       "技能水準 評価区分",
+       w.skill_eval_kind ||
+-        (val(groups, "18 技能水準 (1)試験名") ? "特定技能評価試験" : val(groups, "18 専門級の合格名（技能実習）") ? "技能実習２号を良好に修了" : ""),
++        (val(groups, "18.2 技能水準 合格した試験名") ? "特定技能評価試験" : val(groups, "18 専門級の合格名（技能実習）") ? "技能実習２号を良好に修了" : ""),
+       "choice",
+       w.skill_eval_kind ? "登録した区分。これにより 18.2〜18.8 の項目が変わる" : "未登録なので合格証・専門級から推定。鉛筆マークから選んで保存できる",
+       wk("skill_eval_kind", SKILL_EVAL_KINDS),
+       w.skill_eval_kind ?? "",
+     ),
+-    linked(groups, "18", "技能水準 試験名", "18 技能水準 (1)試験名", "text"),
++    linked(groups, "18.2", "技能水準 合格した試験名", "18.2 技能水準 合格した試験名", "choice", "プルダウンから選ぶ（外国人詳細 ＞ 専門外の合格証の受験情報と同じ）"),
+     linked(groups, "18", "技能水準 受験地", "18 (2)受験地", "text"),
+     // 19.1 評価区分: 登録した区分。無ければ日本語の合格証から推定
+     item(
+@@ -474,7 +474,7 @@ export function buildOnlineApplication(input: ApplicationCopyInput, groups: Copy
+     ),
+     linked(groups, "19.2", "日本語能力 合格した試験名", "19.2 日本語能力 合格した試験名", "choice", "プルダウンから選ぶ（外国人詳細 ＞ 日本語の合格証の受験情報と同じ）"),
+     linked(groups, "19", "日本語能力 受験地", "19 (2)受験地", "text"),
+-    item("19", "日本語能力 レベル", val(groups, "19 レベル"), "choice", undefined, wk("cert_nihongo_level", JLPT_LEVELS)),
++    item("19", "日本語能力 レベル", w.cert_nihongo_level ?? "", "choice", undefined, wk("cert_nihongo_level", JLPT_LEVELS)),
+     linked(groups, "20", "技能実習2号良好修了 職種名", "20 技能実習2号良好修了 (1)職種名", "text", "技能実習2号を良好に修了した人だけ"),
+     linked(groups, "20", "技能実習2号良好修了 作業名", "20 (2)作業名", "text"),
+     linked(groups, "20", "技能実習2号良好修了 証明方法", "20 (3)良好修了の証明方法", "choice"),
+@@ -1003,13 +1003,13 @@ function ninteiKubunV(
+       "23.1",
+       "技能水準 評価区分",
+       w.skill_eval_kind ||
+-        (val(groups, "18 技能水準 (1)試験名") ? "特定技能評価試験" : val(groups, "18 専門級の合格名（技能実習）") ? "技能実習２号を良好に修了" : ""),
++        (val(groups, "18.2 技能水準 合格した試験名") ? "特定技能評価試験" : val(groups, "18 専門級の合格名（技能実習）") ? "技能実習２号を良好に修了" : ""),
+       "choice",
+       w.skill_eval_kind ? "登録した区分。これにより 23.2〜23.8 の項目が変わる" : "未登録なので合格証・専門級から推定。鉛筆マークから選んで保存できる",
+       wk("skill_eval_kind", SKILL_EVAL_KINDS),
+       w.skill_eval_kind ?? "",
+     ),
+-    linked(groups, "23", "技能水準 試験名", "18 技能水準 (1)試験名", "text"),
++    linked(groups, "23", "技能水準 試験名", "18.2 技能水準 合格した試験名", "text"),
+     linked(groups, "23", "技能水準 受験地", "18 (2)受験地", "text"),
+     item(
+       "24.1",
+@@ -1024,7 +1024,7 @@ function ninteiKubunV(
+     ),
+     linked(groups, "24", "日本語能力 試験名", "19.2 日本語能力 合格した試験名", "text"),
+     linked(groups, "24", "日本語能力 受験地", "19 (2)受験地", "text"),
+-    item("24", "日本語能力 レベル", val(groups, "19 レベル"), "choice", undefined, wk("cert_nihongo_level", JLPT_LEVELS)),
++    item("24", "日本語能力 レベル", w.cert_nihongo_level ?? "", "choice", undefined, wk("cert_nihongo_level", JLPT_LEVELS)),
+     linked(groups, "25", "良好に修了した技能実習2号 職種", "20 技能実習2号良好修了 (1)職種名", "text", "23・24 で「技能実習2号を良好に修了」を選んだ人だけ（例: 耕種農業）"),
+     linked(groups, "25", "良好に修了した技能実習2号 作業", "20 (2)作業名", "text", "例: 施設園芸"),
+     linked(groups, "25", "良好に修了したことの証明", "20 (3)良好修了の証明方法", "choice", "3級の技能検定（技能実習評価試験の実技試験）に合格していればそれを選ぶ"),
+diff --git a/src/lib/release-notes.ts b/src/lib/release-notes.ts
+index b22ec72..9ca0106 100644
+--- a/src/lib/release-notes.ts
++++ b/src/lib/release-notes.ts
+@@ -21,12 +21,24 @@ export interface ReleaseNote {
+ 
+ // 新しい順（先頭が最新）
+ export const RELEASE_NOTES: ReleaseNote[] = [
++  {
++    date: "2026-11-14",
++    title: "技能試験の試験名を「18.2 技能水準 合格した試験名」のプルダウンと同じ書き方で選ぶようにしました",
++    where: "申請準備の詳細 ＞ 申請書に貼る情報／外国人詳細 ＞ 専門外の合格証の受験情報",
++    items: [
++      "申請書に貼る情報の「18 技能水準 (1)試験名」を「18.2 技能水準 合格した試験名」に変えました。",
++      "農業は、オンライン申請と同じ4つ（1号・2号の農業技能測定試験 耕種農業全般／畜産農業全般）から選べます。外国人詳細の「専門外の合格証の受験情報」の「受験した試験名」も同じ候補で、どちらで選んでも同じ値になります。",
++      "以前の書き方（例: General crop farming (Indonesian)）で登録した人は「1号農業技能測定試験（耕種農業全般）…」に読み替えて表示・コピーします。2号の人は選び直してください。",
++      "農業以外の試験名（外国人食品産業技能評価機構など）は、これまでどおり選ぶか入力できます。",
++    ],
++  },
+   {
+     date: "2026-11-14",
+     title: "日本語の試験名を「19.2 日本語能力 合格した試験名」のプルダウンと同じ4つから選ぶようにしました",
+     where: "申請準備の詳細 ＞ 申請書に貼る情報／外国人詳細 ＞ 日本語の合格証の受験情報",
+     items: [
+       "申請書に貼る情報の「19 日本語能力 (1)試験名」を「19.2 日本語能力 合格した試験名」に変え、オンライン申請と同じ4つ（試験免除 Test exemption／国際交流基金日本語基礎テスト／日本語能力試験／介護日本語評価試験）から選べます。",
++      "申請書に貼る情報の「19 レベル」は消しました（レベルは外国人詳細の受験情報で引き続き登録できます）。",
+       "外国人詳細の「日本語の合格証の受験情報」の「受験した試験名」も同じ4つから選びます。どちらで選んでも同じ値として保存され、もう一方にも反映されます。",
+       "以前の書き方（例: 日本語能力試験　JLPT、受験してない）で登録した人は、自動で4つのどれかに読み替えて表示・コピーします。読み替えられない値は「候補外・選び直してください」と出ます。",
+     ],
+-- 
+2.43.0
+
+
+From 6da3887192eb9a1117083d9a49af4a9efe8b290e Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 14 Nov 2026 08:23:13 +0000
+Subject: [PATCH 4/7] =?UTF-8?q?=E7=94=B3=E8=AB=8B=E6=9B=B8=E3=81=AB?=
+ =?UTF-8?q?=E8=B2=BC=E3=82=8B=E9=A0=85=E7=9B=AE:=2022.1=20=E4=BF=9D?=
+ =?UTF-8?q?=E8=A8=BC=E9=87=91=E3=83=BB=E9=81=95=E7=B4=84=E9=87=91=E7=AD=89?=
+ =?UTF-8?q?=E3=81=AE=E6=94=AF=E6=89=95=E5=A5=91=E7=B4=84=E3=81=AE=E6=9C=89?=
+ =?UTF-8?q?=E7=84=A1=EF=BC=88=E5=BF=85=E3=81=9A=E7=84=A1=EF=BC=89=E3=82=92?=
+ =?UTF-8?q?=E8=BF=BD=E5=8A=A0?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01FFzQoUe9prfUmLNuqizp8r
+---
+ src/lib/application-copy.test.ts | 1 +
+ src/lib/application-copy.ts      | 6 ++++++
+ src/lib/release-notes.ts         | 3 ++-
+ 3 files changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/src/lib/application-copy.test.ts b/src/lib/application-copy.test.ts
+index 36ca92b..11543c7 100644
+--- a/src/lib/application-copy.test.ts
++++ b/src/lib/application-copy.test.ts
+@@ -205,6 +205,7 @@ describe("申請書に貼る項目", () => {
+     expect(find("18 専門級の合格名（技能実習）")?.value).toBe("農業（耕種）専門級");
+     expect(find("19.2 日本語能力 合格した試験名")?.value).toBe("日本語能力試験 Japanese language proficiency test");
+     expect(find("19 (2)受験地")?.value).toBe("ベトナム");
++    expect(find("22.1 特定技能雇用契約に係る保証金の徴収その他財産管理又は違約金等の支払契約の有無")?.value).toBe("無");
+     expect(find("19 レベル")).toBeUndefined(); // レベルの欄は申請書に貼る情報には出さない
+     // 2件目以降は件数付きで出す。空の受験情報は出さない
+     expect(find("19.2 合格した試験名（2件目）")?.value).toBe("国際交流基金日本語基礎テスト The japan foundation japanese basic test");
+diff --git a/src/lib/application-copy.ts b/src/lib/application-copy.ts
+index a1dff02..3776473 100644
+--- a/src/lib/application-copy.ts
++++ b/src/lib/application-copy.ts
+@@ -560,6 +560,12 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
+         ? "職歴の特定技能1号（通算対象）の期間を、書類作成日まで、1日でも在留した月を1か月として数えています（外国人詳細の「申請書類用の通算」と同じ）。書類作成日が変わったら「支援計画書の日付計算」で直してください"
+         : "職歴の特定技能1号（通算対象）の期間を、今日まで、1日でも在留した月を1か月として数えています（外国人詳細の「申請書類用の通算」と同じ）。書類作成日の時点で数えるには「支援計画書の日付計算」で書類作成日を入れてください",
+     },
++    // 22.1 保証金・違約金等の契約は結ばせてはいけないので、必ず「無」（オンライン申請と同じ）
++    {
++      label: "22.1 特定技能雇用契約に係る保証金の徴収その他財産管理又は違約金等の支払契約の有無",
++      value: "無",
++      note: "必ず「無」を記載する",
++    },
+   ];
+ 
+   const careers: CopyItem[] = [...histories]
+diff --git a/src/lib/release-notes.ts b/src/lib/release-notes.ts
+index 9ca0106..1eb80d3 100644
+--- a/src/lib/release-notes.ts
++++ b/src/lib/release-notes.ts
+@@ -45,13 +45,14 @@ export const RELEASE_NOTES: ReleaseNote[] = [
+   },
+   {
+     date: "2026-11-14",
+-    title: "申請書に貼る項目に「9.3 日本における連絡先 電話番号」「13.2 希望する在留期間」「14 変更の理由」を追加しました",
++    title: "申請書に貼る項目に「9.3 日本における連絡先 電話番号」「13.2 希望する在留期間」「14 変更の理由」「22.1 保証金・違約金等の支払契約の有無」を追加しました",
+     where: "申請準備の詳細 ＞ 申請書に貼る情報 ＞ 申請人等作成用1",
+     items: [
+       "「9 住居地」の下に「9.3 日本における連絡先 電話番号」を出し、登録支援機関の電話番号「05088904000」（ハイフン無し）をコピーできます。",
+       "「13.2 希望する在留期間」は雇用条件書の雇用契約期間を転記します（申請準備で3年を選んだら「3年」）。特定活動への変更は「6月」です。",
+       "「13 希望する在留資格」の下に「14 変更の理由」を出し、「1号特定技能外国人として就労するため」をコピーできます。",
+       "在留資格変更の申請書の欄なので、認定・更新の申請準備では出しません。",
++      "「21 通算在留期間」の下に「22.1 特定技能雇用契約に係る保証金の徴収その他財産管理又は違約金等の支払契約の有無」を出し、必ず「無」をコピーできます。",
+     ],
+   },
+   {
+-- 
+2.43.0
+
+
+From 8b1430321c0c84e06074701986c3b70a7458bb20 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 14 Nov 2026 08:25:52 +0000
+Subject: [PATCH 5/7] =?UTF-8?q?=E7=94=B3=E8=AB=8B=E6=9B=B8=E3=81=AB?=
+ =?UTF-8?q?=E8=B2=BC=E3=82=8B=E9=A0=85=E7=9B=AE:=2023.1=E3=80=9C27=20?=
+ =?UTF-8?q?=E3=81=AE=E6=9C=89=E7=84=A1=E3=82=92=E8=BF=BD=E5=8A=A0=EF=BC=88?=
+ =?UTF-8?q?=E8=BE=B2=E6=A5=AD=E3=81=AF25=E3=81=A0=E3=81=91=E6=9C=89?=
+ =?UTF-8?q?=E3=80=82=E3=82=AA=E3=83=B3=E3=83=A9=E3=82=A4=E3=83=B3=E7=94=B3?=
+ =?UTF-8?q?=E8=AB=8B=E3=81=A8=E5=90=8C=E3=81=98=E5=88=A4=E5=AE=9A=E3=82=92?=
+ =?UTF-8?q?=E5=85=B1=E6=9C=89=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01FFzQoUe9prfUmLNuqizp8r
+---
+ src/lib/application-copy.test.ts |  9 ++++-
+ src/lib/application-copy.ts      | 59 ++++++++++++++++++++++++++++++++
+ src/lib/online-application.ts    | 31 ++---------------
+ src/lib/release-notes.ts         |  1 +
+ 4 files changed, 70 insertions(+), 30 deletions(-)
+
+diff --git a/src/lib/application-copy.test.ts b/src/lib/application-copy.test.ts
+index 11543c7..a1ca678 100644
+--- a/src/lib/application-copy.test.ts
++++ b/src/lib/application-copy.test.ts
+@@ -206,7 +206,14 @@ describe("申請書に貼る項目", () => {
+     expect(find("19.2 日本語能力 合格した試験名")?.value).toBe("日本語能力試験 Japanese language proficiency test");
+     expect(find("19 (2)受験地")?.value).toBe("ベトナム");
+     expect(find("22.1 特定技能雇用契約に係る保証金の徴収その他財産管理又は違約金等の支払契約の有無")?.value).toBe("無");
+-    expect(find("19 レベル")).toBeUndefined(); // レベルの欄は申請書に貼る情報には出さない
++    expect(find("19 レベル")).toBeUndefined();
++    // 23〜27（農業の所属機関）: 25 だけ「有」、ほかはどちらも選ばない
++    const yn = (prefix: string) => g.items.find((i) => i.label.startsWith(prefix))?.value;
++    expect(yn("23.1 ")).toBe("有無どちらも選択しない");
++    expect(yn("24 ")).toBe("有無どちらも選択しない");
++    expect(yn("25 ")).toBe("有");
++    expect(yn("26 ")).toBe("有無どちらも選択しない");
++    expect(yn("27 ")).toBe("有無どちらも選択しない"); // レベルの欄は申請書に貼る情報には出さない
+     // 2件目以降は件数付きで出す。空の受験情報は出さない
+     expect(find("19.2 合格した試験名（2件目）")?.value).toBe("国際交流基金日本語基礎テスト The japan foundation japanese basic test");
+     expect(find("18 (1)試験名（2件目）")).toBeUndefined();
+diff --git a/src/lib/application-copy.ts b/src/lib/application-copy.ts
+index 3776473..9d1f1aa 100644
+--- a/src/lib/application-copy.ts
++++ b/src/lib/application-copy.ts
+@@ -183,6 +183,36 @@ export interface ApplicationCopyInput {
+   today?: string;
+ }
+ 
++// 画面で「有」「無」のどちらも選ばない項目に出す言い方
++export const NEITHER = "有無どちらも選択しない";
++
++// 27 分野に特有の基準（告示基準）が定められている分野
++export const FIELD_SPECIFIC_INDUSTRIES = [
++  "介護",
++  "ビルクリーニング",
++  "工業製品製造業",
++  "建設",
++  "造船・舶用工業",
++  "自動車整備",
++  "航空",
++  "宿泊",
++  "自動車運送業",
++  "飲食料品製造業",
++  "外食業",
++  "林業",
++  "木材産業",
++] as const;
++
++// 27 特定産業分野に特有の基準に適合していることの有無
++export function fieldSpecificChoice(industry: string | null | undefined): string {
++  return (FIELD_SPECIFIC_INDUSTRIES as readonly string[]).includes(industryFieldName(industry)) ? "有" : NEITHER;
++}
++
++// 26 技能実習で修得した技能等の本国への移転: 特定技能2号を希望するときだけ「有」
++export function transferChoice(desiredStatus: string | undefined): string {
++  return (desiredStatus ?? "").normalize("NFKC").includes("2号") ? "有" : NEITHER;
++}
++
+ // 14 変更の理由（特定技能1号への在留資格変更）
+ export const CHANGE_REASON_SSW1 = "1号特定技能外国人として就労するため";
+ 
+@@ -566,6 +596,35 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
+       value: "無",
+       note: "必ず「無」を記載する",
+     },
++    // 23〜27 は運用で決めている選び方（オンライン申請の順と同じ）。
++    // 農業（所属機関の業種が農林業）は 23・24・26・27 はどちらも選ばず、25 だけ「有」
++    {
++      label: "23.1 取次ぎ又は活動準備に関する外国の機関への費用支払について、合意していることの有無",
++      value: NEITHER,
++      note: "有・無のどちらも選ばない（費用の支払があるときだけ「有」にして 23.2・23.3 を入れる）",
++    },
++    { label: "23.2 外国の機関名", value: "", note: "23.1 で「有」を選んだときだけ。60文字以内" },
++    { label: "23.3 支払額", value: "", note: "23.1 で「有」を選んだときだけ。日本円に換算（例: 約〇〇円）。40文字以内" },
++    {
++      label: "24 国籍国等において定められる本邦で行う活動に関連して遵守すべき手続を経ていることの有無",
++      value: NEITHER,
++      note: "有・無のどちらも選ばない",
++    },
++    {
++      label: "25 本邦において定期的に負担する費用について、対価の内容を十分に理解して合意していることの有無",
++      value: "有",
++      note: "必ず「有」",
++    },
++    {
++      label: "26 技能実習によって本邦において修得、習熟又は熟達した技能等の本国への移転に努めることの有無",
++      value: transferChoice(input.desiredStatus),
++      note: "特定技能2号を希望するときだけ「有」。それ以外はどちらも選ばない",
++    },
++    {
++      label: "27 申請人につき特定産業分野に特有の事情に鑑みて告示で定められる基準に適合していることの有無",
++      value: fieldSpecificChoice(org?.industry || industryFieldName(w.field)),
++      note: "農業はどちらも選ばない。介護・ビルクリーニング・工業製品製造業・建設・造船・舶用工業・自動車整備・航空・宿泊・自動車運送業・飲食料品製造業・外食業・林業・木材産業は「有」",
++    },
+   ];
+ 
+   const careers: CopyItem[] = [...histories]
+diff --git a/src/lib/online-application.ts b/src/lib/online-application.ts
+index 0d0434d..1e40136 100644
+--- a/src/lib/online-application.ts
++++ b/src/lib/online-application.ts
+@@ -1,5 +1,6 @@
+ import type { ApplicationCopyInput, CopyEdit, CopyGroup, CopyItem } from "@/lib/application-copy";
+ import { isKunisakiSeika } from "@/lib/stamp-fee";
++import { NEITHER, fieldSpecificChoice, transferChoice } from "@/lib/application-copy";
+ import { cu, industryFieldName, it, og, ONLINE_INDUSTRY_FIELDS, SKILL_EVAL_KINDS, wk, wkDate, YES_NO, ymdCompact } from "@/lib/application-copy";
+ import { JLPT_LEVELS } from "@/lib/cert-exam";
+ import { ONLINE_MAIN_OCCUPATIONS } from "@/lib/online-main-occupations";
+@@ -295,25 +296,7 @@ export const TOKKATSU_PURPOSE =
+ // 2.7・2.8 所定労働時間の注意書き（画面は小数点を受け付けない）
+ export const HOURS_NOTE = "半角数字4文字以内。小数点以下は入力できないので切り捨てています（40.5 → 40）";
+ 
+-// 画面で「有」「無」のどちらも選ばない項目に出す言い方
+-export const NEITHER = "有無どちらも選択しない";
+-
+-// 27 分野に特有の基準（告示基準）が定められている分野
+-export const FIELD_SPECIFIC_INDUSTRIES = [
+-  "介護",
+-  "ビルクリーニング",
+-  "工業製品製造業",
+-  "建設",
+-  "造船・舶用工業",
+-  "自動車整備",
+-  "航空",
+-  "宿泊",
+-  "自動車運送業",
+-  "飲食料品製造業",
+-  "外食業",
+-  "林業",
+-  "木材産業",
+-] as const;
++export { NEITHER, FIELD_SPECIFIC_INDUSTRIES, fieldSpecificChoice, transferChoice } from "@/lib/application-copy";
+ 
+ // 2.3 特定産業分野01: 「農業」→「農業分野」（プルダウンの表記）。分野が分からなければ ""
+ export function industryFieldChoice(industry: string | null | undefined): string {
+@@ -329,16 +312,6 @@ export function employmentStandardChoice(industry: string | null | undefined): s
+   return (EMPLOYMENT_STANDARD_INDUSTRIES as readonly string[]).includes(industryFieldName(industry)) ? "有" : NEITHER;
+ }
+ 
+-// 27 特定産業分野に特有の基準に適合していることの有無
+-export function fieldSpecificChoice(industry: string | null | undefined): string {
+-  return (FIELD_SPECIFIC_INDUSTRIES as readonly string[]).includes(industryFieldName(industry)) ? "有" : NEITHER;
+-}
+-
+-// 26 技能実習で修得した技能等の本国への移転: 特定技能2号を希望するときだけ「有」
+-export function transferChoice(desiredStatus: string | undefined): string {
+-  return (desiredStatus ?? "").normalize("NFKC").includes("2号") ? "有" : NEITHER;
+-}
+-
+ // 7 職業: 職歴のいちばん新しい行の「職種・仕事内容」。無ければ外国人の分野・職種
+ export function occupationOf(careers: { role?: string }[], field: string): string {
+   const last = careers[careers.length - 1];
+diff --git a/src/lib/release-notes.ts b/src/lib/release-notes.ts
+index 1eb80d3..193fbd4 100644
+--- a/src/lib/release-notes.ts
++++ b/src/lib/release-notes.ts
+@@ -52,6 +52,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
+       "「13.2 希望する在留期間」は雇用条件書の雇用契約期間を転記します（申請準備で3年を選んだら「3年」）。特定活動への変更は「6月」です。",
+       "「13 希望する在留資格」の下に「14 変更の理由」を出し、「1号特定技能外国人として就労するため」をコピーできます。",
+       "在留資格変更の申請書の欄なので、認定・更新の申請準備では出しません。",
++      "「23.1 外国の機関への費用支払の合意」「24 国籍国等の手続」「25 定期的に負担する費用の合意」「26 技能の本国への移転」「27 分野に特有の基準」も追加しました。エクセルの申請書と同じく、農業は 25 だけ「有」、23・24・26・27 は有・無のどちらも選びません（23.2 外国の機関名・23.3 支払額は 23.1 で「有」のときだけ）。",
+       "「21 通算在留期間」の下に「22.1 特定技能雇用契約に係る保証金の徴収その他財産管理又は違約金等の支払契約の有無」を出し、必ず「無」をコピーできます。",
+     ],
+   },
+-- 
+2.43.0
+
+
+From dc04690335841407a665d8317d663b7ddf1b6443 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 14 Nov 2026 08:27:42 +0000
+Subject: [PATCH 6/7] =?UTF-8?q?=E7=94=B3=E8=AB=8B=E6=9B=B8=E3=81=AB?=
+ =?UTF-8?q?=E8=B2=BC=E3=82=8B=E6=83=85=E5=A0=B1=EF=BC=88=E7=B4=99=E3=81=AE?=
+ =?UTF-8?q?=E9=A0=86=EF=BC=89:=20=E7=94=B3=E8=AB=8B=E4=BA=BA=E7=AD=89?=
+ =?UTF-8?q?=E4=BD=9C=E6=88=90=E7=94=A83=E3=81=AE=E6=AC=A1=E3=81=AB?=
+ =?UTF-8?q?=E5=8F=96=E6=AC=A1=E8=80=85=E3=81=AE=E6=AC=84=E3=82=92=E8=BF=BD?=
+ =?UTF-8?q?=E5=8A=A0?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01FFzQoUe9prfUmLNuqizp8r
+---
+ src/lib/application-copy.test.ts | 21 ++++++++++++++++++++-
+ src/lib/application-copy.ts      | 25 +++++++++++++++++++++++++
+ src/lib/release-notes.ts         |  9 +++++++++
+ 3 files changed, 54 insertions(+), 1 deletion(-)
+
+diff --git a/src/lib/application-copy.test.ts b/src/lib/application-copy.test.ts
+index a1ca678..bf58596 100644
+--- a/src/lib/application-copy.test.ts
++++ b/src/lib/application-copy.test.ts
+@@ -52,7 +52,7 @@ describe("所属機関等作成用 3（労災保険・協力確認書）", () =>
+     const groups = buildApplicationCopyGroups({ worker, org, intake, wages: [], histories: [], planDates: {} });
+     const g = groups.find((x) => x.title.startsWith("所属機関等作成用 3"))!;
+     expect(groups.map((x) => x.title.replace(/（.*$/, ""))).toEqual([
+-      "申請人等作成用 1", "申請人等作成用 2", "申請人等作成用 3", "所属機関等作成用 1", "所属機関等作成用 2", "所属機関等作成用 3", "所属機関等作成用 4", "職業紹介事業者", "取次機関",
++      "申請人等作成用 1", "申請人等作成用 2", "申請人等作成用 3", "取次者", "所属機関等作成用 1", "所属機関等作成用 2", "所属機関等作成用 3", "所属機関等作成用 4", "職業紹介事業者", "取次機関",
+     ]);
+     expect(g.items[0]).toMatchObject({ label: "(29)労災保険加入等の措置の内容", value: "労災保険加入", editValue: "", edit: { target: "intake", column: "rosai_measure" } });
+     expect(g.items[1]).toMatchObject({ label: "協力確認書（外国人に活動させる事業所） 提出年月日", value: "2026年4月1日", parts: ["2026", "4", "1"], editValue: "2026-04-01", edit: { target: "council", list: "office", index: 0, field: "on", kind: "date" } });
+@@ -373,3 +373,22 @@ describe("14 変更の理由", () => {
+     expect(get({ desiredStatus: "特定活動", appType: "変更" })).toBe("6月");
+   });
+ });
++
++describe("取次者", () => {
++  const base = { worker, org, intake: null, wages: [], histories: [], planDates: {}, today: "2025-05-01" };
++  const agentGroup = (extra: object) => buildApplicationCopyGroups({ ...base, ...extra }).find((g) => g.title === "取次者");
++  it("申請人等作成用 3 の次に、申請取次士と登録支援機関の情報で出す", () => {
++    const groups = buildApplicationCopyGroups({ ...base, agentName: "秋吉 伽恋" });
++    const i = groups.findIndex((g) => g.title === "取次者");
++    expect(groups[i - 1].title).toMatch(/^申請人等作成用 3/);
++    const g = agentGroup({ agentName: "秋吉 伽恋" })!;
++    const find = (label: string) => g.items.find((x) => x.label === label)?.value;
++    expect(find("取次者(オンラインシステム利用者) (1)氏名")).toBe("秋吉 伽恋");
++    expect(find("取次者 (2)郵便番号")).toBe("8618045");
++    expect(find("取次者 (3)所属機関等")).toBe("VUONG VAN THANH");
++    expect(find("取次者 (3)電話番号")).toBe("05088904000");
++  });
++  it("申請取次士が未定なら氏名は空", () => {
++    expect(agentGroup({})!.items[0].value).toBe("");
++  });
++});
+diff --git a/src/lib/application-copy.ts b/src/lib/application-copy.ts
+index 9d1f1aa..68c945e 100644
+--- a/src/lib/application-copy.ts
++++ b/src/lib/application-copy.ts
+@@ -639,6 +639,30 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
+       };
+     });
+ 
++  // 取次者（オンライン申請の「取次者」と同じ内容）。氏名は申請準備の申請取次士、
++  // 本人申請なら登録支援機関の申請取次者。住所・所属機関等・電話番号は登録支援機関の情報から
++  const agentName = input.agentName?.trim() || (input.selfApply ? c.agentName : "");
++  const agentPostal = c.address.replace(/\s/g, "") === CUSTODIAN_INFO.address.replace(/\s/g, "") ? "8618045" : "";
++  const agentPerson: CopyItem[] = [
++    {
++      label: "取次者(オンラインシステム利用者) (1)氏名",
++      value: agentName,
++      note: agentName
++        ? input.agentName?.trim()
++          ? "申請準備の申請取次士（全角26文字以内）"
++          : "本人申請なので登録支援機関の申請取次者（全角26文字以内）"
++        : "申請取次士が未定です。申請準備の「申請取次士」で取次士を選んでください",
++    },
++    {
++      label: "取次者 (2)郵便番号",
++      value: agentPostal,
++      note: agentPostal ? "半角数字7文字（ハイフン無し）" : "登録支援機関の住所の郵便番号（7桁・ハイフン無し）。画面の「住所検索」で確認",
++    },
++    { label: "取次者 (2)住所", value: c.address, note: "全角85文字以内", edit: cu("address") },
++    { label: "取次者 (3)所属機関等", value: c.officeName, note: "256文字以内", edit: cu("officeName") },
++    { label: "取次者 (3)電話番号", value: c.tel.replace(/\D/g, ""), note: "半角数字（ハイフン無し）", edit: cu("tel"), editValue: c.tel },
++  ];
++
+   const organization1: CopyItem[] = [
+     { label: "1 雇用している外国人の氏名", value: w.name },
+     {
+@@ -852,6 +876,7 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
+     { title: "申請人等作成用 1（在留資格変更許可申請書）", items: applicant1 },
+     { title: "申請人等作成用 2（特定技能所属機関・通算在留期間）", items: applicant2 },
+     { title: "申請人等作成用 3（職歴）", items: careers },
++    { title: "取次者", items: agentPerson },
+     { title: "所属機関等作成用 1（特定技能雇用契約）", items: organization1 },
+     { title: "所属機関等作成用 2（特定技能所属機関）", items: organization2 },
+     { title: "所属機関等作成用 3（労災保険・協力確認書）", items: organization3 },
+diff --git a/src/lib/release-notes.ts b/src/lib/release-notes.ts
+index 193fbd4..6c480e7 100644
+--- a/src/lib/release-notes.ts
++++ b/src/lib/release-notes.ts
+@@ -21,6 +21,15 @@ export interface ReleaseNote {
+ 
+ // 新しい順（先頭が最新）
+ export const RELEASE_NOTES: ReleaseNote[] = [
++  {
++    date: "2026-11-14",
++    title: "申請書に貼る情報（紙の申請書の順）に「取次者」の欄を追加しました",
++    where: "申請準備の詳細 ＞ 申請書に貼る情報 ＞ 紙の申請書の順 ＞ 取次者",
++    items: [
++      "「申請人等作成用 3」の次に「取次者」を出し、(1)氏名・(2)郵便番号・(2)住所・(3)所属機関等・(3)電話番号をコピーできます（オンライン申請の「取次者」と同じ内容）。",
++      "氏名は申請準備で選んだ申請取次士です。未定のときは空欄で、取次士を選ぶよう案内します。",
++    ],
++  },
+   {
+     date: "2026-11-14",
+     title: "技能試験の試験名を「18.2 技能水準 合格した試験名」のプルダウンと同じ書き方で選ぶようにしました",
+-- 
+2.43.0
+
+
+From 8f372bb221ccac926d7d3fe40685d6d35e7fd9f3 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 14 Nov 2026 08:28:56 +0000
+Subject: [PATCH 7/7] =?UTF-8?q?=E7=94=B3=E8=AB=8B=E6=9B=B8=E3=81=AB?=
+ =?UTF-8?q?=E8=B2=BC=E3=82=8B=E6=83=85=E5=A0=B1=EF=BC=88=E7=B4=99=E3=81=AE?=
+ =?UTF-8?q?=E9=A0=86=EF=BC=89:=202.9=20=E6=89=80=E5=AE=9A=E5=8A=B4?=
+ =?UTF-8?q?=E5=83=8D=E6=99=82=E9=96=93=E3=81=8C=E9=80=9A=E5=B8=B8=E3=81=AE?=
+ =?UTF-8?q?=E5=8A=B4=E5=83=8D=E8=80=85=E3=81=A8=E5=90=8C=E7=AD=89=E3=81=A7?=
+ =?UTF-8?q?=E3=81=82=E3=82=8B=E3=81=93=E3=81=A8=E3=81=AE=E6=9C=89=E7=84=A1?=
+ =?UTF-8?q?=EF=BC=88=E6=9C=89=EF=BC=89=E3=82=92=E8=BF=BD=E5=8A=A0?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01FFzQoUe9prfUmLNuqizp8r
+---
+ src/lib/application-copy.test.ts | 8 ++++++++
+ src/lib/application-copy.ts      | 6 ++++++
+ src/lib/release-notes.ts         | 1 +
+ 3 files changed, 15 insertions(+)
+
+diff --git a/src/lib/application-copy.test.ts b/src/lib/application-copy.test.ts
+index bf58596..41a6b12 100644
+--- a/src/lib/application-copy.test.ts
++++ b/src/lib/application-copy.test.ts
+@@ -392,3 +392,11 @@ describe("取次者", () => {
+     expect(agentGroup({})!.items[0].value).toBe("");
+   });
+ });
++
++describe("2.9 所定労働時間が通常の労働者と同等であることの有無", () => {
++  it("必ず「有」", () => {
++    const groups = buildApplicationCopyGroups({ worker, org, intake: null, wages: [], histories: [], planDates: {} });
++    const item = groups.flatMap((g) => g.items).find((i) => i.label.startsWith("2.9 特定技能雇用契約"));
++    expect(item?.value).toBe("有");
++  });
++});
+diff --git a/src/lib/application-copy.ts b/src/lib/application-copy.ts
+index 68c945e..1258ee7 100644
+--- a/src/lib/application-copy.ts
++++ b/src/lib/application-copy.ts
+@@ -714,6 +714,12 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
+       edit: org ? it("posting_monthly_hours") : undefined,
+       editValue: intake?.posting_monthly_hours ?? "",
+     },
++    // 2.9 所定労働時間が通常の労働者と同等か（オンライン申請 2.9 と同じ。必ず「有」）
++    {
++      label: "2.9 特定技能雇用契約 (3)所定労働時間が通常の労働者の所定労働時間と同等であることの有無",
++      value: "有",
++      note: "必ず「有」",
++    },
+     { label: "2 (4)月額報酬", value: wage.monthly, note: wage.note },
+     { label: "2 (4)基本給の時間換算額", value: wage.hourly },
+     // 同等の業務に従事する日本人（所属機関の専従者）。未登録ならここで名前・報酬を入れて所属機関に保存する
+diff --git a/src/lib/release-notes.ts b/src/lib/release-notes.ts
+index 6c480e7..f9a8d06 100644
+--- a/src/lib/release-notes.ts
++++ b/src/lib/release-notes.ts
+@@ -26,6 +26,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
+     title: "申請書に貼る情報（紙の申請書の順）に「取次者」の欄を追加しました",
+     where: "申請準備の詳細 ＞ 申請書に貼る情報 ＞ 紙の申請書の順 ＞ 取次者",
+     items: [
++      "所属機関等作成用 1 の「2 (3)所定労働時間（月平均）」の下に「2.9 所定労働時間が通常の労働者の所定労働時間と同等であることの有無」を出し、必ず「有」をコピーできます。",
+       "「申請人等作成用 3」の次に「取次者」を出し、(1)氏名・(2)郵便番号・(2)住所・(3)所属機関等・(3)電話番号をコピーできます（オンライン申請の「取次者」と同じ内容）。",
+       "氏名は申請準備で選んだ申請取次士です。未定のときは空欄で、取次士を選ぶよう案内します。",
+     ],
+-- 
+2.43.0
+
