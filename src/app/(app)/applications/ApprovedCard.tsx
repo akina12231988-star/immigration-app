@@ -2,13 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, CreditCard, ExternalLink, MessageCircle, Plus, StickyNote, Trash2 } from "lucide-react";
+import { Building2, Check, CreditCard, ExternalLink, MessageCircle, Plus, StickyNote, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { AlertBadge } from "@/components/applications/AlertBadge";
 import { ApplicantMeta } from "@/components/applications/ApplicantMeta";
 import { ReceiptMethodBadge } from "@/components/applications/ReceiptMethodBadge";
 import { createClient } from "@/lib/supabase/client";
+import { updateApplicationRow } from "@/lib/supabase/queries/applications";
+import { dbErrorMessage } from "@/lib/errors";
 import { messengerWebUrl } from "@/lib/messenger-link";
 import {
   deleteApplicationMemo,
@@ -93,6 +95,29 @@ export function ApprovedCard({
     }
   }
 
+  // 郵送受け取りにしていたが、後日、窓口受け取りに変更した（変更した日を申請に残す。0224）
+  const changedOn = app.cardReceiptChangedOn ?? "";
+  const canChangeReceipt = editable && app.method === "オンライン" && (!!changedOn || receiptMethod.trim() !== "窓口");
+  const [receiptChangeBusy, setReceiptChangeBusy] = useState(false);
+  const [receiptChangeError, setReceiptChangeError] = useState<string | null>(null);
+  async function setReceiptChanged(on: string | null) {
+    if (!on && !window.confirm("窓口受け取りへの変更を取り消して、郵送受け取りに戻しますか？")) return;
+    setReceiptChangeBusy(true);
+    setReceiptChangeError(null);
+    try {
+      const patch = { cardReceiptChangedOn: on ?? undefined };
+      // 先に保存して、マイグレーション未適用などのエラーをこの場で出す。保存できたら一覧にも反映する
+      await updateApplicationRow(createClient(), app.id, patch);
+      await updateApplication(app.id, patch);
+    } catch (err) {
+      setReceiptChangeError(
+        dbErrorMessage(err, "0224_application_card_receipt_changed.sql", "受け取り方法の変更を保存できませんでした"),
+      );
+    } finally {
+      setReceiptChangeBusy(false);
+    }
+  }
+
   async function addMemo() {
     if (!memoBody.trim()) return;
     setMemoBusy(true);
@@ -138,7 +163,7 @@ export function ApprovedCard({
           </p>
           <p className="text-xs tabular-nums text-muted">預かり番号 {custodyNoLabel}</p>
           <ApplicantMeta app={app} nationality={nationality} className="mt-1" />
-          {(tantou || receiptMethod) && (
+          {(tantou || receiptMethod || changedOn) && (
             <p className="mt-1 flex flex-wrap items-center gap-1">
               {tantou && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-bold text-brand">
@@ -146,8 +171,38 @@ export function ApprovedCard({
                 </span>
               )}
               {/* 在留カードを郵送で受け取るか窓口で受け取るか（受け取り待ちで特に見たい） */}
-              <ReceiptMethodBadge method={receiptMethod} />
+              <ReceiptMethodBadge method={receiptMethod} changedOn={changedOn} />
             </p>
+          )}
+          {/* オンライン申請で郵送受け取りにしていたが、後日、窓口受け取りに変更したとき */}
+          {canChangeReceipt && (
+            <div className="mt-1" onClick={stop}>
+              {changedOn ? (
+                <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
+                  {changedOn} に郵送から窓口受け取りへ変更
+                  <button
+                    type="button"
+                    disabled={receiptChangeBusy}
+                    onClick={() => void setReceiptChanged(null)}
+                    className="font-bold text-brand underline disabled:opacity-50"
+                  >
+                    郵送に戻す
+                  </button>
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  disabled={receiptChangeBusy}
+                  onClick={() => void setReceiptChanged(today)}
+                  title="入管の在留申請オンラインシステムで受け取り方法を郵送から窓口へ変えたら押します"
+                  className="inline-flex min-h-[28px] items-center gap-1 rounded-full border border-border bg-surface px-2.5 text-[11px] font-bold text-brand disabled:opacity-50"
+                >
+                  <Building2 size={11} />
+                  窓口受け取りに変更した
+                </button>
+              )}
+              {receiptChangeError && <p className="mt-0.5 text-[11px] text-seal">{receiptChangeError}</p>}
+            </div>
           )}
           {/* 本人の Messenger（在留カードの受け取りの連絡などに使う）。押してもカードの詳細は開かない */}
           {messengerLink && (

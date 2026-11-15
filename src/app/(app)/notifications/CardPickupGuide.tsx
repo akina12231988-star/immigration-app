@@ -20,9 +20,9 @@ import { CARD_MAIL_TO, CARD_RETURN_TO, mailAddressText, type MailAddress } from 
 export function CardPickupGuide({ canEdit = true }: { canEdit?: boolean }) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"mail" | "counter">("mail");
-  // 郵送で受け取る場合のイラストは、在留資格変更と在留期間更新で別々に登録する
-  const [mailKind, setMailKind] = useState<"mail" | "mail_renewal">("mail");
-  const imageKind: GuideImageKind = tab === "mail" ? mailKind : "counter";
+  // イラストは、在留資格変更と在留期間更新で別々に登録する（郵送・窓口へ変更のどちらも）
+  const [appKind, setAppKind] = useState<"change" | "renewal">("change");
+  const imageKind: GuideImageKind = appKind === "change" ? tab : `${tab}_renewal`;
   // 手続きのイラスト（画面からドラッグ＆ドロップで登録・差し替え）
   const [images, setImages] = useState<Partial<Record<GuideImageKind, string>>>({});
   useEffect(() => {
@@ -68,27 +68,25 @@ export function CardPickupGuide({ canEdit = true }: { canEdit?: boolean }) {
             ))}
           </div>
 
-          {tab === "mail" && (
-            <div className="flex flex-wrap gap-1 text-[11px] font-bold">
-              {(
-                [
-                  ["mail", "在留資格変更申請の場合"],
-                  ["mail_renewal", "在留期間更新申請の場合"],
-                ] as const
-              ).map(([k, label]) => (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => setMailKind(k)}
-                  className={`rounded-full border px-3 py-1 ${
-                    mailKind === k ? "border-brand bg-brand/10 text-brand" : "border-border text-muted"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          )}
+          <div className="flex flex-wrap gap-1 text-[11px] font-bold">
+            {(
+              [
+                ["change", "在留資格変更申請の場合"],
+                ["renewal", "在留期間更新申請の場合"],
+              ] as const
+            ).map(([k, label]) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setAppKind(k)}
+                className={`rounded-full border px-3 py-1 ${
+                  appKind === k ? "border-brand bg-brand/10 text-brand" : "border-border text-muted"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
 
           <GuideImage
             key={imageKind}
@@ -100,6 +98,7 @@ export function CardPickupGuide({ canEdit = true }: { canEdit?: boolean }) {
           {tab === "counter" && (
             <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted">
               受け取り方法を郵送から窓口へ変えたときは、一覧表の「受領方法」に「窓口（受領官署）」と出ます。
+              申請一覧の「在留カード受け取り待ち」のカードでも「窓口受け取りに変更した」を押してください（受領方法が「窓口・郵送から変更」になります）。
             </p>
           )}
           {tab === "mail" && (
@@ -142,7 +141,8 @@ function AddressBox({ title, address: a }: { title: string; address: MailAddress
 const GUIDE_IMAGE_ALT: Record<GuideImageKind, string> = {
   mail: "在留資格変更申請の許可後の郵送での受け取り方法",
   mail_renewal: "在留期間更新申請の許可後の郵送での受け取り方法",
-  counter: "窓口での受け取りへの変更",
+  counter: "在留資格変更申請の許可後に郵送から窓口での受け取りへ変更する方法",
+  counter_renewal: "在留期間更新申請の許可後に郵送から窓口での受け取りへ変更する方法",
 };
 
 // 手続きのイラスト。画像をドロップするか押して選ぶと登録・差し替えできる。押すと別タブで大きく開く

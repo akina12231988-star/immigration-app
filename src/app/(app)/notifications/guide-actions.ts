@@ -3,8 +3,8 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 
-// 在留カードの受け取りの手続きのイラスト（郵送で受け取る〔在留資格変更・在留期間更新〕／郵送→窓口へ変更）。
-// mail = 郵送で受け取る・在留資格変更の場合、mail_renewal = 郵送で受け取る・在留期間更新の場合。
+// 在留カードの受け取りの手続きのイラスト（郵送で受け取る／郵送→窓口へ変更。それぞれ在留資格変更・在留期間更新）。
+// mail・counter = 在留資格変更の場合、mail_renewal・counter_renewal = 在留期間更新の場合。
 // 画像は非公開バケット app-files（guides/）に置き、保存先は app_settings（key = card_pickup_guide）に持つ。
 // 画面からドラッグ＆ドロップで登録・差し替えできる（マイグレーション不要。0149 の app_settings を使う）
 
@@ -13,8 +13,8 @@ const TTL = 60 * 60;
 const SETTING_KEY = "card_pickup_guide";
 const IMAGE_MIME = /^image\/(jpeg|png|webp)$/;
 
-export type GuideImageKind = "mail" | "mail_renewal" | "counter";
-const KINDS: readonly GuideImageKind[] = ["mail", "mail_renewal", "counter"];
+export type GuideImageKind = "mail" | "mail_renewal" | "counter" | "counter_renewal";
+const KINDS: readonly GuideImageKind[] = ["mail", "mail_renewal", "counter", "counter_renewal"];
 type Err = { ok: false; message: string };
 
 async function requireStaff(): Promise<boolean> {

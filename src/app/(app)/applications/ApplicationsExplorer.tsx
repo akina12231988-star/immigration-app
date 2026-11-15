@@ -999,7 +999,7 @@ export function ApplicationsExplorer({
                     className="mt-1"
                   />
                   {/* 在留カードの受領方法（申請準備の詳細で選んだもの） */}
-                  <ReceiptMethodBadge method={receiptMethodOf(a)} className="mt-1" />
+                  <ReceiptMethodBadge method={receiptMethodOf(a)} changedOn={a.cardReceiptChangedOn} className="mt-1" />
                   {a.residenceExpiryAtApply && (
                     <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted">
                       申請時在留期限 {a.residenceExpiryAtApply}
@@ -1221,7 +1221,7 @@ export function ApplicationsExplorer({
                           showApplicant={!isRenewalPlaceholder(a)}
                           className="mt-1 font-normal"
                         />
-                        <ReceiptMethodBadge method={receiptMethodOf(a)} className="mt-1" />
+                        <ReceiptMethodBadge method={receiptMethodOf(a)} changedOn={a.cardReceiptChangedOn} className="mt-1" />
                         {a.workerId && (
                           <span
                             className="mt-1 block"

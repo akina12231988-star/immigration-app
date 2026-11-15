@@ -848,6 +848,7 @@ export interface ImmigrationApplicationRow {
   approval_date: string | null;
   stamp_fee_amount?: number | null; // 許可のときにかかった収入印紙代（円。0213 未適用なら undefined）
   card_received_on: string | null;
+  card_receipt_changed_on?: string | null; // 在留カードの受け取りを郵送から窓口へ変更した日（0224 未適用なら undefined）
   withdrawn_on: string | null;
   approval_reported: boolean;
   receipt_image_url: string | null;
