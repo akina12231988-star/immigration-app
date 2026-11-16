@@ -45,6 +45,7 @@ import type { SalesEntryRow, Worker } from "@/types/db";
 // 解約手続き（TODO・郵送日・追跡番号）・解約金（金額・画像・返戻金の売上No.）をここにまとめる。
 const MIG_BASE = "0139_ssw_insurance.sql";
 const MIG_CANCEL = "0147_ssw_insurance_cancel.sql";
+const MIG_REFUND_PAID = "0225_ssw_insurance_refund_paid_on.sql";
 const INPUT =
   "min-h-[36px] w-full rounded-lg border border-border bg-surface px-2.5 text-sm focus:border-brand focus:outline-none disabled:opacity-60";
 
@@ -55,6 +56,7 @@ type Fields = {
   trackingNo: string;
   refundAmount: number | null;
   refundSalesNo: string;
+  refundPaidOn: string;
 };
 
 export function WorkerSswInsurance({
@@ -77,6 +79,7 @@ export function WorkerSswInsurance({
     trackingNo: worker.ssw_insurance_cancel_tracking_no ?? "",
     refundAmount: worker.ssw_insurance_refund_amount ?? null,
     refundSalesNo: worker.ssw_insurance_refund_sales_no ?? "",
+    refundPaidOn: worker.ssw_insurance_refund_paid_on ?? "",
   });
   const [refundText, setRefundText] = useState(formatYenInput(worker.ssw_insurance_refund_amount ?? null));
   const [certs, setCerts] = useState<SswCertRow[]>([]);
@@ -439,9 +442,9 @@ export function WorkerSswInsurance({
         )}
       </div>
 
-      {/* ⑥ 解約金（金額・画像・返戻金の売上No.） */}
+      {/* ⑥ 解約金（金額・振込日・画像・解約売上No.） */}
       <div className="space-y-2 rounded-lg border border-dashed border-border p-2">
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           <label className="flex flex-col gap-1">
             <span className="text-[11px] font-bold text-muted">解約金（返戻金）</span>
             <span className="flex items-center gap-1">
@@ -459,7 +462,22 @@ export function WorkerSswInsurance({
             {f.refundAmount != null && <span className="text-[11px] text-muted">{formatYenLabel(f.refundAmount)}</span>}
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-bold text-muted">返戻金の売上No.（freee販売）</span>
+            <span className="text-[11px] font-bold text-muted">返戻金の振込日</span>
+            <input
+              type="date"
+              value={f.refundPaidOn}
+              disabled={!canEdit}
+              onChange={(e) => {
+                const v = e.target.value;
+                setF((p) => ({ ...p, refundPaidOn: v }));
+                void save({ ssw_insurance_refund_paid_on: v || null }, MIG_REFUND_PAID);
+              }}
+              className={INPUT}
+            />
+            <span className="text-[11px] text-muted">中途解約返戻金明細のご案内に書かれた日</span>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-bold text-muted">解約売上No.（freee販売）</span>
             <input
               value={f.refundSalesNo}
               disabled={!canEdit}
@@ -468,7 +486,7 @@ export function WorkerSswInsurance({
                 if ((worker.ssw_insurance_refund_sales_no ?? "") !== f.refundSalesNo.trim())
                   void save({ ssw_insurance_refund_sales_no: f.refundSalesNo.trim() }, MIG_CANCEL);
               }}
-              placeholder="返戻金の売上No."
+              placeholder="解約売上No."
               className={INPUT}
             />
           </label>

@@ -543,6 +543,7 @@ export interface Worker {
   ssw_insurance_cancel_tracking_no?: string; // 解約手続きの郵送の追跡番号（0147）
   ssw_insurance_refund_amount?: number | null; // 解約金（返戻金・円。0147）
   ssw_insurance_refund_sales_no?: string; // 返戻金の売上No.（0147）
+  ssw_insurance_refund_paid_on?: string | null; // 解約金（返戻金）の振込日（0225）
   note: string;
   jobseeker_card?: JobseekerCardExtras; // 求職票だけで使う項目（0118）
   followups?: WorkerFollowups; // あとでやる手続きの宿題（転居手続き・国保/国民年金の加入。0119）

@@ -36,6 +36,8 @@ import {
   SSW_SORTS,
   SSW_STATE_LABELS,
   buildSswInsuranceRows,
+  compareSswRefundRecords,
+  isSswRefundRecord,
   isSswActionRow,
   isSswInsuranceTarget,
   sortSswRows,
@@ -67,6 +69,7 @@ import {
   setSalesInsuranceJoined,
   updateSswInsurance,
   type SswCertRow,
+  type SswInsurancePatch,
   type SswSalesRow,
   listSswPermitApplications,
 } from "@/lib/supabase/queries/ssw-insurance";
@@ -78,8 +81,10 @@ import {
   SswResultTable,
   SswTabBar,
   isSswApplying,
+  type SswRefundEntry,
   type SswTabKey,
 } from "./SswTables";
+import { SswRefundTable, type SswRefundRow } from "./SswRefundTable";
 import {
   deleteSswCert,
   getSswCertPreviewUrl,
@@ -88,6 +93,7 @@ import {
 import type { Organization } from "@/types/db";
 
 const MIGRATION = "0139_ssw_insurance.sql";
+const REFUND_MIGRATION = "0225_ssw_insurance_refund_paid_on.sql";
 
 const INPUT =
   "min-h-[38px] rounded-xl border border-border bg-background px-3 text-sm focus:border-brand focus:outline-none";
@@ -366,18 +372,57 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
   };
 
   // すでに解約の手続きが済んでいる人: 解約手続きのTODOを（無ければ作って）完了にし、一覧から外す
+  const completeCancelTodos = async (targets: SswInsuranceRow[]) => {
+    const supabase = createClient();
+    const doneName = statusOptions.find((o) => o.stage === "完了")?.name ?? "完了";
+    for (const row of targets) {
+      if (row.todos.cancel?.done) continue;
+      const todoId = row.todos.cancel?.id ?? (await ensureSswTodo(supabase, row.worker.id, SSW_CANCEL_TODO_TITLE)).row?.id;
+      if (!todoId) throw new Error(`${row.worker.name}さんの解約手続きのTODOを作れませんでした`);
+      await updateTodo(supabase, todoId, { status: doneName });
+    }
+  };
   const markCancelled = async (row: SswInsuranceRow) => {
     if (!window.confirm(`${row.worker.name}さんの特定技能総合保険を「解約済み」にします。よろしいですか？（解約手続きのTODOが完了になり、この一覧から外れます）`)) return;
     setError(null);
     try {
-      const supabase = createClient();
-      const todoId = row.todos.cancel?.id ?? (await ensureSswTodo(supabase, row.worker.id, SSW_CANCEL_TODO_TITLE)).row?.id;
-      if (!todoId) throw new Error("解約手続きのTODOを作れませんでした");
-      const doneName = statusOptions.find((o) => o.stage === "完了")?.name ?? "完了";
-      await updateTodo(supabase, todoId, { status: doneName });
+      await completeCancelTodos([row]);
       await reload();
     } catch (err) {
       setError(dbErrorMessage(err, MIGRATION, "解約済みの保存に失敗しました"));
+    }
+  };
+
+  // 中途解約返戻金明細の返戻金（1人ずつ）と振込日をまとめて保存する。markDone なら解約済みにもする
+  const saveRefunds = async (entries: SswRefundEntry[], paidOn: string | null, markDone: boolean) => {
+    setError(null);
+    try {
+      const supabase = createClient();
+      for (const e of entries) {
+        await updateSswInsurance(supabase, e.workerId, {
+          ssw_insurance_refund_amount: e.amount,
+          ssw_insurance_refund_paid_on: paidOn,
+        });
+      }
+      if (markDone) {
+        const ids = new Set(entries.map((e) => e.workerId));
+        await completeCancelTodos(rows.filter((r) => ids.has(r.worker.id)));
+      }
+      await reload();
+    } catch (err) {
+      setError(dbErrorMessage(err, REFUND_MIGRATION, "返戻金の保存に失敗しました"));
+      throw err;
+    }
+  };
+
+  // 解約済み・返戻金の表で1人ぶんを保存する（読み直さずに手元の一覧だけ直す）
+  const saveRefundField = async (workerId: string, patch: SswInsurancePatch) => {
+    setError(null);
+    try {
+      await updateSswInsurance(createClient(), workerId, patch);
+      setWorkers((prev) => prev.map((w) => (w.id === workerId ? { ...w, ...patch } : w)));
+    } catch (err) {
+      setError(dbErrorMessage(err, REFUND_MIGRATION, "返戻金の保存に失敗しました"));
     }
   };
 
@@ -396,14 +441,30 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
 
   const joinRows = useMemo(() => actionRows.filter((r) => sswTaskOf(r) === "join"), [actionRows]);
   const cancelRows = useMemo(() => actionRows.filter((r) => sswTaskOf(r) === "cancel"), [actionRows]);
+  // 解約済み・返戻金（解約手続きのTODOが完了した人と、返戻金・振込日を入れた人）。
+  // 退職して在留資格が変わった人も出すので、特定技能1号での絞り込みはしない
+  const refundRows = useMemo<SswRefundRow[]>(() => {
+    const todosByWorker = sswTodosByWorker(todos, options);
+    return workers
+      .map((w) => ({
+        worker: w,
+        orgName: w.current_organization_id ? (orgBurden.get(w.current_organization_id)?.name ?? "") : "",
+        cancelDone: !!todosByWorker.get(w.id)?.cancel?.done,
+      }))
+      .filter((r) => isSswRefundRecord(r.worker, r.cancelDone))
+      .filter((r) => !orgFilter.trim() || (r.orgName && matchesOrganizationName({ name: r.orgName }, orgFilter)))
+      .filter((r) => !nameFilter.trim() || matchesWorkerName(r.worker, nameFilter))
+      .sort((a, b) => compareSswRefundRecords(a.worker, b.worker));
+  }, [workers, todos, options, orgBurden, orgFilter, nameFilter]);
   const tabCounts = useMemo(
     () => ({
       join: joinRows.length,
       cancel: cancelRows.length,
+      refund: refundRows.length,
       active: shown.filter((r) => r.state === "active").length,
       declined: shown.filter((r) => r.state === "declined").length,
     }),
-    [joinRows, cancelRows, shown],
+    [joinRows, cancelRows, refundRows, shown],
   );
   const toggleOpen = (workerId: string) => setOpenId(openId === workerId ? null : workerId);
 
@@ -578,10 +639,13 @@ export function SswInsuranceClient({ canEdit }: { canEdit: boolean }) {
               onCancelled={(row) => void markCancelled(row)}
               onExported={markCancelMailed}
               onSaveMailing={saveCancelMailing}
+              onSaveRefunds={saveRefunds}
               today={today}
               onError={setError}
             />
           )}
+
+          {tab === "refund" && <SswRefundTable rows={refundRows} canEdit={canEdit} onSave={saveRefundField} />}
 
           {/* 対応が要らない人（加入中・加入しない）は今までどおりカードで出す */}
           {SSW_SECTIONS.filter(

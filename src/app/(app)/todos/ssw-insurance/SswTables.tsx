@@ -26,10 +26,19 @@ import {
   sswInsuranceMonths,
   sswUploadCells,
   sswUploadRow,
+  formatYenInput,
+  formatYenLabel,
+  parseYenDigits,
   type SswInsuranceRow,
   type SswInsuranceWorker,
   type SswPermitInfo,
 } from "@/lib/ssw-insurance";
+
+// 中途解約返戻金明細の1人ぶん（返戻保険料。未入力は null）
+export interface SswRefundEntry {
+  workerId: string;
+  amount: number | null;
+}
 import { updateSswInsurance } from "@/lib/supabase/queries/ssw-insurance";
 import { updateTodo } from "@/lib/supabase/queries/todos";
 
@@ -70,7 +79,7 @@ const CELL_INPUT =
 const SMALL_BTN =
   "rounded-lg border border-border bg-background px-2 py-1 text-[11px] font-bold text-brand hover:border-brand disabled:opacity-50";
 
-export type SswTabKey = "join" | "cancel" | "active" | "declined";
+export type SswTabKey = "join" | "cancel" | "refund" | "active" | "declined";
 
 // 氏名の欄（加入手続き・解約手続きの表で共通）。
 // 氏名のリンク・コピーの下に、本人への連絡用に Messenger のリンクを出す（外国人情報に登録があるときだけ）
@@ -133,6 +142,7 @@ export function SswTabBar({
   const tabs: { key: SswTabKey; label: string }[] = [
     { key: "join", label: "加入手続き" },
     { key: "cancel", label: "解約手続き" },
+    { key: "refund", label: "解約済み・返戻金" },
     { key: "active", label: "加入中" },
     { key: "declined", label: "加入しない" },
   ];
@@ -703,6 +713,7 @@ export function SswCancelTable({
   onCancelled,
   onExported,
   onSaveMailing,
+  onSaveRefunds,
   today,
   onError,
 }: {
@@ -719,6 +730,8 @@ export function SswCancelTable({
   onExported: (workerIds: string[]) => Promise<void>;
   // 投函日・追跡番号をまとめて保存する（workers.ssw_insurance_cancel_mailed_on / _tracking_no）
   onSaveMailing: (workerIds: string[], mailedOn: string | null, trackingNo: string) => Promise<void>;
+  // 中途解約返戻金明細の返戻金（1人ずつ）と振込日をまとめて保存する。markDone なら解約済みにする
+  onSaveRefunds: (entries: SswRefundEntry[], paidOn: string | null, markDone: boolean) => Promise<void>;
   today: string;
   onError: (message: string | null) => void;
 }) {
@@ -752,6 +765,42 @@ export function SswCancelTable({
       setSavingMailing(false);
     }
   };
+
+  // 中途解約返戻金明細が届いた人。返戻金を1人ずつ、振込日はまとめて入れる
+  const [refundIds, setRefundIds] = useState<string[]>([]);
+  const [refundTexts, setRefundTexts] = useState<Record<string, string>>({});
+  const [refundPaidOn, setRefundPaidOn] = useState("");
+  const [refundMarkDone, setRefundMarkDone] = useState(true);
+  const [savingRefund, setSavingRefund] = useState(false);
+  const refundRows = rows.filter((r) => refundIds.includes(r.worker.id));
+  const refundTotal = refundRows.reduce((sum, r) => sum + (parseYenDigits(refundTexts[r.worker.id] ?? "") ?? 0), 0);
+  const openRefund = (ids: string[]) => {
+    const targets = rows.filter((r) => ids.includes(r.worker.id));
+    setRefundIds(ids);
+    setRefundTexts(
+      Object.fromEntries(targets.map((r) => [r.worker.id, formatYenInput(r.worker.ssw_insurance_refund_amount ?? null)])),
+    );
+    setRefundPaidOn(targets.find((r) => r.worker.ssw_insurance_refund_paid_on)?.worker.ssw_insurance_refund_paid_on ?? "");
+    setRefundMarkDone(true);
+  };
+  const saveRefund = async () => {
+    if (refundRows.length === 0) return;
+    setSavingRefund(true);
+    try {
+      await onSaveRefunds(
+        refundRows.map((r) => ({ workerId: r.worker.id, amount: parseYenDigits(refundTexts[r.worker.id] ?? "") })),
+        refundPaidOn || null,
+        refundMarkDone,
+      );
+      setRefundIds([]);
+      setPicked(new Set());
+    } catch {
+      /* エラーは画面の上に出る。入力は残す */
+    } finally {
+      setSavingRefund(false);
+    }
+  };
+
   const allPicked = rows.length > 0 && rows.every((r) => picked.has(r.worker.id));
   const toggle = (id: string) =>
     setPicked((prev) => {
@@ -825,6 +874,18 @@ export function SswCancelTable({
             チェックした人の投函日・追跡番号を入力
           </button>
         )}
+        {canEdit && (
+          <button
+            type="button"
+            disabled={pickedCount === 0 || exporting}
+            onClick={() => openRefund(rows.filter((r) => picked.has(r.worker.id)).map((r) => r.worker.id))}
+            className="flex min-h-[40px] items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-xs font-bold text-brand disabled:opacity-50"
+            title="国際研修サービスから届いた「中途解約返戻金明細のご案内」の返戻保険料と振込日を入れます"
+          >
+            <Receipt size={14} />
+            チェックした人の返戻金（明細）を入力
+          </button>
+        )}
       </div>
       <p className="text-[11px] leading-relaxed text-muted">
         被保険者証明書番号と有効期限が入っていて、有効期限から4か月たっていない人だけを出しています（それより後は解約できません）。特定技能2号へ移行した人は、随時報告書の支援委託終了を記録すると解約手続きのTODOが自動で入ってここに出ます（退職日の欄は空のまま）。解約の手続きが済んだら「解約済み」を押してください。
@@ -881,6 +942,93 @@ export function SswCancelTable({
               onClick={() => setMailingIds([])}
               className={SMALL_BTN}
             >
+              閉じる
+            </button>
+          </div>
+        </div>
+      )}
+      {/* 中途解約返戻金明細の返戻金（1人ずつ）と振込日 */}
+      {refundRows.length > 0 && (
+        <div className="rounded-xl border border-brand/40 bg-brand/5 p-3">
+          <p className="flex items-center gap-1.5 text-xs font-black">
+            <Receipt size={14} className="text-brand" />
+            中途解約返戻金明細の返戻金を入力（{refundRows.length}人）
+          </p>
+          <p className="mt-0.5 text-[11px] text-muted">
+            明細（変更（解約）届出書の「返戻保険料」の欄）の金額を1人ずつ入れ、振込日（ご案内に書かれた日）を入れてください。返戻金が無い人は 0 を入れます。
+            解約売上No.は「解約済み・返戻金」のタブで入れられます。
+          </p>
+          <div className="mt-2 overflow-x-auto">
+            <table className="w-full min-w-[28rem] border-collapse text-xs">
+              <thead>
+                <tr>
+                  <th className={`${TH} text-left`}>被保険者名</th>
+                  <th className={TH}>被保険者証</th>
+                  <th className={TH}>返戻保険料（円）</th>
+                </tr>
+              </thead>
+              <tbody>
+                {refundRows.map((r) => (
+                  <tr key={r.worker.id}>
+                    <td className={TD}>{r.worker.name}</td>
+                    <td className={`${TD} text-center tabular-nums`}>{r.worker.ssw_insurance_no}</td>
+                    <td className={TD}>
+                      <input
+                        inputMode="numeric"
+                        value={refundTexts[r.worker.id] ?? ""}
+                        onChange={(e) => {
+                          const v = e.target.value.normalize("NFKC").replace(/[^\d,]/g, "");
+                          setRefundTexts((prev) => ({ ...prev, [r.worker.id]: v }));
+                        }}
+                        onBlur={(e) => {
+                          const v = formatYenInput(parseYenDigits(e.target.value));
+                          setRefundTexts((prev) => ({ ...prev, [r.worker.id]: v }));
+                        }}
+                        placeholder="例: 1320"
+                        aria-label={`${r.worker.name}の返戻保険料`}
+                        className={`${CELL_INPUT} text-right tabular-nums`}
+                      />
+                    </td>
+                  </tr>
+                ))}
+                <tr>
+                  <td className={`${TD} text-right font-bold`} colSpan={2}>
+                    合計 {refundRows.length}人
+                  </td>
+                  <td className={`${TD} text-right font-black tabular-nums`}>{formatYenLabel(refundTotal)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-2 flex flex-wrap items-end gap-2">
+            <label className="block">
+              <span className="mb-0.5 block text-[11px] text-muted">振込日（ご案内に書かれた日）</span>
+              <input
+                type="date"
+                value={refundPaidOn}
+                onChange={(e) => setRefundPaidOn(e.target.value)}
+                className={`${CELL_INPUT} min-w-[9rem]`}
+              />
+            </label>
+            <label className="flex min-h-[36px] items-center gap-1.5 text-[11px] font-bold">
+              <input
+                type="checkbox"
+                checked={refundMarkDone}
+                onChange={(e) => setRefundMarkDone(e.target.checked)}
+                className="h-4 w-4"
+              />
+              あわせて解約済みにする
+            </label>
+            <button
+              type="button"
+              disabled={savingRefund || !canEdit}
+              onClick={() => void saveRefund()}
+              className="flex min-h-[36px] items-center gap-1.5 rounded-lg bg-brand px-3 text-xs font-bold text-brand-foreground disabled:opacity-50"
+            >
+              {savingRefund && <Loader2 size={14} className="animate-spin" />}
+              {refundRows.length}人に保存
+            </button>
+            <button type="button" disabled={savingRefund} onClick={() => setRefundIds([])} className={SMALL_BTN}>
               閉じる
             </button>
           </div>

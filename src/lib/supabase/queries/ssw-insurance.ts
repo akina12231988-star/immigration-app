@@ -40,7 +40,13 @@ const COLUMNS = [
   // 解約手続きの郵送（0147）: 解約手続きの表に投函日・追跡番号を出す
   "ssw_insurance_cancel_mailed_on",
   "ssw_insurance_cancel_tracking_no",
+  // 解約金（返戻金）の金額と解約売上No.（0147）: 解約済み・返戻金の表に出す
+  "ssw_insurance_refund_amount",
+  "ssw_insurance_refund_sales_no",
 ].join(", ");
+
+// 解約金（返戻金）の振込日（0225）
+const REFUND_PAID_COLUMNS = "ssw_insurance_refund_paid_on";
 
 // 申込サイトに合わせた申込の項目（0171）: 振込日・加入依頼 受付番号・加入依頼日・保険始期
 const APPLY_COLUMNS = [
@@ -58,6 +64,7 @@ export const SSW_INSURANCE_DETAIL_COLUMNS = [
   "ssw_insurance_cancel_tracking_no",
   "ssw_insurance_refund_amount",
   "ssw_insurance_refund_sales_no",
+  "ssw_insurance_refund_paid_on",
 ].join(", ");
 
 export async function listSswInsuranceWorkers(
@@ -65,7 +72,12 @@ export async function listSswInsuranceWorkers(
 ): Promise<SswInsuranceWorker[]> {
   // 所属機関名は画面側で機関マスタから引くので、ここでは埋め込まない
   // （workers から organizations への関連が増えると埋め込みがあいまいになるため）。
-  // 申込の項目（0171）は未適用の環境でも読めるよう、失敗したら無しで読み直す
+  // 申込の項目（0171）・返戻金の振込日（0225）は未適用の環境でも読めるよう、失敗したら無しで読み直す
+  const withAll = await supabase
+    .from("workers")
+    .select(`${COLUMNS}, ${APPLY_COLUMNS}, ${REFUND_PAID_COLUMNS}`)
+    .order("name", { ascending: true });
+  if (!withAll.error) return (withAll.data as unknown as SswInsuranceWorker[]) ?? [];
   const withApply = await supabase
     .from("workers")
     .select(`${COLUMNS}, ${APPLY_COLUMNS}`)
@@ -93,6 +105,7 @@ export interface SswInsurancePatch {
   ssw_insurance_cancel_tracking_no?: string;
   ssw_insurance_refund_amount?: number | null;
   ssw_insurance_refund_sales_no?: string;
+  ssw_insurance_refund_paid_on?: string | null; // 返戻金の振込日（0225）
   // 申込（0171）
   ssw_insurance_paid_on?: string | null;
   ssw_insurance_request_no?: string;
