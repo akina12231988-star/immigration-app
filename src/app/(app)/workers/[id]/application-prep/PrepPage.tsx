@@ -1,0 +1,153 @@
+import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
+import { Building2, FlaskConical, MessageCircle, NotebookPen, UserRound } from "lucide-react";
+import { AppHeader } from "@/components/AppHeader";
+import { createClient } from "@/lib/supabase/server";
+import { getMyProfile } from "@/lib/supabase/queries/profiles";
+import { ApplicationPrepChecklist } from "@/components/workers/ApplicationPrepChecklist";
+import { messengerWebUrl } from "@/lib/messenger-link";
+import { notionAppUrl } from "@/lib/notion-link";
+import { prepOpenedInfo } from "@/lib/prep-opened";
+import { todayJst } from "@/lib/jst-date";
+import { UNIFIED_PREP_TITLE, canUseUnifiedPrep } from "@/lib/unified-prep";
+
+// 見出しの右側に出す小さなリンク（白い枠。押しやすいよう高さ36px）
+const HEADER_LINK =
+  "inline-flex min-h-[36px] items-center gap-1 rounded-full border border-brand-foreground/60 px-3 text-xs font-bold text-brand-foreground hover:bg-brand-foreground/10";
+
+// 申請準備の詳細（書類チェックリスト）のページ。
+// 以前はTODO一覧・申請一覧のモーダルで開いていたが、項目が多く縦に長いため
+// 1ページとして開き、左上の「←」で元の画面へ戻れるようにしている。
+// unified = true は「申請書類作成をアプリ一本化計画」の試験用ページ（管理者だけが開ける。lib/unified-prep.ts）
+export async function PrepPage({ id, unified }: { id: string; unified: boolean }) {
+  const me = await getMyProfile();
+  if (!me) redirect("/login");
+
+  const supabase = await createClient();
+  // 試験用ページを開けるのは管理者だけ
+  const canUnified = canUseUnifiedPrep(me.role);
+  if (unified && !canUnified) notFound();
+
+  const { data } = await supabase
+    .from("workers")
+    .select(
+      "id, name, photo_path, health_check_on, messenger_link, notion_link, application_prep_organization_id, current_organization_id",
+    )
+    .eq("id", id)
+    .maybeSingle();
+  if (!data) notFound();
+  const worker = data as {
+    id: string;
+    name: string;
+    photo_path: string | null;
+    health_check_on: string | null;
+    messenger_link: string | null;
+    notion_link: string | null;
+    application_prep_organization_id: string | null;
+    current_organization_id: string | null;
+  };
+
+  // 前回この画面を開いた日時を読み、今回開いた日時を書き込む（0202）。
+  // 列が未適用・閲覧のみのロールでも画面は出す（読めなければ記録なし、書けなければそのまま）
+  let prevOpenedAt: string | null = null;
+  try {
+    const { data: opened } = await supabase.from("workers").select("prep_opened_at").eq("id", id).maybeSingle();
+    prevOpenedAt = (opened as { prep_opened_at: string | null } | null)?.prep_opened_at ?? null;
+  } catch {
+    prevOpenedAt = null;
+  }
+  if (me.role !== "viewer") {
+    await supabase
+      .from("workers")
+      .update({ prep_opened_at: new Date().toISOString() })
+      .eq("id", id)
+      .then(() => undefined, () => undefined);
+  }
+  const opened = prepOpenedInfo(prevOpenedAt, todayJst());
+
+  // 準備中の所属機関（転職先。無ければ現在の所属機関）。見出しの右側からすぐ開けるようにする
+  const prepOrgId = worker.application_prep_organization_id ?? worker.current_organization_id ?? null;
+  let prepOrgName = "";
+  if (prepOrgId) {
+    const { data: o } = await supabase.from("organizations").select("name").eq("id", prepOrgId).maybeSingle();
+    prepOrgName = (o as { name: string } | null)?.name ?? "";
+  }
+
+  const headerLinks = (
+    <>
+      {worker.messenger_link && (
+        <a href={messengerWebUrl(worker.messenger_link)} target="_blank" rel="noopener noreferrer" className={HEADER_LINK}>
+          <MessageCircle size={14} />
+          Messenger
+        </a>
+      )}
+      {worker.notion_link && (
+        <a href={notionAppUrl(worker.notion_link)} className={HEADER_LINK}>
+          <NotebookPen size={14} />
+          Notion
+        </a>
+      )}
+      <Link href={`/workers/${worker.id}`} className={HEADER_LINK}>
+        <UserRound size={14} />
+        外国人詳細
+      </Link>
+      {prepOrgId && (
+        <Link href={`/organizations/${prepOrgId}`} className={HEADER_LINK} title={prepOrgName}>
+          <Building2 size={14} />
+          <span className="max-w-[10rem] truncate">{prepOrgName || "所属機関"}</span>
+        </Link>
+      )}
+      {/* 試験用ページと今の画面を行き来する（管理者にだけ出す） */}
+      {canUnified && (
+        <Link
+          href={`/workers/${worker.id}/application-prep${unified ? "" : "/unified"}`}
+          className={HEADER_LINK}
+          title={UNIFIED_PREP_TITLE}
+        >
+          <FlaskConical size={14} />
+          {unified ? "今の画面へ" : "一本化（試験中）"}
+        </Link>
+      )}
+    </>
+  );
+
+  return (
+    <>
+      {/* 直前の画面（TODO一覧・申請一覧・外国人詳細）へ戻る。直接開いたときは申請準備の一覧へ。
+          右側に Messenger・Notion・外国人詳細・準備中の所属機関へのリンクを置く */}
+      <AppHeader
+        title={`${worker.name}｜申請準備${unified ? "（一本化・試験中）" : ""}`}
+        backHref="/workers/renewals"
+        right={headerLinks}
+      />
+      <div className="px-4 pb-10 pt-4 md:px-8">
+        {unified && (
+          <p className="mb-3 rounded-xl border-2 border-dashed border-brand/50 bg-brand/5 px-3 py-2 text-xs leading-relaxed">
+            <span className="font-black text-brand">🧪 {UNIFIED_PREP_TITLE}</span>
+            <br />
+            管理者だけが開ける試験用のページです。入力した内容は今の画面と同じところに保存されます（同じ申請準備です）。
+            問題が無ければ、今の申請準備の詳細画面をこのページと入れ替えます。
+          </p>
+        )}
+        {/* 前回この画面を開いた日。2週間以上空いていたら赤くして、放置に気づけるようにする */}
+        <p
+          className={`mb-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${
+            opened.stale ? "bg-seal/10 text-seal" : "bg-background text-muted"
+          }`}
+        >
+          {opened.stale ? "⚠ " : ""}
+          前回この画面を開いたのは{opened.openedOn ? ` ${opened.openedOn}（${opened.days === 0 ? "今日" : `${opened.days}日前`}）` : "、記録がありません"}
+          {opened.stale && "・2週間以上開いていませんでした"}
+        </p>
+        <ApplicationPrepChecklist
+          workerId={worker.id}
+          canEdit={me.role !== "viewer"}
+          photoPath={worker.photo_path}
+          healthCheckOn={worker.health_check_on}
+          embedEmployment
+          unified={unified}
+        />
+      </div>
+    </>
+  );
+}

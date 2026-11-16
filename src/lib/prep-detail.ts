@@ -8,6 +8,7 @@
 export const PREP_DETAIL_SECTIONS = [
   { id: "prep-basic", label: "基本情報・所属機関" },
   { id: "prep-prior", label: "前回の申請" },
+  { id: "prep-list", label: "提出書類一覧表" },
   { id: "prep-docs", label: "必要な書類" },
   { id: "prep-copy", label: "申請書に貼る情報" },
   { id: "prep-sign", label: "署名・賃金・雇用契約書" },

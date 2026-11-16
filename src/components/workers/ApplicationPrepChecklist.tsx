@@ -238,7 +238,9 @@ import {
   waitingNoteFromMissing,
   type PrepRequesteeKind,
 } from "@/lib/prep-detail";
-import { isAgricultureIndustry } from "@/lib/org-attachments";
+import { isAgricultureIndustry, needsFlexDocs } from "@/lib/org-attachments";
+import { buildSubmissionRows } from "@/lib/submission-list";
+import { PrepSubmissionList } from "@/components/workers/PrepSubmissionList";
 import { desiredResidenceStatus } from "@/lib/application-copy";
 
 // 在留カード・パスポートのアップロード中を示すキー（onboarding_documents の書類キーとは別枠）
@@ -256,6 +258,7 @@ export function ApplicationPrepChecklist({
   worker,
   organizations,
   embedEmployment = false,
+  unified = false,
 }: {
   workerId: string;
   canEdit?: boolean;
@@ -268,6 +271,9 @@ export function ApplicationPrepChecklist({
   // モーダル表示（TODO・申請一覧）のとき true: 賃金（1-6号別紙）もこの中で直接入力する。
   // 外国人詳細では賃金の記録カードが別にあるため false（リンク表示のみ）
   embedEmployment?: boolean;
+  // 申請書類作成をアプリ一本化計画（試験中）のページで開いたとき true。
+  // 提出書類一覧表（有／無・○を付けた印刷）など、試験中の機能を出す（lib/unified-prep.ts）
+  unified?: boolean;
 }) {
   // TODO番号ごとの準備リスト。selected が表示中のリスト（todo_no）
   const [lists, setLists] = useState<PrepChecklistRow[]>([]);
@@ -607,6 +613,7 @@ export function ApplicationPrepChecklist({
         | "estimate_items"
         | "hire_check"
         | "print_marks"
+        | "submission_marks"
       >
     >,
   ) {
@@ -619,7 +626,9 @@ export function ApplicationPrepChecklist({
     } catch (err) {
       // あとから足した項目（筆頭者=0111・申請予定日=0112）は、その分の案内を出す
       const migration =
-        "print_marks" in patch
+        "submission_marks" in patch
+          ? "0226_prep_submission_marks.sql"
+          : "print_marks" in patch
           ? "0223_prep_print_marks.sql"
           : "hire_check" in patch
           ? "0218_prep_hire_check.sql"
@@ -1599,6 +1608,24 @@ export function ApplicationPrepChecklist({
 
   // あっせんは必須（有り、または無しで理由まで）
   const assenTodo = currentTodo ?? fallbackTodo;
+
+  // 提出書類一覧表（特定技能1号の在留資格変更だけ）。保存した有／無と、申請準備の情報からの見当
+  const submissionRows =
+    unified && current && meta.app_type === "変更" && !isSsw2Prep && meta.cert_pattern !== "特定技能2号"
+      ? buildSubmissionRows(
+          current.submission_marks ?? {},
+          {
+            jointKind: current.joint_kind,
+            hasKokuho: meta.has_kokuho,
+            hasNenkin: meta.has_nenkin,
+            flexYear: orgIntake ? needsFlexDocs(orgIntake.flex_hours_kind ?? "") : null,
+            assen: assenTodo?.assen ?? "",
+            nationality: worker?.nationality ?? "",
+            certPattern: meta.cert_pattern,
+          },
+          { agri: prepOrgAgri || isAgricultureIndustry(workerRow?.field) },
+        )
+      : null;
   const assenOk = assenDecided(assenTodo?.assen, assenTodo?.assen_note);
 
   // ステータスを変える前の確認。「入管へ申請！！」にするときだけ、足りない書類とあっせんを確かめる
@@ -2468,6 +2495,29 @@ export function ApplicationPrepChecklist({
         </p>
       ) : (
         <>
+      {/* 提出書類一覧表（特定技能1号・在留資格変更）。入管の一覧表の番号順に有／無を選び、○を付けて印刷する */}
+      {submissionRows && (
+        <PrepSection
+          id="prep-list"
+          title="提出書類一覧表（特定技能1号・在留資格変更）"
+          tone={submissionRows.some((r) => r.mark == null) ? "alert" : "normal"}
+        >
+          <PrepSubmissionList
+            rows={submissionRows}
+            canEdit={canEdit}
+            workerName={workerRow?.name ?? ""}
+            orgName={prepOrgName}
+            onError={setError}
+            onMark={(key, mark) => {
+              const next = { ...current.submission_marks };
+              if (mark) next[key] = mark;
+              else delete next[key];
+              void saveExtras({ submission_marks: next });
+            }}
+          />
+        </PrepSection>
+      )}
+
       {/* 3. 必要な書類（まだ揃っていない／申請後に郵送／揃った） */}
       <PrepSection
         id="prep-docs"
