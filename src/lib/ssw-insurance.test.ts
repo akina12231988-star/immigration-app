@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  compareSswRefundRecords,
+  isSswRefundRecord,
+  needsSswRefundSalesNo,
+  sumSswRefunds,
   excelDateSerial,
   sswInsuranceExpiryState,
   sswStartOnFromPaidOn,
@@ -868,5 +872,45 @@ describe("sswPermitInfo の所属機関・審査中", () => {
   it("申請前・取下げは審査中にしない", () => {
     expect(sswPermitInfo(w, [{ ...base, status: "申請前" }]).reviewing).toBeNull();
     expect(sswPermitInfo(w, [{ ...base, status: "申請済", withdrawn_on: "2026-10-01" }]).reviewing).toBeNull();
+  });
+});
+
+describe("解約済み・返戻金の記録", () => {
+  const rec = (name: string, amount: number | null, paidOn: string | null = null, salesNo = "") => ({
+    name,
+    ssw_insurance_refund_amount: amount,
+    ssw_insurance_refund_paid_on: paidOn,
+    ssw_insurance_refund_sales_no: salesNo,
+  });
+
+  it("解約手続きが完了した人と、返戻金・振込日を入れた人を出す", () => {
+    expect(isSswRefundRecord(rec("A", null), true)).toBe(true);
+    expect(isSswRefundRecord(rec("B", 1320), false)).toBe(true);
+    expect(isSswRefundRecord(rec("C", 0), false)).toBe(true); // 返戻金 0円も記録として残す
+    expect(isSswRefundRecord(rec("D", null, "2026-12-23"), false)).toBe(true);
+    expect(isSswRefundRecord(rec("E", null), false)).toBe(false);
+  });
+
+  it("解約売上No.が要るのは返戻金が1円以上で売上No.が空の人", () => {
+    expect(needsSswRefundSalesNo(rec("A", 1320))).toBe(true);
+    expect(needsSswRefundSalesNo(rec("B", 1320, null, "SP-0000000300"))).toBe(false);
+    expect(needsSswRefundSalesNo(rec("C", 0))).toBe(false);
+    expect(needsSswRefundSalesNo(rec("D", null))).toBe(false);
+  });
+
+  it("振込日が無い人を先頭に、振込日の新しい順・氏名順に並べる", () => {
+    const list = [
+      rec("B", 1, "2026-12-23"),
+      rec("A", 1, "2026-12-23"),
+      rec("C", 1, "2027-01-20"),
+      rec("D", 1, null),
+    ];
+    expect([...list].sort(compareSswRefundRecords).map((r) => r.name)).toEqual(["D", "C", "A", "B"]);
+  });
+
+  it("返戻金の合計（明細の合計 34,720円）", () => {
+    const amounts = [0, 1320, 1320, 3990, 3990, 4100, 5320, 7340, 7340];
+    expect(sumSswRefunds(amounts.map((a) => rec("x", a)))).toBe(34720);
+    expect(sumSswRefunds([rec("x", null), rec("y", 100)])).toBe(100);
   });
 });

@@ -101,6 +101,10 @@ export interface SswInsuranceWorker {
   // 解約手続きの郵送（0147）: 変更（解約）届出書を投函した日と追跡番号
   ssw_insurance_cancel_mailed_on?: string | null;
   ssw_insurance_cancel_tracking_no?: string;
+  // 解約金（返戻金）の金額と解約売上No.（0147）、振込日（0225。未適用の環境では undefined）
+  ssw_insurance_refund_amount?: number | null;
+  ssw_insurance_refund_sales_no?: string;
+  ssw_insurance_refund_paid_on?: string | null;
   // 申込（0171）。未適用の環境では undefined
   ssw_insurance_paid_on?: string | null; // 振込日（保険始期希望日は翌日。土日なら翌週の月曜日）
   ssw_insurance_request_no?: string; // 加入依頼 受付番号
@@ -694,6 +698,45 @@ export function formatYenInput(n: number | null | undefined): string {
 // 表示（例: 12,340円）
 export function formatYenLabel(n: number | null | undefined): string {
   return n == null ? "" : `${n.toLocaleString("ja-JP")}円`;
+}
+
+// ---- 解約済み・返戻金の記録 ----
+// 解約すると国際研修サービスから「中途解約返戻金明細のご案内」が届き、1人ずつの返戻保険料と振込日が書いてある。
+// 金額・振込日・解約売上No.（freee販売）を1人ずつ残す。
+
+type SswRefundFields = Pick<
+  SswInsuranceWorker,
+  "ssw_insurance_refund_amount" | "ssw_insurance_refund_paid_on" | "ssw_insurance_refund_sales_no"
+>;
+
+// 「解約済み・返戻金」の表に出す人か（解約手続きのTODOが完了した人と、返戻金・振込日を入れた人）
+export function isSswRefundRecord(w: SswRefundFields, cancelDone: boolean): boolean {
+  return cancelDone || w.ssw_insurance_refund_amount != null || !!w.ssw_insurance_refund_paid_on;
+}
+
+// 解約売上No.の入力が残っているか（返戻金が1円以上で、売上No.が空）
+export function needsSswRefundSalesNo(w: SswRefundFields): boolean {
+  return (w.ssw_insurance_refund_amount ?? 0) > 0 && !(w.ssw_insurance_refund_sales_no ?? "").trim();
+}
+
+// 並び順: 振込日の新しい順（振込日が無い人は先頭＝まだ明細が来ていない人）→ 氏名
+export function compareSswRefundRecords(
+  a: SswRefundFields & { name: string },
+  b: SswRefundFields & { name: string },
+): number {
+  const pa = a.ssw_insurance_refund_paid_on ?? "";
+  const pb = b.ssw_insurance_refund_paid_on ?? "";
+  if (pa !== pb) {
+    if (!pa) return -1;
+    if (!pb) return 1;
+    return pb.localeCompare(pa);
+  }
+  return a.name.localeCompare(b.name, "ja");
+}
+
+// 返戻金の合計（未入力の人は数えない）
+export function sumSswRefunds(list: SswRefundFields[]): number {
+  return list.reduce((sum, w) => sum + (w.ssw_insurance_refund_amount ?? 0), 0);
 }
 
 // ---- 申込用のファイル（申込サイトにアップロードする「特定技能名簿」） ----
