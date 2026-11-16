@@ -6,6 +6,7 @@ import { useState } from "react";
 // 「追加」ボタン（hidden な input[type=file]）と併用でき、
 // この領域にファイルを落としても同じアップロード処理が動く。
 export function FileDropArea({
+  id,
   onFiles,
   disabled = false,
   className = "",
@@ -13,6 +14,7 @@ export function FileDropArea({
   title = "ここにファイルをドロップしてもアップロードできます",
   children,
 }: {
+  id?: string;
   onFiles: (files: FileList) => void;
   disabled?: boolean;
   className?: string;
@@ -24,6 +26,7 @@ export function FileDropArea({
 
   return (
     <div
+      id={id}
       className={`${className} ${over ? "border-brand ring-2 ring-brand/30" : ""}`}
       style={style}
       title={disabled ? undefined : title}

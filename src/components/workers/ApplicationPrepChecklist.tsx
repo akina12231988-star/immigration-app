@@ -239,8 +239,15 @@ import {
   type PrepRequesteeKind,
 } from "@/lib/prep-detail";
 import { isAgricultureIndustry, needsFlexDocs } from "@/lib/org-attachments";
-import { buildSubmissionRows } from "@/lib/submission-list";
-import { PrepSubmissionList } from "@/components/workers/PrepSubmissionList";
+import {
+  SUBMISSION_LINKS,
+  buildSubmissionRows,
+  canAttachToSubmissionRow,
+  submissionAttachKey,
+  submissionBundleOrder,
+  type SubmissionRow,
+} from "@/lib/submission-list";
+import { PrepSubmissionList, SubmissionRowAction } from "@/components/workers/PrepSubmissionList";
 import { desiredResidenceStatus } from "@/lib/application-copy";
 
 // 在留カード・パスポートのアップロード中を示すキー（onboarding_documents の書類キーとは別枠）
@@ -1503,6 +1510,33 @@ export function ApplicationPrepChecklist({
     : missingItems;
   const docLabelOf = (item: (typeof items)[number]) => prepDocLabel(item.def, docYearOf(item.def), currentReiwa);
 
+  // 提出書類一覧表（特定技能1号の在留資格変更だけ）。保存した有／無と、申請準備の情報からの見当
+  const submissionRows =
+    unified && current && meta.app_type === "変更" && !isSsw2Prep && meta.cert_pattern !== "特定技能2号"
+      ? buildSubmissionRows(
+          current.submission_marks ?? {},
+          {
+            jointKind: current.joint_kind,
+            hasKokuho: meta.has_kokuho,
+            hasNenkin: meta.has_nenkin,
+            flexYear: orgIntake ? needsFlexDocs(orgIntake.flex_hours_kind ?? "") : null,
+            assen: (currentTodo ?? fallbackTodo)?.assen ?? "",
+            nationality: worker?.nationality ?? "",
+            certPattern: meta.cert_pattern,
+          },
+          { agri: prepOrgAgri || isAgricultureIndustry(workerRow?.field) },
+        )
+      : null;
+
+  // 提出書類一覧表の行に直接添付するファイル（アプリの「必要な書類」に無い書類）。保存先は prep_sl_*
+  const submissionAttachDef = (row: SubmissionRow): PrepDocDef => ({
+    id: `sl:${row.key}`,
+    label: `${row.table === "3agri" ? "第3表 " : ""}${row.no}${row.sub ?? ""} ${row.label}`,
+    appliesTo: ["変更"],
+    source: { kind: "doc", docKey: submissionAttachKey(row.key) },
+    manageInline: true,
+  });
+
   // 添付した書類（在留カード・顔写真・パスポート以外）をまとめる計画と、添付の無い書類。
   // 課税・納税証明書は、証明書類の請求に届いた証明書も候補に入れ、2つ以上あれば選んでもらう
   const bundleChosen = applyBundleChoices<BundleFile>(
@@ -1526,7 +1560,40 @@ export function ApplicationPrepChecklist({
     })),
     bundleChoices,
   );
-  const bundlePlan = prepBundlePlan(bundleChosen.items);
+  // 一本化（試験中）では、提出書類一覧表で「有」にした書類だけを、一覧表の順にまとめる
+  const bundlePlan = (() => {
+    if (!submissionRows) return prepBundlePlan(bundleChosen.items);
+    const byId = new Map(bundleChosen.items.map((i) => [i.id, i]));
+    const rowByKey = new Map(submissionRows.map((r) => [r.key, r]));
+    const ordered = submissionBundleOrder(submissionRows).flatMap((o) => {
+      if (!o.id.startsWith("sl:")) {
+        const it = byId.get(o.id);
+        return it ? [it] : [];
+      }
+      const row = rowByKey.get(o.id.slice(3));
+      if (!row) return [];
+      const def = submissionAttachDef(row);
+      return [
+        {
+          id: o.id,
+          label: def.label,
+          kind: "doc",
+          // 「必要な書類」でも揃える書類（15・20）は、この行の添付が無くてもお知らせに出さない
+          satisfied: (SUBMISSION_LINKS[row.key]?.docs ?? []).length > 0,
+          mailAfterApply: false,
+          issueNoMail: false,
+          files: docFilesFor(def).map((d) => ({
+            key: `prep:${d.id}`,
+            id: d.id,
+            name: d.file_name || def.label,
+            source: "prep" as const,
+            link: !d.storage_path,
+          })),
+        },
+      ];
+    });
+    return prepBundlePlan(ordered, { keepOrder: true });
+  })();
   const toggleBundleChoice = (docId: string, key: string) =>
     setBundleChoices((prev) => {
       const cur = new Set(prev[docId] ?? []);
@@ -1609,23 +1676,6 @@ export function ApplicationPrepChecklist({
   // あっせんは必須（有り、または無しで理由まで）
   const assenTodo = currentTodo ?? fallbackTodo;
 
-  // 提出書類一覧表（特定技能1号の在留資格変更だけ）。保存した有／無と、申請準備の情報からの見当
-  const submissionRows =
-    unified && current && meta.app_type === "変更" && !isSsw2Prep && meta.cert_pattern !== "特定技能2号"
-      ? buildSubmissionRows(
-          current.submission_marks ?? {},
-          {
-            jointKind: current.joint_kind,
-            hasKokuho: meta.has_kokuho,
-            hasNenkin: meta.has_nenkin,
-            flexYear: orgIntake ? needsFlexDocs(orgIntake.flex_hours_kind ?? "") : null,
-            assen: assenTodo?.assen ?? "",
-            nationality: worker?.nationality ?? "",
-            certPattern: meta.cert_pattern,
-          },
-          { agri: prepOrgAgri || isAgricultureIndustry(workerRow?.field) },
-        )
-      : null;
   const assenOk = assenDecided(assenTodo?.assen, assenTodo?.assen_note);
 
   // ステータスを変える前の確認。「入管へ申請！！」にするときだけ、足りない書類とあっせんを確かめる
@@ -2508,6 +2558,28 @@ export function ApplicationPrepChecklist({
             workerName={workerRow?.name ?? ""}
             orgName={prepOrgName}
             onError={setError}
+            renderAction={(row) => (
+              <SubmissionRowAction
+                row={row}
+                canEdit={canEdit}
+                busy={busyKey != null}
+                docs={(SUBMISSION_LINKS[row.key]?.docs ?? []).map((id) => {
+                  const item = items.find((i) => i.def.id === id);
+                  return {
+                    id,
+                    label: item ? docLabelOf(item) : (PREP_DOC_DEFS.find((d) => d.id === id)?.label ?? id),
+                    inList: !!item,
+                    satisfied: !!item?.satisfied,
+                    fileCount: item ? docFilesFor(item.def).length : 0,
+                  };
+                })}
+                attachFiles={canAttachToSubmissionRow(row.key) ? docFilesFor(submissionAttachDef(row)) : null}
+                onAttach={() => startAttach(submissionAttachDef(row))}
+                onDrop={(files) => void dropAttach(submissionAttachDef(row), files)}
+                onPreview={(f) => void previewDoc(f.id)}
+                onRemove={(f) => void removeDoc(f.doc_key, `${submissionAttachDef(row).label}（${f.file_name}）`)}
+              />
+            )}
             onMark={(key, mark) => {
               const next = { ...current.submission_marks };
               if (mark) next[key] = mark;
@@ -3180,6 +3252,7 @@ function DocRow({
 
   return (
     <FileDropArea
+      id={`prep-doc-${item.def.id}`}
       onFiles={onDropFiles}
       disabled={!canEdit || busy}
       className="border-b border-border bg-background px-3 py-2.5 text-sm last:border-b-0"

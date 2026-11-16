@@ -1,8 +1,11 @@
 "use client";
 
-import { Fragment, useState } from "react";
-import { ChevronDown, Printer } from "lucide-react";
+import { Fragment, useState, type ReactNode } from "react";
+import { CheckCircle2, ChevronDown, Eye, Loader2, Paperclip, Printer, Trash2 } from "lucide-react";
+import { FileDropArea } from "@/components/ui/FileDropArea";
+import type { OnboardingDocumentRow } from "@/types/db";
 import {
+  SUBMISSION_LINKS,
   SUBMISSION_TABLE_TITLES,
   submissionListPrintHtml,
   type SubmissionRow,
@@ -20,6 +23,7 @@ export function PrepSubmissionList({
   orgName,
   onMark,
   onError,
+  renderAction,
 }: {
   rows: SubmissionRow[];
   canEdit: boolean;
@@ -28,6 +32,8 @@ export function PrepSubmissionList({
   // 有／無を選ぶ（null は選択を外して見当に戻す）
   onMark: (key: string, mark: SubmitMark | null) => void;
   onError: (message: string) => void;
+  // 「有」の行の下に出す、書類を揃えるための欄（添付・作る場所へのリンク）
+  renderAction?: (row: SubmissionRow) => ReactNode;
 }) {
   const [openNotes, setOpenNotes] = useState(false);
   const undecided = rows.filter((r) => r.mark == null);
@@ -138,6 +144,7 @@ export function PrepSubmissionList({
                           {r.sub && <span className="mr-1 font-bold">{r.sub}</span>}
                           {r.label}
                           {openNotes && r.note && <p className="mt-0.5 text-[10px] leading-snug text-muted">※{r.note}</p>}
+                          {r.mark === "有" && renderAction && <div className="mt-1.5">{renderAction(r)}</div>}
                         </td>
                         <td className="border-t border-border px-2 py-1.5 text-center text-[10px] text-muted">{r.formNo}</td>
                         <td className="border-t border-border px-2 py-1.5 text-center">{r.required}</td>
@@ -178,6 +185,112 @@ export function PrepSubmissionList({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// 「有」の行で書類を揃える欄。
+//  ・「必要な書類の準備」で揃える書類は、その状態と、その行へのリンク
+//  ・アプリの中で作る書類は、その章へのリンク
+//  ・アプリに無い書類は、この行に直接添付（ドラッグ＆ドロップも可）。添付したファイルはまとめた PDF に入る
+export function SubmissionRowAction({
+  row,
+  canEdit,
+  busy,
+  docs,
+  attachFiles,
+  onAttach,
+  onDrop,
+  onPreview,
+  onRemove,
+}: {
+  row: SubmissionRow;
+  canEdit: boolean;
+  busy: boolean;
+  docs: { id: string; label: string; inList: boolean; satisfied: boolean; fileCount: number }[];
+  attachFiles: OnboardingDocumentRow[] | null; // null はこの行に添付しない書類
+  onAttach: () => void;
+  onDrop: (files: FileList) => void;
+  onPreview: (f: OnboardingDocumentRow) => void;
+  onRemove: (f: OnboardingDocumentRow) => void;
+}) {
+  const section = SUBMISSION_LINKS[row.key]?.section;
+  return (
+    <div className="flex flex-col gap-1 rounded-lg border border-border bg-background/60 p-2 text-[11px]">
+      {docs.map((d) => (
+        <p key={d.id} className="flex flex-wrap items-center gap-1.5">
+          {d.inList ? (
+            d.satisfied ? (
+              <CheckCircle2 size={13} className="text-status-approved-fg" />
+            ) : (
+              <span className="h-2 w-2 rounded-full bg-seal" aria-hidden />
+            )
+          ) : (
+            <span className="h-2 w-2 rounded-full bg-border" aria-hidden />
+          )}
+          <span className="font-bold">{d.label}</span>
+          {d.inList ? (
+            <>
+              <span className={d.satisfied ? "text-muted" : "font-bold text-seal"}>
+                {d.satisfied ? "揃っています" : "まだ"}
+                {d.fileCount > 0 ? `（${d.fileCount}ファイル）` : ""}
+              </span>
+              <a href={`#prep-doc-${d.id}`} className="font-bold text-brand underline">
+                必要な書類で添付 →
+              </a>
+            </>
+          ) : (
+            <span className="text-muted">（この申請の「必要な書類」には出ていません）</span>
+          )}
+        </p>
+      ))}
+      {section && (
+        <a href={`#${section.anchor}`} className="font-bold text-brand underline">
+          「{section.label}」で作る・確かめる →
+        </a>
+      )}
+      {attachFiles && (
+        <FileDropArea
+          onFiles={onDrop}
+          disabled={!canEdit || busy}
+          className="rounded-md border border-dashed border-border bg-surface p-1.5"
+          title="ここにファイルをドロップすると、この書類として添付されます"
+        >
+          <div className="flex flex-wrap items-center gap-1.5">
+            {attachFiles.length === 0 ? (
+              <span className={docs.length > 0 ? "text-muted" : "font-bold text-seal"}>
+                {docs.length > 0 ? "この行にも添付できます" : "まだ添付していません"}
+              </span>
+            ) : (
+              attachFiles.map((f) => (
+                <span key={f.id} className="inline-flex items-center gap-1 rounded-full bg-background px-2 py-0.5">
+                  <Paperclip size={11} className="text-muted" />
+                  <span className="max-w-[12rem] truncate">{f.file_name || "ファイル"}</span>
+                  <button type="button" onClick={() => onPreview(f)} className="text-brand" aria-label="見る" title="見る">
+                    <Eye size={12} />
+                  </button>
+                  {canEdit && (
+                    <button type="button" onClick={() => onRemove(f)} className="text-muted hover:text-seal" aria-label="削除" title="削除">
+                      <Trash2 size={12} />
+                    </button>
+                  )}
+                </span>
+              ))
+            )}
+            {canEdit && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={onAttach}
+                className="ml-auto inline-flex min-h-[28px] items-center gap-1 rounded-md border border-border bg-surface px-2 font-bold text-brand disabled:opacity-50"
+              >
+                {busy ? <Loader2 size={12} className="animate-spin" /> : <Paperclip size={12} />}
+                添付
+              </button>
+            )}
+          </div>
+        </FileDropArea>
+      )}
     </div>
   );
 }

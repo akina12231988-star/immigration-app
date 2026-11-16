@@ -208,6 +208,74 @@ export function normalizeSubmissionMarks(v: unknown): Record<string, SubmitMark>
   return out;
 }
 
+// ---- 「有」の書類を揃える（②） ----
+// 書類ごとに、アプリのどこで揃えるか。
+//   docs    … 「必要な書類の準備」の書類（PREP_DOC_DEFS の id）。添付はそちらで行い、ここには状態を出す
+//   section … アプリの中で作る・確かめる章（申請準備の詳細のページ内リンク）
+// docs が無い書類（と extraAttach の書類）は、この一覧の行に直接添付できる（保存キーは submissionAttachKey）
+export interface SubmissionLink {
+  docs?: string[];
+  section?: { anchor: string; label: string };
+  extraAttach?: boolean; // docs があっても、この行にも添付できる
+}
+
+export const SUBMISSION_LINKS: Record<string, SubmissionLink> = {
+  // この一覧表そのもの（上の「○を付けた一覧表を印刷」で出す。添付はしない）
+  "t1-2": { docs: [] },
+  "t1-3": { section: { anchor: "prep-copy", label: "申請書に貼る情報" } },
+  "t1-5": { section: { anchor: "prep-sign", label: "署名・賃金・雇用契約書" } },
+  "t1-6-1": { section: { anchor: "hire-check", label: "採用条件の確認・賃金" } },
+  "t1-6-2": { section: { anchor: "hire-check", label: "賃金（1-6号別紙）" } },
+  "t1-7-2": { section: { anchor: "prep-assen", label: "あっせん" } },
+  "t1-8-1": { docs: ["kenshin"] },
+  "t1-9": { docs: ["nozei_shiken"] },
+  "t1-10": { docs: ["kazei"] },
+  "t1-11": { docs: ["gensen"] },
+  "t1-12": { docs: ["hokensho"] },
+  "t1-13": { docs: ["nozei_kokuho"] },
+  "t1-14": { docs: ["nenkin"] },
+  "t1-15": { docs: ["nenkin"], extraAttach: true },
+  "t1-18": { section: { anchor: "prep-plan", label: "1-17号 支援計画書" } },
+  "t1-19": { section: { anchor: "prep-dates", label: "支援計画書の日付（1-25号）" } },
+  "t1-20": { docs: ["suisenjo"], extraAttach: true },
+  "t3a-1-1": { docs: ["cert_senmonkyu", "hyoka_chosho"] },
+  "t3a-1-2": { docs: ["cert_senmongai"] },
+  "t3a-1-3": { docs: ["cert_nihongo"] },
+  "t3a-3": { section: { anchor: "prep-farm", label: "農業 加入通知書" } },
+};
+
+// この行に直接添付できるか
+export function canAttachToSubmissionRow(key: string): boolean {
+  const link = SUBMISSION_LINKS[key];
+  return !link?.docs || !!link.extraAttach;
+}
+
+// この行に直接添付したファイルの保存キー（onboarding_documents.doc_key。prep_ で始める）
+export function submissionAttachKey(key: string): string {
+  return `prep_sl_${key.replace(/-/g, "_")}`;
+}
+
+// まとめる PDF に入れる順番（「有」の書類だけ、一覧表の順）。
+// 「必要な書類」の書類は その id、この行に添付したファイルは sl:キー。同じ書類は最初の1回だけ
+export function submissionBundleOrder(rows: SubmissionRow[]): { id: string; label: string; rowLabel: string }[] {
+  const out: { id: string; label: string; rowLabel: string }[] = [];
+  const seen = new Set<string>();
+  for (const r of rows) {
+    if (r.mark !== "有") continue;
+    const rowLabel = `${SUBMISSION_TABLE_SHORT[r.table]}${r.no}${r.sub ?? ""}`;
+    const push = (id: string) => {
+      if (seen.has(id)) return;
+      seen.add(id);
+      out.push({ id, label: r.label, rowLabel });
+    };
+    for (const d of SUBMISSION_LINKS[r.key]?.docs ?? []) push(d);
+    if (canAttachToSubmissionRow(r.key)) push(`sl:${r.key}`);
+  }
+  return out;
+}
+
+const SUBMISSION_TABLE_SHORT: Record<SubmissionTable, string> = { "1": "", "3agri": "第3表 " };
+
 // ---- 一覧表の印刷（A4縦） ----
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
