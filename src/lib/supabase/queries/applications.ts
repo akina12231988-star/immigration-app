@@ -57,6 +57,7 @@ function toApplication(row: RowWithRefs): Application {
     visaAtGrant: row.visa_at_grant ?? undefined,
     reportOrgHonorific: (row.report_org_honorific as OrgHonorific) ?? "御中",
     cardReceivedOn: row.card_received_on ?? undefined,
+    cardReceiptChangedOn: row.card_receipt_changed_on ?? undefined,
     withdrawnOn: row.withdrawn_on ?? undefined,
     approvalReported: row.approval_reported ?? false,
     lineReported: row.line_reported,
@@ -109,6 +110,7 @@ function toRowPatch(patch: Partial<Application>): Record<string, unknown> {
   if (patch.reportOrgHonorific !== undefined) row.report_org_honorific = patch.reportOrgHonorific;
   // 在留カード受領の取り消しで null に戻せるよう、キーの存在で判定する
   if ("cardReceivedOn" in patch) row.card_received_on = patch.cardReceivedOn ?? null;
+  if ("cardReceiptChangedOn" in patch) row.card_receipt_changed_on = patch.cardReceiptChangedOn ?? null;
   // 取下げの取り消しで null に戻せるよう、キーの存在で判定する
   if ("withdrawnOn" in patch) row.withdrawn_on = patch.withdrawnOn ?? null;
   if (patch.approvalReported !== undefined) row.approval_reported = patch.approvalReported;

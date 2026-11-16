@@ -125,6 +125,8 @@ export interface Application {
   visaAtGrant?: string; // 許可時の在留資格
   reportOrgHonorific: OrgHonorific; // 御中 / 様
   cardReceivedOn?: string; // 在留カード受領日
+  // 在留カードの受け取りを郵送から窓口へ変更した日（0224。未適用・変更なしは undefined）
+  cardReceiptChangedOn?: string;
   withdrawnOn?: string; // 取下げ日
   approvalReported: boolean; // 許可のLINE報告済
   lineReported: boolean; // 申請のLINE報告済

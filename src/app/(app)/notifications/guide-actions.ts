@@ -3,7 +3,8 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 
-// 在留カードの受け取りの手続きのイラスト（郵送で受け取る／郵送→窓口へ変更）。
+// 在留カードの受け取りの手続きのイラスト（郵送で受け取る／郵送→窓口へ変更。それぞれ在留資格変更・在留期間更新）。
+// mail・counter = 在留資格変更の場合、mail_renewal・counter_renewal = 在留期間更新の場合。
 // 画像は非公開バケット app-files（guides/）に置き、保存先は app_settings（key = card_pickup_guide）に持つ。
 // 画面からドラッグ＆ドロップで登録・差し替えできる（マイグレーション不要。0149 の app_settings を使う）
 
@@ -12,7 +13,8 @@ const TTL = 60 * 60;
 const SETTING_KEY = "card_pickup_guide";
 const IMAGE_MIME = /^image\/(jpeg|png|webp)$/;
 
-export type GuideImageKind = "mail" | "counter";
+export type GuideImageKind = "mail" | "mail_renewal" | "counter" | "counter_renewal";
+const KINDS: readonly GuideImageKind[] = ["mail", "mail_renewal", "counter", "counter_renewal"];
 type Err = { ok: false; message: string };
 
 async function requireStaff(): Promise<boolean> {
@@ -35,7 +37,7 @@ export async function getGuideImageUrls(): Promise<Partial<Record<GuideImageKind
   if (!admin) return {};
   const paths = await readPaths();
   const out: Partial<Record<GuideImageKind, string>> = {};
-  for (const kind of ["mail", "counter"] as const) {
+  for (const kind of KINDS) {
     const p = paths[kind];
     if (!p) continue;
     const { data } = await admin.storage.from(BUCKET).createSignedUrl(p, TTL);
@@ -50,6 +52,7 @@ export async function createGuideImageTicket(
   mimeType: string,
 ): Promise<{ ok: true; path: string; token: string } | Err> {
   if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
+  if (!KINDS.includes(kind)) return { ok: false, message: "不正な種類" };
   if (!IMAGE_MIME.test(mimeType)) return { ok: false, message: "画像（JPEG・PNG・WebP）を選んでください" };
   const admin = createAdminClient();
   if (!admin) return { ok: false, message: "サーバー設定エラー（SERVICE_ROLE_KEY 未設定）" };
@@ -64,6 +67,7 @@ export async function createGuideImageTicket(
 // アップロードしたイラストを登録する（前の画像は消す）。表示用の署名付きURLを返す
 export async function setGuideImage(kind: GuideImageKind, path: string): Promise<{ ok: true; url: string } | Err> {
   if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
+  if (!KINDS.includes(kind)) return { ok: false, message: "不正な種類" };
   if (!path.startsWith(`guides/card-pickup-${kind}-`)) return { ok: false, message: "不正なパス" };
   const admin = createAdminClient();
   if (!admin) return { ok: false, message: "サーバー設定エラー" };
