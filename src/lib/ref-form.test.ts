@@ -1,0 +1,102 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+import { PDFDocument } from "pdf-lib";
+import {
+  REF_FORM_ITEMS,
+  REF_FORM_SAMPLE_DATA,
+  fillRefForm,
+  languageForNationality,
+  mergeRefForms,
+  normalizeRefFormLayout,
+  normalizeSignPages,
+  parseRefFormMode,
+  pickRefFormTemplate,
+  refFormFileName,
+  refFormName,
+  refFormPagesFor,
+  refFormValue,
+} from "./ref-form";
+
+describe("参考様式の行", () => {
+  it("提出書類一覧表のうち参考様式の書類だけ", () => {
+    const keys = REF_FORM_ITEMS.map((i) => i.key);
+    expect(keys).toEqual(expect.arrayContaining(["t1-4-1", "t1-5", "t1-6-1", "t1-6-2", "t1-7-1", "t1-8-1", "t1-17", "t1-18", "t1-19", "t3a-2", "t3a-4"]));
+    expect(keys).not.toContain("t1-9"); // 市区町村が発行する書類
+    expect(refFormName("t1-4-1")).toBe("参考様式第1-4号");
+    expect(refFormName("t3a-1-1")).toBe("参考様式第1-2号");
+  });
+});
+
+describe("言語の版を選ぶ", () => {
+  const ts = [
+    { id: "a", form_key: "t1-5", language: "日本語" },
+    { id: "b", form_key: "t1-5", language: "ベトナム語" },
+    { id: "c", form_key: "t1-6-1", language: "クメール語" },
+  ];
+  it("国籍の言語 → 日本語 → 最初のもの", () => {
+    expect(languageForNationality("ベトナム")).toBe("ベトナム語");
+    expect(languageForNationality("カンボジア")).toBe("クメール語");
+    expect(pickRefFormTemplate(ts, "t1-5", "ベトナム")?.id).toBe("b");
+    expect(pickRefFormTemplate(ts, "t1-5", "インドネシア")?.id).toBe("a");
+    expect(pickRefFormTemplate(ts, "t1-6-1", "ベトナム")?.id).toBe("c");
+    expect(pickRefFormTemplate(ts, "t1-17", "ベトナム")).toBeNull();
+  });
+});
+
+describe("書き込む値", () => {
+  const d = { ...REF_FORM_SAMPLE_DATA, today: "2026-11-16" };
+  it("本人・所属機関・登録支援機関・日付", () => {
+    expect(refFormValue({ kind: "name" }, d)).toBe("NGUYEN VAN A");
+    expect(refFormValue({ kind: "birth_seireki" }, d)).toBe("1995年3月8日");
+    expect(refFormValue({ kind: "birth_y" }, d)).toBe("1995");
+    expect(refFormValue({ kind: "postal" }, d)).toBe("〒866-0021");
+    expect(refFormValue({ kind: "org_name" }, d)).toBe("株式会社サンプル農園");
+    expect(refFormValue({ kind: "so_reg_no" }, d)).toBe("20登-005746");
+    expect(refFormValue({ kind: "today" }, d)).toBe("令和8年11月16日");
+    expect(refFormValue({ kind: "today_seireki" }, d)).toBe("2026年11月16日");
+    expect(refFormValue({ kind: "text", text: "同意します" }, d)).toBe("同意します");
+  });
+
+  it("保存値の読み込み", () => {
+    expect(normalizeRefFormLayout([{ kind: "name", page: 1, x: 10, y: 20, size: 11 }, { kind: "nope" }, null])).toHaveLength(1);
+    expect(normalizeSignPages([2, 0, 2, -1, 1.5, "x"])).toEqual([0, 2]);
+    expect(parseRefFormMode("sign")).toBe("sign");
+    expect(parseRefFormMode("x")).toBe("one");
+  });
+});
+
+describe("PDFを作る", () => {
+  it("書き込み・一気に（全ページ）・署名ページだけ", async () => {
+    const make = async (n: number) => {
+      const doc = await PDFDocument.create();
+      for (let i = 0; i < n; i++) doc.addPage([595, 842]);
+      return doc.save();
+    };
+    const font = readFileSync(path.join(process.cwd(), "public", "fonts", "NotoSansJP-Regular.ttf"));
+    const layout = normalizeRefFormLayout([
+      { kind: "name", page: 0, x: 50, y: 50, size: 12 },
+      { kind: "org_name", page: 2, x: 50, y: 80, size: 10 },
+      { kind: "check", page: 1, x: 30, y: 30, size: 10 },
+    ]);
+    const data = { ...REF_FORM_SAMPLE_DATA, today: "2026-11-16" };
+    const a = await fillRefForm(await make(3), font, layout, data);
+    const b = await fillRefForm(await make(2), font, [], data);
+    const all = await PDFDocument.load(await mergeRefForms([{ doc: a }, { doc: b }]));
+    expect(all.getPageCount()).toBe(5);
+    const sign = await PDFDocument.load(
+      await mergeRefForms([
+        { doc: a, onlyPages: refFormPagesFor("sign", [2]) },
+        { doc: b, onlyPages: refFormPagesFor("sign", [0, 1]) },
+      ]),
+    );
+    expect(sign.getPageCount()).toBe(3);
+    expect(refFormPagesFor("all", [1])).toBeUndefined();
+  }, 20000);
+
+  it("ファイル名", () => {
+    expect(refFormFileName("all", "NGUYEN VAN A")).toBe("NGUYEN VAN A_参考様式一式.pdf");
+    expect(refFormFileName("sign", "A/B")).toBe("AB_署名ページ.pdf");
+    expect(refFormFileName("one", "A", "t1-5")).toBe("A_参考様式第1-5号.pdf");
+  });
+});

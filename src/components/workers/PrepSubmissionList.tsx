@@ -3,6 +3,8 @@
 import { Fragment, useState, type ReactNode } from "react";
 import { CheckCircle2, ChevronDown, Eye, Loader2, Paperclip, Printer, Trash2 } from "lucide-react";
 import { FileDropArea } from "@/components/ui/FileDropArea";
+import { isRefFormItem, languageForNationality, pickRefFormTemplate } from "@/lib/ref-form";
+import { RefFormRowBar, RefFormTemplatesDialog, refFormHref, useRefFormTemplates } from "@/components/ref-forms/RefFormPanel";
 import type { OnboardingDocumentRow } from "@/types/db";
 import {
   SUBMISSION_LINKS,
@@ -24,6 +26,8 @@ export function PrepSubmissionList({
   onMark,
   onError,
   renderAction,
+  workerId,
+  nationality = "",
 }: {
   rows: SubmissionRow[];
   canEdit: boolean;
@@ -34,8 +38,17 @@ export function PrepSubmissionList({
   onError: (message: string) => void;
   // 「有」の行の下に出す、書類を揃えるための欄（添付・作る場所へのリンク）
   renderAction?: (row: SubmissionRow) => ReactNode;
+  // 参考様式の作成（ひな形に書き込んだPDF）に使う。渡したときだけ参考様式の欄を出す
+  workerId?: string;
+  nationality?: string;
 }) {
   const [openNotes, setOpenNotes] = useState(false);
+  const refForms = useRefFormTemplates();
+  const [managing, setManaging] = useState<SubmissionRow | null>(null);
+  // 「有」の参考様式（一覧表の順）。ひな形が登録されているものだけを作れる
+  const refRows = workerId ? rows.filter((r) => r.mark === "有" && isRefFormItem(r)) : [];
+  const refReady = refRows.filter((r) => pickRefFormTemplate(refForms.templates, r.key, nationality));
+  const refSignReady = refReady.filter((r) => (pickRefFormTemplate(refForms.templates, r.key, nationality)?.sign_pages.length ?? 0) > 0);
   const undecided = rows.filter((r) => r.mark == null);
   const autoCount = rows.filter((r) => r.auto && r.mark != null).length;
   const yesCount = rows.filter((r) => r.mark === "有").length;
@@ -80,6 +93,40 @@ export function PrepSubmissionList({
           ○を付けた一覧表を印刷（A4）
         </button>
       </div>
+
+      {workerId && refRows.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-brand/30 bg-brand/5 p-2 text-[11px]">
+          <span className="font-bold">
+            参考様式（「有」{refRows.length}件・ひな形あり {refReady.length}件）
+          </span>
+          <a
+            href={refReady.length > 0 ? refFormHref(workerId, refReady.map((r) => r.key), "all") : undefined}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-disabled={refReady.length === 0}
+            className={`inline-flex min-h-[34px] items-center gap-1 rounded-lg px-3 font-bold ${
+              refReady.length > 0 ? "bg-brand text-brand-foreground" : "pointer-events-none bg-border text-muted"
+            }`}
+          >
+            参考様式を一気にダウンロード（{refReady.length}件）
+          </a>
+          <a
+            href={refSignReady.length > 0 ? refFormHref(workerId, refSignReady.map((r) => r.key), "sign") : undefined}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-disabled={refSignReady.length === 0}
+            className={`inline-flex min-h-[34px] items-center gap-1 rounded-lg px-3 font-bold ${
+              refSignReady.length > 0 ? "border border-seal bg-surface text-seal" : "pointer-events-none bg-border text-muted"
+            }`}
+          >
+            ✍ 本人に署名してもらうページだけ（{refSignReady.length}件）
+          </a>
+          {refForms.error && <span className="text-seal">{refForms.error}</span>}
+          {refReady.length < refRows.length && (
+            <span className="text-muted">ひな形が未登録の様式は入りません（行の「ひな形・記入位置」から登録）</span>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-1.5 text-[11px]">
         <span className="rounded-full bg-brand/10 px-2.5 py-1 font-bold text-brand">有 {yesCount}件</span>
@@ -144,6 +191,18 @@ export function PrepSubmissionList({
                           {r.sub && <span className="mr-1 font-bold">{r.sub}</span>}
                           {r.label}
                           {openNotes && r.note && <p className="mt-0.5 text-[10px] leading-snug text-muted">※{r.note}</p>}
+                          {r.mark === "有" && workerId && isRefFormItem(r) && (
+                            <div className="mt-1.5">
+                              <RefFormRowBar
+                                formKey={r.key}
+                                workerId={workerId}
+                                nationality={nationality}
+                                templates={refForms.templates}
+                                canEdit={canEdit}
+                                onManage={() => setManaging(r)}
+                              />
+                            </div>
+                          )}
                           {r.mark === "有" && renderAction && <div className="mt-1.5">{renderAction(r)}</div>}
                         </td>
                         <td className="border-t border-border px-2 py-1.5 text-center text-[10px] text-muted">{r.formNo}</td>
@@ -185,6 +244,16 @@ export function PrepSubmissionList({
           </div>
         );
       })}
+      {managing && (
+        <RefFormTemplatesDialog
+          formKey={managing.key}
+          formLabel={managing.label}
+          templates={refForms.templates}
+          defaultLanguage={languageForNationality(nationality) || "日本語"}
+          onClose={() => setManaging(null)}
+          onChanged={refForms.reload}
+        />
+      )}
     </div>
   );
 }

@@ -50,4 +50,14 @@
    - 行の欄: `src/components/workers/PrepSubmissionList.tsx` の `SubmissionRowAction`（「有」の行の下に出す）
    - まとめた PDF: 一本化のページでは「有」の書類だけを一覧表の順に入れる（`submissionBundleOrder` → `prepBundlePlan(..., { keepOrder: true })`）。
      今の画面は今までどおり（`PREP_BUNDLE_ORDER` の順）
+2.5 **参考様式の作成**（済み・試験中。0227）
+   - 参考様式（1-4号・1-5号・1-6号・1-6号別紙・1-16号・1-3号・1-3号別紙・1-26号・1-17号・1-25号・1-2号・11-1号・11-4号）のひな形PDFを、
+     様式・言語ごとに登録し（`ref_form_templates`。全員共通）、自治体の申請書と同じ操作で記入位置と「本人の署名が要るページ」を置く
+     - 項目と書き込み・まとめ: `src/lib/ref-form.ts`（テスト `ref-form.test.ts`）
+     - 記入位置の画面: `src/components/ref-forms/RefFormLayoutEditor.tsx`（`MunicipalFormLayoutEditor` を元にした）
+     - ひな形の管理・行の欄: `src/components/ref-forms/RefFormPanel.tsx`、登録・削除は管理者だけ（`src/app/(app)/ref-forms/actions.ts`）
+     - PDF: `/api/ref-form?workerId=&keys=&mode=one|all|sign`（見本は `?templateId=&sample=1`）
+   - ダウンロードは3つ: その様式だけ（行の「作成」）／「有」の参考様式を一気に／本人に署名してもらうページだけ
+   - 言語の版は本人の国籍から選ぶ（無ければ日本語の版）
+   - 書き込める情報（最初の版）: 本人・所属機関・登録支援機関・作成日・自由な文字・✓・○。賃金の内訳・契約期間などは使いながら足す
 3. **③ 入れ替え**（利用者の確認のあと）
