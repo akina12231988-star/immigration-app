@@ -20,11 +20,38 @@ export interface PrepBundleMissing {
   reason: string; // 未添付 / 申請後に郵送 / 申請後に発行のみ
 }
 
+// まとめる順番。入管の提出書類一覧表（申請人に関する必要書類）の番号の順にそろえる。
+//   8 健康診断個人票 → 9 個人住民税の納税証明書 → 10 個人住民税の課税証明書 → 11 源泉徴収票
+//   → 12 健康保険の資格情報 → 13 国民健康保険料（税）納付証明書 → 14・15 年金（被保険者記録照会回答票など）
+// 一覧表の15番より後の書類（合格証・技能評価調書・推薦状）はそのあとに、今の並びのまま入れる
+export const PREP_BUNDLE_ORDER: readonly string[] = [
+  "kenshin",
+  "nozei_shiken",
+  "kazei",
+  "gensen",
+  "hokensho",
+  "nozei_kokuho",
+  "nenkin",
+];
+
+function bundleRank(id: string): number {
+  const i = PREP_BUNDLE_ORDER.indexOf(id);
+  return i < 0 ? PREP_BUNDLE_ORDER.length : i;
+}
+
+// 一覧表の順に並べ直す（一覧に無い書類は元の並びのまま後ろへ）
+export function sortPrepBundleItems<T extends { id: string }>(items: T[]): T[] {
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => bundleRank(a.item.id) - bundleRank(b.item.id) || a.index - b.index)
+    .map((x) => x.item);
+}
+
 export function prepBundlePlan<F>(items: PrepBundleItem<F>[]): {
   targets: { id: string; label: string; files: F[] }[];
   missing: PrepBundleMissing[];
 } {
-  const own = items.filter((i) => !PREP_BUNDLE_EXCLUDED_KINDS.has(i.kind));
+  const own = sortPrepBundleItems(items.filter((i) => !PREP_BUNDLE_EXCLUDED_KINDS.has(i.kind)));
   const targets = own.filter((i) => i.files.length > 0).map((i) => ({ id: i.id, label: i.label, files: i.files }));
   const missing = own
     .filter((i) => i.files.length === 0 && !i.satisfied)

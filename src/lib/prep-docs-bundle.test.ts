@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { prepBundleFileName, prepBundlePlan } from "./prep-docs-bundle";
+import { prepBundleFileName, prepBundlePlan, sortPrepBundleItems } from "./prep-docs-bundle";
 
 const item = (p: Partial<Parameters<typeof prepBundlePlan<string>>[0][number]>) => ({
   id: "x", label: "書類", kind: "doc", satisfied: false, mailAfterApply: false, issueNoMail: false, files: [] as string[], ...p,
@@ -43,5 +43,44 @@ describe("applyBundleChoices（課税・納税証明書の選択）", () => {
     expect(r.items[2].files).toHaveLength(2); // 源泉徴収票は選ばずに全部
     expect(r.choosable.map((c) => c.id)).toEqual(["kazei", "nozei_shiken"]);
     expect(r.unchosen.map((c) => c.id)).toEqual(["nozei_shiken"]);
+  });
+});
+
+describe("まとめる順番（提出書類一覧表の番号の順）", () => {
+  const item = (id: string, files: string[] = ["f"]) => ({
+    id,
+    label: id,
+    kind: "doc",
+    satisfied: false,
+    mailAfterApply: false,
+    issueNoMail: false,
+    files,
+  });
+
+  it("健康診断 → 納税 → 課税 → 源泉 → 資格情報 → 国保の納付 → 年金 → そのほか（元の並び）", () => {
+    // アプリの書類の並び（源泉・課税・納税・国保・保険証・年金・健診・推薦状・専門級）
+    const items = ["gensen", "kazei", "nozei_shiken", "nozei_kokuho", "hokensho", "nenkin", "kenshin", "suisenjo", "cert_senmonkyu"].map((id) =>
+      item(id),
+    );
+    expect(prepBundlePlan(items).targets.map((t) => t.id)).toEqual([
+      "kenshin",
+      "nozei_shiken",
+      "kazei",
+      "gensen",
+      "hokensho",
+      "nozei_kokuho",
+      "nenkin",
+      "suisenjo",
+      "cert_senmonkyu",
+    ]);
+  });
+
+  it("添付の無い書類のアラートも同じ順", () => {
+    const items = [item("gensen", []), item("kenshin", []), item("kazei", [])];
+    expect(prepBundlePlan(items).missing.map((m) => m.id)).toEqual(["kenshin", "kazei", "gensen"]);
+  });
+
+  it("sortPrepBundleItems は一覧に無い書類の並びを変えない", () => {
+    expect(sortPrepBundleItems([{ id: "b" }, { id: "nenkin" }, { id: "a" }]).map((x) => x.id)).toEqual(["nenkin", "b", "a"]);
   });
 });
