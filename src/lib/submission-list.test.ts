@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   SUBMISSION_ITEMS,
+  SUBMISSION_LINKS,
+  canAttachToSubmissionRow,
+  submissionAttachKey,
+  submissionBundleOrder,
   buildSubmissionRows,
   normalizeSubmissionMarks,
   submissionListPrintHtml,
@@ -98,5 +102,40 @@ describe("画面・印刷に出す行", () => {
     expect(html).toContain("農園");
     expect(html).toContain('<span class="mk on">有</span><span class="mk">無</span>');
     expect(html).toContain("第3表の13の1");
+  });
+});
+
+describe("「有」の書類を揃える", () => {
+  it("リンク先は一覧にある書類だけ", () => {
+    const keys = new Set(SUBMISSION_ITEMS.map((i) => i.key));
+    for (const k of Object.keys(SUBMISSION_LINKS)) expect(keys.has(k)).toBe(true);
+  });
+
+  it("必要な書類の準備で揃える書類はこの行に添付しない（年金の15・二国間の20は添付もできる）", () => {
+    expect(canAttachToSubmissionRow("t1-9")).toBe(false);
+    expect(canAttachToSubmissionRow("t1-15")).toBe(true);
+    expect(canAttachToSubmissionRow("t1-20")).toBe(true);
+    expect(canAttachToSubmissionRow("t1-1")).toBe(true);
+    expect(canAttachToSubmissionRow("t1-18")).toBe(true);
+  });
+
+  it("保存キーは prep_ で始まる英数字", () => {
+    expect(submissionAttachKey("t3a-1-1")).toBe("prep_sl_t3a_1_1");
+    expect(/^prep_[a-z0-9_]+$/.test(submissionAttachKey("t1-4-2"))).toBe(true);
+  });
+
+  it("まとめる順番は「有」の書類だけ・一覧表の順・同じ書類は1回", () => {
+    const rows = buildSubmissionRows(
+      { "t1-4-1": "有", "t1-15": "有", "t1-14": "有" },
+      { ...base, hasNenkin: true },
+      { agri: false },
+    );
+    const ids = submissionBundleOrder(rows).map((x) => x.id);
+    expect(ids.indexOf("sl:t1-4-1")).toBeLessThan(ids.indexOf("kenshin"));
+    expect(ids.indexOf("kenshin")).toBeLessThan(ids.indexOf("nozei_shiken"));
+    expect(ids.filter((x) => x === "nenkin")).toHaveLength(1);
+    expect(ids).toContain("sl:t1-15");
+    expect(ids).not.toContain("hokensho"); // 国保なし → 12 は無
+    expect(ids).not.toContain("sl:t1-1"); // 単独 → 1 は無
   });
 });

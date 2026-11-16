@@ -47,11 +47,16 @@ export function sortPrepBundleItems<T extends { id: string }>(items: T[]): T[] {
     .map((x) => x.item);
 }
 
-export function prepBundlePlan<F>(items: PrepBundleItem<F>[]): {
+// keepOrder: 渡した順のまま並べる（提出書類一覧表の順で渡すとき）
+export function prepBundlePlan<F>(
+  items: PrepBundleItem<F>[],
+  opts: { keepOrder?: boolean } = {},
+): {
   targets: { id: string; label: string; files: F[] }[];
   missing: PrepBundleMissing[];
 } {
-  const own = sortPrepBundleItems(items.filter((i) => !PREP_BUNDLE_EXCLUDED_KINDS.has(i.kind)));
+  const filtered = items.filter((i) => !PREP_BUNDLE_EXCLUDED_KINDS.has(i.kind));
+  const own = opts.keepOrder ? filtered : sortPrepBundleItems(filtered);
   const targets = own.filter((i) => i.files.length > 0).map((i) => ({ id: i.id, label: i.label, files: i.files }));
   const missing = own
     .filter((i) => i.files.length === 0 && !i.satisfied)
