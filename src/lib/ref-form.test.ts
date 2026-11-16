@@ -44,6 +44,24 @@ describe("言語の版を選ぶ", () => {
   });
 });
 
+describe("所属機関別のひな形（雇用条件書など）", () => {
+  const ts = [
+    { id: "common-ja", form_key: "t1-6-1", language: "日本語", organization_id: null },
+    { id: "common-vi", form_key: "t1-6-1", language: "ベトナム語", organization_id: null },
+    { id: "orgA-ja", form_key: "t1-6-1", language: "日本語", organization_id: "A" },
+    { id: "orgB-vi", form_key: "t1-6-1", language: "ベトナム語", organization_id: "B" },
+  ];
+  it("その所属機関の版（国籍の言語 → 日本語）を先に使う", () => {
+    expect(pickRefFormTemplate(ts, "t1-6-1", "ベトナム", "A")?.id).toBe("orgA-ja");
+    expect(pickRefFormTemplate(ts, "t1-6-1", "ベトナム", "B")?.id).toBe("orgB-vi");
+  });
+  it("その所属機関の版が無ければ全員共通の版。ほかの所属機関の版は使わない", () => {
+    expect(pickRefFormTemplate(ts, "t1-6-1", "ベトナム", "C")?.id).toBe("common-vi");
+    expect(pickRefFormTemplate(ts, "t1-6-1", "インドネシア", null)?.id).toBe("common-ja");
+    expect(pickRefFormTemplate([ts[3]], "t1-6-1", "ベトナム", "A")).toBeNull();
+  });
+});
+
 describe("書き込む値", () => {
   const d = { ...REF_FORM_SAMPLE_DATA, today: "2026-11-16" };
   it("本人・所属機関・登録支援機関・日付", () => {

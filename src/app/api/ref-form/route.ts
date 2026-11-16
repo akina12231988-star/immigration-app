@@ -110,8 +110,9 @@ export async function GET(req: NextRequest) {
         },
         today: todayStr(),
       };
+      // その所属機関の版があればそれを使う（雇用条件書など、所属機関ごとの書式）
       targets = keys
-        .map((k) => pickRefFormTemplate(templates, k, data.person.nationality))
+        .map((k) => pickRefFormTemplate(templates, k, data.person.nationality, orgId || null))
         .filter((t): t is (typeof templates)[number] => !!t);
       if (targets.length === 0) {
         return NextResponse.json({ error: "参考様式のひな形が登録されていません" }, { status: 404 });

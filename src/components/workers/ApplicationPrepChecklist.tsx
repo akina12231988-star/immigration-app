@@ -2556,6 +2556,7 @@ export function ApplicationPrepChecklist({
             rows={submissionRows}
             workerId={workerId}
             nationality={worker?.nationality ?? ""}
+            orgId={prepOrgId ?? null}
             canEdit={canEdit}
             workerName={workerRow?.name ?? ""}
             orgName={prepOrgName}
