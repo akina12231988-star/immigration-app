@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { CUSTODIAN_SETTING_KEY, mergeCustodianInfo } from "@/lib/custody";
 import { todayStr } from "@/lib/application-alerts";
+import { annualHolidays } from "@/lib/job-conditions";
 import {
   REF_FORM_ITEMS,
   REF_FORM_SAMPLE_DATA,
@@ -98,6 +99,12 @@ export async function GET(req: NextRequest) {
           rep: os(intake.rep_name),
           repKana: os(intake.rep_kana),
           corporateNo: os(org.corporate_no),
+          holidayWeekly: os(intake.job_holiday_weekly),
+          holidayOther: os(intake.job_holiday_other),
+          holidayYearDays: String(annualHolidays(os(intake.job_days_year)) ?? ""),
+          holidayIrregularUnit: os(intake.job_holiday_irregular_unit),
+          holidayIrregularDays: os(intake.job_holiday_irregular_days),
+          holidayIrregularOther: os(intake.job_holiday_irregular_other),
         },
         so: {
           name: c.officeName,

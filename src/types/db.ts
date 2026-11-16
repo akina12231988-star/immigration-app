@@ -230,6 +230,9 @@ export interface OrganizationIntake {
   job_overtime: string; // 所定時間外労働の有無（'' / 有 / 無）
   job_holiday_weekly: string; // 休日の定例日（毎週○曜日）
   job_holiday_other: string; // 休日のその他
+  job_holiday_irregular_unit: string; // 非定例日の単位（'' / 週 / 月。「週・月当たり○日」）
+  job_holiday_irregular_days: string; // 非定例日の日数（週・月当たり○日）
+  job_holiday_irregular_other: string; // 非定例日のその他
   job_wage_deduction: string; // 労使協定に基づく賃金支払時の控除（'' / 有 / 無）
   job_raise: string; // 昇給（'' / 有 / 無）
   job_raise_note: string; // 昇給の内容（有のとき）

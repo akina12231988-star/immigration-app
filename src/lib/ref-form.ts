@@ -115,6 +115,12 @@ export type RefFormFieldKind =
   | "org_rep"
   | "org_rep_kana"
   | "org_corporate_no"
+  | "org_holiday_weekly"
+  | "org_holiday_other"
+  | "org_holiday_year_days"
+  | "org_holiday_irregular_unit"
+  | "org_holiday_irregular_days"
+  | "org_holiday_irregular_other"
   | "so_name"
   | "so_reg_no"
   | "so_address"
@@ -152,6 +158,12 @@ export const REF_FORM_FIELDS: { kind: RefFormFieldKind; label: string; sample: s
   { kind: "org_rep", label: "代表者の役職・氏名", sample: "代表取締役 山田太郎", group: "所属機関" },
   { kind: "org_rep_kana", label: "代表者のフリガナ", sample: "ヤマダ タロウ", group: "所属機関" },
   { kind: "org_corporate_no", label: "法人番号", sample: "1234567890123", group: "所属機関" },
+  { kind: "org_holiday_weekly", label: "休日 定例日の曜日（毎週○曜日の○）", sample: "日", group: "所属機関" },
+  { kind: "org_holiday_other", label: "休日 定例日のその他", sample: "企業指定日", group: "所属機関" },
+  { kind: "org_holiday_year_days", label: "休日 年間合計休日日数（数字だけ）", sample: "105", group: "所属機関" },
+  { kind: "org_holiday_irregular_unit", label: "休日 非定例日の単位（週・月）", sample: "週", group: "所属機関" },
+  { kind: "org_holiday_irregular_days", label: "休日 非定例日の日数（数字だけ）", sample: "2", group: "所属機関" },
+  { kind: "org_holiday_irregular_other", label: "休日 非定例日のその他", sample: "シフトにより決定", group: "所属機関" },
   { kind: "so_name", label: "登録支援機関の名称", sample: "VUONG VAN THANH", group: "登録支援機関" },
   { kind: "so_reg_no", label: "登録支援機関の登録番号", sample: "20登-005746", group: "登録支援機関" },
   { kind: "so_address", label: "登録支援機関の住所", sample: "熊本県熊本市東区小山2丁目13-20", group: "登録支援機関" },
@@ -217,7 +229,22 @@ export interface RefFormData {
     cardNo: string;
     passportNo: string;
   };
-  org: { name: string; postalCode: string; address: string; tel: string; rep: string; repKana: string; corporateNo: string };
+  org: {
+    name: string;
+    postalCode: string;
+    address: string;
+    tel: string;
+    rep: string;
+    repKana: string;
+    corporateNo: string;
+    // 休日（所属機関 ＞ 求人票に記載する内容 6. 休日）。無い時は ''
+    holidayWeekly?: string;
+    holidayOther?: string;
+    holidayYearDays?: string;
+    holidayIrregularUnit?: string;
+    holidayIrregularDays?: string;
+    holidayIrregularOther?: string;
+  };
   so: { name: string; regNo: string; address: string; tel: string; rep: string; manager: string; staff: string };
   today: string; // YYYY-MM-DD
 }
@@ -276,6 +303,18 @@ export function refFormValue(item: Pick<RefFormItem, "kind" | "text">, data: Ref
       return data.org.repKana;
     case "org_corporate_no":
       return data.org.corporateNo;
+    case "org_holiday_weekly":
+      return data.org.holidayWeekly ?? "";
+    case "org_holiday_other":
+      return data.org.holidayOther ?? "";
+    case "org_holiday_year_days":
+      return data.org.holidayYearDays ?? "";
+    case "org_holiday_irregular_unit":
+      return data.org.holidayIrregularUnit ?? "";
+    case "org_holiday_irregular_days":
+      return data.org.holidayIrregularDays ?? "";
+    case "org_holiday_irregular_other":
+      return data.org.holidayIrregularOther ?? "";
     case "so_name":
       return data.so.name;
     case "so_reg_no":
@@ -328,6 +367,12 @@ export const REF_FORM_SAMPLE_DATA: RefFormData = {
     rep: "代表取締役 山田太郎",
     repKana: "ヤマダ タロウ",
     corporateNo: "1234567890123",
+    holidayWeekly: "日",
+    holidayOther: "企業指定日",
+    holidayYearDays: "105",
+    holidayIrregularUnit: "週",
+    holidayIrregularDays: "2",
+    holidayIrregularOther: "シフトにより決定",
   },
   so: {
     name: "VUONG VAN THANH",
