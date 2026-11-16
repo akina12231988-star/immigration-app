@@ -258,6 +258,7 @@ export function ApplicationPrepChecklist({
   worker,
   organizations,
   embedEmployment = false,
+  unified = false,
 }: {
   workerId: string;
   canEdit?: boolean;
@@ -270,6 +271,9 @@ export function ApplicationPrepChecklist({
   // モーダル表示（TODO・申請一覧）のとき true: 賃金（1-6号別紙）もこの中で直接入力する。
   // 外国人詳細では賃金の記録カードが別にあるため false（リンク表示のみ）
   embedEmployment?: boolean;
+  // 申請書類作成をアプリ一本化計画（試験中）のページで開いたとき true。
+  // 提出書類一覧表（有／無・○を付けた印刷）など、試験中の機能を出す（lib/unified-prep.ts）
+  unified?: boolean;
 }) {
   // TODO番号ごとの準備リスト。selected が表示中のリスト（todo_no）
   const [lists, setLists] = useState<PrepChecklistRow[]>([]);
@@ -1607,7 +1611,7 @@ export function ApplicationPrepChecklist({
 
   // 提出書類一覧表（特定技能1号の在留資格変更だけ）。保存した有／無と、申請準備の情報からの見当
   const submissionRows =
-    current && meta.app_type === "変更" && !isSsw2Prep && meta.cert_pattern !== "特定技能2号"
+    unified && current && meta.app_type === "変更" && !isSsw2Prep && meta.cert_pattern !== "特定技能2号"
       ? buildSubmissionRows(
           current.submission_marks ?? {},
           {
