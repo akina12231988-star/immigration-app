@@ -43,6 +43,20 @@ export function minutesToHoursDecimal(minutes: number): string {
 }
 
 // 年間合計休日日数 = 365 − 年間所定労働日数
+// 非定例日の表記（例: 週当たり2日、その他（シフトによる））。何も入っていなければ ''
+export function irregularHolidayText(
+  intake: Partial<Pick<OrganizationIntake, "job_holiday_irregular_unit" | "job_holiday_irregular_days" | "job_holiday_irregular_other">>,
+): string {
+  const unit = (intake.job_holiday_irregular_unit ?? "").trim();
+  const days = (intake.job_holiday_irregular_days ?? "").trim();
+  const other = (intake.job_holiday_irregular_other ?? "").trim();
+  const parts = [
+    days ? `${unit || "週・月"}当たり${days}日` : "",
+    other ? `その他（${other}）` : "",
+  ].filter(Boolean);
+  return parts.join("、");
+}
+
 export function annualHolidays(daysYear: string): number | null {
   const n = Number(daysYear.replace(/[^0-9]/g, ""));
   if (!daysYear.trim() || !Number.isFinite(n) || n <= 0 || n > 365) return null;
@@ -171,6 +185,9 @@ type JobIntake = Pick<
   | "job_overtime"
   | "job_holiday_weekly"
   | "job_holiday_other"
+  | "job_holiday_irregular_unit"
+  | "job_holiday_irregular_days"
+  | "job_holiday_irregular_other"
   | "posting_pay_closing"
   | "posting_pay_day"
   | "pay_method"
@@ -237,6 +254,7 @@ export function jobConditionSections(intake: JobIntake): JobConditionSection[] {
         `定例日：${intake.job_holiday_weekly.trim() ? `毎週${intake.job_holiday_weekly.trim()}` : "未登録"}`,
         ...(intake.job_holiday_other.trim() ? [`その他：${intake.job_holiday_other.trim()}`] : []),
         ...(holidays != null ? [`年間合計休日日数：${holidays}日`] : []),
+        ...(irregularHolidayText(intake) ? [`非定例日：${irregularHolidayText(intake)}`] : []),
       ],
     },
     { title: "7. 年次有給休暇", lines: ["6ヶ月継続勤務した場合 → 10日付与", "6ヶ月未満の年次有給休暇 → 無し"] },

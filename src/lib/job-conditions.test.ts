@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { normalizeOrganizationIntake } from "./organization-intake";
 import {
   annualHolidays,
+  irregularHolidayText,
   jobConditionSections,
   dailyWorkMinutes,
   dailyWorkText,
@@ -129,5 +130,15 @@ describe("jobConditionSections", () => {
     expect(s[7].lines[0]).toContain("支払方法：口座振込");
     expect(s[8].lines[0]).toBe("自己都合の場合：30日前に社長・工場長等に届けること");
     expect(s[10].lines).toEqual(["未登録"]);
+  });
+});
+
+describe("非定例日の表記", () => {
+  it("週・月当たり○日と、その他", () => {
+    expect(irregularHolidayText({ job_holiday_irregular_unit: "週", job_holiday_irregular_days: "2" })).toBe("週当たり2日");
+    expect(irregularHolidayText({ job_holiday_irregular_days: "8", job_holiday_irregular_other: "シフトによる" })).toBe(
+      "週・月当たり8日、その他（シフトによる）",
+    );
+    expect(irregularHolidayText({})).toBe("");
   });
 });

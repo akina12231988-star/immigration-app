@@ -1638,6 +1638,40 @@ function IntakeSection({
             placeholder="例: 国民の祝日、年末年始（12/29〜1/3）"
           />
         </div>
+        {/* 非定例日（雇用条件書 V. 休日 2.「週・月当たり○日、その他（　）」） */}
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-bold text-muted">非定例日</span>
+            <span className="flex items-center gap-1.5 text-sm">
+              <select
+                value={intake.job_holiday_irregular_unit ?? ""}
+                onChange={(e) => setIntake({ job_holiday_irregular_unit: e.target.value })}
+                className={`${INPUT_CLASS} w-24`}
+                aria-label="非定例日の単位（週・月）"
+              >
+                <option value="">週・月</option>
+                <option value="週">週</option>
+                <option value="月">月</option>
+              </select>
+              当たり
+              <input
+                inputMode="numeric"
+                value={intake.job_holiday_irregular_days ?? ""}
+                onChange={(e) => setIntake({ job_holiday_irregular_days: e.target.value })}
+                placeholder="例: 2"
+                className={`${INPUT_CLASS} w-20`}
+                aria-label="非定例日の日数"
+              />
+              日
+            </span>
+          </label>
+          <IntakeField
+            label="非定例日のその他"
+            value={intake.job_holiday_irregular_other ?? ""}
+            onChange={(v) => setIntake({ job_holiday_irregular_other: v })}
+            placeholder="例: シフトにより決定"
+          />
+        </div>
         <div className="flex flex-col gap-1">
           <span className="text-xs font-bold text-muted">年間合計休日日数（365日 − 年間所定労働日数）</span>
           <p className="flex min-h-[44px] items-center rounded-xl bg-border/30 px-3 text-sm font-bold">
