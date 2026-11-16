@@ -22,10 +22,12 @@ export function useRefFormTemplates() {
   const [templates, setTemplates] = useState<RefFormTemplate[]>([]);
   const [error, setError] = useState<string | null>(null);
   const reload = useCallback(async () => {
-    const { data, error: err } = await createClient()
-      .from("ref_form_templates")
-      .select("id, form_key, language, pdf_path, pdf_name, layout, sign_pages, updated_at")
-      .order("language");
+    const cols = "id, form_key, language, pdf_path, pdf_name, layout, sign_pages, updated_at";
+    // 所属機関別の版（0228）が未適用でも、全員共通の版は読めるようにする
+    const first = await createClient().from("ref_form_templates").select(`${cols}, organization_id`).order("language");
+    const { data, error: err } = first.error
+      ? await createClient().from("ref_form_templates").select(cols).order("language")
+      : first;
     if (err) {
       setError(dbErrorMessage(err, REF_FORM_MIGRATION, "参考様式のひな形を読めませんでした"));
       return;
@@ -55,6 +57,8 @@ export function RefFormRowBar({
   formKey,
   workerId,
   nationality,
+  orgId,
+  orgName,
   templates,
   canEdit,
   onManage,
@@ -62,12 +66,14 @@ export function RefFormRowBar({
   formKey: string;
   workerId: string;
   nationality: string;
+  orgId: string | null; // 申請準備中の所属機関（その所属機関の版があれば使う）
+  orgName: string;
   templates: RefFormTemplate[];
   canEdit: boolean;
   onManage: () => void;
 }) {
-  const list = templates.filter((t) => t.form_key === formKey);
-  const picked = pickRefFormTemplate(templates, formKey, nationality);
+  const list = templates.filter((t) => t.form_key === formKey && (!t.organization_id || t.organization_id === orgId));
+  const picked = pickRefFormTemplate(templates, formKey, nationality, orgId);
   const lang = languageForNationality(nationality);
   return (
     <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-brand/30 bg-brand/5 px-2 py-1.5 text-[11px]">
@@ -76,6 +82,11 @@ export function RefFormRowBar({
       {picked ? (
         <>
           <span className="text-muted">
+            {picked.organization_id ? (
+              <span className="mr-0.5 rounded bg-brand px-1 font-bold text-brand-foreground">{orgName || "この所属機関"}の版</span>
+            ) : (
+              "全員共通の"
+            )}
             {picked.language}の版で作ります
             {lang && picked.language !== lang ? `（${lang}の版は未登録）` : ""}
             {picked.sign_pages.length > 0 ? `・署名 ${picked.sign_pages.map((p) => p + 1).join("・")}ページ目` : ""}
@@ -113,6 +124,8 @@ export function RefFormTemplatesDialog({
   formLabel,
   templates,
   defaultLanguage,
+  orgId,
+  orgName,
   onClose,
   onChanged,
 }: {
@@ -120,11 +133,18 @@ export function RefFormTemplatesDialog({
   formLabel: string;
   templates: RefFormTemplate[];
   defaultLanguage: string;
+  orgId: string | null; // 申請準備中の所属機関（この所属機関だけの版を登録できる）
+  orgName: string;
   onClose: () => void;
   onChanged: () => Promise<void> | void;
 }) {
-  const list = templates.filter((t) => t.form_key === formKey);
+  // 出すのは全員共通の版と、この所属機関の版（ほかの所属機関の版は出さない）
+  const list = templates.filter((t) => t.form_key === formKey && (!t.organization_id || t.organization_id === orgId));
   const [language, setLanguage] = useState(defaultLanguage || "日本語");
+  // 登録先: 全員共通か、この所属機関だけか
+  const [scope, setScope] = useState<"common" | "org">("common");
+  const scopeOrg = scope === "org" && orgId ? orgId : null;
+  const sameScope = (t: RefFormTemplate) => (t.organization_id ?? null) === scopeOrg;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<RefFormTemplate | null>(null);
@@ -142,7 +162,7 @@ export function RefFormTemplatesDialog({
         .storage.from("app-files")
         .uploadToSignedUrl(ticket.path, ticket.token, file, { contentType: "application/pdf" });
       if (upErr) throw new Error(`アップロードに失敗しました: ${upErr.message}`);
-      const res = await registerRefFormPdf(formKey, language, ticket.path, file.name);
+      const res = await registerRefFormPdf(formKey, language, ticket.path, file.name, scopeOrg);
       if (!res.ok) throw new Error(res.message);
       await onChanged();
     } catch (err) {
@@ -190,10 +210,22 @@ export function RefFormTemplatesDialog({
         </div>
         <p className="mb-3 text-[11px] leading-relaxed text-muted">
           入管のホームページの参考様式のPDF（空のもの、またはある程度記入したもの）を言語ごとに登録し、「記入位置」でどこに何を書くかと、本人の署名が要るページを置きます。
-          全員共通で使います。作成するときは、本人の国籍に合う言語の版を使い、無ければ日本語の版を使います。
+          登録先は「全員共通」か「この所属機関だけ」を選べます（雇用条件書など、所属機関ごとに書式が違う様式は所属機関別に）。
+          作成するときは、その所属機関の版があればそれを、無ければ全員共通の版を使います。どちらも本人の国籍に合う言語の版 → 日本語の版の順に選びます。
         </p>
 
         <div className="mb-3 flex flex-wrap items-end gap-2 rounded-lg border border-border bg-background p-2">
+          <label className="flex flex-col gap-0.5">
+            <span className="text-[11px] text-muted">登録先</span>
+            <select
+              value={scope}
+              onChange={(e) => setScope(e.target.value as "common" | "org")}
+              className="min-h-[34px] rounded-lg border border-border bg-surface px-2"
+            >
+              <option value="common">全員共通</option>
+              {orgId && <option value="org">{orgName || "この所属機関"}だけ</option>}
+            </select>
+          </label>
           <label className="flex flex-col gap-0.5">
             <span className="text-[11px] text-muted">言語</span>
             <select
@@ -204,7 +236,7 @@ export function RefFormTemplatesDialog({
               {REF_FORM_LANGUAGES.map((l) => (
                 <option key={l} value={l}>
                   {l}
-                  {list.some((t) => t.language === l) ? "（登録済み・差し替え）" : ""}
+                  {list.some((t) => t.language === l && sameScope(t)) ? "（登録済み・差し替え）" : ""}
                 </option>
               ))}
             </select>
@@ -239,6 +271,13 @@ export function RefFormTemplatesDialog({
               const count = Array.isArray(t.layout) ? t.layout.length : 0;
               return (
                 <li key={t.id} className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border p-2">
+                  <span
+                    className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                      t.organization_id ? "bg-brand text-brand-foreground" : "bg-background text-muted"
+                    }`}
+                  >
+                    {t.organization_id ? `${orgName || "この所属機関"}だけ` : "全員共通"}
+                  </span>
                   <span className="font-bold">{t.language}</span>
                   <span className="min-w-0 flex-1 truncate text-muted">
                     {t.pdf_name || "PDF"}・置いた項目 {count}件・署名ページ{" "}

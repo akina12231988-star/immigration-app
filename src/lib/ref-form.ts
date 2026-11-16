@@ -64,6 +64,7 @@ export interface RefFormTemplate {
   id: string;
   form_key: string; // 提出書類一覧表の書類のキー（例: t1-4-1）
   language: string;
+  organization_id?: string | null; // この所属機関だけで使うひな形（null は全員共通。0228）
   pdf_path: string;
   pdf_name: string;
   layout: unknown;
@@ -71,16 +72,20 @@ export interface RefFormTemplate {
   updated_at?: string;
 }
 
-// その人に使うひな形: 国籍の言語 → 日本語 → 最初に登録したもの
-export function pickRefFormTemplate<T extends Pick<RefFormTemplate, "form_key" | "language">>(
+// その人に使うひな形。
+// その所属機関の版（国籍の言語 → 日本語 → 最初のもの）→ 全員共通の版（国籍の言語 → 日本語 → 最初のもの）
+export function pickRefFormTemplate<T extends Pick<RefFormTemplate, "form_key" | "language" | "organization_id">>(
   templates: T[],
   formKey: string,
   nationality: string,
+  orgId?: string | null,
 ): T | null {
-  const list = templates.filter((t) => t.form_key === formKey);
-  if (list.length === 0) return null;
   const lang = languageForNationality(nationality);
-  return (lang && list.find((t) => t.language === lang)) || list.find((t) => t.language === "日本語") || list[0];
+  const pick = (list: T[]) =>
+    (lang && list.find((t) => t.language === lang)) || list.find((t) => t.language === "日本語") || list[0] || null;
+  const form = templates.filter((t) => t.form_key === formKey);
+  const own = orgId ? form.filter((t) => t.organization_id === orgId) : [];
+  return pick(own) ?? pick(form.filter((t) => !t.organization_id));
 }
 
 export function normalizeSignPages(v: unknown): number[] {

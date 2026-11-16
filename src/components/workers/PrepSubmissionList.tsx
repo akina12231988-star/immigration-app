@@ -28,6 +28,7 @@ export function PrepSubmissionList({
   renderAction,
   workerId,
   nationality = "",
+  orgId = null,
 }: {
   rows: SubmissionRow[];
   canEdit: boolean;
@@ -41,14 +42,17 @@ export function PrepSubmissionList({
   // 参考様式の作成（ひな形に書き込んだPDF）に使う。渡したときだけ参考様式の欄を出す
   workerId?: string;
   nationality?: string;
+  orgId?: string | null; // 申請準備中の所属機関（所属機関別のひな形を使う・登録する）
 }) {
   const [openNotes, setOpenNotes] = useState(false);
   const refForms = useRefFormTemplates();
   const [managing, setManaging] = useState<SubmissionRow | null>(null);
   // 「有」の参考様式（一覧表の順）。ひな形が登録されているものだけを作れる
   const refRows = workerId ? rows.filter((r) => r.mark === "有" && isRefFormItem(r)) : [];
-  const refReady = refRows.filter((r) => pickRefFormTemplate(refForms.templates, r.key, nationality));
-  const refSignReady = refReady.filter((r) => (pickRefFormTemplate(refForms.templates, r.key, nationality)?.sign_pages.length ?? 0) > 0);
+  const refReady = refRows.filter((r) => pickRefFormTemplate(refForms.templates, r.key, nationality, orgId));
+  const refSignReady = refReady.filter(
+    (r) => (pickRefFormTemplate(refForms.templates, r.key, nationality, orgId)?.sign_pages.length ?? 0) > 0,
+  );
   const undecided = rows.filter((r) => r.mark == null);
   const autoCount = rows.filter((r) => r.auto && r.mark != null).length;
   const yesCount = rows.filter((r) => r.mark === "有").length;
@@ -197,6 +201,8 @@ export function PrepSubmissionList({
                                 formKey={r.key}
                                 workerId={workerId}
                                 nationality={nationality}
+                                orgId={orgId}
+                                orgName={orgName}
                                 templates={refForms.templates}
                                 canEdit={canEdit}
                                 onManage={() => setManaging(r)}
@@ -250,6 +256,8 @@ export function PrepSubmissionList({
           formLabel={managing.label}
           templates={refForms.templates}
           defaultLanguage={languageForNationality(nationality) || "日本語"}
+          orgId={orgId}
+          orgName={orgName}
           onClose={() => setManaging(null)}
           onChanged={refForms.reload}
         />

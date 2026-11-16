@@ -2,7 +2,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
-import { isMissingTableError } from "@/lib/errors";
+import { isMissingColumnError, isMissingTableError } from "@/lib/errors";
 import { REF_FORM_ITEMS, REF_FORM_LANGUAGES, REF_FORM_MIGRATION, normalizeRefFormLayout, normalizeSignPages } from "@/lib/ref-form";
 
 // 参考様式のひな形PDF（ref_form_templates。0227）。非公開バケット app-files の ref-forms/ に置く。
@@ -23,6 +23,8 @@ async function requireAdmin(): Promise<boolean> {
 
 const validKey = (k: string) => REF_FORM_ITEMS.some((i) => i.key === k);
 const validLang = (l: string) => (REF_FORM_LANGUAGES as readonly string[]).includes(l);
+const validOrg = (o: string | null) => o == null || /^[0-9a-f-]{36}$/i.test(o);
+const ORG_HINT = "マイグレーション 0228_ref_form_templates_org.sql が未適用の可能性があります。Supabase の SQL Editor で適用してください。";
 
 export async function createRefFormTicket(
   formKey: string,
@@ -32,6 +34,7 @@ export async function createRefFormTicket(
   if (!(await requireAdmin())) return { ok: false, message: "権限がありません（管理者だけ）" };
   if (mimeType !== "application/pdf") return { ok: false, message: "PDFのみ登録できます" };
   if (!validKey(formKey) || !validLang(language)) return { ok: false, message: "不正な様式・言語です" };
+  // 所属機関別の版も同じ場所に置く（どの所属機関の版かは表の organization_id で持つ）
   const admin = createAdminClient();
   if (!admin) return { ok: false, message: "サーバー設定エラー（SERVICE_ROLE_KEY 未設定）" };
   await admin.storage.createBucket(BUCKET, { public: false }).catch(() => undefined);
@@ -41,34 +44,35 @@ export async function createRefFormTicket(
   return { ok: true, path, token: data.token };
 }
 
-// アップロードしたPDFを登録する（同じ様式・言語があれば差し替え。記入位置・署名ページはそのまま残す）
+// アップロードしたPDFを登録する（同じ様式・言語・所属機関があれば差し替え。記入位置・署名ページはそのまま残す）。
+// orgId を渡すとその所属機関だけの版、null は全員共通の版
 export async function registerRefFormPdf(
   formKey: string,
   language: string,
   path: string,
   fileName: string,
+  orgId: string | null = null,
 ): Promise<{ ok: true; id: string } | Err> {
   if (!(await requireAdmin())) return { ok: false, message: "権限がありません（管理者だけ）" };
-  if (!validKey(formKey) || !validLang(language)) return { ok: false, message: "不正な様式・言語です" };
+  if (!validKey(formKey) || !validLang(language) || !validOrg(orgId)) return { ok: false, message: "不正な様式・言語・所属機関です" };
   if (!path.startsWith(`ref-forms/${formKey}/`)) return { ok: false, message: "不正なパス" };
   const admin = createAdminClient();
   if (!admin) return { ok: false, message: "サーバー設定エラー" };
-  const { data: before, error: readErr } = await admin
-    .from("ref_form_templates")
-    .select("id, pdf_path")
-    .eq("form_key", formKey)
-    .eq("language", language)
-    .maybeSingle();
+  const base = admin.from("ref_form_templates").select("id, pdf_path").eq("form_key", formKey).eq("language", language);
+  const { data: before, error: readErr } = await (orgId ? base.eq("organization_id", orgId) : base.is("organization_id", null)).maybeSingle();
   if (readErr) {
     await admin.storage.from(BUCKET).remove([path]).catch(() => undefined);
-    return { ok: false, message: isMissingTableError(readErr) ? HINT : readErr.message };
+    return {
+      ok: false,
+      message: isMissingTableError(readErr) ? HINT : isMissingColumnError(readErr) ? ORG_HINT : readErr.message,
+    };
   }
   const prev = before as { id: string; pdf_path: string } | null;
   const res = prev
     ? await admin.from("ref_form_templates").update({ pdf_path: path, pdf_name: fileName.slice(0, 200) }).eq("id", prev.id).select("id").single()
     : await admin
         .from("ref_form_templates")
-        .insert({ form_key: formKey, language, pdf_path: path, pdf_name: fileName.slice(0, 200) })
+        .insert({ form_key: formKey, language, organization_id: orgId, pdf_path: path, pdf_name: fileName.slice(0, 200) })
         .select("id")
         .single();
   if (res.error || !res.data) {
