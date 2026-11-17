@@ -7,11 +7,13 @@ import { isRefFormItem, languageForNationality, pickRefFormTemplate } from "@/li
 import { RefFormRowBar, RefFormTemplatesDialog, refFormHref, useRefFormTemplates } from "@/components/ref-forms/RefFormPanel";
 import type { OnboardingDocumentRow } from "@/types/db";
 import {
-  SUBMISSION_LINKS,
+  SUBMISSION_TABLE_ORDER,
+  canonicalSubmissionKey,
+  submissionLink,
+  submissionListTitle,
   SUBMISSION_TABLE_TITLES,
   submissionListPrintHtml,
   type SubmissionRow,
-  type SubmissionTable,
   type SubmitMark,
 } from "@/lib/submission-list";
 
@@ -49,9 +51,11 @@ export function PrepSubmissionList({
   const [managing, setManaging] = useState<SubmissionRow | null>(null);
   // 「有」の参考様式（一覧表の順）。ひな形が登録されているものだけを作れる
   const refRows = workerId ? rows.filter((r) => r.mark === "有" && isRefFormItem(r)) : [];
-  const refReady = refRows.filter((r) => pickRefFormTemplate(refForms.templates, r.key, nationality, orgId));
+  // 参考様式のひな形は、1号と同じ書類なら1号のキーで引く（2号でも 1-5号・1-6号 などは同じひな形）
+  const refKey = (r: SubmissionRow) => canonicalSubmissionKey(r.key);
+  const refReady = refRows.filter((r) => pickRefFormTemplate(refForms.templates, refKey(r), nationality, orgId));
   const refSignReady = refReady.filter(
-    (r) => (pickRefFormTemplate(refForms.templates, r.key, nationality, orgId)?.sign_pages.length ?? 0) > 0,
+    (r) => (pickRefFormTemplate(refForms.templates, refKey(r), nationality, orgId)?.sign_pages.length ?? 0) > 0,
   );
   const undecided = rows.filter((r) => r.mark == null);
   const autoCount = rows.filter((r) => r.auto && r.mark != null).length;
@@ -77,13 +81,14 @@ export function PrepSubmissionList({
     w.print();
   };
 
-  const tables = (["1", "3agri"] as SubmissionTable[]).filter((t) => rows.some((r) => r.table === t));
+  const tables = SUBMISSION_TABLE_ORDER.filter((t) => rows.some((r) => r.table === t));
+  const listTitle = submissionListTitle(rows);
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <p className="min-w-0 flex-1 text-[11px] leading-relaxed text-muted">
-          入管の「特定技能1号」に係る提出書類一覧表（在留資格変更許可申請用）と同じ番号・順番です。書類ごとに提出確認欄の「有」「無」を押してください。
+          入管の{listTitle.title}（在留資格変更許可申請用）と同じ番号・順番です。書類ごとに提出確認欄の「有」「無」を押してください。
           国保・年金・国籍・あっせん・合格証などから見当が付くものは、最初から選んであります（
           <span className="rounded bg-background px-1 font-bold">見当</span>
           の印）。押すと確定します。同一年度内に受け入れているかで変わる 4・7(1) などは選んでください。
@@ -104,7 +109,7 @@ export function PrepSubmissionList({
             参考様式（「有」{refRows.length}件・ひな形あり {refReady.length}件）
           </span>
           <a
-            href={refReady.length > 0 ? refFormHref(workerId, refReady.map((r) => r.key), "all") : undefined}
+            href={refReady.length > 0 ? refFormHref(workerId, refReady.map(refKey), "all") : undefined}
             target="_blank"
             rel="noopener noreferrer"
             aria-disabled={refReady.length === 0}
@@ -115,7 +120,7 @@ export function PrepSubmissionList({
             参考様式を一気にダウンロード（{refReady.length}件）
           </a>
           <a
-            href={refSignReady.length > 0 ? refFormHref(workerId, refSignReady.map((r) => r.key), "sign") : undefined}
+            href={refSignReady.length > 0 ? refFormHref(workerId, refSignReady.map(refKey), "sign") : undefined}
             target="_blank"
             rel="noopener noreferrer"
             aria-disabled={refSignReady.length === 0}
@@ -198,7 +203,7 @@ export function PrepSubmissionList({
                           {r.mark === "有" && workerId && isRefFormItem(r) && (
                             <div className="mt-1.5">
                               <RefFormRowBar
-                                formKey={r.key}
+                                formKey={refKey(r)}
                                 workerId={workerId}
                                 nationality={nationality}
                                 orgId={orgId}
@@ -252,7 +257,7 @@ export function PrepSubmissionList({
       })}
       {managing && (
         <RefFormTemplatesDialog
-          formKey={managing.key}
+          formKey={refKey(managing)}
           formLabel={managing.label}
           templates={refForms.templates}
           defaultLanguage={languageForNationality(nationality) || "日本語"}
@@ -291,7 +296,7 @@ export function SubmissionRowAction({
   onPreview: (f: OnboardingDocumentRow) => void;
   onRemove: (f: OnboardingDocumentRow) => void;
 }) {
-  const section = SUBMISSION_LINKS[row.key]?.section;
+  const section = submissionLink(row.key)?.section;
   return (
     <div className="flex flex-col gap-1 rounded-lg border border-border bg-background/60 p-2 text-[11px]">
       {docs.map((d) => (

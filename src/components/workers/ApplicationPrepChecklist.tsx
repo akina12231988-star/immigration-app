@@ -240,7 +240,7 @@ import {
 } from "@/lib/prep-detail";
 import { isAgricultureIndustry, needsFlexDocs } from "@/lib/org-attachments";
 import {
-  SUBMISSION_LINKS,
+  submissionLink,
   buildSubmissionRows,
   canAttachToSubmissionRow,
   submissionAttachKey,
@@ -1510,9 +1510,10 @@ export function ApplicationPrepChecklist({
     : missingItems;
   const docLabelOf = (item: (typeof items)[number]) => prepDocLabel(item.def, docYearOf(item.def), currentReiwa);
 
-  // 提出書類一覧表（特定技能1号の在留資格変更だけ）。保存した有／無と、申請準備の情報からの見当
+  // 提出書類一覧表（在留資格変更。特定技能2号の準備なら2号の一覧表）。保存した有／無と、申請準備の情報からの見当
+  const submissionSsw2 = isSsw2Prep || meta.cert_pattern === "特定技能2号";
   const submissionRows =
-    unified && current && meta.app_type === "変更" && !isSsw2Prep && meta.cert_pattern !== "特定技能2号"
+    unified && current && meta.app_type === "変更"
       ? buildSubmissionRows(
           current.submission_marks ?? {},
           {
@@ -1524,14 +1525,14 @@ export function ApplicationPrepChecklist({
             nationality: worker?.nationality ?? "",
             certPattern: meta.cert_pattern,
           },
-          { agri: prepOrgAgri || isAgricultureIndustry(workerRow?.field) },
+          { agri: prepOrgAgri || isAgricultureIndustry(workerRow?.field), ssw2: submissionSsw2 },
         )
       : null;
 
   // 提出書類一覧表の行に直接添付するファイル（アプリの「必要な書類」に無い書類）。保存先は prep_sl_*
   const submissionAttachDef = (row: SubmissionRow): PrepDocDef => ({
     id: `sl:${row.key}`,
-    label: `${row.table === "3agri" ? "第3表 " : ""}${row.no}${row.sub ?? ""} ${row.label}`,
+    label: `${row.table === "3agri" || row.table === "2-3agri" ? "第3表 " : ""}${row.no}${row.sub ?? ""} ${row.label}`,
     appliesTo: ["変更"],
     source: { kind: "doc", docKey: submissionAttachKey(row.key) },
     manageInline: true,
@@ -1579,7 +1580,7 @@ export function ApplicationPrepChecklist({
           label: def.label,
           kind: "doc",
           // 「必要な書類」でも揃える書類（15・20）は、この行の添付が無くてもお知らせに出さない
-          satisfied: (SUBMISSION_LINKS[row.key]?.docs ?? []).length > 0,
+          satisfied: (submissionLink(row.key)?.docs ?? []).length > 0,
           mailAfterApply: false,
           issueNoMail: false,
           files: docFilesFor(def).map((d) => ({
@@ -2545,54 +2546,6 @@ export function ApplicationPrepChecklist({
         </p>
       ) : (
         <>
-      {/* 提出書類一覧表（特定技能1号・在留資格変更）。入管の一覧表の番号順に有／無を選び、○を付けて印刷する */}
-      {submissionRows && (
-        <PrepSection
-          id="prep-list"
-          title="提出書類一覧表（特定技能1号・在留資格変更）"
-          tone={submissionRows.some((r) => r.mark == null) ? "alert" : "normal"}
-        >
-          <PrepSubmissionList
-            rows={submissionRows}
-            workerId={workerId}
-            nationality={worker?.nationality ?? ""}
-            orgId={prepOrgId ?? null}
-            canEdit={canEdit}
-            workerName={workerRow?.name ?? ""}
-            orgName={prepOrgName}
-            onError={setError}
-            renderAction={(row) => (
-              <SubmissionRowAction
-                row={row}
-                canEdit={canEdit}
-                busy={busyKey != null}
-                docs={(SUBMISSION_LINKS[row.key]?.docs ?? []).map((id) => {
-                  const item = items.find((i) => i.def.id === id);
-                  return {
-                    id,
-                    label: item ? docLabelOf(item) : (PREP_DOC_DEFS.find((d) => d.id === id)?.label ?? id),
-                    inList: !!item,
-                    satisfied: !!item?.satisfied,
-                    fileCount: item ? docFilesFor(item.def).length : 0,
-                  };
-                })}
-                attachFiles={canAttachToSubmissionRow(row.key) ? docFilesFor(submissionAttachDef(row)) : null}
-                onAttach={() => startAttach(submissionAttachDef(row))}
-                onDrop={(files) => void dropAttach(submissionAttachDef(row), files)}
-                onPreview={(f) => void previewDoc(f.id)}
-                onRemove={(f) => void removeDoc(f.doc_key, `${submissionAttachDef(row).label}（${f.file_name}）`)}
-              />
-            )}
-            onMark={(key, mark) => {
-              const next = { ...current.submission_marks };
-              if (mark) next[key] = mark;
-              else delete next[key];
-              void saveExtras({ submission_marks: next });
-            }}
-          />
-        </PrepSection>
-      )}
-
       {/* 3. 必要な書類（まだ揃っていない／申請後に郵送／揃った） */}
       <PrepSection
         id="prep-docs"
@@ -2838,6 +2791,55 @@ export function ApplicationPrepChecklist({
         </>
       )}
       </PrepSection>
+
+      {/* 提出書類一覧表（特定技能1号・2号の在留資格変更。一本化の試験中だけ）。入管の一覧表の番号順に有／無を選び、
+          ○を付けて印刷する。「必要な書類の準備」のすぐ下に置く */}
+      {submissionRows && (
+        <PrepSection
+          id="prep-list"
+          title={`提出書類一覧表（特定技能${submissionSsw2 ? "2" : "1"}号・在留資格変更）`}
+          tone={submissionRows.some((r) => r.mark == null) ? "alert" : "normal"}
+        >
+          <PrepSubmissionList
+            rows={submissionRows}
+            workerId={workerId}
+            nationality={worker?.nationality ?? ""}
+            orgId={prepOrgId ?? null}
+            canEdit={canEdit}
+            workerName={workerRow?.name ?? ""}
+            orgName={prepOrgName}
+            onError={setError}
+            renderAction={(row) => (
+              <SubmissionRowAction
+                row={row}
+                canEdit={canEdit}
+                busy={busyKey != null}
+                docs={(submissionLink(row.key)?.docs ?? []).map((id) => {
+                  const item = items.find((i) => i.def.id === id);
+                  return {
+                    id,
+                    label: item ? docLabelOf(item) : (PREP_DOC_DEFS.find((d) => d.id === id)?.label ?? id),
+                    inList: !!item,
+                    satisfied: !!item?.satisfied,
+                    fileCount: item ? docFilesFor(item.def).length : 0,
+                  };
+                })}
+                attachFiles={canAttachToSubmissionRow(row.key) ? docFilesFor(submissionAttachDef(row)) : null}
+                onAttach={() => startAttach(submissionAttachDef(row))}
+                onDrop={(files) => void dropAttach(submissionAttachDef(row), files)}
+                onPreview={(f) => void previewDoc(f.id)}
+                onRemove={(f) => void removeDoc(f.doc_key, `${submissionAttachDef(row).label}（${f.file_name}）`)}
+              />
+            )}
+            onMark={(key, mark) => {
+              const next = { ...current.submission_marks };
+              if (mark) next[key] = mark;
+              else delete next[key];
+              void saveExtras({ submission_marks: next });
+            }}
+          />
+        </PrepSection>
+      )}
 
       {/* 4. 申請書類に貼る情報のコピー（80項目・今と同じ） */}
       <PrepSection id="prep-copy">

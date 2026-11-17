@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  SSW2_SAME_AS_SSW1,
+  canonicalSubmissionKey,
+  submissionLink,
+  submissionListTitle,
   SUBMISSION_ITEMS,
   SUBMISSION_LINKS,
   canAttachToSubmissionRow,
@@ -137,5 +141,47 @@ describe("「有」の書類を揃える", () => {
     expect(ids).toContain("sl:t1-15");
     expect(ids).not.toContain("hokensho"); // 国保なし → 12 は無
     expect(ids).not.toContain("sl:t1-1"); // 単独 → 1 は無
+  });
+});
+
+describe("特定技能2号の一覧表", () => {
+  it("第1表は1〜20、第3表の8の1（農業）は1〜3", () => {
+    const nos = (t: string) => [...new Set(SUBMISSION_ITEMS.filter((i) => i.table === t).map((i) => Number(i.no)))];
+    expect(nos("2-1")).toEqual(Array.from({ length: 20 }, (_, i) => i + 1));
+    expect(nos("2-3agri")).toEqual([1, 2, 3]);
+  });
+
+  it("2号を選ぶと2号の表だけ。農業でなければ第3表は出さない", () => {
+    const rows = buildSubmissionRows({}, base, { agri: true, ssw2: true });
+    expect(new Set(rows.map((r) => r.table))).toEqual(new Set(["2-1", "2-3agri"]));
+    expect(buildSubmissionRows({}, base, { agri: false, ssw2: true }).some((r) => r.table === "2-3agri")).toBe(false);
+    expect(submissionListTitle(rows).kind).toBe("2号");
+    expect(submissionListTitle(buildSubmissionRows({}, base, { agri: false })).kind).toBe("1号");
+  });
+
+  it("1号と同じ書類は同じ見当・同じ揃え方・同じひな形のキー", () => {
+    for (const [k2, k1] of Object.entries(SSW2_SAME_AS_SSW1)) {
+      expect(SUBMISSION_ITEMS.some((i) => i.key === k2)).toBe(true);
+      expect(SUBMISSION_ITEMS.some((i) => i.key === k1)).toBe(true);
+    }
+    const ctx = { ...base, hasKokuho: true, hasNenkin: true };
+    expect(suggestSubmissionMark("s2-14", ctx)).toBe(suggestSubmissionMark("t1-13", ctx));
+    expect(submissionLink("s2-9-1")?.docs).toEqual(["kenshin"]);
+    expect(canonicalSubmissionKey("s2-5")).toBe("t1-5");
+    expect(canonicalSubmissionKey("s2-8")).toBe("s2-8");
+  });
+
+  it("2号だけの書類", () => {
+    expect(suggestSubmissionMark("s2-8", base)).toBe("有"); // 1-32号 業務内容の誓約書
+    expect(suggestSubmissionMark("s2-19", base)).toBeNull(); // 技能移転に係る申告書は選んでもらう
+    expect(suggestSubmissionMark("s2-20", { ...base, nationality: "タイ" })).toBe("無"); // 2号はカンボジア・ベトナム
+    expect(suggestSubmissionMark("s2-20", { ...base, nationality: "ベトナム" })).toBe("有");
+    expect(submissionLink("s2a-1")?.docs).toEqual(["cert_ssw2"]);
+  });
+
+  it("印刷の題名が2号になる", () => {
+    const html = submissionListPrintHtml({ workerName: "A", orgName: "B", rows: buildSubmissionRows({}, base, { agri: true, ssw2: true }) });
+    expect(html).toContain("「特定技能２号」に係る提出書類一覧表");
+    expect(html).toContain("第3表の8の1");
   });
 });
