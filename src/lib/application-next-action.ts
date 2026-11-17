@@ -110,7 +110,7 @@ export function applicationNextAction(app: NextActionApp, counts: NextActionCoun
   if (counts.extraOpen > 0) {
     return {
       section: "extra",
-      text: `追加資料の依頼が${counts.extraOpen}件、まだ郵送していません。本人から資料を集めてレターパックで送り、追跡番号を入れて「郵送済み」にします。`,
+      text: `追加資料の依頼が${counts.extraOpen}件、まだ提出していません。本人から資料を集めてレターパックで送り、追跡番号を入れて「郵送済み」にします（オンライン申請でメールで来た依頼は、オンラインシステムで出して「オンラインで提出した（完了）」を押します）。`,
       done: false,
     };
   }
@@ -147,14 +147,14 @@ export function lineSummary(app: Pick<Application, "lineReported">): string {
 }
 
 export interface ExtraSummaryCounts extends NextActionCounts {
-  extraDone: number; // 郵送済みの追加資料の依頼
+  extraDone: number; // 郵送済み・オンラインで提出済みの追加資料の依頼
   mailings: number; // 入管へ郵送した追加資料の投函回数
 }
 
 export function extraSummary(c: ExtraSummaryCounts): string {
   const parts: string[] = [];
   if (c.extraOpen > 0) parts.push(`依頼 ${c.extraOpen}件が未郵送`);
-  else if (c.extraDone > 0) parts.push(`依頼 ${c.extraDone}件は郵送済み`);
+  else if (c.extraDone > 0) parts.push(`依頼 ${c.extraDone}件は提出済み`);
   else parts.push("依頼なし");
   if (c.mailPending > 0) parts.push(`郵送待ちの書類・タスク ${c.mailPending}件`);
   if (c.mailings > 0) parts.push(`郵送した追加資料 ${c.mailings}回`);

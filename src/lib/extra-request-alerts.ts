@@ -1,5 +1,5 @@
 import { daysUntil } from "@/lib/worker-alerts";
-import type { ApplicationExtraRequest } from "@/types/application";
+import { EXTRA_REQUEST_DONE_STATUSES, type ApplicationExtraRequest } from "@/types/application";
 
 // 入管から求められた追加資料の「提出期限」のアラート。
 // 申請一覧の「＜入管＞追加資料」タブで、急ぎのものが上に来るようにする。
@@ -7,7 +7,7 @@ import type { ApplicationExtraRequest } from "@/types/application";
 type DueFields = Pick<ApplicationExtraRequest, "due_on" | "status">;
 
 export type ExtraRequestAlert =
-  | "done" // 郵送済み（完了）
+  | "done" // 郵送済み・オンラインで提出済み（完了）
   | "overdue" // 期限を過ぎている
   | "today" // 今日が期限
   | "soon" // 期限まで3日以内
@@ -18,7 +18,12 @@ export type ExtraRequestAlert =
 const SOON_DAYS = 3;
 
 export function isExtraRequestOpen(r: Pick<ApplicationExtraRequest, "status">): boolean {
-  return r.status !== "郵送済み";
+  return !EXTRA_REQUEST_DONE_STATUSES.includes(r.status);
+}
+
+// 完了の印の文字（郵送済み／オンラインで提出済み）
+export function extraRequestDoneLabel(r: Pick<ApplicationExtraRequest, "status">): string {
+  return r.status === "オンラインで提出済み" ? "完了（オンラインで提出済み）" : "完了（郵送済み）";
 }
 
 export function extraRequestAlert(r: DueFields, today: string): ExtraRequestAlert {

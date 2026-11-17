@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, ExternalLink, MailPlus, Phone, Plus, Trash2, Truck } from "lucide-react";
+import { Check, ExternalLink, Mail, MailPlus, MonitorUp, Phone, Plus, Trash2, Truck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { FileGroup } from "@/components/applications/FileGroup";
 import { ExtraShipments } from "@/components/applications/ExtraShipments";
@@ -15,6 +15,7 @@ import {
 import { letterPackTrackingUrl } from "@/lib/application-prep";
 import { dbErrorMessage, errorMessage } from "@/lib/errors";
 import { todayStr } from "@/lib/application-alerts";
+import { extraRequestDoneLabel, isExtraRequestOpen } from "@/lib/extra-request-alerts";
 import {
   EXTRA_REQUEST_METHODS,
   EXTRA_REQUEST_STATUSES,
@@ -25,6 +26,7 @@ import {
 } from "@/types/application";
 
 const MIGRATION = "0083_application_extra_requests.sql";
+const ONLINE_MIGRATION = "0229_extra_request_online.sql";
 
 // 審査中に入管から来る「追加資料の提出依頼」の記録。
 // 書類（追加資料提出通知書）でも電話でも、来た日・審査担当者・求められた資料を残し、
@@ -37,8 +39,10 @@ export function ExtraRequestSection({
   onUpload,
   onDeleteFile,
   onRowsChange,
+  online = false,
 }: {
   applicationId: string;
+  online?: boolean; // オンライン申請（追加資料の依頼はメールで来て、オンラインで提出する）
   canEdit: boolean;
   noticeFiles: ApplicationFile[]; // 「追加資料通知」として登録した通知書の画像・PDF
   uploading: boolean;
@@ -53,7 +57,8 @@ export function ExtraRequestSection({
 
   // 追加フォーム
   const [requestedOn, setRequestedOn] = useState(todayStr());
-  const [method, setMethod] = useState<ExtraRequestMethod>("書類");
+  const [method, setMethod] = useState<ExtraRequestMethod>(online ? "メール" : "書類");
+  const [mailLink, setMailLink] = useState("");
   const [officer, setOfficer] = useState("");
   const [dueOn, setDueOn] = useState("");
   const [items, setItems] = useState("");
@@ -89,14 +94,17 @@ export function ExtraRequestSection({
         sent_on: null,
         tracking_no: "",
         note: "",
+        // メールのリンクは 0229 で足した列。メールのときだけ送る（未適用でも書類・電話は記録できる）
+        ...(method === "メール" ? { mail_link: mailLink.trim() } : {}),
       });
       setRows((prev) => [row, ...prev]);
       setOfficer("");
       setDueOn("");
       setItems("");
+      setMailLink("");
       setOpen(false);
     } catch (err) {
-      setError(dbErrorMessage(err, MIGRATION, errorMessage(err, "保存に失敗しました")));
+      setError(dbErrorMessage(err, method === "メール" ? ONLINE_MIGRATION : MIGRATION, errorMessage(err, "保存に失敗しました")));
     } finally {
       setBusy(false);
     }
@@ -107,8 +115,13 @@ export function ExtraRequestSection({
     try {
       await updateExtraRequest(createClient(), id, p);
     } catch (err) {
-      setError(errorMessage(err, "保存に失敗しました"));
+      setError(dbErrorMessage(err, ONLINE_MIGRATION, errorMessage(err, "保存に失敗しました")));
     }
+  };
+
+  // オンライン申請: 在留申請オンラインシステムで追加資料を出したら完了（郵送はしない。出した日を残す）
+  const markOnline = async (r: ApplicationExtraRequest) => {
+    await patch(r.id, { status: "オンラインで提出済み", sent_on: r.sent_on ?? todayStr() });
   };
 
   // レターパックで送ったら完了（送った日と追跡番号を残す）
@@ -137,6 +150,8 @@ export function ExtraRequestSection({
         入管から追加資料を求められたときに記録します。書類（追加資料提出通知書）でも電話でも、
         来た日・審査担当者・求められた資料を残してください。
         本人からの返事を書き、レターパックで送って追跡番号を入れると完了になります。
+        オンライン申請でメールで来たときは、来かたを「メール」にしてメールが来た日とメールのリンクを残し、
+        在留申請オンラインシステムで追加資料を出したら「オンラインで提出した（完了）」を押します（郵送は要りません）。
         資料を何回かに分けて送ったときは「郵送を追加」で、いつ・何を・どの追跡番号で送ったかを1回ずつ残せます。
       </p>
 
@@ -161,7 +176,7 @@ export function ExtraRequestSection({
         <div className="mb-3 rounded-xl border border-border p-3">
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
             <label className="flex flex-col gap-1">
-              <span className="text-[11px] font-bold text-muted">依頼が来た日</span>
+              <span className="text-[11px] font-bold text-muted">{method === "メール" ? "メールが来た日" : "依頼が来た日"}</span>
               <input
                 type="date"
                 value={requestedOn}
@@ -183,6 +198,17 @@ export function ExtraRequestSection({
                 ))}
               </select>
             </label>
+            {method === "メール" && (
+              <label className="flex flex-col gap-1 sm:col-span-2">
+                <span className="text-[11px] font-bold text-muted">メールのリンク（Gmail で開いたメールのアドレスを貼る）</span>
+                <input
+                  value={mailLink}
+                  onChange={(e) => setMailLink(e.target.value)}
+                  placeholder="https://mail.google.com/mail/u/0/#inbox/…"
+                  className={INPUT}
+                />
+              </label>
+            )}
             <label className="flex flex-col gap-1">
               <span className="text-[11px] font-bold text-muted">審査担当者（入管）</span>
               <input
@@ -237,7 +263,8 @@ export function ExtraRequestSection({
       ) : (
         <div className="flex flex-col gap-3">
           {rows.map((r) => {
-            const done = r.status === "郵送済み";
+            const done = !isExtraRequestOpen(r);
+            const byMail = r.method === "メール";
             return (
               <div
                 key={r.id}
@@ -245,7 +272,7 @@ export function ExtraRequestSection({
               >
                 <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
                   <span className="flex items-center gap-1 font-bold">
-                    {r.method === "電話" ? <Phone size={13} /> : <MailPlus size={13} />}
+                    {r.method === "電話" ? <Phone size={13} /> : byMail ? <Mail size={13} /> : <MailPlus size={13} />}
                     {r.method}で依頼
                   </span>
                   <span className="tabular-nums text-muted">{r.requested_on}</span>
@@ -257,7 +284,7 @@ export function ExtraRequestSection({
                   {done && (
                     <span className="flex items-center gap-1 rounded-full bg-status-approved-bg px-2 py-0.5 font-bold text-status-approved-fg">
                       <Check size={12} />
-                      完了（郵送済み）
+                      {extraRequestDoneLabel(r)}
                     </span>
                   )}
                   {canEdit && (
@@ -273,6 +300,37 @@ export function ExtraRequestSection({
                 </div>
 
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {byMail && (
+                    <label className="flex flex-col gap-1 sm:col-span-2">
+                      <span className="text-[11px] text-muted">メールのリンク</span>
+                      <span className="flex items-center gap-1.5">
+                        {canEdit ? (
+                          <input
+                            defaultValue={r.mail_link ?? ""}
+                            onBlur={(e) => {
+                              if (e.target.value.trim() !== (r.mail_link ?? ""))
+                                void patch(r.id, { mail_link: e.target.value.trim() });
+                            }}
+                            placeholder="https://mail.google.com/…"
+                            className={CELL}
+                          />
+                        ) : (
+                          <span className="min-w-0 flex-1 truncate text-xs">{r.mail_link || "—"}</span>
+                        )}
+                        {r.mail_link && (
+                          <a
+                            href={r.mail_link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex shrink-0 items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11px] font-bold text-brand"
+                          >
+                            <ExternalLink size={12} />
+                            メールを開く
+                          </a>
+                        )}
+                      </span>
+                    </label>
+                  )}
                   <label className="flex flex-col gap-1">
                     <span className="text-[11px] text-muted">審査担当者</span>
                     {canEdit ? (
@@ -343,7 +401,36 @@ export function ExtraRequestSection({
                   </label>
                 </div>
 
-                {/* 入管への郵送（レターパック）。送ったら完了 */}
+                {/* オンライン申請: オンラインシステムで出したら完了（郵送しない） */}
+                {byMail && (
+                  <div className="mt-2 flex flex-wrap items-end gap-2 border-t border-border pt-2">
+                    <label className="flex flex-col gap-1">
+                      <span className="text-[11px] text-muted">オンラインで提出した日</span>
+                      {canEdit ? (
+                        <input
+                          type="date"
+                          value={r.sent_on ?? ""}
+                          onChange={(e) => void patch(r.id, { sent_on: e.target.value || null })}
+                          className={`${CELL} w-36`}
+                        />
+                      ) : (
+                        <span className="text-xs tabular-nums">{r.sent_on ?? "—"}</span>
+                      )}
+                    </label>
+                    {canEdit && !done && (
+                      <button
+                        type="button"
+                        onClick={() => void markOnline(r)}
+                        className="flex items-center gap-1 rounded-lg bg-brand px-3 py-1.5 text-[11px] font-bold text-brand-foreground"
+                      >
+                        <MonitorUp size={12} />
+                        オンラインで提出した（完了）
+                      </button>
+                    )}
+                  </div>
+                )}
+                {/* 入管への郵送（レターパック）。送ったら完了。メールで来た依頼は、郵送の記録がある時だけ出す */}
+                {(!byMail || r.tracking_no || (r.shipments?.length ?? 0) > 0) && (
                 <div className="mt-2 flex flex-wrap items-end gap-2 border-t border-border pt-2">
                   <label className="flex flex-col gap-1">
                     <span className="text-[11px] text-muted">郵送した日</span>
@@ -396,7 +483,9 @@ export function ExtraRequestSection({
                     </button>
                   )}
                 </div>
+                )}
                 {/* 資料を分けて送ったとき（2回目以降）の郵送の記録 */}
+                {(!byMail || (r.shipments?.length ?? 0) > 0) && (
                 <ExtraShipments
                   requestId={r.id}
                   value={r.shipments}
@@ -405,6 +494,7 @@ export function ExtraRequestSection({
                     setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, shipments: next } : x)))
                   }
                 />
+                )}
               </div>
             );
           })}

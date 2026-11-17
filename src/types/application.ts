@@ -143,25 +143,29 @@ export interface Application {
 // ---- 追加資料の提出依頼（0083_application_extra_requests.sql） ----
 //
 // 審査中に入管から「この資料も出してください」と言われたときの記録。
-// 書類（追加資料提出通知書）で来る場合と、電話で来る場合がある。
+// 書類（追加資料提出通知書）で来る場合と、電話で来る場合、オンライン申請ではメールで来る場合がある（メール・0229）。
 
-export const EXTRA_REQUEST_METHODS = ["書類", "電話"] as const;
+export const EXTRA_REQUEST_METHODS = ["書類", "電話", "メール"] as const;
 export type ExtraRequestMethod = (typeof EXTRA_REQUEST_METHODS)[number];
 
-// 対応の進み具合。レターパックで送ったら「郵送済み」＝完了
+// 対応の進み具合。レターパックで送ったら「郵送済み」、
+// オンライン申請で追加資料をオンラインシステムから出したら「オンラインで提出済み」（0229）＝完了
 export const EXTRA_REQUEST_STATUSES = [
   "本人へ依頼中",
   "本人から受領",
   "書類作成中",
   "郵送済み",
+  "オンラインで提出済み",
 ] as const;
+export const EXTRA_REQUEST_DONE_STATUSES: readonly string[] = ["郵送済み", "オンラインで提出済み"];
 export type ExtraRequestStatus = (typeof EXTRA_REQUEST_STATUSES)[number];
 
 export interface ApplicationExtraRequest {
   id: string;
   application_id: string;
   requested_on: string; // 依頼が来た日 YYYY-MM-DD
-  method: ExtraRequestMethod; // 書類 / 電話
+  method: ExtraRequestMethod; // 書類 / 電話 / メール（オンライン申請）
+  mail_link?: string; // 依頼のメールのリンク（メールのとき。0229。未適用の環境では undefined）
   officer: string; // 入管の審査担当者
   due_on: string | null; // 提出期限
   items: string; // 求められた資料

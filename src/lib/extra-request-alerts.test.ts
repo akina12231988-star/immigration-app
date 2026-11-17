@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   countOpenExtraRequests,
   extraRequestAlert,
+  extraRequestDoneLabel,
   extraRequestDueLabel,
   isExtraRequestUrgent,
   sortExtraRequests,
@@ -86,5 +87,14 @@ describe("countOpenExtraRequests", () => {
     expect(
       countOpenExtraRequests([row(null), row(null, "郵送済み"), row(null, "書類作成中")]),
     ).toBe(2);
+  });
+});
+
+describe("オンライン申請（メールで来た依頼）", () => {
+  it("オンラインで提出済みも完了", () => {
+    expect(extraRequestAlert(row("2026-08-01", "オンラインで提出済み"), TODAY)).toBe("done");
+    expect(countOpenExtraRequests([row(null, "オンラインで提出済み"), row(null)])).toBe(1);
+    expect(extraRequestDoneLabel({ status: "オンラインで提出済み" })).toBe("完了（オンラインで提出済み）");
+    expect(extraRequestDoneLabel({ status: "郵送済み" })).toBe("完了（郵送済み）");
   });
 });
