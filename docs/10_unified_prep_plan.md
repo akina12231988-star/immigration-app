@@ -42,9 +42,12 @@
 - 入管に出すので、アプリで作った表ではなく**入管の様式の PDF そのもの**に、提出確認欄の「有」「無」の丸と、表紙の氏名・所属機関名を書き込む（2026-11-17 の利用者の指示。エクセルでの出力は要らない）
 - 様式の PDF は `public/forms/submission-*.pdf`、書き込む位置は `src/lib/submission-pdf.ts` の `SUBMISSION_PDF_TEMPLATES`
   - 位置は `node scripts/submission-pdf-layout.mjs <PDF>` で「有」「無」の文字の座標を読み取って書き写す（右側の官用欄は除く）
-- 入っている様式: 1号 表紙＋第1表（`submission-ssw1.pdf`）、1号 農業の第3表の13の1（`submission-ssw1-agri.pdf`）、2号 農業の第3表の8の1（`submission-ssw2-agri.pdf`）
-- **まだ無い様式: 2号の表紙＋第1表（在留資格変更許可申請用）**。2026-11-17 にもらった PDF は「在留資格認定証明書交付申請用」だったので使っていない。
-  変更用の PDF をもらったら public/forms に置き、座標を読み取って足す。それまで2号の一覧表は簡易版（`submissionListPrintHtml`）で印刷する
+- 入っている様式: 1号 表紙＋第1表（`submission-ssw1.pdf`）、1号 農業の第3表の13の1（`submission-ssw1-agri.pdf`）、
+  2号 表紙＋第1表（`submission-ssw2.pdf`）、2号 農業の第3表の8の1（`submission-ssw2-agri.pdf`）
+- 2号の表紙＋第1表（在留資格変更許可申請用）は、利用者がくれた PDF が2回とも「在留資格認定証明書交付申請用」だったため、
+  利用者からもらった入管のエクセル（変更用）の丸（Maru_* の図形）を消し、横を1ページに収める・表紙のあと（49行目）で改ページする設定にして、
+  LibreOffice で PDF にしたもの（2026-11-17）。文字の形などが Excel で印刷したものと少し違う。Excel で PDF にした変更用の様式をもらったら差し替え、位置を読み直す
+- 様式が無い表は簡易版（`submissionListPrintHtml`）で印刷する
 利用者からもらった PDF はリポジトリに入れていない。
 
 ## 段階
