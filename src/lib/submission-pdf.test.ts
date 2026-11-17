@@ -21,7 +21,7 @@ describe("提出書類一覧表を入管の様式の PDF で作る", () => {
     expect(SUBMISSION_PDF_TEMPLATES["2-1"]?.rows).toHaveLength(SUBMISSION_ITEMS.filter((i) => i.table === "2-1").length);
   });
 
-  it("2号: 表紙＋第1表（3ページ）と農業の第3表の8の1（1ページ）", async () => {
+  it("2号: 表紙＋第1表（4ページ）と農業の第3表の8の1（1ページ）", async () => {
     const rows = buildSubmissionRows({}, base, { agri: true, ssw2: true });
     const bytes = await fillSubmissionPdf({
       templates: { "2-1": pub("forms/submission-ssw2.pdf"), "2-3agri": pub("forms/submission-ssw2-agri.pdf") },
@@ -30,7 +30,7 @@ describe("提出書類一覧表を入管の様式の PDF で作る", () => {
       workerName: "A",
       orgName: "B",
     });
-    expect((await PDFDocument.load(bytes)).getPageCount()).toBe(4);
+    expect((await PDFDocument.load(bytes)).getPageCount()).toBe(5);
   }, 30000);
 
   it("表紙＋第1表（4ページ）と農業の第3表（1ページ）を1つの PDF にする", async () => {
