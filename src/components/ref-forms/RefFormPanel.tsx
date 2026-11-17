@@ -5,6 +5,7 @@ import { Download, FileText, Loader2, PenLine, Trash2, Upload, X } from "lucide-
 import { createClient } from "@/lib/supabase/client";
 import { dbErrorMessage } from "@/lib/errors";
 import {
+  BUNDLED_REF_FORMS,
   REF_FORM_LANGUAGES,
   REF_FORM_MIGRATION,
   languageForNationality,
@@ -14,7 +15,7 @@ import {
   type RefFormMode,
   type RefFormTemplate,
 } from "@/lib/ref-form";
-import { createRefFormTicket, deleteRefFormTemplate, registerRefFormPdf } from "@/app/(app)/ref-forms/actions";
+import { createRefFormTicket, deleteRefFormTemplate, registerBundledRefForms, registerRefFormPdf } from "@/app/(app)/ref-forms/actions";
 import { RefFormLayoutEditor } from "./RefFormLayoutEditor";
 
 // 参考様式のひな形（ref_form_templates。0227）を読む
@@ -261,6 +262,27 @@ export function RefFormTemplatesDialog({
             この言語のPDFを登録
           </button>
         </div>
+        {/* アプリに入れてある入管の様式（未記入・日本語）を、全員共通のひな形にする */}
+        {BUNDLED_REF_FORMS[formKey] && !templates.some((t) => t.form_key === formKey && t.language === "日本語" && !t.organization_id) && (
+          <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-brand/40 p-2">
+            <span className="min-w-0 flex-1 text-[11px]">アプリに入管の未記入の様式（日本語）が入っています。</span>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                setError(null);
+                const res = await registerBundledRefForms([formKey]);
+                if (!res.ok) setError(res.message);
+                await onChanged();
+                setBusy(false);
+              }}
+              className="inline-flex min-h-[32px] items-center gap-1 rounded-lg bg-brand px-3 font-bold text-brand-foreground disabled:opacity-50"
+            >
+              それを全員共通（日本語）のひな形にする
+            </button>
+          </div>
+        )}
         {error && <p className="mb-2 rounded bg-seal/10 p-2 text-seal">{error}</p>}
 
         {list.length === 0 ? (

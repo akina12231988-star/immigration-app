@@ -1,9 +1,19 @@
 "use server";
 
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { isMissingColumnError, isMissingTableError } from "@/lib/errors";
-import { REF_FORM_ITEMS, REF_FORM_LANGUAGES, REF_FORM_MIGRATION, normalizeRefFormLayout, normalizeSignPages } from "@/lib/ref-form";
+import {
+  BUNDLED_REF_FORMS,
+  REF_FORM_ITEMS,
+  REF_FORM_LANGUAGES,
+  REF_FORM_MIGRATION,
+  normalizeRefFormLayout,
+  normalizeSignPages,
+  refFormName,
+} from "@/lib/ref-form";
 
 // 参考様式のひな形PDF（ref_form_templates。0227）。非公開バケット app-files の ref-forms/ に置く。
 // 試験中（申請書類作成をアプリ一本化計画）なので、登録・変更・削除は管理者だけ
@@ -117,4 +127,39 @@ export async function deleteRefFormTemplate(id: string): Promise<{ ok: true } | 
   const p = (data as { pdf_path: string } | null)?.pdf_path;
   if (p) await admin.storage.from(BUCKET).remove([p]).catch(() => undefined);
   return { ok: true };
+}
+
+// アプリに入れてある入管の参考様式（public/forms/ref-forms/）を、全員共通・日本語のひな形として登録する。
+// すでに全員共通・日本語のひな形がある様式は飛ばす（差し替えない）。登録した件数を返す
+export async function registerBundledRefForms(keys: string[]): Promise<{ ok: true; added: string[] } | Err> {
+  if (!(await requireAdmin())) return { ok: false, message: "権限がありません（管理者だけ）" };
+  const admin = createAdminClient();
+  if (!admin) return { ok: false, message: "サーバー設定エラー（SERVICE_ROLE_KEY 未設定）" };
+  await admin.storage.createBucket(BUCKET, { public: false }).catch(() => undefined);
+  const added: string[] = [];
+  for (const key of keys) {
+    const file = BUNDLED_REF_FORMS[key];
+    if (!file) continue;
+    // 全員共通（所属機関なし）の日本語の版がもうあれば登録しない。所属機関別の列（0228）が無い環境でも読めるようにする
+    const base = admin.from("ref_form_templates").select("id").eq("form_key", key).eq("language", "日本語");
+    let found = await base.is("organization_id", null).limit(1);
+    if (found.error && isMissingColumnError(found.error)) {
+      found = await admin.from("ref_form_templates").select("id").eq("form_key", key).eq("language", "日本語").limit(1);
+    }
+    if (found.error) return { ok: false, message: isMissingTableError(found.error) ? HINT : found.error.message };
+    if ((found.data ?? []).length > 0) continue;
+    const bytes = await readFile(path.join(process.cwd(), "public", "forms", "ref-forms", file));
+    const storagePath = `ref-forms/${key}/${crypto.randomUUID()}.pdf`;
+    const up = await admin.storage.from(BUCKET).upload(storagePath, bytes, { contentType: "application/pdf" });
+    if (up.error) return { ok: false, message: `アップロードに失敗: ${up.error.message}` };
+    const ins = await admin
+      .from("ref_form_templates")
+      .insert({ form_key: key, language: "日本語", pdf_path: storagePath, pdf_name: `${refFormName(key)}（入管の様式・未記入）.pdf` });
+    if (ins.error) {
+      await admin.storage.from(BUCKET).remove([storagePath]).catch(() => undefined);
+      return { ok: false, message: ins.error.message };
+    }
+    added.push(key);
+  }
+  return { ok: true, added };
 }
