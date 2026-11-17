@@ -118,3 +118,28 @@ describe("PDFを作る", () => {
     expect(refFormFileName("one", "A", "t1-5")).toBe("A_参考様式第1-5号.pdf");
   });
 });
+
+describe("アプリに入れてある入管の参考様式", () => {
+  it("どれも参考様式の行で、ファイルがある", async () => {
+    const { existsSync } = await import("node:fs");
+    const { BUNDLED_REF_FORMS } = await import("./ref-form");
+    for (const [key, file] of Object.entries(BUNDLED_REF_FORMS)) {
+      expect(REF_FORM_ITEMS.some((i) => i.key === key)).toBe(true);
+      expect(existsSync(path.join(process.cwd(), "public", "forms", "ref-forms", file))).toBe(true);
+    }
+  });
+
+  it("全員共通・日本語のひな形がまだ無いものだけ", async () => {
+    const { missingBundledRefForms } = await import("./ref-form");
+    const all = missingBundledRefForms([]);
+    expect(all).toEqual(expect.arrayContaining(["t1-4-1", "t1-17", "s2-8", "t3a-2", "t3a-4"]));
+    const rest = missingBundledRefForms([
+      { form_key: "t1-4-1", language: "日本語", organization_id: null },
+      { form_key: "t1-17", language: "日本語", organization_id: "org-A" }, // 所属機関別は数えない
+      { form_key: "s2-8", language: "ベトナム語", organization_id: null }, // 日本語以外は数えない
+    ]);
+    expect(rest).not.toContain("t1-4-1");
+    expect(rest).toContain("t1-17");
+    expect(rest).toContain("s2-8");
+  });
+});

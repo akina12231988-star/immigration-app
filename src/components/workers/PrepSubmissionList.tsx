@@ -3,7 +3,8 @@
 import { Fragment, useState, type ReactNode } from "react";
 import { CheckCircle2, ChevronDown, Eye, Loader2, Paperclip, Printer, Trash2 } from "lucide-react";
 import { FileDropArea } from "@/components/ui/FileDropArea";
-import { isRefFormItem, languageForNationality, pickRefFormTemplate } from "@/lib/ref-form";
+import { isRefFormItem, languageForNationality, missingBundledRefForms, pickRefFormTemplate, refFormName } from "@/lib/ref-form";
+import { registerBundledRefForms } from "@/app/(app)/ref-forms/actions";
 import { SUBMISSION_PDF_TEMPLATES, canFillSubmissionPdf, fillSubmissionPdf, submissionPdfTables } from "@/lib/submission-pdf";
 import { RefFormRowBar, RefFormTemplatesDialog, refFormHref, useRefFormTemplates } from "@/components/ref-forms/RefFormPanel";
 import type { OnboardingDocumentRow } from "@/types/db";
@@ -50,6 +51,28 @@ export function PrepSubmissionList({
   const [openNotes, setOpenNotes] = useState(false);
   const refForms = useRefFormTemplates();
   const [managing, setManaging] = useState<SubmissionRow | null>(null);
+  // アプリに入れてある入管の参考様式（未記入）のうち、まだ全員共通のひな形にしていないもの
+  const bundledMissing = workerId ? missingBundledRefForms(refForms.templates) : [];
+  const [bundling, setBundling] = useState(false);
+  const [bundleNote, setBundleNote] = useState<string | null>(null);
+  const registerBundled = async () => {
+    setBundling(true);
+    setBundleNote(null);
+    try {
+      const res = await registerBundledRefForms(bundledMissing);
+      if (!res.ok) throw new Error(res.message);
+      await refForms.reload();
+      setBundleNote(
+        res.added.length > 0
+          ? `${res.added.map(refFormName).join("・")} を全員共通（日本語）のひな形として登録しました。行の「ひな形・記入位置」から記入位置を置いてください。`
+          : "登録するものはありませんでした（もう登録されています）。",
+      );
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "参考様式の登録に失敗しました");
+    } finally {
+      setBundling(false);
+    }
+  };
   // 「有」の参考様式（一覧表の順）。ひな形が登録されているものだけを作れる
   const refRows = workerId ? rows.filter((r) => r.mark === "有" && isRefFormItem(r)) : [];
   // 参考様式のひな形は、1号と同じ書類なら1号のキーで引く（2号でも 1-5号・1-6号 などは同じひな形）
@@ -180,6 +203,25 @@ export function PrepSubmissionList({
           この一覧表は、入管の様式の PDF がまだアプリに入っていないため、印刷はアプリで作った簡易版になります（入管の様式の PDF を入れると、その様式に○を付けて作れます）。
         </p>
       )}
+      {workerId && canEdit && bundledMissing.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-brand/40 bg-background p-2 text-[11px]">
+          <span className="min-w-0 flex-1">
+            アプリに入っている入管の参考様式（未記入）がまだひな形になっていません：
+            <b>{bundledMissing.map(refFormName).join("・")}</b>
+          </span>
+          <button
+            type="button"
+            disabled={bundling}
+            onClick={() => void registerBundled()}
+            className="inline-flex min-h-[34px] items-center gap-1 rounded-lg bg-brand px-3 font-bold text-brand-foreground disabled:opacity-60"
+          >
+            {bundling && <Loader2 size={13} className="animate-spin" />}
+            全員共通のひな形として登録（{bundledMissing.length}件）
+          </button>
+        </div>
+      )}
+      {bundleNote && <p className="rounded-lg bg-status-approved-bg px-3 py-2 text-[11px] text-status-approved-fg">{bundleNote}</p>}
+
       <div className="flex flex-wrap gap-1.5 text-[11px]">
         <span className="rounded-full bg-brand/10 px-2.5 py-1 font-bold text-brand">有 {yesCount}件</span>
         {autoCount > 0 && (

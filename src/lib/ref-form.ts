@@ -88,6 +88,23 @@ export function pickRefFormTemplate<T extends Pick<RefFormTemplate, "form_key" |
   return pick(own) ?? pick(form.filter((t) => !t.organization_id));
 }
 
+// アプリに入れてある入管の参考様式（何も記入していない日本語の版。public/forms/ref-forms/）。
+// 画面の「アプリに入っている参考様式を登録」で、全員共通・日本語のひな形として登録する（記入位置はそのあと置く）
+export const BUNDLED_REF_FORMS: Record<string, string> = {
+  "t1-4-1": "t1-4-1.pdf", // 参考様式第1-4号 特定技能外国人の報酬に関する説明書
+  "t1-17": "t1-17.pdf", // 参考様式第1-26号 公的義務履行に関する誓約書
+  "s2-8": "s2-8.pdf", // 参考様式第1-32号 2号特定技能外国人の業務内容に関する誓約書
+  "t3a-2": "t3a-2.pdf", // 分野参考様式第11-1号 農業・直接雇用の誓約書
+  "t3a-4": "t3a-4.pdf", // 分野参考様式第11-4号 登録支援機関誓約書
+};
+
+// アプリに入れてある参考様式のうち、全員共通・日本語のひな形がまだ登録されていないもの
+export function missingBundledRefForms(templates: Pick<RefFormTemplate, "form_key" | "language" | "organization_id">[]): string[] {
+  return Object.keys(BUNDLED_REF_FORMS).filter(
+    (k) => !templates.some((t) => t.form_key === k && t.language === "日本語" && !t.organization_id),
+  );
+}
+
 export function normalizeSignPages(v: unknown): number[] {
   if (!Array.isArray(v)) return [];
   return [...new Set(v.filter((x): x is number => typeof x === "number" && Number.isInteger(x) && x >= 0))].sort((a, b) => a - b);
