@@ -16,8 +16,8 @@ describe("PREP_DETAIL_SECTIONS", () => {
     expect(PREP_DETAIL_SECTIONS.map((s) => s.label)).toEqual([
       "基本情報・所属機関",
       "前回の申請",
-      "提出書類一覧表",
       "必要な書類",
+      "提出書類一覧表",
       "申請書に貼る情報",
       "署名・賃金・雇用契約書",
       "あっせん",
