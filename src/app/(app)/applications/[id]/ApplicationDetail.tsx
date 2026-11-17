@@ -56,6 +56,7 @@ import {
 import { ApplicationBasicFields, ApplicationEditBar, useApplicationEdit } from "./ApplicationEditor";
 import { ApprovalSection } from "./ApprovalSection";
 import { ExtraRequestSection } from "./ExtraRequestSection";
+import { isExtraRequestOpen } from "@/lib/extra-request-alerts";
 import { OnlineReceiptSection } from "./OnlineReceiptSection";
 import { ONLINE_RECEIPT_STEP_FOCUS, parseOnlineReceiptStep, receiptSlipFiles } from "@/lib/online-receipt";
 import { ReceiptSlipCopy } from "@/components/applications/ReceiptSlipCopy";
@@ -222,7 +223,7 @@ export function ApplicationDetail({ id }: { id: string }) {
 
   // 折りたたみの見出しの要約と、上のヘッダーに出す「今やること」。
   // 今やる段階の折りたたみだけを最初から開く（段階が進むと開く枠も変わる）
-  const extraOpen = extraRows.filter((r) => r.status !== "郵送済み").length;
+  const extraOpen = extraRows.filter(isExtraRequestOpen).length;
   const extraDone = extraRows.length - extraOpen;
   const mailPending = mailDocs.length + postTasks.length;
   const next = applicationNextAction(app, { extraOpen, mailPending });
@@ -696,6 +697,7 @@ export function ApplicationDetail({ id }: { id: string }) {
             onUpload={(list) => handleUpload("追加資料通知", list)}
             onDeleteFile={handleDeleteFile}
             onRowsChange={setExtraRows}
+            online={app.method === "オンライン"}
           />
           {/* 入管へ郵送した追加資料の記録（申請準備・申請一覧で「入管へ郵送した」と記録したもの） */}
           {postMailings.length > 0 && (

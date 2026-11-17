@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, ExternalLink, MailPlus, Phone, Truck } from "lucide-react";
+import { Check, ExternalLink, Mail, MailPlus, MonitorUp, Phone, Truck } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { ExtraShipments } from "@/components/applications/ExtraShipments";
 import { createClient } from "@/lib/supabase/client";
@@ -10,12 +10,13 @@ import { updateExtraRequest } from "@/lib/supabase/queries/extra-requests";
 import { letterPackTrackingUrl } from "@/lib/application-prep";
 import {
   extraRequestAlert,
+  extraRequestDoneLabel,
   extraRequestDueLabel,
   isExtraRequestOpen,
   sortExtraRequests,
   type ExtraRequestAlert,
 } from "@/lib/extra-request-alerts";
-import { errorMessage } from "@/lib/errors";
+import { dbErrorMessage, errorMessage } from "@/lib/errors";
 import {
   EXTRA_REQUEST_STATUSES,
   type Application,
@@ -87,7 +88,7 @@ export function ExtraRequestBoard({
     try {
       await updateExtraRequest(createClient(), r.id, p);
     } catch (err) {
-      setError(errorMessage(err, "保存に失敗しました"));
+      setError(dbErrorMessage(err, "0229_extra_request_online.sql", errorMessage(err, "保存に失敗しました")));
     }
   };
 
@@ -129,6 +130,7 @@ export function ExtraRequestBoard({
             const alert = extraRequestAlert(r, today);
             const done = !isExtraRequestOpen(r);
             const urgent = alert === "overdue" || alert === "today";
+            const byMail = r.method === "メール";
             // 追加資料の対応を誰が進めるか分かるように、申請準備の担当者を出す
             const tantou = app ? (tantouLabel?.(app) ?? "") : "";
             return (
@@ -143,7 +145,7 @@ export function ExtraRequestBoard({
                   <span
                     className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${ALERT_CLASS[alert]}`}
                   >
-                    {done ? "完了（郵送済み）" : extraRequestDueLabel(r.due_on, today)}
+                    {done ? extraRequestDoneLabel(r) : extraRequestDueLabel(r.due_on, today)}
                   </span>
                 </div>
                 <p className="truncate text-xs text-muted">
@@ -152,10 +154,21 @@ export function ExtraRequestBoard({
                 </p>
                 <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px] text-muted">
                   <span className="flex items-center gap-1 font-bold">
-                    {r.method === "電話" ? <Phone size={12} /> : <MailPlus size={12} />}
+                    {r.method === "電話" ? <Phone size={12} /> : byMail ? <Mail size={12} /> : <MailPlus size={12} />}
                     {r.method}で依頼
                   </span>
                   <span className="tabular-nums">{r.requested_on}</span>
+                  {byMail && r.mail_link && (
+                    <a
+                      href={r.mail_link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-0.5 font-bold text-brand underline"
+                    >
+                      <ExternalLink size={11} />
+                      メールを開く
+                    </a>
+                  )}
                   {r.officer && <span>審査担当者 {r.officer}</span>}
                   <span className={tantou ? "rounded-full bg-brand/10 px-2 py-0.5 font-bold text-brand" : ""}>
                     申請準備の担当者 {tantou || "未設定"}
@@ -191,7 +204,7 @@ export function ExtraRequestBoard({
                     )}
                   </label>
                   <label className="flex flex-col gap-1">
-                    <span className="text-[11px] text-muted">郵送した日</span>
+                    <span className="text-[11px] text-muted">{byMail ? "オンラインで提出した日" : "郵送した日"}</span>
                     {canEdit ? (
                       <input
                         type="date"
@@ -203,6 +216,7 @@ export function ExtraRequestBoard({
                       <span className="text-xs tabular-nums">{r.sent_on ?? "—"}</span>
                     )}
                   </label>
+                  {!byMail && (
                   <label className="flex flex-col gap-1">
                     <span className="text-[11px] text-muted">レターパックの追跡番号</span>
                     {canEdit ? (
@@ -219,6 +233,7 @@ export function ExtraRequestBoard({
                       <span className="text-xs tabular-nums">{r.tracking_no || "—"}</span>
                     )}
                   </label>
+                  )}
                   {r.tracking_no && (
                     <a
                       href={letterPackTrackingUrl(r.tracking_no)}
@@ -230,7 +245,17 @@ export function ExtraRequestBoard({
                       配達状況
                     </a>
                   )}
-                  {canEdit && !done && (
+                  {canEdit && !done && byMail && (
+                    <button
+                      type="button"
+                      onClick={() => void patch(r, { status: "オンラインで提出済み", sent_on: r.sent_on ?? today })}
+                      className="flex items-center gap-1 rounded-lg bg-brand px-3 py-1.5 text-[11px] font-bold text-brand-foreground"
+                    >
+                      <MonitorUp size={12} />
+                      オンラインで提出した（完了）
+                    </button>
+                  )}
+                  {canEdit && !done && !byMail && (
                     <button
                       type="button"
                       onClick={() =>
@@ -249,13 +274,15 @@ export function ExtraRequestBoard({
                     </span>
                   )}
                 </div>
-                {/* 資料を分けて送ったとき（2回目以降）の郵送の記録。申請詳細と同じ */}
-                <ExtraShipments
-                  requestId={r.id}
-                  value={r.shipments}
-                  canEdit={canEdit}
-                  onSaved={(next) => onChanged({ ...r, shipments: next })}
-                />
+                {/* 資料を分けて送ったとき（2回目以降）の郵送の記録。申請詳細と同じ。メールで来た依頼は郵送しないので出さない */}
+                {(!byMail || (r.shipments?.length ?? 0) > 0) && (
+                  <ExtraShipments
+                    requestId={r.id}
+                    value={r.shipments}
+                    canEdit={canEdit}
+                    onSaved={(next) => onChanged({ ...r, shipments: next })}
+                  />
+                )}
 
                 {app && (
                   <Link

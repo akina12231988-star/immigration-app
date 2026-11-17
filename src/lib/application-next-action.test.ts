@@ -126,7 +126,7 @@ describe("折りたたみの要約", () => {
     expect(extraSummary({ extraOpen: 0, extraDone: 0, mailPending: 0, mailings: 0 })).toBe("依頼なし");
     expect(extraSummary({ extraOpen: 1, extraDone: 2, mailPending: 0, mailings: 0 })).toBe("依頼 1件が未郵送");
     expect(extraSummary({ extraOpen: 0, extraDone: 2, mailPending: 1, mailings: 1 })).toBe(
-      "依頼 2件は郵送済み・郵送待ちの書類・タスク 1件・郵送した追加資料 1回",
+      "依頼 2件は提出済み・郵送待ちの書類・タスク 1件・郵送した追加資料 1回",
     );
     expect(extraWarn({ extraOpen: 0, mailPending: 0 })).toBe(false);
     expect(extraWarn({ extraOpen: 0, mailPending: 1 })).toBe(true);
