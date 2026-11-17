@@ -4,6 +4,7 @@ import { Fragment, useState, type ReactNode } from "react";
 import { CheckCircle2, ChevronDown, Eye, Loader2, Paperclip, Printer, Trash2 } from "lucide-react";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { isRefFormItem, languageForNationality, pickRefFormTemplate } from "@/lib/ref-form";
+import { SUBMISSION_PDF_TEMPLATES, canFillSubmissionPdf, fillSubmissionPdf, submissionPdfTables } from "@/lib/submission-pdf";
 import { RefFormRowBar, RefFormTemplatesDialog, refFormHref, useRefFormTemplates } from "@/components/ref-forms/RefFormPanel";
 import type { OnboardingDocumentRow } from "@/types/db";
 import {
@@ -61,24 +62,60 @@ export function PrepSubmissionList({
   const autoCount = rows.filter((r) => r.auto && r.mark != null).length;
   const yesCount = rows.filter((r) => r.mark === "有").length;
 
-  const print = () => {
+  // 入管の様式の PDF が全部そろっている一覧表は、その PDF に○と氏名・所属機関名を書き込んで開く。
+  // そろっていない一覧表（特定技能2号の表紙・第1表など）は、アプリで作った簡易版を印刷する
+  const officialPdf = canFillSubmissionPdf(rows);
+  const [printing, setPrinting] = useState(false);
+  const print = async () => {
     if (
       undecided.length > 0 &&
       !window.confirm(
-        `有・無を選んでいない書類があります（${undecided.map((r) => `${r.no}${r.sub ?? ""}`).join("・")}）。○を付けずに印刷しますか？`,
+        `有・無を選んでいない書類があります（${undecided.map((r) => `${r.no}${r.sub ?? ""}`).join("・")}）。○を付けずに作りますか？`,
       )
     ) {
       return;
     }
-    const w = window.open("", "_blank", "width=900,height=700");
+    // ポップアップを止められないよう、押したときにすぐ新しいタブを開いておく
+    const w = window.open("", "_blank");
     if (!w) {
-      onError("印刷用の画面を開けませんでした。ブラウザのポップアップの許可をご確認ください。");
+      onError("新しいタブを開けませんでした。ブラウザのポップアップの許可をご確認ください。");
       return;
     }
-    w.document.write(submissionListPrintHtml({ workerName, orgName, rows }));
-    w.document.close();
-    w.focus();
-    w.print();
+    if (!officialPdf) {
+      w.document.write(submissionListPrintHtml({ workerName, orgName, rows }));
+      w.document.close();
+      w.focus();
+      w.print();
+      return;
+    }
+    setPrinting(true);
+    w.document.write("<p style='font-family:sans-serif;padding:24px'>提出書類一覧表（入管の様式）を作っています…</p>");
+    try {
+      const get = async (url: string) => {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`様式を読み込めませんでした（${url}）`);
+        return new Uint8Array(await res.arrayBuffer());
+      };
+      const tables = submissionPdfTables(rows);
+      const templates = Object.fromEntries(
+        await Promise.all(tables.map(async (t) => [t, await get(SUBMISSION_PDF_TEMPLATES[t]!.file)] as const)),
+      );
+      const bytes = await fillSubmissionPdf({
+        templates,
+        fontBytes: await get("/fonts/NotoSansJP-Regular.ttf"),
+        rows,
+        workerName,
+        orgName,
+      });
+      const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/pdf" }));
+      w.location.href = url;
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      w.close();
+      onError(err instanceof Error ? err.message : "提出書類一覧表の PDF を作れませんでした");
+    } finally {
+      setPrinting(false);
+    }
   };
 
   const tables = SUBMISSION_TABLE_ORDER.filter((t) => rows.some((r) => r.table === t));
@@ -95,11 +132,12 @@ export function PrepSubmissionList({
         </p>
         <button
           type="button"
-          onClick={print}
-          className="flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-lg bg-brand px-3 text-xs font-bold text-brand-foreground"
+          onClick={() => void print()}
+          disabled={printing}
+          className="flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-lg bg-brand px-3 text-xs font-bold text-brand-foreground disabled:opacity-60"
         >
-          <Printer size={14} />
-          ○を付けた一覧表を印刷（A4）
+          {printing ? <Loader2 size={14} className="animate-spin" /> : <Printer size={14} />}
+          {officialPdf ? "○を付けた一覧表をPDFで作る（入管の様式）" : "○を付けた一覧表を印刷（簡易版）"}
         </button>
       </div>
 
@@ -137,6 +175,11 @@ export function PrepSubmissionList({
         </div>
       )}
 
+      {!officialPdf && (
+        <p className="rounded-lg bg-status-notice-bg px-3 py-2 text-[11px] text-status-notice-fg">
+          この一覧表は、入管の様式の PDF がまだアプリに入っていないため、印刷はアプリで作った簡易版になります（入管の様式の PDF を入れると、その様式に○を付けて作れます）。
+        </p>
+      )}
       <div className="flex flex-wrap gap-1.5 text-[11px]">
         <span className="rounded-full bg-brand/10 px-2.5 py-1 font-bold text-brand">有 {yesCount}件</span>
         {autoCount > 0 && (
