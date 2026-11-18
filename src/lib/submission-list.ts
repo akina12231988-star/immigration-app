@@ -416,7 +416,7 @@ ${body}
     .join("\n");
   return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>提出書類一覧表_${esc(input.workerName)}</title>
 <style>
-  @page { size: A4 portrait; margin: 12mm; }
+  @page { size: A4 portrait; margin: 12mm; @top-left { content: ""; } @top-center { content: ""; } @top-right { content: ""; } @bottom-left { content: ""; } @bottom-center { content: ""; } @bottom-right { content: ""; } }
   body { font-family: "Hiragino Sans", "Noto Sans JP", sans-serif; font-size: 9pt; color: #000; margin: 0; }
   h1 { font-size: 13pt; text-align: center; margin: 0 0 2mm; }
   .sub-title { text-align: center; font-size: 11pt; margin: 0 0 4mm; }
