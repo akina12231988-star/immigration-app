@@ -204,6 +204,8 @@ export const REF_FORM_FIELDS: { kind: RefFormFieldKind; label: string; sample: s
   { kind: "circle_male", label: "○ 丸（男のときだけ）", sample: "○", group: "そのほか" },
   { kind: "circle_female", label: "○ 丸（女のときだけ）", sample: "○", group: "そのほか" },
 ];
+// 自由な文字を置いたときの見本。文字を入れないままなら PDF には何も書かない
+export const REF_FORM_TEXT_PLACEHOLDER = "（文字）";
 export const REF_FORM_FIELD_LABEL = Object.fromEntries(REF_FORM_FIELDS.map((f) => [f.kind, f.label])) as Record<RefFormFieldKind, string>;
 
 export interface RefFormItem {
@@ -370,8 +372,11 @@ export function refFormValue(item: Pick<RefFormItem, "kind" | "text">, data: Ref
       return t?.m ?? "";
     case "today_d":
       return t?.d ?? "";
-    case "text":
-      return item.text ?? "";
+    case "text": {
+      // 文字を入れていない（置いたときの見本「（文字）」のまま）なら何も書かない
+      const v = (item.text ?? "").trim();
+      return v === REF_FORM_TEXT_PLACEHOLDER ? "" : v;
+    }
     default:
       return "";
   }

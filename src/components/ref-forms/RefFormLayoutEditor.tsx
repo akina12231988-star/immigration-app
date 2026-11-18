@@ -6,6 +6,7 @@ import { getRefFormPdfUrl, saveRefFormLayout } from "@/app/(app)/ref-forms/actio
 import {
   REF_FORM_FIELDS,
   REF_FORM_FIELD_LABEL,
+  REF_FORM_TEXT_PLACEHOLDER,
   normalizeRefFormLayout,
   normalizeSignPages,
   refFormName,
@@ -128,7 +129,7 @@ export function RefFormLayoutEditor({
   };
   const changeKind = (id: string, k: RefFormFieldKind) => {
     remember();
-    update(id, { kind: k, ...(k === "text" ? { text: "（文字）" } : {}), ...(DEFAULT_SIZE[k] ? { size: DEFAULT_SIZE[k] } : {}) });
+    update(id, { kind: k, ...(k === "text" ? { text: "" } : {}), ...(DEFAULT_SIZE[k] ? { size: DEFAULT_SIZE[k] } : {}) });
   };
 
   // Delete・Backspace で選んだ項目を消す、矢印で1ptずつ動かす、Esc で選ぶのをやめる（文字の入力中は除く）
@@ -177,7 +178,7 @@ export function RefFormLayoutEditor({
       x: Math.round(x * 10) / 10,
       y: Math.round(Math.max(0, y) * 10) / 10,
       size,
-      text: kind === "text" ? "（文字）" : undefined,
+      text: kind === "text" ? "" : undefined,
     };
     remember();
     setItems((list) => [...list, item]);
@@ -282,7 +283,8 @@ export function RefFormLayoutEditor({
                 <label className="flex flex-col gap-0.5">
                   書く文字
                   <input
-                    value={selected.text ?? ""}
+                    value={selected.text === REF_FORM_TEXT_PLACEHOLDER ? "" : (selected.text ?? "")}
+                    placeholder="空のままなら PDF には何も書きません"
                     onChange={(e) => update(selected.id, { text: e.target.value })}
                     className="min-h-[34px] rounded border border-border px-2"
                   />
@@ -426,7 +428,7 @@ export function RefFormLayoutEditor({
                 .map((it) => {
                   const isSel = it.id === selectedId;
                   const common = `absolute cursor-move select-none whitespace-nowrap ${isSel ? "outline outline-2 outline-brand" : "outline outline-1 outline-seal/60"}`;
-                  const label = it.kind === "text" ? it.text || "（文字）" : SAMPLE[it.kind];
+                  const label = it.kind === "text" ? it.text || REF_FORM_TEXT_PLACEHOLDER : SAMPLE[it.kind];
                   return (
                     <div
                       key={it.id}

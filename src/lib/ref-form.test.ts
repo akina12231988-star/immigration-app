@@ -97,6 +97,13 @@ describe("書き込む値", () => {
     expect(refFormCircleShown("circle", "")).toBe(true);
   });
 
+  it("自由な文字は、入れていない（空・見本の「（文字）」のまま）なら何も書かない", () => {
+    expect(refFormValue({ kind: "text", text: "" }, d)).toBe("");
+    expect(refFormValue({ kind: "text" }, d)).toBe("");
+    expect(refFormValue({ kind: "text", text: "（文字）" }, d)).toBe("");
+    expect(refFormValue({ kind: "text", text: "農業" }, d)).toBe("農業");
+  });
+
   it("保存値の読み込み", () => {
     expect(normalizeRefFormLayout([{ kind: "name", page: 1, x: 10, y: 20, size: 11 }, { kind: "nope" }, null])).toHaveLength(1);
     expect(normalizeSignPages([2, 0, 2, -1, 1.5, "x"])).toEqual([0, 2]);
