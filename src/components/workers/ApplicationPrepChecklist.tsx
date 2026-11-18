@@ -200,6 +200,7 @@ import {
   prepPageKey,
   prepStatusOption,
   SSW2_APP_CONTENT,
+  effectiveCertPattern,
   prepYearDocKey,
   type PrepChecklistMeta,
   type PrepDocDef,
@@ -1523,7 +1524,7 @@ export function ApplicationPrepChecklist({
             flexYear: orgIntake ? needsFlexDocs(orgIntake.flex_hours_kind ?? "") : null,
             assen: (currentTodo ?? fallbackTodo)?.assen ?? "",
             nationality: worker?.nationality ?? "",
-            certPattern: meta.cert_pattern,
+            certPattern: effectiveCertPattern(meta),
           },
           { agri: prepOrgAgri || isAgricultureIndustry(workerRow?.field), ssw2: submissionSsw2 },
         )
@@ -2282,7 +2283,7 @@ export function ApplicationPrepChecklist({
             <label className="flex flex-col gap-1 text-xs font-bold text-muted">
               合格証の組み合わせ
               <select
-                value={meta.cert_pattern}
+                value={effectiveCertPattern(meta)}
                 disabled={!canEdit}
                 onChange={(e) =>
                   patchMeta({ cert_pattern: e.target.value as PrepChecklistMeta["cert_pattern"] })

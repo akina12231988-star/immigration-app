@@ -38,6 +38,7 @@ import {
   docYearFor,
   otherAttachedYears,
   yearOfPrepDocKey,
+  SSW2_APP_CONTENT,
 } from "./application-prep";
 
 
@@ -341,6 +342,17 @@ describe("合格証の組み合わせ（cert_pattern）", () => {
   });
   it("専門級以外の分野で就職（技能評価調書あり）→ 専門外＋技能評価調書", () => {
     expect(ids("専門外・技能評価調書")).toEqual(["cert_senmongai", "hyoka_chosho"].sort());
+  });
+  it("特定技能２号の申請は、組み合わせが空のままでも２号の合格証だけ（日本語・専門外は出ない）", () => {
+    const got = evaluatePrepChecklist(
+      meta({ app_type: "変更", app_content: SSW2_APP_CONTENT, cert_pattern: "" }),
+      sources({}),
+    ).items
+      .map((x) => x.def.id)
+      .filter((id) =>
+        ["cert_senmonkyu", "cert_nihongo", "cert_senmongai", "cert_ssw2", "hyoka_chosho"].includes(id),
+      );
+    expect(got).toEqual(["cert_ssw2"]);
   });
   it("更新申請には合格証・調書は出ない", () => {
     const updateIds = evaluatePrepChecklist(
