@@ -119,6 +119,7 @@ export type RefFormFieldKind =
   | "birth_y"
   | "birth_m"
   | "birth_d"
+  | "age"
   | "gender"
   | "nationality"
   | "postal"
@@ -152,7 +153,9 @@ export type RefFormFieldKind =
   | "today_d"
   | "text"
   | "check"
-  | "circle";
+  | "circle"
+  | "circle_male"
+  | "circle_female";
 
 export const REF_FORM_FIELDS: { kind: RefFormFieldKind; label: string; sample: string; group: string }[] = [
   { kind: "name", label: "氏名", sample: "NGUYEN VAN A", group: "本人" },
@@ -162,6 +165,7 @@ export const REF_FORM_FIELDS: { kind: RefFormFieldKind; label: string; sample: s
   { kind: "birth_y", label: "生年月日の年だけ（西暦）", sample: "1995", group: "本人" },
   { kind: "birth_m", label: "生年月日の月だけ", sample: "3", group: "本人" },
   { kind: "birth_d", label: "生年月日の日だけ", sample: "8", group: "本人" },
+  { kind: "age", label: "年齢（作成日の時点・数字だけ）", sample: "31", group: "本人" },
   { kind: "gender", label: "性別（男・女）", sample: "男", group: "本人" },
   { kind: "nationality", label: "国籍", sample: "ベトナム", group: "本人" },
   { kind: "postal", label: "郵便番号（本人）", sample: "〒866-0021", group: "本人" },
@@ -196,7 +200,12 @@ export const REF_FORM_FIELDS: { kind: RefFormFieldKind; label: string; sample: s
   { kind: "text", label: "自由な文字（毎回同じ）", sample: "（文字）", group: "そのほか" },
   { kind: "check", label: "✓ チェック", sample: "✓", group: "そのほか" },
   { kind: "circle", label: "○ 丸", sample: "○", group: "そのほか" },
+  // 性別で○の位置を変える。「男」と「女」の両方に置いておくと、本人の性別の方だけ書き込む
+  { kind: "circle_male", label: "○ 丸（男のときだけ）", sample: "○", group: "そのほか" },
+  { kind: "circle_female", label: "○ 丸（女のときだけ）", sample: "○", group: "そのほか" },
 ];
+// 自由な文字を置いたときの見本。文字を入れないままなら PDF には何も書かない
+export const REF_FORM_TEXT_PLACEHOLDER = "（文字）";
 export const REF_FORM_FIELD_LABEL = Object.fromEntries(REF_FORM_FIELDS.map((f) => [f.kind, f.label])) as Record<RefFormFieldKind, string>;
 
 export interface RefFormItem {
@@ -294,6 +303,13 @@ export function refFormValue(item: Pick<RefFormItem, "kind" | "text">, data: Ref
       return b?.m ?? "";
     case "birth_d":
       return b?.d ?? "";
+    case "age": {
+      // 作成日の時点の満年齢（誕生日の前日までは1つ少ない）
+      if (!b || !t) return "";
+      const before = Number(t.m) < Number(b.m) || (t.m === b.m && Number(t.d) < Number(b.d));
+      const age = Number(t.y) - Number(b.y) - (before ? 1 : 0);
+      return age >= 0 ? String(age) : "";
+    }
     case "gender":
       return p.gender;
     case "nationality":
@@ -356,8 +372,11 @@ export function refFormValue(item: Pick<RefFormItem, "kind" | "text">, data: Ref
       return t?.m ?? "";
     case "today_d":
       return t?.d ?? "";
-    case "text":
-      return item.text ?? "";
+    case "text": {
+      // 文字を入れていない（置いたときの見本「（文字）」のまま）なら何も書かない
+      const v = (item.text ?? "").trim();
+      return v === REF_FORM_TEXT_PLACEHOLDER ? "" : v;
+    }
     default:
       return "";
   }
@@ -403,6 +422,14 @@ export const REF_FORM_SAMPLE_DATA: RefFormData = {
   today: "",
 };
 
+// 性別で出し分ける○を書き込むか（性別が分からないときはどちらも書かない）
+export function refFormCircleShown(kind: RefFormFieldKind, gender: string): boolean {
+  if (kind !== "circle_male" && kind !== "circle_female") return true;
+  const g = (gender ?? "").trim();
+  const sex = g.includes("女") || /^f/i.test(g) ? "female" : g.includes("男") || /^m/i.test(g) ? "male" : "";
+  return kind === "circle_male" ? sex === "male" : sex === "female";
+}
+
 function drawItem(page: PDFPage, font: PDFFont, item: RefFormItem, data: RefFormData) {
   const black = rgb(0, 0, 0);
   const { height } = page.getSize();
@@ -414,7 +441,8 @@ function drawItem(page: PDFPage, font: PDFFont, item: RefFormItem, data: RefForm
     page.drawLine({ start: { x: x + s * 0.35, y: top - s }, end: { x: x + s, y: top }, thickness: Math.max(1, s / 8), color: black });
     return;
   }
-  if (item.kind === "circle") {
+  if (item.kind === "circle" || item.kind === "circle_male" || item.kind === "circle_female") {
+    if (!refFormCircleShown(item.kind, data.person.gender)) return;
     const r = item.size / 2;
     page.drawEllipse({ x: item.x + r, y: height - item.y - r, xScale: r, yScale: r, borderColor: black, borderWidth: Math.max(0.8, item.size / 18) });
     return;

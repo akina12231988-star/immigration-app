@@ -16,6 +16,7 @@ import {
   refFormName,
   refFormPagesFor,
   refFormValue,
+  refFormCircleShown,
 } from "./ref-form";
 
 describe("参考様式の行", () => {
@@ -74,6 +75,33 @@ describe("書き込む値", () => {
     expect(refFormValue({ kind: "today" }, d)).toBe("令和8年11月16日");
     expect(refFormValue({ kind: "today_seireki" }, d)).toBe("2026年11月16日");
     expect(refFormValue({ kind: "text", text: "同意します" }, d)).toBe("同意します");
+  });
+
+  it("年齢は作成日の時点の満年齢（誕生日の前日までは1つ少ない）", () => {
+    expect(refFormValue({ kind: "age" }, d)).toBe("31");
+    const p = { ...d.person, birth: "1995-11-17" };
+    expect(refFormValue({ kind: "age" }, { ...d, person: p })).toBe("30");
+    expect(refFormValue({ kind: "age" }, { ...d, person: { ...p, birth: "1995-11-16" } })).toBe("31");
+    expect(refFormValue({ kind: "age" }, { ...d, person: { ...p, birth: null } })).toBe("");
+  });
+
+  it("性別で出し分ける○は、本人の性別の方だけ書き込む", () => {
+    expect(refFormCircleShown("circle_male", "男")).toBe(true);
+    expect(refFormCircleShown("circle_female", "男")).toBe(false);
+    expect(refFormCircleShown("circle_male", "女")).toBe(false);
+    expect(refFormCircleShown("circle_female", "女性")).toBe(true);
+    expect(refFormCircleShown("circle_female", "F")).toBe(true);
+    // 性別が分からないときはどちらも書かない。ふつうの○はいつも書く
+    expect(refFormCircleShown("circle_male", "")).toBe(false);
+    expect(refFormCircleShown("circle_female", "")).toBe(false);
+    expect(refFormCircleShown("circle", "")).toBe(true);
+  });
+
+  it("自由な文字は、入れていない（空・見本の「（文字）」のまま）なら何も書かない", () => {
+    expect(refFormValue({ kind: "text", text: "" }, d)).toBe("");
+    expect(refFormValue({ kind: "text" }, d)).toBe("");
+    expect(refFormValue({ kind: "text", text: "（文字）" }, d)).toBe("");
+    expect(refFormValue({ kind: "text", text: "農業" }, d)).toBe("農業");
   });
 
   it("保存値の読み込み", () => {
