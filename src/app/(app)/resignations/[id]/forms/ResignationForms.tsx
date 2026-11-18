@@ -134,6 +134,7 @@ export function ResignationForms({
     const note = formsNote.trim();
     const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>署名のお願い</title>
 <style>
+  @page { @top-left { content: ""; } @top-center { content: ""; } @top-right { content: ""; } @bottom-left { content: ""; } @bottom-center { content: ""; } @bottom-right { content: ""; } }
   body { font-family: "Hiragino Sans", "Noto Sans JP", sans-serif; padding: 24mm 20mm; font-size: 13pt; line-height: 2; color: #000; }
   h1 { font-size: 15pt; margin: 0 0 10mm; }
   p { margin: 0; white-space: pre-wrap; }

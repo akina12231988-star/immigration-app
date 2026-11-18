@@ -129,3 +129,16 @@ body {
     box-shadow: none !important;
   }
 }
+
+/* 印刷したとき、ブラウザが用紙の上下の余白に入れる日付・ページ名・URL・ページ番号（ヘッダーとフッター）を出さない。
+   ブラウザの印刷の「ヘッダーとフッター」にチェックが入っている人だけに出て、人によって違って見えていた。
+   余白の欄（ページマージンボックス）をアプリ側で空の内容で使うと、Chrome・Edge はブラウザのヘッダー・フッターを入れない。
+   余白の大きさは各印刷ページの @page の margin のまま変わらない */
+@page {
+  @top-left { content: ""; }
+  @top-center { content: ""; }
+  @top-right { content: ""; }
+  @bottom-left { content: ""; }
+  @bottom-center { content: ""; }
+  @bottom-right { content: ""; }
+}
