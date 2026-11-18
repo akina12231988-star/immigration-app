@@ -16,6 +16,7 @@ import {
   refFormName,
   refFormPagesFor,
   refFormValue,
+  refFormCircleShown,
 } from "./ref-form";
 
 describe("参考様式の行", () => {
@@ -82,6 +83,18 @@ describe("書き込む値", () => {
     expect(refFormValue({ kind: "age" }, { ...d, person: p })).toBe("30");
     expect(refFormValue({ kind: "age" }, { ...d, person: { ...p, birth: "1995-11-16" } })).toBe("31");
     expect(refFormValue({ kind: "age" }, { ...d, person: { ...p, birth: null } })).toBe("");
+  });
+
+  it("性別で出し分ける○は、本人の性別の方だけ書き込む", () => {
+    expect(refFormCircleShown("circle_male", "男")).toBe(true);
+    expect(refFormCircleShown("circle_female", "男")).toBe(false);
+    expect(refFormCircleShown("circle_male", "女")).toBe(false);
+    expect(refFormCircleShown("circle_female", "女性")).toBe(true);
+    expect(refFormCircleShown("circle_female", "F")).toBe(true);
+    // 性別が分からないときはどちらも書かない。ふつうの○はいつも書く
+    expect(refFormCircleShown("circle_male", "")).toBe(false);
+    expect(refFormCircleShown("circle_female", "")).toBe(false);
+    expect(refFormCircleShown("circle", "")).toBe(true);
   });
 
   it("保存値の読み込み", () => {

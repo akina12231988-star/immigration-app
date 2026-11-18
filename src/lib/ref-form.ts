@@ -153,7 +153,9 @@ export type RefFormFieldKind =
   | "today_d"
   | "text"
   | "check"
-  | "circle";
+  | "circle"
+  | "circle_male"
+  | "circle_female";
 
 export const REF_FORM_FIELDS: { kind: RefFormFieldKind; label: string; sample: string; group: string }[] = [
   { kind: "name", label: "氏名", sample: "NGUYEN VAN A", group: "本人" },
@@ -198,6 +200,9 @@ export const REF_FORM_FIELDS: { kind: RefFormFieldKind; label: string; sample: s
   { kind: "text", label: "自由な文字（毎回同じ）", sample: "（文字）", group: "そのほか" },
   { kind: "check", label: "✓ チェック", sample: "✓", group: "そのほか" },
   { kind: "circle", label: "○ 丸", sample: "○", group: "そのほか" },
+  // 性別で○の位置を変える。「男」と「女」の両方に置いておくと、本人の性別の方だけ書き込む
+  { kind: "circle_male", label: "○ 丸（男のときだけ）", sample: "○", group: "そのほか" },
+  { kind: "circle_female", label: "○ 丸（女のときだけ）", sample: "○", group: "そのほか" },
 ];
 export const REF_FORM_FIELD_LABEL = Object.fromEntries(REF_FORM_FIELDS.map((f) => [f.kind, f.label])) as Record<RefFormFieldKind, string>;
 
@@ -412,6 +417,14 @@ export const REF_FORM_SAMPLE_DATA: RefFormData = {
   today: "",
 };
 
+// 性別で出し分ける○を書き込むか（性別が分からないときはどちらも書かない）
+export function refFormCircleShown(kind: RefFormFieldKind, gender: string): boolean {
+  if (kind !== "circle_male" && kind !== "circle_female") return true;
+  const g = (gender ?? "").trim();
+  const sex = g.includes("女") || /^f/i.test(g) ? "female" : g.includes("男") || /^m/i.test(g) ? "male" : "";
+  return kind === "circle_male" ? sex === "male" : sex === "female";
+}
+
 function drawItem(page: PDFPage, font: PDFFont, item: RefFormItem, data: RefFormData) {
   const black = rgb(0, 0, 0);
   const { height } = page.getSize();
@@ -423,7 +436,8 @@ function drawItem(page: PDFPage, font: PDFFont, item: RefFormItem, data: RefForm
     page.drawLine({ start: { x: x + s * 0.35, y: top - s }, end: { x: x + s, y: top }, thickness: Math.max(1, s / 8), color: black });
     return;
   }
-  if (item.kind === "circle") {
+  if (item.kind === "circle" || item.kind === "circle_male" || item.kind === "circle_female") {
+    if (!refFormCircleShown(item.kind, data.person.gender)) return;
     const r = item.size / 2;
     page.drawEllipse({ x: item.x + r, y: height - item.y - r, xScale: r, yScale: r, borderColor: black, borderWidth: Math.max(0.8, item.size / 18) });
     return;
