@@ -136,6 +136,15 @@ describe("fillKoyoJokyo3（様式第3号）", () => {
     expect(xml).toContain("<w:strike");
   });
 
+  it("⑦資格外活動許可の有無は「②無」（無に○）になっている", async () => {
+    const xml = await fillAndRead();
+    const i = xml.indexOf("⑦①の者の資格外活動許可の有無");
+    const p = xml.indexOf("<w:p ", i);
+    const seg = xml.slice(p, xml.indexOf("</w:p>", p));
+    const text = [...seg.matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)].map((m) => m[1]).join("");
+    expect(text).toBe("1有・②無");
+  });
+
   it("未登録の項目は空欄のままにする（様式は壊さない）", async () => {
     const xml = await fillAndRead({
       birth: null,
