@@ -151,6 +151,11 @@ export type RefFormFieldKind =
   | "today_y"
   | "today_m"
   | "today_d"
+  | "doc_date"
+  | "doc_date_seireki"
+  | "doc_y"
+  | "doc_m"
+  | "doc_d"
   | "text"
   | "check"
   | "circle"
@@ -197,6 +202,12 @@ export const REF_FORM_FIELDS: { kind: RefFormFieldKind; label: string; sample: s
   { kind: "today_y", label: "作成日の年だけ（西暦）", sample: "2026", group: "日付" },
   { kind: "today_m", label: "作成日の月だけ", sample: "11", group: "日付" },
   { kind: "today_d", label: "作成日の日だけ", sample: "16", group: "日付" },
+  // 申請準備の「支援計画書の日付」の書類作成日（全様式共通）。保存していなければ空欄
+  { kind: "doc_date", label: "書類作成日（令和）", sample: "令和8年11月14日", group: "日付" },
+  { kind: "doc_date_seireki", label: "書類作成日（西暦）", sample: "2026年11月14日", group: "日付" },
+  { kind: "doc_y", label: "書類作成日の年だけ（西暦）", sample: "2026", group: "日付" },
+  { kind: "doc_m", label: "書類作成日の月だけ", sample: "11", group: "日付" },
+  { kind: "doc_d", label: "書類作成日の日だけ", sample: "14", group: "日付" },
   { kind: "text", label: "自由な文字（毎回同じ）", sample: "（文字）", group: "そのほか" },
   { kind: "check", label: "✓ チェック", sample: "✓", group: "そのほか" },
   { kind: "circle", label: "○ 丸", sample: "○", group: "そのほか" },
@@ -273,6 +284,8 @@ export interface RefFormData {
   };
   so: { name: string; regNo: string; address: string; tel: string; rep: string; manager: string; staff: string };
   today: string; // YYYY-MM-DD
+  // 書類作成日（申請準備の「支援計画書の日付」の書類作成日。YYYY-MM-DD・無ければ空）
+  docDate?: string;
 }
 
 const postal = (v: string) => {
@@ -288,6 +301,7 @@ export function refFormValue(item: Pick<RefFormItem, "kind" | "text">, data: Ref
   const p = data.person;
   const b = ymd(p.birth);
   const t = ymd(data.today);
+  const dd = ymd(data.docDate ?? null);
   switch (item.kind) {
     case "name":
       return p.name;
@@ -362,6 +376,16 @@ export function refFormValue(item: Pick<RefFormItem, "kind" | "text">, data: Ref
       return data.so.manager;
     case "so_staff":
       return data.so.staff;
+    case "doc_date":
+      return dd ? warekiDate(data.docDate ?? "") : "";
+    case "doc_date_seireki":
+      return dd ? `${dd.y}年${dd.m}月${dd.d}日` : "";
+    case "doc_y":
+      return dd?.y ?? "";
+    case "doc_m":
+      return dd?.m ?? "";
+    case "doc_d":
+      return dd?.d ?? "";
     case "today":
       return warekiDate(data.today);
     case "today_seireki":
@@ -420,7 +444,37 @@ export const REF_FORM_SAMPLE_DATA: RefFormData = {
     staff: "VUONG VAN THANH",
   },
   today: "",
+  docDate: "2026-11-14",
 };
+
+export const isRefFormCircle = (k: RefFormFieldKind) =>
+  k === "circle" || k === "circle_male" || k === "circle_female";
+
+// 作るときに外せる○の一覧（見分け用の名前つき）。名前が無いときは「1ページ目の○（2個目）」
+export function refFormCircles(layout: RefFormItem[]): { id: string; label: string }[] {
+  const circles = layout.filter((i) => isRefFormCircle(i.kind));
+  const perPage = new Map<number, number>();
+  return circles
+    .slice()
+    .sort((a, b) => a.page - b.page || a.y - b.y || a.x - b.x)
+    .map((c) => {
+      const n = (perPage.get(c.page) ?? 0) + 1;
+      perPage.set(c.page, n);
+      const name = (c.text ?? "").trim();
+      const cond = c.kind === "circle_male" ? "（男のときだけ）" : c.kind === "circle_female" ? "（女のときだけ）" : "";
+      return { id: c.id, label: `${name || `${c.page + 1}ページ目の○（${n}個目）`}${cond}` };
+    });
+}
+
+// 作るときに外す○（URL の off=テンプレートID:項目ID,...）から、そのひな形の分の項目IDを取り出す
+export function refFormOffIds(off: string | null, templateId: string): Set<string> {
+  const out = new Set<string>();
+  for (const part of (off ?? "").split(",")) {
+    const i = part.indexOf(":");
+    if (i > 0 && part.slice(0, i) === templateId && part.slice(i + 1)) out.add(part.slice(i + 1));
+  }
+  return out;
+}
 
 // 性別で出し分ける○を書き込むか（性別が分からないときはどちらも書かない）
 export function refFormCircleShown(kind: RefFormFieldKind, gender: string): boolean {
@@ -463,12 +517,15 @@ export async function fillRefForm(
   fontBytes: Uint8Array | ArrayBuffer,
   layout: RefFormItem[],
   data: RefFormData,
+  // 作るときに外す項目（○）の id
+  offIds?: ReadonlySet<string>,
 ): Promise<PDFDocument> {
   const doc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
   doc.registerFontkit(fontkit);
   const font = await doc.embedFont(fontBytes, { subset: false });
   const pages = doc.getPages();
   for (const item of layout) {
+    if (offIds?.has(item.id)) continue;
     const page = pages[item.page];
     if (page) drawItem(page, font, item, data);
   }

@@ -27,6 +27,7 @@ export function PrepSubmissionList({
   canEdit,
   workerName,
   orgName,
+  todoNo = "",
   onMark,
   onError,
   renderAction,
@@ -38,6 +39,7 @@ export function PrepSubmissionList({
   canEdit: boolean;
   workerName: string;
   orgName: string;
+  todoNo?: string; // 申請準備のTODO番号（参考様式の書類作成日に使う）
   // 有／無を選ぶ（null は選択を外して見当に戻す）
   onMark: (key: string, mark: SubmitMark | null) => void;
   onError: (message: string) => void;
@@ -51,6 +53,8 @@ export function PrepSubmissionList({
   const [openNotes, setOpenNotes] = useState(false);
   const refForms = useRefFormTemplates();
   const [managing, setManaging] = useState<SubmissionRow | null>(null);
+  // 参考様式を作るときに外す○（「ひな形ID:項目ID」）。様式ごとの作成・まとめてダウンロードの両方に使う
+  const [refOff, setRefOff] = useState<string[]>([]);
   // アプリに入れてある入管の参考様式（未記入）のうち、まだ全員共通のひな形にしていないもの
   const bundledMissing = workerId ? missingBundledRefForms(refForms.templates) : [];
   const [bundling, setBundling] = useState(false);
@@ -170,7 +174,7 @@ export function PrepSubmissionList({
             参考様式（「有」{refRows.length}件・ひな形あり {refReady.length}件）
           </span>
           <a
-            href={refReady.length > 0 ? refFormHref(workerId, refReady.map(refKey), "all") : undefined}
+            href={refReady.length > 0 ? refFormHref(workerId, refReady.map(refKey), "all", refOff, todoNo) : undefined}
             target="_blank"
             rel="noopener noreferrer"
             aria-disabled={refReady.length === 0}
@@ -181,7 +185,7 @@ export function PrepSubmissionList({
             参考様式を一気にダウンロード（{refReady.length}件）
           </a>
           <a
-            href={refSignReady.length > 0 ? refFormHref(workerId, refSignReady.map(refKey), "sign") : undefined}
+            href={refSignReady.length > 0 ? refFormHref(workerId, refSignReady.map(refKey), "sign", refOff, todoNo) : undefined}
             target="_blank"
             rel="noopener noreferrer"
             aria-disabled={refSignReady.length === 0}
@@ -288,6 +292,9 @@ export function PrepSubmissionList({
                           {r.mark === "有" && workerId && isRefFormItem(r) && (
                             <div className="mt-1.5">
                               <RefFormRowBar
+                                todoNo={todoNo}
+                                off={refOff}
+                                onOffChange={setRefOff}
                                 formKey={refKey(r)}
                                 workerId={workerId}
                                 nationality={nationality}
