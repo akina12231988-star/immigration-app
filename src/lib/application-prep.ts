@@ -367,6 +367,13 @@ export function prepDocLabel(
   return `${y}${def.yearKind} ${def.label}`;
 }
 
+// 実際に使う合格証の組み合わせ。特定技能２号の申請は、保存されている値にかかわらず
+// 「特定技能２号の合格証のみ」（申請種別だけ２号に変わり、組み合わせが空のまま残っていることがある）
+export function effectiveCertPattern(meta: PrepChecklistMeta): "" | PrepCertPattern {
+  if (meta.app_content === SSW2_APP_CONTENT) return "特定技能2号";
+  return meta.cert_pattern;
+}
+
 // その申請種別・条件で必要な書類か
 export function isRequired(
   def: PrepDocDef,
@@ -386,9 +393,10 @@ export function isRequired(
   // 年金記録は、特定技能の更新・変更・2号への変更では加入のチェックにかかわらず必ず必要
   if (def.requiredIf === "nenkin" && !meta.has_nenkin && !isNenkinAlwaysRequired(meta.app_content)) return false;
   if (def.certPatterns) {
+    const pattern = effectiveCertPattern(meta);
     // 組み合わせ未選択のときは調書以外（合格証3種）を表示して選択を促す
-    if (!meta.cert_pattern) return def.id !== "hyoka_chosho";
-    return def.certPatterns.includes(meta.cert_pattern);
+    if (!pattern) return def.id !== "hyoka_chosho";
+    return def.certPatterns.includes(pattern);
   }
   return true;
 }
