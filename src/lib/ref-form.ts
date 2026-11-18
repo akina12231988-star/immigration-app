@@ -422,6 +422,35 @@ export const REF_FORM_SAMPLE_DATA: RefFormData = {
   today: "",
 };
 
+export const isRefFormCircle = (k: RefFormFieldKind) =>
+  k === "circle" || k === "circle_male" || k === "circle_female";
+
+// 作るときに外せる○の一覧（見分け用の名前つき）。名前が無いときは「1ページ目の○（2個目）」
+export function refFormCircles(layout: RefFormItem[]): { id: string; label: string }[] {
+  const circles = layout.filter((i) => isRefFormCircle(i.kind));
+  const perPage = new Map<number, number>();
+  return circles
+    .slice()
+    .sort((a, b) => a.page - b.page || a.y - b.y || a.x - b.x)
+    .map((c) => {
+      const n = (perPage.get(c.page) ?? 0) + 1;
+      perPage.set(c.page, n);
+      const name = (c.text ?? "").trim();
+      const cond = c.kind === "circle_male" ? "（男のときだけ）" : c.kind === "circle_female" ? "（女のときだけ）" : "";
+      return { id: c.id, label: `${name || `${c.page + 1}ページ目の○（${n}個目）`}${cond}` };
+    });
+}
+
+// 作るときに外す○（URL の off=テンプレートID:項目ID,...）から、そのひな形の分の項目IDを取り出す
+export function refFormOffIds(off: string | null, templateId: string): Set<string> {
+  const out = new Set<string>();
+  for (const part of (off ?? "").split(",")) {
+    const i = part.indexOf(":");
+    if (i > 0 && part.slice(0, i) === templateId && part.slice(i + 1)) out.add(part.slice(i + 1));
+  }
+  return out;
+}
+
 // 性別で出し分ける○を書き込むか（性別が分からないときはどちらも書かない）
 export function refFormCircleShown(kind: RefFormFieldKind, gender: string): boolean {
   if (kind !== "circle_male" && kind !== "circle_female") return true;
@@ -463,12 +492,15 @@ export async function fillRefForm(
   fontBytes: Uint8Array | ArrayBuffer,
   layout: RefFormItem[],
   data: RefFormData,
+  // 作るときに外す項目（○）の id
+  offIds?: ReadonlySet<string>,
 ): Promise<PDFDocument> {
   const doc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
   doc.registerFontkit(fontkit);
   const font = await doc.embedFont(fontBytes, { subset: false });
   const pages = doc.getPages();
   for (const item of layout) {
+    if (offIds?.has(item.id)) continue;
     const page = pages[item.page];
     if (page) drawItem(page, font, item, data);
   }

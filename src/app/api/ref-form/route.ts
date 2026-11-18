@@ -17,13 +17,15 @@ import {
   parseRefFormMode,
   pickRefFormTemplate,
   refFormFileName,
+  refFormOffIds,
   refFormPagesFor,
   type RefFormData,
   type RefFormTemplate,
 } from "@/lib/ref-form";
 
 // 参考様式のPDFを作って返す（申請書類作成をアプリ一本化計画・試験中）。
-//   /api/ref-form?workerId=...&keys=t1-4-1,t1-5&mode=one|all|sign[&download=1]
+//   /api/ref-form?workerId=...&keys=t1-4-1,t1-5&mode=one|all|sign[&download=1][&off=ひな形ID:項目ID,...]
+//     off は作るときに外す○（記入位置に置いてあっても書かない）
 //     keys は提出書類一覧表の順に並べて渡す。様式ごとに本人の国籍に合う言語のひな形を選ぶ
 //   /api/ref-form?templateId=...&sample=1 … そのひな形に見本の人で書き込む（記入位置の確認用）
 export const runtime = "nodejs";
@@ -133,7 +135,7 @@ export async function GET(req: NextRequest) {
       if (onlyPages && onlyPages.length === 0) continue; // 署名ページの印が無い様式は入れない
       const { data: blob, error: dlErr } = await admin.storage.from("app-files").download(t.pdf_path);
       if (dlErr || !blob) throw dlErr ?? new Error("PDFを読めませんでした");
-      const doc = await fillRefForm(new Uint8Array(await blob.arrayBuffer()), font, normalizeRefFormLayout(t.layout), data);
+      const doc = await fillRefForm(new Uint8Array(await blob.arrayBuffer()), font, normalizeRefFormLayout(t.layout), data, refFormOffIds(sp.get("off"), t.id));
       parts.push({ doc, onlyPages });
     }
     if (parts.length === 0) {

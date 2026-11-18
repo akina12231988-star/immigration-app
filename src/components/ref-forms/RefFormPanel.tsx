@@ -9,8 +9,10 @@ import {
   REF_FORM_LANGUAGES,
   REF_FORM_MIGRATION,
   languageForNationality,
+  normalizeRefFormLayout,
   normalizeSignPages,
   pickRefFormTemplate,
+  refFormCircles,
   refFormName,
   type RefFormMode,
   type RefFormTemplate,
@@ -49,8 +51,10 @@ export function useRefFormTemplates() {
 }
 
 // PDFを作るリンク（新しいタブで開く）
-export function refFormHref(workerId: string, keys: string[], mode: RefFormMode): string {
-  return `/api/ref-form?workerId=${encodeURIComponent(workerId)}&keys=${encodeURIComponent(keys.join(","))}&mode=${mode}`;
+// off は作るときに外す○（「ひな形ID:項目ID」）
+export function refFormHref(workerId: string, keys: string[], mode: RefFormMode, off: string[] = []): string {
+  const base = `/api/ref-form?workerId=${encodeURIComponent(workerId)}&keys=${encodeURIComponent(keys.join(","))}&mode=${mode}`;
+  return off.length > 0 ? `${base}&off=${encodeURIComponent(off.join(","))}` : base;
 }
 
 // 提出書類一覧表の参考様式の行（「有」のとき）に出す欄: 作成（PDF）・ひな形と記入位置
@@ -63,6 +67,8 @@ export function RefFormRowBar({
   templates,
   canEdit,
   onManage,
+  off,
+  onOffChange,
 }: {
   formKey: string;
   workerId: string;
@@ -72,10 +78,16 @@ export function RefFormRowBar({
   templates: RefFormTemplate[];
   canEdit: boolean;
   onManage: () => void;
+  // 作るときに外す○（「ひな形ID:項目ID」）。一覧の側で持ち、まとめてダウンロードにも使う
+  off: string[];
+  onOffChange: (next: string[]) => void;
 }) {
   const list = templates.filter((t) => t.form_key === formKey && (!t.organization_id || t.organization_id === orgId));
   const picked = pickRefFormTemplate(templates, formKey, nationality, orgId);
   const lang = languageForNationality(nationality);
+  // 記入位置に置いた○。チェックを外したものは、この様式を作るときに書かない
+  const circles = picked ? refFormCircles(normalizeRefFormLayout(picked.layout)) : [];
+  const offKey = (id: string) => `${picked?.id}:${id}`;
   return (
     <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-brand/30 bg-brand/5 px-2 py-1.5 text-[11px]">
       <FileText size={13} className="text-brand" />
@@ -93,7 +105,7 @@ export function RefFormRowBar({
             {picked.sign_pages.length > 0 ? `・署名 ${picked.sign_pages.map((p) => p + 1).join("・")}ページ目` : ""}
           </span>
           <a
-            href={refFormHref(workerId, [formKey], "one")}
+            href={refFormHref(workerId, [formKey], "one", off)}
             target="_blank"
             rel="noopener noreferrer"
             className="ml-auto inline-flex min-h-[28px] items-center gap-1 rounded-md bg-brand px-2 font-bold text-brand-foreground"
@@ -114,6 +126,23 @@ export function RefFormRowBar({
           <PenLine size={12} />
           ひな形・記入位置（{list.length}）
         </button>
+      )}
+      {circles.length > 0 && (
+        <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 border-t border-brand/20 pt-1">
+          <span className="text-muted">付ける○（要らないものはチェックを外すと、作るときに書きません）:</span>
+          {circles.map((c) => (
+            <label key={c.id} className="inline-flex items-center gap-1">
+              <input
+                type="checkbox"
+                checked={!off.includes(offKey(c.id))}
+                onChange={(e) =>
+                  onOffChange(e.target.checked ? off.filter((x) => x !== offKey(c.id)) : [...off, offKey(c.id)])
+                }
+              />
+              {c.label}
+            </label>
+          ))}
+        </div>
       )}
     </div>
   );

@@ -7,6 +7,7 @@ import {
   REF_FORM_FIELDS,
   REF_FORM_FIELD_LABEL,
   REF_FORM_TEXT_PLACEHOLDER,
+  isRefFormCircle,
   normalizeRefFormLayout,
   normalizeSignPages,
   refFormName,
@@ -40,7 +41,7 @@ function fittedSize(text: string, size: number, maxWidth?: number): number {
   return em > 0 ? Math.max(5, Math.min(size, maxWidth / em)) : size;
 }
 
-const isCircle = (k: RefFormFieldKind) => k === "circle" || k === "circle_male" || k === "circle_female";
+const isCircle = isRefFormCircle;
 const MAX_PAGES = 20;
 
 // 参考様式のひな形PDFに「どこに何を書くか」と「本人の署名が要るページ」を置く画面（申請書類作成をアプリ一本化計画）。
@@ -285,6 +286,17 @@ export function RefFormLayoutEditor({
                   <input
                     value={selected.text === REF_FORM_TEXT_PLACEHOLDER ? "" : (selected.text ?? "")}
                     placeholder="空のままなら PDF には何も書きません"
+                    onChange={(e) => update(selected.id, { text: e.target.value })}
+                    className="min-h-[34px] rounded border border-border px-2"
+                  />
+                </label>
+              )}
+              {isCircle(selected.kind) && (
+                <label className="flex flex-col gap-0.5">
+                  名前（PDFを作るときに外すかを選ぶ欄に出ます）
+                  <input
+                    value={selected.text ?? ""}
+                    placeholder="例: ③性別の男"
                     onChange={(e) => update(selected.id, { text: e.target.value })}
                     className="min-h-[34px] rounded border border-border px-2"
                   />
