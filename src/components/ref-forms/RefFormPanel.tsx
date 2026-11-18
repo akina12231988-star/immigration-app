@@ -52,9 +52,18 @@ export function useRefFormTemplates() {
 
 // PDFを作るリンク（新しいタブで開く）
 // off は作るときに外す○（「ひな形ID:項目ID」）
-export function refFormHref(workerId: string, keys: string[], mode: RefFormMode, off: string[] = []): string {
-  const base = `/api/ref-form?workerId=${encodeURIComponent(workerId)}&keys=${encodeURIComponent(keys.join(","))}&mode=${mode}`;
-  return off.length > 0 ? `${base}&off=${encodeURIComponent(off.join(","))}` : base;
+// todoNo は申請準備のTODO番号（書類作成日を読むのに使う）
+export function refFormHref(
+  workerId: string,
+  keys: string[],
+  mode: RefFormMode,
+  off: string[] = [],
+  todoNo = "",
+): string {
+  let href = `/api/ref-form?workerId=${encodeURIComponent(workerId)}&keys=${encodeURIComponent(keys.join(","))}&mode=${mode}`;
+  if (off.length > 0) href += `&off=${encodeURIComponent(off.join(","))}`;
+  if (todoNo) href += `&todoNo=${encodeURIComponent(todoNo)}`;
+  return href;
 }
 
 // 提出書類一覧表の参考様式の行（「有」のとき）に出す欄: 作成（PDF）・ひな形と記入位置
@@ -69,6 +78,7 @@ export function RefFormRowBar({
   onManage,
   off,
   onOffChange,
+  todoNo,
 }: {
   formKey: string;
   workerId: string;
@@ -81,6 +91,7 @@ export function RefFormRowBar({
   // 作るときに外す○（「ひな形ID:項目ID」）。一覧の側で持ち、まとめてダウンロードにも使う
   off: string[];
   onOffChange: (next: string[]) => void;
+  todoNo: string;
 }) {
   const list = templates.filter((t) => t.form_key === formKey && (!t.organization_id || t.organization_id === orgId));
   const picked = pickRefFormTemplate(templates, formKey, nationality, orgId);
@@ -105,7 +116,7 @@ export function RefFormRowBar({
             {picked.sign_pages.length > 0 ? `・署名 ${picked.sign_pages.map((p) => p + 1).join("・")}ページ目` : ""}
           </span>
           <a
-            href={refFormHref(workerId, [formKey], "one", off)}
+            href={refFormHref(workerId, [formKey], "one", off, todoNo)}
             target="_blank"
             rel="noopener noreferrer"
             className="ml-auto inline-flex min-h-[28px] items-center gap-1 rounded-md bg-brand px-2 font-bold text-brand-foreground"

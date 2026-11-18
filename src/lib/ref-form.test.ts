@@ -122,6 +122,18 @@ describe("書き込む値", () => {
     expect(refFormOffIds(null, "t1").size).toBe(0);
   });
 
+  it("書類作成日（支援計画書の日付）を年・月・日でも書ける。無ければ空欄", () => {
+    const x = { ...d, docDate: "2026-11-14" };
+    expect(refFormValue({ kind: "doc_date" }, x)).toBe("令和8年11月14日");
+    expect(refFormValue({ kind: "doc_date_seireki" }, x)).toBe("2026年11月14日");
+    expect(refFormValue({ kind: "doc_y" }, x)).toBe("2026");
+    expect(refFormValue({ kind: "doc_m" }, x)).toBe("11");
+    expect(refFormValue({ kind: "doc_d" }, x)).toBe("14");
+    for (const kind of ["doc_date", "doc_date_seireki", "doc_y", "doc_m", "doc_d"] as const) {
+      expect(refFormValue({ kind }, { ...d, docDate: "" })).toBe("");
+    }
+  });
+
   it("保存値の読み込み", () => {
     expect(normalizeRefFormLayout([{ kind: "name", page: 1, x: 10, y: 20, size: 11 }, { kind: "nope" }, null])).toHaveLength(1);
     expect(normalizeSignPages([2, 0, 2, -1, 1.5, "x"])).toEqual([0, 2]);
