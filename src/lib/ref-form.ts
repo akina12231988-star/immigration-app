@@ -119,6 +119,7 @@ export type RefFormFieldKind =
   | "birth_y"
   | "birth_m"
   | "birth_d"
+  | "age"
   | "gender"
   | "nationality"
   | "postal"
@@ -162,6 +163,7 @@ export const REF_FORM_FIELDS: { kind: RefFormFieldKind; label: string; sample: s
   { kind: "birth_y", label: "生年月日の年だけ（西暦）", sample: "1995", group: "本人" },
   { kind: "birth_m", label: "生年月日の月だけ", sample: "3", group: "本人" },
   { kind: "birth_d", label: "生年月日の日だけ", sample: "8", group: "本人" },
+  { kind: "age", label: "年齢（作成日の時点・数字だけ）", sample: "31", group: "本人" },
   { kind: "gender", label: "性別（男・女）", sample: "男", group: "本人" },
   { kind: "nationality", label: "国籍", sample: "ベトナム", group: "本人" },
   { kind: "postal", label: "郵便番号（本人）", sample: "〒866-0021", group: "本人" },
@@ -294,6 +296,13 @@ export function refFormValue(item: Pick<RefFormItem, "kind" | "text">, data: Ref
       return b?.m ?? "";
     case "birth_d":
       return b?.d ?? "";
+    case "age": {
+      // 作成日の時点の満年齢（誕生日の前日までは1つ少ない）
+      if (!b || !t) return "";
+      const before = Number(t.m) < Number(b.m) || (t.m === b.m && Number(t.d) < Number(b.d));
+      const age = Number(t.y) - Number(b.y) - (before ? 1 : 0);
+      return age >= 0 ? String(age) : "";
+    }
     case "gender":
       return p.gender;
     case "nationality":

@@ -76,6 +76,14 @@ describe("書き込む値", () => {
     expect(refFormValue({ kind: "text", text: "同意します" }, d)).toBe("同意します");
   });
 
+  it("年齢は作成日の時点の満年齢（誕生日の前日までは1つ少ない）", () => {
+    expect(refFormValue({ kind: "age" }, d)).toBe("31");
+    const p = { ...d.person, birth: "1995-11-17" };
+    expect(refFormValue({ kind: "age" }, { ...d, person: p })).toBe("30");
+    expect(refFormValue({ kind: "age" }, { ...d, person: { ...p, birth: "1995-11-16" } })).toBe("31");
+    expect(refFormValue({ kind: "age" }, { ...d, person: { ...p, birth: null } })).toBe("");
+  });
+
   it("保存値の読み込み", () => {
     expect(normalizeRefFormLayout([{ kind: "name", page: 1, x: 10, y: 20, size: 11 }, { kind: "nope" }, null])).toHaveLength(1);
     expect(normalizeSignPages([2, 0, 2, -1, 1.5, "x"])).toEqual([0, 2]);
