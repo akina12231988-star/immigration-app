@@ -22,6 +22,9 @@ function municipalityPayload(input: Partial<MunicipalityInput>): Partial<Municip
   delete out.cert_form_pdf_path;
   delete out.cert_form_pdf_name;
   delete out.cert_form_layout;
+  delete out.nozei_form_pdf_path;
+  delete out.nozei_form_pdf_name;
+  delete out.nozei_form_layout;
   delete out.proxy_form_pdf_path;
   delete out.proxy_form_pdf_name;
   delete out.proxy_form_layout;

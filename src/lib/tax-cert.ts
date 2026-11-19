@@ -13,6 +13,9 @@ export interface Municipality {
   cert_form_pdf_path?: string;
   cert_form_pdf_name?: string;
   cert_form_layout?: unknown;
+  nozei_form_pdf_path?: string; // 納税証明書の申請書PDF（課税証明書と別の様式のとき。0232）
+  nozei_form_pdf_name?: string;
+  nozei_form_layout?: unknown;
   proxy_form_pdf_path?: string; // 委任状PDF（0215）
   proxy_form_pdf_name?: string;
   proxy_form_layout?: unknown;

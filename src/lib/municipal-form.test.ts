@@ -109,3 +109,11 @@ describe("住民票の申請書・委任状（0231）", () => {
     expect(MUNICIPAL_FORM_DOCS.juminhyo.migration).toBe("0231_municipality_juminhyo_form_pdf.sql");
   });
 });
+
+describe("納税証明書の申請書（課税証明書と別の様式・0232）", () => {
+  it("書類の種類を読み、保存先の列が別になる", () => {
+    expect(parseMunicipalFormDoc("nozei")).toBe("nozei");
+    expect(MUNICIPAL_FORM_DOCS.nozei.pathCol).toBe("nozei_form_pdf_path");
+    expect(MUNICIPAL_FORM_DOCS.nozei.migration).toBe("0232_municipality_nozei_form_pdf.sql");
+  });
+});
