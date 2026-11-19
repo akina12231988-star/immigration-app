@@ -331,3 +331,23 @@ function fillAcroFormByName(doc: PDFDocument, person: MunicipalFormPerson, font:
     }
   }
 }
+
+// 請求ごとに直した「自由な文字」（URL の texts = {"項目ID": "文字"} の JSON）を記入位置に重ねる。
+// 自由な文字の項目だけを書き換え、読めない値は無視する
+export function applyMunicipalTextOverrides<T extends { id: string; kind: string; text?: string }>(
+  layout: T[],
+  raw: string | null | undefined,
+): T[] {
+  if (!raw) return layout;
+  let map: Record<string, unknown>;
+  try {
+    const v = JSON.parse(raw) as unknown;
+    if (!v || typeof v !== "object" || Array.isArray(v)) return layout;
+    map = v as Record<string, unknown>;
+  } catch {
+    return layout;
+  }
+  return layout.map((i) =>
+    i.kind === "text" && typeof map[i.id] === "string" ? { ...i, text: (map[i.id] as string).slice(0, 300) } : i,
+  );
+}

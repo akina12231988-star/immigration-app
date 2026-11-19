@@ -80,6 +80,8 @@ export function MunicipalCertFormPanel({
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [dragging, setDragging] = useState(false);
+  // この請求だけ直した「自由な文字」（項目ID → 文字）
+  const [textEdits, setTextEdits] = useState<Record<string, string>>({});
   const fileRef = useRef<HTMLInputElement>(null);
   if (!municipality) return null;
   const m = municipality;
@@ -88,10 +90,18 @@ export function MunicipalCertFormPanel({
   const pdfPath = (m[cols.pathCol] ?? "").trim();
   const pdfName = m[cols.nameCol] ?? "";
   const hasPdf = !!pdfPath;
-  const layoutCount = normalizeMunicipalFormLayout(m[cols.layoutCol]).length;
+  const layout = normalizeMunicipalFormLayout(m[cols.layoutCol]);
+  const layoutCount = layout.length;
+  // 記入位置の「自由な文字」。請求ごとに直せる（直した分だけ URL で渡す。記入位置の文字は変えない）
+  const textItems = layout.filter((i) => i.kind === "text");
+  const changedTexts = Object.fromEntries(
+    textItems.filter((i) => i.id in textEdits && textEdits[i.id] !== (i.text ?? "")).map((i) => [i.id, textEdits[i.id]]),
+  );
   const base = `/api/municipal-cert-form?municipalityId=${encodeURIComponent(m.id)}&doc=${doc}`;
   const personHref = workerId
-    ? `${base}&workerId=${encodeURIComponent(workerId)}${fiscalYear ? `&fiscalYear=${fiscalYear}` : ""}`
+    ? `${base}&workerId=${encodeURIComponent(workerId)}${fiscalYear ? `&fiscalYear=${fiscalYear}` : ""}${
+        Object.keys(changedTexts).length > 0 ? `&texts=${encodeURIComponent(JSON.stringify(changedTexts))}` : ""
+      }`
     : "";
 
   async function upload(file: File) {
@@ -167,6 +177,38 @@ export function MunicipalCertFormPanel({
       />
       {hasPdf ? (
         <>
+          {personHref && textItems.length > 0 && (
+            <div className="flex flex-col gap-1 rounded-lg bg-background p-2">
+              <p className="text-[11px] font-bold text-muted">
+                自由な文字（この請求だけ直せます。記入位置で決めた文字は変わりません）
+              </p>
+              {textItems.map((i, n) => (
+                <label key={i.id} className="flex flex-wrap items-center gap-1.5 text-xs">
+                  <span className="w-14 shrink-0 text-muted">{n + 1}つ目</span>
+                  <input
+                    value={textEdits[i.id] ?? i.text ?? ""}
+                    onChange={(e) => setTextEdits((t) => ({ ...t, [i.id]: e.target.value }))}
+                    className="min-h-[34px] min-w-0 flex-1 rounded-md border border-border bg-surface px-2"
+                  />
+                  {i.id in textEdits && textEdits[i.id] !== (i.text ?? "") && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setTextEdits((t) => {
+                          const next = { ...t };
+                          delete next[i.id];
+                          return next;
+                        })
+                      }
+                      className="text-[11px] font-bold text-brand underline"
+                    >
+                      元に戻す
+                    </button>
+                  )}
+                </label>
+              ))}
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-1.5">
             {personHref && layoutCount > 0 && (
               <>

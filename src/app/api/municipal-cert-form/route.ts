@@ -10,6 +10,7 @@ import {
   MUNICIPAL_FORM_DOCS,
   fillMunicipalForm,
   normalizeMunicipalFormLayout,
+  applyMunicipalTextOverrides,
   parseMunicipalFormDoc,
   type MunicipalFormPerson,
 } from "@/lib/municipal-form";
@@ -100,10 +101,10 @@ export async function GET(req: NextRequest) {
     const bytes = await fillMunicipalForm(
       new Uint8Array(await blob.arrayBuffer()),
       font,
-      normalizeMunicipalFormLayout(muni.layout),
+      applyMunicipalTextOverrides(normalizeMunicipalFormLayout(muni.layout), sp.get("texts")),
       person,
     );
-    const fileName = `課税証明書${cols.label}_${muni.name}_${fileLabel}.pdf`;
+    const fileName = `${cols.label}_${muni.name}_${fileLabel}.pdf`;
     const disposition = sp.get("download") === "1" ? "attachment" : "inline";
     return new NextResponse(new Blob([bytes as BlobPart]), {
       headers: {
