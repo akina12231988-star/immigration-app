@@ -5,6 +5,7 @@ import { warekiDate } from "@/lib/dependents";
 import { SUBMISSION_ITEMS, type SubmissionItem } from "@/lib/submission-list";
 import { PLAN_DATE_FIELDS, type PlanDateKey } from "@/lib/support-plan-dates";
 import { calcWageDetail, fixedOtOverHours, formatYen, normalizeWageDetail } from "@/lib/wage-calc";
+import { P117_FIELDS, type P117Key } from "@/lib/ref-form-117";
 
 // ---- 参考様式の作成（申請書類作成をアプリ一本化計画・試験中） ----
 // 参考様式（1-4号・1-5号・1-6号・1-17号・11-1号など）のひな形PDFを、様式・言語ごとに1回だけ登録し（ref_form_templates。0227）、
@@ -248,6 +249,7 @@ export type RefFormFieldKind =
   | "mark_daily"
   | "mark_hourly"
   | `w6_${W6Key}`
+  | `p117_${P117Key}`
   | "text"
   | "check"
   | "circle"
@@ -317,6 +319,8 @@ export const REF_FORM_FIELDS: { kind: RefFormFieldKind; label: string; sample: s
   { kind: "mark_hourly", label: "■ 時給のときだけ（□を塗る）", sample: "■", group: "賃金" },
   // 1-6号別紙（賃金の支払）。外国人詳細の「賃金（1-6号別紙）」で保存した内容から計算する
   ...W6_FIELDS.map((f) => ({ kind: `w6_${f.key}` as RefFormFieldKind, label: f.label, sample: f.sample, group: "1-6号別紙（賃金の支払）" })),
+  // 1-17号 支援計画書に記載する項目（申請準備の「１－１７号の…記載する項目」と同じ値）
+  ...P117_FIELDS.map((f) => ({ kind: `p117_${f.key}` as RefFormFieldKind, label: f.label, sample: f.sample, group: "1-17号 支援計画書" })),
   { kind: "text", label: "自由な文字（毎回同じ）", sample: "（文字）", group: "そのほか" },
   { kind: "check", label: "✓ チェック", sample: "✓", group: "そのほか" },
   { kind: "circle", label: "○ 丸", sample: "○", group: "そのほか" },
@@ -442,6 +446,8 @@ export interface RefFormData {
   wage?: { kind: string; amount: number } | null;
   // 1-6号別紙（賃金の支払）の値（refFormWage6Values）。無ければ空欄
   wage6?: Record<string, string>;
+  // 1-17号 支援計画書に記載する項目の値（prep117Values）。無ければ空欄
+  p117?: Record<string, string>;
 }
 
 const postal = (v: string) => {
@@ -470,6 +476,7 @@ export function refFormValue(item: Pick<RefFormItem, "kind" | "text" | "fmt">, d
       return wageIs("時給");
   }
   if (item.kind.startsWith("w6_")) return data.wage6?.[item.kind.slice(3)] ?? "";
+  if (item.kind.startsWith("p117_")) return data.p117?.[item.kind.slice(5)] ?? "";
   if (isRefFormPlanDate(item.kind)) {
     const key = item.kind.slice("plan_".length);
     const v = data.planDates?.[key] ?? (key === "doc" ? data.docDate : "");
@@ -620,6 +627,7 @@ export const REF_FORM_SAMPLE_DATA: RefFormData = {
   docDate: "2026-11-14",
   wage: { kind: "月給", amount: 220000 },
   wage6: Object.fromEntries(W6_FIELDS.map((f) => [f.key, f.sample])),
+  p117: Object.fromEntries(P117_FIELDS.map((f) => [f.key, f.sample])),
   planDates: { doc: "2026-11-14", cond: "2026-11-10", con: "2026-11-12", es: "2026-12-01", apply: "2026-11-20" },
 };
 
@@ -731,7 +739,10 @@ export function refFormCircleShown(kind: RefFormFieldKind, gender: string): bool
 function drawItem(page: PDFPage, font: PDFFont, item: RefFormItem, data: RefFormData) {
   const black = rgb(0, 0, 0);
   const { height } = page.getSize();
-  if (item.kind === "check") {
+  // ✓（いつも書く／1-17号の住居は選んだ欄だけ）
+  const isP117Check = item.kind.startsWith("p117_check_");
+  if (item.kind === "check" || isP117Check) {
+    if (isP117Check && !refFormValue(item, data)) return;
     const s = item.size;
     const x = item.x;
     const top = height - item.y;
@@ -769,6 +780,8 @@ export async function fillRefForm(
   data: RefFormData,
   // 作るときに外す項目（○）の id
   offIds?: ReadonlySet<string>,
+  // 書き込んだあとに、同じフォントでページを足す（1-17号のうしろの名簿など）
+  after?: (doc: PDFDocument, font: PDFFont) => void,
 ): Promise<PDFDocument> {
   const doc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
   doc.registerFontkit(fontkit);
@@ -779,6 +792,7 @@ export async function fillRefForm(
     const page = pages[item.page];
     if (page) drawItem(page, font, item, data);
   }
+  after?.(doc, font);
   return doc;
 }
 

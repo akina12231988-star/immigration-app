@@ -309,3 +309,12 @@ describe("1-6号別紙（賃金の支払）の値", () => {
     expect(refFormValue({ kind: "w6_tax" }, d)).toBe("");
   });
 });
+
+describe("1-17号 支援計画書に記載する項目", () => {
+  it("値が入る。無ければ空欄", () => {
+    const d = { ...REF_FORM_SAMPLE_DATA, p117: { managers: "VUONG VAN THANH", check_B: "✓" } };
+    expect(refFormValue({ kind: "p117_managers" }, d)).toBe("VUONG VAN THANH");
+    expect(refFormValue({ kind: "p117_check_B" }, d)).toBe("✓");
+    expect(refFormValue({ kind: "p117_check_A" }, d)).toBe("");
+  });
+});

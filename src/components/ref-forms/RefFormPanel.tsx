@@ -114,6 +114,7 @@ export function RefFormRowBar({
             {picked.language}の版で作ります
             {lang && picked.language !== lang ? `（${lang}の版は未登録）` : ""}
             {picked.sign_pages.length > 0 ? `・署名 ${picked.sign_pages.map((p) => p + 1).join("・")}ページ目` : ""}
+            {formKey === "t1-18" ? "・最後のページに名簿（支援業務を行う体制についての説明）が付きます" : ""}
           </span>
           <a
             href={`/workers/${workerId}/application-prep/unified/ref-form/${encodeURIComponent(formKey)}${todoNo ? `?todo=${encodeURIComponent(todoNo)}` : ""}`}
