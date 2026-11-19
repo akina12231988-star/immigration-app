@@ -8,6 +8,8 @@ import { registerBundledRefForms } from "@/app/(app)/ref-forms/actions";
 import { SUBMISSION_PDF_TEMPLATES, canFillSubmissionPdf, fillSubmissionPdf, submissionPdfTables } from "@/lib/submission-pdf";
 import { RefFormRowBar, RefFormTemplatesDialog, refFormHref, useRefFormTemplates } from "@/components/ref-forms/RefFormPanel";
 import type { OnboardingDocumentRow } from "@/types/db";
+import { SupportOrgFileAttachments } from "@/app/(app)/support-org/SupportOrgFileAttachments";
+import { SUPPORT_ORG_LISTING_FILE_KIND } from "@/lib/support-org-info";
 import {
   SUBMISSION_TABLE_ORDER,
   canonicalSubmissionKey,
@@ -392,8 +394,22 @@ export function SubmissionRowAction({
   onRemove: (f: OnboardingDocumentRow) => void;
 }) {
   const section = submissionLink(row.key)?.section;
+  // 「人材サービス総合サイト」の画面は、だれの申請でも同じ（当社の掲載画面）。全員共通で1つ登録して使う
+  const sharedListing = canonicalSubmissionKey(row.key) === "t1-7-2";
   return (
     <div className="flex flex-col gap-1 rounded-lg border border-border bg-background/60 p-2 text-[11px]">
+      {sharedListing && (
+        <div className="rounded-md border border-brand/30 bg-brand/5 p-2">
+          <p className="mb-1 font-bold text-brand">
+            全員共通の画面（登録支援機関の情報 ＞ 職業紹介事業者と同じもの。差し替えると全員に反映されます）
+          </p>
+          <SupportOrgFileAttachments
+            kind={SUPPORT_ORG_LISTING_FILE_KIND}
+            addLabel={`${SUPPORT_ORG_LISTING_FILE_KIND}の画面を追加（PDF・画像）`}
+            canEdit={canEdit}
+          />
+        </div>
+      )}
       {docs.map((d) => (
         <p key={d.id} className="flex flex-wrap items-center gap-1.5">
           {d.inList ? (
@@ -435,8 +451,12 @@ export function SubmissionRowAction({
         >
           <div className="flex flex-wrap items-center gap-1.5">
             {attachFiles.length === 0 ? (
-              <span className={docs.length > 0 ? "text-muted" : "font-bold text-seal"}>
-                {docs.length > 0 ? "この行にも添付できます" : "まだ添付していません"}
+              <span className={docs.length > 0 || sharedListing ? "text-muted" : "font-bold text-seal"}>
+                {sharedListing
+                  ? "上の全員共通の画面を使います（この人だけ別の画面を使うときだけ添付）"
+                  : docs.length > 0
+                    ? "この行にも添付できます"
+                    : "まだ添付していません"}
               </span>
             ) : (
               attachFiles.map((f) => (
