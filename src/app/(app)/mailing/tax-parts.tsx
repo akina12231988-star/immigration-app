@@ -254,6 +254,27 @@ export function MunicipalityModal({
             </div>
           )}
         </div>
+        {/* 住民票の申請書・委任状のPDF（自動入力用。0231）。課税・納税証明書と同じ操作 */}
+        <div className="rounded-xl border border-border p-2.5">
+          <span className={LABEL}>住民票の申請書・委任状のPDF（氏名・住所などの自動入力用）</span>
+          {initial ? (
+            <>
+              <MunicipalCertFormPanel municipality={initial} doc="juminhyo" canEdit onChanged={onCertFormChanged} />
+              <MunicipalCertFormPanel municipality={initial} doc="juminhyo_proxy" canEdit onChanged={onCertFormChanged} />
+            </>
+          ) : (
+            <div className="mt-1.5 flex flex-col gap-2">
+              {(["juminhyo", "juminhyo_proxy"] as const).map((doc) => (
+                <PdfDropField
+                  key={doc}
+                  label={`${doc === "juminhyo" ? "住民票の申請書" : "住民票の委任状"}のPDF`}
+                  file={files[doc] ?? null}
+                  onChange={(f) => setFiles((x) => ({ ...x, [doc]: f }))}
+                />
+              ))}
+            </div>
+          )}
+        </div>
         <label className="flex flex-col gap-1">
           <span className={LABEL}>証明書名称</span>
           <input value={form.cert_name} onChange={(e) => set("cert_name", e.target.value)} placeholder="例：市民税・県民税 課税証明書" className={INPUT} />

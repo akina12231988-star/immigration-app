@@ -9,7 +9,8 @@ import { MUNICIPAL_FORM_DOCS, parseMunicipalFormDoc, type MunicipalFormDoc } fro
 // 非公開バケット app-files の municipal-forms/{自治体ID}/ に保存し、署名付きURLでアップロード・表示する
 const BUCKET = "app-files";
 const TTL = 60 * 60;
-const MIGRATION_HINT = "マイグレーション 0215_municipality_cert_form_pdf.sql が未適用の可能性があります。Supabase の SQL Editor で適用してください。";
+const migrationHint = (doc: MunicipalFormDoc) =>
+  `マイグレーション ${MUNICIPAL_FORM_DOCS[doc].migration} が未適用の可能性があります。Supabase の SQL Editor で適用してください。`;
 
 interface Err {
   ok: false;
@@ -46,7 +47,8 @@ export async function registerMunicipalFormPdf(
   fileName: string,
   docArg: MunicipalFormDoc = "cert",
 ): Promise<{ ok: true } | Err> {
-  const cols = MUNICIPAL_FORM_DOCS[parseMunicipalFormDoc(docArg)];
+  const doc = parseMunicipalFormDoc(docArg);
+  const cols = MUNICIPAL_FORM_DOCS[doc];
   if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
   if (!path.startsWith(`municipal-forms/${municipalityId}/`)) return { ok: false, message: "不正なパス" };
   const admin = createAdminClient();
@@ -58,7 +60,7 @@ export async function registerMunicipalFormPdf(
     .eq("id", municipalityId);
   if (error) {
     await admin.storage.from(BUCKET).remove([path]).catch(() => undefined);
-    return { ok: false, message: isMissingColumnError(error) ? `保存に失敗しました／${MIGRATION_HINT}` : `保存に失敗しました: ${error.message}` };
+    return { ok: false, message: isMissingColumnError(error) ? `保存に失敗しました／${migrationHint(doc)}` : `保存に失敗しました: ${error.message}` };
   }
   const old = (before as Record<string, string> | null)?.[cols.pathCol];
   if (old && old !== path) await admin.storage.from(BUCKET).remove([old]).catch(() => undefined);
@@ -71,11 +73,12 @@ export async function getMunicipalFormPdfUrl(
   docArg: MunicipalFormDoc = "cert",
 ): Promise<{ ok: true; url: string } | Err> {
   if (!(await requireStaff())) return { ok: false, message: "権限がありません" };
-  const cols = MUNICIPAL_FORM_DOCS[parseMunicipalFormDoc(docArg)];
+  const doc = parseMunicipalFormDoc(docArg);
+  const cols = MUNICIPAL_FORM_DOCS[doc];
   const admin = createAdminClient();
   if (!admin) return { ok: false, message: "サーバー設定エラー" };
   const { data, error: e1 } = await admin.from("municipalities").select(cols.pathCol).eq("id", municipalityId).maybeSingle();
-  if (e1) return { ok: false, message: isMissingColumnError(e1) ? MIGRATION_HINT : e1.message };
+  if (e1) return { ok: false, message: isMissingColumnError(e1) ? migrationHint(doc) : e1.message };
   const path = (data as Record<string, string> | null)?.[cols.pathCol];
   if (!path) return { ok: false, message: "PDFが登録されていません" };
   const { data: signed, error } = await admin.storage.from(BUCKET).createSignedUrl(path, TTL);

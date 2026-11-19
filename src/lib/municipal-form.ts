@@ -10,16 +10,35 @@ import { warekiDate, warekiParts } from "@/lib/dependents";
 // 座標はPDFのページの左上を原点にした pt（1pt = 1/72インチ）。y は文字の上端。
 
 // 自治体ごとに登録できる書類（申請書・委任状）と、その保存先の列
-export type MunicipalFormDoc = "cert" | "proxy";
-export const MUNICIPAL_FORM_DOCS: Record<
-  MunicipalFormDoc,
-  { label: string; pathCol: "cert_form_pdf_path" | "proxy_form_pdf_path"; nameCol: "cert_form_pdf_name" | "proxy_form_pdf_name"; layoutCol: "cert_form_layout" | "proxy_form_layout" }
-> = {
-  cert: { label: "申請書", pathCol: "cert_form_pdf_path", nameCol: "cert_form_pdf_name", layoutCol: "cert_form_layout" },
-  proxy: { label: "委任状", pathCol: "proxy_form_pdf_path", nameCol: "proxy_form_pdf_name", layoutCol: "proxy_form_layout" },
+export type MunicipalFormDoc = "cert" | "proxy" | "juminhyo" | "juminhyo_proxy";
+type MunicipalFormCols = {
+  label: string;
+  pathCol: "cert_form_pdf_path" | "proxy_form_pdf_path" | "juminhyo_form_pdf_path" | "juminhyo_proxy_form_pdf_path";
+  nameCol: "cert_form_pdf_name" | "proxy_form_pdf_name" | "juminhyo_form_pdf_name" | "juminhyo_proxy_form_pdf_name";
+  layoutCol: "cert_form_layout" | "proxy_form_layout" | "juminhyo_form_layout" | "juminhyo_proxy_form_layout";
+  migration: string;
+};
+export const MUNICIPAL_FORM_DOCS: Record<MunicipalFormDoc, MunicipalFormCols> = {
+  cert: { label: "申請書", pathCol: "cert_form_pdf_path", nameCol: "cert_form_pdf_name", layoutCol: "cert_form_layout", migration: "0215_municipality_cert_form_pdf.sql" },
+  proxy: { label: "委任状", pathCol: "proxy_form_pdf_path", nameCol: "proxy_form_pdf_name", layoutCol: "proxy_form_layout", migration: "0215_municipality_cert_form_pdf.sql" },
+  // 住民票の申請書・委任状（0231）
+  juminhyo: {
+    label: "住民票の申請書",
+    pathCol: "juminhyo_form_pdf_path",
+    nameCol: "juminhyo_form_pdf_name",
+    layoutCol: "juminhyo_form_layout",
+    migration: "0231_municipality_juminhyo_form_pdf.sql",
+  },
+  juminhyo_proxy: {
+    label: "住民票の委任状",
+    pathCol: "juminhyo_proxy_form_pdf_path",
+    nameCol: "juminhyo_proxy_form_pdf_name",
+    layoutCol: "juminhyo_proxy_form_layout",
+    migration: "0231_municipality_juminhyo_form_pdf.sql",
+  },
 };
 export function parseMunicipalFormDoc(v: unknown): MunicipalFormDoc {
-  return v === "proxy" ? "proxy" : "cert";
+  return v === "proxy" || v === "juminhyo" || v === "juminhyo_proxy" ? v : "cert";
 }
 
 export type MunicipalFormFieldKind =

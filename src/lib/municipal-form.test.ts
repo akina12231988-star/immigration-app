@@ -3,7 +3,9 @@ import path from "node:path";
 import { PDFDocument } from "pdf-lib";
 import { describe, expect, it } from "vitest";
 import {
+  MUNICIPAL_FORM_DOCS,
   addressAfterCity,
+  parseMunicipalFormDoc,
   fillMunicipalForm,
   guessAcroFieldKind,
   municipalFormValue,
@@ -95,4 +97,15 @@ describe("fillMunicipalForm", () => {
     expect(doc.getPageCount()).toBe(1);
     expect(out.byteLength).toBeGreaterThan(bytes.byteLength);
   }, 20000);
+});
+
+describe("住民票の申請書・委任状（0231）", () => {
+  it("書類の種類を読み、保存先の列が別になる", () => {
+    expect(parseMunicipalFormDoc("juminhyo")).toBe("juminhyo");
+    expect(parseMunicipalFormDoc("juminhyo_proxy")).toBe("juminhyo_proxy");
+    expect(parseMunicipalFormDoc("nope")).toBe("cert");
+    expect(MUNICIPAL_FORM_DOCS.juminhyo.pathCol).toBe("juminhyo_form_pdf_path");
+    expect(MUNICIPAL_FORM_DOCS.juminhyo_proxy.layoutCol).toBe("juminhyo_proxy_form_layout");
+    expect(MUNICIPAL_FORM_DOCS.juminhyo.migration).toBe("0231_municipality_juminhyo_form_pdf.sql");
+  });
 });

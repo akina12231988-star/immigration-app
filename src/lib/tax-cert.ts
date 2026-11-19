@@ -16,6 +16,13 @@ export interface Municipality {
   proxy_form_pdf_path?: string; // 委任状PDF（0215）
   proxy_form_pdf_name?: string;
   proxy_form_layout?: unknown;
+  // 住民票の申請書・委任状のPDFと記入位置（0231。未適用・未登録は空）
+  juminhyo_form_pdf_path?: string;
+  juminhyo_form_pdf_name?: string;
+  juminhyo_form_layout?: unknown;
+  juminhyo_proxy_form_pdf_path?: string;
+  juminhyo_proxy_form_pdf_name?: string;
+  juminhyo_proxy_form_layout?: unknown;
   cert_name: string;
   has_income: boolean;
   has_tax: boolean;
