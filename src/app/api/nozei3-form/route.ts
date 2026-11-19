@@ -5,6 +5,15 @@ import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { getTaxOffice } from "@/lib/supabase/queries/tax-office";
 import { DEFAULT_NOZEI3_AGENT, fillNozei3Form } from "@/lib/nozei3-form";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { todayStr } from "@/lib/application-alerts";
+import {
+  NOZEI3_REF_FORM_KEY,
+  REF_FORM_SAMPLE_DATA,
+  fillRefForm,
+  normalizeRefFormLayout,
+  type RefFormData,
+} from "@/lib/ref-form";
 
 // 納税証明書交付請求書（納税証明書その3）の作成はサーバー側で行う
 // （国税庁の様式PDF＋日本語フォントの埋め込みが必要なため）。
@@ -30,11 +39,38 @@ async function build(workerId: string, taxOfficeId: string, agent: Agent, dispos
 
   const office = taxOfficeId ? await getTaxOffice(supabase, taxOfficeId).catch(() => null) : null;
 
-  const [template, font] = await Promise.all([
-    readFile(path.join(process.cwd(), "public", "forms", "nozei-shomei-3.pdf")),
-    readFile(path.join(process.cwd(), "public", "fonts", "NotoSansJP-Regular.ttf")),
-  ]);
-  const bytes = await fillNozei3Form(template, font, {
+  const font = await readFile(path.join(process.cwd(), "public", "fonts", "NotoSansJP-Regular.ttf"));
+  // 「ひな形・記入位置」で登録したひな形（全員共通・日本語）があり、記入位置を置いてあれば、それで作る
+  const own = await registeredTemplate(supabase);
+  const bytes = own
+    ? await (
+        await fillRefForm(own.pdf, font, own.layout, {
+          ...REF_FORM_SAMPLE_DATA,
+          person: {
+            ...REF_FORM_SAMPLE_DATA.person,
+            name: worker.name,
+            kana: worker.kana ?? "",
+            address: worker.address ?? "",
+            birth: null,
+            gender: "",
+            nationality: "",
+            postalCode: "",
+            cardNo: "",
+            passportNo: "",
+          },
+          org: { name: "", postalCode: "", address: "", tel: "", rep: "", repKana: "", corporateNo: "" },
+          so: { name: "", regNo: "", address: "", tel: "", rep: "", manager: "", staff: "" },
+          today: todayStr(),
+          planDates: {},
+          wage: null,
+          wage6: {},
+          p117: {},
+          myNumber: worker.my_number ?? "",
+          taxOfficeName: office?.name ?? "",
+          agent: { name: agent.name, address: agent.address },
+        } satisfies RefFormData)
+      ).save()
+    : await fillNozei3Form(await readFile(path.join(process.cwd(), "public", "forms", "nozei-shomei-3.pdf")), font, {
     name: worker.name,
     kana: worker.kana ?? "",
     address: worker.address ?? "",
@@ -96,5 +132,30 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error("nozei3-form generation failed:", err);
     return NextResponse.json({ error: "請求書の生成に失敗しました" }, { status: 500 });
+  }
+}
+
+// 登録したひな形（参考様式と同じ ref_form_templates。form_key = nozei3・全員共通・日本語）。
+// 記入位置がまだ空なら、これまでのアプリに入っている様式で作る
+async function registeredTemplate(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+): Promise<{ pdf: Uint8Array; layout: ReturnType<typeof normalizeRefFormLayout> } | null> {
+  try {
+    const { data } = await supabase
+      .from("ref_form_templates")
+      .select("pdf_path, layout, organization_id, language")
+      .eq("form_key", NOZEI3_REF_FORM_KEY);
+    const rows = (data as { pdf_path: string; layout: unknown; organization_id?: string | null; language: string }[] | null) ?? [];
+    const t = rows.find((r) => !r.organization_id && r.language === "日本語") ?? rows.find((r) => !r.organization_id) ?? null;
+    if (!t) return null;
+    const layout = normalizeRefFormLayout(t.layout);
+    if (layout.length === 0) return null;
+    const admin = createAdminClient();
+    if (!admin) return null;
+    const { data: blob } = await admin.storage.from("app-files").download(t.pdf_path);
+    if (!blob) return null;
+    return { pdf: new Uint8Array(await blob.arrayBuffer()), layout };
+  } catch {
+    return null;
   }
 }

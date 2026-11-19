@@ -19,6 +19,7 @@ import {
 } from "@/lib/ref-form";
 import { createRefFormTicket, deleteRefFormTemplate, registerBundledRefForms, registerRefFormPdf } from "@/app/(app)/ref-forms/actions";
 import { RefFormLayoutEditor } from "./RefFormLayoutEditor";
+import { unlockPdfForFilling } from "@/lib/pdf-unlock";
 
 // 参考様式のひな形（ref_form_templates。0227）を読む
 export function useRefFormTemplates() {
@@ -196,6 +197,7 @@ export function RefFormTemplatesDialog({
   const sameScope = (t: RefFormTemplate) => (t.organization_id ?? null) === scopeOrg;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [editing, setEditing] = useState<RefFormTemplate | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -205,6 +207,14 @@ export function RefFormTemplatesDialog({
     setError(null);
     try {
       if (file.type !== "application/pdf") throw new Error("PDFを選んでください");
+      // 保護（変更不可）が付いた PDF は、書き込めるように画像の PDF に作り直してから登録する
+      const unlocked = await unlockPdfForFilling(file);
+      file = unlocked.file;
+      setNotice(
+        unlocked.converted
+          ? "このPDFには保護（変更不可）が付いていたので、書き込めるように作り直して登録しました（見た目は同じです）。"
+          : null,
+      );
       const ticket = await createRefFormTicket(formKey, language, file.type);
       if (!ticket.ok) throw new Error(ticket.message);
       const { error: upErr } = await createClient()
@@ -332,6 +342,7 @@ export function RefFormTemplatesDialog({
           </div>
         )}
         {error && <p className="mb-2 rounded bg-seal/10 p-2 text-seal">{error}</p>}
+        {notice && <p className="mb-2 rounded bg-status-approved-bg p-2 text-status-approved-fg">{notice}</p>}
 
         {list.length === 0 ? (
           <p className="rounded-lg bg-background p-3 text-center text-muted">まだ登録されていません。</p>

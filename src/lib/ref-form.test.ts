@@ -24,6 +24,8 @@ import {
   refFormInitialText,
   refFormSampleOf,
   refFormWage6Values,
+  refFormCellWidth,
+  isRefFormKey,
 } from "./ref-form";
 
 describe("参考様式の行", () => {
@@ -326,5 +328,27 @@ describe("書類作成日（全様式共通）の年・月・日", () => {
     expect(refFormValue({ kind: "docall_m" }, d)).toBe("11");
     expect(refFormValue({ kind: "docall_d" }, d)).toBe("5");
     expect(refFormValue({ kind: "docall_d" }, { ...d, planDates: {} })).toBe("");
+  });
+});
+
+describe("証明書類の請求（税務署の交付請求書）", () => {
+  const d = { ...REF_FORM_SAMPLE_DATA, myNumber: "1234-5678-9012", taxOfficeName: "八代税務署", agent: { name: "野口明菜", address: "熊本市" } };
+  it("個人番号は12桁のときだけ数字で。税務署名・代理人", () => {
+    expect(refFormValue({ kind: "my_number" }, d)).toBe("123456789012");
+    expect(refFormValue({ kind: "my_number" }, { ...d, myNumber: "1234" })).toBe("");
+    expect(refFormValue({ kind: "tax_office" }, d)).toBe("八代");
+    expect(refFormValue({ kind: "tax_office_full" }, d)).toBe("八代税務署");
+    expect(refFormValue({ kind: "agent_name" }, d)).toBe("野口明菜");
+    expect(refFormValue({ kind: "agent_address" }, d)).toBe("熊本市");
+  });
+  it("マスの幅は入れた値、無ければ文字の大きさの1.5倍。保存値から読む", () => {
+    expect(refFormCellWidth({ size: 10 })).toBe(15);
+    expect(refFormCellWidth({ size: 10, cell: 18.1 })).toBe(18.1);
+    expect(normalizeRefFormLayout([{ id: "a", kind: "my_number", page: 0, x: 1, y: 1, size: 10, cell: 18 }])[0].cell).toBe(18);
+  });
+  it("交付請求書（nozei3）もひな形を登録できる様式", () => {
+    expect(isRefFormKey("nozei3")).toBe(true);
+    expect(isRefFormKey("t1-4-1")).toBe(true);
+    expect(isRefFormKey("nope")).toBe(false);
   });
 });
