@@ -10,6 +10,11 @@ import { annualHolidays } from "@/lib/job-conditions";
 import { findPlanDatesForTodo, listPlanDates } from "@/lib/supabase/queries/plan-dates";
 import { listWorkerWages } from "@/lib/supabase/queries/wages";
 import { sortWages } from "@/lib/wage";
+import { prep117Values } from "@/lib/ref-form-117";
+import { listEmployees } from "@/lib/supabase/queries/employees";
+import { listWorkersForSupport } from "@/lib/supabase/queries/workers";
+import { mergeSupportOrgLists } from "@/lib/custody";
+import type { Organization, WorkerWage } from "@/types/db";
 import {
   REF_FORM_ITEMS,
   REF_FORM_SAMPLE_DATA,
@@ -153,6 +158,16 @@ async function makePdf(sp: URLSearchParams, posted: Record<string, RefFormEdits>
       const cw = await currentWage(supabase, workerId, orgId || null);
       data.wage = cw ? { kind: cw.kind, amount: cw.amount } : null;
       data.wage6 = cw ? refFormWage6Values(cw, cw.detail, cw.annualHours) : {};
+      data.p117 = await load117(supabase, {
+        workerId,
+        todoNo: sp.get("todoNo") ?? "",
+        orgId: orgId || null,
+        org,
+        nationality: data.person.nationality,
+        planDates: data.planDates ?? {},
+        wageDetail: cw?.detail ?? null,
+        settings: (so as { value: Record<string, unknown> } | null)?.value ?? null,
+      });
       ({ drafts, orgTexts } = await loadRefFormEdits(supabase, workerId, sp.get("todoNo") ?? "", orgId || null));
       // その所属機関の版があればそれを使う（雇用条件書など、所属機関ごとの書式）
       targets = keys
@@ -265,5 +280,57 @@ async function currentWage(
     return { kind: w.kind, amount: w.amount, detail: w.detail, annualHours };
   } catch {
     return null;
+  }
+}
+
+// 1-17号 支援計画書に記載する項目（申請準備の Prep117Section と同じ値）。読めないものは空欄
+async function load117(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  p: {
+    workerId: string;
+    todoNo: string;
+    orgId: string | null;
+    org: Record<string, unknown>;
+    nationality: string;
+    planDates: Record<string, string>;
+    wageDetail: unknown;
+    settings: Record<string, unknown> | null;
+  },
+): Promise<Record<string, string>> {
+  try {
+    // 連名の方（この申請準備の joint_worker_id）
+    let joint: { name: string; birth: string | null; gender: string; nationality: string } | null = null;
+    const { data: chk } = await supabase
+      .from("application_prep_checklists")
+      .select("joint_worker_id")
+      .eq("worker_id", p.workerId)
+      .eq("todo_no", p.todoNo)
+      .maybeSingle();
+    const jointId = (chk as { joint_worker_id: string | null } | null)?.joint_worker_id ?? null;
+    if (jointId) {
+      const { data: j } = await supabase.from("workers").select("name, birth, gender, nationality").eq("id", jointId).maybeSingle();
+      const r = j as { name: string; birth: string | null; gender: string | null; nationality: string | null } | null;
+      if (r) joint = { name: r.name, birth: r.birth, gender: r.gender ?? "", nationality: r.nationality ?? "" };
+    }
+    const { data: hp } = await supabase.from("workers").select("housing_plan").eq("id", p.workerId).maybeSingle();
+    const [employees, supportWorkers] = await Promise.all([
+      listEmployees(supabase).catch(() => []),
+      listWorkersForSupport(supabase).catch(() => []),
+    ]);
+    return prep117Values({
+      mainNationality: p.nationality,
+      joint,
+      org: p.orgId ? ({ intake: p.org.intake } as Pick<Organization, "intake">) : null,
+      orgId: p.orgId,
+      employees,
+      supportWorkers,
+      planDates: p.planDates,
+      wage: { detail: p.wageDetail as WorkerWage["detail"] },
+      housingPlan: (hp as { housing_plan?: unknown } | null)?.housing_plan ?? null,
+      interpreters: mergeSupportOrgLists(p.settings).interpreters,
+      today: todayStr(),
+    });
+  } catch {
+    return {};
   }
 }
