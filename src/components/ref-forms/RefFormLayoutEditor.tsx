@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { getRefFormPdfUrl, saveRefFormLayout } from "@/app/(app)/ref-forms/actions";
 import {
   REF_FORM_FIELDS,
+  REF_FORM_DATE_FMTS,
+  isRefFormPlanDate,
+  refFormSampleOf,
+  type RefFormDateFmt,
   REF_FORM_FIELD_LABEL,
   REF_FORM_TEXT_PLACEHOLDER,
   isRefFormCircle,
@@ -21,7 +25,6 @@ interface PageView {
   dataUrl: string; // 描いた画像
 }
 
-const SAMPLE = Object.fromEntries(REF_FORM_FIELDS.map((f) => [f.kind, f.sample])) as Record<RefFormFieldKind, string>;
 const DEFAULT_SIZE: Partial<Record<RefFormFieldKind, number>> = {
   check: 10,
   circle: 16,
@@ -273,13 +276,32 @@ export function RefFormLayoutEditor({
                   onChange={(e) => changeKind(selected.id, e.target.value as RefFormFieldKind)}
                   className="min-h-[34px] rounded border border-border bg-background px-1"
                 >
-                  {REF_FORM_FIELDS.map((f) => (
+                  {REF_FORM_FIELDS.filter((f) => !f.hidden || f.kind === selected.kind).map((f) => (
                     <option key={f.kind} value={f.kind}>
                       {f.label}
                     </option>
                   ))}
                 </select>
               </label>
+              {isRefFormPlanDate(selected.kind) && (
+                <label className="flex flex-col gap-0.5">
+                  書き方（申請準備の「支援計画書の日付」から入ります）
+                  <select
+                    value={selected.fmt ?? "seireki"}
+                    onChange={(e) => {
+                      remember();
+                      update(selected.id, { fmt: e.target.value as RefFormDateFmt });
+                    }}
+                    className="min-h-[34px] rounded border border-border bg-background px-1"
+                  >
+                    {REF_FORM_DATE_FMTS.map((f) => (
+                      <option key={f.value} value={f.value}>
+                        {f.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               {selected.kind === "text" && (
                 <label className="flex flex-col gap-0.5">
                   書く文字
@@ -344,9 +366,14 @@ export function RefFormLayoutEditor({
           )}
           <p className="mb-1 font-bold">① 置く項目を選ぶ → ② PDFの書く場所をクリック</p>
           <div className="grid grid-cols-2 gap-1 lg:grid-cols-1">
-            {REF_FORM_FIELDS.map((f) => (
+            {REF_FORM_FIELDS.filter((f) => !f.hidden).map((f, n, list) => (
+              <Fragment key={f.kind}>
+              {f.group === "支援計画書の日付" && list[n - 1]?.group !== f.group && (
+                <p className="col-span-full mt-1 text-[11px] font-bold text-muted">
+                  支援計画書の日付（申請準備の詳細で保存した日付。置いたあと「書き方」で令和・西暦・年・月・日を選びます）
+                </p>
+              )}
               <button
-                key={f.kind}
                 type="button"
                 onClick={() => setKind(f.kind)}
                 className={`min-h-[34px] rounded-lg border px-2 text-left text-xs font-bold ${
@@ -355,6 +382,7 @@ export function RefFormLayoutEditor({
               >
                 {f.label}
               </button>
+              </Fragment>
             ))}
           </div>
           <p className="mt-2 text-[11px] text-muted">
@@ -440,7 +468,7 @@ export function RefFormLayoutEditor({
                 .map((it) => {
                   const isSel = it.id === selectedId;
                   const common = `absolute cursor-move select-none whitespace-nowrap ${isSel ? "outline outline-2 outline-brand" : "outline outline-1 outline-seal/60"}`;
-                  const label = it.kind === "text" ? it.text || REF_FORM_TEXT_PLACEHOLDER : SAMPLE[it.kind];
+                  const label = it.kind === "text" ? it.text || REF_FORM_TEXT_PLACEHOLDER : refFormSampleOf(it);
                   return (
                     <div
                       key={it.id}

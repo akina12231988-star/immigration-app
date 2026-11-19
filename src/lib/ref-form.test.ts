@@ -22,6 +22,7 @@ import {
   applyRefFormEdits,
   normalizeRefFormEdits,
   refFormInitialText,
+  refFormSampleOf,
 } from "./ref-form";
 
 describe("参考様式の行", () => {
@@ -233,5 +234,26 @@ describe("作成画面で直した分（0230）", () => {
       normalizeRefFormEdits({ texts: { a: "x", b: 1 }, moves: { c: { x: 1, y: 2 }, d: { x: "1" } }, off: ["c", "c", 3] }),
     ).toEqual({ texts: { a: "x" }, moves: { c: { x: 1, y: 2 } }, off: ["c"] });
     expect(normalizeRefFormEdits(null)).toEqual({ texts: {}, moves: {}, off: [] });
+  });
+});
+
+describe("支援計画書の日付（置いたあとに書き方を選ぶ）", () => {
+  const d = { ...REF_FORM_SAMPLE_DATA, planDates: { cond: "2026-11-10", es: "2026-12-01" } };
+  it("書き方どおりに書く。無ければ西暦", () => {
+    expect(refFormValue({ kind: "plan_cond" }, d)).toBe("2026年11月10日");
+    expect(refFormValue({ kind: "plan_cond", fmt: "wareki" }, d)).toBe("令和8年11月10日");
+    expect(refFormValue({ kind: "plan_es", fmt: "y" }, d)).toBe("2026");
+    expect(refFormValue({ kind: "plan_es", fmt: "m" }, d)).toBe("12");
+    expect(refFormValue({ kind: "plan_es", fmt: "d" }, d)).toBe("1");
+  });
+  it("保存していない日付は空欄", () => {
+    expect(refFormValue({ kind: "plan_guid", fmt: "y" }, d)).toBe("");
+  });
+  it("書き方は保存値から読み、見本も書き方に合わせる", () => {
+    const [it0] = normalizeRefFormLayout([{ id: "a", kind: "plan_con", page: 0, x: 1, y: 2, size: 10, fmt: "m" }]);
+    expect(it0.fmt).toBe("m");
+    expect(normalizeRefFormLayout([{ id: "b", kind: "plan_con", page: 0, x: 1, y: 2, size: 10, fmt: "zzz" }])[0].fmt).toBeUndefined();
+    expect(refFormSampleOf({ kind: "plan_con", fmt: "m" })).toBe("11");
+    expect(refFormSampleOf({ kind: "name" })).toBe("NGUYEN VAN A");
   });
 });
