@@ -8,6 +8,8 @@ import { CUSTODIAN_SETTING_KEY, mergeCustodianInfo } from "@/lib/custody";
 import { todayStr } from "@/lib/application-alerts";
 import { annualHolidays } from "@/lib/job-conditions";
 import { findPlanDatesForTodo, listPlanDates } from "@/lib/supabase/queries/plan-dates";
+import { listWorkerWages } from "@/lib/supabase/queries/wages";
+import { sortWages } from "@/lib/wage";
 import {
   REF_FORM_ITEMS,
   REF_FORM_SAMPLE_DATA,
@@ -147,6 +149,7 @@ async function makePdf(sp: URLSearchParams, posted: Record<string, RefFormEdits>
         planDates: await planDates(supabase, workerId, sp.get("todoNo") ?? ""),
       };
       data.docDate = data.planDates?.doc ?? "";
+      data.wage = await currentWage(supabase, workerId, orgId || null);
       ({ drafts, orgTexts } = await loadRefFormEdits(supabase, workerId, sp.get("todoNo") ?? "", orgId || null));
       // その所属機関の版があればそれを使う（雇用条件書など、所属機関ごとの書式）
       targets = keys
@@ -236,4 +239,20 @@ async function loadRefFormEdits(
     }
   }
   return { drafts, orgTexts };
+}
+
+// 賃金（外国人詳細の「賃金（1-6号別紙）」）のいちばん新しい記録。申請準備の所属機関の記録があればそちらを使う
+async function currentWage(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  workerId: string,
+  orgId: string | null,
+): Promise<{ kind: string; amount: number } | null> {
+  try {
+    const all = await listWorkerWages(supabase, workerId);
+    const own = orgId ? all.filter((w) => w.organization_id === orgId) : [];
+    const w = sortWages(own.length > 0 ? own : all)[0];
+    return w ? { kind: w.kind, amount: w.amount } : null;
+  } catch {
+    return null;
+  }
 }

@@ -12,6 +12,7 @@ import {
   REF_FORM_FIELD_LABEL,
   REF_FORM_TEXT_PLACEHOLDER,
   isRefFormCircle,
+  isRefFormMark,
   normalizeRefFormLayout,
   normalizeSignPages,
   refFormName,
@@ -30,6 +31,9 @@ const DEFAULT_SIZE: Partial<Record<RefFormFieldKind, number>> = {
   circle: 16,
   circle_male: 16,
   circle_female: 16,
+  mark_monthly: 9,
+  mark_daily: 9,
+  mark_hourly: 9,
 };
 // 画面に出す見本の文字の幅のおおよそ（全角は1文字＝1em、半角は0.55em）。
 // PDFと同じく「最大の幅」を超えるときは文字を小さくして見せる（切って隠さない）
@@ -45,7 +49,14 @@ function fittedSize(text: string, size: number, maxWidth?: number): number {
 }
 
 const isCircle = isRefFormCircle;
+// ○と■は文字ではなく形（大きさ＝一辺）で見せる
+const isShape = (k: RefFormFieldKind) => isRefFormCircle(k) || isRefFormMark(k);
 const MAX_PAGES = 20;
+// 置く項目の一覧で、まとまりの始めに出す説明
+const GROUP_NOTES: Record<string, string> = {
+  支援計画書の日付: "支援計画書の日付（申請準備の詳細で保存した日付。置いたあと「書き方」で令和・西暦・年・月・日を選びます）",
+  賃金: "賃金（外国人詳細の「賃金（1-6号別紙）」のいちばん新しい記録。■は本人の賃金の種類の□の上に置きます）",
+};
 
 // 参考様式のひな形PDFに「どこに何を書くか」と「本人の署名が要るページ」を置く画面（申請書類作成をアプリ一本化計画）。
 // 自治体の申請書の記入位置（components/mailing/MunicipalFormLayoutEditor.tsx）と同じ操作で、
@@ -334,7 +345,7 @@ export function RefFormLayoutEditor({
                   ＋
                 </button>
               </div>
-              {selected.kind !== "check" && !isCircle(selected.kind) && (
+              {selected.kind !== "check" && !isShape(selected.kind) && (
                 <label className="flex items-center gap-1">
                   <span className="w-16">最大の幅</span>
                   <input
@@ -368,10 +379,8 @@ export function RefFormLayoutEditor({
           <div className="grid grid-cols-2 gap-1 lg:grid-cols-1">
             {REF_FORM_FIELDS.filter((f) => !f.hidden).map((f, n, list) => (
               <Fragment key={f.kind}>
-              {f.group === "支援計画書の日付" && list[n - 1]?.group !== f.group && (
-                <p className="col-span-full mt-1 text-[11px] font-bold text-muted">
-                  支援計画書の日付（申請準備の詳細で保存した日付。置いたあと「書き方」で令和・西暦・年・月・日を選びます）
-                </p>
+              {GROUP_NOTES[f.group] && list[n - 1]?.group !== f.group && (
+                <p className="col-span-full mt-1 text-[11px] font-bold text-muted">{GROUP_NOTES[f.group]}</p>
               )}
               <button
                 type="button"
@@ -473,15 +482,15 @@ export function RefFormLayoutEditor({
                     <div
                       key={it.id}
                       title={REF_FORM_FIELD_LABEL[it.kind]}
-                      className={`${common} ${isCircle(it.kind) ? "rounded-full" : ""} bg-seal/10 text-seal`}
+                      className={`${common} ${isCircle(it.kind) ? "rounded-full" : ""} ${isRefFormMark(it.kind) ? "bg-seal/70" : "bg-seal/10"} text-seal`}
                       style={{
                         left: it.x * scale,
                         top: it.y * scale,
-                        fontSize: (isCircle(it.kind) ? it.size : fittedSize(label, it.size, it.maxWidth)) * scale,
+                        fontSize: (isShape(it.kind) ? it.size : fittedSize(label, it.size, it.maxWidth)) * scale,
                         lineHeight: 1.15,
-                        ...(isCircle(it.kind) ? { width: it.size * scale, height: it.size * scale } : {}),
+                        ...(isShape(it.kind) ? { width: it.size * scale, height: it.size * scale } : {}),
                         // 「最大の幅」は点線の幅で見せる（文字は上で小さくしているので切らない）
-                        ...(it.maxWidth && !isCircle(it.kind) ? { minWidth: it.maxWidth * scale, outlineStyle: "dashed" as const } : {}),
+                        ...(it.maxWidth && !isShape(it.kind) ? { minWidth: it.maxWidth * scale, outlineStyle: "dashed" as const } : {}),
                       }}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -500,7 +509,7 @@ export function RefFormLayoutEditor({
                         };
                       }}
                     >
-                      {isCircle(it.kind) ? "" : label}
+                      {isShape(it.kind) ? "" : label}
                       {/* 選んでいる項目の上に出す小さな操作（項目名・消す） */}
                       {isSel && (
                         <span

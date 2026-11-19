@@ -264,6 +264,42 @@ export function RefFormCreator({
 
   // ○をドラッグで動かす（pt に直して持つ）
   const posOf = (i: RefFormItem) => moves[i.id] ?? { x: i.x, y: i.y };
+  // ドラッグを始める（文字のつまみ・○）。位置はページの左上から測る
+  const startDrag = (e: React.PointerEvent<HTMLElement>, i: RefFormItem) => {
+    e.preventDefault();
+    const pageEl = e.currentTarget.closest<HTMLElement>("[data-ref-page]");
+    if (!pageEl) return;
+    const rect = pageEl.getBoundingClientRect();
+    drag.current = {
+      id: i.id,
+      pageEl,
+      dx: (e.clientX - rect.left) / scale - posOf(i).x,
+      dy: (e.clientY - rect.top) / scale - posOf(i).y,
+    };
+  };
+  // 入力中に Alt＋矢印キーで 1pt（Shift も押すと 5pt）ずつ動かす
+  const nudge = (e: React.KeyboardEvent<HTMLInputElement>, i: RefFormItem) => {
+    if (!e.altKey) return;
+    const step = e.shiftKey ? 5 : 1;
+    const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
+    if (!d) return;
+    e.preventDefault();
+    const p = posOf(i);
+    setMoves((m) => ({ ...m, [i.id]: { x: Math.max(0, p.x + d[0]), y: Math.max(0, p.y + d[1]) } }));
+  };
+  // 入力欄の幅（pt）。「最大の幅」があればそれ、無ければ入れた文字に合わせる
+  const inputWidth = (i: RefFormItem, text: string) => {
+    if (i.maxWidth) return i.maxWidth;
+    let em = 0;
+    for (const ch of text || "（空なら書きません）") em += /[\u0020-\u007e\uff61-\uff9f]/.test(ch) ? 0.6 : 1;
+    return Math.max(i.size * 2, em * i.size + 4);
+  };
+  const resetMove = (id: string) =>
+    setMoves((m) => {
+      const next = { ...m };
+      delete next[id];
+      return next;
+    });
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
       const d = drag.current;
@@ -295,7 +331,7 @@ export function RefFormCreator({
     <div className="flex flex-col gap-3">
       <p className="rounded-xl border-2 border-dashed border-brand/50 bg-brand/5 px-3 py-2 text-xs leading-relaxed">
         <span className="font-black text-brand">🧪 試験中</span>
-        ：自動で入る所（氏名・年齢・日付・所属機関など）は様式にそのまま出ています。赤い点線の所に文字を入れ、○はドラッグで動かせます。
+        ：自動で入る所（氏名・年齢・日付・所属機関など）は様式にそのまま出ています。赤い点線の所に文字を入れます。文字は左の赤いつまみ（⠿）、○はそのものをドラッグすると動きます（入力中は Alt＋矢印キーでも動きます）。
         直したら「印刷」「PDFで保存」、あとでまとめて PDF にするなら「一時保存」を押してください。
       </p>
       {error && <p className="rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">{error}</p>}
@@ -326,6 +362,7 @@ export function RefFormCreator({
               {pages.map((p, pi) => (
                 <div
                   key={pi}
+                  data-ref-page
                   className="relative shrink-0 bg-white shadow"
                   style={{ width: p.width * scale, height: p.height * scale }}
                 >
@@ -334,21 +371,34 @@ export function RefFormCreator({
                   {textItems
                     .filter((i) => i.page === pi)
                     .map((i) => (
-                      <input
+                      <div
                         key={i.id}
-                        aria-label={`${pi + 1}ページ目の文字`}
-                        value={texts[i.id] ?? ""}
-                        onChange={(e) => setTexts((t) => ({ ...t, [i.id]: e.target.value }))}
-                        placeholder="（空なら書きません）"
-                        className="absolute rounded-sm border border-dashed border-seal bg-seal/5 px-0.5 text-black placeholder:text-seal/50"
-                        style={{
-                          left: posOf(i).x * scale,
-                          top: posOf(i).y * scale,
-                          width: (i.maxWidth ?? 140) * scale,
-                          fontSize: i.size * scale,
-                          lineHeight: 1.15,
-                        }}
-                      />
+                        className="group absolute flex items-start"
+                        style={{ left: posOf(i).x * scale, top: posOf(i).y * scale }}
+                      >
+                        {/* つまみ（左の外側）。入力欄の文字の始まりは PDF に書く位置のまま */}
+                        <span
+                          title="ドラッグで動かせます（入力中は Alt＋矢印キーでも動きます）"
+                          aria-hidden="true"
+                          className="absolute right-full top-0 flex h-full cursor-move touch-none select-none items-center rounded-l bg-seal px-0.5 text-[10px] leading-none text-white opacity-60 group-hover:opacity-100"
+                          onPointerDown={(e) => startDrag(e, i)}
+                        >
+                          ⠿
+                        </span>
+                        <input
+                          aria-label={`${pi + 1}ページ目の文字（Alt＋矢印キーで位置を動かせます）`}
+                          value={texts[i.id] ?? ""}
+                          onChange={(e) => setTexts((t) => ({ ...t, [i.id]: e.target.value }))}
+                          onKeyDown={(e) => nudge(e, i)}
+                          placeholder="（空なら書きません）"
+                          className="rounded-sm border border-dashed border-seal bg-seal/5 px-0 text-black placeholder:text-seal/50"
+                          style={{
+                            width: inputWidth(i, texts[i.id] ?? "") * scale,
+                            fontSize: i.size * scale,
+                            lineHeight: 1.15,
+                          }}
+                        />
+                      </div>
                     ))}
                   {circleItems
                     .filter((i) => i.page === pi && !off.includes(i.id))
@@ -363,18 +413,7 @@ export function RefFormCreator({
                           width: i.size * scale,
                           height: i.size * scale,
                         }}
-                        onPointerDown={(e) => {
-                          e.preventDefault();
-                          // 動かしている間の位置はページの左上から測る
-                          const pageEl = e.currentTarget.parentElement as HTMLElement;
-                          const rect = pageEl.getBoundingClientRect();
-                          drag.current = {
-                            id: i.id,
-                            pageEl,
-                            dx: (e.clientX - rect.left) / scale - posOf(i).x,
-                            dy: (e.clientY - rect.top) / scale - posOf(i).y,
-                          };
-                        }}
+                        onPointerDown={(e) => startDrag(e, i)}
                       />
                     ))}
                 </div>
@@ -403,6 +442,15 @@ export function RefFormCreator({
                       className="min-h-[36px] rounded-md border border-border px-2 text-sm font-normal text-foreground"
                     />
                   </label>
+                  {moves[i.id] && (
+                    <button
+                      type="button"
+                      onClick={() => resetMove(i.id)}
+                      className="min-h-[28px] self-start rounded-md border border-border px-2 text-xs font-bold text-brand"
+                    >
+                      位置を元に戻す
+                    </button>
+                  )}
                   {orgId && (
                     <label className="inline-flex min-h-[32px] items-center gap-1.5 text-xs text-brand">
                       <input
@@ -437,13 +485,7 @@ export function RefFormCreator({
                   {moves[i.id] && (
                     <button
                       type="button"
-                      onClick={() =>
-                        setMoves((m) => {
-                          const next = { ...m };
-                          delete next[i.id];
-                          return next;
-                        })
-                      }
+                      onClick={() => resetMove(i.id)}
                       className="min-h-[28px] rounded-md border border-border px-2 font-bold text-brand"
                     >
                       元の位置に戻す
