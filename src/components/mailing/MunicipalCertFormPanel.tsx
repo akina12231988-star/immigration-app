@@ -82,6 +82,9 @@ export function MunicipalCertFormPanel({
   const [dragging, setDragging] = useState(false);
   // この請求だけ直した「自由な文字」（項目ID → 文字）
   const [textEdits, setTextEdits] = useState<Record<string, string>>({});
+  // 開いて確認の画面（PDF を見ながら自由な文字を直す）
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewHref, setPreviewHref] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   if (!municipality) return null;
   const m = municipality;
@@ -177,38 +180,6 @@ export function MunicipalCertFormPanel({
       />
       {hasPdf ? (
         <>
-          {personHref && textItems.length > 0 && (
-            <div className="flex flex-col gap-1 rounded-lg bg-background p-2">
-              <p className="text-[11px] font-bold text-muted">
-                自由な文字（この請求だけ直せます。記入位置で決めた文字は変わりません）
-              </p>
-              {textItems.map((i, n) => (
-                <label key={i.id} className="flex flex-wrap items-center gap-1.5 text-xs">
-                  <span className="w-14 shrink-0 text-muted">{n + 1}つ目</span>
-                  <input
-                    value={textEdits[i.id] ?? i.text ?? ""}
-                    onChange={(e) => setTextEdits((t) => ({ ...t, [i.id]: e.target.value }))}
-                    className="min-h-[34px] min-w-0 flex-1 rounded-md border border-border bg-surface px-2"
-                  />
-                  {i.id in textEdits && textEdits[i.id] !== (i.text ?? "") && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setTextEdits((t) => {
-                          const next = { ...t };
-                          delete next[i.id];
-                          return next;
-                        })
-                      }
-                      className="text-[11px] font-bold text-brand underline"
-                    >
-                      元に戻す
-                    </button>
-                  )}
-                </label>
-              ))}
-            </div>
-          )}
           <div className="flex flex-wrap items-center gap-1.5">
             {personHref && layoutCount > 0 && (
               <>
@@ -216,10 +187,18 @@ export function MunicipalCertFormPanel({
                   <Download size={14} />
                   {label}（自動入力）をダウンロード
                 </a>
-                <a href={personHref} target="_blank" rel="noopener noreferrer" className={`${btn} border border-brand text-brand`}>
+                {/* 開いて確認: アプリの中で PDF を見ながら、自由な文字を直して作り直せる */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPreviewHref(personHref);
+                    setPreviewOpen(true);
+                  }}
+                  className={`${btn} border border-brand text-brand`}
+                >
                   <FileText size={14} />
                   開いて確認・印刷
-                </a>
+                </button>
               </>
             )}
             {canEdit && (
@@ -260,6 +239,88 @@ export function MunicipalCertFormPanel({
         )
       )}
       {error && <p className="text-[11px] text-seal">{error}</p>}
+      {/* 開いて確認: PDF を見ながら自由な文字を直し、作り直してから印刷・ダウンロードする */}
+      {previewOpen &&
+        personHref &&
+        createPortal(
+          <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/50 p-2 sm:p-4">
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label={`${label}を確認`}
+              className="flex w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-surface shadow-xl"
+            >
+              <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
+                <p className="flex-1 text-sm font-bold">{label}を確認（{m.name}）</p>
+                <a href={`${personHref}&download=1`} className={`${btn} bg-brand text-brand-foreground`}>
+                  <Download size={14} />
+                  ダウンロード
+                </a>
+                <a href={personHref} target="_blank" rel="noopener noreferrer" className={`${btn} border border-brand text-brand`}>
+                  <FileText size={14} />
+                  新しいタブで開いて印刷
+                </a>
+                <button type="button" onClick={() => setPreviewOpen(false)} className={`${btn} border border-border`}>
+                  閉じる
+                </button>
+              </div>
+              <div className="flex min-h-0 flex-1 flex-col gap-2 p-3 lg:flex-row">
+                {textItems.length > 0 && (
+                  <div className="flex shrink-0 flex-col gap-2 lg:w-80">
+            <div className="flex flex-col gap-1 rounded-lg bg-background p-2">
+              <p className="text-[11px] font-bold text-muted">
+                自由な文字（この請求だけ直せます。記入位置で決めた文字は変わりません）
+              </p>
+              {textItems.map((i, n) => (
+                <label key={i.id} className="flex flex-wrap items-center gap-1.5 text-xs">
+                  <span className="w-14 shrink-0 text-muted">{n + 1}つ目</span>
+                  <input
+                    value={textEdits[i.id] ?? i.text ?? ""}
+                    onChange={(e) => setTextEdits((t) => ({ ...t, [i.id]: e.target.value }))}
+                    className="min-h-[34px] min-w-0 flex-1 rounded-md border border-border bg-surface px-2"
+                  />
+                  {i.id in textEdits && textEdits[i.id] !== (i.text ?? "") && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setTextEdits((t) => {
+                          const next = { ...t };
+                          delete next[i.id];
+                          return next;
+                        })
+                      }
+                      className="text-[11px] font-bold text-brand underline"
+                    >
+                      元に戻す
+                    </button>
+                  )}
+                </label>
+              ))}
+            </div>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewHref(personHref)}
+                      disabled={previewHref === personHref}
+                      className={`${btn} justify-center bg-brand text-brand-foreground disabled:opacity-50`}
+                    >
+                      直した文字で作り直す
+                    </button>
+                    <p className="text-[11px] text-muted">
+                      直したら「直した文字で作り直す」を押すと右の PDF が変わります。ダウンロード・印刷は直した文字で作ります。
+                    </p>
+                  </div>
+                )}
+                <iframe
+                  key={previewHref}
+                  src={previewHref}
+                  title={`${label}の確認`}
+                  className="min-h-[60vh] w-full flex-1 rounded-lg border border-border bg-white"
+                />
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
       {/* 編集中の自治体の画面（モーダル）の中から開いても全画面になるよう、body 直下に出す */}
       {editing &&
         createPortal(
