@@ -4,7 +4,7 @@ import { birthSeireki, birthWareki } from "@/lib/person-copy";
 import { warekiDate } from "@/lib/dependents";
 import { SUBMISSION_ITEMS, type SubmissionItem } from "@/lib/submission-list";
 import { PLAN_DATE_FIELDS, type PlanDateKey } from "@/lib/support-plan-dates";
-import { calcWageDetail, formatYen, normalizeWageDetail } from "@/lib/wage-calc";
+import { calcWageDetail, fixedOtOverHours, formatYen, normalizeWageDetail } from "@/lib/wage-calc";
 
 // ---- 参考様式の作成（申請書類作成をアプリ一本化計画・試験中） ----
 // 参考様式（1-4号・1-5号・1-6号・1-17号・11-1号など）のひな形PDFを、様式・言語ごとに1回だけ登録し（ref_form_templates。0227）、
@@ -125,8 +125,10 @@ export const W6_FIELDS = [
       { key: `allow${n}_method`, label: `手当(${c})の計算方法`, sample: ["実費（上限5,000円）", "毎月定額", "欠勤なしの月に支給", "毎月定額"][n - 1] },
     ];
   }),
+  { key: "ot_name", label: "固定残業代の手当の名前（(e)「　手当」）", sample: "固定残業" },
   { key: "ot_amount", label: "固定残業代の金額", sample: "20,000" },
-  { key: "ot_hours", label: "固定残業代の時間数", sample: "15" },
+  { key: "ot_hours", label: "固定残業代の時間数（〇時間分の時間外手当）", sample: "15" },
+  { key: "ot_over_hours", label: "固定残業代の「〇時間を超える」時間数", sample: "15" },
   { key: "allow_total", label: "諸手当の合計", sample: "5,000" },
   { key: "gross", label: "3. 1か月当たりの支払概算額", sample: "196,000" },
   { key: "tax", label: "4(a) 税金", sample: "3,010" },
@@ -176,6 +178,8 @@ export function refFormWage6Values(
     net: y(r.net),
     ot_amount: detail.fixed_ot_enabled ? y(detail.fixed_ot_amount) : "",
     ot_hours: detail.fixed_ot_enabled && detail.fixed_ot_hours ? String(detail.fixed_ot_hours) : "",
+    ot_name: detail.fixed_ot_enabled ? detail.fixed_ot_name : "",
+    ot_over_hours: detail.fixed_ot_enabled && fixedOtOverHours(detail) ? String(fixedOtOverHours(detail)) : "",
   };
   detail.allowances.slice(0, 4).forEach((a, i) => {
     out[`allow${i + 1}_name`] = a.name || a.type;

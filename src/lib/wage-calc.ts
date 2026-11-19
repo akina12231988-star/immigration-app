@@ -129,6 +129,11 @@ export function formatYen(n: number): string {
   return Math.round(Number(n) || 0).toLocaleString("ja-JP");
 }
 
+// 固定残業代で「この時間を超える時間外労働分の割増賃金は追加で支給」の時間数（入れていなければ固定残業代の時間数と同じ）
+export function fixedOtOverHours(detail: Pick<WageDetail, "fixed_ot_hours" | "fixed_ot_over_hours">): number {
+  return Number(detail.fixed_ot_over_hours) || Number(detail.fixed_ot_hours) || 0;
+}
+
 // ---- 1. 基本賃金（1か月当たりの金額に直す） ----
 // 月給はそのまま、時給は「時給×年間所定労働時間÷12」、
 // 日給は1日8時間として「日給×月平均所定労働日数」、年収は12で割る。
@@ -305,6 +310,8 @@ export function emptyWageDetail(): WageDetail {
     fixed_ot_enabled: false,
     fixed_ot_amount: 0,
     fixed_ot_hours: 20,
+    fixed_ot_name: "固定残業",
+    fixed_ot_over_hours: 0,
     tax_spouse: false,
     tax_dependents: 0,
     social_enabled: true,
@@ -358,6 +365,8 @@ export function normalizeWageDetail(raw: unknown): WageDetail {
     fixed_ot_enabled: Boolean(r.fixed_ot_enabled ?? base.fixed_ot_enabled),
     fixed_ot_amount: toNumber(r.fixed_ot_amount ?? base.fixed_ot_amount),
     fixed_ot_hours: toNumber(r.fixed_ot_hours ?? base.fixed_ot_hours),
+    fixed_ot_name: String(r.fixed_ot_name ?? base.fixed_ot_name),
+    fixed_ot_over_hours: toNumber(r.fixed_ot_over_hours ?? base.fixed_ot_over_hours),
     tax_spouse: Boolean(r.tax_spouse ?? base.tax_spouse),
     tax_dependents: toNumber(r.tax_dependents ?? base.tax_dependents),
     social_enabled: Boolean(r.social_enabled ?? base.social_enabled),
@@ -470,7 +479,7 @@ export function wageDetailFormText(
     )
     .join("\n");
   const otLine = detail.fixed_ot_enabled
-    ? `(固定残業代) ${formatYen(detail.fixed_ot_amount)}円／時間外労働${formatYen(detail.fixed_ot_hours)}時間分の割増賃金として定額支給する。`
+    ? `(固定残業代) ${detail.fixed_ot_name ? `${detail.fixed_ot_name}手当 ` : ""}${formatYen(detail.fixed_ot_amount)}円／時間外労働の有無にかかわらず、${formatYen(detail.fixed_ot_hours)}時間分の時間外手当として支給。${formatYen(fixedOtOverHours(detail))}時間を超える時間外労働分についての割増賃金は追加で支給。`
     : "";
   const otherLines = detail.others
     .map((o) => `　　　　　（${o.name}）（約${formatYen(o.amount)}円）`)

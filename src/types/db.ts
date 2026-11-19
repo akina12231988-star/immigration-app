@@ -724,6 +724,8 @@ export interface WageDetail {
   fixed_ot_enabled: boolean; // 固定残業代があるか
   fixed_ot_amount: number; // 固定残業代（円）
   fixed_ot_hours: number; // 固定残業代に含む時間外労働の時間数
+  fixed_ot_name: string; // 固定残業代の手当の名前（1-6号別紙の (e)（　　手当）。例: 固定残業）
+  fixed_ot_over_hours: number; // この時間を超える時間外労働分の割増賃金は追加で支給（0 = 上の時間数と同じ）
   tax_spouse: boolean; // 源泉控除対象配偶者あり
   tax_dependents: number; // 扶養親族等の数（人）
   social_enabled: boolean; // 社会保険（健康保険・厚生年金）に加入する
