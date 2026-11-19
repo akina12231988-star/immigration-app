@@ -178,7 +178,7 @@ import {
   PREP_CERT_PATTERNS,
   PREP_DOC_ALWAYS_EXTRAS,
   compareGensenKazei,
-  parsePrepAmounts,
+  prepAmountRows,
   serializePrepAmounts,
   sumPrepAmounts,
   PREP_DOC_ATTACH_ITEMS,
@@ -3841,8 +3841,8 @@ function StatusExtraField({
       );
     case "amounts": {
       // 何件でも入れられる金額（源泉徴収票が複数枚のとき）。空の欄を1つは出しておく
-      const list = parsePrepAmounts(ds.amount);
-      const rows = list.length === 0 ? [""] : list;
+      // 「もう1枚追加」で足した空の欄も出す（保存するときに空の欄は落とす）
+      const rows = prepAmountRows(ds.amount);
       const total = sumPrepAmounts(ds.amount);
       const update = (next: string[], save: boolean) =>
         onPatch({ amount: serializePrepAmounts(next) }, save);
