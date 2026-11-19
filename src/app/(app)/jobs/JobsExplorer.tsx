@@ -15,15 +15,18 @@ import {
   NotebookPen,
   Pencil,
   Plus,
+  Trash2,
   TriangleAlert,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ApplicationResultBadge } from "@/components/postings/ApplicationResultBadge";
 import { JobApplicationDialog } from "@/components/workers/JobApplicationDialog";
 import { createClient } from "@/lib/supabase/client";
 import {
+  deleteApplication as deleteJobApplication,
   insertApplication,
   updateApplication as updateJobApplication,
 } from "@/lib/supabase/queries/jobs";
@@ -129,6 +132,23 @@ export function JobsExplorer({
   const [adding, setAdding] = useState(false);
   // 応募の内容（応募日＝紹介年月日、結果日＝採用年月日など）を直す
   const [editing, setEditing] = useState<ApplicationWithRefs | null>(null);
+  // 間違えて登録した応募（二重登録など）を消す
+  const [deleting, setDeleting] = useState<ApplicationWithRefs | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const removeApplication = async () => {
+    if (!deleting) return;
+    setDeleteBusy(true);
+    setError(null);
+    try {
+      await deleteJobApplication(createClient(), deleting.id);
+      setRows((prev) => prev.filter((r) => r.id !== deleting.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "削除に失敗しました");
+    } finally {
+      setDeleteBusy(false);
+      setDeleting(null);
+    }
+  };
 
   // 帳簿情報（求職受付・採用後の記載事項）の編集ダイアログ
   const [ledgerFor, setLedgerFor] = useState<ApplicationWithRefs | null>(null);
@@ -990,6 +1010,15 @@ export function JobsExplorer({
                     </button>
                     <button
                       type="button"
+                      onClick={() => setDeleting(a)}
+                      className="flex items-center gap-1 rounded-lg border border-seal/50 px-2.5 py-1.5 text-[11px] font-bold text-seal"
+                      title="間違えて登録した応募（二重に入れたものなど）を消します"
+                    >
+                      <Trash2 size={12} />
+                      削除
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setLedgerFor(a)}
                       className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-[11px] font-bold text-muted"
                       title="求職受付番号（求職管理簿の受付年月日）や採用後の記載事項を入れます"
@@ -1056,6 +1085,19 @@ export function JobsExplorer({
           }
         />
       )}
+
+      <ConfirmDialog
+        open={deleting !== null}
+        title="応募を削除"
+        message={
+          deleting
+            ? `${deleting.workers?.name ?? ""}（${deleting.organizations?.name ?? "応募先未設定"}）の応募記録（紹介年月日 ${deleting.applied_on ?? "—"}）を削除します。二重に入れたものを消すときは、残す方と日付を見比べてから消してください。この操作は取り消せません。`
+            : ""
+        }
+        busy={deleteBusy}
+        onConfirm={removeApplication}
+        onCancel={() => setDeleting(null)}
+      />
 
       {ledgerFor && (
         <LedgerInfoDialog
