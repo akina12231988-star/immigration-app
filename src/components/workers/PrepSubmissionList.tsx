@@ -289,7 +289,10 @@ export function PrepSubmissionList({
                           {r.sub && <span className="mr-1 font-bold">{r.sub}</span>}
                           {r.label}
                           {openNotes && r.note && <p className="mt-0.5 text-[10px] leading-snug text-muted">※{r.note}</p>}
-                          {r.mark === "有" && workerId && isRefFormItem(r) && (
+                          {/* 参考様式の欄（作成・ひな形と記入位置）。「有」と、まだ有／無を決めていない行に出す
+                              （決める前でもひな形の登録・記入位置の準備ができるように）。「無」の行には出さない。
+                              まとめてダウンロードに入るのは「有」の行だけ */}
+                          {r.mark !== "無" && workerId && isRefFormItem(r) && (
                             <div className="mt-1.5">
                               <RefFormRowBar
                                 todoNo={todoNo}
