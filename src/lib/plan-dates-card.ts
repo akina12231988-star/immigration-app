@@ -27,6 +27,7 @@ const SHORT_LABELS: Record<string, string> = {
   scPeriod: "契約期間（5年間）",
   apply: "申請予定日",
   sign: "署名日",
+  docAll: "書類作成日（共通）",
 };
 
 // 名刺では「2026/8/5」の形（短くて読みやすい）

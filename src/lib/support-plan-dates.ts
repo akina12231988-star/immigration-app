@@ -136,6 +136,8 @@ export const PLAN_DATE_FIELDS = [
   { key: "guid", label: "事前ガイダンス実施日" },
   { key: "orient", label: "生活オリエンテーション実施日" },
   { key: "sign", label: "署名日" },
+  // 支援計画書に限らず、この申請の様式に共通で書く作成日（日付計算ツールでは出さず、ここで入れる）
+  { key: "docAll", label: "書類作成日（全様式共通）" },
 ] as const;
 
 export type PlanDateKey = (typeof PLAN_DATE_FIELDS)[number]["key"];
@@ -186,6 +188,7 @@ export const PLAN_DATE_GROUPS: PlanDateGroup[] = [
     rows: [
       { key: "apply", label: "申請予定日（入管）" },
       { key: "sign", label: "署名日" },
+      { key: "docAll", label: "書類作成日（全様式共通）" },
     ],
   },
 ];
@@ -195,6 +198,9 @@ export const PLAN_DATE_GROUPS: PlanDateGroup[] = [
 export function contractPeriodEnd(employStart: string, years: number = CONTRACT_YEARS): string {
   return addDaysYmd(addYearsYmd(employStart, years), -1);
 }
+
+// 日付計算ツールで保存し直しても消さない日付（申請準備の「支援計画書の日付」でだけ入れるもの）
+export const PLAN_DATE_KEEP_KEYS = ["docAll"] as const;
 
 // 雇用契約の年数（申請準備の「支援計画書の日付」で選ぶ。既定は2年、3年で結ぶ人もいる）。
 // 保存は日付一覧（support_plan_dates.dates）の "eeYears" に "3" のように入れる（マイグレーション不要）
