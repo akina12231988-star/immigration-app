@@ -30,6 +30,7 @@ import {
   refFormFileName,
   refFormOffIds,
   refFormWage6Values,
+  withDerivedPlanDates,
   applyRefFormEdits,
   normalizeRefFormEdits,
   EMPTY_REF_FORM_EDITS,
@@ -148,6 +149,7 @@ async function makePdf(sp: URLSearchParams, posted: Record<string, RefFormEdits>
           holidayIrregularUnit: os(intake.job_holiday_irregular_unit),
           holidayIrregularDays: os(intake.job_holiday_irregular_days),
           holidayIrregularOther: os(intake.job_holiday_irregular_other),
+          supportFee: os(intake.support_fee),
         },
         so: {
           name: c.officeName,
@@ -159,7 +161,7 @@ async function makePdf(sp: URLSearchParams, posted: Record<string, RefFormEdits>
           staff: c.supportStaffName,
         },
         today: todayStr(),
-        planDates: await planDates(supabase, workerId, sp.get("todoNo") ?? ""),
+        planDates: withDerivedPlanDates(await planDates(supabase, workerId, sp.get("todoNo") ?? "")),
       };
       data.docDate = data.planDates?.doc ?? "";
       const cw = await currentWage(supabase, workerId, orgId || null);
