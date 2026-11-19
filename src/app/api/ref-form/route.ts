@@ -19,6 +19,10 @@ import {
   pickRefFormTemplate,
   refFormFileName,
   refFormOffIds,
+  applyRefFormEdits,
+  normalizeRefFormEdits,
+  EMPTY_REF_FORM_EDITS,
+  type RefFormEdits,
   refFormPagesFor,
   type RefFormData,
   type RefFormTemplate,
@@ -34,9 +38,26 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  return makePdf(req.nextUrl.searchParams, null);
+}
+
+// 作成画面の「印刷」「PDFで保存」: まだ一時保存していない直した分（edits）で作る。
+//   body: { query: "workerId=...&keys=...&mode=one&todoNo=...", edits: { [form_key]: RefFormEdits } }
+export async function POST(req: NextRequest) {
+  const body = (await req.json().catch(() => null)) as { query?: unknown; edits?: unknown } | null;
+  if (!body || typeof body.query !== "string") return NextResponse.json({ error: "不正なリクエストです" }, { status: 400 });
+  const edits: Record<string, RefFormEdits> = {};
+  if (body.edits && typeof body.edits === "object") {
+    for (const [k, v] of Object.entries(body.edits as Record<string, unknown>)) {
+      edits[k] = normalizeRefFormEdits(v as Parameters<typeof normalizeRefFormEdits>[0]);
+    }
+  }
+  return makePdf(new URLSearchParams(body.query), edits);
+}
+
+async function makePdf(sp: URLSearchParams, posted: Record<string, RefFormEdits> | null) {
   const me = await getMyProfile();
   if (!me) return NextResponse.json({ error: "ログインが必要です" }, { status: 401 });
-  const sp = req.nextUrl.searchParams;
   const mode = parseRefFormMode(sp.get("mode"));
   const sample = sp.get("sample") === "1";
   const templateId = sp.get("templateId") ?? "";
@@ -56,6 +77,9 @@ export async function GET(req: NextRequest) {
 
     let data: RefFormData;
     let targets: RefFormTemplate[];
+    // この人の一時保存（様式ごと）と所属機関の共通の文字（ひな形ごと）。0230 が未適用なら無し
+    let drafts: Record<string, { template_id: string | null } & RefFormEdits> = {};
+    let orgTexts: Record<string, Record<string, string>> = {};
     let workerName = "見本";
     if (sample) {
       const t = templates.find((x) => x.id === templateId);
@@ -122,6 +146,7 @@ export async function GET(req: NextRequest) {
         today: todayStr(),
         docDate: await planDocDate(supabase, workerId, sp.get("todoNo") ?? ""),
       };
+      ({ drafts, orgTexts } = await loadRefFormEdits(supabase, workerId, sp.get("todoNo") ?? "", orgId || null));
       // その所属機関の版があればそれを使う（雇用条件書など、所属機関ごとの書式）
       targets = keys
         .map((k) => pickRefFormTemplate(templates, k, data.person.nationality, orgId || null))
@@ -138,7 +163,12 @@ export async function GET(req: NextRequest) {
       if (onlyPages && onlyPages.length === 0) continue; // 署名ページの印が無い様式は入れない
       const { data: blob, error: dlErr } = await admin.storage.from("app-files").download(t.pdf_path);
       if (dlErr || !blob) throw dlErr ?? new Error("PDFを読めませんでした");
-      const doc = await fillRefForm(new Uint8Array(await blob.arrayBuffer()), font, normalizeRefFormLayout(t.layout), data, refFormOffIds(sp.get("off"), t.id));
+      // 作成画面で直した分を重ねる（送られてきた分 → 一時保存した分。ひな形を差し替えた後の一時保存は使わない）
+      const draft = drafts[t.form_key];
+      const edits =
+        posted?.[t.form_key] ?? (draft && (!draft.template_id || draft.template_id === t.id) ? draft : EMPTY_REF_FORM_EDITS);
+      const layout = sample ? normalizeRefFormLayout(t.layout) : applyRefFormEdits(normalizeRefFormLayout(t.layout), edits, orgTexts[t.id] ?? {});
+      const doc = await fillRefForm(new Uint8Array(await blob.arrayBuffer()), font, layout, data, refFormOffIds(sp.get("off"), t.id));
       parts.push({ doc, onlyPages });
     }
     if (parts.length === 0) {
@@ -173,4 +203,33 @@ async function planDocDate(
   } catch {
     return "";
   }
+}
+
+// この人の一時保存（ref_form_drafts）と所属機関の共通の文字（ref_form_org_texts）。0230 が未適用なら空
+async function loadRefFormEdits(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  workerId: string,
+  todoNo: string,
+  orgId: string | null,
+): Promise<{
+  drafts: Record<string, { template_id: string | null } & RefFormEdits>;
+  orgTexts: Record<string, Record<string, string>>;
+}> {
+  const drafts: Record<string, { template_id: string | null } & RefFormEdits> = {};
+  const orgTexts: Record<string, Record<string, string>> = {};
+  const { data: d } = await supabase
+    .from("ref_form_drafts")
+    .select("form_key, template_id, texts, moves, off")
+    .eq("worker_id", workerId)
+    .eq("todo_no", todoNo);
+  for (const r of (d as { form_key: string; template_id: string | null; texts: unknown; moves: unknown; off: unknown }[] | null) ?? []) {
+    drafts[r.form_key] = { template_id: r.template_id, ...normalizeRefFormEdits(r) };
+  }
+  if (orgId) {
+    const { data: o } = await supabase.from("ref_form_org_texts").select("template_id, texts").eq("organization_id", orgId);
+    for (const r of (o as { template_id: string; texts: unknown }[] | null) ?? []) {
+      orgTexts[r.template_id] = normalizeRefFormEdits({ texts: r.texts }).texts;
+    }
+  }
+  return { drafts, orgTexts };
 }

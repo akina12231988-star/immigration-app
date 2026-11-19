@@ -74,7 +74,13 @@ export async function registerRefFormPdf(
     await admin.storage.from(BUCKET).remove([path]).catch(() => undefined);
     return {
       ok: false,
-      message: isMissingTableError(readErr) ? HINT : isMissingColumnError(readErr) ? ORG_HINT : readErr.message,
+      // 列が無い（0228 未適用）を先に見る。列が無いときの文面（column ... does not exist）は
+      // 表が無いときの判定にも当たってしまうため
+      message: isMissingColumnError(readErr)
+        ? `${ORG_HINT}（${readErr.message}）`
+        : isMissingTableError(readErr)
+          ? `${HINT}（${readErr.message}）`
+          : readErr.message,
     };
   }
   const prev = before as { id: string; pdf_path: string } | null;

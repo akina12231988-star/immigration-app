@@ -19,6 +19,9 @@ import {
   refFormCircleShown,
   refFormCircles,
   refFormOffIds,
+  applyRefFormEdits,
+  normalizeRefFormEdits,
+  refFormInitialText,
 } from "./ref-form";
 
 describe("参考様式の行", () => {
@@ -199,5 +202,36 @@ describe("アプリに入れてある入管の参考様式", () => {
     expect(rest).not.toContain("t1-4-1");
     expect(rest).toContain("t1-17");
     expect(rest).toContain("s2-8");
+  });
+});
+
+describe("作成画面で直した分（0230）", () => {
+  const layout = normalizeRefFormLayout([
+    { id: "t1", kind: "text", page: 0, x: 10, y: 10, size: 10, text: "（文字）" },
+    { id: "t2", kind: "text", page: 0, x: 10, y: 30, size: 10, text: "代表取締役" },
+    { id: "c1", kind: "circle", page: 0, x: 50, y: 50, size: 16 },
+    { id: "n", kind: "name", page: 0, x: 0, y: 0, size: 10 },
+  ]);
+
+  it("文字の最初の値は 一時保存 → 所属機関の共通 → 記入位置の文字（見本の「（文字）」は空）", () => {
+    expect(refFormInitialText(layout[0], {}, {})).toBe("");
+    expect(refFormInitialText(layout[1], {}, {})).toBe("代表取締役");
+    expect(refFormInitialText(layout[1], {}, { t2: "社長" })).toBe("社長");
+    expect(refFormInitialText(layout[1], { t2: "" }, { t2: "社長" })).toBe("");
+  });
+
+  it("直した分を重ねる: 文字・動かした位置・外した項目", () => {
+    const out = applyRefFormEdits(layout, { texts: { t1: "農作業" }, moves: { c1: { x: 80, y: 52 } }, off: ["t2"] }, { t2: "社長" });
+    expect(out.map((i) => i.id)).toEqual(["t1", "c1", "n"]);
+    expect(out[0].text).toBe("農作業");
+    expect(out[1]).toMatchObject({ x: 80, y: 52 });
+    expect(out[2]).toMatchObject({ x: 0, y: 0 });
+  });
+
+  it("保存値の読み込みは形の違うものを捨てる", () => {
+    expect(
+      normalizeRefFormEdits({ texts: { a: "x", b: 1 }, moves: { c: { x: 1, y: 2 }, d: { x: "1" } }, off: ["c", "c", 3] }),
+    ).toEqual({ texts: { a: "x" }, moves: { c: { x: 1, y: 2 } }, off: ["c"] });
+    expect(normalizeRefFormEdits(null)).toEqual({ texts: {}, moves: {}, off: [] });
   });
 });

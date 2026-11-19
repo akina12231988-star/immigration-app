@@ -116,10 +116,17 @@ export function RefFormRowBar({
             {picked.sign_pages.length > 0 ? `・署名 ${picked.sign_pages.map((p) => p + 1).join("・")}ページ目` : ""}
           </span>
           <a
+            href={`/workers/${workerId}/application-prep/unified/ref-form/${encodeURIComponent(formKey)}${todoNo ? `?todo=${encodeURIComponent(todoNo)}` : ""}`}
+            className="ml-auto inline-flex min-h-[28px] items-center gap-1 rounded-md border border-brand bg-surface px-2 font-bold text-brand"
+          >
+            <PenLine size={12} />
+            見ながら作成（試験中）
+          </a>
+          <a
             href={refFormHref(workerId, [formKey], "one", off, todoNo)}
             target="_blank"
             rel="noopener noreferrer"
-            className="ml-auto inline-flex min-h-[28px] items-center gap-1 rounded-md bg-brand px-2 font-bold text-brand-foreground"
+            className="inline-flex min-h-[28px] items-center gap-1 rounded-md bg-brand px-2 font-bold text-brand-foreground"
           >
             <Download size={12} />
             作成（この様式だけ）
