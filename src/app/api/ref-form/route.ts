@@ -148,6 +148,7 @@ async function makePdf(sp: URLSearchParams, posted: Record<string, RefFormEdits>
           holidayIrregularUnit: os(intake.job_holiday_irregular_unit),
           holidayIrregularDays: os(intake.job_holiday_irregular_days),
           holidayIrregularOther: os(intake.job_holiday_irregular_other),
+          supportFee: os(intake.support_fee),
         },
         so: {
           name: c.officeName,

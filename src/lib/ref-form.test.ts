@@ -392,3 +392,11 @@ describe("本人に署名してもらうだけの書類（事前ガイダンス�
     expect(refFormPagesFor("all", [0], "t1-4-1")).toBeUndefined();
   });
 });
+
+describe("所属機関の支援委託料", () => {
+  it("3桁ごとにカンマ。未登録は空欄", () => {
+    const d = { ...REF_FORM_SAMPLE_DATA, org: { ...REF_FORM_SAMPLE_DATA.org, supportFee: "２２０００円" } };
+    expect(refFormValue({ kind: "org_support_fee" }, d)).toBe("22,000");
+    expect(refFormValue({ kind: "org_support_fee" }, { ...d, org: { ...d.org, supportFee: "" } })).toBe("");
+  });
+});
