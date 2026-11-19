@@ -780,6 +780,8 @@ export async function fillRefForm(
   data: RefFormData,
   // 作るときに外す項目（○）の id
   offIds?: ReadonlySet<string>,
+  // 書き込んだあとに、同じフォントでページを足す（1-17号のうしろの名簿など）
+  after?: (doc: PDFDocument, font: PDFFont) => void,
 ): Promise<PDFDocument> {
   const doc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
   doc.registerFontkit(fontkit);
@@ -790,6 +792,7 @@ export async function fillRefForm(
     const page = pages[item.page];
     if (page) drawItem(page, font, item, data);
   }
+  after?.(doc, font);
   return doc;
 }
 
