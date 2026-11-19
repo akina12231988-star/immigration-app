@@ -158,6 +158,13 @@ export type RefFormFieldKind =
   | "doc_m"
   | "doc_d"
   | `plan_${PlanDateKey}`
+  | "wage_amount"
+  | "wage_monthly"
+  | "wage_daily"
+  | "wage_hourly"
+  | "mark_monthly"
+  | "mark_daily"
+  | "mark_hourly"
   | "text"
   | "check"
   | "circle"
@@ -217,6 +224,14 @@ export const REF_FORM_FIELDS: { kind: RefFormFieldKind; label: string; sample: s
     sample: "2026年11月14日",
     group: "支援計画書の日付",
   })),
+  // 賃金（外国人詳細の「賃金（1-6号別紙）」の現在の記録）。金額は 3桁ごとにカンマ
+  { kind: "wage_amount", label: "賃金の金額（月給・日給・時給どれでも）", sample: "220,000", group: "賃金" },
+  { kind: "wage_monthly", label: "月給の金額（月給のときだけ）", sample: "220,000", group: "賃金" },
+  { kind: "wage_daily", label: "日給の金額（日給のときだけ）", sample: "9,000", group: "賃金" },
+  { kind: "wage_hourly", label: "時給の金額（時給のときだけ）", sample: "1,100", group: "賃金" },
+  { kind: "mark_monthly", label: "■ 月給のときだけ（□を塗る）", sample: "■", group: "賃金" },
+  { kind: "mark_daily", label: "■ 日給のときだけ（□を塗る）", sample: "■", group: "賃金" },
+  { kind: "mark_hourly", label: "■ 時給のときだけ（□を塗る）", sample: "■", group: "賃金" },
   { kind: "text", label: "自由な文字（毎回同じ）", sample: "（文字）", group: "そのほか" },
   { kind: "check", label: "✓ チェック", sample: "✓", group: "そのほか" },
   { kind: "circle", label: "○ 丸", sample: "○", group: "そのほか" },
@@ -336,6 +351,8 @@ export interface RefFormData {
   docDate?: string;
   // 申請準備の「支援計画書の日付」（キー → YYYY-MM-DD）。無ければ空欄
   planDates?: Record<string, string>;
+  // 賃金（外国人詳細の「賃金（1-6号別紙）」の現在の記録）。無ければ空欄
+  wage?: { kind: string; amount: number } | null;
 }
 
 const postal = (v: string) => {
@@ -352,6 +369,17 @@ export function refFormValue(item: Pick<RefFormItem, "kind" | "text" | "fmt">, d
   const b = ymd(p.birth);
   const t = ymd(data.today);
   const dd = ymd(data.docDate ?? null);
+  const wageIs = (k: string) => (data.wage && data.wage.kind === k ? data.wage.amount.toLocaleString("ja-JP") : "");
+  switch (item.kind) {
+    case "wage_amount":
+      return data.wage ? data.wage.amount.toLocaleString("ja-JP") : "";
+    case "wage_monthly":
+      return wageIs("月給");
+    case "wage_daily":
+      return wageIs("日給");
+    case "wage_hourly":
+      return wageIs("時給");
+  }
   if (isRefFormPlanDate(item.kind)) {
     const key = item.kind.slice("plan_".length);
     const v = data.planDates?.[key] ?? (key === "doc" ? data.docDate : "");
@@ -500,8 +528,17 @@ export const REF_FORM_SAMPLE_DATA: RefFormData = {
   },
   today: "",
   docDate: "2026-11-14",
+  wage: { kind: "月給", amount: 220000 },
   planDates: { doc: "2026-11-14", cond: "2026-11-10", con: "2026-11-12", es: "2026-12-01", apply: "2026-11-20" },
 };
+
+// 賃金の種類で塗る□（■）
+export const REF_FORM_MARK_KIND: Partial<Record<RefFormFieldKind, string>> = {
+  mark_monthly: "月給",
+  mark_daily: "日給",
+  mark_hourly: "時給",
+};
+export const isRefFormMark = (k: RefFormFieldKind) => k in REF_FORM_MARK_KIND;
 
 export const isRefFormCircle = (k: RefFormFieldKind) =>
   k === "circle" || k === "circle_male" || k === "circle_female";
@@ -609,6 +646,12 @@ function drawItem(page: PDFPage, font: PDFFont, item: RefFormItem, data: RefForm
     const top = height - item.y;
     page.drawLine({ start: { x, y: top - s * 0.55 }, end: { x: x + s * 0.35, y: top - s }, thickness: Math.max(1, s / 8), color: black });
     page.drawLine({ start: { x: x + s * 0.35, y: top - s }, end: { x: x + s, y: top }, thickness: Math.max(1, s / 8), color: black });
+    return;
+  }
+  if (isRefFormMark(item.kind)) {
+    // 本人の賃金の種類のときだけ、□の大きさの■を塗る
+    if (data.wage?.kind !== REF_FORM_MARK_KIND[item.kind]) return;
+    page.drawRectangle({ x: item.x, y: height - item.y - item.size, width: item.size, height: item.size, color: black });
     return;
   }
   if (item.kind === "circle" || item.kind === "circle_male" || item.kind === "circle_female") {

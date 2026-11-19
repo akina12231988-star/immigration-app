@@ -257,3 +257,14 @@ describe("支援計画書の日付（置いたあとに書き方を選ぶ）", (
     expect(refFormSampleOf({ kind: "name" })).toBe("NGUYEN VAN A");
   });
 });
+
+describe("賃金（月給・日給・時給）", () => {
+  const d = { ...REF_FORM_SAMPLE_DATA, wage: { kind: "月給", amount: 220000 } };
+  it("金額は3桁ごとにカンマ。種類が違う欄は空欄", () => {
+    expect(refFormValue({ kind: "wage_amount" }, d)).toBe("220,000");
+    expect(refFormValue({ kind: "wage_monthly" }, d)).toBe("220,000");
+    expect(refFormValue({ kind: "wage_daily" }, d)).toBe("");
+    expect(refFormValue({ kind: "wage_hourly" }, { ...d, wage: { kind: "時給", amount: 1100 } })).toBe("1,100");
+    expect(refFormValue({ kind: "wage_amount" }, { ...d, wage: null })).toBe("");
+  });
+});
