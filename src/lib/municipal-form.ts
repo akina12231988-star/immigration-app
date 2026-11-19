@@ -10,16 +10,24 @@ import { warekiDate, warekiParts } from "@/lib/dependents";
 // 座標はPDFのページの左上を原点にした pt（1pt = 1/72インチ）。y は文字の上端。
 
 // 自治体ごとに登録できる書類（申請書・委任状）と、その保存先の列
-export type MunicipalFormDoc = "cert" | "proxy" | "juminhyo" | "juminhyo_proxy";
+export type MunicipalFormDoc = "cert" | "nozei" | "proxy" | "juminhyo" | "juminhyo_proxy";
 type MunicipalFormCols = {
   label: string;
-  pathCol: "cert_form_pdf_path" | "proxy_form_pdf_path" | "juminhyo_form_pdf_path" | "juminhyo_proxy_form_pdf_path";
-  nameCol: "cert_form_pdf_name" | "proxy_form_pdf_name" | "juminhyo_form_pdf_name" | "juminhyo_proxy_form_pdf_name";
-  layoutCol: "cert_form_layout" | "proxy_form_layout" | "juminhyo_form_layout" | "juminhyo_proxy_form_layout";
+  pathCol: "cert_form_pdf_path" | "nozei_form_pdf_path" | "proxy_form_pdf_path" | "juminhyo_form_pdf_path" | "juminhyo_proxy_form_pdf_path";
+  nameCol: "cert_form_pdf_name" | "nozei_form_pdf_name" | "proxy_form_pdf_name" | "juminhyo_form_pdf_name" | "juminhyo_proxy_form_pdf_name";
+  layoutCol: "cert_form_layout" | "nozei_form_layout" | "proxy_form_layout" | "juminhyo_form_layout" | "juminhyo_proxy_form_layout";
   migration: string;
 };
 export const MUNICIPAL_FORM_DOCS: Record<MunicipalFormDoc, MunicipalFormCols> = {
-  cert: { label: "申請書", pathCol: "cert_form_pdf_path", nameCol: "cert_form_pdf_name", layoutCol: "cert_form_layout", migration: "0215_municipality_cert_form_pdf.sql" },
+  cert: { label: "課税・納税証明書の申請書", pathCol: "cert_form_pdf_path", nameCol: "cert_form_pdf_name", layoutCol: "cert_form_layout", migration: "0215_municipality_cert_form_pdf.sql" },
+  // 納税証明書の申請書（課税証明書と別の様式の自治体だけ。0232）
+  nozei: {
+    label: "納税証明書の申請書（課税証明書と別の様式のとき）",
+    pathCol: "nozei_form_pdf_path",
+    nameCol: "nozei_form_pdf_name",
+    layoutCol: "nozei_form_layout",
+    migration: "0232_municipality_nozei_form_pdf.sql",
+  },
   proxy: { label: "委任状", pathCol: "proxy_form_pdf_path", nameCol: "proxy_form_pdf_name", layoutCol: "proxy_form_layout", migration: "0215_municipality_cert_form_pdf.sql" },
   // 住民票の申請書・委任状（0231）
   juminhyo: {
@@ -38,7 +46,7 @@ export const MUNICIPAL_FORM_DOCS: Record<MunicipalFormDoc, MunicipalFormCols> = 
   },
 };
 export function parseMunicipalFormDoc(v: unknown): MunicipalFormDoc {
-  return v === "proxy" || v === "juminhyo" || v === "juminhyo_proxy" ? v : "cert";
+  return v === "proxy" || v === "nozei" || v === "juminhyo" || v === "juminhyo_proxy" ? v : "cert";
 }
 
 export type MunicipalFormFieldKind =

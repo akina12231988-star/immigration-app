@@ -435,7 +435,15 @@ function WizardBody({
                         onSaved={(m) => setMunicipalities(municipalities.map((x) => (x.id === m.id ? m : x)))}
                       />
                       {/* 申請書PDF（自治体マスタ）に本人の情報を書き込んでダウンロード。未登録ならその場で登録できる */}
-                      {(["cert", "proxy"] as const).map((doc) => (
+                      {(["cert", "nozei", "proxy"] as const)
+                        // 納税証明書の別の申請書は、登録してあるか、納税証明書が別に要る自治体のときだけ出す
+                        .filter(
+                          (doc) =>
+                            doc !== "nozei" ||
+                            !!ya.suggested?.nozei_form_pdf_path ||
+                            !!ya.suggested?.needs_tax_payment_cert,
+                        )
+                        .map((doc) => (
                         <MunicipalCertFormPanel
                           key={doc}
                           municipality={ya.suggested}

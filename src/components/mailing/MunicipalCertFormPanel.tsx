@@ -24,7 +24,7 @@ export async function uploadMunicipalFormFiles(
   let m = municipality;
   let uploaded = 0;
   const errors: string[] = [];
-  for (const doc of ["cert", "proxy", "juminhyo", "juminhyo_proxy"] as const) {
+  for (const doc of ["cert", "nozei", "proxy", "juminhyo", "juminhyo_proxy"] as const) {
     const f = files[doc];
     if (!f) continue;
     try {

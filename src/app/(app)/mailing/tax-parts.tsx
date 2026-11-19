@@ -1,6 +1,7 @@
 "use client";
 
 import { MunicipalCertFormPanel, type MunicipalFormFiles } from "@/components/mailing/MunicipalCertFormPanel";
+import { MUNICIPAL_FORM_DOCS } from "@/lib/municipal-form";
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -236,14 +237,16 @@ export function MunicipalityModal({
           {initial ? (
             <>
               <MunicipalCertFormPanel municipality={initial} doc="cert" canEdit onChanged={onCertFormChanged} />
+              {/* 納税証明書の郵送請求の申請書が課税証明書と別の様式の自治体だけ、2つ目の申請書を登録する（0232） */}
+              <MunicipalCertFormPanel municipality={initial} doc="nozei" canEdit onChanged={onCertFormChanged} />
               <MunicipalCertFormPanel municipality={initial} doc="proxy" canEdit onChanged={onCertFormChanged} />
             </>
           ) : (
             <div className="mt-1.5 flex flex-col gap-2">
-              {(["cert", "proxy"] as const).map((doc) => (
+              {(["cert", "nozei", "proxy"] as const).map((doc) => (
                 <PdfDropField
                   key={doc}
-                  label={`${doc === "cert" ? "申請書" : "委任状"}のPDF`}
+                  label={`${MUNICIPAL_FORM_DOCS[doc].label}のPDF`}
                   file={files[doc] ?? null}
                   onChange={(f) => setFiles((x) => ({ ...x, [doc]: f }))}
                 />
