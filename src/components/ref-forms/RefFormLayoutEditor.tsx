@@ -9,6 +9,8 @@ import {
   isRefFormPlanDate,
   refFormSampleOf,
   refFormCellWidth,
+  refFormFitLines,
+  REF_FORM_LINE_HEIGHT,
   type RefFormDateFmt,
   REF_FORM_FIELD_LABEL,
   REF_FORM_TEXT_PLACEHOLDER,
@@ -401,6 +403,26 @@ export function RefFormLayoutEditor({
                   <span className="text-muted">pt</span>
                 </label>
               )}
+              {selected.maxWidth && selected.kind !== "my_number" && !isShape(selected.kind) && (
+                <label className="flex items-center gap-1">
+                  <span className="w-16">行数</span>
+                  <select
+                    value={selected.maxLines ?? 1}
+                    onChange={(e) => {
+                      remember();
+                      const n = Number(e.target.value);
+                      update(selected.id, { maxLines: n >= 2 ? n : undefined });
+                    }}
+                    className="min-h-[30px] rounded border border-border bg-background px-1"
+                  >
+                    {[1, 2, 3].map((n) => (
+                      <option key={n} value={n}>
+                        {n === 1 ? "1行（入らなければ小さく）" : `${n}行まで折り返す`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <div className="flex gap-1">
                 <button type="button" className="rounded border border-border px-2 py-1" onClick={() => update(selected.id, { x: selected.x - 1 })}>←</button>
                 <button type="button" className="rounded border border-border px-2 py-1" onClick={() => update(selected.id, { x: selected.x + 1 })}>→</button>
@@ -537,6 +559,10 @@ export function RefFormLayoutEditor({
                   const isSel = it.id === selectedId;
                   const common = `absolute cursor-move select-none whitespace-nowrap ${isSel ? "outline outline-2 outline-brand" : "outline outline-1 outline-seal/60"}`;
                   const label = it.kind === "text" ? it.text || REF_FORM_TEXT_PLACEHOLDER : refFormSampleOf(it);
+                  // 最大の幅・行数があれば、PDF と同じように折り返して（入らなければ小さくして）見せる
+                  const fit = !isShape(it.kind) && it.kind !== "my_number" && it.maxWidth && (it.maxLines ?? 1) > 1
+                    ? refFormFitLines(label, it, (t, sz) => approxWidthEm(t) * sz)
+                    : null;
                   return (
                     <div
                       key={it.id}
@@ -545,8 +571,9 @@ export function RefFormLayoutEditor({
                       style={{
                         left: it.x * scale,
                         top: it.y * scale,
-                        fontSize: (isShape(it.kind) ? it.size : fittedSize(label, it.size, it.maxWidth)) * scale,
-                        lineHeight: 1.15,
+                        fontSize: (isShape(it.kind) ? it.size : fit ? fit.size : fittedSize(label, it.size, it.maxWidth)) * scale,
+                        lineHeight: fit ? REF_FORM_LINE_HEIGHT : 1.15,
+                        ...(fit ? { whiteSpace: "pre" as const } : {}),
                         ...(isShape(it.kind) ? { width: it.size * scale, height: it.size * scale } : {}),
                         // 「最大の幅」は点線の幅で見せる（文字は上で小さくしているので切らない）
                         ...(it.maxWidth && !isShape(it.kind) ? { minWidth: it.maxWidth * scale, outlineStyle: "dashed" as const } : {}),
@@ -583,6 +610,8 @@ export function RefFormLayoutEditor({
                             </span>
                           ))}
                         </span>
+                      ) : fit ? (
+                        fit.lines.join("\n")
                       ) : (
                         label
                       )}

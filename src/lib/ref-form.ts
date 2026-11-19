@@ -373,6 +373,7 @@ export interface RefFormItem {
   maxWidth?: number;
   fmt?: RefFormDateFmt; // 支援計画書の日付の書き方（無ければ西暦）
   cell?: number; // 個人番号の1マスの幅（pt）。置いた位置から右へ1マスに1文字ずつ書く
+  maxLines?: number; // 「最大の幅」を超えるときに折り返す行数（無ければ1行。住所を2行で書くときなど）
 }
 
 // 支援計画書の日付の書き方
@@ -434,6 +435,7 @@ export function normalizeRefFormLayout(v: unknown): RefFormItem[] {
       maxWidth: typeof o.maxWidth === "number" && o.maxWidth > 0 ? o.maxWidth : undefined,
       fmt: typeof o.fmt === "string" && DATE_FMTS.has(o.fmt) ? (o.fmt as RefFormDateFmt) : undefined,
       cell: typeof o.cell === "number" && o.cell > 0 && o.cell < 100 ? o.cell : undefined,
+      maxLines: typeof o.maxLines === "number" && o.maxLines >= 2 && o.maxLines <= 5 ? Math.round(o.maxLines) : undefined,
     });
   }
   return out;
@@ -837,12 +839,50 @@ function drawItem(page: PDFPage, font: PDFFont, item: RefFormItem, data: RefForm
   }
   const text = refFormValue(item, data).replace(/\s+/g, " ").trim();
   if (!text) return;
-  let size = item.size;
-  if (item.maxWidth) {
-    while (size > 5 && font.widthOfTextAtSize(text, size) > item.maxWidth) size -= 0.5;
-  }
+  // 「最大の幅」を超えるときは、行数（既定1行）までは折り返し、それでも入らなければ文字を小さくする
+  const { size, lines } = refFormFitLines(text, item, (t, sz) => font.widthOfTextAtSize(t, sz));
   const ascent = font.heightAtSize(size, { descender: false });
-  page.drawText(text, { x: item.x, y: height - item.y - ascent, size, font, color: black });
+  lines.forEach((line, i) => {
+    page.drawText(line, { x: item.x, y: height - item.y - ascent - i * size * REF_FORM_LINE_HEIGHT, size, font, color: black });
+  });
+}
+
+// 折り返したときの行の間隔（文字の大きさの倍率）
+export const REF_FORM_LINE_HEIGHT = 1.2;
+
+// 幅に収まるよう1文字ずつ折り返す（日本語の住所などのため単語では区切らない）
+export function refFormWrap(text: string, width: number, measure: (t: string) => number): string[] {
+  const lines: string[] = [];
+  let line = "";
+  for (const ch of text) {
+    if (line && measure(line + ch) > width) {
+      lines.push(line);
+      line = ch;
+    } else {
+      line += ch;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+// 書く文字の大きさと行。最大の幅が無ければ1行そのまま。
+// 行数（maxLines・既定1）までに収まるまで、0.5pt ずつ小さくする（5pt まで）
+export function refFormFitLines(
+  text: string,
+  item: Pick<RefFormItem, "size" | "maxWidth" | "maxLines">,
+  measure: (t: string, size: number) => number,
+): { size: number; lines: string[] } {
+  if (!item.maxWidth) return { size: item.size, lines: [text] };
+  const maxW = item.maxWidth;
+  const n = Math.max(1, item.maxLines ?? 1);
+  let size = item.size;
+  for (;;) {
+    const lines = n === 1 ? [text] : refFormWrap(text, maxW, (t) => measure(t, size));
+    const fits = lines.length <= n && lines.every((l) => measure(l, size) <= maxW);
+    if (fits || size <= 5) return { size, lines };
+    size -= 0.5;
+  }
 }
 
 // ひな形1つに書き込む
