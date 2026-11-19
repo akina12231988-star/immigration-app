@@ -773,6 +773,9 @@ export const PREP_DOC_STATUS_OPTIONS: Record<string, PrepDocStatusOption[]> = {
   suisenjo: [
     { value: "送り出し機関に依頼中", done: false },
     { value: "大使館へ郵送請求中", done: false, extras: [{ kind: "tracking" }] },
+    // 推薦状の発行に住民票が要るとき（大使館などへ出す住民票を先に取る）
+    { value: "住民票を郵送請求中", done: false, extras: [{ kind: "mailing" }] },
+    { value: "住民票を代理人で発行依頼中", done: false, extras: [{ kind: "issuer", label: "発行依頼先（代理人）" }, { kind: "date", label: "依頼日" }] },
     { value: "発行済", done: true },
     { value: "特定活動からの資格変更の為、発行なし（国籍：ベトナム）", done: true, noFile: true },
   ],

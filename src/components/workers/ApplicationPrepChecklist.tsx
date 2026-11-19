@@ -4300,7 +4300,13 @@ function MailingStatusField({
 }) {
   const key = normalizeTodoKey(todoNo);
   const wantNozei3 = docId === "gensen";
-  const byKind = records.filter((r) => (r.requestKind === "nozei3") === wantNozei3);
+  // 推薦状の行（住民票を郵送請求中）では住民票の郵送請求を出す
+  const wantJuminhyo = docId === "suisenjo";
+  const byKind = records.filter((r) =>
+    wantJuminhyo
+      ? r.requestKind === "juminhyo"
+      : (r.requestKind === "nozei3") === wantNozei3 && r.requestKind !== "juminhyo",
+  );
   const sameTodo = key ? byKind.filter((r) => normalizeTodoKey(r.todoNumber ?? "") === key) : [];
   const shown = (sameTodo.length > 0 ? sameTodo : byKind).slice(0, 3);
   // 記録一覧をその人・そのTODOで絞った状態で開く
@@ -4311,7 +4317,9 @@ function MailingStatusField({
         <p className="text-[11px] text-muted">
           {wantNozei3
             ? "納税証明書その3の郵送請求はまだ記録されていません。証明書類の請求で税務署への投函を記録すると、ここに投函日・追跡番号・進捗が出ます。"
-            : "郵送請求はまだ記録されていません。証明書類の請求で記録すると、ここに請求先・投函日が出ます。"}
+            : wantJuminhyo
+              ? "住民票の郵送請求はまだ記録されていません。証明書類の請求の「住民票を郵送請求」で記録すると、ここに請求先・投函日が出ます。"
+              : "郵送請求はまだ記録されていません。証明書類の請求で記録すると、ここに請求先・投函日が出ます。"}
         </p>
       ) : (
         shown.map((r) => (
