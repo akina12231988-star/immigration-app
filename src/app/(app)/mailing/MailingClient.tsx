@@ -66,7 +66,7 @@ import {
 import { MailingFileAttachments } from "./MailingFileAttachments";
 import { MailingRecordAttachments } from "@/components/mailing/MailingRecordAttachments";
 import { MunicipalityFormLink } from "@/components/mailing/MunicipalityFormLink";
-import { uploadMunicipalFormFiles, type MunicipalFormFiles } from "@/components/mailing/MunicipalCertFormPanel";
+import { MunicipalCertFormPanel, uploadMunicipalFormFiles, type MunicipalFormFiles } from "@/components/mailing/MunicipalCertFormPanel";
 import { PersonCopyPanel } from "@/components/mailing/PersonCopyPanel";
 import { NenkinEditModal, NenkinRecordView, NenkinRequestForm } from "./NenkinRequestForm";
 import { ProgressBadge, mailingDestination, mailingPostDate } from "@/components/mailing/MailingRecordSummary";
@@ -1007,6 +1007,18 @@ function ExtraRequestForm({
             canEdit={canEdit}
             onSaved={(m) => setMunicipalities(municipalities.map((x) => (x.id === m.id ? m : x)))}
           />
+          {/* 住民票の申請書・委任状のPDF（自治体マスタ）に本人の情報を書き込んでダウンロード。未登録ならその場で登録できる */}
+          {kind === "juminhyo" &&
+            (["juminhyo", "juminhyo_proxy"] as const).map((doc) => (
+              <MunicipalCertFormPanel
+                key={doc}
+                municipality={muni}
+                doc={doc}
+                canEdit={canEdit}
+                workerId={workerId || undefined}
+                onChanged={(m) => setMunicipalities(municipalities.map((x) => (x.id === m.id ? m : x)))}
+              />
+            ))}
           {workerId && (
             <div className="mt-3 rounded-xl border border-border bg-surface p-3">
               <PersonCopyPanel workerId={workerId} />
