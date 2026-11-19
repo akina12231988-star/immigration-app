@@ -137,3 +137,16 @@ describe("雇用契約の年数（3年）", () => {
     expect(planDatesToMap(r2, null).eeYears).toBeUndefined();
   });
 });
+
+describe("planDateGroupsFor（在留期間の更新）", () => {
+  test("更新では 1-17号（支援計画書）と 1-25号（支援委託契約書）の枠を出さない", () => {
+    const titles = planDateGroupsFor(false, true).map((g) => g.title);
+    expect(titles.some((t) => t.startsWith("参考様式1-17号"))).toBe(false);
+    expect(titles.some((t) => t.startsWith("参考様式1-25号"))).toBe(false);
+    expect(titles.some((t) => t.startsWith("参考様式1-5号"))).toBe(true);
+    expect(titles.some((t) => t.startsWith("参考様式1-6号"))).toBe(true);
+  });
+  test("更新でないときはこれまでどおり全部", () => {
+    expect(planDateGroupsFor(false, false).length).toBe(planDateGroupsFor(false).length);
+  });
+});

@@ -2831,6 +2831,7 @@ export function ApplicationPrepChecklist({
                 onDrop={(files) => void dropAttach(submissionAttachDef(row), files)}
                 onPreview={(f) => void previewDoc(f.id)}
                 onRemove={(f) => void removeDoc(f.doc_key, `${submissionAttachDef(row).label}（${f.file_name}）`)}
+                orgId={prepOrgId ?? null}
               />
             )}
             onMark={(key, mark) => {
@@ -2928,12 +2929,14 @@ export function ApplicationPrepChecklist({
           canEdit={canEdit}
           workerName={workerRow?.name ?? ""}
           appContent={meta.app_content ?? ""}
+          renewal={meta.app_type === "更新"}
           onSaved={() => setPrepInfoKey((k) => k + 1)}
         />
         </div>
       </PrepSection>
 
-      {/* 8. １－１７号の特定技能外国人支援計画書に記載する項目 */}
+      {/* 8. １－１７号の特定技能外国人支援計画書に記載する項目（在留期間の更新申請では出さない） */}
+      {meta.app_type !== "更新" && (
       <PrepSection id="prep-plan" title="１－１７号の特定技能外国人支援計画書に記載する項目">
         <Prep117Section
           orgId={prepOrgId}
@@ -2945,6 +2948,7 @@ export function ApplicationPrepChecklist({
           onRosterPrinted={() => void saveExtras({ print_marks: { ...current.print_marks, roster: todayStr() } })}
         />
       </PrepSection>
+      )}
 
       {/* 9. 農業分野だけ（所属機関の業種か外国人の分野が農業）: 農業特定技能協議会の加入通知書 */}
       {(prepOrgAgri || isAgricultureIndustry(workerRow?.field)) && prepOrgId && (

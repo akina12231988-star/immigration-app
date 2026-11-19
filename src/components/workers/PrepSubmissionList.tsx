@@ -9,6 +9,7 @@ import { SUBMISSION_PDF_TEMPLATES, canFillSubmissionPdf, fillSubmissionPdf, subm
 import { RefFormRowBar, RefFormTemplatesDialog, refFormHref, useRefFormTemplates } from "@/components/ref-forms/RefFormPanel";
 import type { OnboardingDocumentRow } from "@/types/db";
 import { SupportOrgFileAttachments } from "@/app/(app)/support-org/SupportOrgFileAttachments";
+import { PrepAgriNoticeSection } from "@/components/workers/PrepSupportOrgSection";
 import { SUPPORT_ORG_LISTING_FILE_KIND } from "@/lib/support-org-info";
 import {
   SUBMISSION_TABLE_ORDER,
@@ -382,7 +383,9 @@ export function SubmissionRowAction({
   onDrop,
   onPreview,
   onRemove,
+  orgId = null,
 }: {
+  orgId?: string | null; // 申請準備中の所属機関（協議会の構成員であることの証明書に、その所属機関の加入通知書を出す）
   row: SubmissionRow;
   canEdit: boolean;
   busy: boolean;
@@ -396,8 +399,19 @@ export function SubmissionRowAction({
   const section = submissionLink(row.key)?.section;
   // 「人材サービス総合サイト」の画面は、だれの申請でも同じ（当社の掲載画面）。全員共通で1つ登録して使う
   const sharedListing = canonicalSubmissionKey(row.key) === "t1-7-2";
+  // 協議会の構成員であることの証明書は、所属機関に登録した農業特定技能協議会の加入通知書を使う（所属機関ごと）
+  const councilNotice = (row.key === "t3a-3" || row.key === "s2a-3") && !!orgId;
+  const usesShared = sharedListing || councilNotice;
   return (
     <div className="flex flex-col gap-1 rounded-lg border border-border bg-background/60 p-2 text-[11px]">
+      {councilNotice && orgId && (
+        <div className="rounded-md border border-brand/30 bg-brand/5 p-2">
+          <p className="mb-1 font-bold text-brand">
+            所属機関の農業特定技能協議会の加入通知書（所属機関の画面と同じもの。ここで添付すると所属機関にも保存されます）
+          </p>
+          <PrepAgriNoticeSection orgId={orgId} canEdit={canEdit} />
+        </div>
+      )}
       {sharedListing && (
         <div className="rounded-md border border-brand/30 bg-brand/5 p-2">
           <p className="mb-1 font-bold text-brand">
@@ -451,8 +465,10 @@ export function SubmissionRowAction({
         >
           <div className="flex flex-wrap items-center gap-1.5">
             {attachFiles.length === 0 ? (
-              <span className={docs.length > 0 || sharedListing ? "text-muted" : "font-bold text-seal"}>
-                {sharedListing
+              <span className={docs.length > 0 || usesShared ? "text-muted" : "font-bold text-seal"}>
+                {councilNotice
+                  ? "上の所属機関の加入通知書を使います（ほかの書類を使うときだけ添付）"
+                  : sharedListing
                   ? "上の全員共通の画面を使います（この人だけ別の画面を使うときだけ添付）"
                   : docs.length > 0
                     ? "この行にも添付できます"

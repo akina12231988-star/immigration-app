@@ -220,7 +220,11 @@ export function isTokuteiKatsudoContent(title: string): boolean {
 
 // 申請の内容に合わせた枠。特定活動は 1-5号・1-6号と「その他」（申請予定日・署名日・書類作成日）だけで、
 // 支援計画書（1-17号）と支援委託契約書（1-25号）の枠は出さない
-export function planDateGroupsFor(tokuteiKatsudo: boolean): PlanDateGroup[] {
+// renewal=true（在留期間の更新）は、支援計画書（1-17号）と支援委託契約書（1-25号）を出さないので、その枠も出さない
+export function planDateGroupsFor(tokuteiKatsudo: boolean, renewal = false): PlanDateGroup[] {
+  if (renewal && !tokuteiKatsudo) {
+    return PLAN_DATE_GROUPS.filter((g) => !g.title.startsWith("参考様式1-17号") && !g.title.startsWith("参考様式1-25号"));
+  }
   if (!tokuteiKatsudo) return PLAN_DATE_GROUPS;
   return [
     ...PLAN_DATE_GROUPS.filter((g) => g.title.startsWith("参考様式1-5号") || g.title.startsWith("参考様式1-6号")),
