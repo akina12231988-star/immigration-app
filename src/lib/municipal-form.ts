@@ -74,6 +74,14 @@ export type MunicipalFormFieldKind =
   | "today_y"
   | "today_m"
   | "today_d"
+  | "agent_name"
+  | "agent_address"
+  | "agent_birth_seireki"
+  | "agent_birth_wareki"
+  | "agent_tel"
+  | "agent_tel1"
+  | "agent_tel2"
+  | "agent_tel3"
   | "text"
   | "check"
   | "circle";
@@ -103,6 +111,15 @@ export const MUNICIPAL_FORM_FIELDS: { kind: MunicipalFormFieldKind; label: strin
   { kind: "today_y", label: "請求日の年だけ（令和の数字）", sample: "8" },
   { kind: "today_m", label: "請求日の月だけ", sample: "11" },
   { kind: "today_d", label: "請求日の日だけ", sample: "7" },
+  // 代理人（請求の画面で入れた代理人の名前に、登録した住所・生年月日・電話番号を使う）
+  { kind: "agent_name", label: "代理人の氏名", sample: "野口明菜" },
+  { kind: "agent_address", label: "代理人の住所", sample: "熊本県熊本市東区小山3-8-87" },
+  { kind: "agent_birth_seireki", label: "代理人の生年月日（西暦）", sample: "1990年4月1日" },
+  { kind: "agent_birth_wareki", label: "代理人の生年月日（和暦）", sample: "平成2年4月1日" },
+  { kind: "agent_tel", label: "代理人の電話番号", sample: "080-4281-1083" },
+  { kind: "agent_tel1", label: "代理人の電話番号の初めの3桁", sample: "080" },
+  { kind: "agent_tel2", label: "代理人の電話番号の真ん中の4桁", sample: "4281" },
+  { kind: "agent_tel3", label: "代理人の電話番号の終わりの4桁", sample: "1083" },
   { kind: "text", label: "自由な文字（毎回同じ）", sample: "在留資格の手続きのため" },
   { kind: "check", label: "✓ チェック", sample: "✓" },
   { kind: "circle", label: "○ 丸で囲む", sample: "○" },
@@ -159,6 +176,19 @@ export interface MunicipalFormPerson {
   yearAddress: string; // その年度の1月1日時点の住所（無ければ ''）
   fiscalYear: number | null; // 年度の開始年（西暦。例: 2026 = 令和8年度）
   today: string; // YYYY-MM-DD
+  // 代理人（請求の画面の代理人の名前と、登録した住所・生年月日・電話番号）。無ければ空欄
+  agent?: { name: string; address: string; birth: string; phone: string } | null;
+}
+
+// 電話番号を3つに分ける（「-」があればそこで、無ければ 11桁は 3-4-4、10桁は 3-3-4）
+export function splitPhone(phone: string): [string, string, string] {
+  const p = (phone ?? "").normalize("NFKC").trim();
+  const parts = p.split(/[-－ー‐ ]+/).filter(Boolean);
+  if (parts.length === 3) return [parts[0], parts[1], parts[2]];
+  const d = p.replace(/[^0-9]/g, "");
+  if (d.length === 11) return [d.slice(0, 3), d.slice(3, 7), d.slice(7)];
+  if (d.length === 10) return [d.slice(0, 3), d.slice(3, 6), d.slice(6)];
+  return [d, "", ""];
 }
 
 const reiwa = (y: number) => (y - 2018 === 1 ? "令和元" : `令和${y - 2018}`);
@@ -227,6 +257,22 @@ export function municipalFormValue(item: Pick<MunicipalFormItem, "kind" | "text"
       return p.fiscalYear ? String(p.fiscalYear - 2019) : "";
     case "today":
       return warekiDate(p.today);
+    case "agent_name":
+      return p.agent?.name ?? "";
+    case "agent_address":
+      return p.agent?.address ?? "";
+    case "agent_birth_seireki":
+      return birthSeireki(p.agent?.birth || null);
+    case "agent_birth_wareki":
+      return birthWareki(p.agent?.birth || null);
+    case "agent_tel":
+      return p.agent?.phone ?? "";
+    case "agent_tel1":
+      return p.agent?.phone ? splitPhone(p.agent.phone)[0] : "";
+    case "agent_tel2":
+      return p.agent?.phone ? splitPhone(p.agent.phone)[1] : "";
+    case "agent_tel3":
+      return p.agent?.phone ? splitPhone(p.agent.phone)[2] : "";
     case "text":
       return item.text ?? "";
     default:

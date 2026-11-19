@@ -191,6 +191,8 @@ export const NOZEI3_AGENTS_SETTING_KEY = "mailing_agents";
 export interface SavedAgent {
   name: string;
   address: string;
+  birth?: string; // 生年月日 YYYY-MM-DD（自治体の申請書の代理人欄に使う。無ければ ''）
+  phone?: string; // 電話番号（例: 080-4281-1083）
 }
 
 // 保存されている値を読む（壊れた行は捨てる）
@@ -202,18 +204,29 @@ export function normalizeSavedAgents(v: unknown): SavedAgent[] {
     const o = a as Record<string, unknown>;
     const name = typeof o.name === "string" ? o.name.trim() : "";
     if (!name) continue;
-    out.push({ name, address: typeof o.address === "string" ? o.address.trim() : "" });
+    const birth = typeof o.birth === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.birth) ? o.birth : "";
+    const phone = typeof o.phone === "string" ? o.phone.trim() : "";
+    out.push({ name, address: typeof o.address === "string" ? o.address.trim() : "", ...(birth ? { birth } : {}), ...(phone ? { phone } : {}) });
   }
   return out;
 }
 
-// 代理人を登録する（同じ氏名がすでにあれば住所を新しいものにする）
+// 代理人を登録する（同じ氏名がすでにあれば住所などを新しいものにする。生年月日・電話番号は渡さなければ前のまま）
 export function upsertSavedAgent(list: SavedAgent[], agent: SavedAgent): SavedAgent[] {
   const name = agent.name.trim();
   const address = agent.address.trim();
   if (!name) return list;
+  const before = list.find((a) => a.name === name);
   const rest = list.filter((a) => a.name !== name);
-  return [...rest, { name, address }];
+  const birth = agent.birth ?? before?.birth ?? "";
+  const phone = (agent.phone ?? before?.phone ?? "").trim();
+  return [...rest, { name, address, ...(birth ? { birth } : {}), ...(phone ? { phone } : {}) }];
+}
+
+// 名前で登録した代理人を探す（前後の空白は無視）
+export function findSavedAgent(list: SavedAgent[], name: string): SavedAgent | null {
+  const n = (name ?? "").trim();
+  return n ? (list.find((a) => a.name === n) ?? null) : null;
 }
 
 // 選択肢（はじめから入っている代理人＋登録した代理人。重複は1つに）

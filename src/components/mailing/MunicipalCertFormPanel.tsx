@@ -67,8 +67,10 @@ export function MunicipalCertFormPanel({
   canEdit,
   workerId,
   fiscalYear,
+  agentName = "",
   onChanged,
 }: {
+  agentName?: string; // 請求の画面で入れた代理人の名前（申請書の代理人の欄に使う）
   municipality: Municipality | null;
   doc?: MunicipalFormDoc; // 申請書（cert）か委任状（proxy）か
   canEdit: boolean;
@@ -103,6 +105,8 @@ export function MunicipalCertFormPanel({
   const base = `/api/municipal-cert-form?municipalityId=${encodeURIComponent(m.id)}&doc=${doc}`;
   const personHref = workerId
     ? `${base}&workerId=${encodeURIComponent(workerId)}${fiscalYear ? `&fiscalYear=${fiscalYear}` : ""}${
+        agentName.trim() ? `&agent=${encodeURIComponent(agentName.trim())}` : ""
+      }${
         Object.keys(changedTexts).length > 0 ? `&texts=${encodeURIComponent(JSON.stringify(changedTexts))}` : ""
       }`
     : "";

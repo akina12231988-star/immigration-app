@@ -6,6 +6,7 @@ import {
   MUNICIPAL_FORM_DOCS,
   addressAfterCity,
   applyMunicipalTextOverrides,
+  splitPhone,
   parseMunicipalFormDoc,
   fillMunicipalForm,
   guessAcroFieldKind,
@@ -130,5 +131,26 @@ describe("自由な文字を請求ごとに直す", () => {
     expect(out[1]).toEqual({ id: "b", kind: "name" });
     expect(applyMunicipalTextOverrides(layout, "壊れた")).toBe(layout);
     expect(applyMunicipalTextOverrides(layout, null)).toBe(layout);
+  });
+});
+
+describe("代理人の欄", () => {
+  const p: MunicipalFormPerson = {
+    name: "", kana: "", birth: null, nationality: "", postalCode: "", address: "", yearAddress: "", fiscalYear: null, today: "2026-11-19",
+    agent: { name: "野口明菜", address: "熊本市", birth: "1990-04-01", phone: "080-4281-1083" },
+  };
+  it("氏名・住所・生年月日・電話番号（3つに分けても）", () => {
+    expect(municipalFormValue({ kind: "agent_name" }, p)).toBe("野口明菜");
+    expect(municipalFormValue({ kind: "agent_address" }, p)).toBe("熊本市");
+    expect(municipalFormValue({ kind: "agent_birth_seireki" }, p)).toBe("1990年4月1日");
+    expect(municipalFormValue({ kind: "agent_tel1" }, p)).toBe("080");
+    expect(municipalFormValue({ kind: "agent_tel2" }, p)).toBe("4281");
+    expect(municipalFormValue({ kind: "agent_tel3" }, p)).toBe("1083");
+    expect(municipalFormValue({ kind: "agent_name" }, { ...p, agent: null })).toBe("");
+  });
+  it("電話番号の分け方", () => {
+    expect(splitPhone("08042811083")).toEqual(["080", "4281", "1083"]);
+    expect(splitPhone("0965-12-3456")).toEqual(["0965", "12", "3456"]);
+    expect(splitPhone("0965123456")).toEqual(["096", "512", "3456"]);
   });
 });

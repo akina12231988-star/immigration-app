@@ -451,6 +451,7 @@ function WizardBody({
                           canEdit={canEdit}
                           workerId={workerId}
                           fiscalYear={fy[y]}
+                          agentName={agent}
                           onChanged={(m) => setMunicipalities(municipalities.map((x) => (x.id === m.id ? m : x)))}
                         />
                       ))}
