@@ -476,6 +476,66 @@ export function refFormOffIds(off: string | null, templateId: string): Set<strin
   return out;
 }
 
+// ---- 作成画面で直した分（0230） ----
+// 作成画面で、この人の分として入れた文字・動かした位置・外した項目
+export interface RefFormEdits {
+  texts: Record<string, string>; // 項目ID → 文字（自由な文字）
+  moves: Record<string, { x: number; y: number }>; // 項目ID → 位置（pt）
+  off: string[]; // 書かない項目ID
+}
+export const EMPTY_REF_FORM_EDITS: RefFormEdits = { texts: {}, moves: {}, off: [] };
+
+// 保存値（jsonb）を読む。形が違うものは捨てる
+export function normalizeRefFormEdits(v: { texts?: unknown; moves?: unknown; off?: unknown } | null | undefined): RefFormEdits {
+  const texts: Record<string, string> = {};
+  if (v?.texts && typeof v.texts === "object") {
+    for (const [k, t] of Object.entries(v.texts as Record<string, unknown>)) if (typeof t === "string") texts[k] = t;
+  }
+  const moves: Record<string, { x: number; y: number }> = {};
+  if (v?.moves && typeof v.moves === "object") {
+    for (const [k, m] of Object.entries(v.moves as Record<string, unknown>)) {
+      const o = m as { x?: unknown; y?: unknown } | null;
+      if (o && typeof o.x === "number" && typeof o.y === "number" && Number.isFinite(o.x) && Number.isFinite(o.y)) {
+        moves[k] = { x: o.x, y: o.y };
+      }
+    }
+  }
+  const off = Array.isArray(v?.off) ? [...new Set((v.off as unknown[]).filter((x): x is string => typeof x === "string"))] : [];
+  return { texts, moves, off };
+}
+
+// 作成画面で入れられる項目（自由な文字）か
+export const isRefFormEditableText = (k: RefFormFieldKind) => k === "text";
+
+// 自由な文字の最初の値: この人の一時保存 → 所属機関の共通 → 記入位置で決めた文字（見本の「（文字）」は空）
+export function refFormInitialText(
+  item: Pick<RefFormItem, "id" | "text">,
+  draftTexts: Record<string, string>,
+  orgTexts: Record<string, string>,
+): string {
+  if (item.id in draftTexts) return draftTexts[item.id];
+  if (item.id in orgTexts) return orgTexts[item.id];
+  const t = (item.text ?? "").trim();
+  return t === REF_FORM_TEXT_PLACEHOLDER ? "" : t;
+}
+
+// 記入位置に、作成画面で直した分（文字・位置・外した項目）を重ねる。
+// orgTexts は所属機関の共通の文字（この人の分で入れていない所に使う）
+export function applyRefFormEdits(
+  layout: RefFormItem[],
+  edits: RefFormEdits,
+  orgTexts: Record<string, string> = {},
+): RefFormItem[] {
+  const off = new Set(edits.off);
+  return layout
+    .filter((i) => !off.has(i.id))
+    .map((i) => {
+      const m = edits.moves[i.id];
+      const moved = m ? { ...i, x: m.x, y: m.y } : i;
+      return isRefFormEditableText(i.kind) ? { ...moved, text: refFormInitialText(i, edits.texts, orgTexts) } : moved;
+    });
+}
+
 // 性別で出し分ける○を書き込むか（性別が分からないときはどちらも書かない）
 export function refFormCircleShown(kind: RefFormFieldKind, gender: string): boolean {
   if (kind !== "circle_male" && kind !== "circle_female") return true;
