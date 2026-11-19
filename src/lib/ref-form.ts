@@ -29,7 +29,12 @@ export function refFormName(key: string): string {
 // 提出書類一覧表に無いが、同じ「ひな形・記入位置」の仕組みで作る様式（キー → 名前）
 export const EXTRA_REF_FORMS: Record<string, string> = {
   nozei3: "納税証明書交付請求書（その3）",
+  guidance: "事前ガイダンスの確認書",
+  orientation: "生活オリエンテーションの確認書",
 };
+// 入管には出さず、本人に署名してもらうだけの書類（申請準備の提出書類一覧表の下に出す）。
+// 「本人に署名してもらうページだけ」では、署名ページの印が無ければ全部のページを入れる
+export const SIGN_ONLY_REF_FORM_KEYS = ["guidance", "orientation"] as const;
 export const NOZEI3_REF_FORM_KEY = "nozei3";
 
 // ひな形を登録できる様式のキーか
@@ -935,8 +940,11 @@ export function refFormFileName(mode: RefFormMode, workerName: string, formKey?:
 }
 
 // 署名ページだけのときは署名ページの印が無い様式を入れない
-export function refFormPagesFor(mode: RefFormMode, signPages: number[]): number[] | undefined {
-  return mode === "sign" ? signPages : undefined;
+export function refFormPagesFor(mode: RefFormMode, signPages: number[], formKey = ""): number[] | undefined {
+  if (mode !== "sign") return undefined;
+  // 署名だけの書類（事前ガイダンス・生活オリエンテーションの確認書）は、印が無ければ全部のページ
+  if (signPages.length === 0 && (SIGN_ONLY_REF_FORM_KEYS as readonly string[]).includes(formKey)) return undefined;
+  return signPages;
 }
 
 export const REF_FORM_MIGRATION = "0227_ref_form_templates.sql";

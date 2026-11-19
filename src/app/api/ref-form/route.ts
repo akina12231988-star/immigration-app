@@ -19,7 +19,7 @@ import { listWorkersForSupport } from "@/lib/supabase/queries/workers";
 import { mergeSupportOrgLists } from "@/lib/custody";
 import type { Organization, WorkerWage } from "@/types/db";
 import {
-  REF_FORM_ITEMS,
+  isRefFormKey,
   REF_FORM_SAMPLE_DATA,
   fillRefForm,
   mergeRefForms,
@@ -75,7 +75,7 @@ async function makePdf(sp: URLSearchParams, posted: Record<string, RefFormEdits>
   const sample = sp.get("sample") === "1";
   const templateId = sp.get("templateId") ?? "";
   const workerId = sp.get("workerId") ?? "";
-  const keys = (sp.get("keys") ?? "").split(",").filter((k) => REF_FORM_ITEMS.some((i) => i.key === k));
+  const keys = (sp.get("keys") ?? "").split(",").filter((k) => isRefFormKey(k));
   if (sample ? !templateId : !workerId || keys.length === 0) {
     return NextResponse.json({ error: "不正なリクエストです" }, { status: 400 });
   }
@@ -202,7 +202,7 @@ async function makePdf(sp: URLSearchParams, posted: Record<string, RefFormEdits>
     const font = await readFile(path.join(process.cwd(), "public", "fonts", "NotoSansJP-Regular.ttf"));
     const parts = [];
     for (const t of targets) {
-      const onlyPages = refFormPagesFor(mode, t.sign_pages);
+      const onlyPages = refFormPagesFor(mode, t.sign_pages, t.form_key);
       if (onlyPages && onlyPages.length === 0) continue; // 署名ページの印が無い様式は入れない
       const { data: blob, error: dlErr } = await admin.storage.from("app-files").download(t.pdf_path);
       if (dlErr || !blob) throw dlErr ?? new Error("PDFを読めませんでした");

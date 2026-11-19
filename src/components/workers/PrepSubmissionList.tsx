@@ -3,7 +3,7 @@
 import { Fragment, useState, type ReactNode } from "react";
 import { CheckCircle2, ChevronDown, Eye, Loader2, Paperclip, Printer, Trash2 } from "lucide-react";
 import { FileDropArea } from "@/components/ui/FileDropArea";
-import { isRefFormItem, languageForNationality, missingBundledRefForms, pickRefFormTemplate, refFormName } from "@/lib/ref-form";
+import { SIGN_ONLY_REF_FORM_KEYS, isRefFormItem, languageForNationality, missingBundledRefForms, pickRefFormTemplate, refFormName } from "@/lib/ref-form";
 import { registerBundledRefForms } from "@/app/(app)/ref-forms/actions";
 import { SUBMISSION_PDF_TEMPLATES, canFillSubmissionPdf, fillSubmissionPdf, submissionPdfTables } from "@/lib/submission-pdf";
 import { RefFormRowBar, RefFormTemplatesDialog, refFormHref, useRefFormTemplates } from "@/components/ref-forms/RefFormPanel";
@@ -56,6 +56,8 @@ export function PrepSubmissionList({
   const [openNotes, setOpenNotes] = useState(false);
   const refForms = useRefFormTemplates();
   const [managing, setManaging] = useState<SubmissionRow | null>(null);
+  // 本人に署名してもらうだけの書類のひな形を管理しているとき（キー）
+  const [managingKey, setManagingKey] = useState<string | null>(null);
   // 参考様式を作るときに外す○（「ひな形ID:項目ID」）。様式ごとの作成・まとめてダウンロードの両方に使う
   const [refOff, setRefOff] = useState<string[]>([]);
   // アプリに入れてある入管の参考様式（未記入）のうち、まだ全員共通のひな形にしていないもの
@@ -88,6 +90,10 @@ export function PrepSubmissionList({
   const refSignReady = refReady.filter(
     (r) => (pickRefFormTemplate(refForms.templates, refKey(r), nationality, orgId)?.sign_pages.length ?? 0) > 0,
   );
+  // 入管には出さず、本人に署名してもらうだけの書類（事前ガイダンス・生活オリエンテーションの確認書）。特定技能1号だけ
+  const signOnlyKeys: string[] = workerId && rows.some((r) => r.key.startsWith("t1-")) ? [...SIGN_ONLY_REF_FORM_KEYS] : [];
+  const signOnlyReady = signOnlyKeys.filter((k) => pickRefFormTemplate(refForms.templates, k, nationality, orgId));
+  const signKeys = [...refSignReady.map(refKey), ...signOnlyReady];
   const undecided = rows.filter((r) => r.mark == null);
   const autoCount = rows.filter((r) => r.auto && r.mark != null).length;
   const yesCount = rows.filter((r) => r.mark === "有").length;
@@ -188,20 +194,49 @@ export function PrepSubmissionList({
             参考様式を一気にダウンロード（{refReady.length}件）
           </a>
           <a
-            href={refSignReady.length > 0 ? refFormHref(workerId, refSignReady.map(refKey), "sign", refOff, todoNo) : undefined}
+            href={signKeys.length > 0 ? refFormHref(workerId, signKeys, "sign", refOff, todoNo) : undefined}
             target="_blank"
             rel="noopener noreferrer"
-            aria-disabled={refSignReady.length === 0}
+            aria-disabled={signKeys.length === 0}
             className={`inline-flex min-h-[34px] items-center gap-1 rounded-lg px-3 font-bold ${
-              refSignReady.length > 0 ? "border border-seal bg-surface text-seal" : "pointer-events-none bg-border text-muted"
+              signKeys.length > 0 ? "border border-seal bg-surface text-seal" : "pointer-events-none bg-border text-muted"
             }`}
+            title="事前ガイダンス・生活オリエンテーションの確認書（ひな形を登録したもの）も入ります"
           >
-            ✍ 本人に署名してもらうページだけ（{refSignReady.length}件）
+            ✍ 本人に署名してもらうページだけ（{signKeys.length}件）
           </a>
           {refForms.error && <span className="text-seal">{refForms.error}</span>}
           {refReady.length < refRows.length && (
             <span className="text-muted">ひな形が未登録の様式は入りません（行の「ひな形・記入位置」から登録）</span>
           )}
+        </div>
+      )}
+
+      {/* 入管には出さず、本人に署名してもらうだけの書類。言語ごとのひな形を登録し、記入位置を置いて作る */}
+      {signOnlyKeys.length > 0 && workerId && (
+        <div className="flex flex-col gap-1.5 rounded-xl border border-seal/30 bg-seal/5 p-2 text-[11px]">
+          <p className="font-bold text-seal">
+            ✍ 本人に署名してもらう書類（入管には出さない）
+            <span className="ml-1 font-normal text-muted">
+              言語ごとにひな形を登録し、記入位置（事前ガイダンス・生活オリエンテーションの実施日など）を置きます。上の「本人に署名してもらうページだけ」にも入ります。
+            </span>
+          </p>
+          {signOnlyKeys.map((k) => (
+            <RefFormRowBar
+              key={k}
+              todoNo={todoNo}
+              off={refOff}
+              onOffChange={setRefOff}
+              formKey={k}
+              workerId={workerId}
+              nationality={nationality}
+              orgId={orgId}
+              orgName={orgName}
+              templates={refForms.templates}
+              canEdit={canEdit}
+              onManage={() => setManagingKey(k)}
+            />
+          ))}
         </div>
       )}
 
@@ -362,6 +397,18 @@ export function PrepSubmissionList({
           orgId={orgId}
           orgName={orgName}
           onClose={() => setManaging(null)}
+          onChanged={refForms.reload}
+        />
+      )}
+      {managingKey && (
+        <RefFormTemplatesDialog
+          formKey={managingKey}
+          formLabel={refFormName(managingKey)}
+          templates={refForms.templates}
+          defaultLanguage={languageForNationality(nationality) || "日本語"}
+          orgId={orgId}
+          orgName={orgName}
+          onClose={() => setManagingKey(null)}
           onChanged={refForms.reload}
         />
       )}
