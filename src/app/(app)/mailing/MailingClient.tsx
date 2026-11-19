@@ -1016,6 +1016,7 @@ function ExtraRequestForm({
                 doc={doc}
                 canEdit={canEdit}
                 workerId={workerId || undefined}
+                agentName={v.applicantType === "agent" ? v.agentName : ""}
                 onChanged={(m) => setMunicipalities(municipalities.map((x) => (x.id === m.id ? m : x)))}
               />
             ))}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildNozei3DrawItems, type Nozei3FormData } from "./nozei3-form";
+import { buildNozei3DrawItems, findSavedAgent, normalizeSavedAgents, upsertSavedAgent, type Nozei3FormData } from "./nozei3-form";
 import { isMyNumberFillable } from "./tax-office";
 
 // テスト用の固定幅（1文字 = size の幅）
@@ -107,5 +107,16 @@ describe("buildNozei3DrawItems（代理人記入欄）", () => {
   it("空なら代理人記入欄には何も書かない", () => {
     const items = buildNozei3DrawItems({ ...base, agentAddress: "", agentName: " " }, measure);
     expect(items.filter((i) => i.x < 250 && 842 - i.y > 120)).toHaveLength(0);
+  });
+});
+
+describe("登録した代理人の生年月日・電話番号", () => {
+  it("読み込み・登録（渡さなければ前の値を残す）・名前で探す", () => {
+    const list = normalizeSavedAgents({ agents: [{ name: "A", address: "x", birth: "1990-04-01", phone: "080-1" }, { name: "B", address: "y", birth: "bad" }] });
+    expect(list[0]).toEqual({ name: "A", address: "x", birth: "1990-04-01", phone: "080-1" });
+    expect(list[1]).toEqual({ name: "B", address: "y" });
+    const next = upsertSavedAgent(list, { name: "A", address: "z" });
+    expect(findSavedAgent(next, " A ")).toEqual({ name: "A", address: "z", birth: "1990-04-01", phone: "080-1" });
+    expect(findSavedAgent(next, "C")).toBeNull();
   });
 });

@@ -8,6 +8,14 @@ import { compressImage } from "@/lib/image-compress";
 import { listMailingAgentDocuments } from "@/lib/supabase/queries/mailing-agent-docs";
 import { docsForAgent, type MailingAgentDocument } from "@/lib/mailing-agent-docs";
 import { createAgentDocTicket, deleteAgentDoc, getAgentDocPreviewUrl, registerAgentDoc } from "./actions";
+import { getAppSetting, setAppSetting } from "@/lib/supabase/queries/app-settings";
+import {
+  NOZEI3_AGENTS_SETTING_KEY,
+  findSavedAgent,
+  normalizeSavedAgents,
+  upsertSavedAgent,
+  type SavedAgent,
+} from "@/lib/nozei3-form";
 
 // 郵送請求の代理人の身分証明書。代理人の名前に登録した本人確認書類（運転免許証の写しなど）を
 // その場で開いて印刷できる。まだ無ければここから登録する（名前ごとに保存され、次回から出る）
@@ -94,7 +102,8 @@ export function AgentIdDocuments({ agentName, canEdit }: { agentName: string; ca
 
   return (
     <div className="rounded-xl border border-border bg-surface p-3">
-      <p className="flex items-center gap-1.5 text-xs font-bold">
+      <AgentProfileFields agentName={name} canEdit={canEdit} />
+      <p className="mt-3 flex items-center gap-1.5 text-xs font-bold">
         <IdCard size={15} />
         {name} の身分証明書（郵送請求に同封する写し）
       </p>
@@ -175,6 +184,108 @@ export function AgentIdDocuments({ agentName, canEdit }: { agentName: string; ca
         <p role="alert" className="mt-2 rounded-lg bg-seal/10 px-3 py-1.5 text-xs text-seal">
           {error}
         </p>
+      )}
+    </div>
+  );
+}
+
+// 代理人の住所・生年月日・電話番号（代理人の名前ごとに登録。自治体の申請書の代理人の欄に入る）。
+// 納税証明書その3の代理人と同じ登録（app_settings の mailing_agents）を使う
+function AgentProfileFields({ agentName, canEdit }: { agentName: string; canEdit: boolean }) {
+  const [all, setAll] = useState<SavedAgent[] | null>(null);
+  const [draft, setDraft] = useState<{ address: string; birth: string; phone: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getAppSetting(createClient(), NOZEI3_AGENTS_SETTING_KEY)
+      .then((v) => {
+        if (!cancelled) setAll(normalizeSavedAgents(v));
+      })
+      .catch(() => {
+        if (!cancelled) setAll([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  // 名前が変わったら、その人の登録を入力欄に出し直す
+  const saved = all ? findSavedAgent(all, agentName) : null;
+  const [draftFor, setDraftFor] = useState("");
+  if (all && draftFor !== agentName) {
+    setDraftFor(agentName);
+    setDraft({ address: saved?.address ?? "", birth: saved?.birth ?? "", phone: saved?.phone ?? "" });
+    setMsg(null);
+  }
+  if (!all || !draft) return null;
+  const changed =
+    draft.address !== (saved?.address ?? "") || draft.birth !== (saved?.birth ?? "") || draft.phone !== (saved?.phone ?? "");
+  const save = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      // 保存の直前に読み直して、ほかの代理人の登録を消さないようにする
+      const latest = normalizeSavedAgents(await getAppSetting(createClient(), NOZEI3_AGENTS_SETTING_KEY));
+      const next = upsertSavedAgent(latest, { name: agentName, address: draft.address, birth: draft.birth, phone: draft.phone });
+      await setAppSetting(createClient(), NOZEI3_AGENTS_SETTING_KEY, { agents: next });
+      setAll(next);
+      setMsg("保存しました");
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "保存に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const input = "min-h-[34px] rounded-md border border-border bg-background px-2 text-xs";
+  return (
+    <div className="flex flex-col gap-1.5">
+      <p className="text-xs font-bold">{agentName} の情報（申請書の代理人の欄に入ります）</p>
+      <div className="flex flex-wrap gap-2 text-[11px]">
+        <label className="flex min-w-[14rem] flex-1 flex-col gap-0.5">
+          <span className="text-muted">住所</span>
+          <input
+            value={draft.address}
+            readOnly={!canEdit}
+            onChange={(e) => setDraft({ ...draft, address: e.target.value })}
+            className={input}
+          />
+        </label>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-muted">生年月日</span>
+          <input
+            type="date"
+            value={draft.birth}
+            readOnly={!canEdit}
+            onChange={(e) => setDraft({ ...draft, birth: e.target.value })}
+            className={input}
+          />
+        </label>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-muted">電話番号</span>
+          <input
+            value={draft.phone}
+            readOnly={!canEdit}
+            inputMode="tel"
+            placeholder="080-1234-5678"
+            onChange={(e) => setDraft({ ...draft, phone: e.target.value })}
+            className={`${input} w-36`}
+          />
+        </label>
+      </div>
+      {canEdit && (
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void save()}
+            disabled={busy || !changed}
+            className="inline-flex min-h-[32px] items-center gap-1 rounded-lg bg-brand px-3 text-xs font-bold text-brand-foreground disabled:opacity-50"
+          >
+            {busy ? <Loader2 size={13} className="animate-spin" /> : null}
+            代理人の情報を保存
+          </button>
+          {msg && <span className="text-[11px] text-muted">{msg}</span>}
+          {!saved && <span className="text-[11px] text-muted">まだ登録されていません（保存すると次回から出ます）</span>}
+        </div>
       )}
     </div>
   );

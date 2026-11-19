@@ -15,6 +15,8 @@ import {
   type MunicipalFormPerson,
 } from "@/lib/municipal-form";
 import { todayStr } from "@/lib/application-alerts";
+import { getAppSetting } from "@/lib/supabase/queries/app-settings";
+import { NOZEI3_AGENTS_SETTING_KEY, findSavedAgent, normalizeSavedAgents } from "@/lib/nozei3-form";
 
 // 自治体の申請書（課税・納税証明書の交付請求書）・委任状（doc=proxy）のPDFに、外国人の情報を記入位置どおりに書き込んで返す。
 // /api/municipal-cert-form?municipalityId=...&workerId=...&fiscalYear=2026[&download=1]
@@ -32,6 +34,7 @@ const SAMPLE: MunicipalFormPerson = {
   yearAddress: "熊本県八代市本町1-1-1",
   fiscalYear: 2026,
   today: "",
+  agent: { name: "野口明菜", address: "熊本県熊本市東区小山3-8-87カームリーハウスB201", birth: "1990-04-01", phone: "080-4281-1083" },
 };
 
 export async function GET(req: NextRequest) {
@@ -93,6 +96,7 @@ export async function GET(req: NextRequest) {
         yearAddress: hit?.address ?? "",
         fiscalYear,
         today,
+        agent: await agentOf(supabase, sp.get("agent") ?? ""),
       };
       fileLabel = worker.name;
     }
@@ -117,4 +121,17 @@ export async function GET(req: NextRequest) {
     console.error("municipal-cert-form failed:", err);
     return NextResponse.json({ error: "申請書の作成に失敗しました（PDFが読めない形式の可能性があります）" }, { status: 500 });
   }
+}
+
+// 請求の画面で入れた代理人の名前から、登録した代理人（住所・生年月日・電話番号）を引く。
+// 登録が無ければ名前だけ入れる。名前が空なら代理人の欄は空欄
+async function agentOf(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  name: string,
+): Promise<{ name: string; address: string; birth: string; phone: string } | null> {
+  const n = name.trim();
+  if (!n) return null;
+  const saved = await getAppSetting(supabase, NOZEI3_AGENTS_SETTING_KEY).catch(() => null);
+  const a = findSavedAgent(normalizeSavedAgents(saved), n);
+  return { name: n, address: a?.address ?? "", birth: a?.birth ?? "", phone: a?.phone ?? "" };
 }
