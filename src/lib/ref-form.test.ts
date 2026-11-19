@@ -26,6 +26,7 @@ import {
   refFormWage6Values,
   refFormCellWidth,
   isRefFormKey,
+  refFormFitLines,
 } from "./ref-form";
 
 describe("参考様式の行", () => {
@@ -350,5 +351,31 @@ describe("証明書類の請求（税務署の交付請求書）", () => {
     expect(isRefFormKey("nozei3")).toBe(true);
     expect(isRefFormKey("t1-4-1")).toBe(true);
     expect(isRefFormKey("nope")).toBe(false);
+  });
+});
+
+describe("最大の幅と行数（折り返し）", () => {
+  const m = (t: string, size: number) => t.length * size;
+  it("1行のときは、入らなければ小さくする", () => {
+    const r = refFormFitLines("あいうえおかきくけこ", { size: 10, maxWidth: 50 }, m);
+    expect(r.lines).toEqual(["あいうえおかきくけこ"]);
+    expect(r.size).toBe(5);
+  });
+  it("2行まで折り返す。2行に入るなら大きさはそのまま", () => {
+    const r = refFormFitLines("あいうえおかきくけこ", { size: 10, maxWidth: 50, maxLines: 2 }, m);
+    expect(r).toEqual({ size: 10, lines: ["あいうえお", "かきくけこ"] });
+  });
+  it("2行でも入らなければ小さくしてから折り返す", () => {
+    const r = refFormFitLines("あいうえおかきくけこさしすせそ", { size: 10, maxWidth: 50, maxLines: 2 }, m);
+    expect(r.lines.length).toBe(2);
+    expect(r.size).toBeLessThan(10);
+  });
+  it("最大の幅が無ければ1行のまま", () => {
+    expect(refFormFitLines("あいう", { size: 10, maxLines: 2 }, m)).toEqual({ size: 10, lines: ["あいう"] });
+  });
+  it("行数は保存値から読む（2〜5）", () => {
+    const [a] = normalizeRefFormLayout([{ id: "a", kind: "agent_address", page: 0, x: 1, y: 1, size: 10, maxWidth: 160, maxLines: 2 }]);
+    expect(a.maxLines).toBe(2);
+    expect(normalizeRefFormLayout([{ id: "b", kind: "address", page: 0, x: 1, y: 1, size: 10, maxLines: 1 }])[0].maxLines).toBeUndefined();
   });
 });
