@@ -19,6 +19,7 @@ import {
   parsePrepAmounts,
   prepAmountValue,
   serializePrepAmounts,
+  prepAmountRows,
   sumPrepAmounts,
   PREP_DOC_ATTACH_ITEMS,
   PREP_DOC_DEFS,
@@ -598,5 +599,13 @@ describe("立替払いの準備状況（納税証明書・年金記録）", () =
   });
   it("課税証明書には立替払いの選択肢を出さない", () => {
     expect(prepStatusOption("kazei", PREP_STATUS_ADVANCE_INSTRUCTED)).toBeNull();
+  });
+});
+
+describe("源泉徴収票の金額の入力欄（もう1枚追加）", () => {
+  it("足した空の欄も並べる。何も無ければ空欄1つ", () => {
+    expect(prepAmountRows("184648+")).toEqual(["184648", ""]);
+    expect(prepAmountRows("")).toEqual([""]);
+    expect(prepAmountRows("871608+500000")).toEqual(["871608", "500000"]);
   });
 });

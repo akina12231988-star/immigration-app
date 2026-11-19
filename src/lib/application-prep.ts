@@ -817,6 +817,12 @@ export function parsePrepAmounts(amount: string): string[] {
     .filter((s) => s !== "");
 }
 
+// 入力欄に並べる金額（空の欄も残す。「もう1枚追加」で足した空の欄を出すため）。何も無ければ空欄1つ
+export function prepAmountRows(amount: string): string[] {
+  const rows = (amount ?? "").split("+").map((s) => s.trim());
+  return rows.length === 0 ? [""] : rows;
+}
+
 // 配列を保存形式にする（数字だけ・「+」区切り。空の項目は落とす）
 export function serializePrepAmounts(list: string[]): string {
   return list
