@@ -34,7 +34,7 @@ const SAMPLE: MunicipalFormPerson = {
   yearAddress: "熊本県八代市本町1-1-1",
   fiscalYear: 2026,
   today: "",
-  agent: { name: "野口明菜", address: "熊本県熊本市東区小山3-8-87カームリーハウスB201", birth: "1990-04-01", phone: "080-4281-1083" },
+  agent: { name: "野口明菜", kana: "ノグチ アキナ", address: "熊本県熊本市東区小山3-8-87カームリーハウスB201", birth: "1990-04-01", phone: "080-4281-1083" },
 };
 
 export async function GET(req: NextRequest) {
@@ -128,10 +128,10 @@ export async function GET(req: NextRequest) {
 async function agentOf(
   supabase: Awaited<ReturnType<typeof createClient>>,
   name: string,
-): Promise<{ name: string; address: string; birth: string; phone: string } | null> {
+): Promise<{ name: string; kana: string; address: string; birth: string; phone: string } | null> {
   const n = name.trim();
   if (!n) return null;
   const saved = await getAppSetting(supabase, NOZEI3_AGENTS_SETTING_KEY).catch(() => null);
   const a = findSavedAgent(normalizeSavedAgents(saved), n);
-  return { name: n, address: a?.address ?? "", birth: a?.birth ?? "", phone: a?.phone ?? "" };
+  return { name: n, kana: a?.kana ?? "", address: a?.address ?? "", birth: a?.birth ?? "", phone: a?.phone ?? "" };
 }

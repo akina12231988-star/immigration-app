@@ -78,6 +78,12 @@ export type MunicipalFormFieldKind =
   | "agent_address"
   | "agent_birth_seireki"
   | "agent_birth_wareki"
+  | "agent_kana"
+  | "agent_birth_era"
+  | "agent_birth_y"
+  | "agent_birth_y_seireki"
+  | "agent_birth_m"
+  | "agent_birth_d"
   | "agent_tel"
   | "agent_tel1"
   | "agent_tel2"
@@ -113,9 +119,15 @@ export const MUNICIPAL_FORM_FIELDS: { kind: MunicipalFormFieldKind; label: strin
   { kind: "today_d", label: "請求日の日だけ", sample: "7" },
   // 代理人（請求の画面で入れた代理人の名前に、登録した住所・生年月日・電話番号を使う）
   { kind: "agent_name", label: "代理人の氏名", sample: "野口明菜" },
+  { kind: "agent_kana", label: "代理人のフリガナ", sample: "ノグチ アキナ" },
   { kind: "agent_address", label: "代理人の住所", sample: "熊本県熊本市東区小山3-8-87" },
   { kind: "agent_birth_seireki", label: "代理人の生年月日（西暦）", sample: "1990年4月1日" },
   { kind: "agent_birth_wareki", label: "代理人の生年月日（和暦）", sample: "平成2年4月1日" },
+  { kind: "agent_birth_era", label: "代理人の生年月日の元号だけ（平成 など）", sample: "平成" },
+  { kind: "agent_birth_y", label: "代理人の生年月日の年だけ（和暦の数字）", sample: "2" },
+  { kind: "agent_birth_y_seireki", label: "代理人の生年月日の年だけ（西暦）", sample: "1990" },
+  { kind: "agent_birth_m", label: "代理人の生年月日の月だけ", sample: "4" },
+  { kind: "agent_birth_d", label: "代理人の生年月日の日だけ", sample: "1" },
   { kind: "agent_tel", label: "代理人の電話番号", sample: "080-4281-1083" },
   { kind: "agent_tel1", label: "代理人の電話番号の初めの3桁", sample: "080" },
   { kind: "agent_tel2", label: "代理人の電話番号の真ん中の4桁", sample: "4281" },
@@ -177,7 +189,7 @@ export interface MunicipalFormPerson {
   fiscalYear: number | null; // 年度の開始年（西暦。例: 2026 = 令和8年度）
   today: string; // YYYY-MM-DD
   // 代理人（請求の画面の代理人の名前と、登録した住所・生年月日・電話番号）。無ければ空欄
-  agent?: { name: string; address: string; birth: string; phone: string } | null;
+  agent?: { name: string; kana?: string; address: string; birth: string; phone: string } | null;
 }
 
 // 電話番号を3つに分ける（「-」があればそこで、無ければ 11桁は 3-4-4、10桁は 3-3-4）
@@ -261,6 +273,24 @@ export function municipalFormValue(item: Pick<MunicipalFormItem, "kind" | "text"
       return p.agent?.name ?? "";
     case "agent_address":
       return p.agent?.address ?? "";
+    case "agent_kana":
+      return p.agent?.kana ?? "";
+    case "agent_birth_era":
+      return warekiParts(p.agent?.birth || null)?.eraLong ?? "";
+    case "agent_birth_y": {
+      const w = warekiParts(p.agent?.birth || null);
+      return w ? String(w.year) : "";
+    }
+    case "agent_birth_y_seireki":
+      return /^\d{4}/.test(p.agent?.birth ?? "") ? (p.agent?.birth ?? "").slice(0, 4) : "";
+    case "agent_birth_m": {
+      const w = warekiParts(p.agent?.birth || null);
+      return w ? String(w.month) : "";
+    }
+    case "agent_birth_d": {
+      const w = warekiParts(p.agent?.birth || null);
+      return w ? String(w.day) : "";
+    }
     case "agent_birth_seireki":
       return birthSeireki(p.agent?.birth || null);
     case "agent_birth_wareki":

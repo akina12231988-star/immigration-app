@@ -193,7 +193,7 @@ export function AgentIdDocuments({ agentName, canEdit }: { agentName: string; ca
 // 納税証明書その3の代理人と同じ登録（app_settings の mailing_agents）を使う
 function AgentProfileFields({ agentName, canEdit }: { agentName: string; canEdit: boolean }) {
   const [all, setAll] = useState<SavedAgent[] | null>(null);
-  const [draft, setDraft] = useState<{ address: string; birth: string; phone: string } | null>(null);
+  const [draft, setDraft] = useState<{ kana: string; address: string; birth: string; phone: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   useEffect(() => {
@@ -214,11 +214,12 @@ function AgentProfileFields({ agentName, canEdit }: { agentName: string; canEdit
   const [draftFor, setDraftFor] = useState("");
   if (all && draftFor !== agentName) {
     setDraftFor(agentName);
-    setDraft({ address: saved?.address ?? "", birth: saved?.birth ?? "", phone: saved?.phone ?? "" });
+    setDraft({ kana: saved?.kana ?? "", address: saved?.address ?? "", birth: saved?.birth ?? "", phone: saved?.phone ?? "" });
     setMsg(null);
   }
   if (!all || !draft) return null;
   const changed =
+    draft.kana !== (saved?.kana ?? "") ||
     draft.address !== (saved?.address ?? "") || draft.birth !== (saved?.birth ?? "") || draft.phone !== (saved?.phone ?? "");
   const save = async () => {
     setBusy(true);
@@ -226,7 +227,7 @@ function AgentProfileFields({ agentName, canEdit }: { agentName: string; canEdit
     try {
       // 保存の直前に読み直して、ほかの代理人の登録を消さないようにする
       const latest = normalizeSavedAgents(await getAppSetting(createClient(), NOZEI3_AGENTS_SETTING_KEY));
-      const next = upsertSavedAgent(latest, { name: agentName, address: draft.address, birth: draft.birth, phone: draft.phone });
+      const next = upsertSavedAgent(latest, { name: agentName, kana: draft.kana, address: draft.address, birth: draft.birth, phone: draft.phone });
       await setAppSetting(createClient(), NOZEI3_AGENTS_SETTING_KEY, { agents: next });
       setAll(next);
       setMsg("保存しました");
@@ -241,6 +242,16 @@ function AgentProfileFields({ agentName, canEdit }: { agentName: string; canEdit
     <div className="flex flex-col gap-1.5">
       <p className="text-xs font-bold">{agentName} の情報（申請書の代理人の欄に入ります）</p>
       <div className="flex flex-wrap gap-2 text-[11px]">
+        <label className="flex flex-col gap-0.5">
+          <span className="text-muted">フリガナ</span>
+          <input
+            value={draft.kana}
+            readOnly={!canEdit}
+            placeholder="ノグチ アキナ"
+            onChange={(e) => setDraft({ ...draft, kana: e.target.value })}
+            className={`${input} w-40`}
+          />
+        </label>
         <label className="flex min-w-[14rem] flex-1 flex-col gap-0.5">
           <span className="text-muted">住所</span>
           <input

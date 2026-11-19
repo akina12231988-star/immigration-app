@@ -120,3 +120,11 @@ describe("登録した代理人の生年月日・電話番号", () => {
     expect(findSavedAgent(next, "C")).toBeNull();
   });
 });
+
+describe("登録した代理人のフリガナ", () => {
+  it("読み込み・登録で残る", () => {
+    const list = normalizeSavedAgents({ agents: [{ name: "A", address: "x", kana: "エー" }] });
+    expect(list[0].kana).toBe("エー");
+    expect(findSavedAgent(upsertSavedAgent(list, { name: "A", address: "y" }), "A")?.kana).toBe("エー");
+  });
+});

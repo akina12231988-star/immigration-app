@@ -154,3 +154,19 @@ describe("代理人の欄", () => {
     expect(splitPhone("0965123456")).toEqual(["096", "512", "3456"]);
   });
 });
+
+describe("代理人のフリガナと生年月日の年・月・日", () => {
+  const p: MunicipalFormPerson = {
+    name: "", kana: "", birth: null, nationality: "", postalCode: "", address: "", yearAddress: "", fiscalYear: null, today: "2026-11-19",
+    agent: { name: "野口明菜", kana: "ノグチ アキナ", address: "", birth: "1990-04-01", phone: "" },
+  };
+  it("フリガナ・元号・年（和暦・西暦）・月・日", () => {
+    expect(municipalFormValue({ kind: "agent_kana" }, p)).toBe("ノグチ アキナ");
+    expect(municipalFormValue({ kind: "agent_birth_era" }, p)).toBe("平成");
+    expect(municipalFormValue({ kind: "agent_birth_y" }, p)).toBe("2");
+    expect(municipalFormValue({ kind: "agent_birth_y_seireki" }, p)).toBe("1990");
+    expect(municipalFormValue({ kind: "agent_birth_m" }, p)).toBe("4");
+    expect(municipalFormValue({ kind: "agent_birth_d" }, p)).toBe("1");
+    expect(municipalFormValue({ kind: "agent_birth_d" }, { ...p, agent: { ...p.agent!, birth: "" } })).toBe("");
+  });
+});
