@@ -23,6 +23,7 @@ import {
   normalizeRefFormEdits,
   refFormInitialText,
   refFormSampleOf,
+  refFormWage6Values,
 } from "./ref-form";
 
 describe("参考様式の行", () => {
@@ -266,5 +267,33 @@ describe("賃金（月給・日給・時給）", () => {
     expect(refFormValue({ kind: "wage_daily" }, d)).toBe("");
     expect(refFormValue({ kind: "wage_hourly" }, { ...d, wage: { kind: "時給", amount: 1100 } })).toBe("1,100");
     expect(refFormValue({ kind: "wage_amount" }, { ...d, wage: null })).toBe("");
+  });
+});
+
+describe("1-6号別紙（賃金の支払）の値", () => {
+  it("月給: 1時間当たり・合計・手当・手取りを、画面と同じ計算で出す", () => {
+    const v = refFormWage6Values(
+      { kind: "月給", amount: 191000 },
+      { allowances: [{ type: "通勤手当", name: "", amount: 5000, method: "実費" }], social_enabled: false, employment_enabled: false },
+      2088,
+    );
+    expect(v.hourly).toBe("1,098");
+    expect(v.monthly).toBe("");
+    expect(v.allow1_name).toBe("通勤手当");
+    expect(v.allow1_amount).toBe("5,000");
+    expect(v.allow1_method).toBe("実費");
+    expect(v.allow_total).toBe("5,000");
+    expect(v.gross).toBe("196,000");
+    expect(v.allow2_name).toBeUndefined();
+  });
+  it("時給: 1か月当たりの金額を出し、1時間当たりは空欄", () => {
+    const v = refFormWage6Values({ kind: "時給", amount: 1100 }, {}, 2088);
+    expect(v.monthly).toBe("191,400");
+    expect(v.hourly).toBe("");
+  });
+  it("置いた項目に値が入る", () => {
+    const d = { ...REF_FORM_SAMPLE_DATA, wage6: { net: "144,712" } };
+    expect(refFormValue({ kind: "w6_net" }, d)).toBe("144,712");
+    expect(refFormValue({ kind: "w6_tax" }, d)).toBe("");
   });
 });

@@ -4,6 +4,7 @@ import { birthSeireki, birthWareki } from "@/lib/person-copy";
 import { warekiDate } from "@/lib/dependents";
 import { SUBMISSION_ITEMS, type SubmissionItem } from "@/lib/submission-list";
 import { PLAN_DATE_FIELDS, type PlanDateKey } from "@/lib/support-plan-dates";
+import { calcWageDetail, formatYen, normalizeWageDetail } from "@/lib/wage-calc";
 
 // ---- 参考様式の作成（申請書類作成をアプリ一本化計画・試験中） ----
 // 参考様式（1-4号・1-5号・1-6号・1-17号・11-1号など）のひな形PDFを、様式・言語ごとに1回だけ登録し（ref_form_templates。0227）、
@@ -111,6 +112,83 @@ export function normalizeSignPages(v: unknown): number[] {
   return [...new Set(v.filter((x): x is number => typeof x === "number" && Number.isInteger(x) && x >= 0))].sort((a, b) => a - b);
 }
 
+// ---- 1-6号別紙（賃金の支払）の値 ----
+// 金額はすべて3桁ごとにカンマ（「約」は様式に書いてあるので付けない）
+export const W6_FIELDS = [
+  { key: "hourly", label: "1時間当たりの金額（月給・日給のとき）", sample: "1,098" },
+  { key: "monthly", label: "1か月当たりの金額（日給・時給のとき）", sample: "191,400" },
+  ...[1, 2, 3, 4].flatMap((n) => {
+    const c = String.fromCharCode(96 + n);
+    return [
+      { key: `allow${n}_name`, label: `手当(${c})の名前`, sample: n === 1 ? "通勤" : "" },
+      { key: `allow${n}_amount`, label: `手当(${c})の金額`, sample: n === 1 ? "5,000" : "" },
+      { key: `allow${n}_method`, label: `手当(${c})の計算方法`, sample: n === 1 ? "実費（上限5,000円）" : "" },
+    ];
+  }),
+  { key: "ot_amount", label: "固定残業代の金額", sample: "" },
+  { key: "ot_hours", label: "固定残業代の時間数", sample: "" },
+  { key: "allow_total", label: "諸手当の合計", sample: "5,000" },
+  { key: "gross", label: "3. 1か月当たりの支払概算額", sample: "196,000" },
+  { key: "tax", label: "4(a) 税金", sample: "3,010" },
+  { key: "social", label: "4(b) 社会保険料", sample: "27,323" },
+  { key: "employment", label: "4(c) 雇用保険料", sample: "955" },
+  { key: "food", label: "4(d) 食費", sample: "0" },
+  { key: "housing", label: "4(e) 居住費", sample: "20,000" },
+  { key: "housing_note", label: "4(e) 居住費の算定方法・説明", sample: "家賃÷入居人数" },
+  { key: "utility", label: "4(f) その他（水道光熱費）", sample: "0" },
+  { key: "other1_name", label: "その他控除1の名前", sample: "" },
+  { key: "other1_amount", label: "その他控除1の金額", sample: "" },
+  { key: "other2_name", label: "その他控除2の名前", sample: "" },
+  { key: "other2_amount", label: "その他控除2の金額", sample: "" },
+  { key: "deduct_total", label: "控除する金額（合計）", sample: "51,288" },
+  { key: "net", label: "5. 手取り支給額", sample: "144,712" },
+] as const;
+export type W6Key = (typeof W6_FIELDS)[number]["key"];
+
+// 賃金（区分・金額）と1-6号別紙の内容から、置く項目の値を出す（画面の「約〇〇円」と同じ計算）。
+// annualHours は所属機関の年間所定労働時間（別紙に入れていないときに使う）
+export function refFormWage6Values(
+  wage: { kind: string; amount: number },
+  rawDetail: unknown,
+  annualHours: number,
+): Record<string, string> {
+  const detail = normalizeWageDetail(rawDetail);
+  const r = calcWageDetail(wage, detail, annualHours);
+  const y = (n: number) => formatYen(n);
+  const out: Record<string, string> = {
+    hourly:
+      wage.kind === "月給" && r.annualHours > 0
+        ? y((wage.amount * 12) / r.annualHours)
+        : wage.kind === "日給"
+          ? y(wage.amount / 8)
+          : "",
+    monthly: (wage.kind === "日給" || wage.kind === "時給") && r.base > 0 ? y(r.base) : "",
+    allow_total: y(r.allowanceTotal),
+    gross: y(r.gross),
+    tax: y(r.tax),
+    social: y(r.social),
+    employment: y(r.employment),
+    food: y(r.food),
+    housing: y(r.housing),
+    housing_note: detail.housing_note ?? "",
+    utility: y(r.utility),
+    deduct_total: y(r.deductTotal),
+    net: y(r.net),
+    ot_amount: detail.fixed_ot_enabled ? y(detail.fixed_ot_amount) : "",
+    ot_hours: detail.fixed_ot_enabled && detail.fixed_ot_hours ? String(detail.fixed_ot_hours) : "",
+  };
+  detail.allowances.slice(0, 4).forEach((a, i) => {
+    out[`allow${i + 1}_name`] = a.name || a.type;
+    out[`allow${i + 1}_amount`] = y(a.amount);
+    out[`allow${i + 1}_method`] = a.method;
+  });
+  detail.others.slice(0, 2).forEach((o, i) => {
+    out[`other${i + 1}_name`] = o.name;
+    out[`other${i + 1}_amount`] = y(o.amount);
+  });
+  return out;
+}
+
 // ---- 書き込む項目 ----
 export type RefFormFieldKind =
   | "name"
@@ -165,6 +243,7 @@ export type RefFormFieldKind =
   | "mark_monthly"
   | "mark_daily"
   | "mark_hourly"
+  | `w6_${W6Key}`
   | "text"
   | "check"
   | "circle"
@@ -232,6 +311,8 @@ export const REF_FORM_FIELDS: { kind: RefFormFieldKind; label: string; sample: s
   { kind: "mark_monthly", label: "■ 月給のときだけ（□を塗る）", sample: "■", group: "賃金" },
   { kind: "mark_daily", label: "■ 日給のときだけ（□を塗る）", sample: "■", group: "賃金" },
   { kind: "mark_hourly", label: "■ 時給のときだけ（□を塗る）", sample: "■", group: "賃金" },
+  // 1-6号別紙（賃金の支払）。外国人詳細の「賃金（1-6号別紙）」で保存した内容から計算する
+  ...W6_FIELDS.map((f) => ({ kind: `w6_${f.key}` as RefFormFieldKind, label: f.label, sample: f.sample, group: "1-6号別紙（賃金の支払）" })),
   { kind: "text", label: "自由な文字（毎回同じ）", sample: "（文字）", group: "そのほか" },
   { kind: "check", label: "✓ チェック", sample: "✓", group: "そのほか" },
   { kind: "circle", label: "○ 丸", sample: "○", group: "そのほか" },
@@ -353,6 +434,8 @@ export interface RefFormData {
   planDates?: Record<string, string>;
   // 賃金（外国人詳細の「賃金（1-6号別紙）」の現在の記録）。無ければ空欄
   wage?: { kind: string; amount: number } | null;
+  // 1-6号別紙（賃金の支払）の値（refFormWage6Values）。無ければ空欄
+  wage6?: Record<string, string>;
 }
 
 const postal = (v: string) => {
@@ -380,6 +463,7 @@ export function refFormValue(item: Pick<RefFormItem, "kind" | "text" | "fmt">, d
     case "wage_hourly":
       return wageIs("時給");
   }
+  if (item.kind.startsWith("w6_")) return data.wage6?.[item.kind.slice(3)] ?? "";
   if (isRefFormPlanDate(item.kind)) {
     const key = item.kind.slice("plan_".length);
     const v = data.planDates?.[key] ?? (key === "doc" ? data.docDate : "");
@@ -529,6 +613,7 @@ export const REF_FORM_SAMPLE_DATA: RefFormData = {
   today: "",
   docDate: "2026-11-14",
   wage: { kind: "月給", amount: 220000 },
+  wage6: Object.fromEntries(W6_FIELDS.map((f) => [f.key, f.sample])),
   planDates: { doc: "2026-11-14", cond: "2026-11-10", con: "2026-11-12", es: "2026-12-01", apply: "2026-11-20" },
 };
 
