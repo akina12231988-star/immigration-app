@@ -120,13 +120,13 @@ export const W6_FIELDS = [
   ...[1, 2, 3, 4].flatMap((n) => {
     const c = String.fromCharCode(96 + n);
     return [
-      { key: `allow${n}_name`, label: `手当(${c})の名前`, sample: n === 1 ? "通勤" : "" },
-      { key: `allow${n}_amount`, label: `手当(${c})の金額`, sample: n === 1 ? "5,000" : "" },
-      { key: `allow${n}_method`, label: `手当(${c})の計算方法`, sample: n === 1 ? "実費（上限5,000円）" : "" },
+      { key: `allow${n}_name`, label: `手当(${c})の名前`, sample: ["通勤", "住宅", "皆勤", "資格"][n - 1] },
+      { key: `allow${n}_amount`, label: `手当(${c})の金額`, sample: ["5,000", "10,000", "3,000", "2,000"][n - 1] },
+      { key: `allow${n}_method`, label: `手当(${c})の計算方法`, sample: ["実費（上限5,000円）", "毎月定額", "欠勤なしの月に支給", "毎月定額"][n - 1] },
     ];
   }),
-  { key: "ot_amount", label: "固定残業代の金額", sample: "" },
-  { key: "ot_hours", label: "固定残業代の時間数", sample: "" },
+  { key: "ot_amount", label: "固定残業代の金額", sample: "20,000" },
+  { key: "ot_hours", label: "固定残業代の時間数", sample: "15" },
   { key: "allow_total", label: "諸手当の合計", sample: "5,000" },
   { key: "gross", label: "3. 1か月当たりの支払概算額", sample: "196,000" },
   { key: "tax", label: "4(a) 税金", sample: "3,010" },
@@ -136,10 +136,10 @@ export const W6_FIELDS = [
   { key: "housing", label: "4(e) 居住費", sample: "20,000" },
   { key: "housing_note", label: "4(e) 居住費の算定方法・説明", sample: "家賃÷入居人数" },
   { key: "utility", label: "4(f) その他（水道光熱費）", sample: "0" },
-  { key: "other1_name", label: "その他控除1の名前", sample: "" },
-  { key: "other1_amount", label: "その他控除1の金額", sample: "" },
-  { key: "other2_name", label: "その他控除2の名前", sample: "" },
-  { key: "other2_amount", label: "その他控除2の金額", sample: "" },
+  { key: "other1_name", label: "その他控除1の名前", sample: "通信費" },
+  { key: "other1_amount", label: "その他控除1の金額", sample: "2,000" },
+  { key: "other2_name", label: "その他控除2の名前", sample: "寮の備品代" },
+  { key: "other2_amount", label: "その他控除2の金額", sample: "1,000" },
   { key: "deduct_total", label: "控除する金額（合計）", sample: "51,288" },
   { key: "net", label: "5. 手取り支給額", sample: "144,712" },
 ] as const;
@@ -370,7 +370,9 @@ export function refFormDateText(date: string | null | undefined, fmt: RefFormDat
 // 記入位置の画面で見せる見本
 export function refFormSampleOf(item: Pick<RefFormItem, "kind" | "text" | "fmt">): string {
   if (isRefFormPlanDate(item.kind)) return REF_FORM_DATE_FMTS.find((f) => f.value === (item.fmt ?? "seireki"))?.sample ?? "";
-  return REF_FORM_FIELDS.find((f) => f.kind === item.kind)?.sample ?? "";
+  const f = REF_FORM_FIELDS.find((x) => x.kind === item.kind);
+  // 見本が空の項目は、置いた所が点にならないよう項目の名前を出す
+  return f?.sample || f?.label || "";
 }
 
 export function normalizeRefFormLayout(v: unknown): RefFormItem[] {
