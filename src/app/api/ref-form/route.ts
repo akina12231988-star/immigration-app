@@ -21,6 +21,7 @@ import {
   pickRefFormTemplate,
   refFormFileName,
   refFormOffIds,
+  refFormWage6Values,
   applyRefFormEdits,
   normalizeRefFormEdits,
   EMPTY_REF_FORM_EDITS,
@@ -149,7 +150,9 @@ async function makePdf(sp: URLSearchParams, posted: Record<string, RefFormEdits>
         planDates: await planDates(supabase, workerId, sp.get("todoNo") ?? ""),
       };
       data.docDate = data.planDates?.doc ?? "";
-      data.wage = await currentWage(supabase, workerId, orgId || null);
+      const cw = await currentWage(supabase, workerId, orgId || null);
+      data.wage = cw ? { kind: cw.kind, amount: cw.amount } : null;
+      data.wage6 = cw ? refFormWage6Values(cw, cw.detail, cw.annualHours) : {};
       ({ drafts, orgTexts } = await loadRefFormEdits(supabase, workerId, sp.get("todoNo") ?? "", orgId || null));
       // その所属機関の版があればそれを使う（雇用条件書など、所属機関ごとの書式）
       targets = keys
@@ -241,17 +244,25 @@ async function loadRefFormEdits(
   return { drafts, orgTexts };
 }
 
-// 賃金（外国人詳細の「賃金（1-6号別紙）」）のいちばん新しい記録。申請準備の所属機関の記録があればそちらを使う
+// 賃金（外国人詳細の「賃金（1-6号別紙）」）のいちばん新しい記録。申請準備の所属機関の記録があればそちらを使う。
+// annualHours は、その賃金の所属機関の年間所定労働時間（1-6号別紙に入れていないときの計算に使う）
 async function currentWage(
   supabase: Awaited<ReturnType<typeof createClient>>,
   workerId: string,
   orgId: string | null,
-): Promise<{ kind: string; amount: number } | null> {
+): Promise<{ kind: string; amount: number; detail: unknown; annualHours: number } | null> {
   try {
     const all = await listWorkerWages(supabase, workerId);
     const own = orgId ? all.filter((w) => w.organization_id === orgId) : [];
     const w = sortWages(own.length > 0 ? own : all)[0];
-    return w ? { kind: w.kind, amount: w.amount } : null;
+    if (!w) return null;
+    let annualHours = 0;
+    const hoursOrg = w.organization_id ?? orgId;
+    if (hoursOrg) {
+      const { data: o } = await supabase.from("organizations").select("annual_work_hours").eq("id", hoursOrg).maybeSingle();
+      annualHours = Number((o as { annual_work_hours: number | null } | null)?.annual_work_hours) || 0;
+    }
+    return { kind: w.kind, amount: w.amount, detail: w.detail, annualHours };
   } catch {
     return null;
   }

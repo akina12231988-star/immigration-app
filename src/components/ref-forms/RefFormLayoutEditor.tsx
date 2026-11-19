@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { getRefFormPdfUrl, saveRefFormLayout } from "@/app/(app)/ref-forms/actions";
 import {
@@ -53,8 +53,19 @@ const isCircle = isRefFormCircle;
 const isShape = (k: RefFormFieldKind) => isRefFormCircle(k) || isRefFormMark(k);
 const MAX_PAGES = 20;
 // 置く項目の一覧で、まとまりの始めに出す説明
+// 置く項目を、まとまり（本人・所属機関・日付…）ごとに開いたり閉じたりできる一覧にする
+const FIELD_GROUPS = REF_FORM_FIELDS.filter((f) => !f.hidden).reduce<{ name: string; fields: typeof REF_FORM_FIELDS }[]>(
+  (acc, f) => {
+    const g = acc.find((x) => x.name === f.group);
+    if (g) g.fields.push(f);
+    else acc.push({ name: f.group, fields: [f] });
+    return acc;
+  },
+  [],
+);
 const GROUP_NOTES: Record<string, string> = {
   支援計画書の日付: "支援計画書の日付（申請準備の詳細で保存した日付。置いたあと「書き方」で令和・西暦・年・月・日を選びます）",
+  "1-6号別紙（賃金の支払）": "外国人詳細の「賃金（1-6号別紙）」で保存した内容から計算します（画面の「約〇〇円」と同じ数字）。手当は上から(a)(b)(c)(d)です。",
   賃金: "賃金（外国人詳細の「賃金（1-6号別紙）」のいちばん新しい記録。■は本人の賃金の種類の□の上に置きます）",
 };
 
@@ -83,6 +94,8 @@ export function RefFormLayoutEditor({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [items, setItems] = useState<RefFormItem[]>(() => normalizeRefFormLayout(initialLayout));
   const [kind, setKind] = useState<RefFormFieldKind>("name");
+  // 開いているまとまり（最初は「本人」だけ）
+  const [openGroups, setOpenGroups] = useState<string[]>(["本人"]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -287,10 +300,17 @@ export function RefFormLayoutEditor({
                   onChange={(e) => changeKind(selected.id, e.target.value as RefFormFieldKind)}
                   className="min-h-[34px] rounded border border-border bg-background px-1"
                 >
-                  {REF_FORM_FIELDS.filter((f) => !f.hidden || f.kind === selected.kind).map((f) => (
-                    <option key={f.kind} value={f.kind}>
-                      {f.label}
-                    </option>
+                  {REF_FORM_FIELDS.some((f) => f.hidden && f.kind === selected.kind) && (
+                    <option value={selected.kind}>{REF_FORM_FIELD_LABEL[selected.kind]}</option>
+                  )}
+                  {FIELD_GROUPS.map((g) => (
+                    <optgroup key={g.name} label={g.name}>
+                      {g.fields.map((f) => (
+                        <option key={f.kind} value={f.kind}>
+                          {f.label}
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
               </label>
@@ -376,23 +396,42 @@ export function RefFormLayoutEditor({
             </div>
           )}
           <p className="mb-1 font-bold">① 置く項目を選ぶ → ② PDFの書く場所をクリック</p>
-          <div className="grid grid-cols-2 gap-1 lg:grid-cols-1">
-            {REF_FORM_FIELDS.filter((f) => !f.hidden).map((f, n, list) => (
-              <Fragment key={f.kind}>
-              {GROUP_NOTES[f.group] && list[n - 1]?.group !== f.group && (
-                <p className="col-span-full mt-1 text-[11px] font-bold text-muted">{GROUP_NOTES[f.group]}</p>
-              )}
-              <button
-                type="button"
-                onClick={() => setKind(f.kind)}
-                className={`min-h-[34px] rounded-lg border px-2 text-left text-xs font-bold ${
-                  kind === f.kind ? "border-brand bg-brand text-brand-foreground" : "border-border bg-background"
-                }`}
-              >
-                {f.label}
-              </button>
-              </Fragment>
-            ))}
+          <div className="flex flex-col gap-1">
+            {FIELD_GROUPS.map((g) => {
+              const open = openGroups.includes(g.name);
+              const hasSelected = g.fields.some((f) => f.kind === kind);
+              return (
+                <div key={g.name} className="rounded-lg border border-border">
+                  <button
+                    type="button"
+                    aria-expanded={open}
+                    onClick={() => setOpenGroups((o) => (open ? o.filter((x) => x !== g.name) : [...o, g.name]))}
+                    className={`flex min-h-[36px] w-full items-center gap-1 rounded-lg px-2 text-left text-xs font-bold ${hasSelected ? "bg-brand/10 text-brand" : "bg-surface"}`}
+                  >
+                    <span className="w-3 shrink-0 text-muted">{open ? "▾" : "▸"}</span>
+                    <span className="flex-1">{g.name}</span>
+                    <span className="text-[10px] font-normal text-muted">{g.fields.length}</span>
+                  </button>
+                  {open && (
+                    <div className="grid grid-cols-2 gap-1 px-1.5 pb-1.5 lg:grid-cols-1">
+                      {GROUP_NOTES[g.name] && <p className="col-span-full text-[10px] text-muted">{GROUP_NOTES[g.name]}</p>}
+                      {g.fields.map((f) => (
+                        <button
+                          key={f.kind}
+                          type="button"
+                          onClick={() => setKind(f.kind)}
+                          className={`min-h-[34px] rounded-lg border px-2 text-left text-xs font-bold ${
+                            kind === f.kind ? "border-brand bg-brand text-brand-foreground" : "border-border bg-background"
+                          }`}
+                        >
+                          {f.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
           <p className="mt-2 text-[11px] text-muted">
             PDFの各ページの上の「本人の署名が要るページ」にチェックすると、署名ページだけのダウンロードに入ります。
