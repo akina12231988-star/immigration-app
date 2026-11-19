@@ -191,6 +191,7 @@ export const NOZEI3_AGENTS_SETTING_KEY = "mailing_agents";
 export interface SavedAgent {
   name: string;
   address: string;
+  kana?: string; // フリガナ（自治体の申請書の代理人の欄に使う）
   birth?: string; // 生年月日 YYYY-MM-DD（自治体の申請書の代理人欄に使う。無ければ ''）
   phone?: string; // 電話番号（例: 080-4281-1083）
 }
@@ -206,7 +207,14 @@ export function normalizeSavedAgents(v: unknown): SavedAgent[] {
     if (!name) continue;
     const birth = typeof o.birth === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.birth) ? o.birth : "";
     const phone = typeof o.phone === "string" ? o.phone.trim() : "";
-    out.push({ name, address: typeof o.address === "string" ? o.address.trim() : "", ...(birth ? { birth } : {}), ...(phone ? { phone } : {}) });
+    const kana = typeof o.kana === "string" ? o.kana.trim() : "";
+    out.push({
+      name,
+      address: typeof o.address === "string" ? o.address.trim() : "",
+      ...(kana ? { kana } : {}),
+      ...(birth ? { birth } : {}),
+      ...(phone ? { phone } : {}),
+    });
   }
   return out;
 }
@@ -220,7 +228,8 @@ export function upsertSavedAgent(list: SavedAgent[], agent: SavedAgent): SavedAg
   const rest = list.filter((a) => a.name !== name);
   const birth = agent.birth ?? before?.birth ?? "";
   const phone = (agent.phone ?? before?.phone ?? "").trim();
-  return [...rest, { name, address, ...(birth ? { birth } : {}), ...(phone ? { phone } : {}) }];
+  const kana = (agent.kana ?? before?.kana ?? "").trim();
+  return [...rest, { name, address, ...(kana ? { kana } : {}), ...(birth ? { birth } : {}), ...(phone ? { phone } : {}) }];
 }
 
 // 名前で登録した代理人を探す（前後の空白は無視）
