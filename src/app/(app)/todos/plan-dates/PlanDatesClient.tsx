@@ -15,6 +15,7 @@ import {
   recommendedApplyDate,
   recommendedContractDate,
   recommendedDocDate,
+  PLAN_DATE_KEEP_KEYS,
 } from "@/lib/support-plan-dates";
 import { normalizeTodoKey } from "@/lib/todo";
 import { findPlanDatesForTodo, listPlanDates, upsertPlanDates } from "@/lib/supabase/queries/plan-dates";
@@ -257,6 +258,11 @@ export function PlanDatesClient({
     setSaving(true);
     setSaveError(null);
     try {
+      // 申請準備の「支援計画書の日付」でだけ入れる日付（書類作成日（全様式共通）など）は、保存し直しても残す
+      const before = findPlanDatesForTodo(await listPlanDates(createClient(), workerId).catch(() => []), todo.trim());
+      const keep = Object.fromEntries(
+        PLAN_DATE_KEEP_KEYS.map((k) => [k, before?.dates?.[k] ?? ""]).filter(([, v]) => v),
+      );
       await upsertPlanDates(createClient(), {
         worker_id: workerId,
         todo_no: todo.trim(),
@@ -274,7 +280,7 @@ export function PlanDatesClient({
             ] as const
           ).filter(([, v]) => v) as [string, string][],
         ),
-        dates: planDatesToMap(result, ap, hideSupport),
+        dates: { ...planDatesToMap(result, ap, hideSupport), ...keep },
       });
       setSavedAt((k) => k + 1);
     } catch (err) {

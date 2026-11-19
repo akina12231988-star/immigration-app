@@ -1512,18 +1512,20 @@ export function SavedPlanDatesSection({
   canEdit,
   workerName = "",
   appContent = "",
+  renewal = false,
   onSaved,
 }: {
   workerId: string;
   todoNo: string;
   canEdit: boolean;
+  renewal?: boolean; // 在留期間の更新申請（支援計画書・支援委託契約書の枠を出さない）
   workerName?: string; // 名刺サイズの画像の見出しとファイル名に使う
   appContent?: string; // 申請の内容。特定活動なら 1-5号・1-6号・その他だけを出し、日付計算なしで直接入力できる
   onSaved?: () => void; // 保存したあと（同じページの１－１７号・申請書に貼る情報を読み直したいとき）
 }) {
   // 特定活動の申請は支援計画書の日付計算を使わないので、この欄で直接入力して保存する
   const tokuteiKatsudo = isTokuteiKatsudoContent(appContent);
-  const groups = planDateGroupsFor(tokuteiKatsudo);
+  const groups = planDateGroupsFor(tokuteiKatsudo, renewal);
   const [saved, setSaved] = useState<SavedPlanDates | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [dates, setDates] = useState<Record<string, string>>({});

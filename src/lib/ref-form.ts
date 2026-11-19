@@ -628,7 +628,7 @@ export const REF_FORM_SAMPLE_DATA: RefFormData = {
   wage: { kind: "月給", amount: 220000 },
   wage6: Object.fromEntries(W6_FIELDS.map((f) => [f.key, f.sample])),
   p117: Object.fromEntries(P117_FIELDS.map((f) => [f.key, f.sample])),
-  planDates: { doc: "2026-11-14", cond: "2026-11-10", con: "2026-11-12", es: "2026-12-01", apply: "2026-11-20" },
+  planDates: { docAll: "2026-11-15", doc: "2026-11-14", cond: "2026-11-10", con: "2026-11-12", es: "2026-12-01", apply: "2026-11-20" },
 };
 
 // 賃金の種類で塗る□（■）
