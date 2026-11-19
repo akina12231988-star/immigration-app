@@ -144,8 +144,9 @@ async function makePdf(sp: URLSearchParams, posted: Record<string, RefFormEdits>
           staff: c.supportStaffName,
         },
         today: todayStr(),
-        docDate: await planDocDate(supabase, workerId, sp.get("todoNo") ?? ""),
+        planDates: await planDates(supabase, workerId, sp.get("todoNo") ?? ""),
       };
+      data.docDate = data.planDates?.doc ?? "";
       ({ drafts, orgTexts } = await loadRefFormEdits(supabase, workerId, sp.get("todoNo") ?? "", orgId || null));
       // その所属機関の版があればそれを使う（雇用条件書など、所属機関ごとの書式）
       targets = keys
@@ -190,18 +191,21 @@ async function makePdf(sp: URLSearchParams, posted: Record<string, RefFormEdits>
   }
 }
 
-// 申請準備の「支援計画書の日付」に保存した書類作成日（0107 が未適用・未保存なら空）
-async function planDocDate(
+// 申請準備の「支援計画書の日付」に保存した日付（キー → YYYY-MM-DD。0107 が未適用・未保存なら空）
+async function planDates(
   supabase: Awaited<ReturnType<typeof createClient>>,
   workerId: string,
   todoNo: string,
-): Promise<string> {
+): Promise<Record<string, string>> {
   try {
     const hit = findPlanDatesForTodo(await listPlanDates(supabase, workerId), todoNo);
-    const v = hit?.dates?.doc ?? "";
-    return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : "";
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(hit?.dates ?? {})) {
+      if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) out[k] = v;
+    }
+    return out;
   } catch {
-    return "";
+    return {};
   }
 }
 

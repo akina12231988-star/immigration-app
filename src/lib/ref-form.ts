@@ -3,6 +3,7 @@ import fontkit from "@pdf-lib/fontkit";
 import { birthSeireki, birthWareki } from "@/lib/person-copy";
 import { warekiDate } from "@/lib/dependents";
 import { SUBMISSION_ITEMS, type SubmissionItem } from "@/lib/submission-list";
+import { PLAN_DATE_FIELDS, type PlanDateKey } from "@/lib/support-plan-dates";
 
 // ---- 参考様式の作成（申請書類作成をアプリ一本化計画・試験中） ----
 // 参考様式（1-4号・1-5号・1-6号・1-17号・11-1号など）のひな形PDFを、様式・言語ごとに1回だけ登録し（ref_form_templates。0227）、
@@ -156,13 +157,14 @@ export type RefFormFieldKind =
   | "doc_y"
   | "doc_m"
   | "doc_d"
+  | `plan_${PlanDateKey}`
   | "text"
   | "check"
   | "circle"
   | "circle_male"
   | "circle_female";
 
-export const REF_FORM_FIELDS: { kind: RefFormFieldKind; label: string; sample: string; group: string }[] = [
+export const REF_FORM_FIELDS: { kind: RefFormFieldKind; label: string; sample: string; group: string; hidden?: boolean }[] = [
   { kind: "name", label: "氏名", sample: "NGUYEN VAN A", group: "本人" },
   { kind: "kana", label: "フリガナ", sample: "グエン ヴァン ア", group: "本人" },
   { kind: "birth_seireki", label: "生年月日（西暦）", sample: "1995年3月8日", group: "本人" },
@@ -203,11 +205,18 @@ export const REF_FORM_FIELDS: { kind: RefFormFieldKind; label: string; sample: s
   { kind: "today_m", label: "作成日の月だけ", sample: "11", group: "日付" },
   { kind: "today_d", label: "作成日の日だけ", sample: "16", group: "日付" },
   // 申請準備の「支援計画書の日付」の書類作成日（全様式共通）。保存していなければ空欄
-  { kind: "doc_date", label: "書類作成日（令和）", sample: "令和8年11月14日", group: "日付" },
-  { kind: "doc_date_seireki", label: "書類作成日（西暦）", sample: "2026年11月14日", group: "日付" },
-  { kind: "doc_y", label: "書類作成日の年だけ（西暦）", sample: "2026", group: "日付" },
-  { kind: "doc_m", label: "書類作成日の月だけ", sample: "11", group: "日付" },
-  { kind: "doc_d", label: "書類作成日の日だけ", sample: "14", group: "日付" },
+  { hidden: true, kind: "doc_date", label: "書類作成日（令和）", sample: "令和8年11月14日", group: "日付" },
+  { hidden: true, kind: "doc_date_seireki", label: "書類作成日（西暦）", sample: "2026年11月14日", group: "日付" },
+  { hidden: true, kind: "doc_y", label: "書類作成日の年だけ（西暦）", sample: "2026", group: "日付" },
+  { hidden: true, kind: "doc_m", label: "書類作成日の月だけ", sample: "11", group: "日付" },
+  { hidden: true, kind: "doc_d", label: "書類作成日の日だけ", sample: "14", group: "日付" },
+  // 申請準備の「支援計画書の日付」の日付。置いたあとに「書き方」（令和・西暦・年・月・日）を選ぶ
+  ...PLAN_DATE_FIELDS.map((f) => ({
+    kind: `plan_${f.key}` as RefFormFieldKind,
+    label: f.label,
+    sample: "2026年11月14日",
+    group: "支援計画書の日付",
+  })),
   { kind: "text", label: "自由な文字（毎回同じ）", sample: "（文字）", group: "そのほか" },
   { kind: "check", label: "✓ チェック", sample: "✓", group: "そのほか" },
   { kind: "circle", label: "○ 丸", sample: "○", group: "そのほか" },
@@ -228,6 +237,44 @@ export interface RefFormItem {
   size: number;
   text?: string;
   maxWidth?: number;
+  fmt?: RefFormDateFmt; // 支援計画書の日付の書き方（無ければ西暦）
+}
+
+// 支援計画書の日付の書き方
+export type RefFormDateFmt = "wareki" | "seireki" | "y" | "m" | "d";
+export const REF_FORM_DATE_FMTS: { value: RefFormDateFmt; label: string; sample: string }[] = [
+  { value: "seireki", label: "西暦（2026年11月14日）", sample: "2026年11月14日" },
+  { value: "wareki", label: "令和（令和8年11月14日）", sample: "令和8年11月14日" },
+  { value: "y", label: "年だけ（西暦・2026）", sample: "2026" },
+  { value: "m", label: "月だけ（11）", sample: "11" },
+  { value: "d", label: "日だけ（14）", sample: "14" },
+];
+const DATE_FMTS = new Set<string>(REF_FORM_DATE_FMTS.map((f) => f.value));
+export const isRefFormPlanDate = (k: RefFormFieldKind): k is `plan_${PlanDateKey}` => k.startsWith("plan_");
+
+// 日付（YYYY-MM-DD）を書き方どおりに。空・不正は空欄
+export function refFormDateText(date: string | null | undefined, fmt: RefFormDateFmt = "seireki"): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((date ?? "").trim());
+  if (!m) return "";
+  const [y, mo, d] = [m[1], String(Number(m[2])), String(Number(m[3]))];
+  switch (fmt) {
+    case "wareki":
+      return warekiDate(date ?? "");
+    case "y":
+      return y;
+    case "m":
+      return mo;
+    case "d":
+      return d;
+    default:
+      return `${y}年${mo}月${d}日`;
+  }
+}
+
+// 記入位置の画面で見せる見本
+export function refFormSampleOf(item: Pick<RefFormItem, "kind" | "text" | "fmt">): string {
+  if (isRefFormPlanDate(item.kind)) return REF_FORM_DATE_FMTS.find((f) => f.value === (item.fmt ?? "seireki"))?.sample ?? "";
+  return REF_FORM_FIELDS.find((f) => f.kind === item.kind)?.sample ?? "";
 }
 
 export function normalizeRefFormLayout(v: unknown): RefFormItem[] {
@@ -248,6 +295,7 @@ export function normalizeRefFormLayout(v: unknown): RefFormItem[] {
       size: Math.min(40, Math.max(4, num(o.size, 10))),
       text: typeof o.text === "string" ? o.text : undefined,
       maxWidth: typeof o.maxWidth === "number" && o.maxWidth > 0 ? o.maxWidth : undefined,
+      fmt: typeof o.fmt === "string" && DATE_FMTS.has(o.fmt) ? (o.fmt as RefFormDateFmt) : undefined,
     });
   }
   return out;
@@ -286,6 +334,8 @@ export interface RefFormData {
   today: string; // YYYY-MM-DD
   // 書類作成日（申請準備の「支援計画書の日付」の書類作成日。YYYY-MM-DD・無ければ空）
   docDate?: string;
+  // 申請準備の「支援計画書の日付」（キー → YYYY-MM-DD）。無ければ空欄
+  planDates?: Record<string, string>;
 }
 
 const postal = (v: string) => {
@@ -297,11 +347,16 @@ const ymd = (v: string | null) => {
   return m ? { y: m[1], m: String(Number(m[2])), d: String(Number(m[3])) } : null;
 };
 
-export function refFormValue(item: Pick<RefFormItem, "kind" | "text">, data: RefFormData): string {
+export function refFormValue(item: Pick<RefFormItem, "kind" | "text" | "fmt">, data: RefFormData): string {
   const p = data.person;
   const b = ymd(p.birth);
   const t = ymd(data.today);
   const dd = ymd(data.docDate ?? null);
+  if (isRefFormPlanDate(item.kind)) {
+    const key = item.kind.slice("plan_".length);
+    const v = data.planDates?.[key] ?? (key === "doc" ? data.docDate : "");
+    return refFormDateText(v, item.fmt);
+  }
   switch (item.kind) {
     case "name":
       return p.name;
@@ -445,6 +500,7 @@ export const REF_FORM_SAMPLE_DATA: RefFormData = {
   },
   today: "",
   docDate: "2026-11-14",
+  planDates: { doc: "2026-11-14", cond: "2026-11-10", con: "2026-11-12", es: "2026-12-01", apply: "2026-11-20" },
 };
 
 export const isRefFormCircle = (k: RefFormFieldKind) =>
