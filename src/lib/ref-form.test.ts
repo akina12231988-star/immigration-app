@@ -379,3 +379,16 @@ describe("最大の幅と行数（折り返し）", () => {
     expect(normalizeRefFormLayout([{ id: "b", kind: "address", page: 0, x: 1, y: 1, size: 10, maxLines: 1 }])[0].maxLines).toBeUndefined();
   });
 });
+
+describe("本人に署名してもらうだけの書類（事前ガイダンス・生活オリエンテーション）", () => {
+  it("ひな形を登録できる様式", () => {
+    expect(isRefFormKey("guidance")).toBe(true);
+    expect(isRefFormKey("orientation")).toBe(true);
+  });
+  it("署名ページだけ: 印が無ければ全部のページ。ほかの様式は印のページだけ（無ければ入れない）", () => {
+    expect(refFormPagesFor("sign", [], "guidance")).toBeUndefined();
+    expect(refFormPagesFor("sign", [1], "guidance")).toEqual([1]);
+    expect(refFormPagesFor("sign", [], "t1-4-1")).toEqual([]);
+    expect(refFormPagesFor("all", [0], "t1-4-1")).toBeUndefined();
+  });
+});

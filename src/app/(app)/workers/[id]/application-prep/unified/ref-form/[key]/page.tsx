@@ -3,7 +3,7 @@ import { AppHeader } from "@/components/AppHeader";
 import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { canUseUnifiedPrep } from "@/lib/unified-prep";
-import { REF_FORM_ITEMS, refFormName } from "@/lib/ref-form";
+import { isRefFormKey, refFormName } from "@/lib/ref-form";
 import { RefFormCreator } from "@/components/ref-forms/RefFormCreator";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +22,7 @@ export default async function RefFormCreatePage({
   const me = await getMyProfile();
   if (!me) redirect("/login");
   if (!canUseUnifiedPrep(me.role)) notFound();
-  if (!REF_FORM_ITEMS.some((i) => i.key === key)) notFound();
+  if (!isRefFormKey(key)) notFound();
 
   const supabase = await createClient();
   const { data } = await supabase
