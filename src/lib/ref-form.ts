@@ -3,7 +3,7 @@ import fontkit from "@pdf-lib/fontkit";
 import { birthSeireki, birthWareki } from "@/lib/person-copy";
 import { warekiDate } from "@/lib/dependents";
 import { SUBMISSION_ITEMS, type SubmissionItem } from "@/lib/submission-list";
-import { PLAN_DATE_FIELDS, type PlanDateKey } from "@/lib/support-plan-dates";
+import { PLAN_DATE_FIELDS, SUPPORT_CONTRACT_YEARS, contractPeriodEnd, type PlanDateKey } from "@/lib/support-plan-dates";
 import { calcWageDetail, fixedOtOverHours, formatYen, normalizeWageDetail } from "@/lib/wage-calc";
 import { P117_FIELDS, type P117Key } from "@/lib/ref-form-117";
 
@@ -259,6 +259,9 @@ export type RefFormFieldKind =
   | "doc_m"
   | "doc_d"
   | `plan_${PlanDateKey}`
+  | "plan_scFrom"
+  | "plan_scTo"
+  | "sc_period"
   | "docall_y"
   | "my_number"
   | "tax_office"
@@ -337,6 +340,10 @@ export const REF_FORM_FIELDS: { kind: RefFormFieldKind; label: string; sample: s
     sample: "2026年11月14日",
     group: "支援計画書の日付",
   })),
+  // 参考様式第1-25号（支援委託契約書）の契約期間: 支援委託契約日から5年間（申請準備の「支援計画書の日付」の表示と同じ）
+  { kind: "plan_scFrom", label: "1-25号 契約期間の始め（支援委託契約日）", sample: "2026年11月12日", group: "支援計画書の日付" },
+  { kind: "plan_scTo", label: "1-25号 契約期間の終わり（5年後の前日）", sample: "2031年11月11日", group: "支援計画書の日付" },
+  { kind: "sc_period", label: "1-25号 契約期間（〇年〇月〇日から〇年〇月〇日まで）", sample: "2026年11月12日から2031年11月11日まで", group: "支援計画書の日付" },
   // 書類作成日（全様式共通）は「　年　月　日」の欄に置くことが多いので、年・月・日を別の項目でも出す
   { kind: "docall_y", label: "書類作成日（全様式共通）の年だけ（西暦）", sample: "2026", group: "支援計画書の日付" },
   { kind: "docall_m", label: "書類作成日（全様式共通）の月だけ", sample: "11", group: "支援計画書の日付" },
@@ -383,6 +390,17 @@ export interface RefFormItem {
   cell?: number; // 個人番号の1マスの幅（pt）。置いた位置から右へ1マスに1文字ずつ書く
   maxLines?: number; // 「最大の幅」を超えるときに折り返す行数（無ければ1行。住所を2行で書くときなど）
 }
+
+// 支援計画書の日付に、計算で出す日付を足す（1-25号の契約期間: 支援委託契約日 → 5年後の前日）
+export function withDerivedPlanDates(dates: Record<string, string>): Record<string, string> {
+  const out = { ...dates };
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dates.con ?? "")) {
+    out.scFrom = dates.con;
+    out.scTo = contractPeriodEnd(dates.con, SUPPORT_CONTRACT_YEARS);
+  }
+  return out;
+}
+
 
 // 支援計画書の日付の書き方
 export type RefFormDateFmt = "wareki" | "seireki" | "y" | "m" | "d";
@@ -541,6 +559,11 @@ export function refFormValue(item: Pick<RefFormItem, "kind" | "text" | "fmt">, d
   }
   if (item.kind === "docall_y" || item.kind === "docall_m" || item.kind === "docall_d") {
     return refFormDateText(data.planDates?.docAll, item.kind === "docall_y" ? "y" : item.kind === "docall_m" ? "m" : "d");
+  }
+  if (item.kind === "sc_period") {
+    const from = refFormDateText(data.planDates?.scFrom);
+    const to = refFormDateText(data.planDates?.scTo);
+    return from && to ? `${from}から${to}まで` : "";
   }
   if (isRefFormPlanDate(item.kind)) {
     const key = item.kind.slice("plan_".length);
@@ -701,7 +724,7 @@ export const REF_FORM_SAMPLE_DATA: RefFormData = {
   myNumber: "123456789012",
   taxOfficeName: "八代税務署",
   agent: { name: "野口明菜", address: "熊本県熊本市東区小山3-8-87カームリーハウスB201" },
-  planDates: { docAll: "2026-11-15", doc: "2026-11-14", cond: "2026-11-10", con: "2026-11-12", es: "2026-12-01", apply: "2026-11-20" },
+  planDates: { scFrom: "2026-11-12", scTo: "2031-11-11", docAll: "2026-11-15", doc: "2026-11-14", cond: "2026-11-10", con: "2026-11-12", es: "2026-12-01", apply: "2026-11-20" },
 };
 
 // 賃金の種類で塗る□（■）

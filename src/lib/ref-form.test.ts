@@ -15,6 +15,7 @@ import {
   refFormFileName,
   refFormName,
   refFormPagesFor,
+  withDerivedPlanDates,
   refFormValue,
   refFormCircleShown,
   refFormCircles,
@@ -398,5 +399,21 @@ describe("所属機関の支援委託料", () => {
     const d = { ...REF_FORM_SAMPLE_DATA, org: { ...REF_FORM_SAMPLE_DATA.org, supportFee: "２２０００円" } };
     expect(refFormValue({ kind: "org_support_fee" }, d)).toBe("22,000");
     expect(refFormValue({ kind: "org_support_fee" }, { ...d, org: { ...d.org, supportFee: "" } })).toBe("");
+  });
+});
+
+describe("1-25号の契約期間（支援委託契約日から5年間）", () => {
+  it("支援委託契約日から始めと終わり（5年後の前日）を出す", () => {
+    const pd = withDerivedPlanDates({ con: "2026-11-12" });
+    expect(pd.scFrom).toBe("2026-11-12");
+    expect(pd.scTo).toBe("2031-11-11");
+    expect(withDerivedPlanDates({}).scFrom).toBeUndefined();
+  });
+  it("始め・終わりは書き方を選べる。期間は1つの文でも書ける", () => {
+    const d = { ...REF_FORM_SAMPLE_DATA, planDates: withDerivedPlanDates({ con: "2026-11-12" }) };
+    expect(refFormValue({ kind: "plan_scTo", fmt: "y" }, d)).toBe("2031");
+    expect(refFormValue({ kind: "plan_scFrom", fmt: "d" }, d)).toBe("12");
+    expect(refFormValue({ kind: "sc_period" }, d)).toBe("2026年11月12日から2031年11月11日まで");
+    expect(refFormValue({ kind: "sc_period" }, { ...d, planDates: {} })).toBe("");
   });
 });
