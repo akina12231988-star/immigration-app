@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   MUNICIPAL_FORM_DOCS,
   addressAfterCity,
+  applyMunicipalTextOverrides,
   parseMunicipalFormDoc,
   fillMunicipalForm,
   guessAcroFieldKind,
@@ -115,5 +116,19 @@ describe("納税証明書の申請書（課税証明書と別の様式・0232）
     expect(parseMunicipalFormDoc("nozei")).toBe("nozei");
     expect(MUNICIPAL_FORM_DOCS.nozei.pathCol).toBe("nozei_form_pdf_path");
     expect(MUNICIPAL_FORM_DOCS.nozei.migration).toBe("0232_municipality_nozei_form_pdf.sql");
+  });
+});
+
+describe("自由な文字を請求ごとに直す", () => {
+  const layout = [
+    { id: "a", kind: "text", text: "入管へ在留資格の手続きのため" },
+    { id: "b", kind: "name" },
+  ];
+  it("自由な文字だけ書き換える。読めない値は無視", () => {
+    const out = applyMunicipalTextOverrides(layout, JSON.stringify({ a: "就職のため", b: "x" }));
+    expect(out[0].text).toBe("就職のため");
+    expect(out[1]).toEqual({ id: "b", kind: "name" });
+    expect(applyMunicipalTextOverrides(layout, "壊れた")).toBe(layout);
+    expect(applyMunicipalTextOverrides(layout, null)).toBe(layout);
   });
 });
