@@ -21,8 +21,20 @@ export const REF_FORM_ITEMS: SubmissionItem[] = SUBMISSION_ITEMS.filter(isRefFor
 
 // 様式の短い名前（例: 参考様式第1-4号）
 export function refFormName(key: string): string {
+  if (key in EXTRA_REF_FORMS) return EXTRA_REF_FORMS[key];
   const it = SUBMISSION_ITEMS.find((i) => i.key === key);
   return it ? it.formNo.replace(/（.*$/, "") : key;
+}
+
+// 提出書類一覧表に無いが、同じ「ひな形・記入位置」の仕組みで作る様式（キー → 名前）
+export const EXTRA_REF_FORMS: Record<string, string> = {
+  nozei3: "納税証明書交付請求書（その3）",
+};
+export const NOZEI3_REF_FORM_KEY = "nozei3";
+
+// ひな形を登録できる様式のキーか
+export function isRefFormKey(key: string): boolean {
+  return key in EXTRA_REF_FORMS || REF_FORM_ITEMS.some((i) => i.key === key);
 }
 
 // ---- 言語 ----
@@ -242,6 +254,11 @@ export type RefFormFieldKind =
   | "doc_d"
   | `plan_${PlanDateKey}`
   | "docall_y"
+  | "my_number"
+  | "tax_office"
+  | "tax_office_full"
+  | "agent_name"
+  | "agent_address"
   | "docall_m"
   | "docall_d"
   | "wage_amount"
@@ -328,6 +345,12 @@ export const REF_FORM_FIELDS: { kind: RefFormFieldKind; label: string; sample: s
   ...W6_FIELDS.map((f) => ({ kind: `w6_${f.key}` as RefFormFieldKind, label: f.label, sample: f.sample, group: "1-6号別紙（賃金の支払）" })),
   // 1-17号 支援計画書に記載する項目（申請準備の「１－１７号の…記載する項目」と同じ値）
   ...P117_FIELDS.map((f) => ({ kind: `p117_${f.key}` as RefFormFieldKind, label: f.label, sample: f.sample, group: "1-17号 支援計画書" })),
+  // 証明書類の請求（税務署の納税証明書交付請求書など）で使う項目
+  { kind: "my_number", label: "個人番号（1マスに1文字・左詰め）", sample: "123456789012", group: "証明書類の請求" },
+  { kind: "tax_office", label: "税務署名（「税務署」を除く。例: 八代）", sample: "八代", group: "証明書類の請求" },
+  { kind: "tax_office_full", label: "税務署名（例: 八代税務署）", sample: "八代税務署", group: "証明書類の請求" },
+  { kind: "agent_name", label: "代理人の氏名", sample: "野口明菜", group: "証明書類の請求" },
+  { kind: "agent_address", label: "代理人の住所", sample: "熊本県熊本市東区小山3-8-87", group: "証明書類の請求" },
   { kind: "text", label: "自由な文字（毎回同じ）", sample: "（文字）", group: "そのほか" },
   { kind: "check", label: "✓ チェック", sample: "✓", group: "そのほか" },
   { kind: "circle", label: "○ 丸", sample: "○", group: "そのほか" },
@@ -349,6 +372,7 @@ export interface RefFormItem {
   text?: string;
   maxWidth?: number;
   fmt?: RefFormDateFmt; // 支援計画書の日付の書き方（無ければ西暦）
+  cell?: number; // 個人番号の1マスの幅（pt）。置いた位置から右へ1マスに1文字ずつ書く
 }
 
 // 支援計画書の日付の書き方
@@ -409,6 +433,7 @@ export function normalizeRefFormLayout(v: unknown): RefFormItem[] {
       text: typeof o.text === "string" ? o.text : undefined,
       maxWidth: typeof o.maxWidth === "number" && o.maxWidth > 0 ? o.maxWidth : undefined,
       fmt: typeof o.fmt === "string" && DATE_FMTS.has(o.fmt) ? (o.fmt as RefFormDateFmt) : undefined,
+      cell: typeof o.cell === "number" && o.cell > 0 && o.cell < 100 ? o.cell : undefined,
     });
   }
   return out;
@@ -455,6 +480,10 @@ export interface RefFormData {
   wage6?: Record<string, string>;
   // 1-17号 支援計画書に記載する項目の値（prep117Values）。無ければ空欄
   p117?: Record<string, string>;
+  // 証明書類の請求で使う値（個人番号・税務署名・代理人）
+  myNumber?: string;
+  taxOfficeName?: string;
+  agent?: { name: string; address: string };
 }
 
 const postal = (v: string) => {
@@ -484,6 +513,20 @@ export function refFormValue(item: Pick<RefFormItem, "kind" | "text" | "fmt">, d
   }
   if (item.kind.startsWith("w6_")) return data.wage6?.[item.kind.slice(3)] ?? "";
   if (item.kind.startsWith("p117_")) return data.p117?.[item.kind.slice(5)] ?? "";
+  switch (item.kind) {
+    case "my_number": {
+      const digits = (data.myNumber ?? "").replace(/[^0-9]/g, "");
+      return digits.length === 12 ? digits : "";
+    }
+    case "tax_office":
+      return (data.taxOfficeName ?? "").trim().replace(/税務署$/, "");
+    case "tax_office_full":
+      return (data.taxOfficeName ?? "").trim();
+    case "agent_name":
+      return data.agent?.name ?? "";
+    case "agent_address":
+      return data.agent?.address ?? "";
+  }
   if (item.kind === "docall_y" || item.kind === "docall_m" || item.kind === "docall_d") {
     return refFormDateText(data.planDates?.docAll, item.kind === "docall_y" ? "y" : item.kind === "docall_m" ? "m" : "d");
   }
@@ -638,6 +681,9 @@ export const REF_FORM_SAMPLE_DATA: RefFormData = {
   wage: { kind: "月給", amount: 220000 },
   wage6: Object.fromEntries(W6_FIELDS.map((f) => [f.key, f.sample])),
   p117: Object.fromEntries(P117_FIELDS.map((f) => [f.key, f.sample])),
+  myNumber: "123456789012",
+  taxOfficeName: "八代税務署",
+  agent: { name: "野口明菜", address: "熊本県熊本市東区小山3-8-87カームリーハウスB201" },
   planDates: { docAll: "2026-11-15", doc: "2026-11-14", cond: "2026-11-10", con: "2026-11-12", es: "2026-12-01", apply: "2026-11-20" },
 };
 
@@ -738,6 +784,11 @@ export function applyRefFormEdits(
     });
 }
 
+// 個人番号の1マスの幅（pt）。入れていなければ文字の大きさの1.5倍
+export function refFormCellWidth(item: Pick<RefFormItem, "cell" | "size">): number {
+  return item.cell ?? Math.round(item.size * 1.5 * 10) / 10;
+}
+
 // 性別で出し分ける○を書き込むか（性別が分からないときはどちらも書かない）
 export function refFormCircleShown(kind: RefFormFieldKind, gender: string): boolean {
   if (kind !== "circle_male" && kind !== "circle_female") return true;
@@ -770,6 +821,18 @@ function drawItem(page: PDFPage, font: PDFFont, item: RefFormItem, data: RefForm
     if (!refFormCircleShown(item.kind, data.person.gender)) return;
     const r = item.size / 2;
     page.drawEllipse({ x: item.x + r, y: height - item.y - r, xScale: r, yScale: r, borderColor: black, borderWidth: Math.max(0.8, item.size / 18) });
+    return;
+  }
+  // 個人番号: 置いた位置から右へ、1マスに1文字ずつ（マスの真ん中に）書く
+  if (item.kind === "my_number") {
+    const digits = refFormValue(item, data);
+    if (!digits) return;
+    const cell = refFormCellWidth(item);
+    const ascent = font.heightAtSize(item.size, { descender: false });
+    [...digits].forEach((ch, i) => {
+      const w = font.widthOfTextAtSize(ch, item.size);
+      page.drawText(ch, { x: item.x + i * cell + (cell - w) / 2, y: height - item.y - ascent, size: item.size, font, color: black });
+    });
     return;
   }
   const text = refFormValue(item, data).replace(/\s+/g, " ").trim();

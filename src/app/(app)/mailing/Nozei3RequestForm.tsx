@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ExternalLink, FileText, IdCard, Printer, StickyNote } from "lucide-react";
+import { ExternalLink, FileText, IdCard, PenLine, Printer, StickyNote } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { Button } from "@/components/ui/Button";
@@ -41,6 +41,8 @@ import { getAppSetting, setAppSetting } from "@/lib/supabase/queries/app-setting
 import { SaveBlockers } from "@/components/mailing/SaveBlockers";
 import { ProgressBadge, TrackingLink } from "@/components/mailing/MailingRecordSummary";
 import { MailingFileAttachments } from "./MailingFileAttachments";
+import { RefFormTemplatesDialog, useRefFormTemplates } from "@/components/ref-forms/RefFormPanel";
+import { NOZEI3_REF_FORM_KEY, normalizeRefFormLayout, refFormName } from "@/lib/ref-form";
 import { MAIL_REQUEST_KIND, NOZEI3_RECEIVED_KIND } from "@/lib/mailing-attachments";
 import { TAX_OFFICE_MIGRATION, TaxOfficeModal, sortTaxOffices } from "./TaxOfficeTab";
 import { INPUT, LABEL, Pill, type MailingWorker } from "./ui";
@@ -230,6 +232,14 @@ export function Nozei3Fields({
   showToast: (m: string) => void;
 }) {
   const { office, suggested } = effectiveTaxOffice(v, taxOffices, workerAddress);
+
+  // 交付請求書のひな形（参考様式と同じ「ひな形・記入位置」。全員共通の日本語の版で、記入位置を置いてあればそれで作る）
+  const refForms = useRefFormTemplates();
+  const [managingForm, setManagingForm] = useState(false);
+  const ownTemplate = refForms.templates.find(
+    (t) => t.form_key === NOZEI3_REF_FORM_KEY && !t.organization_id && t.language === "日本語",
+  );
+  const ownTemplateReady = !!ownTemplate && normalizeRefFormLayout(ownTemplate.layout).length > 0;
 
   // 登録した代理人（氏名と住所の組）。選択肢に足し、氏名を選ぶと住所も入るようにする
   const [savedAgents, setSavedAgents] = useState<SavedAgent[]>([]);
@@ -486,6 +496,23 @@ export function Nozei3Fields({
             )}
           </ol>
         </div>
+        <p className="text-[11px] text-muted">
+          {ownTemplateReady
+            ? `交付請求書は「ひな形・記入位置」で登録した様式（${ownTemplate?.pdf_name || "PDF"}）と記入位置で作ります。`
+            : "交付請求書は、アプリに入っている様式で作ります。「交付請求書のひな形・記入位置」で様式の PDF を登録し、記入位置を置いて保存すると、そちらで作ります。"}
+        </p>
+        {managingForm && (
+          <RefFormTemplatesDialog
+            formKey={NOZEI3_REF_FORM_KEY}
+            formLabel={refFormName(NOZEI3_REF_FORM_KEY)}
+            templates={refForms.templates}
+            defaultLanguage="日本語"
+            orgId={null}
+            orgName=""
+            onClose={() => setManagingForm(false)}
+            onChanged={refForms.reload}
+          />
+        )}
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           <Button
             type="button"
@@ -508,6 +535,14 @@ export function Nozei3Fields({
               交付請求書を作る（自動入力・印刷用）
             </span>
           </Button>
+          {canEdit && (
+            <Button type="button" variant="secondary" onClick={() => setManagingForm(true)}>
+              <span className="inline-flex items-center gap-1.5">
+                <PenLine size={15} />
+                交付請求書のひな形・記入位置
+              </span>
+            </Button>
+          )}
           <Button type="button" variant="secondary" onClick={() => window.open(NOZEI3_ININJO_URL, "_blank", "noopener")}>
             <span className="inline-flex items-center gap-1.5">
               <Printer size={15} />

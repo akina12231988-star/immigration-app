@@ -7,9 +7,9 @@ import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { isMissingColumnError, isMissingTableError } from "@/lib/errors";
 import {
   BUNDLED_REF_FORMS,
-  REF_FORM_ITEMS,
   REF_FORM_LANGUAGES,
   REF_FORM_MIGRATION,
+  isRefFormKey,
   normalizeRefFormLayout,
   normalizeSignPages,
   refFormName,
@@ -31,7 +31,7 @@ async function requireAdmin(): Promise<boolean> {
   return !!me && me.role === "admin";
 }
 
-const validKey = (k: string) => REF_FORM_ITEMS.some((i) => i.key === k);
+const validKey = (k: string) => isRefFormKey(k);
 const validLang = (l: string) => (REF_FORM_LANGUAGES as readonly string[]).includes(l);
 const validOrg = (o: string | null) => o == null || /^[0-9a-f-]{36}$/i.test(o);
 const ORG_HINT = "マイグレーション 0228_ref_form_templates_org.sql が未適用の可能性があります。Supabase の SQL Editor で適用してください。";

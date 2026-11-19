@@ -8,6 +8,7 @@ import {
   REF_FORM_DATE_FMTS,
   isRefFormPlanDate,
   refFormSampleOf,
+  refFormCellWidth,
   type RefFormDateFmt,
   REF_FORM_FIELD_LABEL,
   REF_FORM_TEXT_PLACEHOLDER,
@@ -369,7 +370,22 @@ export function RefFormLayoutEditor({
                   ＋
                 </button>
               </div>
-              {selected.kind !== "check" && !isShape(selected.kind) && (
+              {selected.kind === "my_number" && (
+                <label className="flex items-center gap-1">
+                  <span className="w-16">マスの幅</span>
+                  <input
+                    type="number"
+                    step={0.1}
+                    min={1}
+                    value={selected.cell ?? ""}
+                    placeholder={String(refFormCellWidth(selected))}
+                    onChange={(e) => update(selected.id, { cell: Number(e.target.value) > 0 ? Number(e.target.value) : undefined })}
+                    className="min-h-[30px] w-24 rounded border border-border px-1"
+                  />
+                  <span className="text-muted">pt（様式の1マスの幅に合わせる。最初のマスの左端に置く）</span>
+                </label>
+              )}
+              {selected.kind !== "check" && selected.kind !== "my_number" && !isShape(selected.kind) && (
                 <label className="flex items-center gap-1">
                   <span className="w-16">最大の幅</span>
                   <input
@@ -552,7 +568,24 @@ export function RefFormLayoutEditor({
                         };
                       }}
                     >
-                      {isShape(it.kind) ? "" : label}
+                      {isShape(it.kind) ? (
+                        ""
+                      ) : it.kind === "my_number" ? (
+                        // 個人番号は1マスに1文字。マスの幅で並べて、様式のマスと合っているかを見られるようにする
+                        <span className="flex">
+                          {[...label].map((ch, n) => (
+                            <span
+                              key={n}
+                              className="inline-block border-r border-seal/30 text-center last:border-r-0"
+                              style={{ width: refFormCellWidth(it) * scale }}
+                            >
+                              {ch}
+                            </span>
+                          ))}
+                        </span>
+                      ) : (
+                        label
+                      )}
                       {/* 選んでいる項目の上に出す小さな操作（項目名・消す） */}
                       {isSel && (
                         <span
