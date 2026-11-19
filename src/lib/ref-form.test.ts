@@ -291,6 +291,18 @@ describe("1-6号別紙（賃金の支払）の値", () => {
     expect(v.monthly).toBe("191,400");
     expect(v.hourly).toBe("");
   });
+  it("固定残業代: 手当の名前・金額・時間数・超える時間数（入れていなければ時間数と同じ）", () => {
+    const v = refFormWage6Values(
+      { kind: "月給", amount: 191000 },
+      { fixed_ot_enabled: true, fixed_ot_amount: 20000, fixed_ot_hours: 15, fixed_ot_name: "固定残業" },
+      2088,
+    );
+    expect([v.ot_name, v.ot_amount, v.ot_hours, v.ot_over_hours]).toEqual(["固定残業", "20,000", "15", "15"]);
+    const w = refFormWage6Values({ kind: "月給", amount: 191000 }, { fixed_ot_enabled: true, fixed_ot_hours: 15, fixed_ot_over_hours: 20 }, 2088);
+    expect(w.ot_over_hours).toBe("20");
+    const none = refFormWage6Values({ kind: "月給", amount: 191000 }, { fixed_ot_enabled: false, fixed_ot_name: "固定残業" }, 2088);
+    expect(none.ot_name).toBe("");
+  });
   it("置いた項目に値が入る", () => {
     const d = { ...REF_FORM_SAMPLE_DATA, wage6: { net: "144,712" } };
     expect(refFormValue({ kind: "w6_net" }, d)).toBe("144,712");

@@ -19,6 +19,7 @@ import {
   baseWageNote,
   calcWageDetail,
   formatYen,
+  fixedOtOverHours,
   lodgingNoteTemplate,
   lodgingPerPerson,
 } from "@/lib/wage-calc";
@@ -352,6 +353,16 @@ export function WageDetailForm({
           {detail.fixed_ot_enabled && (
             <>
               <label className="flex flex-col gap-0.5">
+                <span className={labelClass}>手当の名前（(e)「　　手当」）</span>
+                <input
+                  value={detail.fixed_ot_name}
+                  disabled={readOnly}
+                  placeholder="固定残業"
+                  onChange={(e) => set({ fixed_ot_name: e.target.value })}
+                  className={`${NUM} w-28 text-left`}
+                />
+              </label>
+              <label className="flex flex-col gap-0.5">
                 <span className={labelClass}>固定残業代（円）</span>
                 <input
                   value={formatAmountInput(detail.fixed_ot_amount)}
@@ -368,6 +379,17 @@ export function WageDetailForm({
                   disabled={readOnly}
                   inputMode="numeric"
                   onChange={(e) => set({ fixed_ot_hours: numValue(e.target.value) })}
+                  className={`${NUM} w-20`}
+                />
+              </label>
+              <label className="flex flex-col gap-0.5">
+                <span className={labelClass}>この時間を超える分は追加で支給</span>
+                <input
+                  value={detail.fixed_ot_over_hours || ""}
+                  disabled={readOnly}
+                  inputMode="numeric"
+                  placeholder={detail.fixed_ot_hours ? String(detail.fixed_ot_hours) : ""}
+                  onChange={(e) => set({ fixed_ot_over_hours: numValue(e.target.value) })}
                   className={`${NUM} w-20`}
                 />
               </label>
@@ -816,10 +838,12 @@ function WageFormPreview({
         ))}
         {detail.fixed_ot_enabled && (
           <p>
-            【固定残業代】{formatYen(detail.fixed_ot_amount)}円 {copyNum(detail.fixed_ot_amount, "固定残業代")}
+            【固定残業代】{detail.fixed_ot_name ? `${detail.fixed_ot_name}手当 ` : ""}
+            {formatYen(detail.fixed_ot_amount)}円 {copyNum(detail.fixed_ot_amount, "固定残業代")}
             <span className="block pl-4 text-[10px] text-muted">
               支給要件：時間外労働の有無にかかわらず、{formatYen(detail.fixed_ot_hours)}
-              時間分の時間外手当として支給。超える時間外労働分についての割増賃金は追加で支給。
+              時間分の時間外手当として支給。{formatYen(fixedOtOverHours(detail))}
+              時間を超える時間外労働分についての割増賃金は追加で支給。
             </span>
           </p>
         )}
