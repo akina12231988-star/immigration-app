@@ -241,6 +241,9 @@ export type RefFormFieldKind =
   | "doc_m"
   | "doc_d"
   | `plan_${PlanDateKey}`
+  | "docall_y"
+  | "docall_m"
+  | "docall_d"
   | "wage_amount"
   | "wage_monthly"
   | "wage_daily"
@@ -309,6 +312,10 @@ export const REF_FORM_FIELDS: { kind: RefFormFieldKind; label: string; sample: s
     sample: "2026年11月14日",
     group: "支援計画書の日付",
   })),
+  // 書類作成日（全様式共通）は「　年　月　日」の欄に置くことが多いので、年・月・日を別の項目でも出す
+  { kind: "docall_y", label: "書類作成日（全様式共通）の年だけ（西暦）", sample: "2026", group: "支援計画書の日付" },
+  { kind: "docall_m", label: "書類作成日（全様式共通）の月だけ", sample: "11", group: "支援計画書の日付" },
+  { kind: "docall_d", label: "書類作成日（全様式共通）の日だけ", sample: "15", group: "支援計画書の日付" },
   // 賃金（外国人詳細の「賃金（1-6号別紙）」の現在の記録）。金額は 3桁ごとにカンマ
   { kind: "wage_amount", label: "賃金の金額（月給・日給・時給どれでも）", sample: "220,000", group: "賃金" },
   { kind: "wage_monthly", label: "月給の金額（月給のときだけ）", sample: "220,000", group: "賃金" },
@@ -477,6 +484,9 @@ export function refFormValue(item: Pick<RefFormItem, "kind" | "text" | "fmt">, d
   }
   if (item.kind.startsWith("w6_")) return data.wage6?.[item.kind.slice(3)] ?? "";
   if (item.kind.startsWith("p117_")) return data.p117?.[item.kind.slice(5)] ?? "";
+  if (item.kind === "docall_y" || item.kind === "docall_m" || item.kind === "docall_d") {
+    return refFormDateText(data.planDates?.docAll, item.kind === "docall_y" ? "y" : item.kind === "docall_m" ? "m" : "d");
+  }
   if (isRefFormPlanDate(item.kind)) {
     const key = item.kind.slice("plan_".length);
     const v = data.planDates?.[key] ?? (key === "doc" ? data.docDate : "");

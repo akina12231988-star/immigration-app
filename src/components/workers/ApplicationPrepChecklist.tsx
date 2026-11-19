@@ -1792,6 +1792,32 @@ export function ApplicationPrepChecklist({
               );
   };
 
+  // 支援計画書の日付の章（一本化の試験中は提出書類一覧表の上、今の画面では「あっせん」の下に出す）
+  const planDatesSection = current ? (
+      <PrepSection id="prep-dates" title="支援計画書の日付">
+        <div className="flex flex-col gap-3">
+        {/* 支援計画書の日付計算ツール（求人日付のカレンダー表示付き）と保存済みの日付 */}
+        <Link
+          href={`/todos/plan-dates?workerId=${workerId}&name=${encodeURIComponent(
+            workerRow?.name ?? "",
+          )}&todo=${encodeURIComponent(current.todo_no)}`}
+          className="flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-2.5 text-xs font-bold text-brand"
+        >
+          📅 日付計算: 支援計画書の日付計算ツール（求人日付のカレンダー表示付き）を開く →
+        </Link>
+        <SavedPlanDatesSection
+          workerId={workerId}
+          todoNo={current.todo_no}
+          canEdit={canEdit}
+          workerName={workerRow?.name ?? ""}
+          appContent={meta.app_content ?? ""}
+          renewal={meta.app_type === "更新"}
+          onSaved={() => setPrepInfoKey((k) => k + 1)}
+        />
+        </div>
+      </PrepSection>
+  ) : null;
+
   return (
     <div>
       {error && (
@@ -2793,6 +2819,9 @@ export function ApplicationPrepChecklist({
       )}
       </PrepSection>
 
+      {/* 支援計画書の日付（一本化の試験中は、提出書類一覧表の上） */}
+      {submissionRows && planDatesSection}
+
       {/* 提出書類一覧表（特定技能1号・2号の在留資格変更。一本化の試験中だけ）。入管の一覧表の番号順に有／無を選び、
           ○を付けて印刷する。「必要な書類の準備」のすぐ下に置く */}
       {submissionRows && (
@@ -2862,7 +2891,9 @@ export function ApplicationPrepChecklist({
         />
       </PrepSection>
 
-      {/* 5. 署名・賃金（1-6号別紙）。雇用契約書・雇用条件書の欄は外した（外国人詳細で保管している） */}
+      {/* 5. 署名・賃金（1-6号別紙）。雇用契約書・雇用条件書の欄は外した（外国人詳細で保管している）。
+          一本化の試験中は出さない（署名はステータス欄、賃金は「所属機関への採用条件の確認」で扱う） */}
+      {!unified && (
       <PrepSection id="prep-sign" title="署名・賃金">
         <div className="flex flex-col gap-3">
         {/* 本人から署名をもらったかどうかのステータス */}
@@ -2882,6 +2913,7 @@ export function ApplicationPrepChecklist({
         </p>
         </div>
       </PrepSection>
+      )}
 
       {/* 6. あっせん（必須） */}
       <PrepSection
@@ -2911,29 +2943,8 @@ export function ApplicationPrepChecklist({
         />
       </PrepSection>
 
-      {/* 7. 支援計画書の日付 */}
-      <PrepSection id="prep-dates" title="支援計画書の日付">
-        <div className="flex flex-col gap-3">
-        {/* 支援計画書の日付計算ツール（求人日付のカレンダー表示付き）と保存済みの日付 */}
-        <Link
-          href={`/todos/plan-dates?workerId=${workerId}&name=${encodeURIComponent(
-            workerRow?.name ?? "",
-          )}&todo=${encodeURIComponent(current.todo_no)}`}
-          className="flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-2.5 text-xs font-bold text-brand"
-        >
-          📅 日付計算: 支援計画書の日付計算ツール（求人日付のカレンダー表示付き）を開く →
-        </Link>
-        <SavedPlanDatesSection
-          workerId={workerId}
-          todoNo={current.todo_no}
-          canEdit={canEdit}
-          workerName={workerRow?.name ?? ""}
-          appContent={meta.app_content ?? ""}
-          renewal={meta.app_type === "更新"}
-          onSaved={() => setPrepInfoKey((k) => k + 1)}
-        />
-        </div>
-      </PrepSection>
+      {/* 7. 支援計画書の日付（一本化の試験中は、提出書類一覧表の上に出す） */}
+      {!submissionRows && planDatesSection}
 
       {/* 8. １－１７号の特定技能外国人支援計画書に記載する項目（在留期間の更新申請では出さない） */}
       {meta.app_type !== "更新" && (

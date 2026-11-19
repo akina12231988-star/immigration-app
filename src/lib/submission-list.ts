@@ -310,7 +310,8 @@ export const SUBMISSION_LINKS: Record<string, SubmissionLink> = {
   // この一覧表そのもの（上の「○を付けた一覧表を印刷」で出す。添付はしない）
   "t1-2": { docs: [] },
   "t1-3": { section: { anchor: "prep-copy", label: "申請書に貼る情報" } },
-  "t1-5": { section: { anchor: "prep-sign", label: "署名・賃金・雇用契約書" } },
+  // 雇用契約書の写し: 一本化の画面では「署名・賃金」の章を出さないので、この行に添付する（外国人詳細で保管している分を使う）
+  "t1-5": {},
   "t1-6-1": { section: { anchor: "hire-check", label: "採用条件の確認・賃金" } },
   "t1-6-2": { section: { anchor: "hire-check", label: "賃金（1-6号別紙）" } },
   "t1-7-2": { section: { anchor: "prep-assen", label: "あっせん" } },

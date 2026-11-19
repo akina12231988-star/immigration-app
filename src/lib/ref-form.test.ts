@@ -318,3 +318,13 @@ describe("1-17号 支援計画書に記載する項目", () => {
     expect(refFormValue({ kind: "p117_check_A" }, d)).toBe("");
   });
 });
+
+describe("書類作成日（全様式共通）の年・月・日", () => {
+  it("年・月・日を別々に書く。無ければ空欄", () => {
+    const d = { ...REF_FORM_SAMPLE_DATA, planDates: { docAll: "2026-11-05" } };
+    expect(refFormValue({ kind: "docall_y" }, d)).toBe("2026");
+    expect(refFormValue({ kind: "docall_m" }, d)).toBe("11");
+    expect(refFormValue({ kind: "docall_d" }, d)).toBe("5");
+    expect(refFormValue({ kind: "docall_d" }, { ...d, planDates: {} })).toBe("");
+  });
+});
