@@ -9,7 +9,13 @@ import {
   registerMunicipalFormPdf,
   removeMunicipalFormPdf,
 } from "@/app/(app)/mailing/municipal-form-actions";
-import { MUNICIPAL_FORM_DOCS, normalizeMunicipalFormLayout, type MunicipalFormDoc } from "@/lib/municipal-form";
+import {
+  MUNICIPAL_FORM_DOCS,
+  MUNICIPAL_FORM_FIELDS,
+  isMunicipalMarkKind,
+  normalizeMunicipalFormLayout,
+  type MunicipalFormDoc,
+} from "@/lib/municipal-form";
 import type { Municipality } from "@/lib/tax-cert";
 import { MunicipalFormLayoutEditor } from "./MunicipalFormLayoutEditor";
 
@@ -87,6 +93,9 @@ export function MunicipalCertFormPanel({
   // 開いて確認の画面（PDF を見ながら自由な文字を直す）
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewHref, setPreviewHref] = useState("");
+  // この請求だけ外す・動かす ✓・○（項目ID）
+  const [markOff, setMarkOff] = useState<string[]>([]);
+  const [markMoves, setMarkMoves] = useState<Record<string, { dx: number; dy: number }>>({});
   const fileRef = useRef<HTMLInputElement>(null);
   if (!municipality) return null;
   const m = municipality;
@@ -102,13 +111,24 @@ export function MunicipalCertFormPanel({
   const changedTexts = Object.fromEntries(
     textItems.filter((i) => i.id in textEdits && textEdits[i.id] !== (i.text ?? "")).map((i) => [i.id, textEdits[i.id]]),
   );
+  // 記入位置の ✓・○。ページ・上から・左からの順に並べ、名前に何番目かを付ける
+  const markItems = layout
+    .filter((i) => isMunicipalMarkKind(i.kind))
+    .sort((a, b) => a.page - b.page || a.y - b.y || a.x - b.x);
+  const markLabel = (i: (typeof markItems)[number], n: number) =>
+    `${n + 1}. ${MUNICIPAL_FORM_FIELDS.find((f) => f.kind === i.kind)?.label ?? i.kind}（${i.page + 1}ページ目）`;
+  const usedMoves = Object.fromEntries(Object.entries(markMoves).filter(([, v]) => v.dx || v.dy));
+  const marksParam =
+    markOff.length > 0 || Object.keys(usedMoves).length > 0 ? JSON.stringify({ off: markOff, moves: usedMoves }) : "";
+  const nudge = (id: string, dx: number, dy: number) =>
+    setMarkMoves((mv) => ({ ...mv, [id]: { dx: (mv[id]?.dx ?? 0) + dx, dy: (mv[id]?.dy ?? 0) + dy } }));
   const base = `/api/municipal-cert-form?municipalityId=${encodeURIComponent(m.id)}&doc=${doc}`;
   const personHref = workerId
     ? `${base}&workerId=${encodeURIComponent(workerId)}${fiscalYear ? `&fiscalYear=${fiscalYear}` : ""}${
         agentName.trim() ? `&agent=${encodeURIComponent(agentName.trim())}` : ""
       }${
         Object.keys(changedTexts).length > 0 ? `&texts=${encodeURIComponent(JSON.stringify(changedTexts))}` : ""
-      }`
+      }${marksParam ? `&marks=${encodeURIComponent(marksParam)}` : ""}`
     : "";
 
   async function upload(file: File) {
@@ -269,8 +289,9 @@ export function MunicipalCertFormPanel({
                 </button>
               </div>
               <div className="flex min-h-0 flex-1 flex-col gap-2 p-3 lg:flex-row">
-                {textItems.length > 0 && (
-                  <div className="flex shrink-0 flex-col gap-2 lg:w-80">
+                {(textItems.length > 0 || markItems.length > 0) && (
+                  <div className="flex shrink-0 flex-col gap-2 overflow-y-auto lg:w-80">
+            {textItems.length > 0 && (
             <div className="flex flex-col gap-1 rounded-lg bg-background p-2">
               <p className="text-[11px] font-bold text-muted">
                 自由な文字（この請求だけ直せます。記入位置で決めた文字は変わりません）
@@ -301,16 +322,76 @@ export function MunicipalCertFormPanel({
                 </label>
               ))}
             </div>
+            )}
+                    {markItems.length > 0 && (
+                      <div className="flex flex-col gap-1 rounded-lg bg-background p-2">
+                        <p className="text-[11px] font-bold text-muted">
+                          ✓・○（この請求だけ外したり位置を直したりできます。記入位置は変わりません）
+                        </p>
+                        {markItems.map((i, n) => {
+                          const on = !markOff.includes(i.id);
+                          const mv = markMoves[i.id];
+                          const moved = !!mv && (mv.dx !== 0 || mv.dy !== 0);
+                          const arrow = "min-h-[28px] min-w-[28px] rounded border border-border bg-surface text-xs disabled:opacity-40";
+                          return (
+                            <div key={i.id} className="flex flex-col gap-1 border-t border-border pt-1 first:border-t-0 first:pt-0">
+                              <label className="flex items-center gap-1.5 text-xs">
+                                <input
+                                  type="checkbox"
+                                  checked={on}
+                                  onChange={(e) =>
+                                    setMarkOff((o) => (e.target.checked ? o.filter((x) => x !== i.id) : [...o, i.id]))
+                                  }
+                                />
+                                {markLabel(i, n)}
+                              </label>
+                              {on && (
+                                <div className="flex flex-wrap items-center gap-1 pl-5 text-[11px]">
+                                  <span className="text-muted">位置</span>
+                                  <button type="button" aria-label="左へ" onClick={() => nudge(i.id, -2, 0)} className={arrow}>←</button>
+                                  <button type="button" aria-label="右へ" onClick={() => nudge(i.id, 2, 0)} className={arrow}>→</button>
+                                  <button type="button" aria-label="上へ" onClick={() => nudge(i.id, 0, -2)} className={arrow}>↑</button>
+                                  <button type="button" aria-label="下へ" onClick={() => nudge(i.id, 0, 2)} className={arrow}>↓</button>
+                                  {moved && (
+                                    <>
+                                      <span className="tabular-nums text-muted">
+                                        （横 {mv.dx > 0 ? "+" : ""}
+                                        {mv.dx}・縦 {mv.dy > 0 ? "+" : ""}
+                                        {mv.dy}pt）
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setMarkMoves((all) => {
+                                            const next = { ...all };
+                                            delete next[i.id];
+                                            return next;
+                                          })
+                                        }
+                                        className="font-bold text-brand underline"
+                                      >
+                                        位置を戻す
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                        <p className="text-[10px] text-muted">矢印1回で2ptずつ動きます。外した・動かしたあとは「作り直す」を押すと右の PDF に出ます。</p>
+                      </div>
+                    )}
                     <button
                       type="button"
                       onClick={() => setPreviewHref(personHref)}
                       disabled={previewHref === personHref}
                       className={`${btn} justify-center bg-brand text-brand-foreground disabled:opacity-50`}
                     >
-                      直した文字で作り直す
+                      直した内容で作り直す
                     </button>
                     <p className="text-[11px] text-muted">
-                      直したら「直した文字で作り直す」を押すと右の PDF が変わります。ダウンロード・印刷は直した文字で作ります。
+                      直したら「直した内容で作り直す」を押すと右の PDF が変わります。ダウンロード・印刷は直した内容で作ります。
                     </p>
                   </div>
                 )}

@@ -6,6 +6,7 @@ import {
   MUNICIPAL_FORM_DOCS,
   addressAfterCity,
   applyMunicipalTextOverrides,
+  applyMunicipalMarkEdits,
   splitPhone,
   parseMunicipalFormDoc,
   fillMunicipalForm,
@@ -168,5 +169,23 @@ describe("代理人のフリガナと生年月日の年・月・日", () => {
     expect(municipalFormValue({ kind: "agent_birth_m" }, p)).toBe("4");
     expect(municipalFormValue({ kind: "agent_birth_d" }, p)).toBe("1");
     expect(municipalFormValue({ kind: "agent_birth_d" }, { ...p, agent: { ...p.agent!, birth: "" } })).toBe("");
+  });
+});
+
+describe("✓・○を請求ごとに外す・動かす", () => {
+  const layout = [
+    { id: "c1", kind: "check", x: 10, y: 20 },
+    { id: "o1", kind: "circle", x: 30, y: 40 },
+    { id: "n", kind: "name", x: 1, y: 2 },
+  ];
+  it("外した✓・○は書かず、動かしたものはずらす。ほかの項目は変えない", () => {
+    const out = applyMunicipalMarkEdits(layout, JSON.stringify({ off: ["c1", "n"], moves: { o1: { dx: 2, dy: -4 }, n: { dx: 5, dy: 5 } } }));
+    expect(out.map((i) => i.id)).toEqual(["o1", "n"]);
+    expect(out[0]).toMatchObject({ x: 32, y: 36 });
+    expect(out[1]).toMatchObject({ x: 1, y: 2 });
+  });
+  it("読めない値は無視", () => {
+    expect(applyMunicipalMarkEdits(layout, "x")).toBe(layout);
+    expect(applyMunicipalMarkEdits(layout, null)).toBe(layout);
   });
 });
