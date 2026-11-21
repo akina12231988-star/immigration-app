@@ -427,3 +427,35 @@ export function applyMunicipalTextOverrides<T extends { id: string; kind: string
     i.kind === "text" && typeof map[i.id] === "string" ? { ...i, text: (map[i.id] as string).slice(0, 300) } : i,
   );
 }
+
+// ✓・○（チェック・丸）の項目か。請求ごとに外したり位置を直したりできる
+export const isMunicipalMarkKind = (k: string) =>
+  k === "check" || k === "circle" || k === "birth_era_circle_showa" || k === "birth_era_circle_heisei";
+
+// 請求ごとに直した ✓・○（URL の marks = {"off": ["項目ID"], "moves": {"項目ID": {"dx": 1, "dy": -2}}} の JSON）を
+// 記入位置に重ねる。外した項目は書かず、動かした項目はずらして書く（✓・○ 以外の項目は変えない）
+export function applyMunicipalMarkEdits<T extends { id: string; kind: string; x: number; y: number }>(
+  layout: T[],
+  raw: string | null | undefined,
+): T[] {
+  if (!raw) return layout;
+  let v: { off?: unknown; moves?: unknown };
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return layout;
+    v = parsed as { off?: unknown; moves?: unknown };
+  } catch {
+    return layout;
+  }
+  const off = new Set(Array.isArray(v.off) ? v.off.filter((x): x is string => typeof x === "string") : []);
+  const moves = v.moves && typeof v.moves === "object" ? (v.moves as Record<string, unknown>) : {};
+  return layout
+    .filter((i) => !(isMunicipalMarkKind(i.kind) && off.has(i.id)))
+    .map((i) => {
+      if (!isMunicipalMarkKind(i.kind)) return i;
+      const m = moves[i.id] as { dx?: unknown; dy?: unknown } | undefined;
+      const dx = typeof m?.dx === "number" && Number.isFinite(m.dx) ? Math.max(-200, Math.min(200, m.dx)) : 0;
+      const dy = typeof m?.dy === "number" && Number.isFinite(m.dy) ? Math.max(-200, Math.min(200, m.dy)) : 0;
+      return dx || dy ? { ...i, x: i.x + dx, y: i.y + dy } : i;
+    });
+}

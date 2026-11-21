@@ -11,6 +11,7 @@ import {
   fillMunicipalForm,
   normalizeMunicipalFormLayout,
   applyMunicipalTextOverrides,
+  applyMunicipalMarkEdits,
   parseMunicipalFormDoc,
   type MunicipalFormPerson,
 } from "@/lib/municipal-form";
@@ -105,7 +106,7 @@ export async function GET(req: NextRequest) {
     const bytes = await fillMunicipalForm(
       new Uint8Array(await blob.arrayBuffer()),
       font,
-      applyMunicipalTextOverrides(normalizeMunicipalFormLayout(muni.layout), sp.get("texts")),
+      applyMunicipalMarkEdits(applyMunicipalTextOverrides(normalizeMunicipalFormLayout(muni.layout), sp.get("texts")), sp.get("marks")),
       person,
     );
     const fileName = `${cols.label}_${muni.name}_${fileLabel}.pdf`;

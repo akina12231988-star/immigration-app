@@ -44,6 +44,7 @@ import {
   uploadMunicipalFormFiles,
   type MunicipalFormFiles,
 } from "@/components/mailing/MunicipalCertFormPanel";
+import { MUNICIPAL_FORM_DOCS } from "@/lib/municipal-form";
 import { nhiInOtherMunicipality, splitNhiRecord } from "@/lib/mailing-split";
 import { PersonCopyPanel } from "@/components/mailing/PersonCopyPanel";
 import { MoneyOrderFields } from "./MoneyOrderFields";
@@ -705,6 +706,23 @@ function WizardBody({
                       <>
                         <MunicipalitySiteLinks municipalities={municipalities} ids={Array.from(new Set(g.docs.map((d) => d.municipalityId ?? "")))} />
                         <DocList docs={g.docs} />
+                        {/* 判定した年度の自治体の申請書（自動入力）。登録してある申請書だけ、ここでも開いて確認・印刷できる */}
+                        {workerId &&
+                          yearMuni[y] &&
+                          (["cert", "nozei", "proxy"] as const)
+                            .filter((doc) => !!(yearMuni[y]?.[MUNICIPAL_FORM_DOCS[doc].pathCol] ?? "").trim())
+                            .map((doc) => (
+                              <MunicipalCertFormPanel
+                                key={doc}
+                                municipality={yearMuni[y] ?? null}
+                                doc={doc}
+                                canEdit={canEdit}
+                                workerId={workerId}
+                                fiscalYear={fy[y]}
+                                agentName={agent}
+                                onChanged={(m) => setMunicipalities(municipalities.map((x) => (x.id === m.id ? m : x)))}
+                              />
+                            ))}
                         {method === "mail" && (
                           <div>
                             <p className="mb-1.5 text-sm font-bold text-muted">{yearLabelOf(y)}の分として同封した定額小為替</p>
