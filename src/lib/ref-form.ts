@@ -1117,6 +1117,45 @@ export async function fillRefForm(
   return doc;
 }
 
+// 何枚もの様式を書き込んで1つのPDFにする（一気にダウンロード用）。
+// 様式ごとにフォント（約3.6MB）を入れると様式の数だけ重くなる（8様式で30MB）ので、
+// まとめる先のPDFにフォントを1回だけ入れ、様式のページを写してからそこに書き込む
+export async function fillRefFormsMerged(
+  fontBytes: Uint8Array | ArrayBuffer,
+  parts: {
+    pdfBytes: Uint8Array | ArrayBuffer;
+    layout: RefFormItem[];
+    data: RefFormData;
+    offIds?: ReadonlySet<string>;
+    onlyPages?: number[]; // その様式のこのページだけ（署名ページ）
+    after?: (doc: PDFDocument, font: PDFFont) => void; // 書き込んだあとにページを足す（1-17号の名簿）
+  }[],
+): Promise<Uint8Array> {
+  const out = await PDFDocument.create();
+  out.registerFontkit(fontkit);
+  const font = await out.embedFont(fontBytes, { subset: false });
+  for (const part of parts) {
+    const src = await PDFDocument.load(part.pdfBytes, { ignoreEncryption: true });
+    const count = src.getPageCount();
+    const idx = (part.onlyPages ?? Array.from({ length: count }, (_, i) => i)).filter((i) => i >= 0 && i < count);
+    if (idx.length === 0) continue;
+    const copied = await out.copyPages(src, idx);
+    // 元のページ番号 → まとめた先のページ
+    const pageOf = new Map<number, PDFPage>();
+    copied.forEach((p, n) => {
+      out.addPage(p);
+      pageOf.set(idx[n], p);
+    });
+    for (const item of part.layout) {
+      if (part.offIds?.has(item.id)) continue;
+      const page = pageOf.get(item.page);
+      if (page) drawItem(page, font, item, part.data);
+    }
+    part.after?.(out, font);
+  }
+  return out.save();
+}
+
 // 書き込んだ様式を1つのPDFにまとめる。onlyPages を渡すと、その様式のそのページだけ（署名ページ）
 export async function mergeRefForms(parts: { doc: PDFDocument; onlyPages?: number[] }[]): Promise<Uint8Array> {
   const out = await PDFDocument.create();

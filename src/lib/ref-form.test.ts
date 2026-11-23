@@ -6,6 +6,7 @@ import {
   REF_FORM_ITEMS,
   REF_FORM_SAMPLE_DATA,
   fillRefForm,
+  fillRefFormsMerged,
   languageForNationality,
   mergeRefForms,
   normalizeRefFormLayout,
@@ -569,4 +570,26 @@ describe("書類作成日が保存されていないとき", () => {
     expect(refFormValue({ kind: "plan_docAll", fmt: "m" }, { ...base, planDates: {} })).toBe("11");
     expect(refFormValue({ kind: "plan_es", fmt: "d" }, { ...base, planDates: {} })).toBe(""); // ほかの日付は空のまま
   });
+});
+
+describe("一気にダウンロードはフォントを1回だけ入れる", () => {
+  it("様式が増えても大きさがほとんど変わらない・署名ページだけも選べる", async () => {
+    const make = async (n: number) => {
+      const doc = await PDFDocument.create();
+      for (let i = 0; i < n; i++) doc.addPage([595, 842]);
+      return doc.save();
+    };
+    const font = readFileSync(path.join(process.cwd(), "public", "fonts", "NotoSansJP-Regular.ttf"));
+    const layout = normalizeRefFormLayout([{ kind: "name", page: 0, x: 50, y: 50, size: 12 }]);
+    const data = { ...REF_FORM_SAMPLE_DATA, today: "2026-11-16" };
+    const one = await fillRefFormsMerged(font, [{ pdfBytes: await make(2), layout, data }]);
+    const five = await fillRefFormsMerged(
+      font,
+      await Promise.all([1, 2, 3, 4, 5].map(async () => ({ pdfBytes: await make(2), layout, data }))),
+    );
+    expect(five.length).toBeLessThan(one.length * 1.2);
+    expect((await PDFDocument.load(five)).getPageCount()).toBe(10);
+    const sign = await fillRefFormsMerged(font, [{ pdfBytes: await make(3), layout, data, onlyPages: [2] }]);
+    expect((await PDFDocument.load(sign)).getPageCount()).toBe(1);
+  }, 30000);
 });

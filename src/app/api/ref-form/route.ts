@@ -21,8 +21,7 @@ import type { Organization, WorkerWage } from "@/types/db";
 import {
   isRefFormKey,
   REF_FORM_SAMPLE_DATA,
-  fillRefForm,
-  mergeRefForms,
+  fillRefFormsMerged,
   normalizeRefFormLayout,
   normalizeSignPages,
   parseRefFormMode,
@@ -204,7 +203,8 @@ async function makePdf(sp: URLSearchParams, posted: Record<string, RefFormEdits>
     }
 
     const font = await readFile(path.join(process.cwd(), "public", "fonts", "NotoSansJP-Regular.ttf"));
-    const parts = [];
+    // 様式ごとに書き込む内容をそろえ、フォントを1回だけ入れて1つのPDFにする（様式ごとに入れると重くなる）
+    const parts: Parameters<typeof fillRefFormsMerged>[1] = [];
     for (const t of targets) {
       const onlyPages = refFormPagesFor(mode, t.sign_pages, t.form_key);
       if (onlyPages && onlyPages.length === 0) continue; // 署名ページの印が無い様式は入れない
@@ -216,20 +216,19 @@ async function makePdf(sp: URLSearchParams, posted: Record<string, RefFormEdits>
         posted?.[t.form_key] ?? (draft && (!draft.template_id || draft.template_id === t.id) ? draft : EMPTY_REF_FORM_EDITS);
       const layout = sample ? normalizeRefFormLayout(t.layout) : applyRefFormEdits(normalizeRefFormLayout(t.layout), edits, orgTexts[t.id] ?? {});
       const withRoster = roster && t.form_key === ROSTER_FORM_KEY && mode !== "sign" ? roster : null;
-      const doc = await fillRefForm(
-        new Uint8Array(await blob.arrayBuffer()),
-        font,
+      parts.push({
+        pdfBytes: new Uint8Array(await blob.arrayBuffer()),
         layout,
         data,
-        refFormOffIds(sp.get("off"), t.id),
-        withRoster ? (d, f) => addSupportSystemPages(d, f, withRoster) : undefined,
-      );
-      parts.push({ doc, onlyPages });
+        offIds: refFormOffIds(sp.get("off"), t.id),
+        onlyPages,
+        after: withRoster ? (d, f) => addSupportSystemPages(d, f, withRoster) : undefined,
+      });
     }
     if (parts.length === 0) {
       return NextResponse.json({ error: "署名ページの印が付いた様式がありません（記入位置の画面で署名ページを選んでください）" }, { status: 404 });
     }
-    const bytes = await mergeRefForms(parts);
+    const bytes = await fillRefFormsMerged(font, parts);
     const fileName = refFormFileName(sample ? "one" : mode, workerName, sample ? targets[0].form_key : keys[0]);
     const disposition = sp.get("download") === "1" ? "attachment" : "inline";
     return new NextResponse(new Blob([bytes as BlobPart]), {
