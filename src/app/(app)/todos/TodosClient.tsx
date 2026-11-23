@@ -3,6 +3,7 @@
 import { PROCEDURE_TODO_KIND, normalizeProcedureSteps, procedureStepsSummary } from "@/lib/procedure-todo";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { PendingLinkLabel } from "@/components/ui/PendingLinkLabel";
 import { useRouter } from "next/navigation";
 import {
   Check,
@@ -1847,9 +1848,10 @@ function TodoItem({
               {todo.kind === "申請準備" && prepHref && (
                 <Link
                   href={prepHref}
-                  className="shrink-0 rounded-full bg-brand px-2.5 py-1 text-[10px] font-bold text-brand-foreground"
+                  className="inline-flex min-h-[32px] shrink-0 items-center rounded-full bg-brand px-3 py-1 text-[11px] font-bold text-brand-foreground"
                 >
-                  📋 申請書類の準備状況の詳細
+                  {/* 押してから次の画面が出るまで「開いています…」と出す（待つあいだの二度押しを防ぐ） */}
+                  <PendingLinkLabel>📋 申請書類の準備状況の詳細</PendingLinkLabel>
                 </Link>
               )}
               {/* 在留期限（太字）と、残り2ヶ月を切ったときのアラート */}

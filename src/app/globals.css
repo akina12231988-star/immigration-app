@@ -86,6 +86,18 @@
   --font-sans: var(--font-noto-sans-jp), var(--font-geist-sans), sans-serif;
 }
 
+/* スマホで、ボタン・リンク・選択欄を2回すばやくタップしたときに画面が拡大されないようにする
+   （拡大で画面がずれて、2回目のタップで別のもの（下の選択欄など）を押してしまうのを防ぐ） */
+a,
+button,
+select,
+input,
+label,
+summary,
+[role="button"] {
+  touch-action: manipulation;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
