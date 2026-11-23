@@ -392,6 +392,8 @@ export interface RefFormItem {
   fmt?: RefFormDateFmt; // 支援計画書の日付の書き方（無ければ西暦）
   cell?: number; // 個人番号の1マスの幅（pt）。置いた位置から右へ1マスに1文字ずつ書く
   maxLines?: number; // 「最大の幅」を超えるときに折り返す行数（無ければ1行。住所を2行で書くときなど）
+  // 折り返す行数より少ない行で収まるときに、下の行へ寄せて書く（無ければ上の行から書く）
+  valign?: "bottom";
 }
 
 // 支援計画書の日付に、計算で出す日付を足す（1-25号の契約期間: 支援委託契約日 → 5年後の前日）
@@ -465,6 +467,7 @@ export function normalizeRefFormLayout(v: unknown): RefFormItem[] {
       fmt: typeof o.fmt === "string" && DATE_FMTS.has(o.fmt) ? (o.fmt as RefFormDateFmt) : undefined,
       cell: typeof o.cell === "number" && o.cell > 0 && o.cell < 100 ? o.cell : undefined,
       maxLines: typeof o.maxLines === "number" && o.maxLines >= 2 && o.maxLines <= 5 ? Math.round(o.maxLines) : undefined,
+      valign: o.valign === "bottom" ? "bottom" : undefined,
     });
   }
   return out;
@@ -898,9 +901,17 @@ function drawItem(page: PDFPage, font: PDFFont, item: RefFormItem, data: RefForm
   // 「最大の幅」を超えるときは、行数（既定1行）までは折り返し、それでも入らなければ文字を小さくする
   const { size, lines } = refFormFitLines(text, item, (t, sz) => font.widthOfTextAtSize(t, sz));
   const ascent = font.heightAtSize(size, { descender: false });
+  // 下の行へ寄せるときは、空く行の数だけ下から書き始める（1行で収まるとき下段に書く）
+  const skip = refFormLineSkip(item, lines.length);
   lines.forEach((line, i) => {
-    page.drawText(line, { x: item.x, y: height - item.y - ascent - i * size * REF_FORM_LINE_HEIGHT, size, font, color: black });
+    page.drawText(line, { x: item.x, y: height - item.y - ascent - (i + skip) * size * REF_FORM_LINE_HEIGHT, size, font, color: black });
   });
+}
+
+// 書き始めの前に空ける行の数。下の行へ寄せる項目で、行数より少ない行で収まったときだけ空ける
+export function refFormLineSkip(item: Pick<RefFormItem, "maxLines" | "valign">, lineCount: number): number {
+  if (item.valign !== "bottom") return 0;
+  return Math.max(0, (item.maxLines ?? 1) - lineCount);
 }
 
 // 折り返したときの行の間隔（文字の大きさの倍率）
