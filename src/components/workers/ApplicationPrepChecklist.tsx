@@ -37,7 +37,9 @@ interface BundleFile {
   key: string; // prep:<id> / mail:<id> / org:<id>
   id: string;
   name: string;
-  source: "prep" | "mailing" | "org"; // org は所属機関に登録した添付（在留資格変更許可申請書の別紙）
+  // org は所属機関に登録した添付（在留資格変更許可申請書の別紙・協議会の加入通知書）、
+  // support は登録支援機関の全員共通の添付（人材サービス総合サイトの画面）
+  source: "prep" | "mailing" | "org" | "support";
   link: boolean; // リンクで登録した書類（PDF にはまとめられない）
 }
 import { PostApplyList } from "@/components/workers/PostApplyList";
@@ -243,7 +245,9 @@ import {
   waitingNoteFromMissing,
   type PrepRequesteeKind,
 } from "@/lib/prep-detail";
-import { ORG_FILE_KIND_CHANGE_APP_ANNEX, isAgricultureIndustry, latestOrgFiles, needsFlexDocs } from "@/lib/org-attachments";
+import { ORG_FILE_KIND_AGRI_NOTICE, ORG_FILE_KIND_CHANGE_APP_ANNEX, isAgricultureIndustry, latestOrgFiles, needsFlexDocs } from "@/lib/org-attachments";
+import { getSupportOrgFilePreviewUrl, listSupportOrgFiles } from "@/app/(app)/support-org/actions";
+import { SUPPORT_ORG_LISTING_FILE_KIND } from "@/lib/support-org-info";
 import {
   submissionLink,
   buildSubmissionRows,
@@ -658,33 +662,53 @@ export function ApplicationPrepChecklist({
     orgNameFromProp || (orgNameCache?.orgId === prepOrgId ? orgNameCache.name : "");
 
   // 所属機関に登録した「在留資格変更許可申請書の別紙」（最新版）。まとめた PDF で申請書のすぐ後に入れる
-  const [orgAnnex, setOrgAnnex] = useState<{ orgId: string; files: BundleFile[] } | null>(null);
+  const [orgAnnex, setOrgAnnex] = useState<{ orgId: string; files: BundleFile[]; agri: BundleFile[] } | null>(null);
   useEffect(() => {
     if (!prepOrgId) return;
     let cancelled = false;
     listOrganizationFiles(createClient(), prepOrgId)
       .then((rows) => {
         if (cancelled) return;
-        const latest = latestOrgFiles(rows, ORG_FILE_KIND_CHANGE_APP_ANNEX);
-        setOrgAnnex({
-          orgId: prepOrgId,
-          files: (latest?.files ?? []).map((f) => ({
+        const toFiles = (kind: string) =>
+          (latestOrgFiles(rows, kind)?.files ?? []).map((f) => ({
             key: `org:${f.id}`,
             id: f.id,
-            name: f.file_name || ORG_FILE_KIND_CHANGE_APP_ANNEX,
+            name: f.file_name || kind,
             source: "org" as const,
             link: false,
-          })),
-        });
+          }));
+        // 在留資格変更許可申請書の別紙と、協議会の加入通知書（第3表 3 に使う）
+        setOrgAnnex({ orgId: prepOrgId, files: toFiles(ORG_FILE_KIND_CHANGE_APP_ANNEX), agri: toFiles(ORG_FILE_KIND_AGRI_NOTICE) });
       })
       .catch(() => {
-        if (!cancelled) setOrgAnnex({ orgId: prepOrgId, files: [] });
+        if (!cancelled) setOrgAnnex({ orgId: prepOrgId, files: [], agri: [] });
       });
     return () => {
       cancelled = true;
     };
   }, [prepOrgId, orgInfoKey]);
   const orgAnnexFiles = orgAnnex?.orgId === prepOrgId ? orgAnnex.files : [];
+  const orgAgriNoticeFiles = orgAnnex?.orgId === prepOrgId ? orgAnnex.agri : [];
+  // 人材サービス総合サイトの画面（全員共通・最新版 = いちばん新しいアップロード日の分）。7(2) に使う
+  const [listingFiles, setListingFiles] = useState<BundleFile[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    listSupportOrgFiles(SUPPORT_ORG_LISTING_FILE_KIND)
+      .then((rows) => {
+        if (cancelled) return;
+        const day = rows[0]?.created_at.slice(0, 10) ?? "";
+        setListingFiles(
+          rows
+            .filter((f) => f.created_at.slice(0, 10) === day)
+            .reverse()
+            .map((f) => ({ key: `support:${f.id}`, id: f.id, name: f.file_name || SUPPORT_ORG_LISTING_FILE_KIND, source: "support" as const, link: false })),
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // 申請準備の所属機関の登録内容（収入印紙代の負担の既定と、申請種別ごとの売上明細）
   const [prepOrgIntake, setPrepOrgIntake] = useState<{ orgId: string; intake: OrganizationIntake } | null>(null);
@@ -1724,6 +1748,18 @@ export function ApplicationPrepChecklist({
               },
             ]
           : [];
+      // この行に添付したファイル。無ければ、全員共通の人材サービス総合サイトの画面（7(2)）・
+      // 所属機関の協議会の加入通知書（第3表 3）を使う（どちらも行に添付しなくてよい書類）
+      const own: BundleFile[] = docFilesFor(def).map((d) => ({
+        key: `prep:${d.id}`,
+        id: d.id,
+        name: d.file_name || def.label,
+        source: "prep" as const,
+        link: !d.storage_path,
+      }));
+      const ck = canonicalSubmissionKey(row.key);
+      const rowFiles =
+        own.length > 0 ? own : ck === "t1-7-2" ? listingFiles : ck === "t3a-3" || row.key === "s2a-3" ? orgAgriNoticeFiles : own;
       return [
         {
           id: o.id,
@@ -1733,13 +1769,7 @@ export function ApplicationPrepChecklist({
           satisfied: (submissionLink(row.key)?.docs ?? []).length > 0,
           mailAfterApply: false,
           issueNoMail: false,
-          files: docFilesFor(def).map((d) => ({
-            key: `prep:${d.id}`,
-            id: d.id,
-            name: d.file_name || def.label,
-            source: "prep" as const,
-            link: !d.storage_path,
-          })),
+          files: rowFiles,
         },
         ...annex,
       ];
@@ -1755,7 +1785,12 @@ export function ApplicationPrepChecklist({
     });
   const previewBundleFile = async (f: BundleFile) => {
     if (f.source === "prep") return void previewDoc(f.id);
-    const res = f.source === "org" ? await getOrgFilePreviewUrl(f.id) : await getMailingFilePreviewUrl(f.id);
+    const res =
+      f.source === "org"
+        ? await getOrgFilePreviewUrl(f.id)
+        : f.source === "support"
+          ? await getSupportOrgFilePreviewUrl(f.id)
+          : await getMailingFilePreviewUrl(f.id);
     if (res.ok) window.open(res.url, "_blank", "noopener,noreferrer");
     else setError(res.message);
   };
@@ -1790,7 +1825,13 @@ export function ApplicationPrepChecklist({
           const res =
             f.source === "prep"
               ? await getOnboardingDocDownloadUrl(f.id)
-              : await (f.source === "org" ? getOrgFilePreviewUrl(f.id) : getMailingFilePreviewUrl(f.id)).then((r) =>
+              : await (
+                  f.source === "org"
+                    ? getOrgFilePreviewUrl(f.id)
+                    : f.source === "support"
+                      ? getSupportOrgFilePreviewUrl(f.id)
+                      : getMailingFilePreviewUrl(f.id)
+                ).then((r) =>
                   r.ok ? { ...r, fileName: f.name } : r,
                 );
           if (!res.ok) {
@@ -2816,7 +2857,13 @@ export function ApplicationPrepChecklist({
                           <li key={f.key} className="flex flex-wrap items-center gap-1.5 text-[11px]">
                             <span className={f.link ? "text-muted line-through" : ""}>{f.name}</span>
                             <span className="rounded-full bg-background px-1.5 py-0.5 text-[10px] text-muted">
-                              {f.source === "prep" ? "申請準備に添付" : "証明書類の請求で届いた証明書"}
+                              {f.source === "prep"
+                                ? "申請準備に添付"
+                                : f.source === "org"
+                                  ? "所属機関の添付"
+                                  : f.source === "support"
+                                    ? "登録支援機関の情報（全員共通）"
+                                    : "証明書類の請求で届いた証明書"}
                             </span>
                             {f.link && <span className="text-[10px] text-seal">リンクのため PDF に入りません</span>}
                             <button
@@ -2874,7 +2921,13 @@ export function ApplicationPrepChecklist({
                           <span>{f.name}</span>
                         </label>
                         <span className="rounded-full bg-background px-1.5 py-0.5 text-[10px] text-muted">
-                          {f.source === "prep" ? "申請準備に添付" : "証明書類の請求で届いた証明書"}
+                          {f.source === "prep"
+                                ? "申請準備に添付"
+                                : f.source === "org"
+                                  ? "所属機関の添付"
+                                  : f.source === "support"
+                                    ? "登録支援機関の情報（全員共通）"
+                                    : "証明書類の請求で届いた証明書"}
                         </span>
                         <button type="button" onClick={() => void previewBundleFile(f)} className="text-[11px] font-bold text-brand underline">
                           見る
