@@ -560,7 +560,7 @@ export function RefFormLayoutEditor({
           {loadError && <p className="rounded bg-white p-3 text-sm text-seal">{loadError}</p>}
           {!pages && !loadError && <p className="rounded bg-white p-3 text-sm">PDFを読み込み中…</p>}
           {pages?.map((p, pi) => (
-            <div key={pi} className="mx-auto mb-4" style={{ width: p.width * scale }}>
+            <div key={pi} id={`ref-layout-page-${pi}`} className="mx-auto mb-4 scroll-mt-2" style={{ width: p.width * scale }}>
             <label
               className={`mb-1 flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-bold ${
                 signPages.includes(pi) ? "bg-seal text-white" : "bg-white text-foreground"
@@ -716,6 +716,43 @@ export function RefFormLayoutEditor({
             </div>
           ))}
         </div>
+
+        {/* 右のページの一覧（PDF のサムネイルのように）。押すとそのページへ移り、チェックで署名ページを選ぶ */}
+        {pages && pages.length > 0 && (
+          <div className="hidden w-40 shrink-0 overflow-y-auto border-l border-border bg-surface p-2 text-[11px] lg:block">
+            <p className="mb-1 font-bold">ページ（{pages.length}）</p>
+            <p className="mb-2 leading-snug text-muted">
+              ✍ にチェックしたページが「署名ページだけ」のダウンロードに入ります（{signPages.length}ページ）
+            </p>
+            {pages.map((p, pi) => {
+              const sign = signPages.includes(pi);
+              return (
+                <div key={pi} className="mb-3">
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById(`ref-layout-page-${pi}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                    className={`block w-full overflow-hidden rounded border-2 bg-white ${sign ? "border-seal" : "border-border hover:border-brand"}`}
+                    title={`${pi + 1}ページ目へ移る`}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={p.dataUrl} alt={`${pi + 1}ページ目のサムネイル`} className="block w-full" draggable={false} />
+                  </button>
+                  <label className={`mt-0.5 flex items-center justify-center gap-1 rounded px-1 py-0.5 font-bold ${sign ? "bg-seal text-white" : ""}`}>
+                    <input
+                      type="checkbox"
+                      checked={sign}
+                      onChange={(e) =>
+                        setSignPages((cur) => (e.target.checked ? [...cur, pi].sort((a, b) => a - b) : cur.filter((x) => x !== pi)))
+                      }
+                      className="h-3.5 w-3.5"
+                    />
+                    {pi + 1}　✍ 署名
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
