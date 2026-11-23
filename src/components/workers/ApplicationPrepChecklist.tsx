@@ -547,6 +547,55 @@ export function ApplicationPrepChecklist({
         null)
       : null;
   const meta: PrepChecklistMeta = current ?? EMPTY_PREP_META;
+  // 参考様式の作成画面（・まとめて確認する画面）へ移るときにこの画面の位置を覚え、戻ってきたらそこへ戻す。
+  // 書類の欄はあとから読み込むので、高さが足りるまで何度か合わせる（途中で自分でスクロールしたらやめる）
+  useEffect(() => {
+    const key = `prepScroll:${workerId}`;
+    const onClick = (e: MouseEvent) => {
+      const a = (e.target as HTMLElement | null)?.closest?.("a");
+      const href = a?.getAttribute("href") ?? "";
+      if (/\/application-prep\/unified\/ref-form/.test(href)) {
+        try {
+          window.sessionStorage.setItem(key, JSON.stringify({ y: window.scrollY, t: Date.now() }));
+        } catch {
+          // 覚えられなくても移動はできる
+        }
+      }
+    };
+    document.addEventListener("click", onClick, true);
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const stop = () => {
+      if (timer) clearInterval(timer);
+      timer = null;
+      window.removeEventListener("wheel", stop);
+      window.removeEventListener("touchmove", stop);
+    };
+    try {
+      const raw = window.sessionStorage.getItem(key);
+      window.sessionStorage.removeItem(key);
+      const saved = raw ? (JSON.parse(raw) as { y?: number; t?: number }) : null;
+      if (saved && typeof saved.y === "number" && Date.now() - (saved.t ?? 0) < 30 * 60 * 1000) {
+        const y = saved.y;
+        let tries = 0;
+        let ok = 0;
+        window.addEventListener("wheel", stop, { passive: true });
+        window.addEventListener("touchmove", stop, { passive: true });
+        timer = setInterval(() => {
+          tries++;
+          window.scrollTo(0, y);
+          ok = Math.abs(window.scrollY - y) < 4 ? ok + 1 : 0;
+          if (ok >= 4 || tries > 40) stop();
+        }, 150);
+      }
+    } catch {
+      // 戻せなくても使える
+    }
+    return () => {
+      document.removeEventListener("click", onClick, true);
+      stop();
+    };
+  }, [workerId]);
+
   // 提出書類一覧表の行ごとの理由書（0233）。表示中のTODOの分
   const reasons = useReasonLetters(workerId, current?.todo_no ?? "");
   // 行に添付した理由書のファイル（基本キー＋枝番）

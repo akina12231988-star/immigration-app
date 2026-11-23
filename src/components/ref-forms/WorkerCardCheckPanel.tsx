@@ -18,7 +18,6 @@ const FIELDS = [
   { key: "birth", label: "生年月日", type: "date" },
   { key: "gender", label: "性別" },
   { key: "nationality", label: "国籍・地域" },
-  { key: "postal_code", label: "郵便番号" },
   { key: "address", label: "住居地" },
   { key: "residence_card_no", label: "在留カード番号" },
   { key: "passport_no", label: "旅券番号" },
@@ -35,6 +34,37 @@ export function WorkerCardCheckPanel({ workerId, onSaved }: { workerId: string; 
   // 在留カードを大きくして、様式の横に並べて出す（画面の右に重ねる）。zoom は画像の幅（%）
   const [enlarged, setEnlarged] = useState(false);
   const [zoom, setZoom] = useState(100);
+  // 大きくした在留カードの枠の幅（px）。左の端をドラッグして変える（様式が隠れないように）
+  const [panelWidth, setPanelWidth] = useState(() => {
+    try {
+      const v = Number(window.localStorage.getItem("cardPanelWidth"));
+      if (v >= 280) return v;
+    } catch {
+      // 覚えていなくてもよい
+    }
+    return 640;
+  });
+  const startResize = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = panelWidth;
+    let last = startW;
+    const move = (ev: PointerEvent) => {
+      last = Math.max(280, Math.min(window.innerWidth - 160, startW + (startX - ev.clientX)));
+      setPanelWidth(last);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      try {
+        window.localStorage.setItem("cardPanelWidth", String(Math.round(last)));
+      } catch {
+        // 覚えていなくてもよい
+      }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -48,7 +78,8 @@ export function WorkerCardCheckPanel({ workerId, onSaved }: { workerId: string; 
       });
     void createClient()
       .from("workers")
-      .select(FIELDS.map((f) => f.key).join(", "))
+      // 無い列があっても読めるよう select("*") で読み、無い項目は空として扱う
+      .select("*")
       .eq("id", workerId)
       .maybeSingle()
       .then(({ data }) => {
@@ -167,12 +198,21 @@ export function WorkerCardCheckPanel({ workerId, onSaved }: { workerId: string; 
       {/* 大きくした在留カード。画面の右に重ねて出し、左の様式と見比べられるようにする */}
       {enlarged && card && !isPdf && (
         <div
-          className="fixed bottom-3 right-3 top-[76px] z-40 flex w-[min(52vw,900px)] flex-col overflow-hidden rounded-2xl border-2 border-brand bg-surface shadow-2xl"
+          className="fixed bottom-3 right-3 top-[76px] z-40 flex flex-col overflow-hidden rounded-2xl border-2 border-brand bg-surface shadow-2xl"
+          style={{ width: panelWidth }}
           role="dialog"
           aria-label="在留カード（大きく表示）"
         >
-          <div className="flex flex-wrap items-center gap-1.5 border-b border-border bg-brand px-3 py-2 text-brand-foreground">
-            <p className="flex-1 text-sm font-bold">在留カード（登録日 {card.createdAt.slice(0, 10)}）</p>
+          {/* 左の端をドラッグして幅を変える */}
+          <div
+            role="separator"
+            aria-label="幅を変える"
+            title="ドラッグして幅を変えます"
+            onPointerDown={startResize}
+            className="absolute bottom-0 left-0 top-0 z-10 w-2.5 cursor-ew-resize bg-brand/20 hover:bg-brand/50"
+          />
+          <div className="flex flex-wrap items-center gap-1.5 border-b border-border bg-brand py-2 pl-5 pr-3 text-brand-foreground">
+            <p className="flex-1 text-sm font-bold">在留カード（登録日 {card.createdAt.slice(0, 10)}）・左の端をドラッグで幅を変えられます</p>
             {[100, 150, 200].map((z) => (
               <button
                 key={z}
