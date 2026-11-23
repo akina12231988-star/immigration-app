@@ -390,6 +390,9 @@ export function ApplicationPrepChecklist({
     passport_no: string;
     passport_expiry_date: string;
   } | null>(null);
+  // 本人の国籍。申請準備のページでは worker を渡さないので、この画面で読んだ外国人の情報から取る
+  // （参考様式の言語の版・推薦状が要るか・提出書類一覧表の見当に使う）
+  const prepNationality = worker?.nationality || workerRow?.nationality || "";
 
   // 在留期間の注意事項（申請詳細の許可情報で入れた最新の文。在留カードの欄の備考の上に薄い赤で出す）。
   // 0192 未適用の環境でも他の表示が止まらないよう、別に読んで失敗したら空のまま
@@ -906,7 +909,7 @@ export function ApplicationPrepChecklist({
     },
     statusValues,
     // 推薦状はカンボジア国籍だけ必要（国籍が未登録のときは出す）
-    worker?.nationality ?? "",
+    prepNationality,
   );
 
   // 特定技能２号の申請か（合格証の組み合わせ・在留カード/パスポートの扱いが変わる）
@@ -1568,7 +1571,7 @@ export function ApplicationPrepChecklist({
             hasNenkin: meta.has_nenkin,
             flexYear: orgIntake ? needsFlexDocs(orgIntake.flex_hours_kind ?? "") : null,
             assen: (currentTodo ?? fallbackTodo)?.assen ?? "",
-            nationality: worker?.nationality ?? "",
+            nationality: prepNationality,
             certPattern: effectiveCertPattern(meta),
           },
           { agri: prepOrgAgri || isAgricultureIndustry(workerRow?.field), ssw2: submissionSsw2 },
@@ -1809,7 +1812,7 @@ export function ApplicationPrepChecklist({
                   canEdit={canEdit}
                   busy={busyForRow}
                   periodNote={isCard ? periodNote : ""}
-                  nationality={worker?.nationality ?? ""}
+                  nationality={prepNationality}
                   ds={{ ...EMPTY_PREP_DOC_STATUS, ...(docStatuses[item.def.id] ?? {}) }}
                   // 源泉徴収票と課税証明書は金額を突き合わせるので、相手の金額も渡す
                   gensenKazei={
@@ -2896,7 +2899,7 @@ export function ApplicationPrepChecklist({
           <PrepSubmissionList
             rows={submissionRows}
             workerId={workerId}
-            nationality={worker?.nationality ?? ""}
+            nationality={prepNationality}
             orgId={prepOrgId ?? null}
             canEdit={canEdit}
             workerName={workerRow?.name ?? ""}

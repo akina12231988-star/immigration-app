@@ -149,13 +149,26 @@ export function RefFormRowBar({
           </a>
         </>
       ) : (
-        <span className="font-bold text-seal">ひな形が未登録です</span>
+        <>
+          <span className="font-bold text-seal">
+            ひな形が未登録です{lang ? `（${lang}・日本語の版がありません）` : "（日本語の版がありません）"}
+          </span>
+          {/* 押せないが、ボタンの場所はほかの行と同じにして、ひな形を登録すれば押せると分かるようにする */}
+          <span
+            aria-disabled
+            title="ひな形（本人の言語か日本語の版）を登録すると押せます"
+            className="ml-auto inline-flex min-h-[28px] cursor-not-allowed items-center gap-1 rounded-md border border-border bg-background px-2 font-bold text-muted"
+          >
+            <PenLine size={12} />
+            内容を確認して作る・添付（ひな形を登録すると押せます）
+          </span>
+        </>
       )}
       {canEdit && (
         <button
           type="button"
           onClick={onManage}
-          className={`${picked ? "" : "ml-auto"} inline-flex min-h-[28px] items-center gap-1 rounded-md border border-border bg-surface px-2 font-bold text-brand`}
+          className="inline-flex min-h-[28px] items-center gap-1 rounded-md border border-border bg-surface px-2 font-bold text-brand"
         >
           <PenLine size={12} />
           ひな形・記入位置（{list.length}）
