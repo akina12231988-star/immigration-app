@@ -20,6 +20,7 @@ import {
   refFormCircleShown,
   refFormStrikeLength,
   refFormLineSkip,
+  parseReferralFeePresets,
   refFormStrikeThickness,
   refFormCircles,
   refFormOffIds,
@@ -49,13 +50,17 @@ describe("言語の版を選ぶ", () => {
     { id: "b", form_key: "t1-5", language: "ベトナム語" },
     { id: "c", form_key: "t1-6-1", language: "クメール語" },
   ];
-  it("国籍の言語 → 日本語 → 最初のもの", () => {
+  it("国籍の言語 → 日本語（ほかの国の言語の版は使わない）", () => {
     expect(languageForNationality("ベトナム")).toBe("ベトナム語");
     expect(languageForNationality("カンボジア")).toBe("クメール語");
     expect(pickRefFormTemplate(ts, "t1-5", "ベトナム")?.id).toBe("b");
     expect(pickRefFormTemplate(ts, "t1-5", "インドネシア")?.id).toBe("a");
-    expect(pickRefFormTemplate(ts, "t1-6-1", "ベトナム")?.id).toBe("c");
+    expect(pickRefFormTemplate(ts, "t1-6-1", "ベトナム")).toBeNull();
+    expect(pickRefFormTemplate(ts, "t1-6-1", "カンボジア")?.id).toBe("c");
     expect(pickRefFormTemplate(ts, "t1-17", "ベトナム")).toBeNull();
+    // 言語を選び直したとき
+    expect(pickRefFormTemplate(ts, "t1-5", "ベトナム", null, "日本語")?.id).toBe("a");
+    expect(pickRefFormTemplate(ts, "t1-6-1", "ベトナム", null, "クメール語")?.id).toBe("c");
   });
 });
 
@@ -200,6 +205,15 @@ describe("PDFを作る", () => {
     expect(refFormLineSkip(it2, 2)).toBe(0);
     expect(refFormLineSkip({ maxLines: 2 }, 1)).toBe(0);
     expect(normalizeRefFormLayout([{ kind: "name", page: 0, x: 0, y: 0, size: 10, valign: "x" }])[0].valign).toBeUndefined();
+  });
+
+  it("紹介手数料（1-16号）", () => {
+    expect(parseReferralFeePresets("300000、250,000　300000\n１５００００円")).toEqual([300000, 250000, 150000]);
+    expect(parseReferralFeePresets("")).toEqual([]);
+    expect(parseReferralFeePresets("300000,250000")).toEqual([300000, 250000]);
+    const item = { kind: "referral_fee" as const };
+    expect(refFormValue(item, { ...REF_FORM_SAMPLE_DATA, referralFee: "300000" })).toBe("300,000");
+    expect(refFormValue(item, { ...REF_FORM_SAMPLE_DATA, referralFee: "" })).toBe("");
   });
 
   it("ファイル名", () => {

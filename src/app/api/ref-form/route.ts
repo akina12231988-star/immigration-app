@@ -164,6 +164,8 @@ async function makePdf(sp: URLSearchParams, posted: Record<string, RefFormEdits>
         planDates: withDerivedPlanDates(await planDates(supabase, workerId, sp.get("todoNo") ?? "")),
       };
       data.docDate = data.planDates?.doc ?? "";
+      // 紹介手数料（1-16号）。作るときに画面で入れた金額
+      data.referralFee = sp.get("fee") ?? "";
       const cw = await currentWage(supabase, workerId, orgId || null);
       data.wage = cw ? { kind: cw.kind, amount: cw.amount } : null;
       data.wage6 = cw ? refFormWage6Values(cw, cw.detail, cw.annualHours) : {};
@@ -194,7 +196,7 @@ async function makePdf(sp: URLSearchParams, posted: Record<string, RefFormEdits>
       ({ drafts, orgTexts } = await loadRefFormEdits(supabase, workerId, sp.get("todoNo") ?? "", orgId || null));
       // その所属機関の版があればそれを使う（雇用条件書など、所属機関ごとの書式）
       targets = keys
-        .map((k) => pickRefFormTemplate(templates, k, data.person.nationality, orgId || null))
+        .map((k) => pickRefFormTemplate(templates, k, data.person.nationality, orgId || null, sp.get("lang")))
         .filter((t): t is (typeof templates)[number] => !!t);
       if (targets.length === 0) {
         return NextResponse.json({ error: "参考様式のひな形が登録されていません" }, { status: 404 });

@@ -60,8 +60,12 @@ export function refFormHref(
   mode: RefFormMode,
   off: string[] = [],
   todoNo = "",
+  language = "", // 空なら国籍の言語。選んだときはその言語の版（無ければ日本語の版）で作る
+  fee = "", // 紹介手数料（1-16号に書く金額）
 ): string {
   let href = `/api/ref-form?workerId=${encodeURIComponent(workerId)}&keys=${encodeURIComponent(keys.join(","))}&mode=${mode}`;
+  if (language) href += `&lang=${encodeURIComponent(language)}`;
+  if (fee) href += `&fee=${encodeURIComponent(fee)}`;
   if (off.length > 0) href += `&off=${encodeURIComponent(off.join(","))}`;
   if (todoNo) href += `&todoNo=${encodeURIComponent(todoNo)}`;
   return href;
@@ -80,6 +84,9 @@ export function RefFormRowBar({
   off,
   onOffChange,
   todoNo,
+  fee = "",
+  onFeeChange,
+  feePresets = [],
 }: {
   formKey: string;
   workerId: string;
@@ -93,6 +100,10 @@ export function RefFormRowBar({
   off: string[];
   onOffChange: (next: string[]) => void;
   todoNo: string;
+  // 紹介手数料（1-16号 雇用の経緯に係る説明書に書く金額）。onFeeChange を渡した行だけ入力欄を出す
+  fee?: string;
+  onFeeChange?: (v: string) => void;
+  feePresets?: number[]; // 所属機関に登録した「よく使う紹介手数料」
 }) {
   const list = templates.filter((t) => t.form_key === formKey && (!t.organization_id || t.organization_id === orgId));
   const picked = pickRefFormTemplate(templates, formKey, nationality, orgId);
@@ -118,14 +129,17 @@ export function RefFormRowBar({
             {formKey === "t1-18" ? "・最後のページに名簿（支援業務を行う体制についての説明）が付きます" : ""}
           </span>
           <a
-            href={`/workers/${workerId}/application-prep/unified/ref-form/${encodeURIComponent(formKey)}${todoNo ? `?todo=${encodeURIComponent(todoNo)}` : ""}`}
+            href={`/workers/${workerId}/application-prep/unified/ref-form/${encodeURIComponent(formKey)}?${new URLSearchParams({
+              ...(todoNo ? { todo: todoNo } : {}),
+              ...(fee ? { fee } : {}),
+            }).toString()}`}
             className="ml-auto inline-flex min-h-[28px] items-center gap-1 rounded-md border border-brand bg-surface px-2 font-bold text-brand"
           >
             <PenLine size={12} />
             見ながら作成（試験中）
           </a>
           <a
-            href={refFormHref(workerId, [formKey], "one", off, todoNo)}
+            href={refFormHref(workerId, [formKey], "one", off, todoNo, "", fee)}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex min-h-[28px] items-center gap-1 rounded-md bg-brand px-2 font-bold text-brand-foreground"
@@ -146,6 +160,38 @@ export function RefFormRowBar({
           <PenLine size={12} />
           ひな形・記入位置（{list.length}）
         </button>
+      )}
+      {onFeeChange && (
+        <div className="flex w-full flex-wrap items-center gap-1.5 border-t border-brand/20 pt-1">
+          <span className="font-bold">紹介手数料</span>
+          <input
+            value={fee ? Number(fee).toLocaleString("ja-JP") : ""}
+            onChange={(e) => onFeeChange(e.target.value.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/[^0-9]/g, ""))}
+            inputMode="numeric"
+            placeholder="例: 300,000"
+            className="min-h-[28px] w-28 rounded border border-border bg-surface px-1.5 text-right"
+          />
+          <span>円</span>
+          {feePresets.map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => onFeeChange(String(n))}
+              className={`inline-flex min-h-[28px] items-center rounded-md border px-2 font-bold ${
+                fee === String(n) ? "border-brand bg-brand text-brand-foreground" : "border-brand/40 bg-surface text-brand"
+              }`}
+            >
+              {n.toLocaleString("ja-JP")}円
+            </button>
+          ))}
+          <span className="text-muted">
+            {feePresets.length > 0
+              ? "今回の手数料を押すか入れてから作ってください（所属機関の「よく使う紹介手数料」）"
+              : "金額を入れてから作ってください（所属機関の画面で「よく使う紹介手数料」を登録するとボタンで選べます）"}
+            。記入位置に「紹介手数料」を置いた所に書きます。
+          </span>
+          {!fee && <span className="font-bold text-seal">未入力（空欄のまま作ります）</span>}
+        </div>
       )}
       {circles.length > 0 && (
         <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 border-t border-brand/20 pt-1">

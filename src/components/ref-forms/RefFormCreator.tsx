@@ -40,6 +40,7 @@ export function RefFormCreator({
   workerId,
   formKey,
   todoNo,
+  fee = "",
   nationality,
   gender,
   orgId,
@@ -48,6 +49,7 @@ export function RefFormCreator({
   workerId: string;
   formKey: string;
   todoNo: string;
+  fee?: string; // 紹介手数料（1-16号）。申請準備の行で入れた金額
   nationality: string;
   gender: string;
   orgId: string | null;
@@ -82,8 +84,9 @@ export function RefFormCreator({
   const query = useMemo(() => {
     const q = new URLSearchParams({ workerId, keys: formKey, mode: "one" });
     if (todoNo) q.set("todoNo", todoNo);
+    if (fee) q.set("fee", fee);
     return q.toString();
-  }, [workerId, formKey, todoNo]);
+  }, [workerId, formKey, todoNo, fee]);
 
   // 一時保存した分と所属機関の共通の文字を読み、入力欄の最初の値を決める
   const templateId = template?.id ?? null;

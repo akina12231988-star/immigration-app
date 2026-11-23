@@ -1275,6 +1275,18 @@ function IntakeSection({
           hint="数字だけを入力してください（例: 20000）。在留カード受領後の売上登録・退職時の日割り計算に使います。"
           locked={locks.intake("support_fee")}
         />
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-muted">よく使う紹介手数料（円・いくつでも）</span>
+          <input
+            value={intake.referral_fees ?? ""}
+            onChange={(e) => setIntake({ referral_fees: e.target.value })}
+            placeholder="例: 300000、250000"
+            className={INPUT_CLASS}
+          />
+          <span className={HINT_CLASS}>
+            「、」で区切って複数入れられます。申請準備で参考様式第1-16号（雇用の経緯に係る説明書）を作るとき、今回の手数料をボタンで選べます。
+          </span>
+        </label>
         {locks.intake("posting_note") ? (
           <StaticValue
             label="求人で必須としている他条件（求人情報の画面で注意喚起として表示されます）"
