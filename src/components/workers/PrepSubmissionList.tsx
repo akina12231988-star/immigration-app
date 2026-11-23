@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { CheckCircle2, ChevronDown, Eye, Loader2, Paperclip, Printer, Trash2 } from "lucide-react";
 import { FileDropArea } from "@/components/ui/FileDropArea";
-import { REF_FORM_LANGUAGES, SIGN_ONLY_REF_FORM_KEYS, isRefFormItem, languageForNationality, missingBundledRefForms, parseReferralFeePresets, pickRefFormTemplate, refFormName } from "@/lib/ref-form";
+import { isJapaneseOnlyRefForm, REF_FORM_LANGUAGES, SIGN_ONLY_REF_FORM_KEYS, isRefFormItem, languageForNationality, missingBundledRefForms, parseReferralFeePresets, pickRefFormTemplate, refFormName } from "@/lib/ref-form";
 import { createClient } from "@/lib/supabase/client";
 import { registerBundledRefForms } from "@/app/(app)/ref-forms/actions";
 import { SUBMISSION_PDF_TEMPLATES, canFillSubmissionPdf, fillSubmissionPdf, submissionPdfTables } from "@/lib/submission-pdf";
@@ -156,7 +156,12 @@ export function PrepSubmissionList({
   const wantLang = bulkLang || natLang;
   const bulkVersions = [...refRows.map(refKey), ...signOnlyKeys].map((k) => {
     const t = bulkPick(k);
-    return { key: k, language: t?.language ?? null, fallback: !!t && !!wantLang && t.language !== wantLang };
+    return {
+      key: k,
+      language: t?.language ?? null,
+      // 日本語の版だけの様式は日本語で作るのが正しいので、代わりに使っている扱いにしない
+      fallback: !!t && !!wantLang && t.language !== wantLang && !isJapaneseOnlyRefForm(refForms.templates, k, orgId),
+    };
   });
   const undecided = rows.filter((r) => r.mark == null);
   const autoCount = rows.filter((r) => r.auto && r.mark != null).length;
@@ -253,7 +258,8 @@ export function PrepSubmissionList({
             const japaneseOnly = natLang
               ? refRows.filter((r) => {
                   const t = natPick(refKey(r));
-                  return !!t && t.language !== natLang;
+                  // 日本語の版だけの様式（日本語で出す様式）は知らせない
+                  return !!t && t.language !== natLang && !isJapaneseOnlyRefForm(refForms.templates, refKey(r), orgId);
                 })
               : [];
             const rowsParam = [...refRows.map((r) => r.key), ...signOnlyKeys.filter((k) => natPick(k))].join(",");

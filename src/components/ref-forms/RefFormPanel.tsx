@@ -115,7 +115,9 @@ export function RefFormRowBar({
   const commonLangs = [...new Set(list.filter((t) => !t.organization_id).map((t) => t.language))];
   const orgLangs = [...new Set(list.filter((t) => t.organization_id).map((t) => t.language))];
   // 本人の国籍の言語の版が無い（日本語の版で代わりに作っているときも含む）
-  const langMissing = !!lang && lang !== "日本語" && !list.some((t) => t.language === lang);
+  // 日本語の版だけで登録している様式は日本語で出す様式なので、本人の言語の版は要らない
+  const japaneseOnly = list.length > 0 && list.every((t) => t.language === "日本語");
+  const langMissing = !!lang && lang !== "日本語" && !japaneseOnly && !list.some((t) => t.language === lang);
   // 記入位置に置いた○。チェックを外したものは、この様式を作るときに書かない
   const circles = picked ? refFormCircles(normalizeRefFormLayout(picked.layout)) : [];
   const offKey = (id: string) => `${picked?.id}:${id}`;
@@ -132,7 +134,7 @@ export function RefFormRowBar({
               "全員共通の"
             )}
             {picked.language}の版で作ります
-            {lang && picked.language !== lang ? `（${lang}の版は未登録）` : ""}
+            {japaneseOnly ? "（日本語だけの様式）" : lang && picked.language !== lang ? `（${lang}の版は未登録）` : ""}
             {picked.sign_pages.length > 0 ? `・署名 ${picked.sign_pages.map((p) => p + 1).join("・")}ページ目` : ""}
             {formKey === "t1-18" ? "・最後のページに名簿（支援業務を行う体制についての説明）が付きます" : ""}
           </span>

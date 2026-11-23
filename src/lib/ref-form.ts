@@ -187,6 +187,17 @@ export function refFormPrepCell<T extends Pick<RefFormTemplate, "form_key" | "la
   return { orgSpecific, status: "missing", template: null, used: pickRefFormTemplate(templates, key, "", orgId, language) };
 }
 
+// 日本語の版だけで登録している様式か（全員共通とこの所属機関の版で見る）。
+// 日本語の版だけの様式は日本語で出す様式なので、本人の国籍の言語の版は要らない（登録を促さない）
+export function isJapaneseOnlyRefForm<T extends Pick<RefFormTemplate, "form_key" | "language" | "organization_id">>(
+  templates: T[],
+  key: string,
+  orgId: string | null,
+): boolean {
+  const list = templates.filter((t) => t.form_key === key && (!t.organization_id || t.organization_id === orgId));
+  return list.length > 0 && list.every((t) => t.language === "日本語");
+}
+
 // アプリに入れてある入管の参考様式（何も記入していない日本語の版。public/forms/ref-forms/）。
 // 画面の「アプリに入っている参考様式を登録」で、全員共通・日本語のひな形として登録する（記入位置はそのあと置く）
 export const BUNDLED_REF_FORMS: Record<string, string> = {
