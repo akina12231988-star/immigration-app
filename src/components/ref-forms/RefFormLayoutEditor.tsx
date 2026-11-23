@@ -10,6 +10,9 @@ import {
   refFormSampleOf,
   refFormCellWidth,
   refFormFitLines,
+  refFormStrikeLength,
+  refFormStrikeThickness,
+  REF_FORM_STRIKE_DEFAULT_LENGTH,
   REF_FORM_LINE_HEIGHT,
   type RefFormDateFmt,
   REF_FORM_FIELD_LABEL,
@@ -31,6 +34,7 @@ interface PageView {
 
 const DEFAULT_SIZE: Partial<Record<RefFormFieldKind, number>> = {
   check: 10,
+  strike: 10,
   circle: 16,
   circle_male: 16,
   circle_female: 16,
@@ -57,6 +61,8 @@ function fittedSize(text: string, size: number, maxWidth?: number): number {
 const isCircle = isRefFormCircle;
 // ○と■は文字ではなく形（大きさ＝一辺）で見せる
 const isShape = (k: RefFormFieldKind) => isRefFormCircle(k) || isRefFormMark(k);
+// 右端のつまみをドラッグして幅（最大の幅・訂正線の長さ）を変えられる項目
+const isWidthResizable = (k: RefFormFieldKind) => k === "strike" || (!isShape(k) && k !== "check" && k !== "my_number");
 const MAX_PAGES = 20;
 // 置く項目の一覧で、まとまりの始めに出す説明
 // 置く項目を、まとまり（本人・所属機関・日付…）ごとに開いたり閉じたりできる一覧にする
@@ -109,7 +115,8 @@ export function RefFormLayoutEditor({
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [scale, setScale] = useState(1.3);
   const seq = useRef(0);
-  const drag = useRef<{ id: string; dx: number; dy: number; page: number } | null>(null);
+  // mode "width" は右端のつまみで幅（最大の幅・訂正線の長さ）を変えているとき
+  const drag = useRef<{ id: string; dx: number; dy: number; page: number; mode?: "move" | "width" } | null>(null);
 
   // PDFを画像にして並べる（pdfjs は重いので開いたときだけ読む）
   useEffect(() => {
@@ -226,6 +233,7 @@ export function RefFormLayoutEditor({
       y: Math.round(Math.max(0, y) * 10) / 10,
       size,
       text: kind === "text" ? "" : undefined,
+      maxWidth: kind === "strike" ? REF_FORM_STRIKE_DEFAULT_LENGTH : undefined,
     };
     remember();
     setItems((list) => [...list, item]);
@@ -236,6 +244,13 @@ export function RefFormLayoutEditor({
     const d = drag.current;
     if (!d || d.page !== page) return;
     const rect = e.currentTarget.getBoundingClientRect();
+    if (d.mode === "width") {
+      const cur = items.find((i) => i.id === d.id);
+      if (!cur) return;
+      const w = (e.clientX - rect.left) / scale - cur.x;
+      update(d.id, { maxWidth: Math.round(Math.max(5, w)) });
+      return;
+    }
     const x = (e.clientX - rect.left) / scale - d.dx;
     const y = (e.clientY - rect.top) / scale - d.dy;
     update(d.id, { x: Math.round(Math.max(0, x) * 10) / 10, y: Math.round(Math.max(0, y) * 10) / 10 });
@@ -409,7 +424,7 @@ export function RefFormLayoutEditor({
               )}
               {selected.kind !== "check" && selected.kind !== "my_number" && !isShape(selected.kind) && (
                 <label className="flex items-center gap-1">
-                  <span className="w-16">最大の幅</span>
+                  <span className="w-16">{selected.kind === "strike" ? "長さ" : "最大の幅"}</span>
                   <input
                     inputMode="numeric"
                     value={selected.maxWidth ?? ""}
@@ -417,13 +432,13 @@ export function RefFormLayoutEditor({
                       const n = Number(e.target.value);
                       update(selected.id, { maxWidth: n > 0 ? n : undefined });
                     }}
-                    placeholder="空欄＝縮めない"
+                    placeholder={selected.kind === "strike" ? String(REF_FORM_STRIKE_DEFAULT_LENGTH) : "空欄＝縮めない"}
                     className="min-h-[30px] w-24 rounded border border-border px-1"
                   />
-                  <span className="text-muted">pt</span>
+                  <span className="text-muted">pt（PDF の上の右端の■をドラッグしても変えられます）</span>
                 </label>
               )}
-              {selected.maxWidth && selected.kind !== "my_number" && !isShape(selected.kind) && (
+              {selected.maxWidth && selected.kind !== "my_number" && selected.kind !== "strike" && !isShape(selected.kind) && (
                 <label className="flex items-center gap-1">
                   <span className="w-16">行数</span>
                   <select
@@ -453,7 +468,7 @@ export function RefFormLayoutEditor({
                 </button>
               </div>
               <p className="text-[10px] text-muted">
-                Delete キーでも消せます。「⧉ コピー」で同じ設定のものをもう1つ置けます（少し下に出るので、ドラッグで動かす）。矢印キーで1pt（Shift で5pt）ずつ動きます。「最大の幅」を入れると、長い住所などは枠に収まるよう小さくします。
+                Delete キーでも消せます。「⧉ コピー」で同じ設定のものをもう1つ置けます（少し下に出るので、ドラッグで動かす）。右端の■をドラッグすると最大の幅（訂正線は長さ）が変わります。矢印キーで1pt（Shift で5pt）ずつ動きます。「最大の幅」を入れると、長い住所などは枠に収まるよう小さくします。
               </p>
             </div>
           )}
@@ -578,16 +593,17 @@ export function RefFormLayoutEditor({
                 .map((it) => {
                   const isSel = it.id === selectedId;
                   const common = `absolute cursor-move select-none whitespace-nowrap ${isSel ? "outline outline-2 outline-brand" : "outline outline-1 outline-seal/60"}`;
-                  const label = it.kind === "text" ? it.text || REF_FORM_TEXT_PLACEHOLDER : refFormSampleOf(it);
+                  const label = it.kind === "text" ? it.text || REF_FORM_TEXT_PLACEHOLDER : it.kind === "strike" ? "" : refFormSampleOf(it);
+                  const strike = it.kind === "strike";
                   // 最大の幅・行数があれば、PDF と同じように折り返して（入らなければ小さくして）見せる
-                  const fit = !isShape(it.kind) && it.kind !== "my_number" && it.maxWidth && (it.maxLines ?? 1) > 1
+                  const fit = !isShape(it.kind) && !strike && it.kind !== "my_number" && it.maxWidth && (it.maxLines ?? 1) > 1
                     ? refFormFitLines(label, it, (t, sz) => approxWidthEm(t) * sz)
                     : null;
                   return (
                     <div
                       key={it.id}
                       title={REF_FORM_FIELD_LABEL[it.kind]}
-                      className={`${common} ${isCircle(it.kind) ? "rounded-full" : ""} ${isRefFormMark(it.kind) ? "bg-seal/70" : "bg-seal/10"} text-seal`}
+                      className={`${common} ${isCircle(it.kind) ? "rounded-full" : ""} ${isRefFormMark(it.kind) ? "bg-seal/70" : strike ? "" : "bg-seal/10"} text-seal`}
                       style={{
                         left: it.x * scale,
                         top: it.y * scale,
@@ -596,7 +612,9 @@ export function RefFormLayoutEditor({
                         ...(fit ? { whiteSpace: "pre" as const } : {}),
                         ...(isShape(it.kind) ? { width: it.size * scale, height: it.size * scale } : {}),
                         // 「最大の幅」は点線の幅で見せる（文字は上で小さくしているので切らない）
-                        ...(it.maxWidth && !isShape(it.kind) ? { minWidth: it.maxWidth * scale, outlineStyle: "dashed" as const } : {}),
+                        ...(it.maxWidth && !isShape(it.kind) && !strike ? { minWidth: it.maxWidth * scale, outlineStyle: "dashed" as const } : {}),
+                        // 訂正線は長さ×大きさの枠の真ん中に線を引いて見せる
+                        ...(strike ? { width: refFormStrikeLength(it) * scale, height: it.size * scale } : {}),
                       }}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -610,12 +628,18 @@ export function RefFormLayoutEditor({
                         drag.current = {
                           id: it.id,
                           page: pi,
+                          mode: "move",
                           dx: (e.clientX - rect.left) / scale - it.x,
                           dy: (e.clientY - rect.top) / scale - it.y,
                         };
                       }}
                     >
-                      {isShape(it.kind) ? (
+                      {strike ? (
+                        <span
+                          className="absolute left-0 right-0 top-1/2 block -translate-y-1/2 bg-seal"
+                          style={{ height: Math.max(1, refFormStrikeThickness(it) * scale) }}
+                        />
+                      ) : isShape(it.kind) ? (
                         ""
                       ) : it.kind === "my_number" ? (
                         // 個人番号は1マスに1文字。マスの幅で並べて、様式のマスと合っているかを見られるようにする
@@ -634,6 +658,24 @@ export function RefFormLayoutEditor({
                         fit.lines.join("\n")
                       ) : (
                         label
+                      )}
+                      {/* 右端のつまみ。ドラッグして幅（最大の幅・訂正線の長さ）を変える */}
+                      {isSel && isWidthResizable(it.kind) && (
+                        <span
+                          role="slider"
+                          aria-label={strike ? "訂正線の長さ" : "最大の幅"}
+                          aria-valuenow={it.maxWidth ?? 0}
+                          title={strike ? "ドラッグして長さを変える" : "ドラッグして最大の幅を決める"}
+                          className="absolute top-1/2 block h-3.5 w-3.5 -translate-y-1/2 cursor-ew-resize rounded-sm border-2 border-white bg-brand shadow"
+                          style={{ right: -8 }}
+                          onClick={(e) => e.stopPropagation()}
+                          onPointerDown={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            remember();
+                            drag.current = { id: it.id, page: pi, dx: 0, dy: 0, mode: "width" };
+                          }}
+                        />
                       )}
                       {/* 選んでいる項目の上に出す小さな操作（項目名・消す） */}
                       {isSel && (

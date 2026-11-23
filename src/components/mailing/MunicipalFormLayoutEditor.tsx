@@ -72,7 +72,8 @@ export function MunicipalFormLayoutEditor({
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [scale, setScale] = useState(1.3);
   const seq = useRef(0);
-  const drag = useRef<{ id: string; dx: number; dy: number; page: number } | null>(null);
+  // mode "width" は右端のつまみで最大の幅を変えているとき
+  const drag = useRef<{ id: string; dx: number; dy: number; page: number; mode?: "move" | "width" } | null>(null);
 
   // PDFを画像にして並べる（pdfjs は重いので開いたときだけ読む）
   useEffect(() => {
@@ -198,6 +199,12 @@ export function MunicipalFormLayoutEditor({
     const d = drag.current;
     if (!d || d.page !== page) return;
     const rect = e.currentTarget.getBoundingClientRect();
+    if (d.mode === "width") {
+      const cur = items.find((i) => i.id === d.id);
+      if (!cur) return;
+      update(d.id, { maxWidth: Math.round(Math.max(5, (e.clientX - rect.left) / scale - cur.x)) });
+      return;
+    }
     const x = (e.clientX - rect.left) / scale - d.dx;
     const y = (e.clientY - rect.top) / scale - d.dy;
     update(d.id, { x: Math.round(Math.max(0, x) * 10) / 10, y: Math.round(Math.max(0, y) * 10) / 10 });
@@ -341,7 +348,7 @@ export function MunicipalFormLayoutEditor({
                 </button>
               </div>
               <p className="text-[10px] text-muted">
-                Delete キーでも消せます。「⧉ コピー」で同じ設定のものをもう1つ置けます（少し下に出るので、ドラッグで動かす）。矢印キーで1pt（Shift で5pt）ずつ動きます。「最大の幅」を入れると、長い住所などは枠に収まるよう小さくします。
+                Delete キーでも消せます。「⧉ コピー」で同じ設定のものをもう1つ置けます（少し下に出るので、ドラッグで動かす）。右端の■をドラッグすると最大の幅が変わります。矢印キーで1pt（Shift で5pt）ずつ動きます。「最大の幅」を入れると、長い住所などは枠に収まるよう小さくします。
               </p>
             </div>
           )}
@@ -454,12 +461,31 @@ export function MunicipalFormLayoutEditor({
                         drag.current = {
                           id: it.id,
                           page: pi,
+                          mode: "move",
                           dx: (e.clientX - rect.left) / scale - it.x,
                           dy: (e.clientY - rect.top) / scale - it.y,
                         };
                       }}
                     >
                       {isCircle(it.kind) ? "" : label}
+                      {/* 右端のつまみ。ドラッグして最大の幅を決める */}
+                      {isSel && it.kind !== "check" && !isCircle(it.kind) && (
+                        <span
+                          role="slider"
+                          aria-label="最大の幅"
+                          aria-valuenow={it.maxWidth ?? 0}
+                          title="ドラッグして最大の幅を決める"
+                          className="absolute top-1/2 block h-3.5 w-3.5 -translate-y-1/2 cursor-ew-resize rounded-sm border-2 border-white bg-brand shadow"
+                          style={{ right: -8 }}
+                          onClick={(e) => e.stopPropagation()}
+                          onPointerDown={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            remember();
+                            drag.current = { id: it.id, page: pi, dx: 0, dy: 0, mode: "width" };
+                          }}
+                        />
+                      )}
                       {/* 選んでいる項目の上に出す小さな操作（項目名・消す） */}
                       {isSel && (
                         <span
