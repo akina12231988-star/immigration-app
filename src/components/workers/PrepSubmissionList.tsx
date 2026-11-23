@@ -48,6 +48,8 @@ export function PrepSubmissionList({
   orgPastCandidates = [],
   renewal = false,
   missingAttachKeys = [],
+  onDownloadBundle,
+  bundleBusy = false,
   workerId,
   nationality = "",
   orgId = null,
@@ -73,6 +75,9 @@ export function PrepSubmissionList({
   orgPastCandidates?: (SubmissionPast & { label: string })[];
   renewal?: boolean; // 更新申請か（11-4号の転用は更新申請のときだけ）
   missingAttachKeys?: string[]; // 「有」なのに何も添付していない行（行のキー）
+  // 添付した書類（必要な書類の証明書・健康診断書なども、行に添付した参考様式も）を一覧表の順に1つの PDF にする
+  onDownloadBundle?: () => void;
+  bundleBusy?: boolean;
   // 参考様式の作成（ひな形に書き込んだPDF）に使う。渡したときだけ参考様式の欄を出す
   workerId?: string;
   nationality?: string;
@@ -108,7 +113,11 @@ export function PrepSubmissionList({
     }
   };
   // 「有」の参考様式（一覧表の順）。ひな形が登録されているものだけを作れる
-  const refRows = workerId ? rows.filter((r) => r.mark === "有" && isRefFormItem(r)) : [];
+  // まとめてダウンロード・まとめて確認に入れる参考様式。健康診断個人票（1-3号）は病院で書いてもらって
+  // 「必要な書類」に添付したものを使う（提出書類一式に入る）ので、ひな形で作る分は入れない
+  const refRows = workerId
+    ? rows.filter((r) => r.mark === "有" && isRefFormItem(r) && canonicalSubmissionKey(r.key) !== "t1-8-1")
+    : [];
   // 参考様式のひな形は、1号と同じ書類なら1号のキーで引く（2号でも 1-5号・1-6号 などは同じひな形）
   const refKey = (r: SubmissionRow) => canonicalSubmissionKey(r.key);
   // まとめてダウンロードの言語。空なら国籍の言語（その言語の版が無い様式は日本語の版）
@@ -348,6 +357,19 @@ export function PrepSubmissionList({
           >
             参考様式を一気にダウンロード（{refReady.length}件）
           </a>
+          {/* 証明書・健康診断書など「必要な書類」で添付したものも入れて、一覧表の順に1つの PDF にする */}
+          {onDownloadBundle && (
+            <button
+              type="button"
+              onClick={onDownloadBundle}
+              disabled={bundleBusy}
+              title="必要な書類で添付した証明書・健康診断書なども、行に添付した参考様式も、一覧表の順に1つの PDF にします"
+              className="inline-flex min-h-[34px] items-center gap-1 rounded-lg border-2 border-brand bg-surface px-3 font-bold text-brand disabled:opacity-50"
+            >
+              {bundleBusy ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+              添付した書類もまとめて PDF（提出書類一式）
+            </button>
+          )}
           <a
             href={signKeys.length > 0 ? refFormHref(workerId, signKeys, "sign", refOff, todoNo, bulkLang, fee) : undefined}
             target="_blank"
