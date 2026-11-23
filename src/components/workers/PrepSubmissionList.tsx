@@ -44,6 +44,7 @@ export function PrepSubmissionList({
   past = {},
   onPast,
   priorPast = null,
+  missingAttachKeys = [],
   workerId,
   nationality = "",
   orgId = null,
@@ -64,6 +65,7 @@ export function PrepSubmissionList({
   past?: Record<string, SubmissionPast>;
   onPast?: (key: string, value: SubmissionPast | null) => void;
   priorPast?: SubmissionPast | null; // 前回の申請（1年以内）。押すと入れられる
+  missingAttachKeys?: string[]; // 「有」なのに何も添付していない行（行のキー）
   // 参考様式の作成（ひな形に書き込んだPDF）に使う。渡したときだけ参考様式の欄を出す
   workerId?: string;
   nationality?: string;
@@ -356,6 +358,30 @@ export function PrepSubmissionList({
         </div>
       )}
 
+      {/* 「有」に○を付けたのに何も添付していない書類（押すとその行へ） */}
+      {missingAttachKeys.length > 0 && (
+        <div role="alert" className="rounded-xl border-2 border-seal bg-seal/10 p-2.5 text-xs text-seal">
+          <p className="font-black">⚠ 「有」に○を付けたのに、まだ何も添付していない書類があります（{missingAttachKeys.length}件）</p>
+          <p className="mt-0.5 text-[11px]">添付するか、出さない書類なら「無」にしてください。</p>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {missingAttachKeys.map((k) => {
+              const r = rows.find((x) => x.key === k);
+              if (!r) return null;
+              return (
+                <a
+                  key={k}
+                  href={`#prep-list-row-${k}`}
+                  className="rounded border border-seal/40 bg-surface px-1.5 py-0.5 font-bold underline"
+                >
+                  {r.no}
+                  {r.sub ?? ""} {r.label.length > 24 ? `${r.label.slice(0, 24)}…` : r.label}
+                </a>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* 入管には出さず、本人に署名してもらうだけの書類。言語ごとのひな形を登録し、記入位置を置いて作る */}
       {signOnlyKeys.length > 0 && workerId && (
         <div className="flex flex-col gap-1.5 rounded-xl border border-seal/30 bg-seal/5 p-2 text-[11px]">
@@ -420,6 +446,9 @@ export function PrepSubmissionList({
         ) : (
           <span className="rounded-full bg-background px-2.5 py-1 font-bold text-muted">全部選びました</span>
         )}
+        {missingAttachKeys.length > 0 && (
+          <span className="rounded-full bg-seal px-2.5 py-1 font-bold text-seal-foreground">⚠ 「有」なのに添付なし {missingAttachKeys.length}件</span>
+        )}
         <button
           type="button"
           onClick={() => setOpenNotes((v) => !v)}
@@ -467,9 +496,12 @@ export function PrepSubmissionList({
                         <td className="border-t border-border px-2 py-1.5 text-center font-bold tabular-nums">
                           {i > 0 && list[i - 1].no === r.no ? "" : r.no}
                         </td>
-                        <td className="border-t border-border px-2 py-1.5">
+                        <td id={`prep-list-row-${r.key}`} className="scroll-mt-24 border-t border-border px-2 py-1.5">
                           {r.sub && <span className="mr-1 font-bold">{r.sub}</span>}
                           {r.label}
+                          {missingAttachKeys.includes(r.key) && (
+                            <span className="ml-1.5 inline-block rounded bg-seal px-1.5 py-0.5 text-[10px] font-bold text-seal-foreground">⚠ 有なのに添付なし</span>
+                          )}
                           {openNotes && r.note && <p className="mt-0.5 text-[10px] leading-snug text-muted">※{r.note}</p>}
                           {/* 参考様式の欄（作成・ひな形と記入位置）。「有」と、まだ有／無を決めていない行に出す
                               （決める前でもひな形の登録・記入位置の準備ができるように）。「無」の行には出さない。

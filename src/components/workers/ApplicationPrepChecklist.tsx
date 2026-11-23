@@ -1822,6 +1822,22 @@ export function ApplicationPrepChecklist({
       setBundleBusy(false);
     }
   }
+  // 提出書類一覧表で「有」なのに何も添付していない行（申請後に郵送・発行のみにした書類は除く）。
+  // 人材サービス総合サイトの画面（全員共通）と協議会の加入通知書（所属機関の添付）は、行に添付しなくてよいので除く
+  const missingAttachKeys = (() => {
+    if (!submissionRows) return [];
+    const exempt = new Set(["t1-7-2", "s2-7-2", "t3a-3", "s2a-3"]);
+    const out = new Set<string>();
+    for (const m of bundlePlan.missing) {
+      if (m.reason !== "未添付") continue;
+      if (m.id.startsWith("sl:")) out.add(m.id.slice(3));
+      else
+        for (const r of submissionRows)
+          if (r.mark === "有" && (submissionLink(r.key)?.docs ?? []).includes(m.id)) out.add(r.key);
+    }
+    return submissionRows.filter((r) => r.mark === "有" && out.has(r.key) && !exempt.has(r.key)).map((r) => r.key);
+  })();
+
   // 「何の書類を待っていますか？」に1回で入れる文（まだ揃っていない書類と依頼先）
   const waitingSuggestion = waitingNoteFromMissing(
     missingItems.map((i) => ({ label: docLabelOf(i), who: docRequesteeOf(i)?.who })),
@@ -3022,6 +3038,7 @@ export function ApplicationPrepChecklist({
               else delete next[key];
               void saveExtras({ submission_past: next });
             }}
+            missingAttachKeys={missingAttachKeys}
             priorPast={
               priorApp.prior ? { on: priorApp.prior.applicationOn ?? "", no: priorApp.prior.applicationNo ?? "" } : null
             }
