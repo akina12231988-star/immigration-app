@@ -242,10 +242,10 @@ export const W6_FIELDS = [
   { key: "tax", label: "4(a) 税金", sample: "3,010" },
   { key: "social", label: "4(b) 社会保険料", sample: "27,323" },
   { key: "employment", label: "4(c) 雇用保険料", sample: "955" },
-  { key: "food", label: "4(d) 食費", sample: "0" },
+  { key: "food", label: "4(d) 食費", sample: "15,000" },
   { key: "housing", label: "4(e) 居住費", sample: "20,000" },
   { key: "housing_note", label: "4(e) 居住費の算定方法・説明", sample: "家賃÷入居人数" },
-  { key: "utility", label: "4(f) その他（水道光熱費）", sample: "0" },
+  { key: "utility", label: "4(f) その他（水道光熱費）", sample: "7,000" },
   { key: "other1_name", label: "その他控除1の名前", sample: "通信費" },
   { key: "other1_amount", label: "その他控除1の金額", sample: "2,000" },
   { key: "other2_name", label: "その他控除2の名前", sample: "寮の備品代" },
@@ -264,7 +264,8 @@ export function refFormWage6Values(
 ): Record<string, string> {
   const detail = normalizeWageDetail(rawDetail);
   const r = calcWageDetail(wage, detail, annualHours);
-  const y = (n: number) => formatYen(n);
+  // 0円の欄は書かない（空欄のままにする）
+  const y = (n: number) => (Math.round(n) === 0 ? "" : formatYen(n));
   const out: Record<string, string> = {
     hourly:
       wage.kind === "月給" && r.annualHours > 0

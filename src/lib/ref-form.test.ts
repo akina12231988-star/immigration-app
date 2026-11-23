@@ -533,3 +533,12 @@ describe("1-25号の契約期間（支援委託契約日から5年間）", () =>
     expect(refFormValue({ kind: "sc_period" }, { ...d, planDates: {} })).toBe("");
   });
 });
+
+describe("1-6号別紙の0円の欄", () => {
+  it("0円は書かない（空欄）", () => {
+    const v = refFormWage6Values({ kind: "月給", amount: 191000 }, {}, 2088);
+    expect(v.food).toBe("");
+    expect(v.utility).toBe("");
+    expect(v.gross).not.toBe("");
+  });
+});
