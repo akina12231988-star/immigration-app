@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Download, Loader2, Printer, Save } from "lucide-react";
+import { Download, Loader2, Paperclip, Printer, Save } from "lucide-react";
+import { uploadOnboardingDoc } from "@/lib/onboarding-files";
+import { submissionAttachKey } from "@/lib/submission-list";
 import { createClient } from "@/lib/supabase/client";
 import { dbErrorMessage } from "@/lib/errors";
 import {
@@ -21,6 +23,7 @@ import {
 } from "@/lib/ref-form";
 import { downloadBlob } from "@/lib/onboarding-pdf";
 import { useRefFormTemplates } from "./RefFormPanel";
+import { WorkerCardCheckPanel } from "./WorkerCardCheckPanel";
 
 const MIGRATION = "0230_ref_form_drafts.sql";
 // 読み込むページの上限（1-17号の支援計画書のように20ページを超える様式があるので多めに）
@@ -42,6 +45,11 @@ export function RefFormCreator({
   formKey,
   todoNo,
   fee = "",
+  attachRowKey = null,
+  attachLabel = "",
+  embedded = false,
+  reloadSignal = 0,
+  sidePanel,
   nationality,
   gender,
   orgId,
@@ -51,6 +59,12 @@ export function RefFormCreator({
   formKey: string;
   todoNo: string;
   fee?: string; // 紹介手数料（1-16号）。申請準備の行で入れた金額
+  attachRowKey?: string | null; // 作ったPDFを添付する提出書類一覧表の行（無ければ添付のボタンを出さない）
+  attachLabel?: string; // その行の名前（例: 7(1) 雇用の経緯に係る説明書）
+  // まとめて確認する画面の中で使うとき（説明と「在留カードで確かめる」はその画面に1つだけ出す）
+  embedded?: boolean;
+  reloadSignal?: number; // 変わったら様式を作り直す（まとめて確認する画面で本人の情報を直したとき）
+  sidePanel?: React.ReactNode; // embedded のとき、右の欄の下に出すもの（まとめて確認する画面の「在留カードで確かめる」）
   nationality: string;
   gender: string;
   orgId: string | null;
@@ -75,7 +89,9 @@ export function RefFormCreator({
   const [orgTexts, setOrgTexts] = useState<Record<string, string>>({});
   const [pages, setPages] = useState<PageView[] | null>(null);
   const [scale, setScale] = useState(1.3);
-  const [busy, setBusy] = useState<null | "print" | "pdf" | "save">(null);
+  const [busy, setBusy] = useState<null | "print" | "pdf" | "save" | "attach">(null);
+  // 本人の情報を直したときに、下に敷く PDF（自動で入る所）を作り直すためのキー
+  const [reloadKey, setReloadKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
@@ -175,7 +191,7 @@ export function RefFormCreator({
     return () => {
       cancelled = true;
     };
-  }, [templateId, query, formKey, baseOff]);
+  }, [templateId, query, formKey, baseOff, reloadKey, reloadSignal]);
 
   // いまの入力内容で PDF を作る
   async function makePdf(): Promise<Blob> {
@@ -218,6 +234,33 @@ export function RefFormCreator({
       downloadBlob(await makePdf(), `${refFormName(formKey)}.pdf`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "PDFを作れませんでした");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // いまの内容で PDF を作り、申請準備の提出書類一覧表のその行に添付する（前の添付があれば差し替える）
+  async function onAttach() {
+    if (!attachRowKey) return;
+    const docKey = submissionAttachKey(attachRowKey);
+    setBusy("attach");
+    setError(null);
+    setNotice(null);
+    try {
+      const { data: prev } = await createClient()
+        .from("onboarding_documents")
+        .select("id")
+        .eq("worker_id", workerId)
+        .eq("doc_key", docKey)
+        .not("storage_path", "is", null)
+        .limit(1);
+      if ((prev ?? []).length > 0 && !window.confirm("この行にはもう添付があります。いま作った PDF に差し替えますか？")) return;
+      const blob = await makePdf();
+      const file = new File([blob], `${refFormName(formKey)}.pdf`, { type: "application/pdf" });
+      await uploadOnboardingDoc(workerId, { key: docKey, label: attachLabel || refFormName(formKey), num: 0 }, file);
+      setNotice(`申請準備の「${attachLabel || refFormName(formKey)}」の行に添付しました。下のリンクから申請準備に戻ると、その行に出ています。`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "添付できませんでした");
     } finally {
       setBusy(null);
     }
@@ -338,11 +381,13 @@ export function RefFormCreator({
 
   return (
     <div className="flex flex-col gap-3">
+{!embedded && (
       <p className="rounded-xl border-2 border-dashed border-brand/50 bg-brand/5 px-3 py-2 text-xs leading-relaxed">
         <span className="font-black text-brand">🧪 試験中</span>
         ：自動で入る所（氏名・年齢・日付・所属機関など）は様式にそのまま出ています。赤い点線の所に文字を入れます。文字は左の赤いつまみ（⠿）、○はそのものをドラッグすると動きます（入力中は Alt＋矢印キーでも動きます）。
-        直したら「印刷」「PDFで保存」、あとでまとめて PDF にするなら「一時保存」を押してください。
+        直したら「この内容で作って、申請準備に添付する」（申請準備のこの様式の行に添付します）。紙で欲しいときは「印刷」「PDFで保存」、あとでまとめて PDF にするなら「一時保存」を押してください。
       </p>
+      )}
       {error && <p className="rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">{error}</p>}
 
       <div className="flex flex-wrap items-start gap-4">
@@ -507,6 +552,18 @@ export function RefFormCreator({
 
           <section className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-3">
             <h2 className="text-sm font-bold">保存・印刷</h2>
+            {/* いちばんよく使う: 確認した内容で作って、申請準備のその行に添付する */}
+            {attachRowKey && (
+              <button
+                type="button"
+                onClick={() => void onAttach()}
+                disabled={busy !== null || !pages}
+                className="inline-flex min-h-[52px] items-center justify-center gap-1.5 rounded-lg bg-brand px-3 text-sm font-black text-brand-foreground disabled:opacity-50"
+              >
+                {busy === "attach" ? <Loader2 size={16} className="animate-spin" /> : <Paperclip size={16} />}
+                この内容で作って、申請準備に添付する
+              </button>
+            )}
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
@@ -543,7 +600,7 @@ export function RefFormCreator({
               </p>
             )}
             <p className="text-[11px] leading-relaxed text-muted">
-              一時保存した内容は、申請準備の「参考様式を一気にダウンロード」「作成（この様式だけ）」にも使われます。
+              一時保存した内容は、申請準備の「参考様式を一気にダウンロード」「確認せずにPDFだけ作る」にも使われます。
             </p>
             <Link
               href={`/workers/${workerId}/application-prep/unified`}
@@ -552,6 +609,8 @@ export function RefFormCreator({
               申請準備へ戻る
             </Link>
           </section>
+          {/* いまの在留カードを見ながら、様式に入る本人の情報を確かめる・直す */}
+          {embedded ? sidePanel : <WorkerCardCheckPanel workerId={workerId} onSaved={() => setReloadKey((k) => k + 1)} />}
         </aside>
       </div>
 
