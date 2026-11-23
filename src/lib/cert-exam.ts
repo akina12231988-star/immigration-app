@@ -18,38 +18,11 @@ export interface WorkerCertExam {
   name: string; // 受験した試験名
   location: string; // 受験地（日本国内 / 海外の国名）
   level: string; // 日本語の合格証のレベル（N4/N3/N2/N1。専門外・未選択は ''）
-  score?: string; // 日本語の合格証の点数（数字。未入力は ''。0234）
   doc_key: string; // 合格証ファイルの保存キー
 }
 
 // 日本語の合格証のレベル。特定技能で必要になるのはN4以上のため、この4つを候補にする
 export const JLPT_LEVELS = ["N4", "N3", "N2", "N1"] as const;
-// ---- 国際交流基金日本語基礎テスト（JFT-Basic）の点数 ----
-// JFT-Basic は 250点満点で、200点以上が CEFR の A2 レベル（合格）。
-// この試験を選んだときだけ、「合格したレベル」の代わりに点数を入れ、A2 に届いているかを出す
-export const JFT_BASIC_PASS = 200;
-export const JFT_BASIC_MAX = 250;
-
-export function isJftBasicExamName(name: string): boolean {
-  return /日本語基礎テスト|JFT/i.test(name);
-}
-
-export interface JftScoreResult {
-  pass: boolean;
-  level: string; // 合格なら "A2"（「合格したレベル」にも入れる）。不合格は ''
-  text: string; // 画面に出す文
-}
-
-// JFT-Basic の点数から合否と CEFR の目安を出す。点数が空・範囲外なら null
-export function jftScoreResult(score: string): JftScoreResult | null {
-  const t = (score ?? "").replace(/[^0-9]/g, "");
-  if (!t) return null;
-  const n = Number(t);
-  if (!Number.isFinite(n) || n > JFT_BASIC_MAX) return null;
-  return n >= JFT_BASIC_PASS
-    ? { pass: true, level: "A2", text: `A2相当（合格・${n}点）` }
-    : { pass: false, level: "", text: `A2に満たない（不合格・${n}点。合格は${JFT_BASIC_PASS}点以上）` };
-}
 
 // 種類ごとの、1件目の保存キー（従来からのキー。申請準備の合格証パネルとも共有する）
 export const CERT_BASE_DOC_KEY: Record<CertExamKind, string> = {
@@ -91,7 +64,6 @@ export function normalizeCertExams(value: unknown): WorkerCertExam[] {
       name: s(r.name),
       location: s(r.location),
       level: s(r.level),
-      score: s(r.score),
       doc_key: s(r.doc_key) || certExamDocKey(kind, id),
     });
   }
@@ -106,7 +78,6 @@ export function certExamRows(
   firstLocation: string,
   firstLevel: string,
   stored: WorkerCertExam[],
-  firstScore = "",
 ): WorkerCertExam[] {
   const first: WorkerCertExam = {
     id: "",
@@ -114,7 +85,6 @@ export function certExamRows(
     name: firstName,
     location: firstLocation,
     level: firstLevel,
-    score: firstScore,
     doc_key: CERT_BASE_DOC_KEY[kind],
   };
   return [first, ...stored.filter((e) => e.kind === kind)];

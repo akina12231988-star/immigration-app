@@ -51,7 +51,6 @@ describe("normalizeCertExams", () => {
         name: "農業技能測定試験",
         location: "",
         level: "",
-        score: "",
         doc_key: "cert_senmongai_a1b2c3",
       },
     ]);
@@ -74,21 +73,5 @@ describe("certExamRows", () => {
     const rows = certExamRows("nihongo", "JFT-Basic", "日本国内", "N4", stored);
     expect(rows.map((r) => r.doc_key)).toEqual(["cert_nihongo", "cert_nihongo_x1"]);
     expect(rows[0]).toMatchObject({ name: "JFT-Basic", location: "日本国内", level: "N4" });
-  });
-});
-
-describe("国際交流基金日本語基礎テストの点数", () => {
-  it("試験名で見分ける", async () => {
-    const { isJftBasicExamName } = await import("./cert-exam");
-    expect(isJftBasicExamName("国際交流基金日本語基礎テスト")).toBe(true);
-    expect(isJftBasicExamName("日本語能力試験　JLPT")).toBe(false);
-  });
-  it("200点以上で A2（合格）", async () => {
-    const { jftScoreResult } = await import("./cert-exam");
-    expect(jftScoreResult("215")).toEqual({ pass: true, level: "A2", text: "A2相当（合格・215点）" });
-    expect(jftScoreResult("200")?.pass).toBe(true);
-    expect(jftScoreResult("199")).toMatchObject({ pass: false, level: "" });
-    expect(jftScoreResult("")).toBeNull();
-    expect(jftScoreResult("251")).toBeNull();
   });
 });
