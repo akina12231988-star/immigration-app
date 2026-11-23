@@ -3,6 +3,7 @@
 import { buildWorkerOptions, type WorkerLite } from "@/lib/worker-label";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { FileDropArea } from "@/components/ui/FileDropArea";
 import { Building2, ExternalLink, Printer, Upload } from "lucide-react";
 import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { Combobox } from "@/components/ui/Combobox";
@@ -745,12 +746,12 @@ export function PrepOrgInfo({
     uploadKindRef.current = kind;
     uploadInputRef.current?.click();
   };
-  const handleUpload = async (list: FileList | null) => {
-    if (!list || list.length === 0 || !uploadKindRef.current) return;
+  const handleUpload = async (list: FileList | null, kind = uploadKindRef.current) => {
+    if (!list || list.length === 0 || !kind) return;
     setUploading(true);
     setError(null);
     try {
-      await uploadOrgFiles(org.id, uploadKindRef.current, list);
+      await uploadOrgFiles(org.id, kind, list);
       setReloadKey((k) => k + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "アップロードに失敗しました");
@@ -893,15 +894,28 @@ export function PrepOrgInfo({
           />
         </>
       )}
+      {/* 画像・PDF をこの枠にドラッグ＆ドロップしても添付できる（所属機関の添付に保存される） */}
       {isAgri && (
-        <OrgAttachmentPreview
-          label={ORG_FILE_KIND_AGRI_NOTICE}
-          latest={agriNotice}
-          onPreview={preview}
-          printHref={orgFilesPrintHref(org.id, [ORG_FILE_KIND_AGRI_NOTICE])}
-          printLabel="印刷（A4縦）"
-          onUpload={fill && !uploading ? () => startUpload(ORG_FILE_KIND_AGRI_NOTICE) : undefined}
-        />
+        <FileDropArea
+          disabled={!fill || uploading}
+          onFiles={(files) => void handleUpload(files, ORG_FILE_KIND_AGRI_NOTICE)}
+          title="農業特定技能加入通知書の画像・PDFをここにドロップしても添付できます"
+          className="rounded-lg"
+        >
+          <OrgAttachmentPreview
+            label={ORG_FILE_KIND_AGRI_NOTICE}
+            latest={agriNotice}
+            onPreview={preview}
+            printHref={orgFilesPrintHref(org.id, [ORG_FILE_KIND_AGRI_NOTICE])}
+            printLabel="印刷（A4縦）"
+            onUpload={fill && !uploading ? () => startUpload(ORG_FILE_KIND_AGRI_NOTICE) : undefined}
+          />
+          {fill && (
+            <p className="mt-0.5 text-[10px] text-muted">
+              {uploading ? "アップロード中…" : "画像・PDFをこの枠にドラッグ＆ドロップしても添付できます"}
+            </p>
+          )}
+        </FileDropArea>
       )}
       {councilDateMissing("council_office_submissions") ? (
         <OrgInfoLine
