@@ -681,6 +681,7 @@ export function ApplicationPrepChecklist({
         | "hire_check"
         | "print_marks"
         | "submission_marks"
+        | "submission_past"
       >
     >,
   ) {
@@ -693,7 +694,9 @@ export function ApplicationPrepChecklist({
     } catch (err) {
       // あとから足した項目（筆頭者=0111・申請予定日=0112）は、その分の案内を出す
       const migration =
-        "submission_marks" in patch
+        "submission_past" in patch
+          ? "0234_prep_submission_past.sql"
+          : "submission_marks" in patch
           ? "0226_prep_submission_marks.sql"
           : "print_marks" in patch
           ? "0223_prep_print_marks.sql"
@@ -2961,6 +2964,18 @@ export function ApplicationPrepChecklist({
             orgName={prepOrgName}
             todoNo={current?.todo_no ?? ""}
             onError={setError}
+            // 過去に提出した申請情報（入管の様式の欄に書く）。前回の申請（1年以内）から入れられる
+            past={current?.submission_past ?? {}}
+            onPast={(key, v) => {
+              if (!current) return;
+              const next = { ...(current.submission_past ?? {}) };
+              if (v) next[key] = v;
+              else delete next[key];
+              void saveExtras({ submission_past: next });
+            }}
+            priorPast={
+              priorApp.prior ? { on: priorApp.prior.applicationOn ?? "", no: priorApp.prior.applicationNo ?? "" } : null
+            }
             // どの行にも「理由書を添付する」（作って添付し、内容を記録する）
             renderReason={(row) =>
               current ? (

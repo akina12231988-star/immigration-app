@@ -1,6 +1,6 @@
 import { PDFDocument, rgb } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
-import type { SubmissionRow, SubmissionTable } from "@/lib/submission-list";
+import { submissionPastDateText, type SubmissionPast, type SubmissionRow, type SubmissionTable } from "@/lib/submission-list";
 
 // 提出書類一覧表を、入管の様式の PDF そのものに書き込む（申請書類作成をアプリ一本化計画）。
 // 提出確認欄の「有」「無」の文字に丸を描き、表紙の「申請人の氏名」「特定技能所属機関の名称」の線の上に名前を書く。
@@ -14,6 +14,9 @@ export interface SubmissionPdfTemplate {
   markSize: number; // 「有」「無」の文字の大きさ（pt）
   // 表紙の氏名・所属機関名を書く位置（線の上。y は見出しの文字の下端）
   cover?: { page: number; x: number; nameY: number; orgY: number; maxWidth: number };
+  // 「過去に提出した申請情報」の欄（pastInfo の書類の順）。
+  // [ページ, 「・申請年月日」の x, 「・申請年月日」の文字の下端の y, 「・受付番号」の文字の下端の y]。斜線の欄は入れない
+  past?: [number, number, number, number][];
 }
 
 // 入管の様式の PDF が入っている表。ここに無い表は、アプリで作った簡易版で印刷する
@@ -22,6 +25,7 @@ export const SUBMISSION_PDF_TEMPLATES: Partial<Record<SubmissionTable, Submissio
   "1": {
     file: "/forms/submission-ssw1.pdf",
     markSize: 7,
+    past: [[1, 448.4, 191.8, 171.5], [1, 448.4, 102.2, 81.8], [2, 448.4, 746, 725.7], [2, 448.4, 576.3, 556], [2, 448.4, 495.9, 475.6], [2, 448.4, 375.8, 355.4], [2, 448.4, 275.5, 255.2]],
     cover: { page: 0, x: 292, nameY: 92.7, orgY: 57.6, maxWidth: 262 },
     rows: [
       [1, 421.3, 436.5, 722.3],
@@ -56,6 +60,7 @@ export const SUBMISSION_PDF_TEMPLATES: Partial<Record<SubmissionTable, Submissio
   "3agri": {
     file: "/forms/submission-ssw1-agri.pdf",
     markSize: 7,
+    past: [[0, 449.6, 746.2, 725.9], [0, 449.6, 586.4, 566], [0, 449.6, 505.9, 485.6]],
     rows: [
       [0, 422.5, 437.8, 672.1],
       [0, 422.5, 437.8, 551.9],
@@ -69,6 +74,7 @@ export const SUBMISSION_PDF_TEMPLATES: Partial<Record<SubmissionTable, Submissio
   "2-3agri": {
     file: "/forms/submission-ssw2-agri.pdf",
     markSize: 7,
+    past: [[0, 446.6, 748.1, 724.3]],
     rows: [
       [0, 419.3, 434, 704],
       [0, 419.3, 434, 641.7],
@@ -80,6 +86,7 @@ export const SUBMISSION_PDF_TEMPLATES: Partial<Record<SubmissionTable, Submissio
   "2-1": {
     file: "/forms/submission-ssw2.pdf",
     markSize: 7,
+    past: [[2, 445.9, 747.4, 723.6], [2, 445.9, 657.8, 634], [2, 445.9, 590.6, 566.8], [2, 445.9, 338.6, 314.8], [2, 445.9, 225.2, 201.4], [3, 445.9, 747.4, 723.6], [3, 445.9, 596.2, 572.4]],
     cover: { page: 0, x: 292, nameY: 99.9, orgY: 64.9, maxWidth: 262 },
     rows: [
       [1, 418.6, 433.3, 734.8],
@@ -128,9 +135,10 @@ export function submissionPdfTables(rows: Pick<SubmissionRow, "table">[]): Submi
 export async function fillSubmissionPdf(input: {
   templates: Partial<Record<SubmissionTable, Uint8Array | ArrayBuffer>>;
   fontBytes: Uint8Array | ArrayBuffer;
-  rows: Pick<SubmissionRow, "table" | "mark">[];
+  rows: Pick<SubmissionRow, "table" | "mark" | "key" | "pastInfo">[];
   workerName: string;
   orgName: string;
+  past?: Record<string, SubmissionPast>; // 書類のキー → 過去に提出した申請情報
 }): Promise<Uint8Array> {
   const out = await PDFDocument.create();
   out.registerFontkit(fontkit);
@@ -163,6 +171,31 @@ export async function fillSubmissionPdf(input: {
         borderWidth: 0.9,
       });
     });
+    // 過去に提出した申請情報（pastInfo の行の順に、欄の「・申請年月日」「・受付番号」の下に書く）
+    const pastRows = list.filter((row) => row.pastInfo);
+    if (tpl.past && pastRows.length === tpl.past.length && pastRows.some((row) => input.past?.[row.key])) {
+      // 字形の置き換え（palt など）を切らないと、英字・ハイフンの後の数字の間が空いてしまう（R08-123456 → R0 8 -1 2 …）
+      const font = await doc.embedFont(input.fontBytes, {
+        subset: false,
+        features: { liga: false, kern: false, calt: false, palt: false, locl: false },
+      });
+      pastRows.forEach((row, i) => {
+        const v = input.past?.[row.key];
+        if (!v) return;
+        const [pageNo, x, dateY, noY] = tpl.past![i];
+        const page = pages[pageNo];
+        if (!page) return;
+        const write = (text: string, y: number) => {
+          const t = text.trim();
+          if (!t) return;
+          let size = 7;
+          while (size > 4.5 && font.widthOfTextAtSize(t, size) > 86) size -= 0.5;
+          page.drawText(t, { x: x + 5, y: y - 9.5, size, font, color: black });
+        };
+        write(submissionPastDateText(v.on), dateY);
+        write(v.no, noY);
+      });
+    }
     // 表紙の氏名・所属機関名
     if (tpl.cover && pages[tpl.cover.page]) {
       // subset: true だと文字が欠けることがあるので、フォントはまるごと入れる（参考様式の書き込みと同じ）

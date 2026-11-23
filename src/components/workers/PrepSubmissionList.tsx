@@ -20,6 +20,7 @@ import {
   submissionListTitle,
   SUBMISSION_TABLE_TITLES,
   submissionListPrintHtml,
+  type SubmissionPast,
   type SubmissionRow,
   type SubmitMark,
 } from "@/lib/submission-list";
@@ -40,6 +41,9 @@ export function PrepSubmissionList({
   onError,
   renderAction,
   renderReason,
+  past = {},
+  onPast,
+  priorPast = null,
   workerId,
   nationality = "",
   orgId = null,
@@ -56,6 +60,10 @@ export function PrepSubmissionList({
   renderAction?: (row: SubmissionRow) => ReactNode;
   // どの行にも出す「理由書を添付する」（「無」の行でも、出せない理由を書いて添える）
   renderReason?: (row: SubmissionRow) => ReactNode;
+  // 過去に提出した申請情報（過去1年以内の申請で出した書類の行。入管の様式のその欄に書く）
+  past?: Record<string, SubmissionPast>;
+  onPast?: (key: string, value: SubmissionPast | null) => void;
+  priorPast?: SubmissionPast | null; // 前回の申請（1年以内）。押すと入れられる
   // 参考様式の作成（ひな形に書き込んだPDF）に使う。渡したときだけ参考様式の欄を出す
   workerId?: string;
   nationality?: string;
@@ -211,6 +219,7 @@ export function PrepSubmissionList({
         rows,
         workerName,
         orgName,
+        past,
       });
       const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/pdf" }));
       w.location.href = url;
@@ -486,6 +495,16 @@ export function PrepSubmissionList({
                             </div>
                           )}
                           {r.mark === "有" && renderAction && <div className="mt-1.5">{renderAction(r)}</div>}
+                          {/* 過去1年以内の申請で出した書類は、その申請の申請年月日・受付番号を入れると一覧表の欄に書く（斜線の欄の行には出さない） */}
+                          {r.pastInfo && onPast && (
+                            <PastInfoInputs
+                              key={`${r.key}-${past[r.key]?.on ?? ""}-${past[r.key]?.no ?? ""}`}
+                              value={past[r.key] ?? null}
+                              prior={priorPast}
+                              canEdit={canEdit}
+                              onSave={(v) => onPast(r.key, v)}
+                            />
+                          )}
                           {renderReason?.(r)}
                         </td>
                         <td className="border-t border-border px-2 py-1.5 text-center text-[10px] text-muted">{r.formNo}</td>
@@ -708,6 +727,82 @@ export function SubmissionRowAction({
             )}
           </div>
         </FileDropArea>
+      )}
+    </div>
+  );
+}
+
+// 「過去に提出した申請情報」の入力（申請年月日・受付番号）。欄を離れると保存する
+function PastInfoInputs({
+  value,
+  prior,
+  canEdit,
+  onSave,
+}: {
+  value: SubmissionPast | null;
+  prior: SubmissionPast | null;
+  canEdit: boolean;
+  onSave: (v: SubmissionPast | null) => void;
+}) {
+  const [on, setOn] = useState(value?.on ?? "");
+  const [no, setNo] = useState(value?.no ?? "");
+  const save = (next: { on: string; no: string }) => {
+    const v = { on: next.on.trim(), no: next.no.trim() };
+    if (v.on === (value?.on ?? "") && v.no === (value?.no ?? "")) return;
+    onSave(v.on || v.no ? v : null);
+  };
+  const samePrior = !!prior && prior.on === on && prior.no === no;
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-1.5 rounded-md border border-dashed border-border px-2 py-1 text-[11px]">
+      <span className="font-bold text-muted">過去に提出した申請情報</span>
+      <label className="inline-flex items-center gap-1">
+        申請年月日
+        <input
+          type="date"
+          value={on}
+          disabled={!canEdit}
+          onChange={(e) => setOn(e.target.value)}
+          onBlur={() => save({ on, no })}
+          className="min-h-[28px] rounded border border-border bg-surface px-1"
+        />
+      </label>
+      <label className="inline-flex items-center gap-1">
+        受付番号
+        <input
+          value={no}
+          disabled={!canEdit}
+          onChange={(e) => setNo(e.target.value)}
+          onBlur={() => save({ on, no })}
+          placeholder="例: R08-123456"
+          className="min-h-[28px] w-32 rounded border border-border bg-surface px-1"
+        />
+      </label>
+      {canEdit && prior && !samePrior && (prior.on || prior.no) && (
+        <button
+          type="button"
+          onClick={() => {
+            setOn(prior.on);
+            setNo(prior.no);
+            save({ on: prior.on, no: prior.no });
+          }}
+          className="rounded border border-brand/40 bg-surface px-1.5 py-0.5 font-bold text-brand"
+          title="1年以内の前回の申請の申請日・申請番号を入れます"
+        >
+          前回の申請（{prior.on || "日付なし"}・{prior.no || "番号なし"}）を入れる
+        </button>
+      )}
+      {canEdit && (on || no) && (
+        <button
+          type="button"
+          onClick={() => {
+            setOn("");
+            setNo("");
+            save({ on: "", no: "" });
+          }}
+          className="text-muted underline"
+        >
+          消す
+        </button>
       )}
     </div>
   );
