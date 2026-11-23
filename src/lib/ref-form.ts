@@ -400,6 +400,8 @@ export interface RefFormItem {
   maxLines?: number; // 「最大の幅」を超えるときに折り返す行数（無ければ1行。住所を2行で書くときなど）
   // 折り返す行数より少ない行で収まるときに、下の行へ寄せて書く（無ければ上の行から書く）
   valign?: "bottom";
+  // 「最大の幅」に入らないときも文字を小さくしない（幅は記入位置・作成画面の入力欄の目安にだけ使う）
+  noShrink?: boolean;
 }
 
 // 支援計画書の日付に、計算で出す日付を足す（1-25号の契約期間: 支援委託契約日 → 5年後の前日）
@@ -474,6 +476,7 @@ export function normalizeRefFormLayout(v: unknown): RefFormItem[] {
       cell: typeof o.cell === "number" && o.cell > 0 && o.cell < 100 ? o.cell : undefined,
       maxLines: typeof o.maxLines === "number" && o.maxLines >= 2 && o.maxLines <= 5 ? Math.round(o.maxLines) : undefined,
       valign: o.valign === "bottom" ? "bottom" : undefined,
+      noShrink: o.noShrink === true ? true : undefined,
     });
   }
   return out;
@@ -962,12 +965,14 @@ export function refFormWrap(text: string, width: number, measure: (t: string) =>
 // 行数（maxLines・既定1）までに収まるまで、0.5pt ずつ小さくする（5pt まで）
 export function refFormFitLines(
   text: string,
-  item: Pick<RefFormItem, "size" | "maxWidth" | "maxLines">,
+  item: Pick<RefFormItem, "size" | "maxWidth" | "maxLines" | "noShrink">,
   measure: (t: string, size: number) => number,
 ): { size: number; lines: string[] } {
   if (!item.maxWidth) return { size: item.size, lines: [text] };
   const maxW = item.maxWidth;
   const n = Math.max(1, item.maxLines ?? 1);
+  // 小さくしない項目は、大きさはそのまま（折り返す行数があれば折り返すだけ。入らない分ははみ出す）
+  if (item.noShrink) return { size: item.size, lines: n === 1 ? [text] : refFormWrap(text, maxW, (t) => measure(t, item.size)) };
   let size = item.size;
   for (;;) {
     const lines = n === 1 ? [text] : refFormWrap(text, maxW, (t) => measure(t, size));
