@@ -211,7 +211,7 @@ function ReasonLetterDialog({
   const [letter, setLetter] = useState<ReasonLetter>(() =>
     record
       ? { title: record.title, addressee: record.addressee, letterDate: record.letterDate, body: record.body, options: record.options }
-      : { ...emptyReasonLetter(todayJst()), title: "" },
+      : emptyReasonLetter(todayJst()),
   );
   const set = (patch: Partial<ReasonLetter>) => setLetter((l) => ({ ...l, ...patch }));
   const setOpt = (k: keyof ReasonLetterOptions, v: boolean) => setLetter((l) => ({ ...l, options: { ...l.options, [k]: v } }));
@@ -347,7 +347,7 @@ function ReasonLetterDialog({
                   <button
                     type="button"
                     onClick={() =>
-                      setLetter((l) => ({ ...l, title: c.title === REASON_LETTER_DEFAULT_TITLE ? "" : c.title, addressee: c.addressee, body: c.body, options: c.options }))
+                      setLetter((l) => ({ ...l, title: c.title, addressee: c.addressee, body: c.body, options: c.options }))
                     }
                     className="w-full rounded border border-border bg-surface px-2 py-1 text-left hover:border-brand"
                   >
@@ -364,13 +364,8 @@ function ReasonLetterDialog({
 
         <div className="grid gap-2 sm:grid-cols-2">
           <label className="flex flex-col gap-0.5">
-            <span className="text-[11px] text-muted">題名（空なら「理由書」）</span>
-            <input
-              value={letter.title}
-              onChange={(e) => set({ title: e.target.value })}
-              placeholder={REASON_LETTER_DEFAULT_TITLE}
-              className={`${INPUT} placeholder:text-muted`}
-            />
+            <span className="text-[11px] text-muted">題名（変えられます）</span>
+            <input value={letter.title} onChange={(e) => set({ title: e.target.value })} className={INPUT} />
           </label>
           <label className="flex flex-col gap-0.5">
             <span className="text-[11px] text-muted">日付（右上）</span>
