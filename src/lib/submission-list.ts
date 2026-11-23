@@ -306,10 +306,12 @@ export function normalizeSubmissionPast(v: unknown): Record<string, SubmissionPa
   return out;
 }
 // 1年を過ぎても申請番号で転用できる書類（分野参考様式第11-4号 登録支援機関誓約書）。
+// 転用できるのは更新申請のときだけで、前回の申請と同じ所属機関の申請に限る（候補は同じ所属機関の申請だけ）。
 // 様式の「過去に提出した申請情報」の欄は斜線なので一覧表には書かず、転用した申請を控えておく
 export const ANYTIME_TRANSFER_KEYS = new Set(["t3a-4"]);
-export function canTransferRow(row: Pick<SubmissionItem, "key" | "pastInfo">): boolean {
-  return !!row.pastInfo || ANYTIME_TRANSFER_KEYS.has(canonicalSubmissionKey(row.key));
+export function canTransferRow(row: Pick<SubmissionItem, "key" | "pastInfo">, opts: { renewal?: boolean } = {}): boolean {
+  if (row.pastInfo) return true;
+  return !!opts.renewal && ANYTIME_TRANSFER_KEYS.has(canonicalSubmissionKey(row.key));
 }
 
 // 様式に書く申請年月日（2026年5月1日）

@@ -166,7 +166,8 @@ describe("11-4号の転用（1年を過ぎても使える）", () => {
   });
   it("11-4号の行は、過去の申請情報の欄が無くても転用できる", async () => {
     const { canTransferRow } = await import("./submission-list");
-    expect(canTransferRow({ key: "t3a-4" })).toBe(true);
+    expect(canTransferRow({ key: "t3a-4" }, { renewal: true })).toBe(true);
+    expect(canTransferRow({ key: "t3a-4" })).toBe(false); // 変更申請などでは転用しない
     expect(canTransferRow({ key: "t1-9", pastInfo: true })).toBe(true);
     expect(canTransferRow({ key: "t1-5" })).toBe(false);
   });

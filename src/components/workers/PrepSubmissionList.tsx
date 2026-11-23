@@ -46,6 +46,7 @@ export function PrepSubmissionList({
   onPast,
   pastCandidates = [],
   orgPastCandidates = [],
+  renewal = false,
   missingAttachKeys = [],
   workerId,
   nationality = "",
@@ -70,6 +71,7 @@ export function PrepSubmissionList({
   pastCandidates?: (SubmissionPast & { label: string })[];
   // 1年を過ぎても転用できる書類（11-4号）の候補（この所属機関の申請。いつの申請でも）
   orgPastCandidates?: (SubmissionPast & { label: string })[];
+  renewal?: boolean; // 更新申請か（11-4号の転用は更新申請のときだけ）
   missingAttachKeys?: string[]; // 「有」なのに何も添付していない行（行のキー）
   // 参考様式の作成（ひな形に書き込んだPDF）に使う。渡したときだけ参考様式の欄を出す
   workerId?: string;
@@ -534,7 +536,7 @@ export function PrepSubmissionList({
                           {r.mark === "有" && renderAction && <div className="mt-1.5">{renderAction(r)}</div>}
                           {/* 過去1年以内の申請で出した書類は、その申請の申請年月日・受付番号を入れると一覧表の欄に書く（斜線の欄の行には出さない） */}
                           {/* 「転用」にした書類は、どの申請の申請日・受付番号を書くかを選ぶ（入管の様式の「過去に提出した申請情報」に書く） */}
-                          {canTransferRow(r) && onPast && past[r.key] && (
+                          {canTransferRow(r, { renewal }) && onPast && past[r.key] && (
                             <PastInfoPicker
                               key={`${r.key}-${past[r.key]?.on ?? ""}-${past[r.key]?.no ?? ""}`}
                               value={past[r.key]}
@@ -576,7 +578,7 @@ export function PrepSubmissionList({
                             {r.mark == null && <span className="text-[10px] font-bold text-seal">未選択</span>}
                           </div>
                           {/* 過去1年以内の申請で出した書類は「転用」できる（提出せず、その申請の申請日・受付番号を書く） */}
-                          {canTransferRow(r) && onPast && (
+                          {canTransferRow(r, { renewal }) && onPast && (
                             <label
                               className={`mt-1 flex items-center justify-center gap-1 text-[11px] ${past[r.key] ? "font-bold text-brand" : "text-muted"}`}
                               title="過去1年以内の申請で出した書類を転用します（提出せず、その申請の申請日・受付番号を一覧表に書きます）"
@@ -904,12 +906,12 @@ function PastInfoPicker({
         (onForm ? (
           <span className="text-muted">一覧表には「{value.on}」「{value.no}」と書きます</span>
         ) : (
-          <span className="text-muted">1年を過ぎても申請番号で転用できます（様式のこの欄は斜線なので一覧表には書かず、控えとして残します）</span>
+          <span className="text-muted">更新申請で前回と同じ所属機関なら、1年を過ぎても申請番号で転用できます（様式のこの欄は斜線なので一覧表には書かず、控えとして残します）</span>
         ))
       )}
       {candidates.length === 0 && !manual && (
         <span className="text-seal">
-          {onForm ? "1年以内の申請が見つかりません。" : "この所属機関の申請が見つかりません。"}「手で入れる」で入れてください。
+          {onForm ? "1年以内の申請が見つかりません。" : "この所属機関で出した前回の申請が見つかりません（前回と所属機関が違うときは転用できません）。"}「手で入れる」で入れてください。
         </span>
       )}
     </div>

@@ -3039,6 +3039,7 @@ export function ApplicationPrepChecklist({
               void saveExtras({ submission_past: next });
             }}
             missingAttachKeys={missingAttachKeys}
+            renewal={meta.app_type === "更新"}
             orgPastCandidates={priorApp.orgCandidates(prepOrgId ?? null).map((c) => ({
               on: c.applicationOn,
               no: c.applicationNo,
