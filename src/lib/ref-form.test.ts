@@ -102,17 +102,23 @@ describe("書き込む値", () => {
     expect(refFormValue({ kind: "postal" }, d)).toBe("〒866-0021");
     expect(refFormValue({ kind: "org_name" }, d)).toBe("株式会社サンプル農園");
     expect(refFormValue({ kind: "so_reg_no" }, d)).toBe("20登-005746");
-    expect(refFormValue({ kind: "today" }, d)).toBe("令和8年11月16日");
-    expect(refFormValue({ kind: "today_seireki" }, d)).toBe("2026年11月16日");
+    // 「書類作成日（支援計画書）」のまとまり: 保存した書類作成日、無ければ作った日（今日）
+    expect(refFormValue({ kind: "today" }, { ...d, planDates: { doc: "2026-11-14" } })).toBe("令和8年11月14日");
+    expect(refFormValue({ kind: "today_d" }, { ...d, planDates: { doc: "2026-11-14" } })).toBe("14");
+    expect(refFormValue({ kind: "today" }, { ...d, planDates: {} })).toBe("令和8年11月16日");
+    expect(refFormValue({ kind: "today_seireki" }, { ...d, planDates: {} })).toBe("2026年11月16日");
     expect(refFormValue({ kind: "text", text: "同意します" }, d)).toBe("同意します");
   });
 
-  it("年齢は作成日の時点の満年齢（誕生日の前日までは1つ少ない）", () => {
-    expect(refFormValue({ kind: "age" }, d)).toBe("31");
+  it("年齢は書類作成日（無ければ作った日）の時点の満年齢（誕生日の前日までは1つ少ない）", () => {
+    const n = { ...d, planDates: {} }; // 書類作成日なし → 作った日（2026-11-16）
+    expect(refFormValue({ kind: "age" }, n)).toBe("31");
     const p = { ...d.person, birth: "1995-11-17" };
-    expect(refFormValue({ kind: "age" }, { ...d, person: p })).toBe("30");
-    expect(refFormValue({ kind: "age" }, { ...d, person: { ...p, birth: "1995-11-16" } })).toBe("31");
-    expect(refFormValue({ kind: "age" }, { ...d, person: { ...p, birth: null } })).toBe("");
+    expect(refFormValue({ kind: "age" }, { ...n, person: p })).toBe("30");
+    expect(refFormValue({ kind: "age" }, { ...n, person: { ...p, birth: "1995-11-16" } })).toBe("31");
+    expect(refFormValue({ kind: "age" }, { ...n, person: { ...p, birth: null } })).toBe("");
+    // 書類作成日（2026-11-14）の時点では、11月16日生まれはまだ誕生日前
+    expect(refFormValue({ kind: "age" }, { ...n, planDates: { doc: "2026-11-14" }, person: { ...p, birth: "1995-11-16" } })).toBe("30");
   });
 
   it("性別で出し分ける○は、本人の性別の方だけ書き込む", () => {

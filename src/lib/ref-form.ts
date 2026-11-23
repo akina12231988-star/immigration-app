@@ -389,7 +389,7 @@ export const REF_FORM_FIELDS: { kind: RefFormFieldKind; label: string; sample: s
   { kind: "birth_y", label: "生年月日の年だけ（西暦）", sample: "1995", group: "本人" },
   { kind: "birth_m", label: "生年月日の月だけ", sample: "3", group: "本人" },
   { kind: "birth_d", label: "生年月日の日だけ", sample: "8", group: "本人" },
-  { kind: "age", label: "年齢（作成日の時点・数字だけ）", sample: "31", group: "本人" },
+  { kind: "age", label: "年齢（書類作成日（支援計画書）の時点・数字だけ）", sample: "31", group: "本人" },
   { kind: "gender", label: "性別（男・女）", sample: "男", group: "本人" },
   { kind: "nationality", label: "国籍", sample: "ベトナム", group: "本人" },
   { kind: "postal", label: "郵便番号（本人）", sample: "〒866-0021", group: "本人" },
@@ -420,11 +420,13 @@ export const REF_FORM_FIELDS: { kind: RefFormFieldKind; label: string; sample: s
   { kind: "so_rep", label: "登録支援機関の代表者", sample: "VUONG VAN THANH", group: "登録支援機関" },
   { kind: "so_manager", label: "支援責任者", sample: "VUONG VAN THANH", group: "登録支援機関" },
   { kind: "so_staff", label: "支援担当者", sample: "VUONG VAN THANH", group: "登録支援機関" },
-  { kind: "today", label: "作成日（令和）", sample: "令和8年11月16日", group: "日付" },
-  { kind: "today_seireki", label: "作成日（西暦）", sample: "2026年11月16日", group: "日付" },
-  { kind: "today_y", label: "作成日の年だけ（西暦）", sample: "2026", group: "日付" },
-  { kind: "today_m", label: "作成日の月だけ", sample: "11", group: "日付" },
-  { kind: "today_d", label: "作成日の日だけ", sample: "16", group: "日付" },
+  // 書類作成日（支援計画書）。申請準備の「支援計画書の日付」で保存した日。保存していなければ作った日（今日）。
+  // 納税証明書交付請求書など、申請準備の日付を使わない書類では作った日（今日）
+  { kind: "today", label: "書類作成日（支援計画書）（令和）", sample: "令和8年11月14日", group: "書類作成日（支援計画書）" },
+  { kind: "today_seireki", label: "書類作成日（支援計画書）（西暦）", sample: "2026年11月14日", group: "書類作成日（支援計画書）" },
+  { kind: "today_y", label: "書類作成日（支援計画書）の年だけ（西暦）", sample: "2026", group: "書類作成日（支援計画書）" },
+  { kind: "today_m", label: "書類作成日（支援計画書）の月だけ", sample: "11", group: "書類作成日（支援計画書）" },
+  { kind: "today_d", label: "書類作成日（支援計画書）の日だけ", sample: "14", group: "書類作成日（支援計画書）" },
   // 申請準備の「支援計画書の日付」の書類作成日（全様式共通）。保存していなければ空欄
   { hidden: true, kind: "doc_date", label: "書類作成日（令和）", sample: "令和8年11月14日", group: "日付" },
   { hidden: true, kind: "doc_date_seireki", label: "書類作成日（西暦）", sample: "2026年11月14日", group: "日付" },
@@ -447,9 +449,9 @@ export const REF_FORM_FIELDS: { kind: RefFormFieldKind; label: string; sample: s
   { kind: "docall_m", label: "書類作成日（全様式共通）の月だけ", sample: "11", group: "支援計画書の日付" },
   { kind: "docall_d", label: "書類作成日（全様式共通）の日だけ", sample: "15", group: "支援計画書の日付" },
   // 書類作成日（支援計画書）の年・月・日を別々に置く（「書き方」を選ばなくても置ける）
-  { kind: "pdoc_y", label: "書類作成日（支援計画書）の年だけ（西暦）", sample: "2026", group: "支援計画書の日付" },
-  { kind: "pdoc_m", label: "書類作成日（支援計画書）の月だけ", sample: "11", group: "支援計画書の日付" },
-  { kind: "pdoc_d", label: "書類作成日（支援計画書）の日だけ", sample: "14", group: "支援計画書の日付" },
+  { hidden: true, kind: "pdoc_y", label: "書類作成日（支援計画書）の年だけ（西暦）", sample: "2026", group: "支援計画書の日付" },
+  { hidden: true, kind: "pdoc_m", label: "書類作成日（支援計画書）の月だけ", sample: "11", group: "支援計画書の日付" },
+  { hidden: true, kind: "pdoc_d", label: "書類作成日（支援計画書）の日だけ", sample: "14", group: "支援計画書の日付" },
   // 賃金（外国人詳細の「賃金（1-6号別紙）」の現在の記録）。金額は 3桁ごとにカンマ
   { kind: "wage_amount", label: "賃金の金額（月給・日給・時給どれでも）", sample: "220,000", group: "賃金" },
   { kind: "wage_monthly", label: "月給の金額（月給のときだけ）", sample: "220,000", group: "賃金" },
@@ -640,7 +642,8 @@ const ymd = (v: string | null) => {
 export function refFormValue(item: Pick<RefFormItem, "kind" | "text" | "fmt">, data: RefFormData): string {
   const p = data.person;
   const b = ymd(p.birth);
-  const t = ymd(data.today);
+  // 「書類作成日（支援計画書）」のまとまりの日付。保存した書類作成日、無ければ作った日（今日）
+  const t = ymd(data.planDates?.doc || data.today);
   const dd = ymd(data.docDate ?? null);
   const wageIs = (k: string) => (data.wage && data.wage.kind === k ? data.wage.amount.toLocaleString("ja-JP") : "");
   switch (item.kind) {
@@ -701,7 +704,7 @@ export function refFormValue(item: Pick<RefFormItem, "kind" | "text" | "fmt">, d
     case "birth_d":
       return b?.d ?? "";
     case "age": {
-      // 作成日の時点の満年齢（誕生日の前日までは1つ少ない）
+      // 書類作成日（支援計画書。無ければ作った日）の時点の満年齢（誕生日の前日までは1つ少ない）
       if (!b || !t) return "";
       const before = Number(t.m) < Number(b.m) || (t.m === b.m && Number(t.d) < Number(b.d));
       const age = Number(t.y) - Number(b.y) - (before ? 1 : 0);
@@ -778,7 +781,7 @@ export function refFormValue(item: Pick<RefFormItem, "kind" | "text" | "fmt">, d
     case "doc_d":
       return dd?.d ?? "";
     case "today":
-      return warekiDate(data.today);
+      return warekiDate(data.planDates?.doc || data.today);
     case "today_seireki":
       return t ? `${t.y}年${t.m}月${t.d}日` : "";
     case "today_y":
