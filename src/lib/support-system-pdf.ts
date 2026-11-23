@@ -39,42 +39,68 @@ export function wrapText(text: string, font: Pick<PDFFont, "widthOfTextAtSize">,
   return lines;
 }
 
+// 1ページに収める。支援担当者（と2人以上の支援責任者）は2列に並べ、
+// それでも入らなければ行の間隔と文字の大きさを少しずつ小さくする
 export function addSupportSystemPages(doc: PDFDocument, font: PDFFont, input: SupportSystemPdfInput): void {
   const black = rgb(0, 0, 0);
   const width = PAGE_W - MARGIN_X * 2;
-  let page: PDFPage = doc.addPage([PAGE_W, PAGE_H]);
-  let y = PAGE_H - MARGIN_TOP; // いまの行の上端
+  const available = PAGE_H - MARGIN_TOP - MARGIN_BOTTOM;
 
-  const nextLine = (h: number) => {
-    if (y - h < MARGIN_BOTTOM) {
-      page = doc.addPage([PAGE_W, PAGE_H]);
-      y = PAGE_H - MARGIN_TOP;
+  // k は縮める割合（1 = 印刷ページと同じ大きさ）。draw が false のときは高さだけを数える
+  const layout = (k: number, page: PDFPage | null): number => {
+    const line = LINE * k;
+    const after = AFTER * k;
+    let y = PAGE_H - MARGIN_TOP;
+    const start = y;
+    const at = (text: string, size: number, x: number) => {
+      page?.drawText(text, { x, y: y - (line + size) / 2 + size * 0.12, size, font, color: black });
+    };
+    const write = (text: string, size: number, align: "left" | "center" = "left", indentEm = 0) => {
+      const w = font.widthOfTextAtSize(text, size);
+      at(text, size, align === "center" ? (PAGE_W - w) / 2 : MARGIN_X + indentEm * size);
+      y -= line;
+    };
+    const para = (lines: string[], size: number, align: "left" | "center" = "left", indentEm = 0) => {
+      for (const l of lines) write(l, size, align, indentEm);
+      y -= after;
+    };
+    // 名前を2列で（左の列から上から順に）。1人だけなら真ん中に1列
+    const names = (list: string[], size: number) => {
+      if (list.length <= 1) {
+        for (const n of list) para([n], size, "center");
+        return;
+      }
+      const rows = Math.ceil(list.length / 2);
+      const colW = width / 2;
+      for (let r = 0; r < rows; r++) {
+        [list[r], list[r + rows]].forEach((n, c) => {
+          if (!n) return;
+          let sz = size;
+          while (sz > 7 && font.widthOfTextAtSize(n, sz) > colW - 8) sz -= 0.5;
+          const w = font.widthOfTextAtSize(n, sz);
+          at(n, sz, MARGIN_X + colW * c + (colW - w) / 2);
+        });
+        y -= line + after;
+      }
+    };
+    const sz = (n: number) => Math.max(7, n * k);
+
+    para(["支援業務を行う体制についての説明"], sz(20), "left", 2);
+    para(wrapText(input.note, font, sz(14), width - sz(14)), sz(14), "left", 1);
+    y -= (line + after) * 2; // 空行2つ
+    para(wrapText(`登録支援機関　${input.officeName}`, font, sz(20), width - sz(20)), sz(20), "left", 1);
+    if (input.orgName) para(wrapText(`特定技能所属機関　${input.orgName}`, font, sz(20), width - sz(20)), sz(20), "left", 1);
+    if (input.managers.length > 0) {
+      para(["＜支援責任者＞"], sz(16), "center");
+      names(input.managers, sz(16));
     }
-  };
-  // 1行を書く。align は left（indent 文字ぶん下げる）か center
-  const write = (text: string, size: number, align: "left" | "center" = "left", indentEm = 0) => {
-    nextLine(LINE);
-    const w = font.widthOfTextAtSize(text, size);
-    const x = align === "center" ? (PAGE_W - w) / 2 : MARGIN_X + indentEm * size;
-    // 行の高さの中で文字を真ん中あたりに置く
-    page.drawText(text, { x, y: y - (LINE + size) / 2 + size * 0.12, size, font, color: black });
-    y -= LINE;
-  };
-  const para = (lines: string[], size: number, align: "left" | "center" = "left", indentEm = 0) => {
-    for (const l of lines) write(l, size, align, indentEm);
-    y -= AFTER;
+    para(["＜支援担当者一覧＞"], sz(16), "center");
+    if (input.staff.length === 0) para(["（未選択）"], sz(16), "center");
+    names(input.staff, sz(16));
+    return start - y;
   };
 
-  para(["支援業務を行う体制についての説明"], 20, "left", 2);
-  para(wrapText(input.note, font, 14, width - 14), 14, "left", 1);
-  y -= (LINE + AFTER) * 2; // 空行2つ
-  para(wrapText(`登録支援機関　${input.officeName}`, font, 20, width - 20), 20, "left", 1);
-  if (input.orgName) para(wrapText(`特定技能所属機関　${input.orgName}`, font, 20, width - 20), 20, "left", 1);
-  if (input.managers.length > 0) {
-    para(["＜支援責任者＞"], 16, "center");
-    for (const n of input.managers) para([n], 16, "center");
-  }
-  para(["＜支援担当者一覧＞"], 16, "center");
-  if (input.staff.length === 0) para(["（未選択）"], 16, "center");
-  for (const n of input.staff) para([n], 16, "center");
+  let k = 1;
+  while (k > 0.45 && layout(k, null) > available) k -= 0.05;
+  layout(k, doc.addPage([PAGE_W, PAGE_H]));
 }
