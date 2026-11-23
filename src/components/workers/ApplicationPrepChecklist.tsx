@@ -3039,9 +3039,16 @@ export function ApplicationPrepChecklist({
               void saveExtras({ submission_past: next });
             }}
             missingAttachKeys={missingAttachKeys}
-            priorPast={
-              priorApp.prior ? { on: priorApp.prior.applicationOn ?? "", no: priorApp.prior.applicationNo ?? "" } : null
-            }
+            orgPastCandidates={priorApp.orgCandidates(prepOrgId ?? null).map((c) => ({
+              on: c.applicationOn,
+              no: c.applicationNo,
+              label: `${c.applicationOn}・${c.applicationNo}${c.content ? `（${c.content}）` : ""}${c.source === "manual" ? "・手入力" : ""}`,
+            }))}
+            pastCandidates={priorApp.candidates.map((c) => ({
+              on: c.applicationOn,
+              no: c.applicationNo,
+              label: `${c.applicationOn}・${c.applicationNo}${c.content ? `（${c.content}）` : ""}${c.source === "manual" ? "・手入力" : ""}`,
+            }))}
             // どの行にも「理由書を添付する」（作って添付し、内容を記録する）
             renderReason={(row) =>
               current ? (

@@ -20,6 +20,7 @@ import {
   submissionListTitle,
   SUBMISSION_TABLE_TITLES,
   submissionListPrintHtml,
+  canTransferRow,
   type SubmissionPast,
   type SubmissionRow,
   type SubmitMark,
@@ -43,7 +44,8 @@ export function PrepSubmissionList({
   renderReason,
   past = {},
   onPast,
-  priorPast = null,
+  pastCandidates = [],
+  orgPastCandidates = [],
   missingAttachKeys = [],
   workerId,
   nationality = "",
@@ -64,7 +66,10 @@ export function PrepSubmissionList({
   // 過去に提出した申請情報（過去1年以内の申請で出した書類の行。入管の様式のその欄に書く）
   past?: Record<string, SubmissionPast>;
   onPast?: (key: string, value: SubmissionPast | null) => void;
-  priorPast?: SubmissionPast | null; // 前回の申請（1年以内）。押すと入れられる
+  // 転用できる申請の候補（1年以内の申請を新しい順＋手入力の前回の申請）
+  pastCandidates?: (SubmissionPast & { label: string })[];
+  // 1年を過ぎても転用できる書類（11-4号）の候補（この所属機関の申請。いつの申請でも）
+  orgPastCandidates?: (SubmissionPast & { label: string })[];
   missingAttachKeys?: string[]; // 「有」なのに何も添付していない行（行のキー）
   // 参考様式の作成（ひな形に書き込んだPDF）に使う。渡したときだけ参考様式の欄を出す
   workerId?: string;
@@ -528,11 +533,13 @@ export function PrepSubmissionList({
                           )}
                           {r.mark === "有" && renderAction && <div className="mt-1.5">{renderAction(r)}</div>}
                           {/* 過去1年以内の申請で出した書類は、その申請の申請年月日・受付番号を入れると一覧表の欄に書く（斜線の欄の行には出さない） */}
-                          {r.pastInfo && onPast && (
-                            <PastInfoInputs
+                          {/* 「転用」にした書類は、どの申請の申請日・受付番号を書くかを選ぶ（入管の様式の「過去に提出した申請情報」に書く） */}
+                          {canTransferRow(r) && onPast && past[r.key] && (
+                            <PastInfoPicker
                               key={`${r.key}-${past[r.key]?.on ?? ""}-${past[r.key]?.no ?? ""}`}
-                              value={past[r.key] ?? null}
-                              prior={priorPast}
+                              value={past[r.key]}
+                              candidates={r.pastInfo ? pastCandidates : orgPastCandidates}
+                              onForm={!!r.pastInfo}
                               canEdit={canEdit}
                               onSave={(v) => onPast(r.key, v)}
                             />
@@ -568,6 +575,28 @@ export function PrepSubmissionList({
                             )}
                             {r.mark == null && <span className="text-[10px] font-bold text-seal">未選択</span>}
                           </div>
+                          {/* 過去1年以内の申請で出した書類は「転用」できる（提出せず、その申請の申請日・受付番号を書く） */}
+                          {canTransferRow(r) && onPast && (
+                            <label
+                              className={`mt-1 flex items-center justify-center gap-1 text-[11px] ${past[r.key] ? "font-bold text-brand" : "text-muted"}`}
+                              title="過去1年以内の申請で出した書類を転用します（提出せず、その申請の申請日・受付番号を一覧表に書きます）"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={!!past[r.key]}
+                                disabled={!canEdit}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    const c = (r.pastInfo ? pastCandidates : orgPastCandidates)[0];
+                                    onPast(r.key, { on: c?.on ?? "", no: c?.no ?? "" });
+                                    // 転用する書類は今回は出さないので「無」にする
+                                    if (r.mark !== "無" || r.auto) onMark(r.key, "無");
+                                  } else onPast(r.key, null);
+                                }}
+                              />
+                              転用
+                            </label>
+                          )}
                         </td>
                       </tr>
                     </Fragment>
@@ -796,78 +825,94 @@ export function SubmissionRowAction({
   );
 }
 
-// 「過去に提出した申請情報」の入力（申請年月日・受付番号）。欄を離れると保存する
-function PastInfoInputs({
+// 「転用」にした書類で、どの申請の申請日・受付番号を書くかを選ぶ。候補に無ければ手で入れる
+function PastInfoPicker({
   value,
-  prior,
+  candidates,
   canEdit,
   onSave,
+  onForm = true,
 }: {
-  value: SubmissionPast | null;
-  prior: SubmissionPast | null;
+  value: SubmissionPast;
+  candidates: (SubmissionPast & { label: string })[];
+  onForm?: boolean; // 入管の様式の「過去に提出した申請情報」に書くか（11-4号は欄が斜線なので書かない）
   canEdit: boolean;
-  onSave: (v: SubmissionPast | null) => void;
+  onSave: (v: SubmissionPast) => void;
 }) {
-  const [on, setOn] = useState(value?.on ?? "");
-  const [no, setNo] = useState(value?.no ?? "");
-  const save = (next: { on: string; no: string }) => {
-    const v = { on: next.on.trim(), no: next.no.trim() };
-    if (v.on === (value?.on ?? "") && v.no === (value?.no ?? "")) return;
-    onSave(v.on || v.no ? v : null);
+  const hit = candidates.findIndex((c) => c.on === value.on && c.no === value.no);
+  const [manual, setManual] = useState(hit < 0 && !!(value.on || value.no || candidates.length === 0));
+  const [on, setOn] = useState(value.on);
+  const [no, setNo] = useState(value.no);
+  const saveManual = () => {
+    if (on.trim() !== value.on || no.trim() !== value.no) onSave({ on: on.trim(), no: no.trim() });
   };
-  const samePrior = !!prior && prior.on === on && prior.no === no;
   return (
-    <div className="mt-1 flex flex-wrap items-center gap-1.5 rounded-md border border-dashed border-border px-2 py-1 text-[11px]">
-      <span className="font-bold text-muted">過去に提出した申請情報</span>
-      <label className="inline-flex items-center gap-1">
-        申請年月日
-        <input
-          type="date"
-          value={on}
-          disabled={!canEdit}
-          onChange={(e) => setOn(e.target.value)}
-          onBlur={() => save({ on, no })}
-          className="min-h-[28px] rounded border border-border bg-surface px-1"
-        />
-      </label>
-      <label className="inline-flex items-center gap-1">
-        受付番号
-        <input
-          value={no}
-          disabled={!canEdit}
-          onChange={(e) => setNo(e.target.value)}
-          onBlur={() => save({ on, no })}
-          placeholder="例: R08-123456"
-          className="min-h-[28px] w-32 rounded border border-border bg-surface px-1"
-        />
-      </label>
-      {canEdit && prior && !samePrior && (prior.on || prior.no) && (
-        <button
-          type="button"
-          onClick={() => {
-            setOn(prior.on);
-            setNo(prior.no);
-            save({ on: prior.on, no: prior.no });
-          }}
-          className="rounded border border-brand/40 bg-surface px-1.5 py-0.5 font-bold text-brand"
-          title="1年以内の前回の申請の申請日・申請番号を入れます"
-        >
-          前回の申請（{prior.on || "日付なし"}・{prior.no || "番号なし"}）を入れる
-        </button>
+    <div className="mt-1 flex flex-wrap items-center gap-1.5 rounded-md border border-dashed border-brand/40 bg-brand/5 px-2 py-1 text-[11px]">
+      <span className="font-bold text-brand">転用する申請</span>
+      <select
+        value={manual ? "manual" : hit >= 0 ? String(hit) : ""}
+        disabled={!canEdit}
+        onChange={(e) => {
+          if (e.target.value === "manual") {
+            setManual(true);
+            return;
+          }
+          const c = candidates[Number(e.target.value)];
+          if (!c) return;
+          setManual(false);
+          setOn(c.on);
+          setNo(c.no);
+          onSave({ on: c.on, no: c.no });
+        }}
+        className="min-h-[28px] max-w-full rounded border border-border bg-surface px-1"
+      >
+        {hit < 0 && !manual && <option value="">選んでください</option>}
+        {candidates.map((c, i) => (
+          <option key={`${c.on}-${c.no}`} value={i}>
+            {c.label}
+          </option>
+        ))}
+        <option value="manual">手で入れる</option>
+      </select>
+      {manual ? (
+        <>
+          <label className="inline-flex items-center gap-1">
+            申請年月日
+            <input
+              type="date"
+              value={on}
+              disabled={!canEdit}
+              onChange={(e) => setOn(e.target.value)}
+              onBlur={saveManual}
+              className="min-h-[28px] rounded border border-border bg-surface px-1"
+            />
+          </label>
+          <label className="inline-flex items-center gap-1">
+            受付番号
+            <input
+              value={no}
+              disabled={!canEdit}
+              onChange={(e) => setNo(e.target.value)}
+              onBlur={saveManual}
+              placeholder="例: 福オンCV26009566"
+              className="min-h-[28px] w-40 rounded border border-border bg-surface px-1"
+            />
+          </label>
+        </>
+      ) : (
+        hit >= 0 &&
+        (onForm ? (
+          <span className="text-muted">一覧表には「{value.on}」「{value.no}」と書きます</span>
+        ) : (
+          <span className="text-muted">1年を過ぎても申請番号で転用できます（様式のこの欄は斜線なので一覧表には書かず、控えとして残します）</span>
+        ))
       )}
-      {canEdit && (on || no) && (
-        <button
-          type="button"
-          onClick={() => {
-            setOn("");
-            setNo("");
-            save({ on: "", no: "" });
-          }}
-          className="text-muted underline"
-        >
-          消す
-        </button>
+      {candidates.length === 0 && !manual && (
+        <span className="text-seal">
+          {onForm ? "1年以内の申請が見つかりません。" : "この所属機関の申請が見つかりません。"}「手で入れる」で入れてください。
+        </span>
       )}
     </div>
   );
 }
+

@@ -297,12 +297,21 @@ export function normalizeSubmissionPast(v: unknown): Record<string, SubmissionPa
   const out: Record<string, SubmissionPast> = {};
   for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
     const o = (x ?? {}) as Record<string, unknown>;
+    if (!x || typeof x !== "object") continue;
     const on = typeof o.on === "string" ? o.on.trim() : "";
     const no = typeof o.no === "string" ? o.no.trim() : "";
-    if (on || no) out[k] = { on, no };
+    // 日付・番号がまだ空でも「転用する」として残す
+    out[k] = { on, no };
   }
   return out;
 }
+// 1年を過ぎても申請番号で転用できる書類（分野参考様式第11-4号 登録支援機関誓約書）。
+// 様式の「過去に提出した申請情報」の欄は斜線なので一覧表には書かず、転用した申請を控えておく
+export const ANYTIME_TRANSFER_KEYS = new Set(["t3a-4"]);
+export function canTransferRow(row: Pick<SubmissionItem, "key" | "pastInfo">): boolean {
+  return !!row.pastInfo || ANYTIME_TRANSFER_KEYS.has(canonicalSubmissionKey(row.key));
+}
+
 // 様式に書く申請年月日（2026年5月1日）
 export function submissionPastDateText(on: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(on.trim());

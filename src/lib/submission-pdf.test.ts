@@ -56,6 +56,7 @@ describe("過去に提出した申請情報の欄", () => {
     }
     expect(normalizeSubmissionPast({ "t1-9": { on: "2026-05-01", no: " R08-1 " }, x: { on: "", no: "" }, y: 1 })).toEqual({
       "t1-9": { on: "2026-05-01", no: "R08-1" },
+      x: { on: "", no: "" }, // 転用するが、まだ空
     });
     expect(submissionPastDateText("2026-05-01")).toBe("2026年5月1日");
   });
