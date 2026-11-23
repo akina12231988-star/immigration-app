@@ -511,7 +511,7 @@ export function RefFormLayoutEditor({
             })}
           </div>
           <p className="mt-2 text-[11px] text-muted">
-            PDFの各ページの上の「本人の署名が要るページ」にチェックすると、署名ページだけのダウンロードに入ります。
+            右のページの一覧で「✍ 署名」にチェックしたページが、署名ページだけのダウンロードに入ります（全ページなら「✍ 全ページ」）。
             置いた文字はドラッグで動かせます。押すと上に「選んでいる項目」が出て、項目を変えたり消したりできます。
             {savedAt && <span className="ml-1 font-bold text-status-approved-fg">{savedAt} に保存しました</span>}
           </p>
@@ -561,21 +561,14 @@ export function RefFormLayoutEditor({
           {!pages && !loadError && <p className="rounded bg-white p-3 text-sm">PDFを読み込み中…</p>}
           {pages?.map((p, pi) => (
             <div key={pi} id={`ref-layout-page-${pi}`} className="mx-auto mb-4 scroll-mt-2" style={{ width: p.width * scale }}>
-            <label
-              className={`mb-1 flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-bold ${
+            {/* 署名ページかどうかは右のページの一覧で選ぶ。ここはページ番号と印だけ */}
+            <p
+              className={`mb-1 inline-block rounded-md px-2 py-0.5 text-xs font-bold ${
                 signPages.includes(pi) ? "bg-seal text-white" : "bg-white text-foreground"
               }`}
             >
-              <input
-                type="checkbox"
-                checked={signPages.includes(pi)}
-                onChange={(e) =>
-                  setSignPages((cur) => (e.target.checked ? [...cur, pi].sort((a, b) => a - b) : cur.filter((x) => x !== pi)))
-                }
-                className="h-4 w-4"
-              />
-              {pi + 1}ページ目：本人の署名が要るページ（「署名ページだけ」のダウンロードに入れる）
-            </label>
+              {pi + 1}ページ目{signPages.includes(pi) ? "（✍ 署名ページ）" : ""}
+            </p>
             <div
               className="relative cursor-crosshair bg-white shadow"
               style={{ width: p.width * scale, height: p.height * scale }}
@@ -719,11 +712,28 @@ export function RefFormLayoutEditor({
 
         {/* 右のページの一覧（PDF のサムネイルのように）。押すとそのページへ移り、チェックで署名ページを選ぶ */}
         {pages && pages.length > 0 && (
-          <div className="hidden w-40 shrink-0 overflow-y-auto border-l border-border bg-surface p-2 text-[11px] lg:block">
+          <div className="max-h-[30vh] shrink-0 overflow-y-auto border-t border-border bg-surface p-2 text-[11px] lg:max-h-none lg:w-40 lg:border-l lg:border-t-0">
             <p className="mb-1 font-bold">ページ（{pages.length}）</p>
-            <p className="mb-2 leading-snug text-muted">
+            <p className="mb-1 leading-snug text-muted">
               ✍ にチェックしたページが「署名ページだけ」のダウンロードに入ります（{signPages.length}ページ）
             </p>
+            {/* 全ページが署名ページの様式（確認書など）は、まとめてチェック・外す */}
+            <label
+              className={`mb-2 flex items-center gap-1 rounded border px-1.5 py-1 font-bold ${
+                signPages.length === pages.length ? "border-seal bg-seal text-white" : "border-border bg-background"
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={signPages.length === pages.length}
+                ref={(el) => {
+                  if (el) el.indeterminate = signPages.length > 0 && signPages.length < pages.length;
+                }}
+                onChange={(e) => setSignPages(e.target.checked ? pages.map((_, i) => i) : [])}
+                className="h-3.5 w-3.5"
+              />
+              ✍ 全ページ
+            </label>
             {pages.map((p, pi) => {
               const sign = signPages.includes(pi);
               return (
