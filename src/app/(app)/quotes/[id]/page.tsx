@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
-import { getQuote, listQuotes } from "@/lib/supabase/queries/quotes";
+import { getQuote, listQuoteAttachments, listQuotes } from "@/lib/supabase/queries/quotes";
 import { listOrganizations } from "@/lib/supabase/queries/organizations";
 import { getAppSetting } from "@/lib/supabase/queries/app-settings";
 import { CUSTODIAN_SETTING_KEY, mergeCustodianInfo } from "@/lib/custody";
@@ -20,10 +20,11 @@ export default async function QuotePage({ params }: { params: Promise<{ id: stri
 
   const quote = await getQuote(supabase, id).catch(() => null);
   if (!quote) notFound();
-  const [others, organizations, custodianSetting] = await Promise.all([
+  const [others, organizations, custodianSetting, attachments] = await Promise.all([
     listQuotes(supabase).catch(() => []),
     listOrganizations(supabase).catch(() => []),
     getAppSetting<Record<string, unknown>>(supabase, CUSTODIAN_SETTING_KEY).catch(() => null),
+    listQuoteAttachments(supabase).catch(() => []),
   ]);
 
   return (
@@ -31,13 +32,14 @@ export default async function QuotePage({ params }: { params: Promise<{ id: stri
       initial={quote}
       copySources={others
         .filter((q) => q.id !== quote.id)
-        .map((q) => ({ id: q.id, label: `${q.addressee_name}（${q.issued_on ?? "日付なし"}・${q.items.length}項目）`, items: q.items }))}
+        .map((q) => ({ id: q.id, label: `${q.addressee_name}（${q.issued_on ?? "日付なし"}・${q.items.filter((i) => i.on).length}行）`, items: q.items }))}
       organizations={organizations.map((o) => ({
         id: o.id,
         name: o.name,
         address: o.address ?? "",
         repName: normalizeOrganizationIntake(o.intake).rep_name,
       }))}
+      attachmentLibrary={attachments}
       custodian={mergeCustodianInfo(custodianSetting)}
       canEdit={me.role !== "viewer"}
       today={todayStr()}

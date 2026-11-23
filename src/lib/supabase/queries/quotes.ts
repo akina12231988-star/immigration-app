@@ -29,6 +29,25 @@ export interface QuoteInput {
   notes: string;
   show_stamp_table: boolean;
   status: string;
+  honorific: string;
+  online_fee: number | null;
+  attachment_ids: string[];
+}
+
+// 見積書の別紙（0235 の quote_attachments）
+export interface QuoteAttachment {
+  id: string;
+  name: string;
+  storage_path: string;
+  file_name: string;
+  mime_type: string;
+  created_at: string;
+}
+
+export async function listQuoteAttachments(supabase: SupabaseClient): Promise<QuoteAttachment[]> {
+  const { data, error } = await supabase.from("quote_attachments").select("*").order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data as QuoteAttachment[] | null) ?? [];
 }
 
 export async function insertQuote(supabase: SupabaseClient, input: QuoteInput): Promise<QuoteRow> {

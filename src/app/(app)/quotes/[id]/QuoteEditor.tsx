@@ -3,27 +3,31 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowDown, ArrowUp, Copy, Plus, Printer, Save, Trash2 } from "lucide-react";
+import { Copy, Plus, Printer, Save, Trash2 } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
 import { createClient } from "@/lib/supabase/client";
 import { deleteQuote, updateQuote } from "@/lib/supabase/queries/quotes";
 import { dbErrorMessage } from "@/lib/errors";
 import { parseAmount } from "@/lib/organization-intake";
-import { estimateDateText, estimateYen, STAMP_FEE_BANDS, STAMP_FEE_METHODS } from "@/lib/estimate";
+import { estimateDateText, estimateYen, STAMP_FEE_BANDS } from "@/lib/estimate";
 import type { CustodianInfo } from "@/lib/custody";
 import {
   defaultQuoteItems,
   QUOTE_EVENT_KINDS,
   QUOTE_MIGRATION,
   QUOTE_STATUSES,
-  QUOTE_UNITS,
+  onlineFeeWithCharge,
+  printedQuoteItems,
   quoteAddressee,
   quotePriceText,
   type QuoteEvent,
   type QuoteItem,
   type QuoteRow,
 } from "@/lib/quote";
-import { QuoteStatusBadge } from "../QuotesClient";
+import { HonorificPicker, QuoteStatusBadge } from "../QuotesClient";
+import { QuoteItemsEditor } from "../QuoteItemsEditor";
+import { QuoteAttachmentsPanel, QuoteAttachmentPages } from "./QuoteAttachments";
+import type { QuoteAttachment } from "@/lib/supabase/queries/quotes";
 
 interface OrgOption {
   id: string;
@@ -40,11 +44,13 @@ export function QuoteEditor({
   initial,
   copySources,
   organizations,
+  attachmentLibrary,
   custodian,
   canEdit,
   today,
 }: {
   initial: QuoteRow;
+  attachmentLibrary: QuoteAttachment[];
   copySources: { id: string; label: string; items: QuoteItem[] }[];
   organizations: OrgOption[];
   custodian: CustodianInfo;
@@ -57,6 +63,8 @@ export function QuoteEditor({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [copyFrom, setCopyFrom] = useState("");
+  const [library, setLibrary] = useState<QuoteAttachment[]>(attachmentLibrary);
+  const [attachLoading, setAttachLoading] = useState(false);
   const [ev, setEv] = useState<{ on: string; kind: string; body: string }>({ on: today, kind: "送付", body: "" });
 
   const patch = (p: Partial<QuoteRow>) => {
@@ -64,16 +72,6 @@ export function QuoteEditor({
     setDirty(true);
     setMessage(null);
   };
-  const patchItem = (i: number, p: Partial<QuoteItem>) =>
-    patch({ items: q.items.map((it, idx) => (idx === i ? { ...it, ...p } : it)) });
-  const moveItem = (i: number, d: -1 | 1) => {
-    const j = i + d;
-    if (j < 0 || j >= q.items.length) return;
-    const items = [...q.items];
-    [items[i], items[j]] = [items[j], items[i]];
-    patch({ items });
-  };
-
   const save = async (): Promise<boolean> => {
     setBusy(true);
     setMessage(null);
@@ -90,6 +88,9 @@ export function QuoteEditor({
         notes: q.notes,
         show_stamp_table: q.show_stamp_table,
         status: q.status,
+        honorific: q.honorific,
+        online_fee: q.online_fee,
+        attachment_ids: q.attachment_ids,
       });
       setDirty(false);
       setMessage({ ok: true, text: "保存しました" });
@@ -178,10 +179,11 @@ export function QuoteEditor({
     });
   };
 
-  const addressee = quoteAddressee(q.addressee_name, q.addressee_person);
-  const hasStampItem = q.items.some((i) => /収入印紙/.test(i.name));
+  const addressee = quoteAddressee(q.addressee_name, q.addressee_person, q.honorific);
+  const printed = printedQuoteItems(q.items);
+  const hasStampItem = printed.some((i) => i.kind === "item" && /収入印紙/.test(i.name));
   const showStampTable = q.show_stamp_table && hasStampItem;
-  const blankRows = Math.max(0, 6 - q.items.length);
+  const blankRows = Math.max(0, 6 - printed.length);
 
   return (
     <>
@@ -197,11 +199,11 @@ export function QuoteEditor({
             <button
               type="button"
               onClick={print}
-              disabled={busy}
+              disabled={busy || attachLoading}
               className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-brand px-5 text-sm font-bold text-brand-foreground disabled:opacity-60"
             >
               <Printer size={18} />
-              {dirty && canEdit ? "保存して印刷・PDF保存" : "印刷・PDF保存"}
+              {attachLoading ? "別紙を読み込み中…" : dirty && canEdit ? "保存して印刷・PDF保存" : "印刷・PDF保存"}
             </button>
             {canEdit && (
               <button
@@ -261,6 +263,13 @@ export function QuoteEditor({
                 担当者・代表者（例: 代表取締役 山田太郎）
                 <input value={q.addressee_person} onChange={(e) => patch({ addressee_person: e.target.value })} className={input} />
               </label>
+              <div className="flex flex-wrap items-end gap-3 sm:col-span-2">
+                <HonorificPicker value={q.honorific} onChange={(honorific) => patch({ honorific })} />
+                <p className="pb-3 text-xs text-muted">
+                  宛名の印字: <b className="text-foreground">{addressee.orgLine}</b>
+                  {addressee.personLine && <b className="ml-2 text-foreground">{addressee.personLine}</b>}
+                </p>
+              </div>
               <label className="flex flex-col gap-1 text-xs font-bold text-muted sm:col-span-2">
                 宛先の住所
                 <input value={q.addressee_address} onChange={(e) => patch({ addressee_address: e.target.value })} className={input} />
@@ -281,81 +290,9 @@ export function QuoteEditor({
 
             {/* 項目 */}
             <section className="rounded-2xl border border-border bg-surface p-4">
-              <div className="mb-2 flex flex-wrap items-center gap-2">
-                <h2 className="text-sm font-bold">項目（金額は税抜）</h2>
-                <span className="text-[11px] text-muted">金額を空欄にすると「—」と印字します（実費・ご相談など）。</span>
-              </div>
-              <div className="flex flex-col gap-2">
-                {q.items.map((it, i) => (
-                  <div key={i} className="flex flex-col gap-1.5 rounded-xl border border-border bg-background p-2">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <input
-                        value={it.name}
-                        onChange={(e) => patchItem(i, { name: e.target.value })}
-                        placeholder="項目"
-                        aria-label={`項目${i + 1}の名前`}
-                        className={`${input} min-w-[220px] flex-1`}
-                      />
-                      <input
-                        value={it.price == null ? "" : String(it.price)}
-                        onChange={(e) => patchItem(i, { price: e.target.value.trim() === "" ? null : (parseAmount(e.target.value) ?? 0) })}
-                        inputMode="numeric"
-                        placeholder="金額（税抜）"
-                        aria-label={`項目${i + 1}の金額`}
-                        className={`${input} w-28 text-right tabular-nums`}
-                      />
-                      <span className="text-xs text-muted">円</span>
-                      <input
-                        value={it.unit}
-                        onChange={(e) => patchItem(i, { unit: e.target.value })}
-                        list="quote-units"
-                        placeholder="単位"
-                        aria-label={`項目${i + 1}の単位`}
-                        className={`${input} w-28`}
-                      />
-                      <label className="flex items-center gap-1 text-[11px] text-muted">
-                        <input type="checkbox" checked={it.taxFree} onChange={(e) => patchItem(i, { taxFree: e.target.checked })} />
-                        非課税
-                      </label>
-                      <button type="button" onClick={() => moveItem(i, -1)} aria-label={`項目${i + 1}を上へ`} className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted hover:bg-surface">
-                        <ArrowUp size={14} />
-                      </button>
-                      <button type="button" onClick={() => moveItem(i, 1)} aria-label={`項目${i + 1}を下へ`} className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted hover:bg-surface">
-                        <ArrowDown size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => patch({ items: q.items.filter((_, idx) => idx !== i) })}
-                        aria-label={`項目${i + 1}を削除`}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-seal hover:bg-seal/10"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                    <input
-                      value={it.note}
-                      onChange={(e) => patchItem(i, { note: e.target.value })}
-                      placeholder="補足（例: 変更申請のとき）"
-                      aria-label={`項目${i + 1}の補足`}
-                      className={`${input} text-xs`}
-                    />
-                  </div>
-                ))}
-                <datalist id="quote-units">
-                  {QUOTE_UNITS.map((u) => (
-                    <option key={u} value={u} />
-                  ))}
-                </datalist>
-              </div>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => patch({ items: [...q.items, { name: "", price: null, unit: "1人あたり", taxFree: false, note: "" }] })}
-                  className="inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-brand bg-background px-3 text-xs font-bold text-brand hover:bg-brand/5"
-                >
-                  <Plus size={14} />
-                  項目を追加
-                </button>
+              <h2 className="mb-2 text-sm font-bold">項目（金額は税抜）</h2>
+              <QuoteItemsEditor items={q.items} onChange={(items) => patch({ items })} />
+              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
                 <button
                   type="button"
                   onClick={() => window.confirm("項目を既定の内容に戻しますか？") && patch({ items: defaultQuoteItems() })}
@@ -398,8 +335,29 @@ export function QuoteEditor({
                 収入印紙代（申請手数料）の在留期間ごとの表を載せる
                 {!hasStampItem && <span className="text-muted">（項目に収入印紙代があるときだけ載ります）</span>}
               </label>
+              <label className="flex flex-wrap items-center gap-2 text-xs">
+                オンライン申請の決済手数料（1件）
+                <input
+                  value={q.online_fee == null ? "" : String(q.online_fee)}
+                  onChange={(e) => patch({ online_fee: e.target.value.trim() === "" ? null : parseAmount(e.target.value) })}
+                  inputMode="numeric"
+                  placeholder="例: 330"
+                  aria-label="オンライン申請の決済手数料"
+                  className={`${input} w-24 text-right tabular-nums`}
+                />
+                円
+                <span className="text-muted">入れると、表のオンラインの金額を決済手数料込みにします（次に作る見積書にも引き継ぎます）。</span>
+              </label>
             </section>
           </fieldset>
+
+          <QuoteAttachmentsPanel
+            library={library}
+            onLibraryChange={setLibrary}
+            selected={q.attachment_ids}
+            onSelectedChange={(attachment_ids) => patch({ attachment_ids })}
+            canEdit={canEdit}
+          />
 
           {/* やりとりの記録 */}
           <section className="rounded-2xl border border-border bg-surface p-4">
@@ -535,17 +493,25 @@ export function QuoteEditor({
               </tr>
             </thead>
             <tbody>
-              {q.items.map((it, i) => (
-                <tr key={i}>
-                  <td className="border border-black px-2 py-1.5">
-                    {it.name}
-                    {it.taxFree && <span className="ml-1 text-[9px] text-neutral-600">（非課税）</span>}
-                  </td>
-                  <td className="border border-black px-2 py-1.5 text-right tabular-nums">{quotePriceText(it.price)}</td>
-                  <td className="border border-black px-2 py-1.5 text-center">{it.unit}</td>
-                  <td className="border border-black px-2 py-1.5 text-[10px]">{it.note}</td>
-                </tr>
-              ))}
+              {printed.map((it, i) =>
+                it.kind === "text" ? (
+                  <tr key={i}>
+                    <td colSpan={4} className="border border-black bg-neutral-50 px-2 py-1.5 font-bold">
+                      {it.name}
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={i}>
+                    <td className="border border-black px-2 py-1.5">
+                      {it.name}
+                      {it.taxFree && <span className="ml-1 text-[9px] text-neutral-600">（非課税）</span>}
+                    </td>
+                    <td className="border border-black px-2 py-1.5 text-right tabular-nums">{quotePriceText(it.price)}</td>
+                    <td className="border border-black px-2 py-1.5 text-center">{it.unit}</td>
+                    <td className="border border-black px-2 py-1.5 text-[10px]">{it.note}</td>
+                  </tr>
+                ),
+              )}
               {Array.from({ length: blankRows }).map((_, i) => (
                 <tr key={`blank-${i}`}>
                   <td className="border border-black px-2 py-1.5">&nbsp;</td>
@@ -575,11 +541,10 @@ export function QuoteEditor({
                   <thead>
                     <tr className="bg-neutral-100">
                       <th className="border border-black px-1 py-0.5">許可される在留期間</th>
-                      {STAMP_FEE_METHODS.map((m) => (
-                        <th key={m} className="border border-black px-1 py-0.5">
-                          {m}
-                        </th>
-                      ))}
+                      <th className="border border-black px-1 py-0.5">窓口（収入印紙）</th>
+                      <th className="border border-black px-1 py-0.5">
+                        {q.online_fee ? `オンライン（決済手数料${q.online_fee.toLocaleString("ja-JP")}円込み）` : "オンライン"}
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -587,18 +552,26 @@ export function QuoteEditor({
                       <tr key={b.key}>
                         <td className="border border-black px-1 py-0.5">{b.key}</td>
                         <td className="border border-black px-1 py-0.5">{estimateYen(b.counter)}</td>
-                        <td className="border border-black px-1 py-0.5">{estimateYen(b.online)}</td>
+                        <td className="border border-black px-1 py-0.5">{estimateYen(onlineFeeWithCharge(b.online, q.online_fee))}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
                 <p className="mt-1 text-[9.5px] text-neutral-700">
-                  ※収入印紙代は非課税・実費です。オンライン申請はコンビニ決済・銀行決済での納付のみで、別途決済手数料がかかります。
+                  {q.online_fee
+                    ? `※収入印紙代は非課税・実費です。オンライン申請はコンビニ決済・銀行決済での納付のみで、オンラインの金額は決済手数料（${q.online_fee.toLocaleString("ja-JP")}円）を含みます。`
+                    : "※収入印紙代は非課税・実費です。オンライン申請はコンビニ決済・銀行決済での納付のみで、別途決済手数料がかかります。"}
                 </p>
               </div>
             )}
           </div>
         </div>
+        <QuoteAttachmentPages
+          attachments={q.attachment_ids
+            .map((id) => library.find((a) => a.id === id))
+            .filter((a): a is QuoteAttachment => !!a)}
+          onLoadingChange={setAttachLoading}
+        />
       </div>
 
       <style jsx global>{`
@@ -614,6 +587,21 @@ export function QuoteEditor({
         .quote-stamp img {
           width: 20mm;
           height: 20mm;
+          object-fit: contain;
+        }
+        .quote-attach-page {
+          width: 210mm;
+          height: 297mm;
+          box-sizing: border-box;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          break-before: page;
+          overflow: hidden;
+        }
+        .quote-attach-page img {
+          max-width: 100%;
+          max-height: 100%;
           object-fit: contain;
         }
         @media print {

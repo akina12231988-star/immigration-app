@@ -14,6 +14,12 @@
 --   show_stamp_table … 収入印紙代（在留期間ごと）の表を載せるか
 --   status … 作成中 / 送付済 / 検討中 / 受注 / 見送り
 --   events … やりとりの記録 [{ id, on（YYYY-MM-DD）, kind（送付・電話・メール・訪問…）, body }]
+--   honorific … 宛先の敬称（'' = 自動（会社・法人なら御中）/ 御中 / 様 / なし）
+--   online_fee … オンライン申請の決済手数料（1件・円）。印紙代の表のオンラインの金額に足して出す（null = 足さない）
+--   attachment_ids … 一緒に印刷する別紙（quote_attachments の id の配列。特定技能総合保険の案内など）
+--
+-- quote_attachments … 見積書に付ける別紙のファイル（PDF・画像）。一度登録すれば、どの見積書にも付けられる。
+--   ファイルは非公開バケット app-files の quote-attachments/ に置く
 -- 何度実行しても安全。
 
 create table if not exists quotes (
@@ -34,6 +40,32 @@ create table if not exists quotes (
   created_at        timestamptz not null default now(),
   updated_at        timestamptz not null default now()
 );
+
+-- 2回目の適用（列を足した版）でも安全なように、あとから足した列は add column if not exists で足す
+alter table quotes add column if not exists honorific text not null default '';
+alter table quotes add column if not exists online_fee integer;
+alter table quotes add column if not exists attachment_ids jsonb not null default '[]'::jsonb;
+
+create table if not exists quote_attachments (
+  id           uuid primary key default gen_random_uuid(),
+  name         text not null default '',
+  storage_path text not null,
+  file_name    text not null default '',
+  mime_type    text not null default '',
+  uploaded_by  uuid default auth.uid(),
+  created_at   timestamptz not null default now()
+);
+
+alter table quote_attachments enable row level security;
+drop policy if exists sel_quote_attachments on quote_attachments;
+drop policy if exists ins_quote_attachments on quote_attachments;
+drop policy if exists upd_quote_attachments on quote_attachments;
+drop policy if exists del_quote_attachments on quote_attachments;
+create policy sel_quote_attachments on quote_attachments for select using (my_role() is not null);
+create policy ins_quote_attachments on quote_attachments for insert with check (my_role() in ('admin', 'staff'));
+create policy upd_quote_attachments on quote_attachments for update
+  using (my_role() in ('admin', 'staff')) with check (my_role() in ('admin', 'staff'));
+create policy del_quote_attachments on quote_attachments for delete using (my_role() in ('admin', 'staff'));
 
 create index if not exists quotes_org on quotes (organization_id, issued_on desc);
 create index if not exists quotes_updated on quotes (updated_at desc);

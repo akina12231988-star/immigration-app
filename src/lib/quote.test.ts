@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   defaultQuoteItems,
+  latestOnlineFee,
+  newQuoteItemRow,
+  newQuoteTextRow,
+  onlineFeeWithCharge,
+  printedQuoteItems,
   nextQuoteNumber,
   normalizeQuoteEvents,
   normalizeQuoteItems,
@@ -28,7 +33,7 @@ describe("見積書（新規のお客様）", () => {
 
   it("項目をそろえる（文字の金額も読む・壊れた行は捨てる）", () => {
     expect(normalizeQuoteItems([{ name: "A", price: "１２,０００円", unit: "毎月" }, null, 3])).toEqual([
-      { name: "A", price: 12000, unit: "毎月", taxFree: false, note: "" },
+      { kind: "item", on: true, name: "A", price: 12000, unit: "毎月", taxFree: false, note: "" },
     ]);
     expect(normalizeQuoteItems("x")).toEqual([]);
   });
@@ -47,6 +52,34 @@ describe("見積書（新規のお客様）", () => {
       personLine: "代表取締役 山田太郎 様",
     });
     expect(quoteAddressee("西田祐一", "西田祐一")).toEqual({ orgLine: "西田祐一 様", personLine: "" });
+  });
+
+  it("敬称を選べる（御中・様・なし）", () => {
+    expect(quoteAddressee("和田", "", "御中")).toEqual({ orgLine: "和田 御中", personLine: "" });
+    expect(quoteAddressee("株式会社テスト", "", "様")).toEqual({ orgLine: "株式会社テスト 様", personLine: "" });
+    expect(quoteAddressee("株式会社テスト", "山田太郎", "様")).toEqual({ orgLine: "株式会社テスト", personLine: "山田太郎 様" });
+    expect(quoteAddressee("株式会社テスト", "山田太郎", "なし")).toEqual({ orgLine: "株式会社テスト", personLine: "山田太郎" });
+  });
+
+  it("チェックを外した行と空の文字の行は印字しない", () => {
+    const items = [
+      { ...newQuoteItemRow(), name: "A" },
+      { ...newQuoteItemRow(), name: "B", on: false },
+      newQuoteTextRow("■ 見出し"),
+      newQuoteTextRow(""),
+    ];
+    expect(printedQuoteItems(items).map((i) => i.name)).toEqual(["A", "■ 見出し"]);
+    expect(normalizeQuoteItems([{ kind: "text", name: "x", on: false }])[0]).toMatchObject({ kind: "text", on: false });
+  });
+
+  it("印紙代の表のオンラインは決済手数料込み・次の見積書に引き継ぐ", () => {
+    expect(onlineFeeWithCharge(27000, 330)).toBe(27330);
+    expect(onlineFeeWithCharge(27000, null)).toBe(27000);
+    const a = normalizeQuoteRow({ id: "a", online_fee: null });
+    const b = normalizeQuoteRow({ id: "b", online_fee: 330, honorific: "様", attachment_ids: ["x", 1] });
+    expect(latestOnlineFee([a, b])).toBe(330);
+    expect(b.honorific).toBe("様");
+    expect(b.attachment_ids).toEqual(["x"]);
   });
 
   it("見積書番号は同じ日の続き番号", () => {

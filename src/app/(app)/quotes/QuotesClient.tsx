@@ -9,9 +9,14 @@ import { insertQuote } from "@/lib/supabase/queries/quotes";
 import { parseAmount } from "@/lib/organization-intake";
 import { dbErrorMessage } from "@/lib/errors";
 import { estimateDateText } from "@/lib/estimate";
+import { QuoteItemsEditor } from "./QuoteItemsEditor";
 import {
   defaultQuoteItems,
+  latestOnlineFee,
   latestQuoteEvent,
+  QUOTE_HONORIFICS,
+  QUOTE_HONORIFIC_LABELS,
+  quoteAddressee,
   nextQuoteNumber,
   QUOTE_DEFAULT_NOTES,
   QUOTE_DEFAULT_SUBJECT,
@@ -37,6 +42,34 @@ const STATUS_STYLE: Record<string, string> = {
   受注: "bg-emerald-100 text-emerald-800",
   見送り: "bg-neutral-200 text-neutral-600",
 };
+
+// 登録済みの所属機関で毎月の支援代が登録されていれば、毎月の支援代の行にその金額を入れる
+function withSupportFee(items: QuoteItem[], org: QuoteOrgOption | undefined): QuoteItem[] {
+  const fee = org ? parseAmount(org.supportFee) : null;
+  return fee ? items.map((i) => (/毎月の支援代/.test(i.name) ? { ...i, price: fee } : i)) : items;
+}
+
+// 宛先の敬称（自動 / 御中 / 様 / なし）
+export function HonorificPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="flex flex-col gap-1 text-xs font-bold text-muted">
+      敬称
+      <span className="inline-flex overflow-hidden rounded-lg border border-border">
+        {QUOTE_HONORIFICS.map((h) => (
+          <button
+            key={h || "auto"}
+            type="button"
+            onClick={() => onChange(h)}
+            aria-pressed={value === h}
+            className={`min-h-[44px] px-3 ${value === h ? "bg-brand text-brand-foreground" : "bg-background text-muted hover:bg-surface"}`}
+          >
+            {QUOTE_HONORIFIC_LABELS[h]}
+          </button>
+        ))}
+      </span>
+    </div>
+  );
+}
 
 export function QuoteStatusBadge({ status }: { status: string }) {
   return (
@@ -71,7 +104,10 @@ export function QuotesClient({
   const [mode, setMode] = useState<"org" | "manual">(initialOrgId ? "org" : "manual");
   const [orgId, setOrgId] = useState(initialOrgId);
   const [name, setName] = useState("");
+  const [person, setPerson] = useState("");
+  const [honorific, setHonorific] = useState("");
   const [copyFrom, setCopyFrom] = useState("");
+  const [items, setItems] = useState<QuoteItem[]>(() => withSupportFee(defaultQuoteItems(), organizations.find((o) => o.id === initialOrgId)));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -84,25 +120,40 @@ export function QuotesClient({
     [initialQuotes, status, orgFilter, query],
   );
 
+  const selectedOrg = mode === "org" ? organizations.find((o) => o.id === orgId) : undefined;
+  const chooseOrg = (id: string) => {
+    setOrgId(id);
+    const o = organizations.find((x) => x.id === id);
+    if (o) setPerson(o.repName);
+    if (!copyFrom) setItems((prev) => withSupportFee(prev, o));
+  };
+  // 項目の元を選び直したら、その内容で一覧を作り直す（複製元の行は入れる・入れないの選択もそのまま）
+  const chooseSource = (id: string) => {
+    setCopyFrom(id);
+    const src = initialQuotes.find((q) => q.id === id);
+    setItems(src ? src.items.map((i) => ({ ...i })) : withSupportFee(defaultQuoteItems(), selectedOrg));
+  };
+  const preview = quoteAddressee(selectedOrg ? selectedOrg.name : name, person, honorific);
+
   const create = async () => {
     setError(null);
-    const org = mode === "org" ? organizations.find((o) => o.id === orgId) : undefined;
+    const org = selectedOrg;
     const addressee = org ? org.name : name.trim();
     if (!addressee) {
       setError(mode === "org" ? "所属機関を選んでください" : "会社名を入力してください");
       return;
     }
+    if (!items.some((i) => i.on)) {
+      setError("見積書に入れる行にチェックを付けてください");
+      return;
+    }
     const src = initialQuotes.find((q) => q.id === copyFrom);
-    let items: QuoteItem[] = src ? src.items.map((i) => ({ ...i })) : defaultQuoteItems();
-    // 登録済みの所属機関で毎月の支援代が登録されていれば、その金額を入れる（複製のときは複製元のまま）
-    const fee = org ? parseAmount(org.supportFee) : null;
-    if (!src && fee) items = items.map((i) => (/毎月の支援代/.test(i.name) ? { ...i, price: fee } : i));
     setBusy(true);
     try {
       const row = await insertQuote(createClient(), {
         organization_id: org?.id ?? null,
         addressee_name: addressee,
-        addressee_person: org?.repName ?? "",
+        addressee_person: person.trim(),
         addressee_address: org?.address ?? "",
         issued_on: today,
         number: nextQuoteNumber(today, initialQuotes.map((q) => q.number)),
@@ -111,6 +162,9 @@ export function QuotesClient({
         notes: src?.notes ?? QUOTE_DEFAULT_NOTES,
         show_stamp_table: src?.show_stamp_table ?? true,
         status: "作成中",
+        honorific,
+        online_fee: src?.online_fee ?? latestOnlineFee(initialQuotes),
+        attachment_ids: src?.attachment_ids ?? [],
       });
       router.push(`/quotes/${row.id}`);
     } catch (e) {
@@ -161,7 +215,7 @@ export function QuotesClient({
             {mode === "org" ? (
               <select
                 value={orgId}
-                onChange={(e) => setOrgId(e.target.value)}
+                onChange={(e) => chooseOrg(e.target.value)}
                 aria-label="宛先の所属機関"
                 className="min-h-[44px] rounded-xl border border-border bg-background px-3 text-sm"
               >
@@ -181,21 +235,42 @@ export function QuotesClient({
                 className="min-h-[44px] rounded-xl border border-border bg-background px-3 text-sm"
               />
             )}
-            <label className="flex flex-col gap-1 text-xs font-bold text-muted">
-              項目
-              <select
-                value={copyFrom}
-                onChange={(e) => setCopyFrom(e.target.value)}
-                className="min-h-[44px] rounded-xl border border-border bg-background px-3 text-sm font-normal text-foreground"
-              >
-                <option value="">既定の項目（変更申請・事前ガイダンス・生活オリエン・毎月の支援代・更新・印紙代・保険・紹介手数料）</option>
-                {initialQuotes.map((q) => (
-                  <option key={q.id} value={q.id}>
-                    {q.addressee_name}の見積書から複製（{q.issued_on ? estimateDateText(q.issued_on) : "日付なし"}・{q.items.length}項目）
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="flex min-w-[220px] flex-1 flex-col gap-1 text-xs font-bold text-muted">
+                担当者・代表者（空欄でもよい）
+                <input
+                  value={person}
+                  onChange={(e) => setPerson(e.target.value)}
+                  placeholder="例: 代表取締役 山田太郎"
+                  className="min-h-[44px] rounded-xl border border-border bg-background px-3 text-sm font-normal text-foreground"
+                />
+              </label>
+              <HonorificPicker value={honorific} onChange={setHonorific} />
+            </div>
+            {(preview.orgLine || preview.personLine) && (
+              <p className="text-xs text-muted">
+                宛名の印字: <b className="text-foreground">{preview.orgLine}</b>
+                {preview.personLine && <b className="ml-2 text-foreground">{preview.personLine}</b>}
+              </p>
+            )}
+            <div className="flex flex-col gap-2">
+              <label className="flex flex-col gap-1 text-xs font-bold text-muted">
+                項目の元
+                <select
+                  value={copyFrom}
+                  onChange={(e) => chooseSource(e.target.value)}
+                  className="min-h-[44px] rounded-xl border border-border bg-background px-3 text-sm font-normal text-foreground"
+                >
+                  <option value="">既定の項目</option>
+                  {initialQuotes.map((q) => (
+                    <option key={q.id} value={q.id}>
+                      {q.addressee_name}の見積書から複製（{q.issued_on ? estimateDateText(q.issued_on) : "日付なし"}）
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <QuoteItemsEditor items={items} onChange={setItems} />
+            </div>
             {error && (
               <p role="alert" className="text-xs font-bold text-seal">
                 {error}

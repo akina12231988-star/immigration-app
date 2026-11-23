@@ -28,8 +28,14 @@ export const QUOTE_EVENT_KINDS = ["送付", "電話", "メール", "訪問", "�
 // 単位の候補（自由に入力もできる）
 export const QUOTE_UNITS = ["1人あたり", "1人・毎月", "1件あたり", "1人・1年", "実費"] as const;
 
+// 宛先の敬称（'' = 自動。会社・法人・組合・協会なら御中、それ以外は様）
+export const QUOTE_HONORIFICS = ["", "御中", "様", "なし"] as const;
+export const QUOTE_HONORIFIC_LABELS: Record<string, string> = { "": "自動", 御中: "御中", 様: "様", なし: "なし" };
+
 export interface QuoteItem {
-  name: string;
+  kind: "item" | "text"; // item = 項目の行 / text = 文字だけの行（表の幅いっぱいに印字。見出し・説明など）
+  on: boolean; // 見積書に入れるか（外した行も残しておき、あとで入れ直せる）
+  name: string; // 項目名（text の行はその文字）
   price: number | null; // 税抜の金額（null = 空欄。「実費」「別途」のときなど）
   unit: string;
   taxFree: boolean; // 非課税（収入印紙代・保険料）
@@ -57,6 +63,9 @@ export interface QuoteRow {
   show_stamp_table: boolean;
   status: string;
   events: QuoteEvent[];
+  honorific: string;
+  online_fee: number | null; // オンライン申請の決済手数料（印紙代の表のオンラインの金額に足す）
+  attachment_ids: string[]; // 一緒に印刷する別紙
   created_at: string;
   updated_at: string;
 }
@@ -72,6 +81,8 @@ export const QUOTE_DEFAULT_NOTES = [
 // 新しい見積書の既定の項目（金額は画面で直せる）
 export function defaultQuoteItems(): QuoteItem[] {
   const item = (name: string, price: number | null, unit: string, note = "", taxFree = false): QuoteItem => ({
+    kind: "item",
+    on: true,
     name,
     price,
     unit,
@@ -102,7 +113,15 @@ export function normalizeQuoteItems(raw: unknown): QuoteItem[] {
       const p = r.price;
       const price =
         typeof p === "number" && Number.isFinite(p) ? Math.max(0, Math.round(p)) : typeof p === "string" ? parseAmount(p) : null;
-      return { name: str(r.name), price: price ?? null, unit: str(r.unit), taxFree: r.taxFree === true, note: str(r.note) };
+      return {
+        kind: r.kind === "text" ? ("text" as const) : ("item" as const),
+        on: r.on !== false,
+        name: str(r.name),
+        price: price ?? null,
+        unit: str(r.unit),
+        taxFree: r.taxFree === true,
+        note: str(r.note),
+      };
     });
 }
 
@@ -130,20 +149,52 @@ export function normalizeQuoteRow(raw: Record<string, unknown>): QuoteRow {
     show_stamp_table: raw.show_stamp_table !== false,
     status: str(raw.status) || "作成中",
     events: normalizeQuoteEvents(raw.events),
+    honorific: (QUOTE_HONORIFICS as readonly string[]).includes(str(raw.honorific)) ? str(raw.honorific) : "",
+    online_fee: typeof raw.online_fee === "number" && raw.online_fee > 0 ? Math.round(raw.online_fee) : null,
+    attachment_ids: Array.isArray(raw.attachment_ids) ? raw.attachment_ids.filter((x): x is string => typeof x === "string") : [],
     created_at: str(raw.created_at),
     updated_at: str(raw.updated_at),
   };
 }
 
-// 宛先の1行目（会社名＋御中/様）と担当者の行（〇〇 様）
-export function quoteAddressee(name: string, person: string): { orgLine: string; personLine: string } {
+// 宛先の1行目（会社名＋敬称）と担当者の行（〇〇 様）。
+//  honorific: '' = 自動（会社・法人なら御中、それ以外は様）/ 御中 / 様 / なし
+//  ・御中: 「株式会社〇〇 御中」＋担当者がいれば「代表取締役 山田太郎 様」
+//  ・様  : 担当者がいれば「株式会社〇〇」＋「代表取締役 山田太郎 様」、いなければ「〇〇 様」
+//  ・なし: 敬称を付けない（担当者の行も付けない）
+export function quoteAddressee(name: string, person: string, honorific = ""): { orgLine: string; personLine: string } {
   const n = name.trim();
-  const honorific = n ? honorificFor(n) : "";
-  const p = person.trim();
-  return {
-    orgLine: n ? `${n} ${honorific}` : "",
-    personLine: p && honorific === "御中" ? `${p} 様` : "",
-  };
+  // 個人あて（担当者＝宛名）のときは担当者の行を出さない
+  const p = person.trim() === name.trim() ? "" : person.trim();
+  const h = honorific === "なし" ? "" : honorific || (n ? honorificFor(n) : "");
+  if (!n) return { orgLine: "", personLine: p && h ? `${p} 様` : p };
+  if (honorific === "なし") return { orgLine: n, personLine: p };
+  if (h === "御中") return { orgLine: `${n} 御中`, personLine: p ? `${p} 様` : "" };
+  return p ? { orgLine: n, personLine: `${p} 様` } : { orgLine: `${n} 様`, personLine: "" };
+}
+
+// 印紙代の表のオンラインの金額（決済手数料を足す）
+export function onlineFeeWithCharge(online: number, charge: number | null): number {
+  return online + (charge && charge > 0 ? charge : 0);
+}
+
+// 見積書に印字する行（入れない行を外す）
+export function printedQuoteItems(items: QuoteItem[]): QuoteItem[] {
+  return items.filter((i) => i.on && (i.kind === "text" ? i.name.trim() !== "" : true));
+}
+
+// 文字だけの行を新しく作る
+export function newQuoteTextRow(text = ""): QuoteItem {
+  return { kind: "text", on: true, name: text, price: null, unit: "", taxFree: false, note: "" };
+}
+
+export function newQuoteItemRow(): QuoteItem {
+  return { kind: "item", on: true, name: "", price: null, unit: "1人あたり", taxFree: false, note: "" };
+}
+
+// 新しい見積書の決済手数料の初期値（いちばん新しく直した見積書に入っている金額を引き継ぐ）
+export function latestOnlineFee(quotes: QuoteRow[]): number | null {
+  return quotes.find((q) => q.online_fee != null)?.online_fee ?? null;
 }
 
 // 金額の表示（税抜）。空欄は「—」、0円は「0円」
