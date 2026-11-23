@@ -271,7 +271,17 @@ export function RefFormCreator({
       const blob = await makePdf();
       const file = new File([blob], `${refFormName(formKey)}.pdf`, { type: "application/pdf" });
       await uploadOnboardingDoc(workerId, { key: docKey, label: attachLabel || refFormName(formKey), num: 0 }, file);
-      setNotice(`申請準備の「${attachLabel || refFormName(formKey)}」の行に添付しました。下のリンクから申請準備に戻ると、その行に出ています。`);
+      // 直した内容（入れた文字・動かした位置・外した○✓）も一時保存しておく。
+      // 次に開いたときやまとめてダウンロードでも、外した✓などがそのまま使われるように
+      if (template) {
+        const { error: dErr } = await createClient().from("ref_form_drafts").upsert(
+          { worker_id: workerId, todo_no: todoNo, form_key: formKey, template_id: template.id, texts, moves, off },
+          { onConflict: "worker_id,todo_no,form_key" },
+        );
+        if (dErr) throw new Error(dbErrorMessage(dErr, MIGRATION, "添付はしましたが、直した内容の一時保存に失敗しました"));
+        setSavedAt(new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }));
+      }
+      setNotice(`申請準備の「${attachLabel || refFormName(formKey)}」の行に添付しました（直した内容も一時保存しました）。下のリンクから申請準備に戻ると、その行に出ています。`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "添付できませんでした");
     } finally {
