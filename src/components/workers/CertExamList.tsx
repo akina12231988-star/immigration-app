@@ -11,6 +11,10 @@ import { EXAM_LOCATION_JAPAN } from "@/lib/cert-exam-options";
 import {
   CERT_KIND_LABEL,
   JLPT_LEVELS,
+  JFT_BASIC_MAX,
+  JFT_BASIC_PASS,
+  isJftBasicExamName,
+  jftScoreResult,
   certExamDocKey,
   certExamRows,
   newCertExamId,
@@ -111,6 +115,58 @@ function PickOrTypeRow({
   );
 }
 
+// 国際交流基金日本語基礎テスト（JFT-Basic）の点数。入れて欄を離れると保存し、A2 に届いているかを出す
+function JftScoreRow({
+  value,
+  canEdit,
+  busy,
+  onSave,
+}: {
+  value: string;
+  canEdit: boolean;
+  busy: boolean;
+  onSave: (v: string) => void;
+}) {
+  const [text, setText] = useState(value);
+  const result = jftScoreResult(text);
+  const digits = text.replace(/[^0-9]/g, "");
+  const outOfRange = !!digits && !result;
+  return (
+    <div>
+      <p className="text-[11px] font-bold text-muted">合格した点数（{JFT_BASIC_MAX}点満点・{JFT_BASIC_PASS}点以上で A2）</p>
+      <div className="flex flex-wrap items-center gap-2">
+        {canEdit ? (
+          <input
+            value={text}
+            disabled={busy}
+            inputMode="numeric"
+            placeholder="例: 215"
+            onChange={(e) => setText(e.target.value.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/[^0-9]/g, ""))}
+            onBlur={() => {
+              // 250点を超える数字は保存しない（打ち間違いのまま残さない）
+              if (text !== value && (!text || jftScoreResult(text))) onSave(text);
+            }}
+            className={`${INPUT} max-w-[8rem] text-right`}
+          />
+        ) : (
+          <span className="text-sm">{value || <span className="text-muted">未登録</span>}</span>
+        )}
+        <span className="text-sm text-muted">点</span>
+        {result && (
+          <span
+            className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
+              result.pass ? "bg-status-approved-bg text-status-approved-fg" : "bg-seal/10 text-seal"
+            }`}
+          >
+            {result.text}
+          </span>
+        )}
+        {outOfRange && <span className="text-xs text-seal">{JFT_BASIC_MAX}点までの数字を入れてください</span>}
+      </div>
+    </div>
+  );
+}
+
 // 日本語の合格証・専門外の合格証の受験情報（外国人詳細）。
 // 受験した試験名・受験地・（日本語は）レベルを、受験情報ごとに登録できる。
 // 合格証のファイルもその枠の中で登録するので、どの試験名の合格証かを取り違えない。
@@ -130,6 +186,7 @@ export function CertExamList({
     firstName: string;
     firstLocation: string;
     firstLevel: string;
+    firstScore: string;
     exams: WorkerCertExam[];
   } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -155,6 +212,7 @@ export function CertExamList({
           firstName: s(r[nameKey]),
           firstLocation: s(r[locationKey]),
           firstLevel: s(r.cert_nihongo_level),
+          firstScore: s(r.cert_nihongo_score),
           exams: normalizeCertExams(r.cert_exams),
         });
       });
@@ -177,14 +235,17 @@ export function CertExamList({
               firstName: patch[nameKey] ?? prev.firstName,
               firstLocation: patch[locationKey] ?? prev.firstLocation,
               firstLevel: patch.cert_nihongo_level ?? prev.firstLevel,
+              firstScore: patch.cert_nihongo_score ?? prev.firstScore,
             }
           : prev,
       );
     } catch (err) {
       const migration =
-        "cert_nihongo_level" in patch
-          ? "0116_cert_nihongo_level.sql"
-          : "0114_cert_exam_name_location.sql";
+        "cert_nihongo_score" in patch
+          ? "0234_cert_nihongo_score.sql"
+          : "cert_nihongo_level" in patch
+            ? "0116_cert_nihongo_level.sql"
+            : "0114_cert_exam_name_location.sql";
       setError(dbErrorMessage(err, migration, "保存に失敗しました"));
     } finally {
       setBusy(false);
@@ -213,6 +274,7 @@ export function CertExamList({
     loaded.firstLocation,
     loaded.firstLevel,
     loaded.exams,
+    loaded.firstScore,
   );
 
   // 受験情報1件分の変更（1件目は列へ、2件目以降は配列へ）
@@ -226,6 +288,16 @@ export function CertExamList({
     void saveExams(
       loaded.exams.map((e) => (e.id === row.id ? { ...e, [field]: value } : e)),
     );
+  };
+
+  // JFT-Basic の点数を保存する。合格（200点以上）なら「合格したレベル」も A2 にそろえる（申請書の「19 レベル」に使う）
+  const saveJftScore = (row: WorkerCertExam, score: string) => {
+    const level = jftScoreResult(score)?.level ?? "";
+    if (row.id === "") {
+      void saveFirst({ cert_nihongo_score: score, cert_nihongo_level: level });
+      return;
+    }
+    void saveExams(loaded.exams.map((e) => (e.id === row.id ? { ...e, score, level } : e)));
   };
 
   const addRow = () => {
@@ -297,8 +369,18 @@ export function CertExamList({
             busy={busy}
             onSave={(v) => patchRow(row, "location", v)}
           />
-          {/* 日本語の合格証は、N4・N3・N2・N1のどれかを選んで残せる */}
-          {kind === "nihongo" && (
+          {/* 国際交流基金日本語基礎テストを選んだときは、レベルの代わりに点数を入れ、A2 に届いているかを出す */}
+          {kind === "nihongo" && isJftBasicExamName(row.name) && (
+            <JftScoreRow
+              key={`score-${row.doc_key}-${row.score ?? ""}`}
+              value={row.score ?? ""}
+              canEdit={canEdit}
+              busy={busy}
+              onSave={(v) => saveJftScore(row, v)}
+            />
+          )}
+          {/* 日本語の合格証は、N4・N3・N2・N1のどれかを選んで残せる（JFT-Basic 以外） */}
+          {kind === "nihongo" && !isJftBasicExamName(row.name) && (
             <PickOrTypeRow
               key={`level-${row.doc_key}-${row.level}`}
               label="合格したレベル"
