@@ -15,10 +15,10 @@ export default async function RefFormCreatePage({
   searchParams,
 }: {
   params: Promise<{ id: string; key: string }>;
-  searchParams: Promise<{ todo?: string }>;
+  searchParams: Promise<{ todo?: string; fee?: string }>;
 }) {
   const { id, key } = await params;
-  const { todo } = await searchParams;
+  const { todo, fee } = await searchParams;
   const me = await getMyProfile();
   if (!me) redirect("/login");
   if (!canUseUnifiedPrep(me.role)) notFound();
@@ -57,6 +57,7 @@ export default async function RefFormCreatePage({
           workerId={w.id}
           formKey={key}
           todoNo={todo ?? ""}
+          fee={(fee ?? "").replace(/[^0-9]/g, "")}
           nationality={w.nationality ?? ""}
           gender={w.gender ?? ""}
           orgId={orgId}

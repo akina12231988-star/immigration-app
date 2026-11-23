@@ -20,6 +20,7 @@ import {
   refFormCircleShown,
   refFormStrikeLength,
   refFormLineSkip,
+  parseReferralFeePresets,
   refFormStrikeThickness,
   refFormCircles,
   refFormOffIds,
@@ -204,6 +205,15 @@ describe("PDFを作る", () => {
     expect(refFormLineSkip(it2, 2)).toBe(0);
     expect(refFormLineSkip({ maxLines: 2 }, 1)).toBe(0);
     expect(normalizeRefFormLayout([{ kind: "name", page: 0, x: 0, y: 0, size: 10, valign: "x" }])[0].valign).toBeUndefined();
+  });
+
+  it("紹介手数料（1-16号）", () => {
+    expect(parseReferralFeePresets("300000、250,000　300000\n１５００００円")).toEqual([300000, 250000, 150000]);
+    expect(parseReferralFeePresets("")).toEqual([]);
+    expect(parseReferralFeePresets("300000,250000")).toEqual([300000, 250000]);
+    const item = { kind: "referral_fee" as const };
+    expect(refFormValue(item, { ...REF_FORM_SAMPLE_DATA, referralFee: "300000" })).toBe("300,000");
+    expect(refFormValue(item, { ...REF_FORM_SAMPLE_DATA, referralFee: "" })).toBe("");
   });
 
   it("ファイル名", () => {

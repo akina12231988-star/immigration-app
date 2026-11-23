@@ -1,9 +1,10 @@
 "use client";
 
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { CheckCircle2, ChevronDown, Eye, Loader2, Paperclip, Printer, Trash2 } from "lucide-react";
 import { FileDropArea } from "@/components/ui/FileDropArea";
-import { REF_FORM_LANGUAGES, SIGN_ONLY_REF_FORM_KEYS, isRefFormItem, languageForNationality, missingBundledRefForms, pickRefFormTemplate, refFormName } from "@/lib/ref-form";
+import { REF_FORM_LANGUAGES, SIGN_ONLY_REF_FORM_KEYS, isRefFormItem, languageForNationality, missingBundledRefForms, parseReferralFeePresets, pickRefFormTemplate, refFormName } from "@/lib/ref-form";
+import { createClient } from "@/lib/supabase/client";
 import { registerBundledRefForms } from "@/app/(app)/ref-forms/actions";
 import { SUBMISSION_PDF_TEMPLATES, canFillSubmissionPdf, fillSubmissionPdf, submissionPdfTables } from "@/lib/submission-pdf";
 import { RefFormRowBar, RefFormTemplatesDialog, refFormHref, useRefFormTemplates } from "@/components/ref-forms/RefFormPanel";
@@ -22,6 +23,9 @@ import {
   type SubmissionRow,
   type SubmitMark,
 } from "@/lib/submission-list";
+
+// 紹介手数料を書き換えたときに出すイベント（localStorage の値を読み直す）
+const FEE_EVENT = "ref-form-fee-change";
 
 // 申請準備の詳細の「提出書類一覧表」。入管の一覧表と同じ番号・順番で書類を並べ、
 // 提出確認欄の「有」「無」を押して選ぶ（押していない行は、申請準備の情報から見当を付けて出す）。
@@ -89,6 +93,54 @@ export function PrepSubmissionList({
   const refKey = (r: SubmissionRow) => canonicalSubmissionKey(r.key);
   // まとめてダウンロードの言語。空なら国籍の言語（その言語の版が無い様式は日本語の版）
   const [bulkLang, setBulkLang] = useState("");
+  // 紹介手数料（1-16号に書く金額・数字だけ）。この人・この申請の分をブラウザに覚えておく
+  const feeStoreKey = `refFormFee:${workerId ?? ""}:${todoNo}`;
+  // localStorage を外のストアとして読む（書き換えたら同じページの購読者に知らせる）
+  const fee = useSyncExternalStore(
+    (cb) => {
+      window.addEventListener(FEE_EVENT, cb);
+      window.addEventListener("storage", cb);
+      return () => {
+        window.removeEventListener(FEE_EVENT, cb);
+        window.removeEventListener("storage", cb);
+      };
+    },
+    () => {
+      try {
+        return window.localStorage.getItem(feeStoreKey) ?? "";
+      } catch {
+        return "";
+      }
+    },
+    () => "",
+  );
+  const setFee = (v: string) => {
+    try {
+      if (v) window.localStorage.setItem(feeStoreKey, v);
+      else window.localStorage.removeItem(feeStoreKey);
+    } catch {
+      // 覚えておけなくても作るのには困らない（このときは入力が残らない）
+    }
+    window.dispatchEvent(new Event(FEE_EVENT));
+  };
+  // 所属機関の「よく使う紹介手数料」
+  const [feePresets, setFeePresets] = useState<number[]>([]);
+  useEffect(() => {
+    if (!orgId || !workerId) return;
+    let cancelled = false;
+    void createClient()
+      .from("organizations")
+      .select("intake")
+      .eq("id", orgId)
+      .maybeSingle()
+      .then(({ data }) => {
+        const intake = (data as { intake: { referral_fees?: unknown } | null } | null)?.intake;
+        if (!cancelled) setFeePresets(parseReferralFeePresets(typeof intake?.referral_fees === "string" ? intake.referral_fees : ""));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId, workerId]);
   const natLang = languageForNationality(nationality);
   const bulkPick = (key: string) => pickRefFormTemplate(refForms.templates, key, nationality, orgId, bulkLang || null);
   const refReady = refRows.filter((r) => bulkPick(refKey(r)));
@@ -192,7 +244,7 @@ export function PrepSubmissionList({
             参考様式（「有」{refRows.length}件・ひな形あり {refReady.length}件）
           </span>
           <a
-            href={refReady.length > 0 ? refFormHref(workerId, refReady.map(refKey), "all", refOff, todoNo, bulkLang) : undefined}
+            href={refReady.length > 0 ? refFormHref(workerId, refReady.map(refKey), "all", refOff, todoNo, bulkLang, fee) : undefined}
             target="_blank"
             rel="noopener noreferrer"
             aria-disabled={refReady.length === 0}
@@ -203,7 +255,7 @@ export function PrepSubmissionList({
             参考様式を一気にダウンロード（{refReady.length}件）
           </a>
           <a
-            href={signKeys.length > 0 ? refFormHref(workerId, signKeys, "sign", refOff, todoNo, bulkLang) : undefined}
+            href={signKeys.length > 0 ? refFormHref(workerId, signKeys, "sign", refOff, todoNo, bulkLang, fee) : undefined}
             target="_blank"
             rel="noopener noreferrer"
             aria-disabled={signKeys.length === 0}
@@ -379,6 +431,8 @@ export function PrepSubmissionList({
                                 templates={refForms.templates}
                                 canEdit={canEdit}
                                 onManage={() => setManaging(r)}
+                                // 1-16号（雇用の経緯に係る説明書）は紹介手数料を入れてから作る
+                                {...(refKey(r) === "t1-7-1" ? { fee, onFeeChange: setFee, feePresets } : {})}
                               />
                             </div>
                           )}

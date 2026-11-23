@@ -244,6 +244,7 @@ export type RefFormFieldKind =
   | "org_holiday_irregular_days"
   | "org_holiday_irregular_other"
   | "org_support_fee"
+  | "referral_fee"
   | "so_name"
   | "so_reg_no"
   | "so_address"
@@ -319,6 +320,8 @@ export const REF_FORM_FIELDS: { kind: RefFormFieldKind; label: string; sample: s
   { kind: "org_holiday_irregular_other", label: "休日 非定例日のその他", sample: "シフトにより決定", group: "所属機関" },
   // 所属機関の「毎月の支援代（1人あたり月額）」。参考様式第1-25号の「委託料（1名当たりの月額）」など
   { kind: "org_support_fee", label: "支援委託料（1人あたり月額・数字だけ）", sample: "20,000", group: "所属機関" },
+  // 1-16号（雇用の経緯に係る説明書）のあっせんの紹介手数料。作るときに金額を入れる（所属機関の「よく使う紹介手数料」から選べる）
+  { kind: "referral_fee", label: "紹介手数料（円・数字だけ。作るときに入れる）", sample: "300,000", group: "所属機関" },
   { kind: "so_name", label: "登録支援機関の名称", sample: "VUONG VAN THANH", group: "登録支援機関" },
   { kind: "so_reg_no", label: "登録支援機関の登録番号", sample: "20登-005746", group: "登録支援機関" },
   { kind: "so_address", label: "登録支援機関の住所", sample: "熊本県熊本市東区小山2丁目13-20", group: "登録支援機関" },
@@ -517,6 +520,8 @@ export interface RefFormData {
   wage?: { kind: string; amount: number } | null;
   // 1-6号別紙（賃金の支払）の値（refFormWage6Values）。無ければ空欄
   wage6?: Record<string, string>;
+  // 紹介手数料（円。作るときに入れた金額。数字以外が混じっていてもよい）。無ければ空欄
+  referralFee?: string;
   // 1-17号 支援計画書に記載する項目の値（prep117Values）。無ければ空欄
   p117?: Record<string, string>;
   // 証明書類の請求で使う値（個人番号・税務署名・代理人）
@@ -639,6 +644,10 @@ export function refFormValue(item: Pick<RefFormItem, "kind" | "text" | "fmt">, d
       return data.org.holidayIrregularDays ?? "";
     case "org_holiday_irregular_other":
       return data.org.holidayIrregularOther ?? "";
+    case "referral_fee": {
+      const n = parseYenAmount(data.referralFee ?? "");
+      return n > 0 ? n.toLocaleString("ja-JP") : "";
+    }
     case "org_support_fee": {
       const n = Number((data.org.supportFee ?? "").replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/[^0-9]/g, ""));
       return n > 0 ? n.toLocaleString("ja-JP") : "";
@@ -831,6 +840,19 @@ export function applyRefFormEdits(
       const moved = m ? { ...i, x: m.x, y: m.y } : i;
       return isRefFormEditableText(i.kind) ? { ...moved, text: refFormInitialText(i, edits.texts, orgTexts) } : moved;
     });
+}
+
+// 金額の文字（全角・カンマ・「円」入り可）を数字にする。読めなければ 0
+export function parseYenAmount(s: string): number {
+  const n = Number((s ?? "").replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/[^0-9]/g, ""));
+  return Number.isFinite(n) ? n : 0;
+}
+
+// 所属機関の「よく使う紹介手数料」（「300000、250000」のような書き方）を金額の一覧にする（同じ金額は1つ）
+export function parseReferralFeePresets(s: string): number[] {
+  // 「250,000」の3桁区切りのカンマは区切りにしない（「300000,250000」のカンマは区切り）
+  const t = (s ?? "").replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/(\d),(?=\d{3}(?:\D|$))/g, "$1");
+  return [...new Set(t.split(/[,、，\s／/]+/).map(parseYenAmount).filter((n) => n > 0))];
 }
 
 // 訂正線の長さ（pt）と太さ（pt）

@@ -164,6 +164,8 @@ async function makePdf(sp: URLSearchParams, posted: Record<string, RefFormEdits>
         planDates: withDerivedPlanDates(await planDates(supabase, workerId, sp.get("todoNo") ?? "")),
       };
       data.docDate = data.planDates?.doc ?? "";
+      // 紹介手数料（1-16号）。作るときに画面で入れた金額
+      data.referralFee = sp.get("fee") ?? "";
       const cw = await currentWage(supabase, workerId, orgId || null);
       data.wage = cw ? { kind: cw.kind, amount: cw.amount } : null;
       data.wage6 = cw ? refFormWage6Values(cw, cw.detail, cw.annualHours) : {};

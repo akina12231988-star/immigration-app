@@ -202,6 +202,7 @@ export interface OrganizationIntake {
   support_staff: string[]; // この機関の支援担当者（複数可・employees.name。支援責任者との兼任可）
   fiscal_kind: string; // 決算情報の区分（個人事業主 / 法人）
   support_fee: string; // 毎月の支援代（月額）
+  referral_fees?: string; // よく使う紹介手数料（円。「300000、250000」のように複数。1-16号を作るときに選ぶ）
   posting_note: string; // 求人で必須としている他条件（求人情報で注意喚起表示）
   posting_gensen: string; // 求人票に記載する源泉所得税（扶養0人・円。徴収しない会社は「なし」。求人票へ自動反映）
   posting_utility_cost: string; // 求人票に記載する水道光熱費（約・円）
