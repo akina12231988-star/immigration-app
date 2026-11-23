@@ -431,6 +431,7 @@ export function PrepSubmissionList({
                                 templates={refForms.templates}
                                 canEdit={canEdit}
                                 onManage={() => setManaging(r)}
+                                rowKey={r.key}
                                 // 1-16号（雇用の経緯に係る説明書）は紹介手数料を入れてから作る
                                 {...(refKey(r) === "t1-7-1" ? { fee, onFeeChange: setFee, feePresets } : {})}
                               />

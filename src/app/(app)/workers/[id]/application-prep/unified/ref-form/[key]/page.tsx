@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { canUseUnifiedPrep } from "@/lib/unified-prep";
 import { isRefFormKey, refFormName } from "@/lib/ref-form";
+import { SUBMISSION_ITEMS, canAttachToSubmissionRow, canonicalSubmissionKey } from "@/lib/submission-list";
 import { RefFormCreator } from "@/components/ref-forms/RefFormCreator";
 
 export const dynamic = "force-dynamic";
@@ -15,10 +16,14 @@ export default async function RefFormCreatePage({
   searchParams,
 }: {
   params: Promise<{ id: string; key: string }>;
-  searchParams: Promise<{ todo?: string; fee?: string }>;
+  searchParams: Promise<{ todo?: string; fee?: string; row?: string }>;
 }) {
   const { id, key } = await params;
-  const { todo, fee } = await searchParams;
+  const { todo, fee, row } = await searchParams;
+  // 作ったPDFを添付する提出書類一覧表の行（この様式の行で、行に直接添付できるものだけ）
+  const attachRowKey =
+    row && canonicalSubmissionKey(row) === canonicalSubmissionKey(key) && canAttachToSubmissionRow(row) ? row : null;
+  const attachItem = attachRowKey ? SUBMISSION_ITEMS.find((i) => i.key === attachRowKey) : null;
   const me = await getMyProfile();
   if (!me) redirect("/login");
   if (!canUseUnifiedPrep(me.role)) notFound();
@@ -58,6 +63,8 @@ export default async function RefFormCreatePage({
           formKey={key}
           todoNo={todo ?? ""}
           fee={(fee ?? "").replace(/[^0-9]/g, "")}
+          attachRowKey={attachRowKey}
+          attachLabel={attachItem ? `${attachItem.no}${attachItem.sub ?? ""} ${attachItem.label}` : ""}
           nationality={w.nationality ?? ""}
           gender={w.gender ?? ""}
           orgId={orgId}
