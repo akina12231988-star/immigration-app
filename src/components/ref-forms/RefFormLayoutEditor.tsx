@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
+import { useLockPageScroll } from "@/hooks/useLockPageScroll";
 import { getRefFormPdfUrl, saveRefFormLayout } from "@/app/(app)/ref-forms/actions";
 import {
   REF_FORM_FIELDS,
@@ -106,6 +107,10 @@ export function RefFormLayoutEditor({
 }) {
   const [signPages, setSignPages] = useState<number[]>(() => normalizeSignPages(initialSignPages));
   const [pages, setPages] = useState<PageView[] | null>(null);
+  // 開いている間は下の申請準備の画面を止め、閉じたら元の位置に戻す
+  useLockPageScroll();
+  // PDF を並べている枠（右のページの一覧から、この枠の中だけをスクロールして移る）
+  const pdfBoxRef = useRef<HTMLDivElement>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [items, setItems] = useState<RefFormItem[]>(() => normalizeRefFormLayout(initialLayout));
   const [kind, setKind] = useState<RefFormFieldKind>("name");
@@ -595,7 +600,7 @@ export function RefFormLayoutEditor({
         </div>
 
         {/* PDF */}
-        <div className="min-h-0 flex-1 overflow-auto bg-neutral-300 p-4">
+        <div ref={pdfBoxRef} className="min-h-0 flex-1 overflow-auto bg-neutral-300 p-4">
           {loadError && <p className="rounded bg-white p-3 text-sm text-seal">{loadError}</p>}
           {!pages && !loadError && <p className="rounded bg-white p-3 text-sm">PDFを読み込み中…</p>}
           {pages?.map((p, pi) => (
@@ -796,7 +801,15 @@ export function RefFormLayoutEditor({
                 <div key={pi} className="mb-3">
                   <button
                     type="button"
-                    onClick={() => document.getElementById(`ref-layout-page-${pi}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                    onClick={() => {
+                      // scrollIntoView は下の画面までスクロールしてしまうので、PDF の枠の中だけを動かす
+                      const box = pdfBoxRef.current;
+                      const el = document.getElementById(`ref-layout-page-${pi}`);
+                      if (box && el) {
+                        const top = el.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop - 8;
+                        box.scrollTo({ top, behavior: "smooth" });
+                      }
+                    }}
                     className={`block w-full overflow-hidden rounded border-2 bg-white ${sign ? "border-seal" : "border-border hover:border-brand"}`}
                     title={`${pi + 1}ページ目へ移る`}
                   >
