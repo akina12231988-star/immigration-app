@@ -226,11 +226,13 @@ export function RefFormTemplatesDialog({
   onClose,
   onChanged,
   defaultScope = "common",
+  formName,
 }: {
   formKey: string;
   formLabel: string;
   templates: RefFormTemplate[];
   defaultLanguage: string;
+  formName?: string; // 様式の名前（追加した様式など、refFormName で引けないとき）
   defaultScope?: "common" | "org"; // 登録先の最初の選択（所属機関の参考様式の準備から開いたときは所属機関別の様式を「この所属機関だけ」に）
   orgId: string | null; // 申請準備中の所属機関（この所属機関だけの版を登録できる）
   orgName: string;
@@ -242,6 +244,7 @@ export function RefFormTemplatesDialog({
   const [language, setLanguage] = useState(defaultLanguage || "日本語");
   // 登録先: 全員共通か、この所属機関だけか
   const [scope, setScope] = useState<"common" | "org">(defaultScope === "org" && orgId ? "org" : "common");
+  const name = formName || refFormName(formKey);
   const scopeOrg = scope === "org" && orgId ? orgId : null;
   const sameScope = (t: RefFormTemplate) => (t.organization_id ?? null) === scopeOrg;
   const [busy, setBusy] = useState(false);
@@ -283,7 +286,7 @@ export function RefFormTemplatesDialog({
   };
 
   const remove = async (t: RefFormTemplate) => {
-    if (!window.confirm(`${refFormName(formKey)}（${t.language}）のひな形と記入位置を削除します。よろしいですか？`)) return;
+    if (!window.confirm(`${name}（${t.language}）のひな形と記入位置を削除します。よろしいですか？`)) return;
     setBusy(true);
     setError(null);
     const res = await deleteRefFormTemplate(t.id);
@@ -300,6 +303,7 @@ export function RefFormTemplatesDialog({
         language={editing.language}
         initialLayout={editing.layout}
         initialSignPages={editing.sign_pages}
+        formName={name}
         onClose={() => setEditing(null)}
         onSaved={() => void onChanged()}
       />
@@ -311,7 +315,7 @@ export function RefFormTemplatesDialog({
       <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-surface p-4 text-xs shadow-xl">
         <div className="mb-2 flex items-start gap-2">
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-black">{refFormName(formKey)} のひな形・記入位置</p>
+            <p className="text-sm font-black">{name} のひな形・記入位置</p>
             <p className="text-[11px] text-muted">{formLabel}</p>
           </div>
           <button type="button" onClick={onClose} aria-label="閉じる" className="p-1">

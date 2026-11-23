@@ -35,6 +35,8 @@ import {
   isOrgSpecificRefForm,
   refFormPrepCell,
   refFormPrepKeys,
+  isCustomRefFormKey,
+  normalizeCustomRefForms,
 } from "./ref-form";
 
 describe("参考様式の行", () => {
@@ -263,6 +265,23 @@ describe("所属機関ごとに用意する参考様式", () => {
     // 全員共通
     expect(refFormPrepCell(ts, "t1-18", "日本語", "A").status).toBe("missing"); // 1-17号は所属機関別
     expect(refFormPrepCell(ts, "t1-18", "日本語", "A").used?.organization_id).toBeNull();
+  });
+});
+
+describe("追加した参考様式", () => {
+  it("キーと保存値", () => {
+    expect(isCustomRefFormKey("custom-ab12cd34")).toBe(true);
+    expect(isCustomRefFormKey("custom-../x")).toBe(false);
+    expect(isRefFormKey("custom-ab12cd34")).toBe(true);
+    const forms = normalizeCustomRefForms({
+      forms: [
+        { key: "custom-ab12cd34", name: " 参考様式第1-10号 ", label: "技能移転", orgSpecific: true },
+        { key: "custom-ab12cd34", name: "重複" },
+        { key: "bad", name: "x" },
+      ],
+    });
+    expect(forms).toEqual([{ key: "custom-ab12cd34", name: "参考様式第1-10号", label: "技能移転", orgSpecific: true, created_at: "" }]);
+    expect(normalizeCustomRefForms(null)).toEqual([]);
   });
 });
 

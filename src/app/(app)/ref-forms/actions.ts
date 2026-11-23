@@ -10,6 +10,11 @@ import {
   REF_FORM_LANGUAGES,
   REF_FORM_MIGRATION,
   isRefFormKey,
+  CUSTOM_REF_FORMS_SETTING,
+  isCustomRefFormKey,
+  normalizeCustomRefForms,
+  refFormPrepKeys,
+  type CustomRefForm,
   normalizeRefFormLayout,
   normalizeSignPages,
   refFormName,
@@ -168,4 +173,94 @@ export async function registerBundledRefForms(keys: string[]): Promise<{ ok: tru
     added.push(key);
   }
   return { ok: true, added };
+}
+
+// ---- 追加した参考様式（提出書類一覧表にまだ無い様式。app_settings の custom_ref_forms） ----
+
+async function readCustomRefForms(admin: NonNullable<ReturnType<typeof createAdminClient>>): Promise<CustomRefForm[]> {
+  const { data } = await admin.from("app_settings").select("value").eq("key", CUSTOM_REF_FORMS_SETTING).maybeSingle();
+  return normalizeCustomRefForms((data as { value: unknown } | null)?.value);
+}
+async function writeCustomRefForms(
+  admin: NonNullable<ReturnType<typeof createAdminClient>>,
+  forms: CustomRefForm[],
+): Promise<string | null> {
+  const { error } = await admin
+    .from("app_settings")
+    .upsert({ key: CUSTOM_REF_FORMS_SETTING, value: { forms } }, { onConflict: "key" });
+  return error ? error.message : null;
+}
+
+// 参考様式を追加する（名前・書類名・所属機関別か）。ひな形はこのあと、ひな形の画面で登録する
+export async function addCustomRefForm(input: {
+  name: string;
+  label: string;
+  orgSpecific: boolean;
+}): Promise<{ ok: true; form: CustomRefForm } | Err> {
+  if (!(await requireAdmin())) return { ok: false, message: "権限がありません（管理者だけ）" };
+  const name = input.name.trim().slice(0, 80);
+  if (!name) return { ok: false, message: "様式の名前を入れてください（例: 参考様式第1-10号）" };
+  const admin = createAdminClient();
+  if (!admin) return { ok: false, message: "サーバー設定エラー" };
+  const forms = await readCustomRefForms(admin);
+  const form: CustomRefForm = {
+    key: `custom-${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`,
+    name,
+    label: input.label.trim().slice(0, 200),
+    orgSpecific: !!input.orgSpecific,
+    created_at: new Date().toISOString(),
+  };
+  const err = await writeCustomRefForms(admin, [...forms, form]);
+  if (err) return { ok: false, message: err };
+  return { ok: true, form };
+}
+
+// 追加した参考様式を消す（ひな形が残っているときは消さない）
+export async function deleteCustomRefForm(key: string): Promise<{ ok: true } | Err> {
+  if (!(await requireAdmin())) return { ok: false, message: "権限がありません（管理者だけ）" };
+  if (!isCustomRefFormKey(key)) return { ok: false, message: "不正な様式です" };
+  const admin = createAdminClient();
+  if (!admin) return { ok: false, message: "サーバー設定エラー" };
+  const { count } = await admin.from("ref_form_templates").select("id", { count: "exact", head: true }).eq("form_key", key);
+  if ((count ?? 0) > 0) return { ok: false, message: "ひな形が登録されています。先にひな形の画面で削除してください。" };
+  const forms = await readCustomRefForms(admin);
+  const err = await writeCustomRefForms(admin, forms.filter((f) => f.key !== key));
+  return err ? { ok: false, message: err } : { ok: true };
+}
+
+// 追加した参考様式を、提出書類一覧表の行（1号のキー）に紐づける。
+// ひな形（言語・所属機関ごと）をその行のキーへ移し、追加した様式の一覧から外す。
+// 行の側に同じ言語・同じ登録先のひな形があるときは移さずに知らせる
+export async function linkCustomRefForm(key: string, targetKey: string): Promise<{ ok: true; moved: number } | Err> {
+  if (!(await requireAdmin())) return { ok: false, message: "権限がありません（管理者だけ）" };
+  if (!isCustomRefFormKey(key) || !refFormPrepKeys().includes(targetKey)) return { ok: false, message: "不正な様式です" };
+  const admin = createAdminClient();
+  if (!admin) return { ok: false, message: "サーバー設定エラー" };
+  const cols = "id, language, organization_id";
+  const [{ data: mine, error: e1 }, { data: theirs, error: e2 }] = await Promise.all([
+    admin.from("ref_form_templates").select(cols).eq("form_key", key),
+    admin.from("ref_form_templates").select(cols).eq("form_key", targetKey),
+  ]);
+  if (e1 || e2) return { ok: false, message: (e1 ?? e2)!.message };
+  type Row = { id: string; language: string; organization_id: string | null };
+  const scope = (r: Row) => `${r.language}:${r.organization_id ?? ""}`;
+  const taken = new Set(((theirs as Row[] | null) ?? []).map(scope));
+  const clash = ((mine as Row[] | null) ?? []).filter((r) => taken.has(scope(r)));
+  if (clash.length > 0) {
+    return {
+      ok: false,
+      message: `紐づける先に同じ言語・同じ登録先のひな形があります（${clash
+        .map((r) => `${r.language}${r.organization_id ? "・所属機関の版" : "・全員共通"}`)
+        .join("、")}）。どちらかをひな形の画面で削除してから紐づけてください。`,
+    };
+  }
+  const ids = ((mine as Row[] | null) ?? []).map((r) => r.id);
+  if (ids.length > 0) {
+    const { error } = await admin.from("ref_form_templates").update({ form_key: targetKey }).in("id", ids);
+    if (error) return { ok: false, message: error.message };
+  }
+  const forms = await readCustomRefForms(admin);
+  const err = await writeCustomRefForms(admin, forms.filter((f) => f.key !== key));
+  if (err) return { ok: false, message: err };
+  return { ok: true, moved: ids.length };
 }
