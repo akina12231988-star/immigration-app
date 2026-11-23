@@ -622,13 +622,16 @@ export function SubmissionRowAction({
   onRemove,
   orgId = null,
   onOrgFilesChanged,
+  onAttachDoc,
 }: {
   orgId?: string | null; // 申請準備中の所属機関（協議会の構成員であることの証明書に、その所属機関の加入通知書を出す）
   onOrgFilesChanged?: () => void; // 所属機関の添付（申請書の別紙など）をこの場で添付したあと
   row: SubmissionRow;
   canEdit: boolean;
   busy: boolean;
-  docs: { id: string; label: string; inList: boolean; satisfied: boolean; fileCount: number }[];
+  // 必要な書類で揃える書類。files はそこで添付したファイル（この行にも出して、押すと開ける）
+  docs: { id: string; label: string; inList: boolean; satisfied: boolean; fileCount: number; files?: OnboardingDocumentRow[] }[];
+  onAttachDoc?: (docId: string) => void; // 必要な書類のその書類に、この行から添付する
   attachFiles: OnboardingDocumentRow[] | null; // null はこの行に添付しない書類
   onAttach: () => void;
   onDrop: (files: FileList) => void;
@@ -699,8 +702,37 @@ export function SubmissionRowAction({
                 {d.fileCount > 0 ? `（${d.fileCount}ファイル）` : ""}
               </span>
               <a href={`#prep-doc-${d.id}`} className="font-bold text-brand underline">
-                必要な書類で添付 →
+                必要な書類で見る →
               </a>
+              {canEdit && onAttachDoc && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onAttachDoc(d.id)}
+                  className="inline-flex items-center gap-0.5 rounded border border-border bg-surface px-1.5 py-0.5 font-bold text-brand disabled:opacity-50"
+                  title="必要な書類のこの書類に添付します（ここから添付しても同じ所に入ります）"
+                >
+                  <Paperclip size={11} />
+                  添付
+                </button>
+              )}
+              {/* 必要な書類で添付したファイル。押すと開く（添付した書類をまとめた PDF にも入ります） */}
+              {(d.files ?? []).length > 0 && (
+                <span className="flex w-full flex-wrap gap-1 pl-5">
+                  {(d.files ?? []).map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => onPreview(f)}
+                      className="inline-flex items-center gap-1 rounded border border-brand/30 bg-surface px-1.5 py-0.5 text-brand"
+                      title="開く"
+                    >
+                      <Eye size={11} />
+                      {f.file_name || d.label}
+                    </button>
+                  ))}
+                </span>
+              )}
             </>
           ) : (
             <span className="text-muted">（この申請の「必要な書類」には出ていません）</span>
