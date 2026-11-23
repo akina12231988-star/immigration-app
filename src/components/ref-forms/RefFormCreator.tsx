@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Download, Loader2, Paperclip, Printer, Save } from "lucide-react";
+import { Download, Eye, Loader2, Paperclip, Printer, Save } from "lucide-react";
 import { uploadOnboardingDoc } from "@/lib/onboarding-files";
 import { submissionAttachKey } from "@/lib/submission-list";
 import { createClient } from "@/lib/supabase/client";
@@ -102,7 +102,10 @@ export function RefFormCreator({
   const [orgTexts, setOrgTexts] = useState<Record<string, string>>({});
   const [pages, setPages] = useState<PageView[] | null>(null);
   const [scale, setScale] = useState(1.3);
-  const [busy, setBusy] = useState<null | "print" | "pdf" | "save" | "attach">(null);
+  const [busy, setBusy] = useState<null | "print" | "pdf" | "save" | "attach" | "check">(null);
+  // 「内容確認」で作った PDF（プレビュー）と、「はい」で確かめた PDF。key は作ったときの直した内容（変わったら確認し直し）
+  const [preview, setPreview] = useState<{ url: string; blob: Blob; key: string } | null>(null);
+  const [confirmed, setConfirmed] = useState<{ blob: Blob; key: string } | null>(null);
   // 本人の情報を直したときに、下に敷く PDF（自動で入る所）を作り直すためのキー
   const [reloadKey, setReloadKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -220,6 +223,33 @@ export function RefFormCreator({
     return res.blob();
   }
 
+  // 直した内容が同じか（確認したあとに直したら、もう一度確認してもらう）
+  const editsKey = JSON.stringify({ texts, moves, off });
+  const isConfirmed = !!confirmed && confirmed.key === editsKey;
+  // 確認した PDF があればそれを使い、無ければ作る
+  const getPdf = async (): Promise<Blob> => (confirmed && confirmed.key === editsKey ? confirmed.blob : makePdf());
+
+  // 「内容確認」: いまの内容で PDF を作って、画面の上で見せる
+  async function onCheck() {
+    setBusy("check");
+    setError(null);
+    setNotice(null);
+    try {
+      const blob = await makePdf();
+      if (preview) URL.revokeObjectURL(preview.url);
+      setPreview({ url: URL.createObjectURL(blob), blob, key: editsKey });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "PDFを作れませんでした");
+    } finally {
+      setBusy(null);
+    }
+  }
+  const closePreview = (ok: boolean) => {
+    if (preview && ok) setConfirmed({ blob: preview.blob, key: preview.key });
+    if (preview) URL.revokeObjectURL(preview.url);
+    setPreview(null);
+  };
+
   async function onPrint() {
     setBusy("print");
     setError(null);
@@ -227,7 +257,7 @@ export function RefFormCreator({
     // ポップアップを止められないよう、押したときにタブを開いてから中身を入れる
     const win = window.open("", "_blank");
     try {
-      const url = URL.createObjectURL(await makePdf());
+      const url = URL.createObjectURL(await getPdf());
       if (win) win.location.href = url;
       else window.open(url, "_blank");
       setNotice("新しいタブでPDFを開きました。そのタブで印刷してください。");
@@ -244,7 +274,7 @@ export function RefFormCreator({
     setError(null);
     setNotice(null);
     try {
-      downloadBlob(await makePdf(), `${refFormName(formKey)}.pdf`);
+      downloadBlob(await getPdf(), `${refFormName(formKey)}.pdf`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "PDFを作れませんでした");
     } finally {
@@ -268,7 +298,7 @@ export function RefFormCreator({
         .not("storage_path", "is", null)
         .limit(1);
       if ((prev ?? []).length > 0 && !window.confirm("この行にはもう添付があります。いま作った PDF に差し替えますか？")) return;
-      const blob = await makePdf();
+      const blob = await getPdf();
       const file = new File([blob], `${refFormName(formKey)}.pdf`, { type: "application/pdf" });
       await uploadOnboardingDoc(workerId, { key: docKey, label: attachLabel || refFormName(formKey), num: 0 }, file);
       // 直した内容（入れた文字・動かした位置・外した○✓）も一時保存しておく。
@@ -408,7 +438,7 @@ export function RefFormCreator({
       <p className="rounded-xl border-2 border-dashed border-brand/50 bg-brand/5 px-3 py-2 text-xs leading-relaxed">
         <span className="font-black text-brand">🧪 試験中</span>
         ：自動で入る所（氏名・年齢・日付・所属機関など）は様式にそのまま出ています。赤い点線の所に文字を入れます。文字は左の赤いつまみ（⠿）、○はそのものをドラッグすると動きます（入力中は Alt＋矢印キーでも動きます）。
-        直したら「この内容で作って、申請準備に添付する」（申請準備のこの様式の行に添付します）。紙で欲しいときは「印刷」「PDFで保存」、あとでまとめて PDF にするなら「一時保存」を押してください。
+        直したら「内容確認」でできあがりの PDF を見て、「はい」を押してから「この内容で作って、申請準備に添付する」（申請準備のこの様式の行に添付します）・「印刷」・「PDFで保存」を選びます。あとでまとめて PDF にするなら「一時保存」を押してください。
       </p>
       )}
       {error && <p className="rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">{error}</p>}
@@ -606,38 +636,63 @@ export function RefFormCreator({
 
           <section className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-3">
             <h2 className="text-sm font-bold">保存・印刷</h2>
-            {/* いちばんよく使う: 確認した内容で作って、申請準備のその行に添付する */}
-            {attachRowKey && (
-              <button
-                type="button"
-                onClick={() => void onAttach()}
-                disabled={busy !== null || !pages}
-                className="inline-flex min-h-[52px] items-center justify-center gap-1.5 rounded-lg bg-brand px-3 text-sm font-black text-brand-foreground disabled:opacity-50"
-              >
-                {busy === "attach" ? <Loader2 size={16} className="animate-spin" /> : <Paperclip size={16} />}
-                この内容で作って、申請準備に添付する
-              </button>
+            {/* まず「内容確認」で PDF を見て、「はい」と答えたら添付・印刷・PDFで保存ができる */}
+            {!isConfirmed ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => void onCheck()}
+                  disabled={busy !== null || !pages}
+                  className="inline-flex min-h-[52px] items-center justify-center gap-1.5 rounded-lg bg-brand px-3 text-sm font-black text-brand-foreground disabled:opacity-50"
+                >
+                  {busy === "check" ? <Loader2 size={16} className="animate-spin" /> : <Eye size={16} />}
+                  内容確認
+                </button>
+                <p className="text-[11px] leading-relaxed text-muted">
+                  {confirmed
+                    ? "確認したあとに内容を直したので、もう一度「内容確認」を押してください。"
+                    : "できあがりの PDF を見て「はい」を押すと、申請準備への添付・印刷・PDFで保存ができます。"}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="rounded-lg bg-status-approved-bg px-2 py-1.5 text-xs font-bold text-status-approved-fg">✓ 内容を確認しました。この内容で、添付・印刷・PDFで保存ができます。</p>
+                {attachRowKey && (
+                  <button
+                    type="button"
+                    onClick={() => void onAttach()}
+                    disabled={busy !== null || !pages}
+                    className="inline-flex min-h-[52px] items-center justify-center gap-1.5 rounded-lg bg-brand px-3 text-sm font-black text-brand-foreground disabled:opacity-50"
+                  >
+                    {busy === "attach" ? <Loader2 size={16} className="animate-spin" /> : <Paperclip size={16} />}
+                    この内容で作って、申請準備に添付する
+                  </button>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void onPrint()}
+                    disabled={busy !== null || !pages}
+                    className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-1 rounded-lg border border-brand bg-surface px-3 text-sm font-bold text-brand disabled:opacity-50"
+                  >
+                    {busy === "print" ? <Loader2 size={15} className="animate-spin" /> : <Printer size={15} />}
+                    印刷
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void onPdf()}
+                    disabled={busy !== null || !pages}
+                    className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-1 rounded-lg border border-brand bg-surface px-3 text-sm font-bold text-brand disabled:opacity-50"
+                  >
+                    {busy === "pdf" ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+                    PDFで保存
+                  </button>
+                </div>
+                <button type="button" onClick={() => void onCheck()} disabled={busy !== null} className="self-start text-xs font-bold text-brand underline">
+                  もう一度内容確認する
+                </button>
+              </>
             )}
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => void onPrint()}
-                disabled={busy !== null || !pages}
-                className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-1 rounded-lg border border-brand bg-surface px-3 text-sm font-bold text-brand disabled:opacity-50"
-              >
-                {busy === "print" ? <Loader2 size={15} className="animate-spin" /> : <Printer size={15} />}
-                印刷
-              </button>
-              <button
-                type="button"
-                onClick={() => void onPdf()}
-                disabled={busy !== null || !pages}
-                className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-1 rounded-lg border border-brand bg-surface px-3 text-sm font-bold text-brand disabled:opacity-50"
-              >
-                {busy === "pdf" ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-                PDFで保存
-              </button>
-            </div>
             <button
               type="button"
               onClick={onSave}
@@ -667,6 +722,34 @@ export function RefFormCreator({
           {embedded ? sidePanel : <WorkerCardCheckPanel workerId={workerId} onSaved={() => setReloadKey((k) => k + 1)} />}
         </aside>
       </div>
+      {/* 内容確認: できあがりの PDF を見せて「これでいいですか？」 */}
+      {preview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3" role="dialog" aria-modal="true">
+          <div className="flex h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-surface shadow-2xl">
+            <div className="flex items-center gap-2 border-b border-border bg-brand px-4 py-2 text-brand-foreground">
+              <p className="flex-1 text-sm font-bold">内容確認：{refFormName(formKey)}</p>
+            </div>
+            <iframe src={preview.url} title="できあがりの PDF" className="min-h-0 flex-1 bg-neutral-200" />
+            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border p-3">
+              <p className="mr-auto text-base font-black">これでいいですか？</p>
+              <button
+                type="button"
+                onClick={() => closePreview(false)}
+                className="min-h-[44px] rounded-lg border border-border bg-surface px-4 text-sm font-bold"
+              >
+                いいえ、直す
+              </button>
+              <button
+                type="button"
+                onClick={() => closePreview(true)}
+                className="min-h-[44px] rounded-lg bg-brand px-5 text-sm font-black text-brand-foreground"
+              >
+                はい
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {confirming && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
