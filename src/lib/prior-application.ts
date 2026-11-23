@@ -109,6 +109,36 @@ export function latestApplicationWithinYear(
     : null;
 }
 
+// 転用できる申請の候補（1年以内の申請一覧の申請を新しい順＋手入力の前回の申請。同じ申請番号は1つ）。
+// 提出書類一覧表の「過去に提出した申請情報」で、どの申請の申請日・申請番号を書くかを選ぶのに使う
+export function priorApplicationCandidates(
+  apps: PriorApplicationSource[],
+  manual: ManualPriorApplication,
+  today: string,
+): PriorApplication[] {
+  const from = oneYearBefore(today);
+  const out: PriorApplication[] = apps
+    .filter(
+      (a) =>
+        a.applicationDate &&
+        a.applicationDate >= from &&
+        a.applicationDate <= today &&
+        a.applicationNumber.trim() !== "" &&
+        !a.withdrawnOn,
+    )
+    .sort((a, b) => b.applicationDate.localeCompare(a.applicationDate))
+    .map((a) => ({
+      applicationOn: a.applicationDate,
+      applicationNo: a.applicationNumber.trim(),
+      source: "auto" as const,
+      content: applicationContentLabel(a),
+      organizationId: a.organizationId ?? null,
+    }));
+  const m = manualPrior(manual);
+  if (m && !out.some((o) => o.applicationNo === m.applicationNo && o.applicationOn === m.applicationOn)) out.push(m);
+  return out;
+}
+
 // 表示する前回の申請。申請一覧から拾えればそれを優先し、無ければ手入力の値
 export function priorApplication(
   apps: PriorApplicationSource[],

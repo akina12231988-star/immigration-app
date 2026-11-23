@@ -297,9 +297,11 @@ export function normalizeSubmissionPast(v: unknown): Record<string, SubmissionPa
   const out: Record<string, SubmissionPast> = {};
   for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
     const o = (x ?? {}) as Record<string, unknown>;
+    if (!x || typeof x !== "object") continue;
     const on = typeof o.on === "string" ? o.on.trim() : "";
     const no = typeof o.no === "string" ? o.no.trim() : "";
-    if (on || no) out[k] = { on, no };
+    // 日付・番号がまだ空でも「転用する」として残す
+    out[k] = { on, no };
   }
   return out;
 }

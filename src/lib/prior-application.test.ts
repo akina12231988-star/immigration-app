@@ -134,3 +134,20 @@ describe("manualDocYearNote", () => {
     expect(manualDocYearNote(undefined, 7, 7)).toBe("");
   });
 });
+
+describe("転用できる申請の候補", () => {
+  it("1年以内の申請を新しい順に並べ、手入力の前回の申請を足す（同じものは1つ）", async () => {
+    const { priorApplicationCandidates } = await import("./prior-application");
+    const apps = [
+      { applicationDate: "2026-05-01", applicationNumber: "A-1" },
+      { applicationDate: "2026-10-09", applicationNumber: "B-2", applicationContent: "在留資格の変更許可" },
+      { applicationDate: "2025-01-01", applicationNumber: "OLD" }, // 1年より前
+      { applicationDate: "2026-06-01", applicationNumber: "W", withdrawnOn: "2026-06-02" }, // 取下げ
+      { applicationDate: "2026-07-01", applicationNumber: " " }, // 番号なし
+    ];
+    const list = priorApplicationCandidates(apps, { on: "2026-03-03", no: "M-9" }, "2026-11-23");
+    expect(list.map((c) => c.applicationNo)).toEqual(["B-2", "A-1", "M-9"]);
+    expect(list[2].source).toBe("manual");
+    expect(priorApplicationCandidates(apps, { on: "2026-05-01", no: "A-1" }, "2026-11-23")).toHaveLength(2);
+  });
+});
