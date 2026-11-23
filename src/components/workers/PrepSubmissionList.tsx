@@ -39,6 +39,7 @@ export function PrepSubmissionList({
   onMark,
   onError,
   renderAction,
+  renderReason,
   workerId,
   nationality = "",
   orgId = null,
@@ -53,6 +54,8 @@ export function PrepSubmissionList({
   onError: (message: string) => void;
   // 「有」の行の下に出す、書類を揃えるための欄（添付・作る場所へのリンク）
   renderAction?: (row: SubmissionRow) => ReactNode;
+  // どの行にも出す「理由書を添付する」（「無」の行でも、出せない理由を書いて添える）
+  renderReason?: (row: SubmissionRow) => ReactNode;
   // 参考様式の作成（ひな形に書き込んだPDF）に使う。渡したときだけ参考様式の欄を出す
   workerId?: string;
   nationality?: string;
@@ -477,6 +480,7 @@ export function PrepSubmissionList({
                             </div>
                           )}
                           {r.mark === "有" && renderAction && <div className="mt-1.5">{renderAction(r)}</div>}
+                          {renderReason?.(r)}
                         </td>
                         <td className="border-t border-border px-2 py-1.5 text-center text-[10px] text-muted">{r.formNo}</td>
                         <td className="border-t border-border px-2 py-1.5 text-center">{r.required}</td>

@@ -353,19 +353,26 @@ export function submissionAttachKey(key: string): string {
 
 // まとめる PDF に入れる順番（「有」の書類だけ、一覧表の順）。
 // 「必要な書類」の書類は その id、この行に添付したファイルは sl:キー。同じ書類は最初の1回だけ
-export function submissionBundleOrder(rows: SubmissionRow[]): { id: string; label: string; rowLabel: string }[] {
+// reasonRowKeys は理由書を作った行（「無」の行でも、その行の位置に reason:キー で入れる）
+export function submissionBundleOrder(
+  rows: SubmissionRow[],
+  reasonRowKeys: ReadonlySet<string> = new Set(),
+): { id: string; label: string; rowLabel: string }[] {
   const out: { id: string; label: string; rowLabel: string }[] = [];
   const seen = new Set<string>();
   for (const r of rows) {
-    if (r.mark !== "有") continue;
     const rowLabel = `${SUBMISSION_TABLE_SHORT[r.table]}${r.no}${r.sub ?? ""}`;
     const push = (id: string) => {
       if (seen.has(id)) return;
       seen.add(id);
       out.push({ id, label: r.label, rowLabel });
     };
-    for (const d of submissionLink(r.key)?.docs ?? []) push(d);
-    if (canAttachToSubmissionRow(r.key)) push(`sl:${r.key}`);
+    if (r.mark === "有") {
+      for (const d of submissionLink(r.key)?.docs ?? []) push(d);
+      if (canAttachToSubmissionRow(r.key)) push(`sl:${r.key}`);
+    }
+    // 理由書は、その行の書類のすぐ後
+    if (reasonRowKeys.has(r.key)) push(`reason:${r.key}`);
   }
   return out;
 }
