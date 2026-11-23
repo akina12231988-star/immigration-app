@@ -23,7 +23,8 @@ import { downloadBlob } from "@/lib/onboarding-pdf";
 import { useRefFormTemplates } from "./RefFormPanel";
 
 const MIGRATION = "0230_ref_form_drafts.sql";
-const MAX_PAGES = 20;
+// 読み込むページの上限（1-17号の支援計画書のように20ページを超える様式があるので多めに）
+const MAX_PAGES = 100;
 
 interface PageView {
   width: number; // pt
@@ -158,8 +159,13 @@ export function RefFormCreator({
           canvas.height = vp.height;
           const ctx = canvas.getContext("2d");
           if (!ctx) continue;
+          // ページが多いと重くなるので、白地に描いて JPEG にする（PNG より小さい）
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
           await page.render({ canvasContext: ctx, viewport: vp, canvas }).promise;
-          out.push({ width: base.width, height: base.height, dataUrl: canvas.toDataURL("image/png") });
+          out.push({ width: base.width, height: base.height, dataUrl: canvas.toDataURL("image/jpeg", 0.9) });
+          // 読み込んだところまで先に出す（ページが多い様式でも、最初のページから置き始められる）
+          if (i % 5 === 0 && !cancelled) setPages([...out]);
         }
         if (!cancelled) setPages(out);
       } catch (err) {

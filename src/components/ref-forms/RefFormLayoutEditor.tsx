@@ -64,7 +64,8 @@ const isCircle = isRefFormCircle;
 const isShape = (k: RefFormFieldKind) => isRefFormCircle(k) || isRefFormMark(k);
 // 右端のつまみをドラッグして幅（最大の幅・訂正線の長さ）を変えられる項目
 const isWidthResizable = (k: RefFormFieldKind) => k === "strike" || (!isShape(k) && k !== "check" && k !== "my_number");
-const MAX_PAGES = 20;
+// 読み込むページの上限（1-17号の支援計画書のように20ページを超える様式があるので多めに）
+const MAX_PAGES = 100;
 // 置く項目の一覧で、まとまりの始めに出す説明
 // 置く項目を、まとまり（本人・所属機関・日付…）ごとに開いたり閉じたりできる一覧にする
 const FIELD_GROUPS = REF_FORM_FIELDS.filter((f) => !f.hidden).reduce<{ name: string; fields: typeof REF_FORM_FIELDS }[]>(
@@ -140,8 +141,13 @@ export function RefFormLayoutEditor({
           canvas.height = vp.height;
           const ctx = canvas.getContext("2d");
           if (!ctx) continue;
+          // ページが多いと重くなるので、白地に描いて JPEG にする（PNG より小さい）
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
           await page.render({ canvasContext: ctx, viewport: vp, canvas }).promise;
-          out.push({ width: base.width, height: base.height, dataUrl: canvas.toDataURL("image/png") });
+          out.push({ width: base.width, height: base.height, dataUrl: canvas.toDataURL("image/jpeg", 0.9) });
+          // 読み込んだところまで先に出す（ページが多い様式でも、最初のページから置き始められる）
+          if (i % 5 === 0 && !cancelled) setPages([...out]);
         }
         if (!cancelled) setPages(out);
       } catch (err) {
