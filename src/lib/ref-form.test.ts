@@ -37,8 +37,12 @@ import {
 describe("参考様式の行", () => {
   it("提出書類一覧表のうち参考様式の書類だけ", () => {
     const keys = REF_FORM_ITEMS.map((i) => i.key);
-    expect(keys).toEqual(expect.arrayContaining(["t1-4-1", "t1-5", "t1-6-1", "t1-6-2", "t1-7-1", "t1-8-1", "t1-17", "t1-18", "t1-19", "t3a-2", "t3a-4"]));
+    expect(keys).toEqual(expect.arrayContaining(["t1-4-1", "t1-5", "t1-6-1", "t1-6-2", "t1-7-1", "t1-8-2", "t1-17", "t1-18", "t1-19", "t3a-2", "t3a-4"]));
     expect(keys).not.toContain("t1-9"); // 市区町村が発行する書類
+    // 外国人から集める書類（必要な書類で揃える）は参考様式でもひな形を使わない
+    expect(keys).not.toContain("t3a-1-1"); // 評価調書・専門級の合格証
+    expect(keys).not.toContain("t1-8-1"); // 健康診断個人票
+    expect(keys).not.toContain("s2-9-1");
     expect(refFormName("t1-4-1")).toBe("参考様式第1-4号");
     expect(refFormName("t3a-1-1")).toBe("参考様式第1-2号");
   });
