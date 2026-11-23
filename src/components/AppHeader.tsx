@@ -4,10 +4,12 @@ import { NotificationBell } from "@/components/NotificationBell";
 
 export function AppHeader({
   title,
+  titleExtra,
   backHref,
   right,
 }: {
   title: string;
+  titleExtra?: React.ReactNode; // 見出しの文字のすぐ後ろに出すもの（申請準備の申請種別など）
   backHref?: string;
   right?: React.ReactNode; // 見出しの右側に出すリンク・ボタン（申請準備の Messenger・Notion など）
 }) {
@@ -26,7 +28,10 @@ export function AppHeader({
             <p className="text-[11px] font-medium opacity-80 md:hidden">
               入管申請管理システム
             </p>
-            <h1 className="text-lg font-bold">{title}</h1>
+            <h1 className="text-lg font-bold">
+              {title}
+              {titleExtra}
+            </h1>
           </div>
         </div>
         <div className="flex items-center gap-2">

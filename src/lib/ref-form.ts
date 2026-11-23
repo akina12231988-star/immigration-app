@@ -14,10 +14,13 @@ import { P117_FIELDS, type P117Key } from "@/lib/ref-form-117";
 // 座標はPDFのページの左上を原点にした pt。y は文字の上端（自治体の申請書の記入位置 lib/municipal-form.ts と同じ）。
 
 // 参考様式の行か（様式番号が「参考様式第…」「分野参考様式第…」）
-// 外国人から集める書類（申請準備の「必要な書類」で揃える。評価調書・健康診断個人票など）は、
-// 参考様式でもアプリで作らないので、ひな形の欄を出さない
+// 外国人から集める書類（申請準備の「必要な書類」で揃える。評価調書など）は、
+// 参考様式でもアプリで作らないので、ひな形の欄を出さない。
+// ただし健康診断個人票（1-3号）は病院で書いてもらう本人の言語の様式をこちらで用意するので、ひな形を使う
+const REF_FORM_ALSO_COLLECTED = new Set(["t1-8-1"]);
 export function isRefFormItem(item: Pick<SubmissionItem, "formNo" | "key">): boolean {
-  return /参考様式/.test(item.formNo) && (submissionLink(item.key)?.docs ?? []).length === 0;
+  if (!/参考様式/.test(item.formNo)) return false;
+  return REF_FORM_ALSO_COLLECTED.has(canonicalSubmissionKey(item.key)) || (submissionLink(item.key)?.docs ?? []).length === 0;
 }
 export const REF_FORM_ITEMS: SubmissionItem[] = SUBMISSION_ITEMS.filter(isRefFormItem);
 
@@ -39,9 +42,42 @@ export const EXTRA_REF_FORMS: Record<string, string> = {
 export const SIGN_ONLY_REF_FORM_KEYS = ["guidance", "orientation"] as const;
 export const NOZEI3_REF_FORM_KEY = "nozei3";
 
-// ひな形を登録できる様式のキーか
+// ひな形を登録できる様式のキーか（所属機関の「参考様式の準備」で追加した様式も含む）
 export function isRefFormKey(key: string): boolean {
-  return key in EXTRA_REF_FORMS || REF_FORM_ITEMS.some((i) => i.key === key);
+  return key in EXTRA_REF_FORMS || REF_FORM_ITEMS.some((i) => i.key === key) || isCustomRefFormKey(key);
+}
+
+// ---- 追加した参考様式 ----
+// 提出書類一覧表にまだ無い参考様式を、所属機関の「参考様式の準備」で追加してひな形を先に用意できる。
+// あとで一覧表にその様式の行ができたら、その行に紐づける（ひな形を行のキーへ移す）。
+// 一覧は app_settings の custom_ref_forms（{ forms: [...] }）に持つ
+export const CUSTOM_REF_FORMS_SETTING = "custom_ref_forms";
+export interface CustomRefForm {
+  key: string; // custom-xxxxxxxx
+  name: string; // 様式の名前（例: 参考様式第1-10号）
+  label: string; // 書類の名前（例: 技能移転に係る申告書）
+  orgSpecific: boolean; // 所属機関ごとに用意する様式か
+  created_at: string;
+}
+export function isCustomRefFormKey(key: string): boolean {
+  return /^custom-[a-z0-9]{8,32}$/.test(key);
+}
+export function normalizeCustomRefForms(v: unknown): CustomRefForm[] {
+  const forms = v && typeof v === "object" ? (v as { forms?: unknown }).forms : null;
+  if (!Array.isArray(forms)) return [];
+  const out: CustomRefForm[] = [];
+  for (const f of forms) {
+    const o = (f ?? {}) as Record<string, unknown>;
+    if (typeof o.key !== "string" || !isCustomRefFormKey(o.key) || out.some((x) => x.key === o.key)) continue;
+    out.push({
+      key: o.key,
+      name: typeof o.name === "string" && o.name.trim() ? o.name.trim() : "追加した参考様式",
+      label: typeof o.label === "string" ? o.label.trim() : "",
+      orgSpecific: o.orgSpecific === true,
+      created_at: typeof o.created_at === "string" ? o.created_at : "",
+    });
+  }
+  return out;
 }
 
 // ---- 言語 ----
@@ -137,8 +173,9 @@ export function refFormPrepCell<T extends Pick<RefFormTemplate, "form_key" | "la
   key: string,
   language: string,
   orgId: string,
+  orgSpecificOverride?: boolean, // 追加した様式は、追加したときに選んだ区分を使う
 ): { orgSpecific: boolean; status: "ok" | "nolayout" | "missing"; template: T | null; used: T | null } {
-  const orgSpecific = isOrgSpecificRefForm(key);
+  const orgSpecific = orgSpecificOverride ?? isOrgSpecificRefForm(key);
   const template =
     templates.find(
       (t) => t.form_key === key && t.language === language && (orgSpecific ? t.organization_id === orgId : !t.organization_id),

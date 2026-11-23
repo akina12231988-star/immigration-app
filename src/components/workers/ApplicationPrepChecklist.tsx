@@ -42,6 +42,7 @@ interface BundleFile {
 }
 import { PostApplyList } from "@/components/workers/PostApplyList";
 import { PrepPdfCheck } from "@/components/workers/PrepPdfCheck";
+import { publishPrepAppContent } from "@/components/workers/PrepAppContentBadge";
 import { isIssueOnlyDocDone } from "@/lib/post-apply";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { Ssw2Instructees } from "@/components/workers/Ssw2Instructees";
@@ -538,6 +539,18 @@ export function ApplicationPrepChecklist({
         null)
       : null;
   const meta: PrepChecklistMeta = current ?? EMPTY_PREP_META;
+  // 見出しの名前の横に出す申請種別（表示中のTODOの分。TODOがまだ無いときは出さない）
+  const headerAppContent = current
+    ? meta.app_content
+      ? prepSituationLabel(meta.app_content)
+      : meta.app_type
+        ? PREP_APP_TYPE_LABELS[meta.app_type]
+        : ""
+    : null;
+  useEffect(() => {
+    publishPrepAppContent(workerId, headerAppContent);
+  }, [workerId, headerAppContent]);
+  useEffect(() => () => publishPrepAppContent(workerId, null), [workerId]);
 
 
   // 表示中のTODO番号に対応する申請準備のTODO（番号の書き方の揺れは正規化して突き合わせる）

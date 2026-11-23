@@ -109,6 +109,11 @@ export function RefFormRowBar({
   const list = templates.filter((t) => t.form_key === formKey && (!t.organization_id || t.organization_id === orgId));
   const picked = pickRefFormTemplate(templates, formKey, nationality, orgId);
   const lang = languageForNationality(nationality);
+  // 登録してある言語の版（全員共通・この所属機関の版ごと）。ひと目で分かるように並べる
+  const commonLangs = [...new Set(list.filter((t) => !t.organization_id).map((t) => t.language))];
+  const orgLangs = [...new Set(list.filter((t) => t.organization_id).map((t) => t.language))];
+  // 本人の国籍の言語の版が無い（日本語の版で代わりに作っているときも含む）
+  const langMissing = !!lang && lang !== "日本語" && !list.some((t) => t.language === lang);
   // 記入位置に置いた○。チェックを外したものは、この様式を作るときに書かない
   const circles = picked ? refFormCircles(normalizeRefFormLayout(picked.layout)) : [];
   const offKey = (id: string) => `${picked?.id}:${id}`;
@@ -162,6 +167,46 @@ export function RefFormRowBar({
           ひな形・記入位置（{list.length}）
         </button>
       )}
+      {/* 登録してある言語の版。本人の国籍の言語が無ければ登録を促す */}
+      <div className="flex w-full flex-wrap items-center gap-1 border-t border-brand/20 pt-1">
+        <span className="text-muted">登録してある言語：</span>
+        {list.length === 0 && <span className="text-muted">なし</span>}
+        {[
+          ...commonLangs.map((l) => ({ l, org: false })),
+          ...orgLangs.map((l) => ({ l, org: true })),
+        ].map(({ l, org }) => (
+          <span
+            key={`${org ? "o" : "c"}:${l}`}
+            className={`rounded px-1.5 py-0.5 font-bold ${
+              l === lang
+                ? "bg-status-approved-bg text-status-approved-fg"
+                : org
+                  ? "bg-brand/15 text-brand"
+                  : "bg-background text-foreground"
+            }`}
+            title={org ? `${orgName || "この所属機関"}の版` : "全員共通の版"}
+          >
+            {l}
+            {org ? `（${orgName || "所属機関"}）` : ""}
+            {l === lang ? " ✓本人の言語" : ""}
+          </span>
+        ))}
+        {langMissing && (
+          <span className="flex flex-wrap items-center gap-1 font-bold text-seal">
+            本人の言語（{lang}）の版がありません
+            {canEdit && (
+              <button
+                type="button"
+                onClick={onManage}
+                className="inline-flex min-h-[26px] items-center gap-1 rounded-md bg-seal px-2 text-white"
+              >
+                <Upload size={11} />
+                {lang}の版を登録する
+              </button>
+            )}
+          </span>
+        )}
+      </div>
       {onFeeChange && (
         <div className="flex w-full flex-wrap items-center gap-1.5 border-t border-brand/20 pt-1">
           <span className="font-bold">紹介手数料</span>
@@ -226,11 +271,13 @@ export function RefFormTemplatesDialog({
   onClose,
   onChanged,
   defaultScope = "common",
+  formName,
 }: {
   formKey: string;
   formLabel: string;
   templates: RefFormTemplate[];
   defaultLanguage: string;
+  formName?: string; // 様式の名前（追加した様式など、refFormName で引けないとき）
   defaultScope?: "common" | "org"; // 登録先の最初の選択（所属機関の参考様式の準備から開いたときは所属機関別の様式を「この所属機関だけ」に）
   orgId: string | null; // 申請準備中の所属機関（この所属機関だけの版を登録できる）
   orgName: string;
@@ -242,6 +289,7 @@ export function RefFormTemplatesDialog({
   const [language, setLanguage] = useState(defaultLanguage || "日本語");
   // 登録先: 全員共通か、この所属機関だけか
   const [scope, setScope] = useState<"common" | "org">(defaultScope === "org" && orgId ? "org" : "common");
+  const name = formName || refFormName(formKey);
   const scopeOrg = scope === "org" && orgId ? orgId : null;
   const sameScope = (t: RefFormTemplate) => (t.organization_id ?? null) === scopeOrg;
   const [busy, setBusy] = useState(false);
@@ -283,7 +331,7 @@ export function RefFormTemplatesDialog({
   };
 
   const remove = async (t: RefFormTemplate) => {
-    if (!window.confirm(`${refFormName(formKey)}（${t.language}）のひな形と記入位置を削除します。よろしいですか？`)) return;
+    if (!window.confirm(`${name}（${t.language}）のひな形と記入位置を削除します。よろしいですか？`)) return;
     setBusy(true);
     setError(null);
     const res = await deleteRefFormTemplate(t.id);
@@ -300,6 +348,7 @@ export function RefFormTemplatesDialog({
         language={editing.language}
         initialLayout={editing.layout}
         initialSignPages={editing.sign_pages}
+        formName={name}
         onClose={() => setEditing(null)}
         onSaved={() => void onChanged()}
       />
@@ -311,7 +360,7 @@ export function RefFormTemplatesDialog({
       <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-surface p-4 text-xs shadow-xl">
         <div className="mb-2 flex items-start gap-2">
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-black">{refFormName(formKey)} のひな形・記入位置</p>
+            <p className="text-sm font-black">{name} のひな形・記入位置</p>
             <p className="text-[11px] text-muted">{formLabel}</p>
           </div>
           <button type="button" onClick={onClose} aria-label="閉じる" className="p-1">

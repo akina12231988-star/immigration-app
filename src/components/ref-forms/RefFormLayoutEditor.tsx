@@ -96,7 +96,9 @@ export function RefFormLayoutEditor({
   initialSignPages,
   onClose,
   onSaved,
+  formName,
 }: {
+  formName?: string; // 様式の名前（追加した様式など、refFormName で引けないとき）
   templateId: string;
   formKey: string;
   language: string;
@@ -289,7 +291,7 @@ export function RefFormLayoutEditor({
     <div className="fixed inset-0 z-50 flex flex-col bg-black/50" role="dialog" aria-modal="true">
       <div className="flex items-center gap-2 bg-brand px-4 py-2 text-brand-foreground">
         <p className="flex-1 text-sm font-bold">
-          {refFormName(formKey)}（{language}）の記入位置・署名ページ
+          {formName || refFormName(formKey)}（{language}）の記入位置・署名ページ
         </p>
         <button
           type="button"
