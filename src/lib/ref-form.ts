@@ -676,7 +676,11 @@ export function refFormValue(item: Pick<RefFormItem, "kind" | "text" | "fmt">, d
     return refFormDateText(data.planDates?.doc, item.kind === "pdoc_y" ? "y" : item.kind === "pdoc_m" ? "m" : "d");
   }
   if (item.kind === "docall_y" || item.kind === "docall_m" || item.kind === "docall_d") {
-    return refFormDateText(data.planDates?.docAll, item.kind === "docall_y" ? "y" : item.kind === "docall_m" ? "m" : "d");
+    // 書類作成日（全様式共通）。保存していなければ書類作成日（支援計画書）、それも無ければ作った日（今日）
+    return refFormDateText(
+      data.planDates?.docAll || data.planDates?.doc || data.today,
+      item.kind === "docall_y" ? "y" : item.kind === "docall_m" ? "m" : "d",
+    );
   }
   if (item.kind === "sc_period") {
     const from = refFormDateText(data.planDates?.scFrom);
@@ -685,7 +689,13 @@ export function refFormValue(item: Pick<RefFormItem, "kind" | "text" | "fmt">, d
   }
   if (isRefFormPlanDate(item.kind)) {
     const key = item.kind.slice("plan_".length);
-    const v = data.planDates?.[key] ?? (key === "doc" ? data.docDate : "");
+    // 書類作成日は、保存していなければ作った日（今日）。全様式共通は支援計画書の書類作成日 → 今日の順
+    const v =
+      key === "doc"
+        ? data.planDates?.doc || data.docDate || data.today
+        : key === "docAll"
+          ? data.planDates?.docAll || data.planDates?.doc || data.today
+          : (data.planDates?.[key] ?? "");
     return refFormDateText(v, item.fmt);
   }
   switch (item.kind) {

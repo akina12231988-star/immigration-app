@@ -558,3 +558,15 @@ describe("書類作成日（支援計画書）の年・月・日", () => {
     expect(refFormValue({ kind: "docall_d" }, data)).toBe("15");
   });
 });
+
+describe("書類作成日が保存されていないとき", () => {
+  it("全様式共通 → 支援計画書 → 作った日の順に使う", () => {
+    const base = { ...REF_FORM_SAMPLE_DATA, today: "2026-11-23", docDate: "" };
+    expect(refFormValue({ kind: "docall_d" }, { ...base, planDates: {} })).toBe("23");
+    expect(refFormValue({ kind: "docall_d" }, { ...base, planDates: { doc: "2026-11-14" } })).toBe("14");
+    expect(refFormValue({ kind: "docall_d" }, { ...base, planDates: { doc: "2026-11-14", docAll: "2026-11-15" } })).toBe("15");
+    expect(refFormValue({ kind: "plan_doc", fmt: "d" }, { ...base, planDates: {} })).toBe("23");
+    expect(refFormValue({ kind: "plan_docAll", fmt: "m" }, { ...base, planDates: {} })).toBe("11");
+    expect(refFormValue({ kind: "plan_es", fmt: "d" }, { ...base, planDates: {} })).toBe(""); // ほかの日付は空のまま
+  });
+});
