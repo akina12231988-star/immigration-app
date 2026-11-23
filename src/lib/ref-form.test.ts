@@ -36,6 +36,7 @@ import {
   refFormPrepCell,
   refFormPrepKeys,
   isCustomRefFormKey,
+  isJapaneseOnlyRefForm,
   normalizeCustomRefForms,
 } from "./ref-form";
 
@@ -266,6 +267,21 @@ describe("所属機関ごとに用意する参考様式", () => {
     // 全員共通
     expect(refFormPrepCell(ts, "t1-18", "日本語", "A").status).toBe("missing"); // 1-17号は所属機関別
     expect(refFormPrepCell(ts, "t1-18", "日本語", "A").used?.organization_id).toBeNull();
+  });
+});
+
+describe("日本語の版だけの様式", () => {
+  it("日本語の版だけなら、ほかの言語の版は要らない", () => {
+    const ts = [
+      { form_key: "t3a-2", language: "日本語", organization_id: "A" },
+      { form_key: "t1-7-1", language: "日本語", organization_id: null },
+      { form_key: "t1-7-1", language: "ベトナム語", organization_id: null },
+      { form_key: "t1-5", language: "クメール語", organization_id: "B" },
+    ];
+    expect(isJapaneseOnlyRefForm(ts, "t3a-2", "A")).toBe(true);
+    expect(isJapaneseOnlyRefForm(ts, "t1-7-1", "A")).toBe(false); // ベトナム語の版もある
+    expect(isJapaneseOnlyRefForm(ts, "t1-5", "A")).toBe(false); // 登録なし（ほかの所属機関の版は見ない）
+    expect(isJapaneseOnlyRefForm(ts, "t3a-2", "B")).toBe(false);
   });
 });
 

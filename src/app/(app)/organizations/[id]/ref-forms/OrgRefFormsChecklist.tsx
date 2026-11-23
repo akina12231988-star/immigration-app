@@ -8,6 +8,7 @@ import {
   CUSTOM_REF_FORMS_SETTING,
   normalizeCustomRefForms,
   type CustomRefForm,
+  isJapaneseOnlyRefForm,
   languageForNationality,
   refFormName,
   refFormPrepCell,
@@ -110,13 +111,18 @@ export function OrgRefFormsChecklist({
   const commonKeys = keys.filter((k) => !orgSpecificOf(k));
   // 所属機関がわでやること: 所属機関別の様式 × 国籍の言語（日本語は人がいる言語に無いときだけ）で、未登録・記入位置なし
   const todoLangs = languages.filter((l) => l !== "日本語" || byLang.has("日本語") || languages.length === 1);
+  // 日本語の版だけで登録している様式は日本語で出す様式なので、ほかの言語の版は要らない（日本語の版だけを見る）
+  const japaneseOnlyOf = (k: string) => isJapaneseOnlyRefForm(refForms.templates, k, orgId);
   const todos = orgKeys.flatMap((k) =>
-    todoLangs
+    (japaneseOnlyOf(k) ? ["日本語"] : todoLangs)
       .map((l) => ({ key: k, language: l, cell: cellOf(k, l) }))
       .filter((t) => t.cell.status !== "ok"),
   );
 
   const cellView = (key: string, language: string) => {
+    if (language !== "日本語" && japaneseOnlyOf(key)) {
+      return <span className="text-muted">日本語だけの様式（要りません）</span>;
+    }
     const c = cellOf(key, language);
     if (c.status === "ok") {
       const n = Array.isArray(c.template?.layout) ? c.template.layout.length : 0;
