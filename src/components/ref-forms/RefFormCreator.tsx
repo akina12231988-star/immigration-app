@@ -600,7 +600,7 @@ export function RefFormCreator({
               </p>
             )}
             <p className="text-[11px] leading-relaxed text-muted">
-              一時保存した内容は、申請準備の「参考様式を一気にダウンロード」「確認せずにPDFだけ作る」にも使われます。
+              一時保存した内容は、申請準備の「参考様式を一気にダウンロード」にも使われます。
             </p>
             <Link
               href={`/workers/${workerId}/application-prep/unified`}
