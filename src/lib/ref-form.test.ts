@@ -542,3 +542,13 @@ describe("1-6号別紙の0円の欄", () => {
     expect(v.gross).not.toBe("");
   });
 });
+
+describe("書類作成日（支援計画書）の年・月・日", () => {
+  it("別々に置ける", () => {
+    const data = { ...REF_FORM_SAMPLE_DATA, planDates: { doc: "2026-11-14", docAll: "2026-11-15" } };
+    expect(refFormValue({ kind: "pdoc_y" }, data)).toBe("2026");
+    expect(refFormValue({ kind: "pdoc_m" }, data)).toBe("11");
+    expect(refFormValue({ kind: "pdoc_d" }, data)).toBe("14");
+    expect(refFormValue({ kind: "docall_d" }, data)).toBe("15");
+  });
+});
