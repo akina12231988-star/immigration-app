@@ -3,7 +3,7 @@
 import { Fragment, useState, type ReactNode } from "react";
 import { CheckCircle2, ChevronDown, Eye, Loader2, Paperclip, Printer, Trash2 } from "lucide-react";
 import { FileDropArea } from "@/components/ui/FileDropArea";
-import { SIGN_ONLY_REF_FORM_KEYS, isRefFormItem, languageForNationality, missingBundledRefForms, pickRefFormTemplate, refFormName } from "@/lib/ref-form";
+import { REF_FORM_LANGUAGES, SIGN_ONLY_REF_FORM_KEYS, isRefFormItem, languageForNationality, missingBundledRefForms, pickRefFormTemplate, refFormName } from "@/lib/ref-form";
 import { registerBundledRefForms } from "@/app/(app)/ref-forms/actions";
 import { SUBMISSION_PDF_TEMPLATES, canFillSubmissionPdf, fillSubmissionPdf, submissionPdfTables } from "@/lib/submission-pdf";
 import { RefFormRowBar, RefFormTemplatesDialog, refFormHref, useRefFormTemplates } from "@/components/ref-forms/RefFormPanel";
@@ -87,14 +87,22 @@ export function PrepSubmissionList({
   const refRows = workerId ? rows.filter((r) => r.mark === "有" && isRefFormItem(r)) : [];
   // 参考様式のひな形は、1号と同じ書類なら1号のキーで引く（2号でも 1-5号・1-6号 などは同じひな形）
   const refKey = (r: SubmissionRow) => canonicalSubmissionKey(r.key);
-  const refReady = refRows.filter((r) => pickRefFormTemplate(refForms.templates, refKey(r), nationality, orgId));
-  const refSignReady = refReady.filter(
-    (r) => (pickRefFormTemplate(refForms.templates, refKey(r), nationality, orgId)?.sign_pages.length ?? 0) > 0,
-  );
+  // まとめてダウンロードの言語。空なら国籍の言語（その言語の版が無い様式は日本語の版）
+  const [bulkLang, setBulkLang] = useState("");
+  const natLang = languageForNationality(nationality);
+  const bulkPick = (key: string) => pickRefFormTemplate(refForms.templates, key, nationality, orgId, bulkLang || null);
+  const refReady = refRows.filter((r) => bulkPick(refKey(r)));
+  const refSignReady = refReady.filter((r) => (bulkPick(refKey(r))?.sign_pages.length ?? 0) > 0);
   // 入管には出さず、本人に署名してもらうだけの書類（事前ガイダンス・生活オリエンテーションの確認書）。特定技能1号だけ
   const signOnlyKeys: string[] = workerId && rows.some((r) => r.key.startsWith("t1-")) ? [...SIGN_ONLY_REF_FORM_KEYS] : [];
-  const signOnlyReady = signOnlyKeys.filter((k) => pickRefFormTemplate(refForms.templates, k, nationality, orgId));
+  const signOnlyReady = signOnlyKeys.filter((k) => bulkPick(k));
   const signKeys = [...refSignReady.map(refKey), ...signOnlyReady];
+  // まとめてダウンロードに入る様式ごとの言語の版（選んだ言語の版が無く日本語の版を使うものは知らせる）
+  const wantLang = bulkLang || natLang;
+  const bulkVersions = [...refRows.map(refKey), ...signOnlyKeys].map((k) => {
+    const t = bulkPick(k);
+    return { key: k, language: t?.language ?? null, fallback: !!t && !!wantLang && t.language !== wantLang };
+  });
   const undecided = rows.filter((r) => r.mark == null);
   const autoCount = rows.filter((r) => r.auto && r.mark != null).length;
   const yesCount = rows.filter((r) => r.mark === "有").length;
@@ -184,7 +192,7 @@ export function PrepSubmissionList({
             参考様式（「有」{refRows.length}件・ひな形あり {refReady.length}件）
           </span>
           <a
-            href={refReady.length > 0 ? refFormHref(workerId, refReady.map(refKey), "all", refOff, todoNo) : undefined}
+            href={refReady.length > 0 ? refFormHref(workerId, refReady.map(refKey), "all", refOff, todoNo, bulkLang) : undefined}
             target="_blank"
             rel="noopener noreferrer"
             aria-disabled={refReady.length === 0}
@@ -195,7 +203,7 @@ export function PrepSubmissionList({
             参考様式を一気にダウンロード（{refReady.length}件）
           </a>
           <a
-            href={signKeys.length > 0 ? refFormHref(workerId, signKeys, "sign", refOff, todoNo) : undefined}
+            href={signKeys.length > 0 ? refFormHref(workerId, signKeys, "sign", refOff, todoNo, bulkLang) : undefined}
             target="_blank"
             rel="noopener noreferrer"
             aria-disabled={signKeys.length === 0}
@@ -206,7 +214,33 @@ export function PrepSubmissionList({
           >
             ✍ 本人に署名してもらうページだけ（{signKeys.length}件）
           </a>
+          {/* 言語の版。最初は本人の国籍の言語。選び直すと、上の2つのダウンロードがその言語の版になる */}
+          <label className="flex items-center gap-1">
+            <span className="font-bold">言語</span>
+            <select
+              value={bulkLang}
+              onChange={(e) => setBulkLang(e.target.value)}
+              className="min-h-[34px] rounded-lg border border-border bg-surface px-2"
+            >
+              <option value="">国籍に合わせる（{natLang || `${nationality || "国籍未登録"}→日本語`}）</option>
+              {REF_FORM_LANGUAGES.filter((l) => l !== natLang).map((l) => (
+                <option key={l} value={l}>
+                  {l}
+                </option>
+              ))}
+            </select>
+          </label>
           {refForms.error && <span className="text-seal">{refForms.error}</span>}
+          {/* 様式ごとに、どの言語の版が入るか */}
+          <p className="w-full leading-relaxed text-muted">
+            入る版：
+            {bulkVersions.map((v, i) => (
+              <span key={v.key} className={v.language == null ? "text-seal" : v.fallback ? "text-status-notice-fg" : ""}>
+                {i > 0 && "・"}
+                {refFormName(v.key)}（{v.language == null ? "ひな形なし・入りません" : v.fallback ? `${wantLang}の版が無いので${v.language}` : v.language}）
+              </span>
+            ))}
+          </p>
           {refReady.length < refRows.length && (
             <span className="text-muted">ひな形が未登録の様式は入りません（行の「ひな形・記入位置」から登録）</span>
           )}

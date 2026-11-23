@@ -93,16 +93,19 @@ export interface RefFormTemplate {
 }
 
 // その人に使うひな形。
-// その所属機関の版（国籍の言語 → 日本語 → 最初のもの）→ 全員共通の版（国籍の言語 → 日本語 → 最初のもの）
+// その所属機関の版（国籍の言語 → 日本語）→ 全員共通の版（国籍の言語 → 日本語）。
+// 国籍と違う言語の版（カンボジアの人にインドネシア語の版など）は使わない。
+// language を渡したときは国籍ではなくその言語で選ぶ（まとめてダウンロードで言語を選び直したとき）
 export function pickRefFormTemplate<T extends Pick<RefFormTemplate, "form_key" | "language" | "organization_id">>(
   templates: T[],
   formKey: string,
   nationality: string,
   orgId?: string | null,
+  language?: string | null,
 ): T | null {
-  const lang = languageForNationality(nationality);
+  const lang = language || languageForNationality(nationality);
   const pick = (list: T[]) =>
-    (lang && list.find((t) => t.language === lang)) || list.find((t) => t.language === "日本語") || list[0] || null;
+    (lang && list.find((t) => t.language === lang)) || list.find((t) => t.language === "日本語") || null;
   const form = templates.filter((t) => t.form_key === formKey);
   const own = orgId ? form.filter((t) => t.organization_id === orgId) : [];
   return pick(own) ?? pick(form.filter((t) => !t.organization_id));

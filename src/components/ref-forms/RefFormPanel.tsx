@@ -60,8 +60,10 @@ export function refFormHref(
   mode: RefFormMode,
   off: string[] = [],
   todoNo = "",
+  language = "", // 空なら国籍の言語。選んだときはその言語の版（無ければ日本語の版）で作る
 ): string {
   let href = `/api/ref-form?workerId=${encodeURIComponent(workerId)}&keys=${encodeURIComponent(keys.join(","))}&mode=${mode}`;
+  if (language) href += `&lang=${encodeURIComponent(language)}`;
   if (off.length > 0) href += `&off=${encodeURIComponent(off.join(","))}`;
   if (todoNo) href += `&todoNo=${encodeURIComponent(todoNo)}`;
   return href;

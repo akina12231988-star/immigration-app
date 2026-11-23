@@ -49,13 +49,17 @@ describe("言語の版を選ぶ", () => {
     { id: "b", form_key: "t1-5", language: "ベトナム語" },
     { id: "c", form_key: "t1-6-1", language: "クメール語" },
   ];
-  it("国籍の言語 → 日本語 → 最初のもの", () => {
+  it("国籍の言語 → 日本語（ほかの国の言語の版は使わない）", () => {
     expect(languageForNationality("ベトナム")).toBe("ベトナム語");
     expect(languageForNationality("カンボジア")).toBe("クメール語");
     expect(pickRefFormTemplate(ts, "t1-5", "ベトナム")?.id).toBe("b");
     expect(pickRefFormTemplate(ts, "t1-5", "インドネシア")?.id).toBe("a");
-    expect(pickRefFormTemplate(ts, "t1-6-1", "ベトナム")?.id).toBe("c");
+    expect(pickRefFormTemplate(ts, "t1-6-1", "ベトナム")).toBeNull();
+    expect(pickRefFormTemplate(ts, "t1-6-1", "カンボジア")?.id).toBe("c");
     expect(pickRefFormTemplate(ts, "t1-17", "ベトナム")).toBeNull();
+    // 言語を選び直したとき
+    expect(pickRefFormTemplate(ts, "t1-5", "ベトナム", null, "日本語")?.id).toBe("a");
+    expect(pickRefFormTemplate(ts, "t1-6-1", "ベトナム", null, "クメール語")?.id).toBe("c");
   });
 });
 
