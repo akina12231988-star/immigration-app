@@ -236,6 +236,7 @@ import {
 import {
   REQUEST_OVERDUE_DAYS,
   assenDecided,
+  assenJobRecordProblem,
   daysSince,
   prepDocRequestee,
   requesteeCounts,
@@ -349,6 +350,8 @@ export function ApplicationPrepChecklist({
     assenMissing: boolean;
   } | null>(null);
   const applyResolveRef = useRef<((ok: boolean) => void) | null>(null);
+  // 「入管へ申請！！」にしようとしたが、あっせん有りなのに求職の記録が無い・採用が未登録のとき（申請にしないで案内する）
+  const [jobRecordAlert, setJobRecordAlert] = useState<null | "none" | "notHired">(null);
   // 農業の所属機関か（農業特定技能加入通知書の章を出すか）と、添付後に所属機関の情報を読み直すためのキー
   const [prepOrgAgri, setPrepOrgAgri] = useState(false);
   const [orgInfoKey, setOrgInfoKey] = useState(0);
@@ -1778,10 +1781,27 @@ export function ApplicationPrepChecklist({
   const assenOk = assenDecided(assenTodo?.assen, assenTodo?.assen_note);
 
   // ステータスを変える前の確認。「入管へ申請！！」にするときだけ、足りない書類とあっせんを確かめる
-  const confirmBeforeStatus = (next: string): Promise<boolean> => {
-    if (!isImmigrationAppliedStatus(next) || current == null) return Promise.resolve(true);
+  const confirmBeforeStatus = async (next: string): Promise<boolean> => {
+    if (!isImmigrationAppliedStatus(next) || current == null) return true;
+    // あっせん有りなら、準備している所属機関での求職の記録（採用）があるかを先に確かめる。無ければ申請にしない
+    if (assenTodo?.assen === "あり") {
+      const { data, error: jErr } = await createClient()
+        .from("job_applications")
+        .select("organization_id, result")
+        .eq("worker_id", workerId);
+      if (!jErr) {
+        const problem = assenJobRecordProblem(
+          (data as { organization_id: string | null; result: string | null }[] | null) ?? [],
+          prepOrgId ?? null,
+        );
+        if (problem) {
+          setJobRecordAlert(problem);
+          return false;
+        }
+      }
+    }
     const missingDocs = meta.app_type ? missingItems : [];
-    if (missingDocs.length === 0 && assenOk) return Promise.resolve(true);
+    if (missingDocs.length === 0 && assenOk) return true;
     return new Promise<boolean>((resolve) => {
       applyResolveRef.current = resolve;
       setApplyConfirm({
@@ -3221,6 +3241,43 @@ export function ApplicationPrepChecklist({
       )}
       </div>
       </div>
+
+      {/* あっせん有りなのに求職の記録が無い・採用が未登録で「入管へ申請！！」にしようとしたとき */}
+      {jobRecordAlert && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="alertdialog" aria-modal="true">
+          <div className="w-full max-w-md rounded-2xl bg-surface p-5 shadow-xl">
+            <p className="mb-2 text-base font-black text-seal">
+              {jobRecordAlert === "none" ? "求職記録がありません" : "求職記録の「採用」が登録されていません"}
+            </p>
+            <p className="mb-1 text-sm leading-relaxed">
+              あっせんが「有り」ですが、
+              {prepOrgName ? `${prepOrgName}への` : ""}
+              {jobRecordAlert === "none" ? "求職の記録（応募）がありません。" : "応募の結果が「採用」になっていません。"}
+            </p>
+            <p className="mb-4 text-sm font-bold leading-relaxed">
+              ちゃんと求職記録してから、入管へ提出（入管へ申請！！）に切り替えてください。
+            </p>
+            <p className="mb-4 text-[11px] text-muted">ステータスは変えていません。</p>
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setJobRecordAlert(null)}
+                className="min-h-[44px] rounded-lg border border-border bg-surface px-4 text-sm font-bold"
+              >
+                戻る
+              </button>
+              <Link
+                href="/jobs"
+                target="_blank"
+                onClick={() => setJobRecordAlert(null)}
+                className="inline-flex min-h-[44px] items-center rounded-lg bg-brand px-4 text-sm font-bold text-brand-foreground"
+              >
+                求職一覧で登録する →
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ステータスを「入管へ申請！！」にしたときの確認（足りない書類を申請後に郵送するリストへ） */}
       <PrepApplyConfirmDialog

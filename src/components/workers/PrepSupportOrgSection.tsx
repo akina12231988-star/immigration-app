@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { FileDropArea } from "@/components/ui/FileDropArea";
 import { useCurrentPath } from "@/hooks/useCurrentPath";
 import { supportPrintHref } from "@/lib/support-print-link";
 import { Briefcase, Printer, Upload } from "lucide-react";
@@ -684,7 +685,13 @@ export function PrepOrgFileSection({
   if (!files) return null;
   const latest = latestOrgFiles(files, kind);
   return (
-    <div className="flex flex-col gap-2 text-[11px] leading-relaxed">
+    // 画像・PDF をこの枠にドラッグ＆ドロップしても添付できる
+    <FileDropArea
+      disabled={!canEdit || busy}
+      onFiles={(list) => void upload(list)}
+      title={`${kind}の画像・PDFをここにドロップしても添付できます`}
+      className="flex flex-col gap-2 rounded-lg text-[11px] leading-relaxed"
+    >
       {error && <p className="rounded-lg bg-seal/10 px-2.5 py-1.5 text-xs text-seal">{error}</p>}
       {latest ? (
         <OrgAttachmentPreview
@@ -728,7 +735,8 @@ export function PrepOrgFileSection({
           />
         </>
       )}
-    </div>
+      {canEdit && <p className="text-[10px] text-muted">画像・PDFをこの枠にドラッグ＆ドロップしても添付できます</p>}
+    </FileDropArea>
   );
 }
 

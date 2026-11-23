@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { assenJobRecordProblem } from "@/lib/prep-detail";
 import { useEffect, useMemo, useState } from "react";
 import { CalendarDays, Check, Copy, Save } from "lucide-react";
 import { Card } from "@/components/ui/Card";
@@ -75,6 +77,9 @@ export function PlanDatesClient({
   // 申請の内容（TODOの内容）。「特定活動」を含む申請では、
   // 支援委託契約・事前ガイダンス・生活オリエンテーションの行を表示しない
   const [todoTitle, setTodoTitle] = useState("");
+  // あっせんの有無（申請準備のTODO）と、準備している所属機関（求職の記録の確かめに使う）
+  const [assen, setAssen] = useState("");
+  const [prepOrgId, setPrepOrgId] = useState<string | null>(null);
   const hideSupport = isTokuteiKatsudoContent(todoTitle);
 
   // 所属機関名と申請の内容を自動で反映する（外国人と紐づけて開いたとき）
@@ -94,6 +99,7 @@ export function PlanDatesClient({
         } | null;
         const orgId = w?.application_prep_organization_id ?? w?.current_organization_id;
         if (!orgId || cancelled) return;
+        setPrepOrgId(orgId);
         const { data: o } = await supabase
           .from("organizations")
           .select("name")
@@ -105,16 +111,19 @@ export function PlanDatesClient({
       });
     void supabase
       .from("todos")
-      .select("todo_no, title")
+      .select("todo_no, title, assen")
       .eq("worker_id", workerId)
       .eq("kind", "申請準備")
       .then(({ data }) => {
         if (cancelled) return;
-        const rows = (data as { todo_no: string; title: string }[] | null) ?? [];
+        const rows = (data as { todo_no: string; title: string; assen: string | null }[] | null) ?? [];
         const key = normalizeTodoKey(initialTodo);
         const hit =
           (key ? rows.find((r) => normalizeTodoKey(r.todo_no) === key) : undefined) ?? rows[0];
-        if (hit) setTodoTitle(hit.title ?? "");
+        if (hit) {
+          setTodoTitle(hit.title ?? "");
+          setAssen(hit.assen ?? "");
+        }
       });
     return () => {
       cancelled = true;
@@ -132,16 +141,19 @@ export function PlanDatesClient({
 
   // あっせん有りのとき: 求職管理簿から求人申込日・求職申込日・面接日・採用日を出す
   const [recruitMarks, setRecruitMarks] = useState<RecruitMark[]>([]);
+  // 求職の記録（応募）の所属機関と結果。null はまだ読んでいない
+  const [jobApps, setJobApps] = useState<{ organization_id: string | null; result: string | null }[] | null>(null);
   useEffect(() => {
     if (!workerId) return;
     void createClient()
       .from("job_applications")
-      .select("applied_on, interview_on, result_on, result, organizations(name), job_postings(received_on)")
+      .select("organization_id, applied_on, interview_on, result_on, result, organizations(name), job_postings(received_on)")
       .eq("worker_id", workerId)
       .order("applied_on", { ascending: false })
       .then(({ data }) => {
         const rows =
           (data as unknown as {
+            organization_id: string | null;
             applied_on: string;
             interview_on: string | null;
             result_on: string | null;
@@ -162,6 +174,7 @@ export function PlanDatesClient({
           }
         }
         setRecruitMarks(marks);
+        setJobApps(rows.map((r) => ({ organization_id: r.organization_id, result: r.result })));
       });
   }, [workerId]);
 
@@ -484,6 +497,22 @@ export function PlanDatesClient({
               );
             })}
           </div>
+          {/* あっせん有りなのに、準備している所属機関での求職の記録（採用）が無いとき */}
+          {assen === "あり" && jobApps && assenJobRecordProblem(jobApps, prepOrgId) && (
+            <div role="alert" className="mt-3 rounded-lg border border-seal/40 bg-seal/10 p-3 text-xs text-seal">
+              <p className="font-black">
+                {assenJobRecordProblem(jobApps, prepOrgId) === "none"
+                  ? `求職記録がありません（あっせん「有り」${org ? `・${org}への応募がありません` : ""}）`
+                  : `求職記録の「採用」が登録されていません${org ? `（${org}への応募）` : ""}`}
+              </p>
+              <p className="mt-0.5">
+                求人申込日・求職申込日・採用日がカレンダーに出ません。求職一覧で応募と採用を登録してから、日付を選んでください。
+              </p>
+              <Link href="/jobs" target="_blank" className="mt-1 inline-block font-bold underline">
+                求職一覧で登録する →
+              </Link>
+            </div>
+          )}
           {/* あっせん有り: 求人への採用の流れの日付 */}
           {recruitMarks.length > 0 && (
             <div className="mt-3 rounded-lg bg-background p-2 text-[11px] text-muted">
