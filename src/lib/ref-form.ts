@@ -2,7 +2,7 @@ import { PDFDocument, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import { birthSeireki, birthWareki } from "@/lib/person-copy";
 import { warekiDate } from "@/lib/dependents";
-import { SUBMISSION_ITEMS, type SubmissionItem } from "@/lib/submission-list";
+import { SUBMISSION_ITEMS, submissionLink, type SubmissionItem } from "@/lib/submission-list";
 import { PLAN_DATE_FIELDS, SUPPORT_CONTRACT_YEARS, contractPeriodEnd, type PlanDateKey } from "@/lib/support-plan-dates";
 import { calcWageDetail, fixedOtOverHours, formatYen, normalizeWageDetail } from "@/lib/wage-calc";
 import { P117_FIELDS, type P117Key } from "@/lib/ref-form-117";
@@ -14,8 +14,10 @@ import { P117_FIELDS, type P117Key } from "@/lib/ref-form-117";
 // 座標はPDFのページの左上を原点にした pt。y は文字の上端（自治体の申請書の記入位置 lib/municipal-form.ts と同じ）。
 
 // 参考様式の行か（様式番号が「参考様式第…」「分野参考様式第…」）
-export function isRefFormItem(item: Pick<SubmissionItem, "formNo">): boolean {
-  return /参考様式/.test(item.formNo);
+// 外国人から集める書類（申請準備の「必要な書類」で揃える。評価調書・健康診断個人票など）は、
+// 参考様式でもアプリで作らないので、ひな形の欄を出さない
+export function isRefFormItem(item: Pick<SubmissionItem, "formNo" | "key">): boolean {
+  return /参考様式/.test(item.formNo) && (submissionLink(item.key)?.docs ?? []).length === 0;
 }
 export const REF_FORM_ITEMS: SubmissionItem[] = SUBMISSION_ITEMS.filter(isRefFormItem);
 
