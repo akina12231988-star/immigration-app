@@ -603,6 +603,8 @@ export function RefFormLayoutEditor({
                         fontSize: (isShape(it.kind) ? it.size : fit ? fit.size : fittedSize(label, it.size, it.maxWidth)) * scale,
                         lineHeight: fit ? REF_FORM_LINE_HEIGHT : 1.15,
                         ...(fit ? { whiteSpace: "pre" as const } : {}),
+                        // 折り返す行数ぶんの高さの枠を出し、2行目以降がどこに来るかを見せる
+                        ...(fit ? { minHeight: (it.maxLines ?? 1) * fit.size * REF_FORM_LINE_HEIGHT * scale } : {}),
                         ...(isShape(it.kind) ? { width: it.size * scale, height: it.size * scale } : {}),
                         // 「最大の幅」は点線の幅で見せる（文字は上で小さくしているので切らない）
                         ...(it.maxWidth && !isShape(it.kind) && !strike ? { minWidth: it.maxWidth * scale, outlineStyle: "dashed" as const } : {}),
@@ -648,7 +650,15 @@ export function RefFormLayoutEditor({
                           ))}
                         </span>
                       ) : fit ? (
-                        fit.lines.join("\n")
+                        // 書く行はそのまま、空いている行は「（2行目）」を薄く出す（PDF には書かない）
+                        Array.from({ length: Math.max(fit.lines.length, it.maxLines ?? 1) }, (_, n) => (
+                          <span
+                            key={n}
+                            className={`block ${n > 0 ? "border-t border-dotted border-seal/40" : ""} ${n < fit.lines.length ? "" : "text-seal/35"}`}
+                          >
+                            {n < fit.lines.length ? fit.lines[n] : `（${n + 1}行目）`}
+                          </span>
+                        ))
                       ) : (
                         label
                       )}
