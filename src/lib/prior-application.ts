@@ -139,6 +139,36 @@ export function priorApplicationCandidates(
   return out;
 }
 
+// 1年を過ぎても申請番号で転用できる書類（分野参考様式第11-4号 登録支援機関誓約書）の候補。
+// その所属機関で出した申請を、いつの申請でも新しい順に（取下げ・申請番号なし・特定活動は除く）。手入力の前回の申請も同じ所属機関なら足す
+export function orgApplicationCandidates(
+  apps: PriorApplicationSource[],
+  organizationId: string | null,
+  manual: ManualPriorApplication,
+): PriorApplication[] {
+  if (!organizationId) return [];
+  const out: PriorApplication[] = apps
+    .filter(
+      (a) =>
+        a.organizationId === organizationId &&
+        a.applicationDate &&
+        a.applicationNumber.trim() !== "" &&
+        !a.withdrawnOn &&
+        !applicationContentLabel(a).includes("特定活動"),
+    )
+    .sort((a, b) => b.applicationDate.localeCompare(a.applicationDate))
+    .map((a) => ({
+      applicationOn: a.applicationDate,
+      applicationNo: a.applicationNumber.trim(),
+      source: "auto" as const,
+      content: applicationContentLabel(a),
+      organizationId,
+    }));
+  const m = manualPrior(manual);
+  if (m && m.organizationId === organizationId && !isNonTransferable(m) && !out.some((o) => o.applicationNo === m.applicationNo)) out.push(m);
+  return out;
+}
+
 // 表示する前回の申請。申請一覧から拾えればそれを優先し、無ければ手入力の値
 export function priorApplication(
   apps: PriorApplicationSource[],

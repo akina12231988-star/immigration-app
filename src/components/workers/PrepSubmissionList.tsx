@@ -20,6 +20,7 @@ import {
   submissionListTitle,
   SUBMISSION_TABLE_TITLES,
   submissionListPrintHtml,
+  canTransferRow,
   type SubmissionPast,
   type SubmissionRow,
   type SubmitMark,
@@ -44,6 +45,7 @@ export function PrepSubmissionList({
   past = {},
   onPast,
   pastCandidates = [],
+  orgPastCandidates = [],
   missingAttachKeys = [],
   workerId,
   nationality = "",
@@ -66,6 +68,8 @@ export function PrepSubmissionList({
   onPast?: (key: string, value: SubmissionPast | null) => void;
   // 転用できる申請の候補（1年以内の申請を新しい順＋手入力の前回の申請）
   pastCandidates?: (SubmissionPast & { label: string })[];
+  // 1年を過ぎても転用できる書類（11-4号）の候補（この所属機関の申請。いつの申請でも）
+  orgPastCandidates?: (SubmissionPast & { label: string })[];
   missingAttachKeys?: string[]; // 「有」なのに何も添付していない行（行のキー）
   // 参考様式の作成（ひな形に書き込んだPDF）に使う。渡したときだけ参考様式の欄を出す
   workerId?: string;
@@ -530,11 +534,12 @@ export function PrepSubmissionList({
                           {r.mark === "有" && renderAction && <div className="mt-1.5">{renderAction(r)}</div>}
                           {/* 過去1年以内の申請で出した書類は、その申請の申請年月日・受付番号を入れると一覧表の欄に書く（斜線の欄の行には出さない） */}
                           {/* 「転用」にした書類は、どの申請の申請日・受付番号を書くかを選ぶ（入管の様式の「過去に提出した申請情報」に書く） */}
-                          {r.pastInfo && onPast && past[r.key] && (
+                          {canTransferRow(r) && onPast && past[r.key] && (
                             <PastInfoPicker
                               key={`${r.key}-${past[r.key]?.on ?? ""}-${past[r.key]?.no ?? ""}`}
                               value={past[r.key]}
-                              candidates={pastCandidates}
+                              candidates={r.pastInfo ? pastCandidates : orgPastCandidates}
+                              onForm={!!r.pastInfo}
                               canEdit={canEdit}
                               onSave={(v) => onPast(r.key, v)}
                             />
@@ -571,7 +576,7 @@ export function PrepSubmissionList({
                             {r.mark == null && <span className="text-[10px] font-bold text-seal">未選択</span>}
                           </div>
                           {/* 過去1年以内の申請で出した書類は「転用」できる（提出せず、その申請の申請日・受付番号を書く） */}
-                          {r.pastInfo && onPast && (
+                          {canTransferRow(r) && onPast && (
                             <label
                               className={`mt-1 flex items-center justify-center gap-1 text-[11px] ${past[r.key] ? "font-bold text-brand" : "text-muted"}`}
                               title="過去1年以内の申請で出した書類を転用します（提出せず、その申請の申請日・受付番号を一覧表に書きます）"
@@ -582,7 +587,7 @@ export function PrepSubmissionList({
                                 disabled={!canEdit}
                                 onChange={(e) => {
                                   if (e.target.checked) {
-                                    const c = pastCandidates[0];
+                                    const c = (r.pastInfo ? pastCandidates : orgPastCandidates)[0];
                                     onPast(r.key, { on: c?.on ?? "", no: c?.no ?? "" });
                                     // 転用する書類は今回は出さないので「無」にする
                                     if (r.mark !== "無" || r.auto) onMark(r.key, "無");
@@ -826,9 +831,11 @@ function PastInfoPicker({
   candidates,
   canEdit,
   onSave,
+  onForm = true,
 }: {
   value: SubmissionPast;
   candidates: (SubmissionPast & { label: string })[];
+  onForm?: boolean; // 入管の様式の「過去に提出した申請情報」に書くか（11-4号は欄が斜線なので書かない）
   canEdit: boolean;
   onSave: (v: SubmissionPast) => void;
 }) {
@@ -893,9 +900,18 @@ function PastInfoPicker({
           </label>
         </>
       ) : (
-        hit >= 0 && <span className="text-muted">一覧表には「{value.on}」「{value.no}」と書きます</span>
+        hit >= 0 &&
+        (onForm ? (
+          <span className="text-muted">一覧表には「{value.on}」「{value.no}」と書きます</span>
+        ) : (
+          <span className="text-muted">1年を過ぎても申請番号で転用できます（様式のこの欄は斜線なので一覧表には書かず、控えとして残します）</span>
+        ))
       )}
-      {candidates.length === 0 && !manual && <span className="text-seal">1年以内の申請が見つかりません。「手で入れる」で入れてください。</span>}
+      {candidates.length === 0 && !manual && (
+        <span className="text-seal">
+          {onForm ? "1年以内の申請が見つかりません。" : "この所属機関の申請が見つかりません。"}「手で入れる」で入れてください。
+        </span>
+      )}
     </div>
   );
 }

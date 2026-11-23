@@ -14,6 +14,7 @@ import {
   PRIOR_YEAR_DOC_IDS,
   priorApplication,
   priorApplicationCandidates,
+  orgApplicationCandidates,
   sswChangeApplicationFor,
   type PriorApplication,
   type PriorApplicationSource,
@@ -92,9 +93,12 @@ export function usePriorApplication({
   const candidates = priorApplicationCandidates(apps, manual, todayStr());
   // 参考様式1-25号を転用できる申請（申請準備の所属機関と同じ所属機関の在留資格の変更許可（特定技能））
   const sswChangeFor = (organizationId: string | null) => sswChangeApplicationFor(apps, organizationId, manual);
+  // その所属機関の申請（いつの申請でも。11-4号の転用に使う）
+  const orgCandidates = (organizationId: string | null) => orgApplicationCandidates(apps, organizationId, manual);
   return {
     prior,
     candidates,
+    orgCandidates,
     sswChangeFor,
     manualDocYears: docYears,
     form: { on, no, content, orgId, docYears },

@@ -3039,6 +3039,11 @@ export function ApplicationPrepChecklist({
               void saveExtras({ submission_past: next });
             }}
             missingAttachKeys={missingAttachKeys}
+            orgPastCandidates={priorApp.orgCandidates(prepOrgId ?? null).map((c) => ({
+              on: c.applicationOn,
+              no: c.applicationNo,
+              label: `${c.applicationOn}・${c.applicationNo}${c.content ? `（${c.content}）` : ""}${c.source === "manual" ? "・手入力" : ""}`,
+            }))}
             pastCandidates={priorApp.candidates.map((c) => ({
               on: c.applicationOn,
               no: c.applicationNo,

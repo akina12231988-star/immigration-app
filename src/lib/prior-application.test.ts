@@ -151,3 +151,23 @@ describe("転用できる申請の候補", () => {
     expect(priorApplicationCandidates(apps, { on: "2026-05-01", no: "A-1" }, "2026-11-23")).toHaveLength(2);
   });
 });
+
+describe("11-4号の転用（1年を過ぎても使える）", () => {
+  it("その所属機関の申請を、いつの申請でも新しい順に", async () => {
+    const { orgApplicationCandidates } = await import("./prior-application");
+    const apps = [
+      { applicationDate: "2023-04-01", applicationNumber: "OLD-1", organizationId: "A", applicationContent: "在留資格の変更許可" },
+      { applicationDate: "2025-08-01", applicationNumber: "NEW-2", organizationId: "A", applicationContent: "在留期間の更新許可" },
+      { applicationDate: "2025-09-01", applicationNumber: "B-1", organizationId: "B" },
+      { applicationDate: "2025-10-01", applicationNumber: "TK", organizationId: "A", applicationContent: "在留資格の変更許可（特定活動）" },
+    ];
+    expect(orgApplicationCandidates(apps, "A", { on: "", no: "" }).map((c) => c.applicationNo)).toEqual(["NEW-2", "OLD-1"]);
+    expect(orgApplicationCandidates(apps, null, { on: "", no: "" })).toEqual([]);
+  });
+  it("11-4号の行は、過去の申請情報の欄が無くても転用できる", async () => {
+    const { canTransferRow } = await import("./submission-list");
+    expect(canTransferRow({ key: "t3a-4" })).toBe(true);
+    expect(canTransferRow({ key: "t1-9", pastInfo: true })).toBe(true);
+    expect(canTransferRow({ key: "t1-5" })).toBe(false);
+  });
+});
