@@ -129,3 +129,18 @@ describe("waitingNoteFromMissing", () => {
     ).toBe("健康診断書（本人）・納税証明書（国保税）・住民票");
   });
 });
+
+describe("あっせん有りのときの求職の記録", () => {
+  it("準備している所属機関への応募が「採用」なら問題なし", async () => {
+    const { assenJobRecordProblem } = await import("./prep-detail");
+    const apps = [
+      { organization_id: "A", result: "不採用" },
+      { organization_id: "B", result: "採用" },
+    ];
+    expect(assenJobRecordProblem(apps, "B")).toBeNull();
+    expect(assenJobRecordProblem(apps, "A")).toBe("notHired");
+    expect(assenJobRecordProblem(apps, "C")).toBe("none");
+    expect(assenJobRecordProblem([], "B")).toBe("none");
+    expect(assenJobRecordProblem(apps, null)).toBeNull(); // 所属機関が未選択なら、どこかで採用されていればよい
+  });
+});

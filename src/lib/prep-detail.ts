@@ -112,3 +112,16 @@ export function waitingNoteFromMissing(rows: { label: string; who?: string | nul
     .map((r) => (r.who && r.who !== "依頼先未入力" ? `${r.label}（${r.who}）` : r.label))
     .join("・");
 }
+
+// あっせん「有り」のときの求職の記録（求職管理簿 job_applications）の確かめ。
+// 準備している所属機関への応募が「採用」で登録されていれば null。
+//  none     … 準備している所属機関への応募（求職の記録）が無い
+//  notHired … 応募はあるが「採用」の登録がまだ
+export function assenJobRecordProblem(
+  apps: { organization_id: string | null; result: string | null }[],
+  prepOrgId: string | null,
+): null | "none" | "notHired" {
+  const atOrg = prepOrgId ? apps.filter((a) => a.organization_id === prepOrgId) : apps;
+  if (atOrg.length === 0) return "none";
+  return atOrg.some((a) => a.result === "採用") ? null : "notHired";
+}
