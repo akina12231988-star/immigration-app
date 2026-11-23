@@ -165,7 +165,7 @@ export function OrganizationRoster({
           <ClipboardList size={14} />
           会社からの書類の依頼（年末調整など）
         </Link>
-        {/* 参考様式のうち、この所属機関で用意するもの（1-4・1-5・1-6・1-6別紙）と全員共通のものの準備状況 */}
+        {/* 参考様式のうち、この所属機関で用意するもの（1-4・1-5・1-6・1-6別紙・1-17・11-1）と全員共通のものの準備状況 */}
         {showRefForms && (
           <Link
             href={`/organizations/${organizationId}/ref-forms`}

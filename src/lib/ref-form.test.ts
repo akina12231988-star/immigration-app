@@ -241,7 +241,9 @@ describe("所属機関ごとに用意する参考様式", () => {
   it("1-4号・1-5号・1-6号・1-6号別紙（2号の同じ様式も）", () => {
     expect(isOrgSpecificRefForm("t1-5")).toBe(true);
     expect(isOrgSpecificRefForm("s2-6-2")).toBe(true);
-    expect(isOrgSpecificRefForm("t1-18")).toBe(false);
+    expect(isOrgSpecificRefForm("t1-18")).toBe(true); // 1-17号
+    expect(isOrgSpecificRefForm("s2a-2")).toBe(true); // 11-1号（2号）
+    expect(isOrgSpecificRefForm("t1-19")).toBe(false);
     expect(refFormPrepKeys()).toEqual(expect.arrayContaining(["t1-4-1", "t1-18", "guidance", "orientation"]));
     expect(refFormPrepKeys()).not.toContain("s2-5"); // 1号のキーにまとめる
   });
@@ -259,8 +261,8 @@ describe("所属機関ごとに用意する参考様式", () => {
     expect(refFormPrepCell(ts, "t1-5", "クメール語", "B").used?.language).toBe("日本語"); // ほかの所属機関の版は使わない
     expect(refFormPrepCell([ts[1]], "t1-5", "クメール語", "B").used).toBeNull();
     // 全員共通
-    expect(refFormPrepCell(ts, "t1-18", "日本語", "A").status).toBe("ok");
-    expect(refFormPrepCell(ts, "t1-18", "クメール語", "A").used?.language).toBe("日本語");
+    expect(refFormPrepCell(ts, "t1-18", "日本語", "A").status).toBe("missing"); // 1-17号は所属機関別
+    expect(refFormPrepCell(ts, "t1-18", "日本語", "A").used?.organization_id).toBeNull();
   });
 });
 

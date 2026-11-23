@@ -116,7 +116,8 @@ export function pickRefFormTemplate<T extends Pick<RefFormTemplate, "form_key" |
 // ---- 所属機関ごとに用意する参考様式 ----
 // 所属機関ごとに書式・中身が違うので、所属機関がわで PDF を登録して記入位置を置く様式（1号のキー。2号の同じ様式も含む）。
 // ほかの様式は全員共通の版を使う
-export const ORG_SPECIFIC_REF_FORM_KEYS = ["t1-4-1", "t1-5", "t1-6-1", "t1-6-2"] as const;
+// 1-4号・1-5号・1-6号・1-6号別紙・1-17号（支援計画書）・分野参考様式第11-1号（農業・直接雇用の誓約書）
+export const ORG_SPECIFIC_REF_FORM_KEYS = ["t1-4-1", "t1-5", "t1-6-1", "t1-6-2", "t1-18", "t3a-2"] as const;
 export function isOrgSpecificRefForm(key: string): boolean {
   return (ORG_SPECIFIC_REF_FORM_KEYS as readonly string[]).includes(canonicalSubmissionKey(key));
 }

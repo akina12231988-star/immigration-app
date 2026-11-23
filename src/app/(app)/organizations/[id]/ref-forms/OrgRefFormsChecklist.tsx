@@ -25,7 +25,7 @@ function formLabelOf(key: string): string {
   return REF_FORM_ITEMS.find((i) => i.key === key)?.label ?? EXTRA_REF_FORMS[key] ?? "";
 }
 
-// 所属機関の参考様式の準備。所属機関別の様式（1-4・1-5・1-6・1-6別紙）は、その所属機関の版を言語ごとに登録して記入位置を置く。
+// 所属機関の参考様式の準備。所属機関別の様式（1-4・1-5・1-6・1-6別紙・1-17・11-1）は、その所属機関の版を言語ごとに登録して記入位置を置く。
 // ほかの様式は全員共通の版を使う（足りない言語は共通の版を登録する）
 export function OrgRefFormsChecklist({
   orgId,
@@ -138,7 +138,7 @@ export function OrgRefFormsChecklist({
   return (
     <div className="mx-auto max-w-5xl">
       <p className="mb-3 text-xs leading-relaxed text-muted">
-        参考様式のうち、<b>1-4号・1-5号・1-6号・1-6号別紙</b>は所属機関ごとに書式・中身が違うので、{orgName}の版（PDF）を登録して記入位置を置きます。
+        参考様式のうち、<b>1-4号・1-5号・1-6号・1-6号別紙・1-17号・分野参考様式第11-1号</b>は所属機関ごとに書式・中身が違うので、{orgName}の版（PDF）を登録して記入位置を置きます。
         ほかの様式は全員共通の版を使います。どちらも、本人の国籍の言語の版 → 日本語の版の順に使います。
       </p>
 
