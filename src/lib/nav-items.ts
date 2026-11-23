@@ -28,6 +28,7 @@ import {
   Sparkles,
   ShieldCheck,
   Stamp,
+  FileText,
   type LucideIcon,
 } from "lucide-react";
 
@@ -141,6 +142,8 @@ export const NAV_ENTRIES: NavEntry[] = [
     alert: "orientations",
   },
   { href: "/sales", label: "請求書作成", short: "請求", icon: Coins },
+  // 見積書: 新規のお客様向けの料金の一覧（合計なし・税抜）と、その後のやりとりの記録（0235）
+  { href: "/quotes", label: "見積書（新規のお客様）", short: "見積書", icon: FileText },
   {
     key: "assen",
     label: "あっせん",
