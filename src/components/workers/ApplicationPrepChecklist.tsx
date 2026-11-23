@@ -3075,8 +3075,13 @@ export function ApplicationPrepChecklist({
                     inList: !!item,
                     satisfied: !!item?.satisfied,
                     fileCount: item ? docFilesFor(item.def).length : 0,
+                    files: item ? docFilesFor(item.def) : [],
                   };
                 })}
+                onAttachDoc={(id) => {
+                  const item = items.find((i) => i.def.id === id);
+                  if (item) startAttach(item.def);
+                }}
                 attachFiles={canAttachToSubmissionRow(row.key) ? docFilesFor(submissionAttachDef(row)) : null}
                 onAttach={() => startAttach(submissionAttachDef(row))}
                 onDrop={(files) => void dropAttach(submissionAttachDef(row), files)}
