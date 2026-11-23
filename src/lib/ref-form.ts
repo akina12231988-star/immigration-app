@@ -295,8 +295,8 @@ export type RefFormFieldKind =
 export const REF_FORM_FIELDS: { kind: RefFormFieldKind; label: string; sample: string; group: string; hidden?: boolean }[] = [
   { kind: "name", label: "氏名", sample: "NGUYEN VAN A", group: "本人" },
   { kind: "kana", label: "フリガナ", sample: "グエン ヴァン ア", group: "本人" },
-  { kind: "birth_seireki", label: "生年月日（西暦・〇年〇月〇日）", sample: "1995年3月8日", group: "本人" },
-  { kind: "birth_wareki", label: "生年月日（和暦・平成〇年〇月〇日）", sample: "平成7年3月8日", group: "本人" },
+  { kind: "birth_seireki", label: "生年月日（年月日まとめて・西暦）", sample: "1995年3月8日", group: "本人" },
+  { kind: "birth_wareki", label: "生年月日（年月日まとめて・和暦）", sample: "平成7年3月8日", group: "本人" },
   { kind: "birth_y", label: "生年月日の年だけ（西暦）", sample: "1995", group: "本人" },
   { kind: "birth_m", label: "生年月日の月だけ", sample: "3", group: "本人" },
   { kind: "birth_d", label: "生年月日の日だけ", sample: "8", group: "本人" },
