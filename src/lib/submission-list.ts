@@ -285,6 +285,30 @@ export function buildSubmissionRows(
   });
 }
 
+// ---- 過去に提出した申請情報（0234） ----
+// 過去1年以内の申請で出した書類（pastInfo の行）を省略するとき、入管の様式の
+// 「過去に提出した申請情報」の欄に書く申請年月日（YYYY-MM-DD）と受付番号
+export interface SubmissionPast {
+  on: string;
+  no: string;
+}
+export function normalizeSubmissionPast(v: unknown): Record<string, SubmissionPast> {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  const out: Record<string, SubmissionPast> = {};
+  for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+    const o = (x ?? {}) as Record<string, unknown>;
+    const on = typeof o.on === "string" ? o.on.trim() : "";
+    const no = typeof o.no === "string" ? o.no.trim() : "";
+    if (on || no) out[k] = { on, no };
+  }
+  return out;
+}
+// 様式に書く申請年月日（2026年5月1日）
+export function submissionPastDateText(on: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(on.trim());
+  return m ? `${Number(m[1])}年${Number(m[2])}月${Number(m[3])}日` : on.trim();
+}
+
 // 保存してある選択（jsonb）を読む。有／無以外は捨てる
 export function normalizeSubmissionMarks(v: unknown): Record<string, SubmitMark> {
   if (!v || typeof v !== "object" || Array.isArray(v)) return {};

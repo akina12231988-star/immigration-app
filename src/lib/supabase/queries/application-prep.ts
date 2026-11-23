@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { normalizeSubmissionMarks, type SubmitMark } from "@/lib/submission-list";
+import { normalizeSubmissionMarks, normalizeSubmissionPast, type SubmissionPast, type SubmitMark } from "@/lib/submission-list";
 import { normalizeTodoKey } from "@/lib/todo";
 import type { OrgSalesItem } from "@/types/db";
 import { normalizeHireCheck, type HireCheck } from "@/lib/hire-check";
@@ -45,6 +45,7 @@ export interface PrepChecklistRow extends PrepChecklistMeta {
   hire_check: HireCheck; // 所属機関への採用条件の確認（0218）
   print_marks: PrintMarks; // 必ず印刷する書類を印刷した日（0223）
   submission_marks: Record<string, SubmitMark>; // 提出書類一覧表の提出確認欄（有／無。0226）
+  submission_past: Record<string, SubmissionPast>; // 提出書類一覧表の過去に提出した申請情報（0234）
 }
 
 // 必ず印刷する書類を印刷した日（YYYY-MM-DD）。roster = 支援責任者・支援担当者の名簿
@@ -109,6 +110,7 @@ export async function listPrepChecklists(
     hire_check: normalizeHireCheck((r as { hire_check?: unknown }).hire_check),
     print_marks: normalizePrintMarks((r as { print_marks?: unknown }).print_marks),
     submission_marks: normalizeSubmissionMarks((r as { submission_marks?: unknown }).submission_marks),
+    submission_past: normalizeSubmissionPast((r as { submission_past?: unknown }).submission_past),
   }));
 }
 
@@ -216,6 +218,7 @@ export async function updatePrepChecklistExtras(
       | "hire_check"
       | "print_marks"
       | "submission_marks"
+      | "submission_past"
     >
   >,
 ): Promise<void> {

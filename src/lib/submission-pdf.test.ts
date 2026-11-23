@@ -45,3 +45,18 @@ describe("提出書類一覧表を入管の様式の PDF で作る", () => {
     expect((await PDFDocument.load(bytes)).getPageCount()).toBe(5);
   }, 30000);
 });
+
+describe("過去に提出した申請情報の欄", () => {
+  it("様式ごとに、欄の数が「過去1年以内なら省略可」の書類の数と同じ", async () => {
+    const { SUBMISSION_PDF_TEMPLATES } = await import("./submission-pdf");
+    const { SUBMISSION_ITEMS, normalizeSubmissionPast, submissionPastDateText } = await import("./submission-list");
+    for (const [table, tpl] of Object.entries(SUBMISSION_PDF_TEMPLATES)) {
+      const n = SUBMISSION_ITEMS.filter((i) => i.table === table && i.pastInfo).length;
+      expect(tpl?.past?.length ?? 0).toBe(n);
+    }
+    expect(normalizeSubmissionPast({ "t1-9": { on: "2026-05-01", no: " R08-1 " }, x: { on: "", no: "" }, y: 1 })).toEqual({
+      "t1-9": { on: "2026-05-01", no: "R08-1" },
+    });
+    expect(submissionPastDateText("2026-05-01")).toBe("2026年5月1日");
+  });
+});
