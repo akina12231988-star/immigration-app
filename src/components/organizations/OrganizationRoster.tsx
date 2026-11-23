@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { BadgeJapaneseYen, ClipboardList, Printer, Users } from "lucide-react";
+import { BadgeJapaneseYen, ClipboardList, FileText, Printer, Users } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/client";
 import { insertWorkerWage } from "@/lib/supabase/queries/wages";
@@ -37,6 +37,7 @@ export function OrganizationRoster({
   past,
   today,
   error = null,
+  showRefForms = false,
 }: {
   organizationId: string;
   current: OrgRosterWorker[];
@@ -44,6 +45,7 @@ export function OrganizationRoster({
   past: OrgRosterWorker[];
   today: string; // 賃金の適用開始日の既定値に使う（サーバ側で決めて食い違わないようにする）
   error?: string | null; // 取得に失敗したとき（0名と区別できるように出す）
+  showRefForms?: boolean; // 参考様式の準備（一本化の試験中。管理者だけ）へのリンクを出す
 }) {
   const router = useRouter();
   // 未登録の欄に入力した内容（外国人ID → 下書き）。保存すると消す
@@ -163,6 +165,16 @@ export function OrganizationRoster({
           <ClipboardList size={14} />
           会社からの書類の依頼（年末調整など）
         </Link>
+        {/* 参考様式のうち、この所属機関で用意するもの（1-4・1-5・1-6・1-6別紙・1-17・11-1）と全員共通のものの準備状況 */}
+        {showRefForms && (
+          <Link
+            href={`/organizations/${organizationId}/ref-forms`}
+            className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-brand px-3 text-xs font-bold text-brand hover:bg-brand/5"
+          >
+            <FileText size={14} />
+            参考様式の準備（所属機関別・全員共通／試験中）
+          </Link>
+        )}
         {/* 全機関の送付・回答の状況と、地域ごとの時給の集計 */}
         <Link
           href="/organizations/wage-stats"

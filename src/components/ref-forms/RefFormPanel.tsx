@@ -225,11 +225,13 @@ export function RefFormTemplatesDialog({
   orgName,
   onClose,
   onChanged,
+  defaultScope = "common",
 }: {
   formKey: string;
   formLabel: string;
   templates: RefFormTemplate[];
   defaultLanguage: string;
+  defaultScope?: "common" | "org"; // 登録先の最初の選択（所属機関の参考様式の準備から開いたときは所属機関別の様式を「この所属機関だけ」に）
   orgId: string | null; // 申請準備中の所属機関（この所属機関だけの版を登録できる）
   orgName: string;
   onClose: () => void;
@@ -239,7 +241,7 @@ export function RefFormTemplatesDialog({
   const list = templates.filter((t) => t.form_key === formKey && (!t.organization_id || t.organization_id === orgId));
   const [language, setLanguage] = useState(defaultLanguage || "日本語");
   // 登録先: 全員共通か、この所属機関だけか
-  const [scope, setScope] = useState<"common" | "org">("common");
+  const [scope, setScope] = useState<"common" | "org">(defaultScope === "org" && orgId ? "org" : "common");
   const scopeOrg = scope === "org" && orgId ? orgId : null;
   const sameScope = (t: RefFormTemplate) => (t.organization_id ?? null) === scopeOrg;
   const [busy, setBusy] = useState(false);

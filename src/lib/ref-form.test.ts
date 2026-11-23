@@ -32,6 +32,9 @@ import {
   refFormCellWidth,
   isRefFormKey,
   refFormFitLines,
+  isOrgSpecificRefForm,
+  refFormPrepCell,
+  refFormPrepKeys,
 } from "./ref-form";
 
 describe("参考様式の行", () => {
@@ -231,6 +234,35 @@ describe("PDFを作る", () => {
     expect(refFormFileName("all", "NGUYEN VAN A")).toBe("NGUYEN VAN A_参考様式一式.pdf");
     expect(refFormFileName("sign", "A/B")).toBe("AB_署名ページ.pdf");
     expect(refFormFileName("one", "A", "t1-5")).toBe("A_参考様式第1-5号.pdf");
+  });
+});
+
+describe("所属機関ごとに用意する参考様式", () => {
+  it("1-4号・1-5号・1-6号・1-6号別紙（2号の同じ様式も）", () => {
+    expect(isOrgSpecificRefForm("t1-5")).toBe(true);
+    expect(isOrgSpecificRefForm("s2-6-2")).toBe(true);
+    expect(isOrgSpecificRefForm("t1-18")).toBe(true); // 1-17号
+    expect(isOrgSpecificRefForm("s2a-2")).toBe(true); // 11-1号（2号）
+    expect(isOrgSpecificRefForm("t1-19")).toBe(false);
+    expect(refFormPrepKeys()).toEqual(expect.arrayContaining(["t1-4-1", "t1-18", "guidance", "orientation"]));
+    expect(refFormPrepKeys()).not.toContain("s2-5"); // 1号のキーにまとめる
+  });
+  it("様式 × 言語の状況", () => {
+    const ts = [
+      { form_key: "t1-5", language: "日本語", organization_id: null, layout: [{}] },
+      { form_key: "t1-5", language: "クメール語", organization_id: "A", layout: [] },
+      { form_key: "t1-18", language: "日本語", organization_id: null, layout: [{}] },
+    ];
+    // 所属機関別: その所属機関の版を見る
+    expect(refFormPrepCell(ts, "t1-5", "クメール語", "A").status).toBe("nolayout");
+    const m = refFormPrepCell(ts, "t1-5", "日本語", "A");
+    expect(m.status).toBe("missing");
+    expect(m.used?.organization_id).toBeNull(); // 今は全員共通の日本語の版を使う
+    expect(refFormPrepCell(ts, "t1-5", "クメール語", "B").used?.language).toBe("日本語"); // ほかの所属機関の版は使わない
+    expect(refFormPrepCell([ts[1]], "t1-5", "クメール語", "B").used).toBeNull();
+    // 全員共通
+    expect(refFormPrepCell(ts, "t1-18", "日本語", "A").status).toBe("missing"); // 1-17号は所属機関別
+    expect(refFormPrepCell(ts, "t1-18", "日本語", "A").used?.organization_id).toBeNull();
   });
 });
 
