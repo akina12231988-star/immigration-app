@@ -207,6 +207,13 @@ describe("PDFを作る", () => {
     expect(normalizeRefFormLayout([{ kind: "name", page: 0, x: 0, y: 0, size: 10, valign: "x" }])[0].valign).toBeUndefined();
   });
 
+  it("最大の幅に入らなくても文字を小さくしない", () => {
+    const measure = (t: string, sz: number) => t.length * sz;
+    expect(refFormFitLines("あいうえお", { size: 10, maxWidth: 20 }, measure).size).toBeLessThan(10);
+    expect(refFormFitLines("あいうえお", { size: 10, maxWidth: 20, noShrink: true }, measure)).toEqual({ size: 10, lines: ["あいうえお"] });
+    expect(normalizeRefFormLayout([{ kind: "text", page: 0, x: 0, y: 0, size: 10, noShrink: true }])[0].noShrink).toBe(true);
+  });
+
   it("紹介手数料（1-16号）", () => {
     expect(parseReferralFeePresets("300000、250,000　300000\n１５００００円")).toEqual([300000, 250000, 150000]);
     expect(parseReferralFeePresets("")).toEqual([]);

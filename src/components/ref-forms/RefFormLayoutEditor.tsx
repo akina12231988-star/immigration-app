@@ -459,6 +459,22 @@ export function RefFormLayoutEditor({
                   </select>
                 </label>
               )}
+              {selected.maxWidth && selected.kind !== "my_number" && selected.kind !== "strike" && !isShape(selected.kind) && (
+                <label className="flex items-center gap-1">
+                  <span className="w-16 leading-tight">入らないとき</span>
+                  <select
+                    value={selected.noShrink ? "keep" : "shrink"}
+                    onChange={(e) => {
+                      remember();
+                      update(selected.id, { noShrink: e.target.value === "keep" ? true : undefined });
+                    }}
+                    className="min-h-[30px] rounded border border-border bg-background px-1"
+                  >
+                    <option value="shrink">文字を小さくして幅に収める</option>
+                    <option value="keep">文字の大きさは変えない（はみ出す）</option>
+                  </select>
+                </label>
+              )}
               {selected.maxWidth && (selected.maxLines ?? 1) > 1 && selected.kind !== "my_number" && selected.kind !== "strike" && !isShape(selected.kind) && (
                 <label className="flex items-center gap-1">
                   <span className="w-16 leading-tight">短いとき</span>
@@ -485,7 +501,7 @@ export function RefFormLayoutEditor({
                 </button>
               </div>
               <p className="text-[10px] text-muted">
-                Delete キーでも消せます。「⧉ コピー」で同じ設定のものをもう1つ置けます（少し下に出るので、ドラッグで動かす）。右端の■をドラッグすると最大の幅（訂正線は長さ）が変わります。矢印キーで1pt（Shift で5pt）ずつ動きます。「最大の幅」を入れると、長い住所などは枠に収まるよう小さくします。
+                Delete キーでも消せます。「⧉ コピー」で同じ設定のものをもう1つ置けます（少し下に出るので、ドラッグで動かす）。右端の■をドラッグすると最大の幅（訂正線は長さ）が変わります。矢印キーで1pt（Shift で5pt）ずつ動きます。「最大の幅」を入れると、長い住所などは枠に収まるよう小さくします（「入らないとき」で、小さくしないこともできます）。
               </p>
             </div>
           )}
@@ -617,7 +633,7 @@ export function RefFormLayoutEditor({
                       style={{
                         left: it.x * scale,
                         top: it.y * scale,
-                        fontSize: (isShape(it.kind) ? it.size : fit ? fit.size : fittedSize(label, it.size, it.maxWidth)) * scale,
+                        fontSize: (isShape(it.kind) ? it.size : fit ? fit.size : it.noShrink ? it.size : fittedSize(label, it.size, it.maxWidth)) * scale,
                         lineHeight: fit ? REF_FORM_LINE_HEIGHT : 1.15,
                         ...(fit ? { whiteSpace: "pre" as const } : {}),
                         // 折り返す行数ぶんの高さの枠を出し、2行目以降がどこに来るかを見せる
