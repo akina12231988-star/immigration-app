@@ -45,7 +45,7 @@ export function OrganizationRoster({
   past: OrgRosterWorker[];
   today: string; // 賃金の適用開始日の既定値に使う（サーバ側で決めて食い違わないようにする）
   error?: string | null; // 取得に失敗したとき（0名と区別できるように出す）
-  showRefForms?: boolean; // 参考様式の準備（一本化の試験中。管理者だけ）へのリンクを出す
+  showRefForms?: boolean; // 参考様式の準備（一本化の試験中。管理者・職員）へのリンクを出す
 }) {
   const router = useRouter();
   // 未登録の欄に入力した内容（外国人ID → 下書き）。保存すると消す

@@ -11,7 +11,7 @@
 
 ## 進め方（試験用ページ → 入れ替え）
 
-- 新しい画面は **管理者だけが開ける試験用ページ** で作る
+- 新しい画面は **管理者・職員が開ける試験用ページ** で作る（2026-11-23 までは管理者だけ）
   - URL: `/workers/[id]/application-prep/unified`
   - 開けるのは `profiles.role = 'admin'` の人だけ（`src/lib/unified-prep.ts` の `canUseUnifiedPrep`）。それ以外の人は「見つかりません」
   - 今の申請準備の詳細画面の見出しの右に、管理者にだけ「一本化（試験中）」のリンクが出る（試験用ページからは「今の画面へ」で戻る）
@@ -70,7 +70,7 @@
      様式・言語ごとに登録し（`ref_form_templates`。全員共通）、自治体の申請書と同じ操作で記入位置と「本人の署名が要るページ」を置く
      - 項目と書き込み・まとめ: `src/lib/ref-form.ts`（テスト `ref-form.test.ts`）
      - 記入位置の画面: `src/components/ref-forms/RefFormLayoutEditor.tsx`（`MunicipalFormLayoutEditor` を元にした）
-     - ひな形の管理・行の欄: `src/components/ref-forms/RefFormPanel.tsx`、登録・削除は管理者だけ（`src/app/(app)/ref-forms/actions.ts`）
+     - ひな形の管理・行の欄: `src/components/ref-forms/RefFormPanel.tsx`、登録・削除は管理者・職員（`src/app/(app)/ref-forms/actions.ts`）
      - PDF: `/api/ref-form?workerId=&keys=&mode=one|all|sign`（見本は `?templateId=&sample=1`）
    - ダウンロードは3つ: その様式だけ（行の「作成」）／「有」の参考様式を一気に／本人に署名してもらうページだけ
    - 言語の版は本人の国籍から選ぶ（無ければ日本語の版）

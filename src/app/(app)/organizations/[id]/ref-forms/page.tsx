@@ -7,7 +7,7 @@ import { OrgRefFormsChecklist, type OrgRefFormPerson } from "./OrgRefFormsCheckl
 
 export const dynamic = "force-dynamic";
 
-// 所属機関の「参考様式の準備」（申請書類作成をアプリ一本化計画・試験中。管理者だけ）。
+// 所属機関の「参考様式の準備」（申請書類作成をアプリ一本化計画・試験中。管理者・職員）。
 // どの参考様式が全員共通で、どれを所属機関がわで用意するか（PDF の登録と記入位置）を、
 // この所属機関の人の国籍の言語ごとに一覧にする
 export default async function OrgRefFormsPage({ params }: { params: Promise<{ id: string }> }) {
