@@ -141,6 +141,10 @@ describe("「有」の書類を揃える", () => {
     expect(ids).toContain("sl:t1-15");
     expect(ids).not.toContain("hokensho"); // 国保なし → 12 は無
     expect(ids).not.toContain("sl:t1-1"); // 単独 → 1 は無
+    // 理由書は、その行の書類のすぐ後（「無」の行でも入る）
+    const withReason = submissionBundleOrder(rows, new Set(["t1-4-1", "t1-1"])).map((x) => x.id);
+    expect(withReason.indexOf("reason:t1-4-1")).toBe(withReason.indexOf("sl:t1-4-1") + 1);
+    expect(withReason).toContain("reason:t1-1");
   });
 });
 

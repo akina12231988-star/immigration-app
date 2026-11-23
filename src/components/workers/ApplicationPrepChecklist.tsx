@@ -253,6 +253,8 @@ import {
   type SubmissionRow,
 } from "@/lib/submission-list";
 import { PrepSubmissionList, SubmissionRowAction } from "@/components/workers/PrepSubmissionList";
+import { ReasonLetterControl, useReasonLetters } from "@/components/workers/ReasonLetterControl";
+import { reasonLetterDocKey } from "@/lib/reason-letter";
 import { desiredResidenceStatus } from "@/lib/application-copy";
 
 // 在留カード・パスポートのアップロード中を示すキー（onboarding_documents の書類キーとは別枠）
@@ -542,6 +544,12 @@ export function ApplicationPrepChecklist({
         null)
       : null;
   const meta: PrepChecklistMeta = current ?? EMPTY_PREP_META;
+  // 提出書類一覧表の行ごとの理由書（0233）。表示中のTODOの分
+  const reasons = useReasonLetters(workerId, current?.todo_no ?? "");
+  // 行に添付した理由書のファイル（基本キー＋枝番）
+  const reasonFilesFor = (rowKey: string) =>
+    docs.filter((d) => d.storage_path && isPrepPageKeyOf(reasonLetterDocKey(rowKey), d.doc_key));
+
   // 見出しの名前の横に出す申請種別（表示中のTODOの分。TODOがまだ無いときは出さない）
   const headerAppContent = current
     ? meta.app_content
@@ -1615,7 +1623,30 @@ export function ApplicationPrepChecklist({
     if (!submissionRows) return prepBundlePlan(bundleChosen.items);
     const byId = new Map(bundleChosen.items.map((i) => [i.id, i]));
     const rowByKey = new Map(submissionRows.map((r) => [r.key, r]));
-    const ordered = submissionBundleOrder(submissionRows).flatMap((o) => {
+    // 理由書を作った（または添付した）行
+    const reasonKeys = new Set(submissionRows.map((r) => r.key).filter((k) => reasonFilesFor(k).length > 0));
+    const ordered = submissionBundleOrder(submissionRows, reasonKeys).flatMap((o) => {
+      if (o.id.startsWith("reason:")) {
+        const key = o.id.slice(7);
+        const row = rowByKey.get(key);
+        return [
+          {
+            id: o.id,
+            label: `理由書（${row ? `${row.no}${row.sub ?? ""} ${row.label}` : key}）`,
+            kind: "doc",
+            satisfied: true,
+            mailAfterApply: false,
+            issueNoMail: false,
+            files: reasonFilesFor(key).map((d) => ({
+              key: `prep:${d.id}`,
+              id: d.id,
+              name: d.file_name || "理由書",
+              source: "prep" as const,
+              link: !d.storage_path,
+            })),
+          },
+        ];
+      }
       if (!o.id.startsWith("sl:")) {
         const it = byId.get(o.id);
         return it ? [it] : [];
@@ -2896,6 +2927,10 @@ export function ApplicationPrepChecklist({
           title={`提出書類一覧表（特定技能${submissionSsw2 ? "2" : "1"}号・在留資格変更）`}
           tone={submissionRows.some((r) => r.mark == null) ? "alert" : "normal"}
         >
+          {/* 理由書の表（0233）が無いなどで読めないとき */}
+          {reasons.error && (
+            <p className="mb-2 rounded-lg bg-status-notice-bg px-3 py-2 text-xs text-status-notice-fg">{reasons.error}</p>
+          )}
           <PrepSubmissionList
             rows={submissionRows}
             workerId={workerId}
@@ -2906,6 +2941,26 @@ export function ApplicationPrepChecklist({
             orgName={prepOrgName}
             todoNo={current?.todo_no ?? ""}
             onError={setError}
+            // どの行にも「理由書を添付する」（作って添付し、内容を記録する）
+            renderReason={(row) =>
+              current ? (
+                <ReasonLetterControl
+                  workerId={workerId}
+                  todoNo={current.todo_no}
+                  rowKey={row.key}
+                  rowLabel={`${row.no}${row.sub ?? ""} ${row.label}`}
+                  person={{ name: workerRow?.name ?? "", nationality: prepNationality, birth: workerRow?.birth || null }}
+                  record={reasons.records[row.key] ?? null}
+                  files={reasonFilesFor(row.key)}
+                  canEdit={canEdit}
+                  onChanged={async () => {
+                    await Promise.all([reasons.reload(), loadDocs()]);
+                    notifyWorkerDocsChanged(workerId);
+                  }}
+                  onPreview={(f) => void previewDoc(f.id)}
+                />
+              ) : null
+            }
             renderAction={(row) => (
               <SubmissionRowAction
                 row={row}
