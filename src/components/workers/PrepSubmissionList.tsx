@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
-import { CheckCircle2, ChevronDown, Eye, Loader2, Paperclip, Printer, Trash2 } from "lucide-react";
+import { CheckCircle2, ChevronDown, Download, Eye, Loader2, Paperclip, Printer, Trash2 } from "lucide-react";
 import { FileDropArea } from "@/components/ui/FileDropArea";
 import { isJapaneseOnlyRefForm, REF_FORM_LANGUAGES, SIGN_ONLY_REF_FORM_KEYS, isRefFormItem, languageForNationality, missingBundledRefForms, parseReferralFeePresets, pickRefFormTemplate, refFormName } from "@/lib/ref-form";
 import { createClient } from "@/lib/supabase/client";
@@ -188,7 +188,13 @@ export function PrepSubmissionList({
   // そろっていない一覧表（特定技能2号の表紙・第1表など）は、アプリで作った簡易版を印刷する
   const officialPdf = canFillSubmissionPdf(rows);
   const [printing, setPrinting] = useState(false);
-  const print = async () => {
+  // ダウンロードするときのファイル名（例: LAM TRIEU VY_在留資格変更許可申請_提出書類一覧表（特定技能1号）.pdf）
+  const pdfFileName = () => {
+    const name = (workerName || "申請人").replace(/[\\/:*?"<>|]+/g, "").replace(/\s+/g, " ").trim();
+    return `${name}_在留資格変更許可申請_提出書類一覧表（特定技能${submissionListTitle(rows).kind}）.pdf`;
+  };
+  // mode: open = 新しいタブで開く（印刷）／download = 名前を付けてダウンロード
+  const print = async (mode: "open" | "download" = "open") => {
     if (
       undecided.length > 0 &&
       !window.confirm(
@@ -197,13 +203,13 @@ export function PrepSubmissionList({
     ) {
       return;
     }
-    // ポップアップを止められないよう、押したときにすぐ新しいタブを開いておく
-    const w = window.open("", "_blank");
-    if (!w) {
+    // ポップアップを止められないよう、押したときにすぐ新しいタブを開いておく（ダウンロードのときは開かない）
+    const w = mode === "open" || !officialPdf ? window.open("", "_blank") : null;
+    if ((mode === "open" || !officialPdf) && !w) {
       onError("新しいタブを開けませんでした。ブラウザのポップアップの許可をご確認ください。");
       return;
     }
-    if (!officialPdf) {
+    if (!officialPdf && w) {
       w.document.write(submissionListPrintHtml({ workerName, orgName, rows }));
       w.document.close();
       w.focus();
@@ -211,7 +217,7 @@ export function PrepSubmissionList({
       return;
     }
     setPrinting(true);
-    w.document.write("<p style='font-family:sans-serif;padding:24px'>提出書類一覧表（入管の様式）を作っています…</p>");
+    w?.document.write("<p style='font-family:sans-serif;padding:24px'>提出書類一覧表（入管の様式）を作っています…</p>");
     try {
       const get = async (url: string) => {
         const res = await fetch(url);
@@ -231,10 +237,19 @@ export function PrepSubmissionList({
         past,
       });
       const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/pdf" }));
-      w.location.href = url;
+      if (w) {
+        w.location.href = url;
+      } else {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = pdfFileName();
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (err) {
-      w.close();
+      w?.close();
       onError(err instanceof Error ? err.message : "提出書類一覧表の PDF を作れませんでした");
     } finally {
       setPrinting(false);
@@ -255,13 +270,26 @@ export function PrepSubmissionList({
         </p>
         <button
           type="button"
-          onClick={() => void print()}
+          onClick={() => void print("open")}
           disabled={printing}
           className="flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-lg bg-brand px-3 text-xs font-bold text-brand-foreground disabled:opacity-60"
         >
           {printing ? <Loader2 size={14} className="animate-spin" /> : <Printer size={14} />}
           {officialPdf ? "○を付けた一覧表をPDFで作る（入管の様式）" : "○を付けた一覧表を印刷（簡易版）"}
         </button>
+        {/* 名前を付けてダウンロード（ブラウザで開いてから保存すると名前が英数字の羅列になるため） */}
+        {officialPdf && (
+          <button
+            type="button"
+            onClick={() => void print("download")}
+            disabled={printing}
+            title={pdfFileName()}
+            className="flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-lg border border-brand bg-surface px-3 text-xs font-bold text-brand disabled:opacity-60"
+          >
+            <Download size={14} />
+            名前を付けてダウンロード
+          </button>
+        )}
       </div>
 
       {workerId && refRows.length > 0 && (
