@@ -19,6 +19,7 @@ import {
 } from "@/lib/ref-form";
 import { createRefFormTicket, deleteRefFormTemplate, registerBundledRefForms, registerRefFormPdf } from "@/app/(app)/ref-forms/actions";
 import { RefFormLayoutEditor } from "./RefFormLayoutEditor";
+import { useLockPageScroll } from "@/hooks/useLockPageScroll";
 import { unlockPdfForFilling } from "@/lib/pdf-unlock";
 
 // 参考様式のひな形（ref_form_templates。0227）を読む
@@ -246,6 +247,8 @@ export function RefFormTemplatesDialog({
   const [notice, setNotice] = useState<string | null>(null);
   const [editing, setEditing] = useState<RefFormTemplate | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // ひな形の画面・記入位置の画面を開いている間は下の申請準備の画面を止め、閉じたら元の位置に戻す
+  useLockPageScroll();
 
   const upload = async (file: File | undefined) => {
     if (!file) return;

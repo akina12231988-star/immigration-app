@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
+import { useLockPageScroll } from "@/hooks/useLockPageScroll";
 import { createClient } from "@/lib/supabase/client";
 import { updateMunicipalityCertForm } from "@/lib/supabase/queries/tax-cert";
 import { getMunicipalFormPdfUrl } from "@/app/(app)/mailing/municipal-form-actions";
@@ -65,6 +66,8 @@ export function MunicipalFormLayoutEditor({
   const [pages, setPages] = useState<PageView[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [items, setItems] = useState<MunicipalFormItem[]>(() => normalizeMunicipalFormLayout(initialLayout));
+  // 開いている間は下の画面を止め、閉じたら元の位置に戻す
+  useLockPageScroll();
   const [kind, setKind] = useState<MunicipalFormFieldKind>("name");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
