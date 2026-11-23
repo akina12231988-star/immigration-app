@@ -47,6 +47,9 @@ export function RefFormCreator({
   fee = "",
   attachRowKey = null,
   attachLabel = "",
+  embedded = false,
+  reloadSignal = 0,
+  sidePanel,
   nationality,
   gender,
   orgId,
@@ -58,6 +61,10 @@ export function RefFormCreator({
   fee?: string; // 紹介手数料（1-16号）。申請準備の行で入れた金額
   attachRowKey?: string | null; // 作ったPDFを添付する提出書類一覧表の行（無ければ添付のボタンを出さない）
   attachLabel?: string; // その行の名前（例: 7(1) 雇用の経緯に係る説明書）
+  // まとめて確認する画面の中で使うとき（説明と「在留カードで確かめる」はその画面に1つだけ出す）
+  embedded?: boolean;
+  reloadSignal?: number; // 変わったら様式を作り直す（まとめて確認する画面で本人の情報を直したとき）
+  sidePanel?: React.ReactNode; // embedded のとき、右の欄の下に出すもの（まとめて確認する画面の「在留カードで確かめる」）
   nationality: string;
   gender: string;
   orgId: string | null;
@@ -184,7 +191,7 @@ export function RefFormCreator({
     return () => {
       cancelled = true;
     };
-  }, [templateId, query, formKey, baseOff, reloadKey]);
+  }, [templateId, query, formKey, baseOff, reloadKey, reloadSignal]);
 
   // いまの入力内容で PDF を作る
   async function makePdf(): Promise<Blob> {
@@ -374,11 +381,13 @@ export function RefFormCreator({
 
   return (
     <div className="flex flex-col gap-3">
+{!embedded && (
       <p className="rounded-xl border-2 border-dashed border-brand/50 bg-brand/5 px-3 py-2 text-xs leading-relaxed">
         <span className="font-black text-brand">🧪 試験中</span>
         ：自動で入る所（氏名・年齢・日付・所属機関など）は様式にそのまま出ています。赤い点線の所に文字を入れます。文字は左の赤いつまみ（⠿）、○はそのものをドラッグすると動きます（入力中は Alt＋矢印キーでも動きます）。
         直したら「この内容で作って、申請準備に添付する」（申請準備のこの様式の行に添付します）。紙で欲しいときは「印刷」「PDFで保存」、あとでまとめて PDF にするなら「一時保存」を押してください。
       </p>
+      )}
       {error && <p className="rounded-lg bg-seal/10 px-3 py-2 text-sm text-seal">{error}</p>}
 
       <div className="flex flex-wrap items-start gap-4">
@@ -601,7 +610,7 @@ export function RefFormCreator({
             </Link>
           </section>
           {/* いまの在留カードを見ながら、様式に入る本人の情報を確かめる・直す */}
-          <WorkerCardCheckPanel workerId={workerId} onSaved={() => setReloadKey((k) => k + 1)} />
+          {embedded ? sidePanel : <WorkerCardCheckPanel workerId={workerId} onSaved={() => setReloadKey((k) => k + 1)} />}
         </aside>
       </div>
 

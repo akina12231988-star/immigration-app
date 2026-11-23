@@ -243,6 +243,45 @@ export function PrepSubmissionList({
           <span className="font-bold">
             参考様式（「有」{refRows.length}件・ひな形あり {refReady.length}件）
           </span>
+          {/* 全部の様式のひな形がそろったら、1つの画面で在留カードを見ながら順に確かめて作り、行ごとに添付する */}
+          {(() => {
+            const natPick = (k: string) => pickRefFormTemplate(refForms.templates, k, nationality, orgId);
+            const missing = refRows.filter((r) => !natPick(refKey(r)));
+            const japaneseOnly = natLang
+              ? refRows.filter((r) => {
+                  const t = natPick(refKey(r));
+                  return !!t && t.language !== natLang;
+                })
+              : [];
+            const rowsParam = [...refRows.map((r) => r.key), ...signOnlyKeys.filter((k) => natPick(k))].join(",");
+            const ready = refRows.length > 0 && missing.length === 0;
+            const href = `/workers/${workerId}/application-prep/unified/ref-forms?${new URLSearchParams({
+              rows: rowsParam,
+              ...(todoNo ? { todo: todoNo } : {}),
+              ...(fee ? { fee } : {}),
+            }).toString()}`;
+            return (
+              <span className="flex flex-wrap items-center gap-1">
+                <a
+                  href={ready ? href : undefined}
+                  aria-disabled={!ready}
+                  className={`inline-flex min-h-[34px] items-center gap-1 rounded-lg px-3 font-black ${
+                    ready ? "bg-status-approved-fg text-white" : "pointer-events-none bg-border text-muted"
+                  }`}
+                >
+                  ✔ 参考様式をまとめて確認・作成（{refRows.length}件）
+                </a>
+                {!ready && missing.length > 0 && (
+                  <span className="text-seal">ひな形が無い様式があります（{missing.map((r) => refFormName(refKey(r))).join("・")}）</span>
+                )}
+                {ready && japaneseOnly.length > 0 && (
+                  <span className="text-status-notice-fg">
+                    {natLang}の版が無く日本語の版で作る様式: {japaneseOnly.map((r) => refFormName(refKey(r))).join("・")}
+                  </span>
+                )}
+              </span>
+            );
+          })()}
           <a
             href={refReady.length > 0 ? refFormHref(workerId, refReady.map(refKey), "all", refOff, todoNo, bulkLang, fee) : undefined}
             target="_blank"

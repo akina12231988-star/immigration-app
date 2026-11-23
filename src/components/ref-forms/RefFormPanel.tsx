@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Download, FileText, Loader2, PenLine, Trash2, Upload, X } from "lucide-react";
+import { FileText, Loader2, PenLine, Trash2, Upload, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { dbErrorMessage } from "@/lib/errors";
 import {
@@ -146,15 +146,6 @@ export function RefFormRowBar({
           >
             <PenLine size={12} />
             内容を確認して作る・添付
-          </a>
-          <a
-            href={refFormHref(workerId, [formKey], "one", off, todoNo, "", fee)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex min-h-[28px] items-center gap-1 rounded-md bg-brand px-2 font-bold text-brand-foreground"
-          >
-            <Download size={12} />
-            確認せずにPDFだけ作る
           </a>
         </>
       ) : (
