@@ -14,10 +14,13 @@ import { P117_FIELDS, type P117Key } from "@/lib/ref-form-117";
 // 座標はPDFのページの左上を原点にした pt。y は文字の上端（自治体の申請書の記入位置 lib/municipal-form.ts と同じ）。
 
 // 参考様式の行か（様式番号が「参考様式第…」「分野参考様式第…」）
-// 外国人から集める書類（申請準備の「必要な書類」で揃える。評価調書・健康診断個人票など）は、
-// 参考様式でもアプリで作らないので、ひな形の欄を出さない
+// 外国人から集める書類（申請準備の「必要な書類」で揃える。評価調書など）は、
+// 参考様式でもアプリで作らないので、ひな形の欄を出さない。
+// ただし健康診断個人票（1-3号）は病院で書いてもらう本人の言語の様式をこちらで用意するので、ひな形を使う
+const REF_FORM_ALSO_COLLECTED = new Set(["t1-8-1"]);
 export function isRefFormItem(item: Pick<SubmissionItem, "formNo" | "key">): boolean {
-  return /参考様式/.test(item.formNo) && (submissionLink(item.key)?.docs ?? []).length === 0;
+  if (!/参考様式/.test(item.formNo)) return false;
+  return REF_FORM_ALSO_COLLECTED.has(canonicalSubmissionKey(item.key)) || (submissionLink(item.key)?.docs ?? []).length === 0;
 }
 export const REF_FORM_ITEMS: SubmissionItem[] = SUBMISSION_ITEMS.filter(isRefFormItem);
 
