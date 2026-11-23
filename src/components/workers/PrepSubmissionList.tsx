@@ -113,7 +113,11 @@ export function PrepSubmissionList({
     }
   };
   // 「有」の参考様式（一覧表の順）。ひな形が登録されているものだけを作れる
-  const refRows = workerId ? rows.filter((r) => r.mark === "有" && isRefFormItem(r)) : [];
+  // まとめてダウンロード・まとめて確認に入れる参考様式。健康診断個人票（1-3号）は病院で書いてもらって
+  // 「必要な書類」に添付したものを使う（提出書類一式に入る）ので、ひな形で作る分は入れない
+  const refRows = workerId
+    ? rows.filter((r) => r.mark === "有" && isRefFormItem(r) && canonicalSubmissionKey(r.key) !== "t1-8-1")
+    : [];
   // 参考様式のひな形は、1号と同じ書類なら1号のキーで引く（2号でも 1-5号・1-6号 などは同じひな形）
   const refKey = (r: SubmissionRow) => canonicalSubmissionKey(r.key);
   // まとめてダウンロードの言語。空なら国籍の言語（その言語の版が無い様式は日本語の版）
