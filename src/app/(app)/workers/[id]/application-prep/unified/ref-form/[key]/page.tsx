@@ -9,7 +9,7 @@ import { RefFormCreator } from "@/components/ref-forms/RefFormCreator";
 
 export const dynamic = "force-dynamic";
 
-// 参考様式の作成画面（申請書類作成をアプリ一本化計画・試験中。管理者だけ）。
+// 参考様式の作成画面（申請書類作成をアプリ一本化計画・試験中。管理者・職員）。
 // 記入位置を元に、この人の分を見ながら自由な文字を入れ、○を動かし、印刷・PDFで保存・一時保存する
 export default async function RefFormCreatePage({
   params,

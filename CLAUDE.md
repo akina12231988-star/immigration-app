@@ -21,4 +21,4 @@
 
 - 利用者からもらったファイル（会社の情報が入った PDF など）はリポジトリにコミットしない
 - マイグレーションは利用者が Supabase の SQL Editor で手で適用する。次の番号は引き継ぎ資料で確認する
-- 「申請書類作成をアプリ一本化計画」は `docs/10_unified_prep_plan.md`。新しい画面は管理者だけが開ける試験用ページ（`/workers/[id]/application-prep/unified`）で作り、利用者が確認してから今の画面と入れ替える
+- 「申請書類作成をアプリ一本化計画」は `docs/10_unified_prep_plan.md`。新しい画面は管理者・職員が開ける試験用ページ（`/workers/[id]/application-prep/unified`。2026-11-23 に職員にも開放）で作り、利用者が確認してから今の画面と入れ替える

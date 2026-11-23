@@ -19,13 +19,13 @@ const HEADER_LINK =
 // 申請準備の詳細（書類チェックリスト）のページ。
 // 以前はTODO一覧・申請一覧のモーダルで開いていたが、項目が多く縦に長いため
 // 1ページとして開き、左上の「←」で元の画面へ戻れるようにしている。
-// unified = true は「申請書類作成をアプリ一本化計画」の試験用ページ（管理者だけが開ける。lib/unified-prep.ts）
+// unified = true は「申請書類作成をアプリ一本化計画」の試験用ページ（管理者・職員が開ける。lib/unified-prep.ts）
 export async function PrepPage({ id, unified }: { id: string; unified: boolean }) {
   const me = await getMyProfile();
   if (!me) redirect("/login");
 
   const supabase = await createClient();
-  // 試験用ページを開けるのは管理者だけ
+  // 試験用ページを開けるのは管理者と職員
   const canUnified = canUseUnifiedPrep(me.role);
   if (unified && !canUnified) notFound();
 
@@ -128,7 +128,7 @@ export async function PrepPage({ id, unified }: { id: string; unified: boolean }
           <p className="mb-3 rounded-xl border-2 border-dashed border-brand/50 bg-brand/5 px-3 py-2 text-xs leading-relaxed">
             <span className="font-black text-brand">🧪 {UNIFIED_PREP_TITLE}</span>
             <br />
-            管理者だけが開ける試験用のページです。入力した内容は今の画面と同じところに保存されます（同じ申請準備です）。
+            管理者・職員が開ける試験用のページです。入力した内容は今の画面と同じところに保存されます（同じ申請準備です）。
             問題が無ければ、今の申請準備の詳細画面をこのページと入れ替えます。
           </p>
         )}

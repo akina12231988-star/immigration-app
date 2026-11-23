@@ -9,7 +9,7 @@ import { RefFormBatchCreator, type BatchForm } from "@/components/ref-forms/RefF
 
 export const dynamic = "force-dynamic";
 
-// 参考様式をまとめて確認する画面（申請書類作成をアプリ一本化計画・試験中。管理者だけ）。
+// 参考様式をまとめて確認する画面（申請書類作成をアプリ一本化計画・試験中。管理者・職員）。
 // 提出書類一覧表で「有」の参考様式を1つの画面にタブで並べ、在留カードを見ながら順に確かめ・入力し、行ごとに添付する
 export default async function RefFormsBatchPage({
   params,

@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
+import { canUseUnifiedPrep } from "@/lib/unified-prep";
 import { isMissingColumnError, isMissingTableError } from "@/lib/errors";
 import {
   BUNDLED_REF_FORMS,
@@ -21,7 +22,7 @@ import {
 } from "@/lib/ref-form";
 
 // 参考様式のひな形PDF（ref_form_templates。0227）。非公開バケット app-files の ref-forms/ に置く。
-// 試験中（申請書類作成をアプリ一本化計画）なので、登録・変更・削除は管理者だけ
+// 試験中（申請書類作成をアプリ一本化計画）。登録・変更・削除は管理者と職員（閲覧のみの人はできない）
 const BUCKET = "app-files";
 const TTL = 60 * 60;
 const HINT = `マイグレーション ${REF_FORM_MIGRATION} が未適用の可能性があります。Supabase の SQL Editor で適用してください。`;
@@ -33,7 +34,7 @@ interface Err {
 
 async function requireAdmin(): Promise<boolean> {
   const me = await getMyProfile();
-  return !!me && me.role === "admin";
+  return !!me && canUseUnifiedPrep(me.role);
 }
 
 const validKey = (k: string) => isRefFormKey(k);
@@ -46,7 +47,7 @@ export async function createRefFormTicket(
   language: string,
   mimeType: string,
 ): Promise<{ ok: true; path: string; token: string } | Err> {
-  if (!(await requireAdmin())) return { ok: false, message: "権限がありません（管理者だけ）" };
+  if (!(await requireAdmin())) return { ok: false, message: "権限がありません（管理者・職員だけ）" };
   if (mimeType !== "application/pdf") return { ok: false, message: "PDFのみ登録できます" };
   if (!validKey(formKey) || !validLang(language)) return { ok: false, message: "不正な様式・言語です" };
   // 所属機関別の版も同じ場所に置く（どの所属機関の版かは表の organization_id で持つ）
@@ -68,7 +69,7 @@ export async function registerRefFormPdf(
   fileName: string,
   orgId: string | null = null,
 ): Promise<{ ok: true; id: string } | Err> {
-  if (!(await requireAdmin())) return { ok: false, message: "権限がありません（管理者だけ）" };
+  if (!(await requireAdmin())) return { ok: false, message: "権限がありません（管理者・職員だけ）" };
   if (!validKey(formKey) || !validLang(language) || !validOrg(orgId)) return { ok: false, message: "不正な様式・言語・所属機関です" };
   if (!path.startsWith(`ref-forms/${formKey}/`)) return { ok: false, message: "不正なパス" };
   const admin = createAdminClient();
@@ -118,7 +119,7 @@ export async function getRefFormPdfUrl(id: string): Promise<{ ok: true; url: str
 
 // 記入位置と署名ページを保存する
 export async function saveRefFormLayout(id: string, layout: unknown, signPages: unknown): Promise<{ ok: true } | Err> {
-  if (!(await requireAdmin())) return { ok: false, message: "権限がありません（管理者だけ）" };
+  if (!(await requireAdmin())) return { ok: false, message: "権限がありません（管理者・職員だけ）" };
   const admin = createAdminClient();
   if (!admin) return { ok: false, message: "サーバー設定エラー" };
   const { error } = await admin
@@ -129,7 +130,7 @@ export async function saveRefFormLayout(id: string, layout: unknown, signPages: 
 }
 
 export async function deleteRefFormTemplate(id: string): Promise<{ ok: true } | Err> {
-  if (!(await requireAdmin())) return { ok: false, message: "権限がありません（管理者だけ）" };
+  if (!(await requireAdmin())) return { ok: false, message: "権限がありません（管理者・職員だけ）" };
   const admin = createAdminClient();
   if (!admin) return { ok: false, message: "サーバー設定エラー" };
   const { data } = await admin.from("ref_form_templates").select("pdf_path").eq("id", id).maybeSingle();
@@ -143,7 +144,7 @@ export async function deleteRefFormTemplate(id: string): Promise<{ ok: true } | 
 // アプリに入れてある入管の参考様式（public/forms/ref-forms/）を、全員共通・日本語のひな形として登録する。
 // すでに全員共通・日本語のひな形がある様式は飛ばす（差し替えない）。登録した件数を返す
 export async function registerBundledRefForms(keys: string[]): Promise<{ ok: true; added: string[] } | Err> {
-  if (!(await requireAdmin())) return { ok: false, message: "権限がありません（管理者だけ）" };
+  if (!(await requireAdmin())) return { ok: false, message: "権限がありません（管理者・職員だけ）" };
   const admin = createAdminClient();
   if (!admin) return { ok: false, message: "サーバー設定エラー（SERVICE_ROLE_KEY 未設定）" };
   await admin.storage.createBucket(BUCKET, { public: false }).catch(() => undefined);
@@ -197,7 +198,7 @@ export async function addCustomRefForm(input: {
   label: string;
   orgSpecific: boolean;
 }): Promise<{ ok: true; form: CustomRefForm } | Err> {
-  if (!(await requireAdmin())) return { ok: false, message: "権限がありません（管理者だけ）" };
+  if (!(await requireAdmin())) return { ok: false, message: "権限がありません（管理者・職員だけ）" };
   const name = input.name.trim().slice(0, 80);
   if (!name) return { ok: false, message: "様式の名前を入れてください（例: 参考様式第1-10号）" };
   const admin = createAdminClient();
@@ -217,7 +218,7 @@ export async function addCustomRefForm(input: {
 
 // 追加した参考様式を消す（ひな形が残っているときは消さない）
 export async function deleteCustomRefForm(key: string): Promise<{ ok: true } | Err> {
-  if (!(await requireAdmin())) return { ok: false, message: "権限がありません（管理者だけ）" };
+  if (!(await requireAdmin())) return { ok: false, message: "権限がありません（管理者・職員だけ）" };
   if (!isCustomRefFormKey(key)) return { ok: false, message: "不正な様式です" };
   const admin = createAdminClient();
   if (!admin) return { ok: false, message: "サーバー設定エラー" };
@@ -232,7 +233,7 @@ export async function deleteCustomRefForm(key: string): Promise<{ ok: true } | E
 // ひな形（言語・所属機関ごと）をその行のキーへ移し、追加した様式の一覧から外す。
 // 行の側に同じ言語・同じ登録先のひな形があるときは移さずに知らせる
 export async function linkCustomRefForm(key: string, targetKey: string): Promise<{ ok: true; moved: number } | Err> {
-  if (!(await requireAdmin())) return { ok: false, message: "権限がありません（管理者だけ）" };
+  if (!(await requireAdmin())) return { ok: false, message: "権限がありません（管理者・職員だけ）" };
   if (!isCustomRefFormKey(key) || !refFormPrepKeys().includes(targetKey)) return { ok: false, message: "不正な様式です" };
   const admin = createAdminClient();
   if (!admin) return { ok: false, message: "サーバー設定エラー" };
