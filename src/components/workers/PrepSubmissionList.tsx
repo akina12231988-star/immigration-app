@@ -9,7 +9,8 @@ import { SUBMISSION_PDF_TEMPLATES, canFillSubmissionPdf, fillSubmissionPdf, subm
 import { RefFormRowBar, RefFormTemplatesDialog, refFormHref, useRefFormTemplates } from "@/components/ref-forms/RefFormPanel";
 import type { OnboardingDocumentRow } from "@/types/db";
 import { SupportOrgFileAttachments } from "@/app/(app)/support-org/SupportOrgFileAttachments";
-import { PrepAgriNoticeSection } from "@/components/workers/PrepSupportOrgSection";
+import { PrepAgriNoticeSection, PrepOrgFileSection } from "@/components/workers/PrepSupportOrgSection";
+import { ORG_FILE_KIND_CHANGE_APP_ANNEX } from "@/lib/org-attachments";
 import { SUPPORT_ORG_LISTING_FILE_KIND } from "@/lib/support-org-info";
 import {
   SUBMISSION_TABLE_ORDER,
@@ -431,8 +432,10 @@ export function SubmissionRowAction({
   onPreview,
   onRemove,
   orgId = null,
+  onOrgFilesChanged,
 }: {
   orgId?: string | null; // 申請準備中の所属機関（協議会の構成員であることの証明書に、その所属機関の加入通知書を出す）
+  onOrgFilesChanged?: () => void; // 所属機関の添付（申請書の別紙など）をこの場で添付したあと
   row: SubmissionRow;
   canEdit: boolean;
   busy: boolean;
@@ -448,6 +451,8 @@ export function SubmissionRowAction({
   const sharedListing = canonicalSubmissionKey(row.key) === "t1-7-2";
   // 協議会の構成員であることの証明書は、所属機関に登録した農業特定技能協議会の加入通知書を使う（所属機関ごと）
   const councilNotice = (row.key === "t3a-3" || row.key === "s2a-3") && !!orgId;
+  // 在留資格変更許可申請書の行には、所属機関に登録した「申請書の別紙」を出す（まとめた PDF で申請書のすぐ後に入る）
+  const changeAppAnnex = canonicalSubmissionKey(row.key) === "t1-3" && !!orgId;
   const usesShared = sharedListing || councilNotice;
   return (
     <div className="flex flex-col gap-1 rounded-lg border border-border bg-background/60 p-2 text-[11px]">
@@ -457,6 +462,21 @@ export function SubmissionRowAction({
             所属機関の農業特定技能協議会の加入通知書（所属機関の画面と同じもの。ここで添付すると所属機関にも保存されます）
           </p>
           <PrepAgriNoticeSection orgId={orgId} canEdit={canEdit} />
+        </div>
+      )}
+      {changeAppAnnex && orgId && (
+        <div className="rounded-md border border-brand/30 bg-brand/5 p-2">
+          <p className="mb-1 font-bold text-brand">
+            所属機関の{ORG_FILE_KIND_CHANGE_APP_ANNEX}（所属機関ごと。ここで添付すると所属機関にも保存され、この所属機関のほかの人の申請にも出ます。まとめた PDF では申請書のすぐ後に入ります）
+          </p>
+          <PrepOrgFileSection
+            orgId={orgId}
+            canEdit={canEdit}
+            onChanged={onOrgFilesChanged}
+            kind={ORG_FILE_KIND_CHANGE_APP_ANNEX}
+            linkLabel="所属機関の画面で別紙を見る・添付する →"
+            newLabel="新しい別紙を添付"
+          />
         </div>
       )}
       {sharedListing && (

@@ -3,6 +3,8 @@
 import { PrepMailingLink, pickPrepMailingRecord } from "@/components/mailing/PrepMailingLink";
 import { listMailingFiles } from "@/lib/supabase/queries/mailing-files";
 import { getMailingFilePreviewUrl } from "@/app/(app)/mailing/actions";
+import { listOrganizationFiles } from "@/lib/supabase/queries/organization-files";
+import { getOrgFilePreviewUrl } from "@/app/(app)/organizations/actions";
 import { receivedCertFilesFor } from "@/lib/mailing-attachments";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -32,10 +34,10 @@ import { applyBundleChoices, PREP_BUNDLE_CHOOSE_IDS, prepBundleFileName, prepBun
 
 // まとめる PDF に入れるファイル（申請準備に添付したもの・証明書類の請求に届いた証明書）
 interface BundleFile {
-  key: string; // prep:<id> / mail:<id>
+  key: string; // prep:<id> / mail:<id> / org:<id>
   id: string;
   name: string;
-  source: "prep" | "mailing";
+  source: "prep" | "mailing" | "org"; // org は所属機関に登録した添付（在留資格変更許可申請書の別紙）
   link: boolean; // リンクで登録した書類（PDF にはまとめられない）
 }
 import { PostApplyList } from "@/components/workers/PostApplyList";
@@ -239,13 +241,14 @@ import {
   waitingNoteFromMissing,
   type PrepRequesteeKind,
 } from "@/lib/prep-detail";
-import { isAgricultureIndustry, needsFlexDocs } from "@/lib/org-attachments";
+import { ORG_FILE_KIND_CHANGE_APP_ANNEX, isAgricultureIndustry, latestOrgFiles, needsFlexDocs } from "@/lib/org-attachments";
 import {
   submissionLink,
   buildSubmissionRows,
   canAttachToSubmissionRow,
   submissionAttachKey,
   submissionBundleOrder,
+  canonicalSubmissionKey,
   type SubmissionRow,
 } from "@/lib/submission-list";
 import { PrepSubmissionList, SubmissionRowAction } from "@/components/workers/PrepSubmissionList";
@@ -577,6 +580,35 @@ export function ApplicationPrepChecklist({
   }, [prepOrgId, orgNameFromProp]);
   const prepOrgName =
     orgNameFromProp || (orgNameCache?.orgId === prepOrgId ? orgNameCache.name : "");
+
+  // 所属機関に登録した「在留資格変更許可申請書の別紙」（最新版）。まとめた PDF で申請書のすぐ後に入れる
+  const [orgAnnex, setOrgAnnex] = useState<{ orgId: string; files: BundleFile[] } | null>(null);
+  useEffect(() => {
+    if (!prepOrgId) return;
+    let cancelled = false;
+    listOrganizationFiles(createClient(), prepOrgId)
+      .then((rows) => {
+        if (cancelled) return;
+        const latest = latestOrgFiles(rows, ORG_FILE_KIND_CHANGE_APP_ANNEX);
+        setOrgAnnex({
+          orgId: prepOrgId,
+          files: (latest?.files ?? []).map((f) => ({
+            key: `org:${f.id}`,
+            id: f.id,
+            name: f.file_name || ORG_FILE_KIND_CHANGE_APP_ANNEX,
+            source: "org" as const,
+            link: false,
+          })),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setOrgAnnex({ orgId: prepOrgId, files: [] });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [prepOrgId, orgInfoKey]);
+  const orgAnnexFiles = orgAnnex?.orgId === prepOrgId ? orgAnnex.files : [];
 
   // 申請準備の所属機関の登録内容（収入印紙代の負担の既定と、申請種別ごとの売上明細）
   const [prepOrgIntake, setPrepOrgIntake] = useState<{ orgId: string; intake: OrganizationIntake } | null>(null);
@@ -1575,6 +1607,21 @@ export function ApplicationPrepChecklist({
       const row = rowByKey.get(o.id.slice(3));
       if (!row) return [];
       const def = submissionAttachDef(row);
+      // 在留資格変更許可申請書の行のすぐ後に、所属機関の別紙を入れる（無ければ何も足さない）
+      const annex =
+        canonicalSubmissionKey(row.key) === "t1-3" && orgAnnexFiles.length > 0
+          ? [
+              {
+                id: `org-annex:${row.key}`,
+                label: `${def.label}の別紙（所属機関）`,
+                kind: "doc",
+                satisfied: true,
+                mailAfterApply: false,
+                issueNoMail: false,
+                files: orgAnnexFiles,
+              },
+            ]
+          : [];
       return [
         {
           id: o.id,
@@ -1592,6 +1639,7 @@ export function ApplicationPrepChecklist({
             link: !d.storage_path,
           })),
         },
+        ...annex,
       ];
     });
     return prepBundlePlan(ordered, { keepOrder: true });
@@ -1605,7 +1653,7 @@ export function ApplicationPrepChecklist({
     });
   const previewBundleFile = async (f: BundleFile) => {
     if (f.source === "prep") return void previewDoc(f.id);
-    const res = await getMailingFilePreviewUrl(f.id);
+    const res = f.source === "org" ? await getOrgFilePreviewUrl(f.id) : await getMailingFilePreviewUrl(f.id);
     if (res.ok) window.open(res.url, "_blank", "noopener,noreferrer");
     else setError(res.message);
   };
@@ -1640,7 +1688,9 @@ export function ApplicationPrepChecklist({
           const res =
             f.source === "prep"
               ? await getOnboardingDocDownloadUrl(f.id)
-              : await getMailingFilePreviewUrl(f.id).then((r) => (r.ok ? { ...r, fileName: f.name } : r));
+              : await (f.source === "org" ? getOrgFilePreviewUrl(f.id) : getMailingFilePreviewUrl(f.id)).then((r) =>
+                  r.ok ? { ...r, fileName: f.name } : r,
+                );
           if (!res.ok) {
             skipped.push(`${t.label}（${res.message}）`);
             continue;
@@ -2861,6 +2911,7 @@ export function ApplicationPrepChecklist({
                 onPreview={(f) => void previewDoc(f.id)}
                 onRemove={(f) => void removeDoc(f.doc_key, `${submissionAttachDef(row).label}（${f.file_name}）`)}
                 orgId={prepOrgId ?? null}
+                onOrgFilesChanged={() => setOrgInfoKey((k) => k + 1)}
               />
             )}
             onMark={(key, mark) => {

@@ -162,6 +162,18 @@ export function RefFormLayoutEditor({
     setItems((list) => list.filter((i) => i.id !== id));
     setSelectedId((cur) => (cur === id ? null : cur));
   };
+  // 選んだ項目と同じ設定（項目・大きさ・最大の幅・行数・書き方など）のコピーを、少し下にずらして置く。
+  // コピーを選んだ状態にするので、そのままドラッグや矢印キーで置きたい場所へ動かす
+  const duplicate = (id: string) => {
+    const src = items.find((i) => i.id === id);
+    if (!src) return;
+    seq.current += 1;
+    const y = Math.round((src.y + src.size + 6) * 10) / 10;
+    const copy: RefFormItem = { ...src, id: `i${items.length}-${seq.current}-c-${Math.round(src.x)}-${Math.round(y)}`, y };
+    remember();
+    setItems((list) => [...list, copy]);
+    setSelectedId(copy.id);
+  };
   const changeKind = (id: string, k: RefFormFieldKind) => {
     remember();
     update(id, { kind: k, ...(k === "text" ? { text: "" } : {}), ...(DEFAULT_SIZE[k] ? { size: DEFAULT_SIZE[k] } : {}) });
@@ -292,6 +304,14 @@ export function RefFormLayoutEditor({
             <div className="sticky top-0 z-10 mb-3 space-y-1.5 rounded-lg border-2 border-brand bg-background p-2 shadow">
               <div className="flex items-center gap-1">
                 <p className="flex-1 font-bold">選んでいる項目</p>
+                <button
+                  type="button"
+                  onClick={() => duplicate(selected.id)}
+                  className="rounded border border-brand bg-surface px-2 py-1 font-bold text-brand"
+                  title="同じ設定のまま、もう1つ置きます（少し下に出るので、ドラッグで置きたい場所へ動かしてください）"
+                >
+                  ⧉ コピー
+                </button>
                 <button
                   type="button"
                   onClick={() => remove(selected.id)}
@@ -433,7 +453,7 @@ export function RefFormLayoutEditor({
                 </button>
               </div>
               <p className="text-[10px] text-muted">
-                Delete キーでも消せます。矢印キーで1pt（Shift で5pt）ずつ動きます。「最大の幅」を入れると、長い住所などは枠に収まるよう小さくします。
+                Delete キーでも消せます。「⧉ コピー」で同じ設定のものをもう1つ置けます（少し下に出るので、ドラッグで動かす）。矢印キーで1pt（Shift で5pt）ずつ動きます。「最大の幅」を入れると、長い住所などは枠に収まるよう小さくします。
               </p>
             </div>
           )}
@@ -623,6 +643,17 @@ export function RefFormLayoutEditor({
                           onPointerDown={(e) => e.stopPropagation()}
                         >
                           {REF_FORM_FIELD_LABEL[it.kind]}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              duplicate(it.id);
+                            }}
+                            className="rounded bg-surface px-1.5 text-brand"
+                            aria-label="この項目を同じ設定でコピーする"
+                          >
+                            ⧉ コピー
+                          </button>
                           <button
                             type="button"
                             onClick={(e) => {
