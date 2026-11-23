@@ -5,6 +5,7 @@ import { AppHeader } from "@/components/AppHeader";
 import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
 import { ApplicationPrepChecklist } from "@/components/workers/ApplicationPrepChecklist";
+import { PrepAppContentBadge } from "@/components/workers/PrepAppContentBadge";
 import { messengerWebUrl } from "@/lib/messenger-link";
 import { notionAppUrl } from "@/lib/notion-link";
 import { prepOpenedInfo } from "@/lib/prep-opened";
@@ -117,6 +118,8 @@ export async function PrepPage({ id, unified }: { id: string; unified: boolean }
           右側に Messenger・Notion・外国人詳細・準備中の所属機関へのリンクを置く */}
       <AppHeader
         title={`${worker.name}｜申請準備${unified ? "（一本化・試験中）" : ""}`}
+        // 名前の横に申請種別（チェックリストで選んでいる内容。選び直すとすぐ変わる）
+        titleExtra={<PrepAppContentBadge workerId={worker.id} />}
         backHref="/workers/renewals"
         right={headerLinks}
       />
