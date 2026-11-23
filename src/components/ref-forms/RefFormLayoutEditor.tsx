@@ -10,6 +10,7 @@ import {
   refFormSampleOf,
   refFormCellWidth,
   refFormFitLines,
+  refFormLineSkip,
   refFormStrikeLength,
   refFormStrikeThickness,
   REF_FORM_STRIKE_DEFAULT_LENGTH,
@@ -458,6 +459,22 @@ export function RefFormLayoutEditor({
                   </select>
                 </label>
               )}
+              {selected.maxWidth && (selected.maxLines ?? 1) > 1 && selected.kind !== "my_number" && selected.kind !== "strike" && !isShape(selected.kind) && (
+                <label className="flex items-center gap-1">
+                  <span className="w-16 leading-tight">短いとき</span>
+                  <select
+                    value={selected.valign ?? "top"}
+                    onChange={(e) => {
+                      remember();
+                      update(selected.id, { valign: e.target.value === "bottom" ? "bottom" : undefined });
+                    }}
+                    className="min-h-[30px] rounded border border-border bg-background px-1"
+                  >
+                    <option value="top">上の行に書く</option>
+                    <option value="bottom">下の行に書く（下段に寄せる）</option>
+                  </select>
+                </label>
+              )}
               <div className="flex gap-1">
                 <button type="button" className="rounded border border-border px-2 py-1" onClick={() => update(selected.id, { x: selected.x - 1 })}>←</button>
                 <button type="button" className="rounded border border-border px-2 py-1" onClick={() => update(selected.id, { x: selected.x + 1 })}>→</button>
@@ -650,15 +667,22 @@ export function RefFormLayoutEditor({
                           ))}
                         </span>
                       ) : fit ? (
-                        // 書く行はそのまま、空いている行は「（2行目）」を薄く出す（PDF には書かない）
-                        Array.from({ length: Math.max(fit.lines.length, it.maxLines ?? 1) }, (_, n) => (
-                          <span
-                            key={n}
-                            className={`block ${n > 0 ? "border-t border-dotted border-seal/40" : ""} ${n < fit.lines.length ? "" : "text-seal/35"}`}
-                          >
-                            {n < fit.lines.length ? fit.lines[n] : `（${n + 1}行目）`}
-                          </span>
-                        ))
+                        // 書く行はそのまま、空いている行は「（2行目）」を薄く出す（PDF には書かない）。
+                        // 下の行に寄せる項目は、空く行を上に出す
+                        (() => {
+                          const skip = refFormLineSkip(it, fit.lines.length);
+                          return Array.from({ length: Math.max(fit.lines.length + skip, it.maxLines ?? 1) }, (_, n) => {
+                            const line = n >= skip ? fit.lines[n - skip] : undefined;
+                            return (
+                              <span
+                                key={n}
+                                className={`block ${n > 0 ? "border-t border-dotted border-seal/40" : ""} ${line != null ? "" : "text-seal/35"}`}
+                              >
+                                {line ?? `（${n + 1}行目）`}
+                              </span>
+                            );
+                          });
+                        })()
                       ) : (
                         label
                       )}

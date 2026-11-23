@@ -19,6 +19,7 @@ import {
   refFormValue,
   refFormCircleShown,
   refFormStrikeLength,
+  refFormLineSkip,
   refFormStrikeThickness,
   refFormCircles,
   refFormOffIds,
@@ -190,6 +191,15 @@ describe("PDFを作る", () => {
     expect(refFormStrikeThickness({ size: 10 })).toBe(1);
     expect(refFormStrikeThickness({ size: 4 })).toBe(0.5);
     expect(refFormValue(strike, REF_FORM_SAMPLE_DATA)).toBe("");
+  });
+
+  it("1行で収まるとき下の行に寄せる", () => {
+    const [it2] = normalizeRefFormLayout([{ kind: "name", page: 0, x: 0, y: 0, size: 10, maxWidth: 100, maxLines: 2, valign: "bottom" }]);
+    expect(it2.valign).toBe("bottom");
+    expect(refFormLineSkip(it2, 1)).toBe(1);
+    expect(refFormLineSkip(it2, 2)).toBe(0);
+    expect(refFormLineSkip({ maxLines: 2 }, 1)).toBe(0);
+    expect(normalizeRefFormLayout([{ kind: "name", page: 0, x: 0, y: 0, size: 10, valign: "x" }])[0].valign).toBeUndefined();
   });
 
   it("ファイル名", () => {
