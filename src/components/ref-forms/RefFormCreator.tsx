@@ -24,6 +24,7 @@ import {
 import { downloadBlob } from "@/lib/onboarding-pdf";
 import { useRefFormTemplates } from "./RefFormPanel";
 import { WorkerCardCheckPanel } from "./WorkerCardCheckPanel";
+import { SupportRosterPicker } from "./SupportRosterPicker";
 
 const MIGRATION = "0230_ref_form_drafts.sql";
 // 読み込むページの上限（1-17号の支援計画書のように20ページを超える様式があるので多めに）
@@ -512,7 +513,8 @@ export function RefFormCreator({
         </div>
 
         {/* 右: 入れた文字の一覧・○・保存 */}
-        <aside className="flex min-w-0 flex-[1_1_340px] flex-col gap-3">
+        {/* 様式を下へスクロールしても、保存・印刷と在留カードの欄がついてくる（欄が長いときはこの中だけスクロール） */}
+        <aside className="flex min-w-0 flex-[1_1_340px] flex-col gap-3 lg:sticky lg:top-[80px] lg:max-h-[calc(100vh-92px)] lg:self-start lg:overflow-y-auto lg:pr-1">
           {textItems.length > 0 && (
             <section className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-3">
               <h2 className="text-sm font-bold">入力した所</h2>
@@ -585,6 +587,11 @@ export function RefFormCreator({
                 </div>
               ))}
             </section>
+          )}
+
+          {/* 1-17号: 最後のページ（支援業務を行う体制についての説明）の名簿に載せる人を選ぶ */}
+          {formKey === "t1-18" && orgId && (
+            <SupportRosterPicker orgId={orgId} orgName={orgName} onChanged={() => setReloadKey((k) => k + 1)} />
           )}
 
           <section className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-3">
