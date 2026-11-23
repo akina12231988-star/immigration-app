@@ -6,6 +6,7 @@ import { useLockPageScroll } from "@/hooks/useLockPageScroll";
 import { getRefFormPdfUrl, saveRefFormLayout } from "@/app/(app)/ref-forms/actions";
 import {
   REF_FORM_FIELDS,
+  NOZEI3_REF_FORM_KEY,
   REF_FORM_DATE_FMTS,
   isRefFormPlanDate,
   refFormSampleOf,
@@ -167,6 +168,8 @@ export function RefFormLayoutEditor({
   }, [templateId]);
 
   const selected = items.find((i) => i.id === selectedId) ?? null;
+  // 「証明書類の請求」の項目（個人番号・税務署名・代理人）は、納税証明書交付請求書（証明書類の請求のページだけで使う）のときだけ出す
+  const groups = formKey === NOZEI3_REF_FORM_KEY ? FIELD_GROUPS : FIELD_GROUPS.filter((g) => g.name !== "証明書類の請求");
   // 元に戻す（置く・消す・項目を変える・動かす前の状態を積む）
   const [history, setHistory] = useState<RefFormItem[][]>([]);
   const remember = () => setHistory((h) => [...h.slice(-49), items]);
@@ -356,10 +359,10 @@ export function RefFormLayoutEditor({
                   onChange={(e) => changeKind(selected.id, e.target.value as RefFormFieldKind)}
                   className="min-h-[34px] rounded border border-border bg-background px-1"
                 >
-                  {REF_FORM_FIELDS.some((f) => f.hidden && f.kind === selected.kind) && (
+                  {!groups.some((g) => g.fields.some((f) => f.kind === selected.kind)) && (
                     <option value={selected.kind}>{REF_FORM_FIELD_LABEL[selected.kind]}</option>
                   )}
-                  {FIELD_GROUPS.map((g) => (
+                  {groups.map((g) => (
                     <optgroup key={g.name} label={g.name}>
                       {g.fields.map((f) => (
                         <option key={f.kind} value={f.kind}>
@@ -520,7 +523,7 @@ export function RefFormLayoutEditor({
           )}
           <p className="mb-1 font-bold">① 置く項目を選ぶ → ② PDFの書く場所をクリック</p>
           <div className="flex flex-col gap-1">
-            {FIELD_GROUPS.map((g) => {
+            {groups.map((g) => {
               const open = openGroups.includes(g.name);
               const hasSelected = g.fields.some((f) => f.kind === kind);
               return (
