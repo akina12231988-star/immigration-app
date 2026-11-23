@@ -12,7 +12,7 @@ describe("支援業務を行う体制についての説明（PDF）", () => {
     expect(wrapText("あ\nい", font, 10, 30)).toEqual(["あ", "い"]);
   });
 
-  it("名簿が多いときは次のページに続く", async () => {
+  it("名簿が多くても1ページに収める（支援担当者は2列）", async () => {
     const doc = await PDFDocument.create();
     doc.registerFontkit(fontkit);
     const font = await doc.embedFont(await readFile(path.join(__dirname, "../../public/fonts/NotoSansJP-Regular.ttf")), { subset: false });
@@ -31,6 +31,6 @@ describe("支援業務を行う体制についての説明（PDF）", () => {
       managers: [],
       staff: Array.from({ length: 30 }, (_, i) => `担当者${i + 1}`),
     });
-    expect(doc.getPageCount()).toBeGreaterThanOrEqual(3);
+    expect(doc.getPageCount()).toBe(2); // 1人目の分と合わせて2ページ（30人でも1ページ）
   });
 });
