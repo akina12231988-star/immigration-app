@@ -20,6 +20,7 @@ import { OrganizationContacts } from "@/components/organizations/OrganizationCon
 import { ssw2DutiesOf } from "@/lib/org-ssw2-duties";
 import { OrganizationDetail } from "./OrganizationDetail";
 import { signOrgIconUrls } from "@/lib/supabase/queries/org-icons";
+import { canUseUnifiedPrep } from "@/lib/unified-prep";
 
 export const dynamic = "force-dynamic";
 
@@ -86,6 +87,7 @@ export default async function OrganizationDetailPage({
             past={roster.past}
             today={todayStr()}
             error={roster.error}
+            showRefForms={canUseUnifiedPrep(me.role)}
           />
         }
         // 特定技能２号の指導体制（誰が誰を指導するか・あと何人受け入れられるか）

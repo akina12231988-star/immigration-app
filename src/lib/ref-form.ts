@@ -2,7 +2,7 @@ import { PDFDocument, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import { birthSeireki, birthWareki } from "@/lib/person-copy";
 import { warekiDate } from "@/lib/dependents";
-import { SUBMISSION_ITEMS, submissionLink, type SubmissionItem } from "@/lib/submission-list";
+import { SUBMISSION_ITEMS, canonicalSubmissionKey, submissionLink, type SubmissionItem } from "@/lib/submission-list";
 import { PLAN_DATE_FIELDS, SUPPORT_CONTRACT_YEARS, contractPeriodEnd, type PlanDateKey } from "@/lib/support-plan-dates";
 import { calcWageDetail, fixedOtOverHours, formatYen, normalizeWageDetail } from "@/lib/wage-calc";
 import { P117_FIELDS, type P117Key } from "@/lib/ref-form-117";
@@ -111,6 +111,42 @@ export function pickRefFormTemplate<T extends Pick<RefFormTemplate, "form_key" |
   const form = templates.filter((t) => t.form_key === formKey);
   const own = orgId ? form.filter((t) => t.organization_id === orgId) : [];
   return pick(own) ?? pick(form.filter((t) => !t.organization_id));
+}
+
+// ---- 所属機関ごとに用意する参考様式 ----
+// 所属機関ごとに書式・中身が違うので、所属機関がわで PDF を登録して記入位置を置く様式（1号のキー。2号の同じ様式も含む）。
+// ほかの様式は全員共通の版を使う
+export const ORG_SPECIFIC_REF_FORM_KEYS = ["t1-4-1", "t1-5", "t1-6-1", "t1-6-2"] as const;
+export function isOrgSpecificRefForm(key: string): boolean {
+  return (ORG_SPECIFIC_REF_FORM_KEYS as readonly string[]).includes(canonicalSubmissionKey(key));
+}
+
+// 所属機関の「参考様式の準備」の一覧に出す様式（提出書類一覧表の参考様式を1号のキーにまとめたもの＋本人に署名してもらう書類）
+export function refFormPrepKeys(): string[] {
+  const keys = REF_FORM_ITEMS.map((i) => canonicalSubmissionKey(i.key));
+  return [...new Set([...keys, ...SIGN_ONLY_REF_FORM_KEYS])];
+}
+
+// 様式 × 言語の準備の状況（所属機関別の様式は、その所属機関の版を見る。ほかは全員共通の版を見る）
+//  ok        … 登録済みで、記入位置も置いてある
+//  nolayout  … 登録済みだが、記入位置がまだ1つも無い
+//  missing   … その言語の版が無い（used は今作ると使われる版。無ければ null）
+export function refFormPrepCell<T extends Pick<RefFormTemplate, "form_key" | "language" | "organization_id" | "layout">>(
+  templates: T[],
+  key: string,
+  language: string,
+  orgId: string,
+): { orgSpecific: boolean; status: "ok" | "nolayout" | "missing"; template: T | null; used: T | null } {
+  const orgSpecific = isOrgSpecificRefForm(key);
+  const template =
+    templates.find(
+      (t) => t.form_key === key && t.language === language && (orgSpecific ? t.organization_id === orgId : !t.organization_id),
+    ) ?? null;
+  if (template) {
+    const count = Array.isArray(template.layout) ? template.layout.length : 0;
+    return { orgSpecific, status: count > 0 ? "ok" : "nolayout", template, used: template };
+  }
+  return { orgSpecific, status: "missing", template: null, used: pickRefFormTemplate(templates, key, "", orgId, language) };
 }
 
 // アプリに入れてある入管の参考様式（何も記入していない日本語の版。public/forms/ref-forms/）。
