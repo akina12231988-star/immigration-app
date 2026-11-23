@@ -23,6 +23,7 @@ import {
 } from "@/lib/ref-form";
 import { downloadBlob } from "@/lib/onboarding-pdf";
 import { useRefFormTemplates } from "./RefFormPanel";
+import { WorkerCardCheckPanel } from "./WorkerCardCheckPanel";
 
 const MIGRATION = "0230_ref_form_drafts.sql";
 // 読み込むページの上限（1-17号の支援計画書のように20ページを超える様式があるので多めに）
@@ -82,6 +83,8 @@ export function RefFormCreator({
   const [pages, setPages] = useState<PageView[] | null>(null);
   const [scale, setScale] = useState(1.3);
   const [busy, setBusy] = useState<null | "print" | "pdf" | "save" | "attach">(null);
+  // 本人の情報を直したときに、下に敷く PDF（自動で入る所）を作り直すためのキー
+  const [reloadKey, setReloadKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
@@ -181,7 +184,7 @@ export function RefFormCreator({
     return () => {
       cancelled = true;
     };
-  }, [templateId, query, formKey, baseOff]);
+  }, [templateId, query, formKey, baseOff, reloadKey]);
 
   // いまの入力内容で PDF を作る
   async function makePdf(): Promise<Blob> {
@@ -597,6 +600,8 @@ export function RefFormCreator({
               申請準備へ戻る
             </Link>
           </section>
+          {/* いまの在留カードを見ながら、様式に入る本人の情報を確かめる・直す */}
+          <WorkerCardCheckPanel workerId={workerId} onSaved={() => setReloadKey((k) => k + 1)} />
         </aside>
       </div>
 
