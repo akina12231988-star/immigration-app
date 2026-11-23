@@ -73,13 +73,25 @@ export function RefFormCreator({
   const { templates, error: tplError } = useRefFormTemplates();
   const template = pickRefFormTemplate(templates, formKey, nationality, orgId);
   const layout = useMemo(() => (template ? normalizeRefFormLayout(template.layout) : []), [template]);
-  // 作成画面で直せる項目: 自由な文字と、この人に付く○
+  // 作成画面で直せる項目: 自由な文字と、この人に付く○・✓（○と✓は動かす・外すことができる）
   const textItems = useMemo(() => layout.filter((i) => isRefFormEditableText(i.kind)), [layout]);
   const circleItems = useMemo(
-    () => layout.filter((i) => isRefFormCircle(i.kind) && refFormCircleShown(i.kind, gender)),
+    () => layout.filter((i) => (isRefFormCircle(i.kind) && refFormCircleShown(i.kind, gender)) || i.kind === "check"),
     [layout, gender],
   );
-  const circleLabels = useMemo(() => new Map(refFormCircles(circleItems).map((c) => [c.id, c.label])), [circleItems]);
+  const circleLabels = useMemo(() => {
+    const m = new Map(refFormCircles(circleItems).map((c) => [c.id, c.label]));
+    // ✓ は「1ページ目の✓（2個目）」（名前を付けていればその名前）
+    const perPage = new Map<number, number>();
+    for (const c of circleItems
+      .filter((i) => i.kind === "check")
+      .sort((a, b) => a.page - b.page || a.y - b.y || a.x - b.x)) {
+      const n = (perPage.get(c.page) ?? 0) + 1;
+      perPage.set(c.page, n);
+      m.set(c.id, (c.text ?? "").trim() || `${c.page + 1}ページ目の✓（${n}個目）`);
+    }
+    return m;
+  }, [circleItems]);
 
   const [loaded, setLoaded] = useState(false);
   const [texts, setTexts] = useState<Record<string, string>>({});
@@ -459,8 +471,10 @@ export function RefFormCreator({
                     .map((i) => (
                       <div
                         key={i.id}
-                        title={`${circleLabels.get(i.id) ?? "○"}（ドラッグで動かせます）`}
-                        className="absolute cursor-move touch-none rounded-full border-2 border-black hover:border-brand"
+                        title={`${circleLabels.get(i.id) ?? "○"}（ドラッグで動かせます。✕で外します）`}
+                        className={`group absolute cursor-move touch-none ${
+                          i.kind === "check" ? "hover:outline hover:outline-1 hover:outline-brand" : "rounded-full border-2 border-black hover:border-brand"
+                        }`}
                         style={{
                           left: posOf(i).x * scale,
                           top: posOf(i).y * scale,
@@ -468,7 +482,28 @@ export function RefFormCreator({
                           height: i.size * scale,
                         }}
                         onPointerDown={(e) => startDrag(e, i)}
-                      />
+                      >
+                        {/* ✓ は PDF と同じ形の線で描く */}
+                        {i.kind === "check" && (
+                          <svg viewBox="0 0 10 10" className="absolute inset-0 h-full w-full overflow-visible" aria-hidden>
+                            <polyline points="0,4.5 3.5,10 10,0" fill="none" stroke="black" strokeWidth={Math.max(1, i.size / 8) * (10 / i.size)} />
+                          </svg>
+                        )}
+                        {/* 押すとこの○・✓を外す（右の一覧のチェックを外すのと同じ） */}
+                        <button
+                          type="button"
+                          aria-label="この印を外す"
+                          title="この印を外す（右の一覧で戻せます）"
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOff((o) => (o.includes(i.id) ? o : [...o, i.id]));
+                          }}
+                          className="absolute -right-3 -top-3 hidden h-5 w-5 items-center justify-center rounded-full bg-seal text-[11px] font-bold leading-none text-white shadow group-hover:flex"
+                        >
+                          ✕
+                        </button>
+                      </div>
                     ))}
                 </div>
               ))}
@@ -524,8 +559,10 @@ export function RefFormCreator({
 
           {circleItems.length > 0 && (
             <section className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-3">
-              <h2 className="text-sm font-bold">○</h2>
-              <p className="text-[11px] leading-relaxed text-muted">様式の上の○はドラッグで動かせます。要らない○はチェックを外すと書きません。</p>
+              <h2 className="text-sm font-bold">○・✓</h2>
+              <p className="text-[11px] leading-relaxed text-muted">
+                様式の上の○・✓はドラッグで動かせます。要らないものは、様式の上で押すと出る✕か、ここのチェックを外すと書きません（ここでチェックを付け直すと戻ります）。
+              </p>
               {circleItems.map((i) => (
                 <div key={i.id} className="flex flex-wrap items-center gap-2 text-xs">
                   <label className="inline-flex min-h-[32px] items-center gap-1.5">
