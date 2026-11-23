@@ -620,14 +620,25 @@ export function Prep117Section({
 }
 
 // 所属機関の農業特定技能加入通知書（添付データ）。未登録ならこの場で添付でき、所属機関にも保存される
-export function PrepAgriNoticeSection({
+export function PrepAgriNoticeSection(props: { orgId: string; canEdit: boolean; onChanged?: () => void }) {
+  return <PrepOrgFileSection {...props} kind={ORG_FILE_KIND_AGRI_NOTICE} linkLabel="所属機関の画面で加入通知書を見る・添付する →" newLabel="新しい通知書を添付" />;
+}
+
+// 所属機関に登録する添付ファイル（種類ごと・最新版）を申請準備で見せ、その場で添付もできる欄
+export function PrepOrgFileSection({
   orgId,
   canEdit,
   onChanged,
+  kind,
+  linkLabel,
+  newLabel,
 }: {
   orgId: string;
   canEdit: boolean;
   onChanged?: () => void;
+  kind: string;
+  linkLabel: string;
+  newLabel: string;
 }) {
   const [files, setFiles] = useState<OrganizationFileRow[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -660,7 +671,7 @@ export function PrepAgriNoticeSection({
     setBusy(true);
     setError(null);
     try {
-      await uploadOrgFiles(orgId, ORG_FILE_KIND_AGRI_NOTICE, list);
+      await uploadOrgFiles(orgId, kind, list);
       setReloadKey((k) => k + 1);
       onChanged?.();
     } catch (err) {
@@ -671,16 +682,16 @@ export function PrepAgriNoticeSection({
   };
 
   if (!files) return null;
-  const latest = latestOrgFiles(files, ORG_FILE_KIND_AGRI_NOTICE);
+  const latest = latestOrgFiles(files, kind);
   return (
     <div className="flex flex-col gap-2 text-[11px] leading-relaxed">
       {error && <p className="rounded-lg bg-seal/10 px-2.5 py-1.5 text-xs text-seal">{error}</p>}
       {latest ? (
         <OrgAttachmentPreview
-          label={ORG_FILE_KIND_AGRI_NOTICE}
+          label={kind}
           latest={latest}
           onPreview={preview}
-          printHref={orgFilesPrintHref(orgId, [ORG_FILE_KIND_AGRI_NOTICE])}
+          printHref={orgFilesPrintHref(orgId, [kind])}
           printLabel="印刷（A4縦）"
         />
       ) : (
@@ -691,7 +702,7 @@ export function PrepAgriNoticeSection({
         target="_blank"
         className="self-start text-xs font-bold text-brand underline"
       >
-        所属機関の画面で加入通知書を見る・添付する →
+        {linkLabel}
       </Link>
       {canEdit && (
         <>
@@ -702,7 +713,7 @@ export function PrepAgriNoticeSection({
             className="flex min-h-[44px] items-center gap-1.5 self-start rounded-lg bg-brand px-4 text-sm font-bold text-brand-foreground disabled:opacity-50"
           >
             <Upload size={15} />
-            {busy ? "アップロード中…" : latest ? "新しい通知書を添付" : "ファイルを選んで添付"}
+            {busy ? "アップロード中…" : latest ? newLabel : "ファイルを選んで添付"}
           </button>
           <input
             ref={inputRef}

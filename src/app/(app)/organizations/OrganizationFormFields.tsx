@@ -67,6 +67,7 @@ import {
 import { orgYearlyFileGroups, orgYearlyKind } from "@/lib/org-yearly-files";
 import {
   ORG_FILE_KIND_AGRI_NOTICE,
+  ORG_FILE_KIND_CHANGE_APP_ANNEX,
   ORG_FILE_KIND_LABOR_AGREEMENT,
   ORG_FILE_KIND_OWNER_ID,
   ORG_FILE_KIND_YEAR_CALENDAR,
@@ -682,6 +683,26 @@ export function OrganizationFormBody({
           )}
         </div>
       )}
+      {/* 在留資格変更許可申請書に毎回付ける別紙（申請準備の提出書類一覧表の3番に出て、まとめた PDF にも入る） */}
+      <div className="flex flex-col gap-1 sm:col-span-2">
+        <span className="text-xs font-bold text-muted">{ORG_FILE_KIND_CHANGE_APP_ANNEX}</span>
+        {orgId ? (
+          <>
+            <OrgFileAttachments
+              orgId={orgId}
+              kind={ORG_FILE_KIND_CHANGE_APP_ANNEX}
+              addLabel={`${ORG_FILE_KIND_CHANGE_APP_ANNEX}を追加（画像・PDF）`}
+            />
+            <p className={HINT_CLASS}>
+              この会社の在留資格変更の申請で、申請書に添える別紙です。申請準備の「添付した書類をまとめて PDF でダウンロード」で、申請書のすぐ後に入ります（いちばん新しい日に添付した分）。
+            </p>
+          </>
+        ) : (
+          <p className={HINT_CLASS}>
+            {ORG_FILE_KIND_CHANGE_APP_ANNEX}は、会社・機関を登録したあとに編集画面から添付できます。
+          </p>
+        )}
+      </div>
       {/* 郵便番号は住所のテープ印刷（〒の行）に使う。空なら住所印刷の画面で住所から自動で探せる */}
       {locks.top("postal_code") ? (
         <StaticValue label="郵便番号" value={formatPostal(form.postal_code)} />

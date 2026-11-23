@@ -9,6 +9,9 @@ export const ORG_FILE_KIND_LABOR_AGREEMENT = "労使協定書";
 // 雇用保険の適用事業所でない会社が外国人雇用状況届出書をハローワークへ出すときに添える、
 // 事業主の確認書類（名刺・住民票・運転免許証のどれかの画像）
 export const ORG_FILE_KIND_OWNER_ID = "事業主の確認書類";
+// 在留資格変更許可申請書に添える別紙（その所属機関の申請で毎回付けるもの）。
+// 申請準備の提出書類一覧表「在留資格変更許可申請書」の行に出し、添付した書類をまとめた PDF にも入れる
+export const ORG_FILE_KIND_CHANGE_APP_ANNEX = "在留資格変更許可申請書の別紙";
 
 // 添付ファイルの印刷ページで受け付ける種類
 export const ORG_PRINTABLE_FILE_KINDS = [
@@ -16,6 +19,7 @@ export const ORG_PRINTABLE_FILE_KINDS = [
   ORG_FILE_KIND_YEAR_CALENDAR,
   ORG_FILE_KIND_LABOR_AGREEMENT,
   ORG_FILE_KIND_OWNER_ID,
+  ORG_FILE_KIND_CHANGE_APP_ANNEX,
 ] as const;
 
 // 印刷でA4縦の真ん中に置く種類（名刺・免許証のような小さい画像を、用紙の中央に出す）

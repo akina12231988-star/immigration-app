@@ -281,6 +281,7 @@ export type RefFormFieldKind =
   | `p117_${P117Key}`
   | "text"
   | "check"
+  | "strike"
   | "circle"
   | "circle_male"
   | "circle_female";
@@ -368,6 +369,8 @@ export const REF_FORM_FIELDS: { kind: RefFormFieldKind; label: string; sample: s
   { kind: "agent_address", label: "代理人の住所", sample: "熊本県熊本市東区小山3-8-87", group: "証明書類の請求" },
   { kind: "text", label: "自由な文字（毎回同じ）", sample: "（文字）", group: "そのほか" },
   { kind: "check", label: "✓ チェック", sample: "✓", group: "そのほか" },
+  // 訂正線（横線）。長さは「最大の幅」に持つ（記入位置の画面で右端をドラッグして変える）
+  { kind: "strike", label: "― 訂正線（横線）", sample: "", group: "そのほか" },
   { kind: "circle", label: "○ 丸", sample: "○", group: "そのほか" },
   // 性別で○の位置を変える。「男」と「女」の両方に置いておくと、本人の性別の方だけ書き込む
   { kind: "circle_male", label: "○ 丸（男のときだけ）", sample: "○", group: "そのほか" },
@@ -824,6 +827,15 @@ export function applyRefFormEdits(
     });
 }
 
+// 訂正線の長さ（pt）と太さ（pt）
+export const REF_FORM_STRIKE_DEFAULT_LENGTH = 40;
+export function refFormStrikeLength(item: Pick<RefFormItem, "maxWidth">): number {
+  return item.maxWidth ?? REF_FORM_STRIKE_DEFAULT_LENGTH;
+}
+export function refFormStrikeThickness(item: Pick<RefFormItem, "size">): number {
+  return Math.max(0.5, Math.round(item.size) / 10);
+}
+
 // 個人番号の1マスの幅（pt）。入れていなければ文字の大きさの1.5倍
 export function refFormCellWidth(item: Pick<RefFormItem, "cell" | "size">): number {
   return item.cell ?? Math.round(item.size * 1.5 * 10) / 10;
@@ -849,6 +861,12 @@ function drawItem(page: PDFPage, font: PDFFont, item: RefFormItem, data: RefForm
     const top = height - item.y;
     page.drawLine({ start: { x, y: top - s * 0.55 }, end: { x: x + s * 0.35, y: top - s }, thickness: Math.max(1, s / 8), color: black });
     page.drawLine({ start: { x: x + s * 0.35, y: top - s }, end: { x: x + s, y: top }, thickness: Math.max(1, s / 8), color: black });
+    return;
+  }
+  if (item.kind === "strike") {
+    // 置いた所の高さの真ん中に、長さ（最大の幅）の横線を引く。太さは大きさの1/10
+    const y = height - item.y - item.size / 2;
+    page.drawLine({ start: { x: item.x, y }, end: { x: item.x + refFormStrikeLength(item), y }, thickness: refFormStrikeThickness(item), color: black });
     return;
   }
   if (isRefFormMark(item.kind)) {

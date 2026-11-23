@@ -18,6 +18,8 @@ import {
   withDerivedPlanDates,
   refFormValue,
   refFormCircleShown,
+  refFormStrikeLength,
+  refFormStrikeThickness,
   refFormCircles,
   refFormOffIds,
   applyRefFormEdits,
@@ -163,6 +165,7 @@ describe("PDFを作る", () => {
       { kind: "name", page: 0, x: 50, y: 50, size: 12 },
       { kind: "org_name", page: 2, x: 50, y: 80, size: 10 },
       { kind: "check", page: 1, x: 30, y: 30, size: 10 },
+      { kind: "strike", page: 1, x: 30, y: 60, size: 10, maxWidth: 80 },
     ]);
     const data = { ...REF_FORM_SAMPLE_DATA, today: "2026-11-16" };
     const a = await fillRefForm(await make(3), font, layout, data);
@@ -178,6 +181,16 @@ describe("PDFを作る", () => {
     expect(sign.getPageCount()).toBe(3);
     expect(refFormPagesFor("all", [1])).toBeUndefined();
   }, 20000);
+
+  it("訂正線（横線）の長さ・太さ", () => {
+    const [strike] = normalizeRefFormLayout([{ kind: "strike", page: 0, x: 10, y: 20, size: 10, maxWidth: 80 }]);
+    expect(strike.kind).toBe("strike");
+    expect(refFormStrikeLength(strike)).toBe(80);
+    expect(refFormStrikeLength({ maxWidth: undefined })).toBe(40);
+    expect(refFormStrikeThickness({ size: 10 })).toBe(1);
+    expect(refFormStrikeThickness({ size: 4 })).toBe(0.5);
+    expect(refFormValue(strike, REF_FORM_SAMPLE_DATA)).toBe("");
+  });
 
   it("ファイル名", () => {
     expect(refFormFileName("all", "NGUYEN VAN A")).toBe("NGUYEN VAN A_参考様式一式.pdf");
