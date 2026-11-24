@@ -419,10 +419,21 @@ export function ExamTodoSection({
               />
             ))}
           </div>
-          {editing && canAddExamAttempt(exam) && (
+          {/* 不合格のあとは「編集」を押さなくても次の回を足せる（押すと編集を開いて、新しい回の欄を出す） */}
+          {canEdit && canAddExamAttempt(exam) && (
             <button
               type="button"
-              onClick={() => set({ attempts: [...exam.attempts, emptyExamAttempt()] })}
+              onClick={() => {
+                if (editing) {
+                  set({ attempts: [...exam.attempts, emptyExamAttempt()] });
+                  return;
+                }
+                const base = normalizeTodoExam(todo.exam);
+                setDraft({ ...base, attempts: [...base.attempts, emptyExamAttempt()] });
+                setNotice(`${base.attempts.length + 1}回目の欄を足しました。試験日・代金などを入れて「保存」を押してください。`);
+                setError(null);
+                setEditing(true);
+              }}
               className="mt-2 flex min-h-[36px] items-center gap-1 rounded-lg border border-dashed border-brand px-2.5 py-1.5 text-[11px] font-bold text-brand"
             >
               <Plus size={12} />
