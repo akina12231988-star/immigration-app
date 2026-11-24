@@ -175,6 +175,14 @@ export function OrganizationRoster({
             参考様式の準備（所属機関別・全員共通／試験中）
           </Link>
         )}
+        {/* この会社あての見積書（料金の一覧）と、その後のやりとりの記録 */}
+        <Link
+          href={`/quotes?org=${organizationId}`}
+          className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-brand px-3 text-xs font-bold text-brand hover:bg-brand/5"
+        >
+          <FileText size={14} />
+          見積書（料金の一覧・やりとりの記録）
+        </Link>
         {/* 全機関の送付・回答の状況と、地域ごとの時給の集計 */}
         <Link
           href="/organizations/wage-stats"

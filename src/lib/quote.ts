@@ -1,0 +1,231 @@
+// 見積書（新規のお客様向けの料金の一覧）。0235_quotes.sql
+//
+// 申請準備の見積書（lib/estimate.ts）は1人の申請の費用を合計して出すが、こちらは新規のお客様に
+// 「どの手続きにいくらかかるか」を項目ごとに一覧にする。合計金額は出さず、金額は税抜で書く。
+// 宛先は登録済みの所属機関でも、まだ登録していない会社（名前を手で入力）でもよい。
+// 項目はほかの会社の見積書から複製でき、発行した見積書とその後のやりとり（送付・電話・訪問など）を記録する。
+
+import { honorificFor } from "@/lib/reminder-letter";
+import {
+  REFERRAL_SALES_ITEMS,
+  SSW_INSURANCE_AMOUNT,
+  SSW_NEW_COMMON_ITEMS,
+  SSW_NEW_FEE_STANDARD,
+  SSW_NEW_SALES_ITEM_NAME,
+  SSW_RENEWAL_SALES_ITEM,
+} from "@/lib/sales";
+import { parseAmount } from "@/lib/organization-intake";
+
+export const QUOTE_MIGRATION = "0235_quotes.sql";
+
+// 見積書の状況
+export const QUOTE_STATUSES = ["作成中", "送付済", "検討中", "受注", "見送り"] as const;
+export type QuoteStatus = (typeof QUOTE_STATUSES)[number];
+
+// やりとりの種類
+export const QUOTE_EVENT_KINDS = ["送付", "電話", "メール", "訪問", "打合せ", "LINE", "その他"] as const;
+
+// 単位の候補（自由に入力もできる）
+export const QUOTE_UNITS = ["1人あたり", "1人・毎月", "1件あたり", "1人・1年", "実費"] as const;
+
+// 宛先の敬称（'' = 自動。会社・法人・組合・協会なら御中、それ以外は様）
+export const QUOTE_HONORIFICS = ["", "御中", "様", "なし"] as const;
+export const QUOTE_HONORIFIC_LABELS: Record<string, string> = { "": "自動", 御中: "御中", 様: "様", なし: "なし" };
+
+export interface QuoteItem {
+  kind: "item" | "text"; // item = 項目の行 / text = 文字だけの行（表の幅いっぱいに印字。見出し・説明など）
+  on: boolean; // 見積書に入れるか（外した行も残しておき、あとで入れ直せる）
+  name: string; // 項目名（text の行はその文字）
+  price: number | null; // 税抜の金額（null = 空欄。「実費」「別途」のときなど）
+  unit: string;
+  taxFree: boolean; // 非課税（収入印紙代・保険料）
+  note: string; // 項目ごとの補足（いつかかるか など）
+}
+
+export interface QuoteEvent {
+  id: string;
+  on: string; // YYYY-MM-DD
+  kind: string;
+  body: string;
+}
+
+export interface QuoteRow {
+  id: string;
+  organization_id: string | null;
+  addressee_name: string;
+  addressee_person: string;
+  addressee_address: string;
+  issued_on: string | null;
+  number: string;
+  subject: string;
+  items: QuoteItem[];
+  notes: string;
+  show_stamp_table: boolean;
+  status: string;
+  events: QuoteEvent[];
+  honorific: string;
+  online_fee: number | null; // オンライン申請の決済手数料（印紙代の表のオンラインの金額に足す）
+  attachment_ids: string[]; // 一緒に印刷する別紙
+  created_at: string;
+  updated_at: string;
+}
+
+export const QUOTE_DEFAULT_SUBJECT = "特定技能外国人の受入れ・支援に係る費用";
+
+export const QUOTE_DEFAULT_NOTES = [
+  "金額はすべて税抜です。別途消費税（10%）がかかります（非課税の項目を除く）。",
+  "人数・申請の内容により、金額が変わる場合があります。",
+  "本見積書の有効期限は発行日から3か月です。",
+].join("\n");
+
+// 新しい見積書の既定の項目（金額は画面で直せる）
+export function defaultQuoteItems(): QuoteItem[] {
+  const item = (name: string, price: number | null, unit: string, note = "", taxFree = false): QuoteItem => ({
+    kind: "item",
+    on: true,
+    name,
+    price,
+    unit,
+    taxFree,
+    note,
+  });
+  return [
+    item(SSW_NEW_SALES_ITEM_NAME, Number(SSW_NEW_FEE_STANDARD), "1人あたり", "特定技能への在留資格変更のとき"),
+    ...SSW_NEW_COMMON_ITEMS.map((r) => item(r.name, Number(r.amount), "1人あたり", "変更申請のとき")),
+    item("特定技能外国人の支援委託費（毎月の支援代）", null, "1人・毎月", "許可後、毎月"),
+    item(SSW_RENEWAL_SALES_ITEM.name, Number(SSW_RENEWAL_SALES_ITEM.amount), "1人あたり", "在留期間の更新のとき"),
+    item("収入印紙代（申請手数料）", null, "実費", "許可される在留期間により10,000円〜75,000円（下の表）", true),
+    item("特定技能総合保険", SSW_INSURANCE_AMOUNT, "1人・1年", "会社負担のとき", true),
+    ...REFERRAL_SALES_ITEMS.map((r) => item(r.name, Number(r.amount), "1人あたり", "人材のご紹介のとき")),
+  ];
+}
+
+function str(v: unknown): string {
+  return typeof v === "string" ? v : "";
+}
+
+// DB の items（jsonb）を画面で使う形にそろえる
+export function normalizeQuoteItems(raw: unknown): QuoteItem[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((r): r is Record<string, unknown> => !!r && typeof r === "object")
+    .map((r) => {
+      const p = r.price;
+      const price =
+        typeof p === "number" && Number.isFinite(p) ? Math.max(0, Math.round(p)) : typeof p === "string" ? parseAmount(p) : null;
+      return {
+        kind: r.kind === "text" ? ("text" as const) : ("item" as const),
+        on: r.on !== false,
+        name: str(r.name),
+        price: price ?? null,
+        unit: str(r.unit),
+        taxFree: r.taxFree === true,
+        note: str(r.note),
+      };
+    });
+}
+
+// DB の events（jsonb）を画面で使う形にそろえる（新しい日付が上）
+export function normalizeQuoteEvents(raw: unknown): QuoteEvent[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((r): r is Record<string, unknown> => !!r && typeof r === "object")
+    .map((r, i) => ({ id: str(r.id) || `e${i}`, on: str(r.on), kind: str(r.kind), body: str(r.body) }))
+    .sort((a, b) => (a.on === b.on ? 0 : a.on < b.on ? 1 : -1));
+}
+
+export function normalizeQuoteRow(raw: Record<string, unknown>): QuoteRow {
+  return {
+    id: str(raw.id),
+    organization_id: typeof raw.organization_id === "string" ? raw.organization_id : null,
+    addressee_name: str(raw.addressee_name),
+    addressee_person: str(raw.addressee_person),
+    addressee_address: str(raw.addressee_address),
+    issued_on: typeof raw.issued_on === "string" ? raw.issued_on : null,
+    number: str(raw.number),
+    subject: str(raw.subject),
+    items: normalizeQuoteItems(raw.items),
+    notes: str(raw.notes),
+    show_stamp_table: raw.show_stamp_table !== false,
+    status: str(raw.status) || "作成中",
+    events: normalizeQuoteEvents(raw.events),
+    honorific: (QUOTE_HONORIFICS as readonly string[]).includes(str(raw.honorific)) ? str(raw.honorific) : "",
+    online_fee: typeof raw.online_fee === "number" && raw.online_fee > 0 ? Math.round(raw.online_fee) : null,
+    attachment_ids: Array.isArray(raw.attachment_ids) ? raw.attachment_ids.filter((x): x is string => typeof x === "string") : [],
+    created_at: str(raw.created_at),
+    updated_at: str(raw.updated_at),
+  };
+}
+
+// 宛先の1行目（会社名＋敬称）と担当者の行（〇〇 様）。
+//  honorific: '' = 自動（会社・法人なら御中、それ以外は様）/ 御中 / 様 / なし
+//  ・御中: 「株式会社〇〇 御中」＋担当者がいれば「代表取締役 山田太郎 様」
+//  ・様  : 担当者がいれば「株式会社〇〇」＋「代表取締役 山田太郎 様」、いなければ「〇〇 様」
+//  ・なし: 敬称を付けない（担当者の行も付けない）
+export function quoteAddressee(name: string, person: string, honorific = ""): { orgLine: string; personLine: string } {
+  const n = name.trim();
+  // 個人あて（担当者＝宛名）のときは担当者の行を出さない
+  const p = person.trim() === name.trim() ? "" : person.trim();
+  const h = honorific === "なし" ? "" : honorific || (n ? honorificFor(n) : "");
+  if (!n) return { orgLine: "", personLine: p && h ? `${p} 様` : p };
+  if (honorific === "なし") return { orgLine: n, personLine: p };
+  if (h === "御中") return { orgLine: `${n} 御中`, personLine: p ? `${p} 様` : "" };
+  return p ? { orgLine: n, personLine: `${p} 様` } : { orgLine: `${n} 様`, personLine: "" };
+}
+
+// 印紙代の表のオンラインの金額（決済手数料を足す）
+export function onlineFeeWithCharge(online: number, charge: number | null): number {
+  return online + (charge && charge > 0 ? charge : 0);
+}
+
+// 見積書に印字する行（入れない行を外す）
+export function printedQuoteItems(items: QuoteItem[]): QuoteItem[] {
+  return items.filter((i) => i.on && (i.kind === "text" ? i.name.trim() !== "" : true));
+}
+
+// 文字だけの行を新しく作る
+export function newQuoteTextRow(text = ""): QuoteItem {
+  return { kind: "text", on: true, name: text, price: null, unit: "", taxFree: false, note: "" };
+}
+
+export function newQuoteItemRow(): QuoteItem {
+  return { kind: "item", on: true, name: "", price: null, unit: "1人あたり", taxFree: false, note: "" };
+}
+
+// 新しい見積書の決済手数料の初期値（いちばん新しく直した見積書に入っている金額を引き継ぐ）
+export function latestOnlineFee(quotes: QuoteRow[]): number | null {
+  return quotes.find((q) => q.online_fee != null)?.online_fee ?? null;
+}
+
+// 金額の表示（税抜）。空欄は「—」、0円は「0円」
+export function quotePriceText(price: number | null): string {
+  return price == null ? "—" : `${price.toLocaleString("ja-JP")}円`;
+}
+
+// 見積書番号の候補（見積日＋同じ日の何通目か。例: M-20261123-2）
+export function nextQuoteNumber(issuedOn: string, existing: string[]): string {
+  const ymd = issuedOn.replace(/-/g, "");
+  const prefix = `M-${ymd}-`;
+  let max = 0;
+  for (const n of existing) {
+    if (!n.startsWith(prefix)) continue;
+    const k = Number(n.slice(prefix.length));
+    if (Number.isInteger(k) && k > max) max = k;
+  }
+  return `${prefix}${max + 1}`;
+}
+
+// 一覧の検索（会社名・担当者・件名・番号・やりとりの中身）
+export function quoteMatches(q: QuoteRow, query: string): boolean {
+  const s = query.trim().toLowerCase();
+  if (!s) return true;
+  return [q.addressee_name, q.addressee_person, q.subject, q.number, ...q.events.map((e) => e.body)]
+    .join("\n")
+    .toLowerCase()
+    .includes(s);
+}
+
+// いちばん新しいやりとり（一覧に出す）
+export function latestQuoteEvent(q: QuoteRow): QuoteEvent | null {
+  return q.events[0] ?? null;
+}
