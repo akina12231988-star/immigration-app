@@ -189,3 +189,26 @@ describe("特定技能2号の一覧表", () => {
     expect(html).toContain("第3表の8の1");
   });
 });
+
+describe("特定技能1号の在留期間更新の一覧表", () => {
+  it("第1表（1〜14）と農業の第3表の2の1（1〜2）。変更申請の同じ書類に見当・揃え方をそろえる", async () => {
+    const { buildSubmissionRows, canonicalSubmissionKey, submissionListTitle, isChangeAppSubmissionRow, canTransferRow } = await import("./submission-list");
+    const ctx = { jointKind: "単独", hasKokuho: true, hasNenkin: false, flexYear: false, assen: "", nationality: "ベトナム", certPattern: "専門級" };
+    const rows = buildSubmissionRows({}, ctx, { agri: true, renewal: true });
+    expect(rows.filter((r) => r.table === "r1").map((r) => `${r.no}${r.sub ?? ""}`)).toEqual([
+      "1", "2", "3", "4", "5(1)", "5(2)", "5(3)", "5(4)", "6", "7", "8", "9", "10", "11", "12", "13", "14",
+    ]);
+    expect(rows.filter((r) => r.table === "r3agri").map((r) => r.label)).toEqual(["協議会の構成員であることの証明書（特定技能所属機関）", "登録支援機関誓約書"]);
+    const mark = (k: string) => rows.find((r) => r.key === k)?.mark;
+    expect(mark("u1-9")).toBe("有"); // 国保あり
+    expect(mark("u1-11")).toBe("無"); // 年金なし
+    expect(mark("u3a-2")).toBe("有");
+    expect(canonicalSubmissionKey("u3a-2")).toBe("t3a-4");
+    expect(canTransferRow(rows.find((r) => r.key === "u3a-2")!, { renewal: true })).toBe(true);
+    expect(submissionListTitle(rows).app).toBe("在留期間更新許可申請");
+    expect(isChangeAppSubmissionRow("u1-3")).toBe(false);
+    expect(isChangeAppSubmissionRow("t1-3")).toBe(true);
+    // 農業でなければ第1表だけ
+    expect(buildSubmissionRows({}, ctx, { agri: false, renewal: true }).every((r) => r.table === "r1")).toBe(true);
+  });
+});
