@@ -253,3 +253,22 @@ export async function fillSubmissionPdf(input: {
   }
   return out.save();
 }
+
+// 様式の PDF とフォントを読み込んで一覧表の PDF を作る（ブラウザで使う。一覧表の印刷と、提出書類一式のまとめで使う）
+export async function buildSubmissionListPdf(input: {
+  rows: Pick<SubmissionRow, "table" | "mark" | "key" | "pastInfo">[];
+  workerName: string;
+  orgName: string;
+  past?: Record<string, SubmissionPast>;
+}): Promise<Uint8Array> {
+  const get = async (url: string) => {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`様式を読み込めませんでした（${url}）`);
+    return new Uint8Array(await res.arrayBuffer());
+  };
+  const tables = submissionPdfTables(input.rows);
+  const templates = Object.fromEntries(
+    await Promise.all(tables.map(async (t) => [t, await get(SUBMISSION_PDF_TEMPLATES[t]!.file)] as const)),
+  );
+  return fillSubmissionPdf({ ...input, templates, fontBytes: await get("/fonts/NotoSansJP-Regular.ttf") });
+}

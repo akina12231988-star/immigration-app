@@ -29,6 +29,7 @@ import {
   Check,
 } from "lucide-react";
 import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
+import { buildSubmissionListPdf, canFillSubmissionPdf } from "@/lib/submission-pdf";
 import { blobToPdfPart, mergePdfParts, rasterizePdfInBrowser, type PdfPart } from "@/lib/pdf-merge";
 import { applyBundleChoices, PREP_BUNDLE_CHOOSE_IDS, prepBundleFileName, prepBundlePlan } from "@/lib/prep-docs-bundle";
 
@@ -1820,6 +1821,24 @@ export function ApplicationPrepChecklist({
     try {
       const parts: PdfPart[] = [];
       const skipped: string[] = [];
+      // 先頭に、○を付けた提出書類一覧表（入管の様式）を入れる（入管には一覧表を先頭に番号順で出す）
+      let listIncluded = false;
+      if (submissionRows && canFillSubmissionPdf(submissionRows)) {
+        try {
+          const listBytes = await buildSubmissionListPdf({
+            rows: submissionRows,
+            workerName: workerRow?.name ?? "",
+            orgName: prepOrgName,
+            past: current?.submission_past ?? {},
+          });
+          parts.push({ kind: "pdf", bytes: listBytes, name: "提出書類一覧表" });
+          listIncluded = true;
+        } catch (err) {
+          skipped.push(`提出書類一覧表（${err instanceof Error ? err.message : "作れませんでした"}）`);
+        }
+      } else if (submissionRows) {
+        skipped.push("提出書類一覧表（入管の様式の PDF がまだ無い一覧表なので、印刷から別に出してください）");
+      }
       for (const t of bundlePlan.targets) {
         for (const f of t.files) {
           if (f.link) {
@@ -1848,7 +1867,7 @@ export function ApplicationPrepChecklist({
           else skipped.push(`${t.label}（画像・PDF以外のファイル）`);
         }
       }
-      if (parts.length === 0) throw new Error("まとめられるファイルがありませんでした。");
+      if (parts.length === (listIncluded ? 1 : 0)) throw new Error("まとめられるファイルがありませんでした。");
       const bytes = await mergePdfParts(parts, { rasterize: rasterizePdfInBrowser });
       const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/pdf" }));
       const a = document.createElement("a");
@@ -1859,7 +1878,7 @@ export function ApplicationPrepChecklist({
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 10_000);
       setBundleNotice(
-        `${parts.length}ファイルを1つの PDF にまとめました。${skipped.length > 0 ? `まとめられなかったもの: ${skipped.join("、")}` : ""}`,
+        `${listIncluded ? "提出書類一覧表を先頭にして、" : ""}${parts.length}ファイルを1つの PDF にまとめました。${skipped.length > 0 ? `まとめられなかったもの: ${skipped.join("、")}` : ""}`,
       );
     } catch (err) {
       setBundleNotice(err instanceof Error ? err.message : "PDF の作成に失敗しました");

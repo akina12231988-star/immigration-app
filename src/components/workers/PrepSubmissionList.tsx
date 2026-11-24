@@ -6,7 +6,7 @@ import { FileDropArea } from "@/components/ui/FileDropArea";
 import { isJapaneseOnlyRefForm, REF_FORM_LANGUAGES, SIGN_ONLY_REF_FORM_KEYS, isRefFormItem, languageForNationality, missingBundledRefForms, parseReferralFeePresets, pickRefFormTemplate, refFormName, refFormPagesFor } from "@/lib/ref-form";
 import { createClient } from "@/lib/supabase/client";
 import { registerBundledRefForms } from "@/app/(app)/ref-forms/actions";
-import { SUBMISSION_PDF_TEMPLATES, canFillSubmissionPdf, fillSubmissionPdf, submissionPdfTables } from "@/lib/submission-pdf";
+import { buildSubmissionListPdf, canFillSubmissionPdf } from "@/lib/submission-pdf";
 import { RefFormRowBar, RefFormTemplatesDialog, refFormHref, useRefFormTemplates } from "@/components/ref-forms/RefFormPanel";
 import { SignedPagesImport } from "@/components/ref-forms/SignedPagesImport";
 import type { OnboardingDocumentRow } from "@/types/db";
@@ -236,23 +236,7 @@ export function PrepSubmissionList({
     setPrinting(true);
     w?.document.write("<p style='font-family:sans-serif;padding:24px'>提出書類一覧表（入管の様式）を作っています…</p>");
     try {
-      const get = async (url: string) => {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`様式を読み込めませんでした（${url}）`);
-        return new Uint8Array(await res.arrayBuffer());
-      };
-      const tables = submissionPdfTables(rows);
-      const templates = Object.fromEntries(
-        await Promise.all(tables.map(async (t) => [t, await get(SUBMISSION_PDF_TEMPLATES[t]!.file)] as const)),
-      );
-      const bytes = await fillSubmissionPdf({
-        templates,
-        fontBytes: await get("/fonts/NotoSansJP-Regular.ttf"),
-        rows,
-        workerName,
-        orgName,
-        past,
-      });
+      const bytes = await buildSubmissionListPdf({ rows, workerName, orgName, past });
       const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/pdf" }));
       if (w) {
         w.location.href = url;
@@ -371,7 +355,7 @@ export function PrepSubmissionList({
               type="button"
               onClick={onDownloadBundle}
               disabled={bundleBusy}
-              title="必要な書類で添付した証明書・健康診断書なども、行に添付した参考様式も、一覧表の順に1つの PDF にします"
+              title="先頭に○を付けた提出書類一覧表を入れ、必要な書類で添付した証明書・健康診断書なども、行に添付した参考様式も、一覧表の順に1つの PDF にします"
               className="inline-flex min-h-[34px] items-center gap-1 rounded-lg border-2 border-brand bg-surface px-3 font-bold text-brand disabled:opacity-50"
             >
               {bundleBusy ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
