@@ -33,6 +33,22 @@ describe("提出書類一覧表を入管の様式の PDF で作る", () => {
     expect((await PDFDocument.load(bytes)).getPageCount()).toBe(5);
   }, 30000);
 
+  it("1号の更新: 表紙＋第1表（3ページ）と農業の第3表の2の1（1ページ）。過去の申請情報も書ける", async () => {
+    const rows = buildSubmissionRows({}, base, { agri: true, renewal: true });
+    expect(canFillSubmissionPdf(rows)).toBe(true);
+    expect(SUBMISSION_PDF_TEMPLATES.r1?.rows).toHaveLength(SUBMISSION_ITEMS.filter((i) => i.table === "r1").length);
+    expect(SUBMISSION_PDF_TEMPLATES.r3agri?.rows).toHaveLength(SUBMISSION_ITEMS.filter((i) => i.table === "r3agri").length);
+    const bytes = await fillSubmissionPdf({
+      templates: { r1: pub("forms/submission-ssw1-renewal.pdf"), r3agri: pub("forms/submission-ssw1-renewal-agri.pdf") },
+      fontBytes: pub("fonts/NotoSansJP-Regular.ttf"),
+      rows,
+      workerName: "NGUYEN VAN A",
+      orgName: "株式会社サンプル農園",
+      past: { "u1-6": { on: "2026-05-01", no: "福オンCV26009566" }, "u3a-2": { on: "2025-11-01", no: "福オンCV25000001" } },
+    });
+    expect((await PDFDocument.load(bytes)).getPageCount()).toBe(4);
+  }, 30000);
+
   it("表紙＋第1表（4ページ）と農業の第3表（1ページ）を1つの PDF にする", async () => {
     const rows = buildSubmissionRows({ "t1-4-1": "無" }, base, { agri: true });
     const bytes = await fillSubmissionPdf({

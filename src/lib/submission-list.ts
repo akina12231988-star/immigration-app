@@ -6,13 +6,18 @@
 //   第1表          … 申請人に関する必要書類（1〜20）
 //   第3表の13の1   … 農業分野に関する必要な書類（直接雇用。1〜4）。所属機関か外国人の分野が農業のときだけ
 // 第2表（所属機関に関する必要書類）・農業の派遣（13の2・13の3）はまだ入れていない。
+//
+// 在留期間更新許可申請用（特定技能1号。令和8年10月9日改定）も入れている（2026-11-24）
+//   第1表（更新）      … 申請人に関する必要書類（1〜14）
+//   第3表の2の1（更新） … 農業分野に関する必要な書類（直接雇用。1〜2）
 
 export type SubmitMark = "有" | "無";
-// 1号: 第1表・第3表の13の1（農業・直接雇用）／2号: 第1表・第3表の8の1（農業・直接雇用）
-export type SubmissionTable = "1" | "3agri" | "2-1" | "2-3agri";
+// 1号: 第1表・第3表の13の1（農業・直接雇用）／2号: 第1表・第3表の8の1（農業・直接雇用）／
+// 1号の更新: 第1表（更新）・第3表の2の1（農業・直接雇用・更新）
+export type SubmissionTable = "1" | "3agri" | "2-1" | "2-3agri" | "r1" | "r3agri";
 
 // 画面・印刷に並べる表の順
-export const SUBMISSION_TABLE_ORDER: readonly SubmissionTable[] = ["1", "3agri", "2-1", "2-3agri"];
+export const SUBMISSION_TABLE_ORDER: readonly SubmissionTable[] = ["1", "3agri", "2-1", "2-3agri", "r1", "r3agri"];
 
 export interface SubmissionItem {
   key: string; // 保存のキー（例: t1-4-1 / t3a-1-1）
@@ -32,6 +37,8 @@ export const SUBMISSION_TABLE_TITLES: Record<SubmissionTable, string> = {
   "3agri": "第3表の13の1 農業分野に関する必要な書類（直接雇用）",
   "2-1": "第1表 申請人に関する必要書類（特定技能2号）",
   "2-3agri": "第3表の8の1 農業分野に関する必要な書類（特定技能2号・直接雇用）",
+  r1: "第1表 申請人に関する必要書類（特定技能1号・在留期間更新許可申請）",
+  r3agri: "第3表の2の1 農業分野に関する必要な書類（特定技能1号・在留期間更新許可申請・直接雇用）",
 };
 
 const SAME_YEAR = "同一年度内に特定技能外国人を既に受け入れている機関、又は一定の実績があり適正な受入れが見込まれる機関は省略可";
@@ -140,6 +147,38 @@ export const SUBMISSION_ITEMS: SubmissionItem[] = [
   { key: "s2a-1", table: "2-3agri", no: "1", label: "2号農業技能測定試験の合格証明書の写し", formNo: "―", required: "△", note: `対象となる業務区分は運用要領の別表を参照。${PAST_AGRI}`, pastInfo: true },
   { key: "s2a-2", table: "2-3agri", no: "2", label: "農業分野において直接雇用形態で特定技能外国人の受入れを行う特定技能所属機関に係る誓約書", formNo: "分野参考様式第11-1号", required: "○", note: "" },
   { key: "s2a-3", table: "2-3agri", no: "3", label: "協議会の構成員であることの証明書（特定技能所属機関）", formNo: "協議会", required: "○", note: "" },
+
+  // ---- 特定技能1号 在留期間更新許可申請用（令和8年10月9日改定）第1表 ----
+  { key: "u1-1", table: "r1", no: "1", label: "申請人名簿", formNo: "―", required: "△", note: "複数の外国人を同一の機関で受け入れ、同時に申請する場合は必要" },
+  { key: "u1-2", table: "r1", no: "2", label: "「特定技能1号」に係る提出書類一覧表（在留期間更新許可申請用）", formNo: "―", required: "○", note: "第1表（表紙を含む）・第3表の1〜3のいずれか（更新は第2表不要）" },
+  { key: "u1-3", table: "r1", no: "3", label: "在留期間更新許可申請書", formNo: "別記第30号の2様式", required: "○", note: "申請前6か月以内に撮影した写真（縦4cm×横3cm・裏面に氏名）の貼付が必要" },
+  { key: "u1-4", table: "r1", no: "4", label: "特定技能雇用契約書の写し", formNo: "参考様式第1-5号", required: "○", note: "申請人の署名と、申請人が十分に理解できる言語での記載が必要" },
+  { key: "u1-5-1", table: "r1", no: "5", sub: "(1)", label: "雇用条件書の写し", formNo: "参考様式第1-6号", required: "○", note: "申請人の署名と、申請人が十分に理解できる言語での記載が必要" },
+  { key: "u1-5-2", table: "r1", no: "5", sub: "(2)", label: "賃金の支払の写し", formNo: "参考様式第1-6号別紙", required: "○", note: "申請人が十分に理解できる言語での記載が必要" },
+  { key: "u1-5-3", table: "r1", no: "5", sub: "(3)", label: "申請人が十分に理解できる言語が併記された年間カレンダーの写し", formNo: "―", required: "△", note: "1年単位の変形労働時間制を採用している場合は必要" },
+  { key: "u1-5-4", table: "r1", no: "5", sub: "(4)", label: "1年単位の変形労働時間制に関する協定書の写し", formNo: "―", required: "△", note: "1年単位の変形労働時間制を採用している場合は必要" },
+  { key: "u1-6", table: "r1", no: "6", label: "直近1年度分の申請人の個人住民税の納税証明書", formNo: "市区町村", required: "△", note: PAST_1Y, pastInfo: true },
+  { key: "u1-7", table: "r1", no: "7", label: "納税証明書の賦課年度と同一年度の申請人の個人住民税の課税証明書", formNo: "市区町村", required: "△", note: PAST_1Y, pastInfo: true },
+  { key: "u1-8", table: "r1", no: "8", label: "課税証明書と同一年の申請人の給与所得の源泉徴収票の写し", formNo: "―", required: "△", note: `${PAST_1Y}。源泉徴収票が複数で年末調整をしていない場合は、確定申告の上、納税証明書（その3）も必要`, pastInfo: true },
+  { key: "u1-9", table: "r1", no: "9", label: "医療保険の資格情報（マイナポータル）の写し又は資格確認書の写し", formNo: "―", required: "△", note: `申請時点で国民健康保険の被保険者である場合は必要。${PAST_1Y}。保険者番号・記号・番号はマスキング`, pastInfo: true },
+  { key: "u1-10", table: "r1", no: "10", label: "直近1年度分の申請人の国民健康保険料（税）納付証明書", formNo: "市区町村", required: "△", note: `申請時点で国民健康保険の被保険者である場合は必要。${PAST_1Y}`, pastInfo: true },
+  { key: "u1-11", table: "r1", no: "11", label: "申請人の被保険者記録照会回答票", formNo: "日本年金機構又は年金事務所", required: "△", note: `申請時点で国民年金の被保険者である場合は必要。24か月分の領収証書を出す場合は省略可。${PAST_1Y}。基礎年金番号はマスキング`, pastInfo: true },
+  { key: "u1-12", table: "r1", no: "12", label: "被保険者記録照会（納付Ⅱ）又は申請日の属する月の前々月までの24か月分の国民年金保険料領収証書の写し", formNo: "日本年金機構又は年金事務所", required: "△", note: `申請時点で国民年金の被保険者である場合は必要。${PAST_1Y}。基礎年金番号はマスキング`, pastInfo: true },
+  { key: "u1-13", table: "r1", no: "13", label: "前回申請時に履行すべきであった公的義務に係る書類", formNo: "―", required: "△", note: "前回申請時に公的義務を履行できないとして、項番14の書類を出して履行を誓約した場合は必要" },
+  { key: "u1-14", table: "r1", no: "14", label: "公的義務履行に関する誓約書", formNo: "参考様式第1-26号", required: "△", note: "項番6・8・10・12のいずれかに滞納がある場合は必要" },
+
+  // ---- 特定技能1号 在留期間更新許可申請用 第3表の2の1（農業・直接雇用） ----
+  { key: "u3a-1", table: "r3agri", no: "1", label: "協議会の構成員であることの証明書（特定技能所属機関）", formNo: "協議会", required: "○", note: "" },
+  {
+    key: "u3a-2",
+    table: "r3agri",
+    no: "2",
+    label: "登録支援機関誓約書",
+    formNo: "分野参考様式第11-4号",
+    required: "△",
+    note: "登録支援機関に、1号特定技能外国人支援計画の実施の全部を委託する場合は必要。申請人に係る過去の在留諸申請で提出済み（いまも内容に変更がないもの）なら省略可",
+    pastInfo: true,
+  },
 ];
 
 // 2号の書類のうち、1号と同じ書類（見当の付け方・揃え方・参考様式のひな形を1号と同じにする）
@@ -171,9 +210,33 @@ export const SSW2_SAME_AS_SSW1: Record<string, string> = {
   "s2a-3": "t3a-3",
 };
 
-// 1号と同じ書類なら1号のキー（参考様式のひな形・揃え方はこのキーで引く）
+// 1号の更新申請の一覧表の書類のうち、1号の変更申請の一覧表と同じ書類
+// （見当の付け方・揃え方・参考様式のひな形・添付を変更申請と同じにする）
+export const RENEWAL_SAME_AS_SSW1: Record<string, string> = {
+  "u1-1": "t1-1",
+  "u1-2": "t1-2",
+  "u1-3": "t1-3",
+  "u1-4": "t1-5",
+  "u1-5-1": "t1-6-1",
+  "u1-5-2": "t1-6-2",
+  "u1-5-3": "t1-6-3",
+  "u1-5-4": "t1-6-4",
+  "u1-6": "t1-9",
+  "u1-7": "t1-10",
+  "u1-8": "t1-11",
+  "u1-9": "t1-12",
+  "u1-10": "t1-13",
+  "u1-11": "t1-14",
+  "u1-12": "t1-15",
+  "u1-13": "t1-16",
+  "u1-14": "t1-17",
+  "u3a-1": "t3a-3",
+  "u3a-2": "t3a-4",
+};
+
+// 1号（変更申請）と同じ書類なら1号のキー（参考様式のひな形・揃え方はこのキーで引く）
 export function canonicalSubmissionKey(key: string): string {
-  return SSW2_SAME_AS_SSW1[key] ?? key;
+  return SSW2_SAME_AS_SSW1[key] ?? RENEWAL_SAME_AS_SSW1[key] ?? key;
 }
 
 // 二国間取決めの手続が必要な国籍（第1表 20）。2号の一覧表（令和8年8月現在）ではカンボジア・ベトナム
@@ -205,6 +268,7 @@ export function suggestSubmissionMark(key: string, c: SubmissionContext): Submit
       return yesNo(BILATERAL_NATIONALITIES_SSW2.some((n) => c.nationality.includes(n)));
   }
   if (SSW2_SAME_AS_SSW1[key]) return suggestSubmissionMark(SSW2_SAME_AS_SSW1[key], c);
+  if (RENEWAL_SAME_AS_SSW1[key]) return suggestSubmissionMark(RENEWAL_SAME_AS_SSW1[key], c);
   switch (key) {
     case "t1-1":
       return yesNo(c.jointKind === "連名");
@@ -271,13 +335,20 @@ export interface SubmissionRow extends SubmissionItem {
   auto: boolean; // 見当のまま（まだ選んでいない）
 }
 
-// ssw2 = 特定技能2号の一覧表（第1表・第3表の8の1）。agri = 農業の第3表も出す
+// ssw2 = 特定技能2号の一覧表（第1表・第3表の8の1）。renewal = 1号の在留期間更新の一覧表（第1表・第3表の2の1）。
+// agri = 農業の第3表も出す
+export function submissionTablesFor(opts: { agri: boolean; ssw2?: boolean; renewal?: boolean }): SubmissionTable[] {
+  if (opts.ssw2) return ["2-1", ...(opts.agri ? (["2-3agri"] as const) : [])];
+  if (opts.renewal) return ["r1", ...(opts.agri ? (["r3agri"] as const) : [])];
+  return ["1", ...(opts.agri ? (["3agri"] as const) : [])];
+}
+
 export function buildSubmissionRows(
   marks: Record<string, SubmitMark>,
   ctx: SubmissionContext,
-  opts: { agri: boolean; ssw2?: boolean },
+  opts: { agri: boolean; ssw2?: boolean; renewal?: boolean },
 ): SubmissionRow[] {
-  const tables: SubmissionTable[] = opts.ssw2 ? ["2-1", ...(opts.agri ? (["2-3agri"] as const) : [])] : ["1", ...(opts.agri ? (["3agri"] as const) : [])];
+  const tables = submissionTablesFor(opts);
   return SUBMISSION_ITEMS.filter((i) => tables.includes(i.table)).map((i) => {
     const saved = marks[i.key];
     if (saved) return { ...i, mark: saved, auto: false };
@@ -412,14 +483,29 @@ export function submissionBundleOrder(
   return out;
 }
 
-const SUBMISSION_TABLE_SHORT: Record<SubmissionTable, string> = { "1": "", "3agri": "第3表 ", "2-1": "", "2-3agri": "第3表 " };
+const SUBMISSION_TABLE_SHORT: Record<SubmissionTable, string> = { "1": "", "3agri": "第3表 ", "2-1": "", "2-3agri": "第3表 ", r1: "", r3agri: "第3表 " };
 
-// 一覧表の名前（1号／2号）
-export function submissionListTitle(rows: Pick<SubmissionRow, "table">[]): { kind: "1号" | "2号"; title: string } {
+// 在留資格変更許可申請書の行か（所属機関の「申請書の別紙」を付ける。更新申請書の行は除く）
+export function isChangeAppSubmissionRow(key: string): boolean {
+  return canonicalSubmissionKey(key) === "t1-3" && !RENEWAL_SAME_AS_SSW1[key];
+}
+
+// 第3表（分野の書類）の表か
+export function isFieldSubmissionTable(t: SubmissionTable): boolean {
+  return t === "3agri" || t === "2-3agri" || t === "r3agri";
+}
+
+// 一覧表の名前（1号／2号）と、どの申請用か（在留資格変更／在留期間更新）
+export function submissionListTitle(rows: Pick<SubmissionRow, "table">[]): {
+  kind: "1号" | "2号";
+  title: string;
+  app: "在留資格変更許可申請" | "在留期間更新許可申請";
+} {
   const ssw2 = rows.some((r) => r.table === "2-1" || r.table === "2-3agri");
+  const app = rows.some((r) => r.table === "r1" || r.table === "r3agri") ? "在留期間更新許可申請" : "在留資格変更許可申請";
   return ssw2
-    ? { kind: "2号", title: "「特定技能２号」に係る提出書類一覧表" }
-    : { kind: "1号", title: "「特定技能１号」に係る提出書類一覧表" };
+    ? { kind: "2号", title: "「特定技能２号」に係る提出書類一覧表", app }
+    : { kind: "1号", title: "「特定技能１号」に係る提出書類一覧表", app };
 }
 
 // ---- 一覧表の印刷（A4縦） ----
@@ -477,7 +563,7 @@ ${body}
   .mk.on { border: 1.4px solid #000; border-radius: 50%; font-weight: bold; }
 </style></head><body>
 <h1>${submissionListTitle(input.rows).title}</h1>
-<p class="sub-title">（在留資格変更許可申請用）</p>
+<p class="sub-title">（${submissionListTitle(input.rows).app}用）</p>
 <div class="who"><div>申請人の氏名 <span>${esc(input.workerName)}</span></div><div>特定技能所属機関の名称 <span>${esc(input.orgName)}</span></div></div>
 ${tables}
 </body></html>`;

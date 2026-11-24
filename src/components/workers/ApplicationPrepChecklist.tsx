@@ -255,6 +255,8 @@ import {
   submissionAttachKey,
   submissionBundleOrder,
   canonicalSubmissionKey,
+  isFieldSubmissionTable,
+  isChangeAppSubmissionRow,
   type SubmissionRow,
 } from "@/lib/submission-list";
 import { PrepSubmissionList, SubmissionRowAction } from "@/components/workers/PrepSubmissionList";
@@ -1646,10 +1648,12 @@ export function ApplicationPrepChecklist({
     : missingItems;
   const docLabelOf = (item: (typeof items)[number]) => prepDocLabel(item.def, docYearOf(item.def), currentReiwa);
 
-  // 提出書類一覧表（在留資格変更。特定技能2号の準備なら2号の一覧表）。保存した有／無と、申請準備の情報からの見当
+  // 提出書類一覧表（在留資格変更。特定技能2号の準備なら2号の一覧表。特定技能1号の在留期間更新なら更新の一覧表）。
+  // 保存した有／無と、申請準備の情報からの見当。2号の更新の一覧表はまだ入れていない
   const submissionSsw2 = isSsw2Prep || meta.cert_pattern === "特定技能2号";
+  const submissionRenewal = meta.app_type === "更新" && !submissionSsw2;
   const submissionRows =
-    unified && current && meta.app_type === "変更"
+    unified && current && (meta.app_type === "変更" || submissionRenewal)
       ? buildSubmissionRows(
           current.submission_marks ?? {},
           {
@@ -1661,15 +1665,15 @@ export function ApplicationPrepChecklist({
             nationality: prepNationality,
             certPattern: effectiveCertPattern(meta),
           },
-          { agri: prepOrgAgri || isAgricultureIndustry(workerRow?.field), ssw2: submissionSsw2 },
+          { agri: prepOrgAgri || isAgricultureIndustry(workerRow?.field), ssw2: submissionSsw2, renewal: submissionRenewal },
         )
       : null;
 
   // 提出書類一覧表の行に直接添付するファイル（アプリの「必要な書類」に無い書類）。保存先は prep_sl_*
   const submissionAttachDef = (row: SubmissionRow): PrepDocDef => ({
     id: `sl:${row.key}`,
-    label: `${row.table === "3agri" || row.table === "2-3agri" ? "第3表 " : ""}${row.no}${row.sub ?? ""} ${row.label}`,
-    appliesTo: ["変更"],
+    label: `${isFieldSubmissionTable(row.table) ? "第3表 " : ""}${row.no}${row.sub ?? ""} ${row.label}`,
+    appliesTo: ["変更", "更新"],
     source: { kind: "doc", docKey: submissionAttachKey(row.key) },
     manageInline: true,
   });
@@ -1733,9 +1737,9 @@ export function ApplicationPrepChecklist({
       const row = rowByKey.get(o.id.slice(3));
       if (!row) return [];
       const def = submissionAttachDef(row);
-      // 在留資格変更許可申請書の行のすぐ後に、所属機関の別紙を入れる（無ければ何も足さない）
+      // 在留資格変更許可申請書の行のすぐ後に、所属機関の別紙を入れる（無ければ何も足さない。更新申請書には入れない）
       const annex =
-        canonicalSubmissionKey(row.key) === "t1-3" && orgAnnexFiles.length > 0
+        isChangeAppSubmissionRow(row.key) && orgAnnexFiles.length > 0
           ? [
               {
                 id: `org-annex:${row.key}`,
@@ -1867,7 +1871,7 @@ export function ApplicationPrepChecklist({
   // 人材サービス総合サイトの画面（全員共通）と協議会の加入通知書（所属機関の添付）は、行に添付しなくてよいので除く
   const missingAttachKeys = (() => {
     if (!submissionRows) return [];
-    const exempt = new Set(["t1-7-2", "s2-7-2", "t3a-3", "s2a-3"]);
+    const exempt = new Set(["t1-7-2", "t3a-3"]);
     const out = new Set<string>();
     for (const m of bundlePlan.missing) {
       if (m.reason !== "未添付") continue;
@@ -1876,7 +1880,9 @@ export function ApplicationPrepChecklist({
         for (const r of submissionRows)
           if (r.mark === "有" && (submissionLink(r.key)?.docs ?? []).includes(m.id)) out.add(r.key);
     }
-    return submissionRows.filter((r) => r.mark === "有" && out.has(r.key) && !exempt.has(r.key)).map((r) => r.key);
+    return submissionRows
+      .filter((r) => r.mark === "有" && out.has(r.key) && !exempt.has(canonicalSubmissionKey(r.key)))
+      .map((r) => r.key);
   })();
 
   // 「何の書類を待っていますか？」に1回で入れる文（まだ揃っていない書類と依頼先）

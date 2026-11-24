@@ -21,6 +21,8 @@ import {
   SUBMISSION_TABLE_TITLES,
   submissionListPrintHtml,
   canTransferRow,
+  ANYTIME_TRANSFER_KEYS,
+  isChangeAppSubmissionRow,
   type SubmissionPast,
   type SubmissionRow,
   type SubmitMark,
@@ -200,7 +202,8 @@ export function PrepSubmissionList({
   // ダウンロードするときのファイル名（例: LAM TRIEU VY_在留資格変更許可申請_提出書類一覧表（特定技能1号）.pdf）
   const pdfFileName = () => {
     const name = (workerName || "申請人").replace(/[\\/:*?"<>|]+/g, "").replace(/\s+/g, " ").trim();
-    return `${name}_在留資格変更許可申請_提出書類一覧表（特定技能${submissionListTitle(rows).kind}）.pdf`;
+    const t = submissionListTitle(rows);
+    return `${name}_${t.app}_提出書類一覧表（特定技能${t.kind}）.pdf`;
   };
   // mode: open = 新しいタブで開く（印刷）／download = 名前を付けてダウンロード
   const print = async (mode: "open" | "download" = "open") => {
@@ -272,7 +275,7 @@ export function PrepSubmissionList({
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <p className="min-w-0 flex-1 text-[11px] leading-relaxed text-muted">
-          入管の{listTitle.title}（在留資格変更許可申請用）と同じ番号・順番です。書類ごとに提出確認欄の「有」「無」を押してください。
+          入管の{listTitle.title}（{listTitle.app}用）と同じ番号・順番です。書類ごとに提出確認欄の「有」「無」を押してください。
           国保・年金・国籍・あっせん・合格証などから見当が付くものは、最初から選んであります（
           <span className="rounded bg-background px-1 font-bold">見当</span>
           の印）。押すと確定します。同一年度内に受け入れているかで変わる 4・7(1) などは選んでください。
@@ -590,8 +593,9 @@ export function PrepSubmissionList({
                             <PastInfoPicker
                               key={`${r.key}-${past[r.key]?.on ?? ""}-${past[r.key]?.no ?? ""}`}
                               value={past[r.key]}
-                              candidates={r.pastInfo ? pastCandidates : orgPastCandidates}
+                              candidates={orgOnlyTransfer(r) ? orgPastCandidates : pastCandidates}
                               onForm={!!r.pastInfo}
+                              orgOnly={orgOnlyTransfer(r)}
                               canEdit={canEdit}
                               onSave={(v) => onPast(r.key, v)}
                             />
@@ -639,7 +643,7 @@ export function PrepSubmissionList({
                                 disabled={!canEdit}
                                 onChange={(e) => {
                                   if (e.target.checked) {
-                                    const c = (r.pastInfo ? pastCandidates : orgPastCandidates)[0];
+                                    const c = (orgOnlyTransfer(r) ? orgPastCandidates : pastCandidates)[0];
                                     onPast(r.key, { on: c?.on ?? "", no: c?.no ?? "" });
                                     // 転用する書類は今回は出さないので「無」にする
                                     if (r.mark !== "無" || r.auto) onMark(r.key, "無");
@@ -723,9 +727,9 @@ export function SubmissionRowAction({
   // 「人材サービス総合サイト」の画面は、だれの申請でも同じ（当社の掲載画面）。全員共通で1つ登録して使う
   const sharedListing = canonicalSubmissionKey(row.key) === "t1-7-2";
   // 協議会の構成員であることの証明書は、所属機関に登録した農業特定技能協議会の加入通知書を使う（所属機関ごと）
-  const councilNotice = (row.key === "t3a-3" || row.key === "s2a-3") && !!orgId;
+  const councilNotice = canonicalSubmissionKey(row.key) === "t3a-3" && !!orgId;
   // 在留資格変更許可申請書の行には、所属機関に登録した「申請書の別紙」を出す（まとめた PDF で申請書のすぐ後に入る）
-  const changeAppAnnex = canonicalSubmissionKey(row.key) === "t1-3" && !!orgId;
+  const changeAppAnnex = isChangeAppSubmissionRow(row.key) && !!orgId;
   const usesShared = sharedListing || councilNotice;
   return (
     <div className="flex flex-col gap-1 rounded-lg border border-border bg-background/60 p-2 text-[11px]">
@@ -878,16 +882,23 @@ export function SubmissionRowAction({
 }
 
 // 「転用」にした書類で、どの申請の申請日・受付番号を書くかを選ぶ。候補に無ければ手で入れる
+// 1年を過ぎても転用できる書類（11-4号）は、この所属機関の申請から選ぶ（前回と同じ所属機関のときだけ転用できる）
+function orgOnlyTransfer(r: Pick<SubmissionRow, "key">): boolean {
+  return ANYTIME_TRANSFER_KEYS.has(canonicalSubmissionKey(r.key));
+}
+
 function PastInfoPicker({
   value,
   candidates,
   canEdit,
   onSave,
   onForm = true,
+  orgOnly = false,
 }: {
   value: SubmissionPast;
   candidates: (SubmissionPast & { label: string })[];
-  onForm?: boolean; // 入管の様式の「過去に提出した申請情報」に書くか（11-4号は欄が斜線なので書かない）
+  onForm?: boolean; // 入管の様式の「過去に提出した申請情報」に書くか（変更申請の一覧表の11-4号は欄が斜線なので書かない）
+  orgOnly?: boolean; // この所属機関の申請だけが候補（11-4号）
   canEdit: boolean;
   onSave: (v: SubmissionPast) => void;
 }) {
@@ -961,7 +972,7 @@ function PastInfoPicker({
       )}
       {candidates.length === 0 && !manual && (
         <span className="text-seal">
-          {onForm ? "1年以内の申請が見つかりません。" : "この所属機関で出した前回の申請が見つかりません（前回と所属機関が違うときは転用できません）。"}「手で入れる」で入れてください。
+          {orgOnly ? "この所属機関で出した前回の申請が見つかりません（前回と所属機関が違うときは転用できません）。" : "1年以内の申請が見つかりません。"}「手で入れる」で入れてください。
         </span>
       )}
     </div>
