@@ -3,11 +3,12 @@
 import { Fragment, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { CheckCircle2, ChevronDown, Download, Eye, Loader2, Paperclip, Printer, Trash2 } from "lucide-react";
 import { FileDropArea } from "@/components/ui/FileDropArea";
-import { isJapaneseOnlyRefForm, REF_FORM_LANGUAGES, SIGN_ONLY_REF_FORM_KEYS, isRefFormItem, languageForNationality, missingBundledRefForms, parseReferralFeePresets, pickRefFormTemplate, refFormName } from "@/lib/ref-form";
+import { isJapaneseOnlyRefForm, REF_FORM_LANGUAGES, SIGN_ONLY_REF_FORM_KEYS, isRefFormItem, languageForNationality, missingBundledRefForms, parseReferralFeePresets, pickRefFormTemplate, refFormName, refFormPagesFor } from "@/lib/ref-form";
 import { createClient } from "@/lib/supabase/client";
 import { registerBundledRefForms } from "@/app/(app)/ref-forms/actions";
 import { SUBMISSION_PDF_TEMPLATES, canFillSubmissionPdf, fillSubmissionPdf, submissionPdfTables } from "@/lib/submission-pdf";
 import { RefFormRowBar, RefFormTemplatesDialog, refFormHref, useRefFormTemplates } from "@/components/ref-forms/RefFormPanel";
+import { SignedPagesImport } from "@/components/ref-forms/SignedPagesImport";
 import type { OnboardingDocumentRow } from "@/types/db";
 import { SupportOrgFileAttachments } from "@/app/(app)/support-org/SupportOrgFileAttachments";
 import { PrepAgriNoticeSection, PrepOrgFileSection } from "@/components/workers/PrepSupportOrgSection";
@@ -23,6 +24,8 @@ import {
   canTransferRow,
   ANYTIME_TRANSFER_KEYS,
   isChangeAppSubmissionRow,
+  isFieldSubmissionTable,
+  canAttachToSubmissionRow,
   type SubmissionPast,
   type SubmissionRow,
   type SubmitMark,
@@ -51,6 +54,7 @@ export function PrepSubmissionList({
   renewal = false,
   missingAttachKeys = [],
   onDownloadBundle,
+  onAttachedFiles,
   bundleBusy = false,
   workerId,
   nationality = "",
@@ -79,6 +83,7 @@ export function PrepSubmissionList({
   missingAttachKeys?: string[]; // 「有」なのに何も添付していない行（行のキー）
   // 添付した書類（必要な書類の証明書・健康診断書なども、行に添付した参考様式も）を一覧表の順に1つの PDF にする
   onDownloadBundle?: () => void;
+  onAttachedFiles?: () => Promise<void> | void; // 署名ページを差し替えた PDF を行に添付したあと（添付の一覧を読み直す）
   bundleBusy?: boolean;
   // 参考様式の作成（ひな形に書き込んだPDF）に使う。渡したときだけ参考様式の欄を出す
   workerId?: string;
@@ -385,6 +390,30 @@ export function PrepSubmissionList({
           >
             ✍ 本人に署名してもらうページだけ（{signKeys.length}件）
           </a>
+          {/* 署名してもらったページを取り込み、各様式の署名ページだけを差し替えて行に添付する */}
+          <SignedPagesImport
+            workerId={workerId}
+            canEdit={canEdit}
+            onAttached={onAttachedFiles}
+            entries={[
+              ...refSignReady.map((r) => ({
+                key: refKey(r),
+                name: refFormName(refKey(r)),
+                href: refFormHref(workerId, [refKey(r)], "all", refOff, todoNo, bulkLang, fee),
+                signPages: refFormPagesFor("sign", bulkPick(refKey(r))?.sign_pages ?? [], refKey(r)),
+                rowKey: canAttachToSubmissionRow(r.key) ? r.key : null,
+                rowLabel: `${isFieldSubmissionTable(r.table) ? "第3表 " : ""}${r.no}${r.sub ?? ""} ${r.label}`,
+              })),
+              ...signOnlyReady.map((k) => ({
+                key: k,
+                name: refFormName(k),
+                href: refFormHref(workerId, [k], "all", refOff, todoNo, bulkLang, fee),
+                signPages: refFormPagesFor("sign", bulkPick(k)?.sign_pages ?? [], k),
+                rowKey: null,
+                rowLabel: refFormName(k),
+              })),
+            ]}
+          />
           {/* 言語の版。最初は本人の国籍の言語。選び直すと、上の2つのダウンロードがその言語の版になる */}
           <label className="flex items-center gap-1">
             <span className="font-bold">言語</span>

@@ -3100,6 +3100,10 @@ export function ApplicationPrepChecklist({
             missingAttachKeys={missingAttachKeys}
             onDownloadBundle={() => void downloadBundle()}
             bundleBusy={bundleBusy}
+            onAttachedFiles={async () => {
+              await loadDocs();
+              notifyWorkerDocsChanged(workerId);
+            }}
             renewal={meta.app_type === "更新"}
             orgPastCandidates={priorApp.orgCandidates(prepOrgId ?? null).map((c) => ({
               on: c.applicationOn,
