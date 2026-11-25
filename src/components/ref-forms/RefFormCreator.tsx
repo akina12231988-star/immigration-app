@@ -123,6 +123,8 @@ export function RefFormCreator({
   // この人の分だけ変えた文字の大きさ（pt）。自動で入る文字は下に敷く PDF を作り直して見せる
   const [sizes, setSizes] = useState<Record<string, number>>({});
   const [bgSizes, setBgSizes] = useState<Record<string, number>>({});
+  // 文字の大きさの一覧（長いので、最初はたたんでおく）
+  const [showSizes, setShowSizes] = useState(false);
   const [off, setOff] = useState<string[]>([]);
   const [shared, setShared] = useState<string[]>([]);
   const [orgTexts, setOrgTexts] = useState<Record<string, string>>({});
@@ -634,161 +636,7 @@ export function RefFormCreator({
         {/* 右: 入れた文字の一覧・○・保存 */}
         {/* 様式を下へスクロールしても、保存・印刷と在留カードの欄がついてくる（欄が長いときはこの中だけスクロール） */}
         <aside className="flex min-w-0 flex-[1_1_340px] flex-col gap-3 lg:sticky lg:top-[80px] lg:max-h-[calc(100vh-92px)] lg:self-start lg:overflow-y-auto lg:pr-1">
-          {textItems.length > 0 && (
-            <section className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-3">
-              <h2 className="text-sm font-bold">入力した所</h2>
-              <p className="text-[11px] leading-relaxed text-muted">
-                左の様式に直接入れても、ここに入れても同じです。
-                {orgId ? `「${orgName || "この所属機関"}の共通にする」に✓を付けた所は、次からこの所属機関でこの様式を作るとき最初から入っています。` : ""}
-              </p>
-              {textItems.map((i, n) => (
-                <div key={i.id} className="flex flex-col gap-1 border-t border-border pt-2">
-                  <label className="flex flex-col gap-1 text-xs font-bold text-muted">
-                    {textLabel(i, n + 1)}
-                    <input
-                      value={texts[i.id] ?? ""}
-                      onChange={(e) => setTexts((t) => ({ ...t, [i.id]: e.target.value }))}
-                      placeholder="空なら何も書きません"
-                      className="min-h-[36px] rounded-md border border-border px-2 text-sm font-normal text-foreground"
-                    />
-                  </label>
-                  {moves[i.id] && (
-                    <button
-                      type="button"
-                      onClick={() => resetMove(i.id)}
-                      className="min-h-[28px] self-start rounded-md border border-border px-2 text-xs font-bold text-brand"
-                    >
-                      位置を元に戻す
-                    </button>
-                  )}
-                  {orgId && (
-                    <label className="inline-flex min-h-[32px] items-center gap-1.5 text-xs text-brand">
-                      <input
-                        type="checkbox"
-                        checked={shared.includes(i.id)}
-                        onChange={(e) =>
-                          setShared((s) => (e.target.checked ? [...s, i.id] : s.filter((x) => x !== i.id)))
-                        }
-                      />
-                      {orgName || "この所属機関"}の共通にする（{refFormName(formKey)}）
-                    </label>
-                  )}
-                </div>
-              ))}
-            </section>
-          )}
-
-          {/* 文字の大きさ（この人の分だけ。ひな形そのものの大きさは「ひな形・記入位置」で変える） */}
-          {autoTextItems.length + textItems.length > 0 && (
-            <section className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-sm font-bold">文字の大きさ</h2>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setSizes(
-                      Object.fromEntries(
-                        [...autoTextItems, ...textItems].map((i) => [i.id, clampRefFormSize(sizeOf(i) - 0.5)]),
-                      ),
-                    )
-                  }
-                  className="min-h-[28px] rounded-md border border-brand px-2 text-xs font-bold text-brand"
-                >
-                  全部 0.5pt 小さく
-                </button>
-                {Object.keys(sizes).length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setSizes({})}
-                    className="min-h-[28px] rounded-md border border-border px-2 text-xs font-bold text-muted"
-                  >
-                    全部元に戻す
-                  </button>
-                )}
-                {Object.keys(sizes).length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => void applySizesToTemplate()}
-                    disabled={savingTpl}
-                    className="inline-flex min-h-[28px] items-center gap-1 rounded-md bg-brand px-2 text-xs font-bold text-brand-foreground disabled:opacity-60"
-                  >
-                    {savingTpl && <Loader2 size={12} className="animate-spin" />}
-                    この大きさを全員の分（ひな形）にする
-                  </button>
-                )}
-              </div>
-              <p className="text-[11px] leading-relaxed text-muted">
-                変えた大きさは、まずこの人の分だけに効きます（一時保存・添付・印刷に入ります）。全員の分も同じにするときは「この大きさを全員の分（ひな形）にする」を押してください。自動で入る文字は、少し待つと左の様式に出ます。
-              </p>
-              {[...autoTextItems.map((i) => ({ i, label: `${REF_FORM_FIELD_LABEL[i.kind] ?? i.kind}（${i.page + 1}ページ目）` })), ...textItems.map((i, n) => ({ i, label: textLabel(i, n + 1) }))]
-                .sort((a, b) => a.i.page - b.i.page || a.i.y - b.i.y || a.i.x - b.i.x)
-                .map(({ i, label }) => (
-                  <div key={i.id} className="flex flex-wrap items-center gap-1.5 text-xs">
-                    <span className={`min-w-0 flex-1 truncate ${sizes[i.id] ? "font-bold text-brand" : ""}`} title={label}>
-                      {label}
-                    </span>
-                    <button
-                      type="button"
-                      aria-label={`${label}を小さく`}
-                      onClick={() => setSize(i, sizeOf(i) - 0.5)}
-                      className="h-8 w-8 rounded-md border border-border font-bold"
-                    >
-                      －
-                    </button>
-                    <span className="w-12 text-center tabular-nums">{sizeOf(i)}pt</span>
-                    <button
-                      type="button"
-                      aria-label={`${label}を大きく`}
-                      onClick={() => setSize(i, sizeOf(i) + 0.5)}
-                      className="h-8 w-8 rounded-md border border-border font-bold"
-                    >
-                      ＋
-                    </button>
-                    {sizes[i.id] != null && (
-                      <button type="button" onClick={() => setSize(i, null)} className="text-[11px] font-bold text-muted underline">
-                        元（{i.size}pt）
-                      </button>
-                    )}
-                  </div>
-                ))}
-            </section>
-          )}
-
-          {circleItems.length > 0 && (
-            <section className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-3">
-              <h2 className="text-sm font-bold">○・✓</h2>
-              <p className="text-[11px] leading-relaxed text-muted">
-                様式の上の○・✓はドラッグで動かせます。要らないものは、様式の上で押すと出る✕か、ここのチェックを外すと書きません（ここでチェックを付け直すと戻ります）。
-              </p>
-              {circleItems.map((i) => (
-                <div key={i.id} className="flex flex-wrap items-center gap-2 text-xs">
-                  <label className="inline-flex min-h-[32px] items-center gap-1.5">
-                    <input
-                      type="checkbox"
-                      checked={!off.includes(i.id)}
-                      onChange={(e) => setOff((o) => (e.target.checked ? o.filter((x) => x !== i.id) : [...o, i.id]))}
-                    />
-                    {circleLabels.get(i.id) ?? REF_FORM_FIELD_LABEL[i.kind]}
-                  </label>
-                  {moves[i.id] && (
-                    <button
-                      type="button"
-                      onClick={() => resetMove(i.id)}
-                      className="min-h-[28px] rounded-md border border-border px-2 font-bold text-brand"
-                    >
-                      元の位置に戻す
-                    </button>
-                  )}
-                </div>
-              ))}
-            </section>
-          )}
-
-          {/* 1-17号: 最後のページ（支援業務を行う体制についての説明）の名簿に載せる人を選ぶ */}
-          {formKey === "t1-18" && orgId && (
-            <SupportRosterPicker orgId={orgId} orgName={orgName} onChanged={() => setReloadKey((k) => k + 1)} />
-          )}
-
+          {/* 保存・印刷（右の欄のいちばん上。入力した所や文字の大きさの一覧が長くても、すぐ押せる） */}
           <section className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-3">
             <h2 className="text-sm font-bold">保存・印刷</h2>
             {/* まず「内容確認」で PDF を見て、「はい」と答えたら添付・印刷・PDFで保存ができる */}
@@ -873,6 +721,169 @@ export function RefFormCreator({
               申請準備へ戻る
             </Link>
           </section>
+          {textItems.length > 0 && (
+            <section className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-3">
+              <h2 className="text-sm font-bold">入力した所</h2>
+              <p className="text-[11px] leading-relaxed text-muted">
+                左の様式に直接入れても、ここに入れても同じです。
+                {orgId ? `「${orgName || "この所属機関"}の共通にする」に✓を付けた所は、次からこの所属機関でこの様式を作るとき最初から入っています。` : ""}
+              </p>
+              {textItems.map((i, n) => (
+                <div key={i.id} className="flex flex-col gap-1 border-t border-border pt-2">
+                  <label className="flex flex-col gap-1 text-xs font-bold text-muted">
+                    {textLabel(i, n + 1)}
+                    <input
+                      value={texts[i.id] ?? ""}
+                      onChange={(e) => setTexts((t) => ({ ...t, [i.id]: e.target.value }))}
+                      placeholder="空なら何も書きません"
+                      className="min-h-[36px] rounded-md border border-border px-2 text-sm font-normal text-foreground"
+                    />
+                  </label>
+                  {moves[i.id] && (
+                    <button
+                      type="button"
+                      onClick={() => resetMove(i.id)}
+                      className="min-h-[28px] self-start rounded-md border border-border px-2 text-xs font-bold text-brand"
+                    >
+                      位置を元に戻す
+                    </button>
+                  )}
+                  {orgId && (
+                    <label className="inline-flex min-h-[32px] items-center gap-1.5 text-xs text-brand">
+                      <input
+                        type="checkbox"
+                        checked={shared.includes(i.id)}
+                        onChange={(e) =>
+                          setShared((s) => (e.target.checked ? [...s, i.id] : s.filter((x) => x !== i.id)))
+                        }
+                      />
+                      {orgName || "この所属機関"}の共通にする（{refFormName(formKey)}）
+                    </label>
+                  )}
+                </div>
+              ))}
+            </section>
+          )}
+
+          {/* 文字の大きさ（この人の分だけ。ひな形そのものの大きさは「ひな形・記入位置」で変える） */}
+          {autoTextItems.length + textItems.length > 0 && (
+            <section className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSizes((v) => !v)}
+                  aria-expanded={showSizes}
+                  className="text-sm font-bold"
+                >
+                  {showSizes ? "▾" : "▸"} 文字の大きさ
+                  {Object.keys(sizes).length > 0 && <span className="ml-1 text-xs text-brand">（{Object.keys(sizes).length}か所 変更中）</span>}
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSizes(
+                      Object.fromEntries(
+                        [...autoTextItems, ...textItems].map((i) => [i.id, clampRefFormSize(sizeOf(i) - 0.5)]),
+                      ),
+                    )
+                  }
+                  className="min-h-[28px] rounded-md border border-brand px-2 text-xs font-bold text-brand"
+                >
+                  全部 0.5pt 小さく
+                </button>
+                {Object.keys(sizes).length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSizes({})}
+                    className="min-h-[28px] rounded-md border border-border px-2 text-xs font-bold text-muted"
+                  >
+                    全部元に戻す
+                  </button>
+                )}
+                {Object.keys(sizes).length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => void applySizesToTemplate()}
+                    disabled={savingTpl}
+                    className="inline-flex min-h-[28px] items-center gap-1 rounded-md bg-brand px-2 text-xs font-bold text-brand-foreground disabled:opacity-60"
+                  >
+                    {savingTpl && <Loader2 size={12} className="animate-spin" />}
+                    この大きさを全員の分（ひな形）にする
+                  </button>
+                )}
+              </div>
+              <p className="text-[11px] leading-relaxed text-muted">
+                変えた大きさは、まずこの人の分だけに効きます（一時保存・添付・印刷に入ります）。全員の分も同じにするときは「この大きさを全員の分（ひな形）にする」を押してください。自動で入る文字は、少し待つと左の様式に出ます。
+              </p>
+              {showSizes && [...autoTextItems.map((i) => ({ i, label: `${REF_FORM_FIELD_LABEL[i.kind] ?? i.kind}（${i.page + 1}ページ目）` })), ...textItems.map((i, n) => ({ i, label: textLabel(i, n + 1) }))]
+                .sort((a, b) => a.i.page - b.i.page || a.i.y - b.i.y || a.i.x - b.i.x)
+                .map(({ i, label }) => (
+                  <div key={i.id} className="flex flex-wrap items-center gap-1.5 text-xs">
+                    <span className={`min-w-0 flex-1 truncate ${sizes[i.id] ? "font-bold text-brand" : ""}`} title={label}>
+                      {label}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={`${label}を小さく`}
+                      onClick={() => setSize(i, sizeOf(i) - 0.5)}
+                      className="h-8 w-8 rounded-md border border-border font-bold"
+                    >
+                      －
+                    </button>
+                    <span className="w-12 text-center tabular-nums">{sizeOf(i)}pt</span>
+                    <button
+                      type="button"
+                      aria-label={`${label}を大きく`}
+                      onClick={() => setSize(i, sizeOf(i) + 0.5)}
+                      className="h-8 w-8 rounded-md border border-border font-bold"
+                    >
+                      ＋
+                    </button>
+                    {sizes[i.id] != null && (
+                      <button type="button" onClick={() => setSize(i, null)} className="text-[11px] font-bold text-muted underline">
+                        元（{i.size}pt）
+                      </button>
+                    )}
+                  </div>
+                ))}
+            </section>
+          )}
+
+          {circleItems.length > 0 && (
+            <section className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-3">
+              <h2 className="text-sm font-bold">○・✓</h2>
+              <p className="text-[11px] leading-relaxed text-muted">
+                様式の上の○・✓はドラッグで動かせます。要らないものは、様式の上で押すと出る✕か、ここのチェックを外すと書きません（ここでチェックを付け直すと戻ります）。
+              </p>
+              {circleItems.map((i) => (
+                <div key={i.id} className="flex flex-wrap items-center gap-2 text-xs">
+                  <label className="inline-flex min-h-[32px] items-center gap-1.5">
+                    <input
+                      type="checkbox"
+                      checked={!off.includes(i.id)}
+                      onChange={(e) => setOff((o) => (e.target.checked ? o.filter((x) => x !== i.id) : [...o, i.id]))}
+                    />
+                    {circleLabels.get(i.id) ?? REF_FORM_FIELD_LABEL[i.kind]}
+                  </label>
+                  {moves[i.id] && (
+                    <button
+                      type="button"
+                      onClick={() => resetMove(i.id)}
+                      className="min-h-[28px] rounded-md border border-border px-2 font-bold text-brand"
+                    >
+                      元の位置に戻す
+                    </button>
+                  )}
+                </div>
+              ))}
+            </section>
+          )}
+
+          {/* 1-17号: 最後のページ（支援業務を行う体制についての説明）の名簿に載せる人を選ぶ */}
+          {formKey === "t1-18" && orgId && (
+            <SupportRosterPicker orgId={orgId} orgName={orgName} onChanged={() => setReloadKey((k) => k + 1)} />
+          )}
+
           {/* いまの在留カードを見ながら、様式に入る本人の情報を確かめる・直す */}
           {embedded ? sidePanel : <WorkerCardCheckPanel workerId={workerId} onSaved={() => setReloadKey((k) => k + 1)} />}
         </aside>
