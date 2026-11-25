@@ -36,7 +36,10 @@ export const EXTRA_REF_FORMS: Record<string, string> = {
   nozei3: "納税証明書交付請求書（その3）",
   guidance: "事前ガイダンスの確認書",
   orientation: "生活オリエンテーションの確認書",
+  // 推薦状の発行に出す書類（大使館・送り出し機関への申請書など）。申請準備の詳細の「推薦状」の行で作る
+  suisen: "推薦状の発行に必要な書類",
 };
+export const SUISEN_REF_FORM_KEY = "suisen";
 // 入管には出さず、本人に署名してもらうだけの書類（申請準備の提出書類一覧表の下に出す）。
 // 「本人に署名してもらうページだけ」では、署名ページの印が無ければ全部のページを入れる
 export const SIGN_ONLY_REF_FORM_KEYS = ["guidance", "orientation"] as const;
