@@ -36,6 +36,7 @@ type WorkerRow = {
   name: string;
   status: string | null;
   nationality: string | null;
+  residence_status?: string | null;
   photo_path: string | null;
   health_check_on: string | null;
   current_organization_id: string | null;
@@ -124,7 +125,7 @@ export async function listPrepMissingRows(
     supabase
       .from("workers")
       .select(
-        "id, name, status, nationality, photo_path, health_check_on, current_organization_id, application_prep_organization_id",
+        "id, name, status, nationality, residence_status, photo_path, health_check_on, current_organization_id, application_prep_organization_id",
       )
       .in("id", workerIds),
     // memo（0161）・use_reiwa（0164）が未適用でも読めるよう * で取る
@@ -234,6 +235,7 @@ export async function listPrepMissingRows(
       checklistId: c.id,
       meta,
       nationality: w.nationality ?? "",
+      residenceStatus: w.residence_status ?? "",
       sources: {
         filledDocKeys: filled,
         yearOverrides: yearsByChecklist.get(c.id) ?? {},

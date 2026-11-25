@@ -52,11 +52,14 @@ describe("prepMissingRowsOf", () => {
     expect(done.some((r) => r.docId === "photo")).toBe(false);
   });
 
-  it("推薦状はカンボジア国籍のときだけ出す", () => {
-    expect(prepMissingRowsOf(baseInput).some((r) => r.docId === "suisenjo")).toBe(true);
-    expect(
-      prepMissingRowsOf({ ...baseInput, nationality: "ベトナム" }).some((r) => r.docId === "suisenjo"),
-    ).toBe(false);
+  it("推薦状はカンボジア国籍（在留資格を問わず）と、技能実習のベトナム国籍のときだけ出す", () => {
+    const has = (input: Partial<typeof baseInput> & { residenceStatus?: string }) =>
+      prepMissingRowsOf({ ...baseInput, ...input }).some((r) => r.docId === "suisenjo");
+    expect(has({})).toBe(true);
+    expect(has({ residenceStatus: "特定活動" })).toBe(true); // カンボジアは在留資格を問わない
+    expect(has({ nationality: "ベトナム", residenceStatus: "技能実習2号ロ" })).toBe(true);
+    expect(has({ nationality: "ベトナム", residenceStatus: "特定活動" })).toBe(false);
+    expect(has({ nationality: "フィリピン", residenceStatus: "技能実習2号ロ" })).toBe(false);
   });
 
   it("誰にいつ依頼したか・いまの状況・メモを行に入れる", () => {

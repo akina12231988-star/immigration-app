@@ -1000,8 +1000,9 @@ export function ApplicationPrepChecklist({
       yearOverrides,
     },
     statusValues,
-    // 推薦状はカンボジア国籍だけ必要（国籍が未登録のときは出す）
+    // 推薦状はカンボジア国籍と、いまの在留資格が技能実習のベトナム国籍だけ必要（国籍が未登録のときは出す）
     prepNationality,
+    workerRow?.residence_status ?? "",
   );
 
   // 特定技能２号の申請か（合格証の組み合わせ・在留カード/パスポートの扱いが変わる）

@@ -64,6 +64,7 @@ export interface PrepMissingWorkerInput {
   checklistId: string;
   meta: PrepChecklistMeta;
   nationality: string;
+  residenceStatus?: string; // いまの在留資格（推薦状の判定に使う）
   sources: PrepDocSources;
   docStatuses: Record<string, PrepDocStatusDetail>;
   currentReiwa: number;
@@ -84,6 +85,7 @@ export function prepMissingRowsOf(input: PrepMissingWorkerInput): PrepMissingRow
     input.sources,
     statusValues,
     input.nationality,
+    input.residenceStatus ?? "",
   );
   return missing.map((item) => {
     const ds = input.docStatuses[item.def.id] ?? EMPTY_PREP_DOC_STATUS_DETAIL;
