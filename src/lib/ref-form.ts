@@ -916,11 +916,29 @@ export interface RefFormEdits {
   texts: Record<string, string>; // 項目ID → 文字（自由な文字）
   moves: Record<string, { x: number; y: number }>; // 項目ID → 位置（pt）
   off: string[]; // 書かない項目ID
+  sizes?: Record<string, number>; // 項目ID → 文字の大きさ（pt）。この人の分だけ小さく・大きくした所
 }
-export const EMPTY_REF_FORM_EDITS: RefFormEdits = { texts: {}, moves: {}, off: [] };
+export const EMPTY_REF_FORM_EDITS: RefFormEdits = { texts: {}, moves: {}, off: [], sizes: {} };
+
+// 文字の大きさ（sizes）は、保存先（ref_form_drafts.moves の jsonb）に入れて残す（列を増やさない）
+export const REF_FORM_SIZES_KEY = "__sizes";
+export const REF_FORM_MIN_SIZE = 4;
+export const REF_FORM_MAX_SIZE = 40;
+export function clampRefFormSize(n: number): number {
+  return Math.min(REF_FORM_MAX_SIZE, Math.max(REF_FORM_MIN_SIZE, Math.round(n * 2) / 2));
+}
+// 保存する moves（位置）に文字の大きさを入れたもの
+export function refFormMovesForSave(
+  moves: Record<string, { x: number; y: number }>,
+  sizes: Record<string, number> | undefined,
+): Record<string, unknown> {
+  return sizes && Object.keys(sizes).length > 0 ? { ...moves, [REF_FORM_SIZES_KEY]: sizes } : { ...moves };
+}
 
 // 保存値（jsonb）を読む。形が違うものは捨てる
-export function normalizeRefFormEdits(v: { texts?: unknown; moves?: unknown; off?: unknown } | null | undefined): RefFormEdits {
+export function normalizeRefFormEdits(
+  v: { texts?: unknown; moves?: unknown; off?: unknown; sizes?: unknown } | null | undefined,
+): RefFormEdits {
   const texts: Record<string, string> = {};
   if (v?.texts && typeof v.texts === "object") {
     for (const [k, t] of Object.entries(v.texts as Record<string, unknown>)) if (typeof t === "string") texts[k] = t;
@@ -935,7 +953,20 @@ export function normalizeRefFormEdits(v: { texts?: unknown; moves?: unknown; off
     }
   }
   const off = Array.isArray(v?.off) ? [...new Set((v.off as unknown[]).filter((x): x is string => typeof x === "string"))] : [];
-  return { texts, moves, off };
+  // 文字の大きさ: 送られてきた sizes か、保存先の moves の中の __sizes
+  const sizes: Record<string, number> = {};
+  const rawSizes =
+    v?.sizes && typeof v.sizes === "object"
+      ? v.sizes
+      : v?.moves && typeof v.moves === "object"
+        ? (v.moves as Record<string, unknown>)[REF_FORM_SIZES_KEY]
+        : null;
+  if (rawSizes && typeof rawSizes === "object") {
+    for (const [k, n] of Object.entries(rawSizes as Record<string, unknown>)) {
+      if (typeof n === "number" && Number.isFinite(n)) sizes[k] = clampRefFormSize(n);
+    }
+  }
+  return { texts, moves, off, sizes };
 }
 
 // 作成画面で入れられる項目（自由な文字）か
@@ -965,7 +996,8 @@ export function applyRefFormEdits(
     .filter((i) => !off.has(i.id))
     .map((i) => {
       const m = edits.moves[i.id];
-      const moved = m ? { ...i, x: m.x, y: m.y } : i;
+      const sz = edits.sizes?.[i.id];
+      const moved = { ...i, ...(m ? { x: m.x, y: m.y } : {}), ...(sz ? { size: sz } : {}) };
       return isRefFormEditableText(i.kind) ? { ...moved, text: refFormInitialText(i, edits.texts, orgTexts) } : moved;
     });
 }

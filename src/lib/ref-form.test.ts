@@ -360,8 +360,8 @@ describe("作成画面で直した分（0230）", () => {
   it("保存値の読み込みは形の違うものを捨てる", () => {
     expect(
       normalizeRefFormEdits({ texts: { a: "x", b: 1 }, moves: { c: { x: 1, y: 2 }, d: { x: "1" } }, off: ["c", "c", 3] }),
-    ).toEqual({ texts: { a: "x" }, moves: { c: { x: 1, y: 2 } }, off: ["c"] });
-    expect(normalizeRefFormEdits(null)).toEqual({ texts: {}, moves: {}, off: [] });
+    ).toEqual({ texts: { a: "x" }, moves: { c: { x: 1, y: 2 } }, off: ["c"], sizes: {} });
+    expect(normalizeRefFormEdits(null)).toEqual({ texts: {}, moves: {}, off: [], sizes: {} });
   });
 });
 
@@ -592,4 +592,23 @@ describe("一気にダウンロードはフォントを1回だけ入れる", () 
     const sign = await fillRefFormsMerged(font, [{ pdfBytes: await make(3), layout, data, onlyPages: [2] }]);
     expect((await PDFDocument.load(sign)).getPageCount()).toBe(1);
   }, 30000);
+});
+
+describe("作成画面で変えた文字の大きさ", () => {
+  it("moves の中の __sizes から読み、記入位置に重ねる", async () => {
+    const { normalizeRefFormEdits, applyRefFormEdits, refFormMovesForSave, normalizeRefFormLayout } = await import("./ref-form");
+    const saved = refFormMovesForSave({ a: { x: 1, y: 2 } }, { b: 7.3, c: 100 });
+    const edits = normalizeRefFormEdits({ moves: saved });
+    expect(edits.moves).toEqual({ a: { x: 1, y: 2 } });
+    expect(edits.sizes).toEqual({ b: 7.5, c: 40 }); // 0.5pt 刻み・上限 40pt
+    const layout = normalizeRefFormLayout([
+      { id: "b", kind: "name", page: 0, x: 10, y: 10, size: 11 },
+      { id: "d", kind: "name", page: 0, x: 10, y: 30, size: 11 },
+    ]);
+    const out = applyRefFormEdits(layout, edits);
+    expect(out.find((i) => i.id === "b")?.size).toBe(7.5);
+    expect(out.find((i) => i.id === "d")?.size).toBe(11);
+    // 送られてきた sizes（作成画面から）もそのまま読む
+    expect(normalizeRefFormEdits({ sizes: { b: 6 } }).sizes).toEqual({ b: 6 });
+  });
 });
