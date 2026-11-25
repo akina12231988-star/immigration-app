@@ -325,6 +325,7 @@ export type RefFormFieldKind =
   | "org_postal"
   | "org_address"
   | "org_tel"
+  | "org_fax"
   | "org_rep"
   | "org_rep_kana"
   | "org_corporate_no"
@@ -340,6 +341,7 @@ export type RefFormFieldKind =
   | "so_reg_no"
   | "so_address"
   | "so_tel"
+  | "so_fax"
   | "so_rep"
   | "so_manager"
   | "so_staff"
@@ -403,6 +405,7 @@ export const REF_FORM_FIELDS: { kind: RefFormFieldKind; label: string; sample: s
   { kind: "org_postal", label: "所属機関の郵便番号", sample: "〒866-0000", group: "所属機関" },
   { kind: "org_address", label: "所属機関の住所", sample: "熊本県八代市本町1-1-1", group: "所属機関" },
   { kind: "org_tel", label: "所属機関の電話番号", sample: "0965-00-0000", group: "所属機関" },
+  { kind: "org_fax", label: "所属機関のFAX番号", sample: "0965-00-0001", group: "所属機関" },
   { kind: "org_rep", label: "代表者の役職・氏名", sample: "代表取締役 山田太郎", group: "所属機関" },
   { kind: "org_rep_kana", label: "代表者のフリガナ", sample: "ヤマダ タロウ", group: "所属機関" },
   { kind: "org_corporate_no", label: "法人番号", sample: "1234567890123", group: "所属機関" },
@@ -420,6 +423,7 @@ export const REF_FORM_FIELDS: { kind: RefFormFieldKind; label: string; sample: s
   { kind: "so_reg_no", label: "登録支援機関の登録番号", sample: "20登-005746", group: "登録支援機関" },
   { kind: "so_address", label: "登録支援機関の住所", sample: "熊本県熊本市東区小山2丁目13-20", group: "登録支援機関" },
   { kind: "so_tel", label: "登録支援機関の電話番号", sample: "050-8890-4000", group: "登録支援機関" },
+  { kind: "so_fax", label: "登録支援機関のFAX番号", sample: "050-8890-4001", group: "登録支援機関" },
   { kind: "so_rep", label: "登録支援機関の代表者", sample: "VUONG VAN THANH", group: "登録支援機関" },
   { kind: "so_manager", label: "支援責任者", sample: "VUONG VAN THANH", group: "登録支援機関" },
   { kind: "so_staff", label: "支援担当者", sample: "VUONG VAN THANH", group: "登録支援機関" },
@@ -600,6 +604,7 @@ export interface RefFormData {
     postalCode: string;
     address: string;
     tel: string;
+    fax?: string; // FAX番号（所属機関の登録内容の FAX）
     rep: string;
     repKana: string;
     corporateNo: string;
@@ -613,7 +618,7 @@ export interface RefFormData {
     // 毎月の支援代（1人あたり月額。所属機関の intake.support_fee）。無い時は ''
     supportFee?: string;
   };
-  so: { name: string; regNo: string; address: string; tel: string; rep: string; manager: string; staff: string };
+  so: { name: string; regNo: string; address: string; tel: string; fax?: string; rep: string; manager: string; staff: string };
   today: string; // YYYY-MM-DD
   // 書類作成日（申請準備の「支援計画書の日付」の書類作成日。YYYY-MM-DD・無ければ空）
   docDate?: string;
@@ -743,6 +748,8 @@ export function refFormValue(item: Pick<RefFormItem, "kind" | "text" | "fmt">, d
       return data.org.address;
     case "org_tel":
       return data.org.tel;
+    case "org_fax":
+      return data.org.fax ?? "";
     case "org_rep":
       return data.org.rep;
     case "org_rep_kana":
@@ -777,6 +784,8 @@ export function refFormValue(item: Pick<RefFormItem, "kind" | "text" | "fmt">, d
       return data.so.address;
     case "so_tel":
       return data.so.tel;
+    case "so_fax":
+      return data.so.fax ?? "";
     case "so_rep":
       return data.so.rep;
     case "so_manager":
@@ -831,6 +840,7 @@ export const REF_FORM_SAMPLE_DATA: RefFormData = {
     postalCode: "8660000",
     address: "熊本県八代市本町1-1-1",
     tel: "0965-00-0000",
+    fax: "0965-00-0001",
     rep: "代表取締役 山田太郎",
     repKana: "ヤマダ タロウ",
     corporateNo: "1234567890123",
@@ -847,6 +857,7 @@ export const REF_FORM_SAMPLE_DATA: RefFormData = {
     regNo: "20登-005746",
     address: "熊本県熊本市東区小山2丁目13-20 日産共同住宅201号",
     tel: "050-8890-4000",
+    fax: "050-8890-4001",
     rep: "VUONG VAN THANH",
     manager: "VUONG VAN THANH",
     staff: "VUONG VAN THANH",

@@ -29,6 +29,7 @@ export const SUPPORT_ORG_FIELD_GROUPS: SupportOrgFieldGroup[] = [
       { key: "headOfficeAddress", label: "5 (4) 住所（所在地）" },
       { key: "tel", label: "5 (4) 電話番号" },
       { key: "mobile", label: "携帯電話番号", hint: "預かり証などに使います" },
+      { key: "fax", label: "FAX番号", hint: "参考様式などの記入位置「登録支援機関のFAX番号」に使います" },
       { key: "representativeName", label: "5 (5) 代表者の氏名" },
       { key: "registrationNo", label: "5 (6) 登録番号" },
       { key: "registeredOn", label: "5 (7) 登録年月日", kind: "date" },
