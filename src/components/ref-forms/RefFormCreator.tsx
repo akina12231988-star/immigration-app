@@ -9,7 +9,10 @@ import { createClient } from "@/lib/supabase/client";
 import { dbErrorMessage } from "@/lib/errors";
 import {
   REF_FORM_FIELD_LABEL,
+  clampRefFormSize,
   isRefFormCircle,
+  isRefFormMark,
+  refFormMovesForSave,
   isRefFormEditableText,
   normalizeRefFormEdits,
   normalizeRefFormLayout,
@@ -80,6 +83,20 @@ export function RefFormCreator({
     () => layout.filter((i) => (isRefFormCircle(i.kind) && refFormCircleShown(i.kind, gender)) || i.kind === "check"),
     [layout, gender],
   );
+  // 自動で入る文字（氏名・生年月日・所属機関など）。文字の大きさだけこの画面で変えられる
+  const autoTextItems = useMemo(
+    () =>
+      layout.filter(
+        (i) =>
+          !isRefFormEditableText(i.kind) &&
+          !isRefFormCircle(i.kind) &&
+          !isRefFormMark(i.kind) &&
+          i.kind !== "check" &&
+          i.kind !== "strike" &&
+          !i.kind.startsWith("p117_check_"),
+      ),
+    [layout],
+  );
   const circleLabels = useMemo(() => {
     const m = new Map(refFormCircles(circleItems).map((c) => [c.id, c.label]));
     // ✓ は「1ページ目の✓（2個目）」（名前を付けていればその名前）
@@ -97,6 +114,9 @@ export function RefFormCreator({
   const [loaded, setLoaded] = useState(false);
   const [texts, setTexts] = useState<Record<string, string>>({});
   const [moves, setMoves] = useState<Record<string, { x: number; y: number }>>({});
+  // この人の分だけ変えた文字の大きさ（pt）。自動で入る文字は下に敷く PDF を作り直して見せる
+  const [sizes, setSizes] = useState<Record<string, number>>({});
+  const [bgSizes, setBgSizes] = useState<Record<string, number>>({});
   const [off, setOff] = useState<string[]>([]);
   const [shared, setShared] = useState<string[]>([]);
   const [orgTexts, setOrgTexts] = useState<Record<string, string>>({});
@@ -149,6 +169,8 @@ export function RefFormCreator({
       setOrgTexts(org);
       setTexts(Object.fromEntries(textItems.map((i) => [i.id, refFormInitialText(i, draft?.texts ?? {}, org)])));
       setMoves(draft?.moves ?? {});
+      setSizes(draft?.sizes ?? {});
+      setBgSizes(draft?.sizes ?? {});
       setOff(draft?.off ?? []);
       setShared(textItems.filter((i) => i.id in org).map((i) => i.id));
       setLoaded(true);
@@ -159,7 +181,22 @@ export function RefFormCreator({
   }, [templateId, workerId, todoNo, formKey, orgId, textItems]);
 
   // いまの入力内容（印刷・PDF・一時保存に使う）
-  const edits = (): RefFormEdits => ({ texts, moves, off });
+  const edits = (): RefFormEdits => ({ texts, moves, off, sizes });
+  const sizeOf = (i: RefFormItem) => sizes[i.id] ?? i.size;
+  const setSize = (i: RefFormItem, n: number | null) =>
+    setSizes((m) => {
+      const next = { ...m };
+      if (n == null || clampRefFormSize(n) === i.size) delete next[i.id];
+      else next[i.id] = clampRefFormSize(n);
+      return next;
+    });
+  // 自動で入る文字の大きさを変えたら、少し待ってから下に敷く PDF を作り直す（押すたびに作り直さない）
+  const autoIds = useMemo(() => new Set(autoTextItems.map((i) => i.id)), [autoTextItems]);
+  const autoSizesKey = JSON.stringify(Object.fromEntries(Object.entries(sizes).filter(([k]) => autoIds.has(k))));
+  useEffect(() => {
+    const t = setTimeout(() => setBgSizes(JSON.parse(autoSizesKey) as Record<string, number>), 500);
+    return () => clearTimeout(t);
+  }, [autoSizesKey]);
 
   // 下に敷く PDF: 自動で入る項目だけを書き込んだもの（自由な文字と○は画面の上に重ねて出す）
   const baseOff = useMemo(() => [...textItems, ...circleItems].map((i) => i.id), [textItems, circleItems]);
@@ -171,7 +208,7 @@ export function RefFormCreator({
         const res = await fetch("/api/ref-form", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ query, edits: { [formKey]: { texts: {}, moves: {}, off: baseOff } } }),
+          body: JSON.stringify({ query, edits: { [formKey]: { texts: {}, moves: {}, off: baseOff, sizes: bgSizes } } }),
         });
         if (!res.ok) {
           const b = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -207,7 +244,7 @@ export function RefFormCreator({
     return () => {
       cancelled = true;
     };
-  }, [templateId, query, formKey, baseOff, reloadKey, reloadSignal]);
+  }, [templateId, query, formKey, baseOff, reloadKey, reloadSignal, bgSizes]);
 
   // いまの入力内容で PDF を作る
   async function makePdf(): Promise<Blob> {
@@ -224,7 +261,7 @@ export function RefFormCreator({
   }
 
   // 直した内容が同じか（確認したあとに直したら、もう一度確認してもらう）
-  const editsKey = JSON.stringify({ texts, moves, off });
+  const editsKey = JSON.stringify({ texts, moves, off, sizes });
   const isConfirmed = !!confirmed && confirmed.key === editsKey;
   // 確認した PDF があればそれを使い、無ければ作る
   const getPdf = async (): Promise<Blob> => (confirmed && confirmed.key === editsKey ? confirmed.blob : makePdf());
@@ -305,7 +342,7 @@ export function RefFormCreator({
       // 次に開いたときやまとめてダウンロードでも、外した✓などがそのまま使われるように
       if (template) {
         const { error: dErr } = await createClient().from("ref_form_drafts").upsert(
-          { worker_id: workerId, todo_no: todoNo, form_key: formKey, template_id: template.id, texts, moves, off },
+          { worker_id: workerId, todo_no: todoNo, form_key: formKey, template_id: template.id, texts, moves: refFormMovesForSave(moves, sizes), off },
           { onConflict: "worker_id,todo_no,form_key" },
         );
         if (dErr) throw new Error(dbErrorMessage(dErr, MIGRATION, "添付はしましたが、直した内容の一時保存に失敗しました"));
@@ -337,7 +374,7 @@ export function RefFormCreator({
     try {
       const supabase = createClient();
       const { error: dErr } = await supabase.from("ref_form_drafts").upsert(
-        { worker_id: workerId, todo_no: todoNo, form_key: formKey, template_id: template.id, texts, moves, off },
+        { worker_id: workerId, todo_no: todoNo, form_key: formKey, template_id: template.id, texts, moves: refFormMovesForSave(moves, sizes), off },
         { onConflict: "worker_id,todo_no,form_key" },
       );
       if (dErr) throw dErr;
@@ -397,7 +434,7 @@ export function RefFormCreator({
     if (i.maxWidth) return i.maxWidth;
     let em = 0;
     for (const ch of text || "（空なら書きません）") em += /[\u0020-\u007e\uff61-\uff9f]/.test(ch) ? 0.6 : 1;
-    return Math.max(i.size * 2, em * i.size + 4);
+    return Math.max(sizeOf(i) * 2, em * sizeOf(i) + 4);
   };
   const resetMove = (id: string) =>
     setMoves((m) => {
@@ -501,7 +538,7 @@ export function RefFormCreator({
                           className="rounded-sm border border-dashed border-seal bg-seal/5 px-0 text-black placeholder:text-seal/50"
                           style={{
                             width: inputWidth(i, texts[i.id] ?? "") * scale,
-                            fontSize: i.size * scale,
+                            fontSize: sizeOf(i) * scale,
                             lineHeight: 1.15,
                           }}
                         />
@@ -596,6 +633,71 @@ export function RefFormCreator({
                   )}
                 </div>
               ))}
+            </section>
+          )}
+
+          {/* 文字の大きさ（この人の分だけ。ひな形そのものの大きさは「ひな形・記入位置」で変える） */}
+          {autoTextItems.length + textItems.length > 0 && (
+            <section className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-sm font-bold">文字の大きさ</h2>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSizes(
+                      Object.fromEntries(
+                        [...autoTextItems, ...textItems].map((i) => [i.id, clampRefFormSize(sizeOf(i) - 0.5)]),
+                      ),
+                    )
+                  }
+                  className="min-h-[28px] rounded-md border border-brand px-2 text-xs font-bold text-brand"
+                >
+                  全部 0.5pt 小さく
+                </button>
+                {Object.keys(sizes).length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSizes({})}
+                    className="min-h-[28px] rounded-md border border-border px-2 text-xs font-bold text-muted"
+                  >
+                    全部元に戻す
+                  </button>
+                )}
+              </div>
+              <p className="text-[11px] leading-relaxed text-muted">
+                この人の分だけ変わります（一時保存・添付・印刷に入ります）。自動で入る文字は、少し待つと左の様式に出ます。全員の分を変えるときは「ひな形・記入位置」で変えてください。
+              </p>
+              {[...autoTextItems.map((i) => ({ i, label: `${REF_FORM_FIELD_LABEL[i.kind] ?? i.kind}（${i.page + 1}ページ目）` })), ...textItems.map((i, n) => ({ i, label: textLabel(i, n + 1) }))]
+                .sort((a, b) => a.i.page - b.i.page || a.i.y - b.i.y || a.i.x - b.i.x)
+                .map(({ i, label }) => (
+                  <div key={i.id} className="flex flex-wrap items-center gap-1.5 text-xs">
+                    <span className={`min-w-0 flex-1 truncate ${sizes[i.id] ? "font-bold text-brand" : ""}`} title={label}>
+                      {label}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={`${label}を小さく`}
+                      onClick={() => setSize(i, sizeOf(i) - 0.5)}
+                      className="h-8 w-8 rounded-md border border-border font-bold"
+                    >
+                      －
+                    </button>
+                    <span className="w-12 text-center tabular-nums">{sizeOf(i)}pt</span>
+                    <button
+                      type="button"
+                      aria-label={`${label}を大きく`}
+                      onClick={() => setSize(i, sizeOf(i) + 0.5)}
+                      className="h-8 w-8 rounded-md border border-border font-bold"
+                    >
+                      ＋
+                    </button>
+                    {sizes[i.id] != null && (
+                      <button type="button" onClick={() => setSize(i, null)} className="text-[11px] font-bold text-muted underline">
+                        元（{i.size}pt）
+                      </button>
+                    )}
+                  </div>
+                ))}
             </section>
           )}
 
