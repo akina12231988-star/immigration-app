@@ -26,6 +26,7 @@ import {
 } from "@/lib/ref-form";
 import { downloadBlob } from "@/lib/onboarding-pdf";
 import { useRefFormTemplates } from "./RefFormPanel";
+import { saveRefFormLayout } from "@/app/(app)/ref-forms/actions";
 import { WorkerCardCheckPanel } from "./WorkerCardCheckPanel";
 import { SupportRosterPicker } from "./SupportRosterPicker";
 
@@ -74,11 +75,16 @@ export function RefFormCreator({
   orgId: string | null;
   orgName: string;
 }) {
-  const { templates, error: tplError } = useRefFormTemplates();
+  const { templates, error: tplError, reload: reloadTemplates } = useRefFormTemplates();
   const template = pickRefFormTemplate(templates, formKey, nationality, orgId);
   const layout = useMemo(() => (template ? normalizeRefFormLayout(template.layout) : []), [template]);
   // 作成画面で直せる項目: 自由な文字と、この人に付く○・✓（○と✓は動かす・外すことができる）
-  const textItems = useMemo(() => layout.filter((i) => isRefFormEditableText(i.kind)), [layout]);
+  const textItemsNow = useMemo(() => layout.filter((i) => isRefFormEditableText(i.kind)), [layout]);
+  // ひな形の文字の大きさだけを変えたとき（全員の分にする）に、入れている文字を読み直さないよう、
+  // 項目の顔ぶれ（ID・最初の文字）が変わったときだけ作り直す
+  const textItemsKey = textItemsNow.map((i) => `${i.id}:${i.text ?? ""}`).join("|");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const textItems = useMemo(() => textItemsNow, [textItemsKey]);
   const circleItems = useMemo(
     () => layout.filter((i) => (isRefFormCircle(i.kind) && refFormCircleShown(i.kind, gender)) || i.kind === "check"),
     [layout, gender],
@@ -190,6 +196,42 @@ export function RefFormCreator({
       else next[i.id] = clampRefFormSize(n);
       return next;
     });
+  // 変えた大きさを、このひな形（全員の分）の大きさにする。この人の分の変更は消す（ひな形と同じになるので）
+  const [savingTpl, setSavingTpl] = useState(false);
+  async function applySizesToTemplate() {
+    if (!template || Object.keys(sizes).length === 0) return;
+    const who = template.organization_id ? `${orgName || "この所属機関"}の版` : "全員共通の版";
+    if (
+      !window.confirm(
+        `いま変えた文字の大きさ（${Object.keys(sizes).length}か所）を、${refFormName(formKey)}（${template.language}・${who}）のひな形の大きさにします。\n次からこのひな形で作る全員の分がこの大きさになります。よろしいですか？`,
+      )
+    )
+      return;
+    setSavingTpl(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const next = normalizeRefFormLayout(template.layout).map((i) => (sizes[i.id] ? { ...i, size: sizes[i.id] } : i));
+      const res = await saveRefFormLayout(template.id, next, template.sign_pages);
+      if (!res.ok) throw new Error(res.message);
+      // この人の一時保存に残っている大きさも消す（ひな形の大きさを使う）
+      await createClient()
+        .from("ref_form_drafts")
+        .update({ moves: refFormMovesForSave(moves, {}) })
+        .eq("worker_id", workerId)
+        .eq("todo_no", todoNo)
+        .eq("form_key", formKey);
+      setSizes({});
+      setBgSizes({});
+      await reloadTemplates();
+      setNotice(`文字の大きさを${refFormName(formKey)}のひな形（${who}）に保存しました。次からこの大きさで作られます。`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "ひな形に保存できませんでした");
+    } finally {
+      setSavingTpl(false);
+    }
+  }
+
   // 自動で入る文字の大きさを変えたら、少し待ってから下に敷く PDF を作り直す（押すたびに作り直さない）
   const autoIds = useMemo(() => new Set(autoTextItems.map((i) => i.id)), [autoTextItems]);
   const autoSizesKey = JSON.stringify(Object.fromEntries(Object.entries(sizes).filter(([k]) => autoIds.has(k))));
@@ -663,9 +705,20 @@ export function RefFormCreator({
                     全部元に戻す
                   </button>
                 )}
+                {Object.keys(sizes).length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => void applySizesToTemplate()}
+                    disabled={savingTpl}
+                    className="inline-flex min-h-[28px] items-center gap-1 rounded-md bg-brand px-2 text-xs font-bold text-brand-foreground disabled:opacity-60"
+                  >
+                    {savingTpl && <Loader2 size={12} className="animate-spin" />}
+                    この大きさを全員の分（ひな形）にする
+                  </button>
+                )}
               </div>
               <p className="text-[11px] leading-relaxed text-muted">
-                この人の分だけ変わります（一時保存・添付・印刷に入ります）。自動で入る文字は、少し待つと左の様式に出ます。全員の分を変えるときは「ひな形・記入位置」で変えてください。
+                変えた大きさは、まずこの人の分だけに効きます（一時保存・添付・印刷に入ります）。全員の分も同じにするときは「この大きさを全員の分（ひな形）にする」を押してください。自動で入る文字は、少し待つと左の様式に出ます。
               </p>
               {[...autoTextItems.map((i) => ({ i, label: `${REF_FORM_FIELD_LABEL[i.kind] ?? i.kind}（${i.page + 1}ページ目）` })), ...textItems.map((i, n) => ({ i, label: textLabel(i, n + 1) }))]
                 .sort((a, b) => a.i.page - b.i.page || a.i.y - b.i.y || a.i.x - b.i.x)
