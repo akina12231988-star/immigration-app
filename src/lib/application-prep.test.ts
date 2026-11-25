@@ -280,12 +280,12 @@ describe("準備状況（ステータス）の定義", () => {
 });
 
 describe("在留資格認定申請（認定）", () => {
-  it("認定は推薦状が必要で、日本での課税・保険関係の書類は不要", () => {
+  it("認定は推薦状を出さず（資格変更のときだけ）、日本での課税・保険関係の書類も不要", () => {
     const ninteiIds = evaluatePrepChecklist(
       meta({ app_type: "認定", has_kokuho: true, has_nenkin: true, target_reiwa: 7 }),
       sources({}),
     ).items.map((x) => x.def.id);
-    expect(ninteiIds).toContain("suisenjo");
+    expect(ninteiIds).not.toContain("suisenjo");
     // 海外から呼ぶ申請のため、在留カード・日本での課税実績・保険加入の書類は出さない
     for (const id of [
       "zairyu",

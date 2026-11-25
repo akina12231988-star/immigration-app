@@ -281,7 +281,8 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
   {
     id: "suisenjo",
     label: "推薦状",
-    appliesTo: ["変更", "認定"],
+    // 特定技能への在留資格変更許可申請のときだけ（認定・更新・特定活動では出さない）
+    appliesTo: ["変更"],
     // 推薦状が要るのはカンボジア国籍だけ（ベトナムは資格変更なら発行不要）
     nationalities: ["カンボジア"],
     note: "送り出し機関、または大使館への郵送請求で取得する（カンボジア国籍のみ必要）",
