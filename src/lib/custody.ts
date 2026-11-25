@@ -115,6 +115,7 @@ export const CUSTODIAN_INFO = {
   address: "熊本県熊本市東区小山2丁目13-20 日産共同住宅201号",
   tel: "050-8890-4000",
   mobile: "070-4713-5104",
+  fax: "", // FAX番号（登録支援機関の情報の画面で入れる。参考様式などの記入位置で使う）
   agentName: "秋吉 伽恋",
   agentCertNo: "受-222024800268",
   agentCertExpiry: "2027-06-18",
