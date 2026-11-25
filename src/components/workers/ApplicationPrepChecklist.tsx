@@ -30,6 +30,8 @@ import {
 } from "lucide-react";
 import { AttachedFileButton } from "@/components/ui/AttachedFileButton";
 import { buildSubmissionListPdf, canFillSubmissionPdf } from "@/lib/submission-pdf";
+import type { ReactNode } from "react";
+import { SuisenFormPanel } from "@/components/workers/SuisenFormPanel";
 import { blobToPdfPart, mergePdfParts, rasterizePdfInBrowser, type PdfPart } from "@/lib/pdf-merge";
 import { applyBundleChoices, PREP_BUNDLE_CHOOSE_IDS, prepBundleFileName, prepBundlePlan } from "@/lib/prep-docs-bundle";
 
@@ -2039,6 +2041,34 @@ export function ApplicationPrepChecklist({
                   onDownloadFile={(f) => void downloadDoc(f.id)}
                   requestee={docRequesteeOf(item)}
                   mailMode={mailMode}
+                  extraSection={
+                    item.def.id === "suisenjo" ? (
+                      <SuisenFormPanel
+                        workerId={workerId}
+                        nationality={prepNationality}
+                        orgId={prepOrgId ?? null}
+                        orgName={prepOrgName}
+                        todoNo={current?.todo_no ?? ""}
+                        canEdit={canEdit}
+                        passportFiles={[
+                          ...passportFiles.map((f) => ({
+                            id: f.id,
+                            source: "passport" as const,
+                            label: `パスポート（${f.kind || "出入国の記録"}）${f.file_name ? `・${f.file_name}` : ""}`,
+                            date: f.created_at.slice(0, 10),
+                          })),
+                          ...docs
+                            .filter((d) => d.storage_path && d.doc_key.startsWith("cert_passport"))
+                            .map((d) => ({
+                              id: d.id,
+                              source: "doc" as const,
+                              label: `パスポートの写し（入社書類）${d.file_name ? `・${d.file_name}` : ""}`,
+                              date: (d.created_at ?? "").slice(0, 10),
+                            })),
+                        ]}
+                      />
+                    ) : null
+                  }
                 />
               );
   };
@@ -3561,7 +3591,9 @@ function DocRow({
   mailMode = "none",
   periodNote = "",
   nationality = "",
+  extraSection = null,
 }: {
+  extraSection?: ReactNode; // この行だけの欄（推薦状の発行に出す書類など）
   item: PrepDocStatus;
   periodNote?: string; // 在留期間の注意事項（在留カードの行だけ。備考の上に薄い赤で出す）
   nationality?: string; // 本人の国籍（立替払いのとき、国籍別の口座案内の画像を出す）
@@ -3928,6 +3960,8 @@ function DocRow({
           })()}
         </div>
       )}
+
+      {extraSection}
 
       {/* 年金記録: 記号の意味と未納アラートは別ページで確認。その確認結果はここにも出す */}
       {def.id === "nenkin" && (
