@@ -114,6 +114,7 @@ export default async function ApplicationPrepPrintPage({
     },
     statusValues,
     worker.nationality,
+    worker.residence_status ?? "",
   );
 
   const intake = normalizeOrganizationIntake(org?.intake);

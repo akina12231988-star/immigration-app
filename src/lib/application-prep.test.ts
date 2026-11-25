@@ -609,3 +609,15 @@ describe("源泉徴収票の金額の入力欄（もう1枚追加）", () => {
     expect(prepAmountRows("871608+500000")).toEqual(["871608", "500000"]);
   });
 });
+
+describe("推薦状が要るか", () => {
+  it("カンボジアは在留資格を問わず、ベトナムは技能実習のときだけ（未登録は出す）", async () => {
+    const { suisenjoRequired } = await import("./application-prep");
+    expect(suisenjoRequired("カンボジア", "特定活動")).toBe(true);
+    expect(suisenjoRequired("ベトナム", "技能実習3号ロ")).toBe(true);
+    expect(suisenjoRequired("ベトナム", "特定活動")).toBe(false);
+    expect(suisenjoRequired("ベトナム", "")).toBe(true);
+    expect(suisenjoRequired("インドネシア", "技能実習2号ロ")).toBe(false);
+    expect(suisenjoRequired("", "")).toBe(true);
+  });
+});

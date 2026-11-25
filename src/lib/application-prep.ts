@@ -282,8 +282,9 @@ export const PREP_DOC_DEFS: PrepDocDef[] = [
     id: "suisenjo",
     label: "推薦状",
     appliesTo: ["変更", "認定"],
-    // 推薦状が要るのはカンボジア国籍だけ（ベトナムは資格変更なら発行不要）
-    nationalities: ["カンボジア"],
+    // 推薦状が要るのは、カンボジア国籍（いまの在留資格を問わない）と、
+    // いまの在留資格が技能実習のベトナム国籍（suisenjoRequired で判定）
+    nationalities: ["カンボジア", "ベトナム"],
     note: "送り出し機関、または大使館への郵送請求で取得する（カンボジア国籍のみ必要）",
     source: { kind: "doc", docKey: "prep_suisenjo" },
     manageInline: true,
@@ -374,16 +375,37 @@ export function effectiveCertPattern(meta: PrepChecklistMeta): "" | PrepCertPatt
   return meta.cert_pattern;
 }
 
+// 推薦状が要るか（国籍と、いまの在留資格から）。
+//  ・カンボジア国籍 … いまの在留資格を問わず必要
+//  ・ベトナム国籍   … いまの在留資格が技能実習のときだけ必要（在留資格が未登録のときは出す）
+//  ・国籍が未登録   … 出す（選んでもらう）
+export function suisenjoRequired(nationality: string, residenceStatus = ""): boolean {
+  const n = nationality.trim();
+  if (!n) return true;
+  if (n.includes("カンボジア")) return true;
+  if (n.includes("ベトナム")) {
+    const s = residenceStatus.trim();
+    return !s || s.includes("技能実習");
+  }
+  return false;
+}
+
 // その申請種別・条件で必要な書類か
+// residenceStatus はいまの在留資格（推薦状の判定に使う）
 export function isRequired(
   def: PrepDocDef,
   meta: PrepChecklistMeta,
   nationality = "",
+  residenceStatus = "",
 ): boolean {
   if (!meta.app_type) return false;
   if (!def.appliesTo.includes(meta.app_type)) return false;
-  // 国籍が決まっている書類（推薦状＝カンボジアのみ）。国籍が未登録のときは出す
-  if (def.nationalities && nationality && !def.nationalities.includes(nationality)) return false;
+  if (def.id === "suisenjo") {
+    if (!suisenjoRequired(nationality, residenceStatus)) return false;
+  } else if (def.nationalities && nationality && !def.nationalities.includes(nationality)) {
+    // 国籍が決まっている書類。国籍が未登録のときは出す
+    return false;
+  }
   // 申請の内容で外す書類（特定活動ビザの更新のときの税の証明書など）
   if (def.excludeAppContents?.includes(meta.app_content)) return false;
   // 在留資格認定・特定活動は国保・国民年金の加入を問わない（チェック欄も出さない）ため、
@@ -521,8 +543,9 @@ export function evaluatePrepChecklist(
   sources: PrepDocSources,
   docStatuses: Record<string, string> = {},
   nationality = "",
+  residenceStatus = "",
 ): { items: PrepDocStatus[]; missing: PrepDocStatus[] } {
-  const items = PREP_DOC_DEFS.filter((def) => isRequired(def, meta, nationality)).map((def) => {
+  const items = PREP_DOC_DEFS.filter((def) => isRequired(def, meta, nationality, residenceStatus)).map((def) => {
     const fileSatisfied = isSatisfied(def, meta, sources);
     return {
       def,
