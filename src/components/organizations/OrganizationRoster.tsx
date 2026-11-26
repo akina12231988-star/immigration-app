@@ -157,6 +157,14 @@ export function OrganizationRoster({
           <BadgeJapaneseYen size={14} />
           時給の一括登録（◯月◯日から1号◯円・2号◯円）
         </Link>
+        {/* 定期届出（3-6号）の準備。対象年度に特定技能として在籍していた人の賃金台帳と証明書をお願いする案内（A4縦） */}
+        <Link
+          href={`/organizations/${organizationId}/payroll-request`}
+          className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-brand px-3 text-xs font-bold text-brand hover:bg-brand/5"
+        >
+          <Printer size={14} />
+          賃金台帳・証明書のお願い（定期届出の準備）
+        </Link>
         {/* 会社からの書類の依頼（年末調整の書類など）。在籍者 × 書類で案内・発行・送付をチェックする */}
         <Link
           href={`/organizations/requests?org=${organizationId}`}
