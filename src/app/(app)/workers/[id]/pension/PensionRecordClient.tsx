@@ -80,6 +80,10 @@ export function PensionRecordClient({
   const [legacySymbols, setLegacySymbols] = useState<string[]>([]);
   const [note, setNote] = useState("");
   const [paste, setPaste] = useState("");
+  // 期間を指定して同じ記号を入れる（例: Z を令和6年10月から令和7年6月まで）
+  const [rangeFrom, setRangeFrom] = useState("");
+  const [rangeTo, setRangeTo] = useState("");
+  const [rangeCode, setRangeCode] = useState("");
   const [showLegend, setShowLegend] = useState(false);
   const [file, setFile] = useState<OnboardingDocumentRow | null>(null);
   const [saving, setSaving] = useState(false);
@@ -132,6 +136,24 @@ export function PensionRecordClient({
     }
     setMonthCodes((prev) => ({ ...prev, ...filled }));
     setPaste("");
+    setError(null);
+  };
+
+  // 選んだ期間（はじめ〜おわり。逆に選んでも入れ替える）の全部の月に同じ記号を入れる
+  // 申請月を変えて選んだ月が期間の外になったら、期間のはじめ・おわりに戻す
+  const fromMonth = months.includes(rangeFrom) ? rangeFrom : (months[0] ?? "");
+  const toMonth = months.includes(rangeTo) ? rangeTo : (months[months.length - 1] ?? "");
+  const applyRange = () => {
+    const from = fromMonth;
+    const to = toMonth;
+    if (!rangeCode || !from || !to) return;
+    const [a, b] = from <= to ? [from, to] : [to, from];
+    const target = months.filter((m) => m >= a && m <= b);
+    setMonthCodes((prev) => {
+      const next = { ...prev };
+      for (const m of target) next[m] = rangeCode;
+      return next;
+    });
     setError(null);
   };
 
@@ -293,6 +315,63 @@ export function PensionRecordClient({
               <Button type="button" variant="secondary" onClick={clearMonths}>
                 すべて消す
               </Button>
+            </div>
+
+            {/* 期間を指定して同じ記号を入れる（Z が何月から何月まで、など） */}
+            <div className="mt-3 border-t border-border pt-3">
+              <span className="mb-1 block text-[11px] font-bold text-muted">
+                期間を指定して同じ記号を入れる（例: Z を令和6年10月から令和7年6月まで）
+              </span>
+              <div className="flex flex-wrap items-center gap-1.5 text-sm">
+                <select
+                  value={rangeCode}
+                  onChange={(e) => setRangeCode(e.target.value)}
+                  aria-label="入れる記号"
+                  className="min-h-[40px] rounded-lg border border-border bg-surface px-2 font-bold focus:border-brand focus:outline-none"
+                >
+                  <option value="">記号を選ぶ</option>
+                  {SYMBOL_GROUPS.map((g) => (
+                    <optgroup key={g.action} label={g.label}>
+                      {PENSION_SYMBOLS.filter((x) => x.action === g.action).map((x) => (
+                        <option key={x.code} value={x.code}>
+                          {x.code}　{x.meaning}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+                <span className="text-[11px] text-muted">を</span>
+                <select
+                  value={fromMonth}
+                  onChange={(e) => setRangeFrom(e.target.value)}
+                  aria-label="はじめの月"
+                  className="min-h-[40px] rounded-lg border border-border bg-surface px-2 focus:border-brand focus:outline-none"
+                >
+                  {months.map((m) => (
+                    <option key={m} value={m}>
+                      {warekiMonthLabel(m)}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-[11px] text-muted">から</span>
+                <select
+                  value={toMonth}
+                  onChange={(e) => setRangeTo(e.target.value)}
+                  aria-label="おわりの月"
+                  className="min-h-[40px] rounded-lg border border-border bg-surface px-2 focus:border-brand focus:outline-none"
+                >
+                  {months.map((m) => (
+                    <option key={m} value={m}>
+                      {warekiMonthLabel(m)}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-[11px] text-muted">まで</span>
+                <Button type="button" variant="secondary" onClick={applyRange} disabled={!rangeCode}>
+                  この期間に入れる
+                </Button>
+              </div>
+              <p className="mt-1 text-[11px] text-muted">すでに入っている月も、この期間なら選んだ記号に置き換わります。入れたあと「保存」を押してください。</p>
             </div>
           </div>
         )}
