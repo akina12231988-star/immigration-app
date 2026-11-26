@@ -1,4 +1,5 @@
 import { PDFDocument } from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
 
 // 画像（JPEG/PNG）と PDF をひとつの PDF にまとめる。
 // 会社からの書類の依頼で、1人分の資料（扶養控除申告書・扶養証明書 など）を
@@ -24,15 +25,31 @@ export async function mergePdfParts(
     // pdf-lib で読めない・ページを写せない PDF（スキャンアプリで作ったものなど、中の構造が壊れているもの）を
     // ページごとの画像にする関数（ブラウザでは pdf.js で描く）。渡すと、そういう PDF も画像にしてまとめる
     rasterize?: (bytes: Uint8Array) => Promise<RasterPage[]>;
+    // 入力欄（フォーム）に文字が入っている PDF の文字を書き込むための日本語フォント（.ttf）。
+    // 入力欄のままページを写すと、入力した文字が消える（空欄になる）ことがあるので、
+    // 入力欄の文字をページに焼き付けてから写す。省略時はブラウザなら /fonts/NotoSansJP-Regular.ttf を読む
+    formFont?: () => Promise<ArrayBuffer | Uint8Array>;
   } = {},
 ): Promise<Uint8Array> {
   const out = await PDFDocument.create();
+  let fontCache: Promise<ArrayBuffer | Uint8Array> | null = null;
+  const loadFont =
+    options.formFont ??
+    (typeof window !== "undefined"
+      ? async () => {
+          const res = await fetch("/fonts/NotoSansJP-Regular.ttf");
+          if (!res.ok) throw new Error("日本語フォントを読み込めませんでした");
+          return res.arrayBuffer();
+        }
+      : null);
+  const getFont = loadFont ? () => (fontCache ??= loadFont()) : null;
   for (const part of parts) {
     if (part.kind === "pdf") {
       // pdf-lib は読んだ ArrayBuffer を手放すことがあるので、画像にするとき用に写しを持っておく
       const copy = new Uint8Array(part.bytes instanceof Uint8Array ? part.bytes : new Uint8Array(part.bytes)).slice();
       try {
         const src = await PDFDocument.load(part.bytes, { ignoreEncryption: true });
+        if (getFont) await flattenFormFields(src, getFont);
         const pages = await out.copyPages(src, src.getPageIndices());
         for (const p of pages) out.addPage(p);
       } catch (err) {
@@ -61,6 +78,27 @@ export async function mergePdfParts(
     page.drawImage(img, { x: (target.width - w) / 2, y: (target.height - h) / 2, width: w, height: h });
   }
   return out.save();
+}
+
+// 入力欄（フォーム）がある PDF は、入力した文字をページに焼き付けて入力欄を無くす。
+// 入力欄の見た目（文字）が PDF の中に作られていないもの（ビューアが開くときに描くもの）は、
+// ページだけを別の PDF に写すと文字が消えるため。うまくいかなければそのまま（元の PDF で写す）
+export async function flattenFormFields(
+  doc: PDFDocument,
+  getFont: () => Promise<ArrayBuffer | Uint8Array>,
+): Promise<boolean> {
+  try {
+    const form = doc.getForm();
+    if (form.getFields().length === 0) return false;
+    doc.registerFontkit(fontkit);
+    // 日本語を書くので日本語フォントを全部入れる（subset: true は文字が欠けることがある）
+    const font = await doc.embedFont(await getFont(), { subset: false });
+    form.updateFieldAppearances(font);
+    form.flatten();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // どのファイルでつまずいたかが分かるエラーにする（「Expected instance of …」だけでは分からないため）

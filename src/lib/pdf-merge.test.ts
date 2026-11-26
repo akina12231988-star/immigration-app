@@ -58,3 +58,40 @@ describe("mergePdfParts（写せない PDF は画像にしてまとめる）", (
     await expect(mergePdfParts([{ kind: "pdf", bytes: broken, name: "scan.pdf" }])).rejects.toThrow("scan.pdf");
   });
 });
+
+describe("入力欄（フォーム）に文字が入っている PDF をまとめる", () => {
+  it("入力した文字をページに焼き付けてから写す（入力欄のままだと空欄になることがある）", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const path = await import("node:path");
+    const { PDFDocument, PDFName } = await import("pdf-lib");
+    const { fillFuyoForm } = await import("./fuyo-form");
+    const { mergePdfParts } = await import("./pdf-merge");
+    const pub = (p: string) => readFile(path.join(process.cwd(), "public", p));
+    const font = await pub("fonts/NotoSansJP-Regular.ttf");
+    const filled = await fillFuyoForm(
+      await pub("forms/fuyo-r8.pdf"),
+      font,
+      {
+        worker: { name: "BOY SAMNANG", kana: "ボイ", birth: "1999-01-01", address: "熊本県八代市", myNumber: "", hasSpouse: "無" },
+        householdHead: "BOY",
+        headRelation: "本人",
+        dependents: [],
+      },
+      "2026-11-01",
+      { flatten: false },
+    );
+    // 入力欄の見た目（文字）が無く、ビューアが開くときに描く PDF にする（本人が入力したものによくある形）
+    const d = await PDFDocument.load(filled);
+    for (const f of d.getForm().getFields()) for (const w of f.acroField.getWidgets()) w.dict.delete(PDFName.of("AP"));
+    const bytes = await d.save({ updateFieldAppearances: false });
+    const merged = await mergePdfParts([{ kind: "pdf", bytes }], { formFont: async () => font });
+    const out = await PDFDocument.load(merged);
+    expect(out.getPageCount()).toBe(d.getPageCount());
+    // 入力欄（ウィジェット）は残らず、文字はページの中身に書き込まれている
+    const widgets = (out.getPage(0).node.Annots()?.asArray() ?? []).filter((r) => {
+      const a = out.context.lookup(r) as { get?: (n: unknown) => unknown } | undefined;
+      return String(a?.get?.(PDFName.of("Subtype"))) === "/Widget";
+    });
+    expect(widgets).toHaveLength(0);
+  }, 60000);
+});
