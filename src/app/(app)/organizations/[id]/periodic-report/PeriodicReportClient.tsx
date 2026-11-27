@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Plus, Save, Trash2, TriangleAlert } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, FileSpreadsheet, Plus, Save, Trash2, TriangleAlert } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -19,17 +19,8 @@ import {
   type PayrollRequestCandidate,
   type PayrollRequestRow,
 } from "@/lib/payroll-request";
-import {
-  buildSection36,
-  entryToMonthTotals,
-  fiscalYearMonths,
-  gradeStartYm,
-  raiseBase,
-  raiseRate,
-  round1,
-  type MonthTotals,
-  type Section36,
-} from "@/lib/periodic-report";
+import { buildReport36, reportMonthsFor, round1, type Section36 } from "@/lib/periodic-report";
+import { downloadBlob } from "@/lib/xlsx-export";
 import { PAYROLL_ITEM_CATEGORIES, type OrgPayrollItemRow, type PeriodicReportEntryRow } from "@/types/db";
 
 const FIELD =
@@ -260,62 +251,47 @@ export function PeriodicReportClient({
 
   // 入力欄に出す月（依頼期間と同じ: 特定技能になる前・退職後の月は出さない）
   const monthsFor = useCallback(
-    (row: PayrollRequestRow, year: number): string[] =>
-      fiscalYearMonths(year).filter((ym) => {
-        if (year === fy) return ym >= row.fromYm && ym <= row.toYm;
-        return ym >= (row.prevFromYm || `${year}-04`) && ym <= (row.prevToYm || `${year + 1}-03`);
-      }),
+    (row: PayrollRequestRow, year: number): string[] => reportMonthsFor(row, fy, year),
     [fy],
   );
 
-  // ---- 3-6号の平均値 ----
-  const preview = useMemo(() => {
-    const ones: { months: MonthTotals[] }[] = [];
-    const twos: { months: MonthTotals[] }[] = [];
-    const targets1: { baseCurrent: number; basePrevious: number }[] = [];
-    const targets2: { baseCurrent: number; basePrevious: number }[] = [];
-    const toTotals = (workerId: string, yms: string[]): MonthTotals[] =>
-      yms
-        .map((ym) => {
-          const d = drafts[`${workerId}|${ym}`];
-          if (!d) return null;
-          return entryToMonthTotals(
-            { ym, work_days: d.work_days, total_hours: d.total_hours, overtime_hours: d.overtime_hours, amounts: d.amounts, excluded: d.excluded },
-            itemsById,
-          );
-        })
-        .filter((m): m is MonthTotals => m != null);
-    for (const row of rows) {
-      let months = toTotals(row.id, monthsFor(row, fy));
-      const two = !!row.grade2From && gradeStartYm(row.grade2From) <= `${fy + 1}-03`;
-      if (two) {
-        // 2号へ移行した人: 変更許可月（月の途中なら翌月）より前の月は記載しない（要領）
-        const from = gradeStartYm(row.grade2From);
-        months = months.filter((m) => m.ym >= from);
-        twos.push({ months });
-      } else {
-        ones.push({ months });
+  // ---- 3-6号の平均値（様式の出力と同じ共通の集計を使う） ----
+  const preview = useMemo(
+    () => buildReport36(rows, (workerId, ym) => drafts[`${workerId}|${ym}`] ?? null, itemsById, fy),
+    [rows, drafts, itemsById, fy],
+  );
+
+  // ---- 様式のダウンロード（本紙・別紙1） ----
+  const [supportDelegated, setSupportDelegated] = useState(true);
+  const [formNote, setFormNote] = useState("");
+  const [downloading, setDownloading] = useState<string | null>(null);
+  const b1Pages = Math.max(1, Math.ceil(rows.length / 5));
+  const downloadForm = async (kind: "honshi" | "besshi1", page?: number) => {
+    const key = `${kind}${page ?? ""}`;
+    setDownloading(key);
+    setError(null);
+    try {
+      const res = await fetch("/api/periodic-report-form", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ organizationId, fy, kind, page, supportDelegated, note: formNote }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? "様式の生成に失敗しました");
       }
-      // 昇給率（2年以上継続の人だけ）: 当年度と前年度の基準額がそろっている人で算出
-      if (row.prevYear) {
-        const cur = raiseBase(months);
-        const prev = raiseBase(toTotals(row.id, monthsFor(row, fy - 1)));
-        if (cur != null && prev != null) {
-          (two ? targets2 : targets1).push({ baseCurrent: cur, basePrevious: prev });
-        }
-      }
+      const orgSafe = organizationName.replace(/[\\/:*?"<>|]/g, "-");
+      const name =
+        kind === "honshi"
+          ? `参考様式第3-6号_${fy}年度_${orgSafe}.xlsx`
+          : `参考様式第3-6号別紙1_${fy}年度_${orgSafe}${b1Pages > 1 ? `_${page}枚目` : ""}.xlsx`;
+      downloadBlob(await res.blob(), name);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDownloading(null);
     }
-    return {
-      one: buildSection36(ones),
-      two: buildSection36(twos),
-      oneCount: ones.length,
-      twoCount: twos.length,
-      raise1: raiseRate(targets1),
-      raise2: raiseRate(targets2),
-      raise1Targets: targets1.length,
-      raise2Targets: targets2.length,
-    };
-  }, [rows, drafts, itemsById, fy, monthsFor]);
+  };
 
   const fyOptions = [fy + 1, fy, fy - 1, fy - 2].sort((a, b) => b - a);
   const cell = "border border-border px-1.5 py-1 text-right tabular-nums";
@@ -665,6 +641,59 @@ export function PeriodicReportClient({
               {preview.two.note && `特定技能2号: 集計できる月が無いため0＋備考「${preview.two.note}」。`}
             </p>
           )}
+        </section>
+
+        {/* 4 様式のダウンロード */}
+        <section className="rounded-lg border border-border bg-background px-3 py-2">
+          <h2 className="text-sm font-bold">4　様式のダウンロード（公式のExcelに転記）</h2>
+          <p className="mt-1 text-xs text-muted">
+            保存済みの入力から作ります
+            {dirtyKeys.size > 0 && (
+              <span className="font-bold text-seal">（未保存の入力が{dirtyKeys.size}か月分あります。先に「入力を保存」を押してください）</span>
+            )}
+            。本紙は機関の情報（法人番号・ふりがな・住所・担当者）を所属機関の登録内容から入れます。空欄になるときはそちらを登録してください。
+            別紙1は5名ごとに1枚です。別紙2（署名欄）と提出前の署名は今までどおり様式の上で行ってください。
+          </p>
+          <div className="mt-2 flex flex-wrap items-end gap-3">
+            <label className="flex flex-col gap-0.5 text-[11px] font-bold text-muted">
+              支援の実施状況
+              <select value={supportDelegated ? "1" : "0"} onChange={(e) => setSupportDelegated(e.target.value === "1")} className={FIELD}>
+                <option value="1">支援の全部委託あり（登録支援機関に全部委託）</option>
+                <option value="0">自社支援のみ</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-0.5 text-[11px] font-bold text-muted">
+              本紙の備考に書き足す一言（空なら自動の備考だけ）
+              <input value={formNote} onChange={(e) => setFormNote(e.target.value)} className={`${FIELD} min-w-[260px]`} />
+            </label>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => downloadForm("honshi")}
+              disabled={downloading != null || rows.length === 0}
+              className="inline-flex min-h-[40px] items-center gap-2 rounded-xl bg-brand px-4 text-sm font-bold text-brand-foreground disabled:opacity-40"
+            >
+              <FileSpreadsheet size={16} />
+              {downloading === "honshi" ? "作成中…" : "3-6号（本紙）をダウンロード"}
+            </button>
+            {Array.from({ length: b1Pages }, (_, i) => i + 1).map((page) => (
+              <button
+                key={page}
+                type="button"
+                onClick={() => downloadForm("besshi1", page)}
+                disabled={downloading != null || rows.length === 0}
+                className="inline-flex min-h-[40px] items-center gap-2 rounded-xl border border-brand px-4 text-sm font-bold text-brand disabled:opacity-40"
+              >
+                <FileSpreadsheet size={16} />
+                {downloading === `besshi1${page}`
+                  ? "作成中…"
+                  : b1Pages > 1
+                    ? `別紙1（${(page - 1) * 5 + 1}〜${Math.min(page * 5, rows.length)}人目）`
+                    : "別紙1をダウンロード"}
+              </button>
+            ))}
+          </div>
         </section>
       </div>
     </>

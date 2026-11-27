@@ -11,6 +11,7 @@
 //   ・丸め: 金額・日数・時間は小数点第1位を四捨五入して整数、昇給率は第2位を四捨五入して第1位まで
 //   ・その号での雇用が1か月未満（集計できる月が無い）なら（1）〜（6）は0、備考「1か月未満」
 
+import type { PayrollRequestRow } from "@/lib/payroll-request";
 import type { OrgPayrollItemRow, PayrollItemCategory, PeriodicReportEntryRow } from "@/types/db";
 
 // 丸め: 金額・日数・時間（整数）
@@ -228,4 +229,117 @@ export function fiscalYearMonths(fy: number): string[] {
     out.push(`${year}-${String(month).padStart(2, "0")}`);
   }
   return out;
+}
+
+// ---- 入力画面と様式の出力で共通の集計 ----
+
+// 入力1か月分（DBの行でも画面の下書きでもよい形）
+export type ReportEntryLike = Pick<
+  PeriodicReportEntryRow,
+  "work_days" | "total_hours" | "overtime_hours" | "amounts" | "excluded"
+>;
+
+// その人の入力対象の月（依頼案内と同じ: 特定技能になる前・退職後の月は含めない）
+export function reportMonthsFor(row: PayrollRequestRow, fy: number, year: number): string[] {
+  return fiscalYearMonths(year).filter((ym) => {
+    if (year === fy) return ym >= row.fromYm && ym <= row.toYm;
+    return ym >= (row.prevFromYm || `${year}-04`) && ym <= (row.prevToYm || `${year + 1}-03`);
+  });
+}
+
+export interface Report36Result {
+  one: Section36;
+  two: Section36;
+  oneCount: number; // 1号として集計した人数
+  twoCount: number; // 2号として集計した人数（期間中に移行した人を含む）
+  raise1: number | null; // （7）昇給率。null = 対象者なし（空欄）
+  raise2: number | null;
+  raise1Targets: number; // 昇給率の計算に使えた人数（当年度・前年度の入力がそろった人）
+  raise2Targets: number;
+}
+
+// 名簿（依頼案内と同じ自動抽出）と入力から、3-6号「4 労働条件等」をまとめて計算する。
+// getEntry はその人・その月の入力（無ければ null）を返す
+export function buildReport36(
+  rows: PayrollRequestRow[],
+  getEntry: (workerId: string, ym: string) => ReportEntryLike | null,
+  itemsById: Record<string, Pick<OrgPayrollItemRow, "category">>,
+  fy: number,
+): Report36Result {
+  const toTotals = (workerId: string, yms: string[]): MonthTotals[] =>
+    yms
+      .map((ym) => {
+        const d = getEntry(workerId, ym);
+        if (!d) return null;
+        return entryToMonthTotals(
+          {
+            ym,
+            work_days: d.work_days,
+            total_hours: d.total_hours,
+            overtime_hours: d.overtime_hours,
+            amounts: d.amounts,
+            excluded: d.excluded,
+          },
+          itemsById,
+        );
+      })
+      .filter((m): m is MonthTotals => m != null);
+
+  const ones: { months: MonthTotals[] }[] = [];
+  const twos: { months: MonthTotals[] }[] = [];
+  const targets1: { baseCurrent: number; basePrevious: number }[] = [];
+  const targets2: { baseCurrent: number; basePrevious: number }[] = [];
+  for (const row of rows) {
+    let months = toTotals(row.id, reportMonthsFor(row, fy, fy));
+    const two = !!row.grade2From && gradeStartYm(row.grade2From) <= `${fy + 1}-03`;
+    if (two) {
+      // 2号へ移行した人: 変更許可月（月の途中なら翌月）より前の月は記載しない（要領）
+      const from = gradeStartYm(row.grade2From);
+      months = months.filter((m) => m.ym >= from);
+      twos.push({ months });
+    } else {
+      ones.push({ months });
+    }
+    // 昇給率（2年以上継続の人だけ）: 当年度と前年度の基準額がそろった人で算出
+    if (row.prevYear) {
+      const cur = raiseBase(months);
+      const prev = raiseBase(toTotals(row.id, reportMonthsFor(row, fy, fy - 1)));
+      if (cur != null && prev != null) {
+        (two ? targets2 : targets1).push({ baseCurrent: cur, basePrevious: prev });
+      }
+    }
+  }
+  return {
+    one: buildSection36(ones),
+    two: buildSection36(twos),
+    oneCount: ones.length,
+    twoCount: twos.length,
+    raise1: raiseRate(targets1),
+    raise2: raiseRate(targets2),
+    raise1Targets: targets1.length,
+    raise2Targets: targets2.length,
+  };
+}
+
+// 別紙1の「活動日数の総数（年間）」「報酬の支給総額（年間）」。
+// 平均とは違い、入力のある月は除外月も含めてぜんぶ合計する（実績の総数のため）
+export function workerAnnualTotals(
+  row: PayrollRequestRow,
+  getEntry: (workerId: string, ym: string) => ReportEntryLike | null,
+  itemsById: Record<string, Pick<OrgPayrollItemRow, "category">>,
+  fy: number,
+): { days: number; pay: number } {
+  let days = 0;
+  let pay = 0;
+  for (const ym of reportMonthsFor(row, fy, fy)) {
+    const d = getEntry(row.id, ym);
+    if (!d) continue;
+    const t = entryToMonthTotals(
+      { ym, work_days: d.work_days, total_hours: d.total_hours, overtime_hours: d.overtime_hours, amounts: d.amounts, excluded: false },
+      itemsById,
+    );
+    days += t.workDays ?? 0;
+    pay += (t.cashPay ?? 0) + t.bonus;
+  }
+  return { days: round0(days), pay: round0(pay) };
 }
