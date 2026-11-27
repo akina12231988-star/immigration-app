@@ -7,6 +7,7 @@ import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import { createClient } from "@/lib/supabase/client";
 import {
   deleteOrgPayrollItems,
+  periodicExcludeYm,
   upsertOrgPayrollItems,
   upsertPeriodicReportEntries,
   type PeriodicReportEntryInput,
@@ -222,7 +223,16 @@ export function PeriodicReportClient({
   const candidateById = useMemo(() => Object.fromEntries(candidates.map((c) => [c.id, c])), [candidates]);
   // 自動の抽出に載らなかった人を手で対象に入れた分（年度を変えるとリセット）
   const [manualIds, setManualIds] = useState<string[]>([]);
-  const { rows, excluded: excludedWorkers } = useMemo(() => {
+  // 「やっぱり対象じゃなかった」で外した人（理由つき）。実績の表に年度の目印行（YYYY-00）で保存する
+  const [targetOffs, setTargetOffs] = useState<Record<string, { excluded: boolean; reason: string }>>(() => {
+    const out: Record<string, { excluded: boolean; reason: string }> = {};
+    for (const e of initialEntries) {
+      if (e.ym.endsWith("-00")) out[`${e.worker_id}|${e.ym}`] = { excluded: e.excluded, reason: e.note };
+    }
+    return out;
+  });
+  const targetOffOf = (id: string) => targetOffs[`${id}|${periodicExcludeYm(fy)}`];
+  const { rows, offRows, excluded: excludedWorkers } = useMemo(() => {
     const auto = buildPayrollRequestRows(candidates, permitsByWorker, fy);
     const manualRows: PayrollRequestRow[] = [];
     for (const id of manualIds) {
@@ -231,11 +241,46 @@ export function PeriodicReportClient({
       const row = manualPayrollRequestRow(c, fy);
       if (row) manualRows.push(row);
     }
+    const all = [...auto.rows, ...manualRows].sort((a, b) => (a.kana || a.name).localeCompare(b.kana || b.name, "ja"));
+    const off = all.filter((r) => targetOffs[`${r.id}|${periodicExcludeYm(fy)}`]?.excluded);
     return {
-      rows: [...auto.rows, ...manualRows].sort((a, b) => (a.kana || a.name).localeCompare(b.kana || b.name, "ja")),
+      rows: all.filter((r) => !targetOffs[`${r.id}|${periodicExcludeYm(fy)}`]?.excluded),
+      offRows: off,
       excluded: auto.excluded.filter((e) => !manualIds.includes(e.id)),
     };
-  }, [candidates, permitsByWorker, fy, manualIds, candidateById]);
+  }, [candidates, permitsByWorker, fy, manualIds, candidateById, targetOffs]);
+
+  // 対象から外す・戻す（理由も一緒に保存する）
+  const [offReasonDrafts, setOffReasonDrafts] = useState<Record<string, string>>({});
+  const saveTargetOff = async (workerId: string, excluded: boolean, reason: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await upsertPeriodicReportEntries(createClient(), [
+        {
+          organization_id: organizationId,
+          worker_id: workerId,
+          ym: periodicExcludeYm(fy),
+          work_days: null,
+          total_hours: null,
+          overtime_hours: null,
+          amounts: {},
+          excluded,
+          note: reason,
+        },
+      ]);
+      setTargetOffs((cur) => ({ ...cur, [`${workerId}|${periodicExcludeYm(fy)}`]: { excluded, reason } }));
+      setSaved(
+        excluded
+          ? `${candidateById[workerId]?.name ?? ""} を対象から外しました（理由も保存済み）`
+          : `${candidateById[workerId]?.name ?? ""} を対象に戻しました`,
+      );
+    } catch (e) {
+      setError(`対象の変更の保存に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   // 在籍の期間の表示（だれが在籍中で、だれがいつからいつまでいたのか）
   const tenureText = (id: string): string => {
@@ -730,6 +775,24 @@ export function PeriodicReportClient({
                     {!candidateById[row.id]?.residenceStatus && (
                       <div className="text-xs">{statusEditor(row.id)}</div>
                     )}
+                    {/* やっぱり対象じゃなかったとき: 理由を書いて対象から外す（保存される。あとで戻せる） */}
+                    <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                      <input
+                        value={offReasonDrafts[row.id] ?? ""}
+                        onChange={(e) => setOffReasonDrafts((cur) => ({ ...cur, [row.id]: e.target.value }))}
+                        placeholder="対象から外す理由（例: この年度は技能実習だった）"
+                        className={`${FIELD} w-full sm:w-[360px]`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => saveTargetOff(row.id, true, (offReasonDrafts[row.id] ?? "").trim())}
+                        disabled={busy || !(offReasonDrafts[row.id] ?? "").trim()}
+                        className="inline-flex min-h-[28px] items-center rounded-lg border border-seal px-2 text-[11px] font-bold text-seal disabled:opacity-40"
+                      >
+                        対象から外す（保存）
+                      </button>
+                      <span className="text-muted">理由を書くと外せます。入力済みの金額は消えません</span>
+                    </div>
                     {row.prevYear && (
                       <label className="inline-flex items-center gap-1.5 text-xs font-bold text-muted">
                         <input
@@ -965,6 +1028,28 @@ export function PeriodicReportClient({
               </div>
             );
           })}
+          {offRows.length > 0 && (
+            <div className="rounded-lg border border-seal/40 bg-seal/5 px-3 py-2 text-xs text-muted">
+              <p className="font-bold text-seal">対象から外した人（{offRows.length}名）</p>
+              <ul className="mt-1 space-y-1 pl-1">
+                {offRows.map((r) => (
+                  <li key={r.id} className="flex flex-wrap items-center gap-1.5">
+                    <span className="font-bold text-foreground">{r.name}</span>
+                    <span>{tenureText(r.id)}</span>
+                    <span>理由: {targetOffOf(r.id)?.reason || "（未記入）"}</span>
+                    <button
+                      type="button"
+                      onClick={() => saveTargetOff(r.id, false, targetOffOf(r.id)?.reason ?? "")}
+                      disabled={busy}
+                      className="inline-flex min-h-[28px] items-center rounded-lg border border-brand px-2 text-[11px] font-bold text-brand disabled:opacity-40"
+                    >
+                      対象に戻す
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {excludedWorkers.length > 0 && (
             <div className="rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted">
               <p className="font-bold">対象に入れていない人（{excludedWorkers.length}名）</p>

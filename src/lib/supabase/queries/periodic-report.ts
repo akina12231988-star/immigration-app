@@ -73,3 +73,10 @@ export async function upsertPeriodicReportEntries(
     .upsert(entries, { onConflict: "organization_id,worker_id,ym" });
   if (error) throw error;
 }
+
+// 「この人は今年度の対象から外す」の記録。月の実績と同じ表に、実在しない月
+// 'YYYY-00'（年度の目印）で1行だけ持つ（excluded = 外した / note = 理由）。
+// 実際の月は 'YYYY-04'〜'YYYY+1-03' なのでぶつからず、集計は実在の月しか見ない
+export function periodicExcludeYm(fy: number): string {
+  return `${fy}-00`;
+}

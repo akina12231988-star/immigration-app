@@ -99,8 +99,13 @@ export async function POST(req: NextRequest) {
     const manual = c ? manualPayrollRequestRow(c, fy) : null;
     if (manual) rows.push(manual);
   }
-  rows.sort((a, b) => (a.kana || a.name).localeCompare(b.kana || b.name, "ja"));
-  if (rows.length === 0) {
+  // 画面で「対象から外す」にした人（実績の表の年度の目印行 YYYY-00）は様式にも載せない
+  const offIds = new Set(
+    entries.filter((e) => e.ym === `${fy}-00` && e.excluded).map((e) => e.worker_id),
+  );
+  const activeRows = rows.filter((r) => !offIds.has(r.id));
+  activeRows.sort((a, b) => (a.kana || a.name).localeCompare(b.kana || b.name, "ja"));
+  if (activeRows.length === 0) {
     return NextResponse.json({ error: "この年度に特定技能として在籍していた人が見つかりません" }, { status: 404 });
   }
 
@@ -115,9 +120,9 @@ export async function POST(req: NextRequest) {
 
   try {
     if (kind === "honshi") {
-      const report = buildReport36(rows, getEntry, itemsById, fy);
+      const report = buildReport36(activeRows, getEntry, itemsById, fy);
       // ②特定産業分野: 対象者の分野でいちばん多いもの（workers.field）。分野の数も数える
-      const workerRows = await listWorkerFields(supabase, rows.map((r) => r.id));
+      const workerRows = await listWorkerFields(supabase, activeRows.map((r) => r.id));
       const fieldCounts = new Map<string, number>();
       for (const w of workerRows) {
         const f = (w.field ?? "").trim();
@@ -157,7 +162,7 @@ export async function POST(req: NextRequest) {
 
     // 別紙1（5名ごとにページを分ける）
     const page = Math.max(1, Math.floor(body.page ?? 1));
-    const pageRows = rows.slice((page - 1) * B1_PER_PAGE, page * B1_PER_PAGE);
+    const pageRows = activeRows.slice((page - 1) * B1_PER_PAGE, page * B1_PER_PAGE);
     if (pageRows.length === 0) {
       return NextResponse.json({ error: "そのページに載せる人がいません" }, { status: 400 });
     }
