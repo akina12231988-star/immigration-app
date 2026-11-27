@@ -38,6 +38,9 @@ export const EXTRA_REF_FORMS: Record<string, string> = {
   orientation: "生活オリエンテーションの確認書",
   // 推薦状の発行に出す書類（大使館・送り出し機関への申請書など）。申請準備の詳細の「推薦状」の行で作る
   suisen: "推薦状の発行に必要な書類",
+  // 支援委託契約書（当社と所属機関の契約書。入管には出さない）。
+  // 申請準備の「会社に印鑑をもらう書類」で、ひな形・記入位置を登録して2部印刷する
+  "shien-itaku": "支援委託契約書",
   // 定期報告書（定期届出）の添付書類の参考様式。定期報告書の賃金台帳の入力画面で
   // ひな形（PDF）と記入位置を登録して、所属機関の情報を書き込んで印刷する
   "teiki-5-17": "誓約書（参考様式第5-17号。一定の基準を満たさない場合）",
@@ -55,7 +58,7 @@ export const EXTRA_REF_FORMS: Record<string, string> = {
 // 入管に出す日本語の様式なので、本人の国籍の言語の版は要らない（「◯◯語の版がありません」の注意を出さない）。
 // 登録済みのひな形から判定する isJapaneseOnlyRefForm とは別（こちらは未登録でも日本語だけ扱い）
 export function isJapaneseOnlyFormKey(key: string): boolean {
-  return key.startsWith("teiki-");
+  return key.startsWith("teiki-") || key === "shien-itaku";
 }
 
 // 定期報告書の画面に出す並び（入管の提出資料一覧表のA・Bに合わせたグループ）
