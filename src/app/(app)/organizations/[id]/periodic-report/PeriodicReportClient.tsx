@@ -323,6 +323,7 @@ export function PeriodicReportClient({
     return c.leavingOn ? `${start}〜${jpDate(c.leavingOn)} 退職` : `${start}〜 在籍中`;
   };
 
+
   // ---- 在留資格の表示と、未登録の人のその場での登録 ----
   const [statusDrafts, setStatusDrafts] = useState<Record<string, string>>({});
   const [statusBusy, setStatusBusy] = useState<string | null>(null);
@@ -394,6 +395,23 @@ export function PeriodicReportClient({
     return out;
   });
   const [dirtyKeys, setDirtyKeys] = useState<Set<string>>(new Set());
+
+  // だれの分がどこまで入力・保存できているか（行をたたんだままでも分かるように見出しに出す）
+  const inputStatus = useCallback(
+    (row: PayrollRequestRow) => {
+      const months = reportMonthsFor(row, fy, fy);
+      let filled = 0;
+      for (const ym of months) {
+        const d = drafts[`${row.id}|${ym}`];
+        if (d && (d.work_days != null || d.total_hours != null || d.overtime_hours != null || Object.keys(d.amounts).length > 0)) {
+          filled += 1;
+        }
+      }
+      const unsaved = [...dirtyKeys].filter((k) => k.startsWith(`${row.id}|`) && !k.endsWith("-00")).length;
+      return { filled, total: months.length, unsaved };
+    },
+    [drafts, dirtyKeys, fy],
+  );
   const [openWorker, setOpenWorker] = useState<string | null>(null);
   const [showPrevYear, setShowPrevYear] = useState<Record<string, boolean>>({});
 
@@ -406,13 +424,15 @@ export function PeriodicReportClient({
     setDirtyKeys((cur) => new Set(cur).add(key));
   };
 
-  const saveEntries = async (): Promise<boolean> => {
+  // workerId を渡すとその人の分だけ、渡さなければ未保存の全部を保存する
+  const saveEntries = async (workerId?: string): Promise<boolean> => {
     setBusy(true);
     setError(null);
     setSaved(null);
     try {
       const supabase = createClient();
-      const entries: PeriodicReportEntryInput[] = [...dirtyKeys].map((key) => {
+      const keys = [...dirtyKeys].filter((k) => !workerId || k.startsWith(`${workerId}|`));
+      const entries: PeriodicReportEntryInput[] = keys.map((key) => {
         const [workerId, ym] = key.split("|");
         const d = drafts[key];
         return {
@@ -428,8 +448,12 @@ export function PeriodicReportClient({
         };
       });
       await upsertPeriodicReportEntries(supabase, entries);
-      setDirtyKeys(new Set());
-      setSaved(`入力を保存しました（${entries.length}か月分）`);
+      setDirtyKeys((cur) => new Set([...cur].filter((k) => !keys.includes(k))));
+      setSaved(
+        workerId
+          ? `${candidateById[workerId]?.name ?? ""} さんの入力を保存しました（${entries.length}か月分）`
+          : `入力を保存しました（${entries.length}か月分）`,
+      );
       return true;
     } catch (e) {
       setError(`入力の保存に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
@@ -675,7 +699,7 @@ export function PeriodicReportClient({
           </label>
           <button
             type="button"
-            onClick={saveEntries}
+            onClick={() => saveEntries()}
             disabled={busy || dirtyKeys.size === 0}
             className="inline-flex min-h-[40px] items-center gap-2 rounded-xl bg-brand px-4 text-sm font-bold text-brand-foreground disabled:opacity-40"
           >
@@ -773,6 +797,7 @@ export function PeriodicReportClient({
           )}
           {rows.map((row) => {
             const open = openWorker === row.id;
+            const st = inputStatus(row); // だれの分がどこまで入力・保存できているか
             const yearsToShow: number[] = [fy, ...(row.prevYear && showPrevYear[row.id] ? [fy - 1] : [])];
             return (
               <div key={row.id} className="rounded-lg border border-border bg-background">
@@ -783,6 +808,18 @@ export function PeriodicReportClient({
                 >
                   {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                   <span className="font-bold">{row.name}</span>
+                  {st.filled > 0 ? (
+                    <span className="rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-bold text-brand">
+                      入力済み {st.filled}/{st.total}か月
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-border/60 px-2 py-0.5 text-[11px] font-bold text-muted">未入力</span>
+                  )}
+                  {st.unsaved > 0 && (
+                    <span className="rounded-full bg-seal/10 px-2 py-0.5 text-[11px] font-bold text-seal">
+                      未保存 {st.unsaved}か月
+                    </span>
+                  )}
                   {/* だれが在籍中で、いつからいつまでいたのかをひと目で分かるように */}
                   <span className={`text-xs font-bold ${candidateById[row.id]?.leavingOn ? "text-muted" : "text-brand"}`}>
                     {tenureText(row.id)}
@@ -1066,6 +1103,18 @@ export function PeriodicReportClient({
                         </div>
                       );
                     })}
+                    {/* この人の分だけ保存するボタン（上のまとめて保存とは別に、1人入力し終えるたびに押せる） */}
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => saveEntries(row.id)}
+                        disabled={busy || st.unsaved === 0}
+                        className="inline-flex min-h-[40px] items-center gap-2 rounded-xl bg-brand px-4 text-sm font-bold text-brand-foreground disabled:opacity-40"
+                      >
+                        <Save size={16} />
+                        {row.name} さんの入力を保存（{st.unsaved}か月分）
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
