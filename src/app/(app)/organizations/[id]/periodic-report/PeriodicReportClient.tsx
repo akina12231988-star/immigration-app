@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { Fragment, useCallback, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, FileSpreadsheet, GripVertical, Plus, Save, Trash2, TriangleAlert } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
@@ -214,9 +214,9 @@ export function PeriodicReportClient({
   const skipItems = items.filter((it) => it.category === "集計しない");
   // 金額の行の並び。超過労働給与（時間外手当など）の最後の行の下に太い線を引いて、
   // そこから先（通勤・控除側）との境目が賃金台帳と同じように見えるようにする
+  // 金額の行の並び。支給の項目の下に「総支給額（合計・自動）」の行を出し、
+  // その下（控除側との境目）に太い線を引いて、賃金台帳の総支給額と突き合わせやすくする
   const moneyItems = [...payItems, ...deductItems, ...skipItems];
-  const lastOvertimePay = moneyItems.reduce((a, it, idx) => (it.category === "超過労働給与" ? idx : a), -1);
-  const thickLineRow = lastOvertimePay >= 0 ? lastOvertimePay + 1 : -1;
 
   // ---- 対象者と入力 ----
   const candidateById = useMemo(() => Object.fromEntries(candidates.map((c) => [c.id, c])), [candidates]);
@@ -422,18 +422,22 @@ export function PeriodicReportClient({
   // 行の番号: 0=日数 / 1=実労働時間 / 2〜=時間数の項目（無ければ2=超過の直接入力）/ そのあと金額の項目
   const moneyRowBase = 2 + timeItems.length + (hasTimeItems ? 0 : 1);
   const gridRowCount = moneyRowBase + payItems.length + deductItems.length + skipItems.length;
-  const focusNext = (workerId: string, months: string[], mi: number, ri: number) => {
-    for (let m = mi; m < months.length; m += 1) {
-      for (let r = m === mi ? ri + 1 : 0; r < gridRowCount; r += 1) {
-        const el = document.querySelector<HTMLInputElement>(
-          `[data-nav="${workerId}|${months[m]}|${r}"]`,
-        );
-        if (el && !el.disabled) {
-          el.focus();
-          el.select();
-          return;
-        }
+  // dir: 1 = 下へ（Enter・↓）/ -1 = 上へ（↑）。端まで行ったら隣の月へ移る
+  const focusStep = (workerId: string, months: string[], mi: number, ri: number, dir: 1 | -1) => {
+    let idx = mi * gridRowCount + ri + dir;
+    const max = months.length * gridRowCount;
+    while (idx >= 0 && idx < max) {
+      const m = Math.floor(idx / gridRowCount);
+      const r = idx - m * gridRowCount;
+      const el = document.querySelector<HTMLInputElement>(
+        `[data-nav="${workerId}|${months[m]}|${r}"]`,
+      );
+      if (el && !el.disabled) {
+        el.focus();
+        el.select();
+        return;
       }
+      idx += dir;
     }
   };
   // 時間数は「21:10」（21時間10分）の形で出し入れする。
@@ -443,7 +447,7 @@ export function PeriodicReportClient({
     value: number | null,
     onChange: (v: number | null) => void,
     disabled: boolean,
-    nav: { id: string; onEnter: () => void },
+    nav: { id: string; move: (dir: 1 | -1) => void },
   ) => (
     <input
       value={hoursEditing[nav.id] ?? hoursText(value)}
@@ -459,9 +463,13 @@ export function PeriodicReportClient({
         });
       }}
       onKeyDown={(e) => {
-        if (e.key === "Enter") {
+        // Enter・↓で下の項目へ、↑で上の項目へ。欄を移ると blur が走って「21:10」に確定する
+        if (e.key === "Enter" || e.key === "ArrowDown") {
           e.preventDefault();
-          nav.onEnter(); // 次の欄へ移ると blur が走って「21:10」に確定する
+          nav.move(1);
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          nav.move(-1);
         }
       }}
       data-nav={nav.id}
@@ -486,7 +494,7 @@ export function PeriodicReportClient({
     value: number | null,
     onChange: (v: number | null) => void,
     disabled = false,
-    nav?: { id: string; onEnter: () => void },
+    nav?: { id: string; move: (dir: 1 | -1) => void },
   ) => (
     <input
       value={
@@ -516,9 +524,13 @@ export function PeriodicReportClient({
       onKeyDown={
         nav
           ? (e) => {
-              if (e.key === "Enter") {
+              // Enter・↓で下の項目へ、↑で上の項目へ。欄を移ると blur が走ってカンマ入りで確定する
+              if (e.key === "Enter" || e.key === "ArrowDown") {
                 e.preventDefault();
-                nav.onEnter(); // 次の欄へ移ると blur が走ってカンマ入りで確定する
+                nav.move(1);
+              } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                nav.move(-1);
               }
             }
           : undefined
@@ -731,6 +743,26 @@ export function PeriodicReportClient({
                     )}
                     {yearsToShow.map((year) => {
                       const months = monthsFor(row, year);
+                      // 総支給額（支給の項目の合算・自動）。賃金台帳の総支給額の行と突き合わせる。
+                      // この行の下の太い線が、控除側との境目になる
+                      const payTotalRow = payItems.length > 0 && (
+                        <tr key="pay-total">
+                          <td className="border border-border border-b-[3px] border-b-neutral-400 px-1.5 py-1 text-xs">
+                            総支給額（合計）
+                            <span className="block text-[10px] text-muted">支給の項目の合算・自動</span>
+                          </td>
+                          {months.map((ym) => {
+                            const d = draftOf(row.id, ym, row);
+                            const hasAny = payItems.some((it) => d.amounts[it.id] != null);
+                            const sum = payItems.reduce((a, it) => a + (d.amounts[it.id] ?? 0), 0);
+                            return (
+                              <td key={ym} className={`${cell} border-b-[3px] border-b-neutral-400 text-xs font-bold text-muted`}>
+                                {hasAny ? sum.toLocaleString("ja-JP") : ""}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
                       return (
                         <div key={year} className="overflow-x-auto">
                           <p className="mb-1 text-xs font-bold text-muted">{fiscalYearLabel(year)}</p>
@@ -754,7 +786,7 @@ export function PeriodicReportClient({
                                     <td key={ym} className={cell}>
                                       {numInput(d.work_days, (v) => setDraft(row.id, ym, row, { work_days: v }), d.excluded, {
                                         id: `${row.id}|${ym}|0`,
-                                        onEnter: () => focusNext(row.id, months, mi, 0),
+                                        move: (dir) => focusStep(row.id, months, mi, 0, dir),
                                       })}
                                     </td>
                                   );
@@ -771,7 +803,7 @@ export function PeriodicReportClient({
                                     <td key={ym} className={cell}>
                                       {hoursInput(d.total_hours, (v) => setDraft(row.id, ym, row, { total_hours: v }), d.excluded, {
                                         id: `${row.id}|${ym}|1`,
-                                        onEnter: () => focusNext(row.id, months, mi, 1),
+                                        move: (dir) => focusStep(row.id, months, mi, 1, dir),
                                       })}
                                     </td>
                                   );
@@ -797,7 +829,7 @@ export function PeriodicReportClient({
                                             setDraft(row.id, ym, row, { amounts });
                                           },
                                           d.excluded,
-                                          { id: `${row.id}|${ym}|${2 + ti}`, onEnter: () => focusNext(row.id, months, mi, 2 + ti) },
+                                          { id: `${row.id}|${ym}|${2 + ti}`, move: (dir) => focusStep(row.id, months, mi, 2 + ti, dir) },
                                         )}
                                       </td>
                                     );
@@ -844,7 +876,7 @@ export function PeriodicReportClient({
                                       <td key={ym} className={cell}>
                                         {hoursInput(d.overtime_hours, (v) => setDraft(row.id, ym, row, { overtime_hours: v }), d.excluded, {
                                           id: `${row.id}|${ym}|2`,
-                                          onEnter: () => focusNext(row.id, months, mi, 2),
+                                          move: (dir) => focusStep(row.id, months, mi, 2, dir),
                                         })}
                                       </td>
                                     );
@@ -853,18 +885,19 @@ export function PeriodicReportClient({
                               )}
                               {moneyItems.map((it, iiRaw) => {
                                 const ii = moneyRowBase - 3 + iiRaw; // 行番号の底上げ（時間数の項目のぶん）
-                                // 超過労働給与の最後の行の下＝この行の上に太い線
-                                const thick = iiRaw === thickLineRow ? " border-t-[3px] border-t-neutral-400" : "";
                                 return (
-                                <tr key={it.id}>
-                                  <td className={`border border-border px-1.5 py-1 text-xs${thick}`}>
+                                <Fragment key={it.id}>
+                                {/* 支給の項目の終わり＝控除側の最初の行の前に、総支給額（合計）の行を入れる */}
+                                {iiRaw === payItems.length && payTotalRow}
+                                <tr>
+                                  <td className="border border-border px-1.5 py-1 text-xs">
                                     {it.name || "（名前なし）"}
                                     <span className="block text-[10px] text-muted">{it.category}</span>
                                   </td>
                                   {months.map((ym, mi) => {
                                     const d = draftOf(row.id, ym, row);
                                     return (
-                                      <td key={ym} className={`${cell}${thick}`}>
+                                      <td key={ym} className={cell}>
                                         {numInput(
                                           d.amounts[it.id] ?? null,
                                           (v) => {
@@ -876,15 +909,38 @@ export function PeriodicReportClient({
                                           d.excluded,
                                           {
                                             id: `${row.id}|${ym}|${3 + ii}`,
-                                            onEnter: () => focusNext(row.id, months, mi, 3 + ii),
+                                            move: (dir) => focusStep(row.id, months, mi, 3 + ii, dir),
                                           },
                                         )}
                                       </td>
                                     );
                                   })}
                                 </tr>
+                                </Fragment>
                                 );
                               })}
+                              {/* 控除・集計しないの項目が無いときは、支給の項目の最後に総支給額の行を出す */}
+                              {payItems.length === moneyItems.length && payTotalRow}
+                              {/* 差引支給額 = 総支給額 − 控除の合計（自動）。賃金台帳の差引支給額と突き合わせる */}
+                              {payItems.length > 0 && deductItems.length > 0 && (
+                                <tr>
+                                  <td className="border border-border border-t-[3px] border-t-neutral-400 px-1.5 py-1 text-xs">
+                                    差引支給額
+                                    <span className="block text-[10px] text-muted">総支給額−控除の合算・自動</span>
+                                  </td>
+                                  {months.map((ym) => {
+                                    const d = draftOf(row.id, ym, row);
+                                    const hasAny = [...payItems, ...deductItems].some((it) => d.amounts[it.id] != null);
+                                    const pay = payItems.reduce((a, it) => a + (d.amounts[it.id] ?? 0), 0);
+                                    const deduct = deductItems.reduce((a, it) => a + (d.amounts[it.id] ?? 0), 0);
+                                    return (
+                                      <td key={ym} className={`${cell} border-t-[3px] border-t-neutral-400 text-xs font-bold text-muted`}>
+                                        {hasAny ? (pay - deduct).toLocaleString("ja-JP") : ""}
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              )}
                               <tr>
                                 <td className="border border-border px-1.5 py-1 text-xs">
                                   除外（月の途中の入社・退職）
