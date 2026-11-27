@@ -8,6 +8,7 @@ import {
   BUNDLED_REF_FORMS,
   REF_FORM_LANGUAGES,
   REF_FORM_MIGRATION,
+  isJapaneseOnlyFormKey,
   languageForNationality,
   normalizeRefFormLayout,
   normalizeSignPages,
@@ -110,13 +111,14 @@ export function RefFormRowBar({
 }) {
   const list = templates.filter((t) => t.form_key === formKey && (!t.organization_id || t.organization_id === orgId));
   const picked = pickRefFormTemplate(templates, formKey, nationality, orgId);
-  const lang = languageForNationality(nationality);
+  // 日本語だけで作る様式（定期報告書の添付書類など）は、本人の言語の版の有無を気にしない
+  const lang = isJapaneseOnlyFormKey(formKey) ? "" : languageForNationality(nationality);
   // 登録してある言語の版（全員共通・この所属機関の版ごと）。ひと目で分かるように並べる
   const commonLangs = [...new Set(list.filter((t) => !t.organization_id).map((t) => t.language))];
   const orgLangs = [...new Set(list.filter((t) => t.organization_id).map((t) => t.language))];
   // 本人の国籍の言語の版が無い（日本語の版で代わりに作っているときも含む）
   // 日本語の版だけで登録している様式は日本語で出す様式なので、本人の言語の版は要らない
-  const japaneseOnly = list.length > 0 && list.every((t) => t.language === "日本語");
+  const japaneseOnly = isJapaneseOnlyFormKey(formKey) || (list.length > 0 && list.every((t) => t.language === "日本語"));
   const langMissing = !!lang && lang !== "日本語" && !japaneseOnly && !list.some((t) => t.language === lang);
   // 記入位置に置いた○。チェックを外したものは、この様式を作るときに書かない
   const circles = picked ? refFormCircles(normalizeRefFormLayout(picked.layout)) : [];
