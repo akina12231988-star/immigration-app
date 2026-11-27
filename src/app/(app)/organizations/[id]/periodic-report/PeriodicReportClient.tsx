@@ -212,6 +212,11 @@ export function PeriodicReportClient({
   );
   const deductItems = items.filter((it) => it.category.startsWith("控除"));
   const skipItems = items.filter((it) => it.category === "集計しない");
+  // 金額の行の並び。超過労働給与（時間外手当など）の最後の行の下に太い線を引いて、
+  // そこから先（通勤・控除側）との境目が賃金台帳と同じように見えるようにする
+  const moneyItems = [...payItems, ...deductItems, ...skipItems];
+  const lastOvertimePay = moneyItems.reduce((a, it, idx) => (it.category === "超過労働給与" ? idx : a), -1);
+  const thickLineRow = lastOvertimePay >= 0 ? lastOvertimePay + 1 : -1;
 
   // ---- 対象者と入力 ----
   const candidateById = useMemo(() => Object.fromEntries(candidates.map((c) => [c.id, c])), [candidates]);
@@ -846,18 +851,20 @@ export function PeriodicReportClient({
                                   })}
                                 </tr>
                               )}
-                              {[...payItems, ...deductItems, ...skipItems].map((it, iiRaw) => {
+                              {moneyItems.map((it, iiRaw) => {
                                 const ii = moneyRowBase - 3 + iiRaw; // 行番号の底上げ（時間数の項目のぶん）
+                                // 超過労働給与の最後の行の下＝この行の上に太い線
+                                const thick = iiRaw === thickLineRow ? " border-t-[3px] border-t-neutral-400" : "";
                                 return (
                                 <tr key={it.id}>
-                                  <td className="border border-border px-1.5 py-1 text-xs">
+                                  <td className={`border border-border px-1.5 py-1 text-xs${thick}`}>
                                     {it.name || "（名前なし）"}
                                     <span className="block text-[10px] text-muted">{it.category}</span>
                                   </td>
                                   {months.map((ym, mi) => {
                                     const d = draftOf(row.id, ym, row);
                                     return (
-                                      <td key={ym} className={cell}>
+                                      <td key={ym} className={`${cell}${thick}`}>
                                         {numInput(
                                           d.amounts[it.id] ?? null,
                                           (v) => {
