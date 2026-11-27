@@ -125,11 +125,11 @@ export function PayrollRequestSheet({
       <div className="print:hidden">
         <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-brand px-4 py-3 text-brand-foreground lg:px-8">
           <BackButton fallbackHref={`/organizations/${organizationId}`} />
-          <h1 className="flex-1 text-lg font-bold">賃金台帳・証明書のお願い（定期届出の準備・A4縦）</h1>
+          <h1 className="flex-1 text-lg font-bold">定期報告書　賃金台帳・証明書のお願い（A4縦）</h1>
         </div>
         <div className="flex flex-col gap-3 px-4 py-3 lg:px-8">
           <p className="text-xs leading-relaxed text-muted">
-            定期届出（3-6号）の作成のために、所属機関へ送る「賃金台帳の写しと証明書のお願い」です。
+            定期報告書（3-6号）の作成のために、所属機関へ送る「賃金台帳の写しと証明書のお願い」です。
             対象年度に特定技能1号・2号として在籍していた人（年度の途中で退職した人を含む）を名簿にします。
             特定活動だった月はお願いする期間から外しています。2年以上続けて在籍している人は昇給率の計算に前年度分も必要なため、
             前年度分もあわせてお願いする印を付けています。名簿の期間・備考と証明書のリストは下で自由に直してから印刷してください。
@@ -319,7 +319,7 @@ export function PayrollRequestSheet({
           </div>
 
           <h2 className="my-3 text-center text-[13pt] font-bold tracking-[0.05em]">
-            定期届出に伴う「賃金台帳の写し・証明書」のお願い
+            定期報告書の作成に伴う「賃金台帳の写し・証明書」のお願い
           </h2>
           <p className="mb-2">
             平素より大変お世話になっております。特定技能外国人の受入れ状況は、毎年、出入国在留管理庁へ

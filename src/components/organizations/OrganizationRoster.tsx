@@ -163,7 +163,7 @@ export function OrganizationRoster({
           className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-brand px-3 text-xs font-bold text-brand hover:bg-brand/5"
         >
           <Printer size={14} />
-          賃金台帳・証明書のお願い（定期届出の準備）
+          定期報告書（賃金台帳・証明書のお願い）
         </Link>
         {/* 会社からの書類の依頼（年末調整の書類など）。在籍者 × 書類で案内・発行・送付をチェックする */}
         <Link

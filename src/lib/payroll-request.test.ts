@@ -171,7 +171,7 @@ describe("buildPayrollRequestRows", () => {
 
 describe("payrollRequestFileName", () => {
   it("機関名を入れ、ファイル名に使えない文字は置き換える", () => {
-    expect(payrollRequestFileName("株式会社サンプル")).toBe("賃金台帳・証明書のお願い_株式会社サンプル");
-    expect(payrollRequestFileName("A/B")).toBe("賃金台帳・証明書のお願い_A-B");
+    expect(payrollRequestFileName("株式会社サンプル")).toBe("定期報告書_賃金台帳・証明書のお願い_株式会社サンプル");
+    expect(payrollRequestFileName("A/B")).toBe("定期報告書_賃金台帳・証明書のお願い_A-B");
   });
 });
