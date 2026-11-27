@@ -243,7 +243,10 @@ export function PayrollRequestSheet({
                   <label className="inline-flex min-w-[180px] items-center gap-1.5 font-bold">
                     <input type="checkbox" checked={r.include} onChange={(e) => setRow(r.id, { include: e.target.checked })} className="size-4" />
                     {r.name}
-                    <span className="font-normal text-muted">（{r.grade}）</span>
+                    <span className="font-normal text-muted">
+                      （{r.grade}
+                      {r.sswTenure ? `・期間末まで在籍 ${r.sswTenure}` : ""}）
+                    </span>
                   </label>
                   <input type="month" value={r.fromYm} onChange={(e) => setRow(r.id, { fromYm: e.target.value })} className={FIELD} />
                   〜
@@ -371,7 +374,10 @@ export function PayrollRequestSheet({
                   <td className={`${cell} text-center`}>{i + 1}</td>
                   <td className={cell}>{r.name}</td>
                   <td className={`${cell} text-center`}>{r.nationality}</td>
-                  <td className={`${cell} text-center text-[9pt]`}>{r.grade}</td>
+                  <td className={`${cell} text-center text-[9pt]`}>
+                    {r.grade}
+                    {r.sswTenure && <span className="block text-[8pt]">（在籍 {r.sswTenure}）</span>}
+                  </td>
                   <td className={cell}>
                     {ymRangeText(r.fromYm, r.toYm)}
                     {r.prevYear && (

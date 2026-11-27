@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, FileSpreadsheet, GripVertical, Plus, Save, Trash2, TriangleAlert } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
+import { PeriodicRefFormsSection } from "@/components/ref-forms/PeriodicRefFormsSection";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -116,6 +117,7 @@ export function PeriodicReportClient({
   candidates: initialCandidates,
   permitsByWorker,
   messengerByWorker = {},
+  canEditRefForms = false,
   initialItems,
   initialEntries,
   tablesReady,
@@ -126,6 +128,7 @@ export function PeriodicReportClient({
   candidates: PayrollRequestCandidate[];
   permitsByWorker: Record<string, PayrollPermit[]>;
   messengerByWorker?: Record<string, string>; // 本人のメッセンジャーのリンク（在留資格の確認の連絡用）
+  canEditRefForms?: boolean; // 参考様式のひな形・記入位置を直せる人か（管理者・職員）
   initialItems: OrgPayrollItemRow[];
   initialEntries: PeriodicReportEntryRow[];
   tablesReady: boolean; // false = 0236 未適用（読めなかった）
@@ -846,7 +849,8 @@ export function PeriodicReportClient({
                     在留資格: {candidateById[row.id]?.residenceStatus || "未登録"}
                   </span>
                   <span className="text-xs text-muted">
-                    {row.grade}・入力は{ymText(row.fromYm)}〜{ymText(row.toYm)}
+                    {row.grade}
+                    {row.sswTenure ? `（期間末まで在籍 ${row.sswTenure}）` : ""}・入力は{ymText(row.fromYm)}〜{ymText(row.toYm)}
                     {row.prevYear ? "・昇給率の対象（前年度分も入力）" : ""}
                   </span>
                   {row.note && <span className="text-xs text-muted">（{row.note}）</span>}
@@ -1315,6 +1319,19 @@ export function PeriodicReportClient({
                     : "別紙1をダウンロード"}
               </button>
             ))}
+          </div>
+        </section>
+
+        {/* 5 定期報告書の添付書類の参考様式（ひな形・記入位置・印刷） */}
+        <section className="rounded-lg border border-border bg-background px-3 py-2">
+          <h2 className="text-sm font-bold">5　参考様式のひな形と印刷（定期報告書の添付書類）</h2>
+          <div className="mt-2">
+            <PeriodicRefFormsSection
+              orgId={organizationId}
+              orgName={organizationName}
+              canEdit={canEditRefForms}
+              workers={rows.map((r) => ({ id: r.id, name: r.name, nationality: r.nationality }))}
+            />
           </div>
         </section>
       </div>

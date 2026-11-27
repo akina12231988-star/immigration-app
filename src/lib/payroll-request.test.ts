@@ -6,6 +6,7 @@ import {
   fiscalYearPeriod,
   lastEndedFiscalYear,
   manualPayrollRequestRow,
+  yearsMonthsText,
   payrollRequestFileName,
   ymRangeText,
   ymText,
@@ -227,5 +228,31 @@ describe("defaultCertificateItems（提出資料一覧表のAに合わせた初�
     expect(names.some((n) => n.includes("国民健康保険・国民年金"))).toBe(true);
     expect(names).toContain("個人住民税の納税証明書");
     expect(names).not.toContain("登記事項証明書");
+  });
+});
+
+
+describe("yearsMonthsText（在籍の長さ）", () => {
+  it("満の年月で数える（DATEDIFと同じ）", () => {
+    expect(yearsMonthsText("2023-06-01", "2026-03-31")).toBe("2年9ヶ月");
+    expect(yearsMonthsText("2025-10-22", "2026-03-31")).toBe("5ヶ月");
+    expect(yearsMonthsText("2024-04-01", "2026-03-31")).toBe("1年11ヶ月");
+    expect(yearsMonthsText("2024-04-01", "2026-04-01")).toBe("2年");
+    expect(yearsMonthsText("2026-05-01", "2026-03-31")).toBe("");
+  });
+
+  it("名簿の行に、対象期間の最終日（退職日）までの在籍の長さが入る", () => {
+    const { rows } = buildPayrollRequestRows(
+      [{ ...base, startOn: "2023-06-01" }],
+      { w1: [{ permitDate: "2023-06-01", visa: "特定技能1号" }] },
+      2025,
+    );
+    expect(rows[0].sswTenure).toBe("2年9ヶ月");
+    const left = buildPayrollRequestRows(
+      [{ ...base, startOn: "2023-06-01", leavingOn: "2025-10-15" }],
+      { w1: [{ permitDate: "2023-06-01", visa: "特定技能1号" }] },
+      2025,
+    ).rows[0];
+    expect(left.sswTenure).toBe("2年4ヶ月");
   });
 });

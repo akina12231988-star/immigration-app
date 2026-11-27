@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/supabase/queries/profiles";
+import { canUseUnifiedPrep } from "@/lib/unified-prep";
 import { getOrganization, getOrgRoster } from "@/lib/supabase/queries/organizations";
 import { listGrantedPermits, listPermitHistoryExtras } from "@/lib/supabase/queries/applications";
 import { listOrgPayrollItems, listPeriodicReportEntries } from "@/lib/supabase/queries/periodic-report";
@@ -69,6 +70,7 @@ export default async function OrganizationPeriodicReportPage({ params }: { param
       candidates={candidates}
       permitsByWorker={permitsByWorker}
       messengerByWorker={messengerByWorker}
+      canEditRefForms={canUseUnifiedPrep(me.role)}
       initialItems={itemsResult.items}
       initialEntries={entriesResult}
       tablesReady={itemsResult.ok}
