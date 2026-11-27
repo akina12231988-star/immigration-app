@@ -124,6 +124,7 @@ export function ApplicationCopyPanel({
       appType,
       custodian: mergeCustodianInfo(loaded.custodian),
       interpreters: mergeSupportOrgLists(loaded.custodian).interpreters,
+      orgWorkerCounts: loaded.orgWorkerCounts,
     };
     const groups = buildApplicationCopyGroups(input);
     // オンライン申請の画面順・入力形式にそろえたもの（紙の申請書向けの項目から組み立てる）
