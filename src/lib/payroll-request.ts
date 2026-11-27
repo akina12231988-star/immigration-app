@@ -238,5 +238,5 @@ export function buildPayrollRequestRows(
 // 印刷（PDF保存）のファイル名
 export function payrollRequestFileName(orgName: string): string {
   const name = (orgName ?? "").trim().replace(/[\\/:*?"<>|]/g, "-");
-  return name ? `賃金台帳・証明書のお願い_${name}` : "賃金台帳・証明書のお願い";
+  return name ? `定期報告書_賃金台帳・証明書のお願い_${name}` : "定期報告書_賃金台帳・証明書のお願い";
 }
