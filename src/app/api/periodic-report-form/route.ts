@@ -9,7 +9,13 @@ import { listOrgPayrollItems, listPeriodicReportEntries } from "@/lib/supabase/q
 import { getAppSetting } from "@/lib/supabase/queries/app-settings";
 import { CUSTODIAN_SETTING_KEY, mergeCustodianInfo } from "@/lib/custody";
 import { normalizeOrganizationIntake } from "@/lib/organization-intake";
-import { buildPayrollRequestRows, jpDate, type PayrollPermit, type PayrollRequestCandidate } from "@/lib/payroll-request";
+import {
+  buildPayrollRequestRows,
+  jpDate,
+  manualPayrollRequestRow,
+  type PayrollPermit,
+  type PayrollRequestCandidate,
+} from "@/lib/payroll-request";
 import { buildReport36, workerAnnualTotals, type ReportEntryLike } from "@/lib/periodic-report";
 import {
   B1_PER_PAGE,
@@ -33,6 +39,7 @@ interface Body {
   page?: number; // 別紙1のページ（1始まり。5名ごと）
   supportDelegated?: boolean; // 支援の全部委託あり（省略時は支援委託の状況から判定）
   note?: string; // 本紙の６備考
+  manualIds?: string[]; // 画面で「対象に入れて入力する」で手で足した人
 }
 
 export async function POST(req: NextRequest) {
@@ -85,6 +92,14 @@ export async function POST(req: NextRequest) {
     (permitsByWorker[p.workerId] ??= []).push({ permitDate: p.permitDate, visa: p.visa });
   }
   const { rows } = buildPayrollRequestRows(candidates, permitsByWorker, fy);
+  // 画面で手で対象に入れた人（許可の記録が無い人）も様式に載せる
+  for (const id of body.manualIds ?? []) {
+    if (rows.some((r) => r.id === id)) continue;
+    const c = candidates.find((x) => x.id === id);
+    const manual = c ? manualPayrollRequestRow(c, fy) : null;
+    if (manual) rows.push(manual);
+  }
+  rows.sort((a, b) => (a.kana || a.name).localeCompare(b.kana || b.name, "ja"));
   if (rows.length === 0) {
     return NextResponse.json({ error: "この年度に特定技能として在籍していた人が見つかりません" }, { status: 404 });
   }

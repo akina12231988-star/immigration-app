@@ -36,6 +36,15 @@ export default async function OrganizationPeriodicReportPage({ params }: { param
   }));
 
   const ids = new Set(candidates.map((c) => c.id));
+  // 在留資格が未登録の人に連絡しやすいよう、本人のメッセンジャーのリンクも出す
+  const { data: messengerRows } = await supabase
+    .from("workers")
+    .select("id, messenger_link")
+    .in("id", [...ids]);
+  const messengerByWorker: Record<string, string> = {};
+  for (const r of (messengerRows as { id: string; messenger_link: string | null }[] | null) ?? []) {
+    if (r.messenger_link) messengerByWorker[r.id] = r.messenger_link;
+  }
   // 項目・実績はマイグレーション未適用の環境でも開けるよう、読めなければ空で出す（画面に案内を出す）
   const [granted, extras, itemsResult, entriesResult] = await Promise.all([
     listGrantedPermits(supabase).catch(() => []),
@@ -59,6 +68,7 @@ export default async function OrganizationPeriodicReportPage({ params }: { param
       organizationName={organization.name}
       candidates={candidates}
       permitsByWorker={permitsByWorker}
+      messengerByWorker={messengerByWorker}
       initialItems={itemsResult.items}
       initialEntries={entriesResult}
       tablesReady={itemsResult.ok}
