@@ -215,3 +215,39 @@ describe("parseHoursInput / hoursText（時:分の入力）", () => {
     expect(hoursText(167.9999)).toBe("168:00");
   });
 });
+
+describe("超過時間数（時:分）の項目の合算", () => {
+  const items = {
+    jikangai: { category: "超過時間数（時:分）" },
+    kyujitsu: { category: "超過時間数（時:分）" },
+    kihon: { category: "基本給など" },
+  };
+  it("時間外・休日などの項目を（3）超過実労働時間数へ合算し、金額には入れない", () => {
+    const t = entryToMonthTotals(
+      {
+        ym: "2025-04",
+        work_days: 21,
+        total_hours: 178.5,
+        overtime_hours: null,
+        amounts: { jikangai: 10.25, kyujitsu: 4.5, kihon: 200000 },
+        excluded: false,
+      },
+      items,
+    );
+    expect(t.overtimeHours).toBeCloseTo(14.75, 10);
+    expect(t.regularHours).toBeCloseTo(178.5 - 14.75, 10); // （2）＝実労働−合算した超過
+    expect(t.cashPay).toBe(200000); // 時間数は金額に入らない
+  });
+  it("直接入力した超過時間とも足し合わせる。どちらも無い月は未入力のまま", () => {
+    const t = entryToMonthTotals(
+      { ym: "2025-04", work_days: null, total_hours: null, overtime_hours: 5, amounts: { jikangai: 10 }, excluded: false },
+      items,
+    );
+    expect(t.overtimeHours).toBe(15);
+    const none = entryToMonthTotals(
+      { ym: "2025-04", work_days: null, total_hours: null, overtime_hours: null, amounts: { kihon: 1 }, excluded: false },
+      items,
+    );
+    expect(none.overtimeHours).toBeNull();
+  });
+});

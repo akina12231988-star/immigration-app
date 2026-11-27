@@ -25,6 +25,7 @@ import {
 import {
   buildReport36,
   hoursText,
+  OVERTIME_TIME_CATEGORY,
   parseHoursInput,
   reportMonthsFor,
   round1,
@@ -201,7 +202,12 @@ export function PeriodicReportClient({
     () => Object.fromEntries(items.map((it) => [it.id, { category: it.category }])),
     [items],
   );
-  const payItems = items.filter((it) => !it.category.startsWith("控除") && it.category !== "集計しない");
+  // 時間外・休日・深夜などの時間数の項目（時:分で入力して（3）へ合算）
+  const timeItems = items.filter((it) => it.category === OVERTIME_TIME_CATEGORY);
+  const hasTimeItems = timeItems.length > 0;
+  const payItems = items.filter(
+    (it) => !it.category.startsWith("控除") && it.category !== "集計しない" && it.category !== OVERTIME_TIME_CATEGORY,
+  );
   const deductItems = items.filter((it) => it.category.startsWith("控除"));
   const skipItems = items.filter((it) => it.category === "集計しない");
 
@@ -405,8 +411,10 @@ export function PeriodicReportClient({
   const head = "border border-border bg-background px-1.5 py-1 text-center text-[11px] font-bold text-muted";
 
   // Enterで下の項目（同じ月の次の行）へ。月の最後まで行ったら次の月のいちばん上へ
-  // （賃金台帳は1か月分が縦に並んでいるので、縦に転記できるようにする）
-  const gridRowCount = 3 + payItems.length + deductItems.length + skipItems.length;
+  // （賃金台帳は1か月分が縦に並んでいるので、縦に転記できるようにする）。
+  // 行の番号: 0=日数 / 1=実労働時間 / 2〜=時間数の項目（無ければ2=超過の直接入力）/ そのあと金額の項目
+  const moneyRowBase = 2 + timeItems.length + (hasTimeItems ? 0 : 1);
+  const gridRowCount = moneyRowBase + payItems.length + deductItems.length + skipItems.length;
   const focusNext = (workerId: string, months: string[], mi: number, ri: number) => {
     for (let m = mi; m < months.length; m += 1) {
       for (let r = m === mi ? ri + 1 : 0; r < gridRowCount; r += 1) {
@@ -456,6 +464,17 @@ export function PeriodicReportClient({
       className={`${FIELD} w-full min-w-[64px] text-right ${disabled ? "opacity-40" : ""}`}
     />
   );
+  // 金額・日数の欄。表示はカンマ区切り（104,000）、入力中はそのまま打てて、
+  // 確定（Enter・欄を離れる）でカンマが入る。全角数字も半角に直して受ける
+  const [numEditing, setNumEditing] = useState<Record<string, string>>({});
+  const parseNumInput = (text: string): number | null => {
+    const t = text
+      .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+      .replace(/[^0-9.\-]/g, "");
+    if (t === "" || t === "-" || t === ".") return null;
+    const v = Number(t);
+    return Number.isFinite(v) ? v : null;
+  };
   const numInput = (
     value: number | null,
     onChange: (v: number | null) => void,
@@ -463,17 +482,36 @@ export function PeriodicReportClient({
     nav?: { id: string; onEnter: () => void },
   ) => (
     <input
-      value={value ?? ""}
+      value={
+        (nav && numEditing[nav.id]) ?? (value == null ? "" : value.toLocaleString("ja-JP"))
+      }
       onChange={(e) => {
-        const t = e.target.value.replace(/[^0-9.\-]/g, "");
-        onChange(t === "" ? null : Number(t));
+        if (nav) {
+          setNumEditing((cur) => ({ ...cur, [nav.id]: e.target.value }));
+        } else {
+          onChange(parseNumInput(e.target.value));
+        }
       }}
+      onBlur={
+        nav
+          ? () => {
+              const t = numEditing[nav.id];
+              if (t === undefined) return;
+              onChange(parseNumInput(t));
+              setNumEditing((cur) => {
+                const next = { ...cur };
+                delete next[nav.id];
+                return next;
+              });
+            }
+          : undefined
+      }
       onKeyDown={
         nav
           ? (e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
-                nav.onEnter();
+                nav.onEnter(); // 次の欄へ移ると blur が走ってカンマ入りで確定する
               }
             }
           : undefined
@@ -713,24 +751,83 @@ export function PeriodicReportClient({
                                   );
                                 })}
                               </tr>
-                              <tr>
-                                <td className="border border-border px-1.5 py-1 text-xs">
-                                  うち超過実労働時間数
-                                  <span className="block text-[10px] text-muted">21:10 の形</span>
-                                </td>
-                                {months.map((ym, mi) => {
-                                  const d = draftOf(row.id, ym, row);
-                                  return (
-                                    <td key={ym} className={cell}>
-                                      {hoursInput(d.overtime_hours, (v) => setDraft(row.id, ym, row, { overtime_hours: v }), d.excluded, {
-                                        id: `${row.id}|${ym}|2`,
-                                        onEnter: () => focusNext(row.id, months, mi, 2),
-                                      })}
-                                    </td>
-                                  );
-                                })}
-                              </tr>
-                              {[...payItems, ...deductItems, ...skipItems].map((it, ii) => (
+                              {/* 時間外・休日・深夜などの時間数の項目（賃金台帳に別々にあるとき。合計は下の行に自動で出る） */}
+                              {timeItems.map((it, ti) => (
+                                <tr key={it.id}>
+                                  <td className="border border-border px-1.5 py-1 text-xs">
+                                    {it.name || "（名前なし）"}
+                                    <span className="block text-[10px] text-muted">時:分（21:10 の形）・（3）へ合算</span>
+                                  </td>
+                                  {months.map((ym, mi) => {
+                                    const d = draftOf(row.id, ym, row);
+                                    return (
+                                      <td key={ym} className={cell}>
+                                        {hoursInput(
+                                          d.amounts[it.id] ?? null,
+                                          (v) => {
+                                            const amounts = { ...d.amounts };
+                                            if (v == null) delete amounts[it.id];
+                                            else amounts[it.id] = v;
+                                            setDraft(row.id, ym, row, { amounts });
+                                          },
+                                          d.excluded,
+                                          { id: `${row.id}|${ym}|${2 + ti}`, onEnter: () => focusNext(row.id, months, mi, 2 + ti) },
+                                        )}
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              ))}
+                              {hasTimeItems ? (
+                                // 時間数の項目があるときは、超過の合計を自動で出す（直接入力の古い値が残っていたら消せる）
+                                <tr>
+                                  <td className="border border-border px-1.5 py-1 text-xs">
+                                    うち超過実労働時間数（合計）
+                                    <span className="block text-[10px] text-muted">上の時間数の合算・自動</span>
+                                  </td>
+                                  {months.map((ym) => {
+                                    const d = draftOf(row.id, ym, row);
+                                    const itemSum = timeItems.reduce((a, it) => a + (d.amounts[it.id] ?? 0), 0);
+                                    const hasAny = d.overtime_hours != null || timeItems.some((it) => d.amounts[it.id] != null);
+                                    return (
+                                      <td key={ym} className={`${cell} text-xs text-muted`}>
+                                        {hasAny ? hoursText((d.overtime_hours ?? 0) + itemSum) : ""}
+                                        {d.overtime_hours != null && (
+                                          <button
+                                            type="button"
+                                            onClick={() => setDraft(row.id, ym, row, { overtime_hours: null })}
+                                            className="block w-full text-right text-[10px] text-seal underline"
+                                            title="内訳と二重にならないよう、以前の直接入力を消す"
+                                          >
+                                            直接入力 {hoursText(d.overtime_hours)} を消す
+                                          </button>
+                                        )}
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              ) : (
+                                <tr>
+                                  <td className="border border-border px-1.5 py-1 text-xs">
+                                    うち超過実労働時間数
+                                    <span className="block text-[10px] text-muted">21:10 の形</span>
+                                  </td>
+                                  {months.map((ym, mi) => {
+                                    const d = draftOf(row.id, ym, row);
+                                    return (
+                                      <td key={ym} className={cell}>
+                                        {hoursInput(d.overtime_hours, (v) => setDraft(row.id, ym, row, { overtime_hours: v }), d.excluded, {
+                                          id: `${row.id}|${ym}|2`,
+                                          onEnter: () => focusNext(row.id, months, mi, 2),
+                                        })}
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              )}
+                              {[...payItems, ...deductItems, ...skipItems].map((it, iiRaw) => {
+                                const ii = moneyRowBase - 3 + iiRaw; // 行番号の底上げ（時間数の項目のぶん）
+                                return (
                                 <tr key={it.id}>
                                   <td className="border border-border px-1.5 py-1 text-xs">
                                     {it.name || "（名前なし）"}
@@ -758,7 +855,8 @@ export function PeriodicReportClient({
                                     );
                                   })}
                                 </tr>
-                              ))}
+                                );
+                              })}
                               <tr>
                                 <td className="border border-border px-1.5 py-1 text-xs">
                                   除外（月の途中の入社・退職）

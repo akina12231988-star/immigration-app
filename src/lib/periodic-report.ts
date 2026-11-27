@@ -47,6 +47,10 @@ const CASH_PAY_CATEGORIES: PayrollItemCategory[] = [
   "家族手当",
 ];
 
+// 賃金台帳に時間外・休日・法定外・深夜などの時間数が別々にあるときのカテゴリ。
+// 金額ではなく時間（時:分→小数）で入力し、（3）超過実労働時間数へ合算する
+export const OVERTIME_TIME_CATEGORY: PayrollItemCategory = "超過時間数（時:分）";
+
 // 入力1件（人×月）を、項目のカテゴリで3-6号の欄ごとに合計する
 export function entryToMonthTotals(
   entry: Pick<PeriodicReportEntryRow, "ym" | "work_days" | "total_hours" | "overtime_hours" | "amounts" | "excluded">,
@@ -54,22 +58,34 @@ export function entryToMonthTotals(
 ): MonthTotals {
   const sums: Record<string, number> = {};
   let hasPay = false;
+  // 時間数の項目（時間外・休日・深夜など）は金額とは別に合算して（3）に入れる
+  let overtimeItemHours = 0;
+  let hasOvertimeItem = false;
   for (const [itemId, raw] of Object.entries(entry.amounts ?? {})) {
     const category = itemsById[itemId]?.category;
     if (!category || category === "集計しない") continue;
     const v = Number(raw);
     if (!Number.isFinite(v)) continue;
+    if (category === OVERTIME_TIME_CATEGORY) {
+      overtimeItemHours += v;
+      hasOvertimeItem = true;
+      continue;
+    }
     sums[category] = (sums[category] ?? 0) + v;
     if ((CASH_PAY_CATEGORIES as string[]).includes(category)) hasPay = true;
   }
   const cash = CASH_PAY_CATEGORIES.reduce((a, c) => a + (sums[c] ?? 0), 0);
+  // （3）超過実労働時間数 = 直接入力した時間 + 時間数の項目の合算（どちらも無い月は未入力）
+  const overtime =
+    entry.overtime_hours == null && !hasOvertimeItem
+      ? null
+      : (entry.overtime_hours ?? 0) + overtimeItemHours;
   return {
     ym: entry.ym,
     excluded: entry.excluded,
     workDays: entry.work_days,
-    regularHours:
-      entry.total_hours == null ? null : entry.total_hours - (entry.overtime_hours ?? 0),
-    overtimeHours: entry.overtime_hours,
+    regularHours: entry.total_hours == null ? null : entry.total_hours - (overtime ?? 0),
+    overtimeHours: overtime,
     // 金額の入力がまったく無い月は「未入力」として平均に入れない（null）
     cashPay: hasPay ? cash : null,
     overtimePay: sums["超過労働給与"] ?? 0,
@@ -214,7 +230,10 @@ export function raiseRate(targets: { baseCurrent: number; basePrevious: number }
 
 // 入力の文字を小数の時間にする。空・数字なしは null。分が60以上なら繰り上げる
 export function parseHoursInput(text: string): number | null {
-  const t = (text ?? "").replace(/[：]/g, ":").trim();
+  const t = (text ?? "")
+    .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+    .replace(/[：]/g, ":")
+    .trim();
   if (!t) return null;
   const m = /^(\d+):(\d{1,2})$/.exec(t);
   if (m) return Number(m[1]) + Number(m[2]) / 60;

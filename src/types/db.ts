@@ -1271,6 +1271,7 @@ export type CustodyInput = Omit<
 export const PAYROLL_ITEM_CATEGORIES = [
   "基本給など",
   "超過労働給与",
+  "超過時間数（時:分）",
   "通勤手当",
   "精皆勤手当",
   "家族手当",
