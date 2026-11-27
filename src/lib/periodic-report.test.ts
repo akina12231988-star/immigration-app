@@ -4,6 +4,7 @@ import {
   buildSection36,
   countedMonths,
   entryToMonthTotals,
+  explainReport36,
   fiscalYearMonths,
   gradeStartYm,
   hoursText,
@@ -249,5 +250,28 @@ describe("超過時間数（時:分）の項目の合算", () => {
       items,
     );
     expect(none.overtimeHours).toBeNull();
+  });
+});
+
+describe("explainReport36（計算のご説明の内訳）", () => {
+  it("合計・人月・賞与の分母・除外した月が分かる", () => {
+    const items = { kihon: { category: "基本給など" } };
+    const row = {
+      id: "w1", name: "A", kana: "", nationality: "", grade: "特定技能1号",
+      fromYm: "2025-04", toYm: "2026-03", prevYear: false, prevFromYm: "", prevToYm: "",
+      sswStart: "2024-04-01", grade2From: "", note: "", warning: "",
+    };
+    const entries: Record<string, { work_days: number | null; total_hours: null; overtime_hours: null; amounts: Record<string, number>; excluded: boolean }> = {
+      "w1|2025-04": { work_days: 10, total_hours: null, overtime_hours: null, amounts: { kihon: 100000 }, excluded: true }, // 月の途中の入社
+      "w1|2025-05": { work_days: 20, total_hours: null, overtime_hours: null, amounts: { kihon: 200000 }, excluded: false },
+      "w1|2025-06": { work_days: 22, total_hours: null, overtime_hours: null, amounts: { kihon: 210000 }, excluded: false },
+    };
+    const ex = explainReport36([row], (id, ym) => entries[`${id}|${ym}`] ?? null, items, 2025);
+    expect(ex.one.months).toBe(2);
+    expect(ex.one.sums.workDays).toBe(42);
+    expect(ex.one.sums.cashPay).toBe(410000);
+    expect(ex.one.workers[0].usedYms).toEqual(["2025-05", "2025-06"]);
+    expect(ex.one.workers[0].excludedYms).toEqual(["2025-04"]);
+    expect(ex.one.bonusPaidCount).toBe(0);
   });
 });

@@ -6,7 +6,7 @@ import { BackButton } from "@/components/BackButton";
 import { addDaysYmd, warekiDateWithDow } from "@/lib/wage-notice";
 import {
   buildPayrollRequestRows,
-  DEFAULT_CERTIFICATE_ITEMS,
+  defaultCertificateItems,
   fiscalYearLabel,
   lastEndedFiscalYear,
   PAYROLL_REQUEST_REPLY_DAYS,
@@ -37,6 +37,7 @@ export function PayrollRequestSheet({
   organizationName,
   candidates,
   permitsByWorker,
+  isCorporate = true,
   today,
   staffName,
   fax,
@@ -46,6 +47,7 @@ export function PayrollRequestSheet({
   organizationName: string;
   candidates: PayrollRequestCandidate[];
   permitsByWorker: Record<string, PayrollPermit[]>;
+  isCorporate?: boolean; // 法人か（法人番号あり）。証明書リストの初期値を法人・個人事業主で出し分ける
   today: string;
   staffName: string;
   fax: string;
@@ -64,7 +66,12 @@ export function PayrollRequestSheet({
   const set = (patch: Partial<typeof v>) => setV((cur) => ({ ...cur, ...patch }));
 
   // 証明書のリスト（自由に足す・消す・直す・並べ替え）
-  const [certs, setCerts] = useState<CertificateItem[]>(() => DEFAULT_CERTIFICATE_ITEMS.map((c) => ({ ...c })));
+  const [certs, setCerts] = useState<CertificateItem[]>(() => defaultCertificateItems(isCorporate).map((c) => ({ ...c })));
+  // 法人・個人事業主の取り違えがあったとき用: リストを該当の初期値に入れ替える
+  const resetCerts = (corporate: boolean) => {
+    if (!window.confirm(`証明書のリストを${corporate ? "法人" : "個人事業主"}向けの初期値に入れ替えます。いま書かれている内容は消えます。よろしいですか？`)) return;
+    setCerts(defaultCertificateItems(corporate).map((c) => ({ ...c })));
+  };
   const setCert = (i: number, patch: Partial<CertificateItem>) =>
     setCerts((cur) => cur.map((c, j) => (j === i ? { ...c, ...patch } : c)));
   const moveCert = (i: number, d: -1 | 1) =>
@@ -177,7 +184,17 @@ export function PayrollRequestSheet({
 
           {/* 証明書のリスト（自由に足す・消す・直す・並べ替え） */}
           <div className="rounded-lg border border-border bg-background px-3 py-2">
-            <p className="text-xs font-bold text-muted">証明書のリスト（書類名を空にすると印刷されません）</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="flex-1 text-xs font-bold text-muted">
+                証明書のリスト（初期値は入管の提出資料一覧表の「A 一定の基準を満たさない場合」の{isCorporate ? "法人" : "個人事業主"}向け。書類名を空にすると印刷されません）
+              </p>
+              <button type="button" onClick={() => resetCerts(true)} className="inline-flex min-h-[28px] items-center rounded-lg border border-border px-2 text-[11px] font-bold text-muted">
+                法人向けに戻す
+              </button>
+              <button type="button" onClick={() => resetCerts(false)} className="inline-flex min-h-[28px] items-center rounded-lg border border-border px-2 text-[11px] font-bold text-muted">
+                個人事業主向けに戻す
+              </button>
+            </div>
             <div className="mt-1.5 flex flex-col gap-1.5">
               {certs.map((c, i) => (
                 <div key={i} className="flex flex-wrap items-center gap-1.5">

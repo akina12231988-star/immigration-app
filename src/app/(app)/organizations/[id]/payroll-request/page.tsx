@@ -60,6 +60,7 @@ export default async function OrganizationPayrollRequestPage({ params }: { param
       organizationName={organization.name}
       candidates={candidates}
       permitsByWorker={permitsByWorker}
+      isCorporate={!!organization.corporate_no?.trim()}
       today={todayStr()}
       staffName={me.display_name}
       fax={office.fax || CUSTODIAN_INFO.tel}

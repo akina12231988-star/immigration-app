@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildPayrollRequestRows,
+  defaultCertificateItems,
   fiscalYearLabel,
   fiscalYearPeriod,
   lastEndedFiscalYear,
@@ -208,5 +209,23 @@ describe("manualPayrollRequestRow（手で対象に入れる）", () => {
   it("年度と在籍期間が重ならなければ null。2号の在留資格なら2号", () => {
     expect(manualPayrollRequestRow({ ...base, leavingOn: "2025-03-31" }, 2025)).toBeNull();
     expect(manualPayrollRequestRow({ ...base, residenceStatus: "特定技能２号" }, 2025)?.grade).toBe("特定技能2号");
+  });
+});
+
+
+describe("defaultCertificateItems（提出資料一覧表のAに合わせた初期値）", () => {
+  it("法人は登記事項証明書・役員の住民票・法人住民税が入る", () => {
+    const names = defaultCertificateItems(true).map((c) => c.name);
+    expect(names).toContain("登記事項証明書");
+    expect(names).toContain("業務執行に関与する役員の住民票の写し");
+    expect(names).toContain("法人住民税の納税証明書");
+    expect(names.join()).not.toContain("個人事業主");
+  });
+  it("個人事業主は本人の住民票・国保/国民年金・個人住民税が入り、登記事項証明書は入らない", () => {
+    const names = defaultCertificateItems(false).map((c) => c.name);
+    expect(names).toContain("個人事業主の住民票の写し");
+    expect(names.some((n) => n.includes("国民健康保険・国民年金"))).toBe(true);
+    expect(names).toContain("個人住民税の納税証明書");
+    expect(names).not.toContain("登記事項証明書");
   });
 });

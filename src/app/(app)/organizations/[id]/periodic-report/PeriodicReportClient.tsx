@@ -26,6 +26,7 @@ import {
 } from "@/lib/payroll-request";
 import {
   buildReport36,
+  explainReport36,
   hoursText,
   OVERTIME_TIME_CATEGORY,
   parseHoursInput,
@@ -483,6 +484,22 @@ export function PeriodicReportClient({
     [rows, drafts, itemsById, fy],
   );
 
+  // 計算のご説明（A4印刷・提出不要）用の内訳
+  const explain = useMemo(
+    () => explainReport36(rows, (workerId, ym) => drafts[`${workerId}|${ym}`] ?? null, itemsById, fy),
+    [rows, drafts, itemsById, fy],
+  );
+  const printExplain = () => {
+    const original = document.title;
+    const restore = () => {
+      document.title = original;
+      window.removeEventListener("afterprint", restore);
+    };
+    document.title = `定期報告書の計算のご説明_${fy}年度_${organizationName.replace(/[\\/:*?"<>|]/g, "-")}`;
+    window.addEventListener("afterprint", restore);
+    window.print();
+  };
+
   // ---- 様式のダウンロード（本紙・別紙1） ----
   const [supportDelegated, setSupportDelegated] = useState(true);
   const [formNote, setFormNote] = useState("");
@@ -650,12 +667,12 @@ export function PeriodicReportClient({
     <>
       {/* 保存していない入力があるまま離れようとしたら「保存しますか？」の確認を出す */}
       <UnsavedChangesGuard dirty={hasUnsaved} onSave={saveAll} saveLabel="入力を保存" />
-      <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-brand px-4 py-3 text-brand-foreground lg:px-8">
+      <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-brand px-4 py-3 text-brand-foreground print:hidden lg:px-8">
         <BackButton fallbackHref={`/organizations/${organizationId}`} />
         <h1 className="flex-1 text-lg font-bold">定期報告書　賃金台帳の入力（{organizationName}）</h1>
       </div>
 
-      <div className="flex flex-col gap-4 px-4 py-3 lg:px-8">
+      <div className="flex flex-col gap-4 px-4 py-3 print:hidden lg:px-8">
         <p className="text-xs leading-relaxed text-muted">
           届いた賃金台帳を見ながら、人×月で金額を転記する画面です。はじめに「1
           賃金台帳の項目」を台帳と同じ名前・並びで登録してください（3-6号のどの欄に入るかも選びます。翌年も引き継がれます）。
@@ -1181,7 +1198,16 @@ export function PeriodicReportClient({
 
         {/* 3 3-6号の平均値 */}
         <section className="rounded-lg border border-border bg-background px-3 py-2">
-          <h2 className="text-sm font-bold">3　3-6号「4 労働条件等」の平均値（入力から自動計算）</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="flex-1 text-sm font-bold">3　3-6号「4 労働条件等」の平均値（入力から自動計算）</h2>
+            <button
+              type="button"
+              onClick={printExplain}
+              className="inline-flex min-h-[32px] items-center gap-1 rounded-lg border border-brand px-2.5 text-xs font-bold text-brand"
+            >
+              計算の説明を印刷（A4・提出不要）
+            </button>
+          </div>
           <p className="mt-1 text-xs text-muted">
             月の途中の入社・退職の月（除外）と未入力の月は平均に入れません。賞与は支払われた人数で割っています。
             昇給率は2年以上継続して在籍している人の（4）−（①〜④）で、前年度の入力がそろった人だけで計算します。
@@ -1290,6 +1316,136 @@ export function PeriodicReportClient({
               </button>
             ))}
           </div>
+        </section>
+      </div>
+
+      {/* 印刷される部分: 計算のご説明（A4縦・提出不要。所属機関への説明用） */}
+      <div className="hidden text-black print:block">
+        <style>{"@media print{@page{size:A4 portrait;margin:12mm} body{background:#fff}}"}</style>
+        <section className="text-[10pt] leading-[1.5]">
+          <h1 className="text-center text-[14pt] font-bold">
+            定期報告書「4　労働条件等」の平均値の計算のご説明
+          </h1>
+          <p className="mt-1 text-center text-[9pt]">
+            {organizationName}　／　対象: {fiscalYearLabel(fy)}　／　作成日: {jpDate(today)}
+          </p>
+          <p className="mt-2 rounded border border-black px-2 py-1 text-[9pt]">
+            この書面は、受入れ・活動・支援実施状況に係る届出（参考様式第3-6号）の数字の出し方のご説明です。
+            出入国在留管理庁へ提出する書類ではありません。数字は皆さまからお送りいただいた賃金台帳から転記したものです。
+          </p>
+
+          <h2 className="mt-3 text-[11pt] font-bold">1　計算のきまり（定期届出作成要領より）</h2>
+          <ul className="list-disc pl-5 text-[9.5pt]">
+            <li>（1）〜（6）は対象者全員の平均です。各人の月の値を合計し、集計した月数（人月）で割ります。</li>
+            <li>月の途中で入社・退職した月は、平均の計算から除きます（下の表の「除外した月」）。</li>
+            <li>（2）所定内実労働時間数 ＝ 実労働時間数 − 超過実労働時間数。</li>
+            <li>（5）賞与・期末手当等は、年間の支給総額を「支払われた人数」で割ります。</li>
+            <li>（7）昇給率は、2年以上続けて在籍している人の「（4）−（①〜④）」の額を前年度と比べます。昇給がなければ0％です。</li>
+            <li>金額・日数・時間は小数点第1位を四捨五入して整数に、昇給率は第2位を四捨五入して第1位までにします。</li>
+          </ul>
+
+          <h2 className="mt-3 text-[11pt] font-bold">2　対象者と集計した月</h2>
+          <table className="w-full border-collapse text-[9pt]">
+            <thead>
+              <tr>
+                <th className="border border-black bg-neutral-100 px-1.5 py-0.5">氏名</th>
+                <th className="border border-black bg-neutral-100 px-1.5 py-0.5">在留資格</th>
+                <th className="border border-black bg-neutral-100 px-1.5 py-0.5">集計した月数</th>
+                <th className="border border-black bg-neutral-100 px-1.5 py-0.5">除外した月（月の途中の入社・退職など）</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...explain.one.workers, ...explain.two.workers].map((w) => (
+                <tr key={w.name}>
+                  <td className="border border-black px-1.5 py-0.5">{w.name}</td>
+                  <td className="border border-black px-1.5 py-0.5 text-center">{w.grade}</td>
+                  <td className="border border-black px-1.5 py-0.5 text-center">{w.usedYms.length}か月</td>
+                  <td className="border border-black px-1.5 py-0.5">{w.excludedYms.map((ym) => ymText(ym)).join("・")}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {([
+            ["特定技能1号", explain.one, preview.one, preview.raise1, explain.raise1] as const,
+            ["特定技能2号", explain.two, preview.two, preview.raise2, explain.raise2] as const,
+          ])
+            .filter(([, side]) => side.workers.length > 0)
+            .map(([label, side, section, raise, raiseTargets]) => (
+              <div key={label}>
+                <h2 className="mt-3 text-[11pt] font-bold">3　{label}の各欄の計算（合計 ÷ {side.months}人月 ＝ 平均）</h2>
+                <table className="w-full border-collapse text-[9pt]">
+                  <thead>
+                    <tr>
+                      <th className="border border-black bg-neutral-100 px-1.5 py-0.5 text-left">欄</th>
+                      <th className="border border-black bg-neutral-100 px-1.5 py-0.5">全員の合計</th>
+                      <th className="border border-black bg-neutral-100 px-1.5 py-0.5">割る数</th>
+                      <th className="border border-black bg-neutral-100 px-1.5 py-0.5">平均（四捨五入後）</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {([
+                      ["（1）実労働日数", `${side.sums.workDays.toLocaleString("ja-JP")} 日`, `${side.months}人月`, `${section.workDays} 日／月`],
+                      ["（2）所定内実労働時間数", hoursText(side.sums.regularHours), `${side.months}人月`, `${section.regularHours} 時間／月`],
+                      ["（3）超過実労働時間数", hoursText(side.sums.overtimeHours), `${side.months}人月`, `${section.overtimeHours} 時間／月`],
+                      ["（4）きまって支給する現金給与額", `${side.sums.cashPay.toLocaleString("ja-JP")} 円`, `${side.months}人月`, `${section.cashPay.toLocaleString("ja-JP")} 円／月`],
+                      ["　①うち超過労働給与額", `${side.sums.overtimePay.toLocaleString("ja-JP")} 円`, `${side.months}人月`, `${section.overtimePay.toLocaleString("ja-JP")} 円／月`],
+                      ["　②うち通勤手当", `${side.sums.commute.toLocaleString("ja-JP")} 円`, `${side.months}人月`, `${section.commute.toLocaleString("ja-JP")} 円／月`],
+                      ["　③うち精皆勤手当", `${side.sums.attendance.toLocaleString("ja-JP")} 円`, `${side.months}人月`, `${section.attendance.toLocaleString("ja-JP")} 円／月`],
+                      ["　④うち家族手当", `${side.sums.family.toLocaleString("ja-JP")} 円`, `${side.months}人月`, `${section.family.toLocaleString("ja-JP")} 円／月`],
+                      ["（5）賞与、期末手当等特別給与額", `${side.bonusTotal.toLocaleString("ja-JP")} 円`, `支払われた ${side.bonusPaidCount}人`, `${section.bonus.toLocaleString("ja-JP")} 円`],
+                      ["（6）①食費", `${side.sums.food.toLocaleString("ja-JP")} 円`, `${side.months}人月`, `${section.food.toLocaleString("ja-JP")} 円／月`],
+                      ["（6）②居住費", `${side.sums.housing.toLocaleString("ja-JP")} 円`, `${side.months}人月`, `${section.housing.toLocaleString("ja-JP")} 円／月`],
+                      ["（6）③税・社会保険料", `${side.sums.taxSocial.toLocaleString("ja-JP")} 円`, `${side.months}人月`, `${section.taxSocial.toLocaleString("ja-JP")} 円／月`],
+                      ["（6）④その他", `${side.sums.otherDeduction.toLocaleString("ja-JP")} 円`, `${side.months}人月`, `${section.otherDeduction.toLocaleString("ja-JP")} 円／月`],
+                    ] as const).map(([name, sum, by, avg]) => (
+                      <tr key={name}>
+                        <td className="border border-black px-1.5 py-0.5">{name}</td>
+                        <td className="border border-black px-1.5 py-0.5 text-right tabular-nums">{sum}</td>
+                        <td className="border border-black px-1.5 py-0.5 text-center">{by}</td>
+                        <td className="border border-black px-1.5 py-0.5 text-right tabular-nums">{avg}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <h2 className="mt-2 text-[11pt] font-bold">4　{label}の昇給率</h2>
+                {raiseTargets.length === 0 ? (
+                  <p className="text-[9.5pt]">
+                    同一の在留資格で2年以上続けて在籍している人（前年度の賃金もそろっている人）がいないため、記載しません（空欄）。
+                  </p>
+                ) : (
+                  <>
+                    <table className="w-full border-collapse text-[9pt]">
+                      <thead>
+                        <tr>
+                          <th className="border border-black bg-neutral-100 px-1.5 py-0.5">対象者（2年以上継続）</th>
+                          <th className="border border-black bg-neutral-100 px-1.5 py-0.5">当年度の基準額（月額平均）</th>
+                          <th className="border border-black bg-neutral-100 px-1.5 py-0.5">前年度の基準額</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {raiseTargets.map((t) => (
+                          <tr key={t.name}>
+                            <td className="border border-black px-1.5 py-0.5">{t.name}</td>
+                            <td className="border border-black px-1.5 py-0.5 text-right tabular-nums">{Math.round(t.baseCurrent).toLocaleString("ja-JP")} 円</td>
+                            <td className="border border-black px-1.5 py-0.5 text-right tabular-nums">{Math.round(t.basePrevious).toLocaleString("ja-JP")} 円</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <p className="mt-1 text-[9.5pt]">
+                      昇給率 ＝（当年度の基準額の合計 − 前年度の基準額の合計）÷ 前年度の基準額の合計 × 100 ＝{" "}
+                      <b>{raise == null ? "－" : `${round1(raise).toFixed(1)} ％`}</b>
+                      （基準額 ＝（4）きまって支給する現金給与額 −（①超過労働給与〜④家族手当））
+                    </p>
+                  </>
+                )}
+              </div>
+            ))}
+
+          <p className="mt-3 text-[9pt]">
+            ご不明な点は登録支援機関の担当までお問い合わせください。賃金台帳の数字と違う箇所があれば、該当の月をお知らせください。訂正して計算し直します。
+          </p>
         </section>
       </div>
     </>
