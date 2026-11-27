@@ -1260,3 +1260,52 @@ export type CustodyInput = Omit<
   CustodyRecord,
   "id" | "status" | "holder" | "held_since" | "returned_on" | "created_by" | "created_at" | "updated_at"
 >;
+
+// ---- 定期報告書（3-6号）のための賃金台帳の入力（0236_periodic_report.sql） ----
+
+// 賃金台帳の項目を3-6号のどの欄に集計するか。
+// 支給の項目（基本給など〜家族手当）は「（4）きまって支給する現金給与額」に入り、
+// 超過労働給与・通勤・精皆勤・家族はそれぞれ「うち」の欄にも入る。
+// 賞与などは（5）（（4）には入れない）。控除は（6）の各欄。
+// 「集計しない」は賃金台帳にあるが3-6号に関係ない項目（差引支給額など）
+export const PAYROLL_ITEM_CATEGORIES = [
+  "基本給など",
+  "超過労働給与",
+  "通勤手当",
+  "精皆勤手当",
+  "家族手当",
+  "賞与など",
+  "控除 食費",
+  "控除 居住費",
+  "控除 税・社会保険料",
+  "控除 その他",
+  "集計しない",
+] as const;
+export type PayrollItemCategory = (typeof PAYROLL_ITEM_CATEGORIES)[number];
+
+// 機関ごとの賃金台帳の項目（届いた賃金台帳と同じ名前・並びで登録して転記しやすくする）
+export interface OrgPayrollItemRow {
+  id: string;
+  organization_id: string;
+  name: string; // 賃金台帳に書いてある項目名（例: 皆勤手当・寮費）
+  category: string; // PayrollItemCategory
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// 人×月の実績1件（賃金台帳1か月分）
+export interface PeriodicReportEntryRow {
+  id: string;
+  organization_id: string;
+  worker_id: string;
+  ym: string; // 対象の月（YYYY-MM）
+  work_days: number | null; // 実労働日数（有給・休業日は含めない）
+  total_hours: number | null; // 実労働時間数
+  overtime_hours: number | null; // 超過実労働時間数
+  amounts: Record<string, number>; // 項目ごとの金額（org_payroll_items.id → 円）
+  excluded: boolean; // 月の途中の入社・退職などで平均から除く月
+  note: string;
+  created_at: string;
+  updated_at: string;
+}

@@ -165,6 +165,14 @@ export function OrganizationRoster({
           <Printer size={14} />
           定期報告書（賃金台帳・証明書のお願い）
         </Link>
+        {/* 定期報告書（3-6号）: 届いた賃金台帳を人×月で転記して平均値を出す */}
+        <Link
+          href={`/organizations/${organizationId}/periodic-report`}
+          className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-brand px-3 text-xs font-bold text-brand hover:bg-brand/5"
+        >
+          <ClipboardList size={14} />
+          定期報告書（賃金台帳の入力・平均値）
+        </Link>
         {/* 会社からの書類の依頼（年末調整の書類など）。在籍者 × 書類で案内・発行・送付をチェックする */}
         <Link
           href={`/organizations/requests?org=${organizationId}`}

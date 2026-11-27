@@ -39,6 +39,8 @@ export interface PayrollRequestRow {
   prevToYm: string; // 前年度分の最後の月 YYYY-MM
   note: string; // 備考の初期値（年度の途中の入社・退職など）
   warning: string; // 画面だけに出す注意（印刷には出ない。'' = なし）
+  sswStart: string; // 特定技能（1号または2号）の最初の許可日 YYYY-MM-DD（入力画面の除外月の初期値に使う）
+  grade2From: string; // 特定技能2号の最初の許可日 YYYY-MM-DD（2号移行の月割りに使う。1号のままなら ''）
 }
 
 // 名簿に載らない人と、その理由（画面で確認できるようにする）
@@ -223,6 +225,8 @@ export function buildPayrollRequestRows(
       prevYear,
       prevFromYm,
       prevToYm,
+      sswStart,
+      grade2From: first2 ?? "",
       note: notes.join("。"),
       warning: estimated
         ? "特定技能の許可の記録が無いため、現在の在留資格の許可日からお願いする期間を出しています。特定活動から移行した時期と合っているか確認してください"
