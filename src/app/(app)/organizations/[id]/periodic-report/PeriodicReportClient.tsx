@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, FileSpreadsheet, Plus, Save, Trash2, TriangleAlert } from "lucide-react";
+import { ChevronDown, ChevronRight, FileSpreadsheet, GripVertical, Plus, Save, Trash2, TriangleAlert } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import { createClient } from "@/lib/supabase/client";
@@ -146,12 +146,14 @@ export function PeriodicReportClient({
     setItems((cur) => cur.map((it, j) => (j === i ? { ...it, ...patch } : it)));
     setItemsDirty(true);
   };
-  const moveItem = (i: number, d: -1 | 1) => {
+  // つまみ（⠿）をドラッグして並べ替える。ドラッグ中は重なった行と入れ替えていく
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const moveItemTo = (from: number, to: number) => {
     setItems((cur) => {
-      const j = i + d;
-      if (j < 0 || j >= cur.length) return cur;
+      if (from === to || from < 0 || to < 0 || from >= cur.length || to >= cur.length) return cur;
       const next = [...cur];
-      [next[i], next[j]] = [next[j], next[i]];
+      const [picked] = next.splice(from, 1);
+      next.splice(to, 0, picked);
       return next;
     });
     setItemsDirty(true);
@@ -596,10 +598,35 @@ export function PeriodicReportClient({
           {showItems && (
             <div className="mt-2 flex flex-col gap-1.5">
               <p className="text-xs text-muted">
-                届いた賃金台帳と同じ名前・並びで登録すると転記しやすくなります。「集計しない」は差引支給額など3-6号に関係ない項目に使います。
+                届いた賃金台帳と同じ名前・並びで登録すると転記しやすくなります。並べ替えは左の⠿をつかんで上下に動かします。「集計しない」は差引支給額など3-6号に関係ない項目に使います。
               </p>
               {items.map((it, i) => (
-                <div key={it.id} className="flex flex-wrap items-center gap-1.5">
+                <div
+                  key={it.id}
+                  onDragOver={(e) => {
+                    // ドラッグ中の行がこの行に重なったら、その位置へ動かす（離す前に並びが見える）
+                    e.preventDefault();
+                    if (dragIndex == null || dragIndex === i) return;
+                    moveItemTo(dragIndex, i);
+                    setDragIndex(i);
+                  }}
+                  className={`flex flex-wrap items-center gap-1.5 rounded-lg ${dragIndex === i ? "bg-brand/10 ring-1 ring-brand" : ""}`}
+                >
+                  <span
+                    draggable
+                    onDragStart={(e) => {
+                      setDragIndex(i);
+                      e.dataTransfer.effectAllowed = "move";
+                      // ドラッグの絵は行全体にする（つまみだけだと分かりにくい）
+                      const row = e.currentTarget.parentElement;
+                      if (row) e.dataTransfer.setDragImage(row, 20, 20);
+                    }}
+                    onDragEnd={() => setDragIndex(null)}
+                    title="つかんで上下に動かすと並べ替えられます"
+                    className="cursor-grab touch-none rounded-lg border border-border p-1.5 text-muted active:cursor-grabbing"
+                  >
+                    <GripVertical size={14} />
+                  </span>
                   <input value={it.name} onChange={(e) => setItem(i, { name: e.target.value })} placeholder="項目名（例: 皆勤手当）" className={`${FIELD} w-full sm:w-[240px]`} />
                   <select value={it.category} onChange={(e) => setItem(i, { category: e.target.value })} className={FIELD}>
                     {PAYROLL_ITEM_CATEGORIES.map((c) => (
@@ -608,12 +635,6 @@ export function PeriodicReportClient({
                       </option>
                     ))}
                   </select>
-                  <button type="button" onClick={() => moveItem(i, -1)} disabled={i === 0} className="rounded-lg border border-border p-1.5 disabled:opacity-30" aria-label="上へ">
-                    <ArrowUp size={14} />
-                  </button>
-                  <button type="button" onClick={() => moveItem(i, 1)} disabled={i === items.length - 1} className="rounded-lg border border-border p-1.5 disabled:opacity-30" aria-label="下へ">
-                    <ArrowDown size={14} />
-                  </button>
                   <button type="button" onClick={() => removeItem(i)} className="rounded-lg border border-border p-1.5 text-seal" aria-label="消す">
                     <Trash2 size={14} />
                   </button>
