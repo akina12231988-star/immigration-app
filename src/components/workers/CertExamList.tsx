@@ -34,6 +34,7 @@ function PickOrTypeRow({
   options,
   otherLabel = "その他（入力）",
   placeholder = "入力してください",
+  allowOther = true,
   canEdit,
   busy,
   onSave,
@@ -43,11 +44,16 @@ function PickOrTypeRow({
   options: readonly string[];
   otherLabel?: string;
   placeholder?: string;
+  // false = 候補から選ぶだけ（自由入力なし）。オンライン申請のプルダウンと同じ内容に
+  // そろえた候補のときに使う。候補に無い値が登録済みならその値も選択肢に残す
+  allowOther?: boolean;
   canEdit: boolean;
   busy: boolean;
   onSave: (v: string) => void;
 }) {
-  const isKnown = value === "" || options.includes(value);
+  const extra = !allowOther && value !== "" && !options.includes(value) ? [value] : [];
+  const shownOptions = [...extra, ...options];
+  const isKnown = value === "" || shownOptions.includes(value);
   // セレクトの表示（候補にある値ならその値、無ければ「その他」を選んだ状態にする）。
   // 呼び出し側で key={value} を付けてもらい、外部から値が変わったとき
   // （読み込み完了・保存反映）はこのコンポーネントごと作り直して表示を合わせる
@@ -86,12 +92,12 @@ function PickOrTypeRow({
           className={INPUT}
         >
           <option value="">未選択</option>
-          {options.map((o) => (
+          {shownOptions.map((o) => (
             <option key={o} value={o}>
               {o}
             </option>
           ))}
-          <option value={OTHER}>{otherLabel}</option>
+          {allowOther && <option value={OTHER}>{otherLabel}</option>}
         </select>
         {value && <CopyButton value={value} label={`${label}をコピー`} />}
       </div>
@@ -282,6 +288,7 @@ export function CertExamList({
             label="受験した試験名"
             value={row.name}
             options={nameOptions}
+            allowOther={kind !== "senmongai"}
             canEdit={canEdit}
             busy={busy}
             onSave={(v) => patchRow(row, "name", v)}
