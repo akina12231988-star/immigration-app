@@ -20,6 +20,7 @@ import {
   type CopyGroup,
 } from "@/lib/application-copy";
 import { buildOnlineApplication, type OnlineSection } from "@/lib/online-application";
+import { checkOnlineInput, type OnlineCheckSummary } from "@/lib/online-application-check";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { OnlineApplicationList } from "@/components/workers/OnlineApplicationList";
 import { InlineEditField } from "@/components/workers/InlineEditField";
@@ -210,7 +211,8 @@ export function ApplicationCopyList({
         </div>
       )}
       {open && online && mode === "online" && (
-        <div className="mt-2">
+        <div className="mt-2 space-y-2">
+          <OnlineInputCheck sections={online} />
           <OnlineApplicationList sections={online} canEdit={canEdit} onSave={onSave} />
         </div>
       )}
@@ -349,5 +351,76 @@ function PartChip({ value }: { value: string }) {
       {copied ? <Check size={10} /> : <Copy size={10} />}
       {value}
     </button>
+  );
+}
+
+
+// オンライン申請の入力チェック。入力し終えたら、オンライン申請システムの
+// 「入力内容の確認」画面（または申込内容照会）を全選択（Ctrl+A）→コピー（Ctrl+C）して
+// ここに貼り付けると、アプリの期待値と突き合わせて違う項目を赤で出す。
+// 有無・性別などの押し間違いを送信前に見つけるための補助チェック
+function OnlineInputCheck({ sections }: { sections: OnlineSection[] }) {
+  const [openCheck, setOpenCheck] = useState(false);
+  const [pasted, setPasted] = useState("");
+  const [result, setResult] = useState<OnlineCheckSummary | null>(null);
+  return (
+    <div className="rounded-lg border border-brand/40 bg-brand/5 p-2 text-[11px]">
+      <button type="button" onClick={() => setOpenCheck((v) => !v)} className="flex w-full items-center gap-1 text-left font-bold text-brand">
+        {openCheck ? "▼" : "▶"} 入力チェック（オンライン申請の確認画面を貼り付けて答え合わせ）
+      </button>
+      {openCheck && (
+        <div className="mt-1.5 space-y-1.5">
+          <p className="text-muted">
+            オンライン申請システムで入力し終えたら、「入力内容の確認」の画面を全選択（Ctrl+A）→コピー（Ctrl+C）して、
+            下に貼り付けて「チェックする」を押してください。アプリの値と違う項目（有無・性別の押し間違いなど）を赤で出します。
+            画面の文字をそのまま突き合わせる補助チェックなので、赤が出た項目は両方の画面で確かめてください。
+          </p>
+          <textarea
+            value={pasted}
+            onChange={(e) => {
+              setPasted(e.target.value);
+              setResult(null);
+            }}
+            rows={4}
+            placeholder="ここに確認画面の文章を貼り付け"
+            className="w-full rounded-lg border border-border bg-surface p-2 text-xs"
+          />
+          <button
+            type="button"
+            onClick={() => setResult(checkOnlineInput(sections, pasted))}
+            disabled={!pasted.trim()}
+            className="inline-flex min-h-[32px] items-center rounded-lg bg-brand px-3 font-bold text-brand-foreground disabled:opacity-40"
+          >
+            チェックする
+          </button>
+          {result && (
+            <div className="space-y-1">
+              <p className={result.ng === 0 ? "font-bold text-status-approved-fg" : "font-bold text-seal"}>
+                {result.ng === 0
+                  ? `違いは見つかりませんでした（${result.ok}/${result.checked}項目が一致${result.notfound > 0 ? `・${result.notfound}項目は貼り付けた文章に見つからず` : ""}）`
+                  : `違うかもしれない項目が ${result.ng}件あります（一致 ${result.ok}件・見つからず ${result.notfound}件）`}
+              </p>
+              <ul className="space-y-1">
+                {result.results.map((r) => (
+                  <li key={`${r.no}:${r.label}`} className={`rounded-md px-2 py-1 ${r.status === "ng" ? "bg-seal/10 text-seal" : "bg-background text-muted"}`}>
+                    <span className="font-bold">
+                      {r.no && `${r.no}　`}
+                      {r.label}
+                    </span>
+                    {r.status === "ng" ? (
+                      <>
+                        ：アプリの値「{r.expected}」が画面側に見当たりません（画面側: {r.found || "（空欄）"}…）
+                      </>
+                    ) : (
+                      <>：この項目が貼り付けた文章に見つかりませんでした（手動で確認してください）</>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
