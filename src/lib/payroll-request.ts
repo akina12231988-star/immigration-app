@@ -239,6 +239,39 @@ export function buildPayrollRequestRows(
   return { rows, excluded };
 }
 
+// 自動の抽出に載らなかった人を、手で対象に入れるときの行。
+// 特定技能の許可の記録が無くても、在籍期間と年度が重なれば入力を始められるようにする
+// （期間は在籍期間だけで出すので、特定活動の月が混ざっていないか画面で確認してもらう）。
+// 年度と在籍期間が重ならない人は null
+export function manualPayrollRequestRow(
+  c: PayrollRequestCandidate,
+  fy: number,
+): PayrollRequestRow | null {
+  const { from: fyFrom, to: fyTo } = fiscalYearPeriod(fy);
+  let from = fyFrom;
+  if (c.startOn && c.startOn > from) from = c.startOn;
+  const to = c.leavingOn && c.leavingOn < fyTo ? c.leavingOn : fyTo;
+  if (from > to) return null;
+  const grade = visaKind(c.residenceStatus) === "2号" ? SSW2 : SSW1;
+  return {
+    id: c.id,
+    name: c.name,
+    kana: c.kana,
+    nationality: c.nationality,
+    grade,
+    fromYm: from.slice(0, 7),
+    toYm: to.slice(0, 7),
+    prevYear: false,
+    prevFromYm: "",
+    prevToYm: "",
+    sswStart: c.startOn ?? fyFrom,
+    grade2From: "",
+    note: c.leavingOn && c.leavingOn <= fyTo ? `${jpDate(c.leavingOn)} 退職` : "",
+    warning:
+      "手で対象に入れた人です。特定技能の許可の記録が無いため、期間は在籍期間から出しています。特定活動だった月が入っていないか・号が合っているかを確認し、外国人詳細の「在留資格の履歴」に許可日を登録してください",
+  };
+}
+
 // 印刷（PDF保存）のファイル名
 export function payrollRequestFileName(orgName: string): string {
   const name = (orgName ?? "").trim().replace(/[\\/:*?"<>|]/g, "-");

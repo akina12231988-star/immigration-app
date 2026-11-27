@@ -4,6 +4,7 @@ import {
   fiscalYearLabel,
   fiscalYearPeriod,
   lastEndedFiscalYear,
+  manualPayrollRequestRow,
   payrollRequestFileName,
   ymRangeText,
   ymText,
@@ -173,5 +174,22 @@ describe("payrollRequestFileName", () => {
   it("機関名を入れ、ファイル名に使えない文字は置き換える", () => {
     expect(payrollRequestFileName("株式会社サンプル")).toBe("定期報告書_賃金台帳・証明書のお願い_株式会社サンプル");
     expect(payrollRequestFileName("A/B")).toBe("定期報告書_賃金台帳・証明書のお願い_A-B");
+  });
+});
+
+describe("manualPayrollRequestRow（手で対象に入れる）", () => {
+  it("許可の記録が無くても在籍期間から行を作る（警告つき・前年度分なし）", () => {
+    const c = { ...base, residenceStatus: "", residencePermitDate: null, startOn: "2025-06-10", leavingOn: null };
+    const row = manualPayrollRequestRow(c, 2025);
+    expect(row?.grade).toBe("特定技能1号");
+    expect(row?.fromYm).toBe("2025-06");
+    expect(row?.toYm).toBe("2026-03");
+    expect(row?.prevYear).toBe(false);
+    expect(row?.warning).toContain("手で対象に入れた人");
+  });
+
+  it("年度と在籍期間が重ならなければ null。2号の在留資格なら2号", () => {
+    expect(manualPayrollRequestRow({ ...base, leavingOn: "2025-03-31" }, 2025)).toBeNull();
+    expect(manualPayrollRequestRow({ ...base, residenceStatus: "特定技能２号" }, 2025)?.grade).toBe("特定技能2号");
   });
 });

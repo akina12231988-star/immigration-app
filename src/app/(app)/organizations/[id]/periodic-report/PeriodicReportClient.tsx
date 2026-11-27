@@ -13,15 +13,23 @@ import {
 import {
   buildPayrollRequestRows,
   fiscalYearLabel,
+  jpDate,
   lastEndedFiscalYear,
+  manualPayrollRequestRow,
   ymText,
   type PayrollPermit,
   type PayrollRequestCandidate,
   type PayrollRequestRow,
 } from "@/lib/payroll-request";
 import { buildReport36, reportMonthsFor, round1, type Section36 } from "@/lib/periodic-report";
+import { updateWorker } from "@/lib/supabase/queries/workers";
 import { downloadBlob } from "@/lib/xlsx-export";
-import { PAYROLL_ITEM_CATEGORIES, type OrgPayrollItemRow, type PeriodicReportEntryRow } from "@/types/db";
+import {
+  PAYROLL_ITEM_CATEGORIES,
+  RESIDENCE_STATUSES,
+  type OrgPayrollItemRow,
+  type PeriodicReportEntryRow,
+} from "@/types/db";
 
 const FIELD =
   "min-h-[32px] rounded-lg border border-border bg-surface px-1.5 text-sm focus:border-brand focus:outline-none";
@@ -93,8 +101,9 @@ function suggestExcluded(row: PayrollRequestRow, candidate: PayrollRequestCandid
 export function PeriodicReportClient({
   organizationId,
   organizationName,
-  candidates,
+  candidates: initialCandidates,
   permitsByWorker,
+  messengerByWorker = {},
   initialItems,
   initialEntries,
   tablesReady,
@@ -104,11 +113,14 @@ export function PeriodicReportClient({
   organizationName: string;
   candidates: PayrollRequestCandidate[];
   permitsByWorker: Record<string, PayrollPermit[]>;
+  messengerByWorker?: Record<string, string>; // 本人のメッセンジャーのリンク（在留資格の確認の連絡用）
   initialItems: OrgPayrollItemRow[];
   initialEntries: PeriodicReportEntryRow[];
   tablesReady: boolean; // false = 0236 未適用（読めなかった）
   today: string;
 }) {
+  // 在留資格をこの画面で入れたら、すぐ名簿の判定にも反映できるよう手元に持つ
+  const [candidates, setCandidates] = useState(initialCandidates);
   const [fy, setFy] = useState(() => lastEndedFiscalYear(today));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -184,11 +196,86 @@ export function PeriodicReportClient({
   const skipItems = items.filter((it) => it.category === "集計しない");
 
   // ---- 対象者と入力 ----
-  const { rows, excluded: excludedWorkers } = useMemo(
-    () => buildPayrollRequestRows(candidates, permitsByWorker, fy),
-    [candidates, permitsByWorker, fy],
-  );
   const candidateById = useMemo(() => Object.fromEntries(candidates.map((c) => [c.id, c])), [candidates]);
+  // 自動の抽出に載らなかった人を手で対象に入れた分（年度を変えるとリセット）
+  const [manualIds, setManualIds] = useState<string[]>([]);
+  const { rows, excluded: excludedWorkers } = useMemo(() => {
+    const auto = buildPayrollRequestRows(candidates, permitsByWorker, fy);
+    const manualRows: PayrollRequestRow[] = [];
+    for (const id of manualIds) {
+      const c = candidateById[id];
+      if (!c || auto.rows.some((r) => r.id === id)) continue;
+      const row = manualPayrollRequestRow(c, fy);
+      if (row) manualRows.push(row);
+    }
+    return {
+      rows: [...auto.rows, ...manualRows].sort((a, b) => (a.kana || a.name).localeCompare(b.kana || b.name, "ja")),
+      excluded: auto.excluded.filter((e) => !manualIds.includes(e.id)),
+    };
+  }, [candidates, permitsByWorker, fy, manualIds, candidateById]);
+
+  // 在籍の期間の表示（だれが在籍中で、だれがいつからいつまでいたのか）
+  const tenureText = (id: string): string => {
+    const c = candidateById[id];
+    if (!c) return "";
+    const start = c.startOn ? jpDate(c.startOn) : "雇用開始日 未登録";
+    return c.leavingOn ? `${start}〜${jpDate(c.leavingOn)} 退職` : `${start}〜 在籍中`;
+  };
+
+  // ---- 在留資格の表示と、未登録の人のその場での登録 ----
+  const [statusDrafts, setStatusDrafts] = useState<Record<string, string>>({});
+  const [statusBusy, setStatusBusy] = useState<string | null>(null);
+  const saveStatus = async (id: string) => {
+    const v = statusDrafts[id] ?? "";
+    if (!v) return;
+    setStatusBusy(id);
+    setError(null);
+    try {
+      await updateWorker(createClient(), id, { residence_status: v });
+      setCandidates((cur) => cur.map((c) => (c.id === id ? { ...c, residenceStatus: v } : c)));
+      setSaved(`${candidateById[id]?.name ?? ""} の在留資格を「${v}」で登録しました`);
+    } catch (e) {
+      setError(`在留資格の登録に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setStatusBusy(null);
+    }
+  };
+  // 未登録の人向け: 在留資格の選択＋登録、本人のメッセンジャーへのリンク（確認の連絡用）
+  const statusEditor = (id: string) => (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <span className="font-bold text-seal">在留資格 未登録</span>
+      <select
+        value={statusDrafts[id] ?? ""}
+        onChange={(e) => setStatusDrafts((cur) => ({ ...cur, [id]: e.target.value }))}
+        className={`${FIELD} min-h-[28px]`}
+      >
+        <option value="">在留資格を選ぶ…</option>
+        {RESIDENCE_STATUSES.map((s) => (
+          <option key={s} value={s}>
+            {s}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        onClick={() => saveStatus(id)}
+        disabled={!statusDrafts[id] || statusBusy === id}
+        className="inline-flex min-h-[28px] items-center rounded-lg bg-brand px-2 text-[11px] font-bold text-brand-foreground disabled:opacity-40"
+      >
+        {statusBusy === id ? "登録中…" : "登録"}
+      </button>
+      {messengerByWorker[id] && (
+        <a
+          href={messengerByWorker[id]}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex min-h-[28px] items-center rounded-lg border border-brand px-2 text-[11px] font-bold text-brand"
+        >
+          本人のメッセンジャー
+        </a>
+      )}
+    </span>
+  );
 
   // 人×月の下書き（キー: workerId|ym）。初期値はDBの実績
   const [drafts, setDrafts] = useState<Record<string, EntryDraft>>(() => {
@@ -274,7 +361,7 @@ export function PeriodicReportClient({
       const res = await fetch("/api/periodic-report-form", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ organizationId, fy, kind, page, supportDelegated, note: formNote }),
+        body: JSON.stringify({ organizationId, fy, kind, page, supportDelegated, note: formNote, manualIds }),
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -346,7 +433,14 @@ export function PeriodicReportClient({
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-0.5 text-[11px] font-bold text-muted">
             対象年度
-            <select value={fy} onChange={(e) => setFy(Number(e.target.value))} className={FIELD}>
+            <select
+              value={fy}
+              onChange={(e) => {
+                setFy(Number(e.target.value));
+                setManualIds([]);
+              }}
+              className={FIELD}
+            >
               {fyOptions.map((y) => (
                 <option key={y} value={y}>
                   {fiscalYearLabel(y)}
@@ -445,8 +539,16 @@ export function PeriodicReportClient({
                 >
                   {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                   <span className="font-bold">{row.name}</span>
+                  {/* だれが在籍中で、いつからいつまでいたのかをひと目で分かるように */}
+                  <span className={`text-xs font-bold ${candidateById[row.id]?.leavingOn ? "text-muted" : "text-brand"}`}>
+                    {tenureText(row.id)}
+                  </span>
+                  {/* 現在の在留資格もひと目で分かるように（未登録は赤で出し、開くと登録できる） */}
+                  <span className={`text-xs ${candidateById[row.id]?.residenceStatus ? "text-muted" : "font-bold text-seal"}`}>
+                    在留資格: {candidateById[row.id]?.residenceStatus || "未登録"}
+                  </span>
                   <span className="text-xs text-muted">
-                    {row.grade}・{ymText(row.fromYm)}〜{ymText(row.toYm)}
+                    {row.grade}・入力は{ymText(row.fromYm)}〜{ymText(row.toYm)}
                     {row.prevYear ? "・昇給率の対象（前年度分も入力）" : ""}
                   </span>
                   {row.note && <span className="text-xs text-muted">（{row.note}）</span>}
@@ -458,6 +560,9 @@ export function PeriodicReportClient({
                         <TriangleAlert size={14} className="shrink-0" />
                         {row.warning}
                       </p>
+                    )}
+                    {!candidateById[row.id]?.residenceStatus && (
+                      <div className="text-xs">{statusEditor(row.id)}</div>
                     )}
                     {row.prevYear && (
                       <label className="inline-flex items-center gap-1.5 text-xs font-bold text-muted">
@@ -572,13 +677,36 @@ export function PeriodicReportClient({
           {excludedWorkers.length > 0 && (
             <div className="rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted">
               <p className="font-bold">対象に入れていない人（{excludedWorkers.length}名）</p>
-              <ul className="mt-1 list-disc space-y-0.5 pl-5">
-                {excludedWorkers.map((e) => (
-                  <li key={e.id}>
-                    <span className="font-bold text-foreground">{e.name}</span>：{e.reason}
-                  </li>
-                ))}
+              <ul className="mt-1 space-y-1 pl-1">
+                {excludedWorkers.map((e) => {
+                  const canAdd = !!manualPayrollRequestRow(candidateById[e.id] ?? ({} as PayrollRequestCandidate), fy);
+                  return (
+                    <li key={e.id} className="flex flex-wrap items-center gap-1.5">
+                      <span className="font-bold text-foreground">{e.name}</span>
+                      <span className="font-bold">{tenureText(e.id)}</span>
+                      {candidateById[e.id]?.residenceStatus ? (
+                        <span>在留資格: {candidateById[e.id].residenceStatus}</span>
+                      ) : (
+                        statusEditor(e.id)
+                      )}
+                      {canAdd && (
+                        <button
+                          type="button"
+                          onClick={() => setManualIds((cur) => [...cur, e.id])}
+                          className="inline-flex min-h-[28px] items-center gap-1 rounded-lg border border-brand px-2 text-[11px] font-bold text-brand"
+                        >
+                          <Plus size={12} />
+                          対象に入れて入力する
+                        </button>
+                      )}
+                      <span className="block w-full pl-2 sm:w-auto sm:flex-1 sm:pl-0">{e.reason}</span>
+                    </li>
+                  );
+                })}
               </ul>
+              <p className="mt-1.5">
+                「対象に入れて入力する」で、許可の記録が無くてもその人の入力を始められます（期間は在籍期間から出すので、特定活動だった月が入っていないか確認してください）。
+              </p>
             </div>
           )}
         </section>
