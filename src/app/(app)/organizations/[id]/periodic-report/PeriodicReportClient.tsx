@@ -456,6 +456,17 @@ export function PeriodicReportClient({
       className={`${FIELD} w-full min-w-[64px] text-right ${disabled ? "opacity-40" : ""}`}
     />
   );
+  // 金額・日数の欄。表示はカンマ区切り（104,000）、入力中はそのまま打てて、
+  // 確定（Enter・欄を離れる）でカンマが入る。全角数字も半角に直して受ける
+  const [numEditing, setNumEditing] = useState<Record<string, string>>({});
+  const parseNumInput = (text: string): number | null => {
+    const t = text
+      .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+      .replace(/[^0-9.\-]/g, "");
+    if (t === "" || t === "-" || t === ".") return null;
+    const v = Number(t);
+    return Number.isFinite(v) ? v : null;
+  };
   const numInput = (
     value: number | null,
     onChange: (v: number | null) => void,
@@ -463,17 +474,36 @@ export function PeriodicReportClient({
     nav?: { id: string; onEnter: () => void },
   ) => (
     <input
-      value={value ?? ""}
+      value={
+        (nav && numEditing[nav.id]) ?? (value == null ? "" : value.toLocaleString("ja-JP"))
+      }
       onChange={(e) => {
-        const t = e.target.value.replace(/[^0-9.\-]/g, "");
-        onChange(t === "" ? null : Number(t));
+        if (nav) {
+          setNumEditing((cur) => ({ ...cur, [nav.id]: e.target.value }));
+        } else {
+          onChange(parseNumInput(e.target.value));
+        }
       }}
+      onBlur={
+        nav
+          ? () => {
+              const t = numEditing[nav.id];
+              if (t === undefined) return;
+              onChange(parseNumInput(t));
+              setNumEditing((cur) => {
+                const next = { ...cur };
+                delete next[nav.id];
+                return next;
+              });
+            }
+          : undefined
+      }
       onKeyDown={
         nav
           ? (e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
-                nav.onEnter();
+                nav.onEnter(); // 次の欄へ移ると blur が走ってカンマ入りで確定する
               }
             }
           : undefined

@@ -214,7 +214,10 @@ export function raiseRate(targets: { baseCurrent: number; basePrevious: number }
 
 // 入力の文字を小数の時間にする。空・数字なしは null。分が60以上なら繰り上げる
 export function parseHoursInput(text: string): number | null {
-  const t = (text ?? "").replace(/[：]/g, ":").trim();
+  const t = (text ?? "")
+    .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+    .replace(/[：]/g, ":")
+    .trim();
   if (!t) return null;
   const m = /^(\d+):(\d{1,2})$/.exec(t);
   if (m) return Number(m[1]) + Number(m[2]) / 60;
