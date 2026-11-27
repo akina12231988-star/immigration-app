@@ -180,6 +180,8 @@ export interface ApplicationCopyInput {
   custodian?: CustodianInfo; // 登録支援機関の情報（無ければ既定値 CUSTODIAN_INFO）
   interpreters?: SupportOrgInterpreter[]; // 対応可能言語ごとの通訳者（登録支援機関の情報）
   today?: string;
+  // この所属機関にいま「在籍中」で登録している人数（在留資格ごと）。常勤職員数の確認用
+  orgWorkerCounts?: { ssw1: number; ssw2: number; trainee: number; katsudo: number; other: number } | null;
 }
 
 // YYYY-MM-DD → ["1995", "4", "2"]（欄が年・月・日に分かれている申請書用）
@@ -252,6 +254,25 @@ function councilItems(
 }
 
 const yen = (n: number | null | undefined) => (n == null || !Number.isFinite(n) ? "" : String(Math.round(n)));
+
+// 常勤職員数の注記: 登録した内訳（日本人・技能実習・特定技能・特定活動）と、
+// アプリにいま「在籍中」で登録している人数を並べて、登録が古くなっていないか確かめられるようにする
+export function staffCountNote(
+  intake: OrganizationIntake | null,
+  counts: { ssw1: number; ssw2: number; trainee: number; katsudo: number; other: number } | null | undefined,
+): string {
+  const v = (s: string | undefined) => ((s ?? "").trim() ? (s ?? "").trim() : "未");
+  const parts = [
+    `登録した内訳: 日本人${v(intake?.staff_japanese)}・技能実習${v(intake?.staff_trainee)}・特定技能1号${v(intake?.staff_ssw1)}・2号${v(intake?.staff_ssw2)}・特定活動${v(intake?.staff_katsudo)}（所属機関 ＞ 常勤職員数で登録します）`,
+  ];
+  if (counts) {
+    const live = counts.ssw1 + counts.ssw2;
+    parts.push(
+      `アプリの在籍（いま）: 特定技能${live}人（1号${counts.ssw1}・2号${counts.ssw2}）・技能実習${counts.trainee}人・特定活動${counts.katsudo}人${counts.other > 0 ? `・そのほか${counts.other}人` : ""}。登録した数と違うときは直してください`,
+    );
+  }
+  return parts.join("。");
+}
 
 // 常勤職員数（日本人・技能実習生・特定技能・特定活動の合計）
 export function totalStaff(intake: OrganizationIntake | null): string {
@@ -643,7 +664,7 @@ export function buildApplicationCopyGroups(input: ApplicationCopyInput): CopyGro
     {
       label: "3 (8)常勤職員数",
       value: totalStaff(intake),
-      note: "日本人・技能実習生・特定技能・特定活動の合計（所属機関 ＞ 常勤職員数で登録します）",
+      note: staffCountNote(intake, input.orgWorkerCounts),
     },
     { label: "3 (9)代表者の氏名", value: intake?.rep_name ?? "", edit: org ? it("rep_name") : undefined },
     { label: "3 (10)勤務させる事業所名", value: org?.name ?? "", edit: org ? og("name") : undefined },

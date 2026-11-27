@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildApplicationCopyGroups, copyGroupText, desiredResidenceStatus, japaneseStaffMonthly, totalStaff, wageForApplication, ymdCompact, ymdParts } from "./application-copy";
+import { buildApplicationCopyGroups, copyGroupText, desiredResidenceStatus, japaneseStaffMonthly, staffCountNote, totalStaff, wageForApplication, ymdCompact, ymdParts } from "./application-copy";
 import { emptyOrganizationIntake, rosaiMeasureText } from "./organization-intake";
 import { CUSTODIAN_INFO } from "./custody";
 import { contractPeriodEnd, formatYmdJa } from "./support-plan-dates";
@@ -343,5 +343,22 @@ describe("申請準備中の所属機関の賃金・日本人職員の報酬・�
 describe("desiredResidenceStatus（特定技能２号の更新）", () => {
   it("特定技能２号の更新は、希望する在留資格が特定技能2号", () => {
     expect(desiredResidenceStatus("特定技能2号更新の準備中", "更新", "特定技能2号")).toBe("特定技能2号");
+  });
+});
+
+
+describe("staffCountNote（常勤職員数の内訳といまの在籍）", () => {
+  it("登録した内訳と、アプリの在籍の人数を並べる。未登録は「未」", () => {
+    const intake = { ...emptyOrganizationIntake(), staff_japanese: "5", staff_trainee: "", staff_ssw1: "3", staff_ssw2: "0", staff_katsudo: "1" };
+    const note = staffCountNote(intake, { ssw1: 4, ssw2: 0, trainee: 2, katsudo: 1, other: 0 });
+    expect(note).toContain("日本人5");
+    expect(note).toContain("技能実習未");
+    expect(note).toContain("特定技能1号3");
+    expect(note).toContain("アプリの在籍（いま）: 特定技能4人（1号4・2号0）・技能実習2人・特定活動1人");
+  });
+  it("在籍の人数が無ければ登録した内訳だけ", () => {
+    const note = staffCountNote(null, null);
+    expect(note).toContain("日本人未");
+    expect(note).not.toContain("アプリの在籍");
   });
 });
