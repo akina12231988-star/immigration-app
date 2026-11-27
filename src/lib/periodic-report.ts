@@ -392,3 +392,127 @@ export function workerAnnualTotals(
   }
   return { days: round0(days), pay: round0(pay) };
 }
+
+// ---- 計算のご説明（A4印刷・提出不要）用の内訳 ----
+// 「合計 ÷ 人月 = 平均」を所属機関に見せられるよう、丸める前の合計と月数を返す
+
+export interface ExplainWorker {
+  name: string;
+  grade: string;
+  usedYms: string[]; // 平均に使った月
+  excludedYms: string[]; // 入力はあるが平均から除いた月（月の途中の入社・退職など）
+}
+
+export interface ExplainSide {
+  workers: ExplainWorker[];
+  months: number; // 人月の合計
+  sums: {
+    workDays: number;
+    regularHours: number;
+    overtimeHours: number;
+    cashPay: number;
+    overtimePay: number;
+    commute: number;
+    attendance: number;
+    family: number;
+    food: number;
+    housing: number;
+    taxSocial: number;
+    otherDeduction: number;
+  };
+  bonusTotal: number; // 賞与などの年間の支給総額
+  bonusPaidCount: number; // 支払われた人数（賞与の平均の分母）
+}
+
+export interface ExplainRaiseTarget {
+  name: string;
+  baseCurrent: number; // 当年度の基準額（月額平均・丸め前）
+  basePrevious: number; // 前年度の基準額
+}
+
+export interface Report36Explain {
+  one: ExplainSide;
+  two: ExplainSide;
+  raise1: ExplainRaiseTarget[];
+  raise2: ExplainRaiseTarget[];
+}
+
+export function explainReport36(
+  rows: (PayrollRequestRow & { name: string })[],
+  getEntry: (workerId: string, ym: string) => ReportEntryLike | null,
+  itemsById: Record<string, Pick<OrgPayrollItemRow, "category">>,
+  fy: number,
+): Report36Explain {
+  const emptySide = (): ExplainSide => ({
+    workers: [],
+    months: 0,
+    sums: {
+      workDays: 0,
+      regularHours: 0,
+      overtimeHours: 0,
+      cashPay: 0,
+      overtimePay: 0,
+      commute: 0,
+      attendance: 0,
+      family: 0,
+      food: 0,
+      housing: 0,
+      taxSocial: 0,
+      otherDeduction: 0,
+    },
+    bonusTotal: 0,
+    bonusPaidCount: 0,
+  });
+  const out: Report36Explain = { one: emptySide(), two: emptySide(), raise1: [], raise2: [] };
+
+  for (const row of rows) {
+    const toTotals = (yms: string[]): MonthTotals[] =>
+      yms
+        .map((ym) => {
+          const d = getEntry(row.id, ym);
+          if (!d) return null;
+          return entryToMonthTotals({ ym, ...d }, itemsById);
+        })
+        .filter((m): m is MonthTotals => m != null);
+    let months = toTotals(reportMonthsFor(row, fy, fy));
+    const two = !!row.grade2From && gradeStartYm(row.grade2From) <= `${fy + 1}-03`;
+    if (two) months = months.filter((m) => m.ym >= gradeStartYm(row.grade2From));
+    const side = two ? out.two : out.one;
+    const counted = countedMonths(months);
+    side.workers.push({
+      name: row.name,
+      grade: row.grade,
+      usedYms: counted.map((m) => m.ym),
+      excludedYms: months.filter((m) => !counted.includes(m)).map((m) => m.ym),
+    });
+    side.months += counted.length;
+    for (const m of counted) {
+      side.sums.workDays += m.workDays ?? 0;
+      side.sums.regularHours += m.regularHours ?? 0;
+      side.sums.overtimeHours += m.overtimeHours ?? 0;
+      side.sums.cashPay += m.cashPay ?? 0;
+      if (m.cashPay != null) {
+        side.sums.overtimePay += m.overtimePay;
+        side.sums.commute += m.commute;
+        side.sums.attendance += m.attendance;
+        side.sums.family += m.family;
+        side.sums.food += m.food;
+        side.sums.housing += m.housing;
+        side.sums.taxSocial += m.taxSocial;
+        side.sums.otherDeduction += m.otherDeduction;
+      }
+    }
+    const bonus = months.reduce((a, m) => a + (m.bonus ?? 0), 0);
+    side.bonusTotal += bonus;
+    if (bonus > 0) side.bonusPaidCount += 1;
+    // 昇給率の対象（2年以上継続）で、当年度・前年度の基準額がそろった人
+    if (row.prevYear) {
+      const cur = raiseBase(months);
+      const prev = raiseBase(toTotals(reportMonthsFor(row, fy, fy - 1)));
+      if (cur != null && prev != null) {
+        (two ? out.raise2 : out.raise1).push({ name: row.name, baseCurrent: cur, basePrevious: prev });
+      }
+    }
+  }
+  return out;
+}
