@@ -9,6 +9,7 @@ import { registerBundledRefForms } from "@/app/(app)/ref-forms/actions";
 import { buildSubmissionListPdf, canFillSubmissionPdf } from "@/lib/submission-pdf";
 import { RefFormRowBar, RefFormTemplatesDialog, refFormHref, useRefFormTemplates } from "@/components/ref-forms/RefFormPanel";
 import { SignedPagesImport } from "@/components/ref-forms/SignedPagesImport";
+import { SealedDocsSection } from "@/components/workers/SealedDocsSection";
 import type { OnboardingDocumentRow } from "@/types/db";
 import { SupportOrgFileAttachments } from "@/app/(app)/support-org/SupportOrgFileAttachments";
 import { PrepAgriNoticeSection, PrepOrgFileSection } from "@/components/workers/PrepSupportOrgSection";
@@ -481,6 +482,19 @@ export function PrepSubmissionList({
             />
           ))}
         </div>
+      )}
+
+      {/* 会社に必ず印鑑をもらう書類（支援委託契約書・特定技能雇用契約書・雇用条件書）。
+          2部印刷・印鑑をもらったかのチェック・押印後のドライブのリンク */}
+      {workerId && rows.some((r) => /^(t1-|u1-)/.test(r.key)) && (
+        <SealedDocsSection
+          workerId={workerId}
+          nationality={nationality}
+          orgId={orgId}
+          orgName={orgName}
+          todoNo={todoNo}
+          canEdit={canEdit}
+        />
       )}
 
       {!officialPdf && (
