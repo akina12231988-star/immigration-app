@@ -51,6 +51,13 @@ export const EXTRA_REF_FORMS: Record<string, string> = {
   "teiki-riyusho": "理由書（任意様式）",
 };
 
+// キーだけで「日本語だけで作る様式」と決まっている様式か。定期報告書の添付書類（teiki-…）は
+// 入管に出す日本語の様式なので、本人の国籍の言語の版は要らない（「◯◯語の版がありません」の注意を出さない）。
+// 登録済みのひな形から判定する isJapaneseOnlyRefForm とは別（こちらは未登録でも日本語だけ扱い）
+export function isJapaneseOnlyFormKey(key: string): boolean {
+  return key.startsWith("teiki-");
+}
+
 // 定期報告書の画面に出す並び（入管の提出資料一覧表のA・Bに合わせたグループ）
 export const TEIKI_REF_FORM_GROUPS: { title: string; keys: string[] }[] = [
   {

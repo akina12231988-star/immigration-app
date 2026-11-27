@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { RefFormRowBar, RefFormTemplatesDialog, useRefFormTemplates } from "@/components/ref-forms/RefFormPanel";
-import { languageForNationality, refFormName, TEIKI_REF_FORM_GROUPS } from "@/lib/ref-form";
+import { refFormName, TEIKI_REF_FORM_GROUPS } from "@/lib/ref-form";
 
 // 定期報告書（定期届出）の添付書類の参考様式。
 // ひな形（PDF）と記入位置を登録しておくと、所属機関・本人の情報を書き込んだ PDF を
@@ -38,7 +38,7 @@ export function PeriodicRefFormsSection({
     <div className="flex flex-col gap-2">
       <p className="text-xs text-muted">
         定期報告書の添付書類の参考様式です。「ひな形・記入位置」から様式の PDF を登録し、どこに何を書くかを置いておくと、
-        「内容を確認して作る」で所属機関・本人の情報を書き込んだ PDF を印刷できます。
+        「内容を確認して作る」で所属機関・本人の情報を書き込んだ PDF を印刷できます。ひな形は日本語の版だけで大丈夫です。
         概要書・誓約書は所属機関の内容なのでだれを選んでも同じです。報酬支払証明書（5-7号）は本人の欄があるので、人を変えて1人ずつ作ってください。
       </p>
       <label className="flex w-fit flex-col gap-0.5 text-[11px] font-bold text-muted">
@@ -78,7 +78,7 @@ export function PeriodicRefFormsSection({
           formKey={managing}
           formLabel={refFormName(managing)}
           templates={refForms.templates}
-          defaultLanguage={languageForNationality(worker?.nationality ?? "") || "日本語"}
+          defaultLanguage="日本語"
           orgId={orgId}
           orgName={orgName}
           onClose={() => setManaging(null)}
