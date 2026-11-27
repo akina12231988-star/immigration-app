@@ -207,6 +207,36 @@ export function raiseRate(targets: { baseCurrent: number; basePrevious: number }
   return round1(((cur - prev) / prev) * 100);
 }
 
+// ---- 時間数の「時:分」の入力 ----
+// 賃金台帳の時間数は「21:10」（21時間10分）の形が多いので、そのまま打てるようにする。
+// 「2110」と打ったら最後の2桁を分として「21:10」にする（2桁以下は時間だけ）。
+// 計算（平均）には 21 + 10/60 のような小数の時間で使う
+
+// 入力の文字を小数の時間にする。空・数字なしは null。分が60以上なら繰り上げる
+export function parseHoursInput(text: string): number | null {
+  const t = (text ?? "").replace(/[：]/g, ":").trim();
+  if (!t) return null;
+  const m = /^(\d+):(\d{1,2})$/.exec(t);
+  if (m) return Number(m[1]) + Number(m[2]) / 60;
+  const digits = t.replace(/[^0-9.]/g, "");
+  if (!digits) return null;
+  // 小数（21.5 など）で打ったらそのまま時間として受ける
+  if (digits.includes(".")) return Number(digits);
+  if (digits.length <= 2) return Number(digits); // 「34」= 34時間
+  const hours = Number(digits.slice(0, -2));
+  const minutes = Number(digits.slice(-2));
+  return hours + minutes / 60; // 分が60以上でも足し算なので自然に繰り上がる
+}
+
+// 小数の時間を「21:10」の形にする（分は四捨五入。null・空は ''）
+export function hoursText(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return "";
+  const totalMinutes = Math.round(v * 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes - h * 60;
+  return `${h}:${String(m).padStart(2, "0")}`;
+}
+
 // 2号へ移行した人の月割り（要領）: 変更許可を受けた月以降を2号の欄に記載し、
 // 許可が月の途中なら翌月以降を記載する（移行前の月の状況は記載しない）。
 // 許可日が月の初日ならその月、月の途中なら翌月の YYYY-MM を返す

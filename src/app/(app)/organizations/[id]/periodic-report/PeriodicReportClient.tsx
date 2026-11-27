@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, FileSpreadsheet, Plus, Save, Trash2, TriangleAlert } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
+import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import { createClient } from "@/lib/supabase/client";
 import {
   deleteOrgPayrollItems,
@@ -21,7 +22,14 @@ import {
   type PayrollRequestCandidate,
   type PayrollRequestRow,
 } from "@/lib/payroll-request";
-import { buildReport36, reportMonthsFor, round1, type Section36 } from "@/lib/periodic-report";
+import {
+  buildReport36,
+  hoursText,
+  parseHoursInput,
+  reportMonthsFor,
+  round1,
+  type Section36,
+} from "@/lib/periodic-report";
 import { updateWorker } from "@/lib/supabase/queries/workers";
 import { downloadBlob } from "@/lib/xlsx-export";
 import {
@@ -159,7 +167,7 @@ export function PeriodicReportClient({
     });
     setItemsDirty(true);
   };
-  const saveItems = async () => {
+  const saveItems = async (): Promise<boolean> => {
     setBusy(true);
     setError(null);
     setSaved(null);
@@ -181,8 +189,10 @@ export function PeriodicReportClient({
       setItems((cur) => cur.map((it) => ({ ...it, isNew: false })));
       setItemsDirty(false);
       setSaved("項目を保存しました");
+      return true;
     } catch (e) {
       setError(`項目の保存に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
+      return false;
     } finally {
       setBusy(false);
     }
@@ -305,7 +315,7 @@ export function PeriodicReportClient({
     setDirtyKeys((cur) => new Set(cur).add(key));
   };
 
-  const saveEntries = async () => {
+  const saveEntries = async (): Promise<boolean> => {
     setBusy(true);
     setError(null);
     setSaved(null);
@@ -329,11 +339,21 @@ export function PeriodicReportClient({
       await upsertPeriodicReportEntries(supabase, entries);
       setDirtyKeys(new Set());
       setSaved(`入力を保存しました（${entries.length}か月分）`);
+      return true;
     } catch (e) {
       setError(`入力の保存に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
+      return false;
     } finally {
       setBusy(false);
     }
+  };
+
+  // 保存せずに別の画面へ行こうとしたときの確認（保存して移動・保存せずに移動・このページに戻る）
+  const hasUnsaved = dirtyKeys.size > 0 || itemsDirty;
+  const saveAll = async (): Promise<boolean> => {
+    if (itemsDirty && !(await saveItems())) return false;
+    if (dirtyKeys.size > 0 && !(await saveEntries())) return false;
+    return true;
   };
 
   // 入力欄に出す月（依頼期間と同じ: 特定技能になる前・退職後の月は出さない）
@@ -384,13 +404,81 @@ export function PeriodicReportClient({
   const cell = "border border-border px-1.5 py-1 text-right tabular-nums";
   const head = "border border-border bg-background px-1.5 py-1 text-center text-[11px] font-bold text-muted";
 
-  const numInput = (value: number | null, onChange: (v: number | null) => void, disabled = false) => (
+  // Enterで下の項目（同じ月の次の行）へ。月の最後まで行ったら次の月のいちばん上へ
+  // （賃金台帳は1か月分が縦に並んでいるので、縦に転記できるようにする）
+  const gridRowCount = 3 + payItems.length + deductItems.length + skipItems.length;
+  const focusNext = (workerId: string, months: string[], mi: number, ri: number) => {
+    for (let m = mi; m < months.length; m += 1) {
+      for (let r = m === mi ? ri + 1 : 0; r < gridRowCount; r += 1) {
+        const el = document.querySelector<HTMLInputElement>(
+          `[data-nav="${workerId}|${months[m]}|${r}"]`,
+        );
+        if (el && !el.disabled) {
+          el.focus();
+          el.select();
+          return;
+        }
+      }
+    }
+  };
+  // 時間数は「21:10」（21時間10分）の形で出し入れする。
+  // 「2110」と打って確定（Enter・欄を離れる）すると「21:10」になり、計算には 21+10/60 の小数で使う
+  const [hoursEditing, setHoursEditing] = useState<Record<string, string>>({});
+  const hoursInput = (
+    value: number | null,
+    onChange: (v: number | null) => void,
+    disabled: boolean,
+    nav: { id: string; onEnter: () => void },
+  ) => (
+    <input
+      value={hoursEditing[nav.id] ?? hoursText(value)}
+      onChange={(e) => setHoursEditing((cur) => ({ ...cur, [nav.id]: e.target.value }))}
+      onBlur={() => {
+        const t = hoursEditing[nav.id];
+        if (t === undefined) return;
+        onChange(parseHoursInput(t));
+        setHoursEditing((cur) => {
+          const next = { ...cur };
+          delete next[nav.id];
+          return next;
+        });
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          nav.onEnter(); // 次の欄へ移ると blur が走って「21:10」に確定する
+        }
+      }}
+      data-nav={nav.id}
+      inputMode="numeric"
+      placeholder="21:10"
+      disabled={disabled}
+      className={`${FIELD} w-full min-w-[64px] text-right ${disabled ? "opacity-40" : ""}`}
+    />
+  );
+  const numInput = (
+    value: number | null,
+    onChange: (v: number | null) => void,
+    disabled = false,
+    nav?: { id: string; onEnter: () => void },
+  ) => (
     <input
       value={value ?? ""}
       onChange={(e) => {
         const t = e.target.value.replace(/[^0-9.\-]/g, "");
         onChange(t === "" ? null : Number(t));
       }}
+      onKeyDown={
+        nav
+          ? (e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                nav.onEnter();
+              }
+            }
+          : undefined
+      }
+      data-nav={nav?.id}
       inputMode="decimal"
       disabled={disabled}
       className={`${FIELD} w-full min-w-[64px] text-right ${disabled ? "opacity-40" : ""}`}
@@ -401,6 +489,8 @@ export function PeriodicReportClient({
 
   return (
     <>
+      {/* 保存していない入力があるまま離れようとしたら「保存しますか？」の確認を出す */}
+      <UnsavedChangesGuard dirty={hasUnsaved} onSave={saveAll} saveLabel="入力を保存" />
       <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-brand px-4 py-3 text-brand-foreground lg:px-8">
         <BackButton fallbackHref={`/organizations/${organizationId}`} />
         <h1 className="flex-1 text-lg font-bold">定期報告書　賃金台帳の入力（{organizationName}）</h1>
@@ -594,44 +684,59 @@ export function PeriodicReportClient({
                             <tbody>
                               <tr>
                                 <td className="border border-border px-1.5 py-1 text-xs">実労働日数</td>
-                                {months.map((ym) => {
+                                {months.map((ym, mi) => {
                                   const d = draftOf(row.id, ym, row);
                                   return (
                                     <td key={ym} className={cell}>
-                                      {numInput(d.work_days, (v) => setDraft(row.id, ym, row, { work_days: v }), d.excluded)}
+                                      {numInput(d.work_days, (v) => setDraft(row.id, ym, row, { work_days: v }), d.excluded, {
+                                        id: `${row.id}|${ym}|0`,
+                                        onEnter: () => focusNext(row.id, months, mi, 0),
+                                      })}
                                     </td>
                                   );
                                 })}
                               </tr>
                               <tr>
-                                <td className="border border-border px-1.5 py-1 text-xs">実労働時間数</td>
-                                {months.map((ym) => {
+                                <td className="border border-border px-1.5 py-1 text-xs">
+                                  実労働時間数
+                                  <span className="block text-[10px] text-muted">21:10 の形（2110 と打つと : が入ります）</span>
+                                </td>
+                                {months.map((ym, mi) => {
                                   const d = draftOf(row.id, ym, row);
                                   return (
                                     <td key={ym} className={cell}>
-                                      {numInput(d.total_hours, (v) => setDraft(row.id, ym, row, { total_hours: v }), d.excluded)}
+                                      {hoursInput(d.total_hours, (v) => setDraft(row.id, ym, row, { total_hours: v }), d.excluded, {
+                                        id: `${row.id}|${ym}|1`,
+                                        onEnter: () => focusNext(row.id, months, mi, 1),
+                                      })}
                                     </td>
                                   );
                                 })}
                               </tr>
                               <tr>
-                                <td className="border border-border px-1.5 py-1 text-xs">うち超過実労働時間数</td>
-                                {months.map((ym) => {
+                                <td className="border border-border px-1.5 py-1 text-xs">
+                                  うち超過実労働時間数
+                                  <span className="block text-[10px] text-muted">21:10 の形</span>
+                                </td>
+                                {months.map((ym, mi) => {
                                   const d = draftOf(row.id, ym, row);
                                   return (
                                     <td key={ym} className={cell}>
-                                      {numInput(d.overtime_hours, (v) => setDraft(row.id, ym, row, { overtime_hours: v }), d.excluded)}
+                                      {hoursInput(d.overtime_hours, (v) => setDraft(row.id, ym, row, { overtime_hours: v }), d.excluded, {
+                                        id: `${row.id}|${ym}|2`,
+                                        onEnter: () => focusNext(row.id, months, mi, 2),
+                                      })}
                                     </td>
                                   );
                                 })}
                               </tr>
-                              {[...payItems, ...deductItems, ...skipItems].map((it) => (
+                              {[...payItems, ...deductItems, ...skipItems].map((it, ii) => (
                                 <tr key={it.id}>
                                   <td className="border border-border px-1.5 py-1 text-xs">
                                     {it.name || "（名前なし）"}
                                     <span className="block text-[10px] text-muted">{it.category}</span>
                                   </td>
-                                  {months.map((ym) => {
+                                  {months.map((ym, mi) => {
                                     const d = draftOf(row.id, ym, row);
                                     return (
                                       <td key={ym} className={cell}>
@@ -644,6 +749,10 @@ export function PeriodicReportClient({
                                             setDraft(row.id, ym, row, { amounts });
                                           },
                                           d.excluded,
+                                          {
+                                            id: `${row.id}|${ym}|${3 + ii}`,
+                                            onEnter: () => focusNext(row.id, months, mi, 3 + ii),
+                                          },
                                         )}
                                       </td>
                                     );

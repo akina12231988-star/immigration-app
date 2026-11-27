@@ -83,9 +83,11 @@ export function fiscalYearPeriod(fy: number): { from: string; to: string } {
   return { from: `${fy}-04-01`, to: `${fy + 1}-03-31` };
 }
 
-// 「2025年度（2025年4月1日〜2026年3月31日）」
+// 「2025年度（令和7年度・2025年4月1日〜2026年3月31日）」。
+// 賃金台帳には令和の年度で書かれていることが多いので、和暦も併記する
 export function fiscalYearLabel(fy: number): string {
-  return `${fy}年度（${fy}年4月1日〜${fy + 1}年3月31日）`;
+  const wareki = fy >= 2019 ? `令和${fy - 2018}年度・` : "";
+  return `${fy}年度（${wareki}${fy}年4月1日〜${fy + 1}年3月31日）`;
 }
 
 // "2025-08" → 「2025年8月分」
@@ -127,10 +129,12 @@ function minDate(a: string | null, b: string | null): string | null {
 }
 
 // その人の特定技能1号・2号それぞれの最初の許可日。
-// 許可の記録が無くても、現在の在留資格が特定技能なら現在の許可日で補う（警告つき）
+// 許可の記録が無くても、現在の在留資格が特定技能なら対象にする:
+// 現在の許可日 → 無ければこの機関の雇用開始日 → それも無ければ年度の初めから（すべて警告つき）
 function sswStartDates(
   c: PayrollRequestCandidate,
   permits: PayrollPermit[],
+  fyFrom: string,
 ): { first1: string | null; first2: string | null; estimated: boolean } {
   let first1: string | null = null;
   let first2: string | null = null;
@@ -141,11 +145,14 @@ function sswStartDates(
     if (kind === "2号") first2 = minDate(first2, p.permitDate);
   }
   if (first1 || first2) return { first1, first2, estimated: false };
-  // 許可の記録がまだ登録されていない人。現在の在留資格から補う
+  // 許可の記録がまだ登録されていない人。現在の在留資格が特定技能なら、
+  // 対象年度に在籍していれば対象に載せる（開始日は分かる日付で補う）
   const kind = visaKind(c.residenceStatus);
-  if (kind === "1号" && c.residencePermitDate) return { first1: c.residencePermitDate, first2: null, estimated: true };
-  if (kind === "2号" && c.residencePermitDate) return { first1: null, first2: c.residencePermitDate, estimated: true };
-  return { first1: null, first2: null, estimated: false };
+  if (!kind) return { first1: null, first2: null, estimated: false };
+  const date = c.residencePermitDate ?? c.startOn ?? fyFrom;
+  return kind === "1号"
+    ? { first1: date, first2: null, estimated: true }
+    : { first1: null, first2: date, estimated: true };
 }
 
 // 名簿を作る。candidates は在籍中の人＋過去に在籍していた人、permitsByWorker は在留許可の記録
@@ -161,7 +168,7 @@ export function buildPayrollRequestRows(
   const excluded: PayrollRequestExcluded[] = [];
 
   for (const c of candidates) {
-    const { first1, first2, estimated } = sswStartDates(c, permitsByWorker[c.id] ?? []);
+    const { first1, first2, estimated } = sswStartDates(c, permitsByWorker[c.id] ?? [], fyFrom);
     const sswStart = minDate(first1, first2);
     if (!sswStart) {
       excluded.push({
@@ -229,7 +236,7 @@ export function buildPayrollRequestRows(
       grade2From: first2 ?? "",
       note: notes.join("。"),
       warning: estimated
-        ? "特定技能の許可の記録が無いため、現在の在留資格の許可日からお願いする期間を出しています。特定活動から移行した時期と合っているか確認してください"
+        ? "特定技能の許可日の記録が無いため、分かる日付（現在の許可日・雇用開始日・年度の初め）からお願いする期間を出しています。特定活動だった月が入っていないか確認し、外国人詳細の「在留資格の履歴」に許可日を登録してください"
         : "",
     });
   }

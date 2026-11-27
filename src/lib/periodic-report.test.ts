@@ -6,6 +6,8 @@ import {
   entryToMonthTotals,
   fiscalYearMonths,
   gradeStartYm,
+  hoursText,
+  parseHoursInput,
   raiseBase,
   raiseRate,
   type MonthTotals,
@@ -190,5 +192,26 @@ describe("gradeStartYm（2号移行の月割り）", () => {
     expect(gradeStartYm("2025-09-15")).toBe("2025-10"); // 要領の記載例（9/15許可→10月分以降）
     expect(gradeStartYm("2025-12-20")).toBe("2026-01");
     expect(gradeStartYm("")).toBe("");
+  });
+});
+
+describe("parseHoursInput / hoursText（時:分の入力）", () => {
+  it("「2110」→ 21:10（21+10/60時間）。「:」付き・全角「：」もそのまま受ける", () => {
+    expect(parseHoursInput("2110")).toBeCloseTo(21 + 10 / 60, 10);
+    expect(parseHoursInput("21:10")).toBeCloseTo(21 + 10 / 60, 10);
+    expect(parseHoursInput("21：10")).toBeCloseTo(21 + 10 / 60, 10);
+    expect(parseHoursInput("104")).toBeCloseTo(1 + 4 / 60, 10); // 3桁は最後の2桁が分
+  });
+  it("2桁以下は時間だけ。小数・空も受ける。分の60以上は繰り上げ", () => {
+    expect(parseHoursInput("34")).toBe(34);
+    expect(parseHoursInput("8.5")).toBe(8.5);
+    expect(parseHoursInput("")).toBeNull();
+    expect(parseHoursInput("2175")).toBeCloseTo(22 + 15 / 60, 10); // 21:75 → 22:15
+  });
+  it("表示は「21:10」の形（分は四捨五入）", () => {
+    expect(hoursText(21 + 10 / 60)).toBe("21:10");
+    expect(hoursText(34)).toBe("34:00");
+    expect(hoursText(null)).toBe("");
+    expect(hoursText(167.9999)).toBe("168:00");
   });
 });
