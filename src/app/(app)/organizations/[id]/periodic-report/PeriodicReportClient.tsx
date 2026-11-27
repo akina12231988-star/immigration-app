@@ -7,6 +7,7 @@ import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import { createClient } from "@/lib/supabase/client";
 import {
   deleteOrgPayrollItems,
+  deletePeriodicReportEntriesForWorker,
   periodicExcludeYm,
   upsertOrgPayrollItems,
   upsertPeriodicReportEntries,
@@ -277,6 +278,38 @@ export function PeriodicReportClient({
       );
     } catch (e) {
       setError(`対象の変更の保存に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // 入力する人を間違えたときのやり直し: その人のこの年度（前年度分も）の入力をぜんぶ消す
+  const clearWorkerEntries = async (workerId: string) => {
+    const name = candidateById[workerId]?.name ?? "";
+    if (
+      !window.confirm(
+        `${name} さんの ${fy}年度（前年度分の入力も含む）の賃金台帳の入力をすべて消します。元に戻せません。よろしいですか？`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await deletePeriodicReportEntriesForWorker(
+        createClient(),
+        organizationId,
+        workerId,
+        `${fy - 1}-04`,
+        `${fy + 1}-03`,
+      );
+      // 画面の下書きと未保存の印からもその人の分を消す（対象から外した記録 YYYY-00 は残す）
+      const isTarget = (key: string) => key.startsWith(`${workerId}|`) && !key.endsWith("-00");
+      setDrafts((cur) => Object.fromEntries(Object.entries(cur).filter(([k]) => !isTarget(k))));
+      setDirtyKeys((cur) => new Set([...cur].filter((k) => !isTarget(k))));
+      setSaved(`${name} さんの入力をすべて消しました`);
+    } catch (e) {
+      setError(`入力の削除に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setBusy(false);
     }
@@ -792,6 +825,16 @@ export function PeriodicReportClient({
                         対象から外す（保存）
                       </button>
                       <span className="text-muted">理由を書くと外せます。入力済みの金額は消えません</span>
+                      <button
+                        type="button"
+                        onClick={() => clearWorkerEntries(row.id)}
+                        disabled={busy}
+                        className="inline-flex min-h-[28px] items-center gap-1 rounded-lg border border-seal px-2 text-[11px] font-bold text-seal disabled:opacity-40"
+                        title="入力する人を間違えたときに、この人の入力をぜんぶ消してやり直す"
+                      >
+                        <Trash2 size={12} />
+                        この人の入力をすべて消す
+                      </button>
                     </div>
                     {row.prevYear && (
                       <label className="inline-flex items-center gap-1.5 text-xs font-bold text-muted">

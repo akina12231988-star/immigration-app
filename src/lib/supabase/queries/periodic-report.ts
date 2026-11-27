@@ -80,3 +80,23 @@ export async function upsertPeriodicReportEntries(
 export function periodicExcludeYm(fy: number): string {
   return `${fy}-00`;
 }
+
+// その人の月の実績をまとめて消す（入力する人を間違えたときのやり直し用）。
+// 年度の目印行（'YYYY-00'。対象から外した記録）は消さない
+export async function deletePeriodicReportEntriesForWorker(
+  supabase: SupabaseClient,
+  organizationId: string,
+  workerId: string,
+  fromYm: string,
+  toYm: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("periodic_report_entries")
+    .delete()
+    .eq("organization_id", organizationId)
+    .eq("worker_id", workerId)
+    .gte("ym", fromYm)
+    .lte("ym", toYm)
+    .not("ym", "like", "%-00");
+  if (error) throw error;
+}
