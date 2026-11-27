@@ -33,7 +33,7 @@ describe("lastEndedFiscalYear", () => {
 describe("fiscalYearPeriod / ラベル・月の表記", () => {
   it("年度の期間", () => {
     expect(fiscalYearPeriod(2025)).toEqual({ from: "2025-04-01", to: "2026-03-31" });
-    expect(fiscalYearLabel(2025)).toBe("2025年度（2025年4月1日〜2026年3月31日）");
+    expect(fiscalYearLabel(2025)).toBe("2025年度（令和7年度・2025年4月1日〜2026年3月31日）");
   });
   it("月の表記", () => {
     expect(ymText("2025-08")).toBe("2025年8月分");
@@ -155,7 +155,24 @@ describe("buildPayrollRequestRows", () => {
   it("許可の記録が無い人は現在の許可日で補って警告を出す", () => {
     const { rows } = buildPayrollRequestRows([base], {}, 2025);
     expect(rows).toHaveLength(1);
-    expect(rows[0].warning).toContain("特定技能の許可の記録が無い");
+    expect(rows[0].warning).toContain("特定技能の許可日の記録が無い");
+  });
+
+  it("許可日も未登録でも、在留資格が特定技能なら雇用開始日から対象に載せる", () => {
+    const c = { ...base, residencePermitDate: null, startOn: "2025-06-10" };
+    const { rows } = buildPayrollRequestRows([c], {}, 2025);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].fromYm).toBe("2025-06");
+    expect(rows[0].warning).toContain("特定技能の許可日の記録が無い");
+  });
+
+  it("許可日も雇用開始日も未登録なら、年度の初めから対象に載せる（昇給率の対象にはしない）", () => {
+    const c = { ...base, residencePermitDate: null, startOn: null };
+    const { rows } = buildPayrollRequestRows([c], {}, 2025);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].fromYm).toBe("2025-04");
+    expect(rows[0].toYm).toBe("2026-03");
+    expect(rows[0].prevYear).toBe(false);
   });
 
   it("退職して判定日（4月1日）にいない人は、2年以上でも前年度分はお願いしない", () => {
