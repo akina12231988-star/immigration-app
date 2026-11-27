@@ -40,6 +40,7 @@ export interface PayrollRequestRow {
   note: string; // 備考の初期値（年度の途中の入社・退職など）
   warning: string; // 画面だけに出す注意（印刷には出ない。'' = なし）
   sswStart: string; // 特定技能（1号または2号）の最初の許可日 YYYY-MM-DD（入力画面の除外月の初期値に使う）
+  sswTenure: string; // 対象期間の最終日（退職していれば退職日）までの特定技能としての在籍の長さ（例: 2年9ヶ月）
   grade2From: string; // 特定技能2号の最初の許可日 YYYY-MM-DD（2号移行の月割りに使う。1号のままなら ''）
 }
 
@@ -140,6 +141,20 @@ const SSW2 = "特定技能2号";
 export function jpDate(ymd: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
   return m ? `${Number(m[1])}年${Number(m[2])}月${Number(m[3])}日` : ymd;
+}
+
+// 在籍の長さ「2年9ヶ月」（DATEDIF と同じ数え方: 満の年月）。日付が不正・逆なら空
+export function yearsMonthsText(from: string, to: string): string {
+  const f = /^(\d{4})-(\d{2})-(\d{2})$/.exec(from);
+  const t = /^(\d{4})-(\d{2})-(\d{2})$/.exec(to);
+  if (!f || !t) return "";
+  let months = (Number(t[1]) - Number(f[1])) * 12 + (Number(t[2]) - Number(f[2]));
+  if (Number(t[3]) < Number(f[3])) months -= 1;
+  if (months < 0) return "";
+  const years = Math.floor(months / 12);
+  const rest = months % 12;
+  if (years === 0) return `${rest}ヶ月`;
+  return rest === 0 ? `${years}年` : `${years}年${rest}ヶ月`;
 }
 
 // 在留資格の表記ゆれ（全角数字・１号/一号など）をならして判定する
@@ -264,6 +279,7 @@ export function buildPayrollRequestRows(
       prevFromYm,
       prevToYm,
       sswStart,
+      sswTenure: yearsMonthsText(sswStart, to),
       grade2From: first2 ?? "",
       note: notes.join("。"),
       warning: estimated
@@ -303,6 +319,7 @@ export function manualPayrollRequestRow(
     prevFromYm: "",
     prevToYm: "",
     sswStart: c.startOn ?? fyFrom,
+    sswTenure: yearsMonthsText(c.startOn ?? fyFrom, to),
     grade2From: "",
     note: c.leavingOn && c.leavingOn <= fyTo ? `${jpDate(c.leavingOn)} 退職` : "",
     warning:

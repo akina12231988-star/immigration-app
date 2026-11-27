@@ -259,7 +259,7 @@ describe("explainReport36（計算のご説明の内訳）", () => {
     const row = {
       id: "w1", name: "A", kana: "", nationality: "", grade: "特定技能1号",
       fromYm: "2025-04", toYm: "2026-03", prevYear: false, prevFromYm: "", prevToYm: "",
-      sswStart: "2024-04-01", grade2From: "", note: "", warning: "",
+      sswStart: "2024-04-01", sswTenure: "", grade2From: "", note: "", warning: "",
     };
     const entries: Record<string, { work_days: number | null; total_hours: null; overtime_hours: null; amounts: Record<string, number>; excluded: boolean }> = {
       "w1|2025-04": { work_days: 10, total_hours: null, overtime_hours: null, amounts: { kihon: 100000 }, excluded: true }, // 月の途中の入社
